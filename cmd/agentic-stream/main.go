@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -37,6 +38,7 @@ cognitive scheduler decides reasoning is useful.`,
 
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newValidateCommand())
+	root.AddCommand(newRunCommand())
 	root.AddCommand(newConfigEffectiveCommand())
 
 	return root
@@ -80,6 +82,51 @@ func newValidateCommand() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Emit canonical JSON instead of summary")
+	return cmd
+}
+
+func newRunCommand() *cobra.Command {
+	var (
+		dbPath   string
+		tenantID string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "run --spec <spec.yaml> --trace <trace.jsonl>",
+		Short: "Replay a JSONL trace against a spec and print the canonical result.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			specPath, err := cmd.Flags().GetString("spec")
+			if err != nil {
+				return fmt.Errorf("get spec flag: %w", err)
+			}
+			tracePath, err := cmd.Flags().GetString("trace")
+			if err != nil {
+				return fmt.Errorf("get trace flag: %w", err)
+			}
+			if specPath == "" || tracePath == "" {
+				return fmt.Errorf("--spec and --trace are required")
+			}
+			if dbPath == "" {
+				dbPath = tracePath + ".replay.db"
+			}
+
+			result, err := replay.Run(cmd.Context(), dbPath, specPath, tracePath, tenantID)
+			if err != nil {
+				return fmt.Errorf("run replay: %w", err)
+			}
+
+			cmd.Printf("events_processed=%d situation_versions=%d versions_hash=%s\n",
+				result.EventsProcessed, result.VersionCount, result.VersionsHash)
+			return nil
+		},
+	}
+
+	cmd.Flags().String("spec", "", "Path to the SituationSpec YAML file")
+	cmd.Flags().String("trace", "", "Path to the JSONL trace file")
+	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite database path (default: <trace>.replay.db)")
+	cmd.Flags().StringVar(&tenantID, "tenant", "default", "Tenant ID")
+
 	return cmd
 }
 

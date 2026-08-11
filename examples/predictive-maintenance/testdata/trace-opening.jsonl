@@ -1,0 +1,1 @@
+{"id":"pm-open-001","type":"motor.vibration.observed","schema_version":"1.0","tenant_id":"default","source":"golden","partition_key":"motor-17","entity":{"type":"motor","id":"motor-17"},"event_time":"2026-01-01T00:00:00Z","ingested_at":"2026-01-01T00:00:01Z","classification":"internal","data":{"rms_mm_s":5.0}}

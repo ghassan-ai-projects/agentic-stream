@@ -347,6 +347,20 @@ func (e *Engine) buildFeaturesMap(sit *Situation) map[string]any {
 			features[r.Field] = evidence
 		}
 	}
+	// Pre-populate defaults for every operator output so that CEL expressions
+	// never fail on a missing key. Numeric features default to 0; heartbeat
+	// detectors default to false.
+	for _, op := range e.spec.Operators {
+		if _, ok := features[op.Output]; ok {
+			continue
+		}
+		switch op.Kind {
+		case "missing_heartbeat":
+			features[op.Output] = false
+		default:
+			features[op.Output] = 0.0
+		}
+	}
 	return features
 }
 
