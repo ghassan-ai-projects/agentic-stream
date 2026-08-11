@@ -276,15 +276,15 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 
 	var episodeID, status string
 	if err := db.QueryRowContext(ctx,
-		"SELECT episode_id, status FROM episodes WHERE scheduler_item_id = ?", schedulerItemID,
+		"SELECT episode_id, lifecycle_status FROM episodes WHERE scheduler_item_id = ?", schedulerItemID,
 	).Scan(&episodeID, &status); err != nil {
 		t.Fatalf("query episode: %v", err)
 	}
 	if episodeID == "" {
 		t.Fatal("expected episode id")
 	}
-	if status != "queued" {
-		t.Fatalf("expected queued status, got %s", status)
+	if status != "admitted" {
+		t.Fatalf("expected admitted lifecycle status, got %s", status)
 	}
 
 	var itemStatus string

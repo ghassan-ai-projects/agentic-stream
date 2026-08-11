@@ -99,10 +99,10 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		"delta":    delta,
 		"tools":    tools,
 		"executor": map[string]any{
-			"name":           a.spec.Cognition.Executor.Name,
-			"model_policy":   a.spec.Cognition.Executor.ModelPolicy,
-			"prompt_version": a.spec.Cognition.Executor.PromptVersion,
-			"objective":      a.spec.Cognition.Executor.Objective,
+			"name":            a.spec.Cognition.Executor.Name,
+			"model_policy":    a.spec.Cognition.Executor.ModelPolicy,
+			"prompt_version":  a.spec.Cognition.Executor.PromptVersion,
+			"objective":       a.spec.Cognition.Executor.Objective,
 			"decision_schema": a.spec.Cognition.Executor.DecisionSchema,
 		},
 		"budget": a.budgetMap(),
@@ -162,8 +162,8 @@ func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now t
 		INSERT INTO episodes (
 			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
 			executor_name, executor_version, model_policy, prompt_version,
-			snapshot_sha256, admission_key, request_json, status, accepted_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)`,
+			snapshot_sha256, admission_key, request_json, lifecycle_status, accepted_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admitted', ?)`,
 		req.EpisodeID, req.SchedulerItemID, req.TenantID, req.SituationID, req.SituationVersion,
 		req.ExecutorName, req.ExecutorVersion, req.ModelPolicy, req.PromptVersion,
 		snapshotHash, req.AdmissionKey, req.RequestJSON,
@@ -193,13 +193,13 @@ func (a *Assembler) buildTools() []map[string]any {
 	tools := make([]map[string]any, 0, len(a.spec.Actions.Intents))
 	for _, intent := range a.spec.Actions.Intents {
 		tools = append(tools, map[string]any{
-			"type":             intent.Type,
-			"risk":             intent.Risk,
-			"schema":           intent.Schema,
-			"policy":           intent.Policy,
-			"rate_limit":       intent.RateLimitPerHour,
-			"allowed":          true,
-			"description":      "",
+			"type":        intent.Type,
+			"risk":        intent.Risk,
+			"schema":      intent.Schema,
+			"policy":      intent.Policy,
+			"rate_limit":  intent.RateLimitPerHour,
+			"allowed":     true,
+			"description": "",
 		})
 	}
 	return tools
@@ -272,4 +272,3 @@ func (a *Assembler) loadSnapshotJSON(ctx context.Context, tx *sql.Tx, situationI
 	}
 	return snapshotJSON, nil
 }
-
