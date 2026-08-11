@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -34,14 +35,15 @@ type Engine struct {
 
 	opRuntime *operators.OperatorRuntime
 	sitEngine *situations.Engine
+	cogEngine *cognition.Engine
 }
 
 // NewEngine creates an engine for the given spec and tenant.
-func NewEngine(db *storage.DB, log *eventlog.EventLog, clk clock.Clock, compiled *spec.CompiledSpec, tenantID string) (*Engine, error) {
+func NewEngine(ctx context.Context, db *storage.DB, log *eventlog.EventLog, clk clock.Clock, compiled *spec.CompiledSpec, tenantID string) (*Engine, error) {
 	if tenantID == "" {
 		tenantID = contractsv1.TenantID
 	}
-	if err := spec.SaveDeployment(context.Background(), db, tenantID, compiled); err != nil {
+	if err := spec.SaveDeployment(ctx, db, tenantID, compiled); err != nil {
 		return nil, fmt.Errorf("save deployment: %w", err)
 	}
 	idGen := ids.Deterministic()
@@ -54,6 +56,10 @@ func NewEngine(db *storage.DB, log *eventlog.EventLog, clk clock.Clock, compiled
 	if err != nil {
 		return nil, fmt.Errorf("situation engine: %w", err)
 	}
+	cogEngine, err := cognition.NewEngine(db, compiled.Digest, tenantID, compiled, idGen, clk)
+	if err != nil {
+		return nil, fmt.Errorf("cognition engine: %w", err)
+	}
 	return &Engine{
 		db:           db,
 		log:          log,
@@ -63,6 +69,7 @@ func NewEngine(db *storage.DB, log *eventlog.EventLog, clk clock.Clock, compiled
 		deploymentID: compiled.Digest,
 		opRuntime:    opRuntime,
 		sitEngine:    sitEngine,
+		cogEngine:    cogEngine,
 	}, nil
 }
 
@@ -195,6 +202,9 @@ func (e *Engine) applyRecord(ctx context.Context, partitionID int, rec eventlog.
 				if err := e.saveSituationVersion(ctx, tx, partitionID, v); err != nil {
 					return fmt.Errorf("save situation version: %w", err)
 				}
+				if err := e.cogEngine.Process(ctx, tx, v); err != nil {
+					return fmt.Errorf("cognition process: %w", err)
+				}
 			}
 		}
 
@@ -202,21 +212,23 @@ func (e *Engine) applyRecord(ctx context.Context, partitionID int, rec eventlog.
 			return fmt.Errorf("save operator state: %w", err)
 		}
 
+		now := e.clock.Now().UTC().Format(time.RFC3339Nano)
+
 		// Advance checkpoint.
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO partition_checkpoints (consumer_name, tenant_id, partition_id, last_position, watermark, updated_at)
-			VALUES (?, ?, ?, ?, ?, datetime('now'))
+			VALUES (?, ?, ?, ?, ?, ?)
 			ON CONFLICT(consumer_name, tenant_id, partition_id)
 			DO UPDATE SET last_position = excluded.last_position, watermark = excluded.watermark, updated_at = excluded.updated_at`,
-			ConsumerName, e.tenantID, partitionID, int64(rec.Position), watermark.Format(time.RFC3339Nano),
+			ConsumerName, e.tenantID, partitionID, int64(rec.Position), watermark.Format(time.RFC3339Nano), now,
 		); err != nil {
 			return fmt.Errorf("update checkpoint: %w", err)
 		}
 
 		// Mark inbox applied.
 		if _, err := tx.ExecContext(ctx,
-			"INSERT INTO event_inbox (consumer_name, tenant_id, event_id, log_position, applied_at) VALUES (?, ?, ?, ?, datetime('now'))",
-			ConsumerName, e.tenantID, rec.EventID, int64(rec.Position),
+			"INSERT INTO event_inbox (consumer_name, tenant_id, event_id, log_position, applied_at) VALUES (?, ?, ?, ?, ?)",
+			ConsumerName, e.tenantID, rec.EventID, int64(rec.Position), now,
 		); err != nil {
 			return fmt.Errorf("mark inbox: %w", err)
 		}
@@ -264,6 +276,7 @@ func (e *Engine) saveOperatorState(ctx context.Context, tx *sql.Tx, partitionID 
 	if ps == nil {
 		return nil
 	}
+	now := e.clock.Now().UTC().Format(time.RFC3339Nano)
 	for operatorID, keys := range ps.OperatorStates {
 		for stateKey, blob := range keys {
 			blobJSON, err := json.Marshal(blob)
@@ -275,14 +288,14 @@ func (e *Engine) saveOperatorState(ctx context.Context, tx *sql.Tx, partitionID 
 				INSERT INTO operator_state (
 					deployment_id, tenant_id, partition_id, operator_id, state_key,
 					state_version, codec_version, state_blob, state_sha256, updated_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(deployment_id, tenant_id, partition_id, operator_id, state_key)
 				DO UPDATE SET state_version = excluded.state_version + 1,
 				              state_blob = excluded.state_blob,
 				              state_sha256 = excluded.state_sha256,
 				              updated_at = excluded.updated_at`,
 				e.deploymentID, e.tenantID, partitionID, operatorID, stateKey,
-				1, 1, blobJSON, h[:],
+				1, 1, blobJSON, h[:], now,
 			); err != nil {
 				return fmt.Errorf("upsert operator state: %w", err)
 			}
@@ -292,6 +305,8 @@ func (e *Engine) saveOperatorState(ctx context.Context, tx *sql.Tx, partitionID 
 }
 
 func (e *Engine) saveSituationVersion(ctx context.Context, tx *sql.Tx, partitionID int, v situations.Version) error {
+	now := e.clock.Now().UTC().Format(time.RFC3339Nano)
+
 	// Ensure the lineage set exists.
 	lineageID := e.lineageID(v.Evidence)
 	referencesJSON, err := json.Marshal(v.Evidence)
@@ -301,9 +316,9 @@ func (e *Engine) saveSituationVersion(ctx context.Context, tx *sql.Tx, partition
 	lh := sha256.Sum256(referencesJSON)
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO lineage_sets (lineage_id, sha256, reference_count, references_json, created_at)
-		VALUES (?, ?, 1, ?, datetime('now'))
+		VALUES (?, ?, 1, ?, ?)
 		ON CONFLICT(lineage_id) DO NOTHING`,
-		lineageID, lh[:], referencesJSON,
+		lineageID, lh[:], referencesJSON, now,
 	); err != nil {
 		return fmt.Errorf("insert lineage set: %w", err)
 	}
@@ -314,7 +329,7 @@ func (e *Engine) saveSituationVersion(ctx context.Context, tx *sql.Tx, partition
 			situation_id, tenant_id, deployment_id, situation_type, entity_type,
 			entity_id, partition_id, occurrence_id, current_version, phase,
 			status, first_event_time, latest_event_time, updated_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(situation_id)
 		DO UPDATE SET current_version = excluded.current_version,
 		              phase = excluded.phase,
@@ -324,7 +339,7 @@ func (e *Engine) saveSituationVersion(ctx context.Context, tx *sql.Tx, partition
 		v.SituationID, e.tenantID, e.deploymentID, v.Type, v.EntityType,
 		v.EntityID, partitionID, "occ-"+v.SituationID, v.Version, v.Phase,
 		"active", v.EventHorizon.Format(time.RFC3339Nano),
-		v.EventHorizon.Format(time.RFC3339Nano),
+		v.EventHorizon.Format(time.RFC3339Nano), now, now,
 	); err != nil {
 		return fmt.Errorf("upsert situation: %w", err)
 	}
@@ -339,12 +354,12 @@ func (e *Engine) saveSituationVersion(ctx context.Context, tx *sql.Tx, partition
 			situation_id, version, previous_version, phase, previous_phase,
 			severity, confidence, completeness, event_horizon, watermark,
 			valid_from, snapshot_json, snapshot_sha256, lineage_id, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		v.SituationID, v.Version, prevVersion, v.Phase, v.PreviousPhase,
 		v.Severity, v.Confidence, v.Completeness,
 		v.EventHorizon.Format(time.RFC3339Nano), v.Watermark.Format(time.RFC3339Nano),
 		v.EventHorizon.Format(time.RFC3339Nano), v.SnapshotJSON, mustDecodeHex(v.SnapshotSHA256),
-		lineageID,
+		lineageID, now,
 	); err != nil {
 		return fmt.Errorf("insert situation version: %w", err)
 	}

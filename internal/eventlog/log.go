@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -44,12 +45,21 @@ type ReadRequest struct {
 
 // EventLog appends and reads normalized events.
 type EventLog struct {
-	db *storage.DB
+	db  *storage.DB
+	clk clock.Clock
 }
 
-// NewEventLog creates an EventLog backed by db.
+// NewEventLog creates an EventLog backed by db and the physical clock.
 func NewEventLog(db *storage.DB) *EventLog {
-	return &EventLog{db: db}
+	return NewEventLogWithClock(db, clock.Physical())
+}
+
+// NewEventLogWithClock creates an EventLog backed by db and the given clock.
+func NewEventLogWithClock(db *storage.DB, clk clock.Clock) *EventLog {
+	if clk == nil {
+		clk = clock.Physical()
+	}
+	return &EventLog{db: db, clk: clk}
 }
 
 // Append inserts envelopes into the event log. Duplicate event IDs for the same
@@ -131,7 +141,7 @@ func (l *EventLog) appendOne(ctx context.Context, tx *sql.Tx, tenantID string, e
 		qualityJSON,
 		payloadJSON,
 		payloadHash[:],
-		time.Now().UTC().Format(time.RFC3339Nano),
+		l.clk.Now().UTC().Format(time.RFC3339Nano),
 	)
 	if err != nil {
 		return -1, fmt.Errorf("insert event: %w", err)

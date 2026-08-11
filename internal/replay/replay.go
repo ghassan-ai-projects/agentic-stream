@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
@@ -38,13 +39,15 @@ func Run(ctx context.Context, dbPath, specPath, tracePath, tenantID string) (Res
 		return Result{}, fmt.Errorf("compile spec: %w", err)
 	}
 
-	log := eventlog.NewEventLog(db)
-	conn := ingress.NewJSONLReplay(db, log, tenantID, tracePath, "replay:"+tracePath)
+	epoch := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	clk := clock.NewVirtual(epoch)
+	log := eventlog.NewEventLogWithClock(db, clk)
+	conn := ingress.NewJSONLReplayWithClock(db, log, tenantID, tracePath, "replay:"+tracePath, clk)
 	if _, err := conn.Run(ctx); err != nil {
 		return Result{}, fmt.Errorf("replay trace: %w", err)
 	}
 
-	eng, err := engine.NewEngine(db, log, clock.Physical(), compiled, tenantID)
+	eng, err := engine.NewEngine(ctx, db, log, clk, compiled, tenantID)
 	if err != nil {
 		return Result{}, fmt.Errorf("new engine: %w", err)
 	}

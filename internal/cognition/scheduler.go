@@ -1,0 +1,283 @@
+package cognition
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+)
+
+// Scheduler manages the durable cognition queue.
+type Scheduler struct {
+	spec  *spec.CompiledSpec
+	idGen ids.Generator
+	clk   clock.Clock
+}
+
+// NewScheduler creates a scheduler configured by spec.
+func NewScheduler(compiled *spec.CompiledSpec, idGen ids.Generator, clk clock.Clock) *Scheduler {
+	if clk == nil {
+		clk = clock.Physical()
+	}
+	return &Scheduler{spec: compiled, idGen: idGen, clk: clk}
+}
+
+// Item is one durable scheduler entry.
+type Item struct {
+	SchedulerItemID  string
+	TriggerID        string
+	SituationID      string
+	SituationVersion int
+	Lane             string
+	Priority         float64
+	Status           string
+	NotBefore        *time.Time
+	ExpiresAt        time.Time
+}
+
+const (
+	defaultExpiresAfter = 15 * time.Minute
+	globalCapacity      = 100
+)
+
+func parseOptionalDuration(s string, defaultDur time.Duration) (time.Duration, error) {
+	if s == "" {
+		return defaultDur, nil
+	}
+	d, err := duration.Parse(s)
+	if err != nil {
+		return 0, fmt.Errorf("parse duration %q: %w", s, err)
+	}
+	return d, nil
+}
+
+// Admit persists the trigger evaluation and creates or updates the durable
+// scheduler item. It runs inside the supplied transaction.
+func (s *Scheduler) Admit(ctx context.Context, tx *sql.Tx, eval Evaluation, v situations.Version, tenantID, deploymentID string) error {
+	if err := s.saveEvaluation(ctx, tx, eval, tenantID, deploymentID); err != nil {
+		return fmt.Errorf("save evaluation: %w", err)
+	}
+
+	// Ignored or rejected evaluations do not create queue items.
+	if eval.Outcome != "admitted" {
+		return nil
+	}
+
+	item, err := s.buildItem(ctx, tx, eval)
+	if err != nil {
+		return fmt.Errorf("build item: %w", err)
+	}
+
+	// Always supersede stale pending items for the same situation and trigger
+	// before checking capacity, so newer versions replace older ones.
+	if err := s.supersedePending(ctx, tx, eval.SituationID, eval.TriggerName); err != nil {
+		return fmt.Errorf("supersede pending: %w", err)
+	}
+
+	// Capacity exhaustion defers the latest version.
+	pending, err := s.countPending(ctx, tx, tenantID)
+	if err != nil {
+		return fmt.Errorf("count pending: %w", err)
+	}
+	if pending >= globalCapacity {
+		eval.Outcome = "deferred"
+		eval.Reasons = append(eval.Reasons, "global capacity exhausted")
+		if err := s.saveEvaluation(ctx, tx, eval, tenantID, deploymentID); err != nil {
+			return fmt.Errorf("save deferred evaluation: %w", err)
+		}
+		return nil
+	}
+
+	if err := s.insertItem(ctx, tx, item, tenantID); err != nil {
+		return fmt.Errorf("insert item: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Scheduler) saveEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluation, tenantID, deploymentID string) error {
+	reasonsJSON, err := json.Marshal(eval.Reasons)
+	if err != nil {
+		return fmt.Errorf("marshal reasons: %w", err)
+	}
+	policySHA, err := hex.DecodeString(s.spec.Digest)
+	if err != nil {
+		return fmt.Errorf("decode policy digest: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO trigger_evaluations (
+			trigger_id, tenant_id, deployment_id, trigger_name,
+			situation_id, situation_version, score, threshold, lane,
+			outcome, reasons_json, policy_sha256, evaluated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(trigger_id) DO UPDATE SET
+			situation_version = excluded.situation_version,
+			score = excluded.score,
+			threshold = excluded.threshold,
+			lane = excluded.lane,
+			outcome = excluded.outcome,
+			reasons_json = excluded.reasons_json,
+			policy_sha256 = excluded.policy_sha256,
+			evaluated_at = excluded.evaluated_at`,
+		eval.TriggerID, tenantID, deploymentID, eval.TriggerName,
+		eval.SituationID, eval.SituationVersion, eval.Score, eval.Threshold, eval.Lane,
+		eval.Outcome, reasonsJSON, policySHA[:], eval.EvaluatedAt.Format(time.RFC3339Nano),
+	); err != nil {
+		return fmt.Errorf("upsert trigger evaluation: %w", err)
+	}
+	return nil
+}
+
+func (s *Scheduler) buildItem(ctx context.Context, tx *sql.Tx, eval Evaluation) (Item, error) {
+	item := Item{
+		SchedulerItemID:  s.itemID(),
+		TriggerID:        eval.TriggerID,
+		SituationID:      eval.SituationID,
+		SituationVersion: eval.SituationVersion,
+		Lane:             eval.Lane,
+		Priority:         eval.Score,
+		Status:           "pending",
+	}
+
+	trigger, err := s.findTrigger(eval.TriggerName)
+	if err != nil {
+		return item, err
+	}
+
+	now := s.clk.Now().UTC()
+	expiresAfter, err := parseOptionalDuration(trigger.ExpiresAfter, defaultExpiresAfter)
+	if err != nil {
+		return item, fmt.Errorf("parse expiresAfter: %w", err)
+	}
+	item.ExpiresAt = now.Add(expiresAfter)
+
+	debounce, err := parseOptionalDuration(trigger.Debounce, 0)
+	if err != nil {
+		return item, fmt.Errorf("parse debounce: %w", err)
+	}
+	if debounce > 0 {
+		notBefore := now.Add(debounce)
+		item.NotBefore = &notBefore
+	}
+
+	cooldown, err := parseOptionalDuration(trigger.Cooldown, 0)
+	if err != nil {
+		return item, fmt.Errorf("parse cooldown: %w", err)
+	}
+	if cooldown > 0 {
+		latest, err := s.latestAdmittedTime(ctx, tx, eval.SituationID, eval.TriggerName, eval.TriggerID)
+		if err != nil {
+			return item, err
+		}
+		if latest != nil {
+			notBefore := latest.Add(cooldown)
+			if item.NotBefore == nil || notBefore.After(*item.NotBefore) {
+				item.NotBefore = &notBefore
+			}
+		}
+	}
+
+	return item, nil
+}
+
+func (s *Scheduler) findTrigger(name string) (spec.Trigger, error) {
+	for _, tr := range s.spec.Cognition.Triggers {
+		if tr.Name == name {
+			return tr, nil
+		}
+	}
+	return spec.Trigger{}, fmt.Errorf("trigger %q not found", name)
+}
+
+func (s *Scheduler) latestAdmittedTime(ctx context.Context, tx *sql.Tx, situationID, triggerName, excludeTriggerID string) (*time.Time, error) {
+	var evaluatedAt string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT evaluated_at FROM trigger_evaluations
+		WHERE situation_id = ? AND trigger_name = ? AND outcome = 'admitted' AND trigger_id != ?
+		ORDER BY evaluated_at DESC LIMIT 1`,
+		situationID, triggerName, excludeTriggerID,
+	).Scan(&evaluatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("query latest admitted: %w", err)
+	}
+	t, err := time.Parse(time.RFC3339Nano, evaluatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse evaluated_at: %w", err)
+	}
+	return &t, nil
+}
+
+func (s *Scheduler) countPending(ctx context.Context, tx *sql.Tx, tenantID string) (int, error) {
+	var count int
+	if err := tx.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM scheduler_items WHERE tenant_id = ? AND status = 'pending'",
+		tenantID,
+	).Scan(&count); err != nil {
+		return 0, fmt.Errorf("query pending count: %w", err)
+	}
+	return count, nil
+}
+
+func (s *Scheduler) supersedePending(ctx context.Context, tx *sql.Tx, situationID, triggerName string) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE scheduler_items SET status = 'coalesced', updated_at = ?
+		WHERE situation_id = ? AND trigger_id IN (
+			SELECT trigger_id FROM trigger_evaluations
+			WHERE situation_id = ? AND trigger_name = ? AND outcome = 'admitted'
+		) AND status IN ('pending', 'admitted')`,
+		s.clk.Now().UTC().Format(time.RFC3339Nano), situationID, situationID, triggerName,
+	); err != nil {
+		return fmt.Errorf("supersede: %w", err)
+	}
+	return nil
+}
+
+func (s *Scheduler) insertItem(ctx context.Context, tx *sql.Tx, item Item, tenantID string) error {
+	notBefore := sql.NullString{}
+	if item.NotBefore != nil {
+		notBefore = sql.NullString{String: item.NotBefore.Format(time.RFC3339Nano), Valid: true}
+	}
+	now := s.clk.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO scheduler_items (
+			scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version,
+			lane, priority, status, dedupe_key, not_before, expires_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(trigger_id) DO UPDATE SET
+			situation_version = excluded.situation_version,
+			lane = excluded.lane,
+			priority = excluded.priority,
+			status = excluded.status,
+			dedupe_key = excluded.dedupe_key,
+			not_before = excluded.not_before,
+			expires_at = excluded.expires_at,
+			updated_at = excluded.updated_at`,
+		item.SchedulerItemID, item.TriggerID, tenantID, item.SituationID, item.SituationVersion,
+		item.Lane, item.Priority, item.Status, s.dedupeKey(item.SituationID, item.SituationVersion, item.TriggerID),
+		notBefore, item.ExpiresAt.Format(time.RFC3339Nano), now, now,
+	); err != nil {
+		return fmt.Errorf("upsert scheduler item: %w", err)
+	}
+	return nil
+}
+
+func (s *Scheduler) dedupeKey(situationID string, version int, triggerID string) []byte {
+	h := sha256.New()
+	_, _ = fmt.Fprintf(h, "%s|%d|%s", situationID, version, triggerID)
+	return h.Sum(nil)
+}
+
+func (s *Scheduler) itemID() string {
+	return s.idGen.New(ids.PrefixScheduler)
+}

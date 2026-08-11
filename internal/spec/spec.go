@@ -30,6 +30,28 @@ type CompiledSpec struct {
 	Digest        string `json:"digest"`
 }
 
+// DeltaKeys are the stable keys available in the `delta` CEL variable when
+// comparing a new Situation version to the last reasoned version.
+var DeltaKeys = struct {
+	PhaseChanged             string
+	SeverityChange           string
+	CompletenessChanged      string
+	PrimaryHypothesisChanged string
+	FactsChanged             string
+	Facts                    string
+	NewFacts                 string
+	Novelty                  string
+}{
+	PhaseChanged:             "phase_changed",
+	SeverityChange:           "severity_change",
+	CompletenessChanged:      "completeness_changed",
+	PrimaryHypothesisChanged: "primary_hypothesis_changed",
+	FactsChanged:             "facts_changed",
+	Facts:                    "facts",
+	NewFacts:                 "new_facts",
+	Novelty:                  "novelty",
+}
+
 // Metadata describes the spec.
 type Metadata struct {
 	Name        string            `json:"name" yaml:"name"`

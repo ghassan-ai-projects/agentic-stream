@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -23,12 +25,22 @@ type JSONLReplay struct {
 	path        string
 	db          *storage.DB
 	log         *eventlog.EventLog
+	clk         clock.Clock
 }
 
 // NewJSONLReplay creates a JSONL replay connector.
 func NewJSONLReplay(db *storage.DB, log *eventlog.EventLog, tenantID, path, connectorID string) *JSONLReplay {
+	return NewJSONLReplayWithClock(db, log, tenantID, path, connectorID, clock.Physical())
+}
+
+// NewJSONLReplayWithClock creates a JSONL replay connector that uses clk for
+// durable timestamps.
+func NewJSONLReplayWithClock(db *storage.DB, log *eventlog.EventLog, tenantID, path, connectorID string, clk clock.Clock) *JSONLReplay {
 	if connectorID == "" {
 		connectorID = "jsonl:" + path
+	}
+	if clk == nil {
+		clk = clock.Physical()
 	}
 	return &JSONLReplay{
 		connectorID: connectorID,
@@ -36,6 +48,7 @@ func NewJSONLReplay(db *storage.DB, log *eventlog.EventLog, tenantID, path, conn
 		path:        path,
 		db:          db,
 		log:         log,
+		clk:         clk,
 	}
 }
 
@@ -134,14 +147,15 @@ func (c *JSONLReplay) saveCheckpoint(ctx context.Context, lastLine int) error {
 	if err != nil {
 		return fmt.Errorf("marshal checkpoint: %w", err)
 	}
+	now := c.clk.Now().UTC().Format(time.RFC3339Nano)
 	if _, err := c.db.ExecContext(ctx, `
 		INSERT INTO connector_checkpoints (connector_id, connector_kind, checkpoint_version, checkpoint_blob, updated_at)
-		VALUES (?, 'jsonl-replay', ?, ?, datetime('now'))
+		VALUES (?, 'jsonl-replay', ?, ?, ?)
 		ON CONFLICT(connector_id)
 		DO UPDATE SET checkpoint_version = excluded.checkpoint_version,
 		              checkpoint_blob = excluded.checkpoint_blob,
 		              updated_at = excluded.updated_at`,
-		c.connectorID, cp.Version, blob,
+		c.connectorID, cp.Version, blob, now,
 	); err != nil {
 		return fmt.Errorf("upsert checkpoint: %w", err)
 	}

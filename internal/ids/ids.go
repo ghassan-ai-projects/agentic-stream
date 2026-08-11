@@ -14,6 +14,7 @@ const (
 	PrefixEvent     = "evt_"
 	PrefixSituation = "sit_"
 	PrefixEpisode   = "epi_"
+	PrefixScheduler = "sch_"
 	PrefixTrigger   = "trg_"
 	PrefixDecision  = "dec_"
 	PrefixIntent    = "int_"
