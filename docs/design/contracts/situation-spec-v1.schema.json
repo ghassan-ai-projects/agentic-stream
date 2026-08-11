@@ -1,0 +1,730 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-stream:schema:situation-spec:v1",
+  "title": "Agentic Stream SituationSpec v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "inputs",
+    "time",
+    "windows",
+    "operators",
+    "situation",
+    "cognition",
+    "actions"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "agentic-stream/v1"
+    },
+    "kind": {
+      "const": "SituationSpec"
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/input"
+      }
+    },
+    "time": {
+      "$ref": "#/$defs/timePolicy"
+    },
+    "windows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/window"
+      }
+    },
+    "operators": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/operator"
+      }
+    },
+    "situation": {
+      "$ref": "#/$defs/situation"
+    },
+    "cognition": {
+      "$ref": "#/$defs/cognition"
+    },
+    "actions": {
+      "$ref": "#/$defs/actions"
+    },
+    "retention": {
+      "$ref": "#/$defs/retention"
+    },
+    "telemetry": {
+      "$ref": "#/$defs/telemetry"
+    }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,62}$"
+    },
+    "duration": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*(ns|us|ms|s|m|h|d)$"
+    },
+    "expression": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[a-z0-9.-]+)?$"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "labels": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_.-]{0,62}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "maxProperties": 32
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "eventType",
+        "schemaVersion",
+        "partitionKey",
+        "entityType"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "eventType": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{1,126}$"
+        },
+        "schemaVersion": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+$"
+        },
+        "partitionKey": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_.]{0,126}$"
+        },
+        "entityType": {
+          "$ref": "#/$defs/name"
+        },
+        "classification": {
+          "enum": ["public", "internal", "confidential", "restricted"],
+          "default": "internal"
+        },
+        "maxPayloadBytes": {
+          "type": "integer",
+          "minimum": 256,
+          "maximum": 16777216,
+          "default": 1048576
+        }
+      }
+    },
+    "timePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "watermarkStrategy",
+        "maxOutOfOrderness",
+        "idleTimeout",
+        "allowedLateness",
+        "latePolicy"
+      ],
+      "properties": {
+        "watermarkStrategy": {
+          "const": "bounded_out_of_orderness"
+        },
+        "maxOutOfOrderness": {
+          "$ref": "#/$defs/duration"
+        },
+        "idleTimeout": {
+          "$ref": "#/$defs/duration"
+        },
+        "allowedLateness": {
+          "$ref": "#/$defs/duration"
+        },
+        "latePolicy": {
+          "enum": [
+            "drop_with_audit",
+            "history_only",
+            "correct",
+            "correct_and_reconsider"
+          ]
+        },
+        "clockSkewTolerance": {
+          "$ref": "#/$defs/duration"
+        }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "kind": {
+          "enum": ["tumbling", "sliding", "count", "decay"]
+        },
+        "size": {
+          "$ref": "#/$defs/duration"
+        },
+        "slide": {
+          "$ref": "#/$defs/duration"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "halfLife": {
+          "$ref": "#/$defs/duration"
+        },
+        "emit": {
+          "enum": ["on_update", "on_close", "early_and_close"],
+          "default": "on_close"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "tumbling"
+              }
+            }
+          },
+          "then": {
+            "required": ["size"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "sliding"
+              }
+            }
+          },
+          "then": {
+            "required": ["size", "slide"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "count"
+              }
+            }
+          },
+          "then": {
+            "required": ["count"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "decay"
+              }
+            }
+          },
+          "then": {
+            "required": ["halfLife"]
+          }
+        }
+      ]
+    },
+    "operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "inputs", "output"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "kind": {
+          "enum": [
+            "map",
+            "filter",
+            "aggregate",
+            "rate",
+            "slope",
+            "correlation",
+            "duration",
+            "missing_heartbeat"
+          ]
+        },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_.]{0,126}$"
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z_][a-zA-Z0-9_.]{0,126}$"
+          }
+        },
+        "window": {
+          "$ref": "#/$defs/name"
+        },
+        "aggregate": {
+          "enum": [
+            "count",
+            "sum",
+            "min",
+            "max",
+            "mean",
+            "variance",
+            "stddev",
+            "rms",
+            "first",
+            "last",
+            "delta",
+            "rate",
+            "slope",
+            "quantile",
+            "correlation"
+          ]
+        },
+        "where": {
+          "$ref": "#/$defs/expression"
+        },
+        "duration": {
+          "$ref": "#/$defs/duration"
+        },
+        "expectedEvery": {
+          "$ref": "#/$defs/duration"
+        },
+        "output": {
+          "$ref": "#/$defs/name"
+        },
+        "unit": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "configuration": {
+          "type": "object",
+          "maxProperties": 32,
+          "additionalProperties": {
+            "type": ["string", "number", "integer", "boolean"]
+          }
+        }
+      }
+    },
+    "phase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "severity"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "severity": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "terminal": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "when"],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/name"
+        },
+        "to": {
+          "$ref": "#/$defs/name"
+        },
+        "when": {
+          "$ref": "#/$defs/expression"
+        },
+        "minDuration": {
+          "$ref": "#/$defs/duration"
+        }
+      }
+    },
+    "reducer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "strategy", "input"],
+      "properties": {
+        "field": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_.]{0,126}$"
+        },
+        "strategy": {
+          "enum": [
+            "latest_event_time",
+            "min",
+            "max",
+            "bounded_append",
+            "set_union",
+            "weighted_confidence",
+            "source_priority"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/name"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
+      }
+    },
+    "situation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "entityKey",
+        "occurrence",
+        "initialPhase",
+        "phases",
+        "transitions",
+        "reducers"
+      ],
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/name"
+        },
+        "entityKey": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_.]{0,126}$"
+        },
+        "occurrence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["openWhen", "closeWhen"],
+          "properties": {
+            "openWhen": {
+              "$ref": "#/$defs/expression"
+            },
+            "closeWhen": {
+              "$ref": "#/$defs/expression"
+            },
+            "reopenCooldown": {
+              "$ref": "#/$defs/duration"
+            }
+          }
+        },
+        "initialPhase": {
+          "$ref": "#/$defs/name"
+        },
+        "phases": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/phase"
+          }
+        },
+        "transitions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/transition"
+          }
+        },
+        "reducers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/reducer"
+          }
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wallTime",
+        "modelCalls",
+        "inputTokens",
+        "outputTokens",
+        "toolCalls",
+        "toolResultBytes",
+        "totalToolResultBytes",
+        "providerRetries",
+        "costMicrounits"
+      ],
+      "properties": {
+        "wallTime": {
+          "$ref": "#/$defs/duration"
+        },
+        "modelCalls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000000
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "toolCalls": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "toolResultBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16777216
+        },
+        "totalToolResultBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 67108864
+        },
+        "providerRetries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "costMicrounits": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "when",
+        "score",
+        "threshold",
+        "lane",
+        "materialDelta"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "when": {
+          "$ref": "#/$defs/expression"
+        },
+        "score": {
+          "$ref": "#/$defs/expression"
+        },
+        "threshold": {
+          "type": "number"
+        },
+        "lane": {
+          "enum": ["fast", "deep"]
+        },
+        "completeness": {
+          "enum": ["any", "on_time", "final_by_policy"],
+          "default": "any"
+        },
+        "debounce": {
+          "$ref": "#/$defs/duration"
+        },
+        "cooldown": {
+          "$ref": "#/$defs/duration"
+        },
+        "expiresAfter": {
+          "$ref": "#/$defs/duration"
+        },
+        "materialDelta": {
+          "$ref": "#/$defs/expression"
+        }
+      }
+    },
+    "executor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "objective",
+        "modelPolicy",
+        "promptVersion",
+        "decisionSchema",
+        "tools",
+        "budget"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "modelPolicy": {
+          "$ref": "#/$defs/name"
+        },
+        "promptVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "decisionSchema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "tools": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        },
+        "budget": {
+          "$ref": "#/$defs/budget"
+        }
+      }
+    },
+    "cognition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["triggers", "executor"],
+      "properties": {
+        "triggers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/trigger"
+          }
+        },
+        "executor": {
+          "$ref": "#/$defs/executor"
+        }
+      }
+    },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "risk", "schema"],
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/name"
+        },
+        "risk": {
+          "enum": ["R0", "R1", "R2", "R3", "R4"]
+        },
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "policy": {
+          "enum": ["automatic", "approval", "deny", "simulate"],
+          "default": "approval"
+        },
+        "rateLimitPerHour": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        }
+      }
+    },
+    "actions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intents"],
+      "properties": {
+        "intents": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/intent"
+          }
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rawEvents": {
+          "$ref": "#/$defs/duration"
+        },
+        "features": {
+          "$ref": "#/$defs/duration"
+        },
+        "situationVersions": {
+          "$ref": "#/$defs/duration"
+        },
+        "episodeEvents": {
+          "$ref": "#/$defs/duration"
+        }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "traceSampleRatio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "recordModelDeltas": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    }
+  }
+}

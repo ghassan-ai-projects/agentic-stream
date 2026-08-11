@@ -1,0 +1,229 @@
+syntax = "proto3";
+
+package agenticstream.runtime.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// The Go module mapping is supplied by the build until the public repository
+// namespace is selected.
+
+service EpisodeWorker {
+  // Verifies protocol compatibility and supported optional features.
+  rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
+
+  // Executes one immutable, bounded episode. The final event must be Terminal.
+  // Cancellation of the RPC is the primary cancellation mechanism.
+  rpc Execute(EpisodeRequest) returns (stream EpisodeEvent);
+}
+
+// Hosted by the Go runtime. A worker may call only the tools encoded in its
+// short-lived capability token.
+service EvidenceTools {
+  rpc Call(EvidenceToolCall) returns (EvidenceToolResult);
+}
+
+message HandshakeRequest {
+  string protocol_version = 1;
+  string runtime_instance_id = 2;
+  repeated string requested_features = 3;
+}
+
+message HandshakeResponse {
+  string protocol_version = 1;
+  string worker_name = 2;
+  string worker_version = 3;
+  repeated string supported_features = 4;
+  uint64 max_request_bytes = 5;
+  uint64 max_event_bytes = 6;
+}
+
+message EpisodeRequest {
+  string protocol_version = 1;
+  string episode_id = 2;
+  string trigger_id = 3;
+  string tenant_id = 4;
+  string situation_id = 5;
+  uint64 situation_version = 6;
+
+  // Canonical JSON documents validated by the core before dispatch.
+  bytes snapshot_json = 10;
+  bytes snapshot_sha256 = 11;
+  bytes decision_schema_json = 12;
+  bytes decision_schema_sha256 = 13;
+  bytes tool_catalog_json = 14;
+  bytes tool_catalog_sha256 = 15;
+
+  string objective = 20;
+  string executor_name = 21;
+  string executor_version = 22;
+  string model_policy = 23;
+  string prompt_version = 24;
+
+  EpisodeBudget budget = 30;
+  google.protobuf.Timestamp deadline = 31;
+  string supersession_key = 32;
+  string traceparent = 33;
+
+  // The endpoint is normally a Unix domain socket. The token is opaque,
+  // short-lived, and must never be logged or persisted by the worker.
+  string evidence_tools_endpoint = 40;
+  bytes capability_token = 41;
+}
+
+message EpisodeBudget {
+  google.protobuf.Duration wall_time = 1;
+  uint32 max_model_calls = 2;
+  uint64 max_input_tokens = 3;
+  uint64 max_output_tokens = 4;
+  uint32 max_tool_calls = 5;
+  uint64 max_tool_result_bytes = 6;
+  uint64 max_total_tool_result_bytes = 7;
+  uint32 max_provider_retries = 8;
+  uint64 max_cost_microunits = 9;
+}
+
+message EpisodeEvent {
+  string episode_id = 1;
+  uint64 sequence = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+
+  oneof payload {
+    EpisodeStarted started = 10;
+    ModelStarted model_started = 11;
+    ModelDelta model_delta = 12;
+    ModelCompleted model_completed = 13;
+    ToolLifecycle tool = 14;
+    BudgetUpdated budget = 15;
+    DecisionProposed decision = 16;
+    Diagnostic diagnostic = 17;
+    Terminal terminal = 18;
+  }
+}
+
+message EpisodeStarted {
+  string worker_name = 1;
+  string worker_version = 2;
+  string model_provider = 3;
+  string model_id = 4;
+}
+
+message ModelStarted {
+  uint32 ordinal = 1;
+  string provider = 2;
+  string model_id = 3;
+  bytes request_sha256 = 4;
+}
+
+message ModelDelta {
+  uint32 model_ordinal = 1;
+  DeltaLane lane = 2;
+  string text = 3;
+}
+
+enum DeltaLane {
+  DELTA_LANE_UNSPECIFIED = 0;
+  DELTA_LANE_ASSISTANT = 1;
+  DELTA_LANE_COMMENTARY = 2;
+}
+
+message ModelCompleted {
+  uint32 ordinal = 1;
+  string finish_reason = 2;
+  Usage usage = 3;
+  bytes response_sha256 = 4;
+}
+
+message ToolLifecycle {
+  string call_id = 1;
+  string tool_name = 2;
+  ToolState state = 3;
+  bytes arguments_sha256 = 4;
+  bytes result_sha256 = 5;
+  bool is_error = 6;
+  bool execution_started = 7;
+  string error_code = 8;
+}
+
+enum ToolState {
+  TOOL_STATE_UNSPECIFIED = 0;
+  TOOL_STATE_REQUESTED = 1;
+  TOOL_STATE_STARTED = 2;
+  TOOL_STATE_COMPLETED = 3;
+  TOOL_STATE_BLOCKED = 4;
+}
+
+message Usage {
+  uint64 input_tokens = 1;
+  uint64 output_tokens = 2;
+  uint64 cached_input_tokens = 3;
+  uint64 reasoning_tokens = 4;
+  uint64 cost_microunits = 5;
+}
+
+message BudgetUpdated {
+  EpisodeBudget remaining = 1;
+  Usage cumulative_usage = 2;
+  uint32 model_calls_used = 3;
+  uint32 tool_calls_used = 4;
+  uint64 tool_result_bytes_used = 5;
+}
+
+message DecisionProposed {
+  bytes decision_json = 1;
+  bytes decision_sha256 = 2;
+}
+
+message Diagnostic {
+  string code = 1;
+  string message = 2;
+  bool retryable = 3;
+  string diagnostic_ref = 4;
+}
+
+message Terminal {
+  TerminalStatus status = 1;
+  string reason_code = 2;
+  string diagnostic_ref = 3;
+  Usage usage = 4;
+}
+
+enum TerminalStatus {
+  TERMINAL_STATUS_UNSPECIFIED = 0;
+  TERMINAL_STATUS_DECIDED = 1;
+  TERMINAL_STATUS_NO_ACTION = 2;
+  TERMINAL_STATUS_NEEDS_HUMAN = 3;
+  TERMINAL_STATUS_SUPERSEDED = 4;
+  TERMINAL_STATUS_TIMED_OUT = 5;
+  TERMINAL_STATUS_BUDGET_EXHAUSTED = 6;
+  TERMINAL_STATUS_FAILED = 7;
+  TERMINAL_STATUS_CANCELLED = 8;
+}
+
+message EvidenceToolCall {
+  string protocol_version = 1;
+  string episode_id = 2;
+  string call_id = 3;
+  string tool_name = 4;
+  bytes arguments_json = 5;
+  bytes capability_token = 6;
+  google.protobuf.Timestamp deadline = 7;
+}
+
+message EvidenceToolResult {
+  string episode_id = 1;
+  string call_id = 2;
+  bool is_error = 3;
+  string error_code = 4;
+  bytes result_json = 5;
+  bytes result_sha256 = 6;
+  ArtifactRef artifact = 7;
+  bool truncated = 8;
+}
+
+message ArtifactRef {
+  string id = 1;
+  string media_type = 2;
+  uint64 size_bytes = 3;
+  bytes sha256 = 4;
+}

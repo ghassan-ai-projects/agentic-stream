@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-stream.local/schemas/event-envelope-v0.1.schema.json",
+  "title": "Agentic Stream V0.1 Event Envelope",
+  "description": "One accepted event, as an HTTP request body or one line of a replay JSONL file. V0 specified this only in prose; a machine contract is required because hand-authored traces are a first-class input to the golden and evaluation suites, and an unvalidated arrival_time silently corrupts age facts and the event horizon.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "entity_type", "entity_id", "type", "event_time"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+      "description": "Globally unique. Reusing an id with a different payload is 409 event_id_reuse, never a silent duplicate-accept."
+    },
+    "entity_type": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+      "description": "Selects the active injected Situation Model. No active model for this type is 422."
+    },
+    "entity_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+      "description": "Opaque producer identifier. Restricted to a non-prose alphabet because it is carried into diagnostic snapshots."
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+      "description": "Must map to a declared input of the active model."
+    },
+    "event_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339, normalized to UTC nanoseconds. Must not be later than arrival_time."
+    },
+    "arrival_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Required in replay; forbidden in HTTP input and assigned by the server. Must be >= event_time, and replay records must be strictly increasing by recorded time. This field is the evaluation instant, so a fabricated value silently corrupts age facts, budgets, and wakes."
+    },
+    "value": {
+      "description": "Number for value_type number, string for value_type string, omitted for value_type none. A number outside the input's declared min/max, or a string outside its enum, is well-formed but unusable: the event is persisted with admission_reason value_out_of_contract. Raw out-of-enum text is not copied into a reasoning-model snapshot.",
+      "oneOf": [
+        {"type": "number"},
+        {"type": "string", "maxLength": 256}
+      ]
+    },
+    "unit": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "description": "Required for number inputs, forbidden otherwise. Matched exactly; V0.1 performs no unit conversion."
+    }
+  }
+}

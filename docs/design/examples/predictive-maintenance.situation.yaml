@@ -1,0 +1,252 @@
+apiVersion: agentic-stream/v1
+kind: SituationSpec
+
+metadata:
+  name: motor_bearing_degradation
+  version: 0.1.0
+  description: Detect persistent motor bearing degradation and propose a maintenance ticket.
+  labels:
+    domain: predictive-maintenance
+    safety: advisory
+
+inputs:
+  - name: vibration
+    eventType: motor.vibration.observed
+    schemaVersion: "1.0"
+    partitionKey: entity.id
+    entityType: motor
+    classification: internal
+  - name: temperature
+    eventType: motor.temperature.observed
+    schemaVersion: "1.0"
+    partitionKey: entity.id
+    entityType: motor
+    classification: internal
+  - name: current
+    eventType: motor.current.observed
+    schemaVersion: "1.0"
+    partitionKey: entity.id
+    entityType: motor
+    classification: internal
+  - name: heartbeat
+    eventType: motor.heartbeat.observed
+    schemaVersion: "1.0"
+    partitionKey: entity.id
+    entityType: motor
+    classification: internal
+
+time:
+  watermarkStrategy: bounded_out_of_orderness
+  maxOutOfOrderness: 2m
+  idleTimeout: 10m
+  allowedLateness: 30m
+  latePolicy: correct_and_reconsider
+  clockSkewTolerance: 5m
+
+windows:
+  - name: vibration_15m
+    kind: sliding
+    size: 15m
+    slide: 1m
+    emit: early_and_close
+  - name: temperature_30m
+    kind: sliding
+    size: 30m
+    slide: 5m
+    emit: early_and_close
+  - name: current_15m
+    kind: sliding
+    size: 15m
+    slide: 1m
+    emit: early_and_close
+  - name: trend_6h
+    kind: sliding
+    size: 6h
+    slide: 15m
+    emit: on_close
+
+operators:
+  - name: vibration_rms
+    kind: aggregate
+    inputs: [vibration]
+    field: data.rms_mm_s
+    window: vibration_15m
+    aggregate: rms
+    output: vibration_rms_15m
+    unit: mm_s
+
+  - name: vibration_slope
+    kind: slope
+    inputs: [vibration]
+    field: data.rms_mm_s
+    window: trend_6h
+    aggregate: slope
+    output: vibration_slope_6h
+    unit: mm_s_per_hour
+
+  - name: temperature_slope
+    kind: slope
+    inputs: [temperature]
+    field: data.celsius
+    window: temperature_30m
+    aggregate: slope
+    output: temperature_slope_30m
+    unit: celsius_per_hour
+
+  - name: current_mean
+    kind: aggregate
+    inputs: [current]
+    field: data.amps
+    window: current_15m
+    aggregate: mean
+    output: current_mean_15m
+    unit: ampere
+
+  - name: heartbeat_missing
+    kind: missing_heartbeat
+    inputs: [heartbeat]
+    expectedEvery: 1m
+    duration: 5m
+    output: heartbeat_missing_5m
+
+situation:
+  type: bearing_degradation
+  entityKey: entity.id
+  occurrence:
+    openWhen: >
+      features.vibration_rms_15m > 4.5 ||
+      features.vibration_slope_6h > 0.25
+    closeWhen: >
+      features.vibration_rms_15m < 3.0 &&
+      features.vibration_slope_6h <= 0.05
+    reopenCooldown: 30m
+  initialPhase: candidate
+  phases:
+    - name: candidate
+      severity: 10
+    - name: watch
+      severity: 30
+    - name: warning
+      severity: 60
+    - name: incident
+      severity: 80
+    - name: recovering
+      severity: 40
+    - name: resolved
+      severity: 0
+      terminal: true
+  transitions:
+    - from: candidate
+      to: watch
+      when: >
+        features.vibration_rms_15m > 4.5 ||
+        features.vibration_slope_6h > 0.25
+      minDuration: 10m
+    - from: watch
+      to: warning
+      when: >
+        features.vibration_rms_15m > 5.5 &&
+        features.temperature_slope_30m > 1.0
+      minDuration: 15m
+    - from: warning
+      to: incident
+      when: >
+        features.vibration_rms_15m > 7.0 &&
+        features.current_mean_15m > 18.0
+      minDuration: 5m
+    - from: warning
+      to: watch
+      when: features.vibration_rms_15m < 4.0
+      minDuration: 30m
+    - from: watch
+      to: resolved
+      when: >
+        features.vibration_rms_15m < 3.0 &&
+        features.vibration_slope_6h <= 0.05
+      minDuration: 2h
+  reducers:
+    - field: facts.vibration_rms
+      strategy: latest_event_time
+      input: vibration_rms_15m
+    - field: facts.vibration_slope
+      strategy: latest_event_time
+      input: vibration_slope_6h
+    - field: facts.temperature_slope
+      strategy: latest_event_time
+      input: temperature_slope_30m
+    - field: facts.current_mean
+      strategy: latest_event_time
+      input: current_mean_15m
+    - field: evidence
+      strategy: set_union
+      input: vibration_rms_15m
+      limit: 256
+
+cognition:
+  triggers:
+    - name: warning_needs_diagnosis
+      when: >
+        situation.phase in ["warning", "incident"] &&
+        !features.heartbeat_missing_5m
+      score: >
+        situation.severity * 0.5 +
+        delta.novelty * 25.0 +
+        situation.uncertainty * 25.0
+      threshold: 45
+      lane: deep
+      completeness: any
+      debounce: 2m
+      cooldown: 30m
+      expiresAfter: 15m
+      materialDelta: >
+        delta.phase_changed ||
+        delta.severity_change >= 10 ||
+        delta.primary_hypothesis_changed ||
+        delta.completeness_changed
+  executor:
+    name: native
+    objective: >
+      Diagnose the most likely cause of the motor condition, identify
+      contradicting evidence, and propose safe inspection or maintenance steps.
+      Do not propose stopping or controlling the motor.
+    modelPolicy: maintenance_reasoner
+    promptVersion: maintenance-v1
+    decisionSchema: schemas/maintenance-decision-v1.json
+    tools:
+      - features_query
+      - evidence_get
+      - history_prior_incidents
+      - knowledge_search
+    budget:
+      wallTime: 45s
+      modelCalls: 6
+      inputTokens: 30000
+      outputTokens: 5000
+      toolCalls: 8
+      toolResultBytes: 32768
+      totalToolResultBytes: 131072
+      providerRetries: 2
+      costMicrounits: 1000000
+
+actions:
+  intents:
+    - type: create_maintenance_ticket
+      risk: R1
+      schema: schemas/create-maintenance-ticket-v1.json
+      policy: automatic
+      rateLimitPerHour: 2
+    - type: recommend_operating_limit
+      risk: R2
+      schema: schemas/recommend-operating-limit-v1.json
+      policy: approval
+      rateLimitPerHour: 1
+
+retention:
+  rawEvents: 30d
+  features: 90d
+  situationVersions: 365d
+  episodeEvents: 365d
+
+telemetry:
+  traceSampleRatio: 1
+  recordModelDeltas: false

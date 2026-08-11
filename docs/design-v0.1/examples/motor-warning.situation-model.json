@@ -1,0 +1,249 @@
+{
+  "$schema": "../contracts/situation-model-v0.1.schema.json",
+  "schema_version": "0.1.0",
+  "id": "motor-warning",
+  "version": "1.0.0",
+  "entity_type": "motor",
+  "lateness_allowance": "2m",
+  "description": "Predictive-maintenance model for a rotating motor. Changes from the V0 example: string inputs are enumerated, windows declare sample caps, warning entry requires sustained evidence and a minimum sample count instead of a single max reading, absence is expressed as an age fact, maintenance history is an input so the reasoning model has something to reason across, and both triggers carry cooldowns.",
+
+  "inputs": {
+    "vibration": {
+      "event_type": "motor.vibration",
+      "value_type": "number",
+      "unit": "mm/s",
+      "min": 0.0,
+      "max": 200.0
+    },
+    "temperature": {
+      "event_type": "motor.temperature",
+      "value_type": "number",
+      "unit": "C",
+      "min": -40.0,
+      "max": 200.0
+    },
+    "operating_mode": {
+      "event_type": "motor.operating_mode",
+      "value_type": "string",
+      "enum": ["normal", "high_load", "idle", "maintenance"]
+    },
+    "maintenance": {
+      "event_type": "motor.maintenance",
+      "value_type": "string",
+      "enum": [
+        "bearing_replaced",
+        "alignment_checked",
+        "lubricated",
+        "inspection_no_fault",
+        "sensor_replaced"
+      ]
+    },
+    "heartbeat": {
+      "event_type": "motor.heartbeat",
+      "value_type": "none"
+    }
+  },
+
+  "windows": {
+    "recent": {
+      "duration": "5m",
+      "max_samples": 2000
+    }
+  },
+
+  "facts": {
+    "vibration_avg":   {"aggregate": "avg",   "input": "vibration",   "window": "recent"},
+    "vibration_max":   {"aggregate": "max",   "input": "vibration",   "window": "recent"},
+    "vibration_count": {"aggregate": "count", "input": "vibration",   "window": "recent"},
+    "temperature_avg": {"aggregate": "avg",   "input": "temperature", "window": "recent"},
+    "temperature_max": {"aggregate": "max",   "input": "temperature", "window": "recent"},
+    "operating_mode":  {"latest": "operating_mode"},
+    "last_maintenance": {"latest": "maintenance"},
+    "maintenance_age": {"age": "maintenance"},
+    "vibration_age":   {"age": "vibration"},
+    "temperature_age": {"age": "temperature"},
+    "heartbeat_age":   {"age": "heartbeat"}
+  },
+
+  "states": [
+    {
+      "id": "warning",
+      "priority": 100,
+      "description": "Evidence supports a developing fault. This is the only state that costs a model call, so entry requires sustained evidence and a minimum sample count.",
+      "enter": {
+        "any": [
+          {
+            "all": [
+              {"gte": [{"fact": "vibration_max"}, {"number": 7.0}]},
+              {"gte": [{"fact": "vibration_count"}, {"number": 5}]}
+            ]
+          },
+          {
+            "all": [
+              {"gte": [{"fact": "vibration_avg"}, {"number": 5.0}]},
+              {"gte": [{"fact": "vibration_count"}, {"number": 5}]},
+              {"gte": [{"fact": "temperature_avg"}, {"number": 80.0}]}
+            ]
+          },
+          {"gte": [{"fact": "temperature_max"}, {"number": 95.0}]},
+          {
+            "all": [
+              {"gte": [{"fact": "vibration_age"}, {"number": 120}]},
+              {"lt":  [{"fact": "heartbeat_age"}, {"number": 120}]}
+            ]
+          },
+          {
+            "all": [
+              {"gte": [{"fact": "temperature_age"}, {"number": 120}]},
+              {"lt":  [{"fact": "heartbeat_age"}, {"number": 120}]}
+            ]
+          }
+        ]
+      },
+      "stay": {
+        "any": [
+          {"gte": [{"fact": "vibration_max"},   {"number": 6.0}]},
+          {"gte": [{"fact": "vibration_avg"},   {"number": 4.0}]},
+          {"gte": [{"fact": "temperature_avg"}, {"number": 75.0}]},
+          {"gte": [{"fact": "temperature_max"}, {"number": 90.0}]},
+          {
+            "all": [
+              {"gte": [{"fact": "vibration_age"}, {"number": 90}]},
+              {"lt":  [{"fact": "heartbeat_age"}, {"number": 150}]}
+            ]
+          },
+          {
+            "all": [
+              {"gte": [{"fact": "temperature_age"}, {"number": 90}]},
+              {"lt":  [{"fact": "heartbeat_age"}, {"number": 150}]}
+            ]
+          }
+        ]
+      },
+      "sustained_for": "90s"
+    },
+    {
+      "id": "watch",
+      "priority": 50,
+      "description": "Something is worth observing. No trigger fires here, so entry is deliberately cheap and carries no sustained_for.",
+      "enter": {
+        "any": [
+          {
+            "all": [
+              {"gte": [{"fact": "vibration_avg"}, {"number": 3.5}]},
+              {"gte": [{"fact": "vibration_count"}, {"number": 5}]}
+            ]
+          },
+          {"gte": [{"fact": "temperature_avg"}, {"number": 75.0}]},
+          {"gte": [{"fact": "heartbeat_age"}, {"number": 120}]},
+          {
+            "all": [
+              {"gte": [{"fact": "maintenance_age"}, {"number": 2592000}]},
+              {"gte": [{"fact": "vibration_avg"}, {"number": 2.5}]},
+              {"gte": [{"fact": "vibration_count"}, {"number": 5}]}
+            ]
+          }
+        ]
+      },
+      "stay": {
+        "any": [
+          {"gte": [{"fact": "vibration_avg"}, {"number": 3.0}]},
+          {"gte": [{"fact": "temperature_avg"}, {"number": 70.0}]},
+          {"gte": [{"fact": "heartbeat_age"}, {"number": 90}]},
+          {
+            "all": [
+              {"gte": [{"fact": "maintenance_age"}, {"number": 2592000}]},
+              {"gte": [{"fact": "vibration_avg"}, {"number": 2.0}]}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "normal",
+      "priority": 0,
+      "default": true,
+      "description": "No condition of interest."
+    }
+  ],
+
+  "episode_types": {
+    "diagnosis": {
+      "objective": "Diagnose the motor condition and recommend the next human review step.",
+      "instruction": "Use only the supplied evidence. Distinguish observed facts from inference. Consider explicitly whether the pattern is better explained by a sensor fault than by a machine fault, and say so. If prior diagnoses are supplied, state whether this is a continuation of the same condition or something new. Return only JSON matching the output schema. Do not claim that any action was performed.",
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "diagnosis",
+          "fault_class",
+          "confidence",
+          "evidence_event_ids",
+          "alternative_hypotheses",
+          "sensor_fault_suspected",
+          "recommended_next_step",
+          "urgency"
+        ],
+        "properties": {
+          "diagnosis": {"type": "string", "minLength": 1, "maxLength": 1000},
+          "fault_class": {
+            "enum": [
+              "bearing_wear",
+              "misalignment",
+              "overload",
+              "lubrication_due",
+              "sensor_drift",
+              "sensor_failure",
+              "transient_none",
+              "undetermined"
+            ]
+          },
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "evidence_event_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true,
+            "items": {"type": "string", "maxLength": 128}
+          },
+          "alternative_hypotheses": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {"type": "string", "maxLength": 500}
+          },
+          "sensor_fault_suspected": {
+            "type": "boolean",
+            "description": "True when the evidence is better explained by an instrumentation fault than by a machine fault."
+          },
+          "recommended_next_step": {"type": "string", "minLength": 1, "maxLength": 1000},
+          "urgency": {"enum": ["observe", "within_24h", "immediate_review"]}
+        }
+      },
+      "evidence_reference_pointer": "/evidence_event_ids",
+      "confidence_pointer": "/confidence"
+    }
+  },
+
+  "cognition_triggers": [
+    {
+      "id": "diagnose-warning",
+      "type": "transition",
+      "from": ["normal", "watch"],
+      "to": "warning",
+      "episode_type": "diagnosis",
+      "cooldown": "30m"
+    },
+    {
+      "id": "review-persistent-warning",
+      "type": "sustained",
+      "state": "warning",
+      "min_interval": "6h",
+      "episode_type": "diagnosis",
+      "cooldown": "6h"
+    }
+  ],
+
+  "budgets": {
+    "max_episodes_per_entity_per_hour": 4
+  }
+}

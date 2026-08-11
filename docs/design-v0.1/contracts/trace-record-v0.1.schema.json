@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-stream.local/schemas/trace-record-v0.1.schema.json",
+  "title": "Agentic Stream V0.1 Replay Trace Record",
+  "description": "A discriminated JSONL record. A runtime_config header comes first, event/activation records are strictly increasing by recorded time, and trace_end comes last. Configuration, model activations, and the end horizon are replay input because events alone are not a complete deterministic history.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "record_type",
+        "runtime_version",
+        "storage_schema_version",
+        "max_episodes_per_hour"
+      ],
+      "properties": {
+        "record_type": {"const": "runtime_config"},
+        "runtime_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "storage_schema_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_episodes_per_hour": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_type", "event"],
+      "properties": {
+        "record_type": {"const": "event"},
+        "event": {
+          "$ref": "event-envelope-v0.1.schema.json"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "record_type",
+        "recorded_time",
+        "mode",
+        "model"
+      ],
+      "properties": {
+        "record_type": {"const": "model_activation"},
+        "recorded_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "mode": {
+          "enum": ["continue", "reset"]
+        },
+        "model": {
+          "$ref": "situation-model-v0.1.schema.json"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_type", "until"],
+      "properties": {
+        "record_type": {"const": "trace_end"},
+        "until": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Inclusive virtual-clock horizon captured by export. Must be the final JSONL record and later than every recorded input."
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-stream:example:create-maintenance-ticket:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assetId", "title", "priority", "inspectionSteps"],
+  "properties": {
+    "assetId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "priority": {
+      "enum": ["low", "normal", "high", "urgent"]
+    },
+    "inspectionSteps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      }
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 2048
+    }
+  }
+}

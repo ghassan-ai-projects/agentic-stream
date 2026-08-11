@@ -1,0 +1,40 @@
+# ---------------------------------------------------------------------------
+# Pre-commit hooks for Go projects
+# ---------------------------------------------------------------------------
+# Install once:  pre-commit install
+# Run manually:  pre-commit run --all-files
+#
+# The `-local` flag below groups your own imports first.
+# Module path: github.com/ghassan-ai-projects/agentic-stream
+# ---------------------------------------------------------------------------
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-fmt
+      - id: go-vet
+      - id: go-imports
+        args: [-local, github.com/ghassan-ai-projects/agentic-stream]
+
+  - repo: local
+    hooks:
+      - id: golangci-lint
+        name: golangci-lint
+        entry: golangci-lint run --timeout=1m
+        language: system
+        types: [go]
+        pass_filenames: false

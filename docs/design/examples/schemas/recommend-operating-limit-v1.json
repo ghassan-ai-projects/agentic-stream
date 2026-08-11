@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-stream:example:recommend-operating-limit:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assetId", "parameter", "maximum", "unit", "validUntil"],
+  "properties": {
+    "assetId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "parameter": {
+      "enum": ["rpm", "load_percent", "continuous_runtime_minutes"]
+    },
+    "maximum": {
+      "type": "number"
+    },
+    "unit": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "validUntil": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 1024
+    }
+  }
+}

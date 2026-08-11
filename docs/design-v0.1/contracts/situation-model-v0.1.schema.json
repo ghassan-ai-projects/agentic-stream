@@ -1,0 +1,431 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-stream.local/schemas/situation-model-v0.1.schema.json",
+  "title": "Agentic Stream V0.1 Situation Model",
+  "description": "Structural contract only. Semantic rules - reference resolution, operand typing, band construction, the enter-implies-stay proof, output-schema keyword allowlisting, and version compatibility - are enforced by the compiler and are normative in SITUATION_MODEL_DESIGN.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "version",
+    "entity_type",
+    "lateness_allowance",
+    "inputs",
+    "windows",
+    "facts",
+    "states",
+    "episode_types",
+    "cognition_triggers",
+    "budgets"
+  ],
+  "properties": {
+    "$schema": {"type": "string", "maxLength": 256},
+    "schema_version": {"const": "0.1.0"},
+    "id": {"$ref": "#/$defs/identifier"},
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "maxLength": 32
+    },
+    "description": {"type": "string", "maxLength": 1000},
+    "entity_type": {"$ref": "#/$defs/identifier"},
+    "lateness_allowance": {
+      "$ref": "#/$defs/duration",
+      "description": "Entity-wide event-time lateness allowance. Admission is stored once per event, so V0.1 deliberately has one allowance per Situation Model rather than a misleading per-window setting."
+    },
+    "inputs": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "propertyNames": {"$ref": "#/$defs/identifier"},
+      "additionalProperties": {"$ref": "#/$defs/input"}
+    },
+    "windows": {
+      "type": "object",
+      "maxProperties": 16,
+      "propertyNames": {"$ref": "#/$defs/identifier"},
+      "additionalProperties": {"$ref": "#/$defs/window"}
+    },
+    "facts": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 128,
+      "propertyNames": {"$ref": "#/$defs/identifier"},
+      "additionalProperties": {"$ref": "#/$defs/fact"}
+    },
+    "states": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {"$ref": "#/$defs/state"}
+    },
+    "episode_types": {
+      "type": "object",
+      "maxProperties": 16,
+      "propertyNames": {"$ref": "#/$defs/identifier"},
+      "additionalProperties": {"$ref": "#/$defs/episodeType"}
+    },
+    "cognition_triggers": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {"$ref": "#/$defs/trigger"}
+    },
+    "budgets": {"$ref": "#/$defs/budgets"}
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+    },
+    "duration": {
+      "type": "string",
+      "description": "Positive integer followed by ms, s, m, or h. Per-field bounds are enforced by the compiler.",
+      "pattern": "^[1-9][0-9]*(ms|s|m|h)$"
+    },
+
+    "input": {
+      "description": "Maps a domain name to an event type and a value contract. String inputs MUST enumerate their legal values; this is a security control, not ergonomics - it removes the free-text path from an untrusted producer into a model prompt.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["event_type", "value_type", "unit"],
+          "properties": {
+            "event_type": {"$ref": "#/$defs/eventType"},
+            "value_type": {"const": "number"},
+            "unit": {"type": "string", "minLength": 1, "maxLength": 32},
+            "min": {"type": "number"},
+            "max": {"type": "number"}
+          },
+          "dependentRequired": {
+            "min": ["max"],
+            "max": ["min"]
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["event_type", "value_type", "enum"],
+          "properties": {
+            "event_type": {"$ref": "#/$defs/eventType"},
+            "value_type": {"const": "string"},
+            "enum": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 64,
+              "uniqueItems": true,
+              "items": {"type": "string", "minLength": 1, "maxLength": 64}
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["event_type", "value_type"],
+          "properties": {
+            "event_type": {"$ref": "#/$defs/eventType"},
+            "value_type": {"const": "none"}
+          }
+        }
+      ]
+    },
+    "eventType": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]{0,127}$"
+    },
+
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["duration", "max_samples"],
+      "properties": {
+        "duration": {"$ref": "#/$defs/duration"},
+        "max_samples": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000,
+          "description": "Upper bound on the rows any aggregate over this window may scan per entity per input. Exceeding it retains the newest max_samples and marks every fact over this window as quality=partial."
+        }
+      }
+    },
+
+    "fact": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["aggregate", "input", "window"],
+          "properties": {
+            "aggregate": {"enum": ["avg", "max", "min", "count"]},
+            "input": {"$ref": "#/$defs/identifier"},
+            "window": {"$ref": "#/$defs/identifier"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["latest"],
+          "properties": {
+            "latest": {"$ref": "#/$defs/identifier"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["age"],
+          "properties": {
+            "age": {
+              "$ref": "#/$defs/identifier",
+              "description": "Seconds since the arrival of the latest admitted input event by (event_time, arrival_time, id), measured at the evaluation instant. An older out-of-order event cannot reset age. Unavailable if the input has never arrived. Literal crossings of an age fact schedule exact wakes."
+            }
+          }
+        }
+      ]
+    },
+
+    "state": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "priority", "default"],
+          "properties": {
+            "id": {"$ref": "#/$defs/identifier"},
+            "priority": {"type": "integer", "minimum": 0, "maximum": 10000},
+            "default": {"const": true},
+            "description": {"type": "string", "maxLength": 500}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "priority", "enter"],
+          "properties": {
+            "id": {"$ref": "#/$defs/identifier"},
+            "priority": {"type": "integer", "minimum": 0, "maximum": 10000},
+            "enter": {"$ref": "#/$defs/expression"},
+            "stay": {
+              "$ref": "#/$defs/expression",
+              "description": "Must be implied by enter. The compiler proves this by exhaustive band enumeration and rejects the model with a counterexample if it does not hold."
+            },
+            "sustained_for": {
+              "$ref": "#/$defs/duration",
+              "description": "The enter condition must hold at every evaluation across this duration, measured on the evaluation-instant axis, before entry commits. Leaving the current state is governed by its stay condition."
+            },
+            "description": {"type": "string", "maxLength": 500}
+          }
+        }
+      ]
+    },
+
+    "trigger": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "type", "from", "to", "episode_type", "cooldown"],
+          "properties": {
+            "id": {"$ref": "#/$defs/identifier"},
+            "type": {"const": "transition"},
+            "from": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "uniqueItems": true,
+              "items": {"$ref": "#/$defs/identifier"}
+            },
+            "to": {"$ref": "#/$defs/identifier"},
+            "episode_type": {"$ref": "#/$defs/identifier"},
+            "cooldown": {"$ref": "#/$defs/duration"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "type", "state", "min_interval", "episode_type", "cooldown"],
+          "properties": {
+            "id": {"$ref": "#/$defs/identifier"},
+            "type": {"const": "sustained"},
+            "state": {"$ref": "#/$defs/identifier"},
+            "min_interval": {"$ref": "#/$defs/duration"},
+            "episode_type": {"$ref": "#/$defs/identifier"},
+            "cooldown": {"$ref": "#/$defs/duration"}
+          }
+        }
+      ]
+    },
+
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_episodes_per_entity_per_hour"
+      ],
+      "properties": {
+        "max_episodes_per_entity_per_hour": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        }
+      }
+    },
+
+    "episodeType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "objective",
+        "instruction",
+        "output_schema",
+        "evidence_reference_pointer"
+      ],
+      "properties": {
+        "objective": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "instruction": {"type": "string", "minLength": 1, "maxLength": 4000},
+        "output_schema": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "A JSON Schema restricted by the compiler to a keyword allowlist: type, properties, required, additionalProperties, items, prefixItems, enum, const, minimum, maximum, exclusiveMinimum, exclusiveMaximum, minLength, maxLength, pattern, minItems, maxItems, uniqueItems, minProperties, maxProperties, description. $ref, $id, $defs, $anchor, allOf, anyOf, oneOf, not, if/then/else, unevaluated*, dependentSchemas, propertyNames, and contentSchema are rejected. Root must be an object with additionalProperties false. At most 200 nodes and 8 levels of depth. Remote reference resolution is disabled in the validator."
+        },
+        "evidence_reference_pointer": {
+          "type": "string",
+          "pattern": "^(/[A-Za-z0-9_-]+)+$",
+          "maxLength": 256,
+          "description": "RFC 6901 pointer, restricted to unescaped name segments. Must resolve to a declared property of type array with items of type string."
+        },
+        "confidence_pointer": {
+          "type": "string",
+          "pattern": "^(/[A-Za-z0-9_-]+)+$",
+          "maxLength": 256,
+          "description": "Optional. Must resolve to a declared number property bounded to [0,1]. Extracted into decisions.confidence so overconfidence can be measured without parsing domain JSON."
+        }
+      }
+    },
+
+    "expression": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["all"],
+          "properties": {
+            "all": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 64,
+              "items": {"$ref": "#/$defs/expression"}
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["any"],
+          "properties": {
+            "any": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 64,
+              "items": {"$ref": "#/$defs/expression"}
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["not"],
+          "properties": {
+            "not": {"$ref": "#/$defs/expression"}
+          }
+        },
+        {"$ref": "#/$defs/comparison"}
+      ]
+    },
+    "comparison": {
+      "oneOf": [
+        {"$ref": "#/$defs/gte"},
+        {"$ref": "#/$defs/gt"},
+        {"$ref": "#/$defs/lte"},
+        {"$ref": "#/$defs/lt"},
+        {"$ref": "#/$defs/eq"},
+        {"$ref": "#/$defs/neq"}
+      ]
+    },
+    "gte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gte"],
+      "properties": {"gte": {"$ref": "#/$defs/binaryOperands"}}
+    },
+    "gt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gt"],
+      "properties": {"gt": {"$ref": "#/$defs/binaryOperands"}}
+    },
+    "lte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lte"],
+      "properties": {"lte": {"$ref": "#/$defs/binaryOperands"}}
+    },
+    "lt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lt"],
+      "properties": {"lt": {"$ref": "#/$defs/binaryOperands"}}
+    },
+    "eq": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eq"],
+      "properties": {"eq": {"$ref": "#/$defs/binaryOperands"}}
+    },
+    "neq": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["neq"],
+      "properties": {"neq": {"$ref": "#/$defs/binaryOperands"}}
+    },
+    "binaryOperands": {
+      "type": "array",
+      "description": "Always fact on the left, literal on the right. Fact-to-fact comparison is structurally excluded because it breaks the band property that material-change detection is proved against: two facts can each stay inside their own band while crossing each other. Relative comparison is a deferred capability, not an oversight - see SITUATION_MODEL_DESIGN.md section 4.2.",
+      "prefixItems": [
+        {"$ref": "#/$defs/factOperand"},
+        {"$ref": "#/$defs/literalOperand"}
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "factOperand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fact"],
+      "properties": {"fact": {"$ref": "#/$defs/identifier"}}
+    },
+    "literalOperand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["number"],
+          "properties": {"number": {"type": "number"}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["string"],
+          "properties": {
+            "string": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "Must be a member of the compared fact's underlying input enum. A boolean literal is deliberately absent: with absent replaced by the numeric age fact, no fact in V0.1 has boolean type, and an unreachable operator in a closed set is a liability."
+            }
+          }
+        }
+      ]
+    }
+  }
+}

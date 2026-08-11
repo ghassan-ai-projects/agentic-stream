@@ -1,0 +1,23 @@
+{"id": 1, "url": "https://www.anthropic.com/research/building-effective-agents", "page": {"site_name": "SCHLUNTZ E, ZHANG B. Building effective agents"}}
+{"id": 2, "url": "https://arxiv.org/html/2605.13850v2", "page": {"site_name": "A Two-Dimensional Framework for AI Agent Design Patterns: Cognitive Function × Execution Topology"}}
+{"id": 3, "url": "https://arxiv.org/html/2601.19752v1", "page": {"site_name": "Agentic Design Patterns: A System-Theoretic Framework"}}
+{"id": 4, "url": "https://octamem.com/blog/types-of-ai-agent-memory", "page": {"site_name": "Octamem. The 4 Types of AI Agent Memory: Semantic, Episodic, Procedural & Working"}}
+{"id": 5, "url": "https://mer.vin/2026/05/ai-agent-memory-explained-episodic-semantic-procedural-and-working-context/", "page": {"site_name": "mer.vin. AI Agent Memory Explained: Episodic, Semantic, Procedural and Working Context"}}
+{"id": 6, "url": "https://github.com/jcosta33/corpus-skills/blob/main/docs/sources.md", "page": {"site_name": "Anthropic. Effective context engineering for AI agents"}}
+{"id": 7, "url": "https://arxiv.org/pdf/2210.03629", "page": {"site_name": "YAO S, et al. ReAct: Synergizing Reasoning and Acting in Language Models"}}
+{"id": 8, "url": "https://github.com/stevekinney/stevekinney.net/blob/main/writing/agent-loops.md", "page": {"site_name": "KINNEY S. Agent loops"}}
+{"id": 9, "url": "https://createos.sh/blogs/human-in-the-loop-ai-agents", "page": {"site_name": "CreateOS. Human-in-the-Loop AI Agents: When Approval Gates Matter"}}
+{"id": 10, "url": "https://www.betterclaw.io/blog/ai-agent-human-approval-guardrails", "page": {"site_name": "BetterClaw. AI Agent Guardrails: Human Approval Without Killing Speed"}}
+{"id": 11, "url": "https://www.mindstudio.ai/blog/agentic-os-heartbeat-pattern-proactive-ai-agent", "page": {"site_name": "MindStudio. What Is the Agentic OS Heartbeat Pattern?"}}
+{"id": 12, "url": "https://www.clawnify.com/resources/heartbeat-vs-cron-openclaw-guide-2026", "page": {"site_name": "Clawnify. Heartbeat vs Cron in OpenClaw"}}
+{"id": 13, "url": "https://agentskills.io/home", "page": {"site_name": "Agent Skills open standard"}}
+{"id": 14, "url": "https://arxiv.org/html/2602.14690v5", "page": {"site_name": "Harness Engineering for Agentic AI Coding Tools: An Exploratory Study"}}
+{"id": 15, "url": "https://github.com/NousResearch/hermes-agent-self-evolution", "page": {"site_name": "Nous Research. hermes-agent-self-evolution: README + PLAN.md"}}
+{"id": 16, "url": "https://the-agent-report.com/2026/06/hermes-agent-self-evolution-dspy-gepa-june2026/", "page": {"site_name": "The Agent Report. Hermes Agent Self-Evolution: Nous Research Ships Genetic Prompt Optimization with DSPy + GEPA"}}
+{"id": 17, "url": "https://arxiv.org/html/2604.14228v2", "page": {"site_name": "Dive into Claude Code: The Design Space of Today's and Future AI Agent Systems"}}
+{"id": 18, "url": "https://modernaiguide.dev/docs/stack/prompt-optimization", "page": {"site_name": "Modern AI Guide. Programmatic prompt optimization (DSPy, GEPA)"}}
+{"id": 19, "url": "https://www.freecodecamp.org/news/how-to-build-and-secure-a-personal-ai-agent-with-openclaw/", "page": {"site_name": "freeCodeCamp. How to Build and Secure a Personal AI Agent with OpenClaw"}}
+{"id": 21, "url": "https://chenguangliang.com/en/posts/claude-code-five-layer-architecture/", "page": {"site_name": "CHEN G. Claude Code's Five-Layer Architecture"}}
+{"id": 22, "url": "https://chenguangliang.com/en/posts/claude-code-five-layer-architecture/", "page": {"site_name": "Subagent persistent memory scopes (user/project/local); MoA/voting parallelization per Anthropic taxonomy"}}
+{"id": 23, "url": "https://github.com/vectara/awesome-agent-failures/blob/main/docs/case-studies/autogpt-planning-failures.md", "page": {"site_name": "vectara. AutoGPT planning failures case study (awesome-agent-failures)"}}
+{"id": 24, "url": "https://github.com/NousResearch/hermes-agent", "page": {"site_name": "Nous Research. hermes-agent: a self-improving AI agent (source code, commit 4c9628e)[EB/OL]. 2026."}}

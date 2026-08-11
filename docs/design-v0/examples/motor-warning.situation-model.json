@@ -1,0 +1,339 @@
+{
+  "$schema": "../contracts/situation-model-v0.schema.json",
+  "schema_version": "0.1",
+  "id": "motor-warning",
+  "version": "1.0.0",
+  "entity_type": "motor",
+  "inputs": {
+    "vibration": {
+      "event_type": "motor.vibration",
+      "value_type": "number",
+      "unit": "mm/s"
+    },
+    "temperature": {
+      "event_type": "motor.temperature",
+      "value_type": "number",
+      "unit": "C"
+    },
+    "operating_mode": {
+      "event_type": "motor.operating_mode",
+      "value_type": "string"
+    },
+    "heartbeat": {
+      "event_type": "motor.heartbeat",
+      "value_type": "none"
+    }
+  },
+  "windows": {
+    "recent": {
+      "duration": "5m",
+      "lateness_allowance": "2m"
+    }
+  },
+  "facts": {
+    "vibration_avg": {
+      "aggregate": "avg",
+      "input": "vibration",
+      "window": "recent"
+    },
+    "vibration_max": {
+      "aggregate": "max",
+      "input": "vibration",
+      "window": "recent"
+    },
+    "temperature_avg": {
+      "aggregate": "avg",
+      "input": "temperature",
+      "window": "recent"
+    },
+    "temperature_max": {
+      "aggregate": "max",
+      "input": "temperature",
+      "window": "recent"
+    },
+    "operating_mode": {
+      "latest": "operating_mode"
+    },
+    "heartbeat_stale": {
+      "absent": "heartbeat",
+      "timeout": "2m"
+    }
+  },
+  "states": [
+    {
+      "id": "warning",
+      "priority": 100,
+      "enter": {
+        "any": [
+          {
+            "gte": [
+              {"fact": "vibration_max"},
+              {"number": 7.0}
+            ]
+          },
+          {
+            "all": [
+              {
+                "gte": [
+                  {"fact": "vibration_avg"},
+                  {"number": 5.0}
+                ]
+              },
+              {
+                "any": [
+                  {
+                    "all": [
+                      {
+                        "eq": [
+                          {"fact": "operating_mode"},
+                          {"string": "high_load"}
+                        ]
+                      },
+                      {
+                        "gte": [
+                          {"fact": "temperature_avg"},
+                          {"number": 85.0}
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "all": [
+                      {
+                        "neq": [
+                          {"fact": "operating_mode"},
+                          {"string": "high_load"}
+                        ]
+                      },
+                      {
+                        "gte": [
+                          {"fact": "temperature_avg"},
+                          {"number": 80.0}
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "stay": {
+        "any": [
+          {
+            "gte": [
+              {"fact": "vibration_max"},
+              {"number": 6.0}
+            ]
+          },
+          {
+            "gte": [
+              {"fact": "vibration_avg"},
+              {"number": 4.0}
+            ]
+          },
+          {
+            "all": [
+              {
+                "eq": [
+                  {"fact": "operating_mode"},
+                  {"string": "high_load"}
+                ]
+              },
+              {
+                "gte": [
+                  {"fact": "temperature_avg"},
+                  {"number": 80.0}
+                ]
+              }
+            ]
+          },
+          {
+            "all": [
+              {
+                "neq": [
+                  {"fact": "operating_mode"},
+                  {"string": "high_load"}
+                ]
+              },
+              {
+                "gte": [
+                  {"fact": "temperature_avg"},
+                  {"number": 75.0}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "watch",
+      "priority": 50,
+      "enter": {
+        "any": [
+          {
+            "gte": [
+              {"fact": "vibration_avg"},
+              {"number": 3.5}
+            ]
+          },
+          {
+            "all": [
+              {
+                "eq": [
+                  {"fact": "operating_mode"},
+                  {"string": "high_load"}
+                ]
+              },
+              {
+                "gte": [
+                  {"fact": "temperature_avg"},
+                  {"number": 80.0}
+                ]
+              }
+            ]
+          },
+          {
+            "all": [
+              {
+                "neq": [
+                  {"fact": "operating_mode"},
+                  {"string": "high_load"}
+                ]
+              },
+              {
+                "gte": [
+                  {"fact": "temperature_avg"},
+                  {"number": 75.0}
+                ]
+              }
+            ]
+          },
+          {
+            "eq": [
+              {"fact": "heartbeat_stale"},
+              {"boolean": true}
+            ]
+          }
+        ]
+      },
+      "stay": {
+        "any": [
+          {
+            "gte": [
+              {"fact": "vibration_avg"},
+              {"number": 3.0}
+            ]
+          },
+          {
+            "all": [
+              {
+                "eq": [
+                  {"fact": "operating_mode"},
+                  {"string": "high_load"}
+                ]
+              },
+              {
+                "gte": [
+                  {"fact": "temperature_avg"},
+                  {"number": 75.0}
+                ]
+              }
+            ]
+          },
+          {
+            "all": [
+              {
+                "neq": [
+                  {"fact": "operating_mode"},
+                  {"string": "high_load"}
+                ]
+              },
+              {
+                "gte": [
+                  {"fact": "temperature_avg"},
+                  {"number": 70.0}
+                ]
+              }
+            ]
+          },
+          {
+            "eq": [
+              {"fact": "heartbeat_stale"},
+              {"boolean": true}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "normal",
+      "priority": 0,
+      "default": true
+    }
+  ],
+  "episode_types": {
+    "diagnosis": {
+      "objective": "Diagnose the motor condition and recommend the next human review step.",
+      "instruction": "Use only supplied evidence. Distinguish facts from inference. Return only JSON matching the output schema. Do not claim an action was performed.",
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "diagnosis",
+          "confidence",
+          "evidence_event_ids",
+          "alternative_hypotheses",
+          "recommended_next_step",
+          "urgency"
+        ],
+        "properties": {
+          "diagnosis": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "evidence_event_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true,
+            "items": {"type": "string"}
+          },
+          "alternative_hypotheses": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          "recommended_next_step": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "urgency": {
+            "enum": ["observe", "within_24h", "immediate_review"]
+          }
+        }
+      },
+      "evidence_reference_pointer": "/evidence_event_ids"
+    }
+  },
+  "cognition_triggers": [
+    {
+      "id": "diagnose-warning",
+      "from": ["normal", "watch"],
+      "to": "warning",
+      "episode_type": "diagnosis"
+    }
+  ]
+}

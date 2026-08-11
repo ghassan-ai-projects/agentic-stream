@@ -1,0 +1,114 @@
+version: "2"
+
+# ---------------------------------------------------------------------------
+# golangci-lint v2 configuration
+# ---------------------------------------------------------------------------
+# Industry-best static analysis for Go. 14 linters enabled, opinionated
+# settings for gosec and wrapcheck. Matches the rules in AGENTS.md.
+# ---------------------------------------------------------------------------
+
+linters:
+  # Don't use the standard default — only run the linters we explicitly
+  # enable. Keeps the surface area predictable for new contributors.
+  default: none
+
+  # Enable specific linter.
+  enable:
+    - errcheck       # unchecked errors
+    - govet          # standard go vet
+    - ineffassign    # ineffectual assignments
+    - staticcheck    # 100s of bugs
+    - unused         # unused vars/funcs/types
+    - gosec          # security issues
+    - misspell       # English spell-check
+    - noctx          # http.Request without ctx
+    - thelper        # test helpers missing t.Helper()
+    - musttag        # struct fields needing json/xml tags
+    - wrapcheck      # exported funcs must wrap errors
+    - errorlint      # error comparisons must use errors.Is/As
+    - nakedret       # naked returns in long funcs
+    - durationcheck  # time.Duration arithmetic bugs (e.g. multiplying two Durations)
+
+  # Linter exclusions: skip these paths entirely (analyzed but not reported).
+  # v2 moved this from a top-level `exclusions:` block to `linters.exclusions`.
+  exclusions:
+    paths:
+      - (.*/)?mock(_.*)?\.go$
+      - (.*/)?mocks?/.*\.go$
+      - (.*/)?testdata/.*
+      - (.*/)?vendor/.*
+      - (.*/)?.*\.pb\.go$
+      - (.*/)?.*_gen\.go$
+      - (.*/)?.*_string\.go$
+
+# ---------------------------------------------------------------------------
+# Per-linter settings.
+# v2 accepts these under `linters.settings` (the v1 path is still the
+# canonical v2.12.2 path — `linters-settings` at the top level is a
+# newer/forward-compat alias and not yet active in this version).
+# ---------------------------------------------------------------------------
+
+  settings:
+    gosec:
+      # G101: hardcoded credentials (false positives in tests)
+      # G304: file path from variable (often legitimate)
+      excludes:
+        - G101
+        - G304
+
+    wrapcheck:
+      # Allow these signatures to return unwrapped errors.
+      # v2 renamed `ignoreSigs` -> `ignore-sigs` (kebab-case).
+      ignore-sigs:
+        - fmt.Errorf
+        - errors.New
+        - "*.Error() string"
+
+    nakedret:
+      # Naked returns in funcs over 30 lines
+      max-func-lines: 30
+
+    misspell:
+      locale: US
+
+    thelper:
+      # v2 renamed bench/tb/fuzz flags into named sub-blocks (test, benchmark, tb).
+      # We only configure the test block; the rest use defaults.
+      test:
+        first: false  # *testing.T doesn't have to be the first param
+        name: false   # param doesn't have to be named `t`
+        begin: false  # t.Helper() call not required at function start
+
+# ---------------------------------------------------------------------------
+# Run configuration
+# ---------------------------------------------------------------------------
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+  allow-serial-runners: true
+
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 10
+  new-from-rev: HEAD~1  # only show new issues vs main
+  fix: false           # never auto-fix in CI
+  # In v2 `uniq-by-line` lives under `issues`, not `output`.
+  uniq-by-line: true
+
+# ---------------------------------------------------------------------------
+# Output configuration
+# ---------------------------------------------------------------------------
+# v2 renamed `colored-line-number` -> `text` (with a `colors: true` flag).
+# Per-format `print-*` flags moved from the top `output` level into each
+# format block. The default is the colored text format.
+
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+      colors: true

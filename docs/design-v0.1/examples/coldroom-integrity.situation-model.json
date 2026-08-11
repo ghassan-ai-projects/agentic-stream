@@ -1,0 +1,221 @@
+{
+  "$schema": "../contracts/situation-model-v0.1.schema.json",
+  "schema_version": "0.1.0",
+  "id": "coldroom-integrity",
+  "version": "1.0.0",
+  "entity_type": "cold_room",
+  "lateness_allowance": "5m",
+  "description": "Conformance fixture. This model exists to prove the injection invariant: it shares no event name, unit, window, fact name, state name, threshold, trigger structure, episode objective, output schema, or pointer name with the motor model, and it must run on the same unchanged binary and database schema. It is authored in Week 1, before the runtime exists, so the runtime cannot be shaped around it. Any code branch, database column, or API path added to make this model work is a failed acceptance test.",
+
+  "inputs": {
+    "air_temp": {
+      "event_type": "coldroom.air_temperature",
+      "value_type": "number",
+      "unit": "degC",
+      "min": -40.0,
+      "max": 60.0
+    },
+    "compressor_current": {
+      "event_type": "coldroom.compressor_current",
+      "value_type": "number",
+      "unit": "A",
+      "min": 0.0,
+      "max": 100.0
+    },
+    "door_signal": {
+      "event_type": "coldroom.door_signal",
+      "value_type": "string",
+      "enum": ["opened", "closed"]
+    },
+    "defrost_signal": {
+      "event_type": "coldroom.defrost_signal",
+      "value_type": "string",
+      "enum": ["started", "finished"]
+    },
+    "probe_heartbeat": {
+      "event_type": "coldroom.probe_heartbeat",
+      "value_type": "none"
+    }
+  },
+
+  "windows": {
+    "short": {
+      "duration": "10m",
+      "max_samples": 1200
+    },
+    "long": {
+      "duration": "2h",
+      "max_samples": 8000
+    }
+  },
+
+  "facts": {
+    "air_temp_mean_short":  {"aggregate": "avg",   "input": "air_temp",           "window": "short"},
+    "air_temp_peak_short":  {"aggregate": "max",   "input": "air_temp",           "window": "short"},
+    "air_temp_floor_short": {"aggregate": "min",   "input": "air_temp",           "window": "short"},
+    "air_temp_samples":     {"aggregate": "count", "input": "air_temp",           "window": "short"},
+    "air_temp_mean_long":   {"aggregate": "avg",   "input": "air_temp",           "window": "long"},
+    "current_mean_short":   {"aggregate": "avg",   "input": "compressor_current", "window": "short"},
+    "current_samples":      {"aggregate": "count", "input": "compressor_current", "window": "short"},
+    "door_last":            {"latest": "door_signal"},
+    "door_last_age":        {"age": "door_signal"},
+    "defrost_last":         {"latest": "defrost_signal"},
+    "defrost_last_age":     {"age": "defrost_signal"},
+    "probe_silence":        {"age": "probe_heartbeat"}
+  },
+
+  "states": [
+    {
+      "id": "excursion",
+      "priority": 200,
+      "description": "Product temperature integrity is at risk. Entry is sustained because this is the state that costs a model call.",
+      "enter": {
+        "any": [
+          {
+            "all": [
+              {"gte": [{"fact": "air_temp_mean_short"}, {"number": 8.0}]},
+              {"gte": [{"fact": "air_temp_samples"}, {"number": 3}]}
+            ]
+          },
+          {"gte": [{"fact": "air_temp_peak_short"}, {"number": 12.0}]}
+        ]
+      },
+      "stay": {
+        "any": [
+          {"gte": [{"fact": "air_temp_mean_short"}, {"number": 6.0}]},
+          {"gte": [{"fact": "air_temp_peak_short"}, {"number": 10.0}]}
+        ]
+      },
+      "sustained_for": "120s"
+    },
+    {
+      "id": "elevated",
+      "priority": 100,
+      "description": "Something is degrading the cold chain: a door left open, a stalled compressor, a long defrost, or a silent probe.",
+      "enter": {
+        "any": [
+          {
+            "all": [
+              {"gte": [{"fact": "air_temp_mean_short"}, {"number": 5.0}]},
+              {"gte": [{"fact": "air_temp_samples"}, {"number": 3}]}
+            ]
+          },
+          {
+            "all": [
+              {"eq":  [{"fact": "door_last"}, {"string": "opened"}]},
+              {"gte": [{"fact": "door_last_age"}, {"number": 300}]}
+            ]
+          },
+          {
+            "all": [
+              {"eq":  [{"fact": "defrost_last"}, {"string": "started"}]},
+              {"gte": [{"fact": "defrost_last_age"}, {"number": 2700}]}
+            ]
+          },
+          {"gte": [{"fact": "probe_silence"}, {"number": 300}]},
+          {
+            "all": [
+              {"lte": [{"fact": "current_mean_short"}, {"number": 1.0}]},
+              {"gte": [{"fact": "current_samples"}, {"number": 3}]},
+              {"gte": [{"fact": "air_temp_mean_short"}, {"number": 4.0}]}
+            ]
+          }
+        ]
+      },
+      "stay": {
+        "any": [
+          {"gte": [{"fact": "air_temp_mean_short"}, {"number": 4.0}]},
+          {
+            "all": [
+              {"eq":  [{"fact": "door_last"}, {"string": "opened"}]},
+              {"gte": [{"fact": "door_last_age"}, {"number": 180}]}
+            ]
+          },
+          {
+            "all": [
+              {"eq":  [{"fact": "defrost_last"}, {"string": "started"}]},
+              {"gte": [{"fact": "defrost_last_age"}, {"number": 1800}]}
+            ]
+          },
+          {"gte": [{"fact": "probe_silence"}, {"number": 240}]},
+          {
+            "all": [
+              {"lte": [{"fact": "current_mean_short"}, {"number": 1.5}]},
+              {"gte": [{"fact": "air_temp_mean_short"}, {"number": 3.0}]}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "within_spec",
+      "priority": 0,
+      "default": true,
+      "description": "Cold chain nominal."
+    }
+  ],
+
+  "episode_types": {
+    "integrity_assessment": {
+      "objective": "Assess the cold-chain integrity of this room and state what a duty manager should do next.",
+      "instruction": "Use only the supplied evidence. A defrost cycle and an open door both raise air temperature legitimately; separate an expected excursion from an equipment failure before concluding. State the risk to stored product explicitly. Return only JSON matching the output schema. Do not claim that any action was taken.",
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assessment",
+          "likely_cause",
+          "expected_excursion",
+          "product_risk",
+          "certainty",
+          "supporting_events",
+          "containment_step"
+        ],
+        "properties": {
+          "assessment": {"type": "string", "minLength": 1, "maxLength": 800},
+          "likely_cause": {
+            "enum": [
+              "door_left_open",
+              "defrost_overrun",
+              "compressor_failure",
+              "probe_failure",
+              "ambient_load",
+              "undetermined"
+            ]
+          },
+          "expected_excursion": {
+            "type": "boolean",
+            "description": "True when the temperature rise is fully explained by a normal defrost or a normal door event."
+          },
+          "product_risk": {"enum": ["none", "monitor", "quarantine", "discard"]},
+          "certainty": {"type": "number", "minimum": 0, "maximum": 1},
+          "supporting_events": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true,
+            "items": {"type": "string", "maxLength": 128}
+          },
+          "containment_step": {"type": "string", "minLength": 1, "maxLength": 800}
+        }
+      },
+      "evidence_reference_pointer": "/supporting_events",
+      "confidence_pointer": "/certainty"
+    }
+  },
+
+  "cognition_triggers": [
+    {
+      "id": "assess-excursion",
+      "type": "transition",
+      "from": ["within_spec", "elevated"],
+      "to": "excursion",
+      "episode_type": "integrity_assessment",
+      "cooldown": "20m"
+    }
+  ],
+
+  "budgets": {
+    "max_episodes_per_entity_per_hour": 3
+  }
+}

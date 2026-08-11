@@ -1,0 +1,70 @@
+# ---------------------------------------------------------------------------
+# GitHub Actions CI for Go projects
+# ---------------------------------------------------------------------------
+# Runs on push/PR to main. Pipeline:
+#   tidy → build → vet → lint → test (short, race) → deadcode → vulncheck
+#   → cross-compile linux/amd64 → upload artifact
+#
+# Add a `services` block here if your tests need PostgreSQL, Redis, etc.
+# ---------------------------------------------------------------------------
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  GO_VERSION: "1.25.12"
+  GO_TOOLS_VERSION: "v0.45.0"
+  GOVULNCHECK_VERSION: "v1.3.0"
+  GOLANGCI_LINT_VERSION: "v2.12.2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: "Go CI"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Install dev tools
+        run: |
+          go install golang.org/x/tools/cmd/deadcode@${GO_TOOLS_VERSION}
+          go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}
+
+      - name: CI check
+        run: make ci-check
+
+      - name: Cross-compile linux/amd64
+        run: make cross-compile
+
+      # Skipped in a freshly-cloned template, where cross-compile produces
+      # nothing because there is no cmd/ yet. Without the guard this step
+      # warns on every run. Once cmd/<name>/main.go exists it runs normally.
+      - name: Upload linux/amd64 artifact
+        if: hashFiles('bin/*-linux-amd64') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: binary-linux-amd64
+          path: bin/*-linux-amd64
+          retention-days: 3
+          if-no-files-found: warn
