@@ -1,6 +1,7 @@
 package contractsv1
 
 import (
+	"hash/fnv"
 	"time"
 )
 
@@ -49,3 +50,20 @@ type Envelope struct {
 
 // PayloadHash is the SHA-256 digest of the original normalized payload.
 type PayloadHash [32]byte
+
+// PartitionID computes the stable virtual partition for this envelope.
+func (e Envelope) PartitionID(count int) int {
+	if count <= 0 {
+		count = PartitionCount
+	}
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(e.TenantID))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write([]byte(e.PartitionKey))
+	mod := h.Sum64() % uint64(count)
+	// count is bounded to PartitionCount, so mod fits safely in int.
+	if mod > uint64(^uint(0)>>1) {
+		panic("partition mod exceeds int max")
+	}
+	return int(mod) //nolint:gosec // mod is bounded by count <= PartitionCount
+}
