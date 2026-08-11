@@ -25,17 +25,25 @@ service EvidenceTools {
 
 message HandshakeRequest {
   string protocol_version = 1;
-  string runtime_instance_id = 2;
-  repeated string requested_features = 3;
+  string contract_version = 2;
+  string worker_id = 3;
+  bool non_interactive = 4;
+  bool shadow_capable = 5;
+  bool counterfactual_capable = 6;
+  bool emits_complete_replay_ledger = 7;
+  repeated EpisodeKind supports_kinds = 8;
+  string runtime_instance_id = 9;
+  repeated string requested_features = 10;
 }
 
 message HandshakeResponse {
   string protocol_version = 1;
-  string worker_name = 2;
-  string worker_version = 3;
-  repeated string supported_features = 4;
-  uint64 max_request_bytes = 5;
-  uint64 max_event_bytes = 6;
+  string contract_version = 2;
+  string worker_name = 3;
+  string worker_version = 4;
+  repeated string supported_features = 5;
+  uint64 max_request_bytes = 6;
+  uint64 max_event_bytes = 7;
 }
 
 message EpisodeRequest {
@@ -53,6 +61,7 @@ message EpisodeRequest {
   bytes decision_schema_sha256 = 13;
   bytes tool_catalog_json = 14;
   bytes tool_catalog_sha256 = 15;
+  bytes spec_sha256 = 16;
 
   string objective = 20;
   string executor_name = 21;
@@ -69,6 +78,50 @@ message EpisodeRequest {
   // short-lived, and must never be logged or persisted by the worker.
   string evidence_tools_endpoint = 40;
   bytes capability_token = 41;
+
+  EpisodeKind kind = 50;
+  EpisodeLane lane = 51;
+  RiskClass risk_ceiling = 52;
+  repeated string allowed_intent_types = 53;
+  string cancellation_key = 54;
+  string attempt_id = 55;
+  uint64 fence = 56;
+  EvidenceTimeRange evidence_time_range = 57;
+  Reconsideration reconsideration = 58;
+}
+
+enum EpisodeKind {
+  EPISODE_KIND_UNSPECIFIED = 0;
+  EPISODE_KIND_DIAGNOSE = 1;
+  EPISODE_KIND_RECONSIDER = 2;
+}
+
+enum EpisodeLane {
+  EPISODE_LANE_UNSPECIFIED = 0;
+  EPISODE_LANE_FAST = 1;
+  EPISODE_LANE_DEEP = 2;
+  EPISODE_LANE_BATCH = 3;
+}
+
+enum RiskClass {
+  RISK_CLASS_UNSPECIFIED = 0;
+  RISK_CLASS_R0 = 1;
+  RISK_CLASS_R1 = 2;
+  RISK_CLASS_R2 = 3;
+  RISK_CLASS_R3 = 4;
+  RISK_CLASS_R4 = 5;
+}
+
+message EvidenceTimeRange {
+  google.protobuf.Timestamp from = 1;
+  google.protobuf.Timestamp until = 2;
+}
+
+message Reconsideration {
+  bytes prior_decision_json = 1;
+  repeated bytes executed_command_json = 2;
+  repeated bytes observed_outcome_json = 3;
+  bytes correction_json = 4;
 }
 
 message EpisodeBudget {
@@ -87,6 +140,8 @@ message EpisodeEvent {
   string episode_id = 1;
   uint64 sequence = 2;
   google.protobuf.Timestamp occurred_at = 3;
+  string attempt_id = 4;
+  uint64 fence = 5;
 
   oneof payload {
     EpisodeStarted started = 10;
@@ -98,6 +153,7 @@ message EpisodeEvent {
     DecisionProposed decision = 16;
     Diagnostic diagnostic = 17;
     Terminal terminal = 18;
+    EpisodeCancelling cancelling = 19;
   }
 }
 
@@ -172,6 +228,14 @@ message BudgetUpdated {
 message DecisionProposed {
   bytes decision_json = 1;
   bytes decision_sha256 = 2;
+  string episode_id = 3;
+  string attempt_id = 4;
+  uint64 fence = 5;
+}
+
+message EpisodeCancelling {
+  string reason_code = 1;
+  google.protobuf.Timestamp deadline = 2;
 }
 
 message Diagnostic {
@@ -186,18 +250,25 @@ message Terminal {
   string reason_code = 2;
   string diagnostic_ref = 3;
   Usage usage = 4;
+  ArtifactManifest artifact_manifest = 5;
 }
 
 enum TerminalStatus {
   TERMINAL_STATUS_UNSPECIFIED = 0;
-  TERMINAL_STATUS_DECIDED = 1;
-  TERMINAL_STATUS_NO_ACTION = 2;
-  TERMINAL_STATUS_NEEDS_HUMAN = 3;
-  TERMINAL_STATUS_SUPERSEDED = 4;
+  TERMINAL_STATUS_PRODUCED = 1;
+  TERMINAL_STATUS_DECLINED = 2;
+  TERMINAL_STATUS_CANCELLED = 3;
+  TERMINAL_STATUS_FAILED = 4;
   TERMINAL_STATUS_TIMED_OUT = 5;
-  TERMINAL_STATUS_BUDGET_EXHAUSTED = 6;
-  TERMINAL_STATUS_FAILED = 7;
-  TERMINAL_STATUS_CANCELLED = 8;
+}
+
+message ArtifactManifest {
+  bytes prompt_sha256 = 1;
+  bytes skill_set_sha256 = 2;
+  bytes tool_catalog_sha256 = 3;
+  string model_policy = 4;
+  string contract_version = 5;
+  repeated bytes memory_record_sha256 = 6;
 }
 
 message EvidenceToolCall {
@@ -208,6 +279,8 @@ message EvidenceToolCall {
   bytes arguments_json = 5;
   bytes capability_token = 6;
   google.protobuf.Timestamp deadline = 7;
+  string attempt_id = 8;
+  uint64 fence = 9;
 }
 
 message EvidenceToolResult {
@@ -219,6 +292,8 @@ message EvidenceToolResult {
   bytes result_sha256 = 6;
   ArtifactRef artifact = 7;
   bool truncated = 8;
+  string attempt_id = 9;
+  uint64 fence = 10;
 }
 
 message ArtifactRef {
