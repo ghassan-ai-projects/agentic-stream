@@ -28,20 +28,23 @@ func NewScheduler(compiled *spec.CompiledSpec, idGen ids.Generator, clk clock.Cl
 	if clk == nil {
 		clk = clock.Physical()
 	}
+	if idGen == nil {
+		idGen = ids.Random()
+	}
 	return &Scheduler{spec: compiled, idGen: idGen, clk: clk}
 }
 
 // Item is one durable scheduler entry.
 type Item struct {
-	SchedulerItemID  string
-	TriggerID        string
-	SituationID      string
-	SituationVersion int
-	Lane             string
-	Priority         float64
-	Status           string
-	NotBefore        *time.Time
-	ExpiresAt        time.Time
+	SchedulerItemID  string     // unique scheduler item identity.
+	TriggerID        string     // trigger evaluation that admitted this item.
+	SituationID      string     // situation being reasoned about.
+	SituationVersion int        // immutable situation version bound to this item.
+	Lane             string     // fast or deep lane.
+	Priority         float64    // admission score used for ordering.
+	Status           string     // pending, admitted, coalesced, expired, canceled, completed.
+	NotBefore        *time.Time // earliest time the item may be picked.
+	ExpiresAt        time.Time  // latest time the item remains useful.
 }
 
 const (
@@ -77,24 +80,31 @@ func (s *Scheduler) Admit(ctx context.Context, tx *sql.Tx, eval Evaluation, v si
 		return fmt.Errorf("build item: %w", err)
 	}
 
-	// Always supersede stale pending items for the same situation and trigger
-	// before checking capacity, so newer versions replace older ones.
-	if err := s.supersedePending(ctx, tx, eval.SituationID, eval.TriggerName); err != nil {
-		return fmt.Errorf("supersede pending: %w", err)
-	}
-
-	// Capacity exhaustion defers the latest version.
 	pending, err := s.countPending(ctx, tx, tenantID)
 	if err != nil {
 		return fmt.Errorf("count pending: %w", err)
 	}
-	if pending >= globalCapacity {
+	staleSameTrigger, err := s.countPendingSameTrigger(ctx, tx, eval.SituationID, eval.TriggerName)
+	if err != nil {
+		return fmt.Errorf("count stale same-trigger: %w", err)
+	}
+
+	// If global capacity is exhausted, we can still admit this version if it
+	// replaces a stale pending item for the same situation and trigger.
+	if pending >= globalCapacity && staleSameTrigger == 0 {
 		eval.Outcome = "deferred"
 		eval.Reasons = append(eval.Reasons, "global capacity exhausted")
 		if err := s.saveEvaluation(ctx, tx, eval, tenantID, deploymentID); err != nil {
 			return fmt.Errorf("save deferred evaluation: %w", err)
 		}
 		return nil
+	}
+
+	// Supersede stale pending items for the same situation and trigger. This
+	// also marks any already-created episodes as superseded so the new episode
+	// can be inserted under the one-live-episode-per-situation constraint.
+	if err := s.supersedePending(ctx, tx, eval.SituationID, eval.TriggerName); err != nil {
+		return fmt.Errorf("supersede pending: %w", err)
 	}
 
 	if err := s.insertItem(ctx, tx, item, tenantID); err != nil {
@@ -117,8 +127,8 @@ func (s *Scheduler) saveEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluat
 		INSERT INTO trigger_evaluations (
 			trigger_id, tenant_id, deployment_id, trigger_name,
 			situation_id, situation_version, score, threshold, lane,
-			outcome, reasons_json, policy_sha256, evaluated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			outcome, reasons_json, policy_sha256, delta_json, evaluated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(trigger_id) DO UPDATE SET
 			situation_version = excluded.situation_version,
 			score = excluded.score,
@@ -127,10 +137,11 @@ func (s *Scheduler) saveEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluat
 			outcome = excluded.outcome,
 			reasons_json = excluded.reasons_json,
 			policy_sha256 = excluded.policy_sha256,
+			delta_json = excluded.delta_json,
 			evaluated_at = excluded.evaluated_at`,
 		eval.TriggerID, tenantID, deploymentID, eval.TriggerName,
 		eval.SituationID, eval.SituationVersion, eval.Score, eval.Threshold, eval.Lane,
-		eval.Outcome, reasonsJSON, policySHA[:], eval.EvaluatedAt.Format(time.RFC3339Nano),
+		eval.Outcome, reasonsJSON, policySHA[:], eval.DeltaJSON, eval.EvaluatedAt.Format(time.RFC3339Nano),
 	); err != nil {
 		return fmt.Errorf("upsert trigger evaluation: %w", err)
 	}
@@ -229,16 +240,40 @@ func (s *Scheduler) countPending(ctx context.Context, tx *sql.Tx, tenantID strin
 	return count, nil
 }
 
+func (s *Scheduler) countPendingSameTrigger(ctx context.Context, tx *sql.Tx, situationID, triggerName string) (int, error) {
+	var count int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM scheduler_items si
+		JOIN trigger_evaluations te ON te.trigger_id = si.trigger_id
+		WHERE si.situation_id = ? AND te.trigger_name = ? AND si.status = 'pending'`,
+		situationID, triggerName,
+	).Scan(&count); err != nil {
+		return 0, fmt.Errorf("query pending same-trigger count: %w", err)
+	}
+	return count, nil
+}
+
 func (s *Scheduler) supersedePending(ctx context.Context, tx *sql.Tx, situationID, triggerName string) error {
+	now := s.clk.Now().UTC().Format(time.RFC3339Nano)
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE scheduler_items SET status = 'coalesced', updated_at = ?
 		WHERE situation_id = ? AND trigger_id IN (
 			SELECT trigger_id FROM trigger_evaluations
 			WHERE situation_id = ? AND trigger_name = ? AND outcome = 'admitted'
 		) AND status IN ('pending', 'admitted')`,
-		s.clk.Now().UTC().Format(time.RFC3339Nano), situationID, situationID, triggerName,
+		now, situationID, situationID, triggerName,
 	); err != nil {
-		return fmt.Errorf("supersede: %w", err)
+		return fmt.Errorf("supersede scheduler items: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE episodes SET status = 'superseded', ended_at = ?
+		WHERE scheduler_item_id IN (
+			SELECT scheduler_item_id FROM scheduler_items
+			WHERE situation_id = ? AND status = 'coalesced'
+		) AND status IN ('accepted', 'queued', 'running', 'cancelling')`,
+		now, situationID,
+	); err != nil {
+		return fmt.Errorf("supersede episodes: %w", err)
 	}
 	return nil
 }

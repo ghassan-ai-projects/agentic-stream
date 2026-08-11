@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
@@ -45,6 +46,7 @@ type Evaluation struct {
 	Outcome          string
 	Reasons          []string
 	PolicySHA256     string
+	DeltaJSON        []byte
 	EvaluatedAt      time.Time
 }
 
@@ -213,6 +215,11 @@ func (e *Engine) evaluate(ctx context.Context, tr spec.Trigger, current situatio
 	features := e.buildFeatures(current)
 	situation := e.buildSituation(current)
 	delta := e.buildDelta(current, previous)
+	deltaJSON, err := canonicaljson.Marshal(delta)
+	if err != nil {
+		return eval, fmt.Errorf("marshal delta: %w", err)
+	}
+	eval.DeltaJSON = deltaJSON
 
 	fired, err := e.evalBool(ctx, tr, "when", features, situation, delta, current.EventHorizon, current.Watermark)
 	if err != nil {
