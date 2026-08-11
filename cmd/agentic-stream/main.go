@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -50,6 +51,8 @@ func newVersionCommand() *cobra.Command {
 		Short: "Print version and build metadata.",
 		Run: func(cmd *cobra.Command, _ []string) {
 			cmd.Printf("agentic-stream version %s (commit %s)\n", Version, Commit)
+			cmd.Printf("contract: %s\n", contractsv1.ContractVersion)
+			cmd.Printf("protocol: %s\n", contractsv1.ProtocolVersion)
 		},
 	}
 }

@@ -21,4 +21,10 @@ func TestVersionCommand(t *testing.T) {
 	if !strings.Contains(out, "agentic-stream version") {
 		t.Fatalf("unexpected output: %s", out)
 	}
+	if !strings.Contains(out, "contract: situation-runtime-contracts/v1") {
+		t.Fatalf("missing contract version: %s", out)
+	}
+	if !strings.Contains(out, "protocol: agenticstream.runtime/v1") {
+		t.Fatalf("missing protocol version: %s", out)
+	}
 }
