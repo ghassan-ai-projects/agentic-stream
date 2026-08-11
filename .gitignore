@@ -46,3 +46,9 @@ Thumbs.db
 # --- Project-specific (customize per project) ---
 # /tmp/
 # /var/
+
+# --- Runtime artifacts ---
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
