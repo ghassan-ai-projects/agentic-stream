@@ -20,6 +20,8 @@ import (
 
 const testDigest = "0000000000000000000000000000000000000000000000000000000000000000"
 
+const testSpecDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
 func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Version, deploymentID, tenantID string) error {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO lineage_sets (lineage_id, sha256, reference_count, references_json, created_at)
@@ -67,7 +69,7 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 
 	compiled := spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
-		Digest:        testDigest,
+		Digest:        testSpecDigest,
 		Situation: spec.Situation{
 			Type:         "test",
 			InitialPhase: "candidate",
@@ -102,7 +104,7 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.NewEngine(db, testDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
+	eng, err := cognition.NewEngine(db, testSpecDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -124,7 +126,7 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 		SnapshotSHA256: testDigest,
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testDigest, "default"); err != nil {
+		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
 			return err
 		}
 		return eng.Process(ctx, tx, v)
@@ -186,7 +188,7 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 
 	compiled := spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
-		Digest:        testDigest,
+		Digest:        testSpecDigest,
 		Situation: spec.Situation{
 			Type:         "test",
 			InitialPhase: "candidate",
@@ -221,7 +223,7 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.NewEngine(db, testDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
+	eng, err := cognition.NewEngine(db, testSpecDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -243,7 +245,7 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 		SnapshotSHA256: testDigest,
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testDigest, "default"); err != nil {
+		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
 			return err
 		}
 		return eng.Process(ctx, tx, v)
@@ -307,7 +309,7 @@ func TestAssemblerIsDeterministic(t *testing.T) {
 
 	compiled := spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
-		Digest:        testDigest,
+		Digest:        testSpecDigest,
 		Situation: spec.Situation{
 			Type:         "test",
 			InitialPhase: "candidate",
@@ -342,7 +344,7 @@ func TestAssemblerIsDeterministic(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.NewEngine(db, testDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
+	eng, err := cognition.NewEngine(db, testSpecDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -364,7 +366,7 @@ func TestAssemblerIsDeterministic(t *testing.T) {
 		SnapshotSHA256: testDigest,
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testDigest, "default"); err != nil {
+		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
 			return err
 		}
 		return eng.Process(ctx, tx, v)
@@ -419,7 +421,7 @@ func TestAssemblerRequestContainsDelta(t *testing.T) {
 
 	compiled := spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
-		Digest:        testDigest,
+		Digest:        testSpecDigest,
 		Situation: spec.Situation{
 			Type:         "test",
 			InitialPhase: "candidate",
@@ -446,7 +448,7 @@ func TestAssemblerRequestContainsDelta(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.NewEngine(db, testDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
+	eng, err := cognition.NewEngine(db, testSpecDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -468,7 +470,7 @@ func TestAssemblerRequestContainsDelta(t *testing.T) {
 		SnapshotSHA256: testDigest,
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testDigest, "default"); err != nil {
+		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
 			return err
 		}
 		return eng.Process(ctx, tx, v)
@@ -516,7 +518,7 @@ func TestAssemblerTenantMismatch(t *testing.T) {
 
 	compiled := spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
-		Digest:        testDigest,
+		Digest:        testSpecDigest,
 		Situation: spec.Situation{
 			Type:         "test",
 			InitialPhase: "candidate",
@@ -543,7 +545,7 @@ func TestAssemblerTenantMismatch(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.NewEngine(db, testDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
+	eng, err := cognition.NewEngine(db, testSpecDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -565,7 +567,7 @@ func TestAssemblerTenantMismatch(t *testing.T) {
 		SnapshotSHA256: testDigest,
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testDigest, "default"); err != nil {
+		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
 			return err
 		}
 		return eng.Process(ctx, tx, v)
@@ -603,7 +605,7 @@ func TestAssemblerPersistRejectsNonPending(t *testing.T) {
 
 	compiled := spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
-		Digest:        testDigest,
+		Digest:        testSpecDigest,
 		Situation: spec.Situation{
 			Type:         "test",
 			InitialPhase: "candidate",
@@ -630,7 +632,7 @@ func TestAssemblerPersistRejectsNonPending(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.NewEngine(db, testDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
+	eng, err := cognition.NewEngine(db, testSpecDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -652,7 +654,7 @@ func TestAssemblerPersistRejectsNonPending(t *testing.T) {
 		SnapshotSHA256: testDigest,
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testDigest, "default"); err != nil {
+		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
 			return err
 		}
 		return eng.Process(ctx, tx, v)

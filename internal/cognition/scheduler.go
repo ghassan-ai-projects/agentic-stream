@@ -4,11 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -119,7 +119,7 @@ func (s *Scheduler) saveEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluat
 	if err != nil {
 		return fmt.Errorf("marshal reasons: %w", err)
 	}
-	policySHA, err := hex.DecodeString(s.spec.Digest)
+	policySHA, err := canonicaljson.DecodeDigest(s.spec.Digest)
 	if err != nil {
 		return fmt.Errorf("decode policy digest: %w", err)
 	}

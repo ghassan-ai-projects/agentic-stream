@@ -2,11 +2,11 @@ package spec
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -34,7 +34,10 @@ func SaveDeployment(ctx context.Context, db *storage.DB, tenantID string, compil
 		return fmt.Errorf("marshal compiled ir: %w", err)
 	}
 
-	h := sha256.Sum256(sourceJSON)
+	specDigest, err := canonicaljson.DecodeDigest(compiled.Digest)
+	if err != nil {
+		return fmt.Errorf("decode compiled spec digest: %w", err)
+	}
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO spec_deployments (
 			deployment_id, tenant_id, spec_name, spec_version, spec_schema_version,
@@ -42,7 +45,7 @@ func SaveDeployment(ctx context.Context, db *storage.DB, tenantID string, compil
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
 		ON CONFLICT(deployment_id) DO NOTHING`,
 		compiled.Digest, tenantID, compiled.Metadata.Name, compiled.Metadata.Version,
-		compiled.SchemaVersion, h[:], sourceJSON, compiledIR,
+		compiled.SchemaVersion, specDigest, sourceJSON, compiledIR,
 		time.Now().UTC().Format(time.RFC3339Nano),
 		time.Now().UTC().Format(time.RFC3339Nano),
 	)

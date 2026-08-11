@@ -162,7 +162,7 @@ func (c *Compiler) CompileBytes(ctx context.Context, data []byte, path string) (
 	if err != nil {
 		return nil, fmt.Errorf("canonical json: %w", err)
 	}
-	digest, err := canonicaljson.Digest(spec)
+	digest, err := canonicaljson.Digest(canonicaljson.DomainSpec, spec)
 	if err != nil {
 		return nil, fmt.Errorf("digest: %w", err)
 	}
@@ -174,18 +174,18 @@ func (c *Compiler) CompileBytes(ctx context.Context, data []byte, path string) (
 
 // rawSpec mirrors the external YAML/JSON shape exactly.
 type rawSpec struct {
-	APIVersion string       `yaml:"apiVersion" json:"apiVersion"`
-	Kind       string       `yaml:"kind" json:"kind"`
-	Metadata   Metadata     `yaml:"metadata" json:"metadata"`
-	Inputs     []Input      `yaml:"inputs" json:"inputs"`
-	Time       TimePolicy   `yaml:"time" json:"time"`
-	Windows    []Window     `yaml:"windows" json:"windows"`
-	Operators  []Operator   `yaml:"operators" json:"operators"`
-	Situation  Situation    `yaml:"situation" json:"situation"`
-	Cognition  Cognition    `yaml:"cognition" json:"cognition"`
-	Actions    Actions      `yaml:"actions" json:"actions"`
-	Retention  *Retention   `yaml:"retention,omitempty" json:"retention,omitempty"`
-	Telemetry  *Telemetry   `yaml:"telemetry,omitempty" json:"telemetry,omitempty"`
+	APIVersion string     `yaml:"apiVersion" json:"apiVersion"`
+	Kind       string     `yaml:"kind" json:"kind"`
+	Metadata   Metadata   `yaml:"metadata" json:"metadata"`
+	Inputs     []Input    `yaml:"inputs" json:"inputs"`
+	Time       TimePolicy `yaml:"time" json:"time"`
+	Windows    []Window   `yaml:"windows" json:"windows"`
+	Operators  []Operator `yaml:"operators" json:"operators"`
+	Situation  Situation  `yaml:"situation" json:"situation"`
+	Cognition  Cognition  `yaml:"cognition" json:"cognition"`
+	Actions    Actions    `yaml:"actions" json:"actions"`
+	Retention  *Retention `yaml:"retention,omitempty" json:"retention,omitempty"`
+	Telemetry  *Telemetry `yaml:"telemetry,omitempty" json:"telemetry,omitempty"`
 }
 
 func normalize(r *rawSpec) (*CompiledSpec, error) {
