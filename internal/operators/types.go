@@ -64,6 +64,11 @@ type HeartbeatState struct {
 	LastEventID   string     `json:"last_event_id,omitempty"`
 }
 
+// PartitionState is the in-memory operator state for one partition.
+type PartitionState struct {
+	OperatorStates map[string]map[string]*OperatorStateBlob // operatorID -> stateKey -> blob
+}
+
 // Completeness describes how complete the feature is.
 type Completeness string
 

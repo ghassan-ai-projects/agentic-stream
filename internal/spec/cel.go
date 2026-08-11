@@ -7,10 +7,10 @@ import (
 	"github.com/google/cel-go/ext"
 )
 
-// celEnv creates a restricted CEL environment for SituationSpec expressions.
+// NewCELEnv creates a restricted CEL environment for SituationSpec expressions.
 // It allows only deterministic functions and rejects sources of non-determinism
 // such as timestamps, randomness, and external calls.
-func celEnv() (*cel.Env, error) {
+func NewCELEnv() (*cel.Env, error) {
 	opts := []cel.EnvOption{
 		cel.Variable("features", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("situation", cel.MapType(cel.StringType, cel.DynType)),
@@ -29,7 +29,7 @@ func celEnv() (*cel.Env, error) {
 // validateExpressions compiles every CEL expression in the spec and reports the
 // first error.
 func validateExpressions(spec *CompiledSpec) error {
-	env, err := celEnv()
+	env, err := NewCELEnv()
 	if err != nil {
 		return err
 	}

@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -102,27 +102,11 @@ func newWindowConfig(w spec.Window) (*windowConfig, error) {
 }
 
 func parseDuration(s string) (time.Duration, error) {
-	if s == "" {
-		return 0, fmt.Errorf("empty duration")
-	}
-	// Schema uses days (d) which time.ParseDuration does not support.
-	if strings.HasSuffix(s, "d") {
-		days, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
-		if err != nil {
-			return 0, fmt.Errorf("parse days: %w", err)
-		}
-		return time.Duration(days) * 24 * time.Hour, nil
-	}
-	d, err := time.ParseDuration(s)
+	d, err := duration.Parse(s)
 	if err != nil {
-		return 0, fmt.Errorf("parse duration %q: %w", s, err)
+		return 0, fmt.Errorf("parse duration: %w", err)
 	}
 	return d, nil
-}
-
-// PartitionState is the in-memory operator state for one partition.
-type PartitionState struct {
-	operatorStates map[string]map[string]*OperatorStateBlob // operatorID -> stateKey -> blob
 }
 
 // OperatorStateBlob is the JSON-serializable state for one operator key.
@@ -134,7 +118,7 @@ type OperatorStateBlob struct {
 // ApplyEvent processes one event against all operators that consume its input.
 func (r *OperatorRuntime) ApplyEvent(ctx context.Context, ps *PartitionState, env contractsv1.Envelope, watermark time.Time) ([]Feature, *PartitionState, error) {
 	if ps == nil {
-		ps = &PartitionState{operatorStates: make(map[string]map[string]*OperatorStateBlob)}
+		ps = &PartitionState{OperatorStates: make(map[string]map[string]*OperatorStateBlob)}
 	}
 
 	inputName, ok := r.inputForEvent(env)
@@ -193,13 +177,13 @@ func (r *OperatorRuntime) applyOperator(ctx context.Context, ps *PartitionState,
 }
 
 func (r *OperatorRuntime) getBlob(ps *PartitionState, operatorID, stateKey string) *OperatorStateBlob {
-	if ps.operatorStates == nil {
-		ps.operatorStates = make(map[string]map[string]*OperatorStateBlob)
+	if ps.OperatorStates == nil {
+		ps.OperatorStates = make(map[string]map[string]*OperatorStateBlob)
 	}
-	ops, ok := ps.operatorStates[operatorID]
+	ops, ok := ps.OperatorStates[operatorID]
 	if !ok {
 		ops = make(map[string]*OperatorStateBlob)
-		ps.operatorStates[operatorID] = ops
+		ps.OperatorStates[operatorID] = ops
 	}
 	blob, ok := ops[stateKey]
 	if !ok {
@@ -210,13 +194,13 @@ func (r *OperatorRuntime) getBlob(ps *PartitionState, operatorID, stateKey strin
 }
 
 func (r *OperatorRuntime) setBlob(ps *PartitionState, operatorID, stateKey string, blob *OperatorStateBlob) {
-	if ps.operatorStates == nil {
-		ps.operatorStates = make(map[string]map[string]*OperatorStateBlob)
+	if ps.OperatorStates == nil {
+		ps.OperatorStates = make(map[string]map[string]*OperatorStateBlob)
 	}
-	ops, ok := ps.operatorStates[operatorID]
+	ops, ok := ps.OperatorStates[operatorID]
 	if !ok {
 		ops = make(map[string]*OperatorStateBlob)
-		ps.operatorStates[operatorID] = ops
+		ps.OperatorStates[operatorID] = ops
 	}
 	ops[stateKey] = blob
 }
@@ -478,7 +462,7 @@ func (r *OperatorRuntime) applyHeartbeatTimer(inst *operatorInstance, ps *Partit
 	}
 
 	var features []Feature
-	for stateKey, blob := range ps.operatorStates[inst.def.Name] {
+	for stateKey, blob := range ps.OperatorStates[inst.def.Name] {
 		if blob.Heartbeat == nil || blob.Heartbeat.LastEventTime == nil {
 			continue
 		}

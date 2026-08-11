@@ -13,21 +13,21 @@ func CompileFile(ctx context.Context, path string) (*CompiledSpec, error) {
 
 // CompiledSpec is the immutable result of compiling a SituationSpec.
 type CompiledSpec struct {
-	SchemaVersion string
-	Metadata      Metadata
-	Inputs        []Input
-	Time          TimePolicy
-	Windows       []Window
-	Operators     []Operator
-	Situation     Situation
-	Cognition     Cognition
-	Actions       Actions
-	Retention     *Retention
-	Telemetry     *Telemetry
+	SchemaVersion string                 `json:"schemaVersion"`
+	Metadata      Metadata               `json:"metadata"`
+	Inputs        []Input                `json:"inputs"`
+	Time          TimePolicy             `json:"time"`
+	Windows       []Window               `json:"windows"`
+	Operators     []Operator             `json:"operators"`
+	Situation     Situation              `json:"situation"`
+	Cognition     Cognition              `json:"cognition"`
+	Actions       Actions                `json:"actions"`
+	Retention     *Retention             `json:"retention,omitempty"`
+	Telemetry     *Telemetry             `json:"telemetry,omitempty"`
 
 	// CanonicalJSON is the canonical representation used for the digest.
-	CanonicalJSON []byte
-	Digest        string
+	CanonicalJSON []byte `json:"canonicalJSON"`
+	Digest        string `json:"digest"`
 }
 
 // Metadata describes the spec.

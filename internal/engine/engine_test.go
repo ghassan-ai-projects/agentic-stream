@@ -30,7 +30,10 @@ func TestEngineAdvancesCheckpoint(t *testing.T) {
 
 	log := eventlog.NewEventLog(db)
 	clk := clock.Physical()
-	eng := engine.NewEngine(db, log, clk, compiled, "default")
+	eng, err := engine.NewEngine(db, log, clk, compiled, "default")
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
 
 	env := contractsv1.Envelope{
 		ID:             "evt-1",
