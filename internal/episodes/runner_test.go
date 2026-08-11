@@ -17,7 +17,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-func TestRunnerExecutesQueuedEpisode(t *testing.T) {
+func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
@@ -146,7 +146,7 @@ func TestRunnerExecutesQueuedEpisode(t *testing.T) {
 		FROM decisions WHERE situation_id = ?`, v.SituationID).Scan(&validationStatus, &attemptID, &fence); err != nil {
 		t.Fatalf("query decision provenance: %v", err)
 	}
-	if validationStatus != "proposed" || attemptID == "" || fence != 1 {
+	if validationStatus != "accepted" || attemptID == "" || fence != 1 {
 		t.Fatalf("decision provenance = status %q attempt %q fence %d", validationStatus, attemptID, fence)
 	}
 	var attemptStatus string
@@ -156,6 +156,16 @@ func TestRunnerExecutesQueuedEpisode(t *testing.T) {
 	}
 	if attemptStatus != "produced" {
 		t.Fatalf("expected produced attempt, got %s", attemptStatus)
+	}
+	var intentType, policyStatus string
+	if err := db.QueryRowContext(ctx, `
+		SELECT intent_type, policy_status FROM intents
+		WHERE decision_id = (SELECT decision_id FROM decisions WHERE situation_id = ?)`, v.SituationID).
+		Scan(&intentType, &policyStatus); err != nil {
+		t.Fatalf("query validated intent: %v", err)
+	}
+	if intentType != "create_maintenance_ticket" || policyStatus != "pending" {
+		t.Fatalf("validated intent = type %q policy %q", intentType, policyStatus)
 	}
 }
 

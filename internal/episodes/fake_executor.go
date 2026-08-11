@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 // FakeExecutor is a deterministic executor for tests and replay. It produces a
@@ -40,7 +42,9 @@ func (e *FakeExecutor) Execute(ctx context.Context, req *Request) (*Outcome, err
 	}
 
 	decision := map[string]any{
+		"decision_id":       "dec_" + req.EpisodeID,
 		"episode_id":        req.EpisodeID,
+		"snapshot_digest":   req.SnapshotSHA256,
 		"situation_id":      req.SituationID,
 		"situation_version": req.SituationVersion,
 		"summary":           fmt.Sprintf("fake decision for phase %s via trigger %s", phase, triggerName),
@@ -49,17 +53,32 @@ func (e *FakeExecutor) Execute(ctx context.Context, req *Request) (*Outcome, err
 			{"path": "snapshot.phase", "value": phase},
 		},
 		"intents": []map[string]any{
-			{"type": "create_maintenance_ticket", "risk": "R1", "parameters": map[string]any{"reason": phase}},
+			{
+				"intent_id":         "int_" + req.EpisodeID,
+				"decision_id":       "dec_" + req.EpisodeID,
+				"tenant_id":         req.TenantID,
+				"situation_id":      req.SituationID,
+				"situation_version": req.SituationVersion,
+				"type":              "create_maintenance_ticket",
+				"risk_class":        "R1",
+				"parameters":        map[string]any{"reason": phase},
+				"expires_at":        "2099-01-01T00:00:00.000000000Z",
+			},
 		},
 	}
-	decisionJSON, err := json.Marshal(decision)
+	decisionJSON, err := canonicaljson.Marshal(decision)
 	if err != nil {
 		return nil, fmt.Errorf("marshal decision: %w", err)
 	}
+	decisionDigest, err := canonicaljson.Digest(canonicaljson.DomainDecision, decision)
+	if err != nil {
+		return nil, fmt.Errorf("digest decision: %w", err)
+	}
 
 	return &Outcome{
-		Status:       string(AttemptProduced),
-		DecisionJSON: decisionJSON,
-		Reasons:      []string{"deterministic fake outcome"},
+		Status:         string(AttemptProduced),
+		DecisionJSON:   decisionJSON,
+		DecisionSHA256: decisionDigest,
+		Reasons:        []string{"deterministic fake outcome"},
 	}, nil
 }

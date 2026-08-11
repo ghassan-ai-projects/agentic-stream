@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -57,6 +60,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	var req Request
 	var episodeID string
 	var identity Identity
+	var snapshotHash []byte
 	err := r.withTx(ctx, func(tx *sql.Tx) error {
 		if err := tx.QueryRowContext(ctx, `
 			SELECT episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
@@ -69,7 +73,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		).Scan(
 			&episodeID, &req.SchedulerItemID, &req.TenantID, &req.SituationID, &req.SituationVersion,
 			&req.ExecutorName, &req.ExecutorVersion, &req.ModelPolicy, &req.PromptVersion,
-			&req.SnapshotSHA256, &req.AdmissionKey, &req.RequestJSON,
+			&snapshotHash, &req.AdmissionKey, &req.RequestJSON,
 		); err != nil {
 			if err == sql.ErrNoRows {
 				return nil
@@ -78,6 +82,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		}
 
 		req.EpisodeID = episodeID
+		req.SnapshotSHA256 = "sha256:" + hex.EncodeToString(snapshotHash)
 		attemptID := r.idGen.New(ids.PrefixAttempt)
 		var err error
 		identity, err = StartAttempt(ctx, tx, episodeID, attemptID, r.clk.Now())
@@ -103,20 +108,62 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 
 	return true, r.withTx(ctx, func(tx *sql.Tx) error {
 		now := r.clk.Now().UTC().Format(time.RFC3339Nano)
+		validationInput, err := decisionInput(&req, identity, r.clk.Now())
+		if err != nil {
+			return fmt.Errorf("build decision validation input: %w", err)
+		}
+		validated, validationErr := decisions.Validate(outcome.DecisionJSON, outcome.DecisionSHA256, validationInput)
+		decisionID := decisionIDFromJSON(outcome.DecisionJSON)
+		if decisionID == "" {
+			decisionID = r.idGen.New(ids.PrefixDecision)
+		}
+		decisionDigest := sha256.Sum256(outcome.DecisionJSON)
+		validationStatus := "rejected"
+		validationJSON := []byte(`{"reason":"schema_invalid"}`)
+		if validationErr == nil {
+			validationStatus = "proposed"
+			validationJSON = []byte(`{}`)
+			if decoded, decodeErr := canonicaljson.DecodeDigest(validated.DecisionDigest); decodeErr == nil {
+				copy(decisionDigest[:], decoded)
+			}
+		} else {
+			if typed, ok := validationErr.(*decisions.ValidationError); ok {
+				validationJSON, _ = json.Marshal(map[string]any{"reason": typed.Reason, "details": typed.Details})
+			} else {
+				validationJSON, _ = json.Marshal(map[string]any{"reason": "schema_invalid", "details": validationErr.Error()})
+			}
+		}
 		if outcome.DecisionJSON != nil {
-			decisionID := r.idGen.New(ids.PrefixDecision)
-			h := sha256.Sum256(outcome.DecisionJSON)
 			if _, err := tx.ExecContext(ctx, `
 				INSERT INTO decisions (
 					decision_id, episode_id, attempt_id, fence, ordinal, situation_id,
 					situation_version, raw_json, decision_sha256, validation_status,
 					validation_json, created_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?, ?)`,
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				decisionID, episodeID, identity.AttemptID, identity.Fence, 1,
 				req.SituationID, req.SituationVersion,
-				outcome.DecisionJSON, h[:], []byte(`{}`), now,
+				outcome.DecisionJSON, decisionDigest[:], validationStatus, validationJSON, now,
 			); err != nil {
 				return fmt.Errorf("insert decision: %w", err)
+			}
+			if validationErr == nil {
+				if err := r.persistValidatedIntents(ctx, tx, validated, &req, now); err != nil {
+					return err
+				}
+				if _, err := tx.ExecContext(ctx, "UPDATE decisions SET validation_status = 'accepted' WHERE decision_id = ?", decisionID); err != nil {
+					return fmt.Errorf("accept decision: %w", err)
+				}
+			} else {
+				reason := "schema_invalid"
+				if typed, ok := validationErr.(*decisions.ValidationError); ok {
+					reason = typed.Reason
+				}
+				if err := RecordRejection(ctx, tx, identity, RejectionReason(reason), validationJSON, r.clk.Now()); err != nil {
+					return fmt.Errorf("record decision rejection: %w", err)
+				}
+				if _, err := tx.ExecContext(ctx, "UPDATE decisions SET rejection_reason = ? WHERE decision_id = ?", reason, decisionID); err != nil {
+					return fmt.Errorf("annotate rejected decision: %w", err)
+				}
 			}
 		}
 
@@ -145,6 +192,87 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		}
 		return nil
 	})
+}
+
+func decisionInput(req *Request, identity Identity, now time.Time) (decisions.Input, error) {
+	var payload struct {
+		Tools []struct {
+			Type string `json:"type"`
+			Risk string `json:"risk"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
+		return decisions.Input{}, fmt.Errorf("decode request tools: %w", err)
+	}
+	allowed := make(map[string]struct{}, len(payload.Tools))
+	riskCeiling := "R0"
+	for _, tool := range payload.Tools {
+		allowed[tool.Type] = struct{}{}
+		if riskRank(tool.Risk) > riskRank(riskCeiling) {
+			riskCeiling = tool.Risk
+		}
+	}
+	return decisions.Input{
+		EpisodeID:          identity.EpisodeID,
+		AttemptID:          identity.AttemptID,
+		Fence:              identity.Fence,
+		TenantID:           req.TenantID,
+		SituationID:        req.SituationID,
+		SituationVersion:   req.SituationVersion,
+		SnapshotDigest:     req.SnapshotSHA256,
+		AllowedIntentTypes: allowed,
+		RiskCeiling:        riskCeiling,
+		Now:                now,
+	}, nil
+}
+
+func (r *Runner) persistValidatedIntents(ctx context.Context, tx *sql.Tx, validated *decisions.Result, req *Request, now string) error {
+	for _, intent := range validated.Intents {
+		digest, err := canonicaljson.DecodeDigest(intent.Digest)
+		if err != nil {
+			return fmt.Errorf("decode intent digest: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO intents (
+				intent_id, decision_id, tenant_id, situation_id, situation_version,
+				intent_type, risk_class, intent_json, intent_sha256, expires_at,
+				policy_status, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+			intent.ID, validated.DecisionID, req.TenantID, req.SituationID, req.SituationVersion,
+			intent.Type, intent.RiskClass, intent.CanonicalJSON, digest,
+			intent.ExpiresAt.UTC().Format(time.RFC3339Nano), now, now,
+		); err != nil {
+			return fmt.Errorf("insert intent %s: %w", intent.ID, err)
+		}
+	}
+	return nil
+}
+
+func decisionIDFromJSON(raw []byte) string {
+	var document struct {
+		DecisionID string `json:"decision_id"`
+	}
+	if json.Unmarshal(raw, &document) != nil {
+		return ""
+	}
+	return document.DecisionID
+}
+
+func riskRank(risk string) int {
+	switch risk {
+	case "R0":
+		return 1
+	case "R1":
+		return 2
+	case "R2":
+		return 3
+	case "R3":
+		return 4
+	case "R4":
+		return 5
+	default:
+		return 0
+	}
 }
 
 func (r *Runner) failAttempt(ctx context.Context, identity Identity, reason string) error {

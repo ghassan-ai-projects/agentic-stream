@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -108,16 +107,11 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		"budget": a.budgetMap(),
 	}
 
-	requestJSON, err := canonicaljson.Marshal(request)
-	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-
 	episodeID := request["episode_id"].(string)
 	admissionKey := sha256.Sum256([]byte(episodeID + "|" + schedulerItemID))
 
-	// The deterministic snapshot hash excludes the generated episode identity so
-	// that the same situation/trigger always yields the same snapshot digest.
+	// The deterministic snapshot projection excludes the generated episode
+	// identity so that the same situation/trigger always yields the same digest.
 	snapshotOnly := map[string]any{
 		"situation_id":      item.SituationID,
 		"situation_version": item.SituationVersion,
@@ -128,11 +122,15 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		"executor":          request["executor"],
 		"budget":            request["budget"],
 	}
-	snapshotOnlyJSON, err := canonicaljson.Marshal(snapshotOnly)
+	snapshotDigest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, snapshotOnly)
 	if err != nil {
-		return nil, fmt.Errorf("marshal snapshot: %w", err)
+		return nil, fmt.Errorf("digest snapshot: %w", err)
 	}
-	snapshotHash := sha256.Sum256(snapshotOnlyJSON)
+	request["snapshot_digest"] = snapshotDigest
+	requestJSON, err := canonicaljson.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
 
 	return &Request{
 		EpisodeID:        episodeID,
@@ -144,7 +142,7 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		ExecutorVersion:  a.spec.Digest,
 		ModelPolicy:      a.spec.Cognition.Executor.ModelPolicy,
 		PromptVersion:    a.spec.Cognition.Executor.PromptVersion,
-		SnapshotSHA256:   hex.EncodeToString(snapshotHash[:]),
+		SnapshotSHA256:   snapshotDigest,
 		AdmissionKey:     admissionKey[:],
 		RequestJSON:      requestJSON,
 	}, nil
@@ -154,9 +152,9 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 // scheduler item as admitted. It runs inside the supplied transaction. The
 // scheduler item must still be pending; otherwise Persist returns an error.
 func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now time.Time) error {
-	snapshotHash, err := hex.DecodeString(req.SnapshotSHA256)
+	snapshotHash, err := canonicaljson.DecodeDigest(req.SnapshotSHA256)
 	if err != nil {
-		return fmt.Errorf("decode snapshot sha256: %w", err)
+		return fmt.Errorf("decode snapshot digest: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO episodes (
