@@ -54,6 +54,9 @@ func (e CloudEvent) Validate() error {
 	if e.EnvelopeDigest == "" {
 		return fmt.Errorf("cloud event: envelopedigest is required")
 	}
+	if _, err := ParseTraceContext(e.Traceparent, e.Tracestate); err != nil {
+		return fmt.Errorf("cloud event: trace context: %w", err)
+	}
 	expected, err := e.ComputeEnvelopeDigest()
 	if err != nil {
 		return fmt.Errorf("cloud event: compute envelopedigest: %w", err)
@@ -84,6 +87,10 @@ func (e CloudEvent) ComputeEnvelopeDigest() (string, error) {
 		"partitionkey":   e.PartitionKey,
 		"classification": e.Classification,
 		"datadigest":     dataDigest,
+	}
+	if e.Traceparent != "" {
+		projection["traceparent"] = e.Traceparent
+		projection["tracestate"] = e.Tracestate
 	}
 	return canonicaljson.Digest(canonicaljson.DomainEnvelope, projection)
 }

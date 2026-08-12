@@ -41,6 +41,17 @@ type Engine struct {
 
 // NewEngine creates an engine for the given spec and tenant.
 func NewEngine(ctx context.Context, db *storage.DB, log *eventlog.EventLog, clk clock.Clock, compiled *spec.CompiledSpec, tenantID string) (*Engine, error) {
+	return newEngine(ctx, db, log, clk, compiled, tenantID, true)
+}
+
+// NewStreamEngine creates an engine that processes ingress, operators, and
+// Situation versions without evaluating cognition. Replay uses this path for
+// its deterministic stream projection.
+func NewStreamEngine(ctx context.Context, db *storage.DB, log *eventlog.EventLog, clk clock.Clock, compiled *spec.CompiledSpec, tenantID string) (*Engine, error) {
+	return newEngine(ctx, db, log, clk, compiled, tenantID, false)
+}
+
+func newEngine(ctx context.Context, db *storage.DB, log *eventlog.EventLog, clk clock.Clock, compiled *spec.CompiledSpec, tenantID string, cognitionEnabled bool) (*Engine, error) {
 	if tenantID == "" {
 		tenantID = contractsv1.TenantID
 	}
@@ -57,9 +68,12 @@ func NewEngine(ctx context.Context, db *storage.DB, log *eventlog.EventLog, clk 
 	if err != nil {
 		return nil, fmt.Errorf("situation engine: %w", err)
 	}
-	cogEngine, err := cognition.NewEngine(db, compiled.Digest, tenantID, compiled, idGen, clk)
-	if err != nil {
-		return nil, fmt.Errorf("cognition engine: %w", err)
+	var cogEngine *cognition.Engine
+	if cognitionEnabled {
+		cogEngine, err = cognition.NewEngine(db, compiled.Digest, tenantID, compiled, idGen, clk)
+		if err != nil {
+			return nil, fmt.Errorf("cognition engine: %w", err)
+		}
 	}
 	return &Engine{
 		db:           db,
@@ -77,9 +91,60 @@ func NewEngine(ctx context.Context, db *storage.DB, log *eventlog.EventLog, clk 
 // Run reads and applies events for partitionID until no more unprocessed
 // records remain. It returns the number of events processed.
 func (e *Engine) Run(ctx context.Context, partitionID int) (int, error) {
+	return e.run(ctx, partitionID, nil)
+}
+
+// RunWithHook processes a partition and calls beforeApply immediately before
+// each event is applied. The hook runs outside the engine transaction and is
+// intended for deterministic replay clocks only.
+func (e *Engine) RunWithHook(ctx context.Context, partitionID int, beforeApply func(eventlog.Record) error) (int, error) {
+	return e.run(ctx, partitionID, beforeApply)
+}
+
+// RunGlobal applies all partitions in durable event-log position order. It is
+// used by replay so one virtual clock cannot observe a later partition before
+// an earlier record in the authoritative trace.
+func (e *Engine) RunGlobal(ctx context.Context, beforeApply func(eventlog.Record) error) (int, error) {
+	var processed int
+	var lastPosition eventlog.LogPosition
+	for {
+		var records []eventlog.Record
+		if err := e.log.Read(ctx, eventlog.ReadRequest{TenantID: e.tenantID, PartitionID: -1, AfterPosition: lastPosition, Limit: 100}, func(record eventlog.Record) error {
+			records = append(records, record)
+			return nil
+		}); err != nil {
+			return processed, fmt.Errorf("read global event log: %w", err)
+		}
+		if len(records) == 0 {
+			return processed, nil
+		}
+		for _, record := range records {
+			checkpoint, err := e.loadCheckpoint(ctx, record.PartitionID)
+			if err != nil {
+				return processed, fmt.Errorf("load partition checkpoint: %w", err)
+			}
+			watermark, err := e.watermarkForRecord(record.EventTime, checkpoint.Watermark)
+			if err != nil {
+				return processed, fmt.Errorf("watermark: %w", err)
+			}
+			if beforeApply != nil {
+				if err := beforeApply(record); err != nil {
+					return processed, fmt.Errorf("before apply hook: %w", err)
+				}
+			}
+			if err := e.applyRecord(ctx, record.PartitionID, record, watermark); err != nil {
+				return processed, fmt.Errorf("apply record %d: %w", record.Position, err)
+			}
+			lastPosition = record.Position
+			processed++
+		}
+	}
+}
+
+func (e *Engine) run(ctx context.Context, partitionID int, beforeApply func(eventlog.Record) error) (int, error) {
 	processed := 0
 	for {
-		n, err := e.runBatch(ctx, partitionID)
+		n, err := e.runBatch(ctx, partitionID, beforeApply)
 		if err != nil {
 			return processed, err
 		}
@@ -91,7 +156,7 @@ func (e *Engine) Run(ctx context.Context, partitionID int) (int, error) {
 	return processed, nil
 }
 
-func (e *Engine) runBatch(ctx context.Context, partitionID int) (int, error) {
+func (e *Engine) runBatch(ctx context.Context, partitionID int, beforeApply func(eventlog.Record) error) (int, error) {
 	checkpoint, err := e.loadCheckpoint(ctx, partitionID)
 	if err != nil {
 		return 0, fmt.Errorf("load checkpoint: %w", err)
@@ -116,6 +181,11 @@ func (e *Engine) runBatch(ctx context.Context, partitionID int) (int, error) {
 	}
 
 	for _, rec := range records {
+		if beforeApply != nil {
+			if err := beforeApply(rec); err != nil {
+				return 0, fmt.Errorf("before apply hook: %w", err)
+			}
+		}
 		watermark, err := e.watermarkForRecord(rec.EventTime, checkpoint.Watermark)
 		if err != nil {
 			return 0, fmt.Errorf("watermark: %w", err)
@@ -203,8 +273,10 @@ func (e *Engine) applyRecord(ctx context.Context, partitionID int, rec eventlog.
 				if err := e.saveSituationVersion(ctx, tx, partitionID, v); err != nil {
 					return fmt.Errorf("save situation version: %w", err)
 				}
-				if err := e.cogEngine.Process(ctx, tx, v); err != nil {
-					return fmt.Errorf("cognition process: %w", err)
+				if e.cogEngine != nil {
+					if err := e.cogEngine.Process(ctx, tx, v); err != nil {
+						return fmt.Errorf("cognition process: %w", err)
+					}
 				}
 			}
 		}

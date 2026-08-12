@@ -25,6 +25,8 @@ type Feature struct {
 	Watermark     time.Time              `json:"watermark"`
 	InputEventIDs []string               `json:"input_event_ids"`
 	Completeness  string                 `json:"completeness"`
+	Traceparent   string                 `json:"traceparent,omitempty"`
+	Tracestate    string                 `json:"tracestate,omitempty"`
 	Metadata      map[string]interface{} `json:"metadata,omitempty"`
 }
 

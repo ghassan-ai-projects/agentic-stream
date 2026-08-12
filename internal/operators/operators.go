@@ -31,9 +31,9 @@ type operatorInstance struct {
 }
 
 type windowConfig struct {
-	size   time.Duration
-	slide  time.Duration
-	emit   string
+	size  time.Duration
+	slide time.Duration
+	emit  string
 }
 
 // NewRuntime creates an operator runtime for the compiled spec.
@@ -279,6 +279,8 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 			Watermark:     watermark,
 			InputEventIDs: eventIDs(ws.Samples),
 			Completeness:  completeness,
+			Traceparent:   env.Traceparent,
+			Tracestate:    env.Tracestate,
 		}
 		features = append(features, feature)
 		ws.LastEmit = watermark
@@ -320,6 +322,8 @@ func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *O
 		Watermark:     watermark,
 		InputEventIDs: []string{env.ID},
 		Completeness:  string(CompletenessOnTime),
+		Traceparent:   env.Traceparent,
+		Tracestate:    env.Tracestate,
 	}
 	return []Feature{feature}, nil
 }

@@ -30,8 +30,8 @@ func TestOpenCreatesDatabaseAndRunsMigrations(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").Scan(&version); err != nil {
 		t.Fatalf("read migration version: %v", err)
 	}
-	if version != 6 {
-		t.Fatalf("expected migration version 6, got %d", version)
+	if version != 7 {
+		t.Fatalf("expected migration version 7, got %d", version)
 	}
 
 	// Verify a known table exists.

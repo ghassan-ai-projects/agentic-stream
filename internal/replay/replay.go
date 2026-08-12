@@ -3,15 +3,19 @@
 package replay
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
@@ -24,11 +28,59 @@ type Result struct {
 	EventsProcessed int
 	VersionCount    int
 	VersionsHash    string
+	Mode            Mode
+	WorkerInvoked   bool
+	EffectsAllowed  bool
+	Findings        []Finding
+}
+
+// Finding is a deterministic, non-effectful replay observation.
+type Finding struct {
+	Code    string
+	Message string
+}
+
+// ErrModeCapabilityRequired means a worker-aware replay mode was requested
+// without its explicit ledger, worker, or simulator capability.
+var ErrModeCapabilityRequired = errors.New("replay mode capability required")
+
+// ErrUnsupportedMode means the caller supplied a mode outside the frozen
+// replay contract.
+var ErrUnsupportedMode = errors.New("unsupported replay mode")
+
+// Mode is an effect-safe replay mode. Replay has no credential or resolver
+// input by construction; recorded mode uses durable ledgers, shadow reports
+// differences without effects, and counterfactual is simulator-only.
+type Mode string
+
+const (
+	ModeDeterministic  Mode = "deterministic"
+	ModeRecorded       Mode = "recorded"
+	ModeShadow         Mode = "shadow"
+	ModeCounterfactual Mode = "counterfactual"
+)
+
+// RunMode executes a replay mode without accepting credentials, effectors, or
+// a resolver. Only counterfactual simulation may be added at a higher layer.
+func RunMode(ctx context.Context, mode Mode, dbPath, specPath, tracePath, tenantID string) (Result, error) {
+	switch mode {
+	case ModeDeterministic:
+		// continue below
+	case ModeRecorded, ModeShadow, ModeCounterfactual:
+		return Result{Mode: mode, EffectsAllowed: false}, fmt.Errorf("%w: %s", ErrModeCapabilityRequired, mode)
+	default:
+		return Result{}, fmt.Errorf("%w: %s", ErrUnsupportedMode, mode)
+	}
+	result, err := Run(ctx, dbPath, specPath, tracePath, tenantID)
+	result.Mode = mode
+	result.WorkerInvoked = false
+	result.EffectsAllowed = false
+	return result, err
 }
 
 // Run replays tracePath against specPath and returns the canonical result.
 func Run(ctx context.Context, dbPath, specPath, tracePath, tenantID string) (Result, error) {
-	db, err := storage.Open(ctx, dbPath)
+	db, err := storage.OpenFresh(ctx, dbPath)
 	if err != nil {
 		return Result{}, fmt.Errorf("open db: %w", err)
 	}
@@ -39,7 +91,10 @@ func Run(ctx context.Context, dbPath, specPath, tracePath, tenantID string) (Res
 		return Result{}, fmt.Errorf("compile spec: %w", err)
 	}
 
-	epoch := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	epoch, err := traceEpoch(tracePath)
+	if err != nil {
+		return Result{}, fmt.Errorf("derive replay epoch: %w", err)
+	}
 	clk := clock.NewVirtual(epoch)
 	log := eventlog.NewEventLogWithClock(db, clk)
 	conn := ingress.NewJSONLReplayWithClock(db, log, tenantID, tracePath, "replay:"+tracePath, clk)
@@ -47,12 +102,17 @@ func Run(ctx context.Context, dbPath, specPath, tracePath, tenantID string) (Res
 		return Result{}, fmt.Errorf("replay trace: %w", err)
 	}
 
-	eng, err := engine.NewEngine(ctx, db, log, clk, compiled, tenantID)
+	eng, err := engine.NewStreamEngine(ctx, db, log, clk, compiled, tenantID)
 	if err != nil {
 		return Result{}, fmt.Errorf("new engine: %w", err)
 	}
 
-	processed, err := runAllPartitions(ctx, db, eng, tenantID)
+	processed, err := runAllPartitions(ctx, eng, func(rec eventlog.Record) error {
+		if eventTime := rec.EventTime.UTC(); eventTime.After(clk.Now()) {
+			clk.Advance(eventTime.Sub(clk.Now()))
+		}
+		return nil
+	})
 	if err != nil {
 		return Result{}, fmt.Errorf("run partitions: %w", err)
 	}
@@ -66,23 +126,45 @@ func Run(ctx context.Context, dbPath, specPath, tracePath, tenantID string) (Res
 		EventsProcessed: processed,
 		VersionCount:    versionCount,
 		VersionsHash:    versionsHash,
+		Mode:            ModeDeterministic,
+		EffectsAllowed:  false,
 	}, nil
 }
 
-func runAllPartitions(ctx context.Context, db *storage.DB, eng *engine.Engine, tenantID string) (int, error) {
-	partitions, err := listPartitions(ctx, db, tenantID)
+func runAllPartitions(ctx context.Context, eng *engine.Engine, beforeApply func(eventlog.Record) error) (int, error) {
+	return eng.RunGlobal(ctx, beforeApply)
+}
+
+func traceEpoch(path string) (time.Time, error) {
+	file, err := os.Open(path)
 	if err != nil {
-		return 0, err
+		return time.Time{}, err
 	}
-	total := 0
-	for _, pid := range partitions {
-		n, err := eng.Run(ctx, pid)
-		if err != nil {
-			return total, fmt.Errorf("run partition %d: %w", pid, err)
+	defer func() { _ = file.Close() }()
+	var first time.Time
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		if len(scanner.Bytes()) == 0 {
+			continue
 		}
-		total += n
+		var envelope contractsv1.Envelope
+		if err := json.Unmarshal(scanner.Bytes(), &envelope); err != nil {
+			return time.Time{}, err
+		}
+		if envelope.EventTime.IsZero() {
+			return time.Time{}, fmt.Errorf("trace event_time is required")
+		}
+		if first.IsZero() || envelope.EventTime.Before(first) {
+			first = envelope.EventTime.UTC()
+		}
 	}
-	return total, nil
+	if err := scanner.Err(); err != nil {
+		return time.Time{}, err
+	}
+	if first.IsZero() {
+		return time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), nil
+	}
+	return first, nil
 }
 
 func listPartitions(ctx context.Context, db *storage.DB, tenantID string) ([]int, error) {

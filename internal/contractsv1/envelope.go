@@ -43,6 +43,7 @@ type Envelope struct {
 	CorrelationID  string         `json:"correlation_id,omitempty"`
 	CausationID    string         `json:"causation_id,omitempty"`
 	Traceparent    string         `json:"traceparent,omitempty"`
+	Tracestate     string         `json:"tracestate,omitempty"`
 	Classification Classification `json:"classification"`
 	Quality        []QualityFlag  `json:"quality"`
 	Data           map[string]any `json:"data"`

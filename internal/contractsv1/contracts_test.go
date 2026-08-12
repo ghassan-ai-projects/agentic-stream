@@ -132,6 +132,30 @@ func TestCloudEventEnvelopeDigestBindsMetadataAndData(t *testing.T) {
 	}
 }
 
+func TestTraceContextValidationAndSpanLink(t *testing.T) {
+	ctx, err := contractsv1.ParseTraceContext("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", "vendor=value")
+	if err != nil {
+		t.Fatalf("parse trace context: %v", err)
+	}
+	link := ctx.Link()
+	if link == nil || link.Traceparent != ctx.Traceparent || link.Tracestate != ctx.Tracestate {
+		t.Fatalf("span link did not preserve trace context: %#v", link)
+	}
+	for _, tc := range []struct {
+		name, parent, state string
+	}{
+		{"zero trace id", "00-00000000000000000000000000000000-00f067aa0ba902b7-01", ""},
+		{"zero span id", "00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01", ""},
+		{"state without parent", "", "vendor=value"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := contractsv1.ParseTraceContext(tc.parent, tc.state); err == nil {
+				t.Fatal("expected invalid trace context")
+			}
+		})
+	}
+}
+
 func mustDigest(t *testing.T, value any) string {
 	t.Helper()
 	digest, err := canonicaljson.Digest(canonicaljson.DomainEvent, value)

@@ -37,10 +37,10 @@ type Record struct {
 
 // ReadRequest selects a range of records from the log.
 type ReadRequest struct {
-	TenantID     string
-	PartitionID  int
+	TenantID      string
+	PartitionID   int
 	AfterPosition LogPosition
-	Limit        int
+	Limit         int
 }
 
 // EventLog appends and reads normalized events.
@@ -112,15 +112,22 @@ func (l *EventLog) appendOne(ctx context.Context, tx *sql.Tx, tenantID string, e
 	if env.Traceparent != "" {
 		traceparent = sql.NullString{String: env.Traceparent, Valid: true}
 	}
+	tracestate := sql.NullString{}
+	if env.Tracestate != "" {
+		tracestate = sql.NullString{String: env.Tracestate, Valid: true}
+	}
 
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO event_log (
 			tenant_id, partition_id, event_id, event_type, schema_version,
 			source, partition_key, entity_type, entity_id, event_time,
 			observed_at, ingested_at, correlation_id, causation_id,
-			traceparent, classification, quality_json, payload_json,
+			traceparent, tracestate, classification, quality_json, payload_json,
 			payload_sha256, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		)
 		ON CONFLICT(tenant_id, event_id) DO NOTHING`,
 		tenantID,
 		env.PartitionID(0),
@@ -137,6 +144,7 @@ func (l *EventLog) appendOne(ctx context.Context, tx *sql.Tx, tenantID string, e
 		correlationID,
 		causationID,
 		traceparent,
+		tracestate,
 		string(env.Classification),
 		qualityJSON,
 		payloadJSON,
@@ -169,17 +177,22 @@ func (l *EventLog) Read(ctx context.Context, req ReadRequest, callback func(Reco
 		req.Limit = 1000
 	}
 
-	rows, err := l.db.QueryContext(ctx, `
+	query := `
 		SELECT position, tenant_id, partition_id, event_id, event_type,
 		       schema_version, source, partition_key, entity_type, entity_id,
 		       event_time, observed_at, ingested_at, correlation_id,
-		       causation_id, traceparent, classification, quality_json,
+		       causation_id, traceparent, tracestate, classification, quality_json,
 		       payload_json
 		FROM event_log
-		WHERE tenant_id = ? AND partition_id = ? AND position > ?
-		ORDER BY position
-		LIMIT ?`,
-		req.TenantID, req.PartitionID, req.AfterPosition, req.Limit)
+		WHERE tenant_id = ? AND position > ?`
+	args := []any{req.TenantID, req.AfterPosition}
+	if req.PartitionID >= 0 {
+		query += " AND partition_id = ?"
+		args = append(args, req.PartitionID)
+	}
+	query += " ORDER BY position LIMIT ?"
+	args = append(args, req.Limit)
+	rows, err := l.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("query event log: %w", err)
 	}
@@ -205,7 +218,7 @@ func scanRecord(rows *sql.Rows) (Record, error) {
 	var rec Record
 	var eventTimeStr, ingestedAtStr string
 	var observedAtStr sql.NullString
-	var correlationID, causationID, traceparent sql.NullString
+	var correlationID, causationID, traceparent, tracestate sql.NullString
 	var classification string
 	var qualityJSON, payloadJSON []byte
 
@@ -226,6 +239,7 @@ func scanRecord(rows *sql.Rows) (Record, error) {
 		&correlationID,
 		&causationID,
 		&traceparent,
+		&tracestate,
 		&classification,
 		&qualityJSON,
 		&payloadJSON,
@@ -264,6 +278,7 @@ func scanRecord(rows *sql.Rows) (Record, error) {
 		CorrelationID:  correlationID.String,
 		CausationID:    causationID.String,
 		Traceparent:    traceparent.String,
+		Tracestate:     tracestate.String,
 		Classification: contractsv1.Classification(classification),
 	}
 	if err := json.Unmarshal(qualityJSON, &rec.Envelope.Quality); err != nil {
