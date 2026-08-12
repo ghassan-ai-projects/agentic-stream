@@ -180,6 +180,9 @@ CREATE TABLE situations (
     latest_event_time   TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
     created_at          TEXT NOT NULL,
+    state_codec_version INTEGER NOT NULL CHECK (state_codec_version >= 1),
+    state_json          BLOB NOT NULL,
+    state_sha256        BLOB NOT NULL CHECK (length(state_sha256) = 32),
     UNIQUE (
         tenant_id,
         situation_type,

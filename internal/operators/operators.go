@@ -117,6 +117,13 @@ type OperatorStateBlob struct {
 
 // ApplyEvent processes one event against all operators that consume its input.
 func (r *OperatorRuntime) ApplyEvent(ctx context.Context, ps *PartitionState, env contractsv1.Envelope, watermark time.Time) ([]Feature, *PartitionState, error) {
+	processingTime := env.IngestedAt
+	return r.ApplyEventAt(ctx, ps, env, watermark, processingTime)
+}
+
+// ApplyEventAt applies one event using processingTime supplied by the runtime
+// clock. Producer timestamps are evidence, not runtime scheduling authority.
+func (r *OperatorRuntime) ApplyEventAt(ctx context.Context, ps *PartitionState, env contractsv1.Envelope, watermark, processingTime time.Time) ([]Feature, *PartitionState, error) {
 	if ps == nil {
 		ps = &PartitionState{OperatorStates: make(map[string]map[string]*OperatorStateBlob)}
 	}
@@ -131,7 +138,7 @@ func (r *OperatorRuntime) ApplyEvent(ctx context.Context, ps *PartitionState, en
 		if len(inst.def.Inputs) > 0 && inst.def.Inputs[0] != inputName {
 			continue // Only direct inputs supported for now.
 		}
-		fs, err := r.applyOperator(ctx, ps, inst, env, watermark)
+		fs, err := r.applyOperator(ctx, ps, inst, env, watermark, processingTime)
 		if err != nil {
 			return nil, ps, err
 		}
@@ -150,7 +157,7 @@ func (r *OperatorRuntime) inputForEvent(env contractsv1.Envelope) (string, bool)
 	return "", false
 }
 
-func (r *OperatorRuntime) applyOperator(ctx context.Context, ps *PartitionState, inst *operatorInstance, env contractsv1.Envelope, watermark time.Time) ([]Feature, error) {
+func (r *OperatorRuntime) applyOperator(ctx context.Context, ps *PartitionState, inst *operatorInstance, env contractsv1.Envelope, watermark, processingTime time.Time) ([]Feature, error) {
 	stateKey := env.Entity.ID
 	blob := r.getBlob(ps, inst.def.Name, stateKey)
 
@@ -163,7 +170,7 @@ func (r *OperatorRuntime) applyOperator(ctx context.Context, ps *PartitionState,
 		}
 		features = fs
 	case "missing_heartbeat":
-		fs, err := r.applyHeartbeatOperator(inst, blob, env, watermark)
+		fs, err := r.applyHeartbeatOperator(inst, blob, env, watermark, processingTime)
 		if err != nil {
 			return nil, err
 		}
@@ -289,13 +296,19 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 	return features, nil
 }
 
-func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *OperatorStateBlob, env contractsv1.Envelope, watermark time.Time) ([]Feature, error) {
+func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *OperatorStateBlob, env contractsv1.Envelope, watermark, processingTime time.Time) ([]Feature, error) {
 	if blob.Heartbeat == nil {
 		blob.Heartbeat = &HeartbeatState{}
 	}
 	hs := blob.Heartbeat
 	hs.LastEventTime = &env.EventTime
 	hs.LastEventID = env.ID
+	hs.Traceparent = env.Traceparent
+	hs.Tracestate = env.Tracestate
+	if processingTime.IsZero() {
+		processingTime = env.EventTime
+	}
+	hs.LastProcessingTime = &processingTime
 
 	duration, err := parseDuration(inst.def.Duration)
 	if err != nil {
@@ -304,7 +317,7 @@ func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *O
 
 	missing := false
 	if hs.LastEventTime != nil {
-		missing = watermark.Sub(*hs.LastEventTime) > duration
+		missing = watermark.Sub(*hs.LastEventTime) >= duration
 	}
 
 	feature := Feature{
@@ -437,40 +450,60 @@ func eventIDs(samples []Sample) []string {
 
 // ApplyTimer fires due timers and emits any resulting features. In Phase 2 this
 // is used primarily for missing-heartbeat detection.
-func (r *OperatorRuntime) ApplyTimer(ctx context.Context, ps *PartitionState, watermark time.Time) ([]Feature, *PartitionState, error) {
+func (r *OperatorRuntime) ApplyTimer(ctx context.Context, ps *PartitionState, watermark, processingTime time.Time) ([]Feature, *PartitionState, error) {
 	_ = ctx
 	if ps == nil {
 		return nil, ps, nil
 	}
 
 	var features []Feature
-	for _, inst := range r.byInput {
-		for _, op := range inst {
-			if op.def.Kind != "missing_heartbeat" {
-				continue
-			}
-			fs, err := r.applyHeartbeatTimer(op, ps, watermark)
-			if err != nil {
-				return nil, ps, err
-			}
-			features = append(features, fs...)
+	var instances []*operatorInstance
+	for _, inputInstances := range r.byInput {
+		instances = append(instances, inputInstances...)
+	}
+	sort.SliceStable(instances, func(i, j int) bool {
+		return instances[i].def.Name < instances[j].def.Name
+	})
+	seen := make(map[string]struct{}, len(instances))
+	for _, op := range instances {
+		if _, ok := seen[op.def.Name]; ok {
+			continue
 		}
+		seen[op.def.Name] = struct{}{}
+		if op.def.Kind != "missing_heartbeat" {
+			continue
+		}
+		fs, err := r.applyHeartbeatTimer(op, ps, watermark, processingTime)
+		if err != nil {
+			return nil, ps, err
+		}
+		features = append(features, fs...)
 	}
 	return features, ps, nil
 }
 
-func (r *OperatorRuntime) applyHeartbeatTimer(inst *operatorInstance, ps *PartitionState, watermark time.Time) ([]Feature, error) {
+func (r *OperatorRuntime) applyHeartbeatTimer(inst *operatorInstance, ps *PartitionState, watermark, processingTime time.Time) ([]Feature, error) {
 	duration, err := parseDuration(inst.def.Duration)
 	if err != nil {
 		return nil, fmt.Errorf("heartbeat duration: %w", err)
 	}
 
 	var features []Feature
-	for stateKey, blob := range ps.OperatorStates[inst.def.Name] {
+	keys := make([]string, 0, len(ps.OperatorStates[inst.def.Name]))
+	for stateKey := range ps.OperatorStates[inst.def.Name] {
+		keys = append(keys, stateKey)
+	}
+	sort.Strings(keys)
+	for _, stateKey := range keys {
+		blob := ps.OperatorStates[inst.def.Name][stateKey]
 		if blob.Heartbeat == nil || blob.Heartbeat.LastEventTime == nil {
 			continue
 		}
-		missing := watermark.Sub(*blob.Heartbeat.LastEventTime) > duration
+		lastProcessingTime := blob.Heartbeat.LastProcessingTime
+		if lastProcessingTime == nil {
+			lastProcessingTime = blob.Heartbeat.LastEventTime
+		}
+		missing := processingTime.Sub(*lastProcessingTime) >= duration
 		if !missing {
 			continue
 		}
@@ -486,13 +519,15 @@ func (r *OperatorRuntime) applyHeartbeatTimer(inst *operatorInstance, ps *Partit
 			EntityID:          stateKey,
 			PartitionID:       0,
 			WindowStart:       *blob.Heartbeat.LastEventTime,
-			WindowEnd:         watermark,
+			WindowEnd:         processingTime,
 			Value:             true,
-			EventTime:         watermark,
+			EventTime:         *blob.Heartbeat.LastEventTime,
 			Watermark:         watermark,
 			InputEventIDs:     []string{blob.Heartbeat.LastEventID},
 			Completeness:      string(CompletenessOnTime),
 			TraceContinuation: true,
+			Traceparent:       blob.Heartbeat.Traceparent,
+			Tracestate:        blob.Heartbeat.Tracestate,
 		})
 	}
 	return features, nil

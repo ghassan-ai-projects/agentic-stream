@@ -238,8 +238,12 @@ func run(ctx context.Context, dbPath, specPath, tracePath, tenantID string, cogn
 	}
 
 	processed, err := runAllPartitions(ctx, eng, func(rec eventlog.Record) error {
-		if eventTime := rec.EventTime.UTC(); eventTime.After(clk.Now()) {
-			clk.Advance(eventTime.Sub(clk.Now()))
+		processingTime := rec.IngestedAt.UTC()
+		if processingTime.IsZero() {
+			processingTime = rec.EventTime.UTC()
+		}
+		if processingTime.After(clk.Now()) {
+			clk.Advance(processingTime.Sub(clk.Now()))
 		}
 		return nil
 	})
@@ -625,11 +629,15 @@ func traceEpoch(path string) (time.Time, error) {
 		if err := json.Unmarshal(scanner.Bytes(), &envelope); err != nil {
 			return time.Time{}, err
 		}
-		if envelope.EventTime.IsZero() {
-			return time.Time{}, fmt.Errorf("trace event_time is required")
+		processingTime := envelope.IngestedAt
+		if processingTime.IsZero() {
+			processingTime = envelope.EventTime
 		}
-		if first.IsZero() || envelope.EventTime.Before(first) {
-			first = envelope.EventTime.UTC()
+		if processingTime.IsZero() {
+			return time.Time{}, fmt.Errorf("trace event_time or ingested_at is required")
+		}
+		if first.IsZero() || processingTime.Before(first) {
+			first = processingTime.UTC()
 		}
 	}
 	if err := scanner.Err(); err != nil {

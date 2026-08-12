@@ -23,15 +23,16 @@ import (
 type Domain string
 
 const (
-	DomainSnapshot Domain = "situation-runtime/snapshot/v1\n"
-	DomainSpec     Domain = "situation-runtime/spec/v1\n"
-	DomainDecision Domain = "situation-runtime/decision/v1\n"
-	DomainIntent   Domain = "situation-runtime/intent/v1\n"
-	DomainCommand  Domain = "situation-runtime/command/v1\n"
-	DomainEvent    Domain = "situation-runtime/event/v1\n"
-	DomainOutcome  Domain = "situation-runtime/outcome/v1\n"
-	DomainEnvelope Domain = "situation-runtime/envelope/v1\n"
-	DomainTest     Domain = "situation-runtime/test/v1\n"
+	DomainSnapshot       Domain = "situation-runtime/snapshot/v1\n"
+	DomainSpec           Domain = "situation-runtime/spec/v1\n"
+	DomainDecision       Domain = "situation-runtime/decision/v1\n"
+	DomainIntent         Domain = "situation-runtime/intent/v1\n"
+	DomainCommand        Domain = "situation-runtime/command/v1\n"
+	DomainEvent          Domain = "situation-runtime/event/v1\n"
+	DomainOutcome        Domain = "situation-runtime/outcome/v1\n"
+	DomainSituationState Domain = "situation-runtime/situation-state/v1\n"
+	DomainEnvelope       Domain = "situation-runtime/envelope/v1\n"
+	DomainTest           Domain = "situation-runtime/test/v1\n"
 )
 
 const maxSafeInteger = uint64(1<<53 - 1)

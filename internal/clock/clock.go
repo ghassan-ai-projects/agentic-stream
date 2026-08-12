@@ -17,6 +17,15 @@ type Clock interface {
 	NewTimer(d time.Duration) Timer
 }
 
+// Quality identifies whether a clock is virtualized for replay or backed by
+// wall time for live processing.
+func Quality(c Clock) string {
+	if _, ok := c.(*Virtual); ok {
+		return "virtual"
+	}
+	return "physical"
+}
+
 // Timer is the minimal timer surface used by the runtime.
 type Timer interface {
 	// C returns the channel on which the timer fires.

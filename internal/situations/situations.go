@@ -4,6 +4,9 @@ package situations
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
@@ -33,8 +36,9 @@ type Engine struct {
 }
 
 type situationKey struct {
-	entityType string
-	entityID   string
+	partitionID int
+	entityType  string
+	entityID    string
 }
 
 // Situation is the mutable current state for one occurrence.
@@ -81,10 +85,82 @@ type Version struct {
 	Watermark       time.Time
 	Traceparent     string
 	Tracestate      string
+	OccurrenceID    string
+	FirstEventTime  time.Time
+	UpdatedAt       time.Time
+	ConditionStart  map[string]time.Time
+	StateJSON       []byte
+	StateSHA256     string
 	Facts           map[string]any
 	Evidence        []string
 	SnapshotJSON    []byte
 	SnapshotSHA256  string
+}
+
+// Restore loads one durable current Situation into the in-memory index.
+func (e *Engine) Restore(s Situation) error {
+	if s.SituationID == "" || s.EntityType == "" || s.EntityID == "" {
+		return fmt.Errorf("restore situation requires identity")
+	}
+	if s.Facts == nil {
+		s.Facts = make(map[string]any)
+	}
+	if s.Evidence == nil {
+		s.Evidence = make(map[string]struct{})
+	}
+	if s.ConditionStart == nil {
+		s.ConditionStart = make(map[string]time.Time)
+	}
+	e.active[situationKey{partitionID: s.PartitionID, entityType: s.EntityType, entityID: s.EntityID}] = &s
+	return nil
+}
+
+// Reset discards the in-memory index so it can be rebuilt from durable state
+// after a transaction rollback.
+func (e *Engine) Reset() {
+	e.active = make(map[situationKey]*Situation)
+}
+
+// CurrentState returns a copy of the current Situation and its canonical
+// reducer-state payload for transactional persistence.
+func (e *Engine) CurrentState(partitionID int, entityType, entityID string) (Situation, []byte, string, bool, error) {
+	sit, ok := e.active[situationKey{partitionID: partitionID, entityType: entityType, entityID: entityID}]
+	if !ok {
+		return Situation{}, nil, "", false, nil
+	}
+	copy := *sit
+	copy.Facts = cloneMap(sit.Facts)
+	copy.Evidence = cloneSet(sit.Evidence)
+	copy.ConditionStart = cloneTimes(sit.ConditionStart)
+	blob, err := stateJSON(&copy)
+	if err != nil {
+		return Situation{}, nil, "", false, err
+	}
+	var document map[string]any
+	if err := json.Unmarshal(blob, &document); err != nil {
+		return Situation{}, nil, "", false, fmt.Errorf("decode current state: %w", err)
+	}
+	digest, err := canonicaljson.Digest(canonicaljson.DomainSituationState, document)
+	if err != nil {
+		return Situation{}, nil, "", false, fmt.Errorf("digest current state: %w", err)
+	}
+	return copy, blob, digest, true, nil
+}
+
+func cloneMap(values map[string]any) map[string]any {
+	clone := make(map[string]any, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
+}
+
+func cloneSet(values map[string]struct{}) map[string]struct{} {
+	clone := make(map[string]struct{}, len(values))
+	for key := range values {
+		clone[key] = struct{}{}
+	}
+	return clone
 }
 
 // NewEngine creates a situation engine.
@@ -106,14 +182,20 @@ func NewEngine(deploymentID, tenantID string, partitionID int, compiled *spec.Co
 
 // ApplyFeature updates situation state with one emitted feature.
 func (e *Engine) ApplyFeature(ctx context.Context, feature operators.Feature, watermark time.Time) ([]Version, error) {
-	key := situationKey{entityType: feature.EntityType, entityID: feature.EntityID}
+	key := situationKey{partitionID: feature.PartitionID, entityType: feature.EntityType, entityID: feature.EntityID}
 	sit, ok := e.active[key]
 	if !ok {
-		sit = e.newSituation(feature.EntityType, feature.EntityID, feature.EventTime)
+		sit = e.newSituation(feature.PartitionID, feature.EntityType, feature.EntityID, feature.EventTime)
 		e.active[key] = sit
 	}
 
 	e.applyReducers(sit, feature)
+	if len(feature.Metadata) > 0 {
+		if sit.Facts == nil {
+			sit.Facts = make(map[string]any)
+		}
+		sit.Facts["timer_provenance"] = cloneMap(feature.Metadata)
+	}
 	sit.LatestEventTime = feature.EventTime
 	if feature.Traceparent != "" || !feature.TraceContinuation {
 		sit.Traceparent = feature.Traceparent
@@ -131,16 +213,19 @@ func (e *Engine) ApplyFeature(ctx context.Context, feature operators.Feature, wa
 	return []Version{*version}, nil
 }
 
-func (e *Engine) newSituation(entityType, entityID string, eventTime time.Time) *Situation {
+func (e *Engine) newSituation(partitionID int, entityType, entityID string, eventTime time.Time) *Situation {
+	identity := fmt.Sprintf("%s\x00%s\x00%d\x00%s\x00%s\x00%s", e.tenantID, e.deploymentID, partitionID, e.spec.Situation.Type, entityType, entityID)
+	hash := sha256.Sum256([]byte(identity))
+	stableID := "sit_" + hex.EncodeToString(hash[:])
 	return &Situation{
-		SituationID:     e.idGen.New(ids.PrefixSituation),
+		SituationID:     stableID,
 		TenantID:        e.tenantID,
 		DeploymentID:    e.deploymentID,
 		Type:            e.spec.Situation.Type,
 		EntityType:      entityType,
 		EntityID:        entityID,
-		PartitionID:     e.partitionID,
-		OccurrenceID:    e.idGen.New(ids.PrefixSituation),
+		PartitionID:     partitionID,
+		OccurrenceID:    "occ_" + hex.EncodeToString(hash[:]),
 		Version:         0,
 		Phase:           e.spec.Situation.InitialPhase,
 		Severity:        e.initialSeverity(),
@@ -334,6 +419,18 @@ func (e *Engine) materialize(sit *Situation, watermark time.Time) (*Version, err
 	if err != nil {
 		return nil, fmt.Errorf("digest snapshot: %w", err)
 	}
+	stateBlob, err := stateJSON(sit)
+	if err != nil {
+		return nil, fmt.Errorf("marshal persisted state: %w", err)
+	}
+	var stateDocument map[string]any
+	if err := json.Unmarshal(stateBlob, &stateDocument); err != nil {
+		return nil, fmt.Errorf("decode persisted state: %w", err)
+	}
+	stateDigest, err := canonicaljson.Digest(canonicaljson.DomainSituationState, stateDocument)
+	if err != nil {
+		return nil, fmt.Errorf("digest persisted state: %w", err)
+	}
 
 	return &Version{
 		SituationID:     sit.SituationID,
@@ -355,7 +452,60 @@ func (e *Engine) materialize(sit *Situation, watermark time.Time) (*Version, err
 		SnapshotSHA256:  digest,
 		Traceparent:     sit.Traceparent,
 		Tracestate:      sit.Tracestate,
+		OccurrenceID:    sit.OccurrenceID,
+		FirstEventTime:  sit.FirstEventTime,
+		UpdatedAt:       sit.UpdatedAt,
+		ConditionStart:  cloneTimes(sit.ConditionStart),
+		StateJSON:       stateBlob,
+		StateSHA256:     stateDigest,
 	}, nil
+}
+
+func stateJSON(sit *Situation) ([]byte, error) {
+	evidence := make([]string, 0, len(sit.Evidence))
+	for id := range sit.Evidence {
+		evidence = append(evidence, id)
+	}
+	sort.Strings(evidence)
+	facts := make(map[string]any, len(sit.Facts))
+	for key, value := range sit.Facts {
+		if timestamp, ok := value.(time.Time); ok {
+			facts[key] = timestamp.UTC().Format(time.RFC3339Nano)
+			continue
+		}
+		facts[key] = value
+	}
+	conditionStart := make(map[string]string, len(sit.ConditionStart))
+	for key, value := range sit.ConditionStart {
+		conditionStart[key] = value.UTC().Format(time.RFC3339Nano)
+	}
+	blob, err := canonicaljson.Marshal(stateDocument(sit, facts, evidence, conditionStart))
+	if err != nil {
+		return nil, err
+	}
+	return blob, nil
+}
+
+func stateDocument(sit *Situation, facts map[string]any, evidence []string, conditionStart map[string]string) map[string]any {
+	return map[string]any{
+		"situation_id":    sit.SituationID,
+		"occurrence_id":   sit.OccurrenceID,
+		"partition_id":    sit.PartitionID,
+		"version":         sit.Version,
+		"facts":           facts,
+		"evidence":        evidence,
+		"condition_start": conditionStart,
+		"traceparent":     sit.Traceparent,
+		"tracestate":      sit.Tracestate,
+	}
+}
+
+func cloneTimes(values map[string]time.Time) map[string]time.Time {
+	clone := make(map[string]time.Time, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
 }
 
 func (e *Engine) buildFeaturesMap(sit *Situation) map[string]any {

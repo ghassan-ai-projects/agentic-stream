@@ -36,7 +36,7 @@ type Runtime interface {
 	// ApplyEvent processes one normalized event and emits zero or more features.
 	ApplyEvent(ctx context.Context, state *State, env contractsv1.Envelope, watermark time.Time) ([]Feature, *State, error)
 	// ApplyTimer fires due timers and emits any resulting features.
-	ApplyTimer(ctx context.Context, state *State, watermark time.Time) ([]Feature, *State, error)
+	ApplyTimer(ctx context.Context, state *State, watermark, processingTime time.Time) ([]Feature, *State, error)
 }
 
 // State is the durable state blob for one operator instance (keyed by entity).
@@ -63,8 +63,11 @@ type WindowState struct {
 
 // HeartbeatState stores the last seen heartbeat for a keyed entity.
 type HeartbeatState struct {
-	LastEventTime *time.Time `json:"last_event_time,omitempty"`
-	LastEventID   string     `json:"last_event_id,omitempty"`
+	LastEventTime      *time.Time `json:"last_event_time,omitempty"`
+	LastEventID        string     `json:"last_event_id,omitempty"`
+	LastProcessingTime *time.Time `json:"last_processing_time,omitempty"`
+	Traceparent        string     `json:"traceparent,omitempty"`
+	Tracestate         string     `json:"tracestate,omitempty"`
 }
 
 // PartitionState is the in-memory operator state for one partition.
