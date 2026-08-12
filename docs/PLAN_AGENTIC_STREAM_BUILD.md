@@ -9,7 +9,7 @@ Target architecture: **B-full** — Tamoz is the streaming gRPC episode worker; 
 main offering, so the governance items are in scope — just sequenced after the first loop.
 
 Repo: `~/my-projects/agentic-stream` @ `main`, HEAD `bed8576` ("add runtime telemetry and
-operations readiness"). Go 1.25, `modernc.org/sqlite`, `cel-go`, `cobra`, **`grpc-go` now present**; the
+operations readiness"). Go 1.26, `modernc.org/sqlite`, `cel-go`, `cobra`, **`grpc-go` now present**; the
 proto is compiled at `proto/agenticstream/runtime/v1/*.pb.go`. 23 internal packages, 12
 migrations.
 

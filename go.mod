@@ -1,6 +1,6 @@
 module github.com/ghassan-ai-projects/agentic-stream
 
-go 1.25.12
+go 1.26.5
 
 require (
 	github.com/google/cel-go v0.31.0

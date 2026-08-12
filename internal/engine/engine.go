@@ -533,8 +533,9 @@ func (e *Engine) runDueTimers(ctx context.Context, partitionID int) (int, error)
 			args = append(args, timer.id)
 		}
 		args = append(args, e.tenantID, e.deploymentID)
+		//nolint:gosec // placeholders are generated from timer count, never user input.
 		query := fmt.Sprintf(`UPDATE timers SET status = 'fired', fired_at = ?
-			WHERE timer_id IN (%s) AND tenant_id = ? AND deployment_id = ? AND status = 'pending'`, placeholders) //nolint:gosec // placeholders are generated from timer count, never user input.
+			WHERE timer_id IN (%s) AND tenant_id = ? AND deployment_id = ? AND status = 'pending'`, placeholders)
 		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 			return fmt.Errorf("acknowledge timers: %w", err)
 		}
