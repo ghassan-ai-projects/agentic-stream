@@ -136,6 +136,7 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 			"name":            a.spec.Cognition.Executor.Name,
 			"model_policy":    a.spec.Cognition.Executor.ModelPolicy,
 			"prompt_version":  a.spec.Cognition.Executor.PromptVersion,
+			"prompt":          a.spec.Cognition.Executor.Prompt,
 			"objective":       a.spec.Cognition.Executor.Objective,
 			"decision_schema": a.spec.Cognition.Executor.DecisionSchema,
 		},
@@ -145,7 +146,10 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		"traceparent":      traceparent,
 		"tracestate":       tracestate,
 	}
-	promptDigest, err := canonicaljson.Digest(canonicaljson.DomainPrompt, map[string]any{"version": a.spec.Cognition.Executor.PromptVersion})
+	promptDigest, err := canonicaljson.Digest(canonicaljson.DomainPrompt, map[string]any{
+		"version": a.spec.Cognition.Executor.PromptVersion,
+		"text":    a.spec.Cognition.Executor.Prompt,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("digest prompt provenance: %w", err)
 	}

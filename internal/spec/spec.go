@@ -65,6 +65,7 @@ type Input struct {
 	Name            string `json:"name" yaml:"name"`
 	EventType       string `json:"eventType" yaml:"eventType"`
 	SchemaVersion   string `json:"schemaVersion" yaml:"schemaVersion"`
+	SchemaRef       string `json:"schema" yaml:"schema"`
 	PartitionKey    string `json:"partitionKey" yaml:"partitionKey"`
 	EntityType      string `json:"entityType" yaml:"entityType"`
 	Classification  string `json:"classification,omitempty" yaml:"classification,omitempty"`
@@ -168,6 +169,7 @@ type Trigger struct {
 type Executor struct {
 	Name           string   `json:"name" yaml:"name"`
 	Objective      string   `json:"objective" yaml:"objective"`
+	Prompt         string   `json:"prompt" yaml:"prompt"`
 	ModelPolicy    string   `json:"modelPolicy" yaml:"modelPolicy"`
 	PromptVersion  string   `json:"promptVersion" yaml:"promptVersion"`
 	DecisionSchema string   `json:"decisionSchema" yaml:"decisionSchema"`

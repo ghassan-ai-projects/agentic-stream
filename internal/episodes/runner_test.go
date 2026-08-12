@@ -50,7 +50,7 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 			Executor: spec.Executor{
 				Name:          "fake",
 				ModelPolicy:   "test-policy",
-				PromptVersion: "prompt-v1",
+				PromptVersion: "prompt-v1", Prompt: "Analyze the situation and return a typed decision.",
 			},
 		},
 		Actions: spec.Actions{

@@ -114,7 +114,7 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 			Executor: spec.Executor{
 				Name:          "native",
 				ModelPolicy:   "test-policy",
-				PromptVersion: "prompt-v1",
+				PromptVersion: "prompt-v1", Prompt: "Analyze the situation and return a typed decision.",
 			},
 		},
 		Actions: spec.Actions{
