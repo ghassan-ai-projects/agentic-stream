@@ -55,6 +55,9 @@ func (Controller) Reserve(ctx context.Context, tx *sql.Tx, episodeID, tenantID s
 func reserveLimit(ctx context.Context, tx *sql.Tx, scopeKey, tenantID string, amount uint64, now string) error {
 	var exists int
 	if err := tx.QueryRowContext(ctx, "SELECT 1 FROM cost_limits WHERE scope_key = ?", scopeKey).Scan(&exists); err == sql.ErrNoRows {
+		if scopeKey == "global" {
+			return fmt.Errorf("global cost limit is missing")
+		}
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("read %s cost limit: %w", scopeKey, err)
@@ -81,11 +84,19 @@ func (Controller) Settle(ctx context.Context, tx *sql.Tx, episodeID string, actu
 	}
 	var tenantID string
 	var reserved int64
-	if err := tx.QueryRowContext(ctx, "SELECT tenant_id, reserved_micro FROM cost_reservations WHERE episode_id = ? AND status = 'reserved'", episodeID).Scan(&tenantID, &reserved); err != nil {
+	var recordedActual int64
+	var status string
+	if err := tx.QueryRowContext(ctx, "SELECT tenant_id, reserved_micro, actual_micro, status FROM cost_reservations WHERE episode_id = ?", episodeID).Scan(&tenantID, &reserved, &recordedActual, &status); err != nil {
 		if err == sql.ErrNoRows {
-			return nil
+			return fmt.Errorf("cost reservation %s is missing", episodeID)
 		}
 		return fmt.Errorf("load cost reservation: %w", err)
+	}
+	if status != "reserved" {
+		if status == "settled" && recordedActual == toInt64(actual) {
+			return nil
+		}
+		return fmt.Errorf("cost reservation %s was already settled with a different value", episodeID)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE cost_reservations SET actual_micro = ?, status = 'settled', settled_at = ?
@@ -104,6 +115,9 @@ func (Controller) Settle(ctx context.Context, tx *sql.Tx, episodeID string, actu
 func settleLimit(ctx context.Context, tx *sql.Tx, scopeKey string, reserved int64, actual uint64, now string) error {
 	var exists int
 	if err := tx.QueryRowContext(ctx, "SELECT 1 FROM cost_limits WHERE scope_key = ?", scopeKey).Scan(&exists); err == sql.ErrNoRows {
+		if scopeKey == "global" {
+			return fmt.Errorf("global cost limit is missing")
+		}
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("read %s cost limit: %w", scopeKey, err)
@@ -112,7 +126,7 @@ func settleLimit(ctx context.Context, tx *sql.Tx, scopeKey string, reserved int6
 		UPDATE cost_limits
 		SET reserved_micro = MAX(0, reserved_micro - ?),
 		    spent_micro = spent_micro + ?,
-		    kill_switch = CASE WHEN max_micro > 0 AND spent_micro + ? > max_micro THEN 1 ELSE kill_switch END,
+		    kill_switch = CASE WHEN max_micro > 0 AND spent_micro + ? >= max_micro THEN 1 ELSE kill_switch END,
 		    updated_at = ?
 		WHERE scope_key = ?`, reserved, toInt64(actual), toInt64(actual), now, scopeKey)
 	if err != nil {

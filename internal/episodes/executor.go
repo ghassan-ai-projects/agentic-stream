@@ -52,6 +52,8 @@ type Runner struct {
 	cost       *costcontrol.Controller
 }
 
+const maxEpisodeAttempts = 3
+
 // WithCostControl enables settlement of durable episode cost reservations.
 func (r *Runner) WithCostControl(controller *costcontrol.Controller) *Runner {
 	r.cost = controller
@@ -423,7 +425,11 @@ func (r *Runner) failAttemptStatus(ctx context.Context, identity Identity, attem
 		if err := tx.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = ?", identity.EpisodeID).Scan(&lifecycle); err != nil {
 			return fmt.Errorf("read episode lifecycle: %w", err)
 		}
-		if lifecycle != string(LifecycleSuperseded) {
+		var failedAttempts int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM episode_attempts WHERE episode_id = ? AND status IN ('failed', 'timed_out', 'cancelled')`, identity.EpisodeID).Scan(&failedAttempts); err != nil {
+			return fmt.Errorf("count failed episode attempts: %w", err)
+		}
+		if lifecycle != string(LifecycleSuperseded) && failedAttempts < maxEpisodeAttempts {
 			if _, err := tx.ExecContext(ctx, `
 				UPDATE episodes SET lifecycle_status = 'running', ended_at = NULL, terminal_json = NULL
 				WHERE episode_id = ?`,
@@ -431,9 +437,20 @@ func (r *Runner) failAttemptStatus(ctx context.Context, identity Identity, attem
 			); err != nil {
 				return fmt.Errorf("update episode failed: %w", err)
 			}
-		} else if r.cost != nil {
-			if err := r.cost.Settle(ctx, tx, identity.EpisodeID, 0, r.clk.Now().UTC().Format(time.RFC3339Nano)); err != nil {
-				return fmt.Errorf("settle abandoned episode cost: %w", err)
+		} else {
+			if lifecycle != string(LifecycleSuperseded) {
+				terminalJSON, err = json.Marshal(map[string]any{"status": AttemptFailed, "reason": "attempt_retry_limit"})
+				if err != nil {
+					return fmt.Errorf("marshal retry limit terminal: %w", err)
+				}
+				if _, err := tx.ExecContext(ctx, "UPDATE episodes SET lifecycle_status = 'concluded', ended_at = ?, terminal_json = ? WHERE episode_id = ?", r.clk.Now().UTC().Format(time.RFC3339Nano), terminalJSON, identity.EpisodeID); err != nil {
+					return fmt.Errorf("conclude exhausted episode: %w", err)
+				}
+			}
+			if r.cost != nil {
+				if err := r.cost.Settle(ctx, tx, identity.EpisodeID, 0, r.clk.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+					return fmt.Errorf("settle abandoned episode cost: %w", err)
+				}
 			}
 		}
 		return nil
@@ -503,7 +520,20 @@ func (r *Runner) failAttemptWithRejection(ctx context.Context, current, incoming
 		if err := TransitionAttempt(ctx, tx, current, AttemptFailed, r.clk.Now(), terminalJSON); err != nil {
 			return fmt.Errorf("finish identity-failed attempt: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, `
+		var failedAttempts int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM episode_attempts WHERE episode_id = ? AND status IN ('failed', 'timed_out', 'cancelled')`, current.EpisodeID).Scan(&failedAttempts); err != nil {
+			return fmt.Errorf("count identity-failed attempts: %w", err)
+		}
+		if failedAttempts >= maxEpisodeAttempts {
+			if r.cost != nil {
+				if err := r.cost.Settle(ctx, tx, current.EpisodeID, 0, r.clk.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+					return fmt.Errorf("settle exhausted episode cost: %w", err)
+				}
+			}
+			if _, err := tx.ExecContext(ctx, "UPDATE episodes SET lifecycle_status = 'concluded', ended_at = ?, terminal_json = ? WHERE episode_id = ?", r.clk.Now().UTC().Format(time.RFC3339Nano), terminalJSON, current.EpisodeID); err != nil {
+				return fmt.Errorf("conclude identity-failed episode: %w", err)
+			}
+		} else if _, err := tx.ExecContext(ctx, `
 			UPDATE episodes SET lifecycle_status = 'running', ended_at = NULL, terminal_json = NULL
 			WHERE episode_id = ?`, current.EpisodeID); err != nil {
 			return fmt.Errorf("retain episode for retry: %w", err)

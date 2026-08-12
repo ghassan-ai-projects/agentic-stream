@@ -219,6 +219,9 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 	if hasNumericBudget(wireRequest.GetBudget()) && !sawBudget {
 		return nil, budgetTelemetryMissingError{}
 	}
+	if wireRequest.GetBudget().GetMaxCostMicrounits() > 0 && trustedUsage.costMicrounits == 0 && (terminal.GetUsage() == nil || terminal.GetUsage().GetCostMicrounits() == 0) {
+		return nil, fmt.Errorf("worker cost telemetry is missing")
+	}
 
 	outcome := &Outcome{AttemptID: req.AttemptID, Fence: req.Fence, Reasons: []string{terminal.GetReasonCode()}}
 	outcome.CostMicrounits = trustedUsage.costMicrounits
