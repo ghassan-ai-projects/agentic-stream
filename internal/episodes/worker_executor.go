@@ -26,8 +26,14 @@ type WorkerExecutor struct {
 	name                  string
 	runtimeInstance       string
 	requestedFeatures     []string
-	EvidenceToolsEndpoint string
-	CapabilityToken       []byte
+	evidenceToolsEndpoint string
+	capabilityFactory     CapabilityFactory
+}
+
+// CapabilityFactory issues an ephemeral token from the trusted attempt
+// request. Implementations must never persist or log the returned bytes.
+type CapabilityFactory interface {
+	Issue(*Request) ([]byte, error)
 }
 
 // NewWorkerExecutor creates an executor for an already-connected worker. The
@@ -38,6 +44,15 @@ func NewWorkerExecutor(client runtimev1.EpisodeWorkerClient, name, runtimeInstan
 		client: client, name: name, runtimeInstance: runtimeInstance,
 		requestedFeatures: append([]string(nil), requestedFeatures...),
 	}
+}
+
+// NewWorkerExecutorWithEvidence creates an executor whose evidence capability
+// is issued per attempt rather than supplied as caller-controlled bytes.
+func NewWorkerExecutorWithEvidence(client runtimev1.EpisodeWorkerClient, name, runtimeInstance string, requestedFeatures []string, endpoint string, factory CapabilityFactory) *WorkerExecutor {
+	executor := NewWorkerExecutor(client, name, runtimeInstance, requestedFeatures)
+	executor.evidenceToolsEndpoint = endpoint
+	executor.capabilityFactory = factory
+	return executor
 }
 
 // Name returns the worker executor name recorded in the episode ledger.
@@ -53,18 +68,27 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 	if req == nil {
 		return nil, fmt.Errorf("episode request is required")
 	}
-	if e.EvidenceToolsEndpoint != "" {
-		if err := worker.ValidateEvidenceSocketPath(e.EvidenceToolsEndpoint); err != nil {
+	if e.evidenceToolsEndpoint != "" {
+		if err := worker.ValidateEvidenceSocketPath(e.evidenceToolsEndpoint); err != nil {
 			return nil, fmt.Errorf("evidence endpoint: %w", err)
+		}
+		if e.capabilityFactory == nil {
+			return nil, fmt.Errorf("evidence capability factory is not configured")
 		}
 	}
 	wireRequest, err := episodeRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("build worker request: %w", err)
 	}
-	wireRequest.EvidenceToolsEndpoint = e.EvidenceToolsEndpoint
-	wireRequest.CapabilityToken = append([]byte(nil), e.CapabilityToken...)
-	if e.EvidenceToolsEndpoint != "" && !containsFeature(e.requestedFeatures, worker.EvidenceToolsFeature) {
+	wireRequest.EvidenceToolsEndpoint = e.evidenceToolsEndpoint
+	if e.evidenceToolsEndpoint != "" {
+		capabilityToken, issueErr := e.capabilityFactory.Issue(req)
+		if issueErr != nil {
+			return nil, fmt.Errorf("issue evidence capability: %w", issueErr)
+		}
+		wireRequest.CapabilityToken = append([]byte(nil), capabilityToken...)
+	}
+	if e.evidenceToolsEndpoint != "" && !containsFeature(e.requestedFeatures, worker.EvidenceToolsFeature) {
 		return nil, fmt.Errorf("evidence tools require negotiated feature %q", worker.EvidenceToolsFeature)
 	}
 	handshake, err := e.client.Handshake(ctx, &runtimev1.HandshakeRequest{

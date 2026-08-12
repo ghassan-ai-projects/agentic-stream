@@ -32,14 +32,20 @@ Implemented in the live read-boundary slice:
 - SQLite evidence-call reservation and completed-result ledger with composite
   identity, request digests, concurrent reservation serialization, integrity
   checks, and current-attempt fencing.
+- `AttemptCapabilityIssuer` and an evidence-aware worker executor constructor
+  that issue a fresh scoped token per dispatch, binding the attempt identity
+  and trace from the trusted request. Tools, evidence range, limits, expiry,
+  and runtime epoch are composition inputs; the application composition root
+  still owns deriving and wiring them from durable runtime state.
 
 Explicitly deferred from this phase:
 
 - automatic startup recovery/reclamation and process-epoch invalidation for
   unfinished calls; the current ledger exposes explicit reclaim operations but
   does not wire them into startup yet;
-- runtime composition that issues a fresh capability from each persisted
-  attempt and removes raw token injection from the executor test seam;
+- automatic startup epoch generation, recovery, and reissue of unfinished
+  attempts; the issuer currently requires the runtime composition to provide
+  its authoritative epoch and evidence range.
 - child-process supervision, remote workers, mTLS, Python fixtures, and
   provider-specific evidence backends.
 - stale-attempt lease expiry and process-crash reissue; the existing fence
@@ -51,6 +57,7 @@ Explicitly deferred from this phase:
 Those surfaces are subsequent phases. Until they are implemented and tested,
 the completion bar's worker conformance gate remains open.
 
-The next phase closes durable audit and runtime-issued token composition. It
-still does not add Python workers, child-process supervision, remote transport,
-mTLS, or any legacy/N-1 compatibility behavior.
+The next phase closes automatic startup epoch generation, recovery, and fenced
+reissue of unfinished attempts. It still does not add Python workers,
+child-process supervision, remote transport, mTLS, or any legacy/N-1
+compatibility behavior.

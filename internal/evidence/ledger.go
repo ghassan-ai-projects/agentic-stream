@@ -196,6 +196,19 @@ func (l *Ledger) ReclaimExpired(ctx context.Context, now time.Time, runtimeEpoch
 	return nil
 }
 
+// Recover marks unfinished reservations from prior owners interrupted before
+// the runtime becomes ready. A later execution must use a new fenced attempt.
+func (l *Ledger) Recover(ctx context.Context) error {
+	if l == nil || l.RuntimeEpoch == "" {
+		return fmt.Errorf("evidence ledger runtime epoch is not configured")
+	}
+	now := time.Now().UTC()
+	if l.Now != nil {
+		now = l.Now().UTC()
+	}
+	return l.ReclaimExpired(ctx, now, l.RuntimeEpoch)
+}
+
 func callFingerprint(call Call) ([]byte, error) {
 	document := struct {
 		EpisodeID        string               `json:"episode_id"`

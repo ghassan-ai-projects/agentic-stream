@@ -105,6 +105,9 @@ func (i *Issuer) Issue(scope Scope) ([]byte, error) {
 	if scope.ExpiresAt.Sub(scope.IssuedAt) > maxTTL {
 		return nil, fmt.Errorf("capability token lifetime exceeds maximum")
 	}
+	if !scope.ExpiresAt.After(now) {
+		return nil, fmt.Errorf("capability token is already expired")
+	}
 	payload, err := json.Marshal(tokenPayload{
 		Issuer: scope.Issuer, Audience: scope.Audience, TokenID: id, IssuedAt: scope.IssuedAt.UTC().Format(time.RFC3339Nano), EpisodeID: scope.EpisodeID,
 		AttemptID: scope.AttemptID, Fence: scope.Fence, TenantID: scope.TenantID,
@@ -265,6 +268,17 @@ func tokenID(existing string) (string, error) {
 	var raw [16]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		return "", fmt.Errorf("generate capability token id: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
+}
+
+// NewRuntimeEpoch creates an opaque process-owner identity. It is intended to
+// be generated once at startup and shared by the ledger, token issuer, and
+// EvidenceTools server; it must never be persisted as a secret.
+func NewRuntimeEpoch() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", fmt.Errorf("generate runtime epoch: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }

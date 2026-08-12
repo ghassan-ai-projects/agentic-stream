@@ -101,6 +101,11 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		}
 		req.Traceparent = trace.Traceparent
 		req.Tracestate = trace.Tracestate
+		entityID, entityErr := requestEntityID(req.RequestJSON)
+		if entityErr != nil {
+			return fmt.Errorf("load persisted request entity: %w", entityErr)
+		}
+		req.EntityID = entityID
 		req.AttemptID = ""
 		attemptID := r.idGen.New(ids.PrefixAttempt)
 		var err error

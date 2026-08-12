@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 	"google.golang.org/grpc"
@@ -53,9 +54,36 @@ func TestWorkerExecutorRequiresTerminal(t *testing.T) {
 	}
 }
 
+func TestWorkerExecutorIssuesFreshScopedCapabilityPerDispatch(t *testing.T) {
+	var seen [][]byte
+	client := testWorkerClientWithFeatures(t, []string{worker.EvidenceToolsFeature}, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
+		seen = append(seen, append([]byte(nil), req.GetCapabilityToken()...))
+		return emit(&runtimev1.EpisodeEvent{EpisodeId: req.GetEpisodeId(), Sequence: 2, AttemptId: req.GetAttemptId(), Fence: req.GetFence(), OccurredAt: timestamppb.New(time.Unix(10, 0)), Payload: &runtimev1.EpisodeEvent_Terminal{Terminal: &runtimev1.Terminal{Status: runtimev1.TerminalStatus_TERMINAL_STATUS_DECLINED}}})
+	})
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	keys := map[string][]byte{"k1": []byte("01234567890123456789012345678901")}
+	factory := &AttemptCapabilityIssuer{Issuer: &evidence.Issuer{Issuer: "runtime", Audience: "evidence-tools", KeyID: "k1", Keys: keys, Now: func() time.Time { return now }}, RuntimeEpoch: "epoch-1", Tools: []string{"evidence.get"}, From: now.Add(-time.Hour), Until: now, MaxRows: 10, MaxBytes: 1024, ExpiresAt: now.Add(10 * time.Minute)}
+	req := validWorkerRequest()
+	req.EntityID = "motor-1"
+	executor := NewWorkerExecutorWithEvidence(client, "worker-1", "runtime-1", []string{worker.EvidenceToolsFeature}, "/private/tmp/evidence.sock", factory)
+	if _, err := executor.Execute(t.Context(), req); err != nil {
+		t.Fatalf("first execute: %v", err)
+	}
+	if _, err := executor.Execute(t.Context(), req); err != nil {
+		t.Fatalf("second execute: %v", err)
+	}
+	if len(seen) != 2 || string(seen[0]) == string(seen[1]) {
+		t.Fatalf("capabilities were not freshly issued: %d", len(seen))
+	}
+	scope, err := (&evidence.Verifier{Issuer: "runtime", Audience: "evidence-tools", Keys: keys, Now: func() time.Time { return now }}).Verify(seen[0])
+	if err != nil || scope.EntityID != "motor-1" || scope.RuntimeEpoch != "epoch-1" {
+		t.Fatalf("issued scope = %+v, err=%v", scope, err)
+	}
+}
+
 func validWorkerRequest() *Request {
 	return &Request{
-		EpisodeID: "episode-1", TenantID: "tenant-1", SituationID: "situation-1", SituationVersion: 1,
+		EpisodeID: "episode-1", TenantID: "tenant-1", SituationID: "situation-1", SituationVersion: 1, EntityID: "motor-1",
 		ExecutorName: "worker", ExecutorVersion: "sha256:" + "00" + "00000000000000000000000000000000000000000000000000000000000000",
 		PromptVersion: "prompt-v1", SnapshotSHA256: "sha256:" + "00" + "00000000000000000000000000000000000000000000000000000000000000",
 		AttemptID: "attempt-1", Fence: 7, Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
@@ -64,10 +92,14 @@ func validWorkerRequest() *Request {
 }
 
 func testWorkerClient(t *testing.T, execute worker.ExecuteFunc) runtimev1.EpisodeWorkerClient {
+	return testWorkerClientWithFeatures(t, nil, execute)
+}
+
+func testWorkerClientWithFeatures(t *testing.T, features []string, execute worker.ExecuteFunc) runtimev1.EpisodeWorkerClient {
 	t.Helper()
 	listener := bufconn.Listen(1 << 20)
 	grpcServer := grpc.NewServer()
-	runtimev1.RegisterEpisodeWorkerServer(grpcServer, &worker.Server{WorkerName: "worker-1", WorkerVersion: "v1", ExecuteFunc: execute})
+	runtimev1.RegisterEpisodeWorkerServer(grpcServer, &worker.Server{WorkerName: "worker-1", WorkerVersion: "v1", SupportedFeatures: features, ExecuteFunc: execute})
 	go func() { _ = grpcServer.Serve(listener) }()
 	t.Cleanup(func() { grpcServer.Stop(); _ = listener.Close() })
 	conn, err := grpc.NewClient("passthrough:///bufnet", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return listener.Dial() }), grpc.WithTransportCredentials(insecure.NewCredentials()))

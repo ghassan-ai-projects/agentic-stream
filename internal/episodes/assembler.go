@@ -25,6 +25,7 @@ type Request struct {
 	TenantID         string // tenant owning the situation.
 	SituationID      string // situation being reasoned about.
 	SituationVersion int    // immutable situation version bound to this episode.
+	EntityID         string // entity bound to the immutable situation snapshot.
 	ExecutorName     string // executor configured in the active spec.
 	ExecutorVersion  string // digest of the active spec.
 	ModelPolicy      string // model policy from the spec executor.
@@ -72,6 +73,10 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	snapshotJSON, persistedSnapshotDigest, traceparent, tracestate, err := a.loadSnapshotJSON(ctx, tx, item.SituationID, item.SituationVersion)
 	if err != nil {
 		return nil, fmt.Errorf("load snapshot: %w", err)
+	}
+	entityID, err := snapshotEntityID(snapshotJSON)
+	if err != nil {
+		return nil, err
 	}
 
 	var snapshot map[string]any
@@ -151,6 +156,7 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		TenantID:         tenantID,
 		SituationID:      item.SituationID,
 		SituationVersion: item.SituationVersion,
+		EntityID:         entityID,
 		ExecutorName:     a.spec.Cognition.Executor.Name,
 		ExecutorVersion:  a.spec.Digest,
 		ModelPolicy:      a.spec.Cognition.Executor.ModelPolicy,
@@ -161,6 +167,42 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		Traceparent:      traceparent,
 		Tracestate:       tracestate,
 	}, nil
+}
+
+func snapshotEntityID(raw []byte) (string, error) {
+	var snapshot struct {
+		Entity struct {
+			ID string `json:"id"`
+		} `json:"entity"`
+	}
+	if err := json.Unmarshal(raw, &snapshot); err != nil {
+		return "", fmt.Errorf("decode snapshot entity: %w", err)
+	}
+	if snapshot.Entity.ID == "" {
+		return "", fmt.Errorf("snapshot entity id is required")
+	}
+	return snapshot.Entity.ID, nil
+}
+
+func requestEntityID(raw []byte) (string, error) {
+	var request struct {
+		Snapshot json.RawMessage `json:"snapshot"`
+	}
+	if err := json.Unmarshal(raw, &request); err != nil {
+		return "", fmt.Errorf("decode request snapshot: %w", err)
+	}
+	if len(request.Snapshot) == 0 {
+		return "", nil
+	}
+	var snapshot struct {
+		Entity struct {
+			ID string `json:"id"`
+		} `json:"entity"`
+	}
+	if err := json.Unmarshal(request.Snapshot, &snapshot); err != nil {
+		return "", fmt.Errorf("decode request snapshot entity: %w", err)
+	}
+	return snapshot.Entity.ID, nil
 }
 
 // Persist saves the episode request to the episodes table and marks the
