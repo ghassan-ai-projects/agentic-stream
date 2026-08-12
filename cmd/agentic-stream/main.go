@@ -22,6 +22,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
+	nativeexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
@@ -71,6 +72,7 @@ cognitive scheduler decides reasoning is useful.`,
 
 func newRunLiveCommand() *cobra.Command {
 	var dbPath, specPath, tracePath, tenantID, workerSocket, workerName, traceFormat string
+	var modelEndpoint, modelName string
 	var workerCA, workerCert, workerKey, workerServerName, evidenceSocket, evidenceKey string
 	cmd := &cobra.Command{
 		Use:   "run-live --spec <spec.yaml> --trace <trace.jsonl>",
@@ -130,7 +132,18 @@ func newRunLiveCommand() *cobra.Command {
 				defer func() { _ = evidenceListener.Close() }()
 			}
 
-			var executor episodes.Executor = episodes.NewFakeExecutor()
+			var provider nativeexecutor.ModelProvider = &nativeexecutor.DeterministicProvider{}
+			if modelEndpoint != "" {
+				if modelName == "" {
+					return fmt.Errorf("--model-name is required with --model-endpoint")
+				}
+				provider = &nativeexecutor.OpenAICompatibleProvider{Endpoint: modelEndpoint, APIKey: os.Getenv("AGENTIC_STREAM_MODEL_API_KEY"), Model: modelName}
+			}
+			nativeExecutor, nativeErr := nativeexecutor.New(nativeexecutor.Config{Provider: provider})
+			if nativeErr != nil {
+				return fmt.Errorf("configure native executor: %w", nativeErr)
+			}
+			var executor episodes.Executor = nativeExecutor
 			var workerConn interface{ Close() error }
 			if workerSocket != "" {
 				tlsConfig, tlsErr := loadWorkerTLS(workerCA, workerCert, workerKey, workerServerName)
@@ -193,7 +206,9 @@ func newRunLiveCommand() *cobra.Command {
 	cmd.Flags().StringVar(&tracePath, "trace", "", "JSONL trace path")
 	cmd.Flags().StringVar(&tenantID, "tenant", "default", "Tenant ID")
 	cmd.Flags().StringVar(&traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
-	cmd.Flags().StringVar(&workerSocket, "worker-socket", "", "EpisodeWorker Unix socket (default: deterministic Go fake)")
+	cmd.Flags().StringVar(&workerSocket, "worker-socket", "", "EpisodeWorker Unix socket (overrides the native Go executor)")
+	cmd.Flags().StringVar(&modelEndpoint, "model-endpoint", "", "OpenAI-compatible model endpoint for the native Go executor")
+	cmd.Flags().StringVar(&modelName, "model-name", "", "Model name for the OpenAI-compatible native provider")
 	cmd.Flags().StringVar(&workerName, "worker-name", "native", "Expected EpisodeWorker name")
 	cmd.Flags().StringVar(&workerCA, "worker-ca", "", "Worker CA PEM (enables mTLS)")
 	cmd.Flags().StringVar(&workerCert, "worker-cert", "", "Runtime client certificate PEM")
