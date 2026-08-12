@@ -27,7 +27,7 @@ migrations.
 | P1.2 | gRPC toolchain + codegen | ✅ | `proto/agenticstream/runtime/v1/runtime-v1{,_grpc}.pb.go` |
 | P1.3 | gRPC worker server + evidence-tools host + capability tokens | ✅ | `internal/worker/server.go`, `internal/evidence/server.go`, `scoped evidence tools over private uds`, `per-dispatch capability composition seam`, migration `010_evidence_call_ledger` |
 | P1.4 | Native executor + **model provider** | ✅ | `internal/executor/native`, deterministic provider, OpenAI-compatible streaming adapter, bounded read-tool loop |
-| P1.4 | **Executor conformance harness** (what Go workers code against) | 🟡 | `internal/executor/conformance`; in-process worker fixture passes, separate-process fixture remains |
+| P1.4 | **Executor conformance harness** (what Go workers code against) | ✅ | `internal/executor/conformance`; fake, in-process streamed, and separate-process Go worker fixtures pass |
 | P2 | Lifecycle separation + `(episode_id, attempt_id, fence)` | ✅ | `episode lifecycle fencing`, `owner-aware episode attempt fencing`, migrations `003`,`011`,`012` |
 | P3.1 | Decision validator (replaces auto-accept) | ✅ | `internal/decisions/validator.go`, `validate and persist typed decisions` |
 | P3.2 | Prompt/objective content addressing | ✅ | durable prompt/objective digests in episode requests |
@@ -71,7 +71,7 @@ behavior.
 | # | Work | Where | Why essential |
 |---|---|---|---|
 | **S1** | Continuous ingestion and scheduling under `serve` | `cmd/agentic-stream`, `internal/runtime` | ✅ `serve --spec ... --trace ...` polls an append-only JSONL source, resumes from its durable connector checkpoint, and runs the complete pipeline under the runtime owner. |
-| **S2** | Separate-process Go worker conformance fixture | `internal/executor/conformance`, `internal/worker` | Current conformance covers fake and in-process streamed worker; process isolation needs a rehearsal. |
+| **S2** | Separate-process Go worker conformance fixture | `internal/executor/conformance`, `internal/worker` | ✅ Test binary launches a Go worker over a real private Unix socket and runs the shared conformance suite. |
 | **S3** | OpenTelemetry spans/exporter and asynchronous span links | `internal/telemetry`, worker boundary | Current W3C context is persisted and counters are exposed; full OTel instrumentation remains. |
 | **S4** | Environment release evidence | `docs/runbooks/runtime-operations.md` | Backup/restore, disk-full, unclean shutdown, security review, and 24-hour soak require deployed infrastructure. |
 
@@ -87,7 +87,7 @@ ceiling** forward first in this pass — they are the two that matter most once 
 effects flow.
 
 > **Net:** the deterministic and bounded supervised loop and continuous JSONL serving loop are
-> complete. The remaining work is full OTel instrumentation, separate-process rehearsal, and
+> complete. The remaining work is full OTel instrumentation and
 > environment evidence. No Python worker or legacy compatibility layer is required.
 
 ---

@@ -29,6 +29,8 @@ Implemented in the live read-boundary slice:
 - runtime-owned Unix sockets with absolute-path validation, private directory
   checks, mode `0600`, Unix-only dialing, and ownership-safe cleanup;
 - actual EvidenceTools-over-UDS integration coverage.
+- a separate-process Go worker conformance fixture using a real private Unix
+  socket and the same shared semantic checks as the in-process fixture.
 - SQLite evidence-call reservation and completed-result ledger with composite
   identity, request digests, concurrent reservation serialization, integrity
   checks, and current-attempt fencing.
@@ -46,7 +48,7 @@ Explicitly deferred from this phase:
 - automatic startup epoch generation, recovery, and reissue of unfinished
   attempts; the issuer currently requires the runtime composition to provide
   its authoritative epoch and evidence range.
-- child-process supervision, remote workers, mTLS, and non-Go fixtures, and
+- production child-process supervision, remote workers, mTLS, and non-Go fixtures, and
   provider-specific evidence backends.
 - stale-attempt lease expiry and process-crash reissue; the existing fence
   model rejects stale output, while recovery policy is a subsequent phase.
@@ -54,8 +56,9 @@ Explicitly deferred from this phase:
   bytes, retries, and cost. Worker `BudgetUpdated` telemetry is not an
   authorization source.
 
-Those surfaces are subsequent phases. Until they are implemented and tested,
-the completion bar's worker conformance gate remains open.
+Those surfaces are subsequent phases. The current worker conformance gate is
+closed for the Go protocol fixture; production supervision and deployment
+rehearsals remain operational hardening.
 
 The next phase closes automatic startup epoch generation, recovery, and fenced
 reissue of unfinished attempts. It still does not add non-Go workers,
