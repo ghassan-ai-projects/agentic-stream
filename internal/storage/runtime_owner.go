@@ -49,7 +49,8 @@ func (o *RuntimeOwner) Claim(ctx context.Context, epoch string) error {
 				lease_until = excluded.lease_until
 			WHERE (runtime_owner.owner_epoch = excluded.owner_epoch
 				AND runtime_owner.owner_instance = excluded.owner_instance)
-				OR runtime_owner.lease_until <= excluded.heartbeat_at`,
+				OR (runtime_owner.owner_epoch <> excluded.owner_epoch
+					AND runtime_owner.lease_until <= excluded.heartbeat_at)`,
 			epoch, o.InstanceID, nowText, nowText, leaseUntil,
 		)
 		if err != nil {
