@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:situation-runtime:schema:trigger-evaluation:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["trigger_id", "situation_id", "situation_version", "outcome"],
+  "properties": {
+    "trigger_id": {"type": "string", "minLength": 1},
+    "situation_id": {"type": "string", "minLength": 1},
+    "situation_version": {"type": "integer", "minimum": 1},
+    "outcome": {"enum": ["admitted", "ignored", "deferred"]}
+  }
+}

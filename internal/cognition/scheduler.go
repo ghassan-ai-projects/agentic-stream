@@ -10,8 +10,10 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -145,6 +147,22 @@ func (s *Scheduler) saveEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluat
 		eval.Outcome, reasonsJSON, policySHA[:], eval.DeltaJSON, eval.EvaluatedAt.Format(time.RFC3339Nano),
 	); err != nil {
 		return fmt.Errorf("upsert trigger evaluation: %w", err)
+	}
+	event := contractsv1.CloudEvent{
+		SpecVersion: "1.0", ID: eval.TriggerID + ":" + eval.Outcome + ":" + eval.EvaluatedAt.UTC().Format(time.RFC3339Nano), Source: "//agentic-stream/tenants/" + tenantID,
+		Type: "situation.trigger.evaluated", Subject: "situation/" + eval.SituationID,
+		Time: eval.EvaluatedAt, DataContentType: "application/json",
+		DataSchema: "urn:situation-runtime:schema:trigger-evaluation:v1",
+		Data:       map[string]any{"trigger_id": eval.TriggerID, "situation_id": eval.SituationID, "situation_version": eval.SituationVersion, "outcome": eval.Outcome},
+		TenantID:   tenantID, PartitionKey: eval.SituationID, IngestedTime: eval.EvaluatedAt,
+		Classification: contractsv1.ClassificationInternal,
+	}
+	event.EnvelopeDigest, err = event.ComputeEnvelopeDigest()
+	if err != nil {
+		return fmt.Errorf("digest trigger notification: %w", err)
+	}
+	if _, err := notify.Append(ctx, tx, event, eval.EvaluatedAt); err != nil {
+		return fmt.Errorf("append trigger notification: %w", err)
 	}
 	return nil
 }

@@ -13,11 +13,12 @@ import (
 type SchemaName string
 
 const (
-	SchemaSnapshot SchemaName = "snapshot"
-	SchemaDecision SchemaName = "decision"
-	SchemaIntent   SchemaName = "intent"
-	SchemaCommand  SchemaName = "command"
-	SchemaOutcome  SchemaName = "outcome"
+	SchemaSnapshot          SchemaName = "snapshot"
+	SchemaDecision          SchemaName = "decision"
+	SchemaIntent            SchemaName = "intent"
+	SchemaCommand           SchemaName = "command"
+	SchemaOutcome           SchemaName = "outcome"
+	SchemaTriggerEvaluation SchemaName = "trigger-evaluation"
 )
 
 //go:embed schemas/v1/*.json
@@ -84,7 +85,7 @@ func loadSchema(name SchemaName) (*jsonschema.Schema, error) {
 
 func isKnownSchema(name SchemaName) bool {
 	switch name {
-	case SchemaSnapshot, SchemaDecision, SchemaIntent, SchemaCommand, SchemaOutcome:
+	case SchemaSnapshot, SchemaDecision, SchemaIntent, SchemaCommand, SchemaOutcome, SchemaTriggerEvaluation:
 		return true
 	default:
 		return false
