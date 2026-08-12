@@ -205,6 +205,18 @@ func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID strin
 	if !canonicalDocumentMatches(row.IntentJSON, row.IntentSHA, canonicaljson.DomainIntent) {
 		return g.finish(ctx, tx, row, result, "denied", "intent_digest_mismatch", now)
 	}
+	if compensates, ok := intentDocument["compensates"].(string); ok && compensates != "" {
+		var commandTenant string
+		if err := tx.QueryRowContext(ctx, "SELECT tenant_id FROM commands WHERE command_id = ?", compensates).Scan(&commandTenant); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return g.finish(ctx, tx, row, result, "denied", "compensation_target_missing", now)
+			}
+			return result, fmt.Errorf("load compensation target: %w", err)
+		}
+		if commandTenant != row.TenantID {
+			return g.finish(ctx, tx, row, result, "denied", "compensation_tenant_mismatch", now)
+		}
+	}
 	if documentString(intentDocument, "intent_id") != row.IntentID ||
 		documentString(intentDocument, "decision_id") != row.DecisionID ||
 		documentString(intentDocument, "tenant_id") != row.TenantID ||
