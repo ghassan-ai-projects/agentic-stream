@@ -85,6 +85,7 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 	if cfg.Effector == nil {
 		cfg.Effector = actions.NewSimulatedEffector()
 	}
+	cfg.Effector = actions.NewCompositeEffector(actions.NewWatchEffectorWithClock(cfg.DB, cfg.Clock), cfg.Effector)
 	log := eventlog.NewEventLogWithClock(cfg.DB, cfg.Clock)
 	stream, err := engine.NewEngine(ctx, cfg.DB, log, cfg.Clock, cfg.Spec, cfg.TenantID)
 	if err != nil {
