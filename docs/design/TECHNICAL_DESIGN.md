@@ -1057,6 +1057,8 @@ lifecycle and aggregate changes come from durable sequence positions.
 agentic-stream init
 agentic-stream validate <spec>
 agentic-stream run --spec <spec>
+agentic-stream run-live --db <runtime.db> --spec <spec.yaml> --trace <trace.jsonl>
+agentic-stream run-live --trace-format simulator --db <runtime.db> --spec <spec.yaml> --trace <simulator.jsonl>
 agentic-stream ingest <events.jsonl>
 agentic-stream simulate predictive-maintenance
 agentic-stream situation list

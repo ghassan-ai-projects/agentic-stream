@@ -87,6 +87,18 @@ make cross-compile   # linux/amd64 binary
 
 For coding agents: read [AGENTS.md](AGENTS.md) before editing.
 
+Run one supervised live batch with the deterministic Go executor:
+
+```bash
+agentic-stream run-live --db runtime.db --spec docs/design/examples/predictive-maintenance.situation.yaml \
+  --trace examples/predictive-maintenance/testdata/trace-opening.jsonl
+```
+
+Use `--trace-format simulator` for the streams-simulator
+`trace-record-v0.1` JSONL adapter output, or `--worker-socket` to dispatch
+episodes to a current-v1 Go EpisodeWorker. TLS client flags are available for
+certificate-authenticated worker connections.
+
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE).
