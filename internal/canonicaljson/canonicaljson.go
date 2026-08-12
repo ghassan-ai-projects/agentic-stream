@@ -29,6 +29,7 @@ const (
 	DomainIntent   Domain = "situation-runtime/intent/v1\n"
 	DomainCommand  Domain = "situation-runtime/command/v1\n"
 	DomainEvent    Domain = "situation-runtime/event/v1\n"
+	DomainOutcome  Domain = "situation-runtime/outcome/v1\n"
 	DomainEnvelope Domain = "situation-runtime/envelope/v1\n"
 	DomainTest     Domain = "situation-runtime/test/v1\n"
 )

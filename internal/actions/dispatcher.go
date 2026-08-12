@@ -1,0 +1,571 @@
+// Package actions owns the effect boundary after policy approval.
+package actions
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+)
+
+// Command is the validated, policy-approved input to an effector.
+type Command struct {
+	CommandID        string
+	IntentID         string
+	TenantID         string
+	EffectorRoute    string
+	NormalizedTarget string
+	IdempotencyKey   string
+	Payload          map[string]any
+}
+
+// Effect is the provider response. An effector must return UnknownOutcomeError
+// when it cannot establish whether the provider applied the effect.
+type Effect struct {
+	ProviderResult map[string]any
+	ObservedEffect map[string]any
+}
+
+// Effector is the only interface allowed to cross from the action plane into
+// an external system. Implementations must honor Command.IdempotencyKey.
+type Effector interface {
+	Dispatch(context.Context, Command) (Effect, error)
+}
+
+// UnknownOutcomeError means the request may have reached the provider, so the
+// dispatcher records reconciliation as required and never blindly retries it.
+type UnknownOutcomeError struct{ Err error }
+
+func (e *UnknownOutcomeError) Error() string {
+	if e == nil || e.Err == nil {
+		return "action outcome is unknown"
+	}
+	return "action outcome is unknown: " + e.Err.Error()
+}
+
+func (e *UnknownOutcomeError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// IsUnknownOutcome reports whether err requires reconciliation instead of an
+// automatic retry.
+func IsUnknownOutcome(err error) bool {
+	var unknown *UnknownOutcomeError
+	return errors.As(err, &unknown)
+}
+
+// Dispatcher leases approved command outbox rows and records durable results.
+type Dispatcher struct {
+	db       *storage.DB
+	effector Effector
+	clk      clock.Clock
+	idGen    ids.Generator
+	owner    string
+	leaseFor time.Duration
+}
+
+// NewDispatcher creates an action dispatcher. leaseFor controls how long an
+// abandoned lease remains protected from another dispatcher.
+func NewDispatcher(db *storage.DB, effector Effector, clk clock.Clock, idGen ids.Generator, owner string, leaseFor time.Duration) *Dispatcher {
+	if clk == nil {
+		clk = clock.Physical()
+	}
+	if idGen == nil {
+		idGen = ids.Random()
+	}
+	if owner == "" {
+		owner = "actions"
+	}
+	if leaseFor <= 0 {
+		leaseFor = time.Minute
+	}
+	return &Dispatcher{db: db, effector: effector, clk: clk, idGen: idGen, owner: owner, leaseFor: leaseFor}
+}
+
+type leasedCommand struct {
+	OutboxID    int64
+	Command     Command
+	CommandJSON []byte
+	CommandSHA  []byte
+	LeaseOwner  string
+	Now         time.Time
+}
+
+// DispatchOnce processes at most one command. A leased command is marked
+// dispatching before the provider call, and all ledger changes are committed
+// atomically after the provider returns.
+func (d *Dispatcher) DispatchOnce(ctx context.Context) (bool, error) {
+	leased, found, err := d.lease(ctx)
+	if err != nil || !found {
+		return found, err
+	}
+	if d.effector == nil {
+		return true, d.finalize(ctx, leased, Effect{}, errors.New("no effector configured"))
+	}
+	if err := d.revalidateAuthorization(ctx, leased); err != nil {
+		return true, d.finalize(ctx, leased, Effect{}, fmt.Errorf("authorization revalidation failed: %w", err))
+	}
+	callCtx := ctx
+	callTimeout := d.leaseFor - d.leaseFor/10
+	if callTimeout <= 0 {
+		callTimeout = d.leaseFor
+	}
+	callCtx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
+	effect, dispatchErr := d.effector.Dispatch(callCtx, leased.Command)
+	if errors.Is(dispatchErr, context.DeadlineExceeded) {
+		dispatchErr = &UnknownOutcomeError{Err: dispatchErr}
+	}
+	return true, d.finalize(ctx, leased, effect, dispatchErr)
+}
+
+func (d *Dispatcher) revalidateAuthorization(ctx context.Context, leased leasedCommand) error {
+	return d.db.WithTx(ctx, func(tx *sql.Tx) error {
+		return d.revalidateAuthorizationTx(ctx, tx, leased)
+	})
+}
+
+func (d *Dispatcher) revalidateAuthorizationTx(ctx context.Context, tx *sql.Tx, leased leasedCommand) error {
+	var leaseValid int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM outbox WHERE outbox_id = ? AND status = 'leased' AND lease_owner = ? AND lease_until > ?`, leased.OutboxID, leased.LeaseOwner, formatTime(d.clk.Now())).Scan(&leaseValid); err != nil {
+		return fmt.Errorf("dispatch lease is no longer active: %w", err)
+	}
+	commandID := leased.Command.CommandID
+	var commandTenant, commandIntent, commandRoute, commandTarget, intentTenant, intentID, decisionID string
+	var intentSituation, intentType, intentRisk, intentExpires string
+	var intentVersion, currentVersion, episodeVersion int
+	var commandJSON, commandSHA, commandIdempotency, intentJSON, intentSHA, decisionJSON, decisionSHA []byte
+	var approvedApprovalID, approvedApprovalExpiry sql.NullString
+	var policyStatus, validationStatus, episodeID, episodeTenant, episodeSituation, situationTenant, episodeLifecycle, decisionSituation string
+	var decisionVersion int
+	if err := tx.QueryRowContext(ctx, `
+			SELECT c.tenant_id, c.intent_id, c.effector_route, c.normalized_target,
+			       c.idempotency_key, c.command_json, c.command_sha256,
+			       i.tenant_id, i.intent_id, i.decision_id, i.situation_id,
+			       i.situation_version, i.intent_type, i.risk_class, i.intent_json,
+			       i.intent_sha256, i.expires_at, i.policy_status,
+			       (SELECT a.approval_id FROM approvals a WHERE a.intent_id = i.intent_id AND a.status = 'approved' ORDER BY a.decided_at DESC LIMIT 1),
+			       (SELECT a.expires_at FROM approvals a WHERE a.intent_id = i.intent_id AND a.status = 'approved' ORDER BY a.decided_at DESC LIMIT 1),
+			       d.validation_status, d.raw_json, d.decision_sha256, d.situation_id, d.situation_version, d.episode_id,
+			       e.tenant_id, e.situation_id, e.situation_version, e.lifecycle_status,
+			       s.tenant_id, s.current_version
+			FROM commands c
+			JOIN intents i ON i.intent_id = c.intent_id
+			JOIN decisions d ON d.decision_id = i.decision_id
+			JOIN episodes e ON e.episode_id = d.episode_id
+			JOIN situations s ON s.situation_id = i.situation_id
+			WHERE c.command_id = ? AND c.status = 'dispatching'`, commandID).Scan(
+		&commandTenant, &commandIntent, &commandRoute, &commandTarget,
+		&commandIdempotency, &commandJSON, &commandSHA,
+		&intentTenant, &intentID, &decisionID, &intentSituation,
+		&intentVersion, &intentType, &intentRisk, &intentJSON,
+		&intentSHA, &intentExpires, &policyStatus,
+		&approvedApprovalID, &approvedApprovalExpiry,
+		&validationStatus, &decisionJSON, &decisionSHA, &decisionSituation, &decisionVersion, &episodeID,
+		&episodeTenant, &episodeSituation, &episodeVersion, &episodeLifecycle,
+		&situationTenant, &currentVersion); err != nil {
+		return fmt.Errorf("load authorization records: %w", err)
+	}
+	var commandDocument map[string]any
+	if err := json.Unmarshal(commandJSON, &commandDocument); err != nil || contractsv1.Validate(contractsv1.SchemaCommand, commandDocument) != nil || !verifyDigest(canonicaljson.DomainCommand, commandDocument, commandSHA) ||
+		documentString(commandDocument, "command_id") != commandID || documentString(commandDocument, "intent_id") != commandIntent ||
+		documentString(commandDocument, "tenant_id") != commandTenant || documentString(commandDocument, "effector_route") != commandRoute ||
+		documentString(commandDocument, "normalized_target") != commandTarget || !bytes.Equal(commandIdempotency, mustDigest(commandDocument, "idempotency_key")) {
+		return errors.New("command ledger identity mismatch")
+	}
+	if commandTenant != intentTenant || commandIntent != intentID || commandRoute != intentType || policyStatus != "approved" || validationStatus != "accepted" {
+		return errors.New("command is no longer approved for its intent")
+	}
+	if intentRisk == "R2" {
+		if !approvedApprovalID.Valid {
+			return errors.New("approved intent has no approved approval record")
+		}
+		approvalExpires, parseErr := time.Parse(time.RFC3339Nano, approvedApprovalExpiry.String)
+		if parseErr != nil || !approvalExpires.After(d.clk.Now()) {
+			return errors.New("approval is expired")
+		}
+	}
+	if episodeTenant != intentTenant || situationTenant != intentTenant || decisionSituation != intentSituation || decisionVersion != intentVersion || episodeSituation != intentSituation || episodeVersion != intentVersion || (episodeLifecycle != "concluded" && episodeLifecycle != "closed") || currentVersion != intentVersion {
+		return errors.New("command authorization is stale")
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, intentExpires)
+	if err != nil || !expiresAt.After(d.clk.Now()) {
+		return errors.New("intent authorization is expired")
+	}
+	var intentDocument map[string]any
+	if err := json.Unmarshal(intentJSON, &intentDocument); err != nil || contractsv1.Validate(contractsv1.SchemaIntent, intentDocument) != nil || !verifyIntentDigest(intentDocument, intentSHA) {
+		return errors.New("intent authorization is invalid")
+	}
+	if documentString(intentDocument, "intent_id") != intentID || documentString(intentDocument, "decision_id") != decisionID || documentString(intentDocument, "tenant_id") != intentTenant || documentString(intentDocument, "situation_id") != intentSituation || documentInt(intentDocument, "situation_version") != intentVersion || documentString(intentDocument, "type") != intentType || documentString(intentDocument, "risk_class") != intentRisk {
+		return errors.New("intent authorization identity mismatch")
+	}
+	var decisionDocument map[string]any
+	if err := json.Unmarshal(decisionJSON, &decisionDocument); err != nil || contractsv1.Validate(contractsv1.SchemaDecision, decisionDocument) != nil || !verifyDigest(canonicaljson.DomainDecision, decisionDocument, decisionSHA) {
+		return errors.New("decision authorization is invalid")
+	}
+	if documentString(decisionDocument, "decision_id") != decisionID || documentString(decisionDocument, "episode_id") != episodeID || documentString(decisionDocument, "situation_id") != intentSituation || documentInt(decisionDocument, "situation_version") != intentVersion {
+		return errors.New("decision authorization identity mismatch")
+	}
+	refreshNow := d.clk.Now()
+	refresh, err := tx.ExecContext(ctx, `UPDATE outbox SET lease_until = ? WHERE outbox_id = ? AND status = 'leased' AND lease_owner = ? AND lease_until > ?`, formatTime(refreshNow.Add(d.leaseFor)), leased.OutboxID, leased.LeaseOwner, formatTime(refreshNow))
+	if err != nil {
+		return fmt.Errorf("refresh dispatch lease: %w", err)
+	}
+	if count, err := refresh.RowsAffected(); err != nil || count != 1 {
+		return fmt.Errorf("refresh dispatch lease lost ownership")
+	}
+	return nil
+}
+
+func (d *Dispatcher) lease(ctx context.Context) (leasedCommand, bool, error) {
+	var leased leasedCommand
+	found := false
+	err := d.db.WithTx(ctx, func(tx *sql.Tx) error {
+		now := d.clk.Now().UTC()
+		var commandStatus string
+		var storedIntentID, storedTenant, storedRoute, storedTarget string
+		var storedIdempotency []byte
+		var outboxStatus string
+		var storedLeaseOwner, storedLeaseUntil sql.NullString
+		if err := tx.QueryRowContext(ctx, `
+			SELECT o.outbox_id, o.aggregate_id, c.command_json, c.command_sha256, c.status,
+			       c.intent_id, c.tenant_id, c.effector_route, c.normalized_target, c.idempotency_key
+			       , o.status, o.lease_owner, o.lease_until
+			FROM outbox o
+			JOIN commands c ON c.command_id = o.aggregate_id
+			WHERE o.kind = 'command'
+			  AND o.available_at <= ?
+			  AND (o.status = 'pending' OR (o.status = 'leased' AND o.lease_until <= ?))
+			ORDER BY o.outbox_id
+			LIMIT 1`, formatTime(now), formatTime(now)).Scan(
+			&leased.OutboxID, &leased.Command.CommandID,
+			&leased.CommandJSON, &leased.CommandSHA, &commandStatus,
+			&storedIntentID, &storedTenant, &storedRoute, &storedTarget, &storedIdempotency,
+			&outboxStatus, &storedLeaseOwner, &storedLeaseUntil,
+		); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil
+			}
+			return fmt.Errorf("find command outbox: %w", err)
+		}
+		found = true
+		leased.Now = now
+		if outboxStatus == "leased" {
+			leased.LeaseOwner = storedLeaseOwner.String
+			if expiresAt, parseErr := time.Parse(time.RFC3339Nano, storedLeaseUntil.String); parseErr != nil || !storedLeaseOwner.Valid || !storedLeaseUntil.Valid || !expiresAt.After(now) {
+				found = false
+				return d.finalizeTx(ctx, tx, leased, Effect{}, &UnknownOutcomeError{Err: errors.New("lease expired before dispatch")})
+			}
+		}
+		var document map[string]any
+		if err := json.Unmarshal(leased.CommandJSON, &document); err != nil {
+			found = false
+			return d.markLeaseFailure(ctx, tx, leased.OutboxID, leased.Command.CommandID, "command_json_invalid", now)
+		}
+		if err := contractsv1.Validate(contractsv1.SchemaCommand, document); err != nil {
+			found = false
+			return d.markLeaseFailure(ctx, tx, leased.OutboxID, leased.Command.CommandID, "command_schema_invalid", now)
+		}
+		providedIdempotency := documentString(document, "idempotency_key")
+		providedIdempotencyBytes, idempotencyErr := canonicaljson.DecodeDigest(providedIdempotency)
+		if leased.Command.CommandID != documentString(document, "command_id") ||
+			storedIntentID != documentString(document, "intent_id") || storedTenant != documentString(document, "tenant_id") ||
+			storedRoute != documentString(document, "effector_route") || storedTarget != documentString(document, "normalized_target") ||
+			idempotencyErr != nil || !bytes.Equal(storedIdempotency, providedIdempotencyBytes) ||
+			!verifyDigest(canonicaljson.DomainCommand, document, leased.CommandSHA) {
+			found = false
+			return d.markLeaseFailure(ctx, tx, leased.OutboxID, leased.Command.CommandID, "command_digest_mismatch", now)
+		}
+		leased.Command.IntentID = documentString(document, "intent_id")
+		leased.Command.TenantID = documentString(document, "tenant_id")
+		leased.Command.EffectorRoute = documentString(document, "effector_route")
+		leased.Command.NormalizedTarget = documentString(document, "normalized_target")
+		leased.Command.IdempotencyKey = documentString(document, "idempotency_key")
+		leased.Command.Payload, _ = document["payload"].(map[string]any)
+		if commandStatus == "succeeded" || commandStatus == "outcome_unknown" {
+			found = false
+			return d.finishOutboxOnly(ctx, tx, leased.OutboxID, commandStatus, now)
+		}
+		until := now.Add(d.leaseFor)
+		leased.LeaseOwner = d.owner + "/" + d.idGen.New(ids.PrefixLease)
+		result, err := tx.ExecContext(ctx, `
+			UPDATE outbox
+			SET status = 'leased', lease_owner = ?, lease_until = ?, attempt_count = attempt_count + 1
+			WHERE outbox_id = ? AND (status = 'pending' OR (status = 'leased' AND lease_until <= ?))`,
+			leased.LeaseOwner, formatTime(until), leased.OutboxID, formatTime(now))
+		if err != nil {
+			return fmt.Errorf("lease command outbox: %w", err)
+		}
+		if count, _ := result.RowsAffected(); count != 1 {
+			found = false
+			return nil
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE commands SET status = 'dispatching', updated_at = ? WHERE command_id = ? AND status IN ('pending', 'failed', 'dispatching')", formatTime(now), leased.Command.CommandID); err != nil {
+			return fmt.Errorf("mark command dispatching: %w", err)
+		}
+		return nil
+	})
+	return leased, found, err
+}
+
+func (d *Dispatcher) finalize(ctx context.Context, leased leasedCommand, effect Effect, dispatchErr error) error {
+	return d.db.WithTx(ctx, func(tx *sql.Tx) error {
+		return d.finalizeTx(ctx, tx, leased, effect, dispatchErr)
+	})
+}
+
+func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCommand, effect Effect, dispatchErr error) error {
+	now := d.clk.Now().UTC()
+	var leaseStatus, leaseOwner, leaseUntil string
+	if err := tx.QueryRowContext(ctx, `
+			SELECT status, lease_owner, lease_until FROM outbox WHERE outbox_id = ?`,
+		leased.OutboxID).Scan(&leaseStatus, &leaseOwner, &leaseUntil); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// Another dispatcher owns the lease, or this worker's lease
+			// expired. A late provider result must not overwrite it.
+			return nil
+		}
+		return fmt.Errorf("verify command lease: %w", err)
+	}
+	if leaseStatus != "leased" || leaseOwner != leased.LeaseOwner {
+		return nil
+	}
+	if expiresAt, err := time.Parse(time.RFC3339Nano, leaseUntil); err != nil || !expiresAt.After(now) {
+		// The provider result arrived after the lease window. Treat it as
+		// unknown so the next worker cannot blindly repeat the effect.
+		dispatchErr = &UnknownOutcomeError{Err: errors.New("lease expired before provider result")}
+		effect = Effect{}
+	}
+	status := "succeeded"
+	reconciliation := "observed"
+	commandStatus := "succeeded"
+	errorCode := ""
+	if dispatchErr != nil {
+		if IsUnknownOutcome(dispatchErr) {
+			status, reconciliation, commandStatus = "unknown", "required", "reconciling"
+			errorCode = "outcome_unknown"
+		} else {
+			status, reconciliation, commandStatus = "failed", "not_required", "failed"
+			errorCode = "dispatch_failed"
+		}
+	}
+	outcomeID := d.idGen.New(ids.PrefixOutcome)
+	document := map[string]any{
+		"outcome_id": outcomeID, "command_id": leased.Command.CommandID,
+		"status": status, "observed_at": formatTime(now),
+	}
+	if effect.ProviderResult != nil {
+		document["result"] = effect.ProviderResult
+	}
+	if errorCode != "" {
+		document["error_code"] = errorCode
+	}
+	if err := contractsv1.Validate(contractsv1.SchemaOutcome, document); err != nil {
+		return fmt.Errorf("validate action outcome: %w", err)
+	}
+	outcomeDigest, err := canonicaljson.Digest(canonicaljson.DomainOutcome, document)
+	if err != nil {
+		return fmt.Errorf("digest action outcome: %w", err)
+	}
+	outcomeSHA, err := canonicaljson.DecodeDigest(outcomeDigest)
+	if err != nil {
+		return fmt.Errorf("decode action outcome digest: %w", err)
+	}
+	providerJSON, err := optionalJSON(effect.ProviderResult)
+	if err != nil {
+		return fmt.Errorf("encode provider result: %w", err)
+	}
+	observedJSON, err := optionalJSON(effect.ObservedEffect)
+	if err != nil {
+		return fmt.Errorf("encode observed effect: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+			INSERT INTO outcomes (
+				outcome_id, command_id, ordinal, status, provider_result_json,
+				observed_effect_json, reconciliation_status, outcome_sha256, occurred_at
+			) VALUES (?, ?, (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM outcomes WHERE command_id = ?), ?, ?, ?, ?, ?, ?)`,
+		outcomeID, leased.Command.CommandID, leased.Command.CommandID, status, providerJSON,
+		observedJSON, reconciliation, outcomeSHA, formatTime(now)); err != nil {
+		return fmt.Errorf("record action outcome: %w", err)
+	}
+	outboxStatus := "delivered"
+	if dispatchErr != nil {
+		outboxStatus = "failed"
+	}
+	if _, err := tx.ExecContext(ctx, `
+			UPDATE commands SET status = ?, updated_at = ? WHERE command_id = ? AND status = 'dispatching'`,
+		commandStatus, formatTime(now), leased.Command.CommandID); err != nil {
+		return fmt.Errorf("record command status: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+			UPDATE outbox SET status = ?, lease_owner = NULL, lease_until = NULL,
+				last_error_code = ?, delivered_at = CASE WHEN ? = 'delivered' THEN ? ELSE delivered_at END
+			WHERE outbox_id = ? AND lease_owner = ?`,
+		outboxStatus, nullableString(errorCode), outboxStatus, formatTime(now), leased.OutboxID, leased.LeaseOwner); err != nil {
+		return fmt.Errorf("finish command outbox: %w", err)
+	}
+	verificationStatus := "observed"
+	if dispatchErr != nil {
+		verificationStatus = "awaiting"
+	}
+	if _, err := tx.ExecContext(ctx, `
+			INSERT INTO verifications (verification_id, intent_id, command_id, outcome_id, status, updated_at)
+			SELECT ?, intent_id, command_id, ?, ?, ? FROM commands WHERE command_id = ?
+			ON CONFLICT(intent_id) DO UPDATE SET outcome_id = excluded.outcome_id,
+				status = excluded.status, updated_at = excluded.updated_at`,
+		d.idGen.New(ids.PrefixVerification), outcomeID, verificationStatus, formatTime(now), leased.Command.CommandID); err != nil {
+		return fmt.Errorf("record command verification: %w", err)
+	}
+	return nil
+}
+
+// ReconcileUnknown closes an outcome_unknown command using independently
+// observed provider evidence. It is the only path that may resolve a command
+// after an effector call whose result was uncertain.
+func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatus string, evidence map[string]any) error {
+	if finalStatus != "succeeded" && finalStatus != "failed" && finalStatus != "manual_review" {
+		return fmt.Errorf("invalid reconciliation status %q", finalStatus)
+	}
+	return d.db.WithTx(ctx, func(tx *sql.Tx) error {
+		var currentStatus string
+		if err := tx.QueryRowContext(ctx, "SELECT status FROM commands WHERE command_id = ?", commandID).Scan(&currentStatus); err != nil {
+			return fmt.Errorf("load command %s for reconciliation: %w", commandID, err)
+		}
+		if currentStatus != "reconciling" && currentStatus != "outcome_unknown" {
+			return fmt.Errorf("command %s is not awaiting reconciliation", commandID)
+		}
+		now := d.clk.Now().UTC()
+		outcomeID := d.idGen.New(ids.PrefixOutcome)
+		document := map[string]any{
+			"outcome_id": outcomeID, "command_id": commandID, "status": "reconciled",
+			"observed_at": formatTime(now),
+			"result":      map[string]any{"final_status": finalStatus, "evidence": evidence},
+		}
+		if err := contractsv1.Validate(contractsv1.SchemaOutcome, document); err != nil {
+			return fmt.Errorf("validate reconciliation outcome: %w", err)
+		}
+		digest, err := canonicaljson.Digest(canonicaljson.DomainOutcome, document)
+		if err != nil {
+			return fmt.Errorf("digest reconciliation outcome: %w", err)
+		}
+		outcomeSHA, err := canonicaljson.DecodeDigest(digest)
+		if err != nil {
+			return fmt.Errorf("decode reconciliation digest: %w", err)
+		}
+		evidenceJSON, err := optionalJSON(evidence)
+		if err != nil {
+			return fmt.Errorf("encode reconciliation evidence: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO outcomes (
+				outcome_id, command_id, ordinal, status, provider_result_json,
+				observed_effect_json, reconciliation_status, outcome_sha256, occurred_at
+			) VALUES (?, ?, (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM outcomes WHERE command_id = ?), 'reconciled', ?, NULL, 'reconciled', ?, ?)`,
+			outcomeID, commandID, commandID, evidenceJSON, outcomeSHA, formatTime(now)); err != nil {
+			return fmt.Errorf("record reconciliation outcome: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE commands SET status = ?, updated_at = ? WHERE command_id = ? AND status IN ('reconciling', 'outcome_unknown')", finalStatus, formatTime(now), commandID); err != nil {
+			return fmt.Errorf("close reconciled command: %w", err)
+		}
+		verificationStatus := "inconclusive"
+		if finalStatus == "succeeded" {
+			verificationStatus = "reconciled"
+		} else if finalStatus == "failed" {
+			verificationStatus = "refuted"
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE verifications SET outcome_id = ?, status = ?, reconciled_at = ?, updated_at = ?
+			WHERE command_id = ?`, outcomeID, verificationStatus, formatTime(now), formatTime(now), commandID); err != nil {
+			return fmt.Errorf("update reconciliation verification: %w", err)
+		}
+		return nil
+	})
+}
+
+func (d *Dispatcher) markLeaseFailure(ctx context.Context, tx *sql.Tx, outboxID int64, commandID, code string, now time.Time) error {
+	if _, err := tx.ExecContext(ctx, "UPDATE commands SET status = 'failed', updated_at = ? WHERE command_id = ?", formatTime(now), commandID); err != nil {
+		return fmt.Errorf("mark invalid command failed: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE outbox SET status = 'failed', last_error_code = ?, lease_owner = NULL, lease_until = NULL WHERE outbox_id = ?`, code, outboxID); err != nil {
+		return fmt.Errorf("mark invalid outbox failed: %w", err)
+	}
+	return nil
+}
+
+func (d *Dispatcher) finishOutboxOnly(ctx context.Context, tx *sql.Tx, outboxID int64, commandStatus string, now time.Time) error {
+	status := "delivered"
+	if commandStatus == "outcome_unknown" {
+		status = "failed"
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE outbox SET status = ?, lease_owner = NULL, lease_until = NULL, delivered_at = CASE WHEN ? = 'delivered' THEN ? ELSE delivered_at END WHERE outbox_id = ?`, status, status, formatTime(now), outboxID)
+	return err
+}
+
+func verifyDigest(domain canonicaljson.Domain, document map[string]any, digest []byte) bool {
+	if len(digest) != sha256.Size {
+		return false
+	}
+	return canonicaljson.Verify(domain, document, "sha256:"+hex.EncodeToString(digest))
+}
+
+func verifyIntentDigest(document map[string]any, digest []byte) bool {
+	if len(digest) != sha256.Size || !contractsv1.VerifyIntentDigest(document) {
+		return false
+	}
+	expected, err := contractsv1.IntentDigest(document)
+	if err != nil {
+		return false
+	}
+	return expected == "sha256:"+hex.EncodeToString(digest)
+}
+
+func documentString(document map[string]any, key string) string {
+	value, _ := document[key].(string)
+	return value
+}
+
+func documentInt(document map[string]any, key string) int {
+	value, _ := document[key].(float64)
+	return int(value)
+}
+
+func mustDigest(document map[string]any, key string) []byte {
+	value, _ := document[key].(string)
+	digest, err := canonicaljson.DecodeDigest(value)
+	if err != nil {
+		return nil
+	}
+	return digest
+}
+
+func optionalJSON(value map[string]any) ([]byte, error) {
+	if value == nil {
+		return nil, nil
+	}
+	return canonicaljson.Marshal(value)
+}
+
+func nullableString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+func formatTime(value time.Time) string {
+	return value.UTC().Format(time.RFC3339Nano)
+}

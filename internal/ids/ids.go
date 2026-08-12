@@ -11,17 +11,22 @@ import (
 
 // Prefixes for the different runtime identity spaces.
 const (
-	PrefixEvent     = "evt_"
-	PrefixSituation = "sit_"
-	PrefixEpisode   = "epi_"
-	PrefixAttempt   = "att_"
-	PrefixScheduler = "sch_"
-	PrefixTrigger   = "trg_"
-	PrefixDecision  = "dec_"
-	PrefixIntent    = "int_"
-	PrefixCommand   = "cmd_"
-	PrefixArtifact  = "art_"
-	PrefixReplay    = "rpl_"
+	PrefixEvent        = "evt_"
+	PrefixSituation    = "sit_"
+	PrefixEpisode      = "epi_"
+	PrefixAttempt      = "att_"
+	PrefixScheduler    = "sch_"
+	PrefixTrigger      = "trg_"
+	PrefixDecision     = "dec_"
+	PrefixIntent       = "int_"
+	PrefixApproval     = "apr_"
+	PrefixCommand      = "cmd_"
+	PrefixOutcome      = "out_"
+	PrefixPolicy       = "pol_"
+	PrefixVerification = "ver_"
+	PrefixLease        = "lease_"
+	PrefixArtifact     = "art_"
+	PrefixReplay       = "rpl_"
 )
 
 // Generator produces unique identifiers. It is safe for concurrent use.
