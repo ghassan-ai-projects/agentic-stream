@@ -46,7 +46,7 @@ Explicitly deferred from this phase:
 - automatic startup epoch generation, recovery, and reissue of unfinished
   attempts; the issuer currently requires the runtime composition to provide
   its authoritative epoch and evidence range.
-- child-process supervision, remote workers, mTLS, Python fixtures, and
+- child-process supervision, remote workers, mTLS, and non-Go fixtures, and
   provider-specific evidence backends.
 - stale-attempt lease expiry and process-crash reissue; the existing fence
   model rejects stale output, while recovery policy is a subsequent phase.
@@ -58,6 +58,6 @@ Those surfaces are subsequent phases. Until they are implemented and tested,
 the completion bar's worker conformance gate remains open.
 
 The next phase closes automatic startup epoch generation, recovery, and fenced
-reissue of unfinished attempts. It still does not add Python workers,
+reissue of unfinished attempts. It still does not add non-Go workers,
 child-process supervision, remote transport, mTLS, or any legacy/N-1
 compatibility behavior.

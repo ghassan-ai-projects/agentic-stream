@@ -6,7 +6,7 @@
 |---|---|---|
 | ADR-001 | Situation is the primary semantic unit | Accepted |
 | ADR-002 | Separate continuous evidence processing from episodic cognition | Accepted |
-| ADR-003 | Use Go 1.26 for the core; isolate optional Python workers | Accepted |
+| ADR-003 | Use Go 1.26 for the runtime and all worker implementations | Accepted |
 | ADR-004 | Start as a single-node modular monolith | Accepted |
 | ADR-005 | Use SQLite WAL as the local system of record | Accepted |
 | ADR-006 | Author SituationSpec in YAML and compile it to deterministic IR | Accepted |
@@ -53,10 +53,10 @@ Use **Go 1.26** for the runtime, CLI, API, persistence, operator engine,
 Situation engine, scheduler, policy engine, replay engine, and the native
 episode executor.
 
-Use **Python 3.12** only for optional process-isolated workers that need the
-Python ML or agent ecosystem. Python is not required to run the simulator,
-deterministic stream plane, scheduler, policy plane, replay, or a direct
-OpenAI-compatible model executor.
+Use **Go 1.26** for the runtime and all v1 worker implementations. A worker may
+run in-process through the native executor or out of process behind the typed
+current-v1 protocol. Python is not a runtime, worker, SDK, or deployment
+requirement for this product.
 
 ### Why not TypeScript
 
@@ -101,7 +101,7 @@ boundary.
 | Local SQL | `database/sql` + `modernc.org/sqlite` | Pure-Go builds, WAL, transactions, indexes, FTS option |
 | Schema validation | `santhosh-tekuri/jsonschema/v6` | Draft-compatible compiled validation |
 | Rule expressions | `google/cel-go` | Typed, sandboxed expressions without arbitrary code |
-| Worker RPC | Protobuf + `grpc-go` | Typed streaming, cancellation, Go/Python support |
+| Worker RPC | Protobuf + `grpc-go` | Typed streaming, cancellation, Go-only v1 implementation |
 | Model transport | Provider-specific adapters; official provider SDK where available | Keep SDK types and quirks outside the episode loop |
 | MQTT | Eclipse Paho Go | Standard MQTT 5 adapter |
 | Kafka, later | `twmb/franz-go` | Native Go, good control over offsets and transactions |
@@ -121,7 +121,7 @@ Avoid in version 1:
 - an embedded workflow/graph framework;
 - Kubernetes operators;
 - a JavaScript runtime;
-- a mandatory Python environment.
+- a Python worker or mandatory Python environment.
 
 ## ADR-001: Situation is the primary semantic unit
 
@@ -145,16 +145,18 @@ finite, scheduled, budgeted, cancelable, and version-bound.
 **Consequences.** The scheduler is a first-class product component. Agent
 streaming events remain useful for observers but are not the data-stream model.
 
-## ADR-003: Go core with optional Python workers
+## ADR-003: Go runtime with Go-only workers
 
-**Context.** The hot path needs concurrency, predictable resource use, and
-simple distribution. Some time-series and agent integrations need Python.
+**Context.** The hot path and the worker boundary need concurrency,
+predictable resource use, simple distribution, and one operational toolchain.
 
-**Decision.** Go owns state and orchestration. Python workers run out of process
-behind a versioned protocol and capability-scoped tools.
+**Decision.** Go owns state, orchestration, and every v1 worker implementation.
+Workers may be native or separate Go processes behind the versioned protocol and
+capability-scoped tools.
 
-**Consequences.** The system can run without Python. Worker failure cannot
-corrupt stream state. Cross-language contracts must remain compatible.
+**Consequences.** The system has no Python runtime, worker SDK, or Python
+compatibility surface. Worker failure cannot corrupt stream state, and all
+worker conformance tests use Go implementations.
 
 ## ADR-004: Single-node modular monolith first
 

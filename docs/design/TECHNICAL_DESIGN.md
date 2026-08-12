@@ -20,8 +20,9 @@ It combines four planes:
    inspection and replay APIs, and manages operational configuration.
 
 The initial implementation is a Go modular monolith backed by SQLite WAL.
-Optional Python workers are out-of-process adapters. The system is useful with
-no external broker, no Python installation, and no web UI.
+Worker implementations are Go-only: the runtime may use its native executor or
+an out-of-process Go worker that implements the current v1 protocol. The system
+is useful with no external broker and no web UI.
 
 ## 2. Root-cause analysis
 
@@ -201,9 +202,10 @@ The main binary owns:
 - the native direct-model executor;
 - HTTP/SSE and the local worker gRPC server.
 
-Optional workers are child processes or independently managed services. The
-runtime supervises local child liveness, but an episode remains recoverable from
-the durable ledger if a worker disappears.
+Optional Go workers are child processes or independently managed Go services.
+The runtime supervises local child liveness, but an episode remains recoverable
+from the durable ledger if a worker disappears. Python workers are not part of
+the product, protocol conformance target, or deployment model.
 
 Default local sockets:
 
@@ -803,14 +805,10 @@ The validator checks:
 
 ### 12.6 External executors
 
-The worker protocol in `contracts/runtime-v1.proto` allows:
-
-- a direct Python model worker;
-- a LangGraph graph;
-- a LangChain agent;
-- a Hermes task adapter;
-- an OpenClaw runtime adapter;
-- a remote organization-specific executor.
+The worker protocol in `contracts/runtime-v1.proto` allows a native Go
+executor or a Go worker process implementing the exact current v1 contract.
+Language-specific agent frameworks and Python workers are outside the product
+boundary.
 
 The adapter receives the same immutable Episode Request and returns the same
 event vocabulary and terminal states. Framework-specific session or checkpoint
@@ -1139,7 +1137,7 @@ Threats include:
 - capability tokens scoped by tenant, entity, time range, tool, and expiry;
 - policy filtering before tool schemas are shown and revalidation at execution;
 - OS process boundary for model workers;
-- Unix socket permissions locally, mTLS remotely;
+- Unix socket permissions locally;
 - secrets referenced by name and resolved only in owning adapters;
 - redaction before logs, traces, transcripts, and artifacts;
 - fail-closed policy and approval;
@@ -1149,8 +1147,8 @@ Threats include:
 - signed release checksums and an SBOM.
 
 The in-process policy layer is authorization, not containment for arbitrary
-code. Version 1 therefore exposes no shell, Python, or generic HTTP tool to
-episode workers.
+code. Version 1 therefore exposes no shell, generic HTTP tool, or production
+credential to episode workers.
 
 ## 18. Observability
 
@@ -1234,8 +1232,9 @@ real SQLite and operator costs.
 
 ### 19.1 Local mode
 
-One binary, one database, one artifact directory, optional model API key, and
-optional worker processes. Default connectors are simulator, JSONL, and HTTP.
+One Go binary, one database, one artifact directory, optional model API key,
+and optional Go worker processes. Default connectors are simulator, JSONL, and
+HTTP.
 
 ### 19.2 Edge mode
 
@@ -1367,7 +1366,6 @@ agentic-stream/
   migrations/
   examples/predictive-maintenance/
   testdata/golden/
-  sdk/python/
   design/
   research/
 ```
