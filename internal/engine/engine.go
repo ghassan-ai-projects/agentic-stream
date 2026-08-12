@@ -568,7 +568,7 @@ func (e *Engine) RunTimerLoop(ctx context.Context, pollInterval time.Duration) e
 		select {
 		case <-ctx.Done():
 			_ = timer.Stop()
-			return ctx.Err()
+			return fmt.Errorf("timer loop interrupted: %w", ctx.Err())
 		case <-timer.C():
 		}
 	}

@@ -24,7 +24,13 @@ func TestNotificationsAreCursorResumableAndAuditExpiredCursor(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	for i, id := range []string{"evt-1", "evt-2"} {
 		event := testEvent(id, now.Add(time.Duration(i)*time.Second))
-		if err := db.WithTx(ctx, func(tx *sql.Tx) error { _, err := notify.Append(ctx, tx, event, now); return err }); err != nil {
+		if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+			_, err := notify.Append(ctx, tx, event, now)
+			if err != nil {
+				return fmt.Errorf("append notification: %w", err)
+			}
+			return nil
+		}); err != nil {
 			t.Fatalf("append %s: %v", id, err)
 		}
 	}

@@ -109,7 +109,7 @@ func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, "UPDATE episodes SET lifecycle_status = 'closed' WHERE episode_id = ?", "epi-fenced"); err != nil {
-			return err
+			return fmt.Errorf("close episode fixture: %w", err)
 		}
 		if err := ValidateWorkerIdentity(ctx, tx, second); !IsIdentityReason(err, RejectEpisodeClosed) {
 			return testErrorf("closed episode error = %v, want episode_closed", err)

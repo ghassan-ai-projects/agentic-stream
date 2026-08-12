@@ -413,10 +413,6 @@ func decisionIDFromJSON(raw []byte) string {
 	return document.DecisionID
 }
 
-func (r *Runner) failAttempt(ctx context.Context, identity Identity, reason string) error {
-	return r.failAttemptStatus(ctx, identity, AttemptFailed, reason)
-}
-
 func (r *Runner) failAttemptStatus(ctx context.Context, identity Identity, attemptStatus AttemptStatus, reason string) error {
 	return r.withTx(ctx, func(tx *sql.Tx) error {
 		terminalJSON, err := json.Marshal(map[string]any{"status": attemptStatus, "reason": reason})

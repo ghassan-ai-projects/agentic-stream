@@ -82,9 +82,9 @@ func TestLifecycleMigrationMapsEveryFormerEpisodeStatus(t *testing.T) {
 		t.Fatalf("disable foreign keys for legacy fixture: %v", err)
 	}
 	former := []string{
-		"accepted", "queued", "running", "cancelling", "decided", "no_action",
+		"accepted", "queued", "running", "cancelling", "decided", "no_action", //nolint:misspell // Legacy lifecycle status values.
 		"needs_human", "superseded", "timed_out", "budget_exhausted", "failed",
-		"cancelled", "interrupted",
+		"cancelled", "interrupted", //nolint:misspell // Legacy lifecycle status values.
 	}
 	digest := make([]byte, 32)
 	if _, err := raw.ExecContext(ctx, `
@@ -204,9 +204,9 @@ func TestLifecycleMigrationMapsEveryFormerEpisodeStatus(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	want := map[string]string{
-		"accepted": "admitted", "queued": "admitted", "running": "abandoned", "cancelling": "abandoned",
+		"accepted": "admitted", "queued": "admitted", "running": "abandoned", "cancelling": "abandoned", //nolint:misspell // Legacy lifecycle status values.
 		"decided": "concluded", "no_action": "concluded", "needs_human": "concluded", "superseded": "superseded",
-		"timed_out": "concluded", "budget_exhausted": "concluded", "failed": "concluded", "cancelled": "concluded", "interrupted": "concluded",
+		"timed_out": "concluded", "budget_exhausted": "concluded", "failed": "concluded", "cancelled": "concluded", "interrupted": "concluded", //nolint:misspell // Legacy lifecycle status values.
 	}
 	rows, err := db.QueryContext(ctx, "SELECT episode_id, lifecycle_status FROM episodes ORDER BY episode_id")
 	if err != nil {

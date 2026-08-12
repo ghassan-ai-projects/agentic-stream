@@ -449,14 +449,14 @@ func decodeJSON(data []byte) (any, error) {
 	decoder.UseNumber()
 	var value any
 	if err := decoder.Decode(&value); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode JSON value: %w", err)
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
 		if err == nil {
 			return nil, fmt.Errorf("multiple JSON values")
 		}
-		return nil, err
+		return nil, fmt.Errorf("decode trailing JSON: %w", err)
 	}
 	return value, nil
 }
@@ -475,7 +475,7 @@ func validateRawJSON(data []byte) error {
 		if err == nil {
 			return fmt.Errorf("multiple JSON values")
 		}
-		return err
+		return fmt.Errorf("decode trailing JSON: %w", err)
 	}
 	return nil
 }
@@ -483,7 +483,7 @@ func validateRawJSON(data []byte) error {
 func validateTokens(decoder *json.Decoder) error {
 	token, err := decoder.Token()
 	if err != nil {
-		return err
+		return fmt.Errorf("read JSON token: %w", err)
 	}
 	delim, ok := token.(json.Delim)
 	if !ok {
@@ -495,7 +495,7 @@ func validateTokens(decoder *json.Decoder) error {
 		for decoder.More() {
 			keyToken, err := decoder.Token()
 			if err != nil {
-				return err
+				return fmt.Errorf("read JSON object key: %w", err)
 			}
 			key, ok := keyToken.(string)
 			if !ok {
@@ -525,7 +525,7 @@ func validateTokens(decoder *json.Decoder) error {
 func expectDelimiter(decoder *json.Decoder, expected json.Delim) error {
 	token, err := decoder.Token()
 	if err != nil {
-		return err
+		return fmt.Errorf("read JSON delimiter: %w", err)
 	}
 	if token != expected {
 		return fmt.Errorf("expected JSON delimiter %q, got %v", expected, token)

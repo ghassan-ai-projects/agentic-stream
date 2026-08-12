@@ -277,12 +277,16 @@ func run(ctx context.Context, dbPath, specPath, tracePath, tenantID string, cogn
 }
 
 func runAllPartitions(ctx context.Context, eng *engine.Engine, beforeApply func(eventlog.Record) error) (int, error) {
-	return eng.RunGlobal(ctx, beforeApply)
+	count, err := eng.RunGlobal(ctx, beforeApply)
+	if err != nil {
+		return 0, fmt.Errorf("run global replay: %w", err)
+	}
+	return count, nil
 }
 
 func materializeReplayEpisodes(ctx context.Context, db *storage.DB, compiled *spec.CompiledSpec, tenantID string, now time.Time) error {
 	assembler := episodes.NewAssembler(compiled, ids.Deterministic())
-	return db.WithTx(ctx, func(tx *sql.Tx) error {
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		rows, err := tx.QueryContext(ctx, `
 			SELECT scheduler_item_id, created_at, not_before, expires_at
 			FROM scheduler_items
@@ -342,7 +346,10 @@ func materializeReplayEpisodes(ctx context.Context, db *storage.DB, compiled *sp
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return fmt.Errorf("materialize replay episodes: %w", err)
+	}
+	return nil
 }
 
 func applyCapabilities(ctx context.Context, db *storage.DB, tenantID string, mode Mode, caps Capabilities, result *Result) error {
@@ -492,9 +499,17 @@ func recordedEntries(ctx context.Context, ledger RecordedLedger, items []replayI
 				SnapshotDigest: item.SnapshotDigest,
 			})
 		}
-		return stronger.EntriesForReplay(ctx, view)
+		entries, err := stronger.EntriesForReplay(ctx, view)
+		if err != nil {
+			return nil, fmt.Errorf("entries for replay: %w", err)
+		}
+		return entries, nil
 	}
-	return ledger.Entries(ctx)
+	entries, err := ledger.Entries(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("recorded ledger entries: %w", err)
+	}
+	return entries, nil
 }
 
 type replayItem struct {
@@ -616,7 +631,7 @@ func replayEpisodeKey(situationID string, version int, triggerID string) string 
 func traceEpoch(path string) (time.Time, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return time.Time{}, err
+		return time.Time{}, fmt.Errorf("open trace: %w", err)
 	}
 	defer func() { _ = file.Close() }()
 	var first time.Time
@@ -647,29 +662,6 @@ func traceEpoch(path string) (time.Time, error) {
 		return time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), nil
 	}
 	return first, nil
-}
-
-func listPartitions(ctx context.Context, db *storage.DB, tenantID string) ([]int, error) {
-	rows, err := db.QueryContext(ctx,
-		"SELECT DISTINCT partition_id FROM event_log WHERE tenant_id = ? ORDER BY partition_id",
-		tenantID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("list partitions: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	var partitions []int
-	for rows.Next() {
-		var pid int
-		if err := rows.Scan(&pid); err != nil {
-			return nil, fmt.Errorf("scan partition: %w", err)
-		}
-		partitions = append(partitions, pid)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate partitions: %w", err)
-	}
-	return partitions, nil
 }
 
 func hashSituationVersions(ctx context.Context, db *storage.DB, deploymentID string) (string, int, error) {

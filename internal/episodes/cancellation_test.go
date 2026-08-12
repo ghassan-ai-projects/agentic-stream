@@ -2,6 +2,7 @@ package episodes
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -99,7 +100,7 @@ type blockingExecutor struct{ started chan<- struct{} }
 func (e blockingExecutor) Execute(ctx context.Context, _ *Request) (*Outcome, error) {
 	close(e.started)
 	<-ctx.Done()
-	return nil, ctx.Err()
+	return nil, fmt.Errorf("blocking executor canceled: %w", ctx.Err())
 }
 
 func (e blockingExecutor) Name() string { return "blocking" }

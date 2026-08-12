@@ -191,9 +191,12 @@ func (d *Dispatcher) assertInterlock(ctx context.Context, command Command) error
 }
 
 func (d *Dispatcher) revalidateAuthorization(ctx context.Context, leased leasedCommand) error {
-	return d.db.WithTx(ctx, func(tx *sql.Tx) error {
+	if err := d.db.WithTx(ctx, func(tx *sql.Tx) error {
 		return d.revalidateAuthorizationTx(ctx, tx, leased)
-	})
+	}); err != nil {
+		return fmt.Errorf("revalidate dispatch authorization: %w", err)
+	}
+	return nil
 }
 
 func (d *Dispatcher) revalidateAuthorizationTx(ctx context.Context, tx *sql.Tx, leased leasedCommand) error {
@@ -387,13 +390,19 @@ func (d *Dispatcher) lease(ctx context.Context) (leasedCommand, bool, error) {
 		}
 		return nil
 	})
-	return leased, found, err
+	if err != nil {
+		return leasedCommand{}, false, fmt.Errorf("lease command: %w", err)
+	}
+	return leased, found, nil
 }
 
 func (d *Dispatcher) finalize(ctx context.Context, leased leasedCommand, effect Effect, dispatchErr error) error {
-	return d.db.WithTx(ctx, func(tx *sql.Tx) error {
+	if err := d.db.WithTx(ctx, func(tx *sql.Tx) error {
 		return d.finalizeTx(ctx, tx, leased, effect, dispatchErr)
-	})
+	}); err != nil {
+		return fmt.Errorf("finalize command dispatch: %w", err)
+	}
+	return nil
 }
 
 func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCommand, effect Effect, dispatchErr error) error {
@@ -522,7 +531,7 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 	if finalStatus != "succeeded" && finalStatus != "failed" && finalStatus != "manual_review" {
 		return fmt.Errorf("invalid reconciliation status %q", finalStatus)
 	}
-	return d.db.WithTx(ctx, func(tx *sql.Tx) error {
+	if err := d.db.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := d.assertRuntimeOwner(ctx, tx); err != nil {
 			return err
 		}
@@ -567,9 +576,10 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 			return fmt.Errorf("close reconciled command: %w", err)
 		}
 		verificationStatus := "inconclusive"
-		if finalStatus == "succeeded" {
+		switch finalStatus {
+		case "succeeded":
 			verificationStatus = "reconciled"
-		} else if finalStatus == "failed" {
+		case "failed":
 			verificationStatus = "refuted"
 		}
 		if _, err := tx.ExecContext(ctx, `
@@ -584,7 +594,10 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 			return fmt.Errorf("append outcome reconciled notification: %w", err)
 		}
 		return nil
-	})
+	}); err != nil {
+		return fmt.Errorf("reconcile unknown command: %w", err)
+	}
+	return nil
 }
 
 func (d *Dispatcher) assertRuntimeOwner(ctx context.Context, tx *sql.Tx) error {
@@ -613,7 +626,10 @@ func (d *Dispatcher) finishOutboxOnly(ctx context.Context, tx *sql.Tx, outboxID 
 		status = "failed"
 	}
 	_, err := tx.ExecContext(ctx, `UPDATE outbox SET status = ?, lease_owner = NULL, lease_until = NULL, delivered_at = CASE WHEN ? = 'delivered' THEN ? ELSE delivered_at END WHERE outbox_id = ?`, status, status, formatTime(now), outboxID)
-	return err
+	if err != nil {
+		return fmt.Errorf("finish outbox: %w", err)
+	}
+	return nil
 }
 
 func verifyDigest(domain canonicaljson.Domain, document map[string]any, digest []byte) bool {
@@ -657,7 +673,11 @@ func optionalJSON(value map[string]any) ([]byte, error) {
 	if value == nil {
 		return nil, nil
 	}
-	return canonicaljson.Marshal(value)
+	encoded, err := canonicaljson.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("encode optional JSON: %w", err)
+	}
+	return encoded, nil
 }
 
 func nullableString(value string) any {

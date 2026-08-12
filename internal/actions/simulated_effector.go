@@ -39,7 +39,7 @@ func (e *SimulatedEffector) DispatchAuthorized(ctx context.Context, command Comm
 
 func (e *SimulatedEffector) dispatch(ctx context.Context, command Command) (Effect, error) {
 	if err := ctx.Err(); err != nil {
-		return Effect{}, err
+		return Effect{}, fmt.Errorf("simulated effector dispatch canceled: %w", err)
 	}
 	if command.EffectorRoute != "maintenance.ticket" && command.EffectorRoute != "create_maintenance_ticket" && command.EffectorRoute != "sim.effector" {
 		return Effect{}, fmt.Errorf("simulated effector does not support route %q", command.EffectorRoute)

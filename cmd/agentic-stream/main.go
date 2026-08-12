@@ -107,7 +107,7 @@ func newRunLiveCommand() *cobra.Command {
 			ledger := &evidence.Ledger{DB: db, LeaseOwner: epoch, RuntimeEpoch: epoch, Lease: time.Minute}
 			service, err := runtime.NewService(owner, ledger, epoch)
 			if err != nil {
-				return err
+				return fmt.Errorf("create runtime service: %w", err)
 			}
 			if _, err := service.Start(cmd.Context()); err != nil {
 				return fmt.Errorf("start runtime: %w", err)
@@ -169,7 +169,7 @@ func newRunLiveCommand() *cobra.Command {
 				}
 				conn, dialErr := worker.DialEpisodeWorkerSocketTLS(cmd.Context(), workerSocket, tlsConfig)
 				if dialErr != nil {
-					return dialErr
+					return fmt.Errorf("dial episode worker socket: %w", dialErr)
 				}
 				workerConn = conn
 				features := []string(nil)
@@ -196,7 +196,7 @@ func newRunLiveCommand() *cobra.Command {
 				Executor: executor, Effector: actions.NewSimulatedEffector(), IDGenerator: ids.Random(),
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("create runtime pipeline: %w", err)
 			}
 			if err := pipeline.Start(cmd.Context()); err != nil {
 				return fmt.Errorf("start pipeline maintenance: %w", err)
@@ -206,13 +206,16 @@ func newRunLiveCommand() *cobra.Command {
 			switch traceFormat {
 			case "normalized":
 				report, err = pipeline.RunJSONL(cmd.Context(), tracePath)
+				if err != nil {
+					return fmt.Errorf("run normalized trace: %w", err)
+				}
 			case "simulator":
 				report, err = pipeline.RunSimulatorJSONL(cmd.Context(), tracePath)
+				if err != nil {
+					return fmt.Errorf("run simulator trace: %w", err)
+				}
 			default:
 				return fmt.Errorf("unsupported --trace-format %q", traceFormat)
-			}
-			if err != nil {
-				return err
 			}
 			cmd.Printf("events_ingested=%d events_processed=%d episodes_admitted=%d episodes_executed=%d intents_evaluated=%d commands_dispatched=%d\n", report.EventsIngested, report.EventsProcessed, report.EpisodesAdmitted, report.EpisodesExecuted, report.IntentsEvaluated, report.CommandsDispatched)
 			return nil
@@ -326,7 +329,7 @@ func newServeCommand() *cobra.Command {
 			ledger := &evidence.Ledger{DB: db, LeaseOwner: epoch, RuntimeEpoch: epoch, Lease: ownerLease}
 			service, err := runtime.NewService(owner, ledger, epoch)
 			if err != nil {
-				return err
+				return fmt.Errorf("create runtime service: %w", err)
 			}
 			if _, err := service.Start(cmd.Context()); err != nil {
 				return fmt.Errorf("start runtime: %w", err)

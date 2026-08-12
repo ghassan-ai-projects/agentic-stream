@@ -268,7 +268,10 @@ func audit(ctx context.Context, db *storage.DB, tenantID, action string, request
 func auditTx(ctx context.Context, tx *sql.Tx, tenantID, action string, requested, oldest int64, now time.Time) error {
 	details, _ := canonicaljson.Marshal(map[string]any{"requested_cursor": requested, "oldest_cursor": oldest})
 	_, err := tx.ExecContext(ctx, `INSERT INTO notification_audits (audit_id, tenant_id, action, requested_cursor, oldest_cursor, details_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, ids.Random().New(ids.PrefixPolicy), tenantID, action, requested, oldest, details, now.UTC().Format(time.RFC3339Nano))
-	return err
+	if err != nil {
+		return fmt.Errorf("write notification audit: %w", err)
+	}
+	return nil
 }
 
 func recordPoisonAttempt(ctx context.Context, db *storage.DB, tenantID string, cursor int64, now time.Time) (bool, error) {

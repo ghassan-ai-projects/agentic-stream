@@ -92,5 +92,9 @@ func (e CloudEvent) ComputeEnvelopeDigest() (string, error) {
 		projection["traceparent"] = e.Traceparent
 		projection["tracestate"] = e.Tracestate
 	}
-	return canonicaljson.Digest(canonicaljson.DomainEnvelope, projection)
+	digest, err := canonicaljson.Digest(canonicaljson.DomainEnvelope, projection)
+	if err != nil {
+		return "", fmt.Errorf("digest cloud event envelope: %w", err)
+	}
+	return digest, nil
 }

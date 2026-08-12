@@ -200,7 +200,11 @@ func (e *failOnceExecutor) Execute(ctx context.Context, req *episodes.Request) (
 	if e.calls == 1 {
 		return nil, fmt.Errorf("transient worker failure")
 	}
-	return e.delegate.Execute(ctx, req)
+	outcome, err := e.delegate.Execute(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("fail-once delegate: %w", err)
+	}
+	return outcome, nil
 }
 
 func TestRunnerRetriesFailedAttemptWithNextFence(t *testing.T) {

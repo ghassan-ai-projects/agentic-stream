@@ -214,7 +214,7 @@ func (l *Ledger) ReclaimExpired(ctx context.Context, now time.Time) error {
 		return nil
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("reclaim evidence call ledger: %w", err)
 	}
 	return nil
 }
@@ -261,7 +261,10 @@ func (l *Ledger) assertOwner(ctx context.Context, tx *sql.Tx) error {
 	if l.Owner == nil {
 		return nil
 	}
-	return l.Owner.Assert(ctx, tx, l.RuntimeEpoch)
+	if err := l.Owner.Assert(ctx, tx, l.RuntimeEpoch); err != nil {
+		return fmt.Errorf("evidence ledger runtime ownership lost: %w", err)
+	}
+	return nil
 }
 
 func callFingerprint(call Call) ([]byte, error) {

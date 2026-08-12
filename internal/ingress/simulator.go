@@ -77,7 +77,7 @@ func (r *SimulatorJSONLReplay) Run(ctx context.Context) (int, error) {
 		}
 		positions, appendErr := r.log.Append(ctx, r.options.TenantID, batch)
 		if appendErr != nil {
-			return appendErr
+			return fmt.Errorf("append simulator batch: %w", appendErr)
 		}
 		for _, position := range positions {
 			if position >= 0 {

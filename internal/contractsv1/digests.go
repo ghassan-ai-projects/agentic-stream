@@ -1,6 +1,10 @@
 package contractsv1
 
-import "github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+import (
+	"fmt"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+)
 
 // IntentDigest computes the digest carried by an Intent. The digest field is
 // excluded from its own preimage so the contract is not self-referential.
@@ -11,7 +15,11 @@ func IntentDigest(document map[string]any) (string, error) {
 			withoutDigest[key] = value
 		}
 	}
-	return canonicaljson.Digest(canonicaljson.DomainIntent, withoutDigest)
+	digest, err := canonicaljson.Digest(canonicaljson.DomainIntent, withoutDigest)
+	if err != nil {
+		return "", fmt.Errorf("digest intent: %w", err)
+	}
+	return digest, nil
 }
 
 // VerifyIntentDigest verifies the digest carried by an Intent in constant

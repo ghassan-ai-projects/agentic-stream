@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -120,31 +121,34 @@ func insertExecutedCommandFixture(ctx context.Context, db *storage.DB, commandID
 		lifecycle_status, current_fence, accepted_at
 	) VALUES (?, ?, 'tenant', 'sit-reconsider', 1, 'executor', 'v1', 'policy', 'prompt', ?, ?, X'7B7D', 'concluded', 1, ?)`,
 		episodeID, "sch-"+episodeID, zero, zero, now.Format(time.RFC3339Nano)); err != nil {
-		return err
+		return fmt.Errorf("insert episode fixture: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO decisions (
 		decision_id, episode_id, attempt_id, fence, ordinal, situation_id, situation_version,
 		raw_json, decision_sha256, validation_status, validation_json, created_at
 	) VALUES (?, ?, ?, 1, 1, 'sit-reconsider', 1, X'7B7D', ?, 'accepted', X'7B7D', ?)`,
 		decisionID, episodeID, "att-"+decisionID, zero, now.Format(time.RFC3339Nano)); err != nil {
-		return err
+		return fmt.Errorf("insert decision fixture: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO intents (
 		intent_id, decision_id, tenant_id, situation_id, situation_version, intent_type, risk_class,
 		intent_json, intent_sha256, expires_at, policy_status, created_at, updated_at
 	) VALUES (?, ?, 'tenant', 'sit-reconsider', 1, 'maintenance.ticket', 'R1', X'7B7D', ?, ?, 'approved', ?, ?)`,
 		intentID, decisionID, zero, now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
-		return err
+		return fmt.Errorf("insert intent fixture: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO commands (
 		command_id, intent_id, tenant_id, effector_route, normalized_target, idempotency_key, command_json,
 		command_sha256, status, created_at, updated_at
 	) VALUES (?, ?, 'tenant', 'maintenance.ticket', 'motor/1', ?, X'7B7D', ?, 'succeeded', ?, ?)`,
 		commandID, intentID, zero, zero, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
-		return err
+		return fmt.Errorf("insert command fixture: %w", err)
 	}
 	_, err := db.ExecContext(ctx, `INSERT INTO outcomes (
 		outcome_id, command_id, ordinal, status, reconciliation_status, outcome_sha256, occurred_at
 	) VALUES (?, ?, 1, 'succeeded', 'observed', ?, ?)`, "out-"+commandID, commandID, zero, now.Format(time.RFC3339Nano))
-	return err
+	if err != nil {
+		return fmt.Errorf("insert outcome fixture: %w", err)
+	}
+	return nil
 }
