@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:situation-runtime:schema:command:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["command_id", "intent_id", "tenant_id", "effector_route", "normalized_target", "idempotency_key", "status", "created_at"],
+  "properties": {
+    "command_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "intent_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "effector_route": {"type": "string", "minLength": 1, "maxLength": 256},
+    "normalized_target": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "idempotency_key": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "status": {"enum": ["prepared", "dispatched", "outcome_unknown", "succeeded", "failed", "reconcile_required"]},
+    "payload": {"type": "object"},
+    "created_at": {"type": "string", "format": "date-time"}
+  }
+}

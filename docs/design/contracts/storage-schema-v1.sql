@@ -77,6 +77,69 @@ CREATE INDEX event_log_entity_time
 CREATE INDEX event_log_type_time
     ON event_log(tenant_id, event_type, event_time);
 
+CREATE TABLE event_schemas (
+    schema_id       TEXT PRIMARY KEY,
+    event_type      TEXT NOT NULL,
+    schema_version  TEXT NOT NULL,
+    schema_json     BLOB NOT NULL,
+    schema_sha256   BLOB NOT NULL CHECK (length(schema_sha256) = 32),
+    status          TEXT NOT NULL CHECK (status IN ('active', 'retired')),
+    created_at      TEXT NOT NULL,
+    UNIQUE (event_type, schema_version)
+) STRICT;
+
+CREATE TABLE event_quarantine (
+    quarantine_id   TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL,
+    event_id        TEXT NOT NULL,
+    event_type      TEXT NOT NULL,
+    schema_version  TEXT NOT NULL,
+    source          TEXT NOT NULL,
+    reason_code     TEXT NOT NULL,
+    payload_json    BLOB NOT NULL,
+    payload_sha256  BLOB NOT NULL CHECK (length(payload_sha256) = 32),
+    attempt_count   INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count >= 1),
+    status          TEXT NOT NULL CHECK (status IN ('quarantined', 'released', 'rejected')),
+    first_seen_at   TEXT NOT NULL,
+    last_seen_at    TEXT NOT NULL,
+    released_at     TEXT,
+    redriven_at     TEXT,
+    UNIQUE (tenant_id, event_id)
+) STRICT;
+
+CREATE TABLE event_gaps (
+    gap_id          TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL,
+    partition_id    INTEGER NOT NULL CHECK (partition_id >= 0),
+    from_position   INTEGER NOT NULL CHECK (from_position >= 0),
+    to_position     INTEGER NOT NULL CHECK (to_position >= from_position),
+    reason_code     TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
+    resolved_at     TEXT
+) STRICT;
+
+CREATE TABLE watch_conditions (
+    watch_id             TEXT PRIMARY KEY,
+    tenant_id            TEXT NOT NULL,
+    situation_id         TEXT NOT NULL,
+    situation_version    INTEGER NOT NULL CHECK (situation_version >= 1),
+    expression           TEXT NOT NULL,
+    target               TEXT NOT NULL,
+    expires_at           TEXT NOT NULL,
+    remaining_fires      INTEGER NOT NULL CHECK (remaining_fires BETWEEN 0 AND 100),
+    max_fires            INTEGER NOT NULL CHECK (max_fires BETWEEN 1 AND 100),
+    status               TEXT NOT NULL CHECK (status IN ('active', 'expired', 'disabled')),
+    created_at           TEXT NOT NULL,
+    updated_at           TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE watch_fires (
+    watch_id             TEXT NOT NULL REFERENCES watch_conditions(watch_id),
+    event_id             TEXT NOT NULL,
+    fired_at             TEXT NOT NULL,
+    PRIMARY KEY (watch_id, event_id)
+) STRICT;
+
 CREATE TABLE event_inbox (
     consumer_name       TEXT NOT NULL,
     tenant_id           TEXT NOT NULL,
@@ -180,6 +243,9 @@ CREATE TABLE situations (
     latest_event_time   TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
     created_at          TEXT NOT NULL,
+    state_codec_version INTEGER NOT NULL CHECK (state_codec_version >= 1),
+    state_json          BLOB NOT NULL,
+    state_sha256        BLOB NOT NULL CHECK (length(state_sha256) = 32),
     UNIQUE (
         tenant_id,
         situation_type,
@@ -299,6 +365,8 @@ CREATE TABLE episodes (
     model_policy        TEXT NOT NULL,
     prompt_version      TEXT NOT NULL,
     snapshot_sha256     BLOB NOT NULL CHECK (length(snapshot_sha256) = 32),
+    prompt_sha256       BLOB CHECK (prompt_sha256 IS NULL OR length(prompt_sha256) = 32),
+    objective_sha256    BLOB CHECK (objective_sha256 IS NULL OR length(objective_sha256) = 32),
     admission_key       BLOB NOT NULL UNIQUE CHECK (length(admission_key) = 32),
     request_json        BLOB NOT NULL,
     status              TEXT NOT NULL CHECK (
@@ -342,6 +410,19 @@ CREATE TABLE episode_events (
     durable             INTEGER NOT NULL CHECK (durable IN (0, 1)),
     occurred_at         TEXT NOT NULL,
     PRIMARY KEY (episode_id, sequence)
+) STRICT;
+
+CREATE TABLE episode_attempts (
+    attempt_id     TEXT PRIMARY KEY,
+    episode_id     TEXT NOT NULL REFERENCES episodes(episode_id),
+    fence          INTEGER NOT NULL CHECK (fence >= 1),
+    owner_epoch    TEXT,
+    status         TEXT NOT NULL CHECK (status IN ('dispatched', 'running', 'cancelling', 'produced', 'declined', 'cancelled', 'failed', 'timed_out', 'abandoned')),
+    started_at     TEXT NOT NULL,
+    ended_at       TEXT,
+    terminal_json  BLOB,
+    UNIQUE (episode_id, fence),
+    UNIQUE (attempt_id, episode_id, fence)
 ) STRICT;
 
 CREATE TABLE decisions (
@@ -403,7 +484,12 @@ CREATE TABLE approvals (
     decided_at          TEXT,
     approver_identity   TEXT,
     reason              TEXT,
-    approval_json       BLOB NOT NULL
+    approval_json       BLOB NOT NULL,
+    relay_identity      TEXT,
+    nonce               TEXT,
+    assertion_sha256    BLOB,
+    withdrawn_at        TEXT,
+    withdrawal_reason   TEXT
 ) STRICT;
 
 CREATE UNIQUE INDEX one_pending_approval_per_intent
@@ -487,4 +573,103 @@ CREATE TABLE replay_jobs (
     created_at          TEXT NOT NULL,
     started_at          TEXT,
     ended_at            TEXT
+) STRICT;
+
+CREATE TABLE evidence_call_ledger (
+    tenant_id             TEXT NOT NULL,
+    episode_id            TEXT NOT NULL,
+    attempt_id            TEXT NOT NULL,
+    fence                 INTEGER NOT NULL CHECK (fence >= 1),
+    call_id               TEXT NOT NULL,
+    token_id              TEXT NOT NULL,
+    runtime_epoch         TEXT NOT NULL,
+    tool_name             TEXT NOT NULL,
+    situation_id          TEXT NOT NULL,
+    situation_version     INTEGER NOT NULL CHECK (situation_version >= 1),
+    entity_id             TEXT NOT NULL,
+    time_from             TEXT NOT NULL,
+    time_until            TEXT NOT NULL,
+    max_rows              INTEGER NOT NULL CHECK (max_rows >= 1),
+    max_bytes             INTEGER NOT NULL CHECK (max_bytes >= 1),
+    deadline              TEXT NOT NULL,
+    request_sha256        BLOB NOT NULL CHECK (length(request_sha256) = 32),
+    status                TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'interrupted')),
+    result_json           BLOB,
+    result_sha256         BLOB CHECK (result_sha256 IS NULL OR length(result_sha256) = 32),
+    result_bytes          INTEGER CHECK (result_bytes IS NULL OR result_bytes = length(result_json)),
+    row_count             INTEGER CHECK (row_count IS NULL OR row_count >= 0),
+    error_code            TEXT,
+    lease_owner           TEXT NOT NULL,
+    lease_until           TEXT NOT NULL,
+    reserved_at           TEXT NOT NULL,
+    completed_at          TEXT,
+    PRIMARY KEY (tenant_id, episode_id, attempt_id, fence, call_id),
+    UNIQUE (attempt_id, fence, call_id),
+    FOREIGN KEY (attempt_id, episode_id, fence)
+        REFERENCES episode_attempts(attempt_id, episode_id, fence)
+) STRICT;
+
+CREATE TABLE runtime_owner (
+    singleton_id   INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+    owner_epoch    TEXT NOT NULL,
+    owner_instance TEXT NOT NULL,
+    acquired_at    TEXT NOT NULL,
+    heartbeat_at   TEXT NOT NULL,
+    lease_until    TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE principals (
+    principal_id TEXT PRIMARY KEY,
+    tenant_id    TEXT NOT NULL,
+    status       TEXT NOT NULL CHECK (status IN ('active', 'disabled')),
+    created_at   TEXT NOT NULL,
+    public_key   BLOB
+) STRICT;
+
+CREATE TABLE roles (
+    role_id   TEXT PRIMARY KEY,
+    role_name TEXT NOT NULL UNIQUE
+) STRICT;
+
+CREATE TABLE principal_roles (
+    principal_id TEXT NOT NULL REFERENCES principals(principal_id),
+    role_id      TEXT NOT NULL REFERENCES roles(role_id),
+    PRIMARY KEY (principal_id, role_id)
+) STRICT;
+
+CREATE TABLE approval_authorities (
+    tenant_id  TEXT NOT NULL,
+    entity_id  TEXT NOT NULL,
+    risk_class TEXT NOT NULL CHECK (risk_class IN ('R0', 'R1', 'R2', 'R3', 'R4')),
+    role_id    TEXT NOT NULL REFERENCES roles(role_id),
+    PRIMARY KEY (tenant_id, entity_id, risk_class, role_id)
+) STRICT;
+
+CREATE TABLE runtime_interlock (
+    singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+    status       TEXT NOT NULL CHECK (status IN ('ready', 'tripped')),
+    reason       TEXT NOT NULL,
+    version      INTEGER NOT NULL CHECK (version >= 1),
+    updated_at   TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE cost_limits (
+    scope_key       TEXT PRIMARY KEY,
+    tenant_id       TEXT,
+    max_micro       INTEGER NOT NULL CHECK (max_micro >= 0),
+    reserved_micro  INTEGER NOT NULL DEFAULT 0 CHECK (reserved_micro >= 0),
+    spent_micro     INTEGER NOT NULL DEFAULT 0 CHECK (spent_micro >= 0),
+    kill_switch     INTEGER NOT NULL DEFAULT 0 CHECK (kill_switch IN (0, 1)),
+    updated_at      TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE cost_reservations (
+    reservation_id TEXT PRIMARY KEY,
+    episode_id     TEXT NOT NULL UNIQUE,
+    tenant_id      TEXT NOT NULL,
+    reserved_micro INTEGER NOT NULL CHECK (reserved_micro >= 0),
+    actual_micro   INTEGER NOT NULL DEFAULT 0 CHECK (actual_micro >= 0),
+    status         TEXT NOT NULL CHECK (status IN ('reserved', 'settled', 'rejected')),
+    created_at     TEXT NOT NULL,
+    settled_at     TEXT
 ) STRICT;

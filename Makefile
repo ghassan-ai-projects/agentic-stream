@@ -11,6 +11,12 @@ MODULE    ?= github.com/ghassan-ai-projects/agentic-stream
 VERSION   := $(shell git describe --tags 2>/dev/null || echo dev)
 COMMIT    := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 LDFLAGS   := -ldflags="-X main.Version=$(VERSION) -X main.Commit=$(COMMIT)"
+PROTO     := docs/design/contracts/runtime-v1.proto
+PROTO_OUT ?= .
+TOOLS_BIN ?= $(CURDIR)/.tools/bin
+PROTOC_VERSION ?= 35.1
+PROTOC_GEN_GO_VERSION ?= v1.36.11
+PROTOC_GEN_GO_GRPC_VERSION ?= v1.6.2
 
 # Detect if any Go packages exist (after the user adds code). Used to skip
 # targets gracefully in a freshly-cloned template.
@@ -28,7 +34,8 @@ HAS_MAIN := $(if $(MAIN_PKGS),yes,no)
 
 # ---- Phony declarations ---------------------------------------------------
 .PHONY: help all build vet fmt tidy lint lint-ci test test-short test-race \
-        test-coverage ci-check deadcode vulncheck clean run cross-compile
+        test-coverage ci-check deadcode vulncheck clean run cross-compile \
+        proto-generate proto-check
 
 # ---- Help -----------------------------------------------------------------
 help: ## Show this help message
@@ -125,8 +132,31 @@ test-coverage: ## Run tests and produce HTML coverage report
 	fi
 
 # ---- Pipeline -------------------------------------------------------------
-ci-check: tidy build vet lint-ci test-short deadcode vulncheck ## Run the full CI pipeline locally (matches .github/workflows/ci.yml)
+ci-check: proto-check tidy build vet lint-ci test-short deadcode vulncheck ## Run the full CI pipeline locally (matches .github/workflows/ci.yml)
 	@echo "  CI check passed"
+
+# ---- Protocol generation --------------------------------------------------
+proto-generate: ## Generate committed Go worker protocol stubs
+	@mkdir -p $(TOOLS_BIN) $(PROTO_OUT)
+	@actual_protoc=$$(protoc --version 2>/dev/null | awk '{print $$2}'); \
+		test "$$actual_protoc" = "$(PROTOC_VERSION)" || { echo "protoc $(PROTOC_VERSION) is required (found $$actual_protoc)"; exit 1; }
+	@if [ ! -x "$(TOOLS_BIN)/protoc-gen-go" ]; then \
+		GOBIN=$(TOOLS_BIN) go install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION); \
+	fi
+	@if [ ! -x "$(TOOLS_BIN)/protoc-gen-go-grpc" ]; then \
+		GOBIN=$(TOOLS_BIN) go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION); \
+	fi
+	PATH=$(TOOLS_BIN):$$PATH protoc \
+		--proto_path=docs/design/contracts \
+		--go_out=$(PROTO_OUT) --go_opt=paths=import --go_opt=module=$(MODULE) \
+		--go-grpc_out=$(PROTO_OUT) --go-grpc_opt=paths=import --go-grpc_opt=module=$(MODULE) \
+		$(PROTO)
+
+proto-check: ## Verify generated worker protocol stubs are current
+	@tmp_dir=$$(mktemp -d); \
+		trap 'rm -rf "$$tmp_dir"' EXIT; \
+		$(MAKE) --no-print-directory proto-generate PROTO_OUT="$$tmp_dir" TOOLS_BIN="$(TOOLS_BIN)" >/dev/null; \
+		diff -ru proto "$$tmp_dir/proto"
 
 # ---- Tools ----------------------------------------------------------------
 deadcode: ## Detect unused exported functions

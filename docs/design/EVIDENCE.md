@@ -230,7 +230,7 @@ uses the runtime's event/state ledgers as the product-level recovery boundary.
 |---|---|
 | Situation-centered product | Primary streaming architecture report |
 | Go modular monolith | Report language evaluation plus core workload analysis |
-| Optional Python workers | Python agent/ML ecosystem observed in Hermes, LangGraph, and LangChain |
+| Go-only workers | Go runtime and protocol boundary selected for one operational toolchain; Python agent/ML ecosystems are not a v1 runtime target |
 | No agent framework in core | Framework source boundaries and event-time gap |
 | Explicit native episode loop | Hermes/OpenClaw/OpenCode loop evidence |
 | Typed worker event stream | Hermes/OpenClaw structured event contracts |
@@ -253,9 +253,9 @@ uses the runtime's event/state ledgers as the product-level recovery boundary.
 4. Hermes and OpenClaw have accumulated robustness from many incidents. The new
    runtime should copy contracts and guards, not thousands of provider-specific
    recovery branches before encountering the corresponding need.
-5. The design's Go/framework selection is an architectural recommendation,
-   not a claim that Go has the strongest model ecosystem. The worker boundary
-   exists precisely because Python is stronger there.
+5. The design's Go/framework selection is an architectural decision for v1.
+   Python agent ecosystems were considered as research evidence but are not a
+   worker, SDK, or deployment target.
 
 ## 7. Re-verification checklist before adapter implementation
 

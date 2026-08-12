@@ -13,24 +13,28 @@ inputs:
   - name: vibration
     eventType: motor.vibration.observed
     schemaVersion: "1.0"
+    schema: motor.vibration.observed/1.0
     partitionKey: entity.id
     entityType: motor
     classification: internal
   - name: temperature
     eventType: motor.temperature.observed
     schemaVersion: "1.0"
+    schema: motor.temperature.observed/1.0
     partitionKey: entity.id
     entityType: motor
     classification: internal
   - name: current
     eventType: motor.current.observed
     schemaVersion: "1.0"
+    schema: motor.current.observed/1.0
     partitionKey: entity.id
     entityType: motor
     classification: internal
   - name: heartbeat
     eventType: motor.heartbeat.observed
     schemaVersion: "1.0"
+    schema: motor.heartbeat.observed/1.0
     partitionKey: entity.id
     entityType: motor
     classification: internal
@@ -209,6 +213,8 @@ cognition:
       Diagnose the most likely cause of the motor condition, identify
       contradicting evidence, and propose safe inspection or maintenance steps.
       Do not propose stopping or controlling the motor.
+    prompt: >
+      Analyze the immutable situation snapshot and evidence, then return a typed decision.
     modelPolicy: maintenance_reasoner
     promptVersion: maintenance-v1
     decisionSchema: schemas/maintenance-decision-v1.json

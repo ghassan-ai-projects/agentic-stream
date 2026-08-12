@@ -28,13 +28,13 @@ The runtime is deliberately lighter than Hermes Agent and OpenClaw:
 | Area | Choice |
 |---|---|
 | Core runtime and CLI | Go 1.26 |
-| Deployment shape | Modular monolith; one binary plus optional worker processes |
+| Deployment shape | Modular monolith; one Go binary plus optional Go worker processes |
 | Local persistence | SQLite 3 in WAL mode through `modernc.org/sqlite` |
 | Spec format | YAML authoring, JSON Schema validation, canonical JSON digest |
 | Rule expressions | CEL through `cel-go`, restricted to deterministic functions |
 | Public local API | JSON/HTTP plus Server-Sent Events using Go `net/http` |
 | Worker protocol | Protobuf and gRPC over Unix domain socket by default |
-| Optional model/ML workers | Python 3.12, Pydantic v2, `grpcio` |
+| Worker implementations | Go 1.26 only; native executor or current-v1 Go worker process |
 | Telemetry | OpenTelemetry traces, metrics, and structured logs |
 | First ingress | Simulator, file replay, HTTP, then MQTT |
 | Later durable brokers | Kafka via `franz-go`; NATS via `nats.go` |

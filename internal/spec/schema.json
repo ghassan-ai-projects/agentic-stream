@@ -116,6 +116,7 @@
         "name",
         "eventType",
         "schemaVersion",
+        "schema",
         "partitionKey",
         "entityType"
       ],
@@ -130,6 +131,10 @@
         "schemaVersion": {
           "type": "string",
           "pattern": "^[0-9]+\\.[0-9]+$"
+        },
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{1,126}/[0-9]+\\.[0-9]+$"
         },
         "partitionKey": {
           "type": "string",
@@ -595,6 +600,7 @@
       "required": [
         "name",
         "objective",
+        "prompt",
         "modelPolicy",
         "promptVersion",
         "decisionSchema",
@@ -609,6 +615,11 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 4096
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32768
         },
         "modelPolicy": {
           "$ref": "#/$defs/name"
@@ -629,6 +640,9 @@
           "items": {
             "$ref": "#/$defs/name"
           }
+        },
+        "riskCeiling": {
+          "enum": ["R0", "R1", "R2", "R3", "R4"]
         },
         "budget": {
           "$ref": "#/$defs/budget"

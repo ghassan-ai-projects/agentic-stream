@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
 )
 
 //go:embed schema.json
@@ -162,7 +164,7 @@ func (c *Compiler) CompileBytes(ctx context.Context, data []byte, path string) (
 	if err != nil {
 		return nil, fmt.Errorf("canonical json: %w", err)
 	}
-	digest, err := canonicaljson.Digest(spec)
+	digest, err := canonicaljson.Digest(canonicaljson.DomainSpec, spec)
 	if err != nil {
 		return nil, fmt.Errorf("digest: %w", err)
 	}
@@ -174,18 +176,18 @@ func (c *Compiler) CompileBytes(ctx context.Context, data []byte, path string) (
 
 // rawSpec mirrors the external YAML/JSON shape exactly.
 type rawSpec struct {
-	APIVersion string       `yaml:"apiVersion" json:"apiVersion"`
-	Kind       string       `yaml:"kind" json:"kind"`
-	Metadata   Metadata     `yaml:"metadata" json:"metadata"`
-	Inputs     []Input      `yaml:"inputs" json:"inputs"`
-	Time       TimePolicy   `yaml:"time" json:"time"`
-	Windows    []Window     `yaml:"windows" json:"windows"`
-	Operators  []Operator   `yaml:"operators" json:"operators"`
-	Situation  Situation    `yaml:"situation" json:"situation"`
-	Cognition  Cognition    `yaml:"cognition" json:"cognition"`
-	Actions    Actions      `yaml:"actions" json:"actions"`
-	Retention  *Retention   `yaml:"retention,omitempty" json:"retention,omitempty"`
-	Telemetry  *Telemetry   `yaml:"telemetry,omitempty" json:"telemetry,omitempty"`
+	APIVersion string     `yaml:"apiVersion" json:"apiVersion"`
+	Kind       string     `yaml:"kind" json:"kind"`
+	Metadata   Metadata   `yaml:"metadata" json:"metadata"`
+	Inputs     []Input    `yaml:"inputs" json:"inputs"`
+	Time       TimePolicy `yaml:"time" json:"time"`
+	Windows    []Window   `yaml:"windows" json:"windows"`
+	Operators  []Operator `yaml:"operators" json:"operators"`
+	Situation  Situation  `yaml:"situation" json:"situation"`
+	Cognition  Cognition  `yaml:"cognition" json:"cognition"`
+	Actions    Actions    `yaml:"actions" json:"actions"`
+	Retention  *Retention `yaml:"retention,omitempty" json:"retention,omitempty"`
+	Telemetry  *Telemetry `yaml:"telemetry,omitempty" json:"telemetry,omitempty"`
 }
 
 func normalize(r *rawSpec) (*CompiledSpec, error) {
@@ -227,6 +229,9 @@ func normalize(r *rawSpec) (*CompiledSpec, error) {
 			spec.Actions.Intents[i].Policy = "approval"
 		}
 	}
+	if spec.Cognition.Executor.RiskCeiling == "" {
+		spec.Cognition.Executor.RiskCeiling = "R1"
+	}
 
 	return spec, nil
 }
@@ -238,6 +243,13 @@ func resolveReferences(spec *CompiledSpec) error {
 			return &CompileError{Path: "inputs", Message: fmt.Sprintf("duplicate input name %q", in.Name)}
 		}
 		inputs[in.Name] = struct{}{}
+		definition, ok := eventschema.Lookup(in.SchemaRef)
+		if !ok {
+			return &CompileError{Path: fmt.Sprintf("inputs.%s.schema", in.Name), Message: fmt.Sprintf("unknown event schema %q", in.SchemaRef)}
+		}
+		if definition.EventType != in.EventType || definition.SchemaVersion != in.SchemaVersion {
+			return &CompileError{Path: fmt.Sprintf("inputs.%s.schema", in.Name), Message: "schema reference does not match eventType/schemaVersion"}
+		}
 	}
 
 	windows := make(map[string]struct{}, len(spec.Windows))
@@ -280,6 +292,24 @@ func resolveReferences(spec *CompiledSpec) error {
 		if op.Window != "" {
 			if _, ok := windows[op.Window]; !ok {
 				return &CompileError{Path: fmt.Sprintf("operators.%s.window", op.Name), Message: fmt.Sprintf("unknown window %q", op.Window)}
+			}
+		}
+		if op.Field != "" && strings.HasPrefix(op.Field, "data.") {
+			fieldName := strings.TrimPrefix(op.Field, "data.")
+			for _, inputName := range op.Inputs {
+				for _, in := range spec.Inputs {
+					if in.Name != inputName {
+						continue
+					}
+					definition, _ := eventschema.Lookup(in.SchemaRef)
+					field, exists := definition.Fields[fieldName]
+					if !exists {
+						return &CompileError{Path: fmt.Sprintf("operators.%s.field", op.Name), Message: fmt.Sprintf("payload field %q is not declared by schema %q", fieldName, in.SchemaRef)}
+					}
+					if op.Kind == "aggregate" && op.Unit != "" && op.Unit != field.Unit {
+						return &CompileError{Path: fmt.Sprintf("operators.%s.unit", op.Name), Message: fmt.Sprintf("unit %q does not match field %q unit %q", op.Unit, fieldName, field.Unit)}
+					}
+				}
 			}
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -15,17 +16,74 @@ import (
 // DB wraps a sql.DB with runtime-specific configuration.
 type DB struct {
 	*sql.DB
+	reservationPath string
 }
 
 // Open opens or creates the SQLite database at path and runs pending migrations.
 func Open(ctx context.Context, path string) (*DB, error) {
+	if _, err := os.Lstat(path + ".replay-reservation"); err == nil {
+		return nil, fmt.Errorf("database path is reserved by an active replay: %s", path)
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("inspect replay reservation: %w", err)
+	}
+	return open(ctx, path)
+}
+
+// OpenFresh atomically reserves a new database path before opening SQLite.
+// It is used by isolated replay so an existing database, symlink, or
+// concurrent creator cannot be mistaken for a disposable run database.
+func OpenFresh(ctx context.Context, path string) (*DB, error) {
+	reservationPath := path + ".replay-reservation"
+	if err := os.Mkdir(reservationPath, 0o700); err != nil {
+		return nil, fmt.Errorf("reserve replay directory: %w", err)
+	}
+	cleanup := func() { _ = os.Remove(reservationPath) }
+	for _, sidecar := range []string{path + "-wal", path + "-shm"} {
+		if _, err := os.Lstat(sidecar); err == nil {
+			cleanup()
+			return nil, fmt.Errorf("fresh database sidecar already exists: %s", sidecar)
+		} else if !os.IsNotExist(err) {
+			cleanup()
+			return nil, fmt.Errorf("inspect fresh database sidecar: %w", err)
+		}
+	}
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("reserve fresh database path: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("close reserved database path: %w", err)
+	}
+	db, err := open(ctx, path)
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+	db.reservationPath = reservationPath
+	return db, nil
+}
+
+// Close closes the database and releases its private replay reservation.
+func (db *DB) Close() error {
+	err := db.DB.Close()
+	if db.reservationPath != "" {
+		if cleanupErr := os.Remove(db.reservationPath); err == nil {
+			err = cleanupErr
+		}
+	}
+	return err
+}
+
+func open(ctx context.Context, path string) (*DB, error) {
 	connStr := fmt.Sprintf("%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)", path)
 	sqlDB, err := sql.Open("sqlite", connStr)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
-	db := &DB{sqlDB}
+	db := &DB{DB: sqlDB}
 	if err := db.Migrate(ctx); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("migrate: %w", err)

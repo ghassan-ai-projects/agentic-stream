@@ -82,7 +82,8 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `migrations/` - SQLite migrations
 - `examples/predictive-maintenance/` - the first product acceptance test
 - `testdata/golden/` - golden replay traces
-- `sdk/python/` - optional model/ML workers (Python 3.12, Pydantic v2)
+- Worker implementations are Go-only; use the current-v1 protobuf/gRPC boundary
+  for a separate Go worker process.
 - `docs/` - design (v1 + archived v0/v0.1), contracts, examples, research reports
 
 Keep most Go packages under `internal` until their contracts survive a release. Public SDK packages contain client and authoring types only.

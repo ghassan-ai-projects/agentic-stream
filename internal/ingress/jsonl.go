@@ -99,10 +99,25 @@ func (c *JSONLReplay) Run(ctx context.Context) (int, error) {
 		}
 		var env contractsv1.Envelope
 		if err := json.Unmarshal(line, &env); err != nil {
-			return appended, fmt.Errorf("parse line %d: %w", lineNum, err)
+			if quarantineErr := c.log.QuarantineRaw(ctx, c.tenantID, "line:"+fmt.Sprint(lineNum), line, "malformed_json", c.clk.Now().UTC().Format(time.RFC3339Nano)); quarantineErr != nil {
+				return appended, fmt.Errorf("quarantine line %d: %w", lineNum, quarantineErr)
+			}
+			continue
 		}
 		if env.TenantID == "" {
 			env.TenantID = c.tenantID
+		}
+		if err := contractsv1.ValidateEnvelope(env, c.tenantID); err != nil {
+			if quarantineErr := c.log.QuarantineEnvelope(ctx, c.tenantID, env, "envelope_invalid", c.clk.Now().UTC().Format(time.RFC3339Nano)); quarantineErr != nil {
+				return appended, fmt.Errorf("quarantine line %d: %w", lineNum, quarantineErr)
+			}
+			continue
+		}
+		if err := c.log.ValidateEnvelope(ctx, env); err != nil {
+			if quarantineErr := c.log.QuarantineEnvelope(ctx, c.tenantID, env, "schema_invalid", c.clk.Now().UTC().Format(time.RFC3339Nano)); quarantineErr != nil {
+				return appended, fmt.Errorf("quarantine line %d: %w", lineNum, quarantineErr)
+			}
+			continue
 		}
 		batch = append(batch, env)
 		if len(batch) >= 100 {

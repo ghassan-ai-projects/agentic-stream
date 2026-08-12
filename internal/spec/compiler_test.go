@@ -44,6 +44,38 @@ func TestCompileStableDigestForEquivalentYAML(t *testing.T) {
 	}
 }
 
+func TestCompilePromptContentChangesDigestWithoutVersionChange(t *testing.T) {
+	base := minimalSpecYAML()
+	changed := strings.Replace(base, "prompt: Analyze the situation and return a typed decision.", "prompt: Return a typed decision with explicit evidence.", 1)
+	first, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(base), "base.yaml")
+	if err != nil {
+		t.Fatalf("compile base: %v", err)
+	}
+	second, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(changed), "changed.yaml")
+	if err != nil {
+		t.Fatalf("compile changed: %v", err)
+	}
+	if first.Digest == second.Digest {
+		t.Fatal("prompt content change did not change compiled provenance")
+	}
+}
+
+func TestCompileRejectsUndeclaredPayloadField(t *testing.T) {
+	yaml := strings.Replace(minimalSpecYAML(), "field: data.value", "field: data.not_declared", 1)
+	_, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
+	if err == nil || !strings.Contains(err.Error(), "not_declared") {
+		t.Fatalf("expected undeclared payload field diagnostic, got %v", err)
+	}
+}
+
+func TestCompileRejectsPayloadUnitMismatch(t *testing.T) {
+	yaml := strings.Replace(minimalSpecYAML(), "    aggregate: mean\n", "    aggregate: mean\n    unit: kelvin\n", 1)
+	_, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
+	if err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("expected unit mismatch diagnostic, got %v", err)
+	}
+}
+
 func TestCompileRejectsUnknownOperatorOutput(t *testing.T) {
 	yaml := strings.ReplaceAll(minimalSpecYAML(),
 		"      input: mean_value",
@@ -106,6 +138,7 @@ inputs:
   - name: temp
     eventType: sensor.temperature
     schemaVersion: "1.0"
+    schema: sensor.temperature/1.0
     partitionKey: entity.id
     entityType: sensor
 time:
@@ -157,6 +190,7 @@ cognition:
   executor:
     name: fake
     objective: test
+    prompt: Analyze the situation and return a typed decision.
     modelPolicy: fake
     promptVersion: v1
     decisionSchema: schemas/test.json

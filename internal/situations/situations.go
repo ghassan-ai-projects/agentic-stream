@@ -15,6 +15,8 @@ import (
 
 	"github.com/google/cel-go/cel"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
@@ -34,33 +36,36 @@ type Engine struct {
 }
 
 type situationKey struct {
-	entityType string
-	entityID   string
+	partitionID int
+	entityType  string
+	entityID    string
 }
 
 // Situation is the mutable current state for one occurrence.
 type Situation struct {
-	SituationID   string
-	TenantID      string
-	DeploymentID  string
-	Type          string
-	EntityType    string
-	EntityID      string
-	PartitionID   int
-	OccurrenceID  string
-	Version       int
-	Phase         string
-	PreviousPhase string
-	Severity      int
-	Confidence    float64
-	Completeness  string
-	FirstEventTime time.Time
+	SituationID     string
+	TenantID        string
+	DeploymentID    string
+	Type            string
+	EntityType      string
+	EntityID        string
+	PartitionID     int
+	OccurrenceID    string
+	Version         int
+	Phase           string
+	PreviousPhase   string
+	Severity        int
+	Confidence      float64
+	Completeness    string
+	FirstEventTime  time.Time
 	LatestEventTime time.Time
-	Facts         map[string]any
-	Evidence      map[string]struct{}
-	ConditionStart map[string]time.Time // transition key -> first true event time
-	OpenedAt      time.Time
-	UpdatedAt     time.Time
+	Facts           map[string]any
+	Evidence        map[string]struct{}
+	ConditionStart  map[string]time.Time // transition key -> first true event time
+	OpenedAt        time.Time
+	UpdatedAt       time.Time
+	Traceparent     string
+	Tracestate      string
 }
 
 // Version is an immutable Situation version.
@@ -78,10 +83,84 @@ type Version struct {
 	EntityID        string
 	EventHorizon    time.Time
 	Watermark       time.Time
+	Traceparent     string
+	Tracestate      string
+	OccurrenceID    string
+	FirstEventTime  time.Time
+	UpdatedAt       time.Time
+	ConditionStart  map[string]time.Time
+	StateJSON       []byte
+	StateSHA256     string
 	Facts           map[string]any
 	Evidence        []string
 	SnapshotJSON    []byte
 	SnapshotSHA256  string
+}
+
+// Restore loads one durable current Situation into the in-memory index.
+func (e *Engine) Restore(s Situation) error {
+	if s.SituationID == "" || s.EntityType == "" || s.EntityID == "" {
+		return fmt.Errorf("restore situation requires identity")
+	}
+	if s.Facts == nil {
+		s.Facts = make(map[string]any)
+	}
+	if s.Evidence == nil {
+		s.Evidence = make(map[string]struct{})
+	}
+	if s.ConditionStart == nil {
+		s.ConditionStart = make(map[string]time.Time)
+	}
+	e.active[situationKey{partitionID: s.PartitionID, entityType: s.EntityType, entityID: s.EntityID}] = &s
+	return nil
+}
+
+// Reset discards the in-memory index so it can be rebuilt from durable state
+// after a transaction rollback.
+func (e *Engine) Reset() {
+	e.active = make(map[situationKey]*Situation)
+}
+
+// CurrentState returns a copy of the current Situation and its canonical
+// reducer-state payload for transactional persistence.
+func (e *Engine) CurrentState(partitionID int, entityType, entityID string) (Situation, []byte, string, bool, error) {
+	sit, ok := e.active[situationKey{partitionID: partitionID, entityType: entityType, entityID: entityID}]
+	if !ok {
+		return Situation{}, nil, "", false, nil
+	}
+	copy := *sit
+	copy.Facts = cloneMap(sit.Facts)
+	copy.Evidence = cloneSet(sit.Evidence)
+	copy.ConditionStart = cloneTimes(sit.ConditionStart)
+	blob, err := stateJSON(&copy)
+	if err != nil {
+		return Situation{}, nil, "", false, err
+	}
+	var document map[string]any
+	if err := json.Unmarshal(blob, &document); err != nil {
+		return Situation{}, nil, "", false, fmt.Errorf("decode current state: %w", err)
+	}
+	digest, err := canonicaljson.Digest(canonicaljson.DomainSituationState, document)
+	if err != nil {
+		return Situation{}, nil, "", false, fmt.Errorf("digest current state: %w", err)
+	}
+	return copy, blob, digest, true, nil
+}
+
+func cloneMap(values map[string]any) map[string]any {
+	clone := make(map[string]any, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
+}
+
+func cloneSet(values map[string]struct{}) map[string]struct{} {
+	clone := make(map[string]struct{}, len(values))
+	for key := range values {
+		clone[key] = struct{}{}
+	}
+	return clone
 }
 
 // NewEngine creates a situation engine.
@@ -103,19 +182,33 @@ func NewEngine(deploymentID, tenantID string, partitionID int, compiled *spec.Co
 
 // ApplyFeature updates situation state with one emitted feature.
 func (e *Engine) ApplyFeature(ctx context.Context, feature operators.Feature, watermark time.Time) ([]Version, error) {
-	key := situationKey{entityType: feature.EntityType, entityID: feature.EntityID}
+	key := situationKey{partitionID: feature.PartitionID, entityType: feature.EntityType, entityID: feature.EntityID}
 	sit, ok := e.active[key]
 	if !ok {
-		sit = e.newSituation(feature.EntityType, feature.EntityID, feature.EventTime)
+		sit = e.newSituation(feature.PartitionID, feature.EntityType, feature.EntityID, feature.EventTime)
 		e.active[key] = sit
+	}
+	completenessChanged := feature.Completeness != "" && feature.Completeness != sit.Completeness
+	if feature.Completeness != "" {
+		sit.Completeness = feature.Completeness
 	}
 
 	e.applyReducers(sit, feature)
+	if len(feature.Metadata) > 0 {
+		if sit.Facts == nil {
+			sit.Facts = make(map[string]any)
+		}
+		sit.Facts["timer_provenance"] = cloneMap(feature.Metadata)
+	}
 	sit.LatestEventTime = feature.EventTime
+	if feature.Traceparent != "" || !feature.TraceContinuation {
+		sit.Traceparent = feature.Traceparent
+		sit.Tracestate = feature.Tracestate
+	}
 
-	version, err := e.evaluate(ctx, sit, feature, watermark)
+	version, err := e.evaluate(ctx, sit, feature, watermark, completenessChanged)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("evaluate situation: %w", err)
 	}
 	if version == nil {
 		return nil, nil
@@ -124,16 +217,19 @@ func (e *Engine) ApplyFeature(ctx context.Context, feature operators.Feature, wa
 	return []Version{*version}, nil
 }
 
-func (e *Engine) newSituation(entityType, entityID string, eventTime time.Time) *Situation {
+func (e *Engine) newSituation(partitionID int, entityType, entityID string, eventTime time.Time) *Situation {
+	identity := fmt.Sprintf("%s\x00%s\x00%d\x00%s\x00%s\x00%s", e.tenantID, e.deploymentID, partitionID, e.spec.Situation.Type, entityType, entityID)
+	hash := sha256.Sum256([]byte(identity))
+	stableID := "sit_" + hex.EncodeToString(hash[:])
 	return &Situation{
-		SituationID:     e.idGen.New(ids.PrefixSituation),
+		SituationID:     stableID,
 		TenantID:        e.tenantID,
 		DeploymentID:    e.deploymentID,
 		Type:            e.spec.Situation.Type,
 		EntityType:      entityType,
 		EntityID:        entityID,
-		PartitionID:     e.partitionID,
-		OccurrenceID:    e.idGen.New(ids.PrefixSituation),
+		PartitionID:     partitionID,
+		OccurrenceID:    "occ_" + hex.EncodeToString(hash[:]),
 		Version:         0,
 		Phase:           e.spec.Situation.InitialPhase,
 		Severity:        e.initialSeverity(),
@@ -146,6 +242,8 @@ func (e *Engine) newSituation(entityType, entityID string, eventTime time.Time) 
 		ConditionStart:  make(map[string]time.Time),
 		OpenedAt:        eventTime,
 		UpdatedAt:       eventTime,
+		Traceparent:     "",
+		Tracestate:      "",
 	}
 }
 
@@ -182,7 +280,7 @@ func (e *Engine) applyReducers(sit *Situation, feature operators.Feature) {
 	}
 }
 
-func (e *Engine) evaluate(ctx context.Context, sit *Situation, feature operators.Feature, watermark time.Time) (*Version, error) {
+func (e *Engine) evaluate(ctx context.Context, sit *Situation, feature operators.Feature, watermark time.Time, completenessChanged bool) (*Version, error) {
 	features := e.buildFeaturesMap(sit)
 	situation := e.buildSituationMap(sit)
 
@@ -241,6 +339,11 @@ func (e *Engine) evaluate(ctx context.Context, sit *Situation, feature operators
 			changed = true
 		}
 	}
+	if completenessChanged && sit.Version > 0 && !changed {
+		sit.Version++
+		sit.UpdatedAt = watermark
+		changed = true
+	}
 
 	if !changed {
 		return nil, nil
@@ -279,35 +382,64 @@ func (e *Engine) materialize(sit *Situation, watermark time.Time) (*Version, err
 		}
 	}
 
-	evidence := make([]string, 0, len(sit.Evidence))
+	evidenceIDs := make([]string, 0, len(sit.Evidence))
 	for id := range sit.Evidence {
-		evidence = append(evidence, id)
+		evidenceIDs = append(evidenceIDs, id)
 	}
-	sort.Strings(evidence)
+	sort.Strings(evidenceIDs)
+	evidence := make([]any, len(evidenceIDs))
+	for i, id := range evidenceIDs {
+		evidence[i] = id
+	}
 
+	specDigest := e.spec.Digest
+	if specDigest == "" {
+		return nil, fmt.Errorf("compiled spec has no digest")
+	}
+	if _, err := canonicaljson.DecodeDigest(specDigest); err != nil {
+		return nil, fmt.Errorf("invalid spec digest: %w", err)
+	}
 	snapshot := map[string]any{
-		"situation_id":   sit.SituationID,
-		"type":           sit.Type,
-		"entity_type":    sit.EntityType,
-		"entity_id":      sit.EntityID,
-		"partition_id":   sit.PartitionID,
-		"version":        sit.Version,
-		"phase":          sit.Phase,
-		"previous_phase": sit.PreviousPhase,
-		"severity":       sit.Severity,
-		"confidence":     sit.Confidence,
-		"completeness":   sit.Completeness,
-		"facts":          facts,
-		"evidence":       evidence,
-		"event_horizon":  sit.LatestEventTime.Format(time.RFC3339Nano),
-		"watermark":      watermark.Format(time.RFC3339Nano),
+		"situation_id":      sit.SituationID,
+		"situation_version": sit.Version,
+		"situation_type":    sit.Type,
+		"tenant_id":         sit.TenantID,
+		"entity":            map[string]any{"type": sit.EntityType, "id": sit.EntityID},
+		"partition_id":      sit.PartitionID,
+		"phase":             sit.Phase,
+		"previous_phase":    sit.PreviousPhase,
+		"severity":          sit.Severity,
+		"confidence":        sit.Confidence,
+		"completeness":      sit.Completeness,
+		"facts":             facts,
+		"evidence":          evidence,
+		"event_horizon":     sit.LatestEventTime.Format(time.RFC3339Nano),
+		"watermark":         watermark.Format(time.RFC3339Nano),
+		"spec_digest":       specDigest,
 	}
-
-	snapshotJSON, err := json.Marshal(snapshot)
+	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, snapshot); err != nil {
+		return nil, fmt.Errorf("validate snapshot: %w", err)
+	}
+	snapshotJSON, err := canonicaljson.Marshal(snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("marshal snapshot: %w", err)
 	}
-	h := sha256.Sum256(snapshotJSON)
+	digest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("digest snapshot: %w", err)
+	}
+	stateBlob, err := stateJSON(sit)
+	if err != nil {
+		return nil, fmt.Errorf("marshal persisted state: %w", err)
+	}
+	var stateDocument map[string]any
+	if err := json.Unmarshal(stateBlob, &stateDocument); err != nil {
+		return nil, fmt.Errorf("decode persisted state: %w", err)
+	}
+	stateDigest, err := canonicaljson.Digest(canonicaljson.DomainSituationState, stateDocument)
+	if err != nil {
+		return nil, fmt.Errorf("digest persisted state: %w", err)
+	}
 
 	return &Version{
 		SituationID:     sit.SituationID,
@@ -324,10 +456,65 @@ func (e *Engine) materialize(sit *Situation, watermark time.Time) (*Version, err
 		EventHorizon:    sit.LatestEventTime,
 		Watermark:       watermark,
 		Facts:           facts,
-		Evidence:        evidence,
+		Evidence:        evidenceIDs,
 		SnapshotJSON:    snapshotJSON,
-		SnapshotSHA256:  hex.EncodeToString(h[:]),
+		SnapshotSHA256:  digest,
+		Traceparent:     sit.Traceparent,
+		Tracestate:      sit.Tracestate,
+		OccurrenceID:    sit.OccurrenceID,
+		FirstEventTime:  sit.FirstEventTime,
+		UpdatedAt:       sit.UpdatedAt,
+		ConditionStart:  cloneTimes(sit.ConditionStart),
+		StateJSON:       stateBlob,
+		StateSHA256:     stateDigest,
 	}, nil
+}
+
+func stateJSON(sit *Situation) ([]byte, error) {
+	evidence := make([]string, 0, len(sit.Evidence))
+	for id := range sit.Evidence {
+		evidence = append(evidence, id)
+	}
+	sort.Strings(evidence)
+	facts := make(map[string]any, len(sit.Facts))
+	for key, value := range sit.Facts {
+		if timestamp, ok := value.(time.Time); ok {
+			facts[key] = timestamp.UTC().Format(time.RFC3339Nano)
+			continue
+		}
+		facts[key] = value
+	}
+	conditionStart := make(map[string]string, len(sit.ConditionStart))
+	for key, value := range sit.ConditionStart {
+		conditionStart[key] = value.UTC().Format(time.RFC3339Nano)
+	}
+	blob, err := canonicaljson.Marshal(stateDocument(sit, facts, evidence, conditionStart))
+	if err != nil {
+		return nil, fmt.Errorf("marshal situation state: %w", err)
+	}
+	return blob, nil
+}
+
+func stateDocument(sit *Situation, facts map[string]any, evidence []string, conditionStart map[string]string) map[string]any {
+	return map[string]any{
+		"situation_id":    sit.SituationID,
+		"occurrence_id":   sit.OccurrenceID,
+		"partition_id":    sit.PartitionID,
+		"version":         sit.Version,
+		"facts":           facts,
+		"evidence":        evidence,
+		"condition_start": conditionStart,
+		"traceparent":     sit.Traceparent,
+		"tracestate":      sit.Tracestate,
+	}
+}
+
+func cloneTimes(values map[string]time.Time) map[string]time.Time {
+	clone := make(map[string]time.Time, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
 }
 
 func (e *Engine) buildFeaturesMap(sit *Situation) map[string]any {

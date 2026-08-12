@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:situation-runtime:schema:outcome:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["outcome_id", "command_id", "status", "observed_at"],
+  "properties": {
+    "outcome_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "command_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "status": {"enum": ["succeeded", "failed", "unknown", "reconcile_required", "reconciled"]},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "result": {"type": "object"},
+    "error_code": {"type": "string", "maxLength": 256},
+    "reconciled_at": {"type": "string", "format": "date-time"}
+  }
+}

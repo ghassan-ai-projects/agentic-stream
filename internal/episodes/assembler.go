@@ -3,15 +3,17 @@
 package episodes
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -24,19 +26,35 @@ type Request struct {
 	TenantID         string // tenant owning the situation.
 	SituationID      string // situation being reasoned about.
 	SituationVersion int    // immutable situation version bound to this episode.
+	EntityID         string // entity bound to the immutable situation snapshot.
 	ExecutorName     string // executor configured in the active spec.
 	ExecutorVersion  string // digest of the active spec.
 	ModelPolicy      string // model policy from the spec executor.
 	PromptVersion    string // prompt version from the spec executor.
+	PromptSHA256     string // content-addressed prompt reference.
+	ObjectiveSHA256  string // content-addressed objective.
 	SnapshotSHA256   string // deterministic hash of the snapshot subset.
+	AttemptID        string // worker attempt identity, set at dispatch.
+	Fence            int64  // worker fence, set at dispatch.
 	AdmissionKey     []byte // unique 32-byte admission key.
 	RequestJSON      []byte // canonical JSON sent to the executor.
+	Traceparent      string
+	Tracestate       string
+	CancellationKey  string
+	SupersessionKey  string
 }
 
 // Assembler builds deterministic episode requests.
 type Assembler struct {
 	spec  *spec.CompiledSpec
 	idGen ids.Generator
+	cost  *costcontrol.Controller
+}
+
+// WithCostControl enables durable aggregate cost reservation at admission.
+func (a *Assembler) WithCostControl(controller *costcontrol.Controller) *Assembler {
+	a.cost = controller
+	return a
 }
 
 // NewAssembler creates an assembler for the given spec.
@@ -64,14 +82,26 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		return nil, fmt.Errorf("load evaluation: %w", err)
 	}
 
-	snapshotJSON, err := a.loadSnapshotJSON(ctx, tx, item.SituationID, item.SituationVersion)
+	snapshotJSON, persistedSnapshotDigest, traceparent, tracestate, err := a.loadSnapshotJSON(ctx, tx, item.SituationID, item.SituationVersion)
 	if err != nil {
 		return nil, fmt.Errorf("load snapshot: %w", err)
+	}
+	entityID, err := snapshotEntityID(snapshotJSON)
+	if err != nil {
+		return nil, err
 	}
 
 	var snapshot map[string]any
 	if err := json.Unmarshal(snapshotJSON, &snapshot); err != nil {
 		return nil, fmt.Errorf("unmarshal snapshot: %w", err)
+	}
+	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, snapshot); err != nil {
+		return nil, fmt.Errorf("validate snapshot: %w", err)
+	}
+	if snapshotString(snapshot, "situation_id") != item.SituationID ||
+		snapshotInt(snapshot, "situation_version") != item.SituationVersion ||
+		snapshotString(snapshot, "tenant_id") != tenantID {
+		return nil, fmt.Errorf("snapshot identity does not match episode admission")
 	}
 
 	var delta map[string]any
@@ -82,8 +112,10 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	}
 
 	tools := a.buildTools()
+	episodeID := a.idGen.New(ids.PrefixEpisode)
 	request := map[string]any{
-		"episode_id":        a.idGen.New(ids.PrefixEpisode),
+		"episode_id":        episodeID,
+		"kind":              item.Kind,
 		"scheduler_item_id": schedulerItemID,
 		"tenant_id":         tenantID,
 		"situation_id":      item.SituationID,
@@ -95,44 +127,57 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 			"threshold":    ev.Threshold,
 			"lane":         ev.Lane,
 		},
-		"snapshot": snapshot,
-		"delta":    delta,
-		"tools":    tools,
+		"snapshot":             snapshot,
+		"delta":                delta,
+		"tools":                tools,
+		"allowed_intent_types": a.allowedIntentTypeList(),
+		"risk_ceiling":         a.effectiveRiskCeiling(),
 		"executor": map[string]any{
-			"name":           a.spec.Cognition.Executor.Name,
-			"model_policy":   a.spec.Cognition.Executor.ModelPolicy,
-			"prompt_version": a.spec.Cognition.Executor.PromptVersion,
-			"objective":      a.spec.Cognition.Executor.Objective,
+			"name":            a.spec.Cognition.Executor.Name,
+			"model_policy":    a.spec.Cognition.Executor.ModelPolicy,
+			"prompt_version":  a.spec.Cognition.Executor.PromptVersion,
+			"prompt":          a.spec.Cognition.Executor.Prompt,
+			"objective":       a.spec.Cognition.Executor.Objective,
 			"decision_schema": a.spec.Cognition.Executor.DecisionSchema,
 		},
-		"budget": a.budgetMap(),
+		"budget":           a.budgetMap(),
+		"cancellation_key": "episode:" + episodeID,
+		"supersession_key": "situation:" + item.SituationID,
+		"traceparent":      traceparent,
+		"tracestate":       tracestate,
 	}
+	promptDigest, err := canonicaljson.Digest(canonicaljson.DomainPrompt, map[string]any{
+		"version": a.spec.Cognition.Executor.PromptVersion,
+		"text":    a.spec.Cognition.Executor.Prompt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("digest prompt provenance: %w", err)
+	}
+	objectiveDigest, err := canonicaljson.Digest(canonicaljson.DomainObjective, map[string]any{"text": a.spec.Cognition.Executor.Objective})
+	if err != nil {
+		return nil, fmt.Errorf("digest objective provenance: %w", err)
+	}
+	executorDocument := request["executor"].(map[string]any)
+	executorDocument["prompt_sha256"] = promptDigest
+	executorDocument["objective_sha256"] = objectiveDigest
 
+	admissionKey := sha256.Sum256([]byte(episodeID + "|" + schedulerItemID))
+
+	// The snapshot digest covers exactly the immutable Situation snapshot, not
+	// trigger routing or executor capabilities.
+	snapshotDigest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("digest snapshot: %w", err)
+	}
+	decodedSnapshotDigest, err := canonicaljson.DecodeDigest(snapshotDigest)
+	if err != nil || !bytes.Equal(decodedSnapshotDigest, persistedSnapshotDigest) {
+		return nil, fmt.Errorf("snapshot digest does not match persisted situation version")
+	}
+	request["snapshot_digest"] = snapshotDigest
 	requestJSON, err := canonicaljson.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
-
-	episodeID := request["episode_id"].(string)
-	admissionKey := sha256.Sum256([]byte(episodeID + "|" + schedulerItemID))
-
-	// The deterministic snapshot hash excludes the generated episode identity so
-	// that the same situation/trigger always yields the same snapshot digest.
-	snapshotOnly := map[string]any{
-		"situation_id":      item.SituationID,
-		"situation_version": item.SituationVersion,
-		"trigger":           request["trigger"],
-		"snapshot":          snapshot,
-		"delta":             delta,
-		"tools":             tools,
-		"executor":          request["executor"],
-		"budget":            request["budget"],
-	}
-	snapshotOnlyJSON, err := canonicaljson.Marshal(snapshotOnly)
-	if err != nil {
-		return nil, fmt.Errorf("marshal snapshot: %w", err)
-	}
-	snapshotHash := sha256.Sum256(snapshotOnlyJSON)
 
 	return &Request{
 		EpisodeID:        episodeID,
@@ -140,33 +185,97 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		TenantID:         tenantID,
 		SituationID:      item.SituationID,
 		SituationVersion: item.SituationVersion,
+		EntityID:         entityID,
 		ExecutorName:     a.spec.Cognition.Executor.Name,
 		ExecutorVersion:  a.spec.Digest,
 		ModelPolicy:      a.spec.Cognition.Executor.ModelPolicy,
 		PromptVersion:    a.spec.Cognition.Executor.PromptVersion,
-		SnapshotSHA256:   hex.EncodeToString(snapshotHash[:]),
+		PromptSHA256:     promptDigest,
+		ObjectiveSHA256:  objectiveDigest,
+		SnapshotSHA256:   snapshotDigest,
 		AdmissionKey:     admissionKey[:],
 		RequestJSON:      requestJSON,
+		Traceparent:      traceparent,
+		Tracestate:       tracestate,
+		CancellationKey:  "episode:" + episodeID,
+		SupersessionKey:  "situation:" + item.SituationID,
 	}, nil
+}
+
+func snapshotEntityID(raw []byte) (string, error) {
+	var snapshot struct {
+		Entity struct {
+			ID string `json:"id"`
+		} `json:"entity"`
+	}
+	if err := json.Unmarshal(raw, &snapshot); err != nil {
+		return "", fmt.Errorf("decode snapshot entity: %w", err)
+	}
+	if snapshot.Entity.ID == "" {
+		return "", fmt.Errorf("snapshot entity id is required")
+	}
+	return snapshot.Entity.ID, nil
+}
+
+func requestEntityID(raw []byte) (string, error) {
+	var request struct {
+		Snapshot json.RawMessage `json:"snapshot"`
+	}
+	if err := json.Unmarshal(raw, &request); err != nil {
+		return "", fmt.Errorf("decode request snapshot: %w", err)
+	}
+	if len(request.Snapshot) == 0 {
+		return "", nil
+	}
+	var snapshot struct {
+		Entity struct {
+			ID string `json:"id"`
+		} `json:"entity"`
+	}
+	if err := json.Unmarshal(request.Snapshot, &snapshot); err != nil {
+		return "", fmt.Errorf("decode request snapshot entity: %w", err)
+	}
+	return snapshot.Entity.ID, nil
 }
 
 // Persist saves the episode request to the episodes table and marks the
 // scheduler item as admitted. It runs inside the supplied transaction. The
 // scheduler item must still be pending; otherwise Persist returns an error.
 func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now time.Time) error {
-	snapshotHash, err := hex.DecodeString(req.SnapshotSHA256)
+	snapshotHash, err := canonicaljson.DecodeDigest(req.SnapshotSHA256)
 	if err != nil {
-		return fmt.Errorf("decode snapshot sha256: %w", err)
+		return fmt.Errorf("decode snapshot digest: %w", err)
+	}
+	promptHash, err := canonicaljson.DecodeDigest(req.PromptSHA256)
+	if err != nil {
+		return fmt.Errorf("decode prompt digest: %w", err)
+	}
+	objectiveHash, err := canonicaljson.DecodeDigest(req.ObjectiveSHA256)
+	if err != nil {
+		return fmt.Errorf("decode objective digest: %w", err)
+	}
+	if a.cost != nil {
+		var payload struct {
+			Budget struct {
+				CostMicrounits uint64 `json:"cost_microunits"`
+			} `json:"budget"`
+		}
+		if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
+			return fmt.Errorf("decode episode cost budget: %w", err)
+		}
+		if err := a.cost.Reserve(ctx, tx, req.EpisodeID, req.TenantID, payload.Budget.CostMicrounits, now.UTC().Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("reserve episode cost: %w", err)
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO episodes (
 			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
 			executor_name, executor_version, model_policy, prompt_version,
-			snapshot_sha256, admission_key, request_json, status, accepted_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)`,
+			snapshot_sha256, prompt_sha256, objective_sha256, admission_key, request_json, lifecycle_status, accepted_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admitted', ?)`,
 		req.EpisodeID, req.SchedulerItemID, req.TenantID, req.SituationID, req.SituationVersion,
 		req.ExecutorName, req.ExecutorVersion, req.ModelPolicy, req.PromptVersion,
-		snapshotHash, req.AdmissionKey, req.RequestJSON,
+		snapshotHash, promptHash, objectiveHash, req.AdmissionKey, req.RequestJSON,
 		now.Format(time.RFC3339Nano),
 	); err != nil {
 		return fmt.Errorf("insert episode: %w", err)
@@ -190,19 +299,47 @@ func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now t
 }
 
 func (a *Assembler) buildTools() []map[string]any {
-	tools := make([]map[string]any, 0, len(a.spec.Actions.Intents))
-	for _, intent := range a.spec.Actions.Intents {
+	tools := make([]map[string]any, 0, len(a.spec.Cognition.Executor.Tools))
+	for _, name := range a.spec.Cognition.Executor.Tools {
 		tools = append(tools, map[string]any{
-			"type":             intent.Type,
-			"risk":             intent.Risk,
-			"schema":           intent.Schema,
-			"policy":           intent.Policy,
-			"rate_limit":       intent.RateLimitPerHour,
-			"allowed":          true,
-			"description":      "",
+			"name":        name,
+			"description": "bounded read-only evidence capability",
+			"schema":      map[string]any{"type": "object", "additionalProperties": false},
 		})
 	}
 	return tools
+}
+
+func (a *Assembler) allowedIntentTypes() map[string]bool {
+	configured := make(map[string]bool)
+	for _, intent := range a.spec.Actions.Intents {
+		configured[intent.Type] = true
+	}
+	return configured
+}
+
+func (a *Assembler) allowedIntentTypeList() []string {
+	allowed := a.allowedIntentTypes()
+	result := make([]string, 0, len(allowed))
+	seen := make(map[string]struct{}, len(allowed))
+	for _, intent := range a.spec.Actions.Intents {
+		if allowed[intent.Type] {
+			if _, ok := seen[intent.Type]; ok {
+				continue
+			}
+			seen[intent.Type] = struct{}{}
+			result = append(result, intent.Type)
+		}
+	}
+	return result
+}
+
+func (a *Assembler) effectiveRiskCeiling() string {
+	ceiling := a.spec.Cognition.Executor.RiskCeiling
+	if ceiling == "" {
+		return "R1"
+	}
+	return ceiling
 }
 
 func (a *Assembler) budgetMap() map[string]any {
@@ -222,6 +359,7 @@ func (a *Assembler) budgetMap() map[string]any {
 
 type schedulerItem struct {
 	SchedulerItemID  string
+	Kind             string
 	TriggerID        string
 	TenantID         string
 	SituationID      string
@@ -231,10 +369,10 @@ type schedulerItem struct {
 func (a *Assembler) loadSchedulerItem(ctx context.Context, tx *sql.Tx, id string) (schedulerItem, error) {
 	var item schedulerItem
 	if err := tx.QueryRowContext(ctx, `
-		SELECT scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version
+		SELECT scheduler_item_id, kind, trigger_id, tenant_id, situation_id, situation_version
 		FROM scheduler_items WHERE scheduler_item_id = ?`,
 		id,
-	).Scan(&item.SchedulerItemID, &item.TriggerID, &item.TenantID, &item.SituationID, &item.SituationVersion); err != nil {
+	).Scan(&item.SchedulerItemID, &item.Kind, &item.TriggerID, &item.TenantID, &item.SituationID, &item.SituationVersion); err != nil {
 		return item, fmt.Errorf("query scheduler item: %w", err)
 	}
 	return item, nil
@@ -261,15 +399,28 @@ func (a *Assembler) loadEvaluation(ctx context.Context, tx *sql.Tx, triggerID st
 	return ev, nil
 }
 
-func (a *Assembler) loadSnapshotJSON(ctx context.Context, tx *sql.Tx, situationID string, version int) ([]byte, error) {
+func (a *Assembler) loadSnapshotJSON(ctx context.Context, tx *sql.Tx, situationID string, version int) ([]byte, []byte, string, string, error) {
 	var snapshotJSON []byte
+	var snapshotDigest []byte
+	var traceparent, tracestate sql.NullString
 	if err := tx.QueryRowContext(ctx, `
-		SELECT snapshot_json FROM situation_versions
+		SELECT snapshot_json, snapshot_sha256, traceparent, tracestate FROM situation_versions
 		WHERE situation_id = ? AND version = ?`,
-		situationID, version,
-	).Scan(&snapshotJSON); err != nil {
-		return nil, fmt.Errorf("query situation version: %w", err)
+		situationID, version).Scan(&snapshotJSON, &snapshotDigest, &traceparent, &tracestate); err != nil {
+		return nil, nil, "", "", fmt.Errorf("query situation version: %w", err)
 	}
-	return snapshotJSON, nil
+	if _, err := contractsv1.ParseTraceContext(traceparent.String, tracestate.String); err != nil {
+		return nil, nil, "", "", fmt.Errorf("validate situation trace context: %w", err)
+	}
+	return snapshotJSON, snapshotDigest, traceparent.String, tracestate.String, nil
 }
 
+func snapshotString(snapshot map[string]any, key string) string {
+	value, _ := snapshot[key].(string)
+	return value
+}
+
+func snapshotInt(snapshot map[string]any, key string) int {
+	value, _ := snapshot[key].(float64)
+	return int(value)
+}

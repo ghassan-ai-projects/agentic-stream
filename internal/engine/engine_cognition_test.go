@@ -25,7 +25,7 @@ func TestEngineCreatesTriggerAndSchedulerItem(t *testing.T) {
 
 	compiled := spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
-		Digest:        "0000000000000000000000000000000000000000000000000000000000000000",
+		Digest:        "sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		Time: spec.TimePolicy{
 			MaxOutOfOrderness: "2m",
 		},

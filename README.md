@@ -33,13 +33,13 @@ Release-blocking, not guidelines:
 | Area | Choice |
 |---|---|
 | Core runtime and CLI | Go 1.26 |
-| Deployment shape | Modular monolith; one binary plus optional worker processes |
+| Deployment shape | Modular monolith; one Go binary plus optional Go worker processes |
 | Local persistence | SQLite 3 in WAL mode through `modernc.org/sqlite` |
 | Spec format | YAML authoring, JSON Schema validation, canonical JSON digest |
 | Rule expressions | CEL through `cel-go`, restricted to deterministic functions |
 | Public local API | JSON/HTTP plus Server-Sent Events using Go `net/http` |
 | Worker protocol | Protobuf and gRPC over Unix domain socket by default |
-| Optional model/ML workers | Python 3.12, Pydantic v2, `grpcio` |
+| Worker implementations | Go 1.26 only; native executor or current-v1 Go worker process |
 | Telemetry | OpenTelemetry traces, metrics, and structured logs |
 | First ingress | Simulator, file replay, HTTP, then MQTT |
 | Later durable brokers | Kafka via `franz-go`; NATS via `nats.go` |
@@ -86,6 +86,23 @@ make cross-compile   # linux/amd64 binary
 ```
 
 For coding agents: read [AGENTS.md](AGENTS.md) before editing.
+
+Run one supervised live batch with the native Go executor and deterministic provider:
+
+```bash
+agentic-stream run-live --db runtime.db --spec docs/design/examples/predictive-maintenance.situation.yaml \
+  --trace examples/predictive-maintenance/testdata/trace-opening.jsonl
+```
+
+For a production model, add `--model-endpoint <url> --model-name <model>` and
+provide `AGENTIC_STREAM_MODEL_API_KEY` through the process environment. A Go
+EpisodeWorker socket may be selected with `--worker-socket`; Python workers are
+not part of the runtime.
+
+Use `--trace-format simulator` for the streams-simulator
+`trace-record-v0.1` JSONL adapter output, or `--worker-socket` to dispatch
+episodes to a current-v1 Go EpisodeWorker. TLS client flags are available for
+certificate-authenticated worker connections.
 
 ## License
 

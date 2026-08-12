@@ -36,6 +36,8 @@ func TestAppendAndRead(t *testing.T) {
 		Entity:         contractsv1.EntityRef{Type: "motor", ID: "motor-17"},
 		EventTime:      time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		IngestedAt:     time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
+		Traceparent:    "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+		Tracestate:     "vendor=value",
 		Classification: contractsv1.ClassificationInternal,
 		Data:           map[string]any{"celsius": 42.0},
 	}
@@ -70,6 +72,9 @@ func TestAppendAndRead(t *testing.T) {
 	}
 	if records[0].Envelope.Data["celsius"] != 42.0 {
 		t.Fatalf("unexpected payload %v", records[0].Envelope.Data)
+	}
+	if records[0].Envelope.Traceparent != env.Traceparent || records[0].Envelope.Tracestate != env.Tracestate {
+		t.Fatalf("trace context was not persisted: parent=%q state=%q", records[0].Envelope.Traceparent, records[0].Envelope.Tracestate)
 	}
 }
 

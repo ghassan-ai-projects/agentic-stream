@@ -4,14 +4,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -37,6 +39,7 @@ func NewScheduler(compiled *spec.CompiledSpec, idGen ids.Generator, clk clock.Cl
 // Item is one durable scheduler entry.
 type Item struct {
 	SchedulerItemID  string     // unique scheduler item identity.
+	Kind             string     // standard or reconsider.
 	TriggerID        string     // trigger evaluation that admitted this item.
 	SituationID      string     // situation being reasoned about.
 	SituationVersion int        // immutable situation version bound to this item.
@@ -119,7 +122,7 @@ func (s *Scheduler) saveEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluat
 	if err != nil {
 		return fmt.Errorf("marshal reasons: %w", err)
 	}
-	policySHA, err := hex.DecodeString(s.spec.Digest)
+	policySHA, err := canonicaljson.DecodeDigest(s.spec.Digest)
 	if err != nil {
 		return fmt.Errorf("decode policy digest: %w", err)
 	}
@@ -145,12 +148,29 @@ func (s *Scheduler) saveEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluat
 	); err != nil {
 		return fmt.Errorf("upsert trigger evaluation: %w", err)
 	}
+	event := contractsv1.CloudEvent{
+		SpecVersion: "1.0", ID: eval.TriggerID + ":" + eval.Outcome + ":" + eval.EvaluatedAt.UTC().Format(time.RFC3339Nano), Source: "//agentic-stream/tenants/" + tenantID,
+		Type: "situation.trigger.evaluated", Subject: "situation/" + eval.SituationID,
+		Time: eval.EvaluatedAt, DataContentType: "application/json",
+		DataSchema: "urn:situation-runtime:schema:trigger-evaluation:v1",
+		Data:       map[string]any{"trigger_id": eval.TriggerID, "situation_id": eval.SituationID, "situation_version": eval.SituationVersion, "outcome": eval.Outcome},
+		TenantID:   tenantID, PartitionKey: eval.SituationID, IngestedTime: eval.EvaluatedAt,
+		Classification: contractsv1.ClassificationInternal,
+	}
+	event.EnvelopeDigest, err = event.ComputeEnvelopeDigest()
+	if err != nil {
+		return fmt.Errorf("digest trigger notification: %w", err)
+	}
+	if _, err := notify.Append(ctx, tx, event, eval.EvaluatedAt); err != nil {
+		return fmt.Errorf("append trigger notification: %w", err)
+	}
 	return nil
 }
 
 func (s *Scheduler) buildItem(ctx context.Context, tx *sql.Tx, eval Evaluation) (Item, error) {
 	item := Item{
 		SchedulerItemID:  s.itemID(),
+		Kind:             "standard",
 		TriggerID:        eval.TriggerID,
 		SituationID:      eval.SituationID,
 		SituationVersion: eval.SituationVersion,
@@ -266,14 +286,27 @@ func (s *Scheduler) supersedePending(ctx context.Context, tx *sql.Tx, situationI
 		return fmt.Errorf("supersede scheduler items: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE episodes SET status = 'superseded', ended_at = ?
+		UPDATE episodes SET lifecycle_status = 'superseded', ended_at = ?
 		WHERE scheduler_item_id IN (
 			SELECT scheduler_item_id FROM scheduler_items
 			WHERE situation_id = ? AND status = 'coalesced'
-		) AND status IN ('accepted', 'queued', 'running', 'cancelling')`,
+		) AND lifecycle_status IN ('admitted', 'running')`,
 		now, situationID,
 	); err != nil {
 		return fmt.Errorf("supersede episodes: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE episode_attempts SET status = 'cancelling'
+		WHERE episode_id IN (
+			SELECT episode_id FROM episodes
+			WHERE scheduler_item_id IN (
+				SELECT scheduler_item_id FROM scheduler_items
+				WHERE situation_id = ? AND status = 'coalesced'
+			) AND lifecycle_status = 'superseded'
+		) AND status IN ('dispatched', 'running')`,
+		situationID,
+	); err != nil {
+		return fmt.Errorf("cancel superseded attempts: %w", err)
 	}
 	return nil
 }
@@ -287,9 +320,10 @@ func (s *Scheduler) insertItem(ctx context.Context, tx *sql.Tx, item Item, tenan
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO scheduler_items (
 			scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version,
-			lane, priority, status, dedupe_key, not_before, expires_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			kind, lane, priority, status, dedupe_key, not_before, expires_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(trigger_id) DO UPDATE SET
+			kind = excluded.kind,
 			situation_version = excluded.situation_version,
 			lane = excluded.lane,
 			priority = excluded.priority,
@@ -298,7 +332,7 @@ func (s *Scheduler) insertItem(ctx context.Context, tx *sql.Tx, item Item, tenan
 			not_before = excluded.not_before,
 			expires_at = excluded.expires_at,
 			updated_at = excluded.updated_at`,
-		item.SchedulerItemID, item.TriggerID, tenantID, item.SituationID, item.SituationVersion,
+		item.SchedulerItemID, item.TriggerID, tenantID, item.SituationID, item.SituationVersion, item.Kind,
 		item.Lane, item.Priority, item.Status, s.dedupeKey(item.SituationID, item.SituationVersion, item.TriggerID),
 		notBefore, item.ExpiresAt.Format(time.RFC3339Nano), now, now,
 	); err != nil {

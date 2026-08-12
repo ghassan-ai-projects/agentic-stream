@@ -426,22 +426,21 @@ Tests:
 
 Implement:
 
-- generated Go/Python Protobuf types;
+- generated Go Protobuf types for the current v1 contract;
 - protocol handshake and feature negotiation;
 - local UDS gRPC server;
 - capability token issuance;
 - evidence-tool service;
 - child-process supervision;
-- Python reference fake worker;
-- N/N-1 compatibility test fixture.
+- Go reference fake worker;
+- no legacy or N/N-1 compatibility fixture; unsupported versions fail closed.
 
-Python package baseline:
+Worker baseline:
 
-- Python 3.12;
-- Pydantic v2;
-- `grpcio`;
-- no LangGraph/LangChain dependency in the base install;
-- optional extras for future adapters.
+- Go 1.26;
+- generated current-v1 protobuf/gRPC bindings;
+- native and process-isolated Go conformance fixtures;
+- no Python worker, Python SDK, or Python runtime dependency.
 
 Exit:
 
@@ -683,15 +682,10 @@ Situation or action semantics.
 
 ### Epic M5.3 — executor adapters
 
-Prioritize from demonstrated demand:
-
-1. LangGraph Python adapter;
-2. LangChain agent adapter;
-3. OpenClaw adapter;
-4. Hermes adapter.
-
-Every adapter must pass the same executor conformance suite. Do not import its
-memory, session, or action semantics into the core.
+Add only Go executors or Go worker processes when demonstrated demand requires
+them. Every executor must pass the same current-v1 conformance suite. Do not
+add Python workers, language-specific SDKs, or import external framework memory,
+session, or action semantics into the core.
 
 ### Epic M5.4 — compatibility kit
 
@@ -699,7 +693,7 @@ memory, session, or action semantics into the core.
 - EpisodeExecutor TCK;
 - Effector TCK;
 - historical event decoder fixtures;
-- N/N-1 protocol tests;
+- current-v1 protocol conformance tests; unsupported versions fail closed;
 - schema compatibility report in CI;
 - public golden stream corpus.
 

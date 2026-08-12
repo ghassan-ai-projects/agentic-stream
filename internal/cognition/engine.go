@@ -16,6 +16,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -124,6 +125,9 @@ func (e *Engine) Process(ctx context.Context, tx *sql.Tx, v situations.Version) 
 			return fmt.Errorf("admit trigger %s: %w", tr.Name, err)
 		}
 	}
+	if _, err := e.admitReconsiderations(ctx, tx, v); err != nil {
+		return fmt.Errorf("admit reconsideration: %w", err)
+	}
 
 	// Advance last_reasoned_version unconditionally so that future deltas compare
 	// against the most recently evaluated version regardless of outcome.
@@ -157,11 +161,12 @@ func (e *Engine) loadVersion(ctx context.Context, tx *sql.Tx, situationID string
 	}
 	var v situations.Version
 	var eventHorizonStr, watermarkStr string
+	var traceparent, tracestate sql.NullString
 	var snapshotJSON []byte
 	if err := tx.QueryRowContext(ctx, `
 		SELECT sv.situation_id, sv.version, sv.phase, sv.previous_phase, sv.severity,
 		       sv.confidence, sv.completeness, s.entity_type, s.entity_id,
-		       sv.event_horizon, sv.watermark, sv.snapshot_json
+		       sv.event_horizon, sv.watermark, sv.traceparent, sv.tracestate, sv.snapshot_json
 		FROM situation_versions sv
 		JOIN situations s ON s.situation_id = sv.situation_id
 		WHERE sv.situation_id = ? AND sv.version = ?`,
@@ -169,7 +174,7 @@ func (e *Engine) loadVersion(ctx context.Context, tx *sql.Tx, situationID string
 	).Scan(
 		&v.SituationID, &v.Version, &v.Phase, &v.PreviousPhase,
 		&v.Severity, &v.Confidence, &v.Completeness,
-		&v.EntityType, &v.EntityID, &eventHorizonStr, &watermarkStr, &snapshotJSON,
+		&v.EntityType, &v.EntityID, &eventHorizonStr, &watermarkStr, &traceparent, &tracestate, &snapshotJSON,
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -181,6 +186,11 @@ func (e *Engine) loadVersion(ctx context.Context, tx *sql.Tx, situationID string
 		return nil, fmt.Errorf("parse event horizon: %w", err)
 	}
 	v.EventHorizon = eventHorizon
+	if _, err := contractsv1.ParseTraceContext(traceparent.String, tracestate.String); err != nil {
+		return nil, fmt.Errorf("validate version trace context: %w", err)
+	}
+	v.Traceparent = traceparent.String
+	v.Tracestate = tracestate.String
 	if watermarkStr != "" {
 		watermark, err := time.Parse(time.RFC3339Nano, watermarkStr)
 		if err != nil {

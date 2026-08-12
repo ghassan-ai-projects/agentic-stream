@@ -1,0 +1,1 @@
+ALTER TABLE watch_conditions ADD COLUMN max_fires INTEGER NOT NULL DEFAULT 1 CHECK (max_fires BETWEEN 1 AND 100);
