@@ -4,9 +4,6 @@ package situations
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
@@ -15,6 +12,8 @@ import (
 
 	"github.com/google/cel-go/cel"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
@@ -40,27 +39,27 @@ type situationKey struct {
 
 // Situation is the mutable current state for one occurrence.
 type Situation struct {
-	SituationID   string
-	TenantID      string
-	DeploymentID  string
-	Type          string
-	EntityType    string
-	EntityID      string
-	PartitionID   int
-	OccurrenceID  string
-	Version       int
-	Phase         string
-	PreviousPhase string
-	Severity      int
-	Confidence    float64
-	Completeness  string
-	FirstEventTime time.Time
+	SituationID     string
+	TenantID        string
+	DeploymentID    string
+	Type            string
+	EntityType      string
+	EntityID        string
+	PartitionID     int
+	OccurrenceID    string
+	Version         int
+	Phase           string
+	PreviousPhase   string
+	Severity        int
+	Confidence      float64
+	Completeness    string
+	FirstEventTime  time.Time
 	LatestEventTime time.Time
-	Facts         map[string]any
-	Evidence      map[string]struct{}
-	ConditionStart map[string]time.Time // transition key -> first true event time
-	OpenedAt      time.Time
-	UpdatedAt     time.Time
+	Facts           map[string]any
+	Evidence        map[string]struct{}
+	ConditionStart  map[string]time.Time // transition key -> first true event time
+	OpenedAt        time.Time
+	UpdatedAt       time.Time
 }
 
 // Version is an immutable Situation version.
@@ -279,35 +278,52 @@ func (e *Engine) materialize(sit *Situation, watermark time.Time) (*Version, err
 		}
 	}
 
-	evidence := make([]string, 0, len(sit.Evidence))
+	evidenceIDs := make([]string, 0, len(sit.Evidence))
 	for id := range sit.Evidence {
-		evidence = append(evidence, id)
+		evidenceIDs = append(evidenceIDs, id)
 	}
-	sort.Strings(evidence)
+	sort.Strings(evidenceIDs)
+	evidence := make([]any, len(evidenceIDs))
+	for i, id := range evidenceIDs {
+		evidence[i] = id
+	}
 
+	specDigest := e.spec.Digest
+	if specDigest == "" {
+		return nil, fmt.Errorf("compiled spec has no digest")
+	}
+	if _, err := canonicaljson.DecodeDigest(specDigest); err != nil {
+		return nil, fmt.Errorf("invalid spec digest: %w", err)
+	}
 	snapshot := map[string]any{
-		"situation_id":   sit.SituationID,
-		"type":           sit.Type,
-		"entity_type":    sit.EntityType,
-		"entity_id":      sit.EntityID,
-		"partition_id":   sit.PartitionID,
-		"version":        sit.Version,
-		"phase":          sit.Phase,
-		"previous_phase": sit.PreviousPhase,
-		"severity":       sit.Severity,
-		"confidence":     sit.Confidence,
-		"completeness":   sit.Completeness,
-		"facts":          facts,
-		"evidence":       evidence,
-		"event_horizon":  sit.LatestEventTime.Format(time.RFC3339Nano),
-		"watermark":      watermark.Format(time.RFC3339Nano),
+		"situation_id":      sit.SituationID,
+		"situation_version": sit.Version,
+		"situation_type":    sit.Type,
+		"tenant_id":         sit.TenantID,
+		"entity":            map[string]any{"type": sit.EntityType, "id": sit.EntityID},
+		"partition_id":      sit.PartitionID,
+		"phase":             sit.Phase,
+		"previous_phase":    sit.PreviousPhase,
+		"severity":          sit.Severity,
+		"confidence":        sit.Confidence,
+		"completeness":      sit.Completeness,
+		"facts":             facts,
+		"evidence":          evidence,
+		"event_horizon":     sit.LatestEventTime.Format(time.RFC3339Nano),
+		"watermark":         watermark.Format(time.RFC3339Nano),
+		"spec_digest":       specDigest,
 	}
-
-	snapshotJSON, err := json.Marshal(snapshot)
+	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, snapshot); err != nil {
+		return nil, fmt.Errorf("validate snapshot: %w", err)
+	}
+	snapshotJSON, err := canonicaljson.Marshal(snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("marshal snapshot: %w", err)
 	}
-	h := sha256.Sum256(snapshotJSON)
+	digest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("digest snapshot: %w", err)
+	}
 
 	return &Version{
 		SituationID:     sit.SituationID,
@@ -324,9 +340,9 @@ func (e *Engine) materialize(sit *Situation, watermark time.Time) (*Version, err
 		EventHorizon:    sit.LatestEventTime,
 		Watermark:       watermark,
 		Facts:           facts,
-		Evidence:        evidence,
+		Evidence:        evidenceIDs,
 		SnapshotJSON:    snapshotJSON,
-		SnapshotSHA256:  hex.EncodeToString(h[:]),
+		SnapshotSHA256:  digest,
 	}, nil
 }
 

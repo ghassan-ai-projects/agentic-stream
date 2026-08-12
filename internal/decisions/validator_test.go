@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 func TestValidateBindsDecisionAndIntents(t *testing.T) {
@@ -53,6 +54,7 @@ func TestValidateRejectsSecurityAndBindingFailures(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			document := validDecision()
 			test.mutate(document)
+			refreshIntentDigest(document)
 			raw, err := canonicaljson.Marshal(document)
 			if err != nil {
 				t.Fatalf("marshal mutated decision: %v", err)
@@ -111,22 +113,53 @@ func validDecision() map[string]any {
 	return map[string]any{
 		"decision_id":       "dec-1",
 		"episode_id":        "epi-1",
+		"attempt_id":        "att-1",
+		"fence":             1,
 		"snapshot_digest":   "sha256:" + zeros(64),
 		"situation_id":      "sit-1",
 		"situation_version": 2,
 		"confidence":        0.8,
 		"summary":           "maintain the motor",
-		"intents": []any{map[string]any{
-			"intent_id":         "int-1",
-			"decision_id":       "dec-1",
-			"tenant_id":         "tenant-1",
-			"situation_id":      "sit-1",
-			"situation_version": 2,
-			"type":              "create_ticket",
-			"risk_class":        "R1",
-			"parameters":        map[string]any{"priority": "routine"},
-			"expires_at":        "2026-08-12T11:00:00.000000000Z",
-		}},
+		"intents":           []any{validIntent()},
+	}
+}
+
+func validIntent() map[string]any {
+	intent := map[string]any{
+		"intent_id":         "int-1",
+		"decision_id":       "dec-1",
+		"tenant_id":         "tenant-1",
+		"situation_id":      "sit-1",
+		"situation_version": 2,
+		"type":              "create_ticket",
+		"risk_class":        "R1",
+		"parameters":        map[string]any{"priority": "routine"},
+		"expires_at":        "2026-08-12T11:00:00.000000000Z",
+	}
+	digest, err := contractsv1.IntentDigest(intent)
+	if err != nil {
+		panic(err)
+	}
+	intent["intent_digest"] = digest
+	return intent
+}
+
+func refreshIntentDigest(document map[string]any) {
+	intents, ok := document["intents"].([]any)
+	if !ok {
+		return
+	}
+	for _, raw := range intents {
+		intent, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		delete(intent, "intent_digest")
+		digest, err := contractsv1.IntentDigest(intent)
+		if err != nil {
+			panic(err)
+		}
+		intent["intent_digest"] = digest
 	}
 }
 

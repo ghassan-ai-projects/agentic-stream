@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
@@ -23,6 +24,28 @@ const testDigest = "000000000000000000000000000000000000000000000000000000000000
 const testSpecDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
 func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Version, deploymentID, tenantID string) error {
+	snapshot := map[string]any{
+		"situation_id": v.SituationID, "situation_version": v.Version,
+		"situation_type": "test", "tenant_id": tenantID,
+		"entity":       map[string]any{"type": v.EntityType, "id": v.EntityID},
+		"partition_id": 0, "phase": v.Phase, "previous_phase": v.PreviousPhase,
+		"severity": v.Severity, "confidence": v.Confidence, "completeness": v.Completeness,
+		"event_horizon": v.EventHorizon.Format(time.RFC3339Nano),
+		"watermark":     v.Watermark.Format(time.RFC3339Nano), "spec_digest": testSpecDigest,
+		"facts": v.Facts, "evidence": []any{},
+	}
+	snapshotJSON, err := canonicaljson.Marshal(snapshot)
+	if err != nil {
+		return fmt.Errorf("marshal test snapshot: %w", err)
+	}
+	snapshotDigest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, snapshot)
+	if err != nil {
+		return fmt.Errorf("digest test snapshot: %w", err)
+	}
+	snapshotSHA, err := canonicaljson.DecodeDigest(snapshotDigest)
+	if err != nil {
+		return fmt.Errorf("decode test snapshot digest: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO lineage_sets (lineage_id, sha256, reference_count, references_json, created_at)
 		VALUES ('lin_test', X'0000000000000000000000000000000000000000000000000000000000000000', 1, X'5B5D', datetime('now'))
@@ -51,7 +74,7 @@ func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Versio
 		v.SituationID, v.Version, v.Phase, v.PreviousPhase,
 		v.Severity, v.Confidence, v.Completeness,
 		v.EventHorizon.Format(time.RFC3339Nano), v.Watermark.Format(time.RFC3339Nano),
-		v.EventHorizon.Format(time.RFC3339Nano), v.SnapshotJSON, make([]byte, 32),
+		v.EventHorizon.Format(time.RFC3339Nano), snapshotJSON, snapshotSHA,
 	); err != nil {
 		return fmt.Errorf("insert situation version: %w", err)
 	}

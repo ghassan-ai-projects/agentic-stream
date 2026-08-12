@@ -3,10 +3,12 @@
   "$id": "urn:situation-runtime:schema:decision:v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["decision_id", "episode_id", "snapshot_digest", "confidence", "intents"],
+  "required": ["decision_id", "episode_id", "attempt_id", "fence", "snapshot_digest", "confidence", "intents"],
   "properties": {
     "decision_id": {"type": "string", "minLength": 1, "maxLength": 256},
     "episode_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "attempt_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "fence": {"type": "integer", "minimum": 1},
     "snapshot_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "situation_id": {"type": "string", "minLength": 1, "maxLength": 256},
     "situation_version": {"type": "integer", "minimum": 1},

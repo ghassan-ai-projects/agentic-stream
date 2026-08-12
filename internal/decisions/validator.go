@@ -59,6 +59,9 @@ func (e *ValidationError) Error() string {
 // Validate parses, schema-validates, binds, and digests one worker Decision.
 // It does not write to storage and never changes the attempt terminal state.
 func Validate(raw []byte, transmittedDigest string, input Input) (*Result, error) {
+	if input.Now.IsZero() {
+		return nil, reject("schema_invalid", "clock", "trusted validation time is required")
+	}
 	canonical, err := canonicaljson.Marshal(json.RawMessage(raw))
 	if err != nil {
 		return nil, reject("schema_invalid", "canonical_json", err.Error())
@@ -80,6 +83,12 @@ func Validate(raw []byte, transmittedDigest string, input Input) (*Result, error
 	}
 	if got, _ := document["episode_id"].(string); got != input.EpisodeID {
 		return nil, reject("snapshot_mismatch", "episode_id", "decision episode does not match the dispatched episode")
+	}
+	if got, _ := document["attempt_id"].(string); got != input.AttemptID {
+		return nil, reject("stale_attempt", "attempt_id", "decision attempt does not match the dispatched attempt")
+	}
+	if got, ok := integerField(document, "fence"); !ok || int64(got) != input.Fence {
+		return nil, reject("stale_attempt", "fence", "decision fence does not match the dispatched attempt")
 	}
 	if got, _ := document["snapshot_digest"].(string); got != input.SnapshotDigest {
 		return nil, reject("snapshot_mismatch", "snapshot_digest", "decision snapshot does not match the dispatched snapshot")
@@ -113,6 +122,9 @@ func Validate(raw []byte, transmittedDigest string, input Input) (*Result, error
 		}
 		if err := contractsv1.Validate(contractsv1.SchemaIntent, intent); err != nil {
 			return nil, reject("schema_invalid", fmt.Sprintf("intents[%d]", index), err.Error())
+		}
+		if !contractsv1.VerifyIntentDigest(intent) {
+			return nil, reject("schema_invalid", fmt.Sprintf("intents[%d].intent_digest", index), "intent digest does not match the canonical intent")
 		}
 		validated, err := validateIntent(intent, input, decisionID, seenIDs)
 		if err != nil {
@@ -154,14 +166,14 @@ func validateIntent(document map[string]any, input Input, decisionID string, see
 	if err != nil {
 		return nil, reject("schema_invalid", "intent.expires_at", err.Error())
 	}
-	if !input.Now.IsZero() && !expiresAt.After(input.Now) {
+	if !expiresAt.After(input.Now) {
 		return nil, reject("expired", "intent.expires_at", "intent has expired")
 	}
 	canonical, err := canonicaljson.Marshal(document)
 	if err != nil {
 		return nil, reject("schema_invalid", "intent", err.Error())
 	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainIntent, document)
+	digest, err := contractsv1.IntentDigest(document)
 	if err != nil {
 		return nil, reject("schema_invalid", "intent_digest", err.Error())
 	}
@@ -209,5 +221,5 @@ func reject(reason, field, message string) *ValidationError {
 
 func isExpired(now time.Time, value string) bool {
 	parsed, err := time.Parse(time.RFC3339Nano, value)
-	return err == nil && !now.IsZero() && now.After(parsed)
+	return err == nil && !now.Before(parsed)
 }

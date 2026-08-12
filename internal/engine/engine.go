@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
@@ -376,7 +377,7 @@ func (e *Engine) lineageID(evidence []string) string {
 }
 
 func mustDecodeHex(s string) []byte {
-	b, err := hex.DecodeString(s)
+	b, err := canonicaljson.DecodeDigest(s)
 	if err != nil {
 		panic(err)
 	}

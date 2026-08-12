@@ -13,17 +13,17 @@ func CompileFile(ctx context.Context, path string) (*CompiledSpec, error) {
 
 // CompiledSpec is the immutable result of compiling a SituationSpec.
 type CompiledSpec struct {
-	SchemaVersion string                 `json:"schemaVersion"`
-	Metadata      Metadata               `json:"metadata"`
-	Inputs        []Input                `json:"inputs"`
-	Time          TimePolicy             `json:"time"`
-	Windows       []Window               `json:"windows"`
-	Operators     []Operator             `json:"operators"`
-	Situation     Situation              `json:"situation"`
-	Cognition     Cognition              `json:"cognition"`
-	Actions       Actions                `json:"actions"`
-	Retention     *Retention             `json:"retention,omitempty"`
-	Telemetry     *Telemetry             `json:"telemetry,omitempty"`
+	SchemaVersion string     `json:"schemaVersion"`
+	Metadata      Metadata   `json:"metadata"`
+	Inputs        []Input    `json:"inputs"`
+	Time          TimePolicy `json:"time"`
+	Windows       []Window   `json:"windows"`
+	Operators     []Operator `json:"operators"`
+	Situation     Situation  `json:"situation"`
+	Cognition     Cognition  `json:"cognition"`
+	Actions       Actions    `json:"actions"`
+	Retention     *Retention `json:"retention,omitempty"`
+	Telemetry     *Telemetry `json:"telemetry,omitempty"`
 
 	// CanonicalJSON is the canonical representation used for the digest.
 	CanonicalJSON []byte `json:"canonicalJSON"`
@@ -172,6 +172,7 @@ type Executor struct {
 	PromptVersion  string   `json:"promptVersion" yaml:"promptVersion"`
 	DecisionSchema string   `json:"decisionSchema" yaml:"decisionSchema"`
 	Tools          []string `json:"tools" yaml:"tools"`
+	RiskCeiling    string   `json:"riskCeiling,omitempty" yaml:"riskCeiling,omitempty"`
 	Budget         Budget   `json:"budget" yaml:"budget"`
 }
 

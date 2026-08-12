@@ -3,6 +3,7 @@
 package episodes
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -28,6 +30,8 @@ type Request struct {
 	ModelPolicy      string // model policy from the spec executor.
 	PromptVersion    string // prompt version from the spec executor.
 	SnapshotSHA256   string // deterministic hash of the snapshot subset.
+	AttemptID        string // worker attempt identity, set at dispatch.
+	Fence            int64  // worker fence, set at dispatch.
 	AdmissionKey     []byte // unique 32-byte admission key.
 	RequestJSON      []byte // canonical JSON sent to the executor.
 }
@@ -63,7 +67,7 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		return nil, fmt.Errorf("load evaluation: %w", err)
 	}
 
-	snapshotJSON, err := a.loadSnapshotJSON(ctx, tx, item.SituationID, item.SituationVersion)
+	snapshotJSON, persistedSnapshotDigest, err := a.loadSnapshotJSON(ctx, tx, item.SituationID, item.SituationVersion)
 	if err != nil {
 		return nil, fmt.Errorf("load snapshot: %w", err)
 	}
@@ -71,6 +75,14 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	var snapshot map[string]any
 	if err := json.Unmarshal(snapshotJSON, &snapshot); err != nil {
 		return nil, fmt.Errorf("unmarshal snapshot: %w", err)
+	}
+	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, snapshot); err != nil {
+		return nil, fmt.Errorf("validate snapshot: %w", err)
+	}
+	if snapshotString(snapshot, "situation_id") != item.SituationID ||
+		snapshotInt(snapshot, "situation_version") != item.SituationVersion ||
+		snapshotString(snapshot, "tenant_id") != tenantID {
+		return nil, fmt.Errorf("snapshot identity does not match episode admission")
 	}
 
 	var delta map[string]any
@@ -94,9 +106,11 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 			"threshold":    ev.Threshold,
 			"lane":         ev.Lane,
 		},
-		"snapshot": snapshot,
-		"delta":    delta,
-		"tools":    tools,
+		"snapshot":             snapshot,
+		"delta":                delta,
+		"tools":                tools,
+		"allowed_intent_types": a.allowedIntentTypeList(),
+		"risk_ceiling":         a.effectiveRiskCeiling(),
 		"executor": map[string]any{
 			"name":            a.spec.Cognition.Executor.Name,
 			"model_policy":    a.spec.Cognition.Executor.ModelPolicy,
@@ -110,21 +124,15 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	episodeID := request["episode_id"].(string)
 	admissionKey := sha256.Sum256([]byte(episodeID + "|" + schedulerItemID))
 
-	// The deterministic snapshot projection excludes the generated episode
-	// identity so that the same situation/trigger always yields the same digest.
-	snapshotOnly := map[string]any{
-		"situation_id":      item.SituationID,
-		"situation_version": item.SituationVersion,
-		"trigger":           request["trigger"],
-		"snapshot":          snapshot,
-		"delta":             delta,
-		"tools":             tools,
-		"executor":          request["executor"],
-		"budget":            request["budget"],
-	}
-	snapshotDigest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, snapshotOnly)
+	// The snapshot digest covers exactly the immutable Situation snapshot, not
+	// trigger routing or executor capabilities.
+	snapshotDigest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("digest snapshot: %w", err)
+	}
+	decodedSnapshotDigest, err := canonicaljson.DecodeDigest(snapshotDigest)
+	if err != nil || !bytes.Equal(decodedSnapshotDigest, persistedSnapshotDigest) {
+		return nil, fmt.Errorf("snapshot digest does not match persisted situation version")
 	}
 	request["snapshot_digest"] = snapshotDigest
 	requestJSON, err := canonicaljson.Marshal(request)
@@ -188,6 +196,7 @@ func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now t
 }
 
 func (a *Assembler) buildTools() []map[string]any {
+	allowed := a.allowedIntentTypes()
 	tools := make([]map[string]any, 0, len(a.spec.Actions.Intents))
 	for _, intent := range a.spec.Actions.Intents {
 		tools = append(tools, map[string]any{
@@ -196,11 +205,43 @@ func (a *Assembler) buildTools() []map[string]any {
 			"schema":      intent.Schema,
 			"policy":      intent.Policy,
 			"rate_limit":  intent.RateLimitPerHour,
-			"allowed":     true,
+			"allowed":     allowed[intent.Type],
 			"description": "",
 		})
 	}
 	return tools
+}
+
+func (a *Assembler) allowedIntentTypes() map[string]bool {
+	configured := make(map[string]bool)
+	for _, intent := range a.spec.Actions.Intents {
+		configured[intent.Type] = true
+	}
+	return configured
+}
+
+func (a *Assembler) allowedIntentTypeList() []string {
+	allowed := a.allowedIntentTypes()
+	result := make([]string, 0, len(allowed))
+	seen := make(map[string]struct{}, len(allowed))
+	for _, intent := range a.spec.Actions.Intents {
+		if allowed[intent.Type] {
+			if _, ok := seen[intent.Type]; ok {
+				continue
+			}
+			seen[intent.Type] = struct{}{}
+			result = append(result, intent.Type)
+		}
+	}
+	return result
+}
+
+func (a *Assembler) effectiveRiskCeiling() string {
+	ceiling := a.spec.Cognition.Executor.RiskCeiling
+	if ceiling == "" {
+		return "R1"
+	}
+	return ceiling
 }
 
 func (a *Assembler) budgetMap() map[string]any {
@@ -259,14 +300,24 @@ func (a *Assembler) loadEvaluation(ctx context.Context, tx *sql.Tx, triggerID st
 	return ev, nil
 }
 
-func (a *Assembler) loadSnapshotJSON(ctx context.Context, tx *sql.Tx, situationID string, version int) ([]byte, error) {
+func (a *Assembler) loadSnapshotJSON(ctx context.Context, tx *sql.Tx, situationID string, version int) ([]byte, []byte, error) {
 	var snapshotJSON []byte
+	var snapshotDigest []byte
 	if err := tx.QueryRowContext(ctx, `
-		SELECT snapshot_json FROM situation_versions
+		SELECT snapshot_json, snapshot_sha256 FROM situation_versions
 		WHERE situation_id = ? AND version = ?`,
-		situationID, version,
-	).Scan(&snapshotJSON); err != nil {
-		return nil, fmt.Errorf("query situation version: %w", err)
+		situationID, version).Scan(&snapshotJSON, &snapshotDigest); err != nil {
+		return nil, nil, fmt.Errorf("query situation version: %w", err)
 	}
-	return snapshotJSON, nil
+	return snapshotJSON, snapshotDigest, nil
+}
+
+func snapshotString(snapshot map[string]any, key string) string {
+	value, _ := snapshot[key].(string)
+	return value
+}
+
+func snapshotInt(snapshot map[string]any, key string) int {
+	value, _ := snapshot[key].(float64)
+	return int(value)
 }

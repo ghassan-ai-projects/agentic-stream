@@ -3,9 +3,10 @@
   "$id": "urn:situation-runtime:schema:intent:v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["intent_id", "decision_id", "tenant_id", "situation_id", "situation_version", "type", "risk_class", "parameters", "expires_at"],
+  "required": ["intent_id", "intent_digest", "decision_id", "tenant_id", "situation_id", "situation_version", "type", "risk_class", "parameters", "expires_at"],
   "properties": {
     "intent_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "intent_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "decision_id": {"type": "string", "minLength": 1, "maxLength": 256},
     "tenant_id": {"type": "string", "minLength": 1, "maxLength": 256},
     "situation_id": {"type": "string", "minLength": 1, "maxLength": 256},

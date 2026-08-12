@@ -31,6 +31,7 @@ func TestSharedSchemaIDsAndValidation(t *testing.T) {
 			schema: contractsv1.SchemaDecision,
 			valid: map[string]any{
 				"decision_id": "dec_1", "episode_id": "epi_1",
+				"attempt_id": "att_1", "fence": 1,
 				"snapshot_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
 				"confidence":      0.8, "intents": []any{},
 			},
@@ -39,7 +40,7 @@ func TestSharedSchemaIDsAndValidation(t *testing.T) {
 			name:   "intent",
 			schema: contractsv1.SchemaIntent,
 			valid: map[string]any{
-				"intent_id": "int_1", "decision_id": "dec_1", "tenant_id": "default",
+				"intent_id": "int_1", "intent_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444", "decision_id": "dec_1", "tenant_id": "default",
 				"situation_id": "sit_1", "situation_version": 1, "type": "maintenance.ticket",
 				"risk_class": "R1", "parameters": map[string]any{}, "expires_at": "2026-08-04T23:26:00.000000000Z",
 			},
@@ -83,6 +84,7 @@ func TestSharedSchemaIDsAndValidation(t *testing.T) {
 func TestSharedSchemaRejectsUnknownProperties(t *testing.T) {
 	valid := map[string]any{
 		"decision_id": "dec_1", "episode_id": "epi_1",
+		"attempt_id": "att_1", "fence": 1,
 		"snapshot_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
 		"confidence":      0.8, "intents": []any{}, "unexpected": true,
 	}

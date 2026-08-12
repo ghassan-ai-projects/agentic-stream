@@ -227,6 +227,9 @@ func normalize(r *rawSpec) (*CompiledSpec, error) {
 			spec.Actions.Intents[i].Policy = "approval"
 		}
 	}
+	if spec.Cognition.Executor.RiskCeiling == "" {
+		spec.Cognition.Executor.RiskCeiling = "R1"
+	}
 
 	return spec, nil
 }

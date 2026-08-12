@@ -14,6 +14,7 @@ import (
 func TestSituationTransitionsOnFeature(t *testing.T) {
 	ctx := context.Background()
 	compiled := spec.CompiledSpec{
+		Digest:        "sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		SchemaVersion: "agentic-stream/v1",
 		Situation: spec.Situation{
 			Type:         "bearing_degradation",

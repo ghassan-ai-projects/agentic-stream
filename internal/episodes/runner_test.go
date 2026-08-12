@@ -187,3 +187,89 @@ func TestRunnerNoWorkWhenEmpty(t *testing.T) {
 		t.Fatal("expected no work")
 	}
 }
+
+type failOnceExecutor struct {
+	calls    int
+	delegate *episodes.FakeExecutor
+}
+
+func (e *failOnceExecutor) Name() string { return "fail-once" }
+
+func (e *failOnceExecutor) Execute(ctx context.Context, req *episodes.Request) (*episodes.Outcome, error) {
+	e.calls++
+	if e.calls == 1 {
+		return nil, fmt.Errorf("transient worker failure")
+	}
+	return e.delegate.Execute(ctx, req)
+}
+
+func TestRunnerRetriesFailedAttemptWithNextFence(t *testing.T) {
+	ctx := context.Background()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "retry.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		t.Fatalf("disable foreign keys for fixture: %v", err)
+	}
+	digest := make([]byte, 32)
+	acceptedAt := "2026-08-12T12:00:00Z"
+	requestJSON := []byte(`{"snapshot":{"phase":"candidate"},"trigger":{"trigger_name":"retry"},"allowed_intent_types":["create_maintenance_ticket"],"risk_ceiling":"R1"}`)
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO episodes (
+			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
+			executor_name, executor_version, model_policy, prompt_version, snapshot_sha256,
+			admission_key, request_json, lifecycle_status, current_fence, accepted_at
+		) VALUES ('epi-retry', 'sch-retry', 'tenant', 'sit-retry', 1,
+			'executor', 'v1', 'policy', 'prompt', ?, ?, ?, 'admitted', 0, ?)`,
+		digest, digest, requestJSON, acceptedAt); err != nil {
+		t.Fatalf("insert episode fixture: %v", err)
+	}
+
+	executor := &failOnceExecutor{delegate: episodes.NewFakeExecutor()}
+	runner := episodes.NewRunner(db, executor, clock.Physical(), ids.Deterministic())
+	processed, err := runner.RunOnce(ctx, "tenant")
+	if err != nil || !processed {
+		t.Fatalf("first run processed=%v err=%v", processed, err)
+	}
+	var lifecycle string
+	if err := db.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = 'epi-retry'").Scan(&lifecycle); err != nil {
+		t.Fatalf("read lifecycle after failure: %v", err)
+	}
+	if lifecycle != "running" {
+		t.Fatalf("lifecycle after failed attempt = %q, want running", lifecycle)
+	}
+	var failedCount int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM episode_attempts WHERE episode_id = 'epi-retry' AND status = 'failed'").Scan(&failedCount); err != nil {
+		t.Fatalf("count failed attempts: %v", err)
+	}
+	if failedCount != 1 {
+		t.Fatalf("failed attempts = %d, want 1", failedCount)
+	}
+
+	processed, err = runner.RunOnce(ctx, "tenant")
+	if err != nil || !processed {
+		t.Fatalf("retry run processed=%v err=%v", processed, err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = 'epi-retry'").Scan(&lifecycle); err != nil {
+		t.Fatalf("read lifecycle after retry: %v", err)
+	}
+	if lifecycle != "concluded" {
+		t.Fatalf("lifecycle after retry = %q, want concluded", lifecycle)
+	}
+	var attempts, decisions, currentFence, producedFence int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*), MAX(current_fence) FROM episodes WHERE episode_id = 'epi-retry'").Scan(&attempts, &currentFence); err != nil {
+		t.Fatalf("read retry fence: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM decisions WHERE episode_id = 'epi-retry'").Scan(&decisions); err != nil {
+		t.Fatalf("count decisions after retry: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT fence FROM episode_attempts WHERE episode_id = 'epi-retry' AND status = 'produced'").Scan(&producedFence); err != nil {
+		t.Fatalf("read produced fence: %v", err)
+	}
+	if attempts != 1 || currentFence != 2 || producedFence != 2 || decisions != 1 {
+		t.Fatalf("retry state attempts=%d current_fence=%d produced_fence=%d decisions=%d", attempts, currentFence, producedFence, decisions)
+	}
+}

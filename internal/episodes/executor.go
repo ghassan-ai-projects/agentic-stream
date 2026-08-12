@@ -29,6 +29,8 @@ type Executor interface {
 // Outcome is the terminal result of one worker attempt.
 type Outcome struct {
 	Status         string   `json:"status"`
+	AttemptID      string   `json:"attempt_id,omitempty"`
+	Fence          int64    `json:"fence,omitempty"`
 	DecisionJSON   []byte   `json:"decision_json,omitempty"`
 	DecisionSHA256 string   `json:"decision_sha256,omitempty"`
 	Reasons        []string `json:"reasons,omitempty"`
@@ -67,7 +69,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 			       executor_name, executor_version, model_policy, prompt_version,
 			       snapshot_sha256, admission_key, request_json
 			FROM episodes
-			WHERE tenant_id = ? AND lifecycle_status = 'admitted'
+			WHERE tenant_id = ? AND lifecycle_status IN ('admitted', 'running')
 			ORDER BY accepted_at LIMIT 1`,
 			tenantID,
 		).Scan(
@@ -83,6 +85,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 
 		req.EpisodeID = episodeID
 		req.SnapshotSHA256 = "sha256:" + hex.EncodeToString(snapshotHash)
+		req.AttemptID = ""
 		attemptID := r.idGen.New(ids.PrefixAttempt)
 		var err error
 		identity, err = StartAttempt(ctx, tx, episodeID, attemptID, r.clk.Now())
@@ -91,6 +94,15 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		}
 		if err := TransitionAttempt(ctx, tx, identity, AttemptRunning, r.clk.Now(), nil); err != nil {
 			return fmt.Errorf("mark episode attempt running: %w", err)
+		}
+		req.AttemptID = identity.AttemptID
+		req.Fence = identity.Fence
+		req.RequestJSON, err = bindAttemptIdentity(req.RequestJSON, identity)
+		if err != nil {
+			return fmt.Errorf("bind worker identity to request: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE episodes SET request_json = ? WHERE episode_id = ?", req.RequestJSON, episodeID); err != nil {
+			return fmt.Errorf("persist worker request identity: %w", err)
 		}
 		return nil
 	})
@@ -105,6 +117,17 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	if err != nil {
 		return true, r.failAttempt(ctx, identity, fmt.Errorf("execute: %w", err).Error())
 	}
+	if outcome == nil {
+		return true, r.failAttempt(ctx, identity, "executor_returned_nil_outcome")
+	}
+	if outcome.AttemptID != identity.AttemptID || outcome.Fence != identity.Fence {
+		reason := RejectWrongAttempt
+		if outcome.Fence < identity.Fence {
+			reason = RejectStaleAttempt
+		}
+		incoming := Identity{EpisodeID: identity.EpisodeID, AttemptID: outcome.AttemptID, Fence: outcome.Fence}
+		return true, r.failAttemptWithRejection(ctx, identity, incoming, reason, "worker_identity_mismatch")
+	}
 
 	return true, r.withTx(ctx, func(tx *sql.Tx) error {
 		now := r.clk.Now().UTC().Format(time.RFC3339Nano)
@@ -117,14 +140,18 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		if decisionID == "" {
 			decisionID = r.idGen.New(ids.PrefixDecision)
 		}
-		decisionDigest := sha256.Sum256(outcome.DecisionJSON)
+		decisionDigest, hasContractDigest := decisionDigestForStorage(outcome.DecisionJSON)
+		if outcome.DecisionJSON != nil && !hasContractDigest {
+			rawHash := sha256.Sum256(outcome.DecisionJSON)
+			decisionDigest = rawHash[:]
+		}
 		validationStatus := "rejected"
 		validationJSON := []byte(`{"reason":"schema_invalid"}`)
 		if validationErr == nil {
 			validationStatus = "proposed"
 			validationJSON = []byte(`{}`)
 			if decoded, decodeErr := canonicaljson.DecodeDigest(validated.DecisionDigest); decodeErr == nil {
-				copy(decisionDigest[:], decoded)
+				decisionDigest = decoded
 			}
 		} else {
 			if typed, ok := validationErr.(*decisions.ValidationError); ok {
@@ -132,15 +159,26 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 			} else {
 				validationJSON, _ = json.Marshal(map[string]any{"reason": "schema_invalid", "details": validationErr.Error()})
 			}
+			if !hasContractDigest {
+				rawHash := sha256.Sum256(outcome.DecisionJSON)
+				var details map[string]any
+				_ = json.Unmarshal(validationJSON, &details)
+				details["raw_sha256"] = hex.EncodeToString(rawHash[:])
+				validationJSON, _ = json.Marshal(details)
+			}
 		}
 		if outcome.DecisionJSON != nil {
+			var ordinal int
+			if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(ordinal), 0) + 1 FROM decisions WHERE episode_id = ?", episodeID).Scan(&ordinal); err != nil {
+				return fmt.Errorf("allocate decision ordinal: %w", err)
+			}
 			if _, err := tx.ExecContext(ctx, `
 				INSERT INTO decisions (
 					decision_id, episode_id, attempt_id, fence, ordinal, situation_id,
 					situation_version, raw_json, decision_sha256, validation_status,
 					validation_json, created_at
 				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				decisionID, episodeID, identity.AttemptID, identity.Fence, 1,
+				decisionID, episodeID, identity.AttemptID, identity.Fence, ordinal,
 				req.SituationID, req.SituationVersion,
 				outcome.DecisionJSON, decisionDigest[:], validationStatus, validationJSON, now,
 			); err != nil {
@@ -194,23 +232,54 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	})
 }
 
+func decisionDigestForStorage(raw []byte) ([]byte, bool) {
+	canonical, err := canonicaljson.Marshal(json.RawMessage(raw))
+	if err != nil {
+		return nil, false
+	}
+	var document map[string]any
+	if err := json.Unmarshal(canonical, &document); err != nil {
+		return nil, false
+	}
+	digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
+	if err != nil {
+		return nil, false
+	}
+	decoded, err := canonicaljson.DecodeDigest(digest)
+	if err != nil {
+		return nil, false
+	}
+	return decoded, true
+}
+
+func bindAttemptIdentity(raw []byte, identity Identity) ([]byte, error) {
+	var document map[string]any
+	if err := json.Unmarshal(raw, &document); err != nil {
+		return nil, fmt.Errorf("decode request json: %w", err)
+	}
+	document["attempt_id"] = identity.AttemptID
+	document["fence"] = identity.Fence
+	bound, err := canonicaljson.Marshal(document)
+	if err != nil {
+		return nil, fmt.Errorf("canonicalize request json: %w", err)
+	}
+	return bound, nil
+}
+
 func decisionInput(req *Request, identity Identity, now time.Time) (decisions.Input, error) {
 	var payload struct {
-		Tools []struct {
-			Type string `json:"type"`
-			Risk string `json:"risk"`
-		} `json:"tools"`
+		AllowedIntentTypes []string `json:"allowed_intent_types"`
+		RiskCeiling        string   `json:"risk_ceiling"`
 	}
 	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
 		return decisions.Input{}, fmt.Errorf("decode request tools: %w", err)
 	}
-	allowed := make(map[string]struct{}, len(payload.Tools))
-	riskCeiling := "R0"
-	for _, tool := range payload.Tools {
-		allowed[tool.Type] = struct{}{}
-		if riskRank(tool.Risk) > riskRank(riskCeiling) {
-			riskCeiling = tool.Risk
-		}
+	allowed := make(map[string]struct{}, len(payload.AllowedIntentTypes))
+	for _, intentType := range payload.AllowedIntentTypes {
+		allowed[intentType] = struct{}{}
+	}
+	if payload.RiskCeiling == "" {
+		return decisions.Input{}, fmt.Errorf("request has no explicit risk ceiling")
 	}
 	return decisions.Input{
 		EpisodeID:          identity.EpisodeID,
@@ -221,7 +290,7 @@ func decisionInput(req *Request, identity Identity, now time.Time) (decisions.In
 		SituationVersion:   req.SituationVersion,
 		SnapshotDigest:     req.SnapshotSHA256,
 		AllowedIntentTypes: allowed,
-		RiskCeiling:        riskCeiling,
+		RiskCeiling:        payload.RiskCeiling,
 		Now:                now,
 	}, nil
 }
@@ -258,23 +327,6 @@ func decisionIDFromJSON(raw []byte) string {
 	return document.DecisionID
 }
 
-func riskRank(risk string) int {
-	switch risk {
-	case "R0":
-		return 1
-	case "R1":
-		return 2
-	case "R2":
-		return 3
-	case "R3":
-		return 4
-	case "R4":
-		return 5
-	default:
-		return 0
-	}
-}
-
 func (r *Runner) failAttempt(ctx context.Context, identity Identity, reason string) error {
 	return r.withTx(ctx, func(tx *sql.Tx) error {
 		terminalJSON, err := json.Marshal(map[string]any{"status": AttemptFailed, "reason": reason})
@@ -285,11 +337,36 @@ func (r *Runner) failAttempt(ctx context.Context, identity Identity, reason stri
 			return fmt.Errorf("finish failed episode attempt: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, `
-			UPDATE episodes SET lifecycle_status = 'concluded', ended_at = ?, terminal_json = ?
+			UPDATE episodes SET lifecycle_status = 'running', ended_at = NULL, terminal_json = NULL
 			WHERE episode_id = ?`,
-			r.clk.Now().UTC().Format(time.RFC3339Nano), terminalJSON, identity.EpisodeID,
+			identity.EpisodeID,
 		); err != nil {
 			return fmt.Errorf("update episode failed: %w", err)
+		}
+		return nil
+	})
+}
+
+func (r *Runner) failAttemptWithRejection(ctx context.Context, current, incoming Identity, reason RejectionReason, detail string) error {
+	return r.withTx(ctx, func(tx *sql.Tx) error {
+		details, err := json.Marshal(map[string]any{"message": detail, "incoming_attempt_id": incoming.AttemptID, "incoming_fence": incoming.Fence})
+		if err != nil {
+			return fmt.Errorf("marshal identity rejection: %w", err)
+		}
+		if err := RecordRejection(ctx, tx, incoming, reason, details, r.clk.Now()); err != nil {
+			return fmt.Errorf("record worker identity rejection: %w", err)
+		}
+		terminalJSON, err := json.Marshal(map[string]any{"status": AttemptFailed, "reason": detail})
+		if err != nil {
+			return fmt.Errorf("marshal terminal: %w", err)
+		}
+		if err := TransitionAttempt(ctx, tx, current, AttemptFailed, r.clk.Now(), terminalJSON); err != nil {
+			return fmt.Errorf("finish identity-failed attempt: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE episodes SET lifecycle_status = 'running', ended_at = NULL, terminal_json = NULL
+			WHERE episode_id = ?`, current.EpisodeID); err != nil {
+			return fmt.Errorf("retain episode for retry: %w", err)
 		}
 		return nil
 	})
