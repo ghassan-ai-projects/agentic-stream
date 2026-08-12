@@ -4,13 +4,21 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // Version metadata injected at build time.
@@ -20,7 +28,11 @@ var (
 )
 
 func main() {
-	if err := newRootCommand().Execute(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	root := newRootCommand()
+	root.SetContext(ctx)
+	if err := root.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
@@ -41,8 +53,57 @@ cognitive scheduler decides reasoning is useful.`,
 	root.AddCommand(newValidateCommand())
 	root.AddCommand(newRunCommand())
 	root.AddCommand(newConfigEffectiveCommand())
+	root.AddCommand(newServeCommand())
 
 	return root
+}
+
+func newServeCommand() *cobra.Command {
+	var dbPath, listenAddress string
+	var ownerLease time.Duration
+	cmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Start the live Go runtime and readiness endpoint.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if dbPath == "" {
+				return fmt.Errorf("--db is required")
+			}
+			db, err := storage.Open(cmd.Context(), dbPath)
+			if err != nil {
+				return fmt.Errorf("open runtime database: %w", err)
+			}
+			defer func() { _ = db.Close() }()
+			epoch, err := evidence.NewRuntimeEpoch()
+			if err != nil {
+				return fmt.Errorf("generate runtime epoch: %w", err)
+			}
+			owner := &storage.RuntimeOwner{DB: db, InstanceID: epoch, Lease: ownerLease}
+			ledger := &evidence.Ledger{DB: db, LeaseOwner: epoch, RuntimeEpoch: epoch, Lease: ownerLease}
+			service, err := runtime.NewService(owner, ledger, epoch)
+			if err != nil {
+				return err
+			}
+			if _, err := service.Start(cmd.Context()); err != nil {
+				return fmt.Errorf("start runtime: %w", err)
+			}
+			defer func() { _ = service.Close(context.Background()) }()
+			server := &http.Server{Addr: listenAddress, Handler: api.NewHealthHandler(service), ReadHeaderTimeout: 5 * time.Second}
+			go func() {
+				<-cmd.Context().Done()
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = server.Shutdown(shutdownCtx)
+			}()
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				return fmt.Errorf("serve runtime: %w", err)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite runtime database path")
+	cmd.Flags().StringVar(&listenAddress, "listen", "127.0.0.1:8080", "loopback HTTP listen address")
+	cmd.Flags().DurationVar(&ownerLease, "owner-lease", time.Minute, "runtime owner lease duration")
+	return cmd
 }
 
 func newVersionCommand() *cobra.Command {
