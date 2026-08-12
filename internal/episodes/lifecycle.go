@@ -61,9 +61,10 @@ const (
 
 // Identity is the fencing identity carried by every worker-produced object.
 type Identity struct {
-	EpisodeID string
-	AttemptID string
-	Fence     int64
+	EpisodeID  string
+	AttemptID  string
+	Fence      int64
+	OwnerEpoch string
 }
 
 // IdentityError identifies why worker input was refused.
@@ -108,8 +109,27 @@ func IsTerminalAttempt(status AttemptStatus) bool {
 // StartAttempt allocates the next fence for an admitted episode and records a
 // dispatched worker attempt. It must be called inside the caller's transaction.
 func StartAttempt(ctx context.Context, tx *sql.Tx, episodeID, attemptID string, now time.Time) (Identity, error) {
+	return startAttempt(ctx, tx, episodeID, attemptID, "", now)
+}
+
+// StartAttemptOwned allocates an attempt fenced to the current runtime epoch.
+// Live composition must use this entry point; StartAttempt remains available
+// to isolated unit fixtures that do not model runtime ownership.
+func StartAttemptOwned(ctx context.Context, tx *sql.Tx, episodeID, attemptID, ownerEpoch string, now time.Time) (Identity, error) {
+	if ownerEpoch == "" {
+		return Identity{}, fmt.Errorf("runtime owner epoch is required")
+	}
+	return startAttempt(ctx, tx, episodeID, attemptID, ownerEpoch, now)
+}
+
+func startAttempt(ctx context.Context, tx *sql.Tx, episodeID, attemptID, ownerEpoch string, now time.Time) (Identity, error) {
 	if episodeID == "" || attemptID == "" {
 		return Identity{}, fmt.Errorf("episode and attempt IDs are required")
+	}
+	if ownerEpoch != "" {
+		if err := assertRuntimeEpoch(ctx, tx, ownerEpoch, now); err != nil {
+			return Identity{}, err
+		}
 	}
 
 	var lifecycle LifecycleStatus
@@ -141,12 +161,18 @@ func StartAttempt(ctx context.Context, tx *sql.Tx, episodeID, attemptID string, 
 	}
 
 	fence := currentFence + 1
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO episode_attempts (attempt_id, episode_id, fence, status, started_at)
-		VALUES (?, ?, ?, ?, ?)`,
-		attemptID, episodeID, fence, AttemptDispatched, formatTime(now),
-	); err != nil {
-		return Identity{}, fmt.Errorf("insert episode attempt: %w", err)
+	var insertErr error
+	if ownerEpoch == "" {
+		_, insertErr = tx.ExecContext(ctx, `
+			INSERT INTO episode_attempts (attempt_id, episode_id, fence, status, started_at)
+			VALUES (?, ?, ?, ?, ?)`, attemptID, episodeID, fence, AttemptDispatched, formatTime(now))
+	} else {
+		_, insertErr = tx.ExecContext(ctx, `
+			INSERT INTO episode_attempts (attempt_id, episode_id, fence, status, owner_epoch, started_at)
+			VALUES (?, ?, ?, ?, ?, ?)`, attemptID, episodeID, fence, AttemptDispatched, ownerEpoch, formatTime(now))
+	}
+	if insertErr != nil {
+		return Identity{}, fmt.Errorf("insert episode attempt: %w", insertErr)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE episodes
@@ -157,7 +183,7 @@ func StartAttempt(ctx context.Context, tx *sql.Tx, episodeID, attemptID string, 
 	); err != nil {
 		return Identity{}, fmt.Errorf("update episode attempt identity: %w", err)
 	}
-	return Identity{EpisodeID: episodeID, AttemptID: attemptID, Fence: fence}, nil
+	return Identity{EpisodeID: episodeID, AttemptID: attemptID, Fence: fence, OwnerEpoch: ownerEpoch}, nil
 }
 
 // ValidateWorkerIdentity validates a worker identity against the current
@@ -185,19 +211,43 @@ func ValidateWorkerIdentity(ctx context.Context, tx *sql.Tx, identity Identity) 
 	if !currentAttempt.Valid || identity.AttemptID != currentAttempt.String || identity.Fence != currentFence {
 		return &IdentityError{Reason: RejectWrongAttempt}
 	}
+	if identity.OwnerEpoch != "" {
+		if err := assertRuntimeEpoch(ctx, tx, identity.OwnerEpoch, time.Now().UTC()); err != nil {
+			return err
+		}
+	}
 
 	var status AttemptStatus
+	var ownerEpoch sql.NullString
 	if err := tx.QueryRowContext(ctx,
-		"SELECT status FROM episode_attempts WHERE attempt_id = ? AND episode_id = ? AND fence = ?",
+		"SELECT status, owner_epoch FROM episode_attempts WHERE attempt_id = ? AND episode_id = ? AND fence = ?",
 		identity.AttemptID, identity.EpisodeID, identity.Fence,
-	).Scan(&status); err != nil {
+	).Scan(&status, &ownerEpoch); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return &IdentityError{Reason: RejectWrongAttempt}
 		}
 		return fmt.Errorf("load attempt identity: %w", err)
 	}
+	if identity.OwnerEpoch != "" && (!ownerEpoch.Valid || ownerEpoch.String != identity.OwnerEpoch) {
+		return &IdentityError{Reason: RejectStaleAttempt}
+	}
 	if IsTerminalAttempt(status) {
 		return &IdentityError{Reason: RejectTerminalAttempt}
+	}
+	return nil
+}
+
+func assertRuntimeEpoch(ctx context.Context, tx *sql.Tx, epoch string, now time.Time) error {
+	var current string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT owner_epoch FROM runtime_owner
+		WHERE singleton_id = 1 AND owner_epoch = ? AND lease_until > ?`,
+		epoch, formatTime(now),
+	).Scan(&current); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &IdentityError{Reason: RejectStaleAttempt}
+		}
+		return fmt.Errorf("assert runtime owner epoch: %w", err)
 	}
 	return nil
 }

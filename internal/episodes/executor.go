@@ -42,21 +42,28 @@ type Outcome struct {
 
 // Runner polls admitted episodes and executes them deterministically.
 type Runner struct {
-	db       *storage.DB
-	executor Executor
-	clk      clock.Clock
-	idGen    ids.Generator
+	db         *storage.DB
+	executor   Executor
+	clk        clock.Clock
+	idGen      ids.Generator
+	ownerEpoch string
 }
 
 // NewRunner creates a runner for the given executor and clock.
 func NewRunner(db *storage.DB, executor Executor, clk clock.Clock, idGen ids.Generator) *Runner {
+	return NewRunnerWithEpoch(db, executor, clk, idGen, "")
+}
+
+// NewRunnerWithEpoch creates a runner that fences every attempt to ownerEpoch.
+// Live runtime composition must use a freshly claimed epoch.
+func NewRunnerWithEpoch(db *storage.DB, executor Executor, clk clock.Clock, idGen ids.Generator, ownerEpoch string) *Runner {
 	if clk == nil {
 		clk = clock.Physical()
 	}
 	if idGen == nil {
 		idGen = ids.Random()
 	}
-	return &Runner{db: db, executor: executor, clk: clk, idGen: idGen}
+	return &Runner{db: db, executor: executor, clk: clk, idGen: idGen, ownerEpoch: ownerEpoch}
 }
 
 // RunOnce finds one admitted episode, fences a worker attempt, executes it,
@@ -109,7 +116,11 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		req.AttemptID = ""
 		attemptID := r.idGen.New(ids.PrefixAttempt)
 		var err error
-		identity, err = StartAttempt(ctx, tx, episodeID, attemptID, r.clk.Now())
+		if r.ownerEpoch != "" {
+			identity, err = StartAttemptOwned(ctx, tx, episodeID, attemptID, r.ownerEpoch, r.clk.Now())
+		} else {
+			identity, err = StartAttempt(ctx, tx, episodeID, attemptID, r.clk.Now())
+		}
 		if err != nil {
 			return fmt.Errorf("start episode attempt: %w", err)
 		}
