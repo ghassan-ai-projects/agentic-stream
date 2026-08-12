@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -27,6 +28,7 @@ type RecoveryCoordinator struct {
 	Ledger *evidence.Ledger
 	Epoch  string
 	Now    func() time.Time
+	Costs  *costcontrol.Controller
 }
 
 // ClaimAndRecover acquires ownership and commits all recovery mutations before
@@ -49,7 +51,7 @@ func (c *RecoveryCoordinator) ClaimAndRecover(ctx context.Context) (RecoveryRepo
 			now = claimedAt
 		}
 		var err error
-		report.Episodes, err = episodes.RecoverUnfinishedAttempts(ctx, tx, c.Epoch, now)
+		report.Episodes, err = episodes.RecoverUnfinishedAttemptsWithCost(ctx, tx, c.Epoch, now, c.Costs)
 		if err != nil {
 			return fmt.Errorf("recover episode attempts: %w", err)
 		}

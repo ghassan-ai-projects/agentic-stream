@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -35,10 +36,10 @@ func (e *tripBeforeAcceptEffector) DispatchAuthorized(ctx context.Context, comma
 	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
 		return interlock.Set(ctx, tx, "tripped", "race stop", 2, time.Now().UTC().Format(time.RFC3339Nano))
 	}); err != nil {
-		return actions.Effect{}, err
+		return actions.Effect{}, fmt.Errorf("trip interlock: %w", err)
 	}
 	if err := authorization.Check(ctx); err != nil {
-		return actions.Effect{}, err
+		return actions.Effect{}, fmt.Errorf("check authorization: %w", err)
 	}
 	e.calls++
 	return actions.Effect{ProviderResult: map[string]any{"accepted": true}}, nil

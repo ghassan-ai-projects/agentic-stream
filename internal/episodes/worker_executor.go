@@ -221,6 +221,12 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 	}
 
 	outcome := &Outcome{AttemptID: req.AttemptID, Fence: req.Fence, Reasons: []string{terminal.GetReasonCode()}}
+	outcome.CostMicrounits = trustedUsage.costMicrounits
+	if terminal.GetUsage() != nil {
+		if terminal.GetUsage().GetCostMicrounits() > outcome.CostMicrounits {
+			outcome.CostMicrounits = terminal.GetUsage().GetCostMicrounits()
+		}
+	}
 	switch terminal.GetStatus() {
 	case runtimev1.TerminalStatus_TERMINAL_STATUS_PRODUCED:
 		if decision == nil {

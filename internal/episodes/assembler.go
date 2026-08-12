@@ -13,6 +13,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -47,6 +48,13 @@ type Request struct {
 type Assembler struct {
 	spec  *spec.CompiledSpec
 	idGen ids.Generator
+	cost  *costcontrol.Controller
+}
+
+// WithCostControl enables durable aggregate cost reservation at admission.
+func (a *Assembler) WithCostControl(controller *costcontrol.Controller) *Assembler {
+	a.cost = controller
+	return a
 }
 
 // NewAssembler creates an assembler for the given spec.
@@ -241,6 +249,19 @@ func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now t
 	objectiveHash, err := canonicaljson.DecodeDigest(req.ObjectiveSHA256)
 	if err != nil {
 		return fmt.Errorf("decode objective digest: %w", err)
+	}
+	if a.cost != nil {
+		var payload struct {
+			Budget struct {
+				CostMicrounits uint64 `json:"cost_microunits"`
+			} `json:"budget"`
+		}
+		if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
+			return fmt.Errorf("decode episode cost budget: %w", err)
+		}
+		if err := a.cost.Reserve(ctx, tx, req.EpisodeID, req.TenantID, payload.Budget.CostMicrounits, now.UTC().Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("reserve episode cost: %w", err)
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO episodes (

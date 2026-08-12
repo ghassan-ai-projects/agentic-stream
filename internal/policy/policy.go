@@ -53,7 +53,7 @@ type ApprovalAssertion struct {
 
 // CanonicalApprovalAssertion returns the exact bytes principals sign.
 func CanonicalApprovalAssertion(assertion ApprovalAssertion) ([]byte, error) {
-	return canonicaljson.Marshal(map[string]any{
+	result, err := canonicaljson.Marshal(map[string]any{
 		"approval_id": assertion.ApprovalID, "intent_id": assertion.IntentID, "decision_id": assertion.DecisionID,
 		"tenant_id": assertion.TenantID, "situation_id": assertion.SituationID,
 		"situation_version": assertion.SituationVersion, "risk_class": assertion.RiskClass,
@@ -61,6 +61,10 @@ func CanonicalApprovalAssertion(assertion ApprovalAssertion) ([]byte, error) {
 		"expires_at": assertion.ExpiresAt, "nonce": assertion.Nonce,
 		"approver_id": assertion.ApproverID, "relay_id": assertion.RelayID,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("canonicalize approval assertion: %w", err)
+	}
+	return result, nil
 }
 
 // ApprovalAssertionSigningBytes returns the domain-separated bytes principals sign.

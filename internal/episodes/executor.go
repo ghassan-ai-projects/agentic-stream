@@ -13,6 +13,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -38,6 +39,7 @@ type Outcome struct {
 	DecisionJSON   []byte   `json:"decision_json,omitempty"`
 	DecisionSHA256 string   `json:"decision_sha256,omitempty"`
 	Reasons        []string `json:"reasons,omitempty"`
+	CostMicrounits uint64   `json:"cost_microunits,omitempty"`
 }
 
 // Runner polls admitted episodes and executes them deterministically.
@@ -47,6 +49,13 @@ type Runner struct {
 	clk        clock.Clock
 	idGen      ids.Generator
 	ownerEpoch string
+	cost       *costcontrol.Controller
+}
+
+// WithCostControl enables settlement of durable episode cost reservations.
+func (r *Runner) WithCostControl(controller *costcontrol.Controller) *Runner {
+	r.cost = controller
+	return r
 }
 
 // NewRunner creates a runner for the given executor and clock.
@@ -74,11 +83,12 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	var episodeID string
 	var identity Identity
 	var snapshotHash []byte
+	var promptHash, objectiveHash []byte
 	err := r.withTx(ctx, func(tx *sql.Tx) error {
 		if err := tx.QueryRowContext(ctx, `
 			SELECT episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
 			       executor_name, executor_version, model_policy, prompt_version,
-			       snapshot_sha256, admission_key, request_json
+			       snapshot_sha256, prompt_sha256, objective_sha256, admission_key, request_json
 			FROM episodes
 			WHERE tenant_id = ? AND lifecycle_status IN ('admitted', 'running')
 			ORDER BY accepted_at LIMIT 1`,
@@ -86,7 +96,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		).Scan(
 			&episodeID, &req.SchedulerItemID, &req.TenantID, &req.SituationID, &req.SituationVersion,
 			&req.ExecutorName, &req.ExecutorVersion, &req.ModelPolicy, &req.PromptVersion,
-			&snapshotHash, &req.AdmissionKey, &req.RequestJSON,
+			&snapshotHash, &promptHash, &objectiveHash, &req.AdmissionKey, &req.RequestJSON,
 		); err != nil {
 			if err == sql.ErrNoRows {
 				return nil
@@ -96,6 +106,8 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 
 		req.EpisodeID = episodeID
 		req.SnapshotSHA256 = "sha256:" + hex.EncodeToString(snapshotHash)
+		req.PromptSHA256 = "sha256:" + hex.EncodeToString(promptHash)
+		req.ObjectiveSHA256 = "sha256:" + hex.EncodeToString(objectiveHash)
 		var trace struct {
 			Traceparent     string `json:"traceparent"`
 			Tracestate      string `json:"tracestate"`
@@ -272,6 +284,11 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		if err := TransitionAttempt(ctx, tx, identity, attemptStatus, r.clk.Now(), terminalJSON); err != nil {
 			return fmt.Errorf("finish episode attempt: %w", err)
 		}
+		if r.cost != nil {
+			if err := r.cost.Settle(ctx, tx, identity.EpisodeID, outcome.CostMicrounits, now); err != nil {
+				return fmt.Errorf("settle episode cost: %w", err)
+			}
+		}
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE episodes SET lifecycle_status = 'concluded', ended_at = ?, terminal_json = ?
 			WHERE episode_id = ?`,
@@ -413,6 +430,10 @@ func (r *Runner) failAttemptStatus(ctx context.Context, identity Identity, attem
 				identity.EpisodeID,
 			); err != nil {
 				return fmt.Errorf("update episode failed: %w", err)
+			}
+		} else if r.cost != nil {
+			if err := r.cost.Settle(ctx, tx, identity.EpisodeID, 0, r.clk.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+				return fmt.Errorf("settle abandoned episode cost: %w", err)
 			}
 		}
 		return nil

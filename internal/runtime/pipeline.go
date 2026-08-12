@@ -9,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -22,15 +23,18 @@ import (
 
 // PipelineConfig configures one owner-scoped live runtime pipeline.
 type PipelineConfig struct {
-	DB          *storage.DB
-	Spec        *spec.CompiledSpec
-	TenantID    string
-	Owner       *storage.RuntimeOwner
-	OwnerEpoch  string
-	Clock       clock.Clock
-	Executor    episodes.Executor
-	Effector    actions.Effector
-	IDGenerator ids.Generator
+	DB                *storage.DB
+	Spec              *spec.CompiledSpec
+	TenantID          string
+	Owner             *storage.RuntimeOwner
+	OwnerEpoch        string
+	Clock             clock.Clock
+	Executor          episodes.Executor
+	Effector          actions.Effector
+	IDGenerator       ids.Generator
+	GlobalCostCeiling *uint64
+	TenantCostCeiling *uint64
+	CostKillSwitch    *bool
 }
 
 // PipelineReport describes one completed live batch.
@@ -87,12 +91,17 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 		return nil, fmt.Errorf("create stream engine: %w", err)
 	}
 	stream.WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch)
+	if cfg.GlobalCostCeiling != nil || cfg.TenantCostCeiling != nil || cfg.CostKillSwitch != nil {
+		if err := configureCostLimits(ctx, cfg); err != nil {
+			return nil, err
+		}
+	}
 	return &Pipeline{
 		db:         cfg.DB,
 		log:        log,
 		engine:     stream,
-		assembler:  episodes.NewAssembler(cfg.Spec, cfg.IDGenerator),
-		runner:     episodes.NewRunnerWithEpoch(cfg.DB, cfg.Executor, cfg.Clock, cfg.IDGenerator, cfg.OwnerEpoch),
+		assembler:  episodes.NewAssembler(cfg.Spec, cfg.IDGenerator).WithCostControl(&costcontrol.Controller{}),
+		runner:     episodes.NewRunnerWithEpoch(cfg.DB, cfg.Executor, cfg.Clock, cfg.IDGenerator, cfg.OwnerEpoch).WithCostControl(&costcontrol.Controller{}),
 		policy:     policy.NewGatewayWithOwner(cfg.Spec.Digest, cfg.IDGenerator, cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}),
 		dispatcher: actions.NewDispatcher(cfg.DB, cfg.Effector, cfg.Clock, cfg.IDGenerator, "runtime-actions/"+cfg.OwnerEpoch, time.Minute).WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}),
 		owner:      cfg.Owner,
@@ -100,6 +109,34 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 		clk:        cfg.Clock,
 		tenantID:   cfg.TenantID,
 	}, nil
+}
+
+func configureCostLimits(ctx context.Context, cfg PipelineConfig) error {
+	if err := cfg.DB.WithTx(ctx, func(tx *sql.Tx) error {
+		if cfg.Owner != nil && cfg.OwnerEpoch != "" {
+			if err := cfg.Owner.Assert(ctx, tx, cfg.OwnerEpoch); err != nil {
+				return fmt.Errorf("assert owner for cost configuration: %w", err)
+			}
+		}
+		kill := false
+		if cfg.CostKillSwitch != nil {
+			kill = *cfg.CostKillSwitch
+		}
+		if cfg.GlobalCostCeiling != nil {
+			if err := costcontrol.SetLimit(ctx, tx, "global", "", *cfg.GlobalCostCeiling, kill, cfg.Clock.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+				return fmt.Errorf("set global cost limit: %w", err)
+			}
+		}
+		if cfg.TenantCostCeiling != nil {
+			if err := costcontrol.SetLimit(ctx, tx, "tenant:"+cfg.TenantID, cfg.TenantID, *cfg.TenantCostCeiling, kill, cfg.Clock.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+				return fmt.Errorf("set tenant cost limit: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("configure cost limits: %w", err)
+	}
+	return nil
 }
 
 // RunJSONL ingests normalized JSONL, evaluates the stream and cognition,
@@ -208,11 +245,11 @@ func (p *Pipeline) assemblePending(ctx context.Context) (int, error) {
 		}
 		if err := p.db.WithTx(ctx, func(tx *sql.Tx) error {
 			if err := p.assertOwnerTx(ctx, tx); err != nil {
-				return err
+				return fmt.Errorf("assert pipeline owner: %w", err)
 			}
 			req, err := p.assembler.Assemble(ctx, tx, itemID, p.tenantID)
 			if err != nil {
-				return err
+				return fmt.Errorf("assemble scheduler item: %w", err)
 			}
 			return p.assembler.Persist(ctx, tx, req, now)
 		}); err != nil {

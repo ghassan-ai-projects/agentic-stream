@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 )
 
 // RecoveryReport describes active attempt state abandoned during a runtime
@@ -23,6 +25,13 @@ type RecoveryReport struct {
 // because cancellation is an explicit terminal decision, not an automatic
 // retry signal.
 func RecoverUnfinishedAttempts(ctx context.Context, tx *sql.Tx, currentEpoch string, now time.Time) (RecoveryReport, error) {
+	return RecoverUnfinishedAttemptsWithCost(ctx, tx, currentEpoch, now, nil)
+}
+
+// RecoverUnfinishedAttemptsWithCost also releases reservations for attempts
+// that are permanently abandoned during restart. Requeued episodes retain
+// their reservation for the next fenced attempt.
+func RecoverUnfinishedAttemptsWithCost(ctx context.Context, tx *sql.Tx, currentEpoch string, now time.Time, costs *costcontrol.Controller) (RecoveryReport, error) {
 	if tx == nil || currentEpoch == "" {
 		return RecoveryReport{}, fmt.Errorf("recovery transaction and current epoch are required")
 	}
@@ -95,6 +104,11 @@ func RecoverUnfinishedAttempts(ctx context.Context, tx *sql.Tx, currentEpoch str
 			}
 			if count, err := result.RowsAffected(); err == nil && count == 1 {
 				report.AbandonedEpisodes++
+			}
+			if costs != nil {
+				if err := costs.Settle(ctx, tx, item.episodeID, 0, formatTime(now)); err != nil {
+					return RecoveryReport{}, fmt.Errorf("settle abandoned episode cost %s: %w", item.episodeID, err)
+				}
 			}
 		} else {
 			var lifecycle LifecycleStatus

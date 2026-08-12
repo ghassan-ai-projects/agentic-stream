@@ -179,12 +179,15 @@ func (d *Dispatcher) DispatchOnce(ctx context.Context) (bool, error) {
 }
 
 func (d *Dispatcher) assertInterlock(ctx context.Context, command Command) error {
-	return d.db.WithTx(ctx, func(tx *sql.Tx) error {
+	if err := d.db.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := d.interlock.Assert(ctx, tx, command.TenantID, command.NormalizedTarget, ""); err != nil {
 			return fmt.Errorf("dispatch interlock assertion: %w", err)
 		}
 		return nil
-	})
+	}); err != nil {
+		return fmt.Errorf("assert dispatch interlock: %w", err)
+	}
+	return nil
 }
 
 func (d *Dispatcher) revalidateAuthorization(ctx context.Context, leased leasedCommand) error {

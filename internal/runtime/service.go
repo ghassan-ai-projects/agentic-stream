@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -41,7 +42,7 @@ func (s *Service) Start(ctx context.Context) (RecoveryReport, error) {
 	if s == nil {
 		return RecoveryReport{}, fmt.Errorf("runtime service is nil")
 	}
-	coordinator := &RecoveryCoordinator{Owner: s.owner, Ledger: s.ledger, Epoch: s.epoch}
+	coordinator := &RecoveryCoordinator{Owner: s.owner, Ledger: s.ledger, Epoch: s.epoch, Costs: &costcontrol.Controller{}}
 	report, err := coordinator.ClaimAndRecover(ctx)
 	if err != nil {
 		s.setNotReady(err)

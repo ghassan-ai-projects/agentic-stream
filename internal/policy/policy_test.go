@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"database/sql"
 	"encoding/hex"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -116,11 +117,11 @@ func TestGatewayResolvesApprovalBeforeCommanding(t *testing.T) {
 		var err error
 		var nonce string
 		if err := tx.QueryRowContext(ctx, "SELECT nonce FROM approvals WHERE approval_id = ?", approval.ApprovalID).Scan(&nonce); err != nil {
-			return err
+			return fmt.Errorf("load approval nonce: %w", err)
 		}
 		var intentSHA, decisionSHA []byte
 		if err := tx.QueryRowContext(ctx, "SELECT i.intent_sha256, d.decision_sha256 FROM intents i JOIN decisions d ON d.decision_id = i.decision_id WHERE i.intent_id = ?", intentID).Scan(&intentSHA, &decisionSHA); err != nil {
-			return err
+			return fmt.Errorf("load approval digests: %w", err)
 		}
 		assertion, err := ApprovalAssertionSigningBytes(ApprovalAssertion{
 			ApprovalID: approval.ApprovalID, IntentID: intentID, DecisionID: "dec-policy", TenantID: "tenant",
@@ -179,7 +180,7 @@ func TestGatewayFailsClosedWhenInterlockTripped(t *testing.T) {
 	var result Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := interlock.Set(ctx, tx, "tripped", "operator stop", 2, now.Format(time.RFC3339Nano)); err != nil {
-			return err
+			return fmt.Errorf("trip interlock: %w", err)
 		}
 		var err error
 		result, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
