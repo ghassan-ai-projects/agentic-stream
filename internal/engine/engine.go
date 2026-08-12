@@ -72,6 +72,18 @@ func newEngine(ctx context.Context, db *storage.DB, log *eventlog.EventLog, clk 
 	if err := spec.SaveDeployment(ctx, db, tenantID, compiled); err != nil {
 		return nil, fmt.Errorf("save deployment: %w", err)
 	}
+	if len(compiled.Inputs) > 0 {
+		requireSchemas := true
+		for _, input := range compiled.Inputs {
+			if input.SchemaRef == "" {
+				requireSchemas = false
+				break
+			}
+		}
+		if requireSchemas {
+			log.RequireSchemaValidation()
+		}
+	}
 	idGen := ids.Deterministic()
 	opRuntime, err := operators.NewOperatorRuntime(compiled.Digest, compiled, idGen)
 	if err != nil {

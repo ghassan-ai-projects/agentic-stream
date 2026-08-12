@@ -33,15 +33,27 @@ func TestQuarantineIsBoundedAndReleasable(t *testing.T) {
 	if attempts != 10 {
 		t.Fatalf("attempt count = %d, want bounded count 10", attempts)
 	}
-	if err := log.ReleaseQuarantine(ctx, "tenant-1", "evt-poison", "2026-08-12T12:01:00Z"); err != nil {
-		t.Fatalf("release: %v", err)
-	}
 	var status string
 	if err := db.QueryRowContext(ctx, "SELECT status FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", "tenant-1", "evt-poison").Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if status != "released" {
-		t.Fatalf("status = %q, want released", status)
+	if status != "rejected" {
+		t.Fatalf("status = %q, want rejected after retry exhaustion", status)
+	}
+	var gaps int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM event_gaps WHERE tenant_id = ? AND reason_code = 'quarantine_retry_exhausted'", "tenant-1").Scan(&gaps); err != nil {
+		t.Fatal(err)
+	}
+	if gaps != 1 {
+		t.Fatalf("overflow gaps = %d, want 1", gaps)
+	}
+
+	releasable := map[string]any{"id": "evt-releasable", "type": "sensor.temperature", "schema_version": "1.0", "source": "test", "data": map[string]any{"unexpected": true}}
+	if err := log.Quarantine(ctx, "tenant-1", releasable, "unknown_payload_field", "2026-08-12T12:00:00Z"); err != nil {
+		t.Fatalf("releasable quarantine: %v", err)
+	}
+	if err := log.ReleaseQuarantine(ctx, "tenant-1", "evt-releasable", "2026-08-12T12:01:00Z"); err != nil {
+		t.Fatalf("release: %v", err)
 	}
 }
 

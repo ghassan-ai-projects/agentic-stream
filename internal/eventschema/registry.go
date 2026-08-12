@@ -5,6 +5,7 @@ package eventschema
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 )
 
 // Field describes one payload field exposed to deterministic operators.
@@ -38,11 +39,14 @@ func Lookup(ref string) (Definition, bool) {
 // JSON returns the structural schema for a built-in definition.
 func JSON(definition Definition) ([]byte, error) {
 	properties := make(map[string]map[string]string, len(definition.Fields))
+	required := make([]string, 0, len(definition.Fields))
 	for name := range definition.Fields {
 		properties[name] = map[string]string{"type": "number"}
+		required = append(required, name)
 	}
+	sort.Strings(required)
 	result, err := json.Marshal(map[string]any{
-		"type": "object", "additionalProperties": false, "properties": properties,
+		"type": "object", "additionalProperties": false, "properties": properties, "required": required,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal event schema: %w", err)

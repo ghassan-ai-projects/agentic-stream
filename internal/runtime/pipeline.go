@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
@@ -58,10 +59,15 @@ type Pipeline struct {
 	runner     *episodes.Runner
 	policy     *policy.Gateway
 	dispatcher *actions.Dispatcher
+	watch      *actions.WatchEffector
 	owner      *storage.RuntimeOwner
 	ownerEpoch string
 	clk        clock.Clock
 	tenantID   string
+	watchMu    sync.Mutex
+	watchStop  context.CancelFunc
+	watchDone  chan struct{}
+	watchErr   error
 }
 
 // NewPipeline creates a fully composed live pipeline. The caller must start
@@ -85,7 +91,8 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 	if cfg.Effector == nil {
 		cfg.Effector = actions.NewSimulatedEffector()
 	}
-	cfg.Effector = actions.NewCompositeEffector(actions.NewWatchEffectorWithClock(cfg.DB, cfg.Clock), cfg.Effector)
+	watch := actions.NewWatchEffectorWithClock(cfg.DB, cfg.Clock)
+	cfg.Effector = actions.NewCompositeEffector(watch, cfg.Effector)
 	log := eventlog.NewEventLogWithClock(cfg.DB, cfg.Clock)
 	stream, err := engine.NewEngine(ctx, cfg.DB, log, cfg.Clock, cfg.Spec, cfg.TenantID)
 	if err != nil {
@@ -105,11 +112,71 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 		runner:     episodes.NewRunnerWithEpoch(cfg.DB, cfg.Executor, cfg.Clock, cfg.IDGenerator, cfg.OwnerEpoch).WithCostControl(&costcontrol.Controller{}),
 		policy:     policy.NewGatewayWithOwner(cfg.Spec.Digest, cfg.IDGenerator, cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}),
 		dispatcher: actions.NewDispatcher(cfg.DB, cfg.Effector, cfg.Clock, cfg.IDGenerator, "runtime-actions/"+cfg.OwnerEpoch, time.Minute).WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}),
+		watch:      watch,
 		owner:      cfg.Owner,
 		ownerEpoch: cfg.OwnerEpoch,
 		clk:        cfg.Clock,
 		tenantID:   cfg.TenantID,
 	}, nil
+}
+
+// Start begins runtime-owned maintenance loops. It is safe to call once for
+// a pipeline; the caller should call Close when the live runtime stops.
+func (p *Pipeline) Start(ctx context.Context) error {
+	if p == nil || p.watch == nil {
+		return fmt.Errorf("pipeline watch maintenance is not configured")
+	}
+	p.watchMu.Lock()
+	defer p.watchMu.Unlock()
+	if p.watchStop != nil {
+		return fmt.Errorf("pipeline is already started")
+	}
+	watchCtx, stop := context.WithCancel(ctx)
+	p.watchStop = stop
+	p.watchDone = make(chan struct{})
+	done := p.watchDone
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-watchCtx.Done():
+				return
+			case <-ticker.C:
+				if err := p.watch.Expire(watchCtx); err != nil {
+					p.watchMu.Lock()
+					p.watchErr = err
+					p.watchMu.Unlock()
+					return
+				}
+			}
+		}
+	}()
+	return nil
+}
+
+// Close stops runtime-owned maintenance loops.
+func (p *Pipeline) Close() error {
+	if p == nil {
+		return nil
+	}
+	p.watchMu.Lock()
+	stop, done := p.watchStop, p.watchDone
+	p.watchStop = nil
+	p.watchDone = nil
+	p.watchMu.Unlock()
+	if stop != nil {
+		stop()
+		<-done
+	}
+	return nil
+}
+
+func (p *Pipeline) watchFailure() error {
+	p.watchMu.Lock()
+	defer p.watchMu.Unlock()
+	return p.watchErr
 }
 
 func configureCostLimits(ctx context.Context, cfg PipelineConfig) error {
@@ -201,6 +268,12 @@ func (p *Pipeline) RunSimulatorJSONL(ctx context.Context, path string) (Pipeline
 }
 
 func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport) (PipelineReport, error) {
+	if err := p.watchFailure(); err != nil {
+		return report, fmt.Errorf("watch maintenance failed: %w", err)
+	}
+	if err := p.watch.Expire(ctx); err != nil {
+		return report, fmt.Errorf("expire watch conditions: %w", err)
+	}
 	processed, err := p.engine.RunGlobal(ctx, nil)
 	if err != nil {
 		return report, fmt.Errorf("run live stream engine: %w", err)

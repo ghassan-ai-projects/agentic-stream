@@ -103,6 +103,7 @@ CREATE TABLE event_quarantine (
     first_seen_at   TEXT NOT NULL,
     last_seen_at    TEXT NOT NULL,
     released_at     TEXT,
+    redriven_at     TEXT,
     UNIQUE (tenant_id, event_id)
 ) STRICT;
 

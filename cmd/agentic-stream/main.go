@@ -168,6 +168,10 @@ func newRunLiveCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := pipeline.Start(cmd.Context()); err != nil {
+				return fmt.Errorf("start pipeline maintenance: %w", err)
+			}
+			defer func() { _ = pipeline.Close() }()
 			var report runtime.PipelineReport
 			switch traceFormat {
 			case "normalized":

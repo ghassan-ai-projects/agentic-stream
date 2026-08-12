@@ -21,6 +21,9 @@ func NewCompositeEffector(watch *WatchEffector, fallback Effector) *CompositeEff
 // Dispatch routes one command without bypassing idempotency at the selected effector.
 func (e *CompositeEffector) Dispatch(ctx context.Context, command Command) (Effect, error) {
 	if command.EffectorRoute == "install_watch_condition" {
+		if e.watch == nil {
+			return Effect{}, fmt.Errorf("watch effector is not configured")
+		}
 		return e.watch.Dispatch(ctx, command)
 	}
 	effect, err := e.fallback.Dispatch(ctx, command)
@@ -36,6 +39,9 @@ func (e *CompositeEffector) DispatchAuthorized(ctx context.Context, command Comm
 		return Effect{}, fmt.Errorf("dispatch authorization is required")
 	}
 	if command.EffectorRoute == "install_watch_condition" {
+		if e.watch == nil {
+			return Effect{}, fmt.Errorf("watch effector is not configured")
+		}
 		return e.watch.DispatchAuthorized(ctx, command, authorization)
 	}
 	if guarded, ok := e.fallback.(AuthorizedEffector); ok {

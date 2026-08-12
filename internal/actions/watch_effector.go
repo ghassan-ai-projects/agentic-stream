@@ -101,6 +101,16 @@ func (e *WatchEffector) dispatch(ctx context.Context, command Command, _ func(co
 		if err != nil {
 			return fmt.Errorf("install watch condition: %w", err)
 		}
+		var stored struct {
+			TenantID, SituationID, Expression, Target, ExpiresAt string
+			SituationVersion, RemainingFires                     int
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT tenant_id, situation_id, situation_version, expression, target, expires_at, remaining_fires FROM watch_conditions WHERE watch_id = ?`, command.CommandID).Scan(&stored.TenantID, &stored.SituationID, &stored.SituationVersion, &stored.Expression, &stored.Target, &stored.ExpiresAt, &stored.RemainingFires); err != nil {
+			return fmt.Errorf("verify installed watch condition: %w", err)
+		}
+		if stored.TenantID != command.TenantID || stored.SituationID != situationID || stored.SituationVersion != situationVersion || stored.Expression != expression || stored.Target != target || stored.ExpiresAt != expiresAt || stored.RemainingFires != remaining {
+			return fmt.Errorf("watch command idempotency conflict")
+		}
 		return nil
 	}); err != nil {
 		return Effect{}, fmt.Errorf("watch condition transaction: %w", err)
