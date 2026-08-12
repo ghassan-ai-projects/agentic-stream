@@ -27,7 +27,7 @@ func TestEvidenceToolsOverPrivateUDS(t *testing.T) {
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	keys := map[string][]byte{"k1": []byte("01234567890123456789012345678901")}
 	issuer := &Issuer{Issuer: "runtime", Audience: "evidence-tools", KeyID: "k1", Keys: keys, Now: func() time.Time { return now }}
-	token, err := issuer.Issue(Scope{KeyID: "k1", EpisodeID: "episode-1", AttemptID: "attempt-1", Fence: 2, TenantID: "tenant-1", SituationID: "situation-1", SituationVersion: 1, EntityID: "motor-1", Tools: []string{"evidence.get"}, NotBefore: now.Add(-time.Minute), ExpiresAt: now.Add(10 * time.Minute), From: now.Add(-time.Hour), Until: now.Add(time.Hour), MaxRows: 10, MaxBytes: 1024, Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"})
+	token, err := issuer.Issue(Scope{KeyID: "k1", EpisodeID: "episode-1", AttemptID: "attempt-1", Fence: 2, TenantID: "tenant-1", SituationID: "situation-1", SituationVersion: 1, EntityID: "motor-1", Tools: []string{"evidence.get"}, NotBefore: now, ExpiresAt: now.Add(10 * time.Minute), From: now.Add(-time.Hour), Until: now.Add(time.Hour), MaxRows: 10, MaxBytes: 1024, Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", RuntimeEpoch: "epoch-1"})
 	if err != nil {
 		t.Fatal(err)
 	}

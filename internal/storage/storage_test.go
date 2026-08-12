@@ -30,8 +30,12 @@ func TestOpenCreatesDatabaseAndRunsMigrations(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").Scan(&version); err != nil {
 		t.Fatalf("read migration version: %v", err)
 	}
-	if version != 9 {
-		t.Fatalf("expected migration version 9, got %d", version)
+	if version != 10 {
+		t.Fatalf("expected migration version 10, got %d", version)
+	}
+	var table string
+	if err := db.QueryRowContext(ctx, "SELECT name FROM sqlite_master WHERE type='table' AND name='evidence_call_ledger'").Scan(&table); err != nil || table != "evidence_call_ledger" {
+		t.Fatalf("evidence ledger table missing: %v", err)
 	}
 
 	// Verify a known table exists.

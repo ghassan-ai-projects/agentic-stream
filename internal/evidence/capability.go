@@ -43,6 +43,7 @@ type Scope struct {
 	Until            time.Time
 	Traceparent      string
 	Tracestate       string
+	RuntimeEpoch     string
 }
 
 // Issuer signs opaque capability tokens with an HMAC-SHA256 key ring.
@@ -80,6 +81,11 @@ func (i *Issuer) Issue(scope Scope) ([]byte, error) {
 		// The token is an episode-attempt capability, not a durable credential.
 		scope.ExpiresAt = scope.IssuedAt.Add(maxTTL)
 	}
+	id, err := tokenID(scope.TokenID)
+	if err != nil {
+		return nil, err
+	}
+	scope.TokenID = id
 	if err := validateScope(scope); err != nil {
 		return nil, err
 	}
@@ -99,17 +105,13 @@ func (i *Issuer) Issue(scope Scope) ([]byte, error) {
 	if scope.ExpiresAt.Sub(scope.IssuedAt) > maxTTL {
 		return nil, fmt.Errorf("capability token lifetime exceeds maximum")
 	}
-	id, err := tokenID(scope.TokenID)
-	if err != nil {
-		return nil, err
-	}
 	payload, err := json.Marshal(tokenPayload{
 		Issuer: scope.Issuer, Audience: scope.Audience, TokenID: id, IssuedAt: scope.IssuedAt.UTC().Format(time.RFC3339Nano), EpisodeID: scope.EpisodeID,
 		AttemptID: scope.AttemptID, Fence: scope.Fence, TenantID: scope.TenantID,
 		SituationID: scope.SituationID, SituationVersion: scope.SituationVersion, EntityID: scope.EntityID, Tools: append([]string(nil), scope.Tools...),
 		NotBefore: scope.NotBefore.UTC().Format(time.RFC3339Nano), ExpiresAt: scope.ExpiresAt.UTC().Format(time.RFC3339Nano),
 		MaxRows: scope.MaxRows, MaxBytes: scope.MaxBytes,
-		From: scope.From.UTC().Format(time.RFC3339Nano), Until: scope.Until.UTC().Format(time.RFC3339Nano), Traceparent: scope.Traceparent, Tracestate: scope.Tracestate,
+		From: scope.From.UTC().Format(time.RFC3339Nano), Until: scope.Until.UTC().Format(time.RFC3339Nano), Traceparent: scope.Traceparent, Tracestate: scope.Tracestate, RuntimeEpoch: scope.RuntimeEpoch,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal capability payload: %w", err)
@@ -188,10 +190,10 @@ func validateScope(scope Scope) error {
 	if scope.KeyID == "" || scope.EpisodeID == "" || scope.AttemptID == "" || scope.TenantID == "" || scope.SituationID == "" || scope.EntityID == "" || scope.Fence <= 0 || len(scope.Tools) == 0 || scope.MaxRows == 0 || scope.MaxBytes == 0 {
 		return fmt.Errorf("capability scope is incomplete")
 	}
-	if scope.ExpiresAt.IsZero() || scope.NotBefore.IsZero() || !scope.NotBefore.Before(scope.ExpiresAt) {
+	if scope.ExpiresAt.IsZero() || scope.NotBefore.IsZero() || scope.IssuedAt.IsZero() || scope.IssuedAt.After(scope.NotBefore) || !scope.NotBefore.Before(scope.ExpiresAt) {
 		return fmt.Errorf("capability validity window is invalid")
 	}
-	if scope.Until.IsZero() || scope.From.IsZero() || scope.Until.Before(scope.From) || scope.Traceparent == "" || scope.SituationVersion <= 0 {
+	if scope.Until.IsZero() || scope.From.IsZero() || scope.Until.Before(scope.From) || scope.Traceparent == "" || scope.SituationVersion <= 0 || scope.TokenID == "" || scope.RuntimeEpoch == "" {
 		return fmt.Errorf("capability evidence range is invalid")
 	}
 	return nil
@@ -218,6 +220,7 @@ type tokenPayload struct {
 	Until            string   `json:"until"`
 	Traceparent      string   `json:"traceparent"`
 	Tracestate       string   `json:"tracestate,omitempty"`
+	RuntimeEpoch     string   `json:"runtime_epoch"`
 }
 
 func (p tokenPayload) scope(keyID string) (Scope, error) {
@@ -248,7 +251,7 @@ func (p tokenPayload) scope(keyID string) (Scope, error) {
 	if err != nil {
 		return Scope{}, err
 	}
-	scope := Scope{KeyID: keyID, Issuer: p.Issuer, Audience: p.Audience, TokenID: p.TokenID, IssuedAt: issued, EpisodeID: p.EpisodeID, AttemptID: p.AttemptID, Fence: p.Fence, TenantID: p.TenantID, SituationID: p.SituationID, SituationVersion: p.SituationVersion, EntityID: p.EntityID, Tools: p.Tools, NotBefore: nbf, ExpiresAt: exp, MaxRows: p.MaxRows, MaxBytes: p.MaxBytes, From: from, Until: until, Traceparent: p.Traceparent, Tracestate: p.Tracestate}
+	scope := Scope{KeyID: keyID, Issuer: p.Issuer, Audience: p.Audience, TokenID: p.TokenID, IssuedAt: issued, EpisodeID: p.EpisodeID, AttemptID: p.AttemptID, Fence: p.Fence, TenantID: p.TenantID, SituationID: p.SituationID, SituationVersion: p.SituationVersion, EntityID: p.EntityID, Tools: p.Tools, NotBefore: nbf, ExpiresAt: exp, MaxRows: p.MaxRows, MaxBytes: p.MaxBytes, From: from, Until: until, Traceparent: p.Traceparent, Tracestate: p.Tracestate, RuntimeEpoch: p.RuntimeEpoch}
 	if err := validateScope(scope); err != nil {
 		return Scope{}, err
 	}

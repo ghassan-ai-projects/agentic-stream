@@ -29,11 +29,15 @@ Implemented in the live read-boundary slice:
 - runtime-owned Unix sockets with absolute-path validation, private directory
   checks, mode `0600`, Unix-only dialing, and ownership-safe cleanup;
 - actual EvidenceTools-over-UDS integration coverage.
+- SQLite evidence-call reservation and completed-result ledger with composite
+  identity, request digests, concurrent reservation serialization, integrity
+  checks, and current-attempt fencing.
 
 Explicitly deferred from this phase:
 
-- durable cross-restart evidence-call audit/idempotency and process-epoch
-  invalidation;
+- automatic startup recovery/reclamation and process-epoch invalidation for
+  unfinished calls; the current ledger exposes explicit reclaim operations but
+  does not wire them into startup yet;
 - runtime composition that issues a fresh capability from each persisted
   attempt and removes raw token injection from the executor test seam;
 - child-process supervision, remote workers, mTLS, Python fixtures, and
