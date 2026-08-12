@@ -28,3 +28,27 @@ func TestVersionCommand(t *testing.T) {
 		t.Fatalf("missing protocol version: %s", out)
 	}
 }
+
+func TestServeCommandRequiresContinuousSourcePair(t *testing.T) {
+	cmd := newServeCommand()
+	cmd.SetArgs([]string{"--db", "runtime.db", "--spec", "spec.yaml"})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--spec and --trace must be provided together") {
+		t.Fatalf("expected paired source validation, got %v", err)
+	}
+}
+
+func TestLoopbackListenAddress(t *testing.T) {
+	for address, want := range map[string]bool{
+		"127.0.0.1:8080": true,
+		"localhost:8080": true,
+		"[::1]:8080":     true,
+		"0.0.0.0:8080":   false,
+		"127.0.0.1":      false,
+	} {
+		if got := isLoopbackListenAddress(address); got != want {
+			t.Errorf("isLoopbackListenAddress(%q) = %v, want %v", address, got, want)
+		}
+	}
+}

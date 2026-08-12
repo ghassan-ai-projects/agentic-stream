@@ -7,6 +7,7 @@ an environment rehearsal before a production release.
 ## Start and verify readiness
 
 ```bash
+export AGENTIC_STREAM_SUBSCRIBER_TOKEN='replace-with-a-rotated-secret'
 agentic-stream serve --db runtime.db --listen 127.0.0.1:8080
 curl --fail http://127.0.0.1:8080/health/live
 curl --fail http://127.0.0.1:8080/health/ready
@@ -14,10 +15,12 @@ curl --fail http://127.0.0.1:8080/metrics
 ```
 
 The runtime creates a fresh owner epoch, recovers unfinished attempts and
-evidence leases, and only then reports ready. `serve` currently owns the
-runtime lifecycle and API surfaces; bounded trace processing is performed by
-`run-live`. A readiness problem is RFC 9457 `application/problem+json`; do not
-route traffic to an unready process.
+evidence leases, and only then reports ready. `serve` owns the runtime lifecycle
+and API surfaces. To continuously process an append-only normalized JSONL trace,
+also pass `--spec path/to/spec.yaml --trace path/to/events.jsonl`; the process
+resumes from the durable connector checkpoint and polls for appended lines. A
+readiness problem is RFC 9457 `application/problem+json`; do not route traffic
+to an unready process.
 
 ## Backup and restore
 

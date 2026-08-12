@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -284,14 +285,28 @@ func loadWorkerTLS(caPath, certPath, keyPath, serverName string) (*tls.Config, e
 }
 
 func newServeCommand() *cobra.Command {
-	var dbPath, listenAddress, tenantID string
-	var ownerLease time.Duration
+	var dbPath, listenAddress, tenantID, specPath, tracePath, traceFormat string
+	var modelEndpoint, modelName string
+	var ownerLease, pollInterval time.Duration
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Start the live Go runtime and readiness endpoint.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if dbPath == "" {
 				return fmt.Errorf("--db is required")
+			}
+			if (specPath == "") != (tracePath == "") {
+				return fmt.Errorf("--spec and --trace must be provided together for continuous ingestion")
+			}
+			if pollInterval <= 0 {
+				return fmt.Errorf("--poll-interval must be positive")
+			}
+			subscriberToken := os.Getenv("AGENTIC_STREAM_SUBSCRIBER_TOKEN")
+			if subscriberToken == "" {
+				return fmt.Errorf("AGENTIC_STREAM_SUBSCRIBER_TOKEN is required for notification subscribers")
+			}
+			if !isLoopbackListenAddress(listenAddress) {
+				return fmt.Errorf("non-loopback --listen requires an authenticated deployment proxy")
 			}
 			db, err := storage.Open(cmd.Context(), dbPath)
 			if err != nil {
@@ -313,21 +328,81 @@ func newServeCommand() *cobra.Command {
 			}
 			defer func() { _ = service.Close(context.Background()) }()
 			metrics := telemetry.NewRuntime(time.Now().UTC())
-			subscriberToken := os.Getenv("AGENTIC_STREAM_SUBSCRIBER_TOKEN")
-			if subscriberToken == "" {
-				return fmt.Errorf("AGENTIC_STREAM_SUBSCRIBER_TOKEN is required for notification subscribers")
-			}
-			if !isLoopbackListenAddress(listenAddress) {
-				return fmt.Errorf("non-loopback --listen requires an authenticated deployment proxy")
+			runCtx, stop := context.WithCancel(cmd.Context())
+			defer stop()
+			var pipeline *runtime.Pipeline
+			pipelineErrors := make(chan error, 1)
+			if specPath != "" {
+				compiled, compileErr := spec.CompileFile(runCtx, specPath)
+				if compileErr != nil {
+					return fmt.Errorf("compile spec: %w", compileErr)
+				}
+				var provider nativeexecutor.ModelProvider = &nativeexecutor.DeterministicProvider{}
+				if modelEndpoint != "" {
+					if modelName == "" {
+						return fmt.Errorf("--model-name is required with --model-endpoint")
+					}
+					provider = &nativeexecutor.OpenAICompatibleProvider{Endpoint: modelEndpoint, APIKey: os.Getenv("AGENTIC_STREAM_MODEL_API_KEY"), Model: modelName}
+				}
+				nativeExecutor, nativeErr := nativeexecutor.New(nativeexecutor.Config{
+					Provider: provider,
+					ToolFactory: func(req *episodes.Request) []nativeexecutor.Tool {
+						return []nativeexecutor.Tool{
+							nativeexecutor.NewSQLiteEvidenceTool(db, "evidence_get", req.TenantID, req.EntityID),
+							nativeexecutor.NewSQLiteEvidenceTool(db, "evidence.get", req.TenantID, req.EntityID),
+						}
+					},
+				})
+				if nativeErr != nil {
+					return fmt.Errorf("configure native executor: %w", nativeErr)
+				}
+				pipeline, err = runtime.NewPipeline(runCtx, runtime.PipelineConfig{
+					DB: db, Spec: compiled, TenantID: tenantID, Owner: owner, OwnerEpoch: epoch,
+					Executor: nativeExecutor, Effector: actions.NewSimulatedEffector(), IDGenerator: ids.Random(), Telemetry: metrics,
+				})
+				if err != nil {
+					return fmt.Errorf("configure live pipeline: %w", err)
+				}
+				if err := pipeline.Start(runCtx); err != nil {
+					return fmt.Errorf("start live pipeline: %w", err)
+				}
+				defer func() { _ = pipeline.Close() }()
+				go func() {
+					for {
+						var runErr error
+						switch traceFormat {
+						case "normalized":
+							_, runErr = pipeline.RunJSONL(runCtx, tracePath)
+						case "simulator":
+							_, runErr = pipeline.RunSimulatorJSONL(runCtx, tracePath)
+						default:
+							runErr = fmt.Errorf("unsupported --trace-format %q", traceFormat)
+						}
+						if runErr != nil && !errors.Is(runErr, context.Canceled) {
+							pipelineErrors <- fmt.Errorf("continuous pipeline: %w", runErr)
+							stop()
+							return
+						}
+						timer := time.NewTimer(pollInterval)
+						select {
+						case <-runCtx.Done():
+							if !timer.Stop() {
+								<-timer.C
+							}
+							return
+						case <-timer.C:
+						}
+					}
+				}()
 			}
 			handler := api.NewRuntimeHandler(service, db, notify.SSEConfig{
-				TenantID:          tenantID,
-				MaxLag:            1000,
-				Authorize:         notify.BearerTokenAuthorizer(subscriberToken),
+				TenantID:  tenantID,
+				MaxLag:    1000,
+				Authorize: notify.BearerTokenAuthorizer(subscriberToken),
 			}, metrics.Handler())
 			server := &http.Server{Addr: listenAddress, Handler: handler, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 30 * time.Second}
 			go func() {
-				<-cmd.Context().Done()
+				<-runCtx.Done()
 				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				_ = server.Shutdown(shutdownCtx)
@@ -335,13 +410,24 @@ func newServeCommand() *cobra.Command {
 			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				return fmt.Errorf("serve runtime: %w", err)
 			}
-			return nil
+			select {
+			case pipelineErr := <-pipelineErrors:
+				return pipelineErr
+			default:
+				return nil
+			}
 		},
 	}
 	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite runtime database path")
+	cmd.Flags().StringVar(&specPath, "spec", "", "SituationSpec YAML path for continuous ingestion")
+	cmd.Flags().StringVar(&tracePath, "trace", "", "append-only JSONL trace path for continuous ingestion")
+	cmd.Flags().StringVar(&traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
+	cmd.Flags().StringVar(&modelEndpoint, "model-endpoint", "", "OpenAI-compatible model endpoint for the native Go executor")
+	cmd.Flags().StringVar(&modelName, "model-name", "", "Model name for the OpenAI-compatible native provider")
 	cmd.Flags().StringVar(&tenantID, "tenant", "default", "tenant served by this runtime process")
 	cmd.Flags().StringVar(&listenAddress, "listen", "127.0.0.1:8080", "loopback HTTP listen address")
 	cmd.Flags().DurationVar(&ownerLease, "owner-lease", time.Minute, "runtime owner lease duration")
+	cmd.Flags().DurationVar(&pollInterval, "poll-interval", time.Second, "continuous source polling interval")
 	return cmd
 }
 
