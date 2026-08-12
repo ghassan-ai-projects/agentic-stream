@@ -4,16 +4,21 @@
 package telemetry
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sync/atomic"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Runtime holds process-local counters for the live pipeline. Counters are
 // monotonic and have no tenant, entity, or event-id labels.
 type Runtime struct {
 	started            time.Time
+	tracer             trace.Tracer
 	eventsIngested     atomic.Uint64
 	eventsProcessed    atomic.Uint64
 	episodesAdmitted   atomic.Uint64
@@ -25,10 +30,27 @@ type Runtime struct {
 
 // NewRuntime creates an operational counter set.
 func NewRuntime(now time.Time) *Runtime {
+	return NewRuntimeWithTracer(now, otel.Tracer(instrumentationName))
+}
+
+// NewRuntimeWithTracer creates an operational counter set with an explicit
+// tracer, which keeps tests and embedded runtimes independent of global setup.
+func NewRuntimeWithTracer(now time.Time, tracer trace.Tracer) *Runtime {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	return &Runtime{started: now.UTC()}
+	if tracer == nil {
+		tracer = otel.Tracer(instrumentationName)
+	}
+	return &Runtime{started: now.UTC(), tracer: tracer}
+}
+
+// StartSpan starts a runtime span when this telemetry runtime is configured.
+func (r *Runtime) StartSpan(ctx context.Context, name string, options ...trace.SpanStartOption) (context.Context, trace.Span) {
+	if r == nil || r.tracer == nil {
+		return ctx, trace.SpanFromContext(ctx)
+	}
+	return r.tracer.Start(ctx, name, options...)
 }
 
 // PipelineReport is the small counter projection accepted from runtime.

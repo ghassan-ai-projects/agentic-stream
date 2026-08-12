@@ -85,6 +85,11 @@ func newRunLiveCommand() *cobra.Command {
 			if specPath == "" || tracePath == "" || dbPath == "" {
 				return fmt.Errorf("--spec, --trace, and --db are required")
 			}
+			tracerProvider, telemetryErr := configureRuntimeTelemetry(cmd.Context())
+			if telemetryErr != nil {
+				return telemetryErr
+			}
+			defer func() { _ = tracerProvider.Shutdown(context.Background()) }()
 			compiled, err := spec.CompileFile(cmd.Context(), specPath)
 			if err != nil {
 				return fmt.Errorf("compile spec: %w", err)
@@ -328,6 +333,11 @@ func newServeCommand() *cobra.Command {
 			}
 			defer func() { _ = service.Close(context.Background()) }()
 			metrics := telemetry.NewRuntime(time.Now().UTC())
+			tracerProvider, telemetryErr := configureRuntimeTelemetry(cmd.Context())
+			if telemetryErr != nil {
+				return telemetryErr
+			}
+			defer func() { _ = tracerProvider.Shutdown(context.Background()) }()
 			runCtx, stop := context.WithCancel(cmd.Context())
 			defer stop()
 			var pipeline *runtime.Pipeline
@@ -437,6 +447,24 @@ func isLoopbackListenAddress(address string) bool {
 		return false
 	}
 	return host == "127.0.0.1" || host == "localhost" || host == "[::1]" || host == "::1"
+}
+
+func configureRuntimeTelemetry(ctx context.Context) (interface{ Shutdown(context.Context) error }, error) {
+	provider, err := telemetry.Configure(ctx, "agentic-stream", telemetryEndpoint())
+	if err != nil {
+		return nil, fmt.Errorf("configure OpenTelemetry: %w", err)
+	}
+	return provider, nil
+}
+
+func telemetryEndpoint() string {
+	if endpoint := os.Getenv("AGENTIC_STREAM_OTLP_ENDPOINT"); endpoint != "" {
+		return endpoint
+	}
+	if endpoint := os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"); endpoint != "" {
+		return endpoint
+	}
+	return os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 }
 
 func newVersionCommand() *cobra.Command {

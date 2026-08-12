@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
+	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -69,14 +71,23 @@ func (e *WorkerExecutor) Name() string { return e.name }
 // Execute performs the current-version handshake and consumes one validated
 // server stream. RPC cancellation and deadline errors are returned unchanged
 // so the caller can classify them as cancellation or timeout.
-func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, error) {
+func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Outcome, err error) {
 	if e == nil || e.client == nil {
 		return nil, fmt.Errorf("worker client is not configured")
 	}
 	if req == nil {
 		return nil, fmt.Errorf("episode request is required")
 	}
-	executionCtx, cancel, err := boundedExecutionContext(ctx, req.RequestJSON)
+	executionCtx, span := telemetry.StartSpan(ctx, "agentic_stream.worker.execute")
+	telemetry.AddLinkFromW3C(span, req.Traceparent, req.Tracestate)
+	span.SetAttributes(attribute.String("agentic_stream.worker", e.name))
+	defer func() {
+		if err != nil {
+			telemetry.RecordError(span, err)
+		}
+		span.End()
+	}()
+	executionCtx, cancel, err := boundedExecutionContext(executionCtx, req.RequestJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +234,7 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 		return nil, fmt.Errorf("worker cost telemetry is missing")
 	}
 
-	outcome := &Outcome{AttemptID: req.AttemptID, Fence: req.Fence, Reasons: []string{terminal.GetReasonCode()}}
+	outcome = &Outcome{AttemptID: req.AttemptID, Fence: req.Fence, Reasons: []string{terminal.GetReasonCode()}}
 	outcome.CostMicrounits = trustedUsage.costMicrounits
 	if terminal.GetUsage() != nil {
 		if terminal.GetUsage().GetCostMicrounits() > outcome.CostMicrounits {

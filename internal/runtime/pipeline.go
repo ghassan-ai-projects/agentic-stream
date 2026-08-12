@@ -21,6 +21,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // PipelineConfig configures one owner-scoped live runtime pipeline.
@@ -278,7 +280,22 @@ func (p *Pipeline) RunSimulatorJSONL(ctx context.Context, path string) (Pipeline
 	return p.runAfterIngest(ctx, PipelineReport{EventsIngested: count}, before)
 }
 
-func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport, before eventlog.LogPosition) (PipelineReport, error) {
+func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport, before eventlog.LogPosition) (result PipelineReport, err error) {
+	ctx, span := telemetry.StartSpan(ctx, "agentic_stream.pipeline.batch", trace.WithSpanKind(trace.SpanKindConsumer))
+	defer func() {
+		if err != nil {
+			telemetry.RecordError(span, err)
+		}
+		span.SetAttributes(
+			attribute.Int("agentic_stream.events_ingested", report.EventsIngested),
+			attribute.Int("agentic_stream.events_processed", report.EventsProcessed),
+			attribute.Int("agentic_stream.episodes_admitted", report.EpisodesAdmitted),
+			attribute.Int("agentic_stream.episodes_executed", report.EpisodesExecuted),
+			attribute.Int("agentic_stream.intents_evaluated", report.IntentsEvaluated),
+			attribute.Int("agentic_stream.commands_dispatched", report.CommandsDispatched),
+		)
+		span.End()
+	}()
 	if err := p.watchFailure(); err != nil {
 		return report, fmt.Errorf("watch maintenance failed: %w", err)
 	}
@@ -290,7 +307,7 @@ func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport, be
 		return report, fmt.Errorf("run live stream engine: %w", err)
 	}
 	report.EventsProcessed = processed
-	if err := p.fireRecentWatches(ctx, before); err != nil {
+	if err := p.fireRecentWatches(ctx, before, span); err != nil {
 		return report, fmt.Errorf("fire watches: %w", err)
 	}
 	if err := p.assertOwner(ctx); err != nil {
@@ -341,8 +358,9 @@ func (p *Pipeline) currentEventPosition(ctx context.Context) (eventlog.LogPositi
 	return eventlog.LogPosition(position), nil
 }
 
-func (p *Pipeline) fireRecentWatches(ctx context.Context, before eventlog.LogPosition) error {
+func (p *Pipeline) fireRecentWatches(ctx context.Context, before eventlog.LogPosition, span trace.Span) error {
 	if err := p.log.Read(ctx, eventlog.ReadRequest{TenantID: p.tenantID, PartitionID: -1, AfterPosition: before, Limit: 100000}, func(record eventlog.Record) error {
+		telemetry.AddLinkFromW3C(span, record.Envelope.Traceparent, record.Envelope.Tracestate)
 		if _, err := p.watch.FireEvent(ctx, record.EventID, record.EntityID, record.Envelope.Data); err != nil {
 			return fmt.Errorf("event %s: %w", record.EventID, err)
 		}

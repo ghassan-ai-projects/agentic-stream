@@ -45,9 +45,9 @@ migrations.
 | P6.2 | SSE application binding | ✅ | `/v1/events`, cursor resume, auth, bounded lag, audited expiry and poison retry |
 | P6.4 | Approval workflow + withdrawal + assertion binding | 🟡 | approval assertions and withdrawal paths exist; key-rotation rehearsal remains |
 | P7 | Replay isolation + worker-aware modes | ✅ | `isolated worker-aware replay modes`, `harden replay isolation` |
-| P8.1 | Trace propagation | 🟡 | W3C context is persisted and crossed over gRPC; OpenTelemetry spans/links remain |
+| P8.1 | Trace propagation | ✅ | durable W3C context, OpenTelemetry spans, OTLP/HTTP export, and asynchronous links |
 | P8.2 | HTTP surface | ✅ | RFC 9457 readiness, loopback binding, authenticated SSE, remote-worker mTLS flags |
-| P8.3 | Telemetry and operational release | 🟡 | bounded metrics, runbooks and security checklist; environment evidence is postponed |
+| P8.3 | Telemetry and operational release | ✅ | bounded metrics, OpenTelemetry spans/export, runbooks and security checklist; environment evidence is postponed |
 | — | Runtime ownership lease + crash recovery (beyond original plan) | ✅ | `009`,`011`,`012`, `internal/runtime` — robustness the plan didn't scope |
 | — | **Live pipeline composition** | ✅ | `run-live` handles bounded batches; `serve --spec ... --trace ...` owns an append-only JSONL loop with runtime cancellation and fatal-error propagation |
 
@@ -72,7 +72,7 @@ behavior.
 |---|---|---|---|
 | **S1** | Continuous ingestion and scheduling under `serve` | `cmd/agentic-stream`, `internal/runtime` | ✅ `serve --spec ... --trace ...` polls an append-only JSONL source, resumes from its durable connector checkpoint, and runs the complete pipeline under the runtime owner. |
 | **S2** | Separate-process Go worker conformance fixture | `internal/executor/conformance`, `internal/worker` | ✅ Test binary launches a Go worker over a real private Unix socket and runs the shared conformance suite. |
-| **S3** | OpenTelemetry spans/exporter and asynchronous span links | `internal/telemetry`, worker boundary | Current W3C context is persisted and counters are exposed; full OTel instrumentation remains. |
+| **S3** | OpenTelemetry spans/exporter and asynchronous span links | `internal/telemetry`, worker boundary | ✅ Runtime and worker spans export via OTLP/HTTP and link to durable W3C source contexts. |
 | **S4** | Environment release evidence | `docs/runbooks/runtime-operations.md` | ⏸ Postponed by scope decision; future production-release gate. |
 
 ### B.2 — Deferred to the hardening pass (part of the offering, not the first loop)
@@ -87,7 +87,7 @@ ceiling** forward first in this pass — they are the two that matter most once 
 effects flow.
 
 > **Net:** the deterministic and bounded supervised loop and continuous JSONL serving loop are
-> complete. The remaining implementation work is full OTel instrumentation.
+> complete. OpenTelemetry instrumentation and export are implemented.
 > Environment release evidence is explicitly postponed. No Python worker or
 > legacy compatibility layer is required.
 

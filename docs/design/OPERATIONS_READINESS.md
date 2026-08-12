@@ -12,8 +12,8 @@ explicit scope decision.
   reserved, and never accepts production credentials or effectors.
 - W3C `traceparent`/`tracestate` are validated at the contract boundary,
   retained in the event log, propagated to Situation versions, and included in
-  episode requests. Asynchronous consumers must use the stored context as a
-  span link.
+  episode requests. Runtime pipeline and worker spans export through OTLP/HTTP;
+  asynchronous consumers use the stored context as a span link.
 - `/health/live` is process liveness. `/health/ready` returns RFC 9457 Problem
   Details and must fail closed when readiness is unavailable.
 - `go test ./...`, `go test -race ./internal/...`, `go vet ./...`, and

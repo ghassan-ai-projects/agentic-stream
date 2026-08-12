@@ -8,6 +8,8 @@ postponed until a future production release.
 
 ```bash
 export AGENTIC_STREAM_SUBSCRIBER_TOKEN='replace-with-a-rotated-secret'
+# Optional OTLP/HTTP span export.
+export AGENTIC_STREAM_OTLP_ENDPOINT='https://otel-collector.example/v1/traces'
 agentic-stream serve --db runtime.db --listen 127.0.0.1:8080
 curl --fail http://127.0.0.1:8080/health/live
 curl --fail http://127.0.0.1:8080/health/ready

@@ -17,6 +17,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -166,7 +167,20 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	executionCtx, stopWatching := context.WithCancel(ctx)
 	watchDone := make(chan struct{})
 	go r.watchSupersession(executionCtx, episodeID, stopWatching, watchDone)
-	outcome, err := r.executor.Execute(executionCtx, &req)
+	var outcome *Outcome
+	var executionErr error
+	func() {
+		_, span := telemetry.StartSpan(executionCtx, "agentic_stream.episode.execute")
+		telemetry.AddLinkFromW3C(span, req.Traceparent, req.Tracestate)
+		defer func() {
+			if executionErr != nil {
+				telemetry.RecordError(span, executionErr)
+			}
+			span.End()
+		}()
+		outcome, executionErr = r.executor.Execute(executionCtx, &req)
+	}()
+	err = executionErr
 	stopWatching()
 	<-watchDone
 	if err != nil {
