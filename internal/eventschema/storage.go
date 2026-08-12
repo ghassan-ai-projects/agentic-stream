@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 )
 
@@ -12,6 +13,9 @@ import (
 func Register(ctx context.Context, tx *sql.Tx, definition Definition, schemaJSON []byte, now string) error {
 	if definition.Ref == "" || definition.EventType == "" || definition.SchemaVersion == "" || len(schemaJSON) == 0 || now == "" {
 		return fmt.Errorf("event schema identity, bytes, and time are required")
+	}
+	if !json.Valid(schemaJSON) {
+		return fmt.Errorf("event schema %s is not valid JSON", definition.Ref)
 	}
 	digest := sha256.Sum256(schemaJSON)
 	var existing []byte

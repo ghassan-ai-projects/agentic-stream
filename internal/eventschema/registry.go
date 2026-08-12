@@ -2,6 +2,11 @@
 // compiler. Durable schema registrations are persisted separately.
 package eventschema
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
 // Field describes one payload field exposed to deterministic operators.
 type Field struct {
 	Path string
@@ -28,4 +33,19 @@ var builtins = map[string]Definition{
 func Lookup(ref string) (Definition, bool) {
 	definition, ok := builtins[ref]
 	return definition, ok
+}
+
+// JSON returns the structural schema for a built-in definition.
+func JSON(definition Definition) ([]byte, error) {
+	properties := make(map[string]map[string]string, len(definition.Fields))
+	for name := range definition.Fields {
+		properties[name] = map[string]string{"type": "number"}
+	}
+	result, err := json.Marshal(map[string]any{
+		"type": "object", "additionalProperties": false, "properties": properties,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal event schema: %w", err)
+	}
+	return result, nil
 }

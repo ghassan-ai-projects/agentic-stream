@@ -2,11 +2,13 @@ package spec
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -38,19 +40,35 @@ func SaveDeployment(ctx context.Context, db *storage.DB, tenantID string, compil
 	if err != nil {
 		return fmt.Errorf("decode compiled spec digest: %w", err)
 	}
-	_, err = db.ExecContext(ctx, `
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		for _, input := range compiled.Inputs {
+			definition, ok := eventschema.Lookup(input.SchemaRef)
+			if !ok {
+				continue
+			}
+			schemaJSON, err := eventschema.JSON(definition)
+			if err != nil {
+				return fmt.Errorf("build event schema %s: %w", input.SchemaRef, err)
+			}
+			if err := eventschema.Register(ctx, tx, definition, schemaJSON, now); err != nil {
+				return fmt.Errorf("register event schema %s: %w", input.SchemaRef, err)
+			}
+		}
+		_, err := tx.ExecContext(ctx, `
 		INSERT INTO spec_deployments (
 			deployment_id, tenant_id, spec_name, spec_version, spec_schema_version,
 			spec_sha256, source_json, compiled_ir, status, activated_at, created_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
 		ON CONFLICT(deployment_id) DO NOTHING`,
-		compiled.Digest, tenantID, compiled.Metadata.Name, compiled.Metadata.Version,
-		compiled.SchemaVersion, specDigest, sourceJSON, compiledIR,
-		time.Now().UTC().Format(time.RFC3339Nano),
-		time.Now().UTC().Format(time.RFC3339Nano),
-	)
-	if err != nil {
-		return fmt.Errorf("insert deployment: %w", err)
+			compiled.Digest, tenantID, compiled.Metadata.Name, compiled.Metadata.Version,
+			compiled.SchemaVersion, specDigest, sourceJSON, compiledIR, now, now)
+		if err != nil {
+			return fmt.Errorf("insert deployment: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("persist deployment: %w", err)
 	}
 	return nil
 }
