@@ -20,6 +20,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
 // PipelineConfig configures one owner-scoped live runtime pipeline.
@@ -36,6 +37,7 @@ type PipelineConfig struct {
 	GlobalCostCeiling *uint64
 	TenantCostCeiling *uint64
 	CostKillSwitch    *bool
+	Telemetry         *telemetry.Runtime
 }
 
 // PipelineReport describes one completed live batch.
@@ -68,6 +70,7 @@ type Pipeline struct {
 	watchStop  context.CancelFunc
 	watchDone  chan struct{}
 	watchErr   error
+	telemetry  *telemetry.Runtime
 }
 
 // NewPipeline creates a fully composed live pipeline. The caller must start
@@ -113,6 +116,7 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 		policy:     policy.NewGatewayWithOwner(cfg.Spec.Digest, cfg.IDGenerator, cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}),
 		dispatcher: actions.NewDispatcher(cfg.DB, cfg.Effector, cfg.Clock, cfg.IDGenerator, "runtime-actions/"+cfg.OwnerEpoch, time.Minute).WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}),
 		watch:      watch,
+		telemetry:  cfg.Telemetry,
 		owner:      cfg.Owner,
 		ownerEpoch: cfg.OwnerEpoch,
 		clk:        cfg.Clock,
@@ -318,6 +322,13 @@ func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport, be
 			break
 		}
 		report.CommandsDispatched++
+	}
+	if p.telemetry != nil {
+		p.telemetry.ObservePipeline(telemetry.PipelineReport{
+			EventsIngested: report.EventsIngested, EventsProcessed: report.EventsProcessed,
+			EpisodesAdmitted: report.EpisodesAdmitted, EpisodesExecuted: report.EpisodesExecuted,
+			IntentsEvaluated: report.IntentsEvaluated, CommandsDispatched: report.CommandsDispatched,
+		})
 	}
 	return report, nil
 }

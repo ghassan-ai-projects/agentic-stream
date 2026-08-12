@@ -29,6 +29,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
@@ -302,7 +303,8 @@ func newServeCommand() *cobra.Command {
 				return fmt.Errorf("start runtime: %w", err)
 			}
 			defer func() { _ = service.Close(context.Background()) }()
-			handler := api.NewRuntimeHandler(service, db, notify.SSEConfig{TenantFromRequest: func(r *http.Request) string { return r.URL.Query().Get("tenant") }})
+			metrics := telemetry.NewRuntime(time.Now().UTC())
+			handler := api.NewRuntimeHandler(service, db, notify.SSEConfig{TenantFromRequest: func(r *http.Request) string { return r.URL.Query().Get("tenant") }}, metrics.Handler())
 			server := &http.Server{Addr: listenAddress, Handler: handler, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 30 * time.Second}
 			go func() {
 				<-cmd.Context().Done()
