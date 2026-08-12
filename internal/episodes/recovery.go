@@ -100,7 +100,7 @@ func RecoverUnfinishedAttemptsWithCost(ctx context.Context, tx *sql.Tx, currentE
 				    ('concluded', 'closed', 'superseded', 'expired', 'abandoned')`,
 				formatTime(now), terminal, item.episodeID)
 			if err != nil {
-				return RecoveryReport{}, fmt.Errorf("abandon cancelling episode %s: %w", item.episodeID, err)
+				return RecoveryReport{}, fmt.Errorf("abandon canceling episode %s: %w", item.episodeID, err)
 			}
 			if count, err := result.RowsAffected(); err == nil && count == 1 {
 				report.AbandonedEpisodes++
