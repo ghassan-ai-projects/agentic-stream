@@ -391,8 +391,10 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 			Lane      string `json:"lane"`
 		} `json:"trigger"`
 		Executor struct {
-			Objective      string          `json:"objective"`
-			DecisionSchema json.RawMessage `json:"decision_schema"`
+			Objective       string          `json:"objective"`
+			PromptSHA256    string          `json:"prompt_sha256"`
+			ObjectiveSHA256 string          `json:"objective_sha256"`
+			DecisionSchema  json.RawMessage `json:"decision_schema"`
 		} `json:"executor"`
 		Budget struct {
 			WallTime             string `json:"wall_time"`
@@ -433,6 +435,20 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("spec digest: %w", err)
 	}
+	if payload.Executor.PromptSHA256 == "" || payload.Executor.ObjectiveSHA256 == "" || req.PromptSHA256 == "" || req.ObjectiveSHA256 == "" {
+		return nil, fmt.Errorf("prompt and objective provenance digests are required")
+	}
+	promptDigest, err := canonicaljson.DecodeDigest(payload.Executor.PromptSHA256)
+	if err != nil {
+		return nil, fmt.Errorf("prompt digest: %w", err)
+	}
+	objectiveDigest, err := canonicaljson.DecodeDigest(payload.Executor.ObjectiveSHA256)
+	if err != nil {
+		return nil, fmt.Errorf("objective digest: %w", err)
+	}
+	if payload.Executor.PromptSHA256 != req.PromptSHA256 || payload.Executor.ObjectiveSHA256 != req.ObjectiveSHA256 {
+		return nil, fmt.Errorf("worker request provenance does not match durable episode provenance")
+	}
 	kind, err := episodeKind(payload.Kind)
 	if err != nil {
 		return nil, err
@@ -471,6 +487,7 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 		PromptVersion: req.PromptVersion, Budget: budget, Deadline: deadline, Traceparent: req.Traceparent, Tracestate: req.Tracestate,
 		Kind: kind, Lane: lane, RiskCeiling: risk, AllowedIntentTypes: payload.AllowedIntentTypes,
 		CancellationKey: payload.CancellationKey, SupersessionKey: payload.SupersessionKey,
+		PromptSha256: promptDigest, ObjectiveSha256: objectiveDigest,
 		AttemptId: req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
 	}, nil
 }

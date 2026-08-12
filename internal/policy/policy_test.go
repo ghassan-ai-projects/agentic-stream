@@ -2,7 +2,9 @@ package policy
 
 import (
 	"context"
+	"crypto/ed25519"
 	"database/sql"
+	"encoding/hex"
 	"path/filepath"
 	"testing"
 	"time"
@@ -10,6 +12,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -111,13 +114,81 @@ func TestGatewayResolvesApprovalBeforeCommanding(t *testing.T) {
 	var resolved Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		resolved, err = gateway.ResolveApproval(ctx, tx, approval.ApprovalID, true, "operator-1", "approved for maintenance", now)
+		var nonce string
+		if err := tx.QueryRowContext(ctx, "SELECT nonce FROM approvals WHERE approval_id = ?", approval.ApprovalID).Scan(&nonce); err != nil {
+			return err
+		}
+		var intentSHA, decisionSHA []byte
+		if err := tx.QueryRowContext(ctx, "SELECT i.intent_sha256, d.decision_sha256 FROM intents i JOIN decisions d ON d.decision_id = i.decision_id WHERE i.intent_id = ?", intentID).Scan(&intentSHA, &decisionSHA); err != nil {
+			return err
+		}
+		assertion, err := ApprovalAssertionSigningBytes(ApprovalAssertion{
+			ApprovalID: approval.ApprovalID, IntentID: intentID, DecisionID: "dec-policy", TenantID: "tenant",
+			SituationID: "sit-policy", SituationVersion: 1, RiskClass: "R2",
+			IntentDigest: "sha256:" + hex.EncodeToString(intentSHA), DecisionDigest: "sha256:" + hex.EncodeToString(decisionSHA),
+			ExpiresAt: "2099-01-01T00:00:00Z", Nonce: nonce, ApproverID: "operator-1", RelayID: "relay-1",
+		})
+		if err != nil {
+			return err
+		}
+		privateKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+		resolved, err = gateway.ResolveApproval(ctx, tx, approval.ApprovalID, true, "operator-1", "relay-1", ed25519.Sign(privateKey, assertion), "approved for maintenance", now)
 		return err
 	}); err != nil {
 		t.Fatalf("resolve approval: %v", err)
 	}
 	if resolved.Result != "approved" || resolved.CommandID == "" {
 		t.Fatalf("resolved result = %+v", resolved)
+	}
+}
+
+func TestGatewayRejectsSamePrincipalRelay(t *testing.T) {
+	ctx := context.Background()
+	db, intentID := openPolicyFixture(t, "R2", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
+	defer func() { _ = db.Close() }()
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	gateway := NewGateway("policy-v1", ids.Deterministic())
+	var approval Result
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		approval, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
+		return err
+	}); err != nil {
+		t.Fatalf("request approval: %v", err)
+	}
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		resolved, err := gateway.ResolveApproval(ctx, tx, approval.ApprovalID, true, "operator-1", "operator-1", nil, "invalid", now)
+		if err != nil {
+			return err
+		}
+		if resolved.Result != "denied" || resolved.Reason != "approval_principal_not_authorized" {
+			t.Fatalf("resolved approval = %+v", resolved)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("resolve unauthorized approval: %v", err)
+	}
+}
+
+func TestGatewayFailsClosedWhenInterlockTripped(t *testing.T) {
+	ctx := context.Background()
+	db, intentID := openPolicyFixture(t, "R1", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
+	defer func() { _ = db.Close() }()
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	gateway := NewGateway("policy-v1", ids.Deterministic()).WithInterlock(interlock.DurableReader{})
+	var result Result
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := interlock.Set(ctx, tx, "tripped", "operator stop", 2, now.Format(time.RFC3339Nano)); err != nil {
+			return err
+		}
+		var err error
+		result, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
+		return err
+	}); err != nil {
+		t.Fatalf("evaluate tripped intent: %v", err)
+	}
+	if result.Result != "denied" || result.Reason != "interlock_not_ready" {
+		t.Fatalf("tripped interlock result = %+v", result)
 	}
 }
 
@@ -176,6 +247,22 @@ func openPolicyFixture(t *testing.T, risk string, currentVersion, intentVersion 
 		) VALUES (?, 'tenant', 'dep', 'test', 'motor', 'motor-1', 0, 'occ', ?, 'watch', 'open', ?, ?, ?, ?)`,
 		situationID, currentVersion, "2026-08-12T00:00:00Z", "2026-08-12T00:00:00Z", "2026-08-12T00:00:00Z", "2026-08-12T00:00:00Z"); err != nil {
 		t.Fatalf("insert situation: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO roles (role_id, role_name) VALUES ('role-approver', 'approver')`); err != nil {
+		t.Fatalf("insert approval role: %v", err)
+	}
+	publicKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	if _, err := db.ExecContext(ctx, `INSERT INTO principals (principal_id, tenant_id, status, created_at, public_key) VALUES ('operator-1', 'tenant', 'active', '2026-08-12T00:00:00Z', ?)`, []byte(publicKey)); err != nil {
+		t.Fatalf("insert approver principal: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO principals (principal_id, tenant_id, status, created_at) VALUES ('relay-1', 'tenant', 'active', '2026-08-12T00:00:00Z')`); err != nil {
+		t.Fatalf("insert relay principal: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO principal_roles (principal_id, role_id) VALUES ('operator-1', 'role-approver')`); err != nil {
+		t.Fatalf("bind approval role: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO approval_authorities (tenant_id, entity_id, risk_class, role_id) VALUES ('tenant', 'motor-1', 'R2', 'role-approver')`); err != nil {
+		t.Fatalf("insert approval authority: %v", err)
 	}
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO episodes (

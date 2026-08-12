@@ -92,6 +92,8 @@ message EpisodeRequest {
   uint64 fence = 56;
   EvidenceTimeRange evidence_time_range = 57;
   Reconsideration reconsideration = 58;
+  bytes prompt_sha256 = 59;
+  bytes objective_sha256 = 60;
 }
 
 enum EpisodeKind {

@@ -302,6 +302,8 @@ CREATE TABLE episodes (
     model_policy        TEXT NOT NULL,
     prompt_version      TEXT NOT NULL,
     snapshot_sha256     BLOB NOT NULL CHECK (length(snapshot_sha256) = 32),
+    prompt_sha256       BLOB CHECK (prompt_sha256 IS NULL OR length(prompt_sha256) = 32),
+    objective_sha256    BLOB CHECK (objective_sha256 IS NULL OR length(objective_sha256) = 32),
     admission_key       BLOB NOT NULL UNIQUE CHECK (length(admission_key) = 32),
     request_json        BLOB NOT NULL,
     status              TEXT NOT NULL CHECK (
@@ -419,7 +421,12 @@ CREATE TABLE approvals (
     decided_at          TEXT,
     approver_identity   TEXT,
     reason              TEXT,
-    approval_json       BLOB NOT NULL
+    approval_json       BLOB NOT NULL,
+    relay_identity      TEXT,
+    nonce               TEXT,
+    assertion_sha256    BLOB,
+    withdrawn_at        TEXT,
+    withdrawal_reason   TEXT
 ) STRICT;
 
 CREATE UNIQUE INDEX one_pending_approval_per_intent
@@ -546,4 +553,39 @@ CREATE TABLE runtime_owner (
     acquired_at    TEXT NOT NULL,
     heartbeat_at   TEXT NOT NULL,
     lease_until    TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE principals (
+    principal_id TEXT PRIMARY KEY,
+    tenant_id    TEXT NOT NULL,
+    status       TEXT NOT NULL CHECK (status IN ('active', 'disabled')),
+    created_at   TEXT NOT NULL,
+    public_key   BLOB
+) STRICT;
+
+CREATE TABLE roles (
+    role_id   TEXT PRIMARY KEY,
+    role_name TEXT NOT NULL UNIQUE
+) STRICT;
+
+CREATE TABLE principal_roles (
+    principal_id TEXT NOT NULL REFERENCES principals(principal_id),
+    role_id      TEXT NOT NULL REFERENCES roles(role_id),
+    PRIMARY KEY (principal_id, role_id)
+) STRICT;
+
+CREATE TABLE approval_authorities (
+    tenant_id  TEXT NOT NULL,
+    entity_id  TEXT NOT NULL,
+    risk_class TEXT NOT NULL CHECK (risk_class IN ('R0', 'R1', 'R2', 'R3', 'R4')),
+    role_id    TEXT NOT NULL REFERENCES roles(role_id),
+    PRIMARY KEY (tenant_id, entity_id, risk_class, role_id)
+) STRICT;
+
+CREATE TABLE runtime_interlock (
+    singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+    status       TEXT NOT NULL CHECK (status IN ('ready', 'tripped')),
+    reason       TEXT NOT NULL,
+    version      INTEGER NOT NULL CHECK (version >= 1),
+    updated_at   TEXT NOT NULL
 ) STRICT;

@@ -13,12 +13,15 @@ import (
 
 // FixtureRequest is the smallest valid request shape used by conformance.
 func FixtureRequest() *episodes.Request {
+	promptDigest, _ := canonicaljson.Digest(canonicaljson.DomainPrompt, map[string]any{"version": "prompt-v1"})
+	objectiveDigest, _ := canonicaljson.Digest(canonicaljson.DomainObjective, map[string]any{"text": "diagnose"})
 	return &episodes.Request{
 		EpisodeID: "epi-conformance", TenantID: "tenant", SituationID: "sit-conformance", SituationVersion: 1,
 		ExecutorName: "native", ExecutorVersion: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		SnapshotSHA256: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		AttemptID:      "att-conformance", Fence: 1,
-		RequestJSON: []byte(`{"kind":"diagnose","snapshot":{"phase":"warning"},"trigger":{"trigger_id":"trg-1","trigger_name":"warning","lane":"deep"},"tools":[],"allowed_intent_types":["create_maintenance_ticket"],"risk_ceiling":"R1","executor":{"objective":"diagnose","decision_schema":{}},"budget":{"wall_time":"5s"}}`),
+		PromptSHA256: promptDigest, ObjectiveSHA256: objectiveDigest,
+		RequestJSON: []byte(fmt.Sprintf(`{"kind":"diagnose","snapshot":{"phase":"warning"},"trigger":{"trigger_id":"trg-1","trigger_name":"warning","lane":"deep"},"tools":[],"allowed_intent_types":["create_maintenance_ticket"],"risk_ceiling":"R1","executor":{"objective":"diagnose","prompt_sha256":%q,"objective_sha256":%q,"decision_schema":{}},"budget":{"wall_time":"5s"}}`, promptDigest, objectiveDigest)),
 	}
 }
 

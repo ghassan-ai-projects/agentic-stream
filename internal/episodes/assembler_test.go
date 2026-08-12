@@ -192,6 +192,9 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 	if req.SnapshotSHA256 == "" {
 		t.Fatal("expected snapshot sha256")
 	}
+	if req.PromptSHA256 == "" || req.ObjectiveSHA256 == "" {
+		t.Fatalf("expected prompt/objective provenance digests, got prompt=%q objective=%q", req.PromptSHA256, req.ObjectiveSHA256)
+	}
 	if len(req.AdmissionKey) != 32 {
 		t.Fatalf("expected admission key length 32, got %d", len(req.AdmissionKey))
 	}
@@ -308,6 +311,13 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 	}
 	if status != "admitted" {
 		t.Fatalf("expected admitted lifecycle status, got %s", status)
+	}
+	var promptSHA, objectiveSHA []byte
+	if err := db.QueryRowContext(ctx, "SELECT prompt_sha256, objective_sha256 FROM episodes WHERE episode_id = ?", episodeID).Scan(&promptSHA, &objectiveSHA); err != nil {
+		t.Fatalf("query episode provenance: %v", err)
+	}
+	if len(promptSHA) != 32 || len(objectiveSHA) != 32 {
+		t.Fatalf("invalid episode provenance lengths prompt=%d objective=%d", len(promptSHA), len(objectiveSHA))
 	}
 
 	var itemStatus string

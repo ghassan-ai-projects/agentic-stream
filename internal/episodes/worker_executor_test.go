@@ -2,6 +2,8 @@ package episodes
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -53,7 +55,7 @@ func TestWorkerExecutorStopsWhenBudgetUpdateExceedsCeiling(t *testing.T) {
 		})
 	})
 	req := validWorkerRequest()
-	req.RequestJSON = []byte(`{"kind":"diagnose","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","decision_schema":{"type":"object"}},"budget":{"model_calls":1}}`)
+	req.RequestJSON = requestWithBudget(req, map[string]any{"model_calls": 1})
 	_, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
 	if err == nil || !strings.Contains(err.Error(), "budget exceeded: model_calls") {
 		t.Fatalf("expected budget rejection, got %v", err)
@@ -68,7 +70,7 @@ func TestWorkerExecutorEnforcesModelUsageCeiling(t *testing.T) {
 		})
 	})
 	req := validWorkerRequest()
-	req.RequestJSON = []byte(`{"kind":"diagnose","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","decision_schema":{"type":"object"}},"budget":{"input_tokens":1}}`)
+	req.RequestJSON = requestWithBudget(req, map[string]any{"input_tokens": 1})
 	_, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
 	if err == nil || !strings.Contains(err.Error(), "budget exceeded: input_tokens") {
 		t.Fatalf("expected input token budget rejection, got %v", err)
@@ -83,7 +85,7 @@ func TestWorkerExecutorRequiresBudgetTelemetry(t *testing.T) {
 		})
 	})
 	req := validWorkerRequest()
-	req.RequestJSON = []byte(`{"kind":"diagnose","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","decision_schema":{"type":"object"}},"budget":{"provider_retries":1}}`)
+	req.RequestJSON = requestWithBudget(req, map[string]any{"provider_retries": 1})
 	_, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
 	if err == nil || !strings.Contains(err.Error(), "budget telemetry is missing") {
 		t.Fatalf("expected missing budget telemetry rejection, got %v", err)
@@ -128,13 +130,29 @@ func TestWorkerExecutorIssuesFreshScopedCapabilityPerDispatch(t *testing.T) {
 }
 
 func validWorkerRequest() *Request {
+	promptDigest, _ := canonicaljson.Digest(canonicaljson.DomainPrompt, map[string]any{"version": "prompt-v1"})
+	objectiveDigest, _ := canonicaljson.Digest(canonicaljson.DomainObjective, map[string]any{"text": "diagnose"})
 	return &Request{
 		EpisodeID: "episode-1", TenantID: "tenant-1", SituationID: "situation-1", SituationVersion: 1, EntityID: "motor-1",
 		ExecutorName: "worker", ExecutorVersion: "sha256:" + "00" + "00000000000000000000000000000000000000000000000000000000000000",
 		PromptVersion: "prompt-v1", SnapshotSHA256: "sha256:" + "00" + "00000000000000000000000000000000000000000000000000000000000000",
 		AttemptID: "attempt-1", Fence: 7, Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
-		RequestJSON: []byte(`{"kind":"diagnose","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","decision_schema":{"type":"object"}}}`),
+		PromptSHA256: promptDigest, ObjectiveSHA256: objectiveDigest,
+		RequestJSON: []byte(fmt.Sprintf(`{"kind":"diagnose","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","prompt_sha256":%q,"objective_sha256":%q,"decision_schema":{"type":"object"}}}`, promptDigest, objectiveDigest)),
 	}
+}
+
+func requestWithBudget(req *Request, budget map[string]any) []byte {
+	var document map[string]any
+	if err := json.Unmarshal(req.RequestJSON, &document); err != nil {
+		panic(err)
+	}
+	document["budget"] = budget
+	encoded, err := canonicaljson.Marshal(document)
+	if err != nil {
+		panic(err)
+	}
+	return encoded
 }
 
 func testWorkerClient(t *testing.T, execute worker.ExecuteFunc) runtimev1.EpisodeWorkerClient {

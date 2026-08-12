@@ -4,6 +4,7 @@ package policy
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
@@ -18,6 +19,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -31,6 +33,45 @@ type Result struct {
 	ApprovalID string
 }
 
+// ApprovalAssertion is the signed, single-use approval binding. The runtime
+// reconstructs the canonical bytes from durable rows before verifying it.
+type ApprovalAssertion struct {
+	ApprovalID       string
+	IntentID         string
+	DecisionID       string
+	TenantID         string
+	SituationID      string
+	SituationVersion int
+	RiskClass        string
+	IntentDigest     string
+	DecisionDigest   string
+	ExpiresAt        string
+	Nonce            string
+	ApproverID       string
+	RelayID          string
+}
+
+// CanonicalApprovalAssertion returns the exact bytes principals sign.
+func CanonicalApprovalAssertion(assertion ApprovalAssertion) ([]byte, error) {
+	return canonicaljson.Marshal(map[string]any{
+		"approval_id": assertion.ApprovalID, "intent_id": assertion.IntentID, "decision_id": assertion.DecisionID,
+		"tenant_id": assertion.TenantID, "situation_id": assertion.SituationID,
+		"situation_version": assertion.SituationVersion, "risk_class": assertion.RiskClass,
+		"intent_digest": assertion.IntentDigest, "decision_digest": assertion.DecisionDigest,
+		"expires_at": assertion.ExpiresAt, "nonce": assertion.Nonce,
+		"approver_id": assertion.ApproverID, "relay_id": assertion.RelayID,
+	})
+}
+
+// ApprovalAssertionSigningBytes returns the domain-separated bytes principals sign.
+func ApprovalAssertionSigningBytes(assertion ApprovalAssertion) ([]byte, error) {
+	canonical, err := CanonicalApprovalAssertion(assertion)
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(canonicaljson.DomainApproval), canonical...), nil
+}
+
 // Gateway evaluates accepted Intents against current durable state.
 type Gateway struct {
 	policyVersion string
@@ -38,6 +79,7 @@ type Gateway struct {
 	idGen         ids.Generator
 	owner         *storage.RuntimeOwner
 	ownerEpoch    string
+	interlock     interlock.Reader
 }
 
 // NewGateway creates a deterministic policy gateway.
@@ -49,6 +91,12 @@ func NewGateway(policyVersion string, idGen ids.Generator) *Gateway {
 // the active runtime lease.
 func NewGatewayWithOwner(policyVersion string, idGen ids.Generator, owner *storage.RuntimeOwner, ownerEpoch string) *Gateway {
 	return newGateway(policyVersion, idGen, owner, ownerEpoch)
+}
+
+// WithInterlock adds the durable read-only action readiness check.
+func (g *Gateway) WithInterlock(reader interlock.Reader) *Gateway {
+	g.interlock = reader
+	return g
 }
 
 func newGateway(policyVersion string, idGen ids.Generator, owner *storage.RuntimeOwner, ownerEpoch string) *Gateway {
@@ -195,7 +243,7 @@ func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID strin
 
 // ResolveApproval records a human approval decision and, when approved,
 // immediately re-runs the full policy gate before creating a Command.
-func (g *Gateway) ResolveApproval(ctx context.Context, tx *sql.Tx, approvalID string, approved bool, approver, reason string, now time.Time) (Result, error) {
+func (g *Gateway) ResolveApproval(ctx context.Context, tx *sql.Tx, approvalID string, approved bool, approver, relay string, signature []byte, reason string, now time.Time) (Result, error) {
 	if err := g.assertOwner(ctx, tx); err != nil {
 		return Result{ApprovalID: approvalID}, err
 	}
@@ -213,6 +261,14 @@ func (g *Gateway) ResolveApproval(ctx context.Context, tx *sql.Tx, approvalID st
 		result.Reason = "approval_already_resolved"
 		return g.audit(ctx, tx, row, result, result.Result, result.Reason, now)
 	}
+	if approved && row.CurrentSituation != row.SituationVersion {
+		if _, err := tx.ExecContext(ctx, `UPDATE approvals
+			SET status = 'denied', decided_at = ?, withdrawn_at = ?, withdrawal_reason = ?, reason = ?
+			WHERE approval_id = ? AND status = 'pending'`, formatTime(now), formatTime(now), "situation_version_conflict", "approval_withdrawn", approvalID); err != nil {
+			return result, fmt.Errorf("withdraw stale approval: %w", err)
+		}
+		return g.finish(ctx, tx, row, result, "denied", "situation_version_conflict", now)
+	}
 	expires, parseErr := time.Parse(time.RFC3339Nano, expiresAt)
 	if parseErr != nil || !expires.After(now) {
 		if _, err := tx.ExecContext(ctx, "UPDATE approvals SET status = 'expired', decided_at = ?, reason = ? WHERE approval_id = ? AND status = 'pending'", formatTime(now), "approval_expired", approvalID); err != nil {
@@ -223,12 +279,20 @@ func (g *Gateway) ResolveApproval(ctx context.Context, tx *sql.Tx, approvalID st
 	approvalStatus := "denied"
 	policyStatus := "denied"
 	if approved {
+		if err := g.authorizeApproval(ctx, tx, row, approvalID, approver, relay, signature); err != nil {
+			if _, updateErr := tx.ExecContext(ctx, `UPDATE approvals
+				SET status = 'denied', decided_at = ?, approver_identity = ?, relay_identity = ?, reason = ?
+				WHERE approval_id = ? AND status = 'pending'`, formatTime(now), approver, relay, err.Error(), approvalID); updateErr != nil {
+				return result, fmt.Errorf("record unauthorized approval: %w", updateErr)
+			}
+			return g.finish(ctx, tx, row, result, "denied", "approval_principal_not_authorized", now)
+		}
 		approvalStatus = "approved"
 		policyStatus = "pending"
 	}
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE approvals SET status = ?, decided_at = ?, approver_identity = ?, reason = ?
-		WHERE approval_id = ? AND status = 'pending'`, approvalStatus, formatTime(now), approver, reason, approvalID); err != nil {
+		UPDATE approvals SET status = ?, decided_at = ?, approver_identity = ?, relay_identity = ?, reason = ?
+		WHERE approval_id = ? AND status = 'pending'`, approvalStatus, formatTime(now), approver, relay, reason, approvalID); err != nil {
 		return result, fmt.Errorf("resolve approval %s: %w", approvalID, err)
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = ?, updated_at = ? WHERE intent_id = ?", policyStatus, formatTime(now), intentID); err != nil {
@@ -238,6 +302,51 @@ func (g *Gateway) ResolveApproval(ctx context.Context, tx *sql.Tx, approvalID st
 		return g.audit(ctx, tx, row, result, "denied", "approval_denied", now)
 	}
 	return g.EvaluateIntent(ctx, tx, intentID, now)
+}
+
+func (g *Gateway) authorizeApproval(ctx context.Context, tx *sql.Tx, row intentRow, approvalID, approver, relay string, signature []byte) error {
+	if approver == "" || relay == "" || approver == relay {
+		return fmt.Errorf("relay and approver must be distinct registered principals")
+	}
+	var entityID string
+	if err := tx.QueryRowContext(ctx, "SELECT entity_id FROM situations WHERE situation_id = ?", row.SituationID).Scan(&entityID); err != nil {
+		return fmt.Errorf("load approval entity: %w", err)
+	}
+	var active int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM principals WHERE principal_id = ? AND tenant_id = ? AND status = 'active'", relay, row.TenantID).Scan(&active); err != nil || active != 1 {
+		return fmt.Errorf("relay principal is not active")
+	}
+	var publicKey []byte
+	if err := tx.QueryRowContext(ctx, "SELECT public_key FROM principals WHERE principal_id = ? AND tenant_id = ? AND status = 'active'", approver, row.TenantID).Scan(&publicKey); err != nil || len(publicKey) != ed25519.PublicKeySize {
+		return fmt.Errorf("approver principal has no valid verification key")
+	}
+	var expiresAt, nonce string
+	if err := tx.QueryRowContext(ctx, "SELECT expires_at, nonce FROM approvals WHERE approval_id = ? AND status = 'pending'", approvalID).Scan(&expiresAt, &nonce); err != nil {
+		return fmt.Errorf("load approval assertion binding: %w", err)
+	}
+	assertion, err := ApprovalAssertionSigningBytes(ApprovalAssertion{
+		ApprovalID: approvalID, IntentID: row.IntentID, DecisionID: row.DecisionID, TenantID: row.TenantID,
+		SituationID: row.SituationID, SituationVersion: row.SituationVersion, RiskClass: row.RiskClass,
+		IntentDigest: "sha256:" + hex.EncodeToString(row.IntentSHA), DecisionDigest: "sha256:" + hex.EncodeToString(row.DecisionSHA),
+		ExpiresAt: expiresAt, Nonce: nonce, ApproverID: approver, RelayID: relay,
+	})
+	if err != nil || !ed25519.Verify(ed25519.PublicKey(publicKey), assertion, signature) {
+		return fmt.Errorf("approval assertion signature is invalid")
+	}
+	assertionDigest := sha256.Sum256(assertion)
+	if _, err := tx.ExecContext(ctx, "UPDATE approvals SET assertion_sha256 = ?, nonce = nonce WHERE approval_id = ? AND status = 'pending'", assertionDigest[:], approvalID); err != nil {
+		return fmt.Errorf("record approval assertion: %w", err)
+	}
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM principals p
+		JOIN principal_roles pr ON pr.principal_id = p.principal_id
+		JOIN approval_authorities aa ON aa.role_id = pr.role_id
+		WHERE p.principal_id = ? AND p.tenant_id = ? AND p.status = 'active'
+		  AND aa.tenant_id = ? AND aa.entity_id = ? AND aa.risk_class = ?`,
+		approver, row.TenantID, row.TenantID, entityID, row.RiskClass).Scan(&active); err != nil || active == 0 {
+		return fmt.Errorf("approver principal lacks authority")
+	}
+	return nil
 }
 
 func (g *Gateway) assertOwner(ctx context.Context, tx *sql.Tx) error {
@@ -284,6 +393,11 @@ func (g *Gateway) loadIntent(ctx context.Context, tx *sql.Tx, intentID string) (
 }
 
 func (g *Gateway) approveAutomatic(ctx context.Context, tx *sql.Tx, row intentRow, intentDocument map[string]any, result Result, now time.Time) (Result, error) {
+	if g.interlock != nil {
+		if err := g.interlock.Assert(ctx, tx, row.TenantID, normalizedTarget(row.IntentID, intentDocument), row.RiskClass); err != nil {
+			return g.finish(ctx, tx, row, result, "denied", "interlock_not_ready", now)
+		}
+	}
 	var existingCommand string
 	if err := tx.QueryRowContext(ctx, "SELECT command_id FROM commands WHERE intent_id = ?", row.IntentID).Scan(&existingCommand); err == nil {
 		result.Result = "approved"
@@ -363,20 +477,22 @@ func (g *Gateway) requireApproval(ctx context.Context, tx *sql.Tx, row intentRow
 		return result, fmt.Errorf("find pending approval: %w", err)
 	}
 	approvalID = g.idGen.New(ids.PrefixApproval)
+	nonceDigest := sha256.Sum256([]byte(approvalID + "|" + row.IntentID))
+	nonce := hex.EncodeToString(nonceDigest[:])
 	approvalJSON, err := canonicaljson.Marshal(map[string]any{
 		"approval_id": approvalID, "intent_id": row.IntentID, "decision_id": row.DecisionID,
 		"tenant_id": row.TenantID, "situation_id": row.SituationID,
 		"situation_version": row.SituationVersion, "risk_class": row.RiskClass,
-		"intent": intentDocument,
+		"intent": intentDocument, "nonce": nonce,
 	})
 	if err != nil {
 		return result, fmt.Errorf("canonicalize approval: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO approvals (
-			approval_id, intent_id, status, requested_at, expires_at, approval_json
-		) VALUES (?, ?, 'pending', ?, ?, ?)`,
-		approvalID, row.IntentID, formatTime(now), formatTime(expiresAt), approvalJSON,
+			approval_id, intent_id, status, requested_at, expires_at, approval_json, nonce
+		) VALUES (?, ?, 'pending', ?, ?, ?, ?)`,
+		approvalID, row.IntentID, formatTime(now), formatTime(expiresAt), approvalJSON, nonce,
 	); err != nil {
 		return result, fmt.Errorf("insert approval: %w", err)
 	}

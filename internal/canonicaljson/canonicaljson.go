@@ -32,6 +32,9 @@ const (
 	DomainOutcome        Domain = "situation-runtime/outcome/v1\n"
 	DomainSituationState Domain = "situation-runtime/situation-state/v1\n"
 	DomainEnvelope       Domain = "situation-runtime/envelope/v1\n"
+	DomainPrompt         Domain = "situation-runtime/prompt/v1\n"
+	DomainObjective      Domain = "situation-runtime/objective/v1\n"
+	DomainApproval       Domain = "situation-runtime/approval-assertion/v1\n"
 	DomainTest           Domain = "situation-runtime/test/v1\n"
 )
 

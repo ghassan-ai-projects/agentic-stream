@@ -30,6 +30,8 @@ type Request struct {
 	ExecutorVersion  string // digest of the active spec.
 	ModelPolicy      string // model policy from the spec executor.
 	PromptVersion    string // prompt version from the spec executor.
+	PromptSHA256     string // content-addressed prompt reference.
+	ObjectiveSHA256  string // content-addressed objective.
 	SnapshotSHA256   string // deterministic hash of the snapshot subset.
 	AttemptID        string // worker attempt identity, set at dispatch.
 	Fence            int64  // worker fence, set at dispatch.
@@ -135,6 +137,17 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		"traceparent":      traceparent,
 		"tracestate":       tracestate,
 	}
+	promptDigest, err := canonicaljson.Digest(canonicaljson.DomainPrompt, map[string]any{"version": a.spec.Cognition.Executor.PromptVersion})
+	if err != nil {
+		return nil, fmt.Errorf("digest prompt provenance: %w", err)
+	}
+	objectiveDigest, err := canonicaljson.Digest(canonicaljson.DomainObjective, map[string]any{"text": a.spec.Cognition.Executor.Objective})
+	if err != nil {
+		return nil, fmt.Errorf("digest objective provenance: %w", err)
+	}
+	executorDocument := request["executor"].(map[string]any)
+	executorDocument["prompt_sha256"] = promptDigest
+	executorDocument["objective_sha256"] = objectiveDigest
 
 	admissionKey := sha256.Sum256([]byte(episodeID + "|" + schedulerItemID))
 
@@ -165,6 +178,8 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		ExecutorVersion:  a.spec.Digest,
 		ModelPolicy:      a.spec.Cognition.Executor.ModelPolicy,
 		PromptVersion:    a.spec.Cognition.Executor.PromptVersion,
+		PromptSHA256:     promptDigest,
+		ObjectiveSHA256:  objectiveDigest,
 		SnapshotSHA256:   snapshotDigest,
 		AdmissionKey:     admissionKey[:],
 		RequestJSON:      requestJSON,
@@ -219,15 +234,23 @@ func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now t
 	if err != nil {
 		return fmt.Errorf("decode snapshot digest: %w", err)
 	}
+	promptHash, err := canonicaljson.DecodeDigest(req.PromptSHA256)
+	if err != nil {
+		return fmt.Errorf("decode prompt digest: %w", err)
+	}
+	objectiveHash, err := canonicaljson.DecodeDigest(req.ObjectiveSHA256)
+	if err != nil {
+		return fmt.Errorf("decode objective digest: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO episodes (
 			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
 			executor_name, executor_version, model_policy, prompt_version,
-			snapshot_sha256, admission_key, request_json, lifecycle_status, accepted_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admitted', ?)`,
+			snapshot_sha256, prompt_sha256, objective_sha256, admission_key, request_json, lifecycle_status, accepted_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admitted', ?)`,
 		req.EpisodeID, req.SchedulerItemID, req.TenantID, req.SituationID, req.SituationVersion,
 		req.ExecutorName, req.ExecutorVersion, req.ModelPolicy, req.PromptVersion,
-		snapshotHash, req.AdmissionKey, req.RequestJSON,
+		snapshotHash, promptHash, objectiveHash, req.AdmissionKey, req.RequestJSON,
 		now.Format(time.RFC3339Nano),
 	); err != nil {
 		return fmt.Errorf("insert episode: %w", err)

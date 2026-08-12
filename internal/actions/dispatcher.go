@@ -16,6 +16,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -41,6 +42,20 @@ type Effect struct {
 // an external system. Implementations must honor Command.IdempotencyKey.
 type Effector interface {
 	Dispatch(context.Context, Command) (Effect, error)
+}
+
+// Authorization is the final runtime authorization check passed to a
+// concrete effector. The check must run immediately before the effect is
+// accepted by that effector.
+type Authorization struct {
+	Check func(context.Context) error
+}
+
+// AuthorizedEffector is required when the dispatcher has a live interlock.
+// It closes the validation-to-acceptance gap at the concrete effect boundary.
+type AuthorizedEffector interface {
+	Effector
+	DispatchAuthorized(context.Context, Command, Authorization) (Effect, error)
 }
 
 // UnknownOutcomeError means the request may have reached the provider, so the
@@ -78,6 +93,7 @@ type Dispatcher struct {
 	leaseFor     time.Duration
 	runtimeOwner *storage.RuntimeOwner
 	runtimeEpoch string
+	interlock    interlock.Reader
 }
 
 // WithRuntimeOwner fences dispatcher ledger mutations to the active runtime
@@ -85,6 +101,12 @@ type Dispatcher struct {
 func (d *Dispatcher) WithRuntimeOwner(owner *storage.RuntimeOwner, epoch string) *Dispatcher {
 	d.runtimeOwner = owner
 	d.runtimeEpoch = epoch
+	return d
+}
+
+// WithInterlock adds the final read-only readiness check before effect delivery.
+func (d *Dispatcher) WithInterlock(reader interlock.Reader) *Dispatcher {
+	d.interlock = reader
 	return d
 }
 
@@ -136,11 +158,33 @@ func (d *Dispatcher) DispatchOnce(ctx context.Context) (bool, error) {
 	}
 	callCtx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
+	if d.interlock != nil {
+		guarded, ok := d.effector.(AuthorizedEffector)
+		if !ok {
+			return true, d.finalize(ctx, leased, Effect{}, errors.New("configured effector does not enforce dispatch authorization"))
+		}
+		effect, dispatchErr := guarded.DispatchAuthorized(callCtx, leased.Command, Authorization{Check: func(checkCtx context.Context) error {
+			return d.assertInterlock(checkCtx, leased.Command)
+		}})
+		if errors.Is(dispatchErr, context.DeadlineExceeded) {
+			dispatchErr = &UnknownOutcomeError{Err: dispatchErr}
+		}
+		return true, d.finalize(ctx, leased, effect, dispatchErr)
+	}
 	effect, dispatchErr := d.effector.Dispatch(callCtx, leased.Command)
 	if errors.Is(dispatchErr, context.DeadlineExceeded) {
 		dispatchErr = &UnknownOutcomeError{Err: dispatchErr}
 	}
 	return true, d.finalize(ctx, leased, effect, dispatchErr)
+}
+
+func (d *Dispatcher) assertInterlock(ctx context.Context, command Command) error {
+	return d.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := d.interlock.Assert(ctx, tx, command.TenantID, command.NormalizedTarget, ""); err != nil {
+			return fmt.Errorf("dispatch interlock assertion: %w", err)
+		}
+		return nil
+	})
 }
 
 func (d *Dispatcher) revalidateAuthorization(ctx context.Context, leased leasedCommand) error {
@@ -202,6 +246,11 @@ func (d *Dispatcher) revalidateAuthorizationTx(ctx context.Context, tx *sql.Tx, 
 	}
 	if commandTenant != intentTenant || commandIntent != intentID || commandRoute != intentType || policyStatus != "approved" || validationStatus != "accepted" {
 		return errors.New("command is no longer approved for its intent")
+	}
+	if d.interlock != nil {
+		if err := d.interlock.Assert(ctx, tx, commandTenant, commandTarget, intentRisk); err != nil {
+			return fmt.Errorf("interlock rejected command: %w", err)
+		}
 	}
 	if intentRisk == "R2" {
 		if !approvedApprovalID.Valid {

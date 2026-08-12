@@ -30,8 +30,13 @@ func TestOpenCreatesDatabaseAndRunsMigrations(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").Scan(&version); err != nil {
 		t.Fatalf("read migration version: %v", err)
 	}
-	if version != 12 {
-		t.Fatalf("expected migration version 12, got %d", version)
+	all, err := migrations.All()
+	if err != nil {
+		t.Fatalf("load migrations: %v", err)
+	}
+	wantVersion := all[len(all)-1].Version
+	if version != wantVersion {
+		t.Fatalf("expected migration version %d, got %d", wantVersion, version)
 	}
 	var table string
 	if err := db.QueryRowContext(ctx, "SELECT name FROM sqlite_master WHERE type='table' AND name='evidence_call_ledger'").Scan(&table); err != nil || table != "evidence_call_ledger" {

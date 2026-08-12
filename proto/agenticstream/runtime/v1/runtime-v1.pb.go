@@ -594,6 +594,8 @@ type EpisodeRequest struct {
 	Fence                 uint64             `protobuf:"varint,56,opt,name=fence,proto3" json:"fence,omitempty"`
 	EvidenceTimeRange     *EvidenceTimeRange `protobuf:"bytes,57,opt,name=evidence_time_range,json=evidenceTimeRange,proto3" json:"evidence_time_range,omitempty"`
 	Reconsideration       *Reconsideration   `protobuf:"bytes,58,opt,name=reconsideration,proto3" json:"reconsideration,omitempty"`
+	PromptSha256          []byte             `protobuf:"bytes,59,opt,name=prompt_sha256,json=promptSha256,proto3" json:"prompt_sha256,omitempty"`
+	ObjectiveSha256       []byte             `protobuf:"bytes,60,opt,name=objective_sha256,json=objectiveSha256,proto3" json:"objective_sha256,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -862,6 +864,20 @@ func (x *EpisodeRequest) GetEvidenceTimeRange() *EvidenceTimeRange {
 func (x *EpisodeRequest) GetReconsideration() *Reconsideration {
 	if x != nil {
 		return x.Reconsideration
+	}
+	return nil
+}
+
+func (x *EpisodeRequest) GetPromptSha256() []byte {
+	if x != nil {
+		return x.PromptSha256
+	}
+	return nil
+}
+
+func (x *EpisodeRequest) GetObjectiveSha256() []byte {
+	if x != nil {
+		return x.ObjectiveSha256
 	}
 	return nil
 }
@@ -2729,7 +2745,7 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"\x0eworker_version\x18\x04 \x01(\tR\rworkerVersion\x12-\n" +
 	"\x12supported_features\x18\x05 \x03(\tR\x11supportedFeatures\x12*\n" +
 	"\x11max_request_bytes\x18\x06 \x01(\x04R\x0fmaxRequestBytes\x12&\n" +
-	"\x0fmax_event_bytes\x18\a \x01(\x04R\rmaxEventBytes\"\x9c\f\n" +
+	"\x0fmax_event_bytes\x18\a \x01(\x04R\rmaxEventBytes\"\xec\f\n" +
 	"\x0eEpisodeRequest\x12)\n" +
 	"\x10protocol_version\x18\x01 \x01(\tR\x0fprotocolVersion\x12\x1d\n" +
 	"\n" +
@@ -2771,7 +2787,9 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"attempt_id\x187 \x01(\tR\tattemptId\x12\x14\n" +
 	"\x05fence\x188 \x01(\x04R\x05fence\x12[\n" +
 	"\x13evidence_time_range\x189 \x01(\v2+.agenticstream.runtime.v1.EvidenceTimeRangeR\x11evidenceTimeRange\x12S\n" +
-	"\x0freconsideration\x18: \x01(\v2).agenticstream.runtime.v1.ReconsiderationR\x0freconsideration\"u\n" +
+	"\x0freconsideration\x18: \x01(\v2).agenticstream.runtime.v1.ReconsiderationR\x0freconsideration\x12#\n" +
+	"\rprompt_sha256\x18; \x01(\fR\fpromptSha256\x12)\n" +
+	"\x10objective_sha256\x18< \x01(\fR\x0fobjectiveSha256\"u\n" +
 	"\x11EvidenceTimeRange\x12.\n" +
 	"\x04from\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x120\n" +
 	"\x05until\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x05until\"\xd2\x01\n" +

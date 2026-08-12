@@ -2,6 +2,7 @@ package actions_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -12,12 +13,35 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 type recordingEffector struct {
 	calls   int
 	unknown bool
+}
+
+type tripBeforeAcceptEffector struct {
+	db    *storage.DB
+	calls int
+}
+
+func (e *tripBeforeAcceptEffector) Dispatch(context.Context, actions.Command) (actions.Effect, error) {
+	return actions.Effect{}, errors.New("unauthorized dispatch path")
+}
+
+func (e *tripBeforeAcceptEffector) DispatchAuthorized(ctx context.Context, command actions.Command, authorization actions.Authorization) (actions.Effect, error) {
+	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
+		return interlock.Set(ctx, tx, "tripped", "race stop", 2, time.Now().UTC().Format(time.RFC3339Nano))
+	}); err != nil {
+		return actions.Effect{}, err
+	}
+	if err := authorization.Check(ctx); err != nil {
+		return actions.Effect{}, err
+	}
+	e.calls++
+	return actions.Effect{ProviderResult: map[string]any{"accepted": true}}, nil
 }
 
 func (e *recordingEffector) Dispatch(_ context.Context, command actions.Command) (actions.Effect, error) {
@@ -98,6 +122,53 @@ func TestDispatcherDoesNotBlindlyRetryUnknownOutcome(t *testing.T) {
 	}
 	if commandStatus != "succeeded" || outcomeCount != 2 {
 		t.Fatalf("reconciled command=%q outcomes=%d", commandStatus, outcomeCount)
+	}
+}
+
+func TestDispatcherRefusesCommandWhenInterlockTrips(t *testing.T) {
+	db, commandID := openActionFixture(t)
+	defer func() { _ = db.Close() }()
+	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
+		return interlock.Set(context.Background(), tx, "tripped", "maintenance stop", 2, time.Now().UTC().Format(time.RFC3339Nano))
+	}); err != nil {
+		t.Fatalf("trip interlock: %v", err)
+	}
+	effector := &recordingEffector{}
+	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute).WithInterlock(interlock.DurableReader{})
+	processed, err := dispatcher.DispatchOnce(context.Background())
+	if err != nil || !processed {
+		t.Fatalf("dispatch tripped command processed=%v err=%v", processed, err)
+	}
+	if effector.calls != 0 {
+		t.Fatalf("effector was called despite tripped interlock: %d", effector.calls)
+	}
+	var status string
+	if err := db.QueryRowContext(context.Background(), "SELECT status FROM commands WHERE command_id = ?", commandID).Scan(&status); err != nil {
+		t.Fatalf("read refused command: %v", err)
+	}
+	if status != "failed" {
+		t.Fatalf("refused command status = %q, want failed", status)
+	}
+}
+
+func TestDispatcherEffectorAcceptanceRechecksInterlock(t *testing.T) {
+	db, commandID := openActionFixture(t)
+	defer func() { _ = db.Close() }()
+	effector := &tripBeforeAcceptEffector{db: db}
+	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute).WithInterlock(interlock.DurableReader{})
+	processed, err := dispatcher.DispatchOnce(context.Background())
+	if err != nil || !processed {
+		t.Fatalf("dispatch race command processed=%v err=%v", processed, err)
+	}
+	if effector.calls != 0 {
+		t.Fatal("effector accepted command after interlock tripped")
+	}
+	var status string
+	if err := db.QueryRowContext(context.Background(), "SELECT status FROM commands WHERE command_id = ?", commandID).Scan(&status); err != nil {
+		t.Fatalf("read race command: %v", err)
+	}
+	if status != "failed" {
+		t.Fatalf("race command status = %q, want failed", status)
 	}
 }
 

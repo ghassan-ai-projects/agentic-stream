@@ -22,6 +22,22 @@ func NewSimulatedEffector() *SimulatedEffector {
 // Dispatch applies a supported simulated command exactly once per
 // idempotency key. The returned result is stable across duplicate dispatches.
 func (e *SimulatedEffector) Dispatch(ctx context.Context, command Command) (Effect, error) {
+	return e.dispatch(ctx, command)
+}
+
+// DispatchAuthorized checks the live interlock immediately before applying
+// the simulated effect.
+func (e *SimulatedEffector) DispatchAuthorized(ctx context.Context, command Command, authorization Authorization) (Effect, error) {
+	if authorization.Check == nil {
+		return Effect{}, fmt.Errorf("dispatch authorization is required")
+	}
+	if err := authorization.Check(ctx); err != nil {
+		return Effect{}, err
+	}
+	return e.dispatch(ctx, command)
+}
+
+func (e *SimulatedEffector) dispatch(ctx context.Context, command Command) (Effect, error) {
 	if err := ctx.Err(); err != nil {
 		return Effect{}, err
 	}
