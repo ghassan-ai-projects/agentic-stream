@@ -24,6 +24,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	nativeexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -301,7 +302,8 @@ func newServeCommand() *cobra.Command {
 				return fmt.Errorf("start runtime: %w", err)
 			}
 			defer func() { _ = service.Close(context.Background()) }()
-			server := &http.Server{Addr: listenAddress, Handler: api.NewHealthHandler(service), ReadHeaderTimeout: 5 * time.Second}
+			handler := api.NewRuntimeHandler(service, db, notify.SSEConfig{TenantFromRequest: func(r *http.Request) string { return r.URL.Query().Get("tenant") }})
+			server := &http.Server{Addr: listenAddress, Handler: handler, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 30 * time.Second}
 			go func() {
 				<-cmd.Context().Done()
 				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
