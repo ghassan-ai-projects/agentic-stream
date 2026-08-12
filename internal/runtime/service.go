@@ -91,7 +91,10 @@ func (s *Service) Close(ctx context.Context) error {
 		stop()
 		<-done
 	}
-	return s.owner.Release(ctx, s.epoch)
+	if err := s.owner.Release(ctx, s.epoch); err != nil {
+		return fmt.Errorf("release runtime owner: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) heartbeat(ctx context.Context, done chan struct{}) {

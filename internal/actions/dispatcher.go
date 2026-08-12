@@ -152,7 +152,6 @@ func (d *Dispatcher) DispatchOnce(ctx context.Context) (bool, error) {
 	if err := d.revalidateAuthorization(ctx, leased); err != nil {
 		return true, d.finalize(ctx, leased, Effect{}, fmt.Errorf("authorization revalidation failed: %w", err))
 	}
-	callCtx := ctx
 	callTimeout := d.leaseFor - d.leaseFor/10
 	if callTimeout <= 0 {
 		callTimeout = d.leaseFor

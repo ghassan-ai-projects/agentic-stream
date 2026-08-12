@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -76,7 +77,7 @@ func (e *Engine) admitReconsiderations(ctx context.Context, tx *sql.Tx, current 
 		if err == nil {
 			continue
 		}
-		if err != sql.ErrNoRows {
+		if !errors.Is(err, sql.ErrNoRows) {
 			return admitted, fmt.Errorf("check reconsideration dedupe: %w", err)
 		}
 		material := fmt.Sprintf("reconsider|%s|%d|%s", current.SituationID, current.PreviousVersion, commandID)

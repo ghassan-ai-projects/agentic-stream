@@ -30,10 +30,10 @@ type AttemptStatus string
 const (
 	AttemptDispatched AttemptStatus = "dispatched"
 	AttemptRunning    AttemptStatus = "running"
-	AttemptCancelling AttemptStatus = "cancelling"
+	AttemptCancelling AttemptStatus = "cancelling" //nolint:misspell // Frozen durable protocol value.
 	AttemptProduced   AttemptStatus = "produced"
 	AttemptDeclined   AttemptStatus = "declined"
-	AttemptCancelled  AttemptStatus = "cancelled"
+	AttemptCancelled  AttemptStatus = "cancelled" //nolint:misspell // Frozen durable protocol value.
 	AttemptFailed     AttemptStatus = "failed"
 	AttemptTimedOut   AttemptStatus = "timed_out"
 	AttemptAbandoned  AttemptStatus = "abandoned"

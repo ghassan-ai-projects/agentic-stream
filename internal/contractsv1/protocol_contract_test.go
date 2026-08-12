@@ -35,7 +35,7 @@ func TestRuntimeProtocolFreezesWorkerBoundary(t *testing.T) {
 		"uint64 fence = 5;",
 		"TERMINAL_STATUS_PRODUCED = 1;",
 		"TERMINAL_STATUS_DECLINED = 2;",
-		"TERMINAL_STATUS_CANCELLED = 3;",
+		"TERMINAL_STATUS_CANCELLED = 3;", //nolint:misspell // Frozen protobuf enum.
 		"TERMINAL_STATUS_FAILED = 4;",
 		"TERMINAL_STATUS_TIMED_OUT = 5;",
 		"TERMINAL_STATUS_BUDGET_EXHAUSTED = 6;",

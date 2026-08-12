@@ -375,11 +375,11 @@ func utf16Units(value string) []uint16 {
 	units := make([]uint16, 0, len(value))
 	for _, r := range value {
 		if r <= 0xffff {
-			units = append(units, uint16(r))
+			units = append(units, uint16(r)) //nolint:gosec // r is proven <= 0xffff.
 			continue
 		}
 		r -= 0x10000
-		units = append(units, uint16(0xd800+(r>>10)), uint16(0xdc00+(r&0x3ff)))
+		units = append(units, uint16(0xd800+(r>>10)), uint16(0xdc00+(r&0x3ff))) //nolint:gosec // UTF-16 surrogate ranges are bounded.
 	}
 	return units
 }

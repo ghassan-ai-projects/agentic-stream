@@ -208,7 +208,7 @@ func (e *Engine) ApplyFeature(ctx context.Context, feature operators.Feature, wa
 
 	version, err := e.evaluate(ctx, sit, feature, watermark, completenessChanged)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("evaluate situation: %w", err)
 	}
 	if version == nil {
 		return nil, nil
@@ -490,7 +490,7 @@ func stateJSON(sit *Situation) ([]byte, error) {
 	}
 	blob, err := canonicaljson.Marshal(stateDocument(sit, facts, evidence, conditionStart))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal situation state: %w", err)
 	}
 	return blob, nil
 }

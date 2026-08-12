@@ -69,7 +69,7 @@ func TestRunnerCancelsSupersededStreamedAttempt(t *testing.T) {
 			t.Fatal(err)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("superseded executor was not cancelled")
+		t.Fatal("superseded executor was not canceled")
 	}
 	var status, lifecycle string
 	if err := db.QueryRowContext(ctx, "SELECT status FROM episode_attempts WHERE episode_id = 'epi-supersede'").Scan(&status); err != nil {

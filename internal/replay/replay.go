@@ -627,7 +627,7 @@ func traceEpoch(path string) (time.Time, error) {
 		}
 		var envelope contractsv1.Envelope
 		if err := json.Unmarshal(scanner.Bytes(), &envelope); err != nil {
-			return time.Time{}, err
+			return time.Time{}, fmt.Errorf("decode trace envelope: %w", err)
 		}
 		processingTime := envelope.IngestedAt
 		if processingTime.IsZero() {
@@ -641,7 +641,7 @@ func traceEpoch(path string) (time.Time, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return time.Time{}, err
+		return time.Time{}, fmt.Errorf("scan trace: %w", err)
 	}
 	if first.IsZero() {
 		return time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), nil

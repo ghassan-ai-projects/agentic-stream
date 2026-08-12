@@ -440,7 +440,10 @@ func (p *Pipeline) evaluatePendingIntents(ctx context.Context, report *PipelineR
 		now := p.clk.Now().UTC()
 		if err := p.db.WithTx(ctx, func(tx *sql.Tx) error {
 			_, err := p.policy.EvaluateIntent(ctx, tx, intentID, now)
-			return err
+			if err != nil {
+				return fmt.Errorf("evaluate intent: %w", err)
+			}
+			return nil
 		}); err != nil {
 			return fmt.Errorf("evaluate intent %s: %w", intentID, err)
 		}

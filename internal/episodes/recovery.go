@@ -21,7 +21,7 @@ type RecoveryReport struct {
 
 // RecoverUnfinishedAttempts abandons active attempts owned by an older or
 // missing runtime epoch. It preserves the episode and fence so the next
-// StartAttempt allocates fence+1. Cancelling attempts abandon their episode
+// StartAttempt allocates fence+1. Canceling attempts abandon their episode
 // because cancellation is an explicit terminal decision, not an automatic
 // retry signal.
 func RecoverUnfinishedAttempts(ctx context.Context, tx *sql.Tx, currentEpoch string, now time.Time) (RecoveryReport, error) {

@@ -62,7 +62,7 @@ func (c *RecoveryCoordinator) ClaimAndRecover(ctx context.Context) (RecoveryRepo
 		return nil
 	})
 	if err != nil {
-		return RecoveryReport{}, err
+		return RecoveryReport{}, fmt.Errorf("claim and recover runtime: %w", err)
 	}
 	return report, nil
 }

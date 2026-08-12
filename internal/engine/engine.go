@@ -534,7 +534,7 @@ func (e *Engine) runDueTimers(ctx context.Context, partitionID int) (int, error)
 		}
 		args = append(args, e.tenantID, e.deploymentID)
 		query := fmt.Sprintf(`UPDATE timers SET status = 'fired', fired_at = ?
-			WHERE timer_id IN (%s) AND tenant_id = ? AND deployment_id = ? AND status = 'pending'`, placeholders)
+			WHERE timer_id IN (%s) AND tenant_id = ? AND deployment_id = ? AND status = 'pending'`, placeholders) //nolint:gosec // placeholders are generated from timer count, never user input.
 		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 			return fmt.Errorf("acknowledge timers: %w", err)
 		}
@@ -543,7 +543,7 @@ func (e *Engine) runDueTimers(ctx context.Context, partitionID int) (int, error)
 	}); err != nil {
 		e.sitEngine.Reset()
 		if restoreErr := restoreSituations(ctx, e.db, e.deploymentID, e.tenantID, e.sitEngine); restoreErr != nil {
-			return 0, fmt.Errorf("run timers transaction: %w; restore after rollback: %v", err, restoreErr)
+			return 0, fmt.Errorf("run timers transaction: %w; restore after rollback: %w", err, restoreErr)
 		}
 		return 0, fmt.Errorf("run timers transaction: %w", err)
 	}
@@ -766,7 +766,7 @@ func (e *Engine) applyRecord(ctx context.Context, partitionID int, rec eventlog.
 	}); err != nil {
 		e.sitEngine.Reset()
 		if restoreErr := restoreSituations(ctx, e.db, e.deploymentID, e.tenantID, e.sitEngine); restoreErr != nil {
-			return fmt.Errorf("apply record transaction: %w; restore after rollback: %v", err, restoreErr)
+			return fmt.Errorf("apply record transaction: %w; restore after rollback: %w", err, restoreErr)
 		}
 		return fmt.Errorf("apply record transaction: %w", err)
 	}

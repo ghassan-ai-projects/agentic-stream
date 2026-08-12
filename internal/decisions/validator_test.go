@@ -2,6 +2,7 @@ package decisions
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -64,7 +65,8 @@ func TestValidateRejectsSecurityAndBindingFailures(t *testing.T) {
 				t.Fatalf("digest mutated decision: %v", err)
 			}
 			_, err = Validate(raw, digest, validInput())
-			validationErr, ok := err.(*ValidationError)
+			var validationErr *ValidationError
+			ok := errors.As(err, &validationErr)
 			if !ok || validationErr.Reason != test.want {
 				t.Fatalf("error = %v, want reason %s", err, test.want)
 			}
@@ -78,7 +80,8 @@ func TestValidateRejectsSecurityAndBindingFailures(t *testing.T) {
 			t.Fatalf("marshal decision: %v", err)
 		}
 		_, err = Validate(raw, "sha256:"+zeros(64), validInput())
-		validationErr, ok := err.(*ValidationError)
+		var validationErr *ValidationError
+		ok := errors.As(err, &validationErr)
 		if !ok || validationErr.Reason != "schema_invalid" {
 			t.Fatalf("error = %v, want schema_invalid", err)
 		}
@@ -87,7 +90,8 @@ func TestValidateRejectsSecurityAndBindingFailures(t *testing.T) {
 	t.Run("duplicate raw key", func(t *testing.T) {
 		raw := []byte(`{"decision_id":"dec-1","decision_id":"dec-2"}`)
 		_, err := Validate(raw, "", validInput())
-		validationErr, ok := err.(*ValidationError)
+		var validationErr *ValidationError
+		ok := errors.As(err, &validationErr)
 		if !ok || validationErr.Reason != "schema_invalid" {
 			t.Fatalf("error = %v, want schema_invalid", err)
 		}

@@ -221,7 +221,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 			decisionDigest = rawHash[:]
 		}
 		validationStatus := "rejected"
-		validationJSON := []byte(`{"reason":"schema_invalid"}`)
+		var validationJSON []byte
 		if validationErr == nil {
 			validationStatus = "proposed"
 			validationJSON = []byte(`{}`)
@@ -229,7 +229,8 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 				decisionDigest = decoded
 			}
 		} else {
-			if typed, ok := validationErr.(*decisions.ValidationError); ok {
+			var typed *decisions.ValidationError
+			if errors.As(validationErr, &typed) {
 				validationJSON, _ = json.Marshal(map[string]any{"reason": typed.Reason, "details": typed.Details})
 			} else {
 				validationJSON, _ = json.Marshal(map[string]any{"reason": "schema_invalid", "details": validationErr.Error()})
@@ -268,7 +269,8 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 				}
 			} else {
 				reason := "schema_invalid"
-				if typed, ok := validationErr.(*decisions.ValidationError); ok {
+				var typed *decisions.ValidationError
+				if errors.As(validationErr, &typed) {
 					reason = typed.Reason
 				}
 				if err := RecordRejection(ctx, tx, identity, RejectionReason(reason), validationJSON, r.clk.Now()); err != nil {

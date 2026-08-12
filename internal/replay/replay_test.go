@@ -3,6 +3,7 @@ package replay_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,15 +37,15 @@ func (viewRecordedLedger) EntriesForReplay(_ context.Context, episodes []replay.
 		}
 		raw, err := canonicaljson.Marshal(decision)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("marshal recorded decision: %w", err)
 		}
 		decisionDigest, err := canonicaljson.Digest(canonicaljson.DomainDecision, decision)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("digest recorded decision: %w", err)
 		}
 		provenance, err := canonicaljson.Digest(canonicaljson.DomainOutcome, map[string]any{"episode_id": episode.EpisodeID, "attempt_id": attemptID, "fence": fence})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("digest recorded provenance: %w", err)
 		}
 		entries = append(entries, replay.RecordedEntry{
 			EpisodeKey: episode.EpisodeKey, SituationID: episode.SituationID,
@@ -311,7 +312,7 @@ func alwaysTriggerSpec(t *testing.T) string {
 	specText = prefix + suffix
 	specText = strings.Replace(specText, "emit: on_close", "emit: on_update", 1)
 	workingSpec := filepath.Join(t.TempDir(), "always-trigger.situation.yaml")
-	if err := os.WriteFile(workingSpec, []byte(specText), 0o600); err != nil {
+	if err := os.WriteFile(workingSpec, []byte(specText), 0o600); err != nil { //nolint:gosec // test path is created under t.TempDir().
 		t.Fatal(err)
 	}
 	return workingSpec
