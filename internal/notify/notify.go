@@ -24,11 +24,18 @@ var ErrCursorExpired = errors.New("notification cursor expired")
 // ErrSubscriberTooSlow means the subscriber exceeded its bounded backlog.
 var ErrSubscriberTooSlow = errors.New("subscriber too slow")
 
+// ErrNotificationPoison means a malformed notification is waiting for a
+// bounded redelivery attempt. Once the durable retry limit is reached, the
+// row is skipped and audited.
+var ErrNotificationPoison = errors.New("notification poison pending retry")
+
 // ErrEventExpired means an event older than the notification deduplication
 // horizon cannot be reintroduced after retention pruning.
 var ErrEventExpired = errors.New("notification event expired")
 
 const notificationRetentionFloor = 7 * 24 * time.Hour
+
+const maxNotificationPoisonAttempts = 3
 
 // Record is one durable notification and its tenant-local cursor.
 type Record struct {
@@ -182,25 +189,43 @@ func ReadPage(ctx context.Context, db *storage.DB, tenantID string, cursor int64
 		result.NextCursor = record.Cursor
 		computed := sha256.Sum256(eventJSON)
 		if !bytes.Equal(computed[:], eventSHA) {
-			if err := audit(ctx, db, tenantID, "subscriber_skipped", record.Cursor, record.Cursor, now); err != nil {
-				return Page{}, fmt.Errorf("audit corrupt notification: %w", err)
+			skip, poisonErr := recordPoisonAttempt(ctx, db, tenantID, record.Cursor, now)
+			if poisonErr != nil {
+				return Page{}, poisonErr
 			}
-			result.Skipped++
-			continue
+			if skip {
+				result.Skipped++
+				result.NextCursor = record.Cursor
+				continue
+			}
+			return Page{}, ErrNotificationPoison
 		}
 		if err := json.Unmarshal(eventJSON, &record.Event); err != nil {
-			if err := audit(ctx, db, tenantID, "subscriber_skipped", record.Cursor, record.Cursor, now); err != nil {
-				return Page{}, fmt.Errorf("audit poison notification: %w", err)
+			skip, poisonErr := recordPoisonAttempt(ctx, db, tenantID, record.Cursor, now)
+			if poisonErr != nil {
+				return Page{}, poisonErr
 			}
-			result.Skipped++
-			continue
+			if skip {
+				result.Skipped++
+				result.NextCursor = record.Cursor
+				continue
+			}
+			return Page{}, ErrNotificationPoison
 		}
 		if err := record.Event.Validate(); err != nil {
-			if err := audit(ctx, db, tenantID, "subscriber_skipped", record.Cursor, record.Cursor, now); err != nil {
-				return Page{}, fmt.Errorf("audit invalid notification: %w", err)
+			skip, poisonErr := recordPoisonAttempt(ctx, db, tenantID, record.Cursor, now)
+			if poisonErr != nil {
+				return Page{}, poisonErr
 			}
-			result.Skipped++
-			continue
+			if skip {
+				result.Skipped++
+				result.NextCursor = record.Cursor
+				continue
+			}
+			return Page{}, ErrNotificationPoison
+		}
+		if err := clearPoisonAttempt(ctx, db, tenantID, record.Cursor); err != nil {
+			return Page{}, err
 		}
 		result.Records = append(result.Records, record)
 	}
@@ -234,7 +259,50 @@ func Prune(ctx context.Context, db *storage.DB, now time.Time, retention time.Du
 }
 
 func audit(ctx context.Context, db *storage.DB, tenantID, action string, requested, oldest int64, now time.Time) error {
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error { return auditTx(ctx, tx, tenantID, action, requested, oldest, now) }); err != nil {
+		return fmt.Errorf("write notification audit: %w", err)
+	}
+	return nil
+}
+
+func auditTx(ctx context.Context, tx *sql.Tx, tenantID, action string, requested, oldest int64, now time.Time) error {
 	details, _ := canonicaljson.Marshal(map[string]any{"requested_cursor": requested, "oldest_cursor": oldest})
-	_, err := db.ExecContext(ctx, `INSERT INTO notification_audits (audit_id, tenant_id, action, requested_cursor, oldest_cursor, details_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, ids.Random().New(ids.PrefixPolicy), tenantID, action, requested, oldest, details, now.UTC().Format(time.RFC3339Nano))
+	_, err := tx.ExecContext(ctx, `INSERT INTO notification_audits (audit_id, tenant_id, action, requested_cursor, oldest_cursor, details_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, ids.Random().New(ids.PrefixPolicy), tenantID, action, requested, oldest, details, now.UTC().Format(time.RFC3339Nano))
 	return err
+}
+
+func recordPoisonAttempt(ctx context.Context, db *storage.DB, tenantID string, cursor int64, now time.Time) (bool, error) {
+	var skip bool
+	err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO notification_poison_attempts (tenant_id, cursor, attempts, last_attempt_at) VALUES (?, ?, 1, ?) ON CONFLICT(tenant_id, cursor) DO UPDATE SET attempts = attempts + 1, last_attempt_at = excluded.last_attempt_at`, tenantID, cursor, now.UTC().Format(time.RFC3339Nano))
+		if err != nil {
+			return fmt.Errorf("record notification poison attempt: %w", err)
+		}
+		var attempts int
+		if err := tx.QueryRowContext(ctx, "SELECT attempts FROM notification_poison_attempts WHERE tenant_id = ? AND cursor = ?", tenantID, cursor).Scan(&attempts); err != nil {
+			return fmt.Errorf("read notification poison attempts: %w", err)
+		}
+		if attempts < maxNotificationPoisonAttempts {
+			return nil
+		}
+		if err := auditTx(ctx, tx, tenantID, "subscriber_skipped", cursor, cursor, now); err != nil {
+			return fmt.Errorf("audit skipped poison notification: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM notification_poison_attempts WHERE tenant_id = ? AND cursor = ?", tenantID, cursor); err != nil {
+			return fmt.Errorf("clear notification poison attempts: %w", err)
+		}
+		skip = true
+		return nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("persist notification poison attempt: %w", err)
+	}
+	return skip, nil
+}
+
+func clearPoisonAttempt(ctx context.Context, db *storage.DB, tenantID string, cursor int64) error {
+	if _, err := db.ExecContext(ctx, "DELETE FROM notification_poison_attempts WHERE tenant_id = ? AND cursor = ?", tenantID, cursor); err != nil {
+		return fmt.Errorf("clear notification poison attempt: %w", err)
+	}
+	return nil
 }

@@ -36,7 +36,7 @@ func (p *OpenAICompatibleProvider) Stream(ctx context.Context, req ModelRequest)
 	body, err := json.Marshal(openAIRequest{Model: p.Model, Stream: true, Messages: []openAIMessage{
 		{Role: "system", Content: req.Prompt},
 		{Role: "user", Content: buildUserContent(req)},
-	}, ResponseFormat: map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "decision", "strict": true, "schema": json.RawMessage(req.DecisionSchema)}}})
+	}, Tools: providerTools(req.Tools), ResponseFormat: map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "decision", "strict": true, "schema": json.RawMessage(req.DecisionSchema)}}})
 	if err != nil {
 		return ModelResponse{}, fmt.Errorf("marshal provider request: %w", err)
 	}
@@ -75,7 +75,17 @@ type openAIRequest struct {
 	Model          string          `json:"model"`
 	Stream         bool            `json:"stream"`
 	Messages       []openAIMessage `json:"messages"`
+	Tools          []openAITool    `json:"tools,omitempty"`
 	ResponseFormat map[string]any  `json:"response_format"`
+}
+
+type openAITool struct {
+	Type     string `json:"type"`
+	Function struct {
+		Name        string          `json:"name"`
+		Description string          `json:"description,omitempty"`
+		Parameters  json.RawMessage `json:"parameters"`
+	} `json:"function"`
 }
 
 type openAIMessage struct {
@@ -96,6 +106,18 @@ func buildUserContent(req ModelRequest) string {
 	}
 	raw, _ := json.Marshal(document)
 	return string(raw)
+}
+
+func providerTools(definitions []ToolDefinition) []openAITool {
+	result := make([]openAITool, 0, len(definitions))
+	for _, definition := range definitions {
+		result = append(result, openAITool{Type: "function", Function: struct {
+			Name        string          `json:"name"`
+			Description string          `json:"description,omitempty"`
+			Parameters  json.RawMessage `json:"parameters"`
+		}{Name: definition.Name, Description: definition.Description, Parameters: definition.Parameters}})
+	}
+	return result
 }
 
 type openAIChoice struct {

@@ -299,17 +299,12 @@ func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now t
 }
 
 func (a *Assembler) buildTools() []map[string]any {
-	allowed := a.allowedIntentTypes()
-	tools := make([]map[string]any, 0, len(a.spec.Actions.Intents))
-	for _, intent := range a.spec.Actions.Intents {
+	tools := make([]map[string]any, 0, len(a.spec.Cognition.Executor.Tools))
+	for _, name := range a.spec.Cognition.Executor.Tools {
 		tools = append(tools, map[string]any{
-			"type":        intent.Type,
-			"risk":        intent.Risk,
-			"schema":      intent.Schema,
-			"policy":      intent.Policy,
-			"rate_limit":  intent.RateLimitPerHour,
-			"allowed":     allowed[intent.Type],
-			"description": "",
+			"name":        name,
+			"description": "bounded read-only evidence capability",
+			"schema":      map[string]any{"type": "object", "additionalProperties": false},
 		})
 	}
 	return tools

@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,16 @@ import (
 // AuthorizeSubscriber checks the subscriber credential and event type. The
 // callback runs before the stream starts and for every delivered event.
 type AuthorizeSubscriber func(*http.Request, string) bool
+
+// BearerTokenAuthorizer creates a constant-time subscriber credential check.
+// The token is intentionally separate from worker capability tokens.
+func BearerTokenAuthorizer(expected string) AuthorizeSubscriber {
+	expected = strings.TrimSpace(expected)
+	return func(r *http.Request, _ string) bool {
+		provided := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		return expected != "" && subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
+	}
+}
 
 // SSEConfig configures one durable notification stream.
 type SSEConfig struct {
@@ -222,6 +233,8 @@ func writeStreamError(w http.ResponseWriter, err error) {
 		writeSSEProblem(w, http.StatusConflict, "cursor_expired", "cursor is outside retained notification history; perform an audited resnapshot")
 	case errors.Is(err, ErrSubscriberTooSlow):
 		writeSSEProblem(w, http.StatusTooManyRequests, "subscriber_too_slow", "subscriber lag exceeded the bounded backlog")
+	case errors.Is(err, ErrNotificationPoison):
+		writeSSEProblem(w, http.StatusServiceUnavailable, "notification_retry", "a notification failed validation and will be retried")
 	default:
 		writeSSEProblem(w, http.StatusInternalServerError, "notification_stream_failed", "notification stream failed")
 	}
@@ -233,6 +246,9 @@ func streamErrorCode(err error) string {
 	}
 	if errors.Is(err, ErrSubscriberTooSlow) {
 		return "subscriber_too_slow"
+	}
+	if errors.Is(err, ErrNotificationPoison) {
+		return "notification_retry"
 	}
 	return "notification_stream_failed"
 }

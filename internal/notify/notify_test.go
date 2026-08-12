@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -41,6 +42,42 @@ func TestNotificationsAreCursorResumableAndAuditExpiredCursor(t *testing.T) {
 	var audits int
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM notification_audits WHERE action = 'cursor_expired'").Scan(&audits); err != nil || audits != 1 {
 		t.Fatalf("expired audits=%d err=%v", audits, err)
+	}
+}
+
+func TestPoisonNotificationRetriesBeforeAuditedSkip(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "poison.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	event := testEvent("poison", now)
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		_, err := notify.Append(ctx, tx, event, now)
+		if err != nil {
+			return fmt.Errorf("append poison event: %w", err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, "UPDATE notifications SET event_json = ? WHERE tenant_id = ? AND cursor = 1", []byte("{bad"), "tenant"); err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 1; attempt <= 2; attempt++ {
+		if _, err := notify.ReadPage(ctx, db, "tenant", 0, 10, 0, now); !errors.Is(err, notify.ErrNotificationPoison) {
+			t.Fatalf("attempt %d error=%v", attempt, err)
+		}
+	}
+	page, err := notify.ReadPage(ctx, db, "tenant", 0, 10, 0, now)
+	if err != nil || page.Skipped != 1 || page.NextCursor != 1 {
+		t.Fatalf("page=%+v err=%v", page, err)
+	}
+	var audits int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM notification_audits WHERE action = 'subscriber_skipped'").Scan(&audits); err != nil || audits != 1 {
+		t.Fatalf("audits=%d err=%v", audits, err)
 	}
 }
 

@@ -112,6 +112,22 @@ func TestSSEDisconnectsSlowSubscriber(t *testing.T) {
 	}
 }
 
+func TestBearerSubscriberAuthorization(t *testing.T) {
+	authorize := notify.BearerTokenAuthorizer("subscriber-secret")
+	unauthorized := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/events", nil)
+	if authorize(unauthorized, "") {
+		t.Fatal("missing bearer token was authorized")
+	}
+	unauthorized.Header.Set("Authorization", "Bearer wrong")
+	if authorize(unauthorized, "") {
+		t.Fatal("wrong bearer token was authorized")
+	}
+	unauthorized.Header.Set("Authorization", "Bearer subscriber-secret")
+	if !authorize(unauthorized, "") {
+		t.Fatal("valid bearer token was rejected")
+	}
+}
+
 func serveUntilCanceled(t *testing.T, handler http.Handler, path, cursor string) string {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())

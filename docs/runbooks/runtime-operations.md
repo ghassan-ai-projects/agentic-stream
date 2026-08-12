@@ -14,8 +14,10 @@ curl --fail http://127.0.0.1:8080/metrics
 ```
 
 The runtime creates a fresh owner epoch, recovers unfinished attempts and
-evidence leases, and only then reports ready. A readiness problem is RFC 9457
-`application/problem+json`; do not route traffic to an unready process.
+evidence leases, and only then reports ready. `serve` currently owns the
+runtime lifecycle and API surfaces; bounded trace processing is performed by
+`run-live`. A readiness problem is RFC 9457 `application/problem+json`; do not
+route traffic to an unready process.
 
 ## Backup and restore
 
@@ -45,7 +47,8 @@ duplicate envelopes are rejected by the durable inbox.
 
 ## Notification consumers
 
-Connect to `/v1/events?tenant=<tenant>` and persist the last numeric `id`.
+Start one runtime process per served tenant and connect to `/v1/events`; persist
+the last numeric `id`.
 Reconnect with `Last-Event-ID`. A `cursor_expired` problem requires an audited
 resnapshot before reconnecting. A `subscriber_too_slow` event means the client
 must reconnect from its last acknowledged cursor; the server never grows an

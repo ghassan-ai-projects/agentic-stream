@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -141,7 +142,15 @@ func newRunLiveCommand() *cobra.Command {
 				}
 				provider = &nativeexecutor.OpenAICompatibleProvider{Endpoint: modelEndpoint, APIKey: os.Getenv("AGENTIC_STREAM_MODEL_API_KEY"), Model: modelName}
 			}
-			nativeExecutor, nativeErr := nativeexecutor.New(nativeexecutor.Config{Provider: provider})
+			nativeExecutor, nativeErr := nativeexecutor.New(nativeexecutor.Config{
+				Provider: provider,
+				ToolFactory: func(req *episodes.Request) []nativeexecutor.Tool {
+					return []nativeexecutor.Tool{
+						nativeexecutor.NewSQLiteEvidenceTool(db, "evidence_get", req.TenantID, req.EntityID),
+						nativeexecutor.NewSQLiteEvidenceTool(db, "evidence.get", req.TenantID, req.EntityID),
+					}
+				},
+			})
 			if nativeErr != nil {
 				return fmt.Errorf("configure native executor: %w", nativeErr)
 			}
@@ -275,7 +284,7 @@ func loadWorkerTLS(caPath, certPath, keyPath, serverName string) (*tls.Config, e
 }
 
 func newServeCommand() *cobra.Command {
-	var dbPath, listenAddress string
+	var dbPath, listenAddress, tenantID string
 	var ownerLease time.Duration
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -304,7 +313,18 @@ func newServeCommand() *cobra.Command {
 			}
 			defer func() { _ = service.Close(context.Background()) }()
 			metrics := telemetry.NewRuntime(time.Now().UTC())
-			handler := api.NewRuntimeHandler(service, db, notify.SSEConfig{TenantFromRequest: func(r *http.Request) string { return r.URL.Query().Get("tenant") }}, metrics.Handler())
+			subscriberToken := os.Getenv("AGENTIC_STREAM_SUBSCRIBER_TOKEN")
+			if subscriberToken == "" {
+				return fmt.Errorf("AGENTIC_STREAM_SUBSCRIBER_TOKEN is required for notification subscribers")
+			}
+			if !isLoopbackListenAddress(listenAddress) {
+				return fmt.Errorf("non-loopback --listen requires an authenticated deployment proxy")
+			}
+			handler := api.NewRuntimeHandler(service, db, notify.SSEConfig{
+				TenantID:          tenantID,
+				MaxLag:            1000,
+				Authorize:         notify.BearerTokenAuthorizer(subscriberToken),
+			}, metrics.Handler())
 			server := &http.Server{Addr: listenAddress, Handler: handler, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 30 * time.Second}
 			go func() {
 				<-cmd.Context().Done()
@@ -319,9 +339,18 @@ func newServeCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite runtime database path")
+	cmd.Flags().StringVar(&tenantID, "tenant", "default", "tenant served by this runtime process")
 	cmd.Flags().StringVar(&listenAddress, "listen", "127.0.0.1:8080", "loopback HTTP listen address")
 	cmd.Flags().DurationVar(&ownerLease, "owner-lease", time.Minute, "runtime owner lease duration")
 	return cmd
+}
+
+func isLoopbackListenAddress(address string) bool {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+	return host == "127.0.0.1" || host == "localhost" || host == "[::1]" || host == "::1"
 }
 
 func newVersionCommand() *cobra.Command {

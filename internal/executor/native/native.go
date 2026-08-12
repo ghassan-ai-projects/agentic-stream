@@ -68,9 +68,17 @@ type ModelRequest struct {
 	DecisionSchema     json.RawMessage
 	AllowedIntentTypes []string
 	RiskCeiling        string
+	Tools              []ToolDefinition
 	Observations       []Observation
 	Repair             bool
 	RepairReason       string
+}
+
+// ToolDefinition is the provider-facing declaration of one read capability.
+type ToolDefinition struct {
+	Name        string
+	Description string
+	Parameters  json.RawMessage
 }
 
 // ModelProvider is the narrow provider port used by the native executor.
@@ -120,20 +128,21 @@ type ArtifactStore interface {
 }
 
 // Config controls hard ceilings for the native loop. Zero means unlimited for
-// that dimension, except MaxRepairAttempts which is always one.
+// that dimension. Structured-output repair is always limited to one attempt.
 type Config struct {
-	Provider          ModelProvider
-	Tools             []Tool
-	ArtifactStore     ArtifactStore
-	MaxRepairAttempts uint32
+	Provider      ModelProvider
+	Tools         []Tool
+	ArtifactStore ArtifactStore
+	ToolFactory   func(*episodes.Request) []Tool
 }
 
 // Executor is a bounded native Go episode executor.
 type Executor struct {
-	provider  ModelProvider
-	tools     map[string]Tool
-	artifacts ArtifactStore
-	maxRepair uint32
+	provider    ModelProvider
+	tools       map[string]Tool
+	artifacts   ArtifactStore
+	maxRepair   uint32
+	toolFactory func(*episodes.Request) []Tool
 }
 
 // New creates a native executor and rejects duplicate or empty tool names.
@@ -151,14 +160,7 @@ func New(cfg Config) (*Executor, error) {
 		}
 		tools[tool.Name()] = tool
 	}
-	return &Executor{provider: cfg.Provider, tools: tools, artifacts: cfg.ArtifactStore, maxRepair: minOne(cfg.MaxRepairAttempts)}, nil
-}
-
-func minOne(value uint32) uint32 {
-	if value == 0 {
-		return 1
-	}
-	return value
+	return &Executor{provider: cfg.Provider, tools: tools, artifacts: cfg.ArtifactStore, maxRepair: 1, toolFactory: cfg.ToolFactory}, nil
 }
 
 // Name returns the stable executor name recorded in episode provenance.
@@ -184,10 +186,26 @@ func (e *Executor) Execute(ctx context.Context, req *episodes.Request) (*episode
 		TotalToolResultBytes: payload.Budget.TotalToolResultBytes, ProviderRetries: payload.Budget.ProviderRetries,
 		CostMicrounits: payload.Budget.CostMicrounits,
 	}
+	tools := e.toolsFor(req)
 	if budget.WallTime != "" {
-		return e.executeBounded(ctx, req, payload, budget)
+		return e.executeBounded(ctx, req, payload, budget, tools)
 	}
-	return e.executeLoop(ctx, req, payload, budget)
+	return e.executeLoop(ctx, req, payload, budget, tools)
+}
+
+func (e *Executor) toolsFor(req *episodes.Request) map[string]Tool {
+	tools := make(map[string]Tool, len(e.tools))
+	for name, tool := range e.tools {
+		tools[name] = tool
+	}
+	if e.toolFactory != nil {
+		for _, tool := range e.toolFactory(req) {
+			if tool != nil && strings.TrimSpace(tool.Name()) != "" {
+				tools[tool.Name()] = tool
+			}
+		}
+	}
+	return tools
 }
 
 type requestPayload struct {
@@ -224,14 +242,14 @@ func decodeRequest(raw []byte) (requestPayload, error) {
 	return payload, nil
 }
 
-func (e *Executor) executeBounded(ctx context.Context, req *episodes.Request, payload requestPayload, budget budgetConfig) (*episodes.Outcome, error) {
+func (e *Executor) executeBounded(ctx context.Context, req *episodes.Request, payload requestPayload, budget budgetConfig, tools map[string]Tool) (*episodes.Outcome, error) {
 	duration, err := parseWallTime(budget.WallTime)
 	if err != nil {
 		return nil, err
 	}
 	bounded, cancel := context.WithTimeout(ctx, duration)
 	defer cancel()
-	return e.executeLoop(bounded, req, payload, budget)
+	return e.executeLoop(bounded, req, payload, budget, tools)
 }
 
 func parseWallTime(raw string) (time.Duration, error) {
@@ -254,8 +272,8 @@ type budgetConfig = struct {
 	CostMicrounits       uint64
 }
 
-func (e *Executor) executeLoop(ctx context.Context, req *episodes.Request, payload requestPayload, budget budgetConfig) (*episodes.Outcome, error) {
-	modelReq := ModelRequest{Episode: req, Prompt: payload.Executor.Prompt, Objective: payload.Executor.Objective, Snapshot: payload.Snapshot, DecisionSchema: payload.Executor.DecisionSchema, AllowedIntentTypes: append([]string(nil), payload.AllowedIntentTypes...), RiskCeiling: payload.RiskCeiling}
+func (e *Executor) executeLoop(ctx context.Context, req *episodes.Request, payload requestPayload, budget budgetConfig, tools map[string]Tool) (*episodes.Outcome, error) {
+	modelReq := ModelRequest{Episode: req, Prompt: payload.Executor.Prompt, Objective: payload.Executor.Objective, Snapshot: payload.Snapshot, DecisionSchema: payload.Executor.DecisionSchema, AllowedIntentTypes: append([]string(nil), payload.AllowedIntentTypes...), RiskCeiling: payload.RiskCeiling, Tools: toolDefinitions(payload.Tools, tools)}
 	var usage Usage
 	var observations []Observation
 	seenCalls := make(map[string]struct{})
@@ -304,7 +322,7 @@ func (e *Executor) executeLoop(ctx context.Context, req *episodes.Request, paylo
 				if err := ctx.Err(); err != nil {
 					return terminalForContext(req, err), nil
 				}
-				tool, ok := e.tools[call.Name]
+				tool, ok := tools[call.Name]
 				if !ok {
 					return failed(req, "tool_not_allowed:"+call.Name, usage), nil
 				}
@@ -355,6 +373,37 @@ func (e *Executor) executeLoop(ctx context.Context, req *episodes.Request, paylo
 		modelReq.Repair = true
 		modelReq.RepairReason = validationErr.Error()
 	}
+}
+
+func toolDefinitions(raw []map[string]any, tools map[string]Tool) []ToolDefinition {
+	result := make([]ToolDefinition, 0, len(tools))
+	seen := make(map[string]struct{})
+	for _, item := range raw {
+		name, _ := item["name"].(string)
+		if name == "" {
+			name, _ = item["type"].(string)
+		}
+		if name == "" {
+			continue
+		}
+		if _, ok := tools[name]; !ok {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		description, _ := item["description"].(string)
+		parameters := json.RawMessage(`{"type":"object","additionalProperties":false}`)
+		if schema, ok := item["schema"].(map[string]any); ok {
+			if encoded, err := json.Marshal(schema); err == nil {
+				parameters = encoded
+			}
+		}
+		result = append(result, ToolDefinition{Name: name, Description: description, Parameters: parameters})
+	}
+	slices.SortFunc(result, func(a, b ToolDefinition) int { return strings.Compare(a.Name, b.Name) })
+	return result
 }
 
 func (e *Executor) observe(ctx context.Context, call ToolCall, result ToolResult, budget budgetConfig) (Observation, error) {
