@@ -110,6 +110,10 @@ func (s *Service) heartbeat(ctx context.Context, done chan struct{}) {
 				s.setNotReady(fmt.Errorf("runtime owner heartbeat: %w", err))
 				return
 			}
+			if err := s.ledger.ReclaimExpired(ctx, time.Now().UTC()); err != nil {
+				s.setNotReady(fmt.Errorf("evidence lease reclamation: %w", err))
+				return
+			}
 		}
 	}
 }
