@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -97,12 +99,23 @@ func DialEvidenceSocket(ctx context.Context, path string) (*grpc.ClientConn, err
 // socket. The worker protocol remains responsible for handshake and identity
 // validation; this helper only constrains transport to the local socket.
 func DialEpisodeWorkerSocket(ctx context.Context, path string) (*grpc.ClientConn, error) {
+	return DialEpisodeWorkerSocketTLS(ctx, path, nil)
+}
+
+// DialEpisodeWorkerSocketTLS dials an EpisodeWorker over UDS using TLS when
+// tlsConfig is non-nil. This supports local UDS workers and remote-style
+// certificate authentication without changing the application protocol.
+func DialEpisodeWorkerSocketTLS(ctx context.Context, path string, tlsConfig *tls.Config) (*grpc.ClientConn, error) {
 	if err := ValidateEvidenceSocketPath(path); err != nil {
 		return nil, err
 	}
+	transport := grpc.WithTransportCredentials(insecure.NewCredentials())
+	if tlsConfig != nil {
+		transport = grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))
+	}
 	conn, err := grpc.NewClient("passthrough:///episode-worker", grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", path)
-	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}), transport)
 	if err != nil {
 		return nil, fmt.Errorf("dial episode worker socket: %w", err)
 	}

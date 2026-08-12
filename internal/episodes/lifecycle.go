@@ -256,7 +256,15 @@ func assertRuntimeEpoch(ctx context.Context, tx *sql.Tx, epoch string, now time.
 // data. The identity is checked before the state mutation.
 func TransitionAttempt(ctx context.Context, tx *sql.Tx, identity Identity, to AttemptStatus, now time.Time, terminalJSON []byte) error {
 	if err := ValidateWorkerIdentity(ctx, tx, identity); err != nil {
-		return err
+		// A superseded episode still needs to durably acknowledge cancellation
+		// of the in-flight attempt. Do not allow a produced decision through
+		// this exception; only cancellation/abandonment may close the attempt.
+		if (to != AttemptCancelling && to != AttemptCancelled && to != AttemptAbandoned) || !IsIdentityReason(err, RejectEpisodeClosed) {
+			return err
+		}
+		if terminalErr := validateTerminalAttemptIdentity(ctx, tx, identity); terminalErr != nil {
+			return terminalErr
+		}
 	}
 	var from AttemptStatus
 	if err := tx.QueryRowContext(ctx,
@@ -289,6 +297,36 @@ func TransitionAttempt(ctx context.Context, tx *sql.Tx, identity Identity, to At
 		return fmt.Errorf("count transitioned attempts: %w", err)
 	} else if n != 1 {
 		return fmt.Errorf("attempt %s was not transitioned", identity.AttemptID)
+	}
+	return nil
+}
+
+func validateTerminalAttemptIdentity(ctx context.Context, tx *sql.Tx, identity Identity) error {
+	var currentAttempt sql.NullString
+	var currentFence int64
+	if err := tx.QueryRowContext(ctx, "SELECT current_attempt_id, current_fence FROM episodes WHERE episode_id = ?", identity.EpisodeID).Scan(&currentAttempt, &currentFence); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &IdentityError{Reason: RejectUnknownEpisode}
+		}
+		return fmt.Errorf("load terminal attempt identity: %w", err)
+	}
+	if identity.Fence < currentFence {
+		return &IdentityError{Reason: RejectStaleAttempt}
+	}
+	if !currentAttempt.Valid || identity.AttemptID != currentAttempt.String || identity.Fence != currentFence {
+		return &IdentityError{Reason: RejectWrongAttempt}
+	}
+	if identity.OwnerEpoch != "" {
+		if err := assertRuntimeEpoch(ctx, tx, identity.OwnerEpoch, time.Now().UTC()); err != nil {
+			return err
+		}
+	}
+	var status AttemptStatus
+	if err := tx.QueryRowContext(ctx, "SELECT status FROM episode_attempts WHERE attempt_id = ? AND episode_id = ? AND fence = ?", identity.AttemptID, identity.EpisodeID, identity.Fence).Scan(&status); err != nil {
+		return fmt.Errorf("load terminal attempt: %w", err)
+	}
+	if IsTerminalAttempt(status) {
+		return &IdentityError{Reason: RejectTerminalAttempt}
 	}
 	return nil
 }

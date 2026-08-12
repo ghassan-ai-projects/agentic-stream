@@ -3,6 +3,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/http"
 	"os"
@@ -66,6 +68,7 @@ cognitive scheduler decides reasoning is useful.`,
 
 func newRunLiveCommand() *cobra.Command {
 	var dbPath, specPath, tracePath, tenantID, workerSocket, workerName, traceFormat string
+	var workerCA, workerCert, workerKey, workerServerName string
 	cmd := &cobra.Command{
 		Use:   "run-live --spec <spec.yaml> --trace <trace.jsonl>",
 		Short: "Run one owner-scoped live Go pipeline batch.",
@@ -100,7 +103,11 @@ func newRunLiveCommand() *cobra.Command {
 			var executor episodes.Executor = episodes.NewFakeExecutor()
 			var workerConn interface{ Close() error }
 			if workerSocket != "" {
-				conn, dialErr := worker.DialEpisodeWorkerSocket(cmd.Context(), workerSocket)
+				tlsConfig, tlsErr := loadWorkerTLS(workerCA, workerCert, workerKey, workerServerName)
+				if tlsErr != nil {
+					return tlsErr
+				}
+				conn, dialErr := worker.DialEpisodeWorkerSocketTLS(cmd.Context(), workerSocket, tlsConfig)
 				if dialErr != nil {
 					return dialErr
 				}
@@ -140,7 +147,33 @@ func newRunLiveCommand() *cobra.Command {
 	cmd.Flags().StringVar(&traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
 	cmd.Flags().StringVar(&workerSocket, "worker-socket", "", "EpisodeWorker Unix socket (default: deterministic Go fake)")
 	cmd.Flags().StringVar(&workerName, "worker-name", "native", "Expected EpisodeWorker name")
+	cmd.Flags().StringVar(&workerCA, "worker-ca", "", "Worker CA PEM (enables mTLS)")
+	cmd.Flags().StringVar(&workerCert, "worker-cert", "", "Runtime client certificate PEM")
+	cmd.Flags().StringVar(&workerKey, "worker-key", "", "Runtime client private key PEM")
+	cmd.Flags().StringVar(&workerServerName, "worker-server-name", "", "Expected worker certificate name")
 	return cmd
+}
+
+func loadWorkerTLS(caPath, certPath, keyPath, serverName string) (*tls.Config, error) {
+	if caPath == "" && certPath == "" && keyPath == "" {
+		return nil, nil
+	}
+	if caPath == "" || certPath == "" || keyPath == "" {
+		return nil, fmt.Errorf("--worker-ca, --worker-cert, and --worker-key are required together")
+	}
+	caPEM, err := os.ReadFile(caPath)
+	if err != nil {
+		return nil, fmt.Errorf("read worker CA: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, fmt.Errorf("worker CA contains no certificates")
+	}
+	certificate, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("load worker client certificate: %w", err)
+	}
+	return &tls.Config{RootCAs: pool, Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS13, ServerName: serverName}, nil
 }
 
 func newServeCommand() *cobra.Command {

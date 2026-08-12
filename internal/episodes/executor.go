@@ -145,7 +145,12 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		return false, nil
 	}
 
-	outcome, err := r.executor.Execute(ctx, &req)
+	executionCtx, stopWatching := context.WithCancel(ctx)
+	watchDone := make(chan struct{})
+	go r.watchSupersession(executionCtx, episodeID, stopWatching, watchDone)
+	outcome, err := r.executor.Execute(executionCtx, &req)
+	stopWatching()
+	<-watchDone
 	if err != nil {
 		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
@@ -387,15 +392,39 @@ func (r *Runner) failAttemptStatus(ctx context.Context, identity Identity, attem
 		if err := TransitionAttempt(ctx, tx, identity, attemptStatus, r.clk.Now(), terminalJSON); err != nil {
 			return fmt.Errorf("finish failed episode attempt: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE episodes SET lifecycle_status = 'running', ended_at = NULL, terminal_json = NULL
-			WHERE episode_id = ?`,
-			identity.EpisodeID,
-		); err != nil {
-			return fmt.Errorf("update episode failed: %w", err)
+		var lifecycle string
+		if err := tx.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = ?", identity.EpisodeID).Scan(&lifecycle); err != nil {
+			return fmt.Errorf("read episode lifecycle: %w", err)
+		}
+		if lifecycle != string(LifecycleSuperseded) {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE episodes SET lifecycle_status = 'running', ended_at = NULL, terminal_json = NULL
+				WHERE episode_id = ?`,
+				identity.EpisodeID,
+			); err != nil {
+				return fmt.Errorf("update episode failed: %w", err)
+			}
 		}
 		return nil
 	})
+}
+
+func (r *Runner) watchSupersession(ctx context.Context, episodeID string, cancel context.CancelFunc, done chan<- struct{}) {
+	defer close(done)
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			var lifecycle string
+			if err := r.db.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = ?", episodeID).Scan(&lifecycle); err == nil && lifecycle == string(LifecycleSuperseded) {
+				cancel()
+				return
+			}
+		}
+	}
 }
 
 func executionFailureStatus(err error) AttemptStatus {

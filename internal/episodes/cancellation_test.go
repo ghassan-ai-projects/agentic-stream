@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -42,6 +43,46 @@ func TestRunnerPersistsCancellationAfterExecutorCancelsContext(t *testing.T) {
 	}
 }
 
+func TestRunnerCancelsSupersededStreamedAttempt(t *testing.T) {
+	ctx := context.Background()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "supersede.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	seedEpisode(t, ctx, db, "epi-supersede")
+	started := make(chan struct{})
+	runner := NewRunner(db, blockingExecutor{started: started}, clock.Physical(), ids.Deterministic())
+	result := make(chan error, 1)
+	go func() { _, runErr := runner.RunOnce(ctx, "tenant"); result <- runErr }()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("executor did not start")
+	}
+	if _, err := db.ExecContext(ctx, "UPDATE episodes SET lifecycle_status = 'superseded' WHERE episode_id = ?", "epi-supersede"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("superseded executor was not cancelled")
+	}
+	var status, lifecycle string
+	if err := db.QueryRowContext(ctx, "SELECT status FROM episode_attempts WHERE episode_id = 'epi-supersede'").Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = 'epi-supersede'").Scan(&lifecycle); err != nil {
+		t.Fatal(err)
+	}
+	if status != string(AttemptCancelled) || lifecycle != string(LifecycleSuperseded) {
+		t.Fatalf("status=%q lifecycle=%q", status, lifecycle)
+	}
+}
+
 type cancelingExecutor struct{ cancel context.CancelFunc }
 
 func (e cancelingExecutor) Execute(context.Context, *Request) (*Outcome, error) {
@@ -52,3 +93,13 @@ func (e cancelingExecutor) Execute(context.Context, *Request) (*Outcome, error) 
 func (e cancelingExecutor) Name() string { return "canceling" }
 
 var _ Executor = cancelingExecutor{}
+
+type blockingExecutor struct{ started chan<- struct{} }
+
+func (e blockingExecutor) Execute(ctx context.Context, _ *Request) (*Outcome, error) {
+	close(e.started)
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (e blockingExecutor) Name() string { return "blocking" }
