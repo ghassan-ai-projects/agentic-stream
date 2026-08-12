@@ -24,51 +24,69 @@ type RuntimeOwner struct {
 // Claim acquires or renews the singleton lease for epoch. A valid lease held
 // by another epoch is rejected transactionally.
 func (o *RuntimeOwner) Claim(ctx context.Context, epoch string) error {
+	return o.ClaimAndRecover(ctx, epoch, nil)
+}
+
+// ClaimAndRecover acquires the singleton lease and runs recover in the same
+// SQLite transaction. If recovery fails, ownership is not committed.
+func (o *RuntimeOwner) ClaimAndRecover(ctx context.Context, epoch string, recover func(*sql.Tx, time.Time) error) error {
 	if o == nil || o.DB == nil || epoch == "" || o.InstanceID == "" {
 		return fmt.Errorf("runtime owner is not configured")
 	}
 	now := o.now()
-	leaseUntil := formatRuntimeTime(now.Add(o.leaseDuration()))
-	nowText := formatRuntimeTime(now)
 	err := o.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `
-			INSERT INTO runtime_owner (
-				singleton_id, owner_epoch, owner_instance, acquired_at,
-				heartbeat_at, lease_until
-			) VALUES (1, ?, ?, ?, ?, ?)
-			ON CONFLICT(singleton_id) DO UPDATE SET
-				owner_epoch = excluded.owner_epoch,
-				owner_instance = excluded.owner_instance,
-				acquired_at = CASE
-					WHEN runtime_owner.owner_epoch = excluded.owner_epoch
-						AND runtime_owner.owner_instance = excluded.owner_instance
-						THEN runtime_owner.acquired_at
-					ELSE excluded.acquired_at
-				END,
-				heartbeat_at = excluded.heartbeat_at,
-				lease_until = excluded.lease_until
-			WHERE (runtime_owner.owner_epoch = excluded.owner_epoch
-				AND runtime_owner.owner_instance = excluded.owner_instance)
-				OR (runtime_owner.owner_epoch <> excluded.owner_epoch
-					AND runtime_owner.lease_until <= excluded.heartbeat_at)`,
-			epoch, o.InstanceID, nowText, nowText, leaseUntil,
-		)
-		if err != nil {
-			return fmt.Errorf("claim runtime owner: %w", err)
+		if err := o.claimTx(ctx, tx, epoch, now); err != nil {
+			return err
 		}
-		var currentEpoch, currentInstance string
-		if err := tx.QueryRowContext(ctx,
-			"SELECT owner_epoch, owner_instance FROM runtime_owner WHERE singleton_id = 1",
-		).Scan(&currentEpoch, &currentInstance); err != nil {
-			return fmt.Errorf("read runtime owner after claim: %w", err)
+		if recover != nil {
+			if err := recover(tx, now); err != nil {
+				return err
+			}
 		}
-		if currentEpoch != epoch || currentInstance != o.InstanceID {
-			return ErrRuntimeOwnerBusy
-		}
-		return nil
+		return o.Assert(ctx, tx, epoch)
 	})
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+func (o *RuntimeOwner) claimTx(ctx context.Context, tx *sql.Tx, epoch string, now time.Time) error {
+	leaseUntil := formatRuntimeTime(now.Add(o.leaseDuration()))
+	nowText := formatRuntimeTime(now)
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO runtime_owner (
+			singleton_id, owner_epoch, owner_instance, acquired_at,
+			heartbeat_at, lease_until
+		) VALUES (1, ?, ?, ?, ?, ?)
+		ON CONFLICT(singleton_id) DO UPDATE SET
+			owner_epoch = excluded.owner_epoch,
+			owner_instance = excluded.owner_instance,
+			acquired_at = CASE
+				WHEN runtime_owner.owner_epoch = excluded.owner_epoch
+					AND runtime_owner.owner_instance = excluded.owner_instance
+					THEN runtime_owner.acquired_at
+				ELSE excluded.acquired_at
+			END,
+			heartbeat_at = excluded.heartbeat_at,
+			lease_until = excluded.lease_until
+		WHERE (runtime_owner.owner_epoch = excluded.owner_epoch
+			AND runtime_owner.owner_instance = excluded.owner_instance)
+			OR (runtime_owner.owner_epoch <> excluded.owner_epoch
+				AND runtime_owner.lease_until <= excluded.heartbeat_at)`,
+		epoch, o.InstanceID, nowText, nowText, leaseUntil,
+	)
+	if err != nil {
+		return fmt.Errorf("claim runtime owner: %w", err)
+	}
+	var currentEpoch, currentInstance string
+	if err := tx.QueryRowContext(ctx,
+		"SELECT owner_epoch, owner_instance FROM runtime_owner WHERE singleton_id = 1",
+	).Scan(&currentEpoch, &currentInstance); err != nil {
+		return fmt.Errorf("read runtime owner after claim: %w", err)
+	}
+	if currentEpoch != epoch || currentInstance != o.InstanceID {
+		return ErrRuntimeOwnerBusy
 	}
 	return nil
 }

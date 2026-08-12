@@ -79,6 +79,23 @@ func TestRuntimeOwnerAssertRequiresCurrentUnexpiredEpoch(t *testing.T) {
 	}
 }
 
+func TestRuntimeOwnerClaimAndRecoverRollsBackOnFailure(t *testing.T) {
+	db, now := openOwnerDB(t)
+	first := &storage.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
+	second := &storage.RuntimeOwner{DB: db, InstanceID: "instance-2", Lease: time.Minute, Now: func() time.Time { return now.Add(2 * time.Minute) }}
+	if err := first.Claim(t.Context(), "epoch-1"); err != nil {
+		t.Fatalf("first claim: %v", err)
+	}
+	if err := second.ClaimAndRecover(t.Context(), "epoch-2", func(*sql.Tx, time.Time) error {
+		return errors.New("injected recovery failure")
+	}); err == nil {
+		t.Fatal("claim and recovery succeeded despite injected failure")
+	}
+	if err := first.Renew(t.Context(), "epoch-1"); err != nil {
+		t.Fatalf("original owner was not restored after rollback: %v", err)
+	}
+}
+
 func openOwnerDB(t *testing.T) (*storage.DB, time.Time) {
 	t.Helper()
 	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "runtime.db"))
