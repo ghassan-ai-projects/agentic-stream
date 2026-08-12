@@ -39,6 +39,9 @@ func TestRuntimeOwnerRejectsUnexpiredSecondEpoch(t *testing.T) {
 	if err := second.Claim(t.Context(), "epoch-2"); !errors.Is(err, storage.ErrRuntimeOwnerBusy) {
 		t.Fatalf("second claim error = %v, want owner busy", err)
 	}
+	if err := second.Claim(t.Context(), "epoch-1"); !errors.Is(err, storage.ErrRuntimeOwnerBusy) {
+		t.Fatalf("same-epoch different-instance claim error = %v, want owner busy", err)
+	}
 }
 
 func TestRuntimeOwnerExpiredLeaseCanBeReplacedAndOldEpochCannotRenew(t *testing.T) {

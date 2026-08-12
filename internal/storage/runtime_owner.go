@@ -41,25 +41,27 @@ func (o *RuntimeOwner) Claim(ctx context.Context, epoch string) error {
 				owner_instance = excluded.owner_instance,
 				acquired_at = CASE
 					WHEN runtime_owner.owner_epoch = excluded.owner_epoch
+						AND runtime_owner.owner_instance = excluded.owner_instance
 						THEN runtime_owner.acquired_at
 					ELSE excluded.acquired_at
 				END,
 				heartbeat_at = excluded.heartbeat_at,
 				lease_until = excluded.lease_until
-			WHERE runtime_owner.owner_epoch = excluded.owner_epoch
+			WHERE (runtime_owner.owner_epoch = excluded.owner_epoch
+				AND runtime_owner.owner_instance = excluded.owner_instance)
 				OR runtime_owner.lease_until <= excluded.heartbeat_at`,
 			epoch, o.InstanceID, nowText, nowText, leaseUntil,
 		)
 		if err != nil {
 			return fmt.Errorf("claim runtime owner: %w", err)
 		}
-		var currentEpoch string
+		var currentEpoch, currentInstance string
 		if err := tx.QueryRowContext(ctx,
-			"SELECT owner_epoch FROM runtime_owner WHERE singleton_id = 1",
-		).Scan(&currentEpoch); err != nil {
+			"SELECT owner_epoch, owner_instance FROM runtime_owner WHERE singleton_id = 1",
+		).Scan(&currentEpoch, &currentInstance); err != nil {
 			return fmt.Errorf("read runtime owner after claim: %w", err)
 		}
-		if currentEpoch != epoch {
+		if currentEpoch != epoch || currentInstance != o.InstanceID {
 			return ErrRuntimeOwnerBusy
 		}
 		return nil
@@ -80,8 +82,8 @@ func (o *RuntimeOwner) Renew(ctx context.Context, epoch string) error {
 	result, err := o.DB.ExecContext(ctx, `
 		UPDATE runtime_owner
 		SET heartbeat_at = ?, lease_until = ?
-		WHERE singleton_id = 1 AND owner_epoch = ? AND lease_until > ?`,
-		formatRuntimeTime(now), formatRuntimeTime(now.Add(o.leaseDuration())), epoch, formatRuntimeTime(now),
+		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ? AND lease_until > ?`,
+		formatRuntimeTime(now), formatRuntimeTime(now.Add(o.leaseDuration())), epoch, o.InstanceID, formatRuntimeTime(now),
 	)
 	if err != nil {
 		return fmt.Errorf("renew runtime owner: %w", err)
@@ -99,8 +101,11 @@ func (o *RuntimeOwner) Release(ctx context.Context, epoch string) error {
 	if o == nil || o.DB == nil || epoch == "" {
 		return fmt.Errorf("runtime owner is not configured")
 	}
-	result, err := o.DB.ExecContext(ctx,
-		"DELETE FROM runtime_owner WHERE singleton_id = 1 AND owner_epoch = ?", epoch)
+	now := o.now()
+	result, err := o.DB.ExecContext(ctx, `
+		UPDATE runtime_owner SET heartbeat_at = ?, lease_until = ?
+		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ?`,
+		formatRuntimeTime(now), formatRuntimeTime(now), epoch, o.InstanceID)
 	if err != nil {
 		return fmt.Errorf("release runtime owner: %w", err)
 	}
@@ -121,8 +126,8 @@ func (o *RuntimeOwner) Assert(ctx context.Context, tx *sql.Tx, epoch string) err
 	var currentEpoch string
 	if err := tx.QueryRowContext(ctx, `
 		SELECT owner_epoch FROM runtime_owner
-		WHERE singleton_id = 1 AND owner_epoch = ? AND lease_until > ?`,
-		epoch, formatRuntimeTime(o.now()),
+		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ? AND lease_until > ?`,
+		epoch, o.InstanceID, formatRuntimeTime(o.now()),
 	).Scan(&currentEpoch); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrRuntimeOwnerBusy

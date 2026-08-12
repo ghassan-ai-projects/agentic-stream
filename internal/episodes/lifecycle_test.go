@@ -120,6 +120,62 @@ func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 	}
 }
 
+func TestRecoveryAbandonsPriorEpochAndIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "recovery.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	seedEpisode(t, ctx, db, "epi-recovery")
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO episode_attempts (
+			attempt_id, episode_id, fence, status, owner_epoch, started_at
+		) VALUES ('att-recovery', 'epi-recovery', 1, 'running', 'epoch-old', ?)`,
+		"2026-08-12T10:00:00Z"); err != nil {
+		t.Fatalf("insert attempt: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		UPDATE episodes SET lifecycle_status = 'running', current_attempt_id = 'att-recovery', current_fence = 1
+		WHERE episode_id = 'epi-recovery'`); err != nil {
+		t.Fatalf("update episode: %v", err)
+	}
+
+	now := time.Date(2026, 8, 12, 11, 0, 0, 0, time.UTC)
+	var report RecoveryReport
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		report, err = RecoverUnfinishedAttempts(ctx, tx, "epoch-new", now)
+		return err
+	}); err != nil {
+		t.Fatalf("recover: %v", err)
+	}
+	if report.AbandonedAttempts != 1 || report.RequeuedEpisodes != 1 || report.AbandonedEpisodes != 0 {
+		t.Fatalf("recovery report = %+v", report)
+	}
+	var status, lifecycle, reason string
+	if err := db.QueryRowContext(ctx, `
+		SELECT a.status, e.lifecycle_status, json_extract(a.terminal_json, '$.reason')
+		FROM episode_attempts a JOIN episodes e ON e.episode_id = a.episode_id
+		WHERE a.attempt_id = 'att-recovery'`).Scan(&status, &lifecycle, &reason); err != nil {
+		t.Fatalf("read recovered state: %v", err)
+	}
+	if status != string(AttemptAbandoned) || lifecycle != string(LifecycleRunning) || reason != "runtime_restart" {
+		t.Fatalf("recovered state status=%q lifecycle=%q reason=%q", status, lifecycle, reason)
+	}
+
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		report, err = RecoverUnfinishedAttempts(ctx, tx, "epoch-new", now.Add(time.Minute))
+		return err
+	}); err != nil {
+		t.Fatalf("repeat recovery: %v", err)
+	}
+	if report != (RecoveryReport{}) {
+		t.Fatalf("repeat recovery report = %+v, want zero", report)
+	}
+}
+
 func seedEpisode(t *testing.T, ctx context.Context, db *storage.DB, episodeID string) {
 	t.Helper()
 	db.SetMaxOpenConns(1)
