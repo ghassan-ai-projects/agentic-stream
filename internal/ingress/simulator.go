@@ -66,6 +66,10 @@ func (r *SimulatorJSONLReplay) Run(ctx context.Context) (int, error) {
 	scanner := bufio.NewScanner(f)
 	line := 0
 	appended := 0
+	records := 0
+	configured := false
+	ended := false
+	var lastRecorded time.Time
 	var batch []contractsv1.Envelope
 	flush := func() error {
 		if len(batch) == 0 {
@@ -85,7 +89,7 @@ func (r *SimulatorJSONLReplay) Run(ctx context.Context) (int, error) {
 	}
 	for scanner.Scan() {
 		line++
-		if line <= start || strings.TrimSpace(scanner.Text()) == "" {
+		if strings.TrimSpace(scanner.Text()) == "" {
 			continue
 		}
 		var record map[string]any
@@ -93,28 +97,70 @@ func (r *SimulatorJSONLReplay) Run(ctx context.Context) (int, error) {
 			return appended, fmt.Errorf("parse simulator line %d: %w", line, err)
 		}
 		recordType, _ := record["record_type"].(string)
+		records++
+		if records == 1 && recordType != "runtime_config" {
+			return appended, fmt.Errorf("validate simulator line %d: runtime_config must be first", line)
+		}
+		if ended {
+			return appended, fmt.Errorf("validate simulator line %d: record follows trace_end", line)
+		}
 		switch recordType {
-		case "runtime_config", "trace_end":
+		case "runtime_config":
+			if configured {
+				return appended, fmt.Errorf("validate simulator line %d: duplicate runtime_config", line)
+			}
 			if err := validateSimulatorControl(recordType, record); err != nil {
 				return appended, fmt.Errorf("validate simulator line %d: %w", line, err)
 			}
+			configured = true
 		case "event":
 			env, convertErr := r.convertEvent(record)
 			if convertErr != nil {
 				return appended, fmt.Errorf("convert simulator line %d: %w", line, convertErr)
 			}
-			batch = append(batch, env)
-			if len(batch) == 100 {
-				if err := flush(); err != nil {
-					return appended, fmt.Errorf("append simulator batch: %w", err)
+			recorded := env.ObservedAt
+			if recorded == nil {
+				return appended, fmt.Errorf("event arrival_time is required")
+			}
+			if !lastRecorded.IsZero() && !recorded.After(lastRecorded) {
+				return appended, fmt.Errorf("event recorded time must be strictly increasing")
+			}
+			lastRecorded = recorded.UTC()
+			if line > start {
+				batch = append(batch, env)
+				if len(batch) == 100 {
+					if err := flush(); err != nil {
+						return appended, fmt.Errorf("append simulator batch: %w", err)
+					}
 				}
 			}
+		case "model_activation":
+			recorded, err := validateModelActivation(record)
+			if err != nil {
+				return appended, fmt.Errorf("validate simulator line %d: %w", line, err)
+			}
+			if !lastRecorded.IsZero() && !recorded.After(lastRecorded) {
+				return appended, fmt.Errorf("recorded time must be strictly increasing")
+			}
+			lastRecorded = recorded
+		case "trace_end":
+			if err := validateSimulatorControl(recordType, record); err != nil {
+				return appended, fmt.Errorf("validate simulator line %d: %w", line, err)
+			}
+			until, _ := parseSimulatorTime(record, "until")
+			if !lastRecorded.IsZero() && !until.After(lastRecorded) {
+				return appended, fmt.Errorf("trace_end until must be later than every recorded input")
+			}
+			ended = true
 		default:
 			return appended, fmt.Errorf("unknown simulator record_type %q", recordType)
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return appended, fmt.Errorf("read simulator trace: %w", err)
+	}
+	if !configured || !ended {
+		return appended, fmt.Errorf("simulator trace requires runtime_config first and trace_end last")
 	}
 	if err := flush(); err != nil {
 		return appended, fmt.Errorf("append simulator batch: %w", err)
@@ -126,28 +172,38 @@ func (r *SimulatorJSONLReplay) Run(ctx context.Context) (int, error) {
 }
 
 func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.Envelope, error) {
-	allowed := map[string]bool{"record_type": true, "event.id": true, "event.entity_type": true, "event.entity_id": true, "event.type": true, "event.event_time": true, "event.arrival_time": true, "event.value": true, "event.unit": true}
+	allowed := map[string]bool{"record_type": true, "event": true}
 	for key := range record {
 		if !allowed[key] {
 			return contractsv1.Envelope{}, fmt.Errorf("unknown event field %q", key)
 		}
 	}
+	event, ok := record["event"].(map[string]any)
+	if !ok {
+		return contractsv1.Envelope{}, fmt.Errorf("event is required")
+	}
+	eventAllowed := map[string]bool{"id": true, "entity_type": true, "entity_id": true, "type": true, "event_time": true, "arrival_time": true, "value": true, "unit": true}
+	for key := range event {
+		if !eventAllowed[key] {
+			return contractsv1.Envelope{}, fmt.Errorf("unknown event field %q", key)
+		}
+	}
 	getString := func(key string) (string, error) {
-		value, ok := record[key].(string)
+		value, ok := event[key].(string)
 		if !ok || value == "" {
 			return "", fmt.Errorf("%s is required", key)
 		}
 		return value, nil
 	}
-	id, err := getString("event.id")
+	id, err := getString("id")
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
-	entityID, err := getString("event.entity_id")
+	entityID, err := getString("entity_id")
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
-	entityType, err := getString("event.entity_type")
+	entityType, err := getString("entity_type")
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
@@ -158,15 +214,15 @@ func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.
 	if eventTypePrefix == "" {
 		eventTypePrefix = entityType + "."
 	}
-	channel, err := getString("event.type")
+	channel, err := getString("type")
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
-	eventTime, err := parseSimulatorTime(record, "event.event_time")
+	eventTime, err := parseSimulatorTime(event, "event_time")
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
-	arrival, err := parseSimulatorTime(record, "event.arrival_time")
+	arrival, err := parseSimulatorTime(event, "arrival_time")
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
@@ -174,7 +230,7 @@ func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.
 		return contractsv1.Envelope{}, fmt.Errorf("arrival precedes event time")
 	}
 	data := make(map[string]any)
-	if value, ok := record["event.value"]; ok {
+	if value, ok := event["value"]; ok {
 		switch channel {
 		case "vibration":
 			data["rms_mm_s"] = value
@@ -186,11 +242,11 @@ func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.
 			data["value"] = value
 		}
 	}
-	if unit, ok := record["event.unit"].(string); ok && unit != "" {
+	if unit, ok := event["unit"].(string); ok && unit != "" {
 		data["unit"] = unit
 	}
 	if channel == "mode" {
-		if value, ok := record["event.value"]; ok {
+		if value, ok := event["value"]; ok {
 			data["mode"] = value
 		}
 	}
@@ -235,6 +291,39 @@ func validateSimulatorControl(recordType string, record map[string]any) error {
 		return err
 	}
 	return nil
+}
+
+func validateModelActivation(record map[string]any) (time.Time, error) {
+	allowed := map[string]bool{"record_type": true, "recorded_time": true, "mode": true, "model": true}
+	for key := range record {
+		if !allowed[key] {
+			return time.Time{}, fmt.Errorf("model_activation contains unknown field %q", key)
+		}
+	}
+	if len(record) != 4 {
+		return time.Time{}, fmt.Errorf("model_activation is incomplete")
+	}
+	recorded, err := parseSimulatorTime(record, "recorded_time")
+	if err != nil {
+		return time.Time{}, err
+	}
+	mode, ok := record["mode"].(string)
+	if !ok || (mode != "continue" && mode != "reset") {
+		return time.Time{}, fmt.Errorf("model_activation mode must be continue or reset")
+	}
+	model, ok := record["model"].(map[string]any)
+	if !ok {
+		return time.Time{}, fmt.Errorf("model_activation model is required")
+	}
+	for _, key := range []string{"schema_version", "id", "version", "entity_type", "lateness_allowance", "inputs", "windows", "facts", "states", "episode_types", "cognition_triggers", "budgets"} {
+		if _, ok := model[key]; !ok {
+			return time.Time{}, fmt.Errorf("model_activation model.%s is required", key)
+		}
+	}
+	if model["schema_version"] != "0.1.0" {
+		return time.Time{}, fmt.Errorf("model_activation model.schema_version must be 0.1.0")
+	}
+	return recorded, nil
 }
 
 func integerValue(value any) (int64, bool) {

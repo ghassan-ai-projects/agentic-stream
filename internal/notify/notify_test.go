@@ -81,6 +81,39 @@ func TestPoisonNotificationRetriesBeforeAuditedSkip(t *testing.T) {
 	}
 }
 
+func TestLifecycleEventsUseStableTypesAndDurableCursors(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "lifecycle.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	types := []string{
+		notify.TypeApprovalRequested, notify.TypeApprovalWithdrawn, notify.TypeApprovalResolved,
+		notify.TypeCommandDispatched, notify.TypeOutcomeRecorded, notify.TypeOutcomeReconciled,
+	}
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		for i, eventType := range types {
+			if err := notify.AppendLifecycleEvent(ctx, tx, fmt.Sprintf("lifecycle-%d", i), "tenant", eventType, "subject/1", "partition-1", map[string]any{"index": i}, now.Add(time.Duration(i)*time.Second)); err != nil {
+				return fmt.Errorf("append lifecycle event: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	page, err := notify.ReadPage(ctx, db, "tenant", 0, 10, 0, now)
+	if err != nil || len(page.Records) != len(types) || page.NextCursor != int64(len(types)) {
+		t.Fatalf("page=%+v err=%v", page, err)
+	}
+	for i, record := range page.Records {
+		if record.Cursor != int64(i+1) || record.Event.Type != types[i] {
+			t.Fatalf("record[%d]=%+v", i, record)
+		}
+	}
+}
+
 func testEvent(id string, at time.Time) contractsv1.CloudEvent {
 	event := contractsv1.CloudEvent{SpecVersion: "1.0", ID: id, Source: "//agentic-stream/tenant/tenant", Type: "situation.version.published", Subject: "situation/s1", Time: at, DataContentType: "application/json", DataSchema: "urn:situation-runtime:schema:snapshot:v1", Data: map[string]any{"version": 1}, TenantID: "tenant", PartitionKey: "s1", IngestedTime: at, Classification: contractsv1.ClassificationInternal}
 	digest, _ := event.ComputeEnvelopeDigest()

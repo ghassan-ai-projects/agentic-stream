@@ -227,8 +227,21 @@ func TestEngineFiresDurableProcessingTimerExactlyOnce(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM situation_versions").Scan(&versions); err != nil {
 		t.Fatalf("count timer versions: %v", err)
 	}
-	if versions != 1 {
-		t.Fatalf("expected one timer-derived version, got %d", versions)
+	if versions != 2 {
+		t.Fatalf("expected timer-derived uncertainty and recovery versions, got %d", versions)
+	}
+	var completeness string
+	if err := db.QueryRowContext(ctx, "SELECT completeness FROM situation_versions WHERE version = 1").Scan(&completeness); err != nil {
+		t.Fatalf("read source-health completeness: %v", err)
+	}
+	if completeness != "uncertain" {
+		t.Fatalf("expected missing heartbeat to mark dependent situation uncertain, got %q", completeness)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT completeness FROM situation_versions WHERE version = 2").Scan(&completeness); err != nil {
+		t.Fatalf("read source-health recovery completeness: %v", err)
+	}
+	if completeness != "on_time" {
+		t.Fatalf("expected heartbeat recovery to restore on_time completeness, got %q", completeness)
 	}
 }
 

@@ -3,6 +3,7 @@ package native_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -41,6 +42,48 @@ func TestOpenAICompatibleProviderDeclaresBoundedTools(t *testing.T) {
 	tool := tools[0].(map[string]any)
 	if tool["type"] != "function" || tool["function"].(map[string]any)["name"] != "evidence_get" {
 		t.Fatalf("tool=%#v", tool)
+	}
+}
+
+func TestOpenAICompatibleProviderReassemblesSSEAndUsage(t *testing.T) {
+	first, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"delta": map[string]string{"content": `{"ok":`}}}, "usage": map[string]any{"prompt_tokens": 2}})
+	second, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"delta": map[string]string{"content": "true}"}}}, "usage": map[string]any{"completion_tokens": 3}})
+	body := "data: " + string(first) + "\n\ndata: " + string(second) + "\n\ndata: [DONE]\n"
+	provider := &native.OpenAICompatibleProvider{
+		Endpoint: "https://model.invalid/v1/chat/completions", Model: "test-model",
+		Client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}, nil
+		})},
+	}
+	response, err := provider.Stream(context.Background(), native.ModelRequest{DecisionSchema: json.RawMessage(`{"type":"object"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(response.DecisionJSON) != `{"ok":true}` || response.Usage.InputTokens != 2 || response.Usage.OutputTokens != 3 {
+		t.Fatalf("response=%+v", response)
+	}
+}
+
+func TestOpenAICompatibleProviderHonorsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	provider := &native.OpenAICompatibleProvider{
+		Endpoint: "https://model.invalid/v1/chat/completions", Model: "test-model",
+		Client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			select {
+			case <-req.Context().Done():
+				return nil, req.Context().Err()
+			default:
+				return nil, errors.New("request should have been canceled")
+			}
+		})},
+	}
+	if _, err := provider.Stream(ctx, native.ModelRequest{DecisionSchema: json.RawMessage(`{"type":"object"}`)}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation error=%v", err)
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -501,6 +502,17 @@ func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCo
 		d.idGen.New(ids.PrefixVerification), outcomeID, verificationStatus, formatTime(now), leased.Command.CommandID); err != nil {
 		return fmt.Errorf("record command verification: %w", err)
 	}
+	if err := notify.AppendLifecycleEvent(ctx, tx, "command.dispatched:"+leased.Command.CommandID+":"+outcomeID, leased.Command.TenantID, notify.TypeCommandDispatched, "command/"+leased.Command.CommandID, leased.Command.CommandID, map[string]any{
+		"command_id": leased.Command.CommandID, "outcome_id": outcomeID, "status": commandStatus,
+	}, now); err != nil {
+		return fmt.Errorf("append command dispatched notification: %w", err)
+	}
+	if err := notify.AppendLifecycleEvent(ctx, tx, "outcome.recorded:"+outcomeID, leased.Command.TenantID, notify.TypeOutcomeRecorded, "outcome/"+outcomeID, leased.Command.CommandID, map[string]any{
+		"outcome_id": outcomeID, "command_id": leased.Command.CommandID, "status": status,
+		"reconciliation_status": reconciliation,
+	}, now); err != nil {
+		return fmt.Errorf("append outcome recorded notification: %w", err)
+	}
 	return nil
 }
 
@@ -515,8 +527,8 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 		if err := d.assertRuntimeOwner(ctx, tx); err != nil {
 			return err
 		}
-		var currentStatus string
-		if err := tx.QueryRowContext(ctx, "SELECT status FROM commands WHERE command_id = ?", commandID).Scan(&currentStatus); err != nil {
+		var currentStatus, tenantID string
+		if err := tx.QueryRowContext(ctx, "SELECT status, tenant_id FROM commands WHERE command_id = ?", commandID).Scan(&currentStatus, &tenantID); err != nil {
 			return fmt.Errorf("load command %s for reconciliation: %w", commandID, err)
 		}
 		if currentStatus != "reconciling" && currentStatus != "outcome_unknown" {
@@ -565,6 +577,12 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 			UPDATE verifications SET outcome_id = ?, status = ?, reconciled_at = ?, updated_at = ?
 			WHERE command_id = ?`, outcomeID, verificationStatus, formatTime(now), formatTime(now), commandID); err != nil {
 			return fmt.Errorf("update reconciliation verification: %w", err)
+		}
+		if err := notify.AppendLifecycleEvent(ctx, tx, "outcome.reconciled:"+outcomeID, tenantID, notify.TypeOutcomeReconciled, "outcome/"+outcomeID, commandID, map[string]any{
+			"outcome_id": outcomeID, "command_id": commandID, "final_status": finalStatus,
+			"reconciliation_status": "reconciled",
+		}, now); err != nil {
+			return fmt.Errorf("append outcome reconciled notification: %w", err)
 		}
 		return nil
 	})

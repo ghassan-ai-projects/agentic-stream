@@ -188,6 +188,10 @@ func (e *Engine) ApplyFeature(ctx context.Context, feature operators.Feature, wa
 		sit = e.newSituation(feature.PartitionID, feature.EntityType, feature.EntityID, feature.EventTime)
 		e.active[key] = sit
 	}
+	completenessChanged := feature.Completeness != "" && feature.Completeness != sit.Completeness
+	if feature.Completeness != "" {
+		sit.Completeness = feature.Completeness
+	}
 
 	e.applyReducers(sit, feature)
 	if len(feature.Metadata) > 0 {
@@ -202,7 +206,7 @@ func (e *Engine) ApplyFeature(ctx context.Context, feature operators.Feature, wa
 		sit.Tracestate = feature.Tracestate
 	}
 
-	version, err := e.evaluate(ctx, sit, feature, watermark)
+	version, err := e.evaluate(ctx, sit, feature, watermark, completenessChanged)
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +280,7 @@ func (e *Engine) applyReducers(sit *Situation, feature operators.Feature) {
 	}
 }
 
-func (e *Engine) evaluate(ctx context.Context, sit *Situation, feature operators.Feature, watermark time.Time) (*Version, error) {
+func (e *Engine) evaluate(ctx context.Context, sit *Situation, feature operators.Feature, watermark time.Time, completenessChanged bool) (*Version, error) {
 	features := e.buildFeaturesMap(sit)
 	situation := e.buildSituationMap(sit)
 
@@ -334,6 +338,11 @@ func (e *Engine) evaluate(ctx context.Context, sit *Situation, feature operators
 			sit.Version++
 			changed = true
 		}
+	}
+	if completenessChanged && sit.Version > 0 && !changed {
+		sit.Version++
+		sit.UpdatedAt = watermark
+		changed = true
 	}
 
 	if !changed {

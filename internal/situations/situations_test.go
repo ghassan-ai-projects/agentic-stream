@@ -86,3 +86,37 @@ func TestSituationTransitionsOnFeature(t *testing.T) {
 		t.Fatalf("expected phase warning, got %s", versions[0].Phase)
 	}
 }
+
+func TestSituationPublishesCompletenessChangeFromSourceHealth(t *testing.T) {
+	compiled := spec.CompiledSpec{
+		Digest:        "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+		SchemaVersion: "agentic-stream/v1",
+		Situation: spec.Situation{
+			Type:         "bearing_degradation",
+			InitialPhase: "watch",
+			Occurrence:   spec.Occurrence{OpenWhen: "true", CloseWhen: "false"},
+			Phases:       []spec.Phase{{Name: "watch", Severity: 30}},
+		},
+	}
+	eng, err := situations.NewEngine("d1", "default", 0, &compiled, ids.Deterministic())
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	versions, err := eng.ApplyFeature(context.Background(), operators.Feature{
+		OutputName: "heartbeat_missing_5m", EntityType: "motor", EntityID: "motor-17",
+		Value: false, Completeness: string(operators.CompletenessOnTime),
+		EventTime: base, Watermark: base, InputEventIDs: []string{"hb-1"},
+	}, base)
+	if err != nil || len(versions) != 1 || versions[0].Completeness != string(operators.CompletenessOnTime) {
+		t.Fatalf("healthy source version=%+v err=%v", versions, err)
+	}
+	versions, err = eng.ApplyFeature(context.Background(), operators.Feature{
+		OutputName: "heartbeat_missing_5m", EntityType: "motor", EntityID: "motor-17",
+		Value: true, Completeness: string(operators.CompletenessUncertain),
+		EventTime: base.Add(5 * time.Minute), Watermark: base.Add(5 * time.Minute), InputEventIDs: []string{"hb-1"},
+	}, base.Add(5*time.Minute))
+	if err != nil || len(versions) != 1 || versions[0].Version != 2 || versions[0].Completeness != string(operators.CompletenessUncertain) {
+		t.Fatalf("source-health completeness version=%+v err=%v", versions, err)
+	}
+}

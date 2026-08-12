@@ -83,4 +83,5 @@ const (
 	CompletenessOnTime        Completeness = "on_time"
 	CompletenessCorrected     Completeness = "corrected"
 	CompletenessFinalByPolicy Completeness = "final_by_policy"
+	CompletenessUncertain     Completeness = "uncertain"
 )

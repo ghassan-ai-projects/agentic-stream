@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/conformance"
@@ -95,6 +96,45 @@ func TestNativeExecutorUsesBoundedProviderRetry(t *testing.T) {
 	}
 }
 
+func TestNativeExecutorEnforcesReportedUsageBudgets(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		usage native.Usage
+		limit string
+		want  string
+	}{
+		{name: "input tokens", usage: native.Usage{InputTokens: 11}, limit: `{"input_tokens":10}`, want: "budget_exhausted:input_tokens"},
+		{name: "output tokens", usage: native.Usage{OutputTokens: 11}, limit: `{"output_tokens":10}`, want: "budget_exhausted:output_tokens"},
+		{name: "cost", usage: native.Usage{CostMicrounits: 11}, limit: `{"cost_microunits":10}`, want: "budget_exhausted:cost_microunits"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			executor, err := native.New(native.Config{Provider: usageProvider{usage: test.usage}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := conformance.FixtureRequest()
+			request.RequestJSON = replaceBudget(request.RequestJSON, test.limit)
+			outcome, err := executor.Execute(context.Background(), request)
+			if err != nil || outcome.Status != string(episodes.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != test.want {
+				t.Fatalf("outcome=%+v err=%v", outcome, err)
+			}
+		})
+	}
+}
+
+func TestNativeExecutorEnforcesWallTimeAfterLateProviderResponse(t *testing.T) {
+	executor, err := native.New(native.Config{Provider: usageProvider{delay: 10 * time.Millisecond}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := conformance.FixtureRequest()
+	request.RequestJSON = replaceBudget(request.RequestJSON, `{"wall_time":"1ms"}`)
+	outcome, err := executor.Execute(context.Background(), request)
+	if err != nil || outcome.Status != string(episodes.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != "timed_out" {
+		t.Fatalf("outcome=%+v err=%v", outcome, err)
+	}
+}
+
 type toolFunc struct {
 	name string
 	call func(context.Context, json.RawMessage) (native.ToolResult, error)
@@ -123,6 +163,24 @@ func (p *retryProvider) Stream(ctx context.Context, req native.ModelRequest) (na
 	response, err := (&native.DeterministicProvider{}).Stream(ctx, req)
 	if err != nil {
 		return native.ModelResponse{}, fmt.Errorf("deterministic provider failed: %w", err)
+	}
+	return response, nil
+}
+
+type usageProvider struct {
+	usage native.Usage
+	delay time.Duration
+}
+
+func (p usageProvider) Name() string { return "usage" }
+func (p usageProvider) Stream(ctx context.Context, req native.ModelRequest) (native.ModelResponse, error) {
+	if p.delay > 0 {
+		time.Sleep(p.delay)
+	}
+	response, err := (&native.DeterministicProvider{}).Stream(ctx, req)
+	response.Usage = p.usage
+	if err != nil {
+		return response, fmt.Errorf("deterministic provider: %w", err)
 	}
 	return response, nil
 }

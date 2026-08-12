@@ -309,6 +309,11 @@ func (e *Executor) executeLoop(ctx context.Context, req *episodes.Request, paylo
 			}
 			return failed(req, "provider_failed", usage), nil
 		}
+		// A provider is expected to honor cancellation, but a hard wall-time
+		// budget must also win when an adapter returns a late response.
+		if err := ctx.Err(); err != nil {
+			return terminalForContext(req, err), nil
+		}
 		usage = addUsage(usage, response.Usage)
 		if err := checkUsage(usage, budget); err != nil {
 			return failed(req, err.Error(), usage), nil

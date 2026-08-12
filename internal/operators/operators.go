@@ -338,6 +338,9 @@ func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *O
 		Traceparent:   env.Traceparent,
 		Tracestate:    env.Tracestate,
 	}
+	if missing {
+		feature.Completeness = string(CompletenessUncertain)
+	}
 	return []Feature{feature}, nil
 }
 
@@ -524,7 +527,7 @@ func (r *OperatorRuntime) applyHeartbeatTimer(inst *operatorInstance, ps *Partit
 			EventTime:         *blob.Heartbeat.LastEventTime,
 			Watermark:         watermark,
 			InputEventIDs:     []string{blob.Heartbeat.LastEventID},
-			Completeness:      string(CompletenessOnTime),
+			Completeness:      string(CompletenessUncertain),
 			TraceContinuation: true,
 			Traceparent:       blob.Heartbeat.Traceparent,
 			Tracestate:        blob.Heartbeat.Tracestate,

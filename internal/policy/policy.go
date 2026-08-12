@@ -20,6 +20,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -152,11 +153,14 @@ func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID strin
 	result := Result{IntentID: row.IntentID, DecisionID: row.DecisionID}
 	if row.PolicyStatus != "pending" {
 		if row.PolicyStatus == "approval_required" {
-			var approvalStatus, approvalExpiry string
-			if err := tx.QueryRowContext(ctx, "SELECT status, expires_at FROM approvals WHERE intent_id = ? AND status = 'pending'", row.IntentID).Scan(&approvalStatus, &approvalExpiry); err == nil {
+			var approvalID, approvalExpiry string
+			if err := tx.QueryRowContext(ctx, "SELECT approval_id, expires_at FROM approvals WHERE intent_id = ? AND status = 'pending'", row.IntentID).Scan(&approvalID, &approvalExpiry); err == nil {
 				if expiresAt, parseErr := time.Parse(time.RFC3339Nano, approvalExpiry); parseErr != nil || !expiresAt.After(now) {
 					if _, err := tx.ExecContext(ctx, "UPDATE approvals SET status = 'expired' WHERE intent_id = ? AND status = 'pending'", row.IntentID); err != nil {
 						return result, fmt.Errorf("expire approval: %w", err)
+					}
+					if err := appendApprovalResolved(ctx, tx, row, approvalID, "expired", "approval_expired", now); err != nil {
+						return result, err
 					}
 					return g.finish(ctx, tx, row, result, "expired", "approval_expired", now)
 				}
@@ -287,12 +291,21 @@ func (g *Gateway) ResolveApproval(ctx context.Context, tx *sql.Tx, approvalID st
 			WHERE approval_id = ? AND status = 'pending'`, formatTime(now), formatTime(now), "situation_version_conflict", "approval_withdrawn", approvalID); err != nil {
 			return result, fmt.Errorf("withdraw stale approval: %w", err)
 		}
+		if err := appendApprovalWithdrawn(ctx, tx, row, approvalID, "situation_version_conflict", now); err != nil {
+			return result, err
+		}
+		if err := appendApprovalResolved(ctx, tx, row, approvalID, "denied", "situation_version_conflict", now); err != nil {
+			return result, err
+		}
 		return g.finish(ctx, tx, row, result, "denied", "situation_version_conflict", now)
 	}
 	expires, parseErr := time.Parse(time.RFC3339Nano, expiresAt)
 	if parseErr != nil || !expires.After(now) {
 		if _, err := tx.ExecContext(ctx, "UPDATE approvals SET status = 'expired', decided_at = ?, reason = ? WHERE approval_id = ? AND status = 'pending'", formatTime(now), "approval_expired", approvalID); err != nil {
 			return result, fmt.Errorf("expire approval %s: %w", approvalID, err)
+		}
+		if err := appendApprovalResolved(ctx, tx, row, approvalID, "expired", "approval_expired", now); err != nil {
+			return result, err
 		}
 		return g.finish(ctx, tx, row, result, "expired", "approval_expired", now)
 	}
@@ -304,6 +317,9 @@ func (g *Gateway) ResolveApproval(ctx context.Context, tx *sql.Tx, approvalID st
 				SET status = 'denied', decided_at = ?, approver_identity = ?, relay_identity = ?, reason = ?
 				WHERE approval_id = ? AND status = 'pending'`, formatTime(now), approver, relay, err.Error(), approvalID); updateErr != nil {
 				return result, fmt.Errorf("record unauthorized approval: %w", updateErr)
+			}
+			if eventErr := appendApprovalResolved(ctx, tx, row, approvalID, "denied", "approval_principal_not_authorized", now); eventErr != nil {
+				return result, eventErr
 			}
 			return g.finish(ctx, tx, row, result, "denied", "approval_principal_not_authorized", now)
 		}
@@ -317,6 +333,9 @@ func (g *Gateway) ResolveApproval(ctx context.Context, tx *sql.Tx, approvalID st
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = ?, updated_at = ? WHERE intent_id = ?", policyStatus, formatTime(now), intentID); err != nil {
 		return result, fmt.Errorf("update approved intent %s: %w", intentID, err)
+	}
+	if err := appendApprovalResolved(ctx, tx, row, approvalID, approvalStatus, reason, now); err != nil {
+		return result, err
 	}
 	if !approved {
 		return g.audit(ctx, tx, row, result, "denied", "approval_denied", now)
@@ -520,8 +539,36 @@ func (g *Gateway) requireApproval(ctx context.Context, tx *sql.Tx, row intentRow
 	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = 'approval_required', updated_at = ? WHERE intent_id = ?", formatTime(now), row.IntentID); err != nil {
 		return result, fmt.Errorf("mark approval required: %w", err)
 	}
+	if err := notify.AppendLifecycleEvent(ctx, tx, "approval.requested:"+approvalID, row.TenantID, notify.TypeApprovalRequested, "approval/"+approvalID, row.SituationID, map[string]any{
+		"approval_id": approvalID, "intent_id": row.IntentID, "decision_id": row.DecisionID,
+		"situation_id": row.SituationID, "situation_version": row.SituationVersion,
+		"risk_class": row.RiskClass, "expires_at": expiresAt.UTC().Format(time.RFC3339Nano),
+	}, now); err != nil {
+		return result, fmt.Errorf("append approval requested notification: %w", err)
+	}
 	result.Result, result.Reason, result.ApprovalID = "approval_required", "risk_requires_approval", approvalID
 	return g.audit(ctx, tx, row, result, result.Result, result.Reason, now)
+}
+
+func appendApprovalWithdrawn(ctx context.Context, tx *sql.Tx, row intentRow, approvalID, reason string, now time.Time) error {
+	if err := notify.AppendLifecycleEvent(ctx, tx, "approval.withdrawn:"+approvalID, row.TenantID, notify.TypeApprovalWithdrawn, "approval/"+approvalID, row.SituationID, map[string]any{
+		"approval_id": approvalID, "intent_id": row.IntentID, "situation_id": row.SituationID,
+		"situation_version": row.SituationVersion, "reason": reason,
+	}, now); err != nil {
+		return fmt.Errorf("append approval withdrawn notification: %w", err)
+	}
+	return nil
+}
+
+func appendApprovalResolved(ctx context.Context, tx *sql.Tx, row intentRow, approvalID, status, reason string, now time.Time) error {
+	if err := notify.AppendLifecycleEvent(ctx, tx, "approval.resolved:"+approvalID+":"+status, row.TenantID, notify.TypeApprovalResolved, "approval/"+approvalID, row.SituationID, map[string]any{
+		"approval_id": approvalID, "intent_id": row.IntentID, "decision_id": row.DecisionID,
+		"situation_id": row.SituationID, "situation_version": row.SituationVersion,
+		"status": status, "reason": reason,
+	}, now); err != nil {
+		return fmt.Errorf("append approval resolved notification: %w", err)
+	}
+	return nil
 }
 
 func (g *Gateway) finish(ctx context.Context, tx *sql.Tx, row intentRow, result Result, policyStatus, reason string, now time.Time) (Result, error) {

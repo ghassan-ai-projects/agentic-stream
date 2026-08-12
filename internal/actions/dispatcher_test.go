@@ -15,6 +15,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -81,6 +82,10 @@ func TestDispatcherRecordsSuccessAndDoesNotRedispatchDeliveredOutbox(t *testing.
 	if commandStatus != "succeeded" || outboxStatus != "delivered" || outcomeStatus != "succeeded" || reconciliation != "observed" {
 		t.Fatalf("success ledger command=%q outbox=%q outcome=%q reconciliation=%q", commandStatus, outboxStatus, outcomeStatus, reconciliation)
 	}
+	var recordedType string
+	if err := db.QueryRowContext(context.Background(), "SELECT event_type FROM notifications WHERE event_type = ? LIMIT 1", notify.TypeOutcomeRecorded).Scan(&recordedType); err != nil || recordedType != notify.TypeOutcomeRecorded {
+		t.Fatalf("outcome notification type=%q err=%v", recordedType, err)
+	}
 }
 
 func TestDispatcherDoesNotBlindlyRetryUnknownOutcome(t *testing.T) {
@@ -123,6 +128,10 @@ func TestDispatcherDoesNotBlindlyRetryUnknownOutcome(t *testing.T) {
 	}
 	if commandStatus != "succeeded" || outcomeCount != 2 {
 		t.Fatalf("reconciled command=%q outcomes=%d", commandStatus, outcomeCount)
+	}
+	var reconciledType string
+	if err := db.QueryRowContext(context.Background(), "SELECT event_type FROM notifications WHERE event_type = ? LIMIT 1", notify.TypeOutcomeReconciled).Scan(&reconciledType); err != nil || reconciledType != notify.TypeOutcomeReconciled {
+		t.Fatalf("reconciled notification type=%q err=%v", reconciledType, err)
 	}
 }
 

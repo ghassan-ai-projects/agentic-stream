@@ -32,7 +32,8 @@ migrations.
 | P3.1 | Decision validator (replaces auto-accept) | ✅ | `internal/decisions/validator.go`, `validate and persist typed decisions` |
 | P3.2 | Prompt/objective content addressing | ✅ | durable prompt/objective digests in episode requests |
 | P3.3 | Event schema registry | ✅ | `internal/eventschema`, deployment registration, append-time validation |
-| P4.1/4.7 | Stream capability host + dependency-direction test | 🟡 | capability host and source-health gating exist; dependency injection test remains |
+| P4.1 | Stream capability host + dependency-direction test | ✅ | `internal/policy/capabilityhost_test.go` enforces forbidden imports and runs the injection corpus |
+| P4.7 | Source-health gating | ✅ | heartbeat loss emits `uncertain`; dependent Situation completeness changes publish immutable versions and policy gates R2–R4 |
 | P4.2 | Policy gateway + idempotent outbox | ✅ | `enforce policy and idempotent action outbox`, migration `004_policy_audit` |
 | P4.3 | Principal registry / separation of duty | ✅ | durable principal/authority checks in `internal/policy` |
 | P4.4 | Watch-condition intent + effector | ✅ | restricted CEL watch effector with owner/interlock fencing |
@@ -43,11 +44,12 @@ migrations.
 | P5 | Reconsideration admission (dedup) | ✅ | `admit deduplicated reconsideration episodes`, migration `005` |
 | P6.1 | Durable notification log + cursor (Channel B) | ✅ | `durable cursor notifications`, migration `006` |
 | P6.2 | SSE application binding | ✅ | `/v1/events`, cursor resume, auth, bounded lag, audited expiry and poison retry |
+| P6.3 | Channel B lifecycle event types | ✅ | transactional `io.agenticstream.*.v1` approval, command, and outcome events with durable cursors |
 | P6.4 | Approval workflow + withdrawal + assertion binding | 🟡 | approval assertions and withdrawal paths exist; key-rotation rehearsal remains |
 | P7 | Replay isolation + worker-aware modes | ✅ | `isolated worker-aware replay modes`, `harden replay isolation` |
 | P8.1 | Trace propagation | ✅ | durable W3C context, OpenTelemetry spans, OTLP/HTTP export, and asynchronous links |
 | P8.2 | HTTP surface | ✅ | RFC 9457 readiness, loopback binding, authenticated SSE, remote-worker mTLS flags |
-| P8.3 | Telemetry and operational release | ✅ | bounded metrics, OpenTelemetry spans/export, runbooks and security checklist; environment evidence is postponed |
+| P8.3 | Telemetry and operational release | ✅/🟡 | bounded metrics, OpenTelemetry spans/export, runbooks and security checklist; environment evidence is postponed |
 | — | Runtime ownership lease + crash recovery (beyond original plan) | ✅ | `009`,`011`,`012`, `internal/runtime` — robustness the plan didn't scope |
 | — | **Live pipeline composition** | ✅ | `run-live` handles bounded batches; `serve --spec ... --trace ...` owns an append-only JSONL loop with runtime cancellation and fatal-error propagation |
 
@@ -79,12 +81,11 @@ behavior.
 
 Principal registry + separation of duty (P4.3) · approval assertion binding + withdrawal (P6.4)
 · watch conditions (P4.4) · compensating intents (P4.5) · interlock readiness (P4.6) ·
-source-health gating (P4.7) · quarantine + gap records and aggregate cost ceiling + kill switch
-(P4.9) · event schema registry (P3.3) · prompt content-addressing (P3.2) · capability-host
-dependency-direction test + injection corpus (P4.1) · RFC 9457 + mTLS hardening (P8.2). Each has
-its full spec below. Pull the **capability-host dependency test** and the **aggregate cost
-ceiling** forward first in this pass — they are the two that matter most once real money and real
-effects flow.
+quarantine + gap records and aggregate cost ceiling + kill switch (P4.9) · event schema registry
+(P3.3) · prompt content-addressing (P3.2) · RFC 9457 + mTLS hardening (P8.2). Each has its full
+spec below. The capability-host dependency test, source-health propagation, and Channel B lifecycle
+events are now implemented; only environment verification and the postponed release evidence remain
+outside the current pass.
 
 > **Net:** the deterministic and bounded supervised loop and continuous JSONL serving loop are
 > complete. OpenTelemetry instrumentation and export are implemented.

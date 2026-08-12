@@ -14,6 +14,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -111,6 +112,13 @@ func TestGatewayResolvesApprovalBeforeCommanding(t *testing.T) {
 	}
 	if approval.Result != "approval_required" || approval.ApprovalID == "" {
 		t.Fatalf("approval result = %+v", approval)
+	}
+	var requestedType string
+	if err := db.QueryRowContext(ctx, "SELECT event_type FROM notifications WHERE event_id = ?", "approval.requested:"+approval.ApprovalID).Scan(&requestedType); err != nil {
+		t.Fatalf("read approval notification: %v", err)
+	}
+	if requestedType != notify.TypeApprovalRequested {
+		t.Fatalf("approval notification type=%q", requestedType)
 	}
 	var resolved Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
