@@ -1,6 +1,7 @@
 package eventlog
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -19,15 +20,28 @@ func (l *EventLog) Quarantine(ctx context.Context, tenantID string, env map[stri
 	eventType, _ := env["type"].(string)
 	schemaVersion, _ := env["schema_version"].(string)
 	source, _ := env["source"].(string)
-	payload, err := json.Marshal(env["data"])
+	payload, err := json.Marshal(env)
 	if err != nil {
 		return fmt.Errorf("marshal quarantined payload: %w", err)
 	}
 	digest := sha256.Sum256(payload)
 	idDigest := sha256.Sum256(append([]byte(eventID+"|"), payload...))
 	quarantineID := "q_" + hex.EncodeToString(idDigest[:12])
+	conflict := false
 	if err := l.db.WithTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `
+		var existingDigest []byte
+		existingErr := tx.QueryRowContext(ctx, "SELECT payload_sha256 FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", tenantID, eventID).Scan(&existingDigest)
+		if existingErr == nil && !bytes.Equal(existingDigest, digest[:]) {
+			if _, err := tx.ExecContext(ctx, "UPDATE event_quarantine SET status = 'rejected', reason_code = 'event_id_hash_conflict', last_seen_at = ? WHERE tenant_id = ? AND event_id = ?", now, tenantID, eventID); err != nil {
+				return fmt.Errorf("record quarantine hash conflict: %w", err)
+			}
+			conflict = true
+			return nil
+		}
+		if existingErr != nil && existingErr != sql.ErrNoRows {
+			return fmt.Errorf("load existing quarantine: %w", existingErr)
+		}
+		result, err := tx.ExecContext(ctx, `
 			INSERT INTO event_quarantine (
 				quarantine_id, tenant_id, event_id, event_type, schema_version, source,
 				reason_code, payload_json, payload_sha256, status, first_seen_at, last_seen_at
@@ -35,16 +49,47 @@ func (l *EventLog) Quarantine(ctx context.Context, tenantID string, env map[stri
 			ON CONFLICT(tenant_id, event_id) DO UPDATE SET
 				attempt_count = MIN(attempt_count + 1, 10), last_seen_at = excluded.last_seen_at,
 				reason_code = excluded.reason_code, payload_json = excluded.payload_json,
-				payload_sha256 = excluded.payload_sha256`,
+				payload_sha256 = excluded.payload_sha256
+			WHERE event_quarantine.payload_sha256 = excluded.payload_sha256`,
 			quarantineID, tenantID, eventID, eventType, schemaVersion, source,
-			reason, payload, digest[:], now, now); err != nil {
+			reason, payload, digest[:], now, now)
+		if err != nil {
 			return fmt.Errorf("persist event quarantine: %w", err)
+		}
+		count, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("count quarantine update: %w", err)
+		}
+		if count == 0 {
+			if _, err := tx.ExecContext(ctx, "UPDATE event_quarantine SET status = 'rejected', reason_code = 'event_id_hash_conflict', last_seen_at = ? WHERE tenant_id = ? AND event_id = ?", now, tenantID, eventID); err != nil {
+				return fmt.Errorf("record quarantine hash conflict: %w", err)
+			}
+			conflict = true
+			return nil
 		}
 		return nil
 	}); err != nil {
 		return fmt.Errorf("quarantine event transaction: %w", err)
 	}
+	if conflict {
+		return fmt.Errorf("event id %s has conflicting quarantined payload", eventID)
+	}
 	return nil
+}
+
+// ReadQuarantine returns the original envelope for inspection or an explicit
+// caller-controlled re-drive after validation.
+func (l *EventLog) ReadQuarantine(ctx context.Context, tenantID, eventID string) (map[string]any, string, error) {
+	var payload []byte
+	var status string
+	if err := l.db.QueryRowContext(ctx, "SELECT payload_json, status FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", tenantID, eventID).Scan(&payload, &status); err != nil {
+		return nil, "", fmt.Errorf("read quarantined event: %w", err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		return nil, "", fmt.Errorf("decode quarantined envelope: %w", err)
+	}
+	return envelope, status, nil
 }
 
 // ReleaseQuarantine marks one record ready for an explicit re-drive.

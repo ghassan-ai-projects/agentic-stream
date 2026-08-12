@@ -64,3 +64,28 @@ func TestRecordGapPreservesDiscontinuity(t *testing.T) {
 		t.Fatalf("reason = %q", reason)
 	}
 }
+
+func TestQuarantineRejectsEventIDHashConflict(t *testing.T) {
+	ctx := context.Background()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "conflict.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	log := eventlog.NewEventLog(db)
+	base := map[string]any{"id": "evt-conflict", "type": "sensor.temperature", "schema_version": "1.0", "source": "test", "data": map[string]any{"value": 1}}
+	if err := log.Quarantine(ctx, "tenant-1", base, "invalid", "2026-08-12T12:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	base["data"] = map[string]any{"value": 2}
+	if err := log.Quarantine(ctx, "tenant-1", base, "invalid", "2026-08-12T12:01:00Z"); err == nil {
+		t.Fatal("expected hash conflict")
+	}
+	var status string
+	if err := db.QueryRowContext(ctx, "SELECT status FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", "tenant-1", "evt-conflict").Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "rejected" {
+		t.Fatalf("status = %q, want rejected", status)
+	}
+}
