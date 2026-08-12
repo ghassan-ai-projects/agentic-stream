@@ -24,11 +24,11 @@ func TestWatchEffectorIsBoundedExpiringAndOneShot(t *testing.T) {
 	if _, err := effector.Dispatch(ctx, command); err != nil {
 		t.Fatal(err)
 	}
-	fired, err := effector.Fire(ctx, "cmd-watch", "evt-1")
+	fired, err := effector.Fire(ctx, "cmd-watch", "evt-1", "sit-1", "motor-1", map[string]any{"temperature": 95})
 	if err != nil || !fired {
 		t.Fatalf("first fire=%v err=%v", fired, err)
 	}
-	fired, err = effector.Fire(ctx, "cmd-watch", "evt-2")
+	fired, err = effector.Fire(ctx, "cmd-watch", "evt-2", "sit-1", "motor-1", map[string]any{"temperature": 95})
 	if err != nil || fired {
 		t.Fatalf("second fire=%v err=%v", fired, err)
 	}

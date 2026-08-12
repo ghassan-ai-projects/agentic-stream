@@ -110,7 +110,7 @@ func (e *WatchEffector) dispatch(ctx context.Context, command Command, _ func(co
 
 // Fire records one event-driven watch firing exactly once and decrements its
 // bounded allowance. It returns false for expired, disabled, or duplicate fires.
-func (e *WatchEffector) Fire(ctx context.Context, watchID, eventID string) (bool, error) {
+func (e *WatchEffector) Fire(ctx context.Context, watchID, eventID, situationID, target string, features map[string]any) (bool, error) {
 	if e == nil || e.db == nil || watchID == "" || eventID == "" {
 		return false, fmt.Errorf("watch identity is required")
 	}
@@ -119,6 +119,23 @@ func (e *WatchEffector) Fire(ctx context.Context, watchID, eventID string) (bool
 	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, "UPDATE watch_conditions SET status = 'expired', updated_at = ? WHERE status = 'active' AND expires_at <= ?", now, now); err != nil {
 			return fmt.Errorf("expire due watch conditions: %w", err)
+		}
+		var expression, storedSituationID, storedTarget string
+		if err := tx.QueryRowContext(ctx, "SELECT expression, situation_id, target FROM watch_conditions WHERE watch_id = ? AND status = 'active' AND expires_at > ?", watchID, now).Scan(&expression, &storedSituationID, &storedTarget); err != nil {
+			if err == sql.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("load active watch condition: %w", err)
+		}
+		if storedSituationID != situationID || storedTarget != target {
+			return nil
+		}
+		matches, err := evaluateWatchExpression(expression, features)
+		if err != nil {
+			return err
+		}
+		if !matches {
+			return nil
 		}
 		result, err := tx.ExecContext(ctx, `INSERT INTO watch_fires (watch_id, event_id, fired_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM watch_conditions WHERE watch_id = ? AND status = 'active' AND expires_at > ? AND remaining_fires > 0) ON CONFLICT(watch_id, event_id) DO NOTHING`, watchID, eventID, now, watchID, now)
 		if err != nil {
@@ -171,6 +188,34 @@ func validateWatchExpression(expression string) error {
 		return fmt.Errorf("watch expression is not valid CEL: %w", issues.Err())
 	}
 	return nil
+}
+
+func evaluateWatchExpression(expression string, features map[string]any) (bool, error) {
+	env, err := cel.NewEnv(
+		cel.Variable("features", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("situation", cel.MapType(cel.StringType, cel.DynType)),
+		ext.Bindings(),
+	)
+	if err != nil {
+		return false, fmt.Errorf("create watch expression environment: %w", err)
+	}
+	ast, issues := env.Compile(expression)
+	if issues != nil && issues.Err() != nil {
+		return false, fmt.Errorf("watch expression is not valid CEL: %w", issues.Err())
+	}
+	program, err := env.Program(ast)
+	if err != nil {
+		return false, fmt.Errorf("build watch expression program: %w", err)
+	}
+	value, _, err := program.Eval(map[string]any{"features": features, "situation": map[string]any{}})
+	if err != nil {
+		return false, fmt.Errorf("evaluate watch expression: %w", err)
+	}
+	matched, ok := value.Value().(bool)
+	if !ok {
+		return false, fmt.Errorf("watch expression must return bool")
+	}
+	return matched, nil
 }
 
 func integerPayload(value any) (int, bool) {

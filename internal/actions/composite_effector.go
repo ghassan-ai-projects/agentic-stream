@@ -45,12 +45,5 @@ func (e *CompositeEffector) DispatchAuthorized(ctx context.Context, command Comm
 		}
 		return effect, nil
 	}
-	if err := authorization.Check(ctx); err != nil {
-		return Effect{}, err
-	}
-	effect, err := e.fallback.Dispatch(ctx, command)
-	if err != nil {
-		return Effect{}, fmt.Errorf("dispatch fallback effect: %w", err)
-	}
-	return effect, nil
+	return Effect{}, fmt.Errorf("fallback effector must implement AuthorizedEffector")
 }
