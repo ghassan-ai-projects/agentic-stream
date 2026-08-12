@@ -30,6 +30,10 @@ type WorkerExecutor struct {
 	capabilityFactory     CapabilityFactory
 }
 
+type budgetExceededError struct{ metric string }
+
+func (e *budgetExceededError) Error() string { return "episode budget exceeded: " + e.metric }
+
 // CapabilityFactory issues an ephemeral token from the trusted attempt
 // request. Implementations must never persist or log the returned bytes.
 type CapabilityFactory interface {
@@ -68,6 +72,11 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 	if req == nil {
 		return nil, fmt.Errorf("episode request is required")
 	}
+	executionCtx, cancel, err := boundedExecutionContext(ctx, req.RequestJSON)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
 	if e.evidenceToolsEndpoint != "" {
 		if err := worker.ValidateEvidenceSocketPath(e.evidenceToolsEndpoint); err != nil {
 			return nil, fmt.Errorf("evidence endpoint: %w", err)
@@ -91,7 +100,7 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 	if e.evidenceToolsEndpoint != "" && !containsFeature(e.requestedFeatures, worker.EvidenceToolsFeature) {
 		return nil, fmt.Errorf("evidence tools require negotiated feature %q", worker.EvidenceToolsFeature)
 	}
-	handshake, err := e.client.Handshake(ctx, &runtimev1.HandshakeRequest{
+	handshake, err := e.client.Handshake(executionCtx, &runtimev1.HandshakeRequest{
 		ProtocolVersion: worker.ProtocolVersion, ContractVersion: worker.ContractVersion,
 		WorkerId: e.name, RuntimeInstanceId: e.runtimeInstance, NonInteractive: true,
 		RequestedFeatures: append([]string(nil), e.requestedFeatures...),
@@ -117,7 +126,7 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 	if handshake.GetMaxRequestBytes() > 0 && uint64(proto.Size(wireRequest)) > handshake.GetMaxRequestBytes() { //nolint:gosec // protobuf Size is non-negative and bounded by the negotiated request limit.
 		return nil, fmt.Errorf("worker request exceeds negotiated size limit")
 	}
-	stream, err := e.client.Execute(ctx, wireRequest)
+	stream, err := e.client.Execute(executionCtx, wireRequest)
 	if err != nil {
 		return nil, fmt.Errorf("execute worker request: %w", err)
 	}
@@ -168,6 +177,11 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 			}
 			sawStarted = true
 		}
+		if budget := event.GetBudget(); budget != nil {
+			if err := validateBudgetUpdate(wireRequest.GetBudget(), budget); err != nil {
+				return nil, err
+			}
+		}
 		nextSequence++
 		if candidate := event.GetDecision(); candidate != nil {
 			if decision != nil {
@@ -214,6 +228,55 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 		return nil, fmt.Errorf("worker returned unspecified terminal status")
 	}
 	return outcome, nil
+}
+
+func boundedExecutionContext(ctx context.Context, requestJSON []byte) (context.Context, context.CancelFunc, error) {
+	var payload struct {
+		Budget struct {
+			WallTime string `json:"wall_time"`
+		} `json:"budget"`
+	}
+	if err := json.Unmarshal(requestJSON, &payload); err != nil {
+		return nil, nil, fmt.Errorf("decode episode budget: %w", err)
+	}
+	if payload.Budget.WallTime == "" {
+		return ctx, func() {}, nil
+	}
+	duration, err := time.ParseDuration(payload.Budget.WallTime)
+	if err != nil || duration <= 0 {
+		return nil, nil, fmt.Errorf("invalid wall_time budget %q", payload.Budget.WallTime)
+	}
+	bounded, cancel := context.WithTimeout(ctx, duration)
+	return bounded, cancel, nil
+}
+
+func validateBudgetUpdate(limit *runtimev1.EpisodeBudget, update *runtimev1.BudgetUpdated) error {
+	if limit == nil || update == nil {
+		return nil
+	}
+	usage := update.GetCumulativeUsage()
+	if limit.GetMaxModelCalls() > 0 && update.GetModelCallsUsed() > limit.GetMaxModelCalls() {
+		return &budgetExceededError{"model_calls"}
+	}
+	if limit.GetMaxToolCalls() > 0 && update.GetToolCallsUsed() > limit.GetMaxToolCalls() {
+		return &budgetExceededError{"tool_calls"}
+	}
+	if limit.GetMaxToolResultBytes() > 0 && update.GetToolResultBytesUsed() > limit.GetMaxToolResultBytes() {
+		return &budgetExceededError{"tool_result_bytes"}
+	}
+	if usage == nil {
+		return nil
+	}
+	if limit.GetMaxInputTokens() > 0 && usage.GetInputTokens() > limit.GetMaxInputTokens() {
+		return &budgetExceededError{"input_tokens"}
+	}
+	if limit.GetMaxOutputTokens() > 0 && usage.GetOutputTokens() > limit.GetMaxOutputTokens() {
+		return &budgetExceededError{"output_tokens"}
+	}
+	if limit.GetMaxCostMicrounits() > 0 && usage.GetCostMicrounits() > limit.GetMaxCostMicrounits() {
+		return &budgetExceededError{"cost_microunits"}
+	}
+	return nil
 }
 
 func containsFeature(features []string, want string) bool {

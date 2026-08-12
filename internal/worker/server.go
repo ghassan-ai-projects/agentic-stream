@@ -83,6 +83,9 @@ func (s *Server) Handshake(_ context.Context, req *runtimev1.HandshakeRequest) (
 	if req.GetContractVersion() != ContractVersion {
 		return nil, wireErrorf(codes.FailedPrecondition, "unsupported contract version %q", req.GetContractVersion())
 	}
+	if !req.GetNonInteractive() {
+		return nil, wireError(codes.FailedPrecondition, "non_interactive worker handshake is required")
+	}
 	features := make(map[string]struct{}, len(s.SupportedFeatures))
 	for _, feature := range s.SupportedFeatures {
 		features[feature] = struct{}{}

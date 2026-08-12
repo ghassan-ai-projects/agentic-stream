@@ -12,13 +12,18 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 // Version metadata injected at build time.
@@ -54,8 +59,88 @@ cognitive scheduler decides reasoning is useful.`,
 	root.AddCommand(newRunCommand())
 	root.AddCommand(newConfigEffectiveCommand())
 	root.AddCommand(newServeCommand())
+	root.AddCommand(newRunLiveCommand())
 
 	return root
+}
+
+func newRunLiveCommand() *cobra.Command {
+	var dbPath, specPath, tracePath, tenantID, workerSocket, workerName, traceFormat string
+	cmd := &cobra.Command{
+		Use:   "run-live --spec <spec.yaml> --trace <trace.jsonl>",
+		Short: "Run one owner-scoped live Go pipeline batch.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if specPath == "" || tracePath == "" || dbPath == "" {
+				return fmt.Errorf("--spec, --trace, and --db are required")
+			}
+			compiled, err := spec.CompileFile(cmd.Context(), specPath)
+			if err != nil {
+				return fmt.Errorf("compile spec: %w", err)
+			}
+			db, err := storage.Open(cmd.Context(), dbPath)
+			if err != nil {
+				return fmt.Errorf("open runtime database: %w", err)
+			}
+			defer func() { _ = db.Close() }()
+			epoch, err := evidence.NewRuntimeEpoch()
+			if err != nil {
+				return fmt.Errorf("generate runtime epoch: %w", err)
+			}
+			owner := &storage.RuntimeOwner{DB: db, InstanceID: epoch, Lease: time.Minute}
+			ledger := &evidence.Ledger{DB: db, LeaseOwner: epoch, RuntimeEpoch: epoch, Lease: time.Minute}
+			service, err := runtime.NewService(owner, ledger, epoch)
+			if err != nil {
+				return err
+			}
+			if _, err := service.Start(cmd.Context()); err != nil {
+				return fmt.Errorf("start runtime: %w", err)
+			}
+			defer func() { _ = service.Close(context.Background()) }()
+
+			var executor episodes.Executor = episodes.NewFakeExecutor()
+			var workerConn interface{ Close() error }
+			if workerSocket != "" {
+				conn, dialErr := worker.DialEpisodeWorkerSocket(cmd.Context(), workerSocket)
+				if dialErr != nil {
+					return dialErr
+				}
+				workerConn = conn
+				executor = episodes.NewWorkerExecutor(runtimev1.NewEpisodeWorkerClient(conn), workerName, epoch, nil)
+			}
+			if workerConn != nil {
+				defer func() { _ = workerConn.Close() }()
+			}
+			pipeline, err := runtime.NewPipeline(cmd.Context(), runtime.PipelineConfig{
+				DB: db, Spec: compiled, TenantID: tenantID, Owner: owner, OwnerEpoch: epoch,
+				Executor: executor, Effector: actions.NewSimulatedEffector(), IDGenerator: ids.Random(),
+			})
+			if err != nil {
+				return err
+			}
+			var report runtime.PipelineReport
+			switch traceFormat {
+			case "normalized":
+				report, err = pipeline.RunJSONL(cmd.Context(), tracePath)
+			case "simulator":
+				report, err = pipeline.RunSimulatorJSONL(cmd.Context(), tracePath)
+			default:
+				return fmt.Errorf("unsupported --trace-format %q", traceFormat)
+			}
+			if err != nil {
+				return err
+			}
+			cmd.Printf("events_ingested=%d events_processed=%d episodes_admitted=%d episodes_executed=%d intents_evaluated=%d commands_dispatched=%d\n", report.EventsIngested, report.EventsProcessed, report.EpisodesAdmitted, report.EpisodesExecuted, report.IntentsEvaluated, report.CommandsDispatched)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite runtime database path")
+	cmd.Flags().StringVar(&specPath, "spec", "", "SituationSpec YAML path")
+	cmd.Flags().StringVar(&tracePath, "trace", "", "JSONL trace path")
+	cmd.Flags().StringVar(&tenantID, "tenant", "default", "Tenant ID")
+	cmd.Flags().StringVar(&traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
+	cmd.Flags().StringVar(&workerSocket, "worker-socket", "", "EpisodeWorker Unix socket (default: deterministic Go fake)")
+	cmd.Flags().StringVar(&workerName, "worker-name", "native", "Expected EpisodeWorker name")
+	return cmd
 }
 
 func newServeCommand() *cobra.Command {

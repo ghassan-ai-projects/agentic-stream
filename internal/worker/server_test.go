@@ -24,7 +24,7 @@ func TestServerHandshakeAndExecute(t *testing.T) {
 
 	handshake, err := client.Handshake(t.Context(), &runtimev1.HandshakeRequest{
 		ProtocolVersion: "1.0", ContractVersion: "1.0", WorkerId: "worker-1", RuntimeInstanceId: "runtime-1",
-		RequestedFeatures: []string{"trace_context"},
+		RequestedFeatures: []string{"trace_context"}, NonInteractive: true,
 	})
 	if err != nil {
 		t.Fatalf("handshake: %v", err)

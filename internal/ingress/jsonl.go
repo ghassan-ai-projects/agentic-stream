@@ -104,6 +104,9 @@ func (c *JSONLReplay) Run(ctx context.Context) (int, error) {
 		if env.TenantID == "" {
 			env.TenantID = c.tenantID
 		}
+		if err := contractsv1.ValidateEnvelope(env, c.tenantID); err != nil {
+			return appended, fmt.Errorf("validate line %d: %w", lineNum, err)
+		}
 		batch = append(batch, env)
 		if len(batch) >= 100 {
 			if err := flush(); err != nil {

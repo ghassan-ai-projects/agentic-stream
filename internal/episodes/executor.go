@@ -409,6 +409,10 @@ func executionFailureStatus(err error) AttemptStatus {
 }
 
 func executionFailureReason(err error) string {
+	var budgetErr *budgetExceededError
+	if errors.As(err, &budgetErr) {
+		return "budget_exhausted"
+	}
 	switch executionFailureStatus(err) {
 	case AttemptCancelled:
 		return "worker_cancelled" //nolint:misspell // Durable protocol reason is frozen as cancelled.

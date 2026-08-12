@@ -1,6 +1,7 @@
 package contractsv1
 
 import (
+	"fmt"
 	"hash/fnv"
 	"time"
 )
@@ -51,6 +52,33 @@ type Envelope struct {
 
 // PayloadHash is the SHA-256 digest of the original normalized payload.
 type PayloadHash [32]byte
+
+// ValidateEnvelope checks the required invariants of the normalized ingress
+// contract before an envelope enters the durable event log.
+func ValidateEnvelope(e Envelope, tenantID string) error {
+	if e.ID == "" || e.Type == "" || e.SchemaVersion == "" || e.Source == "" {
+		return fmt.Errorf("event id, type, schema_version, and source are required")
+	}
+	if e.TenantID == "" {
+		return fmt.Errorf("tenant_id is required")
+	}
+	if tenantID != "" && e.TenantID != tenantID {
+		return fmt.Errorf("tenant mismatch: envelope=%q runtime=%q", e.TenantID, tenantID)
+	}
+	if e.PartitionKey == "" || e.Entity.Type == "" || e.Entity.ID == "" {
+		return fmt.Errorf("partition_key and entity identity are required")
+	}
+	if e.EventTime.IsZero() || e.IngestedAt.IsZero() {
+		return fmt.Errorf("event_time and ingested_at are required")
+	}
+	if e.ObservedAt != nil && e.ObservedAt.Before(e.EventTime) {
+		return fmt.Errorf("observed_at must not precede event_time")
+	}
+	if e.Data == nil {
+		return fmt.Errorf("data is required")
+	}
+	return nil
+}
 
 // PartitionID computes the stable virtual partition for this envelope.
 func (e Envelope) PartitionID(count int) int {

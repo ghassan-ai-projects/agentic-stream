@@ -93,6 +93,22 @@ func DialEvidenceSocket(ctx context.Context, path string) (*grpc.ClientConn, err
 	return conn, nil
 }
 
+// DialEpisodeWorkerSocket dials a local EpisodeWorker over a private Unix
+// socket. The worker protocol remains responsible for handshake and identity
+// validation; this helper only constrains transport to the local socket.
+func DialEpisodeWorkerSocket(ctx context.Context, path string) (*grpc.ClientConn, error) {
+	if err := ValidateEvidenceSocketPath(path); err != nil {
+		return nil, err
+	}
+	conn, err := grpc.NewClient("passthrough:///episode-worker", grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "unix", path)
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, fmt.Errorf("dial episode worker socket: %w", err)
+	}
+	return conn, nil
+}
+
 type cleanListener struct {
 	net.Listener
 	path string
