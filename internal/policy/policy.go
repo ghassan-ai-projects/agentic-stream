@@ -112,29 +112,30 @@ func newGateway(policyVersion string, idGen ids.Generator, owner *storage.Runtim
 }
 
 type intentRow struct {
-	IntentID          string
-	DecisionID        string
-	EpisodeID         string
-	EpisodeTenant     string
-	EpisodeSituation  string
-	EpisodeVersion    int
-	SituationTenant   string
-	DecisionSituation string
-	DecisionVersion   int
-	TenantID          string
-	SituationID       string
-	SituationVersion  int
-	IntentType        string
-	RiskClass         string
-	IntentJSON        []byte
-	IntentSHA         []byte
-	ExpiresAt         string
-	PolicyStatus      string
-	ValidationStatus  string
-	DecisionJSON      []byte
-	DecisionSHA       []byte
-	EpisodeLifecycle  string
-	CurrentSituation  int
+	IntentID            string
+	DecisionID          string
+	EpisodeID           string
+	EpisodeTenant       string
+	EpisodeSituation    string
+	EpisodeVersion      int
+	SituationTenant     string
+	DecisionSituation   string
+	DecisionVersion     int
+	TenantID            string
+	SituationID         string
+	SituationVersion    int
+	IntentType          string
+	RiskClass           string
+	IntentJSON          []byte
+	IntentSHA           []byte
+	ExpiresAt           string
+	PolicyStatus        string
+	ValidationStatus    string
+	DecisionJSON        []byte
+	DecisionSHA         []byte
+	EpisodeLifecycle    string
+	CurrentSituation    int
+	CurrentCompleteness string
 }
 
 // EvaluateIntent runs the full v1 policy order and atomically creates either
@@ -221,6 +222,9 @@ func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID strin
 			return result, fmt.Errorf("mark stale intent: %w", err)
 		}
 		return g.audit(ctx, tx, row, result, "stale", "situation_version_stale", now)
+	}
+	if (row.RiskClass == "R2" || row.RiskClass == "R3" || row.RiskClass == "R4") && (row.CurrentCompleteness == "provisional" || row.CurrentCompleteness == "uncertain") {
+		return g.finish(ctx, tx, row, result, "denied", "source_health_incomplete", now)
 	}
 	expiresAt, err := time.Parse(time.RFC3339Nano, row.ExpiresAt)
 	if err != nil || !expiresAt.After(now) {
@@ -372,7 +376,8 @@ func (g *Gateway) loadIntent(ctx context.Context, tx *sql.Tx, intentID string) (
 		       d.validation_status, d.raw_json, d.decision_sha256,
 		       d.situation_id, d.situation_version,
 			       e.episode_id, e.tenant_id, e.situation_id, e.situation_version,
-			       e.lifecycle_status, s.tenant_id, s.current_version
+		       e.lifecycle_status, s.tenant_id, s.current_version,
+		       COALESCE((SELECT sv.completeness FROM situation_versions sv WHERE sv.situation_id = s.situation_id AND sv.version = s.current_version), '')
 		FROM intents i
 		JOIN decisions d ON d.decision_id = i.decision_id
 		JOIN episodes e ON e.episode_id = d.episode_id
@@ -385,7 +390,7 @@ func (g *Gateway) loadIntent(ctx context.Context, tx *sql.Tx, intentID string) (
 		&row.ValidationStatus, &row.DecisionJSON, &row.DecisionSHA,
 		&row.DecisionSituation, &row.DecisionVersion,
 		&row.EpisodeID, &row.EpisodeTenant, &row.EpisodeSituation, &row.EpisodeVersion,
-		&row.EpisodeLifecycle, &row.SituationTenant, &row.CurrentSituation,
+		&row.EpisodeLifecycle, &row.SituationTenant, &row.CurrentSituation, &row.CurrentCompleteness,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return row, fmt.Errorf("intent %s not found", intentID)

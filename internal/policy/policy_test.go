@@ -193,6 +193,35 @@ func TestGatewayFailsClosedWhenInterlockTripped(t *testing.T) {
 	}
 }
 
+func TestGatewayDeniesConsequentialIntentWhenCompletenessIsProvisional(t *testing.T) {
+	ctx := context.Background()
+	db, intentID := openPolicyFixture(t, "R2", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
+	defer func() { _ = db.Close() }()
+	digest := make([]byte, 32)
+	if _, err := db.ExecContext(ctx, "INSERT INTO lineage_sets (lineage_id, sha256, reference_count, references_json, created_at) VALUES ('lineage-health', ?, 1, ?, '2026-08-12T00:00:00Z')", digest, []byte("{}")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO situation_versions (
+			situation_id, version, phase, severity, confidence, completeness,
+			event_horizon, valid_from, snapshot_json, snapshot_sha256, lineage_id, created_at
+		) VALUES ('sit-policy', 1, 'watch', 30, 0.8, 'provisional', ?, ?, ?, ?, 'lineage-health', ?)`,
+		"2026-08-12T00:00:00Z", "2026-08-12T00:00:00Z", []byte("{}"), digest, "2026-08-12T00:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	var result Result
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		result, err = NewGateway("policy-v1", ids.Deterministic()).EvaluateIntent(ctx, tx, intentID, time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC))
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if result.Result != "denied" || result.Reason != "source_health_incomplete" {
+		t.Fatalf("result = %+v, want source_health_incomplete denial", result)
+	}
+}
+
 func openPolicyFixture(t *testing.T, risk string, currentVersion, intentVersion int, expiresAt time.Time) (*storage.DB, string) {
 	t.Helper()
 	ctx := context.Background()
