@@ -525,3 +525,12 @@ CREATE TABLE evidence_call_ledger (
     FOREIGN KEY (attempt_id, episode_id, fence)
         REFERENCES episode_attempts(attempt_id, episode_id, fence)
 ) STRICT;
+
+CREATE TABLE runtime_owner (
+    singleton_id   INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+    owner_epoch    TEXT NOT NULL,
+    owner_instance TEXT NOT NULL,
+    acquired_at    TEXT NOT NULL,
+    heartbeat_at   TEXT NOT NULL,
+    lease_until    TEXT NOT NULL
+) STRICT;
