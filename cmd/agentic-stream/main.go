@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
@@ -100,6 +102,33 @@ func newRunLiveCommand() *cobra.Command {
 				return fmt.Errorf("start runtime: %w", err)
 			}
 			defer func() { _ = service.Close(context.Background()) }()
+			if evidenceSocket != "" && workerSocket == "" {
+				return fmt.Errorf("--evidence-socket requires --worker-socket")
+			}
+			var evidenceSecret []byte
+			var evidenceGRPC *grpc.Server
+			var evidenceListener interface{ Close() error }
+			if evidenceSocket != "" {
+				var decodeErr error
+				evidenceSecret, decodeErr = hex.DecodeString(evidenceKey)
+				if decodeErr != nil || len(evidenceSecret) < 32 {
+					return fmt.Errorf("--evidence-key must be at least 32 bytes of hex")
+				}
+				listener, listenErr := worker.ListenEvidenceSocket(evidenceSocket)
+				if listenErr != nil {
+					return fmt.Errorf("listen evidence socket: %w", listenErr)
+				}
+				evidenceListener = listener
+				evidenceGRPC = grpc.NewServer()
+				issuer := &evidence.Issuer{Issuer: "agentic-stream", Audience: "evidence-tools", KeyID: "runtime", Keys: map[string][]byte{"runtime": evidenceSecret}}
+				runtimev1.RegisterEvidenceToolsServer(evidenceGRPC, &evidence.Server{
+					Verifier: &evidence.Verifier{Issuer: issuer.Issuer, Audience: issuer.Audience, Keys: issuer.Keys},
+					Query:    makeEvidenceQuery(db), Ledger: ledger, RuntimeEpoch: epoch, RequireLedger: true,
+				})
+				go func() { _ = evidenceGRPC.Serve(listener) }()
+				defer evidenceGRPC.Stop()
+				defer func() { _ = evidenceListener.Close() }()
+			}
 
 			var executor episodes.Executor = episodes.NewFakeExecutor()
 			var workerConn interface{ Close() error }
@@ -115,11 +144,7 @@ func newRunLiveCommand() *cobra.Command {
 				workerConn = conn
 				features := []string(nil)
 				if evidenceSocket != "" {
-					key, decodeErr := hex.DecodeString(evidenceKey)
-					if decodeErr != nil || len(key) < 32 {
-						return fmt.Errorf("--evidence-key must be at least 32 bytes of hex")
-					}
-					issuer := &evidence.Issuer{Issuer: "agentic-stream", Audience: "evidence-tools", KeyID: "runtime", Keys: map[string][]byte{"runtime": key}}
+					issuer := &evidence.Issuer{Issuer: "agentic-stream", Audience: "evidence-tools", KeyID: "runtime", Keys: map[string][]byte{"runtime": evidenceSecret}}
 					factory := &episodes.AttemptCapabilityIssuer{
 						Issuer: issuer, RuntimeEpoch: epoch, Tools: []string{"evidence.get"},
 						From: time.Now().UTC().Add(-24 * time.Hour), Until: time.Now().UTC().Add(24 * time.Hour), MaxRows: 1000, MaxBytes: 1 << 20,
@@ -129,9 +154,6 @@ func newRunLiveCommand() *cobra.Command {
 				} else {
 					executor = episodes.NewWorkerExecutor(runtimev1.NewEpisodeWorkerClient(conn), workerName, epoch, features)
 				}
-			}
-			if evidenceSocket != "" && workerSocket == "" {
-				return fmt.Errorf("--evidence-socket requires --worker-socket")
 			}
 			if evidenceSocket != "" && evidenceKey == "" {
 				return fmt.Errorf("--evidence-key is required with --evidence-socket")
@@ -176,6 +198,37 @@ func newRunLiveCommand() *cobra.Command {
 	cmd.Flags().StringVar(&evidenceSocket, "evidence-socket", "", "Runtime EvidenceTools Unix socket for worker episodes")
 	cmd.Flags().StringVar(&evidenceKey, "evidence-key", "", "Hex HMAC key shared with the runtime EvidenceTools verifier")
 	return cmd
+}
+
+func makeEvidenceQuery(db *storage.DB) evidence.Query {
+	return func(ctx context.Context, call evidence.Call) (evidence.QueryResult, error) {
+		rows, err := db.QueryContext(ctx, `SELECT event_id, event_type, event_time, payload_json FROM event_log WHERE tenant_id = ? AND entity_id = ? AND event_time >= ? AND event_time <= ? ORDER BY event_time, position LIMIT ?`, call.TenantID, call.EntityID, call.From.UTC().Format(time.RFC3339Nano), call.Until.UTC().Format(time.RFC3339Nano), call.MaxRows)
+		if err != nil {
+			return evidence.QueryResult{}, fmt.Errorf("query evidence events: %w", err)
+		}
+		defer func() { _ = rows.Close() }()
+		resultRows := make([]map[string]any, 0)
+		for rows.Next() {
+			var eventID, eventType, eventTime string
+			var payload []byte
+			if err := rows.Scan(&eventID, &eventType, &eventTime, &payload); err != nil {
+				return evidence.QueryResult{}, fmt.Errorf("scan evidence event: %w", err)
+			}
+			var data map[string]any
+			if err := json.Unmarshal(payload, &data); err != nil {
+				return evidence.QueryResult{}, fmt.Errorf("decode evidence payload: %w", err)
+			}
+			resultRows = append(resultRows, map[string]any{"event_id": eventID, "event_type": eventType, "event_time": eventTime, "data": data})
+		}
+		if err := rows.Err(); err != nil {
+			return evidence.QueryResult{}, fmt.Errorf("iterate evidence events: %w", err)
+		}
+		result, err := json.Marshal(map[string]any{"rows": resultRows})
+		if err != nil {
+			return evidence.QueryResult{}, fmt.Errorf("encode evidence result: %w", err)
+		}
+		return evidence.QueryResult{JSON: result, RowCount: uint64(len(resultRows))}, nil //nolint:gosec // Result rows are bounded by the authenticated capability.
+	}
 }
 
 func loadWorkerTLS(caPath, certPath, keyPath, serverName string) (*tls.Config, error) {

@@ -234,6 +234,7 @@ message BudgetUpdated {
   uint32 model_calls_used = 3;
   uint32 tool_calls_used = 4;
   uint64 tool_result_bytes_used = 5;
+  uint32 provider_retries_used = 6;
 }
 
 message DecisionProposed {

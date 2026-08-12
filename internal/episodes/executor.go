@@ -389,8 +389,14 @@ func (r *Runner) failAttemptStatus(ctx context.Context, identity Identity, attem
 			return fmt.Errorf("marshal terminal: %w", err)
 		}
 		if attemptStatus == AttemptCancelled {
-			if err := TransitionAttempt(ctx, tx, identity, AttemptCancelling, r.clk.Now(), nil); err != nil {
-				return fmt.Errorf("mark episode attempt cancelling: %w", err) //nolint:misspell // Durable lifecycle value is frozen as cancelling.
+			var current AttemptStatus
+			if err := tx.QueryRowContext(ctx, "SELECT status FROM episode_attempts WHERE attempt_id = ? AND episode_id = ? AND fence = ?", identity.AttemptID, identity.EpisodeID, identity.Fence).Scan(&current); err != nil {
+				return fmt.Errorf("read episode attempt status: %w", err)
+			}
+			if current != AttemptCancelling {
+				if err := TransitionAttempt(ctx, tx, identity, AttemptCancelling, r.clk.Now(), nil); err != nil {
+					return fmt.Errorf("mark episode attempt cancelling: %w", err) //nolint:misspell // Durable lifecycle value is frozen as cancelling.
+				}
 			}
 		}
 		if err := TransitionAttempt(ctx, tx, identity, attemptStatus, r.clk.Now(), terminalJSON); err != nil {
@@ -445,6 +451,10 @@ func executionFailureReason(err error) string {
 	var budgetErr *budgetExceededError
 	if errors.As(err, &budgetErr) {
 		return "budget_exhausted"
+	}
+	var telemetryErr budgetTelemetryMissingError
+	if errors.As(err, &telemetryErr) {
+		return "budget_telemetry_missing"
 	}
 	switch executionFailureStatus(err) {
 	case AttemptCancelled:

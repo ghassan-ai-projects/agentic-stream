@@ -1867,6 +1867,7 @@ type BudgetUpdated struct {
 	ModelCallsUsed      uint32                 `protobuf:"varint,3,opt,name=model_calls_used,json=modelCallsUsed,proto3" json:"model_calls_used,omitempty"`
 	ToolCallsUsed       uint32                 `protobuf:"varint,4,opt,name=tool_calls_used,json=toolCallsUsed,proto3" json:"tool_calls_used,omitempty"`
 	ToolResultBytesUsed uint64                 `protobuf:"varint,5,opt,name=tool_result_bytes_used,json=toolResultBytesUsed,proto3" json:"tool_result_bytes_used,omitempty"`
+	ProviderRetriesUsed uint32                 `protobuf:"varint,6,opt,name=provider_retries_used,json=providerRetriesUsed,proto3" json:"provider_retries_used,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -1932,6 +1933,13 @@ func (x *BudgetUpdated) GetToolCallsUsed() uint32 {
 func (x *BudgetUpdated) GetToolResultBytesUsed() uint64 {
 	if x != nil {
 		return x.ToolResultBytesUsed
+	}
+	return 0
+}
+
+func (x *BudgetUpdated) GetProviderRetriesUsed() uint32 {
+	if x != nil {
+		return x.ProviderRetriesUsed
 	}
 	return 0
 }
@@ -2850,13 +2858,14 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"\routput_tokens\x18\x02 \x01(\x04R\foutputTokens\x12.\n" +
 	"\x13cached_input_tokens\x18\x03 \x01(\x04R\x11cachedInputTokens\x12)\n" +
 	"\x10reasoning_tokens\x18\x04 \x01(\x04R\x0freasoningTokens\x12'\n" +
-	"\x0fcost_microunits\x18\x05 \x01(\x04R\x0ecostMicrounits\"\xa9\x02\n" +
+	"\x0fcost_microunits\x18\x05 \x01(\x04R\x0ecostMicrounits\"\xdd\x02\n" +
 	"\rBudgetUpdated\x12E\n" +
 	"\tremaining\x18\x01 \x01(\v2'.agenticstream.runtime.v1.EpisodeBudgetR\tremaining\x12J\n" +
 	"\x10cumulative_usage\x18\x02 \x01(\v2\x1f.agenticstream.runtime.v1.UsageR\x0fcumulativeUsage\x12(\n" +
 	"\x10model_calls_used\x18\x03 \x01(\rR\x0emodelCallsUsed\x12&\n" +
 	"\x0ftool_calls_used\x18\x04 \x01(\rR\rtoolCallsUsed\x123\n" +
-	"\x16tool_result_bytes_used\x18\x05 \x01(\x04R\x13toolResultBytesUsed\"\xb4\x01\n" +
+	"\x16tool_result_bytes_used\x18\x05 \x01(\x04R\x13toolResultBytesUsed\x122\n" +
+	"\x15provider_retries_used\x18\x06 \x01(\rR\x13providerRetriesUsed\"\xb4\x01\n" +
 	"\x10DecisionProposed\x12#\n" +
 	"\rdecision_json\x18\x01 \x01(\fR\fdecisionJson\x12'\n" +
 	"\x0fdecision_sha256\x18\x02 \x01(\fR\x0edecisionSha256\x12\x1d\n" +

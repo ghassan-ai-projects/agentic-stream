@@ -60,6 +60,36 @@ func TestWorkerExecutorStopsWhenBudgetUpdateExceedsCeiling(t *testing.T) {
 	}
 }
 
+func TestWorkerExecutorEnforcesModelUsageCeiling(t *testing.T) {
+	client := testWorkerClient(t, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
+		return emit(&runtimev1.EpisodeEvent{
+			EpisodeId: req.GetEpisodeId(), Sequence: 2, AttemptId: req.GetAttemptId(), Fence: req.GetFence(), OccurredAt: timestamppb.New(time.Unix(10, 0)),
+			Payload: &runtimev1.EpisodeEvent_ModelCompleted{ModelCompleted: &runtimev1.ModelCompleted{Usage: &runtimev1.Usage{InputTokens: 2, OutputTokens: 1}}},
+		})
+	})
+	req := validWorkerRequest()
+	req.RequestJSON = []byte(`{"kind":"diagnose","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","decision_schema":{"type":"object"}},"budget":{"input_tokens":1}}`)
+	_, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+	if err == nil || !strings.Contains(err.Error(), "budget exceeded: input_tokens") {
+		t.Fatalf("expected input token budget rejection, got %v", err)
+	}
+}
+
+func TestWorkerExecutorRequiresBudgetTelemetry(t *testing.T) {
+	client := testWorkerClient(t, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
+		return emit(&runtimev1.EpisodeEvent{
+			EpisodeId: req.GetEpisodeId(), Sequence: 2, AttemptId: req.GetAttemptId(), Fence: req.GetFence(), OccurredAt: timestamppb.New(time.Unix(10, 0)),
+			Payload: &runtimev1.EpisodeEvent_Terminal{Terminal: &runtimev1.Terminal{Status: runtimev1.TerminalStatus_TERMINAL_STATUS_DECLINED}},
+		})
+	})
+	req := validWorkerRequest()
+	req.RequestJSON = []byte(`{"kind":"diagnose","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","decision_schema":{"type":"object"}},"budget":{"provider_retries":1}}`)
+	_, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+	if err == nil || !strings.Contains(err.Error(), "budget telemetry is missing") {
+		t.Fatalf("expected missing budget telemetry rejection, got %v", err)
+	}
+}
+
 func TestWorkerExecutorRequiresTerminal(t *testing.T) {
 	client := testWorkerClient(t, func(context.Context, *runtimev1.EpisodeRequest, func(*runtimev1.EpisodeEvent) error) error {
 		return nil

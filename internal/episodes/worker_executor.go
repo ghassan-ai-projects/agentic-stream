@@ -34,6 +34,10 @@ type budgetExceededError struct{ metric string }
 
 func (e *budgetExceededError) Error() string { return "episode budget exceeded: " + e.metric }
 
+type budgetTelemetryMissingError struct{}
+
+func (budgetTelemetryMissingError) Error() string { return "episode budget telemetry is missing" }
+
 // CapabilityFactory issues an ephemeral token from the trusted attempt
 // request. Implementations must never persist or log the returned bytes.
 type CapabilityFactory interface {
@@ -138,6 +142,8 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 	nextSequence := uint64(1)
 	var receivedBytes uint64
 	var receivedEvents uint64
+	var sawBudget bool
+	var trustedUsage budgetUsage
 	for {
 		event, recvErr := stream.Recv()
 		if errors.Is(recvErr, io.EOF) {
@@ -177,7 +183,11 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 			}
 			sawStarted = true
 		}
+		if err := trustedUsage.observe(wireRequest.GetBudget(), event); err != nil {
+			return nil, err
+		}
 		if budget := event.GetBudget(); budget != nil {
+			sawBudget = true
 			if err := validateBudgetUpdate(wireRequest.GetBudget(), budget); err != nil {
 				return nil, err
 			}
@@ -206,6 +216,9 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 	if !sawStarted || terminal == nil {
 		return nil, fmt.Errorf("worker stream ended without terminal")
 	}
+	if hasNumericBudget(wireRequest.GetBudget()) && !sawBudget {
+		return nil, budgetTelemetryMissingError{}
+	}
 
 	outcome := &Outcome{AttemptID: req.AttemptID, Fence: req.Fence, Reasons: []string{terminal.GetReasonCode()}}
 	switch terminal.GetStatus() {
@@ -228,6 +241,58 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 		return nil, fmt.Errorf("worker returned unspecified terminal status")
 	}
 	return outcome, nil
+}
+
+type budgetUsage struct {
+	modelCalls, toolCalls                                      uint32
+	toolResultBytes, inputTokens, outputTokens, costMicrounits uint64
+}
+
+func (u *budgetUsage) observe(limit *runtimev1.EpisodeBudget, event *runtimev1.EpisodeEvent) error {
+	if limit == nil || event == nil {
+		return nil
+	}
+	if event.GetModelStarted() != nil {
+		u.modelCalls++
+		if limit.GetMaxModelCalls() > 0 && u.modelCalls > limit.GetMaxModelCalls() {
+			return &budgetExceededError{"model_calls"}
+		}
+	}
+	if completed := event.GetModelCompleted(); completed != nil && completed.GetUsage() != nil {
+		usage := completed.GetUsage()
+		u.inputTokens += usage.GetInputTokens()
+		u.outputTokens += usage.GetOutputTokens()
+		u.costMicrounits += usage.GetCostMicrounits()
+		if limit.GetMaxInputTokens() > 0 && u.inputTokens > limit.GetMaxInputTokens() {
+			return &budgetExceededError{"input_tokens"}
+		}
+		if limit.GetMaxOutputTokens() > 0 && u.outputTokens > limit.GetMaxOutputTokens() {
+			return &budgetExceededError{"output_tokens"}
+		}
+		if limit.GetMaxCostMicrounits() > 0 && u.costMicrounits > limit.GetMaxCostMicrounits() {
+			return &budgetExceededError{"cost_microunits"}
+		}
+	}
+	if tool := event.GetTool(); tool != nil && tool.GetExecutionStarted() {
+		u.toolCalls++
+		if limit.GetMaxToolCalls() > 0 && u.toolCalls > limit.GetMaxToolCalls() {
+			return &budgetExceededError{"tool_calls"}
+		}
+	}
+	if progress := event.GetToolProgress(); progress != nil {
+		u.toolResultBytes += progress.GetBytesRead()
+		if limit.GetMaxToolResultBytes() > 0 && u.toolResultBytes > limit.GetMaxToolResultBytes() {
+			return &budgetExceededError{"tool_result_bytes"}
+		}
+		if limit.GetMaxTotalToolResultBytes() > 0 && u.toolResultBytes > limit.GetMaxTotalToolResultBytes() {
+			return &budgetExceededError{"total_tool_result_bytes"}
+		}
+	}
+	return nil
+}
+
+func hasNumericBudget(budget *runtimev1.EpisodeBudget) bool {
+	return budget != nil && (budget.GetMaxModelCalls() > 0 || budget.GetMaxInputTokens() > 0 || budget.GetMaxOutputTokens() > 0 || budget.GetMaxToolCalls() > 0 || budget.GetMaxToolResultBytes() > 0 || budget.GetMaxTotalToolResultBytes() > 0 || budget.GetMaxProviderRetries() > 0 || budget.GetMaxCostMicrounits() > 0)
 }
 
 func boundedExecutionContext(ctx context.Context, requestJSON []byte) (context.Context, context.CancelFunc, error) {
@@ -265,6 +330,9 @@ func validateBudgetUpdate(limit *runtimev1.EpisodeBudget, update *runtimev1.Budg
 	}
 	if limit.GetMaxToolResultBytes() > 0 && update.GetToolResultBytesUsed() > limit.GetMaxToolResultBytes() {
 		return &budgetExceededError{"tool_result_bytes"}
+	}
+	if limit.GetMaxProviderRetries() > 0 && update.GetProviderRetriesUsed() > limit.GetMaxProviderRetries() {
+		return &budgetExceededError{"provider_retries"}
 	}
 	if usage == nil {
 		return nil

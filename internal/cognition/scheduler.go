@@ -295,6 +295,19 @@ func (s *Scheduler) supersedePending(ctx context.Context, tx *sql.Tx, situationI
 	); err != nil {
 		return fmt.Errorf("supersede episodes: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE episode_attempts SET status = 'cancelling'
+		WHERE episode_id IN (
+			SELECT episode_id FROM episodes
+			WHERE scheduler_item_id IN (
+				SELECT scheduler_item_id FROM scheduler_items
+				WHERE situation_id = ? AND status = 'coalesced'
+			) AND lifecycle_status = 'superseded'
+		) AND status IN ('dispatched', 'running')`,
+		situationID,
+	); err != nil {
+		return fmt.Errorf("cancel superseded attempts: %w", err)
+	}
 	return nil
 }
 

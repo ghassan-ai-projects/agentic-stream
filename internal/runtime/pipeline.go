@@ -85,6 +85,7 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create stream engine: %w", err)
 	}
+	stream.WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch)
 	return &Pipeline{
 		db:         cfg.DB,
 		log:        log,
@@ -205,6 +206,9 @@ func (p *Pipeline) assemblePending(ctx context.Context) (int, error) {
 			return count, fmt.Errorf("find pending scheduler item: %w", err)
 		}
 		if err := p.db.WithTx(ctx, func(tx *sql.Tx) error {
+			if err := p.assertOwnerTx(ctx, tx); err != nil {
+				return err
+			}
 			req, err := p.assembler.Assemble(ctx, tx, itemID, p.tenantID)
 			if err != nil {
 				return err
@@ -215,6 +219,16 @@ func (p *Pipeline) assemblePending(ctx context.Context) (int, error) {
 		}
 		count++
 	}
+}
+
+func (p *Pipeline) assertOwnerTx(ctx context.Context, tx *sql.Tx) error {
+	if p.owner == nil || p.ownerEpoch == "" {
+		return nil
+	}
+	if err := p.owner.Assert(ctx, tx, p.ownerEpoch); err != nil {
+		return fmt.Errorf("runtime ownership lost: %w", err)
+	}
+	return nil
 }
 
 func (p *Pipeline) evaluatePendingIntents(ctx context.Context, report *PipelineReport) error {

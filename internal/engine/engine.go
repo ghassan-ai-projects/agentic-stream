@@ -37,10 +37,20 @@ type Engine struct {
 	spec         *spec.CompiledSpec
 	tenantID     string
 	deploymentID string
+	owner        *storage.RuntimeOwner
+	ownerEpoch   string
 
 	opRuntime *operators.OperatorRuntime
 	sitEngine *situations.Engine
 	cogEngine *cognition.Engine
+}
+
+// WithRuntimeOwner fences stream state transactions to the active runtime
+// lease. It is used by live composition; deterministic replay leaves it unset.
+func (e *Engine) WithRuntimeOwner(owner *storage.RuntimeOwner, epoch string) *Engine {
+	e.owner = owner
+	e.ownerEpoch = epoch
+	return e
 }
 
 // NewEngine creates an engine for the given spec and tenant.
@@ -396,6 +406,9 @@ func (e *Engine) runDueTimers(ctx context.Context, partitionID int) (int, error)
 
 	fired := 0
 	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := e.assertOwner(ctx, tx); err != nil {
+			return err
+		}
 		rows, err := tx.QueryContext(ctx, `
 			SELECT timer_id, operator_id, state_key, due_at, payload_json FROM timers
 			WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?
@@ -651,6 +664,9 @@ func (e *Engine) watermarkForRecord(eventTime time.Time, prevWatermark string) (
 
 func (e *Engine) applyRecord(ctx context.Context, partitionID int, rec eventlog.Record, watermark time.Time) error {
 	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := e.assertOwner(ctx, tx); err != nil {
+			return err
+		}
 		// Idempotency: skip if already applied.
 		var applied bool
 		if err := tx.QueryRowContext(ctx,
@@ -741,6 +757,16 @@ func (e *Engine) applyRecord(ctx context.Context, partitionID int, rec eventlog.
 			return fmt.Errorf("apply record transaction: %w; restore after rollback: %v", err, restoreErr)
 		}
 		return fmt.Errorf("apply record transaction: %w", err)
+	}
+	return nil
+}
+
+func (e *Engine) assertOwner(ctx context.Context, tx *sql.Tx) error {
+	if e.owner == nil || e.ownerEpoch == "" {
+		return nil
+	}
+	if err := e.owner.Assert(ctx, tx, e.ownerEpoch); err != nil {
+		return fmt.Errorf("stream runtime ownership lost: %w", err)
 	}
 	return nil
 }
