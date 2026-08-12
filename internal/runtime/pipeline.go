@@ -91,7 +91,7 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 	if cfg.Effector == nil {
 		cfg.Effector = actions.NewSimulatedEffector()
 	}
-	watch := actions.NewWatchEffectorWithClock(cfg.DB, cfg.Clock)
+	watch := actions.NewWatchEffectorWithClock(cfg.DB, cfg.Clock).WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{})
 	cfg.Effector = actions.NewCompositeEffector(watch, cfg.Effector)
 	log := eventlog.NewEventLogWithClock(cfg.DB, cfg.Clock)
 	stream, err := engine.NewEngine(ctx, cfg.DB, log, cfg.Clock, cfg.Spec, cfg.TenantID)
@@ -240,14 +240,17 @@ func (p *Pipeline) RunJSONL(ctx context.Context, path string) (PipelineReport, e
 	if err := p.assertOwner(ctx); err != nil {
 		return PipelineReport{}, err
 	}
+	before, err := p.currentEventPosition(ctx)
+	if err != nil {
+		return PipelineReport{}, err
+	}
 	var report PipelineReport
 	replay := ingress.NewJSONLReplay(p.db, p.log, p.tenantID, path, "live-jsonl:"+path)
-	var err error
 	report.EventsIngested, err = replay.Run(ctx)
 	if err != nil {
 		return report, fmt.Errorf("ingest live JSONL: %w", err)
 	}
-	return p.runAfterIngest(ctx, report)
+	return p.runAfterIngest(ctx, report, before)
 }
 
 // RunSimulatorJSONL ingests the strict streams-simulator adapter format and
@@ -259,15 +262,19 @@ func (p *Pipeline) RunSimulatorJSONL(ctx context.Context, path string) (Pipeline
 	if err := p.assertOwner(ctx); err != nil {
 		return PipelineReport{}, err
 	}
+	before, err := p.currentEventPosition(ctx)
+	if err != nil {
+		return PipelineReport{}, err
+	}
 	replay := ingress.NewSimulatorJSONLReplay(p.db, p.log, ingress.SimulatorOptions{TenantID: p.tenantID}, path, "live-simulator:"+path)
 	count, err := replay.Run(ctx)
 	if err != nil {
 		return PipelineReport{}, fmt.Errorf("ingest simulator JSONL: %w", err)
 	}
-	return p.runAfterIngest(ctx, PipelineReport{EventsIngested: count})
+	return p.runAfterIngest(ctx, PipelineReport{EventsIngested: count}, before)
 }
 
-func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport) (PipelineReport, error) {
+func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport, before eventlog.LogPosition) (PipelineReport, error) {
 	if err := p.watchFailure(); err != nil {
 		return report, fmt.Errorf("watch maintenance failed: %w", err)
 	}
@@ -279,6 +286,9 @@ func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport) (P
 		return report, fmt.Errorf("run live stream engine: %w", err)
 	}
 	report.EventsProcessed = processed
+	if err := p.fireRecentWatches(ctx, before); err != nil {
+		return report, fmt.Errorf("fire watches: %w", err)
+	}
 	if err := p.assertOwner(ctx); err != nil {
 		return report, err
 	}
@@ -310,6 +320,26 @@ func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport) (P
 		report.CommandsDispatched++
 	}
 	return report, nil
+}
+
+func (p *Pipeline) currentEventPosition(ctx context.Context) (eventlog.LogPosition, error) {
+	var position int64
+	if err := p.db.QueryRowContext(ctx, "SELECT COALESCE(MAX(position), 0) FROM event_log WHERE tenant_id = ?", p.tenantID).Scan(&position); err != nil {
+		return 0, fmt.Errorf("read event position: %w", err)
+	}
+	return eventlog.LogPosition(position), nil
+}
+
+func (p *Pipeline) fireRecentWatches(ctx context.Context, before eventlog.LogPosition) error {
+	if err := p.log.Read(ctx, eventlog.ReadRequest{TenantID: p.tenantID, PartitionID: -1, AfterPosition: before, Limit: 100000}, func(record eventlog.Record) error {
+		if _, err := p.watch.FireEvent(ctx, record.EventID, record.EntityID, record.Envelope.Data); err != nil {
+			return fmt.Errorf("event %s: %w", record.EventID, err)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("read recent events: %w", err)
+	}
+	return nil
 }
 
 func (p *Pipeline) assertOwner(ctx context.Context) error {

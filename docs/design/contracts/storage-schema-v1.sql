@@ -127,6 +127,7 @@ CREATE TABLE watch_conditions (
     target               TEXT NOT NULL,
     expires_at           TEXT NOT NULL,
     remaining_fires      INTEGER NOT NULL CHECK (remaining_fires BETWEEN 0 AND 100),
+    max_fires            INTEGER NOT NULL CHECK (max_fires BETWEEN 1 AND 100),
     status               TEXT NOT NULL CHECK (status IN ('active', 'expired', 'disabled')),
     created_at           TEXT NOT NULL,
     updated_at           TEXT NOT NULL
