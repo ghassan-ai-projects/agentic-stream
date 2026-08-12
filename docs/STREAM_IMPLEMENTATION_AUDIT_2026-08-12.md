@@ -6,7 +6,7 @@ Auditor: independent review against the joint build plan
 (`STREAM_RESPONSIBILITIES.md §3.1–3.20`, `PROTOCOL.md`, `LIFECYCLES.md`, `CONTRACTS.md`).
 Method: direct source inspection of `internal/`, `migrations/`, `cmd/`, `proto/`; cross-repo
 context from the tamoz audit.
-Repo state: `main` @ `2bc82e6`. 28 internal packages, 20 migrations.
+Base implementation state: `main` @ `9ecb655`. 28 internal packages, 20 migrations.
 
 ---
 
@@ -94,7 +94,7 @@ Legend: ✅ implemented + tested · 🟡 partial / verify · ⬜ not present.
    nested `trace-record-v0.1` record shape and rejects the former flattened representation. The
    external `streamsim` binary is not installed here, so `streamsim adapter verify` remains an
    environment check for the machine that owns that tool.
-5. **Gate D (soak/release) is explicitly postponed.** Runbooks exist; the 24-hour soak and release
+2. **Gate D (soak/release) is explicitly postponed.** Runbooks exist; the 24-hour soak and release
    evidence are deferred by commit. That is a legitimate sequencing choice, but Gate D is not met,
    so this is not yet a "production-ready" tag.
 
@@ -107,7 +107,7 @@ Legend: ✅ implemented + tested · 🟡 partial / verify · ⬜ not present.
 | Forward supervised episode (Channel A) | ✅ (native + worker) | ✅ (worker) |
 | Governed action plane | ✅ full | n/a (stream owns it) |
 | Reverse evidence channel | ✅ host present | ⬜ client not wired |
-| Learning loop (outcome → Experience) | 🟡 emit side to confirm | ⬜ subscriber absent |
+| Learning loop (outcome → Experience) | ✅ emit side (`outcome.reconciled`) | ⬜ subscriber absent |
 | Approval relay to a human | ✅ authority side | ⬜ delivery side absent |
 
 **The stream is ahead of the agent.** The end-to-end loop is currently gated less by the stream
@@ -132,3 +132,22 @@ Everything else is done to a genuinely high standard.
 *Files cited are at the current `main` revision; line numbers are approximate. Items marked 🟡 warrant a direct
 read before relying on them; two counts in an earlier pass were corrupted by a shell-glob error and
 were re-verified with quoted patterns for this document.*
+
+---
+
+## 7. Re-verification (2026-08-12, `main` @ `9ecb655`)
+
+Second independent pass after commit `close stream implementation audit gaps`. All three code-level
+open items from the first pass are **confirmed closed** against source:
+
+| First-pass open item | Now | Evidence |
+|---|---|---|
+| Capability-host dependency-direction test + injection corpus | ✅ | `internal/policy/capabilityhost_test.go` — forbidden-import direction check (`:51-59`) + `TestCapabilityHostRejectsInjectionCorpus` rejecting `shell/file_write/effector/effect_journal/mcp/http` (`:65-88`) |
+| Channel B outcome/approval event emission | ✅ | `internal/notify/lifecycle.go:15-20` types; emitted in-tx: `outcome.recorded`/`outcome.reconciled` (`actions/dispatcher.go:510,581`), `approval.requested/withdrawn/resolved` (`policy.go:542-564`) |
+| Source-health wiring depth | ✅ | `missing_heartbeat`→`CompletenessUncertain` (`operators/operators.go:342,530`); `policy.go:242` denies R2–R4 on `provisional`/`uncertain` |
+
+**Verdict: the implementation is complete against the plan.** The only two residuals are **not code
+gaps** — (a) running the external `streamsim adapter verify` (a cross-repo tool not in this checkout)
+and (b) Gate D soak/release evidence (deliberately postponed). Agentic Stream is done as a runtime;
+the end-to-end loop now waits only on Tamoz's reverse half (evidence pull, outcome subscriber,
+approval relay), for which the stream-side feeds are all present.
