@@ -45,6 +45,11 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
+      - name: Set up protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "35.1"
+
       - name: Install dev tools
         run: |
           go install golang.org/x/tools/cmd/deadcode@${GO_TOOLS_VERSION}

@@ -2,11 +2,14 @@ syntax = "proto3";
 
 package agenticstream.runtime.v1;
 
+option go_package = "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1;runtimev1";
+
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
-// The Go module mapping is supplied by the build until the public repository
-// namespace is selected.
+// Worker-originated events are proposals and telemetry. The runtime remains
+// authoritative for budget consumption, Decision validation, acceptance or
+// rejection, and durable terminal state.
 
 service EpisodeWorker {
   // Verifies protocol compatibility and supported optional features.
@@ -73,6 +76,7 @@ message EpisodeRequest {
   google.protobuf.Timestamp deadline = 31;
   string supersession_key = 32;
   string traceparent = 33;
+  string tracestate = 34;
 
   // The endpoint is normally a Unix domain socket. The token is opaque,
   // short-lived, and must never be logged or persisted by the worker.
@@ -149,6 +153,7 @@ message EpisodeEvent {
     ModelDelta model_delta = 12;
     ModelCompleted model_completed = 13;
     ToolLifecycle tool = 14;
+    ToolProgress tool_progress = 20;
     BudgetUpdated budget = 15;
     DecisionProposed decision = 16;
     Diagnostic diagnostic = 17;
@@ -199,6 +204,12 @@ message ToolLifecycle {
   bool is_error = 6;
   bool execution_started = 7;
   string error_code = 8;
+}
+
+message ToolProgress {
+  string call_id = 1;
+  uint64 bytes_read = 2;
+  uint64 rows_read = 3;
 }
 
 enum ToolState {
@@ -260,6 +271,7 @@ enum TerminalStatus {
   TERMINAL_STATUS_CANCELLED = 3;
   TERMINAL_STATUS_FAILED = 4;
   TERMINAL_STATUS_TIMED_OUT = 5;
+  TERMINAL_STATUS_BUDGET_EXHAUSTED = 6;
 }
 
 message ArtifactManifest {
@@ -281,6 +293,8 @@ message EvidenceToolCall {
   google.protobuf.Timestamp deadline = 7;
   string attempt_id = 8;
   uint64 fence = 9;
+  string traceparent = 10;
+  string tracestate = 11;
 }
 
 message EvidenceToolResult {
@@ -294,6 +308,8 @@ message EvidenceToolResult {
   bool truncated = 8;
   string attempt_id = 9;
   uint64 fence = 10;
+  string traceparent = 11;
+  string tracestate = 12;
 }
 
 message ArtifactRef {

@@ -20,6 +20,7 @@ func TestRuntimeProtocolFreezesWorkerBoundary(t *testing.T) {
 	}
 
 	required := []string{
+		`option go_package = "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1;runtimev1";`,
 		"string contract_version = 2;",
 		"string worker_id = 3;",
 		"bool non_interactive = 4;",
@@ -37,6 +38,8 @@ func TestRuntimeProtocolFreezesWorkerBoundary(t *testing.T) {
 		"TERMINAL_STATUS_CANCELLED = 3;",
 		"TERMINAL_STATUS_FAILED = 4;",
 		"TERMINAL_STATUS_TIMED_OUT = 5;",
+		"TERMINAL_STATUS_BUDGET_EXHAUSTED = 6;",
+		"string tracestate = 34;",
 		"ArtifactManifest artifact_manifest = 5;",
 	}
 	for _, want := range required {

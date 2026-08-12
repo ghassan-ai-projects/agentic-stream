@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Executor runs a bounded episode against an Episode Request and returns a
@@ -128,11 +131,17 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 
 	outcome, err := r.executor.Execute(ctx, &req)
 	if err != nil {
-		return true, r.failAttempt(ctx, identity, fmt.Errorf("execute: %w", err).Error())
+		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		return true, r.failAttemptStatus(persistCtx, identity, executionFailureStatus(err), executionFailureReason(err))
 	}
 	if outcome == nil {
-		return true, r.failAttempt(ctx, identity, "executor_returned_nil_outcome")
+		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		return true, r.failAttemptStatus(persistCtx, identity, AttemptFailed, "executor_returned_nil_outcome")
 	}
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
 	if outcome.AttemptID != identity.AttemptID || outcome.Fence != identity.Fence {
 		reason := RejectWrongAttempt
 		if outcome.Fence < identity.Fence {
@@ -142,7 +151,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		return true, r.failAttemptWithRejection(ctx, identity, incoming, reason, "worker_identity_mismatch")
 	}
 
-	return true, r.withTx(ctx, func(tx *sql.Tx) error {
+	return true, r.withTx(persistCtx, func(tx *sql.Tx) error {
 		now := r.clk.Now().UTC().Format(time.RFC3339Nano)
 		validationInput, err := decisionInput(&req, identity, r.clk.Now())
 		if err != nil {
@@ -220,7 +229,11 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 
 		attemptStatus := AttemptStatus(outcome.Status)
 		if outcome.DecisionJSON != nil {
-			attemptStatus = AttemptProduced
+			if validationErr == nil {
+				attemptStatus = AttemptProduced
+			} else {
+				attemptStatus = AttemptFailed
+			}
 		} else if attemptStatus == "" {
 			attemptStatus = AttemptDeclined
 		}
@@ -341,12 +354,21 @@ func decisionIDFromJSON(raw []byte) string {
 }
 
 func (r *Runner) failAttempt(ctx context.Context, identity Identity, reason string) error {
+	return r.failAttemptStatus(ctx, identity, AttemptFailed, reason)
+}
+
+func (r *Runner) failAttemptStatus(ctx context.Context, identity Identity, attemptStatus AttemptStatus, reason string) error {
 	return r.withTx(ctx, func(tx *sql.Tx) error {
-		terminalJSON, err := json.Marshal(map[string]any{"status": AttemptFailed, "reason": reason})
+		terminalJSON, err := json.Marshal(map[string]any{"status": attemptStatus, "reason": reason})
 		if err != nil {
 			return fmt.Errorf("marshal terminal: %w", err)
 		}
-		if err := TransitionAttempt(ctx, tx, identity, AttemptFailed, r.clk.Now(), terminalJSON); err != nil {
+		if attemptStatus == AttemptCancelled {
+			if err := TransitionAttempt(ctx, tx, identity, AttemptCancelling, r.clk.Now(), nil); err != nil {
+				return fmt.Errorf("mark episode attempt cancelling: %w", err) //nolint:misspell // Durable lifecycle value is frozen as cancelling.
+			}
+		}
+		if err := TransitionAttempt(ctx, tx, identity, attemptStatus, r.clk.Now(), terminalJSON); err != nil {
 			return fmt.Errorf("finish failed episode attempt: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, `
@@ -358,6 +380,27 @@ func (r *Runner) failAttempt(ctx context.Context, identity Identity, reason stri
 		}
 		return nil
 	})
+}
+
+func executionFailureStatus(err error) AttemptStatus {
+	if errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled {
+		return AttemptCancelled
+	}
+	if errors.Is(err, context.DeadlineExceeded) || status.Code(err) == codes.DeadlineExceeded {
+		return AttemptTimedOut
+	}
+	return AttemptFailed
+}
+
+func executionFailureReason(err error) string {
+	switch executionFailureStatus(err) {
+	case AttemptCancelled:
+		return "worker_cancelled" //nolint:misspell // Durable protocol reason is frozen as cancelled.
+	case AttemptTimedOut:
+		return "worker_deadline_exceeded"
+	default:
+		return "worker_execution_failed"
+	}
 }
 
 func (r *Runner) failAttemptWithRejection(ctx context.Context, current, incoming Identity, reason RejectionReason, detail string) error {
