@@ -22,10 +22,12 @@ import (
 // aggregate Outcome consumed by Runner. It never accepts a Decision before a
 // matching terminal stream has been observed.
 type WorkerExecutor struct {
-	client            runtimev1.EpisodeWorkerClient
-	name              string
-	runtimeInstance   string
-	requestedFeatures []string
+	client                runtimev1.EpisodeWorkerClient
+	name                  string
+	runtimeInstance       string
+	requestedFeatures     []string
+	EvidenceToolsEndpoint string
+	CapabilityToken       []byte
 }
 
 // NewWorkerExecutor creates an executor for an already-connected worker. The
@@ -51,9 +53,19 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 	if req == nil {
 		return nil, fmt.Errorf("episode request is required")
 	}
+	if e.EvidenceToolsEndpoint != "" {
+		if err := worker.ValidateEvidenceSocketPath(e.EvidenceToolsEndpoint); err != nil {
+			return nil, fmt.Errorf("evidence endpoint: %w", err)
+		}
+	}
 	wireRequest, err := episodeRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("build worker request: %w", err)
+	}
+	wireRequest.EvidenceToolsEndpoint = e.EvidenceToolsEndpoint
+	wireRequest.CapabilityToken = append([]byte(nil), e.CapabilityToken...)
+	if e.EvidenceToolsEndpoint != "" && !containsFeature(e.requestedFeatures, worker.EvidenceToolsFeature) {
+		return nil, fmt.Errorf("evidence tools require negotiated feature %q", worker.EvidenceToolsFeature)
 	}
 	handshake, err := e.client.Handshake(ctx, &runtimev1.HandshakeRequest{
 		ProtocolVersion: worker.ProtocolVersion, ContractVersion: worker.ContractVersion,
@@ -180,6 +192,15 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (*Outcome, e
 	return outcome, nil
 }
 
+func containsFeature(features []string, want string) bool {
+	for _, feature := range features {
+		if feature == want {
+			return true
+		}
+	}
+	return false
+}
+
 func verifyDecisionDigest(raw, digest []byte) error {
 	var document map[string]any
 	if err := json.Unmarshal(raw, &document); err != nil {
@@ -290,7 +311,7 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 		Objective: payload.Executor.Objective, ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion,
 		PromptVersion: req.PromptVersion, Budget: budget, Deadline: deadline, Traceparent: req.Traceparent, Tracestate: req.Tracestate,
 		Kind: kind, Lane: lane, RiskCeiling: risk, AllowedIntentTypes: payload.AllowedIntentTypes,
-		AttemptId: req.AttemptID, Fence: uint64(req.Fence), //nolint:gosec // Fence is database-validated non-negative.
+		AttemptId: req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
 	}, nil
 }
 

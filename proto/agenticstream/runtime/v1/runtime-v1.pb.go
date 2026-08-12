@@ -2293,20 +2293,28 @@ func (x *ArtifactManifest) GetMemoryRecordSha256() [][]byte {
 }
 
 type EvidenceToolCall struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	ProtocolVersion string                 `protobuf:"bytes,1,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"`
-	EpisodeId       string                 `protobuf:"bytes,2,opt,name=episode_id,json=episodeId,proto3" json:"episode_id,omitempty"`
-	CallId          string                 `protobuf:"bytes,3,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
-	ToolName        string                 `protobuf:"bytes,4,opt,name=tool_name,json=toolName,proto3" json:"tool_name,omitempty"`
-	ArgumentsJson   []byte                 `protobuf:"bytes,5,opt,name=arguments_json,json=argumentsJson,proto3" json:"arguments_json,omitempty"`
-	CapabilityToken []byte                 `protobuf:"bytes,6,opt,name=capability_token,json=capabilityToken,proto3" json:"capability_token,omitempty"`
-	Deadline        *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=deadline,proto3" json:"deadline,omitempty"`
-	AttemptId       string                 `protobuf:"bytes,8,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
-	Fence           uint64                 `protobuf:"varint,9,opt,name=fence,proto3" json:"fence,omitempty"`
-	Traceparent     string                 `protobuf:"bytes,10,opt,name=traceparent,proto3" json:"traceparent,omitempty"`
-	Tracestate      string                 `protobuf:"bytes,11,opt,name=tracestate,proto3" json:"tracestate,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	ProtocolVersion  string                 `protobuf:"bytes,1,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"`
+	EpisodeId        string                 `protobuf:"bytes,2,opt,name=episode_id,json=episodeId,proto3" json:"episode_id,omitempty"`
+	CallId           string                 `protobuf:"bytes,3,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
+	ToolName         string                 `protobuf:"bytes,4,opt,name=tool_name,json=toolName,proto3" json:"tool_name,omitempty"`
+	ArgumentsJson    []byte                 `protobuf:"bytes,5,opt,name=arguments_json,json=argumentsJson,proto3" json:"arguments_json,omitempty"`
+	CapabilityToken  []byte                 `protobuf:"bytes,6,opt,name=capability_token,json=capabilityToken,proto3" json:"capability_token,omitempty"`
+	Deadline         *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=deadline,proto3" json:"deadline,omitempty"`
+	AttemptId        string                 `protobuf:"bytes,8,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	Fence            uint64                 `protobuf:"varint,9,opt,name=fence,proto3" json:"fence,omitempty"`
+	Traceparent      string                 `protobuf:"bytes,10,opt,name=traceparent,proto3" json:"traceparent,omitempty"`
+	Tracestate       string                 `protobuf:"bytes,11,opt,name=tracestate,proto3" json:"tracestate,omitempty"`
+	TenantId         string                 `protobuf:"bytes,12,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	SituationId      string                 `protobuf:"bytes,13,opt,name=situation_id,json=situationId,proto3" json:"situation_id,omitempty"`
+	EntityId         string                 `protobuf:"bytes,14,opt,name=entity_id,json=entityId,proto3" json:"entity_id,omitempty"`
+	MaxRows          uint64                 `protobuf:"varint,15,opt,name=max_rows,json=maxRows,proto3" json:"max_rows,omitempty"`
+	MaxBytes         uint64                 `protobuf:"varint,16,opt,name=max_bytes,json=maxBytes,proto3" json:"max_bytes,omitempty"`
+	TimeFrom         *timestamppb.Timestamp `protobuf:"bytes,17,opt,name=time_from,json=timeFrom,proto3" json:"time_from,omitempty"`
+	TimeUntil        *timestamppb.Timestamp `protobuf:"bytes,18,opt,name=time_until,json=timeUntil,proto3" json:"time_until,omitempty"`
+	SituationVersion uint64                 `protobuf:"varint,19,opt,name=situation_version,json=situationVersion,proto3" json:"situation_version,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *EvidenceToolCall) Reset() {
@@ -2416,6 +2424,62 @@ func (x *EvidenceToolCall) GetTracestate() string {
 	return ""
 }
 
+func (x *EvidenceToolCall) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *EvidenceToolCall) GetSituationId() string {
+	if x != nil {
+		return x.SituationId
+	}
+	return ""
+}
+
+func (x *EvidenceToolCall) GetEntityId() string {
+	if x != nil {
+		return x.EntityId
+	}
+	return ""
+}
+
+func (x *EvidenceToolCall) GetMaxRows() uint64 {
+	if x != nil {
+		return x.MaxRows
+	}
+	return 0
+}
+
+func (x *EvidenceToolCall) GetMaxBytes() uint64 {
+	if x != nil {
+		return x.MaxBytes
+	}
+	return 0
+}
+
+func (x *EvidenceToolCall) GetTimeFrom() *timestamppb.Timestamp {
+	if x != nil {
+		return x.TimeFrom
+	}
+	return nil
+}
+
+func (x *EvidenceToolCall) GetTimeUntil() *timestamppb.Timestamp {
+	if x != nil {
+		return x.TimeUntil
+	}
+	return nil
+}
+
+func (x *EvidenceToolCall) GetSituationVersion() uint64 {
+	if x != nil {
+		return x.SituationVersion
+	}
+	return 0
+}
+
 type EvidenceToolResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	EpisodeId     string                 `protobuf:"bytes,1,opt,name=episode_id,json=episodeId,proto3" json:"episode_id,omitempty"`
@@ -2430,6 +2494,8 @@ type EvidenceToolResult struct {
 	Fence         uint64                 `protobuf:"varint,10,opt,name=fence,proto3" json:"fence,omitempty"`
 	Traceparent   string                 `protobuf:"bytes,11,opt,name=traceparent,proto3" json:"traceparent,omitempty"`
 	Tracestate    string                 `protobuf:"bytes,12,opt,name=tracestate,proto3" json:"tracestate,omitempty"`
+	RowCount      uint64                 `protobuf:"varint,13,opt,name=row_count,json=rowCount,proto3" json:"row_count,omitempty"`
+	ResultBytes   uint64                 `protobuf:"varint,14,opt,name=result_bytes,json=resultBytes,proto3" json:"result_bytes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2546,6 +2612,20 @@ func (x *EvidenceToolResult) GetTracestate() string {
 		return x.Tracestate
 	}
 	return ""
+}
+
+func (x *EvidenceToolResult) GetRowCount() uint64 {
+	if x != nil {
+		return x.RowCount
+	}
+	return 0
+}
+
+func (x *EvidenceToolResult) GetResultBytes() uint64 {
+	if x != nil {
+		return x.ResultBytes
+	}
+	return 0
 }
 
 type ArtifactRef struct {
@@ -2808,7 +2888,7 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"\x13tool_catalog_sha256\x18\x03 \x01(\fR\x11toolCatalogSha256\x12!\n" +
 	"\fmodel_policy\x18\x04 \x01(\tR\vmodelPolicy\x12)\n" +
 	"\x10contract_version\x18\x05 \x01(\tR\x0fcontractVersion\x120\n" +
-	"\x14memory_record_sha256\x18\x06 \x03(\fR\x12memoryRecordSha256\"\x93\x03\n" +
+	"\x14memory_record_sha256\x18\x06 \x03(\fR\x12memoryRecordSha256\"\xc9\x05\n" +
 	"\x10EvidenceToolCall\x12)\n" +
 	"\x10protocol_version\x18\x01 \x01(\tR\x0fprotocolVersion\x12\x1d\n" +
 	"\n" +
@@ -2825,7 +2905,16 @@ const file_runtime_v1_proto_rawDesc = "" +
 	" \x01(\tR\vtraceparent\x12\x1e\n" +
 	"\n" +
 	"tracestate\x18\v \x01(\tR\n" +
-	"tracestate\"\xa4\x03\n" +
+	"tracestate\x12\x1b\n" +
+	"\ttenant_id\x18\f \x01(\tR\btenantId\x12!\n" +
+	"\fsituation_id\x18\r \x01(\tR\vsituationId\x12\x1b\n" +
+	"\tentity_id\x18\x0e \x01(\tR\bentityId\x12\x19\n" +
+	"\bmax_rows\x18\x0f \x01(\x04R\amaxRows\x12\x1b\n" +
+	"\tmax_bytes\x18\x10 \x01(\x04R\bmaxBytes\x127\n" +
+	"\ttime_from\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\btimeFrom\x129\n" +
+	"\n" +
+	"time_until\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\ttimeUntil\x12+\n" +
+	"\x11situation_version\x18\x13 \x01(\x04R\x10situationVersion\"\xe4\x03\n" +
 	"\x12EvidenceToolResult\x12\x1d\n" +
 	"\n" +
 	"episode_id\x18\x01 \x01(\tR\tepisodeId\x12\x17\n" +
@@ -2845,7 +2934,9 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"\vtraceparent\x18\v \x01(\tR\vtraceparent\x12\x1e\n" +
 	"\n" +
 	"tracestate\x18\f \x01(\tR\n" +
-	"tracestate\"s\n" +
+	"tracestate\x12\x1b\n" +
+	"\trow_count\x18\r \x01(\x04R\browCount\x12!\n" +
+	"\fresult_bytes\x18\x0e \x01(\x04R\vresultBytes\"s\n" +
 	"\vArtifactRef\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -2974,18 +3065,20 @@ var file_runtime_v1_proto_depIdxs = []int32{
 	19, // 30: agenticstream.runtime.v1.Terminal.usage:type_name -> agenticstream.runtime.v1.Usage
 	25, // 31: agenticstream.runtime.v1.Terminal.artifact_manifest:type_name -> agenticstream.runtime.v1.ArtifactManifest
 	29, // 32: agenticstream.runtime.v1.EvidenceToolCall.deadline:type_name -> google.protobuf.Timestamp
-	28, // 33: agenticstream.runtime.v1.EvidenceToolResult.artifact:type_name -> agenticstream.runtime.v1.ArtifactRef
-	6,  // 34: agenticstream.runtime.v1.EpisodeWorker.Handshake:input_type -> agenticstream.runtime.v1.HandshakeRequest
-	8,  // 35: agenticstream.runtime.v1.EpisodeWorker.Execute:input_type -> agenticstream.runtime.v1.EpisodeRequest
-	26, // 36: agenticstream.runtime.v1.EvidenceTools.Call:input_type -> agenticstream.runtime.v1.EvidenceToolCall
-	7,  // 37: agenticstream.runtime.v1.EpisodeWorker.Handshake:output_type -> agenticstream.runtime.v1.HandshakeResponse
-	12, // 38: agenticstream.runtime.v1.EpisodeWorker.Execute:output_type -> agenticstream.runtime.v1.EpisodeEvent
-	27, // 39: agenticstream.runtime.v1.EvidenceTools.Call:output_type -> agenticstream.runtime.v1.EvidenceToolResult
-	37, // [37:40] is the sub-list for method output_type
-	34, // [34:37] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	29, // 33: agenticstream.runtime.v1.EvidenceToolCall.time_from:type_name -> google.protobuf.Timestamp
+	29, // 34: agenticstream.runtime.v1.EvidenceToolCall.time_until:type_name -> google.protobuf.Timestamp
+	28, // 35: agenticstream.runtime.v1.EvidenceToolResult.artifact:type_name -> agenticstream.runtime.v1.ArtifactRef
+	6,  // 36: agenticstream.runtime.v1.EpisodeWorker.Handshake:input_type -> agenticstream.runtime.v1.HandshakeRequest
+	8,  // 37: agenticstream.runtime.v1.EpisodeWorker.Execute:input_type -> agenticstream.runtime.v1.EpisodeRequest
+	26, // 38: agenticstream.runtime.v1.EvidenceTools.Call:input_type -> agenticstream.runtime.v1.EvidenceToolCall
+	7,  // 39: agenticstream.runtime.v1.EpisodeWorker.Handshake:output_type -> agenticstream.runtime.v1.HandshakeResponse
+	12, // 40: agenticstream.runtime.v1.EpisodeWorker.Execute:output_type -> agenticstream.runtime.v1.EpisodeEvent
+	27, // 41: agenticstream.runtime.v1.EvidenceTools.Call:output_type -> agenticstream.runtime.v1.EvidenceToolResult
+	39, // [39:42] is the sub-list for method output_type
+	36, // [36:39] is the sub-list for method input_type
+	36, // [36:36] is the sub-list for extension type_name
+	36, // [36:36] is the sub-list for extension extendee
+	0,  // [0:36] is the sub-list for field type_name
 }
 
 func init() { file_runtime_v1_proto_init() }

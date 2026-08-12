@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	ProtocolVersion = "1.0"
-	ContractVersion = "1.0"
+	ProtocolVersion      = "1.0"
+	ContractVersion      = "1.0"
+	EvidenceToolsFeature = "evidence_tools.v1"
 
 	DefaultMaxRequestBytes = 4 << 20
 	DefaultMaxEventBytes   = 1 << 20
@@ -204,9 +205,6 @@ func (s *Server) validateRequest(req *runtimev1.EpisodeRequest) error { //nolint
 	if !sameMajor(req.GetProtocolVersion(), ProtocolVersion) {
 		return wireErrorf(codes.FailedPrecondition, "unsupported protocol version %q", req.GetProtocolVersion())
 	}
-	if req.GetEvidenceToolsEndpoint() != "" || len(req.GetCapabilityToken()) != 0 {
-		return wireError(codes.FailedPrecondition, "evidence tools are not enabled in this worker phase")
-	}
 	for name, value := range map[string]string{
 		"episode_id": req.GetEpisodeId(), "tenant_id": req.GetTenantId(),
 		"situation_id": req.GetSituationId(), "attempt_id": req.GetAttemptId(),
@@ -236,6 +234,14 @@ func (s *Server) validateRequest(req *runtimev1.EpisodeRequest) error { //nolint
 		}
 		if req.GetDeadline().AsTime().Before(time.Now().UTC()) {
 			return wireError(codes.DeadlineExceeded, "episode deadline has expired")
+		}
+	}
+	if (req.GetEvidenceToolsEndpoint() == "") != (len(req.GetCapabilityToken()) == 0) {
+		return wireError(codes.InvalidArgument, "evidence endpoint and capability token must be supplied together")
+	}
+	if req.GetEvidenceToolsEndpoint() != "" {
+		if err := ValidateEvidenceSocketPath(req.GetEvidenceToolsEndpoint()); err != nil {
+			return wireError(codes.PermissionDenied, "evidence endpoint must be a private Unix socket")
 		}
 	}
 	return nil

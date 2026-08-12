@@ -17,12 +17,27 @@ Implemented:
 - wall-time budget propagation and cancellation persistence using a detached
   bounded database context.
 
-Explicitly unsupported in this phase:
+Implemented in the live read-boundary slice:
 
-- `EvidenceTools`, capability-token issuance or verification, and evidence
-  access. Requests carrying an endpoint or token are rejected closed.
-- UDS listeners, child-process supervision, remote workers, mTLS, Python
-  fixtures, and cross-language compatibility fixtures.
+- HMAC-SHA256 capability tokens with issuer, audience, attempt, fence, tenant,
+  situation version, entity, tool, time-range, row/byte, trace, and expiry
+  claims; verification is fail-closed and short-lived by default;
+- strict v1 `evidence.get` arguments, typed bounded query results, per-call
+  deadline cancellation, result-byte/row enforcement, duplicate call rejection,
+  and no access to effectors, credentials, filesystem, shell, or arbitrary
+  network;
+- runtime-owned Unix sockets with absolute-path validation, private directory
+  checks, mode `0600`, Unix-only dialing, and ownership-safe cleanup;
+- actual EvidenceTools-over-UDS integration coverage.
+
+Explicitly deferred from this phase:
+
+- durable cross-restart evidence-call audit/idempotency and process-epoch
+  invalidation;
+- runtime composition that issues a fresh capability from each persisted
+  attempt and removes raw token injection from the executor test seam;
+- child-process supervision, remote workers, mTLS, Python fixtures, and
+  provider-specific evidence backends.
 - stale-attempt lease expiry and process-crash reissue; the existing fence
   model rejects stale output, while recovery policy is a subsequent phase.
 - runtime-owned hard accounting for model calls, tokens, tool calls, result
@@ -31,3 +46,7 @@ Explicitly unsupported in this phase:
 
 Those surfaces are subsequent phases. Until they are implemented and tested,
 the completion bar's worker conformance gate remains open.
+
+The next phase closes durable audit and runtime-issued token composition. It
+still does not add Python workers, child-process supervision, remote transport,
+mTLS, or any legacy/N-1 compatibility behavior.

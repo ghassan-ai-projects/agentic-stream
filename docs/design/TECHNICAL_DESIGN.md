@@ -1316,7 +1316,7 @@ Partition failure is visible and isolated, but version 1 fails global readiness
 because silently processing other entities while one partition is stuck can
 hide important evidence.
 
-## 22. Compatibility and versioning
+## 22. Versioning and rejection
 
 Independent versions:
 
@@ -1332,17 +1332,11 @@ Independent versions:
 - model prompt and tool catalog;
 - effector contract.
 
-Compatibility tests include:
-
-- old event decoder with new runtime;
-- new optional fields with old stored state;
-- worker protocol N/N-1 handshake;
-- replay of every historical golden trace;
-- connector duplicate and restart behavior;
-- effector idempotency and reconciliation behavior.
-
-The runtime refuses unknown major versions. Historical decoders remain available
-for as long as retained evidence may require replay.
+The runtime supports only the current version of each contract. Unknown,
+previous, and future versions are rejected fail-closed; there is no legacy,
+N/N-1, or historical-decoder compatibility surface in version 1. Tests cover
+current-v1 contract conformance, current golden traces, connector duplicate
+and restart behavior, and effector idempotency and reconciliation behavior.
 
 ## 23. Repository structure
 

@@ -426,14 +426,14 @@ Tests:
 
 Implement:
 
-- generated Go/Python Protobuf types;
+- generated Go Protobuf types for the current v1 contract;
 - protocol handshake and feature negotiation;
 - local UDS gRPC server;
 - capability token issuance;
 - evidence-tool service;
 - child-process supervision;
 - Python reference fake worker;
-- N/N-1 compatibility test fixture.
+- no legacy or N/N-1 compatibility fixture; unsupported versions fail closed.
 
 Python package baseline:
 
@@ -699,7 +699,7 @@ memory, session, or action semantics into the core.
 - EpisodeExecutor TCK;
 - Effector TCK;
 - historical event decoder fixtures;
-- N/N-1 protocol tests;
+- current-v1 protocol conformance tests; unsupported versions fail closed;
 - schema compatibility report in CI;
 - public golden stream corpus.
 

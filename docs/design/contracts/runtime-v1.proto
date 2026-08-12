@@ -295,6 +295,14 @@ message EvidenceToolCall {
   uint64 fence = 9;
   string traceparent = 10;
   string tracestate = 11;
+  string tenant_id = 12;
+  string situation_id = 13;
+  string entity_id = 14;
+  uint64 max_rows = 15;
+  uint64 max_bytes = 16;
+  google.protobuf.Timestamp time_from = 17;
+  google.protobuf.Timestamp time_until = 18;
+  uint64 situation_version = 19;
 }
 
 message EvidenceToolResult {
@@ -310,6 +318,8 @@ message EvidenceToolResult {
   uint64 fence = 10;
   string traceparent = 11;
   string tracestate = 12;
+  uint64 row_count = 13;
+  uint64 result_bytes = 14;
 }
 
 message ArtifactRef {
