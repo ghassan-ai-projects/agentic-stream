@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -113,7 +114,7 @@ func TestWorkerExecutorIssuesFreshScopedCapabilityPerDispatch(t *testing.T) {
 	factory := &AttemptCapabilityIssuer{Issuer: &evidence.Issuer{Issuer: "runtime", Audience: "evidence-tools", KeyID: "k1", Keys: keys, Now: func() time.Time { return now }}, RuntimeEpoch: "epoch-1", Tools: []string{"evidence.get"}, From: now.Add(-time.Hour), Until: now, MaxRows: 10, MaxBytes: 1024, ExpiresAt: now.Add(10 * time.Minute)}
 	req := validWorkerRequest()
 	req.EntityID = "motor-1"
-	executor := NewWorkerExecutorWithEvidence(client, "worker-1", "runtime-1", []string{worker.EvidenceToolsFeature}, "/private/tmp/evidence.sock", factory)
+	executor := NewWorkerExecutorWithEvidence(client, "worker-1", "runtime-1", []string{worker.EvidenceToolsFeature}, filepath.Join(t.TempDir(), "evidence.sock"), factory)
 	if _, err := executor.Execute(t.Context(), req); err != nil {
 		t.Fatalf("first execute: %v", err)
 	}

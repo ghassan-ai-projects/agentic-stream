@@ -3,7 +3,6 @@ package evidence
 import (
 	"context"
 	"database/sql"
-	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -119,11 +118,7 @@ func mustBeginTx(t *testing.T, db *storage.DB) *sql.Tx {
 
 func openLedgerDB(t *testing.T) *storage.DB {
 	t.Helper()
-	dir, err := os.MkdirTemp("/private/tmp", "as-ledger-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	dir := t.TempDir()
 	db, err := storage.Open(t.Context(), filepath.Join(dir, "runtime.db"))
 	if err != nil {
 		t.Fatal(err)

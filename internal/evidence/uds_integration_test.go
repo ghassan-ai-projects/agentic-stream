@@ -13,7 +13,7 @@ import (
 )
 
 func TestEvidenceToolsOverPrivateUDS(t *testing.T) {
-	dir, err := os.MkdirTemp("/private/tmp", "as-")
+	dir, err := os.MkdirTemp("", "as-")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,7 +10,7 @@ import (
 )
 
 func TestEvidenceSocketIsPrivateAndCleansUp(t *testing.T) {
-	dir, err := os.MkdirTemp("/private/tmp", "as-")
+	dir, err := os.MkdirTemp("", "as-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestEvidenceSocketIsPrivateAndCleansUp(t *testing.T) {
 }
 
 func TestEvidenceSocketDialsOnlyUnix(t *testing.T) {
-	dir, err := os.MkdirTemp("/private/tmp", "as-")
+	dir, err := os.MkdirTemp("", "as-")
 	if err != nil {
 		t.Fatal(err)
 	}
