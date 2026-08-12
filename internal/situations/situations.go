@@ -60,6 +60,8 @@ type Situation struct {
 	ConditionStart  map[string]time.Time // transition key -> first true event time
 	OpenedAt        time.Time
 	UpdatedAt       time.Time
+	Traceparent     string
+	Tracestate      string
 }
 
 // Version is an immutable Situation version.
@@ -77,6 +79,8 @@ type Version struct {
 	EntityID        string
 	EventHorizon    time.Time
 	Watermark       time.Time
+	Traceparent     string
+	Tracestate      string
 	Facts           map[string]any
 	Evidence        []string
 	SnapshotJSON    []byte
@@ -111,6 +115,10 @@ func (e *Engine) ApplyFeature(ctx context.Context, feature operators.Feature, wa
 
 	e.applyReducers(sit, feature)
 	sit.LatestEventTime = feature.EventTime
+	if feature.Traceparent != "" || !feature.TraceContinuation {
+		sit.Traceparent = feature.Traceparent
+		sit.Tracestate = feature.Tracestate
+	}
 
 	version, err := e.evaluate(ctx, sit, feature, watermark)
 	if err != nil {
@@ -145,6 +153,8 @@ func (e *Engine) newSituation(entityType, entityID string, eventTime time.Time) 
 		ConditionStart:  make(map[string]time.Time),
 		OpenedAt:        eventTime,
 		UpdatedAt:       eventTime,
+		Traceparent:     "",
+		Tracestate:      "",
 	}
 }
 
@@ -343,6 +353,8 @@ func (e *Engine) materialize(sit *Situation, watermark time.Time) (*Version, err
 		Evidence:        evidenceIDs,
 		SnapshotJSON:    snapshotJSON,
 		SnapshotSHA256:  digest,
+		Traceparent:     sit.Traceparent,
+		Tracestate:      sit.Tracestate,
 	}, nil
 }
 

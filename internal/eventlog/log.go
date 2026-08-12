@@ -84,6 +84,9 @@ func (l *EventLog) Append(ctx context.Context, tenantID string, envelopes []cont
 }
 
 func (l *EventLog) appendOne(ctx context.Context, tx *sql.Tx, tenantID string, env contractsv1.Envelope) (LogPosition, error) {
+	if _, err := contractsv1.ParseTraceContext(env.Traceparent, env.Tracestate); err != nil {
+		return -1, fmt.Errorf("validate trace context: %w", err)
+	}
 	payloadJSON, err := json.Marshal(env.Data)
 	if err != nil {
 		return -1, fmt.Errorf("marshal payload: %w", err)

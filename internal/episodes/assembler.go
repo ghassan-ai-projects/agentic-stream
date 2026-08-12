@@ -34,6 +34,8 @@ type Request struct {
 	Fence            int64  // worker fence, set at dispatch.
 	AdmissionKey     []byte // unique 32-byte admission key.
 	RequestJSON      []byte // canonical JSON sent to the executor.
+	Traceparent      string
+	Tracestate       string
 }
 
 // Assembler builds deterministic episode requests.
@@ -67,7 +69,7 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		return nil, fmt.Errorf("load evaluation: %w", err)
 	}
 
-	snapshotJSON, persistedSnapshotDigest, err := a.loadSnapshotJSON(ctx, tx, item.SituationID, item.SituationVersion)
+	snapshotJSON, persistedSnapshotDigest, traceparent, tracestate, err := a.loadSnapshotJSON(ctx, tx, item.SituationID, item.SituationVersion)
 	if err != nil {
 		return nil, fmt.Errorf("load snapshot: %w", err)
 	}
@@ -119,7 +121,9 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 			"objective":       a.spec.Cognition.Executor.Objective,
 			"decision_schema": a.spec.Cognition.Executor.DecisionSchema,
 		},
-		"budget": a.budgetMap(),
+		"budget":      a.budgetMap(),
+		"traceparent": traceparent,
+		"tracestate":  tracestate,
 	}
 
 	episodeID := request["episode_id"].(string)
@@ -154,6 +158,8 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		SnapshotSHA256:   snapshotDigest,
 		AdmissionKey:     admissionKey[:],
 		RequestJSON:      requestJSON,
+		Traceparent:      traceparent,
+		Tracestate:       tracestate,
 	}, nil
 }
 
@@ -302,16 +308,20 @@ func (a *Assembler) loadEvaluation(ctx context.Context, tx *sql.Tx, triggerID st
 	return ev, nil
 }
 
-func (a *Assembler) loadSnapshotJSON(ctx context.Context, tx *sql.Tx, situationID string, version int) ([]byte, []byte, error) {
+func (a *Assembler) loadSnapshotJSON(ctx context.Context, tx *sql.Tx, situationID string, version int) ([]byte, []byte, string, string, error) {
 	var snapshotJSON []byte
 	var snapshotDigest []byte
+	var traceparent, tracestate sql.NullString
 	if err := tx.QueryRowContext(ctx, `
-		SELECT snapshot_json, snapshot_sha256 FROM situation_versions
+		SELECT snapshot_json, snapshot_sha256, traceparent, tracestate FROM situation_versions
 		WHERE situation_id = ? AND version = ?`,
-		situationID, version).Scan(&snapshotJSON, &snapshotDigest); err != nil {
-		return nil, nil, fmt.Errorf("query situation version: %w", err)
+		situationID, version).Scan(&snapshotJSON, &snapshotDigest, &traceparent, &tracestate); err != nil {
+		return nil, nil, "", "", fmt.Errorf("query situation version: %w", err)
 	}
-	return snapshotJSON, snapshotDigest, nil
+	if _, err := contractsv1.ParseTraceContext(traceparent.String, tracestate.String); err != nil {
+		return nil, nil, "", "", fmt.Errorf("validate situation trace context: %w", err)
+	}
+	return snapshotJSON, snapshotDigest, traceparent.String, tracestate.String, nil
 }
 
 func snapshotString(snapshot map[string]any, key string) string {

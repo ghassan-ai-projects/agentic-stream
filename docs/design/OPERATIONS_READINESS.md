@@ -1,0 +1,35 @@
+# Operations readiness evidence
+
+This document is the Gate D evidence index for the single-node runtime. It is
+deliberately explicit about what is proven in-repository and what still needs
+an environment-level rehearsal.
+
+## Proved by the repository
+
+- SQLite migrations run transactionally and schema version is asserted by
+  `internal/storage/storage_test.go`.
+- Replay creates an exclusive private reservation, rejects normal opens while
+  reserved, and never accepts production credentials or effectors.
+- W3C `traceparent`/`tracestate` are validated at the contract boundary,
+  retained in the event log, propagated to Situation versions, and included in
+  episode requests. Asynchronous consumers must use the stored context as a
+  span link.
+- `/health/live` is process liveness. `/health/ready` returns RFC 9457 Problem
+  Details and must fail closed when readiness is unavailable.
+- `go test ./...`, `go test -race ./internal/...`, `go vet ./...`, and
+  `git diff --check` are the clean-checkout correctness commands.
+
+## Required release rehearsals
+
+The release is not Gate D complete until an operator records results for:
+
+1. backup/restore equality across schema migrations;
+2. unclean shutdown and WAL recovery;
+3. disk-full refusal without dropping ingress evidence;
+4. a 24-hour bounded soak with memory, queue, timer, WAL, and database-growth
+   thresholds recorded; and
+5. security review of worker sockets, token scope/expiry/rotation, API binding,
+   event poisoning, secrets, and shadow-artifact retention.
+
+These are environment-dependent acceptance gates, not claims inferred from
+unit tests. No legacy status compatibility is part of the release contract.

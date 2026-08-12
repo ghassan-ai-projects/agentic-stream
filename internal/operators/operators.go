@@ -478,20 +478,21 @@ func (r *OperatorRuntime) applyHeartbeatTimer(inst *operatorInstance, ps *Partit
 		// known from the spec input.
 		entityType := r.entityTypeForOperator(inst.def.Name)
 		features = append(features, Feature{
-			FeatureID:     r.idGen.New(ids.PrefixEvent),
-			OperatorID:    inst.def.Name,
-			OutputName:    inst.def.Output,
-			TenantID:      contractsv1.TenantID,
-			EntityType:    entityType,
-			EntityID:      stateKey,
-			PartitionID:   0,
-			WindowStart:   *blob.Heartbeat.LastEventTime,
-			WindowEnd:     watermark,
-			Value:         true,
-			EventTime:     watermark,
-			Watermark:     watermark,
-			InputEventIDs: []string{blob.Heartbeat.LastEventID},
-			Completeness:  string(CompletenessOnTime),
+			FeatureID:         r.idGen.New(ids.PrefixEvent),
+			OperatorID:        inst.def.Name,
+			OutputName:        inst.def.Output,
+			TenantID:          contractsv1.TenantID,
+			EntityType:        entityType,
+			EntityID:          stateKey,
+			PartitionID:       0,
+			WindowStart:       *blob.Heartbeat.LastEventTime,
+			WindowEnd:         watermark,
+			Value:             true,
+			EventTime:         watermark,
+			Watermark:         watermark,
+			InputEventIDs:     []string{blob.Heartbeat.LastEventID},
+			Completeness:      string(CompletenessOnTime),
+			TraceContinuation: true,
 		})
 	}
 	return features, nil

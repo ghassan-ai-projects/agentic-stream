@@ -426,13 +426,13 @@ func (e *Engine) saveSituationVersion(ctx context.Context, tx *sql.Tx, partition
 		INSERT INTO situation_versions (
 			situation_id, version, previous_version, phase, previous_phase,
 			severity, confidence, completeness, event_horizon, watermark,
-			valid_from, snapshot_json, snapshot_sha256, lineage_id, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			valid_from, snapshot_json, snapshot_sha256, lineage_id, traceparent, tracestate, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		v.SituationID, v.Version, prevVersion, v.Phase, v.PreviousPhase,
 		v.Severity, v.Confidence, v.Completeness,
 		v.EventHorizon.Format(time.RFC3339Nano), v.Watermark.Format(time.RFC3339Nano),
 		v.EventHorizon.Format(time.RFC3339Nano), v.SnapshotJSON, mustDecodeHex(v.SnapshotSHA256),
-		lineageID, now,
+		lineageID, nullableString(v.Traceparent), nullableString(v.Tracestate), now,
 	); err != nil {
 		return fmt.Errorf("insert situation version: %w", err)
 	}
@@ -454,4 +454,8 @@ func mustDecodeHex(s string) []byte {
 		panic(err)
 	}
 	return b
+}
+
+func nullableString(value string) sql.NullString {
+	return sql.NullString{String: value, Valid: value != ""}
 }

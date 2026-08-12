@@ -11,6 +11,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -85,6 +86,18 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 
 		req.EpisodeID = episodeID
 		req.SnapshotSHA256 = "sha256:" + hex.EncodeToString(snapshotHash)
+		var trace struct {
+			Traceparent string `json:"traceparent"`
+			Tracestate  string `json:"tracestate"`
+		}
+		if err := json.Unmarshal(req.RequestJSON, &trace); err != nil {
+			return fmt.Errorf("decode persisted request trace context: %w", err)
+		}
+		if _, err := contractsv1.ParseTraceContext(trace.Traceparent, trace.Tracestate); err != nil {
+			return fmt.Errorf("validate persisted request trace context: %w", err)
+		}
+		req.Traceparent = trace.Traceparent
+		req.Tracestate = trace.Tracestate
 		req.AttemptID = ""
 		attemptID := r.idGen.New(ids.PrefixAttempt)
 		var err error

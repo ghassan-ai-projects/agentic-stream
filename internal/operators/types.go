@@ -10,24 +10,25 @@ import (
 
 // Feature is an emitted operator result.
 type Feature struct {
-	FeatureID     string                 `json:"feature_id"`
-	OperatorID    string                 `json:"operator_id"`
-	OutputName    string                 `json:"output_name"`
-	TenantID      string                 `json:"tenant_id"`
-	EntityType    string                 `json:"entity_type"`
-	EntityID      string                 `json:"entity_id"`
-	PartitionID   int                    `json:"partition_id"`
-	WindowStart   time.Time              `json:"window_start"`
-	WindowEnd     time.Time              `json:"window_end"`
-	Value         any                    `json:"value"`
-	Unit          string                 `json:"unit,omitempty"`
-	EventTime     time.Time              `json:"event_time"`
-	Watermark     time.Time              `json:"watermark"`
-	InputEventIDs []string               `json:"input_event_ids"`
-	Completeness  string                 `json:"completeness"`
-	Traceparent   string                 `json:"traceparent,omitempty"`
-	Tracestate    string                 `json:"tracestate,omitempty"`
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
+	FeatureID         string                 `json:"feature_id"`
+	OperatorID        string                 `json:"operator_id"`
+	OutputName        string                 `json:"output_name"`
+	TenantID          string                 `json:"tenant_id"`
+	EntityType        string                 `json:"entity_type"`
+	EntityID          string                 `json:"entity_id"`
+	PartitionID       int                    `json:"partition_id"`
+	WindowStart       time.Time              `json:"window_start"`
+	WindowEnd         time.Time              `json:"window_end"`
+	Value             any                    `json:"value"`
+	Unit              string                 `json:"unit,omitempty"`
+	EventTime         time.Time              `json:"event_time"`
+	Watermark         time.Time              `json:"watermark"`
+	InputEventIDs     []string               `json:"input_event_ids"`
+	Completeness      string                 `json:"completeness"`
+	Traceparent       string                 `json:"traceparent,omitempty"`
+	Tracestate        string                 `json:"tracestate,omitempty"`
+	TraceContinuation bool                   `json:"trace_continuation,omitempty"`
+	Metadata          map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // Runtime is the operator runtime interface used by the engine.
