@@ -13,6 +13,10 @@ effects, replay isolation, notifications, and operational evidence described
 below. MQTT and broker-backed distribution remain later adapters unless a
 separate release decision promotes them.
 
+Environment-level production rehearsals are postponed for the current build by
+explicit scope decision. They remain a future production-release gate, not a
+current implementation blocker.
+
 The existing worktree changes outside the implementation scope are preserved:
 the research-document deletions and the pre-existing episode files are not
 part of this build unless a phase explicitly adopts them.
@@ -73,7 +77,10 @@ part of this build unless a phase explicitly adopts them.
 - Replay modes cannot load production effectors, tokens, credentials, or
   outboxes. Counterfactual mode uses an explicit simulator only.
 
-### Gate D — operational and integration release
+### Gate D — operational and integration release (postponed)
+
+Gate D is retained as the future production-release bar. It is not required for
+the current build completion decision.
 
 - The worker protocol has a generated, runnable conformance suite, including
   handshake rejection, cancellation, capability scope, and trace propagation.

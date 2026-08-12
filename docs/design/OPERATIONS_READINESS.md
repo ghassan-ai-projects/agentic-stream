@@ -1,8 +1,8 @@
 # Operations readiness evidence
 
-This document is the Gate D evidence index for the single-node runtime. It is
-deliberately explicit about what is proven in-repository and what still needs
-an environment-level rehearsal.
+This document is the future Gate D evidence index for the single-node runtime.
+Environment-level production rehearsals are postponed for the current build by
+explicit scope decision.
 
 ## Proved by the repository
 
@@ -19,9 +19,9 @@ an environment-level rehearsal.
 - `go test ./...`, `go test -race ./internal/...`, `go vet ./...`, and
   `git diff --check` are the clean-checkout correctness commands.
 
-## Required release rehearsals
+## Postponed production rehearsals
 
-The release is not Gate D complete until an operator records results for:
+The future production release should record results for:
 
 1. backup/restore equality across schema migrations;
 2. unclean shutdown and WAL recovery;
@@ -32,4 +32,5 @@ The release is not Gate D complete until an operator records results for:
    event poisoning, secrets, and shadow-artifact retention.
 
 These are environment-dependent acceptance gates, not claims inferred from
-unit tests. No legacy status compatibility is part of the release contract.
+unit tests. They do not block the current build. No legacy status compatibility
+is part of the release contract.

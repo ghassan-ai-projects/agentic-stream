@@ -1,8 +1,8 @@
 # Agentic Stream runtime operations
 
 These procedures are the operator checklist for the single-node Go runtime.
-They are intentionally explicit about which steps are automated and which need
-an environment rehearsal before a production release.
+They are intentionally explicit about which steps are automated and which are
+postponed until a future production release.
 
 ## Start and verify readiness
 
@@ -65,10 +65,10 @@ short-lived, and scoped to evidence; they are not subscriber credentials and
 must never be logged. Configure model credentials through
 `AGENTIC_STREAM_MODEL_API_KEY`, not command-line arguments.
 
-## Release rehearsal record
+## Postponed release rehearsal record
 
-Before Gate D sign-off, attach measured results for backup/restore, unclean
-shutdown, disk-full refusal, a 24-hour bounded soak, and the security review
-covering sockets, tokens, poisoning, API binding, secrets, and artifact
-retention. Unit tests prove the semantics; they do not replace these
-environment-level rehearsals.
+Backup/restore, unclean shutdown, disk-full refusal, a 24-hour bounded soak,
+and the security review covering sockets, tokens, poisoning, API binding,
+secrets, and artifact retention are postponed until production-release
+planning. Unit tests cover repository semantics; they do not replace these
+future environment-level rehearsals.
