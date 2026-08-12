@@ -171,5 +171,8 @@ func (o *RuntimeOwner) leaseDuration() time.Duration {
 }
 
 func formatRuntimeTime(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
+	// runtime_owner timestamps are compared as SQLite TEXT. Fixed-width
+	// nanoseconds preserve chronological ordering even when a time has no
+	// fractional component.
+	return value.UTC().Format("2006-01-02T15:04:05.000000000Z")
 }

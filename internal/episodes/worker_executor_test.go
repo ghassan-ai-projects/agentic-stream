@@ -3,6 +3,7 @@ package episodes
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,6 +42,21 @@ func TestWorkerExecutorConsumesFencedStream(t *testing.T) {
 	}
 	if outcome.Status != string(AttemptProduced) || outcome.AttemptID != "attempt-1" || outcome.Fence != 7 || string(outcome.DecisionJSON) != `{"decision_id":"d-1"}` {
 		t.Fatalf("unexpected outcome: %+v", outcome)
+	}
+}
+
+func TestWorkerExecutorStopsWhenBudgetUpdateExceedsCeiling(t *testing.T) {
+	client := testWorkerClient(t, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
+		return emit(&runtimev1.EpisodeEvent{
+			EpisodeId: req.GetEpisodeId(), Sequence: 2, AttemptId: req.GetAttemptId(), Fence: req.GetFence(), OccurredAt: timestamppb.New(time.Unix(10, 0)),
+			Payload: &runtimev1.EpisodeEvent_Budget{Budget: &runtimev1.BudgetUpdated{ModelCallsUsed: 2}},
+		})
+	})
+	req := validWorkerRequest()
+	req.RequestJSON = []byte(`{"kind":"diagnose","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","decision_schema":{"type":"object"}},"budget":{"model_calls":1}}`)
+	_, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+	if err == nil || !strings.Contains(err.Error(), "budget exceeded: model_calls") {
+		t.Fatalf("expected budget rejection, got %v", err)
 	}
 }
 

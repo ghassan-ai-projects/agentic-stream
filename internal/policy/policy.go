@@ -18,6 +18,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // Result is the durable policy result for one Intent evaluation.
@@ -35,15 +36,27 @@ type Gateway struct {
 	policyVersion string
 	policyDigest  string
 	idGen         ids.Generator
+	owner         *storage.RuntimeOwner
+	ownerEpoch    string
 }
 
 // NewGateway creates a deterministic policy gateway.
 func NewGateway(policyVersion string, idGen ids.Generator) *Gateway {
+	return newGateway(policyVersion, idGen, nil, "")
+}
+
+// NewGatewayWithOwner creates a policy gateway that fences every mutation to
+// the active runtime lease.
+func NewGatewayWithOwner(policyVersion string, idGen ids.Generator, owner *storage.RuntimeOwner, ownerEpoch string) *Gateway {
+	return newGateway(policyVersion, idGen, owner, ownerEpoch)
+}
+
+func newGateway(policyVersion string, idGen ids.Generator, owner *storage.RuntimeOwner, ownerEpoch string) *Gateway {
 	if idGen == nil {
 		idGen = ids.Random()
 	}
 	policyDigest, _ := canonicaljson.Digest(canonicaljson.DomainTest, map[string]any{"policy_version": policyVersion})
-	return &Gateway{policyVersion: policyVersion, policyDigest: policyDigest, idGen: idGen}
+	return &Gateway{policyVersion: policyVersion, policyDigest: policyDigest, idGen: idGen, owner: owner, ownerEpoch: ownerEpoch}
 }
 
 type intentRow struct {
@@ -76,6 +89,9 @@ type intentRow struct {
 // an approval request or a Command plus outbox row. Repeated evaluation is
 // idempotent for the effect-producing branches.
 func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID string, now time.Time) (Result, error) {
+	if err := g.assertOwner(ctx, tx); err != nil {
+		return Result{IntentID: intentID}, err
+	}
 	row, err := g.loadIntent(ctx, tx, intentID)
 	if err != nil {
 		return Result{IntentID: intentID}, err
@@ -180,6 +196,9 @@ func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID strin
 // ResolveApproval records a human approval decision and, when approved,
 // immediately re-runs the full policy gate before creating a Command.
 func (g *Gateway) ResolveApproval(ctx context.Context, tx *sql.Tx, approvalID string, approved bool, approver, reason string, now time.Time) (Result, error) {
+	if err := g.assertOwner(ctx, tx); err != nil {
+		return Result{ApprovalID: approvalID}, err
+	}
 	var intentID, status, expiresAt string
 	if err := tx.QueryRowContext(ctx, "SELECT intent_id, status, expires_at FROM approvals WHERE approval_id = ?", approvalID).Scan(&intentID, &status, &expiresAt); err != nil {
 		return Result{ApprovalID: approvalID}, fmt.Errorf("load approval %s: %w", approvalID, err)
@@ -219,6 +238,16 @@ func (g *Gateway) ResolveApproval(ctx context.Context, tx *sql.Tx, approvalID st
 		return g.audit(ctx, tx, row, result, "denied", "approval_denied", now)
 	}
 	return g.EvaluateIntent(ctx, tx, intentID, now)
+}
+
+func (g *Gateway) assertOwner(ctx context.Context, tx *sql.Tx) error {
+	if g.owner == nil || g.ownerEpoch == "" {
+		return nil
+	}
+	if err := g.owner.Assert(ctx, tx, g.ownerEpoch); err != nil {
+		return fmt.Errorf("policy runtime ownership lost: %w", err)
+	}
+	return nil
 }
 
 func (g *Gateway) loadIntent(ctx context.Context, tx *sql.Tx, intentID string) (intentRow, error) {

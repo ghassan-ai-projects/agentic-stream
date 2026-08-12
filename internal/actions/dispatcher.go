@@ -70,12 +70,22 @@ func IsUnknownOutcome(err error) bool {
 
 // Dispatcher leases approved command outbox rows and records durable results.
 type Dispatcher struct {
-	db       *storage.DB
-	effector Effector
-	clk      clock.Clock
-	idGen    ids.Generator
-	owner    string
-	leaseFor time.Duration
+	db           *storage.DB
+	effector     Effector
+	clk          clock.Clock
+	idGen        ids.Generator
+	owner        string
+	leaseFor     time.Duration
+	runtimeOwner *storage.RuntimeOwner
+	runtimeEpoch string
+}
+
+// WithRuntimeOwner fences dispatcher ledger mutations to the active runtime
+// lease. It returns the dispatcher for composition during startup.
+func (d *Dispatcher) WithRuntimeOwner(owner *storage.RuntimeOwner, epoch string) *Dispatcher {
+	d.runtimeOwner = owner
+	d.runtimeEpoch = epoch
+	return d
 }
 
 // NewDispatcher creates an action dispatcher. leaseFor controls how long an
@@ -140,6 +150,9 @@ func (d *Dispatcher) revalidateAuthorization(ctx context.Context, leased leasedC
 }
 
 func (d *Dispatcher) revalidateAuthorizationTx(ctx context.Context, tx *sql.Tx, leased leasedCommand) error {
+	if err := d.assertRuntimeOwner(ctx, tx); err != nil {
+		return err
+	}
 	var leaseValid int
 	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM outbox WHERE outbox_id = ? AND status = 'leased' AND lease_owner = ? AND lease_until > ?`, leased.OutboxID, leased.LeaseOwner, formatTime(d.clk.Now())).Scan(&leaseValid); err != nil {
 		return fmt.Errorf("dispatch lease is no longer active: %w", err)
@@ -235,6 +248,9 @@ func (d *Dispatcher) lease(ctx context.Context) (leasedCommand, bool, error) {
 	var leased leasedCommand
 	found := false
 	err := d.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := d.assertRuntimeOwner(ctx, tx); err != nil {
+			return err
+		}
 		now := d.clk.Now().UTC()
 		var commandStatus string
 		var storedIntentID, storedTenant, storedRoute, storedTarget string
@@ -329,6 +345,9 @@ func (d *Dispatcher) finalize(ctx context.Context, leased leasedCommand, effect 
 }
 
 func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCommand, effect Effect, dispatchErr error) error {
+	if err := d.assertRuntimeOwner(ctx, tx); err != nil {
+		return err
+	}
 	now := d.clk.Now().UTC()
 	var leaseStatus, leaseOwner, leaseUntil string
 	if err := tx.QueryRowContext(ctx, `
@@ -441,6 +460,9 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 		return fmt.Errorf("invalid reconciliation status %q", finalStatus)
 	}
 	return d.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := d.assertRuntimeOwner(ctx, tx); err != nil {
+			return err
+		}
 		var currentStatus string
 		if err := tx.QueryRowContext(ctx, "SELECT status FROM commands WHERE command_id = ?", commandID).Scan(&currentStatus); err != nil {
 			return fmt.Errorf("load command %s for reconciliation: %w", commandID, err)
@@ -494,6 +516,16 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 		}
 		return nil
 	})
+}
+
+func (d *Dispatcher) assertRuntimeOwner(ctx context.Context, tx *sql.Tx) error {
+	if d.runtimeOwner == nil || d.runtimeEpoch == "" {
+		return nil
+	}
+	if err := d.runtimeOwner.Assert(ctx, tx, d.runtimeEpoch); err != nil {
+		return fmt.Errorf("action runtime ownership lost: %w", err)
+	}
+	return nil
 }
 
 func (d *Dispatcher) markLeaseFailure(ctx context.Context, tx *sql.Tx, outboxID int64, commandID, code string, now time.Time) error {
