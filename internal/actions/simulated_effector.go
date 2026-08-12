@@ -25,7 +25,7 @@ func (e *SimulatedEffector) Dispatch(ctx context.Context, command Command) (Effe
 	if err := ctx.Err(); err != nil {
 		return Effect{}, err
 	}
-	if command.EffectorRoute != "maintenance.ticket" && command.EffectorRoute != "sim.effector" {
+	if command.EffectorRoute != "maintenance.ticket" && command.EffectorRoute != "create_maintenance_ticket" && command.EffectorRoute != "sim.effector" {
 		return Effect{}, fmt.Errorf("simulated effector does not support route %q", command.EffectorRoute)
 	}
 	if command.IdempotencyKey == "" {

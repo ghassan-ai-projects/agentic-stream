@@ -97,8 +97,10 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		req.EpisodeID = episodeID
 		req.SnapshotSHA256 = "sha256:" + hex.EncodeToString(snapshotHash)
 		var trace struct {
-			Traceparent string `json:"traceparent"`
-			Tracestate  string `json:"tracestate"`
+			Traceparent     string `json:"traceparent"`
+			Tracestate      string `json:"tracestate"`
+			CancellationKey string `json:"cancellation_key"`
+			SupersessionKey string `json:"supersession_key"`
 		}
 		if err := json.Unmarshal(req.RequestJSON, &trace); err != nil {
 			return fmt.Errorf("decode persisted request trace context: %w", err)
@@ -108,6 +110,8 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		}
 		req.Traceparent = trace.Traceparent
 		req.Tracestate = trace.Tracestate
+		req.CancellationKey = trace.CancellationKey
+		req.SupersessionKey = trace.SupersessionKey
 		entityID, entityErr := requestEntityID(req.RequestJSON)
 		if entityErr != nil {
 			return fmt.Errorf("load persisted request entity: %w", entityErr)

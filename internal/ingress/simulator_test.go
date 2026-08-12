@@ -34,7 +34,7 @@ func TestSimulatorJSONLReplayConvertsControlsAndEvents(t *testing.T) {
 	if err := db.QueryRowContext(context.Background(), "SELECT event_type, entity_type, payload_json FROM event_log").Scan(&typ, &entity, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if typ != "motor.vibration.observed" || entity != "motor" || payload == "" {
+	if typ != "pump.vibration.observed" || entity != "pump" || payload == "" {
 		t.Fatalf("unexpected event type=%q entity=%q payload=%q", typ, entity, payload)
 	}
 	count, err = replay.Run(context.Background())

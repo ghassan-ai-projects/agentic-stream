@@ -195,7 +195,7 @@ func (p *Pipeline) assemblePending(ctx context.Context) (int, error) {
 		now := p.clk.Now().UTC()
 		err := p.db.QueryRowContext(ctx, `
 			SELECT scheduler_item_id FROM scheduler_items
-			WHERE tenant_id = ? AND status = 'pending' AND not_before <= ?
+			WHERE tenant_id = ? AND status = 'pending' AND (not_before IS NULL OR not_before <= ?)
 			ORDER BY not_before, created_at, scheduler_item_id LIMIT 1`,
 			p.tenantID, now.Format(time.RFC3339Nano)).Scan(&itemID)
 		if errors.Is(err, sql.ErrNoRows) {

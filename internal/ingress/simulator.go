@@ -40,10 +40,7 @@ func NewSimulatorJSONLReplay(db *storage.DB, log *eventlog.EventLog, options Sim
 	if options.TenantID == "" {
 		options.TenantID = "default"
 	}
-	if options.EntityType == "" {
-		options.EntityType = "motor"
-	}
-	if options.EventTypePrefix == "" {
+	if options.EventTypePrefix == "" && options.EntityType != "" {
 		options.EventTypePrefix = options.EntityType + "."
 	}
 	if options.Source == "" {
@@ -150,8 +147,16 @@ func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
-	if _, err := getString("event.entity_type"); err != nil {
+	entityType, err := getString("event.entity_type")
+	if err != nil {
 		return contractsv1.Envelope{}, err
+	}
+	if r.options.EntityType != "" && r.options.EntityType != entityType {
+		return contractsv1.Envelope{}, fmt.Errorf("entity_type %q does not match configured type %q", entityType, r.options.EntityType)
+	}
+	eventTypePrefix := r.options.EventTypePrefix
+	if eventTypePrefix == "" {
+		eventTypePrefix = entityType + "."
 	}
 	channel, err := getString("event.type")
 	if err != nil {
@@ -190,9 +195,9 @@ func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.
 		}
 	}
 	return contractsv1.Envelope{
-		ID: id, Type: r.options.EventTypePrefix + channel + ".observed", SchemaVersion: "1.0",
+		ID: id, Type: eventTypePrefix + channel + ".observed", SchemaVersion: "1.0",
 		TenantID: r.options.TenantID, Source: r.options.Source, PartitionKey: entityID,
-		Entity: contractsv1.EntityRef{Type: r.options.EntityType, ID: entityID}, EventTime: eventTime,
+		Entity: contractsv1.EntityRef{Type: entityType, ID: entityID}, EventTime: eventTime,
 		ObservedAt: &arrival, IngestedAt: arrival, Classification: contractsv1.ClassificationInternal,
 		Quality: []contractsv1.QualityFlag{}, Data: data,
 	}, nil
@@ -212,15 +217,32 @@ func parseSimulatorTime(record map[string]any, key string) (time.Time, error) {
 
 func validateSimulatorControl(recordType string, record map[string]any) error {
 	if recordType == "runtime_config" {
-		if record["runtime_version"] == nil || record["storage_schema_version"] == nil || record["max_episodes_per_hour"] == nil {
+		if len(record) != 4 {
+			return fmt.Errorf("runtime_config contains unknown fields")
+		}
+		version, versionOK := record["runtime_version"].(string)
+		storageVersion, storageOK := integerValue(record["storage_schema_version"])
+		maxEpisodes, maxOK := integerValue(record["max_episodes_per_hour"])
+		if !versionOK || version == "" || !storageOK || storageVersion < 1 || !maxOK || maxEpisodes < 1 || maxEpisodes > 10000 {
 			return fmt.Errorf("incomplete runtime_config")
 		}
 		return nil
+	}
+	if len(record) != 2 {
+		return fmt.Errorf("trace_end contains unknown fields")
 	}
 	if _, err := parseSimulatorTime(record, "until"); err != nil {
 		return err
 	}
 	return nil
+}
+
+func integerValue(value any) (int64, bool) {
+	number, ok := value.(float64)
+	if !ok || number != float64(int64(number)) {
+		return 0, false
+	}
+	return int64(number), true
 }
 
 func loadLineCheckpoint(ctx context.Context, db *storage.DB, connectorID string) (int, error) {

@@ -235,6 +235,8 @@ func boundedExecutionContext(ctx context.Context, requestJSON []byte) (context.C
 		Budget struct {
 			WallTime string `json:"wall_time"`
 		} `json:"budget"`
+		CancellationKey string `json:"cancellation_key"`
+		SupersessionKey string `json:"supersession_key"`
 	}
 	if err := json.Unmarshal(requestJSON, &payload); err != nil {
 		return nil, nil, fmt.Errorf("decode episode budget: %w", err)
@@ -335,6 +337,8 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 			ProviderRetries      uint32 `json:"provider_retries"`
 			CostMicrounits       uint64 `json:"cost_microunits"`
 		} `json:"budget"`
+		CancellationKey string `json:"cancellation_key"`
+		SupersessionKey string `json:"supersession_key"`
 	}
 	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
 		return nil, fmt.Errorf("decode request json: %w", err)
@@ -398,6 +402,7 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 		Objective: payload.Executor.Objective, ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion,
 		PromptVersion: req.PromptVersion, Budget: budget, Deadline: deadline, Traceparent: req.Traceparent, Tracestate: req.Tracestate,
 		Kind: kind, Lane: lane, RiskCeiling: risk, AllowedIntentTypes: payload.AllowedIntentTypes,
+		CancellationKey: payload.CancellationKey, SupersessionKey: payload.SupersessionKey,
 		AttemptId: req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
 	}, nil
 }

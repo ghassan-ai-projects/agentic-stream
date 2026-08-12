@@ -37,6 +37,8 @@ type Request struct {
 	RequestJSON      []byte // canonical JSON sent to the executor.
 	Traceparent      string
 	Tracestate       string
+	CancellationKey  string
+	SupersessionKey  string
 }
 
 // Assembler builds deterministic episode requests.
@@ -100,8 +102,9 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	}
 
 	tools := a.buildTools()
+	episodeID := a.idGen.New(ids.PrefixEpisode)
 	request := map[string]any{
-		"episode_id":        a.idGen.New(ids.PrefixEpisode),
+		"episode_id":        episodeID,
 		"kind":              item.Kind,
 		"scheduler_item_id": schedulerItemID,
 		"tenant_id":         tenantID,
@@ -126,12 +129,13 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 			"objective":       a.spec.Cognition.Executor.Objective,
 			"decision_schema": a.spec.Cognition.Executor.DecisionSchema,
 		},
-		"budget":      a.budgetMap(),
-		"traceparent": traceparent,
-		"tracestate":  tracestate,
+		"budget":           a.budgetMap(),
+		"cancellation_key": "episode:" + episodeID,
+		"supersession_key": "situation:" + item.SituationID,
+		"traceparent":      traceparent,
+		"tracestate":       tracestate,
 	}
 
-	episodeID := request["episode_id"].(string)
 	admissionKey := sha256.Sum256([]byte(episodeID + "|" + schedulerItemID))
 
 	// The snapshot digest covers exactly the immutable Situation snapshot, not
@@ -166,6 +170,8 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		RequestJSON:      requestJSON,
 		Traceparent:      traceparent,
 		Tracestate:       tracestate,
+		CancellationKey:  "episode:" + episodeID,
+		SupersessionKey:  "situation:" + item.SituationID,
 	}, nil
 }
 

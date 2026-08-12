@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
@@ -68,7 +69,7 @@ cognitive scheduler decides reasoning is useful.`,
 
 func newRunLiveCommand() *cobra.Command {
 	var dbPath, specPath, tracePath, tenantID, workerSocket, workerName, traceFormat string
-	var workerCA, workerCert, workerKey, workerServerName string
+	var workerCA, workerCert, workerKey, workerServerName, evidenceSocket, evidenceKey string
 	cmd := &cobra.Command{
 		Use:   "run-live --spec <spec.yaml> --trace <trace.jsonl>",
 		Short: "Run one owner-scoped live Go pipeline batch.",
@@ -112,7 +113,28 @@ func newRunLiveCommand() *cobra.Command {
 					return dialErr
 				}
 				workerConn = conn
-				executor = episodes.NewWorkerExecutor(runtimev1.NewEpisodeWorkerClient(conn), workerName, epoch, nil)
+				features := []string(nil)
+				if evidenceSocket != "" {
+					key, decodeErr := hex.DecodeString(evidenceKey)
+					if decodeErr != nil || len(key) < 32 {
+						return fmt.Errorf("--evidence-key must be at least 32 bytes of hex")
+					}
+					issuer := &evidence.Issuer{Issuer: "agentic-stream", Audience: "evidence-tools", KeyID: "runtime", Keys: map[string][]byte{"runtime": key}}
+					factory := &episodes.AttemptCapabilityIssuer{
+						Issuer: issuer, RuntimeEpoch: epoch, Tools: []string{"evidence.get"},
+						From: time.Now().UTC().Add(-24 * time.Hour), Until: time.Now().UTC().Add(24 * time.Hour), MaxRows: 1000, MaxBytes: 1 << 20,
+					}
+					features = []string{worker.EvidenceToolsFeature}
+					executor = episodes.NewWorkerExecutorWithEvidence(runtimev1.NewEpisodeWorkerClient(conn), workerName, epoch, features, evidenceSocket, factory)
+				} else {
+					executor = episodes.NewWorkerExecutor(runtimev1.NewEpisodeWorkerClient(conn), workerName, epoch, features)
+				}
+			}
+			if evidenceSocket != "" && workerSocket == "" {
+				return fmt.Errorf("--evidence-socket requires --worker-socket")
+			}
+			if evidenceSocket != "" && evidenceKey == "" {
+				return fmt.Errorf("--evidence-key is required with --evidence-socket")
 			}
 			if workerConn != nil {
 				defer func() { _ = workerConn.Close() }()
@@ -151,6 +173,8 @@ func newRunLiveCommand() *cobra.Command {
 	cmd.Flags().StringVar(&workerCert, "worker-cert", "", "Runtime client certificate PEM")
 	cmd.Flags().StringVar(&workerKey, "worker-key", "", "Runtime client private key PEM")
 	cmd.Flags().StringVar(&workerServerName, "worker-server-name", "", "Expected worker certificate name")
+	cmd.Flags().StringVar(&evidenceSocket, "evidence-socket", "", "Runtime EvidenceTools Unix socket for worker episodes")
+	cmd.Flags().StringVar(&evidenceKey, "evidence-key", "", "Hex HMAC key shared with the runtime EvidenceTools verifier")
 	return cmd
 }
 
