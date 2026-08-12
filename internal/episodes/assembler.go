@@ -95,6 +95,7 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	tools := a.buildTools()
 	request := map[string]any{
 		"episode_id":        a.idGen.New(ids.PrefixEpisode),
+		"kind":              item.Kind,
 		"scheduler_item_id": schedulerItemID,
 		"tenant_id":         tenantID,
 		"situation_id":      item.SituationID,
@@ -261,6 +262,7 @@ func (a *Assembler) budgetMap() map[string]any {
 
 type schedulerItem struct {
 	SchedulerItemID  string
+	Kind             string
 	TriggerID        string
 	TenantID         string
 	SituationID      string
@@ -270,10 +272,10 @@ type schedulerItem struct {
 func (a *Assembler) loadSchedulerItem(ctx context.Context, tx *sql.Tx, id string) (schedulerItem, error) {
 	var item schedulerItem
 	if err := tx.QueryRowContext(ctx, `
-		SELECT scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version
+		SELECT scheduler_item_id, kind, trigger_id, tenant_id, situation_id, situation_version
 		FROM scheduler_items WHERE scheduler_item_id = ?`,
 		id,
-	).Scan(&item.SchedulerItemID, &item.TriggerID, &item.TenantID, &item.SituationID, &item.SituationVersion); err != nil {
+	).Scan(&item.SchedulerItemID, &item.Kind, &item.TriggerID, &item.TenantID, &item.SituationID, &item.SituationVersion); err != nil {
 		return item, fmt.Errorf("query scheduler item: %w", err)
 	}
 	return item, nil

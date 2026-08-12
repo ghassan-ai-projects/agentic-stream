@@ -124,6 +124,9 @@ func (e *Engine) Process(ctx context.Context, tx *sql.Tx, v situations.Version) 
 			return fmt.Errorf("admit trigger %s: %w", tr.Name, err)
 		}
 	}
+	if _, err := e.admitReconsiderations(ctx, tx, v); err != nil {
+		return fmt.Errorf("admit reconsideration: %w", err)
+	}
 
 	// Advance last_reasoned_version unconditionally so that future deltas compare
 	// against the most recently evaluated version regardless of outcome.

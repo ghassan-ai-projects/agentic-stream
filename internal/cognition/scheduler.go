@@ -37,6 +37,7 @@ func NewScheduler(compiled *spec.CompiledSpec, idGen ids.Generator, clk clock.Cl
 // Item is one durable scheduler entry.
 type Item struct {
 	SchedulerItemID  string     // unique scheduler item identity.
+	Kind             string     // standard or reconsider.
 	TriggerID        string     // trigger evaluation that admitted this item.
 	SituationID      string     // situation being reasoned about.
 	SituationVersion int        // immutable situation version bound to this item.
@@ -151,6 +152,7 @@ func (s *Scheduler) saveEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluat
 func (s *Scheduler) buildItem(ctx context.Context, tx *sql.Tx, eval Evaluation) (Item, error) {
 	item := Item{
 		SchedulerItemID:  s.itemID(),
+		Kind:             "standard",
 		TriggerID:        eval.TriggerID,
 		SituationID:      eval.SituationID,
 		SituationVersion: eval.SituationVersion,
@@ -287,9 +289,10 @@ func (s *Scheduler) insertItem(ctx context.Context, tx *sql.Tx, item Item, tenan
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO scheduler_items (
 			scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version,
-			lane, priority, status, dedupe_key, not_before, expires_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			kind, lane, priority, status, dedupe_key, not_before, expires_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(trigger_id) DO UPDATE SET
+			kind = excluded.kind,
 			situation_version = excluded.situation_version,
 			lane = excluded.lane,
 			priority = excluded.priority,
@@ -298,7 +301,7 @@ func (s *Scheduler) insertItem(ctx context.Context, tx *sql.Tx, item Item, tenan
 			not_before = excluded.not_before,
 			expires_at = excluded.expires_at,
 			updated_at = excluded.updated_at`,
-		item.SchedulerItemID, item.TriggerID, tenantID, item.SituationID, item.SituationVersion,
+		item.SchedulerItemID, item.TriggerID, tenantID, item.SituationID, item.SituationVersion, item.Kind,
 		item.Lane, item.Priority, item.Status, s.dedupeKey(item.SituationID, item.SituationVersion, item.TriggerID),
 		notBefore, item.ExpiresAt.Format(time.RFC3339Nano), now, now,
 	); err != nil {
