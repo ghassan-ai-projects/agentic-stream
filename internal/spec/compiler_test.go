@@ -24,6 +24,22 @@ func TestCompilePredictiveMaintenance(t *testing.T) {
 	}
 }
 
+func TestCompileRotatingMachinery(t *testing.T) {
+	compiled, err := spec.CompileFile(context.Background(), "../../docs/design/examples/rotating-machinery.situation.yaml")
+	if err != nil {
+		t.Fatalf("CompileFile failed: %v", err)
+	}
+	if compiled.Metadata.Name != "pump_bearing_degradation" {
+		t.Fatalf("unexpected name %q", compiled.Metadata.Name)
+	}
+	if len(compiled.Inputs) != 7 {
+		t.Fatalf("input count = %d, want 7 simulator channels", len(compiled.Inputs))
+	}
+	if compiled.Digest == "" {
+		t.Fatal("expected non-empty digest")
+	}
+}
+
 func TestCompileStableDigestForEquivalentYAML(t *testing.T) {
 	yaml := minimalSpecYAML()
 

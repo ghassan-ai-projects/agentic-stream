@@ -20,6 +20,42 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+func TestEpisodeKind(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		value   string
+		want    runtimev1.EpisodeKind
+		wantErr bool
+	}{
+		{name: "standard", value: "standard", want: runtimev1.EpisodeKind_EPISODE_KIND_DIAGNOSE},
+		{name: "diagnose", value: "diagnose", want: runtimev1.EpisodeKind_EPISODE_KIND_DIAGNOSE},
+		{name: "reconsider", value: "reconsider", want: runtimev1.EpisodeKind_EPISODE_KIND_RECONSIDER},
+		{name: "invalid", value: "unsupported", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := episodeKind(tt.value)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("episodeKind() error = nil, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("episodeKind() error = %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("episodeKind() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestWorkerExecutorConsumesFencedStream(t *testing.T) {
 	client := testWorkerClient(t, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		decisionJSON := []byte(`{"decision_id":"d-1"}`)
@@ -75,6 +111,46 @@ func TestWorkerExecutorEnforcesModelUsageCeiling(t *testing.T) {
 	_, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
 	if err == nil || !strings.Contains(err.Error(), "budget exceeded: input_tokens") {
 		t.Fatalf("expected input token budget rejection, got %v", err)
+	}
+}
+
+func TestWorkerExecutorRequiresReportedCostUsage(t *testing.T) {
+	tests := []struct {
+		name          string
+		terminalUsage *runtimev1.Usage
+		wantErr       string
+	}{
+		{name: "terminal usage with zero cost is accepted", terminalUsage: &runtimev1.Usage{InputTokens: 1, OutputTokens: 1}},
+		{name: "no usage is refused", wantErr: "worker cost telemetry is missing"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := testWorkerClient(t, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
+				if err := emit(&runtimev1.EpisodeEvent{
+					EpisodeId: req.GetEpisodeId(), Sequence: 2, AttemptId: req.GetAttemptId(), Fence: req.GetFence(), OccurredAt: timestamppb.New(time.Unix(10, 0)),
+					Payload: &runtimev1.EpisodeEvent_Budget{Budget: &runtimev1.BudgetUpdated{}},
+				}); err != nil {
+					return err
+				}
+				return emit(&runtimev1.EpisodeEvent{
+					EpisodeId: req.GetEpisodeId(), Sequence: 3, AttemptId: req.GetAttemptId(), Fence: req.GetFence(), OccurredAt: timestamppb.New(time.Unix(10, 0)),
+					Payload: &runtimev1.EpisodeEvent_Terminal{Terminal: &runtimev1.Terminal{Status: runtimev1.TerminalStatus_TERMINAL_STATUS_DECLINED, Usage: tt.terminalUsage}},
+				})
+			})
+			req := validWorkerRequest()
+			req.RequestJSON = requestWithBudget(req, map[string]any{"cost_microunits": 1_000_000})
+			_, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("execute: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
 	}
 }
 

@@ -114,7 +114,7 @@ func TestLifecycleEventsUseStableTypesAndDurableCursors(t *testing.T) {
 		t.Fatalf("page=%+v err=%v", page, err)
 	}
 	for i, record := range page.Records {
-		if record.Cursor != int64(i+1) || record.Event.Type != types[i] {
+		if record.Cursor != int64(i+1) || record.Event.Type != types[i] || record.Event.Source != notify.SourceForTenant("tenant") {
 			t.Fatalf("record[%d]=%+v", i, record)
 		}
 	}

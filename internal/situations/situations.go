@@ -522,7 +522,9 @@ func (e *Engine) buildFeaturesMap(sit *Situation) map[string]any {
 	for _, r := range e.spec.Situation.Reducers {
 		switch r.Strategy {
 		case "latest_event_time":
-			if v, ok := sit.Facts[r.Field]; ok {
+			// A nil fact means this operator has not materialized an output yet.
+			// Leave it absent so the typed operator default below remains effective.
+			if v, ok := sit.Facts[r.Field]; ok && v != nil {
 				features[r.Input] = v
 			}
 		case "set_union":
