@@ -280,11 +280,17 @@ func (e *Engine) buildFeatures(v situations.Version) map[string]any {
 	for _, r := range e.spec.Situation.Reducers {
 		switch r.Strategy {
 		case "latest_event_time":
-			if val, ok := v.Facts[r.Field]; ok {
+			// A nil fact means this operator has not materialized an output yet.
+			// Leave it absent so the typed operator default below remains effective.
+			if val, ok := v.Facts[r.Field]; ok && val != nil {
 				features[r.Input] = val
 			}
 		case "set_union":
-			features[r.Field] = v.Evidence
+			evidence := v.Evidence
+			if evidence == nil {
+				evidence = []string{}
+			}
+			features[r.Field] = evidence
 		}
 	}
 	// Pre-populate defaults for every operator output so CEL expressions never

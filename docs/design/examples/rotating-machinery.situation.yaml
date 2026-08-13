@@ -2,41 +2,62 @@ apiVersion: agentic-stream/v1
 kind: SituationSpec
 
 metadata:
-  name: motor_bearing_degradation
+  name: pump_bearing_degradation
   version: 0.1.0
-  description: Detect persistent motor bearing degradation and propose a maintenance ticket.
+  description: Detect progressive pump bearing degradation and propose a maintenance ticket.
   labels:
-    domain: predictive-maintenance
+    domain: rotating-machinery
     safety: advisory
 
 inputs:
   - name: vibration
-    eventType: motor.vibration.observed
+    eventType: pump.vibration.observed
     schemaVersion: "1.0"
-    schema: motor.vibration.observed/1.0
+    schema: pump.vibration.observed/1.0
     partitionKey: entity.id
-    entityType: motor
+    entityType: pump
+    classification: internal
+  - name: axial_vibration
+    eventType: pump.axial_vibration.observed
+    schemaVersion: "1.0"
+    schema: pump.axial_vibration.observed/1.0
+    partitionKey: entity.id
+    entityType: pump
     classification: internal
   - name: temperature
-    eventType: motor.temperature.observed
+    eventType: pump.temperature.observed
     schemaVersion: "1.0"
-    schema: motor.temperature.observed/1.0
+    schema: pump.temperature.observed/1.0
     partitionKey: entity.id
-    entityType: motor
+    entityType: pump
     classification: internal
-  - name: current
-    eventType: motor.current.observed
+  - name: motor_current
+    eventType: pump.motor_current.observed
     schemaVersion: "1.0"
-    schema: motor.current.observed/1.0
+    schema: pump.motor_current.observed/1.0
     partitionKey: entity.id
-    entityType: motor
+    entityType: pump
+    classification: internal
+  - name: rpm
+    eventType: pump.rpm.observed
+    schemaVersion: "1.0"
+    schema: pump.rpm.observed/1.0
+    partitionKey: entity.id
+    entityType: pump
+    classification: internal
+  - name: mode
+    eventType: pump.mode.observed
+    schemaVersion: "1.0"
+    schema: pump.mode.observed/1.0
+    partitionKey: entity.id
+    entityType: pump
     classification: internal
   - name: heartbeat
-    eventType: motor.heartbeat.observed
+    eventType: pump.heartbeat.observed
     schemaVersion: "1.0"
-    schema: motor.heartbeat.observed/1.0
+    schema: pump.heartbeat.observed/1.0
     partitionKey: entity.id
-    entityType: motor
+    entityType: pump
     classification: internal
 
 time:
@@ -67,7 +88,7 @@ windows:
     kind: sliding
     size: 6h
     slide: 15m
-    emit: on_close
+    emit: early_and_close
 
 operators:
   - name: vibration_rms
@@ -99,8 +120,8 @@ operators:
 
   - name: current_mean
     kind: aggregate
-    inputs: [current]
-    field: data.amps
+    inputs: [motor_current]
+    field: data.value
     window: current_15m
     aggregate: mean
     output: current_mean_15m
@@ -118,11 +139,13 @@ situation:
   entityKey: entity.id
   occurrence:
     openWhen: >
-      features.vibration_rms_15m > 4.5 ||
-      features.vibration_slope_6h > 0.25
+      features.vibration_rms_15m > 3.15 ||
+      features.vibration_slope_6h > 0.03 ||
+      features.current_mean_15m > 42.0
     closeWhen: >
-      features.vibration_rms_15m < 3.0 &&
-      features.vibration_slope_6h <= 0.05
+      features.vibration_rms_15m < 3.05 &&
+      features.vibration_slope_6h <= 0.01 &&
+      features.current_mean_15m < 36.0
     reopenCooldown: 30m
   initialPhase: candidate
   phases:
@@ -143,30 +166,37 @@ situation:
     - from: candidate
       to: watch
       when: >
-        features.vibration_rms_15m > 4.5 ||
-        features.vibration_slope_6h > 0.25
+        features.vibration_rms_15m > 3.15 ||
+        features.vibration_slope_6h > 0.03 ||
+        features.current_mean_15m > 42.0
       minDuration: 10m
     - from: watch
       to: warning
       when: >
-        features.vibration_rms_15m > 5.5 &&
-        features.temperature_slope_30m > 1.0
-      minDuration: 15m
+        (features.vibration_rms_15m > 3.15 &&
+         features.vibration_slope_6h > 0.03) ||
+        (features.current_mean_15m > 42.0 &&
+         features.temperature_slope_30m > 0.5)
+      minDuration: 10m
     - from: warning
       to: incident
       when: >
-        features.vibration_rms_15m > 7.0 &&
-        features.current_mean_15m > 18.0
+        features.vibration_rms_15m > 3.35 ||
+        (features.current_mean_15m > 45.0 &&
+         features.temperature_slope_30m > 0.5)
       minDuration: 5m
     - from: warning
       to: watch
-      when: features.vibration_rms_15m < 4.0
+      when: >
+        features.vibration_rms_15m < 3.10 &&
+        features.vibration_slope_6h <= 0.01
       minDuration: 30m
     - from: watch
       to: resolved
       when: >
-        features.vibration_rms_15m < 3.0 &&
-        features.vibration_slope_6h <= 0.05
+        features.vibration_rms_15m < 3.05 &&
+        features.vibration_slope_6h <= 0.01 &&
+        features.current_mean_15m < 36.0
       minDuration: 2h
   reducers:
     - field: facts.vibration_rms
@@ -200,7 +230,7 @@ cognition:
       lane: deep
       completeness: any
       debounce: 2m
-      cooldown: 30m
+      cooldown: 2m
       expiresAfter: 15m
       materialDelta: >
         delta.phase_changed ||
@@ -210,9 +240,9 @@ cognition:
   executor:
     name: native
     objective: >
-      Diagnose the most likely cause of the motor condition, identify
+      Diagnose the most likely cause of the pump condition, identify
       contradicting evidence, and propose safe inspection or maintenance steps.
-      Do not propose stopping or controlling the motor.
+      Do not propose stopping or controlling the pump.
     prompt: >
       Analyze the immutable situation snapshot and evidence, then return a typed decision.
     modelPolicy: maintenance_reasoner

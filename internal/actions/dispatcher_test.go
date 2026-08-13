@@ -3,6 +3,8 @@ package actions_test
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -82,10 +84,34 @@ func TestDispatcherRecordsSuccessAndDoesNotRedispatchDeliveredOutbox(t *testing.
 	if commandStatus != "succeeded" || outboxStatus != "delivered" || outcomeStatus != "succeeded" || reconciliation != "observed" {
 		t.Fatalf("success ledger command=%q outbox=%q outcome=%q reconciliation=%q", commandStatus, outboxStatus, outcomeStatus, reconciliation)
 	}
-	var recordedType string
-	if err := db.QueryRowContext(context.Background(), "SELECT event_type FROM notifications WHERE event_type = ? LIMIT 1", notify.TypeOutcomeRecorded).Scan(&recordedType); err != nil || recordedType != notify.TypeOutcomeRecorded {
-		t.Fatalf("outcome notification type=%q err=%v", recordedType, err)
+	var recordedCount, reconciledCount int
+	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM notifications WHERE event_type = ?", notify.TypeOutcomeRecorded).Scan(&recordedCount); err != nil {
+		t.Fatalf("count outcome.recorded notifications: %v", err)
 	}
+	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM notifications WHERE event_type = ?", notify.TypeOutcomeReconciled).Scan(&reconciledCount); err != nil {
+		t.Fatalf("count outcome.reconciled notifications: %v", err)
+	}
+	if recordedCount != 1 || reconciledCount != 1 {
+		t.Fatalf("outcome notification counts recorded=%d reconciled=%d", recordedCount, reconciledCount)
+	}
+	var outcomeID string
+	var outcomeSHA []byte
+	if err := db.QueryRowContext(context.Background(), "SELECT outcome_id, outcome_sha256 FROM outcomes WHERE command_id = ?", commandID).Scan(&outcomeID, &outcomeSHA); err != nil {
+		t.Fatalf("read direct outcome ID: %v", err)
+	}
+	recordedData := readNotificationData(t, db, notify.TypeOutcomeRecorded)
+	if recordedData["outcome_id"] != outcomeID || recordedData["command_id"] != commandID || recordedData["intent_id"] != "int-action" || recordedData["status"] != "succeeded" || recordedData["reconciliation_status"] != "observed" || recordedData["outcome_digest"] != hex.EncodeToString(outcomeSHA) {
+		t.Fatalf("unexpected outcome.recorded payload: %#v", recordedData)
+	}
+	reconciledData := readNotificationData(t, db, notify.TypeOutcomeReconciled)
+	if reconciledData["outcome_id"] != outcomeID || reconciledData["command_id"] != commandID || reconciledData["intent_id"] != "int-action" || reconciledData["final_status"] != "succeeded" || reconciledData["reconciliation_status"] != "reconciled" || reconciledData["verdict"] != "verified" || reconciledData["source_authority"] != notify.SourceForTenant("tenant") {
+		t.Fatalf("unexpected outcome.reconciled payload: %#v", reconciledData)
+	}
+	if version, ok := reconciledData["reconciliation_version"].(float64); !ok || version != 1 {
+		t.Fatalf("outcome.reconciled reconciliation_version=%v, want 1", reconciledData["reconciliation_version"])
+	}
+	assertOutcomeNotificationAuthority(t, db, notify.TypeOutcomeRecorded)
+	assertOutcomeNotificationAuthority(t, db, notify.TypeOutcomeReconciled)
 }
 
 func TestDispatcherDoesNotBlindlyRetryUnknownOutcome(t *testing.T) {
@@ -129,9 +155,20 @@ func TestDispatcherDoesNotBlindlyRetryUnknownOutcome(t *testing.T) {
 	if commandStatus != "succeeded" || outcomeCount != 2 {
 		t.Fatalf("reconciled command=%q outcomes=%d", commandStatus, outcomeCount)
 	}
-	var reconciledType string
-	if err := db.QueryRowContext(context.Background(), "SELECT event_type FROM notifications WHERE event_type = ? LIMIT 1", notify.TypeOutcomeReconciled).Scan(&reconciledType); err != nil || reconciledType != notify.TypeOutcomeReconciled {
-		t.Fatalf("reconciled notification type=%q err=%v", reconciledType, err)
+	var reconciledOutcomeID string
+	if err := db.QueryRowContext(context.Background(), "SELECT outcome_id FROM outcomes WHERE command_id = ? AND ordinal = 2", commandID).Scan(&reconciledOutcomeID); err != nil {
+		t.Fatalf("read reconciled outcome ID: %v", err)
+	}
+	recordedData := readNotificationData(t, db, notify.TypeOutcomeRecorded)
+	if recordedData["intent_id"] != "int-action" || recordedData["outcome_digest"] == "" {
+		t.Fatalf("unexpected unknown outcome.recorded payload: %#v", recordedData)
+	}
+	reconciledData := readNotificationData(t, db, notify.TypeOutcomeReconciled)
+	if reconciledData["outcome_id"] != reconciledOutcomeID || reconciledData["command_id"] != commandID || reconciledData["intent_id"] != "int-action" || reconciledData["final_status"] != "succeeded" || reconciledData["verdict"] != "verified" || reconciledData["reconciliation_status"] != "reconciled" || reconciledData["source_authority"] != notify.SourceForTenant("tenant") {
+		t.Fatalf("unexpected reconciled resolution payload: %#v", reconciledData)
+	}
+	if version, ok := reconciledData["reconciliation_version"].(float64); !ok || version != 1 {
+		t.Fatalf("reconciled resolution reconciliation_version=%v, want 1", reconciledData["reconciliation_version"])
 	}
 }
 
@@ -310,4 +347,40 @@ func mustDecode(t *testing.T, digest string) []byte {
 		t.Fatalf("decode digest: %v", err)
 	}
 	return decoded
+}
+
+func readNotificationData(t *testing.T, db *storage.DB, eventType string) map[string]any {
+	t.Helper()
+	event := readNotification(t, db, eventType)
+	data, ok := event.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("%s notification data type = %T, want map[string]any", eventType, event.Data)
+	}
+	return data
+}
+
+func readNotification(t *testing.T, db *storage.DB, eventType string) contractsv1.CloudEvent {
+	t.Helper()
+	var eventJSON []byte
+	if err := db.QueryRowContext(context.Background(), "SELECT event_json FROM notifications WHERE event_type = ? ORDER BY cursor LIMIT 1", eventType).Scan(&eventJSON); err != nil {
+		t.Fatalf("read %s notification: %v", eventType, err)
+	}
+	var event contractsv1.CloudEvent
+	if err := json.Unmarshal(eventJSON, &event); err != nil {
+		t.Fatalf("decode %s notification: %v", eventType, err)
+	}
+	return event
+}
+
+func assertOutcomeNotificationAuthority(t *testing.T, db *storage.DB, eventType string) {
+	t.Helper()
+	event := readNotification(t, db, eventType)
+	data, ok := event.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("%s notification data type = %T, want map[string]any", eventType, event.Data)
+	}
+	authority, ok := data["source_authority"].(string)
+	if !ok || authority != event.Source {
+		t.Fatalf("%s source_authority=%q, envelope source=%q", eventType, authority, event.Source)
+	}
 }

@@ -133,6 +133,84 @@ func TestTriggerIgnoredWhenConditionFalse(t *testing.T) {
 	}
 }
 
+func TestTriggerHandlesNilFeatureValue(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	compiled := spec.CompiledSpec{
+		SchemaVersion: "agentic-stream/v1",
+		Digest:        testSpecDigest,
+		Operators: []spec.Operator{
+			{Name: "heartbeat_missing", Kind: "missing_heartbeat", Output: "heartbeat_missing_5m"},
+		},
+		Situation: spec.Situation{
+			Type:         "test",
+			InitialPhase: "warning",
+			Phases:       []spec.Phase{{Name: "warning", Severity: 60}},
+			Reducers: []spec.Reducer{
+				{Field: "facts.heartbeat_missing_5m", Strategy: "latest_event_time", Input: "heartbeat_missing_5m"},
+			},
+		},
+		Cognition: spec.Cognition{
+			Triggers: []spec.Trigger{
+				{
+					Name:      "warning_needs_diagnosis",
+					When:      `situation.phase == "warning" && !features.heartbeat_missing_5m`,
+					Score:     "double(situation.severity)",
+					Threshold: 45,
+					Lane:      "deep",
+				},
+			},
+		},
+	}
+
+	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
+		t.Fatalf("save deployment: %v", err)
+	}
+	eng, err := cognition.NewEngine(db, testSpecDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+
+	base := time.Now().UTC()
+	v := situations.Version{
+		SituationID:  "sit-nil-feature",
+		Version:      1,
+		Phase:        "warning",
+		Severity:     60,
+		Confidence:   1.0,
+		Completeness: "provisional",
+		EventHorizon: base,
+		Watermark:    base,
+		Facts:        map[string]any{"facts.heartbeat_missing_5m": nil},
+	}
+
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
+			return err
+		}
+		return eng.Process(ctx, tx, v)
+	}); err != nil {
+		t.Fatalf("process nil feature: %v", err)
+	}
+
+	var outcome string
+	if err := db.QueryRowContext(ctx,
+		"SELECT outcome FROM trigger_evaluations WHERE situation_id = ? AND situation_version = ?",
+		v.SituationID, v.Version,
+	).Scan(&outcome); err != nil {
+		t.Fatalf("query outcome: %v", err)
+	}
+	if outcome != "admitted" {
+		t.Fatalf("expected admitted, got %s", outcome)
+	}
+}
+
 func TestTriggerAdmittedWhenConditionTrue(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

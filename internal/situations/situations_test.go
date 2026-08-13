@@ -120,3 +120,40 @@ func TestSituationPublishesCompletenessChangeFromSourceHealth(t *testing.T) {
 		t.Fatalf("source-health completeness version=%+v err=%v", versions, err)
 	}
 }
+
+func TestSituationSkipsNilFactWhenBuildingFeatures(t *testing.T) {
+	compiled := spec.CompiledSpec{
+		Digest:        "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+		SchemaVersion: "agentic-stream/v1",
+		Operators: []spec.Operator{
+			{Name: "level_latest", Kind: "aggregate", Output: "level"},
+		},
+		Situation: spec.Situation{
+			Type:         "test",
+			InitialPhase: "candidate",
+			Occurrence:   spec.Occurrence{OpenWhen: "features.level > 10"},
+			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
+			Reducers:     []spec.Reducer{{Field: "facts.level", Strategy: "latest_event_time", Input: "level"}},
+		},
+	}
+	eng, err := situations.NewEngine("d1", "default", 0, &compiled, ids.Deterministic())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	versions, err := eng.ApplyFeature(context.Background(), operators.Feature{
+		OutputName: "level",
+		EntityType: "thing",
+		EntityID:   "thing-1",
+		Value:      nil,
+		EventTime:  base,
+		Watermark:  base,
+	}, base)
+	if err != nil {
+		t.Fatalf("ApplyFeature: %v", err)
+	}
+	if len(versions) != 0 {
+		t.Fatalf("expected nil feature not to open a situation, got %d versions", len(versions))
+	}
+}

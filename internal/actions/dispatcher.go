@@ -517,9 +517,16 @@ func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCo
 	}
 	if err := notify.AppendLifecycleEvent(ctx, tx, "outcome.recorded:"+outcomeID, leased.Command.TenantID, notify.TypeOutcomeRecorded, "outcome/"+outcomeID, leased.Command.CommandID, map[string]any{
 		"outcome_id": outcomeID, "command_id": leased.Command.CommandID, "status": status,
-		"reconciliation_status": reconciliation,
+		"reconciliation_status": reconciliation, "intent_id": leased.Command.IntentID,
+		"outcome_digest":   hex.EncodeToString(outcomeSHA),
+		"source_authority": notify.SourceForTenant(leased.Command.TenantID),
 	}, now); err != nil {
 		return fmt.Errorf("append outcome recorded notification: %w", err)
+	}
+	if status == "succeeded" || status == "failed" {
+		if err := appendOutcomeReconciledNotification(ctx, tx, leased.Command.TenantID, leased.Command.IntentID, leased.Command.CommandID, outcomeID, status, now); err != nil {
+			return fmt.Errorf("append outcome reconciled notification: %w", err)
+		}
 	}
 	return nil
 }
@@ -535,8 +542,8 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 		if err := d.assertRuntimeOwner(ctx, tx); err != nil {
 			return err
 		}
-		var currentStatus, tenantID string
-		if err := tx.QueryRowContext(ctx, "SELECT status, tenant_id FROM commands WHERE command_id = ?", commandID).Scan(&currentStatus, &tenantID); err != nil {
+		var currentStatus, tenantID, intentID string
+		if err := tx.QueryRowContext(ctx, "SELECT status, tenant_id, intent_id FROM commands WHERE command_id = ?", commandID).Scan(&currentStatus, &tenantID, &intentID); err != nil {
 			return fmt.Errorf("load command %s for reconciliation: %w", commandID, err)
 		}
 		if currentStatus != "reconciling" && currentStatus != "outcome_unknown" {
@@ -587,10 +594,7 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 			WHERE command_id = ?`, outcomeID, verificationStatus, formatTime(now), formatTime(now), commandID); err != nil {
 			return fmt.Errorf("update reconciliation verification: %w", err)
 		}
-		if err := notify.AppendLifecycleEvent(ctx, tx, "outcome.reconciled:"+outcomeID, tenantID, notify.TypeOutcomeReconciled, "outcome/"+outcomeID, commandID, map[string]any{
-			"outcome_id": outcomeID, "command_id": commandID, "final_status": finalStatus,
-			"reconciliation_status": "reconciled",
-		}, now); err != nil {
+		if err := appendOutcomeReconciledNotification(ctx, tx, tenantID, intentID, commandID, outcomeID, finalStatus, now); err != nil {
 			return fmt.Errorf("append outcome reconciled notification: %w", err)
 		}
 		return nil
@@ -598,6 +602,26 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 		return fmt.Errorf("reconcile unknown command: %w", err)
 	}
 	return nil
+}
+
+func appendOutcomeReconciledNotification(ctx context.Context, tx *sql.Tx, tenantID, intentID, commandID, outcomeID, finalStatus string, now time.Time) error {
+	return notify.AppendLifecycleEvent(ctx, tx, "outcome.reconciled:"+outcomeID, tenantID, notify.TypeOutcomeReconciled, "outcome/"+outcomeID, commandID, map[string]any{
+		"outcome_id": outcomeID, "command_id": commandID, "final_status": finalStatus,
+		"reconciliation_status": "reconciled", "intent_id": intentID,
+		"verdict": outcomeVerdict(finalStatus), "reconciliation_version": 1,
+		"source_authority": notify.SourceForTenant(tenantID),
+	}, now)
+}
+
+func outcomeVerdict(finalStatus string) string {
+	switch finalStatus {
+	case "succeeded":
+		return "verified"
+	case "failed":
+		return "refuted"
+	default:
+		return "inconclusive"
+	}
 }
 
 func (d *Dispatcher) assertRuntimeOwner(ctx context.Context, tx *sql.Tx) error {

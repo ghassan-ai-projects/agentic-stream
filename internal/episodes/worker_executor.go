@@ -230,7 +230,9 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Ou
 	if hasNumericBudget(wireRequest.GetBudget()) && !sawBudget {
 		return nil, budgetTelemetryMissingError{}
 	}
-	if wireRequest.GetBudget().GetMaxCostMicrounits() > 0 && trustedUsage.costMicrounits == 0 && (terminal.GetUsage() == nil || terminal.GetUsage().GetCostMicrounits() == 0) {
+	// A cost ceiling requires an explicit usage record, but zero cost is valid
+	// for providers and test workers that cannot price usage.
+	if wireRequest.GetBudget().GetMaxCostMicrounits() > 0 && !trustedUsage.usageReported && terminal.GetUsage() == nil {
 		return nil, fmt.Errorf("worker cost telemetry is missing")
 	}
 
@@ -266,6 +268,7 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Ou
 type budgetUsage struct {
 	modelCalls, toolCalls                                      uint32
 	toolResultBytes, inputTokens, outputTokens, costMicrounits uint64
+	usageReported                                              bool
 }
 
 func (u *budgetUsage) observe(limit *runtimev1.EpisodeBudget, event *runtimev1.EpisodeEvent) error {
@@ -279,6 +282,7 @@ func (u *budgetUsage) observe(limit *runtimev1.EpisodeBudget, event *runtimev1.E
 		}
 	}
 	if completed := event.GetModelCompleted(); completed != nil && completed.GetUsage() != nil {
+		u.usageReported = true
 		usage := completed.GetUsage()
 		u.inputTokens += usage.GetInputTokens()
 		u.outputTokens += usage.GetOutputTokens()
@@ -292,6 +296,9 @@ func (u *budgetUsage) observe(limit *runtimev1.EpisodeBudget, event *runtimev1.E
 		if limit.GetMaxCostMicrounits() > 0 && u.costMicrounits > limit.GetMaxCostMicrounits() {
 			return &budgetExceededError{"cost_microunits"}
 		}
+	}
+	if budget := event.GetBudget(); budget != nil && budget.GetCumulativeUsage() != nil {
+		u.usageReported = true
 	}
 	if tool := event.GetTool(); tool != nil && tool.GetExecutionStarted() {
 		u.toolCalls++
@@ -521,7 +528,7 @@ func requiredJSON(raw json.RawMessage, name string) ([]byte, error) {
 
 func episodeKind(value string) (runtimev1.EpisodeKind, error) {
 	switch strings.ToLower(value) {
-	case "diagnose", "diagnosis":
+	case "standard", "diagnose", "diagnosis":
 		return runtimev1.EpisodeKind_EPISODE_KIND_DIAGNOSE, nil
 	case "reconsider", "reconsideration":
 		return runtimev1.EpisodeKind_EPISODE_KIND_RECONSIDER, nil

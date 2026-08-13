@@ -22,6 +22,14 @@ const (
 
 const lifecycleSchema = "urn:agentic-stream:schema:lifecycle-event:v1"
 
+const lifecycleSourcePrefix = "//agentic-stream/tenant/"
+
+// SourceForTenant returns the stable CloudEvents source for lifecycle events
+// emitted for tenantID.
+func SourceForTenant(tenantID string) string {
+	return lifecycleSourcePrefix + tenantID
+}
+
 // AppendLifecycleEvent creates and appends one stable lifecycle CloudEvent in
 // the caller's transaction. eventID must be deterministic for a durable state
 // transition so retries remain idempotent.
@@ -32,7 +40,7 @@ func AppendLifecycleEvent(ctx context.Context, tx *sql.Tx, eventID, tenantID, ev
 	event := contractsv1.CloudEvent{
 		SpecVersion:     "1.0",
 		ID:              eventID,
-		Source:          "//agentic-stream/tenant/" + tenantID,
+		Source:          SourceForTenant(tenantID),
 		Type:            eventType,
 		Subject:         subject,
 		Time:            now.UTC(),

@@ -10,8 +10,10 @@ import (
 
 // Field describes one payload field exposed to deterministic operators.
 type Field struct {
-	Path string
-	Unit string
+	Path     string
+	Unit     string
+	Type     string
+	Optional bool
 }
 
 // Definition identifies a schema bound to one normalized event type.
@@ -28,6 +30,21 @@ var builtins = map[string]Definition{
 	"motor.current.observed/1.0":     {Ref: "motor.current.observed/1.0", EventType: "motor.current.observed", SchemaVersion: "1.0", Fields: map[string]Field{"amps": {Path: "amps", Unit: "ampere"}}},
 	"motor.heartbeat.observed/1.0":   {Ref: "motor.heartbeat.observed/1.0", EventType: "motor.heartbeat.observed", SchemaVersion: "1.0", Fields: map[string]Field{}},
 	"sensor.temperature/1.0":         {Ref: "sensor.temperature/1.0", EventType: "sensor.temperature", SchemaVersion: "1.0", Fields: map[string]Field{"value": {Path: "value", Unit: "celsius"}}},
+
+	"pump.vibration.observed/1.0":       {Ref: "pump.vibration.observed/1.0", EventType: "pump.vibration.observed", SchemaVersion: "1.0", Fields: numericWithUnit("rms_mm_s", "mm_s")},
+	"pump.axial_vibration.observed/1.0": {Ref: "pump.axial_vibration.observed/1.0", EventType: "pump.axial_vibration.observed", SchemaVersion: "1.0", Fields: numericWithUnit("value", "mm_s")},
+	"pump.temperature.observed/1.0":     {Ref: "pump.temperature.observed/1.0", EventType: "pump.temperature.observed", SchemaVersion: "1.0", Fields: numericWithUnit("celsius", "celsius")},
+	"pump.motor_current.observed/1.0":   {Ref: "pump.motor_current.observed/1.0", EventType: "pump.motor_current.observed", SchemaVersion: "1.0", Fields: numericWithUnit("value", "ampere")},
+	"pump.rpm.observed/1.0":             {Ref: "pump.rpm.observed/1.0", EventType: "pump.rpm.observed", SchemaVersion: "1.0", Fields: numericWithUnit("value", "rpm")},
+	"pump.mode.observed/1.0":            {Ref: "pump.mode.observed/1.0", EventType: "pump.mode.observed", SchemaVersion: "1.0", Fields: map[string]Field{"value": {Path: "value", Type: "string"}, "mode": {Path: "mode", Type: "string"}}},
+	"pump.heartbeat.observed/1.0":       {Ref: "pump.heartbeat.observed/1.0", EventType: "pump.heartbeat.observed", SchemaVersion: "1.0", Fields: map[string]Field{}},
+}
+
+func numericWithUnit(path, unit string) map[string]Field {
+	return map[string]Field{
+		path:   {Path: path, Unit: unit},
+		"unit": {Path: "unit", Type: "string", Optional: true},
+	}
 }
 
 // Lookup returns a registered built-in definition.
@@ -40,9 +57,15 @@ func Lookup(ref string) (Definition, bool) {
 func JSON(definition Definition) ([]byte, error) {
 	properties := make(map[string]map[string]string, len(definition.Fields))
 	required := make([]string, 0, len(definition.Fields))
-	for name := range definition.Fields {
-		properties[name] = map[string]string{"type": "number"}
-		required = append(required, name)
+	for name, field := range definition.Fields {
+		fieldType := field.Type
+		if fieldType == "" {
+			fieldType = "number"
+		}
+		properties[name] = map[string]string{"type": fieldType}
+		if !field.Optional {
+			required = append(required, name)
+		}
 	}
 	sort.Strings(required)
 	result, err := json.Marshal(map[string]any{

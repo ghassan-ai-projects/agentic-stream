@@ -304,8 +304,8 @@ func alwaysTriggerSpec(t *testing.T) string {
 		t.Fatal("cognition section not found")
 	}
 	prefix, suffix := specText[:idx], specText[idx:]
-	suffix = strings.Replace(suffix, "when: >\n        situation.phase in [\"warning\", \"incident\"] &&\n        !features.heartbeat_missing_5m", "when: true", 1)
-	suffix = strings.Replace(suffix, "score: >\n        situation.severity * 0.5 +\n        delta.novelty * 25.0 +\n        situation.uncertainty * 25.0", "score: 100.0", 1)
+	suffix = strings.Replace(suffix, "when: >\n        situation.phase in [\"warning\", \"incident\"] &&\n        (!has(features.heartbeat_missing_5m) || features.heartbeat_missing_5m == false)", "when: true", 1)
+	suffix = strings.Replace(suffix, "score: >\n        double(situation.severity) * 0.5 +\n        double(delta.novelty) * 25.0 +\n        double(situation.uncertainty) * 25.0", "score: 100.0", 1)
 	suffix = strings.Replace(suffix, "materialDelta: >\n        delta.phase_changed ||\n        delta.severity_change >= 10 ||\n        delta.primary_hypothesis_changed ||\n        delta.completeness_changed", "materialDelta: true", 1)
 	suffix = strings.Replace(suffix, "      debounce: 2m\n", "", 1)
 	suffix = strings.Replace(suffix, "      cooldown: 30m\n", "", 1)
