@@ -100,7 +100,7 @@ func TestDispatcherRecordsSuccessAndDoesNotRedispatchDeliveredOutbox(t *testing.
 		t.Fatalf("read direct outcome ID: %v", err)
 	}
 	recordedData := readNotificationData(t, db, notify.TypeOutcomeRecorded)
-	if recordedData["outcome_id"] != outcomeID || recordedData["command_id"] != commandID || recordedData["intent_id"] != "int-action" || recordedData["status"] != "succeeded" || recordedData["reconciliation_status"] != "observed" || recordedData["outcome_digest"] != hex.EncodeToString(outcomeSHA) {
+	if recordedData["outcome_id"] != outcomeID || recordedData["command_id"] != commandID || recordedData["intent_id"] != "int-action" || recordedData["status"] != "succeeded" || recordedData["reconciliation_status"] != "observed" || recordedData["outcome_digest"] != "sha256:"+hex.EncodeToString(outcomeSHA) {
 		t.Fatalf("unexpected outcome.recorded payload: %#v", recordedData)
 	}
 	reconciledData := readNotificationData(t, db, notify.TypeOutcomeReconciled)
@@ -167,8 +167,8 @@ func TestDispatcherDoesNotBlindlyRetryUnknownOutcome(t *testing.T) {
 	if reconciledData["outcome_id"] != reconciledOutcomeID || reconciledData["command_id"] != commandID || reconciledData["intent_id"] != "int-action" || reconciledData["final_status"] != "succeeded" || reconciledData["verdict"] != "verified" || reconciledData["reconciliation_status"] != "reconciled" || reconciledData["source_authority"] != notify.SourceForTenant("tenant") {
 		t.Fatalf("unexpected reconciled resolution payload: %#v", reconciledData)
 	}
-	if version, ok := reconciledData["reconciliation_version"].(float64); !ok || version != 1 {
-		t.Fatalf("reconciled resolution reconciliation_version=%v, want 1", reconciledData["reconciliation_version"])
+	if version, ok := reconciledData["reconciliation_version"].(float64); !ok || version != 2 {
+		t.Fatalf("reconciled resolution reconciliation_version=%v, want 2", reconciledData["reconciliation_version"])
 	}
 }
 

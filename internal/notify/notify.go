@@ -66,6 +66,8 @@ func Append(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, now t
 		return 0, fmt.Errorf("canonicalize notification: %w", err)
 	}
 	eventSHA := sha256.Sum256(eventJSON)
+	traceparent := nullableString(event.Traceparent)
+	tracestate := nullableString(event.Tracestate)
 	var existingCursor int64
 	var existingSHA []byte
 	if err := tx.QueryRowContext(ctx, "SELECT cursor, event_sha256 FROM notifications WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&existingCursor, &existingSHA); err == nil {
@@ -92,9 +94,9 @@ func Append(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, now t
 		return 0, fmt.Errorf("allocate notification cursor: %w", err)
 	}
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO notifications (tenant_id, cursor, event_id, event_type, event_json, event_sha256, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(tenant_id, event_id) DO NOTHING`,
-		event.TenantID, cursor, event.ID, event.Type, eventJSON, eventSHA[:], now.UTC().Format(time.RFC3339Nano))
+		INSERT INTO notifications (tenant_id, cursor, event_id, event_type, event_json, event_sha256, traceparent, tracestate, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(tenant_id, event_id) DO NOTHING`,
+		event.TenantID, cursor, event.ID, event.Type, eventJSON, eventSHA[:], traceparent, tracestate, now.UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return 0, fmt.Errorf("append notification: %w", err)
 	}
@@ -119,6 +121,10 @@ func Append(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, now t
 		return 0, fmt.Errorf("read notification cursor: %w", err)
 	}
 	return actual, nil
+}
+
+func nullableString(value string) sql.NullString {
+	return sql.NullString{String: value, Valid: value != ""}
 }
 
 // ReadAfter returns up to limit events strictly after cursor. It refuses a

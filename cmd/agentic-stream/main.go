@@ -3,10 +3,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -17,14 +13,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
-	nativeexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
@@ -32,8 +25,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
-	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 // Version metadata injected at build time.
@@ -113,87 +104,18 @@ func newRunLiveCommand() *cobra.Command {
 				return fmt.Errorf("start runtime: %w", err)
 			}
 			defer func() { _ = service.Close(context.Background()) }()
-			if evidenceSocket != "" && workerSocket == "" {
-				return fmt.Errorf("--evidence-socket requires --worker-socket")
-			}
-			var evidenceSecret []byte
-			var evidenceGRPC *grpc.Server
-			var evidenceListener interface{ Close() error }
-			if evidenceSocket != "" {
-				var decodeErr error
-				evidenceSecret, decodeErr = hex.DecodeString(evidenceKey)
-				if decodeErr != nil || len(evidenceSecret) < 32 {
-					return fmt.Errorf("--evidence-key must be at least 32 bytes of hex")
-				}
-				listener, listenErr := worker.ListenEvidenceSocket(evidenceSocket)
-				if listenErr != nil {
-					return fmt.Errorf("listen evidence socket: %w", listenErr)
-				}
-				evidenceListener = listener
-				evidenceGRPC = grpc.NewServer()
-				issuer := &evidence.Issuer{Issuer: "agentic-stream", Audience: "evidence-tools", KeyID: "runtime", Keys: map[string][]byte{"runtime": evidenceSecret}}
-				runtimev1.RegisterEvidenceToolsServer(evidenceGRPC, &evidence.Server{
-					Verifier: &evidence.Verifier{Issuer: issuer.Issuer, Audience: issuer.Audience, Keys: issuer.Keys},
-					Query:    makeEvidenceQuery(db), Ledger: ledger, RuntimeEpoch: epoch, RequireLedger: true,
-				})
-				go func() { _ = evidenceGRPC.Serve(listener) }()
-				defer evidenceGRPC.Stop()
-				defer func() { _ = evidenceListener.Close() }()
-			}
-
-			var provider nativeexecutor.ModelProvider = &nativeexecutor.DeterministicProvider{}
-			if modelEndpoint != "" {
-				if modelName == "" {
-					return fmt.Errorf("--model-name is required with --model-endpoint")
-				}
-				provider = &nativeexecutor.OpenAICompatibleProvider{Endpoint: modelEndpoint, APIKey: os.Getenv("AGENTIC_STREAM_MODEL_API_KEY"), Model: modelName}
-			}
-			nativeExecutor, nativeErr := nativeexecutor.New(nativeexecutor.Config{
-				Provider: provider,
-				ToolFactory: func(req *episodes.Request) []nativeexecutor.Tool {
-					return []nativeexecutor.Tool{
-						nativeexecutor.NewSQLiteEvidenceTool(db, "evidence_get", req.TenantID, req.EntityID),
-						nativeexecutor.NewSQLiteEvidenceTool(db, "evidence.get", req.TenantID, req.EntityID),
-					}
-				},
+			workerRuntime, err := runtime.NewWorkerRuntime(cmd.Context(), runtime.WorkerRuntimeConfig{
+				DB: db, Ledger: ledger, RuntimeEpoch: epoch, WorkerSocket: workerSocket, WorkerName: workerName,
+				WorkerCA: workerCA, WorkerCert: workerCert, WorkerKey: workerKey, WorkerServerName: workerServerName,
+				EvidenceSocket: evidenceSocket, EvidenceKey: evidenceKey, ModelEndpoint: modelEndpoint, ModelName: modelName,
 			})
-			if nativeErr != nil {
-				return fmt.Errorf("configure native executor: %w", nativeErr)
+			if err != nil {
+				return fmt.Errorf("configure worker runtime: %w", err)
 			}
-			var executor episodes.Executor = nativeExecutor
-			var workerConn interface{ Close() error }
-			if workerSocket != "" {
-				tlsConfig, tlsErr := loadWorkerTLS(workerCA, workerCert, workerKey, workerServerName)
-				if tlsErr != nil {
-					return tlsErr
-				}
-				conn, dialErr := worker.DialEpisodeWorkerSocketTLS(cmd.Context(), workerSocket, tlsConfig)
-				if dialErr != nil {
-					return fmt.Errorf("dial episode worker socket: %w", dialErr)
-				}
-				workerConn = conn
-				features := []string(nil)
-				if evidenceSocket != "" {
-					issuer := &evidence.Issuer{Issuer: "agentic-stream", Audience: "evidence-tools", KeyID: "runtime", Keys: map[string][]byte{"runtime": evidenceSecret}}
-					factory := &episodes.AttemptCapabilityIssuer{
-						Issuer: issuer, RuntimeEpoch: epoch, Tools: []string{"evidence.get"},
-						From: time.Now().UTC().Add(-24 * time.Hour), Until: time.Now().UTC().Add(24 * time.Hour), MaxRows: 1000, MaxBytes: 1 << 20,
-					}
-					features = []string{worker.EvidenceToolsFeature}
-					executor = episodes.NewWorkerExecutorWithEvidence(runtimev1.NewEpisodeWorkerClient(conn), workerName, epoch, features, evidenceSocket, factory)
-				} else {
-					executor = episodes.NewWorkerExecutor(runtimev1.NewEpisodeWorkerClient(conn), workerName, epoch, features)
-				}
-			}
-			if evidenceSocket != "" && evidenceKey == "" {
-				return fmt.Errorf("--evidence-key is required with --evidence-socket")
-			}
-			if workerConn != nil {
-				defer func() { _ = workerConn.Close() }()
-			}
+			defer func() { _ = workerRuntime.Close() }()
 			pipeline, err := runtime.NewPipeline(cmd.Context(), runtime.PipelineConfig{
 				DB: db, Spec: compiled, TenantID: tenantID, Owner: owner, OwnerEpoch: epoch,
-				Executor: executor, Effector: actions.NewSimulatedEffector(), IDGenerator: ids.Random(),
+				Executor: workerRuntime.Executor, Effector: actions.NewSimulatedEffector(), IDGenerator: ids.Random(),
 			})
 			if err != nil {
 				return fmt.Errorf("create runtime pipeline: %w", err)
@@ -217,6 +139,9 @@ func newRunLiveCommand() *cobra.Command {
 			default:
 				return fmt.Errorf("unsupported --trace-format %q", traceFormat)
 			}
+			if workerErr := readWorkerRuntimeError(workerRuntime); workerErr != nil {
+				return workerErr
+			}
 			cmd.Printf("events_ingested=%d events_processed=%d episodes_admitted=%d episodes_executed=%d intents_evaluated=%d commands_dispatched=%d\n", report.EventsIngested, report.EventsProcessed, report.EpisodesAdmitted, report.EpisodesExecuted, report.IntentsEvaluated, report.CommandsDispatched)
 			return nil
 		},
@@ -239,62 +164,10 @@ func newRunLiveCommand() *cobra.Command {
 	return cmd
 }
 
-func makeEvidenceQuery(db *storage.DB) evidence.Query {
-	return func(ctx context.Context, call evidence.Call) (evidence.QueryResult, error) {
-		rows, err := db.QueryContext(ctx, `SELECT event_id, event_type, event_time, payload_json FROM event_log WHERE tenant_id = ? AND entity_id = ? AND event_time >= ? AND event_time <= ? ORDER BY event_time, position LIMIT ?`, call.TenantID, call.EntityID, call.From.UTC().Format(time.RFC3339Nano), call.Until.UTC().Format(time.RFC3339Nano), call.MaxRows)
-		if err != nil {
-			return evidence.QueryResult{}, fmt.Errorf("query evidence events: %w", err)
-		}
-		defer func() { _ = rows.Close() }()
-		resultRows := make([]map[string]any, 0)
-		for rows.Next() {
-			var eventID, eventType, eventTime string
-			var payload []byte
-			if err := rows.Scan(&eventID, &eventType, &eventTime, &payload); err != nil {
-				return evidence.QueryResult{}, fmt.Errorf("scan evidence event: %w", err)
-			}
-			var data map[string]any
-			if err := json.Unmarshal(payload, &data); err != nil {
-				return evidence.QueryResult{}, fmt.Errorf("decode evidence payload: %w", err)
-			}
-			resultRows = append(resultRows, map[string]any{"event_id": eventID, "event_type": eventType, "event_time": eventTime, "data": data})
-		}
-		if err := rows.Err(); err != nil {
-			return evidence.QueryResult{}, fmt.Errorf("iterate evidence events: %w", err)
-		}
-		result, err := json.Marshal(map[string]any{"rows": resultRows})
-		if err != nil {
-			return evidence.QueryResult{}, fmt.Errorf("encode evidence result: %w", err)
-		}
-		return evidence.QueryResult{JSON: result, RowCount: uint64(len(resultRows))}, nil //nolint:gosec // Result rows are bounded by the authenticated capability.
-	}
-}
-
-func loadWorkerTLS(caPath, certPath, keyPath, serverName string) (*tls.Config, error) {
-	if caPath == "" && certPath == "" && keyPath == "" {
-		return nil, nil
-	}
-	if caPath == "" || certPath == "" || keyPath == "" {
-		return nil, fmt.Errorf("--worker-ca, --worker-cert, and --worker-key are required together")
-	}
-	caPEM, err := os.ReadFile(caPath)
-	if err != nil {
-		return nil, fmt.Errorf("read worker CA: %w", err)
-	}
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(caPEM) {
-		return nil, fmt.Errorf("worker CA contains no certificates")
-	}
-	certificate, err := tls.LoadX509KeyPair(certPath, keyPath)
-	if err != nil {
-		return nil, fmt.Errorf("load worker client certificate: %w", err)
-	}
-	return &tls.Config{RootCAs: pool, Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS13, ServerName: serverName}, nil
-}
-
 func newServeCommand() *cobra.Command {
 	var dbPath, listenAddress, tenantID, specPath, tracePath, traceFormat string
 	var modelEndpoint, modelName string
+	var workerSocket, workerName, workerCA, workerCert, workerKey, workerServerName, evidenceSocket, evidenceKey string
 	var ownerLease, pollInterval time.Duration
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -305,6 +178,17 @@ func newServeCommand() *cobra.Command {
 			}
 			if (specPath == "") != (tracePath == "") {
 				return fmt.Errorf("--spec and --trace must be provided together for continuous ingestion")
+			}
+			workerConfig := runtime.WorkerRuntimeConfig{
+				WorkerSocket: workerSocket, WorkerName: workerName, WorkerCA: workerCA, WorkerCert: workerCert,
+				WorkerKey: workerKey, WorkerServerName: workerServerName, EvidenceSocket: evidenceSocket, EvidenceKey: evidenceKey,
+				ModelEndpoint: modelEndpoint, ModelName: modelName,
+			}
+			if err := runtime.ValidateWorkerRuntimeConfig(workerConfig); err != nil {
+				return err
+			}
+			if workerSocket != "" && (specPath == "" || tracePath == "") {
+				return fmt.Errorf("--worker-socket requires --spec and --trace for continuous ingestion")
 			}
 			if pollInterval <= 0 {
 				return fmt.Errorf("--poll-interval must be positive")
@@ -344,34 +228,34 @@ func newServeCommand() *cobra.Command {
 			runCtx, stop := context.WithCancel(cmd.Context())
 			defer stop()
 			var pipeline *runtime.Pipeline
+			var workerRuntime *runtime.WorkerRuntime
 			pipelineErrors := make(chan error, 1)
 			if specPath != "" {
 				compiled, compileErr := spec.CompileFile(runCtx, specPath)
 				if compileErr != nil {
 					return fmt.Errorf("compile spec: %w", compileErr)
 				}
-				var provider nativeexecutor.ModelProvider = &nativeexecutor.DeterministicProvider{}
-				if modelEndpoint != "" {
-					if modelName == "" {
-						return fmt.Errorf("--model-name is required with --model-endpoint")
-					}
-					provider = &nativeexecutor.OpenAICompatibleProvider{Endpoint: modelEndpoint, APIKey: os.Getenv("AGENTIC_STREAM_MODEL_API_KEY"), Model: modelName}
+				workerConfig.DB = db
+				workerConfig.Ledger = ledger
+				workerConfig.RuntimeEpoch = epoch
+				workerRuntime, err = runtime.NewWorkerRuntime(runCtx, workerConfig)
+				if err != nil {
+					return fmt.Errorf("configure worker runtime: %w", err)
 				}
-				nativeExecutor, nativeErr := nativeexecutor.New(nativeexecutor.Config{
-					Provider: provider,
-					ToolFactory: func(req *episodes.Request) []nativeexecutor.Tool {
-						return []nativeexecutor.Tool{
-							nativeexecutor.NewSQLiteEvidenceTool(db, "evidence_get", req.TenantID, req.EntityID),
-							nativeexecutor.NewSQLiteEvidenceTool(db, "evidence.get", req.TenantID, req.EntityID),
+				defer func() { _ = workerRuntime.Close() }()
+				if workerRuntime.Errors() != nil {
+					go func() {
+						select {
+						case workerErr := <-workerRuntime.Errors():
+							pipelineErrors <- fmt.Errorf("worker runtime: %w", workerErr)
+							stop()
+						case <-runCtx.Done():
 						}
-					},
-				})
-				if nativeErr != nil {
-					return fmt.Errorf("configure native executor: %w", nativeErr)
+					}()
 				}
 				pipeline, err = runtime.NewPipeline(runCtx, runtime.PipelineConfig{
 					DB: db, Spec: compiled, TenantID: tenantID, Owner: owner, OwnerEpoch: epoch,
-					Executor: nativeExecutor, Effector: actions.NewSimulatedEffector(), IDGenerator: ids.Random(), Telemetry: metrics,
+					Executor: workerRuntime.Executor, Effector: actions.NewSimulatedEffector(), IDGenerator: ids.Random(), Telemetry: metrics,
 				})
 				if err != nil {
 					return fmt.Errorf("configure live pipeline: %w", err)
@@ -437,6 +321,14 @@ func newServeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
 	cmd.Flags().StringVar(&modelEndpoint, "model-endpoint", "", "OpenAI-compatible model endpoint for the native Go executor")
 	cmd.Flags().StringVar(&modelName, "model-name", "", "Model name for the OpenAI-compatible native provider")
+	cmd.Flags().StringVar(&workerSocket, "worker-socket", "", "EpisodeWorker Unix socket (overrides the native Go executor)")
+	cmd.Flags().StringVar(&workerName, "worker-name", "native", "Expected EpisodeWorker name")
+	cmd.Flags().StringVar(&workerCA, "worker-ca", "", "Worker CA PEM (enables mTLS)")
+	cmd.Flags().StringVar(&workerCert, "worker-cert", "", "Runtime client certificate PEM")
+	cmd.Flags().StringVar(&workerKey, "worker-key", "", "Runtime client private key PEM")
+	cmd.Flags().StringVar(&workerServerName, "worker-server-name", "", "Expected worker certificate name")
+	cmd.Flags().StringVar(&evidenceSocket, "evidence-socket", "", "Runtime EvidenceTools Unix socket for worker episodes")
+	cmd.Flags().StringVar(&evidenceKey, "evidence-key", "", "Hex HMAC key shared with the runtime EvidenceTools verifier")
 	cmd.Flags().StringVar(&tenantID, "tenant", "default", "tenant served by this runtime process")
 	cmd.Flags().StringVar(&listenAddress, "listen", "127.0.0.1:8080", "loopback HTTP listen address")
 	cmd.Flags().DurationVar(&ownerLease, "owner-lease", time.Minute, "runtime owner lease duration")
@@ -450,6 +342,18 @@ func isLoopbackListenAddress(address string) bool {
 		return false
 	}
 	return host == "127.0.0.1" || host == "localhost" || host == "[::1]" || host == "::1"
+}
+
+func readWorkerRuntimeError(workerRuntime *runtime.WorkerRuntime) error {
+	if workerRuntime == nil || workerRuntime.Errors() == nil {
+		return nil
+	}
+	select {
+	case workerErr := <-workerRuntime.Errors():
+		return fmt.Errorf("worker runtime: %w", workerErr)
+	default:
+		return nil
+	}
 }
 
 func configureRuntimeTelemetry(ctx context.Context) (interface{ Shutdown(context.Context) error }, error) {
