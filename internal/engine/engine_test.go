@@ -243,6 +243,13 @@ func TestEngineFiresDurableProcessingTimerExactlyOnce(t *testing.T) {
 	if completeness != "on_time" {
 		t.Fatalf("expected heartbeat recovery to restore on_time completeness, got %q", completeness)
 	}
+	var stateJSON string
+	if err := db.QueryRowContext(ctx, "SELECT state_json FROM situations").Scan(&stateJSON); err != nil {
+		t.Fatalf("read timer situation state: %v", err)
+	}
+	if !strings.Contains(stateJSON, `"facts.missing":true`) {
+		t.Fatalf("expected latest_event_time reducer to retain missing=true, state=%s", stateJSON)
+	}
 }
 
 func restartSpec() spec.CompiledSpec {

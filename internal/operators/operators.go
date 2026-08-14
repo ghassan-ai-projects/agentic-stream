@@ -343,6 +343,10 @@ func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *O
 	if hs.LastEventTime != nil {
 		missing = watermark.Sub(*hs.LastEventTime) >= duration
 	}
+	eventTime := env.EventTime
+	if missing {
+		eventTime = processingTime
+	}
 
 	feature := Feature{
 		FeatureID:     r.idGen.New(ids.PrefixEvent),
@@ -355,7 +359,7 @@ func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *O
 		WindowStart:   env.EventTime,
 		WindowEnd:     watermark,
 		Value:         missing,
-		EventTime:     env.EventTime,
+		EventTime:     eventTime,
 		Watermark:     watermark,
 		InputEventIDs: []string{env.ID},
 		Completeness:  string(CompletenessOnTime),
@@ -548,7 +552,7 @@ func (r *OperatorRuntime) applyHeartbeatTimer(inst *operatorInstance, ps *Partit
 			WindowStart:       *blob.Heartbeat.LastEventTime,
 			WindowEnd:         processingTime,
 			Value:             true,
-			EventTime:         *blob.Heartbeat.LastEventTime,
+			EventTime:         processingTime,
 			Watermark:         watermark,
 			InputEventIDs:     []string{blob.Heartbeat.LastEventID},
 			Completeness:      string(CompletenessUncertain),

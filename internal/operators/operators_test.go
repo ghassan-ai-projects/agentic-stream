@@ -156,6 +156,96 @@ func TestLateEventCorrectsPreviouslyEmittedWindow(t *testing.T) {
 	}
 }
 
+func TestMissingHeartbeatTimerUsesDetectionTime(t *testing.T) {
+	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), ids.Deterministic())
+	if err != nil {
+		t.Fatalf("NewOperatorRuntime: %v", err)
+	}
+
+	ctx := context.Background()
+	ps := &operators.PartitionState{}
+	heartbeatEventTime := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	heartbeatProcessingTime := heartbeatEventTime.Add(30 * time.Second)
+	heartbeat := contractsv1.Envelope{
+		ID:             "hb-1",
+		Type:           "test.heartbeat",
+		SchemaVersion:  "1.0",
+		TenantID:       "default",
+		Source:         "test",
+		PartitionKey:   "motor-17",
+		Entity:         contractsv1.EntityRef{Type: "motor", ID: "motor-17"},
+		EventTime:      heartbeatEventTime,
+		IngestedAt:     heartbeatProcessingTime,
+		Classification: contractsv1.ClassificationInternal,
+	}
+	features, ps, err := rt.ApplyEventAt(ctx, ps, heartbeat, heartbeatEventTime, heartbeatProcessingTime)
+	if err != nil {
+		t.Fatalf("apply heartbeat: %v", err)
+	}
+	if len(features) != 1 || features[0].Value != false {
+		t.Fatalf("heartbeat feature = %+v, want one false feature", features)
+	}
+
+	detectionTime := heartbeatProcessingTime.Add(5 * time.Minute)
+	features, _, err = rt.ApplyTimer(ctx, ps, detectionTime, detectionTime)
+	if err != nil {
+		t.Fatalf("apply heartbeat timer: %v", err)
+	}
+	if len(features) != 1 {
+		t.Fatalf("timer emitted %d features, want 1", len(features))
+	}
+	feature := features[0]
+	if feature.Value != true {
+		t.Fatalf("timer feature value = %v, want true", feature.Value)
+	}
+	if feature.Completeness != string(operators.CompletenessUncertain) {
+		t.Fatalf("timer feature completeness = %q, want uncertain", feature.Completeness)
+	}
+	if !feature.EventTime.Equal(detectionTime) {
+		t.Fatalf("timer feature event time = %s, want detection time %s", feature.EventTime, detectionTime)
+	}
+	if !feature.WindowStart.Equal(heartbeatEventTime) {
+		t.Fatalf("timer feature window start = %s, want heartbeat event time %s", feature.WindowStart, heartbeatEventTime)
+	}
+	if len(feature.InputEventIDs) != 1 || feature.InputEventIDs[0] != heartbeat.ID {
+		t.Fatalf("timer feature input IDs = %v, want [%s]", feature.InputEventIDs, heartbeat.ID)
+	}
+}
+
+func TestMissingHeartbeatEventUsesDetectionTimeWhenLate(t *testing.T) {
+	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), ids.Deterministic())
+	if err != nil {
+		t.Fatalf("NewOperatorRuntime: %v", err)
+	}
+
+	ctx := context.Background()
+	ps := &operators.PartitionState{}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	env := contractsv1.Envelope{
+		ID:             "hb-late",
+		Type:           "test.heartbeat",
+		SchemaVersion:  "1.0",
+		TenantID:       "default",
+		Source:         "test",
+		PartitionKey:   "motor-17",
+		Entity:         contractsv1.EntityRef{Type: "motor", ID: "motor-17"},
+		EventTime:      base,
+		IngestedAt:     base.Add(6 * time.Minute),
+		Classification: contractsv1.ClassificationInternal,
+	}
+	detectionTime := base.Add(6 * time.Minute)
+	features, _, err := rt.ApplyEventAt(ctx, ps, env, base.Add(5*time.Minute), detectionTime)
+	if err != nil {
+		t.Fatalf("apply late heartbeat: %v", err)
+	}
+	if len(features) != 1 || features[0].Value != true {
+		t.Fatalf("late heartbeat feature = %+v, want one true feature", features)
+	}
+	if !features[0].EventTime.Equal(detectionTime) {
+		t.Fatalf("late heartbeat feature event time = %s, want detection time %s", features[0].EventTime, detectionTime)
+	}
+}
+
 func meanSpec() *spec.CompiledSpec {
 	return &spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
@@ -182,6 +272,18 @@ func slopeSpec() *spec.CompiledSpec {
 		},
 		Operators: []spec.Operator{
 			{Name: "op1", Kind: "slope", Inputs: []string{"temp"}, Field: "data.celsius", Window: "w1", Aggregate: "slope", Output: "slope_value", Unit: "celsius_per_hour"},
+		},
+	}
+}
+
+func heartbeatSpec() *spec.CompiledSpec {
+	return &spec.CompiledSpec{
+		SchemaVersion: "agentic-stream/v1",
+		Inputs: []spec.Input{
+			{Name: "heartbeat", EventType: "test.heartbeat", SchemaVersion: "1.0", PartitionKey: "entity.id", EntityType: "motor"},
+		},
+		Operators: []spec.Operator{
+			{Name: "heartbeat_missing", Kind: "missing_heartbeat", Inputs: []string{"heartbeat"}, Duration: "5m", Output: "heartbeat_missing_5m"},
 		},
 	}
 }
