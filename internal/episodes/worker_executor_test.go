@@ -56,6 +56,46 @@ func TestEpisodeKind(t *testing.T) {
 	}
 }
 
+func TestEpisodeRequestMapsReconsiderationPayload(t *testing.T) {
+	t.Parallel()
+
+	req := validWorkerRequest()
+	var payload map[string]any
+	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
+		t.Fatalf("decode request fixture: %v", err)
+	}
+	payload["kind"] = "reconsider"
+	payload["reconsideration"] = map[string]any{
+		"prior_decision": map[string]any{"decision_id": "dec-prior"},
+		"commands":       []map[string]any{{"command_id": "cmd-prior", "intent_type": "maintenance.ticket", "status": "succeeded"}},
+		"outcomes":       []map[string]any{{"outcome_id": "out-prior", "command_id": "cmd-prior", "status": "succeeded"}},
+		"correction":     map[string]any{"invalidates": []string{"cmd-prior"}, "superseded_version": 1},
+	}
+	encoded, err := canonicaljson.Marshal(payload)
+	if err != nil {
+		t.Fatalf("encode request fixture: %v", err)
+	}
+	req.RequestJSON = encoded
+
+	wire, err := episodeRequest(req)
+	if err != nil {
+		t.Fatalf("build worker request: %v", err)
+	}
+	if wire.GetKind() != runtimev1.EpisodeKind_EPISODE_KIND_RECONSIDER {
+		t.Fatalf("wire kind = %v, want reconsider", wire.GetKind())
+	}
+	if wire.GetReconsideration() == nil {
+		t.Fatal("expected wire reconsideration payload")
+	}
+	if got := string(wire.GetReconsideration().GetPriorDecisionJson()); got != `{"decision_id":"dec-prior"}` {
+		t.Fatalf("prior decision json = %s", got)
+	}
+	if len(wire.GetReconsideration().GetExecutedCommandJson()) != 1 ||
+		string(wire.GetReconsideration().GetExecutedCommandJson()[0]) != `{"command_id":"cmd-prior","intent_type":"maintenance.ticket","status":"succeeded"}` {
+		t.Fatalf("executed command json = %s", wire.GetReconsideration().GetExecutedCommandJson())
+	}
+}
+
 func TestWorkerExecutorConsumesFencedStream(t *testing.T) {
 	client := testWorkerClient(t, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		decisionJSON := []byte(`{"decision_id":"d-1"}`)

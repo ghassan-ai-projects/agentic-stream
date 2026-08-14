@@ -77,7 +77,7 @@ func (db *DB) Close() error {
 }
 
 func open(ctx context.Context, path string) (*DB, error) {
-	connStr := fmt.Sprintf("%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)", path)
+	connStr := fmt.Sprintf("%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)", path)
 	sqlDB, err := sql.Open("sqlite", connStr)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)

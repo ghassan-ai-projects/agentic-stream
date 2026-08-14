@@ -48,6 +48,28 @@ func TestOpenCreatesDatabaseAndRunsMigrations(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT name FROM sqlite_master WHERE type='table' AND name='event_log'").Scan(&name); err != nil {
 		t.Fatalf("event_log table missing: %v", err)
 	}
+
+	var busyTimeout int
+	if err := db.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&busyTimeout); err != nil {
+		t.Fatalf("read busy timeout: %v", err)
+	}
+	if busyTimeout != 30_000 {
+		t.Fatalf("busy timeout = %d ms, want 30000 ms", busyTimeout)
+	}
+	var journalMode string
+	if err := db.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&journalMode); err != nil {
+		t.Fatalf("read journal mode: %v", err)
+	}
+	if journalMode != "wal" {
+		t.Fatalf("journal mode = %q, want wal", journalMode)
+	}
+	var synchronous int
+	if err := db.QueryRowContext(ctx, "PRAGMA synchronous").Scan(&synchronous); err != nil {
+		t.Fatalf("read synchronous mode: %v", err)
+	}
+	if synchronous != 1 { // SQLite PRAGMA synchronous=NORMAL.
+		t.Fatalf("synchronous mode = %d, want NORMAL (1)", synchronous)
+	}
 }
 
 func TestLifecycleMigrationMapsEveryFormerEpisodeStatus(t *testing.T) {

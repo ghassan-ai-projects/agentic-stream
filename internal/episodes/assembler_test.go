@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -120,6 +121,8 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 		Actions: spec.Actions{
 			Intents: []spec.Intent{
 				{Type: "create_ticket", Risk: "R1", Schema: "schemas/ticket.json", Policy: "approval", RateLimitPerHour: 2},
+				{Type: "downgrade_maintenance_ticket", Risk: "R1", Schema: "schemas/ticket.json", Policy: "automatic", RateLimitPerHour: 2},
+				{Type: "withdraw_maintenance_ticket", Risk: "R1", Schema: "schemas/ticket.json", Policy: "automatic", RateLimitPerHour: 2},
 			},
 		},
 	}
@@ -200,6 +203,246 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 	}
 	if len(req.RequestJSON) == 0 {
 		t.Fatal("expected request json")
+	}
+	var payload struct {
+		AllowedIntentTypes []string `json:"allowed_intent_types"`
+	}
+	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
+		t.Fatalf("unmarshal request: %v", err)
+	}
+	wantAllowed := []string{"create_ticket", "downgrade_maintenance_ticket", "withdraw_maintenance_ticket"}
+	if !slices.Equal(payload.AllowedIntentTypes, wantAllowed) {
+		t.Fatalf("allowed intent types = %v, want %v", payload.AllowedIntentTypes, wantAllowed)
+	}
+}
+
+func TestAssemblerPersistsReconsiderationPayload(t *testing.T) {
+	ctx := context.Background()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "reconsideration.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	db.SetMaxOpenConns(1)
+
+	compiled := spec.CompiledSpec{
+		SchemaVersion: "agentic-stream/v1",
+		Digest:        testSpecDigest,
+		Situation: spec.Situation{
+			Type:         "test",
+			InitialPhase: "candidate",
+			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
+		},
+		Cognition: spec.Cognition{
+			Executor: spec.Executor{Name: "tamoz", ModelPolicy: "test", PromptVersion: "v1"},
+		},
+	}
+	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
+		t.Fatalf("save deployment: %v", err)
+	}
+
+	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
+	prior := situations.Version{
+		SituationID:  "sit-reconsider",
+		Version:      1,
+		Phase:        "candidate",
+		Severity:     10,
+		Confidence:   1,
+		Completeness: "on_time",
+		EntityType:   "motor",
+		EntityID:     "motor-1",
+		EventHorizon: now,
+		Watermark:    now,
+		Facts:        map[string]any{"level": 15},
+	}
+	correction := situations.Version{
+		SituationID:  prior.SituationID,
+		Version:      2,
+		Phase:        "candidate",
+		Severity:     10,
+		Confidence:   1,
+		Completeness: "corrected",
+		EntityType:   prior.EntityType,
+		EntityID:     prior.EntityID,
+		EventHorizon: now,
+		Watermark:    now,
+		Facts:        map[string]any{"level": 20},
+	}
+	zero := make([]byte, 32)
+	reconsiderationDedupe := make([]byte, 32)
+	reconsiderationDedupe[0] = 1
+	decisionJSON, err := canonicaljson.Marshal(map[string]any{
+		"decision_id": "dec-prior",
+		"episode_id":  "epi-prior",
+		"confidence":  0.9,
+		"intents":     []any{},
+	})
+	if err != nil {
+		t.Fatalf("marshal prior decision: %v", err)
+	}
+	commandJSON, err := canonicaljson.Marshal(map[string]any{
+		"command_id":        "cmd-prior",
+		"intent_id":         "int-prior",
+		"tenant_id":         "default",
+		"effector_route":    "maintenance.ticket",
+		"normalized_target": "motor-1",
+		"idempotency_key":   "sha256:" + testDigest,
+		"status":            "prepared",
+		"payload":           map[string]any{"priority": "urgent"},
+	})
+	if err != nil {
+		t.Fatalf("marshal prior command: %v", err)
+	}
+	deltaJSON, err := canonicaljson.Marshal(map[string]any{
+		"reason":                 "prior_action_invalidated",
+		"superseded_version":     1,
+		"correction_version":     2,
+		"invalidated_command_id": "cmd-prior",
+		"prior_decision_id":      "dec-prior",
+		"correction": map[string]any{
+			"situation_id":      prior.SituationID,
+			"situation_version": 2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal reconsideration delta: %v", err)
+	}
+
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := insertSituationVersion(ctx, tx, prior, testSpecDigest, "default"); err != nil {
+			return err
+		}
+		if err := insertSituationVersion(ctx, tx, correction, testSpecDigest, "default"); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO trigger_evaluations (
+				trigger_id, tenant_id, deployment_id, trigger_name, situation_id, situation_version,
+				score, threshold, lane, outcome, reasons_json, policy_sha256, delta_json, evaluated_at
+			) VALUES ('trg-prior', 'default', ?, 'prior', ?, 1, 10, 5, 'fast', 'admitted', ?, ?, ?, ?)`,
+			testSpecDigest, prior.SituationID, []byte("[]"), zero, []byte("{}"), now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert prior evaluation: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO scheduler_items (
+				scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version, lane, priority,
+				status, dedupe_key, expires_at, created_at, updated_at
+			) VALUES ('sch-prior', 'trg-prior', 'default', ?, 1, 'fast', 10, 'completed', ?, ?, ?, ?)`,
+			prior.SituationID, zero, now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert prior scheduler item: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO episodes (
+				episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
+				executor_name, executor_version, model_policy, prompt_version, snapshot_sha256,
+				admission_key, request_json, lifecycle_status, current_fence, accepted_at
+			) VALUES ('epi-prior', 'sch-prior', 'default', ?, 1, 'native', ?, 'test', 'v1', ?, ?, ?, 'concluded', 1, ?)`,
+			prior.SituationID, testSpecDigest, zero, zero, []byte("{}"), now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert prior episode: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO decisions (
+				decision_id, episode_id, attempt_id, fence, ordinal, situation_id, situation_version,
+				raw_json, decision_sha256, validation_status, validation_json, created_at
+			) VALUES ('dec-prior', 'epi-prior', 'attempt-prior', 1, 1, ?, 1, ?, ?, 'accepted', ?, ?)`,
+			prior.SituationID, decisionJSON, zero, []byte("{}"), now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert prior decision: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO intents (
+				intent_id, decision_id, tenant_id, situation_id, situation_version, intent_type, risk_class,
+				intent_json, intent_sha256, expires_at, policy_status, created_at, updated_at
+			) VALUES ('int-prior', 'dec-prior', 'default', ?, 1, 'maintenance.ticket', 'R1', ?, ?, ?, 'approved', ?, ?)`,
+			prior.SituationID, []byte("{}"), zero, now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert prior intent: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO commands (
+				command_id, intent_id, tenant_id, effector_route, normalized_target, idempotency_key,
+				command_json, command_sha256, status, created_at, updated_at
+			) VALUES ('cmd-prior', 'int-prior', 'default', 'maintenance.ticket', 'motor-1', ?, ?, ?, 'succeeded', ?, ?)`,
+			zero, commandJSON, zero, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert prior command: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO outcomes (
+				outcome_id, command_id, ordinal, status, provider_result_json, observed_effect_json,
+				reconciliation_status, outcome_sha256, occurred_at
+			) VALUES ('out-prior', 'cmd-prior', 1, 'succeeded', ?, ?, 'observed', ?, ?)`,
+			[]byte(`{"accepted":true}`), []byte(`{"ticket":"T-1"}`), zero, now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert prior outcome: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO trigger_evaluations (
+				trigger_id, tenant_id, deployment_id, trigger_name, situation_id, situation_version,
+				score, threshold, lane, outcome, reasons_json, policy_sha256, delta_json, evaluated_at
+			) VALUES ('trg-reconsider', 'default', ?, 'prior_action_invalidated', ?, 2, 100, 0, 'deep', 'admitted', ?, ?, ?, ?)`,
+			testSpecDigest, correction.SituationID, []byte("[]"), zero, deltaJSON, now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert reconsideration evaluation: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO scheduler_items (
+				scheduler_item_id, kind, trigger_id, tenant_id, situation_id, situation_version, lane,
+				priority, status, dedupe_key, expires_at, created_at, updated_at
+			) VALUES ('sch-reconsider', 'reconsider', 'trg-reconsider', 'default', ?, 2, 'deep', 100, 'pending', ?, ?, ?, ?)`,
+			correction.SituationID, reconsiderationDedupe, now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert reconsideration scheduler item: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO reconsiderations (
+				reconsideration_id, tenant_id, situation_id, superseded_version, correction_version,
+				correction_snapshot_sha256, invalidated_command_id, invalidated_outcome_id,
+				invalidated_outcome_sha256, trigger_id, scheduler_item_id, created_at
+			) VALUES ('rec-prior', 'default', ?, 1, 2, ?, 'cmd-prior', 'out-prior', ?, 'trg-reconsider', 'sch-reconsider', ?)`,
+			correction.SituationID, zero, zero, now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert reconsideration: %w", err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed reconsideration: %v", err)
+	}
+
+	asm := episodes.NewAssembler(&compiled, ids.Deterministic())
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		req, err := asm.Assemble(ctx, tx, "sch-reconsider", "default")
+		if err != nil {
+			return fmt.Errorf("assemble: %w", err)
+		}
+		return asm.Persist(ctx, tx, req, now)
+	}); err != nil {
+		t.Fatalf("assemble and persist: %v", err)
+	}
+
+	var requestJSON []byte
+	if err := db.QueryRowContext(ctx, "SELECT request_json FROM episodes WHERE scheduler_item_id = ?", "sch-reconsider").Scan(&requestJSON); err != nil {
+		t.Fatalf("load persisted request: %v", err)
+	}
+	var payload struct {
+		Kind            string `json:"kind"`
+		Reconsideration struct {
+			PriorDecision map[string]any   `json:"prior_decision"`
+			Commands      []map[string]any `json:"commands"`
+			Outcomes      []map[string]any `json:"outcomes"`
+			Correction    map[string]any   `json:"correction"`
+		} `json:"reconsideration"`
+	}
+	if err := json.Unmarshal(requestJSON, &payload); err != nil {
+		t.Fatalf("decode persisted request: %v", err)
+	}
+	if payload.Kind != "reconsider" {
+		t.Fatalf("request kind = %q, want reconsider", payload.Kind)
+	}
+	if got := payload.Reconsideration.PriorDecision["decision_id"]; got != "dec-prior" {
+		t.Fatalf("prior decision id = %v, want dec-prior", got)
+	}
+	if len(payload.Reconsideration.Commands) != 1 || payload.Reconsideration.Commands[0]["command_id"] != "cmd-prior" {
+		t.Fatalf("reconsideration commands = %#v", payload.Reconsideration.Commands)
+	}
+	if len(payload.Reconsideration.Outcomes) != 1 || payload.Reconsideration.Outcomes[0]["outcome_id"] != "out-prior" {
+		t.Fatalf("reconsideration outcomes = %#v", payload.Reconsideration.Outcomes)
+	}
+	if invalidates, ok := payload.Reconsideration.Correction["invalidates"].([]any); !ok || len(invalidates) != 1 || invalidates[0] != "cmd-prior" {
+		t.Fatalf("reconsideration correction invalidates = %#v", payload.Reconsideration.Correction["invalidates"])
 	}
 }
 

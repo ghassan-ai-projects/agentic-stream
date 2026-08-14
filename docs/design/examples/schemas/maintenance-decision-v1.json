@@ -132,7 +132,12 @@
       "required": ["type", "parameters", "evidenceIds", "expiresAt"],
       "properties": {
         "type": {
-          "enum": ["create_maintenance_ticket", "recommend_operating_limit"]
+          "enum": [
+            "create_maintenance_ticket",
+            "downgrade_maintenance_ticket",
+            "withdraw_maintenance_ticket",
+            "recommend_operating_limit"
+          ]
         },
         "parameters": {
           "type": "object"
@@ -149,6 +154,11 @@
         "expiresAt": {
           "type": "string",
           "format": "date-time"
+        },
+        "compensates": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
         }
       }
     }

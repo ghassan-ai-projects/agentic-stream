@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -13,6 +14,13 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/ext"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
+)
+
+const (
+	watchExpireAttempts = 3
+	watchExpireBackoff  = 250 * time.Millisecond
 )
 
 // WatchEffector installs bounded, expiring derived triggers. It has no
@@ -258,21 +266,51 @@ func (e *WatchEffector) Expire(ctx context.Context) error {
 		return fmt.Errorf("watch storage is required")
 	}
 	now := e.clk.Now().UTC().Format(time.RFC3339Nano)
-	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
-		if e.owner != nil && e.ownerEpoch != "" {
-			if err := e.owner.Assert(ctx, tx, e.ownerEpoch); err != nil {
-				return fmt.Errorf("assert watch runtime owner: %w", err)
+	expire := func() error {
+		return e.db.WithTx(ctx, func(tx *sql.Tx) error {
+			if e.owner != nil && e.ownerEpoch != "" {
+				if err := e.owner.Assert(ctx, tx, e.ownerEpoch); err != nil {
+					return fmt.Errorf("assert watch runtime owner: %w", err)
+				}
 			}
-		}
-		_, err := tx.ExecContext(ctx, "UPDATE watch_conditions SET status = 'expired', updated_at = ? WHERE status = 'active' AND expires_at <= ?", now, now)
-		if err != nil {
-			return fmt.Errorf("expire watch conditions: %w", err)
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("expire watch conditions: %w", err)
+			_, err := tx.ExecContext(ctx, "UPDATE watch_conditions SET status = 'expired', updated_at = ? WHERE status = 'active' AND expires_at <= ?", now, now)
+			if err != nil {
+				return fmt.Errorf("expire watch conditions: %w", err)
+			}
+			return nil
+		})
 	}
-	return nil
+	var err error
+	for attempt := 0; attempt < watchExpireAttempts; attempt++ {
+		err = expire()
+		if err == nil {
+			return nil
+		}
+		if !isSQLiteBusy(err) || attempt == watchExpireAttempts-1 {
+			break
+		}
+		timer := time.NewTimer(watchExpireBackoff)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return fmt.Errorf("expire watch conditions: wait for retry: %w", ctx.Err())
+		case <-timer.C:
+		}
+	}
+	return fmt.Errorf("expire watch conditions: %w", err)
+}
+
+func isSQLiteBusy(err error) bool {
+	var sqliteErr *sqlite.Error
+	if !errors.As(err, &sqliteErr) {
+		return false
+	}
+	return sqliteErr.Code()&0xff == sqlite3.SQLITE_BUSY
 }
 
 func validateWatchExpression(expression string) error {

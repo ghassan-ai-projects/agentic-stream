@@ -134,6 +134,8 @@ type intentRow struct {
 	ValidationStatus    string
 	DecisionJSON        []byte
 	DecisionSHA         []byte
+	Traceparent         string
+	Tracestate          string
 	EpisodeLifecycle    string
 	CurrentSituation    int
 	CurrentCompleteness string
@@ -400,12 +402,13 @@ func (g *Gateway) assertOwner(ctx context.Context, tx *sql.Tx) error {
 
 func (g *Gateway) loadIntent(ctx context.Context, tx *sql.Tx, intentID string) (intentRow, error) {
 	var row intentRow
+	var traceparent, tracestate sql.NullString
 	err := tx.QueryRowContext(ctx, `
 		SELECT i.intent_id, i.decision_id, i.tenant_id, i.situation_id,
 		       i.situation_version, i.intent_type, i.risk_class, i.intent_json,
 		       i.intent_sha256, i.expires_at, i.policy_status,
-		       d.validation_status, d.raw_json, d.decision_sha256,
-		       d.situation_id, d.situation_version,
+			       d.validation_status, d.raw_json, d.decision_sha256,
+			       d.situation_id, d.situation_version, d.traceparent, d.tracestate,
 			       e.episode_id, e.tenant_id, e.situation_id, e.situation_version,
 		       e.lifecycle_status, s.tenant_id, s.current_version,
 		       COALESCE((SELECT sv.completeness FROM situation_versions sv WHERE sv.situation_id = s.situation_id AND sv.version = s.current_version), '')
@@ -419,7 +422,7 @@ func (g *Gateway) loadIntent(ctx context.Context, tx *sql.Tx, intentID string) (
 		&row.SituationVersion, &row.IntentType, &row.RiskClass, &row.IntentJSON,
 		&row.IntentSHA, &row.ExpiresAt, &row.PolicyStatus,
 		&row.ValidationStatus, &row.DecisionJSON, &row.DecisionSHA,
-		&row.DecisionSituation, &row.DecisionVersion,
+		&row.DecisionSituation, &row.DecisionVersion, &traceparent, &tracestate,
 		&row.EpisodeID, &row.EpisodeTenant, &row.EpisodeSituation, &row.EpisodeVersion,
 		&row.EpisodeLifecycle, &row.SituationTenant, &row.CurrentSituation, &row.CurrentCompleteness,
 	)
@@ -429,6 +432,8 @@ func (g *Gateway) loadIntent(ctx context.Context, tx *sql.Tx, intentID string) (
 	if err != nil {
 		return row, fmt.Errorf("load intent %s: %w", intentID, err)
 	}
+	row.Traceparent = traceparent.String
+	row.Tracestate = tracestate.String
 	return row, nil
 }
 
@@ -519,11 +524,15 @@ func (g *Gateway) requireApproval(ctx context.Context, tx *sql.Tx, row intentRow
 	approvalID = g.idGen.New(ids.PrefixApproval)
 	nonceDigest := sha256.Sum256([]byte(approvalID + "|" + row.IntentID))
 	nonce := hex.EncodeToString(nonceDigest[:])
+	approvalData, err := approvalNotificationData(ctx, tx, row, approvalID, expiresAt, intentDocument)
+	if err != nil {
+		return result, fmt.Errorf("build approval notification: %w", err)
+	}
 	approvalJSON, err := canonicaljson.Marshal(map[string]any{
 		"approval_id": approvalID, "intent_id": row.IntentID, "decision_id": row.DecisionID,
 		"tenant_id": row.TenantID, "situation_id": row.SituationID,
 		"situation_version": row.SituationVersion, "risk_class": row.RiskClass,
-		"intent": intentDocument, "nonce": nonce,
+		"intent": intentDocument, "notification": approvalData, "nonce": nonce,
 	})
 	if err != nil {
 		return result, fmt.Errorf("canonicalize approval: %w", err)
@@ -539,11 +548,7 @@ func (g *Gateway) requireApproval(ctx context.Context, tx *sql.Tx, row intentRow
 	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = 'approval_required', updated_at = ? WHERE intent_id = ?", formatTime(now), row.IntentID); err != nil {
 		return result, fmt.Errorf("mark approval required: %w", err)
 	}
-	if err := notify.AppendLifecycleEvent(ctx, tx, "approval.requested:"+approvalID, row.TenantID, notify.TypeApprovalRequested, "approval/"+approvalID, row.SituationID, map[string]any{
-		"approval_id": approvalID, "intent_id": row.IntentID, "decision_id": row.DecisionID,
-		"situation_id": row.SituationID, "situation_version": row.SituationVersion,
-		"risk_class": row.RiskClass, "expires_at": expiresAt.UTC().Format(time.RFC3339Nano),
-	}, now); err != nil {
+	if err := notify.AppendLifecycleEventWithTrace(ctx, tx, "approval.requested:"+approvalID, row.TenantID, notify.TypeApprovalRequested, "approval/"+approvalID, row.SituationID, approvalData, now, contractsv1.TraceContext{Traceparent: row.Traceparent, Tracestate: row.Tracestate}); err != nil {
 		return result, fmt.Errorf("append approval requested notification: %w", err)
 	}
 	result.Result, result.Reason, result.ApprovalID = "approval_required", "risk_requires_approval", approvalID
@@ -551,24 +556,90 @@ func (g *Gateway) requireApproval(ctx context.Context, tx *sql.Tx, row intentRow
 }
 
 func appendApprovalWithdrawn(ctx context.Context, tx *sql.Tx, row intentRow, approvalID, reason string, now time.Time) error {
-	if err := notify.AppendLifecycleEvent(ctx, tx, "approval.withdrawn:"+approvalID, row.TenantID, notify.TypeApprovalWithdrawn, "approval/"+approvalID, row.SituationID, map[string]any{
-		"approval_id": approvalID, "intent_id": row.IntentID, "situation_id": row.SituationID,
-		"situation_version": row.SituationVersion, "reason": reason,
-	}, now); err != nil {
+	if err := notify.AppendLifecycleEventWithTrace(ctx, tx, "approval.withdrawn:"+approvalID, row.TenantID, notify.TypeApprovalWithdrawn, "approval/"+approvalID, row.SituationID, map[string]any{
+		"tenant_id": row.TenantID, "approval_id": approvalID, "intent_id": row.IntentID, "situation_id": row.SituationID,
+		"situation_version": row.SituationVersion, "reason": reason, "source_authority": notify.SourceForTenant(row.TenantID),
+	}, now, contractsv1.TraceContext{Traceparent: row.Traceparent, Tracestate: row.Tracestate}); err != nil {
 		return fmt.Errorf("append approval withdrawn notification: %w", err)
 	}
 	return nil
 }
 
 func appendApprovalResolved(ctx context.Context, tx *sql.Tx, row intentRow, approvalID, status, reason string, now time.Time) error {
-	if err := notify.AppendLifecycleEvent(ctx, tx, "approval.resolved:"+approvalID+":"+status, row.TenantID, notify.TypeApprovalResolved, "approval/"+approvalID, row.SituationID, map[string]any{
-		"approval_id": approvalID, "intent_id": row.IntentID, "decision_id": row.DecisionID,
+	if err := notify.AppendLifecycleEventWithTrace(ctx, tx, "approval.resolved:"+approvalID+":"+status, row.TenantID, notify.TypeApprovalResolved, "approval/"+approvalID, row.SituationID, map[string]any{
+		"tenant_id": row.TenantID, "approval_id": approvalID, "intent_id": row.IntentID, "decision_id": row.DecisionID,
 		"situation_id": row.SituationID, "situation_version": row.SituationVersion,
-		"status": status, "reason": reason,
-	}, now); err != nil {
+		"status": status, "reason": reason, "source_authority": notify.SourceForTenant(row.TenantID),
+	}, now, contractsv1.TraceContext{Traceparent: row.Traceparent, Tracestate: row.Tracestate}); err != nil {
 		return fmt.Errorf("append approval resolved notification: %w", err)
 	}
 	return nil
+}
+
+func approvalNotificationData(ctx context.Context, tx *sql.Tx, row intentRow, approvalID string, expiresAt time.Time, intentDocument map[string]any) (map[string]any, error) {
+	if len(row.IntentSHA) != sha256.Size {
+		return nil, fmt.Errorf("intent digest is incomplete")
+	}
+	var snapshotSHA []byte
+	if err := tx.QueryRowContext(ctx, `SELECT snapshot_sha256 FROM situation_versions WHERE situation_id = ? AND version = ?`, row.SituationID, row.SituationVersion).Scan(&snapshotSHA); err != nil {
+		return nil, fmt.Errorf("load approval snapshot digest: %w", err)
+	}
+	if len(snapshotSHA) != sha256.Size {
+		return nil, fmt.Errorf("approval snapshot digest is incomplete")
+	}
+
+	delta := map[string]any{}
+	var deltaJSON []byte
+	if err := tx.QueryRowContext(ctx, `
+		SELECT te.delta_json
+		FROM trigger_evaluations te
+		JOIN scheduler_items si ON si.trigger_id = te.trigger_id
+		JOIN episodes e ON e.scheduler_item_id = si.scheduler_item_id
+		WHERE e.episode_id = ?
+		ORDER BY te.evaluated_at DESC LIMIT 1`, row.EpisodeID).Scan(&deltaJSON); err == nil && len(deltaJSON) > 0 {
+		if err := json.Unmarshal(deltaJSON, &delta); err != nil {
+			return nil, fmt.Errorf("decode approval delta: %w", err)
+		}
+	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("load approval delta: %w", err)
+	}
+	if delta == nil {
+		return nil, fmt.Errorf("approval delta must be an object")
+	}
+
+	var decision map[string]any
+	if err := json.Unmarshal(row.DecisionJSON, &decision); err != nil {
+		return nil, fmt.Errorf("decode approval decision: %w", err)
+	}
+	summary := documentString(decision, "summary")
+	if strings.TrimSpace(summary) == "" {
+		summary = fmt.Sprintf("Decision %s requires approval", row.DecisionID)
+	}
+	hypothesis := documentString(decision, "primary_hypothesis")
+	if strings.TrimSpace(hypothesis) == "" {
+		hypothesis = fmt.Sprintf("Decision %s did not record a primary hypothesis", row.DecisionID)
+	}
+	evidence := make([]string, 0)
+	if values, ok := intentDocument["evidence_ids"].([]any); ok {
+		for _, value := range values {
+			if id, ok := value.(string); ok && id != "" {
+				evidence = append(evidence, id)
+			}
+		}
+	}
+	if parameters, ok := intentDocument["parameters"].(map[string]any); !ok || parameters == nil {
+		intentDocument["parameters"] = map[string]any{}
+	}
+	return map[string]any{
+		"tenant_id": row.TenantID, "approval_id": approvalID, "intent_id": row.IntentID, "decision_id": row.DecisionID,
+		"situation_id": row.SituationID, "situation_version": row.SituationVersion,
+		"intent_digest":   "sha256:" + hex.EncodeToString(row.IntentSHA),
+		"snapshot_digest": "sha256:" + hex.EncodeToString(snapshotSHA), "risk_class": row.RiskClass,
+		"expires_at": expiresAt.UTC().Format(time.RFC3339Nano), "audience": "stream-approval-relay",
+		"summary": summary, "delta": delta, "hypothesis": hypothesis, "evidence": evidence,
+		"action": intentDocument["parameters"], "decline_consequence": "The intent will not be dispatched.",
+		"source_authority": notify.SourceForTenant(row.TenantID),
+	}, nil
 }
 
 func (g *Gateway) finish(ctx context.Context, tx *sql.Tx, row intentRow, result Result, policyStatus, reason string, now time.Time) (Result, error) {

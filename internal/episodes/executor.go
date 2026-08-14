@@ -252,11 +252,12 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 				INSERT INTO decisions (
 					decision_id, episode_id, attempt_id, fence, ordinal, situation_id,
 					situation_version, raw_json, decision_sha256, validation_status,
-					validation_json, created_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					validation_json, traceparent, tracestate, created_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				decisionID, episodeID, identity.AttemptID, identity.Fence, ordinal,
 				req.SituationID, req.SituationVersion,
-				outcome.DecisionJSON, decisionDigest[:], validationStatus, validationJSON, now,
+				outcome.DecisionJSON, decisionDigest[:], validationStatus, validationJSON,
+				nullableString(req.Traceparent), nullableString(req.Tracestate), now,
 			); err != nil {
 				return fmt.Errorf("insert decision: %w", err)
 			}
@@ -379,6 +380,10 @@ func decisionInput(req *Request, identity Identity, now time.Time) (decisions.In
 		RiskCeiling:        payload.RiskCeiling,
 		Now:                now,
 	}, nil
+}
+
+func nullableString(value string) sql.NullString {
+	return sql.NullString{String: value, Valid: value != ""}
 }
 
 func (r *Runner) persistValidatedIntents(ctx context.Context, tx *sql.Tx, validated *decisions.Result, req *Request, now string) error {

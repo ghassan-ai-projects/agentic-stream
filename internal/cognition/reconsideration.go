@@ -14,6 +14,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 )
 
@@ -140,6 +141,17 @@ func (e *Engine) admitReconsiderations(ctx context.Context, tx *sql.Tx, current 
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE reconsiderations SET trigger_id = ?, scheduler_item_id = ? WHERE reconsideration_id = ?`, triggerID, schedulerItemID, reconsiderationID); err != nil {
 			return admitted, fmt.Errorf("link reconsideration admission: %w", err)
+		}
+		if err := notify.AppendLifecycleEventWithTrace(ctx, tx,
+			"reconsideration.admitted:"+reconsiderationID, e.tenantID, notify.TypeReconsiderationAdmitted,
+			"situation/"+current.SituationID, current.SituationID, map[string]any{
+				"tenant_id": e.tenantID, "reconsideration_id": reconsiderationID, "situation_id": current.SituationID,
+				"superseded_version": current.PreviousVersion, "correction_version": current.Version,
+				"invalidated_command_id": commandID, "invalidated_outcome_id": outcomeID,
+				"trigger_id": triggerID, "scheduler_item_id": schedulerItemID,
+				"source_authority": notify.SourceForTenant(e.tenantID),
+			}, e.clk.Now().UTC(), contractsv1.TraceContext{Traceparent: current.Traceparent, Tracestate: current.Tracestate}); err != nil {
+			return admitted, fmt.Errorf("append reconsideration notification: %w", err)
 		}
 		admitted++
 	}

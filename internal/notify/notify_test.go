@@ -11,6 +11,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/notifycontract"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -95,13 +96,17 @@ func TestLifecycleEventsUseStableTypesAndDurableCursors(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	types := []string{
-		notify.TypeApprovalRequested, notify.TypeApprovalWithdrawn, notify.TypeApprovalResolved,
-		notify.TypeCommandDispatched, notify.TypeOutcomeRecorded, notify.TypeOutcomeReconciled,
+	events, err := notifycontract.GoldenEvents()
+	if err != nil {
+		t.Fatal(err)
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		for i, eventType := range types {
-			if err := notify.AppendLifecycleEvent(ctx, tx, fmt.Sprintf("lifecycle-%d", i), "tenant", eventType, "subject/1", "partition-1", map[string]any{"index": i}, now.Add(time.Duration(i)*time.Second)); err != nil {
+		for i, event := range events {
+			data, ok := event.Data.(map[string]any)
+			if !ok {
+				return fmt.Errorf("golden event data is %T", event.Data)
+			}
+			if err := notify.AppendLifecycleEventWithTrace(ctx, tx, fmt.Sprintf("lifecycle-%d", i), "acme", event.Type, event.Subject, event.PartitionKey, data, now.Add(time.Duration(i)*time.Second), contractsv1.TraceContext{Traceparent: event.Traceparent, Tracestate: event.Tracestate}); err != nil {
 				return fmt.Errorf("append lifecycle event: %w", err)
 			}
 		}
@@ -109,12 +114,12 @@ func TestLifecycleEventsUseStableTypesAndDurableCursors(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	page, err := notify.ReadPage(ctx, db, "tenant", 0, 10, 0, now)
-	if err != nil || len(page.Records) != len(types) || page.NextCursor != int64(len(types)) {
+	page, err := notify.ReadPage(ctx, db, "acme", 0, 10, 0, now)
+	if err != nil || len(page.Records) != len(events) || page.NextCursor != int64(len(events)) {
 		t.Fatalf("page=%+v err=%v", page, err)
 	}
 	for i, record := range page.Records {
-		if record.Cursor != int64(i+1) || record.Event.Type != types[i] || record.Event.Source != notify.SourceForTenant("tenant") {
+		if record.Cursor != int64(i+1) || record.Event.Type != events[i].Type || record.Event.Source != notify.SourceForTenant("acme") {
 			t.Fatalf("record[%d]=%+v", i, record)
 		}
 	}

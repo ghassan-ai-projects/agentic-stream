@@ -222,6 +222,10 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 	if !ok {
 		return nil, nil
 	}
+	corrected, err := r.isLateWindowCorrection(inst.window.size, env.EventTime, watermark, ws.LastEmit)
+	if err != nil {
+		return nil, err
+	}
 
 	ws.Samples = append(ws.Samples, Sample{
 		EventID:   env.ID,
@@ -268,6 +272,9 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 	case "on_close":
 		emit = false // Only emitted by timer/watermark close.
 	}
+	if corrected {
+		completeness = string(CompletenessCorrected)
+	}
 
 	if emit && len(ws.Samples) > 0 {
 		feature := Feature{
@@ -294,6 +301,23 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 	}
 
 	return features, nil
+}
+
+func (r *OperatorRuntime) isLateWindowCorrection(windowSize time.Duration, eventTime, watermark, lastEmit time.Time) (bool, error) {
+	if r.spec.Time.LatePolicy != "correct" && r.spec.Time.LatePolicy != "correct_and_reconsider" {
+		return false, nil
+	}
+	if lastEmit.IsZero() || !eventTime.Before(watermark) || !eventTime.Before(lastEmit) || eventTime.Before(lastEmit.Add(-windowSize)) {
+		return false, nil
+	}
+	if r.spec.Time.AllowedLateness == "" {
+		return false, nil
+	}
+	allowedLateness, err := parseDuration(r.spec.Time.AllowedLateness)
+	if err != nil {
+		return false, fmt.Errorf("allowed lateness: %w", err)
+	}
+	return watermark.Sub(eventTime) <= allowedLateness, nil
 }
 
 func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *OperatorStateBlob, env contractsv1.Envelope, watermark, processingTime time.Time) ([]Feature, error) {

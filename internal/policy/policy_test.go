@@ -209,12 +209,7 @@ func TestGatewayDeniesConsequentialIntentWhenCompletenessIsProvisional(t *testin
 	if _, err := db.ExecContext(ctx, "INSERT INTO lineage_sets (lineage_id, sha256, reference_count, references_json, created_at) VALUES ('lineage-health', ?, 1, ?, '2026-08-12T00:00:00Z')", digest, []byte("{}")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(ctx, `
-		INSERT INTO situation_versions (
-			situation_id, version, phase, severity, confidence, completeness,
-			event_horizon, valid_from, snapshot_json, snapshot_sha256, lineage_id, created_at
-		) VALUES ('sit-policy', 1, 'watch', 30, 0.8, 'provisional', ?, ?, ?, ?, 'lineage-health', ?)`,
-		"2026-08-12T00:00:00Z", "2026-08-12T00:00:00Z", []byte("{}"), digest, "2026-08-12T00:00:00Z"); err != nil {
+	if _, err := db.ExecContext(ctx, `UPDATE situation_versions SET completeness = 'provisional', snapshot_json = ?, snapshot_sha256 = ?, lineage_id = 'lineage-health' WHERE situation_id = 'sit-policy' AND version = 1`, []byte("{}"), digest); err != nil {
 		t.Fatal(err)
 	}
 	var result Result
@@ -276,7 +271,6 @@ func openPolicyFixture(t *testing.T, risk string, currentVersion, intentVersion 
 	}
 	decisionDigest, _ := canonicaljson.Digest(canonicaljson.DomainDecision, decision)
 	decisionSHA, _ := canonicaljson.DecodeDigest(decisionDigest)
-	digest := make([]byte, 32)
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO situations (
 			situation_id, tenant_id, deployment_id, situation_type, entity_type, entity_id,
@@ -285,6 +279,21 @@ func openPolicyFixture(t *testing.T, risk string, currentVersion, intentVersion 
 		) VALUES (?, 'tenant', 'dep', 'test', 'motor', 'motor-1', 0, 'occ', ?, 'watch', 'open', ?, ?, ?, ?)`,
 		situationID, currentVersion, "2026-08-12T00:00:00Z", "2026-08-12T00:00:00Z", "2026-08-12T00:00:00Z", "2026-08-12T00:00:00Z"); err != nil {
 		t.Fatalf("insert situation: %v", err)
+	}
+	snapshotSHA, err := canonicaljson.DecodeDigest(snapshotDigest)
+	if err != nil {
+		t.Fatalf("decode snapshot digest: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO lineage_sets (lineage_id, sha256, reference_count, references_json, created_at) VALUES ('lineage-policy', ?, 1, ?, '2026-08-12T00:00:00Z')`, snapshotSHA, []byte(`{}`)); err != nil {
+		t.Fatalf("insert policy lineage: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO situation_versions (
+			situation_id, version, phase, severity, confidence, completeness,
+			event_horizon, valid_from, snapshot_json, snapshot_sha256, lineage_id, created_at
+		) VALUES ('sit-policy', ?, 'watch', 30, 0.8, 'on_time', ?, ?, ?, ?, 'lineage-policy', ?)`,
+		intentVersion, "2026-08-12T00:00:00Z", "2026-08-12T00:00:00Z", []byte(`{"phase":"watch"}`), snapshotSHA, "2026-08-12T00:00:00Z"); err != nil {
+		t.Fatalf("insert policy situation version: %v", err)
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO roles (role_id, role_name) VALUES ('role-approver', 'approver')`); err != nil {
 		t.Fatalf("insert approval role: %v", err)
@@ -308,7 +317,7 @@ func openPolicyFixture(t *testing.T, risk string, currentVersion, intentVersion 
 			executor_name, executor_version, model_policy, prompt_version, snapshot_sha256,
 			admission_key, request_json, lifecycle_status, current_fence, accepted_at
 		) VALUES (?, 'sch-policy', 'tenant', ?, ?, 'executor', 'v1', 'policy', 'prompt', ?, ?, X'7B7D', 'concluded', 1, ?)`,
-		episodeID, situationID, intentVersion, digest, digest, "2026-08-12T00:00:00Z"); err != nil {
+		episodeID, situationID, intentVersion, make([]byte, 32), make([]byte, 32), "2026-08-12T00:00:00Z"); err != nil {
 		t.Fatalf("insert episode: %v", err)
 	}
 	if _, err := db.ExecContext(ctx, `

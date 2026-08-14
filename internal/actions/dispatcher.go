@@ -135,6 +135,8 @@ type leasedCommand struct {
 	CommandJSON []byte
 	CommandSHA  []byte
 	LeaseOwner  string
+	Traceparent string
+	Tracestate  string
 	Now         time.Time
 }
 
@@ -312,12 +314,16 @@ func (d *Dispatcher) lease(ctx context.Context) (leasedCommand, bool, error) {
 		var storedIdempotency []byte
 		var outboxStatus string
 		var storedLeaseOwner, storedLeaseUntil sql.NullString
+		var traceparent, tracestate sql.NullString
 		if err := tx.QueryRowContext(ctx, `
 			SELECT o.outbox_id, o.aggregate_id, c.command_json, c.command_sha256, c.status,
-			       c.intent_id, c.tenant_id, c.effector_route, c.normalized_target, c.idempotency_key
-			       , o.status, o.lease_owner, o.lease_until
+				c.intent_id, c.tenant_id, c.effector_route, c.normalized_target, c.idempotency_key,
+				d.traceparent, d.tracestate
+				, o.status, o.lease_owner, o.lease_until
 			FROM outbox o
 			JOIN commands c ON c.command_id = o.aggregate_id
+			JOIN intents i ON i.intent_id = c.intent_id
+			JOIN decisions d ON d.decision_id = i.decision_id
 			WHERE o.kind = 'command'
 			  AND o.available_at <= ?
 			  AND (o.status = 'pending' OR (o.status = 'leased' AND o.lease_until <= ?))
@@ -326,6 +332,7 @@ func (d *Dispatcher) lease(ctx context.Context) (leasedCommand, bool, error) {
 			&leased.OutboxID, &leased.Command.CommandID,
 			&leased.CommandJSON, &leased.CommandSHA, &commandStatus,
 			&storedIntentID, &storedTenant, &storedRoute, &storedTarget, &storedIdempotency,
+			&traceparent, &tracestate,
 			&outboxStatus, &storedLeaseOwner, &storedLeaseUntil,
 		); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -335,6 +342,8 @@ func (d *Dispatcher) lease(ctx context.Context) (leasedCommand, bool, error) {
 		}
 		found = true
 		leased.Now = now
+		leased.Traceparent = traceparent.String
+		leased.Tracestate = tracestate.String
 		if outboxStatus == "leased" {
 			leased.LeaseOwner = storedLeaseOwner.String
 			if expiresAt, parseErr := time.Parse(time.RFC3339Nano, storedLeaseUntil.String); parseErr != nil || !storedLeaseOwner.Valid || !storedLeaseUntil.Valid || !expiresAt.After(now) {
@@ -476,10 +485,10 @@ func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCo
 	if _, err := tx.ExecContext(ctx, `
 			INSERT INTO outcomes (
 				outcome_id, command_id, ordinal, status, provider_result_json,
-				observed_effect_json, reconciliation_status, outcome_sha256, occurred_at
-			) VALUES (?, ?, (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM outcomes WHERE command_id = ?), ?, ?, ?, ?, ?, ?)`,
+				observed_effect_json, reconciliation_status, outcome_sha256, traceparent, tracestate, occurred_at
+			) VALUES (?, ?, (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM outcomes WHERE command_id = ?), ?, ?, ?, ?, ?, ?, ?, ?)`,
 		outcomeID, leased.Command.CommandID, leased.Command.CommandID, status, providerJSON,
-		observedJSON, reconciliation, outcomeSHA, formatTime(now)); err != nil {
+		observedJSON, reconciliation, outcomeSHA, nullableString(leased.Traceparent), nullableString(leased.Tracestate), formatTime(now)); err != nil {
 		return fmt.Errorf("record action outcome: %w", err)
 	}
 	outboxStatus := "delivered"
@@ -510,17 +519,18 @@ func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCo
 		d.idGen.New(ids.PrefixVerification), outcomeID, verificationStatus, formatTime(now), leased.Command.CommandID); err != nil {
 		return fmt.Errorf("record command verification: %w", err)
 	}
-	if err := notify.AppendLifecycleEvent(ctx, tx, "command.dispatched:"+leased.Command.CommandID+":"+outcomeID, leased.Command.TenantID, notify.TypeCommandDispatched, "command/"+leased.Command.CommandID, leased.Command.CommandID, map[string]any{
-		"command_id": leased.Command.CommandID, "outcome_id": outcomeID, "status": commandStatus,
-	}, now); err != nil {
+	if err := notify.AppendLifecycleEventWithTrace(ctx, tx, "command.dispatched:"+leased.Command.CommandID+":"+outcomeID, leased.Command.TenantID, notify.TypeCommandDispatched, "command/"+leased.Command.CommandID, leased.Command.CommandID, map[string]any{
+		"tenant_id": leased.Command.TenantID, "command_id": leased.Command.CommandID, "intent_id": leased.Command.IntentID,
+		"outcome_id": outcomeID, "status": commandStatus, "source_authority": notify.SourceForTenant(leased.Command.TenantID),
+	}, now, contractsv1.TraceContext{Traceparent: leased.Traceparent, Tracestate: leased.Tracestate}); err != nil {
 		return fmt.Errorf("append command dispatched notification: %w", err)
 	}
-	if err := notify.AppendLifecycleEvent(ctx, tx, "outcome.recorded:"+outcomeID, leased.Command.TenantID, notify.TypeOutcomeRecorded, "outcome/"+outcomeID, leased.Command.CommandID, map[string]any{
-		"outcome_id": outcomeID, "command_id": leased.Command.CommandID, "status": status,
+	if err := notify.AppendLifecycleEventWithTrace(ctx, tx, "outcome.recorded:"+outcomeID, leased.Command.TenantID, notify.TypeOutcomeRecorded, "outcome/"+outcomeID, leased.Command.CommandID, map[string]any{
+		"tenant_id": leased.Command.TenantID, "outcome_id": outcomeID, "command_id": leased.Command.CommandID, "status": status,
 		"reconciliation_status": reconciliation, "intent_id": leased.Command.IntentID,
-		"outcome_digest":   hex.EncodeToString(outcomeSHA),
+		"outcome_digest":   "sha256:" + hex.EncodeToString(outcomeSHA),
 		"source_authority": notify.SourceForTenant(leased.Command.TenantID),
-	}, now); err != nil {
+	}, now, contractsv1.TraceContext{Traceparent: leased.Traceparent, Tracestate: leased.Tracestate}); err != nil {
 		return fmt.Errorf("append outcome recorded notification: %w", err)
 	}
 	if status == "succeeded" || status == "failed" {
@@ -543,7 +553,13 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 			return err
 		}
 		var currentStatus, tenantID, intentID string
-		if err := tx.QueryRowContext(ctx, "SELECT status, tenant_id, intent_id FROM commands WHERE command_id = ?", commandID).Scan(&currentStatus, &tenantID, &intentID); err != nil {
+		var traceparent, tracestate sql.NullString
+		if err := tx.QueryRowContext(ctx, `
+			SELECT c.status, c.tenant_id, c.intent_id, d.traceparent, d.tracestate
+			FROM commands c
+			JOIN intents i ON i.intent_id = c.intent_id
+			JOIN decisions d ON d.decision_id = i.decision_id
+			WHERE c.command_id = ?`, commandID).Scan(&currentStatus, &tenantID, &intentID, &traceparent, &tracestate); err != nil {
 			return fmt.Errorf("load command %s for reconciliation: %w", commandID, err)
 		}
 		if currentStatus != "reconciling" && currentStatus != "outcome_unknown" {
@@ -574,9 +590,9 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO outcomes (
 				outcome_id, command_id, ordinal, status, provider_result_json,
-				observed_effect_json, reconciliation_status, outcome_sha256, occurred_at
-			) VALUES (?, ?, (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM outcomes WHERE command_id = ?), 'reconciled', ?, NULL, 'reconciled', ?, ?)`,
-			outcomeID, commandID, commandID, evidenceJSON, outcomeSHA, formatTime(now)); err != nil {
+				observed_effect_json, reconciliation_status, outcome_sha256, traceparent, tracestate, occurred_at
+			) VALUES (?, ?, (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM outcomes WHERE command_id = ?), 'reconciled', ?, NULL, 'reconciled', ?, ?, ?, ?)`,
+			outcomeID, commandID, commandID, evidenceJSON, outcomeSHA, traceparent, tracestate, formatTime(now)); err != nil {
 			return fmt.Errorf("record reconciliation outcome: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, "UPDATE commands SET status = ?, updated_at = ? WHERE command_id = ? AND status IN ('reconciling', 'outcome_unknown')", finalStatus, formatTime(now), commandID); err != nil {
@@ -605,12 +621,28 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 }
 
 func appendOutcomeReconciledNotification(ctx context.Context, tx *sql.Tx, tenantID, intentID, commandID, outcomeID, finalStatus string, now time.Time) error {
-	return notify.AppendLifecycleEvent(ctx, tx, "outcome.reconciled:"+outcomeID, tenantID, notify.TypeOutcomeReconciled, "outcome/"+outcomeID, commandID, map[string]any{
-		"outcome_id": outcomeID, "command_id": commandID, "final_status": finalStatus,
-		"reconciliation_status": "reconciled", "intent_id": intentID,
-		"verdict": outcomeVerdict(finalStatus), "reconciliation_version": 1,
+	var reconciliationVersion int
+	var outcomeSHA []byte
+	var traceparent, tracestate sql.NullString
+	if err := tx.QueryRowContext(ctx, `
+		SELECT o.ordinal, o.outcome_sha256, d.traceparent, d.tracestate
+		FROM outcomes o
+		JOIN commands c ON c.command_id = o.command_id
+		JOIN intents i ON i.intent_id = c.intent_id
+		JOIN decisions d ON d.decision_id = i.decision_id
+		WHERE o.outcome_id = ? AND o.command_id = ? AND i.intent_id = ?`, outcomeID, commandID, intentID).
+		Scan(&reconciliationVersion, &outcomeSHA, &traceparent, &tracestate); err != nil {
+		return fmt.Errorf("load reconciled outcome provenance: %w", err)
+	}
+	if reconciliationVersion < 1 || len(outcomeSHA) != sha256.Size {
+		return fmt.Errorf("reconciled outcome provenance is incomplete")
+	}
+	return notify.AppendLifecycleEventWithTrace(ctx, tx, "outcome.reconciled:"+outcomeID, tenantID, notify.TypeOutcomeReconciled, "outcome/"+outcomeID, commandID, map[string]any{
+		"tenant_id": tenantID, "outcome_id": outcomeID, "command_id": commandID, "final_status": finalStatus,
+		"outcome_digest": "sha256:" + hex.EncodeToString(outcomeSHA), "reconciliation_status": "reconciled", "intent_id": intentID,
+		"verdict": outcomeVerdict(finalStatus), "reconciliation_version": reconciliationVersion,
 		"source_authority": notify.SourceForTenant(tenantID),
-	}, now)
+	}, now, contractsv1.TraceContext{Traceparent: traceparent.String, Tracestate: tracestate.String})
 }
 
 func outcomeVerdict(finalStatus string) string {
