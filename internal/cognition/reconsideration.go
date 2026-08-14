@@ -57,7 +57,14 @@ func (e *Engine) admitReconsiderations(ctx context.Context, tx *sql.Tx, current 
 		JOIN decisions d ON d.decision_id = i.decision_id
 		JOIN episodes e ON e.episode_id = d.episode_id
 		JOIN outcomes o ON o.command_id = c.command_id
-		WHERE i.situation_id = ? AND i.situation_version = ?
+		WHERE i.situation_id = ?
+		  AND i.situation_version = (
+			SELECT MAX(i2.situation_version)
+			FROM intents i2
+			WHERE i2.situation_id = i.situation_id
+			  AND i2.situation_version <= ?
+			  AND i2.policy_status = 'approved'
+		  )
 		  AND d.validation_status = 'accepted' AND c.status = 'succeeded'
 		  AND o.ordinal = (SELECT MAX(o2.ordinal) FROM outcomes o2 WHERE o2.command_id = c.command_id)
 		ORDER BY c.command_id`, current.SituationID, current.PreviousVersion)
