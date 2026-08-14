@@ -48,6 +48,57 @@ func TestWatchEffectorIsBoundedExpiringAndOneShot(t *testing.T) {
 	}
 }
 
+func TestWatchEffectorSkipsCELEvaluationErrorAndFiresWhenDataArrives(t *testing.T) {
+	ctx := t.Context()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "watch-evaluation-error.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	effector := actions.NewWatchEffector(db)
+	command := actions.Command{
+		CommandID: "cmd-watch-evaluation-error", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
+		Payload: map[string]any{
+			"expression": "features.do_mean_15m > 0", "target": "motor-1", "expires_at": "2099-01-01T00:00:00Z",
+			"situation_id": "sit-1", "situation_version": 1, "max_fires": 1,
+		},
+	}
+	if _, err := effector.Dispatch(ctx, command); err != nil {
+		t.Fatal(err)
+	}
+
+	fired, err := effector.Fire(ctx, command.CommandID, "evt-missing-key", "sit-1", "motor-1", map[string]any{"temperature": 95})
+	if err != nil {
+		t.Fatalf("missing-key evaluation: %v", err)
+	}
+	if fired {
+		t.Fatal("watch fired when its CEL key was absent")
+	}
+	var status string
+	var remaining int
+	if err := db.QueryRowContext(ctx, "SELECT status, remaining_fires FROM watch_conditions WHERE watch_id = ?", command.CommandID).Scan(&status, &remaining); err != nil {
+		t.Fatal(err)
+	}
+	if status != "active" || remaining != 1 {
+		t.Fatalf("watch after skipped evaluation = status %q, remaining fires %d; want active, 1", status, remaining)
+	}
+
+	fired, err = effector.Fire(ctx, command.CommandID, "evt-present-key", "sit-1", "motor-1", map[string]any{"do_mean_15m": 15})
+	if err != nil {
+		t.Fatalf("present-key evaluation: %v", err)
+	}
+	if !fired {
+		t.Fatal("watch did not fire when its CEL key was present")
+	}
+	var fires int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM watch_fires WHERE watch_id = ?", command.CommandID).Scan(&fires); err != nil {
+		t.Fatal(err)
+	}
+	if fires != 1 {
+		t.Fatalf("watch fire rows = %d, want 1", fires)
+	}
+}
+
 func TestWatchEffectorEvaluatesExpressionAndExpiresWithoutAFire(t *testing.T) {
 	ctx := context.Background()
 	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "watch-expiry.db"))

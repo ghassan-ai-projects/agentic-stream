@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -157,7 +158,8 @@ func (e *WatchEffector) dispatch(ctx context.Context, command Command, _ func(co
 }
 
 // Fire records one event-driven watch firing exactly once and decrements its
-// bounded allowance. It returns false for expired, disabled, or duplicate fires.
+// bounded allowance. It returns false for expired, disabled, duplicate, or
+// expression-evaluation-error no-fires.
 func (e *WatchEffector) Fire(ctx context.Context, watchID, eventID, situationID, target string, features map[string]any) (bool, error) {
 	if e == nil || e.db == nil || watchID == "" || eventID == "" {
 		return false, fmt.Errorf("watch identity is required")
@@ -190,7 +192,14 @@ func (e *WatchEffector) Fire(ctx context.Context, watchID, eventID, situationID,
 		}
 		matches, err := evaluateWatchExpression(expression, features)
 		if err != nil {
-			return err
+			slog.WarnContext(ctx, "watch expression evaluation skipped",
+				"watch_id", watchID,
+				"event_id", eventID,
+				"situation_id", storedSituationID,
+				"target", storedTarget,
+				"error", err,
+			)
+			return nil
 		}
 		if !matches {
 			return nil
