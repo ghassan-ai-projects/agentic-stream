@@ -77,7 +77,7 @@ func (db *DB) Close() error {
 }
 
 func open(ctx context.Context, path string) (*DB, error) {
-	connStr := fmt.Sprintf("%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)", path)
+	connStr := fmt.Sprintf("%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=wal_autocheckpoint(%d)&_txlock=immediate", path, sqliteWALCheckpointPages)
 	sqlDB, err := sql.Open("sqlite", connStr)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -90,6 +90,17 @@ func open(ctx context.Context, path string) (*DB, error) {
 	}
 
 	return db, nil
+}
+
+// Checkpoint performs a non-blocking WAL checkpoint. SQLite may leave frames
+// for a later checkpoint when readers or another writer are active; callers
+// should treat that as normal maintenance behavior.
+func (db *DB) Checkpoint(ctx context.Context) error {
+	var busy, logFrames, checkpointed int
+	if err := db.QueryRowContext(ctx, "PRAGMA wal_checkpoint(PASSIVE)").Scan(&busy, &logFrames, &checkpointed); err != nil {
+		return fmt.Errorf("checkpoint WAL: %w", err)
+	}
+	return nil
 }
 
 // Migrate runs embedded migrations that have not yet been applied.

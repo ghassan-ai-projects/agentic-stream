@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,8 +13,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/ext"
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
 )
 
 const (
@@ -306,11 +303,7 @@ func (e *WatchEffector) Expire(ctx context.Context) error {
 }
 
 func isSQLiteBusy(err error) bool {
-	var sqliteErr *sqlite.Error
-	if !errors.As(err, &sqliteErr) {
-		return false
-	}
-	return sqliteErr.Code()&0xff == sqlite3.SQLITE_BUSY
+	return storage.IsSQLiteBusy(err)
 }
 
 func validateWatchExpression(expression string) error {

@@ -312,6 +312,9 @@ func (e *Engine) runGlobal(ctx context.Context, beforeApply func(eventlog.Record
 			if err != nil {
 				return processed, fmt.Errorf("run global timers: %w", err)
 			}
+			if err := e.checkpointWAL(ctx); err != nil {
+				return processed + timerCount, fmt.Errorf("checkpoint WAL after global timers: %w", err)
+			}
 			return processed + timerCount, nil
 		}
 		for _, record := range records {
@@ -338,6 +341,9 @@ func (e *Engine) runGlobal(ctx context.Context, beforeApply func(eventlog.Record
 			}
 			lastPosition = record.Position
 			processed++
+		}
+		if err := e.checkpointWAL(ctx); err != nil {
+			return processed, fmt.Errorf("checkpoint WAL after global batch: %w", err)
 		}
 	}
 }
@@ -390,6 +396,9 @@ func (e *Engine) run(ctx context.Context, partitionID int, beforeApply func(even
 		return processed, err
 	}
 	processed += fired
+	if err := e.checkpointWAL(ctx); err != nil {
+		return processed, fmt.Errorf("checkpoint WAL after partition timers: %w", err)
+	}
 	return processed, nil
 }
 
@@ -631,8 +640,18 @@ func (e *Engine) runBatch(ctx context.Context, partitionID int, beforeApply func
 		checkpoint.LastPosition = rec.Position
 		checkpoint.Watermark = watermark.Format(time.RFC3339Nano)
 	}
+	if err := e.checkpointWAL(ctx); err != nil {
+		return 0, fmt.Errorf("checkpoint WAL after partition batch: %w", err)
+	}
 
 	return len(records), nil
+}
+
+func (e *Engine) checkpointWAL(ctx context.Context) error {
+	if err := e.db.Checkpoint(ctx); err != nil && !storage.IsSQLiteBusy(err) {
+		return fmt.Errorf("checkpoint WAL: %w", err)
+	}
+	return nil
 }
 
 type checkpoint struct {
@@ -676,99 +695,107 @@ func (e *Engine) watermarkForRecord(eventTime time.Time, prevWatermark string) (
 }
 
 func (e *Engine) applyRecord(ctx context.Context, partitionID int, rec eventlog.Record, watermark time.Time) error {
-	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := e.assertOwner(ctx, tx); err != nil {
-			return err
-		}
-		// Idempotency: skip if already applied.
-		var applied bool
-		if err := tx.QueryRowContext(ctx,
-			"SELECT 1 FROM event_inbox WHERE consumer_name = ? AND tenant_id = ? AND event_id = ?",
-			ConsumerName, e.tenantID, rec.EventID,
-		).Scan(&applied); err != nil && err != sql.ErrNoRows {
-			return fmt.Errorf("check inbox: %w", err)
-		}
-		if applied {
-			return nil
-		}
-
-		ps, err := e.loadOperatorState(ctx, tx, partitionID, rec.Envelope.Entity.ID)
-		if err != nil {
-			return fmt.Errorf("load operator state: %w", err)
-		}
-
-		features, newPS, err := e.opRuntime.ApplyEventAt(ctx, ps, rec.Envelope, watermark, e.clock.Now().UTC())
-		if err != nil {
-			return fmt.Errorf("apply operators: %w", err)
-		}
-		affected := make(map[string]struct{})
-
-		for _, feature := range features {
-			affected[feature.EntityType+"\x00"+feature.EntityID] = struct{}{}
-			feature.TenantID = e.tenantID
-			feature.PartitionID = partitionID
-			versions, err := e.sitEngine.ApplyFeature(ctx, feature, watermark)
-			if err != nil {
-				return fmt.Errorf("apply situation: %w", err)
+	err := storage.RetrySQLiteBusy(ctx, func() error {
+		err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
+			if err := e.assertOwner(ctx, tx); err != nil {
+				return err
 			}
-			for _, v := range versions {
-				if err := e.saveSituationVersion(ctx, tx, partitionID, v); err != nil {
-					return fmt.Errorf("save situation version: %w", err)
+			// Idempotency: skip if already applied.
+			var applied bool
+			if err := tx.QueryRowContext(ctx,
+				"SELECT 1 FROM event_inbox WHERE consumer_name = ? AND tenant_id = ? AND event_id = ?",
+				ConsumerName, e.tenantID, rec.EventID,
+			).Scan(&applied); err != nil && err != sql.ErrNoRows {
+				return fmt.Errorf("check inbox: %w", err)
+			}
+			if applied {
+				return nil
+			}
+
+			ps, err := e.loadOperatorState(ctx, tx, partitionID, rec.Envelope.Entity.ID)
+			if err != nil {
+				return fmt.Errorf("load operator state: %w", err)
+			}
+
+			features, newPS, err := e.opRuntime.ApplyEventAt(ctx, ps, rec.Envelope, watermark, e.clock.Now().UTC())
+			if err != nil {
+				return fmt.Errorf("apply operators: %w", err)
+			}
+			affected := make(map[string]struct{})
+
+			for _, feature := range features {
+				affected[feature.EntityType+"\x00"+feature.EntityID] = struct{}{}
+				feature.TenantID = e.tenantID
+				feature.PartitionID = partitionID
+				versions, err := e.sitEngine.ApplyFeature(ctx, feature, watermark)
+				if err != nil {
+					return fmt.Errorf("apply situation: %w", err)
 				}
-				if e.cogEngine != nil {
-					if err := e.cogEngine.Process(ctx, tx, v); err != nil {
-						return fmt.Errorf("cognition process: %w", err)
+				for _, v := range versions {
+					if err := e.saveSituationVersion(ctx, tx, partitionID, v); err != nil {
+						return fmt.Errorf("save situation version: %w", err)
+					}
+					if e.cogEngine != nil {
+						if err := e.cogEngine.Process(ctx, tx, v); err != nil {
+							return fmt.Errorf("cognition process: %w", err)
+						}
 					}
 				}
 			}
-		}
-		for key := range affected {
-			parts := strings.SplitN(key, "\x00", 2)
-			sit, stateJSON, stateDigest, ok, err := e.sitEngine.CurrentState(partitionID, parts[0], parts[1])
-			if err != nil {
-				return fmt.Errorf("snapshot current situation state: %w", err)
-			}
-			if ok && sit.Version > 0 {
-				if err := e.saveSituationRuntimeState(ctx, tx, sit, stateJSON, stateDigest); err != nil {
-					return fmt.Errorf("save current situation state: %w", err)
+			for key := range affected {
+				parts := strings.SplitN(key, "\x00", 2)
+				sit, stateJSON, stateDigest, ok, err := e.sitEngine.CurrentState(partitionID, parts[0], parts[1])
+				if err != nil {
+					return fmt.Errorf("snapshot current situation state: %w", err)
+				}
+				if ok && sit.Version > 0 {
+					if err := e.saveSituationRuntimeState(ctx, tx, sit, stateJSON, stateDigest); err != nil {
+						return fmt.Errorf("save current situation state: %w", err)
+					}
 				}
 			}
-		}
 
-		if err := e.saveOperatorState(ctx, tx, partitionID, rec.Envelope.Entity.ID, newPS); err != nil {
-			return fmt.Errorf("save operator state: %w", err)
-		}
-		if err := e.scheduleHeartbeatTimers(ctx, tx, partitionID, newPS); err != nil {
-			return fmt.Errorf("schedule heartbeat timers: %w", err)
-		}
+			if err := e.saveOperatorState(ctx, tx, partitionID, rec.Envelope.Entity.ID, newPS); err != nil {
+				return fmt.Errorf("save operator state: %w", err)
+			}
+			if err := e.scheduleHeartbeatTimers(ctx, tx, partitionID, newPS); err != nil {
+				return fmt.Errorf("schedule heartbeat timers: %w", err)
+			}
 
-		now := e.clock.Now().UTC().Format(time.RFC3339Nano)
+			now := e.clock.Now().UTC().Format(time.RFC3339Nano)
 
-		// Advance checkpoint.
-		if _, err := tx.ExecContext(ctx, `
+			// Advance checkpoint.
+			if _, err := tx.ExecContext(ctx, `
 			INSERT INTO partition_checkpoints (consumer_name, tenant_id, partition_id, last_position, watermark, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?)
 			ON CONFLICT(consumer_name, tenant_id, partition_id)
 			DO UPDATE SET last_position = excluded.last_position, watermark = excluded.watermark, updated_at = excluded.updated_at`,
-			ConsumerName, e.tenantID, partitionID, int64(rec.Position), watermark.Format(time.RFC3339Nano), now,
-		); err != nil {
-			return fmt.Errorf("update checkpoint: %w", err)
+				ConsumerName, e.tenantID, partitionID, int64(rec.Position), watermark.Format(time.RFC3339Nano), now,
+			); err != nil {
+				return fmt.Errorf("update checkpoint: %w", err)
+			}
+
+			// Mark inbox applied.
+			if _, err := tx.ExecContext(ctx,
+				"INSERT INTO event_inbox (consumer_name, tenant_id, event_id, log_position, applied_at) VALUES (?, ?, ?, ?, ?)",
+				ConsumerName, e.tenantID, rec.EventID, int64(rec.Position), now,
+			); err != nil {
+				return fmt.Errorf("mark inbox: %w", err)
+			}
+
+			return nil
+		})
+		if err == nil {
+			return nil
 		}
 
-		// Mark inbox applied.
-		if _, err := tx.ExecContext(ctx,
-			"INSERT INTO event_inbox (consumer_name, tenant_id, event_id, log_position, applied_at) VALUES (?, ?, ?, ?, ?)",
-			ConsumerName, e.tenantID, rec.EventID, int64(rec.Position), now,
-		); err != nil {
-			return fmt.Errorf("mark inbox: %w", err)
-		}
-
-		return nil
-	}); err != nil {
 		e.sitEngine.Reset()
 		if restoreErr := restoreSituations(ctx, e.db, e.deploymentID, e.tenantID, e.sitEngine); restoreErr != nil {
 			return fmt.Errorf("apply record transaction: %w; restore after rollback: %w", err, restoreErr)
 		}
+		return fmt.Errorf("apply transaction: %w", err)
+	})
+	if err != nil {
 		return fmt.Errorf("apply record transaction: %w", err)
 	}
 	return nil
