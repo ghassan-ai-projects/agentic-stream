@@ -63,6 +63,46 @@ func TestRotatingMachinerySchemasDescribeAdapterPayloads(t *testing.T) {
 	}
 }
 
+func TestPondDissolvedOxygenSchemaDescribesAdapterPayload(t *testing.T) {
+	t.Parallel()
+
+	ref := "pond.dissolved_oxygen.observed/1.0"
+	definition, ok := Lookup(ref)
+	if !ok {
+		t.Fatalf("schema %q is not registered", ref)
+	}
+	if definition.EventType != "pond.dissolved_oxygen.observed" {
+		t.Fatalf("event type = %q, want pond.dissolved_oxygen.observed", definition.EventType)
+	}
+	field, ok := definition.Fields["mg_l"]
+	if !ok {
+		t.Fatal("schema does not declare mg_l")
+	}
+	if field.Path != "mg_l" || field.Unit != "mg_l" {
+		t.Fatalf("mg_l field = %+v, want path and unit mg_l", field)
+	}
+
+	raw, err := JSON(definition)
+	if err != nil {
+		t.Fatalf("JSON(%q): %v", ref, err)
+	}
+	var document struct {
+		Properties map[string]struct {
+			Type string `json:"type"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	if err := json.Unmarshal(raw, &document); err != nil {
+		t.Fatalf("decode JSON(%q): %v", ref, err)
+	}
+	if !contains(document.Required, "mg_l") {
+		t.Fatalf("required fields %v do not include mg_l", document.Required)
+	}
+	if contains(document.Required, "unit") || document.Properties["unit"].Type != "string" {
+		t.Fatalf("unit should be an optional string field: %+v", document.Properties["unit"])
+	}
+}
+
 func contains(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {

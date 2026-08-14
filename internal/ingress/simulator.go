@@ -210,13 +210,16 @@ func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.
 	if r.options.EntityType != "" && r.options.EntityType != entityType {
 		return contractsv1.Envelope{}, fmt.Errorf("entity_type %q does not match configured type %q", entityType, r.options.EntityType)
 	}
+	channel, err := getString("type")
+	if err != nil {
+		return contractsv1.Envelope{}, err
+	}
 	eventTypePrefix := r.options.EventTypePrefix
 	if eventTypePrefix == "" {
 		eventTypePrefix = entityType + "."
 	}
-	channel, err := getString("type")
-	if err != nil {
-		return contractsv1.Envelope{}, err
+	if strings.HasPrefix(channel, eventTypePrefix) {
+		eventTypePrefix = ""
 	}
 	eventTime, err := parseSimulatorTime(event, "event_time")
 	if err != nil {
@@ -230,14 +233,27 @@ func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.
 		return contractsv1.Envelope{}, fmt.Errorf("arrival precedes event time")
 	}
 	data := make(map[string]any)
+	channelName := strings.TrimPrefix(channel, entityType+".")
 	if value, ok := event["value"]; ok {
-		switch channel {
+		switch channelName {
 		case "vibration":
 			data["rms_mm_s"] = value
 		case "temperature":
 			data["celsius"] = value
 		case "current":
 			data["amps"] = value
+		case "dissolved_oxygen", "ammonia":
+			data["mg_l"] = value
+		case "water_temperature":
+			data["celsius"] = value
+		case "ph":
+			data["ph"] = value
+		case "aerator_current":
+			data["ampere"] = value
+		case "feeding_event":
+			data["load"] = value
+		case "heartbeat":
+			// Heartbeats carry no data field.
 		default:
 			data["value"] = value
 		}
@@ -245,7 +261,7 @@ func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.
 	if unit, ok := event["unit"].(string); ok && unit != "" {
 		data["unit"] = unit
 	}
-	if channel == "mode" {
+	if channelName == "mode" {
 		if value, ok := event["value"]; ok {
 			data["mode"] = value
 		}

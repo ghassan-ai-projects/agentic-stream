@@ -38,6 +38,14 @@ var builtins = map[string]Definition{
 	"pump.rpm.observed/1.0":             {Ref: "pump.rpm.observed/1.0", EventType: "pump.rpm.observed", SchemaVersion: "1.0", Fields: numericWithUnit("value", "rpm")},
 	"pump.mode.observed/1.0":            {Ref: "pump.mode.observed/1.0", EventType: "pump.mode.observed", SchemaVersion: "1.0", Fields: map[string]Field{"value": {Path: "value", Type: "string"}, "mode": {Path: "mode", Type: "string"}}},
 	"pump.heartbeat.observed/1.0":       {Ref: "pump.heartbeat.observed/1.0", EventType: "pump.heartbeat.observed", SchemaVersion: "1.0", Fields: map[string]Field{}},
+
+	"pond.dissolved_oxygen.observed/1.0":  {Ref: "pond.dissolved_oxygen.observed/1.0", EventType: "pond.dissolved_oxygen.observed", SchemaVersion: "1.0", Fields: numericWithUnit("mg_l", "mg_l")},
+	"pond.water_temperature.observed/1.0": {Ref: "pond.water_temperature.observed/1.0", EventType: "pond.water_temperature.observed", SchemaVersion: "1.0", Fields: numericWithUnit("celsius", "celsius")},
+	"pond.ammonia.observed/1.0":           {Ref: "pond.ammonia.observed/1.0", EventType: "pond.ammonia.observed", SchemaVersion: "1.0", Fields: numericWithUnit("mg_l", "mg_l")},
+	"pond.ph.observed/1.0":                {Ref: "pond.ph.observed/1.0", EventType: "pond.ph.observed", SchemaVersion: "1.0", Fields: map[string]Field{"ph": {Path: "ph", Unit: "ph"}}},
+	"pond.aerator_current.observed/1.0":   {Ref: "pond.aerator_current.observed/1.0", EventType: "pond.aerator_current.observed", SchemaVersion: "1.0", Fields: numericWithUnit("ampere", "ampere")},
+	"pond.feeding_event.observed/1.0":     {Ref: "pond.feeding_event.observed/1.0", EventType: "pond.feeding_event.observed", SchemaVersion: "1.0", Fields: map[string]Field{"load": {Path: "load", Unit: "1"}, "kind": {Path: "kind", Type: "string", Optional: true}}},
+	"pond.heartbeat.observed/1.0":         {Ref: "pond.heartbeat.observed/1.0", EventType: "pond.heartbeat.observed", SchemaVersion: "1.0", Fields: map[string]Field{}},
 }
 
 func numericWithUnit(path, unit string) map[string]Field {
