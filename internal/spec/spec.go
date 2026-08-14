@@ -208,7 +208,17 @@ type Intent struct {
 
 // Actions configures allowed intents.
 type Actions struct {
-	Intents []Intent `json:"intents" yaml:"intents"`
+	Intents              []Intent `json:"intents" yaml:"intents"`
+	WatchConfidenceFloor *float64 `json:"watch_confidence_floor,omitempty" yaml:"watch_confidence_floor,omitempty"`
+}
+
+// EffectiveWatchConfidenceFloor returns the configured watch confidence
+// floor, defaulting to 0.5 when the setting is omitted.
+func (a Actions) EffectiveWatchConfidenceFloor() float64 {
+	if a.WatchConfidenceFloor == nil {
+		return 0.5
+	}
+	return *a.WatchConfidenceFloor
 }
 
 // Retention configures data lifetimes.

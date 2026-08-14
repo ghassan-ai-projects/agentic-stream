@@ -704,6 +704,12 @@
           "items": {
             "$ref": "#/$defs/intent"
           }
+        },
+        "watch_confidence_floor": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5
         }
       }
     },

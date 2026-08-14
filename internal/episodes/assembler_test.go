@@ -205,7 +205,8 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 		t.Fatal("expected request json")
 	}
 	var payload struct {
-		AllowedIntentTypes []string `json:"allowed_intent_types"`
+		AllowedIntentTypes   []string `json:"allowed_intent_types"`
+		WatchConfidenceFloor float64  `json:"watch_confidence_floor"`
 	}
 	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
 		t.Fatalf("unmarshal request: %v", err)
@@ -213,6 +214,39 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 	wantAllowed := []string{"create_ticket", "downgrade_maintenance_ticket", "withdraw_maintenance_ticket"}
 	if !slices.Equal(payload.AllowedIntentTypes, wantAllowed) {
 		t.Fatalf("allowed intent types = %v, want %v", payload.AllowedIntentTypes, wantAllowed)
+	}
+	if payload.WatchConfidenceFloor != 0.5 {
+		t.Fatalf("watch confidence floor = %v, want 0.5", payload.WatchConfidenceFloor)
+	}
+
+	for _, tt := range []struct {
+		name  string
+		floor float64
+	}{
+		{name: "custom", floor: 0.7},
+		{name: "opt out", floor: 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			floor := tt.floor
+			compiled.Actions.WatchConfidenceFloor = &floor
+			var explicitReq *episodes.Request
+			if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+				var err error
+				explicitReq, err = asm.Assemble(ctx, tx, schedulerItemID, "default")
+				return err
+			}); err != nil {
+				t.Fatalf("assemble tx: %v", err)
+			}
+			var explicitPayload struct {
+				WatchConfidenceFloor float64 `json:"watch_confidence_floor"`
+			}
+			if err := json.Unmarshal(explicitReq.RequestJSON, &explicitPayload); err != nil {
+				t.Fatalf("unmarshal explicit request: %v", err)
+			}
+			if explicitPayload.WatchConfidenceFloor != tt.floor {
+				t.Fatalf("watch confidence floor = %v, want %v", explicitPayload.WatchConfidenceFloor, tt.floor)
+			}
+		})
 	}
 }
 

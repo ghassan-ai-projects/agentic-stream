@@ -408,12 +408,13 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 		return nil, fmt.Errorf("fence must be positive")
 	}
 	var payload struct {
-		Kind               string          `json:"kind"`
-		Snapshot           json.RawMessage `json:"snapshot"`
-		Tools              json.RawMessage `json:"tools"`
-		AllowedIntentTypes []string        `json:"allowed_intent_types"`
-		RiskCeiling        string          `json:"risk_ceiling"`
-		Trigger            struct {
+		Kind                 string          `json:"kind"`
+		Snapshot             json.RawMessage `json:"snapshot"`
+		Tools                json.RawMessage `json:"tools"`
+		AllowedIntentTypes   []string        `json:"allowed_intent_types"`
+		WatchConfidenceFloor *float64        `json:"watch_confidence_floor"`
+		RiskCeiling          string          `json:"risk_ceiling"`
+		Trigger              struct {
 			TriggerID string `json:"trigger_id"`
 			Lane      string `json:"lane"`
 		} `json:"trigger"`
@@ -521,7 +522,8 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 		Objective: payload.Executor.Objective, ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion,
 		PromptVersion: req.PromptVersion, Budget: budget, Deadline: deadline, Traceparent: req.Traceparent, Tracestate: req.Tracestate,
 		Kind: kind, Lane: lane, RiskCeiling: risk, AllowedIntentTypes: payload.AllowedIntentTypes,
-		CancellationKey: payload.CancellationKey, SupersessionKey: payload.SupersessionKey,
+		WatchConfidenceFloor: payload.WatchConfidenceFloor,
+		CancellationKey:      payload.CancellationKey, SupersessionKey: payload.SupersessionKey,
 		PromptSha256: promptDigest, ObjectiveSha256: objectiveDigest,
 		AttemptId: req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
 		Reconsideration: reconsideration,
