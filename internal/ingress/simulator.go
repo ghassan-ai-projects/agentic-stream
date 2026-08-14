@@ -262,6 +262,16 @@ func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.
 			data["ntu"] = value
 		case "demand_event":
 			data["magnitude"] = value
+		case "humidity", "leaf_wetness", "vent_position":
+			data["percent"] = value
+		case "air_temp":
+			data["celsius"] = value
+		case "co2":
+			data["umol_mol"] = value
+		case "par_light":
+			data["value"] = value
+		case "vent_event":
+			data["magnitude"] = value
 		case "heartbeat":
 			// Heartbeats carry no data field.
 		default:

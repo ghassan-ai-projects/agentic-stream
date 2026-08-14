@@ -24,6 +24,7 @@ func TestSimulatorJSONLReplayConvertsControlsAndEvents(t *testing.T) {
 {"record_type":"event","event":{"id":"evt-pond-000001","entity_type":"pond","entity_id":"site-a.pond-1","type":"pond.dissolved_oxygen","event_time":"2026-07-29T09:00:00Z","arrival_time":"2026-07-29T09:00:01.5Z","value":6.38}}
 {"record_type":"event","event":{"id":"evt-pump-000001","entity_type":"pump","entity_id":"site-a.pump-1","type":"vibration","event_time":"2026-07-29T09:00:02Z","arrival_time":"2026-07-29T09:00:03Z","value":5.2}}
 {"record_type":"event","event":{"id":"evt-pump-pressure-000001","entity_type":"pump","entity_id":"site-a.pump-1","type":"discharge_pressure","event_time":"2026-07-29T09:00:04Z","arrival_time":"2026-07-29T09:00:05Z","value":245.5}}
+{"record_type":"event","event":{"id":"evt-bay-humidity-000001","entity_type":"bay","entity_id":"site-a.bay-1","type":"bay.humidity","event_time":"2026-07-29T09:00:06Z","arrival_time":"2026-07-29T09:00:07Z","value":78.4}}
 {"record_type":"trace_end","until":"2026-07-29T09:01:00Z"}
 `
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
@@ -31,7 +32,7 @@ func TestSimulatorJSONLReplayConvertsControlsAndEvents(t *testing.T) {
 	}
 	replay := ingress.NewSimulatorJSONLReplay(db, eventlog.NewEventLog(db), ingress.SimulatorOptions{TenantID: "default"}, path, "test-sim")
 	count, err := replay.Run(context.Background())
-	if err != nil || count != 3 {
+	if err != nil || count != 4 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
 	rows, err := db.QueryContext(context.Background(), "SELECT event_id, event_type, entity_type, payload_json FROM event_log ORDER BY position")
@@ -47,6 +48,7 @@ func TestSimulatorJSONLReplayConvertsControlsAndEvents(t *testing.T) {
 		"evt-pond-000001":          {typ: "pond.dissolved_oxygen.observed", entity: "pond", data: map[string]any{"mg_l": 6.38}},
 		"evt-pump-000001":          {typ: "pump.vibration.observed", entity: "pump", data: map[string]any{"rms_mm_s": 5.2}},
 		"evt-pump-pressure-000001": {typ: "pump.discharge_pressure.observed", entity: "pump", data: map[string]any{"kpa": 245.5}},
+		"evt-bay-humidity-000001":  {typ: "bay.humidity.observed", entity: "bay", data: map[string]any{"percent": 78.4}},
 	}
 	for rows.Next() {
 		var eventID, typ, entity string

@@ -108,6 +108,53 @@ func TestPondDissolvedOxygenSchemaDescribesAdapterPayload(t *testing.T) {
 	}
 }
 
+func TestBaySchemasDescribeAdapterPayloads(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		ref       string
+		eventType string
+		field     string
+		unit      string
+	}{
+		{ref: "bay.humidity.observed/1.0", eventType: "bay.humidity.observed", field: "percent", unit: "percent"},
+		{ref: "bay.leaf_wetness.observed/1.0", eventType: "bay.leaf_wetness.observed", field: "percent", unit: "percent"},
+		{ref: "bay.air_temp.observed/1.0", eventType: "bay.air_temp.observed", field: "celsius", unit: "celsius"},
+		{ref: "bay.co2.observed/1.0", eventType: "bay.co2.observed", field: "umol_mol", unit: "umol_mol"},
+		{ref: "bay.par_light.observed/1.0", eventType: "bay.par_light.observed", field: "value", unit: "umol_m2_s"},
+		{ref: "bay.vent_position.observed/1.0", eventType: "bay.vent_position.observed", field: "percent", unit: "percent"},
+		{ref: "bay.vent_event.observed/1.0", eventType: "bay.vent_event.observed", field: "magnitude", unit: "1"},
+		{ref: "bay.heartbeat.observed/1.0", eventType: "bay.heartbeat.observed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.ref, func(t *testing.T) {
+			t.Parallel()
+
+			definition, ok := Lookup(tt.ref)
+			if !ok {
+				t.Fatalf("schema %q is not registered", tt.ref)
+			}
+			if definition.EventType != tt.eventType {
+				t.Fatalf("event type = %q, want %q", definition.EventType, tt.eventType)
+			}
+			if tt.field == "" {
+				if len(definition.Fields) != 0 {
+					t.Fatalf("fields = %+v, want empty", definition.Fields)
+				}
+				return
+			}
+			field, ok := definition.Fields[tt.field]
+			if !ok {
+				t.Fatalf("schema does not declare %s", tt.field)
+			}
+			if field.Path != tt.field || field.Unit != tt.unit {
+				t.Fatalf("%s field = %+v, want path %q and unit %q", tt.field, field, tt.field, tt.unit)
+			}
+		})
+	}
+}
+
 func contains(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {

@@ -51,6 +51,15 @@ var builtins = map[string]Definition{
 	"pond.aerator_current.observed/1.0":   {Ref: "pond.aerator_current.observed/1.0", EventType: "pond.aerator_current.observed", SchemaVersion: "1.0", Fields: numericWithUnit("ampere", "ampere")},
 	"pond.feeding_event.observed/1.0":     {Ref: "pond.feeding_event.observed/1.0", EventType: "pond.feeding_event.observed", SchemaVersion: "1.0", Fields: map[string]Field{"load": {Path: "load", Unit: "1"}, "kind": {Path: "kind", Type: "string", Optional: true}}},
 	"pond.heartbeat.observed/1.0":         {Ref: "pond.heartbeat.observed/1.0", EventType: "pond.heartbeat.observed", SchemaVersion: "1.0", Fields: map[string]Field{}},
+
+	"bay.humidity.observed/1.0":      {Ref: "bay.humidity.observed/1.0", EventType: "bay.humidity.observed", SchemaVersion: "1.0", Fields: numericWithUnit("percent", "percent")},
+	"bay.leaf_wetness.observed/1.0":  {Ref: "bay.leaf_wetness.observed/1.0", EventType: "bay.leaf_wetness.observed", SchemaVersion: "1.0", Fields: numericWithUnit("percent", "percent")},
+	"bay.air_temp.observed/1.0":      {Ref: "bay.air_temp.observed/1.0", EventType: "bay.air_temp.observed", SchemaVersion: "1.0", Fields: numericWithUnit("celsius", "celsius")},
+	"bay.co2.observed/1.0":           {Ref: "bay.co2.observed/1.0", EventType: "bay.co2.observed", SchemaVersion: "1.0", Fields: numericWithUnit("umol_mol", "umol_mol")},
+	"bay.par_light.observed/1.0":     {Ref: "bay.par_light.observed/1.0", EventType: "bay.par_light.observed", SchemaVersion: "1.0", Fields: numericWithUnit("value", "umol_m2_s")},
+	"bay.vent_position.observed/1.0": {Ref: "bay.vent_position.observed/1.0", EventType: "bay.vent_position.observed", SchemaVersion: "1.0", Fields: numericWithUnit("percent", "percent")},
+	"bay.vent_event.observed/1.0":    {Ref: "bay.vent_event.observed/1.0", EventType: "bay.vent_event.observed", SchemaVersion: "1.0", Fields: map[string]Field{"magnitude": {Path: "magnitude", Unit: "1"}}},
+	"bay.heartbeat.observed/1.0":     {Ref: "bay.heartbeat.observed/1.0", EventType: "bay.heartbeat.observed", SchemaVersion: "1.0", Fields: map[string]Field{}},
 }
 
 func numericWithUnit(path, unit string) map[string]Field {
