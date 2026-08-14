@@ -16,6 +16,11 @@ func TestRotatingMachinerySchemasDescribeAdapterPayloads(t *testing.T) {
 	}{
 		{ref: "pump.vibration.observed/1.0", required: []string{"rms_mm_s"}, optional: []string{"unit"}, stringFields: []string{"unit"}},
 		{ref: "pump.motor_current.observed/1.0", required: []string{"value"}, optional: []string{"unit"}, stringFields: []string{"unit"}},
+		{ref: "pump.discharge_pressure.observed/1.0", required: []string{"kpa"}, optional: []string{"unit"}, stringFields: []string{"unit"}},
+		{ref: "pump.flow_rate.observed/1.0", required: []string{"l_s"}, optional: []string{"unit"}, stringFields: []string{"unit"}},
+		{ref: "pump.tank_level.observed/1.0", required: []string{"percent"}, optional: []string{"unit"}, stringFields: []string{"unit"}},
+		{ref: "pump.turbidity.observed/1.0", required: []string{"ntu"}, optional: []string{"unit"}, stringFields: []string{"unit"}},
+		{ref: "pump.demand_event.observed/1.0", required: []string{"magnitude"}, stringFields: []string{}},
 		{ref: "pump.mode.observed/1.0", required: []string{"mode", "value"}, stringFields: []string{"mode", "value"}},
 		{ref: "pump.heartbeat.observed/1.0", required: []string{}, stringFields: []string{}},
 	}
