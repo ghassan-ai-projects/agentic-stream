@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -608,6 +609,129 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 	}
 }
 
+func TestAssemblerMarksReconsiderationLiveEpisodeConflict(t *testing.T) {
+	ctx := t.Context()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "live-conflict.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	compiled := spec.CompiledSpec{
+		SchemaVersion: "agentic-stream/v1",
+		Digest:        testSpecDigest,
+		Situation: spec.Situation{
+			Type:   "test",
+			Phases: []spec.Phase{{Name: "candidate", Severity: 10}},
+		},
+		Cognition: spec.Cognition{Executor: spec.Executor{Name: "native"}},
+	}
+	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
+		t.Fatalf("save deployment: %v", err)
+	}
+	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
+	v := situations.Version{
+		SituationID:  "sit-live-conflict",
+		Version:      1,
+		Phase:        "candidate",
+		Severity:     10,
+		Confidence:   1,
+		Completeness: "on_time",
+		EntityType:   "motor",
+		EntityID:     "motor-1",
+		EventHorizon: now,
+		Watermark:    now,
+	}
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
+			return err
+		}
+		zero := make([]byte, 32)
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO trigger_evaluations (
+				trigger_id, tenant_id, deployment_id, trigger_name, situation_id, situation_version,
+				score, threshold, lane, outcome, reasons_json, policy_sha256, delta_json, evaluated_at
+			) VALUES ('trg-live-first', 'default', ?, 'first', ?, 1, 10, 0, 'deep', 'admitted', ?, ?, ?, ?)`,
+			testSpecDigest, v.SituationID, []byte("[]"), zero, []byte("{}"), now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert first evaluation: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO scheduler_items (
+				scheduler_item_id, kind, trigger_id, tenant_id, situation_id, situation_version, lane,
+				priority, status, dedupe_key, expires_at, created_at, updated_at
+			) VALUES ('sch-live-first', 'standard', 'trg-live-first', 'default', ?, 1, 'deep', 10, 'admitted', ?, ?, ?, ?)`,
+			v.SituationID, zero, now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert first scheduler item: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO episodes (
+				episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
+				executor_name, executor_version, model_policy, prompt_version,
+				snapshot_sha256, admission_key, request_json, lifecycle_status, accepted_at
+			) VALUES ('epi-live-first', 'sch-live-first', 'default', ?, 1, 'native', ?, '', '', ?, ?, X'7B7D', 'admitted', ?)`,
+			v.SituationID, testSpecDigest, zero, zero, now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert live episode: %w", err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed live episode: %v", err)
+	}
+
+	zero := make([]byte, 32)
+	dedupe := make([]byte, 32)
+	dedupe[0] = 1
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO trigger_evaluations (
+				trigger_id, tenant_id, deployment_id, trigger_name, situation_id, situation_version,
+				score, threshold, lane, outcome, reasons_json, policy_sha256, delta_json, evaluated_at
+			) VALUES ('trg-live-reconsider', 'default', ?, 'prior_action_invalidated', ?, 1, 100, 0, 'deep', 'admitted', ?, ?, ?, ?)`,
+			testSpecDigest, v.SituationID, []byte("[]"), zero, []byte("{}"), now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert reconsideration evaluation: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO scheduler_items (
+				scheduler_item_id, kind, trigger_id, tenant_id, situation_id, situation_version, lane,
+				priority, status, dedupe_key, expires_at, created_at, updated_at
+			) VALUES ('sch-live-reconsider', 'reconsider', 'trg-live-reconsider', 'default', ?, 1, 'deep', 100, 'pending', ?, ?, ?, ?)`,
+			v.SituationID, dedupe, now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert reconsideration scheduler item: %w", err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed reconsideration item: %v", err)
+	}
+
+	asm := episodes.NewAssembler(&compiled, ids.Deterministic())
+	err = db.WithTx(ctx, func(tx *sql.Tx) error {
+		return asm.Persist(ctx, tx, &episodes.Request{
+			EpisodeID:        "epi-live-second",
+			SchedulerItemID:  "sch-live-reconsider",
+			Kind:             "reconsider",
+			TenantID:         "default",
+			SituationID:      v.SituationID,
+			SituationVersion: 1,
+			ExecutorName:     "native",
+			ExecutorVersion:  testSpecDigest,
+			SnapshotSHA256:   testSpecDigest,
+			PromptSHA256:     testSpecDigest,
+			ObjectiveSHA256:  testSpecDigest,
+			AdmissionKey:     append([]byte{2}, make([]byte, 31)...),
+			RequestJSON:      []byte("{}"),
+		}, now)
+	})
+	if !errors.Is(err, episodes.ErrLiveEpisodeConflict) {
+		t.Fatalf("persist error = %v, want ErrLiveEpisodeConflict", err)
+	}
+	var episodesCount int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM episodes WHERE situation_id = ?", v.SituationID).Scan(&episodesCount); err != nil {
+		t.Fatalf("count episodes: %v", err)
+	}
+	if episodesCount != 1 {
+		t.Fatalf("episodes after conflict = %d, want 1", episodesCount)
+	}
+}
+
 func TestAssemblerIsDeterministic(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -991,6 +1115,8 @@ func TestAssemblerPersistRejectsNonPending(t *testing.T) {
 		// Second persist should fail because scheduler item is no longer pending.
 		if err := asm.Persist(ctx, tx, req, base); err == nil {
 			return fmt.Errorf("expected error persisting non-pending item")
+		} else if errors.Is(err, episodes.ErrLiveEpisodeConflict) {
+			return fmt.Errorf("non-constraint storage error was classified as live-episode conflict: %w", err)
 		}
 		return nil
 	}); err != nil {

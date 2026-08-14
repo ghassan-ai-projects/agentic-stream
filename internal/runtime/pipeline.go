@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -399,6 +400,7 @@ func (p *Pipeline) assemblePending(ctx context.Context) (int, error) {
 		if err != nil {
 			return count, fmt.Errorf("find pending scheduler item: %w", err)
 		}
+		var requestKind, situationID string
 		if err := p.db.WithTx(ctx, func(tx *sql.Tx) error {
 			if err := p.assertOwnerTx(ctx, tx); err != nil {
 				return fmt.Errorf("assert pipeline owner: %w", err)
@@ -407,12 +409,50 @@ func (p *Pipeline) assemblePending(ctx context.Context) (int, error) {
 			if err != nil {
 				return fmt.Errorf("assemble scheduler item: %w", err)
 			}
+			requestKind = req.Kind
+			situationID = req.SituationID
 			return p.assembler.Persist(ctx, tx, req, now)
 		}); err != nil {
+			if requestKind == "reconsider" && errors.Is(err, episodes.ErrLiveEpisodeConflict) {
+				if skipErr := p.coalesceSkippedSchedulerItem(ctx, itemID, now); skipErr != nil {
+					return count, fmt.Errorf("record skipped reconsideration %s: %w", itemID, skipErr)
+				}
+				slog.WarnContext(ctx, "reconsideration episode admission skipped",
+					"scheduler_item_id", itemID,
+					"situation_id", situationID,
+					"reason", "one_live_episode_per_situation",
+					"error", err,
+				)
+				continue
+			}
 			return count, fmt.Errorf("admit scheduler item %s: %w", itemID, err)
 		}
 		count++
 	}
+}
+
+func (p *Pipeline) coalesceSkippedSchedulerItem(ctx context.Context, schedulerItemID string, now time.Time) error {
+	return p.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := p.assertOwnerTx(ctx, tx); err != nil {
+			return fmt.Errorf("assert pipeline owner: %w", err)
+		}
+		result, err := tx.ExecContext(ctx, `
+			UPDATE scheduler_items SET status = 'coalesced', updated_at = ?
+			WHERE scheduler_item_id = ? AND status = 'pending'`,
+			now.UTC().Format(time.RFC3339Nano), schedulerItemID,
+		)
+		if err != nil {
+			return fmt.Errorf("coalesce scheduler item: %w", err)
+		}
+		updated, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("coalesced scheduler item rows affected: %w", err)
+		}
+		if updated != 1 {
+			return fmt.Errorf("scheduler item %s is no longer pending", schedulerItemID)
+		}
+		return nil
+	})
 }
 
 func (p *Pipeline) assertOwnerTx(ctx context.Context, tx *sql.Tx) error {

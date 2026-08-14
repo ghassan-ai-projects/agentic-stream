@@ -9,7 +9,9 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
@@ -17,13 +19,20 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
-// Request is the durable input to an episode executor. Each field maps to a
-// column in the episodes table; RequestJSON is the canonical executor input.
+// ErrLiveEpisodeConflict means a reconsideration could not be admitted
+// because another episode for the same Situation is already live.
+var ErrLiveEpisodeConflict = errors.New("one live episode per situation constraint")
+
+// Request is the durable input to an episode executor. Its persistence fields
+// map to the episodes table; RequestJSON is the canonical executor input.
 type Request struct {
 	EpisodeID        string // unique episode identity.
 	SchedulerItemID  string // scheduler item that admitted this episode.
+	Kind             string // standard or reconsider.
 	TenantID         string // tenant owning the situation.
 	SituationID      string // situation being reasoned about.
 	SituationVersion int    // immutable situation version bound to this episode.
@@ -195,6 +204,7 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	return &Request{
 		EpisodeID:        episodeID,
 		SchedulerItemID:  schedulerItemID,
+		Kind:             item.Kind,
 		TenantID:         tenantID,
 		SituationID:      item.SituationID,
 		SituationVersion: item.SituationVersion,
@@ -291,6 +301,9 @@ func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now t
 		snapshotHash, promptHash, objectiveHash, req.AdmissionKey, req.RequestJSON,
 		now.Format(time.RFC3339Nano),
 	); err != nil {
+		if req.Kind == "reconsider" && isLiveEpisodeConstraint(err) {
+			return fmt.Errorf("insert episode: %w: %w", ErrLiveEpisodeConflict, err)
+		}
 		return fmt.Errorf("insert episode: %w", err)
 	}
 	res, err := tx.ExecContext(ctx, `
@@ -309,6 +322,14 @@ func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now t
 		return fmt.Errorf("scheduler item %s is no longer pending", req.SchedulerItemID)
 	}
 	return nil
+}
+
+func isLiveEpisodeConstraint(err error) bool {
+	var sqliteErr *sqlite.Error
+	if !errors.As(err, &sqliteErr) || sqliteErr.Code() != sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+		return false
+	}
+	return strings.Contains(err.Error(), "UNIQUE constraint failed: episodes.situation_id")
 }
 
 func (a *Assembler) buildTools() []map[string]any {
