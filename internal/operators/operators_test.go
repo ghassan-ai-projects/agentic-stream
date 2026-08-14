@@ -89,6 +89,73 @@ func TestSlope(t *testing.T) {
 	}
 }
 
+func TestLateEventCorrectsPreviouslyEmittedWindow(t *testing.T) {
+	compiled := meanSpec()
+	compiled.Time = spec.TimePolicy{
+		MaxOutOfOrderness: "0s",
+		AllowedLateness:   "5m",
+		LatePolicy:        "correct_and_reconsider",
+	}
+	rt, err := operators.NewOperatorRuntime("d1", compiled, ids.Deterministic())
+	if err != nil {
+		t.Fatalf("NewOperatorRuntime: %v", err)
+	}
+
+	ctx := context.Background()
+	ps := &operators.PartitionState{}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	first := contractsv1.Envelope{
+		ID:             "evt-first",
+		Type:           "sensor.temperature",
+		SchemaVersion:  "1.0",
+		TenantID:       "default",
+		Source:         "test",
+		PartitionKey:   "motor-17",
+		Entity:         contractsv1.EntityRef{Type: "motor", ID: "motor-17"},
+		EventTime:      base,
+		IngestedAt:     base,
+		Classification: contractsv1.ClassificationInternal,
+		Data:           map[string]any{"celsius": 10.0},
+	}
+	if _, ps, err = rt.ApplyEvent(ctx, ps, first, base); err != nil {
+		t.Fatalf("apply first event: %v", err)
+	}
+
+	late := first
+	late.ID = "evt-late"
+	late.EventTime = base.Add(-time.Minute)
+	features, _, err := rt.ApplyEvent(ctx, ps, late, base)
+	if err != nil {
+		t.Fatalf("apply late event: %v", err)
+	}
+	if len(features) != 1 {
+		t.Fatalf("late event emitted %d features, want 1", len(features))
+	}
+	if got := features[0].Completeness; got != string(operators.CompletenessCorrected) {
+		t.Fatalf("late feature completeness = %q, want corrected", got)
+	}
+	if got, want := features[0].Value, 10.0; got != want {
+		t.Fatalf("late feature value = %v, want %v", got, want)
+	}
+	if got, want := len(features[0].InputEventIDs), 2; got != want {
+		t.Fatalf("late feature input event count = %d, want %d", got, want)
+	}
+
+	inOrder := first
+	inOrder.ID = "evt-in-order"
+	inOrder.EventTime = base.Add(time.Minute)
+	features, _, err = rt.ApplyEvent(ctx, ps, inOrder, base.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("apply in-order event: %v", err)
+	}
+	if len(features) != 1 {
+		t.Fatalf("in-order event emitted %d features, want 1", len(features))
+	}
+	if got := features[0].Completeness; got == string(operators.CompletenessCorrected) {
+		t.Fatal("in-order feature was incorrectly marked corrected")
+	}
+}
+
 func meanSpec() *spec.CompiledSpec {
 	return &spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",

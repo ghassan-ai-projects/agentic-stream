@@ -241,6 +241,20 @@ actions:
       schema: schemas/create-maintenance-ticket-v1.json
       policy: automatic
       rateLimitPerHour: 2
+    # Compensation remains R1 and follows the original ticket's bounded,
+    # rate-limited automatic policy. Automatic here is not a claim that
+    # undoing an executed effect is intrinsically safe: compensates is still
+    # revalidated by the policy and action planes at its own risk class.
+    - type: downgrade_maintenance_ticket
+      risk: R1
+      schema: schemas/create-maintenance-ticket-v1.json
+      policy: automatic
+      rateLimitPerHour: 2
+    - type: withdraw_maintenance_ticket
+      risk: R1
+      schema: schemas/create-maintenance-ticket-v1.json
+      policy: automatic
+      rateLimitPerHour: 2
     - type: recommend_operating_limit
       risk: R2
       schema: schemas/recommend-operating-limit-v1.json

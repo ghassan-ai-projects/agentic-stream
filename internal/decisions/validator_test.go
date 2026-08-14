@@ -1,6 +1,7 @@
 package decisions
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 func TestValidateBindsDecisionAndIntents(t *testing.T) {
@@ -29,6 +31,66 @@ func TestValidateBindsDecisionAndIntents(t *testing.T) {
 	}
 	if result.Intents[0].Digest == "" || result.Intents[0].ID != "int-1" {
 		t.Fatalf("intent provenance = %+v", result.Intents[0])
+	}
+}
+
+func TestValidateCompensatingIntentTypes(t *testing.T) {
+	compiled, err := spec.CompileFile(context.Background(), "../../docs/design/examples/predictive-maintenance.situation.yaml")
+	if err != nil {
+		t.Fatalf("compile predictive-maintenance spec: %v", err)
+	}
+	specAllowed := make(map[string]struct{}, len(compiled.Actions.Intents))
+	for _, configured := range compiled.Actions.Intents {
+		specAllowed[configured.Type] = struct{}{}
+	}
+
+	tests := []struct {
+		name             string
+		intentType       string
+		useSpecAllowlist bool
+		wantErr          string
+	}{
+		{name: "downgrade allowed by spec", intentType: "downgrade_maintenance_ticket", useSpecAllowlist: true},
+		{name: "withdraw allowed by spec", intentType: "withdraw_maintenance_ticket", useSpecAllowlist: true},
+		{name: "downgrade not allowed by episode", intentType: "downgrade_maintenance_ticket", wantErr: "intent_type_not_allowed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			document := validDecision()
+			intent := document["intents"].([]any)[0].(map[string]any)
+			intent["type"] = test.intentType
+			intent["risk_class"] = "R1"
+			intent["compensates"] = "cmd-original"
+			refreshIntentDigest(document)
+
+			raw, err := canonicaljson.Marshal(document)
+			if err != nil {
+				t.Fatalf("marshal decision: %v", err)
+			}
+			digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
+			if err != nil {
+				t.Fatalf("digest decision: %v", err)
+			}
+			input := validInput()
+			if test.useSpecAllowlist {
+				input.AllowedIntentTypes = specAllowed
+			}
+
+			result, err := Validate(raw, digest, input)
+			if test.wantErr != "" {
+				var validationErr *ValidationError
+				if !errors.As(err, &validationErr) || validationErr.Reason != test.wantErr {
+					t.Fatalf("error = %v, want reason %s", err, test.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Validate: %v", err)
+			}
+			if len(result.Intents) != 1 || result.Intents[0].Type != test.intentType || result.Intents[0].RiskClass != "R1" {
+				t.Fatalf("validated intent = %+v", result.Intents)
+			}
+		})
 	}
 }
 

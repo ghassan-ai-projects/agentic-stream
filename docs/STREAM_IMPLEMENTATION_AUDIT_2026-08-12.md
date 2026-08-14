@@ -151,3 +151,22 @@ gaps** — (a) running the external `streamsim adapter verify` (a cross-repo too
 and (b) Gate D soak/release evidence (deliberately postponed). Agentic Stream is done as a runtime;
 the end-to-end loop now waits only on Tamoz's reverse half (evidence pull, outcome subscriber,
 approval relay), for which the stream-side feeds are all present.
+
+---
+
+## 8. ISSUE-030 re-verification (2026-08-14, `e2e-test-2`)
+
+The predictive-maintenance and rotating-machinery examples now declare
+`downgrade_maintenance_ticket` and `withdraw_maintenance_ticket` as R1
+compensation intents. The shared maintenance Decision schema enumerates both
+types and permits the optional `compensates` command binding.
+
+Policy choice: compensation remains `policy: automatic` to match the original
+bounded R1 maintenance-ticket path and the existing v1 R1 policy. This does not
+mean that undoing an effect is intrinsically safe: the compensation retains its
+own risk class and remains subject to Decision validation, compensation-target
+checks, Situation freshness, and the policy/action boundary.
+
+The validator test compiles the deployed predictive-maintenance spec, validates
+both compensation types with `risk_class: R1` and `compensates`, and confirms a
+missing episode allowlist entry is rejected as `intent_type_not_allowed`.

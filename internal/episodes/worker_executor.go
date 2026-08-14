@@ -434,8 +434,9 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 			ProviderRetries      uint32 `json:"provider_retries"`
 			CostMicrounits       uint64 `json:"cost_microunits"`
 		} `json:"budget"`
-		CancellationKey string `json:"cancellation_key"`
-		SupersessionKey string `json:"supersession_key"`
+		Reconsideration *reconsiderationRequest `json:"reconsideration"`
+		CancellationKey string                  `json:"cancellation_key"`
+		SupersessionKey string                  `json:"supersession_key"`
 	}
 	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
 		return nil, fmt.Errorf("decode request json: %w", err)
@@ -484,6 +485,13 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	var reconsideration *runtimev1.Reconsideration
+	if kind == runtimev1.EpisodeKind_EPISODE_KIND_RECONSIDER {
+		reconsideration, err = reconsiderationMessage(payload.Reconsideration)
+		if err != nil {
+			return nil, fmt.Errorf("reconsideration payload: %w", err)
+		}
+	}
 	risk, err := riskClass(payload.RiskCeiling)
 	if err != nil {
 		return nil, err
@@ -516,6 +524,50 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 		CancellationKey: payload.CancellationKey, SupersessionKey: payload.SupersessionKey,
 		PromptSha256: promptDigest, ObjectiveSha256: objectiveDigest,
 		AttemptId: req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
+		Reconsideration: reconsideration,
+	}, nil
+}
+
+type reconsiderationRequest struct {
+	PriorDecision json.RawMessage   `json:"prior_decision"`
+	Commands      []json.RawMessage `json:"commands"`
+	Outcomes      []json.RawMessage `json:"outcomes"`
+	Correction    json.RawMessage   `json:"correction"`
+}
+
+func reconsiderationMessage(payload *reconsiderationRequest) (*runtimev1.Reconsideration, error) {
+	if payload == nil {
+		return nil, fmt.Errorf("payload is required")
+	}
+	priorDecision, err := requiredJSON(payload.PriorDecision, "prior_decision")
+	if err != nil {
+		return nil, err
+	}
+	correction, err := requiredJSON(payload.Correction, "correction")
+	if err != nil {
+		return nil, err
+	}
+	commands := make([][]byte, 0, len(payload.Commands))
+	for index, command := range payload.Commands {
+		encoded, err := requiredJSON(command, fmt.Sprintf("commands[%d]", index))
+		if err != nil {
+			return nil, err
+		}
+		commands = append(commands, encoded)
+	}
+	outcomes := make([][]byte, 0, len(payload.Outcomes))
+	for index, outcome := range payload.Outcomes {
+		encoded, err := requiredJSON(outcome, fmt.Sprintf("outcomes[%d]", index))
+		if err != nil {
+			return nil, err
+		}
+		outcomes = append(outcomes, encoded)
+	}
+	return &runtimev1.Reconsideration{
+		PriorDecisionJson:   priorDecision,
+		ExecutedCommandJson: commands,
+		ObservedOutcomeJson: outcomes,
+		CorrectionJson:      correction,
 	}, nil
 }
 
