@@ -3,6 +3,7 @@ package costcontrol_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -42,6 +43,8 @@ func TestReserveSettleAndKillSwitch(t *testing.T) {
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := controller.Reserve(ctx, tx, "episode-2", "tenant-1", 1, now); err == nil {
 			return fmt.Errorf("expected kill switch rejection")
+		} else if !errors.Is(err, costcontrol.ErrReservationRejected) {
+			return fmt.Errorf("expected cost reservation rejection, got %w", err)
 		}
 		return nil
 	}); err != nil {
@@ -65,6 +68,8 @@ func TestZeroEstimateIsRejectedByTenantCeiling(t *testing.T) {
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := (costcontrol.Controller{}).Reserve(ctx, tx, "episode-1", "tenant-1", 0, now); err == nil {
 			return fmt.Errorf("expected zero estimate rejection")
+		} else if !errors.Is(err, costcontrol.ErrReservationRejected) {
+			return fmt.Errorf("expected cost reservation rejection, got %w", err)
 		}
 		return nil
 	}); err != nil {
