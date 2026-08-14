@@ -96,6 +96,7 @@ func TestSituationPublishesCompletenessChangeFromSourceHealth(t *testing.T) {
 			InitialPhase: "watch",
 			Occurrence:   spec.Occurrence{OpenWhen: "true", CloseWhen: "false"},
 			Phases:       []spec.Phase{{Name: "watch", Severity: 30}},
+			Reducers:     []spec.Reducer{{Field: "facts.heartbeat_missing_5m", Strategy: "latest_event_time", Input: "heartbeat_missing_5m"}},
 		},
 	}
 	eng, err := situations.NewEngine("d1", "default", 0, &compiled, ids.Deterministic())
@@ -111,13 +112,17 @@ func TestSituationPublishesCompletenessChangeFromSourceHealth(t *testing.T) {
 	if err != nil || len(versions) != 1 || versions[0].Completeness != string(operators.CompletenessOnTime) {
 		t.Fatalf("healthy source version=%+v err=%v", versions, err)
 	}
+	detectionTime := base.Add(5*time.Minute + 30*time.Second)
 	versions, err = eng.ApplyFeature(context.Background(), operators.Feature{
 		OutputName: "heartbeat_missing_5m", EntityType: "motor", EntityID: "motor-17",
 		Value: true, Completeness: string(operators.CompletenessUncertain),
-		EventTime: base.Add(5 * time.Minute), Watermark: base.Add(5 * time.Minute), InputEventIDs: []string{"hb-1"},
-	}, base.Add(5*time.Minute))
+		EventTime: detectionTime, Watermark: detectionTime, InputEventIDs: []string{"hb-1"},
+	}, detectionTime)
 	if err != nil || len(versions) != 1 || versions[0].Version != 2 || versions[0].Completeness != string(operators.CompletenessUncertain) {
 		t.Fatalf("source-health completeness version=%+v err=%v", versions, err)
+	}
+	if got := versions[0].Facts["facts.heartbeat_missing_5m"]; got != true {
+		t.Fatalf("latest_event_time reducer fact = %v, want true", got)
 	}
 }
 

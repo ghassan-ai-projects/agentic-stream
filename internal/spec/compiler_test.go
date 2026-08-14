@@ -76,6 +76,64 @@ func TestCompilePromptContentChangesDigestWithoutVersionChange(t *testing.T) {
 	}
 }
 
+func TestEffectiveWatchConfidenceFloor(t *testing.T) {
+	var explicitZero float64
+	explicitCustom := 0.7
+	tests := []struct {
+		name    string
+		actions spec.Actions
+		want    float64
+	}{
+		{name: "omitted", want: 0.5},
+		{name: "custom", actions: spec.Actions{WatchConfidenceFloor: &explicitCustom}, want: 0.7},
+		{name: "opt out", actions: spec.Actions{WatchConfidenceFloor: &explicitZero}, want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.actions.EffectiveWatchConfidenceFloor(); got != tt.want {
+				t.Fatalf("effective watch confidence floor = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCompileWatchConfidenceFloorSchemaValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{name: "accepted", value: "0.7"},
+		{name: "negative", value: "-0.1", wantErr: true},
+		{name: "over one", value: "1.1", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			yaml := strings.Replace(
+				minimalSpecYAML(),
+				"actions:\n",
+				"actions:\n  watch_confidence_floor: "+tt.value+"\n",
+				1,
+			)
+			compiled, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected schema validation error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("compile failed: %v", err)
+			}
+			if compiled.Actions.WatchConfidenceFloor == nil || *compiled.Actions.WatchConfidenceFloor != 0.7 {
+				t.Fatalf("compiled watch confidence floor = %v, want 0.7", compiled.Actions.WatchConfidenceFloor)
+			}
+		})
+	}
+}
+
 func TestCompileRejectsUndeclaredPayloadField(t *testing.T) {
 	yaml := strings.Replace(minimalSpecYAML(), "field: data.value", "field: data.not_declared", 1)
 	_, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")

@@ -7,8 +7,8 @@ import (
 )
 
 // SimulatedEffector is the deterministic effector used by the first live
-// vertical slice. It models a provider that accepts maintenance-ticket
-// commands and remembers results by idempotency key.
+// vertical slice. It accepts commands and remembers results by idempotency
+// key.
 type SimulatedEffector struct {
 	mu      sync.Mutex
 	results map[string]Effect
@@ -19,7 +19,7 @@ func NewSimulatedEffector() *SimulatedEffector {
 	return &SimulatedEffector{results: make(map[string]Effect)}
 }
 
-// Dispatch applies a supported simulated command exactly once per
+// Dispatch applies a simulated command exactly once per
 // idempotency key. The returned result is stable across duplicate dispatches.
 func (e *SimulatedEffector) Dispatch(ctx context.Context, command Command) (Effect, error) {
 	return e.dispatch(ctx, command)
@@ -41,7 +41,7 @@ func (e *SimulatedEffector) dispatch(ctx context.Context, command Command) (Effe
 	if err := ctx.Err(); err != nil {
 		return Effect{}, fmt.Errorf("simulated effector dispatch canceled: %w", err)
 	}
-	if command.EffectorRoute != "maintenance.ticket" && command.EffectorRoute != "create_maintenance_ticket" && command.EffectorRoute != "sim.effector" {
+	if command.EffectorRoute == "" {
 		return Effect{}, fmt.Errorf("simulated effector does not support route %q", command.EffectorRoute)
 	}
 	if command.IdempotencyKey == "" {

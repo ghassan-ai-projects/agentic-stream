@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	_ "modernc.org/sqlite"
 )
 
 func TestEngineAdvancesCheckpoint(t *testing.T) {
@@ -69,6 +71,77 @@ func TestEngineAdvancesCheckpoint(t *testing.T) {
 	}
 	if processed != 0 {
 		t.Fatalf("expected 0 processed events on replay, got %d", processed)
+	}
+}
+
+func TestEngineRetriesApplyAfterTransientSQLiteBusy(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "apply-contention.db")
+	db, err := storage.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	// Make the database connection fail fast so this test proves the engine's
+	// application retry rather than waiting for SQLite's production timeout.
+	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, "PRAGMA busy_timeout = 1"); err != nil {
+		t.Fatalf("set test busy timeout: %v", err)
+	}
+
+	compiled := restartSpec()
+	log := eventlog.NewEventLog(db)
+	eng, err := engine.NewStreamEngine(ctx, db, log, clock.Physical(), &compiled, "default")
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+	appendLevel(t, ctx, log, "evt-contention", 0, 15)
+
+	lockerDB, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(1)")
+	if err != nil {
+		t.Fatalf("open lock connection: %v", err)
+	}
+	defer func() { _ = lockerDB.Close() }()
+	locker, err := lockerDB.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire lock connection: %v", err)
+	}
+	defer func() { _ = locker.Close() }()
+	if _, err := locker.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		t.Fatalf("begin competing writer: %v", err)
+	}
+	if _, err := locker.ExecContext(ctx, "UPDATE event_log SET source = source WHERE event_id = ?", "evt-contention"); err != nil {
+		t.Fatalf("hold competing writer: %v", err)
+	}
+
+	type result struct {
+		processed int
+		err       error
+	}
+	done := make(chan result, 1)
+	go func() {
+		processed, runErr := eng.RunGlobal(ctx, nil)
+		done <- result{processed: processed, err: runErr}
+	}()
+
+	timer := time.NewTimer(100 * time.Millisecond)
+	<-timer.C
+	if _, err := locker.ExecContext(context.Background(), "ROLLBACK"); err != nil {
+		t.Fatalf("release competing writer: %v", err)
+	}
+
+	select {
+	case result := <-done:
+		if result.err != nil {
+			t.Fatalf("engine failed after transient SQLite busy: %v", result.err)
+		}
+		if result.processed != 1 {
+			t.Fatalf("processed=%d, want 1", result.processed)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("engine did not finish after competing writer released the database")
 	}
 }
 
@@ -242,6 +315,13 @@ func TestEngineFiresDurableProcessingTimerExactlyOnce(t *testing.T) {
 	}
 	if completeness != "on_time" {
 		t.Fatalf("expected heartbeat recovery to restore on_time completeness, got %q", completeness)
+	}
+	var stateJSON string
+	if err := db.QueryRowContext(ctx, "SELECT state_json FROM situations").Scan(&stateJSON); err != nil {
+		t.Fatalf("read timer situation state: %v", err)
+	}
+	if !strings.Contains(stateJSON, `"facts.missing":true`) {
+		t.Fatalf("expected latest_event_time reducer to retain missing=true, state=%s", stateJSON)
 	}
 }
 

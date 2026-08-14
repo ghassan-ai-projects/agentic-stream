@@ -2,8 +2,10 @@ package ingress_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -19,7 +21,10 @@ func TestSimulatorJSONLReplayConvertsControlsAndEvents(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	path := filepath.Join(t.TempDir(), "trace.jsonl")
 	content := `{"record_type":"runtime_config","runtime_version":"0.1.0","storage_schema_version":1,"max_episodes_per_hour":100}
-{"record_type":"event","event":{"id":"evt-000001","entity_type":"pump","entity_id":"site-a.pump-1","type":"vibration","event_time":"2026-07-29T09:00:00Z","arrival_time":"2026-07-29T09:00:01.5Z","value":5.2,"unit":"mm/s"}}
+{"record_type":"event","event":{"id":"evt-pond-000001","entity_type":"pond","entity_id":"site-a.pond-1","type":"pond.dissolved_oxygen","event_time":"2026-07-29T09:00:00Z","arrival_time":"2026-07-29T09:00:01.5Z","value":6.38}}
+{"record_type":"event","event":{"id":"evt-pump-000001","entity_type":"pump","entity_id":"site-a.pump-1","type":"vibration","event_time":"2026-07-29T09:00:02Z","arrival_time":"2026-07-29T09:00:03Z","value":5.2}}
+{"record_type":"event","event":{"id":"evt-pump-pressure-000001","entity_type":"pump","entity_id":"site-a.pump-1","type":"discharge_pressure","event_time":"2026-07-29T09:00:04Z","arrival_time":"2026-07-29T09:00:05Z","value":245.5}}
+{"record_type":"event","event":{"id":"evt-bay-humidity-000001","entity_type":"bay","entity_id":"site-a.bay-1","type":"bay.humidity","event_time":"2026-07-29T09:00:06Z","arrival_time":"2026-07-29T09:00:07Z","value":78.4}}
 {"record_type":"trace_end","until":"2026-07-29T09:01:00Z"}
 `
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
@@ -27,15 +32,47 @@ func TestSimulatorJSONLReplayConvertsControlsAndEvents(t *testing.T) {
 	}
 	replay := ingress.NewSimulatorJSONLReplay(db, eventlog.NewEventLog(db), ingress.SimulatorOptions{TenantID: "default"}, path, "test-sim")
 	count, err := replay.Run(context.Background())
-	if err != nil || count != 1 {
+	if err != nil || count != 4 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
-	var typ, entity, payload string
-	if err := db.QueryRowContext(context.Background(), "SELECT event_type, entity_type, payload_json FROM event_log").Scan(&typ, &entity, &payload); err != nil {
+	rows, err := db.QueryContext(context.Background(), "SELECT event_id, event_type, entity_type, payload_json FROM event_log ORDER BY position")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if typ != "pump.vibration.observed" || entity != "pump" || payload == "" {
-		t.Fatalf("unexpected event type=%q entity=%q payload=%q", typ, entity, payload)
+	defer func() { _ = rows.Close() }()
+	expected := map[string]struct {
+		typ    string
+		entity string
+		data   map[string]any
+	}{
+		"evt-pond-000001":          {typ: "pond.dissolved_oxygen.observed", entity: "pond", data: map[string]any{"mg_l": 6.38}},
+		"evt-pump-000001":          {typ: "pump.vibration.observed", entity: "pump", data: map[string]any{"rms_mm_s": 5.2}},
+		"evt-pump-pressure-000001": {typ: "pump.discharge_pressure.observed", entity: "pump", data: map[string]any{"kpa": 245.5}},
+		"evt-bay-humidity-000001":  {typ: "bay.humidity.observed", entity: "bay", data: map[string]any{"percent": 78.4}},
+	}
+	for rows.Next() {
+		var eventID, typ, entity string
+		var payload []byte
+		if err := rows.Scan(&eventID, &typ, &entity, &payload); err != nil {
+			t.Fatal(err)
+		}
+		want, ok := expected[eventID]
+		if !ok {
+			t.Fatalf("unexpected event id %q", eventID)
+		}
+		var data map[string]any
+		if err := json.Unmarshal(payload, &data); err != nil {
+			t.Fatalf("decode payload for %q: %v", eventID, err)
+		}
+		if typ != want.typ || entity != want.entity {
+			t.Fatalf("event %q type/entity = %q/%q, want %q/%q", eventID, typ, entity, want.typ, want.entity)
+		}
+		if !reflect.DeepEqual(data, want.data) {
+			t.Fatalf("event %q data = %v, want %v", eventID, data, want.data)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 	count, err = replay.Run(context.Background())
 	if err != nil || count != 0 {

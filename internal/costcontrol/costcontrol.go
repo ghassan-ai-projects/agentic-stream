@@ -4,9 +4,15 @@ package costcontrol
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 )
+
+// ErrReservationRejected means an aggregate cost limit or kill switch denied
+// a new episode reservation. It is an expected admission outcome, not a
+// storage failure.
+var ErrReservationRejected = errors.New("cost ceiling or kill switch rejected")
 
 // Controller reserves configured episode cost before admission and settles
 // actual worker-reported cost at terminal persistence.
@@ -31,7 +37,7 @@ func (Controller) Reserve(ctx context.Context, tx *sql.Tx, episodeID, tenantID s
 				return fmt.Errorf("scan %s cost ceiling: %w", scopeKey, err)
 			}
 			if maxMicro > 0 || killSwitch != 0 {
-				return fmt.Errorf("cost estimate is required while aggregate cost control is active")
+				return fmt.Errorf("%w: cost estimate is required while aggregate cost control is active", ErrReservationRejected)
 			}
 		}
 		if err := rows.Err(); err != nil {
@@ -70,8 +76,12 @@ func reserveLimit(ctx context.Context, tx *sql.Tx, scopeKey, tenantID string, am
 	if err != nil {
 		return fmt.Errorf("reserve %s cost: %w", scopeKey, err)
 	}
-	if count, err := result.RowsAffected(); err != nil || count != 1 {
-		return fmt.Errorf("cost ceiling or kill switch rejected %s", tenantID)
+	count, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("reserve %s cost rows affected: %w", scopeKey, err)
+	}
+	if count != 1 {
+		return fmt.Errorf("%w: %s", ErrReservationRejected, scopeKey)
 	}
 	return nil
 }

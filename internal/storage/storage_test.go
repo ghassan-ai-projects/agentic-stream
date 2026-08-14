@@ -70,6 +70,38 @@ func TestOpenCreatesDatabaseAndRunsMigrations(t *testing.T) {
 	if synchronous != 1 { // SQLite PRAGMA synchronous=NORMAL.
 		t.Fatalf("synchronous mode = %d, want NORMAL (1)", synchronous)
 	}
+	var walAutocheckpoint int
+	if err := db.QueryRowContext(ctx, "PRAGMA wal_autocheckpoint").Scan(&walAutocheckpoint); err != nil {
+		t.Fatalf("read WAL autocheckpoint: %v", err)
+	}
+	if walAutocheckpoint != 256 {
+		t.Fatalf("WAL autocheckpoint = %d pages, want 256", walAutocheckpoint)
+	}
+
+	// Hold two pooled connections at once to verify connection-local PRAGMAs
+	// are applied to every engine/eventlog writer connection.
+	db.SetMaxOpenConns(2)
+	conn1, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire first pooled connection: %v", err)
+	}
+	defer func() { _ = conn1.Close() }()
+	conn2, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire second pooled connection: %v", err)
+	}
+	defer func() { _ = conn2.Close() }()
+	for name, conn := range map[string]*sql.Conn{"first": conn1, "second": conn2} {
+		t.Run(name, func(t *testing.T) {
+			var timeout int
+			if err := conn.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&timeout); err != nil {
+				t.Fatalf("read busy timeout: %v", err)
+			}
+			if timeout != 30_000 {
+				t.Fatalf("busy timeout = %d ms, want 30000 ms", timeout)
+			}
+		})
+	}
 }
 
 func TestLifecycleMigrationMapsEveryFormerEpisodeStatus(t *testing.T) {

@@ -96,6 +96,54 @@ func TestEpisodeRequestMapsReconsiderationPayload(t *testing.T) {
 	}
 }
 
+func TestEpisodeRequestMapsWatchConfidenceFloor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		value   *float64
+		wantSet bool
+		want    float64
+	}{
+		{name: "omitted", wantSet: false},
+		{name: "custom", value: func() *float64 { v := 0.7; return &v }(), wantSet: true, want: 0.7},
+		{name: "opt out", value: func() *float64 { v := 0.0; return &v }(), wantSet: true, want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := validWorkerRequest()
+			var payload map[string]any
+			if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
+				t.Fatalf("decode request fixture: %v", err)
+			}
+			if tt.value == nil {
+				delete(payload, "watch_confidence_floor")
+			} else {
+				payload["watch_confidence_floor"] = *tt.value
+			}
+			encoded, err := canonicaljson.Marshal(payload)
+			if err != nil {
+				t.Fatalf("encode request fixture: %v", err)
+			}
+			req.RequestJSON = encoded
+
+			wire, err := episodeRequest(req)
+			if err != nil {
+				t.Fatalf("build worker request: %v", err)
+			}
+			if (wire.WatchConfidenceFloor != nil) != tt.wantSet {
+				t.Fatalf("watch confidence floor presence = %v, want %v", wire.WatchConfidenceFloor != nil, tt.wantSet)
+			}
+			if tt.wantSet && wire.GetWatchConfidenceFloor() != tt.want {
+				t.Fatalf("watch confidence floor = %v, want %v", wire.GetWatchConfidenceFloor(), tt.want)
+			}
+		})
+	}
+}
+
 func TestWorkerExecutorConsumesFencedStream(t *testing.T) {
 	client := testWorkerClient(t, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		decisionJSON := []byte(`{"decision_id":"d-1"}`)

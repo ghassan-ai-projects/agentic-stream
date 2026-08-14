@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -14,8 +14,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/ext"
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
 )
 
 const (
@@ -160,7 +158,8 @@ func (e *WatchEffector) dispatch(ctx context.Context, command Command, _ func(co
 }
 
 // Fire records one event-driven watch firing exactly once and decrements its
-// bounded allowance. It returns false for expired, disabled, or duplicate fires.
+// bounded allowance. It returns false for expired, disabled, duplicate, or
+// expression-evaluation-error no-fires.
 func (e *WatchEffector) Fire(ctx context.Context, watchID, eventID, situationID, target string, features map[string]any) (bool, error) {
 	if e == nil || e.db == nil || watchID == "" || eventID == "" {
 		return false, fmt.Errorf("watch identity is required")
@@ -193,7 +192,14 @@ func (e *WatchEffector) Fire(ctx context.Context, watchID, eventID, situationID,
 		}
 		matches, err := evaluateWatchExpression(expression, features)
 		if err != nil {
-			return err
+			slog.WarnContext(ctx, "watch expression evaluation skipped",
+				"watch_id", watchID,
+				"event_id", eventID,
+				"situation_id", storedSituationID,
+				"target", storedTarget,
+				"error", err,
+			)
+			return nil
 		}
 		if !matches {
 			return nil
@@ -306,11 +312,7 @@ func (e *WatchEffector) Expire(ctx context.Context) error {
 }
 
 func isSQLiteBusy(err error) bool {
-	var sqliteErr *sqlite.Error
-	if !errors.As(err, &sqliteErr) {
-		return false
-	}
-	return sqliteErr.Code()&0xff == sqlite3.SQLITE_BUSY
+	return storage.IsSQLiteBusy(err)
 }
 
 func validateWatchExpression(expression string) error {
