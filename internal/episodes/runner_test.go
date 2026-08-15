@@ -2,6 +2,7 @@ package episodes_test
 
 import (
 	"context"
+	"encoding/json"
 	"database/sql"
 	"fmt"
 	"path/filepath"
@@ -55,7 +56,7 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 		},
 		Actions: spec.Actions{
 			Intents: []spec.Intent{
-				{Type: "create_maintenance_ticket", Risk: "R1", Schema: "schemas/ticket.json"},
+				{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
 			},
 		},
 	}
@@ -220,7 +221,26 @@ func TestRunnerRetriesFailedAttemptWithNextFence(t *testing.T) {
 	}
 	digest := make([]byte, 32)
 	acceptedAt := "2026-08-12T12:00:00Z"
-	requestJSON := []byte(`{"snapshot":{"phase":"candidate"},"trigger":{"trigger_name":"retry"},"allowed_intent_types":["create_maintenance_ticket"],"risk_ceiling":"R1"}`)
+	intentCatalog, intentDigest, err := episodes.CompileIntentCatalog([]spec.Intent{
+		{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
+	})
+	if err != nil {
+		t.Fatalf("compile intent catalog: %v", err)
+	}
+	requestPayload, err := json.Marshal(map[string]any{
+		"snapshot":             map[string]any{"phase": "candidate"},
+		"trigger":              map[string]any{"trigger_name": "retry"},
+		"allowed_intent_types": []string{"create_maintenance_ticket"},
+		"risk_ceiling":         "R1",
+		"executor": map[string]any{
+			"intent_catalog":        intentCatalog,
+			"intent_catalog_sha256": intentDigest,
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal request payload: %v", err)
+	}
+	requestJSON := requestPayload
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO episodes (
 			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,

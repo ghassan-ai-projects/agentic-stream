@@ -201,13 +201,21 @@ type Cognition struct {
 	Executor Executor  `json:"executor" yaml:"executor"`
 }
 
-// Intent declares an allowed action type and its policy.
+// Intent declares one action type and its authority: the EXACT risk class,
+// the parameter schema, the operator-authored presets, the model-writable
+// fields, and the policy/rate-limit/compensation metadata. P4: these compile
+// into the canonical intent catalog the worker verifies and the validator
+// enforces independently (B9/B10).
 type Intent struct {
-	Type             string `json:"type" yaml:"type"`
-	Risk             string `json:"risk" yaml:"risk"`
-	Schema           string `json:"schema" yaml:"schema"`
-	Policy           string `json:"policy,omitempty" yaml:"policy,omitempty"`
-	RateLimitPerHour int    `json:"rateLimitPerHour,omitempty" yaml:"rateLimitPerHour,omitempty"`
+	Type                string                    `json:"type" yaml:"type"`
+	Risk                string                    `json:"risk" yaml:"risk"`
+	ParameterSchema     map[string]any            `json:"parameterSchema" yaml:"parameterSchema"`
+	Presets             map[string]map[string]any `json:"presets,omitempty" yaml:"presets,omitempty"`
+	ModelWritableFields []string                  `json:"modelWritableFields,omitempty" yaml:"modelWritableFields,omitempty"`
+	Description         string                    `json:"description,omitempty" yaml:"description,omitempty"`
+	Policy              string                    `json:"policy,omitempty" yaml:"policy,omitempty"`
+	RateLimitPerHour    int                       `json:"rateLimitPerHour,omitempty" yaml:"rateLimitPerHour,omitempty"`
+	Compensation        map[string]any            `json:"compensation,omitempty" yaml:"compensation,omitempty"`
 }
 
 // Actions configures allowed intents.

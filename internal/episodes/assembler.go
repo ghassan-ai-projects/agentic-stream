@@ -201,6 +201,18 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	executorDocument["objective_sha256"] = objectiveDigest
 	executorDocument["diagnosis_catalog_sha256"] = catalogDigest
 
+	// P4: the intent catalog is compiled from the spec and embedded with its
+	// shared-domain digest — the Ruby worker verifies it via
+	// IntentCatalog.verify_wire before any model call, and the Go validator
+	// verifies it again independently (B10). A missing, empty, duplicate, or
+	// structurally invalid catalog fails compilation.
+	intentCatalog, intentCatalogDigest, err := CompileIntentCatalog(a.spec.Actions.Intents)
+	if err != nil {
+		return nil, fmt.Errorf("compile intent catalog: %w", err)
+	}
+	executorDocument["intent_catalog"] = intentCatalog
+	executorDocument["intent_catalog_sha256"] = intentCatalogDigest
+
 	admissionKey := sha256.Sum256([]byte(episodeID + "|" + schedulerItemID))
 
 	// The snapshot digest covers exactly the immutable Situation snapshot, not

@@ -658,8 +658,14 @@ type EpisodeRequest struct {
 	// ACTIVE bears action authority; SHADOW is persisted and scored but the
 	// runtime independently prevents it from entering the governor.
 	DispatchPolicy DispatchPolicy `protobuf:"varint,62,opt,name=dispatch_policy,json=dispatchPolicy,proto3,enum=agenticstream.runtime.v1.DispatchPolicy" json:"dispatch_policy,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// P4/§B9-B10: the spec-bound INTENT catalog — the domain's action
+	// vocabulary with declared risks, parameter schemas, presets, and
+	// model-writable fields. Canonical bytes plus a domain-separated digest the
+	// worker and runtime verify independently before a model call.
+	IntentCatalogJson   []byte `protobuf:"bytes,63,opt,name=intent_catalog_json,json=intentCatalogJson,proto3" json:"intent_catalog_json,omitempty"`
+	IntentCatalogSha256 []byte `protobuf:"bytes,64,opt,name=intent_catalog_sha256,json=intentCatalogSha256,proto3" json:"intent_catalog_sha256,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *EpisodeRequest) Reset() {
@@ -977,6 +983,20 @@ func (x *EpisodeRequest) GetDispatchPolicy() DispatchPolicy {
 		return x.DispatchPolicy
 	}
 	return DispatchPolicy_DISPATCH_POLICY_UNSPECIFIED
+}
+
+func (x *EpisodeRequest) GetIntentCatalogJson() []byte {
+	if x != nil {
+		return x.IntentCatalogJson
+	}
+	return nil
+}
+
+func (x *EpisodeRequest) GetIntentCatalogSha256() []byte {
+	if x != nil {
+		return x.IntentCatalogSha256
+	}
+	return nil
 }
 
 type EvidenceTimeRange struct {
@@ -2842,7 +2862,7 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"\x0eworker_version\x18\x04 \x01(\tR\rworkerVersion\x12-\n" +
 	"\x12supported_features\x18\x05 \x03(\tR\x11supportedFeatures\x12*\n" +
 	"\x11max_request_bytes\x18\x06 \x01(\x04R\x0fmaxRequestBytes\x12&\n" +
-	"\x0fmax_event_bytes\x18\a \x01(\x04R\rmaxEventBytes\"\x9d\x0f\n" +
+	"\x0fmax_event_bytes\x18\a \x01(\x04R\rmaxEventBytes\"\x81\x10\n" +
 	"\x0eEpisodeRequest\x12)\n" +
 	"\x10protocol_version\x18\x01 \x01(\tR\x0fprotocolVersion\x12\x1d\n" +
 	"\n" +
@@ -2891,7 +2911,9 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"\rprompt_sha256\x18; \x01(\fR\fpromptSha256\x12)\n" +
 	"\x10objective_sha256\x18< \x01(\fR\x0fobjectiveSha256\x129\n" +
 	"\x16watch_confidence_floor\x18= \x01(\x01H\x00R\x14watchConfidenceFloor\x88\x01\x01\x12Q\n" +
-	"\x0fdispatch_policy\x18> \x01(\x0e2(.agenticstream.runtime.v1.DispatchPolicyR\x0edispatchPolicyB\x19\n" +
+	"\x0fdispatch_policy\x18> \x01(\x0e2(.agenticstream.runtime.v1.DispatchPolicyR\x0edispatchPolicy\x12.\n" +
+	"\x13intent_catalog_json\x18? \x01(\fR\x11intentCatalogJson\x122\n" +
+	"\x15intent_catalog_sha256\x18@ \x01(\fR\x13intentCatalogSha256B\x19\n" +
 	"\x17_watch_confidence_floor\"u\n" +
 	"\x11EvidenceTimeRange\x12.\n" +
 	"\x04from\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x120\n" +

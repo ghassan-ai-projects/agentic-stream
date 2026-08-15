@@ -57,6 +57,15 @@ const (
 	RejectExpired              RejectionReason = "expired"
 	RejectIntentTypeNotAllowed RejectionReason = "intent_type_not_allowed"
 	RejectRiskCeilingExceeded  RejectionReason = "risk_ceiling_exceeded"
+	// P4: the intent catalog is the independently-verified authority — these
+	// reasons ride the same durable rejection registry.
+	RejectCatalogMissing          RejectionReason = "catalog_missing"
+	RejectCatalogForged           RejectionReason = "catalog_forged"
+	RejectIntentTypeNotInCatalog  RejectionReason = "intent_type_not_in_catalog"
+	RejectRiskLabelMismatch       RejectionReason = "risk_label_mismatch"
+	RejectParameterSchemaViolated RejectionReason = "parameter_schema_violation"
+	RejectPresetMismatch          RejectionReason = "preset_mismatch"
+	RejectUngroundedEvidence      RejectionReason = "ungrounded_evidence"
 )
 
 // Identity is the fencing identity carried by every worker-produced object.
@@ -378,7 +387,9 @@ func validRejectionReason(reason RejectionReason) bool {
 	switch reason {
 	case RejectUnknownEpisode, RejectStaleAttempt, RejectWrongAttempt, RejectTerminalAttempt, RejectEpisodeClosed,
 		RejectSchemaInvalid, RejectSnapshotMismatch, RejectEvidenceNotVisible, RejectForgedReference,
-		RejectOversized, RejectExpired, RejectIntentTypeNotAllowed, RejectRiskCeilingExceeded:
+		RejectOversized, RejectExpired, RejectIntentTypeNotAllowed, RejectRiskCeilingExceeded,
+		RejectCatalogMissing, RejectCatalogForged, RejectIntentTypeNotInCatalog, RejectRiskLabelMismatch,
+		RejectParameterSchemaViolated, RejectPresetMismatch, RejectUngroundedEvidence:
 		return true
 	default:
 		return false

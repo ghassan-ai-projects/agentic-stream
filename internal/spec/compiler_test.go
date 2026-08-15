@@ -283,6 +283,11 @@ actions:
   intents:
     - type: notify
       risk: R0
-      schema: schemas/notify.json
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+        additionalProperties: false
 `
 }

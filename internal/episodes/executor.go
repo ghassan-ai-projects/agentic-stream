@@ -357,6 +357,11 @@ func decisionInput(req *Request, identity Identity, now time.Time) (decisions.In
 	var payload struct {
 		AllowedIntentTypes []string `json:"allowed_intent_types"`
 		RiskCeiling        string   `json:"risk_ceiling"`
+		Kind               string   `json:"kind"`
+		Executor           struct {
+			IntentCatalog      []map[string]any `json:"intent_catalog"`
+			IntentCatalogSHA256 string          `json:"intent_catalog_sha256"`
+		} `json:"executor"`
 	}
 	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
 		return decisions.Input{}, fmt.Errorf("decode request tools: %w", err)
@@ -368,6 +373,17 @@ func decisionInput(req *Request, identity Identity, now time.Time) (decisions.In
 	if payload.RiskCeiling == "" {
 		return decisions.Input{}, fmt.Errorf("request has no explicit risk ceiling")
 	}
+	// P4/B10: the catalog is verified INDEPENDENTLY at the validation
+	// boundary — the digest must bind the parsed bytes under the shared
+	// domain; a forged/missing/empty catalog fails closed before the decision
+	// is trusted (the worker's own verify_wire is not evidence here).
+	if !canonicaljson.Verify(canonicaljson.DomainIntentCatalog, payload.Executor.IntentCatalog, payload.Executor.IntentCatalogSHA256) {
+		return decisions.Input{}, fmt.Errorf("intent catalog is missing, forged, or malformed")
+	}
+	compiled, err := decisions.CompileIntentCatalog(payload.Executor.IntentCatalog)
+	if err != nil {
+		return decisions.Input{}, fmt.Errorf("compile intent catalog: %w", err)
+	}
 	return decisions.Input{
 		EpisodeID:          identity.EpisodeID,
 		AttemptID:          identity.AttemptID,
@@ -375,9 +391,12 @@ func decisionInput(req *Request, identity Identity, now time.Time) (decisions.In
 		TenantID:           req.TenantID,
 		SituationID:        req.SituationID,
 		SituationVersion:   req.SituationVersion,
+		EntityID:           req.EntityID,
 		SnapshotDigest:     req.SnapshotSHA256,
 		AllowedIntentTypes: allowed,
 		RiskCeiling:        payload.RiskCeiling,
+		IntentCatalog:      compiled,
+		Kind:               payload.Kind,
 		Now:                now,
 	}, nil
 }
@@ -396,16 +415,24 @@ func (r *Runner) persistValidatedIntents(ctx context.Context, tx *sql.Tx, valida
 			INSERT INTO intents (
 				intent_id, decision_id, tenant_id, situation_id, situation_version,
 				intent_type, risk_class, intent_json, intent_sha256, expires_at,
-				policy_status, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+				rate_limit_per_hour, requires_approval, policy_status, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
 			intent.ID, validated.DecisionID, req.TenantID, req.SituationID, req.SituationVersion,
 			intent.Type, intent.RiskClass, intent.CanonicalJSON, digest,
-			intent.ExpiresAt.UTC().Format(time.RFC3339Nano), now, now,
+			intent.ExpiresAt.UTC().Format(time.RFC3339Nano), intent.RateLimitPerHour,
+			boolToInt(intent.RequiresApproval), now, now,
 		); err != nil {
 			return fmt.Errorf("insert intent %s: %w", intent.ID, err)
 		}
 	}
 	return nil
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func decisionIDFromJSON(raw []byte) string {

@@ -41,6 +41,10 @@ func (e *FakeExecutor) Execute(ctx context.Context, req *Request) (*Outcome, err
 	if t, ok := trigger["trigger_name"].(string); ok {
 		triggerName = t
 	}
+	parameters := map[string]any{"reason": phase}
+	if req.EntityID != "" {
+		parameters["entity_id"] = req.EntityID
+	}
 	intent := map[string]any{
 		"intent_id":         "int_" + req.EpisodeID,
 		"decision_id":       "dec_" + req.EpisodeID,
@@ -49,7 +53,7 @@ func (e *FakeExecutor) Execute(ctx context.Context, req *Request) (*Outcome, err
 		"situation_version": req.SituationVersion,
 		"type":              "create_maintenance_ticket",
 		"risk_class":        "R1",
-		"parameters":        map[string]any{"reason": phase},
+		"parameters":        parameters,
 		"expires_at":        "2099-01-01T00:00:00.000000000Z",
 	}
 	intentDigest, err := contractsv1.IntentDigest(intent)

@@ -35,6 +35,7 @@ const (
 	DomainPrompt           Domain = "situation-runtime/prompt/v1\n"
 	DomainObjective        Domain = "situation-runtime/objective/v1\n"
 	DomainDiagnosisCatalog Domain = "situation-runtime/diagnosis-catalog/v1\n"
+	DomainIntentCatalog    Domain = "situation-runtime/intent-catalog/v1\n"
 	DomainApproval         Domain = "situation-runtime/approval-assertion/v1\n"
 	DomainTest             Domain = "situation-runtime/test/v1\n"
 )

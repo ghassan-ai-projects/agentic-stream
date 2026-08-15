@@ -129,6 +129,8 @@ type intentRow struct {
 	RiskClass           string
 	IntentJSON          []byte
 	IntentSHA           []byte
+	RateLimitPerHour    int
+	RequiresApproval    int
 	ExpiresAt           string
 	PolicyStatus        string
 	ValidationStatus    string
@@ -247,6 +249,13 @@ func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID strin
 	expiresAt, err := time.Parse(time.RFC3339Nano, row.ExpiresAt)
 	if err != nil || !expiresAt.After(now) {
 		return g.finish(ctx, tx, row, result, "expired", "intent_expired", now)
+	}
+
+	// P4: the catalog's declared policy is enforced — an intent the catalog
+	// marks requires_approval goes through the approval pipeline regardless of
+	// risk class (the digest-bound authority, never the risk label).
+	if row.RequiresApproval != 0 && row.RiskClass != "R2" {
+		return g.requireApproval(ctx, tx, row, intentDocument, result, expiresAt, now)
 	}
 
 	switch row.RiskClass {
@@ -406,7 +415,7 @@ func (g *Gateway) loadIntent(ctx context.Context, tx *sql.Tx, intentID string) (
 	err := tx.QueryRowContext(ctx, `
 		SELECT i.intent_id, i.decision_id, i.tenant_id, i.situation_id,
 		       i.situation_version, i.intent_type, i.risk_class, i.intent_json,
-		       i.intent_sha256, i.expires_at, i.policy_status,
+		       i.intent_sha256, i.expires_at, i.policy_status, i.rate_limit_per_hour, i.requires_approval,
 			       d.validation_status, d.raw_json, d.decision_sha256,
 			       d.situation_id, d.situation_version, d.traceparent, d.tracestate,
 			       e.episode_id, e.tenant_id, e.situation_id, e.situation_version,
@@ -420,7 +429,7 @@ func (g *Gateway) loadIntent(ctx context.Context, tx *sql.Tx, intentID string) (
 	).Scan(
 		&row.IntentID, &row.DecisionID, &row.TenantID, &row.SituationID,
 		&row.SituationVersion, &row.IntentType, &row.RiskClass, &row.IntentJSON,
-		&row.IntentSHA, &row.ExpiresAt, &row.PolicyStatus,
+		&row.IntentSHA, &row.ExpiresAt, &row.PolicyStatus, &row.RateLimitPerHour, &row.RequiresApproval,
 		&row.ValidationStatus, &row.DecisionJSON, &row.DecisionSHA,
 		&row.DecisionSituation, &row.DecisionVersion, &traceparent, &tracestate,
 		&row.EpisodeID, &row.EpisodeTenant, &row.EpisodeSituation, &row.EpisodeVersion,
@@ -464,6 +473,7 @@ func (g *Gateway) approveAutomatic(ctx context.Context, tx *sql.Tx, row intentRo
 		"normalized_target": target,
 		"idempotency_key":   "sha256:" + hex.EncodeToString(idempotency[:]),
 		"status":            "prepared",
+
 		"payload":           intentDocument["parameters"],
 		"created_at":        formatTime(now),
 	}
@@ -479,6 +489,19 @@ func (g *Gateway) approveAutomatic(ctx context.Context, tx *sql.Tx, row intentRo
 	if err != nil {
 		return result, fmt.Errorf("decode command digest: %w", err)
 	}
+	// P4: the catalog's per-intent hourly rate limit is enforced ATOMICALLY —
+	// the counter increment and its limit check happen before the command is
+	// created; an over-limit dispatch is denied (the whole transaction rolls
+	// back, so no partial command).
+	if row.RateLimitPerHour > 0 {
+		overLimit, err := g.dispatchWithinLimit(ctx, tx, row, now)
+		if err != nil {
+			return result, err
+		}
+		if overLimit {
+			return g.finish(ctx, tx, row, result, "denied", "rate_limited", now)
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO commands (
 			command_id, intent_id, tenant_id, effector_route, normalized_target,
@@ -490,6 +513,7 @@ func (g *Gateway) approveAutomatic(ctx context.Context, tx *sql.Tx, row intentRo
 	); err != nil {
 		return result, fmt.Errorf("insert command: %w", err)
 	}
+
 	if err := tx.QueryRowContext(ctx, "SELECT command_id FROM commands WHERE intent_id = ?", row.IntentID).Scan(&commandID); err != nil {
 		return result, fmt.Errorf("read command identity: %w", err)
 	}
@@ -712,6 +736,27 @@ func documentInt(document map[string]any, key string) int {
 
 func formatTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339Nano)
+}
+
+// dispatchWithinLimit atomically increments the tenant's hourly dispatch
+// counter for this intent type and reports whether the catalog-declared limit
+// is exceeded. The increment happens in the same transaction as the command
+// creation, so concurrent dispatches serialize on the counter row — a second
+// concurrent dispatch of an already-limit-bound type is denied, never
+// double-counted.
+func (g *Gateway) dispatchWithinLimit(ctx context.Context, tx *sql.Tx, row intentRow, now time.Time) (bool, error) {
+	bucket := now.UTC().Format("2006-01-02T15:00")
+	var count int
+	if err := tx.QueryRowContext(ctx, `
+		INSERT INTO intent_dispatch_counts (tenant_id, intent_type, bucket, count)
+		VALUES (?, ?, ?, 1)
+		ON CONFLICT(tenant_id, intent_type, bucket) DO UPDATE SET count = count + 1
+		RETURNING count`,
+		row.TenantID, row.IntentType, bucket,
+	).Scan(&count); err != nil {
+		return false, fmt.Errorf("increment intent dispatch counter: %w", err)
+	}
+	return count > row.RateLimitPerHour, nil
 }
 
 func nullableID(value string) any {

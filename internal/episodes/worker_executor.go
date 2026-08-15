@@ -426,6 +426,8 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 			DecisionSchema         json.RawMessage `json:"decision_schema"`
 			DiagnosisCatalog       string          `json:"diagnosis_catalog"`
 			DiagnosisCatalogSHA256 string          `json:"diagnosis_catalog_sha256"`
+			IntentCatalog          []map[string]any `json:"intent_catalog"`
+			IntentCatalogSHA256    string          `json:"intent_catalog_sha256"`
 		} `json:"executor"`
 		Budget struct {
 			WallTime             string `json:"wall_time"`
@@ -527,7 +529,7 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 	if budget.GetWallTime() != nil {
 		deadline = timestamppb.New(time.Now().UTC().Add(budget.GetWallTime().AsDuration()))
 	}
-	return &runtimev1.EpisodeRequest{
+	request := &runtimev1.EpisodeRequest{
 		ProtocolVersion: worker.ProtocolVersion, EpisodeId: req.EpisodeID, TriggerId: payload.Trigger.TriggerID,
 		TenantId: req.TenantID, SituationId: req.SituationID, SituationVersion: uint64(req.SituationVersion), //nolint:gosec // SituationVersion is validated positive before dispatch.
 		SnapshotJson: snapshot, SnapshotSha256: snapshotDigest, DecisionSchemaJson: decisionSchema,
@@ -542,9 +544,33 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 		PromptSha256: promptDigest, ObjectiveSha256: objectiveDigest,
 		DiagnosisCatalogJson:   []byte(payload.Executor.DiagnosisCatalog),
 		DiagnosisCatalogSha256: catalogDigest,
-		AttemptId:              req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
+		// P4: the compiled intent catalog flows to the worker (which verifies
+		// it before any model call) and back to the validator on the decision
+		// (which verifies it independently).
+		IntentCatalogSha256: []byte(payload.Executor.IntentCatalogSHA256),
+		AttemptId:           req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
 		Reconsideration: reconsideration,
-	}, nil
+	}
+	intentCatalogJSON, err := marshalIntentCatalog(payload.Executor.IntentCatalog)
+	if err != nil {
+		return nil, fmt.Errorf("marshal intent catalog: %w", err)
+	}
+	if len(intentCatalogJSON) == 0 {
+		return nil, fmt.Errorf("intent catalog is empty")
+	}
+	request.IntentCatalogJson = intentCatalogJSON
+	return request, nil
+}
+
+func marshalIntentCatalog(entries []map[string]any) ([]byte, error) {
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(entries)
+	if err != nil {
+		return nil, err
+	}
+	return encoded, nil
 }
 
 type reconsiderationRequest struct {

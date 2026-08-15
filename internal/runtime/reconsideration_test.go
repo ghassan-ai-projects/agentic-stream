@@ -42,7 +42,7 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 			Triggers: []spec.Trigger{{Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast", MaterialDelta: "delta.phase_changed"}},
 			Executor: spec.Executor{Name: "native", ModelPolicy: "test", PromptVersion: "v1", DecisionSchema: "schemas/decision.json", Budget: spec.Budget{WallTime: "5s"}},
 		},
-		Actions: spec.Actions{Intents: []spec.Intent{{Type: "create_maintenance_ticket", Risk: "R1", Schema: "schemas/ticket.json", Policy: "automatic"}}},
+		Actions: spec.Actions{Intents: []spec.Intent{{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: runtimeTicketSchema(), Policy: "automatic"}}},
 	}
 
 	firstPath := filepath.Join(t.TempDir(), "first.jsonl")
@@ -149,4 +149,8 @@ func insertSecondInvalidatedCommand(ctx context.Context, db *storage.DB) error {
 		}
 		return nil
 	})
+}
+
+func runtimeTicketSchema() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"entity_id": map[string]any{"type": "string"}, "reason": map[string]any{"type": "string"}}}
 }
