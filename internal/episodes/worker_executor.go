@@ -520,6 +520,7 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 		SnapshotJson: snapshot, SnapshotSha256: snapshotDigest, DecisionSchemaJson: decisionSchema,
 		DecisionSchemaSha256: decisionSchemaHash[:], ToolCatalogJson: tools, ToolCatalogSha256: toolsHash[:], SpecSha256: specDigest,
 		Objective: payload.Executor.Objective, ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion,
+		ModelPolicy:   req.ModelPolicy, // P0B/§2.2: the worker needs the role to resolve a model; was previously omitted.
 		PromptVersion: req.PromptVersion, Budget: budget, Deadline: deadline, Traceparent: req.Traceparent, Tracestate: req.Tracestate,
 		Kind: kind, Lane: lane, RiskCeiling: risk, AllowedIntentTypes: payload.AllowedIntentTypes,
 		WatchConfidenceFloor: payload.WatchConfidenceFloor,
