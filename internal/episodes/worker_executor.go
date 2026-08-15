@@ -419,10 +419,13 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 			Lane      string `json:"lane"`
 		} `json:"trigger"`
 		Executor struct {
-			Objective       string          `json:"objective"`
-			PromptSHA256    string          `json:"prompt_sha256"`
-			ObjectiveSHA256 string          `json:"objective_sha256"`
-			DecisionSchema  json.RawMessage `json:"decision_schema"`
+			Objective              string          `json:"objective"`
+			Prompt                 string          `json:"prompt"`
+			PromptSHA256           string          `json:"prompt_sha256"`
+			ObjectiveSHA256        string          `json:"objective_sha256"`
+			DecisionSchema         json.RawMessage `json:"decision_schema"`
+			DiagnosisCatalog       string          `json:"diagnosis_catalog"`
+			DiagnosisCatalogSHA256 string          `json:"diagnosis_catalog_sha256"`
 		} `json:"executor"`
 		Budget struct {
 			WallTime             string `json:"wall_time"`
@@ -475,6 +478,16 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("objective digest: %w", err)
 	}
+	// The diagnosis catalog is optional at the runtime level (native mode does
+	// not use it); when configured it must be a valid digest. The Ruby worker
+	// fails closed if the request omits the catalog it must verify.
+	var catalogDigest []byte
+	if payload.Executor.DiagnosisCatalogSHA256 != "" {
+		catalogDigest, err = canonicaljson.DecodeDigest(payload.Executor.DiagnosisCatalogSHA256)
+		if err != nil {
+			return nil, fmt.Errorf("diagnosis catalog digest: %w", err)
+		}
+	}
 	if payload.Executor.PromptSHA256 != req.PromptSHA256 || payload.Executor.ObjectiveSHA256 != req.ObjectiveSHA256 {
 		return nil, fmt.Errorf("worker request provenance does not match durable episode provenance")
 	}
@@ -520,13 +533,16 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 		SnapshotJson: snapshot, SnapshotSha256: snapshotDigest, DecisionSchemaJson: decisionSchema,
 		DecisionSchemaSha256: decisionSchemaHash[:], ToolCatalogJson: tools, ToolCatalogSha256: toolsHash[:], SpecSha256: specDigest,
 		Objective: payload.Executor.Objective, ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion,
-		ModelPolicy:   req.ModelPolicy, // P0B/§2.2: the worker needs the role to resolve a model; was previously omitted.
+		ModelPolicy:   req.ModelPolicy,         // P0B/§2.2: the worker needs the role to resolve a model; was previously omitted.
+		Prompt:        payload.Executor.Prompt, // P1/§4.3: the operator prompt body flows to the worker so the frame binds it.
 		PromptVersion: req.PromptVersion, Budget: budget, Deadline: deadline, Traceparent: req.Traceparent, Tracestate: req.Tracestate,
 		Kind: kind, Lane: lane, RiskCeiling: risk, AllowedIntentTypes: payload.AllowedIntentTypes,
 		WatchConfidenceFloor: payload.WatchConfidenceFloor,
 		CancellationKey:      payload.CancellationKey, SupersessionKey: payload.SupersessionKey,
 		PromptSha256: promptDigest, ObjectiveSha256: objectiveDigest,
-		AttemptId: req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
+		DiagnosisCatalogJson:   []byte(payload.Executor.DiagnosisCatalog),
+		DiagnosisCatalogSha256: catalogDigest,
+		AttemptId:              req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
 		Reconsideration: reconsideration,
 	}, nil
 }

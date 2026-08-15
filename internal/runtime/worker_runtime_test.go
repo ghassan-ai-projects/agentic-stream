@@ -1,6 +1,14 @@
 package runtime
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"path/filepath"
+	"testing"
+
+	nativeexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+)
 
 func TestValidateWorkerRuntimeConfig(t *testing.T) {
 	validKey := "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
@@ -34,5 +42,72 @@ func TestValidateWorkerRuntimeConfig(t *testing.T) {
 				t.Fatalf("ValidateWorkerRuntimeConfig() error = %v, want %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// P1 gate 8 (B1): on an ExecutorName=tamoz route (WorkerSocket configured) the
+// Go native executor is NEVER constructed — the constructor is injectable so
+// the test can count invocations, and the count must stay zero even when the
+// worker dial itself fails.
+func TestExecutorSelectionSkipsNativeOnTamoz(t *testing.T) {
+	orig := newNativeExecutor
+	calls := 0
+	newNativeExecutor = func(nativeexecutor.Config) (*nativeexecutor.Executor, error) {
+		calls++
+		return nil, errors.New("native executor must not be constructed")
+	}
+	defer func() { newNativeExecutor = orig }()
+
+	ctx := context.Background()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "tamoz.db"))
+	if err != nil {
+		t.Fatalf("open test db: %v", err)
+	}
+	defer db.Close()
+	// The gRPC dial is lazy, so the constructor succeeds without a live
+	// worker — the adversarial assertion is that the native executor was
+	// never constructed and the route holds the worker executor.
+	r, err := NewWorkerRuntime(ctx, WorkerRuntimeConfig{
+		DB:           db,
+		WorkerSocket: filepath.Join(t.TempDir(), "worker.sock"),
+		WorkerName:   "tamoz",
+	})
+	if err != nil {
+		t.Fatalf("unexpected constructor error on the tamoz route: %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("native executor constructed %d times on a tamoz route; want 0", calls)
+	}
+	if _, ok := r.Executor.(*nativeexecutor.Executor); ok {
+		t.Fatalf("the tamoz route holds a native executor")
+	}
+	if r.Executor == nil {
+		t.Fatalf("the tamoz route must hold the worker executor")
+	}
+}
+
+// The native route still constructs exactly once — the gate must not weaken
+// the native path.
+func TestNativeModeConstructsTheNativeExecutor(t *testing.T) {
+	orig := newNativeExecutor
+	calls := 0
+	newNativeExecutor = func(cfg nativeexecutor.Config) (*nativeexecutor.Executor, error) {
+		calls++
+		return nil, errors.New("probe constructor")
+	}
+	defer func() { newNativeExecutor = orig }()
+
+	ctx := context.Background()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "native.db"))
+	if err != nil {
+		t.Fatalf("open test db: %v", err)
+	}
+	defer db.Close()
+	_, err = NewWorkerRuntime(ctx, WorkerRuntimeConfig{DB: db})
+	if err == nil {
+		t.Fatal("expected the probed native constructor error")
+	}
+	if calls != 1 {
+		t.Fatalf("native executor constructed %d times in native mode; want 1", calls)
 	}
 }

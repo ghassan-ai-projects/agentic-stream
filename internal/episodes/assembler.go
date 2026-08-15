@@ -152,12 +152,13 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		"watch_confidence_floor": a.spec.Actions.EffectiveWatchConfidenceFloor(),
 		"risk_ceiling":           a.effectiveRiskCeiling(),
 		"executor": map[string]any{
-			"name":            a.spec.Cognition.Executor.Name,
-			"model_policy":    a.spec.Cognition.Executor.ModelPolicy,
-			"prompt_version":  a.spec.Cognition.Executor.PromptVersion,
-			"prompt":          a.spec.Cognition.Executor.Prompt,
-			"objective":       a.spec.Cognition.Executor.Objective,
-			"decision_schema": a.spec.Cognition.Executor.DecisionSchema,
+			"name":              a.spec.Cognition.Executor.Name,
+			"model_policy":      a.spec.Cognition.Executor.ModelPolicy,
+			"prompt_version":    a.spec.Cognition.Executor.PromptVersion,
+			"prompt":            a.spec.Cognition.Executor.Prompt,
+			"objective":         a.spec.Cognition.Executor.Objective,
+			"decision_schema":   a.spec.Cognition.Executor.DecisionSchema,
+			"diagnosis_catalog": a.spec.Cognition.Executor.DiagnosisCatalog,
 		},
 		"budget":           a.budgetMap(),
 		"cancellation_key": "episode:" + episodeID,
@@ -179,9 +180,26 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	if err != nil {
 		return nil, fmt.Errorf("digest objective provenance: %w", err)
 	}
+	// P1: the diagnosis catalog digest binds the catalog document the Ruby
+	// worker verifies (shared situation-runtime/diagnosis-catalog domain).
+	// The digest is over the PARSED catalog (the array shape), matching
+	// DiagnosisCatalog.verify_wire — a wrapped-string shape would digest
+	// differently and every Go-driven episode would fail closed in the Ruby
+	// worker. An invalid catalog document fails compilation.
+	var catalogValue any = []any{}
+	if strings.TrimSpace(a.spec.Cognition.Executor.DiagnosisCatalog) != "" {
+		if err := json.Unmarshal([]byte(a.spec.Cognition.Executor.DiagnosisCatalog), &catalogValue); err != nil {
+			return nil, fmt.Errorf("diagnosis catalog is not valid JSON: %w", err)
+		}
+	}
+	catalogDigest, err := canonicaljson.Digest(canonicaljson.DomainDiagnosisCatalog, catalogValue)
+	if err != nil {
+		return nil, fmt.Errorf("digest diagnosis catalog provenance: %w", err)
+	}
 	executorDocument := request["executor"].(map[string]any)
 	executorDocument["prompt_sha256"] = promptDigest
 	executorDocument["objective_sha256"] = objectiveDigest
+	executorDocument["diagnosis_catalog_sha256"] = catalogDigest
 
 	admissionKey := sha256.Sum256([]byte(episodeID + "|" + schedulerItemID))
 

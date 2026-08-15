@@ -22,6 +22,10 @@ import (
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
+// newNativeExecutor is the native-executor constructor, injectable so the
+// P1 gate-8 adversarial test can prove a tamoz route never constructs it.
+var newNativeExecutor = nativeexecutor.New
+
 // WorkerRuntimeConfig contains the complete validated composition for native
 // or process-isolated episode execution. The same configuration is used by
 // run-live and serve so their worker and evidence boundaries cannot drift.
@@ -102,29 +106,38 @@ func NewWorkerRuntime(ctx context.Context, cfg WorkerRuntimeConfig) (*WorkerRunt
 	}
 	r := &WorkerRuntime{evidenceErrors: make(chan error, 1)}
 	cleanupOnError := true
+	var err error
 	defer func() {
 		if cleanupOnError {
 			_ = r.Close()
 		}
 	}()
 
-	var provider nativeexecutor.ModelProvider = &nativeexecutor.DeterministicProvider{}
-	if cfg.ModelEndpoint != "" {
-		provider = &nativeexecutor.OpenAICompatibleProvider{Endpoint: cfg.ModelEndpoint, APIKey: os.Getenv("AGENTIC_STREAM_MODEL_API_KEY"), Model: cfg.ModelName}
+	// P1 gate 8 (B1): the native executor is NEVER constructed on a tamoz
+	// route. A configured worker socket IS the tamoz route (the Go runtime
+	// delegates the episode to the out-of-process Ruby worker); constructing
+	// the native executor here would violate "on an ExecutorName=tamoz route
+	// the Go native executor is never constructed". Native mode keeps the
+	// constructor.
+	if cfg.WorkerSocket == "" {
+		var provider nativeexecutor.ModelProvider = &nativeexecutor.DeterministicProvider{}
+		if cfg.ModelEndpoint != "" {
+			provider = &nativeexecutor.OpenAICompatibleProvider{Endpoint: cfg.ModelEndpoint, APIKey: os.Getenv("AGENTIC_STREAM_MODEL_API_KEY"), Model: cfg.ModelName}
+		}
+		nativeExecutor, newErr := newNativeExecutor(nativeexecutor.Config{
+			Provider: provider,
+			ToolFactory: func(req *episodes.Request) []nativeexecutor.Tool {
+				return []nativeexecutor.Tool{
+					nativeexecutor.NewSQLiteEvidenceTool(cfg.DB, "evidence_get", req.TenantID, req.EntityID),
+					nativeexecutor.NewSQLiteEvidenceTool(cfg.DB, "evidence.get", req.TenantID, req.EntityID),
+				}
+			},
+		})
+		if newErr != nil {
+			return nil, fmt.Errorf("configure native executor: %w", newErr)
+		}
+		r.Executor = nativeExecutor
 	}
-	nativeExecutor, err := nativeexecutor.New(nativeexecutor.Config{
-		Provider: provider,
-		ToolFactory: func(req *episodes.Request) []nativeexecutor.Tool {
-			return []nativeexecutor.Tool{
-				nativeexecutor.NewSQLiteEvidenceTool(cfg.DB, "evidence_get", req.TenantID, req.EntityID),
-				nativeexecutor.NewSQLiteEvidenceTool(cfg.DB, "evidence.get", req.TenantID, req.EntityID),
-			}
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("configure native executor: %w", err)
-	}
-	r.Executor = nativeExecutor
 
 	var evidenceSecret []byte
 	if cfg.EvidenceSocket != "" {

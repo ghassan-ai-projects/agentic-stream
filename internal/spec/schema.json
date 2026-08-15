@@ -634,6 +634,10 @@
           "minLength": 1,
           "maxLength": 512
         },
+        "diagnosisCatalog": {
+          "type": "string",
+          "maxLength": 65536
+        },
         "tools": {
           "type": "array",
           "maxItems": 64,

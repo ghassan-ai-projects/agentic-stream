@@ -176,6 +176,10 @@ type Executor struct {
 	Tools          []string `json:"tools" yaml:"tools"`
 	RiskCeiling    string   `json:"riskCeiling,omitempty" yaml:"riskCeiling,omitempty"`
 	Budget         Budget   `json:"budget" yaml:"budget"`
+	// P1: the diagnosis catalog is a per-executor document (the Ruby worker
+	// verifies it via DiagnosisCatalog.verify_wire under the shared
+	// situation-runtime/diagnosis-catalog domain).
+	DiagnosisCatalog string `json:"diagnosisCatalog" yaml:"diagnosisCatalog"`
 }
 
 // Budget caps episode resource usage.
