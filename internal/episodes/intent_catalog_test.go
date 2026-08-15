@@ -13,7 +13,7 @@ import (
 // once in test/support/aquaculture_domain.rb). A drift on either side breaks
 // every Go-driven episode at the worker's verify_wire gate.
 func TestAquacultureIntentCatalogDigestParity(t *testing.T) {
-	const pinnedDigest = "sha256:7d923ca199a0878bc6d2548ef6ec64de9fd6017ae95492748a082aad3927c9cf"
+	const pinnedDigest = "sha256:e4f866204344a5f19994e28afdea67b610e34405b062bbfd2879209a363d81f3"
 
 	actionSchema := func() map[string]any {
 		return map[string]any{
@@ -43,30 +43,58 @@ func TestAquacultureIntentCatalogDigestParity(t *testing.T) {
 		}
 	}
 	risks := []struct {
-		Type string
-		Risk string
+		Type         string
+		Risk         string
+		Compensation map[string]any
 	}{
-		{"install_watch_condition", "R0"}, {"create_maintenance_ticket", "R1"},
-		{"schedule_maintenance", "R1"}, {"reduce_load", "R1"},
-		{"downgrade_dispatch", "R1"}, {"withdraw_ticket", "R1"},
-		{"start_aerator", "R1"}, {"halt_feeding", "R1"},
-		{"downgrade_intervention", "R1"}, {"withdraw_intervention", "R1"},
-		{"run_vent_cycle", "R1"}, {"dehumidify", "R1"},
-		{"downgrade_climate_action", "R1"}, {"withdraw_climate_action", "R1"},
-		{"recommend_operating_limit", "R2"}, {"dispatch_crew", "R2"},
-		{"emergency_water_exchange", "R2"}, {"deploy_shade_or_heat", "R2"},
-		{"dose_co2", "R2"}, {"isolate_segment", "R3"},
+		{"install_watch_condition", "R0", nil},
+		{"create_maintenance_ticket", "R1", map[string]any{"withdraw": "withdraw_ticket", "downgrade": "downgrade_dispatch"}},
+		{"schedule_maintenance", "R1", map[string]any{"withdraw": "withdraw_ticket", "downgrade": "downgrade_dispatch"}},
+		{"reduce_load", "R1", nil},
+		{"downgrade_dispatch", "R1", nil},
+		{"withdraw_ticket", "R1", nil},
+		{"start_aerator", "R1", map[string]any{"withdraw": "withdraw_intervention", "downgrade": "downgrade_intervention"}},
+		{"halt_feeding", "R1", map[string]any{"withdraw": "withdraw_intervention", "downgrade": "downgrade_intervention"}},
+		{"downgrade_intervention", "R1", nil},
+		{"withdraw_intervention", "R1", nil},
+		{"run_vent_cycle", "R1", map[string]any{"withdraw": "withdraw_climate_action", "downgrade": "downgrade_climate_action"}},
+		{"dehumidify", "R1", map[string]any{"withdraw": "withdraw_climate_action", "downgrade": "downgrade_climate_action"}},
+		{"downgrade_climate_action", "R1", nil},
+		{"withdraw_climate_action", "R1", nil},
+		{"recommend_operating_limit", "R2", nil},
+		{"dispatch_crew", "R2", map[string]any{"withdraw": "withdraw_ticket", "downgrade": "downgrade_dispatch"}},
+		{"emergency_water_exchange", "R2", map[string]any{"withdraw": "withdraw_intervention", "downgrade": "downgrade_intervention"}},
+		{"deploy_shade_or_heat", "R2", map[string]any{"withdraw": "withdraw_climate_action", "downgrade": "downgrade_climate_action"}},
+		{"dose_co2", "R2", map[string]any{"withdraw": "withdraw_climate_action", "downgrade": "downgrade_climate_action"}},
+		{"isolate_segment", "R3", nil},
+		{"cancel_product_transfer", "R3", map[string]any{"withdraw": "cancel_product_transfer", "downgrade": "downgrade_product_transfer"}},
+		{"downgrade_product_transfer", "R3", map[string]any{"withdraw": "cancel_product_transfer", "downgrade": "downgrade_product_transfer"}},
+	}
+	targetTypes := map[string]bool{}
+	for _, entry := range risks {
+		if entry.Compensation != nil {
+			for _, target := range entry.Compensation {
+				targetTypes[target.(string)] = true
+			}
+		}
 	}
 	intents := make([]spec.Intent, 0, len(risks))
 	for _, entry := range risks {
+		schema := actionSchema()
+		if targetTypes[entry.Type] {
+			// The compensate node's note/priority parameters are declared on
+			// the TARGET schemas (the Ruby fixture mirrors this).
+			schema = compensationSchema()
+		}
 		intent := spec.Intent{
 			Type:             entry.Type,
 			Risk:             entry.Risk,
 			Description:      entry.Type + " (" + entry.Risk + ")",
 			Policy:           "automatic",
 			RateLimitPerHour: 60,
-			ParameterSchema:  actionSchema(),
+			ParameterSchema:  schema,
 			ModelWritableFields: []string{"hypothesis"},
+			Compensation:        entry.Compensation,
 		}
 		if entry.Type == "install_watch_condition" {
 			intent.ParameterSchema = watchSchema()
@@ -92,4 +120,16 @@ func TestAquacultureIntentCatalogDigestParity(t *testing.T) {
 	if digest != pinnedDigest {
 		t.Fatalf("intent catalog digest = %s, want the Ruby-pinned %s", digest, pinnedDigest)
 	}
+}
+
+func compensationSchema() map[string]any {
+	properties := map[string]any{
+		"entity_id":         map[string]any{"type": "string"},
+		"situation_id":      map[string]any{"type": "string"},
+		"situation_version": map[string]any{"type": "integer"},
+		"hypothesis":        map[string]any{"type": "string", "maxLength": 512},
+		"note":              map[string]any{"type": "string", "maxLength": 512},
+		"priority":          map[string]any{"type": "string", "maxLength": 16},
+	}
+	return map[string]any{"type": "object", "additionalProperties": false, "properties": properties}
 }
