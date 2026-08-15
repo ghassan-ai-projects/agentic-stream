@@ -27,6 +27,20 @@ import (
 // because another episode for the same Situation is already live.
 var ErrLiveEpisodeConflict = errors.New("one live episode per situation constraint")
 
+// StaleSituationError means the situation advanced past the version the
+// episode was admitted under before dispatch — the snapshot is stale and the
+// episode must not run.
+type StaleSituationError struct {
+	EpisodeID string
+	Bound     int
+	Live      int
+}
+
+func (e *StaleSituationError) Error() string {
+	return fmt.Sprintf("episode %s situation stale: bound version %d, live %d",
+		e.EpisodeID, e.Bound, e.Live)
+}
+
 // Request is the durable input to an episode executor. Its persistence fields
 // map to the episodes table; RequestJSON is the canonical executor input.
 type Request struct {
@@ -52,6 +66,12 @@ type Request struct {
 	Tracestate       string
 	CancellationKey  string
 	SupersessionKey  string
+	// P8: the mode matrix. DispatchPolicy is active|shadow (from the spec);
+	// PolicyEpoch is the runtime owner epoch the episode was admitted under —
+	// set ONCE, never rewritten, so a drained epoch refuses only new admission
+	// and only a killed epoch refuses in-flight.
+	DispatchPolicy string
+	PolicyEpoch    string
 }
 
 // Assembler builds deterministic episode requests.
@@ -257,6 +277,7 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		Tracestate:       tracestate,
 		CancellationKey:  "episode:" + episodeID,
 		SupersessionKey:  "situation:" + item.SituationID,
+		DispatchPolicy:   a.spec.Cognition.Executor.DispatchPolicy,
 	}, nil
 }
 
@@ -300,6 +321,13 @@ func requestEntityID(raw []byte) (string, error) {
 // scheduler item as admitted. It runs inside the supplied transaction. The
 // scheduler item must still be pending; otherwise Persist returns an error.
 func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now time.Time) error {
+	// P8: an empty dispatch policy is SHADOW — nothing enters action
+	// governance unless the spec declared active. The CHECK column stays
+	// strict (active|shadow); this is the only place a value is written.
+	dispatchPolicy := req.DispatchPolicy
+	if dispatchPolicy == "" {
+		dispatchPolicy = "shadow"
+	}
 	snapshotHash, err := canonicaljson.DecodeDigest(req.SnapshotSHA256)
 	if err != nil {
 		return fmt.Errorf("decode snapshot digest: %w", err)
@@ -329,12 +357,14 @@ func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now t
 		INSERT INTO episodes (
 			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
 			executor_name, executor_version, model_policy, prompt_version,
-			snapshot_sha256, prompt_sha256, objective_sha256, admission_key, request_json, lifecycle_status, accepted_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admitted', ?)`,
+			snapshot_sha256, prompt_sha256, objective_sha256, admission_key, request_json, lifecycle_status, accepted_at,
+			dispatch_policy, policy_epoch
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admitted', ?, ?, ?)`,
 		req.EpisodeID, req.SchedulerItemID, req.TenantID, req.SituationID, req.SituationVersion,
 		req.ExecutorName, req.ExecutorVersion, req.ModelPolicy, req.PromptVersion,
 		snapshotHash, promptHash, objectiveHash, req.AdmissionKey, req.RequestJSON,
 		now.Format(time.RFC3339Nano),
+		dispatchPolicy, req.PolicyEpoch,
 	); err != nil {
 		if req.Kind == "reconsider" && isLiveEpisodeConstraint(err) {
 			return fmt.Errorf("insert episode: %w: %w", ErrLiveEpisodeConflict, err)

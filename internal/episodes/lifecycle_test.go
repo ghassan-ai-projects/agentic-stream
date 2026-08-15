@@ -192,6 +192,17 @@ func seedEpisode(t *testing.T, ctx context.Context, db *storage.DB, episodeID st
 		episodeID, digest, digest, "2026-08-12T10:00:00Z"); err != nil {
 		t.Fatalf("seed episode: %v", err)
 	}
+	// P8 (freshness): the dispatch-time situation-version recheck reads the
+	// live situations registry — seed the row the episode is bound to.
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO situations (
+			situation_id, tenant_id, deployment_id, situation_type, entity_type,
+			entity_id, partition_id, occurrence_id, current_version,
+			last_reasoned_version, phase, status, first_event_time, latest_event_time, updated_at, created_at
+		) VALUES ('sit-test', 'tenant', 'dep-test', 'test', 'thing', 'ent-1', 0, 'occ-test', 1, 0, 'candidate', 'open',
+			'2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z')`); err != nil {
+		t.Fatalf("seed situation registry: %v", err)
+	}
 	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
 		t.Fatalf("enable foreign keys: %v", err)
 	}

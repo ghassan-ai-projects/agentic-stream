@@ -401,6 +401,16 @@ func verifyDecisionDigest(raw, digest []byte) error {
 	return nil
 }
 
+// dispatchPolicyEnum maps the durable policy string to the wire enum. An
+// empty/unset policy is shadow — nothing enters action governance unless the
+// spec declared active.
+func dispatchPolicyEnum(policy string) runtimev1.DispatchPolicy {
+	if policy == "active" {
+		return runtimev1.DispatchPolicy_DISPATCH_POLICY_ACTIVE
+	}
+	return runtimev1.DispatchPolicy_DISPATCH_POLICY_SHADOW
+}
+
 func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 	if req.SituationVersion <= 0 {
 		return nil, fmt.Errorf("situation version must be positive")
@@ -550,7 +560,10 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 		// it before any model call) and back to the validator on the decision
 		// (which verifies it independently).
 		IntentCatalogSha256: []byte(payload.Executor.IntentCatalogSHA256),
-		AttemptId:           req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
+		// P8: the mode matrix rides the wire. active|shadow; the worker carries
+		// it (it is part of the durable payload) but the GO side enforces it.
+		DispatchPolicy: dispatchPolicyEnum(req.DispatchPolicy),
+		AttemptId:      req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
 		Reconsideration: reconsideration,
 	}
 	intentCatalogJSON, err := marshalIntentCatalog(payload.Executor.IntentCatalog)

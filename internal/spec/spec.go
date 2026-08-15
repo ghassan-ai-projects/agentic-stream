@@ -189,6 +189,11 @@ type Executor struct {
 	// verifies it via DiagnosisCatalog.verify_wire under the shared
 	// situation-runtime/diagnosis-catalog domain).
 	DiagnosisCatalog string `json:"diagnosisCatalog" yaml:"diagnosisCatalog"`
+	// P8: the dispatch policy for every episode of this executor — active or
+	// shadow. Shadow proposals are persisted and scored but never enter action
+	// governance; the value is part of the compiled digest, so a mode change
+	// is a new spec version.
+	DispatchPolicy string `json:"dispatchPolicy,omitempty" yaml:"dispatchPolicy,omitempty"`
 }
 
 // Budget caps episode resource usage.

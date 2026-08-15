@@ -49,7 +49,8 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 				},
 			},
 			Executor: spec.Executor{
-				Name:          "fake",
+				Name:           "fake",
+				DispatchPolicy: "active",
 				ModelPolicy:   "test-policy",
 				PromptVersion: "prompt-v1", Prompt: "Analyze the situation and return a typed decision.",
 			},
@@ -245,11 +246,22 @@ func TestRunnerRetriesFailedAttemptWithNextFence(t *testing.T) {
 		INSERT INTO episodes (
 			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
 			executor_name, executor_version, model_policy, prompt_version, snapshot_sha256,
-			admission_key, request_json, lifecycle_status, current_fence, accepted_at
+			admission_key, request_json, lifecycle_status, current_fence, accepted_at, dispatch_policy
 		) VALUES ('epi-retry', 'sch-retry', 'tenant', 'sit-retry', 1,
-			'executor', 'v1', 'policy', 'prompt', ?, ?, ?, 'admitted', 0, ?)`,
+			'executor', 'v1', 'policy', 'prompt', ?, ?, ?, 'admitted', 0, ?, 'active')`,
 		digest, digest, requestJSON, acceptedAt); err != nil {
 		t.Fatalf("insert episode fixture: %v", err)
+	}
+	// P8 (freshness): the dispatch-time situation-version recheck reads the
+	// live situations registry — seed the row this episode is bound to.
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO situations (
+			situation_id, tenant_id, deployment_id, situation_type, entity_type,
+			entity_id, partition_id, occurrence_id, current_version,
+			last_reasoned_version, phase, status, first_event_time, latest_event_time, updated_at, created_at
+		) VALUES ('sit-retry', 'tenant', 'dep-retry', 'test', 'thing', 'ent-1', 0, 'occ-retry', 1, 0, 'candidate', 'open',
+			'2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z')`); err != nil {
+		t.Fatalf("seed situation registry: %v", err)
 	}
 
 	executor := &failOnceExecutor{delegate: episodes.NewFakeExecutor()}

@@ -648,6 +648,9 @@
         "riskCeiling": {
           "enum": ["R0", "R1", "R2", "R3", "R4"]
         },
+        "dispatchPolicy": {
+          "enum": ["active", "shadow"]
+        },
         "budget": {
           "$ref": "#/$defs/budget"
         }

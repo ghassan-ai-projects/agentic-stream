@@ -28,6 +28,7 @@ const (
 	PrefixReconsideration = "rec_"
 	PrefixArtifact        = "art_"
 	PrefixReplay          = "rpl_"
+	PrefixShadow          = "shd_"
 )
 
 // Generator produces unique identifiers. It is safe for concurrent use.

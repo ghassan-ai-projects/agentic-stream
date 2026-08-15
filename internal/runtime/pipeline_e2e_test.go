@@ -31,7 +31,7 @@ func TestPipelineCompletesDecisionToSimulatedOutcome(t *testing.T) {
 		Time:   spec.TimePolicy{MaxOutOfOrderness: "1m"}, Windows: []spec.Window{{Name: "tiny", Kind: "tumbling", Size: "1m", Emit: "early_and_close"}},
 		Operators: []spec.Operator{{Name: "level_latest", Kind: "aggregate", Inputs: []string{"level"}, Field: "data.level", Aggregate: "max", Window: "tiny", Output: "level"}},
 		Situation: spec.Situation{Type: "test", InitialPhase: "candidate", Phases: []spec.Phase{{Name: "candidate", Severity: 10}}, Occurrence: spec.Occurrence{OpenWhen: "features.level > 10"}, Reducers: []spec.Reducer{{Field: "facts.level", Strategy: "latest_event_time", Input: "level"}}},
-		Cognition: spec.Cognition{Triggers: []spec.Trigger{{Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast"}}, Executor: spec.Executor{Name: "native", ModelPolicy: "test", PromptVersion: "v1", DecisionSchema: "schemas/decision.json", Budget: spec.Budget{WallTime: "5s"}}},
+		Cognition: spec.Cognition{Triggers: []spec.Trigger{{Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast"}}, Executor: spec.Executor{Name: "native", DispatchPolicy: "active", ModelPolicy: "test", PromptVersion: "v1", DecisionSchema: "schemas/decision.json", Budget: spec.Budget{WallTime: "5s"}}},
 		Actions:   spec.Actions{Intents: []spec.Intent{{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: runtimeTicketSchema(), Policy: "automatic"}}},
 	}
 	path := filepath.Join(t.TempDir(), "event.jsonl")
@@ -73,7 +73,7 @@ func TestPipelineCorrectsLateWindowAndAdmitsOneReconsideration(t *testing.T) {
 		Windows:   []spec.Window{{Name: "tiny", Kind: "tumbling", Size: "5m", Emit: "early_and_close"}},
 		Operators: []spec.Operator{{Name: "level_latest", Kind: "aggregate", Inputs: []string{"level"}, Field: "data.level", Aggregate: "max", Window: "tiny", Output: "level"}},
 		Situation: spec.Situation{Type: "test", InitialPhase: "candidate", Phases: []spec.Phase{{Name: "candidate", Severity: 10}}, Occurrence: spec.Occurrence{OpenWhen: "features.level > 10"}, Reducers: []spec.Reducer{{Field: "facts.level", Strategy: "latest_event_time", Input: "level"}}},
-		Cognition: spec.Cognition{Triggers: []spec.Trigger{{Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast", MaterialDelta: "delta.phase_changed"}}, Executor: spec.Executor{Name: "native", ModelPolicy: "test", PromptVersion: "v1", DecisionSchema: "schemas/decision.json", Budget: spec.Budget{WallTime: "5s"}}},
+		Cognition: spec.Cognition{Triggers: []spec.Trigger{{Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast", MaterialDelta: "delta.phase_changed"}}, Executor: spec.Executor{Name: "native", DispatchPolicy: "active", ModelPolicy: "test", PromptVersion: "v1", DecisionSchema: "schemas/decision.json", Budget: spec.Budget{WallTime: "5s"}}},
 		Actions:   spec.Actions{Intents: []spec.Intent{{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: runtimeTicketSchema(), Policy: "automatic"}}},
 	}
 	base := "2026-08-12T00:00:00Z"

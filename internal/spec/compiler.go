@@ -232,6 +232,12 @@ func normalize(r *rawSpec) (*CompiledSpec, error) {
 	if spec.Cognition.Executor.RiskCeiling == "" {
 		spec.Cognition.Executor.RiskCeiling = "R1"
 	}
+	// P8: the default dispatch policy is SHADOW — nothing enters action
+	// governance until the owner declares active. The value rides the
+	// compiled digest, so a mode change is a new spec version.
+	if spec.Cognition.Executor.DispatchPolicy == "" {
+		spec.Cognition.Executor.DispatchPolicy = "shadow"
+	}
 
 	return spec, nil
 }

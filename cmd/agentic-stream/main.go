@@ -169,6 +169,7 @@ func newServeCommand() *cobra.Command {
 	var modelEndpoint, modelName string
 	var workerSocket, workerName, workerCA, workerCert, workerKey, workerServerName, evidenceSocket, evidenceKey string
 	var ownerLease, pollInterval time.Duration
+	var demoMode bool
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Start the live Go runtime and readiness endpoint.",
@@ -211,6 +212,7 @@ func newServeCommand() *cobra.Command {
 			}
 			owner := &storage.RuntimeOwner{DB: db, InstanceID: epoch, Lease: ownerLease}
 			ledger := &evidence.Ledger{DB: db, LeaseOwner: epoch, RuntimeEpoch: epoch, Lease: ownerLease}
+			epochControl := &storage.EpochControl{DB: db}
 			service, err := runtime.NewService(owner, ledger, epoch)
 			if err != nil {
 				return fmt.Errorf("create runtime service: %w", err)
@@ -256,6 +258,7 @@ func newServeCommand() *cobra.Command {
 				pipeline, err = runtime.NewPipeline(runCtx, runtime.PipelineConfig{
 					DB: db, Spec: compiled, TenantID: tenantID, Owner: owner, OwnerEpoch: epoch,
 					Executor: workerRuntime.Executor, Effector: actions.NewSimulatedEffector(), IDGenerator: ids.Random(), Telemetry: metrics,
+					EpochControl: epochControl, DemoMode: demoMode,
 				})
 				if err != nil {
 					return fmt.Errorf("configure live pipeline: %w", err)
@@ -296,7 +299,7 @@ func newServeCommand() *cobra.Command {
 				TenantID:  tenantID,
 				MaxLag:    1000,
 				Authorize: notify.BearerTokenAuthorizer(subscriberToken),
-			}, metrics.Handler())
+			}, metrics.Handler(), epochControl, epoch, os.Getenv("AGENTIC_STREAM_CONTROL_TOKEN"))
 			server := &http.Server{Addr: listenAddress, Handler: handler, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 30 * time.Second}
 			go func() {
 				<-runCtx.Done()
@@ -333,6 +336,7 @@ func newServeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&listenAddress, "listen", "127.0.0.1:8080", "loopback HTTP listen address")
 	cmd.Flags().DurationVar(&ownerLease, "owner-lease", time.Minute, "runtime owner lease duration")
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", time.Second, "continuous source polling interval")
+	cmd.Flags().BoolVar(&demoMode, "demo-mode", false, "admit fixture executors (demos and tests only; a production route never admits fixture)")
 	return cmd
 }
 

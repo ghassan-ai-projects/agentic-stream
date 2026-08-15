@@ -42,6 +42,13 @@ type PipelineConfig struct {
 	TenantCostCeiling *uint64
 	CostKillSwitch    *bool
 	Telemetry         *telemetry.Runtime
+	// P8: DemoMode admits `fixture` executors (demos and tests only). A
+	// production pipeline (DemoMode false) rejects them at admission.
+	DemoMode bool
+	// P8: the epoch-control reader — nil in tests without drain/kill. When
+	// set, admission refuses new episodes while the epoch is draining and
+	// every later decision is refused once the epoch is killed.
+	EpochControl *storage.EpochControl
 }
 
 // PipelineReport describes one completed live batch.
@@ -75,7 +82,13 @@ type Pipeline struct {
 	watchDone  chan struct{}
 	watchErr   error
 	telemetry  *telemetry.Runtime
+	demoMode   bool
+	epochControl *storage.EpochControl
 }
+
+// ErrFixtureRejected is returned when a production pipeline (no --demo-mode)
+// admits a scheduler item whose executor is `fixture`.
+var ErrFixtureRejected = errors.New("fixture executor rejected")
 
 // NewPipeline creates a fully composed live pipeline. The caller must start
 // the runtime Service first when Owner is configured.
@@ -116,8 +129,8 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 		log:        log,
 		engine:     stream,
 		assembler:  episodes.NewAssembler(cfg.Spec, cfg.IDGenerator).WithCostControl(&costcontrol.Controller{}),
-		runner:     episodes.NewRunnerWithEpoch(cfg.DB, cfg.Executor, cfg.Clock, cfg.IDGenerator, cfg.OwnerEpoch).WithCostControl(&costcontrol.Controller{}),
-		policy:     policy.NewGatewayWithOwner(cfg.Spec.Digest, cfg.IDGenerator, cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}),
+		runner:     episodes.NewRunnerWithEpoch(cfg.DB, cfg.Executor, cfg.Clock, cfg.IDGenerator, cfg.OwnerEpoch).WithCostControl(&costcontrol.Controller{}).WithEpochControl(cfg.EpochControl).WithShadowStore(&storage.ShadowStore{DB: cfg.DB}).WithTelemetry(cfg.Telemetry),
+		policy:     policy.NewGatewayWithOwner(cfg.Spec.Digest, cfg.IDGenerator, cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}).WithCalibration(&storage.CalibrationStore{DB: cfg.DB}).WithEpochControl(cfg.EpochControl),
 		dispatcher: actions.NewDispatcher(cfg.DB, cfg.Effector, cfg.Clock, cfg.IDGenerator, "runtime-actions/"+cfg.OwnerEpoch, time.Minute).WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}),
 		watch:      watch,
 		telemetry:  cfg.Telemetry,
@@ -125,6 +138,8 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 		ownerEpoch: cfg.OwnerEpoch,
 		clk:        cfg.Clock,
 		tenantID:   cfg.TenantID,
+		demoMode:   cfg.DemoMode,
+		epochControl: cfg.EpochControl,
 	}, nil
 }
 
@@ -390,6 +405,15 @@ func (p *Pipeline) assemblePending(ctx context.Context) (int, error) {
 	for {
 		var itemID string
 		now := p.clk.Now().UTC()
+		// P8 (drain): while the epoch is draining or killed, no NEW episode is
+		// admitted — in-flight episodes finish under their recorded epoch.
+		// This is a SKIP, not a batch error: the loop keeps running so the
+		// runner drains the admitted backlog.
+		if p.epochControl != nil {
+			if err := p.epochControl.AssertAdmission(ctx, p.ownerEpoch); err != nil {
+				return count, nil
+			}
+		}
 		err := p.db.QueryRowContext(ctx, `
 			SELECT scheduler_item_id FROM scheduler_items
 			WHERE tenant_id = ? AND status = 'pending' AND (not_before IS NULL OR not_before <= ?)
@@ -410,6 +434,14 @@ func (p *Pipeline) assemblePending(ctx context.Context) (int, error) {
 			if err != nil {
 				return fmt.Errorf("assemble scheduler item: %w", err)
 			}
+			// P8 (mode matrix): a production pipeline rejects the `fixture`
+			// executor — it exists for demos and tests only, never on a live
+			// route. The policy epoch is stamped ONCE here, never rewritten.
+			if !p.demoMode && req.ExecutorName == "fixture" {
+				return fmt.Errorf("%w: fixture executor %s on a production route",
+					ErrFixtureRejected, req.ExecutorName)
+			}
+			req.PolicyEpoch = p.ownerEpoch
 			requestKind = req.Kind
 			situationID = req.SituationID
 			return p.assembler.Persist(ctx, tx, req, now)
@@ -432,6 +464,19 @@ func (p *Pipeline) assemblePending(ctx context.Context) (int, error) {
 					"scheduler_item_id", itemID,
 					"situation_id", situationID,
 					"reason", "one_live_episode_per_situation",
+					"error", err,
+				)
+				continue
+			}
+			if errors.Is(err, ErrFixtureRejected) {
+				// Quarantine the misconfigured item (loudly) instead of leaving
+				// it pending forever, which would block the whole queue.
+				if skipErr := p.coalesceSkippedSchedulerItem(ctx, itemID, now); skipErr != nil {
+					return count, fmt.Errorf("record fixture-rejected scheduler item %s: %w", itemID, skipErr)
+				}
+				slog.ErrorContext(ctx, "episode admission refused: fixture executor on a production route",
+					"scheduler_item_id", itemID,
+					"situation_id", situationID,
 					"error", err,
 				)
 				continue

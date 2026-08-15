@@ -40,7 +40,7 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 		},
 		Cognition: spec.Cognition{
 			Triggers: []spec.Trigger{{Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast", MaterialDelta: "delta.phase_changed"}},
-			Executor: spec.Executor{Name: "native", ModelPolicy: "test", PromptVersion: "v1", DecisionSchema: "schemas/decision.json", Budget: spec.Budget{WallTime: "5s"}},
+			Executor: spec.Executor{Name: "native", DispatchPolicy: "active", ModelPolicy: "test", PromptVersion: "v1", DecisionSchema: "schemas/decision.json", Budget: spec.Budget{WallTime: "5s"}},
 		},
 		Actions: spec.Actions{Intents: []spec.Intent{{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: runtimeTicketSchema(), Policy: "automatic"}}},
 	}
