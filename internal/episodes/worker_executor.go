@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
@@ -428,6 +429,7 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 			DiagnosisCatalogSHA256 string          `json:"diagnosis_catalog_sha256"`
 			IntentCatalog          []map[string]any `json:"intent_catalog"`
 			IntentCatalogSHA256    string          `json:"intent_catalog_sha256"`
+			SkillRefs              []spec.SkillRef `json:"skill_refs"`
 		} `json:"executor"`
 		Budget struct {
 			WallTime             string `json:"wall_time"`
@@ -559,6 +561,15 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 		return nil, fmt.Errorf("intent catalog is empty")
 	}
 	request.IntentCatalogJson = intentCatalogJSON
+	skillRefs := payload.Executor.SkillRefs
+	if skillRefs == nil {
+		skillRefs = []spec.SkillRef{}
+	}
+	skillRefsJSON, err := json.Marshal(skillRefs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal skill refs: %w", err)
+	}
+	request.SkillRefsJson = skillRefsJSON
 	return request, nil
 }
 

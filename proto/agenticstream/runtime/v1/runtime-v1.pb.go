@@ -664,8 +664,13 @@ type EpisodeRequest struct {
 	// worker and runtime verify independently before a model call.
 	IntentCatalogJson   []byte `protobuf:"bytes,63,opt,name=intent_catalog_json,json=intentCatalogJson,proto3" json:"intent_catalog_json,omitempty"`
 	IntentCatalogSha256 []byte `protobuf:"bytes,64,opt,name=intent_catalog_sha256,json=intentCatalogSha256,proto3" json:"intent_catalog_sha256,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// P5/§B6-B9: the ordered skill REFS the episode may render into the frame —
+	// [{name, tree_sha256}], digest-pinned. The worker resolves each skill's
+	// text ONLY from the operator-approved directory and requires the tree
+	// digest to match; a mismatch fails before any model call.
+	SkillRefsJson []byte `protobuf:"bytes,65,opt,name=skill_refs_json,json=skillRefsJson,proto3" json:"skill_refs_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EpisodeRequest) Reset() {
@@ -995,6 +1000,13 @@ func (x *EpisodeRequest) GetIntentCatalogJson() []byte {
 func (x *EpisodeRequest) GetIntentCatalogSha256() []byte {
 	if x != nil {
 		return x.IntentCatalogSha256
+	}
+	return nil
+}
+
+func (x *EpisodeRequest) GetSkillRefsJson() []byte {
+	if x != nil {
+		return x.SkillRefsJson
 	}
 	return nil
 }
@@ -2862,7 +2874,7 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"\x0eworker_version\x18\x04 \x01(\tR\rworkerVersion\x12-\n" +
 	"\x12supported_features\x18\x05 \x03(\tR\x11supportedFeatures\x12*\n" +
 	"\x11max_request_bytes\x18\x06 \x01(\x04R\x0fmaxRequestBytes\x12&\n" +
-	"\x0fmax_event_bytes\x18\a \x01(\x04R\rmaxEventBytes\"\x81\x10\n" +
+	"\x0fmax_event_bytes\x18\a \x01(\x04R\rmaxEventBytes\"\xa9\x10\n" +
 	"\x0eEpisodeRequest\x12)\n" +
 	"\x10protocol_version\x18\x01 \x01(\tR\x0fprotocolVersion\x12\x1d\n" +
 	"\n" +
@@ -2913,7 +2925,8 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"\x16watch_confidence_floor\x18= \x01(\x01H\x00R\x14watchConfidenceFloor\x88\x01\x01\x12Q\n" +
 	"\x0fdispatch_policy\x18> \x01(\x0e2(.agenticstream.runtime.v1.DispatchPolicyR\x0edispatchPolicy\x12.\n" +
 	"\x13intent_catalog_json\x18? \x01(\fR\x11intentCatalogJson\x122\n" +
-	"\x15intent_catalog_sha256\x18@ \x01(\fR\x13intentCatalogSha256B\x19\n" +
+	"\x15intent_catalog_sha256\x18@ \x01(\fR\x13intentCatalogSha256\x12&\n" +
+	"\x0fskill_refs_json\x18A \x01(\fR\rskillRefsJsonB\x19\n" +
 	"\x17_watch_confidence_floor\"u\n" +
 	"\x11EvidenceTimeRange\x12.\n" +
 	"\x04from\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x120\n" +

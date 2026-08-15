@@ -213,6 +213,11 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	executorDocument["intent_catalog"] = intentCatalog
 	executorDocument["intent_catalog_sha256"] = intentCatalogDigest
 
+	// P5: the digest-pinned skill refs flow to the worker, which resolves the
+	// text only from the operator-approved directory and requires the tree
+	// digest to match (unknown name or mismatch fails before a model call).
+	executorDocument["skill_refs"] = a.spec.Cognition.Executor.Skills
+
 	admissionKey := sha256.Sum256([]byte(episodeID + "|" + schedulerItemID))
 
 	// The snapshot digest covers exactly the immutable Situation snapshot, not

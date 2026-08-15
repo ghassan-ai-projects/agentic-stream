@@ -165,6 +165,14 @@ type Trigger struct {
 	MaterialDelta string  `json:"materialDelta" yaml:"materialDelta"`
 }
 
+// SkillRef is one digest-pinned skill the episode may render into its frame —
+// P5/§B6-B9: the worker resolves the text ONLY from the operator-approved
+// directory and requires the tree digest to match.
+type SkillRef struct {
+	Name       string `json:"name" yaml:"name"`
+	TreeSHA256 string `json:"tree_sha256" yaml:"tree_sha256"`
+}
+
 // Executor configures the episode runtime.
 type Executor struct {
 	Name           string   `json:"name" yaml:"name"`
@@ -173,6 +181,7 @@ type Executor struct {
 	ModelPolicy    string   `json:"modelPolicy" yaml:"modelPolicy"`
 	PromptVersion  string   `json:"promptVersion" yaml:"promptVersion"`
 	DecisionSchema string   `json:"decisionSchema" yaml:"decisionSchema"`
+	Skills         []SkillRef `json:"skills,omitempty" yaml:"skills,omitempty"`
 	Tools          []string `json:"tools" yaml:"tools"`
 	RiskCeiling    string   `json:"riskCeiling,omitempty" yaml:"riskCeiling,omitempty"`
 	Budget         Budget   `json:"budget" yaml:"budget"`
