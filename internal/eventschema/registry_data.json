@@ -1,0 +1,406 @@
+{
+  "bay.air_temp.observed/1.0": {
+    "event_type": "bay.air_temp.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "celsius": {
+        "path": "celsius",
+        "unit": "celsius"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "bay.co2.observed/1.0": {
+    "event_type": "bay.co2.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "umol_mol": {
+        "path": "umol_mol",
+        "unit": "umol_mol"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "bay.heartbeat.observed/1.0": {
+    "event_type": "bay.heartbeat.observed",
+    "schema_version": "1.0",
+    "fields": {}
+  },
+  "bay.humidity.observed/1.0": {
+    "event_type": "bay.humidity.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "percent": {
+        "path": "percent",
+        "unit": "percent"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "bay.leaf_wetness.observed/1.0": {
+    "event_type": "bay.leaf_wetness.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "percent": {
+        "path": "percent",
+        "unit": "percent"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "bay.par_light.observed/1.0": {
+    "event_type": "bay.par_light.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      },
+      "value": {
+        "path": "value",
+        "unit": "umol_m2_s"
+      }
+    }
+  },
+  "bay.vent_event.observed/1.0": {
+    "event_type": "bay.vent_event.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "magnitude": {
+        "path": "magnitude",
+        "unit": "1"
+      }
+    }
+  },
+  "bay.vent_position.observed/1.0": {
+    "event_type": "bay.vent_position.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "percent": {
+        "path": "percent",
+        "unit": "percent"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "motor.current.observed/1.0": {
+    "event_type": "motor.current.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "amps": {
+        "path": "amps",
+        "unit": "ampere"
+      }
+    }
+  },
+  "motor.heartbeat.observed/1.0": {
+    "event_type": "motor.heartbeat.observed",
+    "schema_version": "1.0",
+    "fields": {}
+  },
+  "motor.temperature.observed/1.0": {
+    "event_type": "motor.temperature.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "celsius": {
+        "path": "celsius",
+        "unit": "celsius"
+      }
+    }
+  },
+  "motor.vibration.observed/1.0": {
+    "event_type": "motor.vibration.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "rms_mm_s": {
+        "path": "rms_mm_s",
+        "unit": "mm_s"
+      }
+    }
+  },
+  "pond.aerator_current.observed/1.0": {
+    "event_type": "pond.aerator_current.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "ampere": {
+        "path": "ampere",
+        "unit": "ampere"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "pond.ammonia.observed/1.0": {
+    "event_type": "pond.ammonia.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "mg_l": {
+        "path": "mg_l",
+        "unit": "mg_l"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "pond.dissolved_oxygen.observed/1.0": {
+    "event_type": "pond.dissolved_oxygen.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "mg_l": {
+        "path": "mg_l",
+        "unit": "mg_l"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "pond.feeding_event.observed/1.0": {
+    "event_type": "pond.feeding_event.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "kind": {
+        "path": "kind",
+        "type": "string",
+        "optional": true
+      },
+      "load": {
+        "path": "load",
+        "unit": "1"
+      }
+    }
+  },
+  "pond.heartbeat.observed/1.0": {
+    "event_type": "pond.heartbeat.observed",
+    "schema_version": "1.0",
+    "fields": {}
+  },
+  "pond.ph.observed/1.0": {
+    "event_type": "pond.ph.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "ph": {
+        "path": "ph",
+        "unit": "ph"
+      }
+    }
+  },
+  "pond.water_temperature.observed/1.0": {
+    "event_type": "pond.water_temperature.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "celsius": {
+        "path": "celsius",
+        "unit": "celsius"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "pump.axial_vibration.observed/1.0": {
+    "event_type": "pump.axial_vibration.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      },
+      "value": {
+        "path": "value",
+        "unit": "mm_s"
+      }
+    }
+  },
+  "pump.demand_event.observed/1.0": {
+    "event_type": "pump.demand_event.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "magnitude": {
+        "path": "magnitude",
+        "unit": "1"
+      }
+    }
+  },
+  "pump.discharge_pressure.observed/1.0": {
+    "event_type": "pump.discharge_pressure.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "kpa": {
+        "path": "kpa",
+        "unit": "kpa"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "pump.flow_rate.observed/1.0": {
+    "event_type": "pump.flow_rate.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "l_s": {
+        "path": "l_s",
+        "unit": "l_s"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "pump.heartbeat.observed/1.0": {
+    "event_type": "pump.heartbeat.observed",
+    "schema_version": "1.0",
+    "fields": {}
+  },
+  "pump.mode.observed/1.0": {
+    "event_type": "pump.mode.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "mode": {
+        "path": "mode",
+        "type": "string"
+      },
+      "value": {
+        "path": "value",
+        "type": "string"
+      }
+    }
+  },
+  "pump.motor_current.observed/1.0": {
+    "event_type": "pump.motor_current.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      },
+      "value": {
+        "path": "value",
+        "unit": "ampere"
+      }
+    }
+  },
+  "pump.rpm.observed/1.0": {
+    "event_type": "pump.rpm.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      },
+      "value": {
+        "path": "value",
+        "unit": "rpm"
+      }
+    }
+  },
+  "pump.tank_level.observed/1.0": {
+    "event_type": "pump.tank_level.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "percent": {
+        "path": "percent",
+        "unit": "percent"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "pump.temperature.observed/1.0": {
+    "event_type": "pump.temperature.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "celsius": {
+        "path": "celsius",
+        "unit": "celsius"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "pump.turbidity.observed/1.0": {
+    "event_type": "pump.turbidity.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "ntu": {
+        "path": "ntu",
+        "unit": "ntu"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "pump.vibration.observed/1.0": {
+    "event_type": "pump.vibration.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "rms_mm_s": {
+        "path": "rms_mm_s",
+        "unit": "mm_s"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "sensor.temperature/1.0": {
+    "event_type": "sensor.temperature",
+    "schema_version": "1.0",
+    "fields": {
+      "value": {
+        "path": "value",
+        "unit": "celsius"
+      }
+    }
+  }
+}
