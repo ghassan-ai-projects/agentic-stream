@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
@@ -17,6 +18,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // Scheduler manages the durable cognition queue.
@@ -414,6 +417,11 @@ func (s *Scheduler) insertItem(ctx context.Context, tx *sql.Tx, item Item, tenan
 		notBefore = sql.NullString{String: item.NotBefore.Format(time.RFC3339Nano), Valid: true}
 	}
 	now := s.clk.Now().UTC().Format(time.RFC3339Nano)
+	args := []any{
+		item.SchedulerItemID, item.TriggerID, tenantID, item.SituationID, item.SituationVersion, item.Kind,
+		item.Lane, item.Priority, item.Status, s.dedupeKey(item.SituationID, item.SituationVersion, item.TriggerID),
+		notBefore, item.ExpiresAt.Format(time.RFC3339Nano), now, now,
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO scheduler_items (
 			scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version,
@@ -429,13 +437,35 @@ func (s *Scheduler) insertItem(ctx context.Context, tx *sql.Tx, item Item, tenan
 			not_before = excluded.not_before,
 			expires_at = excluded.expires_at,
 			updated_at = excluded.updated_at`,
-		item.SchedulerItemID, item.TriggerID, tenantID, item.SituationID, item.SituationVersion, item.Kind,
-		item.Lane, item.Priority, item.Status, s.dedupeKey(item.SituationID, item.SituationVersion, item.TriggerID),
-		notBefore, item.ExpiresAt.Format(time.RFC3339Nano), now, now,
+		args...,
 	); err != nil {
+		if isSchedulerItemIDConflict(err) {
+			if _, retryErr := tx.ExecContext(ctx, `
+				INSERT INTO scheduler_items (
+					scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version,
+					kind, lane, priority, status, dedupe_key, not_before, expires_at, created_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(scheduler_item_id) DO NOTHING`, args...); retryErr != nil {
+				return fmt.Errorf("ignore scheduler item ID conflict: %w", retryErr)
+			}
+			return nil
+		}
 		return fmt.Errorf("upsert scheduler item: %w", err)
 	}
 	return nil
+}
+
+func isSchedulerItemIDConflict(err error) bool {
+	var sqliteErr *sqlite.Error
+	if !errors.As(err, &sqliteErr) {
+		return false
+	}
+	switch sqliteErr.Code() {
+	case sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY, sqlite3.SQLITE_CONSTRAINT_UNIQUE:
+		return strings.Contains(err.Error(), "UNIQUE constraint failed: scheduler_items.scheduler_item_id")
+	default:
+		return false
+	}
 }
 
 func (s *Scheduler) dedupeKey(situationID string, version int, triggerID string) []byte {
