@@ -45,12 +45,15 @@ type Outcome struct {
 
 // Runner polls admitted episodes and executes them deterministically.
 type Runner struct {
-	db         *storage.DB
-	executor   Executor
-	clk        clock.Clock
-	idGen      ids.Generator
-	ownerEpoch string
-	cost       *costcontrol.Controller
+	db              *storage.DB
+	executor        Executor
+	clk             clock.Clock
+	idGen           ids.Generator
+	ownerEpoch      string
+	cost            *costcontrol.Controller
+	epochControl    *storage.EpochControl
+	shadowStore     *storage.ShadowStore
+	telemetry       *telemetry.Runtime
 }
 
 const maxEpisodeAttempts = 3
@@ -58,6 +61,28 @@ const maxEpisodeAttempts = 3
 // WithCostControl enables settlement of durable episode cost reservations.
 func (r *Runner) WithCostControl(controller *costcontrol.Controller) *Runner {
 	r.cost = controller
+	return r
+}
+
+// WithEpochControl enables the P8 kill gate: every dispatch validates the
+// episode's RECORDED policy epoch against the control table, so a killed
+// epoch refuses in-flight decisions independently of the worker.
+func (r *Runner) WithEpochControl(control *storage.EpochControl) *Runner {
+	r.epochControl = control
+	return r
+}
+
+// WithShadowStore enables P8 shadow scoring: shadow decisions are scored
+// and persisted to shadow_decisions (never to intents/commands).
+func (r *Runner) WithShadowStore(store *storage.ShadowStore) *Runner {
+	r.shadowStore = store
+	return r
+}
+
+// WithTelemetry enables the P8 freshness/latency surface: stale-decision
+// rejections and dispatch→decision durations feed the /metrics percentiles.
+func (r *Runner) WithTelemetry(telemetry *telemetry.Runtime) *Runner {
+	r.telemetry = telemetry
 	return r
 }
 
@@ -87,11 +112,13 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	var identity Identity
 	var snapshotHash []byte
 	var promptHash, objectiveHash []byte
+	var stale *StaleSituationError
 	err := r.withTx(ctx, func(tx *sql.Tx) error {
 		if err := tx.QueryRowContext(ctx, `
 			SELECT episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
 			       executor_name, executor_version, model_policy, prompt_version,
-			       snapshot_sha256, prompt_sha256, objective_sha256, admission_key, request_json
+			       snapshot_sha256, prompt_sha256, objective_sha256, admission_key, request_json,
+			       dispatch_policy, policy_epoch
 			FROM episodes
 			WHERE tenant_id = ? AND lifecycle_status IN ('admitted', 'running')
 			ORDER BY accepted_at LIMIT 1`,
@@ -100,6 +127,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 			&episodeID, &req.SchedulerItemID, &req.TenantID, &req.SituationID, &req.SituationVersion,
 			&req.ExecutorName, &req.ExecutorVersion, &req.ModelPolicy, &req.PromptVersion,
 			&snapshotHash, &promptHash, &objectiveHash, &req.AdmissionKey, &req.RequestJSON,
+			&req.DispatchPolicy, &req.PolicyEpoch,
 		); err != nil {
 			if err == sql.ErrNoRows {
 				return nil
@@ -132,6 +160,49 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 			return fmt.Errorf("load persisted request entity: %w", entityErr)
 		}
 		req.EntityID = entityID
+		// P8 (freshness): the situation version is rechecked immediately
+		// before dispatch. If a newer version is live, this episode's snapshot
+		// is stale — refuse dispatch rather than reason over old facts.
+		var liveVersion int64
+		if err := tx.QueryRowContext(ctx, `
+			SELECT current_version FROM situations
+			WHERE tenant_id = ? AND situation_id = ?`,
+			req.TenantID, req.SituationID,
+		).Scan(&liveVersion); err != nil {
+			return fmt.Errorf("recheck live situation version: %w", err)
+		}
+		if liveVersion != int64(req.SituationVersion) {
+			// Quarantine the stale episode durably (committed in THIS tx — an
+			// error return would roll it back) so it cannot block the admitted
+			// queue forever (it is always the oldest admitted row). The batch
+			// continues; the stale rejection is counted.
+			terminal, _ := json.Marshal(map[string]any{"reason": "stale_situation",
+				"bound": req.SituationVersion, "live": liveVersion})
+			_, _ = tx.ExecContext(ctx, `
+				UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?
+				WHERE episode_id = ?`,
+				r.clk.Now().UTC().Format(time.RFC3339Nano), terminal, episodeID)
+			if r.telemetry != nil {
+				r.telemetry.ObserveStaleRejection()
+			}
+			stale = &StaleSituationError{EpisodeID: episodeID,
+				Bound: req.SituationVersion, Live: int(liveVersion)}
+			return nil
+		}
+		// P8 (kill): a decision under a killed policy epoch is refused
+		// INDEPENDENTLY of the worker — the episode's recorded epoch is
+		// checked at the dispatch boundary, so a hostile worker cannot slip a
+		// decision through after the kill.
+		if r.epochControl != nil && req.PolicyEpoch != "" {
+			if err := r.epochControl.AssertDecision(ctx, req.PolicyEpoch); err != nil {
+				terminal, _ := json.Marshal(map[string]any{"reason": "epoch_killed"})
+				_, _ = tx.ExecContext(ctx, `
+					UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?
+					WHERE episode_id = ?`,
+					r.clk.Now().UTC().Format(time.RFC3339Nano), terminal, episodeID)
+				return fmt.Errorf("refuse episode under killed epoch: %w", err)
+			}
+		}
 		req.AttemptID = ""
 		attemptID := r.idGen.New(ids.PrefixAttempt)
 		var err error
@@ -163,12 +234,18 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	if episodeID == "" {
 		return false, nil
 	}
+	// A stale episode was quarantined (committed) inside the tx — report it
+	// processed and let the batch continue; the queue drains past it.
+	if stale != nil {
+		return true, nil
+	}
 
 	executionCtx, stopWatching := context.WithCancel(ctx)
 	watchDone := make(chan struct{})
 	go r.watchSupersession(executionCtx, episodeID, stopWatching, watchDone)
 	var outcome *Outcome
 	var executionErr error
+	startedAt := r.clk.Now()
 	func() {
 		_, span := telemetry.StartSpan(executionCtx, "agentic_stream.episode.execute")
 		telemetry.AddLinkFromW3C(span, req.Traceparent, req.Tracestate)
@@ -180,6 +257,9 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		}()
 		outcome, executionErr = r.executor.Execute(executionCtx, &req)
 	}()
+	if r.telemetry != nil {
+		r.telemetry.ObserveDuration(r.clk.Now().Sub(startedAt))
+	}
 	err = executionErr
 	stopWatching()
 	<-watchDone
@@ -203,9 +283,30 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		incoming := Identity{EpisodeID: identity.EpisodeID, AttemptID: outcome.AttemptID, Fence: outcome.Fence}
 		return true, r.failAttemptWithRejection(ctx, identity, incoming, reason, "worker_identity_mismatch")
 	}
+	// P8 (freshness): a decision that arrives after the episode's wall_time
+	// deadline is refused (terminal timed_out) — the deadline is never extended
+	// to let a slow model pass, and a hostile in-process executor cannot
+	// bypass the gate either.
+	if r.deadlineExceeded(&req, startedAt) {
+		return true, r.failAttemptStatus(persistCtx, identity, AttemptTimedOut, "decision_after_deadline")
+	}
 
 	return true, r.withTx(persistCtx, func(tx *sql.Tx) error {
 		now := r.clk.Now().UTC().Format(time.RFC3339Nano)
+		// P8 (kill, post-execute): the recorded epoch is re-asserted INSIDE
+		// the persistence transaction — an attempt dispatched before the kill
+		// that completes after it is refused here, so a hostile worker cannot
+		// slip a decision into governance. The episode is quarantined.
+		if r.epochControl != nil && req.PolicyEpoch != "" {
+			if err := r.epochControl.AssertDecision(ctx, req.PolicyEpoch); err != nil {
+				terminal, _ := json.Marshal(map[string]any{"reason": "epoch_killed_post_execute"})
+				_, _ = tx.ExecContext(ctx, `
+					UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?
+					WHERE episode_id = ?`,
+					now, terminal, episodeID)
+				return fmt.Errorf("refuse post-execute decision under killed epoch: %w", err)
+			}
+		}
 		validationInput, err := decisionInput(&req, identity, r.clk.Now())
 		if err != nil {
 			return fmt.Errorf("build decision validation input: %w", err)
@@ -262,8 +363,18 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 				return fmt.Errorf("insert decision: %w", err)
 			}
 			if validationErr == nil {
-				if err := r.persistValidatedIntents(ctx, tx, validated, &req, now); err != nil {
-					return err
+				if req.DispatchPolicy == "shadow" {
+					// P8 (shadow-first): a shadow decision is scored — the
+					// would-be policy outcome is computed from the intents —
+					// but NOTHING is written to intents or commands. Shadow
+					// never enters action governance.
+					if err := r.recordShadow(ctx, tx, decisionID, decisionDigest, &req, outcome, validated, now); err != nil {
+						return err
+					}
+				} else {
+					if err := r.persistValidatedIntents(ctx, tx, validated, &req, now); err != nil {
+						return err
+					}
 				}
 				if _, err := tx.ExecContext(ctx, "UPDATE decisions SET validation_status = 'accepted' WHERE decision_id = ?", decisionID); err != nil {
 					return fmt.Errorf("accept decision: %w", err)
@@ -357,6 +468,11 @@ func decisionInput(req *Request, identity Identity, now time.Time) (decisions.In
 	var payload struct {
 		AllowedIntentTypes []string `json:"allowed_intent_types"`
 		RiskCeiling        string   `json:"risk_ceiling"`
+		Kind               string   `json:"kind"`
+		Executor           struct {
+			IntentCatalog      []map[string]any `json:"intent_catalog"`
+			IntentCatalogSHA256 string          `json:"intent_catalog_sha256"`
+		} `json:"executor"`
 	}
 	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
 		return decisions.Input{}, fmt.Errorf("decode request tools: %w", err)
@@ -368,6 +484,17 @@ func decisionInput(req *Request, identity Identity, now time.Time) (decisions.In
 	if payload.RiskCeiling == "" {
 		return decisions.Input{}, fmt.Errorf("request has no explicit risk ceiling")
 	}
+	// P4/B10: the catalog is verified INDEPENDENTLY at the validation
+	// boundary — the digest must bind the parsed bytes under the shared
+	// domain; a forged/missing/empty catalog fails closed before the decision
+	// is trusted (the worker's own verify_wire is not evidence here).
+	if !canonicaljson.Verify(canonicaljson.DomainIntentCatalog, payload.Executor.IntentCatalog, payload.Executor.IntentCatalogSHA256) {
+		return decisions.Input{}, fmt.Errorf("intent catalog is missing, forged, or malformed")
+	}
+	compiled, err := decisions.CompileIntentCatalog(payload.Executor.IntentCatalog)
+	if err != nil {
+		return decisions.Input{}, fmt.Errorf("compile intent catalog: %w", err)
+	}
 	return decisions.Input{
 		EpisodeID:          identity.EpisodeID,
 		AttemptID:          identity.AttemptID,
@@ -375,9 +502,12 @@ func decisionInput(req *Request, identity Identity, now time.Time) (decisions.In
 		TenantID:           req.TenantID,
 		SituationID:        req.SituationID,
 		SituationVersion:   req.SituationVersion,
+		EntityID:           req.EntityID,
 		SnapshotDigest:     req.SnapshotSHA256,
 		AllowedIntentTypes: allowed,
 		RiskCeiling:        payload.RiskCeiling,
+		IntentCatalog:      compiled,
+		Kind:               payload.Kind,
 		Now:                now,
 	}, nil
 }
@@ -396,14 +526,75 @@ func (r *Runner) persistValidatedIntents(ctx context.Context, tx *sql.Tx, valida
 			INSERT INTO intents (
 				intent_id, decision_id, tenant_id, situation_id, situation_version,
 				intent_type, risk_class, intent_json, intent_sha256, expires_at,
-				policy_status, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+				rate_limit_per_hour, requires_approval, policy_status, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
 			intent.ID, validated.DecisionID, req.TenantID, req.SituationID, req.SituationVersion,
 			intent.Type, intent.RiskClass, intent.CanonicalJSON, digest,
-			intent.ExpiresAt.UTC().Format(time.RFC3339Nano), now, now,
+			intent.ExpiresAt.UTC().Format(time.RFC3339Nano), intent.RateLimitPerHour,
+			boolToInt(intent.RequiresApproval), now, now,
 		); err != nil {
 			return fmt.Errorf("insert intent %s: %w", intent.ID, err)
 		}
+	}
+	return nil
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+// recordShadow scores a shadow decision: the would-be policy outcome computed
+// from the validated intents, persisted ONLY to the shadow_decisions table —
+// never to intents or commands. The score is the highest-risk intent's would-be
+// result under the live policy (R0/R1 automatic, R2 requires approval, R3/R4
+// denied). The decision is correlated by decision_id, so a shadow row is
+// traceable to the decision it scored.
+func (r *Runner) recordShadow(ctx context.Context, tx *sql.Tx, decisionID string, decisionDigest []byte, req *Request, outcome *Outcome, validated *decisions.Result, now string) error {
+	// decisions.Validate rejects a decision with zero intents, so the first
+	// intent is always present here.
+	highest := validated.Intents[0]
+	for _, intent := range validated.Intents[1:] {
+		if intentRiskRanks[intent.RiskClass] > intentRiskRanks[highest.RiskClass] {
+			highest = intent
+		}
+	}
+	var score storage.ShadowScore
+	var reason string
+	switch highest.RiskClass {
+	case "R0", "R1":
+		score = storage.ShadowWouldApprove
+		reason = "would_approve_" + highest.RiskClass
+	case "R2":
+		score = storage.ShadowWouldRequireApproval
+		reason = "would_require_approval_r2"
+	default:
+		score = storage.ShadowWouldDeny
+		reason = "would_deny_" + highest.RiskClass
+	}
+	decisionSHA := decisionDigest
+	if r.shadowStore == nil {
+		return fmt.Errorf("shadow dispatch but no shadow store configured — scores would be silently dropped")
+	}
+	shadow := storage.ShadowDecision{
+		ShadowDecisionID: r.idGen.New(ids.PrefixShadow),
+		EpisodeID:        req.EpisodeID,
+		DecisionID:       decisionID,
+		AttemptID:        req.AttemptID,
+		Fence:            req.Fence,
+		DecisionJSON:     outcome.DecisionJSON,
+		DecisionSHA256:   decisionSHA,
+		ShadowScore:      score,
+		ScoreReason:      reason,
+		TenantID:         req.TenantID,
+		SituationID:      req.SituationID,
+		SituationVersion: req.SituationVersion,
+		PolicyEpoch:      req.PolicyEpoch,
+	}
+	if err := r.shadowStore.Record(ctx, tx, shadow, now); err != nil {
+		return fmt.Errorf("record shadow decision: %w", err)
 	}
 	return nil
 }
@@ -416,6 +607,25 @@ func decisionIDFromJSON(raw []byte) string {
 		return ""
 	}
 	return document.DecisionID
+}
+
+// deadlineExceeded reports whether the attempt ran past its wall_time budget.
+// The budget is the executor's canonical input (never extended after
+// admission); a decision produced after it is refused.
+func (r *Runner) deadlineExceeded(req *Request, startedAt time.Time) bool {
+	var payload struct {
+		Budget struct {
+			WallTime string `json:"wall_time"`
+		} `json:"budget"`
+	}
+	if json.Unmarshal(req.RequestJSON, &payload) != nil || payload.Budget.WallTime == "" {
+		return false
+	}
+	wallTime, err := time.ParseDuration(payload.Budget.WallTime)
+	if err != nil || wallTime <= 0 {
+		return false
+	}
+	return r.clk.Now().After(startedAt.Add(wallTime))
 }
 
 func (r *Runner) failAttemptStatus(ctx context.Context, identity Identity, attemptStatus AttemptStatus, reason string) error {

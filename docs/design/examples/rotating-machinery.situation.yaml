@@ -268,7 +268,14 @@ actions:
   intents:
     - type: create_maintenance_ticket
       risk: R1
-      schema: schemas/create-maintenance-ticket-v1.json
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          hypothesis:
+            type: string
+        additionalProperties: false
       policy: automatic
       rateLimitPerHour: 2
     # Keep the shared maintenance decision contract aligned with the
@@ -276,17 +283,40 @@ actions:
     # rationale for bounded automatic R1 handling.
     - type: downgrade_maintenance_ticket
       risk: R1
-      schema: schemas/create-maintenance-ticket-v1.json
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          hypothesis:
+            type: string
+        additionalProperties: false
       policy: automatic
       rateLimitPerHour: 2
     - type: withdraw_maintenance_ticket
       risk: R1
-      schema: schemas/create-maintenance-ticket-v1.json
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          hypothesis:
+            type: string
+        additionalProperties: false
       policy: automatic
       rateLimitPerHour: 2
     - type: recommend_operating_limit
       risk: R2
-      schema: schemas/recommend-operating-limit-v1.json
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          operating_limit:
+            type: number
+          hypothesis:
+            type: string
+        additionalProperties: false
       policy: approval
       rateLimitPerHour: 1
 

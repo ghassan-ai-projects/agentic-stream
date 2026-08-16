@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
@@ -400,6 +401,16 @@ func verifyDecisionDigest(raw, digest []byte) error {
 	return nil
 }
 
+// dispatchPolicyEnum maps the durable policy string to the wire enum. An
+// empty/unset policy is shadow — nothing enters action governance unless the
+// spec declared active.
+func dispatchPolicyEnum(policy string) runtimev1.DispatchPolicy {
+	if policy == "active" {
+		return runtimev1.DispatchPolicy_DISPATCH_POLICY_ACTIVE
+	}
+	return runtimev1.DispatchPolicy_DISPATCH_POLICY_SHADOW
+}
+
 func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 	if req.SituationVersion <= 0 {
 		return nil, fmt.Errorf("situation version must be positive")
@@ -419,10 +430,16 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 			Lane      string `json:"lane"`
 		} `json:"trigger"`
 		Executor struct {
-			Objective       string          `json:"objective"`
-			PromptSHA256    string          `json:"prompt_sha256"`
-			ObjectiveSHA256 string          `json:"objective_sha256"`
-			DecisionSchema  json.RawMessage `json:"decision_schema"`
+			Objective              string          `json:"objective"`
+			Prompt                 string          `json:"prompt"`
+			PromptSHA256           string          `json:"prompt_sha256"`
+			ObjectiveSHA256        string          `json:"objective_sha256"`
+			DecisionSchema         json.RawMessage `json:"decision_schema"`
+			DiagnosisCatalog       string          `json:"diagnosis_catalog"`
+			DiagnosisCatalogSHA256 string          `json:"diagnosis_catalog_sha256"`
+			IntentCatalog          []map[string]any `json:"intent_catalog"`
+			IntentCatalogSHA256    string          `json:"intent_catalog_sha256"`
+			SkillRefs              []spec.SkillRef `json:"skill_refs"`
 		} `json:"executor"`
 		Budget struct {
 			WallTime             string `json:"wall_time"`
@@ -475,6 +492,16 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("objective digest: %w", err)
 	}
+	// The diagnosis catalog is optional at the runtime level (native mode does
+	// not use it); when configured it must be a valid digest. The Ruby worker
+	// fails closed if the request omits the catalog it must verify.
+	var catalogDigest []byte
+	if payload.Executor.DiagnosisCatalogSHA256 != "" {
+		catalogDigest, err = canonicaljson.DecodeDigest(payload.Executor.DiagnosisCatalogSHA256)
+		if err != nil {
+			return nil, fmt.Errorf("diagnosis catalog digest: %w", err)
+		}
+	}
 	if payload.Executor.PromptSHA256 != req.PromptSHA256 || payload.Executor.ObjectiveSHA256 != req.ObjectiveSHA256 {
 		return nil, fmt.Errorf("worker request provenance does not match durable episode provenance")
 	}
@@ -514,20 +541,60 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 	if budget.GetWallTime() != nil {
 		deadline = timestamppb.New(time.Now().UTC().Add(budget.GetWallTime().AsDuration()))
 	}
-	return &runtimev1.EpisodeRequest{
+	request := &runtimev1.EpisodeRequest{
 		ProtocolVersion: worker.ProtocolVersion, EpisodeId: req.EpisodeID, TriggerId: payload.Trigger.TriggerID,
 		TenantId: req.TenantID, SituationId: req.SituationID, SituationVersion: uint64(req.SituationVersion), //nolint:gosec // SituationVersion is validated positive before dispatch.
 		SnapshotJson: snapshot, SnapshotSha256: snapshotDigest, DecisionSchemaJson: decisionSchema,
 		DecisionSchemaSha256: decisionSchemaHash[:], ToolCatalogJson: tools, ToolCatalogSha256: toolsHash[:], SpecSha256: specDigest,
 		Objective: payload.Executor.Objective, ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion,
+		ModelPolicy:   req.ModelPolicy,         // P0B/§2.2: the worker needs the role to resolve a model; was previously omitted.
+		Prompt:        payload.Executor.Prompt, // P1/§4.3: the operator prompt body flows to the worker so the frame binds it.
 		PromptVersion: req.PromptVersion, Budget: budget, Deadline: deadline, Traceparent: req.Traceparent, Tracestate: req.Tracestate,
 		Kind: kind, Lane: lane, RiskCeiling: risk, AllowedIntentTypes: payload.AllowedIntentTypes,
 		WatchConfidenceFloor: payload.WatchConfidenceFloor,
 		CancellationKey:      payload.CancellationKey, SupersessionKey: payload.SupersessionKey,
 		PromptSha256: promptDigest, ObjectiveSha256: objectiveDigest,
-		AttemptId: req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
+		DiagnosisCatalogJson:   []byte(payload.Executor.DiagnosisCatalog),
+		DiagnosisCatalogSha256: catalogDigest,
+		// P4: the compiled intent catalog flows to the worker (which verifies
+		// it before any model call) and back to the validator on the decision
+		// (which verifies it independently).
+		IntentCatalogSha256: []byte(payload.Executor.IntentCatalogSHA256),
+		// P8: the mode matrix rides the wire. active|shadow; the worker carries
+		// it (it is part of the durable payload) but the GO side enforces it.
+		DispatchPolicy: dispatchPolicyEnum(req.DispatchPolicy),
+		AttemptId:      req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
 		Reconsideration: reconsideration,
-	}, nil
+	}
+	intentCatalogJSON, err := marshalIntentCatalog(payload.Executor.IntentCatalog)
+	if err != nil {
+		return nil, fmt.Errorf("marshal intent catalog: %w", err)
+	}
+	if len(intentCatalogJSON) == 0 {
+		return nil, fmt.Errorf("intent catalog is empty")
+	}
+	request.IntentCatalogJson = intentCatalogJSON
+	skillRefs := payload.Executor.SkillRefs
+	if skillRefs == nil {
+		skillRefs = []spec.SkillRef{}
+	}
+	skillRefsJSON, err := json.Marshal(skillRefs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal skill refs: %w", err)
+	}
+	request.SkillRefsJson = skillRefsJSON
+	return request, nil
+}
+
+func marshalIntentCatalog(entries []map[string]any) ([]byte, error) {
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(entries)
+	if err != nil {
+		return nil, fmt.Errorf("marshal intent catalog: %w", err)
+	}
+	return encoded, nil
 }
 
 type reconsiderationRequest struct {

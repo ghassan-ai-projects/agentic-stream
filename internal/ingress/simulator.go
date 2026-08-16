@@ -3,10 +3,12 @@ package ingress
 import (
 	"bufio"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
@@ -14,6 +16,22 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
+
+//go:embed simulator_data.json
+var simulatorData []byte
+
+// The channel→field mapping (simulator_data.json) — domain DATA, not code.
+// An empty target is the heartbeat/no-data sentinel; a missing channel falls
+// back to data["value"].
+var channelFields = sync.OnceValues(func() (map[string]string, error) {
+	var document struct {
+		ChannelFields map[string]string `json:"channel_fields"`
+	}
+	if err := json.Unmarshal(simulatorData, &document); err != nil {
+		return nil, fmt.Errorf("decode simulator data: %w", err)
+	}
+	return document.ChannelFields, nil
+})
 
 // SimulatorOptions describes the consumer-specific projection from the
 // streams-simulator trace-record-v0.1 format into current normalized events.
@@ -235,47 +253,21 @@ func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.
 	data := make(map[string]any)
 	channelName := strings.TrimPrefix(channel, entityType+".")
 	if value, ok := event["value"]; ok {
-		switch channelName {
-		case "vibration":
-			data["rms_mm_s"] = value
-		case "temperature":
-			data["celsius"] = value
-		case "current":
-			data["amps"] = value
-		case "dissolved_oxygen", "ammonia":
-			data["mg_l"] = value
-		case "water_temperature":
-			data["celsius"] = value
-		case "ph":
-			data["ph"] = value
-		case "aerator_current":
-			data["ampere"] = value
-		case "feeding_event":
-			data["load"] = value
-		case "discharge_pressure":
-			data["kpa"] = value
-		case "flow_rate":
-			data["l_s"] = value
-		case "tank_level":
-			data["percent"] = value
-		case "turbidity":
-			data["ntu"] = value
-		case "demand_event":
-			data["magnitude"] = value
-		case "humidity", "leaf_wetness", "vent_position":
-			data["percent"] = value
-		case "air_temp":
-			data["celsius"] = value
-		case "co2":
-			data["umol_mol"] = value
-		case "par_light":
+		// Channel→field mapping is DATA (simulator_data.json). The heartbeat
+		// sentinel (present, empty target) emits no data field; an ABSENT
+		// channel falls back to data["value"].
+		fields, err := channelFields()
+		if err != nil {
+			return contractsv1.Envelope{}, fmt.Errorf("load simulator channel fields: %w", err)
+		}
+		target, known := fields[channelName]
+		switch {
+		case known && target == "":
+			// Heartbeats (and other no-data channels) carry no field.
+		case !known || target == "value":
 			data["value"] = value
-		case "vent_event":
-			data["magnitude"] = value
-		case "heartbeat":
-			// Heartbeats carry no data field.
 		default:
-			data["value"] = value
+			data[target] = value
 		}
 	}
 	if unit, ok := event["unit"].(string); ok && unit != "" {

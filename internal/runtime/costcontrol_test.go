@@ -45,7 +45,7 @@ func TestPipelineKeepsIngestingWhenCostReservationIsRejected(t *testing.T) {
 				Budget: spec.Budget{WallTime: "5s", CostMicrounits: 2},
 			},
 		},
-		Actions: spec.Actions{Intents: []spec.Intent{{Type: "create_maintenance_ticket", Risk: "R1", Schema: "schemas/ticket.json", Policy: "automatic"}}},
+		Actions: spec.Actions{Intents: []spec.Intent{{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: runtimeTicketSchema(), Policy: "automatic"}}},
 	}
 
 	tracePath := filepath.Join(t.TempDir(), "stations.jsonl")
@@ -97,4 +97,8 @@ func TestPipelineKeepsIngestingWhenCostReservationIsRejected(t *testing.T) {
 	if !strings.Contains(reasons, "cost ceiling or kill switch rejected") {
 		t.Fatalf("cost rejection reason = %q", reasons)
 	}
+}
+
+func runtimeTicketSchema() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"entity_id": map[string]any{"type": "string"}, "reason": map[string]any{"type": "string"}}}
 }

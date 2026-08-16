@@ -1,8 +1,12 @@
 package eventschema
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 func TestRotatingMachinerySchemasDescribeAdapterPayloads(t *testing.T) {
@@ -162,4 +166,64 @@ func contains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// Domain-data extraction (docs/design/impl/GO_DOMAIN_DATA_EXTRACTION.md):
+// the catalog now lives in registry_data.json. Every ref must load and expose
+// its declared fields. The golden digest pins every ref's event_type /
+// schema_version / fields (path, unit, type, optional) VALUES — a typo in any
+// entry, even one the targeted tables above do not cover, breaks the digest.
+// The invariants below catch structural nonsense (a field that is neither
+// typed nor numeric-with-unit) with a readable failure.
+func TestAllBuiltinsLoadFromData(t *testing.T) {
+	t.Parallel()
+	registry, err := builtins()
+	if err != nil {
+		t.Fatalf("load registry: %v", err)
+	}
+	if len(registry) != 32 {
+		t.Fatalf("expected 32 built-in refs, got %d", len(registry))
+	}
+	canonical, err := canonicaljson.Marshal(registry)
+	if err != nil {
+		t.Fatalf("canonicalize registry: %v", err)
+	}
+	sum := sha256.Sum256(canonical)
+	const pinnedDigest = "fbc4dadecfa439d096f7183d609fff5317467b442eed096a377725d50e92dcab"
+	if got := hex.EncodeToString(sum[:]); got != pinnedDigest {
+		t.Fatalf("registry data digest = %s, want the pinned %s", got, pinnedDigest)
+	}
+	for ref, definition := range registry {
+		t.Run(ref, func(t *testing.T) {
+			t.Parallel()
+			if definition.Ref != ref {
+				t.Fatalf("Ref = %q, want %q", definition.Ref, ref)
+			}
+			if definition.EventType == "" {
+				t.Fatal("event type must not be empty")
+			}
+			if definition.SchemaVersion == "" {
+				t.Fatal("schema version must not be empty")
+			}
+			for name, field := range definition.Fields {
+				if field.Path == "" {
+					t.Fatalf("field %s has no path", name)
+				}
+				switch {
+				case name == "unit":
+					if field.Type != "string" || !field.Optional {
+						t.Fatalf("unit field = %+v, want string-typed optional", field)
+					}
+				case field.Unit != "":
+					if field.Type != "" && field.Type != "number" {
+						t.Fatalf("numeric field %s = %+v, type must be empty or number", name, field)
+					}
+				default:
+					if field.Type == "" {
+						t.Fatalf("field %s is neither typed nor numeric-with-unit: %+v", name, field)
+					}
+				}
+			}
+		})
+	}
 }

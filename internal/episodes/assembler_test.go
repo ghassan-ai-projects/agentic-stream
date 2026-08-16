@@ -121,9 +121,9 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 		},
 		Actions: spec.Actions{
 			Intents: []spec.Intent{
-				{Type: "create_ticket", Risk: "R1", Schema: "schemas/ticket.json", Policy: "approval", RateLimitPerHour: 2},
-				{Type: "downgrade_maintenance_ticket", Risk: "R1", Schema: "schemas/ticket.json", Policy: "automatic", RateLimitPerHour: 2},
-				{Type: "withdraw_maintenance_ticket", Risk: "R1", Schema: "schemas/ticket.json", Policy: "automatic", RateLimitPerHour: 2},
+				{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema(), Policy: "approval", RateLimitPerHour: 2},
+				{Type: "downgrade_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema(), Policy: "automatic", RateLimitPerHour: 2},
+				{Type: "withdraw_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema(), Policy: "automatic", RateLimitPerHour: 2},
 			},
 		},
 	}
@@ -270,6 +270,11 @@ func TestAssemblerPersistsReconsiderationPayload(t *testing.T) {
 		},
 		Cognition: spec.Cognition{
 			Executor: spec.Executor{Name: "tamoz", ModelPolicy: "test", PromptVersion: "v1"},
+		},
+		Actions: spec.Actions{
+			Intents: []spec.Intent{
+				{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
+			},
 		},
 	}
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
@@ -519,7 +524,7 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 		},
 		Actions: spec.Actions{
 			Intents: []spec.Intent{
-				{Type: "create_ticket", Risk: "R1", Schema: "schemas/ticket.json"},
+				{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
 			},
 		},
 	}
@@ -770,7 +775,7 @@ func TestAssemblerIsDeterministic(t *testing.T) {
 		},
 		Actions: spec.Actions{
 			Intents: []spec.Intent{
-				{Type: "create_ticket", Risk: "R1", Schema: "schemas/ticket.json"},
+				{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
 			},
 		},
 	}
@@ -876,7 +881,9 @@ func TestAssemblerRequestContainsDelta(t *testing.T) {
 			},
 			Executor: spec.Executor{Name: "native"},
 		},
-		Actions: spec.Actions{},
+		Actions: spec.Actions{
+			Intents: []spec.Intent{{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()}},
+		},
 	}
 
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
@@ -973,7 +980,9 @@ func TestAssemblerTenantMismatch(t *testing.T) {
 			},
 			Executor: spec.Executor{Name: "native"},
 		},
-		Actions: spec.Actions{},
+		Actions: spec.Actions{
+			Intents: []spec.Intent{{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()}},
+		},
 	}
 
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
@@ -1060,7 +1069,9 @@ func TestAssemblerPersistRejectsNonPending(t *testing.T) {
 			},
 			Executor: spec.Executor{Name: "native"},
 		},
-		Actions: spec.Actions{},
+		Actions: spec.Actions{
+			Intents: []spec.Intent{{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()}},
+		},
 	}
 
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
@@ -1122,4 +1133,8 @@ func TestAssemblerPersistRejectsNonPending(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("persist tx: %v", err)
 	}
+}
+
+func ticketSchema() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"entity_id": map[string]any{"type": "string"}, "reason": map[string]any{"type": "string"}}}
 }

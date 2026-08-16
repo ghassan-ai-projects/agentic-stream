@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -26,6 +28,12 @@ type Runtime struct {
 	intentsEvaluated   atomic.Uint64
 	commandsDispatched atomic.Uint64
 	streamFailures     atomic.Uint64
+	// P8: the freshness/latency surface — stale-decision rejections and the
+	// dispatch→decision duration histogram (p95/p99), exported via /metrics
+	// so the freshness SLO is one honest number.
+	staleRejections atomic.Uint64
+	durationsMu     sync.Mutex
+	durations       []time.Duration
 }
 
 // NewRuntime creates an operational counter set.
@@ -88,6 +96,40 @@ func (r *Runtime) ObserveFailure() {
 	}
 }
 
+// ObserveStaleRejection increments the stale-decision rejection counter.
+func (r *Runtime) ObserveStaleRejection() {
+	if r != nil {
+		r.staleRejections.Add(1)
+	}
+}
+
+// ObserveDuration records one dispatch→decision duration for the histogram.
+func (r *Runtime) ObserveDuration(duration time.Duration) {
+	if r == nil {
+		return
+	}
+	r.durationsMu.Lock()
+	defer r.durationsMu.Unlock()
+	r.durations = append(r.durations, duration)
+}
+
+// Percentile returns the p-th percentile of the recorded durations (0-100),
+// or 0 when no durations were recorded.
+func (r *Runtime) Percentile(p float64) time.Duration {
+	if r == nil {
+		return 0
+	}
+	r.durationsMu.Lock()
+	defer r.durationsMu.Unlock()
+	if len(r.durations) == 0 {
+		return 0
+	}
+	sorted := append([]time.Duration(nil), r.durations...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	index := int((p / 100) * float64(len(sorted)-1))
+	return sorted[index]
+}
+
 // Snapshot returns a stable counter view.
 func (r *Runtime) Snapshot() map[string]uint64 {
 	if r == nil {
@@ -101,6 +143,26 @@ func (r *Runtime) Snapshot() map[string]uint64 {
 		"agentic_stream_intents_evaluated_total":   r.intentsEvaluated.Load(),
 		"agentic_stream_commands_dispatched_total": r.commandsDispatched.Load(),
 		"agentic_stream_pipeline_failures_total":   r.streamFailures.Load(),
+		"agentic_stream_stale_rejections_total":    r.staleRejections.Load(),
+	}
+}
+
+// latencyNanos converts a recorded duration to uint64 nanoseconds, clamping
+// negative values to zero so an anomalous clock cannot wrap the metric.
+func latencyNanos(d time.Duration) uint64 {
+	if d < 0 {
+		return 0
+	}
+	return uint64(d)
+}
+
+// LatencySnapshot returns the p50/p95/p99 dispatch→decision latencies in
+// nanoseconds (0 when no durations were recorded yet).
+func (r *Runtime) LatencySnapshot() map[string]uint64 {
+	return map[string]uint64{
+		"agentic_stream_dispatch_decision_p50_ns": latencyNanos(r.Percentile(50)),
+		"agentic_stream_dispatch_decision_p95_ns": latencyNanos(r.Percentile(95)),
+		"agentic_stream_dispatch_decision_p99_ns": latencyNanos(r.Percentile(99)),
 	}
 }
 
@@ -110,6 +172,9 @@ func (r *Runtime) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		for name, value := range r.Snapshot() {
+			_, _ = fmt.Fprintf(w, "%s %d\n", name, value)
+		}
+		for name, value := range r.LatencySnapshot() {
 			_, _ = fmt.Fprintf(w, "%s %d\n", name, value)
 		}
 	})

@@ -47,10 +47,15 @@ Use the prompt files under `.agents/prompts/` when the task matches them.
 
 - Module path: `github.com/ghassan-ai-projects/agentic-stream` (set).
 - Design baseline is complete under `docs/` (design v1 plus archived v0/v0.1 iterations, contracts, examples, research reports). Status: implementation-ready design baseline.
-- There is no `cmd/` tree yet.
-- There is no `internal/` tree yet.
-- The root scaffold package in [doc.go](doc.go) exists so Go tooling has something to operate on.
-- Implementation starts at Milestone 0 per [docs/design/IMPLEMENTATION_PLAN.md](docs/design/IMPLEMENTATION_PLAN.md). The first vertical slice uses a file trace, virtual clock, deterministic operators, SQLite, a fake episode executor, and a simulated effector. Do not start with MQTT, LangGraph integration, a web UI, or a real model provider.
+- Implementation is complete through the P-series phases: the CLI lives in
+  `cmd/agentic-stream/` (`version`, `validate`, `run-live`, `serve`, …) and `internal/`
+  holds the spec compiler, ingress, eventlog, operators, situations, cognition,
+  episodes, decisions, policy, actions, worker runtime, and storage. The worker
+  protocol is `proto/agenticstream/runtime/v1/`; migrations live in `migrations/`.
+  Domain data is extracted to `internal/eventschema/registry_data.json`,
+  `internal/ingress/simulator_data.json`, and
+  `internal/episodes/testdata/aquaculture_intents.json` (see
+  `docs/design/impl/GO_DOMAIN_DATA_EXTRACTION.md`).
 
 Do not invent architecture outside the documented design. The design was written to be built as specified; deviations need a design change first.
 
@@ -138,6 +143,16 @@ See [.agents/context/go-style.md](.agents/context/go-style.md) for the repo-spec
 - Do not let untrusted content become instructions or executable parameters (invariant 1).
 - Do not add graph engines, brokers, LangChain/LangGraph, or a web UI into the version-1 core (see design README).
 - Do not give models direct access to effectors or production credentials.
+- Do not re-author domain data in Go code. Event schemas live in
+  `internal/eventschema/registry_data.json`, the simulator channel→field mapping in
+  `internal/ingress/simulator_data.json`, and the aquaculture intent catalog in
+  `internal/episodes/testdata/aquaculture_intents.json` — loaded by machinery
+  (go:embed + sync.OnceValues, or os.ReadFile in the test). Adding a schema, channel,
+  or intent means editing those JSON files, never a Go literal. Data changes are
+  gated: `TestAllBuiltinsLoadFromData` pins the registry's golden digest, and
+  `TestAquacultureIntentCatalogDigestParity` pins the cross-repo intent digest
+  (`e4f86620…`) shared with the Ruby side — update those pins only as a deliberate,
+  reviewed data change.
 - Do not add top-level dependencies without clear justification; the documented stack (SQLite WAL via `modernc.org/sqlite`, CEL via `cel-go`, `franz-go`, `nats.go`, gRPC) is the default.
 - Do not add abstraction layers "for future flexibility" without a current concrete need.
 - Do not create duplicate canonical agent files such as `CODEX.md`.

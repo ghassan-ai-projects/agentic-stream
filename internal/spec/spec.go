@@ -165,6 +165,14 @@ type Trigger struct {
 	MaterialDelta string  `json:"materialDelta" yaml:"materialDelta"`
 }
 
+// SkillRef is one digest-pinned skill the episode may render into its frame —
+// P5/§B6-B9: the worker resolves the text ONLY from the operator-approved
+// directory and requires the tree digest to match.
+type SkillRef struct {
+	Name       string `json:"name" yaml:"name"`
+	TreeSHA256 string `json:"tree_sha256" yaml:"tree_sha256"`
+}
+
 // Executor configures the episode runtime.
 type Executor struct {
 	Name           string   `json:"name" yaml:"name"`
@@ -173,9 +181,19 @@ type Executor struct {
 	ModelPolicy    string   `json:"modelPolicy" yaml:"modelPolicy"`
 	PromptVersion  string   `json:"promptVersion" yaml:"promptVersion"`
 	DecisionSchema string   `json:"decisionSchema" yaml:"decisionSchema"`
+	Skills         []SkillRef `json:"skills,omitempty" yaml:"skills,omitempty"`
 	Tools          []string `json:"tools" yaml:"tools"`
 	RiskCeiling    string   `json:"riskCeiling,omitempty" yaml:"riskCeiling,omitempty"`
 	Budget         Budget   `json:"budget" yaml:"budget"`
+	// P1: the diagnosis catalog is a per-executor document (the Ruby worker
+	// verifies it via DiagnosisCatalog.verify_wire under the shared
+	// situation-runtime/diagnosis-catalog domain).
+	DiagnosisCatalog string `json:"diagnosisCatalog" yaml:"diagnosisCatalog"`
+	// P8: the dispatch policy for every episode of this executor — active or
+	// shadow. Shadow proposals are persisted and scored but never enter action
+	// governance; the value is part of the compiled digest, so a mode change
+	// is a new spec version.
+	DispatchPolicy string `json:"dispatchPolicy,omitempty" yaml:"dispatchPolicy,omitempty"`
 }
 
 // Budget caps episode resource usage.
@@ -197,13 +215,21 @@ type Cognition struct {
 	Executor Executor  `json:"executor" yaml:"executor"`
 }
 
-// Intent declares an allowed action type and its policy.
+// Intent declares one action type and its authority: the EXACT risk class,
+// the parameter schema, the operator-authored presets, the model-writable
+// fields, and the policy/rate-limit/compensation metadata. P4: these compile
+// into the canonical intent catalog the worker verifies and the validator
+// enforces independently (B9/B10).
 type Intent struct {
-	Type             string `json:"type" yaml:"type"`
-	Risk             string `json:"risk" yaml:"risk"`
-	Schema           string `json:"schema" yaml:"schema"`
-	Policy           string `json:"policy,omitempty" yaml:"policy,omitempty"`
-	RateLimitPerHour int    `json:"rateLimitPerHour,omitempty" yaml:"rateLimitPerHour,omitempty"`
+	Type                string                    `json:"type" yaml:"type"`
+	Risk                string                    `json:"risk" yaml:"risk"`
+	ParameterSchema     map[string]any            `json:"parameterSchema" yaml:"parameterSchema"`
+	Presets             map[string]map[string]any `json:"presets,omitempty" yaml:"presets,omitempty"`
+	ModelWritableFields []string                  `json:"modelWritableFields,omitempty" yaml:"modelWritableFields,omitempty"`
+	Description         string                    `json:"description,omitempty" yaml:"description,omitempty"`
+	Policy              string                    `json:"policy,omitempty" yaml:"policy,omitempty"`
+	RateLimitPerHour    int                       `json:"rateLimitPerHour,omitempty" yaml:"rateLimitPerHour,omitempty"`
+	Compensation        map[string]any            `json:"compensation,omitempty" yaml:"compensation,omitempty"`
 }
 
 // Actions configures allowed intents.

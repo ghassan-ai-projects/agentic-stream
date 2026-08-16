@@ -42,6 +42,17 @@ func SaveDeployment(ctx context.Context, db *storage.DB, tenantID string, compil
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		// P8 (graph versioning): a definition change is a new version + a
+		// FRESH namespace. Retire the previous active deployment of the same
+		// name first (the schema enforces one-active-per-name), so the new
+		// version's state never touches the old version's rows. A redeploy of
+		// the SAME digest is idempotent — it must not retire itself.
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE spec_deployments SET status = 'retired', activated_at = ?
+			WHERE tenant_id = ? AND spec_name = ? AND status = 'active' AND deployment_id <> ?`,
+			now, tenantID, compiled.Metadata.Name, compiled.Digest); err != nil {
+			return fmt.Errorf("retire prior deployment: %w", err)
+		}
 		for _, input := range compiled.Inputs {
 			definition, ok := eventschema.Lookup(input.SchemaRef)
 			if !ok {

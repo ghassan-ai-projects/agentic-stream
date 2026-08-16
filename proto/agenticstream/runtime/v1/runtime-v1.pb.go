@@ -124,6 +124,55 @@ func (EpisodeLane) EnumDescriptor() ([]byte, []int) {
 	return file_runtime_v1_proto_rawDescGZIP(), []int{1}
 }
 
+type DispatchPolicy int32
+
+const (
+	DispatchPolicy_DISPATCH_POLICY_UNSPECIFIED DispatchPolicy = 0
+	DispatchPolicy_DISPATCH_POLICY_ACTIVE      DispatchPolicy = 1
+	DispatchPolicy_DISPATCH_POLICY_SHADOW      DispatchPolicy = 2
+)
+
+// Enum value maps for DispatchPolicy.
+var (
+	DispatchPolicy_name = map[int32]string{
+		0: "DISPATCH_POLICY_UNSPECIFIED",
+		1: "DISPATCH_POLICY_ACTIVE",
+		2: "DISPATCH_POLICY_SHADOW",
+	}
+	DispatchPolicy_value = map[string]int32{
+		"DISPATCH_POLICY_UNSPECIFIED": 0,
+		"DISPATCH_POLICY_ACTIVE":      1,
+		"DISPATCH_POLICY_SHADOW":      2,
+	}
+)
+
+func (x DispatchPolicy) Enum() *DispatchPolicy {
+	p := new(DispatchPolicy)
+	*p = x
+	return p
+}
+
+func (x DispatchPolicy) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DispatchPolicy) Descriptor() protoreflect.EnumDescriptor {
+	return file_runtime_v1_proto_enumTypes[2].Descriptor()
+}
+
+func (DispatchPolicy) Type() protoreflect.EnumType {
+	return &file_runtime_v1_proto_enumTypes[2]
+}
+
+func (x DispatchPolicy) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DispatchPolicy.Descriptor instead.
+func (DispatchPolicy) EnumDescriptor() ([]byte, []int) {
+	return file_runtime_v1_proto_rawDescGZIP(), []int{2}
+}
+
 type RiskClass int32
 
 const (
@@ -166,11 +215,11 @@ func (x RiskClass) String() string {
 }
 
 func (RiskClass) Descriptor() protoreflect.EnumDescriptor {
-	return file_runtime_v1_proto_enumTypes[2].Descriptor()
+	return file_runtime_v1_proto_enumTypes[3].Descriptor()
 }
 
 func (RiskClass) Type() protoreflect.EnumType {
-	return &file_runtime_v1_proto_enumTypes[2]
+	return &file_runtime_v1_proto_enumTypes[3]
 }
 
 func (x RiskClass) Number() protoreflect.EnumNumber {
@@ -179,7 +228,7 @@ func (x RiskClass) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RiskClass.Descriptor instead.
 func (RiskClass) EnumDescriptor() ([]byte, []int) {
-	return file_runtime_v1_proto_rawDescGZIP(), []int{2}
+	return file_runtime_v1_proto_rawDescGZIP(), []int{3}
 }
 
 type DeltaLane int32
@@ -215,11 +264,11 @@ func (x DeltaLane) String() string {
 }
 
 func (DeltaLane) Descriptor() protoreflect.EnumDescriptor {
-	return file_runtime_v1_proto_enumTypes[3].Descriptor()
+	return file_runtime_v1_proto_enumTypes[4].Descriptor()
 }
 
 func (DeltaLane) Type() protoreflect.EnumType {
-	return &file_runtime_v1_proto_enumTypes[3]
+	return &file_runtime_v1_proto_enumTypes[4]
 }
 
 func (x DeltaLane) Number() protoreflect.EnumNumber {
@@ -228,7 +277,7 @@ func (x DeltaLane) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DeltaLane.Descriptor instead.
 func (DeltaLane) EnumDescriptor() ([]byte, []int) {
-	return file_runtime_v1_proto_rawDescGZIP(), []int{3}
+	return file_runtime_v1_proto_rawDescGZIP(), []int{4}
 }
 
 type ToolState int32
@@ -270,11 +319,11 @@ func (x ToolState) String() string {
 }
 
 func (ToolState) Descriptor() protoreflect.EnumDescriptor {
-	return file_runtime_v1_proto_enumTypes[4].Descriptor()
+	return file_runtime_v1_proto_enumTypes[5].Descriptor()
 }
 
 func (ToolState) Type() protoreflect.EnumType {
-	return &file_runtime_v1_proto_enumTypes[4]
+	return &file_runtime_v1_proto_enumTypes[5]
 }
 
 func (x ToolState) Number() protoreflect.EnumNumber {
@@ -283,7 +332,7 @@ func (x ToolState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ToolState.Descriptor instead.
 func (ToolState) EnumDescriptor() ([]byte, []int) {
-	return file_runtime_v1_proto_rawDescGZIP(), []int{4}
+	return file_runtime_v1_proto_rawDescGZIP(), []int{5}
 }
 
 type TerminalStatus int32
@@ -331,11 +380,11 @@ func (x TerminalStatus) String() string {
 }
 
 func (TerminalStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_runtime_v1_proto_enumTypes[5].Descriptor()
+	return file_runtime_v1_proto_enumTypes[6].Descriptor()
 }
 
 func (TerminalStatus) Type() protoreflect.EnumType {
-	return &file_runtime_v1_proto_enumTypes[5]
+	return &file_runtime_v1_proto_enumTypes[6]
 }
 
 func (x TerminalStatus) Number() protoreflect.EnumNumber {
@@ -344,7 +393,7 @@ func (x TerminalStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TerminalStatus.Descriptor instead.
 func (TerminalStatus) EnumDescriptor() ([]byte, []int) {
-	return file_runtime_v1_proto_rawDescGZIP(), []int{5}
+	return file_runtime_v1_proto_rawDescGZIP(), []int{6}
 }
 
 type HandshakeRequest struct {
@@ -564,23 +613,31 @@ type EpisodeRequest struct {
 	SituationId      string                 `protobuf:"bytes,5,opt,name=situation_id,json=situationId,proto3" json:"situation_id,omitempty"`
 	SituationVersion uint64                 `protobuf:"varint,6,opt,name=situation_version,json=situationVersion,proto3" json:"situation_version,omitempty"`
 	// Canonical JSON documents validated by the core before dispatch.
-	SnapshotJson         []byte                 `protobuf:"bytes,10,opt,name=snapshot_json,json=snapshotJson,proto3" json:"snapshot_json,omitempty"`
-	SnapshotSha256       []byte                 `protobuf:"bytes,11,opt,name=snapshot_sha256,json=snapshotSha256,proto3" json:"snapshot_sha256,omitempty"`
-	DecisionSchemaJson   []byte                 `protobuf:"bytes,12,opt,name=decision_schema_json,json=decisionSchemaJson,proto3" json:"decision_schema_json,omitempty"`
-	DecisionSchemaSha256 []byte                 `protobuf:"bytes,13,opt,name=decision_schema_sha256,json=decisionSchemaSha256,proto3" json:"decision_schema_sha256,omitempty"`
-	ToolCatalogJson      []byte                 `protobuf:"bytes,14,opt,name=tool_catalog_json,json=toolCatalogJson,proto3" json:"tool_catalog_json,omitempty"`
-	ToolCatalogSha256    []byte                 `protobuf:"bytes,15,opt,name=tool_catalog_sha256,json=toolCatalogSha256,proto3" json:"tool_catalog_sha256,omitempty"`
-	SpecSha256           []byte                 `protobuf:"bytes,16,opt,name=spec_sha256,json=specSha256,proto3" json:"spec_sha256,omitempty"`
-	Objective            string                 `protobuf:"bytes,20,opt,name=objective,proto3" json:"objective,omitempty"`
-	ExecutorName         string                 `protobuf:"bytes,21,opt,name=executor_name,json=executorName,proto3" json:"executor_name,omitempty"`
-	ExecutorVersion      string                 `protobuf:"bytes,22,opt,name=executor_version,json=executorVersion,proto3" json:"executor_version,omitempty"`
-	ModelPolicy          string                 `protobuf:"bytes,23,opt,name=model_policy,json=modelPolicy,proto3" json:"model_policy,omitempty"`
-	PromptVersion        string                 `protobuf:"bytes,24,opt,name=prompt_version,json=promptVersion,proto3" json:"prompt_version,omitempty"`
-	Budget               *EpisodeBudget         `protobuf:"bytes,30,opt,name=budget,proto3" json:"budget,omitempty"`
-	Deadline             *timestamppb.Timestamp `protobuf:"bytes,31,opt,name=deadline,proto3" json:"deadline,omitempty"`
-	SupersessionKey      string                 `protobuf:"bytes,32,opt,name=supersession_key,json=supersessionKey,proto3" json:"supersession_key,omitempty"`
-	Traceparent          string                 `protobuf:"bytes,33,opt,name=traceparent,proto3" json:"traceparent,omitempty"`
-	Tracestate           string                 `protobuf:"bytes,34,opt,name=tracestate,proto3" json:"tracestate,omitempty"`
+	SnapshotJson         []byte `protobuf:"bytes,10,opt,name=snapshot_json,json=snapshotJson,proto3" json:"snapshot_json,omitempty"`
+	SnapshotSha256       []byte `protobuf:"bytes,11,opt,name=snapshot_sha256,json=snapshotSha256,proto3" json:"snapshot_sha256,omitempty"`
+	DecisionSchemaJson   []byte `protobuf:"bytes,12,opt,name=decision_schema_json,json=decisionSchemaJson,proto3" json:"decision_schema_json,omitempty"`
+	DecisionSchemaSha256 []byte `protobuf:"bytes,13,opt,name=decision_schema_sha256,json=decisionSchemaSha256,proto3" json:"decision_schema_sha256,omitempty"`
+	ToolCatalogJson      []byte `protobuf:"bytes,14,opt,name=tool_catalog_json,json=toolCatalogJson,proto3" json:"tool_catalog_json,omitempty"`
+	ToolCatalogSha256    []byte `protobuf:"bytes,15,opt,name=tool_catalog_sha256,json=toolCatalogSha256,proto3" json:"tool_catalog_sha256,omitempty"`
+	SpecSha256           []byte `protobuf:"bytes,16,opt,name=spec_sha256,json=specSha256,proto3" json:"spec_sha256,omitempty"`
+	// P0B/§5: the versioned diagnosis vocabulary the compiler binds. Canonical
+	// bytes plus a domain-separated digest the worker and runtime verify
+	// independently before a model call.
+	DiagnosisCatalogJson   []byte `protobuf:"bytes,17,opt,name=diagnosis_catalog_json,json=diagnosisCatalogJson,proto3" json:"diagnosis_catalog_json,omitempty"`
+	DiagnosisCatalogSha256 []byte `protobuf:"bytes,18,opt,name=diagnosis_catalog_sha256,json=diagnosisCatalogSha256,proto3" json:"diagnosis_catalog_sha256,omitempty"`
+	Objective              string `protobuf:"bytes,20,opt,name=objective,proto3" json:"objective,omitempty"`
+	ExecutorName           string `protobuf:"bytes,21,opt,name=executor_name,json=executorName,proto3" json:"executor_name,omitempty"`
+	ExecutorVersion        string `protobuf:"bytes,22,opt,name=executor_version,json=executorVersion,proto3" json:"executor_version,omitempty"`
+	ModelPolicy            string `protobuf:"bytes,23,opt,name=model_policy,json=modelPolicy,proto3" json:"model_policy,omitempty"`
+	PromptVersion          string `protobuf:"bytes,24,opt,name=prompt_version,json=promptVersion,proto3" json:"prompt_version,omitempty"`
+	// P0B/§2.2/§4.4: the prompt BODY, previously absent from the wire, so the
+	// worker can assemble the canonical frame instead of a version string alone.
+	Prompt          string                 `protobuf:"bytes,25,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	Budget          *EpisodeBudget         `protobuf:"bytes,30,opt,name=budget,proto3" json:"budget,omitempty"`
+	Deadline        *timestamppb.Timestamp `protobuf:"bytes,31,opt,name=deadline,proto3" json:"deadline,omitempty"`
+	SupersessionKey string                 `protobuf:"bytes,32,opt,name=supersession_key,json=supersessionKey,proto3" json:"supersession_key,omitempty"`
+	Traceparent     string                 `protobuf:"bytes,33,opt,name=traceparent,proto3" json:"traceparent,omitempty"`
+	Tracestate      string                 `protobuf:"bytes,34,opt,name=tracestate,proto3" json:"tracestate,omitempty"`
 	// The endpoint is normally a Unix domain socket. The token is opaque,
 	// short-lived, and must never be logged or persisted by the worker.
 	EvidenceToolsEndpoint string             `protobuf:"bytes,40,opt,name=evidence_tools_endpoint,json=evidenceToolsEndpoint,proto3" json:"evidence_tools_endpoint,omitempty"`
@@ -597,8 +654,23 @@ type EpisodeRequest struct {
 	PromptSha256          []byte             `protobuf:"bytes,59,opt,name=prompt_sha256,json=promptSha256,proto3" json:"prompt_sha256,omitempty"`
 	ObjectiveSha256       []byte             `protobuf:"bytes,60,opt,name=objective_sha256,json=objectiveSha256,proto3" json:"objective_sha256,omitempty"`
 	WatchConfidenceFloor  *float64           `protobuf:"fixed64,61,opt,name=watch_confidence_floor,json=watchConfidenceFloor,proto3,oneof" json:"watch_confidence_floor,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// P0B/§4.1/§8.2: the authority axis, durable and independent of executor_name.
+	// ACTIVE bears action authority; SHADOW is persisted and scored but the
+	// runtime independently prevents it from entering the governor.
+	DispatchPolicy DispatchPolicy `protobuf:"varint,62,opt,name=dispatch_policy,json=dispatchPolicy,proto3,enum=agenticstream.runtime.v1.DispatchPolicy" json:"dispatch_policy,omitempty"`
+	// P4/§B9-B10: the spec-bound INTENT catalog — the domain's action
+	// vocabulary with declared risks, parameter schemas, presets, and
+	// model-writable fields. Canonical bytes plus a domain-separated digest the
+	// worker and runtime verify independently before a model call.
+	IntentCatalogJson   []byte `protobuf:"bytes,63,opt,name=intent_catalog_json,json=intentCatalogJson,proto3" json:"intent_catalog_json,omitempty"`
+	IntentCatalogSha256 []byte `protobuf:"bytes,64,opt,name=intent_catalog_sha256,json=intentCatalogSha256,proto3" json:"intent_catalog_sha256,omitempty"`
+	// P5/§B6-B9: the ordered skill REFS the episode may render into the frame —
+	// [{name, tree_sha256}], digest-pinned. The worker resolves each skill's
+	// text ONLY from the operator-approved directory and requires the tree
+	// digest to match; a mismatch fails before any model call.
+	SkillRefsJson []byte `protobuf:"bytes,65,opt,name=skill_refs_json,json=skillRefsJson,proto3" json:"skill_refs_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EpisodeRequest) Reset() {
@@ -722,6 +794,20 @@ func (x *EpisodeRequest) GetSpecSha256() []byte {
 	return nil
 }
 
+func (x *EpisodeRequest) GetDiagnosisCatalogJson() []byte {
+	if x != nil {
+		return x.DiagnosisCatalogJson
+	}
+	return nil
+}
+
+func (x *EpisodeRequest) GetDiagnosisCatalogSha256() []byte {
+	if x != nil {
+		return x.DiagnosisCatalogSha256
+	}
+	return nil
+}
+
 func (x *EpisodeRequest) GetObjective() string {
 	if x != nil {
 		return x.Objective
@@ -753,6 +839,13 @@ func (x *EpisodeRequest) GetModelPolicy() string {
 func (x *EpisodeRequest) GetPromptVersion() string {
 	if x != nil {
 		return x.PromptVersion
+	}
+	return ""
+}
+
+func (x *EpisodeRequest) GetPrompt() string {
+	if x != nil {
+		return x.Prompt
 	}
 	return ""
 }
@@ -888,6 +981,34 @@ func (x *EpisodeRequest) GetWatchConfidenceFloor() float64 {
 		return *x.WatchConfidenceFloor
 	}
 	return 0
+}
+
+func (x *EpisodeRequest) GetDispatchPolicy() DispatchPolicy {
+	if x != nil {
+		return x.DispatchPolicy
+	}
+	return DispatchPolicy_DISPATCH_POLICY_UNSPECIFIED
+}
+
+func (x *EpisodeRequest) GetIntentCatalogJson() []byte {
+	if x != nil {
+		return x.IntentCatalogJson
+	}
+	return nil
+}
+
+func (x *EpisodeRequest) GetIntentCatalogSha256() []byte {
+	if x != nil {
+		return x.IntentCatalogSha256
+	}
+	return nil
+}
+
+func (x *EpisodeRequest) GetSkillRefsJson() []byte {
+	if x != nil {
+		return x.SkillRefsJson
+	}
+	return nil
 }
 
 type EvidenceTimeRange struct {
@@ -2753,7 +2874,7 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"\x0eworker_version\x18\x04 \x01(\tR\rworkerVersion\x12-\n" +
 	"\x12supported_features\x18\x05 \x03(\tR\x11supportedFeatures\x12*\n" +
 	"\x11max_request_bytes\x18\x06 \x01(\x04R\x0fmaxRequestBytes\x12&\n" +
-	"\x0fmax_event_bytes\x18\a \x01(\x04R\rmaxEventBytes\"\xc2\r\n" +
+	"\x0fmax_event_bytes\x18\a \x01(\x04R\rmaxEventBytes\"\xa9\x10\n" +
 	"\x0eEpisodeRequest\x12)\n" +
 	"\x10protocol_version\x18\x01 \x01(\tR\x0fprotocolVersion\x12\x1d\n" +
 	"\n" +
@@ -2771,12 +2892,15 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"\x11tool_catalog_json\x18\x0e \x01(\fR\x0ftoolCatalogJson\x12.\n" +
 	"\x13tool_catalog_sha256\x18\x0f \x01(\fR\x11toolCatalogSha256\x12\x1f\n" +
 	"\vspec_sha256\x18\x10 \x01(\fR\n" +
-	"specSha256\x12\x1c\n" +
+	"specSha256\x124\n" +
+	"\x16diagnosis_catalog_json\x18\x11 \x01(\fR\x14diagnosisCatalogJson\x128\n" +
+	"\x18diagnosis_catalog_sha256\x18\x12 \x01(\fR\x16diagnosisCatalogSha256\x12\x1c\n" +
 	"\tobjective\x18\x14 \x01(\tR\tobjective\x12#\n" +
 	"\rexecutor_name\x18\x15 \x01(\tR\fexecutorName\x12)\n" +
 	"\x10executor_version\x18\x16 \x01(\tR\x0fexecutorVersion\x12!\n" +
 	"\fmodel_policy\x18\x17 \x01(\tR\vmodelPolicy\x12%\n" +
-	"\x0eprompt_version\x18\x18 \x01(\tR\rpromptVersion\x12?\n" +
+	"\x0eprompt_version\x18\x18 \x01(\tR\rpromptVersion\x12\x16\n" +
+	"\x06prompt\x18\x19 \x01(\tR\x06prompt\x12?\n" +
 	"\x06budget\x18\x1e \x01(\v2'.agenticstream.runtime.v1.EpisodeBudgetR\x06budget\x126\n" +
 	"\bdeadline\x18\x1f \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline\x12)\n" +
 	"\x10supersession_key\x18  \x01(\tR\x0fsupersessionKey\x12 \n" +
@@ -2798,7 +2922,11 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"\x0freconsideration\x18: \x01(\v2).agenticstream.runtime.v1.ReconsiderationR\x0freconsideration\x12#\n" +
 	"\rprompt_sha256\x18; \x01(\fR\fpromptSha256\x12)\n" +
 	"\x10objective_sha256\x18< \x01(\fR\x0fobjectiveSha256\x129\n" +
-	"\x16watch_confidence_floor\x18= \x01(\x01H\x00R\x14watchConfidenceFloor\x88\x01\x01B\x19\n" +
+	"\x16watch_confidence_floor\x18= \x01(\x01H\x00R\x14watchConfidenceFloor\x88\x01\x01\x12Q\n" +
+	"\x0fdispatch_policy\x18> \x01(\x0e2(.agenticstream.runtime.v1.DispatchPolicyR\x0edispatchPolicy\x12.\n" +
+	"\x13intent_catalog_json\x18? \x01(\fR\x11intentCatalogJson\x122\n" +
+	"\x15intent_catalog_sha256\x18@ \x01(\fR\x13intentCatalogSha256\x12&\n" +
+	"\x0fskill_refs_json\x18A \x01(\fR\rskillRefsJsonB\x19\n" +
 	"\x17_watch_confidence_floor\"u\n" +
 	"\x11EvidenceTimeRange\x12.\n" +
 	"\x04from\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x120\n" +
@@ -2989,7 +3117,11 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"\x18EPISODE_LANE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11EPISODE_LANE_FAST\x10\x01\x12\x15\n" +
 	"\x11EPISODE_LANE_DEEP\x10\x02\x12\x16\n" +
-	"\x12EPISODE_LANE_BATCH\x10\x03*\x86\x01\n" +
+	"\x12EPISODE_LANE_BATCH\x10\x03*i\n" +
+	"\x0eDispatchPolicy\x12\x1f\n" +
+	"\x1bDISPATCH_POLICY_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16DISPATCH_POLICY_ACTIVE\x10\x01\x12\x1a\n" +
+	"\x16DISPATCH_POLICY_SHADOW\x10\x02*\x86\x01\n" +
 	"\tRiskClass\x12\x1a\n" +
 	"\x16RISK_CLASS_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rRISK_CLASS_R0\x10\x01\x12\x11\n" +
@@ -3033,89 +3165,91 @@ func file_runtime_v1_proto_rawDescGZIP() []byte {
 	return file_runtime_v1_proto_rawDescData
 }
 
-var file_runtime_v1_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
+var file_runtime_v1_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
 var file_runtime_v1_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_runtime_v1_proto_goTypes = []any{
 	(EpisodeKind)(0),              // 0: agenticstream.runtime.v1.EpisodeKind
 	(EpisodeLane)(0),              // 1: agenticstream.runtime.v1.EpisodeLane
-	(RiskClass)(0),                // 2: agenticstream.runtime.v1.RiskClass
-	(DeltaLane)(0),                // 3: agenticstream.runtime.v1.DeltaLane
-	(ToolState)(0),                // 4: agenticstream.runtime.v1.ToolState
-	(TerminalStatus)(0),           // 5: agenticstream.runtime.v1.TerminalStatus
-	(*HandshakeRequest)(nil),      // 6: agenticstream.runtime.v1.HandshakeRequest
-	(*HandshakeResponse)(nil),     // 7: agenticstream.runtime.v1.HandshakeResponse
-	(*EpisodeRequest)(nil),        // 8: agenticstream.runtime.v1.EpisodeRequest
-	(*EvidenceTimeRange)(nil),     // 9: agenticstream.runtime.v1.EvidenceTimeRange
-	(*Reconsideration)(nil),       // 10: agenticstream.runtime.v1.Reconsideration
-	(*EpisodeBudget)(nil),         // 11: agenticstream.runtime.v1.EpisodeBudget
-	(*EpisodeEvent)(nil),          // 12: agenticstream.runtime.v1.EpisodeEvent
-	(*EpisodeStarted)(nil),        // 13: agenticstream.runtime.v1.EpisodeStarted
-	(*ModelStarted)(nil),          // 14: agenticstream.runtime.v1.ModelStarted
-	(*ModelDelta)(nil),            // 15: agenticstream.runtime.v1.ModelDelta
-	(*ModelCompleted)(nil),        // 16: agenticstream.runtime.v1.ModelCompleted
-	(*ToolLifecycle)(nil),         // 17: agenticstream.runtime.v1.ToolLifecycle
-	(*ToolProgress)(nil),          // 18: agenticstream.runtime.v1.ToolProgress
-	(*Usage)(nil),                 // 19: agenticstream.runtime.v1.Usage
-	(*BudgetUpdated)(nil),         // 20: agenticstream.runtime.v1.BudgetUpdated
-	(*DecisionProposed)(nil),      // 21: agenticstream.runtime.v1.DecisionProposed
-	(*EpisodeCancelling)(nil),     // 22: agenticstream.runtime.v1.EpisodeCancelling
-	(*Diagnostic)(nil),            // 23: agenticstream.runtime.v1.Diagnostic
-	(*Terminal)(nil),              // 24: agenticstream.runtime.v1.Terminal
-	(*ArtifactManifest)(nil),      // 25: agenticstream.runtime.v1.ArtifactManifest
-	(*EvidenceToolCall)(nil),      // 26: agenticstream.runtime.v1.EvidenceToolCall
-	(*EvidenceToolResult)(nil),    // 27: agenticstream.runtime.v1.EvidenceToolResult
-	(*ArtifactRef)(nil),           // 28: agenticstream.runtime.v1.ArtifactRef
-	(*timestamppb.Timestamp)(nil), // 29: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),   // 30: google.protobuf.Duration
+	(DispatchPolicy)(0),           // 2: agenticstream.runtime.v1.DispatchPolicy
+	(RiskClass)(0),                // 3: agenticstream.runtime.v1.RiskClass
+	(DeltaLane)(0),                // 4: agenticstream.runtime.v1.DeltaLane
+	(ToolState)(0),                // 5: agenticstream.runtime.v1.ToolState
+	(TerminalStatus)(0),           // 6: agenticstream.runtime.v1.TerminalStatus
+	(*HandshakeRequest)(nil),      // 7: agenticstream.runtime.v1.HandshakeRequest
+	(*HandshakeResponse)(nil),     // 8: agenticstream.runtime.v1.HandshakeResponse
+	(*EpisodeRequest)(nil),        // 9: agenticstream.runtime.v1.EpisodeRequest
+	(*EvidenceTimeRange)(nil),     // 10: agenticstream.runtime.v1.EvidenceTimeRange
+	(*Reconsideration)(nil),       // 11: agenticstream.runtime.v1.Reconsideration
+	(*EpisodeBudget)(nil),         // 12: agenticstream.runtime.v1.EpisodeBudget
+	(*EpisodeEvent)(nil),          // 13: agenticstream.runtime.v1.EpisodeEvent
+	(*EpisodeStarted)(nil),        // 14: agenticstream.runtime.v1.EpisodeStarted
+	(*ModelStarted)(nil),          // 15: agenticstream.runtime.v1.ModelStarted
+	(*ModelDelta)(nil),            // 16: agenticstream.runtime.v1.ModelDelta
+	(*ModelCompleted)(nil),        // 17: agenticstream.runtime.v1.ModelCompleted
+	(*ToolLifecycle)(nil),         // 18: agenticstream.runtime.v1.ToolLifecycle
+	(*ToolProgress)(nil),          // 19: agenticstream.runtime.v1.ToolProgress
+	(*Usage)(nil),                 // 20: agenticstream.runtime.v1.Usage
+	(*BudgetUpdated)(nil),         // 21: agenticstream.runtime.v1.BudgetUpdated
+	(*DecisionProposed)(nil),      // 22: agenticstream.runtime.v1.DecisionProposed
+	(*EpisodeCancelling)(nil),     // 23: agenticstream.runtime.v1.EpisodeCancelling
+	(*Diagnostic)(nil),            // 24: agenticstream.runtime.v1.Diagnostic
+	(*Terminal)(nil),              // 25: agenticstream.runtime.v1.Terminal
+	(*ArtifactManifest)(nil),      // 26: agenticstream.runtime.v1.ArtifactManifest
+	(*EvidenceToolCall)(nil),      // 27: agenticstream.runtime.v1.EvidenceToolCall
+	(*EvidenceToolResult)(nil),    // 28: agenticstream.runtime.v1.EvidenceToolResult
+	(*ArtifactRef)(nil),           // 29: agenticstream.runtime.v1.ArtifactRef
+	(*timestamppb.Timestamp)(nil), // 30: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),   // 31: google.protobuf.Duration
 }
 var file_runtime_v1_proto_depIdxs = []int32{
 	0,  // 0: agenticstream.runtime.v1.HandshakeRequest.supports_kinds:type_name -> agenticstream.runtime.v1.EpisodeKind
-	11, // 1: agenticstream.runtime.v1.EpisodeRequest.budget:type_name -> agenticstream.runtime.v1.EpisodeBudget
-	29, // 2: agenticstream.runtime.v1.EpisodeRequest.deadline:type_name -> google.protobuf.Timestamp
+	12, // 1: agenticstream.runtime.v1.EpisodeRequest.budget:type_name -> agenticstream.runtime.v1.EpisodeBudget
+	30, // 2: agenticstream.runtime.v1.EpisodeRequest.deadline:type_name -> google.protobuf.Timestamp
 	0,  // 3: agenticstream.runtime.v1.EpisodeRequest.kind:type_name -> agenticstream.runtime.v1.EpisodeKind
 	1,  // 4: agenticstream.runtime.v1.EpisodeRequest.lane:type_name -> agenticstream.runtime.v1.EpisodeLane
-	2,  // 5: agenticstream.runtime.v1.EpisodeRequest.risk_ceiling:type_name -> agenticstream.runtime.v1.RiskClass
-	9,  // 6: agenticstream.runtime.v1.EpisodeRequest.evidence_time_range:type_name -> agenticstream.runtime.v1.EvidenceTimeRange
-	10, // 7: agenticstream.runtime.v1.EpisodeRequest.reconsideration:type_name -> agenticstream.runtime.v1.Reconsideration
-	29, // 8: agenticstream.runtime.v1.EvidenceTimeRange.from:type_name -> google.protobuf.Timestamp
-	29, // 9: agenticstream.runtime.v1.EvidenceTimeRange.until:type_name -> google.protobuf.Timestamp
-	30, // 10: agenticstream.runtime.v1.EpisodeBudget.wall_time:type_name -> google.protobuf.Duration
-	29, // 11: agenticstream.runtime.v1.EpisodeEvent.occurred_at:type_name -> google.protobuf.Timestamp
-	13, // 12: agenticstream.runtime.v1.EpisodeEvent.started:type_name -> agenticstream.runtime.v1.EpisodeStarted
-	14, // 13: agenticstream.runtime.v1.EpisodeEvent.model_started:type_name -> agenticstream.runtime.v1.ModelStarted
-	15, // 14: agenticstream.runtime.v1.EpisodeEvent.model_delta:type_name -> agenticstream.runtime.v1.ModelDelta
-	16, // 15: agenticstream.runtime.v1.EpisodeEvent.model_completed:type_name -> agenticstream.runtime.v1.ModelCompleted
-	17, // 16: agenticstream.runtime.v1.EpisodeEvent.tool:type_name -> agenticstream.runtime.v1.ToolLifecycle
-	18, // 17: agenticstream.runtime.v1.EpisodeEvent.tool_progress:type_name -> agenticstream.runtime.v1.ToolProgress
-	20, // 18: agenticstream.runtime.v1.EpisodeEvent.budget:type_name -> agenticstream.runtime.v1.BudgetUpdated
-	21, // 19: agenticstream.runtime.v1.EpisodeEvent.decision:type_name -> agenticstream.runtime.v1.DecisionProposed
-	23, // 20: agenticstream.runtime.v1.EpisodeEvent.diagnostic:type_name -> agenticstream.runtime.v1.Diagnostic
-	24, // 21: agenticstream.runtime.v1.EpisodeEvent.terminal:type_name -> agenticstream.runtime.v1.Terminal
-	22, // 22: agenticstream.runtime.v1.EpisodeEvent.cancelling:type_name -> agenticstream.runtime.v1.EpisodeCancelling
-	3,  // 23: agenticstream.runtime.v1.ModelDelta.lane:type_name -> agenticstream.runtime.v1.DeltaLane
-	19, // 24: agenticstream.runtime.v1.ModelCompleted.usage:type_name -> agenticstream.runtime.v1.Usage
-	4,  // 25: agenticstream.runtime.v1.ToolLifecycle.state:type_name -> agenticstream.runtime.v1.ToolState
-	11, // 26: agenticstream.runtime.v1.BudgetUpdated.remaining:type_name -> agenticstream.runtime.v1.EpisodeBudget
-	19, // 27: agenticstream.runtime.v1.BudgetUpdated.cumulative_usage:type_name -> agenticstream.runtime.v1.Usage
-	29, // 28: agenticstream.runtime.v1.EpisodeCancelling.deadline:type_name -> google.protobuf.Timestamp
-	5,  // 29: agenticstream.runtime.v1.Terminal.status:type_name -> agenticstream.runtime.v1.TerminalStatus
-	19, // 30: agenticstream.runtime.v1.Terminal.usage:type_name -> agenticstream.runtime.v1.Usage
-	25, // 31: agenticstream.runtime.v1.Terminal.artifact_manifest:type_name -> agenticstream.runtime.v1.ArtifactManifest
-	29, // 32: agenticstream.runtime.v1.EvidenceToolCall.deadline:type_name -> google.protobuf.Timestamp
-	29, // 33: agenticstream.runtime.v1.EvidenceToolCall.time_from:type_name -> google.protobuf.Timestamp
-	29, // 34: agenticstream.runtime.v1.EvidenceToolCall.time_until:type_name -> google.protobuf.Timestamp
-	28, // 35: agenticstream.runtime.v1.EvidenceToolResult.artifact:type_name -> agenticstream.runtime.v1.ArtifactRef
-	6,  // 36: agenticstream.runtime.v1.EpisodeWorker.Handshake:input_type -> agenticstream.runtime.v1.HandshakeRequest
-	8,  // 37: agenticstream.runtime.v1.EpisodeWorker.Execute:input_type -> agenticstream.runtime.v1.EpisodeRequest
-	26, // 38: agenticstream.runtime.v1.EvidenceTools.Call:input_type -> agenticstream.runtime.v1.EvidenceToolCall
-	7,  // 39: agenticstream.runtime.v1.EpisodeWorker.Handshake:output_type -> agenticstream.runtime.v1.HandshakeResponse
-	12, // 40: agenticstream.runtime.v1.EpisodeWorker.Execute:output_type -> agenticstream.runtime.v1.EpisodeEvent
-	27, // 41: agenticstream.runtime.v1.EvidenceTools.Call:output_type -> agenticstream.runtime.v1.EvidenceToolResult
-	39, // [39:42] is the sub-list for method output_type
-	36, // [36:39] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	3,  // 5: agenticstream.runtime.v1.EpisodeRequest.risk_ceiling:type_name -> agenticstream.runtime.v1.RiskClass
+	10, // 6: agenticstream.runtime.v1.EpisodeRequest.evidence_time_range:type_name -> agenticstream.runtime.v1.EvidenceTimeRange
+	11, // 7: agenticstream.runtime.v1.EpisodeRequest.reconsideration:type_name -> agenticstream.runtime.v1.Reconsideration
+	2,  // 8: agenticstream.runtime.v1.EpisodeRequest.dispatch_policy:type_name -> agenticstream.runtime.v1.DispatchPolicy
+	30, // 9: agenticstream.runtime.v1.EvidenceTimeRange.from:type_name -> google.protobuf.Timestamp
+	30, // 10: agenticstream.runtime.v1.EvidenceTimeRange.until:type_name -> google.protobuf.Timestamp
+	31, // 11: agenticstream.runtime.v1.EpisodeBudget.wall_time:type_name -> google.protobuf.Duration
+	30, // 12: agenticstream.runtime.v1.EpisodeEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	14, // 13: agenticstream.runtime.v1.EpisodeEvent.started:type_name -> agenticstream.runtime.v1.EpisodeStarted
+	15, // 14: agenticstream.runtime.v1.EpisodeEvent.model_started:type_name -> agenticstream.runtime.v1.ModelStarted
+	16, // 15: agenticstream.runtime.v1.EpisodeEvent.model_delta:type_name -> agenticstream.runtime.v1.ModelDelta
+	17, // 16: agenticstream.runtime.v1.EpisodeEvent.model_completed:type_name -> agenticstream.runtime.v1.ModelCompleted
+	18, // 17: agenticstream.runtime.v1.EpisodeEvent.tool:type_name -> agenticstream.runtime.v1.ToolLifecycle
+	19, // 18: agenticstream.runtime.v1.EpisodeEvent.tool_progress:type_name -> agenticstream.runtime.v1.ToolProgress
+	21, // 19: agenticstream.runtime.v1.EpisodeEvent.budget:type_name -> agenticstream.runtime.v1.BudgetUpdated
+	22, // 20: agenticstream.runtime.v1.EpisodeEvent.decision:type_name -> agenticstream.runtime.v1.DecisionProposed
+	24, // 21: agenticstream.runtime.v1.EpisodeEvent.diagnostic:type_name -> agenticstream.runtime.v1.Diagnostic
+	25, // 22: agenticstream.runtime.v1.EpisodeEvent.terminal:type_name -> agenticstream.runtime.v1.Terminal
+	23, // 23: agenticstream.runtime.v1.EpisodeEvent.cancelling:type_name -> agenticstream.runtime.v1.EpisodeCancelling
+	4,  // 24: agenticstream.runtime.v1.ModelDelta.lane:type_name -> agenticstream.runtime.v1.DeltaLane
+	20, // 25: agenticstream.runtime.v1.ModelCompleted.usage:type_name -> agenticstream.runtime.v1.Usage
+	5,  // 26: agenticstream.runtime.v1.ToolLifecycle.state:type_name -> agenticstream.runtime.v1.ToolState
+	12, // 27: agenticstream.runtime.v1.BudgetUpdated.remaining:type_name -> agenticstream.runtime.v1.EpisodeBudget
+	20, // 28: agenticstream.runtime.v1.BudgetUpdated.cumulative_usage:type_name -> agenticstream.runtime.v1.Usage
+	30, // 29: agenticstream.runtime.v1.EpisodeCancelling.deadline:type_name -> google.protobuf.Timestamp
+	6,  // 30: agenticstream.runtime.v1.Terminal.status:type_name -> agenticstream.runtime.v1.TerminalStatus
+	20, // 31: agenticstream.runtime.v1.Terminal.usage:type_name -> agenticstream.runtime.v1.Usage
+	26, // 32: agenticstream.runtime.v1.Terminal.artifact_manifest:type_name -> agenticstream.runtime.v1.ArtifactManifest
+	30, // 33: agenticstream.runtime.v1.EvidenceToolCall.deadline:type_name -> google.protobuf.Timestamp
+	30, // 34: agenticstream.runtime.v1.EvidenceToolCall.time_from:type_name -> google.protobuf.Timestamp
+	30, // 35: agenticstream.runtime.v1.EvidenceToolCall.time_until:type_name -> google.protobuf.Timestamp
+	29, // 36: agenticstream.runtime.v1.EvidenceToolResult.artifact:type_name -> agenticstream.runtime.v1.ArtifactRef
+	7,  // 37: agenticstream.runtime.v1.EpisodeWorker.Handshake:input_type -> agenticstream.runtime.v1.HandshakeRequest
+	9,  // 38: agenticstream.runtime.v1.EpisodeWorker.Execute:input_type -> agenticstream.runtime.v1.EpisodeRequest
+	27, // 39: agenticstream.runtime.v1.EvidenceTools.Call:input_type -> agenticstream.runtime.v1.EvidenceToolCall
+	8,  // 40: agenticstream.runtime.v1.EpisodeWorker.Handshake:output_type -> agenticstream.runtime.v1.HandshakeResponse
+	13, // 41: agenticstream.runtime.v1.EpisodeWorker.Execute:output_type -> agenticstream.runtime.v1.EpisodeEvent
+	28, // 42: agenticstream.runtime.v1.EvidenceTools.Call:output_type -> agenticstream.runtime.v1.EvidenceToolResult
+	40, // [40:43] is the sub-list for method output_type
+	37, // [37:40] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_runtime_v1_proto_init() }
@@ -3142,7 +3276,7 @@ func file_runtime_v1_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_v1_proto_rawDesc), len(file_runtime_v1_proto_rawDesc)),
-			NumEnums:      6,
+			NumEnums:      7,
 			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   2,

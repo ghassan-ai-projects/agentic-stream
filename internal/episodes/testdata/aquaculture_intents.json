@@ -1,0 +1,233 @@
+{
+  "action_schema": {
+    "additionalProperties": false,
+    "properties": {
+      "entity_id": {
+        "type": "string"
+      },
+      "hypothesis": {
+        "maxLength": 512,
+        "type": "string"
+      },
+      "situation_id": {
+        "type": "string"
+      },
+      "situation_version": {
+        "type": "integer"
+      }
+    },
+    "type": "object"
+  },
+  "compensation_schema": {
+    "additionalProperties": false,
+    "properties": {
+      "entity_id": {
+        "type": "string"
+      },
+      "hypothesis": {
+        "maxLength": 512,
+        "type": "string"
+      },
+      "note": {
+        "maxLength": 512,
+        "type": "string"
+      },
+      "priority": {
+        "maxLength": 16,
+        "type": "string"
+      },
+      "situation_id": {
+        "type": "string"
+      },
+      "situation_version": {
+        "type": "integer"
+      }
+    },
+    "type": "object"
+  },
+  "intents": [
+    {
+      "risk": "R0",
+      "type": "install_watch_condition"
+    },
+    {
+      "compensation": {
+        "downgrade": "downgrade_dispatch",
+        "withdraw": "withdraw_ticket"
+      },
+      "risk": "R1",
+      "type": "create_maintenance_ticket"
+    },
+    {
+      "compensation": {
+        "downgrade": "downgrade_dispatch",
+        "withdraw": "withdraw_ticket"
+      },
+      "risk": "R1",
+      "type": "schedule_maintenance"
+    },
+    {
+      "risk": "R1",
+      "type": "reduce_load"
+    },
+    {
+      "risk": "R1",
+      "type": "downgrade_dispatch"
+    },
+    {
+      "risk": "R1",
+      "type": "withdraw_ticket"
+    },
+    {
+      "compensation": {
+        "downgrade": "downgrade_intervention",
+        "withdraw": "withdraw_intervention"
+      },
+      "risk": "R1",
+      "type": "start_aerator"
+    },
+    {
+      "compensation": {
+        "downgrade": "downgrade_intervention",
+        "withdraw": "withdraw_intervention"
+      },
+      "risk": "R1",
+      "type": "halt_feeding"
+    },
+    {
+      "risk": "R1",
+      "type": "downgrade_intervention"
+    },
+    {
+      "risk": "R1",
+      "type": "withdraw_intervention"
+    },
+    {
+      "compensation": {
+        "downgrade": "downgrade_climate_action",
+        "withdraw": "withdraw_climate_action"
+      },
+      "risk": "R1",
+      "type": "run_vent_cycle"
+    },
+    {
+      "compensation": {
+        "downgrade": "downgrade_climate_action",
+        "withdraw": "withdraw_climate_action"
+      },
+      "risk": "R1",
+      "type": "dehumidify"
+    },
+    {
+      "risk": "R1",
+      "type": "downgrade_climate_action"
+    },
+    {
+      "risk": "R1",
+      "type": "withdraw_climate_action"
+    },
+    {
+      "risk": "R2",
+      "type": "recommend_operating_limit"
+    },
+    {
+      "compensation": {
+        "downgrade": "downgrade_dispatch",
+        "withdraw": "withdraw_ticket"
+      },
+      "risk": "R2",
+      "type": "dispatch_crew"
+    },
+    {
+      "compensation": {
+        "downgrade": "downgrade_intervention",
+        "withdraw": "withdraw_intervention"
+      },
+      "risk": "R2",
+      "type": "emergency_water_exchange"
+    },
+    {
+      "compensation": {
+        "downgrade": "downgrade_climate_action",
+        "withdraw": "withdraw_climate_action"
+      },
+      "risk": "R2",
+      "type": "deploy_shade_or_heat"
+    },
+    {
+      "compensation": {
+        "downgrade": "downgrade_climate_action",
+        "withdraw": "withdraw_climate_action"
+      },
+      "risk": "R2",
+      "type": "dose_co2"
+    },
+    {
+      "risk": "R3",
+      "type": "isolate_segment"
+    },
+    {
+      "compensation": {
+        "downgrade": "downgrade_product_transfer",
+        "withdraw": "cancel_product_transfer"
+      },
+      "risk": "R3",
+      "type": "cancel_product_transfer"
+    },
+    {
+      "compensation": {
+        "downgrade": "downgrade_product_transfer",
+        "withdraw": "cancel_product_transfer"
+      },
+      "risk": "R3",
+      "type": "downgrade_product_transfer"
+    }
+  ],
+  "policy": "automatic",
+  "rate_limit_per_hour": 60,
+  "watch_preset": {
+    "expression": "situation.condition_score \u003e= 0.8",
+    "max_fires": 3,
+    "metric": "condition_score",
+    "threshold": 0.8
+  },
+  "watch_schema": {
+    "additionalProperties": false,
+    "properties": {
+      "entity_id": {
+        "type": "string"
+      },
+      "expires_at": {
+        "type": "string"
+      },
+      "expression": {
+        "type": [
+          "string",
+          "number"
+        ]
+      },
+      "max_fires": {
+        "type": "integer"
+      },
+      "metric": {
+        "type": [
+          "string",
+          "number"
+        ]
+      },
+      "situation_id": {
+        "type": "string"
+      },
+      "situation_version": {
+        "type": "integer"
+      },
+      "target": {
+        "type": "string"
+      },
+      "threshold": {
+        "type": "number"
+      }
+    },
+    "type": "object"
+  }
+}

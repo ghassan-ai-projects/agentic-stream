@@ -60,7 +60,13 @@ func TestValidateCompensatingIntentTypes(t *testing.T) {
 			intent := document["intents"].([]any)[0].(map[string]any)
 			intent["type"] = test.intentType
 			intent["risk_class"] = "R1"
-			intent["compensates"] = "cmd-original"
+			if !test.useSpecAllowlist {
+				// Without compensates this is a plain proposal: the episode
+				// allowlist gates it (P4 keeps the per-episode subset).
+				delete(intent, "compensates")
+			} else {
+				intent["compensates"] = "cmd-original"
+			}
 			refreshIntentDigest(document)
 
 			raw, err := canonicaljson.Marshal(document)
@@ -75,6 +81,7 @@ func TestValidateCompensatingIntentTypes(t *testing.T) {
 			if test.useSpecAllowlist {
 				input.AllowedIntentTypes = specAllowed
 			}
+			input.Kind = "reconsider"
 
 			result, err := Validate(raw, digest, input)
 			if test.wantErr != "" {
@@ -98,12 +105,18 @@ func TestValidateRejectsSecurityAndBindingFailures(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(map[string]any)
+		input  *Input
 		raw    []byte
 		want   string
 	}{
 		{name: "snapshot mismatch", mutate: func(doc map[string]any) { doc["snapshot_digest"] = "sha256:" + ones(64) }, want: "snapshot_mismatch"},
 		{name: "intent type", mutate: func(doc map[string]any) { doc["intents"].([]any)[0].(map[string]any)["type"] = "delete_everything" }, want: "intent_type_not_allowed"},
-		{name: "risk ceiling", mutate: func(doc map[string]any) { doc["intents"].([]any)[0].(map[string]any)["risk_class"] = "R3" }, want: "risk_ceiling_exceeded"},
+		{name: "risk label attack", mutate: func(doc map[string]any) { doc["intents"].([]any)[0].(map[string]any)["risk_class"] = "R0" }, want: "risk_label_mismatch"},
+		{name: "risk ceiling", mutate: func(doc map[string]any) {
+			intent := doc["intents"].([]any)[0].(map[string]any)
+			intent["type"] = "schedule_crew"
+			intent["risk_class"] = "R2"
+		}, input: func() *Input { i := inputWithAllowlist("create_ticket", "schedule_crew"); return &i }(), want: "risk_ceiling_exceeded"},
 		{name: "expired intent", mutate: func(doc map[string]any) {
 			doc["intents"].([]any)[0].(map[string]any)["expires_at"] = "2026-08-12T09:00:00.000000000Z"
 		}, want: "expired"},
@@ -126,7 +139,11 @@ func TestValidateRejectsSecurityAndBindingFailures(t *testing.T) {
 			if err != nil {
 				t.Fatalf("digest mutated decision: %v", err)
 			}
-			_, err = Validate(raw, digest, validInput())
+			input := validInput()
+			if test.input != nil {
+				input = *test.input
+			}
+			_, err = Validate(raw, digest, input)
 			var validationErr *ValidationError
 			ok := errors.As(err, &validationErr)
 			if !ok || validationErr.Reason != test.want {
@@ -160,8 +177,92 @@ func TestValidateRejectsSecurityAndBindingFailures(t *testing.T) {
 	})
 }
 
+func TestValidateRejectsPresetSchemaAndEvidenceAttacks(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(map[string]any)
+		want   string
+	}{
+		{name: "preset field tampered",
+			mutate: func(doc map[string]any) {
+				doc["intents"].([]any)[0].(map[string]any)["parameters"] = map[string]any{"priority": "urgent"}
+			}, want: "preset_mismatch"},
+		{name: "schema-violating parameter",
+			mutate: func(doc map[string]any) {
+				doc["intents"].([]any)[0].(map[string]any)["parameters"] = map[string]any{"priority": 42}
+			}, want: "parameter_schema_violation"},
+		{name: "ungrounded evidence",
+			mutate: func(doc map[string]any) {
+				doc["intents"].([]any)[0].(map[string]any)["evidence_ids"] = []any{"fact:forged"}
+			}, want: "ungrounded_evidence"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			document := validDecision()
+			document["facts_used"] = []any{map[string]any{"evidence": "fact:dissolved_oxygen"}}
+			test.mutate(document)
+			refreshIntentDigest(document)
+			raw, err := canonicaljson.Marshal(document)
+			if err != nil {
+				t.Fatalf("marshal mutated decision: %v", err)
+			}
+			digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
+			if err != nil {
+				t.Fatalf("digest mutated decision: %v", err)
+			}
+			_, err = Validate(raw, digest, validInput())
+			var validationErr *ValidationError
+			if !errors.As(err, &validationErr) || validationErr.Reason != test.want {
+				t.Fatalf("error = %v, want reason %s", err, test.want)
+			}
+		})
+	}
+}
+
+func TestValidateRequiresTheCompiledCatalog(t *testing.T) {
+	document := validDecision()
+	raw, err := canonicaljson.Marshal(document)
+	if err != nil {
+		t.Fatalf("marshal decision: %v", err)
+	}
+	digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
+	if err != nil {
+		t.Fatalf("digest decision: %v", err)
+	}
+	input := validInput()
+	input.IntentCatalog = nil
+	_, err = Validate(raw, digest, input)
+	var validationErr *ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Reason != "catalog_missing" {
+		t.Fatalf("error = %v, want catalog_missing", err)
+	}
+}
+
+func TestCompileIntentCatalogFailsClosed(t *testing.T) {
+	if _, err := CompileIntentCatalog(nil); err == nil {
+		t.Fatal("an empty catalog must fail compilation")
+	}
+	if _, err := CompileIntentCatalog([]map[string]any{}); err == nil {
+		t.Fatal("an empty catalog must fail compilation")
+	}
+	duplicate := testCatalog()
+	duplicate = append(duplicate, testCatalog()[0])
+	if _, err := CompileIntentCatalog(duplicate); err == nil {
+		t.Fatal("duplicate types must fail compilation")
+	}
+	badRisk := []map[string]any{{"type": "x", "risk_class": "R9",
+		"parameter_schema": map[string]any{"type": "object"}}}
+	if _, err := CompileIntentCatalog(badRisk); err == nil {
+		t.Fatal("an invalid risk class must fail compilation")
+	}
+	noSchema := []map[string]any{{"type": "x", "risk_class": "R1"}}
+	if _, err := CompileIntentCatalog(noSchema); err == nil {
+		t.Fatal("a missing parameter schema must fail compilation")
+	}
+}
+
 func validInput() Input {
-	return Input{
+	input := Input{
 		EpisodeID:          "epi-1",
 		AttemptID:          "att-1",
 		Fence:              1,
@@ -173,6 +274,56 @@ func validInput() Input {
 		RiskCeiling:        "R1",
 		Now:                time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC),
 	}
+	catalog, err := CompileIntentCatalog(testCatalog())
+	if err != nil {
+		panic(err)
+	}
+	input.IntentCatalog = catalog
+	return input
+}
+
+// testCatalog declares the types the fixtures use: create_ticket (R1, preset-
+// authored priority — NOT model-writable, so a tampered value is a preset
+// mismatch), schedule_crew (R2, above an R1 ceiling), and the compensation
+// types downgrade/withdraw (R1, catalog members per G5).
+func testCatalog() []map[string]any {
+	prioritySchema := map[string]any{
+		"type": "object", "additionalProperties": false,
+		"properties": map[string]any{"priority": map[string]any{"type": "string"}},
+	}
+	entries := []map[string]any{
+		{
+			"type": "create_ticket", "risk_class": "R1",
+			"parameter_schema": prioritySchema,
+			"presets":          map[string]any{"default": map[string]any{"priority": "routine"}},
+		},
+		{
+			"type": "schedule_crew", "risk_class": "R2",
+			"parameter_schema": prioritySchema,
+			"model_writable_fields": []any{"priority"},
+		},
+		{
+			"type": "downgrade_maintenance_ticket", "risk_class": "R1",
+			"parameter_schema": prioritySchema,
+			"model_writable_fields": []any{"priority"},
+		},
+		{
+			"type": "withdraw_maintenance_ticket", "risk_class": "R1",
+			"parameter_schema": prioritySchema,
+			"model_writable_fields": []any{"priority"},
+		},
+	}
+	return entries
+}
+
+func inputWithAllowlist(types ...string) Input {
+	input := validInput()
+	allowed := make(map[string]struct{}, len(types))
+	for _, intentType := range types {
+		allowed[intentType] = struct{}{}
+	}
+	input.AllowedIntentTypes = allowed
+	return input
 }
 
 func validDecision() map[string]any {

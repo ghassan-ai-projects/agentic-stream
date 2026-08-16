@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 func TestEpisodeKind(t *testing.T) {
@@ -297,13 +298,20 @@ func TestWorkerExecutorIssuesFreshScopedCapabilityPerDispatch(t *testing.T) {
 func validWorkerRequest() *Request {
 	promptDigest, _ := canonicaljson.Digest(canonicaljson.DomainPrompt, map[string]any{"version": "prompt-v1"})
 	objectiveDigest, _ := canonicaljson.Digest(canonicaljson.DomainObjective, map[string]any{"text": "diagnose"})
+	intentCatalog, intentDigest, err := CompileIntentCatalog([]spec.Intent{
+		{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
+	})
+	if err != nil {
+		panic(err)
+	}
+	intentCatalogJSON, _ := json.Marshal(intentCatalog)
 	return &Request{
 		EpisodeID: "episode-1", TenantID: "tenant-1", SituationID: "situation-1", SituationVersion: 1, EntityID: "motor-1",
 		ExecutorName: "worker", ExecutorVersion: "sha256:" + "00" + "00000000000000000000000000000000000000000000000000000000000000",
 		PromptVersion: "prompt-v1", SnapshotSHA256: "sha256:" + "00" + "00000000000000000000000000000000000000000000000000000000000000",
 		AttemptID: "attempt-1", Fence: 7, Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
 		PromptSHA256: promptDigest, ObjectiveSHA256: objectiveDigest,
-		RequestJSON: []byte(fmt.Sprintf(`{"kind":"diagnose","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","prompt_sha256":%q,"objective_sha256":%q,"decision_schema":{"type":"object"}}}`, promptDigest, objectiveDigest)),
+		RequestJSON: []byte(fmt.Sprintf(`{"kind":"diagnose","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","prompt_sha256":%q,"objective_sha256":%q,"decision_schema":{"type":"object"},"intent_catalog":%s,"intent_catalog_sha256":%q}}`, promptDigest, objectiveDigest, string(intentCatalogJSON), intentDigest)),
 	}
 }
 

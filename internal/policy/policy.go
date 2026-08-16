@@ -34,6 +34,13 @@ type Result struct {
 	ApprovalID string
 }
 
+// WithReason returns a copy with Reason set (used by the calibrated-automation
+// branch).
+func (r Result) WithReason(reason string) Result {
+	r.Reason = reason
+	return r
+}
+
 // ApprovalAssertion is the signed, single-use approval binding. The runtime
 // reconstructs the canonical bytes from durable rows before verifying it.
 type ApprovalAssertion struct {
@@ -85,6 +92,29 @@ type Gateway struct {
 	owner         *storage.RuntimeOwner
 	ownerEpoch    string
 	interlock     interlock.Reader
+	// P8: the calibration store. When set, automatic consequential intents
+	// (R2+) are refused until an exact calibration artifact exists for the
+	// domain — missing or mismatched = watch-only.
+	calibration *storage.CalibrationStore
+	// P8: the epoch-control reader. When set, EvaluateIntent refuses every
+	// decision whose episode was admitted under a KILLED policy epoch —
+	// independently of the worker, at the governance boundary.
+	epochControl *storage.EpochControl
+}
+
+// WithCalibration enables the P8 calibration gate for automatic consequential
+// intents.
+func (g *Gateway) WithCalibration(store *storage.CalibrationStore) *Gateway {
+	g.calibration = store
+	return g
+}
+
+// WithEpochControl enables the P8 kill gate at the governance boundary: a
+// decision whose episode was admitted under a killed epoch is refused even if
+// the worker produced it mid-execution after the kill.
+func (g *Gateway) WithEpochControl(control *storage.EpochControl) *Gateway {
+	g.epochControl = control
+	return g
 }
 
 // NewGateway creates a deterministic policy gateway.
@@ -129,6 +159,8 @@ type intentRow struct {
 	RiskClass           string
 	IntentJSON          []byte
 	IntentSHA           []byte
+	RateLimitPerHour    int
+	RequiresApproval    int
 	ExpiresAt           string
 	PolicyStatus        string
 	ValidationStatus    string
@@ -139,6 +171,12 @@ type intentRow struct {
 	EpisodeLifecycle    string
 	CurrentSituation    int
 	CurrentCompleteness string
+	// P8: the calibration inputs — the episode's model revision (the
+	// compiled-spec digest) and the situation's domain type.
+	ExecutorVersion string
+	SituationType   string
+	// P8: the episode's recorded policy epoch — the kill gate keys on it.
+	PolicyEpoch string
 }
 
 // EvaluateIntent runs the full v1 policy order and atomically creates either
@@ -151,6 +189,16 @@ func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID strin
 	row, err := g.loadIntent(ctx, tx, intentID)
 	if err != nil {
 		return Result{IntentID: intentID}, err
+	}
+	// P8 (kill, governance boundary): a decision whose episode was admitted
+	// under a KILLED policy epoch is refused even if the worker produced it
+	// mid-execution after the kill — independently of the worker, so a hostile
+	// worker cannot slip a decision into governance.
+	if g.epochControl != nil && row.PolicyEpoch != "" {
+		if err := g.epochControl.AssertDecision(ctx, row.PolicyEpoch); err != nil {
+			return g.finish(ctx, tx, row, Result{IntentID: row.IntentID, DecisionID: row.DecisionID},
+				"denied", "epoch_killed", now)
+		}
 	}
 	result := Result{IntentID: row.IntentID, DecisionID: row.DecisionID}
 	if row.PolicyStatus != "pending" {
@@ -249,10 +297,31 @@ func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID strin
 		return g.finish(ctx, tx, row, result, "expired", "intent_expired", now)
 	}
 
+	// P4: the catalog's declared policy is enforced — an intent the catalog
+	// marks requires_approval goes through the approval pipeline regardless of
+	// risk class (the digest-bound authority, never the risk label).
+	if row.RequiresApproval != 0 && row.RiskClass != "R2" {
+		return g.requireApproval(ctx, tx, row, intentDocument, result, expiresAt, now)
+	}
+
 	switch row.RiskClass {
 	case "R0", "R1":
 		return g.approveAutomatic(ctx, tx, row, intentDocument, result, now)
 	case "R2":
+		// P8 (calibration-gated automation): an automatic consequential
+		// intent is refused until an exact calibration artifact exists for the
+		// domain — the episode's model revision (the compiled-spec digest,
+		// which binds prompt + diagnosis catalog + policy) registered against
+		// the domain. Missing or mismatched falls through to the
+		// human-approval path (watch-only), never to silent automation.
+		if g.calibration != nil && row.SituationType != "" && row.ExecutorVersion != "" {
+			if err := g.calibration.AssertCalibration(ctx, tx, storage.CalibrationArtifact{
+				Domain:        row.SituationType,
+				ModelRevision: row.ExecutorVersion,
+			}); err == nil {
+				return g.approveAutomatic(ctx, tx, row, intentDocument, result.WithReason("calibrated_automation"), now)
+			}
+		}
 		var approvedApproval string
 		if err := tx.QueryRowContext(ctx, "SELECT approval_id FROM approvals WHERE intent_id = ? AND status = 'approved' ORDER BY decided_at DESC LIMIT 1", row.IntentID).Scan(&approvedApproval); err == nil {
 			result.ApprovalID = approvedApproval
@@ -406,11 +475,11 @@ func (g *Gateway) loadIntent(ctx context.Context, tx *sql.Tx, intentID string) (
 	err := tx.QueryRowContext(ctx, `
 		SELECT i.intent_id, i.decision_id, i.tenant_id, i.situation_id,
 		       i.situation_version, i.intent_type, i.risk_class, i.intent_json,
-		       i.intent_sha256, i.expires_at, i.policy_status,
+		       i.intent_sha256, i.expires_at, i.policy_status, i.rate_limit_per_hour, i.requires_approval,
 			       d.validation_status, d.raw_json, d.decision_sha256,
 			       d.situation_id, d.situation_version, d.traceparent, d.tracestate,
 			       e.episode_id, e.tenant_id, e.situation_id, e.situation_version,
-		       e.lifecycle_status, s.tenant_id, s.current_version,
+		       e.lifecycle_status, e.executor_version, e.policy_epoch, s.tenant_id, s.current_version, s.situation_type,
 		       COALESCE((SELECT sv.completeness FROM situation_versions sv WHERE sv.situation_id = s.situation_id AND sv.version = s.current_version), '')
 		FROM intents i
 		JOIN decisions d ON d.decision_id = i.decision_id
@@ -420,11 +489,11 @@ func (g *Gateway) loadIntent(ctx context.Context, tx *sql.Tx, intentID string) (
 	).Scan(
 		&row.IntentID, &row.DecisionID, &row.TenantID, &row.SituationID,
 		&row.SituationVersion, &row.IntentType, &row.RiskClass, &row.IntentJSON,
-		&row.IntentSHA, &row.ExpiresAt, &row.PolicyStatus,
+		&row.IntentSHA, &row.ExpiresAt, &row.PolicyStatus, &row.RateLimitPerHour, &row.RequiresApproval,
 		&row.ValidationStatus, &row.DecisionJSON, &row.DecisionSHA,
 		&row.DecisionSituation, &row.DecisionVersion, &traceparent, &tracestate,
 		&row.EpisodeID, &row.EpisodeTenant, &row.EpisodeSituation, &row.EpisodeVersion,
-		&row.EpisodeLifecycle, &row.SituationTenant, &row.CurrentSituation, &row.CurrentCompleteness,
+		&row.EpisodeLifecycle, &row.ExecutorVersion, &row.PolicyEpoch, &row.SituationTenant, &row.CurrentSituation, &row.SituationType, &row.CurrentCompleteness,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return row, fmt.Errorf("intent %s not found", intentID)
@@ -464,6 +533,7 @@ func (g *Gateway) approveAutomatic(ctx context.Context, tx *sql.Tx, row intentRo
 		"normalized_target": target,
 		"idempotency_key":   "sha256:" + hex.EncodeToString(idempotency[:]),
 		"status":            "prepared",
+
 		"payload":           intentDocument["parameters"],
 		"created_at":        formatTime(now),
 	}
@@ -479,6 +549,19 @@ func (g *Gateway) approveAutomatic(ctx context.Context, tx *sql.Tx, row intentRo
 	if err != nil {
 		return result, fmt.Errorf("decode command digest: %w", err)
 	}
+	// P4: the catalog's per-intent hourly rate limit is enforced ATOMICALLY —
+	// the counter increment and its limit check happen before the command is
+	// created; an over-limit dispatch is denied (the whole transaction rolls
+	// back, so no partial command).
+	if row.RateLimitPerHour > 0 {
+		overLimit, err := g.dispatchWithinLimit(ctx, tx, row, now)
+		if err != nil {
+			return result, err
+		}
+		if overLimit {
+			return g.finish(ctx, tx, row, result, "denied", "rate_limited", now)
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO commands (
 			command_id, intent_id, tenant_id, effector_route, normalized_target,
@@ -490,6 +573,7 @@ func (g *Gateway) approveAutomatic(ctx context.Context, tx *sql.Tx, row intentRo
 	); err != nil {
 		return result, fmt.Errorf("insert command: %w", err)
 	}
+
 	if err := tx.QueryRowContext(ctx, "SELECT command_id FROM commands WHERE intent_id = ?", row.IntentID).Scan(&commandID); err != nil {
 		return result, fmt.Errorf("read command identity: %w", err)
 	}
@@ -712,6 +796,27 @@ func documentInt(document map[string]any, key string) int {
 
 func formatTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339Nano)
+}
+
+// dispatchWithinLimit atomically increments the tenant's hourly dispatch
+// counter for this intent type and reports whether the catalog-declared limit
+// is exceeded. The increment happens in the same transaction as the command
+// creation, so concurrent dispatches serialize on the counter row — a second
+// concurrent dispatch of an already-limit-bound type is denied, never
+// double-counted.
+func (g *Gateway) dispatchWithinLimit(ctx context.Context, tx *sql.Tx, row intentRow, now time.Time) (bool, error) {
+	bucket := now.UTC().Format("2006-01-02T15:00")
+	var count int
+	if err := tx.QueryRowContext(ctx, `
+		INSERT INTO intent_dispatch_counts (tenant_id, intent_type, bucket, count)
+		VALUES (?, ?, ?, 1)
+		ON CONFLICT(tenant_id, intent_type, bucket) DO UPDATE SET count = count + 1
+		RETURNING count`,
+		row.TenantID, row.IntentType, bucket,
+	).Scan(&count); err != nil {
+		return false, fmt.Errorf("increment intent dispatch counter: %w", err)
+	}
+	return count > row.RateLimitPerHour, nil
 }
 
 func nullableID(value string) any {

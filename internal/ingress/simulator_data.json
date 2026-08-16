@@ -1,0 +1,26 @@
+{
+  "channel_fields": {
+    "vibration": "rms_mm_s",
+    "temperature": "celsius",
+    "current": "amps",
+    "dissolved_oxygen": "mg_l",
+    "ammonia": "mg_l",
+    "water_temperature": "celsius",
+    "ph": "ph",
+    "aerator_current": "ampere",
+    "feeding_event": "load",
+    "discharge_pressure": "kpa",
+    "flow_rate": "l_s",
+    "tank_level": "percent",
+    "turbidity": "ntu",
+    "demand_event": "magnitude",
+    "humidity": "percent",
+    "leaf_wetness": "percent",
+    "vent_position": "percent",
+    "air_temp": "celsius",
+    "co2": "umol_mol",
+    "par_light": "value",
+    "vent_event": "magnitude",
+    "heartbeat": ""
+  }
+}
