@@ -593,7 +593,10 @@ func (r *Runner) recordShadow(ctx context.Context, tx *sql.Tx, decisionID string
 		SituationVersion: req.SituationVersion,
 		PolicyEpoch:      req.PolicyEpoch,
 	}
-	return r.shadowStore.Record(ctx, tx, shadow, now)
+	if err := r.shadowStore.Record(ctx, tx, shadow, now); err != nil {
+		return fmt.Errorf("record shadow decision: %w", err)
+	}
+	return nil
 }
 
 func decisionIDFromJSON(raw []byte) string {

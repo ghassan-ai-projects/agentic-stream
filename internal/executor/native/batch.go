@@ -64,5 +64,9 @@ func RunBatchJSON(ctx context.Context, executor episodes.Executor, requests []*e
 	if err != nil {
 		return nil, err
 	}
-	return json.MarshalIndent(results, "", "  ")
+	encoded, err := json.MarshalIndent(results, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal batch report: %w", err)
+	}
+	return encoded, nil
 }

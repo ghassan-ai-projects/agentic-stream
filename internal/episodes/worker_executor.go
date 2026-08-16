@@ -592,7 +592,7 @@ func marshalIntentCatalog(entries []map[string]any) ([]byte, error) {
 	}
 	encoded, err := json.Marshal(entries)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal intent catalog: %w", err)
 	}
 	return encoded, nil
 }

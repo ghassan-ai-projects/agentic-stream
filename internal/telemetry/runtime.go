@@ -147,13 +147,22 @@ func (r *Runtime) Snapshot() map[string]uint64 {
 	}
 }
 
+// latencyNanos converts a recorded duration to uint64 nanoseconds, clamping
+// negative values to zero so an anomalous clock cannot wrap the metric.
+func latencyNanos(d time.Duration) uint64 {
+	if d < 0 {
+		return 0
+	}
+	return uint64(d)
+}
+
 // LatencySnapshot returns the p50/p95/p99 dispatch→decision latencies in
 // nanoseconds (0 when no durations were recorded yet).
 func (r *Runtime) LatencySnapshot() map[string]uint64 {
 	return map[string]uint64{
-		"agentic_stream_dispatch_decision_p50_ns": uint64(r.Percentile(50)),
-		"agentic_stream_dispatch_decision_p95_ns": uint64(r.Percentile(95)),
-		"agentic_stream_dispatch_decision_p99_ns": uint64(r.Percentile(99)),
+		"agentic_stream_dispatch_decision_p50_ns": latencyNanos(r.Percentile(50)),
+		"agentic_stream_dispatch_decision_p95_ns": latencyNanos(r.Percentile(95)),
+		"agentic_stream_dispatch_decision_p99_ns": latencyNanos(r.Percentile(99)),
 	}
 }
 

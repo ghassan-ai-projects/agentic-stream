@@ -63,7 +63,7 @@ func TestExecutorSelectionSkipsNativeOnTamoz(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	// The gRPC dial is lazy, so the constructor succeeds without a live
 	// worker — the adversarial assertion is that the native executor was
 	// never constructed and the route holds the worker executor.
@@ -102,7 +102,7 @@ func TestNativeModeConstructsTheNativeExecutor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	_, err = NewWorkerRuntime(ctx, WorkerRuntimeConfig{DB: db})
 	if err == nil {
 		t.Fatal("expected the probed native constructor error")

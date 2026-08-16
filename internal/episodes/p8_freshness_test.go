@@ -254,10 +254,14 @@ func (slowExecutor) Name() string { return "slow" }
 
 func (slowExecutor) Execute(ctx context.Context, req *episodes.Request) (*episodes.Outcome, error) {
 	time.Sleep(50 * time.Millisecond)
-	return episodes.NewFakeExecutor().Execute(ctx, req)
+	outcome, err := episodes.NewFakeExecutor().Execute(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("slow executor: %w", err)
+	}
+	return outcome, nil
 }
 
-// p8BlockingExecutor blocks until its context is cancelled (mirrors the
+// p8BlockingExecutor blocks until its context is canceled (mirrors the
 // package-internal blockingExecutor; this file is in the external test
 // package).
 type p8BlockingExecutor struct{ started chan<- struct{} }
@@ -273,7 +277,7 @@ func (e p8BlockingExecutor) Name() string { return "p8-blocking" }
 // The hostile-worker scenario (exit gate 2): an episode is IN FLIGHT when the
 // epoch is killed. Kill supersedes the episode; the runner's supersession
 // watcher cancels the provider call; the in-flight outcome is refused and the
-// attempt is cancelled. A worker that keeps producing after the kill cannot
+// attempt is canceled. A worker that keeps producing after the kill cannot
 // slip a decision into governance.
 func TestP8KillCancelsInFlightAndRefusesItsDecision(t *testing.T) {
 	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "kill-inflight.db"))
@@ -301,7 +305,7 @@ func TestP8KillCancelsInFlightAndRefusesItsDecision(t *testing.T) {
 		t.Fatal("executor did not start")
 	}
 	// Kill mid-flight: the episode is superseded, the provider call is
-	// cancelled, and the in-flight decision never lands.
+	// canceled, and the in-flight decision never lands.
 	if err := control.Kill(context.Background(), "epoch-hostile"); err != nil {
 		t.Fatal(err)
 	}
@@ -318,8 +322,8 @@ func TestP8KillCancelsInFlightAndRefusesItsDecision(t *testing.T) {
 		"SELECT status FROM episode_attempts WHERE episode_id = 'epi-hostile'").Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if status != "cancelled" {
-		t.Fatalf("in-flight attempt status = %q, want cancelled", status)
+	if status != string(episodes.AttemptCancelled) {
+		t.Fatalf("in-flight attempt status = %q, want %q", status, episodes.AttemptCancelled)
 	}
 	var decisions int
 	if err := db.QueryRowContext(context.Background(),
