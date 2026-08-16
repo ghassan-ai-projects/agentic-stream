@@ -33,6 +33,20 @@ func TestP8LatencyPercentilesAndStaleRejectionsAreMeasured(t *testing.T) {
 		t.Fatalf("stale rejection counter = %d, want 2",
 			r.Snapshot()["agentic_stream_stale_rejections_total"])
 	}
+	// ISSUE-061: recovered stale episodes are counted separately from true
+	// losses, so a dense trace's dispatch churn is visible in /metrics.
+	r.ObserveStaleRebind()
+	if r.Snapshot()["agentic_stream_stale_rebinds_total"] != 1 {
+		t.Fatalf("stale re-bind counter = %d, want 1",
+			r.Snapshot()["agentic_stream_stale_rebinds_total"])
+	}
+	// ISSUE-061: a re-bind that failed on an invalid live snapshot (corruption)
+	// is counted under its own counter, distinct from benign stale rejections.
+	r.ObserveRebindFailure()
+	if r.Snapshot()["agentic_stream_rebind_failures_total"] != 1 {
+		t.Fatalf("re-bind failure counter = %d, want 1",
+			r.Snapshot()["agentic_stream_rebind_failures_total"])
+	}
 }
 
 func TestP8LatencySnapshotAppearsInHandlerPayload(t *testing.T) {
@@ -46,5 +60,11 @@ func TestP8LatencySnapshotAppearsInHandlerPayload(t *testing.T) {
 	}
 	if !strings.Contains(body, "agentic_stream_stale_rejections_total") {
 		t.Fatalf("stale-rejection counter must appear in the metrics payload:\n%s", body)
+	}
+	if !strings.Contains(body, "agentic_stream_stale_rebinds_total") {
+		t.Fatalf("stale re-bind counter must appear in the metrics payload:\n%s", body)
+	}
+	if !strings.Contains(body, "agentic_stream_rebind_failures_total") {
+		t.Fatalf("re-bind failure counter must appear in the metrics payload:\n%s", body)
 	}
 }

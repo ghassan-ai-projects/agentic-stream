@@ -32,6 +32,15 @@ type Runtime struct {
 	// dispatch→decision duration histogram (p95/p99), exported via /metrics
 	// so the freshness SLO is one honest number.
 	staleRejections atomic.Uint64
+	// ISSUE-061: stale episodes recovered by re-binding to the live situation
+	// version instead of being abandoned — the recovery counter, so a dense
+	// trace's dispatch churn is visible, not silent.
+	staleRebinds atomic.Uint64
+	// ISSUE-061: re-binds that failed because the live snapshot did not
+	// validate (DB corruption — the engine validates at publish). Counted
+	// separately from stale_rejections so corruption is distinguishable from
+	// benign churn in /metrics.
+	rebindFailures atomic.Uint64
 	durationsMu     sync.Mutex
 	durations       []time.Duration
 }
@@ -103,6 +112,21 @@ func (r *Runtime) ObserveStaleRejection() {
 	}
 }
 
+// ObserveStaleRebind increments the stale-episode re-bind recovery counter.
+func (r *Runtime) ObserveStaleRebind() {
+	if r != nil {
+		r.staleRebinds.Add(1)
+	}
+}
+
+// ObserveRebindFailure increments the failed re-bind counter — a live snapshot
+// that did not validate (corruption), distinct from a benign stale rejection.
+func (r *Runtime) ObserveRebindFailure() {
+	if r != nil {
+		r.rebindFailures.Add(1)
+	}
+}
+
 // ObserveDuration records one dispatch→decision duration for the histogram.
 func (r *Runtime) ObserveDuration(duration time.Duration) {
 	if r == nil {
@@ -144,6 +168,8 @@ func (r *Runtime) Snapshot() map[string]uint64 {
 		"agentic_stream_commands_dispatched_total": r.commandsDispatched.Load(),
 		"agentic_stream_pipeline_failures_total":   r.streamFailures.Load(),
 		"agentic_stream_stale_rejections_total":    r.staleRejections.Load(),
+		"agentic_stream_stale_rebinds_total":       r.staleRebinds.Load(),
+		"agentic_stream_rebind_failures_total":     r.rebindFailures.Load(),
 	}
 }
 
