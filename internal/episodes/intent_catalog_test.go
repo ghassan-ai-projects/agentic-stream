@@ -10,7 +10,8 @@ import (
 // P4/T5 cross-repo conformance: the aquaculture intent catalog compiled on
 // the Go side must digest to the SAME shared-domain value the Ruby worker's
 // IntentCatalog computes over the identical document (fixture data authored
-// once in test/support/aquaculture_domain.rb). A drift on either side breaks
+// once in test/fixtures/domains/aquaculture.json, loaded via
+// test/support/domain_loader.rb). A drift on either side breaks
 // every Go-driven episode at the worker's verify_wire gate.
 func TestAquacultureIntentCatalogDigestParity(t *testing.T) {
 	const pinnedDigest = "sha256:e4f866204344a5f19994e28afdea67b610e34405b062bbfd2879209a363d81f3"
