@@ -267,3 +267,34 @@ communication, debate, recursive delegation, or distributed state ownership.
   controlling for added cost and latency;
 - the compatibility suite and replay semantics are stable enough to detect
   regressions across nodes.
+
+## ADR-013: Re-bind stale episodes to the live situation version before dispatch
+
+**Context.** On event-dense situations the engine publishes several Situation
+versions per batch; a trigger evaluation admits an episode bound to the version
+current at evaluation time, and the batch's remaining events churn the version
+again before the runner's dispatch poll. The P8 freshness gate refused such
+episodes and abandoned them (`stale_situation`) — a race turned into permanent
+loss with no retry and no re-bind (ISSUE-061).
+
+**Decision.** When `live > bound` at dispatch, the episode is re-bound to the
+live version (fresh snapshot, re-validated: schema, identity, entity, persisted
+digest) and dispatched in the same dispatch transaction (re-bind persist +
+attempt start), bounded by a durable `stale_rebind_count` (`maxStaleRebinds`).
+The triggering evidence (delta) and the reconsideration document are preserved
+verbatim; the decision is recorded at the live version. A live snapshot that
+fails validation quarantines the episode durably (`rebind_failed`, counted and
+logged separately from benign stale rejections) — the queue never stalls.
+
+**Consequences.** This carves out product invariant 5 ("every episode is bound
+to one immutable Situation snapshot"): an episode is bound to ONE immutable
+snapshot at any instant; the re-bind re-points it before dispatch, at most
+`maxStaleRebinds` times across retries, each increment durable. The finite
+budget, episode identity, and admission evidence are unchanged. For
+`reconsider` episodes the reconsideration evidence stays bound to the admission
+version (correction N) while the episode re-reasons over the live snapshot (L):
+the worker sees "correction N judged against live L", and the decision is
+recorded at L. Invariant 10 (explainability) is served by the durable counter
+and the terminal reasons (`stale_situation` with `rebind_attempts`, or
+`rebind_failed`). The policy and dispatcher freshness gates remain the
+version-freshness authority after the episode terminates.

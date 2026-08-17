@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
@@ -54,9 +55,16 @@ type Runner struct {
 	epochControl    *storage.EpochControl
 	shadowStore     *storage.ShadowStore
 	telemetry       *telemetry.Runtime
+	assembler       *Assembler
 }
 
 const maxEpisodeAttempts = 3
+
+// maxStaleRebinds bounds how many times an admitted episode may be re-bound to
+// a newer live situation version before it is abandoned as stale. Dense
+// entities churn versions faster than the dispatch poll; the durable
+// stale_rebind_count column tracks the budget across batches and restarts.
+const maxStaleRebinds = 3
 
 // WithCostControl enables settlement of durable episode cost reservations.
 func (r *Runner) WithCostControl(controller *costcontrol.Controller) *Runner {
@@ -83,6 +91,15 @@ func (r *Runner) WithShadowStore(store *storage.ShadowStore) *Runner {
 // rejections and dispatch→decision durations feed the /metrics percentiles.
 func (r *Runner) WithTelemetry(telemetry *telemetry.Runtime) *Runner {
 	r.telemetry = telemetry
+	return r
+}
+
+// WithAssembler enables the ISSUE-061 re-bind path: an admitted episode whose
+// situation advanced past its bound version is re-bound to the live version
+// and dispatched instead of abandoned. Without an assembler the runner keeps
+// the pre-fix abandon behavior (tests and minimal wiring).
+func (r *Runner) WithAssembler(assembler *Assembler) *Runner {
+	r.assembler = assembler
 	return r
 }
 
@@ -113,12 +130,14 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	var snapshotHash []byte
 	var promptHash, objectiveHash []byte
 	var stale *StaleSituationError
+	var rebindCount int
+	rebound := false
 	err := r.withTx(ctx, func(tx *sql.Tx) error {
 		if err := tx.QueryRowContext(ctx, `
 			SELECT episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
 			       executor_name, executor_version, model_policy, prompt_version,
 			       snapshot_sha256, prompt_sha256, objective_sha256, admission_key, request_json,
-			       dispatch_policy, policy_epoch
+			       dispatch_policy, policy_epoch, stale_rebind_count
 			FROM episodes
 			WHERE tenant_id = ? AND lifecycle_status IN ('admitted', 'running')
 			ORDER BY accepted_at LIMIT 1`,
@@ -127,7 +146,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 			&episodeID, &req.SchedulerItemID, &req.TenantID, &req.SituationID, &req.SituationVersion,
 			&req.ExecutorName, &req.ExecutorVersion, &req.ModelPolicy, &req.PromptVersion,
 			&snapshotHash, &promptHash, &objectiveHash, &req.AdmissionKey, &req.RequestJSON,
-			&req.DispatchPolicy, &req.PolicyEpoch,
+			&req.DispatchPolicy, &req.PolicyEpoch, &rebindCount,
 		); err != nil {
 			if err == sql.ErrNoRows {
 				return nil
@@ -172,22 +191,71 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 			return fmt.Errorf("recheck live situation version: %w", err)
 		}
 		if liveVersion != int64(req.SituationVersion) {
-			// Quarantine the stale episode durably (committed in THIS tx — an
-			// error return would roll it back) so it cannot block the admitted
-			// queue forever (it is always the oldest admitted row). The batch
-			// continues; the stale rejection is counted.
-			terminal, _ := json.Marshal(map[string]any{"reason": "stale_situation",
-				"bound": req.SituationVersion, "live": liveVersion})
-			_, _ = tx.ExecContext(ctx, `
-				UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?
-				WHERE episode_id = ?`,
-				r.clk.Now().UTC().Format(time.RFC3339Nano), terminal, episodeID)
-			if r.telemetry != nil {
-				r.telemetry.ObserveStaleRejection()
+			// ISSUE-061: re-bind the stale episode to the live version instead
+			// of abandoning it — the decision then reflects the freshest state.
+			// Bounded by maxStaleRebinds via the durable counter; when the
+			// budget is exhausted or the live snapshot cannot be validated, the
+			// episode is quarantined durably (committed in THIS tx — an error
+			// return would roll it back) so it cannot block the admitted queue
+			// forever (it is always the oldest admitted row). A quarantine
+			// returns nil here; only a successful re-bind falls through to
+			// dispatch below.
+			if r.assembler != nil && rebindCount < maxStaleRebinds {
+				fresh, rebindErr := r.assembler.Rebind(ctx, tx, &req, int(liveVersion))
+				if rebindErr != nil {
+					// The reachable causes are DB corruption or a validation
+					// bug — the engine validates at publish. Log loudly and
+					// count under rebind_failures, distinct from the benign
+					// stale_rejections counter. The failed attempt still
+					// consumes re-bind budget so the bounded path is reachable.
+					slog.ErrorContext(ctx, "episode re-bind failed: live snapshot invalid",
+						"episode_id", episodeID,
+						"bound", req.SituationVersion, "live", liveVersion,
+						"error", rebindErr.Error())
+					terminal, _ := json.Marshal(map[string]any{"reason": "rebind_failed",
+						"bound": req.SituationVersion, "live": liveVersion,
+						"rebind_attempts": rebindCount + 1, "error": rebindErr.Error()})
+					_, _ = tx.ExecContext(ctx, `
+						UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?,
+						    stale_rebind_count = stale_rebind_count + 1
+						WHERE episode_id = ?`,
+						r.clk.Now().UTC().Format(time.RFC3339Nano), terminal, episodeID)
+					if r.telemetry != nil {
+						r.telemetry.ObserveRebindFailure()
+					}
+					stale = &StaleSituationError{EpisodeID: episodeID,
+						Bound: req.SituationVersion, Live: int(liveVersion)}
+					return nil
+				}
+				req = *fresh
+				liveHash, err := canonicaljson.DecodeDigest(req.SnapshotSHA256)
+				if err != nil {
+					return fmt.Errorf("decode re-bound snapshot digest: %w", err)
+				}
+				if _, err := tx.ExecContext(ctx, `
+					UPDATE episodes SET situation_version = ?, snapshot_sha256 = ?, request_json = ?,
+					    stale_rebind_count = stale_rebind_count + 1
+					WHERE episode_id = ?`,
+					req.SituationVersion, liveHash, req.RequestJSON, episodeID); err != nil {
+					return fmt.Errorf("persist episode re-bind: %w", err)
+				}
+				rebound = true
+				// Bound == live inside this tx (writes are serialized), so the
+				// dispatch below reasons over the freshest committed state.
+			} else {
+				terminal, _ := json.Marshal(map[string]any{"reason": "stale_situation",
+					"bound": req.SituationVersion, "live": liveVersion, "rebind_attempts": rebindCount})
+				_, _ = tx.ExecContext(ctx, `
+					UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?
+					WHERE episode_id = ?`,
+					r.clk.Now().UTC().Format(time.RFC3339Nano), terminal, episodeID)
+				if r.telemetry != nil {
+					r.telemetry.ObserveStaleRejection()
+				}
+				stale = &StaleSituationError{EpisodeID: episodeID,
+					Bound: req.SituationVersion, Live: int(liveVersion)}
+				return nil
 			}
-			stale = &StaleSituationError{EpisodeID: episodeID,
-				Bound: req.SituationVersion, Live: int(liveVersion)}
-			return nil
 		}
 		// P8 (kill): a decision under a killed policy epoch is refused
 		// INDEPENDENTLY of the worker — the episode's recorded epoch is
@@ -238,6 +306,12 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	// processed and let the batch continue; the queue drains past it.
 	if stale != nil {
 		return true, nil
+	}
+	// A successful re-bind is counted only after its tx committed — a later
+	// in-tx failure (attempt start, identity binding) rolls the re-bind back
+	// and must not bump the recovery counter.
+	if rebound && r.telemetry != nil {
+		r.telemetry.ObserveStaleRebind()
 	}
 
 	executionCtx, stopWatching := context.WithCancel(ctx)

@@ -124,12 +124,13 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 			return nil, err
 		}
 	}
+	assembler := episodes.NewAssembler(cfg.Spec, cfg.IDGenerator).WithCostControl(&costcontrol.Controller{})
 	return &Pipeline{
 		db:         cfg.DB,
 		log:        log,
 		engine:     stream,
-		assembler:  episodes.NewAssembler(cfg.Spec, cfg.IDGenerator).WithCostControl(&costcontrol.Controller{}),
-		runner:     episodes.NewRunnerWithEpoch(cfg.DB, cfg.Executor, cfg.Clock, cfg.IDGenerator, cfg.OwnerEpoch).WithCostControl(&costcontrol.Controller{}).WithEpochControl(cfg.EpochControl).WithShadowStore(&storage.ShadowStore{DB: cfg.DB}).WithTelemetry(cfg.Telemetry),
+		assembler:  assembler,
+		runner:     episodes.NewRunnerWithEpoch(cfg.DB, cfg.Executor, cfg.Clock, cfg.IDGenerator, cfg.OwnerEpoch).WithAssembler(assembler).WithCostControl(&costcontrol.Controller{}).WithEpochControl(cfg.EpochControl).WithShadowStore(&storage.ShadowStore{DB: cfg.DB}).WithTelemetry(cfg.Telemetry),
 		policy:     policy.NewGatewayWithOwner(cfg.Spec.Digest, cfg.IDGenerator, cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}).WithCalibration(&storage.CalibrationStore{DB: cfg.DB}).WithEpochControl(cfg.EpochControl),
 		dispatcher: actions.NewDispatcher(cfg.DB, cfg.Effector, cfg.Clock, cfg.IDGenerator, "runtime-actions/"+cfg.OwnerEpoch, time.Minute).WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}),
 		watch:      watch,
