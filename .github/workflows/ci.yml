@@ -3,6 +3,7 @@
 # ---------------------------------------------------------------------------
 # Runs on push/PR to main. Pipeline:
 #   tidy → build → vet → lint → test (short, race) → deadcode → vulncheck
+#   → documentation checks
 #   → cross-compile linux/amd64 → upload artifact
 #
 # Add a `services` block here if your tests need PostgreSQL, Redis, etc.

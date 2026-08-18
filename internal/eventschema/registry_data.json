@@ -393,6 +393,192 @@
       }
     }
   },
+  "reefer.ambient_temp.observed/1.0": {
+    "event_type": "reefer.ambient_temp.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "celsius": {
+        "path": "celsius",
+        "unit": "celsius"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "reefer.defrost.observed/1.0": {
+    "event_type": "reefer.defrost.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "on": {
+        "path": "on",
+        "type": "number"
+      }
+    }
+  },
+  "reefer.door_state.observed/1.0": {
+    "event_type": "reefer.door_state.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "state": {
+        "path": "state",
+        "type": "string"
+      },
+      "open": {
+        "path": "open",
+        "type": "number"
+      }
+    }
+  },
+  "reefer.link_state.observed/1.0": {
+    "event_type": "reefer.link_state.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "state": {
+        "path": "state",
+        "type": "string"
+      }
+    }
+  },
+  "reefer.power_source.observed/1.0": {
+    "event_type": "reefer.power_source.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "state": {
+        "path": "state",
+        "type": "string"
+      }
+    }
+  },
+  "reefer.return_air_temp.observed/1.0": {
+    "event_type": "reefer.return_air_temp.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "celsius": {
+        "path": "celsius",
+        "unit": "celsius"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "reefer.setpoint.observed/1.0": {
+    "event_type": "reefer.setpoint.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "celsius": {
+        "path": "celsius",
+        "unit": "celsius"
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "reefer.supply_air_temp.observed/1.0": {
+    "event_type": "reefer.supply_air_temp.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "celsius": {
+        "path": "celsius",
+        "unit": "celsius"
+      },
+      "excursion_dwell_s": {
+        "path": "excursion_dwell_s",
+        "unit": "s",
+        "optional": true
+      },
+      "unit": {
+        "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "shipment.position.observed/1.0": {
+    "event_type": "shipment.position.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "fraction": {
+        "path": "fraction",
+        "unit": "1"
+      }
+    }
+  },
+  "shipment.leg_status.observed/1.0": {
+    "event_type": "shipment.leg_status.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "state": {
+        "path": "state",
+        "type": "string"
+      },
+      "exception": {
+        "path": "exception",
+        "type": "number"
+      }
+    }
+  },
+  "shipment.hub_event.observed/1.0": {
+    "event_type": "shipment.hub_event.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "state": {
+        "path": "state",
+        "type": "string"
+      },
+      "trouble": {
+        "path": "trouble",
+        "type": "number"
+      }
+    }
+  },
+  "shipment.customs_status.observed/1.0": {
+    "event_type": "shipment.customs_status.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "state": {
+        "path": "state",
+        "type": "string"
+      },
+      "hold": {
+        "path": "hold",
+        "type": "number"
+      }
+    }
+  },
+  "shipment.eta_slack_min.observed/1.0": {
+    "event_type": "shipment.eta_slack_min.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "min": {
+        "path": "min",
+        "unit": "min"
+      }
+    }
+  },
+  "shipment.leg_delay_min.observed/1.0": {
+    "event_type": "shipment.leg_delay_min.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "min": {
+        "path": "min",
+        "unit": "min"
+      }
+    }
+  },
+  "shipment.heartbeat.observed/1.0": {
+    "event_type": "shipment.heartbeat.observed",
+    "schema_version": "1.0",
+    "fields": {}
+  },
   "sensor.temperature/1.0": {
     "event_type": "sensor.temperature",
     "schema_version": "1.0",

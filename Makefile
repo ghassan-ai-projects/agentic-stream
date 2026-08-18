@@ -35,7 +35,7 @@ HAS_MAIN := $(if $(MAIN_PKGS),yes,no)
 # ---- Phony declarations ---------------------------------------------------
 .PHONY: help all build vet fmt tidy lint lint-ci test test-short test-race \
         test-coverage ci-check deadcode vulncheck clean run cross-compile \
-        proto-generate proto-check
+        proto-generate proto-check docs-check
 
 # ---- Help -----------------------------------------------------------------
 help: ## Show this help message
@@ -132,8 +132,12 @@ test-coverage: ## Run tests and produce HTML coverage report
 	fi
 
 # ---- Pipeline -------------------------------------------------------------
-ci-check: proto-check tidy build vet lint-ci test-short deadcode vulncheck ## Run the full CI pipeline locally (matches .github/workflows/ci.yml)
+ci-check: proto-check tidy build vet lint-ci test-short deadcode vulncheck docs-check ## Run the full CI pipeline locally (matches .github/workflows/ci.yml)
 	@echo "  CI check passed"
+
+# ---- Documentation --------------------------------------------------------
+docs-check: ## Check public documentation structure and volatile surfaces
+	python3 scripts/check-documentation.py
 
 # ---- Protocol generation --------------------------------------------------
 proto-generate: ## Generate committed Go worker protocol stubs

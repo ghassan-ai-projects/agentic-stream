@@ -1,6 +1,6 @@
 # Agentic Stream Design
 
-Status: implementation-ready design baseline  
+Status: current v1 design record; implementation has advanced beyond some original milestone wording
 Decision date: 2026-07-29  
 Target: first production-capable, single-node release of a streaming-native agent runtime
 
@@ -32,11 +32,12 @@ The runtime is deliberately lighter than Hermes Agent and OpenClaw:
 | Local persistence | SQLite 3 in WAL mode through `modernc.org/sqlite` |
 | Spec format | YAML authoring, JSON Schema validation, canonical JSON digest |
 | Rule expressions | CEL through `cel-go`, restricted to deterministic functions |
-| Public local API | JSON/HTTP plus Server-Sent Events using Go `net/http` |
+| Public local API | Small JSON/HTTP health/control surface plus Server-Sent Events using Go `net/http` |
 | Worker protocol | Protobuf and gRPC over Unix domain socket by default |
 | Worker implementations | Go 1.26 only; native executor or current-v1 Go worker process |
 | Telemetry | OpenTelemetry traces, metrics, and structured logs |
-| First ingress | Simulator, file replay, HTTP, then MQTT |
+| Current ingress | Simulator and file replay |
+| Deferred ingress | HTTP and MQTT adapters are design targets, not current runtime surfaces |
 | Later durable brokers | Kafka via `franz-go`; NATS via `nats.go` |
 | Core license recommendation | Apache-2.0 |
 
@@ -97,10 +98,11 @@ operating-mode, and maintenance events. The release must:
 - run a new model or prompt against the same trace in effect-disabled shadow mode;
 - explain every Situation field, trigger decision, and action outcome.
 
-## Implementation start
+## Implementation status
 
-Begin with Milestone 0 in the implementation plan. Do not start with MQTT,
-LangGraph integration, a web UI, or a real model provider. The first vertical
-slice uses a file trace, virtual clock, deterministic operators, SQLite, a fake
-episode executor, and a simulated effector. That slice establishes the
-correctness contracts all later integrations must preserve.
+This record remains the detailed design authority, but its milestone language
+describes sequencing rather than a promise that the repository is still at that
+milestone. The current executable status, CLI/API reality, limitations, and
+public reading path are maintained under
+[`documentation/`](../../documentation/README.md). Historical v0/v0.1 records
+are archived separately and are not current implementation authority.

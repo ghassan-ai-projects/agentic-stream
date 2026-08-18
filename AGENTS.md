@@ -46,7 +46,7 @@ Use the prompt files under `.agents/prompts/` when the task matches them.
 ## Current Repository State
 
 - Module path: `github.com/ghassan-ai-projects/agentic-stream` (set).
-- Design baseline is complete under `docs/` (design v1 plus archived v0/v0.1 iterations, contracts, examples, research reports). Status: implementation-ready design baseline.
+- Design baseline is complete under `docs/` (current v1 design plus archived v0/v0.1 iterations, contracts, examples, research reports). The executable runtime is implemented through the current P-series; deployment qualification remains a separate release gate. Public documentation is curated under `documentation/`.
 - Implementation is complete through the P-series phases: the CLI lives in
   `cmd/agentic-stream/` (`version`, `validate`, `run-live`, `serve`, …) and `internal/`
   holds the spec compiler, ingress, eventlog, operators, situations, cognition,
@@ -64,9 +64,9 @@ Do not invent architecture outside the documented design. The design was written
 The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design/TECHNICAL_DESIGN.md)):
 
 - `cmd/agentic-stream/` - entrypoint, flags, wiring, shutdown
-- `internal/contracts` - internal data contracts and validation
+- `internal/contractsv1` - versioned envelopes and JSON contracts
 - `internal/spec` - SituationSpec authoring, YAML in, canonical JSON digest
-- `internal/ingress` - ingress adapters (simulator, file replay, HTTP, later MQTT)
+- `internal/ingress` - ingress adapters (normalized JSONL and simulator replay; HTTP/MQTT deferred)
 - `internal/eventlog` - normalized event log, watermark/completeness tracking
 - `internal/engine` - deterministic stream engine core
 - `internal/operators` - deterministic operators (hysteresis, debounce, cooldown)
@@ -83,13 +83,14 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/storage` - SQLite WAL via `modernc.org/sqlite`
 - `internal/clock` - virtual/physical clock abstraction
 - `proto/agenticstream/runtime/v1/` - worker protocol (Protobuf/gRPC over UDS)
-- `schemas/v1/` - JSON Schemas
+- `internal/spec/schema.json` and `internal/contractsv1/schemas/v1/` - embedded JSON Schemas
 - `migrations/` - SQLite migrations
-- `examples/predictive-maintenance/` - the first product acceptance test
-- `testdata/golden/` - golden replay traces
+- `examples/predictive-maintenance/` - the first product fixture and acceptance work
+- `examples/predictive-maintenance/testdata/` - replay and simulator traces
 - Worker implementations are Go-only; use the current-v1 protobuf/gRPC boundary
   for a separate Go worker process.
-- `docs/` - design (v1 + archived v0/v0.1), contracts, examples, research reports
+- `documentation/` - curated public documentation
+- `docs/` - classified working archive: design, contracts, examples, research, audits, and runbooks
 
 Keep most Go packages under `internal` until their contracts survive a release. Public SDK packages contain client and authoring types only.
 

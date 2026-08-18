@@ -4,6 +4,12 @@ Status: implementation baseline
 Audience: maintainers, implementers, reviewers, and early integration partners  
 Scope: single-node runtime through the first broker-backed production pilot
 
+> Archive reading rule: this is the detailed design target, not the current
+> CLI/API reference. Some control-plane, connector, and operational surfaces
+> remain planned or deferred. Use [`documentation/`](../../documentation/README.md)
+> for the implemented public surface and verify all status claims against code
+> and tests.
+
 ## 1. Executive decision
 
 Agentic Stream will be a broker-neutral **Situation Runtime**.

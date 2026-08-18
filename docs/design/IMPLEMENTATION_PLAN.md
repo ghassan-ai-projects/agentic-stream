@@ -1,5 +1,10 @@
 # Implementation Plan
 
+> Archive reading rule: this plan records sequencing and release intent. It is
+> not a claim that every milestone or listed connector is currently shipped.
+> Use [`documentation/`](../../documentation/README.md) and the code/tests for
+> current implementation status.
+
 ## 1. Delivery strategy
 
 Deliver correctness in vertical slices. Each milestone must run end to end,

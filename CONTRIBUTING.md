@@ -5,9 +5,11 @@ Thanks for improving Agentic Stream. The goal is simple: keep the Situation Runt
 ## Before You Start
 
 1. Read [AGENTS.md](AGENTS.md).
-2. Check existing issues and pull requests for related work.
-3. Keep changes focused. Avoid mixing documentation, tooling, and behavior changes unless they must ship together.
-4. Run `git status --short` before editing so you do not overwrite someone else's work.
+2. Read the [public documentation](documentation/README.md), especially the
+  [architecture](documentation/architecture/overview.md), [testing reference](documentation/reference/testing.md), [quality gates](documentation/governance/quality.md), and [limitations](documentation/overview/limitations.md).
+3. Check existing issues and pull requests for related work.
+4. Keep changes focused. Avoid mixing documentation, tooling, and behavior changes unless they must ship together.
+5. Run `git status --short` before editing so you do not overwrite someone else's work.
 
 ## Development Workflow
 
@@ -30,6 +32,8 @@ A change is done when:
 - Production-code behavior changes include meaningful tests, and modified packages do not show 0% coverage.
 - When feasible, production-code behavior changes start with a failing or expectation-setting test.
 - `make ci-check` passes, unless the change is documentation-only and a narrower check is clearly sufficient.
+- Documentation changes pass `make docs-check` and `git diff --check`; command,
+  API, contract, or status claims also run the relevant code/tests.
 - `git diff --check` passes, and `pre-commit run --all-files` passes when `pre-commit` is installed.
 - Documentation is updated when behavior, commands, setup, or agent expectations change.
 - Secrets are not added, security-sensitive changes are called out, and dependency or workflow permission changes receive extra review.
@@ -39,6 +43,7 @@ A change is done when:
 ```bash
 make help
 make ci-check
+make docs-check
 ```
 
 For code changes, include tests in every modified package. For documentation-only changes, run the narrowest useful checks and explain anything skipped.
@@ -76,3 +81,5 @@ Agent-authored changes are welcome, but the handoff must be reviewable:
 - Default to the simplest correct implementation.
 - Do not commit secrets, machine-local paths, or private customer data.
 - Include command output summaries rather than pasting noisy logs.
+- For documentation changes, identify the audience, source-of-truth files,
+  implemented/partial/deferred status, and the next-read path.

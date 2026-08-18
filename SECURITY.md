@@ -8,7 +8,10 @@ Security fixes should target `main` unless the maintainers document release bran
 
 Do not open a public issue for a suspected vulnerability.
 
-Report privately through GitHub's private vulnerability reporting if enabled for the repository. If it is not enabled, contact the maintainers using the private security contact listed by the adopting project.
+Report privately through [GitHub's private vulnerability reporting form](https://github.com/ghassan-ai-projects/agentic-stream/security/advisories/new).
+If that route is unavailable, use a private maintainer contact from the
+repository hosting profile; do not publish the report in an issue or commit it
+to the repository.
 
 Include:
 
@@ -26,6 +29,10 @@ This project keeps these controls enabled:
 - Secret scanning and branch protection in the hosting platform.
 - Least-privilege tokens for CI and automation.
 - Human review for dependency additions, workflow permission changes, and agent configuration changes.
+
+The technical security model and deployment checklist live in
+[the public documentation](documentation/architecture/security-model.md) and
+[security hardening](documentation/operations/security-hardening.md).
 
 ## Agent Safety
 
