@@ -1,108 +1,116 @@
 # Agentic Stream
 
-> **Codename:** Situation Runtime · **Status:** implementation-ready design baseline · **Decision date:** 2026-07-29
+Agentic Stream is a streaming-native agent runtime. It continuously turns
+unbounded evidence into durable, versioned **Situations**, then starts bounded
+agent **episodes** only when a deterministic cognitive scheduler decides
+reasoning is useful. Agents return typed Decisions and Action Intents; a
+separate deterministic policy and action plane decides what may execute.
 
-A streaming-native agent runtime. It continuously converts unbounded evidence into durable, versioned **Situations**, and starts bounded agent **episodes** only when a deterministic cognitive scheduler decides that reasoning is useful. Agents return typed Decisions and Action Intents; a separate deterministic policy and action plane decides what may execute.
+> Current posture: unreleased development snapshot. The runtime core and
+> focused acceptance paths are implemented, but deployment qualification and a stable
+> compatibility promise are not complete.
 
-Deliberately lighter than Hermes Agent and OpenClaw:
+## Why it exists
 
-- no channel gateway, messaging platform, desktop application, or marketplace;
-- no graph engine in the event hot path;
-- no LLM invocation per event;
-- no multi-agent mesh, autonomous self-modification, or general workflow UI;
-- no distributed stream engine in version 1;
-- no direct model access to effectors or production credentials.
+Many event-driven systems either lose context in stateless alerts or invoke a
+model for every event. Agentic Stream keeps the event-time stream deterministic,
+publishes immutable Situation versions, and spends reasoning budget only on
+bounded opportunities. The model proposes; policy disposes; the action plane
+executes or records why it cannot.
 
-## Product invariants
+## Product boundary
 
-Release-blocking, not guidelines:
+```text
+evidence -> ingress/event log -> deterministic stream/operators
+          -> immutable Situations -> cognitive scheduler -> bounded episode
+          -> Decision/Intents -> policy -> idempotent action/outcome
+```
+
+The runtime deliberately has no graph engine in the event hot path, no LLM call
+per event, no multi-agent mesh, no web UI, no direct model-to-effector access,
+and no broker-backed distributed stream engine in version 1.
+
+## Release-blocking invariants
 
 1. Raw events are evidence, never executable instructions.
 2. Event time, watermark, completeness, and late-data status are explicit.
-3. A Situation version is immutable after publication.
-4. Deterministic state changes are serial per virtual partition.
-5. Every episode is bound to one immutable Situation snapshot and finite budget.
-6. A model can read evidence and propose typed intents; it cannot execute effects.
-7. Policy revalidates every intent against current state immediately before dispatch.
-8. Cross-boundary work uses stable identities, inbox/outbox records, and idempotency.
-9. Replay never performs external effects unless an explicit, separate simulation mode is selected.
-10. Every admitted, deferred, coalesced, rejected, canceled, and expired cognitive opportunity is explainable from durable records.
+3. Published Situation versions are immutable.
+4. State changes are deterministic and serial per virtual partition.
+5. Episodes bind one immutable snapshot and finite budget.
+6. Models propose typed Intents but cannot execute effects.
+7. Policy revalidates every Intent immediately before dispatch.
+8. Cross-boundary work uses stable identities, durable inbox/outbox records, and
+   idempotency.
+9. Replay never performs external effects unless explicit simulation is selected.
+10. Cognitive and action outcomes are explainable from durable records.
+
+Read the [full invariant contract](documentation/architecture/invariants.md)
+before evaluating an integration.
+
+## Start here
+
+```bash
+make build
+./bin/agentic-stream validate docs/design/examples/predictive-maintenance.situation.yaml
+./bin/agentic-stream run \
+  --db predictive-maintenance.replay.db \
+  --spec docs/design/examples/predictive-maintenance.situation.yaml \
+  --trace examples/predictive-maintenance/testdata/trace-opening.jsonl
+```
+
+Then follow the [quickstart](documentation/getting-started/quickstart.md) and
+[predictive-maintenance walkthrough](documentation/guides/predictive-maintenance.md).
+
+## Documentation
+
+The curated public documentation is the primary entrypoint:
+
+- [Documentation home](documentation/README.md)
+- [Product overview](documentation/overview/product.md)
+- [Current status](documentation/overview/status.md)
+- [Limitations](documentation/overview/limitations.md)
+- [Architecture](documentation/architecture/overview.md)
+- [CLI reference](documentation/reference/cli.md)
+- [HTTP/SSE reference](documentation/reference/http-api.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
+- [Support](SUPPORT.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Changelog](CHANGELOG.md)
+
+The `docs/` directory is the working archive: current design records,
+machine-facing contract sources, research, audits, runbooks, and historical
+iterations. See [`docs/README.md`](docs/README.md) before using it as a source.
+The quickstart's `docs/design/examples/` paths are current test fixtures, not a
+replacement for the curated public reading path.
 
 ## Technology
 
 | Area | Choice |
-|---|---|
-| Core runtime and CLI | Go 1.26 |
-| Deployment shape | Modular monolith; one Go binary plus optional Go worker processes |
-| Local persistence | SQLite 3 in WAL mode through `modernc.org/sqlite` |
-| Spec format | YAML authoring, JSON Schema validation, canonical JSON digest |
-| Rule expressions | CEL through `cel-go`, restricted to deterministic functions |
-| Public local API | JSON/HTTP plus Server-Sent Events using Go `net/http` |
-| Worker protocol | Protobuf and gRPC over Unix domain socket by default |
-| Worker implementations | Go 1.26 only; native executor or current-v1 Go worker process |
-| Telemetry | OpenTelemetry traces, metrics, and structured logs |
-| First ingress | Simulator, file replay, HTTP, then MQTT |
-| Later durable brokers | Kafka via `franz-go`; NATS via `nats.go` |
-| Core license | Apache-2.0 |
-
-The core does not depend on LangChain, LangGraph, Hermes Agent, or OpenClaw. Those can be supported later as `EpisodeExecutor` adapters outside the stream core.
-
-## Data flow
-
-```text
-ingress -> eventlog -> engine/operators -> situations -> cognition
-   -> episodes -> evidence/decisions -> policy -> actions
-```
-
-## MVP proof
-
-The predictive-maintenance example is the first product acceptance test. A simulated motor emits temperature, vibration, current, RPM, heartbeat, operating-mode, and maintenance events. The release must produce identical Situation history for repeated deterministic replay; handle duplicates, out-of-order input, late correction, and missing heartbeat; suppress noisy repeated cognition through hysteresis, debounce, and cooldown; cancel a stale episode after material supersession; validate a structured Decision and create a governed maintenance-ticket Intent; prevent duplicate ticket effects across crash and replay; reproduce the accepted decision with recorded cognition; run a new model or prompt against the same trace in effect-disabled shadow mode; and explain every Situation field, trigger decision, and action outcome.
-
-## Documents
-
-The full specification lives in [docs/](docs/design/README.md):
-
-| Document | Contents |
-|---|---|
-| [docs/design/TECHNICAL_DESIGN.md](docs/design/TECHNICAL_DESIGN.md) | Product boundary, architecture, invariants, data model, algorithms, persistence, APIs, failure semantics, security, observability, deployment |
-| [docs/design/IMPLEMENTATION_PLAN.md](docs/design/IMPLEMENTATION_PLAN.md) | Milestones, epics, ordered work packages, acceptance gates, testing strategy, release criteria |
-| [docs/design/DECISIONS.md](docs/design/DECISIONS.md) | Language/framework evaluation and accepted ADRs |
-| [docs/design/EVIDENCE.md](docs/design/EVIDENCE.md) | Research findings from the reports and the four reference source trees |
-| [docs/contracts/](docs/contracts/) | `runtime-v1.proto` worker protocol, `situation-spec-v1` schema, `storage-schema-v1.sql` |
-| [docs/examples/predictive-maintenance.situation.yaml](docs/examples/) | End-to-end example used by the simulator and golden replay suite |
-| [docs/design-v0/](docs/design-v0/) · [docs/design-v0.1/](docs/design-v0.1/) | Archived design iterations (incl. critique of v0, evaluation design, review) |
-| [docs/research/](docs/research/) | Study reports: OpenClaw architecture & agent patterns; streaming-native agent runtime architecture |
-
-**Start here:** [docs/design/README.md](docs/design/README.md), then the technical design, then the implementation plan. Begin with Milestone 0 — not MQTT, LangGraph integration, a web UI, or a real model provider. The first vertical slice uses a file trace, virtual clock, deterministic operators, SQLite, a fake episode executor, and a simulated effector.
+| --- | --- |
+| Runtime and CLI | Go 1.26.5 |
+| Deployment | Modular monolith; optional Go EpisodeWorker processes |
+| Persistence | SQLite 3 in WAL mode through `modernc.org/sqlite` |
+| Authoring | YAML SituationSpec, JSON Schema, canonical JSON digest |
+| Rules | Restricted deterministic CEL through `cel-go` |
+| API | JSON health/metrics, authenticated SSE, operator controls |
+| Worker protocol | Protobuf/gRPC over Unix domain socket; optional mTLS |
+| Telemetry | OpenTelemetry traces and low-cardinality runtime metrics |
+| Ingress | Normalized JSONL and simulator JSONL adapter |
+| License | Apache-2.0 |
 
 ## Development
 
 ```bash
-make ci-check        # tidy + build + vet + lint + test-short + deadcode + vulncheck
-make test            # race + shuffle + coverage
-make test-coverage   # coverage HTML report
-make lint            # golangci-lint
-make cross-compile   # linux/amd64 binary
+make ci-check
+make docs-check
+go test ./...
+go vet ./...
+git diff --check
 ```
 
-For coding agents: read [AGENTS.md](AGENTS.md) before editing.
-
-Run one supervised live batch with the native Go executor and deterministic provider:
-
-```bash
-agentic-stream run-live --db runtime.db --spec docs/design/examples/predictive-maintenance.situation.yaml \
-  --trace examples/predictive-maintenance/testdata/trace-opening.jsonl
-```
-
-For a production model, add `--model-endpoint <url> --model-name <model>` and
-provide `AGENTIC_STREAM_MODEL_API_KEY` through the process environment. A Go
-EpisodeWorker socket may be selected with `--worker-socket`; Python workers are
-not part of the runtime.
-
-Use `--trace-format simulator` for the streams-simulator
-`trace-record-v0.1` JSONL adapter output, or `--worker-socket` to dispatch
-episodes to a current-v1 Go EpisodeWorker. TLS client flags are available for
-certificate-authenticated worker connections.
+See [testing reference](documentation/reference/testing.md) and
+[quality governance](documentation/governance/quality.md) for the full gate.
 
 ## License
 

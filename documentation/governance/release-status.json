@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "channel": "development",
+  "version": "unreleased",
+  "as_of": "2026-08-17",
+  "stable_release": false,
+  "implemented": [
+    "deterministic JSONL replay",
+    "SituationSpec compilation and canonical digests",
+    "event-time stream processing and immutable Situation versions",
+    "bounded cognition and episode lifecycle",
+    "Decision and Intent validation",
+    "policy gateway and idempotent action outbox",
+    "Go current-v1 worker boundary",
+    "effect-safe replay and shadow library modes",
+    "loopback health, metrics, and cursor-resumable SSE"
+  ],
+  "partial": [
+    "environment-level production qualification",
+    "external effector integrations",
+    "continuous JSONL serving operations",
+    "remote worker deployment",
+    "complete Intent policy-mode enforcement",
+    "runtime enforcement for spec retention/telemetry controls",
+    "packaged operator inspection, approval, reconciliation, and redrive tooling"
+  ],
+  "deferred": [
+    "Kafka, NATS, and MQTT ingress",
+    "web UI",
+    "graph engine",
+    "multi-agent orchestration",
+    "Python workers",
+    "distributed scale-out"
+  ],
+  "release_blockers": [
+    "complete backup and restore rehearsal",
+    "disk-full and unclean-shutdown qualification",
+    "long-running workload/soak evidence",
+    "deployment-specific security and external-effector review",
+    "published compatibility and release artifact workflow"
+  ],
+  "evidence": {
+    "primary_commands": [
+      "make ci-check",
+      "go test ./...",
+      "make docs-check",
+      "git diff --check"
+    ],
+    "design_archive": "docs/design/",
+    "implementation_audit": "docs/STREAM_IMPLEMENTATION_AUDIT_2026-08-12.md",
+    "implementation_audit_note": "Dated snapshot; validate current claims against code, tests, and migrations.",
+    "operations_readiness": "docs/design/OPERATIONS_READINESS.md"
+  }
+}

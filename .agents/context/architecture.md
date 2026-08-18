@@ -11,14 +11,14 @@ The authoritative architecture is [docs/design/TECHNICAL_DESIGN.md](../../docs/d
 - `Makefile` defines the authoritative local commands.
 - `.github/workflows/ci.yml` defines CI parity for core checks.
 - `.golangci.yml` and `.pre-commit-config.yaml` enforce code quality and hygiene.
-- `docs/` holds the design (v1 + archived v0/v0.1), contracts, examples, and research reports — the source of truth for behavior.
+- `documentation/` holds the curated public documentation; `docs/` holds the classified design/evidence archive. Code, tests, embedded schemas, migrations, and the worker proto are the authority for implemented behavior.
 
 ## Target Structure (per design §23)
 
 - `cmd/agentic-stream/`: entrypoint, flags, wiring, shutdown
-- `internal/contracts` · `internal/spec` · `internal/ingress` · `internal/eventlog` · `internal/engine` · `internal/operators` · `internal/situations` · `internal/cognition` · `internal/episodes` · `internal/evidence` · `internal/decisions` · `internal/policy` · `internal/actions` · `internal/replay` · `internal/api` · `internal/telemetry` · `internal/storage` · `internal/clock`
+- `internal/contractsv1` · `internal/spec` · `internal/ingress` · `internal/eventlog` · `internal/engine` · `internal/operators` · `internal/situations` · `internal/cognition` · `internal/episodes` · `internal/evidence` · `internal/decisions` · `internal/policy` · `internal/actions` · `internal/replay` · `internal/api` · `internal/telemetry` · `internal/storage` · `internal/clock` · `internal/notify` · `internal/eventschema` · `internal/runtime`
 - `proto/agenticstream/runtime/v1/`: worker protocol (Protobuf/gRPC over UDS)
-- `schemas/v1/` · `migrations/` · `examples/predictive-maintenance/` · `testdata/golden/`
+- `internal/spec/schema.json` · `internal/contractsv1/schemas/v1/` · `migrations/` · `examples/predictive-maintenance/`
 
 ## Data Flow
 
@@ -45,7 +45,7 @@ ingress -> eventlog -> engine/operators -> situations -> cognition
 
 ## Dependency Direction
 
-- `cmd` -> `api`/`ingress`/`replay` -> `engine`/`situations`/`cognition`/`policy`/`actions` -> `eventlog`/`storage`/`clock`/`contracts`
+- `cmd` -> `runtime`/`api`/`ingress`/`replay` -> stream/cognition/episode/policy/action planes -> `eventlog`/`storage`/`clock`/`contractsv1`
 - Dependencies flow downward only.
 - Most Go packages stay under `internal` until their contracts survive a release.
 
