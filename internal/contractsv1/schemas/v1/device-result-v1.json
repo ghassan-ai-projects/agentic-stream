@@ -6,7 +6,7 @@
   "required": ["message_type", "protocol_version", "command_id", "boot_id", "status"],
   "properties": {
     "message_type": {"const": "result"},
-    "protocol_version": {"type": "integer", "minimum": 1, "maximum": 255},
+    "protocol_version": {"const": 1},
     "command_id": {"type": "string", "minLength": 1, "maxLength": 256},
     "boot_id": {"type": "string", "minLength": 1, "maxLength": 256},
     "status": {"enum": ["executed", "rejected", "expired", "superseded", "safe_state"]},

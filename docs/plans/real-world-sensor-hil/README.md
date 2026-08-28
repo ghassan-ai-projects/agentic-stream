@@ -1,10 +1,15 @@
 # Plan: Real-World Sensor HIL-0 (Agentic Stream slice)
 
-Status: implementation-ready plan, not yet built
+Status: active implementation; partial through Phase 01 and Phase 03 Task 3.2;
+HIL-0 gates are not yet met
 Date: 2026-08-28
 Source program: `agent-research-lab/real-world-sensor/round-2/`
 Scope of THIS plan: **only the Agentic Stream changes** required to reach the
 program's first release target, **HIL-0: one bounded verified effect**.
+
+The executable quality bar and evidence ledger is
+[QUALITY_BAR.md](QUALITY_BAR.md). This plan is the work breakdown; a checked
+task or passing unit test is not, by itself, evidence of a physical HIL claim.
 
 ## 0. Read this first
 
@@ -19,15 +24,22 @@ changes*):
 
 | Concern | Repo | In this plan? |
 |---|---|---|
-| Serial effector, adapter config, thermal spec, reconciliation, action tests | **Agentic Stream** | **Yes — the whole plan** |
+| Governed serial-device effector, adapter config, thermal spec, reconciliation, action tests | **Agentic Stream** | **Yes — the whole plan** |
 | Arduino firmware, safe state, watchdog, hard limits | firmware (out of repo) | No — contract only (§ boundary) |
-| Edge gateway process, serial framing, device identity, clock mapping, delivery ledger | edge gateway (out of repo) | No — contract only (§ boundary) |
+| Edge gateway process, raw serial framing, device identity, clock mapping, delivery ledger | edge gateway (out of repo) | No — contract only (§ boundary) |
 | Thermal supervisory objective, semantic decision schema, adversarial evidence | **Tamoz** (separate repo) | No — interface only |
 | Serial-device emulator + protocol fault layer, effector oracle | **Streams Simulator** (separate repo) | No — interface only |
 
 > The Tamoz worker side is already implemented per the user; this plan does not
 > touch it. Agentic Stream sees Tamoz only through the existing worker protocol
 > (`proto/agenticstream/runtime/v1/`) — no change is required there for HIL-0.
+
+The ownership split is deliberate: Agentic Stream owns the governed
+`actions.Effector` and a typed device-session boundary, while the edge gateway
+owns raw serial bytes, framing, reconnect, device identity, and its delivery
+ledger. Agentic Stream must not grow a second serial stack. In the emulator and
+physical profiles, `DeviceTransport` is therefore the gateway link carrying the
+versioned device records, not a direct Arduino/USB serial implementation.
 
 ## 1. What "done" means for the Agentic Stream slice
 
@@ -140,6 +152,11 @@ enum), and the concrete bounded command (`duty_permille`, `lease_ms`) comes from
 a `preset`. The serial effector then translates that already-bounded command into
 device wire bytes and enforces the bound **again** at the last boundary
 (defense in depth). Phase 03 details this.
+
+The thermal profile uses an explicit configuration binding from the semantic
+zone (`zone-01`) to each physical target (`led-01` or `fan-01`). The model and
+policy may select the semantic entity; only the closed capability catalog may
+resolve it to a physical target.
 
 ## 5. Decision log to close before coding (owner input required)
 

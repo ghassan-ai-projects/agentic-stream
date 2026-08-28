@@ -6,7 +6,7 @@
   "required": ["message_type", "protocol_version", "device_id", "boot_id", "firmware_digest", "capability_digest", "safe_state"],
   "properties": {
     "message_type": {"const": "state"},
-    "protocol_version": {"type": "integer", "minimum": 1, "maximum": 255},
+    "protocol_version": {"const": 1},
     "device_id": {"type": "string", "minLength": 1, "maxLength": 256},
     "boot_id": {"type": "string", "minLength": 1, "maxLength": 256},
     "firmware_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},

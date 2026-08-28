@@ -113,7 +113,10 @@ func parseDuration(s string) (time.Duration, error) {
 type OperatorStateBlob struct {
 	Window    *WindowState    `json:"window,omitempty"`
 	Heartbeat *HeartbeatState `json:"heartbeat,omitempty"`
+	Runtime   *RuntimeState   `json:"runtime,omitempty"`
 }
+
+const maxSeenBootIDs = 64
 
 // ApplyEvent processes one event against all operators that consume its input.
 func (r *OperatorRuntime) ApplyEvent(ctx context.Context, ps *PartitionState, env contractsv1.Envelope, watermark time.Time) ([]Feature, *PartitionState, error) {
@@ -130,6 +133,12 @@ func (r *OperatorRuntime) ApplyEventAt(ctx context.Context, ps *PartitionState, 
 
 	inputName, ok := r.inputForEvent(env)
 	if !ok {
+		return nil, ps, nil
+	}
+	if !r.qualityAdmitsBoot(inputName, env) {
+		return nil, ps, nil
+	}
+	if !r.admitBoot(ps, env) {
 		return nil, ps, nil
 	}
 
@@ -158,7 +167,7 @@ func (r *OperatorRuntime) inputForEvent(env contractsv1.Envelope) (string, bool)
 }
 
 func (r *OperatorRuntime) applyOperator(ctx context.Context, ps *PartitionState, inst *operatorInstance, env contractsv1.Envelope, watermark, processingTime time.Time) ([]Feature, error) {
-	stateKey := env.Entity.ID
+	stateKey := operatorStateKey(env)
 	blob := r.getBlob(ps, inst.def.Name, stateKey)
 
 	var features []Feature
@@ -213,14 +222,18 @@ func (r *OperatorRuntime) setBlob(ps *PartitionState, operatorID, stateKey strin
 }
 
 func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *OperatorStateBlob, env contractsv1.Envelope, watermark time.Time) ([]Feature, error) {
+	value, ok := extractValue(inst.def.Field, env)
+	if !ok {
+		return nil, nil
+	}
+
 	if blob.Window == nil {
 		blob.Window = &WindowState{}
 	}
 	ws := blob.Window
-
-	value, ok := extractValue(inst.def.Field, env)
-	if !ok {
-		return nil, nil
+	bootID := deviceBootID(env)
+	if ws.BootID == "" {
+		ws.BootID = bootID
 	}
 	corrected, err := r.isLateWindowCorrection(inst.window.size, env.EventTime, watermark, ws.LastEmit)
 	if err != nil {
@@ -231,6 +244,7 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 		EventID:   env.ID,
 		EventTime: env.EventTime,
 		Value:     value,
+		BootID:    bootID,
 	})
 
 	// Evict samples outside the window.
@@ -284,6 +298,8 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 			TenantID:      env.TenantID,
 			EntityType:    env.Entity.Type,
 			EntityID:      env.Entity.ID,
+			StateKey:      operatorStateKey(env),
+			BootID:        bootID,
 			PartitionID:   env.PartitionID(0),
 			WindowStart:   windowStart,
 			WindowEnd:     windowEnd,
@@ -321,10 +337,20 @@ func (r *OperatorRuntime) isLateWindowCorrection(windowSize time.Duration, event
 }
 
 func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *OperatorStateBlob, env contractsv1.Envelope, watermark, processingTime time.Time) ([]Feature, error) {
+	if !sampleQualityValid(env) {
+		return nil, nil
+	}
+
 	if blob.Heartbeat == nil {
 		blob.Heartbeat = &HeartbeatState{}
 	}
 	hs := blob.Heartbeat
+	bootID := deviceBootID(env)
+	if bootID != "" && hs.BootID != bootID {
+		*hs = HeartbeatState{BootID: bootID}
+	} else if hs.BootID == "" {
+		hs.BootID = bootID
+	}
 	hs.LastEventTime = &env.EventTime
 	hs.LastEventID = env.ID
 	hs.Traceparent = env.Traceparent
@@ -355,6 +381,8 @@ func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *O
 		TenantID:      env.TenantID,
 		EntityType:    env.Entity.Type,
 		EntityID:      env.Entity.ID,
+		StateKey:      operatorStateKey(env),
+		BootID:        bootID,
 		PartitionID:   env.PartitionID(0),
 		WindowStart:   env.EventTime,
 		WindowEnd:     watermark,
@@ -373,7 +401,7 @@ func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *O
 }
 
 func extractValue(field string, env contractsv1.Envelope) (float64, bool) {
-	if field == "" {
+	if field == "" || !numericObservationQualityValid(env) {
 		return 0, false
 	}
 	parts := strings.Split(field, ".")
@@ -386,16 +414,176 @@ func extractValue(field string, env contractsv1.Envelope) (float64, bool) {
 	}
 	switch x := v.(type) {
 	case float64:
-		return x, true
+		return finiteValue(x)
+	case float32:
+		return finiteValue(float64(x))
 	case int:
-		return float64(x), true
+		return finiteValue(float64(x))
 	case int64:
-		return float64(x), true
+		return finiteValue(float64(x))
 	case json.Number:
 		f, err := x.Float64()
-		return f, err == nil
+		if err != nil {
+			return 0, false
+		}
+		return finiteValue(f)
 	}
 	return 0, false
+}
+
+func finiteValue(value float64) (float64, bool) {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0, false
+	}
+	return value, true
+}
+
+// sampleQualityValid accepts legacy payloads that do not carry a quality
+// field, but every supplied sample quality must explicitly be valid. Quality
+// flags on the envelope can independently invalidate a numeric sample.
+func sampleQualityValid(env contractsv1.Envelope) bool {
+	if raw, exists := env.Data["quality"]; exists {
+		quality, ok := raw.(string)
+		if !ok || quality != "valid" {
+			return false
+		}
+	}
+
+	for _, flag := range env.Quality {
+		switch strings.ToLower(strings.TrimSpace(flag.Code)) {
+		case "warming", "invalid", "disconnected", "rail_high", "rail_low":
+			return false
+		default:
+			// Unknown quality flags are not safe to interpret optimistically.
+			return false
+		}
+	}
+	return true
+}
+
+// numericObservationQualityValid applies the strict physical-observation
+// contract to the thermal wire family. The generic operator tests and legacy
+// logical inputs retain their existing quality compatibility until their
+// schemas opt into the physical provenance contract.
+func numericObservationQualityValid(env contractsv1.Envelope) bool {
+	if !strings.HasPrefix(env.Type, "zone.") {
+		return sampleQualityValid(env)
+	}
+	if !sampleQualityValid(env) || deviceBootID(env) == "" {
+		return false
+	}
+	quality, ok := env.Data["quality"].(string)
+	return ok && quality == "valid"
+}
+
+func (r *OperatorRuntime) qualityAdmitsBoot(inputName string, env contractsv1.Envelope) bool {
+	for _, inst := range r.byInput[inputName] {
+		if inst.def.Kind == "missing_heartbeat" {
+			return sampleQualityValid(env)
+		}
+		if inst.def.Kind == "aggregate" || inst.def.Kind == "slope" {
+			return numericObservationQualityValid(env)
+		}
+	}
+	return true
+}
+
+func deviceBootID(env contractsv1.Envelope) string {
+	bootID, ok := env.Data["boot_id"].(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(bootID)
+}
+
+func operatorStateKey(env contractsv1.Envelope) string {
+	bootID := deviceBootID(env)
+	if bootID == "" {
+		return env.Entity.ID
+	}
+	// Device sequence and monotonic time are meaningful only within a boot.
+	// Keep explicit boots in separate durable state keys so a delayed event from
+	// an older boot cannot reset or contaminate the current boot's window.
+	return env.Entity.ID + "\x1f" + bootID
+}
+
+func entityIDFromStateKey(stateKey string) string {
+	if entityID, _, ok := strings.Cut(stateKey, "\x1f"); ok {
+		return entityID
+	}
+	return stateKey
+}
+
+func bootIDFromStateKey(stateKey string) string {
+	_, bootID, ok := strings.Cut(stateKey, "\x1f")
+	if !ok {
+		return ""
+	}
+	return bootID
+}
+
+// admitBoot fences delayed evidence from a prior device boot. Missing boot
+// identity remains compatible only until the first identified boot is seen;
+// thereafter it cannot be used to mutate physical numeric state.
+func (r *OperatorRuntime) admitBoot(ps *PartitionState, env contractsv1.Envelope) bool {
+	stateKey := env.Entity.ID
+	meta := r.getBlob(ps, RuntimeOperatorID, stateKey)
+	if meta.Runtime == nil {
+		meta.Runtime = &RuntimeState{}
+	}
+	runtimeState := meta.Runtime
+	bootID := deviceBootID(env)
+	if bootID == "" {
+		return runtimeState.CurrentBootID == ""
+	}
+	if runtimeState.CurrentBootID == bootID {
+		return true
+	}
+	for _, seen := range runtimeState.SeenBootIDs {
+		if seen == bootID {
+			return false
+		}
+	}
+	if len(runtimeState.SeenBootIDs) >= maxSeenBootIDs {
+		// A bounded history cannot safely distinguish an evicted old boot from
+		// a new one. Fail closed rather than allowing stale evidence to revive.
+		return false
+	}
+	for operatorID, states := range ps.OperatorStates {
+		if operatorID == RuntimeOperatorID {
+			continue
+		}
+		for stateKey := range states {
+			if stateKey == env.Entity.ID || strings.HasPrefix(stateKey, env.Entity.ID+"\x1f") {
+				// Only the active boot's state is useful after admission. The
+				// tombstone list above still prevents a retired boot from being
+				// admitted again.
+				delete(states, stateKey)
+			}
+		}
+	}
+	runtimeState.CurrentBootID = bootID
+	runtimeState.SeenBootIDs = append(runtimeState.SeenBootIDs, bootID)
+	return true
+}
+
+func (r *OperatorRuntime) isActiveBoot(ps *PartitionState, stateKey string) bool {
+	bootID := bootIDFromStateKey(stateKey)
+	meta := ps.OperatorStates[RuntimeOperatorID][entityIDFromStateKey(stateKey)]
+	if bootID == "" {
+		return meta == nil || meta.Runtime == nil || meta.Runtime.CurrentBootID == ""
+	}
+	return meta == nil || meta.Runtime == nil || meta.Runtime.CurrentBootID == "" || meta.Runtime.CurrentBootID == bootID
+}
+
+// IsTimerStateActive reports whether a persisted timer belongs to the current
+// boot admission state. The engine uses this to retire stale timers instead of
+// treating their intentional suppression as a processing failure.
+func (r *OperatorRuntime) IsTimerStateActive(ps *PartitionState, stateKey string) bool {
+	if ps == nil {
+		return false
+	}
+	return r.isActiveBoot(ps, stateKey)
 }
 
 func computeAggregate(agg string, samples []Sample, unit string) (float64, error) {
@@ -441,6 +629,11 @@ func computeAggregate(agg string, samples []Sample, unit string) (float64, error
 			}
 		}
 		return m, nil
+	case "latest":
+		// Samples are sorted by event time and then event ID before this
+		// function is called. The final sample is therefore deterministic even
+		// when events arrive out of order or share an event timestamp.
+		return samples[len(samples)-1].Value, nil
 	default:
 		return 0, fmt.Errorf("unsupported aggregate %q", agg)
 	}
@@ -526,6 +719,9 @@ func (r *OperatorRuntime) applyHeartbeatTimer(inst *operatorInstance, ps *Partit
 	}
 	sort.Strings(keys)
 	for _, stateKey := range keys {
+		if !r.isActiveBoot(ps, stateKey) {
+			continue
+		}
 		blob := ps.OperatorStates[inst.def.Name][stateKey]
 		if blob.Heartbeat == nil || blob.Heartbeat.LastEventTime == nil {
 			continue
@@ -547,7 +743,9 @@ func (r *OperatorRuntime) applyHeartbeatTimer(inst *operatorInstance, ps *Partit
 			OutputName:        inst.def.Output,
 			TenantID:          contractsv1.TenantID,
 			EntityType:        entityType,
-			EntityID:          stateKey,
+			EntityID:          entityIDFromStateKey(stateKey),
+			StateKey:          stateKey,
+			BootID:            blob.Heartbeat.BootID,
 			PartitionID:       0,
 			WindowStart:       *blob.Heartbeat.LastEventTime,
 			WindowEnd:         processingTime,

@@ -11,6 +11,8 @@
     "effector_route": {"type": "string", "minLength": 1, "maxLength": 256},
     "normalized_target": {"type": "string", "minLength": 1, "maxLength": 1024},
     "idempotency_key": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "not_before_mono_us": {"type": "integer", "minimum": 0},
+    "policy_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "status": {"enum": ["prepared", "dispatched", "outcome_unknown", "succeeded", "failed", "reconcile_required"]},
     "payload": {"type": "object"},
     "created_at": {"type": "string", "format": "date-time"}

@@ -173,6 +173,13 @@ func TestCompileRejectsPayloadUnitMismatch(t *testing.T) {
 	}
 }
 
+func TestCompileAcceptsLatestAggregate(t *testing.T) {
+	yaml := strings.Replace(minimalSpecYAML(), "    aggregate: mean\n", "    aggregate: latest\n", 1)
+	if _, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "latest.yaml"); err != nil {
+		t.Fatalf("compile latest aggregate: %v", err)
+	}
+}
+
 func TestCompileRejectsUnknownOperatorOutput(t *testing.T) {
 	yaml := strings.ReplaceAll(minimalSpecYAML(),
 		"      input: mean_value",

@@ -593,14 +593,50 @@
     "event_type": "zone.ambient.observed",
     "schema_version": "1.0",
     "fields": {
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
+        "optional": true
+      },
+      "calibration_id": {
+        "path": "calibration_id",
+        "type": "string",
+        "optional": true
+      },
       "celsius": {
         "path": "celsius",
         "unit": "celsius",
         "optional": true
       },
+      "device_mono_us": {
+        "path": "device_mono_us",
+        "type": "integer",
+        "optional": true
+      },
+      "firmware_id": {
+        "path": "firmware_id",
+        "type": "string",
+        "optional": true
+      },
       "quality": {
         "path": "quality",
         "type": "string",
+        "enum": ["valid", "warming", "invalid", "disconnected", "rail_high", "rail_low"],
+        "optional": true
+      },
+      "raw_value": {
+        "path": "raw_value",
+        "type": "number",
+        "optional": true
+      },
+      "schema_version": {
+        "path": "schema_version",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "integer",
         "optional": true
       }
     }
@@ -609,18 +645,54 @@
     "event_type": "zone.fan_tach.observed",
     "schema_version": "1.0",
     "fields": {
-      "rpm": {
-        "path": "rpm",
-        "unit": "rpm",
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
         "optional": true
       },
-      "state": {
-        "path": "state",
+      "calibration_id": {
+        "path": "calibration_id",
+        "type": "string",
+        "optional": true
+      },
+      "device_mono_us": {
+        "path": "device_mono_us",
+        "type": "integer",
+        "optional": true
+      },
+      "firmware_id": {
+        "path": "firmware_id",
         "type": "string",
         "optional": true
       },
       "quality": {
         "path": "quality",
+        "type": "string",
+        "enum": ["valid", "warming", "invalid", "disconnected", "rail_high", "rail_low"],
+        "optional": true
+      },
+      "rpm": {
+        "path": "rpm",
+        "unit": "rpm",
+        "optional": true
+      },
+      "raw_value": {
+        "path": "raw_value",
+        "type": "number",
+        "optional": true
+      },
+      "schema_version": {
+        "path": "schema_version",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "integer",
+        "optional": true
+      },
+      "state": {
+        "path": "state",
         "type": "string",
         "optional": true
       }
@@ -635,9 +707,40 @@
         "type": "string",
         "optional": true
       },
+      "calibration_id": {
+        "path": "calibration_id",
+        "type": "string",
+        "optional": true
+      },
+      "device_mono_us": {
+        "path": "device_mono_us",
+        "type": "integer",
+        "optional": true
+      },
+      "firmware_id": {
+        "path": "firmware_id",
+        "type": "string",
+        "optional": true
+      },
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "enum": ["valid", "warming", "invalid", "disconnected", "rail_high", "rail_low"],
+        "optional": true
+      },
+      "raw_value": {
+        "path": "raw_value",
+        "type": "number",
+        "optional": true
+      },
+      "schema_version": {
+        "path": "schema_version",
+        "type": "string",
+        "optional": true
+      },
       "seq": {
         "path": "seq",
-        "type": "number",
+        "type": "integer",
         "optional": true
       }
     }
@@ -654,6 +757,7 @@
       "quality": {
         "path": "quality",
         "type": "string",
+        "enum": ["valid", "warming", "invalid", "disconnected", "rail_high", "rail_low"],
         "optional": true
       },
       "raw_value": {
@@ -671,6 +775,11 @@
         "type": "string",
         "optional": true
       },
+      "schema_version": {
+        "path": "schema_version",
+        "type": "string",
+        "optional": true
+      },
       "boot_id": {
         "path": "boot_id",
         "type": "string",
@@ -678,7 +787,12 @@
       },
       "seq": {
         "path": "seq",
-        "type": "number",
+        "type": "integer",
+        "optional": true
+      },
+      "device_mono_us": {
+        "path": "device_mono_us",
+        "type": "integer",
         "optional": true
       }
     }

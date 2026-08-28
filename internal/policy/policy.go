@@ -138,7 +138,14 @@ func newGateway(policyVersion string, idGen ids.Generator, owner *storage.Runtim
 	if idGen == nil {
 		idGen = ids.Random()
 	}
-	policyDigest, _ := canonicaljson.Digest(canonicaljson.DomainTest, map[string]any{"policy_version": policyVersion})
+	policyDigest, _ := canonicaljson.Digest(canonicaljson.DomainPolicy, map[string]any{
+		"policy_version": policyVersion,
+		"risk_policy": map[string]any{
+			"R0": "automatic", "R1": "automatic", "R2": "approval", "R3": "denied", "R4": "denied",
+		},
+		"incomplete_source_health": map[string]any{"R2": "denied", "R3": "denied", "R4": "denied"},
+		"target_resolution":        "closed_catalog_binding",
+	})
 	return &Gateway{policyVersion: policyVersion, policyDigest: policyDigest, idGen: idGen, owner: owner, ownerEpoch: ownerEpoch}
 }
 
@@ -526,16 +533,18 @@ func (g *Gateway) approveAutomatic(ctx context.Context, tx *sql.Tx, row intentRo
 	target := normalizedTarget(row.IntentID, intentDocument)
 	idempotency := sha256.Sum256([]byte(row.TenantID + "|" + row.IntentID + "|" + row.IntentType + "|" + target))
 	commandDocument := map[string]any{
-		"command_id":        commandID,
-		"intent_id":         row.IntentID,
-		"tenant_id":         row.TenantID,
-		"effector_route":    row.IntentType,
-		"normalized_target": target,
-		"idempotency_key":   "sha256:" + hex.EncodeToString(idempotency[:]),
-		"status":            "prepared",
+		"command_id":         commandID,
+		"intent_id":          row.IntentID,
+		"tenant_id":          row.TenantID,
+		"effector_route":     row.IntentType,
+		"normalized_target":  target,
+		"idempotency_key":    "sha256:" + hex.EncodeToString(idempotency[:]),
+		"status":             "prepared",
+		"not_before_mono_us": 0,
+		"policy_digest":      g.policyDigest,
 
-		"payload":           intentDocument["parameters"],
-		"created_at":        formatTime(now),
+		"payload":    intentDocument["parameters"],
+		"created_at": formatTime(now),
 	}
 	commandJSON, err := canonicaljson.Marshal(commandDocument)
 	if err != nil {
@@ -770,15 +779,17 @@ func canonicalDocumentMatches(raw, digest []byte, domain canonicaljson.Domain) b
 
 func normalizedTarget(intentID string, document map[string]any) string {
 	parameters, _ := document["parameters"].(map[string]any)
-	if candidate, ok := parameters["target"].(string); ok {
-		candidate = strings.TrimSpace(candidate)
-		if candidate != "" && len(candidate) <= 256 {
-			for _, r := range candidate {
-				if unicode.IsControl(r) {
-					return intentID
+	for _, key := range []string{"target", "entity_id"} {
+		if candidate, ok := parameters[key].(string); ok {
+			candidate = strings.TrimSpace(candidate)
+			if candidate != "" && len(candidate) <= 256 {
+				for _, r := range candidate {
+					if unicode.IsControl(r) {
+						return intentID
+					}
 				}
+				return candidate
 			}
-			return candidate
 		}
 	}
 	return intentID

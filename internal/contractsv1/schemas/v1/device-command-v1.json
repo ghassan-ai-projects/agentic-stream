@@ -3,10 +3,10 @@
   "$id": "urn:situation-runtime:schema:device-command:v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["message_type", "protocol_version", "command_id", "idempotency_key", "target", "operation", "expected_boot_id", "expires_after_ms"],
+  "required": ["message_type", "protocol_version", "command_id", "idempotency_key", "target", "operation", "parameters", "expected_boot_id", "not_before_mono_us", "expires_after_ms", "policy_digest"],
   "properties": {
     "message_type": {"const": "command"},
-    "protocol_version": {"type": "integer", "minimum": 1, "maximum": 255},
+    "protocol_version": {"const": 1},
     "command_id": {"type": "string", "minLength": 1, "maxLength": 256},
     "idempotency_key": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "target": {"type": "string", "minLength": 1, "maxLength": 256},

@@ -19,6 +19,7 @@ type Field struct {
 	Unit     string
 	Type     string
 	Optional bool
+	Enum     []string
 }
 
 // Definition identifies a schema bound to one normalized event type.
@@ -39,10 +40,11 @@ func loadRegistry() (map[string]Definition, error) {
 		EventType     string `json:"event_type"`
 		SchemaVersion string `json:"schema_version"`
 		Fields        map[string]struct {
-			Path     string `json:"path"`
-			Unit     string `json:"unit"`
-			Type     string `json:"type"`
-			Optional bool   `json:"optional"`
+			Path     string   `json:"path"`
+			Unit     string   `json:"unit"`
+			Type     string   `json:"type"`
+			Optional bool     `json:"optional"`
+			Enum     []string `json:"enum"`
 		} `json:"fields"`
 	}
 	if err := json.Unmarshal(registryData, &document); err != nil {
@@ -52,7 +54,7 @@ func loadRegistry() (map[string]Definition, error) {
 	for ref, def := range document {
 		fields := make(map[string]Field, len(def.Fields))
 		for name, field := range def.Fields {
-			fields[name] = Field{Path: field.Path, Unit: field.Unit, Type: field.Type, Optional: field.Optional}
+			fields[name] = Field{Path: field.Path, Unit: field.Unit, Type: field.Type, Optional: field.Optional, Enum: field.Enum}
 		}
 		registry[ref] = Definition{
 			Ref:           ref,
@@ -79,14 +81,18 @@ func Lookup(ref string) (Definition, bool) {
 
 // JSON returns the structural schema for a built-in definition.
 func JSON(definition Definition) ([]byte, error) {
-	properties := make(map[string]map[string]string, len(definition.Fields))
+	properties := make(map[string]map[string]any, len(definition.Fields))
 	required := make([]string, 0, len(definition.Fields))
 	for name, field := range definition.Fields {
 		fieldType := field.Type
 		if fieldType == "" {
 			fieldType = "number"
 		}
-		properties[name] = map[string]string{"type": fieldType}
+		property := map[string]any{"type": fieldType}
+		if field.Enum != nil {
+			property["enum"] = field.Enum
+		}
+		properties[name] = property
 		if !field.Optional {
 			required = append(required, name)
 		}

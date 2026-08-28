@@ -29,14 +29,19 @@ type Command struct {
 	EffectorRoute    string
 	NormalizedTarget string
 	IdempotencyKey   string
+	PolicyDigest     string
+	NotBeforeMonoUS  int64
 	Payload          map[string]any
 }
 
 // Effect is the provider response. An effector must return UnknownOutcomeError
-// when it cannot establish whether the provider applied the effect.
+// when it cannot establish whether the provider applied the effect. Set
+// VerificationPending when the provider only acknowledged transport receipt;
+// independent feedback must then establish physical success.
 type Effect struct {
-	ProviderResult map[string]any
-	ObservedEffect map[string]any
+	ProviderResult      map[string]any
+	ObservedEffect      map[string]any
+	VerificationPending bool
 }
 
 // Effector is the only interface allowed to cross from the action plane into
@@ -283,6 +288,18 @@ func (d *Dispatcher) revalidateAuthorizationTx(ctx context.Context, tx *sql.Tx, 
 	if documentString(intentDocument, "intent_id") != intentID || documentString(intentDocument, "decision_id") != decisionID || documentString(intentDocument, "tenant_id") != intentTenant || documentString(intentDocument, "situation_id") != intentSituation || documentInt(intentDocument, "situation_version") != intentVersion || documentString(intentDocument, "type") != intentType || documentString(intentDocument, "risk_class") != intentRisk {
 		return errors.New("intent authorization identity mismatch")
 	}
+	if commandPolicyDigest := documentString(commandDocument, "policy_digest"); commandPolicyDigest != "" {
+		var evaluatedPolicyDigest string
+		if err := tx.QueryRowContext(ctx, `
+			SELECT policy_digest FROM policy_evaluations
+			WHERE intent_id = ? AND result = 'approved'
+			ORDER BY evaluated_at DESC LIMIT 1`, intentID).Scan(&evaluatedPolicyDigest); err != nil {
+			return fmt.Errorf("load approved policy digest: %w", err)
+		}
+		if commandPolicyDigest != evaluatedPolicyDigest {
+			return errors.New("command policy digest is stale")
+		}
+	}
 	var decisionDocument map[string]any
 	if err := json.Unmarshal(decisionJSON, &decisionDocument); err != nil || contractsv1.Validate(contractsv1.SchemaDecision, decisionDocument) != nil || !verifyDigest(canonicaljson.DomainDecision, decisionDocument, decisionSHA) {
 		return errors.New("decision authorization is invalid")
@@ -375,6 +392,8 @@ func (d *Dispatcher) lease(ctx context.Context) (leasedCommand, bool, error) {
 		leased.Command.EffectorRoute = documentString(document, "effector_route")
 		leased.Command.NormalizedTarget = documentString(document, "normalized_target")
 		leased.Command.IdempotencyKey = documentString(document, "idempotency_key")
+		leased.Command.PolicyDigest = documentString(document, "policy_digest")
+		leased.Command.NotBeforeMonoUS = documentInt64(document, "not_before_mono_us")
 		leased.Command.Payload, _ = document["payload"].(map[string]any)
 		if commandStatus == "succeeded" || commandStatus == "outcome_unknown" {
 			found = false
@@ -452,6 +471,15 @@ func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCo
 			errorCode = "dispatch_failed"
 		}
 	}
+	if dispatchErr == nil && effect.VerificationPending {
+		// A transport receipt is not physical success. Keep the command in the
+		// existing non-terminal manual-review state until an independent
+		// feedback verifier closes it; the outbox is delivered because no blind
+		// resend is safe after the provider accepted the frame.
+		status = "reconcile_required"
+		reconciliation = "required"
+		commandStatus = "manual_review"
+	}
 	outcomeID := d.idGen.New(ids.PrefixOutcome)
 	document := map[string]any{
 		"outcome_id": outcomeID, "command_id": leased.Command.CommandID,
@@ -508,7 +536,7 @@ func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCo
 		return fmt.Errorf("finish command outbox: %w", err)
 	}
 	verificationStatus := "observed"
-	if dispatchErr != nil {
+	if dispatchErr != nil || effect.VerificationPending {
 		verificationStatus = "awaiting"
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -525,15 +553,22 @@ func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCo
 	}, now, contractsv1.TraceContext{Traceparent: leased.Traceparent, Tracestate: leased.Tracestate}); err != nil {
 		return fmt.Errorf("append command dispatched notification: %w", err)
 	}
+	notificationStatus := status
+	if notificationStatus == "reconcile_required" {
+		// The notification contract deliberately calls an unverified physical
+		// result unknown, while the durable outcome keeps the more precise
+		// reconcile_required state for internal consumers.
+		notificationStatus = "unknown"
+	}
 	if err := notify.AppendLifecycleEventWithTrace(ctx, tx, "outcome.recorded:"+outcomeID, leased.Command.TenantID, notify.TypeOutcomeRecorded, "outcome/"+outcomeID, leased.Command.CommandID, map[string]any{
-		"tenant_id": leased.Command.TenantID, "outcome_id": outcomeID, "command_id": leased.Command.CommandID, "status": status,
+		"tenant_id": leased.Command.TenantID, "outcome_id": outcomeID, "command_id": leased.Command.CommandID, "status": notificationStatus,
 		"reconciliation_status": reconciliation, "intent_id": leased.Command.IntentID,
 		"outcome_digest":   "sha256:" + hex.EncodeToString(outcomeSHA),
 		"source_authority": notify.SourceForTenant(leased.Command.TenantID),
 	}, now, contractsv1.TraceContext{Traceparent: leased.Traceparent, Tracestate: leased.Tracestate}); err != nil {
 		return fmt.Errorf("append outcome recorded notification: %w", err)
 	}
-	if status == "succeeded" || status == "failed" {
+	if !effect.VerificationPending && (status == "succeeded" || status == "failed") {
 		if err := appendOutcomeReconciledNotification(ctx, tx, leased.Command.TenantID, leased.Command.IntentID, leased.Command.CommandID, outcomeID, status, now); err != nil {
 			return fmt.Errorf("append outcome reconciled notification: %w", err)
 		}
@@ -714,6 +749,11 @@ func documentString(document map[string]any, key string) string {
 func documentInt(document map[string]any, key string) int {
 	value, _ := document[key].(float64)
 	return int(value)
+}
+
+func documentInt64(document map[string]any, key string) int64 {
+	value, _ := document[key].(float64)
+	return int64(value)
 }
 
 func mustDigest(document map[string]any, key string) []byte {

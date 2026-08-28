@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -35,6 +36,20 @@ func TestGatewayAutomaticCommandIsIdempotent(t *testing.T) {
 	}
 	if first.Result != "approved" || first.CommandID == "" {
 		t.Fatalf("first result = %+v", first)
+	}
+	var commandJSON []byte
+	if err := db.QueryRowContext(ctx, "SELECT command_json FROM commands WHERE command_id = ?", first.CommandID).Scan(&commandJSON); err != nil {
+		t.Fatalf("load generated command: %v", err)
+	}
+	var commandDocument map[string]any
+	if err := json.Unmarshal(commandJSON, &commandDocument); err != nil {
+		t.Fatalf("decode generated command: %v", err)
+	}
+	if err := contractsv1.Validate(contractsv1.SchemaCommand, commandDocument); err != nil {
+		t.Fatalf("generated command must validate: %v", err)
+	}
+	if commandDocument["policy_digest"] == "" || commandDocument["not_before_mono_us"] != float64(0) {
+		t.Fatalf("generated command missing device freshness/policy binding: %#v", commandDocument)
 	}
 
 	var second Result

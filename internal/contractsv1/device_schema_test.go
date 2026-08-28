@@ -16,7 +16,7 @@ import (
 func goldenDeviceCommand() map[string]any {
 	return map[string]any{
 		"message_type":       "command",
-		"protocol_version":   float64(1),
+		"protocol_version":   float64(contractsv1.DeviceProtocolVersion),
 		"command_id":         "cmd-01",
 		"idempotency_key":    "sha256:" + repeat64('a'),
 		"target":             "fan-01",
@@ -100,8 +100,10 @@ func TestDeviceWireFramesFailClosed(t *testing.T) {
 		{"command missing operation", contractsv1.SchemaDeviceCommand, func(d map[string]any) { delete(d, "operation") }},
 		{"command bad idempotency_key", contractsv1.SchemaDeviceCommand, func(d map[string]any) { d["idempotency_key"] = "nope" }},
 		{"command protocol_version out of range", contractsv1.SchemaDeviceCommand, func(d map[string]any) { d["protocol_version"] = float64(999) }},
+		{"command missing policy digest", contractsv1.SchemaDeviceCommand, func(d map[string]any) { delete(d, "policy_digest") }},
 		{"command expires_after_ms zero", contractsv1.SchemaDeviceCommand, func(d map[string]any) { d["expires_after_ms"] = float64(0) }},
 		{"receipt unknown reject_code", contractsv1.SchemaDeviceReceipt, func(d map[string]any) { d["accepted"] = false; d["reject_code"] = "gremlin" }},
+		{"receipt rejected without reject_code", contractsv1.SchemaDeviceReceipt, func(d map[string]any) { d["accepted"] = false; delete(d, "reject_code") }},
 		{"receipt missing boot_id", contractsv1.SchemaDeviceReceipt, func(d map[string]any) { delete(d, "boot_id") }},
 		{"result bad status", contractsv1.SchemaDeviceResult, func(d map[string]any) { d["status"] = "maybe" }},
 		{"state bad firmware_digest", contractsv1.SchemaDeviceState, func(d map[string]any) { d["firmware_digest"] = "sha256:short" }},

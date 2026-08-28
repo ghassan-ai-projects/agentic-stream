@@ -480,8 +480,21 @@ func (e *Engine) runDueTimers(ctx context.Context, partitionID int) (int, error)
 		}
 		var appliedFeatures []operators.Feature
 		matchedTimers := make(map[string]struct{}, len(timerInfos))
+		for _, timer := range timerInfos {
+			if !e.opRuntime.IsTimerStateActive(ps, timer.stateKey) {
+				// Boot fencing intentionally suppresses this timer. Mark it
+				// handled so a stale timer cannot deadlock the partition.
+				matchedTimers[timer.id] = struct{}{}
+			}
+		}
 		for _, feature := range features {
-			timer, ok := dueByKey[feature.OperatorID+"\x00"+feature.EntityID]
+			stateKey := feature.StateKey
+			if stateKey == "" {
+				// Compatibility for features produced by older runtimes. New
+				// timer-backed features always carry their exact durable key.
+				stateKey = feature.EntityID
+			}
+			timer, ok := dueByKey[feature.OperatorID+"\x00"+stateKey]
 			if !ok || len(feature.InputEventIDs) == 0 || feature.InputEventIDs[len(feature.InputEventIDs)-1] != timer.expectedEventID {
 				continue
 			}
@@ -904,8 +917,10 @@ func (e *Engine) loadOperatorState(ctx context.Context, tx *sql.Tx, partitionID 
 	ps := &operators.PartitionState{OperatorStates: make(map[string]map[string]*operators.OperatorStateBlob)}
 	rows, err := tx.QueryContext(ctx,
 		`SELECT operator_id, state_key, state_blob FROM operator_state
-		 WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ? AND state_key = ?`,
-		e.deploymentID, e.tenantID, partitionID, entityID,
+		 WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?
+		   AND (state_key = ? OR (length(state_key) > length(?) AND
+		        substr(state_key, 1, length(?) + 1) = ? || char(31)))`,
+		e.deploymentID, e.tenantID, partitionID, entityID, entityID, entityID, entityID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query operator state: %w", err)
@@ -937,6 +952,15 @@ func (e *Engine) saveOperatorState(ctx context.Context, tx *sql.Tx, partitionID 
 		return nil
 	}
 	now := e.clock.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM operator_state
+		WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?
+		  AND (state_key = ? OR (length(state_key) > length(?) AND
+		       substr(state_key, 1, length(?) + 1) = ? || char(31)))`,
+		e.deploymentID, e.tenantID, partitionID, entityID, entityID, entityID, entityID,
+	); err != nil {
+		return fmt.Errorf("retire prior operator state: %w", err)
+	}
 	for operatorID, keys := range ps.OperatorStates {
 		for stateKey, blob := range keys {
 			blobJSON, err := json.Marshal(blob)

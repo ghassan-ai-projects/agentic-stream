@@ -2,6 +2,7 @@ package actions_test
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -32,6 +33,8 @@ func loadThermalCatalog(t *testing.T) *actions.CapabilityCatalog {
 
 func idemKey() string { return "sha256:" + strings.Repeat("a", 64) }
 
+func policyKey() string { return "sha256:" + strings.Repeat("b", 64) }
+
 func TestMaterializeProducesBoundedDeviceCommands(t *testing.T) {
 	t.Parallel()
 	catalog := loadThermalCatalog(t)
@@ -39,7 +42,7 @@ func TestMaterializeProducesBoundedDeviceCommands(t *testing.T) {
 	t.Run("led indicator", func(t *testing.T) {
 		t.Parallel()
 		doc, err := catalog.Materialize(actions.Command{
-			CommandID: "cmd-1", EffectorRoute: "set_indicator", IdempotencyKey: idemKey(),
+			CommandID: "cmd-1", EffectorRoute: "set_indicator", NormalizedTarget: "led-01", IdempotencyKey: idemKey(), PolicyDigest: policyKey(),
 			Payload: map[string]any{"entity_id": "zone-01", "state": "alert"},
 		}, boot)
 		if err != nil {
@@ -48,15 +51,35 @@ func TestMaterializeProducesBoundedDeviceCommands(t *testing.T) {
 		if doc["operation"] != "set_led" || doc["target"] != "led-01" {
 			t.Fatalf("unexpected op/target: %v / %v", doc["operation"], doc["target"])
 		}
+		if got, want := doc["parameters"], map[string]any{
+			"brightness_permille": float64(1000),
+			"pattern":             "solid",
+		}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("indicator parameters = %#v, want %#v", got, want)
+		}
 		if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, doc); err != nil {
 			t.Fatalf("emitted command must validate: %v", err)
+		}
+	})
+
+	t.Run("logical target resolves through closed binding", func(t *testing.T) {
+		t.Parallel()
+		doc, err := catalog.Materialize(actions.Command{
+			CommandID: "cmd-logical", EffectorRoute: "set_indicator", NormalizedTarget: "zone-01", IdempotencyKey: idemKey(), PolicyDigest: policyKey(),
+			Payload: map[string]any{"entity_id": "zone-01", "state": "watch"},
+		}, boot)
+		if err != nil {
+			t.Fatalf("materialize logical target: %v", err)
+		}
+		if doc["target"] != "led-01" {
+			t.Fatalf("logical target resolved to %v, want led-01", doc["target"])
 		}
 	})
 
 	t.Run("bounded cooling mode", func(t *testing.T) {
 		t.Parallel()
 		doc, err := catalog.Materialize(actions.Command{
-			CommandID: "cmd-2", EffectorRoute: "select_thermal_mode", IdempotencyKey: idemKey(),
+			CommandID: "cmd-2", EffectorRoute: "select_thermal_mode", NormalizedTarget: "fan-01", IdempotencyKey: idemKey(), PolicyDigest: policyKey(),
 			Payload: map[string]any{"entity_id": "zone-01", "mode": "bounded_cooling"},
 		}, boot)
 		if err != nil {
@@ -69,6 +92,10 @@ func TestMaterializeProducesBoundedDeviceCommands(t *testing.T) {
 		if doc["expected_boot_id"] != boot {
 			t.Fatalf("expected_boot_id = %v, want %s", doc["expected_boot_id"], boot)
 		}
+		notBefore, ok := doc["not_before_mono_us"].(int64)
+		if !ok || notBefore != 0 || doc["policy_digest"] != policyKey() {
+			t.Fatalf("command freshness/policy binding = %v/%v", doc["not_before_mono_us"], doc["policy_digest"])
+		}
 	})
 }
 
@@ -78,7 +105,7 @@ func TestMaterializeIgnoresModelSuppliedParameters(t *testing.T) {
 	t.Parallel()
 	catalog := loadThermalCatalog(t)
 	doc, err := catalog.Materialize(actions.Command{
-		CommandID: "cmd-3", EffectorRoute: "select_thermal_mode", IdempotencyKey: idemKey(),
+		CommandID: "cmd-3", EffectorRoute: "select_thermal_mode", NormalizedTarget: "fan-01", IdempotencyKey: idemKey(), PolicyDigest: policyKey(),
 		Payload: map[string]any{"mode": "bounded_cooling", "duty_permille": float64(999), "lease_ms": float64(99999), "target": "pump-01"},
 	}, boot)
 	if err != nil {
@@ -101,10 +128,14 @@ func TestMaterializeFailsClosed(t *testing.T) {
 		cmd  actions.Command
 		boot string
 	}{
-		{"route not in catalog", actions.Command{CommandID: "c", EffectorRoute: "raise_manual_review", IdempotencyKey: idemKey(), Payload: map[string]any{"mode": "hold"}}, boot},
-		{"selector not an allowed preset", actions.Command{CommandID: "c", EffectorRoute: "select_thermal_mode", IdempotencyKey: idemKey(), Payload: map[string]any{"mode": "turbo"}}, boot},
-		{"missing selector field", actions.Command{CommandID: "c", EffectorRoute: "select_thermal_mode", IdempotencyKey: idemKey(), Payload: map[string]any{"entity_id": "zone-01"}}, boot},
-		{"empty boot id", actions.Command{CommandID: "c", EffectorRoute: "set_indicator", IdempotencyKey: idemKey(), Payload: map[string]any{"state": "off"}}, ""},
+		{"route not in catalog", actions.Command{CommandID: "c", EffectorRoute: "raise_manual_review", IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"mode": "hold"}}, boot},
+		{"empty target", actions.Command{CommandID: "c", EffectorRoute: "set_indicator", NormalizedTarget: "", IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "off"}}, boot},
+		{"unknown target", actions.Command{CommandID: "c", EffectorRoute: "set_indicator", NormalizedTarget: "led-99", IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "off"}}, boot},
+		{"target does not match route", actions.Command{CommandID: "c", EffectorRoute: "set_indicator", NormalizedTarget: "fan-01", IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "off"}}, boot},
+		{"logical target is not bound", actions.Command{CommandID: "c", EffectorRoute: "set_indicator", NormalizedTarget: "zone-99", IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "off"}}, boot},
+		{"selector not an allowed preset", actions.Command{CommandID: "c", EffectorRoute: "select_thermal_mode", IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"mode": "turbo"}}, boot},
+		{"missing selector field", actions.Command{CommandID: "c", EffectorRoute: "select_thermal_mode", IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"entity_id": "zone-01"}}, boot},
+		{"empty boot id", actions.Command{CommandID: "c", EffectorRoute: "set_indicator", IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "off"}}, ""},
 	}
 	for _, tc := range cases {
 		tc := tc
@@ -137,7 +168,7 @@ func TestMaterializeReEnforcesHardBounds(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 	if _, err := catalog.Materialize(actions.Command{
-		CommandID: "c", EffectorRoute: "select_thermal_mode", IdempotencyKey: idemKey(),
+		CommandID: "c", EffectorRoute: "select_thermal_mode", NormalizedTarget: "fan-01", IdempotencyKey: idemKey(), PolicyDigest: policyKey(),
 		Payload: map[string]any{"mode": "bounded_cooling"},
 	}, boot); err == nil {
 		t.Fatal("preset above hard max must be rejected at materialization")
@@ -147,10 +178,17 @@ func TestMaterializeReEnforcesHardBounds(t *testing.T) {
 func TestLoadCapabilityCatalogRejectsInvalid(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"no routes":            `{"protocol_version": 1, "routes": {}}`,
-		"bad protocol":         `{"protocol_version": 0, "routes": {"r": {"operation": "o", "target": "t", "selector_field": "s", "expires_after_ms": 1, "presets": {"p": {}}}}}`,
-		"unknown field":        `{"protocol_version": 1, "gremlin": true, "routes": {}}`,
-		"bound without preset": `{"protocol_version": 1, "routes": {"r": {"operation": "o", "target": "t", "selector_field": "s", "expires_after_ms": 1, "presets": {"p": {}}, "bounds": {"x": {"max": 1}}}}}`,
+		"no routes":                     `{"protocol_version": 1, "routes": {}}`,
+		"bad protocol":                  `{"protocol_version": 0, "routes": {"r": {"operation": "o", "target": "t", "selector_field": "s", "expires_after_ms": 1, "presets": {"p": {}}}}}`,
+		"future protocol":               `{"protocol_version": 2, "routes": {"r": {"operation": "o", "target": "t", "selector_field": "s", "expires_after_ms": 1, "presets": {"p": {}}}}}`,
+		"empty route":                   `{"protocol_version": 1, "routes": {"": {"operation": "o", "target": "t", "selector_field": "s", "expires_after_ms": 1, "presets": {"p": {}}}}}`,
+		"unknown field":                 `{"protocol_version": 1, "gremlin": true, "routes": {}}`,
+		"bound without preset":          `{"protocol_version": 1, "routes": {"r": {"operation": "o", "target": "t", "selector_field": "s", "expires_after_ms": 1, "presets": {"p": {}}, "bounds": {"x": {"max": 1}}}}}`,
+		"bound missing from one preset": `{"protocol_version": 1, "routes": {"r": {"operation": "o", "target": "t", "selector_field": "s", "expires_after_ms": 1, "presets": {"p1": {"x": 1}, "p2": {}}, "bounds": {"x": {"max": 1}}}}}`,
+		"inverted bound":                `{"protocol_version": 1, "routes": {"r": {"operation": "o", "target": "t", "selector_field": "s", "expires_after_ms": 1, "presets": {"p": {"x": 1}}, "bounds": {"x": {"min": 2, "max": 1}}}}}`,
+		"binding to another target":     `{"protocol_version": 1, "routes": {"r": {"operation": "o", "target": "t", "target_bindings": {"zone": "other"}, "selector_field": "s", "expires_after_ms": 1, "presets": {"p": {}}}}}`,
+		"non-finite bound":              `{"protocol_version": 1, "routes": {"r": {"operation": "o", "target": "t", "selector_field": "s", "expires_after_ms": 1, "presets": {"p": {"x": 1}}, "bounds": {"x": {"max": 1e400}}}}}`,
+		"trailing JSON":                 `{"protocol_version": 1, "routes": {"r": {"operation": "o", "target": "t", "selector_field": "s", "expires_after_ms": 1, "presets": {"p": {}}}}} {"unexpected": true}`,
 	}
 	for name, body := range cases {
 		body := body

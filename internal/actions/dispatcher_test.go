@@ -22,8 +22,9 @@ import (
 )
 
 type recordingEffector struct {
-	calls   int
-	unknown bool
+	calls               int
+	unknown             bool
+	verificationPending bool
 }
 
 type tripBeforeAcceptEffector struct {
@@ -53,7 +54,10 @@ func (e *recordingEffector) Dispatch(_ context.Context, command actions.Command)
 	if e.unknown {
 		return actions.Effect{}, &actions.UnknownOutcomeError{Err: errors.New("provider timeout")}
 	}
-	return actions.Effect{ProviderResult: map[string]any{"accepted": true, "target": command.NormalizedTarget}}, nil
+	return actions.Effect{
+		ProviderResult:      map[string]any{"accepted": true, "target": command.NormalizedTarget},
+		VerificationPending: e.verificationPending,
+	}, nil
 }
 
 func TestDispatcherRecordsSuccessAndDoesNotRedispatchDeliveredOutbox(t *testing.T) {
@@ -169,6 +173,43 @@ func TestDispatcherDoesNotBlindlyRetryUnknownOutcome(t *testing.T) {
 	}
 	if version, ok := reconciledData["reconciliation_version"].(float64); !ok || version != 2 {
 		t.Fatalf("reconciled resolution reconciliation_version=%v, want 2", reconciledData["reconciliation_version"])
+	}
+}
+
+func TestDispatcherKeepsAcceptedTransportAwaitingVerification(t *testing.T) {
+	db, commandID := openActionFixture(t)
+	defer func() { _ = db.Close() }()
+	effector := &recordingEffector{verificationPending: true}
+	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute)
+
+	processed, err := dispatcher.DispatchOnce(context.Background())
+	if err != nil || !processed {
+		t.Fatalf("pending-verification dispatch processed=%v err=%v", processed, err)
+	}
+
+	var commandStatus, outcomeStatus, reconciliation, verificationStatus string
+	if err := db.QueryRowContext(context.Background(), `
+		SELECT c.status, o.status, o.reconciliation_status, v.status
+		FROM commands c
+		JOIN outcomes o ON o.command_id = c.command_id
+		JOIN verifications v ON v.command_id = c.command_id
+		WHERE c.command_id = ?`, commandID).Scan(&commandStatus, &outcomeStatus, &reconciliation, &verificationStatus); err != nil {
+		t.Fatalf("read pending-verification ledger: %v", err)
+	}
+	if commandStatus != "manual_review" || outcomeStatus != "reconcile_required" || reconciliation != "required" || verificationStatus != "awaiting" {
+		t.Fatalf("pending-verification ledger command=%q outcome=%q reconciliation=%q verification=%q", commandStatus, outcomeStatus, reconciliation, verificationStatus)
+	}
+
+	var reconciledCount int
+	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM notifications WHERE event_type = ?", notify.TypeOutcomeReconciled).Scan(&reconciledCount); err != nil {
+		t.Fatalf("count outcome.reconciled notifications: %v", err)
+	}
+	if reconciledCount != 0 {
+		t.Fatalf("accepted transport receipt emitted %d outcome.reconciled notifications", reconciledCount)
+	}
+	recordedData := readNotificationData(t, db, notify.TypeOutcomeRecorded)
+	if recordedData["status"] != "unknown" || recordedData["reconciliation_status"] != "required" {
+		t.Fatalf("accepted transport receipt notification status=%v reconciliation=%v", recordedData["status"], recordedData["reconciliation_status"])
 	}
 }
 

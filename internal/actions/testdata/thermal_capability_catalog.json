@@ -4,17 +4,19 @@
     "set_indicator": {
       "operation": "set_led",
       "target": "led-01",
+      "target_bindings": {"zone-01": "led-01"},
       "selector_field": "state",
       "expires_after_ms": 60000,
       "presets": {
-        "off": {},
-        "watch": {},
-        "alert": {}
+        "off": {"brightness_permille": 0, "pattern": "off"},
+        "watch": {"brightness_permille": 500, "pattern": "slow_blink"},
+        "alert": {"brightness_permille": 1000, "pattern": "solid"}
       }
     },
     "select_thermal_mode": {
       "operation": "set_pwm_lease",
       "target": "fan-01",
+      "target_bindings": {"zone-01": "fan-01"},
       "selector_field": "mode",
       "expires_after_ms": 20000,
       "presets": {

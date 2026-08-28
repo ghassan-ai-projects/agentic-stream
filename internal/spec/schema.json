@@ -328,6 +328,7 @@
             "rms",
             "first",
             "last",
+            "latest",
             "delta",
             "rate",
             "slope",

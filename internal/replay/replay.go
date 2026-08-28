@@ -216,12 +216,37 @@ func run(ctx context.Context, dbPath, specPath, tracePath, tenantID string, cogn
 		return Result{}, fmt.Errorf("compile spec: %w", err)
 	}
 
-	epoch, err := traceEpoch(tracePath)
+	// Register the compiled schemas before deriving the virtual clock epoch.
+	// Epoch derivation must inspect the same ingress validity boundary as
+	// JSONLReplay; otherwise a quarantined future-dated line could move the
+	// replay clock and change the result of valid evidence.
+	if err := spec.SaveDeployment(ctx, db, tenantID, compiled); err != nil {
+		return Result{}, fmt.Errorf("prepare replay deployment: %w", err)
+	}
+	requireSchemas := len(compiled.Inputs) > 0
+	for _, input := range compiled.Inputs {
+		if input.SchemaRef == "" {
+			requireSchemas = false
+			break
+		}
+	}
+	validationLog := eventlog.NewEventLog(db)
+	if requireSchemas {
+		validationLog.RequireSchemaValidation()
+	}
+	epoch, err := traceEpoch(ctx, tracePath, tenantID, validationLog)
 	if err != nil {
 		return Result{}, fmt.Errorf("derive replay epoch: %w", err)
 	}
 	clk := clock.NewVirtual(epoch)
 	log := eventlog.NewEventLogWithClock(db, clk)
+	// Register the compiled input schemas before replay ingestion. The stream
+	// engine also enables this guard during construction, but doing it here is
+	// essential: JSONLReplay is the boundary that quarantines malformed and
+	// schema-invalid evidence before it can enter event_log.
+	if requireSchemas {
+		log.RequireSchemaValidation()
+	}
 	conn := ingress.NewJSONLReplayWithClock(db, log, tenantID, tracePath, "replay:"+tracePath, clk)
 	if _, err := conn.Run(ctx); err != nil {
 		return Result{}, fmt.Errorf("replay trace: %w", err)
@@ -628,7 +653,7 @@ func replayEpisodeKey(situationID string, version int, triggerID string) string 
 	return fmt.Sprintf("%s/%d/%s", situationID, version, triggerID)
 }
 
-func traceEpoch(path string) (time.Time, error) {
+func traceEpoch(ctx context.Context, path, tenantID string, log *eventlog.EventLog) (time.Time, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("open trace: %w", err)
@@ -637,19 +662,32 @@ func traceEpoch(path string) (time.Time, error) {
 	var first time.Time
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		if len(scanner.Bytes()) == 0 {
+		line := scanner.Bytes()
+		if len(line) == 0 {
 			continue
 		}
 		var envelope contractsv1.Envelope
-		if err := json.Unmarshal(scanner.Bytes(), &envelope); err != nil {
-			return time.Time{}, fmt.Errorf("decode trace envelope: %w", err)
+		if err := json.Unmarshal(line, &envelope); err != nil {
+			// JSONLReplay owns malformed-line quarantine. Epoch derivation is
+			// only a clock bootstrap and must not turn a quarantinable line into
+			// a whole-replay failure.
+			continue
+		}
+		if envelope.TenantID == "" {
+			envelope.TenantID = tenantID
+		}
+		if err := contractsv1.ValidateEnvelope(envelope, tenantID); err != nil {
+			continue
+		}
+		if err := log.ValidateEnvelope(ctx, envelope); err != nil {
+			continue
 		}
 		processingTime := envelope.IngestedAt
 		if processingTime.IsZero() {
 			processingTime = envelope.EventTime
 		}
 		if processingTime.IsZero() {
-			return time.Time{}, fmt.Errorf("trace event_time or ingested_at is required")
+			continue
 		}
 		if first.IsZero() || processingTime.Before(first) {
 			first = processingTime.UTC()

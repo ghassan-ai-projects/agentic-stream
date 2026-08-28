@@ -184,7 +184,7 @@ func TestDeterministicReplayDoesNotInvokeCognition(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	var evaluations int
-	if err := db.QueryRow("SELECT COUNT(*) FROM trigger_evaluations").Scan(&evaluations); err != nil {
+	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM trigger_evaluations").Scan(&evaluations); err != nil {
 		t.Fatalf("count trigger evaluations: %v", err)
 	}
 	if evaluations != 0 {

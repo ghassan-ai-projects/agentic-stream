@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math"
 	"sort"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
@@ -32,6 +34,7 @@ type NumericBound struct {
 type OperationSpec struct {
 	Operation      string                    `json:"operation"`
 	Target         string                    `json:"target"`
+	TargetBindings map[string]string         `json:"target_bindings,omitempty"`
 	SelectorField  string                    `json:"selector_field"`
 	ExpiresAfterMs int                       `json:"expires_after_ms"`
 	Presets        map[string]map[string]any `json:"presets"`
@@ -56,15 +59,32 @@ func LoadCapabilityCatalog(data []byte) (*CapabilityCatalog, error) {
 	if err := decoder.Decode(&catalog); err != nil {
 		return nil, fmt.Errorf("decode capability catalog: %w", err)
 	}
-	if catalog.ProtocolVersion < 1 || catalog.ProtocolVersion > 255 {
-		return nil, fmt.Errorf("capability catalog protocol_version %d out of range", catalog.ProtocolVersion)
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("capability catalog contains trailing JSON")
+		}
+		return nil, fmt.Errorf("decode trailing capability catalog data: %w", err)
+	}
+	if catalog.ProtocolVersion != contractsv1.DeviceProtocolVersion {
+		return nil, fmt.Errorf("capability catalog protocol_version %d is unsupported, want %d", catalog.ProtocolVersion, contractsv1.DeviceProtocolVersion)
 	}
 	if len(catalog.Routes) == 0 {
 		return nil, fmt.Errorf("capability catalog has no routes")
 	}
 	for route, spec := range catalog.Routes {
+		if route == "" {
+			return nil, fmt.Errorf("capability catalog contains an empty route")
+		}
 		if spec.Operation == "" || spec.Target == "" || spec.SelectorField == "" {
 			return nil, fmt.Errorf("route %q must set operation, target, and selector_field", route)
+		}
+		for logicalTarget, physicalTarget := range spec.TargetBindings {
+			if logicalTarget == "" || physicalTarget == "" {
+				return nil, fmt.Errorf("route %q contains an empty target binding", route)
+			}
+			if physicalTarget != spec.Target {
+				return nil, fmt.Errorf("route %q target binding %q resolves to %q, want route target %q", route, logicalTarget, physicalTarget, spec.Target)
+			}
 		}
 		if spec.ExpiresAfterMs < 1 {
 			return nil, fmt.Errorf("route %q must set a positive expires_after_ms", route)
@@ -72,18 +92,27 @@ func LoadCapabilityCatalog(data []byte) (*CapabilityCatalog, error) {
 		if len(spec.Presets) == 0 {
 			return nil, fmt.Errorf("route %q has no presets", route)
 		}
-		// Every bounded parameter must be produced by at least one preset, so a
-		// bound can never silently apply to nothing.
+		// Every bounded parameter must be produced by every preset, so a
+		// selector can never silently bypass a declared hard bound.
 		for param := range spec.Bounds {
-			found := false
-			for _, preset := range spec.Presets {
-				if _, ok := preset[param]; ok {
-					found = true
-					break
+			if param == "" {
+				return nil, fmt.Errorf("route %q contains an empty bounds parameter", route)
+			}
+			for presetName, preset := range spec.Presets {
+				if _, ok := preset[param]; !ok {
+					return nil, fmt.Errorf("route %q preset %q does not produce bounded parameter %q", route, presetName, param)
 				}
 			}
-			if !found {
-				return nil, fmt.Errorf("route %q bounds parameter %q that no preset produces", route, param)
+		}
+		for param, bound := range spec.Bounds {
+			if bound.Min != nil && !isFinite(*bound.Min) {
+				return nil, fmt.Errorf("route %q bound %q has a non-finite minimum", route, param)
+			}
+			if bound.Max != nil && !isFinite(*bound.Max) {
+				return nil, fmt.Errorf("route %q bound %q has a non-finite maximum", route, param)
+			}
+			if bound.Min != nil && bound.Max != nil && *bound.Min > *bound.Max {
+				return nil, fmt.Errorf("route %q bound %q has minimum %v above maximum %v", route, param, *bound.Min, *bound.Max)
 			}
 		}
 	}
@@ -96,12 +125,31 @@ func LoadCapabilityCatalog(data []byte) (*CapabilityCatalog, error) {
 // outside the preset set, or a parameter beyond its hard bound is rejected with
 // zero commands emitted — never clamped silently.
 func (c *CapabilityCatalog) Materialize(command Command, expectedBootID string) (map[string]any, error) {
+	if c == nil {
+		return nil, fmt.Errorf("capability catalog is required to materialize a device command")
+	}
+	if c.ProtocolVersion != contractsv1.DeviceProtocolVersion {
+		return nil, fmt.Errorf("capability catalog protocol_version %d is unsupported, want %d", c.ProtocolVersion, contractsv1.DeviceProtocolVersion)
+	}
+	if command.CommandID == "" || command.IdempotencyKey == "" || command.PolicyDigest == "" {
+		return nil, fmt.Errorf("command identity and policy digest are required to materialize a device command")
+	}
 	if expectedBootID == "" {
 		return nil, fmt.Errorf("expected boot id is required to materialize a device command")
 	}
 	spec, ok := c.Routes[command.EffectorRoute]
 	if !ok {
 		return nil, fmt.Errorf("route %q is not in the device capability catalog", command.EffectorRoute)
+	}
+	if command.NormalizedTarget == "" {
+		return nil, fmt.Errorf("normalized target is required to materialize a device command")
+	}
+	physicalTarget := spec.Target
+	if command.NormalizedTarget != spec.Target {
+		boundTarget, ok := spec.TargetBindings[command.NormalizedTarget]
+		if !ok || boundTarget != spec.Target {
+			return nil, fmt.Errorf("route %q target %q is not bound to catalog target %q", command.EffectorRoute, command.NormalizedTarget, spec.Target)
+		}
 	}
 	selectorValue, ok := command.Payload[spec.SelectorField].(string)
 	if !ok || selectorValue == "" {
@@ -137,15 +185,17 @@ func (c *CapabilityCatalog) Materialize(command Command, expectedBootID string) 
 	}
 
 	document := map[string]any{
-		"message_type":     "command",
-		"protocol_version": c.ProtocolVersion,
-		"command_id":       command.CommandID,
-		"idempotency_key":  command.IdempotencyKey,
-		"target":           spec.Target,
-		"operation":        spec.Operation,
-		"parameters":       parameters,
-		"expected_boot_id": expectedBootID,
-		"expires_after_ms": spec.ExpiresAfterMs,
+		"message_type":       "command",
+		"protocol_version":   c.ProtocolVersion,
+		"command_id":         command.CommandID,
+		"idempotency_key":    command.IdempotencyKey,
+		"target":             physicalTarget,
+		"operation":          spec.Operation,
+		"parameters":         parameters,
+		"expected_boot_id":   expectedBootID,
+		"not_before_mono_us": command.NotBeforeMonoUS,
+		"expires_after_ms":   spec.ExpiresAfterMs,
+		"policy_digest":      command.PolicyDigest,
 	}
 	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, document); err != nil {
 		return nil, fmt.Errorf("materialized device command is invalid: %w", err)
@@ -165,15 +215,19 @@ func sortedKeys(m map[string]NumericBound) []string {
 func toFloat(value any) (float64, bool) {
 	switch number := value.(type) {
 	case float64:
-		return number, true
+		return number, isFinite(number)
 	case int:
 		return float64(number), true
 	case int64:
 		return float64(number), true
 	case json.Number:
 		parsed, err := number.Float64()
-		return parsed, err == nil
+		return parsed, err == nil && isFinite(parsed)
 	default:
 		return 0, false
 	}
+}
+
+func isFinite(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0)
 }

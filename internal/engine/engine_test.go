@@ -325,6 +325,55 @@ func TestEngineFiresDurableProcessingTimerExactlyOnce(t *testing.T) {
 	}
 }
 
+func TestEngineRetiresTimerFromPreviousDeviceBoot(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	clk := clock.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	compiled := heartbeatSpec()
+	db, err := storage.Open(ctx, filepath.Join(dir, "stale-timer.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	log := eventlog.NewEventLogWithClock(db, clk)
+	eng, err := engine.NewStreamEngine(ctx, db, log, clk, &compiled, "default")
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+	partitionID := appendHeartbeatWithBoot(t, ctx, log, "hb-a", 0, "boot-A")
+	if processed, err := eng.Run(ctx, partitionID); err != nil || processed != 1 {
+		t.Fatalf("boot-A run: processed=%d err=%v", processed, err)
+	}
+	appendHeartbeatWithBoot(t, ctx, log, "hb-b", time.Minute, "boot-B")
+	if processed, err := eng.Run(ctx, partitionID); err != nil || processed != 1 {
+		t.Fatalf("boot-B run: processed=%d err=%v", processed, err)
+	}
+	clk.Advance(6 * time.Minute)
+	fired, err := eng.RunDueTimers(ctx, partitionID)
+	if err != nil {
+		t.Fatalf("retire stale timer: %v", err)
+	}
+	if fired != 2 {
+		t.Fatalf("handled timers = %d, want both stale and active timers", fired)
+	}
+	var pending int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM timers WHERE status = 'pending'").Scan(&pending); err != nil {
+		t.Fatalf("count pending timers: %v", err)
+	}
+	if pending != 0 {
+		t.Fatalf("stale timer remained pending: %d", pending)
+	}
+	var retired int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM operator_state
+		WHERE state_key LIKE 'thing-1' || char(31) || 'boot-A'`).Scan(&retired); err != nil {
+		t.Fatalf("count retired boot state: %v", err)
+	}
+	if retired != 0 {
+		t.Fatalf("retired boot state remained durable: %d rows", retired)
+	}
+}
+
 func restartSpec() spec.CompiledSpec {
 	return spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1", Digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
@@ -360,8 +409,17 @@ func appendLevel(t *testing.T, ctx context.Context, log *eventlog.EventLog, id s
 
 func appendHeartbeat(t *testing.T, ctx context.Context, log *eventlog.EventLog, id string, offset time.Duration) int {
 	t.Helper()
+	return appendHeartbeatWithBoot(t, ctx, log, id, offset, "")
+}
+
+func appendHeartbeatWithBoot(t *testing.T, ctx context.Context, log *eventlog.EventLog, id string, offset time.Duration, bootID string) int {
+	t.Helper()
 	when := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(offset)
-	env := contractsv1.Envelope{ID: id, Type: "test.heartbeat", SchemaVersion: "1.0", TenantID: "default", Source: "test", PartitionKey: "thing-1", Entity: contractsv1.EntityRef{Type: "thing", ID: "thing-1"}, EventTime: when, IngestedAt: when, Classification: contractsv1.ClassificationInternal, Data: map[string]any{}}
+	data := map[string]any{}
+	if bootID != "" {
+		data["boot_id"] = bootID
+	}
+	env := contractsv1.Envelope{ID: id, Type: "test.heartbeat", SchemaVersion: "1.0", TenantID: "default", Source: "test", PartitionKey: "thing-1", Entity: contractsv1.EntityRef{Type: "thing", ID: "thing-1"}, EventTime: when, IngestedAt: when, Classification: contractsv1.ClassificationInternal, Data: data}
 	if _, err := log.Append(ctx, "default", []contractsv1.Envelope{env}); err != nil {
 		t.Fatalf("append heartbeat: %v", err)
 	}

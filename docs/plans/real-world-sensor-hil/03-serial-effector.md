@@ -125,7 +125,9 @@ Dispatch algorithm (all of it inside the dispatcher's lease/timeout window):
    `SimulatedEffector`).
 
 Transport is abstracted so the **emulator** (Streams Simulator, over a UDS or
-pipe) and **real serial** share one effector. Define:
+pipe) and the physical edge gateway share one effector. The edge gateway owns
+the raw serial framing and device identity; Agentic Stream consumes the typed
+gateway link. Define:
 
 ```go
 type DeviceTransport interface {
@@ -136,10 +138,9 @@ type DeviceTransport interface {
 ```
 
 - NDJSON transport first (bring-up), COBS/CBOR framed transport later behind the
-  same interface (decision-log item 6). The emulator implements
-  `DeviceTransport`; no serial library is needed for the emulator path, so **no
-  new dependency** enters the repo until real hardware is wired, and then only
-  behind the physical profile.
+  same interface (decision-log item 6). The emulator and gateway adapter
+  implement `DeviceTransport`; no serial library is needed in Agentic Stream,
+  including the physical profile.
 
 **Exit:** Experiment 5 trials pass against the emulator transport — only the valid
 command acts; out-of-range / expired / wrong-target / wrong-boot / repeated-key /
