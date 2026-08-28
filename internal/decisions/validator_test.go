@@ -34,6 +34,45 @@ func TestValidateBindsDecisionAndIntents(t *testing.T) {
 	}
 }
 
+func TestValidateAllowsExplicitAbstention(t *testing.T) {
+	document := validDecision()
+	document["decision_type"] = "need_more_evidence"
+	document["intents"] = []any{}
+	raw, err := canonicaljson.Marshal(document)
+	if err != nil {
+		t.Fatalf("marshal abstention: %v", err)
+	}
+	digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
+	if err != nil {
+		t.Fatalf("digest abstention: %v", err)
+	}
+	result, err := Validate(raw, digest, validInput())
+	if err != nil {
+		t.Fatalf("Validate abstention: %v", err)
+	}
+	if len(result.Intents) != 0 {
+		t.Fatalf("abstention produced %d intents", len(result.Intents))
+	}
+}
+
+func TestValidateRejectsImplicitAbstention(t *testing.T) {
+	document := validDecision()
+	document["intents"] = []any{}
+	raw, err := canonicaljson.Marshal(document)
+	if err != nil {
+		t.Fatalf("marshal implicit abstention: %v", err)
+	}
+	digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
+	if err != nil {
+		t.Fatalf("digest implicit abstention: %v", err)
+	}
+	_, err = Validate(raw, digest, validInput())
+	var validationErr *ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Reason != "schema_invalid" {
+		t.Fatalf("implicit abstention error = %v, want schema_invalid", err)
+	}
+}
+
 func TestValidateCompensatingIntentTypes(t *testing.T) {
 	compiled, err := spec.CompileFile(context.Background(), "../../docs/design/examples/predictive-maintenance.situation.yaml")
 	if err != nil {
@@ -299,17 +338,17 @@ func testCatalog() []map[string]any {
 		},
 		{
 			"type": "schedule_crew", "risk_class": "R2",
-			"parameter_schema": prioritySchema,
+			"parameter_schema":      prioritySchema,
 			"model_writable_fields": []any{"priority"},
 		},
 		{
 			"type": "downgrade_maintenance_ticket", "risk_class": "R1",
-			"parameter_schema": prioritySchema,
+			"parameter_schema":      prioritySchema,
 			"model_writable_fields": []any{"priority"},
 		},
 		{
 			"type": "withdraw_maintenance_ticket", "risk_class": "R1",
-			"parameter_schema": prioritySchema,
+			"parameter_schema":      prioritySchema,
 			"model_writable_fields": []any{"priority"},
 		},
 	}

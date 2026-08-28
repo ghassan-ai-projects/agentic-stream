@@ -38,6 +38,7 @@ const (
 	DomainIntentCatalog    Domain = "situation-runtime/intent-catalog/v1\n"
 	DomainApproval         Domain = "situation-runtime/approval-assertion/v1\n"
 	DomainPolicy           Domain = "situation-runtime/policy/v1\n"
+	DomainShadowComparison Domain = "situation-runtime/shadow-comparison/v1\n"
 	DomainTest             Domain = "situation-runtime/test/v1\n"
 )
 

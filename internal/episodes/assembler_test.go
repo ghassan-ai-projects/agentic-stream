@@ -312,10 +312,10 @@ func TestAssemblerPersistsReconsiderationPayload(t *testing.T) {
 	reconsiderationDedupe := make([]byte, 32)
 	reconsiderationDedupe[0] = 1
 	decisionJSON, err := canonicaljson.Marshal(map[string]any{
-		"decision_id": "dec-prior",
-		"episode_id":  "epi-prior",
-		"confidence":  0.9,
-		"intents":     []any{},
+		"decision_id":   "dec-prior",
+		"episode_id":    "epi-prior",
+		"confidence":    0.9,
+		"decision_type": "need_more_evidence", "intents": []any{},
 	})
 	if err != nil {
 		t.Fatalf("marshal prior decision: %v", err)

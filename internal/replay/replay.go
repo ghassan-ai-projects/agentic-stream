@@ -19,26 +19,39 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // Result is the deterministic output of a replay run.
 type Result struct {
-	EventsProcessed  int
-	VersionCount     int
-	VersionsHash     string
-	Mode             Mode
-	WorkerInvoked    bool
-	EffectsAllowed   bool
-	CapabilityCalls  int
-	SimulatedResults []map[string]any
-	Findings         []Finding
+	EventsProcessed   int
+	VersionCount      int
+	VersionsHash      string
+	Mode              Mode
+	WorkerInvoked     bool
+	EffectsAllowed    bool
+	CapabilityCalls   int
+	SimulatedResults  []map[string]any
+	ShadowComparisons []ShadowComparisonResult
+	Findings          []Finding
+}
+
+// ShadowComparisonResult identifies the durable report produced for one
+// paired shadow trial.
+type ShadowComparisonResult struct {
+	EpisodeKey             string
+	ComparisonSHA256       string
+	BaselineDecisionSHA256 string
+	TamozDecisionSHA256    string
+	DecisionsEqual         bool
 }
 
 // Finding is a deterministic, non-effectful replay observation.
@@ -88,18 +101,40 @@ type RecordedLedgerForReplay interface {
 // ShadowInput is the immutable Situation snapshot presented to a shadow
 // executor. It contains no credential, resolver, or effector capability.
 type ShadowInput struct {
-	EpisodeKey   string
-	SnapshotJSON []byte
+	TenantID         string
+	EpisodeKey       string
+	EpisodeID        string
+	SituationID      string
+	SituationVersion int
+	TriggerID        string
+	AttemptID        string
+	Fence            int64
+	SnapshotDigest   string
+	SpecDigest       string
+	PolicyDigest     string
+	EvaluationTime   time.Time
+	SnapshotJSON     []byte
 }
 
 // ShadowOutput is the report-only artifact produced by a shadow executor.
 type ShadowOutput struct {
-	ManifestSHA256 string
+	ExecutorVersion string
+	ManifestSHA256  string
+	DecisionJSON    []byte
+	DecisionSHA256  string
 }
 
 // ShadowExecutor may inspect a replay snapshot, but cannot dispatch effects.
 type ShadowExecutor interface {
 	ExecuteShadow(context.Context, ShadowInput) (ShadowOutput, error)
+}
+
+// BaselineExecutor is the deterministic, non-model side of a shadow trial.
+// It has the same effect-free input/output boundary as ShadowExecutor but is
+// named separately so a trial cannot accidentally compare an executor with
+// itself.
+type BaselineExecutor interface {
+	ExecuteBaseline(context.Context, ShadowInput) (ShadowOutput, error)
 }
 
 // SimulatedCommand is a typed counterfactual command. It is intentionally
@@ -118,10 +153,11 @@ type Simulator interface {
 
 // Capabilities are explicit, non-credential replay adapters.
 type Capabilities struct {
-	RecordedLedger RecordedLedger
-	ShadowExecutor ShadowExecutor
-	Simulator      Simulator
-	Commands       []SimulatedCommand
+	RecordedLedger   RecordedLedger
+	BaselineExecutor BaselineExecutor
+	ShadowExecutor   ShadowExecutor
+	Simulator        Simulator
+	Commands         []SimulatedCommand
 }
 
 // ErrModeCapabilityRequired means a worker-aware replay mode was requested
@@ -168,8 +204,8 @@ func RunMode(ctx context.Context, mode Mode, dbPath, specPath, tracePath, tenant
 	default:
 		return Result{}, fmt.Errorf("%w: %s", ErrUnsupportedMode, mode)
 	}
-	result, err := run(ctx, dbPath, specPath, tracePath, tenantID, true, func(db *storage.DB, result *Result) error {
-		return applyCapabilities(ctx, db, tenantID, mode, caps, result)
+	result, err := run(ctx, dbPath, specPath, tracePath, tenantID, true, func(db *storage.DB, result *Result, compiled *spec.CompiledSpec, evaluationTime time.Time) error {
+		return applyCapabilities(ctx, db, tenantID, mode, caps, compiled, evaluationTime, result)
 	})
 	if err != nil {
 		return result, err
@@ -186,6 +222,9 @@ func (c Capabilities) validate(mode Mode) error {
 			return fmt.Errorf("%w: recorded ledger", ErrModeCapabilityRequired)
 		}
 	case ModeShadow:
+		if c.BaselineExecutor == nil {
+			return fmt.Errorf("%w: deterministic baseline executor", ErrModeCapabilityRequired)
+		}
 		if c.ShadowExecutor == nil {
 			return fmt.Errorf("%w: shadow executor", ErrModeCapabilityRequired)
 		}
@@ -199,12 +238,212 @@ func (c Capabilities) validate(mode Mode) error {
 	return nil
 }
 
+func applyPairedShadow(ctx context.Context, db *storage.DB, tenantID string, caps Capabilities, compiled *spec.CompiledSpec, items []replayItem, evaluationTime time.Time, result *Result) error {
+	if compiled == nil {
+		return fmt.Errorf("shadow comparison requires compiled spec")
+	}
+	catalogDocument, _, err := episodes.CompileIntentCatalog(compiled.Actions.Intents)
+	if err != nil {
+		return fmt.Errorf("compile shadow intent catalog: %w", err)
+	}
+	catalog, err := decisions.CompileIntentCatalog(catalogDocument)
+	if err != nil {
+		return fmt.Errorf("compile shadow decision catalog: %w", err)
+	}
+	allowedTypes := make(map[string]struct{}, len(compiled.Actions.Intents))
+	for _, intent := range compiled.Actions.Intents {
+		allowedTypes[intent.Type] = struct{}{}
+	}
+	policyDigest, err := policy.DigestForVersion(compiled.Digest)
+	if err != nil {
+		return fmt.Errorf("digest shadow policy: %w", err)
+	}
+	store := storage.ShadowComparisonStore{}
+	for _, item := range items {
+		input, err := loadShadowInput(ctx, db, item, tenantID, compiled.Digest, policyDigest, evaluationTime)
+		if err != nil {
+			return err
+		}
+		baselineInput := cloneShadowInput(input)
+		tamozInput := cloneShadowInput(input)
+		baselineOutput, err := caps.BaselineExecutor.ExecuteBaseline(ctx, baselineInput)
+		if err != nil {
+			return fmt.Errorf("baseline shadow episode %s: %w", input.EpisodeKey, err)
+		}
+		tamozOutput, err := caps.ShadowExecutor.ExecuteShadow(ctx, tamozInput)
+		if err != nil {
+			return fmt.Errorf("Tamoz shadow episode %s: %w", input.EpisodeKey, err)
+		}
+		result.WorkerInvoked = true
+		result.CapabilityCalls += 2
+		baseline, err := validateShadowOutput(input, baselineOutput, catalog, allowedTypes, compiled.Cognition.Executor.RiskCeiling, evaluationTime)
+		if err != nil {
+			return fmt.Errorf("validate baseline shadow episode %s: %w", input.EpisodeKey, err)
+		}
+		tamoz, err := validateShadowOutput(input, tamozOutput, catalog, allowedTypes, compiled.Cognition.Executor.RiskCeiling, evaluationTime)
+		if err != nil {
+			return fmt.Errorf("validate Tamoz shadow episode %s: %w", input.EpisodeKey, err)
+		}
+		comparison, err := buildShadowComparison(input, baseline, tamoz, tenantID, evaluationTime)
+		if err != nil {
+			return fmt.Errorf("build shadow comparison %s: %w", input.EpisodeKey, err)
+		}
+		if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+			return store.Record(ctx, tx, comparison.record)
+		}); err != nil {
+			return fmt.Errorf("persist shadow comparison %s: %w", input.EpisodeKey, err)
+		}
+		result.ShadowComparisons = append(result.ShadowComparisons, comparison.result)
+		if !comparison.result.DecisionsEqual {
+			result.Findings = append(result.Findings, Finding{Code: "shadow_decision_diff", Message: input.EpisodeKey})
+		}
+	}
+	return nil
+}
+
+type validatedShadowOutput struct {
+	output      ShadowOutput
+	canonical   []byte
+	decision    *decisions.Result
+	decisionSHA []byte
+	manifestSHA []byte
+}
+
+func validateShadowOutput(input ShadowInput, output ShadowOutput, catalog *decisions.IntentCatalog, allowedTypes map[string]struct{}, riskCeiling string, now time.Time) (validatedShadowOutput, error) {
+	if output.ExecutorVersion == "" {
+		return validatedShadowOutput{}, fmt.Errorf("executor version is required")
+	}
+	manifestSHA, err := canonicaljson.DecodeDigest(output.ManifestSHA256)
+	if err != nil {
+		return validatedShadowOutput{}, fmt.Errorf("manifest digest: %w", err)
+	}
+	canonical, err := canonicaljson.Marshal(json.RawMessage(output.DecisionJSON))
+	if err != nil {
+		return validatedShadowOutput{}, fmt.Errorf("decision JSON: %w", err)
+	}
+	if !bytes.Equal(canonical, output.DecisionJSON) {
+		return validatedShadowOutput{}, fmt.Errorf("decision JSON is not canonical")
+	}
+	var document map[string]any
+	if err := json.Unmarshal(canonical, &document); err != nil {
+		return validatedShadowOutput{}, fmt.Errorf("decode decision JSON: %w", err)
+	}
+	decisionSHA, err := canonicaljson.DecodeDigest(output.DecisionSHA256)
+	if err != nil {
+		return validatedShadowOutput{}, fmt.Errorf("decision digest: %w", err)
+	}
+	if !canonicaljson.Verify(canonicaljson.DomainDecision, document, output.DecisionSHA256) {
+		return validatedShadowOutput{}, fmt.Errorf("decision digest does not match decision JSON")
+	}
+	entityID, err := shadowEntityID(input.SnapshotJSON)
+	if err != nil {
+		return validatedShadowOutput{}, err
+	}
+	if riskCeiling == "" {
+		riskCeiling = "R1"
+	}
+	validated, err := decisions.Validate(canonical, output.DecisionSHA256, decisions.Input{
+		EpisodeID: input.EpisodeID, AttemptID: input.AttemptID, Fence: input.Fence,
+		TenantID: input.TenantID, SituationID: input.SituationID,
+		SituationVersion: input.SituationVersion, EntityID: entityID, SnapshotDigest: input.SnapshotDigest,
+		AllowedIntentTypes: allowedTypes, RiskCeiling: riskCeiling, IntentCatalog: catalog,
+		Kind: "standard", Now: now,
+	})
+	if err != nil {
+		return validatedShadowOutput{}, err
+	}
+	return validatedShadowOutput{output: output, canonical: canonical, decision: validated, decisionSHA: decisionSHA, manifestSHA: manifestSHA}, nil
+}
+
+func cloneShadowInput(input ShadowInput) ShadowInput {
+	input.SnapshotJSON = append([]byte(nil), input.SnapshotJSON...)
+	return input
+}
+
+type builtShadowComparison struct {
+	record storage.ShadowComparison
+	result ShadowComparisonResult
+}
+
+func buildShadowComparison(input ShadowInput, baseline, tamoz validatedShadowOutput, tenantID string, createdAt time.Time) (builtShadowComparison, error) {
+	differences := make([]string, 0, 2)
+	if !bytes.Equal(baseline.canonical, tamoz.canonical) {
+		differences = append(differences, "decision")
+	}
+	if baseline.output.ManifestSHA256 != tamoz.output.ManifestSHA256 {
+		differences = append(differences, "manifest")
+	}
+	comparisonKey := tenantID + ":" + input.EpisodeKey
+	document := map[string]any{
+		"comparison_key":    comparisonKey,
+		"tenant_id":         tenantID,
+		"episode_id":        input.EpisodeID,
+		"situation_id":      input.SituationID,
+		"situation_version": input.SituationVersion,
+		"trigger_id":        input.TriggerID,
+		"snapshot_digest":   input.SnapshotDigest,
+		"spec_digest":       input.SpecDigest,
+		"policy_digest":     input.PolicyDigest,
+		"baseline": map[string]any{
+			"executor_version": baseline.output.ExecutorVersion,
+			"manifest_sha256":  baseline.output.ManifestSHA256,
+			"decision_sha256":  baseline.output.DecisionSHA256,
+		},
+		"tamoz": map[string]any{
+			"executor_version": tamoz.output.ExecutorVersion,
+			"manifest_sha256":  tamoz.output.ManifestSHA256,
+			"decision_sha256":  tamoz.output.DecisionSHA256,
+		},
+		"differences": differences,
+	}
+	comparisonJSON, err := canonicaljson.Marshal(document)
+	if err != nil {
+		return builtShadowComparison{}, fmt.Errorf("canonicalize comparison: %w", err)
+	}
+	comparisonDigest, err := canonicaljson.Digest(canonicaljson.DomainShadowComparison, document)
+	if err != nil {
+		return builtShadowComparison{}, fmt.Errorf("digest comparison: %w", err)
+	}
+	comparisonSHA, err := canonicaljson.DecodeDigest(comparisonDigest)
+	if err != nil {
+		return builtShadowComparison{}, fmt.Errorf("decode comparison digest: %w", err)
+	}
+	snapshotSHA, err := canonicaljson.DecodeDigest(input.SnapshotDigest)
+	if err != nil {
+		return builtShadowComparison{}, fmt.Errorf("decode snapshot digest: %w", err)
+	}
+	specSHA, err := canonicaljson.DecodeDigest(input.SpecDigest)
+	if err != nil {
+		return builtShadowComparison{}, fmt.Errorf("decode spec digest: %w", err)
+	}
+	policySHA, err := canonicaljson.DecodeDigest(input.PolicyDigest)
+	if err != nil {
+		return builtShadowComparison{}, fmt.Errorf("decode policy digest: %w", err)
+	}
+	comparisonID := "cmp_" + hex.EncodeToString(comparisonSHA)
+	return builtShadowComparison{
+		record: storage.ShadowComparison{
+			ComparisonID: comparisonID, ComparisonKey: comparisonKey, TenantID: tenantID,
+			EpisodeID: input.EpisodeID, SituationID: input.SituationID, SituationVersion: input.SituationVersion,
+			TriggerID: input.TriggerID, SnapshotSHA256: snapshotSHA, SpecSHA256: specSHA, PolicySHA256: policySHA,
+			BaselineExecutorVersion: baseline.output.ExecutorVersion, TamozExecutorVersion: tamoz.output.ExecutorVersion,
+			BaselineManifestSHA256: baseline.manifestSHA, TamozManifestSHA256: tamoz.manifestSHA,
+			BaselineDecisionJSON: baseline.canonical, BaselineDecisionSHA256: baseline.decisionSHA,
+			TamozDecisionJSON: tamoz.canonical, TamozDecisionSHA256: tamoz.decisionSHA,
+			ComparisonJSON: comparisonJSON, ComparisonSHA256: comparisonSHA, CreatedAt: createdAt.UTC().Format(time.RFC3339Nano),
+		},
+		result: ShadowComparisonResult{EpisodeKey: input.EpisodeKey, ComparisonSHA256: comparisonDigest,
+			BaselineDecisionSHA256: baseline.output.DecisionSHA256, TamozDecisionSHA256: tamoz.output.DecisionSHA256,
+			DecisionsEqual: bytes.Equal(baseline.canonical, tamoz.canonical)},
+	}, nil
+}
+
 // Run replays tracePath against specPath and returns the canonical result.
 func Run(ctx context.Context, dbPath, specPath, tracePath, tenantID string) (Result, error) {
 	return run(ctx, dbPath, specPath, tracePath, tenantID, false, nil)
 }
 
-func run(ctx context.Context, dbPath, specPath, tracePath, tenantID string, cognitionEnabled bool, after func(*storage.DB, *Result) error) (Result, error) {
+func run(ctx context.Context, dbPath, specPath, tracePath, tenantID string, cognitionEnabled bool, after func(*storage.DB, *Result, *spec.CompiledSpec, time.Time) error) (Result, error) {
 	db, err := storage.OpenFresh(ctx, dbPath)
 	if err != nil {
 		return Result{}, fmt.Errorf("open db: %w", err)
@@ -294,7 +533,7 @@ func run(ctx context.Context, dbPath, specPath, tracePath, tenantID string, cogn
 		EffectsAllowed:  false,
 	}
 	if after != nil {
-		if err := after(db, &result); err != nil {
+		if err := after(db, &result, compiled, clk.Now()); err != nil {
 			return Result{}, err
 		}
 	}
@@ -377,7 +616,7 @@ func materializeReplayEpisodes(ctx context.Context, db *storage.DB, compiled *sp
 	return nil
 }
 
-func applyCapabilities(ctx context.Context, db *storage.DB, tenantID string, mode Mode, caps Capabilities, result *Result) error {
+func applyCapabilities(ctx context.Context, db *storage.DB, tenantID string, mode Mode, caps Capabilities, compiled *spec.CompiledSpec, evaluationTime time.Time, result *Result) error {
 	var err error
 	items, err := loadReplayItems(ctx, db, tenantID)
 	if err != nil {
@@ -445,46 +684,8 @@ func applyCapabilities(ctx context.Context, db *storage.DB, tenantID string, mod
 		}
 		result.CapabilityCalls = len(entries)
 	case ModeShadow:
-		expectedManifests := make(map[string]string)
-		if caps.RecordedLedger != nil {
-			entries, err := caps.RecordedLedger.Entries(ctx)
-			if err != nil {
-				return fmt.Errorf("read shadow comparison ledger: %w", err)
-			}
-			for _, entry := range entries {
-				if entry.EpisodeKey == "" || entry.ManifestSHA256 == "" {
-					return fmt.Errorf("shadow comparison ledger contains an incomplete entry")
-				}
-				if err := validateDigest(entry.ManifestSHA256); err != nil {
-					return fmt.Errorf("shadow comparison manifest %q: %w", entry.EpisodeKey, err)
-				}
-				if _, exists := expectedManifests[entry.EpisodeKey]; exists {
-					return fmt.Errorf("shadow comparison ledger contains duplicate episode key %q", entry.EpisodeKey)
-				}
-				expectedManifests[entry.EpisodeKey] = entry.ManifestSHA256
-			}
-		}
-		for _, item := range items {
-			input, err := loadShadowInput(ctx, db, item)
-			if err != nil {
-				return err
-			}
-			output, err := caps.ShadowExecutor.ExecuteShadow(ctx, input)
-			if err != nil {
-				return fmt.Errorf("shadow episode %s: %w", input.EpisodeKey, err)
-			}
-			result.WorkerInvoked = true
-			result.CapabilityCalls++
-			if err := validateDigest(output.ManifestSHA256); err != nil {
-				return fmt.Errorf("shadow episode %s returned no artifact manifest", input.EpisodeKey)
-			} else if expected, ok := expectedManifests[input.EpisodeKey]; ok && expected != output.ManifestSHA256 {
-				result.Findings = append(result.Findings, Finding{Code: "shadow_manifest_diff", Message: input.EpisodeKey})
-			} else if caps.RecordedLedger != nil && !ok {
-				return fmt.Errorf("shadow comparison ledger is missing episode %s", input.EpisodeKey)
-			}
-		}
-		if caps.RecordedLedger != nil && len(expectedManifests) != len(items) {
-			return fmt.Errorf("shadow comparison ledger contains unexpected episode keys")
+		if err := applyPairedShadow(ctx, db, tenantID, caps, compiled, items, evaluationTime, result); err != nil {
+			return err
 		}
 	case ModeCounterfactual:
 		seenCommands := make(map[string]struct{}, len(caps.Commands))
@@ -573,7 +774,7 @@ func loadReplayItems(ctx context.Context, db *storage.DB, tenantID string) ([]re
 	return items, nil
 }
 
-func loadShadowInput(ctx context.Context, db *storage.DB, item replayItem) (ShadowInput, error) {
+func loadShadowInput(ctx context.Context, db *storage.DB, item replayItem, tenantID, specDigest, policyDigest string, evaluationTime time.Time) (ShadowInput, error) {
 	var snapshot, persistedDigest []byte
 	if err := db.QueryRowContext(ctx, `
 		SELECT snapshot_json, snapshot_sha256 FROM situation_versions
@@ -600,9 +801,28 @@ func loadShadowInput(ctx context.Context, db *storage.DB, item replayItem) (Shad
 		return ShadowInput{}, fmt.Errorf("shadow snapshot digest mismatch")
 	}
 	return ShadowInput{
-		EpisodeKey:   replayEpisodeKey(item.SituationID, item.SituationVersion, item.TriggerID),
-		SnapshotJSON: append([]byte(nil), snapshot...),
+		TenantID: tenantID, EpisodeKey: replayEpisodeKey(item.SituationID, item.SituationVersion, item.TriggerID),
+		EpisodeID: item.EpisodeID, SituationID: item.SituationID, SituationVersion: item.SituationVersion,
+		TriggerID: item.TriggerID, AttemptID: "shadow-attempt/" + item.EpisodeID, Fence: 1,
+		SnapshotDigest: item.SnapshotDigest, SpecDigest: specDigest, PolicyDigest: policyDigest,
+		SnapshotJSON:   append([]byte(nil), canonical...),
+		EvaluationTime: evaluationTime,
 	}, nil
+}
+
+func shadowEntityID(snapshot []byte) (string, error) {
+	var document struct {
+		Entity struct {
+			ID string `json:"id"`
+		} `json:"entity"`
+	}
+	if err := json.Unmarshal(snapshot, &document); err != nil {
+		return "", fmt.Errorf("decode shadow entity: %w", err)
+	}
+	if document.Entity.ID == "" {
+		return "", fmt.Errorf("shadow snapshot entity id is required")
+	}
+	return document.Entity.ID, nil
 }
 
 func validateRecordedDecision(ctx context.Context, db *storage.DB, entry RecordedEntry, item replayItem) error {

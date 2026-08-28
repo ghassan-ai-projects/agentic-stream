@@ -33,7 +33,7 @@ func TestSharedSchemaIDsAndValidation(t *testing.T) {
 				"decision_id": "dec_1", "episode_id": "epi_1",
 				"attempt_id": "att_1", "fence": 1,
 				"snapshot_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-				"confidence":      0.8, "intents": []any{},
+				"confidence":      0.8, "decision_type": "need_more_evidence", "intents": []any{},
 			},
 		},
 		{
@@ -86,7 +86,7 @@ func TestSharedSchemaRejectsUnknownProperties(t *testing.T) {
 		"decision_id": "dec_1", "episode_id": "epi_1",
 		"attempt_id": "att_1", "fence": 1,
 		"snapshot_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-		"confidence":      0.8, "intents": []any{}, "unexpected": true,
+		"confidence":      0.8, "decision_type": "need_more_evidence", "intents": []any{}, "unexpected": true,
 	}
 	if err := contractsv1.Validate(contractsv1.SchemaDecision, valid); err == nil {
 		t.Fatal("expected unknown decision property to be rejected")

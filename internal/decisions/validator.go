@@ -38,13 +38,13 @@ type IntentCatalog struct {
 
 // IntentEntry is one declared action type's authority.
 type IntentEntry struct {
-	Type               string
-	RiskClass          string
-	ParameterSchema    *jsonschema.Schema
-	Presets            map[string]map[string]any
-	ModelWritable      map[string]bool
-	RateLimitPerHour   int
-	RequiresApproval   bool
+	Type             string
+	RiskClass        string
+	ParameterSchema  *jsonschema.Schema
+	Presets          map[string]map[string]any
+	ModelWritable    map[string]bool
+	RateLimitPerHour int
+	RequiresApproval bool
 }
 
 // CompileIntentCatalog builds the fail-closed validator view from the wire
@@ -103,13 +103,13 @@ func CompileIntentCatalog(doc []map[string]any) (*IntentCatalog, error) {
 			}
 		}
 		catalog.Entries[entryType] = &IntentEntry{
-			Type:               entryType,
-			RiskClass:          risk,
-			ParameterSchema:    compiled,
-			Presets:            presets,
-			ModelWritable:      writable,
-			RateLimitPerHour:   intValue(entry["rate_limit"], "per_hour"),
-			RequiresApproval:   requiresApproval,
+			Type:             entryType,
+			RiskClass:        risk,
+			ParameterSchema:  compiled,
+			Presets:          presets,
+			ModelWritable:    writable,
+			RateLimitPerHour: intValue(entry["rate_limit"], "per_hour"),
+			RequiresApproval: requiresApproval,
 		}
 	}
 	return catalog, nil
@@ -157,15 +157,15 @@ type Result struct {
 
 // Intent is one validated child of a Decision.
 type Intent struct {
-	ID                  string
-	Type                string
-	RiskClass           string
-	ExpiresAt           time.Time
-	Digest              string
-	CanonicalJSON       []byte
-	Document            map[string]any
-	RateLimitPerHour    int
-	RequiresApproval    bool
+	ID               string
+	Type             string
+	RiskClass        string
+	ExpiresAt        time.Time
+	Digest           string
+	CanonicalJSON    []byte
+	Document         map[string]any
+	RateLimitPerHour int
+	RequiresApproval bool
 }
 
 // ValidationError is a fail-closed Decision rejection. Reason values map to
@@ -239,7 +239,9 @@ func Validate(raw []byte, transmittedDigest string, input Input) (*Result, error
 		return nil, reject("schema_invalid", "intents", "intents must be an array")
 	}
 	if len(rawIntents) == 0 {
-		return nil, reject("schema_invalid", "intents", "a decision must carry at least one intent")
+		if decisionType, _ := document["decision_type"].(string); decisionType != "need_more_evidence" {
+			return nil, reject("schema_invalid", "decision_type", "an empty-intent decision must explicitly request more evidence")
+		}
 	}
 	// P4: at most ONE actionable (non-watch, non-compensation) intent — the
 	// v1 "at most one actionable intent" contract is enforced independently,

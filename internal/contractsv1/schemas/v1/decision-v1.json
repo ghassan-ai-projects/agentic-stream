@@ -10,6 +10,7 @@
     "attempt_id": {"type": "string", "minLength": 1, "maxLength": 256},
     "fence": {"type": "integer", "minimum": 1},
     "snapshot_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "decision_type": {"enum": ["need_more_evidence"]},
     "situation_id": {"type": "string", "minLength": 1, "maxLength": 256},
     "situation_version": {"type": "integer", "minimum": 1},
     "primary_hypothesis": {"type": "string", "maxLength": 1024},
@@ -19,5 +20,15 @@
     "alternatives": {"type": "array", "maxItems": 16, "items": {"type": "object"}},
     "intents": {"type": "array", "maxItems": 16, "items": {"type": "object"}},
     "valid_until": {"type": "string", "format": "date-time"}
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"intents": {"maxItems": 0}}, "required": ["intents"]},
+      "then": {"required": ["decision_type"]}
+    },
+    {
+      "if": {"properties": {"decision_type": {"const": "need_more_evidence"}}, "required": ["decision_type"]},
+      "then": {"properties": {"intents": {"maxItems": 0}}}
+    }
+  ]
 }

@@ -10,7 +10,9 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -33,7 +35,7 @@ func (viewRecordedLedger) EntriesForReplay(_ context.Context, episodes []replay.
 			"decision_id": "dec_recorded", "episode_id": episode.EpisodeID,
 			"attempt_id": attemptID, "fence": fence, "snapshot_digest": episode.SnapshotDigest,
 			"situation_id": episode.SituationID, "situation_version": episode.SituationVersion,
-			"confidence": 0.9, "intents": []any{},
+			"confidence": 0.9, "decision_type": "need_more_evidence", "intents": []any{},
 		}
 		raw, err := canonicaljson.Marshal(decision)
 		if err != nil {
@@ -58,20 +60,65 @@ func (viewRecordedLedger) EntriesForReplay(_ context.Context, episodes []replay.
 }
 
 type testShadowExecutor struct {
-	calls    int
-	manifest string
+	calls       int
+	manifest    string
+	snapshots   [][]byte
+	mutateInput bool
+	summary     string
 }
 
 func (e *testShadowExecutor) ExecuteShadow(_ context.Context, input replay.ShadowInput) (replay.ShadowOutput, error) {
 	e.calls++
+	e.snapshots = append(e.snapshots, append([]byte(nil), input.SnapshotJSON...))
+	if e.mutateInput && len(input.SnapshotJSON) > 0 {
+		input.SnapshotJSON[0] = ' '
+	}
+	return testShadowOutput(input, "tamoz-test-v1", e.manifest, e.summary)
+}
+
+type testBaselineExecutor struct {
+	calls       int
+	manifest    string
+	snapshots   [][]byte
+	mutateInput bool
+	summary     string
+}
+
+func (e *testBaselineExecutor) ExecuteBaseline(_ context.Context, input replay.ShadowInput) (replay.ShadowOutput, error) {
+	e.calls++
+	e.snapshots = append(e.snapshots, append([]byte(nil), input.SnapshotJSON...))
+	if e.mutateInput && len(input.SnapshotJSON) > 0 {
+		input.SnapshotJSON[0] = ' '
+	}
+	return testShadowOutput(input, "baseline-test-v1", e.manifest, e.summary)
+}
+
+func testShadowOutput(input replay.ShadowInput, executorVersion, configuredManifest, summary string) (replay.ShadowOutput, error) {
 	if len(input.SnapshotJSON) == 0 {
 		return replay.ShadowOutput{}, errors.New("empty snapshot")
 	}
-	manifest := e.manifest
+	decision := map[string]any{
+		"decision_id": "dec_shadow_" + input.EpisodeID, "episode_id": input.EpisodeID,
+		"attempt_id": input.AttemptID, "fence": input.Fence, "snapshot_digest": input.SnapshotDigest,
+		"situation_id": input.SituationID, "situation_version": input.SituationVersion,
+		"confidence": 0.5, "decision_type": "need_more_evidence", "intents": []any{},
+	}
+	if summary != "" {
+		decision["summary"] = summary
+	}
+	decisionJSON, err := canonicaljson.Marshal(decision)
+	if err != nil {
+		return replay.ShadowOutput{}, err
+	}
+	decisionDigest, err := canonicaljson.Digest(canonicaljson.DomainDecision, decision)
+	if err != nil {
+		return replay.ShadowOutput{}, err
+	}
+	manifest := configuredManifest
 	if manifest == "" {
 		manifest = "sha256:" + strings.Repeat("a", 64)
 	}
-	return replay.ShadowOutput{ManifestSHA256: manifest}, nil
+	return replay.ShadowOutput{ExecutorVersion: executorVersion, ManifestSHA256: manifest, DecisionJSON: decisionJSON, DecisionSHA256: decisionDigest}, nil
 }
 
 type testSimulator struct{ calls int }
@@ -218,13 +265,18 @@ func TestWorkerAwareModesUseOnlySuppliedCapabilities(t *testing.T) {
 		t.Fatalf("recorded replay crossed an unsafe boundary")
 	}
 
+	baseline := &testBaselineExecutor{}
 	shadow := &testShadowExecutor{}
 	shadowResult, err := replay.RunMode(ctx, replay.ModeShadow, filepath.Join(t.TempDir(), "shadow.db"), specPath, tracePath, "default", replay.Capabilities{ShadowExecutor: shadow})
+	if err == nil || !errors.Is(err, replay.ErrModeCapabilityRequired) {
+		t.Fatalf("shadow replay without baseline should require both executors: %v", err)
+	}
+	shadowResult, err = replay.RunMode(ctx, replay.ModeShadow, filepath.Join(t.TempDir(), "shadow.db"), specPath, tracePath, "default", replay.Capabilities{BaselineExecutor: baseline, ShadowExecutor: shadow})
 	if err != nil {
 		t.Fatalf("shadow replay: %v", err)
 	}
-	if shadowResult.EffectsAllowed || shadowResult.WorkerInvoked || shadowResult.CapabilityCalls != shadow.calls {
-		t.Fatalf("shadow capability accounting mismatch: result=%+v calls=%d", shadowResult, shadow.calls)
+	if shadowResult.EffectsAllowed || shadowResult.CapabilityCalls != shadow.calls+baseline.calls {
+		t.Fatalf("shadow capability accounting mismatch: result=%+v baseline=%d tamoz=%d", shadowResult, baseline.calls, shadow.calls)
 	}
 
 	simulator := &testSimulator{}
@@ -257,23 +309,171 @@ func TestRecordedReplayRejectsUnverifiableLedgerEntries(t *testing.T) {
 
 func TestShadowReplayValidatesAnExecutableOpportunity(t *testing.T) {
 	workingSpec := alwaysTriggerSpec(t)
+	baseline := &testBaselineExecutor{}
 	shadow := &testShadowExecutor{}
 	result, err := replay.RunMode(context.Background(), replay.ModeShadow,
 		filepath.Join(t.TempDir(), "shadow.db"), workingSpec,
 		"../../examples/predictive-maintenance/testdata/trace-opening.jsonl", "default",
-		replay.Capabilities{ShadowExecutor: shadow})
+		replay.Capabilities{BaselineExecutor: baseline, ShadowExecutor: shadow})
 	if err != nil {
 		t.Fatalf("shadow replay: %v", err)
 	}
-	if !result.WorkerInvoked || result.CapabilityCalls == 0 || shadow.calls != result.CapabilityCalls {
+	if !result.WorkerInvoked || result.CapabilityCalls == 0 || shadow.calls+baseline.calls != result.CapabilityCalls {
 		t.Fatalf("shadow worklist was not executed: result=%+v calls=%d", result, shadow.calls)
 	}
 	bad, err := replay.RunMode(context.Background(), replay.ModeShadow,
 		filepath.Join(t.TempDir(), "bad-shadow.db"), workingSpec,
 		"../../examples/predictive-maintenance/testdata/trace-opening.jsonl", "default",
-		replay.Capabilities{ShadowExecutor: &testShadowExecutor{manifest: "sha256:bad"}})
+		replay.Capabilities{BaselineExecutor: &testBaselineExecutor{}, ShadowExecutor: &testShadowExecutor{manifest: "sha256:bad"}})
 	if err == nil {
 		t.Fatalf("malformed shadow manifest was accepted: result=%+v err=%v", bad, err)
+	}
+}
+
+func TestShadowReplayPersistsPairedComparisonWithoutEffects(t *testing.T) {
+	workingSpec := alwaysTriggerSpec(t)
+	tracePath := "../../examples/predictive-maintenance/testdata/trace-opening.jsonl"
+	baseline := &testBaselineExecutor{mutateInput: true}
+	tamoz := &testShadowExecutor{}
+	dbPath := filepath.Join(t.TempDir(), "shadow.db")
+	result, err := replay.RunMode(context.Background(), replay.ModeShadow, dbPath, workingSpec, tracePath, "default", replay.Capabilities{
+		BaselineExecutor: baseline, ShadowExecutor: tamoz,
+	})
+	if err != nil {
+		t.Fatalf("shadow replay: %v", err)
+	}
+	if !result.WorkerInvoked || len(result.ShadowComparisons) == 0 || len(baseline.snapshots) != len(tamoz.snapshots) {
+		t.Fatalf("paired shadow work was not recorded: result=%+v baseline=%d tamoz=%d", result, len(baseline.snapshots), len(tamoz.snapshots))
+	}
+	for index := range baseline.snapshots {
+		if string(baseline.snapshots[index]) != string(tamoz.snapshots[index]) {
+			t.Fatalf("shadow inputs differ at index %d", index)
+		}
+	}
+	db, err := storage.Open(context.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("reopen shadow database: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	var comparisons, intents, commands, outbox int
+	for query, destination := range map[string]*int{
+		"SELECT COUNT(*) FROM shadow_comparisons": &comparisons,
+		"SELECT COUNT(*) FROM intents":            &intents,
+		"SELECT COUNT(*) FROM commands":           &commands,
+		"SELECT COUNT(*) FROM outbox":             &outbox,
+	} {
+		if err := db.QueryRowContext(context.Background(), query).Scan(destination); err != nil {
+			t.Fatalf("count %s: %v", query, err)
+		}
+	}
+	if comparisons != len(result.ShadowComparisons) || comparisons == 0 || intents != 0 || commands != 0 || outbox != 0 {
+		t.Fatalf("shadow crossed an effect boundary: comparisons=%d result=%d intents=%d commands=%d outbox=%d", comparisons, len(result.ShadowComparisons), intents, commands, outbox)
+	}
+	var comparisonJSON, comparisonDigest []byte
+	if err := db.QueryRowContext(context.Background(), "SELECT comparison_json, comparison_sha256 FROM shadow_comparisons LIMIT 1").Scan(&comparisonJSON, &comparisonDigest); err != nil {
+		t.Fatalf("read comparison artifact: %v", err)
+	}
+	if len(comparisonJSON) == 0 || len(comparisonDigest) != 32 {
+		t.Fatalf("comparison artifact is incomplete: json=%d digest=%d", len(comparisonJSON), len(comparisonDigest))
+	}
+
+	repeat, err := replay.RunMode(context.Background(), replay.ModeShadow, filepath.Join(t.TempDir(), "repeat.db"), workingSpec, tracePath, "default", replay.Capabilities{
+		BaselineExecutor: &testBaselineExecutor{}, ShadowExecutor: &testShadowExecutor{},
+	})
+	if err != nil {
+		t.Fatalf("repeat shadow replay: %v", err)
+	}
+	if repeat.ShadowComparisons[0].ComparisonSHA256 != result.ShadowComparisons[0].ComparisonSHA256 {
+		t.Fatalf("comparison is not reproducible: first=%s repeat=%s", result.ShadowComparisons[0].ComparisonSHA256, repeat.ShadowComparisons[0].ComparisonSHA256)
+	}
+}
+
+func TestShadowReplayReportsDecisionDifferences(t *testing.T) {
+	workingSpec := alwaysTriggerSpec(t)
+	result, err := replay.RunMode(context.Background(), replay.ModeShadow,
+		filepath.Join(t.TempDir(), "shadow.db"), workingSpec,
+		"../../examples/predictive-maintenance/testdata/trace-opening.jsonl", "default",
+		replay.Capabilities{
+			BaselineExecutor: &testBaselineExecutor{summary: "baseline"},
+			ShadowExecutor:   &testShadowExecutor{summary: "tamoz"},
+		})
+	if err != nil {
+		t.Fatalf("shadow replay: %v", err)
+	}
+	if len(result.ShadowComparisons) != 1 || result.ShadowComparisons[0].DecisionsEqual {
+		t.Fatalf("different shadow decisions were not recorded: %+v", result.ShadowComparisons)
+	}
+	if len(result.Findings) != 1 || result.Findings[0].Code != "shadow_decision_diff" {
+		t.Fatalf("shadow difference finding = %+v", result.Findings)
+	}
+}
+
+type outOfCatalogShadowExecutor struct{}
+
+func (outOfCatalogShadowExecutor) ExecuteShadow(_ context.Context, input replay.ShadowInput) (replay.ShadowOutput, error) {
+	decision := map[string]any{
+		"decision_id": "dec_attack_" + input.EpisodeID, "episode_id": input.EpisodeID,
+		"attempt_id": input.AttemptID, "fence": input.Fence, "snapshot_digest": input.SnapshotDigest,
+		"situation_id": input.SituationID, "situation_version": input.SituationVersion, "confidence": 1.0,
+		"intents": []any{map[string]any{
+			"intent_id": "int_attack_" + input.EpisodeID, "decision_id": "dec_attack_" + input.EpisodeID,
+			"tenant_id": input.TenantID, "situation_id": input.SituationID, "situation_version": input.SituationVersion,
+			"type": "delete_everything", "risk_class": "R1", "parameters": map[string]any{},
+			"expires_at": "2099-01-01T00:00:00Z",
+		}},
+	}
+	intent := decision["intents"].([]any)[0].(map[string]any)
+	intentDigest, err := contractsv1.IntentDigest(intent)
+	if err != nil {
+		return replay.ShadowOutput{}, err
+	}
+	intent["intent_digest"] = intentDigest
+	decisionJSON, err := canonicaljson.Marshal(decision)
+	if err != nil {
+		return replay.ShadowOutput{}, err
+	}
+	decisionDigest, err := canonicaljson.Digest(canonicaljson.DomainDecision, decision)
+	if err != nil {
+		return replay.ShadowOutput{}, err
+	}
+	return replay.ShadowOutput{
+		ExecutorVersion: "tamoz-attack-v1", ManifestSHA256: "sha256:" + strings.Repeat("b", 64),
+		DecisionJSON: decisionJSON, DecisionSHA256: decisionDigest,
+	}, nil
+}
+
+func TestShadowReplayRejectsOutOfCatalogIntent(t *testing.T) {
+	workingSpec := alwaysTriggerSpec(t)
+	_, err := replay.RunMode(context.Background(), replay.ModeShadow,
+		filepath.Join(t.TempDir(), "shadow.db"), workingSpec,
+		"../../examples/predictive-maintenance/testdata/trace-opening.jsonl", "default",
+		replay.Capabilities{BaselineExecutor: &testBaselineExecutor{}, ShadowExecutor: outOfCatalogShadowExecutor{}})
+	if err == nil || !strings.Contains(err.Error(), "intent_type_not_allowed") {
+		t.Fatalf("out-of-catalog shadow intent was not rejected: %v", err)
+	}
+}
+
+func TestDeterministicBaselineProducesAValidatedRecommendation(t *testing.T) {
+	compiled, err := spec.CompileFile(context.Background(), "../../docs/design/examples/predictive-maintenance.situation.yaml")
+	if err != nil {
+		t.Fatalf("compile predictive spec: %v", err)
+	}
+	baseline, err := replay.NewDeterministicBaseline(compiled)
+	if err != nil {
+		t.Fatalf("create baseline: %v", err)
+	}
+	input := replay.ShadowInput{
+		TenantID: "default", EpisodeKey: "episode-1", EpisodeID: "episode-1", SituationID: "situation-1",
+		SituationVersion: 1, AttemptID: "attempt-1", Fence: 1,
+		SnapshotDigest: "sha256:" + strings.Repeat("1", 64),
+		SnapshotJSON:   []byte(`{"entity":{"id":"motor-1"},"phase":"warning"}`),
+	}
+	output, err := baseline.ExecuteBaseline(context.Background(), input)
+	if err != nil {
+		t.Fatalf("baseline: %v", err)
+	}
+	if output.ExecutorVersion == "" || output.DecisionSHA256 == "" || !strings.Contains(string(output.DecisionJSON), "create_maintenance_ticket") {
+		t.Fatalf("baseline did not produce a recommendation: %+v", output)
 	}
 }
 

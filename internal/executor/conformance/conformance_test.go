@@ -111,7 +111,7 @@ func conformanceWorker() *worker.Server {
 		decision := map[string]any{
 			"decision_id": "dec-conformance", "episode_id": "epi-conformance", "attempt_id": "att-conformance", "fence": 1,
 			"snapshot_digest": conformance.FixtureRequest().SnapshotSHA256, "situation_id": "sit-conformance", "situation_version": 1,
-			"intents": []any{},
+			"decision_type": "need_more_evidence", "intents": []any{},
 		}
 		decisionJSON, err := canonicaljson.Marshal(decision)
 		if err != nil {

@@ -128,6 +128,24 @@ func NewGatewayWithOwner(policyVersion string, idGen ids.Generator, owner *stora
 	return newGateway(policyVersion, idGen, owner, ownerEpoch)
 }
 
+// DigestForVersion returns the canonical digest of the deterministic policy
+// rules used by a gateway for policyVersion. Replay and shadow consumers use
+// this same function so a comparison artifact is bound to the exact policy
+// authority rather than merely carrying an unverified label.
+func DigestForVersion(policyVersion string) (string, error) {
+	if policyVersion == "" {
+		return "", fmt.Errorf("policy version is required")
+	}
+	return canonicaljson.Digest(canonicaljson.DomainPolicy, map[string]any{
+		"policy_version": policyVersion,
+		"risk_policy": map[string]any{
+			"R0": "automatic", "R1": "automatic", "R2": "approval", "R3": "denied", "R4": "denied",
+		},
+		"incomplete_source_health": map[string]any{"R2": "denied", "R3": "denied", "R4": "denied"},
+		"target_resolution":        "closed_catalog_binding",
+	})
+}
+
 // WithInterlock adds the durable read-only action readiness check.
 func (g *Gateway) WithInterlock(reader interlock.Reader) *Gateway {
 	g.interlock = reader
@@ -138,14 +156,7 @@ func newGateway(policyVersion string, idGen ids.Generator, owner *storage.Runtim
 	if idGen == nil {
 		idGen = ids.Random()
 	}
-	policyDigest, _ := canonicaljson.Digest(canonicaljson.DomainPolicy, map[string]any{
-		"policy_version": policyVersion,
-		"risk_policy": map[string]any{
-			"R0": "automatic", "R1": "automatic", "R2": "approval", "R3": "denied", "R4": "denied",
-		},
-		"incomplete_source_health": map[string]any{"R2": "denied", "R3": "denied", "R4": "denied"},
-		"target_resolution":        "closed_catalog_binding",
-	})
+	policyDigest, _ := DigestForVersion(policyVersion)
 	return &Gateway{policyVersion: policyVersion, policyDigest: policyDigest, idGen: idGen, owner: owner, ownerEpoch: ownerEpoch}
 }
 

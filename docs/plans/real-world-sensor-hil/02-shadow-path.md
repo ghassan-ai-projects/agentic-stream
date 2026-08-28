@@ -1,5 +1,10 @@
 # Phase 02 — Supervisory shadow (WP3 → Gate G3)
 
+Implementation status: the paired replay shadow path and deterministic
+baseline are implemented. The executable work breakdown and evidence bar are
+in [PHASE-02-EXECUTION.md](PHASE-02-EXECUTION.md); G3 is not called green until
+the repository gates and any required cross-repo evidence pass.
+
 **Goal:** the deterministic baseline **and** Tamoz both produce recommendations
 over the **same immutable Situations**, and **no live effector credential
 exists**. This is the "shadow tournament" scaffolding on the Agentic Stream side.

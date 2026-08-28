@@ -1,7 +1,8 @@
 # Real-World Sensor HIL Quality Bar
 
-Status: active; the repository currently has partial Phase 01 and Phase 03
-implementation, but no HIL-0 gate is green yet.
+Status: active; Phase 01 software evidence and Phase 02 implementation are
+complete, Phase 03 remains partial scaffolding, and no HIL-0 gate is green
+yet.
 
 This is the evidence ledger for the Agentic Stream slice of the Real-World
 Sensor program. A phase is complete only when its bar is satisfied by named
@@ -28,7 +29,7 @@ behavior.
 
 ## Phase 01 — telemetry vertical (G2)
 
-Status: in progress.
+Status: software evidence complete; repository gate remains open.
 
 Bar:
 
@@ -49,7 +50,8 @@ is not yet available in this repository.
 
 ## Phase 02 — shadow path (G3)
 
-Status: not started.
+Status: implementation complete; G3 gate remains open pending repository and
+cross-repo evidence.
 
 Bar:
 
