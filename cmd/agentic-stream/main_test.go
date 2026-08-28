@@ -39,6 +39,16 @@ func TestServeCommandRequiresContinuousSourcePair(t *testing.T) {
 	}
 }
 
+func TestServeCommandRefusesPhysicalProfileWithJSONLSource(t *testing.T) {
+	cmd := newServeCommand()
+	cmd.SetArgs([]string{"--db", "runtime.db", "--spec", "spec.yaml", "--trace", "trace.jsonl", "--effect-profile", "physical"})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "physical effect profile cannot be combined with replay or shadow") {
+		t.Fatalf("expected physical/JSONL isolation error, got %v", err)
+	}
+}
+
 func TestLoopbackListenAddress(t *testing.T) {
 	for address, want := range map[string]bool{
 		"127.0.0.1:8080": true,

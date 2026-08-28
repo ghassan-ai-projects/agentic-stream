@@ -10,6 +10,7 @@ import (
 // It keeps the watch implementation independent of the spec store.
 type CompositeEffector struct {
 	watch    *WatchEffector
+	serial   *SerialEffector
 	fallback Effector
 }
 
@@ -18,17 +19,25 @@ func NewCompositeEffector(watch *WatchEffector, fallback Effector) *CompositeEff
 	return &CompositeEffector{watch: watch, fallback: fallback}
 }
 
+// WithSerial configures the closed thermal routes to use the governed serial
+// effector. A nil serial effector leaves those routes unavailable rather than
+// silently sending them through the fallback.
+func (e *CompositeEffector) WithSerial(serial *SerialEffector) *CompositeEffector {
+	if e != nil {
+		e.serial = serial
+	}
+	return e
+}
+
 // Dispatch routes one command without bypassing idempotency at the selected effector.
 func (e *CompositeEffector) Dispatch(ctx context.Context, command Command) (Effect, error) {
-	if command.EffectorRoute == "install_watch_condition" {
-		if e.watch == nil {
-			return Effect{}, fmt.Errorf("watch effector is not configured")
-		}
-		return e.watch.Dispatch(ctx, command)
-	}
-	effect, err := e.fallback.Dispatch(ctx, command)
+	effector, err := e.route(command.EffectorRoute)
 	if err != nil {
-		return Effect{}, fmt.Errorf("dispatch fallback effect: %w", err)
+		return Effect{}, err
+	}
+	effect, err := effector.Dispatch(ctx, command)
+	if err != nil {
+		return Effect{}, fmt.Errorf("dispatch %s effect: %w", command.EffectorRoute, err)
 	}
 	return effect, nil
 }
@@ -38,18 +47,40 @@ func (e *CompositeEffector) DispatchAuthorized(ctx context.Context, command Comm
 	if authorization.Check == nil {
 		return Effect{}, fmt.Errorf("dispatch authorization is required")
 	}
-	if command.EffectorRoute == "install_watch_condition" {
+	effector, err := e.route(command.EffectorRoute)
+	if err != nil {
+		return Effect{}, err
+	}
+	guarded, ok := effector.(AuthorizedEffector)
+	if !ok {
+		return Effect{}, fmt.Errorf("effector for route %q must implement AuthorizedEffector", command.EffectorRoute)
+	}
+	effect, err := guarded.DispatchAuthorized(ctx, command, authorization)
+	if err != nil {
+		return Effect{}, fmt.Errorf("dispatch authorized %s effect: %w", command.EffectorRoute, err)
+	}
+	return effect, nil
+}
+
+func (e *CompositeEffector) route(route string) (Effector, error) {
+	if e == nil {
+		return nil, fmt.Errorf("composite effector is not configured")
+	}
+	switch route {
+	case "install_watch_condition":
 		if e.watch == nil {
-			return Effect{}, fmt.Errorf("watch effector is not configured")
+			return nil, fmt.Errorf("watch effector is not configured")
 		}
-		return e.watch.DispatchAuthorized(ctx, command, authorization)
-	}
-	if guarded, ok := e.fallback.(AuthorizedEffector); ok {
-		effect, err := guarded.DispatchAuthorized(ctx, command, authorization)
-		if err != nil {
-			return Effect{}, fmt.Errorf("dispatch authorized fallback effect: %w", err)
+		return e.watch, nil
+	case "set_indicator", "select_thermal_mode":
+		if e.serial == nil {
+			return nil, fmt.Errorf("serial effector is not configured for route %q", route)
 		}
-		return effect, nil
+		return e.serial, nil
+	default:
+		if e.fallback == nil {
+			return nil, fmt.Errorf("no effector is configured for route %q", route)
+		}
+		return e.fallback, nil
 	}
-	return Effect{}, fmt.Errorf("fallback effector must implement AuthorizedEffector")
 }

@@ -66,7 +66,7 @@ cognitive scheduler decides reasoning is useful.`,
 }
 
 func newRunLiveCommand() *cobra.Command {
-	var dbPath, specPath, tracePath, tenantID, workerSocket, workerName, traceFormat string
+	var dbPath, specPath, tracePath, tenantID, workerSocket, workerName, traceFormat, effectProfile string
 	var modelEndpoint, modelName string
 	var workerCA, workerCert, workerKey, workerServerName, evidenceSocket, evidenceKey string
 	cmd := &cobra.Command{
@@ -75,6 +75,11 @@ func newRunLiveCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if specPath == "" || tracePath == "" || dbPath == "" {
 				return fmt.Errorf("--spec, --trace, and --db are required")
+			}
+			if err := actions.ValidateEffectProfile(actions.EffectProfileConfig{
+				Profile: actions.EffectProfile(effectProfile), ReplaySource: tracePath != "",
+			}); err != nil {
+				return fmt.Errorf("validate effect profile: %w", err)
 			}
 			tracerProvider, telemetryErr := configureRuntimeTelemetry(cmd.Context())
 			if telemetryErr != nil {
@@ -151,6 +156,7 @@ func newRunLiveCommand() *cobra.Command {
 	cmd.Flags().StringVar(&tracePath, "trace", "", "JSONL trace path")
 	cmd.Flags().StringVar(&tenantID, "tenant", "default", "Tenant ID")
 	cmd.Flags().StringVar(&traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
+	cmd.Flags().StringVar(&effectProfile, "effect-profile", string(actions.EffectProfileSimulated), "Effect profile: simulated, emulator, or physical")
 	cmd.Flags().StringVar(&workerSocket, "worker-socket", "", "EpisodeWorker Unix socket (overrides the native Go executor)")
 	cmd.Flags().StringVar(&modelEndpoint, "model-endpoint", "", "OpenAI-compatible model endpoint for the native Go executor")
 	cmd.Flags().StringVar(&modelName, "model-name", "", "Model name for the OpenAI-compatible native provider")
@@ -165,7 +171,7 @@ func newRunLiveCommand() *cobra.Command {
 }
 
 func newServeCommand() *cobra.Command {
-	var dbPath, listenAddress, tenantID, specPath, tracePath, traceFormat string
+	var dbPath, listenAddress, tenantID, specPath, tracePath, traceFormat, effectProfile string
 	var modelEndpoint, modelName string
 	var workerSocket, workerName, workerCA, workerCert, workerKey, workerServerName, evidenceSocket, evidenceKey string
 	var ownerLease, pollInterval time.Duration
@@ -179,6 +185,11 @@ func newServeCommand() *cobra.Command {
 			}
 			if (specPath == "") != (tracePath == "") {
 				return fmt.Errorf("--spec and --trace must be provided together for continuous ingestion")
+			}
+			if err := actions.ValidateEffectProfile(actions.EffectProfileConfig{
+				Profile: actions.EffectProfile(effectProfile), ReplaySource: tracePath != "",
+			}); err != nil {
+				return fmt.Errorf("validate effect profile: %w", err)
 			}
 			workerConfig := runtime.WorkerRuntimeConfig{
 				WorkerSocket: workerSocket, WorkerName: workerName, WorkerCA: workerCA, WorkerCert: workerCert,
@@ -322,6 +333,7 @@ func newServeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&specPath, "spec", "", "SituationSpec YAML path for continuous ingestion")
 	cmd.Flags().StringVar(&tracePath, "trace", "", "append-only JSONL trace path for continuous ingestion")
 	cmd.Flags().StringVar(&traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
+	cmd.Flags().StringVar(&effectProfile, "effect-profile", string(actions.EffectProfileSimulated), "Effect profile: simulated, emulator, or physical")
 	cmd.Flags().StringVar(&modelEndpoint, "model-endpoint", "", "OpenAI-compatible model endpoint for the native Go executor")
 	cmd.Flags().StringVar(&modelName, "model-name", "", "Model name for the OpenAI-compatible native provider")
 	cmd.Flags().StringVar(&workerSocket, "worker-socket", "", "EpisodeWorker Unix socket (overrides the native Go executor)")

@@ -1,6 +1,7 @@
 # Phase 02 execution plan — paired supervisory shadow
 
-Status: plan review required; implementation has not started.
+Status: repository implementation complete; G3 gate remains open pending
+full repository and cross-repository evidence.
 
 This is the concrete execution plan for Phase 02 / G3 in
 `02-shadow-path.md`. It is deliberately limited to the Agentic Stream shadow

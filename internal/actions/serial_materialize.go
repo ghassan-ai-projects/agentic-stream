@@ -8,6 +8,7 @@ import (
 	"math"
 	"sort"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
@@ -49,6 +50,20 @@ type CapabilityCatalog struct {
 	Routes          map[string]OperationSpec `json:"routes"`
 }
 
+// Digest returns the canonical identity of this validated capability catalog.
+// A device session must match this digest before the catalog can authorize a
+// command, preventing a stale local route table from being used with a new
+// firmware capability set.
+func (c *CapabilityCatalog) Digest() (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("capability catalog is required")
+	}
+	if err := c.validate(); err != nil {
+		return "", fmt.Errorf("validate capability catalog: %w", err)
+	}
+	return canonicaljson.Digest(canonicaljson.DomainCapabilityCatalog, c)
+}
+
 // LoadCapabilityCatalog parses and validates a capability catalog. A structurally
 // invalid catalog is rejected — the effector must never load a catalog it cannot
 // fully enforce.
@@ -65,58 +80,65 @@ func LoadCapabilityCatalog(data []byte) (*CapabilityCatalog, error) {
 		}
 		return nil, fmt.Errorf("decode trailing capability catalog data: %w", err)
 	}
-	if catalog.ProtocolVersion != contractsv1.DeviceProtocolVersion {
-		return nil, fmt.Errorf("capability catalog protocol_version %d is unsupported, want %d", catalog.ProtocolVersion, contractsv1.DeviceProtocolVersion)
+	if err := catalog.validate(); err != nil {
+		return nil, err
 	}
-	if len(catalog.Routes) == 0 {
-		return nil, fmt.Errorf("capability catalog has no routes")
+	return &catalog, nil
+}
+
+func (c *CapabilityCatalog) validate() error {
+	if c.ProtocolVersion != contractsv1.DeviceProtocolVersion {
+		return fmt.Errorf("capability catalog protocol_version %d is unsupported, want %d", c.ProtocolVersion, contractsv1.DeviceProtocolVersion)
 	}
-	for route, spec := range catalog.Routes {
+	if len(c.Routes) == 0 {
+		return fmt.Errorf("capability catalog has no routes")
+	}
+	for route, spec := range c.Routes {
 		if route == "" {
-			return nil, fmt.Errorf("capability catalog contains an empty route")
+			return fmt.Errorf("capability catalog contains an empty route")
 		}
 		if spec.Operation == "" || spec.Target == "" || spec.SelectorField == "" {
-			return nil, fmt.Errorf("route %q must set operation, target, and selector_field", route)
+			return fmt.Errorf("route %q must set operation, target, and selector_field", route)
 		}
 		for logicalTarget, physicalTarget := range spec.TargetBindings {
 			if logicalTarget == "" || physicalTarget == "" {
-				return nil, fmt.Errorf("route %q contains an empty target binding", route)
+				return fmt.Errorf("route %q contains an empty target binding", route)
 			}
 			if physicalTarget != spec.Target {
-				return nil, fmt.Errorf("route %q target binding %q resolves to %q, want route target %q", route, logicalTarget, physicalTarget, spec.Target)
+				return fmt.Errorf("route %q target binding %q resolves to %q, want route target %q", route, logicalTarget, physicalTarget, spec.Target)
 			}
 		}
 		if spec.ExpiresAfterMs < 1 {
-			return nil, fmt.Errorf("route %q must set a positive expires_after_ms", route)
+			return fmt.Errorf("route %q must set a positive expires_after_ms", route)
 		}
 		if len(spec.Presets) == 0 {
-			return nil, fmt.Errorf("route %q has no presets", route)
+			return fmt.Errorf("route %q has no presets", route)
 		}
 		// Every bounded parameter must be produced by every preset, so a
 		// selector can never silently bypass a declared hard bound.
 		for param := range spec.Bounds {
 			if param == "" {
-				return nil, fmt.Errorf("route %q contains an empty bounds parameter", route)
+				return fmt.Errorf("route %q contains an empty bounds parameter", route)
 			}
 			for presetName, preset := range spec.Presets {
 				if _, ok := preset[param]; !ok {
-					return nil, fmt.Errorf("route %q preset %q does not produce bounded parameter %q", route, presetName, param)
+					return fmt.Errorf("route %q preset %q does not produce bounded parameter %q", route, presetName, param)
 				}
 			}
 		}
 		for param, bound := range spec.Bounds {
 			if bound.Min != nil && !isFinite(*bound.Min) {
-				return nil, fmt.Errorf("route %q bound %q has a non-finite minimum", route, param)
+				return fmt.Errorf("route %q bound %q has a non-finite minimum", route, param)
 			}
 			if bound.Max != nil && !isFinite(*bound.Max) {
-				return nil, fmt.Errorf("route %q bound %q has a non-finite maximum", route, param)
+				return fmt.Errorf("route %q bound %q has a non-finite maximum", route, param)
 			}
 			if bound.Min != nil && bound.Max != nil && *bound.Min > *bound.Max {
-				return nil, fmt.Errorf("route %q bound %q has minimum %v above maximum %v", route, param, *bound.Min, *bound.Max)
+				return fmt.Errorf("route %q bound %q has minimum %v above maximum %v", route, param, *bound.Min, *bound.Max)
 			}
 		}
 	}
-	return &catalog, nil
+	return nil
 }
 
 // Materialize converts a policy-approved actions.Command into a bounded device

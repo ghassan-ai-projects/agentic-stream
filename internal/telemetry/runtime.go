@@ -40,9 +40,16 @@ type Runtime struct {
 	// validate (DB corruption — the engine validates at publish). Counted
 	// separately from stale_rejections so corruption is distinguishable from
 	// benign churn in /metrics.
-	rebindFailures atomic.Uint64
-	durationsMu     sync.Mutex
-	durations       []time.Duration
+	rebindFailures        atomic.Uint64
+	deviceFrameErrors     atomic.Uint64
+	deviceReconnects      atomic.Uint64
+	actionUnknownOutcomes atomic.Uint64
+	verificationPending   atomic.Uint64
+	verificationFailures  atomic.Uint64
+	leaseExpiries         atomic.Uint64
+	safeStateEntries      atomic.Uint64
+	durationsMu           sync.Mutex
+	durations             []time.Duration
 }
 
 // NewRuntime creates an operational counter set.
@@ -127,6 +134,59 @@ func (r *Runtime) ObserveRebindFailure() {
 	}
 }
 
+// ObserveDeviceFrameError increments the device-protocol decode/validation
+// error counter.
+func (r *Runtime) ObserveDeviceFrameError() {
+	if r != nil {
+		r.deviceFrameErrors.Add(1)
+	}
+}
+
+// ObserveDeviceReconnect increments the gateway reconnect counter.
+func (r *Runtime) ObserveDeviceReconnect() {
+	if r != nil {
+		r.deviceReconnects.Add(1)
+	}
+}
+
+// ObserveActionUnknownOutcome increments the ambiguous-action counter.
+func (r *Runtime) ObserveActionUnknownOutcome() {
+	if r != nil {
+		r.actionUnknownOutcomes.Add(1)
+	}
+}
+
+// ObserveVerificationPending increments the transport-accepted, independently
+// unverified action counter.
+func (r *Runtime) ObserveVerificationPending() {
+	if r != nil {
+		r.verificationPending.Add(1)
+	}
+}
+
+// ObserveVerificationFailure increments the independent-feedback failure
+// counter.
+func (r *Runtime) ObserveVerificationFailure() {
+	if r != nil {
+		r.verificationFailures.Add(1)
+	}
+}
+
+// ObserveLeaseExpiry increments the action lease-expiry counter.
+func (r *Runtime) ObserveLeaseExpiry() {
+	if r != nil {
+		r.leaseExpiries.Add(1)
+	}
+}
+
+// ObserveSafeStateEntry records a transition into the device-reported safe
+// state.
+func (r *Runtime) ObserveSafeStateEntry() {
+	if r != nil {
+		r.safeStateEntries.Add(1)
+	}
+}
+
 // ObserveDuration records one dispatch→decision duration for the histogram.
 func (r *Runtime) ObserveDuration(duration time.Duration) {
 	if r == nil {
@@ -160,16 +220,23 @@ func (r *Runtime) Snapshot() map[string]uint64 {
 		return nil
 	}
 	return map[string]uint64{
-		"agentic_stream_events_ingested_total":     r.eventsIngested.Load(),
-		"agentic_stream_events_processed_total":    r.eventsProcessed.Load(),
-		"agentic_stream_episodes_admitted_total":   r.episodesAdmitted.Load(),
-		"agentic_stream_episodes_executed_total":   r.episodesExecuted.Load(),
-		"agentic_stream_intents_evaluated_total":   r.intentsEvaluated.Load(),
-		"agentic_stream_commands_dispatched_total": r.commandsDispatched.Load(),
-		"agentic_stream_pipeline_failures_total":   r.streamFailures.Load(),
-		"agentic_stream_stale_rejections_total":    r.staleRejections.Load(),
-		"agentic_stream_stale_rebinds_total":       r.staleRebinds.Load(),
-		"agentic_stream_rebind_failures_total":     r.rebindFailures.Load(),
+		"agentic_stream_events_ingested_total":         r.eventsIngested.Load(),
+		"agentic_stream_events_processed_total":        r.eventsProcessed.Load(),
+		"agentic_stream_episodes_admitted_total":       r.episodesAdmitted.Load(),
+		"agentic_stream_episodes_executed_total":       r.episodesExecuted.Load(),
+		"agentic_stream_intents_evaluated_total":       r.intentsEvaluated.Load(),
+		"agentic_stream_commands_dispatched_total":     r.commandsDispatched.Load(),
+		"agentic_stream_pipeline_failures_total":       r.streamFailures.Load(),
+		"agentic_stream_stale_rejections_total":        r.staleRejections.Load(),
+		"agentic_stream_stale_rebinds_total":           r.staleRebinds.Load(),
+		"agentic_stream_rebind_failures_total":         r.rebindFailures.Load(),
+		"agentic_stream_device_frame_errors_total":     r.deviceFrameErrors.Load(),
+		"agentic_stream_device_reconnects_total":       r.deviceReconnects.Load(),
+		"agentic_stream_action_unknown_outcomes_total": r.actionUnknownOutcomes.Load(),
+		"agentic_stream_verification_pending_total":    r.verificationPending.Load(),
+		"agentic_stream_verification_failures_total":   r.verificationFailures.Load(),
+		"agentic_stream_lease_expiries_total":          r.leaseExpiries.Load(),
+		"agentic_stream_safe_state_entries_total":      r.safeStateEntries.Load(),
 	}
 }
 

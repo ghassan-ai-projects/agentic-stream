@@ -19,6 +19,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
 // Command is the validated, policy-approved input to an effector.
@@ -100,6 +101,7 @@ type Dispatcher struct {
 	runtimeOwner *storage.RuntimeOwner
 	runtimeEpoch string
 	interlock    interlock.Reader
+	telemetry    *telemetry.Runtime
 }
 
 // WithRuntimeOwner fences dispatcher ledger mutations to the active runtime
@@ -113,6 +115,15 @@ func (d *Dispatcher) WithRuntimeOwner(owner *storage.RuntimeOwner, epoch string)
 // WithInterlock adds the final read-only readiness check before effect delivery.
 func (d *Dispatcher) WithInterlock(reader interlock.Reader) *Dispatcher {
 	d.interlock = reader
+	return d
+}
+
+// WithTelemetry connects action-dispatch counters to the runtime telemetry
+// surface. It is optional for embedders and tests.
+func (d *Dispatcher) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *Dispatcher {
+	if d != nil {
+		d.telemetry = runtimeTelemetry
+	}
 	return d
 }
 
@@ -365,6 +376,9 @@ func (d *Dispatcher) lease(ctx context.Context) (leasedCommand, bool, error) {
 			leased.LeaseOwner = storedLeaseOwner.String
 			if expiresAt, parseErr := time.Parse(time.RFC3339Nano, storedLeaseUntil.String); parseErr != nil || !storedLeaseOwner.Valid || !storedLeaseUntil.Valid || !expiresAt.After(now) {
 				found = false
+				if d.telemetry != nil {
+					d.telemetry.ObserveLeaseExpiry()
+				}
 				return d.finalizeTx(ctx, tx, leased, Effect{}, &UnknownOutcomeError{Err: errors.New("lease expired before dispatch")})
 			}
 		}
@@ -457,6 +471,9 @@ func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCo
 		// unknown so the next worker cannot blindly repeat the effect.
 		dispatchErr = &UnknownOutcomeError{Err: errors.New("lease expired before provider result")}
 		effect = Effect{}
+		if d.telemetry != nil {
+			d.telemetry.ObserveLeaseExpiry()
+		}
 	}
 	status := "succeeded"
 	reconciliation := "observed"

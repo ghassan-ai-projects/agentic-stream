@@ -1,8 +1,8 @@
 # Plan: Real-World Sensor HIL-0 (Agentic Stream slice)
 
 Status: active implementation; Phase 01 software evidence and Phase 02
-implementation are complete; Phase 03 remains partial scaffolding;
-HIL-0 gates are not yet met
+implementation are complete; Phase 03 repository implementation is complete
+with its gate still open; HIL-0 gates are not yet met
 Date: 2026-08-28
 Source program: `agent-research-lab/real-world-sensor/round-2/`
 Scope of THIS plan: **only the Agentic Stream changes** required to reach the
