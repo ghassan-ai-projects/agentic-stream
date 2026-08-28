@@ -1,0 +1,30 @@
+{
+  "protocol_version": 1,
+  "routes": {
+    "set_indicator": {
+      "operation": "set_led",
+      "target": "led-01",
+      "selector_field": "state",
+      "expires_after_ms": 60000,
+      "presets": {
+        "off": {},
+        "watch": {},
+        "alert": {}
+      }
+    },
+    "select_thermal_mode": {
+      "operation": "set_pwm_lease",
+      "target": "fan-01",
+      "selector_field": "mode",
+      "expires_after_ms": 20000,
+      "presets": {
+        "hold": {"duty_permille": 0, "lease_ms": 5000},
+        "bounded_cooling": {"duty_permille": 450, "lease_ms": 5000}
+      },
+      "bounds": {
+        "duty_permille": {"max": 600},
+        "lease_ms": {"max": 10000}
+      }
+    }
+  }
+}
