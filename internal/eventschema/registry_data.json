@@ -588,5 +588,99 @@
         "unit": "celsius"
       }
     }
+  },
+  "zone.ambient.observed/1.0": {
+    "event_type": "zone.ambient.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "celsius": {
+        "path": "celsius",
+        "unit": "celsius",
+        "optional": true
+      },
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "zone.fan_tach.observed/1.0": {
+    "event_type": "zone.fan_tach.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "rpm": {
+        "path": "rpm",
+        "unit": "rpm",
+        "optional": true
+      },
+      "state": {
+        "path": "state",
+        "type": "string",
+        "optional": true
+      },
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "zone.heartbeat.observed/1.0": {
+    "event_type": "zone.heartbeat.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "number",
+        "optional": true
+      }
+    }
+  },
+  "zone.temp.observed/1.0": {
+    "event_type": "zone.temp.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "celsius": {
+        "path": "celsius",
+        "unit": "celsius",
+        "optional": true
+      },
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "optional": true
+      },
+      "raw_value": {
+        "path": "raw_value",
+        "type": "number",
+        "optional": true
+      },
+      "calibration_id": {
+        "path": "calibration_id",
+        "type": "string",
+        "optional": true
+      },
+      "firmware_id": {
+        "path": "firmware_id",
+        "type": "string",
+        "optional": true
+      },
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "number",
+        "optional": true
+      }
+    }
   }
 }

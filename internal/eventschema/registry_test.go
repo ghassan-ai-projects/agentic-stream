@@ -181,15 +181,15 @@ func TestAllBuiltinsLoadFromData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load registry: %v", err)
 	}
-	if len(registry) != 32 {
-		t.Fatalf("expected 32 built-in refs, got %d", len(registry))
+	if len(registry) != 51 {
+		t.Fatalf("expected 51 built-in refs, got %d", len(registry))
 	}
 	canonical, err := canonicaljson.Marshal(registry)
 	if err != nil {
 		t.Fatalf("canonicalize registry: %v", err)
 	}
 	sum := sha256.Sum256(canonical)
-	const pinnedDigest = "fbc4dadecfa439d096f7183d609fff5317467b442eed096a377725d50e92dcab"
+	const pinnedDigest = "57604ad12e29fe6f51299e291957dc160a9fc6658ed562e32763b53ede9063e8"
 	if got := hex.EncodeToString(sum[:]); got != pinnedDigest {
 		t.Fatalf("registry data digest = %s, want the pinned %s", got, pinnedDigest)
 	}

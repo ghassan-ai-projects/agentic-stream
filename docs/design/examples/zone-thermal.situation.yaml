@@ -1,0 +1,285 @@
+apiVersion: agentic-stream/v1
+kind: SituationSpec
+
+# Thermal-chamber over-temp detection — the Agentic Stream telemetry vertical for
+# the Real-World Sensor HIL-0 program (docs/plans/real-world-sensor-hil/).
+# This spec uses ONLY current schema grammar. It intentionally does NOT use the
+# invented fields from the round-1 starter (schema:, supervisor:, expectedFeedback:,
+# idempotencyKeyTemplate:, aggregate: latest) — those do not compile.
+#
+# Quality gate: invalid/warming/disconnected samples are emitted by the gateway
+# WITHOUT a numeric value (only a quality flag), so the aggregates below skip them
+# (extractValue drops events whose field is absent) while the event log retains
+# them as evidence. See Phase 01 Task 1.3.
+
+metadata:
+  name: zone_over_temp
+  version: 0.1.0
+  description: Detect a sustained, rising over-band zone temperature and discount an ambient-tracking rise, before any actuation.
+  labels:
+    domain: thermal-chamber
+    safety: advisory
+
+inputs:
+  - name: temp
+    eventType: zone.temp.observed
+    schemaVersion: "1.0"
+    schema: zone.temp.observed/1.0
+    partitionKey: entity.id
+    entityType: thermal_zone
+    classification: internal
+  - name: ambient
+    eventType: zone.ambient.observed
+    schemaVersion: "1.0"
+    schema: zone.ambient.observed/1.0
+    partitionKey: entity.id
+    entityType: thermal_zone
+    classification: internal
+  - name: fan_tach
+    eventType: zone.fan_tach.observed
+    schemaVersion: "1.0"
+    schema: zone.fan_tach.observed/1.0
+    partitionKey: entity.id
+    entityType: thermal_zone
+    classification: internal
+  - name: heartbeat
+    eventType: zone.heartbeat.observed
+    schemaVersion: "1.0"
+    schema: zone.heartbeat.observed/1.0
+    partitionKey: entity.id
+    entityType: thermal_zone
+    classification: internal
+
+time:
+  watermarkStrategy: bounded_out_of_orderness
+  maxOutOfOrderness: 15s
+  idleTimeout: 3m
+  allowedLateness: 30s
+  latePolicy: correct_and_reconsider
+  clockSkewTolerance: 5s
+
+windows:
+  - name: temp_5m
+    kind: sliding
+    size: 5m
+    slide: 30s
+    emit: early_and_close
+  - name: ambient_5m
+    kind: sliding
+    size: 5m
+    slide: 30s
+    emit: early_and_close
+
+operators:
+  - name: temp_mean
+    kind: aggregate
+    inputs: [temp]
+    field: data.celsius
+    window: temp_5m
+    aggregate: mean
+    output: temp_mean_5m
+    unit: celsius
+  - name: temp_slope
+    kind: slope
+    inputs: [temp]
+    field: data.celsius
+    window: temp_5m
+    aggregate: slope
+    output: temp_slope_5m
+    unit: celsius_per_hour
+  - name: ambient_slope
+    kind: slope
+    inputs: [ambient]
+    field: data.celsius
+    window: ambient_5m
+    aggregate: slope
+    output: ambient_slope_5m
+    unit: celsius_per_hour
+  - name: fan_rpm
+    kind: aggregate
+    inputs: [fan_tach]
+    field: data.rpm
+    window: temp_5m
+    aggregate: max
+    output: fan_rpm_latest
+    unit: rpm
+  - name: link_missing
+    kind: missing_heartbeat
+    inputs: [heartbeat]
+    expectedEvery: 30s
+    duration: 90s
+    output: link_missing_90s
+
+situation:
+  type: zone_over_temp
+  entityKey: entity.id
+  occurrence:
+    openWhen: >
+      has(features.temp_mean_5m) && has(features.temp_slope_5m) &&
+      features.temp_mean_5m > 30.0 && features.temp_slope_5m > 6.0
+    closeWhen: >
+      has(features.temp_mean_5m) && features.temp_mean_5m <= 28.0
+    reopenCooldown: 5m
+  initialPhase: candidate
+  phases:
+    - name: candidate
+      severity: 10
+    - name: watch
+      severity: 30
+    - name: rising
+      severity: 55
+    - name: over_ceiling
+      severity: 85
+    - name: recovering
+      severity: 40
+    - name: resolved
+      severity: 0
+      terminal: true
+  transitions:
+    - from: candidate
+      to: watch
+      when: features.temp_mean_5m > 30.0
+      minDuration: 1m
+    - from: watch
+      to: rising
+      when: >
+        features.temp_slope_5m > 9.0 &&
+        (!has(features.ambient_slope_5m) || features.ambient_slope_5m < 4.0)
+      minDuration: 30s
+    - from: rising
+      to: over_ceiling
+      when: features.temp_mean_5m > 38.0
+      minDuration: 15s
+    - from: rising
+      to: recovering
+      when: features.temp_slope_5m < 0.0
+      minDuration: 1m
+    - from: recovering
+      to: resolved
+      when: features.temp_mean_5m <= 28.0
+      minDuration: 2m
+  reducers:
+    - field: facts.temp_mean
+      strategy: latest_event_time
+      input: temp_mean_5m
+    - field: facts.temp_slope
+      strategy: latest_event_time
+      input: temp_slope_5m
+    - field: facts.ambient_slope
+      strategy: latest_event_time
+      input: ambient_slope_5m
+    - field: facts.fan_rpm
+      strategy: latest_event_time
+      input: fan_rpm_latest
+    - field: facts.link_missing
+      strategy: latest_event_time
+      input: link_missing_90s
+    - field: evidence
+      strategy: set_union
+      input: temp_mean_5m
+      limit: 128
+
+cognition:
+  triggers:
+    - name: overtemp_needs_decision
+      when: >
+        situation.phase in ["watch", "rising", "over_ceiling"] &&
+        (!has(features.link_missing_90s) || features.link_missing_90s == false)
+      score: >
+        double(situation.severity) * 0.5 +
+        double(delta.novelty) * 25.0 +
+        double(situation.uncertainty) * 25.0
+      threshold: 35
+      lane: deep
+      completeness: any
+      debounce: 5s
+      cooldown: 20s
+      expiresAfter: 10m
+      materialDelta: >
+        delta.phase_changed ||
+        delta.severity_change >= 10 ||
+        delta.primary_hypothesis_changed
+  executor:
+    name: native
+    objective: >
+      Decide whether this zone needs active cooling. Require BOTH an out-of-band
+      mean temperature AND a positive temperature slope — a single high reading is
+      not an over-temp. Cross-check the ambient slope: if the zone is merely
+      tracking a rising room, do not propose cooling. You may request a bounded
+      cooling MODE, but you never set duty or duration — a deterministic policy
+      materializes the concrete, bounded command. Never treat a commanded fan as a
+      cooled zone; cooling counts only when independent tach feedback confirms it.
+    prompt: >
+      Analyze the immutable snapshot — mean temp, slope, ambient slope, observed
+      fan tach, and recalled prior experience — then return a typed decision with a
+      bounded cooling-mode request or a discount of an ambient-tracking rise.
+    modelPolicy: thermal_reasoner
+    promptVersion: zone-thermal-v1
+    decisionSchema: schemas/maintenance-decision-v1.json
+    tools:
+      - features_query
+      - evidence_get
+      - history_prior_incidents
+      - knowledge_search
+    budget:
+      wallTime: 30s
+      modelCalls: 5
+      inputTokens: 24000
+      outputTokens: 4000
+      toolCalls: 6
+      toolResultBytes: 32768
+      totalToolResultBytes: 131072
+      providerRetries: 2
+      costMicrounits: 800000
+
+actions:
+  intents:
+    # LED indicator — the always-allowed shadow proxy (R1). No approval beyond
+    # normal policy. The serial effector that consumes this arrives in Phase 03;
+    # for the telemetry gate this must merely compile and deploy.
+    - type: set_indicator
+      risk: R1
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          state:
+            type: string
+            enum: [off, watch, alert]
+        additionalProperties: false
+      modelWritableFields: [state]
+      policy: automatic
+      rateLimitPerHour: 30
+    # Bounded cooling MODE — R2, approval-gated. The model may only write `mode`
+    # (an enum); the concrete duty/lease come from a deterministic preset, never
+    # from the model. This is how PWM stays out of the model's hands.
+    - type: select_thermal_mode
+      risk: R2
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          mode:
+            type: string
+            enum: [hold, bounded_cooling]
+        additionalProperties: false
+      modelWritableFields: [mode]
+      presets:
+        hold:
+          mode: hold
+        bounded_cooling:
+          mode: bounded_cooling
+      policy: approval
+      rateLimitPerHour: 6
+
+retention:
+  rawEvents: 14d
+  features: 90d
+  situationVersions: 180d
+  episodeEvents: 180d
+
+telemetry:
+  traceSampleRatio: 1
+  recordModelDeltas: false

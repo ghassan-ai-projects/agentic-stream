@@ -40,6 +40,29 @@ func TestCompileRotatingMachinery(t *testing.T) {
 	}
 }
 
+func TestCompileZoneThermal(t *testing.T) {
+	// The Real-World Sensor HIL-0 telemetry spec must compile against the
+	// CURRENT schema grammar — it deliberately avoids the invented fields
+	// (schema:, supervisor:, expectedFeedback:, aggregate: latest) that made the
+	// round-1 starter fail. docs/plans/real-world-sensor-hil/01-telemetry-vertical.md
+	compiled, err := spec.CompileFile(context.Background(), "../../docs/design/examples/zone-thermal.situation.yaml")
+	if err != nil {
+		t.Fatalf("CompileFile failed: %v", err)
+	}
+	if compiled.Metadata.Name != "zone_over_temp" {
+		t.Fatalf("unexpected name %q", compiled.Metadata.Name)
+	}
+	if len(compiled.Inputs) != 4 {
+		t.Fatalf("input count = %d, want 4 (temp, ambient, fan_tach, heartbeat)", len(compiled.Inputs))
+	}
+	if len(compiled.Actions.Intents) != 2 {
+		t.Fatalf("intent count = %d, want 2 (set_indicator, select_thermal_mode)", len(compiled.Actions.Intents))
+	}
+	if compiled.Digest == "" {
+		t.Fatal("expected non-empty digest")
+	}
+}
+
 func TestCompileStableDigestForEquivalentYAML(t *testing.T) {
 	yaml := minimalSpecYAML()
 
