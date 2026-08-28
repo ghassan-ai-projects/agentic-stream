@@ -136,14 +136,25 @@ func DigestForVersion(policyVersion string) (string, error) {
 	if policyVersion == "" {
 		return "", fmt.Errorf("policy version is required")
 	}
-	return canonicaljson.Digest(canonicaljson.DomainPolicy, map[string]any{
+	digest, err := canonicaljson.Digest(canonicaljson.DomainPolicy, CanonicalDocumentForVersion(policyVersion))
+	if err != nil {
+		return "", fmt.Errorf("digest policy document: %w", err)
+	}
+	return digest, nil
+}
+
+// CanonicalDocumentForVersion returns the deterministic policy document bound
+// to policyVersion. It is shared by audit exporters so a manifest digest can be
+// verified against the actual policy input rather than an audit-log projection.
+func CanonicalDocumentForVersion(policyVersion string) map[string]any {
+	return map[string]any{
 		"policy_version": policyVersion,
 		"risk_policy": map[string]any{
 			"R0": "automatic", "R1": "automatic", "R2": "approval", "R3": "denied", "R4": "denied",
 		},
 		"incomplete_source_health": map[string]any{"R2": "denied", "R3": "denied", "R4": "denied"},
 		"target_resolution":        "closed_catalog_binding",
-	})
+	}
 }
 
 // WithInterlock adds the durable read-only action readiness check.

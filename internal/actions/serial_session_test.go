@@ -7,18 +7,22 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 type fakeDeviceTransport struct {
-	mu         sync.Mutex
-	frames     [][]byte
-	sentFrames [][]byte
-	sends      int
-	receiveErr error
-	sendErr    error
-	closed     bool
+	mu           sync.Mutex
+	frames       [][]byte
+	sentFrames   [][]byte
+	sends        int
+	receiveErr   error
+	sendErr      error
+	closed       bool
+	receiveHook  func()
+	stateQueries int
 }
 
 func (t *fakeDeviceTransport) Send(_ context.Context, frame []byte) error {
@@ -34,16 +38,31 @@ func (t *fakeDeviceTransport) Send(_ context.Context, frame []byte) error {
 
 func (t *fakeDeviceTransport) Receive(_ context.Context) ([]byte, error) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
+	var frame []byte
 	if len(t.frames) > 0 {
-		frame := t.frames[0]
+		frame = t.frames[0]
 		t.frames = t.frames[1:]
+	}
+	receiveErr := t.receiveErr
+	hook := t.receiveHook
+	t.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	if frame != nil {
 		return frame, nil
 	}
-	if t.receiveErr != nil {
-		return nil, t.receiveErr
+	if receiveErr != nil {
+		return nil, receiveErr
 	}
 	return nil, errors.New("fake transport has no queued frame")
+}
+
+func (t *fakeDeviceTransport) QueryState(ctx context.Context) ([]byte, error) {
+	t.mu.Lock()
+	t.stateQueries++
+	t.mu.Unlock()
+	return t.Receive(ctx)
 }
 
 func (t *fakeDeviceTransport) Close() error {
@@ -73,6 +92,7 @@ func openThermalSession(t *testing.T, replies ...map[string]any) (*actions.Devic
 		t.Fatal(err)
 	}
 	transport := &fakeDeviceTransport{frames: [][]byte{stateFrame}}
+	control := newDeviceControl(t)
 	for _, reply := range replies {
 		frame, encodeErr := actions.EncodeDeviceRecord(reply)
 		if encodeErr != nil {
@@ -83,6 +103,7 @@ func openThermalSession(t *testing.T, replies ...map[string]any) (*actions.Devic
 	session, err := actions.OpenDeviceSession(context.Background(), actions.DeviceSessionConfig{
 		Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{catalogDigest},
 		AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, AuthorityEpoch: "epoch-1",
+		OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: control.reconciliation,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -132,9 +153,11 @@ func TestOpenDeviceSessionRequiresHandshakeAgreement(t *testing.T) {
 				t.Fatal(encodeErr)
 			}
 			transport := &fakeDeviceTransport{frames: [][]byte{badFrame}}
+			control := newDeviceControl(t)
 			_, openErr := actions.OpenDeviceSession(context.Background(), actions.DeviceSessionConfig{
 				Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
 				AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, AuthorityEpoch: "epoch-1",
+				OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: control.reconciliation,
 			})
 			if openErr == nil {
 				t.Fatal("handshake mismatch opened a session")
@@ -153,12 +176,33 @@ func TestOpenDeviceSessionRequiresHandshakeAgreement(t *testing.T) {
 		}
 		frame = bytes.Replace(frame, []byte("\"protocol_version\":1"), []byte("\"protocol_version\":2"), 1)
 		transport := &fakeDeviceTransport{frames: [][]byte{frame}}
+		control := newDeviceControl(t)
 		if _, openErr := actions.OpenDeviceSession(context.Background(), actions.DeviceSessionConfig{
 			Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest}, AuthorityEpoch: "epoch-1",
+			OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: control.reconciliation,
 		}); openErr == nil {
 			t.Fatal("unsupported protocol opened a session")
 		}
 	})
+}
+
+type deviceControl struct {
+	authority      *storage.TargetAuthority
+	reconciliation *storage.ReconciliationStore
+}
+
+func newDeviceControl(t *testing.T) deviceControl {
+	t.Helper()
+	db := openActionDB(t)
+	owner := &storage.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute}
+	if err := owner.Claim(context.Background(), "epoch-1"); err != nil {
+		t.Fatal(err)
+	}
+	epochControl := &storage.EpochControl{DB: db}
+	authority := &storage.TargetAuthority{DB: db, Owner: owner, EpochControl: epochControl, InstanceID: "instance-1", Lease: time.Minute}
+	return deviceControl{
+		authority: authority, reconciliation: &storage.ReconciliationStore{DB: db, Authority: authority},
+	}
 }
 
 func TestDeviceSessionCachesOnlyMatchingIdempotentCommands(t *testing.T) {

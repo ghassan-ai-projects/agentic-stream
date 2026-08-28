@@ -84,20 +84,25 @@ Bar:
 
 ## Phase 04 — authority and soak (G4c–G5)
 
-Status: not started.
+Status: repository implementation in progress; the phase gate remains open.
 
 Bar:
 
 - Existing durable runtime ownership and epoch controls fence every dispatch;
-  no parallel authority model is introduced.
-- Boot change or restart enters a reconciliation barrier before any non-safe
-  command; safe-stop has priority and lease loss cannot re-energize outputs.
+  a target claim adds observability without creating a parallel authority
+  model. Lease overlap is classified as unknown, not treated as cancellable.
+- Boot change or restart enters a durable reconciliation barrier before any
+  non-safe command; safe-stop has priority and lease loss cannot re-energize
+  outputs.
 - Reconciliation uses typed device state/feedback evidence, not caller-supplied
-  success claims.
+  success claims; process-local telemetry is diagnostic only.
 - A run manifest ties deployment, spec, policy, event, situation, decision,
   command, receipt/result/observation, verification, and fault counters.
 - Emulator soak tests produce a reproducible verdict with duplicates, delays,
   reordering, disconnects, expiry, reboot, and unknown-outcome injection.
+
+The detailed execution bar and review checkpoints are in
+[PHASE-04-EXECUTION.md](PHASE-04-EXECUTION.md).
 
 ## Phase 05 — validation matrix and gates
 

@@ -40,16 +40,21 @@ type Runtime struct {
 	// validate (DB corruption — the engine validates at publish). Counted
 	// separately from stale_rejections so corruption is distinguishable from
 	// benign churn in /metrics.
-	rebindFailures        atomic.Uint64
-	deviceFrameErrors     atomic.Uint64
-	deviceReconnects      atomic.Uint64
-	actionUnknownOutcomes atomic.Uint64
-	verificationPending   atomic.Uint64
-	verificationFailures  atomic.Uint64
-	leaseExpiries         atomic.Uint64
-	safeStateEntries      atomic.Uint64
-	durationsMu           sync.Mutex
-	durations             []time.Duration
+	rebindFailures         atomic.Uint64
+	deviceFrameErrors      atomic.Uint64
+	deviceReconnects       atomic.Uint64
+	actionUnknownOutcomes  atomic.Uint64
+	verificationPending    atomic.Uint64
+	verificationFailures   atomic.Uint64
+	leaseExpiries          atomic.Uint64
+	safeStateEntries       atomic.Uint64
+	reconciliationBarriers atomic.Uint64
+	targetClaimRejections  atomic.Uint64
+	safeStopRequests       atomic.Uint64
+	safeStopFailures       atomic.Uint64
+	safeStopCompletions    atomic.Uint64
+	durationsMu            sync.Mutex
+	durations              []time.Duration
 }
 
 // NewRuntime creates an operational counter set.
@@ -187,6 +192,41 @@ func (r *Runtime) ObserveSafeStateEntry() {
 	}
 }
 
+// ObserveReconciliationBarrier records a boot/restart barrier opening.
+func (r *Runtime) ObserveReconciliationBarrier() {
+	if r != nil {
+		r.reconciliationBarriers.Add(1)
+	}
+}
+
+// ObserveTargetClaimRejection records a competing target authority.
+func (r *Runtime) ObserveTargetClaimRejection() {
+	if r != nil {
+		r.targetClaimRejections.Add(1)
+	}
+}
+
+// ObserveSafeStopRequested records a priority safe-stop frame request.
+func (r *Runtime) ObserveSafeStopRequested() {
+	if r != nil {
+		r.safeStopRequests.Add(1)
+	}
+}
+
+// ObserveSafeStopFailure records a safe-stop transport failure.
+func (r *Runtime) ObserveSafeStopFailure() {
+	if r != nil {
+		r.safeStopFailures.Add(1)
+	}
+}
+
+// ObserveSafeStopCompleted records a safe-stop receipt.
+func (r *Runtime) ObserveSafeStopCompleted() {
+	if r != nil {
+		r.safeStopCompletions.Add(1)
+	}
+}
+
 // ObserveDuration records one dispatch→decision duration for the histogram.
 func (r *Runtime) ObserveDuration(duration time.Duration) {
 	if r == nil {
@@ -237,6 +277,11 @@ func (r *Runtime) Snapshot() map[string]uint64 {
 		"agentic_stream_verification_failures_total":   r.verificationFailures.Load(),
 		"agentic_stream_lease_expiries_total":          r.leaseExpiries.Load(),
 		"agentic_stream_safe_state_entries_total":      r.safeStateEntries.Load(),
+		"agentic_stream_reconciliation_barriers_total": r.reconciliationBarriers.Load(),
+		"agentic_stream_target_claim_rejections_total": r.targetClaimRejections.Load(),
+		"agentic_stream_safe_stop_requests_total":      r.safeStopRequests.Load(),
+		"agentic_stream_safe_stop_failures_total":      r.safeStopFailures.Load(),
+		"agentic_stream_safe_stop_completions_total":   r.safeStopCompletions.Load(),
 	}
 }
 

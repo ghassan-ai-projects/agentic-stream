@@ -600,22 +600,42 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 	if finalStatus != "succeeded" && finalStatus != "failed" && finalStatus != "manual_review" {
 		return fmt.Errorf("invalid reconciliation status %q", finalStatus)
 	}
+	if err := validateReconciliationEvidence(evidence); err != nil {
+		return err
+	}
 	if err := d.db.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := d.assertRuntimeOwner(ctx, tx); err != nil {
 			return err
 		}
-		var currentStatus, tenantID, intentID string
+		var currentStatus, tenantID, intentID, commandTarget string
 		var traceparent, tracestate sql.NullString
 		if err := tx.QueryRowContext(ctx, `
-			SELECT c.status, c.tenant_id, c.intent_id, d.traceparent, d.tracestate
+			SELECT c.status, c.tenant_id, c.intent_id, c.normalized_target, d.traceparent, d.tracestate
 			FROM commands c
 			JOIN intents i ON i.intent_id = c.intent_id
 			JOIN decisions d ON d.decision_id = i.decision_id
-			WHERE c.command_id = ?`, commandID).Scan(&currentStatus, &tenantID, &intentID, &traceparent, &tracestate); err != nil {
+			WHERE c.command_id = ?`, commandID).Scan(&currentStatus, &tenantID, &intentID, &commandTarget, &traceparent, &tracestate); err != nil {
 			return fmt.Errorf("load command %s for reconciliation: %w", commandID, err)
 		}
 		if currentStatus != "reconciling" && currentStatus != "outcome_unknown" {
 			return fmt.Errorf("command %s is not awaiting reconciliation", commandID)
+		}
+		var boundTarget, deviceID, bootID string
+		bindingErr := tx.QueryRowContext(ctx, `SELECT target, device_id, boot_id
+			FROM device_command_bindings WHERE command_id = ?`, commandID).Scan(&boundTarget, &deviceID, &bootID)
+		switch {
+		case bindingErr == nil:
+			if boundTarget != commandTarget {
+				return fmt.Errorf("device command binding target does not match command %q", commandID)
+			}
+			if evidenceTarget, _ := evidence["target"].(string); evidenceTarget != boundTarget {
+				return fmt.Errorf("device reconciliation evidence target does not match command %q", commandID)
+			}
+			if err := storage.ValidateDeviceReconciliationEvidence(evidence, deviceID, bootID); err != nil {
+				return fmt.Errorf("validate device reconciliation evidence: %w", err)
+			}
+		case !errors.Is(bindingErr, sql.ErrNoRows):
+			return fmt.Errorf("load device command binding: %w", bindingErr)
 		}
 		now := d.clk.Now().UTC()
 		outcomeID := d.idGen.New(ids.PrefixOutcome)
@@ -670,6 +690,36 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 		return fmt.Errorf("reconcile unknown command: %w", err)
 	}
 	return nil
+}
+
+func validateReconciliationEvidence(evidence map[string]any) error {
+	if len(evidence) == 0 {
+		return fmt.Errorf("reconciliation evidence is required")
+	}
+	source, _ := evidence["source"].(string)
+	if source == "" {
+		return fmt.Errorf("reconciliation evidence source is required")
+	}
+	evidenceType, _ := evidence["evidence_type"].(string)
+	if evidenceType != "provider_observation" && evidenceType != "device_state_feedback" {
+		return fmt.Errorf("reconciliation evidence_type is required")
+	}
+	if evidenceType == "device_state_feedback" {
+		for _, key := range []string{"device_id", "boot_id", "state", "feedback_digest"} {
+			if _, ok := evidence[key]; !ok {
+				return fmt.Errorf("device reconciliation evidence requires %s", key)
+			}
+		}
+	}
+	for _, key := range []string{"evidence_digest", "state_digest", "feedback_digest"} {
+		if digest, ok := evidence[key].(string); ok && digest != "" {
+			if _, err := canonicaljson.DecodeDigest(digest); err != nil {
+				return fmt.Errorf("invalid reconciliation %s: %w", key, err)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("reconciliation evidence must include a sha256 evidence, state, or feedback digest")
 }
 
 func appendOutcomeReconciledNotification(ctx context.Context, tx *sql.Tx, tenantID, intentID, commandID, outcomeID, finalStatus string, now time.Time) error {

@@ -146,7 +146,13 @@ func TestDispatcherDoesNotBlindlyRetryUnknownOutcome(t *testing.T) {
 	if commandStatus != "reconciling" || outboxStatus != "failed" || outcomeStatus != "unknown" || reconciliation != "required" {
 		t.Fatalf("unknown ledger command=%q outbox=%q outcome=%q reconciliation=%q", commandStatus, outboxStatus, outcomeStatus, reconciliation)
 	}
-	if err := dispatcher.ReconcileUnknown(context.Background(), commandID, "succeeded", map[string]any{"provider_id": "p-1"}); err != nil {
+	if err := dispatcher.ReconcileUnknown(context.Background(), commandID, "succeeded", map[string]any{"provider_id": "p-1"}); err == nil {
+		t.Fatal("untyped reconciliation evidence was accepted")
+	}
+	if err := dispatcher.ReconcileUnknown(context.Background(), commandID, "succeeded", map[string]any{
+		"provider_id": "p-1", "source": "independent-feedback", "evidence_type": "provider_observation",
+		"evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+	}); err != nil {
 		t.Fatalf("reconcile unknown outcome: %v", err)
 	}
 	if err := db.QueryRowContext(context.Background(), "SELECT status FROM commands WHERE command_id = ?", commandID).Scan(&commandStatus); err != nil {

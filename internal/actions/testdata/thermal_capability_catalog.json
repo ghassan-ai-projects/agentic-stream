@@ -1,5 +1,9 @@
 {
   "protocol_version": 1,
+  "safe_stops": {
+    "led-01": {"operation": "safe_stop", "expires_after_ms": 1000},
+    "fan-01": {"operation": "safe_stop", "expires_after_ms": 1000}
+  },
   "routes": {
     "set_indicator": {
       "operation": "set_led",

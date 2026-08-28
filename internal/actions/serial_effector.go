@@ -27,7 +27,9 @@ func NewSerialEffector(session *DeviceSession, catalog *CapabilityCatalog) *Seri
 func (e *SerialEffector) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *SerialEffector {
 	if e != nil {
 		e.telemetry = runtimeTelemetry
-		e.session.WithTelemetry(runtimeTelemetry)
+		if e.session != nil {
+			e.session.WithTelemetry(runtimeTelemetry)
+		}
 	}
 	return e
 }
@@ -49,6 +51,22 @@ func (e *SerialEffector) DispatchAuthorized(ctx context.Context, command Command
 		return Effect{}, err
 	}
 	return e.dispatch(ctx, command)
+}
+
+// SafeStop requests the catalog-owned safe state through the session priority
+// lane. It is intentionally separate from policy-approved ordinary dispatch.
+func (e *SerialEffector) SafeStop(ctx context.Context, target string) (Effect, error) {
+	if e == nil || e.session == nil {
+		return Effect{}, fmt.Errorf("serial effector session is required")
+	}
+	receipt, sent, err := e.session.SafeStop(ctx, target)
+	if err != nil {
+		if sent {
+			return Effect{}, &UnknownOutcomeError{Err: err}
+		}
+		return Effect{}, err
+	}
+	return Effect{ProviderResult: map[string]any{"receipt": receipt}, VerificationPending: true}, nil
 }
 
 func (e *SerialEffector) dispatch(ctx context.Context, command Command) (Effect, error) {

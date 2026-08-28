@@ -42,12 +42,20 @@ type OperationSpec struct {
 	Bounds         map[string]NumericBound   `json:"bounds"`
 }
 
+// SafeStopSpec is a catalog-owned, parameter-free operation that requests the
+// device's safe state. It is never produced from model or intent payloads.
+type SafeStopSpec struct {
+	Operation      string `json:"operation"`
+	ExpiresAfterMs int    `json:"expires_after_ms"`
+}
+
 // CapabilityCatalog is the whole closed device-capability surface for one
 // serial effector. It is loaded from configuration (never a Go literal); the
 // concrete bench values live in a JSON file the hardware owner tunes.
 type CapabilityCatalog struct {
 	ProtocolVersion int                      `json:"protocol_version"`
 	Routes          map[string]OperationSpec `json:"routes"`
+	SafeStops       map[string]SafeStopSpec  `json:"safe_stops,omitempty"`
 }
 
 // Digest returns the canonical identity of this validated capability catalog.
@@ -61,7 +69,11 @@ func (c *CapabilityCatalog) Digest() (string, error) {
 	if err := c.validate(); err != nil {
 		return "", fmt.Errorf("validate capability catalog: %w", err)
 	}
-	return canonicaljson.Digest(canonicaljson.DomainCapabilityCatalog, c)
+	digest, err := canonicaljson.Digest(canonicaljson.DomainCapabilityCatalog, c)
+	if err != nil {
+		return "", fmt.Errorf("digest capability catalog: %w", err)
+	}
+	return digest, nil
 }
 
 // LoadCapabilityCatalog parses and validates a capability catalog. A structurally
@@ -136,6 +148,14 @@ func (c *CapabilityCatalog) validate() error {
 			if bound.Min != nil && bound.Max != nil && *bound.Min > *bound.Max {
 				return fmt.Errorf("route %q bound %q has minimum %v above maximum %v", route, param, *bound.Min, *bound.Max)
 			}
+		}
+	}
+	for target, spec := range c.SafeStops {
+		if target == "" || spec.Operation != "safe_stop" {
+			return fmt.Errorf("safe stop %q must use the catalog operation %q", target, "safe_stop")
+		}
+		if spec.ExpiresAfterMs < 1 || spec.ExpiresAfterMs > 86400000 {
+			return fmt.Errorf("safe stop %q must set expires_after_ms between 1 and 86400000", target)
 		}
 	}
 	return nil
@@ -221,6 +241,46 @@ func (c *CapabilityCatalog) Materialize(command Command, expectedBootID string) 
 	}
 	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, document); err != nil {
 		return nil, fmt.Errorf("materialized device command is invalid: %w", err)
+	}
+	return document, nil
+}
+
+// MaterializeSafeStop creates the fixed catalog-owned safe-state command for a
+// target. It has no caller-supplied parameters or policy authority and cannot
+// be used to clear a physical e-stop.
+func (c *CapabilityCatalog) MaterializeSafeStop(target, expectedBootID string) (map[string]any, error) {
+	if c == nil {
+		return nil, fmt.Errorf("capability catalog is required to materialize a safe stop")
+	}
+	if expectedBootID == "" {
+		return nil, fmt.Errorf("expected boot id is required to materialize a safe stop")
+	}
+	spec, ok := c.SafeStops[target]
+	if !ok {
+		return nil, fmt.Errorf("safe stop target %q is not in the capability catalog", target)
+	}
+	catalogDigest, err := c.Digest()
+	if err != nil {
+		return nil, fmt.Errorf("digest safe stop catalog: %w", err)
+	}
+	parameters := map[string]any{}
+	commandID := "safe-stop/" + target
+	document := map[string]any{
+		"message_type": "command", "protocol_version": c.ProtocolVersion,
+		"command_id": commandID, "target": target, "operation": spec.Operation,
+		"parameters": parameters, "expected_boot_id": expectedBootID,
+		"not_before_mono_us": 0, "expires_after_ms": spec.ExpiresAfterMs,
+		"policy_digest": catalogDigest,
+	}
+	identity := cloneDocument(document)
+	delete(identity, "command_id")
+	idempotencyKey, err := canonicaljson.Digest(canonicaljson.DomainCommand, identity)
+	if err != nil {
+		return nil, fmt.Errorf("digest safe stop command identity: %w", err)
+	}
+	document["idempotency_key"] = idempotencyKey
+	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, document); err != nil {
+		return nil, fmt.Errorf("materialized safe stop is invalid: %w", err)
 	}
 	return document, nil
 }
