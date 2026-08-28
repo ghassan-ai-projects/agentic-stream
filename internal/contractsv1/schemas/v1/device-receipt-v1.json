@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:situation-runtime:schema:device-receipt:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["message_type", "protocol_version", "command_id", "boot_id", "accepted"],
+  "properties": {
+    "message_type": {"const": "receipt"},
+    "protocol_version": {"type": "integer", "minimum": 1, "maximum": 255},
+    "command_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "boot_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "accepted": {"type": "boolean"},
+    "received_mono_us": {"type": "integer", "minimum": 0},
+    "reject_code": {"enum": ["malformed", "wrong_boot", "out_of_range", "expired", "wrong_target", "unknown_operation", "duplicate", "interlocked", "not_ready"]}
+  }
+}

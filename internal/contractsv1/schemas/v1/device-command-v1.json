@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:situation-runtime:schema:device-command:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["message_type", "protocol_version", "command_id", "idempotency_key", "target", "operation", "expected_boot_id", "expires_after_ms"],
+  "properties": {
+    "message_type": {"const": "command"},
+    "protocol_version": {"type": "integer", "minimum": 1, "maximum": 255},
+    "command_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "idempotency_key": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "target": {"type": "string", "minLength": 1, "maxLength": 256},
+    "operation": {"type": "string", "minLength": 1, "maxLength": 256},
+    "parameters": {"type": "object"},
+    "expected_boot_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "not_before_mono_us": {"type": "integer", "minimum": 0},
+    "expires_after_ms": {"type": "integer", "minimum": 1, "maximum": 86400000},
+    "policy_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}
