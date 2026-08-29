@@ -23,6 +23,13 @@ type DeterministicBaseline struct {
 	intents []spec.Intent
 }
 
+type baselineSnapshot struct {
+	Phase  string `json:"phase"`
+	Entity struct {
+		ID string `json:"id"`
+	} `json:"entity"`
+}
+
 // NewDeterministicBaseline creates the baseline from an immutable compiled
 // spec. The caller still validates its output through the normal Decision and
 // Intent catalog validator.
@@ -41,46 +48,70 @@ func (b *DeterministicBaseline) ExecuteBaseline(_ context.Context, input ShadowI
 	if b == nil || len(b.intents) == 0 {
 		return ShadowOutput{}, fmt.Errorf("deterministic baseline is not configured")
 	}
-	var snapshot struct {
-		Phase  string `json:"phase"`
-		Entity struct {
-			ID string `json:"id"`
-		} `json:"entity"`
+	snapshot, err := decodeBaselineSnapshot(input.SnapshotJSON)
+	if err != nil {
+		return ShadowOutput{}, err
 	}
-	if err := json.Unmarshal(input.SnapshotJSON, &snapshot); err != nil {
-		return ShadowOutput{}, fmt.Errorf("decode baseline snapshot: %w", err)
+	decision := newBaselineDecision(input)
+	intent, err := b.selectIntent(input, snapshot)
+	if err != nil {
+		return ShadowOutput{}, err
 	}
-	decisionID := "dec_baseline_" + shortKey(input.EpisodeKey)
-	decision := map[string]any{
-		"decision_id": decisionID, "episode_id": input.EpisodeID, "attempt_id": input.AttemptID,
+	if intent == nil {
+		decision["decision_type"] = "need_more_evidence"
+		decision["intents"] = []any{}
+	} else {
+		decision["intents"] = []any{intent}
+	}
+	return finalizeBaselineOutput(input, decision)
+}
+
+func decodeBaselineSnapshot(raw []byte) (baselineSnapshot, error) {
+	var snapshot baselineSnapshot
+	if err := json.Unmarshal(raw, &snapshot); err != nil {
+		return baselineSnapshot{}, fmt.Errorf("decode baseline snapshot: %w", err)
+	}
+	return snapshot, nil
+}
+
+func newBaselineDecision(input ShadowInput) map[string]any {
+	return map[string]any{
+		"decision_id": "dec_baseline_" + shortKey(input.EpisodeKey), "episode_id": input.EpisodeID, "attempt_id": input.AttemptID,
 		"fence": input.Fence, "snapshot_digest": input.SnapshotDigest,
 		"situation_id": input.SituationID, "situation_version": input.SituationVersion,
 		"confidence": 1.0,
 	}
+}
+
+func (b *DeterministicBaseline) selectIntent(input ShadowInput, snapshot baselineSnapshot) (map[string]any, error) {
+	decisionID := "dec_baseline_" + shortKey(input.EpisodeKey)
 	for _, configured := range b.intents {
 		parameters, ok := baselineParameters(configured, snapshot.Entity.ID, snapshot.Phase)
 		if !ok {
 			continue
 		}
-		intent := map[string]any{
-			"intent_id":   "int_baseline_" + shortKey(input.EpisodeKey),
-			"decision_id": decisionID, "tenant_id": input.TenantID,
-			"situation_id": input.SituationID, "situation_version": input.SituationVersion,
-			"type": configured.Type, "risk_class": configured.Risk,
-			"parameters": parameters, "expires_at": "2099-01-01T00:00:00Z",
-		}
-		intentDigest, err := contractsv1.IntentDigest(intent)
-		if err != nil {
-			return ShadowOutput{}, fmt.Errorf("digest baseline intent: %w", err)
-		}
-		intent["intent_digest"] = intentDigest
-		decision["intents"] = []any{intent}
-		break
+		return newBaselineIntent(input, decisionID, configured, parameters)
 	}
-	if _, ok := decision["intents"]; !ok {
-		decision["decision_type"] = "need_more_evidence"
-		decision["intents"] = []any{}
+	return nil, nil
+}
+
+func newBaselineIntent(input ShadowInput, decisionID string, configured spec.Intent, parameters map[string]any) (map[string]any, error) {
+	intent := map[string]any{
+		"intent_id":   "int_baseline_" + shortKey(input.EpisodeKey),
+		"decision_id": decisionID, "tenant_id": input.TenantID,
+		"situation_id": input.SituationID, "situation_version": input.SituationVersion,
+		"type": configured.Type, "risk_class": configured.Risk,
+		"parameters": parameters, "expires_at": "2099-01-01T00:00:00Z",
 	}
+	intentDigest, err := contractsv1.IntentDigest(intent)
+	if err != nil {
+		return nil, fmt.Errorf("digest baseline intent: %w", err)
+	}
+	intent["intent_digest"] = intentDigest
+	return intent, nil
+}
+
+func finalizeBaselineOutput(input ShadowInput, decision map[string]any) (ShadowOutput, error) {
 	decisionJSON, err := canonicaljson.Marshal(decision)
 	if err != nil {
 		return ShadowOutput{}, fmt.Errorf("marshal baseline decision: %w", err)
