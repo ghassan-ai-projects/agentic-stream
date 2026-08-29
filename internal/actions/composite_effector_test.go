@@ -1,12 +1,32 @@
 package actions_test
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
+
+func TestCompositeEffectorRoutesThermalToSerialAndUnknownFailsClosed(t *testing.T) {
+	session, transport, catalog := openThermalSession(t, acceptedReceipt("cmd-thermal"))
+	defer func() { _ = session.Close() }()
+	effector := actions.NewCompositeEffector(nil, nil).WithSerial(actions.NewSerialEffector(session, catalog))
+	effect, err := effector.Dispatch(context.Background(), actions.Command{
+		CommandID: "cmd-thermal", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
+		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"},
+	})
+	if err != nil || !effect.VerificationPending || transport.sendCount() != 1 {
+		t.Fatalf("thermal dispatch effect=%v err=%v sends=%d", effect, err, transport.sendCount())
+	}
+	if _, err := effector.Dispatch(context.Background(), actions.Command{EffectorRoute: "unknown"}); err == nil {
+		t.Fatal("unknown route was accepted without a fallback")
+	}
+	if _, err := actions.NewCompositeEffector(nil, nil).Dispatch(context.Background(), actions.Command{EffectorRoute: "set_indicator"}); err == nil {
+		t.Fatal("thermal route crossed to an absent effector")
+	}
+}
 
 func TestCompositeEffectorRoutesWatchBeforeSimulatedFallback(t *testing.T) {
 	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "composite.db"))

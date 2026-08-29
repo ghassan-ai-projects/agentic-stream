@@ -18,8 +18,28 @@ func TestRuntimeCountersAndMetricsAreLowCardinality(t *testing.T) {
 	runtime := telemetry.NewRuntime(time.Unix(1, 0))
 	runtime.ObservePipeline(telemetry.PipelineReport{EventsIngested: 2, EventsProcessed: 3, EpisodesAdmitted: 1, EpisodesExecuted: 1, IntentsEvaluated: 1, CommandsDispatched: 1})
 	runtime.ObserveFailure()
+	runtime.ObserveDeviceFrameError()
+	runtime.ObserveDeviceReconnect()
+	runtime.ObserveActionUnknownOutcome()
+	runtime.ObserveVerificationPending()
+	runtime.ObserveVerificationFailure()
+	runtime.ObserveLeaseExpiry()
+	runtime.ObserveSafeStateEntry()
 	if got := runtime.Snapshot()["agentic_stream_events_ingested_total"]; got != 2 {
 		t.Fatalf("events=%d", got)
+	}
+	for name := range map[string]struct{}{
+		"agentic_stream_device_frame_errors_total":     {},
+		"agentic_stream_device_reconnects_total":       {},
+		"agentic_stream_action_unknown_outcomes_total": {},
+		"agentic_stream_verification_pending_total":    {},
+		"agentic_stream_verification_failures_total":   {},
+		"agentic_stream_lease_expiries_total":          {},
+		"agentic_stream_safe_state_entries_total":      {},
+	} {
+		if got := runtime.Snapshot()[name]; got != 1 {
+			t.Fatalf("%s=%d", name, got)
+		}
 	}
 	response := httptest.NewRecorder()
 	runtime.Handler().ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", nil))

@@ -4,10 +4,111 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
+
+func TestJSONEmitsStringEnum(t *testing.T) {
+	t.Parallel()
+
+	definition := Definition{Fields: map[string]Field{
+		"quality": {Path: "quality", Type: "string", Optional: true, Enum: []string{"valid", "invalid"}},
+		"value":   {Path: "value", Unit: "celsius"},
+	}}
+
+	raw, err := JSON(definition)
+	if err != nil {
+		t.Fatalf("JSON: %v", err)
+	}
+	var document struct {
+		Properties map[string]struct {
+			Type string   `json:"type"`
+			Enum []string `json:"enum"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(raw, &document); err != nil {
+		t.Fatalf("decode JSON: %v", err)
+	}
+	quality := document.Properties["quality"]
+	if quality.Type != "string" {
+		t.Fatalf("quality type = %q, want string", quality.Type)
+	}
+	if !reflect.DeepEqual(quality.Enum, definition.Fields["quality"].Enum) {
+		t.Fatalf("quality enum = %v, want %v", quality.Enum, definition.Fields["quality"].Enum)
+	}
+	if document.Properties["value"].Enum != nil {
+		t.Fatal("value unexpectedly has an enum")
+	}
+}
+
+func TestThermalSchemasDeclareQualityAndProvenance(t *testing.T) {
+	t.Parallel()
+
+	const thermalQuality = "valid|warming|invalid|disconnected|rail_high|rail_low"
+	wantQuality := []string{"valid", "warming", "invalid", "disconnected", "rail_high", "rail_low"}
+	common := map[string]string{
+		"calibration_id": "string",
+		"firmware_id":    "string",
+		"schema_version": "string",
+		"raw_value":      "number",
+		"boot_id":        "string",
+		"seq":            "integer",
+		"device_mono_us": "integer",
+	}
+	refs := []string{
+		"zone.temp.observed/1.0",
+		"zone.ambient.observed/1.0",
+		"zone.fan_tach.observed/1.0",
+		"zone.heartbeat.observed/1.0",
+	}
+
+	for _, ref := range refs {
+		ref := ref
+		t.Run(ref, func(t *testing.T) {
+			t.Parallel()
+			definition, ok := Lookup(ref)
+			if !ok {
+				t.Fatalf("schema %q is not registered", ref)
+			}
+			quality, ok := definition.Fields["quality"]
+			if !ok {
+				t.Fatal("quality field is not declared")
+			}
+			if quality.Type != "string" || !quality.Optional || !reflect.DeepEqual(quality.Enum, wantQuality) {
+				t.Fatalf("quality = %+v, want optional string enum %s", quality, thermalQuality)
+			}
+			for name, wantType := range common {
+				field, ok := definition.Fields[name]
+				if !ok {
+					t.Errorf("provenance field %q is not declared", name)
+					continue
+				}
+				if field.Type != wantType || !field.Optional {
+					t.Errorf("provenance field %q = %+v, want optional %s", name, field, wantType)
+				}
+			}
+
+			raw, err := JSON(definition)
+			if err != nil {
+				t.Fatalf("JSON(%q): %v", ref, err)
+			}
+			var document struct {
+				Properties map[string]struct {
+					Type string   `json:"type"`
+					Enum []string `json:"enum"`
+				} `json:"properties"`
+			}
+			if err := json.Unmarshal(raw, &document); err != nil {
+				t.Fatalf("decode JSON(%q): %v", ref, err)
+			}
+			if !reflect.DeepEqual(document.Properties["quality"].Enum, wantQuality) {
+				t.Fatalf("generated quality enum = %v, want %v", document.Properties["quality"].Enum, wantQuality)
+			}
+		})
+	}
+}
 
 func TestRotatingMachinerySchemasDescribeAdapterPayloads(t *testing.T) {
 	t.Parallel()
@@ -171,7 +272,7 @@ func contains(values []string, want string) bool {
 // Domain-data extraction (docs/design/impl/GO_DOMAIN_DATA_EXTRACTION.md):
 // the catalog now lives in registry_data.json. Every ref must load and expose
 // its declared fields. The golden digest pins every ref's event_type /
-// schema_version / fields (path, unit, type, optional) VALUES — a typo in any
+// schema_version / fields (path, unit, type, optional, enum) VALUES — a typo in any
 // entry, even one the targeted tables above do not cover, breaks the digest.
 // The invariants below catch structural nonsense (a field that is neither
 // typed nor numeric-with-unit) with a readable failure.
@@ -181,15 +282,15 @@ func TestAllBuiltinsLoadFromData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load registry: %v", err)
 	}
-	if len(registry) != 32 {
-		t.Fatalf("expected 32 built-in refs, got %d", len(registry))
+	if len(registry) != 51 {
+		t.Fatalf("expected 51 built-in refs, got %d", len(registry))
 	}
 	canonical, err := canonicaljson.Marshal(registry)
 	if err != nil {
 		t.Fatalf("canonicalize registry: %v", err)
 	}
 	sum := sha256.Sum256(canonical)
-	const pinnedDigest = "fbc4dadecfa439d096f7183d609fff5317467b442eed096a377725d50e92dcab"
+	const pinnedDigest = "2963f017014b54673e7898ebf71a7a42d41fc906c0115296ab87be0bf62de2fe"
 	if got := hex.EncodeToString(sum[:]); got != pinnedDigest {
 		t.Fatalf("registry data digest = %s, want the pinned %s", got, pinnedDigest)
 	}
@@ -210,6 +311,10 @@ func TestAllBuiltinsLoadFromData(t *testing.T) {
 					t.Fatalf("field %s has no path", name)
 				}
 				switch {
+				case field.Enum != nil:
+					if field.Type != "string" || len(field.Enum) == 0 {
+						t.Fatalf("enum field %s = %+v, want non-empty string enum", name, field)
+					}
 				case name == "unit":
 					if field.Type != "string" || !field.Optional {
 						t.Fatalf("unit field = %+v, want string-typed optional", field)

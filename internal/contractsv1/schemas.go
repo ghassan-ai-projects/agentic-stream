@@ -19,6 +19,13 @@ const (
 	SchemaCommand           SchemaName = "command"
 	SchemaOutcome           SchemaName = "outcome"
 	SchemaTriggerEvaluation SchemaName = "trigger-evaluation"
+	// Device wire records for the physical (serial) effector boundary. These
+	// use snake_case, matching the device wire convention (not the camelCase
+	// SituationSpec). See docs/plans/real-world-sensor-hil/03-serial-effector.md.
+	SchemaDeviceCommand SchemaName = "device-command"
+	SchemaDeviceReceipt SchemaName = "device-receipt"
+	SchemaDeviceResult  SchemaName = "device-result"
+	SchemaDeviceState   SchemaName = "device-state"
 )
 
 //go:embed schemas/v1/*.json
@@ -85,7 +92,8 @@ func loadSchema(name SchemaName) (*jsonschema.Schema, error) {
 
 func isKnownSchema(name SchemaName) bool {
 	switch name {
-	case SchemaSnapshot, SchemaDecision, SchemaIntent, SchemaCommand, SchemaOutcome, SchemaTriggerEvaluation:
+	case SchemaSnapshot, SchemaDecision, SchemaIntent, SchemaCommand, SchemaOutcome, SchemaTriggerEvaluation,
+		SchemaDeviceCommand, SchemaDeviceReceipt, SchemaDeviceResult, SchemaDeviceState:
 		return true
 	default:
 		return false

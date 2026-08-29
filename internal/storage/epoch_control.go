@@ -86,6 +86,31 @@ func (c *EpochControl) AssertDecision(ctx context.Context, episodeEpoch string) 
 	return nil
 }
 
+// AssertOrdinaryTx refuses ordinary action work for an epoch that is draining
+// or killed. It is intentionally transaction-scoped so target claims and the
+// runtime owner assertion share one SQLite read boundary.
+func (c *EpochControl) AssertOrdinaryTx(ctx context.Context, tx *sql.Tx, epoch string) error {
+	if c == nil || c.DB == nil || tx == nil || epoch == "" {
+		return fmt.Errorf("epoch control is not configured")
+	}
+	var state string
+	err := tx.QueryRowContext(ctx, `SELECT state FROM epoch_control WHERE epoch = ?`, epoch).Scan(&state)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read ordinary epoch control: %w", err)
+	}
+	switch state {
+	case "killed":
+		return ErrEpochKilled
+	case "draining":
+		return ErrEpochDraining
+	default:
+		return fmt.Errorf("unknown epoch control state %q", state)
+	}
+}
+
 // AssertAdmission refuses NEW episodes while draining or killed.
 func (c *EpochControl) AssertAdmission(ctx context.Context, currentEpoch string) error {
 	state, err := c.State(ctx, currentEpoch)

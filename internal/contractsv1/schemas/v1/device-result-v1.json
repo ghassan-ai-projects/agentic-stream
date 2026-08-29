@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:situation-runtime:schema:device-result:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["message_type", "protocol_version", "command_id", "boot_id", "status"],
+  "properties": {
+    "message_type": {"const": "result"},
+    "protocol_version": {"const": 1},
+    "command_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "boot_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "status": {"enum": ["executed", "rejected", "expired", "superseded", "safe_state"]},
+    "detail": {"type": "string", "maxLength": 1024},
+    "completed_mono_us": {"type": "integer", "minimum": 0},
+    "error_code": {"type": "string", "maxLength": 256}
+  }
+}

@@ -76,7 +76,8 @@ func validateEnvelopeAgainstSchema(ctx context.Context, queryer queryRower, env 
 	}
 	var schema struct {
 		Properties map[string]struct {
-			Type string `json:"type"`
+			Type string   `json:"type"`
+			Enum []string `json:"enum"`
 		} `json:"properties"`
 		AdditionalProperties bool     `json:"additionalProperties"`
 		Required             []string `json:"required"`
@@ -95,6 +96,11 @@ func validateEnvelopeAgainstSchema(ctx context.Context, queryer queryRower, env 
 		if err := validateJSONSchemaType(property.Type, value); err != nil {
 			return fmt.Errorf("payload field %q: %w", key, err)
 		}
+		if property.Enum != nil {
+			if err := validateJSONSchemaEnum(property.Enum, value); err != nil {
+				return fmt.Errorf("payload field %q: %w", key, err)
+			}
+		}
 	}
 	for _, key := range schema.Required {
 		if _, ok := env.Data[key]; !ok {
@@ -102,6 +108,19 @@ func validateEnvelopeAgainstSchema(ctx context.Context, queryer queryRower, env 
 		}
 	}
 	return nil
+}
+
+func validateJSONSchemaEnum(expected []string, value any) error {
+	actual, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("expected one of %v, got %T", expected, value)
+	}
+	for _, allowed := range expected {
+		if actual == allowed {
+			return nil
+		}
+	}
+	return fmt.Errorf("expected one of %v, got %q", expected, actual)
 }
 
 func validateJSONSchemaType(expected string, value any) error {

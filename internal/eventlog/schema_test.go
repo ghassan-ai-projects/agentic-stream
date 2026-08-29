@@ -30,6 +30,23 @@ func registerTemperatureSchema(t *testing.T, db *storage.DB) {
 	}
 }
 
+func registerSchema(t *testing.T, db *storage.DB, ref string) {
+	t.Helper()
+	definition, ok := eventschema.Lookup(ref)
+	if !ok {
+		t.Fatalf("schema %q is not registered in the built-in catalog", ref)
+	}
+	schemaJSON, err := eventschema.JSON(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
+		return eventschema.Register(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAppendRejectsUnknownAndWrongTypedPayloadsAgainstDurableSchema(t *testing.T) {
 	ctx := context.Background()
 	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "schema.db"))
@@ -54,6 +71,42 @@ func TestAppendRejectsUnknownAndWrongTypedPayloadsAgainstDurableSchema(t *testin
 	}
 	if count != 0 {
 		t.Fatalf("invalid event entered event log: %d rows", count)
+	}
+}
+
+func TestAppendRejectsThermalQualityOutsideSchemaEnum(t *testing.T) {
+	ctx := context.Background()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "thermal-schema.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	registerSchema(t, db, "zone.temp.observed/1.0")
+	log := eventlog.NewEventLog(db).RequireSchemaValidation()
+	base := contractsv1.Envelope{
+		Type: "zone.temp.observed", SchemaVersion: "1.0", TenantID: "default", Source: "test",
+		PartitionKey: "zone-01", Entity: contractsv1.EntityRef{Type: "thermal_zone", ID: "zone-01"},
+		EventTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), IngestedAt: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
+		Classification: contractsv1.ClassificationInternal,
+	}
+	valid := base
+	valid.ID = "thermal-valid"
+	valid.Data = map[string]any{"quality": "valid", "boot_id": "boot-A", "seq": 1.0, "device_mono_us": 1000.0}
+	if _, err := log.Append(ctx, "default", []contractsv1.Envelope{valid}); err != nil {
+		t.Fatalf("valid thermal quality rejected: %v", err)
+	}
+	invalid := base
+	invalid.ID = "thermal-invalid-quality"
+	invalid.Data = map[string]any{"quality": "calibrating"}
+	if _, err := log.Append(ctx, "default", []contractsv1.Envelope{invalid}); err == nil {
+		t.Fatal("expected invalid thermal quality to be rejected")
+	}
+	var count int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM event_log").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("event log count = %d, want only the valid thermal event", count)
 	}
 }
 

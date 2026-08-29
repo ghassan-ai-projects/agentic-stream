@@ -49,6 +49,9 @@ type PipelineConfig struct {
 	// set, admission refuses new episodes while the epoch is draining and
 	// every later decision is refused once the epoch is killed.
 	EpochControl *storage.EpochControl
+	// SerialEffector is optional and supplies the explicitly routed thermal
+	// action boundary. It is never used by replay or shadow execution.
+	SerialEffector *actions.SerialEffector
 }
 
 // PipelineReport describes one completed live batch.
@@ -65,24 +68,24 @@ type PipelineReport struct {
 // and action planes. It is intentionally batch-oriented at this stage: the
 // same methods are called repeatedly by a future continuous ingestion loop.
 type Pipeline struct {
-	db         *storage.DB
-	log        *eventlog.EventLog
-	engine     *engine.Engine
-	assembler  *episodes.Assembler
-	runner     *episodes.Runner
-	policy     *policy.Gateway
-	dispatcher *actions.Dispatcher
-	watch      *actions.WatchEffector
-	owner      *storage.RuntimeOwner
-	ownerEpoch string
-	clk        clock.Clock
-	tenantID   string
-	watchMu    sync.Mutex
-	watchStop  context.CancelFunc
-	watchDone  chan struct{}
-	watchErr   error
-	telemetry  *telemetry.Runtime
-	demoMode   bool
+	db           *storage.DB
+	log          *eventlog.EventLog
+	engine       *engine.Engine
+	assembler    *episodes.Assembler
+	runner       *episodes.Runner
+	policy       *policy.Gateway
+	dispatcher   *actions.Dispatcher
+	watch        *actions.WatchEffector
+	owner        *storage.RuntimeOwner
+	ownerEpoch   string
+	clk          clock.Clock
+	tenantID     string
+	watchMu      sync.Mutex
+	watchStop    context.CancelFunc
+	watchDone    chan struct{}
+	watchErr     error
+	telemetry    *telemetry.Runtime
+	demoMode     bool
 	epochControl *storage.EpochControl
 }
 
@@ -112,7 +115,11 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 		cfg.Effector = actions.NewSimulatedEffector()
 	}
 	watch := actions.NewWatchEffectorWithClock(cfg.DB, cfg.Clock).WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{})
-	cfg.Effector = actions.NewCompositeEffector(watch, cfg.Effector)
+	serialEffector := cfg.SerialEffector
+	if serialEffector != nil {
+		serialEffector.WithTelemetry(cfg.Telemetry)
+	}
+	cfg.Effector = actions.NewCompositeEffector(watch, cfg.Effector).WithSerial(serialEffector)
 	log := eventlog.NewEventLogWithClock(cfg.DB, cfg.Clock)
 	stream, err := engine.NewEngine(ctx, cfg.DB, log, cfg.Clock, cfg.Spec, cfg.TenantID)
 	if err != nil {
@@ -126,20 +133,20 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 	}
 	assembler := episodes.NewAssembler(cfg.Spec, cfg.IDGenerator).WithCostControl(&costcontrol.Controller{})
 	return &Pipeline{
-		db:         cfg.DB,
-		log:        log,
-		engine:     stream,
-		assembler:  assembler,
-		runner:     episodes.NewRunnerWithEpoch(cfg.DB, cfg.Executor, cfg.Clock, cfg.IDGenerator, cfg.OwnerEpoch).WithAssembler(assembler).WithCostControl(&costcontrol.Controller{}).WithEpochControl(cfg.EpochControl).WithShadowStore(&storage.ShadowStore{DB: cfg.DB}).WithTelemetry(cfg.Telemetry),
-		policy:     policy.NewGatewayWithOwner(cfg.Spec.Digest, cfg.IDGenerator, cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}).WithCalibration(&storage.CalibrationStore{DB: cfg.DB}).WithEpochControl(cfg.EpochControl),
-		dispatcher: actions.NewDispatcher(cfg.DB, cfg.Effector, cfg.Clock, cfg.IDGenerator, "runtime-actions/"+cfg.OwnerEpoch, time.Minute).WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}),
-		watch:      watch,
-		telemetry:  cfg.Telemetry,
-		owner:      cfg.Owner,
-		ownerEpoch: cfg.OwnerEpoch,
-		clk:        cfg.Clock,
-		tenantID:   cfg.TenantID,
-		demoMode:   cfg.DemoMode,
+		db:           cfg.DB,
+		log:          log,
+		engine:       stream,
+		assembler:    assembler,
+		runner:       episodes.NewRunnerWithEpoch(cfg.DB, cfg.Executor, cfg.Clock, cfg.IDGenerator, cfg.OwnerEpoch).WithAssembler(assembler).WithCostControl(&costcontrol.Controller{}).WithEpochControl(cfg.EpochControl).WithShadowStore(&storage.ShadowStore{DB: cfg.DB}).WithTelemetry(cfg.Telemetry),
+		policy:       policy.NewGatewayWithOwner(cfg.Spec.Digest, cfg.IDGenerator, cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}).WithCalibration(&storage.CalibrationStore{DB: cfg.DB}).WithEpochControl(cfg.EpochControl),
+		dispatcher:   actions.NewDispatcher(cfg.DB, cfg.Effector, cfg.Clock, cfg.IDGenerator, "runtime-actions/"+cfg.OwnerEpoch, time.Minute).WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}).WithTelemetry(cfg.Telemetry),
+		watch:        watch,
+		telemetry:    cfg.Telemetry,
+		owner:        cfg.Owner,
+		ownerEpoch:   cfg.OwnerEpoch,
+		clk:          cfg.Clock,
+		tenantID:     cfg.TenantID,
+		demoMode:     cfg.DemoMode,
 		epochControl: cfg.EpochControl,
 	}, nil
 }

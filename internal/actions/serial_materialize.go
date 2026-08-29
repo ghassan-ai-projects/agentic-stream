@@ -1,0 +1,315 @@
+package actions
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math"
+	"sort"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+)
+
+// serial_materialize.go — the deterministic intent→device-command materializer
+// for the physical (serial) effector boundary (Real-World Sensor HIL-0, Phase 03
+// Task 3.2). It is the guarantee that no arbitrary target, pin, opcode, or PWM
+// value ever comes from model output: a policy-approved actions.Command carries
+// only a bounded selector (an enum the model was allowed to write), and the
+// concrete device parameters come from a CLOSED capability catalog that is
+// configuration, never model output. The hard bounds are re-enforced here — at
+// the last boundary — even though policy presets already produced bounded values
+// (defense in depth). See docs/plans/real-world-sensor-hil/03-serial-effector.md.
+
+// NumericBound is an inclusive hard limit re-enforced on a materialized device
+// parameter. An absent Min or Max means that side is unbounded.
+type NumericBound struct {
+	Min *float64 `json:"min,omitempty"`
+	Max *float64 `json:"max,omitempty"`
+}
+
+// OperationSpec is the closed mapping from one accepted intent route to one
+// bounded device operation. The model may only select a preset by name; it can
+// never introduce a target, operation, or parameter value.
+type OperationSpec struct {
+	Operation      string                    `json:"operation"`
+	Target         string                    `json:"target"`
+	TargetBindings map[string]string         `json:"target_bindings,omitempty"`
+	SelectorField  string                    `json:"selector_field"`
+	ExpiresAfterMs int                       `json:"expires_after_ms"`
+	Presets        map[string]map[string]any `json:"presets"`
+	Bounds         map[string]NumericBound   `json:"bounds"`
+}
+
+// SafeStopSpec is a catalog-owned, parameter-free operation that requests the
+// device's safe state. It is never produced from model or intent payloads.
+type SafeStopSpec struct {
+	Operation      string `json:"operation"`
+	ExpiresAfterMs int    `json:"expires_after_ms"`
+}
+
+// CapabilityCatalog is the whole closed device-capability surface for one
+// serial effector. It is loaded from configuration (never a Go literal); the
+// concrete bench values live in a JSON file the hardware owner tunes.
+type CapabilityCatalog struct {
+	ProtocolVersion int                      `json:"protocol_version"`
+	Routes          map[string]OperationSpec `json:"routes"`
+	SafeStops       map[string]SafeStopSpec  `json:"safe_stops,omitempty"`
+}
+
+// Digest returns the canonical identity of this validated capability catalog.
+// A device session must match this digest before the catalog can authorize a
+// command, preventing a stale local route table from being used with a new
+// firmware capability set.
+func (c *CapabilityCatalog) Digest() (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("capability catalog is required")
+	}
+	if err := c.validate(); err != nil {
+		return "", fmt.Errorf("validate capability catalog: %w", err)
+	}
+	digest, err := canonicaljson.Digest(canonicaljson.DomainCapabilityCatalog, c)
+	if err != nil {
+		return "", fmt.Errorf("digest capability catalog: %w", err)
+	}
+	return digest, nil
+}
+
+// LoadCapabilityCatalog parses and validates a capability catalog. A structurally
+// invalid catalog is rejected — the effector must never load a catalog it cannot
+// fully enforce.
+func LoadCapabilityCatalog(data []byte) (*CapabilityCatalog, error) {
+	var catalog CapabilityCatalog
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&catalog); err != nil {
+		return nil, fmt.Errorf("decode capability catalog: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("capability catalog contains trailing JSON")
+		}
+		return nil, fmt.Errorf("decode trailing capability catalog data: %w", err)
+	}
+	if err := catalog.validate(); err != nil {
+		return nil, err
+	}
+	return &catalog, nil
+}
+
+func (c *CapabilityCatalog) validate() error {
+	if c.ProtocolVersion != contractsv1.DeviceProtocolVersion {
+		return fmt.Errorf("capability catalog protocol_version %d is unsupported, want %d", c.ProtocolVersion, contractsv1.DeviceProtocolVersion)
+	}
+	if len(c.Routes) == 0 {
+		return fmt.Errorf("capability catalog has no routes")
+	}
+	for route, spec := range c.Routes {
+		if route == "" {
+			return fmt.Errorf("capability catalog contains an empty route")
+		}
+		if spec.Operation == "" || spec.Target == "" || spec.SelectorField == "" {
+			return fmt.Errorf("route %q must set operation, target, and selector_field", route)
+		}
+		for logicalTarget, physicalTarget := range spec.TargetBindings {
+			if logicalTarget == "" || physicalTarget == "" {
+				return fmt.Errorf("route %q contains an empty target binding", route)
+			}
+			if physicalTarget != spec.Target {
+				return fmt.Errorf("route %q target binding %q resolves to %q, want route target %q", route, logicalTarget, physicalTarget, spec.Target)
+			}
+		}
+		if spec.ExpiresAfterMs < 1 {
+			return fmt.Errorf("route %q must set a positive expires_after_ms", route)
+		}
+		if len(spec.Presets) == 0 {
+			return fmt.Errorf("route %q has no presets", route)
+		}
+		// Every bounded parameter must be produced by every preset, so a
+		// selector can never silently bypass a declared hard bound.
+		for param := range spec.Bounds {
+			if param == "" {
+				return fmt.Errorf("route %q contains an empty bounds parameter", route)
+			}
+			for presetName, preset := range spec.Presets {
+				if _, ok := preset[param]; !ok {
+					return fmt.Errorf("route %q preset %q does not produce bounded parameter %q", route, presetName, param)
+				}
+			}
+		}
+		for param, bound := range spec.Bounds {
+			if bound.Min != nil && !isFinite(*bound.Min) {
+				return fmt.Errorf("route %q bound %q has a non-finite minimum", route, param)
+			}
+			if bound.Max != nil && !isFinite(*bound.Max) {
+				return fmt.Errorf("route %q bound %q has a non-finite maximum", route, param)
+			}
+			if bound.Min != nil && bound.Max != nil && *bound.Min > *bound.Max {
+				return fmt.Errorf("route %q bound %q has minimum %v above maximum %v", route, param, *bound.Min, *bound.Max)
+			}
+		}
+	}
+	for target, spec := range c.SafeStops {
+		if target == "" || spec.Operation != "safe_stop" {
+			return fmt.Errorf("safe stop %q must use the catalog operation %q", target, "safe_stop")
+		}
+		if spec.ExpiresAfterMs < 1 || spec.ExpiresAfterMs > 86400000 {
+			return fmt.Errorf("safe stop %q must set expires_after_ms between 1 and 86400000", target)
+		}
+	}
+	return nil
+}
+
+// Materialize converts a policy-approved actions.Command into a bounded device
+// wire command (contractsv1.SchemaDeviceCommand). expectedBootID binds the
+// command to the live device session. A route outside the catalog, a selector
+// outside the preset set, or a parameter beyond its hard bound is rejected with
+// zero commands emitted — never clamped silently.
+func (c *CapabilityCatalog) Materialize(command Command, expectedBootID string) (map[string]any, error) {
+	if c == nil {
+		return nil, fmt.Errorf("capability catalog is required to materialize a device command")
+	}
+	if c.ProtocolVersion != contractsv1.DeviceProtocolVersion {
+		return nil, fmt.Errorf("capability catalog protocol_version %d is unsupported, want %d", c.ProtocolVersion, contractsv1.DeviceProtocolVersion)
+	}
+	if command.CommandID == "" || command.IdempotencyKey == "" || command.PolicyDigest == "" {
+		return nil, fmt.Errorf("command identity and policy digest are required to materialize a device command")
+	}
+	if expectedBootID == "" {
+		return nil, fmt.Errorf("expected boot id is required to materialize a device command")
+	}
+	spec, ok := c.Routes[command.EffectorRoute]
+	if !ok {
+		return nil, fmt.Errorf("route %q is not in the device capability catalog", command.EffectorRoute)
+	}
+	if command.NormalizedTarget == "" {
+		return nil, fmt.Errorf("normalized target is required to materialize a device command")
+	}
+	physicalTarget := spec.Target
+	if command.NormalizedTarget != spec.Target {
+		boundTarget, ok := spec.TargetBindings[command.NormalizedTarget]
+		if !ok || boundTarget != spec.Target {
+			return nil, fmt.Errorf("route %q target %q is not bound to catalog target %q", command.EffectorRoute, command.NormalizedTarget, spec.Target)
+		}
+	}
+	selectorValue, ok := command.Payload[spec.SelectorField].(string)
+	if !ok || selectorValue == "" {
+		return nil, fmt.Errorf("route %q requires a string selector %q in the command payload", command.EffectorRoute, spec.SelectorField)
+	}
+	preset, ok := spec.Presets[selectorValue]
+	if !ok {
+		return nil, fmt.Errorf("route %q selector %q=%q is not an allowed preset", command.EffectorRoute, spec.SelectorField, selectorValue)
+	}
+
+	// Copy preset parameters (the ONLY source of device parameters) and
+	// re-enforce every hard bound at this last boundary.
+	parameters := make(map[string]any, len(preset))
+	for key, value := range preset {
+		parameters[key] = value
+	}
+	for _, param := range sortedKeys(spec.Bounds) {
+		bound := spec.Bounds[param]
+		raw, present := parameters[param]
+		if !present {
+			continue
+		}
+		number, ok := toFloat(raw)
+		if !ok {
+			return nil, fmt.Errorf("route %q parameter %q is not numeric and cannot be bounded", command.EffectorRoute, param)
+		}
+		if bound.Max != nil && number > *bound.Max {
+			return nil, fmt.Errorf("route %q parameter %q=%v exceeds hard max %v", command.EffectorRoute, param, number, *bound.Max)
+		}
+		if bound.Min != nil && number < *bound.Min {
+			return nil, fmt.Errorf("route %q parameter %q=%v below hard min %v", command.EffectorRoute, param, number, *bound.Min)
+		}
+	}
+
+	document := map[string]any{
+		"message_type":       "command",
+		"protocol_version":   c.ProtocolVersion,
+		"command_id":         command.CommandID,
+		"idempotency_key":    command.IdempotencyKey,
+		"target":             physicalTarget,
+		"operation":          spec.Operation,
+		"parameters":         parameters,
+		"expected_boot_id":   expectedBootID,
+		"not_before_mono_us": command.NotBeforeMonoUS,
+		"expires_after_ms":   spec.ExpiresAfterMs,
+		"policy_digest":      command.PolicyDigest,
+	}
+	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, document); err != nil {
+		return nil, fmt.Errorf("materialized device command is invalid: %w", err)
+	}
+	return document, nil
+}
+
+// MaterializeSafeStop creates the fixed catalog-owned safe-state command for a
+// target. It has no caller-supplied parameters or policy authority and cannot
+// be used to clear a physical e-stop.
+func (c *CapabilityCatalog) MaterializeSafeStop(target, expectedBootID string) (map[string]any, error) {
+	if c == nil {
+		return nil, fmt.Errorf("capability catalog is required to materialize a safe stop")
+	}
+	if expectedBootID == "" {
+		return nil, fmt.Errorf("expected boot id is required to materialize a safe stop")
+	}
+	spec, ok := c.SafeStops[target]
+	if !ok {
+		return nil, fmt.Errorf("safe stop target %q is not in the capability catalog", target)
+	}
+	catalogDigest, err := c.Digest()
+	if err != nil {
+		return nil, fmt.Errorf("digest safe stop catalog: %w", err)
+	}
+	parameters := map[string]any{}
+	commandID := "safe-stop/" + target
+	document := map[string]any{
+		"message_type": "command", "protocol_version": c.ProtocolVersion,
+		"command_id": commandID, "target": target, "operation": spec.Operation,
+		"parameters": parameters, "expected_boot_id": expectedBootID,
+		"not_before_mono_us": 0, "expires_after_ms": spec.ExpiresAfterMs,
+		"policy_digest": catalogDigest,
+	}
+	identity := cloneDocument(document)
+	delete(identity, "command_id")
+	idempotencyKey, err := canonicaljson.Digest(canonicaljson.DomainCommand, identity)
+	if err != nil {
+		return nil, fmt.Errorf("digest safe stop command identity: %w", err)
+	}
+	document["idempotency_key"] = idempotencyKey
+	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, document); err != nil {
+		return nil, fmt.Errorf("materialized safe stop is invalid: %w", err)
+	}
+	return document, nil
+}
+
+func sortedKeys(m map[string]NumericBound) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func toFloat(value any) (float64, bool) {
+	switch number := value.(type) {
+	case float64:
+		return number, isFinite(number)
+	case int:
+		return float64(number), true
+	case int64:
+		return float64(number), true
+	case json.Number:
+		parsed, err := number.Float64()
+		return parsed, err == nil && isFinite(parsed)
+	default:
+		return 0, false
+	}
+}
+
+func isFinite(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0)
+}

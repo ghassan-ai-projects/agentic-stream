@@ -19,6 +19,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
 // Command is the validated, policy-approved input to an effector.
@@ -29,14 +30,19 @@ type Command struct {
 	EffectorRoute    string
 	NormalizedTarget string
 	IdempotencyKey   string
+	PolicyDigest     string
+	NotBeforeMonoUS  int64
 	Payload          map[string]any
 }
 
 // Effect is the provider response. An effector must return UnknownOutcomeError
-// when it cannot establish whether the provider applied the effect.
+// when it cannot establish whether the provider applied the effect. Set
+// VerificationPending when the provider only acknowledged transport receipt;
+// independent feedback must then establish physical success.
 type Effect struct {
-	ProviderResult map[string]any
-	ObservedEffect map[string]any
+	ProviderResult      map[string]any
+	ObservedEffect      map[string]any
+	VerificationPending bool
 }
 
 // Effector is the only interface allowed to cross from the action plane into
@@ -95,6 +101,7 @@ type Dispatcher struct {
 	runtimeOwner *storage.RuntimeOwner
 	runtimeEpoch string
 	interlock    interlock.Reader
+	telemetry    *telemetry.Runtime
 }
 
 // WithRuntimeOwner fences dispatcher ledger mutations to the active runtime
@@ -108,6 +115,15 @@ func (d *Dispatcher) WithRuntimeOwner(owner *storage.RuntimeOwner, epoch string)
 // WithInterlock adds the final read-only readiness check before effect delivery.
 func (d *Dispatcher) WithInterlock(reader interlock.Reader) *Dispatcher {
 	d.interlock = reader
+	return d
+}
+
+// WithTelemetry connects action-dispatch counters to the runtime telemetry
+// surface. It is optional for embedders and tests.
+func (d *Dispatcher) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *Dispatcher {
+	if d != nil {
+		d.telemetry = runtimeTelemetry
+	}
 	return d
 }
 
@@ -283,6 +299,18 @@ func (d *Dispatcher) revalidateAuthorizationTx(ctx context.Context, tx *sql.Tx, 
 	if documentString(intentDocument, "intent_id") != intentID || documentString(intentDocument, "decision_id") != decisionID || documentString(intentDocument, "tenant_id") != intentTenant || documentString(intentDocument, "situation_id") != intentSituation || documentInt(intentDocument, "situation_version") != intentVersion || documentString(intentDocument, "type") != intentType || documentString(intentDocument, "risk_class") != intentRisk {
 		return errors.New("intent authorization identity mismatch")
 	}
+	if commandPolicyDigest := documentString(commandDocument, "policy_digest"); commandPolicyDigest != "" {
+		var evaluatedPolicyDigest string
+		if err := tx.QueryRowContext(ctx, `
+			SELECT policy_digest FROM policy_evaluations
+			WHERE intent_id = ? AND result = 'approved'
+			ORDER BY evaluated_at DESC LIMIT 1`, intentID).Scan(&evaluatedPolicyDigest); err != nil {
+			return fmt.Errorf("load approved policy digest: %w", err)
+		}
+		if commandPolicyDigest != evaluatedPolicyDigest {
+			return errors.New("command policy digest is stale")
+		}
+	}
 	var decisionDocument map[string]any
 	if err := json.Unmarshal(decisionJSON, &decisionDocument); err != nil || contractsv1.Validate(contractsv1.SchemaDecision, decisionDocument) != nil || !verifyDigest(canonicaljson.DomainDecision, decisionDocument, decisionSHA) {
 		return errors.New("decision authorization is invalid")
@@ -348,6 +376,9 @@ func (d *Dispatcher) lease(ctx context.Context) (leasedCommand, bool, error) {
 			leased.LeaseOwner = storedLeaseOwner.String
 			if expiresAt, parseErr := time.Parse(time.RFC3339Nano, storedLeaseUntil.String); parseErr != nil || !storedLeaseOwner.Valid || !storedLeaseUntil.Valid || !expiresAt.After(now) {
 				found = false
+				if d.telemetry != nil {
+					d.telemetry.ObserveLeaseExpiry()
+				}
 				return d.finalizeTx(ctx, tx, leased, Effect{}, &UnknownOutcomeError{Err: errors.New("lease expired before dispatch")})
 			}
 		}
@@ -375,6 +406,8 @@ func (d *Dispatcher) lease(ctx context.Context) (leasedCommand, bool, error) {
 		leased.Command.EffectorRoute = documentString(document, "effector_route")
 		leased.Command.NormalizedTarget = documentString(document, "normalized_target")
 		leased.Command.IdempotencyKey = documentString(document, "idempotency_key")
+		leased.Command.PolicyDigest = documentString(document, "policy_digest")
+		leased.Command.NotBeforeMonoUS = documentInt64(document, "not_before_mono_us")
 		leased.Command.Payload, _ = document["payload"].(map[string]any)
 		if commandStatus == "succeeded" || commandStatus == "outcome_unknown" {
 			found = false
@@ -438,6 +471,9 @@ func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCo
 		// unknown so the next worker cannot blindly repeat the effect.
 		dispatchErr = &UnknownOutcomeError{Err: errors.New("lease expired before provider result")}
 		effect = Effect{}
+		if d.telemetry != nil {
+			d.telemetry.ObserveLeaseExpiry()
+		}
 	}
 	status := "succeeded"
 	reconciliation := "observed"
@@ -451,6 +487,15 @@ func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCo
 			status, reconciliation, commandStatus = "failed", "not_required", "failed"
 			errorCode = "dispatch_failed"
 		}
+	}
+	if dispatchErr == nil && effect.VerificationPending {
+		// A transport receipt is not physical success. Keep the command in the
+		// existing non-terminal manual-review state until an independent
+		// feedback verifier closes it; the outbox is delivered because no blind
+		// resend is safe after the provider accepted the frame.
+		status = "reconcile_required"
+		reconciliation = "required"
+		commandStatus = "manual_review"
 	}
 	outcomeID := d.idGen.New(ids.PrefixOutcome)
 	document := map[string]any{
@@ -508,7 +553,7 @@ func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCo
 		return fmt.Errorf("finish command outbox: %w", err)
 	}
 	verificationStatus := "observed"
-	if dispatchErr != nil {
+	if dispatchErr != nil || effect.VerificationPending {
 		verificationStatus = "awaiting"
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -525,15 +570,22 @@ func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCo
 	}, now, contractsv1.TraceContext{Traceparent: leased.Traceparent, Tracestate: leased.Tracestate}); err != nil {
 		return fmt.Errorf("append command dispatched notification: %w", err)
 	}
+	notificationStatus := status
+	if notificationStatus == "reconcile_required" {
+		// The notification contract deliberately calls an unverified physical
+		// result unknown, while the durable outcome keeps the more precise
+		// reconcile_required state for internal consumers.
+		notificationStatus = "unknown"
+	}
 	if err := notify.AppendLifecycleEventWithTrace(ctx, tx, "outcome.recorded:"+outcomeID, leased.Command.TenantID, notify.TypeOutcomeRecorded, "outcome/"+outcomeID, leased.Command.CommandID, map[string]any{
-		"tenant_id": leased.Command.TenantID, "outcome_id": outcomeID, "command_id": leased.Command.CommandID, "status": status,
+		"tenant_id": leased.Command.TenantID, "outcome_id": outcomeID, "command_id": leased.Command.CommandID, "status": notificationStatus,
 		"reconciliation_status": reconciliation, "intent_id": leased.Command.IntentID,
 		"outcome_digest":   "sha256:" + hex.EncodeToString(outcomeSHA),
 		"source_authority": notify.SourceForTenant(leased.Command.TenantID),
 	}, now, contractsv1.TraceContext{Traceparent: leased.Traceparent, Tracestate: leased.Tracestate}); err != nil {
 		return fmt.Errorf("append outcome recorded notification: %w", err)
 	}
-	if status == "succeeded" || status == "failed" {
+	if !effect.VerificationPending && (status == "succeeded" || status == "failed") {
 		if err := appendOutcomeReconciledNotification(ctx, tx, leased.Command.TenantID, leased.Command.IntentID, leased.Command.CommandID, outcomeID, status, now); err != nil {
 			return fmt.Errorf("append outcome reconciled notification: %w", err)
 		}
@@ -548,22 +600,42 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 	if finalStatus != "succeeded" && finalStatus != "failed" && finalStatus != "manual_review" {
 		return fmt.Errorf("invalid reconciliation status %q", finalStatus)
 	}
+	if err := validateReconciliationEvidence(evidence); err != nil {
+		return err
+	}
 	if err := d.db.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := d.assertRuntimeOwner(ctx, tx); err != nil {
 			return err
 		}
-		var currentStatus, tenantID, intentID string
+		var currentStatus, tenantID, intentID, commandTarget string
 		var traceparent, tracestate sql.NullString
 		if err := tx.QueryRowContext(ctx, `
-			SELECT c.status, c.tenant_id, c.intent_id, d.traceparent, d.tracestate
+			SELECT c.status, c.tenant_id, c.intent_id, c.normalized_target, d.traceparent, d.tracestate
 			FROM commands c
 			JOIN intents i ON i.intent_id = c.intent_id
 			JOIN decisions d ON d.decision_id = i.decision_id
-			WHERE c.command_id = ?`, commandID).Scan(&currentStatus, &tenantID, &intentID, &traceparent, &tracestate); err != nil {
+			WHERE c.command_id = ?`, commandID).Scan(&currentStatus, &tenantID, &intentID, &commandTarget, &traceparent, &tracestate); err != nil {
 			return fmt.Errorf("load command %s for reconciliation: %w", commandID, err)
 		}
 		if currentStatus != "reconciling" && currentStatus != "outcome_unknown" {
 			return fmt.Errorf("command %s is not awaiting reconciliation", commandID)
+		}
+		var boundTarget, deviceID, bootID string
+		bindingErr := tx.QueryRowContext(ctx, `SELECT target, device_id, boot_id
+			FROM device_command_bindings WHERE command_id = ?`, commandID).Scan(&boundTarget, &deviceID, &bootID)
+		switch {
+		case bindingErr == nil:
+			if boundTarget != commandTarget {
+				return fmt.Errorf("device command binding target does not match command %q", commandID)
+			}
+			if evidenceTarget, _ := evidence["target"].(string); evidenceTarget != boundTarget {
+				return fmt.Errorf("device reconciliation evidence target does not match command %q", commandID)
+			}
+			if err := storage.ValidateDeviceReconciliationEvidence(evidence, deviceID, bootID); err != nil {
+				return fmt.Errorf("validate device reconciliation evidence: %w", err)
+			}
+		case !errors.Is(bindingErr, sql.ErrNoRows):
+			return fmt.Errorf("load device command binding: %w", bindingErr)
 		}
 		now := d.clk.Now().UTC()
 		outcomeID := d.idGen.New(ids.PrefixOutcome)
@@ -618,6 +690,36 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 		return fmt.Errorf("reconcile unknown command: %w", err)
 	}
 	return nil
+}
+
+func validateReconciliationEvidence(evidence map[string]any) error {
+	if len(evidence) == 0 {
+		return fmt.Errorf("reconciliation evidence is required")
+	}
+	source, _ := evidence["source"].(string)
+	if source == "" {
+		return fmt.Errorf("reconciliation evidence source is required")
+	}
+	evidenceType, _ := evidence["evidence_type"].(string)
+	if evidenceType != "provider_observation" && evidenceType != "device_state_feedback" {
+		return fmt.Errorf("reconciliation evidence_type is required")
+	}
+	if evidenceType == "device_state_feedback" {
+		for _, key := range []string{"device_id", "boot_id", "state", "feedback_digest"} {
+			if _, ok := evidence[key]; !ok {
+				return fmt.Errorf("device reconciliation evidence requires %s", key)
+			}
+		}
+	}
+	for _, key := range []string{"evidence_digest", "state_digest", "feedback_digest"} {
+		if digest, ok := evidence[key].(string); ok && digest != "" {
+			if _, err := canonicaljson.DecodeDigest(digest); err != nil {
+				return fmt.Errorf("invalid reconciliation %s: %w", key, err)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("reconciliation evidence must include a sha256 evidence, state, or feedback digest")
 }
 
 func appendOutcomeReconciledNotification(ctx context.Context, tx *sql.Tx, tenantID, intentID, commandID, outcomeID, finalStatus string, now time.Time) error {
@@ -714,6 +816,11 @@ func documentString(document map[string]any, key string) string {
 func documentInt(document map[string]any, key string) int {
 	value, _ := document[key].(float64)
 	return int(value)
+}
+
+func documentInt64(document map[string]any, key string) int64 {
+	value, _ := document[key].(float64)
+	return int64(value)
 }
 
 func mustDigest(document map[string]any, key string) []byte {
