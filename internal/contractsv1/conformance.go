@@ -1,112 +1,97 @@
 package contractsv1
 
-import "strings"
+import (
+	"embed"
+	"encoding/json"
+	"fmt"
+	"sort"
+	"strings"
+)
 
-// Device wire conformance frames. These are the single, canonical set of
-// example device records for the serial-effector boundary (Real-World Sensor
-// HIL-0). They are the source of truth the golden JSON fixtures under
-// conformance/v1/ are generated from, and the same values the other program
-// repos (Streams Simulator device emulator, edge gateway, firmware) test their
-// wire compatibility against. See conformance/README.md.
-//
-// Field convention is snake_case (device wire), never the camelCase of a
-// SituationSpec. Digests are fixed 64-hex placeholders so the fixtures are
-// deterministic and byte-stable across regenerations.
+// Device wire conformance frames. The committed JSON under conformance/v1/ is the
+// single source of truth — example device records the other program repos (the
+// Streams Simulator device emulator, the edge gateway, firmware) copy and test
+// against. This file is machinery that LOADS that data via go:embed; the frames
+// are never Go literals (AGENTS.md: domain data is JSON, loaded by machinery).
+// See conformance/README.md.
 
-func digest(b byte) string { return "sha256:" + strings.Repeat(string(b), 64) }
-
-// ConformanceValidFrame returns a fresh copy of the canonical valid frame for
-// one device message type ("command", "receipt", "result", "state"). It panics
-// on an unknown type; callers pass a fixed literal.
-func ConformanceValidFrame(messageType string) map[string]any {
-	switch messageType {
-	case "command":
-		return map[string]any{
-			"message_type":       "command",
-			"protocol_version":   float64(DeviceProtocolVersion),
-			"command_id":         "cmd-01",
-			"idempotency_key":    digest('a'),
-			"target":             "fan-01",
-			"operation":          "set_pwm_lease",
-			"parameters":         map[string]any{"duty_permille": float64(450), "lease_ms": float64(5000)},
-			"expected_boot_id":   "boot-A",
-			"not_before_mono_us": float64(5200000),
-			"expires_after_ms":   float64(2000),
-			"policy_digest":      digest('b'),
-		}
-	case "receipt":
-		return map[string]any{
-			"message_type":     "receipt",
-			"protocol_version": float64(DeviceProtocolVersion),
-			"command_id":       "cmd-01",
-			"boot_id":          "boot-A",
-			"accepted":         true,
-			"received_mono_us": float64(5200500),
-		}
-	case "result":
-		return map[string]any{
-			"message_type":      "result",
-			"protocol_version":  float64(DeviceProtocolVersion),
-			"command_id":        "cmd-01",
-			"boot_id":           "boot-A",
-			"status":            "executed",
-			"detail":            "lease active",
-			"completed_mono_us": float64(5205000),
-		}
-	case "state":
-		return map[string]any{
-			"message_type":      "state",
-			"protocol_version":  float64(DeviceProtocolVersion),
-			"device_id":         "dev-01",
-			"boot_id":           "boot-A",
-			"firmware_digest":   digest('c'),
-			"capability_digest": digest('d'),
-			"safe_state":        true,
-			"current_output":    map[string]any{"target": "fan-01", "operation": "set_pwm_lease", "value": float64(0), "energized": false},
-			"dedup_ledger":      map[string]any{"persistent": false, "size": float64(0)},
-		}
-	default:
-		panic("contractsv1: unknown conformance message_type " + messageType)
-	}
-}
+//go:embed conformance/v1/valid/*.json conformance/v1/invalid/*.json
+var conformanceFiles embed.FS
 
 // ConformanceValidMessageTypes lists the device message types, in wire order.
+// These are the four contract record types (defined by the schemas), not
+// domain-flavored values.
 func ConformanceValidMessageTypes() []string {
 	return []string{"command", "receipt", "result", "state"}
 }
 
-// InvalidFrame is one negative conformance case: a named frame that MUST be
-// rejected by a conforming decoder, with the schema it violates. Consumers use
-// these to prove their decoder fails closed, not just that valid frames pass.
+// ConformanceValidFrame loads the canonical valid frame for one device message
+// type from the committed conformance data.
+func ConformanceValidFrame(messageType string) map[string]any {
+	doc, err := loadConformanceFrame("conformance/v1/valid/" + messageType + ".json")
+	if err != nil {
+		panic(err)
+	}
+	return doc
+}
+
+// InvalidFrame is one negative conformance case loaded from data: a frame that
+// MUST be rejected, with the schema it is meant to violate (from the filename).
 type InvalidFrame struct {
 	Name   string
 	Schema SchemaName
 	Doc    map[string]any
 }
 
-// ConformanceInvalidFrames returns the negative conformance corpus. Each frame
-// is a valid frame with exactly one rule broken, so the reason for rejection is
-// unambiguous. A conforming decoder must reject every one.
+// ConformanceInvalidFrames loads the negative corpus from the committed data.
 func ConformanceInvalidFrames() []InvalidFrame {
-	mutate := func(messageType string, f func(map[string]any)) map[string]any {
-		doc := ConformanceValidFrame(messageType)
-		f(doc)
-		return doc
+	entries, err := conformanceFiles.ReadDir("conformance/v1/invalid")
+	if err != nil {
+		panic(fmt.Errorf("read conformance invalid dir: %w", err))
 	}
-	return []InvalidFrame{
-		{"command-wrong-message-type", SchemaDeviceCommand, mutate("command", func(d map[string]any) { d["message_type"] = "receipt" })},
-		{"command-unknown-field", SchemaDeviceCommand, mutate("command", func(d map[string]any) { d["pin"] = float64(13) })},
-		{"command-missing-operation", SchemaDeviceCommand, mutate("command", func(d map[string]any) { delete(d, "operation") })},
-		{"command-bad-idempotency-key", SchemaDeviceCommand, mutate("command", func(d map[string]any) { d["idempotency_key"] = "nope" })},
-		{"command-protocol-version-out-of-range", SchemaDeviceCommand, mutate("command", func(d map[string]any) { d["protocol_version"] = float64(999) })},
-		{"command-missing-policy-digest", SchemaDeviceCommand, mutate("command", func(d map[string]any) { delete(d, "policy_digest") })},
-		{"command-expires-after-ms-zero", SchemaDeviceCommand, mutate("command", func(d map[string]any) { d["expires_after_ms"] = float64(0) })},
-		{"receipt-unknown-reject-code", SchemaDeviceReceipt, mutate("receipt", func(d map[string]any) { d["accepted"] = false; d["reject_code"] = "gremlin" })},
-		{"receipt-rejected-without-reject-code", SchemaDeviceReceipt, mutate("receipt", func(d map[string]any) { d["accepted"] = false })},
-		{"receipt-missing-boot-id", SchemaDeviceReceipt, mutate("receipt", func(d map[string]any) { delete(d, "boot_id") })},
-		{"result-bad-status", SchemaDeviceResult, mutate("result", func(d map[string]any) { d["status"] = "maybe" })},
-		{"state-bad-firmware-digest", SchemaDeviceState, mutate("state", func(d map[string]any) { d["firmware_digest"] = "sha256:short" })},
-		{"state-missing-capability-digest", SchemaDeviceState, mutate("state", func(d map[string]any) { delete(d, "capability_digest") })},
+	frames := make([]InvalidFrame, 0, len(entries))
+	for _, entry := range entries {
+		name := strings.TrimSuffix(entry.Name(), ".json")
+		doc, err := loadConformanceFrame("conformance/v1/invalid/" + entry.Name())
+		if err != nil {
+			panic(err)
+		}
+		schema, ok := schemaForInvalidName(name)
+		if !ok {
+			panic(fmt.Errorf("contractsv1: cannot map invalid conformance frame %q to a schema", name))
+		}
+		frames = append(frames, InvalidFrame{Name: name, Schema: schema, Doc: doc})
+	}
+	sort.Slice(frames, func(i, j int) bool { return frames[i].Name < frames[j].Name })
+	return frames
+}
+
+func loadConformanceFrame(path string) (map[string]any, error) {
+	data, err := conformanceFiles.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read conformance frame %s: %w", path, err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("decode conformance frame %s: %w", path, err)
+	}
+	return doc, nil
+}
+
+// schemaForInvalidName maps an invalid fixture's filename prefix to the schema it
+// violates (command-* → device-command, and so on).
+func schemaForInvalidName(name string) (SchemaName, bool) {
+	switch {
+	case strings.HasPrefix(name, "command-"):
+		return SchemaDeviceCommand, true
+	case strings.HasPrefix(name, "receipt-"):
+		return SchemaDeviceReceipt, true
+	case strings.HasPrefix(name, "result-"):
+		return SchemaDeviceResult, true
+	case strings.HasPrefix(name, "state-"):
+		return SchemaDeviceState, true
+	default:
+		return "", false
 	}
 }
 

@@ -56,14 +56,13 @@ remains the gateway's responsibility, layered around these bytes).
 
 ## Changing the contract
 
-The fixtures are generated and drift-guarded by
-`../conformance_test.go`. After an intentional schema or example change:
+These JSON files are the **source of truth** — data, not generated from Go
+literals. `../conformance.go` loads them via `go:embed`, and
+`../conformance_test.go` validates every `valid/` fixture against its schema and
+asserts every `invalid/` fixture fails closed. So editing a fixture here is how
+you change an example; the tests catch any fixture that drifts from the schema
+Agentic Stream enforces. Invalid fixtures are mapped to the schema they violate
+by filename prefix (`command-*` → device-command, etc.).
 
-```bash
-AGENTIC_STREAM_UPDATE_CONFORMANCE=1 go test ./internal/contractsv1/ -run Conformance
-```
-
-A change to `conformance.go` or a schema that is not reflected in the committed
-files fails the build, so consumers can trust that what they copy matches the
-schema Agentic Stream actually enforces. Bump the version directory (`v2/`) for a
-breaking wire change rather than mutating `v1/` in place.
+Bump the version directory (`v2/`) for a breaking wire change rather than
+mutating `v1/` in place.
