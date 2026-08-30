@@ -13,10 +13,9 @@ import (
 // unknown-type, and unknown-field frames — an invalid frame must never validate
 // into a usable record.
 //
-// The frames themselves live in conformance.go (contractsv1.ConformanceValidFrame
-// / ConformanceInvalidFrames) so the schema pinning here, the committed fixtures
-// under conformance/v1/, and the copies the other repos test against are all one
-// source. See conformance_test.go and conformance/README.md.
+// The frames themselves are loaded by conformance.go from committed fixtures
+// under conformance/v1/, so the schema pinning here and the copies the other
+// repos test against are all one source. See conformance/README.md.
 
 func TestDeviceWireGoldenFramesValidate(t *testing.T) {
 	t.Parallel()

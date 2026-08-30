@@ -443,6 +443,71 @@ func (s *ReconciliationStore) BindState(ctx context.Context, state map[string]an
 	return required, nil
 }
 
+// Require opens the durable reconciliation barrier for the current device
+// boot. It is used when a command may have crossed the gateway but its receipt
+// cannot be trusted; a later process must observe the same required state.
+func (s *ReconciliationStore) Require(ctx context.Context, deviceID, bootID, authorityEpoch, ownerInstance, reason string) error {
+	if err := s.validateRequirement(deviceID, bootID, authorityEpoch, ownerInstance, reason); err != nil {
+		return err
+	}
+	return s.requireBarrier(ctx, deviceID, bootID, authorityEpoch, ownerInstance, reason, true)
+}
+
+// RequireAfterAuthorityLoss opens the same boot-bound safety barrier without
+// ordinary runtime admission. It exists for an unknown outcome whose transport
+// bytes may already have crossed the gateway when the owner lease expires or
+// the epoch is fenced. It only makes future commands safer; resolution still
+// requires a new owner and independent evidence.
+func (s *ReconciliationStore) RequireAfterAuthorityLoss(ctx context.Context, deviceID, bootID, authorityEpoch, ownerInstance, reason string) error {
+	if err := s.validateRequirement(deviceID, bootID, authorityEpoch, ownerInstance, reason); err != nil {
+		return err
+	}
+	return s.requireBarrier(ctx, deviceID, bootID, authorityEpoch, ownerInstance, reason, false)
+}
+
+func (s *ReconciliationStore) validateRequirement(deviceID, bootID, authorityEpoch, ownerInstance, reason string) error {
+	if s == nil || s.DB == nil || s.Authority == nil || deviceID == "" || bootID == "" || authorityEpoch == "" || ownerInstance == "" || reason == "" {
+		return fmt.Errorf("device, boot, authority, and reconciliation reason are required")
+	}
+	return nil
+}
+
+func (s *ReconciliationStore) requireBarrier(ctx context.Context, deviceID, bootID, authorityEpoch, ownerInstance, reason string, assertAuthority bool) error {
+	now := s.now()
+	err := s.DB.WithTx(ctx, func(tx *sql.Tx) error {
+		if assertAuthority {
+			if err := s.Authority.assertOrdinaryTx(ctx, tx, authorityEpoch); err != nil {
+				return fmt.Errorf("assert authority while opening reconciliation: %w", err)
+			}
+		}
+		var currentBoot, status string
+		if err := tx.QueryRowContext(ctx, `SELECT boot_id, status FROM device_reconciliation WHERE device_id = ?`, deviceID).Scan(&currentBoot, &status); err != nil {
+			return fmt.Errorf("load reconciliation barrier: %w", err)
+		}
+		if currentBoot != bootID {
+			return fmt.Errorf("reconciliation boot %q does not match current device boot %q", bootID, currentBoot)
+		}
+		if status != "required" {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE device_reconciliation SET status = 'required',
+					last_resolution_status = NULL, resolution_evidence_json = NULL,
+					resolution_sha256 = NULL, resolved_at = NULL, updated_at = ?
+				WHERE device_id = ? AND boot_id = ?`,
+				formatRuntimeTime(now), deviceID, bootID); err != nil {
+				return fmt.Errorf("open reconciliation barrier: %w", err)
+			}
+		}
+		return appendAuthorityEventTx(ctx, tx, TargetClaim{
+			Target: deviceID, DeviceID: deviceID, BootID: bootID,
+			AuthorityEpoch: authorityEpoch, OwnerInstance: ownerInstance,
+		}, "reconciliation_opened", map[string]any{"reason": reason}, now)
+	})
+	if err != nil {
+		return fmt.Errorf("require device reconciliation: %w", err)
+	}
+	return nil
+}
+
 // Resolve records state/feedback evidence for the device barrier. Command
 // outcomes must already have gone through Dispatcher.ReconcileUnknown;
 // unresolved command ledgers prevent a barrier clear. `manual_review` leaves
@@ -491,7 +556,7 @@ func (s *ReconciliationStore) Resolve(ctx context.Context, deviceID, bootID, fin
 		if stateDigest != "sha256:"+hex.EncodeToString(stateHash[:]) {
 			return fmt.Errorf("reconciliation state digest does not match typed state evidence")
 		}
-		if unresolved, err := countUnresolvedCommands(ctx, tx); err != nil {
+		if unresolved, err := countUnresolvedCommands(ctx, tx, deviceID, bootID); err != nil {
 			return err
 		} else if unresolved > 0 {
 			return fmt.Errorf("cannot clear device barrier while %d command outcomes still require dispatcher reconciliation", unresolved)
@@ -517,9 +582,14 @@ func (s *ReconciliationStore) Resolve(ctx context.Context, deviceID, bootID, fin
 	return cleared, nil
 }
 
-func countUnresolvedCommands(ctx context.Context, tx *sql.Tx) (int64, error) {
+func countUnresolvedCommands(ctx context.Context, tx *sql.Tx, deviceID, bootID string) (int64, error) {
 	var unresolved int64
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM commands WHERE status IN ('outcome_unknown', 'reconciling', 'manual_review')`).Scan(&unresolved); err != nil {
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM commands AS c
+		JOIN device_command_bindings AS b ON b.command_id = c.command_id
+		WHERE b.device_id = ? AND b.boot_id = ?
+			AND c.status IN ('outcome_unknown', 'reconciling', 'manual_review')`, deviceID, bootID).Scan(&unresolved); err != nil {
 		return 0, fmt.Errorf("count unresolved command outcomes: %w", err)
 	}
 	return unresolved, nil

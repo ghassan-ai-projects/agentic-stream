@@ -2,10 +2,15 @@ package actions
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
+
+const reconciliationPersistTimeout = 5 * time.Second
 
 // DeviceID returns the handshake-bound device identity.
 func (s *DeviceSession) DeviceID() string {
@@ -120,6 +125,35 @@ func (s *DeviceSession) failStateRefresh(err error) (map[string]any, error) {
 	return nil, err
 }
 
+func (s *DeviceSession) requireReconciliation(ctx context.Context, reason string) error {
+	wasRequired := s.reconciliationRequired
+	s.stateQueryRequired = true
+	s.reconciliationRequired = true
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), reconciliationPersistTimeout)
+	defer cancel()
+	barrierErr := s.reconciliation.Require(persistCtx, s.deviceID, s.bootID, s.authorityEpoch, s.ownerInstance, reason)
+	if isAuthorityFailure(barrierErr) {
+		recoveryErr := s.reconciliation.RequireAfterAuthorityLoss(persistCtx, s.deviceID, s.bootID, s.authorityEpoch, s.ownerInstance, reason)
+		if recoveryErr == nil {
+			barrierErr = nil
+		} else {
+			barrierErr = errors.Join(barrierErr, recoveryErr)
+		}
+	}
+	if barrierErr != nil {
+		s.opened = false
+		return fmt.Errorf("persist reconciliation barrier: %w", barrierErr)
+	}
+	if !wasRequired && s.telemetry != nil {
+		s.telemetry.ObserveReconciliationBarrier()
+	}
+	return nil
+}
+
+func isAuthorityFailure(err error) bool {
+	return errors.Is(err, storage.ErrRuntimeOwnerBusy) || errors.Is(err, storage.ErrEpochKilled) || errors.Is(err, storage.ErrEpochDraining)
+}
+
 func (s *DeviceSession) applyRefreshedState(ctx context.Context, state map[string]any) error {
 	previousSafeState := s.safeState
 	if bootID := stateString(state, "boot_id"); bootID != s.bootID {
@@ -170,7 +204,7 @@ func (s *DeviceSession) bindRefreshedState(ctx context.Context, state map[string
 // ResolveReconciliation records typed state/feedback evidence for the device
 // barrier. Unknown command outcomes must already have gone through the
 // dispatcher reconciliation path; the durable store refuses to clear while
-// command ledgers remain unresolved. Manual review leaves the barrier closed.
+// command ledgers remain unresolved. Manual review leaves the barrier open.
 func (s *DeviceSession) ResolveReconciliation(ctx context.Context, finalStatus string, evidence map[string]any) (bool, error) {
 	if s == nil {
 		return false, fmt.Errorf("device session is not open")

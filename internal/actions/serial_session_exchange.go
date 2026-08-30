@@ -41,7 +41,11 @@ func (s *DeviceSession) Exchange(ctx context.Context, command map[string]any) (m
 		return receipt, ok, err
 	}
 	if err := s.transport.Send(ctx, frame); err != nil {
-		return nil, false, fmt.Errorf("send device command: %w", err)
+		sent := transportMayHaveSent(err)
+		if sent {
+			err = errors.Join(err, s.requireReconciliation(ctx, "command send may have crossed the gateway"))
+		}
+		return nil, sent, fmt.Errorf("send device command: %w", err)
 	}
 	return s.receiveCommandReceipt(ctx, command, claim, semanticDigest, idempotencyKey)
 }
@@ -118,25 +122,30 @@ func (s *DeviceSession) cachedReceipt(idempotencyKey, semanticDigest string) (ma
 func (s *DeviceSession) receiveCommandReceipt(ctx context.Context, command map[string]any, claim storage.TargetClaim, semanticDigest, idempotencyKey string) (map[string]any, bool, error) {
 	reply, err := s.transport.Receive(ctx)
 	if err != nil {
-		return nil, true, &deviceExchangeError{err: err}
+		return s.unknownReceiptOutcome(ctx, err)
 	}
 	receipt, err := DecodeDeviceRecord(reply)
 	if err != nil {
 		if s.telemetry != nil {
 			s.telemetry.ObserveDeviceFrameError()
 		}
-		return nil, true, &deviceExchangeError{err: fmt.Errorf("decode device receipt: %w", err)}
+		return s.unknownReceiptOutcome(ctx, fmt.Errorf("decode device receipt: %w", err))
 	}
 	if !receiptMatchesCommand(receipt, command, s.bootID) {
-		return nil, true, &deviceExchangeError{err: errors.New("device receipt identity mismatch")}
+		return s.unknownReceiptOutcome(ctx, errors.New("device receipt identity mismatch"))
 	}
 	if s.authority != nil {
 		if err := s.authority.Assert(ctx, claim); err != nil {
-			return nil, true, &deviceExchangeError{err: fmt.Errorf("authority lost during device exchange: %w", err)}
+			return s.unknownReceiptOutcome(ctx, fmt.Errorf("authority lost during device exchange: %w", err))
 		}
 	}
 	s.receipts[idempotencyKey] = cachedReceipt{commandDigest: semanticDigest, receipt: cloneDocument(receipt)}
 	return receipt, true, nil
+}
+
+func (s *DeviceSession) unknownReceiptOutcome(ctx context.Context, err error) (map[string]any, bool, error) {
+	barrierErr := s.requireReconciliation(ctx, "device receipt was not trustworthy")
+	return nil, true, &deviceExchangeError{err: errors.Join(err, barrierErr)}
 }
 
 func receiptMatchesCommand(receipt, command map[string]any, bootID string) bool {

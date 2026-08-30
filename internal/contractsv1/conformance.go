@@ -18,11 +18,20 @@ import (
 //go:embed conformance/v1/valid/*.json conformance/v1/invalid/*.json
 var conformanceFiles embed.FS
 
+var deviceMessageTypes = []string{"command", "receipt", "result", "state"}
+
+var deviceMessageSchemas = map[string]SchemaName{
+	"command": SchemaDeviceCommand,
+	"receipt": SchemaDeviceReceipt,
+	"result":  SchemaDeviceResult,
+	"state":   SchemaDeviceState,
+}
+
 // ConformanceValidMessageTypes lists the device message types, in wire order.
 // These are the four contract record types (defined by the schemas), not
 // domain-flavored values.
 func ConformanceValidMessageTypes() []string {
-	return []string{"command", "receipt", "result", "state"}
+	return append([]string(nil), deviceMessageTypes...)
 }
 
 // ConformanceValidFrame loads the canonical valid frame for one device message
@@ -81,32 +90,15 @@ func loadConformanceFrame(path string) (map[string]any, error) {
 // schemaForInvalidName maps an invalid fixture's filename prefix to the schema it
 // violates (command-* → device-command, and so on).
 func schemaForInvalidName(name string) (SchemaName, bool) {
-	switch {
-	case strings.HasPrefix(name, "command-"):
-		return SchemaDeviceCommand, true
-	case strings.HasPrefix(name, "receipt-"):
-		return SchemaDeviceReceipt, true
-	case strings.HasPrefix(name, "result-"):
-		return SchemaDeviceResult, true
-	case strings.HasPrefix(name, "state-"):
-		return SchemaDeviceState, true
-	default:
+	messageType, _, ok := strings.Cut(name, "-")
+	if !ok {
 		return "", false
 	}
+	return SchemaForMessageType(messageType)
 }
 
 // SchemaForMessageType maps a device message_type to its schema name.
 func SchemaForMessageType(messageType string) (SchemaName, bool) {
-	switch messageType {
-	case "command":
-		return SchemaDeviceCommand, true
-	case "receipt":
-		return SchemaDeviceReceipt, true
-	case "result":
-		return SchemaDeviceResult, true
-	case "state":
-		return SchemaDeviceState, true
-	default:
-		return "", false
-	}
+	schema, ok := deviceMessageSchemas[messageType]
+	return schema, ok
 }

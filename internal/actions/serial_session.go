@@ -13,6 +13,9 @@ import (
 // gateway owns raw serial framing, reconnect, and device identity; this
 // interface carries only one validated device record at a time.
 type DeviceTransport interface {
+	// Send and Receive are one request/receipt pair. Callers must serialize the
+	// full pair and must not overlap it with QueryState; DeviceSession provides
+	// that serialization. QueryState serializes its own control write and read.
 	Send(context.Context, []byte) error
 	Receive(context.Context) ([]byte, error)
 	// QueryState asks the gateway to obtain a fresh device.state record. The
@@ -117,6 +120,9 @@ func validateSessionConfig(config DeviceSessionConfig) error {
 	}
 	if config.Authority.Owner == nil || config.Authority.EpochControl == nil {
 		return fmt.Errorf("device target authority requires runtime owner and epoch control")
+	}
+	if len(config.AllowedFirmwareDigests) == 0 {
+		return fmt.Errorf("device firmware allow-list is required")
 	}
 	if config.Authority.DB != config.Reconciliation.DB || config.Authority.DB != config.Authority.Owner.DB || config.Authority.DB != config.Authority.EpochControl.DB {
 		return fmt.Errorf("device authority components must share one database")

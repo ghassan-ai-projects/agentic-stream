@@ -77,3 +77,10 @@ func TestCompositeEffectorRoutesWatchBeforeSimulatedFallback(t *testing.T) {
 		t.Fatalf("unexpected simulated fallback effect: %v", simulatedEffect)
 	}
 }
+
+func TestFailClosedEffectorRejectsUnmappedLiveRoute(t *testing.T) {
+	effector := actions.NewCompositeEffector(nil, actions.NewFailClosedEffector(actions.EffectProfilePhysical))
+	if _, err := effector.Dispatch(t.Context(), actions.Command{EffectorRoute: "start_aerator"}); err == nil {
+		t.Fatal("physical fallback accepted an unmapped route")
+	}
+}

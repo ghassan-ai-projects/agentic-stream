@@ -22,17 +22,23 @@ type fakeDeviceTransport struct {
 	sendErr      error
 	closed       bool
 	receiveHook  func()
+	sendHook     func()
 	stateQueries int
 }
 
 func (t *fakeDeviceTransport) Send(_ context.Context, frame []byte) error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.sendErr != nil {
+		t.mu.Unlock()
 		return t.sendErr
 	}
 	t.sends++
 	t.sentFrames = append(t.sentFrames, append([]byte(nil), frame...))
+	hook := t.sendHook
+	t.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
 	return nil
 }
 
@@ -79,6 +85,11 @@ func (t *fakeDeviceTransport) sendCount() int {
 }
 
 func openThermalSession(t *testing.T, replies ...map[string]any) (*actions.DeviceSession, *fakeDeviceTransport, *actions.CapabilityCatalog) {
+	session, transport, catalog, _ := openThermalSessionWithControl(t, replies...)
+	return session, transport, catalog
+}
+
+func openThermalSessionWithControl(t *testing.T, replies ...map[string]any) (*actions.DeviceSession, *fakeDeviceTransport, *actions.CapabilityCatalog, deviceControl) {
 	t.Helper()
 	catalog := loadThermalCatalog(t)
 	catalogDigest, err := catalog.Digest()
@@ -108,7 +119,7 @@ func openThermalSession(t *testing.T, replies ...map[string]any) (*actions.Devic
 	if err != nil {
 		t.Fatal(err)
 	}
-	return session, transport, catalog
+	return session, transport, catalog, control
 }
 
 func materializedCommand(t *testing.T, catalog *actions.CapabilityCatalog, commandID, idempotency string) map[string]any {
@@ -184,6 +195,24 @@ func TestOpenDeviceSessionRequiresHandshakeAgreement(t *testing.T) {
 			t.Fatal("unsupported protocol opened a session")
 		}
 	})
+}
+
+func TestOpenDeviceSessionRequiresFirmwareAllowList(t *testing.T) {
+	t.Parallel()
+	catalog := loadThermalCatalog(t)
+	digest, err := catalog.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := newDeviceControl(t)
+	_, openErr := actions.OpenDeviceSession(context.Background(), actions.DeviceSessionConfig{
+		Transport: &fakeDeviceTransport{}, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
+		AuthorityEpoch: "epoch-1", OwnerInstance: "instance-1", Authority: control.authority,
+		Reconciliation: control.reconciliation,
+	})
+	if openErr == nil || !strings.Contains(openErr.Error(), "firmware allow-list is required") {
+		t.Fatalf("empty firmware allow-list error = %v", openErr)
+	}
 }
 
 type deviceControl struct {

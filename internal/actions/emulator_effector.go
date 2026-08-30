@@ -26,6 +26,55 @@ type EmulatorEffectorConfig struct {
 	Telemetry              *telemetry.Runtime
 }
 
+// GatewayEffectorConfig configures a serial effector around an already-open
+// typed gateway link. The caller owns the transport before this function is
+// called; the returned close function owns it after a successful handshake.
+type GatewayEffectorConfig struct {
+	Transport              DeviceTransport
+	Catalog                *CapabilityCatalog
+	AllowedFirmwareDigests []string
+	AuthorityEpoch         string
+	OwnerInstance          string
+	Authority              *storage.TargetAuthority
+	Reconciliation         *storage.ReconciliationStore
+	Telemetry              *telemetry.Runtime
+}
+
+// NewGatewayEffector opens a governed serial effector over a typed gateway
+// link. It performs the capability and device-state handshake before exposing
+// the effector to the action plane.
+func NewGatewayEffector(ctx context.Context, config GatewayEffectorConfig) (*SerialEffector, func() error, error) {
+	if config.Transport == nil {
+		return nil, nil, fmt.Errorf("gateway effector requires a device transport")
+	}
+	if config.Catalog == nil {
+		return nil, nil, fmt.Errorf("gateway effector requires a capability catalog")
+	}
+	catalogDigest, err := config.Catalog.Digest()
+	if err != nil {
+		return nil, nil, fmt.Errorf("digest device capability catalog: %w", err)
+	}
+	session, err := OpenDeviceSession(ctx, DeviceSessionConfig{
+		Transport:                config.Transport,
+		Catalog:                  config.Catalog,
+		AllowedCapabilityDigests: []string{catalogDigest},
+		AllowedFirmwareDigests:   config.AllowedFirmwareDigests,
+		AuthorityEpoch:           config.AuthorityEpoch,
+		OwnerInstance:            config.OwnerInstance,
+		Authority:                config.Authority,
+		Reconciliation:           config.Reconciliation,
+		Telemetry:                config.Telemetry,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("open device session: %w", err)
+	}
+	effector := NewSerialEffector(session, config.Catalog)
+	if config.Telemetry != nil {
+		effector = effector.WithTelemetry(config.Telemetry)
+	}
+	return effector, session.Close, nil
+}
+
 // NewEmulatorEffector dials the device gateway, opens a validated device session
 // (reading and checking the opening state handshake), and returns a serial
 // effector plus a close function that tears the session and transport down. It
@@ -38,32 +87,23 @@ func NewEmulatorEffector(ctx context.Context, config EmulatorEffectorConfig) (*S
 	if config.SocketPath == "" {
 		return nil, nil, fmt.Errorf("emulator effector requires a device socket path")
 	}
-	catalogDigest, err := config.Catalog.Digest()
-	if err != nil {
-		return nil, nil, fmt.Errorf("digest device capability catalog: %w", err)
-	}
 	transport, err := DialUDSTransport(ctx, config.SocketPath)
 	if err != nil {
 		return nil, nil, err
 	}
-	session, err := OpenDeviceSession(ctx, DeviceSessionConfig{
-		Transport:                transport,
-		Catalog:                  config.Catalog,
-		AllowedCapabilityDigests: []string{catalogDigest},
-		AllowedFirmwareDigests:   config.AllowedFirmwareDigests,
-		AuthorityEpoch:           config.AuthorityEpoch,
-		OwnerInstance:            config.OwnerInstance,
-		Authority:                config.Authority,
-		Reconciliation:           config.Reconciliation,
-		Telemetry:                config.Telemetry,
+	effector, closeFn, err := NewGatewayEffector(ctx, GatewayEffectorConfig{
+		Transport:              transport,
+		Catalog:                config.Catalog,
+		AllowedFirmwareDigests: config.AllowedFirmwareDigests,
+		AuthorityEpoch:         config.AuthorityEpoch,
+		OwnerInstance:          config.OwnerInstance,
+		Authority:              config.Authority,
+		Reconciliation:         config.Reconciliation,
+		Telemetry:              config.Telemetry,
 	})
 	if err != nil {
 		_ = transport.Close()
-		return nil, nil, fmt.Errorf("open device session: %w", err)
+		return nil, nil, err
 	}
-	effector := NewSerialEffector(session, config.Catalog)
-	if config.Telemetry != nil {
-		effector = effector.WithTelemetry(config.Telemetry)
-	}
-	return effector, session.Close, nil
+	return effector, closeFn, nil
 }
