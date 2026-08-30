@@ -76,16 +76,9 @@ func deviceSchema(document map[string]any) (contractsv1.SchemaName, error) {
 	if !ok || messageType == "" {
 		return "", fmt.Errorf("device message_type is required")
 	}
-	switch messageType {
-	case "command":
-		return contractsv1.SchemaDeviceCommand, nil
-	case "receipt":
-		return contractsv1.SchemaDeviceReceipt, nil
-	case "result":
-		return contractsv1.SchemaDeviceResult, nil
-	case "state":
-		return contractsv1.SchemaDeviceState, nil
-	default:
+	schema, ok := contractsv1.SchemaForMessageType(messageType)
+	if !ok {
 		return "", fmt.Errorf("unsupported device message_type %q", messageType)
 	}
+	return schema, nil
 }

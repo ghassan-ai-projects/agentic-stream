@@ -142,6 +142,9 @@ func newRunLiveCommand() *cobra.Command {
 	var dbPath, specPath, tracePath, tenantID, workerSocket, workerName, traceFormat, effectProfile string
 	var modelEndpoint, modelName string
 	var workerCA, workerCert, workerKey, workerServerName, evidenceSocket, evidenceKey string
+	var deviceSocket, deviceCatalog string
+	var deviceFirmwareDigests []string
+	var liveActuation, ownerAuthorized bool
 	cmd := &cobra.Command{
 		Use:   "run-live --spec <spec.yaml> --trace <trace.jsonl>",
 		Short: "Run one owner-scoped live Go pipeline batch.",
@@ -149,9 +152,12 @@ func newRunLiveCommand() *cobra.Command {
 			if specPath == "" || tracePath == "" || dbPath == "" {
 				return fmt.Errorf("--spec, --trace, and --db are required")
 			}
-			if err := actions.ValidateEffectProfile(actions.EffectProfileConfig{
-				Profile: actions.EffectProfile(effectProfile), ReplaySource: tracePath != "",
-			}); err != nil {
+			profileOptions := effectProfileOptions{
+				Profile: actions.EffectProfile(effectProfile), DeviceSocket: deviceSocket, DeviceCatalog: deviceCatalog,
+				AllowedFirmwareDigests: deviceFirmwareDigests, LiveActuation: liveActuation,
+				OwnerAuthorized: ownerAuthorized,
+			}
+			if err := profileOptions.validate(true); err != nil {
 				return fmt.Errorf("validate effect profile: %w", err)
 			}
 			tracerProvider, telemetryErr := configureRuntimeTelemetry(cmd.Context())
@@ -174,6 +180,7 @@ func newRunLiveCommand() *cobra.Command {
 			}
 			owner := &storage.RuntimeOwner{DB: db, InstanceID: epoch, Lease: time.Minute}
 			ledger := &evidence.Ledger{DB: db, LeaseOwner: epoch, RuntimeEpoch: epoch, Lease: time.Minute}
+			epochControl := &storage.EpochControl{DB: db}
 			service, err := runtime.NewService(owner, ledger, epoch)
 			if err != nil {
 				return fmt.Errorf("create runtime service: %w", err)
@@ -191,9 +198,16 @@ func newRunLiveCommand() *cobra.Command {
 				return fmt.Errorf("configure worker runtime: %w", err)
 			}
 			defer func() { _ = workerRuntime.Close() }()
+			effector, serialEffector, closeEffector, err := profileOptions.open(cmd.Context(), db, owner, epochControl, epoch, nil, true)
+			if err != nil {
+				return fmt.Errorf("configure effect profile: %w", err)
+			}
+			if closeEffector != nil {
+				defer func() { _ = closeEffector() }()
+			}
 			pipeline, err := runtime.NewPipeline(cmd.Context(), runtime.PipelineConfig{
 				DB: db, Spec: compiled, TenantID: tenantID, Owner: owner, OwnerEpoch: epoch,
-				Executor: workerRuntime.Executor, Effector: actions.NewSimulatedEffector(), IDGenerator: ids.Random(),
+				Executor: workerRuntime.Executor, Effector: effector, SerialEffector: serialEffector, IDGenerator: ids.Random(),
 			})
 			if err != nil {
 				return fmt.Errorf("create runtime pipeline: %w", err)
@@ -229,7 +243,7 @@ func newRunLiveCommand() *cobra.Command {
 	cmd.Flags().StringVar(&tracePath, "trace", "", "JSONL trace path")
 	cmd.Flags().StringVar(&tenantID, "tenant", "default", "Tenant ID")
 	cmd.Flags().StringVar(&traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
-	cmd.Flags().StringVar(&effectProfile, "effect-profile", string(actions.EffectProfileSimulated), "Effect profile: simulated, emulator, or physical")
+	addEffectProfileFlags(cmd, &effectProfile, &deviceSocket, &deviceCatalog, &deviceFirmwareDigests, &liveActuation, &ownerAuthorized)
 	cmd.Flags().StringVar(&workerSocket, "worker-socket", "", "EpisodeWorker Unix socket (overrides the native Go executor)")
 	cmd.Flags().StringVar(&modelEndpoint, "model-endpoint", "", "OpenAI-compatible model endpoint for the native Go executor")
 	cmd.Flags().StringVar(&modelName, "model-name", "", "Model name for the OpenAI-compatible native provider")
@@ -247,6 +261,9 @@ func newServeCommand() *cobra.Command {
 	var dbPath, listenAddress, tenantID, specPath, tracePath, traceFormat, effectProfile string
 	var modelEndpoint, modelName string
 	var workerSocket, workerName, workerCA, workerCert, workerKey, workerServerName, evidenceSocket, evidenceKey string
+	var deviceSocket, deviceCatalog string
+	var deviceFirmwareDigests []string
+	var liveActuation, ownerAuthorized bool
 	var ownerLease, pollInterval time.Duration
 	var demoMode bool
 	cmd := &cobra.Command{
@@ -259,9 +276,12 @@ func newServeCommand() *cobra.Command {
 			if (specPath == "") != (tracePath == "") {
 				return fmt.Errorf("--spec and --trace must be provided together for continuous ingestion")
 			}
-			if err := actions.ValidateEffectProfile(actions.EffectProfileConfig{
-				Profile: actions.EffectProfile(effectProfile), ReplaySource: tracePath != "",
-			}); err != nil {
+			profileOptions := effectProfileOptions{
+				Profile: actions.EffectProfile(effectProfile), DeviceSocket: deviceSocket, DeviceCatalog: deviceCatalog,
+				AllowedFirmwareDigests: deviceFirmwareDigests, LiveActuation: liveActuation,
+				OwnerAuthorized: ownerAuthorized,
+			}
+			if err := profileOptions.validate(tracePath != ""); err != nil {
 				return fmt.Errorf("validate effect profile: %w", err)
 			}
 			workerConfig := runtime.WorkerRuntimeConfig{
@@ -313,6 +333,13 @@ func newServeCommand() *cobra.Command {
 			defer func() { _ = tracerProvider.Shutdown(context.Background()) }()
 			runCtx, stop := context.WithCancel(cmd.Context())
 			defer stop()
+			effector, serialEffector, closeEffector, err := profileOptions.open(runCtx, db, owner, epochControl, epoch, metrics, tracePath != "")
+			if err != nil {
+				return fmt.Errorf("configure effect profile: %w", err)
+			}
+			if closeEffector != nil {
+				defer func() { _ = closeEffector() }()
+			}
 			var pipeline *runtime.Pipeline
 			var workerRuntime *runtime.WorkerRuntime
 			pipelineErrors := make(chan error, 1)
@@ -341,7 +368,7 @@ func newServeCommand() *cobra.Command {
 				}
 				pipeline, err = runtime.NewPipeline(runCtx, runtime.PipelineConfig{
 					DB: db, Spec: compiled, TenantID: tenantID, Owner: owner, OwnerEpoch: epoch,
-					Executor: workerRuntime.Executor, Effector: actions.NewSimulatedEffector(), IDGenerator: ids.Random(), Telemetry: metrics,
+					Executor: workerRuntime.Executor, Effector: effector, SerialEffector: serialEffector, IDGenerator: ids.Random(), Telemetry: metrics,
 					EpochControl: epochControl, DemoMode: demoMode,
 				})
 				if err != nil {
@@ -406,7 +433,7 @@ func newServeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&specPath, "spec", "", "SituationSpec YAML path for continuous ingestion")
 	cmd.Flags().StringVar(&tracePath, "trace", "", "append-only JSONL trace path for continuous ingestion")
 	cmd.Flags().StringVar(&traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
-	cmd.Flags().StringVar(&effectProfile, "effect-profile", string(actions.EffectProfileSimulated), "Effect profile: simulated, emulator, or physical")
+	addEffectProfileFlags(cmd, &effectProfile, &deviceSocket, &deviceCatalog, &deviceFirmwareDigests, &liveActuation, &ownerAuthorized)
 	cmd.Flags().StringVar(&modelEndpoint, "model-endpoint", "", "OpenAI-compatible model endpoint for the native Go executor")
 	cmd.Flags().StringVar(&modelName, "model-name", "", "Model name for the OpenAI-compatible native provider")
 	cmd.Flags().StringVar(&workerSocket, "worker-socket", "", "EpisodeWorker Unix socket (overrides the native Go executor)")

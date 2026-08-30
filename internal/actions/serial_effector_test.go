@@ -78,7 +78,7 @@ func TestSerialEffectorReturnsOrdinaryErrorForDeviceRejection(t *testing.T) {
 }
 
 func TestSerialEffectorConvertsAmbiguousReceiptToUnknownOutcome(t *testing.T) {
-	session, transport, catalog := openThermalSession(t)
+	session, transport, catalog, control := openThermalSessionWithControl(t)
 	defer func() { _ = session.Close() }()
 	transport.frames = append(transport.frames, []byte("{\"message_type\":\"receipt\"}"))
 	_, err := actions.NewSerialEffector(session, catalog).Dispatch(context.Background(), actions.Command{
@@ -90,6 +90,69 @@ func TestSerialEffectorConvertsAmbiguousReceiptToUnknownOutcome(t *testing.T) {
 	}
 	if transport.sendCount() != 1 {
 		t.Fatalf("transport sends=%d, want 1", transport.sendCount())
+	}
+	if !session.ReconciliationRequired() {
+		t.Fatal("ambiguous receipt did not open the reconciliation barrier")
+	}
+	if _, err := session.ResolveReconciliation(context.Background(), "succeeded", map[string]any{"state_digest": "stale"}); err == nil {
+		t.Fatal("ambiguous receipt allowed reconciliation without a fresh state query")
+	}
+	required, err := control.reconciliation.Required(context.Background(), "thermal-01")
+	if err != nil || !required {
+		t.Fatalf("ambiguous receipt did not persist reconciliation barrier required=%v err=%v", required, err)
+	}
+	digest, err := catalog.Digest()
+	if err != nil {
+		t.Fatalf("digest catalog after restart: %v", err)
+	}
+	restartedState := goldenDeviceState()
+	restartedState["capability_digest"] = digest
+	restartedTransport := &fakeDeviceTransport{frames: mustDeviceFrames(t, restartedState)}
+	restarted, err := actions.OpenDeviceSession(context.Background(), actions.DeviceSessionConfig{
+		Transport: restartedTransport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
+		AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, AuthorityEpoch: "epoch-1",
+		OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: control.reconciliation,
+	})
+	if err != nil {
+		t.Fatalf("restart after ambiguous receipt: %v", err)
+	}
+	defer func() { _ = restarted.Close() }()
+	if _, sent, err := restarted.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-after-restart", idemKey())); err == nil || sent {
+		t.Fatalf("ordinary command crossed durable ambiguity barrier after restart sent=%v err=%v", sent, err)
+	}
+}
+
+func TestSerialEffectorPersistsBarrierAfterReceiptContextCancellation(t *testing.T) {
+	session, transport, catalog, control := openThermalSessionWithControl(t)
+	defer func() { _ = session.Close() }()
+	transport.receiveErr = context.Canceled
+	ctx, cancel := context.WithCancel(context.Background())
+	transport.sendHook = cancel
+
+	_, err := actions.NewSerialEffector(session, catalog).Dispatch(ctx, actions.Command{
+		CommandID: "cmd-canceled", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
+		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"},
+	})
+	if err == nil || !actions.IsUnknownOutcome(err) {
+		t.Fatalf("canceled receipt err=%v", err)
+	}
+	required, err := control.reconciliation.Required(context.Background(), "thermal-01")
+	if err != nil || !required {
+		t.Fatalf("canceled receipt did not persist reconciliation barrier required=%v err=%v", required, err)
+	}
+}
+
+func TestSerialEffectorSafeStopUnknownOutcomeOpensReconciliationBarrier(t *testing.T) {
+	session, transport, catalog := openThermalSession(t)
+	defer func() { _ = session.Close() }()
+	transport.frames = append(transport.frames, []byte("{"))
+
+	_, err := actions.NewSerialEffector(session, catalog).SafeStop(context.Background(), "fan-01")
+	if err == nil || !actions.IsUnknownOutcome(err) {
+		t.Fatalf("malformed safe-stop receipt err=%v", err)
+	}
+	if !session.ReconciliationRequired() {
+		t.Fatal("unknown safe-stop outcome did not open the reconciliation barrier")
 	}
 }
 

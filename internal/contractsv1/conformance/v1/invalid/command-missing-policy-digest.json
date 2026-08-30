@@ -1,0 +1,1 @@
+{"command_id":"cmd-01","expected_boot_id":"boot-A","expires_after_ms":2000,"idempotency_key":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","message_type":"command","not_before_mono_us":5200000,"operation":"set_pwm_lease","parameters":{"duty_permille":450,"lease_ms":5000},"protocol_version":1,"target":"fan-01"}

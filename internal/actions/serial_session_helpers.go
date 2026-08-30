@@ -24,7 +24,7 @@ func validateDeviceState(frame []byte, catalog *CapabilityCatalog, catalogDigest
 		return nil, fmt.Errorf("device capability digest %q does not match the allow-listed catalog", capabilityDigest)
 	}
 	firmwareDigest := stateString(state, "firmware_digest")
-	if len(allowedFirmwareDigests) > 0 && !contains(allowedFirmwareDigests, firmwareDigest) {
+	if !contains(allowedFirmwareDigests, firmwareDigest) {
 		return nil, fmt.Errorf("device firmware digest %q is not allow-listed", firmwareDigest)
 	}
 	if stateString(state, "device_id") == "" || stateString(state, "boot_id") == "" {

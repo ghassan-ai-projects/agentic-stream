@@ -42,6 +42,12 @@ Runs one owner-scoped live batch and prints pipeline counters.
 | `--trace` | required | JSONL trace |
 | `--tenant` | `default` | tenant |
 | `--trace-format` | `normalized` | `normalized` or `simulator` |
+| `--effect-profile` | `simulated` | `simulated`, `emulator`, or `physical`; trace-backed runs remain simulated-only |
+| `--device-socket` | empty | typed device-gateway Unix socket for a non-simulated profile |
+| `--device-catalog` | empty | closed capability-catalog JSON path for a non-simulated profile |
+| `--device-firmware-digest` | empty | repeatable firmware allow-list for a non-simulated profile |
+| `--live-actuation` | `false` | explicit physical-actuation gate |
+| `--owner-authorized` | `false` | require explicit hardware-owner authorization for physical actuation |
 | `--worker-socket` | empty | EpisodeWorker Unix socket |
 | `--worker-name` | `native` | expected worker name |
 | `--model-endpoint` | empty | OpenAI-compatible endpoint |
@@ -63,6 +69,12 @@ Starts the live runtime and HTTP readiness/observation surface.
 | `--spec` | empty | spec for continuous ingestion |
 | `--trace` | empty | append-only trace for continuous ingestion |
 | `--trace-format` | `normalized` | `normalized` or `simulator` |
+| `--effect-profile` | `simulated` | `simulated`, `emulator`, or `physical` |
+| `--device-socket` | empty | typed device-gateway Unix socket for a non-simulated profile |
+| `--device-catalog` | empty | closed capability-catalog JSON path for a non-simulated profile |
+| `--device-firmware-digest` | empty | repeatable firmware allow-list for a non-simulated profile |
+| `--live-actuation` | `false` | explicit physical-actuation gate |
+| `--owner-authorized` | `false` | require explicit hardware-owner authorization for physical actuation |
 | `--tenant` | `default` | served tenant |
 | `--listen` | `127.0.0.1:8080` | loopback HTTP address |
 | `--owner-lease` | `1m` | runtime owner lease |
@@ -82,6 +94,12 @@ Starts the live runtime and HTTP readiness/observation surface.
 `--spec` and `--trace` must be supplied together. A subscriber token is
 required even when no SSE client is connected. Non-loopback listeners are
 refused without an authenticated deployment proxy.
+
+`run-live` always consumes a trace and therefore rejects emulator and physical
+profiles. `serve` can open a typed gateway link for those profiles only when
+the catalog, firmware allow-list, and device socket are supplied. The physical
+profile additionally requires both explicit actuation and owner-authorization
+flags. Agentic Stream never opens a raw serial port.
 
 ## `config effective`
 
