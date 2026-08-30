@@ -4,9 +4,14 @@
 # Runs on push/PR to main. Pipeline:
 #   tidy → build → vet → lint → test (short, race) → deadcode → vulncheck
 #   → documentation checks
-#   → cross-compile linux/amd64 → upload artifact
+#   → cross-compile linux/amd64 → upload artifact (push to main only)
 #
-# Add a `services` block here if your tests need PostgreSQL, Redis, etc.
+# Optimized for minimal CI minutes:
+#   - concurrency cancels superseded runs
+#   - dev tools (deadcode/govulncheck/golangci-lint) are cached across runs
+#     instead of recompiled from source every time
+#   - cross-compile + artifact upload run only on push to main, not on PRs
+#   - a job timeout caps runaway spend
 # ---------------------------------------------------------------------------
 
 name: CI
@@ -34,6 +39,7 @@ jobs:
   ci:
     name: "Go CI"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -53,23 +59,47 @@ jobs:
         with:
           version: "35.1"
 
+      # Cache the compiled tool binaries keyed on their pinned versions, so we
+      # only pay to build them on the first run (or when a version changes).
+      # This is the biggest per-run saving: golangci-lint in particular is slow
+      # to compile from source.
+      - name: Cache dev tools
+        id: cache-tools
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin
+          key: go-tools-${{ runner.os }}-${{ env.GO_VERSION }}-${{ env.GO_TOOLS_VERSION }}-${{ env.GOVULNCHECK_VERSION }}-${{ env.GOLANGCI_LINT_VERSION }}
+
       - name: Install dev tools
+        if: steps.cache-tools.outputs.cache-hit != 'true'
         run: |
           go install golang.org/x/tools/cmd/deadcode@${GO_TOOLS_VERSION}
           go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}
 
+      # golangci-lint keeps its own incremental analysis cache (separate from
+      # the Go build cache that setup-go restores). Persisting it turns the
+      # lint step from a full re-analysis into an incremental one.
+      - name: Cache golangci-lint analysis
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/golangci-lint
+          key: golangci-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            golangci-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-
+
       - name: CI check
         run: make ci-check
 
+      # Build + publish the release binary only when landing on main. PRs get
+      # full correctness coverage from `make ci-check` above; a per-PR
+      # cross-compile and artifact upload adds minutes and storage for no gain.
       - name: Cross-compile linux/amd64
+        if: github.event_name == 'push'
         run: make cross-compile
 
-      # Skipped in a freshly-cloned template, where cross-compile produces
-      # nothing because there is no cmd/ yet. Without the guard this step
-      # warns on every run. Once cmd/<name>/main.go exists it runs normally.
       - name: Upload linux/amd64 artifact
-        if: hashFiles('bin/*-linux-amd64') != ''
+        if: github.event_name == 'push' && hashFiles('bin/*-linux-amd64') != ''
         uses: actions/upload-artifact@v7
         with:
           name: binary-linux-amd64
