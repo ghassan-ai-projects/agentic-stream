@@ -77,6 +77,17 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}
 
+      # golangci-lint keeps its own incremental analysis cache (separate from
+      # the Go build cache that setup-go restores). Persisting it turns the
+      # lint step from a full re-analysis into an incremental one.
+      - name: Cache golangci-lint analysis
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/golangci-lint
+          key: golangci-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            golangci-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-
+
       - name: CI check
         run: make ci-check
 
