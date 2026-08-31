@@ -34,7 +34,8 @@ rejects both device profiles so replay cannot reach an effect boundary.
 ## Data and persistence paths
 
 Trace and spec paths are supplied through `--trace` and `--spec` on `run`,
-`run-live`, and `serve`; only `validate` accepts `<spec.yaml>` positionally.
+`run-live`, and `serve`. The `--live-socket` path is supplied only on `serve`;
+only `validate` accepts `<spec.yaml>` positionally.
 The database path is explicit for live/serve workflows. Deterministic `run`
 defaults to `<trace>.replay.db` and requires a fresh path.
 
