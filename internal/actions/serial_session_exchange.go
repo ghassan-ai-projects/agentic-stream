@@ -8,10 +8,37 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// Exchange sends one already-materialized command and waits for its receipt.
-// The bool reports whether bytes were handed to the transport; callers must
-// treat a post-send receive error as an unknown outcome.
+// DeviceExchange is the ordered terminal response to one device command.
+// Receipt proves admission; Result is the device-reported terminal execution
+// status. Neither is physical confirmation by itself.
+type DeviceExchange struct {
+	Receipt map[string]any
+	Result  map[string]any
+}
+
+// Exchange sends one already-materialized command and consumes its receipt and
+// terminal result. The bool reports whether bytes were handed to the transport;
+// callers must treat a post-send receive error as an unknown outcome.
 func (s *DeviceSession) Exchange(ctx context.Context, command map[string]any) (map[string]any, bool, error) {
+	exchange, sent, err := s.exchange(ctx, command)
+	if exchange == nil {
+		return nil, sent, err
+	}
+	return exchange.Receipt, sent, err
+}
+
+// ExchangeWithResult is the result-bearing form of Exchange used by the
+// action plane when it must persist both admission and terminal execution
+// evidence.
+func (s *DeviceSession) ExchangeWithResult(ctx context.Context, command map[string]any) (DeviceExchange, bool, error) {
+	exchange, sent, err := s.exchange(ctx, command)
+	if exchange == nil {
+		return DeviceExchange{}, sent, err
+	}
+	return *exchange, sent, err
+}
+
+func (s *DeviceSession) exchange(ctx context.Context, command map[string]any) (*DeviceExchange, bool, error) {
 	if s == nil {
 		return nil, false, fmt.Errorf("device session is not open")
 	}
@@ -38,16 +65,19 @@ func (s *DeviceSession) Exchange(ctx context.Context, command map[string]any) (m
 		return nil, false, err
 	}
 	if receipt, ok, err := s.cachedReceipt(idempotencyKey, semanticDigest); ok || err != nil {
-		return receipt, ok, err
+		if err != nil {
+			return nil, ok, err
+		}
+		return &DeviceExchange{Receipt: receipt, Result: cloneDocument(s.receipts[idempotencyKey].result)}, ok, nil
 	}
 	if err := s.transport.Send(ctx, frame); err != nil {
 		sent := transportMayHaveSent(err)
 		if sent {
-			err = errors.Join(err, s.requireReconciliation(ctx, "command send may have crossed the gateway"))
+			return s.unknownDeviceOutcome(ctx, nil, errors.Join(err, fmt.Errorf("command send may have crossed the gateway")))
 		}
 		return nil, sent, fmt.Errorf("send device command: %w", err)
 	}
-	return s.receiveCommandReceipt(ctx, command, claim, semanticDigest, idempotencyKey)
+	return s.receiveCommandOutcome(ctx, command, claim, semanticDigest, idempotencyKey)
 }
 
 func (s *DeviceSession) ensureOpen() error {
@@ -119,37 +149,89 @@ func (s *DeviceSession) cachedReceipt(idempotencyKey, semanticDigest string) (ma
 	return cloneDocument(cached.receipt), true, nil
 }
 
-func (s *DeviceSession) receiveCommandReceipt(ctx context.Context, command map[string]any, claim storage.TargetClaim, semanticDigest, idempotencyKey string) (map[string]any, bool, error) {
+func (s *DeviceSession) receiveCommandOutcome(ctx context.Context, command map[string]any, claim storage.TargetClaim, semanticDigest, idempotencyKey string) (*DeviceExchange, bool, error) {
 	reply, err := s.transport.Receive(ctx)
 	if err != nil {
-		return s.unknownReceiptOutcome(ctx, err)
+		return s.unknownDeviceOutcome(ctx, nil, err)
 	}
 	receipt, err := DecodeDeviceRecord(reply)
 	if err != nil {
 		if s.telemetry != nil {
 			s.telemetry.ObserveDeviceFrameError()
 		}
-		return s.unknownReceiptOutcome(ctx, fmt.Errorf("decode device receipt: %w", err))
+		return s.unknownDeviceOutcome(ctx, nil, fmt.Errorf("decode device receipt: %w", err))
 	}
 	if !receiptMatchesCommand(receipt, command, s.bootID) {
-		return s.unknownReceiptOutcome(ctx, errors.New("device receipt identity mismatch"))
+		return s.unknownDeviceOutcome(ctx, nil, errors.New("device receipt identity mismatch"))
 	}
+	partial := &DeviceExchange{Receipt: receipt}
 	if s.authority != nil {
 		if err := s.authority.Assert(ctx, claim); err != nil {
-			return s.unknownReceiptOutcome(ctx, fmt.Errorf("authority lost during device exchange: %w", err))
+			return s.unknownDeviceOutcome(ctx, partial, fmt.Errorf("authority lost during device exchange: %w", err))
 		}
 	}
-	s.receipts[idempotencyKey] = cachedReceipt{commandDigest: semanticDigest, receipt: cloneDocument(receipt)}
-	return receipt, true, nil
+	result, err := s.receiveDeviceResult(ctx, command, receipt)
+	if err != nil {
+		return s.unknownDeviceOutcome(ctx, partial, err)
+	}
+	partial.Result = result
+	if s.authority != nil {
+		if err := s.authority.Assert(ctx, claim); err != nil {
+			return s.unknownDeviceOutcome(ctx, partial, fmt.Errorf("authority lost during device result: %w", err))
+		}
+	}
+	s.receipts[idempotencyKey] = cachedReceipt{commandDigest: semanticDigest, receipt: cloneDocument(receipt), result: cloneDocument(result)}
+	return &DeviceExchange{Receipt: receipt, Result: result}, true, nil
 }
 
-func (s *DeviceSession) unknownReceiptOutcome(ctx context.Context, err error) (map[string]any, bool, error) {
-	barrierErr := s.requireReconciliation(ctx, "device receipt was not trustworthy")
-	return nil, true, &deviceExchangeError{err: errors.Join(err, barrierErr)}
+func (s *DeviceSession) receiveDeviceResult(ctx context.Context, command, receipt map[string]any) (map[string]any, error) {
+	resultFrame, err := s.transport.Receive(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("receive device result: %w", err)
+	}
+	result, err := DecodeDeviceRecord(resultFrame)
+	if err != nil {
+		if s.telemetry != nil {
+			s.telemetry.ObserveDeviceFrameError()
+		}
+		return nil, fmt.Errorf("decode device result: %w", err)
+	}
+	if !resultMatchesCommand(result, command, s.bootID, receipt) {
+		return nil, errors.New("device result identity or status mismatch")
+	}
+	return result, nil
+}
+
+func (s *DeviceSession) unknownDeviceOutcome(ctx context.Context, partial *DeviceExchange, err error) (*DeviceExchange, bool, error) {
+	barrierErr := s.requireReconciliation(ctx, "device exchange was not trustworthy")
+	// A malformed, incomplete, or mismatched pair leaves the next frame's
+	// meaning unknowable. Do not let a caller reuse a potentially desynchronized
+	// transport; a fresh handshake is required.
+	s.invalidateTransportLocked()
+	return partial, true, &deviceExchangeError{err: errors.Join(err, barrierErr)}
 }
 
 func receiptMatchesCommand(receipt, command map[string]any, bootID string) bool {
 	return receipt["message_type"] == "receipt" &&
 		receipt["command_id"] == command["command_id"] &&
 		receipt["boot_id"] == bootID
+}
+
+func resultMatchesCommand(result, command map[string]any, bootID string, receipt map[string]any) bool {
+	if result["message_type"] != "result" || result["command_id"] != command["command_id"] || result["boot_id"] != bootID {
+		return false
+	}
+	status, _ := result["status"].(string)
+	if status == "" {
+		return false
+	}
+	accepted, _ := receipt["accepted"].(bool)
+	if accepted {
+		operation, _ := command["operation"].(string)
+		if operation == "safe_stop" {
+			return status == "safe_state" && result["error_code"] == nil
+		}
+		return status == "executed" && result["error_code"] == nil
+	}
+	return status == "rejected" && result["error_code"] == receipt["reject_code"]
 }

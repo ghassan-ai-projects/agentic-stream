@@ -53,6 +53,8 @@ type Runtime struct {
 	safeStopRequests       atomic.Uint64
 	safeStopFailures       atomic.Uint64
 	safeStopCompletions    atomic.Uint64
+	liveLinesIngested      atomic.Uint64
+	liveLinesRejected      atomic.Uint64
 	durationsMu            sync.Mutex
 	durations              []time.Duration
 }
@@ -227,6 +229,21 @@ func (r *Runtime) ObserveSafeStopCompleted() {
 	}
 }
 
+// ObserveLiveLineIngested records one valid normalized line received from a
+// live ingress source.
+func (r *Runtime) ObserveLiveLineIngested() {
+	if r != nil {
+		r.liveLinesIngested.Add(1)
+	}
+}
+
+// ObserveLiveLineRejected records one malformed or invalid live ingress line.
+func (r *Runtime) ObserveLiveLineRejected() {
+	if r != nil {
+		r.liveLinesRejected.Add(1)
+	}
+}
+
 // ObserveDuration records one dispatch→decision duration for the histogram.
 func (r *Runtime) ObserveDuration(duration time.Duration) {
 	if r == nil {
@@ -282,6 +299,8 @@ func (r *Runtime) Snapshot() map[string]uint64 {
 		"agentic_stream_safe_stop_requests_total":      r.safeStopRequests.Load(),
 		"agentic_stream_safe_stop_failures_total":      r.safeStopFailures.Load(),
 		"agentic_stream_safe_stop_completions_total":   r.safeStopCompletions.Load(),
+		"agentic_stream_live_lines_ingested_total":     r.liveLinesIngested.Load(),
+		"agentic_stream_live_lines_rejected_total":     r.liveLinesRejected.Load(),
 	}
 }
 

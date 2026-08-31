@@ -105,11 +105,7 @@ func openThermalSessionWithControl(t *testing.T, replies ...map[string]any) (*ac
 	transport := &fakeDeviceTransport{frames: [][]byte{stateFrame}}
 	control := newDeviceControl(t)
 	for _, reply := range replies {
-		frame, encodeErr := actions.EncodeDeviceRecord(reply)
-		if encodeErr != nil {
-			t.Fatal(encodeErr)
-		}
-		transport.frames = append(transport.frames, frame)
+		transport.frames = append(transport.frames, mustDeviceFrames(t, reply)...)
 	}
 	session, err := actions.OpenDeviceSession(context.Background(), actions.DeviceSessionConfig{
 		Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{catalogDigest},
@@ -136,6 +132,27 @@ func materializedCommand(t *testing.T, catalog *actions.CapabilityCatalog, comma
 
 func acceptedReceipt(commandID string) map[string]any {
 	return map[string]any{"message_type": "receipt", "protocol_version": 1, "command_id": commandID, "boot_id": "boot-A", "accepted": true}
+}
+
+func terminalResult(receipt map[string]any) map[string]any {
+	status := "executed"
+	if accepted, _ := receipt["accepted"].(bool); !accepted {
+		status = "rejected"
+	}
+	accepted, _ := receipt["accepted"].(bool)
+	if accepted {
+		if commandID, _ := receipt["command_id"].(string); len(commandID) >= 10 && commandID[:10] == "safe-stop/" {
+			status = "safe_state"
+		}
+	}
+	result := map[string]any{
+		"message_type": "result", "protocol_version": 1,
+		"command_id": receipt["command_id"], "boot_id": receipt["boot_id"], "status": status,
+	}
+	if status == "rejected" {
+		result["error_code"] = receipt["reject_code"]
+	}
+	return result
 }
 
 func TestOpenDeviceSessionRequiresHandshakeAgreement(t *testing.T) {

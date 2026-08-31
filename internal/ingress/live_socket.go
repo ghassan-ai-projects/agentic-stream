@@ -162,7 +162,7 @@ func (s *LiveUDSSource) Run(ctx context.Context, sink EnvelopeSink) error {
 		select {
 		case item := <-lines:
 			if err := s.processLine(runCtx, item, sink); err != nil {
-				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				if normalLiveSocketShutdown(ctx, err) {
 					return nil
 				}
 				return fmt.Errorf("process live ingress line: %w", err)
@@ -178,6 +178,10 @@ func (s *LiveUDSSource) Run(ctx context.Context, sink EnvelopeSink) error {
 			return nil
 		}
 	}
+}
+
+func normalLiveSocketShutdown(ctx context.Context, err error) bool {
+	return ctx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
 }
 
 type liveLine struct {

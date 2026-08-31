@@ -33,6 +33,10 @@ func TestSerialEffectorReturnsPendingReceiptAfterAuthorization(t *testing.T) {
 	if !ok || receipt["accepted"] != true {
 		t.Fatalf("provider receipt=%#v", effect.ProviderResult)
 	}
+	result, ok := effect.ProviderResult["result"].(map[string]any)
+	if !ok || result["status"] != "executed" {
+		t.Fatalf("provider result=%#v", effect.ProviderResult)
+	}
 	if transport.sendCount() != 1 {
 		t.Fatalf("transport sends=%d, want 1", transport.sendCount())
 	}
@@ -142,6 +146,175 @@ func TestSerialEffectorReturnsOrdinaryErrorForDeviceRejection(t *testing.T) {
 	}
 	if effect.ProviderResult == nil || transport.sendCount() != 1 {
 		t.Fatalf("rejection evidence=%#v sends=%d", effect.ProviderResult, transport.sendCount())
+	}
+	result, ok := effect.ProviderResult["result"].(map[string]any)
+	if !ok || result["status"] != "rejected" || result["error_code"] != "expired" {
+		t.Fatalf("rejection result=%#v", effect.ProviderResult)
+	}
+}
+
+func TestSerialEffectorPreservesReceiptWhenResultIsUntrustworthy(t *testing.T) {
+	session, transport, catalog, control := openThermalSessionWithControl(t)
+	defer func() { _ = session.Close() }()
+	receipt := acceptedReceipt("cmd-result-bad")
+	receiptFrame, err := actions.EncodeDeviceRecord(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.frames = append(transport.frames, receiptFrame, []byte("{"))
+
+	effect, err := actions.NewSerialEffector(session, catalog).Dispatch(context.Background(), actions.Command{
+		CommandID: "cmd-result-bad", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
+		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"},
+	})
+	if err == nil || !actions.IsUnknownOutcome(err) {
+		t.Fatalf("untrustworthy result err=%v", err)
+	}
+	receivedReceipt, ok := effect.ProviderResult["receipt"].(map[string]any)
+	if !ok || receivedReceipt["command_id"] != "cmd-result-bad" {
+		t.Fatalf("partial provider evidence=%#v", effect.ProviderResult)
+	}
+	if result, ok := effect.ProviderResult["result"].(map[string]any); ok && result != nil {
+		t.Fatalf("untrusted result must remain unavailable: %#v", effect.ProviderResult)
+	}
+	if !transport.closed || !session.ReconciliationRequired() {
+		t.Fatalf("invalid result must close transport and require reconciliation closed=%v barrier=%v", transport.closed, session.ReconciliationRequired())
+	}
+	if _, sent, nextErr := session.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-after-bad-result", idemKey())); nextErr == nil || sent {
+		t.Fatalf("session reused after invalid result sent=%v err=%v", sent, nextErr)
+	}
+	required, controlErr := control.reconciliation.Required(context.Background(), "thermal-01")
+	if controlErr != nil || !required {
+		t.Fatalf("invalid result did not persist reconciliation barrier required=%v err=%v", required, controlErr)
+	}
+}
+
+func TestSerialEffectorSafeStopRejectionPreservesKnownEvidence(t *testing.T) {
+	receipt := acceptedReceipt("safe-stop/fan-01")
+	receipt["accepted"] = false
+	receipt["reject_code"] = "not_ready"
+	session, _, catalog := openThermalSession(t, receipt)
+	defer func() { _ = session.Close() }()
+
+	effect, err := actions.NewSerialEffector(session, catalog).SafeStop(context.Background(), "fan-01")
+	if err == nil || actions.IsUnknownOutcome(err) {
+		t.Fatalf("known safe-stop rejection err=%v", err)
+	}
+	if effect.ProviderResult == nil || effect.VerificationPending {
+		t.Fatalf("safe-stop rejection evidence=%#v pending=%v", effect.ProviderResult, effect.VerificationPending)
+	}
+	result, ok := effect.ProviderResult["result"].(map[string]any)
+	if !ok || result["status"] != "rejected" || result["error_code"] != "not_ready" {
+		t.Fatalf("safe-stop rejection result=%#v", effect.ProviderResult)
+	}
+	if _, sent, ordinaryErr := session.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-after-safe-stop-rejection", idemKey())); ordinaryErr == nil || sent {
+		t.Fatalf("ordinary command crossed latched safe-stop sent=%v err=%v", sent, ordinaryErr)
+	}
+}
+
+func TestSerialEffectorSafeStopReceiveFailureInvalidatesTransport(t *testing.T) {
+	session, transport, catalog, control := openThermalSessionWithControl(t)
+	defer func() { _ = session.Close() }()
+	transport.receiveErr = errors.New("safe-stop receipt timeout")
+
+	_, err := actions.NewSerialEffector(session, catalog).SafeStop(context.Background(), "fan-01")
+	if err == nil || !actions.IsUnknownOutcome(err) {
+		t.Fatalf("safe-stop receive failure err=%v", err)
+	}
+	if !transport.closed {
+		t.Fatal("safe-stop receive failure left transport open")
+	}
+	required, controlErr := control.reconciliation.Required(context.Background(), "thermal-01")
+	if controlErr != nil || !required {
+		t.Fatalf("safe-stop receive failure barrier required=%v err=%v", required, controlErr)
+	}
+	if _, sent, nextErr := session.SafeStop(context.Background(), "fan-01"); nextErr == nil || sent {
+		t.Fatalf("safe-stop retried on invalidated transport sent=%v err=%v", sent, nextErr)
+	}
+	if transport.sendCount() != 1 {
+		t.Fatalf("safe-stop sends=%d, want 1", transport.sendCount())
+	}
+}
+
+func TestSerialEffectorPreservesSafeStopReceiptWhenResultIsUntrustworthy(t *testing.T) {
+	session, transport, catalog, control := openThermalSessionWithControl(t)
+	defer func() { _ = session.Close() }()
+	receipt := acceptedReceipt("safe-stop/fan-01")
+	receiptFrame, err := actions.EncodeDeviceRecord(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.frames = append(transport.frames, receiptFrame, []byte("{"))
+
+	effect, err := actions.NewSerialEffector(session, catalog).SafeStop(context.Background(), "fan-01")
+	if err == nil || !actions.IsUnknownOutcome(err) {
+		t.Fatalf("untrustworthy safe-stop result err=%v", err)
+	}
+	receivedReceipt, ok := effect.ProviderResult["receipt"].(map[string]any)
+	if !ok || receivedReceipt["command_id"] != "safe-stop/fan-01" {
+		t.Fatalf("partial safe-stop provider evidence=%#v", effect.ProviderResult)
+	}
+	if result, ok := effect.ProviderResult["result"].(map[string]any); ok && result != nil {
+		t.Fatalf("untrusted safe-stop result must remain unavailable: %#v", effect.ProviderResult)
+	}
+	if !transport.closed || !session.ReconciliationRequired() {
+		t.Fatalf("untrustworthy safe-stop result closed=%v barrier=%v", transport.closed, session.ReconciliationRequired())
+	}
+	if required, controlErr := control.reconciliation.Required(context.Background(), "thermal-01"); controlErr != nil || !required {
+		t.Fatalf("untrustworthy safe-stop result barrier required=%v err=%v", required, controlErr)
+	}
+}
+
+func TestSerialEffectorSafeStopRejectionWithUndurableEvidenceIsUnknown(t *testing.T) {
+	receipt := acceptedReceipt("safe-stop/fan-01")
+	receipt["accepted"] = false
+	receipt["reject_code"] = "not_ready"
+	session, transport, catalog, control := openThermalSessionWithControl(t, receipt)
+	defer func() { _ = session.Close() }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	transport.sendHook = cancel
+	effect, err := actions.NewSerialEffector(session, catalog).SafeStop(ctx, "fan-01")
+	if err == nil || !actions.IsUnknownOutcome(err) {
+		t.Fatalf("undurable safe-stop rejection err=%v", err)
+	}
+	result, ok := effect.ProviderResult["result"].(map[string]any)
+	if !ok || result["status"] != "rejected" || result["error_code"] != "not_ready" {
+		t.Fatalf("undurable safe-stop rejection evidence=%#v", effect.ProviderResult)
+	}
+	if !transport.closed || !session.ReconciliationRequired() {
+		t.Fatalf("undurable safe-stop rejection closed=%v barrier=%v", transport.closed, session.ReconciliationRequired())
+	}
+	var failedEvents int
+	if err := control.authority.DB.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM device_authority_events WHERE event_type = 'safe_stop_failed'`).Scan(&failedEvents); err != nil {
+		t.Fatal(err)
+	}
+	if failedEvents != 0 {
+		t.Fatalf("undurable rejection unexpectedly recorded %d safe-stop failure events", failedEvents)
+	}
+
+	if err := session.Close(); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := catalog.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	restartedState := goldenDeviceState()
+	restartedState["capability_digest"] = digest
+	restartedTransport := &fakeDeviceTransport{frames: mustDeviceFrames(t, restartedState)}
+	restarted, err := actions.OpenDeviceSession(context.Background(), actions.DeviceSessionConfig{
+		Transport: restartedTransport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
+		AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, AuthorityEpoch: "epoch-1",
+		OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: control.reconciliation,
+	})
+	if err != nil {
+		t.Fatalf("restart after undurable safe-stop rejection: %v", err)
+	}
+	defer func() { _ = restarted.Close() }()
+	if _, sent, restartErr := restarted.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-after-undurable-safe-stop", idemKey())); restartErr == nil || sent {
+		t.Fatalf("restart crossed safe-stop/barrier sent=%v err=%v", sent, restartErr)
 	}
 }
 

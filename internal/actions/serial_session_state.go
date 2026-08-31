@@ -188,6 +188,16 @@ func (s *DeviceSession) failStateRefresh(err error) (map[string]any, error) {
 	return nil, err
 }
 
+// invalidateTransportLocked makes the current session unusable after a
+// partial or invalid wire exchange. The caller holds s.mu; Close can still be
+// called later to release claims and perform its normal cleanup.
+func (s *DeviceSession) invalidateTransportLocked() {
+	s.opened = false
+	if s.transport != nil {
+		_ = s.transport.Close()
+	}
+}
+
 func (s *DeviceSession) requireReconciliation(ctx context.Context, reason string) error {
 	wasRequired := s.reconciliationRequired
 	s.stateQueryRequired = true

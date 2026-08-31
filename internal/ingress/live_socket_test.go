@@ -223,3 +223,67 @@ func TestLiveUDSSourceAcceptsReconnects(t *testing.T) {
 		t.Fatal("live source did not shut down")
 	}
 }
+
+func TestLiveUDSSourcePropagatesSinkDeadlineWithActiveParent(t *testing.T) {
+	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "live.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	path := filepath.Join("/tmp", fmt.Sprintf("agentic-stream-live-deadline-%d.sock", time.Now().UnixNano()))
+	source := NewLiveUDSSource(eventlog.NewEventLog(db), "default", path).
+		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- source.Run(ctx, func(context.Context, contractsv1.Envelope) error {
+			return context.DeadlineExceeded
+		})
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		if _, statErr := os.Stat(path); statErr == nil {
+			break
+		}
+		select {
+		case runErr := <-runDone:
+			t.Fatalf("live source stopped before listening: %v", runErr)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("live source did not create its socket")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	conn, err := (&net.Dialer{}).DialContext(context.Background(), "unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope := contractsv1.Envelope{
+		ID: "evt-live-deadline", Type: "motor.vibration.observed", SchemaVersion: "1.0", TenantID: "default", Source: "gateway",
+		PartitionKey: "motor-1", Entity: contractsv1.EntityRef{Type: "motor", ID: "motor-1"},
+		EventTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), IngestedAt: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
+		Classification: contractsv1.ClassificationInternal, Data: map[string]any{"rms_mm_s": 1.0},
+	}
+	line, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Write(append(line, '\n')); err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.Close()
+
+	select {
+	case runErr := <-runDone:
+		if runErr == nil || !errors.Is(runErr, context.DeadlineExceeded) {
+			t.Fatalf("sink deadline result = %v, want propagated deadline", runErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("live source did not surface sink deadline")
+	}
+}

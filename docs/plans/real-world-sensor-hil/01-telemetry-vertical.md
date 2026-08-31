@@ -102,10 +102,10 @@ digests cleanly (`internal/episodes/intent_catalog.go`).
 
 ## Task 1.3 — Observation ingress + quality/time normalization
 
-The gateway (out of repo) emits normalized JSONL envelopes; Agentic Stream
-ingests them through the existing `internal/ingress` JSONL replay path. For
-HIL-0, **reuse `JSONLReplay`** — do not build a live serial ingress in this repo
-(the gateway owns serial; Agentic Stream consumes normalized JSONL).
+The gateway (out of repo) emits normalized JSONL envelopes. File traces remain
+the deterministic replay path; continuous emulator/physical runs use the live
+normalized JSONL UDS source in `internal/ingress` (the gateway owns serial;
+Agentic Stream consumes normalized JSONL).
 
 1. Produce a trace fixture `examples/thermal-chamber/testdata/trace-*.jsonl` with
    envelopes for the four event types, including the Experiment-1/3 edge cases:

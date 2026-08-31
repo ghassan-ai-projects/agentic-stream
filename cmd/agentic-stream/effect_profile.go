@@ -22,8 +22,9 @@ type effectProfileOptions struct {
 }
 
 // validate checks command-line profile inputs before opening a database or
-// connecting to a device gateway. Replay sources are rejected before any live
-// transport can be constructed.
+// connecting to a device gateway. replaySource identifies the file-backed
+// --trace path only; the normalized --live-socket source is intentionally not
+// replay and may be used with the emulator or physical profile.
 func (o effectProfileOptions) validate(replaySource bool) error {
 	profile := o.profile()
 	switch profile {

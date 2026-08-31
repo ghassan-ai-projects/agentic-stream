@@ -19,10 +19,12 @@ curl --fail http://127.0.0.1:8080/metrics
 The runtime creates a fresh owner epoch, recovers unfinished attempts and
 evidence leases, and only then reports ready. `serve` owns the runtime lifecycle
 and API surfaces. To continuously process an append-only normalized JSONL trace,
-also pass `--spec path/to/spec.yaml --trace path/to/events.jsonl`; the process
-resumes from the durable connector checkpoint and polls for appended lines. A
-readiness problem is RFC 9457 `application/problem+json`; do not route traffic
-to an unready process.
+pass `--spec path/to/spec.yaml --trace path/to/events.jsonl`; the process
+resumes from the durable connector checkpoint and polls for appended lines. For
+a non-replay source, pass `--spec path/to/spec.yaml --live-socket /tmp/live.sock`
+instead; clients can reconnect and malformed lines are quarantined. These source
+flags are mutually exclusive. A readiness problem is RFC 9457
+`application/problem+json`; do not route traffic to an unready process.
 
 ## Backup and restore
 

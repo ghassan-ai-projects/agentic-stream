@@ -59,14 +59,27 @@ func (e *SerialEffector) SafeStop(ctx context.Context, target string) (Effect, e
 	if e == nil || e.session == nil {
 		return Effect{}, fmt.Errorf("serial effector session is required")
 	}
-	receipt, sent, err := e.session.SafeStop(ctx, target)
+	exchange, sent, err := e.session.SafeStopWithResult(ctx, target)
+	providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
 	if err != nil {
 		if sent {
+			if exchange.Receipt != nil || exchange.Result != nil {
+				if IsUnknownOutcome(err) {
+					return Effect{ProviderResult: providerResult}, err
+				}
+				if exchange.Receipt != nil && exchange.Result != nil {
+					// A correlated receipt/result pair is a known terminal device
+					// response, including a rejected safe stop. Keep it out of the
+					// unknown-outcome lane while the safe-stop request remains latched.
+					return Effect{ProviderResult: providerResult}, err
+				}
+				return Effect{ProviderResult: providerResult}, &UnknownOutcomeError{Err: err}
+			}
 			return Effect{}, &UnknownOutcomeError{Err: err}
 		}
 		return Effect{}, err
 	}
-	return Effect{ProviderResult: map[string]any{"receipt": receipt}, VerificationPending: true}, nil
+	return Effect{ProviderResult: providerResult, VerificationPending: true}, nil
 }
 
 // VerifyDeviceCommand reads one fresh state record and compares the observed
@@ -139,25 +152,26 @@ func (e *SerialEffector) dispatch(ctx context.Context, command Command) (Effect,
 	if err != nil {
 		return Effect{}, fmt.Errorf("materialize serial command: %w", err)
 	}
-	receipt, sent, err := e.session.Exchange(ctx, wireCommand)
+	exchange, sent, err := e.session.ExchangeWithResult(ctx, wireCommand)
 	if err != nil {
+		providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
 		if sent {
 			if e.telemetry != nil {
 				e.telemetry.ObserveActionUnknownOutcome()
 			}
-			return Effect{}, &UnknownOutcomeError{Err: err}
+			return Effect{ProviderResult: providerResult}, &UnknownOutcomeError{Err: err}
 		}
 		return Effect{}, fmt.Errorf("exchange serial command: %w", err)
 	}
 
-	providerResult := map[string]any{"receipt": receipt}
-	accepted, _ := receipt["accepted"].(bool)
+	providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
+	accepted, _ := exchange.Receipt["accepted"].(bool)
 	effect := Effect{ProviderResult: providerResult, VerificationPending: accepted}
 	if accepted && e.telemetry != nil {
 		e.telemetry.ObserveVerificationPending()
 	}
 	if !accepted {
-		rejectCode, _ := receipt["reject_code"].(string)
+		rejectCode, _ := exchange.Receipt["reject_code"].(string)
 		return effect, fmt.Errorf("device rejected serial command: %s", rejectCode)
 	}
 	return effect, nil

@@ -267,13 +267,20 @@ func openActionDB(t *testing.T) *storage.DB {
 
 func mustDeviceFrames(t *testing.T, documents ...map[string]any) [][]byte {
 	t.Helper()
-	frames := make([][]byte, 0, len(documents))
+	frames := make([][]byte, 0, len(documents)*2)
 	for _, document := range documents {
 		frame, err := actions.EncodeDeviceRecord(document)
 		if err != nil {
 			t.Fatal(err)
 		}
 		frames = append(frames, frame)
+		if document["message_type"] == "receipt" {
+			resultFrame, resultErr := actions.EncodeDeviceRecord(terminalResult(document))
+			if resultErr != nil {
+				t.Fatal(resultErr)
+			}
+			frames = append(frames, resultFrame)
+		}
 	}
 	return frames
 }

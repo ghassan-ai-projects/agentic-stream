@@ -16,7 +16,7 @@ Two classes of decision:
 |---|---|---|---|---|
 | 1 | Board + logic voltage | TODO — exact Arduino model and 3.3/5 V logic | **[OWNER]** | drives observation unit/quality fields; blocks HIL only |
 | 2 | First sensor + first actuator | LED (`led-01`) first, then a 5 V fan (`fan-01`) via a logic-level MOSFET; sensor = a digital/I2C temperature sensor | **[OWNER]** to confirm exact parts | `EXECUTION_PLAN.md` BOM; catalog targets `led-01`/`fan-01` |
-| 3 | Safe state per output | De-energized / off. Explicit `safe_stop` operation per target, `expires_after_ms: 1000` | **[RATIFIED]** | `internal/actions/testdata/thermal_capability_catalog.json` → `safe_stops` |
+| 3 | Safe state per output | De-energized / off. Explicit `safe_stop` operation per target, `expires_after_ms: 1000` | **[RATIFIED]** | `internal/contractsv1/conformance/v1/thermal-capability-catalog.json` → `safe_stops` |
 | 4 | Feedback mechanism + independence | Fan: tach or current sense, independent of the command path. In emulation the independent feedback is the Streams Simulator world oracle (the real process state, not the ack) | **[OWNER]** to confirm the physical sensor | `deviceworld` plant reads process state for verification; receipt ≠ effect |
 | 5 | Does dedup survive MCU reset? | **No — dedup is volatile.** A reboot clears the ledger, so the **reboot reconciliation barrier (Phase 04) is mandatory** | **[RATIFIED]** | emulator `device.State().dedup_ledger.persistent = false`; `Reboot()` clears it |
 | 6 | NDJSON vs COBS/CBOR frames | **NDJSON first** (canonical JSON, one record per line); framed binary is a later swap behind the same `DeviceTransport` interface | **[RATIFIED]** | `internal/actions/device_codec.go`; emulator `internal/device/codec.go` |

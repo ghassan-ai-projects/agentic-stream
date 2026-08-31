@@ -41,6 +41,7 @@ func stateString(state map[string]any, key string) string {
 type cachedReceipt struct {
 	commandDigest string
 	receipt       map[string]any
+	result        map[string]any
 }
 
 type deviceExchangeError struct{ err error }

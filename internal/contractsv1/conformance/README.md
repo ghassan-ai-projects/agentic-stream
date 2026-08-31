@@ -1,7 +1,8 @@
 # Device Wire Conformance Fixtures (v1)
 
 This directory is the **cross-repo contract surface** for the Real-World Sensor
-serial-effector boundary. It is the single source of truth that the other
+serial-effector boundary, including the device wire fixtures and the closed
+capability catalog. It is the single source of truth that the other
 program repos copy and test against:
 
 - **Streams Simulator** — the device-transport emulator that plays the Arduino.
@@ -16,14 +17,17 @@ re-invent the frames — copy these bytes.
 
 ```
 conformance/v1/
+  thermal-capability-catalog.json  closed route and safe-stop authority
   valid/     one byte-exact wire example per message type (command, receipt, result, state)
   invalid/   frames a conforming decoder MUST reject, one broken rule each
 ```
 
-Every file is **canonical JSON**: object keys sorted, no insignificant
+Every wire fixture is **canonical JSON**: object keys sorted, no insignificant
 whitespace, one record, trailing `\n`. That is exactly the byte layout
 `EncodeDeviceRecord` puts on the wire (raw framing — e.g. NDJSON line, COBS —
-remains the gateway's responsibility, layered around these bytes).
+remains the gateway's responsibility, layered around these bytes). The
+capability catalog uses the same canonical JSON digest rules and its pinned
+digest test lives with the action materializer.
 
 ## The four message types
 

@@ -27,7 +27,9 @@ EvidenceTools additionally requires `--evidence-socket` and a
 
 `simulated` is the default and does not open a device gateway. `serve` can use
 `emulator` or `physical` with `--device-socket`, `--device-catalog`, and one or
-more `--device-firmware-digest` values. The `physical` profile also requires
+more `--device-firmware-digest` values. For continuous ingestion, those
+profiles require the non-replay `--live-socket` source; replay traces remain
+rejected for both device profiles. The `physical` profile also requires
 `--live-actuation` and `--owner-authorized`. `run-live` is trace-backed and
 rejects both device profiles so replay cannot reach an effect boundary.
 
