@@ -55,8 +55,8 @@ func TestCompileZoneThermal(t *testing.T) {
 	if len(compiled.Inputs) != 4 {
 		t.Fatalf("input count = %d, want 4 (temp, ambient, fan_tach, heartbeat)", len(compiled.Inputs))
 	}
-	if len(compiled.Actions.Intents) != 2 {
-		t.Fatalf("intent count = %d, want 2 (set_indicator, select_thermal_mode)", len(compiled.Actions.Intents))
+	if len(compiled.Actions.Intents) != 3 {
+		t.Fatalf("intent count = %d, want 3 (install_watch_condition, set_indicator, select_thermal_mode)", len(compiled.Actions.Intents))
 	}
 	if compiled.Digest == "" {
 		t.Fatal("expected non-empty digest")

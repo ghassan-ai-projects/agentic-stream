@@ -244,9 +244,50 @@ cognition:
       totalToolResultBytes: 131072
       providerRetries: 2
       costMicrounits: 800000
+    # Tamoz validates this catalog before it builds the episode frame. Keep it
+    # as the canonical parsed-array JSON string so the Go and Ruby digests bind
+    # the same document across the worker boundary.
+    diagnosisCatalog: '[{"code":"unknown","description":"no confident diagnosis"},{"code":"over_temperature","description":"zone temperature is rising above the operating band"},{"code":"transient_none","description":"ambient-tracking or transient rise"}]'
 
 actions:
   intents:
+    # Tamoz's canonical catalog always includes the operator-authored watch
+    # fallback, even when this example's trigger path primarily uses thermal
+    # actions. The watch entry is bounded and never model-writable.
+    - type: install_watch_condition
+      risk: R0
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          expires_at:
+            type: string
+          expression:
+            type: [string, number]
+          max_fires:
+            type: integer
+          metric:
+            type: [string, number]
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
+          target:
+            type: string
+          threshold:
+            type: number
+        additionalProperties: false
+      presets:
+        default:
+          # Watch evaluation receives the event feature map; it does not
+          # reconstruct the cognition situation object at dispatch time.
+          expression: features.condition_score >= 0.8
+          max_fires: 3
+          metric: condition_score
+          threshold: 0.8
+      policy: automatic
+      rateLimitPerHour: 4
     # LED indicator — the always-allowed shadow proxy (R1). No approval beyond
     # normal policy. The serial effector that consumes this arrives in Phase 03;
     # for the telemetry gate this must merely compile and deploy.
