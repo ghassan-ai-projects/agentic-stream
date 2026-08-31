@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
@@ -38,6 +39,73 @@ func TestSerialEffectorReturnsPendingReceiptAfterAuthorization(t *testing.T) {
 	sent, err := actions.DecodeDeviceRecord(transport.sentFrames[0])
 	if err != nil || sent["target"] != "led-01" || sent["operation"] != "set_led" {
 		t.Fatalf("sent device command=%v err=%v", sent, err)
+	}
+}
+
+func TestSerialEffectorVerificationRejectsMismatchedIndicatorValue(t *testing.T) {
+	session, transport, catalog := openThermalSession(t)
+	defer func() { _ = session.Close() }()
+	digest, err := catalog.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := goldenDeviceState()
+	state["capability_digest"] = digest
+	state["current_output"] = map[string]any{
+		"target": "led-01", "operation": "set_led", "value": float64(500), "energized": true,
+	}
+	frame, err := actions.EncodeDeviceRecord(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.frames = append(transport.frames, frame)
+
+	status, evidence, err := actions.NewSerialEffector(session, catalog).VerifyDeviceCommand(context.Background(), actions.Command{
+		CommandID: "cmd-alert", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
+		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "alert"},
+	})
+	if err != nil {
+		t.Fatalf("verify device command: %v", err)
+	}
+	if status != "failed" {
+		t.Fatalf("verification status=%q, want failed for a mismatched indicator value", status)
+	}
+	if evidence["target"] != "led-01" {
+		t.Fatalf("reconciliation evidence target=%v, want led-01", evidence["target"])
+	}
+	if err := storage.ValidateDeviceReconciliationEvidence(evidence, "thermal-01", "boot-A"); err != nil {
+		t.Fatalf("query-state evidence must pass durable validation: %v", err)
+	}
+}
+
+func TestSerialEffectorVerificationDoesNotAcceptBootRollover(t *testing.T) {
+	session, transport, catalog := openThermalSession(t)
+	defer func() { _ = session.Close() }()
+	digest, err := catalog.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := goldenDeviceState()
+	state["capability_digest"] = digest
+	state["boot_id"] = "boot-B"
+	state["current_output"] = map[string]any{
+		"target": "led-01", "operation": "set_led", "value": float64(500), "energized": true,
+	}
+	frame, err := actions.EncodeDeviceRecord(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.frames = append(transport.frames, frame)
+
+	status, _, err := actions.NewSerialEffector(session, catalog).VerifyDeviceCommand(context.Background(), actions.Command{
+		CommandID: "cmd-watch", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
+		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"},
+	})
+	if err == nil || status != "" {
+		t.Fatalf("boot rollover verification status=%q err=%v, want unresolved error", status, err)
+	}
+	if !session.ReconciliationRequired() {
+		t.Fatal("boot rollover must open the reconciliation barrier")
 	}
 }
 

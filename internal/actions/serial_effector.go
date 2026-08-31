@@ -69,6 +69,60 @@ func (e *SerialEffector) SafeStop(ctx context.Context, target string) (Effect, e
 	return Effect{ProviderResult: map[string]any{"receipt": receipt}, VerificationPending: true}, nil
 }
 
+// VerifyDeviceCommand reads one fresh state record and compares the observed
+// output with the bounded command materialized from the catalog. The returned
+// evidence is suitable for durable unknown-outcome reconciliation.
+func (e *SerialEffector) VerifyDeviceCommand(ctx context.Context, command Command) (string, map[string]any, error) {
+	if e == nil || e.session == nil || e.catalog == nil {
+		return "", nil, fmt.Errorf("serial effector session and catalog are required")
+	}
+	expectedBootID := e.session.BootID()
+	wireCommand, err := e.catalog.Materialize(command, expectedBootID)
+	if err != nil {
+		return "", nil, fmt.Errorf("materialize serial command for verification: %w", err)
+	}
+	evidence, err := e.session.QueryStateEvidence(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	observedBootID := documentString(evidence, "boot_id")
+	if observedBootID != expectedBootID {
+		return "", evidence, fmt.Errorf("device boot changed during verification from %q to %q", expectedBootID, observedBootID)
+	}
+	if err := setEvidenceTarget(evidence, documentString(wireCommand, "target")); err != nil {
+		return "", nil, err
+	}
+	state, _ := evidence["state"].(map[string]any)
+	output, _ := state["current_output"].(map[string]any)
+	observedTarget, _ := output["target"].(string)
+	observedOperation, _ := output["operation"].(string)
+	observedEnergized, _ := output["energized"].(bool)
+	expectedValue, expectedEnergized := expectedOutput(wireCommand)
+	observedValue, _ := output["value"].(float64)
+	valueMatches := true
+	if command.EffectorRoute == "set_indicator" {
+		valueMatches = observedValue == expectedValue
+	}
+	if observedTarget != wireCommand["target"] || observedOperation != wireCommand["operation"] || observedEnergized != expectedEnergized || !valueMatches {
+		return "failed", evidence, nil
+	}
+	return "succeeded", evidence, nil
+}
+
+func expectedOutput(command map[string]any) (float64, bool) {
+	parameters, _ := command["parameters"].(map[string]any)
+	for name, raw := range parameters {
+		if name == "lease_ms" {
+			continue
+		}
+		value, ok := raw.(float64)
+		if ok {
+			return value, value > 0
+		}
+	}
+	return 0, false
+}
+
 func (e *SerialEffector) dispatch(ctx context.Context, command Command) (Effect, error) {
 	if e == nil || e.session == nil || e.catalog == nil {
 		return Effect{}, fmt.Errorf("serial effector session and catalog are required")

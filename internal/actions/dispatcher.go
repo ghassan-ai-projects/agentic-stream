@@ -51,6 +51,12 @@ type Effector interface {
 	Dispatch(context.Context, Command) (Effect, error)
 }
 
+// DeviceStateVerifier verifies a device-backed command with one fresh state
+// query. An empty final status means the command is not device-backed.
+type DeviceStateVerifier interface {
+	VerifyDeviceCommand(context.Context, Command) (finalStatus string, evidence map[string]any, err error)
+}
+
 // Authorization is the final runtime authorization check passed to a
 // concrete effector. The check must run immediately before the effect is
 // accepted by that effector.
@@ -187,13 +193,44 @@ func (d *Dispatcher) DispatchOnce(ctx context.Context) (bool, error) {
 		if errors.Is(dispatchErr, context.DeadlineExceeded) {
 			dispatchErr = &UnknownOutcomeError{Err: dispatchErr}
 		}
-		return true, d.finalize(ctx, leased, effect, dispatchErr)
+		return true, d.finalizeDispatch(ctx, callCtx, leased, effect, dispatchErr)
 	}
 	effect, dispatchErr := d.effector.Dispatch(callCtx, leased.Command)
 	if errors.Is(dispatchErr, context.DeadlineExceeded) {
 		dispatchErr = &UnknownOutcomeError{Err: dispatchErr}
 	}
-	return true, d.finalize(ctx, leased, effect, dispatchErr)
+	return true, d.finalizeDispatch(ctx, callCtx, leased, effect, dispatchErr)
+}
+
+func (d *Dispatcher) finalizeDispatch(ctx, verifyCtx context.Context, leased leasedCommand, effect Effect, dispatchErr error) error {
+	verifier, canVerify := d.effector.(DeviceStateVerifier)
+	finalStatus := ""
+	var evidence map[string]any
+	var verifyErr error
+	if canVerify && (dispatchErr == nil || IsUnknownOutcome(dispatchErr)) {
+		finalStatus, evidence, verifyErr = verifier.VerifyDeviceCommand(verifyCtx, leased.Command)
+		if finalStatus != "" {
+			effect.ObservedEffect = evidence
+		}
+		if dispatchErr == nil && verifyErr != nil {
+			effect.VerificationPending = false
+			dispatchErr = &UnknownOutcomeError{Err: fmt.Errorf("verify device state: %w", verifyErr)}
+		} else if dispatchErr == nil && finalStatus != "" {
+			effect.VerificationPending = false
+			if finalStatus == "failed" {
+				dispatchErr = errors.New("device state verification failed")
+			}
+		}
+	}
+	if err := d.finalize(ctx, leased, effect, dispatchErr); err != nil {
+		return err
+	}
+	if IsUnknownOutcome(dispatchErr) && finalStatus != "" && verifyErr == nil {
+		if err := d.ReconcileUnknown(ctx, leased.Command.CommandID, finalStatus, evidence); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (d *Dispatcher) assertInterlock(ctx context.Context, command Command) error {
@@ -617,7 +654,7 @@ func (d *Dispatcher) ReconcileUnknown(ctx context.Context, commandID, finalStatu
 			WHERE c.command_id = ?`, commandID).Scan(&currentStatus, &tenantID, &intentID, &commandTarget, &traceparent, &tracestate); err != nil {
 			return fmt.Errorf("load command %s for reconciliation: %w", commandID, err)
 		}
-		if currentStatus != "reconciling" && currentStatus != "outcome_unknown" {
+		if currentStatus != "reconciling" && currentStatus != "outcome_unknown" && currentStatus != "manual_review" {
 			return fmt.Errorf("command %s is not awaiting reconciliation", commandID)
 		}
 		var boundTarget, deviceID, bootID string
