@@ -25,6 +25,8 @@ func TestRuntimeCountersAndMetricsAreLowCardinality(t *testing.T) {
 	runtime.ObserveVerificationFailure()
 	runtime.ObserveLeaseExpiry()
 	runtime.ObserveSafeStateEntry()
+	runtime.ObserveLiveLineIngested()
+	runtime.ObserveLiveLineRejected()
 	if got := runtime.Snapshot()["agentic_stream_events_ingested_total"]; got != 2 {
 		t.Fatalf("events=%d", got)
 	}
@@ -36,6 +38,8 @@ func TestRuntimeCountersAndMetricsAreLowCardinality(t *testing.T) {
 		"agentic_stream_verification_failures_total":   {},
 		"agentic_stream_lease_expiries_total":          {},
 		"agentic_stream_safe_state_entries_total":      {},
+		"agentic_stream_live_lines_ingested_total":     {},
+		"agentic_stream_live_lines_rejected_total":     {},
 	} {
 		if got := runtime.Snapshot()[name]; got != 1 {
 			t.Fatalf("%s=%d", name, got)

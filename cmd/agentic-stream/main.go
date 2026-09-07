@@ -258,7 +258,7 @@ func newRunLiveCommand() *cobra.Command {
 }
 
 func newServeCommand() *cobra.Command {
-	var dbPath, listenAddress, tenantID, specPath, tracePath, traceFormat, effectProfile string
+	var dbPath, listenAddress, tenantID, specPath, tracePath, liveSocket, traceFormat, effectProfile string
 	var modelEndpoint, modelName string
 	var workerSocket, workerName, workerCA, workerCert, workerKey, workerServerName, evidenceSocket, evidenceKey string
 	var deviceSocket, deviceCatalog string
@@ -273,8 +273,11 @@ func newServeCommand() *cobra.Command {
 			if dbPath == "" {
 				return fmt.Errorf("--db is required")
 			}
-			if (specPath == "") != (tracePath == "") {
-				return fmt.Errorf("--spec and --trace must be provided together for continuous ingestion")
+			if err := validateServeSources(specPath, tracePath, liveSocket, workerSocket); err != nil {
+				return err
+			}
+			if liveSocket != "" && traceFormat != "normalized" {
+				return fmt.Errorf("--live-socket requires --trace-format normalized")
 			}
 			profileOptions := effectProfileOptions{
 				Profile: actions.EffectProfile(effectProfile), DeviceSocket: deviceSocket, DeviceCatalog: deviceCatalog,
@@ -291,9 +294,6 @@ func newServeCommand() *cobra.Command {
 			}
 			if err := runtime.ValidateWorkerRuntimeConfig(workerConfig); err != nil {
 				return err
-			}
-			if workerSocket != "" && (specPath == "" || tracePath == "") {
-				return fmt.Errorf("--worker-socket requires --spec and --trace for continuous ingestion")
 			}
 			if pollInterval <= 0 {
 				return fmt.Errorf("--poll-interval must be positive")
@@ -378,33 +378,45 @@ func newServeCommand() *cobra.Command {
 					return fmt.Errorf("start live pipeline: %w", err)
 				}
 				defer func() { _ = pipeline.Close() }()
-				go func() {
-					for {
-						var runErr error
-						switch traceFormat {
-						case "normalized":
-							_, runErr = pipeline.RunJSONL(runCtx, tracePath)
-						case "simulator":
-							_, runErr = pipeline.RunSimulatorJSONL(runCtx, tracePath)
-						default:
-							runErr = fmt.Errorf("unsupported --trace-format %q", traceFormat)
-						}
-						if runErr != nil && !errors.Is(runErr, context.Canceled) {
-							pipelineErrors <- fmt.Errorf("continuous pipeline: %w", runErr)
+				if liveSocket != "" {
+					go func() {
+						if runErr := pipeline.RunLiveSocket(runCtx, liveSocket); runErr != nil && !errors.Is(runErr, context.Canceled) {
+							pipelineErrors <- fmt.Errorf("live socket pipeline: %w", runErr)
 							stop()
-							return
 						}
-						timer := time.NewTimer(pollInterval)
-						select {
-						case <-runCtx.Done():
-							if !timer.Stop() {
-								<-timer.C
-							}
-							return
-						case <-timer.C:
-						}
+					}()
+					if err := waitForLiveSocket(runCtx, liveSocket, pipelineErrors); err != nil {
+						return err
 					}
-				}()
+				} else {
+					go func() {
+						for {
+							var runErr error
+							switch traceFormat {
+							case "normalized":
+								_, runErr = pipeline.RunJSONL(runCtx, tracePath)
+							case "simulator":
+								_, runErr = pipeline.RunSimulatorJSONL(runCtx, tracePath)
+							default:
+								runErr = fmt.Errorf("unsupported --trace-format %q", traceFormat)
+							}
+							if runErr != nil && !errors.Is(runErr, context.Canceled) {
+								pipelineErrors <- fmt.Errorf("continuous pipeline: %w", runErr)
+								stop()
+								return
+							}
+							timer := time.NewTimer(pollInterval)
+							select {
+							case <-runCtx.Done():
+								if !timer.Stop() {
+									<-timer.C
+								}
+								return
+							case <-timer.C:
+							}
+						}
+					}()
+				}
 			}
 			handler := api.NewRuntimeHandler(service, db, notify.SSEConfig{
 				TenantID:  tenantID,
@@ -432,6 +444,7 @@ func newServeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite runtime database path")
 	cmd.Flags().StringVar(&specPath, "spec", "", "SituationSpec YAML path for continuous ingestion")
 	cmd.Flags().StringVar(&tracePath, "trace", "", "append-only JSONL trace path for continuous ingestion")
+	cmd.Flags().StringVar(&liveSocket, "live-socket", "", "Unix socket for live normalized JSONL telemetry ingestion")
 	cmd.Flags().StringVar(&traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
 	addEffectProfileFlags(cmd, &effectProfile, &deviceSocket, &deviceCatalog, &deviceFirmwareDigests, &liveActuation, &ownerAuthorized)
 	cmd.Flags().StringVar(&modelEndpoint, "model-endpoint", "", "OpenAI-compatible model endpoint for the native Go executor")
@@ -450,6 +463,52 @@ func newServeCommand() *cobra.Command {
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", time.Second, "continuous source polling interval")
 	cmd.Flags().BoolVar(&demoMode, "demo-mode", false, "admit fixture executors (demos and tests only; a production route never admits fixture)")
 	return cmd
+}
+
+func validateServeSources(specPath, tracePath, liveSocket, workerSocket string) error {
+	if tracePath != "" && liveSocket != "" {
+		return fmt.Errorf("--trace and --live-socket are mutually exclusive")
+	}
+	continuousSource := tracePath != "" || liveSocket != ""
+	if (specPath == "") != !continuousSource {
+		if liveSocket == "" {
+			return fmt.Errorf("--spec and --trace must be provided together for continuous ingestion")
+		}
+		return fmt.Errorf("--spec and --live-socket must be provided together for continuous ingestion")
+	}
+	if workerSocket != "" && !continuousSource {
+		return fmt.Errorf("--worker-socket requires --spec and (--trace or --live-socket) for continuous ingestion")
+	}
+	return nil
+}
+
+func waitForLiveSocket(ctx context.Context, path string, failures <-chan error) error {
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if _, err := os.Stat(path); err == nil {
+			dialer := net.Dialer{Timeout: 50 * time.Millisecond}
+			conn, dialErr := dialer.DialContext(ctx, "unix", path)
+			if dialErr == nil {
+				_ = conn.Close()
+				return nil
+			}
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("inspect live socket: %w", err)
+		}
+		select {
+		case err := <-failures:
+			return err
+		case <-ctx.Done():
+			select {
+			case err := <-failures:
+				return err
+			default:
+				return nil
+			}
+		case <-ticker.C:
+		}
+	}
 }
 
 func isLoopbackListenAddress(address string) bool {

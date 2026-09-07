@@ -27,6 +27,33 @@ type recordingEffector struct {
 	verificationPending bool
 }
 
+type verifyingEffector struct {
+	calls          int
+	verifyCalls    int
+	unknown        bool
+	finalStatus    string
+	evidence       map[string]any
+	verifyErr      error
+	waitForContext bool
+}
+
+func (e *verifyingEffector) Dispatch(_ context.Context, command actions.Command) (actions.Effect, error) {
+	e.calls++
+	if e.unknown {
+		return actions.Effect{}, &actions.UnknownOutcomeError{Err: errors.New("provider timeout")}
+	}
+	return actions.Effect{ProviderResult: map[string]any{"accepted": true, "target": command.NormalizedTarget}, VerificationPending: true}, nil
+}
+
+func (e *verifyingEffector) VerifyDeviceCommand(ctx context.Context, _ actions.Command) (string, map[string]any, error) {
+	e.verifyCalls++
+	if e.waitForContext {
+		<-ctx.Done()
+		return "", nil, ctx.Err()
+	}
+	return e.finalStatus, e.evidence, e.verifyErr
+}
+
 type tripBeforeAcceptEffector struct {
 	db    *storage.DB
 	calls int
@@ -216,6 +243,118 @@ func TestDispatcherKeepsAcceptedTransportAwaitingVerification(t *testing.T) {
 	recordedData := readNotificationData(t, db, notify.TypeOutcomeRecorded)
 	if recordedData["status"] != "unknown" || recordedData["reconciliation_status"] != "required" {
 		t.Fatalf("accepted transport receipt notification status=%v reconciliation=%v", recordedData["status"], recordedData["reconciliation_status"])
+	}
+}
+
+func TestDispatcherVerifiesDeviceOutcomeAfterDispatch(t *testing.T) {
+	db, commandID := openActionFixture(t)
+	defer func() { _ = db.Close() }()
+	effector := &verifyingEffector{
+		finalStatus: "succeeded",
+		evidence: map[string]any{
+			"source": "device.query_state", "evidence_type": "device_state_feedback",
+			"device_id": "thermal-01", "boot_id": "boot-A", "state": map[string]any{"safe_state": false},
+			"state_digest":    "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+			"feedback_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+		},
+	}
+	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute)
+	processed, err := dispatcher.DispatchOnce(context.Background())
+	if err != nil || !processed {
+		t.Fatalf("verified dispatch processed=%v err=%v", processed, err)
+	}
+	if effector.calls != 1 || effector.verifyCalls != 1 {
+		t.Fatalf("dispatch calls=%d verify calls=%d, want one each", effector.calls, effector.verifyCalls)
+	}
+	var commandStatus, outcomeStatus, reconciliation, verificationStatus string
+	if err := db.QueryRowContext(context.Background(), `
+		SELECT c.status, o.status, o.reconciliation_status, v.status
+		FROM commands c JOIN outcomes o ON o.command_id = c.command_id
+		JOIN verifications v ON v.command_id = c.command_id
+		WHERE c.command_id = ?`, commandID).Scan(&commandStatus, &outcomeStatus, &reconciliation, &verificationStatus); err != nil {
+		t.Fatalf("read verified device ledger: %v", err)
+	}
+	if commandStatus != "succeeded" || outcomeStatus != "succeeded" || reconciliation != "observed" || verificationStatus != "observed" {
+		t.Fatalf("verified device ledger command=%q outcome=%q reconciliation=%q verification=%q", commandStatus, outcomeStatus, reconciliation, verificationStatus)
+	}
+}
+
+func TestDispatcherReconcilesUnknownDeviceOutcomeFromState(t *testing.T) {
+	db, commandID := openActionFixture(t)
+	defer func() { _ = db.Close() }()
+	effector := &verifyingEffector{
+		unknown: true, finalStatus: "failed",
+		evidence: map[string]any{
+			"source": "device.query_state", "evidence_type": "device_state_feedback",
+			"device_id": "thermal-01", "boot_id": "boot-A", "state": map[string]any{"safe_state": true},
+			"state_digest":    "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+			"feedback_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+		},
+	}
+	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute)
+	processed, err := dispatcher.DispatchOnce(context.Background())
+	if err != nil || !processed {
+		t.Fatalf("unknown verified dispatch processed=%v err=%v", processed, err)
+	}
+	if effector.calls != 1 || effector.verifyCalls != 1 {
+		t.Fatalf("dispatch calls=%d verify calls=%d, want one each", effector.calls, effector.verifyCalls)
+	}
+	var commandStatus string
+	if err := db.QueryRowContext(context.Background(), "SELECT status FROM commands WHERE command_id = ?", commandID).Scan(&commandStatus); err != nil {
+		t.Fatalf("read reconciled command: %v", err)
+	}
+	if commandStatus != "failed" {
+		t.Fatalf("reconciled command status=%q, want failed", commandStatus)
+	}
+	var outcomeCount int
+	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM outcomes WHERE command_id = ?", commandID).Scan(&outcomeCount); err != nil {
+		t.Fatalf("count reconciled outcomes: %v", err)
+	}
+	if outcomeCount != 2 {
+		t.Fatalf("reconciled outcome count=%d, want 2", outcomeCount)
+	}
+}
+
+func TestDispatcherKeepsVerificationQueryFailureUnknown(t *testing.T) {
+	db, commandID := openActionFixture(t)
+	defer func() { _ = db.Close() }()
+	effector := &verifyingEffector{verifyErr: errors.New("state query failed")}
+	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute)
+	processed, err := dispatcher.DispatchOnce(context.Background())
+	if err != nil || !processed {
+		t.Fatalf("failed verification dispatch processed=%v err=%v", processed, err)
+	}
+	var commandStatus, outcomeStatus, reconciliation string
+	if err := db.QueryRowContext(context.Background(), `
+		SELECT c.status, o.status, o.reconciliation_status
+		FROM commands c JOIN outcomes o ON o.command_id = c.command_id
+		WHERE c.command_id = ?`, commandID).Scan(&commandStatus, &outcomeStatus, &reconciliation); err != nil {
+		t.Fatalf("read unresolved verification ledger: %v", err)
+	}
+	if commandStatus != "reconciling" || outcomeStatus != "unknown" || reconciliation != "required" {
+		t.Fatalf("failed verification ledger command=%q outcome=%q reconciliation=%q", commandStatus, outcomeStatus, reconciliation)
+	}
+}
+
+func TestDispatcherBoundsVerificationByDispatchLease(t *testing.T) {
+	db, commandID := openActionFixture(t)
+	defer func() { _ = db.Close() }()
+	effector := &verifyingEffector{waitForContext: true}
+	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", 50*time.Millisecond)
+	started := time.Now()
+	processed, err := dispatcher.DispatchOnce(context.Background())
+	if err != nil || !processed {
+		t.Fatalf("bounded verification dispatch processed=%v err=%v", processed, err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("verification exceeded bounded dispatch lease: %v", elapsed)
+	}
+	var status string
+	if err := db.QueryRowContext(context.Background(), "SELECT status FROM commands WHERE command_id = ?", commandID).Scan(&status); err != nil {
+		t.Fatalf("read bounded verification command: %v", err)
+	}
+	if status != "reconciling" {
+		t.Fatalf("bounded verification command status=%q, want reconciling", status)
 	}
 }
 

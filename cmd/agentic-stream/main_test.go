@@ -49,6 +49,26 @@ func TestServeCommandRefusesPhysicalProfileWithJSONLSource(t *testing.T) {
 	}
 }
 
+func TestServeSourceValidationAllowsLiveSocketWithWorker(t *testing.T) {
+	if err := validateServeSources("spec.yaml", "", "/tmp/live.sock", "/tmp/worker.sock"); err != nil {
+		t.Fatalf("live socket plus worker rejected: %v", err)
+	}
+}
+
+func TestServeSourceValidationRejectsMixedSources(t *testing.T) {
+	err := validateServeSources("spec.yaml", "trace.jsonl", "/tmp/live.sock", "")
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("expected mixed source rejection, got %v", err)
+	}
+}
+
+func TestServeSourceValidationRequiresSpecForLiveSocket(t *testing.T) {
+	err := validateServeSources("", "", "/tmp/live.sock", "")
+	if err == nil || !strings.Contains(err.Error(), "--spec and --live-socket") {
+		t.Fatalf("expected live source/spec pairing error, got %v", err)
+	}
+}
+
 func TestLoopbackListenAddress(t *testing.T) {
 	for address, want := range map[string]bool{
 		"127.0.0.1:8080": true,

@@ -22,9 +22,9 @@ import (
 
 // contractPeer is a minimal in-process device that speaks the device wire
 // contract over a UDS, exactly as the Streams Simulator emulator does: it emits
-// state on connect, answers a command with a receipt, and answers a query_state
-// control with a fresh state. It exists to prove UDSTransport's framing against
-// the real contract without a cross-repo binary.
+// state on connect, answers a command with an ordered receipt/result pair, and
+// answers a query_state control with a fresh state. It exists to prove
+// UDSTransport's framing against the real contract without a cross-repo binary.
 func contractPeer(t *testing.T, conn net.Conn) {
 	t.Helper()
 	defer conn.Close()
@@ -44,6 +44,9 @@ func contractPeer(t *testing.T, conn net.Conn) {
 			continue
 		}
 		if !writeContractFrame(t, conn, contractsv1.ConformanceValidFrame("receipt")) {
+			return
+		}
+		if !writeContractFrame(t, conn, contractsv1.ConformanceValidFrame("result")) {
 			return
 		}
 	}
@@ -122,6 +125,14 @@ func TestUDSTransportSpeaksTheContract(t *testing.T) {
 	receipt, err := actions.DecodeDeviceRecord(receiptFrame)
 	if err != nil || receipt["message_type"] != "receipt" {
 		t.Fatalf("expected a valid receipt, got %v (%v)", receipt, err)
+	}
+	resultFrame, err := transport.Receive(ctx)
+	if err != nil {
+		t.Fatalf("receive result: %v", err)
+	}
+	result, err := actions.DecodeDeviceRecord(resultFrame)
+	if err != nil || result["message_type"] != "result" {
+		t.Fatalf("expected a valid result, got %v (%v)", result, err)
 	}
 
 	// QueryState requests and reads a fresh state.

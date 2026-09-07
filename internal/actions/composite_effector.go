@@ -62,6 +62,24 @@ func (e *CompositeEffector) DispatchAuthorized(ctx context.Context, command Comm
 	return effect, nil
 }
 
+// VerifyDeviceCommand routes the one post-dispatch state query to the serial
+// effector. Non-device actions return an empty status and remain governed by
+// their existing effect semantics.
+func (e *CompositeEffector) VerifyDeviceCommand(ctx context.Context, command Command) (string, map[string]any, error) {
+	if e == nil {
+		return "", nil, nil
+	}
+	switch command.EffectorRoute {
+	case "set_indicator", "select_thermal_mode":
+		if e.serial == nil {
+			return "", nil, nil
+		}
+		return e.serial.VerifyDeviceCommand(ctx, command)
+	default:
+		return "", nil, nil
+	}
+}
+
 func (e *CompositeEffector) route(route string) (Effector, error) {
 	if e == nil {
 		return nil, fmt.Errorf("composite effector is not configured")

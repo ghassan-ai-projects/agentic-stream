@@ -12,6 +12,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
@@ -282,6 +283,46 @@ func (p *Pipeline) RunJSONL(ctx context.Context, path string) (PipelineReport, e
 		return report, fmt.Errorf("ingest live JSONL: %w", err)
 	}
 	return p.runAfterIngest(ctx, report, before)
+}
+
+// RunLiveSocket serves normalized JSONL from a live Unix socket and advances
+// the same event, situation, cognition, policy, and action pipeline used by a
+// continuous file source. The live source is not replay: an emulator or
+// physical effect profile may be selected by the caller's startup guards.
+func (p *Pipeline) RunLiveSocket(ctx context.Context, path string) error {
+	if p == nil {
+		return fmt.Errorf("pipeline is nil")
+	}
+	if err := p.assertOwner(ctx); err != nil {
+		return err
+	}
+	source := ingress.NewLiveUDSSource(p.log, p.tenantID, path).WithTelemetry(p.telemetry)
+	err := source.Run(ctx, func(sinkCtx context.Context, env contractsv1.Envelope) error {
+		if err := p.assertOwner(sinkCtx); err != nil {
+			return err
+		}
+		before, err := p.currentEventPosition(sinkCtx)
+		if err != nil {
+			return err
+		}
+		positions, err := p.log.Append(sinkCtx, p.tenantID, []contractsv1.Envelope{env})
+		if err != nil {
+			return fmt.Errorf("append live event: %w", err)
+		}
+		if len(positions) != 1 || positions[0] < 0 {
+			return nil
+		}
+		_, err = p.runAfterIngest(sinkCtx, PipelineReport{EventsIngested: 1}, before)
+		return err
+	})
+	if err != nil && !normalLiveSocketShutdown(ctx, err) {
+		return fmt.Errorf("run live socket source: %w", err)
+	}
+	return nil
+}
+
+func normalLiveSocketShutdown(ctx context.Context, err error) bool {
+	return ctx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
 }
 
 // RunSimulatorJSONL ingests the strict streams-simulator adapter format and

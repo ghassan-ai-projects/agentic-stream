@@ -11,11 +11,13 @@ import (
 
 // DeviceTransport is the typed gateway link used by the serial effector. The
 // gateway owns raw serial framing, reconnect, and device identity; this
-// interface carries only one validated device record at a time.
+// interface carries one validated device record at a time and preserves the
+// receipt/result ordering required by DeviceSession.
 type DeviceTransport interface {
-	// Send and Receive are one request/receipt pair. Callers must serialize the
-	// full pair and must not overlap it with QueryState; DeviceSession provides
-	// that serialization. QueryState serializes its own control write and read.
+	// Send and Receive are one request/receipt/result exchange. Callers must
+	// serialize the full exchange and must not overlap it with QueryState;
+	// DeviceSession provides that serialization. QueryState serializes its own
+	// control write and read.
 	Send(context.Context, []byte) error
 	Receive(context.Context) ([]byte, error)
 	// QueryState asks the gateway to obtain a fresh device.state record. The

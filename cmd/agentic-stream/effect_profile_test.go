@@ -47,7 +47,7 @@ func TestEffectProfileOptionsValidate(t *testing.T) {
 			wantReason: "emulator effect profile requires at least one --device-firmware-digest",
 		},
 		{
-			name: "emulator configuration is valid",
+			name: "emulator accepts live source",
 			options: effectProfileOptions{
 				Profile: actions.EffectProfileEmulator, DeviceSocket: "/tmp/device.sock", DeviceCatalog: "catalog.json",
 				AllowedFirmwareDigests: firmware,

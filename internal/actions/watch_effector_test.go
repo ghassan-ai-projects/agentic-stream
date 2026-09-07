@@ -48,6 +48,32 @@ func TestWatchEffectorIsBoundedExpiringAndOneShot(t *testing.T) {
 	}
 }
 
+func TestWatchEffectorFiresTamozFallbackFromEventFeatures(t *testing.T) {
+	ctx := t.Context()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "watch-tamoz-fallback.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	effector := actions.NewWatchEffector(db)
+	command := actions.Command{
+		CommandID: "cmd-tamoz-fallback", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
+		Payload: map[string]any{
+			"expression": "features.condition_score >= 0.8", "target": "zone-1",
+			"expires_at": "2099-01-01T00:00:00Z", "situation_id": "sit-1",
+			"situation_version": 1, "max_fires": 1,
+		},
+	}
+	if _, err := effector.Dispatch(ctx, command); err != nil {
+		t.Fatal(err)
+	}
+
+	firedCount, err := effector.FireEvent(ctx, "evt-condition-score", "zone-1", map[string]any{"condition_score": 0.9})
+	if err != nil || firedCount != 1 {
+		t.Fatalf("Tamoz fallback fire count=%d err=%v", firedCount, err)
+	}
+}
+
 func TestWatchEffectorSkipsCELEvaluationErrorAndFiresWhenDataArrives(t *testing.T) {
 	ctx := t.Context()
 	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "watch-evaluation-error.db"))

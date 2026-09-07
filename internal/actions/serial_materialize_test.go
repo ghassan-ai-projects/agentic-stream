@@ -20,7 +20,7 @@ const boot = "boot-A"
 
 func loadThermalCatalog(t *testing.T) *actions.CapabilityCatalog {
 	t.Helper()
-	data, err := os.ReadFile("testdata/thermal_capability_catalog.json")
+	data, err := os.ReadFile("../contractsv1/conformance/v1/thermal-capability-catalog.json")
 	if err != nil {
 		t.Fatalf("read catalog: %v", err)
 	}

@@ -57,6 +57,13 @@ func devicePeer(t *testing.T, conn net.Conn, capabilityDigest string) {
 		}) {
 			return
 		}
+		if !write(map[string]any{
+			"message_type": "result", "protocol_version": float64(1),
+			"command_id": command["command_id"], "boot_id": "boot-A",
+			"status": "executed", "completed_mono_us": float64(1),
+		}) {
+			return
+		}
 	}
 }
 

@@ -39,7 +39,7 @@ type OperationSpec struct {
 	SelectorField  string                    `json:"selector_field"`
 	ExpiresAfterMs int                       `json:"expires_after_ms"`
 	Presets        map[string]map[string]any `json:"presets"`
-	Bounds         map[string]NumericBound   `json:"bounds"`
+	Bounds         map[string]NumericBound   `json:"bounds,omitempty"`
 }
 
 // SafeStopSpec is a catalog-owned, parameter-free operation that requests the

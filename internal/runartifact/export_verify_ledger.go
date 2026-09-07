@@ -52,7 +52,7 @@ func verifyLedgerRow(name string, row map[string]any) error {
 	case "decisions.jsonl":
 		return verifyRowDigest(row, "raw_json", "decision_sha256", canonicaljson.DomainDecision)
 	case "situations.jsonl":
-		return verifyRowDigest(row, "snapshot_json", "snapshot_sha256", canonicaljson.DomainSituationState)
+		return verifyRowDigest(row, "snapshot_json", "snapshot_sha256", canonicaljson.DomainSnapshot)
 	case "authority-events.jsonl", "safety-events.jsonl":
 		return verifyRawJSONRowDigest(row, "details_json", "details_sha256")
 	default:

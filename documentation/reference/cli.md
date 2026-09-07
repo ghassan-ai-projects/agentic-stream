@@ -68,6 +68,7 @@ Starts the live runtime and HTTP readiness/observation surface.
 | `--db` | required | SQLite runtime database |
 | `--spec` | empty | spec for continuous ingestion |
 | `--trace` | empty | append-only trace for continuous ingestion |
+| `--live-socket` | empty | live normalized JSONL Unix socket; mutually exclusive with `--trace` |
 | `--trace-format` | `normalized` | `normalized` or `simulator` |
 | `--effect-profile` | `simulated` | `simulated`, `emulator`, or `physical` |
 | `--device-socket` | empty | typed device-gateway Unix socket for a non-simulated profile |
@@ -91,15 +92,19 @@ Starts the live runtime and HTTP readiness/observation surface.
 | `--evidence-socket` | empty | EvidenceTools Unix socket |
 | `--evidence-key` | empty | hex HMAC key for EvidenceTools |
 
-`--spec` and `--trace` must be supplied together. A subscriber token is
-required even when no SSE client is connected. Non-loopback listeners are
-refused without an authenticated deployment proxy.
+For continuous ingestion, supply `--spec` with exactly one of `--trace` or
+`--live-socket`. The live socket accepts normalized JSONL from reconnecting
+clients and is the non-replay source for emulator and physical profiles. A
+subscriber token is required even when no SSE client is connected. The live
+socket requires `--trace-format normalized`. Non-loopback listeners are refused
+without an authenticated deployment proxy.
 
 `run-live` always consumes a trace and therefore rejects emulator and physical
 profiles. `serve` can open a typed gateway link for those profiles only when
-the catalog, firmware allow-list, and device socket are supplied. The physical
-profile additionally requires both explicit actuation and owner-authorization
-flags. Agentic Stream never opens a raw serial port.
+the catalog, firmware allow-list, and device socket are supplied, and it must
+use `--live-socket` rather than `--trace`. The physical profile additionally
+requires both explicit actuation and owner-authorization flags. Agentic Stream
+never opens a raw serial port.
 
 ## `config effective`
 

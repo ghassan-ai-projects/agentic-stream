@@ -51,7 +51,7 @@ migrations.
 | P8.2 | HTTP surface | ✅ | RFC 9457 readiness, loopback binding, authenticated SSE, remote-worker mTLS flags |
 | P8.3 | Telemetry and operational release | ✅/🟡 | bounded metrics, OpenTelemetry spans/export, runbooks and security checklist; environment evidence is postponed |
 | — | Runtime ownership lease + crash recovery (beyond original plan) | ✅ | `009`,`011`,`012`, `internal/runtime` — robustness the plan didn't scope |
-| — | **Live pipeline composition** | ✅ | `run-live` handles bounded batches; `serve --spec ... --trace ...` owns an append-only JSONL loop with runtime cancellation and fatal-error propagation |
+| — | **Live pipeline composition** | ✅ | `run-live` handles bounded batches; `serve --spec ... --trace ...` owns replay polling and `serve --spec ... --live-socket ...` owns reconnecting live normalized JSONL ingestion with runtime cancellation and fatal-error propagation |
 
 **Reading:** the deterministic engine, the fenced gRPC worker protocol, decision validation,
 policy+outbox, reconsideration, notifications, replay isolation, and trace are **done**. What is
@@ -72,7 +72,7 @@ behavior.
 
 | # | Work | Where | Why essential |
 |---|---|---|---|
-| **S1** | Continuous ingestion and scheduling under `serve` | `cmd/agentic-stream`, `internal/runtime` | ✅ `serve --spec ... --trace ...` polls an append-only JSONL source, resumes from its durable connector checkpoint, and runs the complete pipeline under the runtime owner. |
+| **S1** | Continuous ingestion and scheduling under `serve` | `cmd/agentic-stream`, `internal/runtime`, `internal/ingress` | ✅ `serve --spec ... --trace ...` polls replay JSONL; `serve --spec ... --live-socket ...` consumes reconnecting live normalized JSONL; both run the complete pipeline under the runtime owner. |
 | **S2** | Separate-process Go worker conformance fixture | `internal/executor/conformance`, `internal/worker` | ✅ Test binary launches a Go worker over a real private Unix socket and runs the shared conformance suite. |
 | **S3** | OpenTelemetry spans/exporter and asynchronous span links | `internal/telemetry`, worker boundary | ✅ Runtime and worker spans export via OTLP/HTTP and link to durable W3C source contexts. |
 | **S4** | Environment release evidence | `docs/runbooks/runtime-operations.md` | ⏸ Postponed by scope decision; future production-release gate. |
@@ -87,7 +87,7 @@ spec below. The capability-host dependency test, source-health propagation, and 
 events are now implemented; only environment verification and the postponed release evidence remain
 outside the current pass.
 
-> **Net:** the deterministic and bounded supervised loop and continuous JSONL serving loop are
+> **Net:** the deterministic and bounded supervised loop and continuous JSONL serving loops are
 > complete. OpenTelemetry instrumentation and export are implemented.
 > Environment release evidence is explicitly postponed. No Python worker or
 > legacy compatibility layer is required.

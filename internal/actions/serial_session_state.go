@@ -2,10 +2,13 @@ package actions
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
@@ -117,12 +120,82 @@ func (s *DeviceSession) QueryState(ctx context.Context) (map[string]any, error) 
 	return cloneDocument(state), nil
 }
 
+// QueryStateEvidence performs one fresh device-state query and packages the
+// state with the identity and digest fields required by durable reconciliation.
+func (s *DeviceSession) QueryStateEvidence(ctx context.Context) (map[string]any, error) {
+	state, err := s.QueryState(ctx)
+	if err != nil {
+		return nil, err
+	}
+	digest, err := stateDigest(state)
+	if err != nil {
+		return nil, fmt.Errorf("digest device state evidence: %w", err)
+	}
+	feedback := map[string]any{
+		"source":         "device.query_state",
+		"target":         currentOutputTarget(state),
+		"observed_state": state["current_output"],
+		"state_digest":   digest,
+	}
+	feedbackJSON, err := canonicaljson.Marshal(feedback)
+	if err != nil {
+		return nil, fmt.Errorf("canonicalize device feedback: %w", err)
+	}
+	feedbackHash := sha256.Sum256(feedbackJSON)
+	evidence := map[string]any{
+		"source":          "device.query_state",
+		"evidence_type":   "device_state_feedback",
+		"device_id":       stateString(state, "device_id"),
+		"boot_id":         stateString(state, "boot_id"),
+		"state":           state,
+		"state_digest":    digest,
+		"feedback":        feedback,
+		"feedback_digest": "sha256:" + hex.EncodeToString(feedbackHash[:]),
+	}
+	withoutDigest := cloneDocument(evidence)
+	bundleJSON, err := canonicaljson.Marshal(withoutDigest)
+	if err != nil {
+		return nil, fmt.Errorf("canonicalize device evidence: %w", err)
+	}
+	bundleHash := sha256.Sum256(bundleJSON)
+	evidence["evidence_digest"] = "sha256:" + hex.EncodeToString(bundleHash[:])
+	return evidence, nil
+}
+
+func currentOutputTarget(state map[string]any) string {
+	output, _ := state["current_output"].(map[string]any)
+	target, _ := output["target"].(string)
+	return target
+}
+
+func setEvidenceTarget(evidence map[string]any, target string) error {
+	evidence["target"] = target
+	delete(evidence, "evidence_digest")
+	bundleJSON, err := canonicaljson.Marshal(evidence)
+	if err != nil {
+		return fmt.Errorf("canonicalize device evidence with target: %w", err)
+	}
+	bundleHash := sha256.Sum256(bundleJSON)
+	evidence["evidence_digest"] = "sha256:" + hex.EncodeToString(bundleHash[:])
+	return nil
+}
+
 func (s *DeviceSession) failStateRefresh(err error) (map[string]any, error) {
 	if s.telemetry != nil {
 		s.telemetry.ObserveDeviceFrameError()
 	}
 	s.opened = false
 	return nil, err
+}
+
+// invalidateTransportLocked makes the current session unusable after a
+// partial or invalid wire exchange. The caller holds s.mu; Close can still be
+// called later to release claims and perform its normal cleanup.
+func (s *DeviceSession) invalidateTransportLocked() {
+	s.opened = false
+	if s.transport != nil {
+		_ = s.transport.Close()
+	}
 }
 
 func (s *DeviceSession) requireReconciliation(ctx context.Context, reason string) error {
