@@ -305,9 +305,14 @@ actions:
         properties:
           entity_id:
             type: string
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
           state:
             type: string
             enum: [off, watch, alert]
+        required: [state]
         additionalProperties: false
       modelWritableFields: [state]
       policy: automatic
@@ -322,9 +327,14 @@ actions:
         properties:
           entity_id:
             type: string
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
           mode:
             type: string
             enum: [hold, bounded_cooling]
+        required: [mode]
         additionalProperties: false
       modelWritableFields: [mode]
       presets:

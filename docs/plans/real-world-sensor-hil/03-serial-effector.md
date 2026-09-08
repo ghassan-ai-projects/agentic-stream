@@ -27,7 +27,9 @@ records*). Keep `snake_case`.
   `idempotency_key`, `target`, `operation`, `parameters`, `expected_boot_id`,
   `not_before_mono_us`, `expires_after_ms`, `policy_digest`. Relative expiry
   (`expires_after_ms`) after a boot-bound handshake — **not** a server UTC
-  deadline (a raw device cannot reliably interpret one).
+  deadline (a raw device cannot reliably interpret one). `not_before_mono_us: 0`
+  is the immediate-dispatch sentinel; nonzero values are boot-relative
+  freshness anchors.
 - `device.receipt/1` — bytes parsed + command accepted for execution (receipt ≠
   result).
 - `device.result/1` — device-reported execution outcome.

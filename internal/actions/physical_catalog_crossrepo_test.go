@@ -1,0 +1,72 @@
+package actions_test
+
+import (
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+)
+
+const physicalCapabilityDigest = "sha256:2359d96660d55461a48acaac76d4ade3cb0c3460b73eae22d96d49149b890cc2"
+
+func physicalSensorRoot(t *testing.T) string {
+	t.Helper()
+	if root := os.Getenv("REAL_WORLD_SENSOR_ROOT"); root != "" {
+		return root
+	}
+	return filepath.Join("..", "..", "..", "agent-research-lab", "real-world-sensor")
+}
+
+func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDCommands(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(physicalSensorRoot(t), "assessment", "arduino-mega-led-capability-catalog.json"))
+	if err != nil {
+		t.Fatalf("read physical catalog: %v", err)
+	}
+	catalog, err := actions.LoadCapabilityCatalog(data)
+	if err != nil {
+		t.Fatalf("load physical catalog: %v", err)
+	}
+	digest, err := catalog.Digest()
+	if err != nil {
+		t.Fatalf("digest physical catalog: %v", err)
+	}
+	if digest != physicalCapabilityDigest {
+		t.Fatalf("physical catalog digest = %s, want %s", digest, physicalCapabilityDigest)
+	}
+
+	command, err := catalog.Materialize(actions.Command{
+		CommandID:        "cross-repo-led",
+		EffectorRoute:    "set_indicator",
+		NormalizedTarget: "zone-01",
+		IdempotencyKey:   "sha256:" + strings.Repeat("a", 64),
+		PolicyDigest:     "sha256:" + strings.Repeat("b", 64),
+		Payload:          map[string]any{"entity_id": "zone-01", "state": "alert"},
+	}, "boot-cross")
+	if err != nil {
+		t.Fatalf("materialize physical LED command: %v", err)
+	}
+	if command["target"] != "led-01" || command["operation"] != "set_led" {
+		t.Fatalf("materialized target/operation = %v/%v", command["target"], command["operation"])
+	}
+	if got, want := command["parameters"], map[string]any{"brightness_permille": float64(1000), "pattern": "solid"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("materialized physical parameters = %#v, want %#v", got, want)
+	}
+	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, command); err != nil {
+		t.Fatalf("materialized physical command must validate: %v", err)
+	}
+
+	safeStop, err := catalog.MaterializeSafeStop("led-01", "boot-cross")
+	if err != nil {
+		t.Fatalf("materialize physical safe stop: %v", err)
+	}
+	if safeStop["policy_digest"] != physicalCapabilityDigest || safeStop["operation"] != "safe_stop" {
+		t.Fatalf("safe stop authority = %v/%v", safeStop["policy_digest"], safeStop["operation"])
+	}
+	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, safeStop); err != nil {
+		t.Fatalf("materialized physical safe stop must validate: %v", err)
+	}
+}
