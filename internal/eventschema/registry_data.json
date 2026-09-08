@@ -698,6 +698,58 @@
       }
     }
   },
+  "zone.humidity.observed/1.0": {
+    "event_type": "zone.humidity.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "percent": {
+        "path": "percent",
+        "unit": "percent",
+        "optional": true
+      },
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "enum": ["valid", "warming", "invalid", "disconnected", "rail_high", "rail_low"],
+        "optional": true
+      },
+      "raw_value": {
+        "path": "raw_value",
+        "type": "number",
+        "optional": true
+      },
+      "calibration_id": {
+        "path": "calibration_id",
+        "type": "string",
+        "optional": true
+      },
+      "firmware_id": {
+        "path": "firmware_id",
+        "type": "string",
+        "optional": true
+      },
+      "schema_version": {
+        "path": "schema_version",
+        "type": "string",
+        "optional": true
+      },
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "integer",
+        "optional": true
+      },
+      "device_mono_us": {
+        "path": "device_mono_us",
+        "type": "integer",
+        "optional": true
+      }
+    }
+  },
   "zone.heartbeat.observed/1.0": {
     "event_type": "zone.heartbeat.observed",
     "schema_version": "1.0",

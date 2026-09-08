@@ -27,6 +27,13 @@ inputs:
     partitionKey: entity.id
     entityType: thermal_zone
     classification: internal
+  - name: humidity
+    eventType: zone.humidity.observed
+    schemaVersion: "1.0"
+    schema: zone.humidity.observed/1.0
+    partitionKey: entity.id
+    entityType: thermal_zone
+    classification: internal
   - name: ambient
     eventType: zone.ambient.observed
     schemaVersion: "1.0"
