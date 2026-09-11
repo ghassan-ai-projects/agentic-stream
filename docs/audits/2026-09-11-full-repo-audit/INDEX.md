@@ -63,7 +63,7 @@ A test file passes only if all hold:
 - [x] A-010 `internal/canonicaljson/canonicaljson.go` (624) — PASS
 - [x] A-011 `internal/situations/situations.go` (597) — FINDINGS → [A-011-situations-situations.md](A-011-situations-situations.md)
 - [x] A-012 `internal/executor/native/native.go` (560) — FINDINGS · HIGH → [A-012-executor-native-native.md](A-012-executor-native-native.md)
-- [x] A-013 `internal/decisions/validator.go` (510) — FINDINGS · HIGH → [A-013-decisions-validator.md](A-013-decisions-validator.md)
+- [x] A-013 `internal/decisions/validator.go` (510) — FINDINGS · HIGH → [A-013-decisions-validator.md](A-013-decisions-validator.md)  — ✅ FIXED
 - [x] A-014 `internal/cognition/scheduler.go` (479) — FINDINGS → [A-014-cognition-scheduler.md](A-014-cognition-scheduler.md)
 - [x] A-015 `internal/cognition/engine.go` (446) — FINDINGS → [A-015-cognition-engine.md](A-015-cognition-engine.md)
 - [x] A-016 `internal/ingress/live_socket.go` (423) — FINDINGS → [A-016-ingress-live_socket.md](A-016-ingress-live_socket.md)

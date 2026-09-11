@@ -361,8 +361,18 @@ func validateIntent(document map[string]any, input Input, decisionID string, dec
 				"intent parameter expires_at must equal the decision's valid_until")
 		}
 	}
+	// target is an identity-bearing parameter that the policy plane prefers as
+	// the effector's normalized_target, so it must bind to the dispatched
+	// episode's trusted identity directly — never merely to the optional
+	// entity_id parameter, which may be absent. Binding to entity_id alone left
+	// a hole: target without entity_id skipped verification entirely, letting a
+	// proposal steer an effect at an unverified target.
 	if target, present := parameters["target"]; present {
-		if entityID, ok := parameters["entity_id"]; ok && target != entityID {
+		if input.EntityID == "" {
+			return nil, reject("snapshot_mismatch", "intent.parameters.target",
+				"the validator has no entity identity to bind against")
+		}
+		if target != input.EntityID {
 			return nil, reject("snapshot_mismatch", "intent.parameters.target",
 				"intent target must equal the bound entity")
 		}
@@ -504,7 +514,13 @@ func reject(reason, field, message string) *ValidationError {
 	}}
 }
 
+// isExpired reports whether a decision's valid_until has passed. It fails
+// closed: an unparseable trusted-side timestamp is treated as expired so the
+// decision is rejected rather than admitted on a malformed validity window.
 func isExpired(now time.Time, value string) bool {
 	parsed, err := time.Parse(time.RFC3339Nano, value)
-	return err == nil && !now.Before(parsed)
+	if err != nil {
+		return true
+	}
+	return !now.Before(parsed)
 }
