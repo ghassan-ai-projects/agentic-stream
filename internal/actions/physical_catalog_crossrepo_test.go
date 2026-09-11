@@ -22,9 +22,9 @@ func physicalSensorRoot(t *testing.T) string {
 }
 
 func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDAndFanCommands(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(physicalSensorRoot(t), "assessment", "arduino-mega-l293d-fan-led-capability-catalog.json"))
+	data, err := os.ReadFile("../contractsv1/conformance/v1/thermal-capability-catalog.json")
 	if err != nil {
-		t.Fatalf("read physical catalog: %v", err)
+		t.Fatalf("read canonical physical catalog: %v", err)
 	}
 	catalog, err := actions.LoadCapabilityCatalog(data)
 	if err != nil {
@@ -36,6 +36,31 @@ func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDAndFanCommands(t *test
 	}
 	if digest != physicalCapabilityDigest {
 		t.Fatalf("physical catalog digest = %s, want %s", digest, physicalCapabilityDigest)
+	}
+
+	// The physical-sensor repository is an optional sibling checkout in local
+	// development. When present, verify that its consumer copy remains bound to
+	// this repository's canonical catalog; when absent, the standalone contract
+	// and materialization checks above still run in CI.
+	externalPath := filepath.Join(physicalSensorRoot(t), "assessment", "arduino-mega-l293d-fan-led-capability-catalog.json")
+	externalData, err := os.ReadFile(externalPath)
+	if err != nil {
+		if os.Getenv("REAL_WORLD_SENSOR_ROOT") != "" || !os.IsNotExist(err) {
+			t.Fatalf("read physical catalog copy: %v", err)
+		}
+		t.Logf("optional cross-repository physical catalog is not checked out: %s", externalPath)
+	} else {
+		externalCatalog, err := actions.LoadCapabilityCatalog(externalData)
+		if err != nil {
+			t.Fatalf("load physical catalog copy: %v", err)
+		}
+		externalDigest, err := externalCatalog.Digest()
+		if err != nil {
+			t.Fatalf("digest physical catalog copy: %v", err)
+		}
+		if externalDigest != digest {
+			t.Fatalf("physical catalog copy digest = %s, want canonical digest %s", externalDigest, digest)
+		}
 	}
 
 	command, err := catalog.Materialize(actions.Command{
