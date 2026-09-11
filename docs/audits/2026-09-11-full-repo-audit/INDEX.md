@@ -80,7 +80,7 @@ A test file passes only if all hold:
 - [x] A-027 `internal/actions/serial_session_state.go` (310) — FINDINGS → [A-027-actions-serial_session_state.md](A-027-actions-serial_session_state.md)
 - [x] A-028 `internal/policy/policy_command.go` (300) — FINDINGS → [A-028-policy-policy_command.md](A-028-policy-policy_command.md)
 - [x] A-029 `internal/evidence/ledger.go` (298) — FINDINGS → [A-029-evidence-ledger.md](A-029-evidence-ledger.md)
-- [x] A-030 `internal/engine/engine_state.go` (288) — FINDINGS · HIGH → [A-030-engine-engine-state.md](A-030-engine-engine-state.md)
+- [x] A-030 `internal/engine/engine_state.go` (288) — FINDINGS · HIGH → [A-030-engine-engine-state.md](A-030-engine-engine-state.md) — ✅ FIXED
 - [x] A-031 `internal/runtime/worker_runtime.go` (286) — FINDINGS → [A-031-runtime-worker_runtime.md](A-031-runtime-worker_runtime.md)
 - [x] A-032 `internal/runartifact/export_snapshot.go` (286) — FINDINGS → [A-032-runartifact-export_snapshot.md](A-032-runartifact-export_snapshot.md)
 - [x] A-033 `internal/engine/engine_timers.go` (286) — FINDINGS → [A-033-engine-engine-timers.md](A-033-engine-engine-timers.md)

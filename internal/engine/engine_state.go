@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -19,14 +20,26 @@ func (e *Engine) saveSituationRuntimeState(ctx context.Context, tx *sql.Tx, situ
 	if err != nil {
 		return fmt.Errorf("invalid situation state digest: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		UPDATE situations
 		SET phase = ?, latest_event_time = ?, updated_at = ?, state_codec_version = 1,
 		    state_json = ?, state_sha256 = ?
 		WHERE situation_id = ? AND tenant_id = ? AND deployment_id = ? AND current_version = ?`,
 		situation.Phase, situation.LatestEventTime.Format(time.RFC3339Nano), e.clock.Now().UTC().Format(time.RFC3339Nano),
-		stateJSON, digest, situation.SituationID, e.tenantID, e.deploymentID, situation.Version); err != nil {
+		stateJSON, digest, situation.SituationID, e.tenantID, e.deploymentID, situation.Version)
+	if err != nil {
 		return fmt.Errorf("update situation runtime state: %w", err)
+	}
+	// The current_version guard detects a version race. A zero-row update means
+	// the persisted current_version diverged from the in-memory version that
+	// produced this state, which would silently leave state_json stale; surface
+	// it instead of accepting it.
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("situation runtime state rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("update situation runtime state: no row at %s version %d (current_version diverged)", situation.SituationID, situation.Version)
 	}
 	return nil
 }
@@ -68,17 +81,28 @@ func (e *Engine) operatorStateRows(ctx context.Context, tx *sql.Tx, partitionID 
 		}
 		return rows, "partition ", nil
 	}
+	predicate, scopeArgs := entityScopePredicate(entityID)
+	args := append([]any{e.deploymentID, e.tenantID, partitionID}, scopeArgs...)
 	rows, err := tx.QueryContext(ctx,
 		`SELECT operator_id, state_key, state_blob FROM operator_state
 			 WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?
-			   AND (state_key = ? OR (length(state_key) > length(?) AND
-			        substr(state_key, 1, length(?) + 1) = ? || char(31)))`,
-		e.deploymentID, e.tenantID, partitionID, entityID, entityID, entityID, entityID,
-	)
+			   AND `+predicate, args...)
 	if err != nil {
 		return nil, "", fmt.Errorf("query operator state: %w", err)
 	}
 	return rows, "", nil
+}
+
+// entityScopePredicate matches an entity's own operator state_key plus every
+// composite key prefixed by "<entityID>" + char(31). char(31) (unit separator)
+// is the composite-key delimiter used throughout operator state keys, so the
+// prefix test cannot match a different entity whose ID shares this prefix. The
+// read and delete paths share this one definition to prevent them diverging
+// (a divergence would silently drop or resurrect operator state).
+func entityScopePredicate(entityID string) (string, []any) {
+	return `(state_key = ? OR (length(state_key) > length(?) AND
+		        substr(state_key, 1, length(?) + 1) = ? || char(31)))`,
+		[]any{entityID, entityID, entityID, entityID}
 }
 
 type operatorStateScanner interface {
@@ -121,13 +145,12 @@ func (e *Engine) saveOperatorState(ctx context.Context, tx *sql.Tx, partitionID 
 }
 
 func (e *Engine) deleteOperatorState(ctx context.Context, tx *sql.Tx, partitionID int, entityID string) error {
+	predicate, scopeArgs := entityScopePredicate(entityID)
+	args := append([]any{e.deploymentID, e.tenantID, partitionID}, scopeArgs...)
 	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM operator_state
 		WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?
-		  AND (state_key = ? OR (length(state_key) > length(?) AND
-		       substr(state_key, 1, length(?) + 1) = ? || char(31)))`,
-		e.deploymentID, e.tenantID, partitionID, entityID, entityID, entityID, entityID,
-	); err != nil {
+		  AND `+predicate, args...); err != nil {
 		return fmt.Errorf("retire prior operator state: %w", err)
 	}
 	return nil
@@ -139,20 +162,21 @@ func (e *Engine) upsertOperatorState(ctx context.Context, tx *sql.Tx, partitionI
 		return fmt.Errorf("marshal operator state: %w", err)
 	}
 	digest := sha256.Sum256(stateJSON)
+	// saveOperatorState deletes the entity scope before re-inserting, so this
+	// INSERT never conflicts: operator state is fully replaced per save, not
+	// mutated in place. state_version is therefore always 1. A conflict here
+	// would mean deleteOperatorState missed a key, so let it surface as an
+	// error rather than silently upserting (the old ON CONFLICT branch was
+	// dead and its state_version+1 counter never fired).
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO operator_state (
 			deployment_id, tenant_id, partition_id, operator_id, state_key,
 			state_version, codec_version, state_blob, state_sha256, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(deployment_id, tenant_id, partition_id, operator_id, state_key)
-		DO UPDATE SET state_version = excluded.state_version + 1,
-		              state_blob = excluded.state_blob,
-		              state_sha256 = excluded.state_sha256,
-		              updated_at = excluded.updated_at`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.deploymentID, e.tenantID, partitionID, operatorID, stateKey,
 		1, 1, stateJSON, digest[:], now,
 	); err != nil {
-		return fmt.Errorf("upsert operator state: %w", err)
+		return fmt.Errorf("insert operator state: %w", err)
 	}
 	return nil
 }
@@ -275,9 +299,18 @@ func (e *Engine) insertSituationVersion(ctx context.Context, tx *sql.Tx, version
 	return nil
 }
 
+// lineageID derives the stable identity of an ordered evidence set. Each event
+// ID is length-prefixed before hashing so distinct evidence sets can never
+// collide: event IDs are caller-supplied free text, and a plain concatenation
+// would map e.g. ["ab","c"] and ["a","bc"] to the same lineage_id, letting the
+// ON CONFLICT DO NOTHING insert in insertLineageSet silently attach the wrong
+// references_json to a situation version (an explainability-invariant break).
 func (e *Engine) lineageID(evidence []string) string {
 	h := sha256.New()
+	var lenBuf [8]byte
 	for _, id := range evidence {
+		binary.BigEndian.PutUint64(lenBuf[:], uint64(len(id)))
+		_, _ = h.Write(lenBuf[:])
 		_, _ = h.Write([]byte(id))
 	}
 	return "lin_" + hex.EncodeToString(h.Sum(nil))
