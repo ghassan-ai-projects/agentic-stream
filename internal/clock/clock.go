@@ -2,13 +2,15 @@
 package clock
 
 import (
+	"cmp"
+	"slices"
 	"sync"
 	"time"
 )
 
-// Clock provides time to the runtime. Implementations must be safe for the
-// concurrency model of their consumer; the virtual clock is not safe for
-// concurrent use without external synchronization.
+// Clock provides time to the runtime. The physical clock is safe for concurrent
+// use; the virtual clock serializes every method under its own mutex, so it is
+// also safe for concurrent use.
 type Clock interface {
 	// Now returns the current clock time.
 	Now() time.Time
@@ -33,8 +35,6 @@ type Timer interface {
 	// Stop prevents the timer from firing. It returns true if the timer was
 	// stopped before it fired.
 	Stop() bool
-	// Reset changes the timer to fire after d from now on the same clock.
-	Reset(d time.Duration) bool
 }
 
 // Physical returns a clock backed by the operating system.
@@ -58,16 +58,15 @@ func (t physicalTimer) C() <-chan time.Time { return t.t.C }
 
 func (t physicalTimer) Stop() bool { return t.t.Stop() }
 
-func (t physicalTimer) Reset(d time.Duration) bool { return t.t.Reset(d) }
-
 // Virtual is a deterministic clock for tests and replay. It starts at start
-// and advances only when Advance is called. Timers fire during Advance in the
-// order they were scheduled.
+// and advances only when Advance is called. During an Advance, every timer due
+// at or before the new time fires in due-time order; timers with the same due
+// time fire in the order they were scheduled.
 type Virtual struct {
-	mu       sync.Mutex
-	now      time.Time
-	timers   []*virtualTimer
-	modified bool
+	mu     sync.Mutex
+	now    time.Time
+	timers []*virtualTimer
+	seq    uint64
 }
 
 // NewVirtual creates a virtual clock with the given start time.
@@ -92,23 +91,30 @@ func (v *Virtual) NewTimer(d time.Duration) Timer {
 		due:    v.now.Add(d),
 		c:      make(chan time.Time, 1),
 		active: true,
+		seq:    v.seq,
 	}
+	v.seq++
 	v.timers = append(v.timers, t)
-	v.modified = true
 	return t
 }
 
-// Advance moves the virtual clock forward by d and fires any due timers.
+// Advance moves the virtual clock forward by d and fires any due timers. Timers
+// fire in due-time order, ties broken by scheduling order, so every timer due
+// at the new time fires during this call regardless of scheduling sequence.
 func (v *Virtual) Advance(d time.Duration) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
 	v.now = v.now.Add(d)
-	for {
-		v.sortTimers()
-		if len(v.timers) == 0 {
-			break
+	// Sort by (due, seq) once: firing only pops from the front and never adds
+	// timers, so the remainder stays ordered for the rest of this call.
+	slices.SortStableFunc(v.timers, func(a, b *virtualTimer) int {
+		if c := a.due.Compare(b.due); c != 0 {
+			return c
 		}
+		return cmp.Compare(a.seq, b.seq)
+	})
+	for len(v.timers) > 0 {
 		next := v.timers[0]
 		if next.due.After(v.now) {
 			break
@@ -121,23 +127,11 @@ func (v *Virtual) Advance(d time.Duration) {
 	}
 }
 
-func (v *Virtual) sortTimers() {
-	if !v.modified {
-		return
-	}
-	v.modified = false
-	// Simple insertion-style sort: find earliest due timer and move it to front.
-	for i := 1; i < len(v.timers); i++ {
-		if v.timers[i].due.Before(v.timers[0].due) {
-			v.timers[0], v.timers[i] = v.timers[i], v.timers[0]
-		}
-	}
-}
-
 type virtualTimer struct {
 	clock  *Virtual
 	due    time.Time
 	active bool
+	seq    uint64
 	c      chan time.Time
 }
 
@@ -151,14 +145,4 @@ func (t *virtualTimer) Stop() bool {
 	}
 	t.active = false
 	return true
-}
-
-func (t *virtualTimer) Reset(d time.Duration) bool {
-	t.clock.mu.Lock()
-	defer t.clock.mu.Unlock()
-	wasActive := t.active
-	t.active = true
-	t.due = t.clock.now.Add(d)
-	t.clock.modified = true
-	return wasActive
 }
