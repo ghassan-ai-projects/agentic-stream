@@ -30,13 +30,22 @@ Current artifact after Round 1:
 - Pre-commit source receipt: the exact staged content is the A-049 diff,
   `INDEX.md`, all `A-*.md` audit reports, and the Gauntlet artifacts listed
   above; post-commit receipt is recorded below after commit.
+- Content hashes at the Round 1 judgment surface: `INDEX.md`
+  `fba40784638cca237293ddd8f362465172dbe0f85e994f1fe881bd4f899dd211`,
+  `GAUNTLET_BAR.md`
+  `d4c314df617d0103879c816f31f932fb3f5978c666b1856f3dce60c6f6e79b70`,
+  `internal/ingress/jsonl.go`
+  `e3478ecd57affbd7740654c7845a654f629d2687cf1459bf6a9de607ad2e0832`,
+  `internal/ingress/jsonl_test.go`
+  `d0de82184f8af1e6e46014fdfbf328ee031849e73e1446eb02e6d5c075dcffbe`.
 
 Best artifact receipt:
 
 - Best accepted code artifact is commit `da7c5a1` plus the four prior accepted
   audit-fix commits listed above.
 - Round 1 best candidate: the validated A-049 change plus the audit artifact;
-  commit receipt is recorded below after commit.
+  content commit receipt: `646132a` (`audit: capture full-repo gauntlet and
+  close ingress findings`).
 
 ## Decomposition and dependency map
 
@@ -129,5 +138,4 @@ lease/fencing, operator-window, and native-provider cost behavior.
 - Diff hygiene: PASS — `git diff --check` before commit.
 - Resolution artifact: `A-049-ingress-jsonl.md` Resolution section and the
   `INDEX.md` `✅ FIXED` marker.
-- Commit receipt: to be filled with the Round 1 commit hash in the next
-  checkpoint update; this checkpoint is committed together with the round.
+- Commit receipt: `646132a` (Round 1 content and artifact commit).
