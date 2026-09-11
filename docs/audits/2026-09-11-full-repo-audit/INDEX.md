@@ -99,7 +99,7 @@ A test file passes only if all hold:
 - [x] A-046 `internal/storage/storage.go` (195) — FINDINGS → [A-046-storage-storage.md](A-046-storage-storage.md)
 - [x] A-047 `internal/replay/baseline.go` (189) — FINDINGS → [A-047-replay-baseline.md](A-047-replay-baseline.md)
 - [x] A-048 `internal/costcontrol/costcontrol.go` (185) — PASS
-- [x] A-049 `internal/ingress/jsonl.go` (183) — FINDINGS · HIGH → [A-049-ingress-jsonl.md](A-049-ingress-jsonl.md)
+- [x] A-049 `internal/ingress/jsonl.go` (183) — FINDINGS · HIGH → [A-049-ingress-jsonl.md](A-049-ingress-jsonl.md) — ✅ FIXED
 - [x] A-050 `internal/policy/policy.go` (182) — FINDINGS → [A-050-policy-policy.md](A-050-policy-policy.md)
 - [x] A-051 `internal/engine/engine_restore.go` (180) — FINDINGS → [A-051-engine-engine-restore.md](A-051-engine-engine-restore.md)
 - [x] A-052 `internal/storage/runtime_owner.go` (178) — PASS → [A-052-storage-runtime-owner.md](A-052-storage-runtime-owner.md) (PASS record)
