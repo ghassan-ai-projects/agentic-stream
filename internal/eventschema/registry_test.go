@@ -58,6 +58,7 @@ func TestThermalSchemasDeclareQualityAndProvenance(t *testing.T) {
 		"device_mono_us": "integer",
 	}
 	refs := []string{
+		"zone.humidity.observed/1.0",
 		"zone.temp.observed/1.0",
 		"zone.ambient.observed/1.0",
 		"zone.fan_tach.observed/1.0",
@@ -260,6 +261,25 @@ func TestBaySchemasDescribeAdapterPayloads(t *testing.T) {
 	}
 }
 
+func TestZoneHumiditySchemaDescribesAdapterPayload(t *testing.T) {
+	t.Parallel()
+
+	definition, ok := Lookup("zone.humidity.observed/1.0")
+	if !ok {
+		t.Fatal("zone humidity schema is not registered")
+	}
+	if definition.EventType != "zone.humidity.observed" {
+		t.Fatalf("event type = %q, want zone.humidity.observed", definition.EventType)
+	}
+	field, ok := definition.Fields["percent"]
+	if !ok {
+		t.Fatal("schema does not declare percent")
+	}
+	if field.Path != "percent" || field.Unit != "percent" || !field.Optional {
+		t.Fatalf("percent field = %+v, want optional percent field", field)
+	}
+}
+
 func contains(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
@@ -282,15 +302,15 @@ func TestAllBuiltinsLoadFromData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load registry: %v", err)
 	}
-	if len(registry) != 51 {
-		t.Fatalf("expected 51 built-in refs, got %d", len(registry))
+	if len(registry) != 52 {
+		t.Fatalf("expected 52 built-in refs, got %d", len(registry))
 	}
 	canonical, err := canonicaljson.Marshal(registry)
 	if err != nil {
 		t.Fatalf("canonicalize registry: %v", err)
 	}
 	sum := sha256.Sum256(canonical)
-	const pinnedDigest = "2963f017014b54673e7898ebf71a7a42d41fc906c0115296ab87be0bf62de2fe"
+	const pinnedDigest = "496c1f7b52d5723be41be07d5735a2c1c9ae0b17849266ae36c8673c128ac752"
 	if got := hex.EncodeToString(sum[:]); got != pinnedDigest {
 		t.Fatalf("registry data digest = %s, want the pinned %s", got, pinnedDigest)
 	}

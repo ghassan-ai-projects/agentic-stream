@@ -110,6 +110,31 @@ func TestAppendRejectsThermalQualityOutsideSchemaEnum(t *testing.T) {
 	}
 }
 
+func TestAppendAcceptsThermalHumidityEnvelopeAgainstDurableSchema(t *testing.T) {
+	ctx := context.Background()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "humidity-schema.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	registerSchema(t, db, "zone.humidity.observed/1.0")
+	log := eventlog.NewEventLog(db).RequireSchemaValidation()
+	env := contractsv1.Envelope{
+		ID: "humidity-000001", Type: "zone.humidity.observed", SchemaVersion: "1.0", TenantID: "default", Source: "arduino-gateway-v1",
+		PartitionKey: "zone-01", Entity: contractsv1.EntityRef{Type: "thermal_zone", ID: "zone-01"},
+		EventTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), IngestedAt: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
+		Classification: contractsv1.ClassificationInternal,
+		Data:           map[string]any{"percent": 46.0, "quality": "valid", "boot_id": "boot-01", "seq": 1, "device_mono_us": 1_234_567},
+	}
+	positions, err := log.Append(ctx, "default", []contractsv1.Envelope{env})
+	if err != nil {
+		t.Fatalf("valid humidity envelope rejected: %v", err)
+	}
+	if len(positions) != 1 || positions[0] <= 0 {
+		t.Fatalf("append positions = %v, want one positive position", positions)
+	}
+}
+
 func TestReleasedQuarantineCanBeValidatedAndRedrivenOnce(t *testing.T) {
 	ctx := context.Background()
 	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "redrive.db"))

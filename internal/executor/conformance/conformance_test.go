@@ -1,6 +1,7 @@
 package conformance_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -73,22 +74,41 @@ func TestSeparateProcessWorkerConforms(t *testing.T) {
 	t.Cleanup(func() { _ = os.Remove(socketPath) })
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^$", "-test.v") //nolint:gosec // The fixture intentionally launches this signed test binary.
 	cmd.Env = append(os.Environ(), workerSocketEnv+"="+socketPath)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start conformance worker: %v", err)
 	}
-	defer func() {
+	// Reap the child in a goroutine so the socket-wait loop can distinguish an
+	// early exit (surface the worker's stderr) from a slow start. Reading cmdErr
+	// or stderr only happens-after this close, so both stay race-free.
+	var cmdErr error
+	exited := make(chan struct{})
+	go func() { cmdErr = cmd.Wait(); close(exited) }()
+	t.Cleanup(func() {
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
-		_ = cmd.Wait()
-	}()
-	deadline := time.Now().Add(5 * time.Second)
+		<-exited
+	})
+	// The child is a race-instrumented copy of this test binary; under a loaded
+	// CI runner its startup plus socket bind can take several seconds, so keep a
+	// generous deadline rather than a tight one that flakes.
+	const socketDeadline = 30 * time.Second
+	deadline := time.Now().Add(socketDeadline)
 	for {
 		if _, err := os.Stat(socketPath); err == nil {
 			break
 		}
+		select {
+		case <-exited:
+			t.Fatalf("conformance worker exited before creating its socket: %v\nstderr:\n%s", cmdErr, stderr.String())
+		default:
+		}
 		if time.Now().After(deadline) {
-			t.Fatal("conformance worker did not create its socket")
+			_ = cmd.Process.Kill()
+			<-exited
+			t.Fatalf("conformance worker did not create its socket within %s\nstderr:\n%s", socketDeadline, stderr.String())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -99,7 +119,7 @@ func TestSeparateProcessWorkerConforms(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 	executor := episodes.NewWorkerExecutor(runtimev1.NewEpisodeWorkerClient(conn), "worker-1", "runtime", nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := conformance.Run(ctx, executor); err != nil {
 		t.Fatal(err)

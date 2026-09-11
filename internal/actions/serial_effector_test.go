@@ -82,6 +82,39 @@ func TestSerialEffectorVerificationRejectsMismatchedIndicatorValue(t *testing.T)
 	}
 }
 
+func TestSerialEffectorVerificationRejectsMismatchedFanDuty(t *testing.T) {
+	session, transport, catalog := openThermalSession(t)
+	defer func() { _ = session.Close() }()
+	digest, err := catalog.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := goldenDeviceState()
+	state["capability_digest"] = digest
+	state["current_output"] = map[string]any{
+		"target": "fan-01", "operation": "set_pwm_lease", "value": float64(300), "energized": true,
+	}
+	frame, err := actions.EncodeDeviceRecord(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.frames = append(transport.frames, frame)
+
+	status, evidence, err := actions.NewSerialEffector(session, catalog).VerifyDeviceCommand(context.Background(), actions.Command{
+		CommandID: "cmd-fan", EffectorRoute: "select_thermal_mode", NormalizedTarget: "fan-01",
+		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"mode": "bounded_cooling"},
+	})
+	if err != nil {
+		t.Fatalf("verify device command: %v", err)
+	}
+	if status != "failed" {
+		t.Fatalf("verification status=%q, want failed for a mismatched fan duty", status)
+	}
+	if evidence["target"] != "fan-01" {
+		t.Fatalf("reconciliation evidence target=%v, want fan-01", evidence["target"])
+	}
+}
+
 func TestSerialEffectorVerificationDoesNotAcceptBootRollover(t *testing.T) {
 	session, transport, catalog := openThermalSession(t)
 	defer func() { _ = session.Close() }()

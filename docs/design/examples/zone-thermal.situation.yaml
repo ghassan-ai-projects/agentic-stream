@@ -27,6 +27,13 @@ inputs:
     partitionKey: entity.id
     entityType: thermal_zone
     classification: internal
+  - name: humidity
+    eventType: zone.humidity.observed
+    schemaVersion: "1.0"
+    schema: zone.humidity.observed/1.0
+    partitionKey: entity.id
+    entityType: thermal_zone
+    classification: internal
   - name: ambient
     eventType: zone.ambient.observed
     schemaVersion: "1.0"
@@ -298,9 +305,14 @@ actions:
         properties:
           entity_id:
             type: string
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
           state:
             type: string
             enum: [off, watch, alert]
+        required: [state]
         additionalProperties: false
       modelWritableFields: [state]
       policy: automatic
@@ -315,9 +327,14 @@ actions:
         properties:
           entity_id:
             type: string
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
           mode:
             type: string
             enum: [hold, bounded_cooling]
+        required: [mode]
         additionalProperties: false
       modelWritableFields: [mode]
       presets:
