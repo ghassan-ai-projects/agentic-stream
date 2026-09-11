@@ -28,8 +28,8 @@
         "bounded_cooling": {"duty_permille": 450, "lease_ms": 5000}
       },
       "bounds": {
-        "duty_permille": {"max": 600},
-        "lease_ms": {"max": 10000}
+        "duty_permille": {"min": 0, "max": 600},
+        "lease_ms": {"min": 5000, "max": 10000}
       }
     }
   }

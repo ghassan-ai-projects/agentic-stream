@@ -112,10 +112,10 @@ func (e *SerialEffector) VerifyDeviceCommand(ctx context.Context, command Comman
 	observedEnergized, _ := output["energized"].(bool)
 	expectedValue, expectedEnergized := expectedOutput(wireCommand)
 	observedValue, _ := output["value"].(float64)
-	valueMatches := true
-	if command.EffectorRoute == "set_indicator" {
-		valueMatches = observedValue == expectedValue
-	}
+	// Both closed device routes carry a numeric output value: LED brightness or
+	// fan duty. A fan is not verified merely because it is energized; a stale or
+	// misconfigured duty must fail reconciliation just like a wrong LED value.
+	valueMatches := observedValue == expectedValue
 	if observedTarget != wireCommand["target"] || observedOperation != wireCommand["operation"] || observedEnergized != expectedEnergized || !valueMatches {
 		return "failed", evidence, nil
 	}

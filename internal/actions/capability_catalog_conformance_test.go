@@ -9,7 +9,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
-const thermalCapabilityCatalogDigest = "sha256:177552ccdaa8d71ac3eb1e27a1a60e3433e1e2792bad2dc16ea95acb2d735eaf"
+const thermalCapabilityCatalogDigest = "sha256:0d61225286c628cfba8cbf7aea514e1fdc95918b514b4b810516dbe0fc44fc76"
 
 func TestThermalCapabilityCatalogDigest(t *testing.T) {
 	t.Parallel()

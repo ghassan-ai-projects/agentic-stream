@@ -11,7 +11,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
-const physicalCapabilityDigest = "sha256:2359d96660d55461a48acaac76d4ade3cb0c3460b73eae22d96d49149b890cc2"
+const physicalCapabilityDigest = "sha256:0d61225286c628cfba8cbf7aea514e1fdc95918b514b4b810516dbe0fc44fc76"
 
 func physicalSensorRoot(t *testing.T) string {
 	t.Helper()
@@ -21,8 +21,8 @@ func physicalSensorRoot(t *testing.T) string {
 	return filepath.Join("..", "..", "..", "agent-research-lab", "real-world-sensor")
 }
 
-func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDCommands(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(physicalSensorRoot(t), "assessment", "arduino-mega-led-capability-catalog.json"))
+func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDAndFanCommands(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(physicalSensorRoot(t), "assessment", "arduino-mega-l293d-fan-led-capability-catalog.json"))
 	if err != nil {
 		t.Fatalf("read physical catalog: %v", err)
 	}
@@ -68,5 +68,37 @@ func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDCommands(t *testing.T)
 	}
 	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, safeStop); err != nil {
 		t.Fatalf("materialized physical safe stop must validate: %v", err)
+	}
+
+	fanCommand, err := catalog.Materialize(actions.Command{
+		CommandID:        "cross-repo-fan",
+		EffectorRoute:    "select_thermal_mode",
+		NormalizedTarget: "zone-01",
+		IdempotencyKey:   "sha256:" + strings.Repeat("d", 64),
+		PolicyDigest:     "sha256:" + strings.Repeat("e", 64),
+		Payload:          map[string]any{"entity_id": "zone-01", "mode": "bounded_cooling"},
+	}, "boot-cross")
+	if err != nil {
+		t.Fatalf("materialize physical fan command: %v", err)
+	}
+	if fanCommand["target"] != "fan-01" || fanCommand["operation"] != "set_pwm_lease" {
+		t.Fatalf("materialized fan target/operation = %v/%v", fanCommand["target"], fanCommand["operation"])
+	}
+	if got, want := fanCommand["parameters"], map[string]any{"duty_permille": float64(450), "lease_ms": float64(5000)}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("materialized physical fan parameters = %#v, want %#v", got, want)
+	}
+	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, fanCommand); err != nil {
+		t.Fatalf("materialized physical fan command must validate: %v", err)
+	}
+
+	fanSafeStop, err := catalog.MaterializeSafeStop("fan-01", "boot-cross")
+	if err != nil {
+		t.Fatalf("materialize physical fan safe stop: %v", err)
+	}
+	if fanSafeStop["policy_digest"] != physicalCapabilityDigest || fanSafeStop["operation"] != "safe_stop" {
+		t.Fatalf("fan safe stop authority = %v/%v", fanSafeStop["policy_digest"], fanSafeStop["operation"])
+	}
+	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, fanSafeStop); err != nil {
+		t.Fatalf("materialized physical fan safe stop must validate: %v", err)
 	}
 }
