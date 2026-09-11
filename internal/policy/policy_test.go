@@ -166,6 +166,106 @@ func TestGatewayResolvesApprovalBeforeCommanding(t *testing.T) {
 	}
 }
 
+// TestEvaluateIntentDeniesHighRiskDespiteRequiresApproval guards A-041 F1: the
+// R3/R4 denial in the risk-class policy document is authoritative and must be
+// enforced before any requires_approval routing.
+func TestEvaluateIntentDeniesHighRiskDespiteRequiresApproval(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	for _, risk := range []string{"R3", "R4"} {
+		t.Run(risk, func(t *testing.T) {
+			db, intentID := openPolicyFixture(t, risk, 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
+			defer func() { _ = db.Close() }()
+			if _, err := db.ExecContext(ctx, "UPDATE intents SET requires_approval = 1 WHERE intent_id = ?", intentID); err != nil {
+				t.Fatalf("set requires_approval: %v", err)
+			}
+			var result Result
+			if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+				var err error
+				result, err = NewGateway("policy-v1", ids.Deterministic()).EvaluateIntent(ctx, tx, intentID, now)
+				return err
+			}); err != nil {
+				t.Fatalf("evaluate intent: %v", err)
+			}
+			if result.Result != "denied" || result.Reason != "risk_policy_denied" {
+				t.Fatalf("result = %+v, want denied/risk_policy_denied", result)
+			}
+		})
+	}
+}
+
+// TestEvaluateIntentApprovedRequiresApprovalDispatches guards A-041 F1: an
+// approved R0/R1 requires_approval intent must terminate in dispatch, not spawn
+// another approval request. Previously ResolveApproval reset the intent to
+// pending and re-ran EvaluateIntent, which created a fresh approval each cycle
+// (an unbounded approve -> re-pending loop).
+func TestEvaluateIntentApprovedRequiresApprovalDispatches(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	db, intentID := openPolicyFixture(t, "R1", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
+	defer func() { _ = db.Close() }()
+	if _, err := db.ExecContext(ctx, "UPDATE intents SET requires_approval = 1 WHERE intent_id = ?", intentID); err != nil {
+		t.Fatalf("set requires_approval: %v", err)
+	}
+	// The fixture seeds an R2 approval authority; this intent is R1, so grant the
+	// approver authority for R1 too.
+	if _, err := db.ExecContext(ctx, `INSERT INTO approval_authorities (tenant_id, entity_id, risk_class, role_id) VALUES ('tenant', 'motor-1', 'R1', 'role-approver')`); err != nil {
+		t.Fatalf("insert R1 approval authority: %v", err)
+	}
+	gateway := NewGateway("policy-v1", ids.Deterministic())
+
+	var approval Result
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		approval, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
+		return err
+	}); err != nil {
+		t.Fatalf("request approval: %v", err)
+	}
+	if approval.Result != "approval_required" || approval.ApprovalID == "" {
+		t.Fatalf("approval result = %+v, want an approval request", approval)
+	}
+
+	var resolved Result
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		var nonce string
+		if err := tx.QueryRowContext(ctx, "SELECT nonce FROM approvals WHERE approval_id = ?", approval.ApprovalID).Scan(&nonce); err != nil {
+			return fmt.Errorf("load approval nonce: %w", err)
+		}
+		var intentSHA, decisionSHA []byte
+		if err := tx.QueryRowContext(ctx, "SELECT i.intent_sha256, d.decision_sha256 FROM intents i JOIN decisions d ON d.decision_id = i.decision_id WHERE i.intent_id = ?", intentID).Scan(&intentSHA, &decisionSHA); err != nil {
+			return fmt.Errorf("load approval digests: %w", err)
+		}
+		assertion, err := ApprovalAssertionSigningBytes(ApprovalAssertion{
+			ApprovalID: approval.ApprovalID, IntentID: intentID, DecisionID: "dec-policy", TenantID: "tenant",
+			SituationID: "sit-policy", SituationVersion: 1, RiskClass: "R1",
+			IntentDigest: "sha256:" + hex.EncodeToString(intentSHA), DecisionDigest: "sha256:" + hex.EncodeToString(decisionSHA),
+			ExpiresAt: "2099-01-01T00:00:00Z", Nonce: nonce, ApproverID: "operator-1", RelayID: "relay-1",
+		})
+		if err != nil {
+			return err
+		}
+		privateKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+		resolved, err = gateway.ResolveApproval(ctx, tx, approval.ApprovalID, true, "operator-1", "relay-1", ed25519.Sign(privateKey, assertion), "approved", now)
+		return err
+	}); err != nil {
+		t.Fatalf("resolve approval: %v", err)
+	}
+	if resolved.Result != "approved" || resolved.CommandID == "" {
+		t.Fatalf("resolved result = %+v, want approved with a command (no re-pending loop)", resolved)
+	}
+
+	// Exactly one approval must exist for the intent; the loop would have
+	// appended more on each cycle.
+	var approvalCount int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM approvals WHERE intent_id = ?", intentID).Scan(&approvalCount); err != nil {
+		t.Fatalf("count approvals: %v", err)
+	}
+	if approvalCount != 1 {
+		t.Fatalf("approval count = %d, want exactly 1", approvalCount)
+	}
+}
+
 func TestGatewayRejectsSamePrincipalRelay(t *testing.T) {
 	ctx := context.Background()
 	db, intentID := openPolicyFixture(t, "R2", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))

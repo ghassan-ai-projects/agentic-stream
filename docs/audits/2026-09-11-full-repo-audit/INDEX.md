@@ -91,7 +91,7 @@ A test file passes only if all hold:
 - [x] A-038 `internal/executor/native/openai.go` (242) — FINDINGS · HIGH → [A-038-executor-native-openai.md](A-038-executor-native-openai.md)
 - [x] A-039 `internal/actions/serial_session_exchange.go` (237) — FINDINGS → [A-039-actions-serial_session_exchange.md](A-039-actions-serial_session_exchange.md)
 - [x] A-040 `internal/actions/serial_session_safety.go` (226) — FINDINGS → [A-040-actions-serial_session_safety.md](A-040-actions-serial_session_safety.md)
-- [x] A-041 `internal/policy/policy_evaluate.go` (225) — FINDINGS · HIGH → [A-041-policy-policy_evaluate.md](A-041-policy-policy_evaluate.md)
+- [x] A-041 `internal/policy/policy_evaluate.go` (225) — FINDINGS · HIGH → [A-041-policy-policy_evaluate.md](A-041-policy-policy_evaluate.md) — ✅ FIXED
 - [x] A-042 `internal/actions/serial_session.go` (215) — PASS
 - [x] A-043 `internal/engine/engine_events.go` (213) — FINDINGS → [A-043-engine-engine-events.md](A-043-engine-engine-events.md)
 - [x] A-044 `internal/eventlog/quarantine.go` (209) — FINDINGS → [A-044-eventlog-quarantine.md](A-044-eventlog-quarantine.md)
