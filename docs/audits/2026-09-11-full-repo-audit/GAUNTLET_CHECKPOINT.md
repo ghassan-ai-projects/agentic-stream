@@ -431,3 +431,160 @@ review, then record the contract/operator round with its own checkpoint.
   `db80ff985be24fbc3f5bb9db1bac26612850b9f4e5b8170f5ce7aaa05ff1fea2`.
 - This section records the post-commit receipt; the next commit stores the
   updated checkpoint itself.
+
+---
+
+## Checkpoint: G-004 Round 4 operator and contract reconciliation
+
+Recorded: 2026-09-12 Europe/Berlin
+State: active; content round committed and lead-proven; independent re-review
+and the pinned protocol/CI gate remain pending
+
+### Fixed goal, bar, boundaries, and normalized scenes
+
+- Goal unchanged: resolve every actionable finding in `INDEX.md`; no finding
+  remains without a passing resolution and evidence.
+- Bar unchanged: `GAUNTLET_BAR.md` remains authoritative. This checkpoint is
+  progress navigation, not a whole-artifact completion judgment.
+- Boundaries unchanged: highest-quality Go, minimal design-consistent changes,
+  no new architecture/dependencies/network/secrets, preserve user changes,
+  prove behavior with tests, and commit after every round.
+- Normalized scenes unchanged: `runtime-safety`, `durability`, `contract`,
+  `quality`, and `artifact`.
+
+### Exact current and best artifact receipts
+
+- Round entry HEAD: `ded22fe` (`audit: repair operator windows and timer
+  identity`).
+- Current content HEAD: `1ebae6e1f10ed2b036d4ab9b776f677b46bac881`
+  (`audit: close operator and spec contract findings`).
+- Current judgment-surface receipts at that HEAD:
+
+  | Artifact | SHA-256 |
+  |---|---|
+  | `INDEX.md` | `8d506b0f76c95d98049d45107b17d7a90744d0900f5e4d4c433e0b85ba3abbe2` |
+  | `GAUNTLET_BAR.md` | `d4c314df617d0103879c816f31f932fb3f5978c666b1856f3dce60c6f6e79b70` |
+  | `A-005-operators-operators.md` | `304640cf649f31accc5b6b0ba18435896118b8315d199e0a4fb0cc7148cc18df` |
+  | `A-008-cmd-main.md` | `1d9630ea15f6c4bf62a08618ae75bba3921589b138b62180a28eed798c004ce7` |
+  | `A-009-runtime-pipeline.md` | `df02569caf13a7d3975d97883c84c6c8710e41299b6c185ebdd8db15caf446be` |
+  | `A-028-policy-policy_command.md` | `ccd600f921a030818582ab72cc3ee306c1b82992d226cb7e1c379b758e9cc797` |
+  | `A-092-design-storage-schema-v1.md` | `ee293067ea7f443b127934d004b058616c34aa1ad56ef578d26819097977f4e3` |
+  | `A-095-spec-schema.md` | `5025f909b96623122ff29665b31318695859d19c70ac6a3c6f5882fde679eab3` |
+  | `internal/operators/operators.go` | `d8eda5da42775788e47921a30515fbcea22b82b2382d3737b449b46a044da8ef` |
+  | `internal/operators/types.go` | `2c776d9e5342ee91fed4d9e45aad8b50d23b742c127e25a861ce014b154300dd` |
+  | `internal/spec/schema.json` | `3859f502cee40e4850beeba7549d9ad46cf4c2a72e5e10bf25423b81c2eb2f9c` |
+  | `internal/spec/compiler.go` | `a5aeaba9bad1c4d814bf1f7140a19b1b50b689eb33caaf2e463d07d3e3327d49` |
+  | `GAUNTLET_CHECKPOINT.md` before this entry | `35ffac28c490b5f99a16c8dd690e6a52162dcff8f7286c822ccba288a9baa6b9` |
+
+- Best artifact is the current HEAD plus protected commits
+  `70168ef`, `c88529c`, `4499df2`, `da7c5a1`, `646132a`, `13de4e25`,
+  `59dc9b0`, `d5111b6`, `ded22fe`, `02bf516`, `1299f00`, and `bd6b7ec`.
+- Content receipts included in this round: A-005 dead-interface cleanup and
+  operator runtime report, A-008 command wiring, A-009 paginated watch/eventlog
+  access, A-028 policy command semantics, A-092 cumulative storage snapshot,
+  A-095 strict spec contract, and their linked index markers.
+
+### Current decomposition, dependency map, and Ready Frontier
+
+| Unit | Scope | Depends on | Ready Frontier |
+|---|---|---|---|
+| R1 ingress acceptance | A-049 | baseline | `LOCKED PASS` |
+| R2 high-risk runtime | A-002, A-003, A-012, A-038, A-049, A-058, A-062 | R1 | `CONDITIONAL PASS` — lead race/vet proof complete; independent re-review pending |
+| R3 policy and contract | A-050, A-092, A-095 | R2 | `CONDITIONAL PASS` — policy/storage/spec/operator surfaces lead-proven; independent challenge pending |
+| R4 selected runtime surfaces | A-005, A-008, A-009, A-028 | R2/R3 | `CONDITIONAL PASS` — current code and focused tests pass; independent challenge pending |
+| R4 remaining production | A-001, A-004, A-006, A-007, A-011, A-014–A-024, A-026–A-027, A-029, A-031–A-047, A-051–A-061, A-063–A-069 | R2/R3 contract decisions | queued; A-017 isolated candidate is not integrated |
+| R5 test-quality sweep | A-070–A-088 and tests added by R2–R4 | corresponding production behavior | queued |
+| R6 whole-artifact judgment | every A-file, `INDEX.md`, bar, checkpoints, and full gates | R1–R5 | queued |
+
+### Critic-isolation rule and quality lenses
+
+Critics inspect the current committed artifact independently and do not edit
+the lead checkout or share conclusions. A finding is not approval until the
+lead reproduces it in the current artifact. The lenses remain:
+
+- safety/correctness: invariants, fail-closed behavior, cancellation,
+  transactions, races, and TOCTOU paths;
+- architecture/durability: boundaries, recovery, leases, fencing,
+  idempotency, deterministic replay, and dead/divergent code;
+- contracts/operators: schema, migrations, compiler/runtime parity, window
+  behavior, and data-only domain behavior;
+- tests/quality: assertion strength, bounded synchronization, coverage value,
+  duplication, exported-surface hygiene, and CI reproducibility;
+- operator readiness: logs, telemetry, error truthfulness, resource bounds,
+  and documented commands.
+
+### Protected Gain Ledger
+
+| Gain | Receipt | Protection |
+|---|---|---|
+| A-058/A-030/A-013/A-041/A-049 | `70168ef`, `c88529c`, `4499df2`, `da7c5a1`, `646132a` | preserve timer ordering, lineage/target binding, policy routing, and connector-scoped quarantine |
+| A-002/A-003/A-012/A-038/A-062 | `13de4e25` | preserve cancellation, transaction, fencing, provider-timeout, usage, and epoch-cost behavior |
+| A-050 | `59dc9b0` | policy digest failures cannot become empty approval assertions; canonical approval data remains package-private |
+| A-092 | `d5111b6` | design SQL remains a cumulative migration snapshot and ADR-014 remains linked to the contract rule |
+| A-005 | `ded22fe`, `1ebae6e` | preserve watermark close behavior, explicit timer identity/cancellation, per-operator quality admission, and one live entry point |
+| A-008/A-009/A-028 | `02bf516`, `1299f00`, `bd6b7ec` | preserve worker-error propagation, paginated watch delivery, eventlog ownership, retryable interlock failure, and dispatch-only rate accounting |
+| A-095 | `1ebae6e` | preserve schema/runtime parity; removed unenforced controls must fail closed through strict YAML decoding |
+
+### Latest locked verdict and single largest gap per active unit
+
+- R2: `CONDITIONAL PASS` — lead full race/vet proof is green; largest gap is
+  independent review of the combined runtime changes.
+- R3: `CONDITIONAL PASS` — contract and compiler evidence is green; largest gap
+  is independent verification that no supported authored surface was removed
+  or silently ignored.
+- R4 selected: `CONDITIONAL PASS` — focused and full race tests are green;
+  largest gap is independent challenge of command failure propagation and
+  operator boundary semantics.
+- R4 remaining: `PENDING` — largest gap is the unresolved production
+  dead/divergent surface inventory.
+- R5: `PENDING` — largest gap is false-confidence and failure-path coverage.
+- R6: `PENDING` — no whole-artifact judgment has passed.
+
+### Active causal probe
+
+- `env GOCACHE=/tmp/agentic-stream-go-cache go test -race -count=1 ./...` —
+  PASS before the content commit.
+- `env GOCACHE=/tmp/agentic-stream-go-cache go vet ./...` — PASS before the
+  content commit.
+- `sqlite3 :memory: < docs/design/contracts/storage-schema-v1.sql` — PASS.
+- `make docs-check` — PASS (`58 public Markdown pages and volatile surfaces
+  verified`).
+- `git diff --check` — PASS before the content commit.
+- `make ci-check` — NOT COMPLETE; the documented attempt stopped at
+  `proto-check` because the available protocol toolchain did not produce the
+  expected generated output. The pinned protocol gate remains open and must
+  be replayed on resume.
+
+### Cost consumed and remaining
+
+- Consumed: prior G-001–G-003 validation, four content integration rounds,
+  current full race/vet/SQLite/docs probes, and the stopped CI attempt. No
+  explicit token budget or machine-readable cost meter is available.
+- Remaining: continue from the Ready Frontier on resume without resetting
+  validation or plateau history.
+
+### Current truthful state
+
+`INDEX.md` records 17 fixed findings, 60 open findings, and four open HIGH
+findings. The current content commit is clean and lead-proven by the listed
+focused/full tests, but the audit is not solved. Independent re-review of the
+current artifact, the pinned protocol/CI gate, and all remaining findings are
+outstanding. No whole-artifact completion claim is permitted.
+
+### Next concrete artifact action
+
+On resume, inspect HEAD `1ebae6e` and this checkpoint, confirm the unchanged
+bar and boundaries, regenerate one judgment surface, replay the latest
+protected runtime/contract gains, and run isolated independent critics before
+integrating the next Ready Frontier item. Start by resolving the protocol gate
+environment and then evaluate the isolated A-017 candidate against current
+HEAD; do not cherry-pick it blindly because it was built from an older parent.
+
+### Round 4 content receipt
+
+- Content commit: `1ebae6e1f10ed2b036d4ab9b776f677b46bac881`
+  (`audit: close operator and spec contract findings`).
+- Checkpoint hash immediately before this G-004 entry:
+  `35ffac28c490b5f99a16c8dd690e6a52162dcff8f7286c822ccba288a9baa6b9`.
+- This section is the post-content receipt; the checkpoint receipt commit
+  follows immediately and is the final operation in this paused turn.
