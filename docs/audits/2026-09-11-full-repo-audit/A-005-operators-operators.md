@@ -1,6 +1,6 @@
 # A-005 · `internal/operators/operators.go`
 
-LOC: 778 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 862 · Audit date: 2026-09-11 · Verdict: FINDINGS
 
 ## Bar (close only when every line is true)
 - Every window emit mode declared in `internal/spec/schema.json` (`on_update`, `on_close`, `early_and_close`) produces features; the schema default `on_close` is implemented.
@@ -28,3 +28,46 @@ LOC: 778 · Audit date: 2026-09-11 · Verdict: FINDINGS
 - P2: watermark-based eviction/window bounds are explicit (`cutoff := watermark.Add(-size)`, line 251); producer timestamps never drive scheduling (`ApplyEventAt` doc, line 128); boot fencing fails closed at the bounded-history limit (lines 547-551).
 - P7: `ApplyTimer` sorts instance names and state keys before iteration (lines 688, 720); samples sorted by (event time, event ID) for deterministic `latest` (lines 261-266, 632-636); aggregates are order-independent or order-pinned.
 - P5: exported symbols documented; `log/slog` not needed at this layer.
+
+## Resolution (isolated implementation, 2026-09-12)
+
+The scoped implementation closes the operator-runtime findings without adding
+domain branches or unbounded state:
+
+- **F1/F2/P6:** watermark advancement now closes `on_close` windows at the
+  configured tumbling size or sliding hop. `early_and_close` continues to emit
+  deterministic provisional updates while advancing the same close horizon.
+  The runtime validates emit modes, positive sizes, and sliding hops; invalid
+  `count`, `decay`, zero/oversized hops, and tumbling `slide` configurations
+  fail closed before the runtime is constructed. Tests cover the explicit
+  `on_close` path, hop boundaries, and all reachable emit modes.
+- **F3:** provenance admission is driven by the registered input schema's
+  fields rather than an event-type prefix. Slope calculation has one documented
+  per-hour runtime contract and no unit-name scaling branch.
+- **F4 (scoped portion):** the unused `ApplyEvent` production wrapper was
+  removed; tests use `ApplyEventAt` so processing time remains explicit.
+- **F5:** timer output no longer invents the default tenant or partition. Direct
+  timer callers provide `TimerIdentity`; the existing engine path supplies its
+  authoritative tenant and partition during persistence enrichment. A test
+  proves non-default tenant and non-zero partition attribution.
+- **F6/F8:** the redundant state write was removed, deterministic ordering uses
+  `slices`, and `ApplyTimer` now honors cancellation before and during timer
+  evaluation.
+- **F7:** quality and boot admission is evaluated per operator, so one
+  operator's provenance contract cannot suppress a different operator sharing
+  its input.
+
+Focused evidence:
+
+```text
+go test -race -count=1 ./internal/operators   PASS
+go vet ./internal/operators                   PASS
+go test ./...                                  PASS
+git diff --check                               PASS
+```
+
+The `Runtime` interface declaration in `internal/operators/types.go` remains
+unmodified because this isolated change is restricted to `operators.go`, its
+tests, and this audit record. It is still unreferenced and should be removed
+by the lead in a separate, explicitly scoped cleanup before A-005 can be
+marked fully closed.

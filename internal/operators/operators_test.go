@@ -37,7 +37,7 @@ func TestAggregateMean(t *testing.T) {
 			Classification: contractsv1.ClassificationInternal,
 			Data:           map[string]any{"celsius": float64(i + 1)},
 		}
-		fs, nps, err := rt.ApplyEvent(ctx, ps, env, env.EventTime)
+		fs, nps, err := rt.ApplyEventAt(ctx, ps, env, env.EventTime, env.IngestedAt)
 		if err != nil {
 			t.Fatalf("ApplyEvent: %v", err)
 		}
@@ -80,7 +80,7 @@ func TestSlope(t *testing.T) {
 			Classification: contractsv1.ClassificationInternal,
 			Data:           map[string]any{"celsius": float64(i)},
 		}
-		fs, nps, err := rt.ApplyEvent(ctx, ps, env, env.EventTime)
+		fs, nps, err := rt.ApplyEventAt(ctx, ps, env, env.EventTime, env.IngestedAt)
 		if err != nil {
 			t.Fatalf("ApplyEvent: %v", err)
 		}
@@ -119,14 +119,14 @@ func TestLateEventCorrectsPreviouslyEmittedWindow(t *testing.T) {
 		Classification: contractsv1.ClassificationInternal,
 		Data:           map[string]any{"celsius": 10.0},
 	}
-	if _, ps, err = rt.ApplyEvent(ctx, ps, first, base); err != nil {
+	if _, ps, err = rt.ApplyEventAt(ctx, ps, first, base, first.IngestedAt); err != nil {
 		t.Fatalf("apply first event: %v", err)
 	}
 
 	late := first
 	late.ID = "evt-late"
 	late.EventTime = base.Add(-time.Minute)
-	features, _, err := rt.ApplyEvent(ctx, ps, late, base)
+	features, _, err := rt.ApplyEventAt(ctx, ps, late, base, late.IngestedAt)
 	if err != nil {
 		t.Fatalf("apply late event: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestLateEventCorrectsPreviouslyEmittedWindow(t *testing.T) {
 	inOrder := first
 	inOrder.ID = "evt-in-order"
 	inOrder.EventTime = base.Add(time.Minute)
-	features, _, err = rt.ApplyEvent(ctx, ps, inOrder, base.Add(time.Minute))
+	features, _, err = rt.ApplyEventAt(ctx, ps, inOrder, base.Add(time.Minute), inOrder.IngestedAt)
 	if err != nil {
 		t.Fatalf("apply in-order event: %v", err)
 	}
@@ -248,6 +248,181 @@ func TestMissingHeartbeatEventUsesDetectionTimeWhenLate(t *testing.T) {
 	}
 }
 
+func TestOnCloseWindowEmitsAtWatermarkSlideBoundary(t *testing.T) {
+	compiled := meanSpec()
+	// An omitted emit value is normalized to the schema/runtime default.
+	compiled.Windows[0] = spec.Window{Name: "w1", Kind: "sliding", Size: "5m", Slide: "2m"}
+	rt, err := operators.NewOperatorRuntime("d1", compiled, ids.Deterministic())
+	if err != nil {
+		t.Fatalf("NewOperatorRuntime: %v", err)
+	}
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	ps := &operators.PartitionState{}
+	for _, event := range []struct {
+		id     string
+		offset time.Duration
+		value  float64
+		want   int
+	}{
+		{id: "sample-0", offset: 0, value: 1, want: 0},
+		{id: "sample-1", offset: time.Minute, value: 3, want: 0},
+		{id: "sample-2", offset: 2 * time.Minute, value: 5, want: 1},
+		{id: "sample-3", offset: 3 * time.Minute, value: 7, want: 0},
+	} {
+		env := testOperatorEnvelope(event.id, "sensor.temperature", base.Add(event.offset), map[string]any{
+			"celsius": event.value,
+			"quality": "valid",
+		})
+		features, next, err := rt.ApplyEventAt(context.Background(), ps, env, env.EventTime, env.IngestedAt)
+		if err != nil {
+			t.Fatalf("apply %s: %v", event.id, err)
+		}
+		ps = next
+		if got := len(features); got != event.want {
+			t.Fatalf("features after %s = %d, want %d", event.id, got, event.want)
+		}
+		if event.want == 1 {
+			feature := features[0]
+			if got, want := feature.Value, 3.0; got != want {
+				t.Fatalf("closed mean = %v, want %v", got, want)
+			}
+			if got := feature.Completeness; got != string(operators.CompletenessFinalByPolicy) {
+				t.Fatalf("closed completeness = %q, want final_by_policy", got)
+			}
+			if got, want := feature.WindowEnd, env.EventTime; !got.Equal(want) {
+				t.Fatalf("closed window end = %s, want %s", got, want)
+			}
+		}
+	}
+}
+
+func TestUnsupportedWindowConfigurationFailsClosed(t *testing.T) {
+	tests := []struct {
+		name   string
+		window spec.Window
+	}{
+		{name: "count window", window: spec.Window{Name: "w1", Kind: "count", Count: 2}},
+		{name: "decay window", window: spec.Window{Name: "w1", Kind: "decay", HalfLife: "1m"}},
+		{name: "zero sliding size", window: spec.Window{Name: "w1", Kind: "sliding", Size: "0s", Slide: "1s"}},
+		{name: "slide exceeds size", window: spec.Window{Name: "w1", Kind: "sliding", Size: "1m", Slide: "2m"}},
+		{name: "tumbling slide", window: spec.Window{Name: "w1", Kind: "tumbling", Size: "1m", Slide: "1s"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			compiled := meanSpec()
+			compiled.Windows = []spec.Window{tt.window}
+			if _, err := operators.NewOperatorRuntime("d1", compiled, ids.Deterministic()); err == nil {
+				t.Fatal("NewOperatorRuntime succeeded for unsupported window configuration")
+			}
+		})
+	}
+}
+
+func TestEarlyAndCloseWindowEmitsProvisionalUpdates(t *testing.T) {
+	compiled := meanSpec()
+	compiled.Windows[0] = spec.Window{Name: "w1", Kind: "sliding", Size: "5m", Slide: "2m", Emit: "early_and_close"}
+	rt, err := operators.NewOperatorRuntime("d1", compiled, ids.Deterministic())
+	if err != nil {
+		t.Fatalf("NewOperatorRuntime: %v", err)
+	}
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	ps := &operators.PartitionState{}
+	first := testOperatorEnvelope("sample-0", "sensor.temperature", base, map[string]any{"celsius": 1.0, "quality": "valid"})
+	features, ps, err := rt.ApplyEventAt(context.Background(), ps, first, base, base)
+	if err != nil {
+		t.Fatalf("apply first event: %v", err)
+	}
+	if len(features) != 1 || features[0].Completeness != string(operators.CompletenessProvisional) {
+		t.Fatalf("first features = %+v, want one provisional feature", features)
+	}
+
+	second := testOperatorEnvelope("sample-2", "sensor.temperature", base.Add(2*time.Minute), map[string]any{"celsius": 5.0, "quality": "valid"})
+	features, _, err = rt.ApplyEventAt(context.Background(), ps, second, second.EventTime, second.IngestedAt)
+	if err != nil {
+		t.Fatalf("apply closing event: %v", err)
+	}
+	if len(features) != 1 {
+		t.Fatalf("closing features = %d, want one provisional update", len(features))
+	}
+	if features[0].Completeness != string(operators.CompletenessProvisional) {
+		t.Fatalf("closing completeness = %s, want provisional", features[0].Completeness)
+	}
+}
+
+func TestQualityAdmissionIsPerOperator(t *testing.T) {
+	compiled := &spec.CompiledSpec{
+		SchemaVersion: "agentic-stream/v1",
+		Inputs:        []spec.Input{{Name: "zone", EventType: "zone.temp.observed", SchemaVersion: "1.0", SchemaRef: "zone.temp.observed/1.0", PartitionKey: "entity.id", EntityType: "zone"}},
+		Windows:       []spec.Window{{Name: "w1", Kind: "tumbling", Size: "5m", Emit: "on_update"}},
+		Operators: []spec.Operator{
+			{Name: "temperature", Kind: "aggregate", Inputs: []string{"zone"}, Field: "data.celsius", Window: "w1", Aggregate: "mean", Output: "temperature_mean"},
+			{Name: "heartbeat", Kind: "missing_heartbeat", Inputs: []string{"zone"}, Duration: "5m", Output: "heartbeat_missing"},
+		},
+	}
+	rt, err := operators.NewOperatorRuntime("d1", compiled, ids.Deterministic())
+	if err != nil {
+		t.Fatalf("NewOperatorRuntime: %v", err)
+	}
+	env := testOperatorEnvelope("zone-event", "zone.temp.observed", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), map[string]any{
+		"celsius": 25.0,
+		"quality": "valid",
+	})
+	features, _, err := rt.ApplyEventAt(context.Background(), &operators.PartitionState{}, env, env.EventTime, env.IngestedAt)
+	if err != nil {
+		t.Fatalf("apply event: %v", err)
+	}
+	if len(features) != 1 || features[0].OperatorID != "heartbeat" {
+		t.Fatalf("features = %+v, want only heartbeat feature", features)
+	}
+}
+
+func TestHeartbeatTimerCarriesExplicitTenantAndPartition(t *testing.T) {
+	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), ids.Deterministic())
+	if err != nil {
+		t.Fatalf("NewOperatorRuntime: %v", err)
+	}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	env := testOperatorEnvelope("heartbeat-1", "test.heartbeat", base, map[string]any{"boot_id": "boot-A"})
+	env.TenantID = "tenant-b"
+	env.PartitionKey = "partition-b"
+	ps := &operators.PartitionState{}
+	if _, ps, err = rt.ApplyEventAt(context.Background(), ps, env, base, base); err != nil {
+		t.Fatalf("apply heartbeat: %v", err)
+	}
+	wantPartition := env.PartitionID(0)
+	features, _, err := rt.ApplyTimer(context.Background(), ps, base.Add(5*time.Minute), base.Add(5*time.Minute), operators.TimerIdentity{
+		TenantID:    env.TenantID,
+		PartitionID: wantPartition,
+	})
+	if err != nil {
+		t.Fatalf("apply timer: %v", err)
+	}
+	if len(features) != 1 {
+		t.Fatalf("timer feature count = %d, want 1", len(features))
+	}
+	if got := features[0].TenantID; got != env.TenantID {
+		t.Fatalf("timer tenant = %q, want %q", got, env.TenantID)
+	}
+	if got := features[0].PartitionID; got != wantPartition {
+		t.Fatalf("timer partition = %d, want %d", got, wantPartition)
+	}
+}
+
+func TestApplyTimerHonorsCancellation(t *testing.T) {
+	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), ids.Deterministic())
+	if err != nil {
+		t.Fatalf("NewOperatorRuntime: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _, err = rt.ApplyTimer(ctx, &operators.PartitionState{}, time.Time{}, time.Time{})
+	if err != context.Canceled {
+		t.Fatalf("ApplyTimer error = %v, want %v", err, context.Canceled)
+	}
+}
+
 func TestNumericQualityGate(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -274,7 +449,7 @@ func TestNumericQualityGate(t *testing.T) {
 			}
 			env := testOperatorEnvelope("quality", "sensor.temperature", base, tt.data)
 			env.Quality = tt.quality
-			features, _, err := rt.ApplyEvent(context.Background(), &operators.PartitionState{}, env, base)
+			features, _, err := rt.ApplyEventAt(context.Background(), &operators.PartitionState{}, env, base, env.IngestedAt)
 			if err != nil {
 				t.Fatalf("ApplyEvent: %v", err)
 			}
@@ -333,7 +508,7 @@ func TestLatestAggregateUsesDeterministicEventTimeOrdering(t *testing.T) {
 					"quality": "valid",
 				})
 				var emitted []operators.Feature
-				emitted, ps, err = rt.ApplyEvent(context.Background(), ps, env, env.EventTime)
+				emitted, ps, err = rt.ApplyEventAt(context.Background(), ps, env, env.EventTime, env.IngestedAt)
 				if err != nil {
 					t.Fatalf("ApplyEvent: %v", err)
 				}
@@ -403,7 +578,7 @@ func TestWindowStateBootBoundaryAndSequenceWrap(t *testing.T) {
 					"boot_id": event.BootID,
 					"seq":     float64(event.Sequence),
 				})
-				features, ps, err = rt.ApplyEvent(context.Background(), ps, env, env.EventTime)
+				features, ps, err = rt.ApplyEventAt(context.Background(), ps, env, env.EventTime, env.IngestedAt)
 				if err != nil {
 					t.Fatalf("ApplyEvent: %v", err)
 				}
@@ -450,7 +625,7 @@ func TestStaleBootCannotMutateWindow(t *testing.T) {
 			"boot_id": boot,
 		})
 		var err error
-		_, ps, err = rt.ApplyEvent(context.Background(), ps, env, at)
+		_, ps, err = rt.ApplyEventAt(context.Background(), ps, env, at, env.IngestedAt)
 		if err != nil {
 			t.Fatalf("apply %s: %v", id, err)
 		}

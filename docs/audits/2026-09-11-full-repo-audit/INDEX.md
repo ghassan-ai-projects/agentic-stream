@@ -55,7 +55,7 @@ A test file passes only if all hold:
 - [x] A-002 `internal/actions/dispatcher.go` (892) — FINDINGS · HIGH → [A-002-actions-dispatcher.md](A-002-actions-dispatcher.md) — ✅ FIXED
 - [x] A-003 `internal/episodes/executor.go` (851) — FINDINGS · HIGH → [A-003-episodes-executor.md](A-003-episodes-executor.md) — ✅ FIXED
 - [x] A-004 `internal/storage/authority.go` (836) — FINDINGS → [A-004-storage-authority.md](A-004-storage-authority.md)
-- [x] A-005 `internal/operators/operators.go` (778) — FINDINGS · HIGH → [A-005-operators-operators.md](A-005-operators-operators.md)
+- [x] A-005 `internal/operators/operators.go` (778) — FINDINGS · HIGH → [A-005-operators-operators.md](A-005-operators-operators.md) — 🔧 WIP
 - [x] A-006 `internal/episodes/assembler.go` (764) — FINDINGS → [A-006-episodes-assembler.md](A-006-episodes-assembler.md)
 - [x] A-007 `internal/episodes/worker_executor.go` (682) — FINDINGS → [A-007-episodes-worker_executor.md](A-007-episodes-worker_executor.md)
 - [x] A-008 `cmd/agentic-stream/main.go` (648) — FINDINGS → [A-008-cmd-main.md](A-008-cmd-main.md)
