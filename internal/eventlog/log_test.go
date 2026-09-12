@@ -78,6 +78,68 @@ func TestAppendAndRead(t *testing.T) {
 	}
 }
 
+func TestCurrentPositionIsTenantScoped(t *testing.T) {
+	ctx := context.Background()
+	log, cleanup := newTestLog(t)
+	defer cleanup()
+
+	base := contractsv1.Envelope{
+		ID:             "evt-default-1",
+		Type:           "sensor.temperature",
+		SchemaVersion:  "1.0",
+		TenantID:       "default",
+		Source:         "test",
+		PartitionKey:   "motor-17",
+		Entity:         contractsv1.EntityRef{Type: "motor", ID: "motor-17"},
+		EventTime:      time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		IngestedAt:     time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
+		Classification: contractsv1.ClassificationInternal,
+		Data:           map[string]any{"celsius": 42.0},
+	}
+	position, err := log.Append(ctx, "default", []contractsv1.Envelope{base})
+	if err != nil {
+		t.Fatalf("append default event: %v", err)
+	}
+
+	other := base
+	other.ID = "evt-other-1"
+	other.TenantID = "other"
+	other.PartitionKey = "motor-18"
+	other.Entity = contractsv1.EntityRef{Type: "motor", ID: "motor-18"}
+	otherPosition, err := log.Append(ctx, "other", []contractsv1.Envelope{other})
+	if err != nil {
+		t.Fatalf("append other event: %v", err)
+	}
+
+	latest := base
+	latest.ID = "evt-default-2"
+	latest.EventTime = latest.EventTime.Add(time.Second)
+	latest.IngestedAt = latest.IngestedAt.Add(time.Second)
+	latestPosition, err := log.Append(ctx, "default", []contractsv1.Envelope{latest})
+	if err != nil {
+		t.Fatalf("append latest default event: %v", err)
+	}
+
+	if got, err := log.CurrentPosition(ctx, "missing"); err != nil {
+		t.Fatalf("current position for empty tenant: %v", err)
+	} else if got != 0 {
+		t.Fatalf("empty tenant position = %d, want 0", got)
+	}
+	if got, err := log.CurrentPosition(ctx, "default"); err != nil {
+		t.Fatalf("current default position: %v", err)
+	} else if got != latestPosition[0] {
+		t.Fatalf("default position = %d, want %d", got, latestPosition[0])
+	}
+	if got, err := log.CurrentPosition(ctx, "other"); err != nil {
+		t.Fatalf("current other position: %v", err)
+	} else if got != otherPosition[0] {
+		t.Fatalf("other position = %d, want %d", got, otherPosition[0])
+	}
+	if position[0] >= latestPosition[0] {
+		t.Fatalf("positions did not advance: first=%d latest=%d", position[0], latestPosition[0])
+	}
+}
+
 func TestAppendDuplicateIgnored(t *testing.T) {
 	ctx := context.Background()
 	log, cleanup := newTestLog(t)

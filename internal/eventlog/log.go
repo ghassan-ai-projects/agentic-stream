@@ -50,6 +50,21 @@ type EventLog struct {
 	requireSchemas bool
 }
 
+// CurrentPosition returns the greatest durable log position for tenantID.
+// It returns zero when the tenant has no records.
+func (l *EventLog) CurrentPosition(ctx context.Context, tenantID string) (LogPosition, error) {
+	if l == nil || l.db == nil {
+		return 0, fmt.Errorf("event log storage is required")
+	}
+	var position int64
+	if err := l.db.QueryRowContext(ctx,
+		"SELECT COALESCE(MAX(position), 0) FROM event_log WHERE tenant_id = ?", tenantID,
+	).Scan(&position); err != nil {
+		return 0, fmt.Errorf("read current event position for tenant %q: %w", tenantID, err)
+	}
+	return LogPosition(position), nil
+}
+
 // RequireSchemaValidation makes ingress validate every envelope against the
 // durable event_schemas registry before it can enter event_log.
 func (l *EventLog) RequireSchemaValidation() *EventLog {
