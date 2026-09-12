@@ -320,8 +320,8 @@ operator/schema/runtime frontier only after the current candidate is accepted.
 ## Checkpoint: G-003 Round 3 A-050 policy digest hardening
 
 Recorded: 2026-09-12 Europe/Berlin
-State: active; A-050 is locally reproduced and ready for commit/review; the
-contract/operator agents remain isolated and are not yet integrated.
+State: active; A-050 is locally reproduced and committed; the contract/operator
+agents remain isolated and are not yet integrated.
 
 ### Fixed goal, bar, boundaries, and normalized scenes
 
@@ -352,7 +352,8 @@ contract/operator agents remain isolated and are not yet integrated.
   | `GAUNTLET_CHECKPOINT.md` | identified by the post-commit checkpoint receipt below |
 
 - Best accepted artifact remains `80000af` plus the protected commits. The
-  A-050 candidate is locally verified but independent re-review is pending.
+  A-050 content commit is `59dc9b049bbb4688eb6cc671854d8148b066ee0d`; it is
+  locally verified but independent re-review is pending.
 
 ### Current decomposition, dependency map, and Ready Frontier
 
@@ -360,7 +361,7 @@ contract/operator agents remain isolated and are not yet integrated.
 |---|---|---|---|
 | R1 ingress acceptance | A-049 | baseline | `LOCKED PASS` |
 | R2 high-risk runtime | A-002, A-003, A-012, A-038, A-062 | R1 | `CONDITIONAL PASS — PAUSED` |
-| R3-A policy digest | A-050 | R2 | local proof complete; commit and independent challenge |
+| R3-A policy digest | A-050 | R2 | committed; independent challenge |
 | R3-B contract/operator | A-005, A-092, A-095 | R2 and policy/spec decisions | isolated agent commits pending integration |
 | R4 remaining production | A-001, A-004, A-006–A-009, A-011, A-014–A-049, A-051–A-069 | R2/R3 contract decisions | queued |
 | R5 test-quality sweep | A-070–A-088 | corresponding production behavior | queued; isolated test commit pending port |
@@ -380,13 +381,13 @@ operator-readiness/resource bounds.
 |---|---|---|
 | A-058/A-030/A-013/A-041/A-049 | `70168ef`, `c88529c`, `4499df2`, `da7c5a1`, `646132a` | preserve the prior invariant and ingress protections |
 | A-002/A-003/A-012/A-038/A-062 | `13de4e25c0a7595974cd0063423db3e82bd4f317` | preserve cancellation, fencing, usage, timeout, and transaction behavior; re-review remains required |
-| A-050 policy digest and signing surface | Round 3 content commit pending | invalid policy configuration cannot emit empty digests; approval canonicalization remains package-private |
+| A-050 policy digest and signing surface | `59dc9b049bbb4688eb6cc671854d8148b066ee0d` | invalid policy configuration cannot emit empty digests; approval canonicalization remains package-private |
 
 ### Latest locked verdict and single largest gap per active unit
 
 - R2: `CONDITIONAL PASS — PAUSED` — full current race/vet probes pass; largest
   gap is independent review of the latest hardening.
-- R3-A: `CONDITIONAL PASS` — focused policy race/vet probes pass and the
+- R3-A: `CONDITIONAL PASS — COMMITTED` — focused policy race/vet probes pass and the
   constructor no longer swallows digest failure; largest gap is independent
   challenge of the panic-based constructor contract.
 - R3-B: `PENDING` — largest gap is integrating the stale-parent contract
@@ -400,8 +401,8 @@ operator-readiness/resource bounds.
 - `env GOCACHE=/tmp/agentic-stream-go-cache go test -race -count=1 ./internal/policy` — PASS.
 - `env GOCACHE=/tmp/agentic-stream-go-cache go vet ./internal/policy` — PASS.
 - `git diff --check` — PASS before staging.
-- Next probe: stage/commit A-050, then rebase or port the isolated contract
-  and operator artifacts onto the new HEAD before reviewing them.
+- Next probe: rebase or port the isolated contract and operator artifacts onto
+  the new HEAD before reviewing them.
 
 ### Cost consumed and remaining
 
@@ -413,11 +414,20 @@ operator-readiness/resource bounds.
 ### Current truthful state
 
 Eleven findings are now marked `✅ FIXED` in the index and 66 remain open,
-including seven baseline HIGH findings. A-050 is a locally proven candidate;
-the audit is not solved and no whole-artifact completion claim is permitted.
+including seven baseline HIGH findings. A-050 is committed as a locally proven
+candidate; the audit is not solved and no whole-artifact completion claim is
+permitted.
 
 ### Next concrete artifact action
 
-Record the exact A-050 pre-commit receipts, commit the round, record its
-post-commit receipt, then integrate the isolated A-092/A-095 commit with a
-current-HEAD compatibility review.
+Integrate the isolated A-092/A-095 commit with a current-HEAD compatibility
+review, then record the contract/operator round with its own checkpoint.
+
+### Round 3 A-050 content receipt
+
+- Content commit: `59dc9b049bbb4688eb6cc671854d8148b066ee0d`
+  (`audit: close policy digest finding`).
+- Checkpoint hash at that content commit:
+  `db80ff985be24fbc3f5bb9db1bac26612850b9f4e5b8170f5ce7aaa05ff1fea2`.
+- This section records the post-commit receipt; the next commit stores the
+  updated checkpoint itself.
