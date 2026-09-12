@@ -1,6 +1,6 @@
 # A-028 · `internal/policy/policy_command.go`
 
-LOC: 300 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 300 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - An infrastructure failure is never recorded as a durable policy denial; only a genuine policy verdict may set a terminal intent status.
@@ -14,9 +14,23 @@ LOC: 300 · Audit date: 2026-09-11 · Verdict: FINDINGS
 
 ## Checked, not an issue
 - P1: all other errors wrapped with `%w`; contexts honored; single-tx mutations, no races (serial per partition).
-- P2: command creation is idempotent (`existingCommand` pre-check + `ON CONFLICT(intent_id) DO NOTHING` + deterministic idempotency key); command is canonical-JSON digested before insert; approval nonce is derived and single-use; outbox insert is atomic with the command.
+- P2: command creation is idempotent (`existingCommandID` pre-check + `ON CONFLICT(intent_id) DO NOTHING` + deterministic idempotency key); command is canonical-JSON digested before insert; approval nonce is derived and single-use; outbox insert is atomic with the command.
 - P3: `approvalNotificationData`'s local map fill (226-228) is ugly but harmless; no unused exported symbols in the file.
 - P4: policy plane only prepares commands/outbox rows; it does not dispatch — separation holds.
 - P5: canonical JSON used for command document and digest; `formatTime` helper shared via `policy_helpers.go`.
-- P6: `policy_test.go` (interlock denial) and `rate_limit_test.go` cover the paths; `go test ./internal/policy/` passes.
+- P6: `policy_test.go`, `rate_limit_test.go`, and `policy_command_test.go` cover the success and failure paths; `go test ./internal/policy/` passes.
 - P7: command IDs from `ids.Generator`, idempotency key derived from stable identities; bucket key is UTC hour.
+
+## Resolution (2026-09-12) — FIXED
+
+- **F1 fixed:** `approveAutomatic` classifies only `interlock.ErrTripped` as the genuine readiness denial. Other assertion failures are returned as errors, so the caller's transaction rolls back and the intent remains retryable. The stable `Result.Reason` remains `interlock_not_ready`; the policy audit row records the wrapped interlock cause through the separate audit-reason path. `TestGatewayPropagatesInterlockInfrastructureFailure` proves that an infrastructure error does not persist an intent status, audit row, or command, while `TestGatewayRecordsInterlockDenialCauseWithoutChangingStableReason` proves the denial and cause evidence.
+- **F2 fixed:** command insertion is now identified before rate accounting. A new command claims a slot with an atomic conditional upsert only while the bucket is below its limit; an over-limit transaction removes its un-dispatched prepared command and records the denial without incrementing the bucket. `TestRateLimitDenialDoesNotConsumeDispatchBudget` proves the count stays unchanged and no command/outbox row remains.
+- **F3 fixed:** `existingCommandID` is the single command-identity lookup with explicit `sql.ErrNoRows` semantics. `insertCommand` returns whether it inserted; successful inserts use the already-known command ID, while the conflict path reuses the same helper. The divergent `storedCommandID` helper was removed.
+
+Focused evidence for this resolution:
+
+- `go test -race -count=1 ./internal/policy` — PASS
+- `go vet ./internal/policy` — PASS
+- `git diff --check` — PASS
+
+All three bar lines are satisfied: infrastructure failures remain retryable, rate-limit accounting represents dispatchable commands only, and command identity has one lookup contract.
