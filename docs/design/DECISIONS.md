@@ -16,6 +16,7 @@
 | ADR-010 | Keep agent frameworks outside the stream core | Accepted |
 | ADR-011 | Use a typed, process-isolated worker protocol | Accepted |
 | ADR-012 | Defer distributed processing and multi-agent orchestration | Accepted |
+| ADR-014 | Keep the v1 storage contract as a cumulative migration snapshot | Accepted |
 
 ## Language and framework decision
 
@@ -298,3 +299,22 @@ recorded at L. Invariant 10 (explainability) is served by the durable counter
 and the terminal reasons (`stale_situation` with `rebind_attempts`, or
 `rebind_failed`). The policy and dispatcher freshness gates remain the
 version-freshness authority after the episode terminates.
+
+## ADR-014: Keep the v1 storage contract as a cumulative migration snapshot
+
+**Context.** The executable SQLite schema is assembled incrementally by the
+numbered migrations. A separately maintained design SQL file had drifted into
+a mixture of pre- and post-lifecycle-fencing columns, which made the documented
+contract describe a state that no migration could create.
+
+**Decision.** Treat the design SQL as a cumulative snapshot of migrations
+`001` through the current v1 migration. The migration files remain the upgrade
+history and executable source of truth; contract validation compares the
+snapshot's table, column, constraint, and index metadata with a fresh database
+created by the complete migration chain. Lifecycle/fencing columns from
+migration `003` are authoritative.
+
+**Consequences.** Contract changes must be regenerated or reconciled whenever a
+migration changes the schema. Consumers inspecting the design contract see an
+achievable current state and cannot accidentally reintroduce the pre-fencing
+episode status model.

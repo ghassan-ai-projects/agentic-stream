@@ -58,12 +58,6 @@
     },
     "actions": {
       "$ref": "#/$defs/actions"
-    },
-    "retention": {
-      "$ref": "#/$defs/retention"
-    },
-    "telemetry": {
-      "$ref": "#/$defs/telemetry"
     }
   },
   "$defs": {
@@ -712,39 +706,6 @@
           "minimum": 0,
           "maximum": 1,
           "default": 0.5
-        }
-      }
-    },
-    "retention": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "rawEvents": {
-          "$ref": "#/$defs/duration"
-        },
-        "features": {
-          "$ref": "#/$defs/duration"
-        },
-        "situationVersions": {
-          "$ref": "#/$defs/duration"
-        },
-        "episodeEvents": {
-          "$ref": "#/$defs/duration"
-        }
-      }
-    },
-    "telemetry": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "traceSampleRatio": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "recordModelDeltas": {
-          "type": "boolean",
-          "default": false
         }
       }
     }

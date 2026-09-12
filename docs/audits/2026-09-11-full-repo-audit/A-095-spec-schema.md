@@ -1,8 +1,6 @@
 # A-095 · `internal/spec/schema.json`
 
-LOC: 752 · Audit date: 2026-09-11 · Verdict: PARTIAL — F1-F3 FIXED; F4 OPEN
-
-LOC: 781 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 752 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - F1: every field the runtime reads from an authored spec is allowed by the schema.
@@ -40,12 +38,11 @@ count windows, map operators, variance aggregates, and max reducers are
 rejected. `go test ./...`, `go vet ./...`, `git diff --check`, and direct
 SQLite contract validation pass in the isolated worktree.
 
-F4 remains open in this isolated write set. The canonical design examples and
-their compiler tests currently author `retention` and `telemetry`; wiring those
-settings into storage retention and runtime telemetry would require files
-outside the permitted paths, while removing the fields from the schema without
-updating those fixtures would break the repository's current compile proof.
-This is the only remaining concern in A-095 and is reported explicitly rather
-than being marked fixed without runtime evidence.
+F4 is fixed by removing the unenforced `retention` and `telemetry` sections
+from the v1 authoring schema and compiled representation. The three canonical
+examples were updated accordingly, and the compiler now uses strict YAML
+field decoding so an old or misspelled section is rejected instead of silently
+dropped from the digest. `TestCompileRejectsUnenforcedTopLevelControls` proves
+both removed sections fail closed.
 - S2: no redundant or dead per-field definitions within the defs; conditional window requirements via `allOf`/`if` are correct for the kinds the runtime supports (tumbling/sliding).
 - S3: not a domain-data file; `additionalProperties: false` throughout keeps authoring surface explicit.

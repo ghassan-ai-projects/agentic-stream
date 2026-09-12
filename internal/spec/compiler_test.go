@@ -239,6 +239,26 @@ func TestCompileRejectsUnsupportedRuntimeSurface(t *testing.T) {
 	}
 }
 
+func TestCompileRejectsUnenforcedTopLevelControls(t *testing.T) {
+	tests := []struct {
+		name  string
+		field string
+		value string
+	}{
+		{name: "retention", field: "retention", value: "  rawEvents: 7d\n"},
+		{name: "telemetry", field: "telemetry", value: "  traceSampleRatio: 1\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			yaml := minimalSpecYAML() + tt.field + ":\n" + tt.value
+			_, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), tt.name+".yaml")
+			if err == nil || !strings.Contains(err.Error(), tt.field) {
+				t.Fatalf("expected %s to be rejected explicitly, got %v", tt.field, err)
+			}
+		})
+	}
+}
+
 func TestCompileRejectsUnknownOperatorOutput(t *testing.T) {
 	yaml := strings.ReplaceAll(minimalSpecYAML(),
 		"      input: mean_value",

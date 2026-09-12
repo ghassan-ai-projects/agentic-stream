@@ -1,6 +1,6 @@
 # A-005 · `internal/operators/operators.go`
 
-LOC: 862 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 862 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - Every window emit mode declared in `internal/spec/schema.json` (`on_update`, `on_close`, `early_and_close`) produces features; the schema default `on_close` is implemented.
@@ -44,8 +44,9 @@ domain branches or unbounded state:
 - **F3:** provenance admission is driven by the registered input schema's
   fields rather than an event-type prefix. Slope calculation has one documented
   per-hour runtime contract and no unit-name scaling branch.
-- **F4 (scoped portion):** the unused `ApplyEvent` production wrapper was
-  removed; tests use `ApplyEventAt` so processing time remains explicit.
+- **F4:** the unused `ApplyEvent` production wrapper and the unreferenced
+  `operators.Runtime` interface were removed; tests use `ApplyEventAt` so
+  processing time remains explicit and there is one production entry point.
 - **F5:** timer output no longer invents the default tenant or partition. Direct
   timer callers provide `TimerIdentity`; the existing engine path supplies its
   authoritative tenant and partition during persistence enrichment. A test
@@ -65,9 +66,3 @@ go vet ./internal/operators                   PASS
 go test ./...                                  PASS
 git diff --check                               PASS
 ```
-
-The `Runtime` interface declaration in `internal/operators/types.go` remains
-unmodified because this isolated change is restricted to `operators.go`, its
-tests, and this audit record. It is still unreferenced and should be removed
-by the lead in a separate, explicitly scoped cleanup before A-005 can be
-marked fully closed.

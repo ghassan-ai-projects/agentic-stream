@@ -55,11 +55,11 @@ A test file passes only if all hold:
 - [x] A-002 `internal/actions/dispatcher.go` (892) — FINDINGS · HIGH → [A-002-actions-dispatcher.md](A-002-actions-dispatcher.md) — ✅ FIXED
 - [x] A-003 `internal/episodes/executor.go` (851) — FINDINGS · HIGH → [A-003-episodes-executor.md](A-003-episodes-executor.md) — ✅ FIXED
 - [x] A-004 `internal/storage/authority.go` (836) — FINDINGS → [A-004-storage-authority.md](A-004-storage-authority.md)
-- [x] A-005 `internal/operators/operators.go` (778) — FINDINGS · HIGH → [A-005-operators-operators.md](A-005-operators-operators.md) — 🔧 WIP
+- [x] A-005 `internal/operators/operators.go` (778) — FINDINGS · HIGH → [A-005-operators-operators.md](A-005-operators-operators.md) — ✅ FIXED
 - [x] A-006 `internal/episodes/assembler.go` (764) — FINDINGS → [A-006-episodes-assembler.md](A-006-episodes-assembler.md)
 - [x] A-007 `internal/episodes/worker_executor.go` (682) — FINDINGS → [A-007-episodes-worker_executor.md](A-007-episodes-worker_executor.md)
-- [x] A-008 `cmd/agentic-stream/main.go` (648) — FINDINGS → [A-008-cmd-main.md](A-008-cmd-main.md)
-- [x] A-009 `internal/runtime/pipeline.go` (646) — FINDINGS → [A-009-runtime-pipeline.md](A-009-runtime-pipeline.md)
+- [x] A-008 `cmd/agentic-stream/main.go` (648) — FINDINGS → [A-008-cmd-main.md](A-008-cmd-main.md) — ✅ FIXED
+- [x] A-009 `internal/runtime/pipeline.go` (646) — FINDINGS → [A-009-runtime-pipeline.md](A-009-runtime-pipeline.md) — ✅ FIXED
 - [x] A-010 `internal/canonicaljson/canonicaljson.go` (624) — PASS
 - [x] A-011 `internal/situations/situations.go` (597) — FINDINGS → [A-011-situations-situations.md](A-011-situations-situations.md)
 - [x] A-012 `internal/executor/native/native.go` (560) — FINDINGS · HIGH → [A-012-executor-native-native.md](A-012-executor-native-native.md) — ✅ FIXED
@@ -78,7 +78,7 @@ A test file passes only if all hold:
 - [x] A-025 `internal/actions/serial_materialize.go` (315) — PASS
 - [x] A-026 `internal/worker/server.go` (314) — FINDINGS → [A-026-worker-server.md](A-026-worker-server.md)
 - [x] A-027 `internal/actions/serial_session_state.go` (310) — FINDINGS → [A-027-actions-serial_session_state.md](A-027-actions-serial_session_state.md)
-- [x] A-028 `internal/policy/policy_command.go` (300) — FINDINGS → [A-028-policy-policy_command.md](A-028-policy-policy_command.md)
+- [x] A-028 `internal/policy/policy_command.go` (300) — FINDINGS → [A-028-policy-policy_command.md](A-028-policy-policy_command.md) — ✅ FIXED
 - [x] A-029 `internal/evidence/ledger.go` (298) — FINDINGS → [A-029-evidence-ledger.md](A-029-evidence-ledger.md)
 - [x] A-030 `internal/engine/engine_state.go` (288) — FINDINGS · HIGH → [A-030-engine-engine-state.md](A-030-engine-engine-state.md) — ✅ FIXED
 - [x] A-031 `internal/runtime/worker_runtime.go` (286) — FINDINGS → [A-031-runtime-worker_runtime.md](A-031-runtime-worker_runtime.md)
@@ -151,7 +151,7 @@ A test file passes only if all hold:
 - [x] A-092 `docs/design/contracts/storage-schema-v1.sql` (1057) — FINDINGS · HIGH → [A-092-design-storage-schema-v1.md](A-092-design-storage-schema-v1.md) — ✅ FIXED
 - [x] A-093 `migrations/001_initial.sql` (491) — PASS
 - [x] A-094 `migrations/003_lifecycle_fencing.sql` (237) — PASS
-- [x] A-095 `internal/spec/schema.json` (752) — FINDINGS · HIGH → [A-095-spec-schema.md](A-095-spec-schema.md) — ⚠️ F1-F3 FIXED · F4 OPEN
+- [x] A-095 `internal/spec/schema.json` (752) — FINDINGS · HIGH → [A-095-spec-schema.md](A-095-spec-schema.md) — ✅ FIXED
 - [x] A-096 `internal/eventschema/registry_data.json` (852) — PASS
 - [x] A-097 `docs/design/contracts/runtime-v1.proto` (366, canonical proto source for the generated `proto/agenticstream/runtime/v1/` code) — PASS
 
@@ -161,32 +161,20 @@ Audit complete 2026-09-11. 97 files audited (69 production, 22 test, 6 schema/SQ
 
 **Baseline verdicts: 20 PASS · 77 FINDINGS · 16 HIGH.**
 
-**Current resolution status: 11 FIXED · 66 OPEN FINDINGS · 7 OPEN HIGH.**
+**Current resolution status: 17 FIXED · 60 OPEN FINDINGS · 4 OPEN HIGH.**
 
-Current resolution for this isolated round: A-092 is fixed. A-095 fixes F1-F3;
-F4 remains explicitly open because its runtime/storage wiring is outside the
-permitted write set.
+Current resolution for the accepted rounds: A-005, A-008, A-009, A-028,
+A-050, A-092, and A-095 are fixed in the current artifact. The remaining
+findings stay open until their own acceptance bars and evidence are recorded.
 
-### HIGH findings (fix before any further feature work)
+### HIGH findings currently open
 
 | # | File | Finding |
 |---|------|---------|
-| 1 | `internal/episodes/executor.go` (A-003) | Success-path persist tx uses cancellable ctx (lost decisions, stuck `running`); epoch-kill quarantine UPDATEs rolled back by own error return → poisoned admission loop. Empirically proven. |
-| 2 | `internal/actions/dispatcher.go` (A-002) | Expired-lease reclaim finalizes before tenant/intent populated → rollback every attempt → permanent head-of-line blocking of the action plane. |
-| 3 | `internal/operators/operators.go` (A-005) | `on_close` windows (schema + runtime default) never emit a feature — no window-close path exists; flagship example silently worked around in tests. |
-| 4 | `internal/clock/clock.go` (A-058) | `Virtual.Advance` skips due timers behind a not-yet-due head after partial sort — breaks timer-driven replay. Empirically proven. |
-| 5 | `internal/policy/policy_evaluate.go` (A-041) | `requires_approval` shortcut bypasses R3/R4 denial and creates an unbounded approve→re-pending loop; intent can never dispatch. |
-| 6 | `internal/decisions/validator.go` (A-013) | `parameters.target` bypasses entity binding when `entity_id` absent — model can steer an effect at an unverified target. |
-| 7 | `internal/engine/engine_state.go` (A-030) | `lineageID` hashes evidence IDs with no separator → concatenation collisions silently mis-attribute evidence (`ON CONFLICT DO NOTHING`). |
-| 8 | `internal/executor/native/openai.go` (A-038) | Nil client falls back to no-timeout `http.DefaultClient` (stalled provider hangs worker); streamed requests never set `include_usage` → zero-cost settlement. |
-| 9 | `internal/executor/native/native.go` (A-012) | Timeout/cancel terminals settle `Usage{}` → under-counted `spent_micro` weakens the cost kill switch for the most expensive episodes. |
-| 10 | `internal/ingress/jsonl.go` (A-049) | Quarantine ID `line:<N>` not trace-scoped → second malformed trace flips prior record to `rejected` and aborts ingestion. |
 | 11 | `internal/ingress/simulator.go` (A-019) | Hardcoded `"mode"` channel branch in Go; no data entry — violates channels-are-data invariant. |
-| 12 | `internal/replay/replay.go` (A-001) | ~450 LOC unreachable Mode/Shadow/Recorded machinery wired nowhere; admission logic diverges from production pipeline — golden-fidelity risk. |
-| 13 | `docs/design/contracts/storage-schema-v1.sql` (A-092) | Contract is a pre/post-cutover chimera matching no achievable migration state; changed without the ADR its own header requires. |
-| 14 | `internal/spec/schema.json` (A-095) | `executor.skills` implemented end-to-end but rejected by the schema (`additionalProperties:false`) — P5 skill path unreachable from YAML. Schema also admits window/operator kinds and aggregates the runtime rejects; 5 reducer strategies are silent no-ops. |
 | 15 | `internal/storage/storage_test.go` (A-080) | `TestOpenIsIdempotent` mtime assertion can never fail — false confidence on data-wiping regressions. |
 | 16 | `internal/engine/engine_test.go` (A-078) | Fixed 100 ms sleep gates the SQLite busy-retry test — CI-flaky false pass; goroutine leak on timeout path. |
+| 17 | `internal/operators/operators_test.go` (A-072) | Operator tests contain weak assertions and duplicated setup that leave repaired boundary behavior under-proven. |
 
 ### Recurring themes
 

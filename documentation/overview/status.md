@@ -40,8 +40,8 @@ support the claim, not that every production deployment scenario is complete.
   catalog enforcement reduces policy behavior to the implemented approval
   path. Do not rely on `deny` or `simulate` semantics until dedicated runtime
   enforcement and tests exist.
-- SituationSpec retention and telemetry sections are compiled metadata, not
-  currently enforced retention or telemetry controls.
+- SituationSpec does not expose retention or telemetry controls yet; runtime
+  telemetry is configured separately at deployment time.
 
 ## Deliberately deferred
 

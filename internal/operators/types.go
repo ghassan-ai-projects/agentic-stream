@@ -1,12 +1,7 @@
 // Package operators implements deterministic, keyed stream operators.
 package operators
 
-import (
-	"context"
-	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-)
+import "time"
 
 // Feature is an emitted operator result.
 type Feature struct {
@@ -33,14 +28,6 @@ type Feature struct {
 	Tracestate        string                 `json:"tracestate,omitempty"`
 	TraceContinuation bool                   `json:"trace_continuation,omitempty"`
 	Metadata          map[string]interface{} `json:"metadata,omitempty"`
-}
-
-// Runtime is the operator runtime interface used by the engine.
-type Runtime interface {
-	// ApplyEvent processes one normalized event and emits zero or more features.
-	ApplyEvent(ctx context.Context, state *State, env contractsv1.Envelope, watermark time.Time) ([]Feature, *State, error)
-	// ApplyTimer fires due timers and emits any resulting features.
-	ApplyTimer(ctx context.Context, state *State, watermark, processingTime time.Time) ([]Feature, *State, error)
 }
 
 // State is the durable state blob for one operator instance (keyed by entity).

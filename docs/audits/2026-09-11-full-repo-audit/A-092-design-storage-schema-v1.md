@@ -42,10 +42,9 @@ table/index names and equal table column metadata (order, type, nullability,
 default, and primary-key position). The isolated change was committed with the
 focused spec/schema change as one reviewable contract round.
 
-The migration history remains the executable source of truth. The isolated
-write set did not include `docs/design/DECISIONS.md`, so no new ADR entry was
-added; migration `003` retains its explicit breaking-cutover record. If the
-project requires a separate ADR for that historical decision, it remains a
-follow-up outside this isolated change.
+The migration history remains the executable source of truth. ADR-014 records
+the lifecycle/fencing cutover and the rule that this cumulative snapshot must
+be checked against the full migration chain. Migration `003` remains the
+executable breaking-cutover record.
 - S2: no redundant columns found in the contract's own definitions; keys/uniques/FKs it does declare are correct for the tables it describes.
 - S3: not applicable (SQL contract, no domain data).
