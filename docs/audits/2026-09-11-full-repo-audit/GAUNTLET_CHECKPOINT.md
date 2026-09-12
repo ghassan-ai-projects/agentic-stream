@@ -237,11 +237,11 @@ operator-readiness/resource bounds.
 | A-013 target/entity binding | `4499df2` | every target remains bound to trusted episode identity |
 | A-041 risk/approval routing | `da7c5a1` | R3/R4 cannot enter approval loops or dispatch |
 | A-049 connector-scoped quarantine/line bounds | `646132a` | preserve raw-input fail-closed handling, checkpoint error truth, and bounded lines |
-| A-002 expired-lease identity restoration | Round 2 content commit pending | reclaim must finalize unknown outcomes with tenant/intent identity and no effector call |
-| A-003 cancellation-proof episode persistence/epoch quarantine | Round 2 content commit pending | produced/cancelled and late-kill paths must commit terminal state, never poison the queue |
-| A-012 native provider budget/cost accounting | Round 2 content commit pending | timeout/cancel cost, finite ceiling, bounded retry, and canonical output errors remain visible |
-| A-038 OpenAI HTTP/usage bounds | Round 2 content commit pending | provider calls cannot hang or silently settle unreported spend |
-| A-062 atomic epoch kill/fail-closed state | Round 2 content commit pending | kill and supersession share a transaction; missing control fails closed |
+| A-002 expired-lease identity restoration | `13de4e25c0a7595974cd0063423db3e82bd4f317` (progress commit; re-review pending) | reclaim must finalize unknown outcomes with tenant/intent identity and no effector call |
+| A-003 cancellation-proof episode persistence/epoch quarantine | `13de4e25c0a7595974cd0063423db3e82bd4f317` (progress commit; re-review pending) | produced/cancelled and late-kill paths must commit terminal state, never poison the queue |
+| A-012 native provider budget/cost accounting | `13de4e25c0a7595974cd0063423db3e82bd4f317` (progress commit; re-review pending) | timeout/cancel cost, finite ceiling, bounded retry, and canonical output errors remain visible |
+| A-038 OpenAI HTTP/usage bounds | `13de4e25c0a7595974cd0063423db3e82bd4f317` (progress commit; re-review pending) | provider calls cannot hang or silently settle unreported spend |
+| A-062 atomic epoch kill/fail-closed state | `13de4e25c0a7595974cd0063423db3e82bd4f317` (progress commit; re-review pending) | kill and supersession share a transaction; missing control fails closed |
 
 ### Latest locked verdict and single largest gap per active unit
 
@@ -290,11 +290,11 @@ operator-readiness/resource bounds.
 The audit is not solved. Ten findings are marked `✅ FIXED` in the index (four
 prior commits, A-049, and the five Round 2 targets); 67 findings remain open
 and seven baseline HIGH findings remain open. The current Round 2 candidate
-passes the full race and vet probes and is being committed as a resumable
-progress artifact at the user's request. Independent re-review after the
-latest hardening and the full pinned CI gate remain outstanding. No
-whole-artifact completion claim is permitted. Work is intentionally stopped
-after the receipt commit.
+passes the full race and vet probes and is committed as a resumable progress
+artifact at the user's request. Independent re-review after the latest
+hardening and the full pinned CI gate remain outstanding. No whole-artifact
+completion claim is permitted. Work is intentionally stopped after the
+checkpoint receipt commit.
 
 ### Next concrete artifact action
 
@@ -309,5 +309,8 @@ operator/schema/runtime frontier only after the current candidate is accepted.
   completion.
 - Current evidence: full `go test -race -count=1 ./...`, `go vet ./...`, and
   `git diff --check` pass on the candidate.
-- Current content commit and post-commit checkpoint receipt are recorded below
-  once written.
+- Current content commit: `13de4e25c0a7595974cd0063423db3e82bd4f317`
+  (`audit: checkpoint round 2 runtime hardening`).
+- Checkpoint hash at the content commit: `73068bcae519cc92faa9da7e810daaffde6cc6a7ac818f239ad2884c3d749bce`.
+- This section is the post-commit checkpoint receipt; its own receipt commit
+  follows immediately and is the final operation in this paused turn.
