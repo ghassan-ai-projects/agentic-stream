@@ -1,5 +1,7 @@
 # A-095 · `internal/spec/schema.json`
 
+LOC: 752 · Audit date: 2026-09-11 · Verdict: PARTIAL — F1-F3 FIXED; F4 OPEN
+
 LOC: 781 · Audit date: 2026-09-11 · Verdict: FINDINGS
 
 ## Bar (close only when every line is true)
@@ -15,5 +17,35 @@ LOC: 781 · Audit date: 2026-09-11 · Verdict: FINDINGS
 
 ## Checked, not an issue
 - S1 (compiler consistency): required fields and shapes match the compiler's reads — `input.schema` ↔ `SchemaRef` (validated against `eventschema.Lookup`, `compiler.go:252-258`), `timePolicy`, `window`, `operator`, `situation`/`occurrence`, `trigger` (incl. required `materialDelta`), `budget` (9 fields), `intent` (incl. `presets`, `modelWritableFields`, `rateLimitPerHour` ↔ migration 022, `policy` default `approval` ↔ `compiler.go:227-231`), `dispatchPolicy` default `shadow` ↔ `compiler.go:238-240`, `riskCeiling` default `R1` ↔ `compiler.go:232-234`, input classification/maxPayloadBytes defaults ↔ `compiler.go:209-216`.
+
+## Resolution
+
+F1 is fixed by adding the bounded `executor.skills` array and a strict
+`skillRef` definition requiring a name and a lowercase 64-hex-character
+`tree_sha256` digest. The compiler now accepts the authored path used by the
+assembler and worker instead of rejecting it at JSON Schema validation.
+
+F2 is fixed by narrowing the schema to the implemented operator surface:
+`tumbling`/`sliding` windows, `aggregate`/`slope`/`missing_heartbeat` operators,
+and the eight aggregates implemented by `computeAggregate`. The unsupported
+window, operator, and aggregate values are no longer schema-valid.
+
+F3 is fixed by narrowing reducer strategies to the two strategies handled by
+both reducer application and feature-map construction: `latest_event_time` and
+`set_union`. Unsupported strategies can no longer silently publish incomplete
+Situation facts from an authored spec.
+
+Focused compiler coverage proves one digest-pinned skill compiles and that
+count windows, map operators, variance aggregates, and max reducers are
+rejected. `go test ./...`, `go vet ./...`, `git diff --check`, and direct
+SQLite contract validation pass in the isolated worktree.
+
+F4 remains open in this isolated write set. The canonical design examples and
+their compiler tests currently author `retention` and `telemetry`; wiring those
+settings into storage retention and runtime telemetry would require files
+outside the permitted paths, while removing the fields from the schema without
+updating those fixtures would break the repository's current compile proof.
+This is the only remaining concern in A-095 and is reported explicitly rather
+than being marked fixed without runtime evidence.
 - S2: no redundant or dead per-field definitions within the defs; conditional window requirements via `allOf`/`if` are correct for the kinds the runtime supports (tumbling/sliding).
 - S3: not a domain-data file; `additionalProperties: false` throughout keeps authoring surface explicit.

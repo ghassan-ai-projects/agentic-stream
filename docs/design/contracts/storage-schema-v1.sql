@@ -1,6 +1,8 @@
--- Logical SQLite schema baseline for the first implementation.
--- Migration files may split this by milestone, but must preserve these keys
--- and uniqueness constraints unless an ADR changes the contract.
+-- Logical SQLite schema snapshot for the current v1 implementation.
+--
+-- This contract is the cumulative state after migrations 001-030. The numbered
+-- migration files remain the upgrade history and executable source of truth;
+-- keep this snapshot synchronized whenever a migration changes the schema.
 
 PRAGMA foreign_keys = ON;
 
@@ -67,6 +69,7 @@ CREATE TABLE event_log (
     payload_sha256      BLOB NOT NULL CHECK (length(payload_sha256) = 32),
     original_artifact_id TEXT REFERENCES artifacts(artifact_id),
     created_at          TEXT NOT NULL,
+    tracestate          TEXT,
     UNIQUE (tenant_id, event_id)
 ) STRICT;
 
@@ -88,6 +91,9 @@ CREATE TABLE event_schemas (
     UNIQUE (event_type, schema_version)
 ) STRICT;
 
+CREATE INDEX event_schemas_lookup
+    ON event_schemas(event_type, schema_version, status);
+
 CREATE TABLE event_quarantine (
     quarantine_id   TEXT PRIMARY KEY,
     tenant_id       TEXT NOT NULL,
@@ -106,6 +112,9 @@ CREATE TABLE event_quarantine (
     redriven_at     TEXT,
     UNIQUE (tenant_id, event_id)
 ) STRICT;
+
+CREATE INDEX event_quarantine_status
+    ON event_quarantine(tenant_id, status, last_seen_at);
 
 CREATE TABLE event_gaps (
     gap_id          TEXT PRIMARY KEY,
@@ -127,10 +136,10 @@ CREATE TABLE watch_conditions (
     target               TEXT NOT NULL,
     expires_at           TEXT NOT NULL,
     remaining_fires      INTEGER NOT NULL CHECK (remaining_fires BETWEEN 0 AND 100),
-    max_fires            INTEGER NOT NULL CHECK (max_fires BETWEEN 1 AND 100),
     status               TEXT NOT NULL CHECK (status IN ('active', 'expired', 'disabled')),
     created_at           TEXT NOT NULL,
-    updated_at           TEXT NOT NULL
+    updated_at           TEXT NOT NULL,
+    max_fires            INTEGER NOT NULL DEFAULT 1 CHECK (max_fires BETWEEN 1 AND 100)
 ) STRICT;
 
 CREATE TABLE watch_fires (
@@ -139,6 +148,9 @@ CREATE TABLE watch_fires (
     fired_at             TEXT NOT NULL,
     PRIMARY KEY (watch_id, event_id)
 ) STRICT;
+
+CREATE INDEX watch_conditions_due
+    ON watch_conditions(tenant_id, status, expires_at);
 
 CREATE TABLE event_inbox (
     consumer_name       TEXT NOT NULL,
@@ -237,15 +249,16 @@ CREATE TABLE situations (
     partition_id        INTEGER NOT NULL CHECK (partition_id >= 0),
     occurrence_id       TEXT NOT NULL,
     current_version     INTEGER NOT NULL CHECK (current_version >= 1),
+    last_reasoned_version INTEGER NOT NULL DEFAULT 0 CHECK (last_reasoned_version >= 0),
     phase               TEXT NOT NULL,
     status              TEXT NOT NULL,
     first_event_time    TEXT NOT NULL,
     latest_event_time   TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
     created_at          TEXT NOT NULL,
-    state_codec_version INTEGER NOT NULL CHECK (state_codec_version >= 1),
-    state_json          BLOB NOT NULL,
-    state_sha256        BLOB NOT NULL CHECK (length(state_sha256) = 32),
+    state_codec_version INTEGER NOT NULL DEFAULT 0 CHECK (state_codec_version >= 0),
+    state_json          BLOB NOT NULL DEFAULT X'7B7D',
+    state_sha256        BLOB NOT NULL DEFAULT X'0000000000000000000000000000000000000000000000000000000000000000' CHECK (length(state_sha256) = 32),
     UNIQUE (
         tenant_id,
         situation_type,
@@ -285,6 +298,8 @@ CREATE TABLE situation_versions (
     snapshot_sha256     BLOB NOT NULL CHECK (length(snapshot_sha256) = 32),
     lineage_id          TEXT NOT NULL REFERENCES lineage_sets(lineage_id),
     created_at          TEXT NOT NULL,
+    traceparent         TEXT,
+    tracestate          TEXT,
     PRIMARY KEY (situation_id, version),
     CHECK (
         previous_version IS NULL OR
@@ -317,6 +332,7 @@ CREATE TABLE trigger_evaluations (
     reasons_json        BLOB NOT NULL,
     policy_sha256       BLOB NOT NULL CHECK (length(policy_sha256) = 32),
     evaluated_at        TEXT NOT NULL,
+    delta_json          BLOB NOT NULL DEFAULT X'7B7D',
     FOREIGN KEY (situation_id, situation_version)
         REFERENCES situation_versions(situation_id, version)
 ) STRICT;
@@ -347,6 +363,7 @@ CREATE TABLE scheduler_items (
     expires_at          TEXT NOT NULL,
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
+    kind                TEXT NOT NULL DEFAULT 'standard' CHECK (kind IN ('standard', 'reconsider')),
     FOREIGN KEY (situation_id, situation_version)
         REFERENCES situation_versions(situation_id, version)
 ) STRICT;
@@ -365,45 +382,46 @@ CREATE TABLE episodes (
     model_policy        TEXT NOT NULL,
     prompt_version      TEXT NOT NULL,
     snapshot_sha256     BLOB NOT NULL CHECK (length(snapshot_sha256) = 32),
-    prompt_sha256       BLOB CHECK (prompt_sha256 IS NULL OR length(prompt_sha256) = 32),
-    objective_sha256    BLOB CHECK (objective_sha256 IS NULL OR length(objective_sha256) = 32),
     admission_key       BLOB NOT NULL UNIQUE CHECK (length(admission_key) = 32),
     request_json        BLOB NOT NULL,
-    status              TEXT NOT NULL CHECK (
-        status IN (
-            'accepted',
-            'queued',
+    lifecycle_status    TEXT NOT NULL CHECK (
+        lifecycle_status IN (
+            'admitted',
             'running',
-            'cancelling',
-            'decided',
-            'no_action',
-            'needs_human',
+            'concluded',
+            'closed',
             'superseded',
-            'timed_out',
-            'budget_exhausted',
-            'failed',
-            'cancelled',
-            'interrupted'
+            'expired',
+            'abandoned'
         )
     ),
+    current_attempt_id  TEXT,
+    current_fence       INTEGER NOT NULL DEFAULT 0 CHECK (current_fence >= 0),
     accepted_at         TEXT NOT NULL,
     started_at          TEXT,
     ended_at            TEXT,
     terminal_json       BLOB,
+    prompt_sha256       BLOB CHECK (prompt_sha256 IS NULL OR length(prompt_sha256) = 32),
+    objective_sha256    BLOB CHECK (objective_sha256 IS NULL OR length(objective_sha256) = 32),
+    dispatch_policy     TEXT NOT NULL DEFAULT 'shadow' CHECK (dispatch_policy IN ('active', 'shadow')),
+    policy_epoch        TEXT NOT NULL DEFAULT '',
+    stale_rebind_count  INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (situation_id, situation_version)
         REFERENCES situation_versions(situation_id, version)
 ) STRICT;
 
-CREATE INDEX episodes_situation_status
-    ON episodes(situation_id, status, accepted_at);
+CREATE INDEX episodes_situation_lifecycle
+    ON episodes(situation_id, lifecycle_status, accepted_at);
 
 CREATE UNIQUE INDEX one_live_episode_per_situation
     ON episodes(situation_id)
-    WHERE status IN ('accepted', 'queued', 'running', 'cancelling');
+    WHERE lifecycle_status IN ('admitted', 'running');
 
 CREATE TABLE episode_events (
     episode_id          TEXT NOT NULL REFERENCES episodes(episode_id),
     sequence            INTEGER NOT NULL CHECK (sequence >= 1),
+    attempt_id          TEXT,
+    fence               INTEGER CHECK (fence IS NULL OR fence >= 1),
     event_type          TEXT NOT NULL,
     event_json          BLOB NOT NULL,
     event_sha256        BLOB NOT NULL CHECK (length(event_sha256) = 32),
@@ -412,22 +430,79 @@ CREATE TABLE episode_events (
     PRIMARY KEY (episode_id, sequence)
 ) STRICT;
 
-CREATE TABLE episode_attempts (
-    attempt_id     TEXT PRIMARY KEY,
-    episode_id     TEXT NOT NULL REFERENCES episodes(episode_id),
-    fence          INTEGER NOT NULL CHECK (fence >= 1),
-    owner_epoch    TEXT,
-    status         TEXT NOT NULL CHECK (status IN ('dispatched', 'running', 'cancelling', 'produced', 'declined', 'cancelled', 'failed', 'timed_out', 'abandoned')),
-    started_at     TEXT NOT NULL,
-    ended_at       TEXT,
-    terminal_json  BLOB,
-    UNIQUE (episode_id, fence),
-    UNIQUE (attempt_id, episode_id, fence)
+CREATE TABLE episode_rejections (
+    rejection_id  TEXT PRIMARY KEY,
+    episode_id    TEXT,
+    attempt_id    TEXT,
+    fence         INTEGER NOT NULL CHECK (fence >= 0),
+    reason        TEXT NOT NULL CHECK (
+        reason IN (
+            'unknown_episode',
+            'stale_attempt',
+            'wrong_attempt',
+            'terminal_attempt',
+            'episode_closed',
+            'schema_invalid',
+            'snapshot_mismatch',
+            'evidence_not_visible',
+            'forged_reference',
+            'oversized',
+            'expired',
+            'intent_type_not_allowed',
+            'risk_ceiling_exceeded',
+            'catalog_missing',
+            'catalog_forged',
+            'intent_type_not_in_catalog',
+            'risk_label_mismatch',
+            'parameter_schema_violation',
+            'preset_mismatch',
+            'ungrounded_evidence'
+        )
+    ),
+    details_json  BLOB NOT NULL,
+    created_at    TEXT NOT NULL,
+    FOREIGN KEY (episode_id) REFERENCES episodes(episode_id)
 ) STRICT;
+
+CREATE INDEX episode_rejections_identity
+    ON episode_rejections(episode_id, attempt_id, fence);
+
+CREATE TABLE episode_attempts (
+    attempt_id             TEXT PRIMARY KEY,
+    episode_id             TEXT NOT NULL REFERENCES episodes(episode_id),
+    fence                  INTEGER NOT NULL CHECK (fence >= 1),
+    status                 TEXT NOT NULL CHECK (
+        status IN (
+            'dispatched',
+            'running',
+            'cancelling',
+            'produced',
+            'declined',
+            'cancelled',
+            'failed',
+            'timed_out',
+            'abandoned'
+        )
+    ),
+    started_at             TEXT,
+    ended_at               TEXT,
+    terminal_json          BLOB,
+    artifact_manifest_json BLOB NOT NULL DEFAULT X'7B7D',
+    owner_epoch            TEXT,
+    UNIQUE (episode_id, fence)
+) STRICT;
+
+CREATE INDEX episode_attempts_live
+    ON episode_attempts(episode_id, status, fence DESC);
+
+CREATE UNIQUE INDEX episode_attempt_identity
+    ON episode_attempts(attempt_id, episode_id, fence);
 
 CREATE TABLE decisions (
     decision_id         TEXT PRIMARY KEY,
     episode_id          TEXT NOT NULL REFERENCES episodes(episode_id),
+    attempt_id          TEXT,
+    fence               INTEGER CHECK (fence IS NULL OR fence >= 1),
     ordinal             INTEGER NOT NULL CHECK (ordinal >= 1),
     situation_id        TEXT NOT NULL,
     situation_version   INTEGER NOT NULL,
@@ -436,8 +511,11 @@ CREATE TABLE decisions (
     validation_status   TEXT NOT NULL CHECK (
         validation_status IN ('proposed', 'accepted', 'rejected')
     ),
+    rejection_reason    TEXT,
     validation_json     BLOB NOT NULL,
     created_at          TEXT NOT NULL,
+    traceparent         TEXT,
+    tracestate          TEXT,
     UNIQUE (episode_id, ordinal),
     FOREIGN KEY (situation_id, situation_version)
         REFERENCES situation_versions(situation_id, version)
@@ -469,6 +547,8 @@ CREATE TABLE intents (
     ),
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
+    rate_limit_per_hour INTEGER NOT NULL DEFAULT 0,
+    requires_approval   INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (situation_id, situation_version)
         REFERENCES situation_versions(situation_id, version)
 ) STRICT;
@@ -552,6 +632,8 @@ CREATE TABLE outcomes (
     reconciliation_status TEXT,
     outcome_sha256      BLOB NOT NULL CHECK (length(outcome_sha256) = 32),
     occurred_at         TEXT NOT NULL,
+    traceparent         TEXT,
+    tracestate          TEXT,
     UNIQUE (command_id, ordinal)
 ) STRICT;
 
@@ -606,8 +688,16 @@ CREATE TABLE evidence_call_ledger (
     PRIMARY KEY (tenant_id, episode_id, attempt_id, fence, call_id),
     UNIQUE (attempt_id, fence, call_id),
     FOREIGN KEY (attempt_id, episode_id, fence)
-        REFERENCES episode_attempts(attempt_id, episode_id, fence)
+        REFERENCES episode_attempts(attempt_id, episode_id, fence),
+    CHECK (status != 'completed' OR (result_json IS NOT NULL AND result_sha256 IS NOT NULL AND result_bytes IS NOT NULL AND row_count IS NOT NULL AND completed_at IS NOT NULL)),
+    CHECK (status = 'running' OR result_json IS NOT NULL OR result_sha256 IS NULL)
 ) STRICT;
+
+CREATE INDEX evidence_call_ledger_leases
+    ON evidence_call_ledger(status, lease_until);
+
+CREATE INDEX evidence_call_ledger_attempt
+    ON evidence_call_ledger(tenant_id, episode_id, attempt_id, fence);
 
 CREATE TABLE runtime_owner (
     singleton_id   INTEGER PRIMARY KEY CHECK (singleton_id = 1),
@@ -673,3 +763,295 @@ CREATE TABLE cost_reservations (
     created_at     TEXT NOT NULL,
     settled_at     TEXT
 ) STRICT;
+
+CREATE TABLE policy_evaluations (
+    evaluation_id          TEXT PRIMARY KEY,
+    intent_id              TEXT NOT NULL REFERENCES intents(intent_id),
+    decision_id            TEXT NOT NULL REFERENCES decisions(decision_id),
+    policy_version         TEXT NOT NULL,
+    policy_digest          TEXT NOT NULL,
+    intent_sha256          BLOB NOT NULL CHECK (length(intent_sha256) = 32),
+    decision_sha256        BLOB NOT NULL CHECK (length(decision_sha256) = 32),
+    command_id             TEXT REFERENCES commands(command_id),
+    approval_id            TEXT REFERENCES approvals(approval_id),
+    result                 TEXT NOT NULL CHECK (
+        result IN ('approved', 'approval_required', 'simulated', 'denied', 'stale', 'expired')
+    ),
+    reason                 TEXT NOT NULL,
+    situation_version      INTEGER NOT NULL,
+    evaluated_at           TEXT NOT NULL
+) STRICT;
+
+CREATE INDEX policy_evaluations_intent_time
+    ON policy_evaluations(intent_id, evaluated_at DESC);
+
+CREATE TABLE reconsiderations (
+    reconsideration_id        TEXT PRIMARY KEY,
+    tenant_id                 TEXT NOT NULL,
+    situation_id              TEXT NOT NULL,
+    superseded_version        INTEGER NOT NULL CHECK (superseded_version >= 1),
+    correction_version        INTEGER NOT NULL CHECK (correction_version > superseded_version),
+    correction_snapshot_sha256 BLOB NOT NULL CHECK (length(correction_snapshot_sha256) = 32),
+    invalidated_command_id    TEXT NOT NULL REFERENCES commands(command_id),
+    invalidated_outcome_id    TEXT NOT NULL REFERENCES outcomes(outcome_id),
+    invalidated_outcome_sha256 BLOB NOT NULL CHECK (length(invalidated_outcome_sha256) = 32),
+    trigger_id                TEXT UNIQUE REFERENCES trigger_evaluations(trigger_id),
+    scheduler_item_id         TEXT UNIQUE REFERENCES scheduler_items(scheduler_item_id),
+    created_at                TEXT NOT NULL,
+    UNIQUE (situation_id, superseded_version, invalidated_command_id)
+) STRICT;
+
+CREATE INDEX reconsiderations_situation
+    ON reconsiderations(situation_id, correction_version, created_at);
+
+CREATE TABLE verifications (
+    verification_id              TEXT PRIMARY KEY,
+    intent_id                    TEXT NOT NULL UNIQUE REFERENCES intents(intent_id),
+    command_id                   TEXT REFERENCES commands(command_id),
+    outcome_id                   TEXT REFERENCES outcomes(outcome_id),
+    status                       TEXT NOT NULL CHECK (
+        status IN (
+            'awaiting',
+            'observed',
+            'reconciled',
+            'verified',
+            'refuted',
+            'inconclusive',
+            'superseded_before_verification'
+        )
+    ),
+    verdict_json                 BLOB,
+    reconciled_at                TEXT,
+    updated_at                   TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE notifications (
+    tenant_id       TEXT NOT NULL,
+    cursor          INTEGER NOT NULL CHECK (cursor >= 1),
+    event_id        TEXT NOT NULL,
+    event_type      TEXT NOT NULL,
+    event_json      BLOB NOT NULL,
+    event_sha256    BLOB NOT NULL CHECK (length(event_sha256) = 32),
+    created_at      TEXT NOT NULL,
+    traceparent     TEXT,
+    tracestate      TEXT,
+    PRIMARY KEY (tenant_id, cursor),
+    UNIQUE (tenant_id, event_id)
+) STRICT;
+
+CREATE TABLE notification_cursors (
+    tenant_id       TEXT PRIMARY KEY,
+    next_cursor     INTEGER NOT NULL CHECK (next_cursor >= 1)
+) STRICT;
+
+CREATE TABLE notification_event_tombstones (
+    tenant_id       TEXT NOT NULL,
+    event_id        TEXT NOT NULL,
+    event_sha256    BLOB NOT NULL CHECK (length(event_sha256) = 32),
+    retired_at      TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, event_id)
+) STRICT;
+
+CREATE TABLE notification_audits (
+    audit_id         TEXT PRIMARY KEY,
+    tenant_id        TEXT NOT NULL,
+    action           TEXT NOT NULL CHECK (action IN ('cursor_expired', 'subscriber_skipped', 'subscriber_too_slow')),
+    requested_cursor INTEGER,
+    oldest_cursor    INTEGER,
+    details_json     BLOB NOT NULL,
+    created_at       TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE notification_poison_attempts (
+    tenant_id       TEXT NOT NULL,
+    cursor          INTEGER NOT NULL CHECK (cursor >= 1),
+    attempts        INTEGER NOT NULL CHECK (attempts >= 1),
+    last_attempt_at TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, cursor),
+    FOREIGN KEY (tenant_id, cursor) REFERENCES notifications(tenant_id, cursor)
+) STRICT;
+
+CREATE INDEX notifications_retention
+    ON notifications(tenant_id, created_at, cursor);
+
+CREATE TABLE intent_dispatch_counts (
+    tenant_id       TEXT NOT NULL,
+    intent_type     TEXT NOT NULL,
+    bucket          TEXT NOT NULL,
+    count           INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (tenant_id, intent_type, bucket)
+);
+
+CREATE UNIQUE INDEX cost_limits_tenant
+    ON cost_limits(tenant_id)
+    WHERE tenant_id IS NOT NULL;
+
+CREATE TABLE epoch_control (
+    epoch       TEXT PRIMARY KEY,
+    state       TEXT NOT NULL CHECK (state IN ('draining', 'killed')),
+    updated_at  TEXT NOT NULL
+) STRICT;
+
+CREATE INDEX epoch_control_state
+    ON epoch_control(state);
+
+CREATE TABLE shadow_decisions (
+    shadow_decision_id  TEXT PRIMARY KEY,
+    episode_id          TEXT NOT NULL,
+    decision_id         TEXT NOT NULL,
+    attempt_id          TEXT NOT NULL,
+    fence               INTEGER NOT NULL CHECK (fence >= 0),
+    decision_json       BLOB NOT NULL,
+    decision_sha256     BLOB NOT NULL CHECK (length(decision_sha256) = 32),
+    shadow_score        TEXT NOT NULL CHECK (
+        shadow_score IN ('would_approve', 'would_require_approval', 'would_deny')
+    ),
+    score_reason        TEXT,
+    tenant_id           TEXT NOT NULL,
+    situation_id        TEXT NOT NULL,
+    situation_version   INTEGER NOT NULL CHECK (situation_version >= 1),
+    policy_epoch        TEXT NOT NULL,
+    created_at          TEXT NOT NULL,
+    FOREIGN KEY (episode_id) REFERENCES episodes(episode_id)
+) STRICT;
+
+CREATE INDEX shadow_decisions_episode
+    ON shadow_decisions(episode_id);
+CREATE INDEX shadow_decisions_decision
+    ON shadow_decisions(decision_id);
+CREATE INDEX shadow_decisions_situation
+    ON shadow_decisions(tenant_id, situation_id, situation_version);
+
+CREATE TABLE calibration_artifacts (
+    artifact_id              TEXT PRIMARY KEY,
+    domain                   TEXT NOT NULL,
+    model_revision           TEXT NOT NULL,
+    profile_digest           TEXT NOT NULL,
+    prompt_sha256            TEXT NOT NULL,
+    diagnosis_catalog_sha256 TEXT NOT NULL,
+    policy_digest            TEXT NOT NULL,
+    artifact_sha256          TEXT NOT NULL,
+    active                   INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    created_at               TEXT NOT NULL,
+    UNIQUE (domain, artifact_sha256)
+) STRICT;
+
+CREATE INDEX calibration_artifacts_active
+    ON calibration_artifacts(domain, active);
+
+CREATE TABLE shadow_comparisons (
+    comparison_id              TEXT PRIMARY KEY,
+    comparison_key             TEXT NOT NULL UNIQUE,
+    tenant_id                  TEXT NOT NULL,
+    episode_id                 TEXT NOT NULL,
+    situation_id               TEXT NOT NULL,
+    situation_version          INTEGER NOT NULL CHECK (situation_version >= 1),
+    trigger_id                 TEXT NOT NULL,
+    snapshot_sha256            BLOB NOT NULL CHECK (length(snapshot_sha256) = 32),
+    spec_sha256                BLOB NOT NULL CHECK (length(spec_sha256) = 32),
+    policy_sha256              BLOB NOT NULL CHECK (length(policy_sha256) = 32),
+    baseline_executor_version  TEXT NOT NULL,
+    tamoz_executor_version     TEXT NOT NULL,
+    baseline_manifest_sha256   BLOB NOT NULL CHECK (length(baseline_manifest_sha256) = 32),
+    tamoz_manifest_sha256      BLOB NOT NULL CHECK (length(tamoz_manifest_sha256) = 32),
+    baseline_decision_json     BLOB NOT NULL,
+    baseline_decision_sha256   BLOB NOT NULL CHECK (length(baseline_decision_sha256) = 32),
+    tamoz_decision_json        BLOB NOT NULL,
+    tamoz_decision_sha256      BLOB NOT NULL CHECK (length(tamoz_decision_sha256) = 32),
+    comparison_json            BLOB NOT NULL,
+    comparison_sha256          BLOB NOT NULL CHECK (length(comparison_sha256) = 32),
+    created_at                 TEXT NOT NULL,
+    FOREIGN KEY (episode_id) REFERENCES episodes(episode_id)
+) STRICT;
+
+CREATE INDEX shadow_comparisons_situation
+    ON shadow_comparisons(tenant_id, situation_id, situation_version);
+
+CREATE TABLE device_target_claims (
+    target          TEXT PRIMARY KEY,
+    device_id       TEXT NOT NULL,
+    owner_epoch     TEXT NOT NULL,
+    owner_instance  TEXT NOT NULL,
+    boot_id         TEXT NOT NULL,
+    claim_fence     INTEGER NOT NULL CHECK (claim_fence >= 1),
+    lease_until     TEXT NOT NULL,
+    status          TEXT NOT NULL CHECK (status IN ('active', 'released')),
+    updated_at      TEXT NOT NULL
+) STRICT;
+
+CREATE INDEX device_target_claims_owner
+    ON device_target_claims(owner_epoch, owner_instance, status, lease_until);
+
+CREATE TABLE device_command_bindings (
+    command_id      TEXT PRIMARY KEY,
+    target          TEXT NOT NULL,
+    device_id       TEXT NOT NULL,
+    boot_id         TEXT NOT NULL,
+    owner_epoch     TEXT NOT NULL,
+    owner_instance  TEXT NOT NULL,
+    command_sha256  BLOB,
+    bound_at        TEXT NOT NULL
+) STRICT;
+
+CREATE INDEX device_command_bindings_device_boot
+    ON device_command_bindings(device_id, boot_id, target);
+
+CREATE TABLE device_authority_events (
+    event_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    target          TEXT NOT NULL,
+    device_id       TEXT NOT NULL,
+    event_type      TEXT NOT NULL CHECK (event_type IN (
+        'claim_acquired', 'claim_renewed', 'claim_released',
+        'claim_rejected', 'reconciliation_opened', 'reconciliation_recorded',
+        'safe_stop_requested', 'safe_stop_completed', 'safe_stop_failed'
+    )),
+    owner_epoch     TEXT NOT NULL,
+    owner_instance  TEXT NOT NULL,
+    boot_id         TEXT NOT NULL,
+    details_json    BLOB NOT NULL,
+    details_sha256  BLOB NOT NULL CHECK (length(details_sha256) = 32),
+    occurred_at     TEXT NOT NULL
+) STRICT;
+
+CREATE INDEX device_authority_events_target_time
+    ON device_authority_events(target, occurred_at, event_id);
+
+CREATE TABLE device_reconciliation (
+    device_id                 TEXT PRIMARY KEY,
+    boot_id                   TEXT NOT NULL,
+    status                    TEXT NOT NULL CHECK (status IN ('clear', 'required')),
+    opening_boot_id           TEXT NOT NULL,
+    state_json                BLOB NOT NULL,
+    state_sha256              BLOB NOT NULL CHECK (length(state_sha256) = 32),
+    last_resolution_status    TEXT CHECK (last_resolution_status IS NULL OR last_resolution_status IN ('succeeded', 'failed', 'manual_review')),
+    resolution_evidence_json  BLOB,
+    resolution_sha256         BLOB CHECK (resolution_sha256 IS NULL OR length(resolution_sha256) = 32),
+    authority_epoch           TEXT NOT NULL,
+    opened_at                 TEXT NOT NULL,
+    resolved_at               TEXT,
+    updated_at                TEXT NOT NULL
+) STRICT;
+
+CREATE INDEX device_reconciliation_status
+    ON device_reconciliation(status, updated_at);
+
+CREATE TABLE device_safety_events (
+    event_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type      TEXT NOT NULL CHECK (event_type IN (
+        'unsafe_output', 'stale_energizing_effect',
+        'duplicate_net_energizing_effect', 'unexplained_actuator_transition',
+        'false_verified_success', 'safe_state_deadline_miss',
+        'physical_transition'
+    )),
+    target          TEXT NOT NULL,
+    command_id      TEXT,
+    details_json    BLOB NOT NULL,
+    details_sha256  BLOB NOT NULL CHECK (length(details_sha256) = 32),
+    occurred_at     TEXT NOT NULL
+) STRICT;
+
+CREATE INDEX device_safety_events_type_time
+    ON device_safety_events(event_type, occurred_at, event_id);
+
+CREATE INDEX principals_tenant_status
+    ON principals(tenant_id, status, principal_id);

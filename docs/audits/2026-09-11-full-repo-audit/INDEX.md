@@ -148,10 +148,10 @@ A test file passes only if all hold:
 
 ### Schema / SQL / proto / domain data
 
-- [x] A-092 `docs/design/contracts/storage-schema-v1.sql` (675) — FINDINGS · HIGH → [A-092-design-storage-schema-v1.md](A-092-design-storage-schema-v1.md)
+- [x] A-092 `docs/design/contracts/storage-schema-v1.sql` (1057) — FINDINGS · HIGH → [A-092-design-storage-schema-v1.md](A-092-design-storage-schema-v1.md) — ✅ FIXED
 - [x] A-093 `migrations/001_initial.sql` (491) — PASS
 - [x] A-094 `migrations/003_lifecycle_fencing.sql` (237) — PASS
-- [x] A-095 `internal/spec/schema.json` (781) — FINDINGS · HIGH → [A-095-spec-schema.md](A-095-spec-schema.md)
+- [x] A-095 `internal/spec/schema.json` (752) — FINDINGS · HIGH → [A-095-spec-schema.md](A-095-spec-schema.md) — ⚠️ F1-F3 FIXED · F4 OPEN
 - [x] A-096 `internal/eventschema/registry_data.json` (852) — PASS
 - [x] A-097 `docs/design/contracts/runtime-v1.proto` (366, canonical proto source for the generated `proto/agenticstream/runtime/v1/` code) — PASS
 
@@ -162,6 +162,10 @@ Audit complete 2026-09-11. 97 files audited (69 production, 22 test, 6 schema/SQ
 **Baseline verdicts: 20 PASS · 77 FINDINGS · 16 HIGH.**
 
 **Current resolution status: 11 FIXED · 66 OPEN FINDINGS · 7 OPEN HIGH.**
+
+Current resolution for this isolated round: A-092 is fixed. A-095 fixes F1-F3;
+F4 remains explicitly open because its runtime/storage wiring is outside the
+permitted write set.
 
 ### HIGH findings (fix before any further feature work)
 

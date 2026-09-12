@@ -1,6 +1,6 @@
 # A-092 · `docs/design/contracts/storage-schema-v1.sql`
 
-LOC: 675 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 1057 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - F1: the documented `episodes` state machine matches a real, achievable migration state.
@@ -19,6 +19,33 @@ LOC: 675 · Audit date: 2026-09-11 · Verdict: FINDINGS
 - **[LOW] F7. Column/index drift on otherwise-contracted tables** — `docs/design/contracts/storage-schema-v1.sql` lacks `trigger_evaluations.delta_json` (002), `event_log.tracestate` + `situation_versions.traceparent/tracestate` (007), `intents.rate_limit_per_hour`/`requires_approval` (022), and secondary indexes `event_quarantine_status` (016), `watch_conditions_due` (017), `episode_attempts_live` (003), `episode_attempt_identity` (010), `principals_tenant_status` (013), `cost_limits_tenant` (015), `policy_evaluations_intent_time` (004).
 
 ## Checked, not an issue
-- S1 (shared tables): `spec_deployments`, `event_log` (minus tracestate), `event_inbox`, checkpoints, `operator_state`, `timers`, `lineage_sets`, `trigger_evaluations`/`scheduler_items` (minus noted columns), `intents`/`approvals`/`commands`/`outbox`/`outcomes`/`replay_jobs` match cumulative migrations; `approvals` relay/withdrawal columns (013), `event_quarantine.redriven_at` (018), `watch_conditions.max_fires` (019), `evidence_call_ledger` (010), `runtime_owner` (011), principals/interlock block (013), cost tables (015), `event_schemas`/`event_gaps` (016), `watch_fires` (017) all match.
+- S1 (shared tables): the contracted tables, columns, constraints, and indexes match the cumulative migrations through `030`, including trace state, trigger deltas, lifecycle/fencing, governance, cost control, shadow, calibration, and device-authority records.
+
+## Resolution
+
+The contract is now a cumulative snapshot of migrations `001-030` rather than a
+pre/post-lifecycle hybrid. It records the lifecycle/fence columns and live
+episode index from migration `003`, the attempt artifact and owner columns,
+decision provenance and trace links, situation runtime state defaults, trigger
+delta, scheduler kind, intent policy columns, and all later tables through the
+authority/reconciliation soak records in migration `030`.
+
+The previously missing secondary indexes and cumulative constraints are also
+present, including event quarantine, event schema lookup, watch due, attempt
+identity/live, policy evaluation, principal, cost-limit, shadow, calibration,
+and device-authority indexes.
+
+Evidence: `sqlite3 :memory: < docs/design/contracts/storage-schema-v1.sql`
+applies the contract without error. A comparison of the contract against an
+in-memory database created by applying every file in `migrations/` found equal
+table/index names and equal table column metadata (order, type, nullability,
+default, and primary-key position). The isolated change was committed with the
+focused spec/schema change as one reviewable contract round.
+
+The migration history remains the executable source of truth. The isolated
+write set did not include `docs/design/DECISIONS.md`, so no new ADR entry was
+added; migration `003` retains its explicit breaking-cutover record. If the
+project requires a separate ADR for that historical decision, it remains a
+follow-up outside this isolated change.
 - S2: no redundant columns found in the contract's own definitions; keys/uniques/FKs it does declare are correct for the tables it describes.
 - S3: not applicable (SQL contract, no domain data).
