@@ -21,6 +21,22 @@ type effectProfileOptions struct {
 	OwnerAuthorized        bool
 }
 
+// workerRuntimeFlagTargets contains the command-local storage for the shared
+// worker, evidence, and model flags. Keeping registration here prevents the
+// run-live and serve commands from drifting apart.
+type workerRuntimeFlagTargets struct {
+	workerSocket     *string
+	modelEndpoint    *string
+	modelName        *string
+	workerName       *string
+	workerCA         *string
+	workerCert       *string
+	workerKey        *string
+	workerServerName *string
+	evidenceSocket   *string
+	evidenceKey      *string
+}
+
 // validate checks command-line profile inputs before opening a database or
 // connecting to a device gateway. replaySource identifies the file-backed
 // --trace path only; the normalized --live-socket source is intentionally not
@@ -162,4 +178,17 @@ func addEffectProfileFlags(
 	cmd.Flags().StringSliceVar(firmwareDigests, "device-firmware-digest", nil, "Allow-listed device firmware digest (repeatable)")
 	cmd.Flags().BoolVar(liveActuation, "live-actuation", false, "Explicitly permit physical actuation")
 	cmd.Flags().BoolVar(ownerAuthorized, "owner-authorized", false, "Require explicit hardware-owner authorization for physical actuation")
+}
+
+func addWorkerRuntimeFlags(cmd *cobra.Command, targets workerRuntimeFlagTargets) {
+	cmd.Flags().StringVar(targets.workerSocket, "worker-socket", "", "EpisodeWorker Unix socket (overrides the native Go executor)")
+	cmd.Flags().StringVar(targets.modelEndpoint, "model-endpoint", "", "OpenAI-compatible model endpoint for the native Go executor")
+	cmd.Flags().StringVar(targets.modelName, "model-name", "", "Model name for the OpenAI-compatible native provider")
+	cmd.Flags().StringVar(targets.workerName, "worker-name", "native", "Expected EpisodeWorker name")
+	cmd.Flags().StringVar(targets.workerCA, "worker-ca", "", "Worker CA PEM (enables mTLS)")
+	cmd.Flags().StringVar(targets.workerCert, "worker-cert", "", "Runtime client certificate PEM")
+	cmd.Flags().StringVar(targets.workerKey, "worker-key", "", "Runtime client private key PEM")
+	cmd.Flags().StringVar(targets.workerServerName, "worker-server-name", "", "Expected worker certificate name")
+	cmd.Flags().StringVar(targets.evidenceSocket, "evidence-socket", "", "Runtime EvidenceTools Unix socket for worker episodes")
+	cmd.Flags().StringVar(targets.evidenceKey, "evidence-key", "", "Hex HMAC key shared with the runtime EvidenceTools verifier")
 }

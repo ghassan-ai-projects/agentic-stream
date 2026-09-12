@@ -149,6 +149,8 @@ func newRunLiveCommand() *cobra.Command {
 		Use:   "run-live --spec <spec.yaml> --trace <trace.jsonl>",
 		Short: "Run one owner-scoped live Go pipeline batch.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			runCtx, stop := context.WithCancel(cmd.Context())
+			defer stop()
 			if specPath == "" || tracePath == "" || dbPath == "" {
 				return fmt.Errorf("--spec, --trace, and --db are required")
 			}
@@ -160,16 +162,16 @@ func newRunLiveCommand() *cobra.Command {
 			if err := profileOptions.validate(true); err != nil {
 				return fmt.Errorf("validate effect profile: %w", err)
 			}
-			tracerProvider, telemetryErr := configureRuntimeTelemetry(cmd.Context())
+			tracerProvider, telemetryErr := configureRuntimeTelemetry(runCtx)
 			if telemetryErr != nil {
 				return telemetryErr
 			}
 			defer func() { _ = tracerProvider.Shutdown(context.Background()) }()
-			compiled, err := spec.CompileFile(cmd.Context(), specPath)
+			compiled, err := spec.CompileFile(runCtx, specPath)
 			if err != nil {
 				return fmt.Errorf("compile spec: %w", err)
 			}
-			db, err := storage.Open(cmd.Context(), dbPath)
+			db, err := storage.Open(runCtx, dbPath)
 			if err != nil {
 				return fmt.Errorf("open runtime database: %w", err)
 			}
@@ -185,11 +187,11 @@ func newRunLiveCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("create runtime service: %w", err)
 			}
-			if _, err := service.Start(cmd.Context()); err != nil {
+			if _, err := service.Start(runCtx); err != nil {
 				return fmt.Errorf("start runtime: %w", err)
 			}
 			defer func() { _ = service.Close(context.Background()) }()
-			workerRuntime, err := runtime.NewWorkerRuntime(cmd.Context(), runtime.WorkerRuntimeConfig{
+			workerRuntime, err := runtime.NewWorkerRuntime(runCtx, runtime.WorkerRuntimeConfig{
 				DB: db, Ledger: ledger, RuntimeEpoch: epoch, WorkerSocket: workerSocket, WorkerName: workerName,
 				WorkerCA: workerCA, WorkerCert: workerCert, WorkerKey: workerKey, WorkerServerName: workerServerName,
 				EvidenceSocket: evidenceSocket, EvidenceKey: evidenceKey, ModelEndpoint: modelEndpoint, ModelName: modelName,
@@ -198,40 +200,54 @@ func newRunLiveCommand() *cobra.Command {
 				return fmt.Errorf("configure worker runtime: %w", err)
 			}
 			defer func() { _ = workerRuntime.Close() }()
-			effector, serialEffector, closeEffector, err := profileOptions.open(cmd.Context(), db, owner, epochControl, epoch, nil, true)
+			workerFailures := make(chan error, 1)
+			workerMonitorDone := monitorWorkerRuntimeErrors(runCtx, workerRuntime.Errors(), workerFailures, stop)
+			defer func() {
+				stop()
+				<-workerMonitorDone
+			}()
+			metrics := telemetry.NewRuntime(time.Now().UTC())
+			effector, serialEffector, closeEffector, err := profileOptions.open(runCtx, db, owner, epochControl, epoch, metrics, true)
 			if err != nil {
 				return fmt.Errorf("configure effect profile: %w", err)
 			}
 			if closeEffector != nil {
 				defer func() { _ = closeEffector() }()
 			}
-			pipeline, err := runtime.NewPipeline(cmd.Context(), runtime.PipelineConfig{
+			pipeline, err := runtime.NewPipeline(runCtx, runtime.PipelineConfig{
 				DB: db, Spec: compiled, TenantID: tenantID, Owner: owner, OwnerEpoch: epoch,
 				Executor: workerRuntime.Executor, Effector: effector, SerialEffector: serialEffector, IDGenerator: ids.Random(),
+				Telemetry: metrics, EpochControl: epochControl,
 			})
 			if err != nil {
 				return fmt.Errorf("create runtime pipeline: %w", err)
 			}
-			if err := pipeline.Start(cmd.Context()); err != nil {
+			if err := pipeline.Start(runCtx); err != nil {
 				return fmt.Errorf("start pipeline maintenance: %w", err)
 			}
 			defer func() { _ = pipeline.Close() }()
 			var report runtime.PipelineReport
 			switch traceFormat {
 			case "normalized":
-				report, err = pipeline.RunJSONL(cmd.Context(), tracePath)
+				report, err = pipeline.RunJSONL(runCtx, tracePath)
 				if err != nil {
+					if workerErr := readWorkerRuntimeError(workerFailures); workerErr != nil {
+						return workerErr
+					}
 					return fmt.Errorf("run normalized trace: %w", err)
 				}
 			case "simulator":
-				report, err = pipeline.RunSimulatorJSONL(cmd.Context(), tracePath)
+				report, err = pipeline.RunSimulatorJSONL(runCtx, tracePath)
 				if err != nil {
+					if workerErr := readWorkerRuntimeError(workerFailures); workerErr != nil {
+						return workerErr
+					}
 					return fmt.Errorf("run simulator trace: %w", err)
 				}
 			default:
 				return fmt.Errorf("unsupported --trace-format %q", traceFormat)
 			}
-			if workerErr := readWorkerRuntimeError(workerRuntime); workerErr != nil {
+			if workerErr := readWorkerRuntimeError(workerFailures); workerErr != nil {
 				return workerErr
 			}
 			cmd.Printf("events_ingested=%d events_processed=%d episodes_admitted=%d episodes_executed=%d intents_evaluated=%d commands_dispatched=%d\n", report.EventsIngested, report.EventsProcessed, report.EpisodesAdmitted, report.EpisodesExecuted, report.IntentsEvaluated, report.CommandsDispatched)
@@ -244,16 +260,11 @@ func newRunLiveCommand() *cobra.Command {
 	cmd.Flags().StringVar(&tenantID, "tenant", "default", "Tenant ID")
 	cmd.Flags().StringVar(&traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
 	addEffectProfileFlags(cmd, &effectProfile, &deviceSocket, &deviceCatalog, &deviceFirmwareDigests, &liveActuation, &ownerAuthorized)
-	cmd.Flags().StringVar(&workerSocket, "worker-socket", "", "EpisodeWorker Unix socket (overrides the native Go executor)")
-	cmd.Flags().StringVar(&modelEndpoint, "model-endpoint", "", "OpenAI-compatible model endpoint for the native Go executor")
-	cmd.Flags().StringVar(&modelName, "model-name", "", "Model name for the OpenAI-compatible native provider")
-	cmd.Flags().StringVar(&workerName, "worker-name", "native", "Expected EpisodeWorker name")
-	cmd.Flags().StringVar(&workerCA, "worker-ca", "", "Worker CA PEM (enables mTLS)")
-	cmd.Flags().StringVar(&workerCert, "worker-cert", "", "Runtime client certificate PEM")
-	cmd.Flags().StringVar(&workerKey, "worker-key", "", "Runtime client private key PEM")
-	cmd.Flags().StringVar(&workerServerName, "worker-server-name", "", "Expected worker certificate name")
-	cmd.Flags().StringVar(&evidenceSocket, "evidence-socket", "", "Runtime EvidenceTools Unix socket for worker episodes")
-	cmd.Flags().StringVar(&evidenceKey, "evidence-key", "", "Hex HMAC key shared with the runtime EvidenceTools verifier")
+	addWorkerRuntimeFlags(cmd, workerRuntimeFlagTargets{
+		workerSocket: &workerSocket, modelEndpoint: &modelEndpoint, modelName: &modelName,
+		workerName: &workerName, workerCA: &workerCA, workerCert: &workerCert, workerKey: &workerKey,
+		workerServerName: &workerServerName, evidenceSocket: &evidenceSocket, evidenceKey: &evidenceKey,
+	})
 	return cmd
 }
 
@@ -332,7 +343,13 @@ func newServeCommand() *cobra.Command {
 			}
 			defer func() { _ = tracerProvider.Shutdown(context.Background()) }()
 			runCtx, stop := context.WithCancel(cmd.Context())
-			defer stop()
+			var workerMonitorDone <-chan struct{}
+			defer func() {
+				stop()
+				if workerMonitorDone != nil {
+					<-workerMonitorDone
+				}
+			}()
 			effector, serialEffector, closeEffector, err := profileOptions.open(runCtx, db, owner, epochControl, epoch, metrics, tracePath != "")
 			if err != nil {
 				return fmt.Errorf("configure effect profile: %w", err)
@@ -356,16 +373,7 @@ func newServeCommand() *cobra.Command {
 					return fmt.Errorf("configure worker runtime: %w", err)
 				}
 				defer func() { _ = workerRuntime.Close() }()
-				if workerRuntime.Errors() != nil {
-					go func() {
-						select {
-						case workerErr := <-workerRuntime.Errors():
-							pipelineErrors <- fmt.Errorf("worker runtime: %w", workerErr)
-							stop()
-						case <-runCtx.Done():
-						}
-					}()
-				}
+				workerMonitorDone = monitorWorkerRuntimeErrors(runCtx, workerRuntime.Errors(), pipelineErrors, stop)
 				pipeline, err = runtime.NewPipeline(runCtx, runtime.PipelineConfig{
 					DB: db, Spec: compiled, TenantID: tenantID, Owner: owner, OwnerEpoch: epoch,
 					Executor: workerRuntime.Executor, Effector: effector, SerialEffector: serialEffector, IDGenerator: ids.Random(), Telemetry: metrics,
@@ -447,16 +455,11 @@ func newServeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&liveSocket, "live-socket", "", "Unix socket for live normalized JSONL telemetry ingestion")
 	cmd.Flags().StringVar(&traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
 	addEffectProfileFlags(cmd, &effectProfile, &deviceSocket, &deviceCatalog, &deviceFirmwareDigests, &liveActuation, &ownerAuthorized)
-	cmd.Flags().StringVar(&modelEndpoint, "model-endpoint", "", "OpenAI-compatible model endpoint for the native Go executor")
-	cmd.Flags().StringVar(&modelName, "model-name", "", "Model name for the OpenAI-compatible native provider")
-	cmd.Flags().StringVar(&workerSocket, "worker-socket", "", "EpisodeWorker Unix socket (overrides the native Go executor)")
-	cmd.Flags().StringVar(&workerName, "worker-name", "native", "Expected EpisodeWorker name")
-	cmd.Flags().StringVar(&workerCA, "worker-ca", "", "Worker CA PEM (enables mTLS)")
-	cmd.Flags().StringVar(&workerCert, "worker-cert", "", "Runtime client certificate PEM")
-	cmd.Flags().StringVar(&workerKey, "worker-key", "", "Runtime client private key PEM")
-	cmd.Flags().StringVar(&workerServerName, "worker-server-name", "", "Expected worker certificate name")
-	cmd.Flags().StringVar(&evidenceSocket, "evidence-socket", "", "Runtime EvidenceTools Unix socket for worker episodes")
-	cmd.Flags().StringVar(&evidenceKey, "evidence-key", "", "Hex HMAC key shared with the runtime EvidenceTools verifier")
+	addWorkerRuntimeFlags(cmd, workerRuntimeFlagTargets{
+		workerSocket: &workerSocket, modelEndpoint: &modelEndpoint, modelName: &modelName,
+		workerName: &workerName, workerCA: &workerCA, workerCert: &workerCert, workerKey: &workerKey,
+		workerServerName: &workerServerName, evidenceSocket: &evidenceSocket, evidenceKey: &evidenceKey,
+	})
 	cmd.Flags().StringVar(&tenantID, "tenant", "default", "tenant served by this runtime process")
 	cmd.Flags().StringVar(&listenAddress, "listen", "127.0.0.1:8080", "loopback HTTP listen address")
 	cmd.Flags().DurationVar(&ownerLease, "owner-lease", time.Minute, "runtime owner lease duration")
@@ -516,16 +519,40 @@ func isLoopbackListenAddress(address string) bool {
 	if err != nil {
 		return false
 	}
-	return host == "127.0.0.1" || host == "localhost" || host == "[::1]" || host == "::1"
+	return host == "127.0.0.1" || host == "localhost" || host == "::1"
 }
 
-func readWorkerRuntimeError(workerRuntime *runtime.WorkerRuntime) error {
-	if workerRuntime == nil || workerRuntime.Errors() == nil {
+func monitorWorkerRuntimeErrors(ctx context.Context, workerErrors <-chan error, failures chan<- error, stop context.CancelFunc) <-chan struct{} {
+	done := make(chan struct{})
+	if workerErrors == nil {
+		close(done)
+		return done
+	}
+	go func() {
+		defer close(done)
+		select {
+		case workerErr := <-workerErrors:
+			if workerErr == nil {
+				return
+			}
+			select {
+			case failures <- fmt.Errorf("worker runtime: %w", workerErr):
+			default:
+			}
+			stop()
+		case <-ctx.Done():
+		}
+	}()
+	return done
+}
+
+func readWorkerRuntimeError(failures <-chan error) error {
+	if failures == nil {
 		return nil
 	}
 	select {
-	case workerErr := <-workerRuntime.Errors():
-		return fmt.Errorf("worker runtime: %w", workerErr)
+	case workerErr := <-failures:
+		return workerErr
 	default:
 		return nil
 	}

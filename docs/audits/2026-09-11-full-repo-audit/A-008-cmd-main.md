@@ -1,6 +1,6 @@
 # A-008 · `cmd/agentic-stream/main.go`
 
-LOC: 648 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 648 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - run-live observes asynchronous worker-runtime failures during the batch, not only errors already buffered when the batch returns.
@@ -22,3 +22,26 @@ LOC: 648 · Audit date: 2026-09-11 · Verdict: FINDINGS
 - P4: main wires via `runtime.NewService`/`NewPipeline`/`NewWorkerRuntime`; no business logic in handlers.
 - P6: main_test.go covers serve source validation, loopback check, version; effect_profile_test.go covers profile validation.
 - P7: run-live and serve both drive the same `runtime.Pipeline`; no second pipeline implementation.
+
+## Resolution
+
+- F1: both live routes now use the same cancellable worker-runtime error monitor.
+  `run-live` owns a local failure channel, cancels the batch context when the
+  evidence server reports an asynchronous failure, checks that channel before
+  returning a pipeline error and before printing a successful report, and joins
+  the monitor during cleanup. The focused command test proves forwarding,
+  cancellation, and monitor termination.
+- F2: `run-live` passes its constructed `EpochControl` into `runtime.PipelineConfig`,
+  so admission and decision fencing are active on the one-shot live route.
+- F3: worker, evidence, and model flag registration is centralized in
+  `addWorkerRuntimeFlags` in `effect_profile.go`; a focused test compares the
+  complete shared flag surface across `run-live` and `serve`.
+- F4: the impossible bracketed-host comparison was removed; `net.SplitHostPort`
+  already normalizes `[::1]:8080` to `::1`, covered by the existing loopback test.
+- F5: `run-live` now creates the same low-cardinality telemetry runtime as
+  `serve`, passes it to the effect-profile opener and pipeline, and uses the
+  same configured OpenTelemetry tracer provider.
+
+Focused evidence: `go test ./cmd/agentic-stream`,
+`go test -race ./cmd/agentic-stream`, `go vet ./cmd/agentic-stream`, and
+`git diff --check` all pass in the isolated fork.
