@@ -19,6 +19,16 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
+func TestNewGatewayRejectsEmptyPolicyVersion(t *testing.T) {
+	t.Helper()
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatal("NewGateway accepted an empty policy version")
+		}
+	}()
+	_ = NewGateway("", ids.Deterministic())
+}
+
 func TestGatewayAutomaticCommandIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	db, intentID := openPolicyFixture(t, "R1", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))

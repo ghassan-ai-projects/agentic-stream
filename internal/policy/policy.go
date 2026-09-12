@@ -45,8 +45,7 @@ type ApprovalAssertion struct {
 	RelayID          string
 }
 
-// CanonicalApprovalAssertion returns the exact bytes principals sign.
-func CanonicalApprovalAssertion(assertion ApprovalAssertion) ([]byte, error) {
+func canonicalApprovalAssertion(assertion ApprovalAssertion) ([]byte, error) {
 	result, err := canonicaljson.Marshal(map[string]any{
 		"approval_id": assertion.ApprovalID, "intent_id": assertion.IntentID, "decision_id": assertion.DecisionID,
 		"tenant_id": assertion.TenantID, "situation_id": assertion.SituationID,
@@ -63,7 +62,7 @@ func CanonicalApprovalAssertion(assertion ApprovalAssertion) ([]byte, error) {
 
 // ApprovalAssertionSigningBytes returns the domain-separated bytes principals sign.
 func ApprovalAssertionSigningBytes(assertion ApprovalAssertion) ([]byte, error) {
-	canonical, err := CanonicalApprovalAssertion(assertion)
+	canonical, err := canonicalApprovalAssertion(assertion)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +142,10 @@ func newGateway(policyVersion string, idGen ids.Generator, owner *storage.Runtim
 	if idGen == nil {
 		idGen = ids.Random()
 	}
-	policyDigest, _ := DigestForVersion(policyVersion)
+	policyDigest, err := DigestForVersion(policyVersion)
+	if err != nil {
+		panic(fmt.Sprintf("construct policy gateway: %v", err))
+	}
 	return &Gateway{policyVersion: policyVersion, policyDigest: policyDigest, idGen: idGen, owner: owner, ownerEpoch: ownerEpoch}
 }
 

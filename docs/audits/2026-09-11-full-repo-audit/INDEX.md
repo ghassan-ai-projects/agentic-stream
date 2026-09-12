@@ -100,7 +100,7 @@ A test file passes only if all hold:
 - [x] A-047 `internal/replay/baseline.go` (189) — FINDINGS → [A-047-replay-baseline.md](A-047-replay-baseline.md)
 - [x] A-048 `internal/costcontrol/costcontrol.go` (185) — PASS
 - [x] A-049 `internal/ingress/jsonl.go` (183) — FINDINGS · HIGH → [A-049-ingress-jsonl.md](A-049-ingress-jsonl.md) — ✅ FIXED
-- [x] A-050 `internal/policy/policy.go` (182) — FINDINGS → [A-050-policy-policy.md](A-050-policy-policy.md)
+- [x] A-050 `internal/policy/policy.go` (182) — FINDINGS → [A-050-policy-policy.md](A-050-policy-policy.md) — ✅ FIXED
 - [x] A-051 `internal/engine/engine_restore.go` (180) — FINDINGS → [A-051-engine-engine-restore.md](A-051-engine-engine-restore.md)
 - [x] A-052 `internal/storage/runtime_owner.go` (178) — PASS → [A-052-storage-runtime-owner.md](A-052-storage-runtime-owner.md) (PASS record)
 - [x] A-053 `internal/actions/serial_effector.go` (178) — FINDINGS → [A-053-actions-serial_effector.md](A-053-actions-serial_effector.md)
@@ -161,7 +161,7 @@ Audit complete 2026-09-11. 97 files audited (69 production, 22 test, 6 schema/SQ
 
 **Baseline verdicts: 20 PASS · 77 FINDINGS · 16 HIGH.**
 
-**Current resolution status: 10 FIXED · 67 OPEN FINDINGS · 7 OPEN HIGH.**
+**Current resolution status: 11 FIXED · 66 OPEN FINDINGS · 7 OPEN HIGH.**
 
 ### HIGH findings (fix before any further feature work)
 

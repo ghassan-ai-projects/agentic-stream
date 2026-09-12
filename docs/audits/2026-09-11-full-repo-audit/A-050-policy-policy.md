@@ -1,6 +1,6 @@
 # A-050 · `internal/policy/policy.go`
 
-LOC: 182 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 182 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - The policy digest recorded in every audit row and command document is guaranteed non-empty, or construction fails.
@@ -18,3 +18,15 @@ LOC: 182 · Audit date: 2026-09-11 · Verdict: FINDINGS
 - P5: policy document is canonical JSON digested (RFC 8785); all exported symbols documented.
 - P6: `policy_test.go` uses both constructors and the assertion signing bytes; `go test ./internal/policy/` passes.
 - P7: digest is a pure function of the canonical policy document.
+
+## Resolution (2026-09-12) — FIXED
+
+- **F1 fixed:** gateway construction now computes the policy digest through the
+  checked error path and panics on an invalid empty policy version. A gateway
+  can no longer emit policy audit rows or command documents with an empty
+  digest. `TestNewGatewayRejectsEmptyPolicyVersion` proves the constructor
+  rejects the invalid configuration.
+- **F2 fixed:** the unused exported `CanonicalApprovalAssertion` helper is now
+  package-private; `ApprovalAssertionSigningBytes` remains the sole signing
+  boundary.
+- **Verified:** `go test -race ./internal/policy` passes.
