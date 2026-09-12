@@ -1,6 +1,6 @@
 # A-041 · `internal/policy/policy_evaluate.go`
 
-LOC: 225 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 225 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - The risk-class policy document (`R3`/`R4` = denied) is enforced before any approval routing, and an approval resolution can terminate in dispatch or a terminal denial — never in another approval request for the same intent.

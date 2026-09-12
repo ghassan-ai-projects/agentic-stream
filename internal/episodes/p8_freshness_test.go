@@ -250,8 +250,6 @@ func TestP8DecisionAfterDeadlineIsRefused(t *testing.T) {
 
 type slowExecutor struct{}
 
-func (slowExecutor) Name() string { return "slow" }
-
 func (slowExecutor) Execute(ctx context.Context, req *episodes.Request) (*episodes.Outcome, error) {
 	time.Sleep(50 * time.Millisecond)
 	outcome, err := episodes.NewFakeExecutor().Execute(ctx, req)
@@ -271,8 +269,6 @@ func (e p8BlockingExecutor) Execute(ctx context.Context, _ *episodes.Request) (*
 	<-ctx.Done()
 	return nil, fmt.Errorf("blocking executor canceled: %w", ctx.Err())
 }
-
-func (e p8BlockingExecutor) Name() string { return "p8-blocking" }
 
 // The hostile-worker scenario (exit gate 2): an episode is IN FLIGHT when the
 // epoch is killed. Kill supersedes the episode; the runner's supersession

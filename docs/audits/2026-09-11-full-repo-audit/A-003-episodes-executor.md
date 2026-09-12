@@ -1,12 +1,12 @@
 # A-003 · `internal/episodes/executor.go`
 
-LOC: 851 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 851 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - The terminal persistence transaction (decision, intents, attempt transition, episode conclusion) runs on the cancellation-proof `persistCtx`, not the caller's cancellable `ctx`.
 - An epoch-kill quarantine (`lifecycle_status='abandoned'`) is durably committed, never rolled back by the error return that follows it; no `ExecContext` error on a quarantine write is swallowed.
 - `budget.wall_time` from `RequestJSON` is parsed and validated in exactly one place shared by the deadline gate and the worker executor.
-- Every exported symbol has at least one caller (`Executor.Name()` verified repo-wide).
+- No unused exported symbol remains; the dead `Executor.Name()` surface is removed.
 - `ctx` vs `persistCtx` usage is uniform across the three post-execute persistence paths; no `json.Marshal`/`Unmarshal` error is discarded with `_`.
 - Dispatch ordering (`ORDER BY accepted_at`) is a correct chronological total order for the timestamp format actually written.
 
@@ -24,3 +24,13 @@ LOC: 851 · Audit date: 2026-09-11 · Verdict: FINDINGS
 - P7: fencing via monotonic `fence` per episode, bounded retries (`maxEpisodeAttempts`), durable `stale_rebind_count` budget, idempotent `RecordRejection` by content hash.
 - P5: slog used, canonical JSON (RFC 8785) for all digests, intent catalog verified independently of the worker (B10).
 - P6: runner/rebind/p8/shadow/cancellation tests cover dispatch, staleness, kill, shadow, and retry-limit behavior.
+
+## Resolution (2026-09-12) — FIXED
+
+- **F1 (HIGH)** fixed: all post-execute persistence paths use a cancellation-proof `persistCtx` derived with `context.WithoutCancel` and a bounded timeout. `TestRunnerPersistsSuccessfulOutcomeAfterParentCancellation` proves a successful declined outcome still concludes the attempt and episode after the caller cancels.
+- **F2 (HIGH)** fixed: dispatch-time and post-execute epoch-kill quarantine writes check their errors and return `nil` after the terminal state is written, allowing the transaction to commit. The post-execute path also transitions the active attempt to `abandoned`; `TestRunnerQuarantinesLateOutcomeAfterEpochKill` proves no decision is persisted and the queue is unblocked.
+- **F3** fixed: `Request.WallTimeBudget` is the single parsing/validation boundary used by assembly, the runner deadline gate, the native executor, and the worker wire adapter.
+- **F4** fixed: the unused `Executor.Name()` method was removed from the interface and implementations.
+- **F5** fixed: the rejection path now uses the same persistence context and all quarantine/validation/outcome marshal errors are checked and wrapped.
+- **F6** fixed: episode selection uses `(accepted_at, episode_id)` and assembly writes fixed-width nanosecond timestamps so SQLite TEXT ordering is chronological and total.
+- Verified: `go test -race ./internal/episodes` passes.

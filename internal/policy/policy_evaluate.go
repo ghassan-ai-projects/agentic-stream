@@ -23,8 +23,12 @@ func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID strin
 	if err != nil {
 		return Result{IntentID: intentID}, err
 	}
-	if err := g.assertPolicyEpoch(ctx, row); err != nil {
-		return g.finish(ctx, tx, row, Result{IntentID: row.IntentID, DecisionID: row.DecisionID}, "denied", "epoch_killed", now)
+	if err := g.assertPolicyEpoch(ctx, tx, row); err != nil {
+		reason := "epoch_killed"
+		if errors.Is(err, storage.ErrEpochUnbound) {
+			reason = "epoch_unbound"
+		}
+		return g.finish(ctx, tx, row, Result{IntentID: row.IntentID, DecisionID: row.DecisionID}, "denied", reason, now)
 	}
 	result := Result{IntentID: row.IntentID, DecisionID: row.DecisionID}
 	if row.PolicyStatus != "pending" {
@@ -33,11 +37,11 @@ func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID strin
 	return g.evaluatePending(ctx, tx, row, result, now)
 }
 
-func (g *Gateway) assertPolicyEpoch(ctx context.Context, row intentRow) error {
-	if g.epochControl == nil || row.PolicyEpoch == "" {
+func (g *Gateway) assertPolicyEpoch(ctx context.Context, tx *sql.Tx, row intentRow) error {
+	if g.epochControl == nil {
 		return nil
 	}
-	if err := g.epochControl.AssertDecision(ctx, row.PolicyEpoch); err != nil {
+	if err := g.epochControl.AssertDecisionTx(ctx, tx, row.PolicyEpoch); err != nil {
 		return fmt.Errorf("assert policy epoch: %w", err)
 	}
 	return nil

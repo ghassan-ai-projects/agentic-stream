@@ -1,6 +1,6 @@
 # A-012 · `internal/executor/native/native.go`
 
-LOC: 560 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 560 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - Cost accrued before a timeout/cancel terminal is carried into `Outcome.CostMicrounits` so `costcontrol.Settle` records real spend.
@@ -23,3 +23,12 @@ LOC: 560 · Audit date: 2026-09-11 · Verdict: FINDINGS
 - P5: exported symbols documented; `slices.SortFunc`/`slices.Contains` used (410, 454).
 - P6: `native_test.go`, `openai_test.go`, `batch_test.go` cover the loop, budgets, and repair.
 - P7: token/cost budgets checked after every turn (317-320, 477-488); tool result bytes totaled and capped (355-358); wall-time applied via `context.WithTimeout` (250-252).
+
+## Resolution (2026-09-12) — FIXED
+
+- **F1 (HIGH)** fixed: accumulated provider usage is passed into timeout and cancellation terminals, including usage returned by a provider immediately before a late context check. `TestNativeExecutorEnforcesWallTimeAfterLateProviderResponse` and `TestNativeExecutorPreservesUsageOnCancellation` prove the resulting cost is retained.
+- **F2** fixed: execution rejects a request with neither a positive `wall_time` nor a positive `model_calls` ceiling before making a provider call. `TestNativeExecutorRejectsUnboundedRequest` proves the provider is not invoked.
+- **F3** fixed: retryable provider failures wait on a bounded, cancellation-aware backoff before retrying. `TestNativeExecutorBacksOffProviderRetries` proves the retry is delayed and remains bounded by the request budget.
+- **F4** fixed: canonical decision marshaling errors now produce a failed outcome with the accumulated usage instead of being discarded.
+- **F5** fixed: the `Config` documentation describes its actual dependencies and the anonymous budget alias is now a named type.
+- Verified: `go test -race ./internal/executor/native` passes.

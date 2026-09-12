@@ -1,6 +1,6 @@
 # A-058 · `internal/clock/clock.go`
 
-LOC: 164 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 164 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - Every timer due at the advance target fires during that `Advance` call, in due-time order (ties by scheduling order).

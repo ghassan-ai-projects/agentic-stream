@@ -181,20 +181,23 @@ func (s *Server) limitsStreamBytes() uint64 {
 }
 
 func (s *Server) started(req *runtimev1.EpisodeRequest) *runtimev1.EpisodeEvent {
-	now := time.Now().UTC()
-	if s.Now != nil {
-		now = s.Now().UTC()
-	}
 	return &runtimev1.EpisodeEvent{
 		EpisodeId:  req.GetEpisodeId(),
 		Sequence:   1,
-		OccurredAt: timestamppb.New(now),
+		OccurredAt: timestamppb.New(s.now()),
 		AttemptId:  req.GetAttemptId(),
 		Fence:      req.GetFence(),
 		Payload: &runtimev1.EpisodeEvent_Started{Started: &runtimev1.EpisodeStarted{
 			WorkerName: s.WorkerName, WorkerVersion: s.WorkerVersion,
 		}},
 	}
+}
+
+func (s *Server) now() time.Time {
+	if s != nil && s.Now != nil {
+		return s.Now().UTC()
+	}
+	return time.Now().UTC()
 }
 
 func (s *Server) validateRequest(req *runtimev1.EpisodeRequest) error { //nolint:wrapcheck // gRPC status errors are the public wire contract.
@@ -228,6 +231,9 @@ func (s *Server) validateRequest(req *runtimev1.EpisodeRequest) error { //nolint
 	if len(req.GetSnapshotJson()) == 0 || len(req.GetDecisionSchemaJson()) == 0 || len(req.GetToolCatalogJson()) == 0 {
 		return wireError(codes.InvalidArgument, "snapshot, decision schema, and tool catalog are required")
 	}
+	if err := ValidateBudget(req.GetBudget()); err != nil {
+		return wireErrorf(codes.InvalidArgument, "episode budget: %v", err)
+	}
 	if _, err := contractsv1.ParseTraceContext(req.GetTraceparent(), req.GetTracestate()); err != nil {
 		return wireErrorf(codes.InvalidArgument, "trace context: %v", err)
 	}
@@ -235,7 +241,7 @@ func (s *Server) validateRequest(req *runtimev1.EpisodeRequest) error { //nolint
 		if !req.GetDeadline().IsValid() {
 			return wireError(codes.InvalidArgument, "deadline is invalid")
 		}
-		if req.GetDeadline().AsTime().Before(time.Now().UTC()) {
+		if req.GetDeadline().AsTime().Before(s.now()) {
 			return wireError(codes.DeadlineExceeded, "episode deadline has expired")
 		}
 	}

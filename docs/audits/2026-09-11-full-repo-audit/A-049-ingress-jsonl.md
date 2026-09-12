@@ -1,6 +1,6 @@
 # A-049 · `internal/ingress/jsonl.go`
 
-LOC: 183 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 183 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - Quarantine identity is unique per trace/connector so two traces cannot collide on `(tenant_id, event_id)`.

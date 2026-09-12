@@ -1,6 +1,6 @@
 # A-062 · `internal/storage/epoch_control.go`
 
-LOC: 149 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 149 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - Kill is atomic: the epoch record and the supersession of its in-flight episodes commit together or not at all.
@@ -19,3 +19,11 @@ LOC: 149 · Audit date: 2026-09-11 · Verdict: FINDINGS
 - P2: kill terminality is enforced (`WHERE epoch_control.state <> 'killed'`); decision gate checks the episode's RECORDED epoch, so a hostile worker cannot resurrect outcomes.
 - P4: matches `migrations/025_epoch_control.sql` (CHECK-in states, STRICT); `lifecycle_status` values written by Kill match the 003 CHECK.
 - P6: epoch behavior is exercised indirectly via `authority_test.go` (draining/killed refusal through `assertOrdinaryTx`) and policy/episode suites; direct `Kill` supersession has no dedicated test — add one when F1 is fixed.
+
+## Resolution (2026-09-12) — FIXED
+
+- **F1** fixed: `Kill` records the killed epoch and supersedes admitted/running episodes in one transaction. `TestEpochControlKillIsAtomicWithEpisodeSupersession` asserts the shared timestamp and terminal state, and validates the killed decision gate on the same transaction.
+- **F2** fixed: nil, unconfigured, and empty-epoch `State`, `AssertDecision`, and transaction-scoped decision checks return an error, so the safety boundary fails closed.
+- **F3** fixed: `EpochControl.Now` is injectable, with UTC normalization and a physical-clock fallback.
+- **F4** fixed: killed and draining upserts are separate static SQL statements; runtime SQL composition was removed.
+- Verified: `go test -race ./internal/storage` passes.

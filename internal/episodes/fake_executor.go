@@ -18,9 +18,6 @@ func NewFakeExecutor() *FakeExecutor {
 	return &FakeExecutor{}
 }
 
-// Name returns the executor identifier.
-func (e *FakeExecutor) Name() string { return "fake" }
-
 // Execute returns a deterministic Decision based on the request snapshot.
 func (e *FakeExecutor) Execute(ctx context.Context, req *Request) (*Outcome, error) {
 	_ = ctx

@@ -159,7 +159,6 @@ type leasedCommand struct {
 	LeaseOwner  string
 	Traceparent string
 	Tracestate  string
-	Now         time.Time
 }
 
 // DispatchOnce processes at most one command. A leased command is marked
@@ -406,12 +405,17 @@ func (d *Dispatcher) lease(ctx context.Context) (leasedCommand, bool, error) {
 			return fmt.Errorf("find command outbox: %w", err)
 		}
 		found = true
-		leased.Now = now
 		leased.Traceparent = traceparent.String
 		leased.Tracestate = tracestate.String
 		if outboxStatus == "leased" {
 			leased.LeaseOwner = storedLeaseOwner.String
 			if expiresAt, parseErr := time.Parse(time.RFC3339Nano, storedLeaseUntil.String); parseErr != nil || !storedLeaseOwner.Valid || !storedLeaseUntil.Valid || !expiresAt.After(now) {
+				// Reclaimed rows have not gone through the command-document
+				// population below. Finalization still emits tenant-scoped
+				// lifecycle records, so restore the trusted ledger identity
+				// scanned above before recording the unknown outcome.
+				leased.Command.TenantID = storedTenant
+				leased.Command.IntentID = storedIntentID
 				found = false
 				if d.telemetry != nil {
 					d.telemetry.ObserveLeaseExpiry()
@@ -460,7 +464,11 @@ func (d *Dispatcher) lease(ctx context.Context) (leasedCommand, bool, error) {
 		if err != nil {
 			return fmt.Errorf("lease command outbox: %w", err)
 		}
-		if count, _ := result.RowsAffected(); count != 1 {
+		count, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("count leased command outbox rows: %w", err)
+		}
+		if count != 1 {
 			found = false
 			return nil
 		}

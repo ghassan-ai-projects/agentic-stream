@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -66,9 +67,6 @@ func NewWorkerExecutorWithEvidence(client runtimev1.EpisodeWorkerClient, name, r
 	return executor
 }
 
-// Name returns the worker executor name recorded in the episode ledger.
-func (e *WorkerExecutor) Name() string { return e.name }
-
 // Execute performs the current-version handshake and consumes one validated
 // server stream. RPC cancellation and deadline errors are returned unchanged
 // so the caller can classify them as cancellation or timeout.
@@ -88,7 +86,11 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Ou
 		}
 		span.End()
 	}()
-	executionCtx, cancel, err := boundedExecutionContext(executionCtx, req.RequestJSON)
+	wallTime, err := req.WallTimeBudget()
+	if err != nil {
+		return nil, fmt.Errorf("validate episode budget: %w", err)
+	}
+	executionCtx, cancel, err := boundedExecutionContext(executionCtx, wallTime)
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +98,9 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Ou
 	if e.evidenceToolsEndpoint != "" {
 		if err := worker.ValidateEvidenceSocketPath(e.evidenceToolsEndpoint); err != nil {
 			return nil, fmt.Errorf("evidence endpoint: %w", err)
+		}
+		if !slices.Contains(e.requestedFeatures, worker.EvidenceToolsFeature) {
+			return nil, fmt.Errorf("evidence tools require negotiated feature %q", worker.EvidenceToolsFeature)
 		}
 		if e.capabilityFactory == nil {
 			return nil, fmt.Errorf("evidence capability factory is not configured")
@@ -105,6 +110,12 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Ou
 	if err != nil {
 		return nil, fmt.Errorf("build worker request: %w", err)
 	}
+	if err := worker.ValidateBudget(wireRequest.GetBudget()); err != nil {
+		return nil, fmt.Errorf("worker request budget: %w", err)
+	}
+	if deadline, ok := executionCtx.Deadline(); ok {
+		wireRequest.Deadline = timestamppb.New(deadline.UTC())
+	}
 	wireRequest.EvidenceToolsEndpoint = e.evidenceToolsEndpoint
 	if e.evidenceToolsEndpoint != "" {
 		capabilityToken, issueErr := e.capabilityFactory.Issue(req)
@@ -112,9 +123,6 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Ou
 			return nil, fmt.Errorf("issue evidence capability: %w", issueErr)
 		}
 		wireRequest.CapabilityToken = append([]byte(nil), capabilityToken...)
-	}
-	if e.evidenceToolsEndpoint != "" && !containsFeature(e.requestedFeatures, worker.EvidenceToolsFeature) {
-		return nil, fmt.Errorf("evidence tools require negotiated feature %q", worker.EvidenceToolsFeature)
 	}
 	handshake, err := e.client.Handshake(executionCtx, &runtimev1.HandshakeRequest{
 		ProtocolVersion: worker.ProtocolVersion, ContractVersion: worker.ContractVersion,
@@ -200,9 +208,6 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Ou
 		}
 		if budget := event.GetBudget(); budget != nil {
 			sawBudget = true
-			if err := validateBudgetUpdate(wireRequest.GetBudget(), budget); err != nil {
-				return nil, err
-			}
 		}
 		nextSequence++
 		if candidate := event.GetDecision(); candidate != nil {
@@ -233,17 +238,20 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Ou
 	}
 	// A cost ceiling requires an explicit usage record, but zero cost is valid
 	// for providers and test workers that cannot price usage.
-	if wireRequest.GetBudget().GetMaxCostMicrounits() > 0 && !trustedUsage.usageReported && terminal.GetUsage() == nil {
-		return nil, fmt.Errorf("worker cost telemetry is missing")
+	if terminal.GetUsage() != nil {
+		if err := trustedUsage.observeUsage(wireRequest.GetBudget(), terminal.GetUsage()); err != nil {
+			return nil, err
+		}
+	}
+	if hasUsageBudget(wireRequest.GetBudget()) && !trustedUsage.usageReported {
+		if wireRequest.GetBudget().GetMaxCostMicrounits() > 0 {
+			return nil, fmt.Errorf("worker cost telemetry is missing")
+		}
+		return nil, budgetTelemetryMissingError{}
 	}
 
 	outcome = &Outcome{AttemptID: req.AttemptID, Fence: req.Fence, Reasons: []string{terminal.GetReasonCode()}}
-	outcome.CostMicrounits = trustedUsage.costMicrounits
-	if terminal.GetUsage() != nil {
-		if terminal.GetUsage().GetCostMicrounits() > outcome.CostMicrounits {
-			outcome.CostMicrounits = terminal.GetUsage().GetCostMicrounits()
-		}
-	}
+	outcome.CostMicrounits = trustedUsage.usage().costMicrounits
 	switch terminal.GetStatus() {
 	case runtimev1.TerminalStatus_TERMINAL_STATUS_PRODUCED:
 		if decision == nil {
@@ -267,9 +275,10 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Ou
 }
 
 type budgetUsage struct {
-	modelCalls, toolCalls                                      uint32
-	toolResultBytes, inputTokens, outputTokens, costMicrounits uint64
-	usageReported                                              bool
+	modelCalls, toolCalls, providerRetries uint32
+	toolResultBytes                        uint64
+	perEventUsage, cumulativeUsage         usageTotals
+	hasCumulativeUsage, usageReported      bool
 }
 
 func (u *budgetUsage) observe(limit *runtimev1.EpisodeBudget, event *runtimev1.EpisodeEvent) error {
@@ -283,23 +292,19 @@ func (u *budgetUsage) observe(limit *runtimev1.EpisodeBudget, event *runtimev1.E
 		}
 	}
 	if completed := event.GetModelCompleted(); completed != nil && completed.GetUsage() != nil {
-		u.usageReported = true
-		usage := completed.GetUsage()
-		u.inputTokens += usage.GetInputTokens()
-		u.outputTokens += usage.GetOutputTokens()
-		u.costMicrounits += usage.GetCostMicrounits()
-		if limit.GetMaxInputTokens() > 0 && u.inputTokens > limit.GetMaxInputTokens() {
-			return &budgetExceededError{"input_tokens"}
-		}
-		if limit.GetMaxOutputTokens() > 0 && u.outputTokens > limit.GetMaxOutputTokens() {
-			return &budgetExceededError{"output_tokens"}
-		}
-		if limit.GetMaxCostMicrounits() > 0 && u.costMicrounits > limit.GetMaxCostMicrounits() {
-			return &budgetExceededError{"cost_microunits"}
+		if err := u.addPerEventUsage(completed.GetUsage()); err != nil {
+			return err
 		}
 	}
 	if budget := event.GetBudget(); budget != nil && budget.GetCumulativeUsage() != nil {
-		u.usageReported = true
+		if err := u.recordCumulativeUsage(budget.GetCumulativeUsage()); err != nil {
+			return err
+		}
+	}
+	if budget := event.GetBudget(); budget != nil {
+		if err := u.observeBudgetUpdate(limit, budget); err != nil {
+			return err
+		}
 	}
 	if tool := event.GetTool(); tool != nil && tool.GetExecutionStarted() {
 		u.toolCalls++
@@ -316,39 +321,105 @@ func (u *budgetUsage) observe(limit *runtimev1.EpisodeBudget, event *runtimev1.E
 			return &budgetExceededError{"total_tool_result_bytes"}
 		}
 	}
+	return u.checkUsage(limit)
+}
+
+type usageTotals struct {
+	inputTokens, outputTokens, costMicrounits uint64
+}
+
+func usageFromProto(usage *runtimev1.Usage) usageTotals {
+	if usage == nil {
+		return usageTotals{}
+	}
+	return usageTotals{inputTokens: usage.GetInputTokens(), outputTokens: usage.GetOutputTokens(), costMicrounits: usage.GetCostMicrounits()}
+}
+
+func (u *budgetUsage) addPerEventUsage(usage *runtimev1.Usage) error {
+	u.usageReported = true
+	values := usageFromProto(usage)
+	u.perEventUsage.inputTokens += values.inputTokens
+	u.perEventUsage.outputTokens += values.outputTokens
+	u.perEventUsage.costMicrounits += values.costMicrounits
 	return nil
+}
+
+func (u *budgetUsage) recordCumulativeUsage(usage *runtimev1.Usage) error {
+	u.usageReported = true
+	values := usageFromProto(usage)
+	if u.hasCumulativeUsage && (values.inputTokens < u.cumulativeUsage.inputTokens || values.outputTokens < u.cumulativeUsage.outputTokens || values.costMicrounits < u.cumulativeUsage.costMicrounits) {
+		return fmt.Errorf("worker cumulative usage regressed")
+	}
+	u.cumulativeUsage = values
+	u.hasCumulativeUsage = true
+	return nil
+}
+
+func (u *budgetUsage) usage() usageTotals {
+	result := u.perEventUsage
+	if u.hasCumulativeUsage {
+		result.inputTokens = maxUint64(result.inputTokens, u.cumulativeUsage.inputTokens)
+		result.outputTokens = maxUint64(result.outputTokens, u.cumulativeUsage.outputTokens)
+		result.costMicrounits = maxUint64(result.costMicrounits, u.cumulativeUsage.costMicrounits)
+	}
+	return result
+}
+
+func (u *budgetUsage) observeUsage(limit *runtimev1.EpisodeBudget, usage *runtimev1.Usage) error {
+	if err := u.recordCumulativeUsage(usage); err != nil {
+		return err
+	}
+	return u.checkUsage(limit)
+}
+
+func (u *budgetUsage) checkUsage(limit *runtimev1.EpisodeBudget) error {
+	if limit == nil {
+		return nil
+	}
+	usage := u.usage()
+	if limit.GetMaxInputTokens() > 0 && usage.inputTokens > limit.GetMaxInputTokens() {
+		return &budgetExceededError{"input_tokens"}
+	}
+	if limit.GetMaxOutputTokens() > 0 && usage.outputTokens > limit.GetMaxOutputTokens() {
+		return &budgetExceededError{"output_tokens"}
+	}
+	if limit.GetMaxCostMicrounits() > 0 && usage.costMicrounits > limit.GetMaxCostMicrounits() {
+		return &budgetExceededError{"cost_microunits"}
+	}
+	return nil
+}
+
+func hasUsageBudget(budget *runtimev1.EpisodeBudget) bool {
+	return budget != nil && (budget.GetMaxInputTokens() > 0 || budget.GetMaxOutputTokens() > 0 || budget.GetMaxCostMicrounits() > 0)
+}
+
+func maxUint64(a, b uint64) uint64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func hasNumericBudget(budget *runtimev1.EpisodeBudget) bool {
 	return budget != nil && (budget.GetMaxModelCalls() > 0 || budget.GetMaxInputTokens() > 0 || budget.GetMaxOutputTokens() > 0 || budget.GetMaxToolCalls() > 0 || budget.GetMaxToolResultBytes() > 0 || budget.GetMaxTotalToolResultBytes() > 0 || budget.GetMaxProviderRetries() > 0 || budget.GetMaxCostMicrounits() > 0)
 }
 
-func boundedExecutionContext(ctx context.Context, requestJSON []byte) (context.Context, context.CancelFunc, error) {
-	var payload struct {
-		Budget struct {
-			WallTime string `json:"wall_time"`
-		} `json:"budget"`
-		CancellationKey string `json:"cancellation_key"`
-		SupersessionKey string `json:"supersession_key"`
+func boundedExecutionContext(ctx context.Context, wallTime time.Duration) (context.Context, context.CancelFunc, error) {
+	if wallTime <= 0 {
+		return nil, nil, fmt.Errorf("invalid wall_time budget %q", wallTime)
 	}
-	if err := json.Unmarshal(requestJSON, &payload); err != nil {
-		return nil, nil, fmt.Errorf("decode episode budget: %w", err)
-	}
-	if payload.Budget.WallTime == "" {
-		return ctx, func() {}, nil
-	}
-	duration, err := time.ParseDuration(payload.Budget.WallTime)
-	if err != nil || duration <= 0 {
-		return nil, nil, fmt.Errorf("invalid wall_time budget %q", payload.Budget.WallTime)
-	}
-	bounded, cancel := context.WithTimeout(ctx, duration)
+	bounded, cancel := context.WithTimeout(ctx, wallTime)
 	return bounded, cancel, nil
 }
 
-func validateBudgetUpdate(limit *runtimev1.EpisodeBudget, update *runtimev1.BudgetUpdated) error {
+func (u *budgetUsage) observeBudgetUpdate(limit *runtimev1.EpisodeBudget, update *runtimev1.BudgetUpdated) error {
 	if limit == nil || update == nil {
 		return nil
 	}
+	u.modelCalls = maxUint32(u.modelCalls, update.GetModelCallsUsed())
+	u.toolCalls = maxUint32(u.toolCalls, update.GetToolCallsUsed())
+	u.toolResultBytes = maxUint64(u.toolResultBytes, update.GetToolResultBytesUsed())
+	u.providerRetries = maxUint32(u.providerRetries, update.GetProviderRetriesUsed())
 	usage := update.GetCumulativeUsage()
 	if limit.GetMaxModelCalls() > 0 && update.GetModelCallsUsed() > limit.GetMaxModelCalls() {
 		return &budgetExceededError{"model_calls"}
@@ -377,13 +448,11 @@ func validateBudgetUpdate(limit *runtimev1.EpisodeBudget, update *runtimev1.Budg
 	return nil
 }
 
-func containsFeature(features []string, want string) bool {
-	for _, feature := range features {
-		if feature == want {
-			return true
-		}
+func maxUint32(a, b uint32) uint32 {
+	if a > b {
+		return a
 	}
-	return false
+	return b
 }
 
 func verifyDecisionDigest(raw, digest []byte) error {
@@ -430,19 +499,18 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 			Lane      string `json:"lane"`
 		} `json:"trigger"`
 		Executor struct {
-			Objective              string          `json:"objective"`
-			Prompt                 string          `json:"prompt"`
-			PromptSHA256           string          `json:"prompt_sha256"`
-			ObjectiveSHA256        string          `json:"objective_sha256"`
-			DecisionSchema         json.RawMessage `json:"decision_schema"`
-			DiagnosisCatalog       string          `json:"diagnosis_catalog"`
-			DiagnosisCatalogSHA256 string          `json:"diagnosis_catalog_sha256"`
+			Objective              string           `json:"objective"`
+			Prompt                 string           `json:"prompt"`
+			PromptSHA256           string           `json:"prompt_sha256"`
+			ObjectiveSHA256        string           `json:"objective_sha256"`
+			DecisionSchema         json.RawMessage  `json:"decision_schema"`
+			DiagnosisCatalog       string           `json:"diagnosis_catalog"`
+			DiagnosisCatalogSHA256 string           `json:"diagnosis_catalog_sha256"`
 			IntentCatalog          []map[string]any `json:"intent_catalog"`
-			IntentCatalogSHA256    string          `json:"intent_catalog_sha256"`
-			SkillRefs              []spec.SkillRef `json:"skill_refs"`
+			IntentCatalogSHA256    string           `json:"intent_catalog_sha256"`
+			SkillRefs              []spec.SkillRef  `json:"skill_refs"`
 		} `json:"executor"`
 		Budget struct {
-			WallTime             string `json:"wall_time"`
 			ModelCalls           uint32 `json:"model_calls"`
 			InputTokens          uint64 `json:"input_tokens"`
 			OutputTokens         uint64 `json:"output_tokens"`
@@ -530,16 +598,15 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 		MaxToolResultBytes: payload.Budget.ToolResultBytes, MaxTotalToolResultBytes: payload.Budget.TotalToolResultBytes,
 		MaxProviderRetries: payload.Budget.ProviderRetries, MaxCostMicrounits: payload.Budget.CostMicrounits,
 	}
-	if payload.Budget.WallTime != "" {
-		wallTime, parseErr := time.ParseDuration(payload.Budget.WallTime)
-		if parseErr != nil || wallTime <= 0 {
-			return nil, fmt.Errorf("invalid wall_time budget %q", payload.Budget.WallTime)
-		}
+	wallTime, err := req.WallTimeBudget()
+	if err != nil {
+		return nil, fmt.Errorf("validate episode budget: %w", err)
+	}
+	if wallTime > 0 {
 		budget.WallTime = durationpb.New(wallTime)
 	}
-	var deadline *timestamppb.Timestamp
-	if budget.GetWallTime() != nil {
-		deadline = timestamppb.New(time.Now().UTC().Add(budget.GetWallTime().AsDuration()))
+	if err := worker.ValidateBudget(budget); err != nil {
+		return nil, fmt.Errorf("worker budget: %w", err)
 	}
 	request := &runtimev1.EpisodeRequest{
 		ProtocolVersion: worker.ProtocolVersion, EpisodeId: req.EpisodeID, TriggerId: payload.Trigger.TriggerID,
@@ -549,7 +616,7 @@ func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
 		Objective: payload.Executor.Objective, ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion,
 		ModelPolicy:   req.ModelPolicy,         // P0B/§2.2: the worker needs the role to resolve a model; was previously omitted.
 		Prompt:        payload.Executor.Prompt, // P1/§4.3: the operator prompt body flows to the worker so the frame binds it.
-		PromptVersion: req.PromptVersion, Budget: budget, Deadline: deadline, Traceparent: req.Traceparent, Tracestate: req.Tracestate,
+		PromptVersion: req.PromptVersion, Budget: budget, Traceparent: req.Traceparent, Tracestate: req.Tracestate,
 		Kind: kind, Lane: lane, RiskCeiling: risk, AllowedIntentTypes: payload.AllowedIntentTypes,
 		WatchConfidenceFloor: payload.WatchConfidenceFloor,
 		CancellationKey:      payload.CancellationKey, SupersessionKey: payload.SupersessionKey,

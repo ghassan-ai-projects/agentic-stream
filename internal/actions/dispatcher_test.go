@@ -405,6 +405,58 @@ func TestDispatcherEffectorAcceptanceRechecksInterlock(t *testing.T) {
 	}
 }
 
+func TestDispatcherReclaimsExpiredLease(t *testing.T) {
+	db, commandID := openActionFixture(t)
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := t.Context()
+	claimedAt := time.Now().UTC().Add(-2 * time.Minute).Format(time.RFC3339Nano)
+	if _, err := db.ExecContext(ctx, `
+		UPDATE commands SET status = 'dispatching', updated_at = ? WHERE command_id = ?`, claimedAt, commandID); err != nil {
+		t.Fatalf("mark command dispatching: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		UPDATE outbox SET status = 'leased', lease_owner = 'crashed-worker', lease_until = ?, attempt_count = 1
+		WHERE aggregate_id = ?`, claimedAt, commandID); err != nil {
+		t.Fatalf("seed expired lease: %v", err)
+	}
+
+	effector := &recordingEffector{}
+	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute)
+	processed, err := dispatcher.DispatchOnce(ctx)
+	if err != nil {
+		t.Fatalf("reclaim expired lease: %v", err)
+	}
+	if processed {
+		t.Fatalf("expired lease reclaim should not call the effector or report a live dispatch")
+	}
+	if effector.calls != 0 {
+		t.Fatalf("effector calls = %d, want 0 during reclaim", effector.calls)
+	}
+
+	var commandStatus, outboxStatus, outcomeStatus, reconciliation string
+	if err := db.QueryRowContext(ctx, `
+		SELECT c.status, o.status, r.status, r.reconciliation_status
+		FROM commands c
+		JOIN outbox o ON o.aggregate_id = c.command_id
+		JOIN outcomes r ON r.command_id = c.command_id
+		WHERE c.command_id = ?`, commandID).Scan(&commandStatus, &outboxStatus, &outcomeStatus, &reconciliation); err != nil {
+		t.Fatalf("read reclaimed ledger: %v", err)
+	}
+	if commandStatus != "reconciling" || outboxStatus != "failed" || outcomeStatus != "unknown" || reconciliation != "required" {
+		t.Fatalf("reclaimed ledger command=%q outbox=%q outcome=%q reconciliation=%q", commandStatus, outboxStatus, outcomeStatus, reconciliation)
+	}
+	for _, eventType := range []string{notify.TypeCommandDispatched, notify.TypeOutcomeRecorded} {
+		event := readNotification(t, db, eventType)
+		if event.TenantID != "tenant" || event.Source != notify.SourceForTenant("tenant") {
+			t.Fatalf("%s tenant/source = %q/%q, want tenant-scoped event", eventType, event.TenantID, event.Source)
+		}
+		data, ok := event.Data.(map[string]any)
+		if !ok || data["tenant_id"] != "tenant" || data["intent_id"] != "int-action" {
+			t.Fatalf("%s data identity = %#v, want tenant and intent", eventType, event.Data)
+		}
+	}
+}
+
 func openActionFixture(t *testing.T) (*storage.DB, string) {
 	t.Helper()
 	ctx := context.Background()

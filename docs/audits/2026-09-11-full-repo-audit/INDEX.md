@@ -52,8 +52,8 @@ A test file passes only if all hold:
 ### Production files
 
 - [x] A-001 `internal/replay/replay.go` (1003) — FINDINGS → [A-001-replay-replay.md](A-001-replay-replay.md)
-- [x] A-002 `internal/actions/dispatcher.go` (892) — FINDINGS → [A-002-actions-dispatcher.md](A-002-actions-dispatcher.md)
-- [x] A-003 `internal/episodes/executor.go` (851) — FINDINGS · HIGH → [A-003-episodes-executor.md](A-003-episodes-executor.md)
+- [x] A-002 `internal/actions/dispatcher.go` (892) — FINDINGS · HIGH → [A-002-actions-dispatcher.md](A-002-actions-dispatcher.md) — ✅ FIXED
+- [x] A-003 `internal/episodes/executor.go` (851) — FINDINGS · HIGH → [A-003-episodes-executor.md](A-003-episodes-executor.md) — ✅ FIXED
 - [x] A-004 `internal/storage/authority.go` (836) — FINDINGS → [A-004-storage-authority.md](A-004-storage-authority.md)
 - [x] A-005 `internal/operators/operators.go` (778) — FINDINGS · HIGH → [A-005-operators-operators.md](A-005-operators-operators.md)
 - [x] A-006 `internal/episodes/assembler.go` (764) — FINDINGS → [A-006-episodes-assembler.md](A-006-episodes-assembler.md)
@@ -62,7 +62,7 @@ A test file passes only if all hold:
 - [x] A-009 `internal/runtime/pipeline.go` (646) — FINDINGS → [A-009-runtime-pipeline.md](A-009-runtime-pipeline.md)
 - [x] A-010 `internal/canonicaljson/canonicaljson.go` (624) — PASS
 - [x] A-011 `internal/situations/situations.go` (597) — FINDINGS → [A-011-situations-situations.md](A-011-situations-situations.md)
-- [x] A-012 `internal/executor/native/native.go` (560) — FINDINGS · HIGH → [A-012-executor-native-native.md](A-012-executor-native-native.md)
+- [x] A-012 `internal/executor/native/native.go` (560) — FINDINGS · HIGH → [A-012-executor-native-native.md](A-012-executor-native-native.md) — ✅ FIXED
 - [x] A-013 `internal/decisions/validator.go` (510) — FINDINGS · HIGH → [A-013-decisions-validator.md](A-013-decisions-validator.md)  — ✅ FIXED
 - [x] A-014 `internal/cognition/scheduler.go` (479) — FINDINGS → [A-014-cognition-scheduler.md](A-014-cognition-scheduler.md)
 - [x] A-015 `internal/cognition/engine.go` (446) — FINDINGS → [A-015-cognition-engine.md](A-015-cognition-engine.md)
@@ -88,7 +88,7 @@ A test file passes only if all hold:
 - [x] A-035 `internal/spec/spec.go` (272) — FINDINGS → [A-035-spec-spec.md](A-035-spec-spec.md)
 - [x] A-036 `internal/notify/sse.go` (260) — FINDINGS → [A-036-notify-sse.md](A-036-notify-sse.md)
 - [x] A-037 `internal/evidence/server.go` (255) — PASS
-- [x] A-038 `internal/executor/native/openai.go` (242) — FINDINGS · HIGH → [A-038-executor-native-openai.md](A-038-executor-native-openai.md)
+- [x] A-038 `internal/executor/native/openai.go` (242) — FINDINGS · HIGH → [A-038-executor-native-openai.md](A-038-executor-native-openai.md) — ✅ FIXED
 - [x] A-039 `internal/actions/serial_session_exchange.go` (237) — FINDINGS → [A-039-actions-serial_session_exchange.md](A-039-actions-serial_session_exchange.md)
 - [x] A-040 `internal/actions/serial_session_safety.go` (226) — FINDINGS → [A-040-actions-serial_session_safety.md](A-040-actions-serial_session_safety.md)
 - [x] A-041 `internal/policy/policy_evaluate.go` (225) — FINDINGS · HIGH → [A-041-policy-policy_evaluate.md](A-041-policy-policy_evaluate.md) — ✅ FIXED
@@ -112,7 +112,7 @@ A test file passes only if all hold:
 - [x] A-059 `internal/notifycontract/contract.go` (161) — FINDINGS → [A-059-notifycontract-contract.md](A-059-notifycontract-contract.md)
 - [x] A-060 `internal/worker/uds.go` (159) — FINDINGS → [A-060-worker-uds.md](A-060-worker-uds.md)
 - [x] A-061 `internal/runartifact/export.go` (158) — FINDINGS → [A-061-runartifact-export.md](A-061-runartifact-export.md)
-- [x] A-062 `internal/storage/epoch_control.go` (149) — FINDINGS → [A-062-storage-epoch-control.md](A-062-storage-epoch-control.md)
+- [x] A-062 `internal/storage/epoch_control.go` (149) — FINDINGS → [A-062-storage-epoch-control.md](A-062-storage-epoch-control.md) — ✅ FIXED
 - [x] A-063 `internal/engine/engine_apply.go` (147) — FINDINGS → [A-063-engine-engine-apply.md](A-063-engine-engine-apply.md)
 - [x] A-064 `internal/episodes/intent_catalog.go` (132) — PASS
 - [x] A-065 `internal/policy/policy_store.go` (131) — PASS
@@ -159,7 +159,9 @@ A test file passes only if all hold:
 
 Audit complete 2026-09-11. 97 files audited (69 production, 22 test, 6 schema/SQL/proto/data), 2 generated files skipped.
 
-**Verdicts: 20 PASS · 77 FINDINGS · 16 HIGH.**
+**Baseline verdicts: 20 PASS · 77 FINDINGS · 16 HIGH.**
+
+**Current resolution status: 10 FIXED · 67 OPEN FINDINGS · 7 OPEN HIGH.**
 
 ### HIGH findings (fix before any further feature work)
 

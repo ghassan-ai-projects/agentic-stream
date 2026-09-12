@@ -29,8 +29,6 @@ import (
 type Executor interface {
 	// Execute runs the episode to completion or budget exhaustion.
 	Execute(ctx context.Context, req *Request) (*Outcome, error)
-	// Name returns the executor identifier recorded in the episode ledger.
-	Name() string
 }
 
 // Outcome is the terminal result of one worker attempt.
@@ -46,16 +44,16 @@ type Outcome struct {
 
 // Runner polls admitted episodes and executes them deterministically.
 type Runner struct {
-	db              *storage.DB
-	executor        Executor
-	clk             clock.Clock
-	idGen           ids.Generator
-	ownerEpoch      string
-	cost            *costcontrol.Controller
-	epochControl    *storage.EpochControl
-	shadowStore     *storage.ShadowStore
-	telemetry       *telemetry.Runtime
-	assembler       *Assembler
+	db           *storage.DB
+	executor     Executor
+	clk          clock.Clock
+	idGen        ids.Generator
+	ownerEpoch   string
+	cost         *costcontrol.Controller
+	epochControl *storage.EpochControl
+	shadowStore  *storage.ShadowStore
+	telemetry    *telemetry.Runtime
+	assembler    *Assembler
 }
 
 const maxEpisodeAttempts = 3
@@ -132,15 +130,26 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	var stale *StaleSituationError
 	var rebindCount int
 	rebound := false
+	quarantined := false
+	lifecyclePredicate := "lifecycle_status IN ('admitted', 'running')"
+	if r.epochControl != nil {
+		// Kill supersedes admitted episodes that have not started an attempt.
+		// Include only those rows so the runner can release their reservation
+		// and durably quarantine them; other superseded episodes are terminal
+		// for a different reason and must not be dispatched again.
+		lifecyclePredicate += ` OR (lifecycle_status = 'superseded' AND current_attempt_id IS NULL
+			AND EXISTS (SELECT 1 FROM epoch_control WHERE epoch = episodes.policy_epoch AND state = 'killed'))`
+	}
 	err := r.withTx(ctx, func(tx *sql.Tx) error {
-		if err := tx.QueryRowContext(ctx, `
+		query := fmt.Sprintf(`
 			SELECT episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
 			       executor_name, executor_version, model_policy, prompt_version,
 			       snapshot_sha256, prompt_sha256, objective_sha256, admission_key, request_json,
 			       dispatch_policy, policy_epoch, stale_rebind_count
 			FROM episodes
-			WHERE tenant_id = ? AND lifecycle_status IN ('admitted', 'running')
-			ORDER BY accepted_at LIMIT 1`,
+			WHERE tenant_id = ? AND (%s)
+			ORDER BY accepted_at, episode_id LIMIT 1`, lifecyclePredicate)
+		if err := tx.QueryRowContext(ctx, query,
 			tenantID,
 		).Scan(
 			&episodeID, &req.SchedulerItemID, &req.TenantID, &req.SituationID, &req.SituationVersion,
@@ -174,6 +183,9 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		req.Tracestate = trace.Tracestate
 		req.CancellationKey = trace.CancellationKey
 		req.SupersessionKey = trace.SupersessionKey
+		if _, err := req.WallTimeBudget(); err != nil {
+			return fmt.Errorf("validate persisted episode budget: %w", err)
+		}
 		entityID, entityErr := requestEntityID(req.RequestJSON)
 		if entityErr != nil {
 			return fmt.Errorf("load persisted request entity: %w", entityErr)
@@ -212,14 +224,19 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 						"episode_id", episodeID,
 						"bound", req.SituationVersion, "live", liveVersion,
 						"error", rebindErr.Error())
-					terminal, _ := json.Marshal(map[string]any{"reason": "rebind_failed",
+					terminal, marshalErr := json.Marshal(map[string]any{"reason": "rebind_failed",
 						"bound": req.SituationVersion, "live": liveVersion,
 						"rebind_attempts": rebindCount + 1, "error": rebindErr.Error()})
-					_, _ = tx.ExecContext(ctx, `
-						UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?,
-						    stale_rebind_count = stale_rebind_count + 1
-						WHERE episode_id = ?`,
-						r.clk.Now().UTC().Format(time.RFC3339Nano), terminal, episodeID)
+					if marshalErr != nil {
+						return fmt.Errorf("marshal rebind terminal: %w", marshalErr)
+					}
+					if _, execErr := tx.ExecContext(ctx, `
+							UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?,
+							    stale_rebind_count = stale_rebind_count + 1
+							WHERE episode_id = ?`,
+						r.clk.Now().UTC().Format(time.RFC3339Nano), terminal, episodeID); execErr != nil {
+						return fmt.Errorf("quarantine rebind-failed episode: %w", execErr)
+					}
 					if r.telemetry != nil {
 						r.telemetry.ObserveRebindFailure()
 					}
@@ -243,12 +260,17 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 				// Bound == live inside this tx (writes are serialized), so the
 				// dispatch below reasons over the freshest committed state.
 			} else {
-				terminal, _ := json.Marshal(map[string]any{"reason": "stale_situation",
+				terminal, marshalErr := json.Marshal(map[string]any{"reason": "stale_situation",
 					"bound": req.SituationVersion, "live": liveVersion, "rebind_attempts": rebindCount})
-				_, _ = tx.ExecContext(ctx, `
+				if marshalErr != nil {
+					return fmt.Errorf("marshal stale terminal: %w", marshalErr)
+				}
+				if _, execErr := tx.ExecContext(ctx, `
 					UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?
 					WHERE episode_id = ?`,
-					r.clk.Now().UTC().Format(time.RFC3339Nano), terminal, episodeID)
+					r.clk.Now().UTC().Format(time.RFC3339Nano), terminal, episodeID); execErr != nil {
+					return fmt.Errorf("quarantine stale episode: %w", execErr)
+				}
 				if r.telemetry != nil {
 					r.telemetry.ObserveStaleRejection()
 				}
@@ -261,14 +283,36 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		// INDEPENDENTLY of the worker — the episode's recorded epoch is
 		// checked at the dispatch boundary, so a hostile worker cannot slip a
 		// decision through after the kill.
-		if r.epochControl != nil && req.PolicyEpoch != "" {
-			if err := r.epochControl.AssertDecision(ctx, req.PolicyEpoch); err != nil {
-				terminal, _ := json.Marshal(map[string]any{"reason": "epoch_killed"})
-				_, _ = tx.ExecContext(ctx, `
+		if r.epochControl != nil {
+			epochErr := storage.ErrEpochUnbound
+			if req.PolicyEpoch != "" {
+				epochErr = r.epochControl.AssertDecisionTx(ctx, tx, req.PolicyEpoch)
+			}
+			if epochErr != nil {
+				if !errors.Is(epochErr, storage.ErrEpochKilled) && !errors.Is(epochErr, storage.ErrEpochUnbound) {
+					return fmt.Errorf("check episode policy epoch: %w", epochErr)
+				}
+				reason := "epoch_killed"
+				if errors.Is(epochErr, storage.ErrEpochUnbound) {
+					reason = "epoch_unbound"
+				}
+				terminal, marshalErr := json.Marshal(map[string]any{"reason": reason})
+				if marshalErr != nil {
+					return fmt.Errorf("marshal epoch terminal: %w", marshalErr)
+				}
+				if _, execErr := tx.ExecContext(ctx, `
 					UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?
 					WHERE episode_id = ?`,
-					r.clk.Now().UTC().Format(time.RFC3339Nano), terminal, episodeID)
-				return fmt.Errorf("refuse episode under killed epoch: %w", err)
+					r.clk.Now().UTC().Format(time.RFC3339Nano), terminal, episodeID); execErr != nil {
+					return fmt.Errorf("quarantine killed-epoch episode: %w", execErr)
+				}
+				if r.cost != nil {
+					if settleErr := r.cost.Settle(ctx, tx, episodeID, 0, r.clk.Now().UTC().Format(time.RFC3339Nano)); settleErr != nil {
+						return fmt.Errorf("settle quarantined episode cost: %w", settleErr)
+					}
+				}
+				quarantined = true
+				return nil
 			}
 		}
 		req.AttemptID = ""
@@ -305,6 +349,9 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	// A stale episode was quarantined (committed) inside the tx — report it
 	// processed and let the batch continue; the queue drains past it.
 	if stale != nil {
+		return true, nil
+	}
+	if quarantined {
 		return true, nil
 	}
 	// A successful re-bind is counted only after its tx committed — a later
@@ -355,7 +402,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 			reason = RejectStaleAttempt
 		}
 		incoming := Identity{EpisodeID: identity.EpisodeID, AttemptID: outcome.AttemptID, Fence: outcome.Fence}
-		return true, r.failAttemptWithRejection(ctx, identity, incoming, reason, "worker_identity_mismatch")
+		return true, r.failAttemptWithRejection(persistCtx, identity, incoming, reason, "worker_identity_mismatch")
 	}
 	// P8 (freshness): a decision that arrives after the episode's wall_time
 	// deadline is refused (terminal timed_out) — the deadline is never extended
@@ -371,21 +418,57 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		// the persistence transaction — an attempt dispatched before the kill
 		// that completes after it is refused here, so a hostile worker cannot
 		// slip a decision into governance. The episode is quarantined.
-		if r.epochControl != nil && req.PolicyEpoch != "" {
-			if err := r.epochControl.AssertDecision(ctx, req.PolicyEpoch); err != nil {
-				terminal, _ := json.Marshal(map[string]any{"reason": "epoch_killed_post_execute"})
-				_, _ = tx.ExecContext(ctx, `
+		if r.epochControl != nil {
+			epochErr := storage.ErrEpochUnbound
+			if req.PolicyEpoch != "" {
+				epochErr = r.epochControl.AssertDecisionTx(persistCtx, tx, req.PolicyEpoch)
+			}
+			if epochErr != nil {
+				if !errors.Is(epochErr, storage.ErrEpochKilled) && !errors.Is(epochErr, storage.ErrEpochUnbound) {
+					return fmt.Errorf("check post-execute policy epoch: %w", epochErr)
+				}
+				reason := "epoch_killed_post_execute"
+				if errors.Is(epochErr, storage.ErrEpochUnbound) {
+					reason = "epoch_unbound_post_execute"
+				}
+				terminal, marshalErr := json.Marshal(map[string]any{"reason": reason})
+				if marshalErr != nil {
+					return fmt.Errorf("marshal post-execute epoch terminal: %w", marshalErr)
+				}
+				attemptTerminal, marshalErr := json.Marshal(map[string]any{
+					"status": string(AttemptAbandoned),
+					"reason": reason,
+				})
+				if marshalErr != nil {
+					return fmt.Errorf("marshal post-execute attempt terminal: %w", marshalErr)
+				}
+				if err := TransitionAttempt(persistCtx, tx, identity, AttemptAbandoned, r.clk.Now(), attemptTerminal); err != nil {
+					return fmt.Errorf("abandon killed epoch attempt: %w", err)
+				}
+				if _, execErr := tx.ExecContext(persistCtx, `
 					UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?
 					WHERE episode_id = ?`,
-					now, terminal, episodeID)
-				return fmt.Errorf("refuse post-execute decision under killed epoch: %w", err)
+					now, terminal, episodeID); execErr != nil {
+					return fmt.Errorf("quarantine post-execute killed-epoch episode: %w", execErr)
+				}
+				if r.cost != nil {
+					if settleErr := r.cost.Settle(persistCtx, tx, episodeID, outcome.CostMicrounits, now); settleErr != nil {
+						return fmt.Errorf("settle post-execute quarantined episode cost: %w", settleErr)
+					}
+				}
+				quarantined = true
+				return nil
 			}
 		}
-		validationInput, err := decisionInput(&req, identity, r.clk.Now())
-		if err != nil {
-			return fmt.Errorf("build decision validation input: %w", err)
+		var validated *decisions.Result
+		var validationErr error
+		if outcome.DecisionJSON != nil {
+			validationInput, err := decisionInput(&req, identity, r.clk.Now())
+			if err != nil {
+				return fmt.Errorf("build decision validation input: %w", err)
+			}
+			validated, validationErr = decisions.Validate(outcome.DecisionJSON, outcome.DecisionSHA256, validationInput)
 		}
-		validated, validationErr := decisions.Validate(outcome.DecisionJSON, outcome.DecisionSHA256, validationInput)
 		decisionID := decisionIDFromJSON(outcome.DecisionJSON)
 		if decisionID == "" {
 			decisionID = r.idGen.New(ids.PrefixDecision)
@@ -397,33 +480,43 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		}
 		validationStatus := "rejected"
 		var validationJSON []byte
-		if validationErr == nil {
-			validationStatus = "proposed"
-			validationJSON = []byte(`{}`)
-			if decoded, decodeErr := canonicaljson.DecodeDigest(validated.DecisionDigest); decodeErr == nil {
-				decisionDigest = decoded
-			}
-		} else {
-			var typed *decisions.ValidationError
-			if errors.As(validationErr, &typed) {
-				validationJSON, _ = json.Marshal(map[string]any{"reason": typed.Reason, "details": typed.Details})
+		if outcome.DecisionJSON != nil {
+			if validationErr == nil {
+				validationStatus = "proposed"
+				validationJSON = []byte(`{}`)
+				if decoded, decodeErr := canonicaljson.DecodeDigest(validated.DecisionDigest); decodeErr == nil {
+					decisionDigest = decoded
+				}
 			} else {
-				validationJSON, _ = json.Marshal(map[string]any{"reason": "schema_invalid", "details": validationErr.Error()})
-			}
-			if !hasContractDigest {
-				rawHash := sha256.Sum256(outcome.DecisionJSON)
-				var details map[string]any
-				_ = json.Unmarshal(validationJSON, &details)
-				details["raw_sha256"] = hex.EncodeToString(rawHash[:])
-				validationJSON, _ = json.Marshal(details)
+				var typed *decisions.ValidationError
+				if errors.As(validationErr, &typed) {
+					validationJSON, err = json.Marshal(map[string]any{"reason": typed.Reason, "details": typed.Details})
+				} else {
+					validationJSON, err = json.Marshal(map[string]any{"reason": "schema_invalid", "details": validationErr.Error()})
+				}
+				if err != nil {
+					return fmt.Errorf("marshal decision validation: %w", err)
+				}
+				if !hasContractDigest {
+					rawHash := sha256.Sum256(outcome.DecisionJSON)
+					var details map[string]any
+					if err := json.Unmarshal(validationJSON, &details); err != nil {
+						return fmt.Errorf("decode decision validation: %w", err)
+					}
+					details["raw_sha256"] = hex.EncodeToString(rawHash[:])
+					validationJSON, err = json.Marshal(details)
+					if err != nil {
+						return fmt.Errorf("marshal raw decision validation: %w", err)
+					}
+				}
 			}
 		}
 		if outcome.DecisionJSON != nil {
 			var ordinal int
-			if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(ordinal), 0) + 1 FROM decisions WHERE episode_id = ?", episodeID).Scan(&ordinal); err != nil {
+			if err := tx.QueryRowContext(persistCtx, "SELECT COALESCE(MAX(ordinal), 0) + 1 FROM decisions WHERE episode_id = ?", episodeID).Scan(&ordinal); err != nil {
 				return fmt.Errorf("allocate decision ordinal: %w", err)
 			}
-			if _, err := tx.ExecContext(ctx, `
+			if _, err := tx.ExecContext(persistCtx, `
 				INSERT INTO decisions (
 					decision_id, episode_id, attempt_id, fence, ordinal, situation_id,
 					situation_version, raw_json, decision_sha256, validation_status,
@@ -442,15 +535,15 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 					// would-be policy outcome is computed from the intents —
 					// but NOTHING is written to intents or commands. Shadow
 					// never enters action governance.
-					if err := r.recordShadow(ctx, tx, decisionID, decisionDigest, &req, outcome, validated, now); err != nil {
+					if err := r.recordShadow(persistCtx, tx, decisionID, decisionDigest, &req, outcome, validated, now); err != nil {
 						return err
 					}
 				} else {
-					if err := r.persistValidatedIntents(ctx, tx, validated, &req, now); err != nil {
+					if err := r.persistValidatedIntents(persistCtx, tx, validated, &req, now); err != nil {
 						return err
 					}
 				}
-				if _, err := tx.ExecContext(ctx, "UPDATE decisions SET validation_status = 'accepted' WHERE decision_id = ?", decisionID); err != nil {
+				if _, err := tx.ExecContext(persistCtx, "UPDATE decisions SET validation_status = 'accepted' WHERE decision_id = ?", decisionID); err != nil {
 					return fmt.Errorf("accept decision: %w", err)
 				}
 			} else {
@@ -459,10 +552,10 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 				if errors.As(validationErr, &typed) {
 					reason = typed.Reason
 				}
-				if err := RecordRejection(ctx, tx, identity, RejectionReason(reason), validationJSON, r.clk.Now()); err != nil {
+				if err := RecordRejection(persistCtx, tx, identity, RejectionReason(reason), validationJSON, r.clk.Now()); err != nil {
 					return fmt.Errorf("record decision rejection: %w", err)
 				}
-				if _, err := tx.ExecContext(ctx, "UPDATE decisions SET rejection_reason = ? WHERE decision_id = ?", reason, decisionID); err != nil {
+				if _, err := tx.ExecContext(persistCtx, "UPDATE decisions SET rejection_reason = ? WHERE decision_id = ?", reason, decisionID); err != nil {
 					return fmt.Errorf("annotate rejected decision: %w", err)
 				}
 			}
@@ -485,15 +578,15 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 		if err != nil {
 			return fmt.Errorf("marshal outcome: %w", err)
 		}
-		if err := TransitionAttempt(ctx, tx, identity, attemptStatus, r.clk.Now(), terminalJSON); err != nil {
+		if err := TransitionAttempt(persistCtx, tx, identity, attemptStatus, r.clk.Now(), terminalJSON); err != nil {
 			return fmt.Errorf("finish episode attempt: %w", err)
 		}
 		if r.cost != nil {
-			if err := r.cost.Settle(ctx, tx, identity.EpisodeID, outcome.CostMicrounits, now); err != nil {
+			if err := r.cost.Settle(persistCtx, tx, identity.EpisodeID, outcome.CostMicrounits, now); err != nil {
 				return fmt.Errorf("settle episode cost: %w", err)
 			}
 		}
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := tx.ExecContext(persistCtx, `
 			UPDATE episodes SET lifecycle_status = 'concluded', ended_at = ?, terminal_json = ?
 			WHERE episode_id = ?`,
 			now, terminalJSON, episodeID,
@@ -544,8 +637,8 @@ func decisionInput(req *Request, identity Identity, now time.Time) (decisions.In
 		RiskCeiling        string   `json:"risk_ceiling"`
 		Kind               string   `json:"kind"`
 		Executor           struct {
-			IntentCatalog      []map[string]any `json:"intent_catalog"`
-			IntentCatalogSHA256 string          `json:"intent_catalog_sha256"`
+			IntentCatalog       []map[string]any `json:"intent_catalog"`
+			IntentCatalogSHA256 string           `json:"intent_catalog_sha256"`
 		} `json:"executor"`
 	}
 	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
@@ -687,15 +780,7 @@ func decisionIDFromJSON(raw []byte) string {
 // The budget is the executor's canonical input (never extended after
 // admission); a decision produced after it is refused.
 func (r *Runner) deadlineExceeded(req *Request, startedAt time.Time) bool {
-	var payload struct {
-		Budget struct {
-			WallTime string `json:"wall_time"`
-		} `json:"budget"`
-	}
-	if json.Unmarshal(req.RequestJSON, &payload) != nil || payload.Budget.WallTime == "" {
-		return false
-	}
-	wallTime, err := time.ParseDuration(payload.Budget.WallTime)
+	wallTime, err := req.WallTimeBudget()
 	if err != nil || wallTime <= 0 {
 		return false
 	}
@@ -732,7 +817,7 @@ func (r *Runner) failAttemptStatus(ctx context.Context, identity Identity, attem
 		}
 		if lifecycle != string(LifecycleSuperseded) && failedAttempts < maxEpisodeAttempts {
 			if _, err := tx.ExecContext(ctx, `
-				UPDATE episodes SET lifecycle_status = 'running', ended_at = NULL, terminal_json = NULL
+					UPDATE episodes SET lifecycle_status = 'running', ended_at = NULL, terminal_json = NULL
 				WHERE episode_id = ?`,
 				identity.EpisodeID,
 			); err != nil {

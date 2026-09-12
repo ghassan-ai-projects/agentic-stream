@@ -1,6 +1,6 @@
 # A-013 · `internal/decisions/validator.go`
 
-LOC: 510 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 510 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - Every identity-bearing intent parameter is bound to the dispatched episode's trusted identity, regardless of which other parameters are present.

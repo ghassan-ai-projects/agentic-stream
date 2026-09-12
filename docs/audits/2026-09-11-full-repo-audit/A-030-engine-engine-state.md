@@ -1,6 +1,6 @@
 # A-030 · `internal/engine/engine_state.go`
 
-LOC: 288 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 288 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - Stable identities are unambiguous: distinct evidence sets cannot produce the same lineage identity.

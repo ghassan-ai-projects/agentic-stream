@@ -2,8 +2,8 @@ package episodes_test
 
 import (
 	"context"
-	"encoding/json"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -51,8 +51,8 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 			Executor: spec.Executor{
 				Name:           "fake",
 				DispatchPolicy: "active",
-				ModelPolicy:   "test-policy",
-				PromptVersion: "prompt-v1", Prompt: "Analyze the situation and return a typed decision.",
+				ModelPolicy:    "test-policy",
+				PromptVersion:  "prompt-v1", Prompt: "Analyze the situation and return a typed decision.",
 			},
 		},
 		Actions: spec.Actions{
@@ -194,8 +194,6 @@ type failOnceExecutor struct {
 	calls    int
 	delegate *episodes.FakeExecutor
 }
-
-func (e *failOnceExecutor) Name() string { return "fail-once" }
 
 func (e *failOnceExecutor) Execute(ctx context.Context, req *episodes.Request) (*episodes.Outcome, error) {
 	e.calls++

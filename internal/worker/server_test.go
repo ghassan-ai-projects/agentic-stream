@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -126,6 +127,24 @@ func TestServerRejectsEventSequenceAndMissingTerminal(t *testing.T) {
 	}
 }
 
+func TestServerRejectsUnboundedWorkerBudgetBeforeStarted(t *testing.T) {
+	client := runtimev1.NewEpisodeWorkerClient(newBufConn(t, newTestServer()))
+	for _, budget := range []*runtimev1.EpisodeBudget{nil, {}, {WallTime: durationpb.New(0)}} {
+		stream, err := client.Execute(t.Context(), func() *runtimev1.EpisodeRequest {
+			request := validRequest()
+			request.Budget = budget
+			return request
+		}())
+		if err != nil {
+			t.Fatalf("execute budget=%v: %v", budget, err)
+		}
+		_, err = stream.Recv()
+		if status.Code(err) != codes.InvalidArgument {
+			t.Fatalf("budget=%v error code=%v, want %v", budget, status.Code(err), codes.InvalidArgument)
+		}
+	}
+}
+
 func newTestServer() *Server {
 	server := &Server{
 		WorkerName: "test-worker", WorkerVersion: "test-v1", SupportedFeatures: []string{"trace_context"},
@@ -159,6 +178,7 @@ func validRequest() *runtimev1.EpisodeRequest {
 		Kind: runtimev1.EpisodeKind_EPISODE_KIND_DIAGNOSE, Lane: runtimev1.EpisodeLane_EPISODE_LANE_FAST,
 		RiskCeiling: runtimev1.RiskClass_RISK_CLASS_R1, AttemptId: "attempt-1", Fence: 1,
 		Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+		Budget:      &runtimev1.EpisodeBudget{WallTime: durationpb.New(time.Minute)},
 		Deadline:    timestamppb.New(time.Now().Add(time.Minute)),
 	}
 }

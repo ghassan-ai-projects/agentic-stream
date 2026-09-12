@@ -1,6 +1,6 @@
 # A-038 · `internal/executor/native/openai.go`
 
-LOC: 242 · Audit date: 2026-09-11 · Verdict: FINDINGS
+LOC: 242 · Audit date: 2026-09-11 · Verdict: FIXED
 
 ## Bar (close only when every line is true)
 - The HTTP client used has a timeout, and no code path can block indefinitely.
@@ -21,3 +21,11 @@ LOC: 242 · Audit date: 2026-09-11 · Verdict: FINDINGS
 - P5: exported symbols documented; errors wrapped `%w`.
 - P6: `openai_test.go` covers SSE accumulation, tool-call assembly, usage fallbacks, and retryable classification.
 - P7: usage accumulation deterministic; no wall-clock decisions inside the adapter.
+
+## Resolution (2026-09-12) — FIXED
+
+- **F1 (HIGH)** fixed: the nil-client path uses a package-owned HTTP client with bounded total, dial, TLS-handshake, and response-header timeouts; a caller-supplied client with no total timeout is rejected. `TestOpenAICompatibleProviderRejectsZeroTimeoutClient` covers the explicit fail-closed guard.
+- **F2 (HIGH)** fixed: streamed requests set `stream_options.include_usage=true`, and completed SSE/JSON responses without usage are rejected rather than silently settling zero spend. `TestOpenAICompatibleProviderDeclaresBoundedTools` asserts the request option and the provider tests supply usage receipts.
+- **F3** fixed: user-content marshaling errors are returned with context.
+- **F4** fixed: SSE tool-call ordering uses `slices.Sort`.
+- Verified: `go test -race ./internal/executor/native` passes.
