@@ -12,7 +12,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestFireRecentWatchesPaginatesPastFullPage(t *testing.T) {
@@ -68,7 +68,7 @@ func TestFireRecentWatchesPaginatesPastFullPage(t *testing.T) {
 	}
 
 	pipeline := &Pipeline{log: log, watch: watch, tenantID: "default"}
-	spanCtx, span := trace.NewNoopTracerProvider().Tracer("runtime-test").Start(ctx, "watch-pagination")
+	spanCtx, span := noop.NewTracerProvider().Tracer("runtime-test").Start(ctx, "watch-pagination")
 	defer span.End()
 	if err := pipeline.fireRecentWatches(spanCtx, 0, span); err != nil {
 		t.Fatalf("fire paginated watches: %v", err)

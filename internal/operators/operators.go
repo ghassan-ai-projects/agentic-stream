@@ -143,7 +143,7 @@ const maxSeenBootIDs = 64
 // clock. Producer timestamps are evidence, not runtime scheduling authority.
 func (r *OperatorRuntime) ApplyEventAt(ctx context.Context, ps *PartitionState, env contractsv1.Envelope, watermark, processingTime time.Time) ([]Feature, *PartitionState, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, ps, err
+		return nil, ps, fmt.Errorf("apply event canceled: %w", err)
 	}
 	if ps == nil {
 		ps = &PartitionState{OperatorStates: make(map[string]map[string]*OperatorStateBlob)}
@@ -162,7 +162,7 @@ func (r *OperatorRuntime) ApplyEventAt(ctx context.Context, ps *PartitionState, 
 			continue
 		}
 		if err := ctx.Err(); err != nil {
-			return nil, ps, err
+			return nil, ps, fmt.Errorf("apply event canceled: %w", err)
 		}
 		fs, err := r.applyOperator(ctx, ps, inst, env, watermark, processingTime)
 		if err != nil {
@@ -731,7 +731,7 @@ type TimerIdentity struct {
 // enriching timer features.
 func (r *OperatorRuntime) ApplyTimer(ctx context.Context, ps *PartitionState, watermark, processingTime time.Time, identities ...TimerIdentity) ([]Feature, *PartitionState, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, ps, err
+		return nil, ps, fmt.Errorf("apply timer canceled: %w", err)
 	}
 	if ps == nil {
 		return nil, ps, nil
@@ -798,7 +798,7 @@ func (r *OperatorRuntime) applyHeartbeatTimer(ctx context.Context, inst *operato
 	slices.Sort(keys)
 	for _, stateKey := range keys {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("heartbeat timer canceled: %w", err)
 		}
 		if !r.isActiveBoot(ps, stateKey) {
 			continue

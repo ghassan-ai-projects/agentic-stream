@@ -30,7 +30,8 @@ func TestLineageIDNoConcatenationCollision(t *testing.T) {
 
 	// Identical evidence must be stable across calls.
 	same := []string{"evt-1", "evt-2"}
-	if e.lineageID(same) != e.lineageID(same) {
+	first := e.lineageID(same)
+	if e.lineageID(same) != first {
 		t.Fatal("lineageID is not stable for identical evidence")
 	}
 }

@@ -357,7 +357,7 @@ func (missingUsageProvider) Name() string { return "missing-usage" }
 func (missingUsageProvider) Stream(ctx context.Context, req native.ModelRequest) (native.ModelResponse, error) {
 	response, err := (&native.DeterministicProvider{}).Stream(ctx, req)
 	if err != nil {
-		return native.ModelResponse{}, err
+		return native.ModelResponse{}, fmt.Errorf("deterministic stream: %w", err)
 	}
 	response.Usage = native.Usage{}
 	response.UsageReported = false

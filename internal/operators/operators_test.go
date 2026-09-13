@@ -2,6 +2,7 @@ package operators_test
 
 import (
 	"context"
+	"errors"
 	"math"
 	"slices"
 	"testing"
@@ -418,7 +419,7 @@ func TestApplyTimerHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, _, err = rt.ApplyTimer(ctx, &operators.PartitionState{}, time.Time{}, time.Time{})
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("ApplyTimer error = %v, want %v", err, context.Canceled)
 	}
 }

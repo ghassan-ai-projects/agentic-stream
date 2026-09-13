@@ -223,7 +223,7 @@ func discardToNewline(r *bufio.Reader) error {
 		if errors.Is(err, bufio.ErrBufferFull) {
 			continue
 		}
-		return err
+		return fmt.Errorf("discard to newline: %w", err)
 	}
 }
 
