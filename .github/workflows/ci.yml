@@ -23,7 +23,10 @@ on:
     branches: [main]
 
 env:
-  GO_VERSION: "1.26.5"
+  # Patch bump required by govulncheck: 1.26.5 ships six stdlib vulnerabilities
+  # (GO-2026-6218, GO-2026-6091, GO-2026-6090, GO-2026-6089, GO-2026-5972,
+  # GO-2026-5026) that this codebase's call graph reaches; all fixed in 1.26.6.
+  GO_VERSION: "1.26.6"
   GO_TOOLS_VERSION: "v0.45.0"
   GOVULNCHECK_VERSION: "v1.3.0"
   GOLANGCI_LINT_VERSION: "v2.12.2"
