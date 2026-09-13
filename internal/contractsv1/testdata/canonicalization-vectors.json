@@ -3,7 +3,7 @@
   "canonicalization": "RFC 8785 (JCS)",
   "hash": "SHA-256",
   "digest_rule": "sha256:<hex> of SHA256(utf8(domain) || utf8(jcs(document)))",
-  "source": "agent-research-lab/integration/contracts/canonicalization-vectors.json@78fffa5233508494b6e56573c70c7fd4f382bcb0",
+  "source": "shared cross-product contract agreement, 2026-08",
   "native_only": [
     {
       "name": "double-integral-value",
