@@ -329,19 +329,6 @@ func (e blockingExecutor) Execute(ctx context.Context, _ *Request) (*Outcome, er
 	return nil, fmt.Errorf("blocking executor canceled: %w", ctx.Err())
 }
 
-type lateOutcomeExecutor struct {
-	started chan<- struct{}
-	release <-chan struct{}
-}
-
-func (e lateOutcomeExecutor) Execute(_ context.Context, req *Request) (*Outcome, error) {
-	close(e.started)
-	<-e.release
-	return &Outcome{Status: string(AttemptDeclined), AttemptID: req.AttemptID, Fence: req.Fence}, nil
-}
-
-var _ Executor = lateOutcomeExecutor{}
-
 type lateProducedOutcomeExecutor struct {
 	started chan<- struct{}
 	release <-chan struct{}

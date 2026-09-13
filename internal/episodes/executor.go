@@ -127,7 +127,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	var identity Identity
 	var snapshotHash []byte
 	var promptHash, objectiveHash []byte
-	var stale *StaleSituationError
+	var staleQuarantined bool
 	var rebindCount int
 	rebound := false
 	quarantined := false
@@ -240,8 +240,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 					if r.telemetry != nil {
 						r.telemetry.ObserveRebindFailure()
 					}
-					stale = &StaleSituationError{EpisodeID: episodeID,
-						Bound: req.SituationVersion, Live: int(liveVersion)}
+					staleQuarantined = true
 					return nil
 				}
 				req = *fresh
@@ -274,8 +273,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 				if r.telemetry != nil {
 					r.telemetry.ObserveStaleRejection()
 				}
-				stale = &StaleSituationError{EpisodeID: episodeID,
-					Bound: req.SituationVersion, Live: int(liveVersion)}
+				staleQuarantined = true
 				return nil
 			}
 		}
@@ -348,7 +346,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	}
 	// A stale episode was quarantined (committed) inside the tx — report it
 	// processed and let the batch continue; the queue drains past it.
-	if stale != nil {
+	if staleQuarantined {
 		return true, nil
 	}
 	if quarantined {

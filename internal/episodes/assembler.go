@@ -27,20 +27,6 @@ import (
 // because another episode for the same Situation is already live.
 var ErrLiveEpisodeConflict = errors.New("one live episode per situation constraint")
 
-// StaleSituationError means the situation advanced past the version the
-// episode was admitted under before dispatch — the snapshot is stale and the
-// episode must not run.
-type StaleSituationError struct {
-	EpisodeID string
-	Bound     int
-	Live      int
-}
-
-func (e *StaleSituationError) Error() string {
-	return fmt.Sprintf("episode %s situation stale: bound version %d, live %d",
-		e.EpisodeID, e.Bound, e.Live)
-}
-
 // Request is the durable input to an episode executor. Its persistence fields
 // map to the episodes table; RequestJSON is the canonical executor input.
 type Request struct {
