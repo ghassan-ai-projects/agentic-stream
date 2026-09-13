@@ -862,13 +862,6 @@ func validateRecordedDecision(ctx context.Context, db *storage.DB, entry Recorde
 	return nil
 }
 
-func validateDigest(value string) error {
-	if _, err := canonicaljson.DecodeDigest(value); err != nil {
-		return fmt.Errorf("invalid digest: %w", err)
-	}
-	return nil
-}
-
 func replayEpisodeKey(situationID string, version int, triggerID string) string {
 	return fmt.Sprintf("%s/%d/%s", situationID, version, triggerID)
 }

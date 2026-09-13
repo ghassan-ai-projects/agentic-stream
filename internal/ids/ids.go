@@ -72,31 +72,6 @@ func (g *deterministicGenerator) New(prefix string) string {
 	return fmt.Sprintf("%s%016x", prefix, g.seq)
 }
 
-// PrefixSequence is a deterministic generator that maintains an independent
-// sequence per prefix. This keeps IDs short and stable across identity spaces.
-type PrefixSequence struct {
-	mu  sync.Mutex
-	seq map[string]uint64
-}
-
-// New returns the next ID for prefix.
-func (g *PrefixSequence) New(prefix string) string {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.seq == nil {
-		g.seq = make(map[string]uint64)
-	}
-	g.seq[prefix]++
-	return fmt.Sprintf("%s%016x", prefix, g.seq[prefix])
-}
-
-// Reset clears all sequences.
-func (g *PrefixSequence) Reset() {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	g.seq = make(map[string]uint64)
-}
-
 // Sequence is a convenience wrapper for a single prefix.
 type Sequence struct {
 	prefix string

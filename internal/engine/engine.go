@@ -2,9 +2,7 @@ package engine
 
 import (
 	"context"
-	"fmt"
 	"sync"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
@@ -51,15 +49,6 @@ func (e *Engine) Run(ctx context.Context, partitionID int) (int, error) {
 	return e.run(ctx, partitionID, nil)
 }
 
-// RunWithHook processes a partition and calls beforeApply immediately before
-// each event is applied. The hook runs outside the engine transaction and is
-// intended for deterministic replay clocks only.
-func (e *Engine) RunWithHook(ctx context.Context, partitionID int, beforeApply func(eventlog.Record) error) (int, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.run(ctx, partitionID, beforeApply)
-}
-
 // RunGlobal applies all partitions in durable event-log position order. It is
 // used by replay so one virtual clock cannot observe a later partition before
 // an earlier record in the authoritative trace.
@@ -75,27 +64,4 @@ func (e *Engine) RunDueTimers(ctx context.Context, partitionID int) (int, error)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.runDueTimers(ctx, partitionID)
-}
-
-// RunTimerLoop drives durable processing-time timers for a live runtime. The
-// database remains authoritative; the clock timer is only a wake-up mechanism.
-func (e *Engine) RunTimerLoop(ctx context.Context, pollInterval time.Duration) error {
-	if pollInterval <= 0 {
-		pollInterval = 100 * time.Millisecond
-	}
-	for {
-		e.mu.Lock()
-		_, err := e.runDueTimersForAllPartitions(ctx)
-		e.mu.Unlock()
-		if err != nil {
-			return fmt.Errorf("drive timers: %w", err)
-		}
-		timer := e.clock.NewTimer(pollInterval)
-		select {
-		case <-ctx.Done():
-			_ = timer.Stop()
-			return fmt.Errorf("timer loop interrupted: %w", ctx.Err())
-		case <-timer.C():
-		}
-	}
 }
