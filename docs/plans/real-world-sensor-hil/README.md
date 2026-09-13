@@ -4,7 +4,7 @@ Status: active implementation; Phase 01 software evidence and Phase 02
 implementation are complete; Phase 03 repository implementation is complete
 with its gate still open; HIL-0 gates are not yet met
 Date: 2026-08-28
-Source program: `agent-research-lab/real-world-sensor/round-2/`
+Source program: the private real-world-sensor program, round 2
 Scope of THIS plan: **only the Agentic Stream changes** required to reach the
 program's first release target, **HIL-0: one bounded verified effect**.
 

@@ -97,7 +97,7 @@ replacement for the curated public reading path.
 | Worker protocol | Protobuf/gRPC over Unix domain socket; optional mTLS |
 | Telemetry | OpenTelemetry traces and low-cardinality runtime metrics |
 | Ingress | Normalized JSONL and simulator JSONL adapter |
-| License | Apache-2.0 |
+| License | MIT |
 
 ## Development
 
@@ -114,4 +114,4 @@ See [testing reference](documentation/reference/testing.md) and
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).

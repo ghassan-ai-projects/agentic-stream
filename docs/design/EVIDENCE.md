@@ -13,12 +13,12 @@ This design is grounded in:
 
 Reference source trees inspected on 2026-07-29:
 
-| Project | Local checkout | Commit |
+| Project | Source tree | Commit |
 |---|---|---|
-| Hermes Agent | `/Users/ghassan/external-projects/hermes-agent` | `d2d56951a409a3cef73eb95f8f7a93137e1a76ea` |
-| LangGraph | `/Users/ghassan/external-projects/langgraph` | `d15bdf7f3ec699a0bc821e4260cd62493ed335e1` |
-| LangChain | `/Users/ghassan/external-projects/langchain` | `5f00ec677da0477e39be36272e42102a5b0b0007` |
-| OpenClaw | `/Users/ghassan/external-projects/openclaw` | `daa32a0675f97fd4c2312545a391dc9a28695601` |
+| Hermes Agent | `hermes-agent` | `d2d56951a409a3cef73eb95f8f7a93137e1a76ea` |
+| LangGraph | `langgraph` | `d15bdf7f3ec699a0bc821e4260cd62493ed335e1` |
+| LangChain | `langchain` | `5f00ec677da0477e39be36272e42102a5b0b0007` |
+| OpenClaw | `openclaw` | `daa32a0675f97fd4c2312545a391dc9a28695601` |
 
 The checkouts use squashed analysis commits. File paths and behavior are more
 meaningful evidence than commit history in these copies.

@@ -39,7 +39,7 @@ The runtime is deliberately lighter than Hermes Agent and OpenClaw:
 | Current ingress | Simulator and file replay |
 | Deferred ingress | HTTP and MQTT adapters are design targets, not current runtime surfaces |
 | Later durable brokers | Kafka via `franz-go`; NATS via `nats.go` |
-| Core license recommendation | Apache-2.0 |
+| Core license recommendation | MIT |
 
 The core does not depend on LangChain, LangGraph, Hermes Agent, or OpenClaw.
 Those systems can be supported later as `EpisodeExecutor` adapters outside the

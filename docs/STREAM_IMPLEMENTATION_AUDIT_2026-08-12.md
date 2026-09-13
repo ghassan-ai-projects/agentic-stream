@@ -1,8 +1,8 @@
 # Agentic Stream — Implementation Audit (independent)
 
 Date: 2026-08-12
-Auditor: independent review against the joint build plan
-(`agent-research-lab/integration/PLAN_AGENTIC_STREAM_BUILD.md`) and the integration design
+Auditor: independent review against the joint build plan (the cross-product
+integration build plan) and the integration design
 (`STREAM_RESPONSIBILITIES.md §3.1–3.20`, `PROTOCOL.md`, `LIFECYCLES.md`, `CONTRACTS.md`).
 Method: direct source inspection of `internal/`, `migrations/`, `cmd/`, `proto/`; cross-repo
 context from the tamoz audit.

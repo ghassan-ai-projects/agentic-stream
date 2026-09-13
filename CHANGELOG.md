@@ -9,5 +9,6 @@ evidence.
 
 ### Changed
 
+- Relicensed the project from Apache-2.0 to the MIT License.
 - Reorganized the curated open-source documentation under `documentation/`.
 - Added an explicit working-archive guide under `docs/README.md`.
