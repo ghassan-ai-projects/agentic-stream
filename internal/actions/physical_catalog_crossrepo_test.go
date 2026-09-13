@@ -18,7 +18,7 @@ func physicalSensorRoot(t *testing.T) string {
 	if root := os.Getenv("REAL_WORLD_SENSOR_ROOT"); root != "" {
 		return root
 	}
-	return filepath.Join("..", "..", "..", "agent-research-lab", "real-world-sensor")
+	return ""
 }
 
 func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDAndFanCommands(t *testing.T) {
@@ -38,18 +38,17 @@ func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDAndFanCommands(t *test
 		t.Fatalf("physical catalog digest = %s, want %s", digest, physicalCapabilityDigest)
 	}
 
-	// The physical-sensor repository is an optional sibling checkout in local
-	// development. When present, verify that its consumer copy remains bound to
-	// this repository's canonical catalog; when absent, the standalone contract
-	// and materialization checks above still run in CI.
-	externalPath := filepath.Join(physicalSensorRoot(t), "assessment", "arduino-mega-l293d-fan-led-capability-catalog.json")
-	externalData, err := os.ReadFile(externalPath)
-	if err != nil {
-		if os.Getenv("REAL_WORLD_SENSOR_ROOT") != "" || !os.IsNotExist(err) {
+	// The physical-sensor repository is an optional cross-repository checkout in
+	// local development, located through REAL_WORLD_SENSOR_ROOT. When set, verify
+	// that its consumer copy remains bound to this repository's canonical
+	// catalog; when absent, the standalone contract and materialization checks
+	// above still run in CI.
+	if root := physicalSensorRoot(t); root != "" {
+		externalPath := filepath.Join(root, "assessment", "arduino-mega-l293d-fan-led-capability-catalog.json")
+		externalData, err := os.ReadFile(externalPath)
+		if err != nil {
 			t.Fatalf("read physical catalog copy: %v", err)
 		}
-		t.Logf("optional cross-repository physical catalog is not checked out: %s", externalPath)
-	} else {
 		externalCatalog, err := actions.LoadCapabilityCatalog(externalData)
 		if err != nil {
 			t.Fatalf("load physical catalog copy: %v", err)
@@ -61,6 +60,8 @@ func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDAndFanCommands(t *test
 		if externalDigest != digest {
 			t.Fatalf("physical catalog copy digest = %s, want canonical digest %s", externalDigest, digest)
 		}
+	} else {
+		t.Logf("optional cross-repository physical catalog check skipped: REAL_WORLD_SENSOR_ROOT is not set")
 	}
 
 	command, err := catalog.Materialize(actions.Command{
