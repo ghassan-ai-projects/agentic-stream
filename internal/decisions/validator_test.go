@@ -300,6 +300,78 @@ func TestCompileIntentCatalogFailsClosed(t *testing.T) {
 	}
 }
 
+// TestValidateBindsTargetToEpisodeIdentity guards A-013 F1: an identity-bearing
+// target parameter must bind to the dispatched episode's entity even when the
+// optional entity_id parameter is absent. Previously target-without-entity_id
+// skipped verification, letting a proposal steer an effect at an arbitrary,
+// unverified target.
+func TestValidateBindsTargetToEpisodeIdentity(t *testing.T) {
+	targetSchema := map[string]any{
+		"type": "object", "additionalProperties": false,
+		"properties": map[string]any{"target": map[string]any{"type": "string"}},
+	}
+	catalog, err := CompileIntentCatalog([]map[string]any{
+		{"type": "act", "risk_class": "R1", "parameter_schema": targetSchema,
+			"model_writable_fields": []any{"target"}},
+	})
+	if err != nil {
+		t.Fatalf("compile catalog: %v", err)
+	}
+
+	build := func(target string) ([]byte, string) {
+		intent := map[string]any{
+			"intent_id": "int-1", "decision_id": "dec-1", "tenant_id": "tenant-1",
+			"situation_id": "sit-1", "situation_version": 2, "type": "act",
+			"risk_class": "R1", "parameters": map[string]any{"target": target},
+			"expires_at": "2026-08-12T11:00:00.000000000Z",
+		}
+		document := validDecision()
+		document["intents"] = []any{intent}
+		refreshIntentDigest(document)
+		raw, err := canonicaljson.Marshal(document)
+		if err != nil {
+			t.Fatalf("marshal decision: %v", err)
+		}
+		digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
+		if err != nil {
+			t.Fatalf("digest decision: %v", err)
+		}
+		return raw, digest
+	}
+
+	input := validInput()
+	input.EntityID = "motor-7"
+	input.AllowedIntentTypes = map[string]struct{}{"act": {}}
+	input.IntentCatalog = catalog
+
+	t.Run("mismatched target rejected", func(t *testing.T) {
+		raw, digest := build("attacker-controlled-target")
+		_, err := Validate(raw, digest, input)
+		var validationErr *ValidationError
+		if !errors.As(err, &validationErr) || validationErr.Reason != "snapshot_mismatch" {
+			t.Fatalf("error = %v, want snapshot_mismatch", err)
+		}
+	})
+
+	t.Run("target missing episode identity rejected", func(t *testing.T) {
+		raw, digest := build("motor-7")
+		noIdentity := input
+		noIdentity.EntityID = ""
+		_, err := Validate(raw, digest, noIdentity)
+		var validationErr *ValidationError
+		if !errors.As(err, &validationErr) || validationErr.Reason != "snapshot_mismatch" {
+			t.Fatalf("error = %v, want snapshot_mismatch", err)
+		}
+	})
+
+	t.Run("bound target accepted", func(t *testing.T) {
+		raw, digest := build("motor-7")
+		if _, err := Validate(raw, digest, input); err != nil {
+			t.Fatalf("target bound to episode entity should validate: %v", err)
+		}
+	})
+}
+
 func validInput() Input {
 	input := Input{
 		EpisodeID:          "epi-1",

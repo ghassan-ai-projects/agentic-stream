@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"testing"
 	"time"
 
@@ -69,9 +68,17 @@ func TestStreamedWorkerConforms(t *testing.T) {
 }
 
 func TestSeparateProcessWorkerConforms(t *testing.T) {
-	socketPath := filepath.Join(os.TempDir(), "as-conformance-"+strconv.Itoa(os.Getpid())+".sock")
-	_ = os.Remove(socketPath)
-	t.Cleanup(func() { _ = os.Remove(socketPath) })
+	// The worker requires a 0700-private socket parent and refuses to listen
+	// otherwise, so the socket cannot sit in os.TempDir() (world-writable on
+	// Linux CI) or in the umask-masked directory t.TempDir() returns, whose
+	// embedded test name also exceeds the macOS sun_path limit. MkdirTemp
+	// yields a short directory that is always created 0700.
+	socketDir, err := os.MkdirTemp("", "as-conf-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
+	socketPath := filepath.Join(socketDir, "worker.sock")
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^$", "-test.v") //nolint:gosec // The fixture intentionally launches this signed test binary.
 	cmd.Env = append(os.Environ(), workerSocketEnv+"="+socketPath)
 	var stderr bytes.Buffer

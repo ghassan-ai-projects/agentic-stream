@@ -23,8 +23,12 @@ func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID strin
 	if err != nil {
 		return Result{IntentID: intentID}, err
 	}
-	if err := g.assertPolicyEpoch(ctx, row); err != nil {
-		return g.finish(ctx, tx, row, Result{IntentID: row.IntentID, DecisionID: row.DecisionID}, "denied", "epoch_killed", now)
+	if err := g.assertPolicyEpoch(ctx, tx, row); err != nil {
+		reason := "epoch_killed"
+		if errors.Is(err, storage.ErrEpochUnbound) {
+			reason = "epoch_unbound"
+		}
+		return g.finish(ctx, tx, row, Result{IntentID: row.IntentID, DecisionID: row.DecisionID}, "denied", reason, now)
 	}
 	result := Result{IntentID: row.IntentID, DecisionID: row.DecisionID}
 	if row.PolicyStatus != "pending" {
@@ -33,11 +37,11 @@ func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID strin
 	return g.evaluatePending(ctx, tx, row, result, now)
 }
 
-func (g *Gateway) assertPolicyEpoch(ctx context.Context, row intentRow) error {
-	if g.epochControl == nil || row.PolicyEpoch == "" {
+func (g *Gateway) assertPolicyEpoch(ctx context.Context, tx *sql.Tx, row intentRow) error {
+	if g.epochControl == nil {
 		return nil
 	}
-	if err := g.epochControl.AssertDecision(ctx, row.PolicyEpoch); err != nil {
+	if err := g.epochControl.AssertDecisionTx(ctx, tx, row.PolicyEpoch); err != nil {
 		return fmt.Errorf("assert policy epoch: %w", err)
 	}
 	return nil
@@ -52,10 +56,14 @@ func (g *Gateway) evaluateExisting(ctx context.Context, tx *sql.Tx, row intentRo
 	result.Result = row.PolicyStatus
 	result.Reason = "already_evaluated"
 	if row.PolicyStatus == "approved" {
-		_ = tx.QueryRowContext(ctx, "SELECT command_id FROM commands WHERE intent_id = ?", row.IntentID).Scan(&result.CommandID)
+		if err := tx.QueryRowContext(ctx, "SELECT command_id FROM commands WHERE intent_id = ?", row.IntentID).Scan(&result.CommandID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return result, fmt.Errorf("load existing command id: %w", err)
+		}
 	}
 	if row.PolicyStatus == "approval_required" {
-		_ = tx.QueryRowContext(ctx, "SELECT approval_id FROM approvals WHERE intent_id = ? AND status = 'pending'", row.IntentID).Scan(&result.ApprovalID)
+		if err := tx.QueryRowContext(ctx, "SELECT approval_id FROM approvals WHERE intent_id = ? AND status = 'pending'", row.IntentID).Scan(&result.ApprovalID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return result, fmt.Errorf("load pending approval id: %w", err)
+		}
 	}
 	return g.audit(ctx, tx, row, result, result.Result, result.Reason, now)
 }
@@ -63,7 +71,10 @@ func (g *Gateway) evaluateExisting(ctx context.Context, tx *sql.Tx, row intentRo
 func (g *Gateway) expireExistingApproval(ctx context.Context, tx *sql.Tx, row intentRow, result Result, now time.Time) (Result, bool, error) {
 	var approvalID, expiry string
 	if err := tx.QueryRowContext(ctx, "SELECT approval_id, expires_at FROM approvals WHERE intent_id = ? AND status = 'pending'", row.IntentID).Scan(&approvalID, &expiry); err != nil {
-		return result, false, nil
+		if errors.Is(err, sql.ErrNoRows) {
+			return result, false, nil
+		}
+		return result, false, fmt.Errorf("load pending approval for expiry: %w", err)
 	}
 	expiresAt, err := time.Parse(time.RFC3339Nano, expiry)
 	if err == nil && expiresAt.After(now) {
@@ -192,11 +203,17 @@ func (g *Gateway) markStale(ctx context.Context, tx *sql.Tx, row intentRow, resu
 }
 
 func (g *Gateway) routeIntent(ctx context.Context, tx *sql.Tx, row intentRow, intent map[string]any, result Result, expiresAt, now time.Time) (Result, error) {
-	if row.RequiresApproval != 0 && row.RiskClass != "R2" {
-		return g.requireApproval(ctx, tx, row, intent, result, expiresAt, now)
-	}
+	// The risk-class policy document is authoritative and enforced first: R3/R4
+	// are unconditionally denied regardless of a catalog requires_approval flag.
+	// requires_approval is an override only for the auto-approvable R0/R1 tier,
+	// and it consults an already-approved approval before creating a new request
+	// so a resolved approval terminates in dispatch instead of spawning another
+	// approval on the next EvaluateIntent (the approve -> re-pending loop).
 	switch row.RiskClass {
 	case "R0", "R1":
+		if row.RequiresApproval != 0 {
+			return g.approveOrRequireApproval(ctx, tx, row, intent, result, expiresAt, now)
+		}
 		return g.approveAutomatic(ctx, tx, row, intent, result, now)
 	case "R2":
 		return g.routeConsequentialIntent(ctx, tx, row, intent, result, expiresAt, now)
@@ -215,11 +232,25 @@ func (g *Gateway) routeConsequentialIntent(ctx context.Context, tx *sql.Tx, row 
 			return g.approveAutomatic(ctx, tx, row, intent, result.WithReason("calibrated_automation"), now)
 		}
 	}
+	return g.approveOrRequireApproval(ctx, tx, row, intent, result, expiresAt, now)
+}
+
+// approveOrRequireApproval dispatches when a human has already approved this
+// intent, otherwise it opens a fresh approval request. Consulting the existing
+// approval is what breaks the approve -> re-pending -> new-approval loop: once
+// ResolveApproval marks the approval 'approved' and re-runs EvaluateIntent,
+// this path finds that row and terminates in dispatch.
+func (g *Gateway) approveOrRequireApproval(ctx context.Context, tx *sql.Tx, row intentRow, intent map[string]any, result Result, expiresAt, now time.Time) (Result, error) {
 	var approvedApproval string
-	if err := tx.QueryRowContext(ctx, "SELECT approval_id FROM approvals WHERE intent_id = ? AND status = 'approved' ORDER BY decided_at DESC LIMIT 1", row.IntentID).Scan(&approvedApproval); err == nil {
+	err := tx.QueryRowContext(ctx, "SELECT approval_id FROM approvals WHERE intent_id = ? AND status = 'approved' ORDER BY decided_at DESC LIMIT 1", row.IntentID).Scan(&approvedApproval)
+	switch {
+	case err == nil:
 		result.ApprovalID = approvedApproval
 		result.Reason = "approved_by_human"
 		return g.approveAutomatic(ctx, tx, row, intent, result, now)
+	case errors.Is(err, sql.ErrNoRows):
+		return g.requireApproval(ctx, tx, row, intent, result, expiresAt, now)
+	default:
+		return result, fmt.Errorf("load approved approval: %w", err)
 	}
-	return g.requireApproval(ctx, tx, row, intent, result, expiresAt, now)
 }

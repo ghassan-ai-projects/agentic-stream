@@ -27,20 +27,6 @@ import (
 // because another episode for the same Situation is already live.
 var ErrLiveEpisodeConflict = errors.New("one live episode per situation constraint")
 
-// StaleSituationError means the situation advanced past the version the
-// episode was admitted under before dispatch — the snapshot is stale and the
-// episode must not run.
-type StaleSituationError struct {
-	EpisodeID string
-	Bound     int
-	Live      int
-}
-
-func (e *StaleSituationError) Error() string {
-	return fmt.Sprintf("episode %s situation stale: bound version %d, live %d",
-		e.EpisodeID, e.Bound, e.Live)
-}
-
 // Request is the durable input to an episode executor. Its persistence fields
 // map to the episodes table; RequestJSON is the canonical executor input.
 type Request struct {
@@ -62,10 +48,15 @@ type Request struct {
 	Fence            int64  // worker fence, set at dispatch.
 	AdmissionKey     []byte // unique 32-byte admission key.
 	RequestJSON      []byte // canonical JSON sent to the executor.
-	Traceparent      string
-	Tracestate       string
-	CancellationKey  string
-	SupersessionKey  string
+	// wallTime is populated once from RequestJSON by WallTimeBudget. Keeping the
+	// parsed value on the request lets every execution path share one boundary
+	// validation without reparsing durable JSON.
+	wallTime          time.Duration
+	wallTimeValidated bool
+	Traceparent       string
+	Tracestate        string
+	CancellationKey   string
+	SupersessionKey   string
 	// P8: the mode matrix. DispatchPolicy is active|shadow (from the spec);
 	// PolicyEpoch is the runtime owner epoch the episode was admitted under —
 	// set ONCE, never rewritten, so a drained epoch refuses only new admission
@@ -235,7 +226,7 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	return &Request{
+	req := &Request{
 		EpisodeID:        episodeID,
 		SchedulerItemID:  schedulerItemID,
 		Kind:             item.Kind,
@@ -257,7 +248,11 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		CancellationKey:  "episode:" + episodeID,
 		SupersessionKey:  "situation:" + item.SituationID,
 		DispatchPolicy:   a.spec.Cognition.Executor.DispatchPolicy,
-	}, nil
+	}
+	if _, err := req.WallTimeBudget(); err != nil {
+		return nil, fmt.Errorf("validate episode budget: %w", err)
+	}
+	return req, nil
 }
 
 func snapshotEntityID(raw []byte) (string, error) {
@@ -342,7 +337,7 @@ func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now t
 		req.EpisodeID, req.SchedulerItemID, req.TenantID, req.SituationID, req.SituationVersion,
 		req.ExecutorName, req.ExecutorVersion, req.ModelPolicy, req.PromptVersion,
 		snapshotHash, promptHash, objectiveHash, req.AdmissionKey, req.RequestJSON,
-		now.Format(time.RFC3339Nano),
+		formatAcceptedAt(now),
 		dispatchPolicy, req.PolicyEpoch,
 	); err != nil {
 		if req.Kind == "reconsider" && isLiveEpisodeConstraint(err) {

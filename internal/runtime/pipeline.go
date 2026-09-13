@@ -28,6 +28,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+const watchReadBatchSize = 1000
+
 // PipelineConfig configures one owner-scoped live runtime pipeline.
 type PipelineConfig struct {
 	DB                *storage.DB
@@ -115,12 +117,16 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 	if cfg.Effector == nil {
 		cfg.Effector = actions.NewSimulatedEffector()
 	}
-	watch := actions.NewWatchEffectorWithClock(cfg.DB, cfg.Clock).WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{})
+	watch := actions.NewWatchEffectorWithClock(cfg.DB, cfg.Clock)
+	watch.WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch)
+	watch.WithInterlock(interlock.DurableReader{})
 	serialEffector := cfg.SerialEffector
 	if serialEffector != nil {
 		serialEffector.WithTelemetry(cfg.Telemetry)
 	}
-	cfg.Effector = actions.NewCompositeEffector(watch, cfg.Effector).WithSerial(serialEffector)
+	compositeEffector := actions.NewCompositeEffector(watch, cfg.Effector)
+	compositeEffector.WithSerial(serialEffector)
+	cfg.Effector = compositeEffector
 	log := eventlog.NewEventLogWithClock(cfg.DB, cfg.Clock)
 	stream, err := engine.NewEngine(ctx, cfg.DB, log, cfg.Clock, cfg.Spec, cfg.TenantID)
 	if err != nil {
@@ -132,15 +138,30 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 			return nil, err
 		}
 	}
-	assembler := episodes.NewAssembler(cfg.Spec, cfg.IDGenerator).WithCostControl(&costcontrol.Controller{})
+	assembler := episodes.NewAssembler(cfg.Spec, cfg.IDGenerator)
+	assembler.WithCostControl(&costcontrol.Controller{})
+	runner := episodes.NewRunnerWithEpoch(cfg.DB, cfg.Executor, cfg.Clock, cfg.IDGenerator, cfg.OwnerEpoch)
+	runner.WithAssembler(assembler)
+	runner.WithCostControl(&costcontrol.Controller{})
+	runner.WithEpochControl(cfg.EpochControl)
+	runner.WithShadowStore(&storage.ShadowStore{DB: cfg.DB})
+	runner.WithTelemetry(cfg.Telemetry)
+	policyGateway := policy.NewGatewayWithOwner(cfg.Spec.Digest, cfg.IDGenerator, cfg.Owner, cfg.OwnerEpoch)
+	policyGateway.WithInterlock(interlock.DurableReader{})
+	policyGateway.WithCalibration(&storage.CalibrationStore{DB: cfg.DB})
+	policyGateway.WithEpochControl(cfg.EpochControl)
+	dispatcher := actions.NewDispatcher(cfg.DB, cfg.Effector, cfg.Clock, cfg.IDGenerator, "runtime-actions/"+cfg.OwnerEpoch, time.Minute)
+	dispatcher.WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch)
+	dispatcher.WithInterlock(interlock.DurableReader{})
+	dispatcher.WithTelemetry(cfg.Telemetry)
 	return &Pipeline{
 		db:           cfg.DB,
 		log:          log,
 		engine:       stream,
 		assembler:    assembler,
-		runner:       episodes.NewRunnerWithEpoch(cfg.DB, cfg.Executor, cfg.Clock, cfg.IDGenerator, cfg.OwnerEpoch).WithAssembler(assembler).WithCostControl(&costcontrol.Controller{}).WithEpochControl(cfg.EpochControl).WithShadowStore(&storage.ShadowStore{DB: cfg.DB}).WithTelemetry(cfg.Telemetry),
-		policy:       policy.NewGatewayWithOwner(cfg.Spec.Digest, cfg.IDGenerator, cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}).WithCalibration(&storage.CalibrationStore{DB: cfg.DB}).WithEpochControl(cfg.EpochControl),
-		dispatcher:   actions.NewDispatcher(cfg.DB, cfg.Effector, cfg.Clock, cfg.IDGenerator, "runtime-actions/"+cfg.OwnerEpoch, time.Minute).WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch).WithInterlock(interlock.DurableReader{}).WithTelemetry(cfg.Telemetry),
+		runner:       runner,
+		policy:       policyGateway,
+		dispatcher:   dispatcher,
 		watch:        watch,
 		telemetry:    cfg.Telemetry,
 		owner:        cfg.Owner,
@@ -417,24 +438,45 @@ func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport, be
 }
 
 func (p *Pipeline) currentEventPosition(ctx context.Context) (eventlog.LogPosition, error) {
-	var position int64
-	if err := p.db.QueryRowContext(ctx, "SELECT COALESCE(MAX(position), 0) FROM event_log WHERE tenant_id = ?", p.tenantID).Scan(&position); err != nil {
+	position, err := p.log.CurrentPosition(ctx, p.tenantID)
+	if err != nil {
 		return 0, fmt.Errorf("read event position: %w", err)
 	}
-	return eventlog.LogPosition(position), nil
+	return position, nil
 }
 
 func (p *Pipeline) fireRecentWatches(ctx context.Context, before eventlog.LogPosition, span trace.Span) error {
-	if err := p.log.Read(ctx, eventlog.ReadRequest{TenantID: p.tenantID, PartitionID: -1, AfterPosition: before, Limit: 100000}, func(record eventlog.Record) error {
-		telemetry.AddLinkFromW3C(span, record.Envelope.Traceparent, record.Envelope.Tracestate)
-		if _, err := p.watch.FireEvent(ctx, record.EventID, record.EntityID, record.Envelope.Data); err != nil {
-			return fmt.Errorf("event %s: %w", record.EventID, err)
+	cursor := before
+	for {
+		read := 0
+		lastPosition := cursor
+		if err := p.log.Read(ctx, eventlog.ReadRequest{
+			TenantID:      p.tenantID,
+			PartitionID:   -1,
+			AfterPosition: cursor,
+			Limit:         watchReadBatchSize,
+		}, func(record eventlog.Record) error {
+			if record.Position <= cursor {
+				return fmt.Errorf("event log did not advance past position %d", cursor)
+			}
+			read++
+			lastPosition = record.Position
+			telemetry.AddLinkFromW3C(span, record.Envelope.Traceparent, record.Envelope.Tracestate)
+			if _, err := p.watch.FireEvent(ctx, record.EventID, record.EntityID, record.Envelope.Data); err != nil {
+				return fmt.Errorf("event %s: %w", record.EventID, err)
+			}
+			return nil
+		}); err != nil {
+			return fmt.Errorf("read recent events after position %d: %w", cursor, err)
 		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("read recent events: %w", err)
+		if read < watchReadBatchSize {
+			return nil
+		}
+		if lastPosition <= cursor {
+			return fmt.Errorf("event log page did not advance past position %d", cursor)
+		}
+		cursor = lastPosition
 	}
-	return nil
 }
 
 func (p *Pipeline) assertOwner(ctx context.Context) error {

@@ -180,6 +180,85 @@ func TestCompileAcceptsLatestAggregate(t *testing.T) {
 	}
 }
 
+func TestCompileAcceptsDigestPinnedExecutorSkills(t *testing.T) {
+	yaml := strings.Replace(
+		minimalSpecYAML(),
+		"    tools: []\n",
+		"    tools: []\n    skills:\n      - name: diagnostic_playbook\n        tree_sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n",
+		1,
+	)
+	compiled, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "skills.yaml")
+	if err != nil {
+		t.Fatalf("compile skill-enabled spec: %v", err)
+	}
+	if len(compiled.Cognition.Executor.Skills) != 1 {
+		t.Fatalf("compiled skill count = %d, want 1", len(compiled.Cognition.Executor.Skills))
+	}
+	if got := compiled.Cognition.Executor.Skills[0].Name; got != "diagnostic_playbook" {
+		t.Fatalf("compiled skill name = %q, want diagnostic_playbook", got)
+	}
+}
+
+func TestCompileRejectsUnsupportedRuntimeSurface(t *testing.T) {
+	tests := []struct {
+		name string
+		edit func(string) string
+	}{
+		{
+			name: "count window",
+			edit: func(yaml string) string {
+				return strings.Replace(yaml, "    kind: tumbling\n    size: 1m", "    kind: count\n    count: 5", 1)
+			},
+		},
+		{
+			name: "map operator",
+			edit: func(yaml string) string {
+				return strings.Replace(yaml, "    kind: aggregate\n", "    kind: map\n", 1)
+			},
+		},
+		{
+			name: "variance aggregate",
+			edit: func(yaml string) string {
+				return strings.Replace(yaml, "    aggregate: mean\n", "    aggregate: variance\n", 1)
+			},
+		},
+		{
+			name: "max reducer",
+			edit: func(yaml string) string {
+				return strings.Replace(yaml, "      strategy: latest_event_time\n", "      strategy: max\n", 1)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(tt.edit(minimalSpecYAML())), tt.name+".yaml"); err == nil {
+				t.Fatal("expected schema validation error")
+			}
+		})
+	}
+}
+
+func TestCompileRejectsUnenforcedTopLevelControls(t *testing.T) {
+	tests := []struct {
+		name  string
+		field string
+		value string
+	}{
+		{name: "retention", field: "retention", value: "  rawEvents: 7d\n"},
+		{name: "telemetry", field: "telemetry", value: "  traceSampleRatio: 1\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			yaml := minimalSpecYAML() + tt.field + ":\n" + tt.value
+			_, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), tt.name+".yaml")
+			if err == nil || !strings.Contains(err.Error(), tt.field) {
+				t.Fatalf("expected %s to be rejected explicitly, got %v", tt.field, err)
+			}
+		})
+	}
+}
+
 func TestCompileRejectsUnknownOperatorOutput(t *testing.T) {
 	yaml := strings.ReplaceAll(minimalSpecYAML(),
 		"      input: mean_value",

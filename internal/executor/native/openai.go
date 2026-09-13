@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
+	"time"
 )
 
 // OpenAICompatibleProvider speaks the JSON/SSE subset shared by OpenAI-style
@@ -24,6 +26,17 @@ type OpenAICompatibleProvider struct {
 	Client   *http.Client
 }
 
+var defaultOpenAIHTTPClient = &http.Client{
+	Timeout: 2 * time.Minute,
+	Transport: &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	},
+}
+
 // Name returns the provider adapter identity.
 func (p *OpenAICompatibleProvider) Name() string { return "openai-compatible" }
 
@@ -33,9 +46,13 @@ func (p *OpenAICompatibleProvider) Stream(ctx context.Context, req ModelRequest)
 	if p == nil || strings.TrimSpace(p.Endpoint) == "" || strings.TrimSpace(p.Model) == "" {
 		return ModelResponse{}, errors.New("openai-compatible endpoint and model are required")
 	}
-	body, err := json.Marshal(openAIRequest{Model: p.Model, Stream: true, Messages: []openAIMessage{
+	userContent, err := buildUserContent(req)
+	if err != nil {
+		return ModelResponse{}, fmt.Errorf("build provider user content: %w", err)
+	}
+	body, err := json.Marshal(openAIRequest{Model: p.Model, Stream: true, StreamOptions: map[string]any{"include_usage": true}, Messages: []openAIMessage{
 		{Role: "system", Content: req.Prompt},
-		{Role: "user", Content: buildUserContent(req)},
+		{Role: "user", Content: userContent},
 	}, Tools: providerTools(req.Tools), ResponseFormat: map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "decision", "strict": true, "schema": json.RawMessage(req.DecisionSchema)}}})
 	if err != nil {
 		return ModelResponse{}, fmt.Errorf("marshal provider request: %w", err)
@@ -50,7 +67,10 @@ func (p *OpenAICompatibleProvider) Stream(ctx context.Context, req ModelRequest)
 	}
 	client := p.Client
 	if client == nil {
-		client = http.DefaultClient
+		client = defaultOpenAIHTTPClient
+	}
+	if client.Timeout <= 0 {
+		return ModelResponse{}, errors.New("openai-compatible HTTP client timeout is required")
 	}
 	response, err := client.Do(httpRequest)
 	if err != nil {
@@ -66,14 +86,29 @@ func (p *OpenAICompatibleProvider) Stream(ctx context.Context, req ModelRequest)
 		return ModelResponse{}, failure
 	}
 	if strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") {
-		return parseSSE(response.Body)
+		parsed, err := parseSSE(response.Body)
+		if err != nil {
+			return ModelResponse{}, err
+		}
+		if !parsed.UsageReported {
+			return ModelResponse{}, errors.New("model provider stream omitted usage")
+		}
+		return parsed, nil
 	}
-	return parseJSONResponse(response.Body)
+	parsed, err := parseJSONResponse(response.Body)
+	if err != nil {
+		return ModelResponse{}, err
+	}
+	if !parsed.UsageReported {
+		return ModelResponse{}, errors.New("model provider response omitted usage")
+	}
+	return parsed, nil
 }
 
 type openAIRequest struct {
 	Model          string          `json:"model"`
 	Stream         bool            `json:"stream"`
+	StreamOptions  map[string]any  `json:"stream_options,omitempty"`
 	Messages       []openAIMessage `json:"messages"`
 	Tools          []openAITool    `json:"tools,omitempty"`
 	ResponseFormat map[string]any  `json:"response_format"`
@@ -93,7 +128,7 @@ type openAIMessage struct {
 	Content string `json:"content"`
 }
 
-func buildUserContent(req ModelRequest) string {
+func buildUserContent(req ModelRequest) (string, error) {
 	document := map[string]any{
 		"objective":            req.Objective,
 		"snapshot":             req.Snapshot,
@@ -104,8 +139,11 @@ func buildUserContent(req ModelRequest) string {
 	if req.Repair {
 		document["repair_reason"] = req.RepairReason
 	}
-	raw, _ := json.Marshal(document)
-	return string(raw)
+	raw, err := json.Marshal(document)
+	if err != nil {
+		return "", fmt.Errorf("marshal user content: %w", err)
+	}
+	return string(raw), nil
 }
 
 func providerTools(definitions []ToolDefinition) []openAITool {
@@ -142,13 +180,13 @@ type openAIToolCall struct {
 
 type openAIResponse struct {
 	Choices []openAIChoice `json:"choices"`
-	Usage   struct {
+	Usage   *struct {
 		PromptTokens     uint64 `json:"prompt_tokens"`
 		InputTokens      uint64 `json:"input_tokens"`
 		CompletionTokens uint64 `json:"completion_tokens"`
 		OutputTokens     uint64 `json:"output_tokens"`
 		CostMicrounits   uint64 `json:"cost_microunits"`
-	} `json:"usage"`
+	} `json:"usage,omitempty"`
 }
 
 func parseJSONResponse(reader io.Reader) (ModelResponse, error) {
@@ -160,7 +198,8 @@ func parseJSONResponse(reader io.Reader) (ModelResponse, error) {
 		return ModelResponse{}, errors.New("model response contains no choices")
 	}
 	choice := response.Choices[0]
-	result := ModelResponse{DecisionJSON: []byte(choice.Message.Content), Usage: responseUsage(response)}
+	usage, reported := responseUsage(response)
+	result := ModelResponse{DecisionJSON: []byte(choice.Message.Content), Usage: usage, UsageReported: reported}
 	result.ToolCalls = normalizeToolCalls(choice.Message.ToolCalls)
 	return result, nil
 }
@@ -171,6 +210,7 @@ func parseSSE(reader io.Reader) (ModelResponse, error) {
 	var content strings.Builder
 	toolCalls := make(map[int]*ToolCall)
 	var usage Usage
+	var usageReported bool
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if !strings.HasPrefix(line, "data:") {
@@ -184,7 +224,9 @@ func parseSSE(reader io.Reader) (ModelResponse, error) {
 		if err := json.Unmarshal([]byte(data), &response); err != nil {
 			return ModelResponse{}, fmt.Errorf("decode model stream event: %w", err)
 		}
-		usage = addUsage(usage, responseUsage(response))
+		chunkUsage, reported := responseUsage(response)
+		usage = addUsage(usage, chunkUsage)
+		usageReported = usageReported || reported
 		if len(response.Choices) == 0 {
 			continue
 		}
@@ -207,12 +249,12 @@ func parseSSE(reader io.Reader) (ModelResponse, error) {
 	if err := scanner.Err(); err != nil {
 		return ModelResponse{}, fmt.Errorf("read model stream: %w", err)
 	}
-	result := ModelResponse{DecisionJSON: []byte(strings.TrimSpace(content.String())), Usage: usage}
+	result := ModelResponse{DecisionJSON: []byte(strings.TrimSpace(content.String())), Usage: usage, UsageReported: usageReported}
 	indices := make([]int, 0, len(toolCalls))
 	for index := range toolCalls {
 		indices = append(indices, index)
 	}
-	sort.Ints(indices)
+	slices.Sort(indices)
 	for _, index := range indices {
 		if call := toolCalls[index]; call != nil {
 			result.ToolCalls = append(result.ToolCalls, *call)
@@ -229,7 +271,10 @@ func normalizeToolCalls(calls []openAIToolCall) []ToolCall {
 	return result
 }
 
-func responseUsage(response openAIResponse) Usage {
+func responseUsage(response openAIResponse) (Usage, bool) {
+	if response.Usage == nil {
+		return Usage{}, false
+	}
 	input := response.Usage.InputTokens
 	if input == 0 {
 		input = response.Usage.PromptTokens
@@ -238,5 +283,5 @@ func responseUsage(response openAIResponse) Usage {
 	if output == 0 {
 		output = response.Usage.CompletionTokens
 	}
-	return Usage{InputTokens: input, OutputTokens: output, CostMicrounits: response.Usage.CostMicrounits}
+	return Usage{InputTokens: input, OutputTokens: output, CostMicrounits: response.Usage.CostMicrounits}, true
 }

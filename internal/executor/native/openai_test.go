@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
 )
@@ -17,7 +18,7 @@ func TestOpenAICompatibleProviderDeclaresBoundedTools(t *testing.T) {
 	var request map[string]any
 	provider := &native.OpenAICompatibleProvider{
 		Endpoint: "https://model.invalid/v1/chat/completions", Model: "test-model",
-		Client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		Client: &http.Client{Timeout: time.Second, Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
 				return nil, fmt.Errorf("read request: %w", err)
@@ -25,7 +26,7 @@ func TestOpenAICompatibleProviderDeclaresBoundedTools(t *testing.T) {
 			if err := json.Unmarshal(body, &request); err != nil {
 				return nil, fmt.Errorf("decode request: %w", err)
 			}
-			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"{}"}}]}`)), Header: make(http.Header)}, nil
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"{}"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`)), Header: make(http.Header)}, nil
 		})},
 	}
 	_, err := provider.Stream(context.Background(), native.ModelRequest{
@@ -43,6 +44,10 @@ func TestOpenAICompatibleProviderDeclaresBoundedTools(t *testing.T) {
 	if tool["type"] != "function" || tool["function"].(map[string]any)["name"] != "evidence_get" {
 		t.Fatalf("tool=%#v", tool)
 	}
+	streamOptions, ok := request["stream_options"].(map[string]any)
+	if !ok || streamOptions["include_usage"] != true {
+		t.Fatalf("stream_options=%#v, want include_usage=true", request["stream_options"])
+	}
 }
 
 func TestOpenAICompatibleProviderReassemblesSSEAndUsage(t *testing.T) {
@@ -51,7 +56,7 @@ func TestOpenAICompatibleProviderReassemblesSSEAndUsage(t *testing.T) {
 	body := "data: " + string(first) + "\n\ndata: " + string(second) + "\n\ndata: [DONE]\n"
 	provider := &native.OpenAICompatibleProvider{
 		Endpoint: "https://model.invalid/v1/chat/completions", Model: "test-model",
-		Client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		Client: &http.Client{Timeout: time.Second, Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
@@ -73,7 +78,7 @@ func TestOpenAICompatibleProviderHonorsCancellation(t *testing.T) {
 	cancel()
 	provider := &native.OpenAICompatibleProvider{
 		Endpoint: "https://model.invalid/v1/chat/completions", Model: "test-model",
-		Client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		Client: &http.Client{Timeout: time.Second, Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			select {
 			case <-req.Context().Done():
 				return nil, req.Context().Err()
@@ -84,6 +89,48 @@ func TestOpenAICompatibleProviderHonorsCancellation(t *testing.T) {
 	}
 	if _, err := provider.Stream(ctx, native.ModelRequest{DecisionSchema: json.RawMessage(`{"type":"object"}`)}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation error=%v", err)
+	}
+}
+
+func TestOpenAICompatibleProviderRejectsZeroTimeoutClient(t *testing.T) {
+	provider := &native.OpenAICompatibleProvider{
+		Endpoint: "https://model.invalid/v1/chat/completions", Model: "test-model", Client: &http.Client{},
+	}
+	if _, err := provider.Stream(context.Background(), native.ModelRequest{DecisionSchema: json.RawMessage(`{"type":"object"}`)}); err == nil || !strings.Contains(err.Error(), "HTTP client timeout is required") {
+		t.Fatalf("zero-timeout client error = %v", err)
+	}
+}
+
+func TestOpenAICompatibleProviderRejectsJSONWithoutUsage(t *testing.T) {
+	provider := &native.OpenAICompatibleProvider{
+		Endpoint: "https://model.invalid/v1/chat/completions", Model: "test-model",
+		Client: &http.Client{Timeout: time.Second, Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"{}"}}]}`)),
+				Header:     make(http.Header),
+			}, nil
+		})},
+	}
+	if _, err := provider.Stream(context.Background(), native.ModelRequest{DecisionSchema: json.RawMessage(`{"type":"object"}`)}); err == nil || !strings.Contains(err.Error(), "response omitted usage") {
+		t.Fatalf("missing JSON usage error=%v", err)
+	}
+}
+
+func TestOpenAICompatibleProviderRejectsSSEWithoutUsage(t *testing.T) {
+	provider := &native.OpenAICompatibleProvider{
+		Endpoint: "https://model.invalid/v1/chat/completions", Model: "test-model",
+		Client: &http.Client{Timeout: time.Second, Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			body := "data: {\"choices\":[{\"delta\":{\"content\":\"{}\"}}]}\n\ndata: [DONE]\n"
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}, nil
+		})},
+	}
+	if _, err := provider.Stream(context.Background(), native.ModelRequest{DecisionSchema: json.RawMessage(`{"type":"object"}`)}); err == nil || !strings.Contains(err.Error(), "stream omitted usage") {
+		t.Fatalf("missing SSE usage error=%v", err)
 	}
 }
 

@@ -58,18 +58,3 @@ func (s *ShadowStore) Record(ctx context.Context, tx *sql.Tx, decision ShadowDec
 	}
 	return nil
 }
-
-// CountShadowDecisions returns the number of scored shadow decisions for an
-// episode (test/audit surface).
-func (s *ShadowStore) CountShadowDecisions(ctx context.Context, episodeID string) (int, error) {
-	if s == nil || s.DB == nil {
-		return 0, fmt.Errorf("shadow store is not configured")
-	}
-	var count int
-	err := s.DB.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM shadow_decisions WHERE episode_id = ?`, episodeID).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("count shadow decisions: %w", err)
-	}
-	return count, nil
-}

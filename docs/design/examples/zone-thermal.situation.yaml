@@ -344,13 +344,3 @@ actions:
           mode: bounded_cooling
       policy: approval
       rateLimitPerHour: 6
-
-retention:
-  rawEvents: 14d
-  features: 90d
-  situationVersions: 180d
-  episodeEvents: 180d
-
-telemetry:
-  traceSampleRatio: 1
-  recordModelDeltas: false

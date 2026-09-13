@@ -319,13 +319,3 @@ actions:
         additionalProperties: false
       policy: approval
       rateLimitPerHour: 1
-
-retention:
-  rawEvents: 30d
-  features: 90d
-  situationVersions: 365d
-  episodeEvents: 365d
-
-telemetry:
-  traceSampleRatio: 1
-  recordModelDeltas: false

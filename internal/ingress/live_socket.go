@@ -72,14 +72,6 @@ func NewLiveUDSSource(log *eventlog.EventLog, tenantID, path string) *LiveUDSSou
 	}
 }
 
-// WithClock uses clk for quarantine timestamps.
-func (s *LiveUDSSource) WithClock(clk clock.Clock) *LiveUDSSource {
-	if clk != nil {
-		s.clk = clk
-	}
-	return s
-}
-
 // WithLogger uses logger for structured rejection and connection diagnostics.
 func (s *LiveUDSSource) WithLogger(logger *slog.Logger) *LiveUDSSource {
 	if logger != nil {
@@ -92,15 +84,6 @@ func (s *LiveUDSSource) WithLogger(logger *slog.Logger) *LiveUDSSource {
 // process-local low-cardinality runtime counters.
 func (s *LiveUDSSource) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *LiveUDSSource {
 	s.telemetry = runtimeTelemetry
-	return s
-}
-
-// WithQueueSize changes the bounded line buffer. Non-positive values retain
-// the safe default.
-func (s *LiveUDSSource) WithQueueSize(size int) *LiveUDSSource {
-	if size > 0 {
-		s.queueSize = size
-	}
 	return s
 }
 

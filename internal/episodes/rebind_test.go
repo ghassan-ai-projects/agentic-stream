@@ -32,19 +32,19 @@ import (
 func rebindSnapshotJSON(t *testing.T, situationID string, version int, phase string) (map[string]any, []byte, []byte) {
 	t.Helper()
 	doc := map[string]any{
-		"situation_id":    situationID,
+		"situation_id":      situationID,
 		"situation_version": version,
-		"situation_type":  "test",
-		"tenant_id":       "tenant",
-		"entity":          map[string]any{"type": "thing", "id": "ent-1"},
-		"partition_id":    0,
-		"phase":           phase,
-		"severity":        10.0,
-		"completeness":    "on_time",
-		"event_horizon":   "2026-08-12T10:00:00Z",
-		"watermark":       "2026-08-12T10:00:00Z",
-		"spec_digest":     testSpecDigest,
-		"facts":           map[string]any{},
+		"situation_type":    "test",
+		"tenant_id":         "tenant",
+		"entity":            map[string]any{"type": "thing", "id": "ent-1"},
+		"partition_id":      0,
+		"phase":             phase,
+		"severity":          10.0,
+		"completeness":      "on_time",
+		"event_horizon":     "2026-08-12T10:00:00Z",
+		"watermark":         "2026-08-12T10:00:00Z",
+		"spec_digest":       testSpecDigest,
+		"facts":             map[string]any{},
 	}
 	raw, err := canonicaljson.Marshal(doc)
 	if err != nil {
@@ -177,8 +177,6 @@ type recordingExecutor struct {
 	delegate *episodes.FakeExecutor
 	req      *episodes.Request
 }
-
-func (e *recordingExecutor) Name() string { return "recording" }
 
 func (e *recordingExecutor) Execute(ctx context.Context, req *episodes.Request) (*episodes.Outcome, error) {
 	copy := *req

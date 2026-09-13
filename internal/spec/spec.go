@@ -22,8 +22,6 @@ type CompiledSpec struct {
 	Situation     Situation  `json:"situation"`
 	Cognition     Cognition  `json:"cognition"`
 	Actions       Actions    `json:"actions"`
-	Retention     *Retention `json:"retention,omitempty"`
-	Telemetry     *Telemetry `json:"telemetry,omitempty"`
 
 	// CanonicalJSON is the canonical representation used for the digest.
 	CanonicalJSON []byte `json:"canonicalJSON"`
@@ -175,16 +173,16 @@ type SkillRef struct {
 
 // Executor configures the episode runtime.
 type Executor struct {
-	Name           string   `json:"name" yaml:"name"`
-	Objective      string   `json:"objective" yaml:"objective"`
-	Prompt         string   `json:"prompt" yaml:"prompt"`
-	ModelPolicy    string   `json:"modelPolicy" yaml:"modelPolicy"`
-	PromptVersion  string   `json:"promptVersion" yaml:"promptVersion"`
-	DecisionSchema string   `json:"decisionSchema" yaml:"decisionSchema"`
+	Name           string     `json:"name" yaml:"name"`
+	Objective      string     `json:"objective" yaml:"objective"`
+	Prompt         string     `json:"prompt" yaml:"prompt"`
+	ModelPolicy    string     `json:"modelPolicy" yaml:"modelPolicy"`
+	PromptVersion  string     `json:"promptVersion" yaml:"promptVersion"`
+	DecisionSchema string     `json:"decisionSchema" yaml:"decisionSchema"`
 	Skills         []SkillRef `json:"skills,omitempty" yaml:"skills,omitempty"`
-	Tools          []string `json:"tools" yaml:"tools"`
-	RiskCeiling    string   `json:"riskCeiling,omitempty" yaml:"riskCeiling,omitempty"`
-	Budget         Budget   `json:"budget" yaml:"budget"`
+	Tools          []string   `json:"tools" yaml:"tools"`
+	RiskCeiling    string     `json:"riskCeiling,omitempty" yaml:"riskCeiling,omitempty"`
+	Budget         Budget     `json:"budget" yaml:"budget"`
 	// P1: the diagnosis catalog is a per-executor document (the Ruby worker
 	// verifies it via DiagnosisCatalog.verify_wire under the shared
 	// situation-runtime/diagnosis-catalog domain).
@@ -245,20 +243,6 @@ func (a Actions) EffectiveWatchConfidenceFloor() float64 {
 		return 0.5
 	}
 	return *a.WatchConfidenceFloor
-}
-
-// Retention configures data lifetimes.
-type Retention struct {
-	RawEvents         string `json:"rawEvents,omitempty" yaml:"rawEvents,omitempty"`
-	Features          string `json:"features,omitempty" yaml:"features,omitempty"`
-	SituationVersions string `json:"situationVersions,omitempty" yaml:"situationVersions,omitempty"`
-	EpisodeEvents     string `json:"episodeEvents,omitempty" yaml:"episodeEvents,omitempty"`
-}
-
-// Telemetry configures observability.
-type Telemetry struct {
-	TraceSampleRatio  float64 `json:"traceSampleRatio,omitempty" yaml:"traceSampleRatio,omitempty"`
-	RecordModelDeltas bool    `json:"recordModelDeltas,omitempty" yaml:"recordModelDeltas,omitempty"`
 }
 
 // CompileError is a structured diagnostic from the spec compiler.

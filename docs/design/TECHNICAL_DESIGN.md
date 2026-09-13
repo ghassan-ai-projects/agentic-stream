@@ -372,12 +372,13 @@ A SituationSpec is the primary developer artifact. It contains:
 - accepted input schemas and partition key;
 - source watermark and lateness policies;
 - named windows, features, timers, and detectors;
-- Situation identity, lifecycle, reducers, and retention;
+- Situation identity, lifecycle, and reducers;
 - cognitive trigger policy and budgets;
 - episode executor, prompt/objective reference, tool capabilities, and Decision
   schema;
 - allowed intent types and risk policy;
-- replay and telemetry settings.
+- replay behavior. Runtime telemetry and data retention are deployment concerns
+  until their SituationSpec controls have an enforcing implementation.
 
 ### 8.2 Compilation
 

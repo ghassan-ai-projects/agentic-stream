@@ -41,6 +41,46 @@ func TestVirtualTimerFires(t *testing.T) {
 	}
 }
 
+func TestVirtualAdvanceFiresDueTimersBehindLaterHead(t *testing.T) {
+	// Regression: timers scheduled out of due order must all fire during the
+	// Advance in which they become due, even when a not-yet-due timer was
+	// scheduled first and would otherwise sit at the head of the queue.
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	v := clock.NewVirtual(start)
+
+	t10 := v.NewTimer(10 * time.Minute)
+	t5 := v.NewTimer(5 * time.Minute)
+	t7 := v.NewTimer(7 * time.Minute)
+
+	v.Advance(7 * time.Minute)
+
+	fired := func(name string, timer clock.Timer) bool {
+		select {
+		case f := <-timer.C():
+			_ = f
+			return true
+		default:
+			return false
+		}
+	}
+
+	if !fired("t5", t5) {
+		t.Error("timer due at +5m did not fire during Advance(7m)")
+	}
+	if !fired("t7", t7) {
+		t.Error("timer due at +7m did not fire during Advance(7m)")
+	}
+	if fired("t10", t10) {
+		t.Error("timer due at +10m fired early during Advance(7m)")
+	}
+
+	// The +10m timer fires on a later advance.
+	v.Advance(3 * time.Minute)
+	if !fired("t10", t10) {
+		t.Error("timer due at +10m did not fire during Advance to +10m")
+	}
+}
+
 func TestVirtualTimerStop(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	v := clock.NewVirtual(start)

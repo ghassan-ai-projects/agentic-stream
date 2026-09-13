@@ -93,9 +93,15 @@ func TestEmulatorEffectorDrivesDeviceOverUDS(t *testing.T) {
 		devicePeer(t, conn, catalogDigest)
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
+	// The SQLite-backed control plane (DB open, migrations, lease claim) is
+	// setup, not the operation under test: it must not run inside the dial's
+	// timing budget, because under a loaded -race CI runner it alone can
+	// outlast a tight window and leave the effector dialing on an expired
+	// context (surfacing as a bogus "dial unix: i/o timeout").
 	control := newDeviceControl(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	effector, closeFn, err := actions.NewEmulatorEffector(ctx, actions.EmulatorEffectorConfig{
 		SocketPath:             socket,

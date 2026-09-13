@@ -58,12 +58,6 @@
     },
     "actions": {
       "$ref": "#/$defs/actions"
-    },
-    "retention": {
-      "$ref": "#/$defs/retention"
-    },
-    "telemetry": {
-      "$ref": "#/$defs/telemetry"
     }
   },
   "$defs": {
@@ -79,6 +73,20 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 4096
+    },
+    "skillRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "tree_sha256"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "tree_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
     },
     "metadata": {
       "type": "object",
@@ -200,20 +208,12 @@
           "$ref": "#/$defs/name"
         },
         "kind": {
-          "enum": ["tumbling", "sliding", "count", "decay"]
+          "enum": ["tumbling", "sliding"]
         },
         "size": {
           "$ref": "#/$defs/duration"
         },
         "slide": {
-          "$ref": "#/$defs/duration"
-        },
-        "count": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 1000000
-        },
-        "halfLife": {
           "$ref": "#/$defs/duration"
         },
         "emit": {
@@ -245,30 +245,6 @@
           "then": {
             "required": ["size", "slide"]
           }
-        },
-        {
-          "if": {
-            "properties": {
-              "kind": {
-                "const": "count"
-              }
-            }
-          },
-          "then": {
-            "required": ["count"]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "kind": {
-                "const": "decay"
-              }
-            }
-          },
-          "then": {
-            "required": ["halfLife"]
-          }
         }
       ]
     },
@@ -282,13 +258,8 @@
         },
         "kind": {
           "enum": [
-            "map",
-            "filter",
             "aggregate",
-            "rate",
             "slope",
-            "correlation",
-            "duration",
             "missing_heartbeat"
           ]
         },
@@ -318,22 +289,14 @@
         },
         "aggregate": {
           "enum": [
+            "mean",
+            "rms",
+            "slope",
             "count",
             "sum",
             "min",
             "max",
-            "mean",
-            "variance",
-            "stddev",
-            "rms",
-            "first",
-            "last",
-            "latest",
-            "delta",
-            "rate",
-            "slope",
-            "quantile",
-            "correlation"
+            "latest"
           ]
         },
         "where": {
@@ -411,12 +374,7 @@
         "strategy": {
           "enum": [
             "latest_event_time",
-            "min",
-            "max",
-            "bounded_append",
-            "set_union",
-            "weighted_confidence",
-            "source_priority"
+            "set_union"
           ]
         },
         "input": {
@@ -646,6 +604,13 @@
             "$ref": "#/$defs/name"
           }
         },
+        "skills": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/skillRef"
+          }
+        },
         "riskCeiling": {
           "enum": ["R0", "R1", "R2", "R3", "R4"]
         },
@@ -741,39 +706,6 @@
           "minimum": 0,
           "maximum": 1,
           "default": 0.5
-        }
-      }
-    },
-    "retention": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "rawEvents": {
-          "$ref": "#/$defs/duration"
-        },
-        "features": {
-          "$ref": "#/$defs/duration"
-        },
-        "situationVersions": {
-          "$ref": "#/$defs/duration"
-        },
-        "episodeEvents": {
-          "$ref": "#/$defs/duration"
-        }
-      }
-    },
-    "telemetry": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "traceSampleRatio": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "recordModelDeltas": {
-          "type": "boolean",
-          "default": false
         }
       }
     }

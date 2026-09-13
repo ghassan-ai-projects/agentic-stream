@@ -60,14 +60,22 @@ func (g *Gateway) loadIntent(ctx context.Context, tx *sql.Tx, intentID string) (
 }
 
 func (g *Gateway) finish(ctx context.Context, tx *sql.Tx, row intentRow, result Result, policyStatus, reason string, now time.Time) (Result, error) {
+	return g.finishWithAuditReason(ctx, tx, row, result, policyStatus, reason, reason, now)
+}
+
+func (g *Gateway) finishWithAuditReason(ctx context.Context, tx *sql.Tx, row intentRow, result Result, policyStatus, resultReason, auditReason string, now time.Time) (Result, error) {
 	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = ?, updated_at = ? WHERE intent_id = ?", policyStatus, formatTime(now), row.IntentID); err != nil {
 		return result, fmt.Errorf("set intent policy status: %w", err)
 	}
-	return g.audit(ctx, tx, row, result, policyStatus, reason, now)
+	return g.auditWithReason(ctx, tx, row, result, policyStatus, resultReason, auditReason, now)
 }
 
 func (g *Gateway) audit(ctx context.Context, tx *sql.Tx, row intentRow, result Result, policyResult, reason string, now time.Time) (Result, error) {
-	result.Result, result.Reason = policyResult, reason
+	return g.auditWithReason(ctx, tx, row, result, policyResult, reason, reason, now)
+}
+
+func (g *Gateway) auditWithReason(ctx context.Context, tx *sql.Tx, row intentRow, result Result, policyResult, resultReason, auditReason string, now time.Time) (Result, error) {
+	result.Result, result.Reason = policyResult, resultReason
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO policy_evaluations (
 			evaluation_id, intent_id, decision_id, policy_version, result,
@@ -76,7 +84,7 @@ func (g *Gateway) audit(ctx context.Context, tx *sql.Tx, row intentRow, result R
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		g.idGen.New(ids.PrefixPolicy), row.IntentID, row.DecisionID, g.policyVersion,
 		policyResult, g.policyDigest, row.IntentSHA, row.DecisionSHA,
-		nullableID(result.CommandID), nullableID(result.ApprovalID), reason, row.CurrentSituation, formatTime(now),
+		nullableID(result.CommandID), nullableID(result.ApprovalID), auditReason, row.CurrentSituation, formatTime(now),
 	); err != nil {
 		return result, fmt.Errorf("record policy evaluation: %w", err)
 	}
@@ -114,13 +122,17 @@ func (g *Gateway) dispatchWithinLimit(ctx context.Context, tx *sql.Tx, row inten
 	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO intent_dispatch_counts (tenant_id, intent_type, bucket, count)
 		VALUES (?, ?, ?, 1)
-		ON CONFLICT(tenant_id, intent_type, bucket) DO UPDATE SET count = count + 1
+		ON CONFLICT(tenant_id, intent_type, bucket) DO UPDATE SET count = intent_dispatch_counts.count + 1
+		WHERE intent_dispatch_counts.count < ?
 		RETURNING count`,
-		row.TenantID, row.IntentType, bucket,
+		row.TenantID, row.IntentType, bucket, row.RateLimitPerHour,
 	).Scan(&count); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return true, nil
+		}
 		return false, fmt.Errorf("increment intent dispatch counter: %w", err)
 	}
-	return count > row.RateLimitPerHour, nil
+	return false, nil
 }
 
 func nullableID(value string) any {

@@ -56,7 +56,10 @@ type ModelResponse struct {
 	DecisionJSON []byte
 	ToolCalls    []ToolCall
 	Usage        Usage
-	FinishReason string
+	// UsageReported distinguishes an explicit zero-usage receipt from a
+	// provider response that omitted usage telemetry entirely.
+	UsageReported bool
+	FinishReason  string
 }
 
 // ModelRequest is the immutable episode projection plus bounded observations.
@@ -127,8 +130,9 @@ type ArtifactStore interface {
 	Put(context.Context, []byte) (ArtifactRef, error)
 }
 
-// Config controls hard ceilings for the native loop. Zero means unlimited for
-// that dimension. Structured-output repair is always limited to one attempt.
+// Config controls the provider and read-only capabilities used by the native
+// loop. Episode resource ceilings come from each trusted Request. Structured
+// output repair is always limited to one attempt.
 type Config struct {
 	Provider      ModelProvider
 	Tools         []Tool
@@ -163,9 +167,6 @@ func New(cfg Config) (*Executor, error) {
 	return &Executor{provider: cfg.Provider, tools: tools, artifacts: cfg.ArtifactStore, maxRepair: 1, toolFactory: cfg.ToolFactory}, nil
 }
 
-// Name returns the stable executor name recorded in episode provenance.
-func (e *Executor) Name() string { return "native" }
-
 // Execute runs the provider/read-tool loop and returns a typed attempt
 // terminal. It never mutates episode, situation, or action state.
 func (e *Executor) Execute(ctx context.Context, req *episodes.Request) (*episodes.Outcome, error) {
@@ -179,15 +180,22 @@ func (e *Executor) Execute(ctx context.Context, req *episodes.Request) (*episode
 	if err != nil {
 		return nil, err
 	}
+	wallTime, err := req.WallTimeBudget()
+	if err != nil {
+		return nil, fmt.Errorf("validate episode budget: %w", err)
+	}
 	budget := budgetConfig{
-		WallTime: payload.Budget.WallTime, ModelCalls: payload.Budget.ModelCalls,
+		WallTime: wallTime, ModelCalls: payload.Budget.ModelCalls,
 		InputTokens: payload.Budget.InputTokens, OutputTokens: payload.Budget.OutputTokens,
 		ToolCalls: payload.Budget.ToolCalls, ToolResultBytes: payload.Budget.ToolResultBytes,
 		TotalToolResultBytes: payload.Budget.TotalToolResultBytes, ProviderRetries: payload.Budget.ProviderRetries,
 		CostMicrounits: payload.Budget.CostMicrounits,
 	}
+	if budget.WallTime <= 0 && budget.ModelCalls == 0 {
+		return nil, errors.New("finite episode budget requires wall_time or model_calls")
+	}
 	tools := e.toolsFor(req)
-	if budget.WallTime != "" {
+	if budget.WallTime > 0 {
 		return e.executeBounded(ctx, req, payload, budget, tools)
 	}
 	return e.executeLoop(ctx, req, payload, budget, tools)
@@ -219,7 +227,6 @@ type requestPayload struct {
 	AllowedIntentTypes []string         `json:"allowed_intent_types"`
 	RiskCeiling        string           `json:"risk_ceiling"`
 	Budget             struct {
-		WallTime             string `json:"wall_time"`
 		ModelCalls           uint32 `json:"model_calls"`
 		InputTokens          uint64 `json:"input_tokens"`
 		OutputTokens         uint64 `json:"output_tokens"`
@@ -243,25 +250,13 @@ func decodeRequest(raw []byte) (requestPayload, error) {
 }
 
 func (e *Executor) executeBounded(ctx context.Context, req *episodes.Request, payload requestPayload, budget budgetConfig, tools map[string]Tool) (*episodes.Outcome, error) {
-	duration, err := parseWallTime(budget.WallTime)
-	if err != nil {
-		return nil, err
-	}
-	bounded, cancel := context.WithTimeout(ctx, duration)
+	bounded, cancel := context.WithTimeout(ctx, budget.WallTime)
 	defer cancel()
 	return e.executeLoop(bounded, req, payload, budget, tools)
 }
 
-func parseWallTime(raw string) (time.Duration, error) {
-	duration, err := time.ParseDuration(raw)
-	if err != nil || duration <= 0 {
-		return 0, fmt.Errorf("invalid native wall_time %q", raw)
-	}
-	return duration, nil
-}
-
-type budgetConfig = struct {
-	WallTime             string
+type budgetConfig struct {
+	WallTime             time.Duration
 	ModelCalls           uint32
 	InputTokens          uint64
 	OutputTokens         uint64
@@ -284,7 +279,7 @@ func (e *Executor) executeLoop(ctx context.Context, req *episodes.Request, paylo
 	var providerRetries uint32
 	for {
 		if err := ctx.Err(); err != nil {
-			return terminalForContext(req, err), nil
+			return terminalForContext(req, err, usage), nil
 		}
 		if budget.ModelCalls > 0 && modelCalls >= budget.ModelCalls {
 			return failed(req, "budget_exhausted:model_calls", usage), nil
@@ -297,11 +292,14 @@ func (e *Executor) executeLoop(ctx context.Context, req *episodes.Request, paylo
 				return failed(req, "interrupt_in_non_interactive_episode", usage), nil
 			}
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return terminalForContext(req, err), nil
+				return terminalForContext(req, err, usage), nil
 			}
 			var retryable *RetryableError
 			if errors.As(err, &retryable) && providerRetries < budget.ProviderRetries {
 				providerRetries++
+				if waitErr := waitProviderRetry(ctx); waitErr != nil {
+					return terminalForContext(req, waitErr, usage), nil
+				}
 				continue
 			}
 			if errors.As(err, &retryable) && budget.ProviderRetries > 0 {
@@ -309,12 +307,18 @@ func (e *Executor) executeLoop(ctx context.Context, req *episodes.Request, paylo
 			}
 			return failed(req, "provider_failed", usage), nil
 		}
+		// Count usage before checking cancellation: a provider may return a late
+		// response after its context was canceled, but that completed call still
+		// consumed provider resources and must be settled.
+		usage = addUsage(usage, response.Usage)
+		if hasUsageBudget(budget) && !responseUsageReported(response) {
+			return failed(req, "budget_telemetry_missing", usage), nil
+		}
 		// A provider is expected to honor cancellation, but a hard wall-time
 		// budget must also win when an adapter returns a late response.
 		if err := ctx.Err(); err != nil {
-			return terminalForContext(req, err), nil
+			return terminalForContext(req, err, usage), nil
 		}
-		usage = addUsage(usage, response.Usage)
 		if err := checkUsage(usage, budget); err != nil {
 			return failed(req, err.Error(), usage), nil
 		}
@@ -325,7 +329,7 @@ func (e *Executor) executeLoop(ctx context.Context, req *episodes.Request, paylo
 			for _, call := range response.ToolCalls {
 				toolCallsUsed++
 				if err := ctx.Err(); err != nil {
-					return terminalForContext(req, err), nil
+					return terminalForContext(req, err, usage), nil
 				}
 				tool, ok := tools[call.Name]
 				if !ok {
@@ -369,7 +373,11 @@ func (e *Executor) executeLoop(ctx context.Context, req *episodes.Request, paylo
 			if err != nil {
 				return failed(req, "decision_digest_failed", usage), nil
 			}
-			return &episodes.Outcome{Status: string(episodes.AttemptProduced), AttemptID: req.AttemptID, Fence: req.Fence, DecisionJSON: mustCanonical(decision), DecisionSHA256: digest, CostMicrounits: usage.CostMicrounits}, nil
+			decisionJSON, err := canonicaljson.Marshal(decision)
+			if err != nil {
+				return failed(req, "decision_canonicalization_failed", usage), nil
+			}
+			return &episodes.Outcome{Status: string(episodes.AttemptProduced), AttemptID: req.AttemptID, Fence: req.Fence, DecisionJSON: decisionJSON, DecisionSHA256: digest, CostMicrounits: usage.CostMicrounits}, nil
 		}
 		if repairs >= e.maxRepair {
 			return failed(req, "decision_rejected:"+validationErr.Error(), usage), nil
@@ -466,13 +474,16 @@ func number(value any) float64 {
 	return -1
 }
 
-func mustCanonical(document map[string]any) []byte {
-	raw, _ := canonicaljson.Marshal(document)
-	return raw
-}
-
 func addUsage(a, b Usage) Usage {
 	return Usage{InputTokens: a.InputTokens + b.InputTokens, OutputTokens: a.OutputTokens + b.OutputTokens, CostMicrounits: a.CostMicrounits + b.CostMicrounits}
+}
+
+func hasUsageBudget(budget budgetConfig) bool {
+	return budget.InputTokens > 0 || budget.OutputTokens > 0 || budget.CostMicrounits > 0
+}
+
+func responseUsageReported(response ModelResponse) bool {
+	return response.UsageReported || response.Usage != (Usage{})
 }
 func checkUsage(usage Usage, budget budgetConfig) error {
 	if budget.InputTokens > 0 && usage.InputTokens > budget.InputTokens {
@@ -487,11 +498,24 @@ func checkUsage(usage Usage, budget budgetConfig) error {
 	return nil
 }
 
-func terminalForContext(req *episodes.Request, err error) *episodes.Outcome {
-	if errors.Is(err, context.DeadlineExceeded) {
-		return failed(req, "timed_out", Usage{})
+const providerRetryBackoff = 10 * time.Millisecond
+
+func waitProviderRetry(ctx context.Context) error {
+	timer := time.NewTimer(providerRetryBackoff)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("provider retry backoff canceled: %w", ctx.Err())
+	case <-timer.C:
+		return nil
 	}
-	return &episodes.Outcome{Status: string(episodes.AttemptCancelled), AttemptID: req.AttemptID, Fence: req.Fence, Reasons: []string{"canceled"}}
+}
+
+func terminalForContext(req *episodes.Request, err error, usage Usage) *episodes.Outcome {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return failed(req, "timed_out", usage)
+	}
+	return &episodes.Outcome{Status: string(episodes.AttemptCancelled), AttemptID: req.AttemptID, Fence: req.Fence, Reasons: []string{"canceled"}, CostMicrounits: usage.CostMicrounits}
 }
 
 func failed(req *episodes.Request, reason string, usage Usage) *episodes.Outcome {
@@ -524,7 +548,7 @@ func (p *DeterministicProvider) Stream(_ context.Context, req ModelRequest) (Mod
 	if err != nil {
 		return ModelResponse{}, fmt.Errorf("marshal deterministic decision: %w", err)
 	}
-	return ModelResponse{DecisionJSON: raw, Usage: Usage{InputTokens: uint64(len(req.Prompt) + len(req.Objective)), OutputTokens: uint64(len(raw))}, FinishReason: "stop"}, nil
+	return ModelResponse{DecisionJSON: raw, Usage: Usage{InputTokens: uint64(len(req.Prompt) + len(req.Objective)), OutputTokens: uint64(len(raw))}, UsageReported: true, FinishReason: "stop"}, nil
 }
 
 // MemoryArtifactStore is a bounded test/reference artifact store.

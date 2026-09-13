@@ -37,9 +37,9 @@ Every v1 spec contains:
 | `cognition` | Trigger conditions, scores, lanes, budgets, executor |
 | `actions` | Intent types, risk classes, parameter schemas, policy |
 
-Optional retention and telemetry sections must satisfy the schema. They are
-currently compiled into the spec but are not active runtime retention or
-telemetry controls; do not treat them as enforcement settings yet.
+Runtime telemetry and data retention are deployment concerns in v1 and are not
+authoring fields in the SituationSpec. Do not add `retention` or `telemetry`
+sections to a spec until an enforcing contract is introduced.
 
 ## Validate before deploying
 

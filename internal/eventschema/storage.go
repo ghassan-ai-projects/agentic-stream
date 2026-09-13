@@ -36,12 +36,3 @@ func Register(ctx context.Context, tx *sql.Tx, definition Definition, schemaJSON
 	}
 	return nil
 }
-
-// LookupRegistered loads the active schema bytes for an event type and version.
-func LookupRegistered(ctx context.Context, tx *sql.Tx, eventType, schemaVersion string) ([]byte, error) {
-	var schema []byte
-	if err := tx.QueryRowContext(ctx, `SELECT schema_json FROM event_schemas WHERE event_type = ? AND schema_version = ? AND status = 'active'`, eventType, schemaVersion).Scan(&schema); err != nil {
-		return nil, fmt.Errorf("lookup event schema %s/%s: %w", eventType, schemaVersion, err)
-	}
-	return schema, nil
-}

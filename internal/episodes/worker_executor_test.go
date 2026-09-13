@@ -12,13 +12,13 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 func TestEpisodeKind(t *testing.T) {
@@ -203,6 +203,32 @@ func TestWorkerExecutorEnforcesModelUsageCeiling(t *testing.T) {
 	}
 }
 
+func TestWorkerExecutorSettlesCumulativeUsageWhenTerminalOmitsUsage(t *testing.T) {
+	client := testWorkerClient(t, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
+		if err := emit(&runtimev1.EpisodeEvent{
+			EpisodeId: req.GetEpisodeId(), Sequence: 2, AttemptId: req.GetAttemptId(), Fence: req.GetFence(), OccurredAt: timestamppb.New(time.Unix(10, 0)),
+			Payload: &runtimev1.EpisodeEvent_Budget{Budget: &runtimev1.BudgetUpdated{
+				CumulativeUsage: &runtimev1.Usage{InputTokens: 4, OutputTokens: 2, CostMicrounits: 42},
+			}},
+		}); err != nil {
+			return err
+		}
+		return emit(&runtimev1.EpisodeEvent{
+			EpisodeId: req.GetEpisodeId(), Sequence: 3, AttemptId: req.GetAttemptId(), Fence: req.GetFence(), OccurredAt: timestamppb.New(time.Unix(10, 0)),
+			Payload: &runtimev1.EpisodeEvent_Terminal{Terminal: &runtimev1.Terminal{Status: runtimev1.TerminalStatus_TERMINAL_STATUS_DECLINED}},
+		})
+	})
+	req := validWorkerRequest()
+	req.RequestJSON = requestWithBudget(req, map[string]any{"input_tokens": 10, "output_tokens": 10, "cost_microunits": 100})
+	outcome, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if outcome.CostMicrounits != 42 {
+		t.Fatalf("cost=%d, want 42", outcome.CostMicrounits)
+	}
+}
+
 func TestWorkerExecutorRequiresReportedCostUsage(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -311,7 +337,7 @@ func validWorkerRequest() *Request {
 		PromptVersion: "prompt-v1", SnapshotSHA256: "sha256:" + "00" + "00000000000000000000000000000000000000000000000000000000000000",
 		AttemptID: "attempt-1", Fence: 7, Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
 		PromptSHA256: promptDigest, ObjectiveSHA256: objectiveDigest,
-		RequestJSON: []byte(fmt.Sprintf(`{"kind":"diagnose","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","prompt_sha256":%q,"objective_sha256":%q,"decision_schema":{"type":"object"},"intent_catalog":%s,"intent_catalog_sha256":%q}}`, promptDigest, objectiveDigest, string(intentCatalogJSON), intentDigest)),
+		RequestJSON: []byte(fmt.Sprintf(`{"kind":"diagnose","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","prompt_sha256":%q,"objective_sha256":%q,"decision_schema":{"type":"object"},"intent_catalog":%s,"intent_catalog_sha256":%q},"budget":{"wall_time":"1m"}}`, promptDigest, objectiveDigest, string(intentCatalogJSON), intentDigest)),
 	}
 }
 
@@ -320,7 +346,14 @@ func requestWithBudget(req *Request, budget map[string]any) []byte {
 	if err := json.Unmarshal(req.RequestJSON, &document); err != nil {
 		panic(err)
 	}
-	document["budget"] = budget
+	boundedBudget := make(map[string]any, len(budget)+1)
+	for key, value := range budget {
+		boundedBudget[key] = value
+	}
+	if _, ok := boundedBudget["wall_time"]; !ok {
+		boundedBudget["wall_time"] = "1m"
+	}
+	document["budget"] = boundedBudget
 	encoded, err := canonicaljson.Marshal(document)
 	if err != nil {
 		panic(err)

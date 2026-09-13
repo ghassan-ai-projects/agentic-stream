@@ -114,21 +114,6 @@ func (l *EventLog) QuarantineRaw(ctx context.Context, tenantID, eventID string, 
 	}, reason, now)
 }
 
-// ReadQuarantine returns the original envelope for inspection or an explicit
-// caller-controlled re-drive after validation.
-func (l *EventLog) ReadQuarantine(ctx context.Context, tenantID, eventID string) (map[string]any, string, error) {
-	var payload []byte
-	var status string
-	if err := l.db.QueryRowContext(ctx, "SELECT payload_json, status FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", tenantID, eventID).Scan(&payload, &status); err != nil {
-		return nil, "", fmt.Errorf("read quarantined event: %w", err)
-	}
-	var envelope map[string]any
-	if err := json.Unmarshal(payload, &envelope); err != nil {
-		return nil, "", fmt.Errorf("decode quarantined envelope: %w", err)
-	}
-	return envelope, status, nil
-}
-
 // ReleaseQuarantine marks one record ready for an explicit re-drive.
 func (l *EventLog) ReleaseQuarantine(ctx context.Context, tenantID, eventID, now string) error {
 	if tenantID == "" || eventID == "" || now == "" {

@@ -56,10 +56,9 @@ readiness](../../docs/design/OPERATIONS_READINESS.md).
 
 The schema accepts action policy values such as `automatic`, `approval`,
 `deny`, and `simulate`, but the current catalog/runtime path does not provide
-complete independent enforcement semantics for all four values. Retention and
-telemetry sections are also compiled into the spec without active runtime
-enforcement. Treat these fields as incomplete until implementation and focused
-tests close the gap.
+complete independent enforcement semantics for all four values. Data retention
+is an operational release concern and the SituationSpec intentionally does not
+expose a retention or telemetry control until the runtime can enforce it.
 
 ### Operator inspection and redrive are internal capabilities
 

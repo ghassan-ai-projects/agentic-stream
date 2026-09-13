@@ -1,6 +1,7 @@
 package spec
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -123,7 +124,9 @@ func (c *Compiler) CompileBytes(ctx context.Context, data []byte, path string) (
 	}
 
 	var raw rawSpec
-	if err := root.Decode(&raw); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&raw); err != nil {
 		return nil, fmt.Errorf("decode yaml: %w", err)
 	}
 
@@ -186,8 +189,6 @@ type rawSpec struct {
 	Situation  Situation  `yaml:"situation" json:"situation"`
 	Cognition  Cognition  `yaml:"cognition" json:"cognition"`
 	Actions    Actions    `yaml:"actions" json:"actions"`
-	Retention  *Retention `yaml:"retention,omitempty" json:"retention,omitempty"`
-	Telemetry  *Telemetry `yaml:"telemetry,omitempty" json:"telemetry,omitempty"`
 }
 
 func normalize(r *rawSpec) (*CompiledSpec, error) {
@@ -201,8 +202,6 @@ func normalize(r *rawSpec) (*CompiledSpec, error) {
 		Situation:     r.Situation,
 		Cognition:     r.Cognition,
 		Actions:       r.Actions,
-		Retention:     r.Retention,
-		Telemetry:     r.Telemetry,
 	}
 
 	// Normalize defaults so semantically equivalent specs produce the same digest.

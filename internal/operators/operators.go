@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -38,9 +39,13 @@ type windowConfig struct {
 
 // NewRuntime creates an operator runtime for the compiled spec.
 func NewOperatorRuntime(deploymentID string, compiled *spec.CompiledSpec, idGen ids.Generator) (*OperatorRuntime, error) {
-	windows := make(map[string]spec.Window, len(compiled.Windows))
+	windowConfigs := make(map[string]*windowConfig, len(compiled.Windows))
 	for _, w := range compiled.Windows {
-		windows[w.Name] = w
+		cfg, err := newWindowConfig(w)
+		if err != nil {
+			return nil, fmt.Errorf("window %s: %w", w.Name, err)
+		}
+		windowConfigs[w.Name] = cfg
 	}
 
 	byInput := make(map[string][]*operatorInstance)
@@ -48,13 +53,9 @@ func NewOperatorRuntime(deploymentID string, compiled *spec.CompiledSpec, idGen 
 		op := compiled.Operators[i]
 		inst := &operatorInstance{def: op}
 		if op.Window != "" {
-			w, ok := windows[op.Window]
+			cfg, ok := windowConfigs[op.Window]
 			if !ok {
 				return nil, fmt.Errorf("operator %s references unknown window %s", op.Name, op.Window)
-			}
-			cfg, err := newWindowConfig(w)
-			if err != nil {
-				return nil, fmt.Errorf("operator %s window: %w", op.Name, err)
 			}
 			inst.window = cfg
 		}
@@ -76,12 +77,23 @@ func newWindowConfig(w spec.Window) (*windowConfig, error) {
 	if cfg.emit == "" {
 		cfg.emit = "on_close"
 	}
+	switch cfg.emit {
+	case "on_update", "on_close", "early_and_close":
+	default:
+		return nil, fmt.Errorf("unsupported emit mode %q", cfg.emit)
+	}
 
 	switch w.Kind {
 	case "tumbling":
+		if w.Slide != "" {
+			return nil, fmt.Errorf("tumbling windows do not support slide")
+		}
 		d, err := parseDuration(w.Size)
 		if err != nil {
 			return nil, fmt.Errorf("tumbling size: %w", err)
+		}
+		if d <= 0 {
+			return nil, fmt.Errorf("tumbling size must be positive")
 		}
 		cfg.size = d
 	case "sliding":
@@ -92,6 +104,15 @@ func newWindowConfig(w spec.Window) (*windowConfig, error) {
 		slide, err := parseDuration(w.Slide)
 		if err != nil {
 			return nil, fmt.Errorf("sliding slide: %w", err)
+		}
+		if size <= 0 {
+			return nil, fmt.Errorf("sliding size must be positive")
+		}
+		if slide <= 0 {
+			return nil, fmt.Errorf("sliding slide must be positive")
+		}
+		if slide > size {
+			return nil, fmt.Errorf("sliding slide %s exceeds size %s", slide, size)
 		}
 		cfg.size = size
 		cfg.slide = slide
@@ -118,15 +139,12 @@ type OperatorStateBlob struct {
 
 const maxSeenBootIDs = 64
 
-// ApplyEvent processes one event against all operators that consume its input.
-func (r *OperatorRuntime) ApplyEvent(ctx context.Context, ps *PartitionState, env contractsv1.Envelope, watermark time.Time) ([]Feature, *PartitionState, error) {
-	processingTime := env.IngestedAt
-	return r.ApplyEventAt(ctx, ps, env, watermark, processingTime)
-}
-
 // ApplyEventAt applies one event using processingTime supplied by the runtime
 // clock. Producer timestamps are evidence, not runtime scheduling authority.
 func (r *OperatorRuntime) ApplyEventAt(ctx context.Context, ps *PartitionState, env contractsv1.Envelope, watermark, processingTime time.Time) ([]Feature, *PartitionState, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, ps, fmt.Errorf("apply event canceled: %w", err)
+	}
 	if ps == nil {
 		ps = &PartitionState{OperatorStates: make(map[string]map[string]*OperatorStateBlob)}
 	}
@@ -135,17 +153,16 @@ func (r *OperatorRuntime) ApplyEventAt(ctx context.Context, ps *PartitionState, 
 	if !ok {
 		return nil, ps, nil
 	}
-	if !r.qualityAdmitsBoot(inputName, env) {
-		return nil, ps, nil
-	}
-	if !r.admitBoot(ps, env) {
-		return nil, ps, nil
-	}
-
 	var features []Feature
 	for _, inst := range r.byInput[inputName] {
 		if len(inst.def.Inputs) > 0 && inst.def.Inputs[0] != inputName {
 			continue // Only direct inputs supported for now.
+		}
+		if !r.operatorAdmitsEvent(inst, env) || !r.admitBoot(ps, env) {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, ps, fmt.Errorf("apply event canceled: %w", err)
 		}
 		fs, err := r.applyOperator(ctx, ps, inst, env, watermark, processingTime)
 		if err != nil {
@@ -188,7 +205,6 @@ func (r *OperatorRuntime) applyOperator(ctx context.Context, ps *PartitionState,
 		return nil, fmt.Errorf("unsupported operator kind %q", inst.def.Kind)
 	}
 
-	r.setBlob(ps, inst.def.Name, stateKey, blob)
 	return features, nil
 }
 
@@ -209,20 +225,8 @@ func (r *OperatorRuntime) getBlob(ps *PartitionState, operatorID, stateKey strin
 	return blob
 }
 
-func (r *OperatorRuntime) setBlob(ps *PartitionState, operatorID, stateKey string, blob *OperatorStateBlob) {
-	if ps.OperatorStates == nil {
-		ps.OperatorStates = make(map[string]map[string]*OperatorStateBlob)
-	}
-	ops, ok := ps.OperatorStates[operatorID]
-	if !ok {
-		ops = make(map[string]*OperatorStateBlob)
-		ps.OperatorStates[operatorID] = ops
-	}
-	ops[stateKey] = blob
-}
-
 func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *OperatorStateBlob, env contractsv1.Envelope, watermark time.Time) ([]Feature, error) {
-	value, ok := extractValue(inst.def.Field, env)
+	value, ok := r.extractValue(inst, env)
 	if !ok {
 		return nil, nil
 	}
@@ -234,6 +238,9 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 	bootID := deviceBootID(env)
 	if ws.BootID == "" {
 		ws.BootID = bootID
+	}
+	if ws.WindowEnd.IsZero() {
+		ws.WindowEnd = watermark
 	}
 	corrected, err := r.isLateWindowCorrection(inst.window.size, env.EventTime, watermark, ws.LastEmit)
 	if err != nil {
@@ -258,14 +265,17 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 	ws.Samples = filtered
 
 	// Sort samples by event time for deterministic output.
-	sort.SliceStable(ws.Samples, func(i, j int) bool {
-		if ws.Samples[i].EventTime.Equal(ws.Samples[j].EventTime) {
-			return ws.Samples[i].EventID < ws.Samples[j].EventID
+	slices.SortStableFunc(ws.Samples, func(a, b Sample) int {
+		if a.EventTime.Equal(b.EventTime) {
+			return strings.Compare(a.EventID, b.EventID)
 		}
-		return ws.Samples[i].EventTime.Before(ws.Samples[j].EventTime)
+		if a.EventTime.Before(b.EventTime) {
+			return -1
+		}
+		return 1
 	})
 
-	agg, err := computeAggregate(inst.def.Aggregate, ws.Samples, inst.def.Unit)
+	agg, err := computeAggregate(inst.def.Aggregate, ws.Samples)
 	if err != nil {
 		return nil, err
 	}
@@ -273,25 +283,18 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 	windowStart := watermark.Add(-inst.window.size)
 	windowEnd := watermark
 
-	var features []Feature
-	emit := false
-	completeness := string(CompletenessProvisional)
-
-	switch inst.window.emit {
-	case "on_update":
-		emit = len(ws.Samples) > 0
-	case "early_and_close":
-		emit = len(ws.Samples) > 0
-		completeness = string(CompletenessProvisional)
-	case "on_close":
-		emit = false // Only emitted by timer/watermark close.
-	}
+	closeDue := windowCloseDue(inst.window, ws, watermark)
+	updateDue := len(ws.Samples) > 0 && (inst.window.emit == "on_update" || inst.window.emit == "early_and_close")
 	if corrected {
-		completeness = string(CompletenessCorrected)
+		updateDue = len(ws.Samples) > 0
 	}
 
-	if emit && len(ws.Samples) > 0 {
-		feature := Feature{
+	var features []Feature
+	appendFeature := func(completeness string) {
+		if len(ws.Samples) == 0 {
+			return
+		}
+		features = append(features, Feature{
 			FeatureID:     r.idGen.New(ids.PrefixEvent),
 			OperatorID:    inst.def.Name,
 			OutputName:    inst.def.Output,
@@ -311,12 +314,39 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 			Completeness:  completeness,
 			Traceparent:   env.Traceparent,
 			Tracestate:    env.Tracestate,
-		}
-		features = append(features, feature)
-		ws.LastEmit = watermark
+		})
 	}
 
+	if updateDue {
+		completeness := string(CompletenessProvisional)
+		if corrected {
+			completeness = string(CompletenessCorrected)
+		}
+		appendFeature(completeness)
+	}
+	if !corrected && closeDue && inst.window.emit == "on_close" {
+		appendFeature(string(CompletenessFinalByPolicy))
+	}
+	if len(features) > 0 {
+		ws.LastEmit = watermark
+	}
+	if closeDue {
+		// Watermark advancement is the close signal. A single latest close is
+		// emitted after a gap so the runtime never fabricates unobserved windows.
+		ws.WindowEnd = watermark
+	}
 	return features, nil
+}
+
+func windowCloseDue(cfg *windowConfig, ws *WindowState, watermark time.Time) bool {
+	if ws.WindowEnd.IsZero() || watermark.Before(ws.WindowEnd) {
+		return false
+	}
+	interval := cfg.size
+	if cfg.slide > 0 {
+		interval = cfg.slide
+	}
+	return watermark.Sub(ws.WindowEnd) >= interval
 }
 
 func (r *OperatorRuntime) isLateWindowCorrection(windowSize time.Duration, eventTime, watermark, lastEmit time.Time) (bool, error) {
@@ -365,10 +395,7 @@ func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *O
 		return nil, fmt.Errorf("heartbeat duration: %w", err)
 	}
 
-	missing := false
-	if hs.LastEventTime != nil {
-		missing = watermark.Sub(*hs.LastEventTime) >= duration
-	}
+	missing := watermark.Sub(*hs.LastEventTime) >= duration
 	eventTime := env.EventTime
 	if missing {
 		eventTime = processingTime
@@ -400,11 +427,11 @@ func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *O
 	return []Feature{feature}, nil
 }
 
-func extractValue(field string, env contractsv1.Envelope) (float64, bool) {
-	if field == "" || !numericObservationQualityValid(env) {
+func (r *OperatorRuntime) extractValue(inst *operatorInstance, env contractsv1.Envelope) (float64, bool) {
+	if inst.def.Field == "" || !r.numericObservationQualityValid(inst, env) {
 		return 0, false
 	}
-	parts := strings.Split(field, ".")
+	parts := strings.Split(inst.def.Field, ".")
 	if len(parts) != 2 || parts[0] != "data" {
 		return 0, false
 	}
@@ -461,31 +488,47 @@ func sampleQualityValid(env contractsv1.Envelope) bool {
 	return true
 }
 
-// numericObservationQualityValid applies the strict physical-observation
-// contract to the thermal wire family. The generic operator tests and legacy
-// logical inputs retain their existing quality compatibility until their
-// schemas opt into the physical provenance contract.
-func numericObservationQualityValid(env contractsv1.Envelope) bool {
-	if !strings.HasPrefix(env.Type, "zone.") {
+func (r *OperatorRuntime) operatorAdmitsEvent(inst *operatorInstance, env contractsv1.Envelope) bool {
+	switch inst.def.Kind {
+	case "missing_heartbeat":
 		return sampleQualityValid(env)
+	case "aggregate", "slope":
+		return r.numericObservationQualityValid(inst, env)
+	default:
+		return true
 	}
-	if !sampleQualityValid(env) || deviceBootID(env) == "" {
-		return false
-	}
-	quality, ok := env.Data["quality"].(string)
-	return ok && quality == "valid"
 }
 
-func (r *OperatorRuntime) qualityAdmitsBoot(inputName string, env contractsv1.Envelope) bool {
-	for _, inst := range r.byInput[inputName] {
-		if inst.def.Kind == "missing_heartbeat" {
-			return sampleQualityValid(env)
-		}
-		if inst.def.Kind == "aggregate" || inst.def.Kind == "slope" {
-			return numericObservationQualityValid(env)
+// numericObservationQualityValid applies the provenance contract declared by
+// the input's registered schema. A schema that exposes both quality and boot
+// identity requires a valid quality and an identified boot; no event family is
+// special-cased in the runtime.
+func (r *OperatorRuntime) numericObservationQualityValid(inst *operatorInstance, env contractsv1.Envelope) bool {
+	if !sampleQualityValid(env) {
+		return false
+	}
+	if !r.inputRequiresBootIdentity(inst) {
+		return true
+	}
+	return deviceBootID(env) != ""
+}
+
+func (r *OperatorRuntime) inputRequiresBootIdentity(inst *operatorInstance) bool {
+	for _, inputName := range inst.def.Inputs {
+		for _, input := range r.spec.Inputs {
+			if input.Name != inputName || input.SchemaRef == "" {
+				continue
+			}
+			definition, ok := eventschema.Lookup(input.SchemaRef)
+			if !ok {
+				return false
+			}
+			_, hasQuality := definition.Fields["quality"]
+			_, hasBootID := definition.Fields["boot_id"]
+			return hasQuality && hasBootID
 		}
 	}
-	return true
+	return false
 }
 
 func deviceBootID(env contractsv1.Envelope) string {
@@ -586,7 +629,7 @@ func (r *OperatorRuntime) IsTimerStateActive(ps *PartitionState, stateKey string
 	return r.isActiveBoot(ps, stateKey)
 }
 
-func computeAggregate(agg string, samples []Sample, unit string) (float64, error) {
+func computeAggregate(agg string, samples []Sample) (float64, error) {
 	if len(samples) == 0 {
 		return 0, nil
 	}
@@ -604,7 +647,7 @@ func computeAggregate(agg string, samples []Sample, unit string) (float64, error
 		}
 		return math.Sqrt(sumSquares / float64(len(samples))), nil
 	case "slope":
-		return linearSlope(samples, unit), nil
+		return linearSlope(samples), nil
 	case "count":
 		return float64(len(samples)), nil
 	case "sum":
@@ -639,7 +682,10 @@ func computeAggregate(agg string, samples []Sample, unit string) (float64, error
 	}
 }
 
-func linearSlope(samples []Sample, unit string) float64 {
+// linearSlope returns the rate in value-units per hour. The output unit is
+// metadata on the emitted feature; rate scaling is a single runtime contract,
+// not inferred from domain-specific unit names.
+func linearSlope(samples []Sample) float64 {
 	if len(samples) < 2 {
 		return 0
 	}
@@ -658,9 +704,6 @@ func linearSlope(samples []Sample, unit string) float64 {
 		return 0
 	}
 	slope := (n*sumXY - sumX*sumY) / denom
-	if strings.Contains(unit, "per_second") || strings.Contains(unit, "_per_s") {
-		return slope / 3600
-	}
 	return slope
 }
 
@@ -672,12 +715,30 @@ func eventIDs(samples []Sample) []string {
 	return ids
 }
 
+// TimerIdentity identifies the tenant and partition whose timer is firing.
+// Timer calls that persist features must provide it explicitly; an omitted
+// identity yields an unknown tenant and partition rather than a misleading
+// default.
+type TimerIdentity struct {
+	TenantID    string
+	PartitionID int
+}
+
 // ApplyTimer fires due timers and emits any resulting features. In Phase 2 this
-// is used primarily for missing-heartbeat detection.
-func (r *OperatorRuntime) ApplyTimer(ctx context.Context, ps *PartitionState, watermark, processingTime time.Time) ([]Feature, *PartitionState, error) {
-	_ = ctx
+// is used primarily for missing-heartbeat detection. The optional identity is
+// required by direct callers that consume the returned feature; the engine's
+// persistence path supplies its authoritative tenant and partition while
+// enriching timer features.
+func (r *OperatorRuntime) ApplyTimer(ctx context.Context, ps *PartitionState, watermark, processingTime time.Time, identities ...TimerIdentity) ([]Feature, *PartitionState, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, ps, fmt.Errorf("apply timer canceled: %w", err)
+	}
 	if ps == nil {
 		return nil, ps, nil
+	}
+	identity, err := timerIdentity(identities)
+	if err != nil {
+		return nil, ps, err
 	}
 
 	var features []Feature
@@ -685,8 +746,8 @@ func (r *OperatorRuntime) ApplyTimer(ctx context.Context, ps *PartitionState, wa
 	for _, inputInstances := range r.byInput {
 		instances = append(instances, inputInstances...)
 	}
-	sort.SliceStable(instances, func(i, j int) bool {
-		return instances[i].def.Name < instances[j].def.Name
+	slices.SortStableFunc(instances, func(a, b *operatorInstance) int {
+		return strings.Compare(a.def.Name, b.def.Name)
 	})
 	seen := make(map[string]struct{}, len(instances))
 	for _, op := range instances {
@@ -697,7 +758,7 @@ func (r *OperatorRuntime) ApplyTimer(ctx context.Context, ps *PartitionState, wa
 		if op.def.Kind != "missing_heartbeat" {
 			continue
 		}
-		fs, err := r.applyHeartbeatTimer(op, ps, watermark, processingTime)
+		fs, err := r.applyHeartbeatTimer(ctx, op, ps, watermark, processingTime, identity)
 		if err != nil {
 			return nil, ps, err
 		}
@@ -706,7 +767,24 @@ func (r *OperatorRuntime) ApplyTimer(ctx context.Context, ps *PartitionState, wa
 	return features, ps, nil
 }
 
-func (r *OperatorRuntime) applyHeartbeatTimer(inst *operatorInstance, ps *PartitionState, watermark, processingTime time.Time) ([]Feature, error) {
+func timerIdentity(identities []TimerIdentity) (TimerIdentity, error) {
+	if len(identities) > 1 {
+		return TimerIdentity{}, fmt.Errorf("timer identity must be provided at most once")
+	}
+	if len(identities) == 0 {
+		return TimerIdentity{PartitionID: -1}, nil
+	}
+	identity := identities[0]
+	if identity.TenantID == "" {
+		return TimerIdentity{}, fmt.Errorf("timer identity tenant is required")
+	}
+	if identity.PartitionID < 0 {
+		return TimerIdentity{}, fmt.Errorf("timer identity partition must be non-negative")
+	}
+	return identity, nil
+}
+
+func (r *OperatorRuntime) applyHeartbeatTimer(ctx context.Context, inst *operatorInstance, ps *PartitionState, watermark, processingTime time.Time, identity TimerIdentity) ([]Feature, error) {
 	duration, err := parseDuration(inst.def.Duration)
 	if err != nil {
 		return nil, fmt.Errorf("heartbeat duration: %w", err)
@@ -717,8 +795,11 @@ func (r *OperatorRuntime) applyHeartbeatTimer(inst *operatorInstance, ps *Partit
 	for stateKey := range ps.OperatorStates[inst.def.Name] {
 		keys = append(keys, stateKey)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 	for _, stateKey := range keys {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("heartbeat timer canceled: %w", err)
+		}
 		if !r.isActiveBoot(ps, stateKey) {
 			continue
 		}
@@ -741,12 +822,12 @@ func (r *OperatorRuntime) applyHeartbeatTimer(inst *operatorInstance, ps *Partit
 			FeatureID:         r.idGen.New(ids.PrefixEvent),
 			OperatorID:        inst.def.Name,
 			OutputName:        inst.def.Output,
-			TenantID:          contractsv1.TenantID,
+			TenantID:          identity.TenantID,
 			EntityType:        entityType,
 			EntityID:          entityIDFromStateKey(stateKey),
 			StateKey:          stateKey,
 			BootID:            blob.Heartbeat.BootID,
-			PartitionID:       0,
+			PartitionID:       identity.PartitionID,
 			WindowStart:       *blob.Heartbeat.LastEventTime,
 			WindowEnd:         processingTime,
 			Value:             true,
