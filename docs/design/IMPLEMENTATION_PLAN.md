@@ -83,7 +83,7 @@ Deliver:
 - Go formatting, vet, static analysis, race, and vulnerability checks;
 - cross-platform release build for Linux and macOS, amd64 and arm64;
 - embedded database migrations and schema version command;
-- Apache-2.0 license proposal confirmed before public release.
+- MIT license confirmed before public release.
 
 Tests:
 
@@ -827,7 +827,7 @@ These do not block M0–M2 and should be resolved before the named milestone:
 | Decision | Needed by | Default |
 |---|---|---|
 | Public repository/module namespace | M0 release packaging | keep module private until chosen |
-| License confirmation | first public commit | Apache-2.0 |
+| License confirmation | first public commit | MIT |
 | First real model/provider | M2 provider adapter | one OpenAI-compatible endpoint |
 | First MQTT broker for certification | M4 | Mosquitto for tests |
 | First real ticket/notification integration | M4 pilot | generic allowlisted webhook after demo effector |
