@@ -25,23 +25,8 @@ func (Controller) Reserve(ctx context.Context, tx *sql.Tx, episodeID, tenantID s
 		return fmt.Errorf("invalid cost reservation")
 	}
 	if amount == 0 {
-		rows, err := tx.QueryContext(ctx, "SELECT scope_key, max_micro, kill_switch FROM cost_limits WHERE scope_key IN ('global', ?)", "tenant:"+tenantID)
-		if err != nil {
-			return fmt.Errorf("read aggregate cost ceilings: %w", err)
-		}
-		defer func() { _ = rows.Close() }()
-		for rows.Next() {
-			var scopeKey string
-			var maxMicro, killSwitch int64
-			if err := rows.Scan(&scopeKey, &maxMicro, &killSwitch); err != nil {
-				return fmt.Errorf("scan %s cost ceiling: %w", scopeKey, err)
-			}
-			if maxMicro > 0 || killSwitch != 0 {
-				return fmt.Errorf("%w: cost estimate is required while aggregate cost control is active", ErrReservationRejected)
-			}
-		}
-		if err := rows.Err(); err != nil {
-			return fmt.Errorf("read aggregate cost ceilings: %w", err)
+		if err := requireNoActiveCostControl(ctx, tx, tenantID); err != nil {
+			return err
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -52,8 +37,29 @@ func (Controller) Reserve(ctx context.Context, tx *sql.Tx, episodeID, tenantID s
 	if err := reserveLimit(ctx, tx, "global", "", amount, now); err != nil {
 		return err
 	}
-	if err := reserveLimit(ctx, tx, "tenant:"+tenantID, tenantID, amount, now); err != nil {
-		return err
+	return reserveLimit(ctx, tx, "tenant:"+tenantID, tenantID, amount, now)
+}
+
+// requireNoActiveCostControl rejects an unestimated (zero) reservation while
+// a global or tenant ceiling or kill switch is active.
+func requireNoActiveCostControl(ctx context.Context, tx *sql.Tx, tenantID string) error {
+	rows, err := tx.QueryContext(ctx, "SELECT scope_key, max_micro, kill_switch FROM cost_limits WHERE scope_key IN ('global', ?)", "tenant:"+tenantID)
+	if err != nil {
+		return fmt.Errorf("read aggregate cost ceilings: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var scopeKey string
+		var maxMicro, killSwitch int64
+		if err := rows.Scan(&scopeKey, &maxMicro, &killSwitch); err != nil {
+			return fmt.Errorf("scan %s cost ceiling: %w", scopeKey, err)
+		}
+		if maxMicro > 0 || killSwitch != 0 {
+			return fmt.Errorf("%w: cost estimate is required while aggregate cost control is active", ErrReservationRejected)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read aggregate cost ceilings: %w", err)
 	}
 	return nil
 }

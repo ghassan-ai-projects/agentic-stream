@@ -74,16 +74,10 @@ func NewEventLogWithClock(db *storage.DB, clk clock.Clock) *EventLog {
 // tenant are ignored and reported in the returned positions as -1.
 func (l *EventLog) Append(ctx context.Context, tenantID string, envelopes []contractsv1.Envelope) ([]LogPosition, error) {
 	positions := make([]LogPosition, len(envelopes))
-
 	if err := l.db.WithTx(ctx, func(tx *sql.Tx) error {
 		for i, env := range envelopes {
-			if err := contractsv1.ValidateEnvelope(env, tenantID); err != nil {
-				return fmt.Errorf("validate envelope: %w", err)
-			}
-			if l.requireSchemas {
-				if err := validateEnvelopeAgainstSchema(ctx, tx, env); err != nil {
-					return err
-				}
+			if err := l.admit(ctx, tx, tenantID, env); err != nil {
+				return err
 			}
 			pos, err := l.appendOne(ctx, tx, tenantID, env)
 			if err != nil {
@@ -95,47 +89,31 @@ func (l *EventLog) Append(ctx context.Context, tenantID string, envelopes []cont
 	}); err != nil {
 		return nil, fmt.Errorf("append events: %w", err)
 	}
-
 	return positions, nil
 }
 
+// admit validates the envelope contract and, when required, the registered
+// event schema.
+func (l *EventLog) admit(ctx context.Context, tx *sql.Tx, tenantID string, env contractsv1.Envelope) error {
+	if err := contractsv1.ValidateEnvelope(env, tenantID); err != nil {
+		return fmt.Errorf("validate envelope: %w", err)
+	}
+	if !l.requireSchemas {
+		return nil
+	}
+	return validateEnvelopeAgainstSchema(ctx, tx, env)
+}
+
+// appendOne inserts one envelope and returns its position, or -1 when the
+// tenant already logged the event ID.
 func (l *EventLog) appendOne(ctx context.Context, tx *sql.Tx, tenantID string, env contractsv1.Envelope) (LogPosition, error) {
 	if _, err := contractsv1.ParseTraceContext(env.Traceparent, env.Tracestate); err != nil {
 		return -1, fmt.Errorf("validate trace context: %w", err)
 	}
-	payloadJSON, err := json.Marshal(env.Data)
+	body, err := encodeEventBody(env)
 	if err != nil {
-		return -1, fmt.Errorf("marshal payload: %w", err)
+		return -1, err
 	}
-	payloadHash := sha256.Sum256(payloadJSON)
-
-	qualityJSON, err := json.Marshal(env.Quality)
-	if err != nil {
-		return -1, fmt.Errorf("marshal quality: %w", err)
-	}
-
-	observedAt := sql.NullString{}
-	if env.ObservedAt != nil {
-		observedAt = sql.NullString{String: env.ObservedAt.Format(time.RFC3339Nano), Valid: true}
-	}
-
-	correlationID := sql.NullString{}
-	if env.CorrelationID != "" {
-		correlationID = sql.NullString{String: env.CorrelationID, Valid: true}
-	}
-	causationID := sql.NullString{}
-	if env.CausationID != "" {
-		causationID = sql.NullString{String: env.CausationID, Valid: true}
-	}
-	traceparent := sql.NullString{}
-	if env.Traceparent != "" {
-		traceparent = sql.NullString{String: env.Traceparent, Valid: true}
-	}
-	tracestate := sql.NullString{}
-	if env.Tracestate != "" {
-		tracestate = sql.NullString{String: env.Tracestate, Valid: true}
-	}
-
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO event_log (
 			tenant_id, partition_id, event_id, event_type, schema_version,
@@ -148,32 +126,39 @@ func (l *EventLog) appendOne(ctx context.Context, tx *sql.Tx, tenantID string, e
 			?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(tenant_id, event_id) DO NOTHING`,
-		tenantID,
-		env.PartitionID(0),
-		env.ID,
-		env.Type,
-		env.SchemaVersion,
-		env.Source,
-		env.PartitionKey,
-		env.Entity.Type,
-		env.Entity.ID,
-		env.EventTime.Format(time.RFC3339Nano),
-		observedAt,
-		env.IngestedAt.Format(time.RFC3339Nano),
-		correlationID,
-		causationID,
-		traceparent,
-		tracestate,
-		string(env.Classification),
-		qualityJSON,
-		payloadJSON,
-		payloadHash[:],
-		l.clk.Now().UTC().Format(time.RFC3339Nano),
+		tenantID, env.PartitionID(0), env.ID, env.Type, env.SchemaVersion,
+		env.Source, env.PartitionKey, env.Entity.Type, env.Entity.ID, env.EventTime.Format(time.RFC3339Nano),
+		nullableTime(env.ObservedAt), env.IngestedAt.Format(time.RFC3339Nano), nullableText(env.CorrelationID), nullableText(env.CausationID),
+		nullableText(env.Traceparent), nullableText(env.Tracestate), string(env.Classification), body.qualityJSON, body.payloadJSON,
+		body.payloadSHA256, l.clk.Now().UTC().Format(time.RFC3339Nano),
 	)
 	if err != nil {
 		return -1, fmt.Errorf("insert event: %w", err)
 	}
+	return insertedPosition(res)
+}
 
+// eventBody is an envelope's stored JSON columns.
+type eventBody struct {
+	payloadJSON, payloadSHA256, qualityJSON []byte
+}
+
+func encodeEventBody(env contractsv1.Envelope) (eventBody, error) {
+	payloadJSON, err := json.Marshal(env.Data)
+	if err != nil {
+		return eventBody{}, fmt.Errorf("marshal payload: %w", err)
+	}
+	payloadHash := sha256.Sum256(payloadJSON)
+	qualityJSON, err := json.Marshal(env.Quality)
+	if err != nil {
+		return eventBody{}, fmt.Errorf("marshal quality: %w", err)
+	}
+	return eventBody{payloadJSON: payloadJSON, payloadSHA256: payloadHash[:], qualityJSON: qualityJSON}, nil
+}
+
+// insertedPosition returns the new row's position, or -1 when the insert was
+// ignored as a duplicate.
+func insertedPosition(res sql.Result) (LogPosition, error) {
 	rowsAffected, err := res.RowsAffected()
 	if err != nil {
 		return -1, fmt.Errorf("rows affected: %w", err)
@@ -181,11 +166,20 @@ func (l *EventLog) appendOne(ctx context.Context, tx *sql.Tx, tenantID string, e
 	if rowsAffected == 0 {
 		return -1, nil
 	}
-
 	position, err := res.LastInsertId()
 	if err != nil {
 		return -1, fmt.Errorf("last insert id: %w", err)
 	}
-
 	return LogPosition(position), nil
+}
+
+func nullableText(value string) sql.NullString {
+	return sql.NullString{String: value, Valid: value != ""}
+}
+
+func nullableTime(value *time.Time) sql.NullString {
+	if value == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: value.Format(time.RFC3339Nano), Valid: true}
 }

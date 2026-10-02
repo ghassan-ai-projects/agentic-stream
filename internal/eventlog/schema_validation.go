@@ -28,42 +28,63 @@ type queryRower interface {
 }
 
 func validateEnvelopeAgainstSchema(ctx context.Context, queryer queryRower, env contractsv1.Envelope) error {
-	var schemaJSON []byte
-	if err := queryer.QueryRowContext(ctx, "SELECT schema_json FROM event_schemas WHERE event_type = ? AND schema_version = ? AND status = 'active'", env.Type, env.SchemaVersion).Scan(&schemaJSON); err != nil {
-		return fmt.Errorf("event schema %s/%s is not registered: %w", env.Type, env.SchemaVersion, err)
-	}
-	var schema struct {
-		Properties map[string]struct {
-			Type string   `json:"type"`
-			Enum []string `json:"enum"`
-		} `json:"properties"`
-		AdditionalProperties bool     `json:"additionalProperties"`
-		Required             []string `json:"required"`
-	}
-	if err := json.Unmarshal(schemaJSON, &schema); err != nil {
-		return fmt.Errorf("decode event schema: %w", err)
+	schema, err := loadEventSchema(ctx, queryer, env.Type, env.SchemaVersion)
+	if err != nil {
+		return err
 	}
 	for key, value := range env.Data {
-		property, ok := schema.Properties[key]
-		if !ok {
-			if !schema.AdditionalProperties {
-				return fmt.Errorf("payload field %q is not declared by event schema", key)
-			}
-			continue
-		}
-		if err := validateJSONSchemaType(property.Type, value); err != nil {
-			return fmt.Errorf("payload field %q: %w", key, err)
-		}
-		if property.Enum != nil {
-			if err := validateJSONSchemaEnum(property.Enum, value); err != nil {
-				return fmt.Errorf("payload field %q: %w", key, err)
-			}
+		if err := schema.checkField(key, value); err != nil {
+			return err
 		}
 	}
 	for _, key := range schema.Required {
 		if _, ok := env.Data[key]; !ok {
 			return fmt.Errorf("payload field %q is required by event schema", key)
 		}
+	}
+	return nil
+}
+
+// eventSchema is the subset of a registered JSON Schema the event log checks.
+type eventSchema struct {
+	Properties map[string]struct {
+		Type string   `json:"type"`
+		Enum []string `json:"enum"`
+	} `json:"properties"`
+	AdditionalProperties bool     `json:"additionalProperties"`
+	Required             []string `json:"required"`
+}
+
+func loadEventSchema(ctx context.Context, queryer queryRower, eventType, schemaVersion string) (eventSchema, error) {
+	var schemaJSON []byte
+	if err := queryer.QueryRowContext(ctx, "SELECT schema_json FROM event_schemas WHERE event_type = ? AND schema_version = ? AND status = 'active'", eventType, schemaVersion).Scan(&schemaJSON); err != nil {
+		return eventSchema{}, fmt.Errorf("event schema %s/%s is not registered: %w", eventType, schemaVersion, err)
+	}
+	var schema eventSchema
+	if err := json.Unmarshal(schemaJSON, &schema); err != nil {
+		return eventSchema{}, fmt.Errorf("decode event schema: %w", err)
+	}
+	return schema, nil
+}
+
+// checkField requires a declared field (unless additional properties are
+// allowed) whose value has the declared type and, if any, an allowed value.
+func (s eventSchema) checkField(key string, value any) error {
+	property, ok := s.Properties[key]
+	if !ok {
+		if !s.AdditionalProperties {
+			return fmt.Errorf("payload field %q is not declared by event schema", key)
+		}
+		return nil
+	}
+	if err := validateJSONSchemaType(property.Type, value); err != nil {
+		return fmt.Errorf("payload field %q: %w", key, err)
+	}
+	if property.Enum == nil {
+		return nil
+	}
+	if err := validateJSONSchemaEnum(property.Enum, value); err != nil {
+		return fmt.Errorf("payload field %q: %w", key, err)
 	}
 	return nil
 }
@@ -85,40 +106,52 @@ func validateJSONSchemaType(expected string, value any) error {
 	if expected == "" || expected == "null" && value == nil {
 		return nil
 	}
-	switch expected {
-	case "number":
-		switch value.(type) {
-		case float32, float64, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, json.Number:
-			return nil
-		}
-	case "integer":
-		switch number := value.(type) {
-		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-			return nil
-		case float64:
-			if number == float64(int64(number)) {
-				return nil
-			}
-		}
-	case "string":
-		if _, ok := value.(string); ok {
-			return nil
-		}
-	case "boolean":
-		if _, ok := value.(bool); ok {
-			return nil
-		}
-	case "object":
-		if _, ok := value.(map[string]any); ok {
-			return nil
-		}
-	case "array":
-		switch value.(type) {
-		case []any, []string, []float64:
-			return nil
-		}
-	default:
+	matches, known := jsonSchemaTypes[expected]
+	if !known {
 		return fmt.Errorf("schema uses unsupported JSON type %q", expected)
 	}
+	if matches(value) {
+		return nil
+	}
 	return fmt.Errorf("expected %s, got %T", expected, value)
+}
+
+// jsonSchemaTypes maps each supported JSON Schema type to a predicate over a
+// decoded Go value.
+var jsonSchemaTypes = map[string]func(any) bool{
+	"number":  isJSONNumber,
+	"integer": isJSONInteger,
+	"string":  func(value any) bool { _, ok := value.(string); return ok },
+	"boolean": func(value any) bool { _, ok := value.(bool); return ok },
+	"object":  func(value any) bool { _, ok := value.(map[string]any); return ok },
+	"array":   isJSONArray,
+}
+
+func isJSONNumber(value any) bool {
+	switch value.(type) {
+	case float32, float64, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, json.Number:
+		return true
+	default:
+		return false
+	}
+}
+
+func isJSONInteger(value any) bool {
+	switch number := value.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return true
+	case float64:
+		return number == float64(int64(number))
+	default:
+		return false
+	}
+}
+
+func isJSONArray(value any) bool {
+	switch value.(type) {
+	case []any, []string, []float64:
+		return true
+	default:
+		return false
+	}
 }

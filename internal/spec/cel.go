@@ -33,45 +33,42 @@ func validateExpressions(spec *CompiledSpec) error {
 	if err != nil {
 		return err
 	}
-
-	check := func(path, expr string) error {
-		if expr == "" {
-			return nil
+	for _, expression := range specExpressions(spec) {
+		if expression.source == "" {
+			continue
 		}
-		_, issues := env.Compile(expr)
-		if issues != nil && issues.Err() != nil {
-			return &CompileError{Path: path, Message: fmt.Sprintf("cel: %v", issues.Err())}
+		if _, issues := env.Compile(expression.source); issues != nil && issues.Err() != nil {
+			return &CompileError{Path: expression.path, Message: fmt.Sprintf("cel: %v", issues.Err())}
 		}
-		return nil
 	}
+	return nil
+}
 
-	if err := check("situation.occurrence.openWhen", spec.Situation.Occurrence.OpenWhen); err != nil {
-		return err
-	}
-	if err := check("situation.occurrence.closeWhen", spec.Situation.Occurrence.CloseWhen); err != nil {
-		return err
+// celExpression is one CEL source in the spec and the path that names it in
+// a compile error.
+type celExpression struct {
+	path, source string
+}
+
+// specExpressions lists every CEL expression in the spec, in the order errors
+// are reported.
+func specExpressions(spec *CompiledSpec) []celExpression {
+	expressions := []celExpression{
+		{"situation.occurrence.openWhen", spec.Situation.Occurrence.OpenWhen},
+		{"situation.occurrence.closeWhen", spec.Situation.Occurrence.CloseWhen},
 	}
 	for i, t := range spec.Situation.Transitions {
-		if err := check(fmt.Sprintf("situation.transitions[%d].when", i), t.When); err != nil {
-			return err
-		}
+		expressions = append(expressions, celExpression{fmt.Sprintf("situation.transitions[%d].when", i), t.When})
 	}
 	for i, tr := range spec.Cognition.Triggers {
-		if err := check(fmt.Sprintf("cognition.triggers[%d].when", i), tr.When); err != nil {
-			return err
-		}
-		if err := check(fmt.Sprintf("cognition.triggers[%d].score", i), tr.Score); err != nil {
-			return err
-		}
-		if err := check(fmt.Sprintf("cognition.triggers[%d].materialDelta", i), tr.MaterialDelta); err != nil {
-			return err
-		}
+		expressions = append(expressions,
+			celExpression{fmt.Sprintf("cognition.triggers[%d].when", i), tr.When},
+			celExpression{fmt.Sprintf("cognition.triggers[%d].score", i), tr.Score},
+			celExpression{fmt.Sprintf("cognition.triggers[%d].materialDelta", i), tr.MaterialDelta},
+		)
 	}
 	for i, op := range spec.Operators {
-		if err := check(fmt.Sprintf("operators[%d].where", i), op.Where); err != nil {
-			return err
-		}
+		expressions = append(expressions, celExpression{fmt.Sprintf("operators[%d].where", i), op.Where})
 	}
-
-	return nil
+	return expressions
 }

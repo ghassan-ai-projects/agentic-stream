@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"time"
 )
 
 // Resolve records state/feedback evidence for the device barrier. Command
@@ -30,35 +31,55 @@ func (s *ReconciliationStore) Resolve(ctx context.Context, deviceID, bootID, fin
 	if err != nil {
 		return false, fmt.Errorf("canonicalize reconciliation evidence: %w", err)
 	}
-	evidenceHash := sha256.Sum256(evidenceJSON)
-	now := s.now()
-	cleared := finalStatus != "manual_review"
-	err = s.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := s.Authority.assertOrdinaryTx(ctx, tx, authorityEpoch); err != nil {
-			return err
-		}
-		if err := assertResolvableBarrier(ctx, tx, deviceID, bootID, evidence); err != nil {
-			return err
-		}
-		newStatus := "required"
-		if cleared {
-			newStatus = "clear"
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE device_reconciliation SET status = ?, last_resolution_status = ?,
-				resolution_evidence_json = ?, resolution_sha256 = ?, resolved_at = ?,
-				updated_at = ? WHERE device_id = ? AND status = 'required' AND boot_id = ?`,
-			newStatus, finalStatus, evidenceJSON, evidenceHash[:], formatRuntimeTime(now), formatRuntimeTime(now), deviceID, bootID); err != nil {
-			return fmt.Errorf("resolve reconciliation barrier: %w", err)
-		}
-		return appendAuthorityEventTx(ctx, tx, TargetClaim{Target: deviceID, DeviceID: deviceID, BootID: bootID, AuthorityEpoch: authorityEpoch, OwnerInstance: ownerInstance}, "reconciliation_recorded", map[string]any{
-			"final_status": finalStatus, "evidence_sha256": "sha256:" + hex.EncodeToString(evidenceHash[:]), "barrier_cleared": cleared,
-		}, now)
-	})
-	if err != nil {
+	resolution := barrierResolution{
+		claim:       TargetClaim{Target: deviceID, DeviceID: deviceID, BootID: bootID, AuthorityEpoch: authorityEpoch, OwnerInstance: ownerInstance},
+		finalStatus: finalStatus, evidence: evidence, evidenceJSON: evidenceJSON, now: s.now(),
+	}
+	if err := s.DB.WithTx(ctx, func(tx *sql.Tx) error {
+		return s.resolveTx(ctx, tx, resolution)
+	}); err != nil {
 		return false, fmt.Errorf("resolve device reconciliation: %w", err)
 	}
-	return cleared, nil
+	return resolution.clears(), nil
+}
+
+// barrierResolution is one recorded resolution of a device barrier.
+type barrierResolution struct {
+	claim        TargetClaim
+	finalStatus  string
+	evidence     map[string]any
+	evidenceJSON []byte
+	now          time.Time
+}
+
+// clears reports whether the resolution clears the barrier; manual review
+// leaves it open.
+func (r barrierResolution) clears() bool {
+	return r.finalStatus != "manual_review"
+}
+
+func (s *ReconciliationStore) resolveTx(ctx context.Context, tx *sql.Tx, r barrierResolution) error {
+	if err := s.Authority.assertOrdinaryTx(ctx, tx, r.claim.AuthorityEpoch); err != nil {
+		return err
+	}
+	if err := assertResolvableBarrier(ctx, tx, r.claim.DeviceID, r.claim.BootID, r.evidence); err != nil {
+		return err
+	}
+	newStatus := "required"
+	if r.clears() {
+		newStatus = "clear"
+	}
+	evidenceHash := sha256.Sum256(r.evidenceJSON)
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE device_reconciliation SET status = ?, last_resolution_status = ?,
+			resolution_evidence_json = ?, resolution_sha256 = ?, resolved_at = ?,
+			updated_at = ? WHERE device_id = ? AND status = 'required' AND boot_id = ?`,
+		newStatus, r.finalStatus, r.evidenceJSON, evidenceHash[:], formatRuntimeTime(r.now), formatRuntimeTime(r.now), r.claim.DeviceID, r.claim.BootID); err != nil {
+		return fmt.Errorf("resolve reconciliation barrier: %w", err)
+	}
+	return appendAuthorityEventTx(ctx, tx, r.claim, "reconciliation_recorded", map[string]any{
+		"final_status": r.finalStatus, "evidence_sha256": "sha256:" + hex.EncodeToString(evidenceHash[:]), "barrier_cleared": r.clears(),
+	}, r.now)
 }
 
 // assertResolvableBarrier requires an open barrier for this boot and evidence

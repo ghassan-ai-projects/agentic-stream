@@ -57,14 +57,20 @@ const schemaID = "urn:agentic-stream:schema:situation-spec:v1"
 
 // checkDuplicateKeys walks a YAML document and rejects duplicate mapping keys.
 func checkDuplicateKeys(n *yaml.Node, path string) error {
-	if n.Kind != yaml.MappingNode {
-		for _, child := range n.Content {
-			if err := checkDuplicateKeys(child, path); err != nil {
-				return err
-			}
-		}
-		return nil
+	if n.Kind == yaml.MappingNode {
+		return checkMappingKeys(n, path)
 	}
+	for _, child := range n.Content {
+		if err := checkDuplicateKeys(child, path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkMappingKeys rejects a repeated scalar key in one mapping, then checks
+// each value under its key path.
+func checkMappingKeys(n *yaml.Node, path string) error {
 	seen := make(map[string]struct{}, len(n.Content)/2)
 	for i := 0; i < len(n.Content); i += 2 {
 		keyNode := n.Content[i]
@@ -111,11 +117,29 @@ func (c *Compiler) CompileFile(ctx context.Context, path string) (*CompiledSpec,
 // CompileBytes parses and validates raw spec bytes.
 func (c *Compiler) CompileBytes(ctx context.Context, data []byte, path string) (*CompiledSpec, error) {
 	_ = ctx
-
 	if err := c.init(); err != nil {
 		return nil, err
 	}
+	raw, err := parseRawSpec(data)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.validateSchema(raw); err != nil {
+		return nil, err
+	}
+	spec := normalize(raw)
+	if err := resolveReferences(spec); err != nil {
+		return nil, err
+	}
+	if err := validateExpressions(spec); err != nil {
+		return nil, err
+	}
+	return seal(spec)
+}
 
+// parseRawSpec decodes the YAML strictly: duplicate keys and unknown fields
+// are rejected, and the document must be an agentic-stream/v1 SituationSpec.
+func parseRawSpec(data []byte) (*rawSpec, error) {
 	var root yaml.Node
 	if err := yaml.Unmarshal(data, &root); err != nil {
 		return nil, fmt.Errorf("parse yaml: %w", err)
@@ -123,47 +147,40 @@ func (c *Compiler) CompileBytes(ctx context.Context, data []byte, path string) (
 	if err := checkDuplicateKeys(&root, ""); err != nil {
 		return nil, err
 	}
-
 	var raw rawSpec
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&raw); err != nil {
 		return nil, fmt.Errorf("decode yaml: %w", err)
 	}
-
 	if raw.APIVersion != "agentic-stream/v1" {
 		return nil, &CompileError{Path: "apiVersion", Message: fmt.Sprintf("expected agentic-stream/v1, got %q", raw.APIVersion)}
 	}
 	if raw.Kind != "SituationSpec" {
 		return nil, &CompileError{Path: "kind", Message: fmt.Sprintf("expected SituationSpec, got %q", raw.Kind)}
 	}
+	return &raw, nil
+}
 
-	// Convert to JSON for schema validation to catch structural errors.
+// validateSchema checks the decoded spec against the embedded JSON Schema to
+// catch structural errors.
+func (c *Compiler) validateSchema(raw *rawSpec) error {
 	jsonData, err := json.Marshal(raw)
 	if err != nil {
-		return nil, fmt.Errorf("marshal for validation: %w", err)
+		return fmt.Errorf("marshal for validation: %w", err)
 	}
 	var jsonDoc any
 	if err := json.Unmarshal(jsonData, &jsonDoc); err != nil {
-		return nil, fmt.Errorf("unmarshal for validation: %w", err)
+		return fmt.Errorf("unmarshal for validation: %w", err)
 	}
 	if err := c.schema.Validate(jsonDoc); err != nil {
-		return nil, fmt.Errorf("schema validation: %w", err)
+		return fmt.Errorf("schema validation: %w", err)
 	}
+	return nil
+}
 
-	spec, err := normalize(&raw)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := resolveReferences(spec); err != nil {
-		return nil, err
-	}
-
-	if err := validateExpressions(spec); err != nil {
-		return nil, err
-	}
-
+// seal records the spec's canonical JSON and its digest.
+func seal(spec *CompiledSpec) (*CompiledSpec, error) {
 	canonicalJSON, err := canonicaljson.Marshal(spec)
 	if err != nil {
 		return nil, fmt.Errorf("canonical json: %w", err)
@@ -172,7 +189,6 @@ func (c *Compiler) CompileBytes(ctx context.Context, data []byte, path string) (
 	if err != nil {
 		return nil, fmt.Errorf("digest: %w", err)
 	}
-
 	spec.CanonicalJSON = canonicalJSON
 	spec.Digest = digest
 	return spec, nil
@@ -192,7 +208,9 @@ type rawSpec struct {
 	Actions    Actions    `yaml:"actions" json:"actions"`
 }
 
-func normalize(r *rawSpec) (*CompiledSpec, error) {
+// normalize copies the raw spec and fills defaults so semantically equivalent
+// specs produce the same digest.
+func normalize(r *rawSpec) *CompiledSpec {
 	spec := &CompiledSpec{
 		SchemaVersion: r.APIVersion,
 		Metadata:      r.Metadata,
@@ -204,40 +222,53 @@ func normalize(r *rawSpec) (*CompiledSpec, error) {
 		Cognition:     r.Cognition,
 		Actions:       r.Actions,
 	}
+	defaultInputs(spec.Inputs)
+	defaultWindows(spec.Windows)
+	defaultCognition(&spec.Cognition)
+	defaultIntents(spec.Actions.Intents)
+	return spec
+}
 
-	// Normalize defaults so semantically equivalent specs produce the same digest.
-	for i := range spec.Inputs {
-		if spec.Inputs[i].Classification == "" {
-			spec.Inputs[i].Classification = "internal"
+func defaultInputs(inputs []Input) {
+	for i := range inputs {
+		if inputs[i].Classification == "" {
+			inputs[i].Classification = "internal"
 		}
-		if spec.Inputs[i].MaxPayloadBytes == 0 {
-			spec.Inputs[i].MaxPayloadBytes = 1048576
-		}
-	}
-	for i := range spec.Windows {
-		if spec.Windows[i].Emit == "" {
-			spec.Windows[i].Emit = "on_close"
+		if inputs[i].MaxPayloadBytes == 0 {
+			inputs[i].MaxPayloadBytes = 1048576
 		}
 	}
-	for i := range spec.Cognition.Triggers {
-		if spec.Cognition.Triggers[i].Completeness == "" {
-			spec.Cognition.Triggers[i].Completeness = "any"
+}
+
+func defaultWindows(windows []Window) {
+	for i := range windows {
+		if windows[i].Emit == "" {
+			windows[i].Emit = "on_close"
 		}
 	}
-	for i := range spec.Actions.Intents {
-		if spec.Actions.Intents[i].Policy == "" {
-			spec.Actions.Intents[i].Policy = "approval"
+}
+
+func defaultCognition(cognition *Cognition) {
+	for i := range cognition.Triggers {
+		if cognition.Triggers[i].Completeness == "" {
+			cognition.Triggers[i].Completeness = "any"
 		}
 	}
-	if spec.Cognition.Executor.RiskCeiling == "" {
-		spec.Cognition.Executor.RiskCeiling = "R1"
+	if cognition.Executor.RiskCeiling == "" {
+		cognition.Executor.RiskCeiling = "R1"
 	}
 	// P8: the default dispatch policy is SHADOW — nothing enters action
 	// governance until the owner declares active. The value rides the
 	// compiled digest, so a mode change is a new spec version.
-	if spec.Cognition.Executor.DispatchPolicy == "" {
-		spec.Cognition.Executor.DispatchPolicy = "shadow"
+	if cognition.Executor.DispatchPolicy == "" {
+		cognition.Executor.DispatchPolicy = "shadow"
 	}
+}
 
-	return spec, nil
+func defaultIntents(intents []Intent) {
+	for i := range intents {
+		if intents[i].Policy == "" {
+			intents[i].Policy = "approval"
+		}
+	}
 }

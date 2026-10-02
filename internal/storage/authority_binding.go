@@ -29,24 +29,28 @@ func (a *TargetAuthority) BindCommand(ctx context.Context, binding CommandBindin
 		if err != nil || bound {
 			return err
 		}
-		var digest any
-		if binding.CommandDigest != "" {
-			decoded, decodeErr := canonicaljson.DecodeDigest(binding.CommandDigest)
-			if decodeErr != nil {
-				return fmt.Errorf("decode command binding digest: %w", decodeErr)
-			}
-			digest = decoded
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO device_command_bindings
-			(command_id, target, device_id, boot_id, owner_epoch, owner_instance, command_sha256, bound_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, binding.CommandID, binding.Target, binding.DeviceID, binding.BootID,
-			binding.AuthorityEpoch, binding.OwnerInstance, digest, formatRuntimeTime(a.now())); err != nil {
-			return fmt.Errorf("record command binding: %w", err)
-		}
-		return nil
+		return insertCommandBinding(ctx, tx, binding, a.now())
 	})
 	if err != nil {
 		return fmt.Errorf("bind command %q: %w", binding.CommandID, err)
+	}
+	return nil
+}
+
+func insertCommandBinding(ctx context.Context, tx *sql.Tx, binding CommandBinding, now time.Time) error {
+	var digest any
+	if binding.CommandDigest != "" {
+		decoded, err := canonicaljson.DecodeDigest(binding.CommandDigest)
+		if err != nil {
+			return fmt.Errorf("decode command binding digest: %w", err)
+		}
+		digest = decoded
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO device_command_bindings
+		(command_id, target, device_id, boot_id, owner_epoch, owner_instance, command_sha256, bound_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, binding.CommandID, binding.Target, binding.DeviceID, binding.BootID,
+		binding.AuthorityEpoch, binding.OwnerInstance, digest, formatRuntimeTime(now)); err != nil {
+		return fmt.Errorf("record command binding: %w", err)
 	}
 	return nil
 }

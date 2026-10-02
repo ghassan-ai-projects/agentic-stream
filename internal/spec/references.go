@@ -36,40 +36,65 @@ type specNames struct {
 // collectSpecNames requires unique input, window, operator, operator-output,
 // and phase names, and every input to reference its registered event schema.
 func collectSpecNames(spec *CompiledSpec) (specNames, error) {
-	names := specNames{
-		inputs:          make(map[string]struct{}, len(spec.Inputs)),
-		windows:         make(map[string]struct{}, len(spec.Windows)),
-		operatorOutputs: make(map[string]struct{}, len(spec.Operators)),
-		phases:          make(map[string]struct{}, len(spec.Situation.Phases)),
+	inputs, err := collectInputNames(spec.Inputs)
+	if err != nil {
+		return specNames{}, err
 	}
-	for _, in := range spec.Inputs {
-		if err := addUniqueName(names.inputs, in.Name, "inputs", "input name"); err != nil {
-			return specNames{}, err
+	windows, err := uniqueNames(spec.Windows, func(w Window) string { return w.Name }, "windows", "window name")
+	if err != nil {
+		return specNames{}, err
+	}
+	outputs, err := collectOperatorOutputs(spec.Operators)
+	if err != nil {
+		return specNames{}, err
+	}
+	phases, err := uniqueNames(spec.Situation.Phases, func(p Phase) string { return p.Name }, "situation.phases", "phase name")
+	if err != nil {
+		return specNames{}, err
+	}
+	return specNames{inputs: inputs, windows: windows, operatorOutputs: outputs, phases: phases}, nil
+}
+
+// uniqueNames collects the names of items, rejecting a duplicate.
+func uniqueNames[T any](items []T, name func(T) string, path, kind string) (map[string]struct{}, error) {
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		if err := addUniqueName(seen, name(item), path, kind); err != nil {
+			return nil, err
+		}
+	}
+	return seen, nil
+}
+
+// collectInputNames requires unique input names, each referencing its
+// registered event schema.
+func collectInputNames(inputs []Input) (map[string]struct{}, error) {
+	seen := make(map[string]struct{}, len(inputs))
+	for _, in := range inputs {
+		if err := addUniqueName(seen, in.Name, "inputs", "input name"); err != nil {
+			return nil, err
 		}
 		if err := checkInputSchema(in); err != nil {
-			return specNames{}, err
+			return nil, err
 		}
 	}
-	for _, w := range spec.Windows {
-		if err := addUniqueName(names.windows, w.Name, "windows", "window name"); err != nil {
-			return specNames{}, err
+	return seen, nil
+}
+
+// collectOperatorOutputs requires unique operator names and outputs, and
+// returns the outputs.
+func collectOperatorOutputs(operators []Operator) (map[string]struct{}, error) {
+	names := make(map[string]struct{}, len(operators))
+	outputs := make(map[string]struct{}, len(operators))
+	for _, op := range operators {
+		if err := addUniqueName(names, op.Name, "operators", "operator name"); err != nil {
+			return nil, err
+		}
+		if err := addUniqueName(outputs, op.Output, "operators", "operator output"); err != nil {
+			return nil, err
 		}
 	}
-	operatorNames := make(map[string]struct{}, len(spec.Operators))
-	for _, op := range spec.Operators {
-		if err := addUniqueName(operatorNames, op.Name, "operators", "operator name"); err != nil {
-			return specNames{}, err
-		}
-		if err := addUniqueName(names.operatorOutputs, op.Output, "operators", "operator output"); err != nil {
-			return specNames{}, err
-		}
-	}
-	for _, p := range spec.Situation.Phases {
-		if err := addUniqueName(names.phases, p.Name, "situation.phases", "phase name"); err != nil {
-			return specNames{}, err
-		}
-	}
-	return names, nil
+	return outputs, nil
 }
 
 func addUniqueName(seen map[string]struct{}, name, path, kind string) error {
@@ -111,20 +136,38 @@ func checkOperatorReferences(spec *CompiledSpec, op Operator, names specNames) e
 	if !ok {
 		return nil
 	}
+	for _, in := range operatorInputs(spec, op) {
+		if err := checkOperatorField(op, fieldName, in); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// operatorInputs returns the spec inputs an operator reads, in operator
+// input order.
+func operatorInputs(spec *CompiledSpec, op Operator) []Input {
+	var inputs []Input
 	for _, inputName := range op.Inputs {
 		for _, in := range spec.Inputs {
-			if in.Name != inputName {
-				continue
-			}
-			definition, _ := eventschema.Lookup(in.SchemaRef)
-			field, exists := definition.Fields[fieldName]
-			if !exists {
-				return &CompileError{Path: fmt.Sprintf("operators.%s.field", op.Name), Message: fmt.Sprintf("payload field %q is not declared by schema %q", fieldName, in.SchemaRef)}
-			}
-			if op.Kind == "aggregate" && op.Unit != "" && op.Unit != field.Unit {
-				return &CompileError{Path: fmt.Sprintf("operators.%s.unit", op.Name), Message: fmt.Sprintf("unit %q does not match field %q unit %q", op.Unit, fieldName, field.Unit)}
+			if in.Name == inputName {
+				inputs = append(inputs, in)
 			}
 		}
+	}
+	return inputs
+}
+
+// checkOperatorField requires the input's schema to declare the payload
+// field, with a matching unit for an aggregate.
+func checkOperatorField(op Operator, fieldName string, in Input) error {
+	definition, _ := eventschema.Lookup(in.SchemaRef)
+	field, exists := definition.Fields[fieldName]
+	if !exists {
+		return &CompileError{Path: fmt.Sprintf("operators.%s.field", op.Name), Message: fmt.Sprintf("payload field %q is not declared by schema %q", fieldName, in.SchemaRef)}
+	}
+	if op.Kind == "aggregate" && op.Unit != "" && op.Unit != field.Unit {
+		return &CompileError{Path: fmt.Sprintf("operators.%s.unit", op.Name), Message: fmt.Sprintf("unit %q does not match field %q unit %q", op.Unit, fieldName, field.Unit)}
 	}
 	return nil
 }

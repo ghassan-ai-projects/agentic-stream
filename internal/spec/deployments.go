@@ -15,71 +15,102 @@ import (
 // SaveDeployment persists a compiled spec as an active deployment record.
 // It is idempotent: duplicate inserts for the same deployment_id are ignored.
 func SaveDeployment(ctx context.Context, db *storage.DB, tenantID string, compiled *CompiledSpec) error {
+	record, err := newDeploymentRecord(tenantID, compiled)
+	if err != nil {
+		return err
+	}
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := record.retirePriorVersions(ctx, tx); err != nil {
+			return err
+		}
+		if err := registerInputSchemas(ctx, tx, compiled.Inputs, record.now); err != nil {
+			return err
+		}
+		return record.insert(ctx, tx)
+	}); err != nil {
+		return fmt.Errorf("persist deployment: %w", err)
+	}
+	return nil
+}
+
+// deploymentRecord is a compiled spec in its stored form.
+type deploymentRecord struct {
+	tenantID               string
+	compiled               *CompiledSpec
+	specDigest             []byte
+	sourceJSON, compiledIR []byte
+	now                    string
+}
+
+func newDeploymentRecord(tenantID string, compiled *CompiledSpec) (deploymentRecord, error) {
 	if compiled == nil {
-		return fmt.Errorf("compiled spec is nil")
+		return deploymentRecord{}, fmt.Errorf("compiled spec is nil")
 	}
 	if compiled.Digest == "" {
-		return fmt.Errorf("compiled spec digest is empty")
+		return deploymentRecord{}, fmt.Errorf("compiled spec digest is empty")
 	}
+	record := deploymentRecord{tenantID: tenantID, compiled: compiled, sourceJSON: compiled.CanonicalJSON}
+	var err error
+	if len(record.sourceJSON) == 0 {
+		if record.sourceJSON, err = json.Marshal(compiled); err != nil {
+			return deploymentRecord{}, fmt.Errorf("marshal compiled spec: %w", err)
+		}
+	}
+	if record.compiledIR, err = json.Marshal(compiled); err != nil {
+		return deploymentRecord{}, fmt.Errorf("marshal compiled ir: %w", err)
+	}
+	if record.specDigest, err = canonicaljson.DecodeDigest(compiled.Digest); err != nil {
+		return deploymentRecord{}, fmt.Errorf("decode compiled spec digest: %w", err)
+	}
+	record.now = time.Now().UTC().Format(time.RFC3339Nano)
+	return record, nil
+}
 
-	sourceJSON := compiled.CanonicalJSON
-	if len(sourceJSON) == 0 {
-		var err error
-		sourceJSON, err = json.Marshal(compiled)
+// retirePriorVersions implements P8 graph versioning: a definition change is
+// a new version and a FRESH namespace. The previous active deployment of the
+// same name is retired first (the schema enforces one active per name), so
+// the new version's state never touches the old version's rows. A redeploy
+// of the SAME digest is idempotent: it must not retire itself.
+func (r deploymentRecord) retirePriorVersions(ctx context.Context, tx *sql.Tx) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE spec_deployments SET status = 'retired', activated_at = ?
+		WHERE tenant_id = ? AND spec_name = ? AND status = 'active' AND deployment_id <> ?`,
+		r.now, r.tenantID, r.compiled.Metadata.Name, r.compiled.Digest); err != nil {
+		return fmt.Errorf("retire prior deployment: %w", err)
+	}
+	return nil
+}
+
+// registerInputSchemas registers the event schema of every input whose
+// schema is known to the registry.
+func registerInputSchemas(ctx context.Context, tx *sql.Tx, inputs []Input, now string) error {
+	for _, input := range inputs {
+		definition, ok := eventschema.Lookup(input.SchemaRef)
+		if !ok {
+			continue
+		}
+		schemaJSON, err := eventschema.JSON(definition)
 		if err != nil {
-			return fmt.Errorf("marshal compiled spec: %w", err)
+			return fmt.Errorf("build event schema %s: %w", input.SchemaRef, err)
+		}
+		if err := eventschema.Register(ctx, tx, definition, schemaJSON, now); err != nil {
+			return fmt.Errorf("register event schema %s: %w", input.SchemaRef, err)
 		}
 	}
+	return nil
+}
 
-	compiledIR, err := json.Marshal(compiled)
-	if err != nil {
-		return fmt.Errorf("marshal compiled ir: %w", err)
-	}
-
-	specDigest, err := canonicaljson.DecodeDigest(compiled.Digest)
-	if err != nil {
-		return fmt.Errorf("decode compiled spec digest: %w", err)
-	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		// P8 (graph versioning): a definition change is a new version + a
-		// FRESH namespace. Retire the previous active deployment of the same
-		// name first (the schema enforces one-active-per-name), so the new
-		// version's state never touches the old version's rows. A redeploy of
-		// the SAME digest is idempotent — it must not retire itself.
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE spec_deployments SET status = 'retired', activated_at = ?
-			WHERE tenant_id = ? AND spec_name = ? AND status = 'active' AND deployment_id <> ?`,
-			now, tenantID, compiled.Metadata.Name, compiled.Digest); err != nil {
-			return fmt.Errorf("retire prior deployment: %w", err)
-		}
-		for _, input := range compiled.Inputs {
-			definition, ok := eventschema.Lookup(input.SchemaRef)
-			if !ok {
-				continue
-			}
-			schemaJSON, err := eventschema.JSON(definition)
-			if err != nil {
-				return fmt.Errorf("build event schema %s: %w", input.SchemaRef, err)
-			}
-			if err := eventschema.Register(ctx, tx, definition, schemaJSON, now); err != nil {
-				return fmt.Errorf("register event schema %s: %w", input.SchemaRef, err)
-			}
-		}
-		_, err := tx.ExecContext(ctx, `
+// insert records the deployment as active; a repeated insert is ignored.
+func (r deploymentRecord) insert(ctx context.Context, tx *sql.Tx) error {
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO spec_deployments (
 			deployment_id, tenant_id, spec_name, spec_version, spec_schema_version,
 			spec_sha256, source_json, compiled_ir, status, activated_at, created_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
 		ON CONFLICT(deployment_id) DO NOTHING`,
-			compiled.Digest, tenantID, compiled.Metadata.Name, compiled.Metadata.Version,
-			compiled.SchemaVersion, specDigest, sourceJSON, compiledIR, now, now)
-		if err != nil {
-			return fmt.Errorf("insert deployment: %w", err)
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("persist deployment: %w", err)
+		r.compiled.Digest, r.tenantID, r.compiled.Metadata.Name, r.compiled.Metadata.Version,
+		r.compiled.SchemaVersion, r.specDigest, r.sourceJSON, r.compiledIR, r.now, r.now); err != nil {
+		return fmt.Errorf("insert deployment: %w", err)
 	}
 	return nil
 }

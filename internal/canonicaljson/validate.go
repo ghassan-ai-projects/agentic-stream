@@ -59,35 +59,45 @@ func validateTokens(decoder *json.Decoder) error {
 	}
 	switch delim {
 	case '{':
-		keys := make(map[string]struct{})
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return fmt.Errorf("read JSON object key: %w", err)
-			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return fmt.Errorf("object key is not a string")
-			}
-			if _, exists := keys[key]; exists {
-				return fmt.Errorf("duplicate object key %q", key)
-			}
-			keys[key] = struct{}{}
-			if err := validateTokens(decoder); err != nil {
-				return err
-			}
-		}
-		return expectDelimiter(decoder, '}')
+		return validateObjectTokens(decoder)
 	case '[':
-		for decoder.More() {
-			if err := validateTokens(decoder); err != nil {
-				return err
-			}
-		}
-		return expectDelimiter(decoder, ']')
+		return validateArrayTokens(decoder)
 	default:
 		return fmt.Errorf("unexpected JSON delimiter %q", delim)
 	}
+}
+
+// validateObjectTokens checks the members of an object whose opening brace
+// was read: keys are strings, never repeated, and every value is valid.
+func validateObjectTokens(decoder *json.Decoder) error {
+	keys := make(map[string]struct{})
+	for decoder.More() {
+		keyToken, err := decoder.Token()
+		if err != nil {
+			return fmt.Errorf("read JSON object key: %w", err)
+		}
+		key, ok := keyToken.(string)
+		if !ok {
+			return fmt.Errorf("object key is not a string")
+		}
+		if _, exists := keys[key]; exists {
+			return fmt.Errorf("duplicate object key %q", key)
+		}
+		keys[key] = struct{}{}
+		if err := validateTokens(decoder); err != nil {
+			return err
+		}
+	}
+	return expectDelimiter(decoder, '}')
+}
+
+func validateArrayTokens(decoder *json.Decoder) error {
+	for decoder.More() {
+		if err := validateTokens(decoder); err != nil {
+			return err
+		}
+	}
+	return expectDelimiter(decoder, ']')
 }
 
 func expectDelimiter(decoder *json.Decoder, expected json.Delim) error {

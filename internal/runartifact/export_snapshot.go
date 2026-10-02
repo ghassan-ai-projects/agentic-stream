@@ -26,14 +26,27 @@ func snapshot(ctx context.Context, db *storage.DB, input Manifest) (map[string][
 	if err != nil {
 		return nil, fmt.Errorf("enrich run manifest: %w", err)
 	}
-	report, err := soak.ComputeTenantTx(ctx, tx, manifest.TenantID)
-	if err != nil {
-		return nil, fmt.Errorf("compute run soak report: %w", err)
-	}
-
 	files, err := exportLedgerFiles(ctx, tx, manifest.TenantID)
 	if err != nil {
 		return nil, err
+	}
+	if err := addReportFiles(ctx, tx, manifest, files); err != nil {
+		return nil, err
+	}
+	if err := addBoundDefinitions(ctx, tx, manifest, files); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit run artifact snapshot: %w", err)
+	}
+	return files, nil
+}
+
+// addReportFiles adds the manifest, the soak metrics, and the verdict.
+func addReportFiles(ctx context.Context, tx *sql.Tx, manifest Manifest, files map[string][]byte) error {
+	report, err := soak.ComputeTenantTx(ctx, tx, manifest.TenantID)
+	if err != nil {
+		return fmt.Errorf("compute run soak report: %w", err)
 	}
 	for name, value := range map[string]any{
 		"manifest.json": manifest,
@@ -42,28 +55,30 @@ func snapshot(ctx context.Context, db *storage.DB, input Manifest) (map[string][
 	} {
 		encoded, err := canonicalJSONFile(value)
 		if err != nil {
-			return nil, fmt.Errorf("encode %s: %w", name, err)
+			return fmt.Errorf("encode %s: %w", name, err)
 		}
 		files[name] = encoded
 	}
+	return nil
+}
 
+// addBoundDefinitions adds the canonical spec and policy and requires the
+// manifest to bind both.
+func addBoundDefinitions(ctx context.Context, tx *sql.Tx, manifest Manifest, files map[string][]byte) error {
 	spec, err := queryCanonicalSpec(ctx, tx, manifest.TenantID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	files["spec.canonical.json"] = spec
 	policyData, err := queryCanonicalPolicy(ctx, tx, manifest.TenantID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	files["policy.canonical.json"] = policyData
 	if err := verifyManifestBindings(manifest, spec, policyData); err != nil {
-		return nil, fmt.Errorf("verify manifest bindings: %w", err)
+		return fmt.Errorf("verify manifest bindings: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit run artifact snapshot: %w", err)
-	}
-	return files, nil
+	return nil
 }
 
 func exportLedgerFiles(ctx context.Context, tx *sql.Tx, tenantID string) (map[string][]byte, error) {

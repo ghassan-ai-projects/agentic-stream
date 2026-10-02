@@ -35,60 +35,85 @@ type EpochControl struct {
 // in-flight (running/admitted) episodes of that epoch are marked superseded so
 // the runner's watchSupersession cancels their provider calls.
 func (c *EpochControl) Kill(ctx context.Context, epoch string) error {
-	if c == nil || c.DB == nil {
-		return fmt.Errorf("epoch control is not configured")
-	}
-	if epoch == "" {
+	if c == nil || c.DB == nil || epoch == "" {
 		return fmt.Errorf("epoch control is not configured")
 	}
 	now := c.now()
 	if err := c.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := c.setTx(ctx, tx, epoch, "killed", now); err != nil {
-			return err
-		}
-		var admitted []string
-		rows, err := tx.QueryContext(ctx, `
-			SELECT e.episode_id
-			FROM episodes e JOIN cost_reservations r ON r.episode_id = e.episode_id
-			WHERE e.policy_epoch = ? AND e.lifecycle_status = 'admitted'
-			  AND e.current_attempt_id IS NULL AND r.status = 'reserved'`, epoch)
-		if err != nil {
-			return fmt.Errorf("list admitted epoch reservations: %w", err)
-		}
-		for rows.Next() {
-			var episodeID string
-			if err := rows.Scan(&episodeID); err != nil {
-				_ = rows.Close()
-				return fmt.Errorf("scan admitted epoch reservation: %w", err)
-			}
-			admitted = append(admitted, episodeID)
-		}
-		if err := rows.Err(); err != nil {
-			_ = rows.Close()
-			return fmt.Errorf("read admitted epoch reservations: %w", err)
-		}
-		if err := rows.Close(); err != nil {
-			return fmt.Errorf("close admitted epoch reservations: %w", err)
-		}
-		// Cancel in-flight episodes of the killed epoch (gate 2 first half):
-		// the runner's supersession watcher turns this into context
-		// cancellation of the provider call. The decision gates (pre- and
-		// post-execute) refuse any outcome that still lands. Keep this write
-		// in the same transaction as the terminal kill record.
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE episodes SET lifecycle_status = 'superseded', ended_at = ?
-			WHERE policy_epoch = ? AND lifecycle_status IN ('admitted', 'running')`,
-			formatRuntimeTime(now), epoch); err != nil {
-			return fmt.Errorf("supersede in-flight episodes of killed epoch: %w", err)
-		}
-		for _, episodeID := range admitted {
-			if err := (costcontrol.Controller{}).Settle(ctx, tx, episodeID, 0, formatRuntimeTime(now)); err != nil {
-				return fmt.Errorf("release admitted episode cost %s: %w", episodeID, err)
-			}
-		}
-		return nil
+		return c.killTx(ctx, tx, epoch, now)
 	}); err != nil {
 		return fmt.Errorf("kill epoch %q: %w", epoch, err)
+	}
+	return nil
+}
+
+// killTx records the kill, cancels the epoch's in-flight episodes, and
+// releases the cost reservations of admitted episodes that never started, in
+// the transaction that writes the terminal kill record.
+func (c *EpochControl) killTx(ctx context.Context, tx *sql.Tx, epoch string, now time.Time) error {
+	if err := c.setTx(ctx, tx, epoch, "killed", now); err != nil {
+		return err
+	}
+	// Read the unstarted admitted episodes before supersession rewrites their
+	// lifecycle.
+	unstarted, err := unstartedReservedEpisodes(ctx, tx, epoch)
+	if err != nil {
+		return err
+	}
+	if err := supersedeEpochEpisodes(ctx, tx, epoch, now); err != nil {
+		return err
+	}
+	return releaseEpisodeCosts(ctx, tx, unstarted, now)
+}
+
+// unstartedReservedEpisodes lists admitted episodes of the epoch that hold a
+// cost reservation but never started an attempt.
+func unstartedReservedEpisodes(ctx context.Context, tx *sql.Tx, epoch string) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT e.episode_id
+		FROM episodes e JOIN cost_reservations r ON r.episode_id = e.episode_id
+		WHERE e.policy_epoch = ? AND e.lifecycle_status = 'admitted'
+		  AND e.current_attempt_id IS NULL AND r.status = 'reserved'`, epoch)
+	if err != nil {
+		return nil, fmt.Errorf("list admitted epoch reservations: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var episodeIDs []string
+	for rows.Next() {
+		var episodeID string
+		if err := rows.Scan(&episodeID); err != nil {
+			return nil, fmt.Errorf("scan admitted epoch reservation: %w", err)
+		}
+		episodeIDs = append(episodeIDs, episodeID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read admitted epoch reservations: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close admitted epoch reservations: %w", err)
+	}
+	return episodeIDs, nil
+}
+
+// supersedeEpochEpisodes cancels in-flight episodes of a killed epoch (gate 2,
+// first half): the runner's supersession watcher turns this into context
+// cancellation of the provider call, and the decision gates (pre- and
+// post-execute) refuse any outcome that still lands.
+func supersedeEpochEpisodes(ctx context.Context, tx *sql.Tx, epoch string, now time.Time) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE episodes SET lifecycle_status = 'superseded', ended_at = ?
+		WHERE policy_epoch = ? AND lifecycle_status IN ('admitted', 'running')`,
+		formatRuntimeTime(now), epoch); err != nil {
+		return fmt.Errorf("supersede in-flight episodes of killed epoch: %w", err)
+	}
+	return nil
+}
+
+func releaseEpisodeCosts(ctx context.Context, tx *sql.Tx, episodeIDs []string, now time.Time) error {
+	for _, episodeID := range episodeIDs {
+		if err := (costcontrol.Controller{}).Settle(ctx, tx, episodeID, 0, formatRuntimeTime(now)); err != nil {
+			return fmt.Errorf("release admitted episode cost %s: %w", episodeID, err)
+		}
 	}
 	return nil
 }

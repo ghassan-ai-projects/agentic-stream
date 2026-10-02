@@ -172,40 +172,47 @@ func (l *EventLog) RedriveQuarantine(ctx context.Context, tenantID, eventID, now
 	}
 	position := LogPosition(-1)
 	if err := l.db.WithTx(ctx, func(tx *sql.Tx) error {
-		var payload []byte
-		var status string
-		var redrivenAt sql.NullString
-		if err := tx.QueryRowContext(ctx, "SELECT payload_json, status, redriven_at FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", tenantID, eventID).Scan(&payload, &status, &redrivenAt); err != nil {
-			return fmt.Errorf("load released quarantine: %w", err)
+		env, err := loadReleasedEnvelope(ctx, tx, tenantID, eventID)
+		if err != nil {
+			return err
 		}
-		if status != "released" || redrivenAt.Valid {
-			return fmt.Errorf("quarantine %s is not released", eventID)
-		}
-		var env contractsv1.Envelope
-		if err := json.Unmarshal(payload, &env); err != nil {
-			return fmt.Errorf("decode released envelope: %w", err)
-		}
-		if err := contractsv1.ValidateEnvelope(env, tenantID); err != nil {
+		if err := l.admit(ctx, tx, tenantID, env); err != nil {
 			return fmt.Errorf("validate released envelope: %w", err)
 		}
-		if l.requireSchemas {
-			if err := validateEnvelopeAgainstSchema(ctx, tx, env); err != nil {
-				return fmt.Errorf("validate released schema: %w", err)
-			}
-		}
-		var err error
-		position, err = l.appendOne(ctx, tx, tenantID, env)
-		if err != nil {
+		if position, err = l.appendOne(ctx, tx, tenantID, env); err != nil {
 			return fmt.Errorf("append released event: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE event_quarantine SET redriven_at = ? WHERE tenant_id = ? AND event_id = ? AND status = 'released'", now, tenantID, eventID); err != nil {
-			return fmt.Errorf("mark quarantine redriven: %w", err)
-		}
-		return nil
+		return markRedriven(ctx, tx, tenantID, eventID, now)
 	}); err != nil {
 		return -1, fmt.Errorf("redrive quarantine transaction: %w", err)
 	}
 	return position, nil
+}
+
+// loadReleasedEnvelope returns a quarantined envelope that an operator
+// released and that has not been redriven yet.
+func loadReleasedEnvelope(ctx context.Context, tx *sql.Tx, tenantID, eventID string) (contractsv1.Envelope, error) {
+	var payload []byte
+	var status string
+	var redrivenAt sql.NullString
+	if err := tx.QueryRowContext(ctx, "SELECT payload_json, status, redriven_at FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", tenantID, eventID).Scan(&payload, &status, &redrivenAt); err != nil {
+		return contractsv1.Envelope{}, fmt.Errorf("load released quarantine: %w", err)
+	}
+	if status != "released" || redrivenAt.Valid {
+		return contractsv1.Envelope{}, fmt.Errorf("quarantine %s is not released", eventID)
+	}
+	var env contractsv1.Envelope
+	if err := json.Unmarshal(payload, &env); err != nil {
+		return contractsv1.Envelope{}, fmt.Errorf("decode released envelope: %w", err)
+	}
+	return env, nil
+}
+
+func markRedriven(ctx context.Context, tx *sql.Tx, tenantID, eventID, now string) error {
+	if _, err := tx.ExecContext(ctx, "UPDATE event_quarantine SET redriven_at = ? WHERE tenant_id = ? AND event_id = ? AND status = 'released'", now, tenantID, eventID); err != nil {
+		return fmt.Errorf("mark quarantine redriven: %w", err)
+	}
+	return nil
 }
 
 // RecordGap records a durable discontinuity caused by bounded overflow or

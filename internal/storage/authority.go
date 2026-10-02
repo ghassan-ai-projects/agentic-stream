@@ -63,53 +63,67 @@ func (a *TargetAuthority) Claim(ctx context.Context, claim TargetClaim) error {
 		return err
 	}
 	now := a.now()
-	var claimError error
+	busy := false
 	err := a.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := a.assertOrdinaryTx(ctx, tx, claim.AuthorityEpoch); err != nil {
-			return err
-		}
-		current, err := loadTargetClaim(ctx, tx, claim.Target)
-		if err != nil {
-			return err
-		}
-		if current.blocks(claim, now) {
-			if err := appendAuthorityEventTx(ctx, tx, claim, "claim_rejected", map[string]any{
-				"reason": "unexpired_owner", "current_epoch": current.AuthorityEpoch,
-				"current_instance": current.OwnerInstance,
-			}, now); err != nil {
-				return err
-			}
-			claimError = ErrTargetClaimBusy
-			return nil
-		}
-		fence := current.nextFence(claim, now)
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO device_target_claims
-				(target, device_id, owner_epoch, owner_instance, boot_id, claim_fence, lease_until, status, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)
-			ON CONFLICT(target) DO UPDATE SET
-				device_id = excluded.device_id,
-				owner_epoch = excluded.owner_epoch,
-				owner_instance = excluded.owner_instance,
-				boot_id = excluded.boot_id,
-				claim_fence = excluded.claim_fence,
-				lease_until = excluded.lease_until,
-				status = 'active',
-				updated_at = excluded.updated_at`,
-			claim.Target, claim.DeviceID, claim.AuthorityEpoch, claim.OwnerInstance,
-			claim.BootID, fence, formatRuntimeTime(now.Add(a.leaseDuration())), formatRuntimeTime(now)); err != nil {
-			return fmt.Errorf("write target claim: %w", err)
-		}
-		eventType := "claim_acquired"
-		if current.activeFor(claim) {
-			eventType = "claim_renewed"
-		}
-		return appendAuthorityEventTx(ctx, tx, claim, eventType, map[string]any{"claim_fence": fence}, now)
+		var err error
+		busy, err = a.claimTx(ctx, tx, claim, now)
+		return err
 	})
 	if err != nil {
 		return fmt.Errorf("claim target %q: %w", claim.Target, err)
 	}
-	return claimError
+	if busy {
+		return ErrTargetClaimBusy
+	}
+	return nil
+}
+
+// claimTx records a rejected claim and reports busy when another owner holds a
+// live claim; otherwise it writes the claim with its fence.
+func (a *TargetAuthority) claimTx(ctx context.Context, tx *sql.Tx, claim TargetClaim, now time.Time) (bool, error) {
+	if err := a.assertOrdinaryTx(ctx, tx, claim.AuthorityEpoch); err != nil {
+		return false, err
+	}
+	current, err := loadTargetClaim(ctx, tx, claim.Target)
+	if err != nil {
+		return false, err
+	}
+	if current.blocks(claim, now) {
+		return true, appendAuthorityEventTx(ctx, tx, claim, "claim_rejected", map[string]any{
+			"reason": "unexpired_owner", "current_epoch": current.AuthorityEpoch,
+			"current_instance": current.OwnerInstance,
+		}, now)
+	}
+	fence := current.nextFence(claim, now)
+	if err := a.writeClaim(ctx, tx, claim, fence, now); err != nil {
+		return false, err
+	}
+	eventType := "claim_acquired"
+	if current.activeFor(claim) {
+		eventType = "claim_renewed"
+	}
+	return false, appendAuthorityEventTx(ctx, tx, claim, eventType, map[string]any{"claim_fence": fence}, now)
+}
+
+func (a *TargetAuthority) writeClaim(ctx context.Context, tx *sql.Tx, claim TargetClaim, fence int64, now time.Time) error {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO device_target_claims
+			(target, device_id, owner_epoch, owner_instance, boot_id, claim_fence, lease_until, status, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)
+		ON CONFLICT(target) DO UPDATE SET
+			device_id = excluded.device_id,
+			owner_epoch = excluded.owner_epoch,
+			owner_instance = excluded.owner_instance,
+			boot_id = excluded.boot_id,
+			claim_fence = excluded.claim_fence,
+			lease_until = excluded.lease_until,
+			status = 'active',
+			updated_at = excluded.updated_at`,
+		claim.Target, claim.DeviceID, claim.AuthorityEpoch, claim.OwnerInstance,
+		claim.BootID, fence, formatRuntimeTime(now.Add(a.leaseDuration())), formatRuntimeTime(now)); err != nil {
+		return fmt.Errorf("write target claim: %w", err)
+	}
+	return nil
 }
 
 // Assert verifies an unexpired target claim and the runtime's current epoch.
