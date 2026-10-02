@@ -5,11 +5,11 @@ This extends Q5; Q1–Q7 remain mandatory. Package count is not a quality target
 
 | ID | Acceptance criterion | Evidence |
 | --- | --- | --- |
-| A1 | Every production package has a named business or infrastructure responsibility and explicit approved dependencies. Every import points to a lower layer; no unclassified package or same-layer edge. | Package layering and layer-order tests; module map below. |
-| A2 | SQLite infrastructure contains no authority, episode, policy, calibration, or shadow business rules. Contract-only packages have no database, network, or runtime implementation imports. | Foundation and infrastructure isolation tests. |
+| A1 | Every production package has a named business or infrastructure responsibility and explicit approved dependencies. Every import points to a lower layer; no unclassified package or same-layer edge. | `TestPackageLayering`, `TestImportsOnlyPointToLowerArchitectureLayers`; module map below. |
+| A2 | SQLite infrastructure contains no authority, episode, policy, calibration, or shadow business rules. Contract-only packages have no database, network, or runtime implementation imports. | Foundation/import checks, `TestContractPackagesExcludePersistenceAndTransport`, durable ownership checks. |
 | A3 | Governed dispatch depends only on effect ports, never concrete device adapters. Device adapters cannot reach dispatcher, policy, cognition, or episode execution. Composition owns concrete wiring. | Import tests plus authorization/routing regressions. |
-| A4 | Durable mutations have declared module ownership. Episode and scheduler lifecycle writes use their owning ledger APIs; control/cognition do not write another module's lifecycle tables. Authority and qualification tables have one owning module. | SQL ownership tests over production Go literals plus transaction rollback and cancellation tests. |
-| A5 | Forward evidence/decision/command flow and control cancellation are explicit. Results and feedback are returned values or durable records, never adapter callbacks into upstream services. Replay cannot reach live effect adapters, directly or transitively. | Dependency reachability and boundary tests; documented flow. |
+| A4 | Durable mutations have declared module ownership. Episode and scheduler lifecycle writes use their owning ledger APIs; control/cognition do not write another module's lifecycle tables. Authority and qualification tables have one owning module. | `TestDurableMutationsHaveOneOwnerOrAnExplicitHandoffPhase` over production Go SQL literals; handoff column/operation checks; rollback/cancellation regressions. |
+| A5 | Forward evidence/decision/command flow and control cancellation are explicit. Results and feedback are returned values or durable records, never adapter callbacks into upstream services. Replay cannot reach live effect adapters, directly or transitively. | `TestReasoningAndReplayCannotReachEffectImplementations`, final-authorization construction checks; documented flow. |
 | A6 | Module extraction preserves identities, digest inputs, error precedence, clocks, locks, cancellation, atomic transactions, write fencing, unknown outcomes, and fail-closed behavior. No schema/protocol/dependency changes. | Existing replay, worker, policy, action, recovery and device tests, unchanged golden fixtures; new boundary regressions. |
 | A7 | Every implementation round is reviewed, focused-tested, and committed. Final full CI and uncached race suite pass, including coverage of new packages. | Round log and final validation record. |
 
@@ -52,3 +52,12 @@ pass. Logical feedback is permitted; reverse service dependencies are not.
 - Can replay or model-facing code reach a physical effect through a transitive dependency?
 - Did extraction introduce wrappers, duplicate stores, callback cycles, or a second writer?
 - Do changed entry points still meet Q7, with mechanisms below domain steps?
+
+## Shared handoff authority
+
+The complete current mutation inventory is pinned by `durableOwners`. Commands,
+outbox, intents and Situations have explicitly constrained producer/consumer
+phases, described in the public module map. Policy's prepared-command cleanup
+binds command + intent + pending status before outbox publication. All other
+current mutation tables have one owning package. Adding a new table or mutation
+requires an owner and a reviewed phase contract, not another allowlist exception.

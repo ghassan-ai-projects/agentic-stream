@@ -22,7 +22,8 @@ make ci-check
 
 It includes protocol drift, tidy, build, vet, lint with complexity limits,
 short race-enabled tests with a per-package coverage floor, package layering
-and file-size checks, dead-code detection when installed, and vulnerability
+and file-size checks, strict downward dependency levels, transitive effect
+isolation, durable write ownership and shared-handoff column checks, dead-code detection when installed, and vulnerability
 checks when installed.
 
 ## Change classes

@@ -60,6 +60,10 @@ cmd
   -> eventlog / storage / clock / contractsv1
 ```
 
+The [module ownership map](modules.md) separates device adapters, runtime control,
+approval/episode/queue lifecycle, authority and qualification from shared storage.
+Layer and SQL ownership tests enforce these boundaries.
+
 Transport code stays at the edge. Business behavior lives in internal domain
 packages. The runtime is deliberately not a graph engine and does not put an
 LLM in the event hot path.
@@ -85,6 +89,7 @@ semantics explicit before any broker or distributed scheduler is introduced.
 
 ## Next reads
 
+- [Business modules and ownership](modules.md)
 - [Durability and recovery](durability.md)
 - [Worker boundary](worker-boundary.md)
 - [Security model](security-model.md)

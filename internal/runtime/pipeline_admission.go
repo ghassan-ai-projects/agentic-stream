@@ -3,11 +3,12 @@ package runtime
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
 
@@ -144,8 +145,8 @@ func (p *Pipeline) skipCostRejectedSchedulerItem(ctx context.Context, schedulerI
 		if err := p.assertOwnerTx(ctx, tx); err != nil {
 			return fmt.Errorf("assert pipeline owner: %w", err)
 		}
-		if err := recordCostRejectionReason(ctx, tx, schedulerItemID, rejection); err != nil {
-			return err
+		if err := cognition.RecordCostRejectionReason(ctx, tx, schedulerItemID, rejection); err != nil {
+			return fmt.Errorf("%w", err)
 		}
 		if err := scheduleledger.CoalesceCostRejected(ctx, tx, schedulerItemID, now); err != nil {
 			return fmt.Errorf("%w", err)
@@ -154,35 +155,6 @@ func (p *Pipeline) skipCostRejectedSchedulerItem(ctx context.Context, schedulerI
 	}); err != nil {
 		return fmt.Errorf("skip cost-rejected scheduler item %s: %w", schedulerItemID, err)
 	}
-	return nil
-}
-
-func recordCostRejectionReason(ctx context.Context, tx *sql.Tx, schedulerItemID string, rejection error) error {
-	var triggerID string
-	var reasonsJSON []byte
-	if err := tx.QueryRowContext(ctx, `
-			SELECT trigger_id, reasons_json FROM trigger_evaluations
-			WHERE trigger_id = (SELECT trigger_id FROM scheduler_items WHERE scheduler_item_id = ?)`, schedulerItemID).
-		Scan(&triggerID, &reasonsJSON); err != nil {
-		return fmt.Errorf("load cost-rejected trigger evaluation: %w", err)
-	}
-	var reasons []string
-	if len(reasonsJSON) > 0 {
-		if err := json.Unmarshal(reasonsJSON, &reasons); err != nil {
-			return fmt.Errorf("decode trigger evaluation reasons: %w", err)
-		}
-	}
-	reasons = append(reasons, "episode admission rejected by cost control: "+rejection.Error())
-	reasonsJSON, err := json.Marshal(reasons)
-	if err != nil {
-		return fmt.Errorf("encode trigger evaluation reasons: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx,
-		"UPDATE trigger_evaluations SET reasons_json = ? WHERE trigger_id = ?",
-		reasonsJSON, triggerID); err != nil {
-		return fmt.Errorf("record cost rejection reason: %w", err)
-	}
-
 	return nil
 }
 

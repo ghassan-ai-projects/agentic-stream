@@ -40,6 +40,7 @@ Start with these context files:
 - [.agents/context/testing.md](.agents/context/testing.md) for commands and testing bar.
 - [.agents/context/go-style.md](.agents/context/go-style.md) for coding conventions.
 - [.agents/context/quality-bar.md](.agents/context/quality-bar.md) for the enforced quality and modularity bar (lint, complexity, file size, coverage, layering).
+- [.agents/context/architecture-bar.md](.agents/context/architecture-bar.md) for business ownership and one-way dependency/control-flow gates.
 - [.agents/context/review-checklist.md](.agents/context/review-checklist.md) before handoff.
 
 Use the prompt files under `.agents/prompts/` when the task matches them.
@@ -78,6 +79,12 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/decisions` - typed Decision model
 - `internal/policy` - policy plane; revalidates every intent before dispatch
 - `internal/actions` - action plane, effectors, idempotency
+- `internal/actionport` - approved-command/effect contracts without implementation dependencies
+- `internal/device` - concrete device adapters, sessions, materialization and gateway links
+- `internal/episodeledger` / `internal/scheduleledger` / `internal/approvalledger` - durable lifecycle owners shared through transaction-scoped operations
+- `internal/control` - runtime ownership, epoch drain/kill and final readiness capability
+- `internal/authority` - device claims, bindings, reconciliation and safety evidence
+- `internal/qualification` - calibration and shadow evidence
 - `internal/replay` - deterministic replay; replay never performs external effects
 - `internal/api` - JSON/HTTP plus Server-Sent Events
 - `internal/telemetry` - OpenTelemetry traces, metrics, logs
@@ -211,6 +218,7 @@ A task is done when:
 - the change is the simplest correct one that fits the documented design
 - production-code changes include meaningful tests, and modified packages do not show 0% coverage
 - behavior changes respect the ten product invariants and the deterministic-replay contract
+- the change meets [architecture-bar.md](.agents/context/architecture-bar.md), with no foreign lifecycle writes, upward imports, or reasoning/replay access to effect implementations
 - the change keeps the [quality and modularity bar](.agents/context/quality-bar.md); thresholds are never loosened to get a diff green
 - `make ci-check` passes, unless the change is documentation-only and a narrower check is clearly sufficient
 - documentation is updated when behavior, commands, or expectations change

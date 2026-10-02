@@ -56,3 +56,24 @@ Avoid:
 - transport concerns leaking into the engine
 - untrusted input reaching policy/actions without validation
 - per-domain code branches (domains are data via SituationSpec)
+
+## Business ownership refinement (ADR-017)
+
+Additional current modules: `actionport`, `device`, `episodeledger`,
+`scheduleledger`, `approvalledger`, `control`, `authority`, and `qualification`.
+Their contracts are in [architecture-bar.md](architecture-bar.md); the full
+maintainer map is [business modules](../../documentation/architecture/modules.md).
+`storage` is SQLite infrastructure. `runtime` and `cmd` alone wire concrete
+adapters; dispatch and device implementations meet through `actionport`.
+
+Every production import is allowlisted and points to a strictly lower reviewed
+level (`architecture_flow_test.go`). Logical feedback reenters through durable
+records/evidence; it does not create reverse service dependencies. Control and
+cognition call ledger APIs using the original transaction.
+
+`architecture_ownership_test.go` pins all current production SQL mutation
+owners. Shared handoffs are restricted by phase and update columns: episodes
+produce intents, policy governs them and publishes commands/outbox, actions
+consume the outbox, and cognition only marks the last reasoned Situation
+version. Policy can discard only its exact pending prepared command before
+outbox publication. No general foreign-table write permission exists.
