@@ -108,43 +108,10 @@ func Verify(domain Domain, v any, digest string) bool {
 }
 
 func encode(buf *bytes.Buffer, v any) error {
+	if handled, err := encodeScalar(buf, v); handled {
+		return err
+	}
 	switch x := v.(type) {
-	case nil:
-		buf.WriteString("null")
-	case bool:
-		if x {
-			buf.WriteString("true")
-		} else {
-			buf.WriteString("false")
-		}
-	case float64:
-		return encodeFloat(buf, x)
-	case float32:
-		return encodeFloat(buf, float64(x))
-	case int:
-		return encodeInteger(buf, int64(x))
-	case int8:
-		return encodeInteger(buf, int64(x))
-	case int16:
-		return encodeInteger(buf, int64(x))
-	case int32:
-		return encodeInteger(buf, int64(x))
-	case int64:
-		return encodeInteger(buf, x)
-	case uint:
-		return encodeUnsigned(buf, uint64(x))
-	case uint8:
-		return encodeUnsigned(buf, uint64(x))
-	case uint16:
-		return encodeUnsigned(buf, uint64(x))
-	case uint32:
-		return encodeUnsigned(buf, uint64(x))
-	case uint64:
-		return encodeUnsigned(buf, x)
-	case json.Number:
-		return encodeNumber(buf, string(x))
-	case string:
-		return encodeString(buf, x)
 	case []any:
 		return encodeArray(buf, x)
 	case map[string]any:
@@ -168,7 +135,61 @@ func encode(buf *bytes.Buffer, v any) error {
 		}
 		return encode(buf, decoded)
 	}
-	return nil
+}
+
+// encodeScalar encodes null, booleans, strings, and numbers. It reports
+// whether v was one of those.
+func encodeScalar(buf *bytes.Buffer, v any) (bool, error) {
+	switch x := v.(type) {
+	case nil:
+		buf.WriteString("null")
+	case bool:
+		if x {
+			buf.WriteString("true")
+		} else {
+			buf.WriteString("false")
+		}
+	case string:
+		return true, encodeString(buf, x)
+	case json.Number:
+		return true, encodeNumber(buf, string(x))
+	default:
+		return encodeGoNumber(buf, v)
+	}
+	return true, nil
+}
+
+// encodeGoNumber encodes Go's built-in numeric types. It reports whether v
+// was one of them.
+func encodeGoNumber(buf *bytes.Buffer, v any) (bool, error) {
+	switch x := v.(type) {
+	case float64:
+		return true, encodeFloat(buf, x)
+	case float32:
+		return true, encodeFloat(buf, float64(x))
+	case int:
+		return true, encodeInteger(buf, int64(x))
+	case int8:
+		return true, encodeInteger(buf, int64(x))
+	case int16:
+		return true, encodeInteger(buf, int64(x))
+	case int32:
+		return true, encodeInteger(buf, int64(x))
+	case int64:
+		return true, encodeInteger(buf, x)
+	case uint:
+		return true, encodeUnsigned(buf, uint64(x))
+	case uint8:
+		return true, encodeUnsigned(buf, uint64(x))
+	case uint16:
+		return true, encodeUnsigned(buf, uint64(x))
+	case uint32:
+		return true, encodeUnsigned(buf, uint64(x))
+	case uint64:
+		return true, encodeUnsigned(buf, x)
+	default:
+		return false, nil
+	}
 }
 
 func encodeArray(buf *bytes.Buffer, values []any) error {
@@ -412,23 +433,9 @@ func decimalInteger(raw string) (*big.Int, bool) {
 	if len(parts) == 2 {
 		fraction = parts[1]
 	}
-	digits := whole + fraction
-	decimalPlaces := len(fraction) - exponent
-	if decimalPlaces > 0 {
-		if decimalPlaces >= len(digits) {
-			if strings.Trim(digits, "0") != "" {
-				return nil, false
-			}
-			digits = "0"
-		} else {
-			cut := len(digits) - decimalPlaces
-			if strings.Trim(digits[cut:], "0") != "" {
-				return nil, false
-			}
-			digits = digits[:cut]
-		}
-	} else if decimalPlaces < 0 {
-		digits += strings.Repeat("0", -decimalPlaces)
+	digits, ok := scaleDigits(whole+fraction, len(fraction)-exponent)
+	if !ok {
+		return nil, false
 	}
 	digits = strings.TrimLeft(digits, "0")
 	if digits == "" {
@@ -436,6 +443,23 @@ func decimalInteger(raw string) (*big.Int, bool) {
 	}
 	integer, ok := new(big.Int).SetString(sign+digits, 10)
 	return integer, ok
+}
+
+// scaleDigits shifts a decimal digit string left by decimalPlaces (right when
+// negative). It reports false when the shift drops a nonzero digit, meaning
+// the number is not an integer.
+func scaleDigits(digits string, decimalPlaces int) (string, bool) {
+	switch {
+	case decimalPlaces < 0:
+		return digits + strings.Repeat("0", -decimalPlaces), true
+	case decimalPlaces == 0:
+		return digits, true
+	case decimalPlaces >= len(digits):
+		return "0", strings.Trim(digits, "0") == ""
+	default:
+		cut := len(digits) - decimalPlaces
+		return digits[:cut], strings.Trim(digits[cut:], "0") == ""
+	}
 }
 
 func integerRoundTrips(want *big.Int, f float64) bool {
@@ -538,68 +562,85 @@ func expectDelimiter(decoder *json.Decoder, expected json.Delim) error {
 	return nil
 }
 
+// validateStrings checks every JSON string literal for valid escapes, paired
+// UTF-16 surrogates, no raw control characters, and valid UTF-8.
 func validateStrings(data []byte) error {
 	for i := 0; i < len(data); i++ {
 		if data[i] != '"' {
 			continue
 		}
-		i++
-		for i < len(data) {
-			switch data[i] {
-			case '"':
-				goto nextString
-			case '\\':
-				i++
-				if i >= len(data) {
-					return fmt.Errorf("unterminated JSON escape")
-				}
-				if data[i] != 'u' {
-					if !strings.ContainsRune(`"\\/bfnrt`, rune(data[i])) {
-						return fmt.Errorf("invalid JSON escape")
-					}
-					i++
-					continue
-				}
-				if i+4 >= len(data) {
-					return fmt.Errorf("short Unicode escape")
-				}
-				code, ok := parseHex4(data[i+1 : i+5])
-				if !ok {
-					return fmt.Errorf("invalid Unicode escape")
-				}
-				i += 5
-				if code >= 0xdc00 && code <= 0xdfff {
-					return fmt.Errorf("lone low surrogate")
-				}
-				if code >= 0xd800 && code <= 0xdbff {
-					if i+5 >= len(data) || data[i] != '\\' || data[i+1] != 'u' {
-						return fmt.Errorf("lone high surrogate")
-					}
-					low, ok := parseHex4(data[i+2 : i+6])
-					if !ok || low < 0xdc00 || low > 0xdfff {
-						return fmt.Errorf("invalid surrogate pair")
-					}
-					i += 6
-				}
-			default:
-				if data[i] < 0x20 {
-					return fmt.Errorf("unescaped control character in string")
-				}
-				if c := data[i]; c >= utf8.RuneSelf {
-					_, size := utf8.DecodeRune(data[i:])
-					if size == 1 || !utf8.Valid(data[i:i+size]) {
-						return fmt.Errorf("invalid UTF-8 in string")
-					}
-					i += size
-					continue
-				}
-				i++
-			}
+		end, err := scanString(data, i+1)
+		if err != nil {
+			return err
 		}
-		return fmt.Errorf("unterminated JSON string")
-	nextString:
+		i = end
 	}
 	return nil
+}
+
+// scanString validates string content starting at i and returns the index of
+// the closing quote.
+func scanString(data []byte, i int) (int, error) {
+	for i < len(data) {
+		switch c := data[i]; {
+		case c == '"':
+			return i, nil
+		case c == '\\':
+			next, err := scanEscape(data, i+1)
+			if err != nil {
+				return 0, err
+			}
+			i = next
+		case c < 0x20:
+			return 0, fmt.Errorf("unescaped control character in string")
+		case c >= utf8.RuneSelf:
+			_, size := utf8.DecodeRune(data[i:])
+			if size == 1 || !utf8.Valid(data[i:i+size]) {
+				return 0, fmt.Errorf("invalid UTF-8 in string")
+			}
+			i += size
+		default:
+			i++
+		}
+	}
+	return 0, fmt.Errorf("unterminated JSON string")
+}
+
+// scanEscape validates the escape whose code starts at i, just after the
+// backslash, and returns the index after it. A \u escape that encodes a high
+// surrogate must be followed by a \u escape that encodes a low surrogate.
+func scanEscape(data []byte, i int) (int, error) {
+	if i >= len(data) {
+		return 0, fmt.Errorf("unterminated JSON escape")
+	}
+	if data[i] != 'u' {
+		if !strings.ContainsRune(`"\\/bfnrt`, rune(data[i])) {
+			return 0, fmt.Errorf("invalid JSON escape")
+		}
+		return i + 1, nil
+	}
+	if i+4 >= len(data) {
+		return 0, fmt.Errorf("short Unicode escape")
+	}
+	code, ok := parseHex4(data[i+1 : i+5])
+	if !ok {
+		return 0, fmt.Errorf("invalid Unicode escape")
+	}
+	i += 5
+	if code >= 0xdc00 && code <= 0xdfff {
+		return 0, fmt.Errorf("lone low surrogate")
+	}
+	if code < 0xd800 || code > 0xdbff {
+		return i, nil
+	}
+	if i+5 >= len(data) || data[i] != '\\' || data[i+1] != 'u' {
+		return 0, fmt.Errorf("lone high surrogate")
+	}
+	low, ok := parseHex4(data[i+2 : i+6])
+	if !ok || low < 0xdc00 || low > 0xdfff {
+		return 0, fmt.Errorf("invalid surrogate pair")
+	}
+	return i + 6, nil
 }
 
 func parseHex4(value []byte) (uint16, bool) {

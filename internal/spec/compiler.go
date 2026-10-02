@@ -59,37 +59,40 @@ const schemaID = "urn:agentic-stream:schema:situation-spec:v1"
 
 // checkDuplicateKeys walks a YAML document and rejects duplicate mapping keys.
 func checkDuplicateKeys(n *yaml.Node, path string) error {
-	if n.Kind == yaml.MappingNode {
-		seen := make(map[string]struct{}, len(n.Content)/2)
-		for i := 0; i < len(n.Content); i += 2 {
-			keyNode := n.Content[i]
-			if keyNode.Kind != yaml.ScalarNode {
-				continue
-			}
-			key := keyNode.Value
-			if _, ok := seen[key]; ok {
-				return &CompileError{Path: path, Message: fmt.Sprintf("duplicate key %q", key)}
-			}
-			seen[key] = struct{}{}
-			if i+1 < len(n.Content) {
-				childPath := path
-				if childPath != "" {
-					childPath += "."
-				}
-				childPath += key
-				if err := checkDuplicateKeys(n.Content[i+1], childPath); err != nil {
-					return err
-				}
+	if n.Kind != yaml.MappingNode {
+		for _, child := range n.Content {
+			if err := checkDuplicateKeys(child, path); err != nil {
+				return err
 			}
 		}
 		return nil
 	}
-	for _, child := range n.Content {
-		if err := checkDuplicateKeys(child, path); err != nil {
+	seen := make(map[string]struct{}, len(n.Content)/2)
+	for i := 0; i < len(n.Content); i += 2 {
+		keyNode := n.Content[i]
+		if keyNode.Kind != yaml.ScalarNode {
+			continue
+		}
+		key := keyNode.Value
+		if _, ok := seen[key]; ok {
+			return &CompileError{Path: path, Message: fmt.Sprintf("duplicate key %q", key)}
+		}
+		seen[key] = struct{}{}
+		if i+1 >= len(n.Content) {
+			continue
+		}
+		if err := checkDuplicateKeys(n.Content[i+1], joinKeyPath(path, key)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func joinKeyPath(path, key string) string {
+	if path == "" {
+		return key
+	}
+	return path + "." + key
 }
 
 type denyNetworkLoader struct{}
@@ -242,107 +245,145 @@ func normalize(r *rawSpec) (*CompiledSpec, error) {
 }
 
 func resolveReferences(spec *CompiledSpec) error {
-	inputs := make(map[string]struct{}, len(spec.Inputs))
-	for _, in := range spec.Inputs {
-		if _, exists := inputs[in.Name]; exists {
-			return &CompileError{Path: "inputs", Message: fmt.Sprintf("duplicate input name %q", in.Name)}
-		}
-		inputs[in.Name] = struct{}{}
-		definition, ok := eventschema.Lookup(in.SchemaRef)
-		if !ok {
-			return &CompileError{Path: fmt.Sprintf("inputs.%s.schema", in.Name), Message: fmt.Sprintf("unknown event schema %q", in.SchemaRef)}
-		}
-		if definition.EventType != in.EventType || definition.SchemaVersion != in.SchemaVersion {
-			return &CompileError{Path: fmt.Sprintf("inputs.%s.schema", in.Name), Message: "schema reference does not match eventType/schemaVersion"}
-		}
+	names, err := collectSpecNames(spec)
+	if err != nil {
+		return err
 	}
-
-	windows := make(map[string]struct{}, len(spec.Windows))
-	for _, w := range spec.Windows {
-		if _, exists := windows[w.Name]; exists {
-			return &CompileError{Path: "windows", Message: fmt.Sprintf("duplicate window name %q", w.Name)}
-		}
-		windows[w.Name] = struct{}{}
-	}
-
-	operatorOutputs := make(map[string]struct{}, len(spec.Operators))
-	operatorNames := make(map[string]struct{}, len(spec.Operators))
 	for _, op := range spec.Operators {
-		if _, exists := operatorNames[op.Name]; exists {
-			return &CompileError{Path: "operators", Message: fmt.Sprintf("duplicate operator name %q", op.Name)}
-		}
-		operatorNames[op.Name] = struct{}{}
-		if _, exists := operatorOutputs[op.Output]; exists {
-			return &CompileError{Path: "operators", Message: fmt.Sprintf("duplicate operator output %q", op.Output)}
-		}
-		operatorOutputs[op.Output] = struct{}{}
-	}
-
-	phases := make(map[string]struct{}, len(spec.Situation.Phases))
-	for _, p := range spec.Situation.Phases {
-		if _, exists := phases[p.Name]; exists {
-			return &CompileError{Path: "situation.phases", Message: fmt.Sprintf("duplicate phase name %q", p.Name)}
-		}
-		phases[p.Name] = struct{}{}
-	}
-
-	for _, op := range spec.Operators {
-		for _, in := range op.Inputs {
-			if _, ok := inputs[in]; !ok {
-				if _, ok := operatorOutputs[in]; !ok {
-					return &CompileError{Path: fmt.Sprintf("operators.%s.inputs", op.Name), Message: fmt.Sprintf("unknown input %q", in)}
-				}
-			}
-		}
-		if op.Window != "" {
-			if _, ok := windows[op.Window]; !ok {
-				return &CompileError{Path: fmt.Sprintf("operators.%s.window", op.Name), Message: fmt.Sprintf("unknown window %q", op.Window)}
-			}
-		}
-		if op.Field != "" && strings.HasPrefix(op.Field, "data.") {
-			fieldName := strings.TrimPrefix(op.Field, "data.")
-			for _, inputName := range op.Inputs {
-				for _, in := range spec.Inputs {
-					if in.Name != inputName {
-						continue
-					}
-					definition, _ := eventschema.Lookup(in.SchemaRef)
-					field, exists := definition.Fields[fieldName]
-					if !exists {
-						return &CompileError{Path: fmt.Sprintf("operators.%s.field", op.Name), Message: fmt.Sprintf("payload field %q is not declared by schema %q", fieldName, in.SchemaRef)}
-					}
-					if op.Kind == "aggregate" && op.Unit != "" && op.Unit != field.Unit {
-						return &CompileError{Path: fmt.Sprintf("operators.%s.unit", op.Name), Message: fmt.Sprintf("unit %q does not match field %q unit %q", op.Unit, fieldName, field.Unit)}
-					}
-				}
-			}
+		if err := checkOperatorReferences(spec, op, names); err != nil {
+			return err
 		}
 	}
-
-	for _, r := range spec.Situation.Reducers {
-		if _, ok := operatorOutputs[r.Input]; !ok {
-			return &CompileError{Path: fmt.Sprintf("situation.reducers.%s.input", r.Field), Message: fmt.Sprintf("unknown operator output %q", r.Input)}
-		}
+	if err := checkSituationReferences(spec, names); err != nil {
+		return err
 	}
-
-	if _, ok := phases[spec.Situation.InitialPhase]; !ok {
-		return &CompileError{Path: "situation.initialPhase", Message: fmt.Sprintf("unknown phase %q", spec.Situation.InitialPhase)}
-	}
-
-	for _, t := range spec.Situation.Transitions {
-		if _, ok := phases[t.From]; !ok {
-			return &CompileError{Path: fmt.Sprintf("situation.transitions.%s-%s.from", t.From, t.To), Message: fmt.Sprintf("unknown phase %q", t.From)}
-		}
-		if _, ok := phases[t.To]; !ok {
-			return &CompileError{Path: fmt.Sprintf("situation.transitions.%s-%s.to", t.From, t.To), Message: fmt.Sprintf("unknown phase %q", t.To)}
-		}
-	}
-
 	for _, tr := range spec.Cognition.Triggers {
 		if tr.Lane != "fast" && tr.Lane != "deep" {
 			return &CompileError{Path: fmt.Sprintf("cognition.triggers.%s.lane", tr.Name), Message: fmt.Sprintf("invalid lane %q", tr.Lane)}
 		}
 	}
+	return nil
+}
 
+// specNames are the declared names that references resolve against.
+type specNames struct {
+	inputs, windows, operatorOutputs, phases map[string]struct{}
+}
+
+// collectSpecNames requires unique input, window, operator, operator-output,
+// and phase names, and every input to reference its registered event schema.
+func collectSpecNames(spec *CompiledSpec) (specNames, error) {
+	names := specNames{
+		inputs:          make(map[string]struct{}, len(spec.Inputs)),
+		windows:         make(map[string]struct{}, len(spec.Windows)),
+		operatorOutputs: make(map[string]struct{}, len(spec.Operators)),
+		phases:          make(map[string]struct{}, len(spec.Situation.Phases)),
+	}
+	for _, in := range spec.Inputs {
+		if err := addUniqueName(names.inputs, in.Name, "inputs", "input name"); err != nil {
+			return specNames{}, err
+		}
+		if err := checkInputSchema(in); err != nil {
+			return specNames{}, err
+		}
+	}
+	for _, w := range spec.Windows {
+		if err := addUniqueName(names.windows, w.Name, "windows", "window name"); err != nil {
+			return specNames{}, err
+		}
+	}
+	operatorNames := make(map[string]struct{}, len(spec.Operators))
+	for _, op := range spec.Operators {
+		if err := addUniqueName(operatorNames, op.Name, "operators", "operator name"); err != nil {
+			return specNames{}, err
+		}
+		if err := addUniqueName(names.operatorOutputs, op.Output, "operators", "operator output"); err != nil {
+			return specNames{}, err
+		}
+	}
+	for _, p := range spec.Situation.Phases {
+		if err := addUniqueName(names.phases, p.Name, "situation.phases", "phase name"); err != nil {
+			return specNames{}, err
+		}
+	}
+	return names, nil
+}
+
+func addUniqueName(seen map[string]struct{}, name, path, kind string) error {
+	if _, exists := seen[name]; exists {
+		return &CompileError{Path: path, Message: fmt.Sprintf("duplicate %s %q", kind, name)}
+	}
+	seen[name] = struct{}{}
+	return nil
+}
+
+func checkInputSchema(in Input) error {
+	definition, ok := eventschema.Lookup(in.SchemaRef)
+	if !ok {
+		return &CompileError{Path: fmt.Sprintf("inputs.%s.schema", in.Name), Message: fmt.Sprintf("unknown event schema %q", in.SchemaRef)}
+	}
+	if definition.EventType != in.EventType || definition.SchemaVersion != in.SchemaVersion {
+		return &CompileError{Path: fmt.Sprintf("inputs.%s.schema", in.Name), Message: "schema reference does not match eventType/schemaVersion"}
+	}
+	return nil
+}
+
+// checkOperatorReferences resolves an operator's inputs, window, and payload
+// field. A data.* field must be declared by every input's schema, and an
+// aggregate's unit must match the field's.
+func checkOperatorReferences(spec *CompiledSpec, op Operator, names specNames) error {
+	for _, in := range op.Inputs {
+		_, isInput := names.inputs[in]
+		_, isOutput := names.operatorOutputs[in]
+		if !isInput && !isOutput {
+			return &CompileError{Path: fmt.Sprintf("operators.%s.inputs", op.Name), Message: fmt.Sprintf("unknown input %q", in)}
+		}
+	}
+	if op.Window != "" {
+		if _, ok := names.windows[op.Window]; !ok {
+			return &CompileError{Path: fmt.Sprintf("operators.%s.window", op.Name), Message: fmt.Sprintf("unknown window %q", op.Window)}
+		}
+	}
+	fieldName, ok := strings.CutPrefix(op.Field, "data.")
+	if !ok {
+		return nil
+	}
+	for _, inputName := range op.Inputs {
+		for _, in := range spec.Inputs {
+			if in.Name != inputName {
+				continue
+			}
+			definition, _ := eventschema.Lookup(in.SchemaRef)
+			field, exists := definition.Fields[fieldName]
+			if !exists {
+				return &CompileError{Path: fmt.Sprintf("operators.%s.field", op.Name), Message: fmt.Sprintf("payload field %q is not declared by schema %q", fieldName, in.SchemaRef)}
+			}
+			if op.Kind == "aggregate" && op.Unit != "" && op.Unit != field.Unit {
+				return &CompileError{Path: fmt.Sprintf("operators.%s.unit", op.Name), Message: fmt.Sprintf("unit %q does not match field %q unit %q", op.Unit, fieldName, field.Unit)}
+			}
+		}
+	}
+	return nil
+}
+
+// checkSituationReferences resolves reducer inputs, the initial phase, and
+// every transition's phases.
+func checkSituationReferences(spec *CompiledSpec, names specNames) error {
+	for _, r := range spec.Situation.Reducers {
+		if _, ok := names.operatorOutputs[r.Input]; !ok {
+			return &CompileError{Path: fmt.Sprintf("situation.reducers.%s.input", r.Field), Message: fmt.Sprintf("unknown operator output %q", r.Input)}
+		}
+	}
+	if _, ok := names.phases[spec.Situation.InitialPhase]; !ok {
+		return &CompileError{Path: "situation.initialPhase", Message: fmt.Sprintf("unknown phase %q", spec.Situation.InitialPhase)}
+	}
+	for _, t := range spec.Situation.Transitions {
+		if _, ok := names.phases[t.From]; !ok {
+			return &CompileError{Path: fmt.Sprintf("situation.transitions.%s-%s.from", t.From, t.To), Message: fmt.Sprintf("unknown phase %q", t.From)}
+		}
+		if _, ok := names.phases[t.To]; !ok {
+			return &CompileError{Path: fmt.Sprintf("situation.transitions.%s-%s.to", t.From, t.To), Message: fmt.Sprintf("unknown phase %q", t.To)}
+		}
+	}
 	return nil
 }
