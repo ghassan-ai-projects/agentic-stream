@@ -75,88 +75,77 @@ func (c *JSONLReplay) Run(ctx context.Context) (int, error) {
 	// quarantined and skipped rather than aborting the whole replay.
 	reader := bufio.NewReaderSize(f, maxLiveSocketLineBytes)
 	lineNum := 0
-	appended := 0
-	var batch []contractsv1.Envelope
-
-	flush := func() error {
-		if len(batch) == 0 {
-			return nil
-		}
-		positions, err := c.log.Append(ctx, c.tenantID, batch)
-		if err != nil {
-			return fmt.Errorf("append batch: %w", err)
-		}
-		for _, pos := range positions {
-			if pos >= 0 {
-				appended++
-			}
-		}
-		batch = batch[:0]
-		return nil
-	}
-
+	batch := envelopeBatch{log: c.log, tenantID: c.tenantID}
 	for {
 		line, tooLarge, readErr := readBoundedLine(reader, maxLiveSocketLineBytes)
 		if errors.Is(readErr, io.EOF) {
 			break
 		}
 		if readErr != nil {
-			return appended, fmt.Errorf("read trace file: %w", readErr)
+			return batch.appended, fmt.Errorf("read trace file: %w", readErr)
 		}
-		// The reader keeps the line terminator; strip it so payloads and
-		// quarantine records match the terminator-free line content.
-		line = bytes.TrimRight(line, "\r\n")
 		lineNum++
 		if lineNum <= startLine {
 			continue
 		}
-		if tooLarge {
-			if quarantineErr := c.log.QuarantineRaw(ctx, c.tenantID, c.quarantineID(lineNum), line, "line_too_large", c.clk.Now().UTC().Format(time.RFC3339Nano)); quarantineErr != nil {
-				return appended, fmt.Errorf("quarantine line %d: %w", lineNum, quarantineErr)
-			}
+		// The reader keeps the line terminator; strip it so payloads and
+		// quarantine records match the terminator-free line content.
+		env, admitted, err := c.admitLine(ctx, bytes.TrimRight(line, "\r\n"), lineNum, tooLarge)
+		if err != nil {
+			return batch.appended, fmt.Errorf("quarantine line %d: %w", lineNum, err)
+		}
+		if !admitted {
 			continue
 		}
-		if len(bytes.TrimSpace(line)) == 0 {
-			continue
-		}
-		var env contractsv1.Envelope
-		if err := json.Unmarshal(line, &env); err != nil {
-			if quarantineErr := c.log.QuarantineRaw(ctx, c.tenantID, c.quarantineID(lineNum), line, "malformed_json", c.clk.Now().UTC().Format(time.RFC3339Nano)); quarantineErr != nil {
-				return appended, fmt.Errorf("quarantine line %d: %w", lineNum, quarantineErr)
-			}
-			continue
-		}
-		if env.TenantID == "" {
-			env.TenantID = c.tenantID
-		}
-		if err := contractsv1.ValidateEnvelope(env, c.tenantID); err != nil {
-			if quarantineErr := c.log.QuarantineEnvelope(ctx, c.tenantID, env, "envelope_invalid", c.clk.Now().UTC().Format(time.RFC3339Nano)); quarantineErr != nil {
-				return appended, fmt.Errorf("quarantine line %d: %w", lineNum, quarantineErr)
-			}
-			continue
-		}
-		if err := c.log.ValidateEnvelope(ctx, env); err != nil {
-			if quarantineErr := c.log.QuarantineEnvelope(ctx, c.tenantID, env, "schema_invalid", c.clk.Now().UTC().Format(time.RFC3339Nano)); quarantineErr != nil {
-				return appended, fmt.Errorf("quarantine line %d: %w", lineNum, quarantineErr)
-			}
-			continue
-		}
-		batch = append(batch, env)
-		if len(batch) >= 100 {
-			if err := flush(); err != nil {
-				return appended, err
-			}
+		if err := batch.add(ctx, env); err != nil {
+			return batch.appended, err
 		}
 	}
-	if err := flush(); err != nil {
-		return appended, err
+	if err := batch.flush(ctx); err != nil {
+		return batch.appended, err
 	}
+	appended := batch.appended
 
 	if err := c.saveCheckpoint(ctx, lineNum); err != nil {
 		return appended, fmt.Errorf("save checkpoint: %w", err)
 	}
 
 	return appended, nil
+}
+
+// admitLine parses and validates one trace line. Blank lines are skipped, and
+// an oversized, malformed, or invalid line is quarantined instead of aborting
+// the replay; admitted reports whether env should be appended.
+func (c *JSONLReplay) admitLine(ctx context.Context, line []byte, lineNum int, tooLarge bool) (contractsv1.Envelope, bool, error) {
+	now := c.clk.Now().UTC().Format(time.RFC3339Nano)
+	if tooLarge {
+		return contractsv1.Envelope{}, false, quarantined("line_too_large", c.log.QuarantineRaw(ctx, c.tenantID, c.quarantineID(lineNum), line, "line_too_large", now))
+	}
+	if len(bytes.TrimSpace(line)) == 0 {
+		return contractsv1.Envelope{}, false, nil
+	}
+	var env contractsv1.Envelope
+	if err := json.Unmarshal(line, &env); err != nil {
+		return contractsv1.Envelope{}, false, quarantined("malformed_json", c.log.QuarantineRaw(ctx, c.tenantID, c.quarantineID(lineNum), line, "malformed_json", now))
+	}
+	if env.TenantID == "" {
+		env.TenantID = c.tenantID
+	}
+	if err := contractsv1.ValidateEnvelope(env, c.tenantID); err != nil {
+		return contractsv1.Envelope{}, false, quarantined("envelope_invalid", c.log.QuarantineEnvelope(ctx, c.tenantID, env, "envelope_invalid", now))
+	}
+	if err := c.log.ValidateEnvelope(ctx, env); err != nil {
+		return contractsv1.Envelope{}, false, quarantined("schema_invalid", c.log.QuarantineEnvelope(ctx, c.tenantID, env, "schema_invalid", now))
+	}
+	return env, true, nil
+}
+
+// quarantined labels a failed quarantine write with its reason.
+func quarantined(reason string, err error) error {
+	if err != nil {
+		return fmt.Errorf("record %s quarantine: %w", reason, err)
+	}
+	return nil
 }
 
 // quarantineID scopes a raw-line quarantine record to this connector so two

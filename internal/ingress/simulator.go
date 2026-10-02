@@ -81,130 +81,132 @@ func (r *SimulatorJSONLReplay) Run(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	trace := simulatorTrace{replay: r, startLine: start, batch: envelopeBatch{log: r.log, tenantID: r.options.TenantID}}
 	scanner := bufio.NewScanner(f)
-	line := 0
-	appended := 0
-	records := 0
-	configured := false
-	ended := false
-	var lastRecorded time.Time
-	var batch []contractsv1.Envelope
-	flush := func() error {
-		if len(batch) == 0 {
-			return nil
-		}
-		positions, appendErr := r.log.Append(ctx, r.options.TenantID, batch)
-		if appendErr != nil {
-			return fmt.Errorf("append simulator batch: %w", appendErr)
-		}
-		for _, position := range positions {
-			if position >= 0 {
-				appended++
-			}
-		}
-		batch = batch[:0]
-		return nil
-	}
 	for scanner.Scan() {
-		line++
+		trace.line++
 		if strings.TrimSpace(scanner.Text()) == "" {
 			continue
 		}
-		var record map[string]any
-		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
-			return appended, fmt.Errorf("parse simulator line %d: %w", line, err)
-		}
-		recordType, _ := record["record_type"].(string)
-		records++
-		if records == 1 && recordType != "runtime_config" {
-			return appended, fmt.Errorf("validate simulator line %d: runtime_config must be first", line)
-		}
-		if ended {
-			return appended, fmt.Errorf("validate simulator line %d: record follows trace_end", line)
-		}
-		switch recordType {
-		case "runtime_config":
-			if configured {
-				return appended, fmt.Errorf("validate simulator line %d: duplicate runtime_config", line)
-			}
-			if err := validateSimulatorControl(recordType, record); err != nil {
-				return appended, fmt.Errorf("validate simulator line %d: %w", line, err)
-			}
-			configured = true
-		case "event":
-			env, convertErr := r.convertEvent(record)
-			if convertErr != nil {
-				return appended, fmt.Errorf("convert simulator line %d: %w", line, convertErr)
-			}
-			recorded := env.ObservedAt
-			if recorded == nil {
-				return appended, fmt.Errorf("event arrival_time is required")
-			}
-			if !lastRecorded.IsZero() && !recorded.After(lastRecorded) {
-				return appended, fmt.Errorf("event recorded time must be strictly increasing")
-			}
-			lastRecorded = recorded.UTC()
-			if line > start {
-				batch = append(batch, env)
-				if len(batch) == 100 {
-					if err := flush(); err != nil {
-						return appended, fmt.Errorf("append simulator batch: %w", err)
-					}
-				}
-			}
-		case "model_activation":
-			recorded, err := validateModelActivation(record)
-			if err != nil {
-				return appended, fmt.Errorf("validate simulator line %d: %w", line, err)
-			}
-			if !lastRecorded.IsZero() && !recorded.After(lastRecorded) {
-				return appended, fmt.Errorf("recorded time must be strictly increasing")
-			}
-			lastRecorded = recorded
-		case "trace_end":
-			if err := validateSimulatorControl(recordType, record); err != nil {
-				return appended, fmt.Errorf("validate simulator line %d: %w", line, err)
-			}
-			until, _ := parseSimulatorTime(record, "until")
-			if !lastRecorded.IsZero() && !until.After(lastRecorded) {
-				return appended, fmt.Errorf("trace_end until must be later than every recorded input")
-			}
-			ended = true
-		default:
-			return appended, fmt.Errorf("unknown simulator record_type %q", recordType)
+		if err := trace.accept(ctx, scanner.Bytes()); err != nil {
+			return trace.batch.appended, err
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return appended, fmt.Errorf("read simulator trace: %w", err)
+		return trace.batch.appended, fmt.Errorf("read simulator trace: %w", err)
 	}
-	if !configured || !ended {
-		return appended, fmt.Errorf("simulator trace requires runtime_config first and trace_end last")
+	if !trace.configured || !trace.ended {
+		return trace.batch.appended, fmt.Errorf("simulator trace requires runtime_config first and trace_end last")
 	}
-	if err := flush(); err != nil {
-		return appended, fmt.Errorf("append simulator batch: %w", err)
+	if err := trace.batch.flush(ctx); err != nil {
+		return trace.batch.appended, fmt.Errorf("append simulator batch: %w", err)
 	}
-	if err := saveLineCheckpoint(ctx, r.db, r.connectorID, line, r.clk.Now()); err != nil {
-		return appended, err
+	if err := saveLineCheckpoint(ctx, r.db, r.connectorID, trace.line, r.clk.Now()); err != nil {
+		return trace.batch.appended, err
 	}
-	return appended, nil
+	return trace.batch.appended, nil
+}
+
+// simulatorTrace validates the record grammar of one simulator trace:
+// runtime_config first, then events and model activations in strictly
+// increasing recorded time, then trace_end last. Events after the checkpoint
+// are batched for the event log.
+type simulatorTrace struct {
+	replay       *SimulatorJSONLReplay
+	startLine    int
+	line         int
+	records      int
+	configured   bool
+	ended        bool
+	lastRecorded time.Time
+	batch        envelopeBatch
+}
+
+func (t *simulatorTrace) accept(ctx context.Context, raw []byte) error {
+	var record map[string]any
+	if err := json.Unmarshal(raw, &record); err != nil {
+		return fmt.Errorf("parse simulator line %d: %w", t.line, err)
+	}
+	recordType, _ := record["record_type"].(string)
+	t.records++
+	if t.records == 1 && recordType != "runtime_config" {
+		return fmt.Errorf("validate simulator line %d: runtime_config must be first", t.line)
+	}
+	if t.ended {
+		return fmt.Errorf("validate simulator line %d: record follows trace_end", t.line)
+	}
+	switch recordType {
+	case "runtime_config":
+		return t.acceptConfig(record)
+	case "event":
+		return t.acceptEvent(ctx, record)
+	case "model_activation":
+		recorded, err := validateModelActivation(record)
+		if err != nil {
+			return fmt.Errorf("validate simulator line %d: %w", t.line, err)
+		}
+		if !t.after(recorded) {
+			return fmt.Errorf("recorded time must be strictly increasing")
+		}
+		t.lastRecorded = recorded
+		return nil
+	case "trace_end":
+		if err := validateSimulatorControl(recordType, record); err != nil {
+			return fmt.Errorf("validate simulator line %d: %w", t.line, err)
+		}
+		until, _ := parseSimulatorTime(record, "until")
+		if !t.after(until) {
+			return fmt.Errorf("trace_end until must be later than every recorded input")
+		}
+		t.ended = true
+		return nil
+	default:
+		return fmt.Errorf("unknown simulator record_type %q", recordType)
+	}
+}
+
+func (t *simulatorTrace) acceptConfig(record map[string]any) error {
+	if t.configured {
+		return fmt.Errorf("validate simulator line %d: duplicate runtime_config", t.line)
+	}
+	if err := validateSimulatorControl("runtime_config", record); err != nil {
+		return fmt.Errorf("validate simulator line %d: %w", t.line, err)
+	}
+	t.configured = true
+	return nil
+}
+
+func (t *simulatorTrace) acceptEvent(ctx context.Context, record map[string]any) error {
+	env, err := t.replay.convertEvent(record)
+	if err != nil {
+		return fmt.Errorf("convert simulator line %d: %w", t.line, err)
+	}
+	recorded := env.ObservedAt
+	if recorded == nil {
+		return fmt.Errorf("event arrival_time is required")
+	}
+	if !t.after(*recorded) {
+		return fmt.Errorf("event recorded time must be strictly increasing")
+	}
+	t.lastRecorded = recorded.UTC()
+	if t.line <= t.startLine {
+		return nil
+	}
+	if err := t.batch.add(ctx, env); err != nil {
+		return fmt.Errorf("append simulator batch: %w", err)
+	}
+	return nil
+}
+
+// after reports whether recorded is later than every input seen so far.
+func (t *simulatorTrace) after(recorded time.Time) bool {
+	return t.lastRecorded.IsZero() || recorded.After(t.lastRecorded)
 }
 
 func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.Envelope, error) {
-	allowed := map[string]bool{"record_type": true, "event": true}
-	for key := range record {
-		if !allowed[key] {
-			return contractsv1.Envelope{}, fmt.Errorf("unknown event field %q", key)
-		}
-	}
-	event, ok := record["event"].(map[string]any)
-	if !ok {
-		return contractsv1.Envelope{}, fmt.Errorf("event is required")
-	}
-	eventAllowed := map[string]bool{"id": true, "entity_type": true, "entity_id": true, "type": true, "event_time": true, "arrival_time": true, "value": true, "unit": true}
-	for key := range event {
-		if !eventAllowed[key] {
-			return contractsv1.Envelope{}, fmt.Errorf("unknown event field %q", key)
-		}
+	event, err := simulatorEventFields(record)
+	if err != nil {
+		return contractsv1.Envelope{}, err
 	}
 	getString := func(key string) (string, error) {
 		value, ok := event[key].(string)
@@ -232,33 +234,83 @@ func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
-	eventTypePrefix := r.options.EventTypePrefix
-	if eventTypePrefix == "" {
-		eventTypePrefix = entityType + "."
-	}
-	if strings.HasPrefix(channel, eventTypePrefix) {
-		eventTypePrefix = ""
-	}
-	eventTime, err := parseSimulatorTime(event, "event_time")
+	eventTime, arrival, err := simulatorEventTimes(event)
 	if err != nil {
 		return contractsv1.Envelope{}, err
+	}
+	data, err := simulatorEventData(event, strings.TrimPrefix(channel, entityType+"."))
+	if err != nil {
+		return contractsv1.Envelope{}, err
+	}
+	return contractsv1.Envelope{
+		ID: id, Type: r.eventTypePrefix(entityType, channel) + channel + ".observed", SchemaVersion: "1.0",
+		TenantID: r.options.TenantID, Source: r.options.Source, PartitionKey: entityID,
+		Entity: contractsv1.EntityRef{Type: entityType, ID: entityID}, EventTime: eventTime,
+		ObservedAt: &arrival, IngestedAt: arrival, Classification: contractsv1.ClassificationInternal,
+		Quality: []contractsv1.QualityFlag{}, Data: data,
+	}, nil
+}
+
+// simulatorEventFields returns the event object, rejecting unknown fields at
+// both the record and event level.
+func simulatorEventFields(record map[string]any) (map[string]any, error) {
+	allowed := map[string]bool{"record_type": true, "event": true}
+	for key := range record {
+		if !allowed[key] {
+			return nil, fmt.Errorf("unknown event field %q", key)
+		}
+	}
+	event, ok := record["event"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("event is required")
+	}
+	eventAllowed := map[string]bool{"id": true, "entity_type": true, "entity_id": true, "type": true, "event_time": true, "arrival_time": true, "value": true, "unit": true}
+	for key := range event {
+		if !eventAllowed[key] {
+			return nil, fmt.Errorf("unknown event field %q", key)
+		}
+	}
+	return event, nil
+}
+
+// eventTypePrefix is the configured prefix, defaulting to the entity type,
+// unless the channel already carries it.
+func (r *SimulatorJSONLReplay) eventTypePrefix(entityType, channel string) string {
+	prefix := r.options.EventTypePrefix
+	if prefix == "" {
+		prefix = entityType + "."
+	}
+	if strings.HasPrefix(channel, prefix) {
+		return ""
+	}
+	return prefix
+}
+
+func simulatorEventTimes(event map[string]any) (time.Time, time.Time, error) {
+	eventTime, err := parseSimulatorTime(event, "event_time")
+	if err != nil {
+		return time.Time{}, time.Time{}, err
 	}
 	arrival, err := parseSimulatorTime(event, "arrival_time")
 	if err != nil {
-		return contractsv1.Envelope{}, err
+		return time.Time{}, time.Time{}, err
 	}
 	if arrival.Before(eventTime) {
-		return contractsv1.Envelope{}, fmt.Errorf("arrival precedes event time")
+		return time.Time{}, time.Time{}, fmt.Errorf("arrival precedes event time")
 	}
+	return eventTime, arrival, nil
+}
+
+// simulatorEventData maps the event value to its data field. The
+// channel-to-field mapping is DATA (simulator_data.json): the heartbeat
+// sentinel (present, empty target) emits no data field, and an ABSENT channel
+// falls back to data["value"].
+func simulatorEventData(event map[string]any, channelName string) (map[string]any, error) {
 	data := make(map[string]any)
-	channelName := strings.TrimPrefix(channel, entityType+".")
 	if value, ok := event["value"]; ok {
-		// Channel→field mapping is DATA (simulator_data.json). The heartbeat
-		// sentinel (present, empty target) emits no data field; an ABSENT
-		// channel falls back to data["value"].
 		fields, err := channelFields()
 		if err != nil {
-			return contractsv1.Envelope{}, fmt.Errorf("load simulator channel fields: %w", err)
+			return nil, fmt.Errorf("load simulator channel fields: %w", err)
 		}
 		target, known := fields[channelName]
 		switch {
@@ -278,13 +330,7 @@ func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.
 			data["mode"] = value
 		}
 	}
-	return contractsv1.Envelope{
-		ID: id, Type: eventTypePrefix + channel + ".observed", SchemaVersion: "1.0",
-		TenantID: r.options.TenantID, Source: r.options.Source, PartitionKey: entityID,
-		Entity: contractsv1.EntityRef{Type: entityType, ID: entityID}, EventTime: eventTime,
-		ObservedAt: &arrival, IngestedAt: arrival, Classification: contractsv1.ClassificationInternal,
-		Quality: []contractsv1.QualityFlag{}, Data: data,
-	}, nil
+	return data, nil
 }
 
 func parseSimulatorTime(record map[string]any, key string) (time.Time, error) {
