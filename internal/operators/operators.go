@@ -2,15 +2,11 @@ package operators
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"math"
-	"strings"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -136,8 +132,6 @@ type OperatorStateBlob struct {
 	Runtime   *RuntimeState   `json:"runtime,omitempty"`
 }
 
-const maxSeenBootIDs = 64
-
 // ApplyEventAt applies one event using processingTime supplied by the runtime
 // clock. Producer timestamps are evidence, not runtime scheduling authority.
 func (r *OperatorRuntime) ApplyEventAt(ctx context.Context, ps *PartitionState, env contractsv1.Envelope, watermark, processingTime time.Time) ([]Feature, *PartitionState, error) {
@@ -222,208 +216,6 @@ func (r *OperatorRuntime) getBlob(ps *PartitionState, operatorID, stateKey strin
 		ops[stateKey] = blob
 	}
 	return blob
-}
-
-func (r *OperatorRuntime) extractValue(inst *operatorInstance, env contractsv1.Envelope) (float64, bool) {
-	if inst.def.Field == "" || !r.numericObservationQualityValid(inst, env) {
-		return 0, false
-	}
-	parts := strings.Split(inst.def.Field, ".")
-	if len(parts) != 2 || parts[0] != "data" {
-		return 0, false
-	}
-	v, ok := env.Data[parts[1]]
-	if !ok {
-		return 0, false
-	}
-	switch x := v.(type) {
-	case float64:
-		return finiteValue(x)
-	case float32:
-		return finiteValue(float64(x))
-	case int:
-		return finiteValue(float64(x))
-	case int64:
-		return finiteValue(float64(x))
-	case json.Number:
-		f, err := x.Float64()
-		if err != nil {
-			return 0, false
-		}
-		return finiteValue(f)
-	}
-	return 0, false
-}
-
-func finiteValue(value float64) (float64, bool) {
-	if math.IsNaN(value) || math.IsInf(value, 0) {
-		return 0, false
-	}
-	return value, true
-}
-
-// sampleQualityValid accepts legacy payloads that do not carry a quality
-// field, but every supplied sample quality must explicitly be valid. Quality
-// flags on the envelope can independently invalidate a numeric sample.
-func sampleQualityValid(env contractsv1.Envelope) bool {
-	if raw, exists := env.Data["quality"]; exists {
-		quality, ok := raw.(string)
-		if !ok || quality != "valid" {
-			return false
-		}
-	}
-
-	for _, flag := range env.Quality {
-		switch strings.ToLower(strings.TrimSpace(flag.Code)) {
-		case "warming", "invalid", "disconnected", "rail_high", "rail_low":
-			return false
-		default:
-			// Unknown quality flags are not safe to interpret optimistically.
-			return false
-		}
-	}
-	return true
-}
-
-func (r *OperatorRuntime) operatorAdmitsEvent(inst *operatorInstance, env contractsv1.Envelope) bool {
-	switch inst.def.Kind {
-	case "missing_heartbeat":
-		return sampleQualityValid(env)
-	case "aggregate", "slope":
-		return r.numericObservationQualityValid(inst, env)
-	default:
-		return true
-	}
-}
-
-// numericObservationQualityValid applies the provenance contract declared by
-// the input's registered schema. A schema that exposes both quality and boot
-// identity requires a valid quality and an identified boot; no event family is
-// special-cased in the runtime.
-func (r *OperatorRuntime) numericObservationQualityValid(inst *operatorInstance, env contractsv1.Envelope) bool {
-	if !sampleQualityValid(env) {
-		return false
-	}
-	if !r.inputRequiresBootIdentity(inst) {
-		return true
-	}
-	return deviceBootID(env) != ""
-}
-
-func (r *OperatorRuntime) inputRequiresBootIdentity(inst *operatorInstance) bool {
-	for _, inputName := range inst.def.Inputs {
-		for _, input := range r.spec.Inputs {
-			if input.Name != inputName || input.SchemaRef == "" {
-				continue
-			}
-			definition, ok := eventschema.Lookup(input.SchemaRef)
-			if !ok {
-				return false
-			}
-			_, hasQuality := definition.Fields["quality"]
-			_, hasBootID := definition.Fields["boot_id"]
-			return hasQuality && hasBootID
-		}
-	}
-	return false
-}
-
-func deviceBootID(env contractsv1.Envelope) string {
-	bootID, ok := env.Data["boot_id"].(string)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(bootID)
-}
-
-func operatorStateKey(env contractsv1.Envelope) string {
-	bootID := deviceBootID(env)
-	if bootID == "" {
-		return env.Entity.ID
-	}
-	// Device sequence and monotonic time are meaningful only within a boot.
-	// Keep explicit boots in separate durable state keys so a delayed event from
-	// an older boot cannot reset or contaminate the current boot's window.
-	return env.Entity.ID + "\x1f" + bootID
-}
-
-func entityIDFromStateKey(stateKey string) string {
-	if entityID, _, ok := strings.Cut(stateKey, "\x1f"); ok {
-		return entityID
-	}
-	return stateKey
-}
-
-func bootIDFromStateKey(stateKey string) string {
-	_, bootID, ok := strings.Cut(stateKey, "\x1f")
-	if !ok {
-		return ""
-	}
-	return bootID
-}
-
-// admitBoot fences delayed evidence from a prior device boot. Missing boot
-// identity remains compatible only until the first identified boot is seen;
-// thereafter it cannot be used to mutate physical numeric state.
-func (r *OperatorRuntime) admitBoot(ps *PartitionState, env contractsv1.Envelope) bool {
-	stateKey := env.Entity.ID
-	meta := r.getBlob(ps, RuntimeOperatorID, stateKey)
-	if meta.Runtime == nil {
-		meta.Runtime = &RuntimeState{}
-	}
-	runtimeState := meta.Runtime
-	bootID := deviceBootID(env)
-	if bootID == "" {
-		return runtimeState.CurrentBootID == ""
-	}
-	if runtimeState.CurrentBootID == bootID {
-		return true
-	}
-	for _, seen := range runtimeState.SeenBootIDs {
-		if seen == bootID {
-			return false
-		}
-	}
-	if len(runtimeState.SeenBootIDs) >= maxSeenBootIDs {
-		// A bounded history cannot safely distinguish an evicted old boot from
-		// a new one. Fail closed rather than allowing stale evidence to revive.
-		return false
-	}
-	for operatorID, states := range ps.OperatorStates {
-		if operatorID == RuntimeOperatorID {
-			continue
-		}
-		for stateKey := range states {
-			if stateKey == env.Entity.ID || strings.HasPrefix(stateKey, env.Entity.ID+"\x1f") {
-				// Only the active boot's state is useful after admission. The
-				// tombstone list above still prevents a retired boot from being
-				// admitted again.
-				delete(states, stateKey)
-			}
-		}
-	}
-	runtimeState.CurrentBootID = bootID
-	runtimeState.SeenBootIDs = append(runtimeState.SeenBootIDs, bootID)
-	return true
-}
-
-func (r *OperatorRuntime) isActiveBoot(ps *PartitionState, stateKey string) bool {
-	bootID := bootIDFromStateKey(stateKey)
-	meta := ps.OperatorStates[RuntimeOperatorID][entityIDFromStateKey(stateKey)]
-	if bootID == "" {
-		return meta == nil || meta.Runtime == nil || meta.Runtime.CurrentBootID == ""
-	}
-	return meta == nil || meta.Runtime == nil || meta.Runtime.CurrentBootID == "" || meta.Runtime.CurrentBootID == bootID
-}
-
-// IsTimerStateActive reports whether a persisted timer belongs to the current
-// boot admission state. The engine uses this to retire stale timers instead of
-// treating their intentional suppression as a processing failure.
-func (r *OperatorRuntime) IsTimerStateActive(ps *PartitionState, stateKey string) bool {
-	if ps == nil {
-		return false
-	}
-	return r.isActiveBoot(ps, stateKey)
 }
 
 func (r *OperatorRuntime) entityTypeForOperator(operatorID string) string {
