@@ -9,12 +9,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/google/cel-go/cel"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -76,33 +74,6 @@ func NewEngine(db *storage.DB, deploymentID, tenantID string, compiled *spec.Com
 	return eng, nil
 }
 
-func (e *Engine) compilePrograms() error {
-	for _, tr := range e.spec.Cognition.Triggers {
-		for _, expr := range []struct {
-			name string
-			src  string
-		}{
-			{tr.Name + ":when", tr.When},
-			{tr.Name + ":score", tr.Score},
-			{tr.Name + ":materialDelta", tr.MaterialDelta},
-		} {
-			if expr.src == "" {
-				continue
-			}
-			ast, issues := e.celEnv.Compile(expr.src)
-			if issues != nil && issues.Err() != nil {
-				return fmt.Errorf("compile %s: %w", expr.name, issues.Err())
-			}
-			prg, err := e.celEnv.Program(ast)
-			if err != nil {
-				return fmt.Errorf("program %s: %w", expr.name, err)
-			}
-			e.programs[expr.name] = prg
-		}
-	}
-	return nil
-}
-
 // Process evaluates all triggers for a new Situation version and updates the
 // durable scheduler queue. It runs inside the supplied transaction.
 func (e *Engine) Process(ctx context.Context, tx *sql.Tx, v situations.Version) error {
@@ -116,6 +87,17 @@ func (e *Engine) Process(ctx context.Context, tx *sql.Tx, v situations.Version) 
 		return fmt.Errorf("load previous version: %w", err)
 	}
 
+	if err := e.evaluateTriggers(ctx, tx, v, previous); err != nil {
+		return err
+	}
+	if _, err := e.admitReconsiderations(ctx, tx, v); err != nil {
+		return fmt.Errorf("admit reconsideration: %w", err)
+	}
+
+	return e.markVersionReasoned(ctx, tx, v)
+}
+
+func (e *Engine) evaluateTriggers(ctx context.Context, tx *sql.Tx, v situations.Version, previous *situations.Version) error {
 	for _, tr := range e.spec.Cognition.Triggers {
 		eval, err := e.evaluate(ctx, tr, v, previous)
 		if err != nil {
@@ -125,10 +107,10 @@ func (e *Engine) Process(ctx context.Context, tx *sql.Tx, v situations.Version) 
 			return fmt.Errorf("admit trigger %s: %w", tr.Name, err)
 		}
 	}
-	if _, err := e.admitReconsiderations(ctx, tx, v); err != nil {
-		return fmt.Errorf("admit reconsideration: %w", err)
-	}
+	return nil
+}
 
+func (e *Engine) markVersionReasoned(ctx context.Context, tx *sql.Tx, v situations.Version) error {
 	// Advance last_reasoned_version unconditionally so that future deltas compare
 	// against the most recently evaluated version regardless of outcome.
 	if _, err := tx.ExecContext(ctx,
@@ -208,239 +190,8 @@ func (e *Engine) loadVersion(ctx context.Context, tx *sql.Tx, situationID string
 	return &v, nil
 }
 
-func (e *Engine) evaluate(ctx context.Context, tr spec.Trigger, current situations.Version, previous *situations.Version) (Evaluation, error) {
-	evalAt := e.clk.Now().UTC()
-	eval := Evaluation{
-		TriggerID:        e.triggerID(tr.Name, current.SituationID, current.Version),
-		TriggerName:      tr.Name,
-		SituationID:      current.SituationID,
-		SituationVersion: current.Version,
-		Threshold:        tr.Threshold,
-		Lane:             tr.Lane,
-		Outcome:          "ignored",
-		PolicySHA256:     e.spec.Digest,
-		EvaluatedAt:      evalAt,
-	}
-
-	features := e.buildFeatures(current)
-	situation := e.buildSituation(current)
-	delta := e.buildDelta(current, previous)
-	deltaJSON, err := canonicaljson.Marshal(delta)
-	if err != nil {
-		return eval, fmt.Errorf("marshal delta: %w", err)
-	}
-	eval.DeltaJSON = deltaJSON
-
-	fired, err := e.evalBool(ctx, tr, "when", features, situation, delta, current.EventHorizon, current.Watermark)
-	if err != nil {
-		return eval, err
-	}
-	if !fired {
-		eval.Reasons = append(eval.Reasons, "trigger condition false")
-		return eval, nil
-	}
-
-	score, err := e.evalScore(ctx, tr, features, situation, delta, current.EventHorizon, current.Watermark)
-	if err != nil {
-		return eval, err
-	}
-	eval.Score = score
-
-	material := true
-	if tr.MaterialDelta != "" {
-		var err error
-		material, err = e.evalBool(ctx, tr, "materialDelta", features, situation, delta, current.EventHorizon, current.Watermark)
-		if err != nil {
-			return eval, err
-		}
-	}
-	if !material {
-		eval.Reasons = append(eval.Reasons, "material delta false")
-		return eval, nil
-	}
-
-	if score < tr.Threshold {
-		eval.Reasons = append(eval.Reasons, fmt.Sprintf("score %.2f below threshold %.2f", score, tr.Threshold))
-		return eval, nil
-	}
-
-	eval.Outcome = "admitted"
-	eval.Reasons = append(eval.Reasons, fmt.Sprintf("score %.2f meets threshold %.2f", score, tr.Threshold))
-	return eval, nil
-}
-
 func (e *Engine) triggerID(name, situationID string, version int) string {
 	h := sha256.New()
 	_, _ = fmt.Fprintf(h, "%s|%s|%d|%s", e.deploymentID, situationID, version, name)
 	return ids.PrefixTrigger + hex.EncodeToString(h.Sum(nil))[:24]
-}
-
-func (e *Engine) buildFeatures(v situations.Version) map[string]any {
-	features := make(map[string]any)
-	for _, r := range e.spec.Situation.Reducers {
-		switch r.Strategy {
-		case "latest_event_time":
-			// A nil fact means this operator has not materialized an output yet.
-			// Leave it absent so the typed operator default below remains effective.
-			if val, ok := v.Facts[r.Field]; ok && val != nil {
-				features[r.Input] = val
-			}
-		case "set_union":
-			evidence := v.Evidence
-			if evidence == nil {
-				evidence = []string{}
-			}
-			features[r.Field] = evidence
-		}
-	}
-	// Pre-populate defaults for every operator output so CEL expressions never
-	// fail on a missing key. Numeric features default to 0; heartbeat detectors
-	// default to false.
-	for _, op := range e.spec.Operators {
-		if _, ok := features[op.Output]; ok {
-			continue
-		}
-		switch op.Kind {
-		case "missing_heartbeat":
-			features[op.Output] = false
-		default:
-			features[op.Output] = 0.0
-		}
-	}
-	return features
-}
-
-func (e *Engine) buildSituation(v situations.Version) map[string]any {
-	return map[string]any{
-		"phase":       v.Phase,
-		"severity":    v.Severity,
-		"confidence":  v.Confidence,
-		"uncertainty": 1.0 - v.Confidence,
-		"entity": map[string]any{
-			"type": v.EntityType,
-			"id":   v.EntityID,
-		},
-	}
-}
-
-func (e *Engine) buildDelta(current situations.Version, previous *situations.Version) map[string]any {
-	if previous == nil {
-		return map[string]any{
-			spec.DeltaKeys.PhaseChanged:             true,
-			spec.DeltaKeys.SeverityChange:           current.Severity,
-			spec.DeltaKeys.CompletenessChanged:      true,
-			spec.DeltaKeys.PrimaryHypothesisChanged: true,
-			spec.DeltaKeys.FactsChanged:             true,
-			spec.DeltaKeys.Facts:                    map[string]any{},
-			spec.DeltaKeys.NewFacts:                 current.Facts,
-			spec.DeltaKeys.Novelty:                  1.0,
-		}
-	}
-
-	prevFacts := previous.Facts
-	if prevFacts == nil {
-		prevFacts = map[string]any{}
-	}
-	factsChanged := !mapsEqual(prevFacts, current.Facts)
-	// Primary-hypothesis tracking is not implemented in this slice; it is
-	// intentionally false so triggers can reference the key deterministically.
-	primaryHypothesisChanged := false
-	novelty := 0.0
-	if current.Phase != previous.Phase || factsChanged {
-		novelty = 1.0
-	}
-
-	return map[string]any{
-		spec.DeltaKeys.PhaseChanged:             current.Phase != previous.Phase,
-		spec.DeltaKeys.SeverityChange:           current.Severity - previous.Severity,
-		spec.DeltaKeys.CompletenessChanged:      current.Completeness != previous.Completeness,
-		spec.DeltaKeys.PrimaryHypothesisChanged: primaryHypothesisChanged,
-		spec.DeltaKeys.FactsChanged:             factsChanged,
-		spec.DeltaKeys.Facts:                    prevFacts,
-		spec.DeltaKeys.NewFacts:                 current.Facts,
-		spec.DeltaKeys.Novelty:                  novelty,
-	}
-}
-
-func mapsEqual(a, b map[string]any) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, va := range a {
-		vb, ok := b[k]
-		if !ok {
-			return false
-		}
-		if !reflect.DeepEqual(va, vb) {
-			return false
-		}
-	}
-	return true
-}
-
-func (e *Engine) evalBool(ctx context.Context, tr spec.Trigger, kind string, features, situation, delta map[string]any, eventTime, watermark time.Time) (bool, error) {
-	_ = ctx
-	expr := ""
-	switch kind {
-	case "when":
-		expr = tr.When
-	case "materialDelta":
-		expr = tr.MaterialDelta
-	}
-	if expr == "" {
-		return false, nil
-	}
-	prg, ok := e.programs[tr.Name+":"+kind]
-	if !ok {
-		return false, fmt.Errorf("no compiled program for %s:%s", tr.Name, kind)
-	}
-	out, _, err := prg.Eval(map[string]any{
-		"features":   features,
-		"situation":  situation,
-		"delta":      delta,
-		"event_time": eventTime,
-		"watermark":  watermark,
-	})
-	if err != nil {
-		return false, fmt.Errorf("eval cel: %w", err)
-	}
-	v, err := out.ConvertToNative(reflect.TypeOf(true))
-	if err != nil {
-		return false, fmt.Errorf("cel result not bool: %w", err)
-	}
-	b, ok := v.(bool)
-	if !ok {
-		return false, fmt.Errorf("cel result not bool: %T", v)
-	}
-	return b, nil
-}
-
-func (e *Engine) evalScore(ctx context.Context, tr spec.Trigger, features, situation, delta map[string]any, eventTime, watermark time.Time) (float64, error) {
-	if tr.Score == "" {
-		return 0, nil
-	}
-	prg, ok := e.programs[tr.Name+":score"]
-	if !ok {
-		return 0, fmt.Errorf("no compiled program for %s:score", tr.Name)
-	}
-	out, _, err := prg.Eval(map[string]any{
-		"features":   features,
-		"situation":  situation,
-		"delta":      delta,
-		"event_time": eventTime,
-		"watermark":  watermark,
-	})
-	if err != nil {
-		return 0, fmt.Errorf("eval cel: %w", err)
-	}
-	switch x := out.Value().(type) {
-	case float64:
-		return x, nil
-	case int64:
-		return float64(x), nil
-	case int:
-		return float64(x), nil
-	default:
-		return 0, fmt.Errorf("cel result not number: %T", out.Value())
-	}
 }

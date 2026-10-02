@@ -22,21 +22,33 @@ func (e *Engine) runGlobal(ctx context.Context, beforeApply func(eventlog.Record
 		if len(records) == 0 {
 			return e.finishGlobalRun(ctx, processed)
 		}
-		for _, record := range records {
-			outcome, err := e.applyGlobalRecord(ctx, record, beforeApply)
-			if err != nil {
-				if outcome.timersRan {
-					processed += outcome.fired
-				}
-				return processed, err
-			}
-			processed += outcome.fired + 1
-			lastPosition = record.Position
+		batchCount, position, err := e.applyGlobalBatch(ctx, records, beforeApply)
+		processed += batchCount
+		if err != nil {
+			return processed, err
 		}
+		lastPosition = position
 		if err := e.checkpointWAL(ctx); err != nil {
 			return processed, fmt.Errorf("checkpoint WAL after global batch: %w", err)
 		}
 	}
+}
+
+func (e *Engine) applyGlobalBatch(ctx context.Context, records []eventlog.Record, beforeApply func(eventlog.Record) error) (int, eventlog.LogPosition, error) {
+	var processed int
+	var lastPosition eventlog.LogPosition
+	for _, record := range records {
+		outcome, err := e.applyGlobalRecord(ctx, record, beforeApply)
+		if err != nil {
+			if outcome.timersRan {
+				processed += outcome.fired
+			}
+			return processed, lastPosition, err
+		}
+		processed += outcome.fired + 1
+		lastPosition = record.Position
+	}
+	return processed, lastPosition, nil
 }
 
 func (e *Engine) readGlobalRecords(ctx context.Context, afterPosition eventlog.LogPosition) ([]eventlog.Record, error) {

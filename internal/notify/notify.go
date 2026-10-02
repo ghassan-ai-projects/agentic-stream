@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -66,176 +65,117 @@ func Append(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, now t
 		return 0, fmt.Errorf("canonicalize notification: %w", err)
 	}
 	eventSHA := sha256.Sum256(eventJSON)
-	traceparent := nullableString(event.Traceparent)
-	tracestate := nullableString(event.Tracestate)
+	if cursor, found, err := existingNotification(ctx, tx, event, eventSHA[:]); err != nil || found {
+		return cursor, err
+	}
+	if err := checkTombstone(ctx, tx, event, eventSHA[:]); err != nil {
+		return 0, err
+	}
+	cursor, err := allocateCursor(ctx, tx, event.TenantID)
+	if err != nil {
+		return 0, err
+	}
+	inserted, err := insertNotification(ctx, tx, event, eventJSON, eventSHA[:], cursor, now)
+	if err != nil {
+		return 0, err
+	}
+	if !inserted {
+		if err := releaseRacedCursor(ctx, tx, event, eventSHA[:], cursor); err != nil {
+			return 0, err
+		}
+	}
+	return storedCursor(ctx, tx, event)
+}
+
+// existingNotification returns the cursor of an identical notification that
+// was already appended; the same event ID with a different payload is an
+// error.
+func existingNotification(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, eventSHA []byte) (int64, bool, error) {
 	var existingCursor int64
 	var existingSHA []byte
-	if err := tx.QueryRowContext(ctx, "SELECT cursor, event_sha256 FROM notifications WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&existingCursor, &existingSHA); err == nil {
-		if !bytes.Equal(existingSHA, eventSHA[:]) {
-			return 0, fmt.Errorf("notification event id %q has conflicting payload", event.ID)
-		}
-		return existingCursor, nil
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("check duplicate notification: %w", err)
+	err := tx.QueryRowContext(ctx, "SELECT cursor, event_sha256 FROM notifications WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&existingCursor, &existingSHA)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
 	}
-	if err := tx.QueryRowContext(ctx, "SELECT event_sha256 FROM notification_event_tombstones WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&existingSHA); err == nil {
-		if !bytes.Equal(existingSHA, eventSHA[:]) {
-			return 0, fmt.Errorf("notification event id %q conflicts with tombstone", event.ID)
-		}
-		return 0, fmt.Errorf("notification event %q was already retired", event.ID)
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("check notification tombstone: %w", err)
+	if err != nil {
+		return 0, false, fmt.Errorf("check duplicate notification: %w", err)
 	}
+	if !bytes.Equal(existingSHA, eventSHA) {
+		return 0, false, fmt.Errorf("notification event id %q has conflicting payload", event.ID)
+	}
+	return existingCursor, true, nil
+}
+
+// checkTombstone refuses to re-append an event that retention already
+// retired.
+func checkTombstone(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, eventSHA []byte) error {
+	var retiredSHA []byte
+	err := tx.QueryRowContext(ctx, "SELECT event_sha256 FROM notification_event_tombstones WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&retiredSHA)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("check notification tombstone: %w", err)
+	}
+	if !bytes.Equal(retiredSHA, eventSHA) {
+		return fmt.Errorf("notification event id %q conflicts with tombstone", event.ID)
+	}
+	return fmt.Errorf("notification event %q was already retired", event.ID)
+}
+
+func allocateCursor(ctx context.Context, tx *sql.Tx, tenantID string) (int64, error) {
 	var cursor int64
 	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO notification_cursors (tenant_id, next_cursor) VALUES (?, 2)
 		ON CONFLICT(tenant_id) DO UPDATE SET next_cursor = next_cursor + 1
-		RETURNING next_cursor - 1`, event.TenantID).Scan(&cursor); err != nil {
+		RETURNING next_cursor - 1`, tenantID).Scan(&cursor); err != nil {
 		return 0, fmt.Errorf("allocate notification cursor: %w", err)
 	}
+	return cursor, nil
+}
+
+func insertNotification(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, eventJSON, eventSHA []byte, cursor int64, now time.Time) (bool, error) {
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO notifications (tenant_id, cursor, event_id, event_type, event_json, event_sha256, traceparent, tracestate, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(tenant_id, event_id) DO NOTHING`,
-		event.TenantID, cursor, event.ID, event.Type, eventJSON, eventSHA[:], traceparent, tracestate, now.UTC().Format(time.RFC3339Nano))
+		event.TenantID, cursor, event.ID, event.Type, eventJSON, eventSHA, nullableString(event.Traceparent), nullableString(event.Tracestate), now.UTC().Format(time.RFC3339Nano))
 	if err != nil {
-		return 0, fmt.Errorf("append notification: %w", err)
+		return false, fmt.Errorf("append notification: %w", err)
 	}
-	if affected, _ := result.RowsAffected(); affected == 0 {
-		var storedSHA []byte
-		if err := tx.QueryRowContext(ctx, "SELECT event_sha256 FROM notifications WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&storedSHA); err != nil {
-			return 0, fmt.Errorf("read duplicate notification: %w", err)
-		}
-		if !bytes.Equal(storedSHA, eventSHA[:]) {
-			return 0, fmt.Errorf("notification event id %q has conflicting payload", event.ID)
-		}
-		rollback, rollbackErr := tx.ExecContext(ctx, "UPDATE notification_cursors SET next_cursor = next_cursor - 1 WHERE tenant_id = ? AND next_cursor = ?", event.TenantID, cursor+1)
-		if rollbackErr != nil {
-			return 0, fmt.Errorf("rollback duplicate cursor: %w", rollbackErr)
-		}
-		if affected, _ := rollback.RowsAffected(); affected != 1 {
-			return 0, fmt.Errorf("rollback duplicate cursor lost race")
-		}
+	affected, _ := result.RowsAffected()
+	return affected != 0, nil
+}
+
+// releaseRacedCursor gives back the cursor allocated for an insert that a
+// concurrent identical append won, keeping cursors gapless.
+func releaseRacedCursor(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, eventSHA []byte, cursor int64) error {
+	var storedSHA []byte
+	if err := tx.QueryRowContext(ctx, "SELECT event_sha256 FROM notifications WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&storedSHA); err != nil {
+		return fmt.Errorf("read duplicate notification: %w", err)
 	}
-	var actual int64
-	if err := tx.QueryRowContext(ctx, "SELECT cursor FROM notifications WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&actual); err != nil {
+	if !bytes.Equal(storedSHA, eventSHA) {
+		return fmt.Errorf("notification event id %q has conflicting payload", event.ID)
+	}
+	rollback, err := tx.ExecContext(ctx, "UPDATE notification_cursors SET next_cursor = next_cursor - 1 WHERE tenant_id = ? AND next_cursor = ?", event.TenantID, cursor+1)
+	if err != nil {
+		return fmt.Errorf("rollback duplicate cursor: %w", err)
+	}
+	if affected, _ := rollback.RowsAffected(); affected != 1 {
+		return fmt.Errorf("rollback duplicate cursor lost race")
+	}
+	return nil
+}
+
+func storedCursor(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent) (int64, error) {
+	var cursor int64
+	if err := tx.QueryRowContext(ctx, "SELECT cursor FROM notifications WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&cursor); err != nil {
 		return 0, fmt.Errorf("read notification cursor: %w", err)
 	}
-	return actual, nil
+	return cursor, nil
 }
 
 func nullableString(value string) sql.NullString {
 	return sql.NullString{String: value, Valid: value != ""}
-}
-
-// ReadAfter returns up to limit events strictly after cursor. It refuses a
-// resume cursor that predates retained data and records an audit for that
-// refusal.
-// ReadPage reads a bounded page. maxLag of zero disables the slow-subscriber
-// check; otherwise a lagging subscriber is audited and disconnected.
-func ReadPage(ctx context.Context, db *storage.DB, tenantID string, cursor int64, limit int, maxLag int64, now time.Time) (Page, error) {
-	if limit <= 0 || limit > 1000 {
-		return Page{}, fmt.Errorf("notification limit must be between 1 and 1000")
-	}
-	var oldest sql.NullInt64
-	if err := db.QueryRowContext(ctx, "SELECT MIN(cursor) FROM notifications WHERE tenant_id = ?", tenantID).Scan(&oldest); err != nil {
-		return Page{}, fmt.Errorf("find oldest notification: %w", err)
-	}
-	var nextCursor sql.NullInt64
-	if err := db.QueryRowContext(ctx, "SELECT next_cursor FROM notification_cursors WHERE tenant_id = ?", tenantID).Scan(&nextCursor); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return Page{}, fmt.Errorf("read notification highwater: %w", err)
-	}
-	if (oldest.Valid && cursor < oldest.Int64-1) || (!oldest.Valid && nextCursor.Valid && cursor < nextCursor.Int64-1) {
-		oldestCursor := int64(0)
-		if oldest.Valid {
-			oldestCursor = oldest.Int64
-		}
-		if err := audit(ctx, db, tenantID, "cursor_expired", cursor, oldestCursor, now); err != nil {
-			return Page{}, fmt.Errorf("audit expired cursor: %w", err)
-		}
-		return Page{}, ErrCursorExpired
-	}
-	if maxLag > 0 && nextCursor.Valid && nextCursor.Int64-1-cursor > maxLag {
-		if err := audit(ctx, db, tenantID, "subscriber_too_slow", cursor, oldest.Int64, now); err != nil {
-			return Page{}, fmt.Errorf("audit slow subscriber: %w", err)
-		}
-		return Page{}, ErrSubscriberTooSlow
-	}
-	rows, err := db.QueryContext(ctx, `
-		SELECT cursor, event_json, event_sha256 FROM notifications
-		WHERE tenant_id = ? AND cursor > ? ORDER BY cursor LIMIT ?`, tenantID, cursor, limit)
-	if err != nil {
-		return Page{}, fmt.Errorf("read notifications: %w", err)
-	}
-	result := Page{Records: make([]Record, 0, limit), NextCursor: cursor}
-	type rawRecord struct {
-		cursor              int64
-		eventJSON, eventSHA []byte
-	}
-	rawRecords := make([]rawRecord, 0, limit)
-	for rows.Next() {
-		var record Record
-		var eventJSON, eventSHA []byte
-		record.TenantID = tenantID
-		if err := rows.Scan(&record.Cursor, &eventJSON, &eventSHA); err != nil {
-			_ = rows.Close()
-			return Page{}, fmt.Errorf("scan notification: %w", err)
-		}
-		rawRecords = append(rawRecords, rawRecord{record.Cursor, eventJSON, eventSHA})
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return Page{}, fmt.Errorf("iterate notifications: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return Page{}, fmt.Errorf("close notifications: %w", err)
-	}
-	for _, raw := range rawRecords {
-		record := Record{TenantID: tenantID, Cursor: raw.cursor}
-		eventJSON, eventSHA := raw.eventJSON, raw.eventSHA
-		result.NextCursor = record.Cursor
-		computed := sha256.Sum256(eventJSON)
-		if !bytes.Equal(computed[:], eventSHA) {
-			skip, poisonErr := recordPoisonAttempt(ctx, db, tenantID, record.Cursor, now)
-			if poisonErr != nil {
-				return Page{}, poisonErr
-			}
-			if skip {
-				result.Skipped++
-				result.NextCursor = record.Cursor
-				continue
-			}
-			return Page{}, ErrNotificationPoison
-		}
-		if err := json.Unmarshal(eventJSON, &record.Event); err != nil {
-			skip, poisonErr := recordPoisonAttempt(ctx, db, tenantID, record.Cursor, now)
-			if poisonErr != nil {
-				return Page{}, poisonErr
-			}
-			if skip {
-				result.Skipped++
-				result.NextCursor = record.Cursor
-				continue
-			}
-			return Page{}, ErrNotificationPoison
-		}
-		if err := record.Event.Validate(); err != nil {
-			skip, poisonErr := recordPoisonAttempt(ctx, db, tenantID, record.Cursor, now)
-			if poisonErr != nil {
-				return Page{}, poisonErr
-			}
-			if skip {
-				result.Skipped++
-				result.NextCursor = record.Cursor
-				continue
-			}
-			return Page{}, ErrNotificationPoison
-		}
-		if err := clearPoisonAttempt(ctx, db, tenantID, record.Cursor); err != nil {
-			return Page{}, err
-		}
-		result.Records = append(result.Records, record)
-	}
-	return result, nil
 }
 
 // Prune deletes only notifications older than the requested retention period;
@@ -276,42 +216,6 @@ func auditTx(ctx context.Context, tx *sql.Tx, tenantID, action string, requested
 	_, err := tx.ExecContext(ctx, `INSERT INTO notification_audits (audit_id, tenant_id, action, requested_cursor, oldest_cursor, details_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, ids.Random().New(ids.PrefixPolicy), tenantID, action, requested, oldest, details, now.UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return fmt.Errorf("write notification audit: %w", err)
-	}
-	return nil
-}
-
-func recordPoisonAttempt(ctx context.Context, db *storage.DB, tenantID string, cursor int64, now time.Time) (bool, error) {
-	var skip bool
-	err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO notification_poison_attempts (tenant_id, cursor, attempts, last_attempt_at) VALUES (?, ?, 1, ?) ON CONFLICT(tenant_id, cursor) DO UPDATE SET attempts = attempts + 1, last_attempt_at = excluded.last_attempt_at`, tenantID, cursor, now.UTC().Format(time.RFC3339Nano))
-		if err != nil {
-			return fmt.Errorf("record notification poison attempt: %w", err)
-		}
-		var attempts int
-		if err := tx.QueryRowContext(ctx, "SELECT attempts FROM notification_poison_attempts WHERE tenant_id = ? AND cursor = ?", tenantID, cursor).Scan(&attempts); err != nil {
-			return fmt.Errorf("read notification poison attempts: %w", err)
-		}
-		if attempts < maxNotificationPoisonAttempts {
-			return nil
-		}
-		if err := auditTx(ctx, tx, tenantID, "subscriber_skipped", cursor, cursor, now); err != nil {
-			return fmt.Errorf("audit skipped poison notification: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, "DELETE FROM notification_poison_attempts WHERE tenant_id = ? AND cursor = ?", tenantID, cursor); err != nil {
-			return fmt.Errorf("clear notification poison attempts: %w", err)
-		}
-		skip = true
-		return nil
-	})
-	if err != nil {
-		return false, fmt.Errorf("persist notification poison attempt: %w", err)
-	}
-	return skip, nil
-}
-
-func clearPoisonAttempt(ctx context.Context, db *storage.DB, tenantID string, cursor int64) error {
-	if _, err := db.ExecContext(ctx, "DELETE FROM notification_poison_attempts WHERE tenant_id = ? AND cursor = ?", tenantID, cursor); err != nil {
-		return fmt.Errorf("clear notification poison attempt: %w", err)
 	}
 	return nil
 }

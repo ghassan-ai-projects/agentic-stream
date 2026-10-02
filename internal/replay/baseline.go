@@ -139,6 +139,14 @@ func baselineParameters(configured spec.Intent, entityID, phase string) (map[str
 		}
 		parameters["entity_id"] = entityID
 	}
+	fillBaselineEnums(parameters, properties, phase)
+	if !requiredBaselineParametersPresent(configured.ParameterSchema, parameters) {
+		return nil, false
+	}
+	return parameters, true
+}
+
+func fillBaselineEnums(parameters, properties map[string]any, phase string) {
 	for field, raw := range properties {
 		if field == "entity_id" {
 			continue
@@ -157,17 +165,20 @@ func baselineParameters(configured spec.Intent, entityID, phase string) (map[str
 		}
 		parameters[field] = value
 	}
-	required, _ := configured.ParameterSchema["required"].([]any)
+}
+
+func requiredBaselineParametersPresent(schema, parameters map[string]any) bool {
+	required, _ := schema["required"].([]any)
 	for _, raw := range required {
 		field, ok := raw.(string)
 		if !ok {
-			return nil, false
+			return false
 		}
 		if _, present := parameters[field]; !present {
-			return nil, false
+			return false
 		}
 	}
-	return parameters, true
+	return true
 }
 
 func enumValue(values []any, byPhase map[string]string, phase string) any {

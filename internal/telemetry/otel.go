@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -30,8 +31,12 @@ func NewTracerProvider(ctx context.Context, serviceName, endpoint string) (*sdkt
 	}
 	options := []sdktrace.TracerProviderOption{sdktrace.WithResource(resource)}
 	if endpoint != "" {
+		endpointURL, urlErr := tracesEndpointURL(endpoint)
+		if urlErr != nil {
+			return nil, urlErr
+		}
 		exporter, exportErr := otlptracehttp.New(ctx,
-			otlptracehttp.WithEndpointURL(endpoint),
+			otlptracehttp.WithEndpointURL(endpointURL),
 			otlptracehttp.WithTimeout(5*time.Second),
 		)
 		if exportErr != nil {
@@ -40,6 +45,20 @@ func NewTracerProvider(ctx context.Context, serviceName, endpoint string) (*sdkt
 		options = append(options, sdktrace.WithBatcher(exporter))
 	}
 	return sdktrace.NewTracerProvider(options...), nil
+}
+
+// tracesEndpointURL returns endpoint with the OTLP/HTTP traces path when it
+// names only a collector host. otlptracehttp uses a URL path verbatim, so a
+// bare "http://collector:4318" would otherwise post to "/".
+func tracesEndpointURL(endpoint string) (string, error) {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("parse OTLP endpoint: %w", err)
+	}
+	if parsed.Path == "" || parsed.Path == "/" {
+		parsed.Path = "/v1/traces"
+	}
+	return parsed.String(), nil
 }
 
 // Configure installs the process tracer provider and returns it for deferred

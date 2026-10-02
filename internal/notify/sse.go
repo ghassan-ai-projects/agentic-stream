@@ -2,15 +2,10 @@ package notify
 
 import (
 	"crypto/subtle"
-	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -67,14 +62,73 @@ func NewSSEHandler(cfg SSEConfig) http.Handler {
 }
 
 func serveSSE(w http.ResponseWriter, r *http.Request, cfg SSEConfig) {
+	stream, ok := admitSubscriber(w, r, cfg)
+	if !ok {
+		return
+	}
+	// Prime the stream before committing headers so an expired cursor returns a
+	// normal problem response and can force the client's audited resnapshot.
+	page, err := stream.readPage()
+	if err != nil {
+		writeStreamError(w, err)
+		return
+	}
+	if err := stream.beginResponse(); err != nil {
+		return
+	}
+	if err := stream.deliverPage(page); err != nil {
+		return
+	}
+	stream.followNotifications()
+}
+
+// sseStream is one subscriber's notification stream.
+type sseStream struct {
+	w        http.ResponseWriter
+	flusher  http.Flusher
+	r        *http.Request
+	cfg      SSEConfig
+	tenantID string
+	cursor   int64
+	seen     map[string]struct{}
+}
+
+// admitSubscriber requires a GET from an authorized subscriber for a known
+// tenant with a valid resume cursor, answering with a problem otherwise.
+func admitSubscriber(w http.ResponseWriter, r *http.Request, cfg SSEConfig) (*sseStream, bool) {
 	if r.Method != http.MethodGet {
 		writeSSEProblem(w, http.StatusMethodNotAllowed, "method_not_allowed", "notification streams require GET")
-		return
+		return nil, false
 	}
 	if cfg.DB == nil {
 		writeSSEProblem(w, http.StatusServiceUnavailable, "runtime_not_ready", "notification store is not configured")
-		return
+		return nil, false
 	}
+	tenantID := subscriberTenant(r, cfg)
+	if strings.TrimSpace(tenantID) == "" {
+		writeSSEProblem(w, http.StatusBadRequest, "tenant_required", "tenant is required")
+		return nil, false
+	}
+	if cfg.Authorize != nil && !cfg.Authorize(r, "") {
+		writeSSEProblem(w, http.StatusUnauthorized, "subscriber_unauthorized", "subscriber credential is not authorized")
+		return nil, false
+	}
+	cursor, err := requestCursor(r)
+	if err != nil {
+		writeSSEProblem(w, http.StatusBadRequest, "invalid_cursor", err.Error())
+		return nil, false
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeSSEProblem(w, http.StatusInternalServerError, "stream_unsupported", "response writer does not support streaming")
+		return nil, false
+	}
+	return &sseStream{w: w, flusher: flusher, r: r, cfg: cfg, tenantID: tenantID, cursor: cursor, seen: make(map[string]struct{}, cfg.PageSize)}, true
+}
+
+// subscriberTenant is the configured tenant, then the request's derived
+// tenant, then the tenant query parameter.
+func subscriberTenant(r *http.Request, cfg SSEConfig) string {
 	tenantID := cfg.TenantID
 	if cfg.TenantFromRequest != nil {
 		tenantID = cfg.TenantFromRequest(r)
@@ -82,179 +136,61 @@ func serveSSE(w http.ResponseWriter, r *http.Request, cfg SSEConfig) {
 	if tenantID == "" {
 		tenantID = r.URL.Query().Get("tenant")
 	}
-	if strings.TrimSpace(tenantID) == "" {
-		writeSSEProblem(w, http.StatusBadRequest, "tenant_required", "tenant is required")
-		return
-	}
-	if cfg.Authorize != nil && !cfg.Authorize(r, "") {
-		writeSSEProblem(w, http.StatusUnauthorized, "subscriber_unauthorized", "subscriber credential is not authorized")
-		return
-	}
-	cursor, err := requestCursor(r)
-	if err != nil {
-		writeSSEProblem(w, http.StatusBadRequest, "invalid_cursor", err.Error())
-		return
-	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeSSEProblem(w, http.StatusInternalServerError, "stream_unsupported", "response writer does not support streaming")
-		return
-	}
-	// Prime the stream before committing headers so an expired cursor returns a
-	// normal problem response and can force the client's audited resnapshot.
-	page, readErr := ReadPage(r.Context(), cfg.DB, tenantID, cursor, cfg.PageSize, cfg.MaxLag, cfg.Now().UTC())
-	if readErr != nil {
-		writeStreamError(w, readErr)
-		return
-	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-	if err := writeComment(w, "connected"); err != nil {
-		return
-	}
-	flusher.Flush()
+	return tenantID
+}
 
-	seen := make(map[string]struct{}, cfg.PageSize)
-	if err := writePage(w, flusher, r, cfg, page, &cursor, seen); err != nil {
-		return
+func (s *sseStream) readPage() (Page, error) {
+	return ReadPage(s.r.Context(), s.cfg.DB, s.tenantID, s.cursor, s.cfg.PageSize, s.cfg.MaxLag, s.cfg.Now().UTC())
+}
+
+// beginResponse commits the event-stream headers and a connected comment.
+func (s *sseStream) beginResponse() error {
+	s.w.Header().Set("Content-Type", "text/event-stream")
+	s.w.Header().Set("Cache-Control", "no-cache")
+	s.w.Header().Set("Connection", "keep-alive")
+	s.w.Header().Set("X-Accel-Buffering", "no")
+	s.w.WriteHeader(http.StatusOK)
+	if err := writeComment(s.w, "connected"); err != nil {
+		return err
 	}
-	poll := time.NewTicker(cfg.PollInterval)
+	s.flusher.Flush()
+	return nil
+}
+
+func (s *sseStream) deliverPage(page Page) error {
+	return writePage(s.w, s.flusher, s.r, s.cfg, page, &s.cursor, s.seen)
+}
+
+// followNotifications polls for new pages and keeps the connection alive until the
+// subscriber leaves or a read fails, which ends the stream with a control
+// event.
+func (s *sseStream) followNotifications() {
+	poll := time.NewTicker(s.cfg.PollInterval)
 	defer poll.Stop()
-	idle := time.NewTicker(cfg.IdleInterval)
+	idle := time.NewTicker(s.cfg.IdleInterval)
 	defer idle.Stop()
 	for {
 		select {
-		case <-r.Context().Done():
+		case <-s.r.Context().Done():
 			return
 		case <-idle.C:
-			if err := writeComment(w, "idle"); err != nil {
+			if err := writeComment(s.w, "idle"); err != nil {
 				return
 			}
-			flusher.Flush()
+			s.flusher.Flush()
 		case <-poll.C:
-			page, readErr := ReadPage(r.Context(), cfg.DB, tenantID, cursor, cfg.PageSize, cfg.MaxLag, cfg.Now().UTC())
-			if readErr != nil {
-				_ = writeControl(w, flusher, "stream_error", map[string]any{"code": streamErrorCode(readErr), "detail": readErr.Error()})
-				return
-			}
-			if err := writePage(w, flusher, r, cfg, page, &cursor, seen); err != nil {
+			if err := s.pollOnce(); err != nil {
 				return
 			}
 		}
 	}
 }
 
-func requestCursor(r *http.Request) (int64, error) {
-	raw := r.Header.Get("Last-Event-ID")
-	if raw == "" {
-		raw = r.URL.Query().Get("cursor")
-	}
-	if raw == "" {
-		return 0, nil
-	}
-	cursor, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || cursor < 0 {
-		return 0, fmt.Errorf("cursor must be a non-negative integer")
-	}
-	return cursor, nil
-}
-
-func writePage(w http.ResponseWriter, flusher http.Flusher, r *http.Request, cfg SSEConfig, page Page, cursor *int64, seen map[string]struct{}) error {
-	for _, record := range page.Records {
-		*cursor = record.Cursor
-		key := record.Event.Source + "\x00" + record.Event.ID
-		if _, duplicate := seen[key]; duplicate {
-			continue
-		}
-		if len(seen) >= cfg.PageSize*4 {
-			clear(seen)
-		}
-		seen[key] = struct{}{}
-		if !authorizedEvent(cfg, r, record.Event.Type) {
-			continue
-		}
-		if err := writeEvent(w, flusher, cfg.RetryAfter, record); err != nil {
-			return err
-		}
-	}
-	if page.NextCursor > *cursor {
-		*cursor = page.NextCursor
-	}
-	return nil
-}
-
-func authorizedEvent(cfg SSEConfig, r *http.Request, eventType string) bool {
-	if len(cfg.AllowedEventTypes) > 0 {
-		if _, ok := cfg.AllowedEventTypes[eventType]; !ok {
-			return false
-		}
-	}
-	return cfg.Authorize == nil || cfg.Authorize(r, eventType)
-}
-
-func writeEvent(w http.ResponseWriter, flusher http.Flusher, retry time.Duration, record Record) error {
-	data, err := canonicaljson.Marshal(record.Event)
+func (s *sseStream) pollOnce() error {
+	page, err := s.readPage()
 	if err != nil {
-		return fmt.Errorf("marshal SSE CloudEvent: %w", err)
+		_ = writeControl(s.w, s.flusher, "stream_error", map[string]any{"code": streamErrorCode(err), "detail": err.Error()})
+		return err
 	}
-	if _, err := fmt.Fprintf(w, "id: %d\nevent: %s\nretry: %d\ndata: %s\n\n", record.Cursor, record.Event.Type, retry.Milliseconds(), data); err != nil {
-		return fmt.Errorf("write SSE event: %w", err)
-	}
-	flusher.Flush()
-	return nil
-}
-
-func writeControl(w http.ResponseWriter, flusher http.Flusher, eventType string, value map[string]any) error {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return fmt.Errorf("marshal SSE control event: %w", err)
-	}
-	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data); err != nil {
-		return fmt.Errorf("write SSE control event: %w", err)
-	}
-	flusher.Flush()
-	return nil
-}
-
-func writeComment(w http.ResponseWriter, value string) error {
-	_, err := fmt.Fprintf(w, ": %s\n\n", value)
-	if err != nil {
-		return fmt.Errorf("write SSE comment: %w", err)
-	}
-	return nil
-}
-
-func writeStreamError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, ErrCursorExpired):
-		writeSSEProblem(w, http.StatusConflict, "cursor_expired", "cursor is outside retained notification history; perform an audited resnapshot")
-	case errors.Is(err, ErrSubscriberTooSlow):
-		writeSSEProblem(w, http.StatusTooManyRequests, "subscriber_too_slow", "subscriber lag exceeded the bounded backlog")
-	case errors.Is(err, ErrNotificationPoison):
-		writeSSEProblem(w, http.StatusServiceUnavailable, "notification_retry", "a notification failed validation and will be retried")
-	default:
-		writeSSEProblem(w, http.StatusInternalServerError, "notification_stream_failed", "notification stream failed")
-	}
-}
-
-func streamErrorCode(err error) string {
-	if errors.Is(err, ErrCursorExpired) {
-		return "cursor_expired"
-	}
-	if errors.Is(err, ErrSubscriberTooSlow) {
-		return "subscriber_too_slow"
-	}
-	if errors.Is(err, ErrNotificationPoison) {
-		return "notification_retry"
-	}
-	return "notification_stream_failed"
-}
-
-func writeSSEProblem(w http.ResponseWriter, status int, code, detail string) {
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{"type": "urn:agentic-stream:problem:" + code, "title": http.StatusText(status), "status": status, "code": code, "detail": detail})
+	return s.deliverPage(page)
 }

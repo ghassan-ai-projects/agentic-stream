@@ -41,28 +41,37 @@ func ValidateEffectProfile(config EffectProfileConfig) error {
 		}
 		return nil
 	case EffectProfileEmulator:
-		if config.ReplaySource || config.Shadow {
-			return fmt.Errorf("emulator effect profile cannot be combined with replay or shadow")
-		}
-		if config.GatewayLink == nil {
-			return fmt.Errorf("emulator effect profile requires a gateway link")
-		}
-		return nil
+		return requireLiveGateway(profile, config)
 	case EffectProfilePhysical:
-		if config.ReplaySource || config.Shadow {
-			return fmt.Errorf("physical effect profile cannot be combined with replay or shadow")
+		if err := requireLiveGateway(profile, config); err != nil {
+			return err
 		}
-		if config.GatewayLink == nil {
-			return fmt.Errorf("physical effect profile requires a gateway link")
-		}
-		if !config.LiveActuation {
-			return fmt.Errorf("physical effect profile requires explicit live actuation")
-		}
-		if !config.OwnerAuthorized {
-			return fmt.Errorf("physical effect profile requires owner authorization")
-		}
-		return nil
+		return requireActuationConsent(config)
 	default:
 		return fmt.Errorf("unsupported effect profile %q", profile)
 	}
+}
+
+// requireLiveGateway keeps device profiles away from replay and shadow
+// sources and requires a gateway link.
+func requireLiveGateway(profile EffectProfile, config EffectProfileConfig) error {
+	if config.ReplaySource || config.Shadow {
+		return fmt.Errorf("%s effect profile cannot be combined with replay or shadow", profile)
+	}
+	if config.GatewayLink == nil {
+		return fmt.Errorf("%s effect profile requires a gateway link", profile)
+	}
+	return nil
+}
+
+// requireActuationConsent requires both explicit live actuation and owner
+// authorization for physical effects.
+func requireActuationConsent(config EffectProfileConfig) error {
+	if !config.LiveActuation {
+		return fmt.Errorf("physical effect profile requires explicit live actuation")
+	}
+	if !config.OwnerAuthorized {
+		return fmt.Errorf("physical effect profile requires owner authorization")
+	}
+	return nil
 }

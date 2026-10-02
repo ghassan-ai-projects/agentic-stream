@@ -27,7 +27,7 @@ import (
 // UDSTransport's framing against the real contract without a cross-repo binary.
 func contractPeer(t *testing.T, conn net.Conn) {
 	t.Helper()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if !writeContractFrame(t, conn, contractsv1.ConformanceValidFrame("state")) {
 		return
 	}
@@ -77,13 +77,13 @@ func TestUDSTransportSpeaksTheContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	socket := filepath.Join(dir, "d.sock")
-	listener, err := net.Listen("unix", socket)
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "unix", socket)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	go func() {
 		conn, acceptErr := listener.Accept()
 		if acceptErr != nil {
@@ -98,7 +98,7 @@ func TestUDSTransportSpeaksTheContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer transport.Close()
+	defer func() { _ = transport.Close() }()
 
 	// Opening handshake: the device emits state on connect, read via Receive.
 	stateFrame, err := transport.Receive(ctx)

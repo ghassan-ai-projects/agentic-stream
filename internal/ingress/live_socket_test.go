@@ -102,7 +102,7 @@ func TestLiveUDSSourceQuarantinesBoundedPrefixForOversizedLine(t *testing.T) {
 	server, client := net.Pipe()
 	defer func() { _ = server.Close() }()
 	go func() {
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 		_, _ = client.Write(append(append([]byte(nil), prefix...), 'y'))
 	}()
 	lines := make(chan liveLine, 1)

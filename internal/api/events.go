@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 
@@ -15,8 +16,8 @@ import (
 // P8: when control is non-nil the handler exposes /control/drain and
 // /control/kill for the CURRENT policy epoch. A killed epoch refuses every
 // later decision; a drained epoch refuses only new admission. The endpoints
-// require the bearer token in `controlToken` (a header or query value) — an
-// operator action, not an anonymous kill switch.
+// require the Authorization header to equal `controlToken` exactly, compared
+// in constant time — an operator action, not an anonymous kill switch.
 func NewRuntimeHandler(readiness Readiness, db *storage.DB, events notify.SSEConfig, metrics http.Handler, control *storage.EpochControl, epoch string, controlToken string) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", NewHealthHandler(readiness))
@@ -50,7 +51,8 @@ func (h *controlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "epoch control is not configured", http.StatusServiceUnavailable)
 		return
 	}
-	if h.token == "" || h.token != r.Header.Get("Authorization") {
+	provided := r.Header.Get("Authorization")
+	if h.token == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(h.token)) != 1 {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -68,7 +70,11 @@ func (h *controlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	state, _ := h.control.State(r.Context(), h.epoch)
+	state, err := h.control.State(r.Context(), h.epoch)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"epoch": h.epoch, "state": state})
 }

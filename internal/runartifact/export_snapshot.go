@@ -3,7 +3,6 @@ package runartifact
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -26,14 +25,27 @@ func snapshot(ctx context.Context, db *storage.DB, input Manifest) (map[string][
 	if err != nil {
 		return nil, fmt.Errorf("enrich run manifest: %w", err)
 	}
-	report, err := soak.ComputeTenantTx(ctx, tx, manifest.TenantID)
-	if err != nil {
-		return nil, fmt.Errorf("compute run soak report: %w", err)
-	}
-
 	files, err := exportLedgerFiles(ctx, tx, manifest.TenantID)
 	if err != nil {
 		return nil, err
+	}
+	if err := addReportFiles(ctx, tx, manifest, files); err != nil {
+		return nil, err
+	}
+	if err := addBoundDefinitions(ctx, tx, manifest, files); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit run artifact snapshot: %w", err)
+	}
+	return files, nil
+}
+
+// addReportFiles adds the manifest, the soak metrics, and the verdict.
+func addReportFiles(ctx context.Context, tx *sql.Tx, manifest Manifest, files map[string][]byte) error {
+	report, err := soak.ComputeTenantTx(ctx, tx, manifest.TenantID)
+	if err != nil {
+		return fmt.Errorf("compute run soak report: %w", err)
 	}
 	for name, value := range map[string]any{
 		"manifest.json": manifest,
@@ -42,28 +54,30 @@ func snapshot(ctx context.Context, db *storage.DB, input Manifest) (map[string][
 	} {
 		encoded, err := canonicalJSONFile(value)
 		if err != nil {
-			return nil, fmt.Errorf("encode %s: %w", name, err)
+			return fmt.Errorf("encode %s: %w", name, err)
 		}
 		files[name] = encoded
 	}
+	return nil
+}
 
+// addBoundDefinitions adds the canonical spec and policy and requires the
+// manifest to bind both.
+func addBoundDefinitions(ctx context.Context, tx *sql.Tx, manifest Manifest, files map[string][]byte) error {
 	spec, err := queryCanonicalSpec(ctx, tx, manifest.TenantID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	files["spec.canonical.json"] = spec
 	policyData, err := queryCanonicalPolicy(ctx, tx, manifest.TenantID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	files["policy.canonical.json"] = policyData
 	if err := verifyManifestBindings(manifest, spec, policyData); err != nil {
-		return nil, fmt.Errorf("verify manifest bindings: %w", err)
+		return fmt.Errorf("verify manifest bindings: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit run artifact snapshot: %w", err)
-	}
-	return files, nil
+	return nil
 }
 
 func exportLedgerFiles(ctx context.Context, tx *sql.Tx, tenantID string) (map[string][]byte, error) {
@@ -169,57 +183,6 @@ func enrichDeviceIdentity(ctx context.Context, tx *sql.Tx, manifest Manifest) (M
 		manifest.Device.CapabilityDigest, _ = state["capability_digest"].(string)
 	}
 	return manifest, nil
-}
-
-func queryJSONL(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]byte, error) {
-	rows, err := tx.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query artifact rows: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	columns, err := rows.Columns()
-	if err != nil {
-		return nil, fmt.Errorf("read artifact columns: %w", err)
-	}
-	var out []byte
-	for rows.Next() {
-		values := make([]any, len(columns))
-		pointers := make([]any, len(columns))
-		for i := range values {
-			pointers[i] = &values[i]
-		}
-		if err := rows.Scan(pointers...); err != nil {
-			return nil, fmt.Errorf("scan artifact row: %w", err)
-		}
-		document := make(map[string]any, len(columns))
-		for i, column := range columns {
-			document[column] = databaseValue(values[i])
-		}
-		line, err := canonicaljson.Marshal(document)
-		if err != nil {
-			return nil, fmt.Errorf("canonicalize artifact row: %w", err)
-		}
-		out = append(out, line...)
-		out = append(out, '\n')
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate artifact rows: %w", err)
-	}
-	return out, nil
-}
-
-func databaseValue(value any) any {
-	data, ok := value.([]byte)
-	if !ok {
-		return value
-	}
-	if json.Valid(data) {
-		var decoded any
-		if json.Unmarshal(data, &decoded) == nil {
-			return decoded
-		}
-	}
-	return base64.StdEncoding.EncodeToString(data)
 }
 
 func queryCanonicalSpec(ctx context.Context, tx *sql.Tx, tenantID string) ([]byte, error) {

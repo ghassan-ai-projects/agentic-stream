@@ -17,10 +17,10 @@ import (
 // devicePeer is an in-process device that speaks the wire contract over a UDS
 // with the digests this session expects, so NewEmulatorEffector can complete a
 // real handshake + governed command exchange without a cross-repo binary. It is
-// the same behaviour `streamsim device serve` provides.
+// the same behavior `streamsim device serve` provides.
 func devicePeer(t *testing.T, conn net.Conn, capabilityDigest string) {
 	t.Helper()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	write := func(doc map[string]any) bool {
 		frame, err := canonicaljson.Marshal(doc)
 		if err != nil {
@@ -78,13 +78,13 @@ func TestEmulatorEffectorDrivesDeviceOverUDS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	socket := filepath.Join(dir, "d.sock")
-	listener, err := net.Listen("unix", socket)
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "unix", socket)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	go func() {
 		conn, acceptErr := listener.Accept()
 		if acceptErr != nil {
@@ -115,7 +115,7 @@ func TestEmulatorEffectorDrivesDeviceOverUDS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open emulator effector: %v", err)
 	}
-	defer closeFn()
+	defer func() { _ = closeFn() }()
 
 	// A governed semantic command is materialized to a bounded device command,
 	// sent over the UDS, and accepted — verification pending until an independent

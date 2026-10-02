@@ -12,14 +12,14 @@ import (
 // BatchResult is one cell's comparator outcome: the request identity the
 // benchmark protocol assigns plus the executor's terminal outcome.
 type BatchResult struct {
-	CellID     string `json:"cell_id"`
-	Status     string `json:"status"`
-	AttemptID  string `json:"attempt_id,omitempty"`
-	Fence      int64  `json:"fence,omitempty"`
-	Decision   []byte `json:"decision_json,omitempty"`
+	CellID     string   `json:"cell_id"`
+	Status     string   `json:"status"`
+	AttemptID  string   `json:"attempt_id,omitempty"`
+	Fence      int64    `json:"fence,omitempty"`
+	Decision   []byte   `json:"decision_json,omitempty"`
 	Reasons    []string `json:"reasons,omitempty"`
-	Cost       uint64 `json:"cost_microunits,omitempty"`
-	DurationMS int64  `json:"duration_ms,omitempty"`
+	Cost       uint64   `json:"cost_microunits,omitempty"`
+	DurationMS int64    `json:"duration_ms,omitempty"`
 }
 
 // RunBatch drives the native executor over the benchmark cells. It is the Go

@@ -39,6 +39,7 @@ Start with these context files:
 - [.agents/context/architecture.md](.agents/context/architecture.md) for layout and dependency direction.
 - [.agents/context/testing.md](.agents/context/testing.md) for commands and testing bar.
 - [.agents/context/go-style.md](.agents/context/go-style.md) for coding conventions.
+- [.agents/context/quality-bar.md](.agents/context/quality-bar.md) for the enforced quality and modularity bar (lint, complexity, file size, coverage, layering).
 - [.agents/context/review-checklist.md](.agents/context/review-checklist.md) before handoff.
 
 Use the prompt files under `.agents/prompts/` when the task matches them.
@@ -134,8 +135,49 @@ See [.agents/context/testing.md](.agents/context/testing.md) for the testing and
 - Use table-driven tests with `t.Run()` and `t.Parallel()` where safe.
 - Use `t.Context()` in tests when appropriate.
 - Canonical JSON (RFC 8785) everywhere a digest is computed.
+- Keep the module path in `go.mod` only. Import statements name it in full
+  because Go requires a module-qualified import path; everywhere a command can
+  derive it, do so (`go list -m`). Do not add new string literals for it. The
+  unavoidable copies (protobuf `go_package`, pre-commit `goimports -local`,
+  telemetry instrumentation scope) are pinned by
+  `TestModulePathSingleSourceOfTruth` in `module_path_test.go`.
 
 See [.agents/context/go-style.md](.agents/context/go-style.md) for the repo-specific style rules.
+
+## Code Quality Expectations
+
+Code is written to be read top-down by the next reviewer. Every function in
+production code follows these rules (quality-bar rule Q7):
+
+- A function name states its intent.
+- A function is short and does one thing.
+- A function stays at one level of abstraction.
+- Public, top-level functions read like a small domain-specific language: a
+  short sequence of domain verbs over domain nouns.
+- Each function calls functions one level below it, and the code keeps
+  stepping down until the remaining operations are small and concrete (the
+  stepdown rule): entry point first, its steps below it.
+
+The linters enforce the mechanical floor (cognitive complexity ≤ 15, ≤ 50
+lines and 30 statements, nested-`if` ≤ 3, files under 300 lines); review
+enforces the rest. A refactor toward these rules never changes behavior, and
+it never adds abstraction layers without a current need. The full bar, with
+examples, is [.agents/context/quality-bar.md](.agents/context/quality-bar.md).
+
+Before accepting a refactoring round:
+
+- Read changed entry points aloud as domain steps. Move SQL, serialization,
+  transport framing, and loop bookkeeping into the step that owns them.
+- Place private steps below their first caller, splitting files by responsibility
+  when needed. Use names that explain the outcome; avoid numbered parts and
+  wrappers that merely rename another call.
+- Preserve public signatures, error precedence, identity and digest inputs,
+  ordering, clock reads, transaction boundaries, locks, cancellation, and effects.
+  Add regression tests for the boundaries touched by the extraction.
+- Review the diff against Q7 as well as the mechanical limits. Run focused tests
+  before each commit and the full gate before handoff. Keep any blocked check
+  explicit; passing lint alone does not demonstrate clean functions.
+
 
 ## Forbidden Changes
 
@@ -169,6 +211,7 @@ A task is done when:
 - the change is the simplest correct one that fits the documented design
 - production-code changes include meaningful tests, and modified packages do not show 0% coverage
 - behavior changes respect the ten product invariants and the deterministic-replay contract
+- the change keeps the [quality and modularity bar](.agents/context/quality-bar.md); thresholds are never loosened to get a diff green
 - `make ci-check` passes, unless the change is documentation-only and a narrower check is clearly sufficient
 - documentation is updated when behavior, commands, or expectations change
 - secrets are not added, security-sensitive changes are called out, and dependency or workflow permission changes receive extra review

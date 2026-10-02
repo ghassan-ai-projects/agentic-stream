@@ -3,14 +3,13 @@
 package evidence
 
 import (
+	"cmp"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -64,6 +63,21 @@ func (i *Issuer) Issue(scope Scope) ([]byte, error) {
 	if i.Now != nil {
 		now = i.Now().UTC()
 	}
+	scope, err := i.completeScope(scope, now)
+	if err != nil {
+		return nil, err
+	}
+	key, ok := i.Keys[scope.KeyID]
+	if !ok || len(key) < 32 {
+		return nil, fmt.Errorf("signing key %q is unavailable or too short", scope.KeyID)
+	}
+	return signToken(scope, key)
+}
+
+// completeScope fills the scope's defaults (issue time, validity window,
+// token ID, issuer, audience) and requires a complete scope whose lifetime is
+// within the maximum and not yet over.
+func (i *Issuer) completeScope(scope Scope, now time.Time) (Scope, error) {
 	if scope.IssuedAt.IsZero() {
 		scope.IssuedAt = now
 	}
@@ -71,7 +85,7 @@ func (i *Issuer) Issue(scope Scope) ([]byte, error) {
 		scope.NotBefore = now
 	}
 	if scope.Traceparent == "" {
-		return nil, fmt.Errorf("traceparent is required")
+		return Scope{}, fmt.Errorf("traceparent is required")
 	}
 	maxTTL := i.MaxTTL
 	if maxTTL == 0 {
@@ -81,41 +95,31 @@ func (i *Issuer) Issue(scope Scope) ([]byte, error) {
 		// The token is an episode-attempt capability, not a durable credential.
 		scope.ExpiresAt = scope.IssuedAt.Add(maxTTL)
 	}
-	id, err := tokenID(scope.TokenID)
-	if err != nil {
-		return nil, err
+	var err error
+	if scope.TokenID, err = tokenID(scope.TokenID); err != nil {
+		return Scope{}, err
 	}
-	scope.TokenID = id
 	if err := validateScope(scope); err != nil {
-		return nil, err
+		return Scope{}, err
 	}
-	key, ok := i.Keys[scope.KeyID]
-	if !ok || len(key) < 32 {
-		return nil, fmt.Errorf("signing key %q is unavailable or too short", scope.KeyID)
-	}
-	if scope.Issuer == "" {
-		scope.Issuer = i.Issuer
-	}
-	if scope.Audience == "" {
-		scope.Audience = i.Audience
-	}
+	scope.Issuer = cmp.Or(scope.Issuer, i.Issuer)
+	scope.Audience = cmp.Or(scope.Audience, i.Audience)
 	if scope.Issuer == "" || scope.Audience == "" {
-		return nil, fmt.Errorf("issuer and audience are required")
+		return Scope{}, fmt.Errorf("issuer and audience are required")
 	}
 	if scope.ExpiresAt.Sub(scope.IssuedAt) > maxTTL {
-		return nil, fmt.Errorf("capability token lifetime exceeds maximum")
+		return Scope{}, fmt.Errorf("capability token lifetime exceeds maximum")
 	}
 	if !scope.ExpiresAt.After(now) {
-		return nil, fmt.Errorf("capability token is already expired")
+		return Scope{}, fmt.Errorf("capability token is already expired")
 	}
-	payload, err := json.Marshal(tokenPayload{
-		Issuer: scope.Issuer, Audience: scope.Audience, TokenID: id, IssuedAt: scope.IssuedAt.UTC().Format(time.RFC3339Nano), EpisodeID: scope.EpisodeID,
-		AttemptID: scope.AttemptID, Fence: scope.Fence, TenantID: scope.TenantID,
-		SituationID: scope.SituationID, SituationVersion: scope.SituationVersion, EntityID: scope.EntityID, Tools: append([]string(nil), scope.Tools...),
-		NotBefore: scope.NotBefore.UTC().Format(time.RFC3339Nano), ExpiresAt: scope.ExpiresAt.UTC().Format(time.RFC3339Nano),
-		MaxRows: scope.MaxRows, MaxBytes: scope.MaxBytes,
-		From: scope.From.UTC().Format(time.RFC3339Nano), Until: scope.Until.UTC().Format(time.RFC3339Nano), Traceparent: scope.Traceparent, Tracestate: scope.Tracestate, RuntimeEpoch: scope.RuntimeEpoch,
-	})
+	return scope, nil
+}
+
+// signToken encodes the scope's claims and signs version, key ID, and claims
+// with HMAC-SHA256.
+func signToken(scope Scope, key []byte) ([]byte, error) {
+	payload, err := json.Marshal(newTokenPayload(scope))
 	if err != nil {
 		return nil, fmt.Errorf("marshal capability payload: %w", err)
 	}
@@ -126,80 +130,43 @@ func (i *Issuer) Issue(scope Scope) ([]byte, error) {
 	return []byte(tokenVersion + "." + scope.KeyID + "." + encoded + "." + signature), nil
 }
 
-// Verifier validates token integrity, issuer/audience, time bounds, and the
-// exact worker identity scope. It never returns a usable scope for a bad token.
-type Verifier struct {
-	Issuer    string
-	Audience  string
-	Keys      map[string][]byte
-	Now       func() time.Time
-	MaxTTL    time.Duration
-	ClockSkew time.Duration
-}
-
-// Verify checks a token and returns its claims.
-func (v *Verifier) Verify(token []byte) (Scope, error) {
-	parts := strings.Split(string(token), ".")
-	if len(parts) != 4 || parts[0] != tokenVersion || parts[1] == "" {
-		return Scope{}, fmt.Errorf("invalid capability token format")
+func newTokenPayload(scope Scope) tokenPayload {
+	return tokenPayload{
+		Issuer: scope.Issuer, Audience: scope.Audience, TokenID: scope.TokenID, IssuedAt: scope.IssuedAt.UTC().Format(time.RFC3339Nano), EpisodeID: scope.EpisodeID,
+		AttemptID: scope.AttemptID, Fence: scope.Fence, TenantID: scope.TenantID,
+		SituationID: scope.SituationID, SituationVersion: scope.SituationVersion, EntityID: scope.EntityID, Tools: append([]string(nil), scope.Tools...),
+		NotBefore: scope.NotBefore.UTC().Format(time.RFC3339Nano), ExpiresAt: scope.ExpiresAt.UTC().Format(time.RFC3339Nano),
+		MaxRows: scope.MaxRows, MaxBytes: scope.MaxBytes,
+		From: scope.From.UTC().Format(time.RFC3339Nano), Until: scope.Until.UTC().Format(time.RFC3339Nano), Traceparent: scope.Traceparent, Tracestate: scope.Tracestate, RuntimeEpoch: scope.RuntimeEpoch,
 	}
-	key, ok := v.Keys[parts[1]]
-	if !ok || len(key) < 32 {
-		return Scope{}, fmt.Errorf("unknown capability key")
-	}
-	mac := hmac.New(sha256.New, key)
-	_, _ = mac.Write([]byte(strings.Join(parts[:3], ".")))
-	want, err := base64.RawURLEncoding.DecodeString(parts[3])
-	if err != nil || len(want) != sha256.Size || subtle.ConstantTimeCompare(mac.Sum(nil), want) != 1 {
-		return Scope{}, fmt.Errorf("invalid capability token signature")
-	}
-	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil {
-		return Scope{}, fmt.Errorf("decode capability payload: %w", err)
-	}
-	var payload tokenPayload
-	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-		return Scope{}, fmt.Errorf("decode capability claims: %w", err)
-	}
-	scope, err := payload.scope(parts[1])
-	if err != nil {
-		return Scope{}, err
-	}
-	if scope.Issuer != v.Issuer || scope.Audience != v.Audience {
-		return Scope{}, fmt.Errorf("capability issuer or audience mismatch")
-	}
-	now := time.Now().UTC()
-	if v.Now != nil {
-		now = v.Now().UTC()
-	}
-	maxTTL := v.MaxTTL
-	if maxTTL == 0 {
-		maxTTL = defaultCapabilityTTL
-	}
-	if scope.ExpiresAt.Sub(scope.IssuedAt) > maxTTL {
-		return Scope{}, fmt.Errorf("capability token lifetime exceeds maximum")
-	}
-	skew := v.ClockSkew
-	if skew == 0 {
-		skew = time.Second
-	}
-	if now.Add(skew).Before(scope.NotBefore) || !now.Before(scope.ExpiresAt) || scope.IssuedAt.After(now.Add(skew)) {
-		return Scope{}, fmt.Errorf("capability token is outside its validity window")
-	}
-	return scope, nil
 }
 
 func validateScope(scope Scope) error {
-	if scope.KeyID == "" || scope.EpisodeID == "" || scope.AttemptID == "" || scope.TenantID == "" || scope.SituationID == "" || scope.EntityID == "" || scope.Fence <= 0 || len(scope.Tools) == 0 || scope.MaxRows == 0 || scope.MaxBytes == 0 {
+	if !scope.identityComplete() {
 		return fmt.Errorf("capability scope is incomplete")
 	}
-	if scope.ExpiresAt.IsZero() || scope.NotBefore.IsZero() || scope.IssuedAt.IsZero() || scope.IssuedAt.After(scope.NotBefore) || !scope.NotBefore.Before(scope.ExpiresAt) {
+	if !scope.validityWindowValid() {
 		return fmt.Errorf("capability validity window is invalid")
 	}
-	if scope.Until.IsZero() || scope.From.IsZero() || scope.Until.Before(scope.From) || scope.Traceparent == "" || scope.SituationVersion <= 0 || scope.TokenID == "" || scope.RuntimeEpoch == "" {
+	if !scope.evidenceRangeValid() {
 		return fmt.Errorf("capability evidence range is invalid")
 	}
 	return nil
+}
+
+func (s Scope) identityComplete() bool {
+	return s.KeyID != "" && s.EpisodeID != "" && s.AttemptID != "" && s.TenantID != "" && s.SituationID != "" &&
+		s.EntityID != "" && s.Fence > 0 && len(s.Tools) > 0 && s.MaxRows > 0 && s.MaxBytes > 0
+}
+
+func (s Scope) validityWindowValid() bool {
+	return !s.ExpiresAt.IsZero() && !s.NotBefore.IsZero() && !s.IssuedAt.IsZero() &&
+		!s.IssuedAt.After(s.NotBefore) && s.NotBefore.Before(s.ExpiresAt)
+}
+
+func (s Scope) evidenceRangeValid() bool {
+	return !s.Until.IsZero() && !s.From.IsZero() && !s.Until.Before(s.From) && s.Traceparent != "" &&
+		s.SituationVersion > 0 && s.TokenID != "" && s.RuntimeEpoch != ""
 }
 
 type tokenPayload struct {

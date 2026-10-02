@@ -167,3 +167,37 @@ func sseTestEvent(id string, at time.Time) contractsv1.CloudEvent {
 	event.EnvelopeDigest = digest
 	return event
 }
+
+func TestSSEAdmissionPreservesProblemPrecedence(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	db, err := storage.Open(ctx, t.TempDir()+"/admission.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	for _, tc := range []struct {
+		name, method, tenant, cursor, code string
+		store                              *storage.DB
+		authorized                         bool
+		status                             int
+	}{
+		{"method before store", http.MethodPost, "", "-1", "method_not_allowed", nil, false, 405},
+		{"store before tenant", http.MethodGet, "", "-1", "runtime_not_ready", nil, false, 503},
+		{"tenant before authorization", http.MethodGet, "", "-1", "tenant_required", db, false, 400},
+		{"authorization before cursor", http.MethodGet, "tenant", "-1", "subscriber_unauthorized", db, false, 401},
+		{"invalid cursor", http.MethodGet, "tenant", "-1", "invalid_cursor", db, true, 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			handler := notify.NewSSEHandler(notify.SSEConfig{DB: tc.store, TenantID: tc.tenant, Authorize: func(*http.Request, string) bool { return tc.authorized }})
+			request := httptest.NewRequestWithContext(t.Context(), tc.method, "/v1/events", nil)
+			request.Header.Set("Last-Event-ID", tc.cursor)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != tc.status || !strings.Contains(response.Body.String(), tc.code) || response.Header().Get("Content-Type") != "application/problem+json" {
+				t.Fatalf("response=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
+			}
+		})
+	}
+}

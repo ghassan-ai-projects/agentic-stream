@@ -318,3 +318,68 @@ migration `003` are authoritative.
 migration changes the schema. Consumers inspecting the design contract see an
 achievable current state and cannot accidentally reintroduce the pre-fencing
 episode status model.
+
+## ADR-015 (proposed): External ingress bridges over an acknowledged socket
+
+**Status.** Proposed 2026-10-02 for review; not accepted. No implementation is
+authorized by this entry. Research basis:
+[`docs/research/next-level-2026-10/06-OBSERVABILITY-INGRESS.md`](../research/next-level-2026-10/06-OBSERVABILITY-INGRESS.md).
+
+**Context.** Pilots need evidence from existing systems (Prometheus and
+Alertmanager, Kubernetes, log backends, Grafana alerting, and later MQTT or
+Kafka). ADR-004 and ADR-012 keep the core single-node and broker-free, and
+HTTP/broker ingress is deferred. The live Unix-socket source validates and
+quarantines envelopes but gives the producer no per-event commit
+acknowledgement, so a producer cannot know when it may discard its copy.
+
+**Decision.** Source-specific ingestion lives in separate bridge processes
+outside the runtime module (for example an OpenTelemetry Collector pipeline
+plus a small normalizing bridge). Bridges emit normalized envelopes to the live
+socket. The runtime adds one generic contract: a durable admission
+acknowledgement (per event or per batch, keyed by event identity) returned only
+after the event-log commit, plus an admission query for recovery. Bridges map
+source records to stable event identities, entities, and event times; they emit
+signals and structured derivatives, never raw log text. Episodes obtain detail
+through allow-listed, time-bounded, recorded evidence tools rather than through
+streamed raw data.
+
+**Consequences.** The core gains no HTTP, OTLP, Kafka, or MQTT listener and no
+new top-level dependency. Each bridge is independently versioned and tested,
+and its mapping configuration is digested so replay can name it. Ingress
+semantics (dedup, quarantine, watermarks) stay in one place. Bridges own spools
+and must delete only after acknowledgement. New event types are registry data.
+Accepting this ADR requires updating the limitations, roadmap, and
+release-status pages in the same change.
+
+## ADR-016 (proposed): Tamoz is the sole production reasoner
+
+**Status.** Proposed 2026-10-02 from an owner direction ("the brain should
+always be Tamoz"); not accepted. It amends ADR-003 and ADR-010 if accepted.
+Research basis: [`docs/research/next-level-2026-10/`](../research/next-level-2026-10/README.md)
+(Track T).
+
+**Context.** Integration rounds proved Tamoz as the episode reasoner across the
+worker protocol, approval relay, and outcome feedback. ADR-003 restricts v1
+workers to Go, and ADR-010 treats agent frameworks as interchangeable adapters
+with the native direct-model executor as the compatibility baseline. Tamoz's
+EpisodeWorker is a Ruby process, so the current text does not admit the
+intended production topology, and worker conformance runs only against Go
+implementations.
+
+**Decision.** Agentic Stream owns time and authority; Tamoz owns judgment. In
+production, every admitted episode (fast, deep, and reconsider) is executed by
+Tamoz over the versioned gRPC worker protocol. Tamoz is admitted as the single
+non-Go worker, qualified by the same conformance suite run against the real,
+pinned Tamoz worker in CI. The native deterministic executor remains as the
+no-model baseline for tests, replay, and Class C comparisons; the
+OpenAI-compatible native adapter is not a production reasoner. No MCP, agent
+framework, or other process may submit Decisions or Intents. When Tamoz is
+unavailable, episodes fail closed and deterministic processing continues.
+
+**Consequences.** ADR-003's "Go-only" wording and its conformance consequence
+must be amended to name Tamoz explicitly. The worker protocol becomes a
+two-repository contract with cross-language conformance gates and pinned
+versions on both sides. Invariants are unchanged: Tamoz proposes typed Intents
+and never executes effects, and policy revalidates every Intent. Tamoz outages
+become a documented degraded mode instead of a reason to fall back to another
+model path.

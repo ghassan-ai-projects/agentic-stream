@@ -4,8 +4,9 @@
 # Install once:  pre-commit install
 # Run manually:  pre-commit run --all-files
 #
-# The `-local` flag below groups your own imports first.
-# Module path: github.com/ghassan-ai-projects/agentic-stream
+# The `-local` flag below groups this module's imports first. Its value must
+# match the module path declared in go.mod. pre-commit cannot interpolate it,
+# so TestModulePathSingleSourceOfTruth (module_path_test.go) pins the copy.
 # ---------------------------------------------------------------------------
 
 repos:

@@ -109,37 +109,44 @@ func (db *DB) Migrate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("load migrations: %w", err)
 	}
-
-	var appliedVersions map[int]struct{}
-	if hasMigrationsTable(ctx, db) {
-		appliedVersions = make(map[int]struct{})
-		rows, err := db.QueryContext(ctx, "SELECT version FROM schema_migrations")
-		if err != nil {
-			return fmt.Errorf("list applied migrations: %w", err)
-		}
-		defer func() { _ = rows.Close() }()
-		for rows.Next() {
-			var v int
-			if err := rows.Scan(&v); err != nil {
-				return fmt.Errorf("scan migration version: %w", err)
-			}
-			appliedVersions[v] = struct{}{}
-		}
-		if err := rows.Err(); err != nil {
-			return fmt.Errorf("iterate migrations: %w", err)
-		}
+	applied, err := db.appliedMigrationVersions(ctx)
+	if err != nil {
+		return err
 	}
-
 	for _, m := range migrationList {
-		if _, ok := appliedVersions[m.Version]; ok {
+		if _, ok := applied[m.Version]; ok {
 			continue
 		}
 		if err := db.runMigration(ctx, m); err != nil {
 			return fmt.Errorf("migration %d %s: %w", m.Version, m.Name, err)
 		}
 	}
-
 	return nil
+}
+
+// appliedMigrationVersions returns the recorded migration versions; a new
+// database has none.
+func (db *DB) appliedMigrationVersions(ctx context.Context) (map[int]struct{}, error) {
+	applied := make(map[int]struct{})
+	if !hasMigrationsTable(ctx, db) {
+		return applied, nil
+	}
+	rows, err := db.QueryContext(ctx, "SELECT version FROM schema_migrations")
+	if err != nil {
+		return nil, fmt.Errorf("list applied migrations: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var v int
+		if err := rows.Scan(&v); err != nil {
+			return nil, fmt.Errorf("scan migration version: %w", err)
+		}
+		applied[v] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate migrations: %w", err)
+	}
+	return applied, nil
 }
 
 func hasMigrationsTable(ctx context.Context, db *DB) bool {

@@ -114,9 +114,9 @@ func p8VersionedSpec(t *testing.T, name, version, digest string) *spec.CompiledS
 		Digest:        digest,
 		Inputs: []spec.Input{{Name: "level", EventType: "test.observed", SchemaVersion: "1.0",
 			PartitionKey: "entity.id", EntityType: "thing", Classification: "internal"}},
-		Time:    spec.TimePolicy{MaxOutOfOrderness: "1m"},
+		Time: spec.TimePolicy{MaxOutOfOrderness: "1m"},
 		Situation: spec.Situation{Type: "test", InitialPhase: "candidate",
-			Phases: []spec.Phase{{Name: "candidate", Severity: 10}},
+			Phases:     []spec.Phase{{Name: "candidate", Severity: 10}},
 			Occurrence: spec.Occurrence{OpenWhen: "features.level > 10"}},
 		Cognition: spec.Cognition{
 			Triggers: []spec.Trigger{{Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast"}},

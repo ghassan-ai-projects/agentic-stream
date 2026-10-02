@@ -3,14 +3,11 @@ package ingress
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -90,6 +87,19 @@ func (s *LiveUDSSource) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *Live
 // Run listens for live normalized JSONL until ctx is canceled or the sink
 // returns an error. A canceled context is a normal shutdown and returns nil.
 func (s *LiveUDSSource) Run(ctx context.Context, sink EnvelopeSink) error {
+	if err := s.prepare(sink); err != nil {
+		return err
+	}
+	listener, err := listenLiveSocket(s.path)
+	if err != nil {
+		return fmt.Errorf("listen live ingress socket: %w", err)
+	}
+	defer func() { _ = listener.Close() }()
+	return s.serve(ctx, listener, sink)
+}
+
+// prepare validates the source and sink and fills the runtime defaults.
+func (s *LiveUDSSource) prepare(sink EnvelopeSink) error {
 	if s == nil {
 		return fmt.Errorf("live UDS source is nil")
 	}
@@ -113,34 +123,30 @@ func (s *LiveUDSSource) Run(ctx context.Context, sink EnvelopeSink) error {
 		s.connections = make(map[net.Conn]struct{})
 	}
 	s.connectionsMu.Unlock()
-	queueSize := s.queueSize
-	if queueSize <= 0 {
-		queueSize = defaultLiveSocketQueueSize
+	if s.queueSize <= 0 {
+		s.queueSize = defaultLiveSocketQueueSize
 	}
+	return nil
+}
 
-	listener, err := listenLiveSocket(s.path)
-	if err != nil {
-		return fmt.Errorf("listen live ingress socket: %w", err)
-	}
-	defer func() { _ = listener.Close() }()
-
+// serve accepts clients and processes their lines in arrival order until ctx
+// ends, the sink fails, or accepting fails. Shutdown closes the listener and
+// every client before returning.
+func (s *LiveUDSSource) serve(ctx context.Context, listener net.Listener, sink EnvelopeSink) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	lines := make(chan liveLine, queueSize)
+	lines := make(chan liveLine, s.queueSize)
 	acceptDone := make(chan struct{})
 	acceptErr := make(chan error, 1)
 	var clients sync.WaitGroup
-
 	go s.acceptClients(runCtx, listener, lines, acceptDone, acceptErr, &clients)
-	cleanup := func() {
+	defer func() {
 		cancel()
 		_ = listener.Close()
 		s.closeClients()
 		clients.Wait()
 		<-acceptDone
-	}
-	defer cleanup()
-
+	}()
 	for {
 		select {
 		case item := <-lines:
@@ -151,15 +157,20 @@ func (s *LiveUDSSource) Run(ctx context.Context, sink EnvelopeSink) error {
 				return fmt.Errorf("process live ingress line: %w", err)
 			}
 		case <-acceptDone:
-			select {
-			case acceptErr := <-acceptErr:
-				return acceptErr
-			default:
-				return nil
-			}
+			return firstError(acceptErr)
 		case <-ctx.Done():
 			return nil
 		}
+	}
+}
+
+// firstError returns a pending error, or nil when none was sent.
+func firstError(errs <-chan error) error {
+	select {
+	case err := <-errs:
+		return err
+	default:
+		return nil
 	}
 }
 
@@ -179,41 +190,56 @@ func (s *LiveUDSSource) acceptClients(ctx context.Context, listener net.Listener
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			if ctx.Err() != nil {
+			if !retryAccept(ctx, err) {
+				if ctx.Err() == nil {
+					acceptErr <- fmt.Errorf("accept live ingress client: %w", err)
+				}
 				return
 			}
-			var networkErr net.Error
-			if errors.As(err, &networkErr) && networkErr.Timeout() {
-				timer := time.NewTimer(5 * time.Millisecond)
-				select {
-				case <-ctx.Done():
-					if !timer.Stop() {
-						<-timer.C
-					}
-					return
-				case <-timer.C:
-				}
-				continue
-			}
-			acceptErr <- fmt.Errorf("accept live ingress client: %w", err)
-			return
+			continue
 		}
 		if s.clientCount.Load() >= maxLiveSocketClients {
 			s.logger.WarnContext(ctx, "live ingress client rejected", "source", liveSocketSourceTag, "reason_code", "client_limit")
 			_ = conn.Close()
 			continue
 		}
-		connectionID := s.connection.Add(1)
-		s.clientCount.Add(1)
-		s.addClient(conn)
-		clients.Add(1)
-		go func() {
-			defer clients.Done()
-			defer s.clientCount.Add(-1)
-			defer s.removeClient(conn)
-			s.readClient(ctx, conn, connectionID, lines)
-		}()
+		s.startClient(ctx, conn, lines, clients)
 	}
+}
+
+// retryAccept reports whether a failed accept should be retried: a timeout
+// waits briefly and retries, while shutdown and other errors stop accepting.
+func retryAccept(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	var networkErr net.Error
+	if !errors.As(err, &networkErr) || !networkErr.Timeout() {
+		return false
+	}
+	timer := time.NewTimer(5 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+// startClient registers the connection and reads its lines on a goroutine
+// tracked by clients.
+func (s *LiveUDSSource) startClient(ctx context.Context, conn net.Conn, lines chan<- liveLine, clients *sync.WaitGroup) {
+	connectionID := s.connection.Add(1)
+	s.clientCount.Add(1)
+	s.addClient(conn)
+	clients.Add(1)
+	go func() {
+		defer clients.Done()
+		defer s.clientCount.Add(-1)
+		defer s.removeClient(conn)
+		s.readClient(ctx, conn, connectionID, lines)
+	}()
 }
 
 func (s *LiveUDSSource) readClient(ctx context.Context, conn net.Conn, connectionID uint64, lines chan<- liveLine) {
@@ -242,165 +268,4 @@ func (s *LiveUDSSource) readClient(ctx context.Context, conn net.Conn, connectio
 			return
 		}
 	}
-}
-
-func readLiveLine(reader *bufio.Reader) ([]byte, error) {
-	line := make([]byte, 0, min(maxLiveSocketLineBytes, reader.Size()))
-	for {
-		part, err := reader.ReadSlice('\n')
-		if len(line)+len(part) > maxLiveSocketLineBytes {
-			// Preserve the bounded prefix for quarantine. The complete malformed
-			// frame is intentionally not retained or allowed to grow memory.
-			return line, errLiveSocketLineTooLarge
-		}
-		line = append(line, part...)
-		if err == nil {
-			return line, nil
-		}
-		if errors.Is(err, bufio.ErrBufferFull) {
-			continue
-		}
-		if errors.Is(err, io.EOF) && len(line) > 0 {
-			return line, nil
-		}
-		return nil, fmt.Errorf("read live ingress line: %w", err)
-	}
-}
-
-func (s *LiveUDSSource) processLine(ctx context.Context, item liveLine, sink EnvelopeSink) error {
-	if item.readErr != nil {
-		return s.rejectRaw(ctx, item, "line_too_large", item.readErr)
-	}
-	var env contractsv1.Envelope
-	if err := json.Unmarshal(item.data, &env); err != nil {
-		return s.rejectRaw(ctx, item, "malformed_json", err)
-	}
-	if env.TenantID == "" {
-		env.TenantID = s.tenantID
-	}
-	if err := contractsv1.ValidateEnvelope(env, s.tenantID); err != nil {
-		return s.rejectEnvelope(ctx, item, env, "envelope_invalid", err)
-	}
-	if err := s.log.ValidateEnvelope(ctx, env); err != nil {
-		return s.rejectEnvelope(ctx, item, env, "schema_invalid", err)
-	}
-	if s.telemetry != nil {
-		s.telemetry.ObserveLiveLineIngested()
-	}
-	return sink(ctx, env)
-}
-
-func (s *LiveUDSSource) rejectRaw(ctx context.Context, item liveLine, reason string, cause error) error {
-	if s.telemetry != nil {
-		s.telemetry.ObserveLiveLineRejected()
-	}
-	s.logger.WarnContext(ctx, "live ingress line rejected", "source", liveSocketSourceTag, "connection_id", item.connectionID, "line_number", item.lineNumber, "reason_code", reason, "error", cause)
-	eventID := fmt.Sprintf("live-uds:%s:%d:%d", s.instanceID, item.connectionID, item.lineNumber)
-	if err := s.log.QuarantineRaw(ctx, s.tenantID, eventID, item.data, reason, s.clk.Now().UTC().Format(time.RFC3339Nano)); err != nil {
-		return fmt.Errorf("quarantine live line: %w", err)
-	}
-	return nil
-}
-
-func (s *LiveUDSSource) rejectEnvelope(ctx context.Context, item liveLine, env contractsv1.Envelope, reason string, cause error) error {
-	if s.telemetry != nil {
-		s.telemetry.ObserveLiveLineRejected()
-	}
-	s.logger.WarnContext(ctx, "live ingress line rejected", "source", liveSocketSourceTag, "connection_id", item.connectionID, "line_number", item.lineNumber, "reason_code", reason, "error", cause)
-	if err := s.log.QuarantineEnvelope(ctx, s.tenantID, env, reason, s.clk.Now().UTC().Format(time.RFC3339Nano)); err != nil {
-		return fmt.Errorf("quarantine live envelope: %w", err)
-	}
-	return nil
-}
-
-func (s *LiveUDSSource) addClient(conn net.Conn) {
-	s.connectionsMu.Lock()
-	defer s.connectionsMu.Unlock()
-	s.connections[conn] = struct{}{}
-}
-
-func (s *LiveUDSSource) removeClient(conn net.Conn) {
-	s.connectionsMu.Lock()
-	delete(s.connections, conn)
-	s.connectionsMu.Unlock()
-	_ = conn.Close()
-}
-
-func (s *LiveUDSSource) closeClients() {
-	s.connectionsMu.Lock()
-	clients := make([]net.Conn, 0, len(s.connections))
-	for conn := range s.connections {
-		clients = append(clients, conn)
-	}
-	s.connectionsMu.Unlock()
-	for _, conn := range clients {
-		_ = conn.Close()
-	}
-}
-
-func validateLiveSocketPath(path string) error {
-	if path == "" || !filepath.IsAbs(path) || strings.Contains(path, "\x00") || strings.Contains(path, "://") || filepath.Clean(path) != path {
-		return fmt.Errorf("live socket must be a clean absolute Unix path")
-	}
-	return nil
-}
-
-func listenLiveSocket(path string) (net.Listener, error) {
-	if info, err := os.Lstat(path); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 || info.Mode()&os.ModeSocket == 0 {
-			return nil, fmt.Errorf("refusing unsafe existing live socket path")
-		}
-		probeCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		probe, dialErr := (&net.Dialer{}).DialContext(probeCtx, "unix", path)
-		cancel()
-		if dialErr == nil {
-			_ = probe.Close()
-			return nil, fmt.Errorf("live socket is already active")
-		}
-		return nil, fmt.Errorf("live socket path is occupied or stale: %w", dialErr)
-	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("inspect live socket path: %w", err)
-	}
-	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", path)
-	if err != nil {
-		return nil, fmt.Errorf("listen Unix socket: %w", err)
-	}
-	if err := os.Chmod(path, 0o600); err != nil { //nolint:gosec // The live socket is intentionally owner-only.
-		_ = listener.Close()
-		_ = os.Remove(path)
-		return nil, fmt.Errorf("secure live socket: %w", err)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		_ = listener.Close()
-		return nil, fmt.Errorf("stat live socket: %w", err)
-	}
-	return &cleanLiveListener{Listener: listener, path: path, info: info}, nil
-}
-
-type cleanLiveListener struct {
-	net.Listener
-	path string
-	info os.FileInfo
-	once sync.Once
-	err  error
-}
-
-func (l *cleanLiveListener) Close() error {
-	l.once.Do(func() {
-		l.err = l.Listener.Close()
-		current, statErr := os.Stat(l.path)
-		if statErr == nil && os.SameFile(l.info, current) {
-			if removeErr := os.Remove(l.path); removeErr != nil && !os.IsNotExist(removeErr) {
-				if l.err != nil {
-					l.err = errors.Join(l.err, fmt.Errorf("remove live socket: %w", removeErr))
-				} else {
-					l.err = fmt.Errorf("remove live socket: %w", removeErr)
-				}
-			}
-		} else if statErr != nil && !os.IsNotExist(statErr) && l.err == nil {
-			l.err = fmt.Errorf("inspect live socket during cleanup: %w", statErr)
-		}
-	})
-	return l.err
 }

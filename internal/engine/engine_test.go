@@ -3,6 +3,7 @@ package engine_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -424,4 +425,44 @@ func appendHeartbeatWithBoot(t *testing.T, ctx context.Context, log *eventlog.Ev
 		t.Fatalf("append heartbeat: %v", err)
 	}
 	return env.PartitionID(0)
+}
+
+func TestGlobalRunFailurePreservesProgressAndInboxDeduplication(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "partial-global.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	compiled := restartSpec()
+	log := eventlog.NewEventLog(db)
+	eng, err := engine.NewStreamEngine(ctx, db, log, clock.Physical(), &compiled, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendLevel(t, ctx, log, "evt-first", 0, 15)
+	appendLevel(t, ctx, log, "evt-second", 1, 16)
+	failure := errors.New("stop before second event")
+	processed, err := eng.RunGlobal(ctx, func(record eventlog.Record) error {
+		if record.EventID == "evt-second" {
+			return failure
+		}
+		return nil
+	})
+	if !errors.Is(err, failure) || processed != 1 {
+		t.Fatalf("processed=%d err=%v", processed, err)
+	}
+	var inbox int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM event_inbox").Scan(&inbox); err != nil || inbox != 1 {
+		t.Fatalf("inbox=%d err=%v", inbox, err)
+	}
+	// Global runs count redelivered records; the inbox suppresses repeated state writes.
+	processed, err = eng.RunGlobal(ctx, nil)
+	if err != nil || processed != 2 {
+		t.Fatalf("resume processed=%d err=%v", processed, err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM event_inbox").Scan(&inbox); err != nil || inbox != 2 {
+		t.Fatalf("resumed inbox=%d err=%v", inbox, err)
+	}
 }

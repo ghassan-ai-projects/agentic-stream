@@ -28,6 +28,8 @@ Use this before the final answer.
 - Did you run the relevant validation commands?
 - Did you record validation failures accurately?
 - Did you run `git diff --check`?
+- Does the change meet every rule in [quality-bar.md](quality-bar.md) without `//nolint` for complexity or new layering exceptions?
+- Q7: does every new or changed function name its intent, do one thing at one level of abstraction, and sit below the function that calls it? Does each exported entry point read as a short sequence of domain steps?
 
 ## Handoff
 

@@ -7,7 +7,10 @@
 
 # ---- Configurable ---------------------------------------------------------
 BINARY    ?= bin/$(shell basename $(CURDIR))
-MODULE    ?= github.com/ghassan-ai-projects/agentic-stream
+# The module path is declared once, in go.mod. Read it from there instead of
+# repeating it here so a rename cannot leave build tooling stale. Override with
+# `make MODULE=...` when needed.
+MODULE    ?= $(shell go list -m 2>/dev/null)
 VERSION   := $(shell git describe --tags 2>/dev/null || echo dev)
 COMMIT    := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 LDFLAGS   := -ldflags="-X main.Version=$(VERSION) -X main.Commit=$(COMMIT)"
@@ -131,8 +134,11 @@ test-coverage: ## Run tests and produce HTML coverage report
 	  echo "(no packages yet -- skipping coverage)"; \
 	fi
 
+coverage-check: ## Run short race tests and enforce the per-package coverage floor (quality bar Q4)
+	python3 scripts/check-coverage.py
+
 # ---- Pipeline -------------------------------------------------------------
-ci-check: proto-check tidy build vet lint-ci test-short deadcode vulncheck docs-check ## Run the full CI pipeline locally (matches .github/workflows/ci.yml)
+ci-check: proto-check tidy build vet lint-ci coverage-check deadcode vulncheck docs-check ## Run the full CI pipeline locally (matches .github/workflows/ci.yml)
 	@echo "  CI check passed"
 
 # ---- Documentation --------------------------------------------------------

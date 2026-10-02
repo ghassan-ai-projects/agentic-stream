@@ -15,7 +15,7 @@ Use these commands unless the task is documentation-only:
 ## Template-Specific Behavior
 
 - `make build` prints a skip message when `cmd/` does not exist.
-- `make ci-check` runs `tidy -> build -> vet -> lint-ci -> test-short -> deadcode -> vulncheck`.
+- `make ci-check` runs `proto-check -> tidy -> build -> vet -> lint-ci -> coverage-check -> deadcode -> vulncheck -> docs-check`. `coverage-check` runs the short race suite once and enforces the per-package coverage floor.
 - In restricted environments, `golangci-lint` can fail because it writes outside the workspace cache.
 - `deadcode` and `govulncheck` are optional locally when the tools are missing; the Makefile reports that explicitly.
 

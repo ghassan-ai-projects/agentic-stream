@@ -46,12 +46,7 @@ func RetrySQLiteBusy(ctx context.Context, fn func() error) error {
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
+			timer.Stop()
 			return fmt.Errorf("wait for sqlite retry: %w", ctx.Err())
 		case <-timer.C:
 		}

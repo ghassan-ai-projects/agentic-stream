@@ -24,38 +24,7 @@ func (e *Engine) applyRecord(ctx context.Context, partitionID int, record eventl
 
 func (e *Engine) applyRecordTransaction(ctx context.Context, partitionID int, record eventlog.Record, watermark time.Time) error {
 	err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := e.assertOwner(ctx, tx); err != nil {
-			return err
-		}
-		applied, err := e.eventAlreadyApplied(ctx, tx, record.EventID)
-		if err != nil {
-			return err
-		}
-		if applied {
-			return nil
-		}
-		operatorState, err := e.loadOperatorState(ctx, tx, partitionID, record.Envelope.Entity.ID)
-		if err != nil {
-			return fmt.Errorf("load operator state: %w", err)
-		}
-		features, newState, err := e.opRuntime.ApplyEventAt(ctx, operatorState, record.Envelope, watermark, e.clock.Now().UTC())
-		if err != nil {
-			return fmt.Errorf("apply operators: %w", err)
-		}
-		affected, err := e.applyFeatures(ctx, tx, partitionID, features, watermark)
-		if err != nil {
-			return err
-		}
-		if err := e.saveAffectedSituationStates(ctx, tx, partitionID, affected); err != nil {
-			return err
-		}
-		if err := e.saveOperatorState(ctx, tx, partitionID, record.Envelope.Entity.ID, newState); err != nil {
-			return fmt.Errorf("save operator state: %w", err)
-		}
-		if err := e.scheduleHeartbeatTimers(ctx, tx, partitionID, newState); err != nil {
-			return fmt.Errorf("schedule heartbeat timers: %w", err)
-		}
-		return e.commitRecord(ctx, tx, partitionID, record, watermark)
+		return e.applyRecordInTx(ctx, tx, partitionID, record, watermark)
 	})
 	if err == nil {
 		return nil
@@ -65,6 +34,41 @@ func (e *Engine) applyRecordTransaction(ctx context.Context, partitionID int, re
 		return fmt.Errorf("apply record transaction: %w; restore after rollback: %w", err, restoreErr)
 	}
 	return fmt.Errorf("apply transaction: %w", err)
+}
+
+func (e *Engine) applyRecordInTx(ctx context.Context, tx *sql.Tx, partitionID int, record eventlog.Record, watermark time.Time) error {
+	if err := e.assertOwner(ctx, tx); err != nil {
+		return err
+	}
+	applied, err := e.eventAlreadyApplied(ctx, tx, record.EventID)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+	operatorState, err := e.loadOperatorState(ctx, tx, partitionID, record.Envelope.Entity.ID)
+	if err != nil {
+		return fmt.Errorf("load operator state: %w", err)
+	}
+	features, newState, err := e.opRuntime.ApplyEventAt(ctx, operatorState, record.Envelope, watermark, e.clock.Now().UTC())
+	if err != nil {
+		return fmt.Errorf("apply operators: %w", err)
+	}
+	affected, err := e.applyFeatures(ctx, tx, partitionID, features, watermark)
+	if err != nil {
+		return err
+	}
+	if err := e.saveAffectedSituationStates(ctx, tx, partitionID, affected); err != nil {
+		return err
+	}
+	if err := e.saveOperatorState(ctx, tx, partitionID, record.Envelope.Entity.ID, newState); err != nil {
+		return fmt.Errorf("save operator state: %w", err)
+	}
+	if err := e.scheduleHeartbeatTimers(ctx, tx, partitionID, newState); err != nil {
+		return fmt.Errorf("schedule heartbeat timers: %w", err)
+	}
+	return e.commitRecord(ctx, tx, partitionID, record, watermark)
 }
 
 func (e *Engine) eventAlreadyApplied(ctx context.Context, tx *sql.Tx, eventID string) (bool, error) {

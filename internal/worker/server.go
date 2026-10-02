@@ -5,16 +5,11 @@ package worker
 
 import (
 	"context"
-	"fmt"
-	"strings"
-	"sync"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -128,22 +123,45 @@ func (s *Server) Execute(req *runtimev1.EpisodeRequest, stream runtimev1.Episode
 	emit := func(event *runtimev1.EpisodeEvent) error {
 		return validator.emit(stream, event)
 	}
-	executionContext := stream.Context()
+	executionContext, cancel, err := boundedExecutionContext(stream.Context(), req)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	if err := s.executeHandler(executionContext, req, emit); err != nil {
+		return err
+	}
+	if err := executionContext.Err(); err != nil {
+		return wireError(codes.DeadlineExceeded, "episode execution deadline exceeded")
+	}
+	if !validator.terminal {
+		return wireError(codes.FailedPrecondition, "worker stream ended without terminal event")
+	}
+	return nil
+}
+
+func boundedExecutionContext(ctx context.Context, req *runtimev1.EpisodeRequest) (context.Context, context.CancelFunc, error) {
+	executionContext := ctx
+	cancel := context.CancelFunc(func() {})
 	if deadline := req.GetDeadline(); deadline != nil {
-		var cancel context.CancelFunc
 		executionContext, cancel = context.WithDeadline(executionContext, deadline.AsTime())
-		defer cancel()
 	}
 	if budget := req.GetBudget(); budget != nil && budget.GetWallTime() != nil {
 		wallTime := budget.GetWallTime().AsDuration()
 		if wallTime <= 0 {
-			return wireError(codes.InvalidArgument, "wall_time budget must be positive")
+			cancel()
+			return nil, nil, wireError(codes.InvalidArgument, "wall_time budget must be positive")
 		}
-		var cancel context.CancelFunc
-		executionContext, cancel = context.WithTimeout(executionContext, wallTime)
-		defer cancel()
+		deadlineCancel := cancel
+		var budgetCancel context.CancelFunc
+		executionContext, budgetCancel = context.WithTimeout(executionContext, wallTime)
+		cancel = func() { budgetCancel(); deadlineCancel() }
 	}
-	if err := s.ExecuteFunc(executionContext, req, emit); err != nil {
+	return executionContext, cancel, nil
+}
+
+func (s *Server) executeHandler(ctx context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error { //nolint:wrapcheck // Preserve handler gRPC status errors at the wire boundary.
+	if err := s.ExecuteFunc(ctx, req, emit); err != nil {
 		if status.Code(err) == codes.Canceled || status.Code(err) == codes.DeadlineExceeded {
 			return err
 		}
@@ -151,12 +169,6 @@ func (s *Server) Execute(req *runtimev1.EpisodeRequest, stream runtimev1.Episode
 			return err
 		}
 		return wireErrorf(codes.Internal, "worker execution failed: %v", err)
-	}
-	if err := executionContext.Err(); err != nil {
-		return wireError(codes.DeadlineExceeded, "episode execution deadline exceeded")
-	}
-	if !validator.terminal {
-		return wireError(codes.FailedPrecondition, "worker stream ended without terminal event")
 	}
 	return nil
 }
@@ -198,123 +210,4 @@ func (s *Server) now() time.Time {
 		return s.Now().UTC()
 	}
 	return time.Now().UTC()
-}
-
-func (s *Server) validateRequest(req *runtimev1.EpisodeRequest) error { //nolint:wrapcheck // gRPC status errors are the public wire contract.
-	if req == nil {
-		return wireError(codes.InvalidArgument, "episode request is required")
-	}
-	maxRequest, _ := s.limits()
-	if uint64(proto.Size(req)) > maxRequest { //nolint:gosec // protobuf Size is non-negative and bounded by the configured request limit.
-		return wireError(codes.ResourceExhausted, "episode request exceeds size limit")
-	}
-	if !sameMajor(req.GetProtocolVersion(), ProtocolVersion) {
-		return wireErrorf(codes.FailedPrecondition, "unsupported protocol version %q", req.GetProtocolVersion())
-	}
-	for name, value := range map[string]string{
-		"episode_id": req.GetEpisodeId(), "tenant_id": req.GetTenantId(),
-		"situation_id": req.GetSituationId(), "attempt_id": req.GetAttemptId(),
-	} {
-		if strings.TrimSpace(value) == "" {
-			return wireErrorf(codes.InvalidArgument, "%s is required", name)
-		}
-	}
-	if req.GetFence() == 0 || req.GetSituationVersion() == 0 {
-		return wireError(codes.InvalidArgument, "situation_version and fence must be positive")
-	}
-	if req.GetKind() == runtimev1.EpisodeKind_EPISODE_KIND_UNSPECIFIED || req.GetLane() == runtimev1.EpisodeLane_EPISODE_LANE_UNSPECIFIED || req.GetRiskCeiling() == runtimev1.RiskClass_RISK_CLASS_UNSPECIFIED {
-		return wireError(codes.InvalidArgument, "kind, lane, and risk_ceiling are required")
-	}
-	if len(req.GetSnapshotSha256()) != 32 || len(req.GetSpecSha256()) != 32 {
-		return wireError(codes.InvalidArgument, "snapshot_sha256 and spec_sha256 must be 32 bytes")
-	}
-	if len(req.GetSnapshotJson()) == 0 || len(req.GetDecisionSchemaJson()) == 0 || len(req.GetToolCatalogJson()) == 0 {
-		return wireError(codes.InvalidArgument, "snapshot, decision schema, and tool catalog are required")
-	}
-	if err := ValidateBudget(req.GetBudget()); err != nil {
-		return wireErrorf(codes.InvalidArgument, "episode budget: %v", err)
-	}
-	if _, err := contractsv1.ParseTraceContext(req.GetTraceparent(), req.GetTracestate()); err != nil {
-		return wireErrorf(codes.InvalidArgument, "trace context: %v", err)
-	}
-	if req.GetDeadline() != nil {
-		if !req.GetDeadline().IsValid() {
-			return wireError(codes.InvalidArgument, "deadline is invalid")
-		}
-		if req.GetDeadline().AsTime().Before(s.now()) {
-			return wireError(codes.DeadlineExceeded, "episode deadline has expired")
-		}
-	}
-	if (req.GetEvidenceToolsEndpoint() == "") != (len(req.GetCapabilityToken()) == 0) {
-		return wireError(codes.InvalidArgument, "evidence endpoint and capability token must be supplied together")
-	}
-	if req.GetEvidenceToolsEndpoint() != "" {
-		if err := ValidateEvidenceSocketPath(req.GetEvidenceToolsEndpoint()); err != nil {
-			return wireError(codes.PermissionDenied, "evidence endpoint must be a private Unix socket")
-		}
-	}
-	return nil
-}
-
-func sameMajor(got, want string) bool {
-	return strings.TrimSpace(got) == strings.TrimSpace(want)
-}
-
-type streamValidator struct {
-	episodeID      string
-	attemptID      string
-	fence          uint64
-	maxEventBytes  uint64
-	maxEvents      uint64
-	maxStreamBytes uint64
-	nextSequence   uint64
-	eventCount     uint64
-	streamBytes    uint64
-	terminal       bool
-	mu             sync.Mutex
-}
-
-func (v *streamValidator) emit(stream runtimev1.EpisodeWorker_ExecuteServer, event *runtimev1.EpisodeEvent) error { //nolint:wrapcheck // gRPC status errors are the public wire contract.
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if event == nil {
-		return wireError(codes.InvalidArgument, "nil episode event")
-	}
-	if uint64(proto.Size(event)) > v.maxEventBytes { //nolint:gosec // protobuf Size is non-negative and bounded by the configured event limit.
-		return wireError(codes.ResourceExhausted, "episode event exceeds size limit")
-	}
-	eventBytes := uint64(proto.Size(event)) //nolint:gosec // protobuf Size is non-negative and bounded by the configured event limit.
-	if v.eventCount >= v.maxEvents || v.streamBytes+eventBytes > v.maxStreamBytes {
-		return wireError(codes.ResourceExhausted, "episode stream exceeds size limit")
-	}
-	if v.terminal {
-		return wireError(codes.FailedPrecondition, "event emitted after terminal")
-	}
-	if event.GetEpisodeId() != v.episodeID || event.GetAttemptId() != v.attemptID || event.GetFence() != v.fence {
-		return wireError(codes.PermissionDenied, "episode event identity does not match request")
-	}
-	if event.GetSequence() == 0 || event.GetSequence() != v.nextSequence+1 {
-		return wireErrorf(codes.FailedPrecondition, "episode event sequence %d is not %d", event.GetSequence(), v.nextSequence+1)
-	}
-	if event.GetOccurredAt() == nil || !event.GetOccurredAt().IsValid() || event.GetPayload() == nil {
-		return wireError(codes.InvalidArgument, "episode event timestamp and payload are required")
-	}
-	if decision := event.GetDecision(); decision != nil {
-		if decision.GetEpisodeId() != v.episodeID || decision.GetAttemptId() != v.attemptID || decision.GetFence() != v.fence || len(decision.GetDecisionJson()) == 0 || len(decision.GetDecisionSha256()) != 32 {
-			return wireError(codes.PermissionDenied, "decision identity or digest is invalid")
-		}
-	}
-	if terminal := event.GetTerminal(); terminal != nil {
-		if terminal.GetStatus() == runtimev1.TerminalStatus_TERMINAL_STATUS_UNSPECIFIED {
-			return wireError(codes.InvalidArgument, "terminal status is required")
-		}
-		v.terminal = true
-	}
-	v.nextSequence = event.GetSequence()
-	v.eventCount++
-	v.streamBytes += eventBytes
-	if err := stream.Send(event); err != nil {
-		return fmt.Errorf("send episode event: %w", err)
-	}
-	return nil
 }

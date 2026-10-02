@@ -622,3 +622,29 @@ func assertOutcomeNotificationAuthority(t *testing.T, db *storage.DB, eventType 
 		t.Fatalf("%s source_authority=%q, envelope source=%q", eventType, authority, event.Source)
 	}
 }
+
+type deadlineEffector struct{ calls int }
+
+func (e *deadlineEffector) Dispatch(context.Context, actions.Command) (actions.Effect, error) {
+	e.calls++
+	return actions.Effect{}, context.DeadlineExceeded
+}
+
+func TestDispatcherTreatsProviderDeadlineAsUnknownWithoutRetry(t *testing.T) {
+	t.Parallel()
+	db, commandID := openActionFixture(t)
+	effector := &deadlineEffector{}
+	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "deadline-owner", time.Minute)
+	processed, err := dispatcher.DispatchOnce(t.Context())
+	if err != nil || !processed {
+		t.Fatalf("dispatch processed=%v err=%v", processed, err)
+	}
+	var status string
+	if err := db.QueryRowContext(t.Context(), "SELECT status FROM commands WHERE command_id = ?", commandID).Scan(&status); err != nil || status != "reconciling" {
+		t.Fatalf("status=%q err=%v", status, err)
+	}
+	processed, err = dispatcher.DispatchOnce(t.Context())
+	if err != nil || processed || effector.calls != 1 {
+		t.Fatalf("retry processed=%v calls=%d err=%v", processed, effector.calls, err)
+	}
+}
