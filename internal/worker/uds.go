@@ -21,44 +21,11 @@ func ListenEvidenceSocket(path string) (net.Listener, error) {
 	if err := ValidateEvidenceSocketPath(path); err != nil {
 		return nil, err
 	}
-	parent := filepath.Dir(path)
-	parentInfo, err := os.Lstat(parent)
-	createdParent := false
-	if os.IsNotExist(err) {
-		if err := os.MkdirAll(parent, 0o700); err != nil {
-			return nil, fmt.Errorf("create private socket directory: %w", err)
-		}
-		parentInfo, err = os.Lstat(parent)
-		createdParent = true
+	if err := prepareEvidenceSocketDirectory(path); err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("inspect socket directory: %w", err)
-	}
-	if parentInfo.Mode()&os.ModeSymlink != 0 || !parentInfo.IsDir() {
-		return nil, fmt.Errorf("socket parent is not a private directory")
-	}
-	if parentInfo.Mode().Perm()&0o077 != 0 {
-		return nil, fmt.Errorf("socket parent directory is not private")
-	}
-	if createdParent && parentInfo.Mode().Perm() != 0o700 {
-		if err := os.Chmod(parent, 0o700); err != nil { //nolint:gosec // Private directory permissions are deliberately 0700.
-			return nil, fmt.Errorf("secure socket directory: %w", err)
-		}
-	}
-	if info, err := os.Lstat(path); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 || info.Mode()&os.ModeSocket == 0 {
-			return nil, fmt.Errorf("refusing unsafe existing socket path")
-		}
-		probeCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		probe, dialErr := (&net.Dialer{}).DialContext(probeCtx, "unix", path)
-		cancel()
-		if dialErr == nil {
-			_ = probe.Close()
-			return nil, fmt.Errorf("evidence socket is already active")
-		}
-		return nil, fmt.Errorf("evidence socket path is occupied or stale: %w", dialErr)
-	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("inspect evidence socket: %w", err)
+	if err := refuseExistingEvidenceSocket(path); err != nil {
+		return nil, err
 	}
 	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", path)
 	if err != nil {
@@ -75,6 +42,53 @@ func ListenEvidenceSocket(path string) (net.Listener, error) {
 		return nil, fmt.Errorf("stat evidence socket: %w", err)
 	}
 	return &cleanListener{Listener: listener, path: path, info: info}, nil
+}
+
+func prepareEvidenceSocketDirectory(path string) error {
+	parent := filepath.Dir(path)
+	parentInfo, err := os.Lstat(parent)
+	createdParent := false
+	if os.IsNotExist(err) {
+		if err := os.MkdirAll(parent, 0o700); err != nil {
+			return fmt.Errorf("create private socket directory: %w", err)
+		}
+		parentInfo, err = os.Lstat(parent)
+		createdParent = true
+	}
+	if err != nil {
+		return fmt.Errorf("inspect socket directory: %w", err)
+	}
+	if parentInfo.Mode()&os.ModeSymlink != 0 || !parentInfo.IsDir() {
+		return fmt.Errorf("socket parent is not a private directory")
+	}
+	if parentInfo.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("socket parent directory is not private")
+	}
+	if createdParent && parentInfo.Mode().Perm() != 0o700 {
+		if err := os.Chmod(parent, 0o700); err != nil { //nolint:gosec // Private directory permissions are deliberately 0700.
+			return fmt.Errorf("secure socket directory: %w", err)
+		}
+	}
+	return nil
+}
+
+func refuseExistingEvidenceSocket(path string) error {
+	if info, err := os.Lstat(path); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 || info.Mode()&os.ModeSocket == 0 {
+			return fmt.Errorf("refusing unsafe existing socket path")
+		}
+		probeCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		probe, dialErr := (&net.Dialer{}).DialContext(probeCtx, "unix", path)
+		cancel()
+		if dialErr == nil {
+			_ = probe.Close()
+			return fmt.Errorf("evidence socket is already active")
+		}
+		return fmt.Errorf("evidence socket path is occupied or stale: %w", dialErr)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect evidence socket: %w", err)
+	}
+	return nil
 }
 
 // DialEvidenceSocket dials only a Unix socket with transport credentials that

@@ -53,27 +53,31 @@ func (o effectProfileOptions) validate(replaySource bool) error {
 		if replaySource {
 			return checkEffectProfile("validate replay effect profile", actions.EffectProfileConfig{Profile: profile, ReplaySource: true})
 		}
-		if o.DeviceSocket == "" {
-			return fmt.Errorf("%s effect profile requires --device-socket", profile)
-		}
-		if o.DeviceCatalog == "" {
-			return fmt.Errorf("%s effect profile requires --device-catalog", profile)
-		}
-		if len(o.AllowedFirmwareDigests) == 0 {
-			return fmt.Errorf("%s effect profile requires at least one --device-firmware-digest", profile)
-		}
-		if profile == actions.EffectProfilePhysical {
-			if !o.LiveActuation {
-				return fmt.Errorf("physical effect profile requires explicit live actuation")
-			}
-			if !o.OwnerAuthorized {
-				return fmt.Errorf("physical effect profile requires owner authorization")
-			}
-		}
-		return nil
+		return o.validateGatewayOptions(profile)
 	default:
 		return checkEffectProfile("validate effect profile", actions.EffectProfileConfig{Profile: profile, ReplaySource: replaySource})
 	}
+}
+
+func (o effectProfileOptions) validateGatewayOptions(profile actions.EffectProfile) error {
+	if o.DeviceSocket == "" {
+		return fmt.Errorf("%s effect profile requires --device-socket", profile)
+	}
+	if o.DeviceCatalog == "" {
+		return fmt.Errorf("%s effect profile requires --device-catalog", profile)
+	}
+	if len(o.AllowedFirmwareDigests) == 0 {
+		return fmt.Errorf("%s effect profile requires at least one --device-firmware-digest", profile)
+	}
+	if profile == actions.EffectProfilePhysical {
+		if !o.LiveActuation {
+			return fmt.Errorf("physical effect profile requires explicit live actuation")
+		}
+		if !o.OwnerAuthorized {
+			return fmt.Errorf("physical effect profile requires owner authorization")
+		}
+	}
+	return nil
 }
 
 func checkEffectProfile(prefix string, config actions.EffectProfileConfig) error {
@@ -102,27 +106,9 @@ func (o effectProfileOptions) open(
 		return actions.NewSimulatedEffector(), nil, nil, nil
 	}
 
-	catalogData, err := os.ReadFile(o.DeviceCatalog)
+	transport, catalog, err := o.connectDeviceGateway(ctx)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("read device capability catalog: %w", err)
-	}
-	catalog, err := actions.LoadCapabilityCatalog(catalogData)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("load device capability catalog: %w", err)
-	}
-	transport, err := actions.DialUDSTransport(ctx, o.DeviceSocket)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("connect device gateway: %w", err)
-	}
-	profileConfig := actions.EffectProfileConfig{
-		Profile:         o.profile(),
-		GatewayLink:     transport,
-		LiveActuation:   o.LiveActuation,
-		OwnerAuthorized: o.OwnerAuthorized,
-	}
-	if err := actions.ValidateEffectProfile(profileConfig); err != nil {
-		_ = transport.Close()
-		return nil, nil, nil, fmt.Errorf("validate effect profile: %w", err)
+		return nil, nil, nil, err
 	}
 	authority := &storage.TargetAuthority{
 		DB: db, Owner: owner, EpochControl: epochControl, InstanceID: epoch, Lease: owner.Lease,
@@ -143,6 +129,32 @@ func (o effectProfileOptions) open(
 		return nil, nil, nil, fmt.Errorf("open gateway effector: %w", err)
 	}
 	return fallbackEffector(o.profile()), serial, closeFn, nil
+}
+
+func (o effectProfileOptions) connectDeviceGateway(ctx context.Context) (*actions.UDSTransport, *actions.CapabilityCatalog, error) {
+	catalogData, err := os.ReadFile(o.DeviceCatalog)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read device capability catalog: %w", err)
+	}
+	catalog, err := actions.LoadCapabilityCatalog(catalogData)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load device capability catalog: %w", err)
+	}
+	transport, err := actions.DialUDSTransport(ctx, o.DeviceSocket)
+	if err != nil {
+		return nil, nil, fmt.Errorf("connect device gateway: %w", err)
+	}
+	profileConfig := actions.EffectProfileConfig{
+		Profile:         o.profile(),
+		GatewayLink:     transport,
+		LiveActuation:   o.LiveActuation,
+		OwnerAuthorized: o.OwnerAuthorized,
+	}
+	if err := actions.ValidateEffectProfile(profileConfig); err != nil {
+		_ = transport.Close()
+		return nil, nil, fmt.Errorf("validate effect profile: %w", err)
+	}
+	return transport, catalog, nil
 }
 
 func fallbackEffector(profile actions.EffectProfile) actions.Effector {

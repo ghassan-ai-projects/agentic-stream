@@ -200,3 +200,67 @@ func newBufConn(t *testing.T, server runtimev1.EpisodeWorkerServer) *grpc.Client
 	t.Cleanup(func() { _ = conn.Close() })
 	return conn
 }
+
+func TestWorkerExecutionContextPreservesDeadlineAndCancellation(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name                    string
+		parent, request, budget time.Duration
+		bound                   time.Duration
+	}{
+		{"parent first", 10 * time.Second, 20 * time.Second, 30 * time.Second, 10 * time.Second},
+		{"request first", 30 * time.Second, 10 * time.Second, 20 * time.Second, 10 * time.Second},
+		{"budget first", 30 * time.Second, 20 * time.Second, 10 * time.Second, 10 * time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			start := time.Now()
+			parent, parentCancel := context.WithDeadline(t.Context(), start.Add(tc.parent))
+			defer parentCancel()
+			request := validRequest()
+			request.Deadline = timestamppb.New(start.Add(tc.request))
+			request.Budget.WallTime = durationpb.New(tc.budget)
+			ctx, cancel, err := boundedExecutionContext(parent, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cancel()
+			deadline, ok := ctx.Deadline()
+			if !ok || deadline.Before(start.Add(tc.bound)) || deadline.After(time.Now().Add(tc.bound)) {
+				t.Fatalf("deadline=%v", deadline)
+			}
+			cancel()
+			if !errors.Is(ctx.Err(), context.Canceled) || parent.Err() != nil {
+				t.Fatalf("child=%v parent=%v", ctx.Err(), parent.Err())
+			}
+		})
+	}
+}
+
+func TestWorkerHandlerPreservesWireStatuses(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		failure error
+		code    codes.Code
+	}{
+		{"canceled", status.Error(codes.Canceled, "canceled"), codes.Canceled},
+		{"precondition", status.Error(codes.FailedPrecondition, "refused"), codes.FailedPrecondition},
+		{"ordinary error", errors.New("failure"), codes.Internal},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			server := newTestServer()
+			server.ExecuteFunc = func(context.Context, *runtimev1.EpisodeRequest, func(*runtimev1.EpisodeEvent) error) error {
+				return tc.failure
+			}
+			err := server.executeHandler(t.Context(), validRequest(), nil)
+			if status.Code(err) != tc.code {
+				t.Fatalf("status=%v want=%v", status.Code(err), tc.code)
+			}
+			if tc.code != codes.Internal && !errors.Is(err, tc.failure) {
+				t.Fatal("existing gRPC error identity changed")
+			}
+		})
+	}
+}

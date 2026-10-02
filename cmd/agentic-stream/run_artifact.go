@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runartifact"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -14,24 +15,37 @@ func newExportRunCommand() *cobra.Command {
 		Use:   "export-run --db <runtime.db> --output <directory>",
 		Short: "Export one consistent, verifiable runtime evidence artifact.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if dbPath == "" || outputDir == "" {
-				return fmt.Errorf("--db and --output are required")
-			}
-			db, err := storage.Open(cmd.Context(), dbPath)
+			path, err := exportRunArtifact(cmd.Context(), dbPath, outputDir, manifest)
 			if err != nil {
-				return fmt.Errorf("open runtime database: %w", err)
-			}
-			defer func() { _ = db.Close() }()
-			path, err := runartifact.Export(cmd.Context(), runartifact.Options{DB: db, OutputDir: outputDir, Manifest: manifest})
-			if err != nil {
-				return fmt.Errorf("export run artifact: %w", err)
+				return err
 			}
 			cmd.Printf("run_artifact=%s\n", path)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite runtime database path")
-	cmd.Flags().StringVar(&outputDir, "output", "", "New run artifact directory")
+	addExportRunFlags(cmd, &dbPath, &outputDir, &manifest)
+	return cmd
+}
+
+func exportRunArtifact(ctx context.Context, dbPath, outputDir string, manifest runartifact.Manifest) (string, error) {
+	if dbPath == "" || outputDir == "" {
+		return "", fmt.Errorf("--db and --output are required")
+	}
+	db, err := storage.Open(ctx, dbPath)
+	if err != nil {
+		return "", fmt.Errorf("open runtime database: %w", err)
+	}
+	defer func() { _ = db.Close() }()
+	path, err := runartifact.Export(ctx, runartifact.Options{DB: db, OutputDir: outputDir, Manifest: manifest})
+	if err != nil {
+		return "", fmt.Errorf("export run artifact: %w", err)
+	}
+	return path, nil
+}
+
+func addExportRunFlags(cmd *cobra.Command, dbPath, outputDir *string, manifest *runartifact.Manifest) {
+	cmd.Flags().StringVar(dbPath, "db", "", "SQLite runtime database path")
+	cmd.Flags().StringVar(outputDir, "output", "", "New run artifact directory")
 	cmd.Flags().IntVar(&manifest.SchemaVersion, "manifest-schema-version", 1, "Run manifest schema version")
 	cmd.Flags().StringVar(&manifest.RunID, "run-id", "", "Experiment/run identifier")
 	cmd.Flags().StringVar(&manifest.TenantID, "tenant", "", "Tenant identifier")
@@ -60,7 +74,6 @@ func newExportRunCommand() *cobra.Command {
 	cmd.Flags().StringVar(&manifest.OperatorIdentity, "operator", "", "Operator identity")
 	cmd.Flags().StringVar(&manifest.SafetyReviewReference, "safety-review-reference", "", "Safety review reference")
 	cmd.Flags().StringVar(&manifest.DeclaredResult, "declared-result", "", "Operator-declared result")
-	return cmd
 }
 
 func newVerifyRunCommand() *cobra.Command {

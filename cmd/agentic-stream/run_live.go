@@ -48,11 +48,9 @@ func runLive(ctx context.Context, flags liveFlags) (runtime.PipelineReport, erro
 	}
 	var cleanup cleanups
 	defer cleanup.run()
-	tracerProvider, err := configureRuntimeTelemetry(runCtx)
-	if err != nil {
+	if err := startLiveTelemetry(runCtx, &cleanup); err != nil {
 		return runtime.PipelineReport{}, err
 	}
-	cleanup.add(func() { _ = tracerProvider.Shutdown(context.Background()) })
 	compiled, err := spec.CompileFile(runCtx, flags.specPath)
 	if err != nil {
 		return runtime.PipelineReport{}, fmt.Errorf("compile spec: %w", err)
@@ -65,12 +63,7 @@ func runLive(ctx context.Context, flags liveFlags) (runtime.PipelineReport, erro
 	if err != nil {
 		return runtime.PipelineReport{}, err
 	}
-	workerFailures := make(chan error, 1)
-	workerMonitorDone := monitorWorkerRuntimeErrors(runCtx, workerRuntime.Errors(), workerFailures, stop)
-	cleanup.add(func() {
-		stop()
-		<-workerMonitorDone
-	})
+	workerFailures := startLiveWorkerMonitor(runCtx, workerRuntime.Errors(), stop, &cleanup)
 	metrics := telemetry.NewRuntime(time.Now().UTC())
 	opened, err := core.openEffects(runCtx, profileOptions, metrics, true, &cleanup)
 	if err != nil {
@@ -80,7 +73,11 @@ func runLive(ctx context.Context, flags liveFlags) (runtime.PipelineReport, erro
 	if err != nil {
 		return runtime.PipelineReport{}, err
 	}
-	report, err := runTrace(runCtx, pipeline, flags.traceFormat, flags.tracePath)
+	return executeLiveTrace(runCtx, pipeline, flags.traceFormat, flags.tracePath, workerFailures)
+}
+
+func executeLiveTrace(ctx context.Context, pipeline *runtime.Pipeline, format, path string, workerFailures <-chan error) (runtime.PipelineReport, error) {
+	report, err := runTrace(ctx, pipeline, format, path)
 	if workerErr := readWorkerRuntimeError(workerFailures); workerErr != nil {
 		return runtime.PipelineReport{}, workerErr
 	}
@@ -88,6 +85,25 @@ func runLive(ctx context.Context, flags liveFlags) (runtime.PipelineReport, erro
 		return runtime.PipelineReport{}, err
 	}
 	return report, nil
+}
+
+func startLiveTelemetry(ctx context.Context, cleanup *cleanups) error {
+	tracerProvider, err := configureRuntimeTelemetry(ctx)
+	if err != nil {
+		return err
+	}
+	cleanup.add(func() { _ = tracerProvider.Shutdown(context.Background()) })
+	return nil
+}
+
+func startLiveWorkerMonitor(ctx context.Context, workerErrors <-chan error, stop context.CancelFunc, cleanup *cleanups) <-chan error {
+	workerFailures := make(chan error, 1)
+	workerMonitorDone := monitorWorkerRuntimeErrors(ctx, workerErrors, workerFailures, stop)
+	cleanup.add(func() {
+		stop()
+		<-workerMonitorDone
+	})
+	return workerFailures
 }
 
 func monitorWorkerRuntimeErrors(ctx context.Context, workerErrors <-chan error, failures chan<- error, stop context.CancelFunc) <-chan struct{} {

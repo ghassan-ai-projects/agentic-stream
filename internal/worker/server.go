@@ -123,22 +123,45 @@ func (s *Server) Execute(req *runtimev1.EpisodeRequest, stream runtimev1.Episode
 	emit := func(event *runtimev1.EpisodeEvent) error {
 		return validator.emit(stream, event)
 	}
-	executionContext := stream.Context()
+	executionContext, cancel, err := boundedExecutionContext(stream.Context(), req)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	if err := s.executeHandler(executionContext, req, emit); err != nil {
+		return err
+	}
+	if err := executionContext.Err(); err != nil {
+		return wireError(codes.DeadlineExceeded, "episode execution deadline exceeded")
+	}
+	if !validator.terminal {
+		return wireError(codes.FailedPrecondition, "worker stream ended without terminal event")
+	}
+	return nil
+}
+
+func boundedExecutionContext(ctx context.Context, req *runtimev1.EpisodeRequest) (context.Context, context.CancelFunc, error) {
+	executionContext := ctx
+	cancel := context.CancelFunc(func() {})
 	if deadline := req.GetDeadline(); deadline != nil {
-		var cancel context.CancelFunc
 		executionContext, cancel = context.WithDeadline(executionContext, deadline.AsTime())
-		defer cancel()
 	}
 	if budget := req.GetBudget(); budget != nil && budget.GetWallTime() != nil {
 		wallTime := budget.GetWallTime().AsDuration()
 		if wallTime <= 0 {
-			return wireError(codes.InvalidArgument, "wall_time budget must be positive")
+			cancel()
+			return nil, nil, wireError(codes.InvalidArgument, "wall_time budget must be positive")
 		}
-		var cancel context.CancelFunc
-		executionContext, cancel = context.WithTimeout(executionContext, wallTime)
-		defer cancel()
+		deadlineCancel := cancel
+		var budgetCancel context.CancelFunc
+		executionContext, budgetCancel = context.WithTimeout(executionContext, wallTime)
+		cancel = func() { budgetCancel(); deadlineCancel() }
 	}
-	if err := s.ExecuteFunc(executionContext, req, emit); err != nil {
+	return executionContext, cancel, nil
+}
+
+func (s *Server) executeHandler(ctx context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error { //nolint:wrapcheck // Preserve handler gRPC status errors at the wire boundary.
+	if err := s.ExecuteFunc(ctx, req, emit); err != nil {
 		if status.Code(err) == codes.Canceled || status.Code(err) == codes.DeadlineExceeded {
 			return err
 		}
@@ -146,12 +169,6 @@ func (s *Server) Execute(req *runtimev1.EpisodeRequest, stream runtimev1.Episode
 			return err
 		}
 		return wireErrorf(codes.Internal, "worker execution failed: %v", err)
-	}
-	if err := executionContext.Err(); err != nil {
-		return wireError(codes.DeadlineExceeded, "episode execution deadline exceeded")
-	}
-	if !validator.terminal {
-		return wireError(codes.FailedPrecondition, "worker stream ended without terminal event")
 	}
 	return nil
 }

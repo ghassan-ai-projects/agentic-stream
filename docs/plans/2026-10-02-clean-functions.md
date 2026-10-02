@@ -93,3 +93,19 @@ manifest-only differences preserving decision equality, canonical digest and
 comparison identity, and independence from recording wall time. Replay race
 tests (including unchanged predictive-maintenance golden traces and thermal
 fixtures), focused lint, vet, and diff checks passed.
+
+### Round 5: CLI and worker/provider transport
+
+Separated CLI validation, telemetry/worker-monitor startup, trace execution, and
+artifact export from flag registration. Separated evidence-socket preparation,
+worker execution deadlines/status handling, provider request construction,
+response classification, and SSE tool-delta accumulation. Preserved status codes,
+wire-error identity, deadline order, reverse cleanup, request/stream limits,
+retry classification, and sorted tool-call indices.
+
+Added regression tests for CLI path rejection before state creation, worker
+parent/request/budget deadlines and cancellation, gRPC status preservation,
+fragmented tool arguments with out-of-order indices, usage-only chunks, DONE
+termination, retryable provider statuses, and bounded error bodies. Package race
+tests and vet passed with local socket access. Whole-tree lint now reports zero
+issues, without weakened thresholds or complexity suppressions. Diff checks pass.
