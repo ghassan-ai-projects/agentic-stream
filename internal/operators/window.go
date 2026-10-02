@@ -155,51 +155,52 @@ func computeAggregate(agg string, samples []Sample) (float64, error) {
 	}
 	switch agg {
 	case "mean":
-		var sum float64
-		for _, s := range samples {
-			sum += s.Value
-		}
-		return sum / float64(len(samples)), nil
+		return sumValues(samples) / float64(len(samples)), nil
 	case "rms":
-		var sumSquares float64
-		for _, s := range samples {
-			sumSquares += s.Value * s.Value
-		}
-		return math.Sqrt(sumSquares / float64(len(samples))), nil
+		return rootMeanSquare(samples), nil
 	case "slope":
 		return linearSlope(samples), nil
 	case "count":
 		return float64(len(samples)), nil
 	case "sum":
-		var sum float64
-		for _, s := range samples {
-			sum += s.Value
-		}
-		return sum, nil
+		return sumValues(samples), nil
 	case "min":
-		m := samples[0].Value
-		for _, s := range samples {
-			if s.Value < m {
-				m = s.Value
-			}
-		}
-		return m, nil
+		return extremeValue(samples, func(a, b float64) bool { return a < b }), nil
 	case "max":
-		m := samples[0].Value
-		for _, s := range samples {
-			if s.Value > m {
-				m = s.Value
-			}
-		}
-		return m, nil
+		return extremeValue(samples, func(a, b float64) bool { return a > b }), nil
 	case "latest":
-		// Samples are sorted by event time and then event ID before this
-		// function is called. The final sample is therefore deterministic even
-		// when events arrive out of order or share an event timestamp.
+		// Samples are sorted by event time, then event ID.
 		return samples[len(samples)-1].Value, nil
 	default:
 		return 0, fmt.Errorf("unsupported aggregate %q", agg)
 	}
+}
+
+func sumValues(samples []Sample) float64 {
+	var sum float64
+	for _, s := range samples {
+		sum += s.Value
+	}
+	return sum
+}
+
+func rootMeanSquare(samples []Sample) float64 {
+	var sumSquares float64
+	for _, s := range samples {
+		sumSquares += s.Value * s.Value
+	}
+	return math.Sqrt(sumSquares / float64(len(samples)))
+}
+
+// extremeValue returns the first sample value that no later value beats.
+func extremeValue(samples []Sample, beats func(candidate, current float64) bool) float64 {
+	extreme := samples[0].Value
+	for _, s := range samples {
+		if beats(s.Value, extreme) {
+			extreme = s.Value
+		}
+	}
+	return extreme
 }
 
 // linearSlope returns the rate in value-units per hour. The output unit is
@@ -234,8 +235,3 @@ func eventIDs(samples []Sample) []string {
 	}
 	return ids
 }
-
-// TimerIdentity identifies the tenant and partition whose timer is firing.
-// Timer calls that persist features must provide it explicitly; an omitted
-// identity yields an unknown tenant and partition rather than a misleading
-// default.

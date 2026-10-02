@@ -11,29 +11,79 @@ import (
 )
 
 func (e *Engine) materialize(sit *Situation, watermark time.Time) (*Version, error) {
+	if e.spec.Digest == "" {
+		return nil, fmt.Errorf("compiled spec has no digest")
+	}
+	if _, err := canonicaljson.DecodeDigest(e.spec.Digest); err != nil {
+		return nil, fmt.Errorf("invalid spec digest: %w", err)
+	}
+	version := publicationVersion(sit, watermark)
+	snapshotJSON, snapshotDigest, err := e.snapshot(sit, version.Facts, version.Evidence, watermark)
+	if err != nil {
+		return nil, err
+	}
+	stateBlob, stateDigest, err := persistedState(sit)
+	if err != nil {
+		return nil, err
+	}
+	version.SnapshotJSON, version.SnapshotSHA256 = snapshotJSON, snapshotDigest
+	version.StateJSON, version.StateSHA256 = stateBlob, stateDigest
+	return version, nil
+}
+
+func publicationVersion(sit *Situation, watermark time.Time) *Version {
+	return &Version{
+		SituationID:     sit.SituationID,
+		Type:            sit.Type,
+		Version:         sit.Version,
+		PreviousVersion: sit.Version - 1,
+		Phase:           sit.Phase,
+		PreviousPhase:   sit.PreviousPhase,
+		Severity:        sit.Severity,
+		Confidence:      sit.Confidence,
+		Completeness:    sit.Completeness,
+		EntityType:      sit.EntityType,
+		EntityID:        sit.EntityID,
+		EventHorizon:    sit.LatestEventTime,
+		Watermark:       watermark,
+		Facts:           publishedFacts(sit),
+		Evidence:        sortedEvidenceIDs(sit),
+		Traceparent:     sit.Traceparent,
+		Tracestate:      sit.Tracestate,
+		OccurrenceID:    sit.OccurrenceID,
+		FirstEventTime:  sit.FirstEventTime,
+		UpdatedAt:       sit.UpdatedAt,
+		ConditionStart:  cloneTimes(sit.ConditionStart),
+	}
+}
+
+// publishedFacts are the situation facts without internal event-time
+// bookkeeping.
+func publishedFacts(sit *Situation) map[string]any {
 	facts := make(map[string]any, len(sit.Facts))
 	for k, v := range sit.Facts {
 		if !strings.HasSuffix(k, "_event_time") {
 			facts[k] = v
 		}
 	}
+	return facts
+}
 
+func sortedEvidenceIDs(sit *Situation) []string {
 	evidenceIDs := make([]string, 0, len(sit.Evidence))
 	for id := range sit.Evidence {
 		evidenceIDs = append(evidenceIDs, id)
 	}
 	sort.Strings(evidenceIDs)
+	return evidenceIDs
+}
+
+// snapshot builds the immutable, schema-valid Situation snapshot and returns
+// its canonical JSON and digest.
+func (e *Engine) snapshot(sit *Situation, facts map[string]any, evidenceIDs []string, watermark time.Time) ([]byte, string, error) {
 	evidence := make([]any, len(evidenceIDs))
 	for i, id := range evidenceIDs {
 		evidence[i] = id
-	}
-
-	specDigest := e.spec.Digest
-	if specDigest == "" {
-		return nil, fmt.Errorf("compiled spec has no digest")
-	}
-	if _, err := canonicaljson.DecodeDigest(specDigest); err != nil {
-		return nil, fmt.Errorf("invalid spec digest: %w", err)
 	}
 	snapshot := map[string]any{
 		"situation_id":      sit.SituationID,
@@ -51,59 +101,38 @@ func (e *Engine) materialize(sit *Situation, watermark time.Time) (*Version, err
 		"evidence":          evidence,
 		"event_horizon":     sit.LatestEventTime.Format(time.RFC3339Nano),
 		"watermark":         watermark.Format(time.RFC3339Nano),
-		"spec_digest":       specDigest,
+		"spec_digest":       e.spec.Digest,
 	}
 	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, snapshot); err != nil {
-		return nil, fmt.Errorf("validate snapshot: %w", err)
+		return nil, "", fmt.Errorf("validate snapshot: %w", err)
 	}
 	snapshotJSON, err := canonicaljson.Marshal(snapshot)
 	if err != nil {
-		return nil, fmt.Errorf("marshal snapshot: %w", err)
+		return nil, "", fmt.Errorf("marshal snapshot: %w", err)
 	}
 	digest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, snapshot)
 	if err != nil {
-		return nil, fmt.Errorf("digest snapshot: %w", err)
+		return nil, "", fmt.Errorf("digest snapshot: %w", err)
 	}
+	return snapshotJSON, digest, nil
+}
+
+// persistedState returns the situation's persisted runtime state and its
+// digest.
+func persistedState(sit *Situation) ([]byte, string, error) {
 	stateBlob, err := stateJSON(sit)
 	if err != nil {
-		return nil, fmt.Errorf("marshal persisted state: %w", err)
+		return nil, "", fmt.Errorf("marshal persisted state: %w", err)
 	}
 	var stateDocument map[string]any
 	if err := json.Unmarshal(stateBlob, &stateDocument); err != nil {
-		return nil, fmt.Errorf("decode persisted state: %w", err)
+		return nil, "", fmt.Errorf("decode persisted state: %w", err)
 	}
 	stateDigest, err := canonicaljson.Digest(canonicaljson.DomainSituationState, stateDocument)
 	if err != nil {
-		return nil, fmt.Errorf("digest persisted state: %w", err)
+		return nil, "", fmt.Errorf("digest persisted state: %w", err)
 	}
-
-	return &Version{
-		SituationID:     sit.SituationID,
-		Type:            sit.Type,
-		Version:         sit.Version,
-		PreviousVersion: sit.Version - 1,
-		Phase:           sit.Phase,
-		PreviousPhase:   sit.PreviousPhase,
-		Severity:        sit.Severity,
-		Confidence:      sit.Confidence,
-		Completeness:    sit.Completeness,
-		EntityType:      sit.EntityType,
-		EntityID:        sit.EntityID,
-		EventHorizon:    sit.LatestEventTime,
-		Watermark:       watermark,
-		Facts:           facts,
-		Evidence:        evidenceIDs,
-		SnapshotJSON:    snapshotJSON,
-		SnapshotSHA256:  digest,
-		Traceparent:     sit.Traceparent,
-		Tracestate:      sit.Tracestate,
-		OccurrenceID:    sit.OccurrenceID,
-		FirstEventTime:  sit.FirstEventTime,
-		UpdatedAt:       sit.UpdatedAt,
-		ConditionStart:  cloneTimes(sit.ConditionStart),
-		StateJSON:       stateBlob,
-		StateSHA256:     stateDigest,
-	}, nil
+	return stateBlob, stateDigest, nil
 }
 
 func stateJSON(sit *Situation) ([]byte, error) {

@@ -13,7 +13,6 @@ import (
 
 	"github.com/google/cel-go/cel"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -88,6 +87,17 @@ func (e *Engine) Process(ctx context.Context, tx *sql.Tx, v situations.Version) 
 		return fmt.Errorf("load previous version: %w", err)
 	}
 
+	if err := e.evaluateTriggers(ctx, tx, v, previous); err != nil {
+		return err
+	}
+	if _, err := e.admitReconsiderations(ctx, tx, v); err != nil {
+		return fmt.Errorf("admit reconsideration: %w", err)
+	}
+
+	return e.markVersionReasoned(ctx, tx, v)
+}
+
+func (e *Engine) evaluateTriggers(ctx context.Context, tx *sql.Tx, v situations.Version, previous *situations.Version) error {
 	for _, tr := range e.spec.Cognition.Triggers {
 		eval, err := e.evaluate(ctx, tr, v, previous)
 		if err != nil {
@@ -97,10 +107,10 @@ func (e *Engine) Process(ctx context.Context, tx *sql.Tx, v situations.Version) 
 			return fmt.Errorf("admit trigger %s: %w", tr.Name, err)
 		}
 	}
-	if _, err := e.admitReconsiderations(ctx, tx, v); err != nil {
-		return fmt.Errorf("admit reconsideration: %w", err)
-	}
+	return nil
+}
 
+func (e *Engine) markVersionReasoned(ctx context.Context, tx *sql.Tx, v situations.Version) error {
 	// Advance last_reasoned_version unconditionally so that future deltas compare
 	// against the most recently evaluated version regardless of outcome.
 	if _, err := tx.ExecContext(ctx,
@@ -178,67 +188,6 @@ func (e *Engine) loadVersion(ctx context.Context, tx *sql.Tx, situationID string
 		v.Facts = facts
 	}
 	return &v, nil
-}
-
-func (e *Engine) evaluate(ctx context.Context, tr spec.Trigger, current situations.Version, previous *situations.Version) (Evaluation, error) {
-	evalAt := e.clk.Now().UTC()
-	eval := Evaluation{
-		TriggerID:        e.triggerID(tr.Name, current.SituationID, current.Version),
-		TriggerName:      tr.Name,
-		SituationID:      current.SituationID,
-		SituationVersion: current.Version,
-		Threshold:        tr.Threshold,
-		Lane:             tr.Lane,
-		Outcome:          "ignored",
-		PolicySHA256:     e.spec.Digest,
-		EvaluatedAt:      evalAt,
-	}
-
-	features := e.buildFeatures(current)
-	situation := e.buildSituation(current)
-	delta := e.buildDelta(current, previous)
-	deltaJSON, err := canonicaljson.Marshal(delta)
-	if err != nil {
-		return eval, fmt.Errorf("marshal delta: %w", err)
-	}
-	eval.DeltaJSON = deltaJSON
-
-	fired, err := e.evalBool(ctx, tr, "when", features, situation, delta, current.EventHorizon, current.Watermark)
-	if err != nil {
-		return eval, err
-	}
-	if !fired {
-		eval.Reasons = append(eval.Reasons, "trigger condition false")
-		return eval, nil
-	}
-
-	score, err := e.evalScore(ctx, tr, features, situation, delta, current.EventHorizon, current.Watermark)
-	if err != nil {
-		return eval, err
-	}
-	eval.Score = score
-
-	material := true
-	if tr.MaterialDelta != "" {
-		var err error
-		material, err = e.evalBool(ctx, tr, "materialDelta", features, situation, delta, current.EventHorizon, current.Watermark)
-		if err != nil {
-			return eval, err
-		}
-	}
-	if !material {
-		eval.Reasons = append(eval.Reasons, "material delta false")
-		return eval, nil
-	}
-
-	if score < tr.Threshold {
-		eval.Reasons = append(eval.Reasons, fmt.Sprintf("score %.2f below threshold %.2f", score, tr.Threshold))
-		return eval, nil
-	}
-
-	eval.Outcome = "admitted"
-	eval.Reasons = append(eval.Reasons, fmt.Sprintf("score %.2f meets threshold %.2f", score, tr.Threshold))
-	return eval, nil
 }
 
 func (e *Engine) triggerID(name, situationID string, version int) string {

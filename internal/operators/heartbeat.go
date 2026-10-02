@@ -3,6 +3,7 @@ package operators
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -15,7 +16,21 @@ func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *O
 	if !sampleQualityValid(env) {
 		return nil, nil
 	}
+	if processingTime.IsZero() {
+		processingTime = env.EventTime
+	}
+	hs := recordHeartbeat(blob, env, processingTime)
+	duration, err := parseDuration(inst.def.Duration)
+	if err != nil {
+		return nil, fmt.Errorf("heartbeat duration: %w", err)
+	}
+	missing := watermark.Sub(*hs.LastEventTime) >= duration
+	return []Feature{r.heartbeatFeature(inst, env, hs.BootID, watermark, processingTime, missing)}, nil
+}
 
+// recordHeartbeat stores the event as the latest heartbeat. A new device
+// boot starts a fresh heartbeat state.
+func recordHeartbeat(blob *OperatorStateBlob, env contractsv1.Envelope, processingTime time.Time) *HeartbeatState {
 	if blob.Heartbeat == nil {
 		blob.Heartbeat = &HeartbeatState{}
 	}
@@ -30,22 +45,13 @@ func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *O
 	hs.LastEventID = env.ID
 	hs.Traceparent = env.Traceparent
 	hs.Tracestate = env.Tracestate
-	if processingTime.IsZero() {
-		processingTime = env.EventTime
-	}
 	hs.LastProcessingTime = &processingTime
+	return hs
+}
 
-	duration, err := parseDuration(inst.def.Duration)
-	if err != nil {
-		return nil, fmt.Errorf("heartbeat duration: %w", err)
-	}
-
-	missing := watermark.Sub(*hs.LastEventTime) >= duration
-	eventTime := env.EventTime
-	if missing {
-		eventTime = processingTime
-	}
-
+// heartbeatFeature reports whether the heartbeat is missing at the watermark.
+// A missing heartbeat is uncertain and timed at processing time.
+func (r *OperatorRuntime) heartbeatFeature(inst *operatorInstance, env contractsv1.Envelope, bootID string, watermark, processingTime time.Time, missing bool) Feature {
 	feature := Feature{
 		FeatureID:     r.idGen.New(ids.PrefixEvent),
 		OperatorID:    inst.def.Name,
@@ -59,7 +65,7 @@ func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *O
 		WindowStart:   env.EventTime,
 		WindowEnd:     watermark,
 		Value:         missing,
-		EventTime:     eventTime,
+		EventTime:     env.EventTime,
 		Watermark:     watermark,
 		InputEventIDs: []string{env.ID},
 		Completeness:  string(CompletenessOnTime),
@@ -67,11 +73,15 @@ func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *O
 		Tracestate:    env.Tracestate,
 	}
 	if missing {
+		feature.EventTime = processingTime
 		feature.Completeness = string(CompletenessUncertain)
 	}
-	return []Feature{feature}, nil
+	return feature
 }
 
+// TimerIdentity identifies the tenant and partition whose timer is firing.
+// Timer calls that persist features must provide it explicitly; an omitted
+// identity yields an unknown tenant and partition.
 type TimerIdentity struct {
 	TenantID    string
 	PartitionID int
@@ -142,56 +152,57 @@ func (r *OperatorRuntime) applyHeartbeatTimer(ctx context.Context, inst *operato
 	if err != nil {
 		return nil, fmt.Errorf("heartbeat duration: %w", err)
 	}
-
+	states := ps.OperatorStates[inst.def.Name]
 	var features []Feature
-	keys := make([]string, 0, len(ps.OperatorStates[inst.def.Name]))
-	for stateKey := range ps.OperatorStates[inst.def.Name] {
-		keys = append(keys, stateKey)
-	}
-	slices.Sort(keys)
-	for _, stateKey := range keys {
+	for _, stateKey := range slices.Sorted(maps.Keys(states)) {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("heartbeat timer canceled: %w", err)
 		}
-		if !r.isActiveBoot(ps, stateKey) {
+		hs := states[stateKey].Heartbeat
+		if !r.isActiveBoot(ps, stateKey) || !heartbeatOverdue(hs, processingTime, duration) {
 			continue
 		}
-		blob := ps.OperatorStates[inst.def.Name][stateKey]
-		if blob.Heartbeat == nil || blob.Heartbeat.LastEventTime == nil {
-			continue
-		}
-		lastProcessingTime := blob.Heartbeat.LastProcessingTime
-		if lastProcessingTime == nil {
-			lastProcessingTime = blob.Heartbeat.LastEventTime
-		}
-		missing := processingTime.Sub(*lastProcessingTime) >= duration
-		if !missing {
-			continue
-		}
-		// Determine entity type/id from stateKey. For Phase 2 entity type is
-		// known from the spec input.
-		entityType := r.entityTypeForOperator(inst.def.Name)
-		features = append(features, Feature{
-			FeatureID:         r.idGen.New(ids.PrefixEvent),
-			OperatorID:        inst.def.Name,
-			OutputName:        inst.def.Output,
-			TenantID:          identity.TenantID,
-			EntityType:        entityType,
-			EntityID:          entityIDFromStateKey(stateKey),
-			StateKey:          stateKey,
-			BootID:            blob.Heartbeat.BootID,
-			PartitionID:       identity.PartitionID,
-			WindowStart:       *blob.Heartbeat.LastEventTime,
-			WindowEnd:         processingTime,
-			Value:             true,
-			EventTime:         processingTime,
-			Watermark:         watermark,
-			InputEventIDs:     []string{blob.Heartbeat.LastEventID},
-			Completeness:      string(CompletenessUncertain),
-			TraceContinuation: true,
-			Traceparent:       blob.Heartbeat.Traceparent,
-			Tracestate:        blob.Heartbeat.Tracestate,
-		})
+		features = append(features, r.missedHeartbeatFeature(inst, stateKey, hs, identity, watermark, processingTime))
 	}
 	return features, nil
+}
+
+// heartbeatOverdue reports whether no heartbeat was processed for at least
+// duration before processingTime.
+func heartbeatOverdue(hs *HeartbeatState, processingTime time.Time, duration time.Duration) bool {
+	if hs == nil || hs.LastEventTime == nil {
+		return false
+	}
+	lastProcessingTime := hs.LastProcessingTime
+	if lastProcessingTime == nil {
+		lastProcessingTime = hs.LastEventTime
+	}
+	return processingTime.Sub(*lastProcessingTime) >= duration
+}
+
+// missedHeartbeatFeature is the timer-driven, uncertain "heartbeat missing"
+// feature that continues the last heartbeat's trace.
+func (r *OperatorRuntime) missedHeartbeatFeature(inst *operatorInstance, stateKey string, hs *HeartbeatState, identity TimerIdentity, watermark, processingTime time.Time) Feature {
+	return Feature{
+		FeatureID:  r.idGen.New(ids.PrefixEvent),
+		OperatorID: inst.def.Name,
+		OutputName: inst.def.Output,
+		TenantID:   identity.TenantID,
+		// For Phase 2 the entity type is known from the spec input.
+		EntityType:        r.entityTypeForOperator(inst.def.Name),
+		EntityID:          entityIDFromStateKey(stateKey),
+		StateKey:          stateKey,
+		BootID:            hs.BootID,
+		PartitionID:       identity.PartitionID,
+		WindowStart:       *hs.LastEventTime,
+		WindowEnd:         processingTime,
+		Value:             true,
+		EventTime:         processingTime,
+		Watermark:         watermark,
+		InputEventIDs:     []string{hs.LastEventID},
+		Completeness:      string(CompletenessUncertain),
+		TraceContinuation: true,
+		Traceparent:       hs.Traceparent,
+		Tracestate:        hs.Tracestate,
+	}
 }

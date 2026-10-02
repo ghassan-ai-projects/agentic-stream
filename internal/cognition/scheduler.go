@@ -204,17 +204,23 @@ func (s *Scheduler) buildItem(ctx context.Context, tx *sql.Tx, eval Evaluation) 
 		return item, fmt.Errorf("parse cooldown: %w", err)
 	}
 	if cooldown > 0 {
-		latest, err := s.latestAdmittedTime(ctx, tx, eval.SituationID, eval.TriggerName, eval.TriggerID)
-		if err != nil {
+		if err := s.applyCooldown(ctx, tx, &item, eval, cooldown); err != nil {
 			return item, err
 		}
-		if latest != nil {
-			notBefore := latest.Add(cooldown)
-			if item.NotBefore == nil || notBefore.After(*item.NotBefore) {
-				item.NotBefore = &notBefore
-			}
-		}
 	}
-
 	return item, nil
+}
+
+// applyCooldown delays the item until cooldown after the trigger's latest
+// admission, when that is later than its current not-before time.
+func (s *Scheduler) applyCooldown(ctx context.Context, tx *sql.Tx, item *Item, eval Evaluation, cooldown time.Duration) error {
+	latest, err := s.latestAdmittedTime(ctx, tx, eval.SituationID, eval.TriggerName, eval.TriggerID)
+	if err != nil || latest == nil {
+		return err
+	}
+	notBefore := latest.Add(cooldown)
+	if item.NotBefore == nil || notBefore.After(*item.NotBefore) {
+		item.NotBefore = &notBefore
+	}
+	return nil
 }

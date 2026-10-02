@@ -50,3 +50,18 @@ Validation: ingress/notification race tests, package vet, documentation checks,
 and diff whitespace checks passed. Diff review retained admission order,
 checkpoint advancement, subscriber authorization, bounded state, and shutdown
 ownership. The remaining baseline lint findings are assigned to later rounds.
+
+### Round 2: cognition, operators, Situations
+
+Completed the pending trigger, supersession, reconsideration, boot fencing,
+heartbeat, window configuration, aggregate, and publication extractions.
+Cognition entry points now separate trigger evaluation from admission bookkeeping.
+Reconsideration evidence is canonicalized before writes, preserving the original
+failure boundary. Window aggregate selection uses an explicit switch rather than
+adding a mutable global function registry.
+
+Added tests for trigger gate precedence and partial scores on evaluation errors,
+all numeric aggregates and empty-input precedence, canonical evidence ordering,
+private event-time persistence, and publication independence from later state
+mutation. Package race tests, vet, and diff checks passed. Existing correction
+replay/deduplication tests passed unchanged.

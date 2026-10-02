@@ -3,6 +3,7 @@ package operators
 import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
+	"slices"
 	"strings"
 )
 
@@ -64,8 +65,7 @@ func bootIDFromStateKey(stateKey string) string {
 // identity remains compatible only until the first identified boot is seen;
 // thereafter it cannot be used to mutate physical numeric state.
 func (r *OperatorRuntime) admitBoot(ps *PartitionState, env contractsv1.Envelope) bool {
-	stateKey := env.Entity.ID
-	meta := r.getBlob(ps, RuntimeOperatorID, stateKey)
+	meta := r.getBlob(ps, RuntimeOperatorID, env.Entity.ID)
 	if meta.Runtime == nil {
 		meta.Runtime = &RuntimeState{}
 	}
@@ -77,32 +77,34 @@ func (r *OperatorRuntime) admitBoot(ps *PartitionState, env contractsv1.Envelope
 	if runtimeState.CurrentBootID == bootID {
 		return true
 	}
-	for _, seen := range runtimeState.SeenBootIDs {
-		if seen == bootID {
-			return false
-		}
+	if slices.Contains(runtimeState.SeenBootIDs, bootID) {
+		return false
 	}
 	if len(runtimeState.SeenBootIDs) >= maxSeenBootIDs {
 		// A bounded history cannot safely distinguish an evicted old boot from
 		// a new one. Fail closed rather than allowing stale evidence to revive.
 		return false
 	}
+	discardEntityState(ps, env.Entity.ID)
+	runtimeState.CurrentBootID = bootID
+	runtimeState.SeenBootIDs = append(runtimeState.SeenBootIDs, bootID)
+	return true
+}
+
+// discardEntityState drops every operator's state for the entity when a new
+// boot is admitted. Only the active boot's state is useful afterwards; the
+// seen-boot list still prevents a retired boot from being admitted again.
+func discardEntityState(ps *PartitionState, entityID string) {
 	for operatorID, states := range ps.OperatorStates {
 		if operatorID == RuntimeOperatorID {
 			continue
 		}
 		for stateKey := range states {
-			if stateKey == env.Entity.ID || strings.HasPrefix(stateKey, env.Entity.ID+"\x1f") {
-				// Only the active boot's state is useful after admission. The
-				// tombstone list above still prevents a retired boot from being
-				// admitted again.
+			if stateKey == entityID || strings.HasPrefix(stateKey, entityID+"\x1f") {
 				delete(states, stateKey)
 			}
 		}
 	}
-	runtimeState.CurrentBootID = bootID
-	runtimeState.SeenBootIDs = append(runtimeState.SeenBootIDs, bootID)
-	return true
 }
 
 func (r *OperatorRuntime) isActiveBoot(ps *PartitionState, stateKey string) bool {

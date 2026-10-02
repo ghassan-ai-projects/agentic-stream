@@ -68,53 +68,61 @@ func NewOperatorRuntime(deploymentID string, compiled *spec.CompiledSpec, idGen 
 }
 
 func newWindowConfig(w spec.Window) (*windowConfig, error) {
-	cfg := &windowConfig{emit: w.Emit}
-	if cfg.emit == "" {
-		cfg.emit = "on_close"
+	emit := w.Emit
+	if emit == "" {
+		emit = "on_close"
 	}
-	switch cfg.emit {
+	switch emit {
 	case "on_update", "on_close", "early_and_close":
 	default:
-		return nil, fmt.Errorf("unsupported emit mode %q", cfg.emit)
+		return nil, fmt.Errorf("unsupported emit mode %q", emit)
 	}
-
 	switch w.Kind {
 	case "tumbling":
-		if w.Slide != "" {
-			return nil, fmt.Errorf("tumbling windows do not support slide")
-		}
-		d, err := parseDuration(w.Size)
-		if err != nil {
-			return nil, fmt.Errorf("tumbling size: %w", err)
-		}
-		if d <= 0 {
-			return nil, fmt.Errorf("tumbling size must be positive")
-		}
-		cfg.size = d
+		return tumblingWindow(w, emit)
 	case "sliding":
-		size, err := parseDuration(w.Size)
-		if err != nil {
-			return nil, fmt.Errorf("sliding size: %w", err)
-		}
-		slide, err := parseDuration(w.Slide)
-		if err != nil {
-			return nil, fmt.Errorf("sliding slide: %w", err)
-		}
-		if size <= 0 {
-			return nil, fmt.Errorf("sliding size must be positive")
-		}
-		if slide <= 0 {
-			return nil, fmt.Errorf("sliding slide must be positive")
-		}
-		if slide > size {
-			return nil, fmt.Errorf("sliding slide %s exceeds size %s", slide, size)
-		}
-		cfg.size = size
-		cfg.slide = slide
+		return slidingWindow(w, emit)
 	default:
 		return nil, fmt.Errorf("unsupported window kind %q", w.Kind)
 	}
-	return cfg, nil
+}
+
+// tumblingWindow requires a positive size and no slide.
+func tumblingWindow(w spec.Window, emit string) (*windowConfig, error) {
+	if w.Slide != "" {
+		return nil, fmt.Errorf("tumbling windows do not support slide")
+	}
+	size, err := parseDuration(w.Size)
+	if err != nil {
+		return nil, fmt.Errorf("tumbling size: %w", err)
+	}
+	if size <= 0 {
+		return nil, fmt.Errorf("tumbling size must be positive")
+	}
+	return &windowConfig{emit: emit, size: size}, nil
+}
+
+// slidingWindow requires a positive size and a positive slide no longer than
+// the size.
+func slidingWindow(w spec.Window, emit string) (*windowConfig, error) {
+	size, err := parseDuration(w.Size)
+	if err != nil {
+		return nil, fmt.Errorf("sliding size: %w", err)
+	}
+	slide, err := parseDuration(w.Slide)
+	if err != nil {
+		return nil, fmt.Errorf("sliding slide: %w", err)
+	}
+	if size <= 0 {
+		return nil, fmt.Errorf("sliding size must be positive")
+	}
+	if slide <= 0 {
+		return nil, fmt.Errorf("sliding slide must be positive")
+	}
+	if slide > size {
+		return nil, fmt.Errorf("sliding slide %s exceeds size %s", slide, size)
+	}
+	return &windowConfig{emit: emit, size: size, slide: slide}, nil
 }
 
 func parseDuration(s string) (time.Duration, error) {
