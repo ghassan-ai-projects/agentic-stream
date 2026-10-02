@@ -14,11 +14,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runartifact"
@@ -139,333 +136,246 @@ func newVerifyRunCommand() *cobra.Command {
 }
 
 func newRunLiveCommand() *cobra.Command {
-	var dbPath, specPath, tracePath, tenantID, workerSocket, workerName, traceFormat, effectProfile string
-	var modelEndpoint, modelName string
-	var workerCA, workerCert, workerKey, workerServerName, evidenceSocket, evidenceKey string
-	var deviceSocket, deviceCatalog string
-	var deviceFirmwareDigests []string
-	var liveActuation, ownerAuthorized bool
+	var flags liveFlags
 	cmd := &cobra.Command{
 		Use:   "run-live --spec <spec.yaml> --trace <trace.jsonl>",
 		Short: "Run one owner-scoped live Go pipeline batch.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			runCtx, stop := context.WithCancel(cmd.Context())
-			defer stop()
-			if specPath == "" || tracePath == "" || dbPath == "" {
-				return fmt.Errorf("--spec, --trace, and --db are required")
-			}
-			profileOptions := effectProfileOptions{
-				Profile: actions.EffectProfile(effectProfile), DeviceSocket: deviceSocket, DeviceCatalog: deviceCatalog,
-				AllowedFirmwareDigests: deviceFirmwareDigests, LiveActuation: liveActuation,
-				OwnerAuthorized: ownerAuthorized,
-			}
-			if err := profileOptions.validate(true); err != nil {
-				return fmt.Errorf("validate effect profile: %w", err)
-			}
-			tracerProvider, telemetryErr := configureRuntimeTelemetry(runCtx)
-			if telemetryErr != nil {
-				return telemetryErr
-			}
-			defer func() { _ = tracerProvider.Shutdown(context.Background()) }()
-			compiled, err := spec.CompileFile(runCtx, specPath)
+			report, err := runLive(cmd.Context(), flags)
 			if err != nil {
-				return fmt.Errorf("compile spec: %w", err)
-			}
-			db, err := storage.Open(runCtx, dbPath)
-			if err != nil {
-				return fmt.Errorf("open runtime database: %w", err)
-			}
-			defer func() { _ = db.Close() }()
-			epoch, err := evidence.NewRuntimeEpoch()
-			if err != nil {
-				return fmt.Errorf("generate runtime epoch: %w", err)
-			}
-			owner := &storage.RuntimeOwner{DB: db, InstanceID: epoch, Lease: time.Minute}
-			ledger := &evidence.Ledger{DB: db, LeaseOwner: epoch, RuntimeEpoch: epoch, Lease: time.Minute}
-			epochControl := &storage.EpochControl{DB: db}
-			service, err := runtime.NewService(owner, ledger, epoch)
-			if err != nil {
-				return fmt.Errorf("create runtime service: %w", err)
-			}
-			if _, err := service.Start(runCtx); err != nil {
-				return fmt.Errorf("start runtime: %w", err)
-			}
-			defer func() { _ = service.Close(context.Background()) }()
-			workerRuntime, err := runtime.NewWorkerRuntime(runCtx, runtime.WorkerRuntimeConfig{
-				DB: db, Ledger: ledger, RuntimeEpoch: epoch, WorkerSocket: workerSocket, WorkerName: workerName,
-				WorkerCA: workerCA, WorkerCert: workerCert, WorkerKey: workerKey, WorkerServerName: workerServerName,
-				EvidenceSocket: evidenceSocket, EvidenceKey: evidenceKey, ModelEndpoint: modelEndpoint, ModelName: modelName,
-			})
-			if err != nil {
-				return fmt.Errorf("configure worker runtime: %w", err)
-			}
-			defer func() { _ = workerRuntime.Close() }()
-			workerFailures := make(chan error, 1)
-			workerMonitorDone := monitorWorkerRuntimeErrors(runCtx, workerRuntime.Errors(), workerFailures, stop)
-			defer func() {
-				stop()
-				<-workerMonitorDone
-			}()
-			metrics := telemetry.NewRuntime(time.Now().UTC())
-			effector, serialEffector, closeEffector, err := profileOptions.open(runCtx, db, owner, epochControl, epoch, metrics, true)
-			if err != nil {
-				return fmt.Errorf("configure effect profile: %w", err)
-			}
-			if closeEffector != nil {
-				defer func() { _ = closeEffector() }()
-			}
-			pipeline, err := runtime.NewPipeline(runCtx, runtime.PipelineConfig{
-				DB: db, Spec: compiled, TenantID: tenantID, Owner: owner, OwnerEpoch: epoch,
-				Executor: workerRuntime.Executor, Effector: effector, SerialEffector: serialEffector, IDGenerator: ids.Random(),
-				Telemetry: metrics, EpochControl: epochControl,
-			})
-			if err != nil {
-				return fmt.Errorf("create runtime pipeline: %w", err)
-			}
-			if err := pipeline.Start(runCtx); err != nil {
-				return fmt.Errorf("start pipeline maintenance: %w", err)
-			}
-			defer func() { _ = pipeline.Close() }()
-			var report runtime.PipelineReport
-			switch traceFormat {
-			case "normalized":
-				report, err = pipeline.RunJSONL(runCtx, tracePath)
-				if err != nil {
-					if workerErr := readWorkerRuntimeError(workerFailures); workerErr != nil {
-						return workerErr
-					}
-					return fmt.Errorf("run normalized trace: %w", err)
-				}
-			case "simulator":
-				report, err = pipeline.RunSimulatorJSONL(runCtx, tracePath)
-				if err != nil {
-					if workerErr := readWorkerRuntimeError(workerFailures); workerErr != nil {
-						return workerErr
-					}
-					return fmt.Errorf("run simulator trace: %w", err)
-				}
-			default:
-				return fmt.Errorf("unsupported --trace-format %q", traceFormat)
-			}
-			if workerErr := readWorkerRuntimeError(workerFailures); workerErr != nil {
-				return workerErr
+				return err
 			}
 			cmd.Printf("events_ingested=%d events_processed=%d episodes_admitted=%d episodes_executed=%d intents_evaluated=%d commands_dispatched=%d\n", report.EventsIngested, report.EventsProcessed, report.EpisodesAdmitted, report.EpisodesExecuted, report.IntentsEvaluated, report.CommandsDispatched)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite runtime database path")
-	cmd.Flags().StringVar(&specPath, "spec", "", "SituationSpec YAML path")
-	cmd.Flags().StringVar(&tracePath, "trace", "", "JSONL trace path")
-	cmd.Flags().StringVar(&tenantID, "tenant", "default", "Tenant ID")
-	cmd.Flags().StringVar(&traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
-	addEffectProfileFlags(cmd, &effectProfile, &deviceSocket, &deviceCatalog, &deviceFirmwareDigests, &liveActuation, &ownerAuthorized)
-	addWorkerRuntimeFlags(cmd, workerRuntimeFlagTargets{
-		workerSocket: &workerSocket, modelEndpoint: &modelEndpoint, modelName: &modelName,
-		workerName: &workerName, workerCA: &workerCA, workerCert: &workerCert, workerKey: &workerKey,
-		workerServerName: &workerServerName, evidenceSocket: &evidenceSocket, evidenceKey: &evidenceKey,
-	})
+	cmd.Flags().StringVar(&flags.dbPath, "db", "", "SQLite runtime database path")
+	cmd.Flags().StringVar(&flags.specPath, "spec", "", "SituationSpec YAML path")
+	cmd.Flags().StringVar(&flags.tracePath, "trace", "", "JSONL trace path")
+	cmd.Flags().StringVar(&flags.tenantID, "tenant", "default", "Tenant ID")
+	cmd.Flags().StringVar(&flags.traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
+	flags.registerShared(cmd)
 	return cmd
 }
 
+// runLive runs one owner-scoped pipeline batch over a trace file. A worker
+// runtime failure takes precedence over the batch error it caused.
+func runLive(ctx context.Context, flags liveFlags) (runtime.PipelineReport, error) {
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	if flags.specPath == "" || flags.tracePath == "" || flags.dbPath == "" {
+		return runtime.PipelineReport{}, fmt.Errorf("--spec, --trace, and --db are required")
+	}
+	profileOptions := flags.profileOptions()
+	if err := profileOptions.validate(true); err != nil {
+		return runtime.PipelineReport{}, fmt.Errorf("validate effect profile: %w", err)
+	}
+	var cleanup cleanups
+	defer cleanup.run()
+	tracerProvider, err := configureRuntimeTelemetry(runCtx)
+	if err != nil {
+		return runtime.PipelineReport{}, err
+	}
+	cleanup.add(func() { _ = tracerProvider.Shutdown(context.Background()) })
+	compiled, err := spec.CompileFile(runCtx, flags.specPath)
+	if err != nil {
+		return runtime.PipelineReport{}, fmt.Errorf("compile spec: %w", err)
+	}
+	core, err := openRuntimeCore(runCtx, flags.dbPath, time.Minute, &cleanup)
+	if err != nil {
+		return runtime.PipelineReport{}, err
+	}
+	workerRuntime, err := core.openWorkerRuntime(runCtx, flags.worker, &cleanup)
+	if err != nil {
+		return runtime.PipelineReport{}, err
+	}
+	workerFailures := make(chan error, 1)
+	workerMonitorDone := monitorWorkerRuntimeErrors(runCtx, workerRuntime.Errors(), workerFailures, stop)
+	cleanup.add(func() {
+		stop()
+		<-workerMonitorDone
+	})
+	metrics := telemetry.NewRuntime(time.Now().UTC())
+	opened, err := core.openEffects(runCtx, profileOptions, metrics, true, &cleanup)
+	if err != nil {
+		return runtime.PipelineReport{}, err
+	}
+	pipeline, err := core.startPipeline(runCtx, compiled, flags.tenantID, workerRuntime, opened, metrics, false, &cleanup)
+	if err != nil {
+		return runtime.PipelineReport{}, err
+	}
+	report, err := runTrace(runCtx, pipeline, flags.traceFormat, flags.tracePath)
+	if workerErr := readWorkerRuntimeError(workerFailures); workerErr != nil {
+		return runtime.PipelineReport{}, workerErr
+	}
+	if err != nil {
+		return runtime.PipelineReport{}, err
+	}
+	return report, nil
+}
+
+// serveFlags are the serve command's flags.
+type serveFlags struct {
+	liveFlags
+	listenAddress, liveSocket string
+	ownerLease, pollInterval  time.Duration
+	demoMode                  bool
+}
+
 func newServeCommand() *cobra.Command {
-	var dbPath, listenAddress, tenantID, specPath, tracePath, liveSocket, traceFormat, effectProfile string
-	var modelEndpoint, modelName string
-	var workerSocket, workerName, workerCA, workerCert, workerKey, workerServerName, evidenceSocket, evidenceKey string
-	var deviceSocket, deviceCatalog string
-	var deviceFirmwareDigests []string
-	var liveActuation, ownerAuthorized bool
-	var ownerLease, pollInterval time.Duration
-	var demoMode bool
+	var flags serveFlags
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Start the live Go runtime and readiness endpoint.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if dbPath == "" {
-				return fmt.Errorf("--db is required")
-			}
-			if err := validateServeSources(specPath, tracePath, liveSocket, workerSocket); err != nil {
-				return err
-			}
-			if liveSocket != "" && traceFormat != "normalized" {
-				return fmt.Errorf("--live-socket requires --trace-format normalized")
-			}
-			profileOptions := effectProfileOptions{
-				Profile: actions.EffectProfile(effectProfile), DeviceSocket: deviceSocket, DeviceCatalog: deviceCatalog,
-				AllowedFirmwareDigests: deviceFirmwareDigests, LiveActuation: liveActuation,
-				OwnerAuthorized: ownerAuthorized,
-			}
-			if err := profileOptions.validate(tracePath != ""); err != nil {
-				return fmt.Errorf("validate effect profile: %w", err)
-			}
-			workerConfig := runtime.WorkerRuntimeConfig{
-				WorkerSocket: workerSocket, WorkerName: workerName, WorkerCA: workerCA, WorkerCert: workerCert,
-				WorkerKey: workerKey, WorkerServerName: workerServerName, EvidenceSocket: evidenceSocket, EvidenceKey: evidenceKey,
-				ModelEndpoint: modelEndpoint, ModelName: modelName,
-			}
-			if err := runtime.ValidateWorkerRuntimeConfig(workerConfig); err != nil {
-				return fmt.Errorf("worker runtime config: %w", err)
-			}
-			if pollInterval <= 0 {
-				return fmt.Errorf("--poll-interval must be positive")
-			}
-			subscriberToken := os.Getenv("AGENTIC_STREAM_SUBSCRIBER_TOKEN")
-			if subscriberToken == "" {
-				return fmt.Errorf("AGENTIC_STREAM_SUBSCRIBER_TOKEN is required for notification subscribers")
-			}
-			if !isLoopbackListenAddress(listenAddress) {
-				return fmt.Errorf("non-loopback --listen requires an authenticated deployment proxy")
-			}
-			db, err := storage.Open(cmd.Context(), dbPath)
-			if err != nil {
-				return fmt.Errorf("open runtime database: %w", err)
-			}
-			defer func() { _ = db.Close() }()
-			epoch, err := evidence.NewRuntimeEpoch()
-			if err != nil {
-				return fmt.Errorf("generate runtime epoch: %w", err)
-			}
-			owner := &storage.RuntimeOwner{DB: db, InstanceID: epoch, Lease: ownerLease}
-			ledger := &evidence.Ledger{DB: db, LeaseOwner: epoch, RuntimeEpoch: epoch, Lease: ownerLease}
-			epochControl := &storage.EpochControl{DB: db}
-			service, err := runtime.NewService(owner, ledger, epoch)
-			if err != nil {
-				return fmt.Errorf("create runtime service: %w", err)
-			}
-			if _, err := service.Start(cmd.Context()); err != nil {
-				return fmt.Errorf("start runtime: %w", err)
-			}
-			defer func() { _ = service.Close(context.Background()) }()
-			metrics := telemetry.NewRuntime(time.Now().UTC())
-			tracerProvider, telemetryErr := configureRuntimeTelemetry(cmd.Context())
-			if telemetryErr != nil {
-				return telemetryErr
-			}
-			defer func() { _ = tracerProvider.Shutdown(context.Background()) }()
-			runCtx, stop := context.WithCancel(cmd.Context())
-			var workerMonitorDone <-chan struct{}
-			defer func() {
-				stop()
-				if workerMonitorDone != nil {
-					<-workerMonitorDone
-				}
-			}()
-			effector, serialEffector, closeEffector, err := profileOptions.open(runCtx, db, owner, epochControl, epoch, metrics, tracePath != "")
-			if err != nil {
-				return fmt.Errorf("configure effect profile: %w", err)
-			}
-			if closeEffector != nil {
-				defer func() { _ = closeEffector() }()
-			}
-			var pipeline *runtime.Pipeline
-			var workerRuntime *runtime.WorkerRuntime
-			pipelineErrors := make(chan error, 1)
-			if specPath != "" {
-				compiled, compileErr := spec.CompileFile(runCtx, specPath)
-				if compileErr != nil {
-					return fmt.Errorf("compile spec: %w", compileErr)
-				}
-				workerConfig.DB = db
-				workerConfig.Ledger = ledger
-				workerConfig.RuntimeEpoch = epoch
-				workerRuntime, err = runtime.NewWorkerRuntime(runCtx, workerConfig)
-				if err != nil {
-					return fmt.Errorf("configure worker runtime: %w", err)
-				}
-				defer func() { _ = workerRuntime.Close() }()
-				workerMonitorDone = monitorWorkerRuntimeErrors(runCtx, workerRuntime.Errors(), pipelineErrors, stop)
-				pipeline, err = runtime.NewPipeline(runCtx, runtime.PipelineConfig{
-					DB: db, Spec: compiled, TenantID: tenantID, Owner: owner, OwnerEpoch: epoch,
-					Executor: workerRuntime.Executor, Effector: effector, SerialEffector: serialEffector, IDGenerator: ids.Random(), Telemetry: metrics,
-					EpochControl: epochControl, DemoMode: demoMode,
-				})
-				if err != nil {
-					return fmt.Errorf("configure live pipeline: %w", err)
-				}
-				if err := pipeline.Start(runCtx); err != nil {
-					return fmt.Errorf("start live pipeline: %w", err)
-				}
-				defer func() { _ = pipeline.Close() }()
-				if liveSocket != "" {
-					go func() {
-						if runErr := pipeline.RunLiveSocket(runCtx, liveSocket); runErr != nil && !errors.Is(runErr, context.Canceled) {
-							pipelineErrors <- fmt.Errorf("live socket pipeline: %w", runErr)
-							stop()
-						}
-					}()
-					if err := waitForLiveSocket(runCtx, liveSocket, pipelineErrors); err != nil {
-						return err
-					}
-				} else {
-					go func() {
-						for {
-							var runErr error
-							switch traceFormat {
-							case "normalized":
-								_, runErr = pipeline.RunJSONL(runCtx, tracePath)
-							case "simulator":
-								_, runErr = pipeline.RunSimulatorJSONL(runCtx, tracePath)
-							default:
-								runErr = fmt.Errorf("unsupported --trace-format %q", traceFormat)
-							}
-							if runErr != nil && !errors.Is(runErr, context.Canceled) {
-								pipelineErrors <- fmt.Errorf("continuous pipeline: %w", runErr)
-								stop()
-								return
-							}
-							timer := time.NewTimer(pollInterval)
-							select {
-							case <-runCtx.Done():
-								if !timer.Stop() {
-									<-timer.C
-								}
-								return
-							case <-timer.C:
-							}
-						}
-					}()
-				}
-			}
-			handler := api.NewRuntimeHandler(service, db, notify.SSEConfig{
-				TenantID:  tenantID,
-				MaxLag:    1000,
-				Authorize: notify.BearerTokenAuthorizer(subscriberToken),
-			}, metrics.Handler(), epochControl, epoch, os.Getenv("AGENTIC_STREAM_CONTROL_TOKEN"))
-			server := &http.Server{Addr: listenAddress, Handler: handler, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 30 * time.Second}
-			go func() {
-				<-runCtx.Done()
-				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				_ = server.Shutdown(shutdownCtx)
-			}()
-			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				return fmt.Errorf("serve runtime: %w", err)
-			}
-			select {
-			case pipelineErr := <-pipelineErrors:
-				return pipelineErr
-			default:
-				return nil
-			}
+			return serve(cmd.Context(), flags)
 		},
 	}
-	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite runtime database path")
-	cmd.Flags().StringVar(&specPath, "spec", "", "SituationSpec YAML path for continuous ingestion")
-	cmd.Flags().StringVar(&tracePath, "trace", "", "append-only JSONL trace path for continuous ingestion")
-	cmd.Flags().StringVar(&liveSocket, "live-socket", "", "Unix socket for live normalized JSONL telemetry ingestion")
-	cmd.Flags().StringVar(&traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
-	addEffectProfileFlags(cmd, &effectProfile, &deviceSocket, &deviceCatalog, &deviceFirmwareDigests, &liveActuation, &ownerAuthorized)
-	addWorkerRuntimeFlags(cmd, workerRuntimeFlagTargets{
-		workerSocket: &workerSocket, modelEndpoint: &modelEndpoint, modelName: &modelName,
-		workerName: &workerName, workerCA: &workerCA, workerCert: &workerCert, workerKey: &workerKey,
-		workerServerName: &workerServerName, evidenceSocket: &evidenceSocket, evidenceKey: &evidenceKey,
-	})
-	cmd.Flags().StringVar(&tenantID, "tenant", "default", "tenant served by this runtime process")
-	cmd.Flags().StringVar(&listenAddress, "listen", "127.0.0.1:8080", "loopback HTTP listen address")
-	cmd.Flags().DurationVar(&ownerLease, "owner-lease", time.Minute, "runtime owner lease duration")
-	cmd.Flags().DurationVar(&pollInterval, "poll-interval", time.Second, "continuous source polling interval")
-	cmd.Flags().BoolVar(&demoMode, "demo-mode", false, "admit fixture executors (demos and tests only; a production route never admits fixture)")
+	cmd.Flags().StringVar(&flags.dbPath, "db", "", "SQLite runtime database path")
+	cmd.Flags().StringVar(&flags.specPath, "spec", "", "SituationSpec YAML path for continuous ingestion")
+	cmd.Flags().StringVar(&flags.tracePath, "trace", "", "append-only JSONL trace path for continuous ingestion")
+	cmd.Flags().StringVar(&flags.liveSocket, "live-socket", "", "Unix socket for live normalized JSONL telemetry ingestion")
+	cmd.Flags().StringVar(&flags.traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
+	flags.registerShared(cmd)
+	cmd.Flags().StringVar(&flags.tenantID, "tenant", "default", "tenant served by this runtime process")
+	cmd.Flags().StringVar(&flags.listenAddress, "listen", "127.0.0.1:8080", "loopback HTTP listen address")
+	cmd.Flags().DurationVar(&flags.ownerLease, "owner-lease", time.Minute, "runtime owner lease duration")
+	cmd.Flags().DurationVar(&flags.pollInterval, "poll-interval", time.Second, "continuous source polling interval")
+	cmd.Flags().BoolVar(&flags.demoMode, "demo-mode", false, "admit fixture executors (demos and tests only; a production route never admits fixture)")
 	return cmd
+}
+
+// validate checks every serve input before a database, socket, or credential
+// is opened, and returns the notification subscriber token.
+func (f serveFlags) validate() (string, error) {
+	if f.dbPath == "" {
+		return "", fmt.Errorf("--db is required")
+	}
+	if err := validateServeSources(f.specPath, f.tracePath, f.liveSocket, f.worker.WorkerSocket); err != nil {
+		return "", err
+	}
+	if f.liveSocket != "" && f.traceFormat != "normalized" {
+		return "", fmt.Errorf("--live-socket requires --trace-format normalized")
+	}
+	if err := f.profileOptions().validate(f.tracePath != ""); err != nil {
+		return "", fmt.Errorf("validate effect profile: %w", err)
+	}
+	if err := runtime.ValidateWorkerRuntimeConfig(f.worker); err != nil {
+		return "", fmt.Errorf("worker runtime config: %w", err)
+	}
+	if f.pollInterval <= 0 {
+		return "", fmt.Errorf("--poll-interval must be positive")
+	}
+	subscriberToken := os.Getenv("AGENTIC_STREAM_SUBSCRIBER_TOKEN")
+	if subscriberToken == "" {
+		return "", fmt.Errorf("AGENTIC_STREAM_SUBSCRIBER_TOKEN is required for notification subscribers")
+	}
+	if !isLoopbackListenAddress(f.listenAddress) {
+		return "", fmt.Errorf("non-loopback --listen requires an authenticated deployment proxy")
+	}
+	return subscriberToken, nil
+}
+
+// serve runs the runtime HTTP surface and, when a spec is configured, the
+// continuous pipeline, until ctx ends or a source fails.
+func serve(ctx context.Context, flags serveFlags) error {
+	subscriberToken, err := flags.validate()
+	if err != nil {
+		return err
+	}
+	var cleanup cleanups
+	defer cleanup.run()
+	core, err := openRuntimeCore(ctx, flags.dbPath, flags.ownerLease, &cleanup)
+	if err != nil {
+		return err
+	}
+	metrics := telemetry.NewRuntime(time.Now().UTC())
+	tracerProvider, err := configureRuntimeTelemetry(ctx)
+	if err != nil {
+		return err
+	}
+	cleanup.add(func() { _ = tracerProvider.Shutdown(context.Background()) })
+	runCtx, stop := context.WithCancel(ctx)
+	cleanup.add(stop)
+	opened, err := core.openEffects(runCtx, flags.profileOptions(), metrics, flags.tracePath != "", &cleanup)
+	if err != nil {
+		return err
+	}
+	pipelineErrors := make(chan error, 1)
+	if flags.specPath != "" {
+		if err := startContinuousPipeline(runCtx, stop, core, flags, opened, metrics, pipelineErrors, &cleanup); err != nil {
+			return err
+		}
+	}
+	handler := api.NewRuntimeHandler(core.service, core.db, notify.SSEConfig{
+		TenantID:  flags.tenantID,
+		MaxLag:    1000,
+		Authorize: notify.BearerTokenAuthorizer(subscriberToken),
+	}, metrics.Handler(), core.epochControl, core.epoch, os.Getenv("AGENTIC_STREAM_CONTROL_TOKEN"))
+	if err := serveHTTP(runCtx, flags.listenAddress, handler); err != nil {
+		return err
+	}
+	select {
+	case pipelineErr := <-pipelineErrors:
+		return pipelineErr
+	default:
+		return nil
+	}
+}
+
+// startContinuousPipeline starts the worker runtime and pipeline, then feeds
+// it from the live socket or by polling the trace file. A source failure is
+// reported on failures and stops the process.
+func startContinuousPipeline(ctx context.Context, stop context.CancelFunc, core *runtimeCore, flags serveFlags, opened effects, metrics *telemetry.Runtime, failures chan error, cleanup *cleanups) error {
+	compiled, err := spec.CompileFile(ctx, flags.specPath)
+	if err != nil {
+		return fmt.Errorf("compile spec: %w", err)
+	}
+	workerRuntime, err := core.openWorkerRuntime(ctx, flags.worker, cleanup)
+	if err != nil {
+		return err
+	}
+	workerMonitorDone := monitorWorkerRuntimeErrors(ctx, workerRuntime.Errors(), failures, stop)
+	cleanup.add(func() {
+		stop()
+		<-workerMonitorDone
+	})
+	pipeline, err := core.startPipeline(ctx, compiled, flags.tenantID, workerRuntime, opened, metrics, flags.demoMode, cleanup)
+	if err != nil {
+		return err
+	}
+	if flags.liveSocket != "" {
+		go func() {
+			if runErr := pipeline.RunLiveSocket(ctx, flags.liveSocket); runErr != nil && !errors.Is(runErr, context.Canceled) {
+				failures <- fmt.Errorf("live socket pipeline: %w", runErr)
+				stop()
+			}
+		}()
+		return waitForLiveSocket(ctx, flags.liveSocket, failures)
+	}
+	go func() {
+		if runErr := pollTrace(ctx, pipeline, flags.traceFormat, flags.tracePath, flags.pollInterval); runErr != nil {
+			failures <- fmt.Errorf("continuous pipeline: %w", runErr)
+			stop()
+		}
+	}()
+	return nil
+}
+
+// serveHTTP serves handler until ctx ends, then shuts down gracefully.
+func serveHTTP(ctx context.Context, address string, handler http.Handler) error {
+	server := &http.Server{Addr: address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 30 * time.Second}
+	go func() {
+		<-ctx.Done()
+		// ctx is already done; keep its values but give shutdown its own deadline.
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+	}()
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("serve runtime: %w", err)
+	}
+	return nil
 }
 
 func validateServeSources(specPath, tracePath, liveSocket, workerSocket string) error {
