@@ -21,15 +21,41 @@ func NewFakeExecutor() *FakeExecutor {
 // Execute returns a deterministic Decision based on the request snapshot.
 func (e *FakeExecutor) Execute(ctx context.Context, req *Request) (*Outcome, error) {
 	_ = ctx
+	phase, triggerName, err := fakeExecutorInputs(req)
+	if err != nil {
+		return nil, err
+	}
+	intent, err := fakeIntent(req, phase)
+	if err != nil {
+		return nil, err
+	}
+	decision := map[string]any{
+		"decision_id":       "dec_" + req.EpisodeID,
+		"episode_id":        req.EpisodeID,
+		"attempt_id":        req.AttemptID,
+		"fence":             req.Fence,
+		"snapshot_digest":   req.SnapshotSHA256,
+		"situation_id":      req.SituationID,
+		"situation_version": req.SituationVersion,
+		"summary":           fmt.Sprintf("fake decision for phase %s via trigger %s", phase, triggerName),
+		"confidence":        0.95,
+		"facts_used": []map[string]any{
+			{"path": "snapshot.phase", "value": phase},
+		},
+		"intents": []map[string]any{intent},
+	}
+	return producedOutcome(req, decision)
+}
 
+// fakeExecutorInputs reads the snapshot phase and trigger name, defaulting
+// each to "unknown".
+func fakeExecutorInputs(req *Request) (string, string, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
-		return nil, fmt.Errorf("unmarshal request: %w", err)
+		return "", "", fmt.Errorf("unmarshal request: %w", err)
 	}
-
 	snapshot, _ := payload["snapshot"].(map[string]any)
 	trigger, _ := payload["trigger"].(map[string]any)
-
 	phase := "unknown"
 	if p, ok := snapshot["phase"].(string); ok {
 		phase = p
@@ -38,6 +64,11 @@ func (e *FakeExecutor) Execute(ctx context.Context, req *Request) (*Outcome, err
 	if t, ok := trigger["trigger_name"].(string); ok {
 		triggerName = t
 	}
+	return phase, triggerName, nil
+}
+
+// fakeIntent is a digest-bound R1 maintenance-ticket intent for the episode.
+func fakeIntent(req *Request, phase string) (map[string]any, error) {
 	parameters := map[string]any{"reason": phase}
 	if req.EntityID != "" {
 		parameters["entity_id"] = req.EntityID
@@ -58,22 +89,12 @@ func (e *FakeExecutor) Execute(ctx context.Context, req *Request) (*Outcome, err
 		return nil, fmt.Errorf("digest intent: %w", err)
 	}
 	intent["intent_digest"] = intentDigest
+	return intent, nil
+}
 
-	decision := map[string]any{
-		"decision_id":       "dec_" + req.EpisodeID,
-		"episode_id":        req.EpisodeID,
-		"attempt_id":        req.AttemptID,
-		"fence":             req.Fence,
-		"snapshot_digest":   req.SnapshotSHA256,
-		"situation_id":      req.SituationID,
-		"situation_version": req.SituationVersion,
-		"summary":           fmt.Sprintf("fake decision for phase %s via trigger %s", phase, triggerName),
-		"confidence":        0.95,
-		"facts_used": []map[string]any{
-			{"path": "snapshot.phase", "value": phase},
-		},
-		"intents": []map[string]any{intent},
-	}
+// producedOutcome canonicalizes and digests the decision as a produced
+// outcome for the request's attempt.
+func producedOutcome(req *Request, decision map[string]any) (*Outcome, error) {
 	decisionJSON, err := canonicaljson.Marshal(decision)
 	if err != nil {
 		return nil, fmt.Errorf("marshal decision: %w", err)
@@ -82,7 +103,6 @@ func (e *FakeExecutor) Execute(ctx context.Context, req *Request) (*Outcome, err
 	if err != nil {
 		return nil, fmt.Errorf("digest decision: %w", err)
 	}
-
 	return &Outcome{
 		Status:         string(AttemptProduced),
 		AttemptID:      req.AttemptID,

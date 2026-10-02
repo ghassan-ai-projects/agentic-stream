@@ -143,8 +143,7 @@ func validateReconciliationEvidence(evidence map[string]any) error {
 	if len(evidence) == 0 {
 		return fmt.Errorf("reconciliation evidence is required")
 	}
-	source, _ := evidence["source"].(string)
-	if source == "" {
+	if source, _ := evidence["source"].(string); source == "" {
 		return fmt.Errorf("reconciliation evidence source is required")
 	}
 	evidenceType, _ := evidence["evidence_type"].(string)
@@ -152,19 +151,34 @@ func validateReconciliationEvidence(evidence map[string]any) error {
 		return fmt.Errorf("reconciliation evidence_type is required")
 	}
 	if evidenceType == "device_state_feedback" {
-		for _, key := range []string{"device_id", "boot_id", "state", "feedback_digest"} {
-			if _, ok := evidence[key]; !ok {
-				return fmt.Errorf("device reconciliation evidence requires %s", key)
-			}
+		if err := requireDeviceFeedbackFields(evidence); err != nil {
+			return err
 		}
 	}
-	for _, key := range []string{"evidence_digest", "state_digest", "feedback_digest"} {
-		if digest, ok := evidence[key].(string); ok && digest != "" {
-			if _, err := canonicaljson.DecodeDigest(digest); err != nil {
-				return fmt.Errorf("invalid reconciliation %s: %w", key, err)
-			}
-			return nil
+	return requireEvidenceDigest(evidence)
+}
+
+func requireDeviceFeedbackFields(evidence map[string]any) error {
+	for _, key := range []string{"device_id", "boot_id", "state", "feedback_digest"} {
+		if _, ok := evidence[key]; !ok {
+			return fmt.Errorf("device reconciliation evidence requires %s", key)
 		}
+	}
+	return nil
+}
+
+// requireEvidenceDigest validates the first present evidence, state, or
+// feedback digest, and requires at least one.
+func requireEvidenceDigest(evidence map[string]any) error {
+	for _, key := range []string{"evidence_digest", "state_digest", "feedback_digest"} {
+		digest, ok := evidence[key].(string)
+		if !ok || digest == "" {
+			continue
+		}
+		if _, err := canonicaljson.DecodeDigest(digest); err != nil {
+			return fmt.Errorf("invalid reconciliation %s: %w", key, err)
+		}
+		return nil
 	}
 	return fmt.Errorf("reconciliation evidence must include a sha256 evidence, state, or feedback digest")
 }

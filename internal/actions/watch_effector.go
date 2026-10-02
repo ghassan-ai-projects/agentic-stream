@@ -82,38 +82,51 @@ func (e *WatchEffector) dispatch(ctx context.Context, command Command, _ func(co
 	}
 	now := e.clk.Now().UTC().Format(time.RFC3339Nano)
 	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
-		existing, err := loadWatchCondition(ctx, tx, watchID)
-		if err != nil {
-			return fmt.Errorf("load existing watch condition: %w", err)
-		}
-		if existing != nil {
-			return want.sameAs(*existing)
-		}
-		if err := e.assertGuards(ctx, tx, command.TenantID, want.target); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO watch_conditions (
-				watch_id, tenant_id, situation_id, situation_version, expression, target,
-				expires_at, remaining_fires, max_fires, status, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
-			ON CONFLICT(watch_id) DO NOTHING`,
-			watchID, want.tenantID, want.situationID, want.situationVersion, want.expression, want.target,
-			want.expiresAt, want.maxFires, want.maxFires, now, now); err != nil {
-			return fmt.Errorf("install watch condition: %w", err)
-		}
-		stored, err := loadWatchCondition(ctx, tx, watchID)
-		if err != nil {
-			return fmt.Errorf("verify installed watch condition: %w", err)
-		}
-		if stored == nil {
-			return fmt.Errorf("verify installed watch condition: %w", sql.ErrNoRows)
-		}
-		return want.sameAs(*stored)
+		return e.installOnce(ctx, tx, watchID, want, now)
 	}); err != nil {
 		return Effect{}, fmt.Errorf("watch condition transaction: %w", err)
 	}
 	return Effect{ProviderResult: map[string]any{"accepted": true, "watch_id": watchID}}, nil
+}
+
+// installOnce installs the watch, or accepts an identical earlier install of
+// the same watch ID and rejects a conflicting one.
+func (e *WatchEffector) installOnce(ctx context.Context, tx *sql.Tx, watchID string, want watchCondition, now string) error {
+	existing, err := loadWatchCondition(ctx, tx, watchID)
+	if err != nil {
+		return fmt.Errorf("load existing watch condition: %w", err)
+	}
+	if existing != nil {
+		return want.sameAs(*existing)
+	}
+	if err := e.assertGuards(ctx, tx, want.tenantID, want.target); err != nil {
+		return err
+	}
+	if err := insertWatchCondition(ctx, tx, watchID, want, now); err != nil {
+		return err
+	}
+	stored, err := loadWatchCondition(ctx, tx, watchID)
+	if err != nil {
+		return fmt.Errorf("verify installed watch condition: %w", err)
+	}
+	if stored == nil {
+		return fmt.Errorf("verify installed watch condition: %w", sql.ErrNoRows)
+	}
+	return want.sameAs(*stored)
+}
+
+func insertWatchCondition(ctx context.Context, tx *sql.Tx, watchID string, want watchCondition, now string) error {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO watch_conditions (
+			watch_id, tenant_id, situation_id, situation_version, expression, target,
+			expires_at, remaining_fires, max_fires, status, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+		ON CONFLICT(watch_id) DO NOTHING`,
+		watchID, want.tenantID, want.situationID, want.situationVersion, want.expression, want.target,
+		want.expiresAt, want.maxFires, want.maxFires, now, now); err != nil {
+		return fmt.Errorf("install watch condition: %w", err)
+	}
+	return nil
 }
 
 // watchCondition is the identity-defining content of an installed watch.

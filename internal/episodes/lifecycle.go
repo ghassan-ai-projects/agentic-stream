@@ -138,7 +138,29 @@ func startAttempt(ctx context.Context, tx *sql.Tx, episodeID, attemptID, ownerEp
 			return Identity{}, err
 		}
 	}
+	currentFence, err := requireStartableEpisode(ctx, tx, episodeID)
+	if err != nil {
+		return Identity{}, err
+	}
+	identity := Identity{EpisodeID: episodeID, AttemptID: attemptID, Fence: currentFence + 1, OwnerEpoch: ownerEpoch}
+	if err := insertAttempt(ctx, tx, identity, now); err != nil {
+		return Identity{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE episodes
+		SET lifecycle_status = ?, current_attempt_id = ?, current_fence = ?,
+		    started_at = COALESCE(started_at, ?)
+		WHERE episode_id = ?`,
+		LifecycleRunning, attemptID, identity.Fence, formatTime(now), episodeID,
+	); err != nil {
+		return Identity{}, fmt.Errorf("update episode attempt identity: %w", err)
+	}
+	return identity, nil
+}
 
+// requireStartableEpisode requires an admitted or running episode with no
+// active attempt and returns its current fence.
+func requireStartableEpisode(ctx context.Context, tx *sql.Tx, episodeID string) (int64, error) {
 	var lifecycle LifecycleStatus
 	var currentAttempt sql.NullString
 	var currentFence int64
@@ -147,50 +169,46 @@ func startAttempt(ctx context.Context, tx *sql.Tx, episodeID, attemptID, ownerEp
 		FROM episodes WHERE episode_id = ?`, episodeID,
 	).Scan(&lifecycle, &currentAttempt, &currentFence); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Identity{}, &IdentityError{Reason: RejectUnknownEpisode}
+			return 0, &IdentityError{Reason: RejectUnknownEpisode}
 		}
-		return Identity{}, fmt.Errorf("load episode for attempt: %w", err)
+		return 0, fmt.Errorf("load episode for attempt: %w", err)
 	}
 	if lifecycle != LifecycleAdmitted && lifecycle != LifecycleRunning {
-		return Identity{}, &IdentityError{Reason: RejectEpisodeClosed}
+		return 0, &IdentityError{Reason: RejectEpisodeClosed}
 	}
-	if currentAttempt.Valid {
-		var currentStatus AttemptStatus
-		if err := tx.QueryRowContext(ctx,
-			"SELECT status FROM episode_attempts WHERE attempt_id = ? AND episode_id = ?",
-			currentAttempt.String, episodeID,
-		).Scan(&currentStatus); err != nil {
-			return Identity{}, fmt.Errorf("load current attempt: %w", err)
-		}
-		if !IsTerminalAttempt(currentStatus) {
-			return Identity{}, fmt.Errorf("episode %s already has active attempt %s", episodeID, currentAttempt.String)
-		}
+	if !currentAttempt.Valid {
+		return currentFence, nil
 	}
+	var currentStatus AttemptStatus
+	if err := tx.QueryRowContext(ctx,
+		"SELECT status FROM episode_attempts WHERE attempt_id = ? AND episode_id = ?",
+		currentAttempt.String, episodeID,
+	).Scan(&currentStatus); err != nil {
+		return 0, fmt.Errorf("load current attempt: %w", err)
+	}
+	if !IsTerminalAttempt(currentStatus) {
+		return 0, fmt.Errorf("episode %s already has active attempt %s", episodeID, currentAttempt.String)
+	}
+	return currentFence, nil
+}
 
-	fence := currentFence + 1
-	var insertErr error
-	if ownerEpoch == "" {
-		_, insertErr = tx.ExecContext(ctx, `
+// insertAttempt records a dispatched attempt, owned by an epoch when one is
+// given.
+func insertAttempt(ctx context.Context, tx *sql.Tx, identity Identity, now time.Time) error {
+	var err error
+	if identity.OwnerEpoch == "" {
+		_, err = tx.ExecContext(ctx, `
 			INSERT INTO episode_attempts (attempt_id, episode_id, fence, status, started_at)
-			VALUES (?, ?, ?, ?, ?)`, attemptID, episodeID, fence, AttemptDispatched, formatTime(now))
+			VALUES (?, ?, ?, ?, ?)`, identity.AttemptID, identity.EpisodeID, identity.Fence, AttemptDispatched, formatTime(now))
 	} else {
-		_, insertErr = tx.ExecContext(ctx, `
+		_, err = tx.ExecContext(ctx, `
 			INSERT INTO episode_attempts (attempt_id, episode_id, fence, status, owner_epoch, started_at)
-			VALUES (?, ?, ?, ?, ?, ?)`, attemptID, episodeID, fence, AttemptDispatched, ownerEpoch, formatTime(now))
+			VALUES (?, ?, ?, ?, ?, ?)`, identity.AttemptID, identity.EpisodeID, identity.Fence, AttemptDispatched, identity.OwnerEpoch, formatTime(now))
 	}
-	if insertErr != nil {
-		return Identity{}, fmt.Errorf("insert episode attempt: %w", insertErr)
+	if err != nil {
+		return fmt.Errorf("insert episode attempt: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE episodes
-		SET lifecycle_status = ?, current_attempt_id = ?, current_fence = ?,
-		    started_at = COALESCE(started_at, ?)
-		WHERE episode_id = ?`,
-		LifecycleRunning, attemptID, fence, formatTime(now), episodeID,
-	); err != nil {
-		return Identity{}, fmt.Errorf("update episode attempt identity: %w", err)
-	}
-	return Identity{EpisodeID: episodeID, AttemptID: attemptID, Fence: fence, OwnerEpoch: ownerEpoch}, nil
+	return nil
 }
 
 // TransitionAttempt applies a valid attempt transition and records terminal

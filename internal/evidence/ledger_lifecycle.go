@@ -14,7 +14,6 @@ func (l *Ledger) Complete(ctx context.Context, reservation ledgerReservation, re
 	if l == nil || l.DB == nil {
 		return fmt.Errorf("evidence ledger is not configured")
 	}
-	hash := sha256.Sum256(result.JSON)
 	now := time.Now().UTC()
 	if l.Now != nil {
 		now = l.Now().UTC()
@@ -26,30 +25,47 @@ func (l *Ledger) Complete(ctx context.Context, reservation ledgerReservation, re
 		if err := l.assertOwner(persistenceCtx, tx); err != nil {
 			return err
 		}
-		var lifecycle, currentAttempt, attemptStatus string
-		var currentFence int64
-		if err := tx.QueryRowContext(persistenceCtx, `SELECT lifecycle_status, COALESCE(current_attempt_id, ''), current_fence FROM episodes WHERE episode_id = ?`, reservation.Key.EpisodeID).Scan(&lifecycle, &currentAttempt, &currentFence); err != nil {
-			return fmt.Errorf("load completion episode: %w", err)
+		if err := assertAttemptRunning(persistenceCtx, tx, reservation.Key); err != nil {
+			return err
 		}
-		if lifecycle != "running" || currentAttempt != reservation.Key.AttemptID || currentFence != reservation.Key.Fence {
-			return fmt.Errorf("evidence attempt is no longer current")
-		}
-		if err := tx.QueryRowContext(persistenceCtx, `SELECT status FROM episode_attempts WHERE attempt_id = ? AND episode_id = ? AND fence = ?`, reservation.Key.AttemptID, reservation.Key.EpisodeID, reservation.Key.Fence).Scan(&attemptStatus); err != nil {
-			return fmt.Errorf("load completion attempt: %w", err)
-		}
-		if attemptStatus != "dispatched" && attemptStatus != "running" {
-			return fmt.Errorf("evidence attempt is no longer active")
-		}
-		res, err := tx.ExecContext(persistenceCtx, `UPDATE evidence_call_ledger SET status = 'completed', result_json = ?, result_sha256 = ?, result_bytes = ?, row_count = ?, completed_at = ? WHERE tenant_id = ? AND episode_id = ? AND attempt_id = ? AND fence = ? AND call_id = ? AND status = 'running' AND request_sha256 = ? AND token_id = ? AND lease_owner = ? AND runtime_epoch = ? AND lease_until > ?`, result.JSON, hash[:], len(result.JSON), result.RowCount, formatLedgerTime(now), reservation.Key.TenantID, reservation.Key.EpisodeID, reservation.Key.AttemptID, reservation.Key.Fence, reservation.Key.CallID, reservation.RequestSHA256, reservation.TokenID, l.LeaseOwner, reservation.RuntimeEpoch, formatLedgerTime(now))
-		if err != nil {
-			return fmt.Errorf("complete evidence call: %w", err)
-		}
-		if n, _ := res.RowsAffected(); n != 1 {
-			return fmt.Errorf("evidence call reservation is no longer owned")
-		}
-		return nil
+		return l.storeResult(persistenceCtx, tx, reservation, result, now)
 	}); err != nil {
 		return fmt.Errorf("complete evidence call transaction: %w", err)
+	}
+	return nil
+}
+
+// assertAttemptRunning requires the reserved attempt to still be the running
+// episode's current, non-terminal attempt.
+func assertAttemptRunning(ctx context.Context, tx *sql.Tx, key ledgerKey) error {
+	var lifecycle, currentAttempt, attemptStatus string
+	var currentFence int64
+	if err := tx.QueryRowContext(ctx, `SELECT lifecycle_status, COALESCE(current_attempt_id, ''), current_fence FROM episodes WHERE episode_id = ?`, key.EpisodeID).Scan(&lifecycle, &currentAttempt, &currentFence); err != nil {
+		return fmt.Errorf("load completion episode: %w", err)
+	}
+	if lifecycle != "running" || currentAttempt != key.AttemptID || currentFence != key.Fence {
+		return fmt.Errorf("evidence attempt is no longer current")
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM episode_attempts WHERE attempt_id = ? AND episode_id = ? AND fence = ?`, key.AttemptID, key.EpisodeID, key.Fence).Scan(&attemptStatus); err != nil {
+		return fmt.Errorf("load completion attempt: %w", err)
+	}
+	if attemptStatus != "dispatched" && attemptStatus != "running" {
+		return fmt.Errorf("evidence attempt is no longer active")
+	}
+	return nil
+}
+
+// storeResult completes the reservation with its exact result, only while
+// this lease owner and runtime epoch still hold an unexpired lease.
+func (l *Ledger) storeResult(ctx context.Context, tx *sql.Tx, reservation ledgerReservation, result QueryResult, now time.Time) error {
+	hash := sha256.Sum256(result.JSON)
+	key := reservation.Key
+	res, err := tx.ExecContext(ctx, `UPDATE evidence_call_ledger SET status = 'completed', result_json = ?, result_sha256 = ?, result_bytes = ?, row_count = ?, completed_at = ? WHERE tenant_id = ? AND episode_id = ? AND attempt_id = ? AND fence = ? AND call_id = ? AND status = 'running' AND request_sha256 = ? AND token_id = ? AND lease_owner = ? AND runtime_epoch = ? AND lease_until > ?`, result.JSON, hash[:], len(result.JSON), result.RowCount, formatLedgerTime(now), key.TenantID, key.EpisodeID, key.AttemptID, key.Fence, key.CallID, reservation.RequestSHA256, reservation.TokenID, l.LeaseOwner, reservation.RuntimeEpoch, formatLedgerTime(now))
+	if err != nil {
+		return fmt.Errorf("complete evidence call: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return fmt.Errorf("evidence call reservation is no longer owned")
 	}
 	return nil
 }

@@ -14,6 +14,20 @@ import (
 // episode fence and attempt state. Snapshot equality is intentionally not part
 // of this check.
 func ValidateWorkerIdentity(ctx context.Context, tx *sql.Tx, identity Identity) error {
+	if err := checkEpisodeFence(ctx, tx, identity); err != nil {
+		return err
+	}
+	if identity.OwnerEpoch != "" {
+		if err := assertRuntimeEpoch(ctx, tx, identity.OwnerEpoch, time.Now().UTC()); err != nil {
+			return err
+		}
+	}
+	return checkAttemptOpen(ctx, tx, identity)
+}
+
+// checkEpisodeFence requires an open episode whose current attempt and fence
+// are exactly the identity's; an older fence is stale.
+func checkEpisodeFence(ctx context.Context, tx *sql.Tx, identity Identity) error {
 	var lifecycle LifecycleStatus
 	var currentAttempt sql.NullString
 	var currentFence int64
@@ -26,7 +40,7 @@ func ValidateWorkerIdentity(ctx context.Context, tx *sql.Tx, identity Identity) 
 		}
 		return fmt.Errorf("load episode identity: %w", err)
 	}
-	if lifecycle == LifecycleConcluded || lifecycle == LifecycleClosed || lifecycle == LifecycleSuperseded || lifecycle == LifecycleExpired || lifecycle == LifecycleAbandoned {
+	if lifecycle.closed() {
 		return &IdentityError{Reason: RejectEpisodeClosed}
 	}
 	if identity.Fence < currentFence {
@@ -35,12 +49,12 @@ func ValidateWorkerIdentity(ctx context.Context, tx *sql.Tx, identity Identity) 
 	if !currentAttempt.Valid || identity.AttemptID != currentAttempt.String || identity.Fence != currentFence {
 		return &IdentityError{Reason: RejectWrongAttempt}
 	}
-	if identity.OwnerEpoch != "" {
-		if err := assertRuntimeEpoch(ctx, tx, identity.OwnerEpoch, time.Now().UTC()); err != nil {
-			return err
-		}
-	}
+	return nil
+}
 
+// checkAttemptOpen requires the attempt row to exist under the identity's
+// owner epoch and not be terminal.
+func checkAttemptOpen(ctx context.Context, tx *sql.Tx, identity Identity) error {
 	var status AttemptStatus
 	var ownerEpoch sql.NullString
 	if err := tx.QueryRowContext(ctx,
@@ -59,6 +73,16 @@ func ValidateWorkerIdentity(ctx context.Context, tx *sql.Tx, identity Identity) 
 		return &IdentityError{Reason: RejectTerminalAttempt}
 	}
 	return nil
+}
+
+// closed reports whether the episode lifecycle is terminal.
+func (s LifecycleStatus) closed() bool {
+	switch s {
+	case LifecycleConcluded, LifecycleClosed, LifecycleSuperseded, LifecycleExpired, LifecycleAbandoned:
+		return true
+	default:
+		return false
+	}
 }
 
 func assertRuntimeEpoch(ctx context.Context, tx *sql.Tx, epoch string, now time.Time) error {

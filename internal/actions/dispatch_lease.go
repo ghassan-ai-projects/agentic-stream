@@ -23,45 +23,56 @@ func (d *Dispatcher) lease(ctx context.Context) (leasedCommand, bool, error) {
 	var leased leasedCommand
 	found := false
 	err := d.db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := d.assertRuntimeOwner(ctx, tx); err != nil {
-			return err
-		}
-		now := d.clk.Now().UTC()
-		candidate, err := loadDispatchCandidate(ctx, tx, now)
-		if err != nil || candidate == nil {
-			return err
-		}
-		leased = candidate.leased
-		if candidate.outboxStatus == "leased" {
-			leased.LeaseOwner = candidate.leaseOwner.String
-			if candidate.leaseExpired(now) {
-				// Reclaimed rows have not gone through the command-document
-				// population below. Finalization still emits tenant-scoped
-				// lifecycle records, so restore the trusted ledger identity
-				// scanned above before recording the unknown outcome.
-				leased.Command.TenantID = candidate.tenant
-				leased.Command.IntentID = candidate.intentID
-				if d.telemetry != nil {
-					d.telemetry.ObserveLeaseExpiry()
-				}
-				return d.finalizeTx(ctx, tx, leased, Effect{}, &UnknownOutcomeError{Err: errors.New("lease expired before dispatch")})
-			}
-		}
-		document, failureCode := candidate.verifiedDocument()
-		if failureCode != "" {
-			return d.markLeaseFailure(ctx, tx, leased.OutboxID, leased.Command.CommandID, failureCode, now)
-		}
-		populateCommand(&leased.Command, document)
-		if candidate.commandStatus == "succeeded" || candidate.commandStatus == "outcome_unknown" {
-			return d.finishOutboxOnly(ctx, tx, leased.OutboxID, candidate.commandStatus, now)
-		}
-		found, err = d.acquireLease(ctx, tx, &leased, now)
+		var err error
+		leased, found, err = d.leaseTx(ctx, tx)
 		return err
 	})
 	if err != nil {
 		return leasedCommand{}, false, fmt.Errorf("lease command: %w", err)
 	}
 	return leased, found, nil
+}
+
+func (d *Dispatcher) leaseTx(ctx context.Context, tx *sql.Tx) (leasedCommand, bool, error) {
+	if err := d.assertRuntimeOwner(ctx, tx); err != nil {
+		return leasedCommand{}, false, err
+	}
+	now := d.clk.Now().UTC()
+	candidate, err := loadDispatchCandidate(ctx, tx, now)
+	if err != nil || candidate == nil {
+		return leasedCommand{}, false, err
+	}
+	leased := candidate.leased
+	if candidate.outboxStatus == "leased" {
+		leased.LeaseOwner = candidate.leaseOwner.String
+		if candidate.leaseExpired(now) {
+			return leased, false, d.abandonExpiredLease(ctx, tx, leased, candidate)
+		}
+	}
+	document, failureCode := candidate.verifiedDocument()
+	if failureCode != "" {
+		return leased, false, d.markLeaseFailure(ctx, tx, leased.OutboxID, leased.Command.CommandID, failureCode, now)
+	}
+	populateCommand(&leased.Command, document)
+	if candidate.commandStatus == "succeeded" || candidate.commandStatus == "outcome_unknown" {
+		return leased, false, d.finishOutboxOnly(ctx, tx, leased.OutboxID, candidate.commandStatus, now)
+	}
+	found, err := d.acquireLease(ctx, tx, &leased, now)
+	return leased, found, err
+}
+
+// abandonExpiredLease records an unknown outcome for a command whose earlier
+// lease expired mid-dispatch, so no worker can blindly repeat the effect.
+func (d *Dispatcher) abandonExpiredLease(ctx context.Context, tx *sql.Tx, leased leasedCommand, candidate *dispatchCandidate) error {
+	// Reclaimed rows have not gone through command-document population.
+	// Finalization still emits tenant-scoped lifecycle records, so restore
+	// the trusted ledger identity before recording the unknown outcome.
+	leased.Command.TenantID = candidate.tenant
+	leased.Command.IntentID = candidate.intentID
+	if d.telemetry != nil {
+		d.telemetry.ObserveLeaseExpiry()
+	}
+	return d.finalizeTx(ctx, tx, leased, Effect{}, &UnknownOutcomeError{Err: errors.New("lease expired before dispatch")})
 }
 
 // dispatchCandidate is the oldest available command outbox row with the

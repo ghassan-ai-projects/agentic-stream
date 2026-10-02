@@ -78,11 +78,17 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Ou
 		}
 		span.End()
 	}()
+	return e.executeWithinBudget(executionCtx, req)
+}
+
+// executeWithinBudget bounds the attempt by its wall-time budget, then
+// negotiates, sends the request, and consumes the validated stream.
+func (e *WorkerExecutor) executeWithinBudget(ctx context.Context, req *Request) (*Outcome, error) {
 	wallTime, err := req.WallTimeBudget()
 	if err != nil {
 		return nil, fmt.Errorf("validate episode budget: %w", err)
 	}
-	executionCtx, cancel, err := boundedExecutionContext(executionCtx, wallTime)
+	executionCtx, cancel, err := boundedExecutionContext(ctx, wallTime)
 	if err != nil {
 		return nil, err
 	}

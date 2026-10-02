@@ -73,32 +73,9 @@ type Server struct {
 // Call validates identity, trace context, capability scope, argument bounds,
 // and result bounds before invoking the narrow query callback.
 func (s *Server) Call(ctx context.Context, req *runtimev1.EvidenceToolCall) (*runtimev1.EvidenceToolResult, error) { //nolint:wrapcheck // gRPC status errors are the public wire contract.
-	if req == nil || s.Verifier == nil || s.Query == nil {
-		return nil, status.Error(codes.FailedPrecondition, "evidence service is not configured") //nolint:wrapcheck // gRPC wire boundary.
-	}
-	if s.RequireLedger && (s.Ledger == nil || s.RuntimeEpoch == "") {
-		return nil, wireError(codes.FailedPrecondition, "durable evidence ledger is required")
-	}
-	if err := validateCallEnvelope(req); err != nil {
-		return nil, err
-	}
-	trace, err := contractsv1.ParseTraceContext(req.GetTraceparent(), req.GetTracestate())
+	now := s.now()
+	call, scope, err := s.admitCall(req, now)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "trace context: %v", err) //nolint:wrapcheck // gRPC wire boundary.
-	}
-	scope, err := s.Verifier.Verify(req.GetCapabilityToken())
-	if err != nil {
-		return nil, status.Error(codes.PermissionDenied, "capability authorization failed") //nolint:wrapcheck // Do not reveal token failure details.
-	}
-	call, err := s.authorizedCall(req, scope, trace)
-	if err != nil {
-		return nil, err
-	}
-	now := time.Now().UTC()
-	if s.Now != nil {
-		now = s.Now().UTC()
-	}
-	if call.Deadline, err = callDeadline(req, scope, now); err != nil {
 		return nil, err
 	}
 	reservation, replayed, err := s.reserve(ctx, req, call, scope)
@@ -109,13 +86,60 @@ func (s *Server) Call(ctx context.Context, req *runtimev1.EvidenceToolCall) (*ru
 	if err != nil {
 		return nil, err
 	}
-	if s.Ledger != nil {
-		if err := s.Ledger.Complete(ctx, reservation, result); err != nil {
-			return nil, wireError(codes.FailedPrecondition, "evidence result could not be committed")
-		}
+	if err := s.commitResult(ctx, reservation, result); err != nil {
+		return nil, err
 	}
-	hash := sha256.Sum256(result.JSON)
-	return resultMessageWithHash(req, result, hash), nil
+	return resultMessage(req, result), nil
+}
+
+// admitCall turns a wire request into an authorized, deadline-bound Call:
+// the service is configured, the envelope is complete, the trace parses, the
+// capability verifies, and the request stays inside the capability's scope.
+func (s *Server) admitCall(req *runtimev1.EvidenceToolCall, now time.Time) (Call, Scope, error) { //nolint:wrapcheck // gRPC status errors are the public wire contract.
+	if req == nil || s.Verifier == nil || s.Query == nil {
+		return Call{}, Scope{}, status.Error(codes.FailedPrecondition, "evidence service is not configured") //nolint:wrapcheck // gRPC wire boundary.
+	}
+	if s.RequireLedger && (s.Ledger == nil || s.RuntimeEpoch == "") {
+		return Call{}, Scope{}, wireError(codes.FailedPrecondition, "durable evidence ledger is required")
+	}
+	if err := validateCallEnvelope(req); err != nil {
+		return Call{}, Scope{}, err
+	}
+	trace, err := contractsv1.ParseTraceContext(req.GetTraceparent(), req.GetTracestate())
+	if err != nil {
+		return Call{}, Scope{}, status.Errorf(codes.InvalidArgument, "trace context: %v", err) //nolint:wrapcheck // gRPC wire boundary.
+	}
+	scope, err := s.Verifier.Verify(req.GetCapabilityToken())
+	if err != nil {
+		return Call{}, Scope{}, status.Error(codes.PermissionDenied, "capability authorization failed") //nolint:wrapcheck // Do not reveal token failure details.
+	}
+	call, err := s.authorizedCall(req, scope, trace)
+	if err != nil {
+		return Call{}, Scope{}, err
+	}
+	if call.Deadline, err = callDeadline(req, scope, now); err != nil {
+		return Call{}, Scope{}, err
+	}
+	return call, scope, nil
+}
+
+// commitResult stores the result in the durable ledger when one is
+// configured.
+func (s *Server) commitResult(ctx context.Context, reservation ledgerReservation, result QueryResult) error {
+	if s.Ledger == nil {
+		return nil
+	}
+	if err := s.Ledger.Complete(ctx, reservation, result); err != nil {
+		return wireError(codes.FailedPrecondition, "evidence result could not be committed")
+	}
+	return nil
+}
+
+func (s *Server) now() time.Time {
+	if s.Now != nil {
+		return s.Now().UTC()
+	}
+	return time.Now().UTC()
 }
 
 // reserve claims the call identity, durably when a ledger is configured. A

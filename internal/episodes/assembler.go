@@ -90,24 +90,36 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	if item.TenantID != tenantID {
 		return nil, fmt.Errorf("tenant mismatch: item belongs to %s, requested %s", item.TenantID, tenantID)
 	}
-
 	inputs, err := a.loadInputs(ctx, tx, item, tenantID)
 	if err != nil {
 		return nil, err
 	}
-	ev, evidence := inputs.evaluation, inputs.snapshot
-
-	tools := a.buildTools()
 	episodeID := a.idGen.New(ids.PrefixEpisode)
 	executorDocument, err := a.executorDocument()
 	if err != nil {
 		return nil, err
 	}
+	requestJSON, err := a.requestJSON(episodeID, item, inputs, executorDocument)
+	if err != nil {
+		return nil, err
+	}
+	req := a.newRequest(episodeID, item, inputs.snapshot, executorDocument, requestJSON)
+	if _, err := req.WallTimeBudget(); err != nil {
+		return nil, fmt.Errorf("validate episode budget: %w", err)
+	}
+	return req, nil
+}
+
+// requestJSON is the canonical request document the worker receives. Its
+// snapshot digest covers exactly the immutable Situation snapshot, not
+// trigger routing or executor capabilities.
+func (a *Assembler) requestJSON(episodeID string, item schedulerItem, inputs assemblyInputs, executorDocument map[string]any) ([]byte, error) {
+	ev, evidence := inputs.evaluation, inputs.snapshot
 	request := map[string]any{
 		"episode_id":        episodeID,
 		"kind":              item.Kind,
-		"scheduler_item_id": schedulerItemID,
-		"tenant_id":         tenantID,
+		"scheduler_item_id": item.SchedulerItemID,
+		"tenant_id":         item.TenantID,
 		"situation_id":      item.SituationID,
 		"situation_version": item.SituationVersion,
 		"trigger": map[string]any{
@@ -118,8 +130,9 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 			"lane":         ev.Lane,
 		},
 		"snapshot":               evidence.document,
+		"snapshot_digest":        evidence.digest,
 		"delta":                  inputs.delta,
-		"tools":                  tools,
+		"tools":                  a.buildTools(),
 		"allowed_intent_types":   a.allowedIntentTypeList(),
 		"watch_confidence_floor": a.spec.Actions.EffectiveWatchConfidenceFloor(),
 		"risk_ceiling":           a.effectiveRiskCeiling(),
@@ -133,21 +146,20 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	if inputs.reconsideration != nil {
 		request["reconsideration"] = inputs.reconsideration
 	}
-	admissionKey := sha256.Sum256([]byte(episodeID + "|" + schedulerItemID))
-
-	// The snapshot digest covers exactly the immutable Situation snapshot, not
-	// trigger routing or executor capabilities.
-	request["snapshot_digest"] = evidence.digest
 	requestJSON, err := canonicaljson.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
+	return requestJSON, nil
+}
 
-	req := &Request{
+func (a *Assembler) newRequest(episodeID string, item schedulerItem, evidence *snapshotEvidence, executorDocument map[string]any, requestJSON []byte) *Request {
+	admissionKey := sha256.Sum256([]byte(episodeID + "|" + item.SchedulerItemID))
+	return &Request{
 		EpisodeID:        episodeID,
-		SchedulerItemID:  schedulerItemID,
+		SchedulerItemID:  item.SchedulerItemID,
 		Kind:             item.Kind,
-		TenantID:         tenantID,
+		TenantID:         item.TenantID,
 		SituationID:      item.SituationID,
 		SituationVersion: item.SituationVersion,
 		EntityID:         evidence.entityID,
@@ -166,8 +178,4 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		SupersessionKey:  "situation:" + item.SituationID,
 		DispatchPolicy:   a.spec.Cognition.Executor.DispatchPolicy,
 	}
-	if _, err := req.WallTimeBudget(); err != nil {
-		return nil, fmt.Errorf("validate episode budget: %w", err)
-	}
-	return req, nil
 }

@@ -195,34 +195,59 @@ func (d *Dispatcher) DispatchOnce(ctx context.Context) (bool, error) {
 }
 
 func (d *Dispatcher) finalizeDispatch(ctx, verifyCtx context.Context, leased leasedCommand, effect Effect, dispatchErr error) error {
-	verifier, canVerify := d.effector.(DeviceStateVerifier)
-	finalStatus := ""
-	var evidence map[string]any
-	var verifyErr error
-	if canVerify && (dispatchErr == nil || IsUnknownOutcome(dispatchErr)) {
-		finalStatus, evidence, verifyErr = verifier.VerifyDeviceCommand(verifyCtx, leased.Command)
-		if finalStatus != "" {
-			effect.ObservedEffect = evidence
-		}
-		if dispatchErr == nil && verifyErr != nil {
-			effect.VerificationPending = false
-			dispatchErr = &UnknownOutcomeError{Err: fmt.Errorf("verify device state: %w", verifyErr)}
-		} else if dispatchErr == nil && finalStatus != "" {
-			effect.VerificationPending = false
-			if finalStatus == "failed" {
-				dispatchErr = errors.New("device state verification failed")
-			}
-		}
-	}
-	if err := d.finalize(ctx, leased, effect, dispatchErr); err != nil {
+	check := d.verifyDevice(verifyCtx, leased, effect, dispatchErr)
+	if err := d.finalize(ctx, leased, check.effect, check.dispatchErr); err != nil {
 		return err
 	}
-	if IsUnknownOutcome(dispatchErr) && finalStatus != "" && verifyErr == nil {
-		if err := d.ReconcileUnknown(ctx, leased.Command.CommandID, finalStatus, evidence); err != nil {
-			return err
+	if !check.reconcilesUnknown() {
+		return nil
+	}
+	return d.ReconcileUnknown(ctx, leased.Command.CommandID, check.finalStatus, check.evidence)
+}
+
+// deviceCheck is a dispatch result after independent device-state
+// verification.
+type deviceCheck struct {
+	effect      Effect
+	dispatchErr error
+	finalStatus string
+	evidence    map[string]any
+	verifyErr   error
+}
+
+// reconcilesUnknown reports whether verification settled an outcome the
+// transport left unknown.
+func (c deviceCheck) reconcilesUnknown() bool {
+	return IsUnknownOutcome(c.dispatchErr) && c.finalStatus != "" && c.verifyErr == nil
+}
+
+// verifyDevice reads the device state after a successful or unknown dispatch
+// when the effector can verify it. A verification error makes a successful
+// dispatch unknown, and a failed verification makes it failed.
+func (d *Dispatcher) verifyDevice(ctx context.Context, leased leasedCommand, effect Effect, dispatchErr error) deviceCheck {
+	check := deviceCheck{effect: effect, dispatchErr: dispatchErr}
+	verifier, canVerify := d.effector.(DeviceStateVerifier)
+	if !canVerify || (dispatchErr != nil && !IsUnknownOutcome(dispatchErr)) {
+		return check
+	}
+	check.finalStatus, check.evidence, check.verifyErr = verifier.VerifyDeviceCommand(ctx, leased.Command)
+	if check.finalStatus != "" {
+		check.effect.ObservedEffect = check.evidence
+	}
+	if dispatchErr != nil {
+		return check
+	}
+	switch {
+	case check.verifyErr != nil:
+		check.effect.VerificationPending = false
+		check.dispatchErr = &UnknownOutcomeError{Err: fmt.Errorf("verify device state: %w", check.verifyErr)}
+	case check.finalStatus != "":
+		check.effect.VerificationPending = false
+		if check.finalStatus == "failed" {
+			check.dispatchErr = errors.New("device state verification failed")
 		}
 	}
-	return nil
+	return check
 }
 
 func (d *Dispatcher) assertInterlock(ctx context.Context, command Command) error {

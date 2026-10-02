@@ -207,16 +207,7 @@ func verifyEvidenceBinding(document, decisionDocument map[string]any) error {
 	if len(evidenceIDs) == 0 {
 		return nil
 	}
-	grounded := make(map[string]bool)
-	if facts, ok := decisionDocument["facts_used"].([]any); ok {
-		for _, fact := range facts {
-			if object, ok := fact.(map[string]any); ok {
-				if ref, ok := object["evidence"].(string); ok {
-					grounded[ref] = true
-				}
-			}
-		}
-	}
+	grounded := factEvidenceRefs(decisionDocument)
 	for _, ref := range evidenceIDs {
 		text, ok := ref.(string)
 		if !ok {
@@ -228,4 +219,17 @@ func verifyEvidenceBinding(document, decisionDocument map[string]any) error {
 		}
 	}
 	return nil
+}
+
+// factEvidenceRefs collects the evidence refs of the decision's facts_used.
+func factEvidenceRefs(decisionDocument map[string]any) map[string]bool {
+	refs := make(map[string]bool)
+	facts, _ := decisionDocument["facts_used"].([]any)
+	for _, fact := range facts {
+		object, _ := fact.(map[string]any)
+		if ref, ok := object["evidence"].(string); ok {
+			refs[ref] = true
+		}
+	}
+	return refs
 }

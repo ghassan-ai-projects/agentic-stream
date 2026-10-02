@@ -145,6 +145,8 @@ func (r *Runner) retryOrConcludeFailedEpisode(ctx context.Context, tx *sql.Tx, e
 	return nil
 }
 
+// failAttemptWithRejection records why the worker's identity was rejected,
+// fails the current attempt, and retries or concludes the episode.
 func (r *Runner) failAttemptWithRejection(ctx context.Context, current, incoming Identity, reason RejectionReason, detail string) error {
 	return r.withTx(ctx, func(tx *sql.Tx) error {
 		details, err := json.Marshal(map[string]any{"message": detail, "incoming_attempt_id": incoming.AttemptID, "incoming_fence": incoming.Fence})
@@ -161,28 +163,35 @@ func (r *Runner) failAttemptWithRejection(ctx context.Context, current, incoming
 		if err := TransitionAttempt(ctx, tx, current, AttemptFailed, r.clk.Now(), terminalJSON); err != nil {
 			return fmt.Errorf("finish identity-failed attempt: %w", err)
 		}
-		failedAttempts, err := countFailedAttempts(ctx, tx, current.EpisodeID)
-		if err != nil {
-			return fmt.Errorf("count identity-failed attempts: %w", err)
-		}
-		if failedAttempts < maxEpisodeAttempts {
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE episodes SET lifecycle_status = 'running', ended_at = NULL, terminal_json = NULL
-				WHERE episode_id = ?`, current.EpisodeID); err != nil {
-				return fmt.Errorf("retain episode for retry: %w", err)
-			}
-			return nil
-		}
-		if r.cost != nil {
-			if err := r.cost.Settle(ctx, tx, current.EpisodeID, 0, r.runtimeNow()); err != nil {
-				return fmt.Errorf("settle exhausted episode cost: %w", err)
-			}
-		}
-		if _, err := tx.ExecContext(ctx, "UPDATE episodes SET lifecycle_status = 'concluded', ended_at = ?, terminal_json = ? WHERE episode_id = ?", r.runtimeNow(), terminalJSON, current.EpisodeID); err != nil {
-			return fmt.Errorf("conclude identity-failed episode: %w", err)
+		return r.retryOrConcludeRejectedEpisode(ctx, tx, current.EpisodeID, terminalJSON)
+	})
+}
+
+// retryOrConcludeRejectedEpisode keeps the episode running for another
+// attempt until maxEpisodeAttempts have failed, then settles its cost and
+// concludes it with the rejection terminal.
+func (r *Runner) retryOrConcludeRejectedEpisode(ctx context.Context, tx *sql.Tx, episodeID string, terminalJSON []byte) error {
+	failedAttempts, err := countFailedAttempts(ctx, tx, episodeID)
+	if err != nil {
+		return fmt.Errorf("count identity-failed attempts: %w", err)
+	}
+	if failedAttempts < maxEpisodeAttempts {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE episodes SET lifecycle_status = 'running', ended_at = NULL, terminal_json = NULL
+			WHERE episode_id = ?`, episodeID); err != nil {
+			return fmt.Errorf("retain episode for retry: %w", err)
 		}
 		return nil
-	})
+	}
+	if r.cost != nil {
+		if err := r.cost.Settle(ctx, tx, episodeID, 0, r.runtimeNow()); err != nil {
+			return fmt.Errorf("settle exhausted episode cost: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE episodes SET lifecycle_status = 'concluded', ended_at = ?, terminal_json = ? WHERE episode_id = ?", r.runtimeNow(), terminalJSON, episodeID); err != nil {
+		return fmt.Errorf("conclude identity-failed episode: %w", err)
+	}
+	return nil
 }
 
 func countFailedAttempts(ctx context.Context, tx *sql.Tx, episodeID string) (int, error) {

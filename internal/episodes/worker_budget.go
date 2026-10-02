@@ -22,20 +22,26 @@ func (u *budgetUsage) observe(limit *runtimev1.EpisodeBudget, event *runtimev1.E
 	if err := u.observeModel(limit, event); err != nil {
 		return err
 	}
-	if budget := event.GetBudget(); budget != nil {
-		if budget.GetCumulativeUsage() != nil {
-			if err := u.recordCumulativeUsage(budget.GetCumulativeUsage()); err != nil {
-				return err
-			}
-		}
-		if err := u.observeBudgetUpdate(limit, budget); err != nil {
-			return err
-		}
+	if err := u.observeBudgetEvent(limit, event.GetBudget()); err != nil {
+		return err
 	}
 	if err := u.observeTools(limit, event); err != nil {
 		return err
 	}
 	return u.checkUsage(limit)
+}
+
+// observeBudgetEvent records a worker budget update and its cumulative usage.
+func (u *budgetUsage) observeBudgetEvent(limit *runtimev1.EpisodeBudget, budget *runtimev1.BudgetUpdated) error {
+	if budget == nil {
+		return nil
+	}
+	if budget.GetCumulativeUsage() != nil {
+		if err := u.recordCumulativeUsage(budget.GetCumulativeUsage()); err != nil {
+			return err
+		}
+	}
+	return u.observeBudgetUpdate(limit, budget)
 }
 
 func (u *budgetUsage) observeModel(limit *runtimev1.EpisodeBudget, event *runtimev1.EpisodeEvent) error {

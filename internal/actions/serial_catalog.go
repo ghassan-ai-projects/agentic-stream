@@ -138,25 +138,40 @@ func (spec OperationSpec) validate(route string) error {
 // every bound to be finite and ordered.
 func (spec OperationSpec) validateBounds(route string) error {
 	for param := range spec.Bounds {
-		if param == "" {
-			return fmt.Errorf("route %q contains an empty bounds parameter", route)
-		}
-		for presetName, preset := range spec.Presets {
-			if _, ok := preset[param]; !ok {
-				return fmt.Errorf("route %q preset %q does not produce bounded parameter %q", route, presetName, param)
-			}
+		if err := spec.requireBoundedByEveryPreset(route, param); err != nil {
+			return err
 		}
 	}
 	for param, bound := range spec.Bounds {
-		if bound.Min != nil && !isFinite(*bound.Min) {
-			return fmt.Errorf("route %q bound %q has a non-finite minimum", route, param)
+		if err := bound.validate(route, param); err != nil {
+			return err
 		}
-		if bound.Max != nil && !isFinite(*bound.Max) {
-			return fmt.Errorf("route %q bound %q has a non-finite maximum", route, param)
+	}
+	return nil
+}
+
+func (spec OperationSpec) requireBoundedByEveryPreset(route, param string) error {
+	if param == "" {
+		return fmt.Errorf("route %q contains an empty bounds parameter", route)
+	}
+	for presetName, preset := range spec.Presets {
+		if _, ok := preset[param]; !ok {
+			return fmt.Errorf("route %q preset %q does not produce bounded parameter %q", route, presetName, param)
 		}
-		if bound.Min != nil && bound.Max != nil && *bound.Min > *bound.Max {
-			return fmt.Errorf("route %q bound %q has minimum %v above maximum %v", route, param, *bound.Min, *bound.Max)
-		}
+	}
+	return nil
+}
+
+// validate requires finite limits with the minimum at or below the maximum.
+func (bound NumericBound) validate(route, param string) error {
+	if bound.Min != nil && !isFinite(*bound.Min) {
+		return fmt.Errorf("route %q bound %q has a non-finite minimum", route, param)
+	}
+	if bound.Max != nil && !isFinite(*bound.Max) {
+		return fmt.Errorf("route %q bound %q has a non-finite maximum", route, param)
+	}
+	if bound.Min != nil && bound.Max != nil && *bound.Min > *bound.Max {
+		return fmt.Errorf("route %q bound %q has minimum %v above maximum %v", route, param, *bound.Min, *bound.Max)
 	}
 	return nil
 }

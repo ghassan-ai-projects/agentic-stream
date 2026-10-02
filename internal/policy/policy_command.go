@@ -15,6 +15,9 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 )
 
+// approveAutomatic approves an R0/R1 intent: it passes the interlock, gets
+// exactly one command per intent, stays within the intent's hourly dispatch
+// limit, and queues the command for the action plane.
 func (g *Gateway) approveAutomatic(ctx context.Context, tx *sql.Tx, row intentRow, intent map[string]any, result Result, now time.Time) (Result, error) {
 	if err := g.assertInterlock(ctx, tx, row, intent); err != nil {
 		if !errors.Is(err, interlock.ErrTripped) {
@@ -22,46 +25,70 @@ func (g *Gateway) approveAutomatic(ctx context.Context, tx *sql.Tx, row intentRo
 		}
 		return g.finishWithAuditReason(ctx, tx, row, result, "denied", "interlock_not_ready", interlockDenialAuditReason(err), now)
 	}
-	if commandID, err := existingCommandID(ctx, tx, row.IntentID); err != nil {
+	command, existingID, err := g.commandForIntent(ctx, tx, row, intent, now)
+	if err != nil {
 		return result, err
-	} else if commandID != "" {
-		result.Result, result.Reason, result.CommandID = "approved", "already_commanded", commandID
+	}
+	if existingID != "" {
+		result.Result, result.Reason, result.CommandID = "approved", "already_commanded", existingID
 		return g.audit(ctx, tx, row, result, "approved", result.Reason, now)
 	}
+	limited, err := g.rateLimited(ctx, tx, row, command.ID, now)
+	if err != nil {
+		return result, err
+	}
+	if limited {
+		return g.finish(ctx, tx, row, result, "denied", "rate_limited", now)
+	}
+	return g.queueApprovedCommand(ctx, tx, row, command, result, now)
+}
 
+// commandForIntent returns the ID of the intent's existing command, or
+// inserts a new command and returns it. A concurrent insert that wins the
+// race is reported as existing.
+func (g *Gateway) commandForIntent(ctx context.Context, tx *sql.Tx, row intentRow, intent map[string]any, now time.Time) (commandDocument, string, error) {
+	commandID, err := existingCommandID(ctx, tx, row.IntentID)
+	if err != nil || commandID != "" {
+		return commandDocument{}, commandID, err
+	}
 	command, err := newCommand(g, row, intent, now)
 	if err != nil {
-		return result, err
+		return commandDocument{}, "", err
 	}
 	inserted, err := insertCommand(ctx, tx, row, command, now)
+	if err != nil || inserted {
+		return command, "", err
+	}
+	commandID, err = existingCommandID(ctx, tx, row.IntentID)
 	if err != nil {
-		return result, err
+		return commandDocument{}, "", err
 	}
-	if !inserted {
-		commandID, err := existingCommandID(ctx, tx, row.IntentID)
-		if err != nil {
-			return result, err
-		}
-		if commandID == "" {
-			return result, fmt.Errorf("command insert conflicted but no command exists for intent %s", row.IntentID)
-		}
-		result.Result, result.Reason, result.CommandID = "approved", "already_commanded", commandID
-		return g.audit(ctx, tx, row, result, "approved", result.Reason, now)
+	if commandID == "" {
+		return commandDocument{}, "", fmt.Errorf("command insert conflicted but no command exists for intent %s", row.IntentID)
 	}
-	if row.RateLimitPerHour > 0 {
-		overLimit, err := g.dispatchWithinLimit(ctx, tx, row, now)
-		if err != nil {
-			return result, err
-		}
-		if overLimit {
-			if err := removePreparedCommand(ctx, tx, row.IntentID, command.ID); err != nil {
-				return result, err
-			}
-			return g.finish(ctx, tx, row, result, "denied", "rate_limited", now)
-		}
+	return commandDocument{}, commandID, nil
+}
+
+// rateLimited withdraws the prepared command and reports true when the
+// intent type has used its hourly dispatch limit.
+func (g *Gateway) rateLimited(ctx context.Context, tx *sql.Tx, row intentRow, commandID string, now time.Time) (bool, error) {
+	if row.RateLimitPerHour <= 0 {
+		return false, nil
 	}
-	commandID := command.ID
-	if err := insertCommandOutbox(ctx, tx, commandID, command.JSON, now); err != nil {
+	overLimit, err := g.dispatchWithinLimit(ctx, tx, row, now)
+	if err != nil || !overLimit {
+		return false, err
+	}
+	if err := removePreparedCommand(ctx, tx, row.IntentID, commandID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// queueApprovedCommand writes the command outbox row, marks the intent
+// approved, and audits the approval.
+func (g *Gateway) queueApprovedCommand(ctx context.Context, tx *sql.Tx, row intentRow, command commandDocument, result Result, now time.Time) (Result, error) {
+	if err := insertCommandOutbox(ctx, tx, command.ID, command.JSON, now); err != nil {
 		return result, err
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = 'approved', updated_at = ? WHERE intent_id = ?", formatTime(now), row.IntentID); err != nil {
@@ -70,7 +97,7 @@ func (g *Gateway) approveAutomatic(ctx context.Context, tx *sql.Tx, row intentRo
 	if result.Reason == "" {
 		result.Reason = "automatic_r0_r1"
 	}
-	result.Result, result.CommandID = "approved", commandID
+	result.Result, result.CommandID = "approved", command.ID
 	return g.audit(ctx, tx, row, result, result.Result, result.Reason, now)
 }
 
