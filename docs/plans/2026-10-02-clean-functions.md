@@ -1,7 +1,7 @@
 # Branch clean-function completion
 
 Date: 2026-10-02. Branch: `code-improvments`.
-Status: in progress.
+Status: refactoring and validation complete.
 
 ## Scope and acceptance
 
@@ -109,3 +109,31 @@ fragmented tool arguments with out-of-order indices, usage-only chunks, DONE
 termination, retryable provider statuses, and bounded error bodies. Package race
 tests and vet passed with local socket access. Whole-tree lint now reports zero
 issues, without weakened thresholds or complexity suppressions. Diff checks pass.
+
+### Round 6: final domain review and repository gate
+
+Separated command dispatch deadlines and leased execution, Decision intent
+validation, and Situation lookup/evidence application from their public entry
+points. Added tests for provider deadlines entering reconciliation without blind
+retry, intent-digest failure preceding identity binding, and trace continuation
+with independently owned timer metadata. Existing authorization checks, result
+shapes, validation ordering, and state-update ordering remain unchanged.
+
+The full gate exposed an existing 301-line artifact snapshot file. Moved its
+database-row encoding into `export_rows.go` without changing encoding, queries,
+or transaction ownership. Focused action/Decision/Situation and run-artifact race
+tests pass; the production file-size check passes. The pinned protocol compiler
+and optional CI analysis tools are installed only in temporary storage.
+
+Final validation passed on Go 1.27.1 with protoc 35.1:
+
+- `make ci-check`: protocol parity, tidy, build, vet, whole-tree lint (zero
+  issues), shuffled short race tests, every handwritten package at or above 60%
+  coverage, pinned dead-code analysis, vulnerability analysis (none found), and
+  documentation checks (58 public pages and volatile surfaces).
+- `go test -race -count=1 ./...`: full uncached suite, including unchanged
+  deterministic replay and predictive-maintenance fixtures.
+- `git diff --check`: no whitespace errors.
+
+No public contracts, golden fixtures, domain data, dependency versions, or quality
+thresholds changed. The pre-existing untracked executable remains excluded.

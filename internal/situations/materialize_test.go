@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -38,5 +39,25 @@ func TestMaterializationKeepsCanonicalEvidenceAndPrivateState(t *testing.T) {
 	sit.ConditionStart["watch"] = now.Add(time.Hour)
 	if first.Facts["level"] != 3.0 || !first.ConditionStart["watch"].Equal(now) {
 		t.Fatal("later state mutation changed a published version")
+	}
+}
+
+func TestFeatureEvidencePreservesTraceContinuationAndMetadataOwnership(t *testing.T) {
+	t.Parallel()
+	engine := &Engine{spec: &spec.CompiledSpec{}}
+	sit := &Situation{Completeness: "on_time", Facts: map[string]any{}, Traceparent: "prior-trace", Tracestate: "prior-state"}
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	metadata := map[string]any{"basis": "processing_time"}
+	changed := engine.applyFeatureEvidence(sit, operators.Feature{EventTime: now, TraceContinuation: true, Metadata: metadata})
+	if changed || sit.Completeness != "on_time" || sit.Traceparent != "prior-trace" || sit.Tracestate != "prior-state" || !sit.LatestEventTime.Equal(now) {
+		t.Fatalf("continuation state=%+v changed=%v", sit, changed)
+	}
+	metadata["basis"] = "mutated"
+	if sit.Facts["timer_provenance"].(map[string]any)["basis"] != "processing_time" {
+		t.Fatal("input metadata mutated Situation evidence")
+	}
+	changed = engine.applyFeatureEvidence(sit, operators.Feature{EventTime: now, Completeness: "uncertain"})
+	if !changed || sit.Completeness != "uncertain" || sit.Traceparent != "" || sit.Tracestate != "" {
+		t.Fatalf("fresh evidence state=%+v changed=%v", sit, changed)
 	}
 }

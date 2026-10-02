@@ -177,12 +177,31 @@ func NewEngine(deploymentID, tenantID string, partitionID int, compiled *spec.Co
 
 // ApplyFeature updates situation state with one emitted feature.
 func (e *Engine) ApplyFeature(ctx context.Context, feature operators.Feature, watermark time.Time) ([]Version, error) {
+	sit := e.situationForFeature(feature)
+	completenessChanged := e.applyFeatureEvidence(sit, feature)
+
+	version, err := e.evaluate(ctx, sit, feature, watermark, completenessChanged)
+	if err != nil {
+		return nil, fmt.Errorf("evaluate situation: %w", err)
+	}
+	if version == nil {
+		return nil, nil
+	}
+
+	return []Version{*version}, nil
+}
+
+func (e *Engine) situationForFeature(feature operators.Feature) *Situation {
 	key := situationKey{partitionID: feature.PartitionID, entityType: feature.EntityType, entityID: feature.EntityID}
 	sit, ok := e.active[key]
 	if !ok {
 		sit = e.newSituation(feature.PartitionID, feature.EntityType, feature.EntityID, feature.EventTime)
 		e.active[key] = sit
 	}
+	return sit
+}
+
+func (e *Engine) applyFeatureEvidence(sit *Situation, feature operators.Feature) bool {
 	completenessChanged := feature.Completeness != "" && feature.Completeness != sit.Completeness
 	if feature.Completeness != "" {
 		sit.Completeness = feature.Completeness
@@ -200,16 +219,7 @@ func (e *Engine) ApplyFeature(ctx context.Context, feature operators.Feature, wa
 		sit.Traceparent = feature.Traceparent
 		sit.Tracestate = feature.Tracestate
 	}
-
-	version, err := e.evaluate(ctx, sit, feature, watermark, completenessChanged)
-	if err != nil {
-		return nil, fmt.Errorf("evaluate situation: %w", err)
-	}
-	if version == nil {
-		return nil, nil
-	}
-
-	return []Version{*version}, nil
+	return completenessChanged
 }
 
 func (e *Engine) newSituation(partitionID int, entityType, entityID string, eventTime time.Time) *Situation {

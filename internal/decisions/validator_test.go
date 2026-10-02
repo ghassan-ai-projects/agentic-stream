@@ -506,3 +506,24 @@ func ones(length int) string {
 	}
 	return string(result)
 }
+
+func TestIntentDigestValidationPrecedesIdentityBinding(t *testing.T) {
+	t.Parallel()
+	document := validDecision()
+	intent := document["intents"].([]any)[0].(map[string]any)
+	intent["tenant_id"] = "another-tenant"
+	// Leave the original intent digest so both integrity and binding are wrong.
+	raw, err := canonicaljson.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Validate(raw, digest, validInput())
+	var validationErr *ValidationError
+	if result != nil || !errors.As(err, &validationErr) || validationErr.Reason != "schema_invalid" || validationErr.Details["field"] != "intents[0].intent_digest" {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}

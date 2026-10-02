@@ -94,8 +94,16 @@ func Validate(raw []byte, transmittedDigest string, input Input) (*Result, error
 		DecisionDigest: transmittedDigest,
 		CanonicalJSON:  canonical,
 		Document:       document,
-		Intents:        make([]Intent, 0, len(rawIntents)),
 	}
+	result.Intents, err = validateDecisionIntents(rawIntents, input, decisionID, document)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func validateDecisionIntents(rawIntents []any, input Input, decisionID string, document map[string]any) ([]Intent, error) {
+	intents := make([]Intent, 0, len(rawIntents))
 	seenIDs := make(map[string]struct{}, len(rawIntents))
 	for index, rawIntent := range rawIntents {
 		intent, ok := rawIntent.(map[string]any)
@@ -112,9 +120,9 @@ func Validate(raw []byte, transmittedDigest string, input Input) (*Result, error
 		if err != nil {
 			return nil, err
 		}
-		result.Intents = append(result.Intents, *validated)
+		intents = append(intents, *validated)
 	}
-	return result, nil
+	return intents, nil
 }
 
 // parseDecision canonicalizes the raw Decision, validates it against the

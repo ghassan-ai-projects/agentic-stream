@@ -168,16 +168,24 @@ func (d *Dispatcher) DispatchOnce(ctx context.Context) (bool, error) {
 	if err := d.revalidateAuthorization(ctx, leased); err != nil {
 		return true, d.finalize(ctx, leased, Effect{}, fmt.Errorf("authorization revalidation failed: %w", err))
 	}
+	callCtx, cancel := d.dispatchContext(ctx)
+	defer cancel()
+	return true, d.dispatchLeasedCommand(ctx, callCtx, leased)
+}
+
+func (d *Dispatcher) dispatchContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	callTimeout := d.leaseFor - d.leaseFor/10
 	if callTimeout <= 0 {
 		callTimeout = d.leaseFor
 	}
-	callCtx, cancel := context.WithTimeout(ctx, callTimeout)
-	defer cancel()
+	return context.WithTimeout(ctx, callTimeout)
+}
+
+func (d *Dispatcher) dispatchLeasedCommand(ctx, callCtx context.Context, leased leasedCommand) error {
 	if d.interlock != nil {
 		guarded, ok := d.effector.(AuthorizedEffector)
 		if !ok {
-			return true, d.finalize(ctx, leased, Effect{}, errors.New("configured effector does not enforce dispatch authorization"))
+			return d.finalize(ctx, leased, Effect{}, errors.New("configured effector does not enforce dispatch authorization"))
 		}
 		effect, dispatchErr := guarded.DispatchAuthorized(callCtx, leased.Command, Authorization{Check: func(checkCtx context.Context) error {
 			return d.assertInterlock(checkCtx, leased.Command)
@@ -185,13 +193,13 @@ func (d *Dispatcher) DispatchOnce(ctx context.Context) (bool, error) {
 		if errors.Is(dispatchErr, context.DeadlineExceeded) {
 			dispatchErr = &UnknownOutcomeError{Err: dispatchErr}
 		}
-		return true, d.finalizeDispatch(ctx, callCtx, leased, effect, dispatchErr)
+		return d.finalizeDispatch(ctx, callCtx, leased, effect, dispatchErr)
 	}
 	effect, dispatchErr := d.effector.Dispatch(callCtx, leased.Command)
 	if errors.Is(dispatchErr, context.DeadlineExceeded) {
 		dispatchErr = &UnknownOutcomeError{Err: dispatchErr}
 	}
-	return true, d.finalizeDispatch(ctx, callCtx, leased, effect, dispatchErr)
+	return d.finalizeDispatch(ctx, callCtx, leased, effect, dispatchErr)
 }
 
 func (d *Dispatcher) finalizeDispatch(ctx, verifyCtx context.Context, leased leasedCommand, effect Effect, dispatchErr error) error {
