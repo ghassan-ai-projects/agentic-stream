@@ -12,6 +12,25 @@
 - Prefer direct code over indirection when both are maintainable.
 - Add new abstractions only after a real second use, repeated logic, or a clear testing need appears.
 
+## Module Path and Imports
+
+- The module path is declared exactly once, in `go.mod`. Every internal import
+  names it in full (`github.com/ghassan-ai-projects/agentic-stream/internal/actions`)
+  because Go package identity is the module-qualified import path. This is
+  required, not a smell. Never use relative imports such as
+  `./internal/actions`: module mode rejects them and no tool can resolve them.
+- Do not repeat the module path as a new string literal. Ask the toolchain
+  instead (`go list -m`) anywhere a command can be derived, as the `Makefile`
+  does.
+- The only permitted literal copies are ones a tool forces on us: the protobuf
+  `go_package` option, the `goimports -local` prefix in
+  `.pre-commit-config.yaml`, and the OpenTelemetry instrumentation scope
+  constant. `TestModulePathSingleSourceOfTruth` (root `module_path_test.go`)
+  pins each of those copies to `go.mod`, so a rename cannot drift.
+- To rename the module: `go mod edit -module=<new>`, update the pinned literals
+  above, regenerate the protobuf stubs with `make proto-generate` (never hand-edit
+  `*.pb.go`), then run `go test ./...`.
+
 ## Layering Rules
 
 - Keep transport logic in `server`.

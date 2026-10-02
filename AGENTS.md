@@ -134,6 +134,12 @@ See [.agents/context/testing.md](.agents/context/testing.md) for the testing and
 - Use table-driven tests with `t.Run()` and `t.Parallel()` where safe.
 - Use `t.Context()` in tests when appropriate.
 - Canonical JSON (RFC 8785) everywhere a digest is computed.
+- Keep the module path in `go.mod` only. Import statements name it in full
+  because Go requires a module-qualified import path; everywhere a command can
+  derive it, do so (`go list -m`). Do not add new string literals for it. The
+  unavoidable copies (protobuf `go_package`, pre-commit `goimports -local`,
+  telemetry instrumentation scope) are pinned by
+  `TestModulePathSingleSourceOfTruth` in `module_path_test.go`.
 
 See [.agents/context/go-style.md](.agents/context/go-style.md) for the repo-specific style rules.
 
