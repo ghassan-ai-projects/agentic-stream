@@ -1,7 +1,7 @@
 # Clean-function continuation
 
 Date: 2026-10-02. Branch: `code-improvments-2`.
-Starting HEAD: `57eb8bb`. Status: in progress.
+Starting HEAD: `57eb8bb`. Status: complete for the reviewed refactoring scope.
 
 ## Bar and method
 
@@ -125,3 +125,43 @@ error precedence, caller-owned transactions, amount checks, and update order.
 The six-round checkpoint (`2a03c8a`) passed `make ci-check` and the full uncached
 race suite with the pinned protoc and local socket access. Final evidence must
 include this additional round before declaring completion.
+
+## Final review
+
+- Q7 entry points now state reservation/ownership, admission/read delivery,
+  control authorization/application, parsing/compilation, artifact verification,
+  and cost reservation/settlement as named steps. Concrete filesystem, SQL,
+  checksum parsing, serialization, and response work lives in the owning steps.
+- Added 30 regression test functions across nine files. Most characterization
+  tests preceded extraction; additional boundary tests were added during the
+  same round's review. Existing tests and golden fixtures remain unchanged.
+- Compared all 372 public function declarations against the starting commit:
+  no signature changes or added public entry points. Reviewed private steps
+  against error precedence, clock reads, row lifetime, transaction ownership,
+  fencing, audit atomicity, and stepdown order.
+- No new package edges, interfaces, dependencies, migrations, generated stubs,
+  domain data, digest pins, or quality threshold changes.
+- Unchanged leaf code and the earlier merged domain refactoring were retained;
+  this record establishes Q7 for the reviewed changes, not a fresh function-by-
+  function certification of every untouched implementation.
+
+## Final validation
+
+Runtime source at `583e0f6`, Go 1.27.1, protoc 35.1:
+
+- `make ci-check` passed: protocol parity, tidy, build, vet, whole-tree lint
+  (zero issues), shuffled short race tests, per-package coverage, dead-code
+  analysis, vulnerability analysis (none found), and documentation checks
+  (58 public pages and volatile surfaces). Every handwritten package meets
+  the 60% coverage floor; generated protobuf remains the documented exemption.
+- `go test -race -count=1 ./...` passed uncached, including unchanged replay,
+  predictive-maintenance, authority, worker, and integration fixtures.
+- `git diff --check 57eb8bb` passed.
+- `pre-commit` is not installed; its optional invocation was skipped. The
+  authoritative repository gate above passed.
+
+Both complete gates ran with the required cache and local socket access,
+resolving the restricted baseline's environmental blockers. Seven refactoring
+rounds were committed separately; this validation record is the final checkpoint.
+The only untracked file remains the pre-existing executable. No push was
+requested or performed. Deployment qualification remains a separate release gate.
