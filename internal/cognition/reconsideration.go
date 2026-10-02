@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -240,7 +242,7 @@ func (e *Engine) scheduleReconsideration(ctx context.Context, tx *sql.Tx, r reco
 	if err := e.scheduler.saveEvaluation(ctx, tx, eval, e.tenantID, e.deploymentID); err != nil {
 		return fmt.Errorf("save reconsideration evaluation: %w", err)
 	}
-	item := Item{
+	item := scheduleledger.Item{
 		SchedulerItemID: r.schedulerItemID, Kind: "reconsider", TriggerID: r.triggerID,
 		SituationID: r.current.SituationID, SituationVersion: r.current.Version,
 		Lane: "deep", Priority: 100, Status: "pending",

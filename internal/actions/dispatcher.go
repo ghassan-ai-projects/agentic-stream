@@ -117,9 +117,7 @@ func (d *Dispatcher) dispatchLeasedCommand(ctx, callCtx context.Context, leased 
 		if !ok {
 			return d.finalize(ctx, leased, actionport.Effect{}, errors.New("configured effector does not enforce dispatch authorization"))
 		}
-		effect, dispatchErr := guarded.DispatchAuthorized(callCtx, leased.Command, actionport.Authorization{Check: func(checkCtx context.Context) error {
-			return d.assertInterlock(checkCtx, leased.Command)
-		}})
+		effect, dispatchErr := guarded.DispatchAuthorized(callCtx, leased.Command, runtimecontrol.NewDispatchAuthorization(d.db, d.interlock, leased.Command.TenantID, leased.Command.NormalizedTarget))
 		if errors.Is(dispatchErr, context.DeadlineExceeded) {
 			dispatchErr = &actionport.UnknownOutcomeError{Err: dispatchErr}
 		}
@@ -186,18 +184,6 @@ func (d *Dispatcher) verifyDevice(ctx context.Context, leased leasedCommand, eff
 		}
 	}
 	return check
-}
-
-func (d *Dispatcher) assertInterlock(ctx context.Context, command actionport.Command) error {
-	if err := d.db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := d.interlock.Assert(ctx, tx, command.TenantID, command.NormalizedTarget, ""); err != nil {
-			return fmt.Errorf("dispatch interlock assertion: %w", err)
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("assert dispatch interlock: %w", err)
-	}
-	return nil
 }
 
 func (d *Dispatcher) assertRuntimeOwner(ctx context.Context, tx *sql.Tx) error {

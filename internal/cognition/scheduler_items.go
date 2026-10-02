@@ -4,14 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"errors"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
-	"strings"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 func (s *Scheduler) findTrigger(name string) (spec.Trigger, error) {
@@ -67,63 +65,6 @@ func (s *Scheduler) countPendingSameTrigger(ctx context.Context, tx *sql.Tx, sit
 	return count, nil
 }
 
-func (s *Scheduler) insertItem(ctx context.Context, tx *sql.Tx, item Item, tenantID string) error {
-	notBefore := sql.NullString{}
-	if item.NotBefore != nil {
-		notBefore = sql.NullString{String: item.NotBefore.Format(time.RFC3339Nano), Valid: true}
-	}
-	now := s.clk.Now().UTC().Format(time.RFC3339Nano)
-	args := []any{
-		item.SchedulerItemID, item.TriggerID, tenantID, item.SituationID, item.SituationVersion, item.Kind,
-		item.Lane, item.Priority, item.Status, s.dedupeKey(item.SituationID, item.SituationVersion, item.TriggerID),
-		notBefore, item.ExpiresAt.Format(time.RFC3339Nano), now, now,
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO scheduler_items (
-			scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version,
-			kind, lane, priority, status, dedupe_key, not_before, expires_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(trigger_id) DO UPDATE SET
-			kind = excluded.kind,
-			situation_version = excluded.situation_version,
-			lane = excluded.lane,
-			priority = excluded.priority,
-			status = excluded.status,
-			dedupe_key = excluded.dedupe_key,
-			not_before = excluded.not_before,
-			expires_at = excluded.expires_at,
-			updated_at = excluded.updated_at`,
-		args...,
-	); err != nil {
-		if isSchedulerItemIDConflict(err) {
-			if _, retryErr := tx.ExecContext(ctx, `
-				INSERT INTO scheduler_items (
-					scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version,
-					kind, lane, priority, status, dedupe_key, not_before, expires_at, created_at, updated_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-				ON CONFLICT(scheduler_item_id) DO NOTHING`, args...); retryErr != nil {
-				return fmt.Errorf("ignore scheduler item ID conflict: %w", retryErr)
-			}
-			return nil
-		}
-		return fmt.Errorf("upsert scheduler item: %w", err)
-	}
-	return nil
-}
-
-func isSchedulerItemIDConflict(err error) bool {
-	var sqliteErr *sqlite.Error
-	if !errors.As(err, &sqliteErr) {
-		return false
-	}
-	switch sqliteErr.Code() {
-	case sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY, sqlite3.SQLITE_CONSTRAINT_UNIQUE:
-		return strings.Contains(err.Error(), "UNIQUE constraint failed: scheduler_items.scheduler_item_id")
-	default:
-		return false
-	}
-}
-
 func (s *Scheduler) dedupeKey(situationID string, version int, triggerID string) []byte {
 	h := sha256.New()
 	_, _ = fmt.Fprintf(h, "%s|%d|%s", situationID, version, triggerID)
@@ -132,4 +73,13 @@ func (s *Scheduler) dedupeKey(situationID string, version int, triggerID string)
 
 func (s *Scheduler) itemID() string {
 	return s.idGen.New(ids.PrefixScheduler)
+}
+
+func (s *Scheduler) insertItem(ctx context.Context, tx *sql.Tx, item scheduleledger.Item, tenantID string) error {
+	now := s.clk.Now().UTC().Format(time.RFC3339Nano)
+	key := s.dedupeKey(item.SituationID, item.SituationVersion, item.TriggerID)
+	if err := scheduleledger.Upsert(ctx, tx, item, tenantID, key, now); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+	return nil
 }

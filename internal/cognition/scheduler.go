@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
@@ -33,20 +35,6 @@ func NewScheduler(compiled *spec.CompiledSpec, idGen ids.Generator, clk clock.Cl
 		idGen = ids.Random()
 	}
 	return &Scheduler{spec: compiled, idGen: idGen, clk: clk}
-}
-
-// Item is one durable scheduler entry.
-type Item struct {
-	SchedulerItemID  string     // unique scheduler item identity.
-	Kind             string     // standard or reconsider.
-	TriggerID        string     // trigger evaluation that admitted this item.
-	SituationID      string     // situation being reasoned about.
-	SituationVersion int        // immutable situation version bound to this item.
-	Lane             string     // fast or deep lane.
-	Priority         float64    // admission score used for ordering.
-	Status           string     // pending, admitted, coalesced, expired, canceled, completed.
-	NotBefore        *time.Time // earliest time the item may be picked.
-	ExpiresAt        time.Time  // latest time the item remains useful.
 }
 
 const (
@@ -166,8 +154,8 @@ func (s *Scheduler) saveEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluat
 	return nil
 }
 
-func (s *Scheduler) buildItem(ctx context.Context, tx *sql.Tx, eval Evaluation) (Item, error) {
-	item := Item{
+func (s *Scheduler) buildItem(ctx context.Context, tx *sql.Tx, eval Evaluation) (scheduleledger.Item, error) {
+	item := scheduleledger.Item{
 		SchedulerItemID:  s.itemID(),
 		Kind:             "standard",
 		TriggerID:        eval.TriggerID,
@@ -213,7 +201,7 @@ func (s *Scheduler) buildItem(ctx context.Context, tx *sql.Tx, eval Evaluation) 
 
 // applyCooldown delays the item until cooldown after the trigger's latest
 // admission, when that is later than its current not-before time.
-func (s *Scheduler) applyCooldown(ctx context.Context, tx *sql.Tx, item *Item, eval Evaluation, cooldown time.Duration) error {
+func (s *Scheduler) applyCooldown(ctx context.Context, tx *sql.Tx, item *scheduleledger.Item, eval Evaluation, cooldown time.Duration) error {
 	latest, err := s.latestAdmittedTime(ctx, tx, eval.SituationID, eval.TriggerName, eval.TriggerID)
 	if err != nil || latest == nil {
 		return err

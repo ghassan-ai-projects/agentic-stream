@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 )
 
 // ResolveApproval records a human approval decision and, when approved,
@@ -42,8 +44,8 @@ func (g *Gateway) ResolveApproval(ctx context.Context, tx *sql.Tx, approvalID st
 		}
 	}
 	status, policyStatus := approvalDecision(approved)
-	if err := updateApproval(ctx, tx, approvalID, status, approver, relay, reason, now); err != nil {
-		return result, err
+	if err := approvalledger.Resolve(ctx, tx, approvalID, status, approver, relay, reason, formatTime(now)); err != nil {
+		return result, fmt.Errorf("resolve approval %s: %w", approvalID, err)
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = ?, updated_at = ? WHERE intent_id = ?", policyStatus, formatTime(now), approval.intentID); err != nil {
 		return result, fmt.Errorf("update approved intent %s: %w", approval.intentID, err)
@@ -79,9 +81,7 @@ func approvalExpired(expiresAt string, now time.Time) bool {
 }
 
 func (g *Gateway) withdrawStaleApproval(ctx context.Context, tx *sql.Tx, row intentRow, approvalID string, result Result, now time.Time) (Result, error) {
-	if _, err := tx.ExecContext(ctx, `UPDATE approvals
-		SET status = 'denied', decided_at = ?, withdrawn_at = ?, withdrawal_reason = ?, reason = ?
-		WHERE approval_id = ? AND status = 'pending'`, formatTime(now), formatTime(now), "situation_version_conflict", "approval_withdrawn", approvalID); err != nil {
+	if err := approvalledger.Withdraw(ctx, tx, approvalID, formatTime(now)); err != nil {
 		return result, fmt.Errorf("withdraw stale approval: %w", err)
 	}
 	if err := appendApprovalWithdrawn(ctx, tx, row, approvalID, "situation_version_conflict", now); err != nil {
@@ -94,7 +94,7 @@ func (g *Gateway) withdrawStaleApproval(ctx context.Context, tx *sql.Tx, row int
 }
 
 func (g *Gateway) expireApproval(ctx context.Context, tx *sql.Tx, row intentRow, approvalID string, result Result, now time.Time) (Result, error) {
-	if _, err := tx.ExecContext(ctx, "UPDATE approvals SET status = 'expired', decided_at = ?, reason = ? WHERE approval_id = ? AND status = 'pending'", formatTime(now), "approval_expired", approvalID); err != nil {
+	if err := approvalledger.Expire(ctx, tx, approvalID, formatTime(now)); err != nil {
 		return result, fmt.Errorf("expire approval %s: %w", approvalID, err)
 	}
 	if err := appendApprovalResolved(ctx, tx, row, approvalID, "expired", "approval_expired", now); err != nil {
@@ -110,19 +110,8 @@ func approvalDecision(approved bool) (status, policyStatus string) {
 	return "denied", "denied"
 }
 
-func updateApproval(ctx context.Context, tx *sql.Tx, approvalID, status, approver, relay, reason string, now time.Time) error {
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE approvals SET status = ?, decided_at = ?, approver_identity = ?, relay_identity = ?, reason = ?
-		WHERE approval_id = ? AND status = 'pending'`, status, formatTime(now), approver, relay, reason, approvalID); err != nil {
-		return fmt.Errorf("resolve approval %s: %w", approvalID, err)
-	}
-	return nil
-}
-
 func (g *Gateway) denyUnauthorizedApproval(ctx context.Context, tx *sql.Tx, row intentRow, approvalID, approver, relay string, authErr error, result Result, now time.Time) (Result, error) {
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE approvals SET status = 'denied', decided_at = ?, approver_identity = ?, relay_identity = ?, reason = ?
-		WHERE approval_id = ? AND status = 'pending'`, formatTime(now), approver, relay, authErr.Error(), approvalID); err != nil {
+	if err := approvalledger.Resolve(ctx, tx, approvalID, "denied", approver, relay, authErr.Error(), formatTime(now)); err != nil {
 		return result, fmt.Errorf("record unauthorized approval: %w", err)
 	}
 	if err := appendApprovalResolved(ctx, tx, row, approvalID, "denied", "approval_principal_not_authorized", now); err != nil {
@@ -161,7 +150,7 @@ func (g *Gateway) authorizeApproval(ctx context.Context, tx *sql.Tx, row intentR
 		return fmt.Errorf("approval assertion signature is invalid")
 	}
 	assertionDigest := sha256.Sum256(assertion)
-	if _, err := tx.ExecContext(ctx, "UPDATE approvals SET assertion_sha256 = ?, nonce = nonce WHERE approval_id = ? AND status = 'pending'", assertionDigest[:], approvalID); err != nil {
+	if err := approvalledger.BindAssertion(ctx, tx, approvalID, assertionDigest[:]); err != nil {
 		return fmt.Errorf("record approval assertion: %w", err)
 	}
 	if err := tx.QueryRowContext(ctx, `

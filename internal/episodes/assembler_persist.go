@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
@@ -25,7 +27,10 @@ func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now t
 	if err := episodeledger.Admit(ctx, tx, admittedEpisode(req, digests), now); err != nil {
 		return fmt.Errorf("%w", err)
 	}
-	return markSchedulerItemAdmitted(ctx, tx, req.SchedulerItemID, now)
+	if err := scheduleledger.MarkAdmitted(ctx, tx, req.SchedulerItemID, now); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+	return nil
 }
 
 // requestDigests are the raw provenance digests stored with an episode.
@@ -63,26 +68,6 @@ func (a *Assembler) reserveCost(ctx context.Context, tx *sql.Tx, req *Request, n
 	}
 	if err := a.cost.Reserve(ctx, tx, req.EpisodeID, req.TenantID, payload.Budget.CostMicrounits, now.UTC().Format(time.RFC3339Nano)); err != nil {
 		return fmt.Errorf("reserve episode cost: %w", err)
-	}
-	return nil
-}
-
-// markSchedulerItemAdmitted requires the scheduler item to still be pending.
-func markSchedulerItemAdmitted(ctx context.Context, tx *sql.Tx, schedulerItemID string, now time.Time) error {
-	res, err := tx.ExecContext(ctx, `
-		UPDATE scheduler_items SET status = 'admitted', updated_at = ?
-		WHERE scheduler_item_id = ? AND status = 'pending'`,
-		now.Format(time.RFC3339Nano), schedulerItemID,
-	)
-	if err != nil {
-		return fmt.Errorf("mark scheduler item admitted: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("rows affected: %w", err)
-	}
-	if n == 0 {
-		return fmt.Errorf("scheduler item %s is no longer pending", schedulerItemID)
 	}
 	return nil
 }

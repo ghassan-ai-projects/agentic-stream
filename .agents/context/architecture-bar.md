@@ -27,6 +27,7 @@ Additional modules have current concrete responsibilities:
 - `device`: capability materialization, device sessions, gateway transport and concrete device effectors.
 - `episodeledger`: episode/attempt identities, durable lifecycle transitions and recovery mutations.
 - `scheduleledger`: durable queue lifecycle transitions shared by admission and episode assembly.
+- `approvalledger`: pending approval, signed assertion and supersession/expiry lifecycle.
 - `control`: singleton runtime ownership and epoch drain/kill; cancellation calls the episode ledger in the same transaction.
 - `authority`: target claims, command bindings, device reconciliation and safety evidence.
 - `qualification`: calibration activation and shadow decision/comparison evidence.
@@ -38,7 +39,8 @@ splits an atomic state change. Shared outbox and decision handoffs are declared
 producer/consumer contracts, not permission to issue arbitrary SQL across modules.
 
 Control flows downward: composition invokes control; control invokes lifecycle
-operations; execution observes durable fencing/cancellation state. Feedback
+operations; execution observes durable fencing/cancellation state. The final authorization capability binds a read-only lower-level readiness gate;
+effect adapters cannot call back into the dispatcher. Feedback
 enters through evidence or durable outcome records and starts another forward
 pass. Logical feedback is permitted; reverse service dependencies are not.
 

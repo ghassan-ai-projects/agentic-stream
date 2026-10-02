@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
@@ -145,7 +147,10 @@ func (p *Pipeline) skipCostRejectedSchedulerItem(ctx context.Context, schedulerI
 		if err := recordCostRejectionReason(ctx, tx, schedulerItemID, rejection); err != nil {
 			return err
 		}
-		return coalesceCostRejectedItem(ctx, tx, schedulerItemID, now)
+		if err := scheduleledger.CoalesceCostRejected(ctx, tx, schedulerItemID, now); err != nil {
+			return fmt.Errorf("%w", err)
+		}
+		return nil
 	}); err != nil {
 		return fmt.Errorf("skip cost-rejected scheduler item %s: %w", schedulerItemID, err)
 	}
@@ -181,43 +186,13 @@ func recordCostRejectionReason(ctx context.Context, tx *sql.Tx, schedulerItemID 
 	return nil
 }
 
-func coalesceCostRejectedItem(ctx context.Context, tx *sql.Tx, schedulerItemID string, now time.Time) error {
-	result, err := tx.ExecContext(ctx, `
-			UPDATE scheduler_items SET status = 'coalesced', updated_at = ?
-			WHERE scheduler_item_id = ? AND status = 'pending'`,
-		now.UTC().Format(time.RFC3339Nano), schedulerItemID)
-	if err != nil {
-		return fmt.Errorf("skip cost-rejected scheduler item: %w", err)
-	}
-	updated, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("cost-rejected scheduler item rows affected: %w", err)
-	}
-	if updated != 1 {
-		return fmt.Errorf("scheduler item %s is no longer pending", schedulerItemID)
-	}
-	return nil
-}
-
 func (p *Pipeline) coalesceSkippedSchedulerItem(ctx context.Context, schedulerItemID string, now time.Time) error {
 	if err := p.db.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := p.assertOwnerTx(ctx, tx); err != nil {
 			return fmt.Errorf("assert pipeline owner: %w", err)
 		}
-		result, err := tx.ExecContext(ctx, `
-			UPDATE scheduler_items SET status = 'coalesced', updated_at = ?
-			WHERE scheduler_item_id = ? AND status = 'pending'`,
-			now.UTC().Format(time.RFC3339Nano), schedulerItemID,
-		)
-		if err != nil {
-			return fmt.Errorf("coalesce scheduler item: %w", err)
-		}
-		updated, err := result.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("coalesced scheduler item rows affected: %w", err)
-		}
-		if updated != 1 {
-			return fmt.Errorf("scheduler item %s is no longer pending", schedulerItemID)
+		if err := scheduleledger.CoalesceSkipped(ctx, tx, schedulerItemID, now); err != nil {
+			return fmt.Errorf("%w", err)
 		}
 		return nil
 	}); err != nil {

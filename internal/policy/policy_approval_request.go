@@ -8,11 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
-	"strings"
-	"time"
 )
 
 func (g *Gateway) requireApproval(ctx context.Context, tx *sql.Tx, row intentRow, intent map[string]any, result Result, expiresAt, now time.Time) (Result, error) {
@@ -38,12 +40,7 @@ func (g *Gateway) requireApproval(ctx context.Context, tx *sql.Tx, row intentRow
 	if err != nil {
 		return result, fmt.Errorf("canonicalize approval: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO approvals (
-			approval_id, intent_id, status, requested_at, expires_at, approval_json, nonce
-		) VALUES (?, ?, 'pending', ?, ?, ?, ?)`,
-		approvalID, row.IntentID, formatTime(now), formatTime(expiresAt), approvalJSON, nonce,
-	); err != nil {
+	if err := approvalledger.Request(ctx, tx, approvalID, row.IntentID, formatTime(now), formatTime(expiresAt), approvalJSON, nonce); err != nil {
 		return result, fmt.Errorf("insert approval: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = 'approval_required', updated_at = ? WHERE intent_id = ?", formatTime(now), row.IntentID); err != nil {

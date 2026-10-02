@@ -409,3 +409,10 @@ clock reads and safety ordering stay intact. Cancellation uses typed downward
 ledger operations; results/feedback use return values and durable records.
 There is no additional queue, service, framework, table abstraction interface,
 or speculative module. Full CI, race/replay and boundary regressions gate delivery.
+
+**Ownership review refinement.** Approval supersession is a current cross-domain
+lifecycle responsibility: cognition must withdraw pending approvals without
+importing policy. `approvalledger` owns these transitions and their transaction-
+scoped audit notifications; policy owns permission/signature decisions above it.
+`control` supplies the read-only final dispatch readiness capability, so effect
+adapters never call a dispatcher callback. Both refinements are part of ADR-017.

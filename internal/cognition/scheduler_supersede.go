@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
@@ -32,7 +35,10 @@ func (s *Scheduler) supersedePending(ctx context.Context, tx *sql.Tx, situationI
 	if err := s.announceSuperseded(ctx, tx, replacement, items); err != nil {
 		return err
 	}
-	return s.withdrawSupersededApprovals(ctx, tx, situationID, replacement.tenantID, replacement.version, now)
+	if err := approvalledger.WithdrawSuperseded(ctx, tx, situationID, replacement.tenantID, replacement.version, now, s.clk); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+	return nil
 }
 
 // replacementVersion is the Situation's current version, which supersedes
@@ -94,15 +100,8 @@ func supersededItems(ctx context.Context, tx *sql.Tx, situationID, triggerName s
 // coalesceTriggerWork coalesces the trigger's open scheduler items,
 // supersedes their live episodes, and cancels those episodes' attempts.
 func coalesceTriggerWork(ctx context.Context, tx *sql.Tx, situationID, triggerName, now string) error {
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE scheduler_items SET status = 'coalesced', updated_at = ?
-		WHERE situation_id = ? AND trigger_id IN (
-			SELECT trigger_id FROM trigger_evaluations
-			WHERE situation_id = ? AND trigger_name = ? AND outcome = 'admitted'
-		) AND status IN ('pending', 'admitted')`,
-		now, situationID, situationID, triggerName,
-	); err != nil {
-		return fmt.Errorf("supersede scheduler items: %w", err)
+	if err := scheduleledger.Coalesce(ctx, tx, situationID, triggerName, now); err != nil {
+		return fmt.Errorf("%w", err)
 	}
 	if err := episodeledger.SupersedeCoalesced(ctx, tx, situationID, now); err != nil {
 		return fmt.Errorf("%w", err)
@@ -129,44 +128,6 @@ func (s *Scheduler) announceSuperseded(ctx context.Context, tx *sql.Tx, replacem
 			}, s.clk.Now().UTC(), trace); err != nil {
 			return fmt.Errorf("append situation superseded notification: %w", err)
 		}
-	}
-	return nil
-}
-
-func (s *Scheduler) withdrawSupersededApprovals(ctx context.Context, tx *sql.Tx, situationID, tenantID string, replacementVersion int, now string) error {
-	rows, err := tx.QueryContext(ctx, `
-		SELECT a.approval_id, i.intent_id, i.situation_id, i.situation_version,
-		       d.traceparent, d.tracestate
-		FROM approvals a
-		JOIN intents i ON i.intent_id = a.intent_id
-		JOIN decisions d ON d.decision_id = i.decision_id
-		WHERE i.situation_id = ? AND i.situation_version < ? AND a.status = 'pending'
-		ORDER BY a.approval_id`, situationID, replacementVersion)
-	if err != nil {
-		return fmt.Errorf("find superseded approvals: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var approvalID, intentID, linkedSituationID string
-		var situationVersion int
-		var traceparent, tracestate sql.NullString
-		if err := rows.Scan(&approvalID, &intentID, &linkedSituationID, &situationVersion, &traceparent, &tracestate); err != nil {
-			return fmt.Errorf("scan superseded approval: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE approvals SET status = 'denied', decided_at = ?, withdrawn_at = ?, withdrawal_reason = ?, reason = ?
-			WHERE approval_id = ? AND status = 'pending'`, now, now, "situation_version_conflict", "approval_withdrawn", approvalID); err != nil {
-			return fmt.Errorf("withdraw superseded approval %s: %w", approvalID, err)
-		}
-		if err := notify.AppendLifecycleEventWithTrace(ctx, tx, "approval.withdrawn:"+approvalID, tenantID, notify.TypeApprovalWithdrawn, "approval/"+approvalID, linkedSituationID, map[string]any{
-			"tenant_id": tenantID, "approval_id": approvalID, "intent_id": intentID, "situation_id": linkedSituationID,
-			"situation_version": situationVersion, "reason": "situation_version_conflict", "source_authority": notify.SourceForTenant(tenantID),
-		}, s.clk.Now().UTC(), contractsv1.TraceContext{Traceparent: traceparent.String, Tracestate: tracestate.String}); err != nil {
-			return fmt.Errorf("append superseded approval notification: %w", err)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate superseded approvals: %w", err)
 	}
 	return nil
 }

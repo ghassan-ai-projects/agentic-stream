@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 
@@ -82,7 +83,7 @@ func (g *Gateway) expireExistingApproval(ctx context.Context, tx *sql.Tx, row in
 	if err == nil && expiresAt.After(now) {
 		return result, false, nil
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE approvals SET status = 'expired' WHERE intent_id = ? AND status = 'pending'", row.IntentID); err != nil {
+	if err := approvalledger.ExpireIntent(ctx, tx, row.IntentID); err != nil {
 		return result, true, fmt.Errorf("expire approval: %w", err)
 	}
 	if err := appendApprovalResolved(ctx, tx, row, approvalID, "expired", "approval_expired", now); err != nil {
