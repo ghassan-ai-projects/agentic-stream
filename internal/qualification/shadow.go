@@ -1,9 +1,11 @@
-package storage
+package qualification
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // ShadowScore is the would-be policy result for a shadow decision: what
@@ -38,7 +40,7 @@ type ShadowDecision struct {
 // and recorded here and NEVER written to intents or commands — nothing from a
 // shadow run enters action governance.
 type ShadowStore struct {
-	DB *DB
+	DB *storage.DB
 }
 
 // Record persists a shadow decision and its would-be score, correlated to the

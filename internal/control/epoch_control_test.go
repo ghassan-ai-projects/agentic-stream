@@ -1,4 +1,4 @@
-package storage_test
+package control_test
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -16,7 +18,7 @@ func TestEpochControlKillIsAtomicWithEpisodeSupersession(t *testing.T) {
 	seedRunningEpochEpisode(t, db, "epi-kill-atomic", "epoch-kill-atomic")
 
 	now := time.Date(2026, 8, 12, 12, 34, 56, 123456789, time.UTC)
-	control := &storage.EpochControl{DB: db, Now: func() time.Time { return now }}
+	control := &runtimecontrol.EpochControl{DB: db, Now: func() time.Time { return now }}
 	if err := control.Kill(ctx, "epoch-kill-atomic"); err != nil {
 		t.Fatalf("kill epoch: %v", err)
 	}
@@ -35,7 +37,7 @@ func TestEpochControlKillIsAtomicWithEpisodeSupersession(t *testing.T) {
 
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		return control.AssertDecisionTx(ctx, tx, "epoch-kill-atomic")
-	}); !errors.Is(err, storage.ErrEpochKilled) {
+	}); !errors.Is(err, runtimecontrol.ErrEpochKilled) {
 		t.Fatalf("transactional decision assertion = %v, want ErrEpochKilled", err)
 	}
 	if err := control.Drain(ctx, "epoch-kill-atomic"); err != nil {
@@ -64,7 +66,7 @@ func TestEpochControlKillRollsBackWhenSupersessionFails(t *testing.T) {
 		t.Fatalf("install supersession failure trigger: %v", err)
 	}
 
-	control := &storage.EpochControl{DB: db}
+	control := &runtimecontrol.EpochControl{DB: db}
 	if err := control.Kill(ctx, "epoch-kill-rollback"); err == nil {
 		t.Fatal("Kill succeeded despite supersession failure")
 	}
@@ -100,7 +102,7 @@ func TestEpochControlKillReleasesUnstartedEpisodeReservation(t *testing.T) {
 		t.Fatalf("seed global reservation: %v", err)
 	}
 
-	control := &storage.EpochControl{DB: db, Now: func() time.Time {
+	control := &runtimecontrol.EpochControl{DB: db, Now: func() time.Time {
 		return time.Date(2026, 8, 12, 12, 34, 56, 123456789, time.UTC)
 	}}
 	if err := control.Kill(ctx, "epoch-kill-cost"); err != nil {
@@ -124,7 +126,7 @@ func TestEpochControlKillReleasesUnstartedEpisodeReservation(t *testing.T) {
 
 func TestEpochControlDecisionPathFailsClosedWhenMisconfigured(t *testing.T) {
 	ctx := context.Background()
-	var nilControl *storage.EpochControl
+	var nilControl *runtimecontrol.EpochControl
 	if _, err := nilControl.State(ctx, "epoch"); err == nil {
 		t.Fatal("nil State receiver returned success")
 	}
@@ -133,14 +135,14 @@ func TestEpochControlDecisionPathFailsClosedWhenMisconfigured(t *testing.T) {
 	}
 
 	db, _ := openOwnerDB(t)
-	control := &storage.EpochControl{DB: db}
+	control := &runtimecontrol.EpochControl{DB: db}
 	if _, err := control.State(ctx, ""); err == nil {
 		t.Fatal("empty State epoch returned success")
 	}
 	if err := control.AssertDecision(ctx, ""); err == nil {
 		t.Fatal("empty AssertDecision epoch returned success")
 	}
-	var nilDBControl = &storage.EpochControl{}
+	var nilDBControl = &runtimecontrol.EpochControl{}
 	if err := nilDBControl.AssertDecisionTx(ctx, nil, "epoch"); err == nil {
 		t.Fatal("nil DB/transactional AssertDecision returned success")
 	}

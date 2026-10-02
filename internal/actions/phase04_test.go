@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -142,13 +145,13 @@ func TestSerialSessionAuthorityLossAfterTransportIsUnknown(t *testing.T) {
 	state["capability_digest"] = digest
 	transport := &fakeDeviceTransport{frames: mustDeviceFrames(t, state)}
 	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
-	owner := &storage.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: 10, Now: func() time.Time { return now }}
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: 10, Now: func() time.Time { return now }}
 	if err := owner.Claim(t.Context(), "epoch-1"); err != nil {
 		t.Fatal(err)
 	}
-	epochControl := &storage.EpochControl{DB: db}
-	authority := &storage.TargetAuthority{DB: db, Owner: owner, EpochControl: epochControl, InstanceID: "instance-1", Lease: 10, Now: func() time.Time { return now }}
-	store := &storage.ReconciliationStore{DB: db, Authority: authority, Now: func() time.Time { return now }}
+	epochControl := &runtimecontrol.EpochControl{DB: db}
+	authority := &deviceauthority.TargetAuthority{DB: db, Owner: owner, EpochControl: epochControl, InstanceID: "instance-1", Lease: 10, Now: func() time.Time { return now }}
+	store := &deviceauthority.ReconciliationStore{DB: db, Authority: authority, Now: func() time.Time { return now }}
 	session, err := actions.OpenDeviceSession(t.Context(), actions.DeviceSessionConfig{
 		Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
 		AllowedFirmwareDigests: []string{state["firmware_digest"].(string)}, AuthorityEpoch: "epoch-1",

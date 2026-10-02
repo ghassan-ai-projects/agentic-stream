@@ -1,4 +1,4 @@
-package storage_test
+package authority_test
 
 import (
 	"database/sql"
@@ -7,13 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 )
 
 func TestRuntimeRecoveryRechecksLeaseBeforeCommitting(t *testing.T) {
 	t.Parallel()
 	db, now := openOwnerDB(t)
-	owner := &storage.RuntimeOwner{DB: db, InstanceID: "instance", Lease: time.Minute, Now: func() time.Time { return now }}
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance", Lease: time.Minute, Now: func() time.Time { return now }}
 	err := owner.ClaimAndRecover(t.Context(), "epoch", func(tx *sql.Tx, acquiredAt time.Time) error {
 		if !acquiredAt.Equal(now) {
 			t.Fatalf("recovery time = %v, want %v", acquiredAt, now)
@@ -22,7 +23,7 @@ func TestRuntimeRecoveryRechecksLeaseBeforeCommitting(t *testing.T) {
 		now = now.Add(time.Minute)
 		return err
 	})
-	if !errors.Is(err, storage.ErrRuntimeOwnerBusy) {
+	if !errors.Is(err, runtimecontrol.ErrRuntimeOwnerBusy) {
 		t.Fatalf("expired recovery = %v", err)
 	}
 	for _, table := range []string{"runtime_owner", "epoch_control"} {
@@ -36,8 +37,8 @@ func TestRuntimeRecoveryRechecksLeaseBeforeCommitting(t *testing.T) {
 func TestTargetReleaseRollsBackWhenAuditCannotBeWritten(t *testing.T) {
 	t.Parallel()
 	db, now := openOwnerDB(t)
-	authority := &storage.TargetAuthority{DB: db, InstanceID: "instance", Now: func() time.Time { return now }}
-	claim := storage.TargetClaim{Target: "fan", DeviceID: "device", BootID: "boot", AuthorityEpoch: "epoch", OwnerInstance: "instance"}
+	authority := &deviceauthority.TargetAuthority{DB: db, InstanceID: "instance", Now: func() time.Time { return now }}
+	claim := deviceauthority.TargetClaim{Target: "fan", DeviceID: "device", BootID: "boot", AuthorityEpoch: "epoch", OwnerInstance: "instance"}
 	if err := authority.Claim(t.Context(), claim); err != nil {
 		t.Fatal(err)
 	}
@@ -61,28 +62,28 @@ func TestTargetReleaseRollsBackWhenAuditCannotBeWritten(t *testing.T) {
 func TestTargetAssertionPreservesIdentityAndExpiryFences(t *testing.T) {
 	t.Parallel()
 	db, now := openOwnerDB(t)
-	authority := &storage.TargetAuthority{DB: db, Now: func() time.Time { return now }, Lease: time.Minute}
-	claim := storage.TargetClaim{Target: "fan", DeviceID: "device", BootID: "boot", AuthorityEpoch: "epoch", OwnerInstance: "instance"}
+	authority := &deviceauthority.TargetAuthority{DB: db, Now: func() time.Time { return now }, Lease: time.Minute}
+	claim := deviceauthority.TargetClaim{Target: "fan", DeviceID: "device", BootID: "boot", AuthorityEpoch: "epoch", OwnerInstance: "instance"}
 	if err := authority.Claim(t.Context(), claim); err != nil {
 		t.Fatal(err)
 	}
-	for _, mutate := range []func(*storage.TargetClaim){
-		func(c *storage.TargetClaim) { c.DeviceID = "other" },
-		func(c *storage.TargetClaim) { c.BootID = "other" },
-		func(c *storage.TargetClaim) { c.AuthorityEpoch = "other" },
-		func(c *storage.TargetClaim) { c.OwnerInstance = "other" },
+	for _, mutate := range []func(*deviceauthority.TargetClaim){
+		func(c *deviceauthority.TargetClaim) { c.DeviceID = "other" },
+		func(c *deviceauthority.TargetClaim) { c.BootID = "other" },
+		func(c *deviceauthority.TargetClaim) { c.AuthorityEpoch = "other" },
+		func(c *deviceauthority.TargetClaim) { c.OwnerInstance = "other" },
 	} {
 		other := claim
 		mutate(&other)
-		if err := authority.Assert(t.Context(), other); !errors.Is(err, storage.ErrTargetClaimNotOwned) {
+		if err := authority.Assert(t.Context(), other); !errors.Is(err, deviceauthority.ErrTargetClaimNotOwned) {
 			t.Fatalf("assert replacement identity %+v = %v", other, err)
 		}
-		if err := authority.Release(t.Context(), other); !errors.Is(err, storage.ErrTargetClaimNotOwned) {
+		if err := authority.Release(t.Context(), other); !errors.Is(err, deviceauthority.ErrTargetClaimNotOwned) {
 			t.Fatalf("release replacement identity %+v = %v", other, err)
 		}
 	}
 	now = now.Add(time.Minute)
-	if err := authority.Assert(t.Context(), claim); !errors.Is(err, storage.ErrTargetClaimNotOwned) {
+	if err := authority.Assert(t.Context(), claim); !errors.Is(err, deviceauthority.ErrTargetClaimNotOwned) {
 		t.Fatalf("assert at expiry = %v", err)
 	}
 }

@@ -1,17 +1,17 @@
-package storage_test
+package authority_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 )
 
 func TestReconciliationOpeningRollsBackWithoutAudit(t *testing.T) {
 	t.Parallel()
 	db, _ := openOwnerDB(t)
-	authority := &storage.TargetAuthority{DB: db}
-	store := &storage.ReconciliationStore{DB: db, Authority: authority}
+	authority := &deviceauthority.TargetAuthority{DB: db}
+	store := &deviceauthority.ReconciliationStore{DB: db, Authority: authority}
 	state := map[string]any{"device_id": "device", "boot_id": "boot"}
 	if _, err := store.BindState(t.Context(), state, "epoch", "instance"); err != nil {
 		t.Fatal(err)
@@ -32,7 +32,7 @@ func TestReconciliationOpeningRollsBackWithoutAudit(t *testing.T) {
 func TestReconciliationOpeningRejectsPreviousBootAfterAuthorityLoss(t *testing.T) {
 	t.Parallel()
 	db, _ := openOwnerDB(t)
-	store := &storage.ReconciliationStore{DB: db, Authority: &storage.TargetAuthority{DB: db}}
+	store := &deviceauthority.ReconciliationStore{DB: db, Authority: &deviceauthority.TargetAuthority{DB: db}}
 	if _, err := store.BindState(t.Context(), map[string]any{"device_id": "device", "boot_id": "current"}, "epoch", "instance"); err != nil {
 		t.Fatal(err)
 	}

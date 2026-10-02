@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
@@ -21,8 +22,8 @@ type EmulatorEffectorConfig struct {
 	AllowedFirmwareDigests []string
 	AuthorityEpoch         string
 	OwnerInstance          string
-	Authority              *storage.TargetAuthority
-	Reconciliation         *storage.ReconciliationStore
+	Authority              *deviceauthority.TargetAuthority
+	Reconciliation         *deviceauthority.ReconciliationStore
 	Telemetry              *telemetry.Runtime
 }
 
@@ -35,8 +36,8 @@ type GatewayEffectorConfig struct {
 	AllowedFirmwareDigests []string
 	AuthorityEpoch         string
 	OwnerInstance          string
-	Authority              *storage.TargetAuthority
-	Reconciliation         *storage.ReconciliationStore
+	Authority              *deviceauthority.TargetAuthority
+	Reconciliation         *deviceauthority.ReconciliationStore
 	Telemetry              *telemetry.Runtime
 }
 

@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"time"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // RecoveryReport combines episode and evidence state repaired before runtime
@@ -24,7 +25,7 @@ type RecoveryReport struct {
 // unfinished attempts and evidence calls. It does not expose readiness or
 // start ingestion; the live command owns that sequencing.
 type RecoveryCoordinator struct {
-	Owner  *storage.RuntimeOwner
+	Owner  *runtimecontrol.RuntimeOwner
 	Ledger *evidence.Ledger
 	Epoch  string
 	Now    func() time.Time

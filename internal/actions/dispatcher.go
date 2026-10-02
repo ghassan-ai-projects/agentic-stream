@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
@@ -97,7 +99,7 @@ type Dispatcher struct {
 	idGen        ids.Generator
 	owner        string
 	leaseFor     time.Duration
-	runtimeOwner *storage.RuntimeOwner
+	runtimeOwner *runtimecontrol.RuntimeOwner
 	runtimeEpoch string
 	interlock    interlock.Reader
 	telemetry    *telemetry.Runtime
@@ -105,7 +107,7 @@ type Dispatcher struct {
 
 // WithRuntimeOwner fences dispatcher ledger mutations to the active runtime
 // lease. It returns the dispatcher for composition during startup.
-func (d *Dispatcher) WithRuntimeOwner(owner *storage.RuntimeOwner, epoch string) *Dispatcher {
+func (d *Dispatcher) WithRuntimeOwner(owner *runtimecontrol.RuntimeOwner, epoch string) *Dispatcher {
 	d.runtimeOwner = owner
 	d.runtimeEpoch = epoch
 	return d

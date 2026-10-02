@@ -1,4 +1,4 @@
-package storage
+package control
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 )
@@ -27,7 +29,7 @@ var ErrEpochDraining = errors.New("policy epoch is draining")
 // EPISODE's recorded policy_epoch against this table — a killed epoch refuses
 // in-flight decisions even if a hostile worker keeps producing them.
 type EpochControl struct {
-	DB  *DB
+	DB  *storage.DB
 	Now func() time.Time
 }
 

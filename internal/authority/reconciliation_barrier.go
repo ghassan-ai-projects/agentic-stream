@@ -1,4 +1,4 @@
-package storage
+package authority
 
 import (
 	"context"

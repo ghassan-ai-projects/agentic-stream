@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -16,7 +18,7 @@ import (
 // later decision; a drained epoch refuses only new admission. The endpoints
 // require the Authorization header to equal `controlToken` exactly, compared
 // in constant time — an operator action, not an anonymous kill switch.
-func NewRuntimeHandler(readiness Readiness, db *storage.DB, events notify.SSEConfig, metrics http.Handler, control *storage.EpochControl, epoch string, controlToken string) http.Handler {
+func NewRuntimeHandler(readiness Readiness, db *storage.DB, events notify.SSEConfig, metrics http.Handler, control *runtimecontrol.EpochControl, epoch string, controlToken string) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", NewHealthHandler(readiness))
 	if db != nil {

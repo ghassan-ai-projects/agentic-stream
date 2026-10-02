@@ -1,4 +1,4 @@
-package storage_test
+package control_test
 
 import (
 	"context"
@@ -8,12 +8,14 @@ import (
 	"testing"
 	"time"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestRuntimeOwnerClaimHeartbeatAndRelease(t *testing.T) {
 	db, now := openOwnerDB(t)
-	owner := &storage.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
 
 	if err := owner.Claim(t.Context(), "epoch-1"); err != nil {
 		t.Fatalf("claim: %v", err)
@@ -31,23 +33,23 @@ func TestRuntimeOwnerClaimHeartbeatAndRelease(t *testing.T) {
 
 func TestRuntimeOwnerRejectsUnexpiredSecondEpoch(t *testing.T) {
 	db, now := openOwnerDB(t)
-	first := &storage.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
-	second := &storage.RuntimeOwner{DB: db, InstanceID: "instance-2", Lease: time.Minute, Now: func() time.Time { return now }}
+	first := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
+	second := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-2", Lease: time.Minute, Now: func() time.Time { return now }}
 	if err := first.Claim(t.Context(), "epoch-1"); err != nil {
 		t.Fatalf("first claim: %v", err)
 	}
-	if err := second.Claim(t.Context(), "epoch-2"); !errors.Is(err, storage.ErrRuntimeOwnerBusy) {
+	if err := second.Claim(t.Context(), "epoch-2"); !errors.Is(err, runtimecontrol.ErrRuntimeOwnerBusy) {
 		t.Fatalf("second claim error = %v, want owner busy", err)
 	}
-	if err := second.Claim(t.Context(), "epoch-1"); !errors.Is(err, storage.ErrRuntimeOwnerBusy) {
+	if err := second.Claim(t.Context(), "epoch-1"); !errors.Is(err, runtimecontrol.ErrRuntimeOwnerBusy) {
 		t.Fatalf("same-epoch different-instance claim error = %v, want owner busy", err)
 	}
 }
 
 func TestRuntimeOwnerExpiredLeaseCanBeReplacedAndOldEpochCannotRenew(t *testing.T) {
 	db, now := openOwnerDB(t)
-	first := &storage.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
-	second := &storage.RuntimeOwner{DB: db, InstanceID: "instance-2", Lease: time.Minute, Now: func() time.Time { return now }}
+	first := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
+	second := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-2", Lease: time.Minute, Now: func() time.Time { return now }}
 	if err := first.Claim(t.Context(), "epoch-1"); err != nil {
 		t.Fatalf("first claim: %v", err)
 	}
@@ -55,14 +57,14 @@ func TestRuntimeOwnerExpiredLeaseCanBeReplacedAndOldEpochCannotRenew(t *testing.
 	if err := second.Claim(t.Context(), "epoch-2"); err != nil {
 		t.Fatalf("replacement claim: %v", err)
 	}
-	if err := first.Renew(t.Context(), "epoch-1"); !errors.Is(err, storage.ErrRuntimeOwnerBusy) {
+	if err := first.Renew(t.Context(), "epoch-1"); !errors.Is(err, runtimecontrol.ErrRuntimeOwnerBusy) {
 		t.Fatalf("old renew error = %v, want owner busy", err)
 	}
 }
 
 func TestRuntimeOwnerAssertRequiresCurrentUnexpiredEpoch(t *testing.T) {
 	db, now := openOwnerDB(t)
-	owner := &storage.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
 	if err := owner.Claim(t.Context(), "epoch-1"); err != nil {
 		t.Fatalf("claim: %v", err)
 	}
@@ -74,15 +76,15 @@ func TestRuntimeOwnerAssertRequiresCurrentUnexpiredEpoch(t *testing.T) {
 	now = now.Add(2 * time.Minute)
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		return owner.Assert(t.Context(), tx, "epoch-1")
-	}); !errors.Is(err, storage.ErrRuntimeOwnerBusy) {
+	}); !errors.Is(err, runtimecontrol.ErrRuntimeOwnerBusy) {
 		t.Fatalf("assert expired owner error = %v, want owner busy", err)
 	}
 }
 
 func TestRuntimeOwnerClaimAndRecoverRollsBackOnFailure(t *testing.T) {
 	db, now := openOwnerDB(t)
-	first := &storage.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
-	second := &storage.RuntimeOwner{DB: db, InstanceID: "instance-2", Lease: time.Minute, Now: func() time.Time { return now.Add(2 * time.Minute) }}
+	first := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
+	second := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-2", Lease: time.Minute, Now: func() time.Time { return now.Add(2 * time.Minute) }}
 	if err := first.Claim(t.Context(), "epoch-1"); err != nil {
 		t.Fatalf("first claim: %v", err)
 	}

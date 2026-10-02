@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -17,14 +19,14 @@ import (
 type WatchEffector struct {
 	db         *storage.DB
 	clk        clock.Clock
-	owner      *storage.RuntimeOwner
+	owner      *runtimecontrol.RuntimeOwner
 	ownerEpoch string
 	interlock  interlock.Reader
 }
 
 // WithRuntimeOwner fences all durable watch mutations to the active runtime
 // epoch. Standalone tests may leave the owner unset.
-func (e *WatchEffector) WithRuntimeOwner(owner *storage.RuntimeOwner, epoch string) *WatchEffector {
+func (e *WatchEffector) WithRuntimeOwner(owner *runtimecontrol.RuntimeOwner, epoch string) *WatchEffector {
 	e.owner = owner
 	e.ownerEpoch = epoch
 	return e

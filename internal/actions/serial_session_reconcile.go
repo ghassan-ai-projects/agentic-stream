@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 )
 
 func (s *DeviceSession) requireReconciliation(ctx context.Context, reason string) error {
@@ -33,7 +34,7 @@ func (s *DeviceSession) requireReconciliation(ctx context.Context, reason string
 }
 
 func isAuthorityFailure(err error) bool {
-	return errors.Is(err, storage.ErrRuntimeOwnerBusy) || errors.Is(err, storage.ErrEpochKilled) || errors.Is(err, storage.ErrEpochDraining)
+	return errors.Is(err, runtimecontrol.ErrRuntimeOwnerBusy) || errors.Is(err, runtimecontrol.ErrEpochKilled) || errors.Is(err, runtimecontrol.ErrEpochDraining)
 }
 
 // ResolveReconciliation records typed state/feedback evidence for the device

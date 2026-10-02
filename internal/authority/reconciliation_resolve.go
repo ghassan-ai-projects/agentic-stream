@@ -1,4 +1,4 @@
-package storage
+package authority
 
 import (
 	"context"
@@ -6,8 +6,9 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 // Resolve records state/feedback evidence for the device barrier. Command

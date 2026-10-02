@@ -1,4 +1,4 @@
-package storage
+package authority
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
@@ -23,7 +25,7 @@ type SafetyEvent struct {
 
 // SafetyLedger records events from the emulator or physical evidence bridge.
 // The runtime does not synthesize physical transitions from a receipt.
-type SafetyLedger struct{ DB *DB }
+type SafetyLedger struct{ DB *storage.DB }
 
 // Record appends one validated safety event.
 func (l *SafetyLedger) Record(ctx context.Context, event SafetyEvent) error {

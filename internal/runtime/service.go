@@ -7,16 +7,17 @@ import (
 	"sync"
 	"time"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // Service owns the live runtime lease and readiness lifecycle. Ingestion and
 // episode dispatch are enabled by later composition layers only after Service
 // reports ready.
 type Service struct {
-	owner  *storage.RuntimeOwner
+	owner  *runtimecontrol.RuntimeOwner
 	ledger *evidence.Ledger
 	epoch  string
 
@@ -29,7 +30,7 @@ type Service struct {
 
 // NewService creates a runtime lifecycle around an already configured owner,
 // ledger, and epoch.
-func NewService(owner *storage.RuntimeOwner, ledger *evidence.Ledger, epoch string) (*Service, error) {
+func NewService(owner *runtimecontrol.RuntimeOwner, ledger *evidence.Ledger, epoch string) (*Service, error) {
 	if owner == nil || ledger == nil || epoch == "" {
 		return nil, fmt.Errorf("runtime service is not configured")
 	}

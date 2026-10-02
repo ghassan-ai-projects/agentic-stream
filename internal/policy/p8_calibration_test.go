@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -16,7 +18,7 @@ import (
 // exists for the domain (model revision = the compiled-spec digest + domain).
 // R0/R1 automatic intents are unaffected.
 
-func calibrationFixture(t *testing.T, risk, domain, modelRevision, artifactSHA string) (*storage.DB, string, *storage.CalibrationStore) {
+func calibrationFixture(t *testing.T, risk, domain, modelRevision, artifactSHA string) (*storage.DB, string, *qualification.CalibrationStore) {
 	t.Helper()
 	db, intentID := openPolicyFixture(t, risk, 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
 	// The calibration gate needs the episode's model revision and the
@@ -29,9 +31,9 @@ func calibrationFixture(t *testing.T, risk, domain, modelRevision, artifactSHA s
 		"UPDATE situations SET situation_type = ? WHERE situation_id = 'sit-policy'", domain); err != nil {
 		t.Fatal(err)
 	}
-	store := &storage.CalibrationStore{DB: db}
+	store := &qualification.CalibrationStore{DB: db}
 	if artifactSHA != "" {
-		if err := store.Activate(context.Background(), storage.CalibrationArtifact{
+		if err := store.Activate(context.Background(), qualification.CalibrationArtifact{
 			Domain: domain, ModelRevision: modelRevision, ArtifactSHA256: artifactSHA,
 		}, artifactSHA); err != nil {
 			t.Fatal(err)

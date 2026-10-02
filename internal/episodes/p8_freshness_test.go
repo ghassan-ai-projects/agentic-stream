@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -281,7 +283,7 @@ func TestP8KillCancelsInFlightAndRefusesItsDecision(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	control := &storage.EpochControl{DB: db}
+	control := &runtimecontrol.EpochControl{DB: db}
 	seedFreshnessEpisode(t, db, "epi-hostile", "sit-hostile", 1, 1)
 	if _, err := db.ExecContext(context.Background(),
 		"UPDATE episodes SET policy_epoch = 'epoch-hostile' WHERE episode_id = 'epi-hostile'"); err != nil {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -25,7 +27,7 @@ type Engine struct {
 	spec         *spec.CompiledSpec
 	tenantID     string
 	deploymentID string
-	owner        *storage.RuntimeOwner
+	owner        *runtimecontrol.RuntimeOwner
 	ownerEpoch   string
 
 	opRuntime *operators.OperatorRuntime
@@ -35,7 +37,7 @@ type Engine struct {
 
 // WithRuntimeOwner fences stream state transactions to the active runtime
 // lease. It is used by live composition; deterministic replay leaves it unset.
-func (e *Engine) WithRuntimeOwner(owner *storage.RuntimeOwner, epoch string) *Engine {
+func (e *Engine) WithRuntimeOwner(owner *runtimecontrol.RuntimeOwner, epoch string) *Engine {
 	e.owner = owner
 	e.ownerEpoch = epoch
 	return e

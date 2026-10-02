@@ -19,3 +19,5 @@ change is intended, so unchanged acceptance fixtures remain the reference.
 ## Rounds
 
 - Round 0: accepted ADR-017, design refinement and architecture bar. Implementation pending.
+
+- Round 1: extracted `control`, `authority`, and `qualification`; `storage` now imports only migrations. Migrated authority/lease/epoch tests and added shadow transaction rollback, duplicate-evidence and inert-action checks. Focused race tests passed across nine affected packages; full-tree lint reports zero issues. New package coverage: control 79.9%, authority 63.5%, qualification 80.0%; storage 80.6%. Cross-package errors retain their original text and unwrap causes. A4 lifecycle ownership and A3 adapter isolation remain pending.

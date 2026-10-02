@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -17,7 +19,7 @@ const (
 	controlToken = "Bearer operator-secret"
 )
 
-func newControlRuntime(t *testing.T, token string) (http.Handler, *storage.EpochControl) {
+func newControlRuntime(t *testing.T, token string) (http.Handler, *runtimecontrol.EpochControl) {
 	t.Helper()
 
 	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "control.db"))
@@ -25,7 +27,7 @@ func newControlRuntime(t *testing.T, token string) (http.Handler, *storage.Epoch
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	control := &storage.EpochControl{DB: db}
+	control := &runtimecontrol.EpochControl{DB: db}
 	return api.NewRuntimeHandler(readiness{}, nil, notify.SSEConfig{}, nil, control, controlEpoch, token), control
 }
 

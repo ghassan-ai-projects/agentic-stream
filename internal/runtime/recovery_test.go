@@ -6,13 +6,15 @@ import (
 	"testing"
 	"time"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestRecoveryCoordinatorAtomicallyRecoversEpisodesAndEvidence(t *testing.T) {
 	db, now := seedRecoveryState(t)
-	owner := &storage.RuntimeOwner{DB: db, InstanceID: "instance-new", Lease: time.Minute, Now: func() time.Time { return now }}
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-new", Lease: time.Minute, Now: func() time.Time { return now }}
 	ledger := &evidence.Ledger{DB: db, LeaseOwner: "instance-new", RuntimeEpoch: "epoch-new", Lease: time.Minute}
 	coordinator := &RecoveryCoordinator{Owner: owner, Ledger: ledger, Epoch: "epoch-new", Now: func() time.Time { return now }}
 

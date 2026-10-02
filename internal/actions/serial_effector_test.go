@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
@@ -77,7 +78,7 @@ func TestSerialEffectorVerificationRejectsMismatchedIndicatorValue(t *testing.T)
 	if evidence["target"] != "led-01" {
 		t.Fatalf("reconciliation evidence target=%v, want led-01", evidence["target"])
 	}
-	if err := storage.ValidateDeviceReconciliationEvidence(evidence, "thermal-01", "boot-A"); err != nil {
+	if err := deviceauthority.ValidateDeviceReconciliationEvidence(evidence, "thermal-01", "boot-A"); err != nil {
 		t.Fatalf("query-state evidence must pass durable validation: %v", err)
 	}
 }

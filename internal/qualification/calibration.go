@@ -1,4 +1,4 @@
-package storage
+package qualification
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // ErrCalibrationMissing means an automatic consequential intent was attempted
@@ -26,7 +28,7 @@ type CalibrationArtifact struct {
 
 // CalibrationStore persists and asserts the per-domain calibration artifacts.
 type CalibrationStore struct {
-	DB *DB
+	DB *storage.DB
 }
 
 // AssertCalibration fails closed when no ACTIVE artifact matches the domain's
@@ -60,7 +62,7 @@ func (s *CalibrationStore) Activate(ctx context.Context, artifact CalibrationArt
 		return fmt.Errorf("calibration store is not configured")
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	return s.DB.WithTx(ctx, func(tx *sql.Tx) error {
+	if err := s.DB.WithTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE calibration_artifacts SET active = 0 WHERE domain = ?`, artifact.Domain); err != nil {
 			return fmt.Errorf("deactivate prior calibration: %w", err)
@@ -77,7 +79,10 @@ func (s *CalibrationStore) Activate(ctx context.Context, artifact CalibrationArt
 			return fmt.Errorf("activate calibration artifact: %w", err)
 		}
 		return nil
-	})
+	}); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+	return nil
 }
 
 func shortDigest(digest string) string {

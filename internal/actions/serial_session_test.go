@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 type fakeDeviceTransport struct {
@@ -233,21 +235,21 @@ func TestOpenDeviceSessionRequiresFirmwareAllowList(t *testing.T) {
 }
 
 type deviceControl struct {
-	authority      *storage.TargetAuthority
-	reconciliation *storage.ReconciliationStore
+	authority      *deviceauthority.TargetAuthority
+	reconciliation *deviceauthority.ReconciliationStore
 }
 
 func newDeviceControl(t *testing.T) deviceControl {
 	t.Helper()
 	db := openActionDB(t)
-	owner := &storage.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute}
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute}
 	if err := owner.Claim(context.Background(), "epoch-1"); err != nil {
 		t.Fatal(err)
 	}
-	epochControl := &storage.EpochControl{DB: db}
-	authority := &storage.TargetAuthority{DB: db, Owner: owner, EpochControl: epochControl, InstanceID: "instance-1", Lease: time.Minute}
+	epochControl := &runtimecontrol.EpochControl{DB: db}
+	authority := &deviceauthority.TargetAuthority{DB: db, Owner: owner, EpochControl: epochControl, InstanceID: "instance-1", Lease: time.Minute}
 	return deviceControl{
-		authority: authority, reconciliation: &storage.ReconciliationStore{DB: db, Authority: authority},
+		authority: authority, reconciliation: &deviceauthority.ReconciliationStore{DB: db, Authority: authority},
 	}
 }
 

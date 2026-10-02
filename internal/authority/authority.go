@@ -1,4 +1,4 @@
-package storage
+package authority
 
 import (
 	"context"
@@ -7,6 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
@@ -44,13 +47,13 @@ type CommandBinding struct {
 	CommandDigest  string
 }
 
-// TargetAuthority owns durable target-scoped claims. RuntimeOwner remains the
+// TargetAuthority owns durable target-scoped claims. runtimecontrol.RuntimeOwner remains the
 // singleton authority fence; this ledger makes a conflicting target claim
 // observable and recoverable after a crash or lease expiry.
 type TargetAuthority struct {
-	DB           *DB
-	Owner        *RuntimeOwner
-	EpochControl *EpochControl
+	DB           *storage.DB
+	Owner        *runtimecontrol.RuntimeOwner
+	EpochControl *runtimecontrol.EpochControl
 	InstanceID   string
 	Lease        time.Duration
 	Now          func() time.Time
@@ -134,7 +137,7 @@ func (a *TargetAuthority) assertOrdinaryTx(ctx context.Context, tx *sql.Tx, epoc
 	}
 	if a.EpochControl != nil {
 		if err := a.EpochControl.AssertOrdinaryTx(ctx, tx, epoch); err != nil {
-			return err
+			return fmt.Errorf("%w", err)
 		}
 	}
 	return nil

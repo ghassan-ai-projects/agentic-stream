@@ -1,4 +1,4 @@
-package storage
+package authority
 
 import (
 	"context"
@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // BindCommand records the device and boot identity for a command immediately
@@ -116,7 +118,7 @@ func (a *TargetAuthority) RecordSafeStop(ctx context.Context, claim TargetClaim,
 	return recordSafeStopEvent(ctx, a.DB, claim, eventType, details, a.now())
 }
 
-func recordSafeStopEvent(ctx context.Context, db *DB, claim TargetClaim, eventType string, details map[string]any, occurredAt time.Time) error {
+func recordSafeStopEvent(ctx context.Context, db *storage.DB, claim TargetClaim, eventType string, details map[string]any, occurredAt time.Time) error {
 	if db == nil || claim.Target == "" || claim.DeviceID == "" || claim.BootID == "" || claim.AuthorityEpoch == "" || claim.OwnerInstance == "" {
 		return fmt.Errorf("safe-stop target, device, boot, authority, and owner are required")
 	}
@@ -125,9 +127,12 @@ func recordSafeStopEvent(ctx context.Context, db *DB, claim TargetClaim, eventTy
 	default:
 		return fmt.Errorf("invalid safe-stop event type %q", eventType)
 	}
-	return db.WithTx(ctx, func(tx *sql.Tx) error {
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		return appendAuthorityEventTx(ctx, tx, claim, eventType, details, occurredAt)
-	})
+	}); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+	return nil
 }
 
 func nullableText(value string) any {

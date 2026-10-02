@@ -6,9 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"log/slog"
 	"time"
+
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 )
 
 // quarantineStale abandons an episode whose re-bind budget is spent.
@@ -86,16 +87,16 @@ func (r *Runner) epochRefusal(ctx context.Context, tx *sql.Tx, policyEpoch strin
 	if r.epochControl == nil {
 		return "", nil
 	}
-	epochErr := storage.ErrEpochUnbound
+	epochErr := runtimecontrol.ErrEpochUnbound
 	if policyEpoch != "" {
 		epochErr = r.epochControl.AssertDecisionTx(ctx, tx, policyEpoch)
 	}
 	switch {
 	case epochErr == nil:
 		return "", nil
-	case errors.Is(epochErr, storage.ErrEpochUnbound):
+	case errors.Is(epochErr, runtimecontrol.ErrEpochUnbound):
 		return "epoch_unbound", nil
-	case errors.Is(epochErr, storage.ErrEpochKilled):
+	case errors.Is(epochErr, runtimecontrol.ErrEpochKilled):
 		return "epoch_killed", nil
 	default:
 		return "", fmt.Errorf("assert decision epoch: %w", epochErr)

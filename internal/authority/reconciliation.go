@@ -1,4 +1,4 @@
-package storage
+package authority
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
@@ -15,7 +17,7 @@ import (
 // received from a device. A process restart therefore cannot forget an open
 // barrier.
 type ReconciliationStore struct {
-	DB        *DB
+	DB        *storage.DB
 	Authority *TargetAuthority
 	Now       func() time.Time
 }

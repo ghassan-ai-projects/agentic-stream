@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
@@ -27,7 +29,7 @@ type PipelineConfig struct {
 	DB                *storage.DB
 	Spec              *spec.CompiledSpec
 	TenantID          string
-	Owner             *storage.RuntimeOwner
+	Owner             *runtimecontrol.RuntimeOwner
 	OwnerEpoch        string
 	Clock             clock.Clock
 	Executor          episodes.Executor
@@ -43,7 +45,7 @@ type PipelineConfig struct {
 	// P8: the epoch-control reader — nil in tests without drain/kill. When
 	// set, admission refuses new episodes while the epoch is draining and
 	// every later decision is refused once the epoch is killed.
-	EpochControl *storage.EpochControl
+	EpochControl *runtimecontrol.EpochControl
 	// SerialEffector is optional and supplies the explicitly routed thermal
 	// action boundary. It is never used by replay or shadow execution.
 	SerialEffector *actions.SerialEffector
@@ -71,7 +73,7 @@ type Pipeline struct {
 	policy       *policy.Gateway
 	dispatcher   *actions.Dispatcher
 	watch        *actions.WatchEffector
-	owner        *storage.RuntimeOwner
+	owner        *runtimecontrol.RuntimeOwner
 	ownerEpoch   string
 	clk          clock.Clock
 	tenantID     string
@@ -81,7 +83,7 @@ type Pipeline struct {
 	watchErr     error
 	telemetry    *telemetry.Runtime
 	demoMode     bool
-	epochControl *storage.EpochControl
+	epochControl *runtimecontrol.EpochControl
 }
 
 // ErrFixtureRejected is returned when a production pipeline (no --demo-mode)

@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/spf13/cobra"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
@@ -93,8 +96,8 @@ func checkEffectProfile(prefix string, config actions.EffectProfileConfig) error
 func (o effectProfileOptions) open(
 	ctx context.Context,
 	db *storage.DB,
-	owner *storage.RuntimeOwner,
-	epochControl *storage.EpochControl,
+	owner *runtimecontrol.RuntimeOwner,
+	epochControl *runtimecontrol.EpochControl,
 	epoch string,
 	telemetryRuntime *telemetry.Runtime,
 	replaySource bool,
@@ -110,10 +113,10 @@ func (o effectProfileOptions) open(
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	authority := &storage.TargetAuthority{
+	authority := &deviceauthority.TargetAuthority{
 		DB: db, Owner: owner, EpochControl: epochControl, InstanceID: epoch, Lease: owner.Lease,
 	}
-	reconciliation := &storage.ReconciliationStore{DB: db, Authority: authority}
+	reconciliation := &deviceauthority.ReconciliationStore{DB: db, Authority: authority}
 	serial, closeFn, err := actions.NewGatewayEffector(ctx, actions.GatewayEffectorConfig{
 		Transport:              transport,
 		Catalog:                catalog,

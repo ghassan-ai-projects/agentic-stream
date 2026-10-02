@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -96,7 +98,7 @@ func TestP8ShadowDispatchScoresWithoutGovernance(t *testing.T) {
 	seedShadowEpisode(t, db, "epi-shadow", "shadow")
 
 	runner := episodes.NewRunner(db, episodes.NewFakeExecutor(), clock.Physical(), ids.Deterministic())
-	runner.WithShadowStore(&storage.ShadowStore{DB: db})
+	runner.WithShadowStore(&qualification.ShadowStore{DB: db})
 	processed, err := runner.RunOnce(context.Background(), "tenant")
 	if err != nil {
 		t.Fatal(err)
@@ -140,7 +142,7 @@ func TestP8ActiveDispatchPersistsIntents(t *testing.T) {
 	seedShadowEpisode(t, db, "epi-active", "active")
 
 	runner := episodes.NewRunner(db, episodes.NewFakeExecutor(), clock.Physical(), ids.Deterministic())
-	runner.WithShadowStore(&storage.ShadowStore{DB: db})
+	runner.WithShadowStore(&qualification.ShadowStore{DB: db})
 	processed, err := runner.RunOnce(context.Background(), "tenant")
 	if err != nil {
 		t.Fatal(err)

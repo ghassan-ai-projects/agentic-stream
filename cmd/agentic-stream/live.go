@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/spf13/cobra"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
@@ -63,9 +65,9 @@ func (c cleanups) run() {
 type runtimeCore struct {
 	db           *storage.DB
 	epoch        string
-	owner        *storage.RuntimeOwner
+	owner        *runtimecontrol.RuntimeOwner
 	ledger       *evidence.Ledger
-	epochControl *storage.EpochControl
+	epochControl *runtimecontrol.EpochControl
 	service      *runtime.Service
 }
 
@@ -81,9 +83,9 @@ func openRuntimeCore(ctx context.Context, dbPath string, lease time.Duration, cl
 	}
 	core := &runtimeCore{
 		db: db, epoch: epoch,
-		owner:        &storage.RuntimeOwner{DB: db, InstanceID: epoch, Lease: lease},
+		owner:        &runtimecontrol.RuntimeOwner{DB: db, InstanceID: epoch, Lease: lease},
 		ledger:       &evidence.Ledger{DB: db, LeaseOwner: epoch, RuntimeEpoch: epoch, Lease: lease},
-		epochControl: &storage.EpochControl{DB: db},
+		epochControl: &runtimecontrol.EpochControl{DB: db},
 	}
 	core.service, err = runtime.NewService(core.owner, core.ledger, epoch)
 	if err != nil {

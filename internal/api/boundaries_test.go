@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 type countedReadiness struct{ calls int }
@@ -48,7 +49,7 @@ func TestUnconfiguredHealthPreservesProblemResponse(t *testing.T) {
 
 func TestControlConfigurationPrecedesAuthenticationAndMethod(t *testing.T) {
 	t.Parallel()
-	handler := api.NewRuntimeHandler(readiness{}, nil, notify.SSEConfig{}, nil, &storage.EpochControl{}, "", "")
+	handler := api.NewRuntimeHandler(readiness{}, nil, notify.SSEConfig{}, nil, &runtimecontrol.EpochControl{}, "", "")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/control/kill", nil))
 	if rec.Code != http.StatusServiceUnavailable || rec.Body.String() != "epoch control is not configured\n" {

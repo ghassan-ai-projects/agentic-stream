@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
@@ -62,7 +64,7 @@ func p8OpenDB(t *testing.T, name string) *storage.DB {
 func p8NewPipeline(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, cfg runtime.PipelineConfig) *runtime.Pipeline {
 	t.Helper()
 	if cfg.OwnerEpoch != "" {
-		owner := &storage.RuntimeOwner{DB: db, InstanceID: cfg.OwnerEpoch + "-instance", Lease: 0}
+		owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: cfg.OwnerEpoch + "-instance", Lease: 0}
 		if err := owner.Claim(context.Background(), cfg.OwnerEpoch); err != nil {
 			t.Fatal(err)
 		}
@@ -206,7 +208,7 @@ func TestP8ModeMatrixTamozShadowIsScoredNotDispatched(t *testing.T) {
 // Drain refuses NEW admission but the recorded epoch stays untouched.
 func TestP8DrainRefusesNewAdmission(t *testing.T) {
 	db := p8OpenDB(t, "p8-drain.db")
-	control := &storage.EpochControl{DB: db}
+	control := &runtimecontrol.EpochControl{DB: db}
 	epoch := "epoch-p8-drain"
 	compiled := p8CompiledSpec("native", "active")
 	pipeline := p8NewPipeline(t, db, compiled, runtime.PipelineConfig{
@@ -218,7 +220,7 @@ func TestP8DrainRefusesNewAdmission(t *testing.T) {
 	if err := control.Drain(t.Context(), epoch); err != nil {
 		t.Fatal(err)
 	}
-	if err := control.AssertAdmission(t.Context(), epoch); !errors.Is(err, storage.ErrEpochDraining) {
+	if err := control.AssertAdmission(t.Context(), epoch); !errors.Is(err, runtimecontrol.ErrEpochDraining) {
 		t.Fatalf("expected ErrEpochDraining after drain, got %v", err)
 	}
 }
@@ -226,12 +228,12 @@ func TestP8DrainRefusesNewAdmission(t *testing.T) {
 // Kill refuses every later decision under the killed epoch.
 func TestP8KillRefusesLaterDecisions(t *testing.T) {
 	db := p8OpenDB(t, "p8-kill.db")
-	control := &storage.EpochControl{DB: db}
+	control := &runtimecontrol.EpochControl{DB: db}
 	epoch := "epoch-p8-kill"
 	if err := control.Kill(t.Context(), epoch); err != nil {
 		t.Fatal(err)
 	}
-	if err := control.AssertDecision(t.Context(), epoch); !errors.Is(err, storage.ErrEpochKilled) {
+	if err := control.AssertDecision(t.Context(), epoch); !errors.Is(err, runtimecontrol.ErrEpochKilled) {
 		t.Fatalf("expected ErrEpochKilled after kill, got %v", err)
 	}
 	// A different (uncontrolled) epoch is untouched — a kill is scoped to its
@@ -247,7 +249,7 @@ func TestP8KillRefusesLaterDecisions(t *testing.T) {
 // starts). The episode is quarantined so the admitted queue keeps draining.
 func TestP8KillRefusesDispatchOfARecordedEpoch(t *testing.T) {
 	db := p8OpenDB(t, "p8-kill-dispatch.db")
-	control := &storage.EpochControl{DB: db}
+	control := &runtimecontrol.EpochControl{DB: db}
 	epoch := "epoch-p8-kill-dispatch"
 	compiled := p8CompiledSpec("native", "active")
 	pipeline := p8NewPipeline(t, db, compiled, runtime.PipelineConfig{
@@ -274,7 +276,7 @@ func TestP8KillRefusesDispatchOfARecordedEpoch(t *testing.T) {
 	if second.EpisodesAdmitted != 0 || second.EpisodesExecuted != 0 {
 		t.Fatalf("no episode may run under a killed epoch, got %+v", second)
 	}
-	if err := control.AssertDecision(t.Context(), epoch); !errors.Is(err, storage.ErrEpochKilled) {
+	if err := control.AssertDecision(t.Context(), epoch); !errors.Is(err, runtimecontrol.ErrEpochKilled) {
 		t.Fatalf("expected the recorded epoch to be killed, got %v", err)
 	}
 }

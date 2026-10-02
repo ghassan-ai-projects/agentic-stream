@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -176,7 +178,7 @@ func TestRunnerQuarantinesAlreadyKilledEpochBeforeAttempt(t *testing.T) {
 		t.Fatalf("seed killed epoch: %v", err)
 	}
 
-	control := &storage.EpochControl{DB: db}
+	control := &runtimecontrol.EpochControl{DB: db}
 	runner := NewRunner(db, producedCancelingExecutor{}, clock.Physical(), ids.Deterministic()).WithEpochControl(control)
 	processed, err := runner.RunOnce(ctx, "tenant")
 	if err != nil || !processed {
@@ -206,7 +208,7 @@ func TestRunnerQuarantinesUnboundEpochBeforeAttempt(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	seedEpisode(t, ctx, db, "epi-unbound-epoch")
-	control := &storage.EpochControl{DB: db}
+	control := &runtimecontrol.EpochControl{DB: db}
 	runner := NewRunner(db, producedCancelingExecutor{}, clock.Physical(), ids.Deterministic()).WithEpochControl(control)
 	processed, err := runner.RunOnce(ctx, "tenant")
 	if err != nil || !processed {
@@ -247,7 +249,7 @@ func TestRunnerQuarantinesLateOutcomeAfterEpochKill(t *testing.T) {
 			t.Error("late epoch-kill runner did not join")
 		}
 	})
-	control := &storage.EpochControl{DB: db}
+	control := &runtimecontrol.EpochControl{DB: db}
 	runner := NewRunner(db, lateProducedOutcomeExecutor{started: started, release: release}, clock.Physical(), ids.Deterministic()).WithEpochControl(control)
 	result := make(chan error, 1)
 	go func() {

@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
@@ -35,8 +36,8 @@ type DeviceSessionConfig struct {
 	AllowedFirmwareDigests   []string
 	AuthorityEpoch           string
 	OwnerInstance            string
-	Authority                *storage.TargetAuthority
-	Reconciliation           *storage.ReconciliationStore
+	Authority                *deviceauthority.TargetAuthority
+	Reconciliation           *deviceauthority.ReconciliationStore
 	Telemetry                *telemetry.Runtime
 }
 
@@ -49,8 +50,8 @@ type DeviceSession struct {
 	catalog                *CapabilityCatalog
 	authorityEpoch         string
 	ownerInstance          string
-	authority              *storage.TargetAuthority
-	reconciliation         *storage.ReconciliationStore
+	authority              *deviceauthority.TargetAuthority
+	reconciliation         *deviceauthority.ReconciliationStore
 	deviceID               string
 	bootID                 string
 	firmwareDigest         string

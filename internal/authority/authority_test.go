@@ -1,4 +1,4 @@
-package storage_test
+package authority_test
 
 import (
 	"crypto/sha256"
@@ -6,20 +6,22 @@ import (
 	"testing"
 	"time"
 
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestTargetAuthorityFencesConflictingEpochAndRecoversExpiredClaim(t *testing.T) {
 	db, _ := openOwnerDB(t)
 	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
-	authority1 := &storage.TargetAuthority{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
-	claim := storage.TargetClaim{Target: "fan-01", DeviceID: "thermal-01", BootID: "boot-A", AuthorityEpoch: "epoch-1", OwnerInstance: "instance-1"}
+	authority1 := &deviceauthority.TargetAuthority{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
+	claim := deviceauthority.TargetClaim{Target: "fan-01", DeviceID: "thermal-01", BootID: "boot-A", AuthorityEpoch: "epoch-1", OwnerInstance: "instance-1"}
 	if err := authority1.Claim(t.Context(), claim); err != nil {
 		t.Fatal(err)
 	}
-	authority2 := &storage.TargetAuthority{DB: db, InstanceID: "instance-2", Lease: time.Minute, Now: func() time.Time { return now.Add(30 * time.Second) }}
-	claim2 := storage.TargetClaim{Target: "fan-01", DeviceID: "thermal-01", BootID: "boot-B", AuthorityEpoch: "epoch-2", OwnerInstance: "instance-2"}
+	authority2 := &deviceauthority.TargetAuthority{DB: db, InstanceID: "instance-2", Lease: time.Minute, Now: func() time.Time { return now.Add(30 * time.Second) }}
+	claim2 := deviceauthority.TargetClaim{Target: "fan-01", DeviceID: "thermal-01", BootID: "boot-B", AuthorityEpoch: "epoch-2", OwnerInstance: "instance-2"}
 	if err := authority2.Claim(t.Context(), claim2); err == nil {
 		t.Fatal("unexpired target claim was accepted by a second epoch")
 	}
@@ -41,12 +43,12 @@ func TestTargetAuthorityFencesConflictingEpochAndRecoversExpiredClaim(t *testing
 
 func TestReconciliationStoreKeepsBarrierAcrossRestartAndManualReview(t *testing.T) {
 	db, _ := openOwnerDB(t)
-	owner := &storage.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute}
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute}
 	if err := owner.Claim(t.Context(), "epoch-1"); err != nil {
 		t.Fatal(err)
 	}
-	authority := &storage.TargetAuthority{DB: db, Owner: owner, EpochControl: &storage.EpochControl{DB: db}, InstanceID: "instance-1", Lease: time.Minute}
-	store := &storage.ReconciliationStore{DB: db, Authority: authority}
+	authority := &deviceauthority.TargetAuthority{DB: db, Owner: owner, EpochControl: &runtimecontrol.EpochControl{DB: db}, InstanceID: "instance-1", Lease: time.Minute}
+	store := &deviceauthority.ReconciliationStore{DB: db, Authority: authority}
 	state := map[string]any{"message_type": "state", "device_id": "thermal-01", "boot_id": "boot-A", "safe_state": true}
 	required, err := store.BindState(t.Context(), state, "epoch-1", "instance-1")
 	if err != nil || required {
@@ -57,7 +59,7 @@ func TestReconciliationStoreKeepsBarrierAcrossRestartAndManualReview(t *testing.
 	if err != nil || !required {
 		t.Fatalf("boot change required=%v err=%v", required, err)
 	}
-	required, err = (&storage.ReconciliationStore{DB: db}).Required(t.Context(), "thermal-01")
+	required, err = (&deviceauthority.ReconciliationStore{DB: db}).Required(t.Context(), "thermal-01")
 	if err != nil || !required {
 		t.Fatalf("restart lost barrier required=%v err=%v", required, err)
 	}
@@ -107,12 +109,12 @@ func TestReconciliationStoreKeepsBarrierAcrossRestartAndManualReview(t *testing.
 
 func TestReconciliationStorePersistsAmbiguousOutcomeBarrier(t *testing.T) {
 	db, _ := openOwnerDB(t)
-	owner := &storage.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute}
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute}
 	if err := owner.Claim(t.Context(), "epoch-1"); err != nil {
 		t.Fatal(err)
 	}
-	authority := &storage.TargetAuthority{DB: db, Owner: owner, EpochControl: &storage.EpochControl{DB: db}, InstanceID: "instance-1", Lease: time.Minute}
-	store := &storage.ReconciliationStore{DB: db, Authority: authority}
+	authority := &deviceauthority.TargetAuthority{DB: db, Owner: owner, EpochControl: &runtimecontrol.EpochControl{DB: db}, InstanceID: "instance-1", Lease: time.Minute}
+	store := &deviceauthority.ReconciliationStore{DB: db, Authority: authority}
 	state := map[string]any{"device_id": "thermal-01", "boot_id": "boot-A", "safe_state": true}
 	if _, err := store.BindState(t.Context(), state, "epoch-1", "instance-1"); err != nil {
 		t.Fatalf("bind initial state: %v", err)
@@ -120,7 +122,7 @@ func TestReconciliationStorePersistsAmbiguousOutcomeBarrier(t *testing.T) {
 	if err := store.Require(t.Context(), "thermal-01", "boot-A", "epoch-1", "instance-1", "device receipt was not trustworthy"); err != nil {
 		t.Fatalf("persist ambiguous outcome barrier: %v", err)
 	}
-	required, err := (&storage.ReconciliationStore{DB: db}).Required(t.Context(), "thermal-01")
+	required, err := (&deviceauthority.ReconciliationStore{DB: db}).Required(t.Context(), "thermal-01")
 	if err != nil || !required {
 		t.Fatalf("persisted barrier required=%v err=%v", required, err)
 	}
@@ -139,12 +141,12 @@ func TestReconciliationStorePersistsAmbiguousOutcomeBarrier(t *testing.T) {
 func TestReconciliationStoreOpensBarrierAfterAuthorityLoss(t *testing.T) {
 	db, _ := openOwnerDB(t)
 	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
-	owner := &storage.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
 	if err := owner.Claim(t.Context(), "epoch-1"); err != nil {
 		t.Fatal(err)
 	}
-	authority := &storage.TargetAuthority{DB: db, Owner: owner, EpochControl: &storage.EpochControl{DB: db}, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
-	store := &storage.ReconciliationStore{DB: db, Authority: authority, Now: func() time.Time { return now }}
+	authority := &deviceauthority.TargetAuthority{DB: db, Owner: owner, EpochControl: &runtimecontrol.EpochControl{DB: db}, InstanceID: "instance-1", Lease: time.Minute, Now: func() time.Time { return now }}
+	store := &deviceauthority.ReconciliationStore{DB: db, Authority: authority, Now: func() time.Time { return now }}
 	state := map[string]any{"device_id": "thermal-01", "boot_id": "boot-A", "safe_state": true}
 	if _, err := store.BindState(t.Context(), state, "epoch-1", "instance-1"); err != nil {
 		t.Fatalf("bind initial state: %v", err)
@@ -164,12 +166,12 @@ func TestReconciliationStoreOpensBarrierAfterAuthorityLoss(t *testing.T) {
 
 func TestReconciliationStoreResolvesOneDeviceDespiteAnotherDeviceOutcome(t *testing.T) {
 	db, _ := openOwnerDB(t)
-	owner := &storage.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute}
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute}
 	if err := owner.Claim(t.Context(), "epoch-1"); err != nil {
 		t.Fatal(err)
 	}
-	authority := &storage.TargetAuthority{DB: db, Owner: owner, EpochControl: &storage.EpochControl{DB: db}, InstanceID: "instance-1", Lease: time.Minute}
-	store := &storage.ReconciliationStore{DB: db, Authority: authority}
+	authority := &deviceauthority.TargetAuthority{DB: db, Owner: owner, EpochControl: &runtimecontrol.EpochControl{DB: db}, InstanceID: "instance-1", Lease: time.Minute}
+	store := &deviceauthority.ReconciliationStore{DB: db, Authority: authority}
 	stateA := map[string]any{"device_id": "thermal-a", "boot_id": "boot-a", "safe_state": true}
 	stateB := map[string]any{"device_id": "thermal-b", "boot_id": "boot-b", "safe_state": true}
 	for _, state := range []map[string]any{stateA, stateB} {
@@ -238,11 +240,11 @@ func reconciliationEvidence(t *testing.T, state map[string]any, target string) m
 
 func TestSafetyLedgerRejectsUnknownTypeAndStoresExplicitEvent(t *testing.T) {
 	db, _ := openOwnerDB(t)
-	ledger := &storage.SafetyLedger{DB: db}
-	if err := ledger.Record(t.Context(), storage.SafetyEvent{Type: "unknown", Target: "fan-01"}); err == nil {
+	ledger := &deviceauthority.SafetyLedger{DB: db}
+	if err := ledger.Record(t.Context(), deviceauthority.SafetyEvent{Type: "unknown", Target: "fan-01"}); err == nil {
 		t.Fatal("unknown safety event type was accepted")
 	}
-	if err := ledger.Record(t.Context(), storage.SafetyEvent{Type: "physical_transition", Target: "fan-01", Details: map[string]any{
+	if err := ledger.Record(t.Context(), deviceauthority.SafetyEvent{Type: "physical_transition", Target: "fan-01", Details: map[string]any{
 		"evidence_complete": true, "source": "independent-feedback",
 		"evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
 	}}); err != nil {

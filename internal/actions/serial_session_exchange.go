@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 )
 
 // DeviceExchange is the ordered terminal response to one device command.
@@ -58,7 +58,7 @@ func (s *DeviceSession) exchange(ctx context.Context, command map[string]any) (*
 		return nil, false, err
 	}
 	if s.reconciliationRequired {
-		return nil, false, storage.ErrReconciliationRequired
+		return nil, false, deviceauthority.ErrReconciliationRequired
 	}
 	claim, err := s.claimCommand(ctx, command, semanticDigest)
 	if err != nil {
@@ -108,22 +108,22 @@ func (s *DeviceSession) validateCommandLifetime(command map[string]any) error {
 	return nil
 }
 
-func (s *DeviceSession) claimCommand(ctx context.Context, command map[string]any, semanticDigest string) (storage.TargetClaim, error) {
+func (s *DeviceSession) claimCommand(ctx context.Context, command map[string]any, semanticDigest string) (deviceauthority.TargetClaim, error) {
 	target, _ := command["target"].(string)
-	claim := storage.TargetClaim{Target: target, DeviceID: s.deviceID, BootID: s.bootID, AuthorityEpoch: s.authorityEpoch, OwnerInstance: s.ownerInstance}
+	claim := deviceauthority.TargetClaim{Target: target, DeviceID: s.deviceID, BootID: s.bootID, AuthorityEpoch: s.authorityEpoch, OwnerInstance: s.ownerInstance}
 	if s.authority == nil {
 		return claim, nil
 	}
 	if err := s.authority.Claim(ctx, claim); err != nil {
 		return claim, fmt.Errorf("claim device target: %w", err)
 	}
-	if err := s.authority.BindCommand(ctx, storage.CommandBinding{
+	if err := s.authority.BindCommand(ctx, deviceauthority.CommandBinding{
 		CommandID: documentString(command, "command_id"), Target: target, DeviceID: s.deviceID,
 		BootID: s.bootID, AuthorityEpoch: s.authorityEpoch, OwnerInstance: s.ownerInstance,
 		CommandDigest: semanticDigest,
 	}); err != nil {
 		releaseErr := s.authority.Release(ctx, claim)
-		if errors.Is(releaseErr, storage.ErrTargetClaimNotOwned) {
+		if errors.Is(releaseErr, deviceauthority.ErrTargetClaimNotOwned) {
 			releaseErr = nil
 		}
 		return claim, fmt.Errorf("bind device command: %w", errors.Join(err, releaseErr))
@@ -149,7 +149,7 @@ func (s *DeviceSession) cachedReceipt(idempotencyKey, semanticDigest string) (ma
 	return cloneDocument(cached.receipt), true, nil
 }
 
-func (s *DeviceSession) receiveCommandOutcome(ctx context.Context, command map[string]any, claim storage.TargetClaim, semanticDigest, idempotencyKey string) (*DeviceExchange, bool, error) {
+func (s *DeviceSession) receiveCommandOutcome(ctx context.Context, command map[string]any, claim deviceauthority.TargetClaim, semanticDigest, idempotencyKey string) (*DeviceExchange, bool, error) {
 	reply, err := s.transport.Receive(ctx)
 	if err != nil {
 		return s.unknownDeviceOutcome(ctx, nil, err)

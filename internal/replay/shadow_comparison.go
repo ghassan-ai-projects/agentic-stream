@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 type builtShadowComparison struct {
-	record storage.ShadowComparison
+	record qualification.ShadowComparison
 	result ShadowComparisonResult
 }
 
@@ -44,7 +45,7 @@ func buildShadowComparison(input ShadowInput, baseline, tamoz validatedShadowOut
 	}
 	comparisonID := "cmp_" + hex.EncodeToString(comparisonSHA)
 	return builtShadowComparison{
-		record: storage.ShadowComparison{
+		record: qualification.ShadowComparison{
 			ComparisonID: comparisonID, ComparisonKey: comparisonKey, TenantID: tenantID,
 			EpisodeID: input.EpisodeID, SituationID: input.SituationID, SituationVersion: input.SituationVersion,
 			TriggerID: input.TriggerID, SnapshotSHA256: snapshotSHA, SpecSHA256: specSHA, PolicySHA256: policySHA,

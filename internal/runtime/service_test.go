@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -18,7 +20,7 @@ func TestServiceReadinessFollowsRecoveryAndClose(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	epoch := "epoch-service"
-	owner := &storage.RuntimeOwner{DB: db, InstanceID: "instance-service", Lease: time.Minute, Now: func() time.Time { return now }}
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-service", Lease: time.Minute, Now: func() time.Time { return now }}
 	ledger := &evidence.Ledger{DB: db, LeaseOwner: "instance-service", RuntimeEpoch: epoch, Lease: time.Minute}
 	service, err := NewService(owner, ledger, epoch)
 	if err != nil {

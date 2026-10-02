@@ -5,16 +5,16 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 )
 
 type controlHandler struct {
-	control *storage.EpochControl
+	control *runtimecontrol.EpochControl
 	epoch   string
 	token   string
 }
 
-func newControlHandler(control *storage.EpochControl, epoch string, token string) http.Handler {
+func newControlHandler(control *runtimecontrol.EpochControl, epoch string, token string) http.Handler {
 	return &controlHandler{control: control, epoch: epoch, token: token}
 }
 

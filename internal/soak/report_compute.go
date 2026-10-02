@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 )
 
 func computeTx(ctx context.Context, tx *sql.Tx, tenantID string) (Report, error) {
@@ -52,7 +52,7 @@ func scanSafetyEvents(ctx context.Context, tx *sql.Tx, report *Report) error {
 }
 
 func decodeSafetyEvent(eventID int64, details, digest []byte) (map[string]any, error) {
-	if err := storage.VerifyStoredJSONDigest(details, digest); err != nil {
+	if err := deviceauthority.VerifyStoredJSONDigest(details, digest); err != nil {
 		return nil, fmt.Errorf("verify safety event %d: %w", eventID, err)
 	}
 	var values map[string]any
@@ -78,7 +78,7 @@ func countSafetyEvent(report *Report, eventType string, values map[string]any) {
 		report.ZeroTolerance.SafeStateDeadlineMissCount++
 	case "physical_transition":
 		report.EvidenceCompleteness.Transitions++
-		if storage.PhysicalEvidenceComplete(values) {
+		if deviceauthority.PhysicalEvidenceComplete(values) {
 			report.EvidenceCompleteness.Complete++
 		}
 	}

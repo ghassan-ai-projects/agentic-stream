@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 )
 
 // SafeStop sends the catalog-owned safe-state command through a priority path.
@@ -39,7 +39,7 @@ func (s *DeviceSession) SafeStopWithResult(ctx context.Context, target string) (
 	if err != nil {
 		return DeviceExchange{}, false, err
 	}
-	claim := storage.TargetClaim{Target: target, DeviceID: s.deviceID, BootID: s.bootID, AuthorityEpoch: s.authorityEpoch, OwnerInstance: s.ownerInstance}
+	claim := deviceauthority.TargetClaim{Target: target, DeviceID: s.deviceID, BootID: s.bootID, AuthorityEpoch: s.authorityEpoch, OwnerInstance: s.ownerInstance}
 	requestedErr := s.recordSafeStop(ctx, claim, "safe_stop_requested", map[string]any{
 		"command_id": command["command_id"], "state_digest": s.stateDigest,
 	})
@@ -62,7 +62,7 @@ func (s *DeviceSession) requestSafeStop() {
 	s.stopMu.Unlock()
 }
 
-func (s *DeviceSession) failedSafeStop(ctx context.Context, claim storage.TargetClaim, requestedErr, cause error, prefix string, sent bool) (DeviceExchange, bool, error) {
+func (s *DeviceSession) failedSafeStop(ctx context.Context, claim deviceauthority.TargetClaim, requestedErr, cause error, prefix string, sent bool) (DeviceExchange, bool, error) {
 	var barrierErr error
 	if sent {
 		// A partial write may have crossed the gateway. Close the link before
@@ -85,7 +85,7 @@ func (s *DeviceSession) failedSafeStop(ctx context.Context, claim storage.Target
 	return DeviceExchange{}, false, fmt.Errorf("%s: %w", prefix, errors.Join(cause, requestedErr, recordErr))
 }
 
-func (s *DeviceSession) completeSafeStopExchange(ctx context.Context, command map[string]any, claim storage.TargetClaim, requestedErr error) (DeviceExchange, bool, error) {
+func (s *DeviceSession) completeSafeStopExchange(ctx context.Context, command map[string]any, claim deviceauthority.TargetClaim, requestedErr error) (DeviceExchange, bool, error) {
 	reply, err := s.transport.Receive(ctx)
 	if err != nil {
 		s.invalidateTransportLocked()
@@ -124,7 +124,7 @@ func (s *DeviceSession) completeSafeStopExchange(ctx context.Context, command ma
 	return s.recordCompletedSafeStop(ctx, claim, command, receipt, result, requestedErr)
 }
 
-func (s *DeviceSession) failedSafeStopReceipt(ctx context.Context, claim storage.TargetClaim, requestedErr error, partial *DeviceExchange, decodeErr error) (DeviceExchange, bool, error) {
+func (s *DeviceSession) failedSafeStopReceipt(ctx context.Context, claim deviceauthority.TargetClaim, requestedErr error, partial *DeviceExchange, decodeErr error) (DeviceExchange, bool, error) {
 	s.invalidateTransportLocked()
 	barrierErr := s.requireReconciliation(ctx, "safe-stop exchange was not trustworthy")
 	details := map[string]any{"sent": true}
@@ -146,7 +146,7 @@ func (s *DeviceSession) failedSafeStopReceipt(ctx context.Context, claim storage
 	return *partial, true, &deviceExchangeError{err: errors.Join(fmt.Errorf("decode safe-stop response: %w", decodeErr), requestedErr, recordErr, barrierErr)}
 }
 
-func (s *DeviceSession) recordCompletedSafeStop(ctx context.Context, claim storage.TargetClaim, command, receipt, result map[string]any, requestedErr error) (DeviceExchange, bool, error) {
+func (s *DeviceSession) recordCompletedSafeStop(ctx context.Context, claim deviceauthority.TargetClaim, command, receipt, result map[string]any, requestedErr error) (DeviceExchange, bool, error) {
 	completedErr := s.recordSafeStop(ctx, claim, "safe_stop_completed", map[string]any{
 		"command_id": command["command_id"], "accepted": receipt["accepted"], "result_status": result["status"],
 	})
@@ -193,8 +193,8 @@ func (s *DeviceSession) releaseClaims() error {
 	}
 	var releaseErr error
 	for target := range s.claimedTargets {
-		err := s.authority.Release(context.Background(), storage.TargetClaim{Target: target, DeviceID: s.deviceID, BootID: s.bootID, AuthorityEpoch: s.authorityEpoch, OwnerInstance: s.ownerInstance})
-		if errors.Is(err, storage.ErrTargetClaimNotOwned) {
+		err := s.authority.Release(context.Background(), deviceauthority.TargetClaim{Target: target, DeviceID: s.deviceID, BootID: s.bootID, AuthorityEpoch: s.authorityEpoch, OwnerInstance: s.ownerInstance})
+		if errors.Is(err, deviceauthority.ErrTargetClaimNotOwned) {
 			continue
 		}
 		releaseErr = errors.Join(releaseErr, err)
@@ -209,7 +209,7 @@ func (s *DeviceSession) stopRequested() bool {
 	return s.safeStopRequested
 }
 
-func (s *DeviceSession) recordSafeStop(ctx context.Context, claim storage.TargetClaim, eventType string, details map[string]any) error {
+func (s *DeviceSession) recordSafeStop(ctx context.Context, claim deviceauthority.TargetClaim, eventType string, details map[string]any) error {
 	if s.authority != nil {
 		if err := s.authority.RecordSafeStop(ctx, claim, eventType, details); err != nil {
 			return fmt.Errorf("record safe-stop event: %w", err)
