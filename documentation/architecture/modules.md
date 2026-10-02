@@ -88,6 +88,9 @@ and require pending status. It cannot remove leased or delivered work.
 The shared database does not grant arbitrary write authority. Other packages
 call the owning lifecycle operations with the same transaction. Read queries may
 join durable evidence across modules; writes have narrower ownership.
+Producer inserts cannot replace or upsert existing intents, commands or outbox
+records. Unsupported tuple assignments in shared handoffs fail the ownership
+check rather than allowing payload columns to escape inspection.
 
 ## Enforced architecture bar
 

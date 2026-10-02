@@ -14,6 +14,7 @@ import (
 type sqlMutation struct {
 	operation, table, query string
 	columns                 []string
+	rewritesExisting        bool
 }
 type sqlLexeme struct {
 	text   string
@@ -92,6 +93,9 @@ func sqlMutations(query string) []sqlMutation {
 		j := i + 1
 		switch operation {
 		case "insert", "replace":
+			if operation == "replace" && i > 0 && sqlKeyword(tokens, i-1, "or") {
+				continue
+			}
 			if sqlKeyword(tokens, j, "or") {
 				j += 2
 			}
@@ -138,12 +142,27 @@ func sqlMutations(query string) []sqlMutation {
 			}
 		}
 		mutation := sqlMutation{operation: operation, table: table, query: query}
+		if operation == "insert" {
+			mutation.rewritesExisting = insertRewritesExisting(tokens, i)
+		}
 		if operation == "update" {
 			mutation.columns = sqlUpdatedColumns(tokens, j+1)
 		}
 		result = append(result, mutation)
 	}
 	return result
+}
+
+func insertRewritesExisting(tokens []sqlLexeme, index int) bool {
+	if sqlKeyword(tokens, index, "replace") || sqlKeyword(tokens, index+1, "or") && sqlKeyword(tokens, index+2, "replace") {
+		return true
+	}
+	for i := index + 1; i+1 < len(tokens) && tokens[i].text != ";"; i++ {
+		if sqlKeyword(tokens, i, "do") && sqlKeyword(tokens, i+1, "update") {
+			return true
+		}
+	}
+	return false
 }
 
 func sqlKeyword(tokens []sqlLexeme, index int, word string) bool {
@@ -162,6 +181,11 @@ func sqlUpdatedColumns(tokens []sqlLexeme, index int) []string {
 		if expectColumn && i+1 < len(tokens) && tokens[i+1].text == "=" {
 			columns = append(columns, token.text)
 			expectColumn = false
+		}
+		if expectColumn && token.text == "(" {
+			// Tuple assignments are deliberately unsupported: reject the whole
+			// handoff mutation instead of silently missing its payload columns.
+			return nil
 		}
 		switch token.text {
 		case "(":

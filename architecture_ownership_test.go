@@ -95,7 +95,7 @@ func ownsMutation(pkg string, m sqlMutation) bool {
 				"DELETE FROM commands WHERE intent_id = ? AND command_id = ? AND status = 'pending'")
 		}
 		if m.operation == "insert" {
-			return pkg == "internal/policy"
+			return pkg == "internal/policy" && !m.rewritesExisting
 		}
 		if pkg != "internal/actions" || m.operation != "update" {
 			return false
@@ -106,7 +106,7 @@ func ownsMutation(pkg string, m sqlMutation) bool {
 		return columnsWithin(m.columns, []string{"status", "lease_owner", "lease_until", "attempt_count", "last_error_code", "delivered_at"})
 	case "intents":
 		if m.operation == "insert" {
-			return pkg == "internal/episodes"
+			return pkg == "internal/episodes" && !m.rewritesExisting
 		}
 		return pkg == "internal/policy" && m.operation == "update" && columnsWithin(m.columns, []string{"policy_status", "updated_at"})
 	case "situations":
@@ -143,6 +143,11 @@ func TestHandoffOwnershipRejectsAuthorityAndPayloadBypasses(t *testing.T) {
 		{"internal/policy", "UPDATE intents SET intent_json=?"},
 		{"internal/cognition", "UPDATE situations SET current_version=2"},
 		{"internal/episodes", "DELETE FROM intents"},
+		{"internal/policy", "REPLACE INTO commands(command_id) VALUES ('bypass')"},
+		{"internal/policy", "INSERT OR REPLACE INTO outbox(payload_json) VALUES ('bypass')"},
+		{"internal/policy", "INSERT INTO commands(command_id) VALUES ('bypass') ON CONFLICT DO UPDATE SET command_json=?"},
+		{"internal/episodes", "INSERT INTO intents(intent_id) VALUES ('bypass') ON CONFLICT DO UPDATE SET policy_status='approved'"},
+		{"internal/actions", "UPDATE commands SET status=?, (command_json,idempotency_key)=(?,?)"},
 	} {
 		mutations := sqlMutations(tc.query)
 		if len(mutations) != 1 {
