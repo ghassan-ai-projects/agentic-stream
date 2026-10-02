@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -72,7 +74,7 @@ func (d *Dispatcher) abandonExpiredLease(ctx context.Context, tx *sql.Tx, leased
 	if d.telemetry != nil {
 		d.telemetry.ObserveLeaseExpiry()
 	}
-	return d.finalizeTx(ctx, tx, leased, Effect{}, &UnknownOutcomeError{Err: errors.New("lease expired before dispatch")})
+	return d.finalizeTx(ctx, tx, leased, actionport.Effect{}, &actionport.UnknownOutcomeError{Err: errors.New("lease expired before dispatch")})
 }
 
 // dispatchCandidate is the oldest available command outbox row with the
@@ -146,7 +148,7 @@ func (c *dispatchCandidate) verifiedDocument() (map[string]any, string) {
 	return document, ""
 }
 
-func populateCommand(command *Command, document map[string]any) {
+func populateCommand(command *actionport.Command, document map[string]any) {
 	command.IntentID = documentString(document, "intent_id")
 	command.TenantID = documentString(document, "tenant_id")
 	command.EffectorRoute = documentString(document, "effector_route")

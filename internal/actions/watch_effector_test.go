@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -21,7 +23,7 @@ func TestWatchEffectorIsBoundedExpiringAndOneShot(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	effector := actions.NewWatchEffector(db)
-	command := actions.Command{
+	command := actionport.Command{
 		CommandID: "cmd-watch", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
 		Payload: map[string]any{"expression": "features.temperature > 90", "target": "motor-1", "expires_at": "2099-01-01T00:00:00Z", "situation_id": "sit-1", "situation_version": 1, "max_fires": 1},
 	}
@@ -56,7 +58,7 @@ func TestWatchEffectorFiresTamozFallbackFromEventFeatures(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	effector := actions.NewWatchEffector(db)
-	command := actions.Command{
+	command := actionport.Command{
 		CommandID: "cmd-tamoz-fallback", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
 		Payload: map[string]any{
 			"expression": "features.condition_score >= 0.8", "target": "zone-1",
@@ -82,7 +84,7 @@ func TestWatchEffectorSkipsCELEvaluationErrorAndFiresWhenDataArrives(t *testing.
 	}
 	defer func() { _ = db.Close() }()
 	effector := actions.NewWatchEffector(db)
-	command := actions.Command{
+	command := actionport.Command{
 		CommandID: "cmd-watch-evaluation-error", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
 		Payload: map[string]any{
 			"expression": "features.do_mean_15m > 0", "target": "motor-1", "expires_at": "2099-01-01T00:00:00Z",
@@ -135,7 +137,7 @@ func TestWatchEffectorEvaluatesExpressionAndExpiresWithoutAFire(t *testing.T) {
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	virtual := clock.NewVirtual(now)
 	effector := actions.NewWatchEffectorWithClock(db, virtual)
-	command := actions.Command{
+	command := actionport.Command{
 		CommandID: "cmd-expiry", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
 		Payload: map[string]any{"expression": "features.temperature > 90", "target": "motor-1", "expires_at": now.Add(time.Minute).Format(time.RFC3339Nano), "situation_id": "sit-1", "situation_version": 1, "max_fires": 2},
 	}
@@ -180,7 +182,7 @@ func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	virtual := clock.NewVirtual(now)
 	effector := actions.NewWatchEffectorWithClock(db, virtual)
-	command := actions.Command{
+	command := actionport.Command{
 		CommandID: "cmd-contended", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
 		Payload: map[string]any{
 			"expression": "features.temperature > 90", "target": "motor-1",

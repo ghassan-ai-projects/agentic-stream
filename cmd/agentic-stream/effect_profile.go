@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
@@ -16,7 +19,7 @@ import (
 )
 
 type effectProfileOptions struct {
-	Profile                actions.EffectProfile
+	Profile                device.EffectProfile
 	DeviceSocket           string
 	DeviceCatalog          string
 	AllowedFirmwareDigests []string
@@ -47,22 +50,22 @@ type workerRuntimeFlagTargets struct {
 func (o effectProfileOptions) validate(replaySource bool) error {
 	profile := o.profile()
 	switch profile {
-	case actions.EffectProfileSimulated:
+	case device.EffectProfileSimulated:
 		if o.hasGatewayConfiguration() {
 			return fmt.Errorf("simulated effect profile cannot configure device gateway options")
 		}
-		return checkEffectProfile("validate simulated effect profile", actions.EffectProfileConfig{Profile: profile, ReplaySource: replaySource})
-	case actions.EffectProfileEmulator, actions.EffectProfilePhysical:
+		return checkEffectProfile("validate simulated effect profile", device.EffectProfileConfig{Profile: profile, ReplaySource: replaySource})
+	case device.EffectProfileEmulator, device.EffectProfilePhysical:
 		if replaySource {
-			return checkEffectProfile("validate replay effect profile", actions.EffectProfileConfig{Profile: profile, ReplaySource: true})
+			return checkEffectProfile("validate replay effect profile", device.EffectProfileConfig{Profile: profile, ReplaySource: true})
 		}
 		return o.validateGatewayOptions(profile)
 	default:
-		return checkEffectProfile("validate effect profile", actions.EffectProfileConfig{Profile: profile, ReplaySource: replaySource})
+		return checkEffectProfile("validate effect profile", device.EffectProfileConfig{Profile: profile, ReplaySource: replaySource})
 	}
 }
 
-func (o effectProfileOptions) validateGatewayOptions(profile actions.EffectProfile) error {
+func (o effectProfileOptions) validateGatewayOptions(profile device.EffectProfile) error {
 	if o.DeviceSocket == "" {
 		return fmt.Errorf("%s effect profile requires --device-socket", profile)
 	}
@@ -72,7 +75,7 @@ func (o effectProfileOptions) validateGatewayOptions(profile actions.EffectProfi
 	if len(o.AllowedFirmwareDigests) == 0 {
 		return fmt.Errorf("%s effect profile requires at least one --device-firmware-digest", profile)
 	}
-	if profile == actions.EffectProfilePhysical {
+	if profile == device.EffectProfilePhysical {
 		if !o.LiveActuation {
 			return fmt.Errorf("physical effect profile requires explicit live actuation")
 		}
@@ -83,8 +86,8 @@ func (o effectProfileOptions) validateGatewayOptions(profile actions.EffectProfi
 	return nil
 }
 
-func checkEffectProfile(prefix string, config actions.EffectProfileConfig) error {
-	if err := actions.ValidateEffectProfile(config); err != nil {
+func checkEffectProfile(prefix string, config device.EffectProfileConfig) error {
+	if err := device.ValidateEffectProfile(config); err != nil {
 		return fmt.Errorf("%s: %w", prefix, err)
 	}
 	return nil
@@ -101,11 +104,11 @@ func (o effectProfileOptions) open(
 	epoch string,
 	telemetryRuntime *telemetry.Runtime,
 	replaySource bool,
-) (actions.Effector, *actions.SerialEffector, func() error, error) {
+) (actionport.Effector, *device.SerialEffector, func() error, error) {
 	if err := o.validate(replaySource); err != nil {
 		return nil, nil, nil, err
 	}
-	if o.profile() == actions.EffectProfileSimulated {
+	if o.profile() == device.EffectProfileSimulated {
 		return actions.NewSimulatedEffector(), nil, nil, nil
 	}
 
@@ -117,7 +120,7 @@ func (o effectProfileOptions) open(
 		DB: db, Owner: owner, EpochControl: epochControl, InstanceID: epoch, Lease: owner.Lease,
 	}
 	reconciliation := &deviceauthority.ReconciliationStore{DB: db, Authority: authority}
-	serial, closeFn, err := actions.NewGatewayEffector(ctx, actions.GatewayEffectorConfig{
+	serial, closeFn, err := device.NewGatewayEffector(ctx, device.GatewayEffectorConfig{
 		Transport:              transport,
 		Catalog:                catalog,
 		AllowedFirmwareDigests: o.AllowedFirmwareDigests,
@@ -134,42 +137,42 @@ func (o effectProfileOptions) open(
 	return fallbackEffector(o.profile()), serial, closeFn, nil
 }
 
-func (o effectProfileOptions) connectDeviceGateway(ctx context.Context) (*actions.UDSTransport, *actions.CapabilityCatalog, error) {
+func (o effectProfileOptions) connectDeviceGateway(ctx context.Context) (*device.UDSTransport, *device.CapabilityCatalog, error) {
 	catalogData, err := os.ReadFile(o.DeviceCatalog)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read device capability catalog: %w", err)
 	}
-	catalog, err := actions.LoadCapabilityCatalog(catalogData)
+	catalog, err := device.LoadCapabilityCatalog(catalogData)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load device capability catalog: %w", err)
 	}
-	transport, err := actions.DialUDSTransport(ctx, o.DeviceSocket)
+	transport, err := device.DialUDSTransport(ctx, o.DeviceSocket)
 	if err != nil {
 		return nil, nil, fmt.Errorf("connect device gateway: %w", err)
 	}
-	profileConfig := actions.EffectProfileConfig{
+	profileConfig := device.EffectProfileConfig{
 		Profile:         o.profile(),
 		GatewayLink:     transport,
 		LiveActuation:   o.LiveActuation,
 		OwnerAuthorized: o.OwnerAuthorized,
 	}
-	if err := actions.ValidateEffectProfile(profileConfig); err != nil {
+	if err := device.ValidateEffectProfile(profileConfig); err != nil {
 		_ = transport.Close()
 		return nil, nil, fmt.Errorf("validate effect profile: %w", err)
 	}
 	return transport, catalog, nil
 }
 
-func fallbackEffector(profile actions.EffectProfile) actions.Effector {
-	if profile == actions.EffectProfilePhysical {
-		return actions.NewFailClosedEffector(profile)
+func fallbackEffector(profile device.EffectProfile) actionport.Effector {
+	if profile == device.EffectProfilePhysical {
+		return device.NewFailClosedEffector(profile)
 	}
 	return actions.NewSimulatedEffector()
 }
 
-func (o effectProfileOptions) profile() actions.EffectProfile {
+func (o effectProfileOptions) profile() device.EffectProfile {
 	if o.Profile == "" {
-		return actions.EffectProfileSimulated
+		return device.EffectProfileSimulated
 	}
 	return o.Profile
 }
@@ -187,7 +190,7 @@ func addEffectProfileFlags(
 	liveActuation *bool,
 	ownerAuthorized *bool,
 ) {
-	cmd.Flags().StringVar(profile, "effect-profile", string(actions.EffectProfileSimulated), "Effect profile: simulated, emulator, or physical")
+	cmd.Flags().StringVar(profile, "effect-profile", string(device.EffectProfileSimulated), "Effect profile: simulated, emulator, or physical")
 	cmd.Flags().StringVar(deviceSocket, "device-socket", "", "Typed device gateway Unix socket for emulator or physical profiles")
 	cmd.Flags().StringVar(deviceCatalog, "device-catalog", "", "Closed device capability catalog JSON path")
 	cmd.Flags().StringSliceVar(firmwareDigests, "device-firmware-digest", nil, "Allow-listed device firmware digest (repeatable)")

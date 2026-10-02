@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 )
 
 func TestEffectProfileOptionsValidate(t *testing.T) {
@@ -25,31 +25,31 @@ func TestEffectProfileOptionsValidate(t *testing.T) {
 		},
 		{
 			name:       "emulator rejects replay",
-			options:    effectProfileOptions{Profile: actions.EffectProfileEmulator},
+			options:    effectProfileOptions{Profile: device.EffectProfileEmulator},
 			replay:     true,
 			wantReason: "emulator effect profile cannot be combined with replay or shadow",
 		},
 		{
 			name:       "emulator requires socket",
-			options:    effectProfileOptions{Profile: actions.EffectProfileEmulator},
+			options:    effectProfileOptions{Profile: device.EffectProfileEmulator},
 			wantReason: "emulator effect profile requires --device-socket",
 		},
 		{
 			name:       "emulator requires catalog",
-			options:    effectProfileOptions{Profile: actions.EffectProfileEmulator, DeviceSocket: "/tmp/device.sock"},
+			options:    effectProfileOptions{Profile: device.EffectProfileEmulator, DeviceSocket: "/tmp/device.sock"},
 			wantReason: "emulator effect profile requires --device-catalog",
 		},
 		{
 			name: "emulator requires firmware allow-list",
 			options: effectProfileOptions{
-				Profile: actions.EffectProfileEmulator, DeviceSocket: "/tmp/device.sock", DeviceCatalog: "catalog.json",
+				Profile: device.EffectProfileEmulator, DeviceSocket: "/tmp/device.sock", DeviceCatalog: "catalog.json",
 			},
 			wantReason: "emulator effect profile requires at least one --device-firmware-digest",
 		},
 		{
 			name: "emulator accepts live source",
 			options: effectProfileOptions{
-				Profile: actions.EffectProfileEmulator, DeviceSocket: "/tmp/device.sock", DeviceCatalog: "catalog.json",
+				Profile: device.EffectProfileEmulator, DeviceSocket: "/tmp/device.sock", DeviceCatalog: "catalog.json",
 				AllowedFirmwareDigests: firmware,
 			},
 			wantValid: true,
@@ -57,7 +57,7 @@ func TestEffectProfileOptionsValidate(t *testing.T) {
 		{
 			name: "physical requires live actuation",
 			options: effectProfileOptions{
-				Profile: actions.EffectProfilePhysical, DeviceSocket: "/tmp/device.sock", DeviceCatalog: "catalog.json",
+				Profile: device.EffectProfilePhysical, DeviceSocket: "/tmp/device.sock", DeviceCatalog: "catalog.json",
 				AllowedFirmwareDigests: firmware, OwnerAuthorized: true,
 			},
 			wantReason: "physical effect profile requires explicit live actuation",
@@ -65,7 +65,7 @@ func TestEffectProfileOptionsValidate(t *testing.T) {
 		{
 			name: "physical requires owner authorization",
 			options: effectProfileOptions{
-				Profile: actions.EffectProfilePhysical, DeviceSocket: "/tmp/device.sock", DeviceCatalog: "catalog.json",
+				Profile: device.EffectProfilePhysical, DeviceSocket: "/tmp/device.sock", DeviceCatalog: "catalog.json",
 				AllowedFirmwareDigests: firmware, LiveActuation: true,
 			},
 			wantReason: "physical effect profile requires owner authorization",
@@ -73,7 +73,7 @@ func TestEffectProfileOptionsValidate(t *testing.T) {
 		{
 			name: "physical configuration is valid",
 			options: effectProfileOptions{
-				Profile: actions.EffectProfilePhysical, DeviceSocket: "/tmp/device.sock", DeviceCatalog: "catalog.json",
+				Profile: device.EffectProfilePhysical, DeviceSocket: "/tmp/device.sock", DeviceCatalog: "catalog.json",
 				AllowedFirmwareDigests: firmware, LiveActuation: true, OwnerAuthorized: true,
 			},
 			wantValid: true,

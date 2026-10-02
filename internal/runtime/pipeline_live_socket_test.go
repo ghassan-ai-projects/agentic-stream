@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -24,7 +26,7 @@ func TestFireRecentWatchesPaginatesPastFullPage(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	watch := actions.NewWatchEffector(db)
-	if _, err := watch.Dispatch(ctx, actions.Command{
+	if _, err := watch.Dispatch(ctx, actionport.Command{
 		CommandID:     "watch-pagination",
 		TenantID:      "default",
 		EffectorRoute: "install_watch_condition",

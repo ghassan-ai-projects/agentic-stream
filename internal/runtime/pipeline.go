@@ -8,6 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
@@ -33,7 +36,7 @@ type PipelineConfig struct {
 	OwnerEpoch        string
 	Clock             clock.Clock
 	Executor          episodes.Executor
-	Effector          actions.Effector
+	Effector          actionport.Effector
 	IDGenerator       ids.Generator
 	GlobalCostCeiling *uint64
 	TenantCostCeiling *uint64
@@ -48,7 +51,7 @@ type PipelineConfig struct {
 	EpochControl *runtimecontrol.EpochControl
 	// SerialEffector is optional and supplies the explicitly routed thermal
 	// action boundary. It is never used by replay or shadow execution.
-	SerialEffector *actions.SerialEffector
+	SerialEffector *device.SerialEffector
 }
 
 // PipelineReport describes one completed live batch.
