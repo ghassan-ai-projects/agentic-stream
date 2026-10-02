@@ -283,73 +283,92 @@ func (e *Engine) applyReducers(sit *Situation, feature operators.Feature) {
 func (e *Engine) evaluate(ctx context.Context, sit *Situation, feature operators.Feature, watermark time.Time, completenessChanged bool) (*Version, error) {
 	features := e.buildFeaturesMap(sit)
 	situation := e.buildSituationMap(sit)
+	inputs := evaluationInputs{features: features, situation: situation, eventTime: feature.EventTime, watermark: watermark}
 
-	// Build a feature map for just this feature too for occurrence evaluation.
-	_ = feature
-
-	changed := false
-
-	// Check occurrence close first if active.
-	if sit.Version > 0 || sit.Phase != e.spec.Situation.InitialPhase {
-		closed, err := e.evalBool(ctx, e.spec.Situation.Occurrence.CloseWhen, features, situation)
-		if err != nil {
-			return nil, err
-		}
-		if closed {
-			if e.transition(sit, "resolved", watermark) {
-				changed = true
-			}
-		}
+	// Check occurrence close first if active, then phase transitions, then
+	// occurrence open if not active.
+	closed, err := e.closeOccurrence(ctx, sit, inputs)
+	if err != nil {
+		return nil, err
 	}
-
-	// Evaluate transitions.
-	for _, tr := range e.spec.Situation.Transitions {
-		if tr.From != sit.Phase {
-			continue
-		}
-		cond, err := e.evalBool(ctx, tr.When, features, situation)
-		if err != nil {
-			return nil, err
-		}
-		if cond {
-			start := sit.ConditionStart[tr.From+"->"+tr.To]
-			if start.IsZero() {
-				start = feature.EventTime
-				sit.ConditionStart[tr.From+"->"+tr.To] = start
-			}
-			minDur, _ := duration.Parse(tr.MinDuration)
-			if feature.EventTime.Sub(start) >= minDur {
-				if e.transition(sit, tr.To, watermark) {
-					changed = true
-				}
-			}
-		} else {
-			delete(sit.ConditionStart, tr.From+"->"+tr.To)
-		}
+	transitioned, err := e.applyTransitions(ctx, sit, inputs)
+	if err != nil {
+		return nil, err
 	}
-
-	// Check occurrence open if not active.
-	if sit.Version == 0 && sit.Phase == e.spec.Situation.InitialPhase {
-		opened, err := e.evalBool(ctx, e.spec.Situation.Occurrence.OpenWhen, features, situation)
-		if err != nil {
-			return nil, err
-		}
-		if opened {
-			sit.Version++
-			changed = true
-		}
+	opened, err := e.openOccurrence(ctx, sit, inputs)
+	if err != nil {
+		return nil, err
 	}
+	changed := closed || transitioned || opened
 	if completenessChanged && sit.Version > 0 && !changed {
 		sit.Version++
 		sit.UpdatedAt = watermark
 		changed = true
 	}
-
 	if !changed {
 		return nil, nil
 	}
-
 	return e.materialize(sit, watermark)
+}
+
+// evaluationInputs are the CEL inputs and times one evaluation uses.
+type evaluationInputs struct {
+	features, situation map[string]any
+	eventTime           time.Time
+	watermark           time.Time
+}
+
+func (e *Engine) closeOccurrence(ctx context.Context, sit *Situation, in evaluationInputs) (bool, error) {
+	if sit.Version == 0 && sit.Phase == e.spec.Situation.InitialPhase {
+		return false, nil
+	}
+	closed, err := e.evalBool(ctx, e.spec.Situation.Occurrence.CloseWhen, in.features, in.situation)
+	if err != nil || !closed {
+		return false, err
+	}
+	return e.transition(sit, "resolved", in.watermark), nil
+}
+
+// applyTransitions takes every transition out of the current phase whose
+// condition has held for its minimum duration, measured in event time.
+func (e *Engine) applyTransitions(ctx context.Context, sit *Situation, in evaluationInputs) (bool, error) {
+	changed := false
+	for _, tr := range e.spec.Situation.Transitions {
+		if tr.From != sit.Phase {
+			continue
+		}
+		cond, err := e.evalBool(ctx, tr.When, in.features, in.situation)
+		if err != nil {
+			return false, err
+		}
+		key := tr.From + "->" + tr.To
+		if !cond {
+			delete(sit.ConditionStart, key)
+			continue
+		}
+		start := sit.ConditionStart[key]
+		if start.IsZero() {
+			start = in.eventTime
+			sit.ConditionStart[key] = start
+		}
+		minDur, _ := duration.Parse(tr.MinDuration)
+		if in.eventTime.Sub(start) >= minDur && e.transition(sit, tr.To, in.watermark) {
+			changed = true
+		}
+	}
+	return changed, nil
+}
+
+func (e *Engine) openOccurrence(ctx context.Context, sit *Situation, in evaluationInputs) (bool, error) {
+	if sit.Version != 0 || sit.Phase != e.spec.Situation.InitialPhase {
+		return false, nil
+	}
+	opened, err := e.evalBool(ctx, e.spec.Situation.Occurrence.OpenWhen, in.features, in.situation)
+	if err != nil || !opened {
+		return false, err
+	}
+	sit.Version++
+	return true, nil
 }
 
 func (e *Engine) transition(sit *Situation, to string, watermark time.Time) bool {

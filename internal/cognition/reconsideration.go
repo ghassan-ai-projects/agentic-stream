@@ -30,25 +30,61 @@ func (e *Engine) admitReconsiderations(ctx context.Context, tx *sql.Tx, current 
 	if e.spec.Digest == "" {
 		return 0, fmt.Errorf("compiled spec has no digest")
 	}
+	correction, correctionDigest, err := verifiedCorrection(ctx, tx, current)
+	if err != nil {
+		return 0, err
+	}
+	invalidated, err := invalidatedCommands(ctx, tx, current)
+	if err != nil {
+		return 0, err
+	}
+	admitted := 0
+	for _, command := range invalidated {
+		created, err := e.admitReconsideration(ctx, tx, current, correction, correctionDigest, command)
+		if err != nil {
+			return admitted, err
+		}
+		if created {
+			admitted++
+		}
+	}
+	return admitted, nil
+}
+
+// verifiedCorrection decodes the corrected snapshot and requires it to match
+// the digest persisted with its Situation version.
+func verifiedCorrection(ctx context.Context, tx *sql.Tx, current situations.Version) (map[string]any, []byte, error) {
 	var correction map[string]any
 	if err := json.Unmarshal(current.SnapshotJSON, &correction); err != nil {
-		return 0, fmt.Errorf("decode correction snapshot: %w", err)
+		return nil, nil, fmt.Errorf("decode correction snapshot: %w", err)
 	}
 	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, correction); err != nil {
-		return 0, fmt.Errorf("validate correction snapshot: %w", err)
+		return nil, nil, fmt.Errorf("validate correction snapshot: %w", err)
 	}
 	correctionDigest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, correction)
 	if err != nil {
-		return 0, fmt.Errorf("digest correction snapshot: %w", err)
+		return nil, nil, fmt.Errorf("digest correction snapshot: %w", err)
 	}
 	var persistedCorrectionDigest []byte
 	if err := tx.QueryRowContext(ctx, "SELECT snapshot_sha256 FROM situation_versions WHERE situation_id = ? AND version = ?", current.SituationID, current.Version).Scan(&persistedCorrectionDigest); err != nil {
-		return 0, fmt.Errorf("load correction snapshot digest: %w", err)
+		return nil, nil, fmt.Errorf("load correction snapshot digest: %w", err)
 	}
 	decodedCorrectionDigest, err := canonicaljson.DecodeDigest(correctionDigest)
 	if err != nil || !bytes.Equal(decodedCorrectionDigest, persistedCorrectionDigest) {
-		return 0, fmt.Errorf("correction snapshot digest mismatch")
+		return nil, nil, fmt.Errorf("correction snapshot digest mismatch")
 	}
+	return correction, decodedCorrectionDigest, nil
+}
+
+// invalidatedCommand is a succeeded command, with its latest outcome, whose
+// authorizing Situation version the correction superseded.
+type invalidatedCommand struct {
+	commandID, decisionID, outcomeID, outcomeStatus, reconciliationStatus string
+	outcomeOrdinal                                                        int
+	providerJSON, observedJSON, outcomeSHA                                []byte
+}
+
+func invalidatedCommands(ctx context.Context, tx *sql.Tx, current situations.Version) ([]invalidatedCommand, error) {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT c.command_id, d.decision_id, o.outcome_id, o.ordinal, o.status, o.provider_result_json,
 		       o.observed_effect_json, o.reconciliation_status, o.outcome_sha256
@@ -69,101 +105,112 @@ func (e *Engine) admitReconsiderations(ctx context.Context, tx *sql.Tx, current 
 		  AND o.ordinal = (SELECT MAX(o2.ordinal) FROM outcomes o2 WHERE o2.command_id = c.command_id)
 		ORDER BY c.command_id`, current.SituationID, current.PreviousVersion)
 	if err != nil {
-		return 0, fmt.Errorf("find invalidated commands: %w", err)
+		return nil, fmt.Errorf("find invalidated commands: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	admitted := 0
+	var commands []invalidatedCommand
 	for rows.Next() {
-		var commandID, decisionID, outcomeID, outcomeStatus, reconciliationStatus string
-		var outcomeOrdinal int
-		var providerJSON, observedJSON, outcomeSHA []byte
-		if err := rows.Scan(&commandID, &decisionID, &outcomeID, &outcomeOrdinal, &outcomeStatus, &providerJSON, &observedJSON, &reconciliationStatus, &outcomeSHA); err != nil {
-			return admitted, fmt.Errorf("scan invalidated command: %w", err)
+		var c invalidatedCommand
+		if err := rows.Scan(&c.commandID, &c.decisionID, &c.outcomeID, &c.outcomeOrdinal, &c.outcomeStatus, &c.providerJSON, &c.observedJSON, &c.reconciliationStatus, &c.outcomeSHA); err != nil {
+			return nil, fmt.Errorf("scan invalidated command: %w", err)
 		}
-		var existing int
-		err := tx.QueryRowContext(ctx, `SELECT 1 FROM reconsiderations WHERE situation_id = ? AND superseded_version = ? AND invalidated_command_id = ?`, current.SituationID, current.PreviousVersion, commandID).Scan(&existing)
-		if err == nil {
-			continue
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return admitted, fmt.Errorf("check reconsideration dedupe: %w", err)
-		}
-		material := fmt.Sprintf("reconsider|%s|%d|%s", current.SituationID, current.PreviousVersion, commandID)
-		key := sha256.Sum256([]byte(material))
-		reconsiderationID := ids.PrefixReconsideration + hex.EncodeToString(key[:])
-		triggerID := "trg_reconsider_" + hex.EncodeToString(key[:])
-		schedulerItemID := "sch_reconsider_" + hex.EncodeToString(key[:])
-		priorOutcome := map[string]any{"status": outcomeStatus, "reconciliation_status": reconciliationStatus}
-		priorOutcome["outcome_id"] = outcomeID
-		priorOutcome["ordinal"] = outcomeOrdinal
-		priorOutcome["outcome_sha256"] = "sha256:" + hex.EncodeToString(outcomeSHA)
-		if len(providerJSON) > 0 {
-			priorOutcome["provider_result"] = json.RawMessage(providerJSON)
-		}
-		if len(observedJSON) > 0 {
-			priorOutcome["observed_effect"] = json.RawMessage(observedJSON)
-		}
-		delta := map[string]any{
-			"reason":                 reconsiderationTrigger,
-			"correction":             correction,
-			"superseded_version":     current.PreviousVersion,
-			"correction_version":     current.Version,
-			"invalidated_command_id": commandID,
-			"prior_decision_id":      decisionID,
-			"prior_outcome":          priorOutcome,
-		}
-		deltaJSON, err := canonicaljson.Marshal(delta)
-		if err != nil {
-			return admitted, fmt.Errorf("canonicalize reconsideration evidence: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO reconsiderations (
-				reconsideration_id, tenant_id, situation_id, superseded_version,
-				correction_version, correction_snapshot_sha256, invalidated_command_id,
-				invalidated_outcome_id, invalidated_outcome_sha256, created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			reconsiderationID, e.tenantID, current.SituationID, current.PreviousVersion,
-			current.Version, decodedCorrectionDigest, commandID, outcomeID, outcomeSHA,
-			e.clk.Now().UTC().Format(time.RFC3339Nano)); err != nil {
-			return admitted, fmt.Errorf("insert reconsideration: %w", err)
-		}
-		eval := Evaluation{
-			TriggerID: triggerID, TriggerName: reconsiderationTrigger,
-			SituationID: current.SituationID, SituationVersion: current.Version,
-			Score: 100, Threshold: 0, Lane: "deep", Outcome: "admitted",
-			Reasons:      []string{"accepted action invalidated by corrected Situation version"},
-			PolicySHA256: e.spec.Digest, DeltaJSON: deltaJSON, EvaluatedAt: e.clk.Now().UTC(),
-		}
-		if err := e.scheduler.saveEvaluation(ctx, tx, eval, e.tenantID, e.deploymentID); err != nil {
-			return admitted, fmt.Errorf("save reconsideration evaluation: %w", err)
-		}
-		item := Item{
-			SchedulerItemID: schedulerItemID, Kind: "reconsider", TriggerID: triggerID,
-			SituationID: current.SituationID, SituationVersion: current.Version,
-			Lane: "deep", Priority: 100, Status: "pending",
-			ExpiresAt: e.clk.Now().UTC().Add(defaultExpiresAfter),
-		}
-		if err := e.scheduler.insertItem(ctx, tx, item, e.tenantID); err != nil {
-			return admitted, fmt.Errorf("insert reconsideration item: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE reconsiderations SET trigger_id = ?, scheduler_item_id = ? WHERE reconsideration_id = ?`, triggerID, schedulerItemID, reconsiderationID); err != nil {
-			return admitted, fmt.Errorf("link reconsideration admission: %w", err)
-		}
-		if err := notify.AppendLifecycleEventWithTrace(ctx, tx,
-			"reconsideration.admitted:"+reconsiderationID, e.tenantID, notify.TypeReconsiderationAdmitted,
-			"situation/"+current.SituationID, current.SituationID, map[string]any{
-				"tenant_id": e.tenantID, "reconsideration_id": reconsiderationID, "situation_id": current.SituationID,
-				"superseded_version": current.PreviousVersion, "correction_version": current.Version,
-				"invalidated_command_id": commandID, "invalidated_outcome_id": outcomeID,
-				"trigger_id": triggerID, "scheduler_item_id": schedulerItemID,
-				"source_authority": notify.SourceForTenant(e.tenantID),
-			}, e.clk.Now().UTC(), contractsv1.TraceContext{Traceparent: current.Traceparent, Tracestate: current.Tracestate}); err != nil {
-			return admitted, fmt.Errorf("append reconsideration notification: %w", err)
-		}
-		admitted++
+		commands = append(commands, c)
 	}
 	if err := rows.Err(); err != nil {
-		return admitted, fmt.Errorf("iterate invalidated commands: %w", err)
+		return nil, fmt.Errorf("iterate invalidated commands: %w", err)
 	}
-	return admitted, nil
+	return commands, nil
+}
+
+// priorOutcome is the invalidated command's latest outcome as reconsideration
+// evidence.
+func (c invalidatedCommand) priorOutcome() map[string]any {
+	outcome := map[string]any{
+		"status": c.outcomeStatus, "reconciliation_status": c.reconciliationStatus,
+		"outcome_id": c.outcomeID, "ordinal": c.outcomeOrdinal,
+		"outcome_sha256": "sha256:" + hex.EncodeToString(c.outcomeSHA),
+	}
+	if len(c.providerJSON) > 0 {
+		outcome["provider_result"] = json.RawMessage(c.providerJSON)
+	}
+	if len(c.observedJSON) > 0 {
+		outcome["observed_effect"] = json.RawMessage(c.observedJSON)
+	}
+	return outcome
+}
+
+// admitReconsideration records one reconsideration and admits its deep-lane
+// episode. Identities derive from the Situation, superseded version, and
+// command, so a duplicate correction delivery admits nothing.
+func (e *Engine) admitReconsideration(ctx context.Context, tx *sql.Tx, current situations.Version, correction map[string]any, correctionDigest []byte, command invalidatedCommand) (bool, error) {
+	var existing int
+	err := tx.QueryRowContext(ctx, `SELECT 1 FROM reconsiderations WHERE situation_id = ? AND superseded_version = ? AND invalidated_command_id = ?`, current.SituationID, current.PreviousVersion, command.commandID).Scan(&existing)
+	if err == nil {
+		return false, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, fmt.Errorf("check reconsideration dedupe: %w", err)
+	}
+	material := fmt.Sprintf("reconsider|%s|%d|%s", current.SituationID, current.PreviousVersion, command.commandID)
+	key := sha256.Sum256([]byte(material))
+	reconsiderationID := ids.PrefixReconsideration + hex.EncodeToString(key[:])
+	triggerID := "trg_reconsider_" + hex.EncodeToString(key[:])
+	schedulerItemID := "sch_reconsider_" + hex.EncodeToString(key[:])
+	deltaJSON, err := canonicaljson.Marshal(map[string]any{
+		"reason":                 reconsiderationTrigger,
+		"correction":             correction,
+		"superseded_version":     current.PreviousVersion,
+		"correction_version":     current.Version,
+		"invalidated_command_id": command.commandID,
+		"prior_decision_id":      command.decisionID,
+		"prior_outcome":          command.priorOutcome(),
+	})
+	if err != nil {
+		return false, fmt.Errorf("canonicalize reconsideration evidence: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO reconsiderations (
+			reconsideration_id, tenant_id, situation_id, superseded_version,
+			correction_version, correction_snapshot_sha256, invalidated_command_id,
+			invalidated_outcome_id, invalidated_outcome_sha256, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		reconsiderationID, e.tenantID, current.SituationID, current.PreviousVersion,
+		current.Version, correctionDigest, command.commandID, command.outcomeID, command.outcomeSHA,
+		e.clk.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return false, fmt.Errorf("insert reconsideration: %w", err)
+	}
+	eval := Evaluation{
+		TriggerID: triggerID, TriggerName: reconsiderationTrigger,
+		SituationID: current.SituationID, SituationVersion: current.Version,
+		Score: 100, Threshold: 0, Lane: "deep", Outcome: "admitted",
+		Reasons:      []string{"accepted action invalidated by corrected Situation version"},
+		PolicySHA256: e.spec.Digest, DeltaJSON: deltaJSON, EvaluatedAt: e.clk.Now().UTC(),
+	}
+	if err := e.scheduler.saveEvaluation(ctx, tx, eval, e.tenantID, e.deploymentID); err != nil {
+		return false, fmt.Errorf("save reconsideration evaluation: %w", err)
+	}
+	item := Item{
+		SchedulerItemID: schedulerItemID, Kind: "reconsider", TriggerID: triggerID,
+		SituationID: current.SituationID, SituationVersion: current.Version,
+		Lane: "deep", Priority: 100, Status: "pending",
+		ExpiresAt: e.clk.Now().UTC().Add(defaultExpiresAfter),
+	}
+	if err := e.scheduler.insertItem(ctx, tx, item, e.tenantID); err != nil {
+		return false, fmt.Errorf("insert reconsideration item: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE reconsiderations SET trigger_id = ?, scheduler_item_id = ? WHERE reconsideration_id = ?`, triggerID, schedulerItemID, reconsiderationID); err != nil {
+		return false, fmt.Errorf("link reconsideration admission: %w", err)
+	}
+	if err := notify.AppendLifecycleEventWithTrace(ctx, tx,
+		"reconsideration.admitted:"+reconsiderationID, e.tenantID, notify.TypeReconsiderationAdmitted,
+		"situation/"+current.SituationID, current.SituationID, map[string]any{
+			"tenant_id": e.tenantID, "reconsideration_id": reconsiderationID, "situation_id": current.SituationID,
+			"superseded_version": current.PreviousVersion, "correction_version": current.Version,
+			"invalidated_command_id": command.commandID, "invalidated_outcome_id": command.outcomeID,
+			"trigger_id": triggerID, "scheduler_item_id": schedulerItemID,
+			"source_authority": notify.SourceForTenant(e.tenantID),
+		}, e.clk.Now().UTC(), contractsv1.TraceContext{Traceparent: current.Traceparent, Tracestate: current.Tracestate}); err != nil {
+		return false, fmt.Errorf("append reconsideration notification: %w", err)
+	}
+	return true, nil
 }

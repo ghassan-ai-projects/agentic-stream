@@ -193,74 +193,17 @@ func Validate(raw []byte, transmittedDigest string, input Input) (*Result, error
 	if input.IntentCatalog == nil {
 		return nil, reject("catalog_missing", "catalog", "the compiled intent catalog is required")
 	}
-	canonical, err := canonicaljson.Marshal(json.RawMessage(raw))
+	canonical, document, err := parseDecision(raw, transmittedDigest)
 	if err != nil {
-		return nil, reject("schema_invalid", "canonical_json", err.Error())
+		return nil, err
 	}
-	var document map[string]any
-	if err := json.Unmarshal(canonical, &document); err != nil {
-		return nil, reject("schema_invalid", "json", err.Error())
+	decisionID, err := checkDecisionBinding(document, input)
+	if err != nil {
+		return nil, err
 	}
-	if err := contractsv1.Validate(contractsv1.SchemaDecision, document); err != nil {
-		return nil, reject("schema_invalid", "decision_schema", err.Error())
-	}
-	if _, err := canonicaljson.DecodeDigest(transmittedDigest); err != nil || !canonicaljson.Verify(canonicaljson.DomainDecision, document, transmittedDigest) {
-		return nil, reject("schema_invalid", "decision_digest", "decision digest is missing or does not match canonical JSON")
-	}
-
-	decisionID, ok := document["decision_id"].(string)
-	if !ok || decisionID == "" {
-		return nil, reject("schema_invalid", "decision_id", "decision_id is required")
-	}
-	if got, _ := document["episode_id"].(string); got != input.EpisodeID {
-		return nil, reject("snapshot_mismatch", "episode_id", "decision episode does not match the dispatched episode")
-	}
-	if got, _ := document["attempt_id"].(string); got != input.AttemptID {
-		return nil, reject("stale_attempt", "attempt_id", "decision attempt does not match the dispatched attempt")
-	}
-	if got, ok := integerField(document, "fence"); !ok || int64(got) != input.Fence {
-		return nil, reject("stale_attempt", "fence", "decision fence does not match the dispatched attempt")
-	}
-	if got, _ := document["snapshot_digest"].(string); got != input.SnapshotDigest {
-		return nil, reject("snapshot_mismatch", "snapshot_digest", "decision snapshot does not match the dispatched snapshot")
-	}
-	if got, _ := document["situation_id"].(string); got != input.SituationID {
-		return nil, reject("snapshot_mismatch", "situation_id", "decision Situation does not match the dispatched Situation")
-	}
-	if got, ok := integerField(document, "situation_version"); !ok || got != input.SituationVersion {
-		return nil, reject("snapshot_mismatch", "situation_version", "decision Situation version does not match the dispatched version")
-	}
-	if validUntil, ok := document["valid_until"].(string); ok && isExpired(input.Now, validUntil) {
-		return nil, reject("expired", "valid_until", "decision validity has expired")
-	}
-
-	rawIntents, ok := document["intents"].([]any)
-	if !ok {
-		return nil, reject("schema_invalid", "intents", "intents must be an array")
-	}
-	if len(rawIntents) == 0 {
-		if decisionType, _ := document["decision_type"].(string); decisionType != "need_more_evidence" {
-			return nil, reject("schema_invalid", "decision_type", "an empty-intent decision must explicitly request more evidence")
-		}
-	}
-	// P4: at most ONE actionable (non-watch, non-compensation) intent — the
-	// v1 "at most one actionable intent" contract is enforced independently,
-	// not only by the worker's builder.
-	actionable := 0
-	for _, rawIntent := range rawIntents {
-		intent, ok := rawIntent.(map[string]any)
-		if !ok {
-			return nil, reject("schema_invalid", "intents", "intent must be an object")
-		}
-		intentType, _ := intent["type"].(string)
-		if intentType == "install_watch_condition" || documentString(intent, "compensates") != "" {
-			continue
-		}
-		actionable++
-	}
-	if actionable > 1 {
-		return nil, reject("schema_invalid", "intents",
-			"a decision may carry at most one actionable intent")
+	rawIntents, err := decisionIntents(document)
+	if err != nil {
+		return nil, err
 	}
 	result := &Result{
 		DecisionID:     decisionID,
@@ -290,24 +233,147 @@ func Validate(raw []byte, transmittedDigest string, input Input) (*Result, error
 	return result, nil
 }
 
+// parseDecision canonicalizes the raw Decision, validates it against the
+// shared schema, and verifies the transmitted digest.
+func parseDecision(raw []byte, transmittedDigest string) ([]byte, map[string]any, error) {
+	canonical, err := canonicaljson.Marshal(json.RawMessage(raw))
+	if err != nil {
+		return nil, nil, reject("schema_invalid", "canonical_json", err.Error())
+	}
+	var document map[string]any
+	if err := json.Unmarshal(canonical, &document); err != nil {
+		return nil, nil, reject("schema_invalid", "json", err.Error())
+	}
+	if err := contractsv1.Validate(contractsv1.SchemaDecision, document); err != nil {
+		return nil, nil, reject("schema_invalid", "decision_schema", err.Error())
+	}
+	if _, err := canonicaljson.DecodeDigest(transmittedDigest); err != nil || !canonicaljson.Verify(canonicaljson.DomainDecision, document, transmittedDigest) {
+		return nil, nil, reject("schema_invalid", "decision_digest", "decision digest is missing or does not match canonical JSON")
+	}
+	return canonical, document, nil
+}
+
+// checkDecisionBinding requires the Decision to name the dispatched episode,
+// attempt, fence, snapshot, and Situation version, and to be unexpired. It
+// returns the decision ID.
+func checkDecisionBinding(document map[string]any, input Input) (string, error) {
+	decisionID, ok := document["decision_id"].(string)
+	if !ok || decisionID == "" {
+		return "", reject("schema_invalid", "decision_id", "decision_id is required")
+	}
+	if got, _ := document["episode_id"].(string); got != input.EpisodeID {
+		return "", reject("snapshot_mismatch", "episode_id", "decision episode does not match the dispatched episode")
+	}
+	if got, _ := document["attempt_id"].(string); got != input.AttemptID {
+		return "", reject("stale_attempt", "attempt_id", "decision attempt does not match the dispatched attempt")
+	}
+	if got, ok := integerField(document, "fence"); !ok || int64(got) != input.Fence {
+		return "", reject("stale_attempt", "fence", "decision fence does not match the dispatched attempt")
+	}
+	if got, _ := document["snapshot_digest"].(string); got != input.SnapshotDigest {
+		return "", reject("snapshot_mismatch", "snapshot_digest", "decision snapshot does not match the dispatched snapshot")
+	}
+	if got, _ := document["situation_id"].(string); got != input.SituationID {
+		return "", reject("snapshot_mismatch", "situation_id", "decision Situation does not match the dispatched Situation")
+	}
+	if got, ok := integerField(document, "situation_version"); !ok || got != input.SituationVersion {
+		return "", reject("snapshot_mismatch", "situation_version", "decision Situation version does not match the dispatched version")
+	}
+	if validUntil, ok := document["valid_until"].(string); ok && isExpired(input.Now, validUntil) {
+		return "", reject("expired", "valid_until", "decision validity has expired")
+	}
+	return decisionID, nil
+}
+
+// decisionIntents returns the intents array. An empty array must explicitly
+// request more evidence, and (P4) at most ONE intent may be actionable
+// (neither a watch nor a compensation); the v1 contract is enforced here
+// independently of the worker's builder.
+func decisionIntents(document map[string]any) ([]any, error) {
+	rawIntents, ok := document["intents"].([]any)
+	if !ok {
+		return nil, reject("schema_invalid", "intents", "intents must be an array")
+	}
+	if len(rawIntents) == 0 {
+		if decisionType, _ := document["decision_type"].(string); decisionType != "need_more_evidence" {
+			return nil, reject("schema_invalid", "decision_type", "an empty-intent decision must explicitly request more evidence")
+		}
+	}
+	actionable := 0
+	for _, rawIntent := range rawIntents {
+		intent, ok := rawIntent.(map[string]any)
+		if !ok {
+			return nil, reject("schema_invalid", "intents", "intent must be an object")
+		}
+		intentType, _ := intent["type"].(string)
+		if intentType == "install_watch_condition" || documentString(intent, "compensates") != "" {
+			continue
+		}
+		actionable++
+	}
+	if actionable > 1 {
+		return nil, reject("schema_invalid", "intents",
+			"a decision may carry at most one actionable intent")
+	}
+	return rawIntents, nil
+}
+
 func validateIntent(document map[string]any, input Input, decisionID string, decisionDocument map[string]any, seenIDs map[string]struct{}) (*Intent, error) {
+	if err := checkIntentBinding(document, input, decisionID, seenIDs); err != nil {
+		return nil, err
+	}
+	entry, err := checkIntentAuthority(document, input)
+	if err != nil {
+		return nil, err
+	}
+	// P4: parameters must satisfy the catalog's per-intent schema.
+	parameters, _ := document["parameters"].(map[string]any)
+	if err := entry.ParameterSchema.Validate(parameters); err != nil {
+		return nil, reject("parameter_schema_violation", "intent.parameters", err.Error())
+	}
+	if err := checkIdentityParameters(parameters, input, decisionDocument); err != nil {
+		return nil, err
+	}
+	// P4: preset-only fields must be byte-identical to the compiled preset —
+	// an attempt to silently substitute a preset value is rejected, not
+	// repaired.
+	if err := verifyPresetEquality(document, entry); err != nil {
+		return nil, err
+	}
+	// P4: the intent's evidence must be grounded in the decision's facts.
+	if err := verifyEvidenceBinding(document, decisionDocument); err != nil {
+		return nil, err
+	}
+	return buildIntent(document, input, entry)
+}
+
+// checkIntentBinding requires a unique intent bound to its Decision and to the
+// episode's tenant, Situation, and version.
+func checkIntentBinding(document map[string]any, input Input, decisionID string, seenIDs map[string]struct{}) error {
 	intentID, _ := document["intent_id"].(string)
 	if _, exists := seenIDs[intentID]; exists {
-		return nil, reject("schema_invalid", "intent_id", "Decision contains duplicate intent_id values")
+		return reject("schema_invalid", "intent_id", "Decision contains duplicate intent_id values")
 	}
 	seenIDs[intentID] = struct{}{}
 	if got, _ := document["decision_id"].(string); got != decisionID {
-		return nil, reject("snapshot_mismatch", "intent.decision_id", "intent is not bound to its Decision")
+		return reject("snapshot_mismatch", "intent.decision_id", "intent is not bound to its Decision")
 	}
 	if got, _ := document["tenant_id"].(string); got != input.TenantID {
-		return nil, reject("snapshot_mismatch", "intent.tenant_id", "intent tenant does not match the episode")
+		return reject("snapshot_mismatch", "intent.tenant_id", "intent tenant does not match the episode")
 	}
 	if got, _ := document["situation_id"].(string); got != input.SituationID {
-		return nil, reject("snapshot_mismatch", "intent.situation_id", "intent Situation does not match the episode")
+		return reject("snapshot_mismatch", "intent.situation_id", "intent Situation does not match the episode")
 	}
 	if got, ok := integerField(document, "situation_version"); !ok || got != input.SituationVersion {
-		return nil, reject("snapshot_mismatch", "intent.situation_version", "intent Situation version does not match the episode")
+		return reject("snapshot_mismatch", "intent.situation_version", "intent Situation version does not match the episode")
 	}
+	return nil
+}
+
+// checkIntentAuthority checks the intent type against the episode allowlist
+// and the catalog, and its risk against the catalog and the ceiling. It
+// returns the catalog entry.
+func checkIntentAuthority(document map[string]any, input Input) (*IntentEntry, error) {
 	intentType, _ := document["type"].(string)
 	isCompensation := documentString(document, "compensates") != ""
 	// The allowlist bypass is kind-scoped: only a RECONSIDER episode may carry
@@ -337,27 +403,26 @@ func validateIntent(document map[string]any, input Input, decisionID string, dec
 	if riskRank(risk) > riskRank(input.RiskCeiling) {
 		return nil, reject("risk_ceiling_exceeded", "intent.risk_class", "intent risk exceeds the episode ceiling")
 	}
-	// P4: parameters must satisfy the catalog's per-intent schema.
-	parameters, _ := document["parameters"].(map[string]any)
-	if err := entry.ParameterSchema.Validate(parameters); err != nil {
-		return nil, reject("parameter_schema_violation", "intent.parameters", err.Error())
-	}
-	// P4: the builder-bound identity parameters are checked against the
-	// dispatched episode — a tampered entity_id would otherwise flow into the
-	// command payload unverified (the preset check only covers preset keys).
+	return entry, nil
+}
+
+// checkIdentityParameters binds identity-bearing parameters to the dispatched
+// episode (P4): a tampered entity_id would otherwise flow into the command
+// payload unverified, since the preset check only covers preset keys.
+func checkIdentityParameters(parameters map[string]any, input Input, decisionDocument map[string]any) error {
 	if entityID, present := parameters["entity_id"]; present {
 		if input.EntityID == "" {
-			return nil, reject("snapshot_mismatch", "intent.parameters.entity_id",
+			return reject("snapshot_mismatch", "intent.parameters.entity_id",
 				"the validator has no entity identity to bind against")
 		}
 		if entityID != input.EntityID {
-			return nil, reject("snapshot_mismatch", "intent.parameters.entity_id",
+			return reject("snapshot_mismatch", "intent.parameters.entity_id",
 				"intent entity does not match the dispatched episode")
 		}
 	}
 	if expiresAt, present := parameters["expires_at"]; present {
 		if validUntil, ok := decisionDocument["valid_until"].(string); ok && expiresAt != validUntil {
-			return nil, reject("snapshot_mismatch", "intent.parameters.expires_at",
+			return reject("snapshot_mismatch", "intent.parameters.expires_at",
 				"intent parameter expires_at must equal the decision's valid_until")
 		}
 	}
@@ -369,24 +434,19 @@ func validateIntent(document map[string]any, input Input, decisionID string, dec
 	// proposal steer an effect at an unverified target.
 	if target, present := parameters["target"]; present {
 		if input.EntityID == "" {
-			return nil, reject("snapshot_mismatch", "intent.parameters.target",
+			return reject("snapshot_mismatch", "intent.parameters.target",
 				"the validator has no entity identity to bind against")
 		}
 		if target != input.EntityID {
-			return nil, reject("snapshot_mismatch", "intent.parameters.target",
+			return reject("snapshot_mismatch", "intent.parameters.target",
 				"intent target must equal the bound entity")
 		}
 	}
-	// P4: preset-only fields must be byte-identical to the compiled preset —
-	// an attempt to silently substitute a preset value is rejected, not
-	// repaired.
-	if err := verifyPresetEquality(document, entry); err != nil {
-		return nil, err
-	}
-	// P4: the intent's evidence must be grounded in the decision's facts.
-	if err := verifyEvidenceBinding(document, decisionDocument); err != nil {
-		return nil, err
-	}
+	return nil
+}
+
+// buildIntent checks the intent expiry and builds the validated Intent.
+func buildIntent(document map[string]any, input Input, entry *IntentEntry) (*Intent, error) {
 	expiresAtString, _ := document["expires_at"].(string)
 	expiresAt, err := time.Parse(time.RFC3339Nano, expiresAtString)
 	if err != nil {
@@ -403,6 +463,9 @@ func validateIntent(document map[string]any, input Input, decisionID string, dec
 	if err != nil {
 		return nil, reject("schema_invalid", "intent_digest", err.Error())
 	}
+	intentID, _ := document["intent_id"].(string)
+	intentType, _ := document["type"].(string)
+	risk, _ := document["risk_class"].(string)
 	return &Intent{
 		ID:               intentID,
 		Type:             intentType,
