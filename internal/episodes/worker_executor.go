@@ -2,23 +2,15 @@ package episodes
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"slices"
-	"strings"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -68,8 +60,8 @@ func NewWorkerExecutorWithEvidence(client runtimev1.EpisodeWorkerClient, name, r
 }
 
 // Execute performs the current-version handshake and consumes one validated
-// server stream. RPC cancellation and deadline errors are returned unchanged
-// so the caller can classify them as cancellation or timeout.
+// server stream. RPC cancellation and deadline errors are wrapped with %w so
+// the caller can still classify them as cancellation or timeout.
 func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Outcome, err error) {
 	if e == nil || e.client == nil {
 		return nil, fmt.Errorf("worker client is not configured")
@@ -95,16 +87,31 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Ou
 		return nil, err
 	}
 	defer cancel()
-	if e.evidenceToolsEndpoint != "" {
-		if err := worker.ValidateEvidenceSocketPath(e.evidenceToolsEndpoint); err != nil {
-			return nil, fmt.Errorf("evidence endpoint: %w", err)
-		}
-		if !slices.Contains(e.requestedFeatures, worker.EvidenceToolsFeature) {
-			return nil, fmt.Errorf("evidence tools require negotiated feature %q", worker.EvidenceToolsFeature)
-		}
-		if e.capabilityFactory == nil {
-			return nil, fmt.Errorf("evidence capability factory is not configured")
-		}
+	wireRequest, err := e.wireRequest(executionCtx, req)
+	if err != nil {
+		return nil, err
+	}
+	handshake, err := e.negotiate(executionCtx, wireRequest)
+	if err != nil {
+		return nil, err
+	}
+	stream, err := e.client.Execute(executionCtx, wireRequest)
+	if err != nil {
+		return nil, fmt.Errorf("execute worker request: %w", err)
+	}
+	consumer := newWorkerStream(req, wireRequest.GetBudget(), handshake.GetMaxEventBytes())
+	if err := consumer.consume(stream); err != nil {
+		return nil, err
+	}
+	return consumer.outcome()
+}
+
+// wireRequest builds the validated worker request for one attempt, bound to
+// the execution deadline and, when evidence tools are enabled, carrying a
+// freshly issued capability.
+func (e *WorkerExecutor) wireRequest(ctx context.Context, req *Request) (*runtimev1.EpisodeRequest, error) {
+	if err := e.validateEvidenceConfig(); err != nil {
+		return nil, err
 	}
 	wireRequest, err := episodeRequest(req)
 	if err != nil {
@@ -113,18 +120,41 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Ou
 	if err := worker.ValidateBudget(wireRequest.GetBudget()); err != nil {
 		return nil, fmt.Errorf("worker request budget: %w", err)
 	}
-	if deadline, ok := executionCtx.Deadline(); ok {
+	if deadline, ok := ctx.Deadline(); ok {
 		wireRequest.Deadline = timestamppb.New(deadline.UTC())
 	}
 	wireRequest.EvidenceToolsEndpoint = e.evidenceToolsEndpoint
 	if e.evidenceToolsEndpoint != "" {
-		capabilityToken, issueErr := e.capabilityFactory.Issue(req)
-		if issueErr != nil {
-			return nil, fmt.Errorf("issue evidence capability: %w", issueErr)
+		capabilityToken, err := e.capabilityFactory.Issue(req)
+		if err != nil {
+			return nil, fmt.Errorf("issue evidence capability: %w", err)
 		}
 		wireRequest.CapabilityToken = append([]byte(nil), capabilityToken...)
 	}
-	handshake, err := e.client.Handshake(executionCtx, &runtimev1.HandshakeRequest{
+	return wireRequest, nil
+}
+
+func (e *WorkerExecutor) validateEvidenceConfig() error {
+	if e.evidenceToolsEndpoint == "" {
+		return nil
+	}
+	if err := worker.ValidateEvidenceSocketPath(e.evidenceToolsEndpoint); err != nil {
+		return fmt.Errorf("evidence endpoint: %w", err)
+	}
+	if !slices.Contains(e.requestedFeatures, worker.EvidenceToolsFeature) {
+		return fmt.Errorf("evidence tools require negotiated feature %q", worker.EvidenceToolsFeature)
+	}
+	if e.capabilityFactory == nil {
+		return fmt.Errorf("evidence capability factory is not configured")
+	}
+	return nil
+}
+
+// negotiate performs the handshake and requires the exact protocol and
+// contract versions, the expected worker identity, every requested feature,
+// and a request within the worker's size limit.
+func (e *WorkerExecutor) negotiate(ctx context.Context, wireRequest *runtimev1.EpisodeRequest) (*runtimev1.HandshakeResponse, error) {
+	handshake, err := e.client.Handshake(ctx, &runtimev1.HandshakeRequest{
 		ProtocolVersion: worker.ProtocolVersion, ContractVersion: worker.ContractVersion,
 		WorkerId: e.name, RuntimeInstanceId: e.runtimeInstance, NonInteractive: true,
 		RequestedFeatures: append([]string(nil), e.requestedFeatures...),
@@ -138,270 +168,15 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Ou
 	if e.name != "" && handshake.GetWorkerName() != e.name {
 		return nil, fmt.Errorf("worker handshake identity mismatch")
 	}
-	advertised := make(map[string]struct{}, len(handshake.GetSupportedFeatures()))
-	for _, feature := range handshake.GetSupportedFeatures() {
-		advertised[feature] = struct{}{}
-	}
 	for _, requested := range e.requestedFeatures {
-		if _, ok := advertised[requested]; !ok {
+		if !slices.Contains(handshake.GetSupportedFeatures(), requested) {
 			return nil, fmt.Errorf("worker did not negotiate requested feature %q", requested)
 		}
 	}
 	if handshake.GetMaxRequestBytes() > 0 && uint64(proto.Size(wireRequest)) > handshake.GetMaxRequestBytes() { //nolint:gosec // protobuf Size is non-negative and bounded by the negotiated request limit.
 		return nil, fmt.Errorf("worker request exceeds negotiated size limit")
 	}
-	stream, err := e.client.Execute(executionCtx, wireRequest)
-	if err != nil {
-		return nil, fmt.Errorf("execute worker request: %w", err)
-	}
-
-	var decision *runtimev1.DecisionProposed
-	var terminal *runtimev1.Terminal
-	sawStarted := false
-	sawTerminal := false
-	nextSequence := uint64(1)
-	var receivedBytes uint64
-	var receivedEvents uint64
-	var sawBudget bool
-	var trustedUsage budgetUsage
-	for {
-		event, recvErr := stream.Recv()
-		if errors.Is(recvErr, io.EOF) {
-			break
-		}
-		if recvErr != nil {
-			return nil, fmt.Errorf("receive worker event: %w", recvErr)
-		}
-		if event == nil {
-			return nil, fmt.Errorf("worker emitted nil event")
-		}
-		eventBytes := uint64(proto.Size(event)) //nolint:gosec // protobuf Size is non-negative.
-		maxEventBytes := handshake.GetMaxEventBytes()
-		if maxEventBytes > 0 && eventBytes > maxEventBytes {
-			return nil, fmt.Errorf("worker event exceeds negotiated size limit")
-		}
-		if receivedEvents >= worker.DefaultMaxEvents || eventBytes > worker.DefaultMaxStreamBytes || receivedBytes > worker.DefaultMaxStreamBytes-eventBytes {
-			return nil, fmt.Errorf("worker stream exceeds size limit")
-		}
-		receivedEvents++
-		receivedBytes += eventBytes
-		if event.GetEpisodeId() != req.EpisodeID || event.GetAttemptId() != req.AttemptID || event.GetFence() != uint64(req.Fence) || event.GetSequence() != nextSequence { //nolint:gosec // Request.Fence is database-validated non-negative.
-			return nil, fmt.Errorf("worker event identity or sequence mismatch")
-		}
-		if sawTerminal {
-			return nil, fmt.Errorf("worker emitted event after terminal")
-		}
-		if event.GetOccurredAt() == nil || !event.GetOccurredAt().IsValid() {
-			return nil, fmt.Errorf("worker event has invalid occurred_at")
-		}
-		if nextSequence == 1 && event.GetStarted() == nil {
-			return nil, fmt.Errorf("worker stream did not start with episode.started")
-		}
-		if event.GetStarted() != nil {
-			if sawStarted {
-				return nil, fmt.Errorf("worker emitted duplicate started event")
-			}
-			sawStarted = true
-		}
-		if err := trustedUsage.observe(wireRequest.GetBudget(), event); err != nil {
-			return nil, err
-		}
-		if budget := event.GetBudget(); budget != nil {
-			sawBudget = true
-		}
-		nextSequence++
-		if candidate := event.GetDecision(); candidate != nil {
-			if decision != nil {
-				return nil, fmt.Errorf("worker emitted duplicate decision")
-			}
-			if candidate.GetEpisodeId() != req.EpisodeID || candidate.GetAttemptId() != req.AttemptID || candidate.GetFence() != uint64(req.Fence) { //nolint:gosec // Request.Fence is database-validated non-negative.
-				return nil, fmt.Errorf("worker decision identity mismatch")
-			}
-			if err := verifyDecisionDigest(candidate.GetDecisionJson(), candidate.GetDecisionSha256()); err != nil {
-				return nil, err
-			}
-			decision = candidate
-		}
-		if candidate := event.GetTerminal(); candidate != nil {
-			if terminal != nil {
-				return nil, fmt.Errorf("worker emitted duplicate terminal")
-			}
-			terminal = candidate
-			sawTerminal = true
-		}
-	}
-	if !sawStarted || terminal == nil {
-		return nil, fmt.Errorf("worker stream ended without terminal")
-	}
-	if hasNumericBudget(wireRequest.GetBudget()) && !sawBudget {
-		return nil, budgetTelemetryMissingError{}
-	}
-	// A cost ceiling requires an explicit usage record, but zero cost is valid
-	// for providers and test workers that cannot price usage.
-	if terminal.GetUsage() != nil {
-		if err := trustedUsage.observeUsage(wireRequest.GetBudget(), terminal.GetUsage()); err != nil {
-			return nil, err
-		}
-	}
-	if hasUsageBudget(wireRequest.GetBudget()) && !trustedUsage.usageReported {
-		if wireRequest.GetBudget().GetMaxCostMicrounits() > 0 {
-			return nil, fmt.Errorf("worker cost telemetry is missing")
-		}
-		return nil, budgetTelemetryMissingError{}
-	}
-
-	outcome = &Outcome{AttemptID: req.AttemptID, Fence: req.Fence, Reasons: []string{terminal.GetReasonCode()}}
-	outcome.CostMicrounits = trustedUsage.usage().costMicrounits
-	switch terminal.GetStatus() {
-	case runtimev1.TerminalStatus_TERMINAL_STATUS_PRODUCED:
-		if decision == nil {
-			return nil, fmt.Errorf("produced worker terminal has no decision")
-		}
-		outcome.Status = string(AttemptProduced)
-		outcome.DecisionJSON = append([]byte(nil), decision.GetDecisionJson()...)
-		outcome.DecisionSHA256 = fmt.Sprintf("sha256:%x", decision.GetDecisionSha256())
-	case runtimev1.TerminalStatus_TERMINAL_STATUS_DECLINED:
-		outcome.Status = string(AttemptDeclined)
-	case runtimev1.TerminalStatus_TERMINAL_STATUS_CANCELLED: //nolint:misspell // Wire enum is frozen by the protocol.
-		outcome.Status = string(AttemptCancelled)
-	case runtimev1.TerminalStatus_TERMINAL_STATUS_TIMED_OUT:
-		outcome.Status = string(AttemptTimedOut)
-	case runtimev1.TerminalStatus_TERMINAL_STATUS_FAILED, runtimev1.TerminalStatus_TERMINAL_STATUS_BUDGET_EXHAUSTED:
-		outcome.Status = string(AttemptFailed)
-	default:
-		return nil, fmt.Errorf("worker returned unspecified terminal status")
-	}
-	return outcome, nil
-}
-
-type budgetUsage struct {
-	modelCalls, toolCalls, providerRetries uint32
-	toolResultBytes                        uint64
-	perEventUsage, cumulativeUsage         usageTotals
-	hasCumulativeUsage, usageReported      bool
-}
-
-func (u *budgetUsage) observe(limit *runtimev1.EpisodeBudget, event *runtimev1.EpisodeEvent) error {
-	if limit == nil || event == nil {
-		return nil
-	}
-	if event.GetModelStarted() != nil {
-		u.modelCalls++
-		if limit.GetMaxModelCalls() > 0 && u.modelCalls > limit.GetMaxModelCalls() {
-			return &budgetExceededError{"model_calls"}
-		}
-	}
-	if completed := event.GetModelCompleted(); completed != nil && completed.GetUsage() != nil {
-		if err := u.addPerEventUsage(completed.GetUsage()); err != nil {
-			return err
-		}
-	}
-	if budget := event.GetBudget(); budget != nil && budget.GetCumulativeUsage() != nil {
-		if err := u.recordCumulativeUsage(budget.GetCumulativeUsage()); err != nil {
-			return err
-		}
-	}
-	if budget := event.GetBudget(); budget != nil {
-		if err := u.observeBudgetUpdate(limit, budget); err != nil {
-			return err
-		}
-	}
-	if tool := event.GetTool(); tool != nil && tool.GetExecutionStarted() {
-		u.toolCalls++
-		if limit.GetMaxToolCalls() > 0 && u.toolCalls > limit.GetMaxToolCalls() {
-			return &budgetExceededError{"tool_calls"}
-		}
-	}
-	if progress := event.GetToolProgress(); progress != nil {
-		u.toolResultBytes += progress.GetBytesRead()
-		if limit.GetMaxToolResultBytes() > 0 && u.toolResultBytes > limit.GetMaxToolResultBytes() {
-			return &budgetExceededError{"tool_result_bytes"}
-		}
-		if limit.GetMaxTotalToolResultBytes() > 0 && u.toolResultBytes > limit.GetMaxTotalToolResultBytes() {
-			return &budgetExceededError{"total_tool_result_bytes"}
-		}
-	}
-	return u.checkUsage(limit)
-}
-
-type usageTotals struct {
-	inputTokens, outputTokens, costMicrounits uint64
-}
-
-func usageFromProto(usage *runtimev1.Usage) usageTotals {
-	if usage == nil {
-		return usageTotals{}
-	}
-	return usageTotals{inputTokens: usage.GetInputTokens(), outputTokens: usage.GetOutputTokens(), costMicrounits: usage.GetCostMicrounits()}
-}
-
-func (u *budgetUsage) addPerEventUsage(usage *runtimev1.Usage) error {
-	u.usageReported = true
-	values := usageFromProto(usage)
-	u.perEventUsage.inputTokens += values.inputTokens
-	u.perEventUsage.outputTokens += values.outputTokens
-	u.perEventUsage.costMicrounits += values.costMicrounits
-	return nil
-}
-
-func (u *budgetUsage) recordCumulativeUsage(usage *runtimev1.Usage) error {
-	u.usageReported = true
-	values := usageFromProto(usage)
-	if u.hasCumulativeUsage && (values.inputTokens < u.cumulativeUsage.inputTokens || values.outputTokens < u.cumulativeUsage.outputTokens || values.costMicrounits < u.cumulativeUsage.costMicrounits) {
-		return fmt.Errorf("worker cumulative usage regressed")
-	}
-	u.cumulativeUsage = values
-	u.hasCumulativeUsage = true
-	return nil
-}
-
-func (u *budgetUsage) usage() usageTotals {
-	result := u.perEventUsage
-	if u.hasCumulativeUsage {
-		result.inputTokens = maxUint64(result.inputTokens, u.cumulativeUsage.inputTokens)
-		result.outputTokens = maxUint64(result.outputTokens, u.cumulativeUsage.outputTokens)
-		result.costMicrounits = maxUint64(result.costMicrounits, u.cumulativeUsage.costMicrounits)
-	}
-	return result
-}
-
-func (u *budgetUsage) observeUsage(limit *runtimev1.EpisodeBudget, usage *runtimev1.Usage) error {
-	if err := u.recordCumulativeUsage(usage); err != nil {
-		return err
-	}
-	return u.checkUsage(limit)
-}
-
-func (u *budgetUsage) checkUsage(limit *runtimev1.EpisodeBudget) error {
-	if limit == nil {
-		return nil
-	}
-	usage := u.usage()
-	if limit.GetMaxInputTokens() > 0 && usage.inputTokens > limit.GetMaxInputTokens() {
-		return &budgetExceededError{"input_tokens"}
-	}
-	if limit.GetMaxOutputTokens() > 0 && usage.outputTokens > limit.GetMaxOutputTokens() {
-		return &budgetExceededError{"output_tokens"}
-	}
-	if limit.GetMaxCostMicrounits() > 0 && usage.costMicrounits > limit.GetMaxCostMicrounits() {
-		return &budgetExceededError{"cost_microunits"}
-	}
-	return nil
-}
-
-func hasUsageBudget(budget *runtimev1.EpisodeBudget) bool {
-	return budget != nil && (budget.GetMaxInputTokens() > 0 || budget.GetMaxOutputTokens() > 0 || budget.GetMaxCostMicrounits() > 0)
-}
-
-func maxUint64(a, b uint64) uint64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func hasNumericBudget(budget *runtimev1.EpisodeBudget) bool {
-	return budget != nil && (budget.GetMaxModelCalls() > 0 || budget.GetMaxInputTokens() > 0 || budget.GetMaxOutputTokens() > 0 || budget.GetMaxToolCalls() > 0 || budget.GetMaxToolResultBytes() > 0 || budget.GetMaxTotalToolResultBytes() > 0 || budget.GetMaxProviderRetries() > 0 || budget.GetMaxCostMicrounits() > 0)
+	return handshake, nil
 }
 
 func boundedExecutionContext(ctx context.Context, wallTime time.Duration) (context.Context, context.CancelFunc, error) {
@@ -410,340 +185,6 @@ func boundedExecutionContext(ctx context.Context, wallTime time.Duration) (conte
 	}
 	bounded, cancel := context.WithTimeout(ctx, wallTime)
 	return bounded, cancel, nil
-}
-
-func (u *budgetUsage) observeBudgetUpdate(limit *runtimev1.EpisodeBudget, update *runtimev1.BudgetUpdated) error {
-	if limit == nil || update == nil {
-		return nil
-	}
-	u.modelCalls = maxUint32(u.modelCalls, update.GetModelCallsUsed())
-	u.toolCalls = maxUint32(u.toolCalls, update.GetToolCallsUsed())
-	u.toolResultBytes = maxUint64(u.toolResultBytes, update.GetToolResultBytesUsed())
-	u.providerRetries = maxUint32(u.providerRetries, update.GetProviderRetriesUsed())
-	usage := update.GetCumulativeUsage()
-	if limit.GetMaxModelCalls() > 0 && update.GetModelCallsUsed() > limit.GetMaxModelCalls() {
-		return &budgetExceededError{"model_calls"}
-	}
-	if limit.GetMaxToolCalls() > 0 && update.GetToolCallsUsed() > limit.GetMaxToolCalls() {
-		return &budgetExceededError{"tool_calls"}
-	}
-	if limit.GetMaxToolResultBytes() > 0 && update.GetToolResultBytesUsed() > limit.GetMaxToolResultBytes() {
-		return &budgetExceededError{"tool_result_bytes"}
-	}
-	if limit.GetMaxProviderRetries() > 0 && update.GetProviderRetriesUsed() > limit.GetMaxProviderRetries() {
-		return &budgetExceededError{"provider_retries"}
-	}
-	if usage == nil {
-		return nil
-	}
-	if limit.GetMaxInputTokens() > 0 && usage.GetInputTokens() > limit.GetMaxInputTokens() {
-		return &budgetExceededError{"input_tokens"}
-	}
-	if limit.GetMaxOutputTokens() > 0 && usage.GetOutputTokens() > limit.GetMaxOutputTokens() {
-		return &budgetExceededError{"output_tokens"}
-	}
-	if limit.GetMaxCostMicrounits() > 0 && usage.GetCostMicrounits() > limit.GetMaxCostMicrounits() {
-		return &budgetExceededError{"cost_microunits"}
-	}
-	return nil
-}
-
-func maxUint32(a, b uint32) uint32 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func verifyDecisionDigest(raw, digest []byte) error {
-	var document map[string]any
-	if err := json.Unmarshal(raw, &document); err != nil {
-		return fmt.Errorf("worker decision is not valid JSON: %w", err)
-	}
-	computed, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
-	if err != nil {
-		return fmt.Errorf("compute worker decision digest: %w", err)
-	}
-	if computed != fmt.Sprintf("sha256:%x", digest) {
-		return fmt.Errorf("worker decision digest mismatch")
-	}
-	return nil
-}
-
-// dispatchPolicyEnum maps the durable policy string to the wire enum. An
-// empty/unset policy is shadow — nothing enters action governance unless the
-// spec declared active.
-func dispatchPolicyEnum(policy string) runtimev1.DispatchPolicy {
-	if policy == "active" {
-		return runtimev1.DispatchPolicy_DISPATCH_POLICY_ACTIVE
-	}
-	return runtimev1.DispatchPolicy_DISPATCH_POLICY_SHADOW
-}
-
-func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
-	if req.SituationVersion <= 0 {
-		return nil, fmt.Errorf("situation version must be positive")
-	}
-	if req.Fence <= 0 {
-		return nil, fmt.Errorf("fence must be positive")
-	}
-	var payload struct {
-		Kind                 string          `json:"kind"`
-		Snapshot             json.RawMessage `json:"snapshot"`
-		Tools                json.RawMessage `json:"tools"`
-		AllowedIntentTypes   []string        `json:"allowed_intent_types"`
-		WatchConfidenceFloor *float64        `json:"watch_confidence_floor"`
-		RiskCeiling          string          `json:"risk_ceiling"`
-		Trigger              struct {
-			TriggerID string `json:"trigger_id"`
-			Lane      string `json:"lane"`
-		} `json:"trigger"`
-		Executor struct {
-			Objective              string           `json:"objective"`
-			Prompt                 string           `json:"prompt"`
-			PromptSHA256           string           `json:"prompt_sha256"`
-			ObjectiveSHA256        string           `json:"objective_sha256"`
-			DecisionSchema         json.RawMessage  `json:"decision_schema"`
-			DiagnosisCatalog       string           `json:"diagnosis_catalog"`
-			DiagnosisCatalogSHA256 string           `json:"diagnosis_catalog_sha256"`
-			IntentCatalog          []map[string]any `json:"intent_catalog"`
-			IntentCatalogSHA256    string           `json:"intent_catalog_sha256"`
-			SkillRefs              []spec.SkillRef  `json:"skill_refs"`
-		} `json:"executor"`
-		Budget struct {
-			ModelCalls           uint32 `json:"model_calls"`
-			InputTokens          uint64 `json:"input_tokens"`
-			OutputTokens         uint64 `json:"output_tokens"`
-			ToolCalls            uint32 `json:"tool_calls"`
-			ToolResultBytes      uint64 `json:"tool_result_bytes"`
-			TotalToolResultBytes uint64 `json:"total_tool_result_bytes"`
-			ProviderRetries      uint32 `json:"provider_retries"`
-			CostMicrounits       uint64 `json:"cost_microunits"`
-		} `json:"budget"`
-		Reconsideration *reconsiderationRequest `json:"reconsideration"`
-		CancellationKey string                  `json:"cancellation_key"`
-		SupersessionKey string                  `json:"supersession_key"`
-	}
-	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
-		return nil, fmt.Errorf("decode request json: %w", err)
-	}
-	snapshot, err := requiredJSON(payload.Snapshot, "snapshot")
-	if err != nil {
-		return nil, err
-	}
-	tools, err := requiredJSON(payload.Tools, "tools")
-	if err != nil {
-		return nil, err
-	}
-	decisionSchema, err := requiredJSON(payload.Executor.DecisionSchema, "decision_schema")
-	if err != nil {
-		return nil, err
-	}
-	decisionSchemaHash := sha256.Sum256(decisionSchema)
-	toolsHash := sha256.Sum256(tools)
-	snapshotDigest, err := canonicaljson.DecodeDigest(req.SnapshotSHA256)
-	if err != nil {
-		return nil, fmt.Errorf("snapshot digest: %w", err)
-	}
-	specDigest, err := canonicaljson.DecodeDigest(req.ExecutorVersion)
-	if err != nil {
-		return nil, fmt.Errorf("spec digest: %w", err)
-	}
-	if payload.Executor.PromptSHA256 == "" || payload.Executor.ObjectiveSHA256 == "" || req.PromptSHA256 == "" || req.ObjectiveSHA256 == "" {
-		return nil, fmt.Errorf("prompt and objective provenance digests are required")
-	}
-	promptDigest, err := canonicaljson.DecodeDigest(payload.Executor.PromptSHA256)
-	if err != nil {
-		return nil, fmt.Errorf("prompt digest: %w", err)
-	}
-	objectiveDigest, err := canonicaljson.DecodeDigest(payload.Executor.ObjectiveSHA256)
-	if err != nil {
-		return nil, fmt.Errorf("objective digest: %w", err)
-	}
-	// The diagnosis catalog is optional at the runtime level (native mode does
-	// not use it); when configured it must be a valid digest. The Ruby worker
-	// fails closed if the request omits the catalog it must verify.
-	var catalogDigest []byte
-	if payload.Executor.DiagnosisCatalogSHA256 != "" {
-		catalogDigest, err = canonicaljson.DecodeDigest(payload.Executor.DiagnosisCatalogSHA256)
-		if err != nil {
-			return nil, fmt.Errorf("diagnosis catalog digest: %w", err)
-		}
-	}
-	if payload.Executor.PromptSHA256 != req.PromptSHA256 || payload.Executor.ObjectiveSHA256 != req.ObjectiveSHA256 {
-		return nil, fmt.Errorf("worker request provenance does not match durable episode provenance")
-	}
-	kind, err := episodeKind(payload.Kind)
-	if err != nil {
-		return nil, err
-	}
-	lane, err := episodeLane(payload.Trigger.Lane)
-	if err != nil {
-		return nil, err
-	}
-	var reconsideration *runtimev1.Reconsideration
-	if kind == runtimev1.EpisodeKind_EPISODE_KIND_RECONSIDER {
-		reconsideration, err = reconsiderationMessage(payload.Reconsideration)
-		if err != nil {
-			return nil, fmt.Errorf("reconsideration payload: %w", err)
-		}
-	}
-	risk, err := riskClass(payload.RiskCeiling)
-	if err != nil {
-		return nil, err
-	}
-	budget := &runtimev1.EpisodeBudget{
-		MaxModelCalls: payload.Budget.ModelCalls, MaxInputTokens: payload.Budget.InputTokens,
-		MaxOutputTokens: payload.Budget.OutputTokens, MaxToolCalls: payload.Budget.ToolCalls,
-		MaxToolResultBytes: payload.Budget.ToolResultBytes, MaxTotalToolResultBytes: payload.Budget.TotalToolResultBytes,
-		MaxProviderRetries: payload.Budget.ProviderRetries, MaxCostMicrounits: payload.Budget.CostMicrounits,
-	}
-	wallTime, err := req.WallTimeBudget()
-	if err != nil {
-		return nil, fmt.Errorf("validate episode budget: %w", err)
-	}
-	if wallTime > 0 {
-		budget.WallTime = durationpb.New(wallTime)
-	}
-	if err := worker.ValidateBudget(budget); err != nil {
-		return nil, fmt.Errorf("worker budget: %w", err)
-	}
-	request := &runtimev1.EpisodeRequest{
-		ProtocolVersion: worker.ProtocolVersion, EpisodeId: req.EpisodeID, TriggerId: payload.Trigger.TriggerID,
-		TenantId: req.TenantID, SituationId: req.SituationID, SituationVersion: uint64(req.SituationVersion), //nolint:gosec // SituationVersion is validated positive before dispatch.
-		SnapshotJson: snapshot, SnapshotSha256: snapshotDigest, DecisionSchemaJson: decisionSchema,
-		DecisionSchemaSha256: decisionSchemaHash[:], ToolCatalogJson: tools, ToolCatalogSha256: toolsHash[:], SpecSha256: specDigest,
-		Objective: payload.Executor.Objective, ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion,
-		ModelPolicy:   req.ModelPolicy,         // P0B/§2.2: the worker needs the role to resolve a model; was previously omitted.
-		Prompt:        payload.Executor.Prompt, // P1/§4.3: the operator prompt body flows to the worker so the frame binds it.
-		PromptVersion: req.PromptVersion, Budget: budget, Traceparent: req.Traceparent, Tracestate: req.Tracestate,
-		Kind: kind, Lane: lane, RiskCeiling: risk, AllowedIntentTypes: payload.AllowedIntentTypes,
-		WatchConfidenceFloor: payload.WatchConfidenceFloor,
-		CancellationKey:      payload.CancellationKey, SupersessionKey: payload.SupersessionKey,
-		PromptSha256: promptDigest, ObjectiveSha256: objectiveDigest,
-		DiagnosisCatalogJson:   []byte(payload.Executor.DiagnosisCatalog),
-		DiagnosisCatalogSha256: catalogDigest,
-		// P4: the compiled intent catalog flows to the worker (which verifies
-		// it before any model call) and back to the validator on the decision
-		// (which verifies it independently).
-		IntentCatalogSha256: []byte(payload.Executor.IntentCatalogSHA256),
-		// P8: the mode matrix rides the wire. active|shadow; the worker carries
-		// it (it is part of the durable payload) but the GO side enforces it.
-		DispatchPolicy: dispatchPolicyEnum(req.DispatchPolicy),
-		AttemptId:      req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
-		Reconsideration: reconsideration,
-	}
-	intentCatalogJSON, err := marshalIntentCatalog(payload.Executor.IntentCatalog)
-	if err != nil {
-		return nil, fmt.Errorf("marshal intent catalog: %w", err)
-	}
-	if len(intentCatalogJSON) == 0 {
-		return nil, fmt.Errorf("intent catalog is empty")
-	}
-	request.IntentCatalogJson = intentCatalogJSON
-	skillRefs := payload.Executor.SkillRefs
-	if skillRefs == nil {
-		skillRefs = []spec.SkillRef{}
-	}
-	skillRefsJSON, err := json.Marshal(skillRefs)
-	if err != nil {
-		return nil, fmt.Errorf("marshal skill refs: %w", err)
-	}
-	request.SkillRefsJson = skillRefsJSON
-	return request, nil
-}
-
-func marshalIntentCatalog(entries []map[string]any) ([]byte, error) {
-	if len(entries) == 0 {
-		return nil, nil
-	}
-	encoded, err := json.Marshal(entries)
-	if err != nil {
-		return nil, fmt.Errorf("marshal intent catalog: %w", err)
-	}
-	return encoded, nil
-}
-
-type reconsiderationRequest struct {
-	PriorDecision json.RawMessage   `json:"prior_decision"`
-	Commands      []json.RawMessage `json:"commands"`
-	Outcomes      []json.RawMessage `json:"outcomes"`
-	Correction    json.RawMessage   `json:"correction"`
-}
-
-func reconsiderationMessage(payload *reconsiderationRequest) (*runtimev1.Reconsideration, error) {
-	if payload == nil {
-		return nil, fmt.Errorf("payload is required")
-	}
-	priorDecision, err := requiredJSON(payload.PriorDecision, "prior_decision")
-	if err != nil {
-		return nil, err
-	}
-	correction, err := requiredJSON(payload.Correction, "correction")
-	if err != nil {
-		return nil, err
-	}
-	commands := make([][]byte, 0, len(payload.Commands))
-	for index, command := range payload.Commands {
-		encoded, err := requiredJSON(command, fmt.Sprintf("commands[%d]", index))
-		if err != nil {
-			return nil, err
-		}
-		commands = append(commands, encoded)
-	}
-	outcomes := make([][]byte, 0, len(payload.Outcomes))
-	for index, outcome := range payload.Outcomes {
-		encoded, err := requiredJSON(outcome, fmt.Sprintf("outcomes[%d]", index))
-		if err != nil {
-			return nil, err
-		}
-		outcomes = append(outcomes, encoded)
-	}
-	return &runtimev1.Reconsideration{
-		PriorDecisionJson:   priorDecision,
-		ExecutedCommandJson: commands,
-		ObservedOutcomeJson: outcomes,
-		CorrectionJson:      correction,
-	}, nil
-}
-
-func requiredJSON(raw json.RawMessage, name string) ([]byte, error) {
-	if len(raw) == 0 || string(raw) == "null" {
-		return nil, fmt.Errorf("%s is required", name)
-	}
-	return append([]byte(nil), raw...), nil
-}
-
-func episodeKind(value string) (runtimev1.EpisodeKind, error) {
-	switch strings.ToLower(value) {
-	case "standard", "diagnose", "diagnosis":
-		return runtimev1.EpisodeKind_EPISODE_KIND_DIAGNOSE, nil
-	case "reconsider", "reconsideration":
-		return runtimev1.EpisodeKind_EPISODE_KIND_RECONSIDER, nil
-	default:
-		return 0, fmt.Errorf("unsupported episode kind %q", value)
-	}
-}
-
-func episodeLane(value string) (runtimev1.EpisodeLane, error) {
-	switch strings.ToLower(value) {
-	case "fast":
-		return runtimev1.EpisodeLane_EPISODE_LANE_FAST, nil
-	case "deep":
-		return runtimev1.EpisodeLane_EPISODE_LANE_DEEP, nil
-	case "batch":
-		return runtimev1.EpisodeLane_EPISODE_LANE_BATCH, nil
-	default:
-		return 0, fmt.Errorf("unsupported episode lane %q", value)
-	}
-}
-
-func riskClass(value string) (runtimev1.RiskClass, error) {
-	value = strings.ToUpper(strings.TrimSpace(value))
-	if len(value) != 2 || value[0] != 'R' || value[1] < '0' || value[1] > '4' {
-		return 0, fmt.Errorf("unsupported risk ceiling %q", value)
-	}
-	return runtimev1.RiskClass(int32(runtimev1.RiskClass_RISK_CLASS_R0) + int32(value[1]-'0')), nil
 }
 
 var _ Executor = (*WorkerExecutor)(nil)

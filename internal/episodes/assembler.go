@@ -98,37 +98,18 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 		return nil, fmt.Errorf("tenant mismatch: item belongs to %s, requested %s", item.TenantID, tenantID)
 	}
 
-	ev, err := a.loadEvaluation(ctx, tx, item.TriggerID)
-	if err != nil {
-		return nil, fmt.Errorf("load evaluation: %w", err)
-	}
-
-	evidence, err := a.loadValidatedSnapshot(ctx, tx, item.SituationID, item.SituationVersion, tenantID)
+	inputs, err := a.loadInputs(ctx, tx, item, tenantID)
 	if err != nil {
 		return nil, err
 	}
-	snapshot := evidence.document
-	entityID := evidence.entityID
-	traceparent := evidence.traceparent
-	tracestate := evidence.tracestate
-
-	var delta map[string]any
-	if len(ev.DeltaJSON) > 0 {
-		if err := json.Unmarshal(ev.DeltaJSON, &delta); err != nil {
-			return nil, fmt.Errorf("unmarshal delta: %w", err)
-		}
-	}
-
-	var reconsideration map[string]any
-	if item.Kind == "reconsider" {
-		reconsideration, err = loadReconsideration(ctx, tx, item, ev, delta, snapshot)
-		if err != nil {
-			return nil, fmt.Errorf("load reconsideration: %w", err)
-		}
-	}
+	ev, evidence := inputs.evaluation, inputs.snapshot
 
 	tools := a.buildTools()
 	episodeID := a.idGen.New(ids.PrefixEpisode)
+	executorDocument, err := a.executorDocument()
+	if err != nil {
+		return nil, err
+	}
 	request := map[string]any{
 		"episode_id":        episodeID,
 		"kind":              item.Kind,
@@ -143,29 +124,107 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 			"threshold":    ev.Threshold,
 			"lane":         ev.Lane,
 		},
-		"snapshot":               snapshot,
-		"delta":                  delta,
+		"snapshot":               evidence.document,
+		"delta":                  inputs.delta,
 		"tools":                  tools,
 		"allowed_intent_types":   a.allowedIntentTypeList(),
 		"watch_confidence_floor": a.spec.Actions.EffectiveWatchConfidenceFloor(),
 		"risk_ceiling":           a.effectiveRiskCeiling(),
-		"executor": map[string]any{
-			"name":              a.spec.Cognition.Executor.Name,
-			"model_policy":      a.spec.Cognition.Executor.ModelPolicy,
-			"prompt_version":    a.spec.Cognition.Executor.PromptVersion,
-			"prompt":            a.spec.Cognition.Executor.Prompt,
-			"objective":         a.spec.Cognition.Executor.Objective,
-			"decision_schema":   a.spec.Cognition.Executor.DecisionSchema,
-			"diagnosis_catalog": a.spec.Cognition.Executor.DiagnosisCatalog,
-		},
-		"budget":           a.budgetMap(),
-		"cancellation_key": "episode:" + episodeID,
-		"supersession_key": "situation:" + item.SituationID,
-		"traceparent":      traceparent,
-		"tracestate":       tracestate,
+		"executor":               executorDocument,
+		"budget":                 a.budgetMap(),
+		"cancellation_key":       "episode:" + episodeID,
+		"supersession_key":       "situation:" + item.SituationID,
+		"traceparent":            evidence.traceparent,
+		"tracestate":             evidence.tracestate,
 	}
-	if reconsideration != nil {
-		request["reconsideration"] = reconsideration
+	if inputs.reconsideration != nil {
+		request["reconsideration"] = inputs.reconsideration
+	}
+	admissionKey := sha256.Sum256([]byte(episodeID + "|" + schedulerItemID))
+
+	// The snapshot digest covers exactly the immutable Situation snapshot, not
+	// trigger routing or executor capabilities.
+	request["snapshot_digest"] = evidence.digest
+	requestJSON, err := canonicaljson.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req := &Request{
+		EpisodeID:        episodeID,
+		SchedulerItemID:  schedulerItemID,
+		Kind:             item.Kind,
+		TenantID:         tenantID,
+		SituationID:      item.SituationID,
+		SituationVersion: item.SituationVersion,
+		EntityID:         evidence.entityID,
+		ExecutorName:     a.spec.Cognition.Executor.Name,
+		ExecutorVersion:  a.spec.Digest,
+		ModelPolicy:      a.spec.Cognition.Executor.ModelPolicy,
+		PromptVersion:    a.spec.Cognition.Executor.PromptVersion,
+		PromptSHA256:     executorDocument["prompt_sha256"].(string),
+		ObjectiveSHA256:  executorDocument["objective_sha256"].(string),
+		SnapshotSHA256:   evidence.digest,
+		AdmissionKey:     admissionKey[:],
+		RequestJSON:      requestJSON,
+		Traceparent:      evidence.traceparent,
+		Tracestate:       evidence.tracestate,
+		CancellationKey:  "episode:" + episodeID,
+		SupersessionKey:  "situation:" + item.SituationID,
+		DispatchPolicy:   a.spec.Cognition.Executor.DispatchPolicy,
+	}
+	if _, err := req.WallTimeBudget(); err != nil {
+		return nil, fmt.Errorf("validate episode budget: %w", err)
+	}
+	return req, nil
+}
+
+// assemblyInputs are the durable facts one scheduler item is assembled from.
+type assemblyInputs struct {
+	evaluation      evaluation
+	snapshot        *snapshotEvidence
+	delta           map[string]any
+	reconsideration map[string]any
+}
+
+// loadInputs reads the trigger evaluation, the validated Situation snapshot,
+// and, for a reconsider item, the reconsideration context.
+func (a *Assembler) loadInputs(ctx context.Context, tx *sql.Tx, item schedulerItem, tenantID string) (assemblyInputs, error) {
+	var inputs assemblyInputs
+	var err error
+	inputs.evaluation, err = a.loadEvaluation(ctx, tx, item.TriggerID)
+	if err != nil {
+		return assemblyInputs{}, fmt.Errorf("load evaluation: %w", err)
+	}
+	inputs.snapshot, err = a.loadValidatedSnapshot(ctx, tx, item.SituationID, item.SituationVersion, tenantID)
+	if err != nil {
+		return assemblyInputs{}, err
+	}
+	if len(inputs.evaluation.DeltaJSON) > 0 {
+		if err := json.Unmarshal(inputs.evaluation.DeltaJSON, &inputs.delta); err != nil {
+			return assemblyInputs{}, fmt.Errorf("unmarshal delta: %w", err)
+		}
+	}
+	if item.Kind == "reconsider" {
+		inputs.reconsideration, err = loadReconsideration(ctx, tx, item, inputs.evaluation, inputs.delta, inputs.snapshot.document)
+		if err != nil {
+			return assemblyInputs{}, fmt.Errorf("load reconsideration: %w", err)
+		}
+	}
+	return inputs, nil
+}
+
+// executorDocument is the spec-derived executor section of every request,
+// with the provenance digests the worker and validator verify.
+func (a *Assembler) executorDocument() (map[string]any, error) {
+	executorDocument := map[string]any{
+		"name":              a.spec.Cognition.Executor.Name,
+		"model_policy":      a.spec.Cognition.Executor.ModelPolicy,
+		"prompt_version":    a.spec.Cognition.Executor.PromptVersion,
+		"prompt":            a.spec.Cognition.Executor.Prompt,
+		"objective":         a.spec.Cognition.Executor.Objective,
+		"decision_schema":   a.spec.Cognition.Executor.DecisionSchema,
+		"diagnosis_catalog": a.spec.Cognition.Executor.DiagnosisCatalog,
 	}
 	promptDigest, err := canonicaljson.Digest(canonicaljson.DomainPrompt, map[string]any{
 		"version": a.spec.Cognition.Executor.PromptVersion,
@@ -194,7 +253,6 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	if err != nil {
 		return nil, fmt.Errorf("digest diagnosis catalog provenance: %w", err)
 	}
-	executorDocument := request["executor"].(map[string]any)
 	executorDocument["prompt_sha256"] = promptDigest
 	executorDocument["objective_sha256"] = objectiveDigest
 	executorDocument["diagnosis_catalog_sha256"] = catalogDigest
@@ -215,44 +273,7 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	// text only from the operator-approved directory and requires the tree
 	// digest to match (unknown name or mismatch fails before a model call).
 	executorDocument["skill_refs"] = a.spec.Cognition.Executor.Skills
-
-	admissionKey := sha256.Sum256([]byte(episodeID + "|" + schedulerItemID))
-
-	// The snapshot digest covers exactly the immutable Situation snapshot, not
-	// trigger routing or executor capabilities.
-	request["snapshot_digest"] = evidence.digest
-	requestJSON, err := canonicaljson.Marshal(request)
-	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-
-	req := &Request{
-		EpisodeID:        episodeID,
-		SchedulerItemID:  schedulerItemID,
-		Kind:             item.Kind,
-		TenantID:         tenantID,
-		SituationID:      item.SituationID,
-		SituationVersion: item.SituationVersion,
-		EntityID:         entityID,
-		ExecutorName:     a.spec.Cognition.Executor.Name,
-		ExecutorVersion:  a.spec.Digest,
-		ModelPolicy:      a.spec.Cognition.Executor.ModelPolicy,
-		PromptVersion:    a.spec.Cognition.Executor.PromptVersion,
-		PromptSHA256:     promptDigest,
-		ObjectiveSHA256:  objectiveDigest,
-		SnapshotSHA256:   evidence.digest,
-		AdmissionKey:     admissionKey[:],
-		RequestJSON:      requestJSON,
-		Traceparent:      traceparent,
-		Tracestate:       tracestate,
-		CancellationKey:  "episode:" + episodeID,
-		SupersessionKey:  "situation:" + item.SituationID,
-		DispatchPolicy:   a.spec.Cognition.Executor.DispatchPolicy,
-	}
-	if _, err := req.WallTimeBudget(); err != nil {
-		return nil, fmt.Errorf("validate episode budget: %w", err)
-	}
-	return req, nil
+	return executorDocument, nil
 }
 
 func snapshotEntityID(raw []byte) (string, error) {
@@ -569,6 +590,53 @@ type reconsiderationRow struct {
 }
 
 func loadReconsideration(ctx context.Context, tx *sql.Tx, item schedulerItem, ev evaluation, delta, snapshot map[string]any) (map[string]any, error) {
+	row, err := queryReconsideration(ctx, tx, item, delta)
+	if err != nil {
+		return nil, err
+	}
+	priorDecision, err := jsonDocument(row.PriorDecisionJSON, "prior decision")
+	if err != nil {
+		return nil, err
+	}
+	if err := setDocumentIdentity(priorDecision, "decision_id", row.PriorDecisionID); err != nil {
+		return nil, err
+	}
+	command, err := row.commandDocument()
+	if err != nil {
+		return nil, err
+	}
+	outcome, err := row.outcomeDocument()
+	if err != nil {
+		return nil, err
+	}
+
+	correction := copyDocument(snapshot)
+	if nested, ok := delta["correction"].(map[string]any); ok {
+		correction = copyDocument(nested)
+	}
+	correction["reason"] = ev.TriggerName
+	correction["invalidates"] = []string{row.InvalidatedCommandID}
+	correction["superseded_version"] = row.SupersededVersion
+	correction["correction_version"] = row.CorrectionVersion
+
+	return map[string]any{
+		"reconsideration_id":     row.ReconsiderationID,
+		"situation_id":           row.SituationID,
+		"superseded_version":     row.SupersededVersion,
+		"correction_version":     row.CorrectionVersion,
+		"invalidated_command_id": row.InvalidatedCommandID,
+		"invalidated_outcome_id": row.InvalidatedOutcomeID,
+		"prior_decision":         priorDecision,
+		"commands":               []map[string]any{command},
+		"outcomes":               []map[string]any{outcome},
+		"correction":             correction,
+	}, nil
+}
+
+// queryReconsideration loads the invalidated command, its decision, and its
+// outcome for a reconsider item, preferring the exact scheduler item, then
+// the trigger, then the superseded version and command.
+func queryReconsideration(ctx context.Context, tx *sql.Tx, item schedulerItem, delta map[string]any) (reconsiderationRow, error) {
 	supersededVersion := snapshotInt(delta, "superseded_version")
 	invalidatedCommandID := snapshotString(delta, "invalidated_command_id")
 	var row reconsiderationRow
@@ -605,16 +673,14 @@ func loadReconsideration(ctx context.Context, tx *sql.Tx, item schedulerItem, ev
 		&row.OutcomeID, &row.OutcomeOrdinal, &row.OutcomeStatus, &row.ProviderResultJSON, &row.ObservedEffectJSON,
 		&row.ReconciliationStatus, &row.OutcomeSHA256,
 	); err != nil {
-		return nil, fmt.Errorf("query reconsideration evidence: %w", err)
+		return reconsiderationRow{}, fmt.Errorf("query reconsideration evidence: %w", err)
 	}
 
-	priorDecision, err := jsonDocument(row.PriorDecisionJSON, "prior decision")
-	if err != nil {
-		return nil, err
-	}
-	if err := setDocumentIdentity(priorDecision, "decision_id", row.PriorDecisionID); err != nil {
-		return nil, err
-	}
+	return row, nil
+}
+
+// commandDocument is the executed command with its durable identity and status.
+func (row reconsiderationRow) commandDocument() (map[string]any, error) {
 	command, err := jsonDocument(row.CommandJSON, "executed command")
 	if err != nil {
 		return nil, err
@@ -633,7 +699,11 @@ func loadReconsideration(ctx context.Context, tx *sql.Tx, item schedulerItem, ev
 			command["parameters"] = payload
 		}
 	}
+	return command, nil
+}
 
+// outcomeDocument is the observed outcome of the invalidated command.
+func (row reconsiderationRow) outcomeDocument() (map[string]any, error) {
 	outcome := map[string]any{
 		"outcome_id":            row.OutcomeID,
 		"command_id":            row.InvalidatedCommandID,
@@ -642,38 +712,21 @@ func loadReconsideration(ctx context.Context, tx *sql.Tx, item schedulerItem, ev
 		"outcome_sha256":        "sha256:" + hex.EncodeToString(row.OutcomeSHA256),
 		"reconciliation_status": row.ReconciliationStatus.String,
 	}
-	if provider, err := optionalJSONDocument(row.ProviderResultJSON, "provider result"); err != nil {
+	provider, err := optionalJSONDocument(row.ProviderResultJSON, "provider result")
+	if err != nil {
 		return nil, err
-	} else if provider != nil {
+	}
+	if provider != nil {
 		outcome["provider_result"] = provider
 	}
-	if observed, err := optionalJSONDocument(row.ObservedEffectJSON, "observed effect"); err != nil {
+	observed, err := optionalJSONDocument(row.ObservedEffectJSON, "observed effect")
+	if err != nil {
 		return nil, err
-	} else if observed != nil {
+	}
+	if observed != nil {
 		outcome["observed_effect"] = observed
 	}
-
-	correction := copyDocument(snapshot)
-	if nested, ok := delta["correction"].(map[string]any); ok {
-		correction = copyDocument(nested)
-	}
-	correction["reason"] = ev.TriggerName
-	correction["invalidates"] = []string{row.InvalidatedCommandID}
-	correction["superseded_version"] = row.SupersededVersion
-	correction["correction_version"] = row.CorrectionVersion
-
-	return map[string]any{
-		"reconsideration_id":     row.ReconsiderationID,
-		"situation_id":           row.SituationID,
-		"superseded_version":     row.SupersededVersion,
-		"correction_version":     row.CorrectionVersion,
-		"invalidated_command_id": row.InvalidatedCommandID,
-		"invalidated_outcome_id": row.InvalidatedOutcomeID,
-		"prior_decision":         priorDecision,
-		"commands":               []map[string]any{command},
-		"outcomes":               []map[string]any{outcome},
-		"correction":             correction,
-	}, nil
+	return outcome, nil
 }
 
 func jsonDocument(raw []byte, name string) (map[string]any, error) {
