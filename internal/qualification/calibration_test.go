@@ -41,3 +41,25 @@ func TestCalibrationActivationReplacesPriorArtifact(t *testing.T) {
 		t.Fatal("unconfigured store activated an artifact")
 	}
 }
+
+func TestFailedCalibrationReplacementRetainsActiveArtifact(t *testing.T) {
+	db, _ := openOwnerDB(t)
+	ctx := t.Context()
+	store := &qualification.CalibrationStore{DB: db}
+	first := qualification.CalibrationArtifact{Domain: "motors", ModelRevision: "rev-1"}
+	if err := store.Activate(ctx, first, "sharedprefix-first"); err != nil {
+		t.Fatal(err)
+	}
+	second := first
+	second.ModelRevision = "rev-2"
+	// Different digests sharing the artifact ID prefix fail after deactivation.
+	if err := store.Activate(ctx, second, "sharedprefix-second"); err == nil {
+		t.Fatal("artifact identity conflict was ignored")
+	}
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error { return store.AssertCalibration(ctx, tx, first) }); err != nil {
+		t.Fatalf("failed replacement deactivated the prior artifact: %v", err)
+	}
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error { return store.AssertCalibration(ctx, tx, second) }); !errors.Is(err, qualification.ErrCalibrationMissing) {
+		t.Fatalf("failed replacement became active: %v", err)
+	}
+}

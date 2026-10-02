@@ -63,24 +63,35 @@ func (s *CalibrationStore) Activate(ctx context.Context, artifact CalibrationArt
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if err := s.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx,
-			`UPDATE calibration_artifacts SET active = 0 WHERE domain = ?`, artifact.Domain); err != nil {
-			return fmt.Errorf("deactivate prior calibration: %w", err)
+		if err := deactivatePriorCalibration(ctx, tx, artifact.Domain); err != nil {
+			return err
 		}
-		if _, err := tx.ExecContext(ctx, `
+		return registerActiveCalibration(ctx, tx, artifact, artifactSHA256, now)
+	}); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+	return nil
+}
+
+func deactivatePriorCalibration(ctx context.Context, tx *sql.Tx, domain string) error {
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE calibration_artifacts SET active = 0 WHERE domain = ?`, domain); err != nil {
+		return fmt.Errorf("deactivate prior calibration: %w", err)
+	}
+	return nil
+}
+
+func registerActiveCalibration(ctx context.Context, tx *sql.Tx, artifact CalibrationArtifact, artifactSHA256, now string) error {
+	if _, err := tx.ExecContext(ctx, `
 			INSERT INTO calibration_artifacts (
 				artifact_id, domain, model_revision, profile_digest, prompt_sha256,
 				diagnosis_catalog_sha256, policy_digest, artifact_sha256, active, created_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 			ON CONFLICT(domain, artifact_sha256) DO UPDATE SET active = 1`,
-			artifact.Domain+"-"+shortDigest(artifactSHA256), artifact.Domain,
-			artifact.ModelRevision, artifact.ProfileDigest, artifact.PromptSHA256,
-			artifact.DiagnosisCatalogSHA, artifact.PolicyDigest, artifactSHA256, now); err != nil {
-			return fmt.Errorf("activate calibration artifact: %w", err)
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("%w", err)
+		artifact.Domain+"-"+shortDigest(artifactSHA256), artifact.Domain,
+		artifact.ModelRevision, artifact.ProfileDigest, artifact.PromptSHA256,
+		artifact.DiagnosisCatalogSHA, artifact.PolicyDigest, artifactSHA256, now); err != nil {
+		return fmt.Errorf("activate calibration artifact: %w", err)
 	}
 	return nil
 }

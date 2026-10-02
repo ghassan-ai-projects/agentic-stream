@@ -27,13 +27,21 @@ type Admission struct {
 // Admit admits the episode. A reconsideration that collides with a
 // live episode for its Situation reports ErrLiveEpisodeConflict.
 func Admit(ctx context.Context, tx *sql.Tx, req Admission, now time.Time) error {
+	dispatchPolicy := admissionDispatchPolicy(req.DispatchPolicy)
+	return persistAdmittedEpisode(ctx, tx, req, now, dispatchPolicy)
+}
+
+func admissionDispatchPolicy(declared string) string {
 	// P8: an empty dispatch policy is SHADOW — nothing enters action
 	// governance unless the spec declared active. The CHECK column stays
 	// strict (active|shadow); this is the only place a value is written.
-	dispatchPolicy := req.DispatchPolicy
-	if dispatchPolicy == "" {
-		dispatchPolicy = "shadow"
+	if declared == "" {
+		return "shadow"
 	}
+	return declared
+}
+
+func persistAdmittedEpisode(ctx context.Context, tx *sql.Tx, req Admission, now time.Time, dispatchPolicy string) error {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO episodes (
 			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
