@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -81,80 +82,118 @@ func (e *WatchEffector) dispatch(ctx context.Context, command Command, _ func(co
 	if command.EffectorRoute != "install_watch_condition" {
 		return Effect{}, fmt.Errorf("watch effector does not support route %q", command.EffectorRoute)
 	}
-	expression, _ := command.Payload["expression"].(string)
-	target, _ := command.Payload["target"].(string)
-	expiresAt, _ := command.Payload["expires_at"].(string)
-	situationID, _ := command.Payload["situation_id"].(string)
-	situationVersion, ok := integerPayload(command.Payload["situation_version"])
-	remaining, remainingOK := integerPayload(command.Payload["max_fires"])
-	if expression == "" || len(expression) > 4096 || target == "" || situationID == "" || !ok || situationVersion < 1 || !remainingOK || remaining < 1 || remaining > 100 {
-		return Effect{}, fmt.Errorf("watch condition payload is invalid")
-	}
-	if err := validateWatchExpression(expression); err != nil {
+	want, err := watchConditionFromCommand(command, e.clk.Now().UTC())
+	if err != nil {
 		return Effect{}, err
 	}
 	watchID := command.CommandID
 	if command.IdempotencyKey != "" {
 		watchID = command.IdempotencyKey
 	}
-	parsedExpiry, err := time.Parse(time.RFC3339Nano, expiresAt)
-	if err != nil || !parsedExpiry.After(e.clk.Now().UTC()) {
-		return Effect{}, fmt.Errorf("watch condition expiry is invalid")
-	}
-	expiresAt = parsedExpiry.UTC().Format(time.RFC3339Nano)
 	now := e.clk.Now().UTC().Format(time.RFC3339Nano)
 	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
-		var existing struct {
-			TenantID, SituationID, Expression, Target, ExpiresAt string
-			SituationVersion, RemainingFires                     int
+		existing, err := loadWatchCondition(ctx, tx, watchID)
+		if err != nil {
+			return fmt.Errorf("load existing watch condition: %w", err)
 		}
-		var maxFires int
-		existingErr := tx.QueryRowContext(ctx, `SELECT tenant_id, situation_id, situation_version, expression, target, expires_at, remaining_fires, max_fires FROM watch_conditions WHERE watch_id = ?`, watchID).Scan(&existing.TenantID, &existing.SituationID, &existing.SituationVersion, &existing.Expression, &existing.Target, &existing.ExpiresAt, &existing.RemainingFires, &maxFires)
-		if existingErr == nil {
-			if existing.TenantID != command.TenantID || existing.SituationID != situationID || existing.SituationVersion != situationVersion || existing.Expression != expression || existing.Target != target || existing.ExpiresAt != expiresAt || maxFires != remaining {
-				return fmt.Errorf("watch command idempotency conflict")
-			}
-			return nil
+		if existing != nil {
+			return want.sameAs(*existing)
 		}
-		if existingErr != sql.ErrNoRows {
-			return fmt.Errorf("load existing watch condition: %w", existingErr)
+		if err := e.assertGuards(ctx, tx, command.TenantID, want.target); err != nil {
+			return err
 		}
-		if e.owner != nil && e.ownerEpoch != "" {
-			if err := e.owner.Assert(ctx, tx, e.ownerEpoch); err != nil {
-				return fmt.Errorf("assert watch runtime owner: %w", err)
-			}
-		}
-		if e.interlock != nil {
-			if err := e.interlock.Assert(ctx, tx, command.TenantID, target, ""); err != nil {
-				return fmt.Errorf("assert watch interlock: %w", err)
-			}
-		}
-		_, err := tx.ExecContext(ctx, `
+		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO watch_conditions (
 				watch_id, tenant_id, situation_id, situation_version, expression, target,
 				expires_at, remaining_fires, max_fires, status, created_at, updated_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
 			ON CONFLICT(watch_id) DO NOTHING`,
-			watchID, command.TenantID, situationID, situationVersion, expression, target,
-			expiresAt, remaining, remaining, now, now)
-		if err != nil {
+			watchID, want.tenantID, want.situationID, want.situationVersion, want.expression, want.target,
+			want.expiresAt, want.maxFires, want.maxFires, now, now); err != nil {
 			return fmt.Errorf("install watch condition: %w", err)
 		}
-		var stored struct {
-			TenantID, SituationID, Expression, Target, ExpiresAt string
-			SituationVersion, RemainingFires, MaxFires           int
-		}
-		if err := tx.QueryRowContext(ctx, `SELECT tenant_id, situation_id, situation_version, expression, target, expires_at, remaining_fires, max_fires FROM watch_conditions WHERE watch_id = ?`, watchID).Scan(&stored.TenantID, &stored.SituationID, &stored.SituationVersion, &stored.Expression, &stored.Target, &stored.ExpiresAt, &stored.RemainingFires, &stored.MaxFires); err != nil {
+		stored, err := loadWatchCondition(ctx, tx, watchID)
+		if err != nil {
 			return fmt.Errorf("verify installed watch condition: %w", err)
 		}
-		if stored.TenantID != command.TenantID || stored.SituationID != situationID || stored.SituationVersion != situationVersion || stored.Expression != expression || stored.Target != target || stored.ExpiresAt != expiresAt || stored.MaxFires != remaining {
-			return fmt.Errorf("watch command idempotency conflict")
+		if stored == nil {
+			return fmt.Errorf("verify installed watch condition: %w", sql.ErrNoRows)
 		}
-		return nil
+		return want.sameAs(*stored)
 	}); err != nil {
 		return Effect{}, fmt.Errorf("watch condition transaction: %w", err)
 	}
 	return Effect{ProviderResult: map[string]any{"accepted": true, "watch_id": watchID}}, nil
+}
+
+// watchCondition is the identity-defining content of an installed watch.
+type watchCondition struct {
+	tenantID, situationID, expression, target, expiresAt string
+	situationVersion, maxFires                           int
+}
+
+// watchConditionFromCommand validates a watch payload: a bounded, valid
+// expression, a target and Situation, 1-100 fires, and a future expiry.
+func watchConditionFromCommand(command Command, now time.Time) (watchCondition, error) {
+	condition := watchCondition{tenantID: command.TenantID}
+	condition.expression, _ = command.Payload["expression"].(string)
+	condition.target, _ = command.Payload["target"].(string)
+	condition.situationID, _ = command.Payload["situation_id"].(string)
+	expiresAt, _ := command.Payload["expires_at"].(string)
+	var versionOK, firesOK bool
+	condition.situationVersion, versionOK = integerPayload(command.Payload["situation_version"])
+	condition.maxFires, firesOK = integerPayload(command.Payload["max_fires"])
+	if condition.expression == "" || len(condition.expression) > 4096 || condition.target == "" || condition.situationID == "" ||
+		!versionOK || condition.situationVersion < 1 || !firesOK || condition.maxFires < 1 || condition.maxFires > 100 {
+		return watchCondition{}, fmt.Errorf("watch condition payload is invalid")
+	}
+	if err := validateWatchExpression(condition.expression); err != nil {
+		return watchCondition{}, err
+	}
+	parsedExpiry, err := time.Parse(time.RFC3339Nano, expiresAt)
+	if err != nil || !parsedExpiry.After(now) {
+		return watchCondition{}, fmt.Errorf("watch condition expiry is invalid")
+	}
+	condition.expiresAt = parsedExpiry.UTC().Format(time.RFC3339Nano)
+	return condition, nil
+}
+
+// loadWatchCondition returns the stored watch, or nil when none exists.
+func loadWatchCondition(ctx context.Context, tx *sql.Tx, watchID string) (*watchCondition, error) {
+	var stored watchCondition
+	var remainingFires int
+	err := tx.QueryRowContext(ctx, `SELECT tenant_id, situation_id, situation_version, expression, target, expires_at, remaining_fires, max_fires FROM watch_conditions WHERE watch_id = ?`, watchID).Scan(&stored.tenantID, &stored.situationID, &stored.situationVersion, &stored.expression, &stored.target, &stored.expiresAt, &remainingFires, &stored.maxFires)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load watch condition: %w", err)
+	}
+	return &stored, nil
+}
+
+// sameAs makes a repeated install idempotent: the same watch ID must carry
+// the same condition.
+func (c watchCondition) sameAs(stored watchCondition) error {
+	if c != stored {
+		return fmt.Errorf("watch command idempotency conflict")
+	}
+	return nil
+}
+
+// assertGuards re-checks runtime ownership and the governance interlock.
+func (e *WatchEffector) assertGuards(ctx context.Context, tx *sql.Tx, tenantID, target string) error {
+	if e.owner != nil && e.ownerEpoch != "" {
+		if err := e.owner.Assert(ctx, tx, e.ownerEpoch); err != nil {
+			return fmt.Errorf("assert watch runtime owner: %w", err)
+		}
+	}
+	if e.interlock != nil {
+		if err := e.interlock.Assert(ctx, tx, tenantID, target, ""); err != nil {
+			return fmt.Errorf("assert watch interlock: %w", err)
+		}
+	}
+	return nil
 }
 
 // Fire records one event-driven watch firing exactly once and decrements its
@@ -167,63 +206,70 @@ func (e *WatchEffector) Fire(ctx context.Context, watchID, eventID, situationID,
 	now := e.clk.Now().UTC().Format(time.RFC3339Nano)
 	fired := false
 	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
-		if e.owner != nil && e.ownerEpoch != "" {
-			if err := e.owner.Assert(ctx, tx, e.ownerEpoch); err != nil {
-				return fmt.Errorf("assert watch runtime owner: %w", err)
-			}
-		}
-		if e.interlock != nil {
-			if err := e.interlock.Assert(ctx, tx, "", "", ""); err != nil {
-				return fmt.Errorf("assert watch interlock: %w", err)
-			}
+		if err := e.assertGuards(ctx, tx, "", ""); err != nil {
+			return err
 		}
 		if _, err := tx.ExecContext(ctx, "UPDATE watch_conditions SET status = 'expired', updated_at = ? WHERE status = 'active' AND expires_at <= ?", now, now); err != nil {
 			return fmt.Errorf("expire due watch conditions: %w", err)
 		}
-		var expression, storedSituationID, storedTarget string
-		if err := tx.QueryRowContext(ctx, "SELECT expression, situation_id, target FROM watch_conditions WHERE watch_id = ? AND status = 'active' AND expires_at > ?", watchID, now).Scan(&expression, &storedSituationID, &storedTarget); err != nil {
-			if err == sql.ErrNoRows {
-				return nil
-			}
-			return fmt.Errorf("load active watch condition: %w", err)
+		matches, err := activeWatchMatches(ctx, tx, watchID, eventID, situationID, target, features, now)
+		if err != nil || !matches {
+			return err
 		}
-		if storedSituationID != situationID || storedTarget != target {
-			return nil
-		}
-		matches, err := evaluateWatchExpression(expression, features)
-		if err != nil {
-			slog.WarnContext(ctx, "watch expression evaluation skipped",
-				"watch_id", watchID,
-				"event_id", eventID,
-				"situation_id", storedSituationID,
-				"target", storedTarget,
-				"error", err,
-			)
-			return nil
-		}
-		if !matches {
-			return nil
-		}
-		result, err := tx.ExecContext(ctx, `INSERT INTO watch_fires (watch_id, event_id, fired_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM watch_conditions WHERE watch_id = ? AND status = 'active' AND expires_at > ? AND remaining_fires > 0) ON CONFLICT(watch_id, event_id) DO NOTHING`, watchID, eventID, now, watchID, now)
-		if err != nil {
-			return fmt.Errorf("record watch fire: %w", err)
-		}
-		count, err := result.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("count watch fire: %w", err)
-		}
-		if count != 1 {
-			return nil
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE watch_conditions SET remaining_fires = remaining_fires - 1, status = CASE WHEN remaining_fires = 1 THEN 'disabled' ELSE status END, updated_at = ? WHERE watch_id = ?`, now, watchID); err != nil {
-			return fmt.Errorf("decrement watch allowance: %w", err)
-		}
-		fired = true
-		return nil
+		fired, err = recordWatchFire(ctx, tx, watchID, eventID, now)
+		return err
 	}); err != nil {
 		return false, fmt.Errorf("watch fire transaction: %w", err)
 	}
 	return fired, nil
+}
+
+// activeWatchMatches reports whether an active, unexpired watch scoped to this
+// Situation and target matches the features. An expression that fails to
+// evaluate is a logged no-fire, never an error.
+func activeWatchMatches(ctx context.Context, tx *sql.Tx, watchID, eventID, situationID, target string, features map[string]any, now string) (bool, error) {
+	var expression, storedSituationID, storedTarget string
+	if err := tx.QueryRowContext(ctx, "SELECT expression, situation_id, target FROM watch_conditions WHERE watch_id = ? AND status = 'active' AND expires_at > ?", watchID, now).Scan(&expression, &storedSituationID, &storedTarget); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("load active watch condition: %w", err)
+	}
+	if storedSituationID != situationID || storedTarget != target {
+		return false, nil
+	}
+	matches, err := evaluateWatchExpression(expression, features)
+	if err != nil {
+		slog.WarnContext(ctx, "watch expression evaluation skipped",
+			"watch_id", watchID,
+			"event_id", eventID,
+			"situation_id", storedSituationID,
+			"target", storedTarget,
+			"error", err,
+		)
+		return false, nil
+	}
+	return matches, nil
+}
+
+// recordWatchFire records the fire at most once per event and spends one
+// unit of the watch's allowance, disabling it at zero.
+func recordWatchFire(ctx context.Context, tx *sql.Tx, watchID, eventID, now string) (bool, error) {
+	result, err := tx.ExecContext(ctx, `INSERT INTO watch_fires (watch_id, event_id, fired_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM watch_conditions WHERE watch_id = ? AND status = 'active' AND expires_at > ? AND remaining_fires > 0) ON CONFLICT(watch_id, event_id) DO NOTHING`, watchID, eventID, now, watchID, now)
+	if err != nil {
+		return false, fmt.Errorf("record watch fire: %w", err)
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("count watch fire: %w", err)
+	}
+	if count != 1 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE watch_conditions SET remaining_fires = remaining_fires - 1, status = CASE WHEN remaining_fires = 1 THEN 'disabled' ELSE status END, updated_at = ? WHERE watch_id = ?`, now, watchID); err != nil {
+		return false, fmt.Errorf("decrement watch allowance: %w", err)
+	}
+	return true, nil
 }
 
 // FireEvent evaluates all active watches scoped to one event target. The

@@ -106,48 +106,8 @@ func (c *CapabilityCatalog) validate() error {
 		return fmt.Errorf("capability catalog has no routes")
 	}
 	for route, spec := range c.Routes {
-		if route == "" {
-			return fmt.Errorf("capability catalog contains an empty route")
-		}
-		if spec.Operation == "" || spec.Target == "" || spec.SelectorField == "" {
-			return fmt.Errorf("route %q must set operation, target, and selector_field", route)
-		}
-		for logicalTarget, physicalTarget := range spec.TargetBindings {
-			if logicalTarget == "" || physicalTarget == "" {
-				return fmt.Errorf("route %q contains an empty target binding", route)
-			}
-			if physicalTarget != spec.Target {
-				return fmt.Errorf("route %q target binding %q resolves to %q, want route target %q", route, logicalTarget, physicalTarget, spec.Target)
-			}
-		}
-		if spec.ExpiresAfterMs < 1 {
-			return fmt.Errorf("route %q must set a positive expires_after_ms", route)
-		}
-		if len(spec.Presets) == 0 {
-			return fmt.Errorf("route %q has no presets", route)
-		}
-		// Every bounded parameter must be produced by every preset, so a
-		// selector can never silently bypass a declared hard bound.
-		for param := range spec.Bounds {
-			if param == "" {
-				return fmt.Errorf("route %q contains an empty bounds parameter", route)
-			}
-			for presetName, preset := range spec.Presets {
-				if _, ok := preset[param]; !ok {
-					return fmt.Errorf("route %q preset %q does not produce bounded parameter %q", route, presetName, param)
-				}
-			}
-		}
-		for param, bound := range spec.Bounds {
-			if bound.Min != nil && !isFinite(*bound.Min) {
-				return fmt.Errorf("route %q bound %q has a non-finite minimum", route, param)
-			}
-			if bound.Max != nil && !isFinite(*bound.Max) {
-				return fmt.Errorf("route %q bound %q has a non-finite maximum", route, param)
-			}
-			if bound.Min != nil && bound.Max != nil && *bound.Min > *bound.Max {
-				return fmt.Errorf("route %q bound %q has minimum %v above maximum %v", route, param, *bound.Min, *bound.Max)
-			}
+		if err := spec.validate(route); err != nil {
+			return err
 		}
 	}
 	for target, spec := range c.SafeStops {
@@ -156,6 +116,58 @@ func (c *CapabilityCatalog) validate() error {
 		}
 		if spec.ExpiresAfterMs < 1 || spec.ExpiresAfterMs > 86400000 {
 			return fmt.Errorf("safe stop %q must set expires_after_ms between 1 and 86400000", target)
+		}
+	}
+	return nil
+}
+
+func (spec OperationSpec) validate(route string) error {
+	if route == "" {
+		return fmt.Errorf("capability catalog contains an empty route")
+	}
+	if spec.Operation == "" || spec.Target == "" || spec.SelectorField == "" {
+		return fmt.Errorf("route %q must set operation, target, and selector_field", route)
+	}
+	for logicalTarget, physicalTarget := range spec.TargetBindings {
+		if logicalTarget == "" || physicalTarget == "" {
+			return fmt.Errorf("route %q contains an empty target binding", route)
+		}
+		if physicalTarget != spec.Target {
+			return fmt.Errorf("route %q target binding %q resolves to %q, want route target %q", route, logicalTarget, physicalTarget, spec.Target)
+		}
+	}
+	if spec.ExpiresAfterMs < 1 {
+		return fmt.Errorf("route %q must set a positive expires_after_ms", route)
+	}
+	if len(spec.Presets) == 0 {
+		return fmt.Errorf("route %q has no presets", route)
+	}
+	return spec.validateBounds(route)
+}
+
+// validateBounds requires every bounded parameter to be produced by every
+// preset, so a selector can never silently bypass a declared hard bound, and
+// every bound to be finite and ordered.
+func (spec OperationSpec) validateBounds(route string) error {
+	for param := range spec.Bounds {
+		if param == "" {
+			return fmt.Errorf("route %q contains an empty bounds parameter", route)
+		}
+		for presetName, preset := range spec.Presets {
+			if _, ok := preset[param]; !ok {
+				return fmt.Errorf("route %q preset %q does not produce bounded parameter %q", route, presetName, param)
+			}
+		}
+	}
+	for param, bound := range spec.Bounds {
+		if bound.Min != nil && !isFinite(*bound.Min) {
+			return fmt.Errorf("route %q bound %q has a non-finite minimum", route, param)
+		}
+		if bound.Max != nil && !isFinite(*bound.Max) {
+			return fmt.Errorf("route %q bound %q has a non-finite maximum", route, param)
+		}
+		if bound.Min != nil && bound.Max != nil && *bound.Min > *bound.Max {
+			return fmt.Errorf("route %q bound %q has minimum %v above maximum %v", route, param, *bound.Min, *bound.Max)
 		}
 	}
 	return nil
@@ -183,48 +195,14 @@ func (c *CapabilityCatalog) Materialize(command Command, expectedBootID string) 
 	if !ok {
 		return nil, fmt.Errorf("route %q is not in the device capability catalog", command.EffectorRoute)
 	}
-	if command.NormalizedTarget == "" {
-		return nil, fmt.Errorf("normalized target is required to materialize a device command")
+	if err := spec.checkTarget(command); err != nil {
+		return nil, err
+	}
+	parameters, err := spec.boundedParameters(command)
+	if err != nil {
+		return nil, err
 	}
 	physicalTarget := spec.Target
-	if command.NormalizedTarget != spec.Target {
-		boundTarget, ok := spec.TargetBindings[command.NormalizedTarget]
-		if !ok || boundTarget != spec.Target {
-			return nil, fmt.Errorf("route %q target %q is not bound to catalog target %q", command.EffectorRoute, command.NormalizedTarget, spec.Target)
-		}
-	}
-	selectorValue, ok := command.Payload[spec.SelectorField].(string)
-	if !ok || selectorValue == "" {
-		return nil, fmt.Errorf("route %q requires a string selector %q in the command payload", command.EffectorRoute, spec.SelectorField)
-	}
-	preset, ok := spec.Presets[selectorValue]
-	if !ok {
-		return nil, fmt.Errorf("route %q selector %q=%q is not an allowed preset", command.EffectorRoute, spec.SelectorField, selectorValue)
-	}
-
-	// Copy preset parameters (the ONLY source of device parameters) and
-	// re-enforce every hard bound at this last boundary.
-	parameters := make(map[string]any, len(preset))
-	for key, value := range preset {
-		parameters[key] = value
-	}
-	for _, param := range sortedKeys(spec.Bounds) {
-		bound := spec.Bounds[param]
-		raw, present := parameters[param]
-		if !present {
-			continue
-		}
-		number, ok := toFloat(raw)
-		if !ok {
-			return nil, fmt.Errorf("route %q parameter %q is not numeric and cannot be bounded", command.EffectorRoute, param)
-		}
-		if bound.Max != nil && number > *bound.Max {
-			return nil, fmt.Errorf("route %q parameter %q=%v exceeds hard max %v", command.EffectorRoute, param, number, *bound.Max)
-		}
-		if bound.Min != nil && number < *bound.Min {
-			return nil, fmt.Errorf("route %q parameter %q=%v below hard min %v", command.EffectorRoute, param, number, *bound.Min)
-		}
-	}
 
 	document := map[string]any{
 		"message_type":       "command",
@@ -243,6 +221,62 @@ func (c *CapabilityCatalog) Materialize(command Command, expectedBootID string) 
 		return nil, fmt.Errorf("materialized device command is invalid: %w", err)
 	}
 	return document, nil
+}
+
+// checkTarget requires the command's normalized target to be the route's
+// catalog target or one of its declared bindings.
+func (spec OperationSpec) checkTarget(command Command) error {
+	if command.NormalizedTarget == "" {
+		return fmt.Errorf("normalized target is required to materialize a device command")
+	}
+	if command.NormalizedTarget == spec.Target {
+		return nil
+	}
+	if boundTarget, ok := spec.TargetBindings[command.NormalizedTarget]; !ok || boundTarget != spec.Target {
+		return fmt.Errorf("route %q target %q is not bound to catalog target %q", command.EffectorRoute, command.NormalizedTarget, spec.Target)
+	}
+	return nil
+}
+
+// boundedParameters copies the selected preset (the ONLY source of device
+// parameters) and re-enforces every hard bound at this last boundary.
+func (spec OperationSpec) boundedParameters(command Command) (map[string]any, error) {
+	selectorValue, ok := command.Payload[spec.SelectorField].(string)
+	if !ok || selectorValue == "" {
+		return nil, fmt.Errorf("route %q requires a string selector %q in the command payload", command.EffectorRoute, spec.SelectorField)
+	}
+	preset, ok := spec.Presets[selectorValue]
+	if !ok {
+		return nil, fmt.Errorf("route %q selector %q=%q is not an allowed preset", command.EffectorRoute, spec.SelectorField, selectorValue)
+	}
+	parameters := make(map[string]any, len(preset))
+	for key, value := range preset {
+		parameters[key] = value
+	}
+	for _, param := range sortedKeys(spec.Bounds) {
+		raw, present := parameters[param]
+		if !present {
+			continue
+		}
+		if err := spec.Bounds[param].check(command.EffectorRoute, param, raw); err != nil {
+			return nil, err
+		}
+	}
+	return parameters, nil
+}
+
+func (bound NumericBound) check(route, param string, raw any) error {
+	number, ok := toFloat(raw)
+	if !ok {
+		return fmt.Errorf("route %q parameter %q is not numeric and cannot be bounded", route, param)
+	}
+	if bound.Max != nil && number > *bound.Max {
+		return fmt.Errorf("route %q parameter %q=%v exceeds hard max %v", route, param, number, *bound.Max)
+	}
+	if bound.Min != nil && number < *bound.Min {
+		return fmt.Errorf("route %q parameter %q=%v below hard min %v", route, param, number, *bound.Min)
+	}
+	return nil
 }
 
 // MaterializeSafeStop creates the fixed catalog-owned safe-state command for a

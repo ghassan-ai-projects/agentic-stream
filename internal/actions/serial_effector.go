@@ -61,25 +61,24 @@ func (e *SerialEffector) SafeStop(ctx context.Context, target string) (Effect, e
 	}
 	exchange, sent, err := e.session.SafeStopWithResult(ctx, target)
 	providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
-	if err != nil {
-		if sent {
-			if exchange.Receipt != nil || exchange.Result != nil {
-				if IsUnknownOutcome(err) {
-					return Effect{ProviderResult: providerResult}, err
-				}
-				if exchange.Receipt != nil && exchange.Result != nil {
-					// A correlated receipt/result pair is a known terminal device
-					// response, including a rejected safe stop. Keep it out of the
-					// unknown-outcome lane while the safe-stop request remains latched.
-					return Effect{ProviderResult: providerResult}, err
-				}
-				return Effect{ProviderResult: providerResult}, &UnknownOutcomeError{Err: err}
-			}
-			return Effect{}, &UnknownOutcomeError{Err: err}
-		}
+	switch {
+	case err == nil:
+		return Effect{ProviderResult: providerResult, VerificationPending: true}, nil
+	case !sent:
+		// Nothing reached the device, so the failure is known.
 		return Effect{}, err
+	case exchange.Receipt == nil && exchange.Result == nil:
+		return Effect{}, &UnknownOutcomeError{Err: err}
+	case IsUnknownOutcome(err):
+		return Effect{ProviderResult: providerResult}, err
+	case exchange.Receipt != nil && exchange.Result != nil:
+		// A correlated receipt/result pair is a known terminal device
+		// response, including a rejected safe stop. Keep it out of the
+		// unknown-outcome lane while the safe-stop request remains latched.
+		return Effect{ProviderResult: providerResult}, err
+	default:
+		return Effect{ProviderResult: providerResult}, &UnknownOutcomeError{Err: err}
 	}
-	return Effect{ProviderResult: providerResult, VerificationPending: true}, nil
 }
 
 // VerifyDeviceCommand reads one fresh state record and compares the observed
