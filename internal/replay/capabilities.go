@@ -50,6 +50,14 @@ func applyRecorded(ctx context.Context, db *storage.DB, ledger RecordedLedger, i
 		}
 		return nil
 	}
+	if err := matchRecordedEpisodes(ctx, db, items, byKey); err != nil {
+		return err
+	}
+	result.CapabilityCalls = len(entries)
+	return nil
+}
+
+func matchRecordedEpisodes(ctx context.Context, db *storage.DB, items []replayItem, byKey map[string]RecordedEntry) error {
 	itemsByKey := make(map[string]replayItem, len(items))
 	for _, item := range items {
 		key := replayEpisodeKey(item.SituationID, item.SituationVersion, item.TriggerID)
@@ -70,7 +78,6 @@ func applyRecorded(ctx context.Context, db *storage.DB, ledger RecordedLedger, i
 			return fmt.Errorf("recorded ledger contains unexpected decision %q", key)
 		}
 	}
-	result.CapabilityCalls = len(entries)
 	return nil
 }
 

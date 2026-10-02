@@ -79,3 +79,17 @@ and rollback of global changes when tenant configuration fails. Added a global
 run failure/resume test that pins inbox deduplication and the existing report
 semantics (global runs count redelivered records while suppressing state writes).
 Runtime and engine race tests, focused lint, vet, and diff checks passed.
+
+### Round 4: replay and paired shadow comparison
+
+Separated isolated replay preparation, ingress, virtual-clock advancement,
+processing, and result collection. Separated recorded-ledger matching, baseline
+parameter completeness, paired executor validation, and canonical comparison
+construction. Replay still has no action-plane import or effector capability.
+Schema registration precedes clock derivation and ingestion as before.
+
+Added comparison regression tests for decision/manifest difference order,
+manifest-only differences preserving decision equality, canonical digest and
+comparison identity, and independence from recording wall time. Replay race
+tests (including unchanged predictive-maintenance golden traces and thermal
+fixtures), focused lint, vet, and diff checks passed.

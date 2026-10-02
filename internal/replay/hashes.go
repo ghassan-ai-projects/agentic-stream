@@ -24,31 +24,8 @@ func traceEpoch(ctx context.Context, path, tenantID string, log *eventlog.EventL
 	var first time.Time
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var envelope contractsv1.Envelope
-		if err := json.Unmarshal(line, &envelope); err != nil {
-			// JSONLReplay owns malformed-line quarantine. Epoch derivation is
-			// only a clock bootstrap and must not turn a quarantinable line into
-			// a whole-replay failure.
-			continue
-		}
-		if envelope.TenantID == "" {
-			envelope.TenantID = tenantID
-		}
-		if err := contractsv1.ValidateEnvelope(envelope, tenantID); err != nil {
-			continue
-		}
-		if err := log.ValidateEnvelope(ctx, envelope); err != nil {
-			continue
-		}
-		processingTime := envelope.IngestedAt
-		if processingTime.IsZero() {
-			processingTime = envelope.EventTime
-		}
-		if processingTime.IsZero() {
+		processingTime, valid := traceProcessingTime(ctx, scanner.Bytes(), tenantID, log)
+		if !valid {
 			continue
 		}
 		if first.IsZero() || processingTime.Before(first) {
@@ -62,6 +39,37 @@ func traceEpoch(ctx context.Context, path, tenantID string, log *eventlog.EventL
 		return time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), nil
 	}
 	return first, nil
+}
+
+// traceProcessingTime shares ingress validity before a line can affect the clock.
+func traceProcessingTime(ctx context.Context, line []byte, tenantID string, log *eventlog.EventLog) (time.Time, bool) {
+	if len(line) == 0 {
+		return time.Time{}, false
+	}
+	var envelope contractsv1.Envelope
+	if err := json.Unmarshal(line, &envelope); err != nil {
+		// JSONLReplay owns malformed-line quarantine. Epoch derivation is
+		// only a clock bootstrap and must not turn a quarantinable line into
+		// a whole-replay failure.
+		return time.Time{}, false
+	}
+	if envelope.TenantID == "" {
+		envelope.TenantID = tenantID
+	}
+	if err := contractsv1.ValidateEnvelope(envelope, tenantID); err != nil {
+		return time.Time{}, false
+	}
+	if err := log.ValidateEnvelope(ctx, envelope); err != nil {
+		return time.Time{}, false
+	}
+	processingTime := envelope.IngestedAt
+	if processingTime.IsZero() {
+		processingTime = envelope.EventTime
+	}
+	if processingTime.IsZero() {
+		return time.Time{}, false
+	}
+	return processingTime, true
 }
 
 func hashSituationVersions(ctx context.Context, db *storage.DB, deploymentID string) (string, int, error) {
