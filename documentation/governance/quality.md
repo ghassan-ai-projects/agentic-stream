@@ -20,8 +20,10 @@ The repository CI-equivalent gate is:
 make ci-check
 ```
 
-It includes protocol drift, tidy, build, vet, lint, short race-enabled tests,
-dead-code detection when installed, and vulnerability checks when installed.
+It includes protocol drift, tidy, build, vet, lint with complexity limits,
+short race-enabled tests with a per-package coverage floor, package layering
+and file-size checks, dead-code detection when installed, and vulnerability
+checks when installed.
 
 ## Change classes
 

@@ -39,6 +39,7 @@ Start with these context files:
 - [.agents/context/architecture.md](.agents/context/architecture.md) for layout and dependency direction.
 - [.agents/context/testing.md](.agents/context/testing.md) for commands and testing bar.
 - [.agents/context/go-style.md](.agents/context/go-style.md) for coding conventions.
+- [.agents/context/quality-bar.md](.agents/context/quality-bar.md) for the enforced quality and modularity bar (lint, complexity, file size, coverage, layering).
 - [.agents/context/review-checklist.md](.agents/context/review-checklist.md) before handoff.
 
 Use the prompt files under `.agents/prompts/` when the task matches them.
@@ -175,6 +176,7 @@ A task is done when:
 - the change is the simplest correct one that fits the documented design
 - production-code changes include meaningful tests, and modified packages do not show 0% coverage
 - behavior changes respect the ten product invariants and the deterministic-replay contract
+- the change keeps the [quality and modularity bar](.agents/context/quality-bar.md); thresholds are never loosened to get a diff green
 - `make ci-check` passes, unless the change is documentation-only and a narrower check is clearly sufficient
 - documentation is updated when behavior, commands, or expectations change
 - secrets are not added, security-sensitive changes are called out, and dependency or workflow permission changes receive extra review

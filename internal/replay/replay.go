@@ -272,7 +272,7 @@ func applyPairedShadow(ctx context.Context, db *storage.DB, tenantID string, cap
 		}
 		tamozOutput, err := caps.ShadowExecutor.ExecuteShadow(ctx, tamozInput)
 		if err != nil {
-			return fmt.Errorf("Tamoz shadow episode %s: %w", input.EpisodeKey, err)
+			return fmt.Errorf("tamoz shadow episode %s: %w", input.EpisodeKey, err)
 		}
 		result.WorkerInvoked = true
 		result.CapabilityCalls += 2
@@ -350,7 +350,7 @@ func validateShadowOutput(input ShadowInput, output ShadowOutput, catalog *decis
 		Kind: "standard", Now: now,
 	})
 	if err != nil {
-		return validatedShadowOutput{}, err
+		return validatedShadowOutput{}, fmt.Errorf("validate shadow decision: %w", err)
 	}
 	return validatedShadowOutput{output: output, canonical: canonical, decision: validated, decisionSHA: decisionSHA, manifestSHA: manifestSHA}, nil
 }

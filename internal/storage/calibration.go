@@ -15,13 +15,13 @@ var ErrCalibrationMissing = errors.New("calibration artifact missing or mismatch
 // CalibrationArtifact is the exact bound artifact that unlocks automatic
 // consequential intents (R2+) for one domain.
 type CalibrationArtifact struct {
-	Domain               string
-	ModelRevision        string
-	ProfileDigest        string
-	PromptSHA256         string
-	DiagnosisCatalogSHA  string
-	PolicyDigest         string
-	ArtifactSHA256       string
+	Domain              string
+	ModelRevision       string
+	ProfileDigest       string
+	PromptSHA256        string
+	DiagnosisCatalogSHA string
+	PolicyDigest        string
+	ArtifactSHA256      string
 }
 
 // CalibrationStore persists and asserts the per-domain calibration artifacts.
@@ -84,5 +84,5 @@ func shortDigest(digest string) string {
 	if len(digest) > 12 {
 		return digest[:12]
 	}
-    return digest
+	return digest
 }

@@ -10,7 +10,8 @@ categories, and the minimum checks for documentation-only versus code changes.
 | `make build` | compile `cmd/...` into `bin/agentic-stream` |
 | `go test ./...` | all package tests |
 | `make test` | race, shuffle, one run, coverage profile |
-| `make test-short` | short race-enabled suite used by CI |
+| `make test-short` | short race-enabled suite |
+| `make coverage-check` | short race-enabled suite used by CI, with the 60% per-package coverage floor |
 | `make test-race` | race-enabled tests without shuffle/coverage wrapper |
 | `make test-coverage` | HTML coverage report |
 | `go vet ./...` | static analysis |

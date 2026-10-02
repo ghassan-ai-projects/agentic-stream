@@ -304,7 +304,7 @@ func newServeCommand() *cobra.Command {
 				ModelEndpoint: modelEndpoint, ModelName: modelName,
 			}
 			if err := runtime.ValidateWorkerRuntimeConfig(workerConfig); err != nil {
-				return err
+				return fmt.Errorf("worker runtime config: %w", err)
 			}
 			if pollInterval <= 0 {
 				return fmt.Errorf("--poll-interval must be positive")

@@ -134,8 +134,11 @@ test-coverage: ## Run tests and produce HTML coverage report
 	  echo "(no packages yet -- skipping coverage)"; \
 	fi
 
+coverage-check: ## Run short race tests and enforce the per-package coverage floor (quality bar Q4)
+	python3 scripts/check-coverage.py
+
 # ---- Pipeline -------------------------------------------------------------
-ci-check: proto-check tidy build vet lint-ci test-short deadcode vulncheck docs-check ## Run the full CI pipeline locally (matches .github/workflows/ci.yml)
+ci-check: proto-check tidy build vet lint-ci coverage-check deadcode vulncheck docs-check ## Run the full CI pipeline locally (matches .github/workflows/ci.yml)
 	@echo "  CI check passed"
 
 # ---- Documentation --------------------------------------------------------

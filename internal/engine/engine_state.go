@@ -81,12 +81,11 @@ func (e *Engine) operatorStateRows(ctx context.Context, tx *sql.Tx, partitionID 
 		}
 		return rows, "partition ", nil
 	}
-	predicate, scopeArgs := entityScopePredicate(entityID)
-	args := append([]any{e.deploymentID, e.tenantID, partitionID}, scopeArgs...)
+	args := append([]any{e.deploymentID, e.tenantID, partitionID}, entityScopeArgs(entityID)...)
 	rows, err := tx.QueryContext(ctx,
 		`SELECT operator_id, state_key, state_blob FROM operator_state
 			 WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?
-			   AND `+predicate, args...)
+			   AND `+entityScopePredicate, args...)
 	if err != nil {
 		return nil, "", fmt.Errorf("query operator state: %w", err)
 	}
@@ -99,10 +98,14 @@ func (e *Engine) operatorStateRows(ctx context.Context, tx *sql.Tx, partitionID 
 // prefix test cannot match a different entity whose ID shares this prefix. The
 // read and delete paths share this one definition to prevent them diverging
 // (a divergence would silently drop or resurrect operator state).
-func entityScopePredicate(entityID string) (string, []any) {
-	return `(state_key = ? OR (length(state_key) > length(?) AND
-		        substr(state_key, 1, length(?) + 1) = ? || char(31)))`,
-		[]any{entityID, entityID, entityID, entityID}
+// It is a constant so the statements that embed it stay fully parameterized;
+// bind it with entityScopeArgs.
+const entityScopePredicate = `(state_key = ? OR (length(state_key) > length(?) AND
+		        substr(state_key, 1, length(?) + 1) = ? || char(31)))`
+
+// entityScopeArgs returns the bind arguments for entityScopePredicate.
+func entityScopeArgs(entityID string) []any {
+	return []any{entityID, entityID, entityID, entityID}
 }
 
 type operatorStateScanner interface {
@@ -145,12 +148,11 @@ func (e *Engine) saveOperatorState(ctx context.Context, tx *sql.Tx, partitionID 
 }
 
 func (e *Engine) deleteOperatorState(ctx context.Context, tx *sql.Tx, partitionID int, entityID string) error {
-	predicate, scopeArgs := entityScopePredicate(entityID)
-	args := append([]any{e.deploymentID, e.tenantID, partitionID}, scopeArgs...)
+	args := append([]any{e.deploymentID, e.tenantID, partitionID}, entityScopeArgs(entityID)...)
 	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM operator_state
 		WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?
-		  AND `+predicate, args...); err != nil {
+		  AND `+entityScopePredicate, args...); err != nil {
 		return fmt.Errorf("retire prior operator state: %w", err)
 	}
 	return nil

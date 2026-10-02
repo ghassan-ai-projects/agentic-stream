@@ -169,7 +169,7 @@ func (s *Server) Call(ctx context.Context, req *runtimev1.EvidenceToolCall) (*ru
 	result, err := s.Query(queryContext, call)
 	if err != nil {
 		if s.Ledger != nil {
-			_ = s.Ledger.Fail(context.Background(), reservation, "query_failed")
+			_ = s.Ledger.Fail(ctx, reservation, "query_failed")
 		}
 		if s.Ledger == nil {
 			s.mu.Lock()
@@ -186,13 +186,13 @@ func (s *Server) Call(ctx context.Context, req *runtimev1.EvidenceToolCall) (*ru
 	}
 	if uint64(len(result.JSON)) > call.MaxBytes {
 		if s.Ledger != nil {
-			_ = s.Ledger.Fail(context.Background(), reservation, "result_bytes_exceeded")
+			_ = s.Ledger.Fail(ctx, reservation, "result_bytes_exceeded")
 		}
 		return nil, wireError(codes.ResourceExhausted, "evidence result exceeds capability")
 	} //nolint:wrapcheck // gRPC wire boundary.
 	if result.RowCount > call.MaxRows {
 		if s.Ledger != nil {
-			_ = s.Ledger.Fail(context.Background(), reservation, "result_rows_exceeded")
+			_ = s.Ledger.Fail(ctx, reservation, "result_rows_exceeded")
 		}
 		return nil, wireError(codes.ResourceExhausted, "evidence result exceeds row limit")
 	}

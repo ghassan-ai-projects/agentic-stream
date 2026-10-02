@@ -89,10 +89,5 @@ func (e Envelope) PartitionID(count int) int {
 	_, _ = h.Write([]byte(e.TenantID))
 	_, _ = h.Write([]byte{0})
 	_, _ = h.Write([]byte(e.PartitionKey))
-	mod := h.Sum64() % uint64(count)
-	// count is bounded to PartitionCount, so mod fits safely in int.
-	if mod > uint64(^uint(0)>>1) {
-		panic("partition mod exceeds int max")
-	}
-	return int(mod) //nolint:gosec // mod is bounded by count <= PartitionCount
+	return int(h.Sum64() % uint64(count)) //nolint:gosec // the result is below count, a positive int
 }

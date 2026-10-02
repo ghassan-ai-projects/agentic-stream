@@ -76,11 +76,11 @@ func CompileIntentCatalog(intents []spec.Intent) ([]map[string]any, string, erro
 			writable = []string{}
 		}
 		entry := map[string]any{
-			"type":                      intent.Type,
-			"risk_class":                intent.Risk,
-			"parameter_schema":          schemaValue,
-			"parameter_schema_digest":   schemaDigest,
-			"model_writable_fields":     writable,
+			"type":                    intent.Type,
+			"risk_class":              intent.Risk,
+			"parameter_schema":        schemaValue,
+			"parameter_schema_digest": schemaDigest,
+			"model_writable_fields":   writable,
 		}
 		if len(intent.Presets) > 0 {
 			entry["presets"] = intent.Presets

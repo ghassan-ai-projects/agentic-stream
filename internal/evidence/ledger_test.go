@@ -145,3 +145,69 @@ func ledgerTestCall() Call {
 func traceForLedger() contractsv1.TraceContext {
 	return contractsv1.TraceContext{Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}
 }
+
+func fixedLedgerClock() func() time.Time {
+	return func() time.Time { return time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC) }
+}
+
+func readLedgerStatus(t *testing.T, db *storage.DB, callID string) (string, string) {
+	t.Helper()
+	var status string
+	var code sql.NullString
+	if err := db.QueryRowContext(t.Context(), `SELECT status, error_code FROM evidence_call_ledger WHERE call_id = ?`, callID).Scan(&status, &code); err != nil {
+		t.Fatalf("read ledger row %s: %v", callID, err)
+	}
+	return status, code.String
+}
+
+func TestLedgerFailIsTerminalAndSurvivesCancelledRequest(t *testing.T) {
+	db := openLedgerDB(t)
+	ledger := &Ledger{DB: db, LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Lease: time.Minute, Now: fixedLedgerClock()}
+	reservation, err := ledger.Reserve(t.Context(), ledgerTestCall(), "token-1", "epoch-1")
+	if err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := ledger.Fail(cancelled, reservation, "provider_timeout"); err != nil {
+		t.Fatalf("fail with cancelled request context: %v", err)
+	}
+	if status, code := readLedgerStatus(t, db, "call-1"); status != "failed" || code != "provider_timeout" {
+		t.Fatalf("failed call status=%q code=%q", status, code)
+	}
+	if err := ledger.Fail(t.Context(), reservation, "provider_timeout"); err == nil {
+		t.Fatal("a terminal reservation was failed twice")
+	}
+	if err := (*Ledger)(nil).Fail(t.Context(), reservation, "x"); err == nil {
+		t.Fatal("nil ledger accepted a failure")
+	}
+}
+
+func TestLedgerRecoverInterruptsExpiredAndForeignEpochCalls(t *testing.T) {
+	db := openLedgerDB(t)
+	previous := &Ledger{DB: db, LeaseOwner: "owner-old", RuntimeEpoch: "epoch-old", Lease: time.Minute, Now: fixedLedgerClock()}
+	if _, err := previous.Reserve(t.Context(), ledgerTestCall(), "token-1", "epoch-old"); err != nil {
+		t.Fatalf("reserve under previous epoch: %v", err)
+	}
+
+	current := &Ledger{DB: db, LeaseOwner: "owner-new", RuntimeEpoch: "epoch-new", Now: fixedLedgerClock()}
+	if err := current.Recover(t.Context()); err != nil {
+		t.Fatalf("recover: %v", err)
+	}
+	if status, code := readLedgerStatus(t, db, "call-1"); status != "interrupted" || code != "lease_expired" {
+		t.Fatalf("recovered call status=%q code=%q", status, code)
+	}
+
+	for name, ledger := range map[string]*Ledger{
+		"nil":      nil,
+		"no epoch": {DB: db},
+	} {
+		if err := ledger.Recover(t.Context()); err == nil {
+			t.Fatalf("%s ledger recovered without configuration", name)
+		}
+	}
+	if err := (&Ledger{RuntimeEpoch: "epoch"}).ReclaimExpired(t.Context(), time.Now()); err == nil {
+		t.Fatal("ledger without a database reclaimed calls")
+	}
+}

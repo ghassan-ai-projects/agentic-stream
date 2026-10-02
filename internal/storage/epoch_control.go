@@ -217,27 +217,18 @@ func (c *EpochControl) setTx(ctx context.Context, tx *sql.Tx, epoch, state strin
 	if state != "draining" && state != "killed" {
 		return fmt.Errorf("invalid epoch control state %q", state)
 	}
-	query := epochControlUpsert(state)
-	if _, err := tx.ExecContext(ctx, query, epoch, state, formatRuntimeTime(now)); err != nil {
+	if _, err := tx.ExecContext(ctx, epochControlUpsert, epoch, state, formatRuntimeTime(now)); err != nil {
 		return fmt.Errorf("record epoch control: %w", err)
 	}
 	return nil
 }
 
-func epochControlUpsert(state string) string {
-	const killed = `
+// epochControlUpsert records a drain or kill. Kill is terminal: once an epoch
+// is killed, neither a later drain nor a repeated kill rewrites the row.
+const epochControlUpsert = `
 		INSERT INTO epoch_control (epoch, state, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT(epoch) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at
 		WHERE epoch_control.state <> 'killed'`
-	const draining = `
-		INSERT INTO epoch_control (epoch, state, updated_at) VALUES (?, ?, ?)
-		ON CONFLICT(epoch) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at
-		WHERE epoch_control.state IS NULL OR epoch_control.state <> 'killed'`
-	if state == "draining" {
-		return draining
-	}
-	return killed
-}
 
 func (c *EpochControl) now() time.Time {
 	if c.Now != nil {

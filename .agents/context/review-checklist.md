@@ -28,6 +28,7 @@ Use this before the final answer.
 - Did you run the relevant validation commands?
 - Did you record validation failures accurately?
 - Did you run `git diff --check`?
+- Does the change meet every rule in [quality-bar.md](quality-bar.md) without `//nolint` for complexity or new layering exceptions?
 
 ## Handoff
 

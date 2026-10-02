@@ -579,7 +579,7 @@ func (p *Pipeline) assemblePending(ctx context.Context) (int, error) {
 }
 
 func (p *Pipeline) skipCostRejectedSchedulerItem(ctx context.Context, schedulerItemID string, now time.Time, rejection error) error {
-	return p.db.WithTx(ctx, func(tx *sql.Tx) error {
+	if err := p.db.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := p.assertOwnerTx(ctx, tx); err != nil {
 			return fmt.Errorf("assert pipeline owner: %w", err)
 		}
@@ -624,11 +624,14 @@ func (p *Pipeline) skipCostRejectedSchedulerItem(ctx context.Context, schedulerI
 			return fmt.Errorf("scheduler item %s is no longer pending", schedulerItemID)
 		}
 		return nil
-	})
+	}); err != nil {
+		return fmt.Errorf("skip cost-rejected scheduler item %s: %w", schedulerItemID, err)
+	}
+	return nil
 }
 
 func (p *Pipeline) coalesceSkippedSchedulerItem(ctx context.Context, schedulerItemID string, now time.Time) error {
-	return p.db.WithTx(ctx, func(tx *sql.Tx) error {
+	if err := p.db.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := p.assertOwnerTx(ctx, tx); err != nil {
 			return fmt.Errorf("assert pipeline owner: %w", err)
 		}
@@ -648,7 +651,10 @@ func (p *Pipeline) coalesceSkippedSchedulerItem(ctx context.Context, schedulerIt
 			return fmt.Errorf("scheduler item %s is no longer pending", schedulerItemID)
 		}
 		return nil
-	})
+	}); err != nil {
+		return fmt.Errorf("coalesce scheduler item %s: %w", schedulerItemID, err)
+	}
+	return nil
 }
 
 func (p *Pipeline) assertOwnerTx(ctx context.Context, tx *sql.Tx) error {

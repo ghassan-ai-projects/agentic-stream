@@ -40,7 +40,7 @@ make ci-check
 ```
 
 `ci-check` also verifies generated worker stubs, module tidiness, linting,
-short race-enabled tests, dead-code checks when installed, and vulnerability
+short race-enabled tests with a per-package coverage floor, dead-code checks when installed, and vulnerability
 checks when installed. See [testing reference](../reference/testing.md) for
 the full target list.
 

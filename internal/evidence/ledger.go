@@ -134,7 +134,8 @@ func (l *Ledger) Complete(ctx context.Context, reservation ledgerReservation, re
 	if l.Now != nil {
 		now = l.Now().UTC()
 	}
-	persistenceCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Persist even when the caller was cancelled; keep its values (trace).
+	persistenceCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if err := l.DB.WithTx(persistenceCtx, func(tx *sql.Tx) error {
 		if err := l.assertOwner(persistenceCtx, tx); err != nil {
@@ -173,7 +174,8 @@ func (l *Ledger) Fail(ctx context.Context, reservation ledgerReservation, code s
 	if l == nil || l.DB == nil {
 		return fmt.Errorf("evidence ledger is not configured")
 	}
-	persistenceCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Persist even when the caller was cancelled; keep its values (trace).
+	persistenceCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	now := time.Now().UTC()
 	if l.Now != nil {

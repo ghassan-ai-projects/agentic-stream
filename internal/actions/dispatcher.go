@@ -784,12 +784,15 @@ func appendOutcomeReconciledNotification(ctx context.Context, tx *sql.Tx, tenant
 	if reconciliationVersion < 1 || len(outcomeSHA) != sha256.Size {
 		return fmt.Errorf("reconciled outcome provenance is incomplete")
 	}
-	return notify.AppendLifecycleEventWithTrace(ctx, tx, "outcome.reconciled:"+outcomeID, tenantID, notify.TypeOutcomeReconciled, "outcome/"+outcomeID, commandID, map[string]any{
+	if err := notify.AppendLifecycleEventWithTrace(ctx, tx, "outcome.reconciled:"+outcomeID, tenantID, notify.TypeOutcomeReconciled, "outcome/"+outcomeID, commandID, map[string]any{
 		"tenant_id": tenantID, "outcome_id": outcomeID, "command_id": commandID, "final_status": finalStatus,
 		"outcome_digest": "sha256:" + hex.EncodeToString(outcomeSHA), "reconciliation_status": "reconciled", "intent_id": intentID,
 		"verdict": outcomeVerdict(finalStatus), "reconciliation_version": reconciliationVersion,
 		"source_authority": notify.SourceForTenant(tenantID),
-	}, now, contractsv1.TraceContext{Traceparent: traceparent.String, Tracestate: tracestate.String})
+	}, now, contractsv1.TraceContext{Traceparent: traceparent.String, Tracestate: tracestate.String}); err != nil {
+		return fmt.Errorf("append outcome.reconciled notification: %w", err)
+	}
+	return nil
 }
 
 func outcomeVerdict(finalStatus string) string {
