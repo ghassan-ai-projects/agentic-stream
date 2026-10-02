@@ -85,16 +85,17 @@ linters:
     misspell:
       locale: US
 
-    # Quality-bar rule Q2. Do not raise these to make a diff pass.
+    # Quality-bar rule Q2: the mechanical floor for the clean-function rules (Q7).
+    # Do not raise these to make a diff pass.
     gocognit:
-      min-complexity: 30
+      min-complexity: 15
     gocyclo:
       min-complexity: 20
     nestif:
-      min-complexity: 6
+      min-complexity: 4
     funlen:
-      lines: 100
-      statements: 60
+      lines: 50
+      statements: 30
       ignore-comments: true
 
     thelper:

@@ -144,6 +144,26 @@ See [.agents/context/testing.md](.agents/context/testing.md) for the testing and
 
 See [.agents/context/go-style.md](.agents/context/go-style.md) for the repo-specific style rules.
 
+## Code Quality Expectations
+
+Code is written to be read top-down by the next reviewer. Every function in
+production code follows these rules (quality-bar rule Q7):
+
+- A function name states its intent.
+- A function is short and does one thing.
+- A function stays at one level of abstraction.
+- Public, top-level functions read like a small domain-specific language: a
+  short sequence of domain verbs over domain nouns.
+- Each function calls functions one level below it, and the code keeps
+  stepping down until the remaining operations are small and concrete (the
+  stepdown rule): entry point first, its steps below it.
+
+The linters enforce the mechanical floor (cognitive complexity ≤ 15, ≤ 50
+lines and 30 statements, nested-`if` ≤ 3, files under 300 lines); review
+enforces the rest. A refactor toward these rules never changes behavior, and
+it never adds abstraction layers without a current need. The full bar, with
+examples, is [.agents/context/quality-bar.md](.agents/context/quality-bar.md).
+
 ## Forbidden Changes
 
 - Do not add secrets, credentials, or machine-specific private data.
