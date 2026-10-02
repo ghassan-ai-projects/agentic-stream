@@ -91,3 +91,14 @@ CEL text is preserved exactly (a generic numeric conversion changes `1.0` to
 `1`, which is different expression source). Spec race tests, focused lint, and
 diff checks pass. Review retained loader denial, schema caching, defaults,
 normalization order, compile diagnostics, and identity inputs.
+
+### Round 6: artifact verification
+
+Artifact verification now reads as file integrity, JSON syntax, manifest binding,
+and ledger verification. Checksum parsing and JSONL record validation each own
+their concrete mechanics. Tests pin malformed/duplicate/path-bearing checksum
+entries, integrity-before-syntax precedence, manifest version rejection, and
+canonical/blank record checks even when checksums are refreshed. Run-artifact
+race tests and focused lint pass. Test writes use os.Root rather than adding
+security-linter suppressions. Review confirms verification order, line bounds,
+error strings, digest inputs, and fail-closed behavior are unchanged.
