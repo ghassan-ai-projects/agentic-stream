@@ -7,13 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // episodeClaim is the oldest dispatchable episode, fenced to a new attempt in
@@ -179,97 +176,6 @@ func (r *Runner) bindLiveSituation(ctx context.Context, tx *sql.Tx, claim *episo
 	return nil
 }
 
-// quarantineStale abandons an episode whose re-bind budget is spent.
-func (r *Runner) quarantineStale(ctx context.Context, tx *sql.Tx, claim *episodeClaim, liveVersion int64) error {
-	terminal := map[string]any{"reason": "stale_situation",
-		"bound": claim.req.SituationVersion, "live": liveVersion, "rebind_attempts": claim.rebindCount}
-	if err := r.abandonEpisode(ctx, tx, claim.episodeID, terminal, r.runtimeNow()); err != nil {
-		return fmt.Errorf("quarantine stale episode: %w", err)
-	}
-	if r.telemetry != nil {
-		r.telemetry.ObserveStaleRejection()
-	}
-	claim.quarantined = true
-	return nil
-}
-
-// quarantineRebindFailure abandons an episode whose live snapshot failed
-// validation. The reachable causes are database corruption or a validation
-// bug (the engine validates at publish), so it logs loudly and counts under
-// rebind_failures, distinct from the benign stale_rejections counter. The
-// failed re-bind still consumes budget so the bounded path stays reachable.
-func (r *Runner) quarantineRebindFailure(ctx context.Context, tx *sql.Tx, claim *episodeClaim, liveVersion int64, rebindErr error) error {
-	slog.ErrorContext(ctx, "episode re-bind failed: live snapshot invalid",
-		"episode_id", claim.episodeID,
-		"bound", claim.req.SituationVersion, "live", liveVersion,
-		"error", rebindErr.Error())
-	terminal, err := json.Marshal(map[string]any{"reason": "rebind_failed",
-		"bound": claim.req.SituationVersion, "live": liveVersion,
-		"rebind_attempts": claim.rebindCount + 1, "error": rebindErr.Error()})
-	if err != nil {
-		return fmt.Errorf("marshal rebind terminal: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?,
-		    stale_rebind_count = stale_rebind_count + 1
-		WHERE episode_id = ?`,
-		r.runtimeNow(), terminal, claim.episodeID); err != nil {
-		return fmt.Errorf("quarantine rebind-failed episode: %w", err)
-	}
-	if r.telemetry != nil {
-		r.telemetry.ObserveRebindFailure()
-	}
-	claim.quarantined = true
-	return nil
-}
-
-// quarantineRefusedEpoch enforces the P8 kill gate at dispatch: the episode's
-// RECORDED policy epoch is checked independently of the worker, so a hostile
-// worker cannot slip a decision through after a kill.
-func (r *Runner) quarantineRefusedEpoch(ctx context.Context, tx *sql.Tx, claim *episodeClaim) error {
-	reason, err := r.epochRefusal(ctx, tx, claim.req.PolicyEpoch)
-	if err != nil {
-		return fmt.Errorf("check episode policy epoch: %w", err)
-	}
-	if reason == "" {
-		return nil
-	}
-	now := r.runtimeNow()
-	if err := r.abandonEpisode(ctx, tx, claim.episodeID, map[string]any{"reason": reason}, now); err != nil {
-		return fmt.Errorf("quarantine killed-epoch episode: %w", err)
-	}
-	if r.cost != nil {
-		if err := r.cost.Settle(ctx, tx, claim.episodeID, 0, now); err != nil {
-			return fmt.Errorf("settle quarantined episode cost: %w", err)
-		}
-	}
-	claim.quarantined = true
-	return nil
-}
-
-// epochRefusal returns why the recorded policy epoch refuses a decision
-// ("epoch_killed" or "epoch_unbound"), or "" when it allows one or no epoch
-// control is configured.
-func (r *Runner) epochRefusal(ctx context.Context, tx *sql.Tx, policyEpoch string) (string, error) {
-	if r.epochControl == nil {
-		return "", nil
-	}
-	epochErr := storage.ErrEpochUnbound
-	if policyEpoch != "" {
-		epochErr = r.epochControl.AssertDecisionTx(ctx, tx, policyEpoch)
-	}
-	switch {
-	case epochErr == nil:
-		return "", nil
-	case errors.Is(epochErr, storage.ErrEpochUnbound):
-		return "epoch_unbound", nil
-	case errors.Is(epochErr, storage.ErrEpochKilled):
-		return "epoch_killed", nil
-	default:
-		return "", fmt.Errorf("assert decision epoch: %w", epochErr)
-	}
-}
-
 // startClaimedAttempt fences a new attempt and binds its identity into the
 // persisted request.
 func (r *Runner) startClaimedAttempt(ctx context.Context, tx *sql.Tx, claim *episodeClaim) error {
@@ -299,24 +205,4 @@ func (r *Runner) startClaimedAttempt(ctx context.Context, tx *sql.Tx, claim *epi
 		return fmt.Errorf("persist worker request identity: %w", err)
 	}
 	return nil
-}
-
-// abandonEpisode durably quarantines an episode with a terminal reason.
-func (r *Runner) abandonEpisode(ctx context.Context, tx *sql.Tx, episodeID string, terminal map[string]any, now string) error {
-	terminalJSON, err := json.Marshal(terminal)
-	if err != nil {
-		return fmt.Errorf("marshal episode terminal: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?
-		WHERE episode_id = ?`,
-		now, terminalJSON, episodeID); err != nil {
-		return fmt.Errorf("abandon episode: %w", err)
-	}
-	return nil
-}
-
-// runtimeNow formats the runner clock for durable timestamps.
-func (r *Runner) runtimeNow() string {
-	return r.clk.Now().UTC().Format(time.RFC3339Nano)
 }

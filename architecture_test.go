@@ -15,9 +15,9 @@ import (
 	"testing"
 )
 
-// maxProductionFileLines is quality-bar rule Q3. See
-// .agents/context/quality-bar.md.
-const maxProductionFileLines = 800
+// maxProductionFileLines is quality-bar rule Q3: production files stay under
+// 300 lines. See .agents/context/quality-bar.md.
+const maxProductionFileLines = 299
 
 // foundationPackages sit at the bottom of the dependency graph. They may import
 // each other but never a domain plane (quality-bar rule Q5).
@@ -138,7 +138,7 @@ func TestProductionFileSize(t *testing.T) {
 	for _, file := range productionGoFiles(t, repoRoot(t)) {
 		lines, generated := countLines(t, file.abs)
 		if !generated && lines > maxProductionFileLines {
-			t.Errorf("%s has %d lines; split it by responsibility to at most %d", file.rel, lines, maxProductionFileLines)
+			t.Errorf("%s has %d lines; split it by responsibility to under %d", file.rel, lines, maxProductionFileLines+1)
 		}
 	}
 }
