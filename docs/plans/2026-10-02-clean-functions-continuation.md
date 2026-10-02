@@ -25,7 +25,8 @@ functions; lint alone does not establish Q7 across every untouched function.
 3. Event-log append/read orchestration and row mechanics.
 4. HTTP health/control orchestration.
 5. Specification parsing and compiler reading order.
-6. Artifact verification stages and final whole-repository validation.
+6. Artifact verification stages.
+7. Aggregate cost reservation, settlement, and final whole-repository validation.
 
 ## Baseline
 
@@ -102,3 +103,25 @@ canonical/blank record checks even when checksums are refreshed. Run-artifact
 race tests and focused lint pass. Test writes use os.Root rather than adding
 security-linter suppressions. Review confirms verification order, line bounds,
 error strings, digest inputs, and fail-closed behavior are unchanged.
+
+### Continued review
+
+The six-round checkpoint gate is running. A further Q7 review identified mixed
+SQL/orchestration in aggregate cost-control entry points. Extend the same bar
+to reservation and settlement, pinning global-before-tenant order, rollback,
+repeated settlement, and signed-integer validation. No threshold is lowered.
+
+### Round 7: aggregate cost control
+
+Separated reservation insertion, settlement loading/idempotence, reservation
+ledger updates, and scope accounting. A shared existence predicate preserves
+mandatory global and optional tenant limits. Reused the existing range-checked
+integer conversion instead of adding suppressions. Tests pin global-before-tenant
+rejection, rollback after tenant rejection/write failure, identical/conflicting
+settlement, kill-switch stability, and validation before transaction access.
+Cost-control race tests and focused lint pass. Review retained SQL predicates,
+error precedence, caller-owned transactions, amount checks, and update order.
+
+The six-round checkpoint (`2a03c8a`) passed `make ci-check` and the full uncached
+race suite with the pinned protoc and local socket access. Final evidence must
+include this additional round before declaring completion.
