@@ -211,12 +211,30 @@ func (s *Server) validateRequest(req *runtimev1.EpisodeRequest) error { //nolint
 	if !sameMajor(req.GetProtocolVersion(), ProtocolVersion) {
 		return wireErrorf(codes.FailedPrecondition, "unsupported protocol version %q", req.GetProtocolVersion())
 	}
-	for name, value := range map[string]string{
-		"episode_id": req.GetEpisodeId(), "tenant_id": req.GetTenantId(),
-		"situation_id": req.GetSituationId(), "attempt_id": req.GetAttemptId(),
+	if err := validateRequestIdentity(req); err != nil {
+		return err
+	}
+	if err := ValidateBudget(req.GetBudget()); err != nil {
+		return wireErrorf(codes.InvalidArgument, "episode budget: %v", err)
+	}
+	if _, err := contractsv1.ParseTraceContext(req.GetTraceparent(), req.GetTracestate()); err != nil {
+		return wireErrorf(codes.InvalidArgument, "trace context: %v", err)
+	}
+	if err := s.validateDeadline(req); err != nil {
+		return err
+	}
+	return validateEvidenceEndpoint(req)
+}
+
+// validateRequestIdentity requires the attempt identity, episode shape, and
+// the digest-bound documents the worker reasons over.
+func validateRequestIdentity(req *runtimev1.EpisodeRequest) error {
+	for _, field := range []struct{ name, value string }{
+		{"episode_id", req.GetEpisodeId()}, {"tenant_id", req.GetTenantId()},
+		{"situation_id", req.GetSituationId()}, {"attempt_id", req.GetAttemptId()},
 	} {
-		if strings.TrimSpace(value) == "" {
-			return wireErrorf(codes.InvalidArgument, "%s is required", name)
+		if strings.TrimSpace(field.value) == "" {
+			return wireErrorf(codes.InvalidArgument, "%s is required", field.name)
 		}
 	}
 	if req.GetFence() == 0 || req.GetSituationVersion() == 0 {
@@ -231,20 +249,25 @@ func (s *Server) validateRequest(req *runtimev1.EpisodeRequest) error { //nolint
 	if len(req.GetSnapshotJson()) == 0 || len(req.GetDecisionSchemaJson()) == 0 || len(req.GetToolCatalogJson()) == 0 {
 		return wireError(codes.InvalidArgument, "snapshot, decision schema, and tool catalog are required")
 	}
-	if err := ValidateBudget(req.GetBudget()); err != nil {
-		return wireErrorf(codes.InvalidArgument, "episode budget: %v", err)
+	return nil
+}
+
+func (s *Server) validateDeadline(req *runtimev1.EpisodeRequest) error {
+	if req.GetDeadline() == nil {
+		return nil
 	}
-	if _, err := contractsv1.ParseTraceContext(req.GetTraceparent(), req.GetTracestate()); err != nil {
-		return wireErrorf(codes.InvalidArgument, "trace context: %v", err)
+	if !req.GetDeadline().IsValid() {
+		return wireError(codes.InvalidArgument, "deadline is invalid")
 	}
-	if req.GetDeadline() != nil {
-		if !req.GetDeadline().IsValid() {
-			return wireError(codes.InvalidArgument, "deadline is invalid")
-		}
-		if req.GetDeadline().AsTime().Before(s.now()) {
-			return wireError(codes.DeadlineExceeded, "episode deadline has expired")
-		}
+	if req.GetDeadline().AsTime().Before(s.now()) {
+		return wireError(codes.DeadlineExceeded, "episode deadline has expired")
 	}
+	return nil
+}
+
+// validateEvidenceEndpoint requires the evidence endpoint and capability
+// together, with the endpoint on a private Unix socket.
+func validateEvidenceEndpoint(req *runtimev1.EpisodeRequest) error {
 	if (req.GetEvidenceToolsEndpoint() == "") != (len(req.GetCapabilityToken()) == 0) {
 		return wireError(codes.InvalidArgument, "evidence endpoint and capability token must be supplied together")
 	}
@@ -280,13 +303,41 @@ func (v *streamValidator) emit(stream runtimev1.EpisodeWorker_ExecuteServer, eve
 	if event == nil {
 		return wireError(codes.InvalidArgument, "nil episode event")
 	}
-	if uint64(proto.Size(event)) > v.maxEventBytes { //nolint:gosec // protobuf Size is non-negative and bounded by the configured event limit.
+	eventBytes := uint64(proto.Size(event)) //nolint:gosec // protobuf Size is non-negative and bounded by the configured event limit.
+	if err := v.checkSize(eventBytes); err != nil {
+		return err
+	}
+	if err := v.checkOrder(event); err != nil {
+		return err
+	}
+	if err := v.checkPayload(event); err != nil {
+		return err
+	}
+	if event.GetTerminal() != nil {
+		v.terminal = true
+	}
+	v.nextSequence = event.GetSequence()
+	v.eventCount++
+	v.streamBytes += eventBytes
+	if err := stream.Send(event); err != nil {
+		return fmt.Errorf("send episode event: %w", err)
+	}
+	return nil
+}
+
+func (v *streamValidator) checkSize(eventBytes uint64) error {
+	if eventBytes > v.maxEventBytes {
 		return wireError(codes.ResourceExhausted, "episode event exceeds size limit")
 	}
-	eventBytes := uint64(proto.Size(event)) //nolint:gosec // protobuf Size is non-negative and bounded by the configured event limit.
 	if v.eventCount >= v.maxEvents || v.streamBytes+eventBytes > v.maxStreamBytes {
 		return wireError(codes.ResourceExhausted, "episode stream exceeds size limit")
 	}
+	return nil
+}
+
+// checkOrder requires the request's attempt identity, gapless sequencing, and
+// nothing after the terminal.
+func (v *streamValidator) checkOrder(event *runtimev1.EpisodeEvent) error {
 	if v.terminal {
 		return wireError(codes.FailedPrecondition, "event emitted after terminal")
 	}
@@ -296,6 +347,12 @@ func (v *streamValidator) emit(stream runtimev1.EpisodeWorker_ExecuteServer, eve
 	if event.GetSequence() == 0 || event.GetSequence() != v.nextSequence+1 {
 		return wireErrorf(codes.FailedPrecondition, "episode event sequence %d is not %d", event.GetSequence(), v.nextSequence+1)
 	}
+	return nil
+}
+
+// checkPayload requires a timestamped payload, a Decision bound to this
+// attempt with a SHA-256 digest, and a terminal with an explicit status.
+func (v *streamValidator) checkPayload(event *runtimev1.EpisodeEvent) error {
 	if event.GetOccurredAt() == nil || !event.GetOccurredAt().IsValid() || event.GetPayload() == nil {
 		return wireError(codes.InvalidArgument, "episode event timestamp and payload are required")
 	}
@@ -304,17 +361,8 @@ func (v *streamValidator) emit(stream runtimev1.EpisodeWorker_ExecuteServer, eve
 			return wireError(codes.PermissionDenied, "decision identity or digest is invalid")
 		}
 	}
-	if terminal := event.GetTerminal(); terminal != nil {
-		if terminal.GetStatus() == runtimev1.TerminalStatus_TERMINAL_STATUS_UNSPECIFIED {
-			return wireError(codes.InvalidArgument, "terminal status is required")
-		}
-		v.terminal = true
-	}
-	v.nextSequence = event.GetSequence()
-	v.eventCount++
-	v.streamBytes += eventBytes
-	if err := stream.Send(event); err != nil {
-		return fmt.Errorf("send episode event: %w", err)
+	if terminal := event.GetTerminal(); terminal != nil && terminal.GetStatus() == runtimev1.TerminalStatus_TERMINAL_STATUS_UNSPECIFIED {
+		return wireError(codes.InvalidArgument, "terminal status is required")
 	}
 	return nil
 }

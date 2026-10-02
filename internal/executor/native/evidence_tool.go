@@ -35,6 +35,31 @@ func (t *SQLiteEvidenceTool) Call(ctx context.Context, raw json.RawMessage) (Too
 	if t == nil || t.db == nil || t.tenantID == "" || t.entityID == "" {
 		return ToolResult{}, fmt.Errorf("evidence tool is not configured")
 	}
+	query, err := t.parseQuery(raw, time.Now().UTC())
+	if err != nil {
+		return ToolResult{}, err
+	}
+	rows, err := t.readRows(ctx, query)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	encoded, err := json.Marshal(map[string]any{"rows": rows})
+	if err != nil {
+		return ToolResult{}, fmt.Errorf("encode evidence result: %w", err)
+	}
+	return ToolResult{JSON: encoded, Rows: uint64(len(rows)), Bytes: uint64(len(encoded))}, nil
+}
+
+// evidenceQuery is a scoped, bounded evidence read.
+type evidenceQuery struct {
+	from, until       time.Time
+	maxRows, maxBytes uint64
+}
+
+// parseQuery applies the caller's arguments, which may only narrow the tool's
+// row and byte limits and never widen its entity scope. The window defaults
+// to the 24 hours before now.
+func (t *SQLiteEvidenceTool) parseQuery(raw json.RawMessage, now time.Time) (evidenceQuery, error) {
 	var args struct {
 		EntityID string `json:"entity_id"`
 		From     string `json:"from"`
@@ -43,69 +68,75 @@ func (t *SQLiteEvidenceTool) Call(ctx context.Context, raw json.RawMessage) (Too
 		MaxBytes uint64 `json:"max_bytes"`
 	}
 	if err := json.Unmarshal(raw, &args); err != nil {
-		return ToolResult{}, fmt.Errorf("decode evidence arguments: %w", err)
+		return evidenceQuery{}, fmt.Errorf("decode evidence arguments: %w", err)
 	}
 	if args.EntityID != "" && args.EntityID != t.entityID {
-		return ToolResult{}, fmt.Errorf("evidence entity is outside episode scope")
+		return evidenceQuery{}, fmt.Errorf("evidence entity is outside episode scope")
 	}
-	maxRows, maxBytes := t.maxRows, t.maxBytes
-	if args.MaxRows > 0 && args.MaxRows < maxRows {
-		maxRows = args.MaxRows
+	query := evidenceQuery{from: now.Add(-24 * time.Hour), until: now, maxRows: t.maxRows, maxBytes: t.maxBytes}
+	if args.MaxRows > 0 && args.MaxRows < query.maxRows {
+		query.maxRows = args.MaxRows
 	}
-	if args.MaxBytes > 0 && args.MaxBytes < maxBytes {
-		maxBytes = args.MaxBytes
+	if args.MaxBytes > 0 && args.MaxBytes < query.maxBytes {
+		query.maxBytes = args.MaxBytes
 	}
-	from, until := time.Now().UTC().Add(-24*time.Hour), time.Now().UTC()
 	var err error
 	if args.From != "" {
-		from, err = time.Parse(time.RFC3339Nano, args.From)
-		if err != nil {
-			return ToolResult{}, fmt.Errorf("invalid evidence from: %w", err)
+		if query.from, err = time.Parse(time.RFC3339Nano, args.From); err != nil {
+			return evidenceQuery{}, fmt.Errorf("invalid evidence from: %w", err)
 		}
 	}
 	if args.Until != "" {
-		until, err = time.Parse(time.RFC3339Nano, args.Until)
-		if err != nil {
-			return ToolResult{}, fmt.Errorf("invalid evidence until: %w", err)
+		if query.until, err = time.Parse(time.RFC3339Nano, args.Until); err != nil {
+			return evidenceQuery{}, fmt.Errorf("invalid evidence until: %w", err)
 		}
 	}
-	if !until.After(from) {
-		return ToolResult{}, fmt.Errorf("evidence until must be after from")
+	if !query.until.After(query.from) {
+		return evidenceQuery{}, fmt.Errorf("evidence until must be after from")
 	}
-	rows, err := t.db.QueryContext(ctx, `SELECT event_id, event_type, event_time, payload_json FROM event_log WHERE tenant_id = ? AND entity_id = ? AND event_time >= ? AND event_time <= ? ORDER BY event_time, position LIMIT ?`, t.tenantID, t.entityID, from.UTC().Format(time.RFC3339Nano), until.UTC().Format(time.RFC3339Nano), maxRows)
+	return query, nil
+}
+
+// readRows returns the longest prefix of matching events whose encoded
+// {"rows":[...]} document stays within maxBytes.
+func (t *SQLiteEvidenceTool) readRows(ctx context.Context, query evidenceQuery) ([]json.RawMessage, error) {
+	rows, err := t.db.QueryContext(ctx, `SELECT event_id, event_type, event_time, payload_json FROM event_log WHERE tenant_id = ? AND entity_id = ? AND event_time >= ? AND event_time <= ? ORDER BY event_time, position LIMIT ?`, t.tenantID, t.entityID, query.from.UTC().Format(time.RFC3339Nano), query.until.UTC().Format(time.RFC3339Nano), query.maxRows)
 	if err != nil {
-		return ToolResult{}, fmt.Errorf("query evidence: %w", err)
+		return nil, fmt.Errorf("query evidence: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	resultRows := make([]map[string]any, 0)
+	result := make([]json.RawMessage, 0)
+	// The encoded document is {"rows":[r1,r2,...]}: the envelope, each row,
+	// and a comma between rows.
+	size := uint64(len(`{"rows":[]}`))
 	for rows.Next() {
 		var eventID, eventType, eventTime string
 		var payload []byte
 		if err := rows.Scan(&eventID, &eventType, &eventTime, &payload); err != nil {
-			return ToolResult{}, fmt.Errorf("scan evidence: %w", err)
+			return nil, fmt.Errorf("scan evidence: %w", err)
 		}
 		var data any
 		if err := json.Unmarshal(payload, &data); err != nil {
-			return ToolResult{}, fmt.Errorf("decode evidence payload: %w", err)
+			return nil, fmt.Errorf("decode evidence payload: %w", err)
 		}
-		candidate := append(append([]map[string]any(nil), resultRows...), map[string]any{"event_id": eventID, "event_type": eventType, "event_time": eventTime, "data": data})
-		encoded, err := json.Marshal(map[string]any{"rows": candidate})
+		encoded, err := json.Marshal(map[string]any{"event_id": eventID, "event_type": eventType, "event_time": eventTime, "data": data})
 		if err != nil {
-			return ToolResult{}, fmt.Errorf("encode evidence: %w", err)
+			return nil, fmt.Errorf("encode evidence: %w", err)
 		}
-		if uint64(len(encoded)) > maxBytes {
+		next := size + uint64(len(encoded))
+		if len(result) > 0 {
+			next++
+		}
+		if next > query.maxBytes {
 			break
 		}
-		resultRows = candidate
+		result = append(result, encoded)
+		size = next
 	}
 	if err := rows.Err(); err != nil {
-		return ToolResult{}, fmt.Errorf("iterate evidence: %w", err)
+		return nil, fmt.Errorf("iterate evidence: %w", err)
 	}
-	encoded, err := json.Marshal(map[string]any{"rows": resultRows})
-	if err != nil {
-		return ToolResult{}, fmt.Errorf("encode evidence result: %w", err)
-	}
-	return ToolResult{JSON: encoded, Rows: uint64(len(resultRows)), Bytes: uint64(len(encoded))}, nil
+	return result, nil
 }
 
 var _ Tool = (*SQLiteEvidenceTool)(nil)
