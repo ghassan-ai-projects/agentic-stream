@@ -9,6 +9,7 @@ Stream. The curated public reading path is
 | Area | Classification | How to use it |
 | --- | --- | --- |
 | `design/` | Current authoritative design record, machine-facing contract sources, examples, implementation notes | Use with current code/tests; label design-only material when it is not implemented |
+| `eval/` | Evaluation design: measurement model, suite catalog, implementation plan, evaluation bar | Design-only record of what the evaluation should measure; code and tests define implemented behavior |
 | `design-v0/`, `design-v0.1/` | Historical design iterations | Read for rationale and critique, not current behavior |
 | `contracts/` | Repository-level notification contract mirror | Prefer embedded runtime files under `internal/notifycontract/contracts/` for code behavior |
 | `research/` | Research reports and generated working artifacts | Reference material; generated variants are not public entrypoints |
