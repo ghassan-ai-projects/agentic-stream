@@ -52,6 +52,13 @@ func (o *RuntimeOwner) ClaimAndRecover(ctx context.Context, epoch string, recove
 }
 
 func (o *RuntimeOwner) claimTx(ctx context.Context, tx *sql.Tx, epoch string, now time.Time) error {
+	if err := o.writeOwnerLease(ctx, tx, epoch, now); err != nil {
+		return err
+	}
+	return o.assertRecordedOwner(ctx, tx, epoch)
+}
+
+func (o *RuntimeOwner) writeOwnerLease(ctx context.Context, tx *sql.Tx, epoch string, now time.Time) error {
 	leaseUntil := formatRuntimeTime(now.Add(o.leaseDuration()))
 	nowText := formatRuntimeTime(now)
 	_, err := tx.ExecContext(ctx, `
@@ -79,6 +86,10 @@ func (o *RuntimeOwner) claimTx(ctx context.Context, tx *sql.Tx, epoch string, no
 	if err != nil {
 		return fmt.Errorf("claim runtime owner: %w", err)
 	}
+	return nil
+}
+
+func (o *RuntimeOwner) assertRecordedOwner(ctx context.Context, tx *sql.Tx, epoch string) error {
 	var currentEpoch, currentInstance string
 	if err := tx.QueryRowContext(ctx,
 		"SELECT owner_epoch, owner_instance FROM runtime_owner WHERE singleton_id = 1",

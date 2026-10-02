@@ -49,3 +49,13 @@ backoff delays, attempt order, and successful-close ownership are unchanged.
 Baseline whole-tree lint passed. Restricted baseline CI could not write the Go
 module cache and failed local socket tests. Final CI will run with those required
 capabilities rather than skipping checks.
+
+### Round 2: durable ownership and reconciliation barriers
+
+Separated lease persistence from owner verification, target assertion/release
+from their SQL steps, and barrier opening from state binding. Reused TargetClaim
+for the private transaction step rather than introducing another state type.
+Tests pin post-recovery lease expiry, identity/boot fences, release audit rollback,
+barrier audit rollback, and old-boot rejection after authority loss. Storage race
+tests, focused lint, and diff checks pass. Review retained both release clock
+reads, final recovery assertion, authority-check precedence, and atomic audits.
