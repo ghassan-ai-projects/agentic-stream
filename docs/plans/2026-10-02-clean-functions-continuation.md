@@ -69,3 +69,13 @@ filtering before limits, stable position ordering, and connection cleanup when
 the consumer stops. Event-log race tests, focused lint, and diff checks pass.
 Review confirms the same SQL, duplicate sentinel, JSON/hash inputs, clock read
 position, callback errors, and row cleanup.
+
+### Round 4: HTTP health and operator control
+
+Health construction now registers routes without embedding response logic.
+Control delivery reads as access check, control application, state response;
+control mechanics have their own file. Tests pin configuration/authentication/
+method precedence, readiness call counts, problem responses, persistence errors,
+and absence of mutations on rejection. API race tests, focused lint, and diff
+checks pass. Review preserved exact-token constant-time comparison, status/body
+shapes, action-before-state-read order, and readiness detail suppression.

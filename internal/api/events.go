@@ -1,8 +1,6 @@
 package api
 
 import (
-	"crypto/subtle"
-	"encoding/json"
 	"net/http"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
@@ -34,47 +32,4 @@ func NewRuntimeHandler(readiness Readiness, db *storage.DB, events notify.SSECon
 		mux.Handle("/control/kill", handler)
 	}
 	return mux
-}
-
-type controlHandler struct {
-	control *storage.EpochControl
-	epoch   string
-	token   string
-}
-
-func newControlHandler(control *storage.EpochControl, epoch string, token string) http.Handler {
-	return &controlHandler{control: control, epoch: epoch, token: token}
-}
-
-func (h *controlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if h.control == nil || h.epoch == "" {
-		http.Error(w, "epoch control is not configured", http.StatusServiceUnavailable)
-		return
-	}
-	provided := r.Header.Get("Authorization")
-	if h.token == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(h.token)) != 1 {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	var err error
-	switch {
-	case r.Method == http.MethodPost && r.URL.Path == "/control/kill":
-		err = h.control.Kill(r.Context(), h.epoch)
-	case r.Method == http.MethodPost && r.URL.Path == "/control/drain":
-		err = h.control.Drain(r.Context(), h.epoch)
-	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	state, err := h.control.State(r.Context(), h.epoch)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"epoch": h.epoch, "state": state})
 }
