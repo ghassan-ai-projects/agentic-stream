@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
@@ -37,8 +39,8 @@ func TestRunnerPersistsCancellationAfterExecutorCancelsContext(t *testing.T) {
 	if err := db.QueryRowContext(context.Background(), "SELECT status FROM episode_attempts WHERE episode_id = 'epi-cancel'").Scan(&status); err != nil {
 		t.Fatalf("read attempt status: %v", err)
 	}
-	if status != string(AttemptCancelled) {
-		t.Fatalf("attempt status = %q, want %q", status, AttemptCancelled)
+	if status != string(episodeledger.AttemptCancelled) {
+		t.Fatalf("attempt status = %q, want %q", status, episodeledger.AttemptCancelled)
 	}
 	var reason string
 	if err := db.QueryRowContext(context.Background(), "SELECT json_extract(terminal_json, '$.reason') FROM episode_attempts WHERE episode_id = 'epi-cancel'").Scan(&reason); err != nil {
@@ -72,7 +74,7 @@ func TestRunnerPersistsSuccessfulOutcomeAfterParentCancellation(t *testing.T) {
 		WHERE a.episode_id = 'epi-cancel-success'`).Scan(&attemptStatus, &lifecycle); err != nil {
 		t.Fatalf("read persisted successful cancellation: %v", err)
 	}
-	if attemptStatus != string(AttemptDeclined) || lifecycle != string(LifecycleConcluded) {
+	if attemptStatus != string(episodeledger.AttemptDeclined) || lifecycle != string(episodeledger.LifecycleConcluded) {
 		t.Fatalf("attempt status=%q lifecycle=%q, want declined/concluded", attemptStatus, lifecycle)
 	}
 	var decisions int
@@ -109,7 +111,7 @@ func TestRunnerPersistsProducedOutcomeAfterParentCancellation(t *testing.T) {
 		WHERE a.episode_id = 'epi-cancel-produced'`).Scan(&attemptStatus, &lifecycle, &validationStatus); err != nil {
 		t.Fatalf("read persisted produced cancellation: %v", err)
 	}
-	if attemptStatus != string(AttemptProduced) || lifecycle != string(LifecycleConcluded) || validationStatus != "accepted" {
+	if attemptStatus != string(episodeledger.AttemptProduced) || lifecycle != string(episodeledger.LifecycleConcluded) || validationStatus != "accepted" {
 		t.Fatalf("attempt=%q lifecycle=%q validation=%q, want produced/concluded/accepted", attemptStatus, lifecycle, validationStatus)
 	}
 	var intents int
@@ -156,7 +158,7 @@ func TestRunnerCancelsSupersededStreamedAttempt(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = 'epi-supersede'").Scan(&lifecycle); err != nil {
 		t.Fatal(err)
 	}
-	if status != string(AttemptCancelled) || lifecycle != string(LifecycleSuperseded) {
+	if status != string(episodeledger.AttemptCancelled) || lifecycle != string(episodeledger.LifecycleSuperseded) {
 		t.Fatalf("status=%q lifecycle=%q", status, lifecycle)
 	}
 }
@@ -188,7 +190,7 @@ func TestRunnerQuarantinesAlreadyKilledEpochBeforeAttempt(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = 'epi-kill-before-attempt'").Scan(&lifecycle); err != nil {
 		t.Fatalf("read quarantined episode: %v", err)
 	}
-	if lifecycle != string(LifecycleAbandoned) {
+	if lifecycle != string(episodeledger.LifecycleAbandoned) {
 		t.Fatalf("pre-gate lifecycle = %q, want abandoned", lifecycle)
 	}
 	var attempts int
@@ -220,7 +222,7 @@ func TestRunnerQuarantinesUnboundEpochBeforeAttempt(t *testing.T) {
 		FROM episodes WHERE episode_id = 'epi-unbound-epoch'`).Scan(&lifecycle, &reason); err != nil {
 		t.Fatalf("read quarantined episode: %v", err)
 	}
-	if lifecycle != string(LifecycleAbandoned) || reason != "epoch_unbound" {
+	if lifecycle != string(episodeledger.LifecycleAbandoned) || reason != "epoch_unbound" {
 		t.Fatalf("lifecycle=%q reason=%q, want abandoned/epoch_unbound", lifecycle, reason)
 	}
 }
@@ -282,7 +284,7 @@ func TestRunnerQuarantinesLateOutcomeAfterEpochKill(t *testing.T) {
 		WHERE a.episode_id = 'epi-kill-late'`).Scan(&attemptStatus, &lifecycle); err != nil {
 		t.Fatalf("read late epoch-kill state: %v", err)
 	}
-	if attemptStatus != string(AttemptAbandoned) || lifecycle != string(LifecycleAbandoned) {
+	if attemptStatus != string(episodeledger.AttemptAbandoned) || lifecycle != string(episodeledger.LifecycleAbandoned) {
 		t.Fatalf("late epoch-kill attempt=%q lifecycle=%q, want abandoned/abandoned", attemptStatus, lifecycle)
 	}
 	var decisions int
@@ -307,7 +309,7 @@ type successfulCancelingExecutor struct{ cancel context.CancelFunc }
 
 func (e successfulCancelingExecutor) Execute(_ context.Context, req *Request) (*Outcome, error) {
 	e.cancel()
-	return &Outcome{Status: string(AttemptDeclined), AttemptID: req.AttemptID, Fence: req.Fence}, nil
+	return &Outcome{Status: string(episodeledger.AttemptDeclined), AttemptID: req.AttemptID, Fence: req.Fence}, nil
 }
 
 var _ Executor = successfulCancelingExecutor{}

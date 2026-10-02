@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -48,7 +50,7 @@ func Run(ctx context.Context, executor episodes.Executor) error {
 	if err != nil {
 		return fmt.Errorf("execute conformance fixture: %w", err)
 	}
-	if outcome == nil || outcome.Status != string(episodes.AttemptProduced) {
+	if outcome == nil || outcome.Status != string(episodeledger.AttemptProduced) {
 		return fmt.Errorf("expected produced outcome, got %#v", outcome)
 	}
 	if outcome.AttemptID != req.AttemptID || outcome.Fence != req.Fence {

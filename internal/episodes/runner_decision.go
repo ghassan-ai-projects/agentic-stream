@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
-	"time"
 )
 
 func decisionDigestForStorage(raw []byte) ([]byte, bool) {
@@ -34,7 +36,7 @@ func decisionDigestForStorage(raw []byte) ([]byte, bool) {
 	return decoded, true
 }
 
-func bindAttemptIdentity(raw []byte, identity Identity) ([]byte, error) {
+func bindAttemptIdentity(raw []byte, identity episodeledger.Identity) ([]byte, error) {
 	var document map[string]any
 	if err := json.Unmarshal(raw, &document); err != nil {
 		return nil, fmt.Errorf("decode request json: %w", err)
@@ -48,7 +50,7 @@ func bindAttemptIdentity(raw []byte, identity Identity) ([]byte, error) {
 	return bound, nil
 }
 
-func decisionInput(req *Request, identity Identity, now time.Time) (decisions.Input, error) {
+func decisionInput(req *Request, identity episodeledger.Identity, now time.Time) (decisions.Input, error) {
 	var payload struct {
 		AllowedIntentTypes []string `json:"allowed_intent_types"`
 		RiskCeiling        string   `json:"risk_ceiling"`
@@ -246,13 +248,13 @@ func (r *Runner) governDecision(ctx context.Context, tx *sql.Tx, claim *episodeC
 	return nil
 }
 
-func (r *Runner) rejectDecision(ctx context.Context, tx *sql.Tx, identity Identity, record *decisionRecord) error {
+func (r *Runner) rejectDecision(ctx context.Context, tx *sql.Tx, identity episodeledger.Identity, record *decisionRecord) error {
 	reason := "schema_invalid"
 	var typed *decisions.ValidationError
 	if errors.As(record.validationErr, &typed) {
 		reason = typed.Reason
 	}
-	if err := RecordRejection(ctx, tx, identity, RejectionReason(reason), record.validationJSON, r.clk.Now()); err != nil {
+	if err := episodeledger.RecordRejection(ctx, tx, identity, episodeledger.RejectionReason(reason), record.validationJSON, r.clk.Now()); err != nil {
 		return fmt.Errorf("record decision rejection: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE decisions SET rejection_reason = ? WHERE decision_id = ?", reason, record.id); err != nil {

@@ -7,17 +7,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 )
 
 // RecoveryReport combines episode and evidence state repaired before runtime
 // readiness. Both changes are committed with ownership in one transaction.
 type RecoveryReport struct {
-	Episodes            episodes.RecoveryReport
+	Episodes            episodeledger.RecoveryReport
 	InterruptedEvidence int
 }
 
@@ -52,7 +53,7 @@ func (c *RecoveryCoordinator) ClaimAndRecover(ctx context.Context) (RecoveryRepo
 			now = claimedAt
 		}
 		var err error
-		report.Episodes, err = episodes.RecoverUnfinishedAttemptsWithCost(ctx, tx, c.Epoch, now, c.Costs)
+		report.Episodes, err = episodeledger.RecoverUnfinishedAttemptsWithCost(ctx, tx, c.Epoch, now, c.Costs)
 		if err != nil {
 			return fmt.Errorf("recover episode attempts: %w", err)
 		}

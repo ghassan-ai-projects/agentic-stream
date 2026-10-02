@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 )
 
@@ -40,10 +42,10 @@ func RunBatch(ctx context.Context, executor episodes.Executor, requests []*episo
 		outcome, err := executor.Execute(ctx, request)
 		result.DurationMS = time.Since(start).Milliseconds()
 		if err != nil {
-			result.Status = string(episodes.AttemptFailed)
+			result.Status = string(episodeledger.AttemptFailed)
 			result.Reasons = append(result.Reasons, fmt.Sprintf("executor_error:%v", err))
 		} else if outcome == nil {
-			result.Status = string(episodes.AttemptFailed)
+			result.Status = string(episodeledger.AttemptFailed)
 			result.Reasons = append(result.Reasons, "nil_outcome")
 		} else {
 			result.Status = outcome.Status

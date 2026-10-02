@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"time"
 )
 
 // deadlineExceeded reports whether the attempt ran past its wall_time budget.
@@ -32,7 +34,7 @@ func (r *Runner) watchSupersession(ctx context.Context, episodeID string, cancel
 			return
 		case <-ticker.C:
 			var lifecycle string
-			if err := r.db.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = ?", episodeID).Scan(&lifecycle); err == nil && lifecycle == string(LifecycleSuperseded) {
+			if err := r.db.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = ?", episodeID).Scan(&lifecycle); err == nil && lifecycle == string(episodeledger.LifecycleSuperseded) {
 				cancel()
 				return
 			}
@@ -40,14 +42,14 @@ func (r *Runner) watchSupersession(ctx context.Context, episodeID string, cancel
 	}
 }
 
-func executionFailureStatus(err error) AttemptStatus {
+func executionFailureStatus(err error) episodeledger.AttemptStatus {
 	if errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled {
-		return AttemptCancelled
+		return episodeledger.AttemptCancelled
 	}
 	if errors.Is(err, context.DeadlineExceeded) || status.Code(err) == codes.DeadlineExceeded {
-		return AttemptTimedOut
+		return episodeledger.AttemptTimedOut
 	}
-	return AttemptFailed
+	return episodeledger.AttemptFailed
 }
 
 func executionFailureReason(err error) string {
@@ -60,9 +62,9 @@ func executionFailureReason(err error) string {
 		return "budget_telemetry_missing"
 	}
 	switch executionFailureStatus(err) {
-	case AttemptCancelled:
+	case episodeledger.AttemptCancelled:
 		return "worker_cancelled" //nolint:misspell // Durable protocol reason is frozen as cancelled.
-	case AttemptTimedOut:
+	case episodeledger.AttemptTimedOut:
 		return "worker_deadline_exceeded"
 	default:
 		return "worker_execution_failed"
@@ -71,35 +73,35 @@ func executionFailureReason(err error) string {
 
 // failAttemptStatus fails the current attempt, then retries the episode or
 // concludes it once the retry budget is spent.
-func (r *Runner) failAttemptStatus(ctx context.Context, identity Identity, attemptStatus AttemptStatus, reason string) error {
+func (r *Runner) failAttemptStatus(ctx context.Context, identity episodeledger.Identity, attemptStatus episodeledger.AttemptStatus, reason string) error {
 	return r.withTx(ctx, func(tx *sql.Tx) error {
 		terminalJSON, err := json.Marshal(map[string]any{"status": attemptStatus, "reason": reason})
 		if err != nil {
 			return fmt.Errorf("marshal terminal: %w", err)
 		}
-		if attemptStatus == AttemptCancelled {
+		if attemptStatus == episodeledger.AttemptCancelled {
 			if err := r.markCancelling(ctx, tx, identity); err != nil {
 				return err
 			}
 		}
-		if err := TransitionAttempt(ctx, tx, identity, attemptStatus, r.clk.Now(), terminalJSON); err != nil {
+		if err := episodeledger.TransitionAttempt(ctx, tx, identity, attemptStatus, r.clk.Now(), terminalJSON); err != nil {
 			return fmt.Errorf("finish failed episode attempt: %w", err)
 		}
 		return r.retryOrConcludeFailedEpisode(ctx, tx, identity.EpisodeID)
 	})
 }
 
-// markCancelling moves the attempt through AttemptCancelling, which the
-// attempt lifecycle requires before AttemptCancelled.
-func (r *Runner) markCancelling(ctx context.Context, tx *sql.Tx, identity Identity) error {
-	var current AttemptStatus
+// markCancelling moves the attempt through episodeledger.AttemptCancelling, which the
+// attempt lifecycle requires before episodeledger.AttemptCancelled.
+func (r *Runner) markCancelling(ctx context.Context, tx *sql.Tx, identity episodeledger.Identity) error {
+	var current episodeledger.AttemptStatus
 	if err := tx.QueryRowContext(ctx, "SELECT status FROM episode_attempts WHERE attempt_id = ? AND episode_id = ? AND fence = ?", identity.AttemptID, identity.EpisodeID, identity.Fence).Scan(&current); err != nil {
 		return fmt.Errorf("read episode attempt status: %w", err)
 	}
-	if current == AttemptCancelling {
+	if current == episodeledger.AttemptCancelling {
 		return nil
 	}
-	if err := TransitionAttempt(ctx, tx, identity, AttemptCancelling, r.clk.Now(), nil); err != nil {
+	if err := episodeledger.TransitionAttempt(ctx, tx, identity, episodeledger.AttemptCancelling, r.clk.Now(), nil); err != nil {
 		return fmt.Errorf("mark episode attempt cancelling: %w", err) //nolint:misspell // Durable lifecycle value is frozen as cancelling.
 	}
 	return nil
@@ -117,23 +119,19 @@ func (r *Runner) retryOrConcludeFailedEpisode(ctx context.Context, tx *sql.Tx, e
 	if err != nil {
 		return fmt.Errorf("count failed episode attempts: %w", err)
 	}
-	superseded := lifecycle == string(LifecycleSuperseded)
+	superseded := lifecycle == string(episodeledger.LifecycleSuperseded)
 	if !superseded && failedAttempts < maxEpisodeAttempts {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE episodes SET lifecycle_status = 'running', ended_at = NULL, terminal_json = NULL
-			WHERE episode_id = ?`,
-			episodeID,
-		); err != nil {
+		if err := episodeledger.RetainForRetry(ctx, tx, episodeID); err != nil {
 			return fmt.Errorf("update episode failed: %w", err)
 		}
 		return nil
 	}
 	if !superseded {
-		terminalJSON, err := json.Marshal(map[string]any{"status": AttemptFailed, "reason": "attempt_retry_limit"})
+		terminalJSON, err := json.Marshal(map[string]any{"status": episodeledger.AttemptFailed, "reason": "attempt_retry_limit"})
 		if err != nil {
 			return fmt.Errorf("marshal retry limit terminal: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE episodes SET lifecycle_status = 'concluded', ended_at = ?, terminal_json = ? WHERE episode_id = ?", r.runtimeNow(), terminalJSON, episodeID); err != nil {
+		if err := episodeledger.Conclude(ctx, tx, episodeID, r.runtimeNow(), terminalJSON); err != nil {
 			return fmt.Errorf("conclude exhausted episode: %w", err)
 		}
 	}
@@ -147,20 +145,20 @@ func (r *Runner) retryOrConcludeFailedEpisode(ctx context.Context, tx *sql.Tx, e
 
 // failAttemptWithRejection records why the worker's identity was rejected,
 // fails the current attempt, and retries or concludes the episode.
-func (r *Runner) failAttemptWithRejection(ctx context.Context, current, incoming Identity, reason RejectionReason, detail string) error {
+func (r *Runner) failAttemptWithRejection(ctx context.Context, current, incoming episodeledger.Identity, reason episodeledger.RejectionReason, detail string) error {
 	return r.withTx(ctx, func(tx *sql.Tx) error {
 		details, err := json.Marshal(map[string]any{"message": detail, "incoming_attempt_id": incoming.AttemptID, "incoming_fence": incoming.Fence})
 		if err != nil {
 			return fmt.Errorf("marshal identity rejection: %w", err)
 		}
-		if err := RecordRejection(ctx, tx, incoming, reason, details, r.clk.Now()); err != nil {
+		if err := episodeledger.RecordRejection(ctx, tx, incoming, reason, details, r.clk.Now()); err != nil {
 			return fmt.Errorf("record worker identity rejection: %w", err)
 		}
-		terminalJSON, err := json.Marshal(map[string]any{"status": AttemptFailed, "reason": detail})
+		terminalJSON, err := json.Marshal(map[string]any{"status": episodeledger.AttemptFailed, "reason": detail})
 		if err != nil {
 			return fmt.Errorf("marshal terminal: %w", err)
 		}
-		if err := TransitionAttempt(ctx, tx, current, AttemptFailed, r.clk.Now(), terminalJSON); err != nil {
+		if err := episodeledger.TransitionAttempt(ctx, tx, current, episodeledger.AttemptFailed, r.clk.Now(), terminalJSON); err != nil {
 			return fmt.Errorf("finish identity-failed attempt: %w", err)
 		}
 		return r.retryOrConcludeRejectedEpisode(ctx, tx, current.EpisodeID, terminalJSON)
@@ -176,9 +174,7 @@ func (r *Runner) retryOrConcludeRejectedEpisode(ctx context.Context, tx *sql.Tx,
 		return fmt.Errorf("count identity-failed attempts: %w", err)
 	}
 	if failedAttempts < maxEpisodeAttempts {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE episodes SET lifecycle_status = 'running', ended_at = NULL, terminal_json = NULL
-			WHERE episode_id = ?`, episodeID); err != nil {
+		if err := episodeledger.RetainForRetry(ctx, tx, episodeID); err != nil {
 			return fmt.Errorf("retain episode for retry: %w", err)
 		}
 		return nil
@@ -188,7 +184,7 @@ func (r *Runner) retryOrConcludeRejectedEpisode(ctx context.Context, tx *sql.Tx,
 			return fmt.Errorf("settle exhausted episode cost: %w", err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE episodes SET lifecycle_status = 'concluded', ended_at = ?, terminal_json = ? WHERE episode_id = ?", r.runtimeNow(), terminalJSON, episodeID); err != nil {
+	if err := episodeledger.Conclude(ctx, tx, episodeID, r.runtimeNow(), terminalJSON); err != nil {
 		return fmt.Errorf("conclude identity-failed episode: %w", err)
 	}
 	return nil

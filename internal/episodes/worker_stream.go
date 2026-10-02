@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
@@ -153,17 +155,17 @@ func (s *workerStream) outcome() (*Outcome, error) {
 		if s.decision == nil {
 			return nil, fmt.Errorf("produced worker terminal has no decision")
 		}
-		outcome.Status = string(AttemptProduced)
+		outcome.Status = string(episodeledger.AttemptProduced)
 		outcome.DecisionJSON = append([]byte(nil), s.decision.GetDecisionJson()...)
 		outcome.DecisionSHA256 = fmt.Sprintf("sha256:%x", s.decision.GetDecisionSha256())
 	case runtimev1.TerminalStatus_TERMINAL_STATUS_DECLINED:
-		outcome.Status = string(AttemptDeclined)
+		outcome.Status = string(episodeledger.AttemptDeclined)
 	case runtimev1.TerminalStatus_TERMINAL_STATUS_CANCELLED: //nolint:misspell // Wire enum is frozen by the protocol.
-		outcome.Status = string(AttemptCancelled)
+		outcome.Status = string(episodeledger.AttemptCancelled)
 	case runtimev1.TerminalStatus_TERMINAL_STATUS_TIMED_OUT:
-		outcome.Status = string(AttemptTimedOut)
+		outcome.Status = string(episodeledger.AttemptTimedOut)
 	case runtimev1.TerminalStatus_TERMINAL_STATUS_FAILED, runtimev1.TerminalStatus_TERMINAL_STATUS_BUDGET_EXHAUSTED:
-		outcome.Status = string(AttemptFailed)
+		outcome.Status = string(episodeledger.AttemptFailed)
 	default:
 		return nil, fmt.Errorf("worker returned unspecified terminal status")
 	}

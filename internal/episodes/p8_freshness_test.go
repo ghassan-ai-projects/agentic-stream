@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
@@ -320,8 +322,8 @@ func TestP8KillCancelsInFlightAndRefusesItsDecision(t *testing.T) {
 		"SELECT status FROM episode_attempts WHERE episode_id = 'epi-hostile'").Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if status != string(episodes.AttemptCancelled) {
-		t.Fatalf("in-flight attempt status = %q, want %q", status, episodes.AttemptCancelled)
+	if status != string(episodeledger.AttemptCancelled) {
+		t.Fatalf("in-flight attempt status = %q, want %q", status, episodeledger.AttemptCancelled)
 	}
 	var decisions int
 	if err := db.QueryRowContext(context.Background(),

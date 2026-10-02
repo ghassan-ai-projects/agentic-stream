@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 )
 
 func (e *Executor) executeBounded(ctx context.Context, req *episodes.Request, payload requestPayload, budget budgetConfig, tools map[string]Tool) (*episodes.Outcome, error) {
@@ -214,7 +216,7 @@ func (l *episodeLoop) produced(decision map[string]any) *episodes.Outcome {
 	if err != nil {
 		return failed(l.req, "decision_canonicalization_failed", l.usage)
 	}
-	return &episodes.Outcome{Status: string(episodes.AttemptProduced), AttemptID: l.req.AttemptID, Fence: l.req.Fence, DecisionJSON: decisionJSON, DecisionSHA256: digest, CostMicrounits: l.usage.CostMicrounits}
+	return &episodes.Outcome{Status: string(episodeledger.AttemptProduced), AttemptID: l.req.AttemptID, Fence: l.req.Fence, DecisionJSON: decisionJSON, DecisionSHA256: digest, CostMicrounits: l.usage.CostMicrounits}
 }
 
 func number(value any) float64 {
@@ -266,9 +268,9 @@ func terminalForContext(req *episodes.Request, err error, usage Usage) *episodes
 	if errors.Is(err, context.DeadlineExceeded) {
 		return failed(req, "timed_out", usage)
 	}
-	return &episodes.Outcome{Status: string(episodes.AttemptCancelled), AttemptID: req.AttemptID, Fence: req.Fence, Reasons: []string{"canceled"}, CostMicrounits: usage.CostMicrounits}
+	return &episodes.Outcome{Status: string(episodeledger.AttemptCancelled), AttemptID: req.AttemptID, Fence: req.Fence, Reasons: []string{"canceled"}, CostMicrounits: usage.CostMicrounits}
 }
 
 func failed(req *episodes.Request, reason string, usage Usage) *episodes.Outcome {
-	return &episodes.Outcome{Status: string(episodes.AttemptFailed), AttemptID: req.AttemptID, Fence: req.Fence, Reasons: []string{reason}, CostMicrounits: usage.CostMicrounits}
+	return &episodes.Outcome{Status: string(episodeledger.AttemptFailed), AttemptID: req.AttemptID, Fence: req.Fence, Reasons: []string{reason}, CostMicrounits: usage.CostMicrounits}
 }

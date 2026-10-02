@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
@@ -62,8 +64,8 @@ func (c *EpochControl) killTx(ctx context.Context, tx *sql.Tx, epoch string, now
 	if err != nil {
 		return err
 	}
-	if err := supersedeEpochEpisodes(ctx, tx, epoch, now); err != nil {
-		return err
+	if err := episodeledger.SupersedeEpoch(ctx, tx, epoch, formatRuntimeTime(now)); err != nil {
+		return fmt.Errorf("%w", err)
 	}
 	return releaseEpisodeCosts(ctx, tx, unstarted, now)
 }
@@ -95,20 +97,6 @@ func unstartedReservedEpisodes(ctx context.Context, tx *sql.Tx, epoch string) ([
 		return nil, fmt.Errorf("close admitted epoch reservations: %w", err)
 	}
 	return episodeIDs, nil
-}
-
-// supersedeEpochEpisodes cancels in-flight episodes of a killed epoch (gate 2,
-// first half): the runner's supersession watcher turns this into context
-// cancellation of the provider call, and the decision gates (pre- and
-// post-execute) refuse any outcome that still lands.
-func supersedeEpochEpisodes(ctx context.Context, tx *sql.Tx, epoch string, now time.Time) error {
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE episodes SET lifecycle_status = 'superseded', ended_at = ?
-		WHERE policy_epoch = ? AND lifecycle_status IN ('admitted', 'running')`,
-		formatRuntimeTime(now), epoch); err != nil {
-		return fmt.Errorf("supersede in-flight episodes of killed epoch: %w", err)
-	}
-	return nil
 }
 
 func releaseEpisodeCosts(ctx context.Context, tx *sql.Tx, episodeIDs []string, now time.Time) error {

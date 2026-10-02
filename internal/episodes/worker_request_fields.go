@@ -3,8 +3,9 @@ package episodes
 import (
 	"encoding/json"
 	"fmt"
-	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 	"strings"
+
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 // dispatchPolicyEnum maps the durable policy string to the wire enum. An

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
@@ -104,7 +106,7 @@ func producedOutcome(req *Request, decision map[string]any) (*Outcome, error) {
 		return nil, fmt.Errorf("digest decision: %w", err)
 	}
 	return &Outcome{
-		Status:         string(AttemptProduced),
+		Status:         string(episodeledger.AttemptProduced),
 		AttemptID:      req.AttemptID,
 		Fence:          req.Fence,
 		DecisionJSON:   decisionJSON,

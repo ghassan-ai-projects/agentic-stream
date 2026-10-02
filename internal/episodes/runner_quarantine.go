@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 )
 
@@ -42,11 +44,7 @@ func (r *Runner) quarantineRebindFailure(ctx context.Context, tx *sql.Tx, claim 
 	if err != nil {
 		return fmt.Errorf("marshal rebind terminal: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?,
-		    stale_rebind_count = stale_rebind_count + 1
-		WHERE episode_id = ?`,
-		r.runtimeNow(), terminal, claim.episodeID); err != nil {
+	if err := episodeledger.AbandonRebind(ctx, tx, claim.episodeID, r.runtimeNow(), terminal); err != nil {
 		return fmt.Errorf("quarantine rebind-failed episode: %w", err)
 	}
 	if r.telemetry != nil {
@@ -109,10 +107,7 @@ func (r *Runner) abandonEpisode(ctx context.Context, tx *sql.Tx, episodeID strin
 	if err != nil {
 		return fmt.Errorf("marshal episode terminal: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?
-		WHERE episode_id = ?`,
-		now, terminalJSON, episodeID); err != nil {
+	if err := episodeledger.Abandon(ctx, tx, episodeID, now, terminalJSON); err != nil {
 		return fmt.Errorf("abandon episode: %w", err)
 	}
 	return nil

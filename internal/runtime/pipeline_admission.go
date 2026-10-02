@@ -6,10 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"log/slog"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
 
 func (p *Pipeline) assemblePending(ctx context.Context) (int, error) {
@@ -109,7 +110,7 @@ func (p *Pipeline) skipUnadmittable(ctx context.Context, itemID string, now time
 			"scheduler_item_id", itemID,
 			"reason", err,
 		)
-	case admitted.kind == "reconsider" && errors.Is(err, episodes.ErrLiveEpisodeConflict):
+	case admitted.kind == "reconsider" && errors.Is(err, episodeledger.ErrLiveEpisodeConflict):
 		if skipErr := p.coalesceSkippedSchedulerItem(ctx, itemID, now); skipErr != nil {
 			return false, fmt.Errorf("record skipped reconsideration %s: %w", itemID, skipErr)
 		}

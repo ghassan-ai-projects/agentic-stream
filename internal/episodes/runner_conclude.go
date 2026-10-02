@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
 
 // recordExecution persists the result of one executed attempt: a failed or
@@ -15,19 +17,19 @@ func (r *Runner) recordExecution(ctx context.Context, claim *episodeClaim, outco
 	case executionErr != nil:
 		return r.failAttemptStatus(ctx, identity, executionFailureStatus(executionErr), executionFailureReason(executionErr))
 	case outcome == nil:
-		return r.failAttemptStatus(ctx, identity, AttemptFailed, "executor_returned_nil_outcome")
+		return r.failAttemptStatus(ctx, identity, episodeledger.AttemptFailed, "executor_returned_nil_outcome")
 	case outcome.AttemptID != identity.AttemptID || outcome.Fence != identity.Fence:
-		reason := RejectWrongAttempt
+		reason := episodeledger.RejectWrongAttempt
 		if outcome.Fence < identity.Fence {
-			reason = RejectStaleAttempt
+			reason = episodeledger.RejectStaleAttempt
 		}
-		incoming := Identity{EpisodeID: identity.EpisodeID, AttemptID: outcome.AttemptID, Fence: outcome.Fence}
+		incoming := episodeledger.Identity{EpisodeID: identity.EpisodeID, AttemptID: outcome.AttemptID, Fence: outcome.Fence}
 		return r.failAttemptWithRejection(ctx, identity, incoming, reason, "worker_identity_mismatch")
 	case deadlineExceeded:
 		// P8 (freshness): a decision that arrives after the episode's
 		// wall_time deadline is refused. The deadline is never extended to let
 		// a slow model pass, and an in-process executor cannot bypass it.
-		return r.failAttemptStatus(ctx, identity, AttemptTimedOut, "decision_after_deadline")
+		return r.failAttemptStatus(ctx, identity, episodeledger.AttemptTimedOut, "decision_after_deadline")
 	default:
 		return r.concludeAttempt(ctx, claim, outcome)
 	}
@@ -61,13 +63,13 @@ func (r *Runner) concludeAttempt(ctx context.Context, claim *episodeClaim, outco
 // unbound while its attempt ran.
 func (r *Runner) abandonAfterExecute(ctx context.Context, tx *sql.Tx, claim *episodeClaim, outcome *Outcome, reason string, now string) error {
 	attemptTerminal, err := json.Marshal(map[string]any{
-		"status": string(AttemptAbandoned),
+		"status": string(episodeledger.AttemptAbandoned),
 		"reason": reason,
 	})
 	if err != nil {
 		return fmt.Errorf("marshal post-execute attempt terminal: %w", err)
 	}
-	if err := TransitionAttempt(ctx, tx, claim.identity, AttemptAbandoned, r.clk.Now(), attemptTerminal); err != nil {
+	if err := episodeledger.TransitionAttempt(ctx, tx, claim.identity, episodeledger.AttemptAbandoned, r.clk.Now(), attemptTerminal); err != nil {
 		return fmt.Errorf("abandon killed epoch attempt: %w", err)
 	}
 	if err := r.abandonEpisode(ctx, tx, claim.episodeID, map[string]any{"reason": reason}, now); err != nil {
@@ -85,14 +87,14 @@ func (r *Runner) abandonAfterExecute(ctx context.Context, tx *sql.Tx, claim *epi
 // episode.
 func (r *Runner) finishAttempt(ctx context.Context, tx *sql.Tx, claim *episodeClaim, outcome *Outcome, record *decisionRecord, now string) error {
 	attemptStatus := terminalAttemptStatus(outcome, record)
-	if !IsTerminalAttempt(attemptStatus) {
+	if !episodeledger.IsTerminalAttempt(attemptStatus) {
 		return fmt.Errorf("executor returned non-terminal attempt status %q", attemptStatus)
 	}
 	terminalJSON, err := json.Marshal(outcome)
 	if err != nil {
 		return fmt.Errorf("marshal outcome: %w", err)
 	}
-	if err := TransitionAttempt(ctx, tx, claim.identity, attemptStatus, r.clk.Now(), terminalJSON); err != nil {
+	if err := episodeledger.TransitionAttempt(ctx, tx, claim.identity, attemptStatus, r.clk.Now(), terminalJSON); err != nil {
 		return fmt.Errorf("finish episode attempt: %w", err)
 	}
 	if r.cost != nil {
@@ -100,11 +102,7 @@ func (r *Runner) finishAttempt(ctx context.Context, tx *sql.Tx, claim *episodeCl
 			return fmt.Errorf("settle episode cost: %w", err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE episodes SET lifecycle_status = 'concluded', ended_at = ?, terminal_json = ?
-		WHERE episode_id = ?`,
-		now, terminalJSON, claim.episodeID,
-	); err != nil {
+	if err := episodeledger.Conclude(ctx, tx, claim.episodeID, now, terminalJSON); err != nil {
 		return fmt.Errorf("update episode terminal: %w", err)
 	}
 	return nil
@@ -113,15 +111,15 @@ func (r *Runner) finishAttempt(ctx context.Context, tx *sql.Tx, claim *episodeCl
 // terminalAttemptStatus derives the attempt terminal: a Decision makes it
 // produced or failed by validation; otherwise the executor's status stands,
 // and an empty status means the executor declined.
-func terminalAttemptStatus(outcome *Outcome, record *decisionRecord) AttemptStatus {
+func terminalAttemptStatus(outcome *Outcome, record *decisionRecord) episodeledger.AttemptStatus {
 	switch {
 	case record != nil && record.validationErr == nil:
-		return AttemptProduced
+		return episodeledger.AttemptProduced
 	case record != nil:
-		return AttemptFailed
+		return episodeledger.AttemptFailed
 	case outcome.Status == "":
-		return AttemptDeclined
+		return episodeledger.AttemptDeclined
 	default:
-		return AttemptStatus(outcome.Status)
+		return episodeledger.AttemptStatus(outcome.Status)
 	}
 }

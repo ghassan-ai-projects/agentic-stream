@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
@@ -725,7 +727,7 @@ func TestAssemblerMarksReconsiderationLiveEpisodeConflict(t *testing.T) {
 			RequestJSON:      []byte("{}"),
 		}, now)
 	})
-	if !errors.Is(err, episodes.ErrLiveEpisodeConflict) {
+	if !errors.Is(err, episodeledger.ErrLiveEpisodeConflict) {
 		t.Fatalf("persist error = %v, want ErrLiveEpisodeConflict", err)
 	}
 	var episodesCount int
@@ -1126,7 +1128,7 @@ func TestAssemblerPersistRejectsNonPending(t *testing.T) {
 		// Second persist should fail because scheduler item is no longer pending.
 		if err := asm.Persist(ctx, tx, req, base); err == nil {
 			return fmt.Errorf("expected error persisting non-pending item")
-		} else if errors.Is(err, episodes.ErrLiveEpisodeConflict) {
+		} else if errors.Is(err, episodeledger.ErrLiveEpisodeConflict) {
 			return fmt.Errorf("non-constraint storage error was classified as live-episode conflict: %w", err)
 		}
 		return nil

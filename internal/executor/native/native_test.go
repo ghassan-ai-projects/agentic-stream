@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/conformance"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
@@ -37,7 +39,7 @@ func TestNativeExecutorRunsReadToolThenDecision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outcome.Status != string(episodes.AttemptProduced) {
+	if outcome.Status != string(episodeledger.AttemptProduced) {
 		t.Fatalf("expected produced outcome, got %#v", outcome)
 	}
 	if len(outcome.DecisionJSON) == 0 {
@@ -60,7 +62,7 @@ func TestNativeExecutorSpillsOversizedResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outcome.Status != string(episodes.AttemptProduced) {
+	if outcome.Status != string(episodeledger.AttemptProduced) {
 		t.Fatalf("expected artifact-backed continuation, got %#v", outcome)
 	}
 }
@@ -75,7 +77,7 @@ func TestNativeExecutorFailsInterruptImmediately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outcome.Status != string(episodes.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != "interrupt_in_non_interactive_episode" {
+	if outcome.Status != string(episodeledger.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != "interrupt_in_non_interactive_episode" {
 		t.Fatalf("unexpected interrupt outcome: %#v", outcome)
 	}
 }
@@ -92,7 +94,7 @@ func TestNativeExecutorUsesBoundedProviderRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outcome.Status != string(episodes.AttemptProduced) || provider.calls != 2 {
+	if outcome.Status != string(episodeledger.AttemptProduced) || provider.calls != 2 {
 		t.Fatalf("expected one retry and a produced outcome, calls=%d outcome=%#v", provider.calls, outcome)
 	}
 }
@@ -116,7 +118,7 @@ func TestNativeExecutorEnforcesReportedUsageBudgets(t *testing.T) {
 			request := conformance.FixtureRequest()
 			request.RequestJSON = replaceBudget(request.RequestJSON, test.limit)
 			outcome, err := executor.Execute(context.Background(), request)
-			if err != nil || outcome.Status != string(episodes.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != test.want {
+			if err != nil || outcome.Status != string(episodeledger.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != test.want {
 				t.Fatalf("outcome=%+v err=%v", outcome, err)
 			}
 		})
@@ -131,7 +133,7 @@ func TestNativeExecutorEnforcesWallTimeAfterLateProviderResponse(t *testing.T) {
 	request := conformance.FixtureRequest()
 	request.RequestJSON = replaceBudget(request.RequestJSON, `{"wall_time":"1ms"}`)
 	outcome, err := executor.Execute(context.Background(), request)
-	if err != nil || outcome.Status != string(episodes.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != "timed_out" || outcome.CostMicrounits != 42 {
+	if err != nil || outcome.Status != string(episodeledger.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != "timed_out" || outcome.CostMicrounits != 42 {
 		t.Fatalf("outcome=%+v err=%v", outcome, err)
 	}
 }
@@ -165,7 +167,7 @@ func TestNativeExecutorRejectsMissingUsageForUsageBound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if outcome.Status != string(episodes.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != "budget_telemetry_missing" {
+	if outcome.Status != string(episodeledger.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != "budget_telemetry_missing" {
 		t.Fatalf("outcome=%+v, want missing telemetry failure", outcome)
 	}
 }
@@ -208,7 +210,7 @@ func TestNativeExecutorPreservesUsageOnCancellation(t *testing.T) {
 		if completed.err != nil {
 			t.Fatalf("canceled execution error = %v", completed.err)
 		}
-		if completed.outcome.Status != string(episodes.AttemptCancelled) || completed.outcome.CostMicrounits != 42 {
+		if completed.outcome.Status != string(episodeledger.AttemptCancelled) || completed.outcome.CostMicrounits != 42 {
 			t.Fatalf("canceled outcome = %+v, want canceled with cost 42", completed.outcome)
 		}
 	case <-time.After(time.Second):
@@ -225,7 +227,7 @@ func TestNativeExecutorBacksOffProviderRetries(t *testing.T) {
 	request := conformance.FixtureRequest()
 	request.RequestJSON = replaceBudget(request.RequestJSON, `{"model_calls":3,"provider_retries":1}`)
 	outcome, err := executor.Execute(context.Background(), request)
-	if err != nil || outcome.Status != string(episodes.AttemptProduced) {
+	if err != nil || outcome.Status != string(episodeledger.AttemptProduced) {
 		t.Fatalf("outcome=%+v err=%v", outcome, err)
 	}
 	if provider.calls != 2 || provider.secondAt.Sub(provider.firstAt) < 8*time.Millisecond {
@@ -245,7 +247,7 @@ func TestNativeExecutorCapsProviderRetries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("capped retries returned error: %v", err)
 	}
-	if outcome.Status != string(episodes.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != "budget_exhausted:provider_retries" {
+	if outcome.Status != string(episodeledger.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != "budget_exhausted:provider_retries" {
 		t.Fatalf("capped retry outcome=%+v, want retry budget failure", outcome)
 	}
 	if provider.calls != 2 {
@@ -282,7 +284,7 @@ func TestNativeExecutorCancellationStopsRetryBackoff(t *testing.T) {
 	cancel()
 	select {
 	case completed := <-result:
-		if completed.err != nil || completed.outcome.Status != string(episodes.AttemptCancelled) {
+		if completed.err != nil || completed.outcome.Status != string(episodeledger.AttemptCancelled) {
 			t.Fatalf("canceled retry outcome=%+v err=%v, want canceled outcome", completed.outcome, completed.err)
 		}
 		if provider.calls != 1 {

@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -48,7 +50,7 @@ func TestDecisionInputRejectsCatalogAttacks(t *testing.T) {
 			"intent_catalog_sha256": intentDigest,
 		},
 	}
-	identity := Identity{EpisodeID: "epi", AttemptID: "att", Fence: 1}
+	identity := episodeledger.Identity{EpisodeID: "epi", AttemptID: "att", Fence: 1}
 
 	// The honest payload compiles.
 	raw, err := json.Marshal(validPayload)
