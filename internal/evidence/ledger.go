@@ -66,49 +66,13 @@ func (l *Ledger) Reserve(ctx context.Context, call Call, tokenID, runtimeEpoch s
 		if err := l.assertOwner(ctx, tx); err != nil {
 			return err
 		}
-		var lifecycle, currentAttempt, attemptStatus string
-		var currentFence int64
-		if err := tx.QueryRowContext(ctx, `SELECT lifecycle_status, COALESCE(current_attempt_id, ''), current_fence FROM episodes WHERE episode_id = ? AND tenant_id = ?`, call.EpisodeID, call.TenantID).Scan(&lifecycle, &currentAttempt, &currentFence); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("evidence episode is unknown")
-			}
-			return fmt.Errorf("load evidence episode: %w", err)
+		if err := assertLiveAttempt(ctx, tx, call); err != nil {
+			return err
 		}
-		if currentAttempt != call.AttemptID || currentFence != call.Fence || lifecycle == "concluded" || lifecycle == "closed" || lifecycle == "superseded" || lifecycle == "expired" || lifecycle == "abandoned" {
-			return fmt.Errorf("evidence attempt is stale")
-		}
-		if err := tx.QueryRowContext(ctx, `SELECT status FROM episode_attempts WHERE episode_id = ? AND attempt_id = ? AND fence = ?`, call.EpisodeID, call.AttemptID, call.Fence).Scan(&attemptStatus); err != nil {
-			return fmt.Errorf("load evidence attempt: %w", err)
-		}
-		if attemptStatus != "dispatched" && attemptStatus != "running" {
-			return fmt.Errorf("evidence attempt is terminal")
-		}
-		var existingHash, resultJSON, resultHash []byte
-		var existingTokenID, existingEpoch, status string
-		var rowCount, resultBytes sql.NullInt64
-		err := tx.QueryRowContext(ctx, `SELECT request_sha256, token_id, runtime_epoch, status, result_json, result_sha256, row_count, result_bytes FROM evidence_call_ledger WHERE tenant_id = ? AND episode_id = ? AND attempt_id = ? AND fence = ? AND call_id = ?`, key.TenantID, key.EpisodeID, key.AttemptID, key.Fence, key.CallID).Scan(&existingHash, &existingTokenID, &existingEpoch, &status, &resultJSON, &resultHash, &rowCount, &resultBytes)
-		if err == nil {
-			if string(existingHash) != string(fingerprint) {
-				return fmt.Errorf("evidence call identity was reused with different request")
-			}
-			if existingTokenID != tokenID || existingEpoch != runtimeEpoch {
-				return fmt.Errorf("evidence call token identity mismatch")
-			}
-			reservation = ledgerReservation{Key: key, RequestSHA256: fingerprint, TokenID: tokenID, RuntimeEpoch: runtimeEpoch, Status: status, ResultSHA256: resultHash}
-			if status == "completed" {
-				if resultBytes.Int64 < 0 || uint64(resultBytes.Int64) != uint64(len(resultJSON)) || len(resultHash) != sha256.Size || rowCount.Int64 < 0 {
-					return fmt.Errorf("stored evidence result is malformed")
-				}
-				hash := sha256.Sum256(resultJSON)
-				if string(hash[:]) != string(resultHash) {
-					return fmt.Errorf("stored evidence result digest mismatch")
-				}
-				reservation.Completed = &QueryResult{JSON: append([]byte(nil), resultJSON...), RowCount: uint64(rowCount.Int64)}
-			}
-			return nil
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("load evidence call: %w", err)
+		existing, err := loadReservation(ctx, tx, key, fingerprint, tokenID, runtimeEpoch)
+		if err != nil || existing != nil {
+			reservation = derefReservation(existing)
+			return err
 		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO evidence_call_ledger (tenant_id, episode_id, attempt_id, fence, call_id, token_id, runtime_epoch, tool_name, situation_id, situation_version, entity_id, time_from, time_until, max_rows, max_bytes, deadline, request_sha256, status, lease_owner, lease_until, reserved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)`, key.TenantID, key.EpisodeID, key.AttemptID, key.Fence, key.CallID, tokenID, runtimeEpoch, call.ToolName, call.SituationID, call.SituationVersion, call.EntityID, formatLedgerTime(call.From), formatLedgerTime(call.Until), call.MaxRows, call.MaxBytes, formatLedgerTime(call.Deadline), fingerprint, l.LeaseOwner, formatLedgerTime(now.Add(lease)), formatLedgerTime(now))
 		if err != nil {
@@ -123,6 +87,71 @@ func (l *Ledger) Reserve(ctx context.Context, call Call, tokenID, runtimeEpoch s
 	return reservation, nil
 }
 
+// assertLiveAttempt requires the call's attempt to be the episode's current,
+// non-terminal attempt.
+func assertLiveAttempt(ctx context.Context, tx *sql.Tx, call Call) error {
+	var lifecycle, currentAttempt, attemptStatus string
+	var currentFence int64
+	if err := tx.QueryRowContext(ctx, `SELECT lifecycle_status, COALESCE(current_attempt_id, ''), current_fence FROM episodes WHERE episode_id = ? AND tenant_id = ?`, call.EpisodeID, call.TenantID).Scan(&lifecycle, &currentAttempt, &currentFence); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("evidence episode is unknown")
+		}
+		return fmt.Errorf("load evidence episode: %w", err)
+	}
+	if currentAttempt != call.AttemptID || currentFence != call.Fence || lifecycle == "concluded" || lifecycle == "closed" || lifecycle == "superseded" || lifecycle == "expired" || lifecycle == "abandoned" {
+		return fmt.Errorf("evidence attempt is stale")
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM episode_attempts WHERE episode_id = ? AND attempt_id = ? AND fence = ?`, call.EpisodeID, call.AttemptID, call.Fence).Scan(&attemptStatus); err != nil {
+		return fmt.Errorf("load evidence attempt: %w", err)
+	}
+	if attemptStatus != "dispatched" && attemptStatus != "running" {
+		return fmt.Errorf("evidence attempt is terminal")
+	}
+	return nil
+}
+
+// loadReservation returns the existing reservation for key, or nil when the
+// call is new. A reused call identity must carry the same request and token,
+// and a completed call returns its verified stored result.
+func loadReservation(ctx context.Context, tx *sql.Tx, key ledgerKey, fingerprint []byte, tokenID, runtimeEpoch string) (*ledgerReservation, error) {
+	var existingHash, resultJSON, resultHash []byte
+	var existingTokenID, existingEpoch, status string
+	var rowCount, resultBytes sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT request_sha256, token_id, runtime_epoch, status, result_json, result_sha256, row_count, result_bytes FROM evidence_call_ledger WHERE tenant_id = ? AND episode_id = ? AND attempt_id = ? AND fence = ? AND call_id = ?`, key.TenantID, key.EpisodeID, key.AttemptID, key.Fence, key.CallID).Scan(&existingHash, &existingTokenID, &existingEpoch, &status, &resultJSON, &resultHash, &rowCount, &resultBytes)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load evidence call: %w", err)
+	}
+	if string(existingHash) != string(fingerprint) {
+		return nil, fmt.Errorf("evidence call identity was reused with different request")
+	}
+	if existingTokenID != tokenID || existingEpoch != runtimeEpoch {
+		return nil, fmt.Errorf("evidence call token identity mismatch")
+	}
+	reservation := &ledgerReservation{Key: key, RequestSHA256: fingerprint, TokenID: tokenID, RuntimeEpoch: runtimeEpoch, Status: status, ResultSHA256: resultHash}
+	if status != "completed" {
+		return reservation, nil
+	}
+	if resultBytes.Int64 < 0 || uint64(resultBytes.Int64) != uint64(len(resultJSON)) || len(resultHash) != sha256.Size || rowCount.Int64 < 0 {
+		return nil, fmt.Errorf("stored evidence result is malformed")
+	}
+	hash := sha256.Sum256(resultJSON)
+	if string(hash[:]) != string(resultHash) {
+		return nil, fmt.Errorf("stored evidence result digest mismatch")
+	}
+	reservation.Completed = &QueryResult{JSON: append([]byte(nil), resultJSON...), RowCount: uint64(rowCount.Int64)}
+	return reservation, nil
+}
+
+func derefReservation(reservation *ledgerReservation) ledgerReservation {
+	if reservation == nil {
+		return ledgerReservation{}
+	}
+	return *reservation
+}
+
 // Complete stores an exact bounded result only while the reservation remains
 // owned by this runtime epoch and lease owner.
 func (l *Ledger) Complete(ctx context.Context, reservation ledgerReservation, result QueryResult) error {
@@ -134,7 +163,7 @@ func (l *Ledger) Complete(ctx context.Context, reservation ledgerReservation, re
 	if l.Now != nil {
 		now = l.Now().UTC()
 	}
-	// Persist even when the caller was cancelled; keep its values (trace).
+	// Persist even when the caller was canceled; keep its values (trace).
 	persistenceCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if err := l.DB.WithTx(persistenceCtx, func(tx *sql.Tx) error {
@@ -174,7 +203,7 @@ func (l *Ledger) Fail(ctx context.Context, reservation ledgerReservation, code s
 	if l == nil || l.DB == nil {
 		return fmt.Errorf("evidence ledger is not configured")
 	}
-	// Persist even when the caller was cancelled; keep its values (trace).
+	// Persist even when the caller was canceled; keep its values (trace).
 	persistenceCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	now := time.Now().UTC()

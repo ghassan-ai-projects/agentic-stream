@@ -160,7 +160,7 @@ func readLedgerStatus(t *testing.T, db *storage.DB, callID string) (string, stri
 	return status, code.String
 }
 
-func TestLedgerFailIsTerminalAndSurvivesCancelledRequest(t *testing.T) {
+func TestLedgerFailIsTerminalAndSurvivesCanceledRequest(t *testing.T) {
 	db := openLedgerDB(t)
 	ledger := &Ledger{DB: db, LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Lease: time.Minute, Now: fixedLedgerClock()}
 	reservation, err := ledger.Reserve(t.Context(), ledgerTestCall(), "token-1", "epoch-1")
@@ -168,10 +168,10 @@ func TestLedgerFailIsTerminalAndSurvivesCancelledRequest(t *testing.T) {
 		t.Fatalf("reserve: %v", err)
 	}
 
-	cancelled, cancel := context.WithCancel(t.Context())
+	canceledCtx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := ledger.Fail(cancelled, reservation, "provider_timeout"); err != nil {
-		t.Fatalf("fail with cancelled request context: %v", err)
+	if err := ledger.Fail(canceledCtx, reservation, "provider_timeout"); err != nil {
+		t.Fatalf("fail with canceled request context: %v", err)
 	}
 	if status, code := readLedgerStatus(t, db, "call-1"); status != "failed" || code != "provider_timeout" {
 		t.Fatalf("failed call status=%q code=%q", status, code)

@@ -200,10 +200,10 @@ func TestRetrySQLiteBusyRetriesRealContention(t *testing.T) {
 		t.Fatalf("attempts = %d; the first attempt should have hit a busy writer lock", attempts)
 	}
 
-	cancelled, cancel := context.WithCancel(ctx)
+	canceledCtx, cancel := context.WithCancel(ctx)
 	cancel()
 	busy := 0
-	if err := storage.RetrySQLiteBusy(cancelled, func() error {
+	if err := storage.RetrySQLiteBusy(canceledCtx, func() error {
 		busy++
 		lock, err := db.BeginTx(ctx, nil)
 		if err != nil {
@@ -219,6 +219,6 @@ func TestRetrySQLiteBusyRetriesRealContention(t *testing.T) {
 		}
 		return err
 	}); !errors.Is(err, context.Canceled) || busy != 1 {
-		t.Fatalf("cancelled retry: err=%v attempts=%d", err, busy)
+		t.Fatalf("canceled retry: err=%v attempts=%d", err, busy)
 	}
 }

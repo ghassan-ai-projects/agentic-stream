@@ -84,11 +84,8 @@ func (s *Server) Call(ctx context.Context, req *runtimev1.EvidenceToolCall) (*ru
 	if s.RequireLedger && (s.Ledger == nil || s.RuntimeEpoch == "") {
 		return nil, wireError(codes.FailedPrecondition, "durable evidence ledger is required")
 	}
-	if req.GetProtocolVersion() != "1.0" || req.GetEpisodeId() == "" || req.GetCallId() == "" || req.GetToolName() == "" || req.GetTenantId() == "" || req.GetSituationId() == "" || req.GetEntityId() == "" || req.GetAttemptId() == "" || req.GetFence() == 0 || req.GetMaxRows() == 0 || req.GetMaxBytes() == 0 {
-		return nil, status.Error(codes.InvalidArgument, "evidence call identity is incomplete") //nolint:wrapcheck // gRPC wire boundary.
-	}
-	if len(req.GetArgumentsJson()) == 0 || len(req.GetArgumentsJson()) > maxArgumentsBytes || len(req.GetCapabilityToken()) > maxCapabilityTokenBytes || proto.Size(req) > maxArgumentsBytes+maxCapabilityTokenBytes {
-		return nil, status.Error(codes.ResourceExhausted, "evidence arguments exceed limits") //nolint:wrapcheck // gRPC wire boundary.
+	if err := validateCallEnvelope(req); err != nil {
+		return nil, err
 	}
 	trace, err := contractsv1.ParseTraceContext(req.GetTraceparent(), req.GetTracestate())
 	if err != nil {
@@ -98,103 +95,24 @@ func (s *Server) Call(ctx context.Context, req *runtimev1.EvidenceToolCall) (*ru
 	if err != nil {
 		return nil, status.Error(codes.PermissionDenied, "capability authorization failed") //nolint:wrapcheck // Do not reveal token failure details.
 	}
-	if req.GetFence() > uint64(^uint64(0)>>1) {
-		return nil, wireError(codes.InvalidArgument, "fence exceeds runtime range")
-	}
-	if req.GetSituationVersion() > uint64(^uint64(0)>>1) {
-		return nil, wireError(codes.InvalidArgument, "situation version exceeds runtime range")
-	}
-	fence := int64(req.GetFence())                       //nolint:gosec // Checked against MaxInt64 immediately above.
-	situationVersion := int64(req.GetSituationVersion()) //nolint:gosec // Checked against MaxInt64 immediately above.
-	if scope.EpisodeID != req.GetEpisodeId() || scope.AttemptID != req.GetAttemptId() || scope.Fence != fence || scope.TenantID != req.GetTenantId() || scope.SituationID != req.GetSituationId() || scope.SituationVersion != situationVersion || scope.EntityID != req.GetEntityId() || !contains(scope.Tools, req.GetToolName()) || scope.Traceparent != req.GetTraceparent() || scope.Tracestate != req.GetTracestate() || (s.RuntimeEpoch != "" && scope.RuntimeEpoch != s.RuntimeEpoch) {
-		return nil, status.Error(codes.PermissionDenied, "capability scope mismatch") //nolint:wrapcheck // gRPC wire boundary.
-	}
-	if req.GetTimeFrom() == nil || req.GetTimeUntil() == nil || !req.GetTimeFrom().IsValid() || !req.GetTimeUntil().IsValid() || req.GetTimeUntil().AsTime().Before(req.GetTimeFrom().AsTime()) || req.GetTimeFrom().AsTime().Before(scope.From) || req.GetTimeUntil().AsTime().After(scope.Until) {
-		return nil, status.Error(codes.PermissionDenied, "evidence time range exceeds capability") //nolint:wrapcheck // gRPC wire boundary.
-	}
-	arguments, err := decodeEvidenceGetArguments(req.GetArgumentsJson())
+	call, err := s.authorizedCall(req, scope, trace)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "invalid evidence.get arguments") //nolint:wrapcheck // gRPC wire boundary.
-	}
-	if arguments.EntityID != scope.EntityID || arguments.EntityID != req.GetEntityId() {
-		return nil, status.Error(codes.PermissionDenied, "entity scope mismatch") //nolint:wrapcheck // gRPC wire boundary.
+		return nil, err
 	}
 	now := time.Now().UTC()
 	if s.Now != nil {
 		now = s.Now().UTC()
 	}
-	deadline := now.Add(time.Minute)
-	if req.GetDeadline() != nil {
-		if !req.GetDeadline().IsValid() {
-			return nil, wireError(codes.InvalidArgument, "deadline is invalid")
-		} //nolint:wrapcheck // gRPC wire boundary.
-		deadline = req.GetDeadline().AsTime()
+	if call.Deadline, err = callDeadline(req, scope, now); err != nil {
+		return nil, err
 	}
-	if !deadline.Before(scope.ExpiresAt) {
-		deadline = scope.ExpiresAt
+	reservation, replayed, err := s.reserve(ctx, req, call, scope)
+	if err != nil || replayed != nil {
+		return replayed, err
 	}
-	if !deadline.After(now) {
-		return nil, wireError(codes.DeadlineExceeded, "evidence call deadline has expired")
-	}
-	call := Call{EpisodeID: req.GetEpisodeId(), CallID: req.GetCallId(), ToolName: req.GetToolName(), TenantID: req.GetTenantId(), SituationID: req.GetSituationId(), SituationVersion: situationVersion, EntityID: arguments.EntityID, Arguments: arguments, Deadline: deadline, AttemptID: req.GetAttemptId(), Fence: fence, Trace: trace, MaxRows: minNonZero(req.GetMaxRows(), scope.MaxRows), MaxBytes: minNonZero(req.GetMaxBytes(), scope.MaxBytes), From: req.GetTimeFrom().AsTime(), Until: req.GetTimeUntil().AsTime()}
-	var reservation ledgerReservation
-	if s.Ledger != nil {
-		reservation, err = s.Ledger.Reserve(ctx, call, scope.TokenID, s.RuntimeEpoch)
-		if err != nil {
-			return nil, wireError(codes.FailedPrecondition, "evidence call reservation failed")
-		}
-		if reservation.Completed != nil {
-			return resultMessage(req, *reservation.Completed), nil
-		}
-		if !reservation.Created {
-			if reservation.Status != "running" {
-				return nil, wireError(codes.FailedPrecondition, "evidence call is terminal")
-			}
-			return nil, wireError(codes.AlreadyExists, "evidence call is already in progress")
-		}
-	} else {
-		s.mu.Lock()
-		if s.calls == nil {
-			s.calls = make(map[string]struct{})
-		}
-		if _, exists := s.calls[call.CallID]; exists {
-			s.mu.Unlock()
-			return nil, wireError(codes.AlreadyExists, "evidence call was already used")
-		}
-		s.calls[call.CallID] = struct{}{}
-		s.mu.Unlock()
-	}
-	queryContext, cancel := context.WithTimeout(ctx, deadline.Sub(now))
-	defer cancel()
-	result, err := s.Query(queryContext, call)
+	result, err := s.runQuery(ctx, call, reservation, now)
 	if err != nil {
-		if s.Ledger != nil {
-			_ = s.Ledger.Fail(ctx, reservation, "query_failed")
-		}
-		if s.Ledger == nil {
-			s.mu.Lock()
-			delete(s.calls, call.CallID)
-			s.mu.Unlock()
-		}
-		if queryContext.Err() != nil {
-			return nil, contextStatusError(queryContext.Err())
-		}
-		return nil, wireError(codes.Internal, "evidence query failed")
-	} //nolint:wrapcheck // Do not leak query details.
-	if queryContext.Err() != nil {
-		return nil, contextStatusError(queryContext.Err())
-	}
-	if uint64(len(result.JSON)) > call.MaxBytes {
-		if s.Ledger != nil {
-			_ = s.Ledger.Fail(ctx, reservation, "result_bytes_exceeded")
-		}
-		return nil, wireError(codes.ResourceExhausted, "evidence result exceeds capability")
-	} //nolint:wrapcheck // gRPC wire boundary.
-	if result.RowCount > call.MaxRows {
-		if s.Ledger != nil {
-			_ = s.Ledger.Fail(ctx, reservation, "result_rows_exceeded")
-		}
-		return nil, wireError(codes.ResourceExhausted, "evidence result exceeds row limit")
+		return nil, err
 	}
 	if s.Ledger != nil {
 		if err := s.Ledger.Complete(ctx, reservation, result); err != nil {
@@ -203,6 +121,157 @@ func (s *Server) Call(ctx context.Context, req *runtimev1.EvidenceToolCall) (*ru
 	}
 	hash := sha256.Sum256(result.JSON)
 	return resultMessageWithHash(req, result, hash), nil
+}
+
+// validateCallEnvelope requires a complete call identity within size limits.
+func validateCallEnvelope(req *runtimev1.EvidenceToolCall) error {
+	if req.GetProtocolVersion() != "1.0" || req.GetEpisodeId() == "" || req.GetCallId() == "" || req.GetToolName() == "" || req.GetTenantId() == "" || req.GetSituationId() == "" || req.GetEntityId() == "" || req.GetAttemptId() == "" || req.GetFence() == 0 || req.GetMaxRows() == 0 || req.GetMaxBytes() == 0 {
+		return status.Error(codes.InvalidArgument, "evidence call identity is incomplete") //nolint:wrapcheck // gRPC wire boundary.
+	}
+	if len(req.GetArgumentsJson()) == 0 || len(req.GetArgumentsJson()) > maxArgumentsBytes || len(req.GetCapabilityToken()) > maxCapabilityTokenBytes || proto.Size(req) > maxArgumentsBytes+maxCapabilityTokenBytes {
+		return status.Error(codes.ResourceExhausted, "evidence arguments exceed limits") //nolint:wrapcheck // gRPC wire boundary.
+	}
+	return nil
+}
+
+// authorizedCall binds the request to the verified capability scope: every
+// identity field, the tool, the trace, the runtime epoch, the time range, and
+// the entity must match what the capability grants.
+func (s *Server) authorizedCall(req *runtimev1.EvidenceToolCall, scope Scope, trace contractsv1.TraceContext) (Call, error) {
+	if req.GetFence() > uint64(^uint64(0)>>1) {
+		return Call{}, wireError(codes.InvalidArgument, "fence exceeds runtime range")
+	}
+	if req.GetSituationVersion() > uint64(^uint64(0)>>1) {
+		return Call{}, wireError(codes.InvalidArgument, "situation version exceeds runtime range")
+	}
+	fence := int64(req.GetFence())                       //nolint:gosec // Checked against MaxInt64 immediately above.
+	situationVersion := int64(req.GetSituationVersion()) //nolint:gosec // Checked against MaxInt64 immediately above.
+	if !scope.grants(req, fence, situationVersion) || (s.RuntimeEpoch != "" && scope.RuntimeEpoch != s.RuntimeEpoch) {
+		return Call{}, status.Error(codes.PermissionDenied, "capability scope mismatch") //nolint:wrapcheck // gRPC wire boundary.
+	}
+	if !scope.coversTimeRange(req) {
+		return Call{}, status.Error(codes.PermissionDenied, "evidence time range exceeds capability") //nolint:wrapcheck // gRPC wire boundary.
+	}
+	arguments, err := decodeEvidenceGetArguments(req.GetArgumentsJson())
+	if err != nil {
+		return Call{}, status.Error(codes.InvalidArgument, "invalid evidence.get arguments") //nolint:wrapcheck // gRPC wire boundary.
+	}
+	if arguments.EntityID != scope.EntityID || arguments.EntityID != req.GetEntityId() {
+		return Call{}, status.Error(codes.PermissionDenied, "entity scope mismatch") //nolint:wrapcheck // gRPC wire boundary.
+	}
+	return Call{EpisodeID: req.GetEpisodeId(), CallID: req.GetCallId(), ToolName: req.GetToolName(), TenantID: req.GetTenantId(), SituationID: req.GetSituationId(), SituationVersion: situationVersion, EntityID: arguments.EntityID, Arguments: arguments, AttemptID: req.GetAttemptId(), Fence: fence, Trace: trace, MaxRows: minNonZero(req.GetMaxRows(), scope.MaxRows), MaxBytes: minNonZero(req.GetMaxBytes(), scope.MaxBytes), From: req.GetTimeFrom().AsTime(), Until: req.GetTimeUntil().AsTime()}, nil
+}
+
+// grants reports whether the capability names exactly this call's attempt,
+// situation version, entity, tool, and trace.
+func (scope Scope) grants(req *runtimev1.EvidenceToolCall, fence, situationVersion int64) bool {
+	return scope.EpisodeID == req.GetEpisodeId() && scope.AttemptID == req.GetAttemptId() && scope.Fence == fence &&
+		scope.TenantID == req.GetTenantId() && scope.SituationID == req.GetSituationId() &&
+		scope.SituationVersion == situationVersion && scope.EntityID == req.GetEntityId() &&
+		contains(scope.Tools, req.GetToolName()) &&
+		scope.Traceparent == req.GetTraceparent() && scope.Tracestate == req.GetTracestate()
+}
+
+// coversTimeRange reports whether the call asks for a valid, ordered time
+// range inside the capability's evidence range.
+func (scope Scope) coversTimeRange(req *runtimev1.EvidenceToolCall) bool {
+	from, until := req.GetTimeFrom(), req.GetTimeUntil()
+	if from == nil || until == nil || !from.IsValid() || !until.IsValid() {
+		return false
+	}
+	return !until.AsTime().Before(from.AsTime()) && !from.AsTime().Before(scope.From) && !until.AsTime().After(scope.Until)
+}
+
+// callDeadline is the requested deadline (one minute by default), capped at
+// the capability expiry, and must still be in the future.
+func callDeadline(req *runtimev1.EvidenceToolCall, scope Scope, now time.Time) (time.Time, error) {
+	deadline := now.Add(time.Minute)
+	if req.GetDeadline() != nil {
+		if !req.GetDeadline().IsValid() {
+			return time.Time{}, wireError(codes.InvalidArgument, "deadline is invalid")
+		}
+		deadline = req.GetDeadline().AsTime()
+	}
+	if !deadline.Before(scope.ExpiresAt) {
+		deadline = scope.ExpiresAt
+	}
+	if !deadline.After(now) {
+		return time.Time{}, wireError(codes.DeadlineExceeded, "evidence call deadline has expired")
+	}
+	return deadline, nil
+}
+
+// reserve claims the call identity, durably when a ledger is configured. A
+// completed durable call returns its stored result instead of re-querying.
+func (s *Server) reserve(ctx context.Context, req *runtimev1.EvidenceToolCall, call Call, scope Scope) (ledgerReservation, *runtimev1.EvidenceToolResult, error) {
+	if s.Ledger == nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.calls == nil {
+			s.calls = make(map[string]struct{})
+		}
+		if _, exists := s.calls[call.CallID]; exists {
+			return ledgerReservation{}, nil, wireError(codes.AlreadyExists, "evidence call was already used")
+		}
+		s.calls[call.CallID] = struct{}{}
+		return ledgerReservation{}, nil, nil
+	}
+	reservation, err := s.Ledger.Reserve(ctx, call, scope.TokenID, s.RuntimeEpoch)
+	if err != nil {
+		return ledgerReservation{}, nil, wireError(codes.FailedPrecondition, "evidence call reservation failed")
+	}
+	if reservation.Completed != nil {
+		return reservation, resultMessage(req, *reservation.Completed), nil
+	}
+	if !reservation.Created {
+		if reservation.Status != "running" {
+			return ledgerReservation{}, nil, wireError(codes.FailedPrecondition, "evidence call is terminal")
+		}
+		return ledgerReservation{}, nil, wireError(codes.AlreadyExists, "evidence call is already in progress")
+	}
+	return reservation, nil, nil
+}
+
+// runQuery invokes the query within the call deadline and enforces the result
+// bounds. A failed call is recorded terminal in the ledger; without a ledger a
+// failed query releases the call identity for a retry.
+func (s *Server) runQuery(ctx context.Context, call Call, reservation ledgerReservation, now time.Time) (QueryResult, error) {
+	queryContext, cancel := context.WithTimeout(ctx, call.Deadline.Sub(now))
+	defer cancel()
+	result, err := s.Query(queryContext, call)
+	if err != nil {
+		s.failCall(ctx, reservation, "query_failed")
+		if s.Ledger == nil {
+			s.mu.Lock()
+			delete(s.calls, call.CallID)
+			s.mu.Unlock()
+		}
+		if queryContext.Err() != nil {
+			return QueryResult{}, contextStatusError(queryContext.Err())
+		}
+		return QueryResult{}, wireError(codes.Internal, "evidence query failed") // Do not leak query details.
+	}
+	if queryContext.Err() != nil {
+		return QueryResult{}, contextStatusError(queryContext.Err())
+	}
+	if uint64(len(result.JSON)) > call.MaxBytes {
+		s.failCall(ctx, reservation, "result_bytes_exceeded")
+		return QueryResult{}, wireError(codes.ResourceExhausted, "evidence result exceeds capability")
+	}
+	if result.RowCount > call.MaxRows {
+		s.failCall(ctx, reservation, "result_rows_exceeded")
+		return QueryResult{}, wireError(codes.ResourceExhausted, "evidence result exceeds row limit")
+	}
+	return result, nil
+}
+
+// failCall records a terminal failure when a durable ledger is configured.
+// The wire error the caller returns is the authoritative failure signal, so
+// a failed ledger write is not surfaced separately.
+func (s *Server) failCall(ctx context.Context, reservation ledgerReservation, code string) {
+	if s.Ledger != nil {
+		_ = s.Ledger.Fail(ctx, reservation, code)
+	}
 }
 
 func resultMessage(req *runtimev1.EvidenceToolCall, result QueryResult) *runtimev1.EvidenceToolResult {

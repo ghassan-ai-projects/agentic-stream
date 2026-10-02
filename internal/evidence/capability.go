@@ -139,35 +139,54 @@ type Verifier struct {
 
 // Verify checks a token and returns its claims.
 func (v *Verifier) Verify(token []byte) (Scope, error) {
-	parts := strings.Split(string(token), ".")
-	if len(parts) != 4 || parts[0] != tokenVersion || parts[1] == "" {
-		return Scope{}, fmt.Errorf("invalid capability token format")
-	}
-	key, ok := v.Keys[parts[1]]
-	if !ok || len(key) < 32 {
-		return Scope{}, fmt.Errorf("unknown capability key")
-	}
-	mac := hmac.New(sha256.New, key)
-	_, _ = mac.Write([]byte(strings.Join(parts[:3], ".")))
-	want, err := base64.RawURLEncoding.DecodeString(parts[3])
-	if err != nil || len(want) != sha256.Size || subtle.ConstantTimeCompare(mac.Sum(nil), want) != 1 {
-		return Scope{}, fmt.Errorf("invalid capability token signature")
-	}
-	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[2])
+	keyID, payloadBytes, err := v.signedPayload(token)
 	if err != nil {
-		return Scope{}, fmt.Errorf("decode capability payload: %w", err)
+		return Scope{}, err
 	}
 	var payload tokenPayload
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 		return Scope{}, fmt.Errorf("decode capability claims: %w", err)
 	}
-	scope, err := payload.scope(parts[1])
+	scope, err := payload.scope(keyID)
 	if err != nil {
 		return Scope{}, err
 	}
 	if scope.Issuer != v.Issuer || scope.Audience != v.Audience {
 		return Scope{}, fmt.Errorf("capability issuer or audience mismatch")
 	}
+	if err := v.checkValidity(scope); err != nil {
+		return Scope{}, err
+	}
+	return scope, nil
+}
+
+// signedPayload checks the token format and HMAC signature in constant time
+// and returns the signing key ID and the decoded claims bytes.
+func (v *Verifier) signedPayload(token []byte) (string, []byte, error) {
+	parts := strings.Split(string(token), ".")
+	if len(parts) != 4 || parts[0] != tokenVersion || parts[1] == "" {
+		return "", nil, fmt.Errorf("invalid capability token format")
+	}
+	key, ok := v.Keys[parts[1]]
+	if !ok || len(key) < 32 {
+		return "", nil, fmt.Errorf("unknown capability key")
+	}
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte(strings.Join(parts[:3], ".")))
+	want, err := base64.RawURLEncoding.DecodeString(parts[3])
+	if err != nil || len(want) != sha256.Size || subtle.ConstantTimeCompare(mac.Sum(nil), want) != 1 {
+		return "", nil, fmt.Errorf("invalid capability token signature")
+	}
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		return "", nil, fmt.Errorf("decode capability payload: %w", err)
+	}
+	return parts[1], payloadBytes, nil
+}
+
+// checkValidity bounds the token lifetime and requires now to fall inside its
+// validity window, allowing for clock skew.
+func (v *Verifier) checkValidity(scope Scope) error {
 	now := time.Now().UTC()
 	if v.Now != nil {
 		now = v.Now().UTC()
@@ -177,29 +196,44 @@ func (v *Verifier) Verify(token []byte) (Scope, error) {
 		maxTTL = defaultCapabilityTTL
 	}
 	if scope.ExpiresAt.Sub(scope.IssuedAt) > maxTTL {
-		return Scope{}, fmt.Errorf("capability token lifetime exceeds maximum")
+		return fmt.Errorf("capability token lifetime exceeds maximum")
 	}
 	skew := v.ClockSkew
 	if skew == 0 {
 		skew = time.Second
 	}
 	if now.Add(skew).Before(scope.NotBefore) || !now.Before(scope.ExpiresAt) || scope.IssuedAt.After(now.Add(skew)) {
-		return Scope{}, fmt.Errorf("capability token is outside its validity window")
+		return fmt.Errorf("capability token is outside its validity window")
 	}
-	return scope, nil
+	return nil
 }
 
 func validateScope(scope Scope) error {
-	if scope.KeyID == "" || scope.EpisodeID == "" || scope.AttemptID == "" || scope.TenantID == "" || scope.SituationID == "" || scope.EntityID == "" || scope.Fence <= 0 || len(scope.Tools) == 0 || scope.MaxRows == 0 || scope.MaxBytes == 0 {
+	if !scope.identityComplete() {
 		return fmt.Errorf("capability scope is incomplete")
 	}
-	if scope.ExpiresAt.IsZero() || scope.NotBefore.IsZero() || scope.IssuedAt.IsZero() || scope.IssuedAt.After(scope.NotBefore) || !scope.NotBefore.Before(scope.ExpiresAt) {
+	if !scope.validityWindowValid() {
 		return fmt.Errorf("capability validity window is invalid")
 	}
-	if scope.Until.IsZero() || scope.From.IsZero() || scope.Until.Before(scope.From) || scope.Traceparent == "" || scope.SituationVersion <= 0 || scope.TokenID == "" || scope.RuntimeEpoch == "" {
+	if !scope.evidenceRangeValid() {
 		return fmt.Errorf("capability evidence range is invalid")
 	}
 	return nil
+}
+
+func (s Scope) identityComplete() bool {
+	return s.KeyID != "" && s.EpisodeID != "" && s.AttemptID != "" && s.TenantID != "" && s.SituationID != "" &&
+		s.EntityID != "" && s.Fence > 0 && len(s.Tools) > 0 && s.MaxRows > 0 && s.MaxBytes > 0
+}
+
+func (s Scope) validityWindowValid() bool {
+	return !s.ExpiresAt.IsZero() && !s.NotBefore.IsZero() && !s.IssuedAt.IsZero() &&
+		!s.IssuedAt.After(s.NotBefore) && s.NotBefore.Before(s.ExpiresAt)
+}
+
+func (s Scope) evidenceRangeValid() bool {
+	return !s.Until.IsZero() && !s.From.IsZero() && !s.Until.Before(s.From) && s.Traceparent != "" &&
+		s.SituationVersion > 0 && s.TokenID != "" && s.RuntimeEpoch != ""
 }
 
 type tokenPayload struct {
