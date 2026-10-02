@@ -65,3 +65,17 @@ all numeric aggregates and empty-input precedence, canonical evidence ordering,
 private event-time persistence, and publication independence from later state
 mutation. Package race tests, vet, and diff checks passed. Existing correction
 replay/deduplication tests passed unchanged.
+
+### Round 3: runtime and stream transactions
+
+Separated pipeline defaults, effector composition, cognition/policy/dispatcher
+wiring, episode execution, command dispatch, and cost-limit configuration.
+Separated transactional record application and global batch accounting. Preserved
+owner checks, transaction boundaries, rollback restoration, processing order,
+partial reports, and telemetry timing.
+
+Added cost-configuration tests for unspecified values, kill-switch semantics,
+and rollback of global changes when tenant configuration fails. Added a global
+run failure/resume test that pins inbox deduplication and the existing report
+semantics (global runs count redelivered records while suppressing state writes).
+Runtime and engine race tests, focused lint, vet, and diff checks passed.

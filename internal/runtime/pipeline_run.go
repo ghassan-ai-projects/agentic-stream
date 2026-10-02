@@ -134,36 +134,16 @@ func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport, be
 	if err != nil {
 		return report, err
 	}
-	for {
-		processed, runErr := p.runner.RunOnce(ctx, p.tenantID)
-		if runErr != nil {
-			return report, fmt.Errorf("run episode: %w", runErr)
-		}
-		if !processed {
-			break
-		}
-		report.EpisodesExecuted++
+	if err := p.executeAdmittedEpisodes(ctx, &report); err != nil {
+		return report, err
 	}
 	if err := p.evaluatePendingIntents(ctx, &report); err != nil {
 		return report, err
 	}
-	for {
-		dispatched, dispatchErr := p.dispatcher.DispatchOnce(ctx)
-		if dispatchErr != nil {
-			return report, fmt.Errorf("dispatch action: %w", dispatchErr)
-		}
-		if !dispatched {
-			break
-		}
-		report.CommandsDispatched++
+	if err := p.dispatchApprovedCommands(ctx, &report); err != nil {
+		return report, err
 	}
-	if p.telemetry != nil {
-		p.telemetry.ObservePipeline(telemetry.PipelineReport{
-			EventsIngested: report.EventsIngested, EventsProcessed: report.EventsProcessed,
-			EpisodesAdmitted: report.EpisodesAdmitted, EpisodesExecuted: report.EpisodesExecuted,
-			IntentsEvaluated: report.IntentsEvaluated, CommandsDispatched: report.CommandsDispatched,
-		})
-	}
+	p.observeBatch(report)
 	return report, nil
 }
 
