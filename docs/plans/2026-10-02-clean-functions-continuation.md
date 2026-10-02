@@ -59,3 +59,13 @@ Tests pin post-recovery lease expiry, identity/boot fences, release audit rollba
 barrier audit rollback, and old-boot rejection after authority loss. Storage race
 tests, focused lint, and diff checks pass. Review retained both release clock
 reads, final recovery assertion, authority-check precedence, and atomic audits.
+
+### Round 3: event-log admission and reads
+
+Separated transactional batch admission, envelope encoding/insertion, range
+selection, row delivery, and row reconstruction by responsibility. Tests pin
+whole-batch rollback, validation before duplicate suppression, tenant/partition
+filtering before limits, stable position ordering, and connection cleanup when
+the consumer stops. Event-log race tests, focused lint, and diff checks pass.
+Review confirms the same SQL, duplicate sentinel, JSON/hash inputs, clock read
+position, callback errors, and row cleanup.
