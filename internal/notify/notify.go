@@ -65,61 +65,113 @@ func Append(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, now t
 		return 0, fmt.Errorf("canonicalize notification: %w", err)
 	}
 	eventSHA := sha256.Sum256(eventJSON)
-	traceparent := nullableString(event.Traceparent)
-	tracestate := nullableString(event.Tracestate)
+	if cursor, found, err := existingNotification(ctx, tx, event, eventSHA[:]); err != nil || found {
+		return cursor, err
+	}
+	if err := checkTombstone(ctx, tx, event, eventSHA[:]); err != nil {
+		return 0, err
+	}
+	cursor, err := allocateCursor(ctx, tx, event.TenantID)
+	if err != nil {
+		return 0, err
+	}
+	inserted, err := insertNotification(ctx, tx, event, eventJSON, eventSHA[:], cursor, now)
+	if err != nil {
+		return 0, err
+	}
+	if !inserted {
+		if err := releaseRacedCursor(ctx, tx, event, eventSHA[:], cursor); err != nil {
+			return 0, err
+		}
+	}
+	return storedCursor(ctx, tx, event)
+}
+
+// existingNotification returns the cursor of an identical notification that
+// was already appended; the same event ID with a different payload is an
+// error.
+func existingNotification(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, eventSHA []byte) (int64, bool, error) {
 	var existingCursor int64
 	var existingSHA []byte
-	if err := tx.QueryRowContext(ctx, "SELECT cursor, event_sha256 FROM notifications WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&existingCursor, &existingSHA); err == nil {
-		if !bytes.Equal(existingSHA, eventSHA[:]) {
-			return 0, fmt.Errorf("notification event id %q has conflicting payload", event.ID)
-		}
-		return existingCursor, nil
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("check duplicate notification: %w", err)
+	err := tx.QueryRowContext(ctx, "SELECT cursor, event_sha256 FROM notifications WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&existingCursor, &existingSHA)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
 	}
-	if err := tx.QueryRowContext(ctx, "SELECT event_sha256 FROM notification_event_tombstones WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&existingSHA); err == nil {
-		if !bytes.Equal(existingSHA, eventSHA[:]) {
-			return 0, fmt.Errorf("notification event id %q conflicts with tombstone", event.ID)
-		}
-		return 0, fmt.Errorf("notification event %q was already retired", event.ID)
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("check notification tombstone: %w", err)
+	if err != nil {
+		return 0, false, fmt.Errorf("check duplicate notification: %w", err)
 	}
+	if !bytes.Equal(existingSHA, eventSHA) {
+		return 0, false, fmt.Errorf("notification event id %q has conflicting payload", event.ID)
+	}
+	return existingCursor, true, nil
+}
+
+// checkTombstone refuses to re-append an event that retention already
+// retired.
+func checkTombstone(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, eventSHA []byte) error {
+	var retiredSHA []byte
+	err := tx.QueryRowContext(ctx, "SELECT event_sha256 FROM notification_event_tombstones WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&retiredSHA)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("check notification tombstone: %w", err)
+	}
+	if !bytes.Equal(retiredSHA, eventSHA) {
+		return fmt.Errorf("notification event id %q conflicts with tombstone", event.ID)
+	}
+	return fmt.Errorf("notification event %q was already retired", event.ID)
+}
+
+func allocateCursor(ctx context.Context, tx *sql.Tx, tenantID string) (int64, error) {
 	var cursor int64
 	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO notification_cursors (tenant_id, next_cursor) VALUES (?, 2)
 		ON CONFLICT(tenant_id) DO UPDATE SET next_cursor = next_cursor + 1
-		RETURNING next_cursor - 1`, event.TenantID).Scan(&cursor); err != nil {
+		RETURNING next_cursor - 1`, tenantID).Scan(&cursor); err != nil {
 		return 0, fmt.Errorf("allocate notification cursor: %w", err)
 	}
+	return cursor, nil
+}
+
+func insertNotification(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, eventJSON, eventSHA []byte, cursor int64, now time.Time) (bool, error) {
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO notifications (tenant_id, cursor, event_id, event_type, event_json, event_sha256, traceparent, tracestate, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(tenant_id, event_id) DO NOTHING`,
-		event.TenantID, cursor, event.ID, event.Type, eventJSON, eventSHA[:], traceparent, tracestate, now.UTC().Format(time.RFC3339Nano))
+		event.TenantID, cursor, event.ID, event.Type, eventJSON, eventSHA, nullableString(event.Traceparent), nullableString(event.Tracestate), now.UTC().Format(time.RFC3339Nano))
 	if err != nil {
-		return 0, fmt.Errorf("append notification: %w", err)
+		return false, fmt.Errorf("append notification: %w", err)
 	}
-	if affected, _ := result.RowsAffected(); affected == 0 {
-		var storedSHA []byte
-		if err := tx.QueryRowContext(ctx, "SELECT event_sha256 FROM notifications WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&storedSHA); err != nil {
-			return 0, fmt.Errorf("read duplicate notification: %w", err)
-		}
-		if !bytes.Equal(storedSHA, eventSHA[:]) {
-			return 0, fmt.Errorf("notification event id %q has conflicting payload", event.ID)
-		}
-		rollback, rollbackErr := tx.ExecContext(ctx, "UPDATE notification_cursors SET next_cursor = next_cursor - 1 WHERE tenant_id = ? AND next_cursor = ?", event.TenantID, cursor+1)
-		if rollbackErr != nil {
-			return 0, fmt.Errorf("rollback duplicate cursor: %w", rollbackErr)
-		}
-		if affected, _ := rollback.RowsAffected(); affected != 1 {
-			return 0, fmt.Errorf("rollback duplicate cursor lost race")
-		}
+	affected, _ := result.RowsAffected()
+	return affected != 0, nil
+}
+
+// releaseRacedCursor gives back the cursor allocated for an insert that a
+// concurrent identical append won, keeping cursors gapless.
+func releaseRacedCursor(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, eventSHA []byte, cursor int64) error {
+	var storedSHA []byte
+	if err := tx.QueryRowContext(ctx, "SELECT event_sha256 FROM notifications WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&storedSHA); err != nil {
+		return fmt.Errorf("read duplicate notification: %w", err)
 	}
-	var actual int64
-	if err := tx.QueryRowContext(ctx, "SELECT cursor FROM notifications WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&actual); err != nil {
+	if !bytes.Equal(storedSHA, eventSHA) {
+		return fmt.Errorf("notification event id %q has conflicting payload", event.ID)
+	}
+	rollback, err := tx.ExecContext(ctx, "UPDATE notification_cursors SET next_cursor = next_cursor - 1 WHERE tenant_id = ? AND next_cursor = ?", event.TenantID, cursor+1)
+	if err != nil {
+		return fmt.Errorf("rollback duplicate cursor: %w", err)
+	}
+	if affected, _ := rollback.RowsAffected(); affected != 1 {
+		return fmt.Errorf("rollback duplicate cursor lost race")
+	}
+	return nil
+}
+
+func storedCursor(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent) (int64, error) {
+	var cursor int64
+	if err := tx.QueryRowContext(ctx, "SELECT cursor FROM notifications WHERE tenant_id = ? AND event_id = ?", event.TenantID, event.ID).Scan(&cursor); err != nil {
 		return 0, fmt.Errorf("read notification cursor: %w", err)
 	}
-	return actual, nil
+	return cursor, nil
 }
 
 func nullableString(value string) sql.NullString {

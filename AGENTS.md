@@ -164,6 +164,21 @@ enforces the rest. A refactor toward these rules never changes behavior, and
 it never adds abstraction layers without a current need. The full bar, with
 examples, is [.agents/context/quality-bar.md](.agents/context/quality-bar.md).
 
+Before accepting a refactoring round:
+
+- Read changed entry points aloud as domain steps. Move SQL, serialization,
+  transport framing, and loop bookkeeping into the step that owns them.
+- Place private steps below their first caller, splitting files by responsibility
+  when needed. Use names that explain the outcome; avoid numbered parts and
+  wrappers that merely rename another call.
+- Preserve public signatures, error precedence, identity and digest inputs,
+  ordering, clock reads, transaction boundaries, locks, cancellation, and effects.
+  Add regression tests for the boundaries touched by the extraction.
+- Review the diff against Q7 as well as the mechanical limits. Run focused tests
+  before each commit and the full gate before handoff. Keep any blocked check
+  explicit; passing lint alone does not demonstrate clean functions.
+
+
 ## Forbidden Changes
 
 - Do not add secrets, credentials, or machine-specific private data.

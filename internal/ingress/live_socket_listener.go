@@ -86,20 +86,31 @@ type cleanLiveListener struct {
 }
 
 func (l *cleanLiveListener) Close() error {
-	l.once.Do(func() {
-		l.err = l.Listener.Close()
-		current, statErr := os.Stat(l.path)
-		if statErr == nil && os.SameFile(l.info, current) {
-			if removeErr := os.Remove(l.path); removeErr != nil && !os.IsNotExist(removeErr) {
-				if l.err != nil {
-					l.err = errors.Join(l.err, fmt.Errorf("remove live socket: %w", removeErr))
-				} else {
-					l.err = fmt.Errorf("remove live socket: %w", removeErr)
-				}
-			}
-		} else if statErr != nil && !os.IsNotExist(statErr) && l.err == nil {
-			l.err = fmt.Errorf("inspect live socket during cleanup: %w", statErr)
-		}
-	})
+	l.once.Do(func() { l.err = l.closeAndRemove() })
 	return l.err
+}
+
+// closeAndRemove closes the listener and removes the socket file only if it
+// is still the one this listener created.
+func (l *cleanLiveListener) closeAndRemove() error {
+	closeErr := l.Listener.Close()
+	if closeErr != nil {
+		closeErr = fmt.Errorf("close live socket listener: %w", closeErr)
+	}
+	current, statErr := os.Stat(l.path)
+	switch {
+	case statErr == nil && os.SameFile(l.info, current):
+		return errors.Join(closeErr, removeSocketFile(l.path))
+	case statErr != nil && !os.IsNotExist(statErr) && closeErr == nil:
+		return fmt.Errorf("inspect live socket during cleanup: %w", statErr)
+	default:
+		return closeErr
+	}
+}
+
+func removeSocketFile(path string) error {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove live socket: %w", err)
+	}
+	return nil
 }

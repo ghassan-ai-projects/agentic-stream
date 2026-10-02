@@ -131,3 +131,45 @@ func testEvent(id string, at time.Time) contractsv1.CloudEvent {
 	event.EnvelopeDigest = digest
 	return event
 }
+
+func TestAppendDuplicatesAndConflictsDoNotConsumeCursors(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "dedupe.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	appendEvent := func(event contractsv1.CloudEvent) (int64, error) {
+		var cursor int64
+		err := db.WithTx(ctx, func(tx *sql.Tx) error {
+			var appendErr error
+			cursor, appendErr = notify.Append(ctx, tx, event, now)
+			return appendErr
+		})
+		return cursor, err
+	}
+	original := testEvent("same-id", now)
+	for range 2 {
+		if cursor, err := appendEvent(original); err != nil || cursor != 1 {
+			t.Fatalf("duplicate cursor=%d err=%v", cursor, err)
+		}
+	}
+	conflict := original
+	conflict.Data = map[string]any{"version": 2}
+	conflict.EnvelopeDigest, err = conflict.ComputeEnvelopeDigest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := appendEvent(conflict); err == nil {
+		t.Fatal("conflicting payload accepted")
+	}
+	if cursor, err := appendEvent(testEvent("next-id", now)); err != nil || cursor != 2 {
+		t.Fatalf("next cursor=%d err=%v", cursor, err)
+	}
+	page, err := notify.ReadPage(ctx, db, "tenant", 0, 10, 0, now)
+	if err != nil || len(page.Records) != 2 || page.Records[0].Event.EnvelopeDigest != original.EnvelopeDigest {
+		t.Fatalf("stored notifications changed: page=%+v err=%v", page, err)
+	}
+}

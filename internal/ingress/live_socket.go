@@ -87,6 +87,19 @@ func (s *LiveUDSSource) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *Live
 // Run listens for live normalized JSONL until ctx is canceled or the sink
 // returns an error. A canceled context is a normal shutdown and returns nil.
 func (s *LiveUDSSource) Run(ctx context.Context, sink EnvelopeSink) error {
+	if err := s.prepare(sink); err != nil {
+		return err
+	}
+	listener, err := listenLiveSocket(s.path)
+	if err != nil {
+		return fmt.Errorf("listen live ingress socket: %w", err)
+	}
+	defer func() { _ = listener.Close() }()
+	return s.serve(ctx, listener, sink)
+}
+
+// prepare validates the source and sink and fills the runtime defaults.
+func (s *LiveUDSSource) prepare(sink EnvelopeSink) error {
 	if s == nil {
 		return fmt.Errorf("live UDS source is nil")
 	}
@@ -110,34 +123,30 @@ func (s *LiveUDSSource) Run(ctx context.Context, sink EnvelopeSink) error {
 		s.connections = make(map[net.Conn]struct{})
 	}
 	s.connectionsMu.Unlock()
-	queueSize := s.queueSize
-	if queueSize <= 0 {
-		queueSize = defaultLiveSocketQueueSize
+	if s.queueSize <= 0 {
+		s.queueSize = defaultLiveSocketQueueSize
 	}
+	return nil
+}
 
-	listener, err := listenLiveSocket(s.path)
-	if err != nil {
-		return fmt.Errorf("listen live ingress socket: %w", err)
-	}
-	defer func() { _ = listener.Close() }()
-
+// serve accepts clients and processes their lines in arrival order until ctx
+// ends, the sink fails, or accepting fails. Shutdown closes the listener and
+// every client before returning.
+func (s *LiveUDSSource) serve(ctx context.Context, listener net.Listener, sink EnvelopeSink) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	lines := make(chan liveLine, queueSize)
+	lines := make(chan liveLine, s.queueSize)
 	acceptDone := make(chan struct{})
 	acceptErr := make(chan error, 1)
 	var clients sync.WaitGroup
-
 	go s.acceptClients(runCtx, listener, lines, acceptDone, acceptErr, &clients)
-	cleanup := func() {
+	defer func() {
 		cancel()
 		_ = listener.Close()
 		s.closeClients()
 		clients.Wait()
 		<-acceptDone
-	}
-	defer cleanup()
-
+	}()
 	for {
 		select {
 		case item := <-lines:
@@ -148,15 +157,20 @@ func (s *LiveUDSSource) Run(ctx context.Context, sink EnvelopeSink) error {
 				return fmt.Errorf("process live ingress line: %w", err)
 			}
 		case <-acceptDone:
-			select {
-			case acceptErr := <-acceptErr:
-				return acceptErr
-			default:
-				return nil
-			}
+			return firstError(acceptErr)
 		case <-ctx.Done():
 			return nil
 		}
+	}
+}
+
+// firstError returns a pending error, or nil when none was sent.
+func firstError(errs <-chan error) error {
+	select {
+	case err := <-errs:
+		return err
+	default:
+		return nil
 	}
 }
 
@@ -176,41 +190,56 @@ func (s *LiveUDSSource) acceptClients(ctx context.Context, listener net.Listener
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			if ctx.Err() != nil {
+			if !retryAccept(ctx, err) {
+				if ctx.Err() == nil {
+					acceptErr <- fmt.Errorf("accept live ingress client: %w", err)
+				}
 				return
 			}
-			var networkErr net.Error
-			if errors.As(err, &networkErr) && networkErr.Timeout() {
-				timer := time.NewTimer(5 * time.Millisecond)
-				select {
-				case <-ctx.Done():
-					if !timer.Stop() {
-						<-timer.C
-					}
-					return
-				case <-timer.C:
-				}
-				continue
-			}
-			acceptErr <- fmt.Errorf("accept live ingress client: %w", err)
-			return
+			continue
 		}
 		if s.clientCount.Load() >= maxLiveSocketClients {
 			s.logger.WarnContext(ctx, "live ingress client rejected", "source", liveSocketSourceTag, "reason_code", "client_limit")
 			_ = conn.Close()
 			continue
 		}
-		connectionID := s.connection.Add(1)
-		s.clientCount.Add(1)
-		s.addClient(conn)
-		clients.Add(1)
-		go func() {
-			defer clients.Done()
-			defer s.clientCount.Add(-1)
-			defer s.removeClient(conn)
-			s.readClient(ctx, conn, connectionID, lines)
-		}()
+		s.startClient(ctx, conn, lines, clients)
 	}
+}
+
+// retryAccept reports whether a failed accept should be retried: a timeout
+// waits briefly and retries, while shutdown and other errors stop accepting.
+func retryAccept(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	var networkErr net.Error
+	if !errors.As(err, &networkErr) || !networkErr.Timeout() {
+		return false
+	}
+	timer := time.NewTimer(5 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+// startClient registers the connection and reads its lines on a goroutine
+// tracked by clients.
+func (s *LiveUDSSource) startClient(ctx context.Context, conn net.Conn, lines chan<- liveLine, clients *sync.WaitGroup) {
+	connectionID := s.connection.Add(1)
+	s.clientCount.Add(1)
+	s.addClient(conn)
+	clients.Add(1)
+	go func() {
+		defer clients.Done()
+		defer s.clientCount.Add(-1)
+		defer s.removeClient(conn)
+		s.readClient(ctx, conn, connectionID, lines)
+	}()
 }
 
 func (s *LiveUDSSource) readClient(ctx context.Context, conn net.Conn, connectionID uint64, lines chan<- liveLine) {

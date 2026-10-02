@@ -140,28 +140,36 @@ func (t *simulatorTrace) accept(ctx context.Context, raw []byte) error {
 	case "event":
 		return t.acceptEvent(ctx, record)
 	case "model_activation":
-		recorded, err := validateModelActivation(record)
-		if err != nil {
-			return fmt.Errorf("validate simulator line %d: %w", t.line, err)
-		}
-		if !t.after(recorded) {
-			return fmt.Errorf("recorded time must be strictly increasing")
-		}
-		t.lastRecorded = recorded
-		return nil
+		return t.acceptModelActivation(record)
 	case "trace_end":
-		if err := validateSimulatorControl(recordType, record); err != nil {
-			return fmt.Errorf("validate simulator line %d: %w", t.line, err)
-		}
-		until, _ := parseSimulatorTime(record, "until")
-		if !t.after(until) {
-			return fmt.Errorf("trace_end until must be later than every recorded input")
-		}
-		t.ended = true
-		return nil
+		return t.acceptTraceEnd(record)
 	default:
 		return fmt.Errorf("unknown simulator record_type %q", recordType)
 	}
+}
+
+func (t *simulatorTrace) acceptModelActivation(record map[string]any) error {
+	recorded, err := validateModelActivation(record)
+	if err != nil {
+		return fmt.Errorf("validate simulator line %d: %w", t.line, err)
+	}
+	if !t.after(recorded) {
+		return fmt.Errorf("recorded time must be strictly increasing")
+	}
+	t.lastRecorded = recorded
+	return nil
+}
+
+func (t *simulatorTrace) acceptTraceEnd(record map[string]any) error {
+	if err := validateSimulatorControl("trace_end", record); err != nil {
+		return fmt.Errorf("validate simulator line %d: %w", t.line, err)
+	}
+	until, _ := parseSimulatorTime(record, "until")
+	if !t.after(until) {
+		return fmt.Errorf("trace_end until must be later than every recorded input")
+	}
+	t.ended = true
+	return nil
 }
 
 func (t *simulatorTrace) acceptConfig(record map[string]any) error {

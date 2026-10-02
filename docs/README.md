@@ -41,3 +41,5 @@ documentation authority matrix and root navigation in the same change.
 - [Public documentation](../documentation/README.md)
 - [Current design record](design/README.md)
 - [Documentation plan](../documentation/PLAN.md)
+
+- [Branch clean-function completion](plans/2026-10-02-clean-functions.md)
