@@ -79,3 +79,15 @@ method precedence, readiness call counts, problem responses, persistence errors,
 and absence of mutations on rejection. API race tests, focused lint, and diff
 checks pass. Review preserved exact-token constant-time comparison, status/body
 shapes, action-before-state-read order, and readiness detail suppression.
+
+### Round 5: specification parsing and compiler order
+
+Placed compiler entry points before their steps and separated parsing, embedded
+schema loading, and normalization into responsibility files. Parsing now names
+duplicate-key validation, strict decoding, and identity checks. Tests pin error
+precedence through reference/expression validation and compiler reuse after a
+failed document. Equivalent YAML/JSON preserves canonical bytes and digest when
+CEL text is preserved exactly (a generic numeric conversion changes `1.0` to
+`1`, which is different expression source). Spec race tests, focused lint, and
+diff checks pass. Review retained loader denial, schema caching, defaults,
+normalization order, compile diagnostics, and identity inputs.
