@@ -383,3 +383,29 @@ versions on both sides. Invariants are unchanged: Tamoz proposes typed Intents
 and never executes effects, and policy revalidates every Intent. Tamoz outages
 become a documented degraded mode instead of a reason to fall back to another
 model path.
+
+## ADR-017: Business ownership and directed module boundaries
+
+**Status.** Accepted 2026-10-02 under the owner's instruction to strengthen
+module decoupling and one-way data/control flow. This refines implementation
+structure; ADR-015 and ADR-016 remain proposed and are not implemented here.
+
+**Context.** The domain pipeline is sound, but storage includes runtime and
+device governance, action dispatch shares a package with device adapters, and
+cognition/control directly mutate episode lifecycle state. Import allowlists
+alone do not protect business ownership or transitive effect reachability.
+
+**Decision.** Retain the single-node modular monolith and its atomic SQLite
+transactions. Extract concrete control, authority, qualification, episode and
+scheduler ledger capabilities from shared infrastructure. Separate approved
+command/effect ports from device implementations. Composition roots alone wire
+concrete effect adapters into dispatch. Pin a strictly downward package graph,
+durable mutation ownership, and replay/effect reachability in architecture tests.
+The acceptance contract is [.agents/context/architecture-bar.md](../../.agents/context/architecture-bar.md).
+
+**Consequences.** Internal Go import paths may change; external JSON, protobuf,
+schema, digest and database contracts do not. Existing transactions, fences,
+clock reads and safety ordering stay intact. Cancellation uses typed downward
+ledger operations; results/feedback use return values and durable records.
+There is no additional queue, service, framework, table abstraction interface,
+or speculative module. Full CI, race/replay and boundary regressions gate delivery.
