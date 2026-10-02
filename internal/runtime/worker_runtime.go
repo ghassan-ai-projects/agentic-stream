@@ -58,6 +58,22 @@ type WorkerRuntime struct {
 // ValidateWorkerRuntimeConfig rejects incomplete worker/evidence combinations
 // before sockets or credentials are opened.
 func ValidateWorkerRuntimeConfig(cfg WorkerRuntimeConfig) error {
+	if err := validateEvidenceFlags(cfg); err != nil {
+		return err
+	}
+	if cfg.WorkerSocket != "" && cfg.WorkerName == "" {
+		return fmt.Errorf("--worker-name is required with --worker-socket")
+	}
+	if err := validateWorkerTLSFlags(cfg); err != nil {
+		return err
+	}
+	if cfg.ModelEndpoint != "" && cfg.ModelName == "" {
+		return fmt.Errorf("--model-name is required with --model-endpoint")
+	}
+	return nil
+}
+
+func validateEvidenceFlags(cfg WorkerRuntimeConfig) error {
 	if cfg.EvidenceSocket != "" && cfg.WorkerSocket == "" {
 		return fmt.Errorf("--evidence-socket requires --worker-socket")
 	}
@@ -65,14 +81,14 @@ func ValidateWorkerRuntimeConfig(cfg WorkerRuntimeConfig) error {
 		return fmt.Errorf("--evidence-key requires --evidence-socket")
 	}
 	if cfg.EvidenceSocket != "" {
-		secret, err := hex.DecodeString(cfg.EvidenceKey)
-		if err != nil || len(secret) < 32 {
-			return fmt.Errorf("--evidence-key must be at least 32 bytes of hex")
+		if _, err := decodeEvidenceKey(cfg.EvidenceKey); err != nil {
+			return err
 		}
 	}
-	if cfg.WorkerSocket != "" && cfg.WorkerName == "" {
-		return fmt.Errorf("--worker-name is required with --worker-socket")
-	}
+	return nil
+}
+
+func validateWorkerTLSFlags(cfg WorkerRuntimeConfig) error {
 	if cfg.WorkerSocket == "" && (cfg.WorkerCA != "" || cfg.WorkerCert != "" || cfg.WorkerKey != "" || cfg.WorkerServerName != "") {
 		return fmt.Errorf("worker TLS flags require --worker-socket")
 	}
@@ -85,10 +101,17 @@ func ValidateWorkerRuntimeConfig(cfg WorkerRuntimeConfig) error {
 	if cfg.WorkerCA != "" && cfg.WorkerServerName == "" {
 		return fmt.Errorf("--worker-server-name is required with mTLS")
 	}
-	if cfg.ModelEndpoint != "" && cfg.ModelName == "" {
-		return fmt.Errorf("--model-name is required with --model-endpoint")
-	}
 	return nil
+}
+
+// decodeEvidenceKey decodes the evidence capability HMAC key, which must be
+// at least 32 bytes.
+func decodeEvidenceKey(key string) ([]byte, error) {
+	secret, err := hex.DecodeString(key)
+	if err != nil || len(secret) < 32 {
+		return nil, fmt.Errorf("--evidence-key must be at least 32 bytes of hex")
+	}
+	return secret, nil
 }
 
 // NewWorkerRuntime constructs the native executor by default and replaces it
@@ -106,7 +129,6 @@ func NewWorkerRuntime(ctx context.Context, cfg WorkerRuntimeConfig) (*WorkerRunt
 	}
 	r := &WorkerRuntime{evidenceErrors: make(chan error, 1)}
 	cleanupOnError := true
-	var err error
 	defer func() {
 		if cleanupOnError {
 			_ = r.Close()
@@ -120,81 +142,102 @@ func NewWorkerRuntime(ctx context.Context, cfg WorkerRuntimeConfig) (*WorkerRunt
 	// the Go native executor is never constructed". Native mode keeps the
 	// constructor.
 	if cfg.WorkerSocket == "" {
-		var provider nativeexecutor.ModelProvider = &nativeexecutor.DeterministicProvider{}
-		if cfg.ModelEndpoint != "" {
-			provider = &nativeexecutor.OpenAICompatibleProvider{Endpoint: cfg.ModelEndpoint, APIKey: os.Getenv("AGENTIC_STREAM_MODEL_API_KEY"), Model: cfg.ModelName}
-		}
-		nativeExecutor, newErr := newNativeExecutor(nativeexecutor.Config{
-			Provider: provider,
-			ToolFactory: func(req *episodes.Request) []nativeexecutor.Tool {
-				return []nativeexecutor.Tool{
-					nativeexecutor.NewSQLiteEvidenceTool(cfg.DB, "evidence_get", req.TenantID, req.EntityID),
-					nativeexecutor.NewSQLiteEvidenceTool(cfg.DB, "evidence.get", req.TenantID, req.EntityID),
-				}
-			},
-		})
-		if newErr != nil {
-			return nil, fmt.Errorf("configure native executor: %w", newErr)
+		nativeExecutor, err := newRuntimeNativeExecutor(cfg)
+		if err != nil {
+			return nil, err
 		}
 		r.Executor = nativeExecutor
 	}
-
 	var evidenceSecret []byte
 	if cfg.EvidenceSocket != "" {
-		evidenceSecret, err = hex.DecodeString(cfg.EvidenceKey)
-		if err != nil {
-			return nil, fmt.Errorf("decode evidence key: %w", err)
+		var err error
+		if evidenceSecret, err = r.startEvidenceServer(cfg); err != nil {
+			return nil, err
 		}
-		if len(evidenceSecret) < 32 {
-			return nil, fmt.Errorf("--evidence-key must be at least 32 bytes of hex")
-		}
-		if cfg.Ledger == nil {
-			return nil, fmt.Errorf("evidence ledger is required with --evidence-socket")
-		}
-		listener, listenErr := worker.ListenEvidenceSocket(cfg.EvidenceSocket)
-		if listenErr != nil {
-			return nil, fmt.Errorf("listen evidence socket: %w", listenErr)
-		}
-		r.evidenceListener = listener
-		evidenceGRPC := grpc.NewServer()
-		r.evidenceGRPC = evidenceGRPC
-		issuer := evidenceIssuer(evidenceSecret)
-		runtimev1.RegisterEvidenceToolsServer(evidenceGRPC, &evidence.Server{
-			Verifier: &evidence.Verifier{Issuer: issuer.Issuer, Audience: issuer.Audience, Keys: issuer.Keys},
-			Query:    makeEvidenceQuery(cfg.DB), Ledger: cfg.Ledger, RuntimeEpoch: cfg.RuntimeEpoch, RequireLedger: true,
-		})
-		go func() {
-			if serveErr := evidenceGRPC.Serve(listener); serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
-				r.evidenceErrors <- fmt.Errorf("evidence server: %w", serveErr)
-			}
-		}()
 	}
-
 	if cfg.WorkerSocket != "" {
-		tlsConfig, tlsErr := loadWorkerTLS(cfg.WorkerCA, cfg.WorkerCert, cfg.WorkerKey, cfg.WorkerServerName)
-		if tlsErr != nil {
-			return nil, tlsErr
-		}
-		conn, dialErr := worker.DialEpisodeWorkerSocketTLS(ctx, cfg.WorkerSocket, tlsConfig)
-		if dialErr != nil {
-			return nil, fmt.Errorf("dial episode worker socket: %w", dialErr)
-		}
-		r.workerConn = conn
-		features := []string(nil)
-		if cfg.EvidenceSocket != "" {
-			issuer := evidenceIssuer(evidenceSecret)
-			factory := &episodes.AttemptCapabilityIssuer{
-				Issuer: issuer, RuntimeEpoch: cfg.RuntimeEpoch, Tools: []string{"evidence.get"},
-				From: time.Now().UTC().Add(-24 * time.Hour), Until: time.Now().UTC().Add(24 * time.Hour), MaxRows: 1000, MaxBytes: 1 << 20,
-			}
-			features = []string{worker.EvidenceToolsFeature}
-			r.Executor = episodes.NewWorkerExecutorWithEvidence(runtimev1.NewEpisodeWorkerClient(conn), cfg.WorkerName, cfg.RuntimeEpoch, features, cfg.EvidenceSocket, factory)
-		} else {
-			r.Executor = episodes.NewWorkerExecutor(runtimev1.NewEpisodeWorkerClient(conn), cfg.WorkerName, cfg.RuntimeEpoch, features)
+		if err := r.connectWorker(ctx, cfg, evidenceSecret); err != nil {
+			return nil, err
 		}
 	}
 	cleanupOnError = false
 	return r, nil
+}
+
+func newRuntimeNativeExecutor(cfg WorkerRuntimeConfig) (episodes.Executor, error) {
+	var provider nativeexecutor.ModelProvider = &nativeexecutor.DeterministicProvider{}
+	if cfg.ModelEndpoint != "" {
+		provider = &nativeexecutor.OpenAICompatibleProvider{Endpoint: cfg.ModelEndpoint, APIKey: os.Getenv("AGENTIC_STREAM_MODEL_API_KEY"), Model: cfg.ModelName}
+	}
+	nativeExecutor, err := newNativeExecutor(nativeexecutor.Config{
+		Provider: provider,
+		ToolFactory: func(req *episodes.Request) []nativeexecutor.Tool {
+			return []nativeexecutor.Tool{
+				nativeexecutor.NewSQLiteEvidenceTool(cfg.DB, "evidence_get", req.TenantID, req.EntityID),
+				nativeexecutor.NewSQLiteEvidenceTool(cfg.DB, "evidence.get", req.TenantID, req.EntityID),
+			}
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure native executor: %w", err)
+	}
+	return nativeExecutor, nil
+}
+
+// startEvidenceServer serves the ledger-backed evidence tools on the private
+// evidence socket and returns the capability signing key.
+func (r *WorkerRuntime) startEvidenceServer(cfg WorkerRuntimeConfig) ([]byte, error) {
+	evidenceSecret, err := decodeEvidenceKey(cfg.EvidenceKey)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Ledger == nil {
+		return nil, fmt.Errorf("evidence ledger is required with --evidence-socket")
+	}
+	listener, err := worker.ListenEvidenceSocket(cfg.EvidenceSocket)
+	if err != nil {
+		return nil, fmt.Errorf("listen evidence socket: %w", err)
+	}
+	r.evidenceListener = listener
+	evidenceGRPC := grpc.NewServer()
+	r.evidenceGRPC = evidenceGRPC
+	issuer := evidenceIssuer(evidenceSecret)
+	runtimev1.RegisterEvidenceToolsServer(evidenceGRPC, &evidence.Server{
+		Verifier: &evidence.Verifier{Issuer: issuer.Issuer, Audience: issuer.Audience, Keys: issuer.Keys},
+		Query:    makeEvidenceQuery(cfg.DB), Ledger: cfg.Ledger, RuntimeEpoch: cfg.RuntimeEpoch, RequireLedger: true,
+	})
+	go func() {
+		if serveErr := evidenceGRPC.Serve(listener); serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
+			r.evidenceErrors <- fmt.Errorf("evidence server: %w", serveErr)
+		}
+	}()
+	return evidenceSecret, nil
+}
+
+// connectWorker dials the EpisodeWorker over its socket, with mTLS when
+// configured, and negotiates evidence tools when the evidence server runs.
+func (r *WorkerRuntime) connectWorker(ctx context.Context, cfg WorkerRuntimeConfig, evidenceSecret []byte) error {
+	tlsConfig, err := loadWorkerTLS(cfg.WorkerCA, cfg.WorkerCert, cfg.WorkerKey, cfg.WorkerServerName)
+	if err != nil {
+		return err
+	}
+	conn, err := worker.DialEpisodeWorkerSocketTLS(ctx, cfg.WorkerSocket, tlsConfig)
+	if err != nil {
+		return fmt.Errorf("dial episode worker socket: %w", err)
+	}
+	r.workerConn = conn
+	client := runtimev1.NewEpisodeWorkerClient(conn)
+	if cfg.EvidenceSocket == "" {
+		r.Executor = episodes.NewWorkerExecutor(client, cfg.WorkerName, cfg.RuntimeEpoch, nil)
+		return nil
+	}
+	factory := &episodes.AttemptCapabilityIssuer{
+		Issuer: evidenceIssuer(evidenceSecret), RuntimeEpoch: cfg.RuntimeEpoch, Tools: []string{"evidence.get"},
+		From: time.Now().UTC().Add(-24 * time.Hour), Until: time.Now().UTC().Add(24 * time.Hour), MaxRows: 1000, MaxBytes: 1 << 20,
+	}
+	features := []string{worker.EvidenceToolsFeature}
+	r.Executor = episodes.NewWorkerExecutorWithEvidence(client, cfg.WorkerName, cfg.RuntimeEpoch, features, cfg.EvidenceSocket, factory)
+	return nil
 }
 
 // Errors reports asynchronous evidence-server failures. A closed channel is
