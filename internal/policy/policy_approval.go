@@ -2,15 +2,27 @@ package policy
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 )
+
+type approvalRow struct {
+	intentID  string
+	status    string
+	expiresAt string
+}
+
+type approvalResolution struct {
+	id              string
+	approved        bool
+	approver, relay string
+	signature       []byte
+	reason          string
+	now             time.Time
+}
 
 // ResolveApproval records a human approval decision and, when approved,
 // immediately re-runs the full policy gate before creating a Command.
@@ -26,43 +38,9 @@ func (g *Gateway) ResolveApproval(ctx context.Context, tx *sql.Tx, approvalID st
 	if err != nil {
 		return Result{IntentID: approval.intentID, ApprovalID: approvalID}, err
 	}
+	request := approvalResolution{approvalID, approved, approver, relay, signature, reason, now}
 	result := Result{IntentID: approval.intentID, DecisionID: row.DecisionID, ApprovalID: approvalID}
-	if approval.status != "pending" {
-		result.Result = approval.status
-		result.Reason = "approval_already_resolved"
-		return g.audit(ctx, tx, row, result, result.Result, result.Reason, now)
-	}
-	if approved && row.CurrentSituation != row.SituationVersion {
-		return g.withdrawStaleApproval(ctx, tx, row, approvalID, result, now)
-	}
-	if approvalExpired(approval.expiresAt, now) {
-		return g.expireApproval(ctx, tx, row, approvalID, result, now)
-	}
-	if approved {
-		if err := g.authorizeApproval(ctx, tx, row, approvalID, approver, relay, signature); err != nil {
-			return g.denyUnauthorizedApproval(ctx, tx, row, approvalID, approver, relay, err, result, now)
-		}
-	}
-	status, policyStatus := approvalDecision(approved)
-	if err := approvalledger.Resolve(ctx, tx, approvalID, status, approver, relay, reason, formatTime(now)); err != nil {
-		return result, fmt.Errorf("resolve approval %s: %w", approvalID, err)
-	}
-	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = ?, updated_at = ? WHERE intent_id = ?", policyStatus, formatTime(now), approval.intentID); err != nil {
-		return result, fmt.Errorf("update approved intent %s: %w", approval.intentID, err)
-	}
-	if err := appendApprovalResolved(ctx, tx, row, approvalID, status, reason, now); err != nil {
-		return result, err
-	}
-	if !approved {
-		return g.audit(ctx, tx, row, result, "denied", "approval_denied", now)
-	}
-	return g.EvaluateIntent(ctx, tx, approval.intentID, now)
-}
-
-type approvalRow struct {
-	intentID  string
-	status    string
-	expiresAt string
+	return g.resolvePendingApproval(ctx, tx, row, approval, request, result)
 }
 
 func loadApproval(ctx context.Context, tx *sql.Tx, approvalID string) (approvalRow, error) {
@@ -73,6 +51,20 @@ func loadApproval(ctx context.Context, tx *sql.Tx, approvalID string) (approvalR
 		return approval, fmt.Errorf("load approval %s: %w", approvalID, err)
 	}
 	return approval, nil
+}
+
+func (g *Gateway) resolvePendingApproval(ctx context.Context, tx *sql.Tx, row intentRow, approval approvalRow, request approvalResolution, result Result) (Result, error) {
+	if approval.status != "pending" {
+		result.Result, result.Reason = approval.status, "approval_already_resolved"
+		return g.audit(ctx, tx, row, result, result.Result, result.Reason, request.now)
+	}
+	if request.approved && row.CurrentSituation != row.SituationVersion {
+		return g.withdrawStaleApproval(ctx, tx, row, request.id, result, request.now)
+	}
+	if approvalExpired(approval.expiresAt, request.now) {
+		return g.expireApproval(ctx, tx, row, request.id, result, request.now)
+	}
+	return g.resolveAuthorizedApproval(ctx, tx, row, request, result)
 }
 
 func approvalExpired(expiresAt string, now time.Time) bool {
@@ -103,11 +95,19 @@ func (g *Gateway) expireApproval(ctx context.Context, tx *sql.Tx, row intentRow,
 	return g.finish(ctx, tx, row, result, "expired", "approval_expired", now)
 }
 
-func approvalDecision(approved bool) (status, policyStatus string) {
-	if approved {
-		return "approved", "pending"
+func (g *Gateway) resolveAuthorizedApproval(ctx context.Context, tx *sql.Tx, row intentRow, request approvalResolution, result Result) (Result, error) {
+	if request.approved {
+		if err := g.authorizeApproval(ctx, tx, row, request.id, request.approver, request.relay, request.signature); err != nil {
+			return g.denyUnauthorizedApproval(ctx, tx, row, request.id, request.approver, request.relay, err, result, request.now)
+		}
 	}
-	return "denied", "denied"
+	if err := recordApprovalResolution(ctx, tx, row, request); err != nil {
+		return result, err
+	}
+	if !request.approved {
+		return g.audit(ctx, tx, row, result, "denied", "approval_denied", request.now)
+	}
+	return g.EvaluateIntent(ctx, tx, row.IntentID, request.now)
 }
 
 func (g *Gateway) denyUnauthorizedApproval(ctx context.Context, tx *sql.Tx, row intentRow, approvalID, approver, relay string, authErr error, result Result, now time.Time) (Result, error) {
@@ -120,47 +120,20 @@ func (g *Gateway) denyUnauthorizedApproval(ctx context.Context, tx *sql.Tx, row 
 	return g.finish(ctx, tx, row, result, "denied", "approval_principal_not_authorized", now)
 }
 
-func (g *Gateway) authorizeApproval(ctx context.Context, tx *sql.Tx, row intentRow, approvalID, approver, relay string, signature []byte) error {
-	if approver == "" || relay == "" || approver == relay {
-		return fmt.Errorf("relay and approver must be distinct registered principals")
+func recordApprovalResolution(ctx context.Context, tx *sql.Tx, row intentRow, request approvalResolution) error {
+	status, policyStatus := approvalDecision(request.approved)
+	if err := approvalledger.Resolve(ctx, tx, request.id, status, request.approver, request.relay, request.reason, formatTime(request.now)); err != nil {
+		return fmt.Errorf("resolve approval %s: %w", request.id, err)
 	}
-	var entityID string
-	if err := tx.QueryRowContext(ctx, "SELECT entity_id FROM situations WHERE situation_id = ?", row.SituationID).Scan(&entityID); err != nil {
-		return fmt.Errorf("load approval entity: %w", err)
+	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = ?, updated_at = ? WHERE intent_id = ?", policyStatus, formatTime(request.now), row.IntentID); err != nil {
+		return fmt.Errorf("update approved intent %s: %w", row.IntentID, err)
 	}
-	var active int
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM principals WHERE principal_id = ? AND tenant_id = ? AND status = 'active'", relay, row.TenantID).Scan(&active); err != nil || active != 1 {
-		return fmt.Errorf("relay principal is not active")
+	return appendApprovalResolved(ctx, tx, row, request.id, status, request.reason, request.now)
+}
+
+func approvalDecision(approved bool) (status, policyStatus string) {
+	if approved {
+		return "approved", "pending"
 	}
-	var publicKey []byte
-	if err := tx.QueryRowContext(ctx, "SELECT public_key FROM principals WHERE principal_id = ? AND tenant_id = ? AND status = 'active'", approver, row.TenantID).Scan(&publicKey); err != nil || len(publicKey) != ed25519.PublicKeySize {
-		return fmt.Errorf("approver principal has no valid verification key")
-	}
-	var expiresAt, nonce string
-	if err := tx.QueryRowContext(ctx, "SELECT expires_at, nonce FROM approvals WHERE approval_id = ? AND status = 'pending'", approvalID).Scan(&expiresAt, &nonce); err != nil {
-		return fmt.Errorf("load approval assertion binding: %w", err)
-	}
-	assertion, err := ApprovalAssertionSigningBytes(ApprovalAssertion{
-		ApprovalID: approvalID, IntentID: row.IntentID, DecisionID: row.DecisionID, TenantID: row.TenantID,
-		SituationID: row.SituationID, SituationVersion: row.SituationVersion, RiskClass: row.RiskClass,
-		IntentDigest: "sha256:" + hex.EncodeToString(row.IntentSHA), DecisionDigest: "sha256:" + hex.EncodeToString(row.DecisionSHA),
-		ExpiresAt: expiresAt, Nonce: nonce, ApproverID: approver, RelayID: relay,
-	})
-	if err != nil || !ed25519.Verify(ed25519.PublicKey(publicKey), assertion, signature) {
-		return fmt.Errorf("approval assertion signature is invalid")
-	}
-	assertionDigest := sha256.Sum256(assertion)
-	if err := approvalledger.BindAssertion(ctx, tx, approvalID, assertionDigest[:]); err != nil {
-		return fmt.Errorf("record approval assertion: %w", err)
-	}
-	if err := tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM principals p
-		JOIN principal_roles pr ON pr.principal_id = p.principal_id
-		JOIN approval_authorities aa ON aa.role_id = pr.role_id
-		WHERE p.principal_id = ? AND p.tenant_id = ? AND p.status = 'active'
-		  AND aa.tenant_id = ? AND aa.entity_id = ? AND aa.risk_class = ?`,
-		approver, row.TenantID, row.TenantID, entityID, row.RiskClass).Scan(&active); err != nil || active == 0 {
-		return fmt.Errorf("approver principal lacks authority")
-	}
-	return nil
+	return "denied", "denied"
 }

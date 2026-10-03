@@ -250,3 +250,10 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   checks and unresolved-command refusal remain unchanged. New regressions pin
   metadata/binding and canonical-JSON/digest error precedence. Authority and
   architecture race tests and strict focused lint pass.
+
+- Round 24: policy approval requests, resolution, principal/signature authority,
+  pending validation, command creation and persistence are bounded domain steps.
+  Original gate precedence, approval digest binding before role checks, command
+  identity, dispatch counters and transaction boundaries remain intact. Added
+  a regression proving stale approval withdrawal precedes expiry and principal
+  rejection. Policy and architecture race tests and strict focused lint pass.
