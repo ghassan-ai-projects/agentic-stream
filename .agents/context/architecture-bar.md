@@ -14,6 +14,8 @@ This extends Q5; Q1–Q7 remain mandatory. Package count is not a quality target
 | A7 | Every implementation round is reviewed, focused-tested, and committed. Final full CI and uncached race suite pass, including coverage of new packages. | Round log and final validation record. |
 | A8 | The episode lifecycle depends only on the `Executor` port. Concrete executors (in-process native, out-of-process worker protocol) live under `internal/executor/`; `episodes` imports no worker protocol, gRPC or protobuf package, and classifies failures from transport-neutral errors. | `forbiddenImports`, `TestEpisodeLifecycleImportsNoExecutorTransport`; worker conformance and failure-classification regressions. |
 | A9 | Every production package states its business or infrastructure responsibility in its package comment, and the public module map lists every package. | `TestEveryPackageDocumentsItsResponsibility`, `TestModuleMapListsEveryPackage`. |
+| A10 | Composition roots (`runtime`, `cmd`) wire modules and drive loops only. They contain no SQL and no business decision; episode admission, intent selection, cost-ceiling configuration and evidence reads are calls into the owning module. | `TestCompositionRootsContainNoSQL`; admission, cost and evidence regressions in the owning modules. |
+| A11 | The governed dispatcher (`actions`) contains dispatch only. Internal effect adapters (watches, the simulator) live in their own modules behind `actionport`, so the event pipeline never calls into the action plane. `watch` owns `watch_conditions` and `watch_fires`. | `forbiddenImports`, `durableOwners`, watch and routing regressions. |
 
 ## Module map and flow
 
@@ -34,6 +36,8 @@ Additional modules have current concrete responsibilities:
 - `authority`: target claims, command bindings, device reconciliation and safety evidence.
 - `qualification`: calibration activation and shadow decision/comparison evidence.
 - `executor/remote`: the out-of-process EpisodeWorker protocol adapter: request mapping, streamed budget accounting and terminal outcome assembly.
+- `admission`: turns pending scheduler items into admitted, epoch-stamped episodes, or records why an item can never be admitted.
+- `watch`: bounded, expiring derived triggers installed by approved commands and fired by matching evidence.
 
 These are internal Go packages in the same modular monolith. They add no broker,
 service, asynchronous queue, storage engine, or model authority. Concrete SQL

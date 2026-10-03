@@ -27,6 +27,27 @@ The packages already follow business capabilities (ADR-017). Two findings:
 
 No other package is split: package count is not a quality target.
 
+### Second assessment: clean modules and one-way flow (after round 3)
+
+Imports are strictly downward and pinned. Looking past imports, at callbacks,
+interface use, SQL location and who calls whom at runtime:
+
+| Finding | Evidence | Decision |
+| --- | --- | --- |
+| Composition root owns episode admission | `runtime/pipeline_admission.go`: drain gate, scheduler query, assembly, fixture refusal, epoch stamp, skip rules | Extract `internal/admission` (A10) |
+| Composition root issues domain SQL | `runtime` reads `intents`, `cost_limits`, `scheduler_items`, `event_log` | Owning modules expose the reads (A10) |
+| Duplicate evidence query | Identical `event_log` window query in `runtime` and `executor/native` | `eventlog` owns one entity-window read |
+| Reverse runtime flow through the dispatcher | `actions` owns watches; the ingest loop calls `actions.WatchEffector.FireEvent` | Extract `internal/watch` (A11) |
+| Effect adapter inside the dispatcher | `actions.SimulatedEffector` | Move to `device` with the other adapters (A11) |
+| Unused, misplaced episode tool host | `policy.CapabilityHost` has no production caller | Reported; not removed in this work |
+
+Callbacks are otherwise clocks, the control-built readiness check, and tool
+factories injected downward by composition. Interfaces declared in lower modules
+(`episodes.Executor`, `actionport.Effector`, `device.DeviceTransport`) are
+implemented by adapters and invoked in the forward direction of the data flow.
+Replay, soak and run-artifact read across tables as reporting modules; reads
+are permitted, writes keep single owners.
+
 ## Rounds
 
 - Round 0: tightened Q2 to 15 lines/statements, added A8/A9 and the ADR-017
@@ -57,3 +78,6 @@ No other package is split: package count is not a quality target.
   named constants; cursor loops delegate one row to a named step; the metrics
   snapshot is a named counter table. Error text, ordering and transactions are
   unchanged. Focused race tests and lint pass.
+
+- Round 4: recorded the second module assessment, added A10/A11 and the ADR-017
+  composition and effect-adapter refinement.
