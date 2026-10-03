@@ -257,3 +257,9 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   identity, dispatch counters and transaction boundaries remain intact. Added
   a regression proving stale approval withdrawal precedes expiry and principal
   rejection. Policy and architecture race tests and strict focused lint pass.
+
+- Round 25: run-artifact snapshot definitions, manifest binding, row collection,
+  checksum parsing and atomic publication are separated by responsibility.
+  Tenant scope, exact SQL, digest inputs and temporary-directory rename remain
+  unchanged. Regressions pin manifest error precedence and duplicate checksums.
+  Run-artifact race tests and strict focused lint pass; no new dependency edge.
