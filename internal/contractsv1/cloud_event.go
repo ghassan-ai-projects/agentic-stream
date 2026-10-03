@@ -37,13 +37,20 @@ func (e CloudEvent) Validate() error {
 	if e.SpecVersion != "1.0" {
 		return fmt.Errorf("cloud event: specversion must be 1.0")
 	}
-	for name, value := range map[string]string{
-		"id": e.ID, "source": e.Source, "type": e.Type, "dataschema": e.DataSchema,
-		"tenantid": e.TenantID, "partitionkey": e.PartitionKey,
-	} {
-		if value == "" {
-			return fmt.Errorf("cloud event: %s is required", name)
-		}
+	if err := e.checkRequiredAttributes(); err != nil {
+		return err
+	}
+	if _, err := ParseTraceContext(e.Traceparent, e.Tracestate); err != nil {
+		return fmt.Errorf("cloud event: trace context: %w", err)
+	}
+	return e.checkEnvelopeDigest()
+}
+
+// checkRequiredAttributes requires the identity attributes, both times,
+// JSON content and an envelope digest.
+func (e CloudEvent) checkRequiredAttributes() error {
+	if err := e.checkIdentityAttributes(); err != nil {
+		return err
 	}
 	if e.Time.IsZero() || e.IngestedTime.IsZero() {
 		return fmt.Errorf("cloud event: time and ingestedtime are required")
@@ -54,9 +61,22 @@ func (e CloudEvent) Validate() error {
 	if e.EnvelopeDigest == "" {
 		return fmt.Errorf("cloud event: envelopedigest is required")
 	}
-	if _, err := ParseTraceContext(e.Traceparent, e.Tracestate); err != nil {
-		return fmt.Errorf("cloud event: trace context: %w", err)
+	return nil
+}
+
+func (e CloudEvent) checkIdentityAttributes() error {
+	for name, value := range map[string]string{
+		"id": e.ID, "source": e.Source, "type": e.Type, "dataschema": e.DataSchema,
+		"tenantid": e.TenantID, "partitionkey": e.PartitionKey,
+	} {
+		if value == "" {
+			return fmt.Errorf("cloud event: %s is required", name)
+		}
 	}
+	return nil
+}
+
+func (e CloudEvent) checkEnvelopeDigest() error {
 	expected, err := e.ComputeEnvelopeDigest()
 	if err != nil {
 		return fmt.Errorf("cloud event: compute envelopedigest: %w", err)
@@ -75,26 +95,25 @@ func (e CloudEvent) ComputeEnvelopeDigest() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("data digest: %w", err)
 	}
+	digest, err := canonicaljson.Digest(canonicaljson.DomainEnvelope, e.envelopeProjection(dataDigest))
+	if err != nil {
+		return "", fmt.Errorf("digest cloud event envelope: %w", err)
+	}
+	return digest, nil
+}
+
+// envelopeProjection is the digested view of the envelope: its attributes,
+// the data digest and, when present, the trace context.
+func (e CloudEvent) envelopeProjection(dataDigest string) map[string]any {
 	projection := map[string]any{
-		"specversion":    e.SpecVersion,
-		"type":           e.Type,
-		"source":         e.Source,
-		"id":             e.ID,
-		"subject":        e.Subject,
-		"time":           e.Time.UTC().Format(time.RFC3339Nano),
-		"dataschema":     e.DataSchema,
-		"tenantid":       e.TenantID,
-		"partitionkey":   e.PartitionKey,
-		"classification": e.Classification,
-		"datadigest":     dataDigest,
+		"specversion": e.SpecVersion, "type": e.Type, "source": e.Source, "id": e.ID,
+		"subject": e.Subject, "time": e.Time.UTC().Format(time.RFC3339Nano),
+		"dataschema": e.DataSchema, "tenantid": e.TenantID, "partitionkey": e.PartitionKey,
+		"classification": e.Classification, "datadigest": dataDigest,
 	}
 	if e.Traceparent != "" {
 		projection["traceparent"] = e.Traceparent
 		projection["tracestate"] = e.Tracestate
 	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainEnvelope, projection)
-	if err != nil {
-		return "", fmt.Errorf("digest cloud event envelope: %w", err)
-	}
-	return digest, nil
+	return projection
 }

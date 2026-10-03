@@ -3,6 +3,7 @@ package canonicaljson
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"unicode/utf8"
 )
 
@@ -12,30 +13,28 @@ func encodeString(buf *bytes.Buffer, value string) error {
 	}
 	buf.WriteByte('"')
 	for _, r := range value {
-		switch r {
-		case '"', '\\':
-			buf.WriteByte('\\')
-			buf.WriteRune(r)
-		case '\b':
-			buf.WriteString(`\b`)
-		case '\f':
-			buf.WriteString(`\f`)
-		case '\n':
-			buf.WriteString(`\n`)
-		case '\r':
-			buf.WriteString(`\r`)
-		case '\t':
-			buf.WriteString(`\t`)
-		default:
-			if r < 0x20 {
-				fmt.Fprintf(buf, `\u%04x`, r)
-				continue
-			}
-			buf.WriteRune(r)
-		}
+		writeStringRune(buf, r)
 	}
 	buf.WriteByte('"')
 	return nil
+}
+
+// writeStringRune writes one rune with the JCS short escapes, \u00XX for the
+// other control characters, and every other rune verbatim.
+func writeStringRune(buf *bytes.Buffer, r rune) {
+	if escape, ok := shortEscapes[r]; ok {
+		buf.WriteString(escape)
+		return
+	}
+	if r < 0x20 {
+		fmt.Fprintf(buf, `\u%04x`, r)
+		return
+	}
+	buf.WriteRune(r)
+}
+
+var shortEscapes = map[rune]string{
+	'"': `\"`, '\\': `\\`, '\b': `\b`, '\f': `\f`, '\n': `\n`, '\r': `\r`, '\t': `\t`,
 }
 
 func containsSurrogate(value string) bool {
@@ -48,24 +47,7 @@ func containsSurrogate(value string) bool {
 }
 
 func compareUTF16(a, b string) int {
-	a16 := utf16Units(a)
-	b16 := utf16Units(b)
-	for i := 0; i < len(a16) && i < len(b16); i++ {
-		if a16[i] < b16[i] {
-			return -1
-		}
-		if a16[i] > b16[i] {
-			return 1
-		}
-	}
-	switch {
-	case len(a16) < len(b16):
-		return -1
-	case len(a16) > len(b16):
-		return 1
-	default:
-		return 0
-	}
+	return slices.Compare(utf16Units(a), utf16Units(b))
 }
 
 func utf16Units(value string) []uint16 {

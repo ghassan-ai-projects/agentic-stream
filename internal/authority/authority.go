@@ -59,12 +59,36 @@ type TargetAuthority struct {
 	Now          func() time.Time
 }
 
+const writeTargetClaimSQL = `
+		INSERT INTO device_target_claims
+			(target, device_id, owner_epoch, owner_instance, boot_id, claim_fence, lease_until, status, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)
+		ON CONFLICT(target) DO UPDATE SET
+			device_id = excluded.device_id,
+			owner_epoch = excluded.owner_epoch,
+			owner_instance = excluded.owner_instance,
+			boot_id = excluded.boot_id,
+			claim_fence = excluded.claim_fence,
+			lease_until = excluded.lease_until,
+			status = 'active',
+			updated_at = excluded.updated_at`
+
+const appendAuthorityEventSQL = `
+		INSERT INTO device_authority_events
+			(target, device_id, event_type, owner_epoch, owner_instance, boot_id,
+			 details_json, details_sha256, occurred_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
 // Claim renews or acquires a target claim. An expired claim may be taken over;
 // an unexpired claim held by another epoch is durably recorded and rejected.
 func (a *TargetAuthority) Claim(ctx context.Context, claim TargetClaim) error {
 	if err := a.validateClaim(claim); err != nil {
 		return err
 	}
+	return a.recordClaim(ctx, claim)
+}
+
+func (a *TargetAuthority) recordClaim(ctx context.Context, claim TargetClaim) error {
 	now := a.now()
 	busy := false
 	err := a.DB.WithTx(ctx, func(tx *sql.Tx) error {
@@ -97,6 +121,10 @@ func (a *TargetAuthority) claimTx(ctx context.Context, tx *sql.Tx, claim TargetC
 			"current_instance": current.OwnerInstance,
 		}, now)
 	}
+	return a.acquireClaimTx(ctx, tx, claim, current, now)
+}
+
+func (a *TargetAuthority) acquireClaimTx(ctx context.Context, tx *sql.Tx, claim TargetClaim, current *storedTargetClaim, now time.Time) (bool, error) {
 	fence := current.nextFence(claim, now)
 	if err := a.writeClaim(ctx, tx, claim, fence, now); err != nil {
 		return false, err
@@ -109,22 +137,27 @@ func (a *TargetAuthority) claimTx(ctx context.Context, tx *sql.Tx, claim TargetC
 }
 
 func (a *TargetAuthority) writeClaim(ctx context.Context, tx *sql.Tx, claim TargetClaim, fence int64, now time.Time) error {
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO device_target_claims
-			(target, device_id, owner_epoch, owner_instance, boot_id, claim_fence, lease_until, status, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)
-		ON CONFLICT(target) DO UPDATE SET
-			device_id = excluded.device_id,
-			owner_epoch = excluded.owner_epoch,
-			owner_instance = excluded.owner_instance,
-			boot_id = excluded.boot_id,
-			claim_fence = excluded.claim_fence,
-			lease_until = excluded.lease_until,
-			status = 'active',
-			updated_at = excluded.updated_at`,
+	if _, err := tx.ExecContext(ctx, writeTargetClaimSQL,
 		claim.Target, claim.DeviceID, claim.AuthorityEpoch, claim.OwnerInstance,
 		claim.BootID, fence, formatRuntimeTime(now.Add(a.leaseDuration())), formatRuntimeTime(now)); err != nil {
 		return fmt.Errorf("write target claim: %w", err)
+	}
+	return nil
+}
+
+func appendAuthorityEventTx(ctx context.Context, tx *sql.Tx, claim TargetClaim, eventType string, details map[string]any, occurredAt time.Time) error {
+	if details == nil {
+		details = map[string]any{}
+	}
+	data, err := canonicaljson.Marshal(details)
+	if err != nil {
+		return fmt.Errorf("canonicalize authority event: %w", err)
+	}
+	hash := sha256.Sum256(data)
+	if _, err := tx.ExecContext(ctx, appendAuthorityEventSQL,
+		claim.Target, claim.DeviceID, eventType, claim.AuthorityEpoch, claim.OwnerInstance,
+		claim.BootID, data, hash[:], formatRuntimeTime(occurredAt)); err != nil {
+		return fmt.Errorf("record authority event: %w", err)
 	}
 	return nil
 }
@@ -171,25 +204,4 @@ func (a *TargetAuthority) leaseDuration() time.Duration {
 		return a.Lease
 	}
 	return time.Minute
-}
-
-func appendAuthorityEventTx(ctx context.Context, tx *sql.Tx, claim TargetClaim, eventType string, details map[string]any, occurredAt time.Time) error {
-	if details == nil {
-		details = map[string]any{}
-	}
-	data, err := canonicaljson.Marshal(details)
-	if err != nil {
-		return fmt.Errorf("canonicalize authority event: %w", err)
-	}
-	hash := sha256.Sum256(data)
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO device_authority_events
-			(target, device_id, event_type, owner_epoch, owner_instance, boot_id,
-			 details_json, details_sha256, occurred_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		claim.Target, claim.DeviceID, eventType, claim.AuthorityEpoch, claim.OwnerInstance,
-		claim.BootID, data, hash[:], formatRuntimeTime(occurredAt)); err != nil {
-		return fmt.Errorf("record authority event: %w", err)
-	}
-	return nil
 }

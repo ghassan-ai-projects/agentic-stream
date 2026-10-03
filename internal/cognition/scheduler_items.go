@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -23,15 +24,11 @@ func (s *Scheduler) findTrigger(name string) (spec.Trigger, error) {
 
 func (s *Scheduler) latestAdmittedTime(ctx context.Context, tx *sql.Tx, situationID, triggerName, excludeTriggerID string) (*time.Time, error) {
 	var evaluatedAt string
-	if err := tx.QueryRowContext(ctx, `
-		SELECT evaluated_at FROM trigger_evaluations
-		WHERE situation_id = ? AND trigger_name = ? AND outcome = 'admitted' AND trigger_id != ?
-		ORDER BY evaluated_at DESC LIMIT 1`,
-		situationID, triggerName, excludeTriggerID,
-	).Scan(&evaluatedAt); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
+	err := tx.QueryRowContext(ctx, latestAdmittedSQL, situationID, triggerName, excludeTriggerID).Scan(&evaluatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
 		return nil, fmt.Errorf("query latest admitted: %w", err)
 	}
 	t, err := time.Parse(time.RFC3339Nano, evaluatedAt)
@@ -40,6 +37,11 @@ func (s *Scheduler) latestAdmittedTime(ctx context.Context, tx *sql.Tx, situatio
 	}
 	return &t, nil
 }
+
+const latestAdmittedSQL = `
+		SELECT evaluated_at FROM trigger_evaluations
+		WHERE situation_id = ? AND trigger_name = ? AND outcome = 'admitted' AND trigger_id != ?
+		ORDER BY evaluated_at DESC LIMIT 1`
 
 func (s *Scheduler) countPending(ctx context.Context, tx *sql.Tx, tenantID string) (int, error) {
 	var count int

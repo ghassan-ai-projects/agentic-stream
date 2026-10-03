@@ -30,16 +30,9 @@ func (c *Compiler) CompileFile(ctx context.Context, path string) (*CompiledSpec,
 }
 
 // CompileBytes parses and validates raw spec bytes.
-func (c *Compiler) CompileBytes(ctx context.Context, data []byte, path string) (*CompiledSpec, error) {
-	_ = ctx
-	if err := c.prepareSchema(); err != nil {
-		return nil, err
-	}
-	raw, err := parseRawSpec(data)
+func (c *Compiler) CompileBytes(_ context.Context, data []byte, path string) (*CompiledSpec, error) {
+	raw, err := c.parseValidated(data)
 	if err != nil {
-		return nil, err
-	}
-	if err := c.validateSchema(raw); err != nil {
 		return nil, err
 	}
 	spec := normalizeSpec(raw)
@@ -50,6 +43,22 @@ func (c *Compiler) CompileBytes(ctx context.Context, data []byte, path string) (
 		return nil, err
 	}
 	return sealSpec(spec)
+}
+
+// parseValidated parses the YAML source and validates it against the
+// embedded SituationSpec schema.
+func (c *Compiler) parseValidated(data []byte) (*rawSpec, error) {
+	if err := c.prepareSchema(); err != nil {
+		return nil, err
+	}
+	raw, err := parseRawSpec(data)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.validateSchema(raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
 }
 
 // sealSpec records the spec's canonical JSON and its digest.

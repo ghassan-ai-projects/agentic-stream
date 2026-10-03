@@ -14,25 +14,25 @@ func (l *Ledger) Complete(ctx context.Context, reservation ledgerReservation, re
 	if l == nil || l.DB == nil {
 		return fmt.Errorf("evidence ledger is not configured")
 	}
-	now := time.Now().UTC()
-	if l.Now != nil {
-		now = l.Now().UTC()
-	}
+	now := l.now()
 	// Persist even when the caller was canceled; keep its values (trace).
 	persistenceCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if err := l.DB.WithTx(persistenceCtx, func(tx *sql.Tx) error {
-		if err := l.assertOwner(persistenceCtx, tx); err != nil {
-			return err
-		}
-		if err := assertAttemptRunning(persistenceCtx, tx, reservation.Key); err != nil {
-			return err
-		}
-		return l.storeResult(persistenceCtx, tx, reservation, result, now)
-	}); err != nil {
+	err := l.DB.WithTx(persistenceCtx, func(tx *sql.Tx) error { return l.completeTx(persistenceCtx, tx, reservation, result, now) })
+	if err != nil {
 		return fmt.Errorf("complete evidence call transaction: %w", err)
 	}
 	return nil
+}
+
+func (l *Ledger) completeTx(ctx context.Context, tx *sql.Tx, reservation ledgerReservation, result QueryResult, now time.Time) error {
+	if err := l.assertOwner(ctx, tx); err != nil {
+		return err
+	}
+	if err := assertAttemptRunning(ctx, tx, reservation.Key); err != nil {
+		return err
+	}
+	return l.storeResult(ctx, tx, reservation, result, now)
 }
 
 // assertAttemptRunning requires the reserved attempt to still be the running
@@ -78,24 +78,24 @@ func (l *Ledger) Fail(ctx context.Context, reservation ledgerReservation, code s
 	// Persist even when the caller was canceled; keep its values (trace).
 	persistenceCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	now := time.Now().UTC()
-	if l.Now != nil {
-		now = l.Now().UTC()
-	}
-	if err := l.DB.WithTx(persistenceCtx, func(tx *sql.Tx) error {
-		if err := l.assertOwner(persistenceCtx, tx); err != nil {
-			return err
-		}
-		result, err := tx.ExecContext(persistenceCtx, `UPDATE evidence_call_ledger SET status = 'failed', error_code = ?, completed_at = ? WHERE tenant_id = ? AND episode_id = ? AND attempt_id = ? AND fence = ? AND call_id = ? AND status = 'running' AND request_sha256 = ? AND token_id = ? AND lease_owner = ? AND runtime_epoch = ? AND lease_until > ?`, code, formatLedgerTime(now), reservation.Key.TenantID, reservation.Key.EpisodeID, reservation.Key.AttemptID, reservation.Key.Fence, reservation.Key.CallID, reservation.RequestSHA256, reservation.TokenID, l.LeaseOwner, reservation.RuntimeEpoch, formatLedgerTime(now))
-		if err != nil {
-			return fmt.Errorf("fail evidence call: %w", err)
-		}
-		if count, _ := result.RowsAffected(); count != 1 {
-			return fmt.Errorf("evidence call reservation is no longer owned")
-		}
-		return nil
-	}); err != nil {
+	now := l.now()
+	err := l.DB.WithTx(persistenceCtx, func(tx *sql.Tx) error { return l.failTx(persistenceCtx, tx, reservation, code, now) })
+	if err != nil {
 		return fmt.Errorf("fail evidence call transaction: %w", err)
+	}
+	return nil
+}
+
+func (l *Ledger) failTx(ctx context.Context, tx *sql.Tx, reservation ledgerReservation, code string, now time.Time) error {
+	if err := l.assertOwner(ctx, tx); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE evidence_call_ledger SET status = 'failed', error_code = ?, completed_at = ? WHERE tenant_id = ? AND episode_id = ? AND attempt_id = ? AND fence = ? AND call_id = ? AND status = 'running' AND request_sha256 = ? AND token_id = ? AND lease_owner = ? AND runtime_epoch = ? AND lease_until > ?`, code, formatLedgerTime(now), reservation.Key.TenantID, reservation.Key.EpisodeID, reservation.Key.AttemptID, reservation.Key.Fence, reservation.Key.CallID, reservation.RequestSHA256, reservation.TokenID, l.LeaseOwner, reservation.RuntimeEpoch, formatLedgerTime(now))
+	if err != nil {
+		return fmt.Errorf("fail evidence call: %w", err)
+	}
+	if count, _ := result.RowsAffected(); count != 1 {
+		return fmt.Errorf("evidence call reservation is no longer owned")
 	}
 	return nil
 }
@@ -106,18 +106,20 @@ func (l *Ledger) ReclaimExpired(ctx context.Context, now time.Time) error {
 	if l == nil || l.DB == nil || l.RuntimeEpoch == "" {
 		return fmt.Errorf("evidence ledger is not configured")
 	}
-	err := l.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := l.assertOwner(ctx, tx); err != nil {
-			return err
-		}
-		_, err := tx.ExecContext(ctx, `UPDATE evidence_call_ledger SET status = 'interrupted', error_code = 'lease_expired', completed_at = ? WHERE status = 'running' AND (lease_until <= ? OR runtime_epoch <> ?)`, formatLedgerTime(now.UTC()), formatLedgerTime(now.UTC()), l.RuntimeEpoch)
-		if err != nil {
-			return fmt.Errorf("reclaim evidence calls: %w", err)
-		}
-		return nil
-	})
+	err := l.DB.WithTx(ctx, func(tx *sql.Tx) error { return l.reclaimExpiredTx(ctx, tx, now) })
 	if err != nil {
 		return fmt.Errorf("reclaim evidence call ledger: %w", err)
+	}
+	return nil
+}
+
+func (l *Ledger) reclaimExpiredTx(ctx context.Context, tx *sql.Tx, now time.Time) error {
+	if err := l.assertOwner(ctx, tx); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE evidence_call_ledger SET status = 'interrupted', error_code = 'lease_expired', completed_at = ? WHERE status = 'running' AND (lease_until <= ? OR runtime_epoch <> ?)`, formatLedgerTime(now.UTC()), formatLedgerTime(now.UTC()), l.RuntimeEpoch)
+	if err != nil {
+		return fmt.Errorf("reclaim evidence calls: %w", err)
 	}
 	return nil
 }
@@ -145,11 +147,7 @@ func (l *Ledger) RecoverTx(ctx context.Context, tx *sql.Tx, now time.Time) (int,
 	if err := l.assertOwner(ctx, tx); err != nil {
 		return 0, err
 	}
-	result, err := tx.ExecContext(ctx, `
-		UPDATE evidence_call_ledger
-		SET status = 'interrupted', error_code = 'runtime_restart', completed_at = ?
-		WHERE status = 'running' AND runtime_epoch <> ?`,
-		formatLedgerTime(now.UTC()), l.RuntimeEpoch)
+	result, err := tx.ExecContext(ctx, recoverEvidenceCallsSQL, formatLedgerTime(now.UTC()), l.RuntimeEpoch)
 	if err != nil {
 		return 0, fmt.Errorf("recover evidence calls: %w", err)
 	}
@@ -159,3 +157,8 @@ func (l *Ledger) RecoverTx(ctx context.Context, tx *sql.Tx, now time.Time) (int,
 	}
 	return int(count), nil
 }
+
+const recoverEvidenceCallsSQL = `
+ UPDATE evidence_call_ledger
+ SET status = 'interrupted', error_code = 'runtime_restart', completed_at = ?
+ WHERE status = 'running' AND runtime_epoch <> ?`

@@ -65,20 +65,23 @@ func loadSchema(name SchemaName) (*jsonschema.Schema, error) {
 	if schema := compiled[name]; schema != nil {
 		return schema, nil
 	}
-
-	resource := "schemas/v1/" + string(name) + "-v1.json"
-	data, err := schemaFiles.ReadFile(resource)
+	schema, err := compileEmbeddedSchema(name)
 	if err != nil {
-		return nil, fmt.Errorf("read embedded schema %s: %w", name, err)
+		return nil, err
 	}
-	var document any
-	if err := json.Unmarshal(data, &document); err != nil {
-		return nil, fmt.Errorf("decode embedded schema %s: %w", name, err)
+	compiled[name] = schema
+	return schema, nil
+}
+
+// compileEmbeddedSchema compiles one embedded v1 schema with format
+// assertions and no network schema loading.
+func compileEmbeddedSchema(name SchemaName) (*jsonschema.Schema, error) {
+	document, err := embeddedSchemaDocument(name)
+	if err != nil {
+		return nil, err
 	}
 	id, _ := SchemaID(name)
-	compiler := jsonschema.NewCompiler()
-	compiler.AssertFormat()
-	compiler.UseLoader(denyNetworkLoader{})
+	compiler := offlineCompiler()
 	if err := compiler.AddResource(id, document); err != nil {
 		return nil, fmt.Errorf("add embedded schema %s: %w", name, err)
 	}
@@ -86,8 +89,27 @@ func loadSchema(name SchemaName) (*jsonschema.Schema, error) {
 	if err != nil {
 		return nil, fmt.Errorf("compile embedded schema %s: %w", name, err)
 	}
-	compiled[name] = schema
 	return schema, nil
+}
+
+// offlineCompiler asserts formats and refuses to load schemas over the network.
+func offlineCompiler() *jsonschema.Compiler {
+	compiler := jsonschema.NewCompiler()
+	compiler.AssertFormat()
+	compiler.UseLoader(denyNetworkLoader{})
+	return compiler
+}
+
+func embeddedSchemaDocument(name SchemaName) (any, error) {
+	data, err := schemaFiles.ReadFile("schemas/v1/" + string(name) + "-v1.json")
+	if err != nil {
+		return nil, fmt.Errorf("read embedded schema %s: %w", name, err)
+	}
+	var document any
+	if err := json.Unmarshal(data, &document); err != nil {
+		return nil, fmt.Errorf("decode embedded schema %s: %w", name, err)
+	}
+	return document, nil
 }
 
 func isKnownSchema(name SchemaName) bool {

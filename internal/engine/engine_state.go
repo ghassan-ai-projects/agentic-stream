@@ -28,10 +28,13 @@ func (e *Engine) saveSituationRuntimeState(ctx context.Context, tx *sql.Tx, situ
 	if err != nil {
 		return fmt.Errorf("update situation runtime state: %w", err)
 	}
-	// The current_version guard detects a version race. A zero-row update means
-	// the persisted current_version diverged from the in-memory version that
-	// produced this state, which would silently leave state_json stale; surface
-	// it instead of accepting it.
+	return requireCurrentVersion(result, situation)
+}
+
+// requireCurrentVersion surfaces a version race. A zero-row update means the
+// persisted current_version diverged from the in-memory version that produced
+// this state, which would silently leave state_json stale.
+func requireCurrentVersion(result sql.Result, situation situations.Situation) error {
 	affected, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("situation runtime state rows affected: %w", err)
@@ -70,14 +73,8 @@ func (e *Engine) readOperatorState(ctx context.Context, tx *sql.Tx, partitionID 
 
 func (e *Engine) operatorStateRows(ctx context.Context, tx *sql.Tx, partitionID int, entityID string) (*sql.Rows, string, error) {
 	if entityID == "" {
-		rows, err := tx.QueryContext(ctx, `
-			SELECT operator_id, state_key, state_blob FROM operator_state
-			WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?`,
-			e.deploymentID, e.tenantID, partitionID)
-		if err != nil {
-			return nil, "partition ", fmt.Errorf("query partition operator state: %w", err)
-		}
-		return rows, "partition ", nil
+		rows, err := e.partitionOperatorStateRows(ctx, tx, partitionID)
+		return rows, "partition ", err
 	}
 	args := append([]any{e.deploymentID, e.tenantID, partitionID}, entityScopeArgs(entityID)...)
 	rows, err := tx.QueryContext(ctx,
@@ -88,6 +85,17 @@ func (e *Engine) operatorStateRows(ctx context.Context, tx *sql.Tx, partitionID 
 		return nil, "", fmt.Errorf("query operator state: %w", err)
 	}
 	return rows, "", nil
+}
+
+func (e *Engine) partitionOperatorStateRows(ctx context.Context, tx *sql.Tx, partitionID int) (*sql.Rows, error) {
+	rows, err := tx.QueryContext(ctx, `
+			SELECT operator_id, state_key, state_blob FROM operator_state
+			WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?`,
+		e.deploymentID, e.tenantID, partitionID)
+	if err != nil {
+		return nil, fmt.Errorf("query partition operator state: %w", err)
+	}
+	return rows, nil
 }
 
 // entityScopePredicate matches an entity's own operator state_key plus every
@@ -162,21 +170,21 @@ func (e *Engine) upsertOperatorState(ctx context.Context, tx *sql.Tx, partitionI
 		return fmt.Errorf("marshal operator state: %w", err)
 	}
 	digest := sha256.Sum256(stateJSON)
-	// saveOperatorState deletes the entity scope before re-inserting, so this
-	// INSERT never conflicts: operator state is fully replaced per save, not
-	// mutated in place. state_version is therefore always 1. A conflict here
-	// would mean deleteOperatorState missed a key, so let it surface as an
-	// error rather than silently upserting (the old ON CONFLICT branch was
-	// dead and its state_version+1 counter never fired).
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO operator_state (
-			deployment_id, tenant_id, partition_id, operator_id, state_key,
-			state_version, codec_version, state_blob, state_sha256, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.deploymentID, e.tenantID, partitionID, operatorID, stateKey,
-		1, 1, stateJSON, digest[:], now,
+	if _, err := tx.ExecContext(ctx, insertOperatorStateSQL,
+		e.deploymentID, e.tenantID, partitionID, operatorID, stateKey, 1, 1, stateJSON, digest[:], now,
 	); err != nil {
 		return fmt.Errorf("insert operator state: %w", err)
 	}
 	return nil
 }
+
+// insertOperatorStateSQL never conflicts: saveOperatorState deletes the
+// entity scope before re-inserting, so operator state is fully replaced per
+// save, not mutated in place, and state_version is always 1. A conflict
+// would mean deleteOperatorState missed a key, so it surfaces as an error
+// rather than silently upserting.
+const insertOperatorStateSQL = `
+		INSERT INTO operator_state (
+			deployment_id, tenant_id, partition_id, operator_id, state_key,
+			state_version, codec_version, state_blob, state_sha256, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`

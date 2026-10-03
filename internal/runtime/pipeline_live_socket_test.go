@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
+	"go.opentelemetry.io/otel/trace/noop"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
-	"go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestFireRecentWatchesPaginatesPastFullPage(t *testing.T) {
@@ -25,7 +26,7 @@ func TestFireRecentWatchesPaginatesPastFullPage(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	watch := actions.NewWatchEffector(db)
+	watch := watch.NewEffector(db)
 	if _, err := watch.Dispatch(ctx, actionport.Command{
 		CommandID:     "watch-pagination",
 		TenantID:      "default",

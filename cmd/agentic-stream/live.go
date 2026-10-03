@@ -30,6 +30,28 @@ type liveFlags struct {
 	worker                                             runtime.WorkerRuntimeConfig
 }
 
+// cleanups runs registered release functions in reverse order, like a
+// sequence of defers that helper functions can extend.
+type cleanups []func()
+
+// runtimeCore is the owner-fenced runtime both live commands start from: the
+// database, a fresh runtime epoch with its owner lease and evidence ledger,
+// epoch control, and the started runtime service.
+type runtimeCore struct {
+	db           *storage.DB
+	epoch        string
+	owner        *runtimecontrol.RuntimeOwner
+	ledger       *evidence.Ledger
+	epochControl *runtimecontrol.EpochControl
+	service      *runtime.Service
+}
+
+// effects is the opened effect profile.
+type effects struct {
+	effector actionport.Effector
+	serial   *device.SerialEffector
+}
+
 // registerShared adds the effect-profile and worker-runtime flags.
 func (f *liveFlags) registerShared(cmd *cobra.Command) {
 	addEffectProfileFlags(cmd, &f.effectProfile, &f.effect.DeviceSocket, &f.effect.DeviceCatalog,
@@ -49,10 +71,6 @@ func (f *liveFlags) profileOptions() effectProfileOptions {
 	return options
 }
 
-// cleanups runs registered release functions in reverse order, like a
-// sequence of defers that helper functions can extend.
-type cleanups []func()
-
 func (c *cleanups) add(fn func()) { *c = append(*c, fn) }
 
 func (c cleanups) run() {
@@ -61,24 +79,23 @@ func (c cleanups) run() {
 	}
 }
 
-// runtimeCore is the owner-fenced runtime both live commands start from: the
-// database, a fresh runtime epoch with its owner lease and evidence ledger,
-// epoch control, and the started runtime service.
-type runtimeCore struct {
-	db           *storage.DB
-	epoch        string
-	owner        *runtimecontrol.RuntimeOwner
-	ledger       *evidence.Ledger
-	epochControl *runtimecontrol.EpochControl
-	service      *runtime.Service
-}
-
 func openRuntimeCore(ctx context.Context, dbPath string, lease time.Duration, cleanup *cleanups) (*runtimeCore, error) {
 	db, err := storage.Open(ctx, dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open runtime database: %w", err)
 	}
 	cleanup.add(func() { _ = db.Close() })
+	core, err := newRuntimeCore(db, lease)
+	if err != nil {
+		return nil, err
+	}
+	if err := core.startService(ctx, cleanup); err != nil {
+		return nil, err
+	}
+	return core, nil
+}
+
+func newRuntimeCore(db *storage.DB, lease time.Duration) (*runtimeCore, error) {
 	epoch, err := evidence.NewRuntimeEpoch()
 	if err != nil {
 		return nil, fmt.Errorf("generate runtime epoch: %w", err)
@@ -89,21 +106,20 @@ func openRuntimeCore(ctx context.Context, dbPath string, lease time.Duration, cl
 		ledger:       &evidence.Ledger{DB: db, LeaseOwner: epoch, RuntimeEpoch: epoch, Lease: lease},
 		epochControl: &runtimecontrol.EpochControl{DB: db},
 	}
-	core.service, err = runtime.NewService(core.owner, core.ledger, epoch)
-	if err != nil {
-		return nil, fmt.Errorf("create runtime service: %w", err)
-	}
-	if _, err := core.service.Start(ctx); err != nil {
-		return nil, fmt.Errorf("start runtime: %w", err)
-	}
-	cleanup.add(func() { _ = core.service.Close(context.Background()) })
 	return core, nil
 }
 
-// effects is the opened effect profile.
-type effects struct {
-	effector actionport.Effector
-	serial   *device.SerialEffector
+func (core *runtimeCore) startService(ctx context.Context, cleanup *cleanups) error {
+	var err error
+	core.service, err = runtime.NewService(core.owner, core.ledger, core.epoch)
+	if err != nil {
+		return fmt.Errorf("create runtime service: %w", err)
+	}
+	if _, err := core.service.Start(ctx); err != nil {
+		return fmt.Errorf("start runtime: %w", err)
+	}
+	cleanup.add(func() { _ = core.service.Close(context.Background()) })
+	return nil
 }
 
 func (core *runtimeCore) openEffects(ctx context.Context, options effectProfileOptions, metrics *telemetry.Runtime, replaySource bool, cleanup *cleanups) (effects, error) {
@@ -149,20 +165,28 @@ func (core *runtimeCore) startPipeline(ctx context.Context, compiled *spec.Compi
 func runTrace(ctx context.Context, pipeline *runtime.Pipeline, format, path string) (runtime.PipelineReport, error) {
 	switch format {
 	case "normalized":
-		report, err := pipeline.RunJSONL(ctx, path)
-		if err != nil {
-			return report, fmt.Errorf("run normalized trace: %w", err)
-		}
-		return report, nil
+		return runNormalizedTrace(ctx, pipeline, path)
 	case "simulator":
-		report, err := pipeline.RunSimulatorJSONL(ctx, path)
-		if err != nil {
-			return report, fmt.Errorf("run simulator trace: %w", err)
-		}
-		return report, nil
+		return runSimulatorTrace(ctx, pipeline, path)
 	default:
 		return runtime.PipelineReport{}, fmt.Errorf("unsupported --trace-format %q", format)
 	}
+}
+
+func runNormalizedTrace(ctx context.Context, pipeline *runtime.Pipeline, path string) (runtime.PipelineReport, error) {
+	report, err := pipeline.RunJSONL(ctx, path)
+	if err != nil {
+		return report, fmt.Errorf("run normalized trace: %w", err)
+	}
+	return report, nil
+}
+
+func runSimulatorTrace(ctx context.Context, pipeline *runtime.Pipeline, path string) (runtime.PipelineReport, error) {
+	report, err := pipeline.RunSimulatorJSONL(ctx, path)
+	if err != nil {
+		return report, fmt.Errorf("run simulator trace: %w", err)
+	}
+	return report, nil
 }
 
 // pollTrace reruns an append-only trace every interval until ctx ends. It

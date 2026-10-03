@@ -42,10 +42,13 @@ var foundationPackages = []string{
 var forbiddenImports = map[string][]string{
 	"internal/cognition":            {"internal/policy", "internal/actions"},
 	"internal/decisions":            {"internal/policy", "internal/actions"},
-	"internal/episodes":             {"internal/policy", "internal/actions"},
+	"internal/episodes":             {"internal/policy", "internal/actions", "internal/worker", "proto/agenticstream/runtime/v1", "internal/evidence"},
 	"internal/evidence":             {"internal/policy", "internal/actions"},
 	"internal/executor/native":      {"internal/policy", "internal/actions"},
+	"internal/executor/remote":      {"internal/policy", "internal/actions"},
 	"internal/worker":               {"internal/policy", "internal/actions"},
+	"internal/actions":              {"internal/device", "internal/watch"},
+	"internal/watch":                {"internal/actions", "internal/policy", "internal/episodes", "internal/cognition"},
 	"internal/replay":               {"internal/actions", "internal/runtime"},
 	"internal/executor/conformance": {"internal/actions"},
 }
@@ -54,10 +57,11 @@ var forbiddenImports = map[string][]string{
 // follow the data flow in .agents/context/architecture.md and be added here in
 // the same change.
 var allowedImports = map[string][]string{
-	"cmd/agentic-stream":             {"internal/actionport", "internal/actions", "internal/api", "internal/authority", "internal/contractsv1", "internal/control", "internal/device", "internal/evidence", "internal/ids", "internal/notify", "internal/replay", "internal/runartifact", "internal/runtime", "internal/spec", "internal/storage", "internal/telemetry"},
+	"cmd/agentic-stream":             {"internal/actionport", "internal/api", "internal/authority", "internal/contractsv1", "internal/control", "internal/device", "internal/evidence", "internal/ids", "internal/replay", "internal/runartifact", "internal/runtime", "internal/spec", "internal/storage", "internal/telemetry"},
 	"internal/actionport":            {},
 	"internal/actions":               {"internal/actionport", "internal/authority", "internal/canonicaljson", "internal/clock", "internal/contractsv1", "internal/control", "internal/ids", "internal/interlock", "internal/notify", "internal/storage", "internal/telemetry"},
-	"internal/api":                   {"internal/control", "internal/notify", "internal/storage"},
+	"internal/admission":             {"internal/clock", "internal/cognition", "internal/control", "internal/costcontrol", "internal/episodeledger", "internal/episodes", "internal/scheduleledger", "internal/storage"},
+	"internal/api":                   {"internal/canonicaljson", "internal/control", "internal/notify", "internal/storage"},
 	"internal/approvalledger":        {"internal/clock", "internal/contractsv1", "internal/notify"},
 	"internal/authority":             {"internal/canonicaljson", "internal/control", "internal/storage"},
 	"internal/canonicaljson":         {},
@@ -71,12 +75,13 @@ var allowedImports = map[string][]string{
 	"internal/duration":              {},
 	"internal/engine":                {"internal/canonicaljson", "internal/clock", "internal/cognition", "internal/contractsv1", "internal/control", "internal/duration", "internal/eventlog", "internal/ids", "internal/operators", "internal/situations", "internal/spec", "internal/storage"},
 	"internal/episodeledger":         {"internal/costcontrol"},
-	"internal/episodes":              {"internal/canonicaljson", "internal/clock", "internal/contractsv1", "internal/control", "internal/costcontrol", "internal/decisions", "internal/duration", "internal/episodeledger", "internal/evidence", "internal/ids", "internal/qualification", "internal/scheduleledger", "internal/spec", "internal/storage", "internal/telemetry", "internal/worker", "proto/agenticstream/runtime/v1"},
+	"internal/episodes":              {"internal/canonicaljson", "internal/clock", "internal/contractsv1", "internal/control", "internal/costcontrol", "internal/decisions", "internal/duration", "internal/episodeledger", "internal/ids", "internal/qualification", "internal/scheduleledger", "internal/spec", "internal/storage", "internal/telemetry"},
 	"internal/eventlog":              {"internal/clock", "internal/contractsv1", "internal/storage"},
 	"internal/eventschema":           {},
-	"internal/evidence":              {"internal/contractsv1", "internal/control", "internal/storage", "proto/agenticstream/runtime/v1"},
+	"internal/evidence":              {"internal/contractsv1", "internal/control", "internal/eventlog", "internal/storage", "proto/agenticstream/runtime/v1"},
 	"internal/executor/conformance":  {"internal/canonicaljson", "internal/episodeledger", "internal/episodes", "internal/spec"},
-	"internal/executor/native":       {"internal/canonicaljson", "internal/episodeledger", "internal/episodes", "internal/storage"},
+	"internal/executor/native":       {"internal/canonicaljson", "internal/episodeledger", "internal/episodes", "internal/eventlog", "internal/storage"},
+	"internal/executor/remote":       {"internal/canonicaljson", "internal/episodeledger", "internal/episodes", "internal/evidence", "internal/spec", "internal/telemetry", "internal/worker", "proto/agenticstream/runtime/v1"},
 	"internal/ids":                   {},
 	"internal/ingress":               {"internal/clock", "internal/contractsv1", "internal/eventlog", "internal/ids", "internal/storage", "internal/telemetry"},
 	"internal/interlock":             {},
@@ -87,13 +92,14 @@ var allowedImports = map[string][]string{
 	"internal/qualification":         {"internal/storage"},
 	"internal/replay":                {"internal/canonicaljson", "internal/clock", "internal/contractsv1", "internal/decisions", "internal/engine", "internal/episodes", "internal/eventlog", "internal/ids", "internal/ingress", "internal/policy", "internal/qualification", "internal/spec", "internal/storage"},
 	"internal/runartifact":           {"internal/canonicaljson", "internal/policy", "internal/soak", "internal/storage"},
-	"internal/runtime":               {"internal/actionport", "internal/actions", "internal/clock", "internal/cognition", "internal/contractsv1", "internal/control", "internal/costcontrol", "internal/device", "internal/engine", "internal/episodeledger", "internal/episodes", "internal/eventlog", "internal/evidence", "internal/executor/native", "internal/ids", "internal/ingress", "internal/interlock", "internal/policy", "internal/qualification", "internal/scheduleledger", "internal/spec", "internal/storage", "internal/telemetry", "internal/worker", "proto/agenticstream/runtime/v1"},
+	"internal/runtime":               {"internal/actionport", "internal/actions", "internal/admission", "internal/clock", "internal/contractsv1", "internal/control", "internal/costcontrol", "internal/device", "internal/engine", "internal/episodeledger", "internal/episodes", "internal/eventlog", "internal/evidence", "internal/executor/native", "internal/executor/remote", "internal/ids", "internal/ingress", "internal/interlock", "internal/policy", "internal/qualification", "internal/spec", "internal/storage", "internal/telemetry", "internal/watch", "internal/worker", "proto/agenticstream/runtime/v1"},
 	"internal/scheduleledger":        {},
 	"internal/situations":            {"internal/canonicaljson", "internal/contractsv1", "internal/duration", "internal/ids", "internal/operators", "internal/spec"},
 	"internal/soak":                  {"internal/authority", "internal/storage"},
 	"internal/spec":                  {"internal/canonicaljson", "internal/eventschema", "internal/storage"},
 	"internal/storage":               {"migrations"},
 	"internal/telemetry":             {},
+	"internal/watch":                 {"internal/actionport", "internal/clock", "internal/control", "internal/interlock", "internal/storage"},
 	"internal/worker":                {"internal/contractsv1", "proto/agenticstream/runtime/v1"},
 	"migrations":                     {},
 	"proto/agenticstream/runtime/v1": {},
@@ -135,6 +141,23 @@ func TestPackageLayering(t *testing.T) {
 	for _, pkg := range slices.Sorted(maps.Keys(allowedImports)) {
 		if _, exists := graph[pkg]; !exists {
 			t.Errorf("allowedImports declares %s, which has no production Go files; remove the stale entry", pkg)
+		}
+	}
+}
+
+// TestAllowedImportsHaveNoStaleEdges keeps the reviewed graph exact: an
+// approved edge that no production file uses must be removed, so the
+// allowlist documents real dependencies rather than permissions.
+func TestAllowedImportsHaveNoStaleEdges(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	graph := productionImportGraph(t, root, readModulePath(t, filepath.Join(root, "go.mod")))
+	for _, pkg := range slices.Sorted(maps.Keys(allowedImports)) {
+		for _, allowed := range allowedImports[pkg] {
+			if !slices.Contains(graph[pkg], allowed) {
+				t.Errorf("allowedImports approves %s -> %s, which no production file uses; remove the stale edge", pkg, allowed)
+			}
 		}
 	}
 }

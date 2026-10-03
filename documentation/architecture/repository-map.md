@@ -13,13 +13,15 @@ historical design map where the code has chosen a more specific package name.
 | `internal/operators/` | aggregates, slopes, missing-heartbeat and related features |
 | `internal/situations/` | Situation state and immutable versions |
 | `internal/cognition/` | scheduler, trigger evaluation, reconsideration |
-| `internal/episodes/` | request assembly, bounded execution, workers and budgets |
+| `internal/admission/` | episode admission: due scheduler items to epoch-stamped episodes, or recorded skips |
+| `internal/episodes/` | request assembly, bounded execution lifecycle, budgets and the `Executor` port |
 | `internal/evidence/` | capability tokens, evidence server, call ledger |
 | `internal/decisions/` | Decision and Intent validation |
 | `internal/policy/` | deterministic governance and approvals |
-| `internal/actions/` | outbox dispatcher and effectors |
+| `internal/actions/` | governed outbox dispatch, verification and reconciliation |
+| `internal/watch/` | derived-trigger watches: install as an effect, fire on matching evidence, expire |
 | `internal/actionport/` | approved command/effect contracts |
-| `internal/device/` | concrete device sessions, materialization and gateway transport |
+| `internal/device/` | concrete device sessions, materialization, gateway transport and the simulated effector |
 | `internal/episodeledger/` | durable episode/attempt lifecycle, fencing and recovery |
 | `internal/scheduleledger/` | durable queue identity, admission and coalescing |
 | `internal/approvalledger/` | human approval lifecycle and supersession notification |
@@ -30,14 +32,14 @@ historical design map where the code has chosen a more specific package name.
 | `internal/interlock/` | durable readiness state and read-only assertions |
 | `internal/notifycontract/` | versioned notification names and metadata |
 | `internal/canonicaljson/`, `internal/clock/`, `internal/duration/`, `internal/ids/` | deterministic digest, time, duration and identity primitives |
-| `internal/executor/native/`, `internal/executor/conformance/`, `internal/worker/` | native executor, worker qualification and protocol transport |
+| `internal/executor/native/`, `internal/executor/remote/`, `internal/executor/conformance/`, `internal/worker/` | in-process and out-of-process executors, executor qualification and worker protocol transport |
 | `internal/soak/`, `internal/runartifact/` | bounded operational evidence and immutable artifact verification |
 | `internal/replay/` | effect-safe replay modes |
 | `internal/runtime/` | service/pipeline orchestration, recovery and concrete composition |
 | `internal/storage/` | SQLite infrastructure, migrations and transactions |
 | `internal/contractsv1/` | versioned envelope/schema contracts |
 | `internal/telemetry/` | OpenTelemetry and runtime metrics |
-| `internal/api/` and `internal/notify/` | HTTP, health, SSE, notifications, controls |
+| `internal/api/` and `internal/notify/` | HTTP health, controls and SSE delivery; the durable notification outbox |
 | `internal/eventschema/` | data-driven event schema registry |
 | `proto/agenticstream/runtime/v1/` | generated current-v1 Go protocol |
 | `migrations/` | ordered SQLite schema changes |

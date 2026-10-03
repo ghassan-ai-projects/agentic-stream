@@ -38,6 +38,17 @@ func (r *Runner) quarantineRebindFailure(ctx context.Context, tx *sql.Tx, claim 
 		"episode_id", claim.episodeID,
 		"bound", claim.req.SituationVersion, "live", liveVersion,
 		"error", rebindErr.Error())
+	if err := r.abandonRebindFailure(ctx, tx, claim, liveVersion, rebindErr); err != nil {
+		return err
+	}
+	if r.telemetry != nil {
+		r.telemetry.ObserveRebindFailure()
+	}
+	claim.quarantined = true
+	return nil
+}
+
+func (r *Runner) abandonRebindFailure(ctx context.Context, tx *sql.Tx, claim *episodeClaim, liveVersion int64, rebindErr error) error {
 	terminal, err := json.Marshal(map[string]any{"reason": "rebind_failed",
 		"bound": claim.req.SituationVersion, "live": liveVersion,
 		"rebind_attempts": claim.rebindCount + 1, "error": rebindErr.Error()})
@@ -47,10 +58,6 @@ func (r *Runner) quarantineRebindFailure(ctx context.Context, tx *sql.Tx, claim 
 	if err := episodeledger.AbandonRebind(ctx, tx, claim.episodeID, r.runtimeNow(), terminal); err != nil {
 		return fmt.Errorf("quarantine rebind-failed episode: %w", err)
 	}
-	if r.telemetry != nil {
-		r.telemetry.ObserveRebindFailure()
-	}
-	claim.quarantined = true
 	return nil
 }
 
@@ -65,6 +72,10 @@ func (r *Runner) quarantineRefusedEpoch(ctx context.Context, tx *sql.Tx, claim *
 	if reason == "" {
 		return nil
 	}
+	return r.abandonRefusedEpoch(ctx, tx, claim, reason)
+}
+
+func (r *Runner) abandonRefusedEpoch(ctx context.Context, tx *sql.Tx, claim *episodeClaim, reason string) error {
 	now := r.runtimeNow()
 	if err := r.abandonEpisode(ctx, tx, claim.episodeID, map[string]any{"reason": reason}, now); err != nil {
 		return fmt.Errorf("quarantine killed-epoch episode: %w", err)
@@ -89,6 +100,10 @@ func (r *Runner) epochRefusal(ctx context.Context, tx *sql.Tx, policyEpoch strin
 	if policyEpoch != "" {
 		epochErr = r.epochControl.AssertDecisionTx(ctx, tx, policyEpoch)
 	}
+	return epochRefusalReason(epochErr)
+}
+
+func epochRefusalReason(epochErr error) (string, error) {
 	switch {
 	case epochErr == nil:
 		return "", nil

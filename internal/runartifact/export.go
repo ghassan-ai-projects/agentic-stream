@@ -89,11 +89,8 @@ func Export(ctx context.Context, options Options) (string, error) {
 	if err := validateExportOptions(options); err != nil {
 		return "", err
 	}
-	output, err := filepath.Abs(options.OutputDir)
+	output, err := availableOutput(options.OutputDir)
 	if err != nil {
-		return "", fmt.Errorf("resolve run artifact output: %w", err)
-	}
-	if err := ensureOutputIsAvailable(output); err != nil {
 		return "", err
 	}
 	files, err := snapshot(ctx, options.DB, options.Manifest)
@@ -101,6 +98,17 @@ func Export(ctx context.Context, options Options) (string, error) {
 		return "", err
 	}
 	if err := publishArtifact(output, files); err != nil {
+		return "", err
+	}
+	return output, nil
+}
+
+func availableOutput(path string) (string, error) {
+	output, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve run artifact output: %w", err)
+	}
+	if err := ensureOutputIsAvailable(output); err != nil {
 		return "", err
 	}
 	return output, nil
@@ -139,6 +147,16 @@ func publishArtifact(output string, files map[string][]byte) error {
 	if err := os.Chmod(tmp, 0o700); err != nil { //nolint:gosec // directories need owner-only execute permission
 		return fmt.Errorf("protect run artifact temporary directory: %w", err)
 	}
+	if err := writeArtifactContents(tmp, files); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, output); err != nil {
+		return fmt.Errorf("publish run artifact: %w", err)
+	}
+	return nil
+}
+
+func writeArtifactContents(tmp string, files map[string][]byte) error {
 	for name, data := range files {
 		if err := writeFile(tmp, name, data); err != nil {
 			return err
@@ -150,9 +168,6 @@ func publishArtifact(output string, files map[string][]byte) error {
 	}
 	if err := writeFile(tmp, "checksums.sha256", checksums); err != nil {
 		return err
-	}
-	if err := os.Rename(tmp, output); err != nil {
-		return fmt.Errorf("publish run artifact: %w", err)
 	}
 	return nil
 }

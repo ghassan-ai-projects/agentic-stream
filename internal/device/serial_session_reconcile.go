@@ -8,35 +8,6 @@ import (
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 )
 
-func (s *DeviceSession) requireReconciliation(ctx context.Context, reason string) error {
-	wasRequired := s.reconciliationRequired
-	s.stateQueryRequired = true
-	s.reconciliationRequired = true
-	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), reconciliationPersistTimeout)
-	defer cancel()
-	barrierErr := s.reconciliation.Require(persistCtx, s.deviceID, s.bootID, s.authorityEpoch, s.ownerInstance, reason)
-	if isAuthorityFailure(barrierErr) {
-		recoveryErr := s.reconciliation.RequireAfterAuthorityLoss(persistCtx, s.deviceID, s.bootID, s.authorityEpoch, s.ownerInstance, reason)
-		if recoveryErr == nil {
-			barrierErr = nil
-		} else {
-			barrierErr = errors.Join(barrierErr, recoveryErr)
-		}
-	}
-	if barrierErr != nil {
-		s.opened = false
-		return fmt.Errorf("persist reconciliation barrier: %w", barrierErr)
-	}
-	if !wasRequired && s.telemetry != nil {
-		s.telemetry.ObserveReconciliationBarrier()
-	}
-	return nil
-}
-
-func isAuthorityFailure(err error) bool {
-	return errors.Is(err, runtimecontrol.ErrRuntimeOwnerBusy) || errors.Is(err, runtimecontrol.ErrEpochKilled) || errors.Is(err, runtimecontrol.ErrEpochDraining)
-}
-
 // ResolveReconciliation records typed state/feedback evidence for the device
 // barrier. Unknown command outcomes must already have gone through the
 // dispatcher reconciliation path; the durable store refuses to clear while
@@ -53,6 +24,10 @@ func (s *DeviceSession) ResolveReconciliation(ctx context.Context, finalStatus s
 	if !s.reconciliationRequired {
 		return false, fmt.Errorf("device reconciliation barrier is not open")
 	}
+	return s.resolveCurrentState(ctx, finalStatus, evidence)
+}
+
+func (s *DeviceSession) resolveCurrentState(ctx context.Context, finalStatus string, evidence map[string]any) (bool, error) {
 	if s.stateQueryRequired {
 		return false, fmt.Errorf("device state query is required before reconciliation can be resolved")
 	}
@@ -62,6 +37,10 @@ func (s *DeviceSession) ResolveReconciliation(ctx context.Context, finalStatus s
 	if err := s.authority.AssertRuntime(ctx, s.authorityEpoch); err != nil {
 		return false, fmt.Errorf("assert reconciliation authority: %w", err)
 	}
+	return s.persistResolvedState(ctx, finalStatus, evidence)
+}
+
+func (s *DeviceSession) persistResolvedState(ctx context.Context, finalStatus string, evidence map[string]any) (bool, error) {
 	cleared, err := s.reconciliation.Resolve(ctx, s.deviceID, s.bootID, finalStatus, evidence, s.authorityEpoch, s.ownerInstance)
 	if err != nil {
 		return false, fmt.Errorf("resolve device reconciliation: %w", err)
@@ -70,4 +49,42 @@ func (s *DeviceSession) ResolveReconciliation(ctx context.Context, finalStatus s
 		s.reconciliationRequired = false
 	}
 	return cleared, nil
+}
+
+func (s *DeviceSession) requireReconciliation(ctx context.Context, reason string) error {
+	wasRequired := s.reconciliationRequired
+	s.stateQueryRequired = true
+	s.reconciliationRequired = true
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), reconciliationPersistTimeout)
+	defer cancel()
+	barrierErr := s.reconciliation.Require(persistCtx, s.deviceID, s.bootID, s.authorityEpoch, s.ownerInstance, reason)
+	return s.finishReconciliationBarrier(persistCtx, reason, wasRequired, barrierErr)
+}
+
+func (s *DeviceSession) finishReconciliationBarrier(persistCtx context.Context, reason string, wasRequired bool, barrierErr error) error {
+	barrierErr = s.recoverReconciliationBarrier(persistCtx, reason, barrierErr)
+	if barrierErr != nil {
+		s.opened = false
+		return fmt.Errorf("persist reconciliation barrier: %w", barrierErr)
+	}
+	if !wasRequired && s.telemetry != nil {
+		s.telemetry.ObserveReconciliationBarrier()
+	}
+	return nil
+}
+
+func (s *DeviceSession) recoverReconciliationBarrier(persistCtx context.Context, reason string, barrierErr error) error {
+	if isAuthorityFailure(barrierErr) {
+		recoveryErr := s.reconciliation.RequireAfterAuthorityLoss(persistCtx, s.deviceID, s.bootID, s.authorityEpoch, s.ownerInstance, reason)
+		if recoveryErr == nil {
+			barrierErr = nil
+		} else {
+			barrierErr = errors.Join(barrierErr, recoveryErr)
+		}
+	}
+	return barrierErr
+}
+
+func isAuthorityFailure(err error) bool {
+	return errors.Is(err, runtimecontrol.ErrRuntimeOwnerBusy) || errors.Is(err, runtimecontrol.ErrEpochKilled) || errors.Is(err, runtimecontrol.ErrEpochDraining)
 }

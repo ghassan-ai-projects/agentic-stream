@@ -81,7 +81,15 @@ func encodeEventBody(env contractsv1.Envelope) (eventBody, error) {
 }
 
 func (l *EventLog) insertEnvelope(ctx context.Context, tx *sql.Tx, tenantID string, env contractsv1.Envelope, body eventBody) (LogPosition, error) {
-	res, err := tx.ExecContext(ctx, `
+	createdAt := l.clk.Now().UTC().Format(time.RFC3339Nano)
+	res, err := tx.ExecContext(ctx, insertEventSQL, eventColumns(tenantID, env, body, createdAt)...)
+	if err != nil {
+		return -1, fmt.Errorf("insert event: %w", err)
+	}
+	return insertedPosition(res)
+}
+
+const insertEventSQL = `
 		INSERT INTO event_log (
 			tenant_id, partition_id, event_id, event_type, schema_version,
 			source, partition_key, entity_type, entity_id, event_time,
@@ -92,17 +100,17 @@ func (l *EventLog) insertEnvelope(ctx context.Context, tx *sql.Tx, tenantID stri
 			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 			?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
-		ON CONFLICT(tenant_id, event_id) DO NOTHING`,
+		ON CONFLICT(tenant_id, event_id) DO NOTHING`
+
+// eventColumns lists one envelope in insertEventSQL column order.
+func eventColumns(tenantID string, env contractsv1.Envelope, body eventBody, createdAt string) []any {
+	return []any{
 		tenantID, env.PartitionID(0), env.ID, env.Type, env.SchemaVersion,
 		env.Source, env.PartitionKey, env.Entity.Type, env.Entity.ID, env.EventTime.Format(time.RFC3339Nano),
 		nullableTime(env.ObservedAt), env.IngestedAt.Format(time.RFC3339Nano), nullableText(env.CorrelationID), nullableText(env.CausationID),
 		nullableText(env.Traceparent), nullableText(env.Tracestate), string(env.Classification), body.qualityJSON, body.payloadJSON,
-		body.payloadSHA256, l.clk.Now().UTC().Format(time.RFC3339Nano),
-	)
-	if err != nil {
-		return -1, fmt.Errorf("insert event: %w", err)
+		body.payloadSHA256, createdAt,
 	}
-	return insertedPosition(res)
 }
 
 // insertedPosition returns the new row's position, or -1 when the insert was

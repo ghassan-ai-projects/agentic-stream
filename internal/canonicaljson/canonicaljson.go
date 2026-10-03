@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -111,24 +112,32 @@ func encode(buf *bytes.Buffer, v any) error {
 	case map[string]any:
 		return encodeObject(buf, x)
 	case json.RawMessage:
-		decoded, err := decodeJSON(x)
-		if err != nil {
-			return fmt.Errorf("canonicaljson: invalid RawMessage: %w", err)
-		}
-		return encode(buf, decoded)
+		return encodeRaw(buf, x)
 	default:
-		// Marshal structs and typed collections once, then canonicalize the
-		// resulting JSON with duplicate-key and Unicode validation enabled.
-		b, err := json.Marshal(x)
-		if err != nil {
-			return fmt.Errorf("canonicaljson: fallback marshal: %w", err)
-		}
-		decoded, err := decodeJSON(b)
-		if err != nil {
-			return fmt.Errorf("canonicaljson: fallback unmarshal: %w", err)
-		}
-		return encode(buf, decoded)
+		return encodeMarshaled(buf, x)
 	}
+}
+
+func encodeRaw(buf *bytes.Buffer, raw json.RawMessage) error {
+	decoded, err := decodeJSON(raw)
+	if err != nil {
+		return fmt.Errorf("canonicaljson: invalid RawMessage: %w", err)
+	}
+	return encode(buf, decoded)
+}
+
+// encodeMarshaled marshals structs and typed collections once, then
+// canonicalizes the resulting JSON with duplicate-key and Unicode validation.
+func encodeMarshaled(buf *bytes.Buffer, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Errorf("canonicaljson: fallback marshal: %w", err)
+	}
+	decoded, err := decodeJSON(b)
+	if err != nil {
+		return fmt.Errorf("canonicaljson: fallback unmarshal: %w", err)
+	}
+	return encode(buf, decoded)
 }
 
 // encodeScalar encodes null, booleans, strings, and numbers. It reports
@@ -137,12 +146,10 @@ func encodeScalar(buf *bytes.Buffer, v any) (bool, error) {
 	switch x := v.(type) {
 	case nil:
 		buf.WriteString("null")
+		return true, nil
 	case bool:
-		if x {
-			buf.WriteString("true")
-		} else {
-			buf.WriteString("false")
-		}
+		buf.WriteString(strconv.FormatBool(x))
+		return true, nil
 	case string:
 		return true, encodeString(buf, x)
 	case json.Number:
@@ -150,7 +157,6 @@ func encodeScalar(buf *bytes.Buffer, v any) (bool, error) {
 	default:
 		return encodeGoNumber(buf, v)
 	}
-	return true, nil
 }
 
 // encodeGoNumber encodes Go's built-in numeric types. It reports whether v
@@ -161,29 +167,46 @@ func encodeGoNumber(buf *bytes.Buffer, v any) (bool, error) {
 		return true, encodeFloat(buf, x)
 	case float32:
 		return true, encodeFloat(buf, float64(x))
-	case int:
-		return true, encodeInteger(buf, int64(x))
-	case int8:
-		return true, encodeInteger(buf, int64(x))
-	case int16:
-		return true, encodeInteger(buf, int64(x))
-	case int32:
-		return true, encodeInteger(buf, int64(x))
-	case int64:
-		return true, encodeInteger(buf, x)
-	case uint:
-		return true, encodeUnsigned(buf, uint64(x))
-	case uint8:
-		return true, encodeUnsigned(buf, uint64(x))
-	case uint16:
-		return true, encodeUnsigned(buf, uint64(x))
-	case uint32:
-		return true, encodeUnsigned(buf, uint64(x))
-	case uint64:
-		return true, encodeUnsigned(buf, x)
-	default:
-		return false, nil
 	}
+	if signed, ok := signedInteger(v); ok {
+		return true, encodeInteger(buf, signed)
+	}
+	if unsigned, ok := unsignedInteger(v); ok {
+		return true, encodeUnsigned(buf, unsigned)
+	}
+	return false, nil
+}
+
+func signedInteger(v any) (int64, bool) {
+	switch x := v.(type) {
+	case int:
+		return int64(x), true
+	case int8:
+		return int64(x), true
+	case int16:
+		return int64(x), true
+	case int32:
+		return int64(x), true
+	case int64:
+		return x, true
+	}
+	return 0, false
+}
+
+func unsignedInteger(v any) (uint64, bool) {
+	switch x := v.(type) {
+	case uint:
+		return uint64(x), true
+	case uint8:
+		return uint64(x), true
+	case uint16:
+		return uint64(x), true
+	case uint32:
+		return uint64(x), true
+	case uint64:
+		return x, true
+	}
+	return 0, false
 }
 
 func encodeArray(buf *bytes.Buffer, values []any) error {
@@ -201,33 +224,43 @@ func encodeArray(buf *bytes.Buffer, values []any) error {
 }
 
 func encodeObject(buf *bytes.Buffer, values map[string]any) error {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		if !utf8.ValidString(key) {
-			return fmt.Errorf("canonicaljson: invalid UTF-8 object key")
-		}
-		if containsSurrogate(key) {
-			return fmt.Errorf("canonicaljson: object key contains surrogate")
-		}
-		keys = append(keys, key)
+	keys, err := sortedKeys(values)
+	if err != nil {
+		return err
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		return compareUTF16(keys[i], keys[j]) < 0
-	})
-
 	buf.WriteByte('{')
 	for i, key := range keys {
 		if i > 0 {
 			buf.WriteByte(',')
 		}
-		if err := encodeString(buf, key); err != nil {
-			return err
-		}
-		buf.WriteByte(':')
-		if err := encode(buf, values[key]); err != nil {
+		if err := encodeMember(buf, key, values[key]); err != nil {
 			return err
 		}
 	}
 	buf.WriteByte('}')
 	return nil
+}
+
+// sortedKeys validates the object keys and orders them by UTF-16 code units.
+func sortedKeys(values map[string]any) ([]string, error) {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		if !utf8.ValidString(key) {
+			return nil, fmt.Errorf("canonicaljson: invalid UTF-8 object key")
+		}
+		if containsSurrogate(key) {
+			return nil, fmt.Errorf("canonicaljson: object key contains surrogate")
+		}
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool { return compareUTF16(keys[i], keys[j]) < 0 })
+	return keys, nil
+}
+
+func encodeMember(buf *bytes.Buffer, key string, value any) error {
+	if err := encodeString(buf, key); err != nil {
+		return err
+	}
+	buf.WriteByte(':')
+	return encode(buf, value)
 }

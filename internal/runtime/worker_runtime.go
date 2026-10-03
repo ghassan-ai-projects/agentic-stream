@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -14,6 +13,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	nativeexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
+	remoteexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/remote"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
@@ -65,6 +65,10 @@ func NewWorkerRuntime(ctx context.Context, cfg WorkerRuntimeConfig) (*WorkerRunt
 	if cfg.WorkerName == "" {
 		cfg.WorkerName = "native"
 	}
+	return initializeWorkerRuntime(ctx, cfg)
+}
+
+func initializeWorkerRuntime(ctx context.Context, cfg WorkerRuntimeConfig) (*WorkerRuntime, error) {
 	r := &WorkerRuntime{evidenceErrors: make(chan error, 1)}
 	cleanupOnError := true
 	defer func() {
@@ -73,6 +77,14 @@ func NewWorkerRuntime(ctx context.Context, cfg WorkerRuntimeConfig) (*WorkerRunt
 		}
 	}()
 
+	if err := r.configureExecutor(ctx, cfg); err != nil {
+		return nil, err
+	}
+	cleanupOnError = false
+	return r, nil
+}
+
+func (r *WorkerRuntime) configureExecutor(ctx context.Context, cfg WorkerRuntimeConfig) error {
 	// P1 gate 8 (B1): the native executor is NEVER constructed on a tamoz
 	// route. A configured worker socket IS the tamoz route (the Go runtime
 	// delegates the episode to the out-of-process Ruby worker); constructing
@@ -82,24 +94,11 @@ func NewWorkerRuntime(ctx context.Context, cfg WorkerRuntimeConfig) (*WorkerRunt
 	if cfg.WorkerSocket == "" {
 		nativeExecutor, err := newRuntimeNativeExecutor(cfg)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		r.Executor = nativeExecutor
 	}
-	var evidenceSecret []byte
-	if cfg.EvidenceSocket != "" {
-		var err error
-		if evidenceSecret, err = r.startEvidenceServer(cfg); err != nil {
-			return nil, err
-		}
-	}
-	if cfg.WorkerSocket != "" {
-		if err := r.connectWorker(ctx, cfg, evidenceSecret); err != nil {
-			return nil, err
-		}
-	}
-	cleanupOnError = false
-	return r, nil
+	return r.configureWorkerEvidence(ctx, cfg)
 }
 
 func newRuntimeNativeExecutor(cfg WorkerRuntimeConfig) (episodes.Executor, error) {
@@ -108,18 +107,35 @@ func newRuntimeNativeExecutor(cfg WorkerRuntimeConfig) (episodes.Executor, error
 		provider = &nativeexecutor.OpenAICompatibleProvider{Endpoint: cfg.ModelEndpoint, APIKey: os.Getenv("AGENTIC_STREAM_MODEL_API_KEY"), Model: cfg.ModelName}
 	}
 	nativeExecutor, err := newNativeExecutor(nativeexecutor.Config{
-		Provider: provider,
-		ToolFactory: func(req *episodes.Request) []nativeexecutor.Tool {
-			return []nativeexecutor.Tool{
-				nativeexecutor.NewSQLiteEvidenceTool(cfg.DB, "evidence_get", req.TenantID, req.EntityID),
-				nativeexecutor.NewSQLiteEvidenceTool(cfg.DB, "evidence.get", req.TenantID, req.EntityID),
-			}
-		},
+		Provider:    provider,
+		ToolFactory: nativeEvidenceTools(cfg.DB),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("configure native executor: %w", err)
 	}
 	return nativeExecutor, nil
+}
+
+func nativeEvidenceTools(db *storage.DB) func(*episodes.Request) []nativeexecutor.Tool {
+	return func(req *episodes.Request) []nativeexecutor.Tool {
+		return []nativeexecutor.Tool{nativeexecutor.NewSQLiteEvidenceTool(db, "evidence_get", req.TenantID, req.EntityID), nativeexecutor.NewSQLiteEvidenceTool(db, "evidence.get", req.TenantID, req.EntityID)}
+	}
+}
+
+func (r *WorkerRuntime) configureWorkerEvidence(ctx context.Context, cfg WorkerRuntimeConfig) error {
+	var evidenceSecret []byte
+	if cfg.EvidenceSocket != "" {
+		var err error
+		if evidenceSecret, err = r.startEvidenceServer(cfg); err != nil {
+			return err
+		}
+	}
+	if cfg.WorkerSocket != "" {
+		if err := r.connectWorker(ctx, cfg, evidenceSecret); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // startEvidenceServer serves the ledger-backed evidence tools on the private
@@ -137,19 +153,25 @@ func (r *WorkerRuntime) startEvidenceServer(cfg WorkerRuntimeConfig) ([]byte, er
 		return nil, fmt.Errorf("listen evidence socket: %w", err)
 	}
 	r.evidenceListener = listener
+	r.serveEvidence(cfg, evidenceSecret, listener)
+	return evidenceSecret, nil
+}
+
+func (r *WorkerRuntime) serveEvidence(cfg WorkerRuntimeConfig, evidenceSecret []byte, listener net.Listener) {
 	evidenceGRPC := grpc.NewServer()
 	r.evidenceGRPC = evidenceGRPC
 	issuer := evidenceIssuer(evidenceSecret)
 	runtimev1.RegisterEvidenceToolsServer(evidenceGRPC, &evidence.Server{
 		Verifier: &evidence.Verifier{Issuer: issuer.Issuer, Audience: issuer.Audience, Keys: issuer.Keys},
-		Query:    makeEvidenceQuery(cfg.DB), Ledger: cfg.Ledger, RuntimeEpoch: cfg.RuntimeEpoch, RequireLedger: true,
+		Query:    evidence.EventLogQuery(cfg.DB), Ledger: cfg.Ledger, RuntimeEpoch: cfg.RuntimeEpoch, RequireLedger: true,
 	})
-	go func() {
-		if serveErr := evidenceGRPC.Serve(listener); serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
-			r.evidenceErrors <- fmt.Errorf("evidence server: %w", serveErr)
-		}
-	}()
-	return evidenceSecret, nil
+	go r.runEvidenceServer(evidenceGRPC, listener)
+}
+
+func (r *WorkerRuntime) runEvidenceServer(evidenceGRPC *grpc.Server, listener net.Listener) {
+	if serveErr := evidenceGRPC.Serve(listener); serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
+		r.evidenceErrors <- fmt.Errorf("evidence server: %w", serveErr)
+	}
 }
 
 // connectWorker dials the EpisodeWorker over its socket, with mTLS when
@@ -164,18 +186,26 @@ func (r *WorkerRuntime) connectWorker(ctx context.Context, cfg WorkerRuntimeConf
 		return fmt.Errorf("dial episode worker socket: %w", err)
 	}
 	r.workerConn = conn
+	r.installRemoteExecutor(cfg, evidenceSecret, conn)
+	return nil
+}
+
+func (r *WorkerRuntime) installRemoteExecutor(cfg WorkerRuntimeConfig, evidenceSecret []byte, conn *grpc.ClientConn) {
 	client := runtimev1.NewEpisodeWorkerClient(conn)
 	if cfg.EvidenceSocket == "" {
-		r.Executor = episodes.NewWorkerExecutor(client, cfg.WorkerName, cfg.RuntimeEpoch, nil)
-		return nil
+		r.Executor = remoteexecutor.NewExecutor(client, cfg.WorkerName, cfg.RuntimeEpoch, nil)
+		return
 	}
-	factory := &episodes.AttemptCapabilityIssuer{
+	factory := &remoteexecutor.AttemptCapabilityIssuer{
 		Issuer: evidenceIssuer(evidenceSecret), RuntimeEpoch: cfg.RuntimeEpoch, Tools: []string{"evidence.get"},
 		From: time.Now().UTC().Add(-24 * time.Hour), Until: time.Now().UTC().Add(24 * time.Hour), MaxRows: 1000, MaxBytes: 1 << 20,
 	}
 	features := []string{worker.EvidenceToolsFeature}
-	r.Executor = episodes.NewWorkerExecutorWithEvidence(client, cfg.WorkerName, cfg.RuntimeEpoch, features, cfg.EvidenceSocket, factory)
-	return nil
+	r.Executor = remoteexecutor.NewExecutorWithEvidence(client, cfg.WorkerName, cfg.RuntimeEpoch, features, cfg.EvidenceSocket, factory)
+}
+
+func evidenceIssuer(secret []byte) *evidence.Issuer {
+	return &evidence.Issuer{Issuer: "agentic-stream", Audience: "evidence-tools", KeyID: "runtime", Keys: map[string][]byte{"runtime": secret}}
 }
 
 // Errors reports asynchronous evidence-server failures. A closed channel is
@@ -193,6 +223,17 @@ func (r *WorkerRuntime) Close() error {
 		return nil
 	}
 	var errs []error
+	errs = r.closeEvidenceServer(errs)
+	if r.workerConn != nil {
+		if err := r.workerConn.Close(); err != nil {
+			errs = append(errs, err)
+		}
+		r.workerConn = nil
+	}
+	return errors.Join(errs...)
+}
+
+func (r *WorkerRuntime) closeEvidenceServer(errs []error) []error {
 	if r.evidenceGRPC != nil {
 		r.evidenceGRPC.Stop()
 		r.evidenceGRPC = nil
@@ -203,46 +244,5 @@ func (r *WorkerRuntime) Close() error {
 		}
 		r.evidenceListener = nil
 	}
-	if r.workerConn != nil {
-		if err := r.workerConn.Close(); err != nil {
-			errs = append(errs, err)
-		}
-		r.workerConn = nil
-	}
-	return errors.Join(errs...)
-}
-
-func evidenceIssuer(secret []byte) *evidence.Issuer {
-	return &evidence.Issuer{Issuer: "agentic-stream", Audience: "evidence-tools", KeyID: "runtime", Keys: map[string][]byte{"runtime": secret}}
-}
-
-func makeEvidenceQuery(db *storage.DB) evidence.Query {
-	return func(ctx context.Context, call evidence.Call) (evidence.QueryResult, error) {
-		rows, err := db.QueryContext(ctx, `SELECT event_id, event_type, event_time, payload_json FROM event_log WHERE tenant_id = ? AND entity_id = ? AND event_time >= ? AND event_time <= ? ORDER BY event_time, position LIMIT ?`, call.TenantID, call.EntityID, call.From.UTC().Format(time.RFC3339Nano), call.Until.UTC().Format(time.RFC3339Nano), call.MaxRows)
-		if err != nil {
-			return evidence.QueryResult{}, fmt.Errorf("query evidence events: %w", err)
-		}
-		defer func() { _ = rows.Close() }()
-		resultRows := make([]map[string]any, 0)
-		for rows.Next() {
-			var eventID, eventType, eventTime string
-			var payload []byte
-			if err := rows.Scan(&eventID, &eventType, &eventTime, &payload); err != nil {
-				return evidence.QueryResult{}, fmt.Errorf("scan evidence event: %w", err)
-			}
-			var data map[string]any
-			if err := json.Unmarshal(payload, &data); err != nil {
-				return evidence.QueryResult{}, fmt.Errorf("decode evidence payload: %w", err)
-			}
-			resultRows = append(resultRows, map[string]any{"event_id": eventID, "event_type": eventType, "event_time": eventTime, "data": data})
-		}
-		if err := rows.Err(); err != nil {
-			return evidence.QueryResult{}, fmt.Errorf("iterate evidence events: %w", err)
-		}
-		result, err := json.Marshal(map[string]any{"rows": resultRows})
-		if err != nil {
-			return evidence.QueryResult{}, fmt.Errorf("encode evidence result: %w", err)
-		}
-		return evidence.QueryResult{JSON: result, RowCount: uint64(len(resultRows))}, nil //nolint:gosec // Result rows are bounded by the authenticated capability.
-	}
+	return errs
 }

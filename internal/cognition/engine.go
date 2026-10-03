@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -59,14 +60,8 @@ func NewEngine(db *storage.DB, deploymentID, tenantID string, compiled *spec.Com
 		clk = clock.Physical()
 	}
 	eng := &Engine{
-		deploymentID: deploymentID,
-		tenantID:     tenantID,
-		spec:         compiled,
-		celEnv:       env,
-		scheduler:    NewScheduler(compiled, idGen, clk),
-		idGen:        idGen,
-		clk:          clk,
-		programs:     make(map[string]cel.Program),
+		deploymentID: deploymentID, tenantID: tenantID, spec: compiled, celEnv: env,
+		scheduler: NewScheduler(compiled, idGen, clk), idGen: idGen, clk: clk, programs: make(map[string]cel.Program),
 	}
 	if err := eng.compilePrograms(); err != nil {
 		return nil, fmt.Errorf("compile trigger programs: %w", err)
@@ -77,24 +72,31 @@ func NewEngine(db *storage.DB, deploymentID, tenantID string, compiled *spec.Com
 // Process evaluates all triggers for a new Situation version and updates the
 // durable scheduler queue. It runs inside the supplied transaction.
 func (e *Engine) Process(ctx context.Context, tx *sql.Tx, v situations.Version) error {
-	lastReasoned, err := e.loadLastReasonedVersion(ctx, tx, v.SituationID)
+	previous, err := e.lastReasonedVersion(ctx, tx, v.SituationID)
 	if err != nil {
-		return fmt.Errorf("load last reasoned version: %w", err)
+		return err
 	}
-
-	previous, err := e.loadVersion(ctx, tx, v.SituationID, lastReasoned)
-	if err != nil {
-		return fmt.Errorf("load previous version: %w", err)
-	}
-
 	if err := e.evaluateTriggers(ctx, tx, v, previous); err != nil {
 		return err
 	}
 	if _, err := e.admitReconsiderations(ctx, tx, v); err != nil {
 		return fmt.Errorf("admit reconsideration: %w", err)
 	}
-
 	return e.markVersionReasoned(ctx, tx, v)
+}
+
+// lastReasonedVersion loads the version cognition last reasoned about, which
+// is nil before the first one.
+func (e *Engine) lastReasonedVersion(ctx context.Context, tx *sql.Tx, situationID string) (*situations.Version, error) {
+	lastReasoned, err := e.loadLastReasonedVersion(ctx, tx, situationID)
+	if err != nil {
+		return nil, fmt.Errorf("load last reasoned version: %w", err)
+	}
+	previous, err := e.loadVersion(ctx, tx, situationID, lastReasoned)
+	if err != nil {
+		return nil, fmt.Errorf("load previous version: %w", err)
+	}
+	return previous, nil
 }
 
 func (e *Engine) evaluateTriggers(ctx context.Context, tx *sql.Tx, v situations.Version, previous *situations.Version) error {
@@ -141,53 +143,87 @@ func (e *Engine) loadVersion(ctx context.Context, tx *sql.Tx, situationID string
 	if version <= 0 {
 		return nil, nil
 	}
-	var v situations.Version
-	var eventHorizonStr, watermarkStr string
-	var traceparent, tracestate sql.NullString
-	var snapshotJSON []byte
-	if err := tx.QueryRowContext(ctx, `
+	row, found, err := queryVersionRow(ctx, tx, situationID, version)
+	if err != nil || !found {
+		return nil, err
+	}
+	return row.version()
+}
+
+// versionRow is one stored Situation version with its entity, as scanned.
+type versionRow struct {
+	v                       situations.Version
+	eventHorizon, watermark string
+	traceparent, tracestate sql.NullString
+	snapshotJSON            []byte
+}
+
+func queryVersionRow(ctx context.Context, tx *sql.Tx, situationID string, version int) (versionRow, bool, error) {
+	var r versionRow
+	err := tx.QueryRowContext(ctx, selectVersionSQL, situationID, version).Scan(
+		&r.v.SituationID, &r.v.Version, &r.v.Phase, &r.v.PreviousPhase,
+		&r.v.Severity, &r.v.Confidence, &r.v.Completeness,
+		&r.v.EntityType, &r.v.EntityID, &r.eventHorizon, &r.watermark, &r.traceparent, &r.tracestate, &r.snapshotJSON,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return versionRow{}, false, nil
+	}
+	if err != nil {
+		return versionRow{}, false, fmt.Errorf("query version: %w", err)
+	}
+	return r, true, nil
+}
+
+const selectVersionSQL = `
 		SELECT sv.situation_id, sv.version, sv.phase, sv.previous_phase, sv.severity,
 		       sv.confidence, sv.completeness, s.entity_type, s.entity_id,
 		       sv.event_horizon, sv.watermark, sv.traceparent, sv.tracestate, sv.snapshot_json
 		FROM situation_versions sv
 		JOIN situations s ON s.situation_id = sv.situation_id
-		WHERE sv.situation_id = ? AND sv.version = ?`,
-		situationID, version,
-	).Scan(
-		&v.SituationID, &v.Version, &v.Phase, &v.PreviousPhase,
-		&v.Severity, &v.Confidence, &v.Completeness,
-		&v.EntityType, &v.EntityID, &eventHorizonStr, &watermarkStr, &traceparent, &tracestate, &snapshotJSON,
-	); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("query version: %w", err)
-	}
-	eventHorizon, err := time.Parse(time.RFC3339Nano, eventHorizonStr)
-	if err != nil {
+		WHERE sv.situation_id = ? AND sv.version = ?`
+
+// version parses the row's times, validates its trace context and recovers
+// the snapshot facts.
+func (r versionRow) version() (*situations.Version, error) {
+	v := r.v
+	var err error
+	if v.EventHorizon, err = time.Parse(time.RFC3339Nano, r.eventHorizon); err != nil {
 		return nil, fmt.Errorf("parse event horizon: %w", err)
 	}
-	v.EventHorizon = eventHorizon
-	if _, err := contractsv1.ParseTraceContext(traceparent.String, tracestate.String); err != nil {
-		return nil, fmt.Errorf("validate version trace context: %w", err)
+	if v.Traceparent, v.Tracestate, err = r.traceContext(); err != nil {
+		return nil, err
 	}
-	v.Traceparent = traceparent.String
-	v.Tracestate = tracestate.String
-	if watermarkStr != "" {
-		watermark, err := time.Parse(time.RFC3339Nano, watermarkStr)
-		if err != nil {
-			return nil, fmt.Errorf("parse watermark: %w", err)
-		}
-		v.Watermark = watermark
+	if v.Watermark, err = parseOptionalTime(r.watermark); err != nil {
+		return nil, fmt.Errorf("parse watermark: %w", err)
 	}
+	if v.Facts, err = snapshotFacts(r.snapshotJSON); err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
+func (r versionRow) traceContext() (string, string, error) {
+	if _, err := contractsv1.ParseTraceContext(r.traceparent.String, r.tracestate.String); err != nil {
+		return "", "", fmt.Errorf("validate version trace context: %w", err)
+	}
+	return r.traceparent.String, r.tracestate.String, nil
+}
+
+func parseOptionalTime(value string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, nil
+	}
+	return time.Parse(time.RFC3339Nano, value) //nolint:wrapcheck // The caller names the field.
+}
+
+// snapshotFacts returns the snapshot's facts object, or nil when it has none.
+func snapshotFacts(snapshotJSON []byte) (map[string]any, error) {
 	var snapshot map[string]any
 	if err := json.Unmarshal(snapshotJSON, &snapshot); err != nil {
 		return nil, fmt.Errorf("unmarshal snapshot: %w", err)
 	}
-	if facts, ok := snapshot["facts"].(map[string]any); ok {
-		v.Facts = facts
-	}
-	return &v, nil
+	facts, _ := snapshot["facts"].(map[string]any)
+	return facts, nil
 }
 
 func (e *Engine) triggerID(name, situationID string, version int) string {

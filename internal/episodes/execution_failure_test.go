@@ -7,9 +7,6 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // TestExecutionFailureClassificationSurvivesWrapping pins that executeClaim
@@ -24,12 +21,10 @@ func TestExecutionFailureClassificationSurvivesWrapping(t *testing.T) {
 		wantStatus episodeledger.AttemptStatus
 		wantReason string
 	}{
-		{name: "context canceled", err: context.Canceled, wantStatus: episodeledger.AttemptCancelled, wantReason: "worker_cancelled"},                  //nolint:misspell // Durable protocol reason is frozen as cancelled.
-		{name: "grpc canceled", err: status.Error(codes.Canceled, "stop"), wantStatus: episodeledger.AttemptCancelled, wantReason: "worker_cancelled"}, //nolint:misspell // Durable protocol reason is frozen as cancelled.
+		{name: "context canceled", err: context.Canceled, wantStatus: episodeledger.AttemptCancelled, wantReason: "worker_cancelled"}, //nolint:misspell // Durable protocol reason is frozen as cancelled.
 		{name: "context deadline", err: context.DeadlineExceeded, wantStatus: episodeledger.AttemptTimedOut, wantReason: "worker_deadline_exceeded"},
-		{name: "grpc deadline", err: status.Error(codes.DeadlineExceeded, "slow"), wantStatus: episodeledger.AttemptTimedOut, wantReason: "worker_deadline_exceeded"},
-		{name: "budget exhausted", err: &budgetExceededError{metric: "tokens"}, wantStatus: episodeledger.AttemptFailed, wantReason: "budget_exhausted"},
-		{name: "budget telemetry missing", err: budgetTelemetryMissingError{}, wantStatus: episodeledger.AttemptFailed, wantReason: "budget_telemetry_missing"},
+		{name: "budget exhausted", err: &BudgetExceededError{Metric: "tokens"}, wantStatus: episodeledger.AttemptFailed, wantReason: "budget_exhausted"},
+		{name: "budget telemetry missing", err: BudgetTelemetryMissingError{}, wantStatus: episodeledger.AttemptFailed, wantReason: "budget_telemetry_missing"},
 		{name: "other", err: errors.New("boom"), wantStatus: episodeledger.AttemptFailed, wantReason: "worker_execution_failed"},
 	}
 	for _, tt := range tests {

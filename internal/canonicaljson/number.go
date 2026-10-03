@@ -2,6 +2,7 @@ package canonicaljson
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"math"
 	"math/big"
@@ -38,53 +39,72 @@ func encodeNumber(buf *bytes.Buffer, raw string) error {
 	if f == 0 && strings.HasPrefix(raw, "-") {
 		return fmt.Errorf("canonicaljson: negative zero is not allowed")
 	}
-	if integer, ok := decimalInteger(raw); ok {
-		limit := new(big.Int).SetUint64(maxSafeInteger)
-		if new(big.Int).Abs(integer).Cmp(limit) > 0 {
-			return fmt.Errorf("canonicaljson: unsafe JSON integer %q", raw)
-		}
-		if !integerRoundTrips(integer, f) {
-			return fmt.Errorf("canonicaljson: JSON integer %q does not round-trip", raw)
-		}
+	if err := checkExactInteger(raw, f); err != nil {
+		return err
 	}
 	return encodeFloat(buf, f)
+}
+
+// checkExactInteger requires an integer-valued literal to be a safe integer
+// that the parsed float represents exactly.
+func checkExactInteger(raw string, f float64) error {
+	integer, ok := decimalInteger(raw)
+	if !ok {
+		return nil
+	}
+	if new(big.Int).Abs(integer).Cmp(new(big.Int).SetUint64(maxSafeInteger)) > 0 {
+		return fmt.Errorf("canonicaljson: unsafe JSON integer %q", raw)
+	}
+	if !integerRoundTrips(integer, f) {
+		return fmt.Errorf("canonicaljson: JSON integer %q does not round-trip", raw)
+	}
+	return nil
 }
 
 func encodeFloat(buf *bytes.Buffer, f float64) error {
 	if math.IsNaN(f) || math.IsInf(f, 0) {
 		return fmt.Errorf("canonicaljson: non-finite float %v", f)
 	}
-	if f == 0 {
-		if math.Signbit(f) {
-			return fmt.Errorf("canonicaljson: negative zero is not allowed")
-		}
-		buf.WriteByte('0')
-		return nil
+	if f == 0 && math.Signbit(f) {
+		return fmt.Errorf("canonicaljson: negative zero is not allowed")
 	}
-
-	shortest := strconv.FormatFloat(f, 'g', -1, 64)
-	if exponentIndex := strings.IndexByte(shortest, 'e'); exponentIndex >= 0 {
-		mantissa := shortest[:exponentIndex]
-		exponent, err := strconv.Atoi(shortest[exponentIndex+1:])
-		if err != nil {
-			return fmt.Errorf("canonicaljson: parse float exponent %q: %w", shortest, err)
-		}
-		if exponent >= -6 && exponent <= 20 {
-			shortest = expandExponent(mantissa, exponent)
-		} else {
-			shortest = normalizeExponent(mantissa, exponent)
-		}
+	formatted, err := formatFloat(f)
+	if err != nil {
+		return err
 	}
-	buf.WriteString(shortest)
+	buf.WriteString(formatted)
 	return nil
 }
 
-func expandExponent(mantissa string, exponent int) string {
-	sign := ""
-	if strings.HasPrefix(mantissa, "-") {
-		sign = "-"
-		mantissa = mantissa[1:]
+// formatFloat is the shortest round-trip form, written without an exponent
+// for exponents in [-6, 20] and with a normalized exponent otherwise.
+func formatFloat(f float64) (string, error) {
+	if f == 0 {
+		return "0", nil
 	}
+	shortest := strconv.FormatFloat(f, 'g', -1, 64)
+	mantissa, exponentText, hasExponent := strings.Cut(shortest, "e")
+	if !hasExponent {
+		return shortest, nil
+	}
+	exponent, err := strconv.Atoi(exponentText)
+	if err != nil {
+		return "", fmt.Errorf("canonicaljson: parse float exponent %q: %w", shortest, err)
+	}
+	return placeExponent(mantissa, exponent), nil
+}
+
+// placeExponent writes exponents in [-6, 20] positionally and normalizes the
+// others.
+func placeExponent(mantissa string, exponent int) string {
+	if exponent >= -6 && exponent <= 20 {
+		return expandExponent(mantissa, exponent)
+	}
+	return normalizeExponent(mantissa, exponent)
+}
+
+func expandExponent(mantissa string, exponent int) string {
+	sign, mantissa := splitSign(mantissa)
 	dot := strings.IndexByte(mantissa, '.')
 	if dot < 0 {
 		dot = len(mantissa)
@@ -101,6 +121,14 @@ func expandExponent(mantissa string, exponent int) string {
 	}
 }
 
+// splitSign separates a leading minus sign from a decimal literal.
+func splitSign(value string) (string, string) {
+	if rest, negative := strings.CutPrefix(value, "-"); negative {
+		return "-", rest
+	}
+	return "", value
+}
+
 func normalizeExponent(mantissa string, exponent int) string {
 	if exponent >= 0 {
 		return mantissa + "e+" + strconv.Itoa(exponent)
@@ -109,38 +137,33 @@ func normalizeExponent(mantissa string, exponent int) string {
 }
 
 func decimalInteger(raw string) (*big.Int, bool) {
-	sign := ""
-	if strings.HasPrefix(raw, "-") {
-		sign = "-"
-		raw = raw[1:]
-	} else if strings.HasPrefix(raw, "+") {
+	if strings.HasPrefix(raw, "+") {
 		return nil, false
 	}
-	exponent := 0
-	if index := strings.IndexAny(raw, "eE"); index >= 0 {
-		parsed, err := strconv.Atoi(raw[index+1:])
-		if err != nil {
-			return nil, false
-		}
-		exponent = parsed
-		raw = raw[:index]
+	sign, raw := splitSign(raw)
+	mantissa, exponent, ok := splitExponent(raw)
+	if !ok {
+		return nil, false
 	}
-	parts := strings.SplitN(raw, ".", 2)
-	whole := parts[0]
-	fraction := ""
-	if len(parts) == 2 {
-		fraction = parts[1]
-	}
+	whole, fraction, _ := strings.Cut(mantissa, ".")
 	digits, ok := scaleDigits(whole+fraction, len(fraction)-exponent)
 	if !ok {
 		return nil, false
 	}
-	digits = strings.TrimLeft(digits, "0")
-	if digits == "" {
-		digits = "0"
+	return new(big.Int).SetString(sign+cmp.Or(strings.TrimLeft(digits, "0"), "0"), 10)
+}
+
+// splitExponent separates a decimal literal's mantissa from its exponent.
+func splitExponent(raw string) (string, int, bool) {
+	index := strings.IndexAny(raw, "eE")
+	if index < 0 {
+		return raw, 0, true
 	}
-	integer, ok := new(big.Int).SetString(sign+digits, 10)
-	return integer, ok
+	exponent, err := strconv.Atoi(raw[index+1:])
+	if err != nil {
+		return "", 0, false
+	}
+	return raw[:index], exponent, true
 }
 
 // scaleDigits shifts a decimal digit string left by decimalPlaces (right when

@@ -1,10 +1,11 @@
 package cognition
 
 import (
-	"context"
 	"fmt"
 	"reflect"
-	"time"
+
+	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/common/types/ref"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -12,24 +13,13 @@ import (
 
 func (e *Engine) compilePrograms() error {
 	for _, tr := range e.spec.Cognition.Triggers {
-		for _, expr := range []struct {
-			name string
-			src  string
-		}{
-			{tr.Name + ":when", tr.When},
-			{tr.Name + ":score", tr.Score},
-			{tr.Name + ":materialDelta", tr.MaterialDelta},
-		} {
+		for _, expr := range triggerSources(tr) {
 			if expr.src == "" {
 				continue
 			}
-			ast, issues := e.celEnv.Compile(expr.src)
-			if issues != nil && issues.Err() != nil {
-				return fmt.Errorf("compile %s: %w", expr.name, issues.Err())
-			}
-			prg, err := e.celEnv.Program(ast)
+			prg, err := e.compileProgram(expr.name, expr.src)
 			if err != nil {
-				return fmt.Errorf("program %s: %w", expr.name, err)
+				return err
 			}
 			e.programs[expr.name] = prg
 		}
@@ -37,39 +27,35 @@ func (e *Engine) compilePrograms() error {
 	return nil
 }
 
+// triggerSource is one named trigger expression.
+type triggerSource struct{ name, src string }
+
+func triggerSources(tr spec.Trigger) []triggerSource {
+	return []triggerSource{
+		{tr.Name + ":when", tr.When},
+		{tr.Name + ":score", tr.Score},
+		{tr.Name + ":materialDelta", tr.MaterialDelta},
+	}
+}
+
+func (e *Engine) compileProgram(name, src string) (cel.Program, error) {
+	ast, issues := e.celEnv.Compile(src)
+	if issues != nil && issues.Err() != nil {
+		return nil, fmt.Errorf("compile %s: %w", name, issues.Err())
+	}
+	prg, err := e.celEnv.Program(ast)
+	if err != nil {
+		return nil, fmt.Errorf("program %s: %w", name, err)
+	}
+	return prg, nil
+}
+
 func (e *Engine) buildFeatures(v situations.Version) map[string]any {
-	features := make(map[string]any)
-	for _, r := range e.spec.Situation.Reducers {
-		switch r.Strategy {
-		case "latest_event_time":
-			// A nil fact means this operator has not materialized an output yet.
-			// Leave it absent so the typed operator default below remains effective.
-			if val, ok := v.Facts[r.Field]; ok && val != nil {
-				features[r.Input] = val
-			}
-		case "set_union":
-			evidence := v.Evidence
-			if evidence == nil {
-				evidence = []string{}
-			}
-			features[r.Field] = evidence
-		}
+	evidence := v.Evidence
+	if evidence == nil {
+		evidence = []string{}
 	}
-	// Pre-populate defaults for every operator output so CEL expressions never
-	// fail on a missing key. Numeric features default to 0; heartbeat detectors
-	// default to false.
-	for _, op := range e.spec.Operators {
-		if _, ok := features[op.Output]; ok {
-			continue
-		}
-		switch op.Kind {
-		case "missing_heartbeat":
-			features[op.Output] = false
-		default:
-			features[op.Output] = 0.0
-		}
-	}
-	return features
+	return situations.CELFeatures(e.spec, v.Facts, evidence)
 }
 
 func (e *Engine) buildSituation(v situations.Version) map[string]any {
@@ -87,41 +73,45 @@ func (e *Engine) buildSituation(v situations.Version) map[string]any {
 
 func (e *Engine) buildDelta(current situations.Version, previous *situations.Version) map[string]any {
 	if previous == nil {
-		return map[string]any{
-			spec.DeltaKeys.PhaseChanged:             true,
-			spec.DeltaKeys.SeverityChange:           current.Severity,
-			spec.DeltaKeys.CompletenessChanged:      true,
-			spec.DeltaKeys.PrimaryHypothesisChanged: true,
-			spec.DeltaKeys.FactsChanged:             true,
-			spec.DeltaKeys.Facts:                    map[string]any{},
-			spec.DeltaKeys.NewFacts:                 current.Facts,
-			spec.DeltaKeys.Novelty:                  1.0,
-		}
+		return firstVersionDelta(current)
 	}
-
 	prevFacts := previous.Facts
 	if prevFacts == nil {
 		prevFacts = map[string]any{}
 	}
-	factsChanged := !mapsEqual(prevFacts, current.Facts)
-	// Primary-hypothesis tracking is not implemented in this slice; it is
-	// intentionally false so triggers can reference the key deterministically.
-	primaryHypothesisChanged := false
-	novelty := 0.0
-	if current.Phase != previous.Phase || factsChanged {
-		novelty = 1.0
-	}
+	return changeDelta(current, *previous, prevFacts)
+}
 
+// changeDelta describes what changed since the previously reasoned version.
+func changeDelta(current, previous situations.Version, prevFacts map[string]any) map[string]any {
+	factsChanged := !mapsEqual(prevFacts, current.Facts)
+	phaseChanged := current.Phase != previous.Phase
 	return map[string]any{
-		spec.DeltaKeys.PhaseChanged:             current.Phase != previous.Phase,
-		spec.DeltaKeys.SeverityChange:           current.Severity - previous.Severity,
-		spec.DeltaKeys.CompletenessChanged:      current.Completeness != previous.Completeness,
-		spec.DeltaKeys.PrimaryHypothesisChanged: primaryHypothesisChanged,
-		spec.DeltaKeys.FactsChanged:             factsChanged,
-		spec.DeltaKeys.Facts:                    prevFacts,
-		spec.DeltaKeys.NewFacts:                 current.Facts,
-		spec.DeltaKeys.Novelty:                  novelty,
+		spec.DeltaKeys.PhaseChanged: phaseChanged, spec.DeltaKeys.SeverityChange: current.Severity - previous.Severity,
+		spec.DeltaKeys.CompletenessChanged: current.Completeness != previous.Completeness,
+		// Primary-hypothesis tracking is not implemented in this slice; it is
+		// intentionally false so triggers can reference the key deterministically.
+		spec.DeltaKeys.PrimaryHypothesisChanged: false, spec.DeltaKeys.FactsChanged: factsChanged,
+		spec.DeltaKeys.Facts: prevFacts, spec.DeltaKeys.NewFacts: current.Facts,
+		spec.DeltaKeys.Novelty: novelty(phaseChanged || factsChanged),
 	}
+}
+
+// firstVersionDelta treats every aspect of a first reasoned version as new.
+func firstVersionDelta(current situations.Version) map[string]any {
+	return map[string]any{
+		spec.DeltaKeys.PhaseChanged: true, spec.DeltaKeys.SeverityChange: current.Severity,
+		spec.DeltaKeys.CompletenessChanged: true, spec.DeltaKeys.PrimaryHypothesisChanged: true,
+		spec.DeltaKeys.FactsChanged: true, spec.DeltaKeys.Facts: map[string]any{},
+		spec.DeltaKeys.NewFacts: current.Facts, spec.DeltaKeys.Novelty: 1.0,
+	}
+}
+
+func novelty(changed bool) float64 {
+	if changed {
+		return 1.0
+	}
+	return 0.0
 }
 
 func mapsEqual(a, b map[string]any) bool {
@@ -140,61 +130,57 @@ func mapsEqual(a, b map[string]any) bool {
 	return true
 }
 
-func (e *Engine) evalBool(ctx context.Context, tr spec.Trigger, kind string, features, situation, delta map[string]any, eventTime, watermark time.Time) (bool, error) {
-	_ = ctx
-	expr := ""
-	switch kind {
-	case "when":
-		expr = tr.When
-	case "materialDelta":
-		expr = tr.MaterialDelta
-	}
-	if expr == "" {
+func (e *Engine) evalBool(tr spec.Trigger, kind string, in triggerInputs) (bool, error) {
+	if triggerExpression(tr, kind) == "" {
 		return false, nil
 	}
-	prg, ok := e.programs[tr.Name+":"+kind]
-	if !ok {
-		return false, fmt.Errorf("no compiled program for %s:%s", tr.Name, kind)
-	}
-	out, _, err := prg.Eval(map[string]any{
-		"features":   features,
-		"situation":  situation,
-		"delta":      delta,
-		"event_time": eventTime,
-		"watermark":  watermark,
-	})
+	out, err := e.evalProgram(tr.Name+":"+kind, in)
 	if err != nil {
-		return false, fmt.Errorf("eval cel: %w", err)
+		return false, err
 	}
-	v, err := out.ConvertToNative(reflect.TypeOf(true))
-	if err != nil {
-		return false, fmt.Errorf("cel result not bool: %w", err)
-	}
-	b, ok := v.(bool)
-	if !ok {
-		return false, fmt.Errorf("cel result not bool: %T", v)
-	}
-	return b, nil
+	return spec.CELBool(out) //nolint:wrapcheck // The spec helper names the conversion failure.
 }
 
-func (e *Engine) evalScore(ctx context.Context, tr spec.Trigger, features, situation, delta map[string]any, eventTime, watermark time.Time) (float64, error) {
+// triggerExpression is the trigger's boolean expression of the given kind.
+func triggerExpression(tr spec.Trigger, kind string) string {
+	switch kind {
+	case "when":
+		return tr.When
+	case "materialDelta":
+		return tr.MaterialDelta
+	default:
+		return ""
+	}
+}
+
+// evalProgram runs a precompiled trigger program over the trigger inputs.
+func (e *Engine) evalProgram(name string, in triggerInputs) (ref.Val, error) {
+	prg, ok := e.programs[name]
+	if !ok {
+		return nil, fmt.Errorf("no compiled program for %s", name)
+	}
+	out, _, err := prg.Eval(map[string]any{
+		"features": in.features, "situation": in.situation, "delta": in.delta,
+		"event_time": in.eventHorizon, "watermark": in.watermark,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("eval cel: %w", err)
+	}
+	return out, nil
+}
+
+func (e *Engine) evalScore(tr spec.Trigger, in triggerInputs) (float64, error) {
 	if tr.Score == "" {
 		return 0, nil
 	}
-	prg, ok := e.programs[tr.Name+":score"]
-	if !ok {
-		return 0, fmt.Errorf("no compiled program for %s:score", tr.Name)
-	}
-	out, _, err := prg.Eval(map[string]any{
-		"features":   features,
-		"situation":  situation,
-		"delta":      delta,
-		"event_time": eventTime,
-		"watermark":  watermark,
-	})
+	out, err := e.evalProgram(tr.Name+":score", in)
 	if err != nil {
-		return 0, fmt.Errorf("eval cel: %w", err)
+		return 0, err
 	}
+	return celNumber(out)
+}
+
+func celNumber(out ref.Val) (float64, error) {
 	switch x := out.Value().(type) {
 	case float64:
 		return x, nil

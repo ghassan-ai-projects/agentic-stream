@@ -35,6 +35,31 @@ type Executor struct {
 	toolFactory func(*episodes.Request) []Tool
 }
 
+type requestPayload struct {
+	Snapshot map[string]any `json:"snapshot"`
+	Executor struct {
+		Prompt         string          `json:"prompt"`
+		Objective      string          `json:"objective"`
+		DecisionSchema json.RawMessage `json:"decision_schema"`
+	} `json:"executor"`
+	Tools              []map[string]any `json:"tools"`
+	AllowedIntentTypes []string         `json:"allowed_intent_types"`
+	RiskCeiling        string           `json:"risk_ceiling"`
+	Budget             struct {
+		ModelCalls           uint32 `json:"model_calls"`
+		InputTokens          uint64 `json:"input_tokens"`
+		OutputTokens         uint64 `json:"output_tokens"`
+		ToolCalls            uint32 `json:"tool_calls"`
+		ToolResultBytes      uint64 `json:"tool_result_bytes"`
+		TotalToolResultBytes uint64 `json:"total_tool_result_bytes"`
+		ProviderRetries      uint32 `json:"provider_retries"`
+		CostMicrounits       uint64 `json:"cost_microunits"`
+	} `json:"budget"`
+}
+
+// Ensure the native executor remains a valid episode executor.
+var _ episodes.Executor = (*Executor)(nil)
+
 // New creates a native executor and rejects duplicate or empty tool names.
 func New(cfg Config) (*Executor, error) {
 	if cfg.Provider == nil {
@@ -66,9 +91,25 @@ func (e *Executor) Execute(ctx context.Context, req *episodes.Request) (*episode
 	if err != nil {
 		return nil, err
 	}
+	return e.executePayload(ctx, req, payload)
+}
+
+func (e *Executor) executePayload(ctx context.Context, req *episodes.Request, payload requestPayload) (*episodes.Outcome, error) {
+	budget, err := requestBudget(req, payload)
+	if err != nil {
+		return nil, err
+	}
+	tools := e.toolsFor(req)
+	if budget.WallTime > 0 {
+		return e.executeBounded(ctx, req, payload, budget, tools)
+	}
+	return e.executeLoop(ctx, req, payload, budget, tools)
+}
+
+func requestBudget(req *episodes.Request, payload requestPayload) (budgetConfig, error) {
 	wallTime, err := req.WallTimeBudget()
 	if err != nil {
-		return nil, fmt.Errorf("validate episode budget: %w", err)
+		return budgetConfig{}, fmt.Errorf("validate episode budget: %w", err)
 	}
 	budget := budgetConfig{
 		WallTime: wallTime, ModelCalls: payload.Budget.ModelCalls,
@@ -78,13 +119,9 @@ func (e *Executor) Execute(ctx context.Context, req *episodes.Request) (*episode
 		CostMicrounits: payload.Budget.CostMicrounits,
 	}
 	if budget.WallTime <= 0 && budget.ModelCalls == 0 {
-		return nil, errors.New("finite episode budget requires wall_time or model_calls")
+		return budgetConfig{}, errors.New("finite episode budget requires wall_time or model_calls")
 	}
-	tools := e.toolsFor(req)
-	if budget.WallTime > 0 {
-		return e.executeBounded(ctx, req, payload, budget, tools)
-	}
-	return e.executeLoop(ctx, req, payload, budget, tools)
+	return budget, nil
 }
 
 func (e *Executor) toolsFor(req *episodes.Request) map[string]Tool {
@@ -102,28 +139,6 @@ func (e *Executor) toolsFor(req *episodes.Request) map[string]Tool {
 	return tools
 }
 
-type requestPayload struct {
-	Snapshot map[string]any `json:"snapshot"`
-	Executor struct {
-		Prompt         string          `json:"prompt"`
-		Objective      string          `json:"objective"`
-		DecisionSchema json.RawMessage `json:"decision_schema"`
-	} `json:"executor"`
-	Tools              []map[string]any `json:"tools"`
-	AllowedIntentTypes []string         `json:"allowed_intent_types"`
-	RiskCeiling        string           `json:"risk_ceiling"`
-	Budget             struct {
-		ModelCalls           uint32 `json:"model_calls"`
-		InputTokens          uint64 `json:"input_tokens"`
-		OutputTokens         uint64 `json:"output_tokens"`
-		ToolCalls            uint32 `json:"tool_calls"`
-		ToolResultBytes      uint64 `json:"tool_result_bytes"`
-		TotalToolResultBytes uint64 `json:"total_tool_result_bytes"`
-		ProviderRetries      uint32 `json:"provider_retries"`
-		CostMicrounits       uint64 `json:"cost_microunits"`
-	} `json:"budget"`
-}
-
 func decodeRequest(raw []byte) (requestPayload, error) {
 	var payload requestPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
@@ -139,31 +154,47 @@ func toolDefinitions(raw []map[string]any, tools map[string]Tool) []ToolDefiniti
 	result := make([]ToolDefinition, 0, len(tools))
 	seen := make(map[string]struct{})
 	for _, item := range raw {
-		name, _ := item["name"].(string)
-		if name == "" {
-			name, _ = item["type"].(string)
-		}
-		if name == "" {
+		name := configuredToolName(item)
+		if !acceptToolDefinition(name, tools, seen) {
 			continue
 		}
-		if _, ok := tools[name]; !ok {
-			continue
-		}
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		seen[name] = struct{}{}
-		description, _ := item["description"].(string)
-		parameters := json.RawMessage(`{"type":"object","additionalProperties":false}`)
-		if schema, ok := item["schema"].(map[string]any); ok {
-			if encoded, err := json.Marshal(schema); err == nil {
-				parameters = encoded
-			}
-		}
-		result = append(result, ToolDefinition{Name: name, Description: description, Parameters: parameters})
+		result = append(result, configuredToolDefinition(name, item))
 	}
 	slices.SortFunc(result, func(a, b ToolDefinition) int { return strings.Compare(a.Name, b.Name) })
 	return result
+}
+
+func configuredToolName(item map[string]any) string {
+	name, _ := item["name"].(string)
+	if name == "" {
+		name, _ = item["type"].(string)
+	}
+	return name
+}
+
+func acceptToolDefinition(name string, tools map[string]Tool, seen map[string]struct{}) bool {
+	if name == "" {
+		return false
+	}
+	if _, ok := tools[name]; !ok {
+		return false
+	}
+	if _, ok := seen[name]; ok {
+		return false
+	}
+	seen[name] = struct{}{}
+	return true
+}
+
+func configuredToolDefinition(name string, item map[string]any) ToolDefinition {
+	description, _ := item["description"].(string)
+	parameters := json.RawMessage(`{"type":"object","additionalProperties":false}`)
+	if schema, ok := item["schema"].(map[string]any); ok {
+		if encoded, err := json.Marshal(schema); err == nil {
+			parameters = encoded
+		}
+	}
+	return ToolDefinition{Name: name, Description: description, Parameters: parameters}
 }
 
 func (e *Executor) observe(ctx context.Context, call ToolCall, result ToolResult, budget budgetConfig) (Observation, error) {
@@ -178,6 +209,10 @@ func (e *Executor) observe(ctx context.Context, call ToolCall, result ToolResult
 	if bytesRead == 0 {
 		bytesRead = uint64(len(data))
 	}
+	return e.observationForResult(ctx, call, data, bytesRead, budget)
+}
+
+func (e *Executor) observationForResult(ctx context.Context, call ToolCall, data []byte, bytesRead uint64, budget budgetConfig) (Observation, error) {
 	if budget.ToolResultBytes > 0 && bytesRead > budget.ToolResultBytes {
 		if e.artifacts == nil {
 			return Observation{}, fmt.Errorf("tool_result_oversized:%s", call.Name)
@@ -199,20 +234,24 @@ func validateDecision(req *episodes.Request, raw []byte, allowed []string) (map[
 	if decision["episode_id"] != req.EpisodeID || decision["attempt_id"] != req.AttemptID || number(decision["fence"]) != float64(req.Fence) || decision["situation_id"] != req.SituationID || number(decision["situation_version"]) != float64(req.SituationVersion) || decision["snapshot_digest"] != req.SnapshotSHA256 {
 		return nil, errors.New("decision_identity_mismatch")
 	}
-	if intents, ok := decision["intents"].([]any); ok {
-		for _, rawIntent := range intents {
-			intent, ok := rawIntent.(map[string]any)
-			if !ok {
-				return nil, errors.New("intent_invalid")
-			}
-			typeName, _ := intent["type"].(string)
-			if !slices.Contains(allowed, typeName) {
-				return nil, fmt.Errorf("intent_not_allowed:%s", typeName)
-			}
-		}
+	if err := validateAllowedIntents(decision, allowed); err != nil {
+		return nil, err
 	}
 	return decision, nil
 }
 
-// Ensure the native executor remains a valid episode executor.
-var _ episodes.Executor = (*Executor)(nil)
+func validateAllowedIntents(decision map[string]any, allowed []string) error {
+	if intents, ok := decision["intents"].([]any); ok {
+		for _, rawIntent := range intents {
+			intent, ok := rawIntent.(map[string]any)
+			if !ok {
+				return errors.New("intent_invalid")
+			}
+			typeName, _ := intent["type"].(string)
+			if !slices.Contains(allowed, typeName) {
+				return fmt.Errorf("intent_not_allowed:%s", typeName)
+			}
+		}
+	}
+	return nil
+}

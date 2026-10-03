@@ -21,10 +21,7 @@ type storedTargetClaim struct {
 func loadTargetClaim(ctx context.Context, tx *sql.Tx, target string) (*storedTargetClaim, error) {
 	current := &storedTargetClaim{TargetClaim: TargetClaim{Target: target}}
 	var leaseUntil string
-	err := tx.QueryRowContext(ctx, `
-		SELECT device_id, owner_epoch, owner_instance, boot_id, claim_fence,
-		       lease_until, status
-		FROM device_target_claims WHERE target = ?`, target).Scan(
+	err := tx.QueryRowContext(ctx, loadTargetClaimSQL, target).Scan(
 		&current.DeviceID, &current.AuthorityEpoch, &current.OwnerInstance,
 		&current.BootID, &current.fence, &leaseUntil, &current.status)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -33,11 +30,7 @@ func loadTargetClaim(ctx context.Context, tx *sql.Tx, target string) (*storedTar
 	if err != nil {
 		return nil, fmt.Errorf("load target claim: %w", err)
 	}
-	current.expires, err = time.Parse(time.RFC3339Nano, leaseUntil)
-	if err != nil {
-		return nil, fmt.Errorf("parse target claim lease: %w", err)
-	}
-	return current, nil
+	return parseTargetClaimLease(current, leaseUntil)
 }
 
 // ownedBy reports whether the stored claim belongs to the claimant's epoch
@@ -72,4 +65,18 @@ func (c *storedTargetClaim) nextFence(claim TargetClaim, now time.Time) int64 {
 		return c.fence
 	}
 	return c.fence + 1
+}
+
+const loadTargetClaimSQL = `
+		SELECT device_id, owner_epoch, owner_instance, boot_id, claim_fence,
+		       lease_until, status
+		FROM device_target_claims WHERE target = ?`
+
+func parseTargetClaimLease(current *storedTargetClaim, leaseUntil string) (*storedTargetClaim, error) {
+	var err error
+	current.expires, err = time.Parse(time.RFC3339Nano, leaseUntil)
+	if err != nil {
+		return nil, fmt.Errorf("parse target claim lease: %w", err)
+	}
+	return current, nil
 }

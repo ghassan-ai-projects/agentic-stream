@@ -43,6 +43,12 @@ cognitive scheduler decides reasoning is useful.`,
 		SilenceErrors: true,
 	}
 
+	registerCommands(root)
+
+	return root
+}
+
+func registerCommands(root *cobra.Command) {
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newValidateCommand())
 	root.AddCommand(newRunCommand())
@@ -52,7 +58,6 @@ cognitive scheduler decides reasoning is useful.`,
 	root.AddCommand(newExportRunCommand())
 	root.AddCommand(newVerifyRunCommand())
 
-	return root
 }
 
 func newVersionCommand() *cobra.Command {
@@ -69,78 +74,77 @@ func newVersionCommand() *cobra.Command {
 
 func newValidateCommand() *cobra.Command {
 	var outputJSON bool
-
 	cmd := &cobra.Command{
-		Use:   "validate <spec.yaml>",
-		Short: "Validate and compile a SituationSpec.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			path := args[0]
-			result, err := spec.CompileFile(context.Background(), path)
-			if err != nil {
-				return fmt.Errorf("compile %s: %w", path, err)
-			}
-
-			if outputJSON {
-				cmd.Printf("%s\n", result.CanonicalJSON)
-				return nil
-			}
-
-			cmd.Printf("ok: %s\n", result.Metadata.Name)
-			cmd.Printf("version: %s\n", result.Metadata.Version)
-			cmd.Printf("digest: %s\n", result.Digest)
-			cmd.Printf("schema: %s\n", result.SchemaVersion)
-			return nil
-		},
+		Use: "validate <spec.yaml>", Short: "Validate and compile a SituationSpec.", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error { return validateSpecCommand(cmd, args[0], outputJSON) },
 	}
-
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Emit canonical JSON instead of summary")
 	return cmd
 }
 
-func newRunCommand() *cobra.Command {
-	var (
-		dbPath   string
-		tenantID string
-	)
+func validateSpecCommand(cmd *cobra.Command, path string, outputJSON bool) error {
+	result, err := spec.CompileFile(context.Background(), path)
+	if err != nil {
+		return fmt.Errorf("compile %s: %w", path, err)
+	}
+	printCompiledSpec(cmd, result, outputJSON)
+	return nil
+}
 
+func printCompiledSpec(cmd *cobra.Command, result *spec.CompiledSpec, outputJSON bool) {
+	if outputJSON {
+		cmd.Printf("%s\n", result.CanonicalJSON)
+		return
+	}
+	cmd.Printf("ok: %s\n", result.Metadata.Name)
+	cmd.Printf("version: %s\n", result.Metadata.Version)
+	cmd.Printf("digest: %s\n", result.Digest)
+	cmd.Printf("schema: %s\n", result.SchemaVersion)
+}
+
+func newRunCommand() *cobra.Command {
+	var dbPath, tenantID string
 	cmd := &cobra.Command{
 		Use:   "run --spec <spec.yaml> --trace <trace.jsonl>",
-		Short: "Replay a JSONL trace against a spec and print the canonical result.",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			specPath, err := cmd.Flags().GetString("spec")
-			if err != nil {
-				return fmt.Errorf("get spec flag: %w", err)
-			}
-			tracePath, err := cmd.Flags().GetString("trace")
-			if err != nil {
-				return fmt.Errorf("get trace flag: %w", err)
-			}
-			if specPath == "" || tracePath == "" {
-				return fmt.Errorf("--spec and --trace are required")
-			}
-			if dbPath == "" {
-				dbPath = tracePath + ".replay.db"
-			}
-
-			result, err := replay.Run(cmd.Context(), dbPath, specPath, tracePath, tenantID)
-			if err != nil {
-				return fmt.Errorf("run replay: %w", err)
-			}
-
-			cmd.Printf("events_processed=%d situation_versions=%d versions_hash=%s\n",
-				result.EventsProcessed, result.VersionCount, result.VersionsHash)
-			return nil
-		},
+		Short: "Replay a JSONL trace against a spec and print the canonical result.", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error { return runReplayCommand(cmd, &dbPath, tenantID) },
 	}
-
 	cmd.Flags().String("spec", "", "Path to the SituationSpec YAML file")
 	cmd.Flags().String("trace", "", "Path to the JSONL trace file")
 	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite database path (default: <trace>.replay.db)")
 	cmd.Flags().StringVar(&tenantID, "tenant", "default", "Tenant ID")
-
 	return cmd
+}
+
+func runReplayCommand(cmd *cobra.Command, dbPath *string, tenantID string) error {
+	specPath, tracePath, err := replayPaths(cmd)
+	if err != nil {
+		return err
+	}
+	if *dbPath == "" {
+		*dbPath = tracePath + ".replay.db"
+	}
+	result, err := replay.Run(cmd.Context(), *dbPath, specPath, tracePath, tenantID)
+	if err != nil {
+		return fmt.Errorf("run replay: %w", err)
+	}
+	cmd.Printf("events_processed=%d situation_versions=%d versions_hash=%s\n", result.EventsProcessed, result.VersionCount, result.VersionsHash)
+	return nil
+}
+
+func replayPaths(cmd *cobra.Command) (string, string, error) {
+	specPath, err := cmd.Flags().GetString("spec")
+	if err != nil {
+		return "", "", fmt.Errorf("get spec flag: %w", err)
+	}
+	tracePath, err := cmd.Flags().GetString("trace")
+	if err != nil {
+		return "", "", fmt.Errorf("get trace flag: %w", err)
+	}
+	if specPath == "" || tracePath == "" {
+		return "", "", fmt.Errorf("--spec and --trace are required")
+	}
+	return specPath, tracePath, nil
 }
 
 func newConfigEffectiveCommand() *cobra.Command {

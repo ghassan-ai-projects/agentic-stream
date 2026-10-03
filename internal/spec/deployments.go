@@ -20,17 +20,23 @@ func SaveDeployment(ctx context.Context, db *storage.DB, tenantID string, compil
 		return err
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := record.retirePriorVersions(ctx, tx); err != nil {
-			return err
-		}
-		if err := registerInputSchemas(ctx, tx, compiled.Inputs, record.now); err != nil {
-			return err
-		}
-		return record.insert(ctx, tx)
+		return record.persist(ctx, tx)
 	}); err != nil {
 		return fmt.Errorf("persist deployment: %w", err)
 	}
 	return nil
+}
+
+// persist retires earlier versions, registers the input schemas and inserts
+// the deployment in one transaction.
+func (r deploymentRecord) persist(ctx context.Context, tx *sql.Tx) error {
+	if err := r.retirePriorVersions(ctx, tx); err != nil {
+		return err
+	}
+	if err := registerInputSchemas(ctx, tx, r.compiled.Inputs, r.now); err != nil {
+		return err
+	}
+	return r.insert(ctx, tx)
 }
 
 // deploymentRecord is a compiled spec in its stored form.
@@ -50,20 +56,29 @@ func newDeploymentRecord(tenantID string, compiled *CompiledSpec) (deploymentRec
 		return deploymentRecord{}, fmt.Errorf("compiled spec digest is empty")
 	}
 	record := deploymentRecord{tenantID: tenantID, compiled: compiled, sourceJSON: compiled.CanonicalJSON}
-	var err error
-	if len(record.sourceJSON) == 0 {
-		if record.sourceJSON, err = json.Marshal(compiled); err != nil {
-			return deploymentRecord{}, fmt.Errorf("marshal compiled spec: %w", err)
-		}
-	}
-	if record.compiledIR, err = json.Marshal(compiled); err != nil {
-		return deploymentRecord{}, fmt.Errorf("marshal compiled ir: %w", err)
-	}
-	if record.specDigest, err = canonicaljson.DecodeDigest(compiled.Digest); err != nil {
-		return deploymentRecord{}, fmt.Errorf("decode compiled spec digest: %w", err)
+	if err := record.encode(); err != nil {
+		return deploymentRecord{}, err
 	}
 	record.now = time.Now().UTC().Format(time.RFC3339Nano)
 	return record, nil
+}
+
+// encode fills the source JSON when the spec carries none, the compiled IR
+// and the decoded spec digest.
+func (r *deploymentRecord) encode() error {
+	var err error
+	if len(r.sourceJSON) == 0 {
+		if r.sourceJSON, err = json.Marshal(r.compiled); err != nil {
+			return fmt.Errorf("marshal compiled spec: %w", err)
+		}
+	}
+	if r.compiledIR, err = json.Marshal(r.compiled); err != nil {
+		return fmt.Errorf("marshal compiled ir: %w", err)
+	}
+	if r.specDigest, err = canonicaljson.DecodeDigest(r.compiled.Digest); err != nil {
+		return fmt.Errorf("decode compiled spec digest: %w", err)
+	}
+	return nil
 }
 
 // retirePriorVersions implements P8 graph versioning: a definition change is

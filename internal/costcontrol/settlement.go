@@ -21,16 +21,19 @@ func (Controller) Settle(ctx context.Context, tx *sql.Tx, episodeID string, actu
 	if err != nil || !needed {
 		return err
 	}
+	return applySettlement(ctx, tx, episodeID, reservation, actual, now)
+}
+
+// applySettlement records the episode's actual cost and moves its reservation
+// to spent in the global and tenant limits.
+func applySettlement(ctx context.Context, tx *sql.Tx, episodeID string, reservation costReservation, actual uint64, now string) error {
 	if err := recordCostSettlement(ctx, tx, episodeID, actual, now); err != nil {
 		return err
 	}
 	if err := settleLimit(ctx, tx, "global", reservation.reserved, actual, now); err != nil {
 		return err
 	}
-	if err := settleLimit(ctx, tx, "tenant:"+reservation.tenantID, reservation.reserved, actual, now); err != nil {
-		return err
-	}
-	return nil
+	return settleLimit(ctx, tx, "tenant:"+reservation.tenantID, reservation.reserved, actual, now)
 }
 
 type costReservation struct {

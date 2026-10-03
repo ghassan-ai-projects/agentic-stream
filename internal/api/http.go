@@ -1,5 +1,6 @@
-// Package api provides the small, loopback-safe HTTP surface for runtime
-// liveness and readiness. Business operations remain in internal packages.
+// Package api provides the small, loopback-safe HTTP surface: liveness,
+// readiness, epoch controls and the Server-Sent Events delivery of durable
+// notifications. Business operations remain in internal packages.
 package api
 
 import (

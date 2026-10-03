@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
 func TestRuntimeCountersAndMetricsAreLowCardinality(t *testing.T) {

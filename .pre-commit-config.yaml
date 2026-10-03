@@ -14,6 +14,7 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-merge-conflict
@@ -27,12 +28,19 @@ repos:
     rev: v0.5.1
     hooks:
       - id: go-fmt
-      - id: go-vet
       - id: go-imports
+        # Generated imports are owned by the pinned protobuf generator.
+        exclude: '(^|/).*\.pb\.go$'
         args: [-local, github.com/ghassan-ai-projects/agentic-stream]
 
   - repo: local
     hooks:
+      - id: go-vet
+        name: go vet
+        entry: go vet ./...
+        language: system
+        types: [go]
+        pass_filenames: false
       - id: golangci-lint
         name: golangci-lint
         entry: golangci-lint run --timeout=1m

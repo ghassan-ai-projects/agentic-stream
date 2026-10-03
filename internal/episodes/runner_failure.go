@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // deadlineExceeded reports whether the attempt ran past its wall_time budget.
@@ -42,22 +40,12 @@ func (r *Runner) watchSupersession(ctx context.Context, episodeID string, cancel
 	}
 }
 
-func executionFailureStatus(err error) episodeledger.AttemptStatus {
-	if errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled {
-		return episodeledger.AttemptCancelled
-	}
-	if errors.Is(err, context.DeadlineExceeded) || status.Code(err) == codes.DeadlineExceeded {
-		return episodeledger.AttemptTimedOut
-	}
-	return episodeledger.AttemptFailed
-}
-
 func executionFailureReason(err error) string {
-	var budgetErr *budgetExceededError
+	var budgetErr *BudgetExceededError
 	if errors.As(err, &budgetErr) {
 		return "budget_exhausted"
 	}
-	var telemetryErr budgetTelemetryMissingError
+	var telemetryErr BudgetTelemetryMissingError
 	if errors.As(err, &telemetryErr) {
 		return "budget_telemetry_missing"
 	}
@@ -69,6 +57,16 @@ func executionFailureReason(err error) string {
 	default:
 		return "worker_execution_failed"
 	}
+}
+
+func executionFailureStatus(err error) episodeledger.AttemptStatus {
+	if errors.Is(err, context.Canceled) {
+		return episodeledger.AttemptCancelled
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return episodeledger.AttemptTimedOut
+	}
+	return episodeledger.AttemptFailed
 }
 
 // failAttemptStatus fails the current attempt, then retries the episode or
@@ -120,12 +118,20 @@ func (r *Runner) retryOrConcludeFailedEpisode(ctx context.Context, tx *sql.Tx, e
 		return fmt.Errorf("count failed episode attempts: %w", err)
 	}
 	superseded := lifecycle == string(episodeledger.LifecycleSuperseded)
+	return r.resolveFailedEpisode(ctx, tx, episodeID, superseded, failedAttempts)
+}
+
+func (r *Runner) resolveFailedEpisode(ctx context.Context, tx *sql.Tx, episodeID string, superseded bool, failedAttempts int) error {
 	if !superseded && failedAttempts < maxEpisodeAttempts {
 		if err := episodeledger.RetainForRetry(ctx, tx, episodeID); err != nil {
 			return fmt.Errorf("update episode failed: %w", err)
 		}
 		return nil
 	}
+	return r.concludeFailedEpisode(ctx, tx, episodeID, superseded)
+}
+
+func (r *Runner) concludeFailedEpisode(ctx context.Context, tx *sql.Tx, episodeID string, superseded bool) error {
 	if !superseded {
 		terminalJSON, err := json.Marshal(map[string]any{"status": episodeledger.AttemptFailed, "reason": "attempt_retry_limit"})
 		if err != nil {
@@ -154,15 +160,19 @@ func (r *Runner) failAttemptWithRejection(ctx context.Context, current, incoming
 		if err := episodeledger.RecordRejection(ctx, tx, incoming, reason, details, r.clk.Now()); err != nil {
 			return fmt.Errorf("record worker identity rejection: %w", err)
 		}
-		terminalJSON, err := json.Marshal(map[string]any{"status": episodeledger.AttemptFailed, "reason": detail})
-		if err != nil {
-			return fmt.Errorf("marshal terminal: %w", err)
-		}
-		if err := episodeledger.TransitionAttempt(ctx, tx, current, episodeledger.AttemptFailed, r.clk.Now(), terminalJSON); err != nil {
-			return fmt.Errorf("finish identity-failed attempt: %w", err)
-		}
-		return r.retryOrConcludeRejectedEpisode(ctx, tx, current.EpisodeID, terminalJSON)
+		return r.failRejectedAttempt(ctx, tx, current, detail)
 	})
+}
+
+func (r *Runner) failRejectedAttempt(ctx context.Context, tx *sql.Tx, current episodeledger.Identity, detail string) error {
+	terminalJSON, err := json.Marshal(map[string]any{"status": episodeledger.AttemptFailed, "reason": detail})
+	if err != nil {
+		return fmt.Errorf("marshal terminal: %w", err)
+	}
+	if err := episodeledger.TransitionAttempt(ctx, tx, current, episodeledger.AttemptFailed, r.clk.Now(), terminalJSON); err != nil {
+		return fmt.Errorf("finish identity-failed attempt: %w", err)
+	}
+	return r.retryOrConcludeRejectedEpisode(ctx, tx, current.EpisodeID, terminalJSON)
 }
 
 // retryOrConcludeRejectedEpisode keeps the episode running for another
@@ -179,6 +189,10 @@ func (r *Runner) retryOrConcludeRejectedEpisode(ctx context.Context, tx *sql.Tx,
 		}
 		return nil
 	}
+	return r.concludeRejectedEpisode(ctx, tx, episodeID, terminalJSON)
+}
+
+func (r *Runner) concludeRejectedEpisode(ctx context.Context, tx *sql.Tx, episodeID string, terminalJSON []byte) error {
 	if r.cost != nil {
 		if err := r.cost.Settle(ctx, tx, episodeID, 0, r.runtimeNow()); err != nil {
 			return fmt.Errorf("settle exhausted episode cost: %w", err)

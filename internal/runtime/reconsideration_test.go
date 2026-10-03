@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
@@ -56,7 +56,7 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 
 	pipeline, err := NewPipeline(ctx, PipelineConfig{
 		DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: ids.Deterministic(),
-		Executor: episodes.NewFakeExecutor(), Effector: actions.NewSimulatedEffector(),
+		Executor: episodes.NewFakeExecutor(), Effector: device.NewSimulatedEffector(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +77,7 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	if _, err := pipeline.engine.RunGlobal(ctx, nil); err != nil {
 		t.Fatalf("process correction: %v", err)
 	}
-	if admitted, err := pipeline.assemblePending(ctx); err != nil {
+	if admitted, err := pipeline.admission.AdmitPending(ctx); err != nil {
 		t.Fatalf("assemble reconsiderations: %v", err)
 	} else if admitted != 1 {
 		t.Fatalf("episodes admitted = %d, want 1", admitted)

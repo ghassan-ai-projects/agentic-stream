@@ -39,6 +39,10 @@ func (c *CapabilityCatalog) Materialize(command actionport.Command, expectedBoot
 	if expectedBootID == "" {
 		return nil, fmt.Errorf("expected boot id is required to materialize a device command")
 	}
+	return c.materializeRoute(command, expectedBootID)
+}
+
+func (c *CapabilityCatalog) materializeRoute(command actionport.Command, expectedBootID string) (map[string]any, error) {
 	spec, ok := c.Routes[command.EffectorRoute]
 	if !ok {
 		return nil, fmt.Errorf("route %q is not in the device capability catalog", command.EffectorRoute)
@@ -50,25 +54,7 @@ func (c *CapabilityCatalog) Materialize(command actionport.Command, expectedBoot
 	if err != nil {
 		return nil, err
 	}
-	physicalTarget := spec.Target
-
-	document := map[string]any{
-		"message_type":       "command",
-		"protocol_version":   c.ProtocolVersion,
-		"command_id":         command.CommandID,
-		"idempotency_key":    command.IdempotencyKey,
-		"target":             physicalTarget,
-		"operation":          spec.Operation,
-		"parameters":         parameters,
-		"expected_boot_id":   expectedBootID,
-		"not_before_mono_us": command.NotBeforeMonoUS,
-		"expires_after_ms":   spec.ExpiresAfterMs,
-		"policy_digest":      command.PolicyDigest,
-	}
-	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, document); err != nil {
-		return nil, fmt.Errorf("materialized device command is invalid: %w", err)
-	}
-	return document, nil
+	return c.deviceCommandDocument(command, expectedBootID, spec, parameters)
 }
 
 // checkTarget requires the command's normalized target to be the route's
@@ -97,6 +83,10 @@ func (spec OperationSpec) boundedParameters(command actionport.Command) (map[str
 	if !ok {
 		return nil, fmt.Errorf("route %q selector %q=%q is not an allowed preset", command.EffectorRoute, spec.SelectorField, selectorValue)
 	}
+	return spec.enforcePresetBounds(command.EffectorRoute, preset)
+}
+
+func (spec OperationSpec) enforcePresetBounds(route string, preset map[string]any) (map[string]any, error) {
 	parameters := make(map[string]any, len(preset))
 	for key, value := range preset {
 		parameters[key] = value
@@ -106,11 +96,20 @@ func (spec OperationSpec) boundedParameters(command actionport.Command) (map[str
 		if !present {
 			continue
 		}
-		if err := spec.Bounds[param].check(command.EffectorRoute, param, raw); err != nil {
+		if err := spec.Bounds[param].check(route, param, raw); err != nil {
 			return nil, err
 		}
 	}
 	return parameters, nil
+}
+
+func sortedKeys(m map[string]NumericBound) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func (bound NumericBound) check(route, param string, raw any) error {
@@ -127,55 +126,6 @@ func (bound NumericBound) check(route, param string, raw any) error {
 	return nil
 }
 
-// MaterializeSafeStop creates the fixed catalog-owned safe-state command for a
-// target. It has no caller-supplied parameters or policy authority and cannot
-// be used to clear a physical e-stop.
-func (c *CapabilityCatalog) MaterializeSafeStop(target, expectedBootID string) (map[string]any, error) {
-	if c == nil {
-		return nil, fmt.Errorf("capability catalog is required to materialize a safe stop")
-	}
-	if expectedBootID == "" {
-		return nil, fmt.Errorf("expected boot id is required to materialize a safe stop")
-	}
-	spec, ok := c.SafeStops[target]
-	if !ok {
-		return nil, fmt.Errorf("safe stop target %q is not in the capability catalog", target)
-	}
-	catalogDigest, err := c.Digest()
-	if err != nil {
-		return nil, fmt.Errorf("digest safe stop catalog: %w", err)
-	}
-	parameters := map[string]any{}
-	commandID := "safe-stop/" + target
-	document := map[string]any{
-		"message_type": "command", "protocol_version": c.ProtocolVersion,
-		"command_id": commandID, "target": target, "operation": spec.Operation,
-		"parameters": parameters, "expected_boot_id": expectedBootID,
-		"not_before_mono_us": 0, "expires_after_ms": spec.ExpiresAfterMs,
-		"policy_digest": catalogDigest,
-	}
-	identity := cloneDocument(document)
-	delete(identity, "command_id")
-	idempotencyKey, err := canonicaljson.Digest(canonicaljson.DomainCommand, identity)
-	if err != nil {
-		return nil, fmt.Errorf("digest safe stop command identity: %w", err)
-	}
-	document["idempotency_key"] = idempotencyKey
-	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, document); err != nil {
-		return nil, fmt.Errorf("materialized safe stop is invalid: %w", err)
-	}
-	return document, nil
-}
-
-func sortedKeys(m map[string]NumericBound) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
 func toFloat(value any) (float64, bool) {
 	switch number := value.(type) {
 	case float64:
@@ -190,4 +140,76 @@ func toFloat(value any) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func (c *CapabilityCatalog) deviceCommandDocument(command actionport.Command, expectedBootID string, spec OperationSpec, parameters map[string]any) (map[string]any, error) {
+	document := map[string]any{
+		"message_type":       "command",
+		"protocol_version":   c.ProtocolVersion,
+		"command_id":         command.CommandID,
+		"idempotency_key":    command.IdempotencyKey,
+		"target":             spec.Target,
+		"operation":          spec.Operation,
+		"parameters":         parameters,
+		"expected_boot_id":   expectedBootID,
+		"not_before_mono_us": command.NotBeforeMonoUS,
+		"expires_after_ms":   spec.ExpiresAfterMs,
+		"policy_digest":      command.PolicyDigest,
+	}
+	return validateMaterializedCommand(document)
+}
+
+func validateMaterializedCommand(document map[string]any) (map[string]any, error) {
+	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, document); err != nil {
+		return nil, fmt.Errorf("materialized device command is invalid: %w", err)
+	}
+	return document, nil
+}
+
+// MaterializeSafeStop creates the fixed catalog-owned safe-state command for a
+// target. It has no caller-supplied parameters or policy authority and cannot
+// be used to clear a physical e-stop.
+func (c *CapabilityCatalog) MaterializeSafeStop(target, expectedBootID string) (map[string]any, error) {
+	if c == nil {
+		return nil, fmt.Errorf("capability catalog is required to materialize a safe stop")
+	}
+	if expectedBootID == "" {
+		return nil, fmt.Errorf("expected boot id is required to materialize a safe stop")
+	}
+	spec, ok := c.SafeStops[target]
+	if !ok {
+		return nil, fmt.Errorf("safe stop target %q is not in the capability catalog", target)
+	}
+	return c.safeStopDocument(target, expectedBootID, spec)
+}
+
+func (c *CapabilityCatalog) safeStopDocument(target, expectedBootID string, spec SafeStopSpec) (map[string]any, error) {
+	catalogDigest, err := c.Digest()
+	if err != nil {
+		return nil, fmt.Errorf("digest safe stop catalog: %w", err)
+	}
+	parameters := map[string]any{}
+	commandID := "safe-stop/" + target
+	document := map[string]any{
+		"message_type": "command", "protocol_version": c.ProtocolVersion,
+		"command_id": commandID, "target": target, "operation": spec.Operation,
+		"parameters": parameters, "expected_boot_id": expectedBootID,
+		"not_before_mono_us": 0, "expires_after_ms": spec.ExpiresAfterMs,
+		"policy_digest": catalogDigest,
+	}
+	return sealSafeStopDocument(document)
+}
+
+func sealSafeStopDocument(document map[string]any) (map[string]any, error) {
+	identity := cloneDocument(document)
+	delete(identity, "command_id")
+	idempotencyKey, err := canonicaljson.Digest(canonicaljson.DomainCommand, identity)
+	if err != nil {
+		return nil, fmt.Errorf("digest safe stop command identity: %w", err)
+	}
+	document["idempotency_key"] = idempotencyKey
+	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, document); err != nil {
+		return nil, fmt.Errorf("materialized safe stop is invalid: %w", err)
+	}
+	return document, nil
 }

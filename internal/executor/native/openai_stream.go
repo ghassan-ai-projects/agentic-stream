@@ -9,41 +9,66 @@ import (
 	"strings"
 )
 
+type providerStream struct {
+	content       strings.Builder
+	toolCalls     map[int]*ToolCall
+	usage         Usage
+	usageReported bool
+}
+
 func parseSSE(reader io.Reader) (ModelResponse, error) {
 	scanner := bufio.NewScanner(io.LimitReader(reader, 16<<20))
 	scanner.Buffer(make([]byte, 4096), 1<<20)
-	var content strings.Builder
-	toolCalls := make(map[int]*ToolCall)
-	var usage Usage
-	var usageReported bool
+	stream := providerStream{toolCalls: make(map[int]*ToolCall)}
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "data:") {
-			continue
+		done, err := stream.acceptLine(scanner.Text())
+		if err != nil {
+			return ModelResponse{}, err
 		}
-		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if data == "[DONE]" {
+		if done {
 			break
 		}
-		var response openAIResponse
-		if err := json.Unmarshal([]byte(data), &response); err != nil {
-			return ModelResponse{}, fmt.Errorf("decode model stream event: %w", err)
-		}
-		chunkUsage, reported := responseUsage(response)
-		usage = addUsage(usage, chunkUsage)
-		usageReported = usageReported || reported
-		if len(response.Choices) == 0 {
-			continue
-		}
-		content.WriteString(response.Choices[0].Delta.Content)
-		appendToolCallDeltas(toolCalls, response.Choices[0].Delta.ToolCalls)
 	}
-	if err := scanner.Err(); err != nil {
+	return stream.finish(scanner.Err())
+}
+
+func (s *providerStream) acceptLine(raw string) (bool, error) {
+	line := strings.TrimSpace(raw)
+	if !strings.HasPrefix(line, "data:") {
+		return false, nil
+	}
+	data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+	if data == "[DONE]" {
+		return true, nil
+	}
+	var response openAIResponse
+	if err := json.Unmarshal([]byte(data), &response); err != nil {
+		return false, fmt.Errorf("decode model stream event: %w", err)
+	}
+	s.acceptChunk(response)
+	return false, nil
+}
+
+func (s *providerStream) acceptChunk(response openAIResponse) {
+	chunkUsage, reported := responseUsage(response)
+	s.usage = addUsage(s.usage, chunkUsage)
+	s.usageReported = s.usageReported || reported
+	if len(response.Choices) == 0 {
+		return
+	}
+	s.content.WriteString(response.Choices[0].Delta.Content)
+	appendToolCallDeltas(s.toolCalls, response.Choices[0].Delta.ToolCalls)
+}
+
+func (stream *providerStream) finish(err error) (ModelResponse, error) {
+	if err != nil {
 		return ModelResponse{}, fmt.Errorf("read model stream: %w", err)
 	}
-	result := ModelResponse{DecisionJSON: []byte(strings.TrimSpace(content.String())), Usage: usage, UsageReported: usageReported}
-	result.ToolCalls = orderedToolCalls(toolCalls)
-	return result, nil
+	return stream.response(), nil
+}
+
+func (s *providerStream) response() ModelResponse {
+	return ModelResponse{DecisionJSON: []byte(strings.TrimSpace(s.content.String())), Usage: s.usage, UsageReported: s.usageReported, ToolCalls: orderedToolCalls(s.toolCalls)}
 }
 
 func appendToolCallDeltas(toolCalls map[int]*ToolCall, deltas []openAIToolCall) {

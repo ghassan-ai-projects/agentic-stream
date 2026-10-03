@@ -37,15 +37,7 @@ func (o *RuntimeOwner) ClaimAndRecover(ctx context.Context, epoch string, recove
 	}
 	now := o.now()
 	err := o.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := o.claimTx(ctx, tx, epoch, now); err != nil {
-			return err
-		}
-		if recover != nil {
-			if err := recover(tx, now); err != nil {
-				return err
-			}
-		}
-		return o.Assert(ctx, tx, epoch)
+		return o.claimAndRecoverTx(ctx, tx, epoch, now, recover)
 	})
 	if err != nil {
 		return fmt.Errorf("%w", err)
@@ -63,26 +55,7 @@ func (o *RuntimeOwner) claimTx(ctx context.Context, tx *sql.Tx, epoch string, no
 func (o *RuntimeOwner) writeOwnerLease(ctx context.Context, tx *sql.Tx, epoch string, now time.Time) error {
 	leaseUntil := formatRuntimeTime(now.Add(o.leaseDuration()))
 	nowText := formatRuntimeTime(now)
-	_, err := tx.ExecContext(ctx, `
-		INSERT INTO runtime_owner (
-			singleton_id, owner_epoch, owner_instance, acquired_at,
-			heartbeat_at, lease_until
-		) VALUES (1, ?, ?, ?, ?, ?)
-		ON CONFLICT(singleton_id) DO UPDATE SET
-			owner_epoch = excluded.owner_epoch,
-			owner_instance = excluded.owner_instance,
-			acquired_at = CASE
-				WHEN runtime_owner.owner_epoch = excluded.owner_epoch
-					AND runtime_owner.owner_instance = excluded.owner_instance
-					THEN runtime_owner.acquired_at
-				ELSE excluded.acquired_at
-			END,
-			heartbeat_at = excluded.heartbeat_at,
-			lease_until = excluded.lease_until
-		WHERE (runtime_owner.owner_epoch = excluded.owner_epoch
-			AND runtime_owner.owner_instance = excluded.owner_instance)
-			OR (runtime_owner.owner_epoch <> excluded.owner_epoch
-				AND runtime_owner.lease_until <= excluded.heartbeat_at)`,
+	_, err := tx.ExecContext(ctx, claimOwnerLeaseSQL,
 		epoch, o.InstanceID, nowText, nowText, leaseUntil,
 	)
 	if err != nil {
@@ -111,21 +84,13 @@ func (o *RuntimeOwner) Renew(ctx context.Context, epoch string) error {
 		return fmt.Errorf("runtime owner is not configured")
 	}
 	now := o.now()
-	result, err := o.DB.ExecContext(ctx, `
-		UPDATE runtime_owner
-		SET heartbeat_at = ?, lease_until = ?
-		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ? AND lease_until > ?`,
+	result, err := o.DB.ExecContext(ctx, renewOwnerLeaseSQL,
 		formatRuntimeTime(now), formatRuntimeTime(now.Add(o.leaseDuration())), epoch, o.InstanceID, formatRuntimeTime(now),
 	)
 	if err != nil {
 		return fmt.Errorf("renew runtime owner: %w", err)
 	}
-	if count, err := result.RowsAffected(); err != nil {
-		return fmt.Errorf("count renewed runtime owners: %w", err)
-	} else if count != 1 {
-		return ErrRuntimeOwnerBusy
-	}
-	return nil
+	return requireOwnerMutation(result, "renewed")
 }
 
 // Release clears the singleton lease only for the owning epoch.
@@ -134,19 +99,12 @@ func (o *RuntimeOwner) Release(ctx context.Context, epoch string) error {
 		return fmt.Errorf("runtime owner is not configured")
 	}
 	now := o.now()
-	result, err := o.DB.ExecContext(ctx, `
-		UPDATE runtime_owner SET heartbeat_at = ?, lease_until = ?
-		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ?`,
+	result, err := o.DB.ExecContext(ctx, releaseOwnerLeaseSQL,
 		formatRuntimeTime(now), formatRuntimeTime(now), epoch, o.InstanceID)
 	if err != nil {
 		return fmt.Errorf("release runtime owner: %w", err)
 	}
-	if count, err := result.RowsAffected(); err != nil {
-		return fmt.Errorf("count released runtime owners: %w", err)
-	} else if count != 1 {
-		return ErrRuntimeOwnerBusy
-	}
-	return nil
+	return requireOwnerMutation(result, "released")
 }
 
 // Assert verifies that epoch currently owns an unexpired lease inside tx.
@@ -188,4 +146,57 @@ func formatRuntimeTime(value time.Time) string {
 	// nanoseconds preserve chronological ordering even when a time has no
 	// fractional component.
 	return value.UTC().Format("2006-01-02T15:04:05.000000000Z")
+}
+
+func (o *RuntimeOwner) claimAndRecoverTx(ctx context.Context, tx *sql.Tx, epoch string, now time.Time, recover func(*sql.Tx, time.Time) error) error {
+	if err := o.claimTx(ctx, tx, epoch, now); err != nil {
+		return err
+	}
+	if recover != nil {
+		if err := recover(tx, now); err != nil {
+			return err
+		}
+	}
+	return o.Assert(ctx, tx, epoch)
+}
+
+const claimOwnerLeaseSQL = `
+		INSERT INTO runtime_owner (
+			singleton_id, owner_epoch, owner_instance, acquired_at,
+			heartbeat_at, lease_until
+		) VALUES (1, ?, ?, ?, ?, ?)
+		ON CONFLICT(singleton_id) DO UPDATE SET
+			owner_epoch = excluded.owner_epoch,
+			owner_instance = excluded.owner_instance,
+			acquired_at = CASE
+				WHEN runtime_owner.owner_epoch = excluded.owner_epoch
+					AND runtime_owner.owner_instance = excluded.owner_instance
+					THEN runtime_owner.acquired_at
+				ELSE excluded.acquired_at
+			END,
+			heartbeat_at = excluded.heartbeat_at,
+			lease_until = excluded.lease_until
+		WHERE (runtime_owner.owner_epoch = excluded.owner_epoch
+			AND runtime_owner.owner_instance = excluded.owner_instance)
+			OR (runtime_owner.owner_epoch <> excluded.owner_epoch
+				AND runtime_owner.lease_until <= excluded.heartbeat_at)`
+
+const renewOwnerLeaseSQL = `
+		UPDATE runtime_owner
+		SET heartbeat_at = ?, lease_until = ?
+		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ? AND lease_until > ?`
+
+const releaseOwnerLeaseSQL = `
+		UPDATE runtime_owner SET heartbeat_at = ?, lease_until = ?
+		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ?`
+
+func requireOwnerMutation(result sql.Result, verb string) error {
+	count, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count %s runtime owners: %w", verb, err)
+	}
+	if count != 1 {
+		return ErrRuntimeOwnerBusy
+	}
+	return nil
 }

@@ -42,29 +42,45 @@ func (c *RecoveryCoordinator) ClaimAndRecover(ctx context.Context) (RecoveryRepo
 	if c.Ledger.RuntimeEpoch != c.Epoch {
 		return RecoveryReport{}, fmt.Errorf("ledger runtime epoch does not match owner epoch")
 	}
+	return c.claimRecovery(ctx)
+}
+
+func (c *RecoveryCoordinator) claimRecovery(ctx context.Context) (RecoveryReport, error) {
 	c.Ledger.Owner = c.Owner
-	now := time.Now().UTC()
-	if c.Now != nil {
-		now = c.Now().UTC()
-	}
+	now := c.recoveryTime()
 	var report RecoveryReport
 	err := c.Owner.ClaimAndRecover(ctx, c.Epoch, func(tx *sql.Tx, claimedAt time.Time) error {
 		if c.Now == nil {
 			now = claimedAt
 		}
 		var err error
-		report.Episodes, err = episodeledger.RecoverUnfinishedAttemptsWithCost(ctx, tx, c.Epoch, now, c.Costs)
-		if err != nil {
-			return fmt.Errorf("recover episode attempts: %w", err)
-		}
-		report.InterruptedEvidence, err = c.Ledger.RecoverTx(ctx, tx, now)
-		if err != nil {
-			return fmt.Errorf("recover evidence calls: %w", err)
-		}
-		return nil
+		report, err = c.recoverLedgers(ctx, tx, now)
+		return err
 	})
 	if err != nil {
 		return RecoveryReport{}, fmt.Errorf("claim and recover runtime: %w", err)
+	}
+	return report, nil
+}
+
+func (c *RecoveryCoordinator) recoveryTime() time.Time {
+	now := time.Now().UTC()
+	if c.Now != nil {
+		now = c.Now().UTC()
+	}
+	return now
+}
+
+func (c *RecoveryCoordinator) recoverLedgers(ctx context.Context, tx *sql.Tx, now time.Time) (RecoveryReport, error) {
+	var report RecoveryReport
+	var err error
+	report.Episodes, err = episodeledger.RecoverUnfinishedAttemptsWithCost(ctx, tx, c.Epoch, now, c.Costs)
+	if err != nil {
+		return RecoveryReport{}, fmt.Errorf("recover episode attempts: %w", err)
+	}
+	report.InterruptedEvidence, err = c.Ledger.RecoverTx(ctx, tx, now)
+	if err != nil {
+		return RecoveryReport{}, fmt.Errorf("recover evidence calls: %w", err)
 	}
 	return report, nil
 }

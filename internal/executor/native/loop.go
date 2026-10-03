@@ -2,9 +2,6 @@ package native
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -13,12 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 )
-
-func (e *Executor) executeBounded(ctx context.Context, req *episodes.Request, payload requestPayload, budget budgetConfig, tools map[string]Tool) (*episodes.Outcome, error) {
-	bounded, cancel := context.WithTimeout(ctx, budget.WallTime)
-	defer cancel()
-	return e.executeLoop(bounded, req, payload, budget, tools)
-}
 
 type budgetConfig struct {
 	WallTime             time.Duration
@@ -30,19 +21,6 @@ type budgetConfig struct {
 	TotalToolResultBytes uint64
 	ProviderRetries      uint32
 	CostMicrounits       uint64
-}
-
-func (e *Executor) executeLoop(ctx context.Context, req *episodes.Request, payload requestPayload, budget budgetConfig, tools map[string]Tool) (*episodes.Outcome, error) {
-	loop := &episodeLoop{
-		executor: e, req: req, payload: payload, budget: budget, tools: tools,
-		modelReq:  ModelRequest{Episode: req, Prompt: payload.Executor.Prompt, Objective: payload.Executor.Objective, Snapshot: payload.Snapshot, DecisionSchema: payload.Executor.DecisionSchema, AllowedIntentTypes: append([]string(nil), payload.AllowedIntentTypes...), RiskCeiling: payload.RiskCeiling, Tools: toolDefinitions(payload.Tools, tools)},
-		seenCalls: make(map[string]struct{}),
-	}
-	for {
-		if outcome := loop.step(ctx); outcome != nil {
-			return outcome, nil
-		}
-	}
 }
 
 // episodeLoop is the bounded model/tool loop of one native episode. Each step
@@ -64,6 +42,27 @@ type episodeLoop struct {
 	toolResultBytes                                 uint64
 }
 
+const providerRetryBackoff = 10 * time.Millisecond
+
+func (e *Executor) executeBounded(ctx context.Context, req *episodes.Request, payload requestPayload, budget budgetConfig, tools map[string]Tool) (*episodes.Outcome, error) {
+	bounded, cancel := context.WithTimeout(ctx, budget.WallTime)
+	defer cancel()
+	return e.executeLoop(bounded, req, payload, budget, tools)
+}
+
+func (e *Executor) executeLoop(ctx context.Context, req *episodes.Request, payload requestPayload, budget budgetConfig, tools map[string]Tool) (*episodes.Outcome, error) {
+	loop := &episodeLoop{
+		executor: e, req: req, payload: payload, budget: budget, tools: tools,
+		modelReq:  ModelRequest{Episode: req, Prompt: payload.Executor.Prompt, Objective: payload.Executor.Objective, Snapshot: payload.Snapshot, DecisionSchema: payload.Executor.DecisionSchema, AllowedIntentTypes: append([]string(nil), payload.AllowedIntentTypes...), RiskCeiling: payload.RiskCeiling, Tools: toolDefinitions(payload.Tools, tools)},
+		seenCalls: make(map[string]struct{}),
+	}
+	for {
+		if outcome := loop.step(ctx); outcome != nil {
+			return outcome, nil
+		}
+	}
+}
+
 // step runs one model call. It returns the terminal outcome, or nil when the
 // loop should continue.
 func (l *episodeLoop) step(ctx context.Context) *episodes.Outcome {
@@ -79,6 +78,10 @@ func (l *episodeLoop) step(ctx context.Context) *episodes.Outcome {
 	if err != nil {
 		return l.providerFailure(ctx, err)
 	}
+	return l.acceptResponse(ctx, response)
+}
+
+func (l *episodeLoop) acceptResponse(ctx context.Context, response ModelResponse) *episodes.Outcome {
 	if outcome := l.account(ctx, response); outcome != nil {
 		return outcome
 	}
@@ -101,6 +104,10 @@ func (l *episodeLoop) providerFailure(ctx context.Context, err error) *episodes.
 	if !errors.As(err, &retryable) {
 		return failed(l.req, "provider_failed", l.usage)
 	}
+	return l.retryProvider(ctx)
+}
+
+func (l *episodeLoop) retryProvider(ctx context.Context) *episodes.Outcome {
 	if l.providerRetries < l.budget.ProviderRetries {
 		l.providerRetries++
 		if waitErr := waitProviderRetry(ctx); waitErr != nil {
@@ -132,59 +139,6 @@ func (l *episodeLoop) account(ctx context.Context, response ModelResponse) *epis
 	if err := checkUsage(l.usage, l.budget); err != nil {
 		return failed(l.req, err.Error(), l.usage)
 	}
-	return nil
-}
-
-// runTools executes the requested tool calls as observations for the next
-// model call. Only allow-listed tools with valid, never-repeated arguments
-// run, within the tool-call and result-byte budgets.
-func (l *episodeLoop) runTools(ctx context.Context, calls []ToolCall) *episodes.Outcome {
-	if l.budget.ToolCalls > 0 && uint32(len(calls)) > l.budget.ToolCalls-l.toolCalls { //nolint:gosec // bounded by provider response and checked below.
-		return failed(l.req, "budget_exhausted:tool_calls", l.usage)
-	}
-	for _, call := range calls {
-		l.toolCalls++
-		if err := ctx.Err(); err != nil {
-			return terminalForContext(l.req, err, l.usage)
-		}
-		if outcome := l.runTool(ctx, call); outcome != nil {
-			return outcome
-		}
-	}
-	return nil
-}
-
-func (l *episodeLoop) runTool(ctx context.Context, call ToolCall) *episodes.Outcome {
-	tool, ok := l.tools[call.Name]
-	if !ok {
-		return failed(l.req, "tool_not_allowed:"+call.Name, l.usage)
-	}
-	if len(call.Arguments) == 0 || !json.Valid(call.Arguments) {
-		return failed(l.req, "tool_arguments_invalid:"+call.Name, l.usage)
-	}
-	digest := sha256.Sum256(append([]byte(call.Name+"|"), call.Arguments...))
-	key := hex.EncodeToString(digest[:])
-	if _, exists := l.seenCalls[key]; exists {
-		return failed(l.req, "repeated_tool_call:"+call.Name, l.usage)
-	}
-	l.seenCalls[key] = struct{}{}
-	result, err := tool.Call(ctx, call.Arguments)
-	if err != nil {
-		if errors.Is(err, ErrInterrupt) {
-			return failed(l.req, "interrupt_in_non_interactive_episode", l.usage)
-		}
-		l.observations = append(l.observations, Observation{CallID: call.ID, ToolName: call.Name, ErrorCode: "tool_failed"})
-		return nil
-	}
-	observation, err := l.executor.observe(ctx, call, result, l.budget)
-	if err != nil {
-		return failed(l.req, err.Error(), l.usage)
-	}
-	l.toolResultBytes += observation.Bytes
-	if l.budget.TotalToolResultBytes > 0 && l.toolResultBytes > l.budget.TotalToolResultBytes {
-		return failed(l.req, "budget_exhausted:total_tool_result_bytes", l.usage)
-	}
-	l.observations = append(l.observations, observation)
 	return nil
 }
 
@@ -250,8 +204,6 @@ func checkUsage(usage Usage, budget budgetConfig) error {
 	}
 	return nil
 }
-
-const providerRetryBackoff = 10 * time.Millisecond
 
 func waitProviderRetry(ctx context.Context) error {
 	timer := time.NewTimer(providerRetryBackoff)

@@ -94,8 +94,8 @@ linters:
     nestif:
       min-complexity: 4
     funlen:
-      lines: 50
-      statements: 30
+      lines: 15
+      statements: 15
       ignore-comments: true
 
     thelper:

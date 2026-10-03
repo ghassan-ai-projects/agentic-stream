@@ -4,15 +4,9 @@ package spec
 // specs produce the same digest.
 func normalizeSpec(r *rawSpec) *CompiledSpec {
 	spec := &CompiledSpec{
-		SchemaVersion: r.APIVersion,
-		Metadata:      r.Metadata,
-		Inputs:        r.Inputs,
-		Time:          r.Time,
-		Windows:       r.Windows,
-		Operators:     r.Operators,
-		Situation:     r.Situation,
-		Cognition:     r.Cognition,
-		Actions:       r.Actions,
+		SchemaVersion: r.APIVersion, Metadata: r.Metadata, Inputs: r.Inputs, Time: r.Time,
+		Windows: r.Windows, Operators: r.Operators, Situation: r.Situation,
+		Cognition: r.Cognition, Actions: r.Actions,
 	}
 	defaultInputs(spec.Inputs)
 	defaultWindows(spec.Windows)

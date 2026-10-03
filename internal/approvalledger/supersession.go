@@ -37,14 +37,7 @@ func findSupersededApprovals(ctx context.Context, tx *sql.Tx, situationID string
 
 func withdrawSupersededRows(ctx context.Context, tx *sql.Tx, rows *sql.Rows, tenantID, now string, clk clock.Clock) error {
 	for rows.Next() {
-		approval, err := scanSupersededApproval(rows)
-		if err != nil {
-			return err
-		}
-		if err := Withdraw(ctx, tx, approval.approvalID, now); err != nil {
-			return fmt.Errorf("withdraw superseded approval %s: %w", approval.approvalID, err)
-		}
-		if err := publishSupersededWithdrawal(ctx, tx, approval, tenantID, clk); err != nil {
+		if err := withdrawSupersededRow(ctx, tx, rows, tenantID, now, clk); err != nil {
 			return err
 		}
 	}
@@ -52,6 +45,19 @@ func withdrawSupersededRows(ctx context.Context, tx *sql.Tx, rows *sql.Rows, ten
 		return fmt.Errorf("iterate superseded approvals: %w", err)
 	}
 	return nil
+}
+
+// withdrawSupersededRow withdraws the approval at the cursor and publishes
+// its withdrawal notification in the same transaction.
+func withdrawSupersededRow(ctx context.Context, tx *sql.Tx, rows *sql.Rows, tenantID, now string, clk clock.Clock) error {
+	approval, err := scanSupersededApproval(rows)
+	if err != nil {
+		return err
+	}
+	if err := Withdraw(ctx, tx, approval.approvalID, now); err != nil {
+		return fmt.Errorf("withdraw superseded approval %s: %w", approval.approvalID, err)
+	}
+	return publishSupersededWithdrawal(ctx, tx, approval, tenantID, clk)
 }
 
 type supersededApproval struct {

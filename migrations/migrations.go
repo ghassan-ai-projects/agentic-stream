@@ -4,6 +4,7 @@ package migrations
 import (
 	"embed"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -26,31 +27,42 @@ func All() ([]Migration, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read migrations: %w", err)
 	}
+	migrations, err := readMigrations(entries)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(migrations, func(i, j int) bool { return migrations[i].Version < migrations[j].Version })
+	return migrations, nil
+}
 
+func readMigrations(entries []fs.DirEntry) ([]Migration, error) {
 	var migrations []Migration
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
-			continue
-		}
-		version, name, ok := parseName(entry.Name())
-		if !ok {
-			continue
-		}
-		data, err := files.ReadFile(entry.Name())
+		migration, ok, err := readMigration(entry)
 		if err != nil {
-			return nil, fmt.Errorf("read migration %s: %w", entry.Name(), err)
+			return nil, err
 		}
-		migrations = append(migrations, Migration{
-			Version: version,
-			Name:    name,
-			SQL:     string(data),
-		})
+		if ok {
+			migrations = append(migrations, migration)
+		}
 	}
-
-	sort.Slice(migrations, func(i, j int) bool {
-		return migrations[i].Version < migrations[j].Version
-	})
 	return migrations, nil
+}
+
+// readMigration loads one versioned .sql entry; other entries are skipped.
+func readMigration(entry fs.DirEntry) (Migration, bool, error) {
+	if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+		return Migration{}, false, nil
+	}
+	version, name, ok := parseName(entry.Name())
+	if !ok {
+		return Migration{}, false, nil
+	}
+	data, err := files.ReadFile(entry.Name())
+	if err != nil {
+		return Migration{}, false, fmt.Errorf("read migration %s: %w", entry.Name(), err)
+	}
+	return Migration{Version: version, Name: name, SQL: string(data)}, true, nil
 }
 
 func parseName(name string) (int, string, bool) {

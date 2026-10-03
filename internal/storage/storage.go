@@ -94,10 +94,7 @@ func (db *DB) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for _, m := range migrationList {
-		if _, ok := applied[m.Version]; ok {
-			continue
-		}
+	for _, m := range pendingMigrations(migrationList, applied) {
 		if err := db.runMigration(ctx, m); err != nil {
 			return fmt.Errorf("migration %d %s: %w", m.Version, m.Name, err)
 		}
@@ -105,18 +102,33 @@ func (db *DB) Migrate(ctx context.Context) error {
 	return nil
 }
 
+// pendingMigrations keeps the ordered migrations that have not been applied.
+func pendingMigrations(all []migrations.Migration, applied map[int]struct{}) []migrations.Migration {
+	pending := make([]migrations.Migration, 0, len(all))
+	for _, m := range all {
+		if _, ok := applied[m.Version]; !ok {
+			pending = append(pending, m)
+		}
+	}
+	return pending
+}
+
 // appliedMigrationVersions returns the recorded migration versions; a new
 // database has none.
 func (db *DB) appliedMigrationVersions(ctx context.Context) (map[int]struct{}, error) {
-	applied := make(map[int]struct{})
 	if !hasMigrationsTable(ctx, db) {
-		return applied, nil
+		return make(map[int]struct{}), nil
 	}
 	rows, err := db.QueryContext(ctx, "SELECT version FROM schema_migrations")
 	if err != nil {
 		return nil, fmt.Errorf("list applied migrations: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
+	return scanMigrationVersions(rows)
+}
+
+func scanMigrationVersions(rows *sql.Rows) (map[int]struct{}, error) {
+	applied := make(map[int]struct{})
 	for rows.Next() {
 		var v int
 		if err := rows.Scan(&v); err != nil {
@@ -146,20 +158,25 @@ func (db *DB) runMigration(ctx context.Context, m migrations.Migration) error {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := applyMigration(ctx, tx, m); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit migration tx: %w", err)
+	}
+	return nil
+}
 
+// applyMigration executes the migration script and records its version.
+func applyMigration(ctx context.Context, tx *sql.Tx, m migrations.Migration) error {
 	if _, err := tx.ExecContext(ctx, m.SQL); err != nil {
 		return fmt.Errorf("execute: %w", err)
 	}
-
 	if _, err := tx.ExecContext(ctx,
 		"INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
 		m.Version, m.Name, time.Now().UTC().Format(time.RFC3339Nano),
 	); err != nil {
 		return fmt.Errorf("record migration: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit migration tx: %w", err)
 	}
 	return nil
 }

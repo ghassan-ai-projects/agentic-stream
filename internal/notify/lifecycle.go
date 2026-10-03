@@ -40,33 +40,34 @@ func AppendLifecycleEventWithTrace(ctx context.Context, tx *sql.Tx, eventID, ten
 	if _, err := contractsv1.ParseTraceContext(trace.Traceparent, trace.Tracestate); err != nil {
 		return fmt.Errorf("lifecycle trace context: %w", err)
 	}
-	event := contractsv1.CloudEvent{
-		SpecVersion:     "1.0",
-		ID:              eventID,
-		Source:          SourceForTenant(tenantID),
-		Type:            eventType,
-		Subject:         subject,
-		Time:            now.UTC(),
-		DataContentType: "application/json",
-		DataSchema:      notifycontract.SchemaID,
-		Data:            data,
-		TenantID:        tenantID,
-		PartitionKey:    partitionKey,
-		IngestedTime:    now.UTC(),
-		Classification:  contractsv1.ClassificationInternal,
-		Traceparent:     trace.Traceparent,
-		Tracestate:      trace.Tracestate,
+	event := lifecycleEvent(eventID, tenantID, eventType, subject, partitionKey, data, now, trace)
+	if err := sealLifecycleEvent(&event); err != nil {
+		return err
 	}
+	if _, err := Append(ctx, tx, event, now.UTC()); err != nil {
+		return fmt.Errorf("append lifecycle event %s: %w", eventType, err)
+	}
+	return nil
+}
+
+func lifecycleEvent(eventID, tenantID, eventType, subject, partitionKey string, data map[string]any, now time.Time, trace contractsv1.TraceContext) contractsv1.CloudEvent {
+	return contractsv1.CloudEvent{
+		SpecVersion: "1.0", ID: eventID, Source: SourceForTenant(tenantID), Type: eventType, Subject: subject,
+		Time: now.UTC(), DataContentType: "application/json", DataSchema: notifycontract.SchemaID, Data: data,
+		TenantID: tenantID, PartitionKey: partitionKey, IngestedTime: now.UTC(), Classification: contractsv1.ClassificationInternal,
+		Traceparent: trace.Traceparent, Tracestate: trace.Tracestate,
+	}
+}
+
+func sealLifecycleEvent(event *contractsv1.CloudEvent) error {
 	digest, err := event.ComputeEnvelopeDigest()
 	if err != nil {
 		return fmt.Errorf("compute lifecycle event digest: %w", err)
 	}
 	event.EnvelopeDigest = digest
-	if err := notifycontract.Validate(event); err != nil {
+	if err := notifycontract.Validate(*event); err != nil {
 		return fmt.Errorf("validate lifecycle contract: %w", err)
 	}
-	if _, err := Append(ctx, tx, event, now.UTC()); err != nil {
-		return fmt.Errorf("append lifecycle event %s: %w", eventType, err)
-	}
+
 	return nil
 }

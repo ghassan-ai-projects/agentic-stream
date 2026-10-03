@@ -19,12 +19,7 @@ func (r *Runner) recordExecution(ctx context.Context, claim *episodeClaim, outco
 	case outcome == nil:
 		return r.failAttemptStatus(ctx, identity, episodeledger.AttemptFailed, "executor_returned_nil_outcome")
 	case outcome.AttemptID != identity.AttemptID || outcome.Fence != identity.Fence:
-		reason := episodeledger.RejectWrongAttempt
-		if outcome.Fence < identity.Fence {
-			reason = episodeledger.RejectStaleAttempt
-		}
-		incoming := episodeledger.Identity{EpisodeID: identity.EpisodeID, AttemptID: outcome.AttemptID, Fence: outcome.Fence}
-		return r.failAttemptWithRejection(ctx, identity, incoming, reason, "worker_identity_mismatch")
+		return r.rejectOutcomeIdentity(ctx, identity, outcome)
 	case deadlineExceeded:
 		// P8 (freshness): a decision that arrives after the episode's
 		// wall_time deadline is refused. The deadline is never extended to let
@@ -33,6 +28,15 @@ func (r *Runner) recordExecution(ctx context.Context, claim *episodeClaim, outco
 	default:
 		return r.concludeAttempt(ctx, claim, outcome)
 	}
+}
+
+func (r *Runner) rejectOutcomeIdentity(ctx context.Context, identity episodeledger.Identity, outcome *Outcome) error {
+	reason := episodeledger.RejectWrongAttempt
+	if outcome.Fence < identity.Fence {
+		reason = episodeledger.RejectStaleAttempt
+	}
+	incoming := episodeledger.Identity{EpisodeID: identity.EpisodeID, AttemptID: outcome.AttemptID, Fence: outcome.Fence}
+	return r.failAttemptWithRejection(ctx, identity, incoming, reason, "worker_identity_mismatch")
 }
 
 // concludeAttempt persists a usable outcome in one transaction: the proposed
@@ -75,8 +79,12 @@ func (r *Runner) abandonAfterExecute(ctx context.Context, tx *sql.Tx, claim *epi
 	if err := r.abandonEpisode(ctx, tx, claim.episodeID, map[string]any{"reason": reason}, now); err != nil {
 		return fmt.Errorf("quarantine post-execute killed-epoch episode: %w", err)
 	}
+	return r.settleAbandonedCost(ctx, tx, claim.episodeID, outcome.CostMicrounits, now)
+}
+
+func (r *Runner) settleAbandonedCost(ctx context.Context, tx *sql.Tx, episodeID string, cost uint64, now string) error {
 	if r.cost != nil {
-		if err := r.cost.Settle(ctx, tx, claim.episodeID, outcome.CostMicrounits, now); err != nil {
+		if err := r.cost.Settle(ctx, tx, episodeID, cost, now); err != nil {
 			return fmt.Errorf("settle post-execute quarantined episode cost: %w", err)
 		}
 	}
@@ -97,15 +105,7 @@ func (r *Runner) finishAttempt(ctx context.Context, tx *sql.Tx, claim *episodeCl
 	if err := episodeledger.TransitionAttempt(ctx, tx, claim.identity, attemptStatus, r.clk.Now(), terminalJSON); err != nil {
 		return fmt.Errorf("finish episode attempt: %w", err)
 	}
-	if r.cost != nil {
-		if err := r.cost.Settle(ctx, tx, claim.identity.EpisodeID, outcome.CostMicrounits, now); err != nil {
-			return fmt.Errorf("settle episode cost: %w", err)
-		}
-	}
-	if err := episodeledger.Conclude(ctx, tx, claim.episodeID, now, terminalJSON); err != nil {
-		return fmt.Errorf("update episode terminal: %w", err)
-	}
-	return nil
+	return r.concludeSettledEpisode(ctx, tx, claim, outcome, now, terminalJSON)
 }
 
 // terminalAttemptStatus derives the attempt terminal: a Decision makes it
@@ -122,4 +122,16 @@ func terminalAttemptStatus(outcome *Outcome, record *decisionRecord) episodeledg
 	default:
 		return episodeledger.AttemptStatus(outcome.Status)
 	}
+}
+
+func (r *Runner) concludeSettledEpisode(ctx context.Context, tx *sql.Tx, claim *episodeClaim, outcome *Outcome, now string, terminalJSON []byte) error {
+	if r.cost != nil {
+		if err := r.cost.Settle(ctx, tx, claim.identity.EpisodeID, outcome.CostMicrounits, now); err != nil {
+			return fmt.Errorf("settle episode cost: %w", err)
+		}
+	}
+	if err := episodeledger.Conclude(ctx, tx, claim.episodeID, now, terminalJSON); err != nil {
+		return fmt.Errorf("update episode terminal: %w", err)
+	}
+	return nil
 }

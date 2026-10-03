@@ -16,6 +16,16 @@ func ValidateDeviceReconciliationEvidence(evidence map[string]any, deviceID, boo
 	if len(evidence) == 0 || deviceID == "" || bootID == "" {
 		return fmt.Errorf("device reconciliation evidence is required")
 	}
+	if err := checkEvidenceEnvelope(evidence); err != nil {
+		return err
+	}
+	if err := checkEvidenceDigestReferences(evidence); err != nil {
+		return err
+	}
+	return checkEvidenceDeviceBinding(evidence, deviceID, bootID)
+}
+
+func checkEvidenceEnvelope(evidence map[string]any) error {
 	source, _ := evidence["source"].(string)
 	if source == "" {
 		return fmt.Errorf("reconciliation evidence source is required")
@@ -24,18 +34,37 @@ func ValidateDeviceReconciliationEvidence(evidence map[string]any, deviceID, boo
 	if evidenceType != "device_state_feedback" {
 		return fmt.Errorf("reconciliation evidence_type must be device_state_feedback")
 	}
+	return nil
+}
+
+func checkEvidenceDigestReferences(evidence map[string]any) error {
 	for _, key := range []string{"evidence_digest", "feedback_digest", "state_digest"} {
 		digest, _ := evidence[key].(string)
 		if !validSHA256Reference(digest) {
 			return fmt.Errorf("reconciliation %s must be a sha256 reference", key)
 		}
 	}
+	return nil
+}
+
+func checkEvidenceDeviceBinding(evidence map[string]any, deviceID, bootID string) error {
 	if evidenceDevice, _ := evidence["device_id"].(string); evidenceDevice != deviceID {
 		return fmt.Errorf("reconciliation evidence device identity does not match the binding")
 	}
 	if evidenceBoot, _ := evidence["boot_id"].(string); evidenceBoot != bootID {
 		return fmt.Errorf("reconciliation evidence boot identity does not match the binding")
 	}
+	if err := checkEvidenceStateBinding(evidence, deviceID, bootID); err != nil {
+		return err
+	}
+	feedback, ok := evidence["feedback"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("reconciliation evidence must include independent feedback")
+	}
+	return verifyEvidenceReferences(evidence, feedback)
+}
+
+func checkEvidenceStateBinding(evidence map[string]any, deviceID, bootID string) error {
 	state, ok := evidence["state"].(map[string]any)
 	if !ok {
 		return fmt.Errorf("reconciliation evidence must include typed device state")
@@ -46,20 +75,11 @@ func ValidateDeviceReconciliationEvidence(evidence map[string]any, deviceID, boo
 	if stateBoot, _ := state["boot_id"].(string); stateBoot != bootID {
 		return fmt.Errorf("reconciliation state boot identity does not match the binding")
 	}
-	feedback, ok := evidence["feedback"].(map[string]any)
-	if !ok {
-		return fmt.Errorf("reconciliation evidence must include independent feedback")
-	}
-	return verifyEvidenceReferences(evidence, feedback)
+	return nil
 }
 
 func verifyEvidenceReferences(evidence map[string]any, feedback map[string]any) error {
-	withoutDigest := make(map[string]any, len(evidence)-1)
-	for key, value := range evidence {
-		if key != "evidence_digest" {
-			withoutDigest[key] = value
-		}
-	}
+	withoutDigest := evidenceWithoutDigest(evidence)
 	bundle, err := canonicaljson.Marshal(withoutDigest)
 	if err != nil {
 		return fmt.Errorf("canonicalize reconciliation evidence bundle: %w", err)
@@ -69,12 +89,26 @@ func verifyEvidenceReferences(evidence map[string]any, feedback map[string]any) 
 	if provided != "sha256:"+hex.EncodeToString(bundleHash[:]) {
 		return fmt.Errorf("reconciliation evidence_digest does not match the evidence bundle")
 	}
+	return verifyFeedbackReference(evidence, feedback)
+}
+
+func evidenceWithoutDigest(evidence map[string]any) map[string]any {
+	withoutDigest := make(map[string]any, len(evidence)-1)
+	for key, value := range evidence {
+		if key != "evidence_digest" {
+			withoutDigest[key] = value
+		}
+	}
+	return withoutDigest
+}
+
+func verifyFeedbackReference(evidence, feedback map[string]any) error {
 	feedbackJSON, err := canonicaljson.Marshal(feedback)
 	if err != nil {
 		return fmt.Errorf("canonicalize reconciliation feedback: %w", err)
 	}
 	feedbackHash := sha256.Sum256(feedbackJSON)
-	provided, _ = evidence["feedback_digest"].(string)
+	provided, _ := evidence["feedback_digest"].(string)
 	if provided != "sha256:"+hex.EncodeToString(feedbackHash[:]) {
 		return fmt.Errorf("reconciliation feedback_digest does not match feedback")
 	}

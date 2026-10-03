@@ -106,19 +106,27 @@ func (v *Virtual) Advance(d time.Duration) {
 	defer v.mu.Unlock()
 
 	v.now = v.now.Add(d)
-	// Sort by (due, seq) once: firing only pops from the front and never adds
-	// timers, so the remainder stays ordered for the rest of this call.
+	v.sortTimersByDue()
+	v.fireDueTimers()
+}
+
+// sortTimersByDue orders timers by (due, seq) once: firing only pops from the
+// front and never adds timers, so the remainder stays ordered for the rest of
+// an Advance call.
+func (v *Virtual) sortTimersByDue() {
 	slices.SortStableFunc(v.timers, func(a, b *virtualTimer) int {
 		if c := a.due.Compare(b.due); c != 0 {
 			return c
 		}
 		return cmp.Compare(a.seq, b.seq)
 	})
-	for len(v.timers) > 0 {
+}
+
+// fireDueTimers pops every timer due at or before now, delivering the due
+// time to each one that is still active.
+func (v *Virtual) fireDueTimers() {
+	for len(v.timers) > 0 && !v.timers[0].due.After(v.now) {
 		next := v.timers[0]
-		if next.due.After(v.now) {
-			break
-		}
 		v.timers = v.timers[1:]
 		if next.active {
 			next.active = false

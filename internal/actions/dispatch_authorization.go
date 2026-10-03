@@ -13,63 +13,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
-func (d *Dispatcher) revalidateAuthorization(ctx context.Context, leased leasedCommand) error {
-	if err := d.db.WithTx(ctx, func(tx *sql.Tx) error {
-		return d.revalidateAuthorizationTx(ctx, tx, leased)
-	}); err != nil {
-		return fmt.Errorf("revalidate dispatch authorization: %w", err)
-	}
-	return nil
-}
-
-// revalidateAuthorizationTx re-proves, immediately before the effector call,
-// that the leased command is still authorized: the lease is live, the
-// command, intent, and decision documents still match their digests and
-// ledger rows, the intent is approved, unexpired, and bound to the current
-// Situation version, interlocks and R2 approvals still hold, and the policy
-// digest is current. It then refreshes the lease.
-func (d *Dispatcher) revalidateAuthorizationTx(ctx context.Context, tx *sql.Tx, leased leasedCommand) error {
-	if err := d.assertRuntimeOwner(ctx, tx); err != nil {
-		return err
-	}
-	var leaseValid int
-	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM outbox WHERE outbox_id = ? AND status = 'leased' AND lease_owner = ? AND lease_until > ?`, leased.OutboxID, leased.LeaseOwner, formatTime(d.clk.Now())).Scan(&leaseValid); err != nil {
-		return fmt.Errorf("dispatch lease is no longer active: %w", err)
-	}
-	records, err := loadAuthorizationRecords(ctx, tx, leased.Command.CommandID)
-	if err != nil {
-		return err
-	}
-	commandDocument, err := records.verifiedCommand()
-	if err != nil {
-		return err
-	}
-	if !records.approvedForIntent() {
-		return errors.New("command is no longer approved for its intent")
-	}
-	if d.interlock != nil {
-		if err := d.interlock.Assert(ctx, tx, records.commandTenant, records.commandTarget, records.intentRisk); err != nil {
-			return fmt.Errorf("interlock rejected command: %w", err)
-		}
-	}
-	if err := records.checkApproval(d.clk.Now()); err != nil {
-		return err
-	}
-	if !records.current() {
-		return errors.New("command authorization is stale")
-	}
-	if err := records.checkIntent(d.clk.Now()); err != nil {
-		return err
-	}
-	if err := checkPolicyDigest(ctx, tx, commandDocument, records.intentID); err != nil {
-		return err
-	}
-	if err := records.checkDecision(); err != nil {
-		return err
-	}
-	return d.refreshLease(ctx, tx, leased)
-}
-
 // authorizationRecords is every ledger row a command's authority rests on.
 type authorizationRecords struct {
 	commandID, commandTenant, commandIntent, commandRoute, commandTarget string
@@ -93,9 +36,7 @@ type authorizationRecords struct {
 	currentVersion  int
 }
 
-func loadAuthorizationRecords(ctx context.Context, tx *sql.Tx, commandID string) (authorizationRecords, error) {
-	r := authorizationRecords{commandID: commandID}
-	if err := tx.QueryRowContext(ctx, `
+const loadAuthorizationRecordsSQL = `
 			SELECT c.tenant_id, c.intent_id, c.effector_route, c.normalized_target,
 			       c.idempotency_key, c.command_json, c.command_sha256,
 			       i.tenant_id, i.intent_id, i.decision_id, i.situation_id,
@@ -111,7 +52,52 @@ func loadAuthorizationRecords(ctx context.Context, tx *sql.Tx, commandID string)
 			JOIN decisions d ON d.decision_id = i.decision_id
 			JOIN episodes e ON e.episode_id = d.episode_id
 			JOIN situations s ON s.situation_id = i.situation_id
-			WHERE c.command_id = ? AND c.status = 'dispatching'`, commandID).Scan(
+			WHERE c.command_id = ? AND c.status = 'dispatching'`
+
+func (d *Dispatcher) revalidateAuthorization(ctx context.Context, leased leasedCommand) error {
+	if err := d.db.WithTx(ctx, func(tx *sql.Tx) error {
+		return d.revalidateAuthorizationTx(ctx, tx, leased)
+	}); err != nil {
+		return fmt.Errorf("revalidate dispatch authorization: %w", err)
+	}
+	return nil
+}
+
+// revalidateAuthorizationTx re-proves, immediately before the effector call,
+// that the leased command is still authorized: the lease is live, the
+// command, intent, and decision documents still match their digests and
+// ledger rows, the intent is approved, unexpired, and bound to the current
+// Situation version, interlocks and R2 approvals still hold, and the policy
+// digest is current. It then refreshes the lease.
+func (d *Dispatcher) revalidateAuthorizationTx(ctx context.Context, tx *sql.Tx, leased leasedCommand) error {
+	if err := d.assertRuntimeOwner(ctx, tx); err != nil {
+		return err
+	}
+	if err := d.requireLiveDispatchLease(ctx, tx, leased); err != nil {
+		return err
+	}
+	records, err := loadAuthorizationRecords(ctx, tx, leased.Command.CommandID)
+	if err != nil {
+		return err
+	}
+	commandDocument, err := records.verifiedCommand()
+	if err != nil {
+		return err
+	}
+	return d.authorizeCurrentCommand(ctx, tx, leased, records, commandDocument)
+}
+
+func (d *Dispatcher) requireLiveDispatchLease(ctx context.Context, tx *sql.Tx, leased leasedCommand) error {
+	var leaseValid int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM outbox WHERE outbox_id = ? AND status = 'leased' AND lease_owner = ? AND lease_until > ?`, leased.OutboxID, leased.LeaseOwner, formatTime(d.clk.Now())).Scan(&leaseValid); err != nil {
+		return fmt.Errorf("dispatch lease is no longer active: %w", err)
+	}
+	return nil
+}
+
+func loadAuthorizationRecords(ctx context.Context, tx *sql.Tx, commandID string) (authorizationRecords, error) {
+	r := authorizationRecords{commandID: commandID}
+	if err := tx.QueryRowContext(ctx, loadAuthorizationRecordsSQL, commandID).Scan(
 		&r.commandTenant, &r.commandIntent, &r.commandRoute, &r.commandTarget,
 		&r.commandIdempotency, &r.commandJSON, &r.commandSHA,
 		&r.intentTenant, &r.intentID, &r.decisionID, &r.intentSituation,
@@ -139,6 +125,21 @@ func (r authorizationRecords) verifiedCommand() (map[string]any, error) {
 	return document, nil
 }
 
+func (d *Dispatcher) authorizeCurrentCommand(ctx context.Context, tx *sql.Tx, leased leasedCommand, records authorizationRecords, commandDocument map[string]any) error {
+	if !records.approvedForIntent() {
+		return errors.New("command is no longer approved for its intent")
+	}
+	if d.interlock != nil {
+		if err := d.interlock.Assert(ctx, tx, records.commandTenant, records.commandTarget, records.intentRisk); err != nil {
+			return fmt.Errorf("interlock rejected command: %w", err)
+		}
+	}
+	if err := records.checkApproval(d.clk.Now()); err != nil {
+		return err
+	}
+	return d.authorizeCurrentDocuments(ctx, tx, leased, records, commandDocument)
+}
+
 func (r authorizationRecords) approvedForIntent() bool {
 	return r.commandTenant == r.intentTenant && r.commandIntent == r.intentID && r.commandRoute == r.intentType &&
 		r.policyStatus == "approved" && r.validationStatus == "accepted"
@@ -157,6 +158,22 @@ func (r authorizationRecords) checkApproval(now time.Time) error {
 		return errors.New("approval is expired")
 	}
 	return nil
+}
+
+func (d *Dispatcher) authorizeCurrentDocuments(ctx context.Context, tx *sql.Tx, leased leasedCommand, records authorizationRecords, commandDocument map[string]any) error {
+	if !records.current() {
+		return errors.New("command authorization is stale")
+	}
+	if err := records.checkIntent(d.clk.Now()); err != nil {
+		return err
+	}
+	if err := checkPolicyDigest(ctx, tx, commandDocument, records.intentID); err != nil {
+		return err
+	}
+	if err := records.checkDecision(); err != nil {
+		return err
+	}
+	return d.refreshLease(ctx, tx, leased)
 }
 
 // current reports whether the decision, episode, and live Situation all still
@@ -189,20 +206,6 @@ func (r authorizationRecords) checkIntent(now time.Time) error {
 	return nil
 }
 
-// checkDecision requires a digest-bound decision document that matches the
-// intent's episode and Situation version.
-func (r authorizationRecords) checkDecision() error {
-	var document map[string]any
-	if err := json.Unmarshal(r.decisionJSON, &document); err != nil || contractsv1.Validate(contractsv1.SchemaDecision, document) != nil || !verifyDigest(canonicaljson.DomainDecision, document, r.decisionSHA) {
-		return errors.New("decision authorization is invalid")
-	}
-	if documentString(document, "decision_id") != r.decisionID || documentString(document, "episode_id") != r.episodeID ||
-		documentString(document, "situation_id") != r.intentSituation || documentInt(document, "situation_version") != r.intentVersion {
-		return errors.New("decision authorization identity mismatch")
-	}
-	return nil
-}
-
 // checkPolicyDigest requires a command that names a policy digest to match
 // the latest approving policy evaluation of its intent.
 func checkPolicyDigest(ctx context.Context, tx *sql.Tx, commandDocument map[string]any, intentID string) error {
@@ -219,6 +222,20 @@ func checkPolicyDigest(ctx context.Context, tx *sql.Tx, commandDocument map[stri
 	}
 	if commandPolicyDigest != evaluatedPolicyDigest {
 		return errors.New("command policy digest is stale")
+	}
+	return nil
+}
+
+// checkDecision requires a digest-bound decision document that matches the
+// intent's episode and Situation version.
+func (r authorizationRecords) checkDecision() error {
+	var document map[string]any
+	if err := json.Unmarshal(r.decisionJSON, &document); err != nil || contractsv1.Validate(contractsv1.SchemaDecision, document) != nil || !verifyDigest(canonicaljson.DomainDecision, document, r.decisionSHA) {
+		return errors.New("decision authorization is invalid")
+	}
+	if documentString(document, "decision_id") != r.decisionID || documentString(document, "episode_id") != r.episodeID ||
+		documentString(document, "situation_id") != r.intentSituation || documentInt(document, "situation_version") != r.intentVersion {
+		return errors.New("decision authorization identity mismatch")
 	}
 	return nil
 }

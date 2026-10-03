@@ -19,18 +19,7 @@ func validateDeviceState(frame []byte, catalog *CapabilityCatalog, catalogDigest
 	if protocol := documentInt64(state, "protocol_version"); protocol != int64(catalog.ProtocolVersion) {
 		return nil, fmt.Errorf("device protocol version %d is unsupported", protocol)
 	}
-	capabilityDigest := stateString(state, "capability_digest")
-	if capabilityDigest != catalogDigest || !contains(allowedCapabilityDigests, capabilityDigest) {
-		return nil, fmt.Errorf("device capability digest %q does not match the allow-listed catalog", capabilityDigest)
-	}
-	firmwareDigest := stateString(state, "firmware_digest")
-	if !contains(allowedFirmwareDigests, firmwareDigest) {
-		return nil, fmt.Errorf("device firmware digest %q is not allow-listed", firmwareDigest)
-	}
-	if stateString(state, "device_id") == "" || stateString(state, "boot_id") == "" {
-		return nil, fmt.Errorf("device handshake identity is incomplete")
-	}
-	return state, nil
+	return validateStateIdentity(state, catalogDigest, allowedCapabilityDigests, allowedFirmwareDigests)
 }
 
 func stateString(state map[string]any, key string) string {
@@ -83,4 +72,19 @@ func stateDigest(state map[string]any) (string, error) {
 	}
 	hash := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(hash[:]), nil
+}
+
+func validateStateIdentity(state map[string]any, catalogDigest string, allowedCapabilityDigests, allowedFirmwareDigests []string) (map[string]any, error) {
+	capabilityDigest := stateString(state, "capability_digest")
+	if capabilityDigest != catalogDigest || !contains(allowedCapabilityDigests, capabilityDigest) {
+		return nil, fmt.Errorf("device capability digest %q does not match the allow-listed catalog", capabilityDigest)
+	}
+	firmwareDigest := stateString(state, "firmware_digest")
+	if !contains(allowedFirmwareDigests, firmwareDigest) {
+		return nil, fmt.Errorf("device firmware digest %q is not allow-listed", firmwareDigest)
+	}
+	if stateString(state, "device_id") == "" || stateString(state, "boot_id") == "" {
+		return nil, fmt.Errorf("device handshake identity is incomplete")
+	}
+	return state, nil
 }

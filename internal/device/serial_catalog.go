@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"io"
 	"math"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 // NumericBound is an inclusive hard limit re-enforced on a materialized device
@@ -74,6 +75,10 @@ func LoadCapabilityCatalog(data []byte) (*CapabilityCatalog, error) {
 	if err := decoder.Decode(&catalog); err != nil {
 		return nil, fmt.Errorf("decode capability catalog: %w", err)
 	}
+	return finishCapabilityCatalog(decoder, &catalog)
+}
+
+func finishCapabilityCatalog(decoder *json.Decoder, catalog *CapabilityCatalog) (*CapabilityCatalog, error) {
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		if err == nil {
 			return nil, fmt.Errorf("capability catalog contains trailing JSON")
@@ -83,7 +88,7 @@ func LoadCapabilityCatalog(data []byte) (*CapabilityCatalog, error) {
 	if err := catalog.validate(); err != nil {
 		return nil, err
 	}
-	return &catalog, nil
+	return catalog, nil
 }
 
 func (c *CapabilityCatalog) validate() error {
@@ -98,15 +103,7 @@ func (c *CapabilityCatalog) validate() error {
 			return err
 		}
 	}
-	for target, spec := range c.SafeStops {
-		if target == "" || spec.Operation != "safe_stop" {
-			return fmt.Errorf("safe stop %q must use the catalog operation %q", target, "safe_stop")
-		}
-		if spec.ExpiresAfterMs < 1 || spec.ExpiresAfterMs > 86400000 {
-			return fmt.Errorf("safe stop %q must set expires_after_ms between 1 and 86400000", target)
-		}
-	}
-	return nil
+	return c.validateSafeStops()
 }
 
 func (spec OperationSpec) validate(route string) error {
@@ -116,6 +113,13 @@ func (spec OperationSpec) validate(route string) error {
 	if spec.Operation == "" || spec.Target == "" || spec.SelectorField == "" {
 		return fmt.Errorf("route %q must set operation, target, and selector_field", route)
 	}
+	if err := spec.validateTargetBindings(route); err != nil {
+		return err
+	}
+	return spec.validatePresets(route)
+}
+
+func (spec OperationSpec) validateTargetBindings(route string) error {
 	for logicalTarget, physicalTarget := range spec.TargetBindings {
 		if logicalTarget == "" || physicalTarget == "" {
 			return fmt.Errorf("route %q contains an empty target binding", route)
@@ -124,6 +128,10 @@ func (spec OperationSpec) validate(route string) error {
 			return fmt.Errorf("route %q target binding %q resolves to %q, want route target %q", route, logicalTarget, physicalTarget, spec.Target)
 		}
 	}
+	return nil
+}
+
+func (spec OperationSpec) validatePresets(route string) error {
 	if spec.ExpiresAfterMs < 1 {
 		return fmt.Errorf("route %q must set a positive expires_after_ms", route)
 	}
@@ -178,4 +186,16 @@ func (bound NumericBound) validate(route, param string) error {
 
 func isFinite(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
+func (c *CapabilityCatalog) validateSafeStops() error {
+	for target, spec := range c.SafeStops {
+		if target == "" || spec.Operation != "safe_stop" {
+			return fmt.Errorf("safe stop %q must use the catalog operation %q", target, "safe_stop")
+		}
+		if spec.ExpiresAfterMs < 1 || spec.ExpiresAfterMs > 86400000 {
+			return fmt.Errorf("safe stop %q must set expires_after_ms between 1 and 86400000", target)
+		}
+	}
+	return nil
 }

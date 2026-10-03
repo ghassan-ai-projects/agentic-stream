@@ -57,12 +57,7 @@ func (b *DeterministicBaseline) ExecuteBaseline(_ context.Context, input ShadowI
 	if err != nil {
 		return ShadowOutput{}, err
 	}
-	if intent == nil {
-		decision["decision_type"] = "need_more_evidence"
-		decision["intents"] = []any{}
-	} else {
-		decision["intents"] = []any{intent}
-	}
+	setBaselineIntents(decision, intent)
 	return finalizeBaselineOutput(input, decision)
 }
 
@@ -111,6 +106,15 @@ func newBaselineIntent(input ShadowInput, decisionID string, configured spec.Int
 	return intent, nil
 }
 
+func setBaselineIntents(decision map[string]any, intent map[string]any) {
+	if intent == nil {
+		decision["decision_type"] = "need_more_evidence"
+		decision["intents"] = []any{}
+	} else {
+		decision["intents"] = []any{intent}
+	}
+}
+
 func finalizeBaselineOutput(input ShadowInput, decision map[string]any) (ShadowOutput, error) {
 	decisionJSON, err := canonicaljson.Marshal(decision)
 	if err != nil {
@@ -120,14 +124,22 @@ func finalizeBaselineOutput(input ShadowInput, decision map[string]any) (ShadowO
 	if err != nil {
 		return ShadowOutput{}, fmt.Errorf("digest baseline decision: %w", err)
 	}
+	manifestDigest, err := baselineManifestDigest(input, decisionDigest)
+	if err != nil {
+		return ShadowOutput{}, err
+	}
+	return ShadowOutput{ExecutorVersion: deterministicBaselineVersion, ManifestSHA256: manifestDigest, DecisionJSON: decisionJSON, DecisionSHA256: decisionDigest}, nil
+}
+
+func baselineManifestDigest(input ShadowInput, decisionDigest string) (string, error) {
 	manifestDigest, err := canonicaljson.Digest(canonicaljson.DomainShadowComparison, map[string]any{
 		"executor_version": deterministicBaselineVersion, "episode_key": input.EpisodeKey,
 		"decision_digest": decisionDigest,
 	})
 	if err != nil {
-		return ShadowOutput{}, fmt.Errorf("digest baseline manifest: %w", err)
+		return "", fmt.Errorf("digest baseline manifest: %w", err)
 	}
-	return ShadowOutput{ExecutorVersion: deterministicBaselineVersion, ManifestSHA256: manifestDigest, DecisionJSON: decisionJSON, DecisionSHA256: decisionDigest}, nil
+	return manifestDigest, nil
 }
 
 func baselineParameters(configured spec.Intent, entityID, phase string) (map[string]any, bool) {
@@ -156,15 +168,19 @@ func fillBaselineEnums(parameters, properties map[string]any, phase string) {
 		if len(enum) == 0 {
 			continue
 		}
-		value := enum[0]
-		if field == "state" {
-			value = enumValue(enum, map[string]string{"over_ceiling": "alert", "cooling": "watch"}, phase)
-		}
-		if field == "mode" {
-			value = enumValue(enum, map[string]string{"over_ceiling": "bounded_cooling", "cooling": "hold"}, phase)
-		}
-		parameters[field] = value
+		parameters[field] = baselineEnumValue(field, enum, phase)
 	}
+}
+
+func baselineEnumValue(field string, enum []any, phase string) any {
+	value := enum[0]
+	if field == "state" {
+		value = enumValue(enum, map[string]string{"over_ceiling": "alert", "cooling": "watch"}, phase)
+	}
+	if field == "mode" {
+		value = enumValue(enum, map[string]string{"over_ceiling": "bounded_cooling", "cooling": "hold"}, phase)
+	}
+	return value
 }
 
 func requiredBaselineParametersPresent(schema, parameters map[string]any) bool {

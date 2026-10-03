@@ -1,6 +1,7 @@
 package eventlog
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"fmt"
@@ -26,11 +27,27 @@ func (l *EventLog) Read(ctx context.Context, req ReadRequest, callback func(Reco
 }
 
 func (l *EventLog) queryRecords(ctx context.Context, req ReadRequest) (*sql.Rows, error) {
-	if req.Limit <= 0 {
-		req.Limit = 1000
+	query, args := recordQuery(req)
+	rows, err := l.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query event log: %w", err)
 	}
+	return rows, nil
+}
 
-	query := `
+// recordQuery selects the tenant's records after a position, optionally in
+// one partition, in log order; the limit defaults to 1000.
+func recordQuery(req ReadRequest) (string, []any) {
+	query := selectRecordsSQL
+	args := []any{req.TenantID, req.AfterPosition}
+	if req.PartitionID >= 0 {
+		query += " AND partition_id = ?"
+		args = append(args, req.PartitionID)
+	}
+	return query + " ORDER BY position LIMIT ?", append(args, cmp.Or(max(req.Limit, 0), 1000))
+}
+
+const selectRecordsSQL = `
 		SELECT position, tenant_id, partition_id, event_id, event_type,
 		       schema_version, source, partition_key, entity_type, entity_id,
 		       event_time, observed_at, ingested_at, correlation_id,
@@ -38,19 +55,6 @@ func (l *EventLog) queryRecords(ctx context.Context, req ReadRequest) (*sql.Rows
 		       payload_json
 		FROM event_log
 		WHERE tenant_id = ? AND position > ?`
-	args := []any{req.TenantID, req.AfterPosition}
-	if req.PartitionID >= 0 {
-		query += " AND partition_id = ?"
-		args = append(args, req.PartitionID)
-	}
-	query += " ORDER BY position LIMIT ?"
-	args = append(args, req.Limit)
-	rows, err := l.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query event log: %w", err)
-	}
-	return rows, nil
-}
 
 func deliverRecords(rows *sql.Rows, callback func(Record) error) error {
 	for rows.Next() {
