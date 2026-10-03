@@ -3,14 +3,12 @@ package situations
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/common/types/ref"
 )
 
 func (e *Engine) evaluate(ctx context.Context, sit *Situation, feature operators.Feature, watermark time.Time, completenessChanged bool) (*Version, error) {
@@ -146,32 +144,39 @@ func (e *Engine) severityForPhase(phase string) int {
 }
 
 func (e *Engine) buildFeaturesMap(sit *Situation) map[string]any {
+	return CELFeatures(e.spec, sit.Facts, sortedEvidenceIDs(sit))
+}
+
+// CELFeatures is the CEL `features` view of a Situation: its reduced facts
+// and evidence, with every missing operator output defaulted so expressions
+// never fail on a missing key. Situations and cognition share this one view.
+func CELFeatures(compiled *spec.CompiledSpec, facts map[string]any, evidence []string) map[string]any {
 	features := make(map[string]any)
-	for _, r := range e.spec.Situation.Reducers {
-		addReducedFeature(features, sit, r)
+	for _, r := range compiled.Situation.Reducers {
+		addReducedFeature(features, facts, evidence, r)
 	}
-	e.addOperatorDefaults(features)
+	addOperatorDefaults(features, compiled.Operators)
 	return features
 }
 
-func addReducedFeature(features map[string]any, sit *Situation, r spec.Reducer) {
+func addReducedFeature(features, facts map[string]any, evidence []string, r spec.Reducer) {
 	switch r.Strategy {
 	case "latest_event_time":
 		// A nil fact means this operator has not materialized an output yet.
 		// Leave it absent so the typed operator default remains effective.
-		if v, ok := sit.Facts[r.Field]; ok && v != nil {
+		if v, ok := facts[r.Field]; ok && v != nil {
 			features[r.Input] = v
 		}
 	case "set_union":
-		features[r.Field] = sortedEvidenceIDs(sit)
+		features[r.Field] = evidence
 	}
 }
 
 // addOperatorDefaults pre-populates every missing operator output so that CEL
 // expressions never fail on a missing key: heartbeat detectors default to
 // false and numeric features to 0.
-func (e *Engine) addOperatorDefaults(features map[string]any) {
-	for _, op := range e.spec.Operators {
+func addOperatorDefaults(features map[string]any, ops []spec.Operator) {
+	for _, op := range ops {
 		if _, ok := features[op.Output]; ok {
 			continue
 		}
@@ -207,7 +212,7 @@ func (e *Engine) evalBool(_ context.Context, expr string, features, situation ma
 	if err != nil {
 		return false, fmt.Errorf("eval cel: %w", err)
 	}
-	return celBool(out)
+	return spec.CELBool(out) //nolint:wrapcheck // The spec helper names the conversion failure.
 }
 
 func (e *Engine) program(expr string) (cel.Program, error) {
@@ -220,16 +225,4 @@ func (e *Engine) program(expr string) (cel.Program, error) {
 		return nil, fmt.Errorf("program cel: %w", err)
 	}
 	return prg, nil
-}
-
-func celBool(out ref.Val) (bool, error) {
-	v, err := out.ConvertToNative(reflect.TypeOf(true))
-	if err != nil {
-		return false, fmt.Errorf("cel result not bool: %w", err)
-	}
-	b, ok := v.(bool)
-	if !ok {
-		return false, fmt.Errorf("cel result not bool: %T", v)
-	}
-	return b, nil
 }

@@ -28,7 +28,23 @@ type persistedSituationState struct {
 }
 
 func restoreSituations(ctx context.Context, db *storage.DB, deploymentID, tenantID string, sitEngine *situations.Engine) error {
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.QueryContext(ctx, selectCurrentSituationsSQL, deploymentID, tenantID)
+	if err != nil {
+		return fmt.Errorf("query current situations: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		if err := restoreSituationRow(rows, tenantID, deploymentID, sitEngine); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate current situations: %w", err)
+	}
+	return nil
+}
+
+const selectCurrentSituationsSQL = `
 		SELECT s.situation_id, s.situation_type, s.entity_type, s.entity_id, s.partition_id,
 		       s.occurrence_id, s.current_version, s.phase,
 		       s.first_event_time, s.latest_event_time, s.updated_at,
@@ -39,22 +55,15 @@ func restoreSituations(ctx context.Context, db *storage.DB, deploymentID, tenant
 		JOIN situation_versions v
 		  ON v.situation_id = s.situation_id AND v.version = s.current_version
 		WHERE s.deployment_id = ? AND s.tenant_id = ?
-		ORDER BY s.partition_id, s.entity_type, s.entity_id`, deploymentID, tenantID)
+		ORDER BY s.partition_id, s.entity_type, s.entity_id`
+
+func restoreSituationRow(rows *sql.Rows, tenantID, deploymentID string, sitEngine *situations.Engine) error {
+	record, err := scanPersistedSituation(rows, tenantID, deploymentID)
 	if err != nil {
-		return fmt.Errorf("query current situations: %w", err)
+		return err
 	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		record, err := scanPersistedSituation(rows, tenantID, deploymentID)
-		if err != nil {
-			return err
-		}
-		if err := sitEngine.Restore(record.situation); err != nil {
-			return fmt.Errorf("restore situation %s: %w", record.situation.SituationID, err)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate current situations: %w", err)
+	if err := sitEngine.Restore(record.situation); err != nil {
+		return fmt.Errorf("restore situation %s: %w", record.situation.SituationID, err)
 	}
 	return nil
 }
@@ -64,47 +73,72 @@ type persistedSituationRecord struct {
 }
 
 func scanPersistedSituation(rows *sql.Rows, tenantID, deploymentID string) (persistedSituationRecord, error) {
-	var (
-		situationID, situationType, entityType, entityID, occurrenceID, phase string
-		partitionID, version, severity                                        int
-		firstEventTime, latestEventTime, updatedAt                            string
-		stateCodecVersion                                                     int
-		stateJSON, stateSHA256                                                []byte
-		previousPhase, traceparent, tracestate                                sql.NullString
-		confidence                                                            float64
-		completeness                                                          string
-	)
-	if err := rows.Scan(&situationID, &situationType, &entityType, &entityID, &partitionID,
-		&occurrenceID, &version, &phase, &firstEventTime, &latestEventTime,
-		&updatedAt, &stateCodecVersion, &stateJSON, &stateSHA256, &previousPhase, &severity, &confidence,
-		&completeness, &traceparent, &tracestate); err != nil {
-		return persistedSituationRecord{}, fmt.Errorf("scan current situation: %w", err)
-	}
-	first, err := parseSituationTime("first event time", firstEventTime)
+	row, err := scanSituationRow(rows)
 	if err != nil {
 		return persistedSituationRecord{}, err
 	}
-	latest, err := parseSituationTime("latest event time", latestEventTime)
+	times, err := row.parseTimes()
 	if err != nil {
 		return persistedSituationRecord{}, err
 	}
-	updated, err := parseSituationTime("updated time", updatedAt)
+	state, err := decodePersistedSituationState(row.situationID, row.occurrenceID, row.partitionID, row.version, row.stateCodecVersion, row.stateJSON, row.stateSHA256)
 	if err != nil {
 		return persistedSituationRecord{}, err
 	}
-	state, err := decodePersistedSituationState(situationID, occurrenceID, partitionID, version, stateCodecVersion, stateJSON, stateSHA256)
-	if err != nil {
-		return persistedSituationRecord{}, err
+	return persistedSituationRecord{row.situation(tenantID, deploymentID, times, state)}, nil
+}
+
+// situationRow is one current Situation joined with its current version.
+type situationRow struct {
+	situationID, situationType, entityType, entityID, occurrenceID, phase string
+	partitionID, version, severity, stateCodecVersion                     int
+	firstEventTime, latestEventTime, updatedAt, completeness              string
+	stateJSON, stateSHA256                                                []byte
+	previousPhase, traceparent, tracestate                                sql.NullString
+	confidence                                                            float64
+}
+
+func scanSituationRow(rows *sql.Rows) (situationRow, error) {
+	var r situationRow
+	if err := rows.Scan(&r.situationID, &r.situationType, &r.entityType, &r.entityID, &r.partitionID,
+		&r.occurrenceID, &r.version, &r.phase, &r.firstEventTime, &r.latestEventTime,
+		&r.updatedAt, &r.stateCodecVersion, &r.stateJSON, &r.stateSHA256, &r.previousPhase, &r.severity, &r.confidence,
+		&r.completeness, &r.traceparent, &r.tracestate); err != nil {
+		return situationRow{}, fmt.Errorf("scan current situation: %w", err)
 	}
-	return persistedSituationRecord{situations.Situation{
-		SituationID: situationID, TenantID: tenantID, DeploymentID: deploymentID, Type: situationType,
-		EntityType: entityType, EntityID: entityID, PartitionID: partitionID,
-		OccurrenceID: occurrenceID, Version: version, Phase: phase,
-		PreviousPhase: previousPhase.String, Severity: severity, Confidence: confidence,
-		Completeness: completeness, FirstEventTime: first, LatestEventTime: latest,
+	return r, nil
+}
+
+// situationTimes are the parsed lifecycle times of a stored Situation.
+type situationTimes struct {
+	first, latest, updated time.Time
+}
+
+func (r situationRow) parseTimes() (situationTimes, error) {
+	var times situationTimes
+	var err error
+	if times.first, err = parseSituationTime("first event time", r.firstEventTime); err != nil {
+		return situationTimes{}, err
+	}
+	if times.latest, err = parseSituationTime("latest event time", r.latestEventTime); err != nil {
+		return situationTimes{}, err
+	}
+	if times.updated, err = parseSituationTime("updated time", r.updatedAt); err != nil {
+		return situationTimes{}, err
+	}
+	return times, nil
+}
+
+func (r situationRow) situation(tenantID, deploymentID string, times situationTimes, state persistedSituationState) situations.Situation {
+	return situations.Situation{
+		SituationID: r.situationID, TenantID: tenantID, DeploymentID: deploymentID, Type: r.situationType,
+		EntityType: r.entityType, EntityID: r.entityID, PartitionID: r.partitionID,
+		OccurrenceID: r.occurrenceID, Version: r.version, Phase: r.phase,
+		PreviousPhase: r.previousPhase.String, Severity: r.severity, Confidence: r.confidence,
+		Completeness: r.completeness, FirstEventTime: times.first, LatestEventTime: times.latest,
 		Facts: state.Facts, Evidence: evidenceSet(state.Evidence), ConditionStart: state.ConditionStart,
-		OpenedAt: first, UpdatedAt: updated, Traceparent: traceparent.String, Tracestate: tracestate.String,
-	}}, nil
+		OpenedAt: times.first, UpdatedAt: times.updated, Traceparent: r.traceparent.String, Tracestate: r.tracestate.String,
+	}
 }
 
 func parseSituationTime(name, value string) (time.Time, error) {
@@ -116,39 +150,60 @@ func parseSituationTime(name, value string) (time.Time, error) {
 }
 
 func decodePersistedSituationState(situationID, occurrenceID string, partitionID, version, codecVersion int, stateJSON, stateSHA256 []byte) (persistedSituationState, error) {
-	if codecVersion == 0 {
-		return persistedSituationState{}, fmt.Errorf("situation %s requires rebuild: legacy runtime state has no supported codec", situationID)
+	if err := checkStateCodec(situationID, codecVersion, stateJSON, stateSHA256); err != nil {
+		return persistedSituationState{}, err
 	}
-	if codecVersion != 1 {
-		return persistedSituationState{}, fmt.Errorf("situation %s has unsupported state codec %d", situationID, codecVersion)
+	if err := verifyStateDigest(situationID, stateJSON, stateSHA256); err != nil {
+		return persistedSituationState{}, err
 	}
-	if len(stateJSON) == 0 || len(stateSHA256) != sha256.Size {
-		return persistedSituationState{}, fmt.Errorf("situation %s has incomplete persisted state", situationID)
-	}
-	var document map[string]any
-	if err := json.Unmarshal(stateJSON, &document); err != nil {
-		return persistedSituationState{}, fmt.Errorf("decode situation state document %s: %w", situationID, err)
-	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainSituationState, document)
+	state, err := decodeState(situationID, stateJSON)
 	if err != nil {
-		return persistedSituationState{}, fmt.Errorf("digest situation state %s: %w", situationID, err)
-	}
-	decodedDigest, err := canonicaljson.DecodeDigest(digest)
-	if err != nil || !bytes.Equal(decodedDigest, stateSHA256) {
-		return persistedSituationState{}, fmt.Errorf("situation %s persisted state digest mismatch", situationID)
-	}
-	var state persistedSituationState
-	if err := json.Unmarshal(stateJSON, &state); err != nil {
-		return persistedSituationState{}, fmt.Errorf("decode situation state %s: %w", situationID, err)
+		return persistedSituationState{}, err
 	}
 	if state.SituationID != situationID || state.OccurrenceID != occurrenceID || state.PartitionID != partitionID || state.Version != version {
 		return persistedSituationState{}, fmt.Errorf("situation %s persisted state identity mismatch", situationID)
 	}
+	return state, restoreFactTimes(state.Facts)
+}
+
+// checkStateCodec requires codec version 1 and complete state bytes; legacy
+// codec 0 state must be rebuilt.
+func checkStateCodec(situationID string, codecVersion int, stateJSON, stateSHA256 []byte) error {
+	if codecVersion == 0 {
+		return fmt.Errorf("situation %s requires rebuild: legacy runtime state has no supported codec", situationID)
+	}
+	if codecVersion != 1 {
+		return fmt.Errorf("situation %s has unsupported state codec %d", situationID, codecVersion)
+	}
+	if len(stateJSON) == 0 || len(stateSHA256) != sha256.Size {
+		return fmt.Errorf("situation %s has incomplete persisted state", situationID)
+	}
+	return nil
+}
+
+func verifyStateDigest(situationID string, stateJSON, stateSHA256 []byte) error {
+	var document map[string]any
+	if err := json.Unmarshal(stateJSON, &document); err != nil {
+		return fmt.Errorf("decode situation state document %s: %w", situationID, err)
+	}
+	digest, err := canonicaljson.Digest(canonicaljson.DomainSituationState, document)
+	if err != nil {
+		return fmt.Errorf("digest situation state %s: %w", situationID, err)
+	}
+	decodedDigest, err := canonicaljson.DecodeDigest(digest)
+	if err != nil || !bytes.Equal(decodedDigest, stateSHA256) {
+		return fmt.Errorf("situation %s persisted state digest mismatch", situationID)
+	}
+	return nil
+}
+
+func decodeState(situationID string, stateJSON []byte) (persistedSituationState, error) {
+	var state persistedSituationState
+	if err := json.Unmarshal(stateJSON, &state); err != nil {
+		return persistedSituationState{}, fmt.Errorf("decode situation state %s: %w", situationID, err)
+	}
 	if state.Facts == nil {
 		state.Facts = make(map[string]any)
-	}
-	if err := restoreFactTimes(state.Facts); err != nil {
-		return persistedSituationState{}, err
 	}
 	return state, nil
 }

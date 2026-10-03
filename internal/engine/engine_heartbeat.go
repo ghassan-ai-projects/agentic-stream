@@ -47,28 +47,45 @@ func (e *Engine) scheduleOperatorHeartbeatTimers(ctx context.Context, tx *sql.Tx
 }
 
 func (e *Engine) scheduleHeartbeatTimer(ctx context.Context, tx *sql.Tx, partitionID int, operator spec.Operator, stateKey string, blob *operators.OperatorStateBlob, delay time.Duration, now string) error {
-	processingTime := blob.Heartbeat.LastProcessingTime
-	if processingTime == nil {
-		processingTime = blob.Heartbeat.LastEventTime
-	}
-	dueAt := processingTime.Add(delay).UTC()
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE timers SET status = 'cancelled'
-		WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?
-		  AND operator_id = ? AND state_key = ? AND timer_kind = 'processing_time' AND status = 'pending'`,
-		e.deploymentID, e.tenantID, partitionID, operator.Name, stateKey); err != nil {
-		return fmt.Errorf("cancel prior heartbeat timer: %w", err)
+	dueAt := heartbeatDueAt(blob.Heartbeat, delay)
+	if err := e.cancelPendingHeartbeat(ctx, tx, partitionID, operator.Name, stateKey); err != nil {
+		return err
 	}
 	payload, err := json.Marshal(map[string]any{
-		"operator_id":       operator.Name,
-		"state_key":         stateKey,
-		"expected_event_id": blob.Heartbeat.LastEventID,
-		"due_at":            dueAt.Format(time.RFC3339Nano),
+		"operator_id": operator.Name, "state_key": stateKey,
+		"expected_event_id": blob.Heartbeat.LastEventID, "due_at": dueAt.Format(time.RFC3339Nano),
 	})
 	if err != nil {
 		return fmt.Errorf("marshal heartbeat timer: %w", err)
 	}
 	timerID := heartbeatTimerID(e.deploymentID, e.tenantID, partitionID, operator.Name, stateKey, dueAt)
+	return e.insertHeartbeatTimer(ctx, tx, timerID, partitionID, operator.Name, stateKey, dueAt, payload, now)
+}
+
+// heartbeatDueAt is delay after the last processing time, or after the last
+// event time when no processing time was recorded.
+func heartbeatDueAt(hs *operators.HeartbeatState, delay time.Duration) time.Time {
+	processingTime := hs.LastProcessingTime
+	if processingTime == nil {
+		processingTime = hs.LastEventTime
+	}
+	return processingTime.Add(delay).UTC()
+}
+
+func (e *Engine) cancelPendingHeartbeat(ctx context.Context, tx *sql.Tx, partitionID int, operatorID, stateKey string) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE timers SET status = 'cancelled'
+		WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?
+		  AND operator_id = ? AND state_key = ? AND timer_kind = 'processing_time' AND status = 'pending'`,
+		e.deploymentID, e.tenantID, partitionID, operatorID, stateKey); err != nil {
+		return fmt.Errorf("cancel prior heartbeat timer: %w", err)
+	}
+	return nil
+}
+
+// insertHeartbeatTimer arms the timer, reviving a withdrawn one at the same
+// due time but never a fired one.
+func (e *Engine) insertHeartbeatTimer(ctx context.Context, tx *sql.Tx, timerID string, partitionID int, operatorID, stateKey string, dueAt time.Time, payload []byte, now string) error {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO timers (
 			timer_id, deployment_id, tenant_id, partition_id, operator_id, state_key,
@@ -77,7 +94,7 @@ func (e *Engine) scheduleHeartbeatTimer(ctx context.Context, tx *sql.Tx, partiti
 		ON CONFLICT(deployment_id, tenant_id, partition_id, operator_id, state_key, timer_kind, due_at)
 		DO UPDATE SET status = 'pending', payload_json = excluded.payload_json
 		WHERE timers.status != 'fired'`,
-		timerID, e.deploymentID, e.tenantID, partitionID, operator.Name, stateKey,
+		timerID, e.deploymentID, e.tenantID, partitionID, operatorID, stateKey,
 		dueAt.Format(time.RFC3339Nano), payload, now); err != nil {
 		return fmt.Errorf("insert heartbeat timer: %w", err)
 	}

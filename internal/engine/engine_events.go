@@ -12,26 +12,45 @@ import (
 )
 
 func (e *Engine) runGlobal(ctx context.Context, beforeApply func(eventlog.Record) error) (int, error) {
-	var processed int
-	var lastPosition eventlog.LogPosition
+	processed, lastPosition := 0, eventlog.LogPosition(0)
 	for {
-		records, err := e.readGlobalRecords(ctx, lastPosition)
+		batch, err := e.runGlobalBatch(ctx, lastPosition, beforeApply)
+		processed += batch.processed
 		if err != nil {
 			return processed, err
 		}
-		if len(records) == 0 {
+		if batch.empty {
 			return e.finishGlobalRun(ctx, processed)
 		}
-		batchCount, position, err := e.applyGlobalBatch(ctx, records, beforeApply)
-		processed += batchCount
-		if err != nil {
-			return processed, err
-		}
-		lastPosition = position
-		if err := e.checkpointWAL(ctx); err != nil {
-			return processed, fmt.Errorf("checkpoint WAL after global batch: %w", err)
-		}
+		lastPosition = batch.lastPosition
 	}
+}
+
+// globalBatch is the outcome of one page of the global event log.
+type globalBatch struct {
+	processed    int
+	lastPosition eventlog.LogPosition
+	empty        bool
+}
+
+// runGlobalBatch applies the next page after lastPosition and checkpoints
+// the WAL; an empty page ends the run.
+func (e *Engine) runGlobalBatch(ctx context.Context, lastPosition eventlog.LogPosition, beforeApply func(eventlog.Record) error) (globalBatch, error) {
+	records, err := e.readGlobalRecords(ctx, lastPosition)
+	if err != nil {
+		return globalBatch{}, err
+	}
+	if len(records) == 0 {
+		return globalBatch{empty: true}, nil
+	}
+	processed, position, err := e.applyGlobalBatch(ctx, records, beforeApply)
+	if err != nil {
+		return globalBatch{processed: processed}, err
+	}
+	if err := e.checkpointWAL(ctx); err != nil {
+		return globalBatch{processed: processed}, fmt.Errorf("checkpoint WAL after global batch: %w", err)
+	}
+	return globalBatch{processed: processed, lastPosition: position}, nil
 }
 
 func (e *Engine) applyGlobalBatch(ctx context.Context, records []eventlog.Record, beforeApply func(eventlog.Record) error) (int, eventlog.LogPosition, error) {
@@ -81,18 +100,9 @@ type globalRecordOutcome struct {
 }
 
 func (e *Engine) applyGlobalRecord(ctx context.Context, record eventlog.Record, beforeApply func(eventlog.Record) error) (globalRecordOutcome, error) {
-	checkpoint, err := e.loadCheckpoint(ctx, record.PartitionID)
+	watermark, err := e.prepareRecord(ctx, record, beforeApply)
 	if err != nil {
-		return globalRecordOutcome{}, fmt.Errorf("load partition checkpoint: %w", err)
-	}
-	watermark, err := e.watermarkForRecord(record.EventTime, checkpoint.Watermark)
-	if err != nil {
-		return globalRecordOutcome{}, fmt.Errorf("watermark: %w", err)
-	}
-	if beforeApply != nil {
-		if err := beforeApply(record); err != nil {
-			return globalRecordOutcome{}, fmt.Errorf("before apply hook: %w", err)
-		}
+		return globalRecordOutcome{}, err
 	}
 	fired, err := e.runDueTimersForAllPartitions(ctx)
 	if err != nil {
@@ -105,17 +115,37 @@ func (e *Engine) applyGlobalRecord(ctx context.Context, record eventlog.Record, 
 	return outcome, nil
 }
 
+// prepareRecord derives the record's watermark from its partition checkpoint
+// and runs the before-apply hook.
+func (e *Engine) prepareRecord(ctx context.Context, record eventlog.Record, beforeApply func(eventlog.Record) error) (time.Time, error) {
+	checkpoint, err := e.loadCheckpoint(ctx, record.PartitionID)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("load partition checkpoint: %w", err)
+	}
+	watermark, err := e.watermarkForRecord(record.EventTime, checkpoint.Watermark)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("watermark: %w", err)
+	}
+	if err := runBeforeApply(beforeApply, record); err != nil {
+		return time.Time{}, err
+	}
+	return watermark, nil
+}
+
+func runBeforeApply(beforeApply func(eventlog.Record) error, record eventlog.Record) error {
+	if beforeApply == nil {
+		return nil
+	}
+	if err := beforeApply(record); err != nil {
+		return fmt.Errorf("before apply hook: %w", err)
+	}
+	return nil
+}
+
 func (e *Engine) run(ctx context.Context, partitionID int, beforeApply func(eventlog.Record) error) (int, error) {
-	processed := 0
-	for {
-		batchCount, err := e.runBatch(ctx, partitionID, beforeApply)
-		if err != nil {
-			return processed, err
-		}
-		processed += batchCount
-		if batchCount == 0 {
-			break
-		}
+	processed, err := e.drainPartition(ctx, partitionID, beforeApply)
+	if err != nil {
+		return processed, err
 	}
 	fired, err := e.runDueTimers(ctx, partitionID)
 	if err != nil {
@@ -128,38 +158,53 @@ func (e *Engine) run(ctx context.Context, partitionID int, beforeApply func(even
 	return processed, nil
 }
 
+// drainPartition applies batches until the partition has no unread records.
+func (e *Engine) drainPartition(ctx context.Context, partitionID int, beforeApply func(eventlog.Record) error) (int, error) {
+	processed := 0
+	for {
+		batchCount, err := e.runBatch(ctx, partitionID, beforeApply)
+		if err != nil || batchCount == 0 {
+			return processed, err
+		}
+		processed += batchCount
+	}
+}
+
 func (e *Engine) runBatch(ctx context.Context, partitionID int, beforeApply func(eventlog.Record) error) (int, error) {
 	checkpoint, err := e.loadCheckpoint(ctx, partitionID)
 	if err != nil {
 		return 0, fmt.Errorf("load checkpoint: %w", err)
 	}
 	records, err := e.readPartitionRecords(ctx, partitionID, checkpoint.LastPosition)
-	if err != nil {
+	if err != nil || len(records) == 0 {
 		return 0, err
 	}
-	for _, record := range records {
-		if beforeApply != nil {
-			if err := beforeApply(record); err != nil {
-				return 0, fmt.Errorf("before apply hook: %w", err)
-			}
-		}
-		watermark, err := e.watermarkForRecord(record.EventTime, checkpoint.Watermark)
-		if err != nil {
-			return 0, fmt.Errorf("watermark: %w", err)
-		}
-		if err := e.applyRecord(ctx, partitionID, record, watermark); err != nil {
-			return 0, fmt.Errorf("apply record %d: %w", record.Position, err)
-		}
-		checkpoint.LastPosition = record.Position
-		checkpoint.Watermark = watermark.Format(time.RFC3339Nano)
-	}
-	if len(records) == 0 {
-		return 0, nil
+	if err := e.applyPartitionRecords(ctx, partitionID, records, checkpoint, beforeApply); err != nil {
+		return 0, err
 	}
 	if err := e.checkpointWAL(ctx); err != nil {
 		return 0, fmt.Errorf("checkpoint WAL after partition batch: %w", err)
 	}
 	return len(records), nil
+}
+
+// applyPartitionRecords applies records in log order, advancing the local
+// watermark from the checkpoint record by record.
+func (e *Engine) applyPartitionRecords(ctx context.Context, partitionID int, records []eventlog.Record, checkpoint checkpoint, beforeApply func(eventlog.Record) error) error {
+	for _, record := range records {
+		if err := runBeforeApply(beforeApply, record); err != nil {
+			return err
+		}
+		watermark, err := e.watermarkForRecord(record.EventTime, checkpoint.Watermark)
+		if err != nil {
+			return fmt.Errorf("watermark: %w", err)
+		}
+		if err := e.applyRecord(ctx, partitionID, record, watermark); err != nil {
+			return fmt.Errorf("apply record %d: %w", record.Position, err)
+		}
+		checkpoint.Watermark = watermark.Format(time.RFC3339Nano)
+	}
+	return nil
 }
 
 func (e *Engine) readPartitionRecords(ctx context.Context, partitionID int, afterPosition eventlog.LogPosition) ([]eventlog.Record, error) {
@@ -218,8 +263,13 @@ func (e *Engine) watermarkForRecord(eventTime time.Time, previousWatermark strin
 	if err != nil {
 		return time.Time{}, fmt.Errorf("parse prev watermark: %w", err)
 	}
+	return latest(watermark, previous), nil
+}
+
+// latest keeps the watermark monotonic: it never moves before previous.
+func latest(watermark, previous time.Time) time.Time {
 	if watermark.Before(previous) {
-		return previous, nil
+		return previous
 	}
-	return watermark, nil
+	return watermark
 }

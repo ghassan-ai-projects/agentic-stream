@@ -2,8 +2,10 @@ package spec
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/ext"
 )
 
@@ -77,4 +79,18 @@ func triggerExpressions(triggers []Trigger) []celExpression {
 		)
 	}
 	return expressions
+}
+
+// CELBool converts an evaluated SituationSpec condition to a Go bool,
+// rejecting any non-boolean result.
+func CELBool(out ref.Val) (bool, error) {
+	v, err := out.ConvertToNative(reflect.TypeOf(true))
+	if err != nil {
+		return false, fmt.Errorf("cel result not bool: %w", err)
+	}
+	b, ok := v.(bool)
+	if !ok {
+		return false, fmt.Errorf("cel result not bool: %T", v)
+	}
+	return b, nil
 }

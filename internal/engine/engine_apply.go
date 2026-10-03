@@ -9,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -41,34 +42,54 @@ func (e *Engine) applyRecordInTx(ctx context.Context, tx *sql.Tx, partitionID in
 		return err
 	}
 	applied, err := e.eventAlreadyApplied(ctx, tx, record.EventID)
+	if err != nil || applied {
+		return err
+	}
+	newState, err := e.applyEventFeatures(ctx, tx, partitionID, record, watermark)
 	if err != nil {
 		return err
 	}
-	if applied {
-		return nil
+	if err := e.persistOperatorState(ctx, tx, partitionID, record.Envelope.Entity.ID, newState); err != nil {
+		return err
 	}
+	return e.commitRecord(ctx, tx, partitionID, record, watermark)
+}
+
+// applyEventFeatures runs the operators over the event and folds every
+// emitted feature into Situations, returning the new operator state.
+func (e *Engine) applyEventFeatures(ctx context.Context, tx *sql.Tx, partitionID int, record eventlog.Record, watermark time.Time) (*operators.PartitionState, error) {
 	operatorState, err := e.loadOperatorState(ctx, tx, partitionID, record.Envelope.Entity.ID)
 	if err != nil {
-		return fmt.Errorf("load operator state: %w", err)
+		return nil, fmt.Errorf("load operator state: %w", err)
 	}
 	features, newState, err := e.opRuntime.ApplyEventAt(ctx, operatorState, record.Envelope, watermark, e.clock.Now().UTC())
 	if err != nil {
-		return fmt.Errorf("apply operators: %w", err)
+		return nil, fmt.Errorf("apply operators: %w", err)
 	}
+	if err := e.applyAndSaveFeatures(ctx, tx, partitionID, features, watermark); err != nil {
+		return nil, err
+	}
+	return newState, nil
+}
+
+func (e *Engine) applyAndSaveFeatures(ctx context.Context, tx *sql.Tx, partitionID int, features []operators.Feature, watermark time.Time) error {
 	affected, err := e.applyFeatures(ctx, tx, partitionID, features, watermark)
 	if err != nil {
 		return err
 	}
-	if err := e.saveAffectedSituationStates(ctx, tx, partitionID, affected); err != nil {
-		return err
-	}
-	if err := e.saveOperatorState(ctx, tx, partitionID, record.Envelope.Entity.ID, newState); err != nil {
+	return e.saveAffectedSituationStates(ctx, tx, partitionID, affected)
+}
+
+// persistOperatorState saves the entity's operator state and re-arms its
+// heartbeat timers.
+func (e *Engine) persistOperatorState(ctx context.Context, tx *sql.Tx, partitionID int, entityID string, state *operators.PartitionState) error {
+	if err := e.saveOperatorState(ctx, tx, partitionID, entityID, state); err != nil {
 		return fmt.Errorf("save operator state: %w", err)
 	}
-	if err := e.scheduleHeartbeatTimers(ctx, tx, partitionID, newState); err != nil {
+	if err := e.scheduleHeartbeatTimers(ctx, tx, partitionID, state); err != nil {
 		return fmt.Errorf("schedule heartbeat timers: %w", err)
 	}
-	return e.commitRecord(ctx, tx, partitionID, record, watermark)
+	return nil
 }
 
 func (e *Engine) eventAlreadyApplied(ctx context.Context, tx *sql.Tx, eventID string) (bool, error) {
@@ -88,22 +109,40 @@ func (e *Engine) applyFeatures(ctx context.Context, tx *sql.Tx, partitionID int,
 		feature.TenantID = e.tenantID
 		feature.PartitionID = partitionID
 		affected[feature.EntityType+"\x00"+feature.EntityID] = struct{}{}
-		versions, err := e.sitEngine.ApplyFeature(ctx, feature, watermark)
-		if err != nil {
-			return nil, fmt.Errorf("apply situation: %w", err)
-		}
-		for _, version := range versions {
-			if err := e.saveSituationVersion(ctx, tx, partitionID, version); err != nil {
-				return nil, fmt.Errorf("save situation version: %w", err)
-			}
-			if e.cogEngine != nil {
-				if err := e.cogEngine.Process(ctx, tx, version); err != nil {
-					return nil, fmt.Errorf("cognition process: %w", err)
-				}
-			}
+		if err := e.applyFeature(ctx, tx, partitionID, feature, watermark); err != nil {
+			return nil, err
 		}
 	}
 	return affected, nil
+}
+
+// applyFeature updates the Situation and publishes each new version.
+func (e *Engine) applyFeature(ctx context.Context, tx *sql.Tx, partitionID int, feature operators.Feature, watermark time.Time) error {
+	versions, err := e.sitEngine.ApplyFeature(ctx, feature, watermark)
+	if err != nil {
+		return fmt.Errorf("apply situation: %w", err)
+	}
+	for _, version := range versions {
+		if err := e.publishVersion(ctx, tx, partitionID, version); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// publishVersion persists the version and lets cognition react to it in the
+// same transaction.
+func (e *Engine) publishVersion(ctx context.Context, tx *sql.Tx, partitionID int, version situations.Version) error {
+	if err := e.saveSituationVersion(ctx, tx, partitionID, version); err != nil {
+		return fmt.Errorf("save situation version: %w", err)
+	}
+	if e.cogEngine == nil {
+		return nil
+	}
+	if err := e.cogEngine.Process(ctx, tx, version); err != nil {
+		return fmt.Errorf("cognition process: %w", err)
+	}
+	return nil
 }
 
 func (e *Engine) saveAffectedSituationStates(ctx context.Context, tx *sql.Tx, partitionID int, affected map[string]struct{}) error {

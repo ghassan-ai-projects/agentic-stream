@@ -131,3 +131,14 @@ are permitted, writes keep single owners.
   table replaces a switch. ID-generation order, side-effect order (boot
   admission after event admission) and canonical documents are unchanged; the
   full (non-short) replay/golden suites and runtime/CLI suites pass under race.
+
+- Round 11 (Q2/Q7 + duplication): `engine` and `cognition` have no production
+  function over 15 lines. Record application reads as owner check → dedupe →
+  operators/situations → operator state → commit; timer firing moved to
+  `engine_timer_firing.go`; scheduler admission reads as save → build →
+  enqueue-or-defer. Removed duplicated business logic: the CEL `features` view
+  is now `situations.CELFeatures`, shared by the situation engine and cognition,
+  and CEL bool conversion is `spec.CELBool`. Added `storage.CollectRows` for the
+  repeated scan loop (with tests). Preserved clock-read order, ID order, error
+  text and transaction scope; caught and fixed an operand-order hazard in
+  `buildItem` before commit. Full replay/runtime suites pass under race.
