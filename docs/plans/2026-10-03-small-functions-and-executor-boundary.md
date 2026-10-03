@@ -311,3 +311,11 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   Device race tests and strict focused lint pass. Locks, claims, cache fencing,
   safe-stop latch, durable barriers, digests and cancellation synchronization
   retain their original semantics. Full coverage requires socket permissions.
+
+- Round 33: command constructors, flag registration, validation, effect-profile
+  wiring, live batch setup, continuous sources and socket readiness are bounded
+  steps. Source handling is grouped in serve_source.go. Added regressions for
+  full-channel worker failure cancellation, source error retention during socket
+  wait cancellation, and source validation before credentials. Command race tests
+  and whole-tree strict 15-line/15-statement lint pass. Cleanup order, failure
+  precedence, cancellation, effect authorization and command output are intact.

@@ -16,16 +16,20 @@ func newExportRunCommand() *cobra.Command {
 		Use:   "export-run --db <runtime.db> --output <directory>",
 		Short: "Export one consistent, verifiable runtime evidence artifact.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			path, err := exportRunArtifact(cmd.Context(), dbPath, outputDir, manifest)
-			if err != nil {
-				return err
-			}
-			cmd.Printf("run_artifact=%s\n", path)
-			return nil
+			return printExportedArtifact(cmd, dbPath, outputDir, manifest)
 		},
 	}
 	addExportRunFlags(cmd, &dbPath, &outputDir, &manifest)
 	return cmd
+}
+
+func printExportedArtifact(cmd *cobra.Command, dbPath, outputDir string, manifest runartifact.Manifest) error {
+	path, err := exportRunArtifact(cmd.Context(), dbPath, outputDir, manifest)
+	if err != nil {
+		return err
+	}
+	cmd.Printf("run_artifact=%s\n", path)
+	return nil
 }
 
 func exportRunArtifact(ctx context.Context, dbPath, outputDir string, manifest runartifact.Manifest) (string, error) {
@@ -52,17 +56,29 @@ func addExportRunFlags(cmd *cobra.Command, dbPath, outputDir *string, manifest *
 	cmd.Flags().StringVar(&manifest.TenantID, "tenant", "", "Tenant identifier")
 	cmd.Flags().StringVar(&manifest.GitCommit, "git-commit", Commit, "Agentic Stream git commit")
 	cmd.Flags().BoolVar(&manifest.GitDirty, "git-dirty", false, "Whether the source checkout was dirty")
-	cmd.Flags().StringVar(&manifest.Device.Board, "board", "", "Board identity")
-	cmd.Flags().StringVar(&manifest.Device.DeviceID, "device-id", "", "Device identity")
-	cmd.Flags().StringVar(&manifest.Device.BootID, "boot-id", "", "Device boot identity")
-	cmd.Flags().StringVar(&manifest.Device.FirmwareDigest, "firmware-digest", "", "Firmware digest")
-	cmd.Flags().StringVar(&manifest.Device.CapabilityDigest, "capability-digest", "", "Capability catalog digest")
-	cmd.Flags().StringVar(&manifest.Worker.PromptVersion, "prompt-version", "", "Worker prompt version")
-	cmd.Flags().StringVar(&manifest.Worker.PromptDigest, "prompt-digest", "", "Worker prompt digest")
-	cmd.Flags().StringVar(&manifest.Worker.DecisionSchema, "decision-schema", "", "Worker decision schema")
-	cmd.Flags().StringVar(&manifest.Worker.Provider, "provider", "", "Worker provider")
-	cmd.Flags().StringVar(&manifest.Worker.Model, "model", "", "Worker model")
-	cmd.Flags().StringVar(&manifest.Worker.SamplingParameters, "sampling-parameters", "", "Worker sampling parameters")
+	addDeviceManifestFlags(cmd, &manifest.Device)
+	addWorkerManifestFlags(cmd, &manifest.Worker)
+	addRunEvidenceFlags(cmd, manifest)
+}
+
+func addDeviceManifestFlags(cmd *cobra.Command, device *runartifact.DeviceIdentity) {
+	cmd.Flags().StringVar(&device.Board, "board", "", "Board identity")
+	cmd.Flags().StringVar(&device.DeviceID, "device-id", "", "Device identity")
+	cmd.Flags().StringVar(&device.BootID, "boot-id", "", "Device boot identity")
+	cmd.Flags().StringVar(&device.FirmwareDigest, "firmware-digest", "", "Firmware digest")
+	cmd.Flags().StringVar(&device.CapabilityDigest, "capability-digest", "", "Capability catalog digest")
+}
+
+func addWorkerManifestFlags(cmd *cobra.Command, worker *runartifact.WorkerMetadata) {
+	cmd.Flags().StringVar(&worker.PromptVersion, "prompt-version", "", "Worker prompt version")
+	cmd.Flags().StringVar(&worker.PromptDigest, "prompt-digest", "", "Worker prompt digest")
+	cmd.Flags().StringVar(&worker.DecisionSchema, "decision-schema", "", "Worker decision schema")
+	cmd.Flags().StringVar(&worker.Provider, "provider", "", "Worker provider")
+	cmd.Flags().StringVar(&worker.Model, "model", "", "Worker model")
+	cmd.Flags().StringVar(&worker.SamplingParameters, "sampling-parameters", "", "Worker sampling parameters")
+}
+
+func addRunEvidenceFlags(cmd *cobra.Command, manifest *runartifact.Manifest) {
 	cmd.Flags().StringVar(&manifest.SpecDigest, "spec-digest", "", "SituationSpec digest")
 	cmd.Flags().StringVar(&manifest.PolicyDigest, "policy-digest", "", "Policy digest")
 	cmd.Flags().StringVar(&manifest.CalibrationRevision, "calibration-revision", "", "Calibration revision")
