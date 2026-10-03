@@ -219,3 +219,11 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   distinction between absent controls and unknown stored states. Added a
   regression proving recovery cannot commit an expired lease and acquisition
   rolls back. Control and architecture race tests and strict focused lint pass.
+
+- Round 20: worker handshake, request validation, bounded execution and stream
+  accounting are named steps. Started emission still precedes execution-context
+  construction; counters and terminal state still advance under the same mutex
+  before Send. Private socket creation/refusal/cleanup keeps permission checks
+  and inode ownership. Added earlier-deadline and invalid-wall-budget cancellation
+  regressions. Worker, evidence, executor conformance/native/remote and root
+  architecture race tests pass; strict focused worker lint passes.
