@@ -281,3 +281,10 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   Runtime ownership, clock reads, lease refresh, unknown-outcome refusal and
   reconciliation digest precedence stay unchanged. Added evidence validation
   order and fallback regressions. Action race tests and strict focused lint pass.
+
+- Round 29: replay separates recorded decisions, counterfactual simulations,
+  shadow input binding and output validation by capability ownership. New
+  regressions pin partial simulations before duplicate failure, manifest errors
+  before decision/snapshot parsing, and attempt identity before fence checking.
+  Replay race tests and strict focused lint pass; golden fixtures and dependency
+  edges are unchanged, and replay still cannot reach live effect implementations.

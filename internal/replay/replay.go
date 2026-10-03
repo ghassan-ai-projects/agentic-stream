@@ -55,6 +55,10 @@ func run(ctx context.Context, dbPath, specPath, tracePath, tenantID string, cogn
 	}
 	defer func() { _ = db.Close() }()
 
+	return runReplaySession(ctx, db, specPath, tracePath, tenantID, cognitionEnabled, after)
+}
+
+func runReplaySession(ctx context.Context, db *storage.DB, specPath, tracePath, tenantID string, cognitionEnabled bool, after func(*storage.DB, *Result, *spec.CompiledSpec, time.Time) error) (Result, error) {
 	session, err := prepareReplaySession(ctx, db, specPath, tracePath, tenantID)
 	if err != nil {
 		return Result{}, err
@@ -63,16 +67,25 @@ func run(ctx context.Context, dbPath, specPath, tracePath, tenantID string, cogn
 	if err != nil {
 		return Result{}, err
 	}
+	return session.completeReplay(ctx, processed, after)
+}
+
+func (session *replaySession) completeReplay(ctx context.Context, processed int, after func(*storage.DB, *Result, *spec.CompiledSpec, time.Time) error) (Result, error) {
 	result, err := session.collectResult(ctx, processed)
 	if err != nil {
 		return Result{}, err
 	}
-	if after != nil {
-		if err := after(db, &result, session.compiled, session.clk.Now()); err != nil {
-			return Result{}, err
-		}
+	if err := session.applyAfter(after, &result); err != nil {
+		return Result{}, err
 	}
 	return result, nil
+}
+
+func (s *replaySession) applyAfter(after func(*storage.DB, *Result, *spec.CompiledSpec, time.Time) error, result *Result) error {
+	if after == nil {
+		return nil
+	}
+	return after(s.db, result, s.compiled, s.clk.Now())
 }
 
 func runAllPartitions(ctx context.Context, eng *engine.Engine, beforeApply func(eventlog.Record) error) (int, error) {

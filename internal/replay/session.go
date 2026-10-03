@@ -35,6 +35,14 @@ func prepareReplaySession(ctx context.Context, db *storage.DB, specPath, tracePa
 	if err := spec.SaveDeployment(ctx, db, tenantID, compiled); err != nil {
 		return nil, fmt.Errorf("prepare replay deployment: %w", err)
 	}
+	log, clk, err := prepareReplayClock(ctx, db, compiled, tracePath, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	return &replaySession{db: db, compiled: compiled, log: log, clk: clk, tenantID: tenantID}, nil
+}
+
+func prepareReplayClock(ctx context.Context, db *storage.DB, compiled *spec.CompiledSpec, tracePath, tenantID string) (*eventlog.EventLog, *clock.Virtual, error) {
 	requireSchemas := allInputSchemasDeclared(compiled)
 	validationLog := eventlog.NewEventLog(db)
 	if requireSchemas {
@@ -42,7 +50,7 @@ func prepareReplaySession(ctx context.Context, db *storage.DB, specPath, tracePa
 	}
 	epoch, err := traceEpoch(ctx, tracePath, tenantID, validationLog)
 	if err != nil {
-		return nil, fmt.Errorf("derive replay epoch: %w", err)
+		return nil, nil, fmt.Errorf("derive replay epoch: %w", err)
 	}
 	clk := clock.NewVirtual(epoch)
 	log := eventlog.NewEventLogWithClock(db, clk)
@@ -53,7 +61,7 @@ func prepareReplaySession(ctx context.Context, db *storage.DB, specPath, tracePa
 	if requireSchemas {
 		log.RequireSchemaValidation()
 	}
-	return &replaySession{db: db, compiled: compiled, log: log, clk: clk, tenantID: tenantID}, nil
+	return log, clk, nil
 }
 
 func allInputSchemasDeclared(compiled *spec.CompiledSpec) bool {
@@ -69,11 +77,27 @@ func allInputSchemasDeclared(compiled *spec.CompiledSpec) bool {
 }
 
 func (s *replaySession) processTrace(ctx context.Context, tracePath string, cognitionEnabled bool) (int, error) {
-	conn := ingress.NewJSONLReplayWithClock(s.db, s.log, s.tenantID, tracePath, "replay:"+tracePath, s.clk)
-	if _, err := conn.Run(ctx); err != nil {
-		return 0, fmt.Errorf("replay trace: %w", err)
+	if err := s.ingestTrace(ctx, tracePath); err != nil {
+		return 0, err
 	}
 
+	eng, err := s.newReplayEngine(ctx, cognitionEnabled)
+	if err != nil {
+		return 0, err
+	}
+
+	return s.runTraceEngine(ctx, eng, cognitionEnabled)
+}
+
+func (s *replaySession) ingestTrace(ctx context.Context, tracePath string) error {
+	conn := ingress.NewJSONLReplayWithClock(s.db, s.log, s.tenantID, tracePath, "replay:"+tracePath, s.clk)
+	if _, err := conn.Run(ctx); err != nil {
+		return fmt.Errorf("replay trace: %w", err)
+	}
+	return nil
+}
+
+func (s *replaySession) newReplayEngine(ctx context.Context, cognitionEnabled bool) (*engine.Engine, error) {
 	var eng *engine.Engine
 	var err error
 	if cognitionEnabled {
@@ -82,19 +106,29 @@ func (s *replaySession) processTrace(ctx context.Context, tracePath string, cogn
 		eng, err = engine.NewStreamEngine(ctx, s.db, s.log, s.clk, s.compiled, s.tenantID)
 	}
 	if err != nil {
-		return 0, fmt.Errorf("new engine: %w", err)
+		return nil, fmt.Errorf("new engine: %w", err)
 	}
+	return eng, nil
+}
 
+func (s *replaySession) runTraceEngine(ctx context.Context, eng *engine.Engine, cognitionEnabled bool) (int, error) {
 	processed, err := runAllPartitions(ctx, eng, s.advanceToRecordTime)
 	if err != nil {
 		return 0, fmt.Errorf("run partitions: %w", err)
 	}
-	if cognitionEnabled {
-		if err := materializeReplayEpisodes(ctx, s.db, s.compiled, s.tenantID, s.clk.Now()); err != nil {
-			return 0, fmt.Errorf("materialize replay episodes: %w", err)
-		}
+	if err := s.materializeEpisodes(ctx, cognitionEnabled); err != nil {
+		return 0, err
 	}
 	return processed, nil
+}
+
+func (s *replaySession) materializeEpisodes(ctx context.Context, cognitionEnabled bool) error {
+	if cognitionEnabled {
+		if err := materializeReplayEpisodes(ctx, s.db, s.compiled, s.tenantID, s.clk.Now()); err != nil {
+			return fmt.Errorf("materialize replay episodes: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *replaySession) advanceToRecordTime(record eventlog.Record) error {
