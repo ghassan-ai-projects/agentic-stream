@@ -2,6 +2,7 @@ package decisions
 
 import (
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 

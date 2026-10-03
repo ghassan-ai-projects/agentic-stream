@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 )
 

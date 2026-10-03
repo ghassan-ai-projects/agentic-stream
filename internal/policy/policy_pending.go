@@ -6,9 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"time"
 )
 
 func (g *Gateway) evaluatePending(ctx context.Context, tx *sql.Tx, row intentRow, result Result, now time.Time) (Result, error) {

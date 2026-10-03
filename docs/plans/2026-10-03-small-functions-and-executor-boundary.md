@@ -325,3 +325,41 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   repeat registration, immutable byte conflicts, retained creation time and
   validation before storage access. Event-schema short race coverage is now
   91.4%; focused lint passes. Production behavior and catalog data are unchanged.
+
+- Round 35: enforced Q2 in the repository configuration at 15 body lines and
+  15 statements, with a regression preventing configuration drift. Production
+  inventory now has zero functions above 15 lines. Normalized import grouping
+  and the catalog fixture's final newline without changing JSON content or
+  existing test functions. Hook validation exposed two tool-boundary conflicts:
+  generated protobuf imports must remain generator-owned, and the legacy vet
+  hook incorrectly treats an archived nested module as part of the root module.
+  The import hook now excludes generated stubs; the vet hook runs the same
+  `go vet ./...` gate as CI. Authored Markdown line breaks are preserved.
+
+## Final continuation validation
+
+Baseline for this continuation: `b71f06f`; 331 oversized production functions.
+Rounds 13–35 each have a separate commit. Existing test functions were not
+refactored for size. The pre-existing untracked executable was left untouched.
+
+- Whole-tree lint: 0 issues with the repository's enforced 15/15 limits.
+- Production inventory: zero oversized functions; production files under 300
+  lines, enforced by the architecture suite.
+- Independent reviews of policy/actions/runtime and episodes/replay/runartifact:
+  no correctness or Q7 findings; import grouping polish completed.
+- Architecture bar A1–A11: imports, mutation ownership, package responsibilities,
+  public module map, composition SQL isolation and replay/effect separation pass.
+- `make ci-check`: passes with pinned protoc 35.1 and installed deadcode and
+  vulnerability tools. Every hand-written package meets the unchanged 60%
+  coverage floor; vulnerability scan reports no vulnerabilities. Public docs
+  check verifies 59 pages and volatile surfaces.
+- `go test -race -count=1 ./...`: passes, including unchanged replay goldens and
+  predictive-maintenance contracts. New schema tests also pass uncached with
+  race detection and 91.4% package coverage.
+- `pre-commit run --all-files`: all hooks pass after correcting tool boundaries.
+- `git diff --check`: passes. No protocol, schema, dependency or public signature
+  change; no new speculative package or architecture exception.
+
+The clean-function and architecture bars are met. Existing business-owned
+packages remain the right boundaries; responsibility files provide the needed
+local modularity without adding layers or services.

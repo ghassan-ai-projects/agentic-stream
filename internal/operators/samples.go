@@ -2,9 +2,10 @@ package operators
 
 import (
 	"encoding/json"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"math"
 	"strings"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 func (r *OperatorRuntime) extractValue(inst *operatorInstance, env contractsv1.Envelope) (float64, bool) {

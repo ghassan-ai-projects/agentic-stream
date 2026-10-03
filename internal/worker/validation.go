@@ -2,12 +2,14 @@ package worker
 
 import (
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/protobuf/proto"
 	"strings"
 	"sync"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 func (s *Server) validateRequest(req *runtimev1.EpisodeRequest) error { //nolint:wrapcheck // gRPC status errors are the public wire contract.

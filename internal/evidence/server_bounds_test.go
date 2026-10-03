@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 var boundsNow = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)

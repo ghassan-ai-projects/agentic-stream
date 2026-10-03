@@ -4,13 +4,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"google.golang.org/grpc/status"
 	"sync"
 	"time"
 
-	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
+	"google.golang.org/grpc/status"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+
 	"google.golang.org/grpc/codes"
+
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 const maxArgumentsBytes = 256 << 10

@@ -9,10 +9,11 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 
+	_ "modernc.org/sqlite"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
-	_ "modernc.org/sqlite"
 )
 
 func TestWatchEffectorIsBoundedExpiringAndOneShot(t *testing.T) {

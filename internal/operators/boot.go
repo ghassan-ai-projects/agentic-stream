@@ -1,10 +1,11 @@
 package operators
 
 import (
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
 	"slices"
 	"strings"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
 )
 
 const maxSeenBootIDs = 64

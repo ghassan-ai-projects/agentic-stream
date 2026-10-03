@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 )
 

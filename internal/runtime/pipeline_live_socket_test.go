@@ -11,10 +11,11 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 
+	"go.opentelemetry.io/otel/trace/noop"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
-	"go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestFireRecentWatchesPaginatesPastFullPage(t *testing.T) {

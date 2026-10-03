@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestStreamAdmissionPreservesErrorPrecedence(t *testing.T) {

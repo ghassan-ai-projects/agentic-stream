@@ -2,6 +2,7 @@ package decisions
 
 import (
 	"fmt"
+
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 

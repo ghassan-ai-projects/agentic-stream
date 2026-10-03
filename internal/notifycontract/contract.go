@@ -9,8 +9,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/santhosh-tekuri/jsonschema/v6"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 const (

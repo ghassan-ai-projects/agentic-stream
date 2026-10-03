@@ -2,9 +2,11 @@ package worker
 
 import (
 	"context"
-	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 // Execute validates the request, emits a Started event, and validates the

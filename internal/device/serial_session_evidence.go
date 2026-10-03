@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 

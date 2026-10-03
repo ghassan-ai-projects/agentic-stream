@@ -6,9 +6,10 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
-	"time"
 )
 
 func newCommand(g *Gateway, row intentRow, intent map[string]any, now time.Time) (commandDocument, error) {

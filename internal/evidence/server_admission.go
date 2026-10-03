@@ -2,10 +2,12 @@ package evidence
 
 import (
 	"fmt"
+	"time"
+
+	"google.golang.org/grpc/codes"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
-	"google.golang.org/grpc/codes"
-	"time"
 )
 
 // admitCall turns a wire request into an authorized, deadline-bound Call:

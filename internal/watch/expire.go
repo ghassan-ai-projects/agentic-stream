@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // Expire marks due active watches inactive without deleting their audit rows.

@@ -3,8 +3,9 @@ package spec
 import (
 	_ "embed"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
 	"strings"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
 )
 
 func resolveReferences(spec *CompiledSpec) error {
