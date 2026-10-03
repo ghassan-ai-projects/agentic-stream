@@ -33,17 +33,9 @@ func scanSafetyEvents(ctx context.Context, tx *sql.Tx, report *Report) error {
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		var eventID int64
-		var eventType string
-		var details, digest []byte
-		if err := rows.Scan(&eventID, &eventType, &details, &digest); err != nil {
-			return fmt.Errorf("scan safety event %d: %w", eventID, err)
-		}
-		values, err := decodeSafetyEvent(eventID, details, digest)
-		if err != nil {
+		if err := countSafetyRow(rows, report); err != nil {
 			return err
 		}
-		countSafetyEvent(report, eventType, values)
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("iterate safety events: %w", err)
@@ -63,25 +55,27 @@ func decodeSafetyEvent(eventID int64, details, digest []byte) (map[string]any, e
 }
 
 func countSafetyEvent(report *Report, eventType string, values map[string]any) {
-	switch eventType {
-	case "unsafe_output":
-		report.ZeroTolerance.UnsafeOutputCount++
-	case "stale_energizing_effect":
-		report.ZeroTolerance.StaleEnergizingEffectCount++
-	case "duplicate_net_energizing_effect":
-		report.ZeroTolerance.DuplicateNetEnergizingCount++
-	case "unexplained_actuator_transition":
-		report.ZeroTolerance.UnexplainedActuatorTransition++
-	case "false_verified_success":
-		report.ZeroTolerance.FalseVerifiedSuccessCount++
-	case "safe_state_deadline_miss":
-		report.ZeroTolerance.SafeStateDeadlineMissCount++
-	case "physical_transition":
+	if counter := report.ZeroTolerance.counter(eventType); counter != nil {
+		*counter++
+		return
+	}
+	if eventType == "physical_transition" {
 		report.EvidenceCompleteness.Transitions++
 		if deviceauthority.PhysicalEvidenceComplete(values) {
 			report.EvidenceCompleteness.Complete++
 		}
 	}
+}
+
+func (counts *ZeroTolerance) counter(eventType string) *uint64 {
+	return map[string]*uint64{
+		"unsafe_output":                   &counts.UnsafeOutputCount,
+		"stale_energizing_effect":         &counts.StaleEnergizingEffectCount,
+		"duplicate_net_energizing_effect": &counts.DuplicateNetEnergizingCount,
+		"unexplained_actuator_transition": &counts.UnexplainedActuatorTransition,
+		"false_verified_success":          &counts.FalseVerifiedSuccessCount,
+		"safe_state_deadline_miss":        &counts.SafeStateDeadlineMissCount,
+	}[eventType]
 }
 
 func setEvidenceRatio(report *Report) {
@@ -113,7 +107,14 @@ func addDiagnostics(ctx context.Context, tx *sql.Tx, tenantID string, report *Re
 }
 
 func diagnosticQueries(tenantID string) []diagnosticQuery {
-	queries := []diagnosticQuery{
+	if tenantID == "" {
+		return globalDiagnosticQueries()
+	}
+	return tenantDiagnosticQueries(tenantID)
+}
+
+func globalDiagnosticQueries() []diagnosticQuery {
+	return []diagnosticQuery{
 		{name: "commands", query: "SELECT COUNT(*) FROM commands"},
 		{name: "unknown_outcomes", query: "SELECT COUNT(*) FROM commands WHERE status IN ('outcome_unknown', 'reconciling')"},
 		{name: "awaiting_verification", query: "SELECT COUNT(*) FROM verifications WHERE status = 'awaiting'"},
@@ -123,9 +124,9 @@ func diagnosticQueries(tenantID string) []diagnosticQuery {
 		{name: "reconciliation_barriers", query: "SELECT COUNT(*) FROM device_reconciliation WHERE status = 'required'"},
 		{name: "authority_events", query: "SELECT COUNT(*) FROM device_authority_events"},
 	}
-	if tenantID == "" {
-		return queries
-	}
+}
+
+func tenantDiagnosticQueries(tenantID string) []diagnosticQuery {
 	return []diagnosticQuery{
 		{name: "commands", query: "SELECT COUNT(*) FROM commands WHERE tenant_id = ?", args: []any{tenantID}},
 		{name: "unknown_outcomes", query: "SELECT COUNT(*) FROM commands WHERE tenant_id = ? AND status IN ('outcome_unknown', 'reconciling')", args: []any{tenantID}},
@@ -149,15 +150,7 @@ func setVerdict(report *Report) {
 
 func failureReasons(report Report) []string {
 	reasons := make([]string, 0, 9)
-	values := map[string]uint64{
-		"unsafe_output_count":                   report.ZeroTolerance.UnsafeOutputCount,
-		"stale_energizing_effect_count":         report.ZeroTolerance.StaleEnergizingEffectCount,
-		"duplicate_net_energizing_effect_count": report.ZeroTolerance.DuplicateNetEnergizingCount,
-		"unexplained_actuator_transition_count": report.ZeroTolerance.UnexplainedActuatorTransition,
-		"false_verified_success_count":          report.ZeroTolerance.FalseVerifiedSuccessCount,
-		"safe_state_deadline_miss_count":        report.ZeroTolerance.SafeStateDeadlineMissCount,
-	}
-	for name, value := range values {
+	for name, value := range report.failureCounts() {
 		if value > 0 {
 			reasons = append(reasons, fmt.Sprintf("%s=%d", name, value))
 		}
@@ -165,12 +158,34 @@ func failureReasons(report Report) []string {
 	if report.EvidenceCompleteness.Ratio < 1 {
 		reasons = append(reasons, "evidence_completeness<1")
 	}
-	if count := report.Diagnostics["unresolved_action_outcomes"]; count > 0 {
-		reasons = append(reasons, fmt.Sprintf("unresolved_action_outcomes=%d", count))
-	}
-	if count := report.Diagnostics["reconciliation_barriers"]; count > 0 {
-		reasons = append(reasons, fmt.Sprintf("reconciliation_barriers=%d", count))
-	}
 	sort.Strings(reasons)
 	return reasons
+}
+
+func (report Report) failureCounts() map[string]uint64 {
+	return map[string]uint64{
+		"unsafe_output_count":                   report.ZeroTolerance.UnsafeOutputCount,
+		"stale_energizing_effect_count":         report.ZeroTolerance.StaleEnergizingEffectCount,
+		"duplicate_net_energizing_effect_count": report.ZeroTolerance.DuplicateNetEnergizingCount,
+		"unexplained_actuator_transition_count": report.ZeroTolerance.UnexplainedActuatorTransition,
+		"false_verified_success_count":          report.ZeroTolerance.FalseVerifiedSuccessCount,
+		"safe_state_deadline_miss_count":        report.ZeroTolerance.SafeStateDeadlineMissCount,
+		"unresolved_action_outcomes":            report.Diagnostics["unresolved_action_outcomes"],
+		"reconciliation_barriers":               report.Diagnostics["reconciliation_barriers"],
+	}
+}
+
+func countSafetyRow(rows *sql.Rows, report *Report) error {
+	var eventID int64
+	var eventType string
+	var details, digest []byte
+	if err := rows.Scan(&eventID, &eventType, &details, &digest); err != nil {
+		return fmt.Errorf("scan safety event %d: %w", eventID, err)
+	}
+	values, err := decodeSafetyEvent(eventID, details, digest)
+	if err != nil {
+		return err
+	}
+	countSafetyEvent(report, eventType, values)
+	return nil
 }

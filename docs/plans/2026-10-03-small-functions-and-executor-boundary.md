@@ -206,3 +206,9 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   unchanged. A new regression proves filtered duplicate records authorize once
   and still advance beyond skipped poison rows. API and architecture race tests
   and focused 15-line/15-statement lint pass.
+
+- Round 18: soak reporting separates row decoding, safety counting, diagnostic
+  selection and snapshot commit. All safety counters, evidence completeness and
+  unresolved outcomes retain their fail-closed verdicts. Added a regression
+  pinning every failure reason and its stable sorted order, excluding report-only
+  diagnostics. Soak and architecture race tests and strict focused lint pass.

@@ -54,10 +54,7 @@ func Compute(ctx context.Context, db *storage.DB) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	if err := tx.Commit(); err != nil {
-		return Report{}, fmt.Errorf("commit soak snapshot: %w", err)
-	}
-	return report, nil
+	return commitSoakReport(tx, report)
 }
 
 // ComputeTx derives a report from the caller's consistent read transaction.
@@ -73,4 +70,11 @@ func ComputeTenantTx(ctx context.Context, tx *sql.Tx, tenantID string) (Report, 
 		return Report{}, fmt.Errorf("soak tenant is required")
 	}
 	return computeTx(ctx, tx, tenantID)
+}
+
+func commitSoakReport(tx *sql.Tx, report Report) (Report, error) {
+	if err := tx.Commit(); err != nil {
+		return Report{}, fmt.Errorf("commit soak snapshot: %w", err)
+	}
+	return report, nil
 }
