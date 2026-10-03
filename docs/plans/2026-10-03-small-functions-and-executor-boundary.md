@@ -183,3 +183,11 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   corrupted stored results, preserve identity-error precedence, and prove
   completion survives request cancellation. Evidence and root architecture
   race tests pass; focused lint passes without changing repository thresholds.
+
+- Round 15: notification append reads as validate → canonicalize → deduplicate
+  → publish; page admission delegates valid records and poison accounting.
+  Poison retries still update/audit/clear in one transaction, and result sets
+  close before accounting writes. Retention keeps its original operation and
+  error order. A new regression proves pruning preserves cursor highwater,
+  refuses expired events and resumes new events at the next cursor. Notification
+  and architecture race tests pass; focused lint at 15 lines/statements passes.
