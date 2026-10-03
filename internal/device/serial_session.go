@@ -81,34 +81,7 @@ func OpenDeviceSession(ctx context.Context, config DeviceSessionConfig) (*Device
 	if err := validateOwnerInstance(config); err != nil {
 		return nil, err
 	}
-	if len(config.AllowedCapabilityDigests) == 0 {
-		return nil, fmt.Errorf("device capability allow-list is required")
-	}
-	catalogDigest, err := config.Catalog.Digest()
-	if err != nil {
-		return nil, fmt.Errorf("digest device capability catalog: %w", err)
-	}
-	if !contains(config.AllowedCapabilityDigests, catalogDigest) {
-		return nil, fmt.Errorf("capability catalog digest is not allow-listed")
-	}
-
-	session := newDeviceSession(config)
-	opened := false
-	defer func() {
-		if !opened {
-			_ = config.Transport.Close()
-		}
-	}()
-	state, err := session.receiveHandshake(ctx, catalogDigest)
-	if err != nil {
-		return nil, err
-	}
-	if err := session.bindHandshakeState(ctx, state); err != nil {
-		return nil, err
-	}
-	session.opened = true
-	opened = true
-	return session, nil
+	return openCatalogSession(ctx, config)
 }
 
 func validateSessionConfig(config DeviceSessionConfig) error {
@@ -124,6 +97,10 @@ func validateSessionConfig(config DeviceSessionConfig) error {
 	if config.Authority.Owner == nil || config.Authority.EpochControl == nil {
 		return fmt.Errorf("device target authority requires runtime owner and epoch control")
 	}
+	return validateSessionStores(config)
+}
+
+func validateSessionStores(config DeviceSessionConfig) error {
 	if len(config.AllowedFirmwareDigests) == 0 {
 		return fmt.Errorf("device firmware allow-list is required")
 	}
@@ -153,6 +130,31 @@ func validateOwnerInstance(config DeviceSessionConfig) error {
 	return nil
 }
 
+func openCatalogSession(ctx context.Context, config DeviceSessionConfig) (*DeviceSession, error) {
+	if len(config.AllowedCapabilityDigests) == 0 {
+		return nil, fmt.Errorf("device capability allow-list is required")
+	}
+	catalogDigest, err := config.Catalog.Digest()
+	if err != nil {
+		return nil, fmt.Errorf("digest device capability catalog: %w", err)
+	}
+	if !contains(config.AllowedCapabilityDigests, catalogDigest) {
+		return nil, fmt.Errorf("capability catalog digest is not allow-listed")
+	}
+
+	return handshakeDeviceSession(ctx, config, catalogDigest)
+}
+
+func handshakeDeviceSession(ctx context.Context, config DeviceSessionConfig, catalogDigest string) (*DeviceSession, error) {
+	session := newDeviceSession(config)
+	defer func() {
+		if !session.opened {
+			_ = config.Transport.Close()
+		}
+	}()
+	return session.acceptHandshake(ctx, catalogDigest)
+}
+
 func newDeviceSession(config DeviceSessionConfig) *DeviceSession {
 	return &DeviceSession{
 		transport: config.Transport, catalog: config.Catalog,
@@ -162,6 +164,18 @@ func newDeviceSession(config DeviceSessionConfig) *DeviceSession {
 		telemetry:              config.Telemetry,
 		allowedFirmwareDigests: append([]string(nil), config.AllowedFirmwareDigests...),
 	}
+}
+
+func (s *DeviceSession) acceptHandshake(ctx context.Context, catalogDigest string) (*DeviceSession, error) {
+	state, err := s.receiveHandshake(ctx, catalogDigest)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.bindHandshakeState(ctx, state); err != nil {
+		return nil, err
+	}
+	s.opened = true
+	return s, nil
 }
 
 func (s *DeviceSession) receiveHandshake(ctx context.Context, catalogDigest string) (map[string]any, error) {
@@ -188,6 +202,10 @@ func (s *DeviceSession) bindHandshakeState(ctx context.Context, state map[string
 	if err != nil {
 		return fmt.Errorf("digest device state handshake: %w", err)
 	}
+	return s.bindHandshakeBarrier(ctx, state)
+}
+
+func (s *DeviceSession) bindHandshakeBarrier(ctx context.Context, state map[string]any) error {
 	if err := s.authority.AssertRuntime(ctx, s.authorityEpoch); err != nil {
 		return fmt.Errorf("assert authority before binding device state: %w", err)
 	}
@@ -195,6 +213,10 @@ func (s *DeviceSession) bindHandshakeState(ctx context.Context, state map[string
 	if err != nil {
 		return fmt.Errorf("read device reconciliation barrier: %w", err)
 	}
+	return s.persistHandshakeBarrier(ctx, state, priorBarrier)
+}
+
+func (s *DeviceSession) persistHandshakeBarrier(ctx context.Context, state map[string]any, priorBarrier bool) error {
 	wasRequired := s.reconciliationRequired
 	required, err := s.reconciliation.BindState(ctx, state, s.authorityEpoch, s.ownerInstance)
 	if err != nil {
@@ -205,6 +227,11 @@ func (s *DeviceSession) bindHandshakeState(ctx context.Context, state map[string
 	if !wasRequired && s.reconciliationRequired && s.telemetry != nil {
 		s.telemetry.ObserveReconciliationBarrier()
 	}
+	return s.restoreSafeStopState(ctx)
+}
+
+func (s *DeviceSession) restoreSafeStopState(ctx context.Context) error {
+	var err error
 	s.safeStopRequested, err = s.authority.SafeStopRequested(ctx, s.deviceID, s.bootID)
 	if err != nil {
 		return fmt.Errorf("read durable safe-stop state: %w", err)

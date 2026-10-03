@@ -50,12 +50,22 @@ func (e *SimulatedEffector) dispatch(ctx context.Context, command actionport.Com
 		return actionport.Effect{}, fmt.Errorf("idempotency key is required")
 	}
 
+	return e.applyOnce(command)
+}
+
+func (e *SimulatedEffector) applyOnce(command actionport.Command) (actionport.Effect, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if result, ok := e.results[command.IdempotencyKey]; ok {
 		return result, nil
 	}
-	result := actionport.Effect{
+	result := simulatedEffect(command)
+	e.results[command.IdempotencyKey] = result
+	return result, nil
+}
+
+func simulatedEffect(command actionport.Command) actionport.Effect {
+	return actionport.Effect{
 		ProviderResult: map[string]any{
 			"accepted":        true,
 			"provider":        "agentic-stream-simulator",
@@ -66,6 +76,4 @@ func (e *SimulatedEffector) dispatch(ctx context.Context, command actionport.Com
 			"target": command.NormalizedTarget,
 		},
 	}
-	e.results[command.IdempotencyKey] = result
-	return result, nil
 }

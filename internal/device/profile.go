@@ -34,22 +34,34 @@ func ValidateEffectProfile(config EffectProfileConfig) error {
 	if profile == "" {
 		profile = EffectProfileSimulated
 	}
+	return validateSelectedProfile(profile, config)
+}
+
+func validateSelectedProfile(profile EffectProfile, config EffectProfileConfig) error {
 	switch profile {
 	case EffectProfileSimulated:
-		if config.GatewayLink != nil {
-			return fmt.Errorf("simulated effect profile cannot configure a gateway link")
-		}
-		return nil
+		return requireSimulatedProfile(config)
 	case EffectProfileEmulator:
 		return requireLiveGateway(profile, config)
 	case EffectProfilePhysical:
-		if err := requireLiveGateway(profile, config); err != nil {
-			return err
-		}
-		return requireActuationConsent(config)
+		return requirePhysicalProfile(profile, config)
 	default:
 		return fmt.Errorf("unsupported effect profile %q", profile)
 	}
+}
+
+func requireSimulatedProfile(config EffectProfileConfig) error {
+	if config.GatewayLink != nil {
+		return fmt.Errorf("simulated effect profile cannot configure a gateway link")
+	}
+	return nil
+}
+
+func requirePhysicalProfile(profile EffectProfile, config EffectProfileConfig) error {
+	if err := requireLiveGateway(profile, config); err != nil {
+		return err
+	}
+	return requireActuationConsent(config)
 }
 
 // requireLiveGateway keeps device profiles away from replay and shadow

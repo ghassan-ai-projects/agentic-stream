@@ -2,12 +2,9 @@ package device
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
@@ -32,6 +29,15 @@ func (s *DeviceSession) AuthorityEpoch() string {
 // device handshake.
 func (s *DeviceSession) CapabilityDigest() string {
 	return s.readString(func(s *DeviceSession) string { return s.capabilityDigest })
+}
+
+func (s *DeviceSession) readString(read func(*DeviceSession) string) string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return read(s)
 }
 
 // SafeState reports the last safe_state value received from the device. It is
@@ -68,15 +74,6 @@ func (s *DeviceSession) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *Devi
 	return s
 }
 
-func (s *DeviceSession) readString(read func(*DeviceSession) string) string {
-	if s == nil {
-		return ""
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return read(s)
-}
-
 // RefreshState reads another device.state record. A changed boot invalidates
 // cached receipts before the new boot is accepted, so a prior semantic effect
 // cannot be mistaken for a receipt from the new device lifetime.
@@ -96,6 +93,10 @@ func (s *DeviceSession) QueryState(ctx context.Context) (map[string]any, error) 
 	if !s.opened || s.closed {
 		return nil, fmt.Errorf("device session is not open")
 	}
+	return s.queryCurrentState(ctx)
+}
+
+func (s *DeviceSession) queryCurrentState(ctx context.Context) (map[string]any, error) {
 	catalogDigest, err := s.catalog.Digest()
 	if err != nil {
 		return nil, fmt.Errorf("digest device capability catalog: %w", err)
@@ -108,6 +109,10 @@ func (s *DeviceSession) QueryState(ctx context.Context) (map[string]any, error) 
 	if err != nil {
 		return s.failStateRefresh(fmt.Errorf("validate device state refresh: %w", err))
 	}
+	return s.acceptCurrentState(ctx, state)
+}
+
+func (s *DeviceSession) acceptCurrentState(ctx context.Context, state map[string]any) (map[string]any, error) {
 	if stateString(state, "device_id") != s.deviceID {
 		s.opened = false
 		return nil, fmt.Errorf("device identity changed from %q to %q", s.deviceID, stateString(state, "device_id"))
@@ -118,63 +123,58 @@ func (s *DeviceSession) QueryState(ctx context.Context) (map[string]any, error) 
 	return cloneDocument(state), nil
 }
 
-// QueryStateEvidence performs one fresh device-state query and packages the
-// state with the identity and digest fields required by durable reconciliation.
-func (s *DeviceSession) QueryStateEvidence(ctx context.Context) (map[string]any, error) {
-	state, err := s.QueryState(ctx)
+func (s *DeviceSession) applyRefreshedState(ctx context.Context, state map[string]any) error {
+	previousSafeState := s.safeState
+	if bootID := stateString(state, "boot_id"); bootID != s.bootID {
+		s.bootID = bootID
+		s.receipts = make(map[string]cachedReceipt)
+		s.reconciliationRequired = true
+	}
+	s.firmwareDigest = stateString(state, "firmware_digest")
+	s.capabilityDigest = stateString(state, "capability_digest")
+	s.safeState, _ = state["safe_state"].(bool)
+	var err error
+	s.stateDigest, err = stateDigest(state)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("digest device state refresh: %w", err)
 	}
-	digest, err := stateDigest(state)
-	if err != nil {
-		return nil, fmt.Errorf("digest device state evidence: %w", err)
-	}
-	feedback := map[string]any{
-		"source":         "device.query_state",
-		"target":         currentOutputTarget(state),
-		"observed_state": state["current_output"],
-		"state_digest":   digest,
-	}
-	feedbackJSON, err := canonicaljson.Marshal(feedback)
-	if err != nil {
-		return nil, fmt.Errorf("canonicalize device feedback: %w", err)
-	}
-	feedbackHash := sha256.Sum256(feedbackJSON)
-	evidence := map[string]any{
-		"source":          "device.query_state",
-		"evidence_type":   "device_state_feedback",
-		"device_id":       stateString(state, "device_id"),
-		"boot_id":         stateString(state, "boot_id"),
-		"state":           state,
-		"state_digest":    digest,
-		"feedback":        feedback,
-		"feedback_digest": "sha256:" + hex.EncodeToString(feedbackHash[:]),
-	}
-	withoutDigest := cloneDocument(evidence)
-	bundleJSON, err := canonicaljson.Marshal(withoutDigest)
-	if err != nil {
-		return nil, fmt.Errorf("canonicalize device evidence: %w", err)
-	}
-	bundleHash := sha256.Sum256(bundleJSON)
-	evidence["evidence_digest"] = "sha256:" + hex.EncodeToString(bundleHash[:])
-	return evidence, nil
+	return s.completeStateRefresh(ctx, state, previousSafeState)
 }
 
-func currentOutputTarget(state map[string]any) string {
-	output, _ := state["current_output"].(map[string]any)
-	target, _ := output["target"].(string)
-	return target
+func (s *DeviceSession) completeStateRefresh(ctx context.Context, state map[string]any, previousSafeState bool) error {
+	if err := s.bindRefreshedState(ctx, state); err != nil {
+		return err
+	}
+	if !previousSafeState && s.safeState && s.telemetry != nil {
+		s.telemetry.ObserveSafeStateEntry()
+	}
+	return nil
 }
 
-func setEvidenceTarget(evidence map[string]any, target string) error {
-	evidence["target"] = target
-	delete(evidence, "evidence_digest")
-	bundleJSON, err := canonicaljson.Marshal(evidence)
-	if err != nil {
-		return fmt.Errorf("canonicalize device evidence with target: %w", err)
+func (s *DeviceSession) bindRefreshedState(ctx context.Context, state map[string]any) error {
+	if err := s.authority.AssertRuntime(ctx, s.authorityEpoch); err != nil {
+		s.reconciliationRequired = true
+		s.opened = false
+		return fmt.Errorf("assert authority before binding refreshed state: %w", err)
 	}
-	bundleHash := sha256.Sum256(bundleJSON)
-	evidence["evidence_digest"] = "sha256:" + hex.EncodeToString(bundleHash[:])
+	return s.persistRefreshedState(ctx, state)
+}
+
+func (s *DeviceSession) persistRefreshedState(ctx context.Context, state map[string]any) error {
+	wasRequired := s.reconciliationRequired
+	required, err := s.reconciliation.BindState(ctx, state, s.authorityEpoch, s.ownerInstance)
+	if err != nil {
+		// A refresh is a durable safety transition. If its barrier write cannot
+		// be proven, this session is no longer safe to use.
+		s.reconciliationRequired = true
+		s.opened = false
+		return fmt.Errorf("bind refreshed device state: %w", err)
+	}
+	s.reconciliationRequired = required
+	s.stateQueryRequired = false
+	if !wasRequired && s.reconciliationRequired && s.telemetry != nil {
+		s.telemetry.ObserveReconciliationBarrier()
+	}
 	return nil
 }
 
@@ -194,51 +194,4 @@ func (s *DeviceSession) invalidateTransportLocked() {
 	if s.transport != nil {
 		_ = s.transport.Close()
 	}
-}
-
-func (s *DeviceSession) applyRefreshedState(ctx context.Context, state map[string]any) error {
-	previousSafeState := s.safeState
-	if bootID := stateString(state, "boot_id"); bootID != s.bootID {
-		s.bootID = bootID
-		s.receipts = make(map[string]cachedReceipt)
-		s.reconciliationRequired = true
-	}
-	s.firmwareDigest = stateString(state, "firmware_digest")
-	s.capabilityDigest = stateString(state, "capability_digest")
-	s.safeState, _ = state["safe_state"].(bool)
-	var err error
-	s.stateDigest, err = stateDigest(state)
-	if err != nil {
-		return fmt.Errorf("digest device state refresh: %w", err)
-	}
-	if err := s.bindRefreshedState(ctx, state); err != nil {
-		return err
-	}
-	if !previousSafeState && s.safeState && s.telemetry != nil {
-		s.telemetry.ObserveSafeStateEntry()
-	}
-	return nil
-}
-
-func (s *DeviceSession) bindRefreshedState(ctx context.Context, state map[string]any) error {
-	if err := s.authority.AssertRuntime(ctx, s.authorityEpoch); err != nil {
-		s.reconciliationRequired = true
-		s.opened = false
-		return fmt.Errorf("assert authority before binding refreshed state: %w", err)
-	}
-	wasRequired := s.reconciliationRequired
-	required, err := s.reconciliation.BindState(ctx, state, s.authorityEpoch, s.ownerInstance)
-	if err != nil {
-		// A refresh is a durable safety transition. If its barrier write cannot
-		// be proven, this session is no longer safe to use.
-		s.reconciliationRequired = true
-		s.opened = false
-		return fmt.Errorf("bind refreshed device state: %w", err)
-	}
-	s.reconciliationRequired = required
-	s.stateQueryRequired = false
-	if !wasRequired && s.reconciliationRequired && s.telemetry != nil {
-		s.telemetry.ObserveReconciliationBarrier()
-	}
-	return nil
 }

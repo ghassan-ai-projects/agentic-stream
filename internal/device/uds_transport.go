@@ -81,25 +81,31 @@ func (t *UDSTransport) writeFrameWithWriteGate(ctx context.Context, frame []byte
 		return fmt.Errorf("prepare device frame send: %w", err)
 	}
 	written := 0
-	defer func() {
-		if cleanupErr := cleanup(); cleanupErr != nil {
-			resetErr := fmt.Errorf("reset device frame deadline: %w", cleanupErr)
-			if written > 0 {
-				resetErr = &possiblySentError{err: resetErr}
-			}
-			err = errors.Join(err, resetErr)
-		}
-	}()
-	var writeErr error
-	written, writeErr = writeAll(t.conn, frame)
+	defer func() { err = resetWriteDeadline(err, cleanup, written) }()
+	written, err = writeAll(t.conn, frame)
+	return classifyDeviceWrite(ctx, written, err)
+}
+
+func classifyDeviceWrite(ctx context.Context, written int, writeErr error) error {
 	if writeErr != nil {
 		writeErr = fmt.Errorf("send device frame: %w", contextError(ctx, writeErr))
 		if written > 0 {
-			writeErr = &possiblySentError{err: writeErr}
+			return &possiblySentError{err: writeErr}
 		}
 		return writeErr
 	}
 	return nil
+}
+
+func resetWriteDeadline(err error, cleanup func() error, written int) error {
+	if cleanupErr := cleanup(); cleanupErr != nil {
+		resetErr := fmt.Errorf("reset device frame deadline: %w", cleanupErr)
+		if written > 0 {
+			return errors.Join(err, &possiblySentError{err: resetErr})
+		}
+		return errors.Join(err, resetErr)
+	}
+	return err
 }
 
 // Receive reads one newline-delimited device frame.
@@ -133,28 +139,6 @@ func (t *UDSTransport) QueryState(ctx context.Context) ([]byte, error) {
 	return t.readFrame(ctx)
 }
 
-// Close closes the gateway link.
-func (t *UDSTransport) Close() error {
-	if t == nil {
-		return nil
-	}
-	t.stateMu.Lock()
-	if t.closed {
-		t.stateMu.Unlock()
-		return nil
-	}
-	t.closed = true
-	conn := t.conn
-	t.stateMu.Unlock()
-	if conn == nil {
-		return nil
-	}
-	if err := conn.Close(); err != nil {
-		return fmt.Errorf("close device transport: %w", err)
-	}
-	return nil
-}
-
 func (t *UDSTransport) readFrame(ctx context.Context) (line []byte, err error) {
 	if err := t.ensureOpen(); err != nil {
 		return nil, err
@@ -164,7 +148,11 @@ func (t *UDSTransport) readFrame(ctx context.Context) (line []byte, err error) {
 		return nil, fmt.Errorf("prepare device frame receive: %w", err)
 	}
 	defer func() { err = errors.Join(err, cleanup()) }()
-	line, err = readBoundedFrame(t.reader)
+	return t.receiveBoundedFrame(ctx)
+}
+
+func (t *UDSTransport) receiveBoundedFrame(ctx context.Context) ([]byte, error) {
+	line, err := readBoundedFrame(t.reader)
 	if err != nil {
 		if errors.Is(err, errDeviceFrameTooLarge) {
 			err = errors.Join(err, t.Close())
@@ -205,4 +193,30 @@ func (t *UDSTransport) acquireWrite(ctx context.Context) error {
 
 func (t *UDSTransport) releaseWrite() {
 	t.writeGate <- struct{}{}
+}
+
+// Close closes the gateway link.
+func (t *UDSTransport) Close() error {
+	if t == nil {
+		return nil
+	}
+	t.stateMu.Lock()
+	if t.closed {
+		t.stateMu.Unlock()
+		return nil
+	}
+	t.closed = true
+	conn := t.conn
+	t.stateMu.Unlock()
+	return closeDeviceConnection(conn)
+}
+
+func closeDeviceConnection(conn net.Conn) error {
+	if conn == nil {
+		return nil
+	}
+	if err := conn.Close(); err != nil {
+		return fmt.Errorf("close device transport: %w", err)
+	}
+	return nil
 }

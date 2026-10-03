@@ -302,3 +302,12 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   in their original scopes. New recovery regression proves the owner's claim
   timestamp is used for attempts and evidence when no override is supplied.
   Runtime and architecture race tests and strict focused lint pass.
+
+- Round 32: device codec, gateway transport, catalogs, materialization, sessions
+  and effectors expose bounded admission, delivery, reconciliation and cleanup
+  steps. Session evidence and close cleanup have distinct responsibility files.
+  New regressions pin safety/admission precedence, zero sends on refusal,
+  trailing data validation and write-error identity/possibly-sent classification.
+  Device race tests and strict focused lint pass. Locks, claims, cache fencing,
+  safe-stop latch, durable barriers, digests and cancellation synchronization
+  retain their original semantics. Full coverage requires socket permissions.

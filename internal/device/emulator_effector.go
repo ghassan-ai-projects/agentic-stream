@@ -41,41 +41,6 @@ type GatewayEffectorConfig struct {
 	Telemetry              *telemetry.Runtime
 }
 
-// NewGatewayEffector opens a governed serial effector over a typed gateway
-// link. It performs the capability and device-state handshake before exposing
-// the effector to the action plane.
-func NewGatewayEffector(ctx context.Context, config GatewayEffectorConfig) (*SerialEffector, func() error, error) {
-	if config.Transport == nil {
-		return nil, nil, fmt.Errorf("gateway effector requires a device transport")
-	}
-	if config.Catalog == nil {
-		return nil, nil, fmt.Errorf("gateway effector requires a capability catalog")
-	}
-	catalogDigest, err := config.Catalog.Digest()
-	if err != nil {
-		return nil, nil, fmt.Errorf("digest device capability catalog: %w", err)
-	}
-	session, err := OpenDeviceSession(ctx, DeviceSessionConfig{
-		Transport:                config.Transport,
-		Catalog:                  config.Catalog,
-		AllowedCapabilityDigests: []string{catalogDigest},
-		AllowedFirmwareDigests:   config.AllowedFirmwareDigests,
-		AuthorityEpoch:           config.AuthorityEpoch,
-		OwnerInstance:            config.OwnerInstance,
-		Authority:                config.Authority,
-		Reconciliation:           config.Reconciliation,
-		Telemetry:                config.Telemetry,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("open device session: %w", err)
-	}
-	effector := NewSerialEffector(session, config.Catalog)
-	if config.Telemetry != nil {
-		effector = effector.WithTelemetry(config.Telemetry)
-	}
-	return effector, session.Close, nil
-}
-
 // NewEmulatorEffector dials the device gateway, opens a validated device session
 // (reading and checking the opening state handshake), and returns a serial
 // effector plus a close function that tears the session and transport down. It
@@ -92,7 +57,20 @@ func NewEmulatorEffector(ctx context.Context, config EmulatorEffectorConfig) (*S
 	if err != nil {
 		return nil, nil, err
 	}
-	effector, closeFn, err := NewGatewayEffector(ctx, GatewayEffectorConfig{
+	return openEmulatorGateway(ctx, config, transport)
+}
+
+func openEmulatorGateway(ctx context.Context, config EmulatorEffectorConfig, transport DeviceTransport) (*SerialEffector, func() error, error) {
+	effector, closeFn, err := NewGatewayEffector(ctx, emulatorGatewayConfig(config, transport))
+	if err != nil {
+		_ = transport.Close()
+		return nil, nil, err
+	}
+	return effector, closeFn, nil
+}
+
+func emulatorGatewayConfig(config EmulatorEffectorConfig, transport DeviceTransport) GatewayEffectorConfig {
+	return GatewayEffectorConfig{
 		Transport:              transport,
 		Catalog:                config.Catalog,
 		AllowedFirmwareDigests: config.AllowedFirmwareDigests,
@@ -101,10 +79,52 @@ func NewEmulatorEffector(ctx context.Context, config EmulatorEffectorConfig) (*S
 		Authority:              config.Authority,
 		Reconciliation:         config.Reconciliation,
 		Telemetry:              config.Telemetry,
-	})
-	if err != nil {
-		_ = transport.Close()
-		return nil, nil, err
 	}
-	return effector, closeFn, nil
+}
+
+// NewGatewayEffector opens a governed serial effector over a typed gateway
+// link. It performs the capability and device-state handshake before exposing
+// the effector to the action plane.
+func NewGatewayEffector(ctx context.Context, config GatewayEffectorConfig) (*SerialEffector, func() error, error) {
+	if config.Transport == nil {
+		return nil, nil, fmt.Errorf("gateway effector requires a device transport")
+	}
+	if config.Catalog == nil {
+		return nil, nil, fmt.Errorf("gateway effector requires a capability catalog")
+	}
+	catalogDigest, err := config.Catalog.Digest()
+	if err != nil {
+		return nil, nil, fmt.Errorf("digest device capability catalog: %w", err)
+	}
+	return openGatewayEffector(ctx, config, catalogDigest)
+}
+
+func openGatewayEffector(ctx context.Context, config GatewayEffectorConfig, catalogDigest string) (*SerialEffector, func() error, error) {
+	session, err := OpenDeviceSession(ctx, gatewaySessionConfig(config, catalogDigest))
+	if err != nil {
+		return nil, nil, fmt.Errorf("open device session: %w", err)
+	}
+	return exposeSessionEffector(session, config)
+}
+
+func gatewaySessionConfig(config GatewayEffectorConfig, catalogDigest string) DeviceSessionConfig {
+	return DeviceSessionConfig{
+		Transport:                config.Transport,
+		Catalog:                  config.Catalog,
+		AllowedCapabilityDigests: []string{catalogDigest},
+		AllowedFirmwareDigests:   config.AllowedFirmwareDigests,
+		AuthorityEpoch:           config.AuthorityEpoch,
+		OwnerInstance:            config.OwnerInstance,
+		Authority:                config.Authority,
+		Reconciliation:           config.Reconciliation,
+		Telemetry:                config.Telemetry,
+	}
+}
+
+func exposeSessionEffector(session *DeviceSession, config GatewayEffectorConfig) (*SerialEffector, func() error, error) {
+	effector := NewSerialEffector(session, config.Catalog)
+	if config.Telemetry != nil {
+		effector = effector.WithTelemetry(config.Telemetry)
+	}
+	return effector, session.Close, nil
 }
