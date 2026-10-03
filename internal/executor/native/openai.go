@@ -51,15 +51,7 @@ func (p *OpenAICompatibleProvider) Stream(ctx context.Context, req ModelRequest)
 	if err != nil {
 		return ModelResponse{}, err
 	}
-	response, err := client.Do(httpRequest)
-	if err != nil {
-		return ModelResponse{}, fmt.Errorf("call model provider: %w", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-	if err := checkProviderStatus(response); err != nil {
-		return ModelResponse{}, err
-	}
-	return decodeProviderResponse(response)
+	return callProvider(client, httpRequest)
 }
 
 func (p *OpenAICompatibleProvider) buildHTTPRequest(ctx context.Context, req ModelRequest) (*http.Request, error) {
@@ -74,15 +66,7 @@ func (p *OpenAICompatibleProvider) buildHTTPRequest(ctx context.Context, req Mod
 	if err != nil {
 		return nil, fmt.Errorf("marshal provider request: %w", err)
 	}
-	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, p.Endpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("create provider request: %w", err)
-	}
-	httpRequest.Header.Set("Content-Type", "application/json")
-	if p.APIKey != "" {
-		httpRequest.Header.Set("Authorization", "Bearer "+p.APIKey)
-	}
-	return httpRequest, nil
+	return p.providerHTTPRequest(ctx, body)
 }
 
 func (p *OpenAICompatibleProvider) boundedHTTPClient() (*http.Client, error) {
@@ -147,4 +131,28 @@ func providerTools(definitions []ToolDefinition) []openAITool {
 		}{Name: definition.Name, Description: definition.Description, Parameters: definition.Parameters}})
 	}
 	return result
+}
+
+func callProvider(client *http.Client, httpRequest *http.Request) (ModelResponse, error) {
+	response, err := client.Do(httpRequest)
+	if err != nil {
+		return ModelResponse{}, fmt.Errorf("call model provider: %w", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if err := checkProviderStatus(response); err != nil {
+		return ModelResponse{}, err
+	}
+	return decodeProviderResponse(response)
+}
+
+func (p *OpenAICompatibleProvider) providerHTTPRequest(ctx context.Context, body []byte) (*http.Request, error) {
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, p.Endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create provider request: %w", err)
+	}
+	httpRequest.Header.Set("Content-Type", "application/json")
+	if p.APIKey != "" {
+		httpRequest.Header.Set("Authorization", "Bearer "+p.APIKey)
+	}
+	return httpRequest, nil
 }

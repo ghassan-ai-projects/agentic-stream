@@ -37,24 +37,7 @@ func RunBatch(ctx context.Context, executor episodes.Executor, requests []*episo
 	}
 	results := make([]BatchResult, 0, len(requests))
 	for index, request := range requests {
-		result := BatchResult{CellID: cellIDs[index]}
-		start := time.Now()
-		outcome, err := executor.Execute(ctx, request)
-		result.DurationMS = time.Since(start).Milliseconds()
-		if err != nil {
-			result.Status = string(episodeledger.AttemptFailed)
-			result.Reasons = append(result.Reasons, fmt.Sprintf("executor_error:%v", err))
-		} else if outcome == nil {
-			result.Status = string(episodeledger.AttemptFailed)
-			result.Reasons = append(result.Reasons, "nil_outcome")
-		} else {
-			result.Status = outcome.Status
-			result.AttemptID = outcome.AttemptID
-			result.Fence = outcome.Fence
-			result.Decision = outcome.DecisionJSON
-			result.Cost = outcome.CostMicrounits
-			result.Reasons = outcome.Reasons
-		}
+		result := executeBatchCell(ctx, executor, request, cellIDs[index])
 		results = append(results, result)
 	}
 	return results, nil
@@ -71,4 +54,36 @@ func RunBatchJSON(ctx context.Context, executor episodes.Executor, requests []*e
 		return nil, fmt.Errorf("marshal batch report: %w", err)
 	}
 	return encoded, nil
+}
+
+func executeBatchCell(ctx context.Context, executor episodes.Executor, request *episodes.Request, cellID string) BatchResult {
+	result := BatchResult{CellID: cellID}
+	start := time.Now()
+	outcome, err := executor.Execute(ctx, request)
+	result.DurationMS = time.Since(start).Milliseconds()
+	return settleBatchCell(result, outcome, err)
+}
+
+func settleBatchCell(result BatchResult, outcome *episodes.Outcome, err error) BatchResult {
+
+	if err != nil {
+		result.Status = string(episodeledger.AttemptFailed)
+		result.Reasons = append(result.Reasons, fmt.Sprintf("executor_error:%v", err))
+	} else if outcome == nil {
+		result.Status = string(episodeledger.AttemptFailed)
+		result.Reasons = append(result.Reasons, "nil_outcome")
+	} else {
+		result = producedBatchCell(result, outcome)
+	}
+	return result
+}
+
+func producedBatchCell(result BatchResult, outcome *episodes.Outcome) BatchResult {
+	result.Status = outcome.Status
+	result.AttemptID = outcome.AttemptID
+	result.Fence = outcome.Fence
+	result.Decision = outcome.DecisionJSON
+	result.Cost = outcome.CostMicrounits
+	result.Reasons = outcome.Reasons
+	return result
 }

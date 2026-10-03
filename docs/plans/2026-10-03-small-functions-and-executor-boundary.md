@@ -263,3 +263,9 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   Tenant scope, exact SQL, digest inputs and temporary-directory rename remain
   unchanged. Regressions pin manifest error precedence and duplicate checksums.
   Run-artifact race tests and strict focused lint pass; no new dependency edge.
+
+- Round 26: native execution separates bounded loop admission, provider retry,
+  response acceptance, tool observations, evidence windows and streamed decoding.
+  Failed tool calls remain deduplicated and bytes are charged before refusing an
+  observation; new regressions pin both boundaries. Native and conformance race
+  tests and strict focused lint pass. No public signature or import edge changed.
