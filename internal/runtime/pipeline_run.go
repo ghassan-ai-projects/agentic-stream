@@ -9,6 +9,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -192,26 +193,27 @@ func (p *Pipeline) fireRecentWatches(ctx context.Context, before eventlog.LogPos
 
 func (p *Pipeline) evaluatePendingIntents(ctx context.Context, report *PipelineReport) error {
 	for {
-		var intentID string
-		err := p.db.QueryRowContext(ctx, `
-			SELECT intent_id FROM intents WHERE tenant_id = ? AND policy_status = 'pending'
-			ORDER BY created_at, intent_id LIMIT 1`, p.tenantID).Scan(&intentID)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
+		intentID, found, err := policy.NextPendingIntent(ctx, p.db.DB, p.tenantID)
+		if err != nil || !found {
+			return err //nolint:wrapcheck // Policy names the failed read; the batch error text is unchanged.
 		}
-		if err != nil {
-			return fmt.Errorf("find pending intent: %w", err)
-		}
-		now := p.clk.Now().UTC()
-		if err := p.db.WithTx(ctx, func(tx *sql.Tx) error {
-			_, err := p.policy.EvaluateIntent(ctx, tx, intentID, now)
-			if err != nil {
-				return fmt.Errorf("evaluate intent: %w", err)
-			}
-			return nil
-		}); err != nil {
-			return fmt.Errorf("evaluate intent %s: %w", intentID, err)
+		if err := p.evaluateIntent(ctx, intentID); err != nil {
+			return err
 		}
 		report.IntentsEvaluated++
 	}
+}
+
+// evaluateIntent runs policy for one intent in its own transaction.
+func (p *Pipeline) evaluateIntent(ctx context.Context, intentID string) error {
+	now := p.clk.Now().UTC()
+	if err := p.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := p.policy.EvaluateIntent(ctx, tx, intentID, now); err != nil {
+			return fmt.Errorf("evaluate intent: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("evaluate intent %s: %w", intentID, err)
+	}
+	return nil
 }

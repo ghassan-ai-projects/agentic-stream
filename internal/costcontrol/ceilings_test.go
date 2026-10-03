@@ -1,18 +1,15 @@
-package runtime
+package costcontrol
 
 import (
 	"database/sql"
 	"math"
 	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-func TestCostConfigurationPreservesUnspecifiedLimitsAndAtomicity(t *testing.T) {
+func TestApplyCeilingsPreservesUnspecifiedLimitsAndAtomicity(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name                                      string
@@ -36,14 +33,16 @@ func TestCostConfigurationPreservesUnspecifiedLimitsAndAtomicity(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = db.Close() })
 			if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-				if err := costcontrol.SetLimit(ctx, tx, "global", "", 100, true, "2026-01-01T00:00:00Z"); err != nil {
+				if err := SetLimit(ctx, tx, "global", "", 100, true, "2026-01-01T00:00:00Z"); err != nil {
 					return err
 				}
-				return costcontrol.SetLimit(ctx, tx, "tenant:tenant", "tenant", 10, true, "2026-01-01T00:00:00Z")
+				return SetLimit(ctx, tx, "tenant:tenant", "tenant", 10, true, "2026-01-01T00:00:00Z")
 			}); err != nil {
 				t.Fatal(err)
 			}
-			err = configureCostLimits(ctx, PipelineConfig{DB: db, TenantID: "tenant", Clock: clock.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)), GlobalCostCeiling: tc.global, TenantCostCeiling: tc.tenant, CostKillSwitch: tc.kill})
+			err = db.WithTx(ctx, func(tx *sql.Tx) error {
+				return ApplyCeilings(ctx, tx, Ceilings{Global: tc.global, Tenant: tc.tenant, KillSwitch: tc.kill}, "tenant", "2026-01-01T00:00:00Z")
+			})
 			if (err != nil) != tc.wantError {
 				t.Fatalf("configuration err=%v", err)
 			}

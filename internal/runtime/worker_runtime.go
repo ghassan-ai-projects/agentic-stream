@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -143,7 +142,7 @@ func (r *WorkerRuntime) startEvidenceServer(cfg WorkerRuntimeConfig) ([]byte, er
 	issuer := evidenceIssuer(evidenceSecret)
 	runtimev1.RegisterEvidenceToolsServer(evidenceGRPC, &evidence.Server{
 		Verifier: &evidence.Verifier{Issuer: issuer.Issuer, Audience: issuer.Audience, Keys: issuer.Keys},
-		Query:    makeEvidenceQuery(cfg.DB), Ledger: cfg.Ledger, RuntimeEpoch: cfg.RuntimeEpoch, RequireLedger: true,
+		Query:    evidence.EventLogQuery(cfg.DB), Ledger: cfg.Ledger, RuntimeEpoch: cfg.RuntimeEpoch, RequireLedger: true,
 	})
 	go func() {
 		if serveErr := evidenceGRPC.Serve(listener); serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
@@ -215,35 +214,4 @@ func (r *WorkerRuntime) Close() error {
 
 func evidenceIssuer(secret []byte) *evidence.Issuer {
 	return &evidence.Issuer{Issuer: "agentic-stream", Audience: "evidence-tools", KeyID: "runtime", Keys: map[string][]byte{"runtime": secret}}
-}
-
-func makeEvidenceQuery(db *storage.DB) evidence.Query {
-	return func(ctx context.Context, call evidence.Call) (evidence.QueryResult, error) {
-		rows, err := db.QueryContext(ctx, `SELECT event_id, event_type, event_time, payload_json FROM event_log WHERE tenant_id = ? AND entity_id = ? AND event_time >= ? AND event_time <= ? ORDER BY event_time, position LIMIT ?`, call.TenantID, call.EntityID, call.From.UTC().Format(time.RFC3339Nano), call.Until.UTC().Format(time.RFC3339Nano), call.MaxRows)
-		if err != nil {
-			return evidence.QueryResult{}, fmt.Errorf("query evidence events: %w", err)
-		}
-		defer func() { _ = rows.Close() }()
-		resultRows := make([]map[string]any, 0)
-		for rows.Next() {
-			var eventID, eventType, eventTime string
-			var payload []byte
-			if err := rows.Scan(&eventID, &eventType, &eventTime, &payload); err != nil {
-				return evidence.QueryResult{}, fmt.Errorf("scan evidence event: %w", err)
-			}
-			var data map[string]any
-			if err := json.Unmarshal(payload, &data); err != nil {
-				return evidence.QueryResult{}, fmt.Errorf("decode evidence payload: %w", err)
-			}
-			resultRows = append(resultRows, map[string]any{"event_id": eventID, "event_type": eventType, "event_time": eventTime, "data": data})
-		}
-		if err := rows.Err(); err != nil {
-			return evidence.QueryResult{}, fmt.Errorf("iterate evidence events: %w", err)
-		}
-		result, err := json.Marshal(map[string]any{"rows": resultRows})
-		if err != nil {
-			return evidence.QueryResult{}, fmt.Errorf("encode evidence result: %w", err)
-		}
-		return evidence.QueryResult{JSON: result, RowCount: uint64(len(resultRows))}, nil //nolint:gosec // Result rows are bounded by the authenticated capability.
-	}
 }

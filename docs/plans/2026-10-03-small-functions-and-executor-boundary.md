@@ -90,3 +90,13 @@ are permitted, writes keep single owners.
   admission tests cover admission, both fixture modes, drain and cost refusal
   (coverage 75.3%). `TestAllowedImportsHaveNoStaleEdges` now keeps the reviewed
   import graph exact; runtime no longer imports `cognition` or `scheduleledger`.
+
+- Round 6 (A10): the composition roots now contain no SQL
+  (`TestCompositionRootsContainNoSQL`, checked to fail on a probe literal).
+  Pending-intent selection moved to `policy.NextPendingIntent`; cost-ceiling
+  merging to `costcontrol.ApplyCeilings` (its table test moved with it); the
+  evidence server's event query to `evidence.EventLogQuery`. Both evidence
+  readers (`evidence` and the native executor tool) share one
+  `eventlog.ReadEntityWindow`, removing a duplicated `event_log` query. Error
+  texts of the shared read are unified under `eventlog`; the ceiling update now
+  reads the clock once per configuration transaction. Focused race tests pass.

@@ -1,13 +1,16 @@
 package agenticstream
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"maps"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -125,4 +128,51 @@ func isExecutorTransport(imported string) bool {
 	return slices.ContainsFunc(executorTransportImports, func(transport string) bool {
 		return strings.Contains(imported, transport)
 	})
+}
+
+// compositionRoots wire modules and drive loops; they own no business rule.
+var compositionRoots = []string{"internal/runtime", "cmd/agentic-stream"}
+
+// sqlStatement matches a string literal that is a SQL statement.
+var sqlStatement = regexp.MustCompile(`(?i)^\s*(SELECT|INSERT|UPDATE|DELETE|REPLACE|WITH)\s`)
+
+// TestCompositionRootsContainNoSQL enforces architecture-bar rule A10: reads
+// and writes belong to the module that owns the data, never to composition.
+func TestCompositionRootsContainNoSQL(t *testing.T) {
+	t.Parallel()
+
+	for _, file := range productionGoFiles(t, repoRoot(t)) {
+		if !slices.Contains(compositionRoots, path.Dir(file.rel)) {
+			continue
+		}
+		for _, literal := range stringLiterals(t, file) {
+			if sqlStatement.MatchString(literal) {
+				t.Errorf("%s contains SQL %q; call the owning module instead", file.rel, firstLine(literal))
+			}
+		}
+	}
+}
+
+func stringLiterals(t *testing.T, file goFile) []string {
+	t.Helper()
+
+	parsed, err := parser.ParseFile(token.NewFileSet(), file.abs, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", file.rel, err)
+	}
+	var literals []string
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		if literal, ok := node.(*ast.BasicLit); ok && literal.Kind == token.STRING {
+			if value, err := strconv.Unquote(literal.Value); err == nil {
+				literals = append(literals, value)
+			}
+		}
+		return true
+	})
+	return literals
+}
+
+func firstLine(text string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	return line
 }

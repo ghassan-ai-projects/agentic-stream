@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -100,43 +101,51 @@ func (t *SQLiteEvidenceTool) parseQuery(raw json.RawMessage, now time.Time) (evi
 // readRows returns the longest prefix of matching events whose encoded
 // {"rows":[...]} document stays within maxBytes.
 func (t *SQLiteEvidenceTool) readRows(ctx context.Context, query evidenceQuery) ([]json.RawMessage, error) {
-	rows, err := t.db.QueryContext(ctx, `SELECT event_id, event_type, event_time, payload_json FROM event_log WHERE tenant_id = ? AND entity_id = ? AND event_time >= ? AND event_time <= ? ORDER BY event_time, position LIMIT ?`, t.tenantID, t.entityID, query.from.UTC().Format(time.RFC3339Nano), query.until.UTC().Format(time.RFC3339Nano), query.maxRows)
-	if err != nil {
+	rows := boundedRows{maxBytes: query.maxBytes, size: uint64(len(`{"rows":[]}`)), result: make([]json.RawMessage, 0)}
+	window := eventlog.EntityWindow{TenantID: t.tenantID, EntityID: t.entityID, From: query.from, Until: query.until, MaxRows: query.maxRows}
+	if err := eventlog.ReadEntityWindow(ctx, t.db, window, rows.add); err != nil {
 		return nil, fmt.Errorf("query evidence: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
-	result := make([]json.RawMessage, 0)
-	// The encoded document is {"rows":[r1,r2,...]}: the envelope, each row,
-	// and a comma between rows.
-	size := uint64(len(`{"rows":[]}`))
-	for rows.Next() {
-		var eventID, eventType, eventTime string
-		var payload []byte
-		if err := rows.Scan(&eventID, &eventType, &eventTime, &payload); err != nil {
-			return nil, fmt.Errorf("scan evidence: %w", err)
-		}
-		var data any
-		if err := json.Unmarshal(payload, &data); err != nil {
-			return nil, fmt.Errorf("decode evidence payload: %w", err)
-		}
-		encoded, err := json.Marshal(map[string]any{"event_id": eventID, "event_type": eventType, "event_time": eventTime, "data": data})
-		if err != nil {
-			return nil, fmt.Errorf("encode evidence: %w", err)
-		}
-		next := size + uint64(len(encoded))
-		if len(result) > 0 {
-			next++
-		}
-		if next > query.maxBytes {
-			break
-		}
-		result = append(result, encoded)
-		size = next
+	return rows.result, nil
+}
+
+// boundedRows collects encoded rows while the encoded {"rows":[r1,r2,...]}
+// document, counting the envelope and the commas between rows, stays within
+// maxBytes.
+type boundedRows struct {
+	maxBytes, size uint64
+	result         []json.RawMessage
+}
+
+// add appends the event's encoded row, reporting false once the next row
+// would exceed the byte limit.
+func (b *boundedRows) add(event eventlog.EntityEvent) (bool, error) {
+	encoded, err := encodeEvidenceRow(event)
+	if err != nil {
+		return false, err
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate evidence: %w", err)
+	next := b.size + uint64(len(encoded))
+	if len(b.result) > 0 {
+		next++
 	}
-	return result, nil
+	if next > b.maxBytes {
+		return false, nil
+	}
+	b.result = append(b.result, encoded)
+	b.size = next
+	return true, nil
+}
+
+func encodeEvidenceRow(event eventlog.EntityEvent) (json.RawMessage, error) {
+	var data any
+	if err := json.Unmarshal(event.Payload, &data); err != nil {
+		return nil, fmt.Errorf("decode evidence payload: %w", err)
+	}
+	encoded, err := json.Marshal(map[string]any{"event_id": event.EventID, "event_type": event.EventType, "event_time": event.EventTime, "data": data})
+	if err != nil {
+		return nil, fmt.Errorf("encode evidence: %w", err)
+	}
+	return encoded, nil
 }
 
 var _ Tool = (*SQLiteEvidenceTool)(nil)
