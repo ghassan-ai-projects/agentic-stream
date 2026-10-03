@@ -32,3 +32,8 @@ No other package is split: package count is not a quality target.
 - Round 0: tightened Q2 to 15 lines/statements, added A8/A9 and the ADR-017
   executor boundary refinement. Lint enforcement of 15 lines lands when the
   refactoring rounds reach zero findings.
+
+- Round 1 (A9): added package comments for `authority`, `control`, `decisions`,
+  `device`, `engine`, `episodeledger`, `qualification` and `scheduleledger`.
+  `TestEveryPackageDocumentsItsResponsibility` and `TestModuleMapListsEveryPackage`
+  pin the rule; both were checked to fail on a removed comment and a removed map entry.
