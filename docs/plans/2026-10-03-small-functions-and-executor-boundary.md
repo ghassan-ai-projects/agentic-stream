@@ -319,3 +319,9 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   wait cancellation, and source validation before credentials. Command race tests
   and whole-tree strict 15-line/15-statement lint pass. Cleanup order, failure
   precedence, cancellation, effect authorization and command output are intact.
+
+- Round 34: the full gate found schema-registration coverage at 58.6%, below
+  Q4's existing 60% floor. Added direct tests for caller transaction rollback,
+  repeat registration, immutable byte conflicts, retained creation time and
+  validation before storage access. Event-schema short race coverage is now
+  91.4%; focused lint passes. Production behavior and catalog data are unchanged.
