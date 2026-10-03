@@ -23,7 +23,7 @@ var packageLayers = map[string]int{
 	"internal/control": 3, "internal/ingress": 3, "internal/notify": 3, "internal/operators": 3,
 	"internal/api": 4, "internal/approvalledger": 4, "internal/authority": 4, "internal/situations": 4,
 	"internal/actions": 5, "internal/cognition": 5, "internal/device": 5, "internal/episodes": 5, "internal/policy": 5, "internal/soak": 5,
-	"internal/engine": 6, "internal/executor/conformance": 6, "internal/executor/native": 6, "internal/executor/remote": 6, "internal/runartifact": 6,
+	"internal/admission": 6, "internal/engine": 6, "internal/executor/conformance": 6, "internal/executor/native": 6, "internal/executor/remote": 6, "internal/runartifact": 6,
 	"internal/replay": 7, "internal/runtime": 8, "cmd/agentic-stream": 9,
 }
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
@@ -130,9 +131,9 @@ func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport, be
 	if err := p.assertOwner(ctx); err != nil {
 		return report, err
 	}
-	report.EpisodesAdmitted, err = p.assemblePending(ctx)
+	report.EpisodesAdmitted, err = p.admission.AdmitPending(ctx)
 	if err != nil {
-		return report, err
+		return report, err //nolint:wrapcheck // Admission names the failed item; the batch error text is unchanged.
 	}
 	if err := p.executeAdmittedEpisodes(ctx, &report); err != nil {
 		return report, err

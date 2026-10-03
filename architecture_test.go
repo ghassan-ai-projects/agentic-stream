@@ -58,6 +58,7 @@ var allowedImports = map[string][]string{
 	"cmd/agentic-stream":             {"internal/actionport", "internal/actions", "internal/api", "internal/authority", "internal/contractsv1", "internal/control", "internal/device", "internal/evidence", "internal/ids", "internal/notify", "internal/replay", "internal/runartifact", "internal/runtime", "internal/spec", "internal/storage", "internal/telemetry"},
 	"internal/actionport":            {},
 	"internal/actions":               {"internal/actionport", "internal/authority", "internal/canonicaljson", "internal/clock", "internal/contractsv1", "internal/control", "internal/ids", "internal/interlock", "internal/notify", "internal/storage", "internal/telemetry"},
+	"internal/admission":             {"internal/clock", "internal/cognition", "internal/control", "internal/costcontrol", "internal/episodeledger", "internal/episodes", "internal/scheduleledger", "internal/storage"},
 	"internal/api":                   {"internal/control", "internal/notify", "internal/storage"},
 	"internal/approvalledger":        {"internal/clock", "internal/contractsv1", "internal/notify"},
 	"internal/authority":             {"internal/canonicaljson", "internal/control", "internal/storage"},
@@ -89,7 +90,7 @@ var allowedImports = map[string][]string{
 	"internal/qualification":         {"internal/storage"},
 	"internal/replay":                {"internal/canonicaljson", "internal/clock", "internal/contractsv1", "internal/decisions", "internal/engine", "internal/episodes", "internal/eventlog", "internal/ids", "internal/ingress", "internal/policy", "internal/qualification", "internal/spec", "internal/storage"},
 	"internal/runartifact":           {"internal/canonicaljson", "internal/policy", "internal/soak", "internal/storage"},
-	"internal/runtime":               {"internal/actionport", "internal/actions", "internal/clock", "internal/cognition", "internal/contractsv1", "internal/control", "internal/costcontrol", "internal/device", "internal/engine", "internal/episodeledger", "internal/episodes", "internal/eventlog", "internal/evidence", "internal/executor/native", "internal/executor/remote", "internal/ids", "internal/ingress", "internal/interlock", "internal/policy", "internal/qualification", "internal/scheduleledger", "internal/spec", "internal/storage", "internal/telemetry", "internal/worker", "proto/agenticstream/runtime/v1"},
+	"internal/runtime":               {"internal/actionport", "internal/actions", "internal/admission", "internal/clock", "internal/contractsv1", "internal/control", "internal/costcontrol", "internal/device", "internal/engine", "internal/episodeledger", "internal/episodes", "internal/eventlog", "internal/evidence", "internal/executor/native", "internal/executor/remote", "internal/ids", "internal/ingress", "internal/interlock", "internal/policy", "internal/qualification", "internal/spec", "internal/storage", "internal/telemetry", "internal/worker", "proto/agenticstream/runtime/v1"},
 	"internal/scheduleledger":        {},
 	"internal/situations":            {"internal/canonicaljson", "internal/contractsv1", "internal/duration", "internal/ids", "internal/operators", "internal/spec"},
 	"internal/soak":                  {"internal/authority", "internal/storage"},
@@ -137,6 +138,23 @@ func TestPackageLayering(t *testing.T) {
 	for _, pkg := range slices.Sorted(maps.Keys(allowedImports)) {
 		if _, exists := graph[pkg]; !exists {
 			t.Errorf("allowedImports declares %s, which has no production Go files; remove the stale entry", pkg)
+		}
+	}
+}
+
+// TestAllowedImportsHaveNoStaleEdges keeps the reviewed graph exact: an
+// approved edge that no production file uses must be removed, so the
+// allowlist documents real dependencies rather than permissions.
+func TestAllowedImportsHaveNoStaleEdges(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	graph := productionImportGraph(t, root, readModulePath(t, filepath.Join(root, "go.mod")))
+	for _, pkg := range slices.Sorted(maps.Keys(allowedImports)) {
+		for _, allowed := range allowedImports[pkg] {
+			if !slices.Contains(graph[pkg], allowed) {
+				t.Errorf("allowedImports approves %s -> %s, which no production file uses; remove the stale edge", pkg, allowed)
+			}
 		}
 	}
 }

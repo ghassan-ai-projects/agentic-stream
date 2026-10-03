@@ -54,6 +54,7 @@ records or returned values, not reverse service dependencies.
 | `device` | Closed capability catalog, deterministic materialization, session/boot checks, safe stop and gateway transport |
 | `actions` | Approved-command leases, dispatch, outcome verification, reconciliation and durable internal watches |
 | `episodeledger` | Episode/attempt state, fencing identity, rejection audit, recovery and cancellation mutations |
+| `admission` | Turning due scheduler items into epoch-stamped episodes; drain stop, fixture refusal and recorded skips for unadmittable items |
 | `episodes` | Validated request assembly, bounded execution through the `Executor` port, failure accounting and Decision acceptance |
 | `executor/native`, `executor/remote` | Concrete executors: the in-process Go executor, and the streamed EpisodeWorker adapter with per-attempt evidence capability and budget accounting |
 | `scheduleledger` | Durable queue identity, admission, coalescing and skipped opportunities |

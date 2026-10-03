@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 )
 
 func configureCostLimits(ctx context.Context, cfg PipelineConfig) error {

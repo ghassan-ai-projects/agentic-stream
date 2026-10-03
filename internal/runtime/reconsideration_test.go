@@ -77,7 +77,7 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	if _, err := pipeline.engine.RunGlobal(ctx, nil); err != nil {
 		t.Fatalf("process correction: %v", err)
 	}
-	if admitted, err := pipeline.assemblePending(ctx); err != nil {
+	if admitted, err := pipeline.admission.AdmitPending(ctx); err != nil {
 		t.Fatalf("assemble reconsiderations: %v", err)
 	} else if admitted != 1 {
 		t.Fatalf("episodes admitted = %d, want 1", admitted)

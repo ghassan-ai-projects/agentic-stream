@@ -81,3 +81,12 @@ are permitted, writes keep single owners.
 
 - Round 4: recorded the second module assessment, added A10/A11 and the ADR-017
   composition and effect-adapter refinement.
+
+- Round 5 (A10): extracted `internal/admission` from the runtime pipeline. It
+  owns the drain stop, queue-order selection (now `scheduleledger.NextPending`),
+  owner-fenced assembly, fixture refusal, single epoch stamp and the recorded
+  skips for cost refusal, live reconsideration conflict and fixtures. Error text,
+  transaction boundaries and the order of clock reads are unchanged. New
+  admission tests cover admission, both fixture modes, drain and cost refusal
+  (coverage 75.3%). `TestAllowedImportsHaveNoStaleEdges` now keeps the reviewed
+  import graph exact; runtime no longer imports `cognition` or `scheduleledger`.

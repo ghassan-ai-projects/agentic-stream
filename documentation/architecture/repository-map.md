@@ -13,6 +13,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/operators/` | aggregates, slopes, missing-heartbeat and related features |
 | `internal/situations/` | Situation state and immutable versions |
 | `internal/cognition/` | scheduler, trigger evaluation, reconsideration |
+| `internal/admission/` | episode admission: due scheduler items to epoch-stamped episodes, or recorded skips |
 | `internal/episodes/` | request assembly, bounded execution lifecycle, budgets and the `Executor` port |
 | `internal/evidence/` | capability tokens, evidence server, call ledger |
 | `internal/decisions/` | Decision and Intent validation |
