@@ -191,3 +191,11 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   error order. A new regression proves pruning preserves cursor highwater,
   refuses expired events and resumes new events at the next cursor. Notification
   and architecture race tests pass; focused lint at 15 lines/statements passes.
+
+- Round 16: watches now install, validate, match, spend allowances and expire
+  through bounded steps. CEL compilation shares the same environment without
+  introducing caches or changing evaluation. Event candidates close their read
+  cursor before firing transactions; duplicate/event identities, partial counts,
+  guard ordering and retry cancellation remain unchanged. Added payload-error
+  precedence and retry cancellation regressions. Watch and architecture race
+  tests and focused 15-line/15-statement lint pass.

@@ -26,6 +26,12 @@ type Effector struct {
 	interlock  interlock.Reader
 }
 
+// watchCondition is the identity-defining content of an installed watch.
+type watchCondition struct {
+	tenantID, situationID, expression, target, expiresAt string
+	situationVersion, maxFires                           int
+}
+
 // WithRuntimeOwner fences all durable watch mutations to the active runtime
 // epoch. Standalone tests may leave the owner unset.
 func (e *Effector) WithRuntimeOwner(owner *runtimecontrol.RuntimeOwner, epoch string) *Effector {
@@ -80,6 +86,10 @@ func (e *Effector) dispatch(ctx context.Context, command actionport.Command, _ f
 	if err != nil {
 		return actionport.Effect{}, err
 	}
+	return e.installCommand(ctx, command, want)
+}
+
+func (e *Effector) installCommand(ctx context.Context, command actionport.Command, want watchCondition) (actionport.Effect, error) {
 	watchID := command.CommandID
 	if command.IdempotencyKey != "" {
 		watchID = command.IdempotencyKey
@@ -109,6 +119,10 @@ func (e *Effector) installOnce(ctx context.Context, tx *sql.Tx, watchID string, 
 	if err := insertWatchCondition(ctx, tx, watchID, want, now); err != nil {
 		return err
 	}
+	return verifyInstalledWatch(ctx, tx, watchID, want)
+}
+
+func verifyInstalledWatch(ctx context.Context, tx *sql.Tx, watchID string, want watchCondition) error {
 	stored, err := loadWatchCondition(ctx, tx, watchID)
 	if err != nil {
 		return fmt.Errorf("verify installed watch condition: %w", err)
@@ -133,12 +147,6 @@ func insertWatchCondition(ctx context.Context, tx *sql.Tx, watchID string, want 
 	return nil
 }
 
-// watchCondition is the identity-defining content of an installed watch.
-type watchCondition struct {
-	tenantID, situationID, expression, target, expiresAt string
-	situationVersion, maxFires                           int
-}
-
 // watchConditionFromCommand validates a watch payload: a bounded, valid
 // expression, a target and Situation, 1-100 fires, and a future expiry.
 func watchConditionFromCommand(command actionport.Command, now time.Time) (watchCondition, error) {
@@ -154,6 +162,10 @@ func watchConditionFromCommand(command actionport.Command, now time.Time) (watch
 		!versionOK || condition.situationVersion < 1 || !firesOK || condition.maxFires < 1 || condition.maxFires > 100 {
 		return watchCondition{}, fmt.Errorf("watch condition payload is invalid")
 	}
+	return condition.withValidatedExpiry(expiresAt, now)
+}
+
+func (condition watchCondition) withValidatedExpiry(expiresAt string, now time.Time) (watchCondition, error) {
 	if err := validateWatchExpression(condition.expression); err != nil {
 		return watchCondition{}, err
 	}
