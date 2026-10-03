@@ -174,3 +174,12 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   configuration and lifecycle. No logic changed. The ingress race suite and
   root architecture suite pass with local Unix-socket access. The sandboxed
   ingress run could not bind sockets; this is an environment restriction.
+
+- Round 14: completed the evidence package's 15-line production refactor.
+  Capability decoding, HMAC verification, scope admission, query bounds and
+  ledger reservation/completion are explicit steps. Fingerprint field order,
+  errors, UTC formatting, live-attempt fences and transaction ownership remain
+  unchanged. New regressions pin the exact fingerprint encoding, reject
+  corrupted stored results, preserve identity-error precedence, and prove
+  completion survives request cancellation. Evidence and root architecture
+  race tests pass; focused lint passes without changing repository thresholds.

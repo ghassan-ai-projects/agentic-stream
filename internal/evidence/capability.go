@@ -204,38 +204,32 @@ type tokenPayload struct {
 }
 
 func (p tokenPayload) scope(keyID string) (Scope, error) {
-	parse := func(value, name string) (time.Time, error) {
-		parsed, err := time.Parse(time.RFC3339Nano, value)
-		if err != nil {
-			return time.Time{}, fmt.Errorf("invalid capability %s: %w", name, err)
-		}
-		return parsed.UTC(), nil
-	}
-	nbf, err := parse(p.NotBefore, "not-before")
-	if err != nil {
+	scope := Scope{KeyID: keyID, Issuer: p.Issuer, Audience: p.Audience, TokenID: p.TokenID, EpisodeID: p.EpisodeID, AttemptID: p.AttemptID, Fence: p.Fence, TenantID: p.TenantID, SituationID: p.SituationID, SituationVersion: p.SituationVersion, EntityID: p.EntityID, Tools: p.Tools, MaxRows: p.MaxRows, MaxBytes: p.MaxBytes, Traceparent: p.Traceparent, Tracestate: p.Tracestate, RuntimeEpoch: p.RuntimeEpoch}
+	if err := p.decodeTimes(&scope); err != nil {
 		return Scope{}, err
 	}
-	exp, err := parse(p.ExpiresAt, "expiry")
-	if err != nil {
-		return Scope{}, err
-	}
-	from, err := parse(p.From, "from")
-	if err != nil {
-		return Scope{}, err
-	}
-	until, err := parse(p.Until, "until")
-	if err != nil {
-		return Scope{}, err
-	}
-	issued, err := parse(p.IssuedAt, "issued-at")
-	if err != nil {
-		return Scope{}, err
-	}
-	scope := Scope{KeyID: keyID, Issuer: p.Issuer, Audience: p.Audience, TokenID: p.TokenID, IssuedAt: issued, EpisodeID: p.EpisodeID, AttemptID: p.AttemptID, Fence: p.Fence, TenantID: p.TenantID, SituationID: p.SituationID, SituationVersion: p.SituationVersion, EntityID: p.EntityID, Tools: p.Tools, NotBefore: nbf, ExpiresAt: exp, MaxRows: p.MaxRows, MaxBytes: p.MaxBytes, From: from, Until: until, Traceparent: p.Traceparent, Tracestate: p.Tracestate, RuntimeEpoch: p.RuntimeEpoch}
 	if err := validateScope(scope); err != nil {
 		return Scope{}, err
 	}
 	return scope, nil
+}
+
+func (p tokenPayload) decodeTimes(scope *Scope) error {
+	fields := []struct {
+		value, name string
+		target      *time.Time
+	}{
+		{p.NotBefore, "not-before", &scope.NotBefore}, {p.ExpiresAt, "expiry", &scope.ExpiresAt},
+		{p.From, "from", &scope.From}, {p.Until, "until", &scope.Until}, {p.IssuedAt, "issued-at", &scope.IssuedAt},
+	}
+	for _, field := range fields {
+		parsed, err := time.Parse(time.RFC3339Nano, field.value)
+		if err != nil {
+			return fmt.Errorf("invalid capability %s: %w", field.name, err)
+		}
+		*field.target = parsed.UTC()
+	}
+	return nil
 }
 
 func tokenID(existing string) (string, error) {
