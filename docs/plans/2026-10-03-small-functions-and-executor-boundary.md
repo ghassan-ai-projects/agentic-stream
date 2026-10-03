@@ -162,3 +162,15 @@ Then set `funlen` to 15 lines/statements in `.golangci.yml`, run `make ci-check`
 and record final acceptance. Follow-up: move `episodes.FakeExecutor` under
 `internal/executor/` (needs an in-package test change); remove the unused
 `policy.CapabilityHost`.
+
+## Continuation on 2026-10-03
+
+Refreshed baseline at `b71f06f`: 331 production declarations exceed 15 body
+lines (comments excluded); tests and generated files are excluded. Existing
+A1–A11 remain the architecture acceptance bar. The root architecture suite
+found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
+
+- Round 13: separated live socket client acceptance/read loops from source
+  configuration and lifecycle. No logic changed. The ingress race suite and
+  root architecture suite pass with local Unix-socket access. The sandboxed
+  ingress run could not bind sockets; this is an environment restriction.
