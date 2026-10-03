@@ -275,3 +275,9 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   Regressions pin stream size/identity/budget, request artifact and terminal usage
   precedence. Wire fields, digests, cancellation and capability clock reads are
   preserved. Remote and conformance race tests and strict focused lint pass.
+
+- Round 28: action dispatch separates lease admission, live authorization,
+  provider result classification, outcome persistence and lifecycle publication.
+  Runtime ownership, clock reads, lease refresh, unknown-outcome refusal and
+  reconciliation digest precedence stay unchanged. Added evidence validation
+  order and fallback regressions. Action race tests and strict focused lint pass.

@@ -16,6 +16,36 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 )
 
+// dispatchCandidate is the oldest available command outbox row with the
+// ledger columns its document must match.
+type dispatchCandidate struct {
+	leased                                 leasedCommand
+	commandStatus, intentID, tenant, route string
+	target, outboxStatus                   string
+	idempotency                            []byte
+	leaseOwner, leaseUntil                 sql.NullString
+}
+
+const loadDispatchCandidateSQL = `
+		SELECT o.outbox_id, o.aggregate_id, c.command_json, c.command_sha256, c.status,
+			c.intent_id, c.tenant_id, c.effector_route, c.normalized_target, c.idempotency_key,
+			d.traceparent, d.tracestate
+			, o.status, o.lease_owner, o.lease_until
+		FROM outbox o
+		JOIN commands c ON c.command_id = o.aggregate_id
+		JOIN intents i ON i.intent_id = c.intent_id
+		JOIN decisions d ON d.decision_id = i.decision_id
+		WHERE o.kind = 'command'
+		  AND o.available_at <= ?
+		  AND (o.status = 'pending' OR (o.status = 'leased' AND o.lease_until <= ?))
+		ORDER BY o.outbox_id
+		LIMIT 1`
+
+const acquireDispatchLeaseSQL = `
+		UPDATE outbox
+		SET status = 'leased', lease_owner = ?, lease_until = ?, attempt_count = attempt_count + 1
+		WHERE outbox_id = ? AND (status = 'pending' OR (status = 'leased' AND lease_until <= ?))`
+
 // lease claims the oldest available command for dispatch. A row whose
 // earlier lease expired mid-dispatch is finalized as an unknown outcome, a
 // command whose document no longer matches its ledger row is failed, and a
@@ -44,6 +74,34 @@ func (d *Dispatcher) leaseTx(ctx context.Context, tx *sql.Tx) (leasedCommand, bo
 	if err != nil || candidate == nil {
 		return leasedCommand{}, false, err
 	}
+	return d.leaseCandidate(ctx, tx, candidate, now)
+}
+
+func loadDispatchCandidate(ctx context.Context, tx *sql.Tx, now time.Time) (*dispatchCandidate, error) {
+	var c dispatchCandidate
+	var traceparent, tracestate sql.NullString
+	if err := scanDispatchCandidate(tx.QueryRowContext(ctx, loadDispatchCandidateSQL, formatTime(now), formatTime(now)), &c, &traceparent, &tracestate); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("find command outbox: %w", err)
+	}
+	c.leased.Traceparent = traceparent.String
+	c.leased.Tracestate = tracestate.String
+	return &c, nil
+}
+
+func scanDispatchCandidate(query *sql.Row, c *dispatchCandidate, traceparent, tracestate *sql.NullString) error {
+	return query.Scan( //nolint:wrapcheck // Caller preserves the database error contract.
+		&c.leased.OutboxID, &c.leased.Command.CommandID,
+		&c.leased.CommandJSON, &c.leased.CommandSHA, &c.commandStatus,
+		&c.intentID, &c.tenant, &c.route, &c.target, &c.idempotency,
+		traceparent, tracestate,
+		&c.outboxStatus, &c.leaseOwner, &c.leaseUntil,
+	)
+}
+
+func (d *Dispatcher) leaseCandidate(ctx context.Context, tx *sql.Tx, candidate *dispatchCandidate, now time.Time) (leasedCommand, bool, error) {
 	leased := candidate.leased
 	if candidate.outboxStatus == "leased" {
 		leased.LeaseOwner = candidate.leaseOwner.String
@@ -55,12 +113,14 @@ func (d *Dispatcher) leaseTx(ctx context.Context, tx *sql.Tx) (leasedCommand, bo
 	if failureCode != "" {
 		return leased, false, d.markLeaseFailure(ctx, tx, leased.OutboxID, leased.Command.CommandID, failureCode, now)
 	}
-	populateCommand(&leased.Command, document)
-	if candidate.commandStatus == "succeeded" || candidate.commandStatus == "outcome_unknown" {
-		return leased, false, d.finishOutboxOnly(ctx, tx, leased.OutboxID, candidate.commandStatus, now)
-	}
-	found, err := d.acquireLease(ctx, tx, &leased, now)
-	return leased, found, err
+	return d.leaseVerifiedCommand(ctx, tx, candidate, leased, document, now)
+}
+
+// leaseExpired reports whether a previously leased row has no valid,
+// unexpired lease.
+func (c *dispatchCandidate) leaseExpired(now time.Time) bool {
+	expiresAt, err := time.Parse(time.RFC3339Nano, c.leaseUntil.String)
+	return err != nil || !c.leaseOwner.Valid || !c.leaseUntil.Valid || !expiresAt.After(now)
 }
 
 // abandonExpiredLease records an unknown outcome for a command whose earlier
@@ -77,56 +137,6 @@ func (d *Dispatcher) abandonExpiredLease(ctx context.Context, tx *sql.Tx, leased
 	return d.finalizeTx(ctx, tx, leased, actionport.Effect{}, &actionport.UnknownOutcomeError{Err: errors.New("lease expired before dispatch")})
 }
 
-// dispatchCandidate is the oldest available command outbox row with the
-// ledger columns its document must match.
-type dispatchCandidate struct {
-	leased                                 leasedCommand
-	commandStatus, intentID, tenant, route string
-	target, outboxStatus                   string
-	idempotency                            []byte
-	leaseOwner, leaseUntil                 sql.NullString
-}
-
-func loadDispatchCandidate(ctx context.Context, tx *sql.Tx, now time.Time) (*dispatchCandidate, error) {
-	var c dispatchCandidate
-	var traceparent, tracestate sql.NullString
-	if err := tx.QueryRowContext(ctx, `
-		SELECT o.outbox_id, o.aggregate_id, c.command_json, c.command_sha256, c.status,
-			c.intent_id, c.tenant_id, c.effector_route, c.normalized_target, c.idempotency_key,
-			d.traceparent, d.tracestate
-			, o.status, o.lease_owner, o.lease_until
-		FROM outbox o
-		JOIN commands c ON c.command_id = o.aggregate_id
-		JOIN intents i ON i.intent_id = c.intent_id
-		JOIN decisions d ON d.decision_id = i.decision_id
-		WHERE o.kind = 'command'
-		  AND o.available_at <= ?
-		  AND (o.status = 'pending' OR (o.status = 'leased' AND o.lease_until <= ?))
-		ORDER BY o.outbox_id
-		LIMIT 1`, formatTime(now), formatTime(now)).Scan(
-		&c.leased.OutboxID, &c.leased.Command.CommandID,
-		&c.leased.CommandJSON, &c.leased.CommandSHA, &c.commandStatus,
-		&c.intentID, &c.tenant, &c.route, &c.target, &c.idempotency,
-		&traceparent, &tracestate,
-		&c.outboxStatus, &c.leaseOwner, &c.leaseUntil,
-	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("find command outbox: %w", err)
-	}
-	c.leased.Traceparent = traceparent.String
-	c.leased.Tracestate = tracestate.String
-	return &c, nil
-}
-
-// leaseExpired reports whether a previously leased row has no valid,
-// unexpired lease.
-func (c *dispatchCandidate) leaseExpired(now time.Time) bool {
-	expiresAt, err := time.Parse(time.RFC3339Nano, c.leaseUntil.String)
-	return err != nil || !c.leaseOwner.Valid || !c.leaseUntil.Valid || !expiresAt.After(now)
-}
-
 // verifiedDocument decodes the command document and returns the lease
 // failure code when it is invalid or disagrees with its ledger columns.
 func (c *dispatchCandidate) verifiedDocument() (map[string]any, string) {
@@ -137,6 +147,10 @@ func (c *dispatchCandidate) verifiedDocument() (map[string]any, string) {
 	if err := contractsv1.Validate(contractsv1.SchemaCommand, document); err != nil {
 		return nil, "command_schema_invalid"
 	}
+	return c.verifyDocumentBinding(document)
+}
+
+func (c *dispatchCandidate) verifyDocumentBinding(document map[string]any) (map[string]any, string) {
 	providedIdempotency, idempotencyErr := canonicaljson.DecodeDigest(documentString(document, "idempotency_key"))
 	if c.leased.Command.CommandID != documentString(document, "command_id") ||
 		c.intentID != documentString(document, "intent_id") || c.tenant != documentString(document, "tenant_id") ||
@@ -146,6 +160,15 @@ func (c *dispatchCandidate) verifiedDocument() (map[string]any, string) {
 		return nil, "command_digest_mismatch"
 	}
 	return document, ""
+}
+
+func (d *Dispatcher) leaseVerifiedCommand(ctx context.Context, tx *sql.Tx, candidate *dispatchCandidate, leased leasedCommand, document map[string]any, now time.Time) (leasedCommand, bool, error) {
+	populateCommand(&leased.Command, document)
+	if candidate.commandStatus == "succeeded" || candidate.commandStatus == "outcome_unknown" {
+		return leased, false, d.finishOutboxOnly(ctx, tx, leased.OutboxID, candidate.commandStatus, now)
+	}
+	found, err := d.acquireLease(ctx, tx, &leased, now)
+	return leased, found, err
 }
 
 func populateCommand(command *actionport.Command, document map[string]any) {
@@ -164,10 +187,7 @@ func populateCommand(command *actionport.Command, document map[string]any) {
 func (d *Dispatcher) acquireLease(ctx context.Context, tx *sql.Tx, leased *leasedCommand, now time.Time) (bool, error) {
 	until := now.Add(d.leaseFor)
 	leased.LeaseOwner = d.owner + "/" + d.idGen.New(ids.PrefixLease)
-	result, err := tx.ExecContext(ctx, `
-		UPDATE outbox
-		SET status = 'leased', lease_owner = ?, lease_until = ?, attempt_count = attempt_count + 1
-		WHERE outbox_id = ? AND (status = 'pending' OR (status = 'leased' AND lease_until <= ?))`,
+	result, err := tx.ExecContext(ctx, acquireDispatchLeaseSQL,
 		leased.LeaseOwner, formatTime(until), leased.OutboxID, formatTime(now))
 	if err != nil {
 		return false, fmt.Errorf("lease command outbox: %w", err)
@@ -179,6 +199,10 @@ func (d *Dispatcher) acquireLease(ctx context.Context, tx *sql.Tx, leased *lease
 	if count != 1 {
 		return false, nil
 	}
+	return markCommandDispatching(ctx, tx, leased, now)
+}
+
+func markCommandDispatching(ctx context.Context, tx *sql.Tx, leased *leasedCommand, now time.Time) (bool, error) {
 	if _, err := tx.ExecContext(ctx, "UPDATE commands SET status = 'dispatching', updated_at = ? WHERE command_id = ? AND status IN ('pending', 'failed', 'dispatching')", formatTime(now), leased.Command.CommandID); err != nil {
 		return false, fmt.Errorf("mark command dispatching: %w", err)
 	}
