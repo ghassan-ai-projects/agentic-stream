@@ -86,6 +86,10 @@ func episodeRequest(req *episodes.Request) (*runtimev1.EpisodeRequest, error) {
 	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
 		return nil, fmt.Errorf("decode request json: %w", err)
 	}
+	return payload.buildRequest(req)
+}
+
+func (payload *workerRequestPayload) buildRequest(req *episodes.Request) (*runtimev1.EpisodeRequest, error) {
 	artifacts, err := payload.artifacts()
 	if err != nil {
 		return nil, err
@@ -94,6 +98,10 @@ func episodeRequest(req *episodes.Request) (*runtimev1.EpisodeRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	return payload.requestWithProvenance(req, artifacts, provenance)
+}
+
+func (payload *workerRequestPayload) requestWithProvenance(req *episodes.Request, artifacts requestArtifacts, provenance requestProvenance) (*runtimev1.EpisodeRequest, error) {
 	shape, err := payload.shape()
 	if err != nil {
 		return nil, err
@@ -102,35 +110,39 @@ func episodeRequest(req *episodes.Request) (*runtimev1.EpisodeRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	request := &runtimev1.EpisodeRequest{
+	return payload.assembleRequest(req, artifacts, provenance, shape, budget)
+}
+
+func (payload *workerRequestPayload) assembleRequest(req *episodes.Request, artifacts requestArtifacts, provenance requestProvenance, shape requestShape, budget *runtimev1.EpisodeBudget) (*runtimev1.EpisodeRequest, error) {
+	request := payload.boundRequest(req, artifacts, provenance)
+	payload.bindExecutionFields(request, req, provenance, shape, budget)
+	if err := payload.attachCatalogs(request); err != nil {
+		return nil, err
+	}
+	return request, nil
+}
+
+func (payload *workerRequestPayload) boundRequest(req *episodes.Request, artifacts requestArtifacts, provenance requestProvenance) *runtimev1.EpisodeRequest {
+	return &runtimev1.EpisodeRequest{
 		ProtocolVersion: worker.ProtocolVersion, EpisodeId: req.EpisodeID, TriggerId: payload.Trigger.TriggerID,
 		TenantId: req.TenantID, SituationId: req.SituationID, SituationVersion: uint64(req.SituationVersion), //nolint:gosec // SituationVersion is validated positive before dispatch.
 		SnapshotJson: artifacts.snapshot, SnapshotSha256: provenance.snapshot, DecisionSchemaJson: artifacts.decisionSchema,
 		DecisionSchemaSha256: artifacts.decisionSchemaSHA256[:], ToolCatalogJson: artifacts.tools, ToolCatalogSha256: artifacts.toolsSHA256[:], SpecSha256: provenance.spec,
 		Objective: payload.Executor.Objective, ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion,
-		ModelPolicy:   req.ModelPolicy,         // P0B/§2.2: the worker needs the role to resolve a model; was previously omitted.
-		Prompt:        payload.Executor.Prompt, // P1/§4.3: the operator prompt body flows to the worker so the frame binds it.
-		PromptVersion: req.PromptVersion, Budget: budget, Traceparent: req.Traceparent, Tracestate: req.Tracestate,
-		Kind: shape.kind, Lane: shape.lane, RiskCeiling: shape.risk, AllowedIntentTypes: payload.AllowedIntentTypes,
-		WatchConfidenceFloor: payload.WatchConfidenceFloor,
-		CancellationKey:      payload.CancellationKey, SupersessionKey: payload.SupersessionKey,
-		PromptSha256: provenance.prompt, ObjectiveSha256: provenance.objective,
-		DiagnosisCatalogJson:   []byte(payload.Executor.DiagnosisCatalog),
-		DiagnosisCatalogSha256: provenance.diagnosisCatalog,
-		// P4: the compiled intent catalog flows to the worker (which verifies
-		// it before any model call) and back to the validator on the decision
-		// (which verifies it independently).
-		IntentCatalogSha256: []byte(payload.Executor.IntentCatalogSHA256),
-		// P8: the mode matrix rides the wire. active|shadow; the worker carries
-		// it (it is part of the durable payload) but the GO side enforces it.
-		DispatchPolicy: dispatchPolicyEnum(req.DispatchPolicy),
-		AttemptId:      req.AttemptID, Fence: uint64(req.Fence), EvidenceToolsEndpoint: "", CapabilityToken: nil, //nolint:gosec // Fence is database-validated non-negative.
-		Reconsideration: shape.reconsideration,
 	}
-	if err := payload.attachCatalogs(request); err != nil {
-		return nil, err
-	}
-	return request, nil
+}
+
+func (payload *workerRequestPayload) bindExecutionFields(request *runtimev1.EpisodeRequest, req *episodes.Request, provenance requestProvenance, shape requestShape, budget *runtimev1.EpisodeBudget) {
+	request.ModelPolicy, request.Prompt, request.PromptVersion = req.ModelPolicy, payload.Executor.Prompt, req.PromptVersion
+	request.Budget, request.Traceparent, request.Tracestate = budget, req.Traceparent, req.Tracestate
+	request.Kind, request.Lane, request.RiskCeiling = shape.kind, shape.lane, shape.risk
+	request.AllowedIntentTypes, request.WatchConfidenceFloor = payload.AllowedIntentTypes, payload.WatchConfidenceFloor
+	request.CancellationKey, request.SupersessionKey = payload.CancellationKey, payload.SupersessionKey
+	request.PromptSha256, request.ObjectiveSha256 = provenance.prompt, provenance.objective
+	request.DiagnosisCatalogJson, request.DiagnosisCatalogSha256 = []byte(payload.Executor.DiagnosisCatalog), provenance.diagnosisCatalog
+	request.IntentCatalogSha256, request.DispatchPolicy = []byte(payload.Executor.IntentCatalogSHA256), dispatchPolicyEnum(req.DispatchPolicy)
+	request.AttemptId, request.Fence = req.AttemptID, uint64(req.Fence) //nolint:gosec // Fence is validated positive before dispatch.
+	request.Reconsideration = shape.reconsideration
 }
 
 func (p *workerRequestPayload) artifacts() (requestArtifacts, error) {
@@ -159,6 +171,11 @@ func (p *workerRequestPayload) provenance(req *episodes.Request) (requestProvena
 	if provenance.spec, err = canonicaljson.DecodeDigest(req.ExecutorVersion); err != nil {
 		return requestProvenance{}, fmt.Errorf("spec digest: %w", err)
 	}
+	return p.promptProvenance(req, provenance)
+}
+
+func (p *workerRequestPayload) promptProvenance(req *episodes.Request, provenance requestProvenance) (requestProvenance, error) {
+	var err error
 	if p.Executor.PromptSHA256 == "" || p.Executor.ObjectiveSHA256 == "" || req.PromptSHA256 == "" || req.ObjectiveSHA256 == "" {
 		return requestProvenance{}, fmt.Errorf("prompt and objective provenance digests are required")
 	}
@@ -171,6 +188,11 @@ func (p *workerRequestPayload) provenance(req *episodes.Request) (requestProvena
 	// The diagnosis catalog is optional at the runtime level (native mode does
 	// not use it); when configured it must be a valid digest. The Ruby worker
 	// fails closed if the request omits the catalog it must verify.
+	return p.catalogProvenance(req, provenance)
+}
+
+func (p *workerRequestPayload) catalogProvenance(req *episodes.Request, provenance requestProvenance) (requestProvenance, error) {
+	var err error
 	if p.Executor.DiagnosisCatalogSHA256 != "" {
 		if provenance.diagnosisCatalog, err = canonicaljson.DecodeDigest(p.Executor.DiagnosisCatalogSHA256); err != nil {
 			return requestProvenance{}, fmt.Errorf("diagnosis catalog digest: %w", err)
@@ -191,6 +213,11 @@ func (p *workerRequestPayload) shape() (requestShape, error) {
 	if shape.lane, err = episodeLane(p.Trigger.Lane); err != nil {
 		return requestShape{}, err
 	}
+	return p.reconsiderationShape(shape)
+}
+
+func (p *workerRequestPayload) reconsiderationShape(shape requestShape) (requestShape, error) {
+	var err error
 	if shape.kind == runtimev1.EpisodeKind_EPISODE_KIND_RECONSIDER {
 		if shape.reconsideration, err = reconsiderationMessage(p.Reconsideration); err != nil {
 			return requestShape{}, fmt.Errorf("reconsideration payload: %w", err)
@@ -209,6 +236,10 @@ func (p *workerRequestPayload) wireBudget(req *episodes.Request) (*runtimev1.Epi
 		MaxToolResultBytes: p.Budget.ToolResultBytes, MaxTotalToolResultBytes: p.Budget.TotalToolResultBytes,
 		MaxProviderRetries: p.Budget.ProviderRetries, MaxCostMicrounits: p.Budget.CostMicrounits,
 	}
+	return bindWallTimeBudget(req, budget)
+}
+
+func bindWallTimeBudget(req *episodes.Request, budget *runtimev1.EpisodeBudget) (*runtimev1.EpisodeBudget, error) {
 	wallTime, err := req.WallTimeBudget()
 	if err != nil {
 		return nil, fmt.Errorf("validate episode budget: %w", err)
@@ -233,6 +264,10 @@ func (p *workerRequestPayload) attachCatalogs(request *runtimev1.EpisodeRequest)
 		return fmt.Errorf("intent catalog is empty")
 	}
 	request.IntentCatalogJson = intentCatalogJSON
+	return p.attachSkillRefs(request)
+}
+
+func (p *workerRequestPayload) attachSkillRefs(request *runtimev1.EpisodeRequest) error {
 	skillRefs := p.Executor.SkillRefs
 	if skillRefs == nil {
 		skillRefs = []spec.SkillRef{}

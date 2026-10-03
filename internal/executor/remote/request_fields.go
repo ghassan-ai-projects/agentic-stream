@@ -8,6 +8,13 @@ import (
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
+type reconsiderationRequest struct {
+	PriorDecision json.RawMessage   `json:"prior_decision"`
+	Commands      []json.RawMessage `json:"commands"`
+	Outcomes      []json.RawMessage `json:"outcomes"`
+	Correction    json.RawMessage   `json:"correction"`
+}
+
 // dispatchPolicyEnum maps the durable policy string to the wire enum. An
 // empty/unset policy is shadow — nothing enters action governance unless the
 // spec declared active.
@@ -29,13 +36,6 @@ func marshalIntentCatalog(entries []map[string]any) ([]byte, error) {
 	return encoded, nil
 }
 
-type reconsiderationRequest struct {
-	PriorDecision json.RawMessage   `json:"prior_decision"`
-	Commands      []json.RawMessage `json:"commands"`
-	Outcomes      []json.RawMessage `json:"outcomes"`
-	Correction    json.RawMessage   `json:"correction"`
-}
-
 func reconsiderationMessage(payload *reconsiderationRequest) (*runtimev1.Reconsideration, error) {
 	if payload == nil {
 		return nil, fmt.Errorf("payload is required")
@@ -48,6 +48,10 @@ func reconsiderationMessage(payload *reconsiderationRequest) (*runtimev1.Reconsi
 	if err != nil {
 		return nil, err
 	}
+	return reconsiderationEvidence(payload, priorDecision, correction)
+}
+
+func reconsiderationEvidence(payload *reconsiderationRequest, priorDecision, correction []byte) (*runtimev1.Reconsideration, error) {
 	commands, err := requiredJSONList(payload.Commands, "commands")
 	if err != nil {
 		return nil, err

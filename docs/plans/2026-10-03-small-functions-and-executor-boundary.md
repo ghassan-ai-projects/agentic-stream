@@ -269,3 +269,9 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   Failed tool calls remain deduplicated and bytes are charged before refusing an
   observation; new regressions pin both boundaries. Native and conformance race
   tests and strict focused lint pass. No public signature or import edge changed.
+
+- Round 27: remote execution separates request framing, handshake, streamed
+  admission, budget accounting, terminal validation and capability signing.
+  Regressions pin stream size/identity/budget, request artifact and terminal usage
+  precedence. Wire fields, digests, cancellation and capability clock reads are
+  preserved. Remote and conformance race tests and strict focused lint pass.

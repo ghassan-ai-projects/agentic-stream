@@ -71,20 +71,7 @@ func (s *workerStream) accept(event *runtimev1.EpisodeEvent) error {
 	if err := s.usage.observe(s.budget, event); err != nil {
 		return err
 	}
-	if event.GetBudget() != nil {
-		s.sawBudget = true
-	}
-	s.nextSequence++
-	if err := s.acceptDecision(event.GetDecision()); err != nil {
-		return err
-	}
-	if candidate := event.GetTerminal(); candidate != nil {
-		if s.terminal != nil {
-			return fmt.Errorf("worker emitted duplicate terminal")
-		}
-		s.terminal = candidate
-	}
-	return nil
+	return s.acceptPayload(event)
 }
 
 // admitSize enforces the negotiated per-event limit and the runtime's stream
@@ -114,6 +101,10 @@ func (s *workerStream) checkOrder(event *runtimev1.EpisodeEvent) error {
 	if event.GetOccurredAt() == nil || !event.GetOccurredAt().IsValid() {
 		return fmt.Errorf("worker event has invalid occurred_at")
 	}
+	return s.checkStarted(event)
+}
+
+func (s *workerStream) checkStarted(event *runtimev1.EpisodeEvent) error {
 	if s.nextSequence == 1 && event.GetStarted() == nil {
 		return fmt.Errorf("worker stream did not start with episode.started")
 	}
@@ -122,6 +113,23 @@ func (s *workerStream) checkOrder(event *runtimev1.EpisodeEvent) error {
 			return fmt.Errorf("worker emitted duplicate started event")
 		}
 		s.sawStarted = true
+	}
+	return nil
+}
+
+func (s *workerStream) acceptPayload(event *runtimev1.EpisodeEvent) error {
+	if event.GetBudget() != nil {
+		s.sawBudget = true
+	}
+	s.nextSequence++
+	if err := s.acceptDecision(event.GetDecision()); err != nil {
+		return err
+	}
+	if candidate := event.GetTerminal(); candidate != nil {
+		if s.terminal != nil {
+			return fmt.Errorf("worker emitted duplicate terminal")
+		}
+		s.terminal = candidate
 	}
 	return nil
 }
@@ -143,6 +151,21 @@ func (s *workerStream) acceptDecision(candidate *runtimev1.DecisionProposed) err
 	return nil
 }
 
+func verifyDecisionDigest(raw, digest []byte) error {
+	var document map[string]any
+	if err := json.Unmarshal(raw, &document); err != nil {
+		return fmt.Errorf("worker decision is not valid JSON: %w", err)
+	}
+	computed, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
+	if err != nil {
+		return fmt.Errorf("compute worker decision digest: %w", err)
+	}
+	if computed != fmt.Sprintf("sha256:%x", digest) {
+		return fmt.Errorf("worker decision digest mismatch")
+	}
+	return nil
+}
+
 // outcome converts a fully consumed stream into the aggregate Outcome. It
 // never accepts a Decision without a matching terminal.
 func (s *workerStream) outcome() (*episodes.Outcome, error) {
@@ -151,26 +174,7 @@ func (s *workerStream) outcome() (*episodes.Outcome, error) {
 	}
 	outcome := &episodes.Outcome{AttemptID: s.req.AttemptID, Fence: s.req.Fence, Reasons: []string{s.terminal.GetReasonCode()}}
 	outcome.CostMicrounits = s.usage.usage().costMicrounits
-	switch s.terminal.GetStatus() {
-	case runtimev1.TerminalStatus_TERMINAL_STATUS_PRODUCED:
-		if s.decision == nil {
-			return nil, fmt.Errorf("produced worker terminal has no decision")
-		}
-		outcome.Status = string(episodeledger.AttemptProduced)
-		outcome.DecisionJSON = append([]byte(nil), s.decision.GetDecisionJson()...)
-		outcome.DecisionSHA256 = fmt.Sprintf("sha256:%x", s.decision.GetDecisionSha256())
-	case runtimev1.TerminalStatus_TERMINAL_STATUS_DECLINED:
-		outcome.Status = string(episodeledger.AttemptDeclined)
-	case runtimev1.TerminalStatus_TERMINAL_STATUS_CANCELLED: //nolint:misspell // Wire enum is frozen by the protocol.
-		outcome.Status = string(episodeledger.AttemptCancelled)
-	case runtimev1.TerminalStatus_TERMINAL_STATUS_TIMED_OUT:
-		outcome.Status = string(episodeledger.AttemptTimedOut)
-	case runtimev1.TerminalStatus_TERMINAL_STATUS_FAILED, runtimev1.TerminalStatus_TERMINAL_STATUS_BUDGET_EXHAUSTED:
-		outcome.Status = string(episodeledger.AttemptFailed)
-	default:
-		return nil, fmt.Errorf("worker returned unspecified terminal status")
-	}
-	return outcome, nil
+	return s.bindTerminalOutcome(outcome)
 }
 
 // checkComplete requires a started and terminated stream and the budget
@@ -189,6 +193,10 @@ func (s *workerStream) checkComplete() error {
 			return err
 		}
 	}
+	return s.requireUsageTelemetry()
+}
+
+func (s *workerStream) requireUsageTelemetry() error {
 	if hasUsageBudget(s.budget) && !s.usage.usageReported {
 		if s.budget.GetMaxCostMicrounits() > 0 {
 			return fmt.Errorf("worker cost telemetry is missing")
@@ -198,17 +206,30 @@ func (s *workerStream) checkComplete() error {
 	return nil
 }
 
-func verifyDecisionDigest(raw, digest []byte) error {
-	var document map[string]any
-	if err := json.Unmarshal(raw, &document); err != nil {
-		return fmt.Errorf("worker decision is not valid JSON: %w", err)
+func (s *workerStream) bindTerminalOutcome(outcome *episodes.Outcome) (*episodes.Outcome, error) {
+	switch s.terminal.GetStatus() {
+	case runtimev1.TerminalStatus_TERMINAL_STATUS_PRODUCED:
+		return s.producedOutcome(outcome)
+	case runtimev1.TerminalStatus_TERMINAL_STATUS_DECLINED:
+		outcome.Status = string(episodeledger.AttemptDeclined)
+	case runtimev1.TerminalStatus_TERMINAL_STATUS_CANCELLED: //nolint:misspell // Wire enum is frozen by the protocol.
+		outcome.Status = string(episodeledger.AttemptCancelled)
+	case runtimev1.TerminalStatus_TERMINAL_STATUS_TIMED_OUT:
+		outcome.Status = string(episodeledger.AttemptTimedOut)
+	case runtimev1.TerminalStatus_TERMINAL_STATUS_FAILED, runtimev1.TerminalStatus_TERMINAL_STATUS_BUDGET_EXHAUSTED:
+		outcome.Status = string(episodeledger.AttemptFailed)
+	default:
+		return nil, fmt.Errorf("worker returned unspecified terminal status")
 	}
-	computed, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
-	if err != nil {
-		return fmt.Errorf("compute worker decision digest: %w", err)
+	return outcome, nil
+}
+
+func (s *workerStream) producedOutcome(outcome *episodes.Outcome) (*episodes.Outcome, error) {
+	if s.decision == nil {
+		return nil, fmt.Errorf("produced worker terminal has no decision")
 	}
-	if computed != fmt.Sprintf("sha256:%x", digest) {
-		return fmt.Errorf("worker decision digest mismatch")
-	}
-	return nil
+	outcome.Status = string(episodeledger.AttemptProduced)
+	outcome.DecisionJSON = append([]byte(nil), s.decision.GetDecisionJson()...)
+	outcome.DecisionSHA256 = fmt.Sprintf("sha256:%x", s.decision.GetDecisionSha256())
+	return outcome, nil
 }
