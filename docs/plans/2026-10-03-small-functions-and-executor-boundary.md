@@ -242,3 +242,11 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   their original rejection order and digest inputs. Added a public-validation
   regression proving attempt/fence mismatch precedes snapshot mismatch. Decision
   and architecture race tests and strict focused lint pass.
+
+- Round 23: device authority now exposes bounded claim, command binding,
+  boot-state reconciliation, barrier resolution and safety-recording steps.
+  Runtime assertions remain inside mutation transactions as well as before
+  reconciliation; clock reads, claim fences, manual-review barriers, latest-state
+  checks and unresolved-command refusal remain unchanged. New regressions pin
+  metadata/binding and canonical-JSON/digest error precedence. Authority and
+  architecture race tests and strict focused lint pass.

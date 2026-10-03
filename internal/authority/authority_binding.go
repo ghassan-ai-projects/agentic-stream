@@ -24,14 +24,7 @@ func (a *TargetAuthority) BindCommand(ctx context.Context, binding CommandBindin
 		return fmt.Errorf("command binding owner instance does not match authority")
 	}
 	err := a.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := a.assertOrdinaryTx(ctx, tx, binding.AuthorityEpoch); err != nil {
-			return err
-		}
-		bound, err := commandAlreadyBound(ctx, tx, binding)
-		if err != nil || bound {
-			return err
-		}
-		return insertCommandBinding(ctx, tx, binding, a.now())
+		return a.bindCommandTx(ctx, tx, binding)
 	})
 	if err != nil {
 		return fmt.Errorf("bind command %q: %w", binding.CommandID, err)
@@ -66,8 +59,7 @@ func (b CommandBinding) complete() bool {
 func commandAlreadyBound(ctx context.Context, tx *sql.Tx, binding CommandBinding) (bool, error) {
 	var stored CommandBinding
 	var storedDigest []byte
-	err := tx.QueryRowContext(ctx, `SELECT target, device_id, boot_id, owner_epoch, owner_instance, command_sha256
-		FROM device_command_bindings WHERE command_id = ?`, binding.CommandID).Scan(&stored.Target, &stored.DeviceID, &stored.BootID, &stored.AuthorityEpoch, &stored.OwnerInstance, &storedDigest)
+	err := tx.QueryRowContext(ctx, readCommandBindingSQL, binding.CommandID).Scan(&stored.Target, &stored.DeviceID, &stored.BootID, &stored.AuthorityEpoch, &stored.OwnerInstance, &storedDigest)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -149,6 +141,31 @@ func VerifyStoredJSONDigest(data, digest []byte) error {
 	if len(digest) != sha256.Size {
 		return fmt.Errorf("stored digest has %d bytes", len(digest))
 	}
+	if err := checkStoredCanonicalJSON(data); err != nil {
+		return err
+	}
+	hash := sha256.Sum256(data)
+	if string(hash[:]) != string(digest) {
+		return fmt.Errorf("stored JSON digest mismatch")
+	}
+	return nil
+}
+
+func (a *TargetAuthority) bindCommandTx(ctx context.Context, tx *sql.Tx, binding CommandBinding) error {
+	if err := a.assertOrdinaryTx(ctx, tx, binding.AuthorityEpoch); err != nil {
+		return err
+	}
+	bound, err := commandAlreadyBound(ctx, tx, binding)
+	if err != nil || bound {
+		return err
+	}
+	return insertCommandBinding(ctx, tx, binding, a.now())
+}
+
+const readCommandBindingSQL = `SELECT target, device_id, boot_id, owner_epoch, owner_instance, command_sha256
+		FROM device_command_bindings WHERE command_id = ?`
+
+func checkStoredCanonicalJSON(data []byte) error {
 	var value any
 	if err := json.Unmarshal(data, &value); err != nil {
 		return fmt.Errorf("stored JSON is invalid: %w", err)
@@ -156,10 +173,6 @@ func VerifyStoredJSONDigest(data, digest []byte) error {
 	canonical, err := canonicaljson.Marshal(value)
 	if err != nil || string(canonical) != string(data) {
 		return fmt.Errorf("stored JSON is not canonical")
-	}
-	hash := sha256.Sum256(data)
-	if string(hash[:]) != string(digest) {
-		return fmt.Errorf("stored JSON digest mismatch")
 	}
 	return nil
 }

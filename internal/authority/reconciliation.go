@@ -22,6 +22,21 @@ type ReconciliationStore struct {
 	Now       func() time.Time
 }
 
+// stateBinding is a validated device state and the authority binding it.
+type stateBinding struct {
+	deviceID, bootID, authorityEpoch, ownerInstance string
+	stateJSON, stateSHA256                          []byte
+}
+
+const updateBoundDeviceStateSQL = `
+		UPDATE device_reconciliation SET boot_id = ?, status = ?, opening_boot_id = ?,
+			state_json = ?, state_sha256 = ?, authority_epoch = ?,
+			last_resolution_status = CASE WHEN boot_id = ? THEN last_resolution_status ELSE NULL END,
+			resolution_evidence_json = CASE WHEN boot_id = ? THEN resolution_evidence_json ELSE NULL END,
+			resolution_sha256 = CASE WHEN boot_id = ? THEN resolution_sha256 ELSE NULL END,
+			resolved_at = CASE WHEN boot_id = ? THEN resolved_at ELSE NULL END,
+			updated_at = ? WHERE device_id = ?`
+
 // BindState stores a validated device state and returns whether ordinary
 // commands must remain blocked. A changed boot opens the barrier atomically.
 func (s *ReconciliationStore) BindState(ctx context.Context, state map[string]any, authorityEpoch, ownerInstance string) (bool, error) {
@@ -36,22 +51,7 @@ func (s *ReconciliationStore) BindState(ctx context.Context, state map[string]an
 	if err := s.Authority.AssertRuntime(ctx, authorityEpoch); err != nil {
 		return false, fmt.Errorf("assert authority before binding device state: %w", err)
 	}
-	required := false
-	err = s.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		required, err = s.bindStateTx(ctx, tx, binding, now)
-		return err
-	})
-	if err != nil {
-		return required, fmt.Errorf("bind device state: %w", err)
-	}
-	return required, nil
-}
-
-// stateBinding is a validated device state and the authority binding it.
-type stateBinding struct {
-	deviceID, bootID, authorityEpoch, ownerInstance string
-	stateJSON, stateSHA256                          []byte
+	return s.recordBoundState(ctx, binding, now)
 }
 
 func newStateBinding(state map[string]any, authorityEpoch, ownerInstance string) (stateBinding, error) {
@@ -69,6 +69,19 @@ func newStateBinding(state map[string]any, authorityEpoch, ownerInstance string)
 		stateJSON: stateJSON, stateSHA256: stateHash[:]}, nil
 }
 
+func (s *ReconciliationStore) recordBoundState(ctx context.Context, binding stateBinding, now time.Time) (bool, error) {
+	required := false
+	err := s.DB.WithTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		required, err = s.bindStateTx(ctx, tx, binding, now)
+		return err
+	})
+	if err != nil {
+		return required, fmt.Errorf("bind device state: %w", err)
+	}
+	return required, nil
+}
+
 // bindStateTx records the first state of a device as clear, and otherwise
 // keeps the barrier required while it is open or the device rebooted.
 func (s *ReconciliationStore) bindStateTx(ctx context.Context, tx *sql.Tx, b stateBinding, now time.Time) (bool, error) {
@@ -83,6 +96,10 @@ func (s *ReconciliationStore) bindStateTx(ctx context.Context, tx *sql.Tx, b sta
 	if err != nil {
 		return false, fmt.Errorf("load reconciliation state: %w", err)
 	}
+	return updateReconciliationBoot(ctx, tx, b, currentBoot, status, now)
+}
+
+func updateReconciliationBoot(ctx context.Context, tx *sql.Tx, b stateBinding, currentBoot, status string, now time.Time) (bool, error) {
 	rebooted := currentBoot != b.bootID
 	required := status == "required" || rebooted
 	openingBoot := currentBoot
@@ -124,14 +141,7 @@ func updateBoundState(ctx context.Context, tx *sql.Tx, b stateBinding, required 
 	if required {
 		newStatus = "required"
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE device_reconciliation SET boot_id = ?, status = ?, opening_boot_id = ?,
-			state_json = ?, state_sha256 = ?, authority_epoch = ?,
-			last_resolution_status = CASE WHEN boot_id = ? THEN last_resolution_status ELSE NULL END,
-			resolution_evidence_json = CASE WHEN boot_id = ? THEN resolution_evidence_json ELSE NULL END,
-			resolution_sha256 = CASE WHEN boot_id = ? THEN resolution_sha256 ELSE NULL END,
-			resolved_at = CASE WHEN boot_id = ? THEN resolved_at ELSE NULL END,
-			updated_at = ? WHERE device_id = ?`,
+	if _, err := tx.ExecContext(ctx, updateBoundDeviceStateSQL,
 		b.bootID, newStatus, openingBoot, b.stateJSON, b.stateSHA256, b.authorityEpoch,
 		b.bootID, b.bootID, b.bootID, b.bootID, formatRuntimeTime(now), b.deviceID); err != nil {
 		return fmt.Errorf("update reconciliation state: %w", err)
