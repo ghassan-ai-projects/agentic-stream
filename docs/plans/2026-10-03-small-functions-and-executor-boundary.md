@@ -235,3 +235,10 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   a superseded episode accepts only cancellation of its current attempt and
   rejects stale cancellation and produced output. Ledger and architecture race
   tests and strict focused lint pass. No new package or import edge.
+
+- Round 22: Decision validation reads as trusted-input check → parse → bind →
+  accept intents. Catalog compilation, intent authority, trusted target/expiry
+  binding, preset equality and grounded references remain fail-closed, with
+  their original rejection order and digest inputs. Added a public-validation
+  regression proving attempt/fence mismatch precedes snapshot mismatch. Decision
+  and architecture race tests and strict focused lint pass.
