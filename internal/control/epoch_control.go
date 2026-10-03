@@ -73,25 +73,14 @@ func (c *EpochControl) killTx(ctx context.Context, tx *sql.Tx, epoch string, now
 // unstartedReservedEpisodes lists admitted episodes of the epoch that hold a
 // cost reservation but never started an attempt.
 func unstartedReservedEpisodes(ctx context.Context, tx *sql.Tx, epoch string) ([]string, error) {
-	rows, err := tx.QueryContext(ctx, `
-		SELECT e.episode_id
-		FROM episodes e JOIN cost_reservations r ON r.episode_id = e.episode_id
-		WHERE e.policy_epoch = ? AND e.lifecycle_status = 'admitted'
-		  AND e.current_attempt_id IS NULL AND r.status = 'reserved'`, epoch)
+	rows, err := tx.QueryContext(ctx, unstartedEpisodeReservationsSQL, epoch)
 	if err != nil {
 		return nil, fmt.Errorf("list admitted epoch reservations: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var episodeIDs []string
-	for rows.Next() {
-		var episodeID string
-		if err := rows.Scan(&episodeID); err != nil {
-			return nil, fmt.Errorf("scan admitted epoch reservation: %w", err)
-		}
-		episodeIDs = append(episodeIDs, episodeID)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("read admitted epoch reservations: %w", err)
+	episodeIDs, err := collectEpisodeReservations(rows)
+	if err != nil {
+		return nil, err
 	}
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("close admitted epoch reservations: %w", err)
@@ -157,16 +146,23 @@ func (c *EpochControl) AssertDecisionTx(ctx context.Context, tx *sql.Tx, episode
 	if episodeEpoch == "" {
 		return ErrEpochUnbound
 	}
-	var state string
-	err := tx.QueryRowContext(ctx,
-		`SELECT state FROM epoch_control WHERE epoch = ?`, episodeEpoch).Scan(&state)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
+	state, _, err := readControlledEpoch(ctx, tx, episodeEpoch, "epoch control")
 	if err != nil {
-		return fmt.Errorf("read epoch control: %w", err)
+		return err
 	}
 	return decisionEpochState(state)
+}
+
+func readControlledEpoch(ctx context.Context, tx *sql.Tx, epoch, what string) (string, bool, error) {
+	var state string
+	err := tx.QueryRowContext(ctx, `SELECT state FROM epoch_control WHERE epoch = ?`, epoch).Scan(&state)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("read %s: %w", what, err)
+	}
+	return state, true, nil
 }
 
 func decisionEpochState(state string) error {
@@ -183,14 +179,14 @@ func (c *EpochControl) AssertOrdinaryTx(ctx context.Context, tx *sql.Tx, epoch s
 	if c == nil || c.DB == nil || tx == nil || epoch == "" {
 		return fmt.Errorf("epoch control is not configured")
 	}
-	var state string
-	err := tx.QueryRowContext(ctx, `SELECT state FROM epoch_control WHERE epoch = ?`, epoch).Scan(&state)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
+	state, found, err := readControlledEpoch(ctx, tx, epoch, "ordinary epoch control")
+	if err != nil || !found {
+		return err
 	}
-	if err != nil {
-		return fmt.Errorf("read ordinary epoch control: %w", err)
-	}
+	return ordinaryEpochState(state)
+}
+
+func ordinaryEpochState(state string) error {
 	switch state {
 	case "killed":
 		return ErrEpochKilled
@@ -250,4 +246,25 @@ func (c *EpochControl) now() time.Time {
 		return c.Now().UTC()
 	}
 	return time.Now().UTC()
+}
+
+const unstartedEpisodeReservationsSQL = `
+		SELECT e.episode_id
+		FROM episodes e JOIN cost_reservations r ON r.episode_id = e.episode_id
+		WHERE e.policy_epoch = ? AND e.lifecycle_status = 'admitted'
+		  AND e.current_attempt_id IS NULL AND r.status = 'reserved'`
+
+func collectEpisodeReservations(rows *sql.Rows) ([]string, error) {
+	var episodeIDs []string
+	for rows.Next() {
+		var episodeID string
+		if err := rows.Scan(&episodeID); err != nil {
+			return nil, fmt.Errorf("scan admitted epoch reservation: %w", err)
+		}
+		episodeIDs = append(episodeIDs, episodeID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read admitted epoch reservations: %w", err)
+	}
+	return episodeIDs, nil
 }

@@ -212,3 +212,10 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   unresolved outcomes retain their fail-closed verdicts. Added a regression
   pinning every failure reason and its stable sorted order, excluding report-only
   diagnostics. Soak and architecture race tests and strict focused lint pass.
+
+- Round 19: runtime-owner claim/recovery and lease mutations are bounded steps;
+  SQL definitions sit below the owning operations. Shared mutation accounting
+  retains zero-row fencing and exact error text. Epoch-state reads preserve the
+  distinction between absent controls and unknown stored states. Added a
+  regression proving recovery cannot commit an expired lease and acquisition
+  rolls back. Control and architecture race tests and strict focused lint pass.
