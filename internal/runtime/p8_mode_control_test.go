@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -76,7 +76,7 @@ func p8NewPipeline(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, cf
 	cfg.Clock = clock.Physical()
 	cfg.IDGenerator = ids.Deterministic()
 	cfg.Executor = episodes.NewFakeExecutor()
-	cfg.Effector = actions.NewSimulatedEffector()
+	cfg.Effector = device.NewSimulatedEffector()
 	pipeline, err := runtime.NewPipeline(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)

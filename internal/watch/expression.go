@@ -1,11 +1,12 @@
-package actions
+package watch
 
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/ext"
-	"strings"
 )
 
 func validateWatchExpression(expression string) error {

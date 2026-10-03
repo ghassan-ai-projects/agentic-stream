@@ -1,13 +1,14 @@
-package actions
+package watch
 
 import (
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"log/slog"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 const (
@@ -18,7 +19,7 @@ const (
 // Fire records one event-driven watch firing exactly once and decrements its
 // bounded allowance. It returns false for expired, disabled, duplicate, or
 // expression-evaluation-error no-fires.
-func (e *WatchEffector) Fire(ctx context.Context, watchID, eventID, situationID, target string, features map[string]any) (bool, error) {
+func (e *Effector) Fire(ctx context.Context, watchID, eventID, situationID, target string, features map[string]any) (bool, error) {
 	if e == nil || e.db == nil || watchID == "" || eventID == "" {
 		return false, fmt.Errorf("watch identity is required")
 	}
@@ -94,7 +95,7 @@ func recordWatchFire(ctx context.Context, tx *sql.Tx, watchID, eventID, now stri
 // FireEvent evaluates all active watches scoped to one event target. The
 // event log remains the source of evidence; duplicate event delivery is
 // absorbed by the watch_fires primary key.
-func (e *WatchEffector) FireEvent(ctx context.Context, eventID, target string, features map[string]any) (int, error) {
+func (e *Effector) FireEvent(ctx context.Context, eventID, target string, features map[string]any) (int, error) {
 	if e == nil || e.db == nil || eventID == "" || target == "" {
 		return 0, fmt.Errorf("watch event identity is required")
 	}
@@ -132,7 +133,7 @@ func (e *WatchEffector) FireEvent(ctx context.Context, eventID, target string, f
 }
 
 // Expire marks due active watches inactive without deleting their audit rows.
-func (e *WatchEffector) Expire(ctx context.Context) error {
+func (e *Effector) Expire(ctx context.Context) error {
 	if e == nil || e.db == nil {
 		return fmt.Errorf("watch storage is required")
 	}
@@ -141,7 +142,7 @@ func (e *WatchEffector) Expire(ctx context.Context) error {
 }
 
 // expireDue marks every active watch whose expiry has passed as expired.
-func (e *WatchEffector) expireDue(ctx context.Context, now string) error {
+func (e *Effector) expireDue(ctx context.Context, now string) error {
 	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
 		if e.owner != nil && e.ownerEpoch != "" {
 			if err := e.owner.Assert(ctx, tx, e.ownerEpoch); err != nil {

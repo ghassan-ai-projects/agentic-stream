@@ -21,6 +21,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
 
 const watchReadBatchSize = 1000
@@ -73,7 +74,7 @@ type Pipeline struct {
 	runner     *episodes.Runner
 	policy     *policy.Gateway
 	dispatcher *actions.Dispatcher
-	watch      *actions.WatchEffector
+	watch      *watch.Effector
 	owner      *runtimecontrol.RuntimeOwner
 	ownerEpoch string
 	clk        clock.Clock
@@ -92,7 +93,7 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 		return nil, fmt.Errorf("pipeline database and spec are required")
 	}
 	cfg = pipelineDefaults(cfg)
-	var watch *actions.WatchEffector
+	var watch *watch.Effector
 	cfg.Effector, watch = composeEffectors(cfg)
 	log := eventlog.NewEventLogWithClock(cfg.DB, cfg.Clock)
 	stream, err := engine.NewEngine(ctx, cfg.DB, log, cfg.Clock, cfg.Spec, cfg.TenantID)

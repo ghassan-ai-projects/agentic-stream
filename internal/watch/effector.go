@@ -1,4 +1,4 @@
-package actions
+package watch
 
 import (
 	"context"
@@ -16,9 +16,9 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// WatchEffector installs bounded, expiring derived triggers. It has no
+// Effector installs bounded, expiring derived triggers. It has no
 // reference to a spec store or deployment path by construction.
-type WatchEffector struct {
+type Effector struct {
 	db         *storage.DB
 	clk        clock.Clock
 	owner      *runtimecontrol.RuntimeOwner
@@ -28,38 +28,38 @@ type WatchEffector struct {
 
 // WithRuntimeOwner fences all durable watch mutations to the active runtime
 // epoch. Standalone tests may leave the owner unset.
-func (e *WatchEffector) WithRuntimeOwner(owner *runtimecontrol.RuntimeOwner, epoch string) *WatchEffector {
+func (e *Effector) WithRuntimeOwner(owner *runtimecontrol.RuntimeOwner, epoch string) *Effector {
 	e.owner = owner
 	e.ownerEpoch = epoch
 	return e
 }
 
 // WithInterlock adds the final action-plane readiness check to watch writes.
-func (e *WatchEffector) WithInterlock(reader interlock.Reader) *WatchEffector {
+func (e *Effector) WithInterlock(reader interlock.Reader) *Effector {
 	e.interlock = reader
 	return e
 }
 
-// NewWatchEffector creates an internal watch-condition effector.
-func NewWatchEffector(db *storage.DB) *WatchEffector {
-	return NewWatchEffectorWithClock(db, clock.Physical())
+// NewEffector creates an internal watch-condition effector.
+func NewEffector(db *storage.DB) *Effector {
+	return NewEffectorWithClock(db, clock.Physical())
 }
 
-// NewWatchEffectorWithClock creates a watch effector with deterministic time.
-func NewWatchEffectorWithClock(db *storage.DB, clk clock.Clock) *WatchEffector {
+// NewEffectorWithClock creates a watch effector with deterministic time.
+func NewEffectorWithClock(db *storage.DB, clk clock.Clock) *Effector {
 	if clk == nil {
 		clk = clock.Physical()
 	}
-	return &WatchEffector{db: db, clk: clk}
+	return &Effector{db: db, clk: clk}
 }
 
 // Dispatch installs one watch condition and is idempotent by watch_id.
-func (e *WatchEffector) Dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
+func (e *Effector) Dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
 	return e.dispatch(ctx, command, nil)
 }
 
 // DispatchAuthorized performs the final authorization check before install.
-func (e *WatchEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
+func (e *Effector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
 	if authorization.Check == nil {
 		return actionport.Effect{}, fmt.Errorf("dispatch authorization is required")
 	}
@@ -69,7 +69,7 @@ func (e *WatchEffector) DispatchAuthorized(ctx context.Context, command actionpo
 	return e.dispatch(ctx, command, authorization.Check)
 }
 
-func (e *WatchEffector) dispatch(ctx context.Context, command actionport.Command, _ func(context.Context) error) (actionport.Effect, error) {
+func (e *Effector) dispatch(ctx context.Context, command actionport.Command, _ func(context.Context) error) (actionport.Effect, error) {
 	if e == nil || e.db == nil {
 		return actionport.Effect{}, fmt.Errorf("watch effector storage is required")
 	}
@@ -95,7 +95,7 @@ func (e *WatchEffector) dispatch(ctx context.Context, command actionport.Command
 
 // installOnce installs the watch, or accepts an identical earlier install of
 // the same watch ID and rejects a conflicting one.
-func (e *WatchEffector) installOnce(ctx context.Context, tx *sql.Tx, watchID string, want watchCondition, now string) error {
+func (e *Effector) installOnce(ctx context.Context, tx *sql.Tx, watchID string, want watchCondition, now string) error {
 	existing, err := loadWatchCondition(ctx, tx, watchID)
 	if err != nil {
 		return fmt.Errorf("load existing watch condition: %w", err)
@@ -189,7 +189,7 @@ func (c watchCondition) sameAs(stored watchCondition) error {
 }
 
 // assertGuards re-checks runtime ownership and the governance interlock.
-func (e *WatchEffector) assertGuards(ctx context.Context, tx *sql.Tx, tenantID, target string) error {
+func (e *Effector) assertGuards(ctx context.Context, tx *sql.Tx, tenantID, target string) error {
 	if e.owner != nil && e.ownerEpoch != "" {
 		if err := e.owner.Assert(ctx, tx, e.ownerEpoch); err != nil {
 			return fmt.Errorf("assert watch runtime owner: %w", err)

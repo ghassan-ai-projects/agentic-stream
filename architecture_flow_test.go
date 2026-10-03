@@ -21,7 +21,7 @@ var packageLayers = map[string]int{
 	"internal/decisions": 2, "internal/episodeledger": 2, "internal/eventlog": 2, "internal/evidence": 4,
 	"internal/notifycontract": 2, "internal/qualification": 2, "internal/scheduleledger": 2, "internal/spec": 2, "internal/worker": 2,
 	"internal/control": 3, "internal/ingress": 3, "internal/notify": 3, "internal/operators": 3,
-	"internal/api": 4, "internal/approvalledger": 4, "internal/authority": 4, "internal/situations": 4,
+	"internal/api": 4, "internal/approvalledger": 4, "internal/watch": 4, "internal/authority": 4, "internal/situations": 4,
 	"internal/actions": 5, "internal/cognition": 5, "internal/device": 5, "internal/episodes": 5, "internal/policy": 5, "internal/soak": 5,
 	"internal/admission": 6, "internal/engine": 6, "internal/executor/conformance": 6, "internal/executor/native": 6, "internal/executor/remote": 6, "internal/runartifact": 6,
 	"internal/replay": 7, "internal/runtime": 8, "cmd/agentic-stream": 9,
@@ -63,7 +63,7 @@ func TestReasoningAndReplayCannotReachEffectImplementations(t *testing.T) {
 	graph := productionImportGraph(t, root, module)
 	reasoning := []string{"internal/cognition", "internal/decisions", "internal/engine", "internal/episodes", "internal/evidence", "internal/executor/native", "internal/executor/remote", "internal/executor/conformance", "internal/worker"}
 	for _, source := range append(reasoning, "internal/replay") {
-		for _, target := range []string{"internal/actions", "internal/device", "internal/runtime", "cmd/agentic-stream"} {
+		for _, target := range []string{"internal/actions", "internal/device", "internal/watch", "internal/runtime", "cmd/agentic-stream"} {
 			if path := dependencyPath(graph, source, target); len(path) > 0 {
 				t.Errorf("effect implementation reachable: %s", strings.Join(path, " -> "))
 			}

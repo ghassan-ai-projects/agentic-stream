@@ -5,20 +5,20 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
 
 // CompositeEffector routes internal watch installs to the durable watch
 // effector and all other routes to the configured external/simulated effector.
 // It keeps the watch implementation independent of the spec store.
 type CompositeEffector struct {
-	watch    *actions.WatchEffector
+	watch    *watch.Effector
 	serial   actionport.VerifiedEffector
 	fallback actionport.Effector
 }
 
 // NewCompositeEffector creates the production action-plane composition.
-func NewCompositeEffector(watch *actions.WatchEffector, fallback actionport.Effector) *CompositeEffector {
+func NewCompositeEffector(watch *watch.Effector, fallback actionport.Effector) *CompositeEffector {
 	return &CompositeEffector{watch: watch, fallback: fallback}
 }
 

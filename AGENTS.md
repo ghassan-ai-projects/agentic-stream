@@ -80,7 +80,8 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/evidence` - evidence/tool boundary for episodes
 - `internal/decisions` - typed Decision model
 - `internal/policy` - policy plane; revalidates every intent before dispatch
-- `internal/actions` - action plane, effectors, idempotency
+- `internal/actions` - governed dispatch plane, idempotency, verification
+- `internal/watch` - derived-trigger watches installed by approved commands
 - `internal/actionport` - approved-command/effect contracts without implementation dependencies
 - `internal/device` - concrete device adapters, sessions, materialization and gateway links
 - `internal/episodeledger` / `internal/scheduleledger` / `internal/approvalledger` - durable lifecycle owners shared through transaction-scoped operations

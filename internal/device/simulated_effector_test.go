@@ -1,4 +1,4 @@
-package actions_test
+package device_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 )
 
 func TestSimulatedEffectorAcceptsAnyRouteAndIsIdempotent(t *testing.T) {
@@ -20,7 +20,7 @@ func TestSimulatedEffectorAcceptsAnyRouteAndIsIdempotent(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			effector := actions.NewSimulatedEffector()
+			effector := device.NewSimulatedEffector()
 			command := actionport.Command{EffectorRoute: tt.route, NormalizedTarget: "pump-1", IdempotencyKey: "sha256:key-" + tt.route}
 			first, err := effector.Dispatch(context.Background(), command)
 			if err != nil {

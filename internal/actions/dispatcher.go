@@ -1,4 +1,6 @@
-// Package actions owns the effect boundary after policy approval.
+// Package actions is the governed dispatcher after policy approval: it leases
+// approved commands, dispatches them through effect ports, and verifies and
+// reconciles their outcomes. Concrete effect adapters live elsewhere.
 package actions
 
 import (

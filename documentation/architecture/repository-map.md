@@ -18,9 +18,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/evidence/` | capability tokens, evidence server, call ledger |
 | `internal/decisions/` | Decision and Intent validation |
 | `internal/policy/` | deterministic governance and approvals |
-| `internal/actions/` | outbox dispatcher and effectors |
+| `internal/actions/` | governed outbox dispatch, verification and reconciliation |
+| `internal/watch/` | derived-trigger watches: install as an effect, fire on matching evidence, expire |
 | `internal/actionport/` | approved command/effect contracts |
-| `internal/device/` | concrete device sessions, materialization and gateway transport |
+| `internal/device/` | concrete device sessions, materialization, gateway transport and the simulated effector |
 | `internal/episodeledger/` | durable episode/attempt lifecycle, fencing and recovery |
 | `internal/scheduleledger/` | durable queue identity, admission and coalescing |
 | `internal/approvalledger/` | human approval lifecycle and supersession notification |

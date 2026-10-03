@@ -100,3 +100,12 @@ are permitted, writes keep single owners.
   `eventlog.ReadEntityWindow`, removing a duplicated `event_log` query. Error
   texts of the shared read are unified under `eventlog`; the ceiling update now
   reads the clock once per configuration transaction. Focused race tests pass.
+
+- Round 7 (A11): extracted `internal/watch` (install, fire, expire; sole owner
+  of `watch_conditions` and `watch_fires`) and moved the simulated effector to
+  `device`. `actions` is now governed dispatch only and is forbidden from
+  importing `device` or `watch`; `watch` is forbidden from reaching dispatch,
+  policy, episodes or cognition, and is an effect implementation for the
+  reasoning/replay reachability check. The ingest loop now calls the watch
+  module instead of the action plane. Behavior and tests moved unchanged; race
+  tests pass (coverage: watch 67.0%, actions 70.0%, device 80.5%).

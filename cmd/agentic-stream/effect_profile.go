@@ -13,7 +13,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
@@ -109,7 +108,7 @@ func (o effectProfileOptions) open(
 		return nil, nil, nil, err
 	}
 	if o.profile() == device.EffectProfileSimulated {
-		return actions.NewSimulatedEffector(), nil, nil, nil
+		return device.NewSimulatedEffector(), nil, nil, nil
 	}
 
 	transport, catalog, err := o.connectDeviceGateway(ctx)
@@ -167,7 +166,7 @@ func fallbackEffector(profile device.EffectProfile) actionport.Effector {
 	if profile == device.EffectProfilePhysical {
 		return device.NewFailClosedEffector(profile)
 	}
-	return actions.NewSimulatedEffector()
+	return device.NewSimulatedEffector()
 }
 
 func (o effectProfileOptions) profile() device.EffectProfile {

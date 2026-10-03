@@ -51,8 +51,9 @@ records or returned values, not reverse service dependencies.
 | Package | Owns |
 | --- | --- |
 | `actionport` | Approved command, effect outcome, final authorization and effector contracts; no database/network implementation |
-| `device` | Closed capability catalog, deterministic materialization, session/boot checks, safe stop and gateway transport |
-| `actions` | Approved-command leases, dispatch, outcome verification, reconciliation and durable internal watches |
+| `device` | Closed capability catalog, deterministic materialization, session/boot checks, safe stop, gateway transport and the simulated effector |
+| `actions` | Approved-command leases, governed dispatch, outcome verification and reconciliation |
+| `watch` | Bounded, expiring derived-trigger watches: install through the effect port, fire on matching evidence, expire; owns `watch_conditions`/`watch_fires` |
 | `episodeledger` | Episode/attempt state, fencing identity, rejection audit, recovery and cancellation mutations |
 | `admission` | Turning due scheduler items into epoch-stamped episodes; drain stop, fixture refusal and recorded skips for unadmittable items |
 | `episodes` | Validated request assembly, bounded execution through the `Executor` port, failure accounting and Decision acceptance |

@@ -47,6 +47,8 @@ var forbiddenImports = map[string][]string{
 	"internal/executor/native":      {"internal/policy", "internal/actions"},
 	"internal/executor/remote":      {"internal/policy", "internal/actions"},
 	"internal/worker":               {"internal/policy", "internal/actions"},
+	"internal/actions":              {"internal/device", "internal/watch"},
+	"internal/watch":                {"internal/actions", "internal/policy", "internal/episodes", "internal/cognition"},
 	"internal/replay":               {"internal/actions", "internal/runtime"},
 	"internal/executor/conformance": {"internal/actions"},
 }
@@ -55,7 +57,7 @@ var forbiddenImports = map[string][]string{
 // follow the data flow in .agents/context/architecture.md and be added here in
 // the same change.
 var allowedImports = map[string][]string{
-	"cmd/agentic-stream":             {"internal/actionport", "internal/actions", "internal/api", "internal/authority", "internal/contractsv1", "internal/control", "internal/device", "internal/evidence", "internal/ids", "internal/notify", "internal/replay", "internal/runartifact", "internal/runtime", "internal/spec", "internal/storage", "internal/telemetry"},
+	"cmd/agentic-stream":             {"internal/actionport", "internal/api", "internal/authority", "internal/contractsv1", "internal/control", "internal/device", "internal/evidence", "internal/ids", "internal/notify", "internal/replay", "internal/runartifact", "internal/runtime", "internal/spec", "internal/storage", "internal/telemetry"},
 	"internal/actionport":            {},
 	"internal/actions":               {"internal/actionport", "internal/authority", "internal/canonicaljson", "internal/clock", "internal/contractsv1", "internal/control", "internal/ids", "internal/interlock", "internal/notify", "internal/storage", "internal/telemetry"},
 	"internal/admission":             {"internal/clock", "internal/cognition", "internal/control", "internal/costcontrol", "internal/episodeledger", "internal/episodes", "internal/scheduleledger", "internal/storage"},
@@ -90,13 +92,14 @@ var allowedImports = map[string][]string{
 	"internal/qualification":         {"internal/storage"},
 	"internal/replay":                {"internal/canonicaljson", "internal/clock", "internal/contractsv1", "internal/decisions", "internal/engine", "internal/episodes", "internal/eventlog", "internal/ids", "internal/ingress", "internal/policy", "internal/qualification", "internal/spec", "internal/storage"},
 	"internal/runartifact":           {"internal/canonicaljson", "internal/policy", "internal/soak", "internal/storage"},
-	"internal/runtime":               {"internal/actionport", "internal/actions", "internal/admission", "internal/clock", "internal/contractsv1", "internal/control", "internal/costcontrol", "internal/device", "internal/engine", "internal/episodeledger", "internal/episodes", "internal/eventlog", "internal/evidence", "internal/executor/native", "internal/executor/remote", "internal/ids", "internal/ingress", "internal/interlock", "internal/policy", "internal/qualification", "internal/spec", "internal/storage", "internal/telemetry", "internal/worker", "proto/agenticstream/runtime/v1"},
+	"internal/runtime":               {"internal/actionport", "internal/actions", "internal/admission", "internal/clock", "internal/contractsv1", "internal/control", "internal/costcontrol", "internal/device", "internal/engine", "internal/episodeledger", "internal/episodes", "internal/eventlog", "internal/evidence", "internal/executor/native", "internal/executor/remote", "internal/ids", "internal/ingress", "internal/interlock", "internal/policy", "internal/qualification", "internal/spec", "internal/storage", "internal/telemetry", "internal/watch", "internal/worker", "proto/agenticstream/runtime/v1"},
 	"internal/scheduleledger":        {},
 	"internal/situations":            {"internal/canonicaljson", "internal/contractsv1", "internal/duration", "internal/ids", "internal/operators", "internal/spec"},
 	"internal/soak":                  {"internal/authority", "internal/storage"},
 	"internal/spec":                  {"internal/canonicaljson", "internal/eventschema", "internal/storage"},
 	"internal/storage":               {"migrations"},
 	"internal/telemetry":             {},
+	"internal/watch":                 {"internal/actionport", "internal/clock", "internal/control", "internal/interlock", "internal/storage"},
 	"internal/worker":                {"internal/contractsv1", "proto/agenticstream/runtime/v1"},
 	"migrations":                     {},
 	"proto/agenticstream/runtime/v1": {},
