@@ -1,4 +1,4 @@
-package episodes
+package remote
 
 import (
 	"encoding/json"
@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 // eventReceiver is the receive side of the EpisodeWorker Execute stream.
@@ -23,7 +24,7 @@ type eventReceiver interface {
 // accumulates the trusted view of it: identity and ordering, size limits,
 // budget usage, and at most one Decision and one terminal.
 type workerStream struct {
-	req           *Request
+	req           *episodes.Request
 	budget        *runtimev1.EpisodeBudget
 	maxEventBytes uint64
 
@@ -37,7 +38,7 @@ type workerStream struct {
 	usage          budgetUsage
 }
 
-func newWorkerStream(req *Request, budget *runtimev1.EpisodeBudget, maxEventBytes uint64) *workerStream {
+func newWorkerStream(req *episodes.Request, budget *runtimev1.EpisodeBudget, maxEventBytes uint64) *workerStream {
 	return &workerStream{req: req, budget: budget, maxEventBytes: maxEventBytes, nextSequence: 1}
 }
 
@@ -144,11 +145,11 @@ func (s *workerStream) acceptDecision(candidate *runtimev1.DecisionProposed) err
 
 // outcome converts a fully consumed stream into the aggregate Outcome. It
 // never accepts a Decision without a matching terminal.
-func (s *workerStream) outcome() (*Outcome, error) {
+func (s *workerStream) outcome() (*episodes.Outcome, error) {
 	if err := s.checkComplete(); err != nil {
 		return nil, err
 	}
-	outcome := &Outcome{AttemptID: s.req.AttemptID, Fence: s.req.Fence, Reasons: []string{s.terminal.GetReasonCode()}}
+	outcome := &episodes.Outcome{AttemptID: s.req.AttemptID, Fence: s.req.Fence, Reasons: []string{s.terminal.GetReasonCode()}}
 	outcome.CostMicrounits = s.usage.usage().costMicrounits
 	switch s.terminal.GetStatus() {
 	case runtimev1.TerminalStatus_TERMINAL_STATUS_PRODUCED:
@@ -179,7 +180,7 @@ func (s *workerStream) checkComplete() error {
 		return fmt.Errorf("worker stream ended without terminal")
 	}
 	if hasNumericBudget(s.budget) && !s.sawBudget {
-		return budgetTelemetryMissingError{}
+		return episodes.BudgetTelemetryMissingError{}
 	}
 	// A cost ceiling requires an explicit usage record, but zero cost is valid
 	// for providers and test workers that cannot price usage.
@@ -192,7 +193,7 @@ func (s *workerStream) checkComplete() error {
 		if s.budget.GetMaxCostMicrounits() > 0 {
 			return fmt.Errorf("worker cost telemetry is missing")
 		}
-		return budgetTelemetryMissingError{}
+		return episodes.BudgetTelemetryMissingError{}
 	}
 	return nil
 }

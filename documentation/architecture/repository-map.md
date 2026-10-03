@@ -13,7 +13,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/operators/` | aggregates, slopes, missing-heartbeat and related features |
 | `internal/situations/` | Situation state and immutable versions |
 | `internal/cognition/` | scheduler, trigger evaluation, reconsideration |
-| `internal/episodes/` | request assembly, bounded execution, workers and budgets |
+| `internal/episodes/` | request assembly, bounded execution lifecycle, budgets and the `Executor` port |
 | `internal/evidence/` | capability tokens, evidence server, call ledger |
 | `internal/decisions/` | Decision and Intent validation |
 | `internal/policy/` | deterministic governance and approvals |
@@ -30,7 +30,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/interlock/` | durable readiness state and read-only assertions |
 | `internal/notifycontract/` | versioned notification names and metadata |
 | `internal/canonicaljson/`, `internal/clock/`, `internal/duration/`, `internal/ids/` | deterministic digest, time, duration and identity primitives |
-| `internal/executor/native/`, `internal/executor/conformance/`, `internal/worker/` | native executor, worker qualification and protocol transport |
+| `internal/executor/native/`, `internal/executor/remote/`, `internal/executor/conformance/`, `internal/worker/` | in-process and out-of-process executors, executor qualification and worker protocol transport |
 | `internal/soak/`, `internal/runartifact/` | bounded operational evidence and immutable artifact verification |
 | `internal/replay/` | effect-safe replay modes |
 | `internal/runtime/` | service/pipeline orchestration, recovery and concrete composition |

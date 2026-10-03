@@ -37,3 +37,15 @@ No other package is split: package count is not a quality target.
   `device`, `engine`, `episodeledger`, `qualification` and `scheduleledger`.
   `TestEveryPackageDocumentsItsResponsibility` and `TestModuleMapListsEveryPackage`
   pin the rule; both were checked to fail on a removed comment and a removed map entry.
+
+- Round 2 (A8): moved the streamed EpisodeWorker adapter and the per-attempt
+  evidence capability issuer from `episodes` to `internal/executor/remote`
+  (`remote.Executor`). `episodes` exports `BudgetExceededError` and
+  `BudgetTelemetryMissingError` as the port's failure contract and no longer
+  imports gRPC, protobuf, `worker`, `evidence` or the protocol package. The
+  adapter maps gRPC `Canceled`/`DeadlineExceeded` onto the matching context
+  errors while keeping the original message and status, so durable failure
+  reasons are unchanged. New tests pin the mapping and the import rule; the
+  architecture allowlist, layers, forbidden edges and reasoning-reachability
+  sources include the new package. Focused race tests pass for episodes,
+  executors, runtime and replay (coverage: remote 72.1%, episodes 72.7%).

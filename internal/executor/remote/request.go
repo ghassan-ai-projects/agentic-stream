@@ -1,15 +1,17 @@
-package episodes
+package remote
 
 import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/protobuf/types/known/durationpb"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
-	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // workerRequestPayload is the durable request_json fields the worker wire
@@ -73,7 +75,7 @@ type requestShape struct {
 	reconsideration *runtimev1.Reconsideration
 }
 
-func episodeRequest(req *Request) (*runtimev1.EpisodeRequest, error) {
+func episodeRequest(req *episodes.Request) (*runtimev1.EpisodeRequest, error) {
 	if req.SituationVersion <= 0 {
 		return nil, fmt.Errorf("situation version must be positive")
 	}
@@ -148,7 +150,7 @@ func (p *workerRequestPayload) artifacts() (requestArtifacts, error) {
 	return artifacts, nil
 }
 
-func (p *workerRequestPayload) provenance(req *Request) (requestProvenance, error) {
+func (p *workerRequestPayload) provenance(req *episodes.Request) (requestProvenance, error) {
 	var provenance requestProvenance
 	var err error
 	if provenance.snapshot, err = canonicaljson.DecodeDigest(req.SnapshotSHA256); err != nil {
@@ -200,7 +202,7 @@ func (p *workerRequestPayload) shape() (requestShape, error) {
 	return shape, nil
 }
 
-func (p *workerRequestPayload) wireBudget(req *Request) (*runtimev1.EpisodeBudget, error) {
+func (p *workerRequestPayload) wireBudget(req *episodes.Request) (*runtimev1.EpisodeBudget, error) {
 	budget := &runtimev1.EpisodeBudget{
 		MaxModelCalls: p.Budget.ModelCalls, MaxInputTokens: p.Budget.InputTokens,
 		MaxOutputTokens: p.Budget.OutputTokens, MaxToolCalls: p.Budget.ToolCalls,

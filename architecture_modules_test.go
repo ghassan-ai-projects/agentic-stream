@@ -84,3 +84,45 @@ func readModuleMap(t *testing.T, root string) string {
 	}
 	return string(content)
 }
+
+// executorTransportImports are the worker protocol and transport packages
+// that only a concrete executor under internal/executor may import.
+var executorTransportImports = []string{"google.golang.org/grpc", "google.golang.org/protobuf", "/internal/worker", "/proto/"}
+
+// TestEpisodeLifecycleImportsNoExecutorTransport enforces architecture-bar
+// rule A8: the episode lifecycle depends on the Executor port only, so it
+// classifies failures without knowing how a concrete executor communicates.
+func TestEpisodeLifecycleImportsNoExecutorTransport(t *testing.T) {
+	t.Parallel()
+
+	for _, file := range productionGoFiles(t, repoRoot(t)) {
+		if path.Dir(file.rel) != "internal/episodes" {
+			continue
+		}
+		for _, imported := range fileImports(t, file) {
+			if isExecutorTransport(imported) {
+				t.Errorf("%s imports executor transport %s; move it to an executor under internal/executor", file.rel, imported)
+			}
+		}
+	}
+}
+
+func fileImports(t *testing.T, file goFile) []string {
+	t.Helper()
+
+	parsed, err := parser.ParseFile(token.NewFileSet(), file.abs, nil, parser.ImportsOnly)
+	if err != nil {
+		t.Fatalf("parse %s: %v", file.rel, err)
+	}
+	imports := make([]string, 0, len(parsed.Imports))
+	for _, spec := range parsed.Imports {
+		imports = append(imports, strings.Trim(spec.Path.Value, `"`))
+	}
+	return imports
+}
+
+func isExecutorTransport(imported string) bool {
+	return slices.ContainsFunc(executorTransportImports, func(transport string) bool {
+		return strings.Contains(imported, transport)
+	})
+}

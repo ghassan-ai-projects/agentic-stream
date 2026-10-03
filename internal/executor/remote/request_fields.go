@@ -1,4 +1,4 @@
-package episodes
+package remote
 
 import (
 	"encoding/json"

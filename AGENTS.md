@@ -75,6 +75,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/situations` - Situation state machine, versioning, publication
 - `internal/cognition` - deterministic cognitive scheduler
 - `internal/episodes` - bounded episode lifecycle
+- `internal/executor/native`, `internal/executor/remote` - concrete executors behind the episode `Executor` port (in-process and streamed worker protocol)
 - `internal/evidence` - evidence/tool boundary for episodes
 - `internal/decisions` - typed Decision model
 - `internal/policy` - policy plane; revalidates every intent before dispatch

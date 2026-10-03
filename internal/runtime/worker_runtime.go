@@ -14,6 +14,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	nativeexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
+	remoteexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/remote"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
@@ -166,15 +167,15 @@ func (r *WorkerRuntime) connectWorker(ctx context.Context, cfg WorkerRuntimeConf
 	r.workerConn = conn
 	client := runtimev1.NewEpisodeWorkerClient(conn)
 	if cfg.EvidenceSocket == "" {
-		r.Executor = episodes.NewWorkerExecutor(client, cfg.WorkerName, cfg.RuntimeEpoch, nil)
+		r.Executor = remoteexecutor.NewExecutor(client, cfg.WorkerName, cfg.RuntimeEpoch, nil)
 		return nil
 	}
-	factory := &episodes.AttemptCapabilityIssuer{
+	factory := &remoteexecutor.AttemptCapabilityIssuer{
 		Issuer: evidenceIssuer(evidenceSecret), RuntimeEpoch: cfg.RuntimeEpoch, Tools: []string{"evidence.get"},
 		From: time.Now().UTC().Add(-24 * time.Hour), Until: time.Now().UTC().Add(24 * time.Hour), MaxRows: 1000, MaxBytes: 1 << 20,
 	}
 	features := []string{worker.EvidenceToolsFeature}
-	r.Executor = episodes.NewWorkerExecutorWithEvidence(client, cfg.WorkerName, cfg.RuntimeEpoch, features, cfg.EvidenceSocket, factory)
+	r.Executor = remoteexecutor.NewExecutorWithEvidence(client, cfg.WorkerName, cfg.RuntimeEpoch, features, cfg.EvidenceSocket, factory)
 	return nil
 }
 

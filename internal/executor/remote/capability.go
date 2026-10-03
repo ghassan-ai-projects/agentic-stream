@@ -1,9 +1,10 @@
-package episodes
+package remote
 
 import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 )
 
@@ -22,7 +23,7 @@ type AttemptCapabilityIssuer struct {
 
 // Issue creates a capability bound to the exact attempt identity and request
 // trace. It fails closed when any required scope is absent.
-func (i *AttemptCapabilityIssuer) Issue(req *Request) ([]byte, error) {
+func (i *AttemptCapabilityIssuer) Issue(req *episodes.Request) ([]byte, error) {
 	if i == nil || i.Issuer == nil || req == nil {
 		return nil, fmt.Errorf("attempt capability issuer is not configured")
 	}

@@ -11,15 +11,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/conformance"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
-	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/conformance"
+	remoteexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/remote"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 const workerSocketEnv = "AGENTIC_STREAM_CONFORMANCE_WORKER_SOCKET"
@@ -61,7 +63,7 @@ func TestStreamedWorkerConforms(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = conn.Close() }()
-	executor := episodes.NewWorkerExecutor(runtimev1.NewEpisodeWorkerClient(conn), "worker-1", "runtime", nil)
+	executor := remoteexecutor.NewExecutor(runtimev1.NewEpisodeWorkerClient(conn), "worker-1", "runtime", nil)
 	if err := conformance.Run(context.Background(), executor); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +127,7 @@ func TestSeparateProcessWorkerConforms(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = conn.Close() }()
-	executor := episodes.NewWorkerExecutor(runtimev1.NewEpisodeWorkerClient(conn), "worker-1", "runtime", nil)
+	executor := remoteexecutor.NewExecutor(runtimev1.NewEpisodeWorkerClient(conn), "worker-1", "runtime", nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := conformance.Run(ctx, executor); err != nil {

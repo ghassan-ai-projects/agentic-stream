@@ -1,4 +1,4 @@
-package episodes
+package remote
 
 import (
 	"context"
@@ -10,17 +10,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
-	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 func TestEpisodeKind(t *testing.T) {
@@ -147,7 +148,7 @@ func TestEpisodeRequestMapsWatchConfidenceFloor(t *testing.T) {
 	}
 }
 
-func TestWorkerExecutorConsumesFencedStream(t *testing.T) {
+func TestRemoteExecutorConsumesFencedStream(t *testing.T) {
 	client := testWorkerClient(t, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		decisionJSON := []byte(`{"decision_id":"d-1"}`)
 		decisionDigest, _ := canonicaljson.Digest(canonicaljson.DomainDecision, map[string]any{"decision_id": "d-1"})
@@ -165,7 +166,7 @@ func TestWorkerExecutorConsumesFencedStream(t *testing.T) {
 			Payload: &runtimev1.EpisodeEvent_Terminal{Terminal: &runtimev1.Terminal{Status: runtimev1.TerminalStatus_TERMINAL_STATUS_PRODUCED, ReasonCode: "complete"}},
 		})
 	})
-	executor := NewWorkerExecutor(client, "worker-1", "runtime-1", nil)
+	executor := NewExecutor(client, "worker-1", "runtime-1", nil)
 	outcome, err := executor.Execute(t.Context(), validWorkerRequest())
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -175,7 +176,7 @@ func TestWorkerExecutorConsumesFencedStream(t *testing.T) {
 	}
 }
 
-func TestWorkerExecutorStopsWhenBudgetUpdateExceedsCeiling(t *testing.T) {
+func TestRemoteExecutorStopsWhenBudgetUpdateExceedsCeiling(t *testing.T) {
 	client := testWorkerClient(t, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		return emit(&runtimev1.EpisodeEvent{
 			EpisodeId: req.GetEpisodeId(), Sequence: 2, AttemptId: req.GetAttemptId(), Fence: req.GetFence(), OccurredAt: timestamppb.New(time.Unix(10, 0)),
@@ -184,13 +185,13 @@ func TestWorkerExecutorStopsWhenBudgetUpdateExceedsCeiling(t *testing.T) {
 	})
 	req := validWorkerRequest()
 	req.RequestJSON = requestWithBudget(req, map[string]any{"model_calls": 1})
-	_, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+	_, err := NewExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
 	if err == nil || !strings.Contains(err.Error(), "budget exceeded: model_calls") {
 		t.Fatalf("expected budget rejection, got %v", err)
 	}
 }
 
-func TestWorkerExecutorEnforcesModelUsageCeiling(t *testing.T) {
+func TestRemoteExecutorEnforcesModelUsageCeiling(t *testing.T) {
 	client := testWorkerClient(t, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		return emit(&runtimev1.EpisodeEvent{
 			EpisodeId: req.GetEpisodeId(), Sequence: 2, AttemptId: req.GetAttemptId(), Fence: req.GetFence(), OccurredAt: timestamppb.New(time.Unix(10, 0)),
@@ -199,13 +200,13 @@ func TestWorkerExecutorEnforcesModelUsageCeiling(t *testing.T) {
 	})
 	req := validWorkerRequest()
 	req.RequestJSON = requestWithBudget(req, map[string]any{"input_tokens": 1})
-	_, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+	_, err := NewExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
 	if err == nil || !strings.Contains(err.Error(), "budget exceeded: input_tokens") {
 		t.Fatalf("expected input token budget rejection, got %v", err)
 	}
 }
 
-func TestWorkerExecutorSettlesCumulativeUsageWhenTerminalOmitsUsage(t *testing.T) {
+func TestRemoteExecutorSettlesCumulativeUsageWhenTerminalOmitsUsage(t *testing.T) {
 	client := testWorkerClient(t, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		if err := emit(&runtimev1.EpisodeEvent{
 			EpisodeId: req.GetEpisodeId(), Sequence: 2, AttemptId: req.GetAttemptId(), Fence: req.GetFence(), OccurredAt: timestamppb.New(time.Unix(10, 0)),
@@ -222,7 +223,7 @@ func TestWorkerExecutorSettlesCumulativeUsageWhenTerminalOmitsUsage(t *testing.T
 	})
 	req := validWorkerRequest()
 	req.RequestJSON = requestWithBudget(req, map[string]any{"input_tokens": 10, "output_tokens": 10, "cost_microunits": 100})
-	outcome, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+	outcome, err := NewExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
@@ -231,7 +232,7 @@ func TestWorkerExecutorSettlesCumulativeUsageWhenTerminalOmitsUsage(t *testing.T
 	}
 }
 
-func TestWorkerExecutorRequiresReportedCostUsage(t *testing.T) {
+func TestRemoteExecutorRequiresReportedCostUsage(t *testing.T) {
 	tests := []struct {
 		name          string
 		terminalUsage *runtimev1.Usage
@@ -257,7 +258,7 @@ func TestWorkerExecutorRequiresReportedCostUsage(t *testing.T) {
 			})
 			req := validWorkerRequest()
 			req.RequestJSON = requestWithBudget(req, map[string]any{"cost_microunits": 1_000_000})
-			_, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+			_, err := NewExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("execute: %v", err)
@@ -271,7 +272,7 @@ func TestWorkerExecutorRequiresReportedCostUsage(t *testing.T) {
 	}
 }
 
-func TestWorkerExecutorRequiresBudgetTelemetry(t *testing.T) {
+func TestRemoteExecutorRequiresBudgetTelemetry(t *testing.T) {
 	client := testWorkerClient(t, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		return emit(&runtimev1.EpisodeEvent{
 			EpisodeId: req.GetEpisodeId(), Sequence: 2, AttemptId: req.GetAttemptId(), Fence: req.GetFence(), OccurredAt: timestamppb.New(time.Unix(10, 0)),
@@ -280,23 +281,23 @@ func TestWorkerExecutorRequiresBudgetTelemetry(t *testing.T) {
 	})
 	req := validWorkerRequest()
 	req.RequestJSON = requestWithBudget(req, map[string]any{"provider_retries": 1})
-	_, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+	_, err := NewExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
 	if err == nil || !strings.Contains(err.Error(), "budget telemetry is missing") {
 		t.Fatalf("expected missing budget telemetry rejection, got %v", err)
 	}
 }
 
-func TestWorkerExecutorRequiresTerminal(t *testing.T) {
+func TestRemoteExecutorRequiresTerminal(t *testing.T) {
 	client := testWorkerClient(t, func(context.Context, *runtimev1.EpisodeRequest, func(*runtimev1.EpisodeEvent) error) error {
 		return nil
 	})
-	_, err := NewWorkerExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), validWorkerRequest())
+	_, err := NewExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), validWorkerRequest())
 	if err == nil {
 		t.Fatal("expected missing-terminal error")
 	}
 }
 
-func TestWorkerExecutorIssuesFreshScopedCapabilityPerDispatch(t *testing.T) {
+func TestRemoteExecutorIssuesFreshScopedCapabilityPerDispatch(t *testing.T) {
 	var seen [][]byte
 	client := testWorkerClientWithFeatures(t, []string{worker.EvidenceToolsFeature}, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		seen = append(seen, append([]byte(nil), req.GetCapabilityToken()...))
@@ -307,7 +308,7 @@ func TestWorkerExecutorIssuesFreshScopedCapabilityPerDispatch(t *testing.T) {
 	factory := &AttemptCapabilityIssuer{Issuer: &evidence.Issuer{Issuer: "runtime", Audience: "evidence-tools", KeyID: "k1", Keys: keys, Now: func() time.Time { return now }}, RuntimeEpoch: "epoch-1", Tools: []string{"evidence.get"}, From: now.Add(-time.Hour), Until: now, MaxRows: 10, MaxBytes: 1024, ExpiresAt: now.Add(10 * time.Minute)}
 	req := validWorkerRequest()
 	req.EntityID = "motor-1"
-	executor := NewWorkerExecutorWithEvidence(client, "worker-1", "runtime-1", []string{worker.EvidenceToolsFeature}, filepath.Join(t.TempDir(), "evidence.sock"), factory)
+	executor := NewExecutorWithEvidence(client, "worker-1", "runtime-1", []string{worker.EvidenceToolsFeature}, filepath.Join(t.TempDir(), "evidence.sock"), factory)
 	if _, err := executor.Execute(t.Context(), req); err != nil {
 		t.Fatalf("first execute: %v", err)
 	}
@@ -323,17 +324,17 @@ func TestWorkerExecutorIssuesFreshScopedCapabilityPerDispatch(t *testing.T) {
 	}
 }
 
-func validWorkerRequest() *Request {
+func validWorkerRequest() *episodes.Request {
 	promptDigest, _ := canonicaljson.Digest(canonicaljson.DomainPrompt, map[string]any{"version": "prompt-v1"})
 	objectiveDigest, _ := canonicaljson.Digest(canonicaljson.DomainObjective, map[string]any{"text": "diagnose"})
-	intentCatalog, intentDigest, err := CompileIntentCatalog([]spec.Intent{
+	intentCatalog, intentDigest, err := episodes.CompileIntentCatalog([]spec.Intent{
 		{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
 	})
 	if err != nil {
 		panic(err)
 	}
 	intentCatalogJSON, _ := json.Marshal(intentCatalog)
-	return &Request{
+	return &episodes.Request{
 		EpisodeID: "episode-1", TenantID: "tenant-1", SituationID: "situation-1", SituationVersion: 1, EntityID: "motor-1",
 		ExecutorName: "worker", ExecutorVersion: "sha256:" + "00" + "00000000000000000000000000000000000000000000000000000000000000",
 		PromptVersion: "prompt-v1", SnapshotSHA256: "sha256:" + "00" + "00000000000000000000000000000000000000000000000000000000000000",
@@ -343,7 +344,7 @@ func validWorkerRequest() *Request {
 	}
 }
 
-func requestWithBudget(req *Request, budget map[string]any) []byte {
+func requestWithBudget(req *episodes.Request, budget map[string]any) []byte {
 	var document map[string]any
 	if err := json.Unmarshal(req.RequestJSON, &document); err != nil {
 		panic(err)
@@ -380,4 +381,8 @@ func testWorkerClientWithFeatures(t *testing.T, features []string, execute worke
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	return runtimev1.NewEpisodeWorkerClient(conn)
+}
+
+func ticketSchema() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"entity_id": map[string]any{"type": "string"}, "reason": map[string]any{"type": "string"}}}
 }

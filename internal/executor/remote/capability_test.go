@@ -1,9 +1,10 @@
-package episodes
+package remote
 
 import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 )
 
@@ -12,7 +13,7 @@ func TestAttemptCapabilityIssuerBindsRequestIdentity(t *testing.T) {
 	keys := map[string][]byte{"k1": []byte("01234567890123456789012345678901")}
 	issuer := &evidence.Issuer{Issuer: "runtime", Audience: "evidence-tools", KeyID: "k1", Keys: keys, Now: func() time.Time { return now }}
 	factory := &AttemptCapabilityIssuer{Issuer: issuer, RuntimeEpoch: "epoch-1", Tools: []string{"evidence.get"}, From: now.Add(-time.Hour), Until: now, MaxRows: 10, MaxBytes: 1024, ExpiresAt: now.Add(10 * time.Minute)}
-	token, err := factory.Issue(&Request{EpisodeID: "episode-1", AttemptID: "attempt-1", Fence: 2, TenantID: "tenant-1", SituationID: "situation-1", SituationVersion: 3, EntityID: "motor-1", Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"})
+	token, err := factory.Issue(&episodes.Request{EpisodeID: "episode-1", AttemptID: "attempt-1", Fence: 2, TenantID: "tenant-1", SituationID: "situation-1", SituationVersion: 3, EntityID: "motor-1", Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"})
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}

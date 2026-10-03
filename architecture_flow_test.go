@@ -23,7 +23,7 @@ var packageLayers = map[string]int{
 	"internal/control": 3, "internal/ingress": 3, "internal/notify": 3, "internal/operators": 3,
 	"internal/api": 4, "internal/approvalledger": 4, "internal/authority": 4, "internal/situations": 4,
 	"internal/actions": 5, "internal/cognition": 5, "internal/device": 5, "internal/episodes": 5, "internal/policy": 5, "internal/soak": 5,
-	"internal/engine": 6, "internal/executor/conformance": 6, "internal/executor/native": 6, "internal/runartifact": 6,
+	"internal/engine": 6, "internal/executor/conformance": 6, "internal/executor/native": 6, "internal/executor/remote": 6, "internal/runartifact": 6,
 	"internal/replay": 7, "internal/runtime": 8, "cmd/agentic-stream": 9,
 }
 
@@ -61,7 +61,7 @@ func TestReasoningAndReplayCannotReachEffectImplementations(t *testing.T) {
 	root := repoRoot(t)
 	module := readModulePath(t, filepath.Join(root, "go.mod"))
 	graph := productionImportGraph(t, root, module)
-	reasoning := []string{"internal/cognition", "internal/decisions", "internal/engine", "internal/episodes", "internal/evidence", "internal/executor/native", "internal/executor/conformance", "internal/worker"}
+	reasoning := []string{"internal/cognition", "internal/decisions", "internal/engine", "internal/episodes", "internal/evidence", "internal/executor/native", "internal/executor/remote", "internal/executor/conformance", "internal/worker"}
 	for _, source := range append(reasoning, "internal/replay") {
 		for _, target := range []string{"internal/actions", "internal/device", "internal/runtime", "cmd/agentic-stream"} {
 			if path := dependencyPath(graph, source, target); len(path) > 0 {

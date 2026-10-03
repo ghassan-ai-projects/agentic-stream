@@ -1,4 +1,4 @@
-package episodes
+package remote
 
 import (
 	"context"
@@ -6,18 +6,20 @@ import (
 	"slices"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
-	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
-// WorkerExecutor adapts the streamed EpisodeWorker protocol to the durable
+// Executor adapts the streamed EpisodeWorker protocol to the durable
 // aggregate Outcome consumed by Runner. It never accepts a Decision before a
 // matching terminal stream has been observed.
-type WorkerExecutor struct {
+type Executor struct {
 	client                runtimev1.EpisodeWorkerClient
 	name                  string
 	runtimeInstance       string
@@ -26,43 +28,36 @@ type WorkerExecutor struct {
 	capabilityFactory     CapabilityFactory
 }
 
-type budgetExceededError struct{ metric string }
-
-func (e *budgetExceededError) Error() string { return "episode budget exceeded: " + e.metric }
-
-type budgetTelemetryMissingError struct{}
-
-func (budgetTelemetryMissingError) Error() string { return "episode budget telemetry is missing" }
-
 // CapabilityFactory issues an ephemeral token from the trusted attempt
 // request. Implementations must never persist or log the returned bytes.
 type CapabilityFactory interface {
-	Issue(*Request) ([]byte, error)
+	Issue(*episodes.Request) ([]byte, error)
 }
 
-// NewWorkerExecutor creates an executor for an already-connected worker. The
+// NewExecutor creates an executor for an already-connected worker. The
 // connection lifecycle is owned by the caller so it can be supervised and
 // shared across episodes.
-func NewWorkerExecutor(client runtimev1.EpisodeWorkerClient, name, runtimeInstance string, requestedFeatures []string) *WorkerExecutor {
-	return &WorkerExecutor{
+func NewExecutor(client runtimev1.EpisodeWorkerClient, name, runtimeInstance string, requestedFeatures []string) *Executor {
+	return &Executor{
 		client: client, name: name, runtimeInstance: runtimeInstance,
 		requestedFeatures: append([]string(nil), requestedFeatures...),
 	}
 }
 
-// NewWorkerExecutorWithEvidence creates an executor whose evidence capability
+// NewExecutorWithEvidence creates an executor whose evidence capability
 // is issued per attempt rather than supplied as caller-controlled bytes.
-func NewWorkerExecutorWithEvidence(client runtimev1.EpisodeWorkerClient, name, runtimeInstance string, requestedFeatures []string, endpoint string, factory CapabilityFactory) *WorkerExecutor {
-	executor := NewWorkerExecutor(client, name, runtimeInstance, requestedFeatures)
+func NewExecutorWithEvidence(client runtimev1.EpisodeWorkerClient, name, runtimeInstance string, requestedFeatures []string, endpoint string, factory CapabilityFactory) *Executor {
+	executor := NewExecutor(client, name, runtimeInstance, requestedFeatures)
 	executor.evidenceToolsEndpoint = endpoint
 	executor.capabilityFactory = factory
 	return executor
 }
 
 // Execute performs the current-version handshake and consumes one validated
-// server stream. RPC cancellation and deadline errors are wrapped with %w so
-// the caller can still classify them as cancellation or timeout.
-func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Outcome, err error) {
+// server stream. RPC cancellation and deadline statuses also match
+// context.Canceled and context.DeadlineExceeded, so the runner classifies them
+// as cancellation or timeout without importing the transport.
+func (e *Executor) Execute(ctx context.Context, req *episodes.Request) (outcome *episodes.Outcome, err error) {
 	if e == nil || e.client == nil {
 		return nil, fmt.Errorf("worker client is not configured")
 	}
@@ -78,12 +73,13 @@ func (e *WorkerExecutor) Execute(ctx context.Context, req *Request) (outcome *Ou
 		}
 		span.End()
 	}()
-	return e.executeWithinBudget(executionCtx, req)
+	outcome, err = e.executeWithinBudget(executionCtx, req)
+	return outcome, asContextError(err)
 }
 
 // executeWithinBudget bounds the attempt by its wall-time budget, then
 // negotiates, sends the request, and consumes the validated stream.
-func (e *WorkerExecutor) executeWithinBudget(ctx context.Context, req *Request) (*Outcome, error) {
+func (e *Executor) executeWithinBudget(ctx context.Context, req *episodes.Request) (*episodes.Outcome, error) {
 	wallTime, err := req.WallTimeBudget()
 	if err != nil {
 		return nil, fmt.Errorf("validate episode budget: %w", err)
@@ -115,7 +111,7 @@ func (e *WorkerExecutor) executeWithinBudget(ctx context.Context, req *Request) 
 // wireRequest builds the validated worker request for one attempt, bound to
 // the execution deadline and, when evidence tools are enabled, carrying a
 // freshly issued capability.
-func (e *WorkerExecutor) wireRequest(ctx context.Context, req *Request) (*runtimev1.EpisodeRequest, error) {
+func (e *Executor) wireRequest(ctx context.Context, req *episodes.Request) (*runtimev1.EpisodeRequest, error) {
 	if err := e.validateEvidenceConfig(); err != nil {
 		return nil, err
 	}
@@ -140,7 +136,7 @@ func (e *WorkerExecutor) wireRequest(ctx context.Context, req *Request) (*runtim
 	return wireRequest, nil
 }
 
-func (e *WorkerExecutor) validateEvidenceConfig() error {
+func (e *Executor) validateEvidenceConfig() error {
 	if e.evidenceToolsEndpoint == "" {
 		return nil
 	}
@@ -159,7 +155,7 @@ func (e *WorkerExecutor) validateEvidenceConfig() error {
 // negotiate performs the handshake and requires the exact protocol and
 // contract versions, the expected worker identity, every requested feature,
 // and a request within the worker's size limit.
-func (e *WorkerExecutor) negotiate(ctx context.Context, wireRequest *runtimev1.EpisodeRequest) (*runtimev1.HandshakeResponse, error) {
+func (e *Executor) negotiate(ctx context.Context, wireRequest *runtimev1.EpisodeRequest) (*runtimev1.HandshakeResponse, error) {
 	handshake, err := e.client.Handshake(ctx, &runtimev1.HandshakeRequest{
 		ProtocolVersion: worker.ProtocolVersion, ContractVersion: worker.ContractVersion,
 		WorkerId: e.name, RuntimeInstanceId: e.runtimeInstance, NonInteractive: true,
@@ -193,4 +189,4 @@ func boundedExecutionContext(ctx context.Context, wallTime time.Duration) (conte
 	return bounded, cancel, nil
 }
 
-var _ Executor = (*WorkerExecutor)(nil)
+var _ episodes.Executor = (*Executor)(nil)

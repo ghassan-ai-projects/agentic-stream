@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
@@ -34,6 +33,18 @@ type Outcome struct {
 	Reasons        []string `json:"reasons,omitempty"`
 	CostMicrounits uint64   `json:"cost_microunits,omitempty"`
 }
+
+// BudgetExceededError reports that an executor stopped an attempt because it
+// consumed more than its admitted budget for Metric.
+type BudgetExceededError struct{ Metric string }
+
+func (e *BudgetExceededError) Error() string { return "episode budget exceeded: " + e.Metric }
+
+// BudgetTelemetryMissingError reports that an executor could not prove an
+// attempt stayed within budget because the usage telemetry was absent.
+type BudgetTelemetryMissingError struct{}
+
+func (BudgetTelemetryMissingError) Error() string { return "episode budget telemetry is missing" }
 
 // Runner polls admitted episodes and executes them deterministically.
 type Runner struct {
@@ -164,8 +175,8 @@ func (r *Runner) executeClaim(ctx context.Context, claim *episodeClaim) (outcome
 	}()
 	outcome, executionErr = r.executor.Execute(executionCtx, &claim.req)
 	if executionErr != nil {
-		// Wrapped errors keep their gRPC status and budget types; the
-		// failure classifiers unwrap with errors.Is/As and status.Code.
+		// Wrapped errors keep their context and budget types; the failure
+		// classifiers unwrap with errors.Is/As.
 		return nil, fmt.Errorf("execute episode attempt: %w", executionErr)
 	}
 	return outcome, nil

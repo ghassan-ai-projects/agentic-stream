@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // deadlineExceeded reports whether the attempt ran past its wall_time budget.
@@ -43,21 +41,21 @@ func (r *Runner) watchSupersession(ctx context.Context, episodeID string, cancel
 }
 
 func executionFailureStatus(err error) episodeledger.AttemptStatus {
-	if errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled {
+	if errors.Is(err, context.Canceled) {
 		return episodeledger.AttemptCancelled
 	}
-	if errors.Is(err, context.DeadlineExceeded) || status.Code(err) == codes.DeadlineExceeded {
+	if errors.Is(err, context.DeadlineExceeded) {
 		return episodeledger.AttemptTimedOut
 	}
 	return episodeledger.AttemptFailed
 }
 
 func executionFailureReason(err error) string {
-	var budgetErr *budgetExceededError
+	var budgetErr *BudgetExceededError
 	if errors.As(err, &budgetErr) {
 		return "budget_exhausted"
 	}
-	var telemetryErr budgetTelemetryMissingError
+	var telemetryErr BudgetTelemetryMissingError
 	if errors.As(err, &telemetryErr) {
 		return "budget_telemetry_missing"
 	}

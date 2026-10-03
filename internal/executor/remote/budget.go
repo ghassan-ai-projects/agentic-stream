@@ -1,8 +1,9 @@
-package episodes
+package remote
 
 import (
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
@@ -49,7 +50,7 @@ func (u *budgetUsage) observeModel(limit *runtimev1.EpisodeBudget, event *runtim
 	if event.GetModelStarted() != nil {
 		u.modelCalls++
 		if limit.GetMaxModelCalls() > 0 && u.modelCalls > limit.GetMaxModelCalls() {
-			return &budgetExceededError{"model_calls"}
+			return &episodes.BudgetExceededError{Metric: "model_calls"}
 		}
 	}
 	if completed := event.GetModelCompleted(); completed != nil && completed.GetUsage() != nil {
@@ -62,16 +63,16 @@ func (u *budgetUsage) observeTools(limit *runtimev1.EpisodeBudget, event *runtim
 	if tool := event.GetTool(); tool != nil && tool.GetExecutionStarted() {
 		u.toolCalls++
 		if limit.GetMaxToolCalls() > 0 && u.toolCalls > limit.GetMaxToolCalls() {
-			return &budgetExceededError{"tool_calls"}
+			return &episodes.BudgetExceededError{Metric: "tool_calls"}
 		}
 	}
 	if progress := event.GetToolProgress(); progress != nil {
 		u.toolResultBytes += progress.GetBytesRead()
 		if limit.GetMaxToolResultBytes() > 0 && u.toolResultBytes > limit.GetMaxToolResultBytes() {
-			return &budgetExceededError{"tool_result_bytes"}
+			return &episodes.BudgetExceededError{Metric: "tool_result_bytes"}
 		}
 		if limit.GetMaxTotalToolResultBytes() > 0 && u.toolResultBytes > limit.GetMaxTotalToolResultBytes() {
-			return &budgetExceededError{"total_tool_result_bytes"}
+			return &episodes.BudgetExceededError{Metric: "total_tool_result_bytes"}
 		}
 	}
 	return nil
@@ -134,13 +135,13 @@ func (u *budgetUsage) checkUsage(limit *runtimev1.EpisodeBudget) error {
 // checkUsageLimits reports the first token or cost limit that usage exceeds.
 func checkUsageLimits(limit *runtimev1.EpisodeBudget, usage usageTotals) error {
 	if limit.GetMaxInputTokens() > 0 && usage.inputTokens > limit.GetMaxInputTokens() {
-		return &budgetExceededError{"input_tokens"}
+		return &episodes.BudgetExceededError{Metric: "input_tokens"}
 	}
 	if limit.GetMaxOutputTokens() > 0 && usage.outputTokens > limit.GetMaxOutputTokens() {
-		return &budgetExceededError{"output_tokens"}
+		return &episodes.BudgetExceededError{Metric: "output_tokens"}
 	}
 	if limit.GetMaxCostMicrounits() > 0 && usage.costMicrounits > limit.GetMaxCostMicrounits() {
-		return &budgetExceededError{"cost_microunits"}
+		return &episodes.BudgetExceededError{Metric: "cost_microunits"}
 	}
 	return nil
 }
@@ -154,16 +155,16 @@ func (u *budgetUsage) observeBudgetUpdate(limit *runtimev1.EpisodeBudget, update
 	u.toolResultBytes = max(u.toolResultBytes, update.GetToolResultBytesUsed())
 	u.providerRetries = max(u.providerRetries, update.GetProviderRetriesUsed())
 	if limit.GetMaxModelCalls() > 0 && update.GetModelCallsUsed() > limit.GetMaxModelCalls() {
-		return &budgetExceededError{"model_calls"}
+		return &episodes.BudgetExceededError{Metric: "model_calls"}
 	}
 	if limit.GetMaxToolCalls() > 0 && update.GetToolCallsUsed() > limit.GetMaxToolCalls() {
-		return &budgetExceededError{"tool_calls"}
+		return &episodes.BudgetExceededError{Metric: "tool_calls"}
 	}
 	if limit.GetMaxToolResultBytes() > 0 && update.GetToolResultBytesUsed() > limit.GetMaxToolResultBytes() {
-		return &budgetExceededError{"tool_result_bytes"}
+		return &episodes.BudgetExceededError{Metric: "tool_result_bytes"}
 	}
 	if limit.GetMaxProviderRetries() > 0 && update.GetProviderRetriesUsed() > limit.GetMaxProviderRetries() {
-		return &budgetExceededError{"provider_retries"}
+		return &episodes.BudgetExceededError{Metric: "provider_retries"}
 	}
 	if usage := update.GetCumulativeUsage(); usage != nil {
 		return checkUsageLimits(limit, usageFromProto(usage))
