@@ -107,21 +107,29 @@ type attempt struct {
 func (a *Admitter) admitItem(ctx context.Context, itemID string, now time.Time) (attempt, error) {
 	var assembled attempt
 	err := a.cfg.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		req, err := a.assembleOwned(ctx, tx, itemID)
-		if err != nil {
-			return err
-		}
-		if err := a.refuseFixture(req); err != nil {
-			return err
-		}
-		req.PolicyEpoch = a.cfg.OwnerEpoch
-		assembled = attempt{kind: req.Kind, situationID: req.SituationID}
-		return a.cfg.Assembler.Persist(ctx, tx, req, now)
+		var err error
+		assembled, err = a.persistAdmission(ctx, tx, itemID, now)
+		return err
 	})
 	if err != nil {
 		return assembled, fmt.Errorf("persist episode admission: %w", err)
 	}
 	return assembled, nil
+}
+
+// persistAdmission assembles the item's request, refuses a production
+// fixture, stamps the owner epoch and persists the episode.
+func (a *Admitter) persistAdmission(ctx context.Context, tx *sql.Tx, itemID string, now time.Time) (attempt, error) {
+	req, err := a.assembleOwned(ctx, tx, itemID)
+	if err != nil {
+		return attempt{}, err
+	}
+	if err := a.refuseFixture(req); err != nil {
+		return attempt{}, err
+	}
+	req.PolicyEpoch = a.cfg.OwnerEpoch
+	assembled := attempt{kind: req.Kind, situationID: req.SituationID}
+	return assembled, a.cfg.Assembler.Persist(ctx, tx, req, now) //nolint:wrapcheck // Wrapped by admitItem with the admission step.
 }
 
 // assembleOwned fences the transaction to the runtime owner, then assembles

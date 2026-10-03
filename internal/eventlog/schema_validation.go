@@ -47,12 +47,15 @@ func validateEnvelopeAgainstSchema(ctx context.Context, queryer queryRower, env 
 
 // eventSchema is the subset of a registered JSON Schema the event log checks.
 type eventSchema struct {
-	Properties map[string]struct {
-		Type string   `json:"type"`
-		Enum []string `json:"enum"`
-	} `json:"properties"`
-	AdditionalProperties bool     `json:"additionalProperties"`
-	Required             []string `json:"required"`
+	Properties           map[string]schemaProperty `json:"properties"`
+	AdditionalProperties bool                      `json:"additionalProperties"`
+	Required             []string                  `json:"required"`
+}
+
+// schemaProperty is one declared payload field.
+type schemaProperty struct {
+	Type string   `json:"type"`
+	Enum []string `json:"enum"`
 }
 
 func loadEventSchema(ctx context.Context, queryer queryRower, eventType, schemaVersion string) (eventSchema, error) {
@@ -70,23 +73,29 @@ func loadEventSchema(ctx context.Context, queryer queryRower, eventType, schemaV
 // checkField requires a declared field (unless additional properties are
 // allowed) whose value has the declared type and, if any, an allowed value.
 func (s eventSchema) checkField(key string, value any) error {
-	property, ok := s.Properties[key]
-	if !ok {
-		if !s.AdditionalProperties {
-			return fmt.Errorf("payload field %q is not declared by event schema", key)
-		}
+	property, declared := s.Properties[key]
+	if !declared && !s.AdditionalProperties {
+		return fmt.Errorf("payload field %q is not declared by event schema", key)
+	}
+	if !declared {
 		return nil
 	}
-	if err := validateJSONSchemaType(property.Type, value); err != nil {
-		return fmt.Errorf("payload field %q: %w", key, err)
-	}
-	if property.Enum == nil {
-		return nil
-	}
-	if err := validateJSONSchemaEnum(property.Enum, value); err != nil {
+	if err := property.check(value); err != nil {
 		return fmt.Errorf("payload field %q: %w", key, err)
 	}
 	return nil
+}
+
+// check requires the declared type and, when the property has one, an
+// allowed enum value.
+func (p schemaProperty) check(value any) error {
+	if err := validateJSONSchemaType(p.Type, value); err != nil {
+		return err
+	}
+	if p.Enum == nil {
+		return nil
+	}
+	return validateJSONSchemaEnum(p.Enum, value)
 }
 
 func validateJSONSchemaEnum(expected []string, value any) error {

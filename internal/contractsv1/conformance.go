@@ -60,19 +60,25 @@ func ConformanceInvalidFrames() []InvalidFrame {
 	}
 	frames := make([]InvalidFrame, 0, len(entries))
 	for _, entry := range entries {
-		name := strings.TrimSuffix(entry.Name(), ".json")
-		doc, err := loadConformanceFrame("conformance/v1/invalid/" + entry.Name())
-		if err != nil {
-			panic(err)
-		}
-		schema, ok := schemaForInvalidName(name)
-		if !ok {
-			panic(fmt.Errorf("contractsv1: cannot map invalid conformance frame %q to a schema", name))
-		}
-		frames = append(frames, InvalidFrame{Name: name, Schema: schema, Doc: doc})
+		frames = append(frames, invalidFrame(entry.Name()))
 	}
 	sort.Slice(frames, func(i, j int) bool { return frames[i].Name < frames[j].Name })
 	return frames
+}
+
+// invalidFrame loads one invalid conformance frame and the schema its name
+// targets, panicking on a fixture defect.
+func invalidFrame(fileName string) InvalidFrame {
+	name := strings.TrimSuffix(fileName, ".json")
+	doc, err := loadConformanceFrame("conformance/v1/invalid/" + fileName)
+	if err != nil {
+		panic(err)
+	}
+	schema, ok := schemaForInvalidName(name)
+	if !ok {
+		panic(fmt.Errorf("contractsv1: cannot map invalid conformance frame %q to a schema", name))
+	}
+	return InvalidFrame{Name: name, Schema: schema, Doc: doc}
 }
 
 func loadConformanceFrame(path string) (map[string]any, error) {

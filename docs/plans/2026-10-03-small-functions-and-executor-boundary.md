@@ -116,3 +116,10 @@ are permitted, writes keep single owners.
   details are unchanged. `FakeExecutor` stays in `episodes` for now: an
   in-package episode test depends on it, so moving it to `internal/executor`
   needs a test change and is recorded as follow-up work.
+
+- Round 9 (Q2/Q7): `canonicaljson`, `contractsv1`, `eventlog` and `admission`
+  have no production function over 15 lines. Canonical encoding is split into
+  scalar, integer, object-member, float-placement and string-escape steps;
+  validation into token, key, escape and surrogate steps; CloudEvent and
+  envelope checks keep their original error precedence. Golden digest, replay
+  and ingress suites pass unchanged under race.

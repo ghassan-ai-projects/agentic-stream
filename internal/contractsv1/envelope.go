@@ -56,6 +56,24 @@ type PayloadHash [32]byte
 // ValidateEnvelope checks the required invariants of the normalized ingress
 // contract before an envelope enters the durable event log.
 func ValidateEnvelope(e Envelope, tenantID string) error {
+	if err := validateEnvelopeIdentity(e, tenantID); err != nil {
+		return err
+	}
+	if e.EventTime.IsZero() || e.IngestedAt.IsZero() {
+		return fmt.Errorf("event_time and ingested_at are required")
+	}
+	if e.ObservedAt != nil && e.ObservedAt.Before(e.EventTime) {
+		return fmt.Errorf("observed_at must not precede event_time")
+	}
+	if e.Data == nil {
+		return fmt.Errorf("data is required")
+	}
+	return nil
+}
+
+// validateEnvelopeIdentity requires the event, tenant, partition and entity
+// identity, with the tenant matching the runtime's when one is given.
+func validateEnvelopeIdentity(e Envelope, tenantID string) error {
 	if e.ID == "" || e.Type == "" || e.SchemaVersion == "" || e.Source == "" {
 		return fmt.Errorf("event id, type, schema_version, and source are required")
 	}
@@ -67,15 +85,6 @@ func ValidateEnvelope(e Envelope, tenantID string) error {
 	}
 	if e.PartitionKey == "" || e.Entity.Type == "" || e.Entity.ID == "" {
 		return fmt.Errorf("partition_key and entity identity are required")
-	}
-	if e.EventTime.IsZero() || e.IngestedAt.IsZero() {
-		return fmt.Errorf("event_time and ingested_at are required")
-	}
-	if e.ObservedAt != nil && e.ObservedAt.Before(e.EventTime) {
-		return fmt.Errorf("observed_at must not precede event_time")
-	}
-	if e.Data == nil {
-		return fmt.Errorf("data is required")
 	}
 	return nil
 }
