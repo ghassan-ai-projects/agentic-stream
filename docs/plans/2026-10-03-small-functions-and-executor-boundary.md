@@ -288,3 +288,10 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   before decision/snapshot parsing, and attempt identity before fence checking.
   Replay race tests and strict focused lint pass; golden fixtures and dependency
   edges are unchanged, and replay still cannot reach live effect implementations.
+
+- Round 30: episode assembly, catalog validation, attempt claiming, bounded
+  execution, retry settlement, supersession and correction reads are intentful
+  bounded steps. Regressions pin trace-before-budget validation, prior-decision
+  identity before command decoding and correction evidence immutability. Episode
+  race tests, architecture checks and strict focused lint pass. Identity/digest
+  inputs, transactions, clock reads, cancellation watchers and defers are intact.

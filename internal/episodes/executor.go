@@ -138,6 +138,10 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	if claim.quarantined {
 		return true, nil
 	}
+	return true, r.executeAdmittedClaim(ctx, claim)
+}
+
+func (r *Runner) executeAdmittedClaim(ctx context.Context, claim *episodeClaim) error {
 	// A re-bind is counted only after its transaction committed. A later
 	// in-transaction failure rolls it back and must not bump the counter.
 	if claim.rebound && r.telemetry != nil {
@@ -151,7 +155,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	}
 	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	return true, r.recordExecution(persistCtx, claim, outcome, executionErr, r.deadlineExceeded(&claim.req, startedAt))
+	return r.recordExecution(persistCtx, claim, outcome, executionErr, r.deadlineExceeded(&claim.req, startedAt))
 }
 
 // executeClaim runs the fenced attempt under a supersession watch, so a
@@ -165,6 +169,10 @@ func (r *Runner) executeClaim(ctx context.Context, claim *episodeClaim) (outcome
 		<-watchDone
 	}()
 
+	return r.executeTracedAttempt(executionCtx, claim)
+}
+
+func (r *Runner) executeTracedAttempt(executionCtx context.Context, claim *episodeClaim) (outcome *Outcome, executionErr error) {
 	_, span := telemetry.StartSpan(executionCtx, "agentic_stream.episode.execute")
 	telemetry.AddLinkFromW3C(span, claim.req.Traceparent, claim.req.Tracestate)
 	defer func() {

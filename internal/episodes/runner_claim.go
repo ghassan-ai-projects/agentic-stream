@@ -30,6 +30,13 @@ type episodeClaim struct {
 	quarantined bool
 }
 
+type persistedRequestTrace struct {
+	Traceparent     string `json:"traceparent"`
+	Tracestate      string `json:"tracestate"`
+	CancellationKey string `json:"cancellation_key"`
+	SupersessionKey string `json:"supersession_key"`
+}
+
 // claimEpisode selects the oldest dispatchable episode, re-checks its
 // situation freshness and policy epoch at the dispatch boundary, and fences a
 // new worker attempt, all in one transaction. It returns nil when no episode
@@ -37,22 +44,31 @@ type episodeClaim struct {
 func (r *Runner) claimEpisode(ctx context.Context, tenantID string) (*episodeClaim, error) {
 	var claim *episodeClaim
 	err := r.withTx(ctx, func(tx *sql.Tx) error {
-		loaded, err := r.loadDispatchableEpisode(ctx, tx, tenantID)
-		if err != nil || loaded == nil {
-			return err
-		}
-		claim = loaded
-		// A quarantine commits in THIS transaction (an error return would roll
-		// it back), so the oldest row cannot block the admitted queue forever.
-		if err := r.bindLiveSituation(ctx, tx, claim); err != nil || claim.quarantined {
-			return err
-		}
-		if err := r.quarantineRefusedEpoch(ctx, tx, claim); err != nil || claim.quarantined {
-			return err
-		}
-		return r.startClaimedAttempt(ctx, tx, claim)
+		var err error
+		claim, err = r.claimEpisodeInTx(ctx, tx, tenantID)
+		return err
 	})
 	if err != nil {
+		return nil, err
+	}
+	return claim, nil
+}
+
+func (r *Runner) claimEpisodeInTx(ctx context.Context, tx *sql.Tx, tenantID string) (*episodeClaim, error) {
+	loaded, err := r.loadDispatchableEpisode(ctx, tx, tenantID)
+	if err != nil || loaded == nil {
+		return nil, err
+	}
+	claim := loaded
+	// A quarantine commits in THIS transaction (an error return would roll
+	// it back), so the oldest row cannot block the admitted queue forever.
+	if err := r.bindLiveSituation(ctx, tx, claim); err != nil || claim.quarantined {
+		return claim, err
+	}
+	if err := r.quarantineRefusedEpoch(ctx, tx, claim); err != nil || claim.quarantined {
+		return claim, err
+	}
+	if err := r.startClaimedAttempt(ctx, tx, claim); err != nil {
 		return nil, err
 	}
 	return claim, nil
@@ -61,6 +77,21 @@ func (r *Runner) claimEpisode(ctx context.Context, tenantID string) (*episodeCla
 // loadDispatchableEpisode reads the oldest admitted or running episode and
 // rebuilds its validated Request. It returns nil when there is none.
 func (r *Runner) loadDispatchableEpisode(ctx context.Context, tx *sql.Tx, tenantID string) (*episodeClaim, error) {
+	query := r.dispatchableEpisodeQuery()
+
+	var claim episodeClaim
+	var snapshotHash, promptHash, objectiveHash []byte
+	err := scanEpisodeClaim(tx.QueryRowContext(ctx, query, tenantID), &claim, &snapshotHash, &promptHash, &objectiveHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query admitted episode: %w", err)
+	}
+	return hydrateEpisodeClaim(&claim, snapshotHash, promptHash, objectiveHash)
+}
+
+func (r *Runner) dispatchableEpisodeQuery() string {
 	lifecyclePredicate := "lifecycle_status IN ('admitted', 'running')"
 	if r.epochControl != nil {
 		// Kill supersedes admitted episodes that have not started an attempt.
@@ -79,20 +110,21 @@ func (r *Runner) loadDispatchableEpisode(ctx context.Context, tx *sql.Tx, tenant
 		WHERE tenant_id = ? AND (%s)
 		ORDER BY accepted_at, episode_id LIMIT 1`, lifecyclePredicate)
 
-	var claim episodeClaim
+	return query
+}
+
+func scanEpisodeClaim(query *sql.Row, claim *episodeClaim, snapshotHash, promptHash, objectiveHash *[]byte) error {
 	req := &claim.req
-	var snapshotHash, promptHash, objectiveHash []byte
-	if err := tx.QueryRowContext(ctx, query, tenantID).Scan(
+	return query.Scan( //nolint:wrapcheck // caller distinguishes no rows and preserves query error context.
 		&claim.episodeID, &req.SchedulerItemID, &req.TenantID, &req.SituationID, &req.SituationVersion,
 		&req.ExecutorName, &req.ExecutorVersion, &req.ModelPolicy, &req.PromptVersion,
-		&snapshotHash, &promptHash, &objectiveHash, &req.AdmissionKey, &req.RequestJSON,
+		snapshotHash, promptHash, objectiveHash, &req.AdmissionKey, &req.RequestJSON,
 		&req.DispatchPolicy, &req.PolicyEpoch, &claim.rebindCount,
-	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("query admitted episode: %w", err)
-	}
+	)
+}
+
+func hydrateEpisodeClaim(claim *episodeClaim, snapshotHash, promptHash, objectiveHash []byte) (*episodeClaim, error) {
+	req := &claim.req
 	req.EpisodeID = claim.episodeID
 	req.SnapshotSHA256 = "sha256:" + hex.EncodeToString(snapshotHash)
 	req.PromptSHA256 = "sha256:" + hex.EncodeToString(promptHash)
@@ -100,18 +132,13 @@ func (r *Runner) loadDispatchableEpisode(ctx context.Context, tx *sql.Tx, tenant
 	if err := hydratePersistedRequest(req); err != nil {
 		return nil, err
 	}
-	return &claim, nil
+	return claim, nil
 }
 
 // hydratePersistedRequest restores and validates the request fields that are
 // stored only inside request_json.
 func hydratePersistedRequest(req *Request) error {
-	var trace struct {
-		Traceparent     string `json:"traceparent"`
-		Tracestate      string `json:"tracestate"`
-		CancellationKey string `json:"cancellation_key"`
-		SupersessionKey string `json:"supersession_key"`
-	}
+	var trace persistedRequestTrace
 	if err := json.Unmarshal(req.RequestJSON, &trace); err != nil {
 		return fmt.Errorf("decode persisted request trace context: %w", err)
 	}
@@ -122,6 +149,11 @@ func hydratePersistedRequest(req *Request) error {
 	req.Tracestate = trace.Tracestate
 	req.CancellationKey = trace.CancellationKey
 	req.SupersessionKey = trace.SupersessionKey
+	return hydrateRequestBudgetEntity(req)
+}
+
+func hydrateRequestBudgetEntity(req *Request) error {
+
 	if _, err := req.WallTimeBudget(); err != nil {
 		return fmt.Errorf("validate persisted episode budget: %w", err)
 	}
@@ -156,6 +188,10 @@ func (r *Runner) bindLiveSituation(ctx context.Context, tx *sql.Tx, claim *episo
 	if r.assembler == nil || claim.rebindCount >= maxStaleRebinds {
 		return r.quarantineStale(ctx, tx, claim, liveVersion)
 	}
+	return r.rebindClaim(ctx, tx, claim, liveVersion)
+}
+
+func (r *Runner) rebindClaim(ctx context.Context, tx *sql.Tx, claim *episodeClaim, liveVersion int64) error {
 	fresh, err := r.assembler.Rebind(ctx, tx, &claim.req, int(liveVersion))
 	if err != nil {
 		return r.quarantineRebindFailure(ctx, tx, claim, liveVersion, err)
@@ -179,19 +215,29 @@ func (r *Runner) bindLiveSituation(ctx context.Context, tx *sql.Tx, claim *episo
 func (r *Runner) startClaimedAttempt(ctx context.Context, tx *sql.Tx, claim *episodeClaim) error {
 	claim.req.AttemptID = ""
 	attemptID := r.idGen.New(ids.PrefixAttempt)
-	var identity episodeledger.Identity
-	var err error
-	if r.ownerEpoch != "" {
-		identity, err = episodeledger.StartAttemptOwned(ctx, tx, claim.episodeID, attemptID, r.ownerEpoch, r.clk.Now())
-	} else {
-		identity, err = episodeledger.StartAttempt(ctx, tx, claim.episodeID, attemptID, r.clk.Now())
-	}
+	identity, err := r.startOwnedAttempt(ctx, tx, claim.episodeID, attemptID)
 	if err != nil {
 		return fmt.Errorf("start episode attempt: %w", err)
 	}
 	if err := episodeledger.TransitionAttempt(ctx, tx, identity, episodeledger.AttemptRunning, r.clk.Now(), nil); err != nil {
 		return fmt.Errorf("mark episode attempt running: %w", err)
 	}
+	return bindClaimIdentity(ctx, tx, claim, identity)
+}
+
+func (r *Runner) startOwnedAttempt(ctx context.Context, tx *sql.Tx, episodeID, attemptID string) (episodeledger.Identity, error) {
+	var identity episodeledger.Identity
+	var err error
+	if r.ownerEpoch != "" {
+		identity, err = episodeledger.StartAttemptOwned(ctx, tx, episodeID, attemptID, r.ownerEpoch, r.clk.Now())
+	} else {
+		identity, err = episodeledger.StartAttempt(ctx, tx, episodeID, attemptID, r.clk.Now())
+	}
+	return identity, err //nolint:wrapcheck // caller preserves the established error context.
+}
+
+func bindClaimIdentity(ctx context.Context, tx *sql.Tx, claim *episodeClaim, identity episodeledger.Identity) error {
+	var err error
 	claim.identity = identity
 	claim.req.AttemptID = identity.AttemptID
 	claim.req.Fence = identity.Fence

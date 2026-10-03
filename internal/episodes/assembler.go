@@ -89,6 +89,10 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 	if err != nil {
 		return nil, err
 	}
+	return a.assembleRequest(item, inputs)
+}
+
+func (a *Assembler) assembleRequest(item schedulerItem, inputs assemblyInputs) (*Request, error) {
 	episodeID := a.idGen.New(ids.PrefixEpisode)
 	executorDocument, err := a.executorDocument()
 	if err != nil {
@@ -109,38 +113,9 @@ func (a *Assembler) Assemble(ctx context.Context, tx *sql.Tx, schedulerItemID, t
 // snapshot digest covers exactly the immutable Situation snapshot, not
 // trigger routing or executor capabilities.
 func (a *Assembler) requestJSON(episodeID string, item schedulerItem, inputs assemblyInputs, executorDocument map[string]any) ([]byte, error) {
-	ev, evidence := inputs.evaluation, inputs.snapshot
-	request := map[string]any{
-		"episode_id":        episodeID,
-		"kind":              item.Kind,
-		"scheduler_item_id": item.SchedulerItemID,
-		"tenant_id":         item.TenantID,
-		"situation_id":      item.SituationID,
-		"situation_version": item.SituationVersion,
-		"trigger": map[string]any{
-			"trigger_id":   ev.TriggerID,
-			"trigger_name": ev.TriggerName,
-			"score":        ev.Score,
-			"threshold":    ev.Threshold,
-			"lane":         ev.Lane,
-		},
-		"snapshot":               evidence.document,
-		"snapshot_digest":        evidence.digest,
-		"delta":                  inputs.delta,
-		"tools":                  a.buildTools(),
-		"allowed_intent_types":   a.allowedIntentTypeList(),
-		"watch_confidence_floor": a.spec.Actions.EffectiveWatchConfidenceFloor(),
-		"risk_ceiling":           a.effectiveRiskCeiling(),
-		"executor":               executorDocument,
-		"budget":                 a.budgetMap(),
-		"cancellation_key":       "episode:" + episodeID,
-		"supersession_key":       "situation:" + item.SituationID,
-		"traceparent":            evidence.traceparent,
-		"tracestate":             evidence.tracestate,
-	}
-	if inputs.reconsideration != nil {
-		request["reconsideration"] = inputs.reconsideration
-	}
+	request := requestIdentity(episodeID, item, inputs.evaluation)
+	a.bindRequestCapabilities(request, executorDocument)
+	bindRequestEvidence(request, episodeID, item, inputs)
 	requestJSON, err := canonicaljson.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
@@ -148,29 +123,50 @@ func (a *Assembler) requestJSON(episodeID string, item schedulerItem, inputs ass
 	return requestJSON, nil
 }
 
+func requestIdentity(episodeID string, item schedulerItem, ev evaluation) map[string]any {
+	return map[string]any{
+		"episode_id": episodeID, "kind": item.Kind, "scheduler_item_id": item.SchedulerItemID,
+		"tenant_id": item.TenantID, "situation_id": item.SituationID, "situation_version": item.SituationVersion,
+		"trigger": map[string]any{
+			"trigger_id": ev.TriggerID, "trigger_name": ev.TriggerName,
+			"score": ev.Score, "threshold": ev.Threshold, "lane": ev.Lane,
+		},
+	}
+}
+
+func (a *Assembler) bindRequestCapabilities(request, executorDocument map[string]any) {
+	request["tools"] = a.buildTools()
+	request["allowed_intent_types"] = a.allowedIntentTypeList()
+	request["watch_confidence_floor"] = a.spec.Actions.EffectiveWatchConfidenceFloor()
+	request["risk_ceiling"] = a.effectiveRiskCeiling()
+	request["executor"] = executorDocument
+	request["budget"] = a.budgetMap()
+}
+
+func bindRequestEvidence(request map[string]any, episodeID string, item schedulerItem, inputs assemblyInputs) {
+	request["snapshot"] = inputs.snapshot.document
+	request["snapshot_digest"] = inputs.snapshot.digest
+	request["delta"] = inputs.delta
+	request["cancellation_key"] = "episode:" + episodeID
+	request["supersession_key"] = "situation:" + item.SituationID
+	request["traceparent"] = inputs.snapshot.traceparent
+	request["tracestate"] = inputs.snapshot.tracestate
+	if inputs.reconsideration != nil {
+		request["reconsideration"] = inputs.reconsideration
+	}
+}
+
 func (a *Assembler) newRequest(episodeID string, item schedulerItem, evidence *snapshotEvidence, executorDocument map[string]any, requestJSON []byte) *Request {
 	admissionKey := sha256.Sum256([]byte(episodeID + "|" + item.SchedulerItemID))
 	return &Request{
-		EpisodeID:        episodeID,
-		SchedulerItemID:  item.SchedulerItemID,
-		Kind:             item.Kind,
-		TenantID:         item.TenantID,
-		SituationID:      item.SituationID,
-		SituationVersion: item.SituationVersion,
-		EntityID:         evidence.entityID,
-		ExecutorName:     a.spec.Cognition.Executor.Name,
-		ExecutorVersion:  a.spec.Digest,
-		ModelPolicy:      a.spec.Cognition.Executor.ModelPolicy,
-		PromptVersion:    a.spec.Cognition.Executor.PromptVersion,
-		PromptSHA256:     executorDocument["prompt_sha256"].(string),
-		ObjectiveSHA256:  executorDocument["objective_sha256"].(string),
-		SnapshotSHA256:   evidence.digest,
-		AdmissionKey:     admissionKey[:],
-		RequestJSON:      requestJSON,
-		Traceparent:      evidence.traceparent,
-		Tracestate:       evidence.tracestate,
-		CancellationKey:  "episode:" + episodeID,
-		SupersessionKey:  "situation:" + item.SituationID,
-		DispatchPolicy:   a.spec.Cognition.Executor.DispatchPolicy,
+		EpisodeID: episodeID, SchedulerItemID: item.SchedulerItemID, Kind: item.Kind, TenantID: item.TenantID,
+		SituationID: item.SituationID, SituationVersion: item.SituationVersion, EntityID: evidence.entityID,
+		ExecutorName: a.spec.Cognition.Executor.Name, ExecutorVersion: a.spec.Digest,
+		ModelPolicy: a.spec.Cognition.Executor.ModelPolicy, PromptVersion: a.spec.Cognition.Executor.PromptVersion,
+		PromptSHA256: executorDocument["prompt_sha256"].(string), ObjectiveSHA256: executorDocument["objective_sha256"].(string),
+		SnapshotSHA256: evidence.digest, AdmissionKey: admissionKey[:], RequestJSON: requestJSON,
+		Traceparent: evidence.traceparent, Tracestate: evidence.tracestate,
+		CancellationKey: "episode:" + episodeID, SupersessionKey: "situation:" + item.SituationID,
+		DispatchPolicy: a.spec.Cognition.Executor.DispatchPolicy,
 	}
 }

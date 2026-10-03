@@ -16,102 +16,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 )
 
-func decisionDigestForStorage(raw []byte) ([]byte, bool) {
-	canonical, err := canonicaljson.Marshal(json.RawMessage(raw))
-	if err != nil {
-		return nil, false
-	}
-	var document map[string]any
-	if err := json.Unmarshal(canonical, &document); err != nil {
-		return nil, false
-	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
-	if err != nil {
-		return nil, false
-	}
-	decoded, err := canonicaljson.DecodeDigest(digest)
-	if err != nil {
-		return nil, false
-	}
-	return decoded, true
-}
-
-func bindAttemptIdentity(raw []byte, identity episodeledger.Identity) ([]byte, error) {
-	var document map[string]any
-	if err := json.Unmarshal(raw, &document); err != nil {
-		return nil, fmt.Errorf("decode request json: %w", err)
-	}
-	document["attempt_id"] = identity.AttemptID
-	document["fence"] = identity.Fence
-	bound, err := canonicaljson.Marshal(document)
-	if err != nil {
-		return nil, fmt.Errorf("canonicalize request json: %w", err)
-	}
-	return bound, nil
-}
-
-func decisionInput(req *Request, identity episodeledger.Identity, now time.Time) (decisions.Input, error) {
-	var payload struct {
-		AllowedIntentTypes []string `json:"allowed_intent_types"`
-		RiskCeiling        string   `json:"risk_ceiling"`
-		Kind               string   `json:"kind"`
-		Executor           struct {
-			IntentCatalog       []map[string]any `json:"intent_catalog"`
-			IntentCatalogSHA256 string           `json:"intent_catalog_sha256"`
-		} `json:"executor"`
-	}
-	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
-		return decisions.Input{}, fmt.Errorf("decode request tools: %w", err)
-	}
-	allowed := make(map[string]struct{}, len(payload.AllowedIntentTypes))
-	for _, intentType := range payload.AllowedIntentTypes {
-		allowed[intentType] = struct{}{}
-	}
-	if payload.RiskCeiling == "" {
-		return decisions.Input{}, fmt.Errorf("request has no explicit risk ceiling")
-	}
-	// P4/B10: the catalog is verified INDEPENDENTLY at the validation
-	// boundary — the digest must bind the parsed bytes under the shared
-	// domain; a forged/missing/empty catalog fails closed before the decision
-	// is trusted (the worker's own verify_wire is not evidence here).
-	if !canonicaljson.Verify(canonicaljson.DomainIntentCatalog, payload.Executor.IntentCatalog, payload.Executor.IntentCatalogSHA256) {
-		return decisions.Input{}, fmt.Errorf("intent catalog is missing, forged, or malformed")
-	}
-	compiled, err := decisions.CompileIntentCatalog(payload.Executor.IntentCatalog)
-	if err != nil {
-		return decisions.Input{}, fmt.Errorf("compile intent catalog: %w", err)
-	}
-	return decisions.Input{
-		EpisodeID:          identity.EpisodeID,
-		AttemptID:          identity.AttemptID,
-		Fence:              identity.Fence,
-		TenantID:           req.TenantID,
-		SituationID:        req.SituationID,
-		SituationVersion:   req.SituationVersion,
-		EntityID:           req.EntityID,
-		SnapshotDigest:     req.SnapshotSHA256,
-		AllowedIntentTypes: allowed,
-		RiskCeiling:        payload.RiskCeiling,
-		IntentCatalog:      compiled,
-		Kind:               payload.Kind,
-		Now:                now,
-	}, nil
-}
-
-func nullableString(value string) sql.NullString {
-	return sql.NullString{String: value, Valid: value != ""}
-}
-
-func decisionIDFromJSON(raw []byte) string {
-	var document struct {
-		DecisionID string `json:"decision_id"`
-	}
-	if json.Unmarshal(raw, &document) != nil {
-		return ""
-	}
-	return document.DecisionID
-}
-
 // decisionRecord is a proposed Decision as validated and stored.
 type decisionRecord struct {
 	id             string
@@ -120,6 +24,23 @@ type decisionRecord struct {
 	validationErr  error
 	validationJSON []byte
 }
+
+type decisionRequestAuthority struct {
+	AllowedIntentTypes []string `json:"allowed_intent_types"`
+	RiskCeiling        string   `json:"risk_ceiling"`
+	Kind               string   `json:"kind"`
+	Executor           struct {
+		IntentCatalog       []map[string]any `json:"intent_catalog"`
+		IntentCatalogSHA256 string           `json:"intent_catalog_sha256"`
+	} `json:"executor"`
+}
+
+const insertDecisionSQL = `
+		INSERT INTO decisions (
+			decision_id, episode_id, attempt_id, fence, ordinal, situation_id,
+			situation_version, raw_json, decision_sha256, validation_status,
+			validation_json, traceparent, tracestate, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 // persistDecision validates and stores the outcome's Decision, then sends a
 // valid one to governance and records why an invalid one was rejected. It
@@ -154,11 +75,99 @@ func (r *Runner) validateDecision(claim *episodeClaim, outcome *Outcome) (*decis
 	if record.id == "" {
 		record.id = r.idGen.New(ids.PrefixDecision)
 	}
-	digest, hasContractDigest := decisionDigestForStorage(outcome.DecisionJSON)
+	digest, hasContractDigest := storageDecisionDigest(outcome.DecisionJSON)
+	return record.finishValidation(outcome.DecisionJSON, digest, hasContractDigest)
+}
+
+func decisionInput(req *Request, identity episodeledger.Identity, now time.Time) (decisions.Input, error) {
+	var payload decisionRequestAuthority
+	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
+		return decisions.Input{}, fmt.Errorf("decode request tools: %w", err)
+	}
+	return payload.validationInput(req, identity, now)
+}
+
+func (payload decisionRequestAuthority) validationInput(req *Request, identity episodeledger.Identity, now time.Time) (decisions.Input, error) {
+	allowed := make(map[string]struct{}, len(payload.AllowedIntentTypes))
+	for _, intentType := range payload.AllowedIntentTypes {
+		allowed[intentType] = struct{}{}
+	}
+	if payload.RiskCeiling == "" {
+		return decisions.Input{}, fmt.Errorf("request has no explicit risk ceiling")
+	}
+	compiled, err := payload.verifiedIntentCatalog()
+	if err != nil {
+		return decisions.Input{}, err
+	}
+	return payload.boundValidationInput(req, identity, now, allowed, compiled), nil
+}
+
+func (payload decisionRequestAuthority) verifiedIntentCatalog() (*decisions.IntentCatalog, error) {
+	if !canonicaljson.Verify(canonicaljson.DomainIntentCatalog, payload.Executor.IntentCatalog, payload.Executor.IntentCatalogSHA256) {
+		return nil, fmt.Errorf("intent catalog is missing, forged, or malformed")
+	}
+	compiled, err := decisions.CompileIntentCatalog(payload.Executor.IntentCatalog)
+	if err != nil {
+		return nil, fmt.Errorf("compile intent catalog: %w", err)
+	}
+	return compiled, nil
+}
+
+func (payload decisionRequestAuthority) boundValidationInput(req *Request, identity episodeledger.Identity, now time.Time, allowed map[string]struct{}, compiled *decisions.IntentCatalog) decisions.Input {
+	return decisions.Input{
+		EpisodeID: identity.EpisodeID, AttemptID: identity.AttemptID, Fence: identity.Fence,
+		TenantID: req.TenantID, SituationID: req.SituationID, SituationVersion: req.SituationVersion,
+		EntityID: req.EntityID, SnapshotDigest: req.SnapshotSHA256,
+		AllowedIntentTypes: allowed, RiskCeiling: payload.RiskCeiling, IntentCatalog: compiled,
+		Kind: payload.Kind, Now: now,
+	}
+}
+
+func decisionIDFromJSON(raw []byte) string {
+	var document struct {
+		DecisionID string `json:"decision_id"`
+	}
+	if json.Unmarshal(raw, &document) != nil {
+		return ""
+	}
+	return document.DecisionID
+}
+
+func storageDecisionDigest(raw []byte) ([]byte, bool) {
+	digest, hasContractDigest := decisionDigestForStorage(raw)
 	if !hasContractDigest {
-		rawHash := sha256.Sum256(outcome.DecisionJSON)
+		rawHash := sha256.Sum256(raw)
 		digest = rawHash[:]
 	}
+	return digest, hasContractDigest
+}
+
+func decisionDigestForStorage(raw []byte) ([]byte, bool) {
+	canonical, err := canonicaljson.Marshal(json.RawMessage(raw))
+	if err != nil {
+		return nil, false
+	}
+	var document map[string]any
+	if err := json.Unmarshal(canonical, &document); err != nil {
+		return nil, false
+	}
+	return documentDigestForStorage(document)
+}
+
+func documentDigestForStorage(document map[string]any) ([]byte, bool) {
+	digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
+	if err != nil {
+		return nil, false
+	}
+	decoded, err := canonicaljson.DecodeDigest(digest)
+	if err != nil {
+		return nil, false
+	}
+	return decoded, true
+}
+
+func (record *decisionRecord) finishValidation(raw []byte, digest []byte, hasContractDigest bool) (*decisionRecord, error) {
+	var err error
 	record.digest = digest
 	if record.validationErr == nil {
 		record.validationJSON = []byte(`{}`)
@@ -167,7 +176,7 @@ func (r *Runner) validateDecision(claim *episodeClaim, outcome *Outcome) (*decis
 		}
 		return record, nil
 	}
-	record.validationJSON, err = validationFailureJSON(record.validationErr, outcome.DecisionJSON, hasContractDigest)
+	record.validationJSON, err = validationFailureJSON(record.validationErr, raw, hasContractDigest)
 	if err != nil {
 		return nil, err
 	}
@@ -191,6 +200,11 @@ func validationFailureJSON(validationErr error, raw []byte, hasContractDigest bo
 	if hasContractDigest {
 		return validationJSON, nil
 	}
+	return rawValidationFailureJSON(validationJSON, raw)
+}
+
+func rawValidationFailureJSON(validationJSON, raw []byte) ([]byte, error) {
+	var err error
 	rawHash := sha256.Sum256(raw)
 	var details map[string]any
 	if err := json.Unmarshal(validationJSON, &details); err != nil {
@@ -213,18 +227,36 @@ func insertDecision(ctx context.Context, tx *sql.Tx, claim *episodeClaim, outcom
 	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(ordinal), 0) + 1 FROM decisions WHERE episode_id = ?", claim.episodeID).Scan(&ordinal); err != nil {
 		return fmt.Errorf("allocate decision ordinal: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO decisions (
-			decision_id, episode_id, attempt_id, fence, ordinal, situation_id,
-			situation_version, raw_json, decision_sha256, validation_status,
-			validation_json, traceparent, tracestate, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	return insertDecisionRow(ctx, tx, claim, outcome, record, now, ordinal, validationStatus)
+}
+
+func insertDecisionRow(ctx context.Context, tx *sql.Tx, claim *episodeClaim, outcome *Outcome, record *decisionRecord, now string, ordinal int, validationStatus string) error {
+	if _, err := tx.ExecContext(ctx, insertDecisionSQL,
 		record.id, claim.episodeID, claim.identity.AttemptID, claim.identity.Fence, ordinal,
 		claim.req.SituationID, claim.req.SituationVersion,
 		outcome.DecisionJSON, record.digest, validationStatus, record.validationJSON,
 		nullableString(claim.req.Traceparent), nullableString(claim.req.Tracestate), now,
 	); err != nil {
 		return fmt.Errorf("insert decision: %w", err)
+	}
+	return nil
+}
+
+func nullableString(value string) sql.NullString {
+	return sql.NullString{String: value, Valid: value != ""}
+}
+
+func (r *Runner) rejectDecision(ctx context.Context, tx *sql.Tx, identity episodeledger.Identity, record *decisionRecord) error {
+	reason := "schema_invalid"
+	var typed *decisions.ValidationError
+	if errors.As(record.validationErr, &typed) {
+		reason = typed.Reason
+	}
+	if err := episodeledger.RecordRejection(ctx, tx, identity, episodeledger.RejectionReason(reason), record.validationJSON, r.clk.Now()); err != nil {
+		return fmt.Errorf("record decision rejection: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE decisions SET rejection_reason = ? WHERE decision_id = ?", reason, record.id); err != nil {
+		return fmt.Errorf("annotate rejected decision: %w", err)
 	}
 	return nil
 }
@@ -248,17 +280,16 @@ func (r *Runner) governDecision(ctx context.Context, tx *sql.Tx, claim *episodeC
 	return nil
 }
 
-func (r *Runner) rejectDecision(ctx context.Context, tx *sql.Tx, identity episodeledger.Identity, record *decisionRecord) error {
-	reason := "schema_invalid"
-	var typed *decisions.ValidationError
-	if errors.As(record.validationErr, &typed) {
-		reason = typed.Reason
+func bindAttemptIdentity(raw []byte, identity episodeledger.Identity) ([]byte, error) {
+	var document map[string]any
+	if err := json.Unmarshal(raw, &document); err != nil {
+		return nil, fmt.Errorf("decode request json: %w", err)
 	}
-	if err := episodeledger.RecordRejection(ctx, tx, identity, episodeledger.RejectionReason(reason), record.validationJSON, r.clk.Now()); err != nil {
-		return fmt.Errorf("record decision rejection: %w", err)
+	document["attempt_id"] = identity.AttemptID
+	document["fence"] = identity.Fence
+	bound, err := canonicaljson.Marshal(document)
+	if err != nil {
+		return nil, fmt.Errorf("canonicalize request json: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE decisions SET rejection_reason = ? WHERE decision_id = ?", reason, record.id); err != nil {
-		return fmt.Errorf("annotate rejected decision: %w", err)
-	}
-	return nil
+	return bound, nil
 }

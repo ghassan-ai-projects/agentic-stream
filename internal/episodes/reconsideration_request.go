@@ -31,58 +31,7 @@ type reconsiderationRow struct {
 	OutcomeSHA256        []byte
 }
 
-func loadReconsideration(ctx context.Context, tx *sql.Tx, item schedulerItem, ev evaluation, delta, snapshot map[string]any) (map[string]any, error) {
-	row, err := queryReconsideration(ctx, tx, item, delta)
-	if err != nil {
-		return nil, err
-	}
-	priorDecision, err := jsonDocument(row.PriorDecisionJSON, "prior decision")
-	if err != nil {
-		return nil, err
-	}
-	if err := setDocumentIdentity(priorDecision, "decision_id", row.PriorDecisionID); err != nil {
-		return nil, err
-	}
-	command, err := row.commandDocument()
-	if err != nil {
-		return nil, err
-	}
-	outcome, err := row.outcomeDocument()
-	if err != nil {
-		return nil, err
-	}
-
-	correction := copyDocument(snapshot)
-	if nested, ok := delta["correction"].(map[string]any); ok {
-		correction = copyDocument(nested)
-	}
-	correction["reason"] = ev.TriggerName
-	correction["invalidates"] = []string{row.InvalidatedCommandID}
-	correction["superseded_version"] = row.SupersededVersion
-	correction["correction_version"] = row.CorrectionVersion
-
-	return map[string]any{
-		"reconsideration_id":     row.ReconsiderationID,
-		"situation_id":           row.SituationID,
-		"superseded_version":     row.SupersededVersion,
-		"correction_version":     row.CorrectionVersion,
-		"invalidated_command_id": row.InvalidatedCommandID,
-		"invalidated_outcome_id": row.InvalidatedOutcomeID,
-		"prior_decision":         priorDecision,
-		"commands":               []map[string]any{command},
-		"outcomes":               []map[string]any{outcome},
-		"correction":             correction,
-	}, nil
-}
-
-// queryReconsideration loads the invalidated command, its decision, and its
-// outcome for a reconsider item, preferring the exact scheduler item, then
-// the trigger, then the superseded version and command.
-func queryReconsideration(ctx context.Context, tx *sql.Tx, item schedulerItem, delta map[string]any) (reconsiderationRow, error) {
-	supersededVersion := snapshotInt(delta, "superseded_version")
-	invalidatedCommandID := snapshotString(delta, "invalidated_command_id")
-	var row reconsiderationRow
-	if err := tx.QueryRowContext(ctx, `
+const queryReconsiderationSQL = `
 		SELECT r.reconsideration_id, r.situation_id, r.superseded_version, r.correction_version,
 		       r.invalidated_command_id, r.invalidated_outcome_id,
 		       d.decision_id, d.raw_json, c.command_json, c.status, i.intent_id, i.intent_type, i.risk_class,
@@ -104,21 +53,74 @@ func queryReconsideration(ctx context.Context, tx *sql.Tx, item schedulerItem, d
 			WHEN r.trigger_id = ? THEN 1
 			ELSE 2
 		END
-		LIMIT 1`,
-		item.TenantID, item.SituationID, item.SituationVersion,
-		item.SchedulerItemID, item.TriggerID, supersededVersion, invalidatedCommandID,
-		item.SchedulerItemID, item.TriggerID,
-	).Scan(
+		LIMIT 1`
+
+func loadReconsideration(ctx context.Context, tx *sql.Tx, item schedulerItem, ev evaluation, delta, snapshot map[string]any) (map[string]any, error) {
+	row, err := queryReconsideration(ctx, tx, item, delta)
+	if err != nil {
+		return nil, err
+	}
+	return row.reconsiderationDocument(ev, delta, snapshot)
+}
+
+// queryReconsideration loads the invalidated command, its decision, and its
+// outcome for a reconsider item, preferring the exact scheduler item, then
+// the trigger, then the superseded version and command.
+func queryReconsideration(ctx context.Context, tx *sql.Tx, item schedulerItem, delta map[string]any) (reconsiderationRow, error) {
+	supersededVersion := snapshotInt(delta, "superseded_version")
+	invalidatedCommandID := snapshotString(delta, "invalidated_command_id")
+	var row reconsiderationRow
+	query := tx.QueryRowContext(ctx, queryReconsiderationSQL, item.TenantID, item.SituationID, item.SituationVersion,
+		item.SchedulerItemID, item.TriggerID, supersededVersion, invalidatedCommandID, item.SchedulerItemID, item.TriggerID)
+	if err := scanReconsideration(query, &row); err != nil {
+		return reconsiderationRow{}, err
+	}
+
+	return row, nil
+}
+
+func scanReconsideration(query *sql.Row, row *reconsiderationRow) error {
+	if err := query.Scan(
 		&row.ReconsiderationID, &row.SituationID, &row.SupersededVersion, &row.CorrectionVersion,
 		&row.InvalidatedCommandID, &row.InvalidatedOutcomeID,
 		&row.PriorDecisionID, &row.PriorDecisionJSON, &row.CommandJSON, &row.CommandStatus, &row.IntentID, &row.IntentType, &row.RiskClass,
 		&row.OutcomeID, &row.OutcomeOrdinal, &row.OutcomeStatus, &row.ProviderResultJSON, &row.ObservedEffectJSON,
 		&row.ReconciliationStatus, &row.OutcomeSHA256,
 	); err != nil {
-		return reconsiderationRow{}, fmt.Errorf("query reconsideration evidence: %w", err)
+		return fmt.Errorf("query reconsideration evidence: %w", err)
 	}
 
-	return row, nil
+	return nil
+}
+
+func (row reconsiderationRow) reconsiderationDocument(ev evaluation, delta, snapshot map[string]any) (map[string]any, error) {
+	priorDecision, err := row.priorDecisionDocument()
+	if err != nil {
+		return nil, err
+	}
+	command, err := row.commandDocument()
+	if err != nil {
+		return nil, err
+	}
+	outcome, err := row.outcomeDocument()
+	if err != nil {
+		return nil, err
+	}
+
+	correction := row.correctionDocument(ev, delta, snapshot)
+	return row.reconsiderationFields(priorDecision, command, outcome, correction), nil
+}
+
+func (row reconsiderationRow) priorDecisionDocument() (map[string]any, error) {
+	priorDecision, err := jsonDocument(row.PriorDecisionJSON, "prior decision")
+	if err != nil {
+		return nil, err
+	}
+	if err := setDocumentIdentity(priorDecision, "decision_id", row.PriorDecisionID); err != nil {
+		return nil, err
+	}
+
+	return priorDecision, nil
 }
 
 // commandDocument is the executed command with its durable identity and status.
@@ -133,6 +135,10 @@ func (row reconsiderationRow) commandDocument() (map[string]any, error) {
 	if err := setDocumentIdentity(command, "intent_id", row.IntentID); err != nil {
 		return nil, err
 	}
+	return row.bindCommandContext(command), nil
+}
+
+func (row reconsiderationRow) bindCommandContext(command map[string]any) map[string]any {
 	command["status"] = row.CommandStatus
 	command["intent_type"] = row.IntentType
 	command["risk_class"] = row.RiskClass
@@ -141,7 +147,7 @@ func (row reconsiderationRow) commandDocument() (map[string]any, error) {
 			command["parameters"] = payload
 		}
 	}
-	return command, nil
+	return command
 }
 
 // outcomeDocument is the observed outcome of the invalidated command.
@@ -154,6 +160,10 @@ func (row reconsiderationRow) outcomeDocument() (map[string]any, error) {
 		"outcome_sha256":        "sha256:" + hex.EncodeToString(row.OutcomeSHA256),
 		"reconciliation_status": row.ReconciliationStatus.String,
 	}
+	return row.bindOutcomeEvidence(outcome)
+}
+
+func (row reconsiderationRow) bindOutcomeEvidence(outcome map[string]any) (map[string]any, error) {
 	provider, err := optionalJSONDocument(row.ProviderResultJSON, "provider result")
 	if err != nil {
 		return nil, err
@@ -171,6 +181,44 @@ func (row reconsiderationRow) outcomeDocument() (map[string]any, error) {
 	return outcome, nil
 }
 
+func (row reconsiderationRow) correctionDocument(ev evaluation, delta, snapshot map[string]any) map[string]any {
+
+	correction := copyDocument(snapshot)
+	if nested, ok := delta["correction"].(map[string]any); ok {
+		correction = copyDocument(nested)
+	}
+	correction["reason"] = ev.TriggerName
+	correction["invalidates"] = []string{row.InvalidatedCommandID}
+	correction["superseded_version"] = row.SupersededVersion
+	correction["correction_version"] = row.CorrectionVersion
+
+	return correction
+}
+
+func copyDocument(document map[string]any) map[string]any {
+	copy := make(map[string]any, len(document))
+	for key, value := range document {
+		copy[key] = value
+	}
+	return copy
+}
+
+func (row reconsiderationRow) reconsiderationFields(priorDecision, command, outcome, correction map[string]any) map[string]any {
+
+	return map[string]any{
+		"reconsideration_id":     row.ReconsiderationID,
+		"situation_id":           row.SituationID,
+		"superseded_version":     row.SupersededVersion,
+		"correction_version":     row.CorrectionVersion,
+		"invalidated_command_id": row.InvalidatedCommandID,
+		"invalidated_outcome_id": row.InvalidatedOutcomeID,
+		"prior_decision":         priorDecision,
+		"commands":               []map[string]any{command},
+		"outcomes":               []map[string]any{outcome},
+		"correction":             correction,
+	}
+}
+
 func jsonDocument(raw []byte, name string) (map[string]any, error) {
 	var document map[string]any
 	if len(raw) == 0 {
@@ -181,17 +229,6 @@ func jsonDocument(raw []byte, name string) (map[string]any, error) {
 	}
 	if document == nil {
 		return nil, fmt.Errorf("%s must be an object", name)
-	}
-	return document, nil
-}
-
-func optionalJSONDocument(raw []byte, name string) (any, error) {
-	if len(raw) == 0 {
-		return nil, nil
-	}
-	var document any
-	if err := json.Unmarshal(raw, &document); err != nil {
-		return nil, fmt.Errorf("decode %s: %w", name, err)
 	}
 	return document, nil
 }
@@ -207,10 +244,13 @@ func setDocumentIdentity(document map[string]any, key, want string) error {
 	return nil
 }
 
-func copyDocument(document map[string]any) map[string]any {
-	copy := make(map[string]any, len(document))
-	for key, value := range document {
-		copy[key] = value
+func optionalJSONDocument(raw []byte, name string) (any, error) {
+	if len(raw) == 0 {
+		return nil, nil
 	}
-	return copy
+	var document any
+	if err := json.Unmarshal(raw, &document); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", name, err)
+	}
+	return document, nil
 }

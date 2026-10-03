@@ -31,21 +31,7 @@ func (e *FakeExecutor) Execute(ctx context.Context, req *Request) (*Outcome, err
 	if err != nil {
 		return nil, err
 	}
-	decision := map[string]any{
-		"decision_id":       "dec_" + req.EpisodeID,
-		"episode_id":        req.EpisodeID,
-		"attempt_id":        req.AttemptID,
-		"fence":             req.Fence,
-		"snapshot_digest":   req.SnapshotSHA256,
-		"situation_id":      req.SituationID,
-		"situation_version": req.SituationVersion,
-		"summary":           fmt.Sprintf("fake decision for phase %s via trigger %s", phase, triggerName),
-		"confidence":        0.95,
-		"facts_used": []map[string]any{
-			{"path": "snapshot.phase", "value": phase},
-		},
-		"intents": []map[string]any{intent},
-	}
+	decision := fakeDecision(req, phase, triggerName, intent)
 	return producedOutcome(req, decision)
 }
 
@@ -75,7 +61,17 @@ func fakeIntent(req *Request, phase string) (map[string]any, error) {
 	if req.EntityID != "" {
 		parameters["entity_id"] = req.EntityID
 	}
-	intent := map[string]any{
+	intent := fakeMaintenanceIntent(req, parameters)
+	intentDigest, err := contractsv1.IntentDigest(intent)
+	if err != nil {
+		return nil, fmt.Errorf("digest intent: %w", err)
+	}
+	intent["intent_digest"] = intentDigest
+	return intent, nil
+}
+
+func fakeMaintenanceIntent(req *Request, parameters map[string]any) map[string]any {
+	return map[string]any{
 		"intent_id":         "int_" + req.EpisodeID,
 		"decision_id":       "dec_" + req.EpisodeID,
 		"tenant_id":         req.TenantID,
@@ -86,12 +82,22 @@ func fakeIntent(req *Request, phase string) (map[string]any, error) {
 		"parameters":        parameters,
 		"expires_at":        "2099-01-01T00:00:00.000000000Z",
 	}
-	intentDigest, err := contractsv1.IntentDigest(intent)
-	if err != nil {
-		return nil, fmt.Errorf("digest intent: %w", err)
+}
+
+func fakeDecision(req *Request, phase, triggerName string, intent map[string]any) map[string]any {
+	return map[string]any{
+		"decision_id":       "dec_" + req.EpisodeID,
+		"episode_id":        req.EpisodeID,
+		"attempt_id":        req.AttemptID,
+		"fence":             req.Fence,
+		"snapshot_digest":   req.SnapshotSHA256,
+		"situation_id":      req.SituationID,
+		"situation_version": req.SituationVersion,
+		"summary":           fmt.Sprintf("fake decision for phase %s via trigger %s", phase, triggerName),
+		"confidence":        0.95,
+		"facts_used":        []map[string]any{{"path": "snapshot.phase", "value": phase}},
+		"intents":           []map[string]any{intent},
 	}
-	intent["intent_digest"] = intentDigest
-	return intent, nil
 }
 
 // producedOutcome canonicalizes and digests the decision as a produced
@@ -106,9 +112,7 @@ func producedOutcome(req *Request, decision map[string]any) (*Outcome, error) {
 		return nil, fmt.Errorf("digest decision: %w", err)
 	}
 	return &Outcome{
-		Status:         string(episodeledger.AttemptProduced),
-		AttemptID:      req.AttemptID,
-		Fence:          req.Fence,
+		Status: string(episodeledger.AttemptProduced), AttemptID: req.AttemptID, Fence: req.Fence,
 		DecisionJSON:   decisionJSON,
 		DecisionSHA256: decisionDigest,
 		Reasons:        []string{"deterministic fake outcome"},
