@@ -199,3 +199,10 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   guard ordering and retry cancellation remain unchanged. Added payload-error
   precedence and retry cancellation regressions. Watch and architecture race
   tests and focused 15-line/15-statement lint pass.
+
+- Round 17: SSE admission, stream following and record delivery are separate
+  bounded steps. Problem-response precedence, priming before header commit,
+  per-event authorization, duplicate filtering and cursor advancement remain
+  unchanged. A new regression proves filtered duplicate records authorize once
+  and still advance beyond skipped poison rows. API and architecture race tests
+  and focused 15-line/15-statement lint pass.

@@ -29,19 +29,7 @@ func requestCursor(r *http.Request) (int64, error) {
 
 func writePage(w http.ResponseWriter, flusher http.Flusher, r *http.Request, cfg SSEConfig, page notify.Page, cursor *int64, seen map[string]struct{}) error {
 	for _, record := range page.Records {
-		*cursor = record.Cursor
-		key := record.Event.Source + "\x00" + record.Event.ID
-		if _, duplicate := seen[key]; duplicate {
-			continue
-		}
-		if len(seen) >= cfg.PageSize*4 {
-			clear(seen)
-		}
-		seen[key] = struct{}{}
-		if !authorizedEvent(cfg, r, record.Event.Type) {
-			continue
-		}
-		if err := writeEvent(w, flusher, cfg.RetryAfter, record); err != nil {
+		if err := deliverRecord(w, flusher, r, cfg, record, cursor, seen); err != nil {
 			return err
 		}
 	}
@@ -49,6 +37,22 @@ func writePage(w http.ResponseWriter, flusher http.Flusher, r *http.Request, cfg
 		*cursor = page.NextCursor
 	}
 	return nil
+}
+
+func deliverRecord(w http.ResponseWriter, flusher http.Flusher, r *http.Request, cfg SSEConfig, record notify.Record, cursor *int64, seen map[string]struct{}) error {
+	*cursor = record.Cursor
+	key := record.Event.Source + "\x00" + record.Event.ID
+	if _, duplicate := seen[key]; duplicate {
+		return nil
+	}
+	if len(seen) >= cfg.PageSize*4 {
+		clear(seen)
+	}
+	seen[key] = struct{}{}
+	if !authorizedEvent(cfg, r, record.Event.Type) {
+		return nil
+	}
+	return writeEvent(w, flusher, cfg.RetryAfter, record)
 }
 
 func authorizedEvent(cfg SSEConfig, r *http.Request, eventType string) bool {

@@ -45,15 +45,7 @@ func NewSSEHandler(cfg SSEConfig) http.Handler {
 	if cfg.PageSize <= 0 || cfg.PageSize > 1000 {
 		cfg.PageSize = 100
 	}
-	if cfg.PollInterval <= 0 {
-		cfg.PollInterval = 500 * time.Millisecond
-	}
-	if cfg.IdleInterval <= 0 {
-		cfg.IdleInterval = 15 * time.Second
-	}
-	if cfg.RetryAfter <= 0 {
-		cfg.RetryAfter = 2 * time.Second
-	}
+	cfg = defaultStreamTiming(cfg)
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
@@ -67,20 +59,7 @@ func serveSSE(w http.ResponseWriter, r *http.Request, cfg SSEConfig) {
 	if !ok {
 		return
 	}
-	// Prime the stream before committing headers so an expired cursor returns a
-	// normal problem response and can force the client's audited resnapshot.
-	page, err := stream.readPage()
-	if err != nil {
-		writeStreamError(w, err)
-		return
-	}
-	if err := stream.beginResponse(); err != nil {
-		return
-	}
-	if err := stream.deliverPage(page); err != nil {
-		return
-	}
-	stream.followNotifications()
+	stream.followFromCursor()
 }
 
 // sseStream is one subscriber's notification stream.
@@ -97,21 +76,8 @@ type sseStream struct {
 // admitSubscriber requires a GET from an authorized subscriber for a known
 // tenant with a valid resume cursor, answering with a problem otherwise.
 func admitSubscriber(w http.ResponseWriter, r *http.Request, cfg SSEConfig) (*sseStream, bool) {
-	if r.Method != http.MethodGet {
-		writeSSEProblem(w, http.StatusMethodNotAllowed, "method_not_allowed", "notification streams require GET")
-		return nil, false
-	}
-	if cfg.DB == nil {
-		writeSSEProblem(w, http.StatusServiceUnavailable, "runtime_not_ready", "notification store is not configured")
-		return nil, false
-	}
-	tenantID := subscriberTenant(r, cfg)
-	if strings.TrimSpace(tenantID) == "" {
-		writeSSEProblem(w, http.StatusBadRequest, "tenant_required", "tenant is required")
-		return nil, false
-	}
-	if cfg.Authorize != nil && !cfg.Authorize(r, "") {
-		writeSSEProblem(w, http.StatusUnauthorized, "subscriber_unauthorized", "subscriber credential is not authorized")
+	tenantID, admitted := admitSubscriberIdentity(w, r, cfg)
+	if !admitted {
 		return nil, false
 	}
 	cursor, err := requestCursor(r)
@@ -170,21 +136,27 @@ func (s *sseStream) followNotifications() {
 	defer poll.Stop()
 	idle := time.NewTicker(s.cfg.IdleInterval)
 	defer idle.Stop()
-	for {
-		select {
-		case <-s.r.Context().Done():
-			return
-		case <-idle.C:
-			if err := writeComment(s.w, "idle"); err != nil {
-				return
-			}
-			s.flusher.Flush()
-		case <-poll.C:
-			if err := s.pollOnce(); err != nil {
-				return
-			}
-		}
+	for s.followTick(poll.C, idle.C) {
 	}
+}
+
+func (s *sseStream) followTick(poll, idle <-chan time.Time) bool {
+	select {
+	case <-s.r.Context().Done():
+		return false
+	case <-idle:
+		return s.keepAlive() == nil
+	case <-poll:
+		return s.pollOnce() == nil
+	}
+}
+
+func (s *sseStream) keepAlive() error {
+	if err := writeComment(s.w, "idle"); err != nil {
+		return err
+	}
+	s.flusher.Flush()
+	return nil
 }
 
 func (s *sseStream) pollOnce() error {
@@ -194,4 +166,62 @@ func (s *sseStream) pollOnce() error {
 		return err
 	}
 	return s.deliverPage(page)
+}
+
+func defaultStreamTiming(cfg SSEConfig) SSEConfig {
+	if cfg.PollInterval <= 0 {
+		cfg.PollInterval = 500 * time.Millisecond
+	}
+	if cfg.IdleInterval <= 0 {
+		cfg.IdleInterval = 15 * time.Second
+	}
+	if cfg.RetryAfter <= 0 {
+		cfg.RetryAfter = 2 * time.Second
+	}
+	return cfg
+}
+
+func (s *sseStream) followFromCursor() {
+	// Prime the stream before committing headers so an expired cursor returns a
+	// normal problem response and can force the client's audited resnapshot.
+	page, err := s.readPage()
+	if err != nil {
+		writeStreamError(s.w, err)
+		return
+	}
+	if err := s.beginResponse(); err != nil {
+		return
+	}
+	if err := s.deliverPage(page); err != nil {
+		return
+	}
+	s.followNotifications()
+}
+
+func admitSubscriberIdentity(w http.ResponseWriter, r *http.Request, cfg SSEConfig) (string, bool) {
+	if !admitStreamTransport(w, r, cfg) {
+		return "", false
+	}
+	tenantID := subscriberTenant(r, cfg)
+	if strings.TrimSpace(tenantID) == "" {
+		writeSSEProblem(w, http.StatusBadRequest, "tenant_required", "tenant is required")
+		return "", false
+	}
+	if cfg.Authorize != nil && !cfg.Authorize(r, "") {
+		writeSSEProblem(w, http.StatusUnauthorized, "subscriber_unauthorized", "subscriber credential is not authorized")
+		return "", false
+	}
+	return tenantID, true
+}
+
+func admitStreamTransport(w http.ResponseWriter, r *http.Request, cfg SSEConfig) bool {
+	if r.Method != http.MethodGet {
+		writeSSEProblem(w, http.StatusMethodNotAllowed, "method_not_allowed", "notification streams require GET")
+		return false
+	}
+	if cfg.DB == nil {
+		writeSSEProblem(w, http.StatusServiceUnavailable, "runtime_not_ready", "notification store is not configured")
+		return false
+	}
+	return true
 }
