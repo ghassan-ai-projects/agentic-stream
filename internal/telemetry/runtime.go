@@ -126,32 +126,42 @@ func (r *Runtime) Snapshot() map[string]uint64 {
 	if r == nil {
 		return nil
 	}
-	return map[string]uint64{
-		"agentic_stream_events_ingested_total":         r.eventsIngested.Load(),
-		"agentic_stream_events_processed_total":        r.eventsProcessed.Load(),
-		"agentic_stream_episodes_admitted_total":       r.episodesAdmitted.Load(),
-		"agentic_stream_episodes_executed_total":       r.episodesExecuted.Load(),
-		"agentic_stream_intents_evaluated_total":       r.intentsEvaluated.Load(),
-		"agentic_stream_commands_dispatched_total":     r.commandsDispatched.Load(),
-		"agentic_stream_pipeline_failures_total":       r.streamFailures.Load(),
-		"agentic_stream_stale_rejections_total":        r.staleRejections.Load(),
-		"agentic_stream_stale_rebinds_total":           r.staleRebinds.Load(),
-		"agentic_stream_rebind_failures_total":         r.rebindFailures.Load(),
-		"agentic_stream_device_frame_errors_total":     r.deviceFrameErrors.Load(),
-		"agentic_stream_device_reconnects_total":       r.deviceReconnects.Load(),
-		"agentic_stream_action_unknown_outcomes_total": r.actionUnknownOutcomes.Load(),
-		"agentic_stream_verification_pending_total":    r.verificationPending.Load(),
-		"agentic_stream_verification_failures_total":   r.verificationFailures.Load(),
-		"agentic_stream_lease_expiries_total":          r.leaseExpiries.Load(),
-		"agentic_stream_safe_state_entries_total":      r.safeStateEntries.Load(),
-		"agentic_stream_reconciliation_barriers_total": r.reconciliationBarriers.Load(),
-		"agentic_stream_target_claim_rejections_total": r.targetClaimRejections.Load(),
-		"agentic_stream_safe_stop_requests_total":      r.safeStopRequests.Load(),
-		"agentic_stream_safe_stop_failures_total":      r.safeStopFailures.Load(),
-		"agentic_stream_safe_stop_completions_total":   r.safeStopCompletions.Load(),
-		"agentic_stream_live_lines_ingested_total":     r.liveLinesIngested.Load(),
-		"agentic_stream_live_lines_rejected_total":     r.liveLinesRejected.Load(),
+	snapshot := make(map[string]uint64, len(runtimeCounters))
+	for _, counter := range runtimeCounters {
+		snapshot[counter.name] = counter.value(r).Load()
 	}
+	return snapshot
+}
+
+// runtimeCounters names every counter in the Snapshot view.
+var runtimeCounters = []struct {
+	name  string
+	value func(*Runtime) *atomic.Uint64
+}{
+	{"agentic_stream_events_ingested_total", func(r *Runtime) *atomic.Uint64 { return &r.eventsIngested }},
+	{"agentic_stream_events_processed_total", func(r *Runtime) *atomic.Uint64 { return &r.eventsProcessed }},
+	{"agentic_stream_episodes_admitted_total", func(r *Runtime) *atomic.Uint64 { return &r.episodesAdmitted }},
+	{"agentic_stream_episodes_executed_total", func(r *Runtime) *atomic.Uint64 { return &r.episodesExecuted }},
+	{"agentic_stream_intents_evaluated_total", func(r *Runtime) *atomic.Uint64 { return &r.intentsEvaluated }},
+	{"agentic_stream_commands_dispatched_total", func(r *Runtime) *atomic.Uint64 { return &r.commandsDispatched }},
+	{"agentic_stream_pipeline_failures_total", func(r *Runtime) *atomic.Uint64 { return &r.streamFailures }},
+	{"agentic_stream_stale_rejections_total", func(r *Runtime) *atomic.Uint64 { return &r.staleRejections }},
+	{"agentic_stream_stale_rebinds_total", func(r *Runtime) *atomic.Uint64 { return &r.staleRebinds }},
+	{"agentic_stream_rebind_failures_total", func(r *Runtime) *atomic.Uint64 { return &r.rebindFailures }},
+	{"agentic_stream_device_frame_errors_total", func(r *Runtime) *atomic.Uint64 { return &r.deviceFrameErrors }},
+	{"agentic_stream_device_reconnects_total", func(r *Runtime) *atomic.Uint64 { return &r.deviceReconnects }},
+	{"agentic_stream_action_unknown_outcomes_total", func(r *Runtime) *atomic.Uint64 { return &r.actionUnknownOutcomes }},
+	{"agentic_stream_verification_pending_total", func(r *Runtime) *atomic.Uint64 { return &r.verificationPending }},
+	{"agentic_stream_verification_failures_total", func(r *Runtime) *atomic.Uint64 { return &r.verificationFailures }},
+	{"agentic_stream_lease_expiries_total", func(r *Runtime) *atomic.Uint64 { return &r.leaseExpiries }},
+	{"agentic_stream_safe_state_entries_total", func(r *Runtime) *atomic.Uint64 { return &r.safeStateEntries }},
+	{"agentic_stream_reconciliation_barriers_total", func(r *Runtime) *atomic.Uint64 { return &r.reconciliationBarriers }},
+	{"agentic_stream_target_claim_rejections_total", func(r *Runtime) *atomic.Uint64 { return &r.targetClaimRejections }},
+	{"agentic_stream_safe_stop_requests_total", func(r *Runtime) *atomic.Uint64 { return &r.safeStopRequests }},
+	{"agentic_stream_safe_stop_failures_total", func(r *Runtime) *atomic.Uint64 { return &r.safeStopFailures }},
+	{"agentic_stream_safe_stop_completions_total", func(r *Runtime) *atomic.Uint64 { return &r.safeStopCompletions }},
+	{"agentic_stream_live_lines_ingested_total", func(r *Runtime) *atomic.Uint64 { return &r.liveLinesIngested }},
+	{"agentic_stream_live_lines_rejected_total", func(r *Runtime) *atomic.Uint64 { return &r.liveLinesRejected }},
 }
 
 // latencyNanos converts a recorded duration to uint64 nanoseconds, clamping

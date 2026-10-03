@@ -31,7 +31,18 @@ func queueItemValues(item Item, tenantID string, dedupeKey []byte, now string) [
 }
 
 func persistQueueItem(ctx context.Context, tx *sql.Tx, values []any) error {
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.ExecContext(ctx, upsertQueueItemSQL, values...); err != nil {
+		if isSchedulerItemIDConflict(err) {
+			return retainExistingItemIdentity(ctx, tx, values)
+		}
+		return fmt.Errorf("upsert scheduler item: %w", err)
+	}
+	return nil
+}
+
+// upsertQueueItemSQL inserts a queue item or refreshes the item already
+// queued for the same trigger.
+const upsertQueueItemSQL = `
 		INSERT INTO scheduler_items (
 			scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version,
 			kind, lane, priority, status, dedupe_key, not_before, expires_at, created_at, updated_at
@@ -45,16 +56,7 @@ func persistQueueItem(ctx context.Context, tx *sql.Tx, values []any) error {
 			dedupe_key = excluded.dedupe_key,
 			not_before = excluded.not_before,
 			expires_at = excluded.expires_at,
-			updated_at = excluded.updated_at`,
-		values...,
-	); err != nil {
-		if isSchedulerItemIDConflict(err) {
-			return retainExistingItemIdentity(ctx, tx, values)
-		}
-		return fmt.Errorf("upsert scheduler item: %w", err)
-	}
-	return nil
-}
+			updated_at = excluded.updated_at`
 
 func retainExistingItemIdentity(ctx context.Context, tx *sql.Tx, values []any) error {
 	if _, err := tx.ExecContext(ctx, `

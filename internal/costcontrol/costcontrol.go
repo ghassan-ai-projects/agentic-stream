@@ -47,17 +47,26 @@ func requireNoActiveCostControl(ctx context.Context, tx *sql.Tx, tenantID string
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		var scopeKey string
-		var maxMicro, killSwitch int64
-		if err := rows.Scan(&scopeKey, &maxMicro, &killSwitch); err != nil {
-			return fmt.Errorf("scan %s cost ceiling: %w", scopeKey, err)
-		}
-		if maxMicro > 0 || killSwitch != 0 {
-			return fmt.Errorf("%w: cost estimate is required while aggregate cost control is active", ErrReservationRejected)
+		if err := requireInactiveCeiling(rows); err != nil {
+			return err
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("read aggregate cost ceilings: %w", err)
+	}
+	return nil
+}
+
+// requireInactiveCeiling rejects the ceiling at the cursor when it sets a
+// limit or engages the kill switch.
+func requireInactiveCeiling(rows *sql.Rows) error {
+	var scopeKey string
+	var maxMicro, killSwitch int64
+	if err := rows.Scan(&scopeKey, &maxMicro, &killSwitch); err != nil {
+		return fmt.Errorf("scan %s cost ceiling: %w", scopeKey, err)
+	}
+	if maxMicro > 0 || killSwitch != 0 {
+		return fmt.Errorf("%w: cost estimate is required while aggregate cost control is active", ErrReservationRejected)
 	}
 	return nil
 }

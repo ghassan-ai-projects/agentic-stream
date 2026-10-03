@@ -17,22 +17,27 @@ func Parse(s string) (time.Duration, error) {
 		return 0, fmt.Errorf("empty duration")
 	}
 	if strings.HasSuffix(s, "d") {
-		days, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
-		if err != nil {
-			return 0, fmt.Errorf("parse days in %q: %w", s, err)
-		}
-		if days <= 0 {
-			return 0, fmt.Errorf("duration %q must be positive", s)
-		}
-		const hoursPerDay = 24
-		if uint64(days) > uint64(math.MaxInt64)/(hoursPerDay*uint64(time.Hour)) {
-			return 0, fmt.Errorf("duration %q overflows time.Duration", s)
-		}
-		return time.Duration(days) * 24 * time.Hour, nil
+		return parseDays(s)
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil {
 		return 0, fmt.Errorf("parse duration %q: %w", s, err)
 	}
 	return d, nil
+}
+
+// parseDays parses a positive whole number of days such as "7d".
+func parseDays(s string) (time.Duration, error) {
+	days, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
+	if err != nil {
+		return 0, fmt.Errorf("parse days in %q: %w", s, err)
+	}
+	if days <= 0 {
+		return 0, fmt.Errorf("duration %q must be positive", s)
+	}
+	const hoursPerDay = 24
+	if uint64(days) > uint64(math.MaxInt64)/(hoursPerDay*uint64(time.Hour)) {
+		return 0, fmt.Errorf("duration %q overflows time.Duration", s)
+	}
+	return time.Duration(days) * 24 * time.Hour, nil
 }

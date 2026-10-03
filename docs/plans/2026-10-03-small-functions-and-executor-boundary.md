@@ -49,3 +49,11 @@ No other package is split: package count is not a quality target.
   architecture allowlist, layers, forbidden edges and reasoning-reachability
   sources include the new package. Focused race tests pass for episodes,
   executors, runtime and replay (coverage: remote 72.1%, episodes 72.7%).
+
+- Round 3 (Q2/Q7): foundation and ledger packages (`approvalledger`, `clock`,
+  `costcontrol`, `duration`, `eventschema`, `executor/conformance`, `interlock`,
+  `notifycontract`, `qualification`, `scheduleledger`, `storage`, `telemetry`,
+  `migrations`) now have no production function over 15 lines. Long SQL moved to
+  named constants; cursor loops delegate one row to a named step; the metrics
+  snapshot is a named counter table. Error text, ordering and transactions are
+  unchanged. Focused race tests and lint pass.

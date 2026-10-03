@@ -35,11 +35,8 @@ func (DurableReader) Assert(ctx context.Context, tx *sql.Tx, _ string, _ string,
 // Set changes the durable interlock state. Callers must separately fence this
 // mutation with the active runtime owner.
 func Set(ctx context.Context, tx *sql.Tx, status, reason string, version int64, now string) error {
-	if status != "ready" && status != "tripped" {
-		return fmt.Errorf("invalid interlock status %q", status)
-	}
-	if reason == "" || version < 1 || now == "" {
-		return fmt.Errorf("interlock reason, version, and timestamp are required")
+	if err := validateInterlockChange(status, reason, version, now); err != nil {
+		return err
 	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE runtime_interlock SET status = ?, reason = ?, version = ?, updated_at = ?
@@ -49,6 +46,16 @@ func Set(ctx context.Context, tx *sql.Tx, status, reason string, version int64, 
 	}
 	if count, err := result.RowsAffected(); err != nil || count != 1 {
 		return fmt.Errorf("runtime interlock row was not updated")
+	}
+	return nil
+}
+
+func validateInterlockChange(status, reason string, version int64, now string) error {
+	if status != "ready" && status != "tripped" {
+		return fmt.Errorf("invalid interlock status %q", status)
+	}
+	if reason == "" || version < 1 || now == "" {
+		return fmt.Errorf("interlock reason, version, and timestamp are required")
 	}
 	return nil
 }

@@ -36,34 +36,39 @@ type Definition struct {
 var builtins = sync.OnceValues(loadRegistry)
 
 func loadRegistry() (map[string]Definition, error) {
-	var document map[string]struct {
-		EventType     string `json:"event_type"`
-		SchemaVersion string `json:"schema_version"`
-		Fields        map[string]struct {
-			Path     string   `json:"path"`
-			Unit     string   `json:"unit"`
-			Type     string   `json:"type"`
-			Optional bool     `json:"optional"`
-			Enum     []string `json:"enum"`
-		} `json:"fields"`
-	}
+	var document map[string]registryEntry
 	if err := json.Unmarshal(registryData, &document); err != nil {
 		return nil, fmt.Errorf("decode eventschema registry data: %w", err)
 	}
 	registry := make(map[string]Definition, len(document))
-	for ref, def := range document {
-		fields := make(map[string]Field, len(def.Fields))
-		for name, field := range def.Fields {
-			fields[name] = Field{Path: field.Path, Unit: field.Unit, Type: field.Type, Optional: field.Optional, Enum: field.Enum}
-		}
-		registry[ref] = Definition{
-			Ref:           ref,
-			EventType:     def.EventType,
-			SchemaVersion: def.SchemaVersion,
-			Fields:        fields,
-		}
+	for ref, entry := range document {
+		registry[ref] = entry.definition(ref)
 	}
 	return registry, nil
+}
+
+// registryEntry is one schema in registry_data.json.
+type registryEntry struct {
+	EventType     string                   `json:"event_type"`
+	SchemaVersion string                   `json:"schema_version"`
+	Fields        map[string]registryField `json:"fields"`
+}
+
+// registryField is one payload field in registry_data.json.
+type registryField struct {
+	Path     string   `json:"path"`
+	Unit     string   `json:"unit"`
+	Type     string   `json:"type"`
+	Optional bool     `json:"optional"`
+	Enum     []string `json:"enum"`
+}
+
+func (e registryEntry) definition(ref string) Definition {
+	fields := make(map[string]Field, len(e.Fields))
+	for name, field := range e.Fields {
+		fields[name] = Field(field)
+	}
+	return Definition{Ref: ref, EventType: e.EventType, SchemaVersion: e.SchemaVersion, Fields: fields}
 }
 
 // Lookup returns a registered built-in definition.
@@ -81,28 +86,46 @@ func Lookup(ref string) (Definition, bool) {
 
 // JSON returns the structural schema for a built-in definition.
 func JSON(definition Definition) ([]byte, error) {
-	properties := make(map[string]map[string]any, len(definition.Fields))
-	required := make([]string, 0, len(definition.Fields))
-	for name, field := range definition.Fields {
-		fieldType := field.Type
-		if fieldType == "" {
-			fieldType = "number"
-		}
-		property := map[string]any{"type": fieldType}
-		if field.Enum != nil {
-			property["enum"] = field.Enum
-		}
-		properties[name] = property
-		if !field.Optional {
-			required = append(required, name)
-		}
-	}
-	sort.Strings(required)
 	result, err := json.Marshal(map[string]any{
-		"type": "object", "additionalProperties": false, "properties": properties, "required": required,
+		"type": "object", "additionalProperties": false,
+		"properties": definition.schemaProperties(), "required": definition.requiredFields(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal event schema: %w", err)
 	}
 	return result, nil
+}
+
+func (d Definition) schemaProperties() map[string]map[string]any {
+	properties := make(map[string]map[string]any, len(d.Fields))
+	for name, field := range d.Fields {
+		properties[name] = field.schemaProperty()
+	}
+	return properties
+}
+
+// requiredFields lists the non-optional field names in sorted order.
+func (d Definition) requiredFields() []string {
+	required := make([]string, 0, len(d.Fields))
+	for name, field := range d.Fields {
+		if !field.Optional {
+			required = append(required, name)
+		}
+	}
+	sort.Strings(required)
+	return required
+}
+
+// schemaProperty is the field's JSON Schema property; untyped fields are
+// numbers.
+func (f Field) schemaProperty() map[string]any {
+	fieldType := f.Type
+	if fieldType == "" {
+		fieldType = "number"
+	}
+	property := map[string]any{"type": fieldType}
+	if f.Enum != nil {
+		property["enum"] = f.Enum
+	}
+	return property
 }
