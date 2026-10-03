@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 )
 
 // SimulatedEffector is the deterministic effector used by the first live
@@ -11,41 +13,41 @@ import (
 // key.
 type SimulatedEffector struct {
 	mu      sync.Mutex
-	results map[string]Effect
+	results map[string]actionport.Effect
 }
 
 // NewSimulatedEffector creates an in-memory simulator effector.
 func NewSimulatedEffector() *SimulatedEffector {
-	return &SimulatedEffector{results: make(map[string]Effect)}
+	return &SimulatedEffector{results: make(map[string]actionport.Effect)}
 }
 
 // Dispatch applies a simulated command exactly once per
 // idempotency key. The returned result is stable across duplicate dispatches.
-func (e *SimulatedEffector) Dispatch(ctx context.Context, command Command) (Effect, error) {
+func (e *SimulatedEffector) Dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
 	return e.dispatch(ctx, command)
 }
 
 // DispatchAuthorized checks the live interlock immediately before applying
 // the simulated effect.
-func (e *SimulatedEffector) DispatchAuthorized(ctx context.Context, command Command, authorization Authorization) (Effect, error) {
+func (e *SimulatedEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
 	if authorization.Check == nil {
-		return Effect{}, fmt.Errorf("dispatch authorization is required")
+		return actionport.Effect{}, fmt.Errorf("dispatch authorization is required")
 	}
 	if err := authorization.Check(ctx); err != nil {
-		return Effect{}, err
+		return actionport.Effect{}, fmt.Errorf("%w", err)
 	}
 	return e.dispatch(ctx, command)
 }
 
-func (e *SimulatedEffector) dispatch(ctx context.Context, command Command) (Effect, error) {
+func (e *SimulatedEffector) dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
 	if err := ctx.Err(); err != nil {
-		return Effect{}, fmt.Errorf("simulated effector dispatch canceled: %w", err)
+		return actionport.Effect{}, fmt.Errorf("simulated effector dispatch canceled: %w", err)
 	}
 	if command.EffectorRoute == "" {
-		return Effect{}, fmt.Errorf("simulated effector does not support route %q", command.EffectorRoute)
+		return actionport.Effect{}, fmt.Errorf("simulated effector does not support route %q", command.EffectorRoute)
 	}
 	if command.IdempotencyKey == "" {
-		return Effect{}, fmt.Errorf("idempotency key is required")
+		return actionport.Effect{}, fmt.Errorf("idempotency key is required")
 	}
 
 	e.mu.Lock()
@@ -53,7 +55,7 @@ func (e *SimulatedEffector) dispatch(ctx context.Context, command Command) (Effe
 	if result, ok := e.results[command.IdempotencyKey]; ok {
 		return result, nil
 	}
-	result := Effect{
+	result := actionport.Effect{
 		ProviderResult: map[string]any{
 			"accepted":        true,
 			"provider":        "agentic-stream-simulator",

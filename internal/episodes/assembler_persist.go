@@ -4,13 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
-	"strings"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
 
 // Persist saves the episode request to the episodes table and marks the
@@ -24,10 +24,13 @@ func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now t
 	if err := a.reserveCost(ctx, tx, req, now); err != nil {
 		return err
 	}
-	if err := insertEpisode(ctx, tx, req, digests, now); err != nil {
-		return err
+	if err := episodeledger.Admit(ctx, tx, admittedEpisode(req, digests), now); err != nil {
+		return fmt.Errorf("%w", err)
 	}
-	return markSchedulerItemAdmitted(ctx, tx, req.SchedulerItemID, now)
+	if err := scheduleledger.MarkAdmitted(ctx, tx, req.SchedulerItemID, now); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+	return nil
 }
 
 // requestDigests are the raw provenance digests stored with an episode.
@@ -69,65 +72,6 @@ func (a *Assembler) reserveCost(ctx context.Context, tx *sql.Tx, req *Request, n
 	return nil
 }
 
-// insertEpisode admits the episode. A reconsideration that collides with a
-// live episode for its Situation reports ErrLiveEpisodeConflict.
-func insertEpisode(ctx context.Context, tx *sql.Tx, req *Request, digests requestDigests, now time.Time) error {
-	// P8: an empty dispatch policy is SHADOW — nothing enters action
-	// governance unless the spec declared active. The CHECK column stays
-	// strict (active|shadow); this is the only place a value is written.
-	dispatchPolicy := req.DispatchPolicy
-	if dispatchPolicy == "" {
-		dispatchPolicy = "shadow"
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO episodes (
-			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
-			executor_name, executor_version, model_policy, prompt_version,
-			snapshot_sha256, prompt_sha256, objective_sha256, admission_key, request_json, lifecycle_status, accepted_at,
-			dispatch_policy, policy_epoch
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admitted', ?, ?, ?)`,
-		req.EpisodeID, req.SchedulerItemID, req.TenantID, req.SituationID, req.SituationVersion,
-		req.ExecutorName, req.ExecutorVersion, req.ModelPolicy, req.PromptVersion,
-		digests.snapshot, digests.prompt, digests.objective, req.AdmissionKey, req.RequestJSON,
-		formatAcceptedAt(now),
-		dispatchPolicy, req.PolicyEpoch,
-	); err != nil {
-		if req.Kind == "reconsider" && isLiveEpisodeConstraint(err) {
-			return fmt.Errorf("insert episode: %w: %w", ErrLiveEpisodeConflict, err)
-		}
-		return fmt.Errorf("insert episode: %w", err)
-	}
-	return nil
-}
-
-// markSchedulerItemAdmitted requires the scheduler item to still be pending.
-func markSchedulerItemAdmitted(ctx context.Context, tx *sql.Tx, schedulerItemID string, now time.Time) error {
-	res, err := tx.ExecContext(ctx, `
-		UPDATE scheduler_items SET status = 'admitted', updated_at = ?
-		WHERE scheduler_item_id = ? AND status = 'pending'`,
-		now.Format(time.RFC3339Nano), schedulerItemID,
-	)
-	if err != nil {
-		return fmt.Errorf("mark scheduler item admitted: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("rows affected: %w", err)
-	}
-	if n == 0 {
-		return fmt.Errorf("scheduler item %s is no longer pending", schedulerItemID)
-	}
-	return nil
-}
-
-func isLiveEpisodeConstraint(err error) bool {
-	var sqliteErr *sqlite.Error
-	if !errors.As(err, &sqliteErr) || sqliteErr.Code() != sqlite3.SQLITE_CONSTRAINT_UNIQUE {
-		return false
-	}
-	return strings.Contains(err.Error(), "UNIQUE constraint failed: episodes.situation_id")
-}
-
 // Rebind rebuilds an admitted episode's request for the live situation version
 // (ISSUE-061). The situation advanced past the version the episode was admitted
 // under before dispatch; instead of abandoning, the request is re-pointed at the
@@ -162,4 +106,14 @@ func (a *Assembler) Rebind(ctx context.Context, tx *sql.Tx, req *Request, liveVe
 	fresh.SnapshotSHA256 = evidence.digest
 	fresh.RequestJSON = requestJSON
 	return &fresh, nil
+}
+
+// admittedEpisode binds validated digests to the durable admission record.
+func admittedEpisode(req *Request, digests requestDigests) episodeledger.Admission {
+	return episodeledger.Admission{EpisodeID: req.EpisodeID, SchedulerItemID: req.SchedulerItemID,
+		Kind: req.Kind, TenantID: req.TenantID, SituationID: req.SituationID, SituationVersion: req.SituationVersion,
+		ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion, ModelPolicy: req.ModelPolicy,
+		PromptVersion: req.PromptVersion, SnapshotSHA256: digests.snapshot, PromptSHA256: digests.prompt,
+		ObjectiveSHA256: digests.objective, AdmissionKey: req.AdmissionKey, RequestJSON: req.RequestJSON,
+		DispatchPolicy: req.DispatchPolicy, PolicyEpoch: req.PolicyEpoch}
 }

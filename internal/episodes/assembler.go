@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
@@ -15,10 +14,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
-
-// ErrLiveEpisodeConflict means a reconsideration could not be admitted
-// because another episode for the same Situation is already live.
-var ErrLiveEpisodeConflict = errors.New("one live episode per situation constraint")
 
 // Request is the durable input to an episode executor. Its persistence fields
 // map to the episodes table; RequestJSON is the canonical executor input.

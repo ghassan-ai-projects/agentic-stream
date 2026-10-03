@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -18,7 +20,7 @@ import (
 type episodeClaim struct {
 	episodeID   string
 	req         Request
-	identity    Identity
+	identity    episodeledger.Identity
 	rebindCount int
 	// rebound reports that the episode was re-bound to a newer situation
 	// version before its attempt started.
@@ -163,11 +165,7 @@ func (r *Runner) bindLiveSituation(ctx context.Context, tx *sql.Tx, claim *episo
 	if err != nil {
 		return fmt.Errorf("decode re-bound snapshot digest: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE episodes SET situation_version = ?, snapshot_sha256 = ?, request_json = ?,
-		    stale_rebind_count = stale_rebind_count + 1
-		WHERE episode_id = ?`,
-		claim.req.SituationVersion, liveHash, claim.req.RequestJSON, claim.episodeID); err != nil {
+	if err := episodeledger.Rebind(ctx, tx, claim.episodeID, claim.req.SituationVersion, liveHash, claim.req.RequestJSON); err != nil {
 		return fmt.Errorf("persist episode re-bind: %w", err)
 	}
 	// Bound == live inside this transaction (writes are serialized), so the
@@ -181,17 +179,17 @@ func (r *Runner) bindLiveSituation(ctx context.Context, tx *sql.Tx, claim *episo
 func (r *Runner) startClaimedAttempt(ctx context.Context, tx *sql.Tx, claim *episodeClaim) error {
 	claim.req.AttemptID = ""
 	attemptID := r.idGen.New(ids.PrefixAttempt)
-	var identity Identity
+	var identity episodeledger.Identity
 	var err error
 	if r.ownerEpoch != "" {
-		identity, err = StartAttemptOwned(ctx, tx, claim.episodeID, attemptID, r.ownerEpoch, r.clk.Now())
+		identity, err = episodeledger.StartAttemptOwned(ctx, tx, claim.episodeID, attemptID, r.ownerEpoch, r.clk.Now())
 	} else {
-		identity, err = StartAttempt(ctx, tx, claim.episodeID, attemptID, r.clk.Now())
+		identity, err = episodeledger.StartAttempt(ctx, tx, claim.episodeID, attemptID, r.clk.Now())
 	}
 	if err != nil {
 		return fmt.Errorf("start episode attempt: %w", err)
 	}
-	if err := TransitionAttempt(ctx, tx, identity, AttemptRunning, r.clk.Now(), nil); err != nil {
+	if err := episodeledger.TransitionAttempt(ctx, tx, identity, episodeledger.AttemptRunning, r.clk.Now(), nil); err != nil {
 		return fmt.Errorf("mark episode attempt running: %w", err)
 	}
 	claim.identity = identity
@@ -201,7 +199,7 @@ func (r *Runner) startClaimedAttempt(ctx context.Context, tx *sql.Tx, claim *epi
 	if err != nil {
 		return fmt.Errorf("bind worker identity to request: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE episodes SET request_json = ? WHERE episode_id = ?", claim.req.RequestJSON, claim.episodeID); err != nil {
+	if err := episodeledger.BindRequest(ctx, tx, claim.episodeID, claim.req.RequestJSON); err != nil {
 		return fmt.Errorf("persist worker request identity: %w", err)
 	}
 	return nil

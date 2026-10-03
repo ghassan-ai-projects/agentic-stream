@@ -8,13 +8,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 )
 
-func (d *Dispatcher) finalize(ctx context.Context, leased leasedCommand, effect Effect, dispatchErr error) error {
+func (d *Dispatcher) finalize(ctx context.Context, leased leasedCommand, effect actionport.Effect, dispatchErr error) error {
 	if err := d.db.WithTx(ctx, func(tx *sql.Tx) error {
 		return d.finalizeTx(ctx, tx, leased, effect, dispatchErr)
 	}); err != nil {
@@ -27,7 +29,7 @@ func (d *Dispatcher) finalize(ctx context.Context, leased leasedCommand, effect 
 // the lease. A late result after another worker took the lease is dropped,
 // and a result after this lease expired is recorded as unknown so the next
 // worker cannot blindly repeat the effect.
-func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCommand, effect Effect, dispatchErr error) error {
+func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCommand, effect actionport.Effect, dispatchErr error) error {
 	if err := d.assertRuntimeOwner(ctx, tx); err != nil {
 		return err
 	}
@@ -37,8 +39,8 @@ func (d *Dispatcher) finalizeTx(ctx context.Context, tx *sql.Tx, leased leasedCo
 		return err
 	}
 	if !live {
-		dispatchErr = &UnknownOutcomeError{Err: errors.New("lease expired before provider result")}
-		effect = Effect{}
+		dispatchErr = &actionport.UnknownOutcomeError{Err: errors.New("lease expired before provider result")}
+		effect = actionport.Effect{}
 		if d.telemetry != nil {
 			d.telemetry.ObserveLeaseExpiry()
 		}
@@ -86,11 +88,11 @@ type dispatchResult struct {
 	settled bool
 }
 
-func classifyDispatch(effect Effect, dispatchErr error) dispatchResult {
+func classifyDispatch(effect actionport.Effect, dispatchErr error) dispatchResult {
 	result := dispatchResult{status: "succeeded", reconciliation: "observed", commandStatus: "succeeded",
 		outboxStatus: "delivered", verificationStatus: "observed"}
 	switch {
-	case dispatchErr != nil && IsUnknownOutcome(dispatchErr):
+	case dispatchErr != nil && actionport.IsUnknownOutcome(dispatchErr):
 		result.status, result.reconciliation, result.commandStatus = "unknown", "required", "reconciling"
 		result.errorCode = "outcome_unknown"
 	case dispatchErr != nil:
@@ -130,7 +132,7 @@ func outcomeDigest(document map[string]any) ([]byte, error) {
 	return outcomeSHA, nil
 }
 
-func recordDispatchOutcome(ctx context.Context, tx *sql.Tx, leased leasedCommand, effect Effect, result dispatchResult, outcomeID string, now time.Time) ([]byte, error) {
+func recordDispatchOutcome(ctx context.Context, tx *sql.Tx, leased leasedCommand, effect actionport.Effect, result dispatchResult, outcomeID string, now time.Time) ([]byte, error) {
 	document := map[string]any{
 		"outcome_id": outcomeID, "command_id": leased.Command.CommandID,
 		"status": result.status, "observed_at": formatTime(now),

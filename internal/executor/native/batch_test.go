@@ -6,6 +6,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/conformance"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
@@ -30,7 +32,7 @@ func TestRunBatchReportsEveryCellIntentionToTreat(t *testing.T) {
 		t.Fatalf("expected 3 results, got %d", len(results))
 	}
 	for _, result := range results {
-		if result.Status != string(episodes.AttemptProduced) {
+		if result.Status != string(episodeledger.AttemptProduced) {
 			t.Fatalf("expected produced outcome for %s, got %#v", result.CellID, result)
 		}
 		if len(result.Decision) == 0 {
@@ -92,7 +94,7 @@ func TestRunBatchReportsFailedCellsIntentionToTreat(t *testing.T) {
 		t.Fatalf("expected exactly one result for one cell, got %d", len(results))
 	}
 	result := results[0]
-	if result.Status != string(episodes.AttemptFailed) {
+	if result.Status != string(episodeledger.AttemptFailed) {
 		t.Fatalf("expected AttemptFailed, got %q", result.Status)
 	}
 	if len(result.Reasons) != 1 || result.Reasons[0] != "provider_failed" {

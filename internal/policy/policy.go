@@ -5,10 +5,12 @@ package policy
 import (
 	"fmt"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // Result is the durable policy result for one Intent evaluation.
@@ -74,23 +76,23 @@ type Gateway struct {
 	policyVersion string
 	policyDigest  string
 	idGen         ids.Generator
-	owner         *storage.RuntimeOwner
+	owner         *runtimecontrol.RuntimeOwner
 	ownerEpoch    string
 	interlock     interlock.Reader
 	// P8: automatic consequential intents require an exact calibration artifact.
-	calibration *storage.CalibrationStore
+	calibration *qualification.CalibrationStore
 	// P8: decisions admitted under a killed policy epoch are refused here.
-	epochControl *storage.EpochControl
+	epochControl *runtimecontrol.EpochControl
 }
 
 // WithCalibration enables the calibration gate for automatic consequential intents.
-func (g *Gateway) WithCalibration(store *storage.CalibrationStore) *Gateway {
+func (g *Gateway) WithCalibration(store *qualification.CalibrationStore) *Gateway {
 	g.calibration = store
 	return g
 }
 
 // WithEpochControl enables the kill gate at the governance boundary.
-func (g *Gateway) WithEpochControl(control *storage.EpochControl) *Gateway {
+func (g *Gateway) WithEpochControl(control *runtimecontrol.EpochControl) *Gateway {
 	g.epochControl = control
 	return g
 }
@@ -102,7 +104,7 @@ func NewGateway(policyVersion string, idGen ids.Generator) *Gateway {
 
 // NewGatewayWithOwner creates a policy gateway that fences every mutation to
 // the active runtime lease.
-func NewGatewayWithOwner(policyVersion string, idGen ids.Generator, owner *storage.RuntimeOwner, ownerEpoch string) *Gateway {
+func NewGatewayWithOwner(policyVersion string, idGen ids.Generator, owner *runtimecontrol.RuntimeOwner, ownerEpoch string) *Gateway {
 	return newGateway(policyVersion, idGen, owner, ownerEpoch)
 }
 
@@ -138,7 +140,7 @@ func (g *Gateway) WithInterlock(reader interlock.Reader) *Gateway {
 	return g
 }
 
-func newGateway(policyVersion string, idGen ids.Generator, owner *storage.RuntimeOwner, ownerEpoch string) *Gateway {
+func newGateway(policyVersion string, idGen ids.Generator, owner *runtimecontrol.RuntimeOwner, ownerEpoch string) *Gateway {
 	if idGen == nil {
 		idGen = ids.Random()
 	}

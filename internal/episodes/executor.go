@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -40,8 +43,8 @@ type Runner struct {
 	idGen        ids.Generator
 	ownerEpoch   string
 	cost         *costcontrol.Controller
-	epochControl *storage.EpochControl
-	shadowStore  *storage.ShadowStore
+	epochControl *runtimecontrol.EpochControl
+	shadowStore  *qualification.ShadowStore
 	telemetry    *telemetry.Runtime
 	assembler    *Assembler
 }
@@ -63,14 +66,14 @@ func (r *Runner) WithCostControl(controller *costcontrol.Controller) *Runner {
 // WithEpochControl enables the P8 kill gate: every dispatch validates the
 // episode's RECORDED policy epoch against the control table, so a killed
 // epoch refuses in-flight decisions independently of the worker.
-func (r *Runner) WithEpochControl(control *storage.EpochControl) *Runner {
+func (r *Runner) WithEpochControl(control *runtimecontrol.EpochControl) *Runner {
 	r.epochControl = control
 	return r
 }
 
 // WithShadowStore enables P8 shadow scoring: shadow decisions are scored
 // and persisted to shadow_decisions (never to intents/commands).
-func (r *Runner) WithShadowStore(store *storage.ShadowStore) *Runner {
+func (r *Runner) WithShadowStore(store *qualification.ShadowStore) *Runner {
 	r.shadowStore = store
 	return r
 }

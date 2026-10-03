@@ -61,7 +61,7 @@ deduplicated reconsideration episode bound to the corrected Situation version.
 ## Source evidence
 
 - Scheduler: [`internal/cognition/`](../../internal/cognition/)
-- Episode lifecycle: [`internal/episodes/lifecycle.go`](../../internal/episodes/lifecycle.go)
+- Episode lifecycle: [`internal/episodeledger/lifecycle.go`](../../internal/episodeledger/lifecycle.go)
 - Episode assembler: [`internal/episodes/assembler.go`](../../internal/episodes/assembler.go)
 - Cancellation/recovery tests: [`internal/episodes/`](../../internal/episodes/)
 

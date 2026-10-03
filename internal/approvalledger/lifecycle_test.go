@@ -1,0 +1,146 @@
+package approvalledger
+
+import (
+	"database/sql"
+	"errors"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+)
+
+func approvalDB(t *testing.T) *storage.DB {
+	t.Helper()
+	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "approval.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	// Policy acceptance owns signature and provenance validation; isolate state and notification atomicity here.
+	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO decisions (decision_id,episode_id,attempt_id,fence,ordinal,situation_id,situation_version,raw_json,decision_sha256,validation_status,validation_json,created_at)
+ VALUES ('decision','episode','attempt',1,1,'situation',1,X'7B7D',?,'accepted',X'7B7D','now')`, make([]byte, 32)); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct {
+		id      string
+		version int
+	}{{"old", 1}, {"current", 2}, {"expired", 1}, {"denied", 1}} {
+		if _, err := db.ExecContext(t.Context(), `INSERT INTO intents (intent_id,decision_id,tenant_id,situation_id,situation_version,intent_type,risk_class,intent_json,intent_sha256,expires_at,policy_status,created_at,updated_at)
+ VALUES (?,'decision','tenant','situation',?,'review','R2',X'7B7D',?,'later','approval_required','now','now')`, item.id, item.version, make([]byte, 32)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return db
+}
+
+func TestApprovalTransitionsPreserveTerminalStateAndAssertionBinding(t *testing.T) {
+	db := approvalDB(t)
+	ctx := t.Context()
+	digest := make([]byte, 32)
+	digest[0] = 7
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		for _, id := range []string{"old", "current", "expired", "denied"} {
+			if err := Request(ctx, tx, id, id, "now", "later", []byte(`{}`), "nonce-"+id); err != nil {
+				return err
+			}
+		}
+		if err := BindAssertion(ctx, tx, "old", digest); err != nil {
+			return err
+		}
+		if err := Resolve(ctx, tx, "old", "approved", "human", "relay", "allowed", "decided"); err != nil {
+			return err
+		}
+		if err := Withdraw(ctx, tx, "old", "later"); err != nil {
+			return err
+		}
+		if err := Expire(ctx, tx, "expired", "decided"); err != nil {
+			return err
+		}
+		if err := ExpireIntent(ctx, tx, "current"); err != nil {
+			return err
+		}
+		return Withdraw(ctx, tx, "denied", "decided")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []struct{ id, status string }{{"old", "approved"}, {"current", "expired"}, {"expired", "expired"}, {"denied", "denied"}} {
+		var state string
+		if err := db.QueryRowContext(ctx, "SELECT status FROM approvals WHERE approval_id=?", want.id).Scan(&state); err != nil {
+			t.Fatal(err)
+		}
+		if state != want.status {
+			t.Fatalf("%s status=%s want=%s", want.id, state, want.status)
+		}
+	}
+	var nonce, approver, relay string
+	var bound []byte
+	if err := db.QueryRowContext(ctx, "SELECT nonce,assertion_sha256,approver_identity,relay_identity FROM approvals WHERE approval_id='old'").Scan(&nonce, &bound, &approver, &relay); err != nil {
+		t.Fatal(err)
+	}
+	if nonce != "nonce-old" || len(bound) != 32 || bound[0] != 7 || approver != "human" || relay != "relay" {
+		t.Fatalf("assertion/principal binding changed: nonce=%s digest=%x human=%s relay=%s", nonce, bound, approver, relay)
+	}
+}
+
+func TestSupersededWithdrawalAndNotificationShareTransaction(t *testing.T) {
+	db := approvalDB(t)
+	ctx := t.Context()
+	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
+	clk := clock.NewVirtual(now)
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		for _, id := range []string{"old", "current"} {
+			if err := Request(ctx, tx, id, id, "now", "later", []byte(`{}`), "nonce-"+id); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rollback := errors.New("downstream participant failed")
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := WithdrawSuperseded(ctx, tx, "situation", "tenant", 2, "withdrawn", clk); err != nil {
+			return err
+		}
+		return rollback
+	}); !errors.Is(err, rollback) {
+		t.Fatalf("withdrawal rollback: %v", err)
+	}
+	var state string
+	var count int
+	if err := db.QueryRowContext(ctx, "SELECT status FROM approvals WHERE approval_id='old'").Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "pending" {
+		t.Fatalf("withdrawal escaped rollback: %s", state)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM notifications").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatal("withdrawal notification escaped rollback")
+	}
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error { return WithdrawSuperseded(ctx, tx, "situation", "tenant", 2, "withdrawn", clk) }); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []struct{ id, status string }{{"old", "denied"}, {"current", "pending"}} {
+		if err := db.QueryRowContext(ctx, "SELECT status FROM approvals WHERE approval_id=?", want.id).Scan(&state); err != nil {
+			t.Fatal(err)
+		}
+		if state != want.status {
+			t.Fatalf("%s status=%s want=%s", want.id, state, want.status)
+		}
+	}
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM notifications").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("withdrawal notifications=%d", count)
+	}
+}

@@ -7,6 +7,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -17,14 +21,14 @@ import (
 type WatchEffector struct {
 	db         *storage.DB
 	clk        clock.Clock
-	owner      *storage.RuntimeOwner
+	owner      *runtimecontrol.RuntimeOwner
 	ownerEpoch string
 	interlock  interlock.Reader
 }
 
 // WithRuntimeOwner fences all durable watch mutations to the active runtime
 // epoch. Standalone tests may leave the owner unset.
-func (e *WatchEffector) WithRuntimeOwner(owner *storage.RuntimeOwner, epoch string) *WatchEffector {
+func (e *WatchEffector) WithRuntimeOwner(owner *runtimecontrol.RuntimeOwner, epoch string) *WatchEffector {
 	e.owner = owner
 	e.ownerEpoch = epoch
 	return e
@@ -50,31 +54,31 @@ func NewWatchEffectorWithClock(db *storage.DB, clk clock.Clock) *WatchEffector {
 }
 
 // Dispatch installs one watch condition and is idempotent by watch_id.
-func (e *WatchEffector) Dispatch(ctx context.Context, command Command) (Effect, error) {
+func (e *WatchEffector) Dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
 	return e.dispatch(ctx, command, nil)
 }
 
 // DispatchAuthorized performs the final authorization check before install.
-func (e *WatchEffector) DispatchAuthorized(ctx context.Context, command Command, authorization Authorization) (Effect, error) {
+func (e *WatchEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
 	if authorization.Check == nil {
-		return Effect{}, fmt.Errorf("dispatch authorization is required")
+		return actionport.Effect{}, fmt.Errorf("dispatch authorization is required")
 	}
 	if err := authorization.Check(ctx); err != nil {
-		return Effect{}, err
+		return actionport.Effect{}, fmt.Errorf("%w", err)
 	}
 	return e.dispatch(ctx, command, authorization.Check)
 }
 
-func (e *WatchEffector) dispatch(ctx context.Context, command Command, _ func(context.Context) error) (Effect, error) {
+func (e *WatchEffector) dispatch(ctx context.Context, command actionport.Command, _ func(context.Context) error) (actionport.Effect, error) {
 	if e == nil || e.db == nil {
-		return Effect{}, fmt.Errorf("watch effector storage is required")
+		return actionport.Effect{}, fmt.Errorf("watch effector storage is required")
 	}
 	if command.EffectorRoute != "install_watch_condition" {
-		return Effect{}, fmt.Errorf("watch effector does not support route %q", command.EffectorRoute)
+		return actionport.Effect{}, fmt.Errorf("watch effector does not support route %q", command.EffectorRoute)
 	}
 	want, err := watchConditionFromCommand(command, e.clk.Now().UTC())
 	if err != nil {
-		return Effect{}, err
+		return actionport.Effect{}, err
 	}
 	watchID := command.CommandID
 	if command.IdempotencyKey != "" {
@@ -84,9 +88,9 @@ func (e *WatchEffector) dispatch(ctx context.Context, command Command, _ func(co
 	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
 		return e.installOnce(ctx, tx, watchID, want, now)
 	}); err != nil {
-		return Effect{}, fmt.Errorf("watch condition transaction: %w", err)
+		return actionport.Effect{}, fmt.Errorf("watch condition transaction: %w", err)
 	}
-	return Effect{ProviderResult: map[string]any{"accepted": true, "watch_id": watchID}}, nil
+	return actionport.Effect{ProviderResult: map[string]any{"accepted": true, "watch_id": watchID}}, nil
 }
 
 // installOnce installs the watch, or accepts an identical earlier install of
@@ -137,7 +141,7 @@ type watchCondition struct {
 
 // watchConditionFromCommand validates a watch payload: a bounded, valid
 // expression, a target and Situation, 1-100 fires, and a future expiry.
-func watchConditionFromCommand(command Command, now time.Time) (watchCondition, error) {
+func watchConditionFromCommand(command actionport.Command, now time.Time) (watchCondition, error) {
 	condition := watchCondition{tenantID: command.TenantID}
 	condition.expression, _ = command.Payload["expression"].(string)
 	condition.target, _ = command.Payload["target"].(string)

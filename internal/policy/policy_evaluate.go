@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // EvaluateIntent runs the ordered policy gates and atomically creates either
@@ -25,7 +28,7 @@ func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID strin
 	}
 	if err := g.assertPolicyEpoch(ctx, tx, row); err != nil {
 		reason := "epoch_killed"
-		if errors.Is(err, storage.ErrEpochUnbound) {
+		if errors.Is(err, runtimecontrol.ErrEpochUnbound) {
 			reason = "epoch_unbound"
 		}
 		return g.finish(ctx, tx, row, Result{IntentID: row.IntentID, DecisionID: row.DecisionID}, "denied", reason, now)
@@ -80,7 +83,7 @@ func (g *Gateway) expireExistingApproval(ctx context.Context, tx *sql.Tx, row in
 	if err == nil && expiresAt.After(now) {
 		return result, false, nil
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE approvals SET status = 'expired' WHERE intent_id = ? AND status = 'pending'", row.IntentID); err != nil {
+	if err := approvalledger.ExpireIntent(ctx, tx, row.IntentID); err != nil {
 		return result, true, fmt.Errorf("expire approval: %w", err)
 	}
 	if err := appendApprovalResolved(ctx, tx, row, approvalID, "expired", "approval_expired", now); err != nil {
@@ -226,7 +229,7 @@ func (g *Gateway) routeIntent(ctx context.Context, tx *sql.Tx, row intentRow, in
 
 func (g *Gateway) routeConsequentialIntent(ctx context.Context, tx *sql.Tx, row intentRow, intent map[string]any, result Result, expiresAt, now time.Time) (Result, error) {
 	if g.calibration != nil && row.SituationType != "" && row.ExecutorVersion != "" {
-		if err := g.calibration.AssertCalibration(ctx, tx, storage.CalibrationArtifact{
+		if err := g.calibration.AssertCalibration(ctx, tx, qualification.CalibrationArtifact{
 			Domain: row.SituationType, ModelRevision: row.ExecutorVersion,
 		}); err == nil {
 			return g.approveAutomatic(ctx, tx, row, intent, result.WithReason("calibrated_automation"), now)

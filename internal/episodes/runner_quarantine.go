@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"log/slog"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 )
 
 // quarantineStale abandons an episode whose re-bind budget is spent.
@@ -41,11 +44,7 @@ func (r *Runner) quarantineRebindFailure(ctx context.Context, tx *sql.Tx, claim 
 	if err != nil {
 		return fmt.Errorf("marshal rebind terminal: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?,
-		    stale_rebind_count = stale_rebind_count + 1
-		WHERE episode_id = ?`,
-		r.runtimeNow(), terminal, claim.episodeID); err != nil {
+	if err := episodeledger.AbandonRebind(ctx, tx, claim.episodeID, r.runtimeNow(), terminal); err != nil {
 		return fmt.Errorf("quarantine rebind-failed episode: %w", err)
 	}
 	if r.telemetry != nil {
@@ -86,16 +85,16 @@ func (r *Runner) epochRefusal(ctx context.Context, tx *sql.Tx, policyEpoch strin
 	if r.epochControl == nil {
 		return "", nil
 	}
-	epochErr := storage.ErrEpochUnbound
+	epochErr := runtimecontrol.ErrEpochUnbound
 	if policyEpoch != "" {
 		epochErr = r.epochControl.AssertDecisionTx(ctx, tx, policyEpoch)
 	}
 	switch {
 	case epochErr == nil:
 		return "", nil
-	case errors.Is(epochErr, storage.ErrEpochUnbound):
+	case errors.Is(epochErr, runtimecontrol.ErrEpochUnbound):
 		return "epoch_unbound", nil
-	case errors.Is(epochErr, storage.ErrEpochKilled):
+	case errors.Is(epochErr, runtimecontrol.ErrEpochKilled):
 		return "epoch_killed", nil
 	default:
 		return "", fmt.Errorf("assert decision epoch: %w", epochErr)
@@ -108,10 +107,7 @@ func (r *Runner) abandonEpisode(ctx context.Context, tx *sql.Tx, episodeID strin
 	if err != nil {
 		return fmt.Errorf("marshal episode terminal: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?
-		WHERE episode_id = ?`,
-		now, terminalJSON, episodeID); err != nil {
+	if err := episodeledger.Abandon(ctx, tx, episodeID, now, terminalJSON); err != nil {
 		return fmt.Errorf("abandon episode: %w", err)
 	}
 	return nil

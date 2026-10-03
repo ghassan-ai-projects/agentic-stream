@@ -33,32 +33,13 @@ func Open(ctx context.Context, path string) (*DB, error) {
 // It is used by isolated replay so an existing database, symlink, or
 // concurrent creator cannot be mistaken for a disposable run database.
 func OpenFresh(ctx context.Context, path string) (*DB, error) {
-	reservationPath := path + ".replay-reservation"
-	if err := os.Mkdir(reservationPath, 0o700); err != nil {
-		return nil, fmt.Errorf("reserve replay directory: %w", err)
-	}
-	cleanup := func() { _ = os.Remove(reservationPath) }
-	for _, sidecar := range []string{path + "-wal", path + "-shm"} {
-		if _, err := os.Lstat(sidecar); err == nil {
-			cleanup()
-			return nil, fmt.Errorf("fresh database sidecar already exists: %s", sidecar)
-		} else if !os.IsNotExist(err) {
-			cleanup()
-			return nil, fmt.Errorf("inspect fresh database sidecar: %w", err)
-		}
-	}
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+	reservationPath, err := reserveFreshDatabase(path)
 	if err != nil {
-		cleanup()
-		return nil, fmt.Errorf("reserve fresh database path: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("close reserved database path: %w", err)
+		return nil, err
 	}
 	db, err := open(ctx, path)
 	if err != nil {
-		cleanup()
+		_ = os.Remove(reservationPath)
 		return nil, err
 	}
 	db.reservationPath = reservationPath

@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"time"
 
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -16,7 +18,7 @@ import (
 // Capability bytes are never persisted.
 type Ledger struct {
 	DB           *storage.DB
-	Owner        *storage.RuntimeOwner
+	Owner        *runtimecontrol.RuntimeOwner
 	LeaseOwner   string
 	RuntimeEpoch string
 	Lease        time.Duration

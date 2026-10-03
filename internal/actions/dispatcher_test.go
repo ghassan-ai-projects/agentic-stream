@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
@@ -37,15 +39,15 @@ type verifyingEffector struct {
 	waitForContext bool
 }
 
-func (e *verifyingEffector) Dispatch(_ context.Context, command actions.Command) (actions.Effect, error) {
+func (e *verifyingEffector) Dispatch(_ context.Context, command actionport.Command) (actionport.Effect, error) {
 	e.calls++
 	if e.unknown {
-		return actions.Effect{}, &actions.UnknownOutcomeError{Err: errors.New("provider timeout")}
+		return actionport.Effect{}, &actionport.UnknownOutcomeError{Err: errors.New("provider timeout")}
 	}
-	return actions.Effect{ProviderResult: map[string]any{"accepted": true, "target": command.NormalizedTarget}, VerificationPending: true}, nil
+	return actionport.Effect{ProviderResult: map[string]any{"accepted": true, "target": command.NormalizedTarget}, VerificationPending: true}, nil
 }
 
-func (e *verifyingEffector) VerifyDeviceCommand(ctx context.Context, _ actions.Command) (string, map[string]any, error) {
+func (e *verifyingEffector) VerifyDeviceCommand(ctx context.Context, _ actionport.Command) (string, map[string]any, error) {
 	e.verifyCalls++
 	if e.waitForContext {
 		<-ctx.Done()
@@ -59,29 +61,29 @@ type tripBeforeAcceptEffector struct {
 	calls int
 }
 
-func (e *tripBeforeAcceptEffector) Dispatch(context.Context, actions.Command) (actions.Effect, error) {
-	return actions.Effect{}, errors.New("unauthorized dispatch path")
+func (e *tripBeforeAcceptEffector) Dispatch(context.Context, actionport.Command) (actionport.Effect, error) {
+	return actionport.Effect{}, errors.New("unauthorized dispatch path")
 }
 
-func (e *tripBeforeAcceptEffector) DispatchAuthorized(ctx context.Context, command actions.Command, authorization actions.Authorization) (actions.Effect, error) {
+func (e *tripBeforeAcceptEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
 	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
 		return interlock.Set(ctx, tx, "tripped", "race stop", 2, time.Now().UTC().Format(time.RFC3339Nano))
 	}); err != nil {
-		return actions.Effect{}, fmt.Errorf("trip interlock: %w", err)
+		return actionport.Effect{}, fmt.Errorf("trip interlock: %w", err)
 	}
 	if err := authorization.Check(ctx); err != nil {
-		return actions.Effect{}, fmt.Errorf("check authorization: %w", err)
+		return actionport.Effect{}, fmt.Errorf("check authorization: %w", err)
 	}
 	e.calls++
-	return actions.Effect{ProviderResult: map[string]any{"accepted": true}}, nil
+	return actionport.Effect{ProviderResult: map[string]any{"accepted": true}}, nil
 }
 
-func (e *recordingEffector) Dispatch(_ context.Context, command actions.Command) (actions.Effect, error) {
+func (e *recordingEffector) Dispatch(_ context.Context, command actionport.Command) (actionport.Effect, error) {
 	e.calls++
 	if e.unknown {
-		return actions.Effect{}, &actions.UnknownOutcomeError{Err: errors.New("provider timeout")}
+		return actionport.Effect{}, &actionport.UnknownOutcomeError{Err: errors.New("provider timeout")}
 	}
-	return actions.Effect{
+	return actionport.Effect{
 		ProviderResult:      map[string]any{"accepted": true, "target": command.NormalizedTarget},
 		VerificationPending: e.verificationPending,
 	}, nil
@@ -625,9 +627,9 @@ func assertOutcomeNotificationAuthority(t *testing.T, db *storage.DB, eventType 
 
 type deadlineEffector struct{ calls int }
 
-func (e *deadlineEffector) Dispatch(context.Context, actions.Command) (actions.Effect, error) {
+func (e *deadlineEffector) Dispatch(context.Context, actionport.Command) (actionport.Effect, error) {
 	e.calls++
-	return actions.Effect{}, context.DeadlineExceeded
+	return actionport.Effect{}, context.DeadlineExceeded
 }
 
 func TestDispatcherTreatsProviderDeadlineAsUnknownWithoutRetry(t *testing.T) {

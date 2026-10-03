@@ -3,10 +3,11 @@ package cognition
 import (
 	"context"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"reflect"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 func (e *Engine) compilePrograms() error {

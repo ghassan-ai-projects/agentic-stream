@@ -31,6 +31,15 @@ Use this before the final answer.
 - Does the change meet every rule in [quality-bar.md](quality-bar.md) without `//nolint` for complexity or new layering exceptions?
 - Q7: does every new or changed function name its intent, do one thing at one level of abstraction, and sit below the function that calls it? Does each exported entry point read as a short sequence of domain steps?
 
+## Architecture
+
+- Do production imports remain explicitly allowed and strictly downward?
+- Are lifecycle writes performed by the owning ledger, within the original transaction?
+- Are shared handoffs limited to their producer/consumer fields and operations?
+- Can reasoning or replay reach an effect implementation transitively?
+- Is final readiness supplied by control without a dispatcher callback?
+- Does the public module map agree with the implementation and ADR-017?
+
 ## Handoff
 
 - Did you list created and updated files?

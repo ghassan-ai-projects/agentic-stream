@@ -38,9 +38,3 @@ func (r *Request) WallTimeBudget() (time.Duration, error) {
 	r.wallTimeValidated = true
 	return duration, nil
 }
-
-func formatAcceptedAt(value time.Time) string {
-	// accepted_at is ordered as SQLite TEXT. Fixed-width nanoseconds keep the
-	// durable lexical order identical to chronological order across writers.
-	return value.UTC().Format("2006-01-02T15:04:05.000000000Z")
-}

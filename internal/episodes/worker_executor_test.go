@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -168,7 +170,7 @@ func TestWorkerExecutorConsumesFencedStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if outcome.Status != string(AttemptProduced) || outcome.AttemptID != "attempt-1" || outcome.Fence != 7 || string(outcome.DecisionJSON) != `{"decision_id":"d-1"}` {
+	if outcome.Status != string(episodeledger.AttemptProduced) || outcome.AttemptID != "attempt-1" || outcome.Fence != 7 || string(outcome.DecisionJSON) != `{"decision_id":"d-1"}` {
 		t.Fatalf("unexpected outcome: %+v", outcome)
 	}
 }

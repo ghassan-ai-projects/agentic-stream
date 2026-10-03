@@ -9,11 +9,12 @@ import (
 	"fmt"
 	"time"
 
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // ReconcileUnknown closes an outcome_unknown command using independently
@@ -85,7 +86,7 @@ func verifyDeviceBinding(ctx context.Context, tx *sql.Tx, command reconcilableCo
 	if evidenceTarget, _ := evidence["target"].(string); evidenceTarget != boundTarget {
 		return fmt.Errorf("device reconciliation evidence target does not match command %q", command.commandID)
 	}
-	if err := storage.ValidateDeviceReconciliationEvidence(evidence, deviceID, bootID); err != nil {
+	if err := deviceauthority.ValidateDeviceReconciliationEvidence(evidence, deviceID, bootID); err != nil {
 		return fmt.Errorf("validate device reconciliation evidence: %w", err)
 	}
 	return nil

@@ -3,8 +3,9 @@ package episodes
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"strings"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 // executorDocument is the spec-derived executor section of every request,

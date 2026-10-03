@@ -63,3 +63,9 @@ introducing a type is warranted only when several steps share state.
 - A new package edge must follow the data flow in
   [architecture.md](architecture.md). Add it to the allowlist in
   `architecture_test.go` in the same change, with the reason in review.
+
+## Architecture ownership and directed flow
+
+Q5 is supplemented by [architecture-bar.md](architecture-bar.md), A1–A7.
+New module boundaries require explicit business ownership, lower-layer imports,
+and durable mutation ownership; passing the import allowlist alone is insufficient.

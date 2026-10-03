@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/spf13/cobra"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
@@ -41,7 +45,7 @@ func (f *liveFlags) registerShared(cmd *cobra.Command) {
 // profileOptions returns the effect-profile options with the parsed profile.
 func (f *liveFlags) profileOptions() effectProfileOptions {
 	options := f.effect
-	options.Profile = actions.EffectProfile(f.effectProfile)
+	options.Profile = device.EffectProfile(f.effectProfile)
 	return options
 }
 
@@ -63,9 +67,9 @@ func (c cleanups) run() {
 type runtimeCore struct {
 	db           *storage.DB
 	epoch        string
-	owner        *storage.RuntimeOwner
+	owner        *runtimecontrol.RuntimeOwner
 	ledger       *evidence.Ledger
-	epochControl *storage.EpochControl
+	epochControl *runtimecontrol.EpochControl
 	service      *runtime.Service
 }
 
@@ -81,9 +85,9 @@ func openRuntimeCore(ctx context.Context, dbPath string, lease time.Duration, cl
 	}
 	core := &runtimeCore{
 		db: db, epoch: epoch,
-		owner:        &storage.RuntimeOwner{DB: db, InstanceID: epoch, Lease: lease},
+		owner:        &runtimecontrol.RuntimeOwner{DB: db, InstanceID: epoch, Lease: lease},
 		ledger:       &evidence.Ledger{DB: db, LeaseOwner: epoch, RuntimeEpoch: epoch, Lease: lease},
-		epochControl: &storage.EpochControl{DB: db},
+		epochControl: &runtimecontrol.EpochControl{DB: db},
 	}
 	core.service, err = runtime.NewService(core.owner, core.ledger, epoch)
 	if err != nil {
@@ -98,8 +102,8 @@ func openRuntimeCore(ctx context.Context, dbPath string, lease time.Duration, cl
 
 // effects is the opened effect profile.
 type effects struct {
-	effector actions.Effector
-	serial   *actions.SerialEffector
+	effector actionport.Effector
+	serial   *device.SerialEffector
 }
 
 func (core *runtimeCore) openEffects(ctx context.Context, options effectProfileOptions, metrics *telemetry.Runtime, replaySource bool, cleanup *cleanups) (effects, error) {

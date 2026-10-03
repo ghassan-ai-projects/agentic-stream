@@ -8,6 +8,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
@@ -15,89 +19,15 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
-// Command is the validated, policy-approved input to an effector.
-type Command struct {
-	CommandID        string
-	IntentID         string
-	TenantID         string
-	EffectorRoute    string
-	NormalizedTarget string
-	IdempotencyKey   string
-	PolicyDigest     string
-	NotBeforeMonoUS  int64
-	Payload          map[string]any
-}
-
-// Effect is the provider response. An effector must return UnknownOutcomeError
-// when it cannot establish whether the provider applied the effect. Set
-// VerificationPending when the provider only acknowledged transport receipt;
-// independent feedback must then establish physical success.
-type Effect struct {
-	ProviderResult      map[string]any
-	ObservedEffect      map[string]any
-	VerificationPending bool
-}
-
-// Effector is the only interface allowed to cross from the action plane into
-// an external system. Implementations must honor Command.IdempotencyKey.
-type Effector interface {
-	Dispatch(context.Context, Command) (Effect, error)
-}
-
-// DeviceStateVerifier verifies a device-backed command with one fresh state
-// query. An empty final status means the command is not device-backed.
-type DeviceStateVerifier interface {
-	VerifyDeviceCommand(context.Context, Command) (finalStatus string, evidence map[string]any, err error)
-}
-
-// Authorization is the final runtime authorization check passed to a
-// concrete effector. The check must run immediately before the effect is
-// accepted by that effector.
-type Authorization struct {
-	Check func(context.Context) error
-}
-
-// AuthorizedEffector is required when the dispatcher has a live interlock.
-// It closes the validation-to-acceptance gap at the concrete effect boundary.
-type AuthorizedEffector interface {
-	Effector
-	DispatchAuthorized(context.Context, Command, Authorization) (Effect, error)
-}
-
-// UnknownOutcomeError means the request may have reached the provider, so the
-// dispatcher records reconciliation as required and never blindly retries it.
-type UnknownOutcomeError struct{ Err error }
-
-func (e *UnknownOutcomeError) Error() string {
-	if e == nil || e.Err == nil {
-		return "action outcome is unknown"
-	}
-	return "action outcome is unknown: " + e.Err.Error()
-}
-
-func (e *UnknownOutcomeError) Unwrap() error {
-	if e == nil {
-		return nil
-	}
-	return e.Err
-}
-
-// IsUnknownOutcome reports whether err requires reconciliation instead of an
-// automatic retry.
-func IsUnknownOutcome(err error) bool {
-	var unknown *UnknownOutcomeError
-	return errors.As(err, &unknown)
-}
-
 // Dispatcher leases approved command outbox rows and records durable results.
 type Dispatcher struct {
 	db           *storage.DB
-	effector     Effector
+	effector     actionport.Effector
 	clk          clock.Clock
 	idGen        ids.Generator
 	owner        string
 	leaseFor     time.Duration
-	runtimeOwner *storage.RuntimeOwner
+	runtimeOwner *runtimecontrol.RuntimeOwner
 	runtimeEpoch string
 	interlock    interlock.Reader
 	telemetry    *telemetry.Runtime
@@ -105,7 +35,7 @@ type Dispatcher struct {
 
 // WithRuntimeOwner fences dispatcher ledger mutations to the active runtime
 // lease. It returns the dispatcher for composition during startup.
-func (d *Dispatcher) WithRuntimeOwner(owner *storage.RuntimeOwner, epoch string) *Dispatcher {
+func (d *Dispatcher) WithRuntimeOwner(owner *runtimecontrol.RuntimeOwner, epoch string) *Dispatcher {
 	d.runtimeOwner = owner
 	d.runtimeEpoch = epoch
 	return d
@@ -128,7 +58,7 @@ func (d *Dispatcher) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *Dispatc
 
 // NewDispatcher creates an action dispatcher. leaseFor controls how long an
 // abandoned lease remains protected from another dispatcher.
-func NewDispatcher(db *storage.DB, effector Effector, clk clock.Clock, idGen ids.Generator, owner string, leaseFor time.Duration) *Dispatcher {
+func NewDispatcher(db *storage.DB, effector actionport.Effector, clk clock.Clock, idGen ids.Generator, owner string, leaseFor time.Duration) *Dispatcher {
 	if clk == nil {
 		clk = clock.Physical()
 	}
@@ -146,7 +76,7 @@ func NewDispatcher(db *storage.DB, effector Effector, clk clock.Clock, idGen ids
 
 type leasedCommand struct {
 	OutboxID    int64
-	Command     Command
+	Command     actionport.Command
 	CommandJSON []byte
 	CommandSHA  []byte
 	LeaseOwner  string
@@ -163,10 +93,10 @@ func (d *Dispatcher) DispatchOnce(ctx context.Context) (bool, error) {
 		return found, err
 	}
 	if d.effector == nil {
-		return true, d.finalize(ctx, leased, Effect{}, errors.New("no effector configured"))
+		return true, d.finalize(ctx, leased, actionport.Effect{}, errors.New("no effector configured"))
 	}
 	if err := d.revalidateAuthorization(ctx, leased); err != nil {
-		return true, d.finalize(ctx, leased, Effect{}, fmt.Errorf("authorization revalidation failed: %w", err))
+		return true, d.finalize(ctx, leased, actionport.Effect{}, fmt.Errorf("authorization revalidation failed: %w", err))
 	}
 	callCtx, cancel := d.dispatchContext(ctx)
 	defer cancel()
@@ -183,26 +113,24 @@ func (d *Dispatcher) dispatchContext(ctx context.Context) (context.Context, cont
 
 func (d *Dispatcher) dispatchLeasedCommand(ctx, callCtx context.Context, leased leasedCommand) error {
 	if d.interlock != nil {
-		guarded, ok := d.effector.(AuthorizedEffector)
+		guarded, ok := d.effector.(actionport.AuthorizedEffector)
 		if !ok {
-			return d.finalize(ctx, leased, Effect{}, errors.New("configured effector does not enforce dispatch authorization"))
+			return d.finalize(ctx, leased, actionport.Effect{}, errors.New("configured effector does not enforce dispatch authorization"))
 		}
-		effect, dispatchErr := guarded.DispatchAuthorized(callCtx, leased.Command, Authorization{Check: func(checkCtx context.Context) error {
-			return d.assertInterlock(checkCtx, leased.Command)
-		}})
+		effect, dispatchErr := guarded.DispatchAuthorized(callCtx, leased.Command, runtimecontrol.NewDispatchAuthorization(d.db, d.interlock, leased.Command.TenantID, leased.Command.NormalizedTarget))
 		if errors.Is(dispatchErr, context.DeadlineExceeded) {
-			dispatchErr = &UnknownOutcomeError{Err: dispatchErr}
+			dispatchErr = &actionport.UnknownOutcomeError{Err: dispatchErr}
 		}
 		return d.finalizeDispatch(ctx, callCtx, leased, effect, dispatchErr)
 	}
 	effect, dispatchErr := d.effector.Dispatch(callCtx, leased.Command)
 	if errors.Is(dispatchErr, context.DeadlineExceeded) {
-		dispatchErr = &UnknownOutcomeError{Err: dispatchErr}
+		dispatchErr = &actionport.UnknownOutcomeError{Err: dispatchErr}
 	}
 	return d.finalizeDispatch(ctx, callCtx, leased, effect, dispatchErr)
 }
 
-func (d *Dispatcher) finalizeDispatch(ctx, verifyCtx context.Context, leased leasedCommand, effect Effect, dispatchErr error) error {
+func (d *Dispatcher) finalizeDispatch(ctx, verifyCtx context.Context, leased leasedCommand, effect actionport.Effect, dispatchErr error) error {
 	check := d.verifyDevice(verifyCtx, leased, effect, dispatchErr)
 	if err := d.finalize(ctx, leased, check.effect, check.dispatchErr); err != nil {
 		return err
@@ -216,7 +144,7 @@ func (d *Dispatcher) finalizeDispatch(ctx, verifyCtx context.Context, leased lea
 // deviceCheck is a dispatch result after independent device-state
 // verification.
 type deviceCheck struct {
-	effect      Effect
+	effect      actionport.Effect
 	dispatchErr error
 	finalStatus string
 	evidence    map[string]any
@@ -226,16 +154,16 @@ type deviceCheck struct {
 // reconcilesUnknown reports whether verification settled an outcome the
 // transport left unknown.
 func (c deviceCheck) reconcilesUnknown() bool {
-	return IsUnknownOutcome(c.dispatchErr) && c.finalStatus != "" && c.verifyErr == nil
+	return actionport.IsUnknownOutcome(c.dispatchErr) && c.finalStatus != "" && c.verifyErr == nil
 }
 
 // verifyDevice reads the device state after a successful or unknown dispatch
 // when the effector can verify it. A verification error makes a successful
 // dispatch unknown, and a failed verification makes it failed.
-func (d *Dispatcher) verifyDevice(ctx context.Context, leased leasedCommand, effect Effect, dispatchErr error) deviceCheck {
+func (d *Dispatcher) verifyDevice(ctx context.Context, leased leasedCommand, effect actionport.Effect, dispatchErr error) deviceCheck {
 	check := deviceCheck{effect: effect, dispatchErr: dispatchErr}
-	verifier, canVerify := d.effector.(DeviceStateVerifier)
-	if !canVerify || (dispatchErr != nil && !IsUnknownOutcome(dispatchErr)) {
+	verifier, canVerify := d.effector.(actionport.DeviceStateVerifier)
+	if !canVerify || (dispatchErr != nil && !actionport.IsUnknownOutcome(dispatchErr)) {
 		return check
 	}
 	check.finalStatus, check.evidence, check.verifyErr = verifier.VerifyDeviceCommand(ctx, leased.Command)
@@ -248,7 +176,7 @@ func (d *Dispatcher) verifyDevice(ctx context.Context, leased leasedCommand, eff
 	switch {
 	case check.verifyErr != nil:
 		check.effect.VerificationPending = false
-		check.dispatchErr = &UnknownOutcomeError{Err: fmt.Errorf("verify device state: %w", check.verifyErr)}
+		check.dispatchErr = &actionport.UnknownOutcomeError{Err: fmt.Errorf("verify device state: %w", check.verifyErr)}
 	case check.finalStatus != "":
 		check.effect.VerificationPending = false
 		if check.finalStatus == "failed" {
@@ -256,18 +184,6 @@ func (d *Dispatcher) verifyDevice(ctx context.Context, leased leasedCommand, eff
 		}
 	}
 	return check
-}
-
-func (d *Dispatcher) assertInterlock(ctx context.Context, command Command) error {
-	if err := d.db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := d.interlock.Assert(ctx, tx, command.TenantID, command.NormalizedTarget, ""); err != nil {
-			return fmt.Errorf("dispatch interlock assertion: %w", err)
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("assert dispatch interlock: %w", err)
-	}
-	return nil
 }
 
 func (d *Dispatcher) assertRuntimeOwner(ctx context.Context, tx *sql.Tx) error {

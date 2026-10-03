@@ -4,11 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
-	"time"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 )
 
 func (r *Runner) persistValidatedIntents(ctx context.Context, tx *sql.Tx, validated *decisions.Result, req *Request, now string) error {
@@ -56,24 +57,24 @@ func (r *Runner) recordShadow(ctx context.Context, tx *sql.Tx, decisionID string
 			highest = intent
 		}
 	}
-	var score storage.ShadowScore
+	var score qualification.ShadowScore
 	var reason string
 	switch highest.RiskClass {
 	case "R0", "R1":
-		score = storage.ShadowWouldApprove
+		score = qualification.ShadowWouldApprove
 		reason = "would_approve_" + highest.RiskClass
 	case "R2":
-		score = storage.ShadowWouldRequireApproval
+		score = qualification.ShadowWouldRequireApproval
 		reason = "would_require_approval_r2"
 	default:
-		score = storage.ShadowWouldDeny
+		score = qualification.ShadowWouldDeny
 		reason = "would_deny_" + highest.RiskClass
 	}
 	decisionSHA := decisionDigest
 	if r.shadowStore == nil {
 		return fmt.Errorf("shadow dispatch but no shadow store configured — scores would be silently dropped")
 	}
-	shadow := storage.ShadowDecision{
+	shadow := qualification.ShadowDecision{
 		ShadowDecisionID: r.idGen.New(ids.PrefixShadow),
 		EpisodeID:        req.EpisodeID,
 		DecisionID:       decisionID,

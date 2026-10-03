@@ -39,17 +39,25 @@ func RetrySQLiteBusy(ctx context.Context, fn func() error) error {
 			return err
 		}
 
-		delay := sqliteRetryInitialDelay << attempt
-		if delay > sqliteRetryMaximumDelay {
-			delay = sqliteRetryMaximumDelay
-		}
-		timer := time.NewTimer(delay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return fmt.Errorf("wait for sqlite retry: %w", ctx.Err())
-		case <-timer.C:
+		if err := waitForSQLiteRetry(ctx, attempt); err != nil {
+			return err
 		}
 	}
 	return err
+}
+
+// waitForSQLiteRetry bounds backoff and lets cancellation interrupt the wait.
+func waitForSQLiteRetry(ctx context.Context, attempt int) error {
+	delay := sqliteRetryInitialDelay << attempt
+	if delay > sqliteRetryMaximumDelay {
+		delay = sqliteRetryMaximumDelay
+	}
+	timer := time.NewTimer(delay)
+	select {
+	case <-ctx.Done():
+		timer.Stop()
+		return fmt.Errorf("wait for sqlite retry: %w", ctx.Err())
+	case <-timer.C:
+		return nil
+	}
 }

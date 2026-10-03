@@ -3,6 +3,10 @@ package runtime
 import (
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
@@ -12,7 +16,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func pipelineDefaults(cfg PipelineConfig) PipelineConfig {
@@ -34,7 +37,7 @@ func pipelineDefaults(cfg PipelineConfig) PipelineConfig {
 	return cfg
 }
 
-func composeEffectors(cfg PipelineConfig) (actions.Effector, *actions.WatchEffector) {
+func composeEffectors(cfg PipelineConfig) (actionport.Effector, *actions.WatchEffector) {
 	watch := actions.NewWatchEffectorWithClock(cfg.DB, cfg.Clock)
 	watch.WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch)
 	watch.WithInterlock(interlock.DurableReader{})
@@ -42,8 +45,10 @@ func composeEffectors(cfg PipelineConfig) (actions.Effector, *actions.WatchEffec
 	if serialEffector != nil {
 		serialEffector.WithTelemetry(cfg.Telemetry)
 	}
-	compositeEffector := actions.NewCompositeEffector(watch, cfg.Effector)
-	compositeEffector.WithSerial(serialEffector)
+	compositeEffector := NewCompositeEffector(watch, cfg.Effector)
+	if serialEffector != nil {
+		compositeEffector.WithSerial(serialEffector)
+	}
 	return compositeEffector, watch
 }
 
@@ -77,7 +82,7 @@ func composeCognition(cfg PipelineConfig) (*episodes.Assembler, *episodes.Runner
 	runner.WithAssembler(assembler)
 	runner.WithCostControl(&costcontrol.Controller{})
 	runner.WithEpochControl(cfg.EpochControl)
-	runner.WithShadowStore(&storage.ShadowStore{DB: cfg.DB})
+	runner.WithShadowStore(&qualification.ShadowStore{DB: cfg.DB})
 	runner.WithTelemetry(cfg.Telemetry)
 	return assembler, runner
 }
@@ -85,7 +90,7 @@ func composeCognition(cfg PipelineConfig) (*episodes.Assembler, *episodes.Runner
 func composePolicy(cfg PipelineConfig) *policy.Gateway {
 	policyGateway := policy.NewGatewayWithOwner(cfg.Spec.Digest, cfg.IDGenerator, cfg.Owner, cfg.OwnerEpoch)
 	policyGateway.WithInterlock(interlock.DurableReader{})
-	policyGateway.WithCalibration(&storage.CalibrationStore{DB: cfg.DB})
+	policyGateway.WithCalibration(&qualification.CalibrationStore{DB: cfg.DB})
 	policyGateway.WithEpochControl(cfg.EpochControl)
 	return policyGateway
 }

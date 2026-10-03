@@ -8,6 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -281,7 +285,7 @@ func TestP8KillCancelsInFlightAndRefusesItsDecision(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	control := &storage.EpochControl{DB: db}
+	control := &runtimecontrol.EpochControl{DB: db}
 	seedFreshnessEpisode(t, db, "epi-hostile", "sit-hostile", 1, 1)
 	if _, err := db.ExecContext(context.Background(),
 		"UPDATE episodes SET policy_epoch = 'epoch-hostile' WHERE episode_id = 'epi-hostile'"); err != nil {
@@ -318,8 +322,8 @@ func TestP8KillCancelsInFlightAndRefusesItsDecision(t *testing.T) {
 		"SELECT status FROM episode_attempts WHERE episode_id = 'epi-hostile'").Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if status != string(episodes.AttemptCancelled) {
-		t.Fatalf("in-flight attempt status = %q, want %q", status, episodes.AttemptCancelled)
+	if status != string(episodeledger.AttemptCancelled) {
+		t.Fatalf("in-flight attempt status = %q, want %q", status, episodeledger.AttemptCancelled)
 	}
 	var decisions int
 	if err := db.QueryRowContext(context.Background(),

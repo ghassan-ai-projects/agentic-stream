@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
@@ -22,7 +24,7 @@ func applyPairedShadow(ctx context.Context, db *storage.DB, tenantID string, cap
 	if err != nil {
 		return err
 	}
-	store := storage.ShadowComparisonStore{}
+	store := qualification.ShadowComparisonStore{}
 	for _, item := range items {
 		input, err := loadShadowInput(ctx, db, item, tenantID, compiled.Digest, validation.policyDigest, evaluationTime)
 		if err != nil {

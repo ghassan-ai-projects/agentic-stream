@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -104,7 +106,7 @@ type recordingDeclinedExecutor struct {
 
 func (e *recordingDeclinedExecutor) Execute(_ context.Context, req *Request) (*Outcome, error) {
 	e.episodeIDs = append(e.episodeIDs, req.EpisodeID)
-	return &Outcome{Status: string(AttemptDeclined), AttemptID: req.AttemptID, Fence: req.Fence}, nil
+	return &Outcome{Status: string(episodeledger.AttemptDeclined), AttemptID: req.AttemptID, Fence: req.Fence}, nil
 }
 
 var _ Executor = (*recordingDeclinedExecutor)(nil)

@@ -13,14 +13,28 @@ historical design map where the code has chosen a more specific package name.
 | `internal/operators/` | aggregates, slopes, missing-heartbeat and related features |
 | `internal/situations/` | Situation state and immutable versions |
 | `internal/cognition/` | scheduler, trigger evaluation, reconsideration |
-| `internal/episodes/` | requests, lifecycle, workers, budgets, fencing, recovery |
+| `internal/episodes/` | request assembly, bounded execution, workers and budgets |
 | `internal/evidence/` | capability tokens, evidence server, call ledger |
 | `internal/decisions/` | Decision and Intent validation |
 | `internal/policy/` | deterministic governance and approvals |
 | `internal/actions/` | outbox dispatcher and effectors |
+| `internal/actionport/` | approved command/effect contracts |
+| `internal/device/` | concrete device sessions, materialization and gateway transport |
+| `internal/episodeledger/` | durable episode/attempt lifecycle, fencing and recovery |
+| `internal/scheduleledger/` | durable queue identity, admission and coalescing |
+| `internal/approvalledger/` | human approval lifecycle and supersession notification |
+| `internal/control/` | runtime ownership, epoch control and readiness capability |
+| `internal/authority/` | device target claims, bindings, reconciliation and safety evidence |
+| `internal/qualification/` | calibration and shadow evidence |
+| `internal/costcontrol/` | reservation, bounded usage and settlement |
+| `internal/interlock/` | durable readiness state and read-only assertions |
+| `internal/notifycontract/` | versioned notification names and metadata |
+| `internal/canonicaljson/`, `internal/clock/`, `internal/duration/`, `internal/ids/` | deterministic digest, time, duration and identity primitives |
+| `internal/executor/native/`, `internal/executor/conformance/`, `internal/worker/` | native executor, worker qualification and protocol transport |
+| `internal/soak/`, `internal/runartifact/` | bounded operational evidence and immutable artifact verification |
 | `internal/replay/` | effect-safe replay modes |
-| `internal/runtime/` | service, pipeline, ownership, recovery, worker composition |
-| `internal/storage/` | SQLite wrapper and runtime state |
+| `internal/runtime/` | service/pipeline orchestration, recovery and concrete composition |
+| `internal/storage/` | SQLite infrastructure, migrations and transactions |
 | `internal/contractsv1/` | versioned envelope/schema contracts |
 | `internal/telemetry/` | OpenTelemetry and runtime metrics |
 | `internal/api/` and `internal/notify/` | HTTP, health, SSE, notifications, controls |
@@ -49,5 +63,6 @@ versioned JSON contracts, and current-v1 worker protocol.
 ## Next reads
 
 - [Architecture overview](overview.md)
+- [Business modules and ownership](modules.md)
 - [Contract index](../contracts/README.md)
 - [Contributing](../../CONTRIBUTING.md)

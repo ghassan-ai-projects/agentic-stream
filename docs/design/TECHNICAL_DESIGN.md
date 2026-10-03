@@ -198,6 +198,18 @@ type Effector interface {
 SQLite repositories are concrete implementations behind transaction-scoped
 methods, not one interface per table.
 
+### 6.1.1 Business ownership refinement (ADR-017)
+
+The implementation further separates `actionport` (approved effect contracts),
+`device` (concrete gateway adapters), `control` (runtime ownership and epoch
+control), `authority` (device authority/reconciliation/safety), `qualification`
+(calibration and shadow evidence), `episodeledger` (episode/attempt lifecycle),
+`scheduleledger` (queue lifecycle), and `approvalledger` (approval lifecycle). `storage` owns SQLite infrastructure only.
+`runtime`/`cmd` wire concrete adapters; domain packages consume downward contracts.
+All ledger operations share the original transaction. See
+[ADR-017](DECISIONS.md#adr-017-business-ownership-and-directed-module-boundaries)
+and the [architecture bar](../../.agents/context/architecture-bar.md).
+
 ### 6.2 Process model
 
 The main binary owns:

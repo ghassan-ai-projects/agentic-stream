@@ -3,14 +3,16 @@ package soak_test
 import (
 	"testing"
 
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/soak"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestComputePassesCompletePhysicalTransitions(t *testing.T) {
 	db, _ := openSoakDB(t)
-	ledger := &storage.SafetyLedger{DB: db}
-	if err := ledger.Record(t.Context(), storage.SafetyEvent{Type: "physical_transition", Target: "fan-01", Details: completeEvidence()}); err != nil {
+	ledger := &deviceauthority.SafetyLedger{DB: db}
+	if err := ledger.Record(t.Context(), deviceauthority.SafetyEvent{Type: "physical_transition", Target: "fan-01", Details: completeEvidence()}); err != nil {
 		t.Fatal(err)
 	}
 	report, err := soak.Compute(t.Context(), db)
@@ -45,8 +47,8 @@ func TestComputeFailsUnresolvedActionOutcome(t *testing.T) {
 
 func TestComputeFailsAnyZeroToleranceEventOrIncompleteEvidence(t *testing.T) {
 	db, _ := openSoakDB(t)
-	ledger := &storage.SafetyLedger{DB: db}
-	for _, event := range []storage.SafetyEvent{
+	ledger := &deviceauthority.SafetyLedger{DB: db}
+	for _, event := range []deviceauthority.SafetyEvent{
 		{Type: "unsafe_output", Target: "fan-01"},
 		{Type: "physical_transition", Target: "fan-01", Details: map[string]any{"evidence_complete": false}},
 	} {

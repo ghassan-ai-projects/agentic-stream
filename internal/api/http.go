@@ -27,29 +27,35 @@ type Problem struct {
 // the owning service boundary.
 func NewHealthHandler(readiness Readiness) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health/live", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "live"})
-	})
+	mux.HandleFunc("/health/live", serveLiveness)
 	mux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		if readiness == nil {
-			writeProblem(w, r, http.StatusServiceUnavailable, "runtime is not configured")
-			return
-		}
-		if err := readiness.Ready(); err != nil {
-			writeProblem(w, r, http.StatusServiceUnavailable, "runtime is not ready")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+		serveReadiness(w, r, readiness)
 	})
 	return mux
+}
+
+func serveLiveness(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "live"})
+}
+
+func serveReadiness(w http.ResponseWriter, r *http.Request, readiness Readiness) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if readiness == nil {
+		writeProblem(w, r, http.StatusServiceUnavailable, "runtime is not configured")
+		return
+	}
+	if err := readiness.Ready(); err != nil {
+		writeProblem(w, r, http.StatusServiceUnavailable, "runtime is not ready")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
 func writeProblem(w http.ResponseWriter, r *http.Request, status int, detail string) {

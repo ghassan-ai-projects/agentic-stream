@@ -36,6 +36,7 @@ before building on it.
 ### I want to understand it
 
 - [Architecture overview](architecture/overview.md)
+- [Business modules and ownership](architecture/modules.md)
 - [Durability and recovery](architecture/durability.md)
 - [Worker boundary](architecture/worker-boundary.md)
 - [Security model](architecture/security-model.md)
