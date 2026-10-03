@@ -78,23 +78,29 @@ func (i *Issuer) Issue(scope Scope) ([]byte, error) {
 // token ID, issuer, audience) and requires a complete scope whose lifetime is
 // within the maximum and not yet over.
 func (i *Issuer) completeScope(scope Scope, now time.Time) (Scope, error) {
-	if scope.IssuedAt.IsZero() {
-		scope.IssuedAt = now
+	maxTTL := cmp.Or(i.MaxTTL, defaultCapabilityTTL)
+	scope, err := prepareScope(scope, now, maxTTL)
+	if err != nil {
+		return Scope{}, err
 	}
-	if scope.NotBefore.IsZero() {
-		scope.NotBefore = now
+	scope.Issuer = cmp.Or(scope.Issuer, i.Issuer)
+	scope.Audience = cmp.Or(scope.Audience, i.Audience)
+	if err := checkIssuable(scope, now, maxTTL); err != nil {
+		return Scope{}, err
 	}
+	return scope, nil
+}
+
+// prepareScope requires a trace, defaults the validity window (the token is
+// an episode-attempt capability, not a durable credential), assigns a token
+// ID and validates the scope.
+func prepareScope(scope Scope, now time.Time, maxTTL time.Duration) (Scope, error) {
 	if scope.Traceparent == "" {
 		return Scope{}, fmt.Errorf("traceparent is required")
 	}
-	maxTTL := i.MaxTTL
-	if maxTTL == 0 {
-		maxTTL = defaultCapabilityTTL
-	}
-	if scope.ExpiresAt.IsZero() {
-		// The token is an episode-attempt capability, not a durable credential.
-		scope.ExpiresAt = scope.IssuedAt.Add(maxTTL)
-	}
+	scope.IssuedAt = timeOr(scope.IssuedAt, now)
+	scope.NotBefore = timeOr(scope.NotBefore, now)
+	scope.ExpiresAt = timeOr(scope.ExpiresAt, scope.IssuedAt.Add(maxTTL))
 	var err error
 	if scope.TokenID, err = tokenID(scope.TokenID); err != nil {
 		return Scope{}, err
@@ -102,18 +108,22 @@ func (i *Issuer) completeScope(scope Scope, now time.Time) (Scope, error) {
 	if err := validateScope(scope); err != nil {
 		return Scope{}, err
 	}
-	scope.Issuer = cmp.Or(scope.Issuer, i.Issuer)
-	scope.Audience = cmp.Or(scope.Audience, i.Audience)
+	return scope, nil
+}
+
+// checkIssuable requires an issuer and audience and a lifetime that is
+// within the maximum and not already over.
+func checkIssuable(scope Scope, now time.Time, maxTTL time.Duration) error {
 	if scope.Issuer == "" || scope.Audience == "" {
-		return Scope{}, fmt.Errorf("issuer and audience are required")
+		return fmt.Errorf("issuer and audience are required")
 	}
 	if scope.ExpiresAt.Sub(scope.IssuedAt) > maxTTL {
-		return Scope{}, fmt.Errorf("capability token lifetime exceeds maximum")
+		return fmt.Errorf("capability token lifetime exceeds maximum")
 	}
 	if !scope.ExpiresAt.After(now) {
-		return Scope{}, fmt.Errorf("capability token is already expired")
+		return fmt.Errorf("capability token is already expired")
 	}
-	return scope, nil
+	return nil
 }
 
 // signToken encodes the scope's claims and signs version, key ID, and claims
@@ -248,4 +258,12 @@ func NewRuntimeEpoch() (string, error) {
 		return "", fmt.Errorf("generate runtime epoch: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
+}
+
+// timeOr returns value unless it is the zero time.
+func timeOr(value, fallback time.Time) time.Time {
+	if value.IsZero() {
+		return fallback
+	}
+	return value
 }

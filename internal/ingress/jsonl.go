@@ -69,17 +69,24 @@ func (c *JSONLReplay) Run(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("load checkpoint: %w", err)
 	}
 	batch := envelopeBatch{log: c.log, tenantID: c.tenantID}
-	lineNum, err := c.ingestLines(ctx, f, startLine, &batch)
+	err = c.ingestAndCheckpoint(ctx, f, startLine, &batch)
+	return batch.appended, err
+}
+
+// ingestAndCheckpoint ingests the lines after startLine, flushes the final
+// batch and records the last line read.
+func (c *JSONLReplay) ingestAndCheckpoint(ctx context.Context, f io.Reader, startLine int, batch *envelopeBatch) error {
+	lineNum, err := c.ingestLines(ctx, f, startLine, batch)
 	if err != nil {
-		return batch.appended, err
+		return err
 	}
 	if err := batch.flush(ctx); err != nil {
-		return batch.appended, err
+		return err
 	}
 	if err := c.saveCheckpoint(ctx, lineNum); err != nil {
-		return batch.appended, fmt.Errorf("save checkpoint: %w", err)
+		return fmt.Errorf("save checkpoint: %w", err)
 	}
-	return batch.appended, nil
+	return nil
 }
 
 // ingestLines admits every line after startLine into the batch and returns
@@ -98,21 +105,27 @@ func (c *JSONLReplay) ingestLines(ctx context.Context, f io.Reader, startLine in
 			return lineNum, fmt.Errorf("read trace file: %w", err)
 		}
 		lineNum++
-		if lineNum <= startLine {
-			continue
-		}
-		// The reader keeps the line terminator; strip it so payloads and
-		// quarantine records match the terminator-free line content.
-		env, admitted, err := c.admitLine(ctx, bytes.TrimRight(line, "\r\n"), lineNum, tooLarge)
-		if err != nil {
-			return lineNum, fmt.Errorf("quarantine line %d: %w", lineNum, err)
-		}
-		if admitted {
-			if err := batch.add(ctx, env); err != nil {
-				return lineNum, err
-			}
+		if err := c.ingestLine(ctx, line, lineNum, startLine, tooLarge, batch); err != nil {
+			return lineNum, err
 		}
 	}
+}
+
+// ingestLine admits a line after the checkpoint into the batch. The reader
+// keeps the line terminator; it is stripped so payloads and quarantine
+// records match the terminator-free line content.
+func (c *JSONLReplay) ingestLine(ctx context.Context, line []byte, lineNum, startLine int, tooLarge bool, batch *envelopeBatch) error {
+	if lineNum <= startLine {
+		return nil
+	}
+	env, admitted, err := c.admitLine(ctx, bytes.TrimRight(line, "\r\n"), lineNum, tooLarge)
+	if err != nil {
+		return fmt.Errorf("quarantine line %d: %w", lineNum, err)
+	}
+	if !admitted {
+		return nil
+	}
+	return batch.add(ctx, env)
 }
 
 // admitLine parses and validates one trace line. Blank lines are skipped, and
@@ -126,20 +139,20 @@ func (c *JSONLReplay) admitLine(ctx context.Context, line []byte, lineNum int, t
 	if len(bytes.TrimSpace(line)) == 0 {
 		return contractsv1.Envelope{}, false, nil
 	}
-	var env contractsv1.Envelope
-	if err := json.Unmarshal(line, &env); err != nil {
-		return contractsv1.Envelope{}, false, quarantined("malformed_json", c.log.QuarantineRaw(ctx, c.tenantID, c.quarantineID(lineNum), line, "malformed_json", now))
+	verdict := admitEnvelopeLine(ctx, c.log, c.tenantID, line)
+	if verdict.reason == "" {
+		return verdict.env, true, nil
 	}
-	if env.TenantID == "" {
-		env.TenantID = c.tenantID
+	return contractsv1.Envelope{}, false, quarantined(verdict.reason, c.quarantine(ctx, verdict, line, lineNum, now))
+}
+
+// quarantine records a rejected line, as its envelope when it decoded and as
+// raw bytes otherwise.
+func (c *JSONLReplay) quarantine(ctx context.Context, verdict lineVerdict, line []byte, lineNum int, now string) error {
+	if verdict.decoded {
+		return c.log.QuarantineEnvelope(ctx, c.tenantID, verdict.env, verdict.reason, now) //nolint:wrapcheck // quarantined labels the failure.
 	}
-	if err := contractsv1.ValidateEnvelope(env, c.tenantID); err != nil {
-		return contractsv1.Envelope{}, false, quarantined("envelope_invalid", c.log.QuarantineEnvelope(ctx, c.tenantID, env, "envelope_invalid", now))
-	}
-	if err := c.log.ValidateEnvelope(ctx, env); err != nil {
-		return contractsv1.Envelope{}, false, quarantined("schema_invalid", c.log.QuarantineEnvelope(ctx, c.tenantID, env, "schema_invalid", now))
-	}
-	return env, true, nil
+	return c.log.QuarantineRaw(ctx, c.tenantID, c.quarantineID(lineNum), line, verdict.reason, now) //nolint:wrapcheck // quarantined labels the failure.
 }
 
 // quarantined labels a failed quarantine write with its reason.
@@ -173,22 +186,27 @@ func readBoundedLine(r *bufio.Reader, max int) ([]byte, bool, error) {
 	for {
 		part, err := r.ReadSlice('\n')
 		line, over = appendBounded(line, part, max, over)
-		switch {
-		case err == nil:
-			// The newline was found and consumed; the line is complete.
-			return line, over, nil
-		case errors.Is(err, bufio.ErrBufferFull):
-			if over {
-				return line, true, skipOverlongRemainder(r)
-			}
-		case errors.Is(err, io.EOF):
-			if len(line) > 0 || over {
-				return line, over, nil
-			}
-			return nil, false, io.EOF
-		default:
-			return line, over, fmt.Errorf("read line: %w", err)
+		if !errors.Is(err, bufio.ErrBufferFull) {
+			return finishBoundedLine(line, over, err)
 		}
+		if over {
+			return line, true, skipOverlongRemainder(r)
+		}
+	}
+}
+
+// finishBoundedLine completes a line at a newline or at end of input; io.EOF
+// is returned only when no bytes remained.
+func finishBoundedLine(line []byte, over bool, err error) ([]byte, bool, error) {
+	switch {
+	case err == nil:
+		return line, over, nil
+	case errors.Is(err, io.EOF) && (len(line) > 0 || over):
+		return line, over, nil
+	case errors.Is(err, io.EOF):
+		return nil, false, io.EOF
+	default:
+		return line, over, fmt.Errorf("read line: %w", err)
 	}
 }
 
@@ -254,19 +272,19 @@ func (c *JSONLReplay) saveCheckpoint(ctx context.Context, lastLine int) error {
 		return fmt.Errorf("marshal checkpoint: %w", err)
 	}
 	now := c.clk.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := c.db.ExecContext(ctx, `
+	if _, err := c.db.ExecContext(ctx, upsertReplayCheckpointSQL, c.connectorID, cp.Version, blob, now); err != nil {
+		return fmt.Errorf("upsert checkpoint: %w", err)
+	}
+	return nil
+}
+
+const upsertReplayCheckpointSQL = `
 		INSERT INTO connector_checkpoints (connector_id, connector_kind, checkpoint_version, checkpoint_blob, updated_at)
 		VALUES (?, 'jsonl-replay', ?, ?, ?)
 		ON CONFLICT(connector_id)
 		DO UPDATE SET checkpoint_version = excluded.checkpoint_version,
 		              checkpoint_blob = excluded.checkpoint_blob,
-		              updated_at = excluded.updated_at`,
-		c.connectorID, cp.Version, blob, now,
-	); err != nil {
-		return fmt.Errorf("upsert checkpoint: %w", err)
-	}
-	return nil
-}
+		              updated_at = excluded.updated_at`
 
 type checkpoint struct {
 	Version  int `json:"version"`

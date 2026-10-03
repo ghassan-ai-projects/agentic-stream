@@ -142,3 +142,23 @@ are permitted, writes keep single owners.
   repeated scan loop (with tests). Preserved clock-read order, ID order, error
   text and transaction scope; caught and fixed an operand-order hazard in
   `buildItem` before commit. Full replay/runtime suites pass under race.
+
+- Round 12 (partial): `ingress` has no production function over 15 lines; file
+  replay and the live socket now share one line-admission rule
+  (`admitEnvelopeLine`). `evidence` started: capability scope completion split
+  into prepare/issuable checks (explicit `IsZero` defaults kept). Remaining
+  evidence functions and the packages below are still over 15 lines.
+
+## Status at pause
+
+Done: A8–A11 met and enforced (executor/remote, admission, watch, SSE in api,
+no SQL in composition roots, package docs, exact import allowlist). Q2 at 15
+lines: done for foundation, ledgers, canonicaljson, contractsv1, eventlog,
+admission, spec, situations, operators, engine, cognition, ingress.
+Remaining (~330 functions): episodes, device, replay, runtime, evidence,
+authority, actions, cmd, executor/remote, executor/native, runartifact,
+policy, decisions, episodeledger, worker, watch, notify, control, soak, api.
+Then set `funlen` to 15 lines/statements in `.golangci.yml`, run `make ci-check`,
+and record final acceptance. Follow-up: move `episodes.FakeExecutor` under
+`internal/executor/` (needs an in-package test change); remove the unused
+`policy.CapabilityHost`.
