@@ -227,3 +227,11 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   and inode ownership. Added earlier-deadline and invalid-wall-budget cancellation
   regressions. Worker, evidence, executor conformance/native/remote and root
   architecture race tests pass; strict focused worker lint passes.
+
+- Round 21: episode ledger admission, fence validation, attempt start/transition,
+  rejection identity and restart recovery are bounded domain steps. Reused fence
+  comparison keeps stale-before-wrong-attempt precedence. Attempts and episodes
+  still mutate only inside the caller's transaction. Added a regression proving
+  a superseded episode accepts only cancellation of its current attempt and
+  rejects stale cancellation and produced output. Ledger and architecture race
+  tests and strict focused lint pass. No new package or import edge.

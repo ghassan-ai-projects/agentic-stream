@@ -42,13 +42,7 @@ func admissionDispatchPolicy(declared string) string {
 }
 
 func persistAdmittedEpisode(ctx context.Context, tx *sql.Tx, req Admission, now time.Time, dispatchPolicy string) error {
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO episodes (
-			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
-			executor_name, executor_version, model_policy, prompt_version,
-			snapshot_sha256, prompt_sha256, objective_sha256, admission_key, request_json, lifecycle_status, accepted_at,
-			dispatch_policy, policy_epoch
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admitted', ?, ?, ?)`,
+	if _, err := tx.ExecContext(ctx, admitEpisodeSQL,
 		req.EpisodeID, req.SchedulerItemID, req.TenantID, req.SituationID, req.SituationVersion,
 		req.ExecutorName, req.ExecutorVersion, req.ModelPolicy, req.PromptVersion,
 		req.SnapshotSHA256, req.PromptSHA256, req.ObjectiveSHA256, req.AdmissionKey, req.RequestJSON,
@@ -75,3 +69,11 @@ func formatAcceptedAt(value time.Time) string {
 	// durable lexical order identical to chronological order across writers.
 	return value.UTC().Format("2006-01-02T15:04:05.000000000Z")
 }
+
+const admitEpisodeSQL = `
+		INSERT INTO episodes (
+			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
+			executor_name, executor_version, model_policy, prompt_version,
+			snapshot_sha256, prompt_sha256, objective_sha256, admission_key, request_json, lifecycle_status, accepted_at,
+			dispatch_policy, policy_epoch
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admitted', ?, ?, ?)`
