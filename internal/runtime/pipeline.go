@@ -3,18 +3,16 @@ package runtime
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
-
-	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/admission"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -23,6 +21,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
 
 const watchReadBatchSize = 1000
@@ -68,30 +67,24 @@ type PipelineReport struct {
 // and action planes. It is intentionally batch-oriented at this stage: the
 // same methods are called repeatedly by a future continuous ingestion loop.
 type Pipeline struct {
-	db           *storage.DB
-	log          *eventlog.EventLog
-	engine       *engine.Engine
-	assembler    *episodes.Assembler
-	runner       *episodes.Runner
-	policy       *policy.Gateway
-	dispatcher   *actions.Dispatcher
-	watch        *actions.WatchEffector
-	owner        *runtimecontrol.RuntimeOwner
-	ownerEpoch   string
-	clk          clock.Clock
-	tenantID     string
-	watchMu      sync.Mutex
-	watchStop    context.CancelFunc
-	watchDone    chan struct{}
-	watchErr     error
-	telemetry    *telemetry.Runtime
-	demoMode     bool
-	epochControl *runtimecontrol.EpochControl
+	db         *storage.DB
+	log        *eventlog.EventLog
+	engine     *engine.Engine
+	admission  *admission.Admitter
+	runner     *episodes.Runner
+	policy     *policy.Gateway
+	dispatcher *actions.Dispatcher
+	watch      *watch.Effector
+	owner      *runtimecontrol.RuntimeOwner
+	ownerEpoch string
+	clk        clock.Clock
+	tenantID   string
+	watchMu    sync.Mutex
+	watchStop  context.CancelFunc
+	watchDone  chan struct{}
+	watchErr   error
+	telemetry  *telemetry.Runtime
 }
-
-// ErrFixtureRejected is returned when a production pipeline (no --demo-mode)
-// admits a scheduler item whose executor is `fixture`.
-var ErrFixtureRejected = errors.New("fixture executor rejected")
 
 // NewPipeline creates a fully composed live pipeline. The caller must start
 // the runtime Service first when Owner is configured.
@@ -100,18 +93,26 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 		return nil, fmt.Errorf("pipeline database and spec are required")
 	}
 	cfg = pipelineDefaults(cfg)
-	var watch *actions.WatchEffector
+	var watch *watch.Effector
 	cfg.Effector, watch = composeEffectors(cfg)
 	log := eventlog.NewEventLogWithClock(cfg.DB, cfg.Clock)
+	stream, err := newOwnedStream(ctx, cfg, log)
+	if err != nil {
+		return nil, err
+	}
+	if err := configureCostLimits(ctx, cfg); err != nil {
+		return nil, err
+	}
+	return composePipeline(cfg, log, stream, watch), nil
+}
+
+func newOwnedStream(ctx context.Context, cfg PipelineConfig, log *eventlog.EventLog) (*engine.Engine, error) {
 	stream, err := engine.NewEngine(ctx, cfg.DB, log, cfg.Clock, cfg.Spec, cfg.TenantID)
 	if err != nil {
 		return nil, fmt.Errorf("create stream engine: %w", err)
 	}
 	stream.WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch)
-	if err := configureCostLimits(ctx, cfg); err != nil {
-		return nil, err
-	}
-	return composePipeline(cfg, log, stream, watch), nil
+	return stream, nil
 }
 
 // Start begins runtime-owned maintenance loops. It is safe to call once for
@@ -129,24 +130,33 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	p.watchStop = stop
 	p.watchDone = make(chan struct{})
 	done := p.watchDone
-	go func() {
-		defer close(done)
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-watchCtx.Done():
+	go p.maintainWatches(watchCtx, done)
+	return nil
+}
+
+func (p *Pipeline) maintainWatches(watchCtx context.Context, done chan struct{}) {
+	defer close(done)
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-watchCtx.Done():
+			return
+		case <-ticker.C:
+			if err := p.expireMaintainedWatches(watchCtx); err != nil {
 				return
-			case <-ticker.C:
-				if err := p.watch.Expire(watchCtx); err != nil {
-					p.watchMu.Lock()
-					p.watchErr = err
-					p.watchMu.Unlock()
-					return
-				}
 			}
 		}
-	}()
+	}
+}
+
+func (p *Pipeline) expireMaintainedWatches(ctx context.Context) error {
+	if err := p.watch.Expire(ctx); err != nil {
+		p.watchMu.Lock()
+		p.watchErr = err
+		p.watchMu.Unlock()
+		return fmt.Errorf("%w", err)
+	}
 	return nil
 }
 
@@ -180,16 +190,6 @@ func (p *Pipeline) assertOwner(ctx context.Context) error {
 	if err := p.db.WithTx(ctx, func(tx *sql.Tx) error {
 		return p.owner.Assert(ctx, tx, p.ownerEpoch)
 	}); err != nil {
-		return fmt.Errorf("runtime ownership lost: %w", err)
-	}
-	return nil
-}
-
-func (p *Pipeline) assertOwnerTx(ctx context.Context, tx *sql.Tx) error {
-	if p.owner == nil || p.ownerEpoch == "" {
-		return nil
-	}
-	if err := p.owner.Assert(ctx, tx, p.ownerEpoch); err != nil {
 		return fmt.Errorf("runtime ownership lost: %w", err)
 	}
 	return nil

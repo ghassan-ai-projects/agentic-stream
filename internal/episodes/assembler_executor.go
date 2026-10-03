@@ -11,63 +11,80 @@ import (
 // executorDocument is the spec-derived executor section of every request,
 // with the provenance digests the worker and validator verify.
 func (a *Assembler) executorDocument() (map[string]any, error) {
-	executorDocument := map[string]any{
-		"name":              a.spec.Cognition.Executor.Name,
-		"model_policy":      a.spec.Cognition.Executor.ModelPolicy,
-		"prompt_version":    a.spec.Cognition.Executor.PromptVersion,
-		"prompt":            a.spec.Cognition.Executor.Prompt,
-		"objective":         a.spec.Cognition.Executor.Objective,
-		"decision_schema":   a.spec.Cognition.Executor.DecisionSchema,
+	document := a.executorConfiguration()
+	if err := a.bindExecutorProvenance(document); err != nil {
+		return nil, err
+	}
+	if err := a.bindIntentCatalog(document); err != nil {
+		return nil, err
+	}
+	document["skill_refs"] = a.spec.Cognition.Executor.Skills
+	return document, nil
+}
+
+func (a *Assembler) executorConfiguration() map[string]any {
+	return map[string]any{
+		"name": a.spec.Cognition.Executor.Name, "model_policy": a.spec.Cognition.Executor.ModelPolicy,
+		"prompt_version": a.spec.Cognition.Executor.PromptVersion, "prompt": a.spec.Cognition.Executor.Prompt,
+		"objective": a.spec.Cognition.Executor.Objective, "decision_schema": a.spec.Cognition.Executor.DecisionSchema,
 		"diagnosis_catalog": a.spec.Cognition.Executor.DiagnosisCatalog,
 	}
+}
+
+func (a *Assembler) bindExecutorProvenance(document map[string]any) error {
+	prompt, objective, err := a.executorTextDigests()
+	if err != nil {
+		return err
+	}
+	catalog, err := a.diagnosisCatalogDigest()
+	if err != nil {
+		return err
+	}
+	document["prompt_sha256"] = prompt
+	document["objective_sha256"] = objective
+	document["diagnosis_catalog_sha256"] = catalog
+	return nil
+}
+
+func (a *Assembler) executorTextDigests() (string, string, error) {
 	promptDigest, err := canonicaljson.Digest(canonicaljson.DomainPrompt, map[string]any{
 		"version": a.spec.Cognition.Executor.PromptVersion,
 		"text":    a.spec.Cognition.Executor.Prompt,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("digest prompt provenance: %w", err)
+		return "", "", fmt.Errorf("digest prompt provenance: %w", err)
 	}
 	objectiveDigest, err := canonicaljson.Digest(canonicaljson.DomainObjective, map[string]any{"text": a.spec.Cognition.Executor.Objective})
 	if err != nil {
-		return nil, fmt.Errorf("digest objective provenance: %w", err)
+		return "", "", fmt.Errorf("digest objective provenance: %w", err)
 	}
-	// P1: the diagnosis catalog digest binds the catalog document the Ruby
-	// worker verifies (shared situation-runtime/diagnosis-catalog domain).
-	// The digest is over the PARSED catalog (the array shape), matching
-	// DiagnosisCatalog.verify_wire — a wrapped-string shape would digest
-	// differently and every Go-driven episode would fail closed in the Ruby
-	// worker. An invalid catalog document fails compilation.
+	return promptDigest, objectiveDigest, nil
+}
+
+// diagnosisCatalogDigest hashes the parsed catalog array, matching the worker wire contract.
+func (a *Assembler) diagnosisCatalogDigest() (string, error) {
 	var catalogValue any = []any{}
 	if strings.TrimSpace(a.spec.Cognition.Executor.DiagnosisCatalog) != "" {
 		if err := json.Unmarshal([]byte(a.spec.Cognition.Executor.DiagnosisCatalog), &catalogValue); err != nil {
-			return nil, fmt.Errorf("diagnosis catalog is not valid JSON: %w", err)
+			return "", fmt.Errorf("diagnosis catalog is not valid JSON: %w", err)
 		}
 	}
 	catalogDigest, err := canonicaljson.Digest(canonicaljson.DomainDiagnosisCatalog, catalogValue)
 	if err != nil {
-		return nil, fmt.Errorf("digest diagnosis catalog provenance: %w", err)
+		return "", fmt.Errorf("digest diagnosis catalog provenance: %w", err)
 	}
-	executorDocument["prompt_sha256"] = promptDigest
-	executorDocument["objective_sha256"] = objectiveDigest
-	executorDocument["diagnosis_catalog_sha256"] = catalogDigest
+	return catalogDigest, nil
+}
 
-	// P4: the intent catalog is compiled from the spec and embedded with its
-	// shared-domain digest — the Ruby worker verifies it via
-	// IntentCatalog.verify_wire before any model call, and the Go validator
-	// verifies it again independently (B10). A missing, empty, duplicate, or
-	// structurally invalid catalog fails compilation.
+func (a *Assembler) bindIntentCatalog(executorDocument map[string]any) error {
 	intentCatalog, intentCatalogDigest, err := CompileIntentCatalog(a.spec.Actions.Intents)
 	if err != nil {
-		return nil, fmt.Errorf("compile intent catalog: %w", err)
+		return fmt.Errorf("compile intent catalog: %w", err)
 	}
 	executorDocument["intent_catalog"] = intentCatalog
 	executorDocument["intent_catalog_sha256"] = intentCatalogDigest
 
-	// P5: the digest-pinned skill refs flow to the worker, which resolves the
-	// text only from the operator-approved directory and requires the tree
-	// digest to match (unknown name or mismatch fails before a model call).
-	executorDocument["skill_refs"] = a.spec.Cognition.Executor.Skills
-	return executorDocument, nil
+	return nil
 }
 
 func (a *Assembler) buildTools() []map[string]any {
@@ -80,14 +97,6 @@ func (a *Assembler) buildTools() []map[string]any {
 		})
 	}
 	return tools
-}
-
-func (a *Assembler) allowedIntentTypes() map[string]bool {
-	configured := make(map[string]bool)
-	for _, intent := range a.spec.Actions.Intents {
-		configured[intent.Type] = true
-	}
-	return configured
 }
 
 func (a *Assembler) allowedIntentTypeList() []string {
@@ -104,6 +113,14 @@ func (a *Assembler) allowedIntentTypeList() []string {
 		}
 	}
 	return result
+}
+
+func (a *Assembler) allowedIntentTypes() map[string]bool {
+	configured := make(map[string]bool)
+	for _, intent := range a.spec.Actions.Intents {
+		configured[intent.Type] = true
+	}
+	return configured
 }
 
 func (a *Assembler) effectiveRiskCeiling() string {

@@ -4,39 +4,51 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
-	"time"
 )
+
+type executableItem struct {
+	id      string
+	admitAt time.Time
+}
 
 func materializeReplayEpisodes(ctx context.Context, db *storage.DB, compiled *spec.CompiledSpec, tenantID string, now time.Time) error {
 	assembler := episodes.NewAssembler(compiled, ids.Deterministic())
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		executable, err := executableSchedulerItems(ctx, tx, tenantID, now)
-		if err != nil {
-			return err
-		}
-		for _, item := range executable {
-			req, err := assembler.Assemble(ctx, tx, item.id, tenantID)
-			if err != nil {
-				return fmt.Errorf("assemble scheduler item %s: %w", item.id, err)
-			}
-			if err := assembler.Persist(ctx, tx, req, item.admitAt); err != nil {
-				return fmt.Errorf("persist replay episode %s: %w", req.EpisodeID, err)
-			}
-		}
-		return nil
+		return persistExecutableEpisodes(ctx, tx, assembler, tenantID, now)
 	}); err != nil {
 		return fmt.Errorf("materialize replay episodes: %w", err)
 	}
 	return nil
 }
 
-type executableItem struct {
-	id      string
-	admitAt time.Time
+func persistExecutableEpisodes(ctx context.Context, tx *sql.Tx, assembler *episodes.Assembler, tenantID string, now time.Time) error {
+	executable, err := executableSchedulerItems(ctx, tx, tenantID, now)
+	if err != nil {
+		return err
+	}
+	for _, item := range executable {
+		if err := persistReplayEpisode(ctx, tx, assembler, item, tenantID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func persistReplayEpisode(ctx context.Context, tx *sql.Tx, assembler *episodes.Assembler, item executableItem, tenantID string) error {
+	req, err := assembler.Assemble(ctx, tx, item.id, tenantID)
+	if err != nil {
+		return fmt.Errorf("assemble scheduler item %s: %w", item.id, err)
+	}
+	if err := assembler.Persist(ctx, tx, req, item.admitAt); err != nil {
+		return fmt.Errorf("persist replay episode %s: %w", req.EpisodeID, err)
+	}
+	return nil
 }
 
 // executableSchedulerItems lists pending scheduler items whose admission time
@@ -51,25 +63,37 @@ func executableSchedulerItems(ctx context.Context, tx *sql.Tx, tenantID string, 
 		return nil, fmt.Errorf("query executable scheduler items: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
+	return collectExecutableItems(rows, now)
+}
+
+func collectExecutableItems(rows *sql.Rows, now time.Time) ([]executableItem, error) {
 	var executable []executableItem
 	for rows.Next() {
-		var itemID, createdAt, expiresAt string
-		var notBefore sql.NullString
-		if err := rows.Scan(&itemID, &createdAt, &notBefore, &expiresAt); err != nil {
-			return nil, fmt.Errorf("scan executable scheduler item: %w", err)
-		}
-		admitAt, expires, err := admissionWindow(createdAt, notBefore, expiresAt)
+		item, eligible, err := executableSchedulerItem(rows, now)
 		if err != nil {
 			return nil, err
 		}
-		if expires.After(admitAt) && !admitAt.After(now) {
-			executable = append(executable, executableItem{id: itemID, admitAt: admitAt})
+		if eligible {
+			executable = append(executable, item)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate executable scheduler items: %w", err)
 	}
 	return executable, nil
+}
+
+func executableSchedulerItem(rows *sql.Rows, now time.Time) (executableItem, bool, error) {
+	var itemID, createdAt, expiresAt string
+	var notBefore sql.NullString
+	if err := rows.Scan(&itemID, &createdAt, &notBefore, &expiresAt); err != nil {
+		return executableItem{}, false, fmt.Errorf("scan executable scheduler item: %w", err)
+	}
+	admitAt, expires, err := admissionWindow(createdAt, notBefore, expiresAt)
+	if err != nil {
+		return executableItem{}, false, err
+	}
+	return executableItem{id: itemID, admitAt: admitAt}, expires.After(admitAt) && !admitAt.After(now), nil
 }
 
 // admissionWindow parses when a scheduler item may first be admitted and when
@@ -83,14 +107,22 @@ func admissionWindow(createdAt string, notBefore sql.NullString, expiresAt strin
 	if err != nil {
 		return time.Time{}, time.Time{}, fmt.Errorf("parse scheduler expiry: %w", err)
 	}
+	admitAt, err = applyNotBefore(admitAt, notBefore)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	return admitAt, expires, nil
+}
+
+func applyNotBefore(admitAt time.Time, notBefore sql.NullString) (time.Time, error) {
 	if notBefore.Valid {
 		notBeforeTime, err := time.Parse(time.RFC3339Nano, notBefore.String)
 		if err != nil {
-			return time.Time{}, time.Time{}, fmt.Errorf("parse scheduler not-before: %w", err)
+			return time.Time{}, fmt.Errorf("parse scheduler not-before: %w", err)
 		}
 		if notBeforeTime.After(admitAt) {
 			admitAt = notBeforeTime
 		}
 	}
-	return admitAt, expires, nil
+	return admitAt, nil
 }

@@ -5,25 +5,22 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // RunJSONL ingests normalized JSONL, evaluates the stream and cognition,
 // executes all admitted episodes, applies policy, and dispatches approved
 // commands. Each stage is idempotent against the durable ledgers.
 func (p *Pipeline) RunJSONL(ctx context.Context, path string) (PipelineReport, error) {
-	if p == nil {
-		return PipelineReport{}, fmt.Errorf("pipeline is nil")
-	}
-	if err := p.assertOwner(ctx); err != nil {
-		return PipelineReport{}, err
-	}
-	before, err := p.currentEventPosition(ctx)
+	before, err := p.prepareIngest(ctx)
 	if err != nil {
 		return PipelineReport{}, err
 	}
@@ -34,6 +31,16 @@ func (p *Pipeline) RunJSONL(ctx context.Context, path string) (PipelineReport, e
 		return report, fmt.Errorf("ingest live JSONL: %w", err)
 	}
 	return p.runAfterIngest(ctx, report, before)
+}
+
+func (p *Pipeline) prepareIngest(ctx context.Context) (eventlog.LogPosition, error) {
+	if p == nil {
+		return 0, fmt.Errorf("pipeline is nil")
+	}
+	if err := p.assertOwner(ctx); err != nil {
+		return 0, err
+	}
+	return p.currentEventPosition(ctx)
 }
 
 // RunLiveSocket serves normalized JSONL from a live Unix socket and advances
@@ -49,27 +56,28 @@ func (p *Pipeline) RunLiveSocket(ctx context.Context, path string) error {
 	}
 	source := ingress.NewLiveUDSSource(p.log, p.tenantID, path).WithTelemetry(p.telemetry)
 	err := source.Run(ctx, func(sinkCtx context.Context, env contractsv1.Envelope) error {
-		if err := p.assertOwner(sinkCtx); err != nil {
-			return err
-		}
-		before, err := p.currentEventPosition(sinkCtx)
-		if err != nil {
-			return err
-		}
-		positions, err := p.log.Append(sinkCtx, p.tenantID, []contractsv1.Envelope{env})
-		if err != nil {
-			return fmt.Errorf("append live event: %w", err)
-		}
-		if len(positions) != 1 || positions[0] < 0 {
-			return nil
-		}
-		_, err = p.runAfterIngest(sinkCtx, PipelineReport{EventsIngested: 1}, before)
-		return err
+		return p.ingestLiveEvent(sinkCtx, env)
 	})
 	if err != nil && !normalLiveSocketShutdown(ctx, err) {
 		return fmt.Errorf("run live socket source: %w", err)
 	}
 	return nil
+}
+
+func (p *Pipeline) ingestLiveEvent(ctx context.Context, env contractsv1.Envelope) error {
+	before, err := p.prepareIngest(ctx)
+	if err != nil {
+		return err
+	}
+	positions, err := p.log.Append(ctx, p.tenantID, []contractsv1.Envelope{env})
+	if err != nil {
+		return fmt.Errorf("append live event: %w", err)
+	}
+	if len(positions) != 1 || positions[0] < 0 {
+		return nil
+	}
+	_, err = p.runAfterIngest(ctx, PipelineReport{EventsIngested: 1}, before)
+	return err
 }
 
 func normalLiveSocketShutdown(ctx context.Context, err error) bool {
@@ -79,13 +87,7 @@ func normalLiveSocketShutdown(ctx context.Context, err error) bool {
 // RunSimulatorJSONL ingests the strict streams-simulator adapter format and
 // runs the same pipeline stages as RunJSONL.
 func (p *Pipeline) RunSimulatorJSONL(ctx context.Context, path string) (PipelineReport, error) {
-	if p == nil {
-		return PipelineReport{}, fmt.Errorf("pipeline is nil")
-	}
-	if err := p.assertOwner(ctx); err != nil {
-		return PipelineReport{}, err
-	}
-	before, err := p.currentEventPosition(ctx)
+	before, err := p.prepareIngest(ctx)
 	if err != nil {
 		return PipelineReport{}, err
 	}
@@ -99,52 +101,68 @@ func (p *Pipeline) RunSimulatorJSONL(ctx context.Context, path string) (Pipeline
 
 func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport, before eventlog.LogPosition) (result PipelineReport, err error) {
 	ctx, span := telemetry.StartSpan(ctx, "agentic_stream.pipeline.batch", trace.WithSpanKind(trace.SpanKindConsumer))
-	defer func() {
-		if err != nil {
-			telemetry.RecordError(span, err)
-		}
-		span.SetAttributes(
-			attribute.Int("agentic_stream.events_ingested", report.EventsIngested),
-			attribute.Int("agentic_stream.events_processed", report.EventsProcessed),
-			attribute.Int("agentic_stream.episodes_admitted", report.EpisodesAdmitted),
-			attribute.Int("agentic_stream.episodes_executed", report.EpisodesExecuted),
-			attribute.Int("agentic_stream.intents_evaluated", report.IntentsEvaluated),
-			attribute.Int("agentic_stream.commands_dispatched", report.CommandsDispatched),
-		)
-		span.End()
-	}()
+	defer func() { finishBatchSpan(span, report, err) }()
+	err = p.advanceBatch(ctx, &report, before, span)
+	return report, err
+}
+
+func finishBatchSpan(span trace.Span, report PipelineReport, err error) {
+	if err != nil {
+		telemetry.RecordError(span, err)
+	}
+	span.SetAttributes(
+		attribute.Int("agentic_stream.events_ingested", report.EventsIngested),
+		attribute.Int("agentic_stream.events_processed", report.EventsProcessed),
+		attribute.Int("agentic_stream.episodes_admitted", report.EpisodesAdmitted),
+		attribute.Int("agentic_stream.episodes_executed", report.EpisodesExecuted),
+		attribute.Int("agentic_stream.intents_evaluated", report.IntentsEvaluated),
+		attribute.Int("agentic_stream.commands_dispatched", report.CommandsDispatched),
+	)
+	span.End()
+}
+
+func (p *Pipeline) advanceBatch(ctx context.Context, report *PipelineReport, before eventlog.LogPosition, span trace.Span) error {
 	if err := p.watchFailure(); err != nil {
-		return report, fmt.Errorf("watch maintenance failed: %w", err)
+		return fmt.Errorf("watch maintenance failed: %w", err)
 	}
 	if err := p.watch.Expire(ctx); err != nil {
-		return report, fmt.Errorf("expire watch conditions: %w", err)
+		return fmt.Errorf("expire watch conditions: %w", err)
 	}
 	processed, err := p.engine.RunGlobal(ctx, nil)
 	if err != nil {
-		return report, fmt.Errorf("run live stream engine: %w", err)
+		return fmt.Errorf("run live stream engine: %w", err)
 	}
 	report.EventsProcessed = processed
 	if err := p.fireRecentWatches(ctx, before, span); err != nil {
-		return report, fmt.Errorf("fire watches: %w", err)
+		return fmt.Errorf("fire watches: %w", err)
 	}
+	return p.runGovernedBatch(ctx, report)
+}
+
+func (p *Pipeline) runGovernedBatch(ctx context.Context, report *PipelineReport) error {
 	if err := p.assertOwner(ctx); err != nil {
-		return report, err
+		return err
 	}
-	report.EpisodesAdmitted, err = p.assemblePending(ctx)
+	var err error
+	report.EpisodesAdmitted, err = p.admission.AdmitPending(ctx)
 	if err != nil {
-		return report, err
+		return err //nolint:wrapcheck // Admission names the failed item; the batch error text is unchanged.
 	}
-	if err := p.executeAdmittedEpisodes(ctx, &report); err != nil {
-		return report, err
+	return p.runAdmittedBatch(ctx, report)
+}
+
+func (p *Pipeline) runAdmittedBatch(ctx context.Context, report *PipelineReport) error {
+	if err := p.executeAdmittedEpisodes(ctx, report); err != nil {
+		return err
 	}
-	if err := p.evaluatePendingIntents(ctx, &report); err != nil {
-		return report, err
+	if err := p.evaluatePendingIntents(ctx, report); err != nil {
+		return err
 	}
-	if err := p.dispatchApprovedCommands(ctx, &report); err != nil {
-		return report, err
+	if err := p.dispatchApprovedCommands(ctx, report); err != nil {
+		return err
 	}
-	p.observeBatch(report)
-	return report, nil
+	p.observeBatch(*report)
+	return nil
 }
 
 func (p *Pipeline) currentEventPosition(ctx context.Context) (eventlog.LogPosition, error) {
@@ -158,26 +176,9 @@ func (p *Pipeline) currentEventPosition(ctx context.Context) (eventlog.LogPositi
 func (p *Pipeline) fireRecentWatches(ctx context.Context, before eventlog.LogPosition, span trace.Span) error {
 	cursor := before
 	for {
-		read := 0
-		lastPosition := cursor
-		if err := p.log.Read(ctx, eventlog.ReadRequest{
-			TenantID:      p.tenantID,
-			PartitionID:   -1,
-			AfterPosition: cursor,
-			Limit:         watchReadBatchSize,
-		}, func(record eventlog.Record) error {
-			if record.Position <= cursor {
-				return fmt.Errorf("event log did not advance past position %d", cursor)
-			}
-			read++
-			lastPosition = record.Position
-			telemetry.AddLinkFromW3C(span, record.Envelope.Traceparent, record.Envelope.Tracestate)
-			if _, err := p.watch.FireEvent(ctx, record.EventID, record.EntityID, record.Envelope.Data); err != nil {
-				return fmt.Errorf("event %s: %w", record.EventID, err)
-			}
-			return nil
-		}); err != nil {
-			return fmt.Errorf("read recent events after position %d: %w", cursor, err)
+		read, lastPosition, err := p.fireWatchPage(ctx, cursor, span)
+		if err != nil {
+			return err
 		}
 		if read < watchReadBatchSize {
 			return nil
@@ -189,28 +190,58 @@ func (p *Pipeline) fireRecentWatches(ctx context.Context, before eventlog.LogPos
 	}
 }
 
+func (p *Pipeline) fireWatchPage(ctx context.Context, cursor eventlog.LogPosition, span trace.Span) (int, eventlog.LogPosition, error) {
+	read := 0
+	lastPosition := cursor
+	if err := p.log.Read(ctx, eventlog.ReadRequest{
+		TenantID:      p.tenantID,
+		PartitionID:   -1,
+		AfterPosition: cursor,
+		Limit:         watchReadBatchSize,
+	}, func(record eventlog.Record) error {
+		return p.fireWatchRecord(ctx, cursor, record, span, &read, &lastPosition)
+	}); err != nil {
+		return 0, 0, fmt.Errorf("read recent events after position %d: %w", cursor, err)
+	}
+	return read, lastPosition, nil
+}
+
+func (p *Pipeline) fireWatchRecord(ctx context.Context, cursor eventlog.LogPosition, record eventlog.Record, span trace.Span, read *int, lastPosition *eventlog.LogPosition) error {
+	if record.Position <= cursor {
+		return fmt.Errorf("event log did not advance past position %d", cursor)
+	}
+	(*read)++
+	*lastPosition = record.Position
+	telemetry.AddLinkFromW3C(span, record.Envelope.Traceparent, record.Envelope.Tracestate)
+	if _, err := p.watch.FireEvent(ctx, record.EventID, record.EntityID, record.Envelope.Data); err != nil {
+		return fmt.Errorf("event %s: %w", record.EventID, err)
+	}
+	return nil
+}
+
 func (p *Pipeline) evaluatePendingIntents(ctx context.Context, report *PipelineReport) error {
 	for {
-		var intentID string
-		err := p.db.QueryRowContext(ctx, `
-			SELECT intent_id FROM intents WHERE tenant_id = ? AND policy_status = 'pending'
-			ORDER BY created_at, intent_id LIMIT 1`, p.tenantID).Scan(&intentID)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
+		intentID, found, err := policy.NextPendingIntent(ctx, p.db.DB, p.tenantID)
+		if err != nil || !found {
+			return err //nolint:wrapcheck // Policy names the failed read; the batch error text is unchanged.
 		}
-		if err != nil {
-			return fmt.Errorf("find pending intent: %w", err)
-		}
-		now := p.clk.Now().UTC()
-		if err := p.db.WithTx(ctx, func(tx *sql.Tx) error {
-			_, err := p.policy.EvaluateIntent(ctx, tx, intentID, now)
-			if err != nil {
-				return fmt.Errorf("evaluate intent: %w", err)
-			}
-			return nil
-		}); err != nil {
-			return fmt.Errorf("evaluate intent %s: %w", intentID, err)
+		if err := p.evaluateIntent(ctx, intentID); err != nil {
+			return err
 		}
 		report.IntentsEvaluated++
 	}
+}
+
+// evaluateIntent runs policy for one intent in its own transaction.
+func (p *Pipeline) evaluateIntent(ctx context.Context, intentID string) error {
+	now := p.clk.Now().UTC()
+	if err := p.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := p.policy.EvaluateIntent(ctx, tx, intentID, now); err != nil {
+			return fmt.Errorf("evaluate intent: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("evaluate intent %s: %w", intentID, err)
+	}
+	return nil
 }

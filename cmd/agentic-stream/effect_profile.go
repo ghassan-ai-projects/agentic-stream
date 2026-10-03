@@ -13,7 +13,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
@@ -75,6 +74,10 @@ func (o effectProfileOptions) validateGatewayOptions(profile device.EffectProfil
 	if len(o.AllowedFirmwareDigests) == 0 {
 		return fmt.Errorf("%s effect profile requires at least one --device-firmware-digest", profile)
 	}
+	return o.validatePhysicalAuthorization(profile)
+}
+
+func (o effectProfileOptions) validatePhysicalAuthorization(profile device.EffectProfile) error {
 	if profile == device.EffectProfilePhysical {
 		if !o.LiveActuation {
 			return fmt.Errorf("physical effect profile requires explicit live actuation")
@@ -96,31 +99,78 @@ func checkEffectProfile(prefix string, config device.EffectProfileConfig) error 
 // open creates the action-plane effector after the runtime owner has started.
 // Device profiles use a typed UDS gateway link; the serial effector remains
 // explicitly routed by runtime.NewPipeline.
-func (o effectProfileOptions) open(
-	ctx context.Context,
-	db *storage.DB,
-	owner *runtimecontrol.RuntimeOwner,
-	epochControl *runtimecontrol.EpochControl,
-	epoch string,
-	telemetryRuntime *telemetry.Runtime,
-	replaySource bool,
-) (actionport.Effector, *device.SerialEffector, func() error, error) {
+func (o effectProfileOptions) open(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, replaySource bool) (actionport.Effector, *device.SerialEffector, func() error, error) {
 	if err := o.validate(replaySource); err != nil {
 		return nil, nil, nil, err
 	}
 	if o.profile() == device.EffectProfileSimulated {
-		return actions.NewSimulatedEffector(), nil, nil, nil
+		return device.NewSimulatedEffector(), nil, nil, nil
 	}
 
 	transport, catalog, err := o.connectDeviceGateway(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	return o.openGatewayEffector(ctx, db, owner, epochControl, epoch, telemetryRuntime, transport, catalog)
+}
+
+func (o effectProfileOptions) connectDeviceGateway(ctx context.Context) (*device.UDSTransport, *device.CapabilityCatalog, error) {
+	catalog, err := o.loadDeviceCatalog()
+	if err != nil {
+		return nil, nil, err
+	}
+	transport, err := device.DialUDSTransport(ctx, o.DeviceSocket)
+	if err != nil {
+		return nil, nil, fmt.Errorf("connect device gateway: %w", err)
+	}
+	if err := o.validateGatewayLink(transport); err != nil {
+		_ = transport.Close()
+		return nil, nil, err
+	}
+	return transport, catalog, nil
+}
+
+func (o effectProfileOptions) loadDeviceCatalog() (*device.CapabilityCatalog, error) {
+	catalogData, err := os.ReadFile(o.DeviceCatalog)
+	if err != nil {
+		return nil, fmt.Errorf("read device capability catalog: %w", err)
+	}
+	catalog, err := device.LoadCapabilityCatalog(catalogData)
+	if err != nil {
+		return nil, fmt.Errorf("load device capability catalog: %w", err)
+	}
+	return catalog, nil
+}
+
+func (o effectProfileOptions) validateGatewayLink(transport *device.UDSTransport) error {
+	profileConfig := device.EffectProfileConfig{
+		Profile:         o.profile(),
+		GatewayLink:     transport,
+		LiveActuation:   o.LiveActuation,
+		OwnerAuthorized: o.OwnerAuthorized,
+	}
+	if err := device.ValidateEffectProfile(profileConfig); err != nil {
+		return fmt.Errorf("validate effect profile: %w", err)
+	}
+	return nil
+}
+
+func (o effectProfileOptions) openGatewayEffector(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, transport *device.UDSTransport, catalog *device.CapabilityCatalog) (actionport.Effector, *device.SerialEffector, func() error, error) {
+	config := o.gatewayEffectorConfig(db, owner, epochControl, epoch, telemetryRuntime, transport, catalog)
+	serial, closeFn, err := device.NewGatewayEffector(ctx, config)
+	if err != nil {
+		_ = transport.Close()
+		return nil, nil, nil, fmt.Errorf("open gateway effector: %w", err)
+	}
+	return fallbackEffector(o.profile()), serial, closeFn, nil
+}
+
+func (o effectProfileOptions) gatewayEffectorConfig(db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, transport *device.UDSTransport, catalog *device.CapabilityCatalog) device.GatewayEffectorConfig {
 	authority := &deviceauthority.TargetAuthority{
 		DB: db, Owner: owner, EpochControl: epochControl, InstanceID: epoch, Lease: owner.Lease,
 	}
 	reconciliation := &deviceauthority.ReconciliationStore{DB: db, Authority: authority}
-	serial, closeFn, err := device.NewGatewayEffector(ctx, device.GatewayEffectorConfig{
+	return device.GatewayEffectorConfig{
 		Transport:              transport,
 		Catalog:                catalog,
 		AllowedFirmwareDigests: o.AllowedFirmwareDigests,
@@ -129,45 +179,14 @@ func (o effectProfileOptions) open(
 		Authority:              authority,
 		Reconciliation:         reconciliation,
 		Telemetry:              telemetryRuntime,
-	})
-	if err != nil {
-		_ = transport.Close()
-		return nil, nil, nil, fmt.Errorf("open gateway effector: %w", err)
 	}
-	return fallbackEffector(o.profile()), serial, closeFn, nil
-}
-
-func (o effectProfileOptions) connectDeviceGateway(ctx context.Context) (*device.UDSTransport, *device.CapabilityCatalog, error) {
-	catalogData, err := os.ReadFile(o.DeviceCatalog)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read device capability catalog: %w", err)
-	}
-	catalog, err := device.LoadCapabilityCatalog(catalogData)
-	if err != nil {
-		return nil, nil, fmt.Errorf("load device capability catalog: %w", err)
-	}
-	transport, err := device.DialUDSTransport(ctx, o.DeviceSocket)
-	if err != nil {
-		return nil, nil, fmt.Errorf("connect device gateway: %w", err)
-	}
-	profileConfig := device.EffectProfileConfig{
-		Profile:         o.profile(),
-		GatewayLink:     transport,
-		LiveActuation:   o.LiveActuation,
-		OwnerAuthorized: o.OwnerAuthorized,
-	}
-	if err := device.ValidateEffectProfile(profileConfig); err != nil {
-		_ = transport.Close()
-		return nil, nil, fmt.Errorf("validate effect profile: %w", err)
-	}
-	return transport, catalog, nil
 }
 
 func fallbackEffector(profile device.EffectProfile) actionport.Effector {
 	if profile == device.EffectProfilePhysical {
 		return device.NewFailClosedEffector(profile)
 	}
-	return actions.NewSimulatedEffector()
+	return device.NewSimulatedEffector()
 }
 
 func (o effectProfileOptions) profile() device.EffectProfile {

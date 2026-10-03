@@ -6,9 +6,10 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"time"
 )
 
 func (d *Dispatcher) markLeaseFailure(ctx context.Context, tx *sql.Tx, outboxID int64, commandID, code string, now time.Time) error {

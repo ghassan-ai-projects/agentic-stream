@@ -3,12 +3,12 @@ package ingress
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"io"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 func readLiveLine(reader *bufio.Reader) ([]byte, error) {
@@ -21,40 +21,35 @@ func readLiveLine(reader *bufio.Reader) ([]byte, error) {
 			return line, errLiveSocketLineTooLarge
 		}
 		line = append(line, part...)
-		if err == nil {
-			return line, nil
+		if !errors.Is(err, bufio.ErrBufferFull) {
+			return completeLiveLine(line, err)
 		}
-		if errors.Is(err, bufio.ErrBufferFull) {
-			continue
-		}
-		if errors.Is(err, io.EOF) && len(line) > 0 {
-			return line, nil
-		}
-		return nil, fmt.Errorf("read live ingress line: %w", err)
 	}
+}
+
+// completeLiveLine accepts a line ended by a newline or by end of input.
+func completeLiveLine(line []byte, err error) ([]byte, error) {
+	if err == nil || (errors.Is(err, io.EOF) && len(line) > 0) {
+		return line, nil
+	}
+	return nil, fmt.Errorf("read live ingress line: %w", err)
 }
 
 func (s *LiveUDSSource) processLine(ctx context.Context, item liveLine, sink EnvelopeSink) error {
 	if item.readErr != nil {
 		return s.rejectRaw(ctx, item, "line_too_large", item.readErr)
 	}
-	var env contractsv1.Envelope
-	if err := json.Unmarshal(item.data, &env); err != nil {
-		return s.rejectRaw(ctx, item, "malformed_json", err)
+	verdict := admitEnvelopeLine(ctx, s.log, s.tenantID, item.data)
+	if verdict.decoded {
+		return s.rejectEnvelope(ctx, item, verdict.env, verdict.reason, verdict.cause)
 	}
-	if env.TenantID == "" {
-		env.TenantID = s.tenantID
-	}
-	if err := contractsv1.ValidateEnvelope(env, s.tenantID); err != nil {
-		return s.rejectEnvelope(ctx, item, env, "envelope_invalid", err)
-	}
-	if err := s.log.ValidateEnvelope(ctx, env); err != nil {
-		return s.rejectEnvelope(ctx, item, env, "schema_invalid", err)
+	if verdict.reason != "" {
+		return s.rejectRaw(ctx, item, verdict.reason, verdict.cause)
 	}
 	if s.telemetry != nil {
 		s.telemetry.ObserveLiveLineIngested()
 	}
-	return sink(ctx, env)
+	return sink(ctx, verdict.env)
 }
 
 func (s *LiveUDSSource) rejectRaw(ctx context.Context, item liveLine, reason string, cause error) error {

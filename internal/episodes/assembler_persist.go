@@ -13,6 +13,11 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
 
+// requestDigests are the raw provenance digests stored with an episode.
+type requestDigests struct {
+	snapshot, prompt, objective []byte
+}
+
 // Persist saves the episode request to the episodes table and marks the
 // scheduler item as admitted. It runs inside the supplied transaction. The
 // scheduler item must still be pending; otherwise Persist returns an error.
@@ -31,11 +36,6 @@ func (a *Assembler) Persist(ctx context.Context, tx *sql.Tx, req *Request, now t
 		return fmt.Errorf("%w", err)
 	}
 	return nil
-}
-
-// requestDigests are the raw provenance digests stored with an episode.
-type requestDigests struct {
-	snapshot, prompt, objective []byte
 }
 
 func decodeRequestDigests(req *Request) (requestDigests, error) {
@@ -72,6 +72,16 @@ func (a *Assembler) reserveCost(ctx context.Context, tx *sql.Tx, req *Request, n
 	return nil
 }
 
+// admittedEpisode binds validated digests to the durable admission record.
+func admittedEpisode(req *Request, digests requestDigests) episodeledger.Admission {
+	return episodeledger.Admission{EpisodeID: req.EpisodeID, SchedulerItemID: req.SchedulerItemID,
+		Kind: req.Kind, TenantID: req.TenantID, SituationID: req.SituationID, SituationVersion: req.SituationVersion,
+		ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion, ModelPolicy: req.ModelPolicy,
+		PromptVersion: req.PromptVersion, SnapshotSHA256: digests.snapshot, PromptSHA256: digests.prompt,
+		ObjectiveSHA256: digests.objective, AdmissionKey: req.AdmissionKey, RequestJSON: req.RequestJSON,
+		DispatchPolicy: req.DispatchPolicy, PolicyEpoch: req.PolicyEpoch}
+}
+
 // Rebind rebuilds an admitted episode's request for the live situation version
 // (ISSUE-061). The situation advanced past the version the episode was admitted
 // under before dispatch; instead of abandoning, the request is re-pointed at the
@@ -89,6 +99,24 @@ func (a *Assembler) Rebind(ctx context.Context, tx *sql.Tx, req *Request, liveVe
 	if evidence.entityID != req.EntityID {
 		return nil, fmt.Errorf("live snapshot entity %q does not match bound entity %q", evidence.entityID, req.EntityID)
 	}
+	return rebindRequest(req, liveVersion, evidence)
+}
+
+func rebindRequest(req *Request, liveVersion int, evidence *snapshotEvidence) (*Request, error) {
+	requestJSON, err := reboundRequestJSON(req, liveVersion, evidence)
+	if err != nil {
+		return nil, err
+	}
+
+	fresh := *req
+	fresh.SituationVersion = liveVersion
+	fresh.EntityID = evidence.entityID
+	fresh.SnapshotSHA256 = evidence.digest
+	fresh.RequestJSON = requestJSON
+	return &fresh, nil
+}
+
+func reboundRequestJSON(req *Request, liveVersion int, evidence *snapshotEvidence) ([]byte, error) {
 	var request map[string]any
 	if err := json.Unmarshal(req.RequestJSON, &request); err != nil {
 		return nil, fmt.Errorf("decode bound episode request: %w", err)
@@ -100,20 +128,5 @@ func (a *Assembler) Rebind(ctx context.Context, tx *sql.Tx, req *Request, liveVe
 	if err != nil {
 		return nil, fmt.Errorf("marshal re-bound request: %w", err)
 	}
-	fresh := *req
-	fresh.SituationVersion = liveVersion
-	fresh.EntityID = evidence.entityID
-	fresh.SnapshotSHA256 = evidence.digest
-	fresh.RequestJSON = requestJSON
-	return &fresh, nil
-}
-
-// admittedEpisode binds validated digests to the durable admission record.
-func admittedEpisode(req *Request, digests requestDigests) episodeledger.Admission {
-	return episodeledger.Admission{EpisodeID: req.EpisodeID, SchedulerItemID: req.SchedulerItemID,
-		Kind: req.Kind, TenantID: req.TenantID, SituationID: req.SituationID, SituationVersion: req.SituationVersion,
-		ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion, ModelPolicy: req.ModelPolicy,
-		PromptVersion: req.PromptVersion, SnapshotSHA256: digests.snapshot, PromptSHA256: digests.prompt,
-		ObjectiveSHA256: digests.objective, AdmissionKey: req.AdmissionKey, RequestJSON: req.RequestJSON,
-		DispatchPolicy: req.DispatchPolicy, PolicyEpoch: req.PolicyEpoch}
+	return requestJSON, nil
 }

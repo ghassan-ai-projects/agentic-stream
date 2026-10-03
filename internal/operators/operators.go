@@ -34,18 +34,34 @@ type windowConfig struct {
 
 // NewRuntime creates an operator runtime for the compiled spec.
 func NewOperatorRuntime(deploymentID string, compiled *spec.CompiledSpec, idGen ids.Generator) (*OperatorRuntime, error) {
-	windowConfigs := make(map[string]*windowConfig, len(compiled.Windows))
-	for _, w := range compiled.Windows {
+	windowConfigs, err := buildWindowConfigs(compiled.Windows)
+	if err != nil {
+		return nil, err
+	}
+	byInput, err := indexOperatorsByInput(compiled.Operators, windowConfigs)
+	if err != nil {
+		return nil, err
+	}
+	return &OperatorRuntime{deploymentID: deploymentID, spec: compiled, idGen: idGen, byInput: byInput}, nil
+}
+
+func buildWindowConfigs(windows []spec.Window) (map[string]*windowConfig, error) {
+	windowConfigs := make(map[string]*windowConfig, len(windows))
+	for _, w := range windows {
 		cfg, err := newWindowConfig(w)
 		if err != nil {
 			return nil, fmt.Errorf("window %s: %w", w.Name, err)
 		}
 		windowConfigs[w.Name] = cfg
 	}
+	return windowConfigs, nil
+}
 
+// indexOperatorsByInput binds each operator to its window and lists it under
+// every input it consumes.
+func indexOperatorsByInput(operators []spec.Operator, windowConfigs map[string]*windowConfig) (map[string][]*operatorInstance, error) {
 	byInput := make(map[string][]*operatorInstance)
-	for i := range compiled.Operators {
-		op := compiled.Operators[i]
+	for _, op := range operators {
 		inst := &operatorInstance{def: op}
 		if op.Window != "" {
 			cfg, ok := windowConfigs[op.Window]
@@ -58,24 +74,13 @@ func NewOperatorRuntime(deploymentID string, compiled *spec.CompiledSpec, idGen 
 			byInput[in] = append(byInput[in], inst)
 		}
 	}
-
-	return &OperatorRuntime{
-		deploymentID: deploymentID,
-		spec:         compiled,
-		idGen:        idGen,
-		byInput:      byInput,
-	}, nil
+	return byInput, nil
 }
 
 func newWindowConfig(w spec.Window) (*windowConfig, error) {
-	emit := w.Emit
-	if emit == "" {
-		emit = "on_close"
-	}
-	switch emit {
-	case "on_update", "on_close", "early_and_close":
-	default:
-		return nil, fmt.Errorf("unsupported emit mode %q", emit)
+	emit, err := emitMode(w.Emit)
+	if err != nil {
+		return nil, err
 	}
 	switch w.Kind {
 	case "tumbling":
@@ -84,6 +89,18 @@ func newWindowConfig(w spec.Window) (*windowConfig, error) {
 		return slidingWindow(w, emit)
 	default:
 		return nil, fmt.Errorf("unsupported window kind %q", w.Kind)
+	}
+}
+
+// emitMode defaults an empty mode to on_close and rejects unknown modes.
+func emitMode(emit string) (string, error) {
+	switch emit {
+	case "":
+		return "on_close", nil
+	case "on_update", "on_close", "early_and_close":
+		return emit, nil
+	default:
+		return "", fmt.Errorf("unsupported emit mode %q", emit)
 	}
 }
 
@@ -113,16 +130,23 @@ func slidingWindow(w spec.Window, emit string) (*windowConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sliding slide: %w", err)
 	}
-	if size <= 0 {
-		return nil, fmt.Errorf("sliding size must be positive")
-	}
-	if slide <= 0 {
-		return nil, fmt.Errorf("sliding slide must be positive")
-	}
-	if slide > size {
-		return nil, fmt.Errorf("sliding slide %s exceeds size %s", slide, size)
+	if err := checkSlide(size, slide); err != nil {
+		return nil, err
 	}
 	return &windowConfig{emit: emit, size: size, slide: slide}, nil
+}
+
+func checkSlide(size, slide time.Duration) error {
+	if size <= 0 {
+		return fmt.Errorf("sliding size must be positive")
+	}
+	if slide <= 0 {
+		return fmt.Errorf("sliding slide must be positive")
+	}
+	if slide > size {
+		return fmt.Errorf("sliding slide %s exceeds size %s", slide, size)
+	}
+	return nil
 }
 
 func parseDuration(s string) (time.Duration, error) {
@@ -149,30 +173,44 @@ func (r *OperatorRuntime) ApplyEventAt(ctx context.Context, ps *PartitionState, 
 	if ps == nil {
 		ps = &PartitionState{OperatorStates: make(map[string]map[string]*OperatorStateBlob)}
 	}
-
 	inputName, ok := r.inputForEvent(env)
 	if !ok {
 		return nil, ps, nil
 	}
+	features, err := r.applyInput(ctx, ps, inputName, env, watermark, processingTime)
+	if err != nil {
+		return nil, ps, err
+	}
+	return features, ps, nil
+}
+
+// applyInput runs every operator fed directly by the input that admits the
+// event and its device boot.
+func (r *OperatorRuntime) applyInput(ctx context.Context, ps *PartitionState, inputName string, env contractsv1.Envelope, watermark, processingTime time.Time) ([]Feature, error) {
 	var features []Feature
 	for _, inst := range r.byInput[inputName] {
-		if len(inst.def.Inputs) > 0 && inst.def.Inputs[0] != inputName {
-			continue // Only direct inputs supported for now.
-		}
-		if !r.operatorAdmitsEvent(inst, env) || !r.admitBoot(ps, env) {
+		if !r.operatorApplies(ps, inst, inputName, env) {
 			continue
 		}
 		if err := ctx.Err(); err != nil {
-			return nil, ps, fmt.Errorf("apply event canceled: %w", err)
+			return nil, fmt.Errorf("apply event canceled: %w", err)
 		}
 		fs, err := r.applyOperator(ctx, ps, inst, env, watermark, processingTime)
 		if err != nil {
-			return nil, ps, err
+			return nil, err
 		}
 		features = append(features, fs...)
 	}
+	return features, nil
+}
 
-	return features, ps, nil
+// operatorApplies requires a direct input (only direct inputs are supported
+// for now), an admitted event and an admitted device boot, in that order.
+func (r *OperatorRuntime) operatorApplies(ps *PartitionState, inst *operatorInstance, inputName string, env contractsv1.Envelope) bool {
+	if len(inst.def.Inputs) > 0 && inst.def.Inputs[0] != inputName {
+		return false
+	}
+	return r.operatorAdmitsEvent(inst, env) && r.admitBoot(ps, env)
 }
 
 func (r *OperatorRuntime) inputForEvent(env contractsv1.Envelope) (string, bool) {
@@ -184,29 +222,16 @@ func (r *OperatorRuntime) inputForEvent(env contractsv1.Envelope) (string, bool)
 	return "", false
 }
 
-func (r *OperatorRuntime) applyOperator(ctx context.Context, ps *PartitionState, inst *operatorInstance, env contractsv1.Envelope, watermark, processingTime time.Time) ([]Feature, error) {
-	stateKey := operatorStateKey(env)
-	blob := r.getBlob(ps, inst.def.Name, stateKey)
-
-	var features []Feature
+func (r *OperatorRuntime) applyOperator(_ context.Context, ps *PartitionState, inst *operatorInstance, env contractsv1.Envelope, watermark, processingTime time.Time) ([]Feature, error) {
+	blob := r.getBlob(ps, inst.def.Name, operatorStateKey(env))
 	switch inst.def.Kind {
 	case "aggregate", "slope":
-		fs, err := r.applyWindowOperator(inst, blob, env, watermark)
-		if err != nil {
-			return nil, err
-		}
-		features = fs
+		return r.applyWindowOperator(inst, blob, env, watermark)
 	case "missing_heartbeat":
-		fs, err := r.applyHeartbeatOperator(inst, blob, env, watermark, processingTime)
-		if err != nil {
-			return nil, err
-		}
-		features = fs
+		return r.applyHeartbeatOperator(inst, blob, env, watermark, processingTime)
 	default:
 		return nil, fmt.Errorf("unsupported operator kind %q", inst.def.Kind)
 	}
-
-	return features, nil
 }
 
 func (r *OperatorRuntime) getBlob(ps *PartitionState, operatorID, stateKey string) *OperatorStateBlob {

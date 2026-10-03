@@ -59,61 +59,97 @@ func (s *Scheduler) Admit(ctx context.Context, tx *sql.Tx, eval Evaluation, v si
 	if err := s.saveEvaluation(ctx, tx, eval, tenantID, deploymentID); err != nil {
 		return fmt.Errorf("save evaluation: %w", err)
 	}
-
 	// Ignored or rejected evaluations do not create queue items.
 	if eval.Outcome != "admitted" {
 		return nil
 	}
-
 	item, err := s.buildItem(ctx, tx, eval)
 	if err != nil {
 		return fmt.Errorf("build item: %w", err)
 	}
+	return s.enqueueOrDefer(ctx, tx, eval, item, tenantID, deploymentID)
+}
 
-	pending, err := s.countPending(ctx, tx, tenantID)
+// enqueueOrDefer defers the evaluation when global capacity is exhausted;
+// otherwise it supersedes stale pending items for the same Situation and
+// trigger (and their episodes, so the new episode fits the one-live-episode
+// constraint) and queues the item.
+func (s *Scheduler) enqueueOrDefer(ctx context.Context, tx *sql.Tx, eval Evaluation, item scheduleledger.Item, tenantID, deploymentID string) error {
+	full, err := s.capacityExhausted(ctx, tx, eval, tenantID)
 	if err != nil {
-		return fmt.Errorf("count pending: %w", err)
+		return err
 	}
-	staleSameTrigger, err := s.countPendingSameTrigger(ctx, tx, eval.SituationID, eval.TriggerName)
-	if err != nil {
-		return fmt.Errorf("count stale same-trigger: %w", err)
+	if full {
+		return s.deferEvaluation(ctx, tx, eval, tenantID, deploymentID)
 	}
-
-	// If global capacity is exhausted, we can still admit this version if it
-	// replaces a stale pending item for the same situation and trigger.
-	if pending >= globalCapacity && staleSameTrigger == 0 {
-		eval.Outcome = "deferred"
-		eval.Reasons = append(eval.Reasons, "global capacity exhausted")
-		if err := s.saveEvaluation(ctx, tx, eval, tenantID, deploymentID); err != nil {
-			return fmt.Errorf("save deferred evaluation: %w", err)
-		}
-		return nil
-	}
-
-	// Supersede stale pending items for the same situation and trigger. This
-	// also marks any already-created episodes as superseded so the new episode
-	// can be inserted under the one-live-episode-per-situation constraint.
 	if err := s.supersedePending(ctx, tx, eval.SituationID, eval.TriggerName); err != nil {
 		return fmt.Errorf("supersede pending: %w", err)
 	}
-
 	if err := s.insertItem(ctx, tx, item, tenantID); err != nil {
 		return fmt.Errorf("insert item: %w", err)
 	}
+	return nil
+}
 
+// capacityExhausted reports a full queue, unless this version replaces a
+// stale pending item for the same Situation and trigger.
+func (s *Scheduler) capacityExhausted(ctx context.Context, tx *sql.Tx, eval Evaluation, tenantID string) (bool, error) {
+	pending, err := s.countPending(ctx, tx, tenantID)
+	if err != nil {
+		return false, fmt.Errorf("count pending: %w", err)
+	}
+	staleSameTrigger, err := s.countPendingSameTrigger(ctx, tx, eval.SituationID, eval.TriggerName)
+	if err != nil {
+		return false, fmt.Errorf("count stale same-trigger: %w", err)
+	}
+	return pending >= globalCapacity && staleSameTrigger == 0, nil
+}
+
+func (s *Scheduler) deferEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluation, tenantID, deploymentID string) error {
+	eval.Outcome = "deferred"
+	eval.Reasons = append(eval.Reasons, "global capacity exhausted")
+	if err := s.saveEvaluation(ctx, tx, eval, tenantID, deploymentID); err != nil {
+		return fmt.Errorf("save deferred evaluation: %w", err)
+	}
 	return nil
 }
 
 func (s *Scheduler) saveEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluation, tenantID, deploymentID string) error {
+	if err := s.upsertEvaluation(ctx, tx, eval, tenantID, deploymentID); err != nil {
+		return err
+	}
+	return announceEvaluation(ctx, tx, eval, tenantID)
+}
+
+func (s *Scheduler) upsertEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluation, tenantID, deploymentID string) error {
+	columns, err := s.evaluationColumns(eval, tenantID, deploymentID)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, upsertEvaluationSQL, columns...); err != nil {
+		return fmt.Errorf("upsert trigger evaluation: %w", err)
+	}
+	return nil
+}
+
+// evaluationColumns lists the evaluation in upsertEvaluationSQL column order.
+func (s *Scheduler) evaluationColumns(eval Evaluation, tenantID, deploymentID string) ([]any, error) {
 	reasonsJSON, err := json.Marshal(eval.Reasons)
 	if err != nil {
-		return fmt.Errorf("marshal reasons: %w", err)
+		return nil, fmt.Errorf("marshal reasons: %w", err)
 	}
 	policySHA, err := canonicaljson.DecodeDigest(s.spec.Digest)
 	if err != nil {
-		return fmt.Errorf("decode policy digest: %w", err)
+		return nil, fmt.Errorf("decode policy digest: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	return []any{
+		eval.TriggerID, tenantID, deploymentID, eval.TriggerName,
+		eval.SituationID, eval.SituationVersion, eval.Score, eval.Threshold, eval.Lane,
+		eval.Outcome, reasonsJSON, policySHA[:], eval.DeltaJSON, eval.EvaluatedAt.Format(time.RFC3339Nano),
+	}, nil
+}
+
+const upsertEvaluationSQL = `
 		INSERT INTO trigger_evaluations (
 			trigger_id, tenant_id, deployment_id, trigger_name,
 			situation_id, situation_version, score, threshold, lane,
@@ -128,24 +164,13 @@ func (s *Scheduler) saveEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluat
 			reasons_json = excluded.reasons_json,
 			policy_sha256 = excluded.policy_sha256,
 			delta_json = excluded.delta_json,
-			evaluated_at = excluded.evaluated_at`,
-		eval.TriggerID, tenantID, deploymentID, eval.TriggerName,
-		eval.SituationID, eval.SituationVersion, eval.Score, eval.Threshold, eval.Lane,
-		eval.Outcome, reasonsJSON, policySHA[:], eval.DeltaJSON, eval.EvaluatedAt.Format(time.RFC3339Nano),
-	); err != nil {
-		return fmt.Errorf("upsert trigger evaluation: %w", err)
-	}
-	event := contractsv1.CloudEvent{
-		SpecVersion: "1.0", ID: eval.TriggerID + ":" + eval.Outcome + ":" + eval.EvaluatedAt.UTC().Format(time.RFC3339Nano), Source: "//agentic-stream/tenants/" + tenantID,
-		Type: "situation.trigger.evaluated", Subject: "situation/" + eval.SituationID,
-		Time: eval.EvaluatedAt, DataContentType: "application/json",
-		DataSchema: "urn:situation-runtime:schema:trigger-evaluation:v1",
-		Data:       map[string]any{"trigger_id": eval.TriggerID, "situation_id": eval.SituationID, "situation_version": eval.SituationVersion, "outcome": eval.Outcome},
-		TenantID:   tenantID, PartitionKey: eval.SituationID, IngestedTime: eval.EvaluatedAt,
-		Classification: contractsv1.ClassificationInternal,
-	}
-	event.EnvelopeDigest, err = event.ComputeEnvelopeDigest()
-	if err != nil {
+			evaluated_at = excluded.evaluated_at`
+
+// announceEvaluation appends the situation.trigger.evaluated notification.
+func announceEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluation, tenantID string) error {
+	event := evaluationEvent(eval, tenantID)
+	var err error
+	if event.EnvelopeDigest, err = event.ComputeEnvelopeDigest(); err != nil {
 		return fmt.Errorf("digest trigger notification: %w", err)
 	}
 	if _, err := notify.Append(ctx, tx, event, eval.EvaluatedAt); err != nil {
@@ -154,49 +179,63 @@ func (s *Scheduler) saveEvaluation(ctx context.Context, tx *sql.Tx, eval Evaluat
 	return nil
 }
 
+func evaluationEvent(eval Evaluation, tenantID string) contractsv1.CloudEvent {
+	return contractsv1.CloudEvent{
+		SpecVersion: "1.0", ID: eval.TriggerID + ":" + eval.Outcome + ":" + eval.EvaluatedAt.UTC().Format(time.RFC3339Nano), Source: "//agentic-stream/tenants/" + tenantID,
+		Type: "situation.trigger.evaluated", Subject: "situation/" + eval.SituationID,
+		Time: eval.EvaluatedAt, DataContentType: "application/json",
+		DataSchema: "urn:situation-runtime:schema:trigger-evaluation:v1",
+		Data:       map[string]any{"trigger_id": eval.TriggerID, "situation_id": eval.SituationID, "situation_version": eval.SituationVersion, "outcome": eval.Outcome},
+		TenantID:   tenantID, PartitionKey: eval.SituationID, IngestedTime: eval.EvaluatedAt,
+		Classification: contractsv1.ClassificationInternal,
+	}
+}
+
 func (s *Scheduler) buildItem(ctx context.Context, tx *sql.Tx, eval Evaluation) (scheduleledger.Item, error) {
 	item := scheduleledger.Item{
-		SchedulerItemID:  s.itemID(),
-		Kind:             "standard",
-		TriggerID:        eval.TriggerID,
-		SituationID:      eval.SituationID,
-		SituationVersion: eval.SituationVersion,
-		Lane:             eval.Lane,
-		Priority:         eval.Score,
-		Status:           "pending",
+		SchedulerItemID: s.itemID(), Kind: "standard", TriggerID: eval.TriggerID,
+		SituationID: eval.SituationID, SituationVersion: eval.SituationVersion,
+		Lane: eval.Lane, Priority: eval.Score, Status: "pending",
 	}
-
 	trigger, err := s.findTrigger(eval.TriggerName)
 	if err != nil {
 		return item, err
 	}
+	if err := applyTiming(&item, trigger, s.clk.Now().UTC()); err != nil {
+		return item, err
+	}
+	err = s.applyTriggerCooldown(ctx, tx, &item, eval, trigger)
+	return item, err
+}
 
-	now := s.clk.Now().UTC()
+// applyTiming sets the item's expiry and, when the trigger debounces, the
+// earliest time it may run.
+func applyTiming(item *scheduleledger.Item, trigger spec.Trigger, now time.Time) error {
 	expiresAfter, err := parseOptionalDuration(trigger.ExpiresAfter, defaultExpiresAfter)
 	if err != nil {
-		return item, fmt.Errorf("parse expiresAfter: %w", err)
+		return fmt.Errorf("parse expiresAfter: %w", err)
 	}
 	item.ExpiresAt = now.Add(expiresAfter)
-
 	debounce, err := parseOptionalDuration(trigger.Debounce, 0)
 	if err != nil {
-		return item, fmt.Errorf("parse debounce: %w", err)
+		return fmt.Errorf("parse debounce: %w", err)
 	}
 	if debounce > 0 {
 		notBefore := now.Add(debounce)
 		item.NotBefore = &notBefore
 	}
+	return nil
+}
 
+func (s *Scheduler) applyTriggerCooldown(ctx context.Context, tx *sql.Tx, item *scheduleledger.Item, eval Evaluation, trigger spec.Trigger) error {
 	cooldown, err := parseOptionalDuration(trigger.Cooldown, 0)
 	if err != nil {
-		return item, fmt.Errorf("parse cooldown: %w", err)
+		return fmt.Errorf("parse cooldown: %w", err)
 	}
-	if cooldown > 0 {
-		if err := s.applyCooldown(ctx, tx, &item, eval, cooldown); err != nil {
-			return item, err
-		}
+	if cooldown <= 0 {
+		return nil
 	}
-	return item, nil
+	return s.applyCooldown(ctx, tx, item, eval, cooldown)
 }
 
 // applyCooldown delays the item until cooldown after the trigger's latest

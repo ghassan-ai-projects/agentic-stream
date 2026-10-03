@@ -15,26 +15,32 @@ func (c *Compiler) prepareSchema() error {
 	if c.schema != nil {
 		return nil
 	}
-
-	compiler := jsonschema.NewCompiler()
-	compiler.AssertFormat()
-	compiler.UseLoader(denyNetworkLoader{})
-
-	var schemaDoc any
-	if err := json.Unmarshal(schemaBytes, &schemaDoc); err != nil {
-		return fmt.Errorf("unmarshal embedded schema: %w", err)
-	}
-
-	if err := compiler.AddResource(schemaID, schemaDoc); err != nil {
-		return fmt.Errorf("add schema resource: %w", err)
-	}
-
-	schema, err := compiler.Compile(schemaID)
+	schema, err := compileSpecSchema()
 	if err != nil {
-		return fmt.Errorf("compile schema: %w", err)
+		return err
 	}
 	c.schema = schema
 	return nil
+}
+
+// compileSpecSchema compiles the embedded SituationSpec schema with format
+// assertions and no network schema loading.
+func compileSpecSchema() (*jsonschema.Schema, error) {
+	var schemaDoc any
+	if err := json.Unmarshal(schemaBytes, &schemaDoc); err != nil {
+		return nil, fmt.Errorf("unmarshal embedded schema: %w", err)
+	}
+	compiler := jsonschema.NewCompiler()
+	compiler.AssertFormat()
+	compiler.UseLoader(denyNetworkLoader{})
+	if err := compiler.AddResource(schemaID, schemaDoc); err != nil {
+		return nil, fmt.Errorf("add schema resource: %w", err)
+	}
+	schema, err := compiler.Compile(schemaID)
+	if err != nil {
+		return nil, fmt.Errorf("compile schema: %w", err)
+	}
+	return schema, nil
 }
 
 const schemaID = "urn:agentic-stream:schema:situation-spec:v1"

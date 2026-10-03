@@ -53,26 +53,15 @@ type unfinishedAttempt struct {
 }
 
 func listUnfinishedAttempts(ctx context.Context, tx *sql.Tx, currentEpoch string) ([]unfinishedAttempt, error) {
-	rows, err := tx.QueryContext(ctx, `
-		SELECT attempt_id, episode_id, status, COALESCE(owner_epoch, '')
-		FROM episode_attempts
-		WHERE status IN ('dispatched', 'running', 'cancelling')
-		  AND (owner_epoch IS NULL OR owner_epoch <> ?)`, currentEpoch)
+	rows, err := tx.QueryContext(ctx, unfinishedAttemptsSQL, currentEpoch)
 	if err != nil {
 		return nil, fmt.Errorf("list unfinished attempts: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	var attempts []unfinishedAttempt
-	for rows.Next() {
-		var item unfinishedAttempt
-		if err := rows.Scan(&item.attemptID, &item.episodeID, &item.status, &item.ownerEpoch); err != nil {
-			return nil, fmt.Errorf("scan unfinished attempt: %w", err)
-		}
-		attempts = append(attempts, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate unfinished attempts: %w", err)
+	attempts, err := collectUnfinishedAttempts(rows)
+	if err != nil {
+		return nil, err
 	}
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("close unfinished attempts: %w", err)
@@ -90,46 +79,22 @@ type attemptRecovery struct {
 }
 
 func (r *attemptRecovery) recover(ctx context.Context, item unfinishedAttempt) error {
-	terminal, err := json.Marshal(map[string]any{
-		"status":               AttemptAbandoned,
-		"reason":               "runtime_restart",
-		"previous_owner_epoch": item.ownerEpoch,
-	})
+	terminal, err := recoveryTerminal(item)
 	if err != nil {
-		return fmt.Errorf("marshal recovery terminal: %w", err)
+		return err
 	}
-	result, err := r.tx.ExecContext(ctx, `
-		UPDATE episode_attempts
-		SET status = 'abandoned', ended_at = ?, terminal_json = ?
-		WHERE attempt_id = ? AND episode_id = ?
-		  AND status IN ('dispatched', 'running', 'cancelling')`,
+	result, err := r.tx.ExecContext(ctx, abandonAttemptSQL,
 		r.now, terminal, item.attemptID, item.episodeID)
 	if err != nil {
 		return fmt.Errorf("abandon attempt %s: %w", item.attemptID, err)
 	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("count abandoned attempt %s: %w", item.attemptID, err)
-	}
-	if count != 1 {
-		return nil
-	}
-	r.report.AbandonedAttempts++
-	if item.status == string(AttemptCancelling) {
-		return r.abandonCancelingEpisode(ctx, item.episodeID, terminal)
-	}
-	return r.countRequeued(ctx, item.episodeID)
+	return r.countRecoveredAttempt(ctx, item, terminal, result)
 }
 
 // abandonCancelingEpisode ends an episode whose attempt was being canceled:
 // cancellation is a terminal decision, not a retry signal.
 func (r *attemptRecovery) abandonCancelingEpisode(ctx context.Context, episodeID string, terminal []byte) error {
-	result, err := r.tx.ExecContext(ctx, `
-		UPDATE episodes
-		SET lifecycle_status = 'abandoned', ended_at = ?,
-		    terminal_json = ?
-		WHERE episode_id = ? AND lifecycle_status NOT IN
-		    ('concluded', 'closed', 'superseded', 'expired', 'abandoned')`,
+	result, err := r.tx.ExecContext(ctx, abandonCancelingEpisodeSQL,
 		r.now, terminal, episodeID)
 	if err != nil {
 		return fmt.Errorf("abandon canceling episode %s: %w", episodeID, err)
@@ -154,4 +119,65 @@ func (r *attemptRecovery) countRequeued(ctx context.Context, episodeID string) e
 		r.report.RequeuedEpisodes++
 	}
 	return nil
+}
+
+const unfinishedAttemptsSQL = `
+		SELECT attempt_id, episode_id, status, COALESCE(owner_epoch, '')
+		FROM episode_attempts
+		WHERE status IN ('dispatched', 'running', 'cancelling')
+		  AND (owner_epoch IS NULL OR owner_epoch <> ?)`
+
+const abandonAttemptSQL = `
+		UPDATE episode_attempts
+		SET status = 'abandoned', ended_at = ?, terminal_json = ?
+		WHERE attempt_id = ? AND episode_id = ?
+		  AND status IN ('dispatched', 'running', 'cancelling')`
+
+const abandonCancelingEpisodeSQL = `
+		UPDATE episodes
+		SET lifecycle_status = 'abandoned', ended_at = ?,
+		    terminal_json = ?
+		WHERE episode_id = ? AND lifecycle_status NOT IN
+		    ('concluded', 'closed', 'superseded', 'expired', 'abandoned')`
+
+func collectUnfinishedAttempts(rows *sql.Rows) ([]unfinishedAttempt, error) {
+	var attempts []unfinishedAttempt
+	for rows.Next() {
+		var item unfinishedAttempt
+		if err := rows.Scan(&item.attemptID, &item.episodeID, &item.status, &item.ownerEpoch); err != nil {
+			return nil, fmt.Errorf("scan unfinished attempt: %w", err)
+		}
+		attempts = append(attempts, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate unfinished attempts: %w", err)
+	}
+	return attempts, nil
+}
+
+func recoveryTerminal(item unfinishedAttempt) ([]byte, error) {
+	terminal, err := json.Marshal(map[string]any{
+		"status":               AttemptAbandoned,
+		"reason":               "runtime_restart",
+		"previous_owner_epoch": item.ownerEpoch,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal recovery terminal: %w", err)
+	}
+	return terminal, nil
+}
+
+func (r *attemptRecovery) countRecoveredAttempt(ctx context.Context, item unfinishedAttempt, terminal []byte, result sql.Result) error {
+	count, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count abandoned attempt %s: %w", item.attemptID, err)
+	}
+	if count != 1 {
+		return nil
+	}
+	r.report.AbandonedAttempts++
+	if item.status == string(AttemptCancelling) {
+		return r.abandonCancelingEpisode(ctx, item.episodeID, terminal)
+	}
+	return r.countRequeued(ctx, item.episodeID)
 }

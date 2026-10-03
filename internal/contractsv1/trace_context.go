@@ -25,23 +25,32 @@ type SpanLink struct {
 
 // ParseTraceContext validates W3C traceparent/tracestate values.
 func ParseTraceContext(traceparent, tracestate string) (TraceContext, error) {
+	if traceparent == "" && tracestate != "" {
+		return TraceContext{}, fmt.Errorf("tracestate requires traceparent")
+	}
 	if traceparent == "" {
-		if tracestate != "" {
-			return TraceContext{}, fmt.Errorf("tracestate requires traceparent")
-		}
 		return TraceContext{}, nil
 	}
-	if !traceparentPattern.MatchString(traceparent) {
-		return TraceContext{}, fmt.Errorf("invalid W3C traceparent")
-	}
-	parts := strings.Split(traceparent, "-")
-	if strings.Trim(parts[1], "0") == "" || strings.Trim(parts[2], "0") == "" || parts[1] == strings.Repeat("f", 32) {
-		return TraceContext{}, fmt.Errorf("traceparent contains an invalid zero or all-ones identifier")
+	if err := checkTraceparent(traceparent); err != nil {
+		return TraceContext{}, err
 	}
 	if len(tracestate) > 512 || strings.ContainsAny(tracestate, "\r\n") {
 		return TraceContext{}, fmt.Errorf("invalid tracestate")
 	}
 	return TraceContext{Traceparent: traceparent, Tracestate: tracestate}, nil
+}
+
+// checkTraceparent requires the W3C format with non-zero trace and span IDs
+// and a trace ID that is not all ones.
+func checkTraceparent(traceparent string) error {
+	if !traceparentPattern.MatchString(traceparent) {
+		return fmt.Errorf("invalid W3C traceparent")
+	}
+	parts := strings.Split(traceparent, "-")
+	if strings.Trim(parts[1], "0") == "" || strings.Trim(parts[2], "0") == "" || parts[1] == strings.Repeat("f", 32) {
+		return fmt.Errorf("traceparent contains an invalid zero or all-ones identifier")
+	}
+	return nil
 }
 
 // Link returns a span link for the context, or nil when tracing is absent.

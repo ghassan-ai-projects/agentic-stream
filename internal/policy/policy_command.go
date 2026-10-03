@@ -2,16 +2,12 @@ package policy
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 )
 
@@ -29,18 +25,7 @@ func (g *Gateway) approveAutomatic(ctx context.Context, tx *sql.Tx, row intentRo
 	if err != nil {
 		return result, err
 	}
-	if existingID != "" {
-		result.Result, result.Reason, result.CommandID = "approved", "already_commanded", existingID
-		return g.audit(ctx, tx, row, result, "approved", result.Reason, now)
-	}
-	limited, err := g.rateLimited(ctx, tx, row, command.ID, now)
-	if err != nil {
-		return result, err
-	}
-	if limited {
-		return g.finish(ctx, tx, row, result, "denied", "rate_limited", now)
-	}
-	return g.queueApprovedCommand(ctx, tx, row, command, result, now)
+	return g.approvePreparedCommand(ctx, tx, row, command, existingID, result, now)
 }
 
 // commandForIntent returns the ID of the intent's existing command, or
@@ -55,18 +40,7 @@ func (g *Gateway) commandForIntent(ctx context.Context, tx *sql.Tx, row intentRo
 	if err != nil {
 		return commandDocument{}, "", err
 	}
-	inserted, err := insertCommand(ctx, tx, row, command, now)
-	if err != nil || inserted {
-		return command, "", err
-	}
-	commandID, err = existingCommandID(ctx, tx, row.IntentID)
-	if err != nil {
-		return commandDocument{}, "", err
-	}
-	if commandID == "" {
-		return commandDocument{}, "", fmt.Errorf("command insert conflicted but no command exists for intent %s", row.IntentID)
-	}
-	return commandDocument{}, commandID, nil
+	return storeCommandOnce(ctx, tx, row, command, now)
 }
 
 // rateLimited withdraws the prepared command and reports true when the
@@ -143,84 +117,32 @@ type commandDocument struct {
 	Target string
 }
 
-func newCommand(g *Gateway, row intentRow, intent map[string]any, now time.Time) (commandDocument, error) {
-	commandID := g.idGen.New(ids.PrefixCommand)
-	target := normalizedTarget(row.IntentID, intent)
-	idempotency := sha256.Sum256([]byte(row.TenantID + "|" + row.IntentID + "|" + row.IntentType + "|" + target))
-	document := map[string]any{
-		"command_id": commandID, "intent_id": row.IntentID, "tenant_id": row.TenantID,
-		"effector_route": row.IntentType, "normalized_target": target,
-		"idempotency_key": "sha256:" + hex.EncodeToString(idempotency[:]),
-		"status":          "prepared", "not_before_mono_us": 0, "policy_digest": g.policyDigest,
-		"payload": intent["parameters"], "created_at": formatTime(now),
+func (g *Gateway) approvePreparedCommand(ctx context.Context, tx *sql.Tx, row intentRow, command commandDocument, existingID string, result Result, now time.Time) (Result, error) {
+	if existingID != "" {
+		result.Result, result.Reason, result.CommandID = "approved", "already_commanded", existingID
+		return g.audit(ctx, tx, row, result, "approved", result.Reason, now)
 	}
-	commandJSON, err := canonicaljson.Marshal(document)
+	limited, err := g.rateLimited(ctx, tx, row, command.ID, now)
 	if err != nil {
-		return commandDocument{}, fmt.Errorf("canonicalize command: %w", err)
+		return result, err
 	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainCommand, document)
-	if err != nil {
-		return commandDocument{}, fmt.Errorf("digest command: %w", err)
+	if limited {
+		return g.finish(ctx, tx, row, result, "denied", "rate_limited", now)
 	}
-	commandSHA, err := canonicaljson.DecodeDigest(digest)
-	if err != nil {
-		return commandDocument{}, fmt.Errorf("decode command digest: %w", err)
-	}
-	return commandDocument{ID: commandID, JSON: commandJSON, SHA: commandSHA, Key: idempotency[:], Target: target}, nil
+	return g.queueApprovedCommand(ctx, tx, row, command, result, now)
 }
 
-func insertCommand(ctx context.Context, tx *sql.Tx, row intentRow, command commandDocument, now time.Time) (bool, error) {
-	result, err := tx.ExecContext(ctx, `
-		INSERT INTO commands (
-			command_id, intent_id, tenant_id, effector_route, normalized_target,
-			idempotency_key, command_json, command_sha256, status, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-		ON CONFLICT(intent_id) DO NOTHING`,
-		command.ID, row.IntentID, row.TenantID, row.IntentType, command.Target,
-		command.Key, command.JSON, command.SHA, formatTime(now), formatTime(now),
-	)
+func storeCommandOnce(ctx context.Context, tx *sql.Tx, row intentRow, command commandDocument, now time.Time) (commandDocument, string, error) {
+	inserted, err := insertCommand(ctx, tx, row, command, now)
+	if err != nil || inserted {
+		return command, "", err
+	}
+	commandID, err := existingCommandID(ctx, tx, row.IntentID)
 	if err != nil {
-		return false, fmt.Errorf("insert command: %w", err)
+		return commandDocument{}, "", err
 	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("insert command rows affected: %w", err)
+	if commandID == "" {
+		return commandDocument{}, "", fmt.Errorf("command insert conflicted but no command exists for intent %s", row.IntentID)
 	}
-	switch count {
-	case 0:
-		return false, nil
-	case 1:
-		return true, nil
-	default:
-		return false, fmt.Errorf("insert command affected %d rows", count)
-	}
-}
-
-func removePreparedCommand(ctx context.Context, tx *sql.Tx, intentID, commandID string) error {
-	result, err := tx.ExecContext(ctx, "DELETE FROM commands WHERE intent_id = ? AND command_id = ? AND status = 'pending'", intentID, commandID)
-	if err != nil {
-		return fmt.Errorf("remove rate-limited command: %w", err)
-	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("remove rate-limited command rows affected: %w", err)
-	}
-	if count != 1 {
-		return fmt.Errorf("remove rate-limited command affected %d rows", count)
-	}
-	return nil
-}
-
-func insertCommandOutbox(ctx context.Context, tx *sql.Tx, commandID string, commandJSON []byte, now time.Time) error {
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO outbox (
-			kind, aggregate_id, aggregate_version, payload_json, status,
-			available_at, created_at
-		) VALUES ('command', ?, 1, ?, 'pending', ?, ?)
-		ON CONFLICT(kind, aggregate_id, aggregate_version) DO NOTHING`,
-		commandID, commandJSON, formatTime(now), formatTime(now),
-	); err != nil {
-		return fmt.Errorf("insert command outbox: %w", err)
-	}
-	return nil
+	return commandDocument{}, commandID, nil
 }

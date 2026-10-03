@@ -49,6 +49,11 @@ func (s *Service) Start(ctx context.Context) (RecoveryReport, error) {
 		s.setNotReady(err)
 		return RecoveryReport{}, err
 	}
+	s.startHeartbeat()
+	return report, nil
+}
+
+func (s *Service) startHeartbeat() {
 	heartbeatCtx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
 	s.stop = cancel
@@ -58,7 +63,41 @@ func (s *Service) Start(ctx context.Context) (RecoveryReport, error) {
 	done := s.done
 	s.mu.Unlock()
 	go s.heartbeat(heartbeatCtx, done)
-	return report, nil
+}
+
+func (s *Service) heartbeat(ctx context.Context, done chan struct{}) {
+	defer close(done)
+	ticker := time.NewTicker(ownerHeartbeatInterval(s.owner.Lease))
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := s.maintainRuntimeLease(ctx); err != nil {
+				s.setNotReady(err)
+				return
+			}
+		}
+	}
+}
+
+func ownerHeartbeatInterval(lease time.Duration) time.Duration {
+	interval := lease / 3
+	if interval <= 0 {
+		return time.Second
+	}
+	return interval
+}
+
+func (s *Service) maintainRuntimeLease(ctx context.Context) error {
+	if err := s.owner.Renew(ctx, s.epoch); err != nil {
+		return fmt.Errorf("runtime owner heartbeat: %w", err)
+	}
+	if err := s.ledger.ReclaimExpired(ctx, time.Now().UTC()); err != nil {
+		return fmt.Errorf("evidence lease reclamation: %w", err)
+	}
+	return nil
 }
 
 // Ready reports whether ownership, recovery, and heartbeat health permit live
@@ -92,35 +131,14 @@ func (s *Service) Close(ctx context.Context) error {
 		stop()
 		<-done
 	}
+	return s.releaseOwner(ctx)
+}
+
+func (s *Service) releaseOwner(ctx context.Context) error {
 	if err := s.owner.Release(ctx, s.epoch); err != nil {
 		return fmt.Errorf("release runtime owner: %w", err)
 	}
 	return nil
-}
-
-func (s *Service) heartbeat(ctx context.Context, done chan struct{}) {
-	defer close(done)
-	interval := s.owner.Lease / 3
-	if interval <= 0 {
-		interval = time.Second
-	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if err := s.owner.Renew(ctx, s.epoch); err != nil {
-				s.setNotReady(fmt.Errorf("runtime owner heartbeat: %w", err))
-				return
-			}
-			if err := s.ledger.ReclaimExpired(ctx, time.Now().UTC()); err != nil {
-				s.setNotReady(fmt.Errorf("evidence lease reclamation: %w", err))
-				return
-			}
-		}
-	}
 }
 
 func (s *Service) setNotReady(err error) {

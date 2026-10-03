@@ -1,4 +1,6 @@
-// Package notify provides durable, cursor-resumable notification delivery.
+// Package notify owns the durable, cursor-resumable notification outbox:
+// append, paged reads with lag and poison handling, and retention. HTTP
+// delivery lives in api.
 package notify
 
 import (
@@ -64,6 +66,10 @@ func Append(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, now t
 	if err != nil {
 		return 0, fmt.Errorf("canonicalize notification: %w", err)
 	}
+	return appendCanonicalNotification(ctx, tx, event, eventJSON, now)
+}
+
+func appendCanonicalNotification(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, eventJSON []byte, now time.Time) (int64, error) {
 	eventSHA := sha256.Sum256(eventJSON)
 	if cursor, found, err := existingNotification(ctx, tx, event, eventSHA[:]); err != nil || found {
 		return cursor, err
@@ -71,16 +77,20 @@ func Append(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, now t
 	if err := checkTombstone(ctx, tx, event, eventSHA[:]); err != nil {
 		return 0, err
 	}
+	return publishNotification(ctx, tx, event, eventJSON, eventSHA[:], now)
+}
+
+func publishNotification(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, eventJSON, eventSHA []byte, now time.Time) (int64, error) {
 	cursor, err := allocateCursor(ctx, tx, event.TenantID)
 	if err != nil {
 		return 0, err
 	}
-	inserted, err := insertNotification(ctx, tx, event, eventJSON, eventSHA[:], cursor, now)
+	inserted, err := insertNotification(ctx, tx, event, eventJSON, eventSHA, cursor, now)
 	if err != nil {
 		return 0, err
 	}
 	if !inserted {
-		if err := releaseRacedCursor(ctx, tx, event, eventSHA[:], cursor); err != nil {
+		if err := releaseRacedCursor(ctx, tx, event, eventSHA, cursor); err != nil {
 			return 0, err
 		}
 	}
@@ -188,6 +198,17 @@ func Prune(ctx context.Context, db *storage.DB, now time.Time, retention time.Du
 	if _, err := db.ExecContext(ctx, `INSERT INTO notification_event_tombstones (tenant_id, event_id, event_sha256, retired_at) SELECT tenant_id, event_id, event_sha256, ? FROM notifications WHERE created_at < ? ON CONFLICT(tenant_id, event_id) DO NOTHING`, now.UTC().Format(time.RFC3339Nano), cutoff); err != nil {
 		return 0, fmt.Errorf("tombstone notifications: %w", err)
 	}
+	deleted, err := deleteRetiredNotifications(ctx, db, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	if err := pruneTombstones(ctx, db, cutoff); err != nil {
+		return 0, err
+	}
+	return deleted, nil
+}
+
+func deleteRetiredNotifications(ctx context.Context, db *storage.DB, cutoff string) (int64, error) {
 	result, err := db.ExecContext(ctx, "DELETE FROM notifications WHERE created_at < ?", cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("prune notifications: %w", err)
@@ -196,12 +217,16 @@ func Prune(ctx context.Context, db *storage.DB, now time.Time, retention time.Du
 	if err != nil {
 		return 0, fmt.Errorf("count pruned notifications: %w", err)
 	}
+	return deleted, nil
+}
+
+func pruneTombstones(ctx context.Context, db *storage.DB, cutoff string) error {
 	// Tombstones share the bounded deduplication horizon. Replay beyond the
 	// retention contract is already refused by cursor expiry.
 	if _, err := db.ExecContext(ctx, "DELETE FROM notification_event_tombstones WHERE retired_at < ?", cutoff); err != nil {
-		return 0, fmt.Errorf("prune notification tombstones: %w", err)
+		return fmt.Errorf("prune notification tombstones: %w", err)
 	}
-	return deleted, nil
+	return nil
 }
 
 func audit(ctx context.Context, db *storage.DB, tenantID, action string, requested, oldest int64, now time.Time) error {

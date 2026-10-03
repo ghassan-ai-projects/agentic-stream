@@ -43,19 +43,37 @@ func (s storedEvent) record() (Record, error) {
 	if rec.IngestedAt, err = time.Parse(time.RFC3339Nano, s.ingestedAt); err != nil {
 		return rec, fmt.Errorf("parse ingested_at: %w", err)
 	}
-	if s.observedAt.Valid {
-		t, err := time.Parse(time.RFC3339Nano, s.observedAt.String)
-		if err != nil {
-			return rec, fmt.Errorf("parse observed_at: %w", err)
-		}
-		rec.ObservedAt = &t
+	if rec.ObservedAt, err = s.parseObservedAt(); err != nil {
+		return rec, err
 	}
 	rec.Envelope, err = s.envelope(rec)
 	return rec, err
 }
 
+func (s storedEvent) parseObservedAt() (*time.Time, error) {
+	if !s.observedAt.Valid {
+		return nil, nil
+	}
+	t, err := time.Parse(time.RFC3339Nano, s.observedAt.String)
+	if err != nil {
+		return nil, fmt.Errorf("parse observed_at: %w", err)
+	}
+	return &t, nil
+}
+
 func (s storedEvent) envelope(rec Record) (contractsv1.Envelope, error) {
-	env := contractsv1.Envelope{
+	env := s.envelopeHeader(rec)
+	if err := json.Unmarshal(s.qualityJSON, &env.Quality); err != nil {
+		return env, fmt.Errorf("unmarshal quality: %w", err)
+	}
+	if err := json.Unmarshal(s.payloadJSON, &env.Data); err != nil {
+		return env, fmt.Errorf("unmarshal payload: %w", err)
+	}
+	return env, nil
+}
+
+func (s storedEvent) envelopeHeader(rec Record) contractsv1.Envelope {
+	return contractsv1.Envelope{
 		ID: rec.EventID, Type: rec.EventType, SchemaVersion: rec.SchemaVersion, TenantID: rec.TenantID,
 		Source: rec.Source, PartitionKey: rec.PartitionKey,
 		Entity:    contractsv1.EntityRef{Type: rec.EntityType, ID: rec.EntityID},
@@ -64,11 +82,4 @@ func (s storedEvent) envelope(rec Record) (contractsv1.Envelope, error) {
 		Traceparent: s.traceparent.String, Tracestate: s.tracestate.String,
 		Classification: contractsv1.Classification(s.classification),
 	}
-	if err := json.Unmarshal(s.qualityJSON, &env.Quality); err != nil {
-		return env, fmt.Errorf("unmarshal quality: %w", err)
-	}
-	if err := json.Unmarshal(s.payloadJSON, &env.Data); err != nil {
-		return env, fmt.Errorf("unmarshal payload: %w", err)
-	}
-	return env, nil
 }

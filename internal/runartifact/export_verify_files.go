@@ -50,19 +50,26 @@ func parseChecksumIndex(data []byte) (map[string]string, error) {
 	expected := make(map[string]string)
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
 	for scanner.Scan() {
-		name, digest, err := parseChecksumEntry(scanner.Text())
-		if err != nil {
+		if err := indexChecksumEntry(expected, scanner.Text()); err != nil {
 			return nil, err
 		}
-		if _, duplicate := expected[name]; duplicate {
-			return nil, fmt.Errorf("duplicate checksum entry for %s", name)
-		}
-		expected[name] = digest
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("read checksums: %w", err)
 	}
 	return expected, nil
+}
+
+func indexChecksumEntry(expected map[string]string, line string) error {
+	name, digest, err := parseChecksumEntry(line)
+	if err != nil {
+		return err
+	}
+	if _, duplicate := expected[name]; duplicate {
+		return fmt.Errorf("duplicate checksum entry for %s", name)
+	}
+	expected[name] = digest
+	return nil
 }
 
 func parseChecksumEntry(line string) (string, string, error) {
@@ -83,14 +90,21 @@ func verifyExpectedFiles(dir string, expected map[string]string) error {
 		}
 	}
 	for name, wanted := range expected {
-		data, err := readArtifactFile(dir, name)
-		if err != nil {
-			return fmt.Errorf("read %s: %w", name, err)
+		if err := verifyFileChecksum(dir, name, wanted); err != nil {
+			return err
 		}
-		hash := sha256.Sum256(data)
-		if hex.EncodeToString(hash[:]) != wanted {
-			return fmt.Errorf("checksum mismatch for %s", name)
-		}
+	}
+	return nil
+}
+
+func verifyFileChecksum(dir, name, wanted string) error {
+	data, err := readArtifactFile(dir, name)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", name, err)
+	}
+	hash := sha256.Sum256(data)
+	if hex.EncodeToString(hash[:]) != wanted {
+		return fmt.Errorf("checksum mismatch for %s", name)
 	}
 	return nil
 }

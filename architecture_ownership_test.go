@@ -58,8 +58,8 @@ var durableOwners = map[string]string{
 	"timers":                        "internal/engine",
 	"trigger_evaluations":           "internal/cognition",
 	"verifications":                 "internal/actions",
-	"watch_conditions":              "internal/actions",
-	"watch_fires":                   "internal/actions",
+	"watch_conditions":              "internal/watch",
+	"watch_fires":                   "internal/watch",
 }
 
 func TestDurableMutationsHaveOneOwnerOrAnExplicitHandoffPhase(t *testing.T) {

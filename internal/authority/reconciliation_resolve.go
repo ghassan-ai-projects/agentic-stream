@@ -22,20 +22,30 @@ func (s *ReconciliationStore) Resolve(ctx context.Context, deviceID, bootID, fin
 	if s == nil || s.DB == nil || s.Authority == nil || !allNonEmpty(deviceID, bootID, authorityEpoch, ownerInstance) || len(evidence) == 0 {
 		return false, fmt.Errorf("device, boot, authority, and reconciliation evidence are required")
 	}
-	if err := s.Authority.AssertRuntime(ctx, authorityEpoch); err != nil {
-		return false, fmt.Errorf("assert authority before resolving device reconciliation: %w", err)
-	}
-	if err := ValidateDeviceReconciliationEvidence(evidence, deviceID, bootID); err != nil {
+	claim := TargetClaim{Target: deviceID, DeviceID: deviceID, BootID: bootID, AuthorityEpoch: authorityEpoch, OwnerInstance: ownerInstance}
+	evidenceJSON, err := s.authorizeResolution(ctx, claim, evidence)
+	if err != nil {
 		return false, err
+	}
+	resolution := barrierResolution{claim: claim, finalStatus: finalStatus, evidence: evidence, evidenceJSON: evidenceJSON, now: s.now()}
+	return s.recordResolution(ctx, resolution)
+}
+
+func (s *ReconciliationStore) authorizeResolution(ctx context.Context, claim TargetClaim, evidence map[string]any) ([]byte, error) {
+	if err := s.Authority.AssertRuntime(ctx, claim.AuthorityEpoch); err != nil {
+		return nil, fmt.Errorf("assert authority before resolving device reconciliation: %w", err)
+	}
+	if err := ValidateDeviceReconciliationEvidence(evidence, claim.DeviceID, claim.BootID); err != nil {
+		return nil, err
 	}
 	evidenceJSON, err := canonicaljson.Marshal(evidence)
 	if err != nil {
-		return false, fmt.Errorf("canonicalize reconciliation evidence: %w", err)
+		return nil, fmt.Errorf("canonicalize reconciliation evidence: %w", err)
 	}
-	resolution := barrierResolution{
-		claim:       TargetClaim{Target: deviceID, DeviceID: deviceID, BootID: bootID, AuthorityEpoch: authorityEpoch, OwnerInstance: ownerInstance},
-		finalStatus: finalStatus, evidence: evidence, evidenceJSON: evidenceJSON, now: s.now(),
-	}
+	return evidenceJSON, nil
+}
+
+func (s *ReconciliationStore) recordResolution(ctx context.Context, resolution barrierResolution) (bool, error) {
 	if err := s.DB.WithTx(ctx, func(tx *sql.Tx) error {
 		return s.resolveTx(ctx, tx, resolution)
 	}); err != nil {
@@ -66,21 +76,7 @@ func (s *ReconciliationStore) resolveTx(ctx context.Context, tx *sql.Tx, r barri
 	if err := assertResolvableBarrier(ctx, tx, r.claim.DeviceID, r.claim.BootID, r.evidence); err != nil {
 		return err
 	}
-	newStatus := "required"
-	if r.clears() {
-		newStatus = "clear"
-	}
-	evidenceHash := sha256.Sum256(r.evidenceJSON)
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE device_reconciliation SET status = ?, last_resolution_status = ?,
-			resolution_evidence_json = ?, resolution_sha256 = ?, resolved_at = ?,
-			updated_at = ? WHERE device_id = ? AND status = 'required' AND boot_id = ?`,
-		newStatus, r.finalStatus, r.evidenceJSON, evidenceHash[:], formatRuntimeTime(r.now), formatRuntimeTime(r.now), r.claim.DeviceID, r.claim.BootID); err != nil {
-		return fmt.Errorf("resolve reconciliation barrier: %w", err)
-	}
-	return appendAuthorityEventTx(ctx, tx, r.claim, "reconciliation_recorded", map[string]any{
-		"final_status": r.finalStatus, "evidence_sha256": "sha256:" + hex.EncodeToString(evidenceHash[:]), "barrier_cleared": r.clears(),
-	}, r.now)
+	return recordResolvedBarrier(ctx, tx, r)
 }
 
 // assertResolvableBarrier requires an open barrier for this boot and evidence
@@ -95,6 +91,13 @@ func assertResolvableBarrier(ctx context.Context, tx *sql.Tx, deviceID, bootID s
 	if status != "required" || currentBoot != bootID {
 		return ErrReconciliationRequired
 	}
+	if err := checkLatestStateEvidence(evidence, currentStateHash); err != nil {
+		return err
+	}
+	return requireReconciledCommands(ctx, tx, deviceID, bootID)
+}
+
+func checkLatestStateEvidence(evidence map[string]any, currentStateHash []byte) error {
 	stateDigest, _ := evidence["state_digest"].(string)
 	if stateDigest != "sha256:"+hex.EncodeToString(currentStateHash) {
 		return fmt.Errorf("reconciliation evidence does not bind the latest device state")
@@ -107,6 +110,10 @@ func assertResolvableBarrier(ctx context.Context, tx *sql.Tx, deviceID, bootID s
 	if stateDigest != "sha256:"+hex.EncodeToString(stateHash[:]) {
 		return fmt.Errorf("reconciliation state digest does not match typed state evidence")
 	}
+	return nil
+}
+
+func requireReconciledCommands(ctx context.Context, tx *sql.Tx, deviceID, bootID string) error {
 	unresolved, err := countUnresolvedCommands(ctx, tx, deviceID, bootID)
 	if err != nil {
 		return err
@@ -138,3 +145,23 @@ func countUnresolvedCommands(ctx context.Context, tx *sql.Tx, deviceID, bootID s
 	}
 	return unresolved, nil
 }
+
+func recordResolvedBarrier(ctx context.Context, tx *sql.Tx, r barrierResolution) error {
+	newStatus := "required"
+	if r.clears() {
+		newStatus = "clear"
+	}
+	evidenceHash := sha256.Sum256(r.evidenceJSON)
+	if _, err := tx.ExecContext(ctx, recordResolvedDeviceBarrierSQL,
+		newStatus, r.finalStatus, r.evidenceJSON, evidenceHash[:], formatRuntimeTime(r.now), formatRuntimeTime(r.now), r.claim.DeviceID, r.claim.BootID); err != nil {
+		return fmt.Errorf("resolve reconciliation barrier: %w", err)
+	}
+	return appendAuthorityEventTx(ctx, tx, r.claim, "reconciliation_recorded", map[string]any{
+		"final_status": r.finalStatus, "evidence_sha256": "sha256:" + hex.EncodeToString(evidenceHash[:]), "barrier_cleared": r.clears(),
+	}, r.now)
+}
+
+const recordResolvedDeviceBarrierSQL = `
+		UPDATE device_reconciliation SET status = ?, last_resolution_status = ?,
+			resolution_evidence_json = ?, resolution_sha256 = ?, resolved_at = ?,
+			updated_at = ? WHERE device_id = ? AND status = 'required' AND boot_id = ?`

@@ -28,27 +28,42 @@ func CompileIntentCatalog(intents []spec.Intent) ([]map[string]any, string, erro
 	if len(intents) == 0 {
 		return nil, "", fmt.Errorf("intent catalog is empty")
 	}
-	entries := make([]map[string]any, 0, len(intents))
-	seen := make(map[string]struct{}, len(intents))
-	for _, intent := range intents {
-		if intent.Type == "" {
-			return nil, "", fmt.Errorf("intent catalog entry has no type")
-		}
-		if _, exists := seen[intent.Type]; exists {
-			return nil, "", fmt.Errorf("intent catalog duplicates type %q", intent.Type)
-		}
-		seen[intent.Type] = struct{}{}
-		entry, err := compileIntentEntry(intent)
-		if err != nil {
-			return nil, "", err
-		}
-		entries = append(entries, entry)
+	entries, err := compileIntentEntries(intents)
+	if err != nil {
+		return nil, "", err
 	}
 	digest, err := canonicaljson.Digest(canonicaljson.DomainIntentCatalog, entries)
 	if err != nil {
 		return nil, "", fmt.Errorf("digest intent catalog: %w", err)
 	}
 	return entries, digest, nil
+}
+
+func compileIntentEntries(intents []spec.Intent) ([]map[string]any, error) {
+	entries := make([]map[string]any, 0, len(intents))
+	seen := make(map[string]struct{}, len(intents))
+	for _, intent := range intents {
+		if err := admitIntentType(intent.Type, seen); err != nil {
+			return nil, err
+		}
+		entry, err := compileIntentEntry(intent)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+func admitIntentType(intentType string, seen map[string]struct{}) error {
+	if intentType == "" {
+		return fmt.Errorf("intent catalog entry has no type")
+	}
+	if _, exists := seen[intentType]; exists {
+		return fmt.Errorf("intent catalog duplicates type %q", intentType)
+	}
+	seen[intentType] = struct{}{}
+	return nil
 }
 
 // compileIntentEntry validates one declared intent and converts it to its
@@ -63,32 +78,10 @@ func compileIntentEntry(intent spec.Intent) (map[string]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("canonicalize intent %q schema: %w", intent.Type, err)
 	}
-	properties, _ := intent.ParameterSchema["properties"].(map[string]any)
-	for _, field := range intent.ModelWritableFields {
-		if _, ok := properties[field]; !ok {
-			return nil, fmt.Errorf("intent %q marks %q writable but the schema has no such property",
-				intent.Type, field)
-		}
-	}
-	if err := validatePresets(intent.Type, properties, intent.Presets); err != nil {
+	if err := validateIntentParameters(intent); err != nil {
 		return nil, err
 	}
-	if intent.RateLimitPerHour < 0 {
-		return nil, fmt.Errorf("intent %q has an invalid rate limit", intent.Type)
-	}
-	writable := intent.ModelWritableFields
-	if writable == nil {
-		writable = []string{}
-	}
-	entry := map[string]any{
-		"type":                    intent.Type,
-		"risk_class":              intent.Risk,
-		"parameter_schema":        intent.ParameterSchema,
-		"parameter_schema_digest": "sha256:" + hex.EncodeToString(sha256Sum(canonicalSchema)),
-		"model_writable_fields":   writable,
-	}
-	addOptionalIntentFields(entry, intent)
-	return entry, nil
+	return intentCatalogEntry(intent, canonicalSchema), nil
 }
 
 // validateIntentSchema requires a declared risk and a closed object schema.
@@ -108,28 +101,21 @@ func validateIntentSchema(intent spec.Intent) error {
 	return nil
 }
 
-// addOptionalIntentFields adds the fields the wire form omits when unset.
-func addOptionalIntentFields(entry map[string]any, intent spec.Intent) {
-	if len(intent.Presets) > 0 {
-		entry["presets"] = intent.Presets
+func validateIntentParameters(intent spec.Intent) error {
+	properties, _ := intent.ParameterSchema["properties"].(map[string]any)
+	for _, field := range intent.ModelWritableFields {
+		if _, ok := properties[field]; !ok {
+			return fmt.Errorf("intent %q marks %q writable but the schema has no such property",
+				intent.Type, field)
+		}
 	}
-	if intent.Description != "" {
-		entry["description"] = intent.Description
+	if err := validatePresets(intent.Type, properties, intent.Presets); err != nil {
+		return err
 	}
-	if intent.Policy != "" {
-		entry["policy"] = map[string]any{"requires_approval": intent.Policy == "approval"}
+	if intent.RateLimitPerHour < 0 {
+		return fmt.Errorf("intent %q has an invalid rate limit", intent.Type)
 	}
-	if intent.RateLimitPerHour > 0 {
-		entry["rate_limit"] = map[string]any{"per_hour": intent.RateLimitPerHour}
-	}
-	if len(intent.Compensation) > 0 {
-		entry["compensation"] = intent.Compensation
-	}
-}
-
-func sha256Sum(bytes []byte) []byte {
-	sum := sha256.Sum256(bytes)
-	return sum[:]
+	return nil
 }
 
 // validatePresets mirrors the Ruby IntentCatalog's preset rules: every preset
@@ -150,4 +136,45 @@ func validatePresets(intentType string, properties map[string]any, presets map[s
 		}
 	}
 	return nil
+}
+
+func intentCatalogEntry(intent spec.Intent, canonicalSchema []byte) map[string]any {
+
+	writable := intent.ModelWritableFields
+	if writable == nil {
+		writable = []string{}
+	}
+	entry := map[string]any{
+		"type":                    intent.Type,
+		"risk_class":              intent.Risk,
+		"parameter_schema":        intent.ParameterSchema,
+		"parameter_schema_digest": "sha256:" + hex.EncodeToString(sha256Sum(canonicalSchema)),
+		"model_writable_fields":   writable,
+	}
+	addOptionalIntentFields(entry, intent)
+	return entry
+}
+
+func sha256Sum(bytes []byte) []byte {
+	sum := sha256.Sum256(bytes)
+	return sum[:]
+}
+
+// addOptionalIntentFields adds the fields the wire form omits when unset.
+func addOptionalIntentFields(entry map[string]any, intent spec.Intent) {
+	if len(intent.Presets) > 0 {
+		entry["presets"] = intent.Presets
+	}
+	if intent.Description != "" {
+		entry["description"] = intent.Description
+	}
+	if intent.Policy != "" {
+		entry["policy"] = map[string]any{"requires_approval": intent.Policy == "approval"}
+	}
+	if intent.RateLimitPerHour > 0 {
+		entry["rate_limit"] = map[string]any{"per_hour": intent.RateLimitPerHour}
+	}
+	if len(intent.Compensation) > 0 {
+		entry["compensation"] = intent.Compensation
+	}
 }

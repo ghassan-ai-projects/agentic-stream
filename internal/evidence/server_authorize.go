@@ -4,13 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
+	"io"
+	"time"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
-	"io"
-	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 // validateCallEnvelope requires a complete call identity within size limits.
@@ -28,11 +30,8 @@ func validateCallEnvelope(req *runtimev1.EvidenceToolCall) error {
 // identity field, the tool, the trace, the runtime epoch, the time range, and
 // the entity must match what the capability grants.
 func (s *Server) authorizedCall(req *runtimev1.EvidenceToolCall, scope Scope, trace contractsv1.TraceContext) (Call, error) {
-	if req.GetFence() > uint64(^uint64(0)>>1) {
-		return Call{}, wireError(codes.InvalidArgument, "fence exceeds runtime range")
-	}
-	if req.GetSituationVersion() > uint64(^uint64(0)>>1) {
-		return Call{}, wireError(codes.InvalidArgument, "situation version exceeds runtime range")
+	if err := checkCallNumericRange(req); err != nil {
+		return Call{}, err
 	}
 	fence := int64(req.GetFence())                       //nolint:gosec // Checked against MaxInt64 immediately above.
 	situationVersion := int64(req.GetSituationVersion()) //nolint:gosec // Checked against MaxInt64 immediately above.
@@ -122,4 +121,14 @@ func contains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func checkCallNumericRange(req *runtimev1.EvidenceToolCall) error {
+	if req.GetFence() > uint64(^uint64(0)>>1) {
+		return wireError(codes.InvalidArgument, "fence exceeds runtime range")
+	}
+	if req.GetSituationVersion() > uint64(^uint64(0)>>1) {
+		return wireError(codes.InvalidArgument, "situation version exceeds runtime range")
+	}
+	return nil
 }

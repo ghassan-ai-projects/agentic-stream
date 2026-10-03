@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
@@ -34,6 +33,18 @@ type Outcome struct {
 	Reasons        []string `json:"reasons,omitempty"`
 	CostMicrounits uint64   `json:"cost_microunits,omitempty"`
 }
+
+// BudgetExceededError reports that an executor stopped an attempt because it
+// consumed more than its admitted budget for Metric.
+type BudgetExceededError struct{ Metric string }
+
+func (e *BudgetExceededError) Error() string { return "episode budget exceeded: " + e.Metric }
+
+// BudgetTelemetryMissingError reports that an executor could not prove an
+// attempt stayed within budget because the usage telemetry was absent.
+type BudgetTelemetryMissingError struct{}
+
+func (BudgetTelemetryMissingError) Error() string { return "episode budget telemetry is missing" }
 
 // Runner polls admitted episodes and executes them deterministically.
 type Runner struct {
@@ -127,6 +138,10 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	if claim.quarantined {
 		return true, nil
 	}
+	return true, r.executeAdmittedClaim(ctx, claim)
+}
+
+func (r *Runner) executeAdmittedClaim(ctx context.Context, claim *episodeClaim) error {
 	// A re-bind is counted only after its transaction committed. A later
 	// in-transaction failure rolls it back and must not bump the counter.
 	if claim.rebound && r.telemetry != nil {
@@ -140,7 +155,7 @@ func (r *Runner) RunOnce(ctx context.Context, tenantID string) (bool, error) {
 	}
 	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	return true, r.recordExecution(persistCtx, claim, outcome, executionErr, r.deadlineExceeded(&claim.req, startedAt))
+	return r.recordExecution(persistCtx, claim, outcome, executionErr, r.deadlineExceeded(&claim.req, startedAt))
 }
 
 // executeClaim runs the fenced attempt under a supersession watch, so a
@@ -154,6 +169,10 @@ func (r *Runner) executeClaim(ctx context.Context, claim *episodeClaim) (outcome
 		<-watchDone
 	}()
 
+	return r.executeTracedAttempt(executionCtx, claim)
+}
+
+func (r *Runner) executeTracedAttempt(executionCtx context.Context, claim *episodeClaim) (outcome *Outcome, executionErr error) {
 	_, span := telemetry.StartSpan(executionCtx, "agentic_stream.episode.execute")
 	telemetry.AddLinkFromW3C(span, claim.req.Traceparent, claim.req.Tracestate)
 	defer func() {
@@ -164,8 +183,8 @@ func (r *Runner) executeClaim(ctx context.Context, claim *episodeClaim) (outcome
 	}()
 	outcome, executionErr = r.executor.Execute(executionCtx, &claim.req)
 	if executionErr != nil {
-		// Wrapped errors keep their gRPC status and budget types; the
-		// failure classifiers unwrap with errors.Is/As and status.Code.
+		// Wrapped errors keep their context and budget types; the failure
+		// classifiers unwrap with errors.Is/As.
 		return nil, fmt.Errorf("execute episode attempt: %w", executionErr)
 	}
 	return outcome, nil

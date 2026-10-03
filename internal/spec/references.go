@@ -3,8 +3,9 @@ package spec
 import (
 	_ "embed"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
 	"strings"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
 )
 
 func resolveReferences(spec *CompiledSpec) error {
@@ -20,7 +21,11 @@ func resolveReferences(spec *CompiledSpec) error {
 	if err := checkSituationReferences(spec, names); err != nil {
 		return err
 	}
-	for _, tr := range spec.Cognition.Triggers {
+	return checkTriggerLanes(spec.Cognition.Triggers)
+}
+
+func checkTriggerLanes(triggers []Trigger) error {
+	for _, tr := range triggers {
 		if tr.Lane != "fast" && tr.Lane != "deep" {
 			return &CompileError{Path: fmt.Sprintf("cognition.triggers.%s.lane", tr.Name), Message: fmt.Sprintf("invalid lane %q", tr.Lane)}
 		}
@@ -36,23 +41,21 @@ type specNames struct {
 // collectSpecNames requires unique input, window, operator, operator-output,
 // and phase names, and every input to reference its registered event schema.
 func collectSpecNames(spec *CompiledSpec) (specNames, error) {
-	inputs, err := collectInputNames(spec.Inputs)
-	if err != nil {
+	var names specNames
+	var err error
+	if names.inputs, err = collectInputNames(spec.Inputs); err != nil {
 		return specNames{}, err
 	}
-	windows, err := uniqueNames(spec.Windows, func(w Window) string { return w.Name }, "windows", "window name")
-	if err != nil {
+	if names.windows, err = uniqueNames(spec.Windows, func(w Window) string { return w.Name }, "windows", "window name"); err != nil {
 		return specNames{}, err
 	}
-	outputs, err := collectOperatorOutputs(spec.Operators)
-	if err != nil {
+	if names.operatorOutputs, err = collectOperatorOutputs(spec.Operators); err != nil {
 		return specNames{}, err
 	}
-	phases, err := uniqueNames(spec.Situation.Phases, func(p Phase) string { return p.Name }, "situation.phases", "phase name")
-	if err != nil {
+	if names.phases, err = uniqueNames(spec.Situation.Phases, func(p Phase) string { return p.Name }, "situation.phases", "phase name"); err != nil {
 		return specNames{}, err
 	}
-	return specNames{inputs: inputs, windows: windows, operatorOutputs: outputs, phases: phases}, nil
+	return names, nil
 }
 
 // uniqueNames collects the names of items, rejecting a duplicate.
@@ -120,17 +123,8 @@ func checkInputSchema(in Input) error {
 // field. A data.* field must be declared by every input's schema, and an
 // aggregate's unit must match the field's.
 func checkOperatorReferences(spec *CompiledSpec, op Operator, names specNames) error {
-	for _, in := range op.Inputs {
-		_, isInput := names.inputs[in]
-		_, isOutput := names.operatorOutputs[in]
-		if !isInput && !isOutput {
-			return &CompileError{Path: fmt.Sprintf("operators.%s.inputs", op.Name), Message: fmt.Sprintf("unknown input %q", in)}
-		}
-	}
-	if op.Window != "" {
-		if _, ok := names.windows[op.Window]; !ok {
-			return &CompileError{Path: fmt.Sprintf("operators.%s.window", op.Name), Message: fmt.Sprintf("unknown window %q", op.Window)}
-		}
+	if err := checkOperatorSources(op, names); err != nil {
+		return err
 	}
 	fieldName, ok := strings.CutPrefix(op.Field, "data.")
 	if !ok {
@@ -140,6 +134,22 @@ func checkOperatorReferences(spec *CompiledSpec, op Operator, names specNames) e
 		if err := checkOperatorField(op, fieldName, in); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// checkOperatorSources requires every input to be a spec input or an
+// operator output, and the window, when set, to be declared.
+func checkOperatorSources(op Operator, names specNames) error {
+	for _, in := range op.Inputs {
+		_, isInput := names.inputs[in]
+		_, isOutput := names.operatorOutputs[in]
+		if !isInput && !isOutput {
+			return &CompileError{Path: fmt.Sprintf("operators.%s.inputs", op.Name), Message: fmt.Sprintf("unknown input %q", in)}
+		}
+	}
+	if _, ok := names.windows[op.Window]; op.Window != "" && !ok {
+		return &CompileError{Path: fmt.Sprintf("operators.%s.window", op.Name), Message: fmt.Sprintf("unknown window %q", op.Window)}
 	}
 	return nil
 }
@@ -183,7 +193,11 @@ func checkSituationReferences(spec *CompiledSpec, names specNames) error {
 	if _, ok := names.phases[spec.Situation.InitialPhase]; !ok {
 		return &CompileError{Path: "situation.initialPhase", Message: fmt.Sprintf("unknown phase %q", spec.Situation.InitialPhase)}
 	}
-	for _, t := range spec.Situation.Transitions {
+	return checkTransitionPhases(spec.Situation.Transitions, names)
+}
+
+func checkTransitionPhases(transitions []Transition, names specNames) error {
+	for _, t := range transitions {
 		if _, ok := names.phases[t.From]; !ok {
 			return &CompileError{Path: fmt.Sprintf("situation.transitions.%s-%s.from", t.From, t.To), Message: fmt.Sprintf("unknown phase %q", t.From)}
 		}

@@ -1,4 +1,6 @@
-// Package actions owns the effect boundary after policy approval.
+// Package actions is the governed dispatcher after policy approval: it leases
+// approved commands, dispatches them through effect ports, and verifies and
+// reconciles their outcomes. Concrete effect adapters live elsewhere.
 package actions
 
 import (
@@ -117,17 +119,11 @@ func (d *Dispatcher) dispatchLeasedCommand(ctx, callCtx context.Context, leased 
 		if !ok {
 			return d.finalize(ctx, leased, actionport.Effect{}, errors.New("configured effector does not enforce dispatch authorization"))
 		}
-		effect, dispatchErr := guarded.DispatchAuthorized(callCtx, leased.Command, runtimecontrol.NewDispatchAuthorization(d.db, d.interlock, leased.Command.TenantID, leased.Command.NormalizedTarget))
-		if errors.Is(dispatchErr, context.DeadlineExceeded) {
-			dispatchErr = &actionport.UnknownOutcomeError{Err: dispatchErr}
-		}
-		return d.finalizeDispatch(ctx, callCtx, leased, effect, dispatchErr)
+		effect, err := guarded.DispatchAuthorized(callCtx, leased.Command, runtimecontrol.NewDispatchAuthorization(d.db, d.interlock, leased.Command.TenantID, leased.Command.NormalizedTarget))
+		return d.finalizeProviderDispatch(ctx, callCtx, leased, effect, err)
 	}
-	effect, dispatchErr := d.effector.Dispatch(callCtx, leased.Command)
-	if errors.Is(dispatchErr, context.DeadlineExceeded) {
-		dispatchErr = &actionport.UnknownOutcomeError{Err: dispatchErr}
-	}
-	return d.finalizeDispatch(ctx, callCtx, leased, effect, dispatchErr)
+	effect, err := d.effector.Dispatch(callCtx, leased.Command)
+	return d.finalizeProviderDispatch(ctx, callCtx, leased, effect, err)
 }
 
 func (d *Dispatcher) finalizeDispatch(ctx, verifyCtx context.Context, leased leasedCommand, effect actionport.Effect, dispatchErr error) error {
@@ -173,6 +169,27 @@ func (d *Dispatcher) verifyDevice(ctx context.Context, leased leasedCommand, eff
 	if dispatchErr != nil {
 		return check
 	}
+	return classifyDeviceVerification(check)
+}
+
+func (d *Dispatcher) assertRuntimeOwner(ctx context.Context, tx *sql.Tx) error {
+	if d.runtimeOwner == nil || d.runtimeEpoch == "" {
+		return nil
+	}
+	if err := d.runtimeOwner.Assert(ctx, tx, d.runtimeEpoch); err != nil {
+		return fmt.Errorf("action runtime ownership lost: %w", err)
+	}
+	return nil
+}
+
+func (d *Dispatcher) finalizeProviderDispatch(ctx, callCtx context.Context, leased leasedCommand, effect actionport.Effect, dispatchErr error) error {
+	if errors.Is(dispatchErr, context.DeadlineExceeded) {
+		dispatchErr = &actionport.UnknownOutcomeError{Err: dispatchErr}
+	}
+	return d.finalizeDispatch(ctx, callCtx, leased, effect, dispatchErr)
+}
+
+func classifyDeviceVerification(check deviceCheck) deviceCheck {
 	switch {
 	case check.verifyErr != nil:
 		check.effect.VerificationPending = false
@@ -184,14 +201,4 @@ func (d *Dispatcher) verifyDevice(ctx context.Context, leased leasedCommand, eff
 		}
 	}
 	return check
-}
-
-func (d *Dispatcher) assertRuntimeOwner(ctx context.Context, tx *sql.Tx) error {
-	if d.runtimeOwner == nil || d.runtimeEpoch == "" {
-		return nil
-	}
-	if err := d.runtimeOwner.Assert(ctx, tx, d.runtimeEpoch); err != nil {
-		return fmt.Errorf("action runtime ownership lost: %w", err)
-	}
-	return nil
 }

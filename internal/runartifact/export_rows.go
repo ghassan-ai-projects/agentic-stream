@@ -20,23 +20,15 @@ func queryJSONL(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]b
 	if err != nil {
 		return nil, fmt.Errorf("read artifact columns: %w", err)
 	}
+	return collectArtifactRows(rows, columns)
+}
+
+func collectArtifactRows(rows *sql.Rows, columns []string) ([]byte, error) {
 	var out []byte
 	for rows.Next() {
-		values := make([]any, len(columns))
-		pointers := make([]any, len(columns))
-		for i := range values {
-			pointers[i] = &values[i]
-		}
-		if err := rows.Scan(pointers...); err != nil {
-			return nil, fmt.Errorf("scan artifact row: %w", err)
-		}
-		document := make(map[string]any, len(columns))
-		for i, column := range columns {
-			document[column] = databaseValue(values[i])
-		}
-		line, err := canonicaljson.Marshal(document)
+		line, err := encodeArtifactRow(rows, columns)
 		if err != nil {
-			return nil, fmt.Errorf("canonicalize artifact row: %w", err)
+			return nil, err
 		}
 		out = append(out, line...)
 		out = append(out, '\n')
@@ -45,6 +37,30 @@ func queryJSONL(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]b
 		return nil, fmt.Errorf("iterate artifact rows: %w", err)
 	}
 	return out, nil
+}
+
+func encodeArtifactRow(rows *sql.Rows, columns []string) ([]byte, error) {
+	values := make([]any, len(columns))
+	pointers := make([]any, len(columns))
+	for i := range values {
+		pointers[i] = &values[i]
+	}
+	if err := rows.Scan(pointers...); err != nil {
+		return nil, fmt.Errorf("scan artifact row: %w", err)
+	}
+	return canonicalArtifactRow(columns, values)
+}
+
+func canonicalArtifactRow(columns []string, values []any) ([]byte, error) {
+	document := make(map[string]any, len(columns))
+	for i, column := range columns {
+		document[column] = databaseValue(values[i])
+	}
+	line, err := canonicaljson.Marshal(document)
+	if err != nil {
+		return nil, fmt.Errorf("canonicalize artifact row: %w", err)
+	}
+	return line, nil
 }
 
 func databaseValue(value any) any {

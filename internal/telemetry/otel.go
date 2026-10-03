@@ -22,29 +22,47 @@ const instrumentationName = "github.com/ghassan-ai-projects/agentic-stream"
 // is empty, spans are recorded by the SDK but no exporter is configured. When
 // endpoint is set, spans are exported using OTLP/HTTP with bounded batching.
 func NewTracerProvider(ctx context.Context, serviceName, endpoint string) (*sdktrace.TracerProvider, error) {
-	if serviceName == "" {
-		serviceName = "agentic-stream"
-	}
-	resource, err := resource.New(ctx, resource.WithAttributes(attribute.String("service.name", serviceName)))
+	resource, err := serviceResource(ctx, serviceName)
 	if err != nil {
-		return nil, fmt.Errorf("create telemetry resource: %w", err)
+		return nil, err
 	}
 	options := []sdktrace.TracerProviderOption{sdktrace.WithResource(resource)}
 	if endpoint != "" {
-		endpointURL, urlErr := tracesEndpointURL(endpoint)
-		if urlErr != nil {
-			return nil, urlErr
+		batcher, err := otlpBatcher(ctx, endpoint)
+		if err != nil {
+			return nil, err
 		}
-		exporter, exportErr := otlptracehttp.New(ctx,
-			otlptracehttp.WithEndpointURL(endpointURL),
-			otlptracehttp.WithTimeout(5*time.Second),
-		)
-		if exportErr != nil {
-			return nil, fmt.Errorf("create OTLP trace exporter: %w", exportErr)
-		}
-		options = append(options, sdktrace.WithBatcher(exporter))
+		options = append(options, batcher)
 	}
 	return sdktrace.NewTracerProvider(options...), nil
+}
+
+// serviceResource names the traced service, defaulting to agentic-stream.
+func serviceResource(ctx context.Context, serviceName string) (*resource.Resource, error) {
+	if serviceName == "" {
+		serviceName = "agentic-stream"
+	}
+	serviceResource, err := resource.New(ctx, resource.WithAttributes(attribute.String("service.name", serviceName)))
+	if err != nil {
+		return nil, fmt.Errorf("create telemetry resource: %w", err)
+	}
+	return serviceResource, nil
+}
+
+// otlpBatcher exports spans in batches to the OTLP/HTTP traces endpoint.
+func otlpBatcher(ctx context.Context, endpoint string) (sdktrace.TracerProviderOption, error) {
+	endpointURL, err := tracesEndpointURL(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	exporter, err := otlptracehttp.New(ctx,
+		otlptracehttp.WithEndpointURL(endpointURL),
+		otlptracehttp.WithTimeout(5*time.Second),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create OTLP trace exporter: %w", err)
+	}
+	return sdktrace.WithBatcher(exporter), nil
 }
 
 // tracesEndpointURL returns endpoint with the OTLP/HTTP traces path when it

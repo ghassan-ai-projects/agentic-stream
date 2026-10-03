@@ -7,10 +7,11 @@ import (
 	"context"
 	"time"
 
-	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 const (
@@ -69,27 +70,45 @@ func (s *Server) limits() (uint64, uint64) {
 // Handshake accepts only the current protocol and contract versions and
 // rejects required features that this worker does not advertise.
 func (s *Server) Handshake(_ context.Context, req *runtimev1.HandshakeRequest) (*runtimev1.HandshakeResponse, error) { //nolint:wrapcheck // gRPC status errors are the public wire contract.
+	if err := validateHandshake(req); err != nil {
+		return nil, err
+	}
+	if err := s.requireFeatures(req.GetRequestedFeatures()); err != nil {
+		return nil, err
+	}
+	return s.handshakeResponse(), nil
+}
+
+func validateHandshake(req *runtimev1.HandshakeRequest) error {
 	if req == nil || req.GetWorkerId() == "" || req.GetRuntimeInstanceId() == "" {
-		return nil, wireError(codes.InvalidArgument, "worker_id and runtime_instance_id are required")
+		return wireError(codes.InvalidArgument, "worker_id and runtime_instance_id are required")
 	}
 	if req.GetProtocolVersion() != ProtocolVersion {
-		return nil, wireErrorf(codes.FailedPrecondition, "unsupported protocol version %q", req.GetProtocolVersion())
+		return wireErrorf(codes.FailedPrecondition, "unsupported protocol version %q", req.GetProtocolVersion())
 	}
 	if req.GetContractVersion() != ContractVersion {
-		return nil, wireErrorf(codes.FailedPrecondition, "unsupported contract version %q", req.GetContractVersion())
+		return wireErrorf(codes.FailedPrecondition, "unsupported contract version %q", req.GetContractVersion())
 	}
 	if !req.GetNonInteractive() {
-		return nil, wireError(codes.FailedPrecondition, "non_interactive worker handshake is required")
+		return wireError(codes.FailedPrecondition, "non_interactive worker handshake is required")
 	}
+	return nil
+}
+
+func (s *Server) requireFeatures(requestedFeatures []string) error {
 	features := make(map[string]struct{}, len(s.SupportedFeatures))
 	for _, feature := range s.SupportedFeatures {
 		features[feature] = struct{}{}
 	}
-	for _, requested := range req.GetRequestedFeatures() {
+	for _, requested := range requestedFeatures {
 		if _, ok := features[requested]; !ok {
-			return nil, wireErrorf(codes.FailedPrecondition, "unsupported required feature %q", requested)
+			return wireErrorf(codes.FailedPrecondition, "unsupported required feature %q", requested)
 		}
 	}
+	return nil
+}
+
+func (s *Server) handshakeResponse() *runtimev1.HandshakeResponse {
 	maxRequest, maxEvent := s.limits()
 	return &runtimev1.HandshakeResponse{
 		ProtocolVersion:   ProtocolVersion,
@@ -99,78 +118,7 @@ func (s *Server) Handshake(_ context.Context, req *runtimev1.HandshakeRequest) (
 		SupportedFeatures: append([]string(nil), s.SupportedFeatures...),
 		MaxRequestBytes:   maxRequest,
 		MaxEventBytes:     maxEvent,
-	}, nil
-}
-
-// Execute validates the request, emits a Started event, and validates the
-// complete worker stream. EOF without a terminal event is rejected.
-func (s *Server) Execute(req *runtimev1.EpisodeRequest, stream runtimev1.EpisodeWorker_ExecuteServer) (err error) { //nolint:wrapcheck // gRPC status errors are the public wire contract.
-	defer func() {
-		if recover() != nil {
-			err = wireError(codes.Internal, "worker handler panic")
-		}
-	}()
-	if err := s.validateRequest(req); err != nil {
-		return err
 	}
-	if s.ExecuteFunc == nil {
-		return wireError(codes.Unimplemented, "worker execute handler is not configured")
-	}
-	validator := streamValidator{episodeID: req.GetEpisodeId(), attemptID: req.GetAttemptId(), fence: req.GetFence(), maxEventBytes: s.limitsEvent(), maxEvents: s.limitsEvents(), maxStreamBytes: s.limitsStreamBytes()}
-	if err := validator.emit(stream, s.started(req)); err != nil {
-		return err
-	}
-	emit := func(event *runtimev1.EpisodeEvent) error {
-		return validator.emit(stream, event)
-	}
-	executionContext, cancel, err := boundedExecutionContext(stream.Context(), req)
-	if err != nil {
-		return err
-	}
-	defer cancel()
-	if err := s.executeHandler(executionContext, req, emit); err != nil {
-		return err
-	}
-	if err := executionContext.Err(); err != nil {
-		return wireError(codes.DeadlineExceeded, "episode execution deadline exceeded")
-	}
-	if !validator.terminal {
-		return wireError(codes.FailedPrecondition, "worker stream ended without terminal event")
-	}
-	return nil
-}
-
-func boundedExecutionContext(ctx context.Context, req *runtimev1.EpisodeRequest) (context.Context, context.CancelFunc, error) {
-	executionContext := ctx
-	cancel := context.CancelFunc(func() {})
-	if deadline := req.GetDeadline(); deadline != nil {
-		executionContext, cancel = context.WithDeadline(executionContext, deadline.AsTime())
-	}
-	if budget := req.GetBudget(); budget != nil && budget.GetWallTime() != nil {
-		wallTime := budget.GetWallTime().AsDuration()
-		if wallTime <= 0 {
-			cancel()
-			return nil, nil, wireError(codes.InvalidArgument, "wall_time budget must be positive")
-		}
-		deadlineCancel := cancel
-		var budgetCancel context.CancelFunc
-		executionContext, budgetCancel = context.WithTimeout(executionContext, wallTime)
-		cancel = func() { budgetCancel(); deadlineCancel() }
-	}
-	return executionContext, cancel, nil
-}
-
-func (s *Server) executeHandler(ctx context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error { //nolint:wrapcheck // Preserve handler gRPC status errors at the wire boundary.
-	if err := s.ExecuteFunc(ctx, req, emit); err != nil {
-		if status.Code(err) == codes.Canceled || status.Code(err) == codes.DeadlineExceeded {
-			return err
-		}
-		if status.Code(err) != codes.Unknown {
-			return err
-		}
-		return wireErrorf(codes.Internal, "worker execution failed: %v", err)
-	}
-	return nil
 }
 
 func (s *Server) limitsEvent() uint64 {

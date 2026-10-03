@@ -3,39 +3,14 @@ package ingress
 import (
 	_ "embed"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"strings"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.Envelope, error) {
-	event, err := simulatorEventFields(record)
-	if err != nil {
-		return contractsv1.Envelope{}, err
-	}
-	getString := func(key string) (string, error) {
-		value, ok := event[key].(string)
-		if !ok || value == "" {
-			return "", fmt.Errorf("%s is required", key)
-		}
-		return value, nil
-	}
-	id, err := getString("id")
-	if err != nil {
-		return contractsv1.Envelope{}, err
-	}
-	entityID, err := getString("entity_id")
-	if err != nil {
-		return contractsv1.Envelope{}, err
-	}
-	entityType, err := getString("entity_type")
-	if err != nil {
-		return contractsv1.Envelope{}, err
-	}
-	if r.options.EntityType != "" && r.options.EntityType != entityType {
-		return contractsv1.Envelope{}, fmt.Errorf("entity_type %q does not match configured type %q", entityType, r.options.EntityType)
-	}
-	channel, err := getString("type")
+	event, ident, err := r.identifiedEvent(record)
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
@@ -43,37 +18,90 @@ func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
-	data, err := simulatorEventData(event, strings.TrimPrefix(channel, entityType+"."))
+	data, err := simulatorEventData(event, strings.TrimPrefix(ident.channel, ident.entityType+"."))
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
+	return r.envelope(ident, eventTime, arrival, data), nil
+}
+
+// identifiedEvent extracts the event object and its identity.
+func (r *SimulatorJSONLReplay) identifiedEvent(record map[string]any) (map[string]any, simulatorIdentity, error) {
+	event, err := simulatorEventFields(record)
+	if err != nil {
+		return nil, simulatorIdentity{}, err
+	}
+	ident, err := r.eventIdentity(event)
+	if err != nil {
+		return nil, simulatorIdentity{}, err
+	}
+	return event, ident, nil
+}
+
+// simulatorIdentity names one simulator event and its entity and channel.
+type simulatorIdentity struct {
+	id, entityID, entityType, channel string
+}
+
+// eventIdentity reads the required identity strings, requiring the entity
+// type to match the configured one when set.
+func (r *SimulatorJSONLReplay) eventIdentity(event map[string]any) (simulatorIdentity, error) {
+	values, err := requiredStrings(event, "id", "entity_id", "entity_type")
+	if err != nil {
+		return simulatorIdentity{}, err
+	}
+	ident := simulatorIdentity{id: values[0], entityID: values[1], entityType: values[2]}
+	if r.options.EntityType != "" && r.options.EntityType != ident.entityType {
+		return simulatorIdentity{}, fmt.Errorf("entity_type %q does not match configured type %q", ident.entityType, r.options.EntityType)
+	}
+	if ident.channel, err = requiredString(event, "type"); err != nil {
+		return simulatorIdentity{}, err
+	}
+	return ident, nil
+}
+
+func requiredStrings(event map[string]any, keys ...string) ([]string, error) {
+	values := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value, err := requiredString(event, key)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, nil
+}
+
+func requiredString(event map[string]any, key string) (string, error) {
+	value, ok := event[key].(string)
+	if !ok || value == "" {
+		return "", fmt.Errorf("%s is required", key)
+	}
+	return value, nil
+}
+
+func (r *SimulatorJSONLReplay) envelope(ident simulatorIdentity, eventTime, arrival time.Time, data map[string]any) contractsv1.Envelope {
 	return contractsv1.Envelope{
-		ID: id, Type: r.eventTypePrefix(entityType, channel) + channel + ".observed", SchemaVersion: "1.0",
-		TenantID: r.options.TenantID, Source: r.options.Source, PartitionKey: entityID,
-		Entity: contractsv1.EntityRef{Type: entityType, ID: entityID}, EventTime: eventTime,
+		ID: ident.id, Type: r.eventTypePrefix(ident.entityType, ident.channel) + ident.channel + ".observed", SchemaVersion: "1.0",
+		TenantID: r.options.TenantID, Source: r.options.Source, PartitionKey: ident.entityID,
+		Entity: contractsv1.EntityRef{Type: ident.entityType, ID: ident.entityID}, EventTime: eventTime,
 		ObservedAt: &arrival, IngestedAt: arrival, Classification: contractsv1.ClassificationInternal,
 		Quality: []contractsv1.QualityFlag{}, Data: data,
-	}, nil
+	}
 }
 
 // simulatorEventFields returns the event object, rejecting unknown fields at
 // both the record and event level.
 func simulatorEventFields(record map[string]any) (map[string]any, error) {
-	allowed := map[string]bool{"record_type": true, "event": true}
-	for key := range record {
-		if !allowed[key] {
-			return nil, fmt.Errorf("unknown event field %q", key)
-		}
+	if key, found := unknownField(record, "record_type", "event"); found {
+		return nil, fmt.Errorf("unknown event field %q", key)
 	}
 	event, ok := record["event"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("event is required")
 	}
-	eventAllowed := map[string]bool{"id": true, "entity_type": true, "entity_id": true, "type": true, "event_time": true, "arrival_time": true, "value": true, "unit": true}
-	for key := range event {
-		if !eventAllowed[key] {
-			return nil, fmt.Errorf("unknown event field %q", key)
-		}
+	if key, found := unknownField(event, "id", "entity_type", "entity_id", "type", "event_time", "arrival_time", "value", "unit"); found {
+		return nil, fmt.Errorf("unknown event field %q", key)
 	}
 	return event, nil
 }
@@ -113,29 +141,35 @@ func simulatorEventTimes(event map[string]any) (time.Time, time.Time, error) {
 func simulatorEventData(event map[string]any, channelName string) (map[string]any, error) {
 	data := make(map[string]any)
 	if value, ok := event["value"]; ok {
-		fields, err := channelFields()
-		if err != nil {
-			return nil, fmt.Errorf("load simulator channel fields: %w", err)
-		}
-		target, known := fields[channelName]
-		switch {
-		case known && target == "":
-			// Heartbeats (and other no-data channels) carry no field.
-		case !known || target == "value":
-			data["value"] = value
-		default:
-			data[target] = value
+		if err := mapChannelValue(data, channelName, value); err != nil {
+			return nil, err
 		}
 	}
 	if unit, ok := event["unit"].(string); ok && unit != "" {
 		data["unit"] = unit
 	}
-	if channelName == "mode" {
-		if value, ok := event["value"]; ok {
-			data["mode"] = value
-		}
+	if value, ok := event["value"]; ok && channelName == "mode" {
+		data["mode"] = value
 	}
 	return data, nil
+}
+
+// mapChannelValue stores the value under the channel's configured field.
+func mapChannelValue(data map[string]any, channelName string, value any) error {
+	fields, err := channelFields()
+	if err != nil {
+		return fmt.Errorf("load simulator channel fields: %w", err)
+	}
+	target, known := fields[channelName]
+	switch {
+	case known && target == "":
+		// Heartbeats (and other no-data channels) carry no field.
+	case !known || target == "value":
+		data["value"] = value
+	default:
+		data[target] = value
+	}
+	return nil
 }
 
 func parseSimulatorTime(record map[string]any, key string) (time.Time, error) {

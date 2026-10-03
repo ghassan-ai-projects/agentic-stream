@@ -18,23 +18,35 @@ func (r *Request) WallTimeBudget() (time.Duration, error) {
 	if r.wallTimeValidated {
 		return r.wallTime, nil
 	}
+	return r.parseWallTimeBudget()
+}
+
+func (r *Request) parseWallTimeBudget() (time.Duration, error) {
+	wallTime, err := requestWallTime(r.RequestJSON)
+	if err != nil {
+		return 0, err
+	}
+	if wallTime == "" {
+		r.wallTimeValidated = true
+		return 0, nil
+	}
+	duration, err := runtimeDuration.Parse(wallTime)
+	if err != nil || duration <= 0 {
+		return 0, fmt.Errorf("invalid wall_time budget %q", wallTime)
+	}
+	r.wallTime = duration
+	r.wallTimeValidated = true
+	return duration, nil
+}
+
+func requestWallTime(raw []byte) (string, error) {
 	var payload struct {
 		Budget struct {
 			WallTime string `json:"wall_time"`
 		} `json:"budget"`
 	}
-	if err := json.Unmarshal(r.RequestJSON, &payload); err != nil {
-		return 0, fmt.Errorf("decode episode budget: %w", err)
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return "", fmt.Errorf("decode episode budget: %w", err)
 	}
-	if payload.Budget.WallTime == "" {
-		r.wallTimeValidated = true
-		return 0, nil
-	}
-	duration, err := runtimeDuration.Parse(payload.Budget.WallTime)
-	if err != nil || duration <= 0 {
-		return 0, fmt.Errorf("invalid wall_time budget %q", payload.Budget.WallTime)
-	}
-	r.wallTime = duration
-	r.wallTimeValidated = true
-	return duration, nil
+	return payload.Budget.WallTime, nil
 }

@@ -3,7 +3,6 @@ package policy
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -11,9 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 // EvaluateIntent runs the ordered policy gates and atomically creates either
@@ -27,11 +23,7 @@ func (g *Gateway) EvaluateIntent(ctx context.Context, tx *sql.Tx, intentID strin
 		return Result{IntentID: intentID}, err
 	}
 	if err := g.assertPolicyEpoch(ctx, tx, row); err != nil {
-		reason := "epoch_killed"
-		if errors.Is(err, runtimecontrol.ErrEpochUnbound) {
-			reason = "epoch_unbound"
-		}
-		return g.finish(ctx, tx, row, Result{IntentID: row.IntentID, DecisionID: row.DecisionID}, "denied", reason, now)
+		return g.denyEpochIntent(ctx, tx, row, err, now)
 	}
 	result := Result{IntentID: row.IntentID, DecisionID: row.DecisionID}
 	if row.PolicyStatus != "pending" {
@@ -58,15 +50,8 @@ func (g *Gateway) evaluateExisting(ctx context.Context, tx *sql.Tx, row intentRo
 	}
 	result.Result = row.PolicyStatus
 	result.Reason = "already_evaluated"
-	if row.PolicyStatus == "approved" {
-		if err := tx.QueryRowContext(ctx, "SELECT command_id FROM commands WHERE intent_id = ?", row.IntentID).Scan(&result.CommandID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return result, fmt.Errorf("load existing command id: %w", err)
-		}
-	}
-	if row.PolicyStatus == "approval_required" {
-		if err := tx.QueryRowContext(ctx, "SELECT approval_id FROM approvals WHERE intent_id = ? AND status = 'pending'", row.IntentID).Scan(&result.ApprovalID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return result, fmt.Errorf("load pending approval id: %w", err)
-		}
+	if err := bindExistingResult(ctx, tx, row, &result); err != nil {
+		return result, err
 	}
 	return g.audit(ctx, tx, row, result, result.Result, result.Reason, now)
 }
@@ -83,119 +68,7 @@ func (g *Gateway) expireExistingApproval(ctx context.Context, tx *sql.Tx, row in
 	if err == nil && expiresAt.After(now) {
 		return result, false, nil
 	}
-	if err := approvalledger.ExpireIntent(ctx, tx, row.IntentID); err != nil {
-		return result, true, fmt.Errorf("expire approval: %w", err)
-	}
-	if err := appendApprovalResolved(ctx, tx, row, approvalID, "expired", "approval_expired", now); err != nil {
-		return result, true, err
-	}
-	result, err = g.finish(ctx, tx, row, result, "expired", "approval_expired", now)
-	return result, true, err
-}
-
-func (g *Gateway) evaluatePending(ctx context.Context, tx *sql.Tx, row intentRow, result Result, now time.Time) (Result, error) {
-	if row.ValidationStatus != "accepted" {
-		return g.finish(ctx, tx, row, result, "denied", "decision_not_accepted", now)
-	}
-
-	decision, reason := decodeDocument(row.DecisionJSON, contractsv1.SchemaDecision)
-	if reason != "" {
-		return g.finish(ctx, tx, row, result, "denied", reason, now)
-	}
-	if !matchesDecisionIdentity(row, decision) {
-		return g.finish(ctx, tx, row, result, "denied", "identity_mismatch", now)
-	}
-	if !canonicalDocumentMatches(row.DecisionJSON, row.DecisionSHA, canonicaljson.DomainDecision) {
-		return g.finish(ctx, tx, row, result, "denied", "decision_digest_mismatch", now)
-	}
-
-	intent, reason := decodeDocument(row.IntentJSON, contractsv1.SchemaIntent)
-	if reason != "" {
-		return g.finish(ctx, tx, row, result, "denied", reason, now)
-	}
-	if !canonicalDocumentMatches(row.IntentJSON, row.IntentSHA, canonicaljson.DomainIntent) {
-		return g.finish(ctx, tx, row, result, "denied", "intent_digest_mismatch", now)
-	}
-	if reason, err := g.compensationFailure(ctx, tx, row, intent); err != nil {
-		return result, err
-	} else if reason != "" {
-		return g.finish(ctx, tx, row, result, "denied", reason, now)
-	}
-	if !matchesIntentIdentity(row, intent) {
-		return g.finish(ctx, tx, row, result, "denied", "identity_mismatch", now)
-	}
-	if !episodeConcluded(row) {
-		return g.finish(ctx, tx, row, result, "denied", "episode_not_concluded", now)
-	}
-	if row.CurrentSituation != row.SituationVersion {
-		return g.markStale(ctx, tx, row, result, now)
-	}
-	if sourceHealthIncomplete(row) {
-		return g.finish(ctx, tx, row, result, "denied", "source_health_incomplete", now)
-	}
-	expiresAt, err := time.Parse(time.RFC3339Nano, row.ExpiresAt)
-	if err != nil || !expiresAt.After(now) {
-		return g.finish(ctx, tx, row, result, "expired", "intent_expired", now)
-	}
-	return g.routeIntent(ctx, tx, row, intent, result, expiresAt, now)
-}
-
-func decodeDocument(raw []byte, schema contractsv1.SchemaName) (map[string]any, string) {
-	var document map[string]any
-	if err := json.Unmarshal(raw, &document); err != nil {
-		return nil, "schema_invalid"
-	}
-	if err := contractsv1.Validate(schema, document); err != nil {
-		return nil, "schema_invalid"
-	}
-	return document, ""
-}
-
-func matchesDecisionIdentity(row intentRow, document map[string]any) bool {
-	return documentString(document, "decision_id") == row.DecisionID &&
-		documentString(document, "episode_id") == row.EpisodeID &&
-		documentString(document, "situation_id") == row.SituationID &&
-		documentInt(document, "situation_version") == row.SituationVersion &&
-		row.EpisodeTenant == row.TenantID && row.SituationTenant == row.TenantID &&
-		row.DecisionSituation == row.SituationID && row.DecisionVersion == row.SituationVersion &&
-		row.EpisodeSituation == row.SituationID && row.EpisodeVersion == row.SituationVersion
-}
-
-func matchesIntentIdentity(row intentRow, document map[string]any) bool {
-	return documentString(document, "intent_id") == row.IntentID &&
-		documentString(document, "decision_id") == row.DecisionID &&
-		documentString(document, "tenant_id") == row.TenantID &&
-		documentString(document, "situation_id") == row.SituationID &&
-		documentInt(document, "situation_version") == row.SituationVersion &&
-		documentString(document, "type") == row.IntentType &&
-		documentString(document, "risk_class") == row.RiskClass
-}
-
-func (g *Gateway) compensationFailure(ctx context.Context, tx *sql.Tx, row intentRow, document map[string]any) (string, error) {
-	compensates, ok := document["compensates"].(string)
-	if !ok || compensates == "" {
-		return "", nil
-	}
-	var commandTenant string
-	if err := tx.QueryRowContext(ctx, "SELECT tenant_id FROM commands WHERE command_id = ?", compensates).Scan(&commandTenant); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "compensation_target_missing", nil
-		}
-		return "", fmt.Errorf("load compensation target: %w", err)
-	}
-	if commandTenant != row.TenantID {
-		return "compensation_tenant_mismatch", nil
-	}
-	return "", nil
-}
-
-func episodeConcluded(row intentRow) bool {
-	return row.EpisodeLifecycle == "concluded" || row.EpisodeLifecycle == "closed"
-}
-
-func sourceHealthIncomplete(row intentRow) bool {
-	consequential := row.RiskClass == "R2" || row.RiskClass == "R3" || row.RiskClass == "R4"
-	return consequential && (row.CurrentCompleteness == "provisional" || row.CurrentCompleteness == "uncertain")
+	return g.recordExpiredApproval(ctx, tx, row, approvalID, result, now)
 }
 
 func (g *Gateway) markStale(ctx context.Context, tx *sql.Tx, row intentRow, result Result, now time.Time) (Result, error) {
@@ -256,4 +129,37 @@ func (g *Gateway) approveOrRequireApproval(ctx context.Context, tx *sql.Tx, row 
 	default:
 		return result, fmt.Errorf("load approved approval: %w", err)
 	}
+}
+
+func (g *Gateway) denyEpochIntent(ctx context.Context, tx *sql.Tx, row intentRow, err error, now time.Time) (Result, error) {
+	reason := "epoch_killed"
+	if errors.Is(err, runtimecontrol.ErrEpochUnbound) {
+		reason = "epoch_unbound"
+	}
+	return g.finish(ctx, tx, row, Result{IntentID: row.IntentID, DecisionID: row.DecisionID}, "denied", reason, now)
+}
+
+func bindExistingResult(ctx context.Context, tx *sql.Tx, row intentRow, result *Result) error {
+	if row.PolicyStatus == "approved" {
+		if err := tx.QueryRowContext(ctx, "SELECT command_id FROM commands WHERE intent_id = ?", row.IntentID).Scan(&result.CommandID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("load existing command id: %w", err)
+		}
+	}
+	if row.PolicyStatus == "approval_required" {
+		if err := tx.QueryRowContext(ctx, "SELECT approval_id FROM approvals WHERE intent_id = ? AND status = 'pending'", row.IntentID).Scan(&result.ApprovalID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("load pending approval id: %w", err)
+		}
+	}
+	return nil
+}
+
+func (g *Gateway) recordExpiredApproval(ctx context.Context, tx *sql.Tx, row intentRow, approvalID string, result Result, now time.Time) (Result, bool, error) {
+	if err := approvalledger.ExpireIntent(ctx, tx, row.IntentID); err != nil {
+		return result, true, fmt.Errorf("expire approval: %w", err)
+	}
+	if err := appendApprovalResolved(ctx, tx, row, approvalID, "expired", "approval_expired", now); err != nil {
+		return result, true, err
+	}
+	result, err := g.finish(ctx, tx, row, result, "expired", "approval_expired", now)
+	return result, true, err
 }

@@ -23,14 +23,7 @@ func checkProviderStatus(response *http.Response) error {
 
 func decodeProviderResponse(response *http.Response) (ModelResponse, error) {
 	if strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") {
-		parsed, err := parseSSE(response.Body)
-		if err != nil {
-			return ModelResponse{}, err
-		}
-		if !parsed.UsageReported {
-			return ModelResponse{}, errors.New("model provider stream omitted usage")
-		}
-		return parsed, nil
+		return decodeProviderStream(response.Body)
 	}
 	parsed, err := parseJSONResponse(response.Body)
 	if err != nil {
@@ -109,4 +102,15 @@ func responseUsage(response openAIResponse) (Usage, bool) {
 		output = response.Usage.CompletionTokens
 	}
 	return Usage{InputTokens: input, OutputTokens: output, CostMicrounits: response.Usage.CostMicrounits}, true
+}
+
+func decodeProviderStream(reader io.Reader) (ModelResponse, error) {
+	parsed, err := parseSSE(reader)
+	if err != nil {
+		return ModelResponse{}, err
+	}
+	if !parsed.UsageReported {
+		return ModelResponse{}, errors.New("model provider stream omitted usage")
+	}
+	return parsed, nil
 }

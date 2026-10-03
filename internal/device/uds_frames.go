@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+type possiblySentError struct{ err error }
+
 func prepareDeadline(ctx context.Context, setDeadline func(time.Time) error, closeConnection func() error) (func() error, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("prepare device operation context: %w", err)
@@ -23,29 +25,37 @@ func prepareDeadline(ctx context.Context, setDeadline func(time.Time) error, clo
 		return nil, err
 	}
 
+	return armCancellationDeadline(ctx, setDeadline, closeConnection)
+}
+
+func armCancellationDeadline(ctx context.Context, setDeadline func(time.Time) error, closeConnection func() error) (func() error, error) {
 	callbackDone := make(chan struct{})
 	callbackErr := make(chan error, 1)
-	stop := context.AfterFunc(ctx, func() {
-		defer close(callbackDone)
-		if err := setDeadline(time.Now()); err != nil {
-			if closeErr := closeConnection(); closeErr != nil {
-				err = errors.Join(err, fmt.Errorf("close canceled device transport: %w", closeErr))
-			}
-			callbackErr <- err
+	stop := context.AfterFunc(ctx, func() { applyCancellationDeadline(setDeadline, closeConnection, callbackDone, callbackErr) })
+	return func() error { return clearOperationDeadline(stop, callbackDone, callbackErr, setDeadline) }, nil
+}
+
+func applyCancellationDeadline(setDeadline func(time.Time) error, closeConnection func() error, callbackDone chan struct{}, callbackErr chan error) {
+	defer close(callbackDone)
+	if err := setDeadline(time.Now()); err != nil {
+		if closeErr := closeConnection(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close canceled device transport: %w", closeErr))
 		}
-	})
-	return func() error {
-		if !stop() {
-			<-callbackDone
-		}
-		var cleanupErr error
-		select {
-		case err := <-callbackErr:
-			cleanupErr = fmt.Errorf("apply cancellation deadline: %w", err)
-		default:
-		}
-		return errors.Join(cleanupErr, setDeadline(time.Time{}))
-	}, nil
+		callbackErr <- err
+	}
+}
+
+func clearOperationDeadline(stop func() bool, callbackDone chan struct{}, callbackErr chan error, setDeadline func(time.Time) error) error {
+	if !stop() {
+		<-callbackDone
+	}
+	var cleanupErr error
+	select {
+	case err := <-callbackErr:
+		cleanupErr = fmt.Errorf("apply cancellation deadline: %w", err)
+	default:
+	}
+	return errors.Join(cleanupErr, setDeadline(time.Time{}))
 }
 
 func writeAll(conn net.Conn, frame []byte) (written int, err error) {
@@ -55,9 +65,7 @@ func writeAll(conn net.Conn, frame []byte) (written int, err error) {
 			return written, fmt.Errorf("invalid write count %d", count)
 		}
 		written += count
-		if count > 0 {
-			frame = frame[count:]
-		}
+		frame = frame[count:]
 		if err != nil {
 			return written, fmt.Errorf("write device frame: %w", err)
 		}
@@ -67,8 +75,6 @@ func writeAll(conn net.Conn, frame []byte) (written int, err error) {
 	}
 	return written, nil
 }
-
-type possiblySentError struct{ err error }
 
 func (e *possiblySentError) Error() string {
 	return "device frame may have been sent: " + e.err.Error()

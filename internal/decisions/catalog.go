@@ -2,6 +2,7 @@ package decisions
 
 import (
 	"fmt"
+
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -21,6 +22,8 @@ type IntentEntry struct {
 	RequiresApproval bool
 }
 
+type denyNetworkLoader struct{}
+
 // CompileIntentCatalog builds the fail-closed validator view from the wire
 // document (already digest-verified by the caller): a missing, empty,
 // duplicate, or structurally invalid catalog is an error — never repaired.
@@ -33,20 +36,27 @@ func CompileIntentCatalog(doc []map[string]any) (*IntentCatalog, error) {
 	compiler.AssertFormat()
 	compiler.UseLoader(denyNetworkLoader{})
 	for _, entry := range doc {
-		entryType, _ := entry["type"].(string)
-		if entryType == "" {
-			return nil, fmt.Errorf("intent catalog entry has no type")
-		}
-		if _, exists := catalog.Entries[entryType]; exists {
-			return nil, fmt.Errorf("intent catalog duplicates type %q", entryType)
-		}
-		compiled, err := compileCatalogEntry(compiler, entryType, entry)
-		if err != nil {
+		if err := catalog.addEntry(compiler, entry); err != nil {
 			return nil, err
 		}
-		catalog.Entries[entryType] = compiled
 	}
 	return catalog, nil
+}
+
+func (catalog *IntentCatalog) addEntry(compiler *jsonschema.Compiler, entry map[string]any) error {
+	entryType, _ := entry["type"].(string)
+	if entryType == "" {
+		return fmt.Errorf("intent catalog entry has no type")
+	}
+	if _, exists := catalog.Entries[entryType]; exists {
+		return fmt.Errorf("intent catalog duplicates type %q", entryType)
+	}
+	compiled, err := compileCatalogEntry(compiler, entryType, entry)
+	if err != nil {
+		return err
+	}
+	catalog.Entries[entryType] = compiled
+	return nil
 }
 
 // compileCatalogEntry validates one wire catalog entry and compiles its
@@ -60,6 +70,14 @@ func compileCatalogEntry(compiler *jsonschema.Compiler, entryType string, entry 
 	if !ok {
 		return nil, fmt.Errorf("intent %q has no parameter schema", entryType)
 	}
+	compiled, err := compileParameterSchema(compiler, entryType, schema)
+	if err != nil {
+		return nil, err
+	}
+	return catalogAuthority(entryType, risk, compiled, entry), nil
+}
+
+func compileParameterSchema(compiler *jsonschema.Compiler, entryType string, schema map[string]any) (*jsonschema.Schema, error) {
 	schemaID := "urn:situation-runtime:catalog:" + entryType + ":schema:v1"
 	if err := compiler.AddResource(schemaID, schema); err != nil {
 		return nil, fmt.Errorf("compile intent %q schema: %w", entryType, err)
@@ -68,6 +86,10 @@ func compileCatalogEntry(compiler *jsonschema.Compiler, entryType string, entry 
 	if err != nil {
 		return nil, fmt.Errorf("compile intent %q schema: %w", entryType, err)
 	}
+	return compiled, nil
+}
+
+func catalogAuthority(entryType, risk string, compiled *jsonschema.Schema, entry map[string]any) *IntentEntry {
 	return &IntentEntry{
 		Type:             entryType,
 		RiskClass:        risk,
@@ -76,7 +98,7 @@ func compileCatalogEntry(compiler *jsonschema.Compiler, entryType string, entry 
 		ModelWritable:    stringSet(toStringSlice(entry["model_writable_fields"])),
 		RateLimitPerHour: intValue(entry["rate_limit"], "per_hour"),
 		RequiresApproval: requiresApproval(entry),
-	}, nil
+	}
 }
 
 func catalogPresets(entry map[string]any) map[string]map[string]any {
@@ -131,8 +153,6 @@ func intValue(section any, key string) int {
 	}
 	return 0
 }
-
-type denyNetworkLoader struct{}
 
 func (denyNetworkLoader) Load(url string) (any, error) {
 	return nil, fmt.Errorf("external schema load denied: %s", url)

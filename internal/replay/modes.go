@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
-	"time"
 )
 
 // RecordedEntry is the immutable worker result recorded with an episode.
@@ -132,27 +133,72 @@ const (
 // RunMode executes a replay mode without accepting credentials, effectors, or
 // a resolver. Only counterfactual simulation may be added at a higher layer.
 func RunMode(ctx context.Context, mode Mode, dbPath, specPath, tracePath, tenantID string, capabilities ...Capabilities) (Result, error) {
-	if len(capabilities) > 1 {
-		return Result{}, fmt.Errorf("at most one replay capability set is allowed")
+	caps, err := replayCapabilities(capabilities)
+	if err != nil {
+		return Result{}, err
 	}
-	var caps Capabilities
-	if len(capabilities) == 1 {
-		caps = capabilities[0]
+	if mode == ModeDeterministic {
+		return runDeterministicMode(ctx, mode, dbPath, specPath, tracePath, tenantID)
 	}
-	switch mode {
-	case ModeDeterministic:
-		result, err := Run(ctx, dbPath, specPath, tracePath, tenantID)
-		result.Mode = mode
-		result.WorkerInvoked = false
-		result.EffectsAllowed = false
-		return result, err
-	case ModeRecorded, ModeShadow, ModeCounterfactual:
-		if err := caps.validate(mode); err != nil {
-			return Result{Mode: mode, EffectsAllowed: false}, err
-		}
-	default:
+	if !workerAwareMode(mode) {
 		return Result{}, fmt.Errorf("%w: %s", ErrUnsupportedMode, mode)
 	}
+	if err := caps.validate(mode); err != nil {
+		return Result{Mode: mode, EffectsAllowed: false}, err
+	}
+	return runCapabilityMode(ctx, mode, dbPath, specPath, tracePath, tenantID, caps)
+}
+
+func replayCapabilities(capabilities []Capabilities) (Capabilities, error) {
+	if len(capabilities) > 1 {
+		return Capabilities{}, fmt.Errorf("at most one replay capability set is allowed")
+	}
+	if len(capabilities) == 1 {
+		return capabilities[0], nil
+	}
+	return Capabilities{}, nil
+}
+
+func runDeterministicMode(ctx context.Context, mode Mode, dbPath, specPath, tracePath, tenantID string) (Result, error) {
+	result, err := Run(ctx, dbPath, specPath, tracePath, tenantID)
+	result.Mode = mode
+	result.WorkerInvoked = false
+	result.EffectsAllowed = false
+	return result, err
+}
+
+func workerAwareMode(mode Mode) bool {
+	return mode == ModeRecorded || mode == ModeShadow || mode == ModeCounterfactual
+}
+
+func (c Capabilities) validate(mode Mode) error {
+	switch mode {
+	case ModeRecorded:
+		return requireReplayCapability(c.RecordedLedger != nil, "recorded ledger")
+	case ModeShadow:
+		return c.requireShadowExecutors()
+	case ModeCounterfactual:
+		return requireReplayCapability(c.Simulator != nil, "counterfactual simulator")
+	default:
+		return fmt.Errorf("%w: %s", ErrUnsupportedMode, mode)
+	}
+}
+
+func (c Capabilities) requireShadowExecutors() error {
+	if err := requireReplayCapability(c.BaselineExecutor != nil, "deterministic baseline executor"); err != nil {
+		return err
+	}
+	return requireReplayCapability(c.ShadowExecutor != nil, "shadow executor")
+}
+
+func requireReplayCapability(present bool, name string) error {
+	if !present {
+		return fmt.Errorf("%w: %s", ErrModeCapabilityRequired, name)
+	}
+	return nil
+}
+
+func runCapabilityMode(ctx context.Context, mode Mode, dbPath, specPath, tracePath, tenantID string, caps Capabilities) (Result, error) {
 	result, err := run(ctx, dbPath, specPath, tracePath, tenantID, true, func(db *storage.DB, result *Result, compiled *spec.CompiledSpec, evaluationTime time.Time) error {
 		return applyCapabilities(ctx, db, tenantID, mode, caps, compiled, evaluationTime, result)
 	})
@@ -162,27 +208,4 @@ func RunMode(ctx context.Context, mode Mode, dbPath, specPath, tracePath, tenant
 	result.Mode = mode
 	result.EffectsAllowed = false
 	return result, err
-}
-
-func (c Capabilities) validate(mode Mode) error {
-	switch mode {
-	case ModeRecorded:
-		if c.RecordedLedger == nil {
-			return fmt.Errorf("%w: recorded ledger", ErrModeCapabilityRequired)
-		}
-	case ModeShadow:
-		if c.BaselineExecutor == nil {
-			return fmt.Errorf("%w: deterministic baseline executor", ErrModeCapabilityRequired)
-		}
-		if c.ShadowExecutor == nil {
-			return fmt.Errorf("%w: shadow executor", ErrModeCapabilityRequired)
-		}
-	case ModeCounterfactual:
-		if c.Simulator == nil {
-			return fmt.Errorf("%w: counterfactual simulator", ErrModeCapabilityRequired)
-		}
-	default:
-		return fmt.Errorf("%w: %s", ErrUnsupportedMode, mode)
-	}
-	return nil
 }

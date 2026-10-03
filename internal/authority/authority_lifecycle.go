@@ -29,16 +29,9 @@ func (a *TargetAuthority) Assert(ctx context.Context, claim TargetClaim) error {
 }
 
 func (a *TargetAuthority) assertActiveClaimTx(ctx context.Context, tx *sql.Tx, claim TargetClaim) error {
-	var status, leaseUntil string
-	if err := tx.QueryRowContext(ctx, `
-		SELECT status, lease_until FROM device_target_claims
-		WHERE target = ? AND device_id = ? AND owner_epoch = ? AND owner_instance = ? AND boot_id = ?`,
-		claim.Target, claim.DeviceID, claim.AuthorityEpoch, claim.OwnerInstance, claim.BootID,
-	).Scan(&status, &leaseUntil); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrTargetClaimNotOwned
-		}
-		return fmt.Errorf("read target claim: %w", err)
+	status, leaseUntil, err := readActiveClaimLease(ctx, tx, claim)
+	if err != nil {
+		return err
 	}
 	expires, err := time.Parse(time.RFC3339Nano, leaseUntil)
 	if err != nil {
@@ -105,3 +98,20 @@ func markClaimReleased(ctx context.Context, tx *sql.Tx, claim TargetClaim, now t
 	}
 	return nil
 }
+
+func readActiveClaimLease(ctx context.Context, tx *sql.Tx, claim TargetClaim) (string, string, error) {
+	var status, leaseUntil string
+	if err := tx.QueryRowContext(ctx, readActiveClaimLeaseSQL,
+		claim.Target, claim.DeviceID, claim.AuthorityEpoch, claim.OwnerInstance, claim.BootID,
+	).Scan(&status, &leaseUntil); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "", ErrTargetClaimNotOwned
+		}
+		return "", "", fmt.Errorf("read target claim: %w", err)
+	}
+	return status, leaseUntil, nil
+}
+
+const readActiveClaimLeaseSQL = `
+		SELECT status, lease_until FROM device_target_claims
+		WHERE target = ? AND device_id = ? AND owner_epoch = ? AND owner_instance = ? AND boot_id = ?`

@@ -25,6 +25,10 @@ func EncodeDeviceRecord(document map[string]any) ([]byte, error) {
 	if err := contractsv1.Validate(schema, document); err != nil {
 		return nil, fmt.Errorf("validate device record: %w", err)
 	}
+	return encodeDeviceFrame(document)
+}
+
+func encodeDeviceFrame(document map[string]any) ([]byte, error) {
 	encoded, err := canonicaljson.Marshal(document)
 	if err != nil {
 		return nil, fmt.Errorf("encode device record: %w", err)
@@ -46,6 +50,10 @@ func DecodeDeviceRecord(frame []byte) (map[string]any, error) {
 	if len(frame) > maxDeviceFrameBytes {
 		return nil, fmt.Errorf("device frame exceeds %d bytes", maxDeviceFrameBytes)
 	}
+	return decodeDeviceFrame(frame)
+}
+
+func decodeDeviceFrame(frame []byte) (map[string]any, error) {
 	decoder := json.NewDecoder(bytes.NewReader(frame))
 	var document map[string]any
 	if err := decoder.Decode(&document); err != nil {
@@ -54,6 +62,10 @@ func DecodeDeviceRecord(frame []byte) (map[string]any, error) {
 	if document == nil {
 		return nil, fmt.Errorf("device frame must be a JSON object")
 	}
+	return validateDecodedFrame(decoder, document)
+}
+
+func validateDecodedFrame(decoder *json.Decoder, document map[string]any) (map[string]any, error) {
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		if err == nil {

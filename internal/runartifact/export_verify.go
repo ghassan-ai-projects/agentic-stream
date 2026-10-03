@@ -30,6 +30,10 @@ func verifyArtifactManifest(dir string) error {
 	if err != nil {
 		return err
 	}
+	return verifyManifestDefinitions(dir, manifest)
+}
+
+func verifyManifestDefinitions(dir string, manifest Manifest) error {
 	specData, err := readArtifactFile(dir, "spec.canonical.json")
 	if err != nil {
 		return err

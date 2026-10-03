@@ -7,10 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+
+	"google.golang.org/grpc/codes"
+
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 const maxArgumentsBytes = 256 << 10
@@ -82,45 +85,7 @@ func (s *Server) Call(ctx context.Context, req *runtimev1.EvidenceToolCall) (*ru
 	if err != nil || replayed != nil {
 		return replayed, err
 	}
-	result, err := s.runQuery(ctx, call, reservation, now)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.commitResult(ctx, reservation, result); err != nil {
-		return nil, err
-	}
-	return resultMessage(req, result), nil
-}
-
-// admitCall turns a wire request into an authorized, deadline-bound Call:
-// the service is configured, the envelope is complete, the trace parses, the
-// capability verifies, and the request stays inside the capability's scope.
-func (s *Server) admitCall(req *runtimev1.EvidenceToolCall, now time.Time) (Call, Scope, error) { //nolint:wrapcheck // gRPC status errors are the public wire contract.
-	if req == nil || s.Verifier == nil || s.Query == nil {
-		return Call{}, Scope{}, status.Error(codes.FailedPrecondition, "evidence service is not configured") //nolint:wrapcheck // gRPC wire boundary.
-	}
-	if s.RequireLedger && (s.Ledger == nil || s.RuntimeEpoch == "") {
-		return Call{}, Scope{}, wireError(codes.FailedPrecondition, "durable evidence ledger is required")
-	}
-	if err := validateCallEnvelope(req); err != nil {
-		return Call{}, Scope{}, err
-	}
-	trace, err := contractsv1.ParseTraceContext(req.GetTraceparent(), req.GetTracestate())
-	if err != nil {
-		return Call{}, Scope{}, status.Errorf(codes.InvalidArgument, "trace context: %v", err) //nolint:wrapcheck // gRPC wire boundary.
-	}
-	scope, err := s.Verifier.Verify(req.GetCapabilityToken())
-	if err != nil {
-		return Call{}, Scope{}, status.Error(codes.PermissionDenied, "capability authorization failed") //nolint:wrapcheck // Do not reveal token failure details.
-	}
-	call, err := s.authorizedCall(req, scope, trace)
-	if err != nil {
-		return Call{}, Scope{}, err
-	}
-	if call.Deadline, err = callDeadline(req, scope, now); err != nil {
-		return Call{}, Scope{}, err
-	}
-	return call, scope, nil
+	return s.queryResult(ctx, req, call, reservation, now)
 }
 
 // commitResult stores the result in the durable ledger when one is
@@ -146,16 +111,7 @@ func (s *Server) now() time.Time {
 // completed durable call returns its stored result instead of re-querying.
 func (s *Server) reserve(ctx context.Context, req *runtimev1.EvidenceToolCall, call Call, scope Scope) (ledgerReservation, *runtimev1.EvidenceToolResult, error) {
 	if s.Ledger == nil {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		if s.calls == nil {
-			s.calls = make(map[string]struct{})
-		}
-		if _, exists := s.calls[call.CallID]; exists {
-			return ledgerReservation{}, nil, wireError(codes.AlreadyExists, "evidence call was already used")
-		}
-		s.calls[call.CallID] = struct{}{}
-		return ledgerReservation{}, nil, nil
+		return ledgerReservation{}, nil, s.reserveInMemory(call.CallID)
 	}
 	reservation, err := s.Ledger.Reserve(ctx, call, scope.TokenID, s.RuntimeEpoch)
 	if err != nil {
@@ -164,13 +120,33 @@ func (s *Server) reserve(ctx context.Context, req *runtimev1.EvidenceToolCall, c
 	if reservation.Completed != nil {
 		return reservation, resultMessage(req, *reservation.Completed), nil
 	}
-	if !reservation.Created {
-		if reservation.Status != "running" {
-			return ledgerReservation{}, nil, wireError(codes.FailedPrecondition, "evidence call is terminal")
-		}
-		return ledgerReservation{}, nil, wireError(codes.AlreadyExists, "evidence call is already in progress")
+	if err := checkReservationCreated(reservation); err != nil {
+		return ledgerReservation{}, nil, err
 	}
 	return reservation, nil, nil
+}
+
+func (s *Server) reserveInMemory(callID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.calls == nil {
+		s.calls = make(map[string]struct{})
+	}
+	if _, exists := s.calls[callID]; exists {
+		return wireError(codes.AlreadyExists, "evidence call was already used")
+	}
+	s.calls[callID] = struct{}{}
+	return nil
+}
+
+func checkReservationCreated(reservation ledgerReservation) error {
+	if reservation.Created {
+		return nil
+	}
+	if reservation.Status != "running" {
+		return wireError(codes.FailedPrecondition, "evidence call is terminal")
+	}
+	return wireError(codes.AlreadyExists, "evidence call is already in progress")
 }
 
 // runQuery invokes the query within the call deadline and enforces the result
@@ -181,29 +157,40 @@ func (s *Server) runQuery(ctx context.Context, call Call, reservation ledgerRese
 	defer cancel()
 	result, err := s.Query(queryContext, call)
 	if err != nil {
-		s.failCall(ctx, reservation, "query_failed")
-		if s.Ledger == nil {
-			s.mu.Lock()
-			delete(s.calls, call.CallID)
-			s.mu.Unlock()
-		}
-		if queryContext.Err() != nil {
-			return QueryResult{}, contextStatusError(queryContext.Err())
-		}
-		return QueryResult{}, wireError(codes.Internal, "evidence query failed") // Do not leak query details.
+		return QueryResult{}, s.queryFailure(ctx, queryContext, call, reservation)
 	}
 	if queryContext.Err() != nil {
 		return QueryResult{}, contextStatusError(queryContext.Err())
 	}
+	if err := s.checkResultBounds(ctx, call, reservation, result); err != nil {
+		return QueryResult{}, err
+	}
+	return result, nil
+}
+
+func (s *Server) queryFailure(ctx, queryContext context.Context, call Call, reservation ledgerReservation) error {
+	s.failCall(ctx, reservation, "query_failed")
+	if s.Ledger == nil {
+		s.mu.Lock()
+		delete(s.calls, call.CallID)
+		s.mu.Unlock()
+	}
+	if queryContext.Err() != nil {
+		return contextStatusError(queryContext.Err())
+	}
+	return wireError(codes.Internal, "evidence query failed") // Do not leak query details.
+}
+
+func (s *Server) checkResultBounds(ctx context.Context, call Call, reservation ledgerReservation, result QueryResult) error {
 	if uint64(len(result.JSON)) > call.MaxBytes {
 		s.failCall(ctx, reservation, "result_bytes_exceeded")
-		return QueryResult{}, wireError(codes.ResourceExhausted, "evidence result exceeds capability")
+		return wireError(codes.ResourceExhausted, "evidence result exceeds capability")
 	}
 	if result.RowCount > call.MaxRows {
 		s.failCall(ctx, reservation, "result_rows_exceeded")
-		return QueryResult{}, wireError(codes.ResourceExhausted, "evidence result exceeds row limit")
+		return wireError(codes.ResourceExhausted, "evidence result exceeds row limit")
 	}
-	return result, nil
+	return nil
 }
 
 // failCall records a terminal failure when a durable ledger is configured.
@@ -229,4 +216,15 @@ func contextStatusError(err error) error {
 		return wireError(codes.Canceled, "evidence query canceled")
 	}
 	return wireError(codes.DeadlineExceeded, "evidence query deadline exceeded")
+}
+
+func (s *Server) queryResult(ctx context.Context, req *runtimev1.EvidenceToolCall, call Call, reservation ledgerReservation, now time.Time) (*runtimev1.EvidenceToolResult, error) {
+	result, err := s.runQuery(ctx, call, reservation, now)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.commitResult(ctx, reservation, result); err != nil {
+		return nil, err
+	}
+	return resultMessage(req, result), nil
 }

@@ -62,6 +62,11 @@ func reserveAvailableCost(ctx context.Context, tx *sql.Tx, scopeKey string, amou
 	if err != nil {
 		return fmt.Errorf("reserve %s cost: %w", scopeKey, err)
 	}
+	return requireReserved(result, scopeKey)
+}
+
+// requireReserved rejects a reservation that no limit row admitted.
+func requireReserved(result sql.Result, scopeKey string) error {
 	count, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("reserve %s cost rows affected: %w", scopeKey, err)

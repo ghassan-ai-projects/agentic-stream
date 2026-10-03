@@ -8,47 +8,75 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
-	"time"
 )
 
 func (e *Engine) saveSituationVersion(ctx context.Context, tx *sql.Tx, partitionID int, version situations.Version) error {
 	now := e.clock.Now().UTC().Format(time.RFC3339Nano)
-	firstEventTime := version.FirstEventTime
-	if firstEventTime.IsZero() {
-		firstEventTime = version.EventHorizon
-	}
-	occurrenceID := version.OccurrenceID
-	if occurrenceID == "" {
-		occurrenceID = "occ-" + version.SituationID
-	}
-	stateJSON := version.StateJSON
-	if len(stateJSON) == 0 {
-		return fmt.Errorf("situation %s version %d has no runtime state", version.SituationID, version.Version)
-	}
-	stateDigest, err := situationStateDigest(stateJSON, version.StateSHA256)
+	write, err := newSituationWrite(version)
 	if err != nil {
 		return err
 	}
-	stateDigestBytes, err := canonicaljson.DecodeDigest(stateDigest)
+	lineageID, err := e.recordLineage(ctx, tx, version.Evidence, now)
 	if err != nil {
-		return fmt.Errorf("invalid situation state digest: %w", err)
-	}
-
-	lineageID := e.lineageID(version.Evidence)
-	referencesJSON, err := json.Marshal(version.Evidence)
-	if err != nil {
-		return fmt.Errorf("marshal evidence: %w", err)
-	}
-	lineageDigest := sha256.Sum256(referencesJSON)
-	if err := e.insertLineageSet(ctx, tx, lineageID, lineageDigest[:], referencesJSON, now); err != nil {
 		return err
 	}
-	if err := e.upsertSituation(ctx, tx, partitionID, version, occurrenceID, firstEventTime, stateJSON, stateDigestBytes, now); err != nil {
+	if err := e.upsertSituation(ctx, tx, partitionID, version, write, now); err != nil {
 		return err
 	}
 	return e.insertSituationVersion(ctx, tx, version, lineageID, now)
+}
+
+// situationWrite is the current-row content derived from a version.
+type situationWrite struct {
+	occurrenceID           string
+	firstEventTime         time.Time
+	stateJSON, stateDigest []byte
+}
+
+// newSituationWrite requires the version's runtime state and defaults a
+// missing occurrence ID and first event time.
+func newSituationWrite(version situations.Version) (situationWrite, error) {
+	if len(version.StateJSON) == 0 {
+		return situationWrite{}, fmt.Errorf("situation %s version %d has no runtime state", version.SituationID, version.Version)
+	}
+	stateDigest, err := situationStateDigest(version.StateJSON, version.StateSHA256)
+	if err != nil {
+		return situationWrite{}, err
+	}
+	digest, err := canonicaljson.DecodeDigest(stateDigest)
+	if err != nil {
+		return situationWrite{}, fmt.Errorf("invalid situation state digest: %w", err)
+	}
+	return situationWrite{occurrenceID: occurrenceIDOf(version), firstEventTime: firstEventTimeOf(version), stateJSON: version.StateJSON, stateDigest: digest}, nil
+}
+
+func occurrenceIDOf(version situations.Version) string {
+	if version.OccurrenceID == "" {
+		return "occ-" + version.SituationID
+	}
+	return version.OccurrenceID
+}
+
+func firstEventTimeOf(version situations.Version) time.Time {
+	if version.FirstEventTime.IsZero() {
+		return version.EventHorizon
+	}
+	return version.FirstEventTime
+}
+
+// recordLineage stores the evidence references once per lineage ID.
+func (e *Engine) recordLineage(ctx context.Context, tx *sql.Tx, evidence []string, now string) (string, error) {
+	lineageID := e.lineageID(evidence)
+	referencesJSON, err := json.Marshal(evidence)
+	if err != nil {
+		return "", fmt.Errorf("marshal evidence: %w", err)
+	}
+	lineageDigest := sha256.Sum256(referencesJSON)
+	return lineageID, e.insertLineageSet(ctx, tx, lineageID, lineageDigest[:], referencesJSON, now)
 }
 
 func situationStateDigest(stateJSON []byte, digest string) (string, error) {
@@ -78,8 +106,19 @@ func (e *Engine) insertLineageSet(ctx context.Context, tx *sql.Tx, lineageID str
 	return nil
 }
 
-func (e *Engine) upsertSituation(ctx context.Context, tx *sql.Tx, partitionID int, version situations.Version, occurrenceID string, firstEventTime time.Time, stateJSON, stateDigest []byte, now string) error {
-	if _, err := tx.ExecContext(ctx, `
+func (e *Engine) upsertSituation(ctx context.Context, tx *sql.Tx, partitionID int, version situations.Version, write situationWrite, now string) error {
+	if _, err := tx.ExecContext(ctx, upsertSituationSQL,
+		version.SituationID, e.tenantID, e.deploymentID, version.Type, version.EntityType,
+		version.EntityID, partitionID, write.occurrenceID, version.Version, version.Phase,
+		"active", write.firstEventTime.Format(time.RFC3339Nano), version.EventHorizon.Format(time.RFC3339Nano),
+		now, now, 1, write.stateJSON, write.stateDigest,
+	); err != nil {
+		return fmt.Errorf("upsert situation: %w", err)
+	}
+	return nil
+}
+
+const upsertSituationSQL = `
 		INSERT INTO situations (
 			situation_id, tenant_id, deployment_id, situation_type, entity_type,
 			entity_id, partition_id, occurrence_id, current_version, phase,
@@ -94,33 +133,15 @@ func (e *Engine) upsertSituation(ctx context.Context, tx *sql.Tx, partitionID in
 		              updated_at = excluded.updated_at,
 		              state_codec_version = excluded.state_codec_version,
 		              state_json = excluded.state_json,
-		              state_sha256 = excluded.state_sha256`,
-		version.SituationID, e.tenantID, e.deploymentID, version.Type, version.EntityType,
-		version.EntityID, partitionID, occurrenceID, version.Version, version.Phase,
-		"active", firstEventTime.Format(time.RFC3339Nano), version.EventHorizon.Format(time.RFC3339Nano),
-		now, now, 1, stateJSON, stateDigest,
-	); err != nil {
-		return fmt.Errorf("upsert situation: %w", err)
-	}
-	return nil
-}
+		              state_sha256 = excluded.state_sha256`
 
 func (e *Engine) insertSituationVersion(ctx context.Context, tx *sql.Tx, version situations.Version, lineageID, now string) error {
 	snapshotDigest, err := canonicaljson.DecodeDigest(version.SnapshotSHA256)
 	if err != nil {
 		return fmt.Errorf("invalid snapshot digest: %w", err)
 	}
-	var previousVersion sql.NullInt64
-	if version.PreviousVersion >= 1 {
-		previousVersion = sql.NullInt64{Int64: int64(version.PreviousVersion), Valid: true}
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO situation_versions (
-			situation_id, version, previous_version, phase, previous_phase,
-			severity, confidence, completeness, event_horizon, watermark,
-			valid_from, snapshot_json, snapshot_sha256, lineage_id, traceparent, tracestate, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		version.SituationID, version.Version, previousVersion, version.Phase, version.PreviousPhase,
+	if _, err := tx.ExecContext(ctx, insertSituationVersionSQL,
+		version.SituationID, version.Version, previousVersionOf(version), version.Phase, version.PreviousPhase,
 		version.Severity, version.Confidence, version.Completeness,
 		version.EventHorizon.Format(time.RFC3339Nano), version.Watermark.Format(time.RFC3339Nano),
 		version.EventHorizon.Format(time.RFC3339Nano), version.SnapshotJSON, snapshotDigest,
@@ -129,6 +150,21 @@ func (e *Engine) insertSituationVersion(ctx context.Context, tx *sql.Tx, version
 		return fmt.Errorf("insert situation version: %w", err)
 	}
 	return nil
+}
+
+const insertSituationVersionSQL = `
+		INSERT INTO situation_versions (
+			situation_id, version, previous_version, phase, previous_phase,
+			severity, confidence, completeness, event_horizon, watermark,
+			valid_from, snapshot_json, snapshot_sha256, lineage_id, traceparent, tracestate, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+// previousVersionOf is NULL for a first version.
+func previousVersionOf(version situations.Version) sql.NullInt64 {
+	if version.PreviousVersion < 1 {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: int64(version.PreviousVersion), Valid: true}
 }
 
 // lineageID derives the stable identity of an ordered evidence set. Each event

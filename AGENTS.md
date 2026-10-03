@@ -74,11 +74,14 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/operators` - deterministic operators (hysteresis, debounce, cooldown)
 - `internal/situations` - Situation state machine, versioning, publication
 - `internal/cognition` - deterministic cognitive scheduler
+- `internal/admission` - episode admission from the scheduler queue
 - `internal/episodes` - bounded episode lifecycle
+- `internal/executor/native`, `internal/executor/remote` - concrete executors behind the episode `Executor` port (in-process and streamed worker protocol)
 - `internal/evidence` - evidence/tool boundary for episodes
 - `internal/decisions` - typed Decision model
 - `internal/policy` - policy plane; revalidates every intent before dispatch
-- `internal/actions` - action plane, effectors, idempotency
+- `internal/actions` - governed dispatch plane, idempotency, verification
+- `internal/watch` - derived-trigger watches installed by approved commands
 - `internal/actionport` - approved-command/effect contracts without implementation dependencies
 - `internal/device` - concrete device adapters, sessions, materialization and gateway links
 - `internal/episodeledger` / `internal/scheduleledger` / `internal/approvalledger` - durable lifecycle owners shared through transaction-scoped operations
@@ -157,7 +160,7 @@ Code is written to be read top-down by the next reviewer. Every function in
 production code follows these rules (quality-bar rule Q7):
 
 - A function name states its intent.
-- A function is short and does one thing.
+- A function is short (at most 15 body lines) and does one thing.
 - A function stays at one level of abstraction.
 - Public, top-level functions read like a small domain-specific language: a
   short sequence of domain verbs over domain nouns.
@@ -165,8 +168,8 @@ production code follows these rules (quality-bar rule Q7):
   stepping down until the remaining operations are small and concrete (the
   stepdown rule): entry point first, its steps below it.
 
-The linters enforce the mechanical floor (cognitive complexity ≤ 15, ≤ 50
-lines and 30 statements, nested-`if` ≤ 3, files under 300 lines); review
+The linters enforce the mechanical floor (cognitive complexity ≤ 15, ≤ 15
+body lines and 15 statements, nested-`if` ≤ 3, files under 300 lines); review
 enforces the rest. A refactor toward these rules never changes behavior, and
 it never adds abstraction layers without a current need. The full bar, with
 examples, is [.agents/context/quality-bar.md](.agents/context/quality-bar.md).

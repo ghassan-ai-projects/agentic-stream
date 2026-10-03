@@ -37,6 +37,16 @@ func (s *DeviceSession) SafeStopWithResult(ctx context.Context, target string) (
 	if err := s.ensureOpen(); err != nil {
 		return DeviceExchange{}, false, err
 	}
+	return s.deliverSafeStop(ctx, target)
+}
+
+func (s *DeviceSession) requestSafeStop() {
+	s.stopMu.Lock()
+	s.safeStopRequested = true
+	s.stopMu.Unlock()
+}
+
+func (s *DeviceSession) deliverSafeStop(ctx context.Context, target string) (DeviceExchange, bool, error) {
 	command, err := s.catalog.MaterializeSafeStop(target, s.bootID)
 	if err != nil {
 		return DeviceExchange{}, false, err
@@ -48,6 +58,10 @@ func (s *DeviceSession) SafeStopWithResult(ctx context.Context, target string) (
 	if s.telemetry != nil {
 		s.telemetry.ObserveSafeStopRequested()
 	}
+	return s.sendSafeStop(ctx, command, claim, requestedErr)
+}
+
+func (s *DeviceSession) sendSafeStop(ctx context.Context, command map[string]any, claim deviceauthority.TargetClaim, requestedErr error) (DeviceExchange, bool, error) {
 	frame, err := EncodeDeviceRecord(command)
 	if err != nil {
 		return s.failedSafeStop(ctx, claim, requestedErr, fmt.Errorf("encode safe stop: %w", err), "safe-stop preparation failed", false)
@@ -56,12 +70,6 @@ func (s *DeviceSession) SafeStopWithResult(ctx context.Context, target string) (
 		return s.failedSafeStop(ctx, claim, requestedErr, fmt.Errorf("send safe stop: %w", err), "safe-stop send failed", transportMayHaveSent(err))
 	}
 	return s.completeSafeStopExchange(ctx, command, claim, requestedErr)
-}
-
-func (s *DeviceSession) requestSafeStop() {
-	s.stopMu.Lock()
-	s.safeStopRequested = true
-	s.stopMu.Unlock()
 }
 
 func (s *DeviceSession) failedSafeStop(ctx context.Context, claim deviceauthority.TargetClaim, requestedErr, cause error, prefix string, sent bool) (DeviceExchange, bool, error) {
@@ -73,6 +81,10 @@ func (s *DeviceSession) failedSafeStop(ctx context.Context, claim deviceauthorit
 		s.invalidateTransportLocked()
 		barrierErr = s.requireReconciliation(ctx, "safe-stop outcome was not trustworthy")
 	}
+	return s.recordFailedSafeStop(ctx, claim, requestedErr, cause, barrierErr, prefix, sent)
+}
+
+func (s *DeviceSession) recordFailedSafeStop(ctx context.Context, claim deviceauthority.TargetClaim, requestedErr, cause, barrierErr error, prefix string, sent bool) (DeviceExchange, bool, error) {
 	details := map[string]any{"error": cause.Error()}
 	if sent {
 		details["sent"] = true
@@ -90,13 +102,7 @@ func (s *DeviceSession) failedSafeStop(ctx context.Context, claim deviceauthorit
 func (s *DeviceSession) completeSafeStopExchange(ctx context.Context, command map[string]any, claim deviceauthority.TargetClaim, requestedErr error) (DeviceExchange, bool, error) {
 	reply, err := s.transport.Receive(ctx)
 	if err != nil {
-		s.invalidateTransportLocked()
-		barrierErr := s.requireReconciliation(ctx, "safe-stop receipt was not received")
-		recordErr := s.recordSafeStop(ctx, claim, "safe_stop_failed", map[string]any{"error": err.Error(), "sent": true})
-		if s.telemetry != nil {
-			s.telemetry.ObserveSafeStopFailure()
-		}
-		return DeviceExchange{}, true, &deviceExchangeError{err: errors.Join(err, requestedErr, recordErr, barrierErr)}
+		return s.failedSafeStopReceive(ctx, claim, requestedErr, err)
 	}
 	receipt, err := DecodeDeviceRecord(reply)
 	if err != nil || !receiptMatchesCommand(receipt, command, s.bootID) {
@@ -106,24 +112,17 @@ func (s *DeviceSession) completeSafeStopExchange(ctx context.Context, command ma
 	if resultErr != nil {
 		return s.failedSafeStopReceipt(ctx, claim, requestedErr, &DeviceExchange{Receipt: receipt}, resultErr)
 	}
-	accepted, _ := receipt["accepted"].(bool)
-	if !accepted {
-		recordErr := s.recordSafeStop(ctx, claim, "safe_stop_failed", map[string]any{
-			"command_id": command["command_id"], "accepted": false,
-			"result_status": result["status"], "error_code": result["error_code"],
-		})
-		if s.telemetry != nil {
-			s.telemetry.ObserveSafeStopFailure()
-		}
-		lifecycleErr := errors.Join(requestedErr, recordErr)
-		if lifecycleErr != nil {
-			s.invalidateTransportLocked()
-			barrierErr := s.requireReconciliation(ctx, "safe-stop rejection evidence was not durable")
-			return DeviceExchange{Receipt: receipt, Result: result}, true, &actionport.UnknownOutcomeError{Err: errors.Join(errors.New("device rejected safe stop but lifecycle evidence was not durable"), lifecycleErr, barrierErr)}
-		}
-		return DeviceExchange{Receipt: receipt, Result: result}, true, &deviceExchangeError{err: errors.Join(errors.New("device rejected safe stop"), requestedErr, recordErr)}
+	return s.concludeSafeStopResponse(ctx, command, receipt, result, claim, requestedErr)
+}
+
+func (s *DeviceSession) failedSafeStopReceive(ctx context.Context, claim deviceauthority.TargetClaim, requestedErr, err error) (DeviceExchange, bool, error) {
+	s.invalidateTransportLocked()
+	barrierErr := s.requireReconciliation(ctx, "safe-stop receipt was not received")
+	recordErr := s.recordSafeStop(ctx, claim, "safe_stop_failed", map[string]any{"error": err.Error(), "sent": true})
+	if s.telemetry != nil {
+		s.telemetry.ObserveSafeStopFailure()
 	}
-	return s.recordCompletedSafeStop(ctx, claim, command, receipt, result, requestedErr)
+	return DeviceExchange{}, true, &deviceExchangeError{err: errors.Join(err, requestedErr, recordErr, barrierErr)}
 }
 
 func (s *DeviceSession) failedSafeStopReceipt(ctx context.Context, claim deviceauthority.TargetClaim, requestedErr error, partial *DeviceExchange, decodeErr error) (DeviceExchange, bool, error) {
@@ -139,6 +138,10 @@ func (s *DeviceSession) failedSafeStopReceipt(ctx context.Context, claim devicea
 	if s.telemetry != nil {
 		s.telemetry.ObserveSafeStopFailure()
 	}
+	return failedSafeStopResponse(partial, decodeErr, requestedErr, recordErr, barrierErr)
+}
+
+func failedSafeStopResponse(partial *DeviceExchange, decodeErr, requestedErr, recordErr, barrierErr error) (DeviceExchange, bool, error) {
 	if decodeErr == nil {
 		decodeErr = errors.New("safe-stop receipt identity mismatch")
 	}
@@ -146,6 +149,35 @@ func (s *DeviceSession) failedSafeStopReceipt(ctx context.Context, claim devicea
 		partial = &DeviceExchange{}
 	}
 	return *partial, true, &deviceExchangeError{err: errors.Join(fmt.Errorf("decode safe-stop response: %w", decodeErr), requestedErr, recordErr, barrierErr)}
+}
+
+func (s *DeviceSession) concludeSafeStopResponse(ctx context.Context, command, receipt, result map[string]any, claim deviceauthority.TargetClaim, requestedErr error) (DeviceExchange, bool, error) {
+	accepted, _ := receipt["accepted"].(bool)
+	if !accepted {
+		return s.rejectedSafeStop(ctx, command, receipt, result, claim, requestedErr)
+	}
+	return s.recordCompletedSafeStop(ctx, claim, command, receipt, result, requestedErr)
+}
+
+func (s *DeviceSession) rejectedSafeStop(ctx context.Context, command, receipt, result map[string]any, claim deviceauthority.TargetClaim, requestedErr error) (DeviceExchange, bool, error) {
+	recordErr := s.recordSafeStop(ctx, claim, "safe_stop_failed", map[string]any{
+		"command_id": command["command_id"], "accepted": false,
+		"result_status": result["status"], "error_code": result["error_code"],
+	})
+	if s.telemetry != nil {
+		s.telemetry.ObserveSafeStopFailure()
+	}
+	return s.classifySafeStopRejection(ctx, receipt, result, requestedErr, recordErr)
+}
+
+func (s *DeviceSession) classifySafeStopRejection(ctx context.Context, receipt, result map[string]any, requestedErr, recordErr error) (DeviceExchange, bool, error) {
+	lifecycleErr := errors.Join(requestedErr, recordErr)
+	if lifecycleErr != nil {
+		s.invalidateTransportLocked()
+		barrierErr := s.requireReconciliation(ctx, "safe-stop rejection evidence was not durable")
+		return DeviceExchange{Receipt: receipt, Result: result}, true, &actionport.UnknownOutcomeError{Err: errors.Join(errors.New("device rejected safe stop but lifecycle evidence was not durable"), lifecycleErr, barrierErr)}
+	}
+	return DeviceExchange{Receipt: receipt, Result: result}, true, &deviceExchangeError{err: errors.Join(errors.New("device rejected safe stop"), requestedErr, recordErr)}
 }
 
 func (s *DeviceSession) recordCompletedSafeStop(ctx context.Context, claim deviceauthority.TargetClaim, command, receipt, result map[string]any, requestedErr error) (DeviceExchange, bool, error) {
@@ -165,52 +197,6 @@ func (s *DeviceSession) recordCompletedSafeStop(ctx context.Context, claim devic
 	return DeviceExchange{Receipt: receipt, Result: result}, true, nil
 }
 
-// Close releases the gateway link. It is safe to call more than once.
-func (s *DeviceSession) Close() error {
-	if s == nil {
-		return nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return nil
-	}
-	s.closed = true
-	releaseErr := s.releaseClaims()
-	if s.transport == nil {
-		if releaseErr != nil {
-			return fmt.Errorf("release device target claims: %w", releaseErr)
-		}
-		return nil
-	}
-	if err := errors.Join(releaseErr, s.transport.Close()); err != nil {
-		return fmt.Errorf("close device session: %w", err)
-	}
-	return nil
-}
-
-func (s *DeviceSession) releaseClaims() error {
-	if s.authority == nil {
-		return nil
-	}
-	var releaseErr error
-	for target := range s.claimedTargets {
-		err := s.authority.Release(context.Background(), deviceauthority.TargetClaim{Target: target, DeviceID: s.deviceID, BootID: s.bootID, AuthorityEpoch: s.authorityEpoch, OwnerInstance: s.ownerInstance})
-		if errors.Is(err, deviceauthority.ErrTargetClaimNotOwned) {
-			continue
-		}
-		releaseErr = errors.Join(releaseErr, err)
-	}
-	// Close adds the operation context at the public boundary.
-	return releaseErr //nolint:wrapcheck // Close wraps the joined release errors.
-}
-
-func (s *DeviceSession) stopRequested() bool {
-	s.stopMu.RLock()
-	defer s.stopMu.RUnlock()
-	return s.safeStopRequested
-}
-
 func (s *DeviceSession) recordSafeStop(ctx context.Context, claim deviceauthority.TargetClaim, eventType string, details map[string]any) error {
 	if s.authority != nil {
 		if err := s.authority.RecordSafeStop(ctx, claim, eventType, details); err != nil {
@@ -225,4 +211,10 @@ func (s *DeviceSession) recordSafeStop(ctx context.Context, claim deviceauthorit
 		return nil
 	}
 	return fmt.Errorf("safe-stop lifecycle store is not configured")
+}
+
+func (s *DeviceSession) stopRequested() bool {
+	s.stopMu.RLock()
+	defer s.stopMu.RUnlock()
+	return s.safeStopRequested
 }

@@ -3,34 +3,22 @@ package situations
 import (
 	"context"
 	"fmt"
+	"time"
+
+	"github.com/google/cel-go/cel"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
-	"reflect"
-	"sort"
-	"time"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 func (e *Engine) evaluate(ctx context.Context, sit *Situation, feature operators.Feature, watermark time.Time, completenessChanged bool) (*Version, error) {
-	features := e.buildFeaturesMap(sit)
-	situation := e.buildSituationMap(sit)
-	inputs := evaluationInputs{features: features, situation: situation, eventTime: feature.EventTime, watermark: watermark}
-
-	// Check occurrence close first if active, then phase transitions, then
-	// occurrence open if not active.
-	closed, err := e.closeOccurrence(ctx, sit, inputs)
+	inputs := evaluationInputs{features: e.buildFeaturesMap(sit), situation: e.buildSituationMap(sit), eventTime: feature.EventTime, watermark: watermark}
+	changed, err := e.advanceLifecycle(ctx, sit, inputs)
 	if err != nil {
 		return nil, err
 	}
-	transitioned, err := e.applyTransitions(ctx, sit, inputs)
-	if err != nil {
-		return nil, err
-	}
-	opened, err := e.openOccurrence(ctx, sit, inputs)
-	if err != nil {
-		return nil, err
-	}
-	changed := closed || transitioned || opened
-	if completenessChanged && sit.Version > 0 && !changed {
+	if !changed && completenessChanged && sit.Version > 0 {
 		sit.Version++
 		sit.UpdatedAt = watermark
 		changed = true
@@ -39,6 +27,24 @@ func (e *Engine) evaluate(ctx context.Context, sit *Situation, feature operators
 		return nil, nil
 	}
 	return e.materialize(sit, watermark)
+}
+
+// advanceLifecycle checks occurrence close first if active, then phase
+// transitions, then occurrence open if not active.
+func (e *Engine) advanceLifecycle(ctx context.Context, sit *Situation, inputs evaluationInputs) (bool, error) {
+	closed, err := e.closeOccurrence(ctx, sit, inputs)
+	if err != nil {
+		return false, err
+	}
+	transitioned, err := e.applyTransitions(ctx, sit, inputs)
+	if err != nil {
+		return false, err
+	}
+	opened, err := e.openOccurrence(ctx, sit, inputs)
+	if err != nil {
+		return false, err
+	}
+	return closed || transitioned || opened, nil
 }
 
 // evaluationInputs are the CEL inputs and times one evaluation uses.
@@ -67,26 +73,41 @@ func (e *Engine) applyTransitions(ctx context.Context, sit *Situation, in evalua
 		if tr.From != sit.Phase {
 			continue
 		}
-		cond, err := e.evalBool(ctx, tr.When, in.features, in.situation)
+		moved, err := e.applyTransition(ctx, sit, tr, in)
 		if err != nil {
 			return false, err
 		}
-		key := tr.From + "->" + tr.To
-		if !cond {
-			delete(sit.ConditionStart, key)
-			continue
-		}
-		start := sit.ConditionStart[key]
-		if start.IsZero() {
-			start = in.eventTime
-			sit.ConditionStart[key] = start
-		}
-		minDur, _ := duration.Parse(tr.MinDuration)
-		if in.eventTime.Sub(start) >= minDur && e.transition(sit, tr.To, in.watermark) {
-			changed = true
-		}
+		changed = changed || moved
 	}
 	return changed, nil
+}
+
+// applyTransition starts or clears the transition's condition timer and
+// moves the Situation once the condition has held for the minimum duration.
+func (e *Engine) applyTransition(ctx context.Context, sit *Situation, tr spec.Transition, in evaluationInputs) (bool, error) {
+	held, err := e.evalBool(ctx, tr.When, in.features, in.situation)
+	if err != nil {
+		return false, err
+	}
+	key := tr.From + "->" + tr.To
+	if !held {
+		delete(sit.ConditionStart, key)
+		return false, nil
+	}
+	start := conditionStart(sit, key, in.eventTime)
+	minDur, _ := duration.Parse(tr.MinDuration)
+	return in.eventTime.Sub(start) >= minDur && e.transition(sit, tr.To, in.watermark), nil
+}
+
+// conditionStart returns when the keyed condition began to hold, recording
+// eventTime when it starts now.
+func conditionStart(sit *Situation, key string, eventTime time.Time) time.Time {
+	start := sit.ConditionStart[key]
+	if start.IsZero() {
+		start = eventTime
+		sit.ConditionStart[key] = start
+	}
+	return start
 }
 
 func (e *Engine) openOccurrence(ctx context.Context, sit *Situation, in evaluationInputs) (bool, error) {
@@ -124,39 +145,48 @@ func (e *Engine) severityForPhase(phase string) int {
 }
 
 func (e *Engine) buildFeaturesMap(sit *Situation) map[string]any {
+	return CELFeatures(e.spec, sit.Facts, sortedEvidenceIDs(sit))
+}
+
+// CELFeatures is the CEL `features` view of a Situation: its reduced facts
+// and evidence, with every missing operator output defaulted so expressions
+// never fail on a missing key. Situations and cognition share this one view.
+func CELFeatures(compiled *spec.CompiledSpec, facts map[string]any, evidence []string) map[string]any {
 	features := make(map[string]any)
-	for _, r := range e.spec.Situation.Reducers {
-		switch r.Strategy {
-		case "latest_event_time":
-			// A nil fact means this operator has not materialized an output yet.
-			// Leave it absent so the typed operator default below remains effective.
-			if v, ok := sit.Facts[r.Field]; ok && v != nil {
-				features[r.Input] = v
-			}
-		case "set_union":
-			evidence := make([]string, 0, len(sit.Evidence))
-			for id := range sit.Evidence {
-				evidence = append(evidence, id)
-			}
-			sort.Strings(evidence)
-			features[r.Field] = evidence
-		}
+	for _, r := range compiled.Situation.Reducers {
+		addReducedFeature(features, facts, evidence, r)
 	}
-	// Pre-populate defaults for every operator output so that CEL expressions
-	// never fail on a missing key. Numeric features default to 0; heartbeat
-	// detectors default to false.
-	for _, op := range e.spec.Operators {
+	addOperatorDefaults(features, compiled.Operators)
+	return features
+}
+
+func addReducedFeature(features, facts map[string]any, evidence []string, r spec.Reducer) {
+	switch r.Strategy {
+	case "latest_event_time":
+		// A nil fact means this operator has not materialized an output yet.
+		// Leave it absent so the typed operator default remains effective.
+		if v, ok := facts[r.Field]; ok && v != nil {
+			features[r.Input] = v
+		}
+	case "set_union":
+		features[r.Field] = evidence
+	}
+}
+
+// addOperatorDefaults pre-populates every missing operator output so that CEL
+// expressions never fail on a missing key: heartbeat detectors default to
+// false and numeric features to 0.
+func addOperatorDefaults(features map[string]any, ops []spec.Operator) {
+	for _, op := range ops {
 		if _, ok := features[op.Output]; ok {
 			continue
 		}
-		switch op.Kind {
-		case "missing_heartbeat":
+		if op.Kind == "missing_heartbeat" {
 			features[op.Output] = false
-		default:
+		} else {
 			features[op.Output] = 0.0
 		}
 	}
-	return features
 }
 
 func (e *Engine) buildSituationMap(sit *Situation) map[string]any {
@@ -171,33 +201,29 @@ func (e *Engine) buildSituationMap(sit *Situation) map[string]any {
 	}
 }
 
-func (e *Engine) evalBool(ctx context.Context, expr string, features, situation map[string]any) (bool, error) {
-	_ = ctx
+func (e *Engine) evalBool(_ context.Context, expr string, features, situation map[string]any) (bool, error) {
 	if expr == "" {
 		return false, nil
 	}
-	ast, issues := e.celEnv.Compile(expr)
-	if issues != nil && issues.Err() != nil {
-		return false, fmt.Errorf("compile cel: %w", issues.Err())
-	}
-	prg, err := e.celEnv.Program(ast)
+	prg, err := e.program(expr)
 	if err != nil {
-		return false, fmt.Errorf("program cel: %w", err)
+		return false, err
 	}
-	out, _, err := prg.Eval(map[string]any{
-		"features":  features,
-		"situation": situation,
-	})
+	out, _, err := prg.Eval(map[string]any{"features": features, "situation": situation})
 	if err != nil {
 		return false, fmt.Errorf("eval cel: %w", err)
 	}
-	v, err := out.ConvertToNative(reflect.TypeOf(true))
+	return spec.CELBool(out) //nolint:wrapcheck // The spec helper names the conversion failure.
+}
+
+func (e *Engine) program(expr string) (cel.Program, error) {
+	ast, issues := e.celEnv.Compile(expr)
+	if issues != nil && issues.Err() != nil {
+		return nil, fmt.Errorf("compile cel: %w", issues.Err())
+	}
+	prg, err := e.celEnv.Program(ast)
 	if err != nil {
-		return false, fmt.Errorf("cel result not bool: %w", err)
+		return nil, fmt.Errorf("program cel: %w", err)
 	}
-	b, ok := v.(bool)
-	if !ok {
-		return false, fmt.Errorf("cel result not bool: %T", v)
-	}
-	return b, nil
+	return prg, nil
 }

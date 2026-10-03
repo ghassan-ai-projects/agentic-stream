@@ -55,6 +55,58 @@ func (e *SerialEffector) DispatchAuthorized(ctx context.Context, command actionp
 	return e.dispatch(ctx, command)
 }
 
+func (e *SerialEffector) dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
+	if e == nil || e.session == nil || e.catalog == nil {
+		return actionport.Effect{}, fmt.Errorf("serial effector session and catalog are required")
+	}
+	catalogDigest, err := e.catalog.Digest()
+	if err != nil {
+		return actionport.Effect{}, fmt.Errorf("validate serial capability catalog: %w", err)
+	}
+	if catalogDigest != e.session.CapabilityDigest() {
+		return actionport.Effect{}, fmt.Errorf("serial capability catalog does not match the device session")
+	}
+	return e.dispatchMaterialized(ctx, command)
+}
+
+func (e *SerialEffector) dispatchMaterialized(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
+	bootID := e.session.BootID()
+	wireCommand, err := e.catalog.Materialize(command, bootID)
+	if err != nil {
+		return actionport.Effect{}, fmt.Errorf("materialize serial command: %w", err)
+	}
+	exchange, sent, err := e.session.ExchangeWithResult(ctx, wireCommand)
+	if err != nil {
+		return e.failedDeviceEffect(exchange, sent, err)
+	}
+	return e.acceptedDeviceEffect(exchange)
+}
+
+func (e *SerialEffector) failedDeviceEffect(exchange DeviceExchange, sent bool, err error) (actionport.Effect, error) {
+	providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
+	if sent {
+		if e.telemetry != nil {
+			e.telemetry.ObserveActionUnknownOutcome()
+		}
+		return actionport.Effect{ProviderResult: providerResult}, &actionport.UnknownOutcomeError{Err: err}
+	}
+	return actionport.Effect{}, fmt.Errorf("exchange serial command: %w", err)
+}
+
+func (e *SerialEffector) acceptedDeviceEffect(exchange DeviceExchange) (actionport.Effect, error) {
+	providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
+	accepted, _ := exchange.Receipt["accepted"].(bool)
+	effect := actionport.Effect{ProviderResult: providerResult, VerificationPending: accepted}
+	if accepted && e.telemetry != nil {
+		e.telemetry.ObserveVerificationPending()
+	}
+	if !accepted {
+		rejectCode, _ := exchange.Receipt["reject_code"].(string)
+		return effect, fmt.Errorf("device rejected serial command: %s", rejectCode)
+	}
+	return effect, nil
+}
+
 // SafeStop requests the catalog-owned safe state through the session priority
 // lane. It is intentionally separate from policy-approved ordinary dispatch.
 func (e *SerialEffector) SafeStop(ctx context.Context, target string) (actionport.Effect, error) {
@@ -62,6 +114,10 @@ func (e *SerialEffector) SafeStop(ctx context.Context, target string) (actionpor
 		return actionport.Effect{}, fmt.Errorf("serial effector session is required")
 	}
 	exchange, sent, err := e.session.SafeStopWithResult(ctx, target)
+	return classifySafeStop(exchange, sent, err)
+}
+
+func classifySafeStop(exchange DeviceExchange, sent bool, err error) (actionport.Effect, error) {
 	providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
 	switch {
 	case err == nil:
@@ -95,6 +151,10 @@ func (e *SerialEffector) VerifyDeviceCommand(ctx context.Context, command action
 	if err != nil {
 		return "", nil, fmt.Errorf("materialize serial command for verification: %w", err)
 	}
+	return e.verifyMaterializedCommand(ctx, wireCommand, expectedBootID)
+}
+
+func (e *SerialEffector) verifyMaterializedCommand(ctx context.Context, wireCommand map[string]any, expectedBootID string) (string, map[string]any, error) {
 	evidence, err := e.session.QueryStateEvidence(ctx)
 	if err != nil {
 		return "", nil, err
@@ -106,6 +166,10 @@ func (e *SerialEffector) VerifyDeviceCommand(ctx context.Context, command action
 	if err := setEvidenceTarget(evidence, documentString(wireCommand, "target")); err != nil {
 		return "", nil, err
 	}
+	return verifyObservedOutput(evidence, wireCommand)
+}
+
+func verifyObservedOutput(evidence, wireCommand map[string]any) (string, map[string]any, error) {
 	state, _ := evidence["state"].(map[string]any)
 	output, _ := state["current_output"].(map[string]any)
 	observedTarget, _ := output["target"].(string)
@@ -135,45 +199,4 @@ func expectedOutput(command map[string]any) (float64, bool) {
 		}
 	}
 	return 0, false
-}
-
-func (e *SerialEffector) dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
-	if e == nil || e.session == nil || e.catalog == nil {
-		return actionport.Effect{}, fmt.Errorf("serial effector session and catalog are required")
-	}
-	catalogDigest, err := e.catalog.Digest()
-	if err != nil {
-		return actionport.Effect{}, fmt.Errorf("validate serial capability catalog: %w", err)
-	}
-	if catalogDigest != e.session.CapabilityDigest() {
-		return actionport.Effect{}, fmt.Errorf("serial capability catalog does not match the device session")
-	}
-	bootID := e.session.BootID()
-	wireCommand, err := e.catalog.Materialize(command, bootID)
-	if err != nil {
-		return actionport.Effect{}, fmt.Errorf("materialize serial command: %w", err)
-	}
-	exchange, sent, err := e.session.ExchangeWithResult(ctx, wireCommand)
-	if err != nil {
-		providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
-		if sent {
-			if e.telemetry != nil {
-				e.telemetry.ObserveActionUnknownOutcome()
-			}
-			return actionport.Effect{ProviderResult: providerResult}, &actionport.UnknownOutcomeError{Err: err}
-		}
-		return actionport.Effect{}, fmt.Errorf("exchange serial command: %w", err)
-	}
-
-	providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
-	accepted, _ := exchange.Receipt["accepted"].(bool)
-	effect := actionport.Effect{ProviderResult: providerResult, VerificationPending: accepted}
-	if accepted && e.telemetry != nil {
-		e.telemetry.ObserveVerificationPending()
-	}
-	if !accepted {
-		rejectCode, _ := exchange.Receipt["reject_code"].(string)
-		return effect, fmt.Errorf("device rejected serial command: %s", rejectCode)
-	}
-	return effect, nil
 }

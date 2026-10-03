@@ -416,3 +416,23 @@ importing policy. `approvalledger` owns these transitions and their transaction-
 scoped audit notifications; policy owns permission/signature decisions above it.
 `control` supplies the read-only final dispatch readiness capability, so effect
 adapters never call a dispatcher callback. Both refinements are part of ADR-017.
+
+**Executor boundary refinement (2026-10-03).** The episode lifecycle (claim,
+fencing, assembly, Decision acceptance and failure accounting) is a business
+module; how reasoning runs is an adapter concern. The streamed EpisodeWorker
+adapter moves from `episodes` to `internal/executor/remote`, beside the native
+executor, together with the per-attempt evidence capability issuer it presents.
+`episodes` keeps the `Executor` port and the typed budget errors; the adapter translates transport cancellation and
+deadline status into context errors, so durable failure reasons are unchanged.
+No protocol, schema, digest or dependency changes.
+
+**Composition and effect-adapter refinement (2026-10-03).** The composition
+root had accumulated business work: the episode admission workflow (drain gate,
+assembly, fixture refusal, epoch stamping, skip recording), pending-intent
+selection, cost-ceiling configuration and a second event-log evidence query.
+Admission moves to `internal/admission`; the other reads move to `policy`,
+`costcontrol` and `eventlog`, so `runtime` and `cmd` contain no SQL. The
+dispatcher package also owned derived-trigger watches, which the ingest loop
+fired, so the first pipeline stage called the last. Watches move to
+`internal/watch` and the simulated effector to `device`; `actions` keeps
+governed dispatch only. Behavior, transactions and durable records are unchanged.

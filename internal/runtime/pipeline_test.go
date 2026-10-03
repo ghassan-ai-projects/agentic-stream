@@ -6,8 +6,9 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -29,7 +30,7 @@ func TestPipelineRunsNormalizedBatchThroughAllPlanes(t *testing.T) {
 	}
 	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{
 		DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: ids.Deterministic(),
-		Executor: episodes.NewFakeExecutor(), Effector: actions.NewSimulatedEffector(),
+		Executor: episodes.NewFakeExecutor(), Effector: device.NewSimulatedEffector(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +56,7 @@ func TestPipelineSurvivesWatchExpressionEvaluationError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	watch := actions.NewWatchEffector(db)
+	watch := watch.NewEffector(db)
 	command := actionport.Command{
 		CommandID: "cmd-pipeline-watch-evaluation-error", TenantID: "default", EffectorRoute: "install_watch_condition",
 		Payload: map[string]any{
@@ -69,7 +70,7 @@ func TestPipelineSurvivesWatchExpressionEvaluationError(t *testing.T) {
 
 	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{
 		DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: ids.Deterministic(),
-		Executor: episodes.NewFakeExecutor(), Effector: actions.NewSimulatedEffector(),
+		Executor: episodes.NewFakeExecutor(), Effector: device.NewSimulatedEffector(),
 	})
 	if err != nil {
 		t.Fatal(err)

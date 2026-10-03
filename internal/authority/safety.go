@@ -41,18 +41,7 @@ func (l *SafetyLedger) Record(ctx context.Context, event SafetyEvent) error {
 	if event.Type == "physical_transition" && eventComplete(event.Details) && !PhysicalEvidenceComplete(event.Details) {
 		return fmt.Errorf("complete physical transition evidence requires source and sha256 evidence_digest")
 	}
-	data, err := canonicaljson.Marshal(event.Details)
-	if err != nil {
-		return fmt.Errorf("canonicalize safety event: %w", err)
-	}
-	hash := sha256.Sum256(data)
-	if _, err := l.DB.ExecContext(ctx, `
-		INSERT INTO device_safety_events
-			(event_type, target, command_id, details_json, details_sha256, occurred_at)
-		VALUES (?, ?, ?, ?, ?, ?)`, event.Type, event.Target, nullableText(event.CommandID), data, hash[:], formatRuntimeTime(event.Occurred)); err != nil {
-		return fmt.Errorf("record safety event: %w", err)
-	}
-	return nil
+	return l.storeSafetyEvent(ctx, event)
 }
 
 func validSafetyEventType(eventType string) bool {
@@ -89,3 +78,20 @@ func validSHA256Reference(value string) bool {
 	_, err := hex.DecodeString(strings.TrimPrefix(value, "sha256:"))
 	return err == nil
 }
+
+func (l *SafetyLedger) storeSafetyEvent(ctx context.Context, event SafetyEvent) error {
+	data, err := canonicaljson.Marshal(event.Details)
+	if err != nil {
+		return fmt.Errorf("canonicalize safety event: %w", err)
+	}
+	hash := sha256.Sum256(data)
+	if _, err := l.DB.ExecContext(ctx, recordDeviceSafetyEventSQL, event.Type, event.Target, nullableText(event.CommandID), data, hash[:], formatRuntimeTime(event.Occurred)); err != nil {
+		return fmt.Errorf("record safety event: %w", err)
+	}
+	return nil
+}
+
+const recordDeviceSafetyEventSQL = `
+		INSERT INTO device_safety_events
+			(event_type, target, command_id, details_json, details_sha256, occurred_at)
+		VALUES (?, ?, ?, ?, ?, ?)`

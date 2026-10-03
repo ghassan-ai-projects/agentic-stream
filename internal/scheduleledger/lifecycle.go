@@ -17,9 +17,15 @@ func MarkAdmitted(ctx context.Context, tx *sql.Tx, schedulerItemID string, now t
 	if err != nil {
 		return fmt.Errorf("mark scheduler item admitted: %w", err)
 	}
-	n, err := res.RowsAffected()
+	return requireStillPending(res, schedulerItemID, "rows affected")
+}
+
+// requireStillPending fails when a pending-only transition matched no item.
+// The label prefixes a rows-affected error.
+func requireStillPending(result sql.Result, schedulerItemID, label string) error {
+	n, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("rows affected: %w", err)
+		return fmt.Errorf("%s: %w", label, err)
 	}
 	if n == 0 {
 		return fmt.Errorf("scheduler item %s is no longer pending", schedulerItemID)

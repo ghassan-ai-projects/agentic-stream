@@ -1,12 +1,10 @@
 package cognition
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -40,6 +38,12 @@ func (e *Engine) admitReconsiderations(ctx context.Context, tx *sql.Tx, current 
 	if err != nil {
 		return 0, err
 	}
+	return e.admitInvalidated(ctx, tx, current, correction, correctionDigest, invalidated)
+}
+
+// admitInvalidated admits one reconsideration per invalidated command,
+// counting only those not already admitted.
+func (e *Engine) admitInvalidated(ctx context.Context, tx *sql.Tx, current situations.Version, correction map[string]any, correctionDigest []byte, invalidated []invalidatedCommand) (int, error) {
 	admitted := 0
 	for _, command := range invalidated {
 		created, err := e.admitReconsideration(ctx, tx, current, correction, correctionDigest, command)
@@ -53,92 +57,12 @@ func (e *Engine) admitReconsiderations(ctx context.Context, tx *sql.Tx, current 
 	return admitted, nil
 }
 
-// verifiedCorrection decodes the corrected snapshot and requires it to match
-// the digest persisted with its Situation version.
-func verifiedCorrection(ctx context.Context, tx *sql.Tx, current situations.Version) (map[string]any, []byte, error) {
-	var correction map[string]any
-	if err := json.Unmarshal(current.SnapshotJSON, &correction); err != nil {
-		return nil, nil, fmt.Errorf("decode correction snapshot: %w", err)
-	}
-	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, correction); err != nil {
-		return nil, nil, fmt.Errorf("validate correction snapshot: %w", err)
-	}
-	correctionDigest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, correction)
-	if err != nil {
-		return nil, nil, fmt.Errorf("digest correction snapshot: %w", err)
-	}
-	var persistedCorrectionDigest []byte
-	if err := tx.QueryRowContext(ctx, "SELECT snapshot_sha256 FROM situation_versions WHERE situation_id = ? AND version = ?", current.SituationID, current.Version).Scan(&persistedCorrectionDigest); err != nil {
-		return nil, nil, fmt.Errorf("load correction snapshot digest: %w", err)
-	}
-	decodedCorrectionDigest, err := canonicaljson.DecodeDigest(correctionDigest)
-	if err != nil || !bytes.Equal(decodedCorrectionDigest, persistedCorrectionDigest) {
-		return nil, nil, fmt.Errorf("correction snapshot digest mismatch")
-	}
-	return correction, decodedCorrectionDigest, nil
-}
-
 // invalidatedCommand is a succeeded command, with its latest outcome, whose
 // authorizing Situation version the correction superseded.
 type invalidatedCommand struct {
 	commandID, decisionID, outcomeID, outcomeStatus, reconciliationStatus string
 	outcomeOrdinal                                                        int
 	providerJSON, observedJSON, outcomeSHA                                []byte
-}
-
-func invalidatedCommands(ctx context.Context, tx *sql.Tx, current situations.Version) ([]invalidatedCommand, error) {
-	rows, err := tx.QueryContext(ctx, `
-		SELECT c.command_id, d.decision_id, o.outcome_id, o.ordinal, o.status, o.provider_result_json,
-		       o.observed_effect_json, o.reconciliation_status, o.outcome_sha256
-		FROM commands c
-		JOIN intents i ON i.intent_id = c.intent_id
-		JOIN decisions d ON d.decision_id = i.decision_id
-		JOIN episodes e ON e.episode_id = d.episode_id
-		JOIN outcomes o ON o.command_id = c.command_id
-		WHERE i.situation_id = ?
-		  AND i.situation_version = (
-			SELECT MAX(i2.situation_version)
-			FROM intents i2
-			WHERE i2.situation_id = i.situation_id
-			  AND i2.situation_version <= ?
-			  AND i2.policy_status = 'approved'
-		  )
-		  AND d.validation_status = 'accepted' AND c.status = 'succeeded'
-		  AND o.ordinal = (SELECT MAX(o2.ordinal) FROM outcomes o2 WHERE o2.command_id = c.command_id)
-		ORDER BY c.command_id`, current.SituationID, current.PreviousVersion)
-	if err != nil {
-		return nil, fmt.Errorf("find invalidated commands: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	var commands []invalidatedCommand
-	for rows.Next() {
-		var c invalidatedCommand
-		if err := rows.Scan(&c.commandID, &c.decisionID, &c.outcomeID, &c.outcomeOrdinal, &c.outcomeStatus, &c.providerJSON, &c.observedJSON, &c.reconciliationStatus, &c.outcomeSHA); err != nil {
-			return nil, fmt.Errorf("scan invalidated command: %w", err)
-		}
-		commands = append(commands, c)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate invalidated commands: %w", err)
-	}
-	return commands, nil
-}
-
-// priorOutcome is the invalidated command's latest outcome as reconsideration
-// evidence.
-func (c invalidatedCommand) priorOutcome() map[string]any {
-	outcome := map[string]any{
-		"status": c.outcomeStatus, "reconciliation_status": c.reconciliationStatus,
-		"outcome_id": c.outcomeID, "ordinal": c.outcomeOrdinal,
-		"outcome_sha256": "sha256:" + hex.EncodeToString(c.outcomeSHA),
-	}
-	if len(c.providerJSON) > 0 {
-		outcome["provider_result"] = json.RawMessage(c.providerJSON)
-	}
-	if len(c.observedJSON) > 0 {
-		outcome["observed_effect"] = json.RawMessage(c.observedJSON)
-	}
-	return outcome
 }
 
 // admitReconsideration records one reconsideration and admits its deep-lane
@@ -154,16 +78,22 @@ func (e *Engine) admitReconsideration(ctx context.Context, tx *sql.Tx, current s
 	if err != nil {
 		return false, err
 	}
-	if err := e.recordReconsideration(ctx, tx, r, correctionDigest); err != nil {
-		return false, err
-	}
-	if err := e.scheduleReconsideration(ctx, tx, r, deltaJSON); err != nil {
-		return false, err
-	}
-	if err := e.announceReconsideration(ctx, tx, r); err != nil {
+	if err := e.persistReconsideration(ctx, tx, r, correctionDigest, deltaJSON); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+// persistReconsideration records the reconsideration, schedules its episode
+// and announces it, in that order.
+func (e *Engine) persistReconsideration(ctx context.Context, tx *sql.Tx, r reconsideration, correctionDigest, deltaJSON []byte) error {
+	if err := e.recordReconsideration(ctx, tx, r, correctionDigest); err != nil {
+		return err
+	}
+	if err := e.scheduleReconsideration(ctx, tx, r, deltaJSON); err != nil {
+		return err
+	}
+	return e.announceReconsideration(ctx, tx, r)
 }
 
 func reconsiderationExists(ctx context.Context, tx *sql.Tx, current situations.Version, commandID string) (bool, error) {
@@ -232,29 +162,37 @@ func (e *Engine) recordReconsideration(ctx context.Context, tx *sql.Tx, r recons
 // scheduleReconsideration saves an admitted deep-lane evaluation carrying the
 // reconsideration evidence and inserts its pending scheduler item.
 func (e *Engine) scheduleReconsideration(ctx context.Context, tx *sql.Tx, r reconsideration, deltaJSON []byte) error {
-	eval := Evaluation{
-		TriggerID: r.triggerID, TriggerName: reconsiderationTrigger,
-		SituationID: r.current.SituationID, SituationVersion: r.current.Version,
-		Score: 100, Threshold: 0, Lane: "deep", Outcome: "admitted",
-		Reasons:      []string{"accepted action invalidated by corrected Situation version"},
-		PolicySHA256: e.spec.Digest, DeltaJSON: deltaJSON, EvaluatedAt: e.clk.Now().UTC(),
-	}
-	if err := e.scheduler.saveEvaluation(ctx, tx, eval, e.tenantID, e.deploymentID); err != nil {
+	if err := e.scheduler.saveEvaluation(ctx, tx, e.reconsiderationEvaluation(r, deltaJSON), e.tenantID, e.deploymentID); err != nil {
 		return fmt.Errorf("save reconsideration evaluation: %w", err)
 	}
-	item := scheduleledger.Item{
-		SchedulerItemID: r.schedulerItemID, Kind: "reconsider", TriggerID: r.triggerID,
-		SituationID: r.current.SituationID, SituationVersion: r.current.Version,
-		Lane: "deep", Priority: 100, Status: "pending",
-		ExpiresAt: e.clk.Now().UTC().Add(defaultExpiresAfter),
-	}
-	if err := e.scheduler.insertItem(ctx, tx, item, e.tenantID); err != nil {
+	if err := e.scheduler.insertItem(ctx, tx, e.reconsiderationItem(r), e.tenantID); err != nil {
 		return fmt.Errorf("insert reconsideration item: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE reconsiderations SET trigger_id = ?, scheduler_item_id = ? WHERE reconsideration_id = ?`, r.triggerID, r.schedulerItemID, r.reconsiderationID); err != nil {
 		return fmt.Errorf("link reconsideration admission: %w", err)
 	}
 	return nil
+}
+
+// reconsiderationEvaluation is the admitted deep-lane evaluation that
+// explains why the reconsideration exists.
+func (e *Engine) reconsiderationEvaluation(r reconsideration, deltaJSON []byte) Evaluation {
+	return Evaluation{
+		TriggerID: r.triggerID, TriggerName: reconsiderationTrigger,
+		SituationID: r.current.SituationID, SituationVersion: r.current.Version,
+		Score: 100, Threshold: 0, Lane: "deep", Outcome: "admitted",
+		Reasons:      []string{"accepted action invalidated by corrected Situation version"},
+		PolicySHA256: e.spec.Digest, DeltaJSON: deltaJSON, EvaluatedAt: e.clk.Now().UTC(),
+	}
+}
+
+func (e *Engine) reconsiderationItem(r reconsideration) scheduleledger.Item {
+	return scheduleledger.Item{
+		SchedulerItemID: r.schedulerItemID, Kind: "reconsider", TriggerID: r.triggerID,
+		SituationID: r.current.SituationID, SituationVersion: r.current.Version,
+		Lane: "deep", Priority: 100, Status: "pending",
+		ExpiresAt: e.clk.Now().UTC().Add(defaultExpiresAfter),
+	}
 }
 
 func (e *Engine) announceReconsideration(ctx context.Context, tx *sql.Tx, r reconsideration) error {

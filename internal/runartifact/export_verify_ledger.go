@@ -69,6 +69,10 @@ func verifyRawJSONRowDigest(row map[string]any, documentField, digestField strin
 	if err != nil {
 		return err
 	}
+	return verifyRawDocumentDigest(document, documentField, digestField, storedDigest)
+}
+
+func verifyRawDocumentDigest(document map[string]any, documentField, digestField string, storedDigest []byte) error {
 	canonical, err := canonicaljson.Marshal(document)
 	if err != nil {
 		return fmt.Errorf("canonicalize %s: %w", documentField, err)
@@ -89,6 +93,10 @@ func verifyRowDigest(row map[string]any, documentField, digestField string, doma
 	if err != nil {
 		return err
 	}
+	return verifyDomainDocumentDigest(document, documentField, digestField, storedDigest, domain)
+}
+
+func verifyDomainDocumentDigest(document map[string]any, documentField, digestField string, storedDigest []byte, domain canonicaljson.Domain) error {
 	expected, err := canonicaljson.Digest(domain, document)
 	if err != nil {
 		return fmt.Errorf("digest %s: %w", documentField, err)

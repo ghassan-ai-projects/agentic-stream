@@ -36,12 +36,5 @@ func CoalesceSkipped(ctx context.Context, tx *sql.Tx, schedulerItemID string, no
 	if err != nil {
 		return fmt.Errorf("coalesce scheduler item: %w", err)
 	}
-	updated, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("coalesced scheduler item rows affected: %w", err)
-	}
-	if updated != 1 {
-		return fmt.Errorf("scheduler item %s is no longer pending", schedulerItemID)
-	}
-	return nil
+	return requireStillPending(result, schedulerItemID, "coalesced scheduler item rows affected")
 }

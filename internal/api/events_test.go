@@ -10,7 +10,6 @@ import (
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -28,7 +27,7 @@ func newControlRuntime(t *testing.T, token string) (http.Handler, *runtimecontro
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	control := &runtimecontrol.EpochControl{DB: db}
-	return api.NewRuntimeHandler(readiness{}, nil, notify.SSEConfig{}, nil, control, controlEpoch, token), control
+	return api.NewRuntimeHandler(readiness{}, nil, api.SSEConfig{}, nil, control, controlEpoch, token), control
 }
 
 func TestControlEndpointsRequireExactToken(t *testing.T) {

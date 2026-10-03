@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -81,29 +82,40 @@ func (r *SimulatorJSONLReplay) Run(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	trace := simulatorTrace{replay: r, startLine: start, batch: envelopeBatch{log: r.log, tenantID: r.options.TenantID}}
+	err = trace.run(ctx, f)
+	return trace.batch.appended, err
+}
+
+// run reads the whole trace, requires its framing records, then appends the
+// final batch and checkpoints the last line.
+func (t *simulatorTrace) run(ctx context.Context, f io.Reader) error {
+	if err := t.readLines(ctx, f); err != nil {
+		return err
+	}
+	if !t.configured || !t.ended {
+		return fmt.Errorf("simulator trace requires runtime_config first and trace_end last")
+	}
+	if err := t.batch.flush(ctx); err != nil {
+		return fmt.Errorf("append simulator batch: %w", err)
+	}
+	return saveLineCheckpoint(ctx, t.replay.db, t.replay.connectorID, t.line, t.replay.clk.Now())
+}
+
+func (t *simulatorTrace) readLines(ctx context.Context, f io.Reader) error {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		trace.line++
+		t.line++
 		if strings.TrimSpace(scanner.Text()) == "" {
 			continue
 		}
-		if err := trace.accept(ctx, scanner.Bytes()); err != nil {
-			return trace.batch.appended, err
+		if err := t.accept(ctx, scanner.Bytes()); err != nil {
+			return err
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return trace.batch.appended, fmt.Errorf("read simulator trace: %w", err)
+		return fmt.Errorf("read simulator trace: %w", err)
 	}
-	if !trace.configured || !trace.ended {
-		return trace.batch.appended, fmt.Errorf("simulator trace requires runtime_config first and trace_end last")
-	}
-	if err := trace.batch.flush(ctx); err != nil {
-		return trace.batch.appended, fmt.Errorf("append simulator batch: %w", err)
-	}
-	if err := saveLineCheckpoint(ctx, r.db, r.connectorID, trace.line, r.clk.Now()); err != nil {
-		return trace.batch.appended, err
-	}
-	return trace.batch.appended, nil
+	return nil
 }
 
 // simulatorTrace validates the record grammar of one simulator trace:
@@ -127,6 +139,14 @@ func (t *simulatorTrace) accept(ctx context.Context, raw []byte) error {
 		return fmt.Errorf("parse simulator line %d: %w", t.line, err)
 	}
 	recordType, _ := record["record_type"].(string)
+	if err := t.checkPosition(recordType); err != nil {
+		return err
+	}
+	return t.acceptRecord(ctx, recordType, record)
+}
+
+// checkPosition requires runtime_config first and nothing after trace_end.
+func (t *simulatorTrace) checkPosition(recordType string) error {
 	t.records++
 	if t.records == 1 && recordType != "runtime_config" {
 		return fmt.Errorf("validate simulator line %d: runtime_config must be first", t.line)
@@ -134,6 +154,10 @@ func (t *simulatorTrace) accept(ctx context.Context, raw []byte) error {
 	if t.ended {
 		return fmt.Errorf("validate simulator line %d: record follows trace_end", t.line)
 	}
+	return nil
+}
+
+func (t *simulatorTrace) acceptRecord(ctx context.Context, recordType string, record map[string]any) error {
 	switch recordType {
 	case "runtime_config":
 		return t.acceptConfig(record)
@@ -188,7 +212,21 @@ func (t *simulatorTrace) acceptEvent(ctx context.Context, record map[string]any)
 	if err != nil {
 		return fmt.Errorf("convert simulator line %d: %w", t.line, err)
 	}
-	recorded := env.ObservedAt
+	if err := t.advanceRecorded(env.ObservedAt); err != nil {
+		return err
+	}
+	if t.line <= t.startLine {
+		return nil
+	}
+	if err := t.batch.add(ctx, env); err != nil {
+		return fmt.Errorf("append simulator batch: %w", err)
+	}
+	return nil
+}
+
+// advanceRecorded requires the event's arrival time to move recorded time
+// strictly forward.
+func (t *simulatorTrace) advanceRecorded(recorded *time.Time) error {
 	if recorded == nil {
 		return fmt.Errorf("event arrival_time is required")
 	}
@@ -196,12 +234,6 @@ func (t *simulatorTrace) acceptEvent(ctx context.Context, record map[string]any)
 		return fmt.Errorf("event recorded time must be strictly increasing")
 	}
 	t.lastRecorded = recorded.UTC()
-	if t.line <= t.startLine {
-		return nil
-	}
-	if err := t.batch.add(ctx, env); err != nil {
-		return fmt.Errorf("append simulator batch: %w", err)
-	}
 	return nil
 }
 

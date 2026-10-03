@@ -35,28 +35,30 @@ func newEngine(ctx context.Context, db *storage.DB, log *eventlog.EventLog, clk 
 		return nil, fmt.Errorf("save deployment: %w", err)
 	}
 	configureSchemaValidation(log, compiled)
-
-	idGen := ids.Deterministic()
-	opRuntime, err := operators.NewOperatorRuntime(compiled.Digest, compiled, idGen)
-	if err != nil {
-		return nil, fmt.Errorf("operator runtime: %w", err)
-	}
-	sitEngine, err := situations.NewEngine(compiled.Digest, tenantID, 0, compiled, idGen)
-	if err != nil {
-		return nil, fmt.Errorf("situation engine: %w", err)
-	}
-	if err := restoreSituations(ctx, db, compiled.Digest, tenantID, sitEngine); err != nil {
-		return nil, fmt.Errorf("restore situations: %w", err)
-	}
-	cogEngine, err := newCognitionEngine(db, compiled, tenantID, clk, idGen, cognitionEnabled)
-	if err != nil {
+	engine := &Engine{db: db, log: log, clock: clk, spec: compiled, tenantID: tenantID, deploymentID: compiled.Digest}
+	if err := engine.buildPlanes(ctx, cognitionEnabled); err != nil {
 		return nil, err
 	}
-	return &Engine{
-		db: db, log: log, clock: clk, spec: compiled,
-		tenantID: tenantID, deploymentID: compiled.Digest,
-		opRuntime: opRuntime, sitEngine: sitEngine, cogEngine: cogEngine,
-	}, nil
+	return engine, nil
+}
+
+// buildPlanes creates the operator runtime and situation engine over one
+// deterministic ID sequence, restores durable Situations, then attaches
+// cognition.
+func (e *Engine) buildPlanes(ctx context.Context, cognitionEnabled bool) error {
+	idGen := ids.Deterministic()
+	var err error
+	if e.opRuntime, err = operators.NewOperatorRuntime(e.spec.Digest, e.spec, idGen); err != nil {
+		return fmt.Errorf("operator runtime: %w", err)
+	}
+	if e.sitEngine, err = situations.NewEngine(e.spec.Digest, e.tenantID, 0, e.spec, idGen); err != nil {
+		return fmt.Errorf("situation engine: %w", err)
+	}
+	if err := restoreSituations(ctx, e.db, e.spec.Digest, e.tenantID, e.sitEngine); err != nil {
+		return fmt.Errorf("restore situations: %w", err)
+	}
+	e.cogEngine, err = newCognitionEngine(e.db, e.spec, e.tenantID, e.clock, idGen, cognitionEnabled)
+	return err
 }
 
 func configureSchemaValidation(log *eventlog.EventLog, compiled *spec.CompiledSpec) {

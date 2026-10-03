@@ -3,6 +3,7 @@ package canonicaljson
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -19,14 +20,23 @@ func decodeJSON(data []byte) (any, error) {
 	if err := decoder.Decode(&value); err != nil {
 		return nil, fmt.Errorf("decode JSON value: %w", err)
 	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		if err == nil {
-			return nil, fmt.Errorf("multiple JSON values")
-		}
-		return nil, fmt.Errorf("decode trailing JSON: %w", err)
+	if err := requireEnd(decoder); err != nil {
+		return nil, err
 	}
 	return value, nil
+}
+
+// requireEnd rejects any JSON value after the first.
+func requireEnd(decoder *json.Decoder) error {
+	var extra any
+	err := decoder.Decode(&extra)
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	if err == nil {
+		return fmt.Errorf("multiple JSON values")
+	}
+	return fmt.Errorf("decode trailing JSON: %w", err)
 }
 
 func validateRawJSON(data []byte) error {
@@ -38,14 +48,7 @@ func validateRawJSON(data []byte) error {
 	if err := validateTokens(decoder); err != nil {
 		return err
 	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		if err == nil {
-			return fmt.Errorf("multiple JSON values")
-		}
-		return fmt.Errorf("decode trailing JSON: %w", err)
-	}
-	return nil
+	return requireEnd(decoder)
 }
 
 func validateTokens(decoder *json.Decoder) error {
@@ -57,6 +60,10 @@ func validateTokens(decoder *json.Decoder) error {
 	if !ok {
 		return nil
 	}
+	return validateComposite(decoder, delim)
+}
+
+func validateComposite(decoder *json.Decoder, delim json.Delim) error {
 	switch delim {
 	case '{':
 		return validateObjectTokens(decoder)
@@ -72,23 +79,31 @@ func validateTokens(decoder *json.Decoder) error {
 func validateObjectTokens(decoder *json.Decoder) error {
 	keys := make(map[string]struct{})
 	for decoder.More() {
-		keyToken, err := decoder.Token()
-		if err != nil {
-			return fmt.Errorf("read JSON object key: %w", err)
+		if err := readUniqueKey(decoder, keys); err != nil {
+			return err
 		}
-		key, ok := keyToken.(string)
-		if !ok {
-			return fmt.Errorf("object key is not a string")
-		}
-		if _, exists := keys[key]; exists {
-			return fmt.Errorf("duplicate object key %q", key)
-		}
-		keys[key] = struct{}{}
 		if err := validateTokens(decoder); err != nil {
 			return err
 		}
 	}
 	return expectDelimiter(decoder, '}')
+}
+
+// readUniqueKey reads the next member key and rejects a repeated one.
+func readUniqueKey(decoder *json.Decoder, keys map[string]struct{}) error {
+	keyToken, err := decoder.Token()
+	if err != nil {
+		return fmt.Errorf("read JSON object key: %w", err)
+	}
+	key, ok := keyToken.(string)
+	if !ok {
+		return fmt.Errorf("object key is not a string")
+	}
+	if _, exists := keys[key]; exists {
+		return fmt.Errorf("duplicate object key %q", key)
+	}
+	keys[key] = struct{}{}
+	return nil
 }
 
 func validateArrayTokens(decoder *json.Decoder) error {
@@ -131,28 +146,39 @@ func validateStrings(data []byte) error {
 // the closing quote.
 func scanString(data []byte, i int) (int, error) {
 	for i < len(data) {
-		switch c := data[i]; {
-		case c == '"':
+		if data[i] == '"' {
 			return i, nil
-		case c == '\\':
-			next, err := scanEscape(data, i+1)
-			if err != nil {
-				return 0, err
-			}
-			i = next
-		case c < 0x20:
-			return 0, fmt.Errorf("unescaped control character in string")
-		case c >= utf8.RuneSelf:
-			_, size := utf8.DecodeRune(data[i:])
-			if size == 1 || !utf8.Valid(data[i:i+size]) {
-				return 0, fmt.Errorf("invalid UTF-8 in string")
-			}
-			i += size
-		default:
-			i++
 		}
+		next, err := scanStringUnit(data, i)
+		if err != nil {
+			return 0, err
+		}
+		i = next
 	}
 	return 0, fmt.Errorf("unterminated JSON string")
+}
+
+// scanStringUnit validates one escape, control byte or UTF-8 sequence and
+// returns the index after it.
+func scanStringUnit(data []byte, i int) (int, error) {
+	switch c := data[i]; {
+	case c == '\\':
+		return scanEscape(data, i+1)
+	case c < 0x20:
+		return 0, fmt.Errorf("unescaped control character in string")
+	case c >= utf8.RuneSelf:
+		return scanMultibyte(data, i)
+	default:
+		return i + 1, nil
+	}
+}
+
+func scanMultibyte(data []byte, i int) (int, error) {
+	_, size := utf8.DecodeRune(data[i:])
+	if size == 1 || !utf8.Valid(data[i:i+size]) {
+		return 0, fmt.Errorf("invalid UTF-8 in string")
+	}
+	return i + size, nil
 }
 
 // scanEscape validates the escape whose code starts at i, just after the
@@ -162,12 +188,18 @@ func scanEscape(data []byte, i int) (int, error) {
 	if i >= len(data) {
 		return 0, fmt.Errorf("unterminated JSON escape")
 	}
-	if data[i] != 'u' {
-		if !strings.ContainsRune(`"\\/bfnrt`, rune(data[i])) {
-			return 0, fmt.Errorf("invalid JSON escape")
-		}
-		return i + 1, nil
+	if data[i] == 'u' {
+		return scanUnicodeEscape(data, i)
 	}
+	if !strings.ContainsRune(`"\\/bfnrt`, rune(data[i])) {
+		return 0, fmt.Errorf("invalid JSON escape")
+	}
+	return i + 1, nil
+}
+
+// scanUnicodeEscape validates \uXXXX at i, requiring a high surrogate to be
+// followed by an escaped low surrogate.
+func scanUnicodeEscape(data []byte, i int) (int, error) {
 	if i+4 >= len(data) {
 		return 0, fmt.Errorf("short Unicode escape")
 	}
@@ -175,13 +207,16 @@ func scanEscape(data []byte, i int) (int, error) {
 	if !ok {
 		return 0, fmt.Errorf("invalid Unicode escape")
 	}
-	i += 5
 	if code >= 0xdc00 && code <= 0xdfff {
 		return 0, fmt.Errorf("lone low surrogate")
 	}
 	if code < 0xd800 || code > 0xdbff {
-		return i, nil
+		return i + 5, nil
 	}
+	return scanLowSurrogate(data, i+5)
+}
+
+func scanLowSurrogate(data []byte, i int) (int, error) {
 	if i+5 >= len(data) || data[i] != '\\' || data[i+1] != 'u' {
 		return 0, fmt.Errorf("lone high surrogate")
 	}
@@ -198,17 +233,24 @@ func parseHex4(value []byte) (uint16, bool) {
 	}
 	var result uint16
 	for _, c := range value {
-		result <<= 4
-		switch {
-		case c >= '0' && c <= '9':
-			result += uint16(c - '0')
-		case c >= 'a' && c <= 'f':
-			result += uint16(c-'a') + 10
-		case c >= 'A' && c <= 'F':
-			result += uint16(c-'A') + 10
-		default:
+		digit, ok := hexDigit(c)
+		if !ok {
 			return 0, false
 		}
+		result = result<<4 + digit
 	}
 	return result, true
+}
+
+func hexDigit(c byte) (uint16, bool) {
+	switch {
+	case c >= '0' && c <= '9':
+		return uint16(c - '0'), true
+	case c >= 'a' && c <= 'f':
+		return uint16(c-'a') + 10, true
+	case c >= 'A' && c <= 'F':
+		return uint16(c-'A') + 10, true
+	default:
+		return 0, false
+	}
 }
