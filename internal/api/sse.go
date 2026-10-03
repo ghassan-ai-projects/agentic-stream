@@ -1,4 +1,4 @@
-package notify
+package api
 
 import (
 	"crypto/subtle"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -139,8 +140,8 @@ func subscriberTenant(r *http.Request, cfg SSEConfig) string {
 	return tenantID
 }
 
-func (s *sseStream) readPage() (Page, error) {
-	return ReadPage(s.r.Context(), s.cfg.DB, s.tenantID, s.cursor, s.cfg.PageSize, s.cfg.MaxLag, s.cfg.Now().UTC())
+func (s *sseStream) readPage() (notify.Page, error) {
+	return notify.ReadPage(s.r.Context(), s.cfg.DB, s.tenantID, s.cursor, s.cfg.PageSize, s.cfg.MaxLag, s.cfg.Now().UTC()) //nolint:wrapcheck // The error detail is part of the SSE stream_error contract.
 }
 
 // beginResponse commits the event-stream headers and a connected comment.
@@ -157,7 +158,7 @@ func (s *sseStream) beginResponse() error {
 	return nil
 }
 
-func (s *sseStream) deliverPage(page Page) error {
+func (s *sseStream) deliverPage(page notify.Page) error {
 	return writePage(s.w, s.flusher, s.r, s.cfg, page, &s.cursor, s.seen)
 }
 

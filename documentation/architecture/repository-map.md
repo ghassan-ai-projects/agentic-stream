@@ -39,7 +39,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/storage/` | SQLite infrastructure, migrations and transactions |
 | `internal/contractsv1/` | versioned envelope/schema contracts |
 | `internal/telemetry/` | OpenTelemetry and runtime metrics |
-| `internal/api/` and `internal/notify/` | HTTP, health, SSE, notifications, controls |
+| `internal/api/` and `internal/notify/` | HTTP health, controls and SSE delivery; the durable notification outbox |
 | `internal/eventschema/` | data-driven event schema registry |
 | `proto/agenticstream/runtime/v1/` | generated current-v1 Go protocol |
 | `migrations/` | ordered SQLite schema changes |

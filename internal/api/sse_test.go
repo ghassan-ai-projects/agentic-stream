@@ -1,4 +1,4 @@
-package notify_test
+package api_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -35,7 +36,7 @@ func TestSSEStreamsDurableEventsAndResumesFromLastEventID(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	handler := notify.NewSSEHandler(notify.SSEConfig{DB: db, TenantID: "tenant", PollInterval: time.Millisecond, IdleInterval: time.Hour, Now: func() time.Time { return now }})
+	handler := api.NewSSEHandler(api.SSEConfig{DB: db, TenantID: "tenant", PollInterval: time.Millisecond, IdleInterval: time.Hour, Now: func() time.Time { return now }})
 	body := serveUntilCanceled(t, handler, "/v1/events", "")
 	if !strings.Contains(body, "id: 1\nevent: situation.version.published") || !strings.Contains(body, `"id":"evt-1"`) {
 		t.Fatalf("unexpected SSE body: %s", body)
@@ -69,7 +70,7 @@ func TestSSEExpiredCursorForcesAuditedResnapshot(t *testing.T) {
 	if _, err := notify.Prune(ctx, db, prunedAt, 8*24*time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	handler := notify.NewSSEHandler(notify.SSEConfig{DB: db, TenantID: "tenant", Now: func() time.Time { return prunedAt }})
+	handler := api.NewSSEHandler(api.SSEConfig{DB: db, TenantID: "tenant", Now: func() time.Time { return prunedAt }})
 	request := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/events", nil)
 	request.Header.Set("Last-Event-ID", "0")
 	response := httptest.NewRecorder()
@@ -103,7 +104,7 @@ func TestSSEDisconnectsSlowSubscriber(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	handler := notify.NewSSEHandler(notify.SSEConfig{DB: db, TenantID: "tenant", MaxLag: 1, Now: func() time.Time { return now }})
+	handler := api.NewSSEHandler(api.SSEConfig{DB: db, TenantID: "tenant", MaxLag: 1, Now: func() time.Time { return now }})
 	request := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/events", nil)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -113,7 +114,7 @@ func TestSSEDisconnectsSlowSubscriber(t *testing.T) {
 }
 
 func TestBearerSubscriberAuthorization(t *testing.T) {
-	authorize := notify.BearerTokenAuthorizer("subscriber-secret")
+	authorize := api.BearerTokenAuthorizer("subscriber-secret")
 	unauthorized := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/events", nil)
 	if authorize(unauthorized, "") {
 		t.Fatal("missing bearer token was authorized")
@@ -190,7 +191,7 @@ func TestSSEAdmissionPreservesProblemPrecedence(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			handler := notify.NewSSEHandler(notify.SSEConfig{DB: tc.store, TenantID: tc.tenant, Authorize: func(*http.Request, string) bool { return tc.authorized }})
+			handler := api.NewSSEHandler(api.SSEConfig{DB: tc.store, TenantID: tc.tenant, Authorize: func(*http.Request, string) bool { return tc.authorized }})
 			request := httptest.NewRequestWithContext(t.Context(), tc.method, "/v1/events", nil)
 			request.Header.Set("Last-Event-ID", tc.cursor)
 			response := httptest.NewRecorder()

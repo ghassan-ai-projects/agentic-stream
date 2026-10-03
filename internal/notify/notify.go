@@ -1,4 +1,6 @@
-// Package notify provides durable, cursor-resumable notification delivery.
+// Package notify owns the durable, cursor-resumable notification outbox:
+// append, paged reads with lag and poison handling, and retention. HTTP
+// delivery lives in api.
 package notify
 
 import (

@@ -1,4 +1,4 @@
-package notify
+package api
 
 import (
 	"encoding/json"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 )
 
 func requestCursor(r *http.Request) (int64, error) {
@@ -26,7 +27,7 @@ func requestCursor(r *http.Request) (int64, error) {
 	return cursor, nil
 }
 
-func writePage(w http.ResponseWriter, flusher http.Flusher, r *http.Request, cfg SSEConfig, page Page, cursor *int64, seen map[string]struct{}) error {
+func writePage(w http.ResponseWriter, flusher http.Flusher, r *http.Request, cfg SSEConfig, page notify.Page, cursor *int64, seen map[string]struct{}) error {
 	for _, record := range page.Records {
 		*cursor = record.Cursor
 		key := record.Event.Source + "\x00" + record.Event.ID
@@ -59,7 +60,7 @@ func authorizedEvent(cfg SSEConfig, r *http.Request, eventType string) bool {
 	return cfg.Authorize == nil || cfg.Authorize(r, eventType)
 }
 
-func writeEvent(w http.ResponseWriter, flusher http.Flusher, retry time.Duration, record Record) error {
+func writeEvent(w http.ResponseWriter, flusher http.Flusher, retry time.Duration, record notify.Record) error {
 	data, err := canonicaljson.Marshal(record.Event)
 	if err != nil {
 		return fmt.Errorf("marshal SSE CloudEvent: %w", err)
@@ -93,11 +94,11 @@ func writeComment(w http.ResponseWriter, value string) error {
 
 func writeStreamError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, ErrCursorExpired):
+	case errors.Is(err, notify.ErrCursorExpired):
 		writeSSEProblem(w, http.StatusConflict, "cursor_expired", "cursor is outside retained notification history; perform an audited resnapshot")
-	case errors.Is(err, ErrSubscriberTooSlow):
+	case errors.Is(err, notify.ErrSubscriberTooSlow):
 		writeSSEProblem(w, http.StatusTooManyRequests, "subscriber_too_slow", "subscriber lag exceeded the bounded backlog")
-	case errors.Is(err, ErrNotificationPoison):
+	case errors.Is(err, notify.ErrNotificationPoison):
 		writeSSEProblem(w, http.StatusServiceUnavailable, "notification_retry", "a notification failed validation and will be retried")
 	default:
 		writeSSEProblem(w, http.StatusInternalServerError, "notification_stream_failed", "notification stream failed")
@@ -105,13 +106,13 @@ func writeStreamError(w http.ResponseWriter, err error) {
 }
 
 func streamErrorCode(err error) string {
-	if errors.Is(err, ErrCursorExpired) {
+	if errors.Is(err, notify.ErrCursorExpired) {
 		return "cursor_expired"
 	}
-	if errors.Is(err, ErrSubscriberTooSlow) {
+	if errors.Is(err, notify.ErrSubscriberTooSlow) {
 		return "subscriber_too_slow"
 	}
-	if errors.Is(err, ErrNotificationPoison) {
+	if errors.Is(err, notify.ErrNotificationPoison) {
 		return "notification_retry"
 	}
 	return "notification_stream_failed"

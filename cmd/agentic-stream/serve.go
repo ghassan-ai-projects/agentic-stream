@@ -4,16 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
-	"github.com/spf13/cobra"
 	"net"
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
+	"github.com/spf13/cobra"
 )
 
 // serveFlags are the serve command's flags.
@@ -109,10 +109,10 @@ func serve(ctx context.Context, flags serveFlags) error {
 			return err
 		}
 	}
-	handler := api.NewRuntimeHandler(core.service, core.db, notify.SSEConfig{
+	handler := api.NewRuntimeHandler(core.service, core.db, api.SSEConfig{
 		TenantID:  flags.tenantID,
 		MaxLag:    1000,
-		Authorize: notify.BearerTokenAuthorizer(subscriberToken),
+		Authorize: api.BearerTokenAuthorizer(subscriberToken),
 	}, metrics.Handler(), core.epochControl, core.epoch, os.Getenv("AGENTIC_STREAM_CONTROL_TOKEN"))
 	if err := serveHTTP(runCtx, flags.listenAddress, handler); err != nil {
 		return err

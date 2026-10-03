@@ -109,3 +109,10 @@ are permitted, writes keep single owners.
   reasoning/replay reachability check. The ingest loop now calls the watch
   module instead of the action plane. Behavior and tests moved unchanged; race
   tests pass (coverage: watch 67.0%, actions 70.0%, device 80.5%).
+
+- Round 8: moved Server-Sent Events delivery (HTTP transport) from `notify`
+  to `api`. `notify` now owns only the durable outbox, paged reads and
+  retention; `api` owns every HTTP surface. The SSE problem/stream_error wire
+  details are unchanged. `FakeExecutor` stays in `episodes` for now: an
+  in-package episode test depends on it, so moving it to `internal/executor`
+  needs a test change and is recorded as follow-up work.

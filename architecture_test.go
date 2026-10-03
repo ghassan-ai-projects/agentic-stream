@@ -57,11 +57,11 @@ var forbiddenImports = map[string][]string{
 // follow the data flow in .agents/context/architecture.md and be added here in
 // the same change.
 var allowedImports = map[string][]string{
-	"cmd/agentic-stream":             {"internal/actionport", "internal/api", "internal/authority", "internal/contractsv1", "internal/control", "internal/device", "internal/evidence", "internal/ids", "internal/notify", "internal/replay", "internal/runartifact", "internal/runtime", "internal/spec", "internal/storage", "internal/telemetry"},
+	"cmd/agentic-stream":             {"internal/actionport", "internal/api", "internal/authority", "internal/contractsv1", "internal/control", "internal/device", "internal/evidence", "internal/ids", "internal/replay", "internal/runartifact", "internal/runtime", "internal/spec", "internal/storage", "internal/telemetry"},
 	"internal/actionport":            {},
 	"internal/actions":               {"internal/actionport", "internal/authority", "internal/canonicaljson", "internal/clock", "internal/contractsv1", "internal/control", "internal/ids", "internal/interlock", "internal/notify", "internal/storage", "internal/telemetry"},
 	"internal/admission":             {"internal/clock", "internal/cognition", "internal/control", "internal/costcontrol", "internal/episodeledger", "internal/episodes", "internal/scheduleledger", "internal/storage"},
-	"internal/api":                   {"internal/control", "internal/notify", "internal/storage"},
+	"internal/api":                   {"internal/canonicaljson", "internal/control", "internal/notify", "internal/storage"},
 	"internal/approvalledger":        {"internal/clock", "internal/contractsv1", "internal/notify"},
 	"internal/authority":             {"internal/canonicaljson", "internal/control", "internal/storage"},
 	"internal/canonicaljson":         {},
