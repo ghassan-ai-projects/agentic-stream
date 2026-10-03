@@ -295,3 +295,10 @@ found one existing Q3 failure: `ingress/live_socket.go` was 303 lines.
   identity before command decoding and correction evidence immutability. Episode
   race tests, architecture checks and strict focused lint pass. Identity/digest
   inputs, transactions, clock reads, cancellation watchers and defers are intact.
+
+- Round 31: runtime composition, batch stages, watch pagination, maintenance,
+  owner recovery and worker/evidence setup are bounded steps. Cleanup ownership,
+  native-versus-remote construction, span finalization, locks and clock reads stay
+  in their original scopes. New recovery regression proves the owner's claim
+  timestamp is used for attempts and evidence when no override is supplied.
+  Runtime and architecture race tests and strict focused lint pass.

@@ -96,15 +96,23 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 	var watch *watch.Effector
 	cfg.Effector, watch = composeEffectors(cfg)
 	log := eventlog.NewEventLogWithClock(cfg.DB, cfg.Clock)
+	stream, err := newOwnedStream(ctx, cfg, log)
+	if err != nil {
+		return nil, err
+	}
+	if err := configureCostLimits(ctx, cfg); err != nil {
+		return nil, err
+	}
+	return composePipeline(cfg, log, stream, watch), nil
+}
+
+func newOwnedStream(ctx context.Context, cfg PipelineConfig, log *eventlog.EventLog) (*engine.Engine, error) {
 	stream, err := engine.NewEngine(ctx, cfg.DB, log, cfg.Clock, cfg.Spec, cfg.TenantID)
 	if err != nil {
 		return nil, fmt.Errorf("create stream engine: %w", err)
 	}
 	stream.WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch)
-	if err := configureCostLimits(ctx, cfg); err != nil {
-		return nil, err
-	}
-	return composePipeline(cfg, log, stream, watch), nil
+	return stream, nil
 }
 
 // Start begins runtime-owned maintenance loops. It is safe to call once for
@@ -122,24 +130,33 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	p.watchStop = stop
 	p.watchDone = make(chan struct{})
 	done := p.watchDone
-	go func() {
-		defer close(done)
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-watchCtx.Done():
+	go p.maintainWatches(watchCtx, done)
+	return nil
+}
+
+func (p *Pipeline) maintainWatches(watchCtx context.Context, done chan struct{}) {
+	defer close(done)
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-watchCtx.Done():
+			return
+		case <-ticker.C:
+			if err := p.expireMaintainedWatches(watchCtx); err != nil {
 				return
-			case <-ticker.C:
-				if err := p.watch.Expire(watchCtx); err != nil {
-					p.watchMu.Lock()
-					p.watchErr = err
-					p.watchMu.Unlock()
-					return
-				}
 			}
 		}
-	}()
+	}
+}
+
+func (p *Pipeline) expireMaintainedWatches(ctx context.Context) error {
+	if err := p.watch.Expire(ctx); err != nil {
+		p.watchMu.Lock()
+		p.watchErr = err
+		p.watchMu.Unlock()
+		return fmt.Errorf("%w", err)
+	}
 	return nil
 }
 

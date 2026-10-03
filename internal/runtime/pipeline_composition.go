@@ -29,6 +29,10 @@ func pipelineDefaults(cfg PipelineConfig) PipelineConfig {
 	if cfg.IDGenerator == nil {
 		cfg.IDGenerator = ids.Random()
 	}
+	return pipelineExecutionDefaults(cfg)
+}
+
+func pipelineExecutionDefaults(cfg PipelineConfig) PipelineConfig {
 	if cfg.Executor == nil {
 		cfg.Executor = episodes.NewFakeExecutor()
 	}
@@ -62,19 +66,9 @@ func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.
 	policyGateway := composePolicy(cfg)
 	dispatcher := composeDispatcher(cfg)
 	return &Pipeline{
-		db:         cfg.DB,
-		log:        log,
-		engine:     stream,
-		admission:  admitter,
-		runner:     runner,
-		policy:     policyGateway,
-		dispatcher: dispatcher,
-		watch:      watch,
-		telemetry:  cfg.Telemetry,
-		owner:      cfg.Owner,
-		ownerEpoch: cfg.OwnerEpoch,
-		clk:        cfg.Clock,
-		tenantID:   cfg.TenantID,
+		db: cfg.DB, log: log, engine: stream, admission: admitter, runner: runner,
+		policy: policyGateway, dispatcher: dispatcher, watch: watch, telemetry: cfg.Telemetry,
+		owner: cfg.Owner, ownerEpoch: cfg.OwnerEpoch, clk: cfg.Clock, tenantID: cfg.TenantID,
 	}
 }
 
