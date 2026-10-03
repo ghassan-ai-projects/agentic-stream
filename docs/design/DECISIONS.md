@@ -416,3 +416,12 @@ importing policy. `approvalledger` owns these transitions and their transaction-
 scoped audit notifications; policy owns permission/signature decisions above it.
 `control` supplies the read-only final dispatch readiness capability, so effect
 adapters never call a dispatcher callback. Both refinements are part of ADR-017.
+
+**Executor boundary refinement (2026-10-03).** The episode lifecycle (claim,
+fencing, assembly, Decision acceptance and failure accounting) is a business
+module; how reasoning runs is an adapter concern. The streamed EpisodeWorker
+adapter moves from `episodes` to `internal/executor/remote`, beside the native
+executor, together with the per-attempt evidence capability issuer it presents.
+`episodes` keeps the `Executor` port and the typed budget errors; the adapter translates transport cancellation and
+deadline status into context errors, so durable failure reasons are unchanged.
+No protocol, schema, digest or dependency changes.

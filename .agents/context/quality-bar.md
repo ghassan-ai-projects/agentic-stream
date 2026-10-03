@@ -8,7 +8,7 @@ recorded in the same change, never a way to get a diff green.
 | ID | Rule | Enforced by |
 | --- | --- | --- |
 | Q1 | `golangci-lint` reports 0 issues across the whole tree, with no "new issues only" baseline. | `make lint-ci` (`.golangci.yml`) |
-| Q2 | Production functions stay short and flat: cognitive complexity ≤ 15, cyclomatic complexity ≤ 20, nested-`if` complexity ≤ 3, at most 50 lines and 30 statements. These are the mechanical floor for Q7, not its target. | `gocognit`, `gocyclo`, `nestif`, `funlen` in `.golangci.yml` |
+| Q2 | Production functions stay short and flat: cognitive complexity ≤ 15, cyclomatic complexity ≤ 20, nested-`if` complexity ≤ 3, at most 15 body lines (comments excluded) and 15 statements. These are the mechanical floor for Q7, not its target. | `gocognit`, `gocyclo`, `nestif`, `funlen` in `.golangci.yml` |
 | Q3 | Production Go files stay under 300 lines. Generated files are exempt. | `TestProductionFileSize` (`architecture_test.go`) |
 | Q4 | Every package with statements has its own tests and at least 60% statement coverage, measured with `-short`. Generated protobuf stubs are exempt. | `make coverage-check` (`scripts/check-coverage.py`) |
 | Q5 | Package imports follow the declared layering. Foundation packages import no domain package; cognition and episodes never import policy or actions; replay never imports actions or the runtime; nothing under `internal/` imports `cmd/`. | `TestPackageLayering` (`architecture_test.go`) |
@@ -21,7 +21,8 @@ recorded in the same change, never a way to get a diff green.
    `claimEpisode`, `checkIntentAuthority`, `skipUnadmittable`, not `process`,
    `handle`, `doStep2`, or `helper`. A boolean function reads as a question
    (`leaseExpired`, `grants`). If you need "and" in the name, it does two things.
-2. **A function is short and does one thing.** "One thing" means you cannot
+2. **A function is short and does one thing.** Its body is at most 15 lines.
+   "One thing" means you cannot
    extract another function from it whose name is not just a restatement of
    its code. Error handling for that one thing belongs inside it.
 3. **A function stays at one level of abstraction.** Do not mix orchestration
