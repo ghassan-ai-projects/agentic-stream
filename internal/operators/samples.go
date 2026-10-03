@@ -19,6 +19,11 @@ func (r *OperatorRuntime) extractValue(inst *operatorInstance, env contractsv1.E
 	if !ok {
 		return 0, false
 	}
+	return numericValue(v)
+}
+
+// numericValue accepts finite JSON and Go numbers.
+func numericValue(v any) (float64, bool) {
 	switch x := v.(type) {
 	case float64:
 		return finiteValue(x)
@@ -29,13 +34,17 @@ func (r *OperatorRuntime) extractValue(inst *operatorInstance, env contractsv1.E
 	case int64:
 		return finiteValue(float64(x))
 	case json.Number:
-		f, err := x.Float64()
-		if err != nil {
-			return 0, false
-		}
-		return finiteValue(f)
+		return jsonNumberValue(x)
 	}
 	return 0, false
+}
+
+func jsonNumberValue(number json.Number) (float64, bool) {
+	f, err := number.Float64()
+	if err != nil {
+		return 0, false
+	}
+	return finiteValue(f)
 }
 
 func finiteValue(value float64) (float64, bool) {
@@ -50,22 +59,14 @@ func finiteValue(value float64) (float64, bool) {
 // flags on the envelope can independently invalidate a numeric sample.
 func sampleQualityValid(env contractsv1.Envelope) bool {
 	if raw, exists := env.Data["quality"]; exists {
-		quality, ok := raw.(string)
-		if !ok || quality != "valid" {
+		if quality, ok := raw.(string); !ok || quality != "valid" {
 			return false
 		}
 	}
-
-	for _, flag := range env.Quality {
-		switch strings.ToLower(strings.TrimSpace(flag.Code)) {
-		case "warming", "invalid", "disconnected", "rail_high", "rail_low":
-			return false
-		default:
-			// Unknown quality flags are not safe to interpret optimistically.
-			return false
-		}
-	}
-	return true
+	// Any quality flag invalidates the sample: the known flags (warming,
+	// invalid, disconnected, rail_high, rail_low) mark bad readings, and
+	// unknown flags are not safe to interpret optimistically.
+	return len(env.Quality) == 0
 }
 
 func (r *OperatorRuntime) operatorAdmitsEvent(inst *operatorInstance, env contractsv1.Envelope) bool {

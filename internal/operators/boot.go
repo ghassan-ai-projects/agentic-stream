@@ -65,11 +65,7 @@ func bootIDFromStateKey(stateKey string) string {
 // identity remains compatible only until the first identified boot is seen;
 // thereafter it cannot be used to mutate physical numeric state.
 func (r *OperatorRuntime) admitBoot(ps *PartitionState, env contractsv1.Envelope) bool {
-	meta := r.getBlob(ps, RuntimeOperatorID, env.Entity.ID)
-	if meta.Runtime == nil {
-		meta.Runtime = &RuntimeState{}
-	}
-	runtimeState := meta.Runtime
+	runtimeState := r.runtimeState(ps, env.Entity.ID)
 	bootID := deviceBootID(env)
 	if bootID == "" {
 		return runtimeState.CurrentBootID == ""
@@ -77,18 +73,28 @@ func (r *OperatorRuntime) admitBoot(ps *PartitionState, env contractsv1.Envelope
 	if runtimeState.CurrentBootID == bootID {
 		return true
 	}
-	if slices.Contains(runtimeState.SeenBootIDs, bootID) {
-		return false
-	}
-	if len(runtimeState.SeenBootIDs) >= maxSeenBootIDs {
-		// A bounded history cannot safely distinguish an evicted old boot from
-		// a new one. Fail closed rather than allowing stale evidence to revive.
+	if !runtimeState.acceptsNewBoot(bootID) {
 		return false
 	}
 	discardEntityState(ps, env.Entity.ID)
 	runtimeState.CurrentBootID = bootID
 	runtimeState.SeenBootIDs = append(runtimeState.SeenBootIDs, bootID)
 	return true
+}
+
+func (r *OperatorRuntime) runtimeState(ps *PartitionState, entityID string) *RuntimeState {
+	meta := r.getBlob(ps, RuntimeOperatorID, entityID)
+	if meta.Runtime == nil {
+		meta.Runtime = &RuntimeState{}
+	}
+	return meta.Runtime
+}
+
+// acceptsNewBoot refuses a boot seen before. A full bounded history cannot
+// safely distinguish an evicted old boot from a new one, so it fails closed
+// rather than allowing stale evidence to revive.
+func (s *RuntimeState) acceptsNewBoot(bootID string) bool {
+	return !slices.Contains(s.SeenBootIDs, bootID) && len(s.SeenBootIDs) < maxSeenBootIDs
 }
 
 // discardEntityState drops every operator's state for the entity when a new

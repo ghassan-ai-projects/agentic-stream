@@ -123,23 +123,38 @@ func (e *Engine) CurrentState(partitionID int, entityType, entityID string) (Sit
 	if !ok {
 		return Situation{}, nil, "", false, nil
 	}
-	copy := *sit
-	copy.Facts = cloneMap(sit.Facts)
-	copy.Evidence = cloneSet(sit.Evidence)
-	copy.ConditionStart = cloneTimes(sit.ConditionStart)
+	copy := cloneSituation(sit)
 	blob, err := stateJSON(&copy)
 	if err != nil {
 		return Situation{}, nil, "", false, err
 	}
+	digest, err := stateDigest(blob)
+	if err != nil {
+		return Situation{}, nil, "", false, err
+	}
+	return copy, blob, digest, true, nil
+}
+
+// cloneSituation copies the Situation with its own facts, evidence and
+// condition timers.
+func cloneSituation(sit *Situation) Situation {
+	copy := *sit
+	copy.Facts = cloneMap(sit.Facts)
+	copy.Evidence = cloneSet(sit.Evidence)
+	copy.ConditionStart = cloneTimes(sit.ConditionStart)
+	return copy
+}
+
+func stateDigest(blob []byte) (string, error) {
 	var document map[string]any
 	if err := json.Unmarshal(blob, &document); err != nil {
-		return Situation{}, nil, "", false, fmt.Errorf("decode current state: %w", err)
+		return "", fmt.Errorf("decode current state: %w", err)
 	}
 	digest, err := canonicaljson.Digest(canonicaljson.DomainSituationState, document)
 	if err != nil {
-		return Situation{}, nil, "", false, fmt.Errorf("digest current state: %w", err)
+		return "", fmt.Errorf("digest current state: %w", err)
 	}
-	return copy, blob, digest, true, nil
+	return digest, nil
 }
 
 func cloneMap(values map[string]any) map[string]any {
@@ -201,55 +216,23 @@ func (e *Engine) situationForFeature(feature operators.Feature) *Situation {
 	return sit
 }
 
-func (e *Engine) applyFeatureEvidence(sit *Situation, feature operators.Feature) bool {
-	completenessChanged := feature.Completeness != "" && feature.Completeness != sit.Completeness
-	if feature.Completeness != "" {
-		sit.Completeness = feature.Completeness
-	}
-
-	e.applyReducers(sit, feature)
-	if len(feature.Metadata) > 0 {
-		if sit.Facts == nil {
-			sit.Facts = make(map[string]any)
-		}
-		sit.Facts["timer_provenance"] = cloneMap(feature.Metadata)
-	}
-	sit.LatestEventTime = feature.EventTime
-	if feature.Traceparent != "" || !feature.TraceContinuation {
-		sit.Traceparent = feature.Traceparent
-		sit.Tracestate = feature.Tracestate
-	}
-	return completenessChanged
-}
-
 func (e *Engine) newSituation(partitionID int, entityType, entityID string, eventTime time.Time) *Situation {
 	identity := fmt.Sprintf("%s\x00%s\x00%d\x00%s\x00%s\x00%s", e.tenantID, e.deploymentID, partitionID, e.spec.Situation.Type, entityType, entityID)
-	hash := sha256.Sum256([]byte(identity))
-	stableID := "sit_" + hex.EncodeToString(hash[:])
+	hash := hex.EncodeToString(sha256Sum(identity))
 	return &Situation{
-		SituationID:     stableID,
-		TenantID:        e.tenantID,
-		DeploymentID:    e.deploymentID,
-		Type:            e.spec.Situation.Type,
-		EntityType:      entityType,
-		EntityID:        entityID,
-		PartitionID:     partitionID,
-		OccurrenceID:    "occ_" + hex.EncodeToString(hash[:]),
-		Version:         0,
-		Phase:           e.spec.Situation.InitialPhase,
-		Severity:        e.initialSeverity(),
-		Confidence:      1.0,
-		Completeness:    string(operators.CompletenessProvisional),
-		FirstEventTime:  eventTime,
-		LatestEventTime: eventTime,
-		Facts:           make(map[string]any),
-		Evidence:        make(map[string]struct{}),
-		ConditionStart:  make(map[string]time.Time),
-		OpenedAt:        eventTime,
-		UpdatedAt:       eventTime,
-		Traceparent:     "",
-		Tracestate:      "",
+		SituationID: "sit_" + hash, TenantID: e.tenantID, DeploymentID: e.deploymentID,
+		Type: e.spec.Situation.Type, EntityType: entityType, EntityID: entityID, PartitionID: partitionID,
+		OccurrenceID: "occ_" + hash, Version: 0, Phase: e.spec.Situation.InitialPhase,
+		Severity: e.initialSeverity(), Confidence: 1.0, Completeness: string(operators.CompletenessProvisional),
+		FirstEventTime: eventTime, LatestEventTime: eventTime,
+		Facts: make(map[string]any), Evidence: make(map[string]struct{}), ConditionStart: make(map[string]time.Time),
+		OpenedAt: eventTime, UpdatedAt: eventTime, Traceparent: "", Tracestate: "",
 	}
+}
+
+func sha256Sum(value string) []byte {
+	hash := sha256.Sum256([]byte(value))
+	return hash[:]
 }
 
 func (e *Engine) initialSeverity() int {
@@ -259,28 +242,4 @@ func (e *Engine) initialSeverity() int {
 		}
 	}
 	return 0
-}
-
-func (e *Engine) applyReducers(sit *Situation, feature operators.Feature) {
-	for _, r := range e.spec.Situation.Reducers {
-		if r.Input != feature.OutputName {
-			continue
-		}
-		switch r.Strategy {
-		case "latest_event_time":
-			_, exists := sit.Facts[r.Field]
-			currentTime, _ := sit.Facts[r.Field+"_event_time"].(time.Time)
-			if !exists || feature.EventTime.After(currentTime) {
-				sit.Facts[r.Field] = feature.Value
-				sit.Facts[r.Field+"_event_time"] = feature.EventTime
-			}
-		case "set_union":
-			if sit.Evidence == nil {
-				sit.Evidence = make(map[string]struct{})
-			}
-			for _, id := range feature.InputEventIDs {
-				sit.Evidence[id] = struct{}{}
-			}
-		}
-	}
 }

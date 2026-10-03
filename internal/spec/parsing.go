@@ -63,23 +63,29 @@ func checkDuplicateKeys(n *yaml.Node, path string) error {
 func checkMappingKeys(n *yaml.Node, path string) error {
 	seen := make(map[string]struct{}, len(n.Content)/2)
 	for i := 0; i < len(n.Content); i += 2 {
-		keyNode := n.Content[i]
-		if keyNode.Kind != yaml.ScalarNode {
-			continue
-		}
-		key := keyNode.Value
-		if _, ok := seen[key]; ok {
-			return &CompileError{Path: path, Message: fmt.Sprintf("duplicate key %q", key)}
-		}
-		seen[key] = struct{}{}
-		if i+1 >= len(n.Content) {
-			continue
-		}
-		if err := checkDuplicateKeys(n.Content[i+1], joinKeyPath(path, key)); err != nil {
+		if err := checkMappingEntry(n.Content, i, path, seen); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// checkMappingEntry rejects a repeated scalar key at content[i], then checks
+// its value recursively.
+func checkMappingEntry(content []*yaml.Node, i int, path string, seen map[string]struct{}) error {
+	keyNode := content[i]
+	if keyNode.Kind != yaml.ScalarNode {
+		return nil
+	}
+	key := keyNode.Value
+	if _, ok := seen[key]; ok {
+		return &CompileError{Path: path, Message: fmt.Sprintf("duplicate key %q", key)}
+	}
+	seen[key] = struct{}{}
+	if i+1 >= len(content) {
+		return nil
+	}
+	return checkDuplicateKeys(content[i+1], joinKeyPath(path, key))
 }
 
 func joinKeyPath(path, key string) string {

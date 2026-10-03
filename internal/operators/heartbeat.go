@@ -35,12 +35,7 @@ func recordHeartbeat(blob *OperatorStateBlob, env contractsv1.Envelope, processi
 		blob.Heartbeat = &HeartbeatState{}
 	}
 	hs := blob.Heartbeat
-	bootID := deviceBootID(env)
-	if bootID != "" && hs.BootID != bootID {
-		*hs = HeartbeatState{BootID: bootID}
-	} else if hs.BootID == "" {
-		hs.BootID = bootID
-	}
+	hs.adoptBoot(deviceBootID(env))
 	hs.LastEventTime = &env.EventTime
 	hs.LastEventID = env.ID
 	hs.Traceparent = env.Traceparent
@@ -49,28 +44,26 @@ func recordHeartbeat(blob *OperatorStateBlob, env contractsv1.Envelope, processi
 	return hs
 }
 
+// adoptBoot resets the heartbeat when a different explicit boot appears and
+// records the first boot otherwise.
+func (hs *HeartbeatState) adoptBoot(bootID string) {
+	if bootID != "" && hs.BootID != bootID {
+		*hs = HeartbeatState{BootID: bootID}
+	} else if hs.BootID == "" {
+		hs.BootID = bootID
+	}
+}
+
 // heartbeatFeature reports whether the heartbeat is missing at the watermark.
 // A missing heartbeat is uncertain and timed at processing time.
 func (r *OperatorRuntime) heartbeatFeature(inst *operatorInstance, env contractsv1.Envelope, bootID string, watermark, processingTime time.Time, missing bool) Feature {
 	feature := Feature{
-		FeatureID:     r.idGen.New(ids.PrefixEvent),
-		OperatorID:    inst.def.Name,
-		OutputName:    inst.def.Output,
-		TenantID:      env.TenantID,
-		EntityType:    env.Entity.Type,
-		EntityID:      env.Entity.ID,
-		StateKey:      operatorStateKey(env),
-		BootID:        bootID,
-		PartitionID:   env.PartitionID(0),
-		WindowStart:   env.EventTime,
-		WindowEnd:     watermark,
-		Value:         missing,
-		EventTime:     env.EventTime,
-		Watermark:     watermark,
-		InputEventIDs: []string{env.ID},
-		Completeness:  string(CompletenessOnTime),
-		Traceparent:   env.Traceparent,
-		Tracestate:    env.Tracestate,
+		FeatureID: r.idGen.New(ids.PrefixEvent), OperatorID: inst.def.Name, OutputName: inst.def.Output,
+		TenantID: env.TenantID, EntityType: env.Entity.Type, EntityID: env.Entity.ID,
+		StateKey: operatorStateKey(env), BootID: bootID, PartitionID: env.PartitionID(0),
+		WindowStart: env.EventTime, WindowEnd: watermark, Value: missing,
+		EventTime: env.EventTime, Watermark: watermark, InputEventIDs: []string{env.ID},
+		Completeness: string(CompletenessOnTime), Traceparent: env.Traceparent, Tracestate: env.Tracestate,
 	}
 	if missing {
 		feature.EventTime = processingTime
@@ -103,31 +96,34 @@ func (r *OperatorRuntime) ApplyTimer(ctx context.Context, ps *PartitionState, wa
 	if err != nil {
 		return nil, ps, err
 	}
+	features, err := r.applyHeartbeatTimers(ctx, ps, watermark, processingTime, identity)
+	return features, ps, err
+}
 
+// applyHeartbeatTimers fires every missing-heartbeat operator in name order.
+func (r *OperatorRuntime) applyHeartbeatTimers(ctx context.Context, ps *PartitionState, watermark, processingTime time.Time, identity TimerIdentity) ([]Feature, error) {
 	var features []Feature
-	var instances []*operatorInstance
-	for _, inputInstances := range r.byInput {
-		instances = append(instances, inputInstances...)
-	}
-	slices.SortStableFunc(instances, func(a, b *operatorInstance) int {
-		return strings.Compare(a.def.Name, b.def.Name)
-	})
-	seen := make(map[string]struct{}, len(instances))
-	for _, op := range instances {
-		if _, ok := seen[op.def.Name]; ok {
-			continue
-		}
-		seen[op.def.Name] = struct{}{}
+	for _, op := range r.operatorsByName() {
 		if op.def.Kind != "missing_heartbeat" {
 			continue
 		}
 		fs, err := r.applyHeartbeatTimer(ctx, op, ps, watermark, processingTime, identity)
 		if err != nil {
-			return nil, ps, err
+			return nil, err
 		}
 		features = append(features, fs...)
 	}
-	return features, ps, nil
+	return features, nil
+}
+
+// operatorsByName lists each operator once, sorted by name.
+func (r *OperatorRuntime) operatorsByName() []*operatorInstance {
+	var instances []*operatorInstance
+	for _, inputInstances := range r.byInput {
+		instances = append(instances, inputInstances...)
+	}
+	slices.SortStableFunc(instances, func(a, b *operatorInstance) int { return strings.Compare(a.def.Name, b.def.Name) })
+	return slices.CompactFunc(instances, func(a, b *operatorInstance) bool { return a.def.Name == b.def.Name })
 }
 
 func timerIdentity(identities []TimerIdentity) (TimerIdentity, error) {
@@ -152,17 +148,15 @@ func (r *OperatorRuntime) applyHeartbeatTimer(ctx context.Context, inst *operato
 	if err != nil {
 		return nil, fmt.Errorf("heartbeat duration: %w", err)
 	}
-	states := ps.OperatorStates[inst.def.Name]
 	var features []Feature
+	states := ps.OperatorStates[inst.def.Name]
 	for _, stateKey := range slices.Sorted(maps.Keys(states)) {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("heartbeat timer canceled: %w", err)
 		}
-		hs := states[stateKey].Heartbeat
-		if !r.isActiveBoot(ps, stateKey) || !heartbeatOverdue(hs, processingTime, duration) {
-			continue
+		if hs := states[stateKey].Heartbeat; r.isActiveBoot(ps, stateKey) && heartbeatOverdue(hs, processingTime, duration) {
+			features = append(features, r.missedHeartbeatFeature(inst, stateKey, hs, identity, watermark, processingTime))
 		}
-		features = append(features, r.missedHeartbeatFeature(inst, stateKey, hs, identity, watermark, processingTime))
 	}
 	return features, nil
 }
@@ -184,25 +178,13 @@ func heartbeatOverdue(hs *HeartbeatState, processingTime time.Time, duration tim
 // feature that continues the last heartbeat's trace.
 func (r *OperatorRuntime) missedHeartbeatFeature(inst *operatorInstance, stateKey string, hs *HeartbeatState, identity TimerIdentity, watermark, processingTime time.Time) Feature {
 	return Feature{
-		FeatureID:  r.idGen.New(ids.PrefixEvent),
-		OperatorID: inst.def.Name,
-		OutputName: inst.def.Output,
-		TenantID:   identity.TenantID,
+		FeatureID: r.idGen.New(ids.PrefixEvent), OperatorID: inst.def.Name, OutputName: inst.def.Output,
 		// For Phase 2 the entity type is known from the spec input.
-		EntityType:        r.entityTypeForOperator(inst.def.Name),
-		EntityID:          entityIDFromStateKey(stateKey),
-		StateKey:          stateKey,
-		BootID:            hs.BootID,
-		PartitionID:       identity.PartitionID,
-		WindowStart:       *hs.LastEventTime,
-		WindowEnd:         processingTime,
-		Value:             true,
-		EventTime:         processingTime,
-		Watermark:         watermark,
-		InputEventIDs:     []string{hs.LastEventID},
-		Completeness:      string(CompletenessUncertain),
-		TraceContinuation: true,
-		Traceparent:       hs.Traceparent,
-		Tracestate:        hs.Tracestate,
+		TenantID: identity.TenantID, EntityType: r.entityTypeForOperator(inst.def.Name),
+		EntityID: entityIDFromStateKey(stateKey), StateKey: stateKey, BootID: hs.BootID, PartitionID: identity.PartitionID,
+		WindowStart: *hs.LastEventTime, WindowEnd: processingTime, Value: true,
+		EventTime: processingTime, Watermark: watermark, InputEventIDs: []string{hs.LastEventID},
+		Completeness: string(CompletenessUncertain), TraceContinuation: true,
+		Traceparent: hs.Traceparent, Tracestate: hs.Tracestate,
 	}
 }

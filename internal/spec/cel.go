@@ -60,15 +60,21 @@ func specExpressions(spec *CompiledSpec) []celExpression {
 	for i, t := range spec.Situation.Transitions {
 		expressions = append(expressions, celExpression{fmt.Sprintf("situation.transitions[%d].when", i), t.When})
 	}
-	for i, tr := range spec.Cognition.Triggers {
+	expressions = append(expressions, triggerExpressions(spec.Cognition.Triggers)...)
+	for i, op := range spec.Operators {
+		expressions = append(expressions, celExpression{fmt.Sprintf("operators[%d].where", i), op.Where})
+	}
+	return expressions
+}
+
+func triggerExpressions(triggers []Trigger) []celExpression {
+	expressions := make([]celExpression, 0, 3*len(triggers))
+	for i, tr := range triggers {
 		expressions = append(expressions,
 			celExpression{fmt.Sprintf("cognition.triggers[%d].when", i), tr.When},
 			celExpression{fmt.Sprintf("cognition.triggers[%d].score", i), tr.Score},
 			celExpression{fmt.Sprintf("cognition.triggers[%d].materialDelta", i), tr.MaterialDelta},
 		)
-	}
-	for i, op := range spec.Operators {
-		expressions = append(expressions, celExpression{fmt.Sprintf("operators[%d].where", i), op.Where})
 	}
 	return expressions
 }

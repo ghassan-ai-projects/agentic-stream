@@ -123,3 +123,11 @@ are permitted, writes keep single owners.
   validation into token, key, escape and surrogate steps; CloudEvent and
   envelope checks keep their original error precedence. Golden digest, replay
   and ingress suites pass unchanged under race.
+
+- Round 10 (Q2/Q7): `spec`, `situations` and `operators` have no production
+  function over 15 lines. Lifecycle evaluation reads as close → transitions →
+  open; reducers moved to `situations/reducers.go` (file cap); window emission,
+  boot admission, heartbeat timers and aggregates are named steps; the aggregate
+  table replaces a switch. ID-generation order, side-effect order (boot
+  admission after event admission) and canonical documents are unchanged; the
+  full (non-short) replay/golden suites and runtime/CLI suites pass under race.
