@@ -53,3 +53,16 @@ All three rounds are complete. The new learning path and design summaries,
 source-alignment repairs, runnable proofs, browser visual review, and five
 self-review lenses meet [this pass's quality bar](QUALITY_BAR.md).
 See [the review](REVIEW.md) for the actual evidence and completion boundary.
+
+## Round 4: complete the core concept model
+
+The follow-up asks for more complete domain and implementation explanations,
+not an inconsistency-only audit. Extend the learning path with a domain model
+and an ownership/control explanation. Expand the vocabulary and explain
+publication, attempts, rebinding, evidence status, correction, reconsideration,
+and compensation in the existing focused pages.
+
+Review each concept against its owner in current code, including limitations.
+Render the new three-node relationship diagram in the browser, inspect the
+new pages, run documentation/heading checks and relevant existing package
+tests, record the results, then commit this round. No runtime changes.

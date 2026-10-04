@@ -63,6 +63,13 @@ reconciliation-required outcome. **Reconciliation** means obtaining evidence
 of what happened before deciding the next safe step. General reconciliation
 is an internal operational capability, not a packaged public CLI command.
 
+## A correction does not undo an effect
+
+If later evidence changes the condition, reconsideration can reassess a prior
+succeeded Command. Reversing or adjusting that effect requires a separate
+compensating Intent linked to the earlier Command and governed on its own
+merits. [Time and state](time-and-state.md) explains these three different jobs.
+
 ## Replay is a different execution boundary
 
 Deterministic replay rebuilds stream history without external effects. Shadow
@@ -76,6 +83,7 @@ Sources: [Decision/Intent contract](../contracts/decision-intent.md),
 
 ## Next reads
 
+- [Who owns state and authority?](runtime-boundaries.md)
 - [Why these design choices](design-choices.md)
 - [Decision and action mechanics](../design/decisions-and-actions.md)
 - [Security model](../architecture/security-model.md)

@@ -27,6 +27,16 @@ record or test that proves it, and include the failure path. The focused tests
 are organized by package, while the design rationale is in
 [`docs/design/TECHNICAL_DESIGN.md`](../../docs/design/TECHNICAL_DESIGN.md).
 
+## Snapshot binding under invariant 5
+
+The accepted [ADR-013](../../docs/design/DECISIONS.md#adr-013-re-bind-stale-episodes-to-the-live-situation-version-before-dispatch)
+interprets the binding as one immutable snapshot at any instant. Before an
+attempt starts, bounded rebinding may repoint the episode to a validated live
+version. It preserves identity, admission evidence, and finite budget; it does
+not mutate either published snapshot or a running attempt's request. See
+[the episode explanation](../learn/reasoning.md) and
+[rebinding tests](../../internal/episodes/rebind_test.go).
+
 ## Invariant-to-system map
 
 | Invariants | Primary implementation areas |

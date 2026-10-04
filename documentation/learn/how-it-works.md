@@ -28,8 +28,10 @@ The committed motor fixture opens a bearing-degradation Situation when its
 opening rule is met. Its initial phase is `candidate`. Later phase transitions
 require supporting conditions to last for their declared durations.
 
-A **version** records the published state at that point. When evidence changes
-the state, the runtime publishes another version and keeps the old one.
+A **version** records the published state at that point. Opening, phase changes,
+and completeness changes can publish another version; a fact update alone
+need not publish. Old versions remain fixed. [The domain model](domain-model.md)
+explains the difference between current state and a published snapshot.
 
 Source: [motor SituationSpec](../../docs/design/examples/predictive-maintenance.situation.yaml)
 and [time and state](time-and-state.md).
@@ -75,6 +77,7 @@ certify a physical motor or ticket provider.
 
 ## Next reads
 
+- [What a Situation represents](domain-model.md)
 - [Time and changing state](time-and-state.md)
 - [Run the predictive-maintenance walkthrough](../guides/predictive-maintenance.md)
 - [SituationSpec authoring](../getting-started/first-situation.md)

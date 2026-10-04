@@ -65,6 +65,21 @@ complete independent enforcement semantics for all four values. Data retention
 is an operational release concern and the SituationSpec intentionally does not
 expose a retention or telemetry control until the runtime can enforce it.
 
+### Domain state has a narrower implemented model
+
+The current engine keeps a stable Situation/occurrence identity for the
+tenant, deployment, partition, type, and entity; it does not automatically
+create a new occurrence after resolution. Confidence starts at `1.0` without
+a calibrated update mechanism, and subsequent primary-hypothesis change
+tracking is not implemented. Completeness is an evidence-processing status,
+not a certified all-source coverage measure; the trigger `completeness` field
+is not independently enforced by the current scheduler.
+
+See [the domain model](../learn/domain-model.md),
+[state initialization](../../internal/situations/situations.go),
+[trigger state view](../../internal/cognition/engine_cel.go), and
+[trigger gates](../../internal/cognition/engine_trigger.go).
+
 ### Operator inspection and redrive are internal capabilities
 
 Durable quarantine, approval, reconciliation, and explainability records exist

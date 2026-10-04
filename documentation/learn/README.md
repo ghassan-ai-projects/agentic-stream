@@ -27,10 +27,12 @@ many versions start no episode; many proposals produce no external effect.
 | --- | --- | --- |
 | 1. [Why the project exists](why.md) | Why does an event stream need more than alerts? | The problem and the runtime's role |
 | 2. [From a reading to a result](how-it-works.md) | What happens to one motor reading? | Evidence, state, reasoning, and governed action |
-| 3. [Time and changing state](time-and-state.md) | What if readings arrive late or repeat? | Event time, watermarks, completeness, and versions |
-| 4. [When an agent should reason](reasoning.md) | When is a reasoning session worth starting? | Triggers, waiting, budgets, and stale work |
-| 5. [From proposal to effect](safe-actions.md) | Who decides what may execute? | Decisions, Intents, policy, Commands, and outcomes |
-| 6. [Why these design choices](design-choices.md) | Why build it this way? | Tradeoffs, boundaries, and current limits |
+| 3. [What a Situation represents](domain-model.md) | What identifies a condition, and what is published? | Entities, deployments, occurrences, facts, phases, and snapshots |
+| 4. [Time and changing state](time-and-state.md) | What if readings arrive late or repeat? | Event time, watermarks, completeness, and versions |
+| 5. [When an agent should reason](reasoning.md) | When is a reasoning session worth starting? | Triggers, waiting, budgets, and stale work |
+| 6. [From proposal to effect](safe-actions.md) | Who decides what may execute? | Decisions, Intents, policy, Commands, and outcomes |
+| 7. [Who owns state and authority?](runtime-boundaries.md) | How do control and recovery preserve permission? | Planes, targets, capabilities, watches, leases, and fences |
+| 8. [Why these design choices](design-choices.md) | Why build it this way? | Tradeoffs, boundaries, and current limits |
 
 Each page introduces one part of the system. More detailed diagrams appear in
 [the design section](../design/README.md), after this basic model.

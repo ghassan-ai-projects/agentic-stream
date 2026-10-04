@@ -52,16 +52,48 @@ intentional: the new version does not edit the old one.
 Source: [Situation implementation](../../internal/situations/)
 and [engine](../../internal/engine/).
 
-An episode bound to version 1 can therefore be explained later. If new evidence
-makes that work stale, cancellation and acceptance checks protect the newer
-state. A correction can also prompt reconsideration under the declared policy.
+The records can therefore explain which version an attempt actually read.
+Before an attempt starts, its episode may be rebound to a newer validated
+snapshot; during execution the request stays fixed. Supersession and acceptance
+checks protect against stale output. See [reasoning](reasoning.md).
 
 ## Missing evidence is part of the state
 
-**Completeness** describes whether the runtime has enough expected evidence,
-including source-health information. Missing heartbeat evidence can make a
-condition uncertain even when the available vibration readings look normal.
-The runtime records that uncertainty so triggers and policy can consider it.
+**Completeness** records the evidence-processing status carried by a feature
+and copied into Situation state. It is separate from diagnostic confidence
+and does not certify that every required sensor has reported.
+
+| Status | Meaning in the current processing path |
+| --- | --- |
+| `provisional` | A result emitted while its window is still progressing |
+| `on_time` | An on-time result, including healthy heartbeat evidence |
+| `corrected` | A result changed by accepted late evidence |
+| `final_by_policy` | A window result closed under the configured time policy |
+| `uncertain` | Evidence such as missing or late heartbeat needs caution |
+
+Missing heartbeat evidence can make the evidence status uncertain while
+vibration readings look normal. The motor trigger explicitly checks heartbeat
+features. The current scheduler does not enforce the schema-visible trigger
+`completeness` field as a separate admission gate; domain conditions must carry
+the actual implemented checks. Source: [feature emission](../../internal/operators/),
+[Situation update](../../internal/situations/reducers.go), and
+[trigger evaluation](../../internal/cognition/engine_trigger.go).
+
+## Correction, reconsideration, and compensation
+
+A **correction** changes the published interpretation of evidence. Under
+`correct_and_reconsider`, eligible prior succeeded Commands can create
+**reconsideration** work: review a previous action against the correction.
+The runtime deduplicates by Situation, superseded version, and prior Command;
+one correction may therefore produce no reconsideration or more than one.
+
+A **compensation** is a new proposed effect linked to a prior Command. It must
+pass its own catalog, binding, policy, and dispatch checks. A corrected snapshot
+does not undo a ticket or reverse a device operation automatically. The prior
+Command and its recorded outcome remain in history. Source:
+[reconsideration selection and evidence](../../internal/cognition/reconsideration_evidence.go),
+[deduplication](../../internal/cognition/reconsideration.go), and
+[Intent contract](../contracts/decision-intent.md).
 
 ## Why preserve the history?
 

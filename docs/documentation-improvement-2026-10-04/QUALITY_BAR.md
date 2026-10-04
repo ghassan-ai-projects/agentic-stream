@@ -35,3 +35,13 @@ in the explanation before introducing the detailed implementation map.
 All gates must pass and all recorded P0/P1/P2 findings must be closed. Preserve
 existing accurate reference material. No runtime or validation-tool edits are
 part of this pass. Independent release approval remains a separate gate.
+
+## Core concept completion gate
+
+For the follow-up, require a connected explanation of domain identities,
+state/publication, attention/reasoning, proposals/effects, and ownership/recovery.
+Each concept group must have a plain meaning, a domain example or purpose,
+an implementation owner, and a stated current limit where the design exceeds
+the implemented model. Validate the reader questions in the Round 4 record.
+Keep the motor story as the anchor; avoid presenting a schema field as an
+enforced capability merely because the field exists.

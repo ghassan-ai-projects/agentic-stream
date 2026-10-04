@@ -183,3 +183,77 @@ no claim of an independent reviewer or a new production release gate result.
 - [Improvement plan](PLAN.md)
 - [Quality bar](QUALITY_BAR.md)
 - [Documentation home](../../documentation/README.md)
+
+## Round 4 — complete core concepts against the domain and code
+
+The user clarified that “inconsistencies” was a mistaken word: the goal is a
+more complete core concept explanation reflecting the domain and current code.
+This round therefore adds the missing model and relationships, rather than
+limiting the work to terminology repairs.
+
+### Coverage and reader checks
+
+| Reader question | Public explanation | Current implementation evidence |
+| --- | --- | --- |
+| What is the difference between a motor and its condition? | [Domain model](../../documentation/learn/domain-model.md) | `internal/situations/situations.go`: entity/type and Situation identity |
+| What separates a spec, deployment, occurrence, and version? | Domain identity table and occurrence boundary | `internal/spec/deployments.go`; `newSituation` and `openOccurrence` |
+| How do observations become features and retained facts? | Evidence → features → facts explanation with actual motor names | Motor spec reducers; `internal/situations/reducers.go` |
+| Why do phases remain stable across small changes? | Hysteresis and minimum-duration explanation | Motor opening/closing conditions; `applyTransition` |
+| Does every fact update publish a snapshot? | Current state versus publication | `internal/situations/evaluate.go` and `materialize.go` |
+| Do completeness and confidence mean the same thing? | [Time/state](../../documentation/learn/time-and-state.md) status table and domain limitations | Feature statuses, reducer copy behavior, confidence initialization |
+| Does a schema field establish an enforced cognitive gate? | Explicit completeness-field boundary | `internal/cognition/engine_trigger.go`: actual gate ordering |
+| What is material delta compared with? | [Reasoning](../../documentation/learn/reasoning.md) | `markVersionReasoned` advances after evaluation regardless of outcome |
+| How can one episode use a newer version without changing history? | Attempt/rebinding explanation | ADR-013; runner claim/assembler; `rebind_test.go` |
+| Does coalescing merge requests or cancel work on every publication? | Learning and cognition controls distinguish replacement from publication | Scheduler supersession and schedule/episode ledgers |
+| Does correction undo a succeeded effect? | Correction/reconsideration/compensation distinction | Reconsideration selection, per-Command deduplication, governed Intent checks |
+| What separates stream state, reasoning output, and effect authority? | [Ownership](../../documentation/learn/runtime-boundaries.md) | Architecture boundaries and package owners |
+| How do targets, capabilities, sessions, and authority relate? | Entity/target explanation and physical qualification boundary | `internal/device`, `internal/authority`, control dispatch gate |
+| What do leases, fences, epochs, and watches establish? | Recovery table and bounded follow-up explanation | Episode/control owners; watch firing and expiry rules |
+| What is explainable history versus deployment qualification? | Ownership page and existing replay/observability pages | Notifications, outcomes, qualification owner, release posture |
+
+All fifteen questions now have an accessible public answer and implementation
+evidence. The glossary adds definitions and ownership links; the learning
+path adds two focused pages. Existing action/replay explanations remain the
+owners of their detailed contracts. No new math section is introduced.
+
+### Review repairs and boundaries
+
+The source review refined publication behavior, replacement/coalescing, and
+snapshot rebinding rather than presenting each as an unconditional pipeline
+step. It also distinguishes a reason to reconsider a succeeded Command from
+a proof that the action was wrong, and compensation from automatic reversal.
+
+Explicit current limits are documented: no automatic fresh occurrence after
+resolution, no calibrated Situation-confidence update, no changing primary
+hypothesis tracking for subsequent versions, and no independent enforcement
+of the trigger completeness field. This closes explanation gaps; it does not
+implement those missing runtime capabilities.
+
+A writing review caught and repaired an incorrect illustrative reduced-fact
+name: the motor spec declares `facts.vibration_rms`. Another review clarified
+that material delta uses the most recently evaluated version, even if no
+episode ran. The new relationship diagram has only three nodes, and its text
+equivalent explains that relationships are not event-processing guarantees.
+
+The worktree already contained a first-line edit to the core-concepts heading
+before this round. Preserve that user edit in the worktree and exclude it from
+the commit; the staged documentation retains the committed heading.
+
+### Validation and acceptance
+
+| Gate | Result |
+| --- | --- |
+| Domain/code coverage and ownership | All fifteen questions covered; current limitations linked |
+| Plain writing and page focus | Nine learning pages; every page under 180 lines (longest 134) |
+| Browser review | New domain diagram rendered with Mermaid 11; labels/arrows fit at the preview's 780 px reading width; inspected new ownership page and expanded learning table |
+| Browser evidence | [Core domain explanation](evidence/core-domain-browser.jpg) |
+| Documentation check | `make docs-check`: 68 public Markdown pages and volatile surfaces pass |
+| Local heading links | All thirteen explicit Markdown heading targets resolve |
+| Regression evidence | Uncached full suites pass for situations, operators, cognition, episodes, policy, actions, replay, spec, watch, control, authority, qualification |
+| Whitespace | `git diff --check` passes |
+| Scope | Reader pages only under `documentation/`; plan, bar, review, and evidence only in this working folder |
+
+The core concept completion gate is met. These are self-review passes; no
+independent approval or production qualification is claimed. Executable guide
+commands were unchanged, so their Round 3 evidence was not rerun. Full CI and
+whole-repository tests were not run for this documentation-only round.
