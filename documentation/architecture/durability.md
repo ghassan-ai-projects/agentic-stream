@@ -1,14 +1,14 @@
 # Durability and recovery
 
-Durability is part of the runtime semantics, not just a storage choice. The
-runtime records enough identity and state to restart without silently changing
-the meaning of a partition or duplicating a known effect.
+The runtime stores identities, state, and progress so it can recover after a
+restart. Those records preserve processing history and help distinguish
+completed work from work that still needs attention.
 
 ## Storage boundary
 
-The runtime uses SQLite in WAL mode through `modernc.org/sqlite`. Database open
+The runtime uses SQLite in write-ahead log (WAL) mode through `modernc.org/sqlite`. Database open
 applies the numbered migrations under [`migrations/`](../../migrations/). The
-current repository contains 28 migrations; migration order is append-only.
+current repository contains 30 migrations; migration order is append-only.
 
 Important durable record families include:
 
@@ -34,8 +34,7 @@ committing later state.
 
 Episode attempts carry an `attempt_id` and monotonic `fence`. A late result from
 an abandoned or superseded attempt is rejected even if it refers to the same
-Situation snapshot. This prevents “same input, therefore safe” from becoming a
-stale-write vulnerability.
+Situation snapshot. The same snapshot does not make output from an obsolete attempt acceptable.
 
 ## Crash boundaries
 
@@ -47,7 +46,7 @@ The runtime treats these boundaries differently:
 | Stream checkpoint | Processing resumes from durable progress and deterministic state |
 | Episode dispatch | Attempt identity and fence reject stale worker output |
 | Evidence call | Reservation/completion ledger prevents unsafe duplicate reads |
-| Command outbox | Leases make dispatch resumable; idempotency key protects repeat delivery |
+| Command outbox | Leases let dispatch resume; the idempotency key identifies repeat delivery |
 | External timeout | Outcome becomes `unknown` and requires reconciliation rather than blind retry |
 | Notification cursor | Subscriber resumes from `Last-Event-ID` or explicit cursor, subject to retention |
 
@@ -56,7 +55,7 @@ The runtime treats these boundaries differently:
 The default replay creates a fresh database, processes the trace, and computes
 the Situation-version history hash. It is constructed without credentials or
 effectors. Recorded, shadow, and counterfactual modes require explicit
-non-effecting capabilities and keep `EffectsAllowed` false.
+capabilities that cannot perform production effects and keep `EffectsAllowed` false.
 
 ## Recovery operator expectations
 

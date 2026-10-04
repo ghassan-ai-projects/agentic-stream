@@ -4,6 +4,12 @@ These pages are public summaries of the current Agentic Stream design. The
 full technical record remains in [`docs/design/`](../../docs/design/), while
 the implementation and tests decide what can be claimed as shipped.
 
+## Before the detailed diagrams
+
+If the vocabulary is new, start with [the learning path](../learn/README.md).
+Its first diagram has four stages. The pages below add one boundary at a time;
+[the module map](../architecture/modules.md) is the final implementation view.
+
 ## Reading order
 
 1. [Architecture overview](../architecture/overview.md)
@@ -33,11 +39,13 @@ the implementation and tests decide what can be claimed as shipped.
 ## Drift rule
 
 The design archive contains historical plans and detailed contracts. A public
-summary must label design-only surfaces as planned or deferred. When a summary
+summary must label interfaces described only in the design as planned or deferred. When a summary
 and current code disagree, update the summary or record the discrepancy; do not
 silently present the design target as the running API.
 
 ## Next reads
+
+- [Why these choices: a plain-language introduction](../learn/design-choices.md)
 
 - [Current status](../overview/status.md)
 - [Contracts](../contracts/README.md)

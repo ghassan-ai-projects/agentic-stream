@@ -1,7 +1,8 @@
 # Add a domain
 
-The runtime is intended to support domains through data and `SituationSpec`,
-not through new branches in the stream engine.
+Add a domain by defining its event data and SituationSpec. Keep domain rules
+in those definitions so the stream engine can apply them without special-case
+branches.
 
 ## 1. Define the event vocabulary
 
@@ -30,7 +31,7 @@ for the new edge cases.
 
 Declare inputs, partition/entity identity, event-time policy, windows,
 operators, Situation reducers/phases, cognitive triggers/budgets, and allowed
-Intent catalog. Start from the predictive-maintenance example and validate:
+Intent types and parameters. Start from the predictive-maintenance example and validate:
 
 ```bash
 agentic-stream validate path/to/domain.situation.yaml

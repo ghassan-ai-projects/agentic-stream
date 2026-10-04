@@ -10,6 +10,13 @@ The SituationSpec fixture is intentionally stored in the current design
 archive because tests load it directly. This page is the public explanation of
 how to use that fixture and what its evidence does—and does not—prove.
 
+## Understand the story first
+
+[Follow one reading](../learn/how-it-works.md) for the plain-language flow.
+The motor spec looks for a persistent bearing condition. Its phases and
+duration rules decide how the condition develops; the diagnosis trigger
+only applies in `warning` or `incident`.
+
 ## The assets
 
 - Spec: [`docs/design/examples/predictive-maintenance.situation.yaml`](../../docs/design/examples/predictive-maintenance.situation.yaml)
@@ -22,9 +29,10 @@ how to use that fixture and what its evidence does—and does not—prove.
 
 ```bash
 make build
+walkthrough_dir=$(mktemp -d)
 ./bin/agentic-stream validate docs/design/examples/predictive-maintenance.situation.yaml
 ./bin/agentic-stream run-live \
-  --db predictive-maintenance.db \
+  --db "$walkthrough_dir/predictive-maintenance.db" \
   --spec docs/design/examples/predictive-maintenance.situation.yaml \
   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl
 ```
@@ -35,6 +43,21 @@ ingested/processed event and zero episodes, Intents, or Commands because the
 Situation remains in its initial candidate phase. The live batch uses the
 deterministic native provider unless a worker or model endpoint is explicitly
 configured.
+
+## Read the spec as a story
+
+| Part of the fixture | Meaning |
+| --- | --- |
+| Inputs | Vibration, temperature, current, and heartbeat evidence for a motor |
+| Windows and operators | Calculate vibration magnitude, slopes, current mean, and heartbeat absence |
+| Opening and phases | Open a candidate occurrence, then require sustained evidence for later phases |
+| Diagnosis trigger | Consider a warning/incident version, with heartbeat, score, and material-change checks |
+| Episode objective | Diagnose the condition and propose safe inspection or maintenance steps |
+| Intent catalog | Bound proposals to declared maintenance/recommendation types and risk classes |
+
+These are example rules, not a diagnosis or recommended operating thresholds
+for a real motor. The exact conditions and durations are in the
+[fixture](../../docs/design/examples/predictive-maintenance.situation.yaml).
 
 ## What the trace exercises
 

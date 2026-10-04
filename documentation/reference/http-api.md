@@ -1,7 +1,8 @@
 # HTTP and SSE reference
 
-The current handler is intentionally small. It exposes health, metrics,
-notifications, and operator controls; it does not expose a general CRUD API.
+The HTTP API provides health checks, metrics, notifications, and operator
+controls. It does not provide general endpoints to create, read, update, or
+delete runtime records.
 
 ## Routes
 
@@ -35,7 +36,7 @@ curl -N \
 The stream is at-least-once. The numeric event ID is a tenant-local cursor;
 deduplicate by CloudEvent source/id. `cursor` may be used instead of
 `Last-Event-ID`. A cursor outside retained history returns HTTP 409 and needs
-an audited resnapshot. Slow subscribers are bounded and disconnected.
+an audited resnapshot. The server disconnects subscribers that exceed the allowed lag.
 
 ## Controls
 

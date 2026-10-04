@@ -8,16 +8,17 @@ deliberate non-goals.
 
 The repository is an implementation-ready development snapshot. The runtime
 has a working deterministic core, governed action path, worker protocol, local
-HTTP/SSE surface, and predictive-maintenance stream-plane fixture. Synthetic
-focused tests cover later action stages. It is not yet a
+HTTP API and Server-Sent Events (SSE), plus predictive-maintenance test data
+for stream processing. Tests with simulated inputs cover later action stages. It is not yet a
 stable release with a published compatibility promise or complete environment
 qualification.
 
 ## Capability boundaries
 
-### Ingress is local and file-oriented
+### Ingress is local
 
-The supported ingestion paths are normalized JSONL and the simulator adapter.
+The supported ingestion paths are normalized JSONL files, the simulator file
+adapter, and live normalized JSONL over a Unix domain socket on `serve`.
 Broker and MQTT integrations are deferred. If a deployment tails a file, it
 must own file rotation, permissions, atomic append behavior, and source-health
 monitoring.
@@ -28,13 +29,18 @@ The action plane uses stable identities, an outbox, leases, idempotency keys,
 and durable outcomes. A provider timeout can mean that the provider accepted
 the request; the runtime records an unknown outcome and does not blindly retry
 it. An external integration must provide an idempotent or reconcilable route.
+The CLI can select emulator/physical profiles through a typed device gateway,
+with explicit catalog, firmware, and authority gates. That integration code
+does not establish physical hardware qualification. Trace-backed runs remain
+simulated-only.
 
 ### The local server is not an internet edge
 
-`serve` is loopback-only by default and rejects non-loopback listeners without
-an authenticated deployment proxy. Subscriber and control tokens are required
-for the respective surfaces. TLS termination, network policy, rotation, and
-rate limiting remain deployment responsibilities.
+`serve` accepts only loopback listen addresses. For remote access, an
+authenticated deployment proxy must forward to that loopback service.
+Notification subscriptions and operator controls require their respective
+tokens. TLS termination, network policy, rotation, and rate limiting remain
+deployment responsibilities.
 
 ### Model support is intentionally narrow
 
@@ -56,17 +62,32 @@ readiness](../../docs/design/OPERATIONS_READINESS.md).
 
 The schema accepts action policy values such as `automatic`, `approval`,
 `deny`, and `simulate`, but the current catalog/runtime path does not provide
-complete independent enforcement semantics for all four values. Data retention
+complete, separately enforced behavior for all four values. Data retention
 is an operational release concern and the SituationSpec intentionally does not
 expose a retention or telemetry control until the runtime can enforce it.
+
+### Domain state has a narrower implemented model
+
+The current engine keeps a stable Situation/occurrence identity for the
+tenant, deployment, partition, type, and entity; it does not automatically
+create a new occurrence after resolution. Confidence starts at `1.0` without
+a calibrated update mechanism, and subsequent primary-hypothesis change
+tracking is not implemented. Completeness is an evidence-processing status,
+not a certified all-source coverage measure; the trigger `completeness` field
+is not independently enforced by the current scheduler.
+
+See [the domain model](../learn/domain-model.md),
+[state initialization](../../internal/situations/situations.go),
+[trigger state view](../../internal/cognition/engine_cel.go), and
+[trigger gates](../../internal/cognition/engine_trigger.go).
 
 ### Operator inspection and redrive are internal capabilities
 
 Durable quarantine, approval, reconciliation, and explainability records exist
-inside the runtime, but the current public CLI and HTTP surface does not expose
+inside the runtime, but the current public CLI and HTTP API do not expose
 general inspection, approval resolution, unknown-outcome reconciliation, or
 quarantine redrive commands. A deployment needs approved internal tooling and
-runbooks for those actions; they are not turnkey public operations.
+runbooks for those actions; they are not available as ready-to-use public operations.
 
 ## Deliberate non-goals
 

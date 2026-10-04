@@ -1,8 +1,8 @@
 # Replay and shadow modes
 
-Replay is an effect-safety boundary. The default path reconstructs deterministic
-stream behavior; other modes are explicit library/runtime capabilities and are
-not currently exposed as separate CLI subcommands.
+Replay reprocesses evidence without performing production effects. The
+default mode rebuilds stream history. Other modes are available through
+internal APIs and are not exposed as separate CLI subcommands.
 
 ## Modes
 
@@ -15,32 +15,38 @@ not currently exposed as separate CLI subcommands.
 
 ## Mode separation
 
+Which boundary can replay reach?
+
 ```mermaid
 flowchart LR
-    T["Trace + SituationSpec"] --> R["Replay runtime"]
-    R --> D["Deterministic\nstream history"]
-    R --> L["Recorded ledger\nread-only"]
-    R --> S["Shadow executor\nreport-only"]
-    R --> C["Counterfactual simulator\nexplicit capability"]
-    D --> H["Versions hash"]
-    L --> H
-    S --> H
-    C --> H
-    R -. forbidden .-> X["Production effector"]
+    T["Trace and spec"] --> R["Replay runtime"]
+    R --> O["History or evaluation report"]
+    E["Production effectors: excluded"]
 ```
 
-Text equivalent: one trace and spec feed deterministic, recorded, shadow, or
-explicit counterfactual branches; every branch produces evidence or simulator
-output, while production effectors remain outside the replay graph.
+Text equivalent: replay consumes evidence and produces history or evaluation
+artifacts. The isolated production-effector node has no execution edge from
+replay. An explicit counterfactual simulator is a separate capability, described
+in the mode table. Source: [replay implementation](../../internal/replay/replay.go).
 
-The replay package is constructed without credentials, effectors, or a
-resolver. The runtime reports `EffectsAllowed=false` for all modes. A
-counterfactual simulator is a distinct capability from a production effector.
+Replay is constructed without production credentials, effectors, or an effect
+resolver. It reports `EffectsAllowed=false` for all modes.
+
+## Why keep replay separate?
+
+Reprocessing evidence should not create another real ticket or repeat a device
+change. The replay boundary lets a maintainer compare stream history or evaluate
+reasoning while keeping production effects excluded by construction.
+
+Deterministic replay proves repeatable stream behavior. It does not prove that
+a model always gives the same answer, that a simulation predicts a physical
+system, or that a new executor is ready for production. Each needs its own
+evaluation evidence.
 
 ## Shadow evaluation
 
 Shadow mode lets a new executor or prompt inspect the same snapshot and produce
-a report-only artifact. It can be scored and compared without entering the
+a report for comparison. It can be scored and compared without entering the
 policy gateway. The active/shadow dispatch policy is also bound to the episode
 request and checked at governance boundaries.
 

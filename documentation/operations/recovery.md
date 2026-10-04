@@ -1,8 +1,7 @@
 # Recovery runbook
 
-This is the safe recovery sequence for the current local runtime. It is a
-runbook outline, not a replacement for a deployment-specific disaster-recovery
-plan.
+Follow this sequence when recovering the local runtime. A production
+deployment also needs a disaster-recovery plan tested in its own environment.
 
 ## 1. Preserve evidence
 
@@ -33,11 +32,11 @@ deleting durable rows.
 
 ## 4. Handle input quarantine and gaps
 
-Malformed/schema-invalid input is quarantined. A released row is validated
-again before redrive. Gap records preserve a discontinuity and must be resolved
-from the source of truth; they are not synthetic events.
+Malformed input and input that fails schema validation are quarantined. A released row is validated
+again before redrive. Gap records identify missing input. Resolve them using authoritative source
+data rather than inventing replacement events.
 
-The current public CLI and HTTP surface does not expose quarantine release or
+The current public CLI and HTTP API do not expose quarantine release or
 redrive. The underlying release path is an internal API; use only approved
 deployment tooling and preserve the audit trail. Do not invent a public
 endpoint or edit the database directly.
@@ -58,7 +57,7 @@ database with ordinary file-copy tools. In an isolated restore directory, open
 the backup read-only, run `PRAGMA integrity_check`, compare the migration
 version and highest event/notification cursors with the source, then restore
 only while the runtime is stopped. Start the runtime and verify readiness before
-resuming ingress. The repository does not provide a turnkey backup/restore CLI.
+resuming ingress. The repository does not provide a backup or restore CLI.
 
 ## 7. Notification recovery
 

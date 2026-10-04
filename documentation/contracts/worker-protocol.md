@@ -1,7 +1,7 @@
 # Worker protocol
 
-The current-v1 worker protocol is a Protobuf/gRPC contract for separate Go
-EpisodeWorker processes. The source is
+The v1 worker protocol uses Protobuf and gRPC to communicate with a separate
+Go EpisodeWorker process. The source is
 [`docs/design/contracts/runtime-v1.proto`](../../docs/design/contracts/runtime-v1.proto);
 generated Go output is under
 [`proto/agenticstream/runtime/v1/`](../../proto/agenticstream/runtime/v1/).
@@ -19,8 +19,8 @@ EvidenceTools.Call(EvidenceToolCall) -> EvidenceToolResult
 A worker must declare compatible protocol/contract versions, a stable worker
 identity, non-interactive execution, and requested features. The current
 runtime validates the versions, identity, non-interactive flag, and requested
-feature compatibility. Protocol fields for episode kinds and replay/shadow
-capabilities exist, but their full semantic enforcement is not yet complete.
+feature compatibility. The protocol also declares episode kinds and replay/shadow capabilities, but
+the runtime does not yet fully enforce what all those fields promise.
 
 ## Episode request
 
@@ -33,9 +33,9 @@ The request binds:
 - deadline, lane, kind, risk ceiling, allowed Intent types;
 - evidence time range and capability token;
 - attempt ID, fence, cancellation/supersession keys, trace context, and
-  active/shadow dispatch policy. Some capability fields are protocol data whose
-  runtime enforcement remains a release gap; do not infer support solely from
-  their presence in the message.
+  active/shadow dispatch policy. Some capability fields are present in the message
+  but are not fully enforced. Check current runtime support before relying
+  on them.
 
 ## Episode events
 

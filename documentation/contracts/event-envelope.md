@@ -1,11 +1,12 @@
 # Event envelope and ingress
 
-Ingress converts source data into the normalized event envelope before the
-event log accepts it. The envelope is evidence, not an executable command.
+Ingress converts source data into a common event format, the **envelope**,
+before the event log accepts it. The envelope carries an observation and its
+identity, source, and times. It does not carry permission to execute a command.
 
 ## Normalized envelope
 
-The normalized JSONL shape contains:
+Each normalized JSON Lines (JSONL) record contains:
 
 | Field | Role |
 | --- | --- |
@@ -29,15 +30,19 @@ payload type and declared fields.
 - **Simulator JSONL:** the streams-simulator `trace-record-v0.1` adapter,
   selected with `--trace-format simulator` on live workflows.
 
+- **Live normalized JSONL socket:** `serve --live-socket` accepts normalized
+  envelopes over a Unix domain socket. It is mutually exclusive with `--trace`
+  and requires `--trace-format normalized`.
+
 HTTP, Kafka, NATS, and MQTT adapters are not part of the current runtime.
 
 ## Data quality behavior
 
 Malformed or schema-invalid input is retained in bounded quarantine with a
 stable line identity where possible. Released rows are validated again before
-redrive. Duplicate IDs are ignored only when their payload digest agrees;
-conflicting reuse is rejected. Event gaps preserve discontinuity rather than
-inventing evidence.
+**redrive**, an attempt to process them again. Duplicate IDs are ignored only
+when their payload digest agrees; conflicting reuse is rejected. Gap records
+identify missing input; they do not invent replacement evidence.
 
 ## Example envelope
 
@@ -63,6 +68,7 @@ inventing evidence.
 - Envelope type and validation: [`internal/contractsv1/envelope.go`](../../internal/contractsv1/envelope.go)
 - JSONL adapter: [`internal/ingress/jsonl.go`](../../internal/ingress/jsonl.go)
 - Simulator adapter: [`internal/ingress/simulator.go`](../../internal/ingress/simulator.go)
+- Live socket adapter: [`internal/ingress/live_socket.go`](../../internal/ingress/live_socket.go)
 - Schema registry data: [`internal/eventschema/registry_data.json`](../../internal/eventschema/registry_data.json)
 
 ## Next reads

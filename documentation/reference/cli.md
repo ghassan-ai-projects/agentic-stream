@@ -61,7 +61,7 @@ Runs one owner-scoped live batch and prints pipeline counters.
 
 ## `serve`
 
-Starts the live runtime and HTTP readiness/observation surface.
+Starts the live runtime with HTTP health checks and notifications.
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
@@ -96,8 +96,9 @@ For continuous ingestion, supply `--spec` with exactly one of `--trace` or
 `--live-socket`. The live socket accepts normalized JSONL from reconnecting
 clients and is the non-replay source for emulator and physical profiles. A
 subscriber token is required even when no SSE client is connected. The live
-socket requires `--trace-format normalized`. Non-loopback listeners are refused
-without an authenticated deployment proxy.
+socket requires `--trace-format normalized`. Non-loopback `--listen` values are
+always refused. For remote access, an authenticated deployment proxy must
+forward to the loopback service.
 
 `run-live` always consumes a trace and therefore rejects emulator and physical
 profiles. `serve` can open a typed gateway link for those profiles only when

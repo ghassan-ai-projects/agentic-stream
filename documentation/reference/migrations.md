@@ -1,7 +1,7 @@
 # Migration reference
 
 The runtime applies numbered SQLite migrations from
-[`migrations/`](../../migrations/). The current tree contains 28 migrations.
+[`migrations/`](../../migrations/). The current tree contains 30 migrations.
 
 ## Migration families
 
@@ -9,7 +9,13 @@ The sequence establishes the initial event/Situation/episode/action records,
 then adds trigger deltas, policy audits, lifecycle fencing, reconsiderations,
 notifications, evidence ledgers, runtime ownership, quarantine/redrive,
 cost/interlock controls, mode/shadow state, epoch control, calibration, and
-episode rebinding.
+episode rebinding, paired shadow comparisons, and device authority,
+reconciliation, and soak evidence.
+
+The current head is
+[`030_authority_reconciliation_soak.sql`](../../migrations/030_authority_reconciliation_soak.sql);
+[`029_shadow_comparisons.sql`](../../migrations/029_shadow_comparisons.sql)
+adds the preceding comparison records.
 
 The filenames are the precise history. Read the SQL and storage tests before
 depending on a column or status value.

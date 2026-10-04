@@ -1,8 +1,9 @@
 # Decision and Intent contract
 
-The Decision contract is the model-facing output boundary. It is a proposal,
-not an authorization. The runtime validates it, then policy evaluates each
-Intent independently.
+A **Decision** is the structured result returned by an executor. It contains
+reasoning and proposed **Intents**. The runtime validates the Decision, then
+policy evaluates each Intent separately. A valid proposal is not permission
+to execute it.
 
 ## Shared v1 schemas
 
@@ -38,9 +39,9 @@ An invalid, stale, or superseded result is rejected and recorded with a reason.
 
 ## Risk classes
 
-Intent risk is explicit (`R0` through `R4`). The exact policy and approval
-requirements are spec- and policy-versioned. Do not infer that a low-risk
-Intent is automatically safe for every deployment.
+Intent risk is explicit (`R0` through `R4`). The applicable spec and policy
+versions determine approval requirements. Do not infer that a low-risk Intent is
+automatically safe for every deployment.
 
 ## The safety boundary
 

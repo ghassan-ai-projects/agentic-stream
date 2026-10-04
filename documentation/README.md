@@ -1,71 +1,37 @@
 # Agentic Stream documentation
 
-Agentic Stream is a streaming-native agent runtime: it turns unbounded
-evidence into durable, versioned **Situations**, then starts bounded agent
-**episodes** only when a deterministic cognitive scheduler says reasoning is
-useful. Agents return typed Decisions and Action Intents; deterministic policy
-and action planes decide what may execute.
+Agentic Stream watches evidence over time, keeps a record of the condition it
+reveals, and starts a limited agent reasoning session when that would be useful.
+A separate policy and action path checks proposed changes before they execute.
 
-This is the curated public documentation set for the current repository. The
-repository is an implementation-ready development snapshot, not a declaration
-of a stable production release. Read [limitations](overview/limitations.md)
-before building on it.
+This is the public reading path for an unreleased development snapshot. See
+[current status](overview/status.md) and [limitations](overview/limitations.md)
+for the boundary between implemented behavior and production qualification.
 
-## Start here
+## Start with the idea
 
-- [Product](overview/product.md) — what the runtime is, who it is for, and what
-  it deliberately does not do.
-- [Core concepts](overview/concepts.md) — the vocabulary and mental model.
-- [Quickstart](getting-started/quickstart.md) — build, validate, replay, and
-  run the first trace.
-- [Current status](overview/status.md) — what is implemented, partial, or
-  deferred, with code evidence.
-- [Limitations](overview/limitations.md) — release posture and fault-model
-  boundaries.
+![Evidence becomes versioned Situation state; useful changes may start an episode; permitted proposals enter governed action.](assets/runtime-story.svg)
 
-## Choose a path
+Observations build a **Situation**, the evolving condition. A meaningful change
+may start an **episode**, a bounded reasoning session. Its proposal reaches an
+effect only through policy and governed dispatch. Each arrow is conditional;
+not every reading needs reasoning, and not every proposal may execute.
+[Diagram source](assets/runtime-story.mmd) ·
+[Architecture evidence](architecture/overview.md).
 
-### I want to run it
+## Three starting points
 
-- [Install and build](getting-started/install.md)
-- [Quickstart](getting-started/quickstart.md)
-- [Live runtime](getting-started/live-runtime.md)
-- [Predictive-maintenance walkthrough](guides/predictive-maintenance.md)
-- [Troubleshooting](guides/troubleshoot.md)
-
-### I want to understand it
-
-- [Architecture overview](architecture/overview.md)
-- [Business modules and ownership](architecture/modules.md)
-- [Durability and recovery](architecture/durability.md)
-- [Worker boundary](architecture/worker-boundary.md)
-- [Security model](architecture/security-model.md)
-- [Product invariants](architecture/invariants.md)
-- [Public design reading order](design/README.md)
-
-### I want to integrate or extend it
-
-- [Author a SituationSpec](getting-started/first-situation.md)
-- [Add a domain](guides/add-a-domain.md)
-- [Build a Go worker](guides/build-a-go-worker.md)
-- [Contract index](contracts/README.md)
-- [CLI reference](reference/cli.md)
-- [HTTP and SSE reference](reference/http-api.md)
-
-### I want to operate or review it
-
-- [Operations](operations/README.md)
-- [Recovery runbook](operations/recovery.md)
-- [Security hardening](operations/security-hardening.md)
-- [Telemetry](operations/observability.md)
-- [Quality and release gates](governance/quality.md)
-- [Release evidence](governance/release.md)
-- [Roadmap](roadmap.md)
+| Your goal | Start here |
+| --- | --- |
+| Understand the concepts, how it works, and why | [Guided learning path](learn/README.md) |
+| Build and run the local example | [Quickstart](getting-started/quickstart.md) |
+| Check an exact contract or command | [Reference](reference/README.md) and [contracts](contracts/README.md) |
 
 ## Documentation map
 
 | Area | Purpose |
 | --- | --- |
+| [Learn](learn/) | Concepts explained through a motor story, with gradually deeper diagrams |
 | [Overview](overview/) | Product, concepts, status, compatibility, limitations |
 | [Getting started](getting-started/) | Build and run the supported local workflows |
 | [Architecture](architecture/) | Runtime shape, durability, trust boundaries, invariants |
@@ -109,6 +75,7 @@ and link to the evidence.
 
 ## Next reads
 
+- [Start learning](learn/why.md)
 - [Product](overview/product.md)
 - [Quickstart](getting-started/quickstart.md)
 - [Current status](overview/status.md)

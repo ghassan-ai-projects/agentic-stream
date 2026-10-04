@@ -7,7 +7,7 @@ historical design map where the code has chosen a more specific package name.
 | --- | --- |
 | `cmd/agentic-stream/` | CLI entrypoint and runtime wiring |
 | `internal/spec/` | SituationSpec schema, compiler, CEL, deployment persistence |
-| `internal/ingress/` | normalized and simulator JSONL adapters |
+| `internal/ingress/` | normalized/simulator JSONL files and live normalized JSONL Unix socket |
 | `internal/eventlog/` | append-only events, validation, dedup, quarantine, gaps |
 | `internal/engine/` | deterministic partitioned stream processing |
 | `internal/operators/` | aggregates, slopes, missing-heartbeat and related features |

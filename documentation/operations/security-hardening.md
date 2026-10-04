@@ -1,11 +1,13 @@
 # Security hardening checklist
 
-This checklist separates runtime controls from deployment controls. A green
-unit suite is not a deployment approval.
+Use this checklist to preserve runtime safeguards and configure the host,
+network, and credentials. Passing unit tests alone does not approve a
+production deployment.
 
 ## Runtime controls to preserve
 
-- Bind `serve` to loopback or place it behind an authenticated proxy.
+- Bind `serve` to loopback; for remote access, use an authenticated proxy
+  forwarding to that loopback service.
 - Require and rotate `AGENTIC_STREAM_SUBSCRIBER_TOKEN`.
 - Set `AGENTIC_STREAM_CONTROL_TOKEN` only through a protected secret source;
   audit drain/kill actions.

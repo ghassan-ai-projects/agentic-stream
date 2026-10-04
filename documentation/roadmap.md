@@ -1,11 +1,12 @@
 # Roadmap
 
-This roadmap is a sequencing view, not a promise. The canonical current
-posture is [`governance/release-status.json`](governance/release-status.json).
+This roadmap shows the planned order of work. It is not a delivery commitment.
+For the authoritative release status, read [`governance/release-status.json`](governance/release-status.json).
 
 ## Shipped in the current development tree
 
-- Deterministic JSONL stream processing and replay.
+- Deterministic JSONL stream processing and replay; live normalized JSONL
+  ingress over a Unix socket.
 - SituationSpec compiler, schema validation, canonical digests, and domain
   data registries.
 - Event-time windows/operators, immutable Situation versions, and source-health
@@ -23,6 +24,8 @@ posture is [`governance/release-status.json`](governance/release-status.json).
 - Complete backup/restore, WAL, disk-full, crash, and owner-takeover rehearsal.
 - Qualify long-running workload behavior and capacity limits.
 - Review and qualify concrete external effectors and reconciliation paths.
+  Typed device-gateway, authority, and reconciliation code is present; physical
+  qualification remains a separate evidence gate.
 - Finish deployment-specific worker/TLS/key-rotation evidence.
 - Publish release artifacts, compatibility policy, checksums/provenance/SBOM,
   and rollback instructions.

@@ -1,13 +1,13 @@
 # Runtime operations
 
-Audience: local operators. Scope: start, serve, drain, kill, and verify the
-current single-node runtime; deployment-specific qualification remains out of
-scope.
+Use this guide to start the local runtime, check readiness, and apply drain
+or kill controls. Qualifying a production deployment requires separate
+evidence for its configuration and environment.
 
 ## Start a bounded batch
 
-For a supervised one-shot proof, use `run-live` with a fresh or intentionally
-owned SQLite path:
+For one supervised batch, use `run-live` with a new database or one you have
+confirmed is owned by this runtime:
 
 ```bash
 ./bin/agentic-stream run-live \
@@ -61,7 +61,7 @@ The handler compares the full `Authorization` header value to the configured
 token. Drain refuses new admission. Kill also refuses later decisions from
 the killed policy epoch. Treat these as operator actions and audit their use.
 
-## Not a current surface
+## Available routes
 
 The design archive lists broader CRUD and inspection HTTP APIs. The current
 handler exposes only the routes in the [HTTP reference](../reference/http-api.md).

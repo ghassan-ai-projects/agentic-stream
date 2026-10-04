@@ -1,25 +1,39 @@
 # Deployment model
 
-The current deployment target is intentionally small: one Go runtime process,
-one SQLite WAL database, optional local or separate Go worker processes, and a
-loopback HTTP surface.
+The current deployment uses one Go runtime process and one local SQLite
+database in write-ahead log (WAL) mode. It can use a separate Go worker and
+serves its HTTP API on loopback.
 
 ## Components
 
+What runs together, and what is optional?
+
 ```mermaid
-flowchart TB
-    R["agentic-stream runtime"] --> DB["SQLite WAL"]
-    R --> API["Loopback HTTP\nhealth + metrics + SSE + controls"]
-    R --> E["Simulated effector / integration boundary"]
-    R -->|optional private UDS + mTLS| W["Go EpisodeWorker"]
-    R -->|optional private UDS + HMAC capability| T["EvidenceTools"]
-    R -->|optional OTLP/HTTP| O["OpenTelemetry collector"]
+flowchart TD
+    R["Go runtime"] --> DB["Local SQLite WAL"]
+    R --> API["Local HTTP API"]
+    R -->|optional| W["Go worker"]
+    R --> E["Effect adapter"]
 ```
 
-Text equivalent: one runtime owns SQLite, local HTTP, and the simulated
-effector; optional private worker/EvidenceTools sockets and OTLP export extend
-the process without changing the authority boundary. External effectors remain
-deployment-specific integrations that need separate review.
+Text equivalent: one runtime owns local durable state and the HTTP API.
+An optional Go worker performs bounded episodes. The configured adapter supplies
+the governed effect boundary. EvidenceTools and telemetry extend these paths;
+they do not introduce a second state owner.
+Source: [runtime composition](../../internal/runtime/pipeline.go) and
+[worker boundary](../architecture/worker-boundary.md).
+
+## Why start with one node?
+
+State, checkpoint, and queued-work updates can share a local transaction. That
+makes ordering and crash recovery easier to establish before distributed
+coordination is added. Clear module ownership keeps the application
+maintainable without requiring a separate service for each component.
+
+The tradeoff is bounded capacity and availability. Virtual partitions are
+logical units inside the runtime; they are not a broker or multi-region
+replication system. A separate worker does not distribute SQLite ownership.
+See [the design tradeoffs](../learn/design-choices.md).
 
 ## Operational assumptions
 
@@ -28,14 +42,14 @@ deployment-specific integrations that need separate review.
 - A deployment proxy, if used, authenticates and rate-limits remote access.
 - Worker sockets and evidence sockets are private and protected by filesystem
   permissions and/or TLS/HMAC configuration.
-- External effectors are idempotent or reconcilable and have their own health,
-  timeout, and credential rotation story.
+- External effectors handle duplicate requests or support reconciliation;
+  deployments define health checks, timeouts, and credential rotation.
 
 ## Deferred scale-out
 
 Kafka, NATS, MQTT, remote fleet management, multi-region state, and a UI are
-not current deployment surfaces. The single-node path must establish stable
-event-time, replay, policy, and action semantics before adding distributed
+not supported deployment options today. The single-node path must establish stable
+event-time processing, replay, policy, and action behavior before adding distributed
 coordination.
 
 ## Source evidence

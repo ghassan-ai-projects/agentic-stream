@@ -6,40 +6,53 @@ to wake up for every incoming event.
 
 ## Admission path
 
+Why does one version start work while another does not?
+
 ```mermaid
 flowchart TD
-    V["Published Situation version"] --> T["Evaluate trigger CEL"]
-    T -->|false| N["Record ignored / explainable"]
-    T -->|true| S["Compute score and threshold"]
-    S -->|below threshold| N
-    S -->|eligible| H["Material delta + freshness + completeness"]
-    H -->|blocked| B["Defer / reject with reason"]
-    H -->|eligible| Q["Debounce, cooldown, coalesce"]
-    Q -->|existing opportunity| C["Coalesce or supersede"]
-    Q -->|new opportunity| A["Admit bounded episode"]
-    A --> E["Immutable snapshot + budget + fence"]
+    V["Situation version"] --> T["Evaluate trigger and score"]
+    T -->|ineligible| R["Record reason; no episode"]
+    T -->|eligible| Q["Queue with timing and capacity gates"]
+    Q -->|due and admissible| E["Create bounded episode"]
 ```
 
-Text equivalent: a published version is evaluated, scored, checked for
-freshness/completeness, then debounced/coalesced before a bounded episode is
-admitted with a snapshot, budget, and fence.
+Text equivalent: an ineligible version records a reason without creating an
+episode. An eligible version can enter a timed queue; only due, admissible work
+becomes an episode. This is a conceptual summary, not the exact ordering of
+every validation check. Source: [cognition](../../internal/cognition/) and
+[admission](../../internal/admission/).
 
-The scheduler records ignored, deferred, coalesced, admitted, canceled, and
-expired outcomes. This is how the runtime makes cognitive cost and behavior
-explainable.
+## Why a scheduler instead of a model call per event?
+
+The scheduler spends reasoning effort on declared opportunities. Timing and
+supersession prevent a long queue of outdated questions from becoming the
+model's workload. Recorded trigger and admission reasons also explain why the
+runtime stayed quiet.
+
+This adds domain choices: a trigger or budget that is too restrictive can miss
+useful attention; a loose one can spend budget on repeated conditions. Use
+replay and the durable evaluations to review those choices before treating them
+as behavior qualified for a production deployment.
 
 ## Controls
 
 - **Trigger condition:** deterministic restricted CEL.
 - **Score/threshold:** avoids waking an executor for weak evidence.
-- **Material delta:** allows a trigger to require a meaningful change.
-- **Debounce:** enforces a not-before period after an admission.
-- **Cooldown:** limits repeated opportunities over a time horizon.
-- **Coalescing:** merges pending work for the same logical condition.
+- **Material delta:** allows a trigger to require a meaningful change from
+  the most recently evaluated version. The durable `last_reasoned_version`
+  marker advances even when the evaluation starts no episode.
+- **Debounce:** sets the earliest run time after a queue opportunity is created.
+- **Cooldown:** delays work until the configured interval after the latest trigger admission.
+- **Coalescing:** replaces open work for the same Situation and trigger; it
+  does not merge old request payloads.
 - **Capacity:** defers when bounded concurrency or budget capacity is used.
-- **Freshness/completeness:** prevents reasoning from stale or uncertain state.
-- **Supersession:** cancels work whose snapshot no longer represents the live
-  Situation.
+- **Freshness:** validates the live snapshot before dispatch, with bounded
+  pre-attempt rebinding where needed; later acceptance and policy checks remain.
+- **Evidence status:** completeness is recorded, but the trigger `completeness`
+  field is not independently enforced by the current evaluation path. Explicit
+  feature conditions, such as the motor heartbeat check, supply actual gates.
+- **Supersession:** eligible replacement work coalesces older open items for
+  the same Situation and trigger and cancels their live attempts.
 
 ## Episode contract
 
@@ -52,11 +65,34 @@ Budgets cover wall time, model calls, input/output tokens, tool calls,
 tool-result bytes, provider retries, and cost where configured. Budget updates
 are durable and a late provider response cannot extend the deadline.
 
+## Snapshot binding and attempts
+
+An episode is bound to one immutable snapshot at a time. Before starting an
+attempt, the runner may repoint a stale binding to a validated live snapshot, in
+the same transaction as attempt start. Identity, budget, trigger delta, and
+reconsideration evidence are preserved. The durable limit is three rebindings
+across retries; invalid live evidence abandons the episode as `rebind_failed`.
+Each started attempt uses its fixed request. See
+[ADR-013](../../docs/design/DECISIONS.md#adr-013-re-bind-stale-episodes-to-the-live-situation-version-before-dispatch)
+and [rebinding tests](../../internal/episodes/rebind_test.go).
+
 ## Cancellation and reconsideration
 
-Material supersession cancels an active attempt. The worker's attempt ID and
-fence ensure a late result cannot be accepted. A late correction can create one
-deduplicated reconsideration episode bound to the corrected Situation version.
+Eligible replacement work can supersede an episode and cancel its attempt.
+The worker's attempt ID and fence prevent acceptance of obsolete output.
+
+For `correct_and_reconsider`, a verified corrected snapshot selects succeeded
+Commands from the latest approved Intent version at or before the superseded
+version. Each eligible Command can create reconsideration work, deduplicated
+by Situation, superseded version, and Command. This selection is a reason to
+review the effect; it is not a domain proof that the effect was wrong.
+
+The correction remains admission evidence even if a later live snapshot is
+used by a rebound attempt. Its accepted Decision is recorded against that live
+version. Any compensating proposal must pass governance as a new Intent;
+reconsideration does not reverse an effect automatically. Source:
+[selection](../../internal/cognition/reconsideration_evidence.go) and
+[admission/deduplication](../../internal/cognition/reconsideration.go).
 
 ## Source evidence
 

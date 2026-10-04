@@ -2,7 +2,7 @@
   "schema_version": 1,
   "channel": "development",
   "version": "unreleased",
-  "as_of": "2026-08-17",
+  "as_of": "2026-10-04",
   "stable_release": false,
   "implemented": [
     "deterministic JSONL replay",
@@ -13,7 +13,9 @@
     "policy gateway and idempotent action outbox",
     "Go current-v1 worker boundary",
     "effect-safe replay and shadow library modes",
-    "loopback health, metrics, and cursor-resumable SSE"
+    "loopback health, metrics, and cursor-resumable SSE",
+    "live normalized JSONL ingress over a Unix domain socket",
+    "typed device-gateway boundary with authority and reconciliation records"
   ],
   "partial": [
     "environment-level production qualification",
@@ -22,7 +24,8 @@
     "remote worker deployment",
     "complete Intent policy-mode enforcement",
     "runtime enforcement for spec retention/telemetry controls",
-    "packaged operator inspection, approval, reconciliation, and redrive tooling"
+    "packaged operator inspection, approval, reconciliation, and redrive tooling",
+    "physical device qualification and hardware-in-the-loop evidence"
   ],
   "deferred": [
     "Kafka, NATS, and MQTT ingress",

@@ -1,12 +1,14 @@
 # Operational observability
 
-Audience: operators and incident reviewers. Scope: health, metrics, telemetry,
-durable notifications, and the limits of current inspection surfaces.
+Use health checks and telemetry to observe the running service. Use stored
+records to explain its decisions, including after a restart. This guide also
+identifies the inspection tools that are not yet exposed publicly.
 
 ## Health and metrics
 
-Use liveness and readiness for process/service routing, and `/metrics` for
-low-cardinality runtime signals. Metrics include pipeline counters and bounded
+Use liveness to check that the process is running and readiness to decide
+whether it can accept work. `/metrics` reports counters and latency measures
+with a bounded set of labels. Metrics include pipeline counters and bounded
 latency/stale-rejection observations; they are not a durable replacement for
 the SQLite ledger.
 
@@ -37,8 +39,9 @@ curl -N \
 ```
 
 Persist the numeric SSE `id` and resume with `Last-Event-ID`. A subscriber is
-disconnected when its bounded lag is exceeded. Cursor expiry, poison retries,
-and audited skips are explicit failure states.
+disconnected when its bounded lag is exceeded. Expired cursors, repeated
+delivery failures for an invalid notification, and audited skips are recorded
+explicitly.
 
 ## Explain a decision
 

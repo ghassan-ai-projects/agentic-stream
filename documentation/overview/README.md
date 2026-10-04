@@ -14,6 +14,8 @@ runtime.
 
 ## Next reads
 
+- [Guided learning path](../learn/README.md)
+
 - [Install and build](../getting-started/install.md)
 - [Quickstart](../getting-started/quickstart.md)
 - [Architecture](../architecture/README.md)

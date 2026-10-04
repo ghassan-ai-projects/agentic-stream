@@ -1,8 +1,8 @@
 # SituationSpec v1
 
-`SituationSpec` is the domain authoring contract. It is YAML or JSON at the
-edge, compiled into canonical JSON, semantically checked, and bound to a
-`sha256:` digest before the runtime deploys it.
+A `SituationSpec` defines how the runtime follows a domain condition. You
+write it in YAML or JSON. The compiler checks its structure and rules, converts
+it to canonical JSON, and computes a `sha256:` digest before deployment.
 
 ## Runtime authority
 
@@ -29,7 +29,7 @@ cognition: {}
 actions: {}
 ```
 
-The actual example is the safer starting point:
+Start from the working example:
 [`predictive-maintenance.situation.yaml`](../../docs/design/examples/predictive-maintenance.situation.yaml).
 
 ## Compilation
@@ -50,8 +50,9 @@ agentic-stream validate path/to/spec.yaml
 agentic-stream validate --json path/to/spec.yaml
 ```
 
-The digest is content-addressed. Prompt/objective and catalog changes are part
-of the identity where the runtime binds them to an episode.
+The digest identifies the compiled content. An episode also records digests
+for its prompt, objective, and catalogs so the runtime can check exactly which
+definitions it used.
 
 ## Authoring constraints
 
