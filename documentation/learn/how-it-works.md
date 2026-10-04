@@ -1,17 +1,19 @@
 # From a reading to a result
 
-For new readers: follow a motor observation through the system. The first
-step uses the committed fixture; later steps describe the possible runtime
-path rather than claiming that this one reading executes an action.
+Follow one motor reading through the system. The first step uses the
+repository's test data. The later steps explain what could happen as the
+condition develops; this reading alone does not cause an external action.
 
 ## 1. Accept evidence
 
-The opening trace contains a vibration reading for `motor-17`: `5.0 mm/s`.
-The event includes an identity, tenant, source, and time. Ingress, the input
-boundary, checks the envelope and payload schema before the event log accepts it.
+The opening trace contains a vibration reading for `motor-17`: `5.0 mm/s`. The
+event includes an identity, tenant, source, and time. **Ingress**, the input
+handler, checks the event's identifying fields and payload against their schemas
+before the event log accepts it.
 
-An exact duplicate is recognized by stable identity and matching payload digest.
-A conflicting reuse of that identity is rejected. A reading remains evidence;
+The runtime recognizes a duplicate when its event identity and payload digest
+match the stored event. It rejects reuse of that identity with a different
+payload. A reading remains evidence;
 it cannot ask the runtime to execute a command.
 
 Source: [opening trace](../../examples/predictive-maintenance/testdata/trace-opening.jsonl)
@@ -24,7 +26,7 @@ time rules, calculations, lifecycle, and triggers. A **window** selects the
 readings used in a calculation. An **operator** calculates a feature such as
 vibration over that window. A **reducer** uses features to update Situation state.
 
-The committed motor fixture opens a bearing-degradation Situation when its
+The motor example opens a bearing-degradation Situation when its
 opening rule is met. Its initial phase is `candidate`. Later phase transitions
 require supporting conditions to last for their declared durations.
 
@@ -51,13 +53,13 @@ Source: [reasoning and admission](reasoning.md).
 ## 4. Evaluate the proposal
 
 The executor can return a typed **Decision** containing an **Intent**, such as
-proposing a maintenance ticket. The runtime validates its identity, snapshot
-binding, schema, and allowed vocabulary. Policy then checks the proposal
+proposing a maintenance ticket. The runtime checks which episode and snapshot it belongs to, whether its
+structure is valid, and whether the Intent type is allowed. Policy then checks the proposal
 against current state and permissions.
 
 An accepted Intent can become a durable **Command**. The dispatcher checks
-readiness again before calling the configured effector, the adapter that
-performs the change. It records success, failure, or an uncertain outcome.
+current permission and readiness again before calling the configured
+**effector**, the adapter that performs the change. It records success, failure, or an uncertain outcome.
 
 Source: [the governed action path](safe-actions.md).
 

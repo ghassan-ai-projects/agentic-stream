@@ -1,8 +1,8 @@
 # Who owns state and authority?
 
-A useful diagnosis and permission to change the world are separate results.
-Agentic Stream gives each kind of state a clear owner so a worker response,
-restart, or delayed provider reply cannot silently become new authority.
+A diagnosis explains a condition. Permission determines what may be done
+about it. Agentic Stream assigns those responsibilities to separate owners
+and records their decisions so delayed replies and restarts remain traceable.
 
 ## Three planes, three responsibilities
 
@@ -12,7 +12,8 @@ restart, or delayed provider reply cannot silently become new authority.
 | Cognition | Eligibility, queueing, admission, and bounded reasoning | Validated Decisions and proposed Intents | Diagnose a useful change within a fixed budget |
 | Policy and action | Permission, dispatch, and effect evidence | Commands and outcomes | Permit a ticket request, then record what the provider did |
 
-The planes connect through durable records. A Decision does not directly edit
+The runtime calls these groups **planes**. They exchange records stored in the
+database, so their decisions survive a restart. A Decision does not directly edit
 Situation facts, and a Command's success does not itself prove that the
 condition has improved. New observations must establish that change through
 the stream rules. Source: [architecture](../architecture/overview.md)
@@ -26,13 +27,14 @@ request or, in another qualified integration, a device operation. The model's
 proposal cannot turn an arbitrary target string into permission.
 
 A **capability** describes an allowed operation and its constraints. A device
-**binding** connects a governed Command to the concrete operation and target.
-A device **session** owns communication with that device. **Target authority**
-records which owner may control it, with boot, reconciliation, and safety
-barriers. Policy approval and device authority are separate requirements.
+**binding** connects a permitted Command to a specific operation and target. A
+device **session** owns communication with that device. **Target authority**
+records which owner may control it, and which boot, reconciliation, and safety
+checks must pass. Policy approval and device authority are separate
+requirements.
 
-For physical effects, the concrete adapter, runtime readiness checks, and
-authority records must agree. Having adapter code is not proof that a particular
+Before a physical effect, the adapter, readiness checks, and authority records
+must all permit the operation. Having adapter code is not proof that a particular
 piece of hardware is qualified. Source: [device adapters](../../internal/device/doc.go),
 [target authority](../../internal/authority/doc.go), and
 [limitations](../overview/limitations.md).
@@ -78,8 +80,8 @@ telemetry helps observe execution but does not replace those records.
 
 **Qualification** asks whether the configuration and integration are suitable
 for the intended operating environment. Calibration activation and report-only
-shadow comparisons are separate evidence mechanisms. Passing a synthetic motor
-test does not qualify a physical installation.
+shadow comparisons are separate evidence mechanisms. Passing a motor
+test with simulated inputs does not qualify a physical installation.
 Source: [observability](../design/observability.md),
 [qualification owner](../../internal/qualification/doc.go), and
 [current release posture](../overview/status.md).

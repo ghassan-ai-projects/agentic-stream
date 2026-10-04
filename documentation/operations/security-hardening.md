@@ -1,7 +1,8 @@
 # Security hardening checklist
 
-This checklist separates runtime controls from deployment controls. A green
-unit suite is not a deployment approval.
+Use this checklist to preserve runtime safeguards and configure the host,
+network, and credentials. Passing unit tests alone does not approve a
+production deployment.
 
 ## Runtime controls to preserve
 

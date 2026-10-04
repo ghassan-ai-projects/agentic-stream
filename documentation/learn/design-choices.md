@@ -1,8 +1,8 @@
 # Why these design choices
 
-For readers who have followed the full flow: this page connects the design to
-its tradeoffs. These choices describe the current system, not an unlimited
-scalability or production-safety promise.
+These choices keep state repeatable, reasoning bounded, and execution under
+explicit control. Each has a cost. This page explains those tradeoffs and
+the limits of the current system.
 
 ## Keep continuous state separate from finite reasoning
 
@@ -23,7 +23,7 @@ in **write-ahead log (WAL)** mode supplies the durable records and transactions.
 The stream can commit state and queued work together, without coordinating
 separate services for every reading.
 
-That keeps ordering, recovery, and audit easier to reason about. It also bounds
+That makes ordering, recovery, and audit easier to understand. It also limits
 write concurrency and capacity to one node. Virtual partitions divide state
 ownership inside this design; they do not automatically distribute it across
 machines. See [ADR-004](../../docs/design/DECISIONS.md#adr-004-single-node-modular-monolith-first)
@@ -37,8 +37,8 @@ for the normalized spec. Equivalent authoring syntax can share that identity.
 
 This makes the deployed behavior inspectable and replayable. It also restricts
 what a spec can express: arbitrary scripts are not part of the contract.
-Some accepted policy fields have partial enforcement today; schema acceptance
-alone is not a capability promise. See
+Some policy values pass schema validation but are not fully enforced today.
+A valid spec is therefore not proof that every declared control works. See
 [ADR-006](../../docs/design/DECISIONS.md#adr-006-compile-situationspec-to-deterministic-ir)
 and [SituationSpec limitations](../overview/limitations.md).
 
@@ -62,9 +62,10 @@ Delivery can repeat after a crash or lost reply. Stable event identities,
 transactional records, Command idempotency keys, and reconciliation let the
 runtime distinguish a repeated request from new work.
 
-This is not a universal exactly-once guarantee. Every external integration
-needs an honest statement of its deduplication and outcome-verification
-behavior. See [ADR-007](../../docs/design/DECISIONS.md#adr-007-at-least-once-plus-idempotent-state-effects).
+This is not a universal exactly-once guarantee. For each external integration,
+document how it handles duplicate requests and how the runtime can verify the
+result. See
+[ADR-007](../../docs/design/DECISIONS.md#adr-007-at-least-once-plus-idempotent-state-effects).
 
 ## Choose your next level of detail
 

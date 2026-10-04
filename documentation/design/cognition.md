@@ -32,7 +32,7 @@ runtime stayed quiet.
 This adds domain choices: a trigger or budget that is too restrictive can miss
 useful attention; a loose one can spend budget on repeated conditions. Use
 replay and the durable evaluations to review those choices before treating them
-as deployment-qualified behavior.
+as behavior qualified for a production deployment.
 
 ## Controls
 
@@ -68,8 +68,8 @@ are durable and a late provider response cannot extend the deadline.
 ## Snapshot binding and attempts
 
 An episode is bound to one immutable snapshot at a time. Before starting an
-attempt, the runner may repoint a stale binding to a validated live snapshot,
-in the same transaction as attempt start. Identity, budget, trigger delta, and
+attempt, the runner may repoint a stale binding to a validated live snapshot, in
+the same transaction as attempt start. Identity, budget, trigger delta, and
 reconsideration evidence are preserved. The durable limit is three rebindings
 across retries; invalid live evidence abandons the episode as `rebind_failed`.
 Each started attempt uses its fixed request. See

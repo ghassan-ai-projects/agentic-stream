@@ -31,17 +31,18 @@ already has a Situation. Source: [Situation identities and state](../../internal
 | Occurrence | Which instance of the condition's lifecycle is recorded? | The condition opened for this motor |
 | Version | What was published at a particular point? | Version 1 in `candidate`, with its evidence and facts |
 
-The same entity can participate in different Situation types. For example,
+One entity can have several kinds of condition. For example,
 bearing degradation and overheating would need separate domain definitions;
 changing a spec also creates a fresh deployment namespace. These examples
 explain modeling choices, not additional committed motor fixtures.
 
 **Current occurrence boundary:** the engine derives Situation and occurrence
-identities from the same stable combination and retains the current record.
-It does not create a fresh occurrence automatically after resolution. The
-occurrence field is therefore not proof of a complete recurring-incident
-model. Source: [`newSituation` and `openOccurrence`](../../internal/situations/)
-and [deployment versioning](../../internal/spec/deployments.go).
+identities from the same stable combination and retains the current record. It
+does not create a fresh occurrence automatically after resolution. The
+occurrence field does not yet support a complete history of separate, recurring
+incidents. Source: [`newSituation` and
+`openOccurrence`](../../internal/situations/) and [deployment
+versioning](../../internal/spec/deployments.go).
 
 ## Evidence becomes features, then facts
 
@@ -79,10 +80,10 @@ duration rules; they stabilize the domain state before reasoning is considered.
 records the status of the evidence calculation. They answer different questions:
 a serious condition can still have incomplete evidence.
 
-In the current Situation engine, confidence starts at `1.0` and is not updated
-by a calibrated inference mechanism. The cognition view derives uncertainty
-from that confidence. Primary-hypothesis change tracking is also not implemented
-for subsequent versions. These fields must not be read as a measured diagnosis
+In the current Situation engine, confidence starts at `1.0`. The engine does
+not calculate or update it from the evidence. The cognition view derives
+uncertainty from that confidence. It also does not track changes to the main hypothesis
+across later versions. These fields must not be read as a measured diagnosis
 probability or a working hypothesis-management system.
 Source: [state initialization](../../internal/situations/situations.go)
 and [cognition's state view](../../internal/cognition/engine_cel.go).
@@ -99,14 +100,14 @@ stream's phase transitions.
 
 ## Current state and publication serve different jobs
 
-The mutable current state includes facts, evidence, and condition timers needed
-for the next evaluation. A published **snapshot** is the stable view supplied
-to readers and reasoning. Private reducer bookkeeping is kept separately.
+The current state can change. It contains the facts, evidence, and condition
+timers needed for the next evaluation. A published **snapshot** is the stable view supplied
+to readers and reasoning. Internal reducer values and timers are stored separately from the snapshot.
 
 The current engine publishes when the occurrence opens, a lifecycle transition
 changes phase, or completeness changes after publication. A fact update alone
-does not necessarily publish a new version. The next publication incorporates
-the then-current facts; a snapshot is not a live view of every incoming reading.
+does not necessarily publish a new version. The next publication includes
+the facts held at that time; a snapshot is not a live view of every incoming reading.
 Source: [publication gates](../../internal/situations/evaluate.go)
 and [current-state versus snapshot persistence](../../internal/situations/materialize.go).
 

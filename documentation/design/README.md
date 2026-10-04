@@ -39,7 +39,7 @@ Its first diagram has four stages. The pages below add one boundary at a time;
 ## Drift rule
 
 The design archive contains historical plans and detailed contracts. A public
-summary must label design-only surfaces as planned or deferred. When a summary
+summary must label interfaces described only in the design as planned or deferred. When a summary
 and current code disagree, update the summary or record the discrepancy; do not
 silently present the design target as the running API.
 

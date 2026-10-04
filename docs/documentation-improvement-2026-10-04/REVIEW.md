@@ -257,3 +257,46 @@ The core concept completion gate is met. These are self-review passes; no
 independent approval or production qualification is claimed. Executable guide
 commands were unchanged, so their Round 3 evidence was not rerun. Full CI and
 whole-repository tests were not run for this documentation-only round.
+
+## Round 5 — improve documentation wording
+
+Edited 44 current public pages across learning, product/status, architecture,
+design, contracts, getting-started, guides, operations, and reference. Keep
+historical review records and release evidence unchanged. This is a wording
+pass, not a runtime or contract change.
+
+### Editorial review
+
+| Finding | Repair |
+| --- | --- |
+| Introductions announce audience/scope before explaining the topic | Lead with the condition, responsibility, or task the reader needs to understand |
+| Dense noun lists obscure who does what | Name the actor and action: the compiler checks rules; policy evaluates an Intent; the dispatcher checks readiness |
+| Vague words such as “surface,” “posture,” and “disposition” obscure meaning | Use HTTP API, available commands, release status, or policy result as appropriate |
+| Technical shorthand requires outside knowledge | Explain envelope, redrive, JSONL, SSE, mutual TLS, planes, rebinding, and material delta where introduced |
+| Troubleshooting puts many checks into one sentence | Split validation/startup checks into parallel, actionable lists |
+| Safety and deployment prose is abstract | State what a test demonstrates, what the runtime checks, and what still requires deployment evidence |
+
+The second review checked sentence flow, terminology, and preservation of
+meaning. It retained precise contract names, restrictions, risk classes,
+source links, and current limitations. A wording repair also made the existing
+product-page current-status reference an explicit working link. Technical terms
+remain where readers need them to identify a contract, field, or mechanism.
+
+### Validation
+
+- `make docs-check` passes for all 68 public Markdown pages and volatile surfaces.
+- All thirteen explicit local Markdown heading targets resolve.
+- All nine learning pages remain below 180 lines.
+- A comparison against the preceding commit confirms every fenced code block,
+  executable example, Mermaid definition, and visual asset is unchanged.
+- `git diff --check` passes.
+- Scope review confirms reader changes only in `documentation/`, with this
+  round's plan/bar/review updates in the existing working folder under `docs/`.
+- The pre-existing core-concepts heading edit remains excluded from the commit.
+
+The wording gate is met after editing and self-review. No diagrams were
+created or changed, so their previous browser evidence still applies. Runtime
+tests, builds, executable guide runs, and full CI were not repeated: only prose
+and one navigation link changed, and the protected-example comparison verifies
+that commands and diagrams match the previously tested versions. No independent
+review or new release qualification is claimed.

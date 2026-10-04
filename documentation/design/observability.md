@@ -1,8 +1,8 @@
 # Observability and explainability
 
-Observability is part of the runtime contract because an operator must be able
-to explain what evidence changed, why cognition was admitted or refused, and
-what happened to a governed effect.
+Operators need to understand what changed, why reasoning started or stayed
+quiet, and what happened to a permitted action. Logs, metrics, traces, and
+stored records answer different parts of those questions.
 
 ## Signal layers
 
@@ -50,10 +50,10 @@ proposal are useful explanations, even when there is no final effect.
 ## Why keep durable explanations beside telemetry?
 
 A trace helps follow a run and metrics help spot trends. Durable records explain
-what was accepted and why, including after a restart. Notifications project
-those records for observers; they are not the recovery authority.
+what was accepted and why, including after a restart. Notifications let
+subscribers observe committed changes. Recovery uses the stored records.
 
-The public API does not yet offer a general inspection/query surface. Operators
+The public API does not yet offer general endpoints for inspecting or querying records. Operators
 need approved read-only tooling for detailed record review. See the
 [operational observability guide](../operations/observability.md).
 

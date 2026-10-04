@@ -1,7 +1,6 @@
 # Install and build
 
-Audience: contributors and evaluators. Scope: build the current Go checkout and
-run the repository's local quality gates.
+Build the runtime from this checkout, then run the local quality checks.
 
 ## Requirements
 

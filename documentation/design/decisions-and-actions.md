@@ -1,7 +1,8 @@
 # Decisions, policy, and actions
 
-The action path is deliberately longer than “model output → API call.” Each
-boundary turns an untrusted proposal into a more constrained durable record.
+A model proposal must pass validation and policy before it becomes a Command.
+The dispatcher then checks current readiness before calling an effector. Each
+step records what was permitted or refused.
 
 ## Two authority boundaries
 
@@ -36,7 +37,7 @@ Source: [dispatcher](../../internal/actions/dispatcher.go).
 
 The first boundary rejects proposals that are malformed, stale, out of scope,
 or disallowed. The second accounts for change while an accepted Command waits:
-owner, epoch controls, interlocks, or device readiness can change.
+runtime ownership, operator controls, interlocks, or device readiness can change.
 
 The extra checks and durable queue add work and may add latency. They also
 keep model output from carrying its own execution authority. A prior approval
@@ -45,17 +46,17 @@ cannot become a shortcut past a later stop.
 ## Validation
 
 Decision validation binds the output to the exact episode attempt, fence,
-snapshot digest, Situation version, schema, and allowed catalog. Intent
-validation also checks type, risk, parameters, expiry, evidence references,
-and compensating binding where applicable.
+snapshot digest, Situation version, schema, and allowed catalog. For each
+Intent, validation also checks type, risk, parameters, expiry, evidence
+references, and its link to a prior Command when proposing compensation.
 
 ## Policy
 
-The gateway evaluates against current durable state, not the state observed
-when the model started. Approval-required paths create durable approval records;
-automatic paths still pass all revalidation and interlock checks. Epoch drain
-and kill controls operate at the governance boundary so a worker cannot outrun
-an operator stop.
+The gateway evaluates against current durable state, not the state observed when
+the model started. Approval-required paths create durable approval records;
+automatic paths still pass all revalidation and interlock checks. Drain and kill
+controls apply to the current policy epoch, the generation of operational
+permission. A worker response cannot bypass an operator stop.
 
 ## Action and outcomes
 

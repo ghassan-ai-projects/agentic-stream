@@ -1,8 +1,8 @@
 # Current implementation status
 
-This page describes the repository as it exists now. It is intentionally more
-conservative than a roadmap: a checkmark means the code and focused tests
-support the claim, not that every production deployment scenario is complete.
+This page lists what the current code and focused tests support. An
+implemented feature still needs evidence for its intended production
+environment; the table is not deployment approval.
 
 ## Implemented in the current tree
 
@@ -32,7 +32,7 @@ support the claim, not that every production deployment scenario is complete.
 - `serve` accepts only loopback listen addresses. For remote access, a deployment
   must provide an authenticated proxy that forwards to the loopback service,
   together with its operational controls.
-- A simulated effector is the safe default proof surface. Concrete external
+- A simulated effector is the default for local tests and examples. Concrete external
   effectors require an integration-specific implementation and review.
 - Environment-level release evidence, long-running soak evidence, and a
   stable-release process are not implied by the green unit suite.
@@ -52,8 +52,8 @@ support the claim, not that every production deployment scenario is complete.
 - Distributed scale-out and broker adapters before single-node deterministic
   semantics are proven in the target workload.
 
-The [limitations](limitations.md) page is the release-facing explanation; the
-[roadmap](../roadmap.md) is the sequencing view.
+Read [limitations](limitations.md) for current boundaries and the
+[roadmap](../roadmap.md) for the planned order of work.
 
 ## Evidence posture
 

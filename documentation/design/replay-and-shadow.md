@@ -1,8 +1,8 @@
 # Replay and shadow modes
 
-Replay is an effect-safety boundary. The default path reconstructs deterministic
-stream behavior; other modes are explicit library/runtime capabilities and are
-not currently exposed as separate CLI subcommands.
+Replay reprocesses evidence without performing production effects. The
+default mode rebuilds stream history. Other modes are available through
+internal APIs and are not exposed as separate CLI subcommands.
 
 ## Modes
 
@@ -46,7 +46,7 @@ evaluation evidence.
 ## Shadow evaluation
 
 Shadow mode lets a new executor or prompt inspect the same snapshot and produce
-a report-only artifact. It can be scored and compared without entering the
+a report for comparison. It can be scored and compared without entering the
 policy gateway. The active/shadow dispatch policy is also bound to the episode
 request and checked at governance boundaries.
 

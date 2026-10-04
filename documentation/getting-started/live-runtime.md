@@ -3,7 +3,7 @@
 Agentic Stream has two local runtime workflows:
 
 - `run-live` processes one bounded trace batch and exits.
-- `serve` owns a runtime lease, exposes health/metrics/SSE endpoints, and can
+- `serve` owns a runtime lease, exposes health, metrics, and Server-Sent Events (SSE) endpoints, and can
   continuously consume either an append-only JSONL source or live normalized
   JSONL over a Unix socket.
 
@@ -71,9 +71,9 @@ telemetry socket:
 Replace the example firmware digest with the allow-listed digest reported by
 the device gateway.
 
-The live socket is a source of normalized evidence, not a device-control
-socket. Replay-file restrictions remain unchanged, and receipt data never
-stands in for independent effect verification.
+The live socket accepts normalized evidence. Device control uses a separate
+socket. Receiving an event does not prove that an effect occurred; effects
+need independent verification. Replay-file restrictions still apply.
 
 The server accepts only loopback listen addresses. To expose remote access,
 place an authenticated deployment proxy in front of the loopback service;

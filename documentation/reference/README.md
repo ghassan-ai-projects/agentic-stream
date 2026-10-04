@@ -12,8 +12,8 @@ variables, HTTP/SSE routes, event data, migrations, and test targets.
 - [Migrations](migrations.md)
 - [Testing](testing.md)
 
-These pages describe the current implementation surface. Designed but
-unregistered commands or routes are explicitly labeled as not current.
+These pages describe commands and APIs available in the current implementation.
+Commands and routes that exist only in the design are labeled accordingly.
 
 ## Next reads
 

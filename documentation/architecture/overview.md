@@ -1,8 +1,8 @@
 # Architecture overview
 
-Agentic Stream is a modular monolith with a strict direction of authority.
-The stream plane is deterministic; the cognition plane is bounded; the policy
-and action planes are the only path to external effects.
+Agentic Stream is one application with separate internal modules. Stream
+processing follows repeatable rules, reasoning has explicit limits, and every
+external effect must pass through policy and action dispatch.
 
 ## Main runtime boundaries
 
@@ -50,8 +50,9 @@ work moving through the runtime. The [module ownership map](modules.md) shows
 which packages may depend on which owners, including lifecycle ledgers,
 runtime control, and device ports.
 
-Composition roots wire implementations. Transport stays at the edge;
-modules call lower owners through permitted dependencies. Shared SQLite
+The runtime setup code connects the implementations. Input and protocol
+handlers stay at the edge; each module uses only the dependencies permitted
+by the ownership rules. Shared SQLite
 storage does not grant every module permission to change every lifecycle.
 Layer and SQL ownership tests enforce these rules.
 
@@ -66,9 +67,9 @@ EpisodeWorker may run over a private Unix socket; mTLS can be configured for a
 worker connection. The Go process hosts the evidence reverse service when that
 feature is enabled.
 
-Scale-out is not a hidden property of this design. Ownership leases, virtual
-partitions, durable checkpoints, and idempotent ledgers make the single-node
-semantics explicit before any broker or distributed scheduler is introduced.
+The current design does not distribute state across nodes. Ownership leases, virtual
+partitions, durable checkpoints, and idempotent ledgers establish the single-node
+behavior before any broker or distributed scheduler is introduced.
 
 ## Source evidence
 

@@ -1,8 +1,8 @@
 # Compatibility
 
-Audience: evaluators and integrators. Scope: the tested language, platform,
-storage, protocol, ingress, and API baseline—not a promise of broad platform
-support.
+Use this page to check the tested language, platform, storage, protocol, and
+input/API support before integrating the runtime. Other platforms require
+their own compatibility evidence.
 
 ## Supported baseline
 

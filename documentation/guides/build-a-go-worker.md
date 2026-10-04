@@ -1,7 +1,8 @@
 # Build a Go EpisodeWorker
 
-This guide describes the integration boundary, not a full worker framework.
-Worker implementations are Go-only in the current version.
+Use this guide to connect a separate Go worker to the runtime. It explains
+the protocol, permission limits, and compatibility checks. The current
+version supports Go workers only.
 
 ## 1. Read the source contract
 
@@ -18,7 +19,7 @@ must emit exactly one terminal event for each attempt.
 
 The worker may inspect the immutable request and scoped evidence, call only the
 EvidenceTools capabilities in its token, emit bounded model/tool telemetry,
-and propose a schema-shaped Decision.
+and return a Decision that matches the required schema.
 
 The worker may not execute an effector, access runtime credentials, mutate
 Situation state, or widen its allowed Intent catalog/risk ceiling.
@@ -58,7 +59,7 @@ Worker and EvidenceTools Unix socket paths must be absolute and owned by the
 deployment. Create the parent directory with restrictive permissions before
 starting either process.
 
-For mTLS, add the complete CA/certificate/key/server-name set. For reverse
+For mutual TLS (mTLS), provide the CA, certificate, key, and server name together. For reverse
 EvidenceTools, add the private evidence socket and a 32-byte-or-longer hex
 HMAC key. Keep socket permissions and key rotation in the deployment plan.
 

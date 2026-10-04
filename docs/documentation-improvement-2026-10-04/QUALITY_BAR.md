@@ -45,3 +45,12 @@ an implementation owner, and a stated current limit where the design exceeds
 the implemented model. Validate the reader questions in the Round 4 record.
 Keep the motor story as the anchor; avoid presenting a schema field as an
 enforced capability merely because the field exists.
+
+## Wording gate
+
+Lead with what the reader needs to understand or do. Prefer concrete actors
+and verbs to dense noun lists. Explain essential technical terms at first use
+when the page introduces them; use exact contract names where precision matters.
+Retain explicit limits and requirement words. Do not simplify wording into a
+stronger guarantee. Verify that runnable examples, protocol identifiers, and
+diagram definitions are unchanged for a prose-only pass.

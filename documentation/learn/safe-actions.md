@@ -1,7 +1,7 @@
 # From proposal to effect
 
-For readers following an episode: this page explains how a suggestion can
-become an external change and why that change needs a separate owner.
+An episode can suggest a change, such as opening a maintenance ticket. Policy
+decides whether to permit it, and the action dispatcher controls execution.
 
 ## Four records, four meanings
 
@@ -15,8 +15,8 @@ not yet an authorized request to a ticket provider.
 | Command | “This accepted request may enter governed dispatch” | Action dispatcher checks current authority |
 | Outcome | “Succeeded,” “failed,” or “we cannot yet prove the result” | Action/reconciliation path records evidence |
 
-This is an illustrative ticket story. The local proof uses a simulated
-effector, and the opening motor fixture produces no ticket.
+The ticket illustrates the action path. The local tests use a simulated
+effector, and the opening motor trace produces no ticket.
 
 ## Where authority increases
 
@@ -42,13 +42,13 @@ are scoped read tools, not an execution shortcut.
 
 ## Why check again after approval?
 
-The condition, runtime owner, interlocks, or operator control state may have
-changed while work waited. An **interlock** is a readiness condition that must
+While work waits, the condition can change, a different runtime can take
+ownership, or an operator can stop admission or dispatch. An **interlock** is a readiness condition that must
 hold before execution. Policy and action checks use current durable state so
 earlier reasoning or approval cannot silently bypass a later stop.
 
-The spec catalog declares allowed action types and risk. Some schema-visible
-policy modes do not yet have complete runtime enforcement; use the
+The spec catalog declares allowed action types and risk. The schema accepts some
+policy modes that the runtime does not yet fully enforce; use the
 [current limitations](../overview/limitations.md) when adapting a spec.
 
 ## A timeout does not tell you whether the effect happened
@@ -59,9 +59,9 @@ logical request across delivery attempts; its protection depends on the
 provider honoring that identity.
 
 When the runtime cannot prove the result, it records an unknown or
-reconciliation-required outcome. **Reconciliation** means obtaining evidence
-of what happened before deciding the next safe step. General reconciliation
-is an internal operational capability, not a packaged public CLI command.
+reconciliation-required outcome. **Reconciliation** means obtaining evidence of
+what happened before deciding the next safe step. General reconciliation is
+available internally. There is no public CLI command for it yet.
 
 ## A correction does not undo an effect
 

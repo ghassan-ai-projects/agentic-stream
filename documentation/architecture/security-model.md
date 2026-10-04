@@ -1,8 +1,8 @@
 # Security model
 
 Agentic Stream assumes that event payloads, model output, tool descriptions,
-and worker output can be untrusted. The system therefore separates data from
-authority and validates again at each boundary where authority increases.
+and worker output can be untrusted. The system therefore separates observations and proposals from permission.
+It checks each record before allowing the next step.
 
 ## Trust boundaries
 
@@ -34,7 +34,7 @@ Source: [decisions](../../internal/decisions/), [policy](../../internal/policy/)
 and [actions](../../internal/actions/).
 
 Production effect credentials remain outside the model/worker request and scoped
-evidence tools. The proposal path carries data; it cannot mint authority.
+evidence tools. A proposal cannot grant itself permission to execute.
 
 ## Security rules
 
@@ -49,7 +49,7 @@ evidence tools. The proposal path carries data; it cannot mint authority.
   action boundary.
 - Unknown external outcomes stop automatic retry and require reconciliation.
 - Replay has no credentials or production effectors by construction.
-- Subscriber and control surfaces are authenticated; `serve` refuses every non-loopback
+- Notification subscriptions and control endpoints require authentication; `serve` refuses every non-loopback
   listen address. Remote access requires an authenticated proxy to loopback.
 
 ## Secret handling
@@ -69,8 +69,8 @@ not get a retry path into governance.
 
 ## Threat model boundary
 
-The runtime protects its semantic authority boundaries. It does not make an
-arbitrary host safe: operators still own OS patching, filesystem permissions,
+The runtime checks who may read evidence, propose work, and execute effects.
+The host needs separate protection: operators still own OS patching, filesystem permissions,
 network policy, TLS termination, secret storage, database backup, and external
 effector correctness. Read the [deployment hardening checklist](../operations/security-hardening.md)
 before exposing a process beyond a local development machine.

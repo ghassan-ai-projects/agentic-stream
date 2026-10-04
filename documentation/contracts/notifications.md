@@ -1,7 +1,8 @@
 # Notification contract v1
 
-Notifications are a versioned, cursor-resumable observation surface. They are
-not a second source of truth and do not authorize an action.
+Notifications report committed lifecycle changes. Each has a versioned
+contract and a cursor that lets subscribers resume delivery. Stored runtime
+records remain authoritative; a notification does not authorize an action.
 
 ## Contract identity
 
@@ -29,7 +30,8 @@ uses the shared CloudEvent validation rules.
 
 ## Delivery semantics
 
-`GET /v1/events` is at-least-once. Clients must deduplicate by CloudEvent
+`GET /v1/events` uses Server-Sent Events (SSE). Delivery is at-least-once,
+so a client can receive the same notification again. Clients must deduplicate by CloudEvent
 `source`/`id`, persist the cursor, and handle:
 
 - `Last-Event-ID` or `cursor` resume;

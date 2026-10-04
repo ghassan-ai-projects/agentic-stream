@@ -3,8 +3,8 @@
 Start with [what a Situation represents](../learn/domain-model.md) for the
 domain model, then use this page as a vocabulary and ownership reference.
 The [learning path](../learn/README.md) explains the concepts in context.
-Each term has one job;
-keeping those jobs separate is how the runtime controls state and authority.
+The definitions separate observations, state, proposals, and permission so
+each part of the runtime has a clear responsibility.
 
 ## Domain identity
 

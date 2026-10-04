@@ -1,7 +1,8 @@
 # Testing reference
 
-Audience: contributors and maintainers. Scope: repository targets, evidence
-categories, and the minimum checks for documentation-only versus code changes.
+Choose checks that match your change. This page lists the repository targets,
+what each kind of test demonstrates, and the minimum checks for documentation
+and code changes.
 
 ## Standard targets
 

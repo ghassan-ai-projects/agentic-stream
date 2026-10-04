@@ -66,3 +66,14 @@ Review each concept against its owner in current code, including limitations.
 Render the new three-node relationship diagram in the browser, inspect the
 new pages, run documentation/heading checks and relevant existing package
 tests, record the results, then commit this round. No runtime changes.
+
+## Round 5: plain-language wording
+
+Review current reader-facing prose for dense noun lists, vague terms, repeated
+introductory framing, and unclear instructions. Rewrite passages around the
+reader's question and the runtime's concrete action. Keep exact identifiers,
+requirements, examples, diagrams, and recorded limitations intact.
+
+Use a second editing pass to check sentence flow and terminology. Verify that
+all fenced examples/diagrams and visual assets match the previous commit, run
+docs-check and heading/whitespace checks, record evidence, and commit.

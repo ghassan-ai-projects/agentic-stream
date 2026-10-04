@@ -1,7 +1,8 @@
 # Why Agentic Stream exists
 
-For readers new to the project: this page explains the problem the runtime
-solves and when that problem appears.
+Agentic Stream helps interpret conditions that develop over time. It keeps
+track of evidence, asks an agent to reason when useful, and checks any proposed
+action before it can execute.
 
 ## A reading is a fact; a condition needs context
 
@@ -10,10 +11,10 @@ reading could mean wear, a temporary load change, or a faulty sensor. A useful
 response depends on what happened before, whether other evidence agrees, and
 whether the condition persists.
 
-An alert can tell you that a threshold was crossed. A **Situation** keeps the
-evolving condition: which motor is involved, its current phase, the facts
-supporting it, and how complete those facts are. That record gives reasoning a
-stable starting point.
+An alert can tell you that a threshold was crossed. A **Situation** records
+the condition as it develops: which motor is involved, its phase, the facts
+supporting that phase, and the status of the evidence. A published version
+gives the agent a stable starting point.
 
 ## Why not ask an agent about every reading?
 
@@ -40,18 +41,19 @@ or refusing work. If reasoning proposes an external change, policy checks
 current state before that proposal can become a Command.
 
 The model has a useful role: it can interpret evidence and propose a next step.
-The runtime supplies the temporal state, budget, validation, and execution
-boundary around that role.
+The runtime keeps the history, limits the work, checks the output, and controls
+execution.
 
 ## When this shape is useful
 
-Consider this runtime when conditions develop across multiple observations,
-late or duplicate evidence matters, and proposed actions need an auditable
-permission path. Predictive maintenance is the first example in this repository.
-Other domains need their own schemas, rules, tests, and operational evidence.
+Consider this runtime when conditions develop across multiple observations, late
+or duplicate evidence matters, and you need to review why a proposed action was
+permitted or refused. Predictive maintenance is the first example in this
+repository. Other domains need their own schemas, rules, tests, and operational
+evidence.
 
 The current implementation starts with a single node and local inputs. It is
-not yet a qualified production maintenance service. See the
+not yet qualified for use as a production maintenance service. See the
 [product boundaries](../overview/product.md) and
 [limitations](../overview/limitations.md).
 

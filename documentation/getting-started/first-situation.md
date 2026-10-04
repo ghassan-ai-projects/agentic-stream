@@ -1,12 +1,13 @@
 # Author your first SituationSpec
 
-Situation behavior is data-driven. A `SituationSpec` declares the input event
-schemas, event-time policy, windows, deterministic operators, Situation state,
-cognition triggers, executor budget, and allowed Intent catalog.
+A `SituationSpec` declares how the runtime interprets a domain's evidence. It
+defines accepted events, time rules, calculations, and Situation state. It
+also defines when reasoning may start, its budget, and the proposals it may
+return.
 
 The starter fixture remains under `docs/design/examples` because it is also
 used by implementation tests. This page is the maintained authoring guide;
-the archive path is not a second public documentation entrypoint.
+start here for the instructions, then use the example as your working model.
 
 ## Start from a known-good example
 
@@ -56,8 +57,8 @@ sections to a spec until an enforcing contract is introduced.
 
 The default output reports the spec name, version, schema, and `sha256:` digest.
 Use `validate --json` to print the canonical JSON. Equivalent YAML
-representations should produce the same canonical identity. A digest change is
-an explicit deployment/versioning event.
+representations should produce the same canonical identity. Changing the digest
+changes the deployed definition's identity.
 
 ## Change one part of the story at a time
 
@@ -84,8 +85,8 @@ with the cross-language contract.
 ## Safe authoring checklist
 
 - Use a stable partition key and entity identity.
-- Choose a late-data policy deliberately; `correct_and_reconsider` has a cost
-  and an action-governance consequence.
+- Choose a late-data policy deliberately; `correct_and_reconsider` can create
+  additional reasoning work to review prior actions.
 - Bound every window, episode, tool, model, and cost budget.
 - Declare only the Intent types and fields the episode may propose.
 - Give each Intent a risk class and a parameter schema.

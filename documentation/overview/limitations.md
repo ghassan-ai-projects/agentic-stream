@@ -8,8 +8,8 @@ deliberate non-goals.
 
 The repository is an implementation-ready development snapshot. The runtime
 has a working deterministic core, governed action path, worker protocol, local
-HTTP/SSE surface, and predictive-maintenance stream-plane fixture. Synthetic
-focused tests cover later action stages. It is not yet a
+HTTP API and Server-Sent Events (SSE), plus predictive-maintenance test data
+for stream processing. Tests with simulated inputs cover later action stages. It is not yet a
 stable release with a published compatibility promise or complete environment
 qualification.
 
@@ -37,9 +37,10 @@ simulated-only.
 ### The local server is not an internet edge
 
 `serve` accepts only loopback listen addresses. For remote access, an
-authenticated deployment proxy must forward to that loopback service. Subscriber and control tokens are required
-for the respective surfaces. TLS termination, network policy, rotation, and
-rate limiting remain deployment responsibilities.
+authenticated deployment proxy must forward to that loopback service.
+Notification subscriptions and operator controls require their respective
+tokens. TLS termination, network policy, rotation, and rate limiting remain
+deployment responsibilities.
 
 ### Model support is intentionally narrow
 
@@ -61,7 +62,7 @@ readiness](../../docs/design/OPERATIONS_READINESS.md).
 
 The schema accepts action policy values such as `automatic`, `approval`,
 `deny`, and `simulate`, but the current catalog/runtime path does not provide
-complete independent enforcement semantics for all four values. Data retention
+complete, separately enforced behavior for all four values. Data retention
 is an operational release concern and the SituationSpec intentionally does not
 expose a retention or telemetry control until the runtime can enforce it.
 
@@ -83,10 +84,10 @@ See [the domain model](../learn/domain-model.md),
 ### Operator inspection and redrive are internal capabilities
 
 Durable quarantine, approval, reconciliation, and explainability records exist
-inside the runtime, but the current public CLI and HTTP surface does not expose
+inside the runtime, but the current public CLI and HTTP API do not expose
 general inspection, approval resolution, unknown-outcome reconciliation, or
 quarantine redrive commands. A deployment needs approved internal tooling and
-runbooks for those actions; they are not turnkey public operations.
+runbooks for those actions; they are not available as ready-to-use public operations.
 
 ## Deliberate non-goals
 

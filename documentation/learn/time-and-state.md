@@ -1,7 +1,8 @@
 # Time and changing state
 
-For readers following the motor story: this page explains why arrival order
-and the published history are different things.
+Readings can arrive late, arrive twice, or fail to arrive. The runtime records
+when evidence happened and how it was processed so those differences remain
+visible in the Situation history.
 
 ## Two times tell different stories
 
@@ -23,9 +24,10 @@ measurement describes.
 ## A watermark says how far processing has progressed
 
 A **watermark** is a time boundary used to judge window progress and lateness.
-For bounded disorder, the source boundary trails the latest event time by the
-configured allowance. The partition considers active sources; idle and
-rejoining sources need explicit rules. The boundary moves forward, never back.
+When a source allows out-of-order arrivals, its watermark follows the latest
+event time by the configured allowance. The partition combines active sources;
+the spec supplies rules for sources that become idle or start reporting again.
+The boundary moves forward, never back.
 
 It is not proof that all earlier evidence exists. A delayed reading can still
 arrive behind it. The spec declares how to handle that evidence: audit and drop
@@ -52,15 +54,15 @@ intentional: the new version does not edit the old one.
 Source: [Situation implementation](../../internal/situations/)
 and [engine](../../internal/engine/).
 
-The records can therefore explain which version an attempt actually read.
+The history shows which version each attempt actually read.
 Before an attempt starts, its episode may be rebound to a newer validated
 snapshot; during execution the request stays fixed. Supersession and acceptance
 checks protect against stale output. See [reasoning](reasoning.md).
 
 ## Missing evidence is part of the state
 
-**Completeness** records the evidence-processing status carried by a feature
-and copied into Situation state. It is separate from diagnostic confidence
+**Completeness** records a feature's processing status. The runtime copies
+that status into Situation state. It is separate from diagnostic confidence
 and does not certify that every required sensor has reported.
 
 | Status | Meaning in the current processing path |
@@ -74,21 +76,24 @@ and does not certify that every required sensor has reported.
 Missing heartbeat evidence can make the evidence status uncertain while
 vibration readings look normal. The motor trigger explicitly checks heartbeat
 features. The current scheduler does not enforce the schema-visible trigger
-`completeness` field as a separate admission gate; domain conditions must carry
-the actual implemented checks. Source: [feature emission](../../internal/operators/),
-[Situation update](../../internal/situations/reducers.go), and
-[trigger evaluation](../../internal/cognition/engine_trigger.go).
+`completeness` field as a separate admission gate; use explicit trigger
+conditions, such as the heartbeat check, when those checks must affect
+admission. Source: [feature emission](../../internal/operators/), [Situation
+update](../../internal/situations/reducers.go), and [trigger
+evaluation](../../internal/cognition/engine_trigger.go).
 
 ## Correction, reconsideration, and compensation
 
 A **correction** changes the published interpretation of evidence. Under
 `correct_and_reconsider`, eligible prior succeeded Commands can create
 **reconsideration** work: review a previous action against the correction.
-The runtime deduplicates by Situation, superseded version, and prior Command;
+The runtime prevents duplicate reconsideration for the same Situation,
+superseded version, and prior Command;
 one correction may therefore produce no reconsideration or more than one.
 
-A **compensation** is a new proposed effect linked to a prior Command. It must
-pass its own catalog, binding, policy, and dispatch checks. A corrected snapshot
+A **compensation** is a new proposed effect linked to a prior Command. The runtime checks
+that its type is allowed, that it identifies the prior Command correctly, and
+that policy and current dispatch conditions permit it. A corrected snapshot
 does not undo a ticket or reverse a device operation automatically. The prior
 Command and its recorded outcome remain in history. Source:
 [reconsideration selection and evidence](../../internal/cognition/reconsideration_evidence.go),

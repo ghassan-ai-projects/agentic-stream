@@ -1,7 +1,7 @@
 # Roadmap
 
-This roadmap is a sequencing view, not a promise. The canonical current
-posture is [`governance/release-status.json`](governance/release-status.json).
+This roadmap shows the planned order of work. It is not a delivery commitment.
+For the authoritative release status, read [`governance/release-status.json`](governance/release-status.json).
 
 ## Shipped in the current development tree
 

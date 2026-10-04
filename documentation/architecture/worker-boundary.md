@@ -22,7 +22,7 @@ The two services are:
 Handshake compatibility currently validates protocol/contract versions, worker
 identity, non-interactive execution, and requested features. The protocol also
 carries shadow/counterfactual, replay-ledger, and episode-kind fields, but the
-full semantics of those capability fields are not yet enforced.
+runtime does not yet fully enforce those capability fields.
 
 ## Request identity
 

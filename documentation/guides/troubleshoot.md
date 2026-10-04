@@ -6,11 +6,16 @@ issue.
 
 ## `validate` fails
 
-Check that `apiVersion` is `agentic-stream/v1`, `kind` is `SituationSpec`, all
-input fields and units exist in the registry, CEL references declared
-features, windows/operators/triggers are unique and declared, schemas and
-catalogs are available, and YAML has no duplicate keys. Compare with the
-known-good example and rerun `validate --json`.
+Check these parts of the spec:
+
+- Set `apiVersion` to `agentic-stream/v1` and `kind` to `SituationSpec`.
+- Use input fields and units defined in the event registry.
+- Refer to declared features in Common Expression Language (CEL) expressions.
+- Give windows, operators, and triggers unique names and declare their references.
+- Make the required schemas and catalogs available.
+- Remove duplicate YAML keys.
+
+Compare with the working example and rerun `validate --json`.
 
 ## `run` refuses the database
 
@@ -20,9 +25,13 @@ sidecar.
 
 ## `serve` exits before listening
 
-Common causes are a missing `AGENTIC_STREAM_SUBSCRIBER_TOKEN`, a `--spec` without exactly
-one of `--trace`/`--live-socket`, a non-positive `--poll-interval`, a non-loopback `--listen` value, invalid worker TLS/evidence combinations, a
-stale owner lease, or a failed SQLite migration.
+Check the error for one of these common causes:
+
+- A missing `AGENTIC_STREAM_SUBSCRIBER_TOKEN`.
+- A `--spec` without exactly one of `--trace` or `--live-socket`.
+- A non-positive `--poll-interval` or a non-loopback `--listen` address.
+- An incomplete worker TLS or evidence configuration.
+- A stale owner lease or failed SQLite migration.
 
 ## Worker handshake or execution fails
 
@@ -49,8 +58,9 @@ an audited resnapshot. Clients must deduplicate at-least-once delivery.
 ## Effects are not dispatched
 
 Inspect the Decision validation result, Intent policy status, approval/interlock
-state, epoch control, outbox lease, and outcome/reconciliation state. A denied
-or unknown result is safer than an untracked retry.
+state, epoch control, outbox lease, and outcome/reconciliation state. A denial
+means the request was not permitted. An unknown outcome means the effect may
+have happened; resolve that uncertainty before retrying.
 
 ## Next reads
 

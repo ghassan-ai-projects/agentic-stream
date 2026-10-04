@@ -1,13 +1,13 @@
 # Product overview
 
-Agentic Stream is a single-node, streaming-native runtime for situations that
-develop over time. It continuously processes evidence, maintains durable
-Situation state, and invokes an agent only when a deterministic scheduler has
-enough reason to do so.
+Agentic Stream follows conditions that develop over time. It processes
+events continuously, stores the evolving condition as a Situation, and asks
+an agent to reason when declared rules say that would be useful. The current
+runtime runs on one node.
 
 ## What it is
 
-The runtime has two deliberately different halves:
+The runtime separates continuous processing from bounded reasoning and action:
 
 - A deterministic stream plane ingests events, applies event-time rules and
   operators, publishes immutable Situation versions, and records why a change
@@ -16,10 +16,10 @@ The runtime has two deliberately different halves:
   proposes typed Decisions and Intents, and sends only policy-approved Commands
   to an effector.
 
-This shape is useful when an event stream is noisy, late, duplicated, or
+This approach is useful when an event stream is noisy, late, duplicated, or
 incomplete, and when an AI proposal must not become an external effect by
-itself. Predictive maintenance is the first proof domain, but domain behavior
-is authored as data in a `SituationSpec`.
+itself. Predictive maintenance is the first example. A `SituationSpec` declares the
+inputs, state rules, reasoning triggers, and permitted proposals for a domain.
 
 ## What it is not
 
@@ -33,27 +33,28 @@ Agentic Stream is not:
 - a direct model-to-effector bridge;
 - a web UI or a replacement for a domain system of record.
 
-The runtime intentionally starts with a modular monolith, SQLite WAL, JSONL
-ingress from files or a live Unix socket, and Go worker boundaries. Kafka, NATS, MQTT, and broader deployment
-topologies are deferred until the single-node semantics are proven.
+The runtime starts as one application with separate internal modules. It uses
+SQLite in write-ahead log (WAL) mode, reads JSON Lines (JSONL) from files or a
+live Unix socket, and can delegate reasoning to a Go worker. Kafka, NATS, MQTT,
+and distributed deployments are deferred until the single-node behavior is
+proven.
 
 ## Who it is for
 
-- Engineers building event-driven systems that need durable intermediate
-  situations rather than stateless alerts.
-- Safety- and operations-minded teams evaluating bounded AI proposals beside a
-  deterministic policy plane.
+- Engineers building event-driven systems that need a stored history of
+  conditions, beyond individual alerts.
+- Teams evaluating limited AI proposals with explicit policy and operational
+  controls.
 - Researchers and maintainers who need replayable evidence, explainable
   admission decisions, and effect-disabled shadow evaluation.
 
-It is not yet positioned as a turnkey production service. The [current status]
+It is not yet a production service ready to deploy as supplied. The [current status](status.md)
 and [limitations](limitations.md) pages describe the evidence boundary.
 
 ## The first proof
 
 The predictive-maintenance example models a motor with temperature, vibration,
-current, and heartbeat events. The acceptance
-path requires deterministic replay, duplicate and out-of-order handling,
+current, and heartbeat events. Acceptance requires deterministic replay, duplicate and out-of-order handling,
 hysteresis/debounce/cooldown, stale-episode cancellation, typed and governed
 intents, idempotent effects, shadow mode, and explainability.
 

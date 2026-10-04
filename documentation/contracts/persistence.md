@@ -1,7 +1,8 @@
 # Persistence and migrations
 
-The persistence contract is the durable relational state needed to preserve
-identity, ordering, lifecycle, policy, action, and explanation semantics.
+The database stores evidence, state, work, permissions, and outcomes. These
+records preserve identities and processing order, support recovery, and
+explain why the runtime took each step.
 
 ## Authority
 
@@ -18,8 +19,8 @@ description of the current migration head.
 | Events/checkpoints | Replayable source evidence and deterministic progress |
 | Situations/versions | Immutable published state and explanation |
 | Scheduler/episodes/attempts | Admission, budgets, cancellation, fencing, recovery |
-| Decisions/Intents/policy | Typed proposals and governed disposition |
-| Commands/outbox/outcomes | Effect idempotency, leasing, unknown reconciliation |
+| Decisions/Intents/policy | Typed proposals and policy results |
+| Commands/outbox/outcomes | Repeat-request identity, dispatch leases, and reconciliation of uncertain outcomes |
 | Evidence ledger | Scoped read-call identity and crash recovery |
 | Owner/epoch/interlock | Single active writer and action readiness |
 | Notifications | Cursor-resumable downstream observations |
