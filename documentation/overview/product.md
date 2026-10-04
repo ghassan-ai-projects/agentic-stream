@@ -68,6 +68,8 @@ before evaluating an integration.
 
 ## Next reads
 
+- [Why the project exists](../learn/why.md)
+
 - [Core concepts](concepts.md)
 - [Current status](status.md)
 - [Limitations](limitations.md)

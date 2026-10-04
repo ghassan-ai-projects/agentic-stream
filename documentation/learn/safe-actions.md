@@ -1,0 +1,81 @@
+# From proposal to effect
+
+For readers following an episode: this page explains how a suggestion can
+become an external change and why that change needs a separate owner.
+
+## Four records, four meanings
+
+Suppose an episode suggests opening a maintenance ticket. That suggestion is
+not yet an authorized request to a ticket provider.
+
+| Record | Example meaning | Who owns the next step? |
+| --- | --- | --- |
+| Decision | “Bearing wear is plausible; here is the supporting evidence” | Runtime validates the proposal |
+| Intent | “Propose a maintenance ticket for this motor” | Policy evaluates the typed request |
+| Command | “This accepted request may enter governed dispatch” | Action dispatcher checks current authority |
+| Outcome | “Succeeded,” “failed,” or “we cannot yet prove the result” | Action/reconciliation path records evidence |
+
+This is an illustrative ticket story. The local proof uses a simulated
+effector, and the opening motor fixture produces no ticket.
+
+## Where authority increases
+
+How does a proposal reach an external system?
+
+```mermaid
+flowchart LR
+    I["Validated Intent"] --> P["Policy checks current state"]
+    P -->|accepted| C["Durable Command"]
+    C --> R["Final readiness check"]
+    R -->|permitted| E["Effector and outcome"]
+```
+
+Text equivalent: policy evaluates a validated proposal against current state.
+An accepted request becomes a Command; the dispatcher checks authority again
+before an effector performs it and records an outcome. Denial, deferral,
+approval requirements, or failed readiness can stop this path.
+Source: [policy](../../internal/policy/) and [dispatcher](../../internal/actions/dispatcher.go).
+
+The model can propose allowed Intent types. It cannot grant itself a higher
+risk ceiling, create a governed Command, or call an effector. Evidence tools
+are scoped read tools, not an execution shortcut.
+
+## Why check again after approval?
+
+The condition, runtime owner, interlocks, or operator control state may have
+changed while work waited. An **interlock** is a readiness condition that must
+hold before execution. Policy and action checks use current durable state so
+earlier reasoning or approval cannot silently bypass a later stop.
+
+The spec catalog declares allowed action types and risk. Some schema-visible
+policy modes do not yet have complete runtime enforcement; use the
+[current limitations](../overview/limitations.md) when adapting a spec.
+
+## A timeout does not tell you whether the effect happened
+
+A provider may accept a request and then lose the reply. Retrying immediately
+could create a second ticket. A stable **idempotency key** identifies the same
+logical request across delivery attempts; its protection depends on the
+provider honoring that identity.
+
+When the runtime cannot prove the result, it records an unknown or
+reconciliation-required outcome. **Reconciliation** means obtaining evidence
+of what happened before deciding the next safe step. General reconciliation
+is an internal operational capability, not a packaged public CLI command.
+
+## Replay is a different execution boundary
+
+Deterministic replay rebuilds stream history without external effects. Shadow
+mode evaluates an executor without sending its proposals into governance.
+Counterfactual mode can use an explicitly supplied simulator. None of these
+modes authorizes a production effect.
+
+Sources: [Decision/Intent contract](../contracts/decision-intent.md),
+[unknown-outcome tests](../../internal/actions/dispatcher_test.go),
+[recovery](../operations/recovery.md), and [replay](../design/replay-and-shadow.md).
+
+## Next reads
+
+- [Why these design choices](design-choices.md)
+- [Decision and action mechanics](../design/decisions-and-actions.md)
+- [Security model](../architecture/security-model.md)

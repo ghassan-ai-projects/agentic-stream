@@ -15,6 +15,8 @@ before connecting an external model, worker, or effector.
 
 ## Next reads
 
+- [Understand the runtime before running it](../learn/README.md)
+
 - [Overview](../overview/README.md)
 - [Predictive-maintenance walkthrough](../guides/predictive-maintenance.md)
 - [CLI reference](../reference/cli.md)

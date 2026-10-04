@@ -49,6 +49,29 @@ and a bounded plan; no product capability or release status is changed. Text and
 priority; diagram detail increases gradually. Working records are kept here
 under `docs/`, as requested, rather than in the public reading path.
 
+## Round 2 — guided learning and first visual
+
+Added a seven-page learning path, rewrote the glossary for quick lookup, and
+linked the path from public home, overview, getting-started, and design.
+The learning pages answer one question each and use a concrete motor story.
+The first diagram has four stages; the later learning diagrams have four or
+five nodes and explain one boundary at a time.
+
+Reviewed claims against the motor fixture, pipeline synthetic test, scheduler
+not-before/cooldown implementation, migration inventory, existing contracts,
+and replay tests. D1 and D8 are closed. D2/D3 are closed for the learning path;
+existing design diagrams and summaries are addressed in the next round.
+
+Visual review: rendered the SVG at 720 px and inspected it. Long labels crowded
+the last two boxes; shortened them to “What next?”, “Action”, and “Checked
+outcome”. Shapes, arrows, and labels remain understandable without color.
+The SVG has title/description, a Mermaid source, and prose equivalents on both
+pages embedding it. New learning pages are all under 180 lines.
+
+Validation: `make docs-check` passes for 66 public Markdown pages;
+`git diff --check` passes. Runtime behavior was not changed. A focused source
+regression suite and executable examples are being checked for round 3.
+
 ## Review method
 
 After the edits, perform separate completeness, correctness, code-alignment,
