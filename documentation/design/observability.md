@@ -28,23 +28,34 @@ payloads into spans.
 
 ## Explainability path
 
+Which records answer an incident reviewer's questions?
+
 ```mermaid
 flowchart TD
-    E["Event + quality"] --> S["Situation version\nfacts + provenance + delta"]
-    S --> C["Scheduler item\ntrigger + score + reason"]
-    C --> P["Episode\nsnapshot + budget + attempt"]
-    P --> D["Decision / Intent\nvalidation result"]
-    D --> G["Policy audit\nallow / deny / approval"]
-    G --> O["Command / outcome\nidempotency + reconciliation"]
+    S["Situation version: what changed?"] --> C["Scheduler and episode: why reason?"]
+    C --> P["Decision and policy: why permit?"]
+    P --> O["Command and outcome: what happened?"]
 ```
 
-Text equivalent: event quality feeds a Situation version, scheduler record,
-episode, Decision/Intent validation, policy audit, and command/outcome record;
-stable IDs and digests connect the explanation chain.
+Text equivalent: reviewers follow linked records from the Situation to the
+reasoning session, policy result, and effect outcome. This is a lookup path;
+it does not imply that every Situation has an episode or Command.
+Source: [durable families](../contracts/persistence.md) and
+[notifications](../contracts/notifications.md).
 
-The chain is durable and linked by stable IDs, digests, trace context, and
-tenant/partition identity. Notifications are a projection for observers, not
-the authority for recovery.
+Stable identities, digests, trace context, and tenant identity connect those
+records to the original event evidence. An ignored trigger and a rejected
+proposal are useful explanations, even when there is no final effect.
+
+## Why keep durable explanations beside telemetry?
+
+A trace helps follow a run and metrics help spot trends. Durable records explain
+what was accepted and why, including after a restart. Notifications project
+those records for observers; they are not the recovery authority.
+
+The public API does not yet offer a general inspection/query surface. Operators
+need approved read-only tooling for detailed record review. See the
+[operational observability guide](../operations/observability.md).
 
 ## Source evidence
 

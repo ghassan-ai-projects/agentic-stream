@@ -11,7 +11,7 @@ keeping those jobs separate is how the runtime controls state and authority.
 | Evidence / event | An observed fact with identity, time, source, and typed payload | One vibration reading |
 | SituationSpec | The declared rules for interpreting a domain's evidence | The bearing-degradation spec |
 | Window | The bounded set of readings used in a calculation | A fifteen-minute vibration window |
-| Operator / feature | A repeatable calculation and its result | Vibration RMS, a measure of signal magnitude |
+| Operator / feature | A repeatable calculation and its result | Vibration root mean square (RMS), a measure of signal magnitude |
 | Reducer | A rule for incorporating a feature into current state | Keep the latest event-time value |
 | Situation | The durable record of an evolving condition | Bearing degradation for one motor occurrence |
 | Situation version | One immutable publication of that condition | A candidate or warning snapshot with supporting evidence |

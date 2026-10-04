@@ -15,9 +15,10 @@ qualification.
 
 ## Capability boundaries
 
-### Ingress is local and file-oriented
+### Ingress is local
 
-The supported ingestion paths are normalized JSONL and the simulator adapter.
+The supported ingestion paths are normalized JSONL files, the simulator file
+adapter, and live normalized JSONL over a Unix domain socket on `serve`.
 Broker and MQTT integrations are deferred. If a deployment tails a file, it
 must own file rotation, permissions, atomic append behavior, and source-health
 monitoring.
@@ -28,11 +29,15 @@ The action plane uses stable identities, an outbox, leases, idempotency keys,
 and durable outcomes. A provider timeout can mean that the provider accepted
 the request; the runtime records an unknown outcome and does not blindly retry
 it. An external integration must provide an idempotent or reconcilable route.
+The CLI can select emulator/physical profiles through a typed device gateway,
+with explicit catalog, firmware, and authority gates. That integration code
+does not establish physical hardware qualification. Trace-backed runs remain
+simulated-only.
 
 ### The local server is not an internet edge
 
-`serve` is loopback-only by default and rejects non-loopback listeners without
-an authenticated deployment proxy. Subscriber and control tokens are required
+`serve` accepts only loopback listen addresses. For remote access, an
+authenticated deployment proxy must forward to that loopback service. Subscriber and control tokens are required
 for the respective surfaces. TLS termination, network policy, rotation, and
 rate limiting remain deployment responsibilities.
 

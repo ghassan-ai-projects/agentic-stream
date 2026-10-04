@@ -5,26 +5,36 @@ Situations without invoking a model for every event.
 
 ## Event-time path
 
+What happens inside the stream path?
+
 ```mermaid
-flowchart LR
-    A["Event arrives"] --> B["Validate envelope\nand schema"]
-    B --> C["Append / deduplicate\nby stable identity"]
-    C --> D["Partition by tenant + key"]
-    D --> E["Advance watermark\nwith source health"]
-    E --> F["Close/update windows"]
-    F --> G["Run deterministic operators"]
-    G --> H["Reduce Situation state"]
-    H --> I["Publish immutable version\nor audit no-op"]
-    I --> J["Schedule cognition\nif material"]
+flowchart TD
+    E["Validate and deduplicate evidence"] --> T["Apply event-time rules"]
+    T --> F["Calculate windowed features"]
+    F --> S["Reduce Situation state"]
+    S --> V["Publish a version when needed"]
 ```
 
-Text equivalent: validate and deduplicate the event, partition it, advance the
-watermark, update windows/operators, publish an immutable Situation version,
-and schedule cognition only when the change is material.
+Text equivalent: the stream validates evidence, applies time rules, calculates
+features, and reduces state. A change may publish a version. This diagram omits
+transaction bookkeeping; it does not add model calls or effects to the path.
+Source: [engine](../../internal/engine/) and [event log](../../internal/eventlog/).
 
-The event log is append-only. The engine serializes state changes per virtual
-partition. A later event can produce a new correction version, but it does not
-rewrite an earlier published version.
+The engine serializes state changes per virtual partition. A later event can
+produce a correction version, but it cannot rewrite a published version.
+
+## Why windows and explicit time rules?
+
+A window gives a calculation a declared evidence horizon. The motor spec uses
+a fifteen-minute vibration window rather than treating one reading as the
+whole condition. The input time and late-data policy remain part of the result,
+so a transport delay does not silently become a different domain history.
+
+The tradeoff is configuration: developers must choose a time horizon, disorder
+allowance, idle behavior, and late policy suitable for their sources. Waiting
+for more evidence can improve completeness while delaying a result. The
+[time and state introduction](../learn/time-and-state.md) explains this without
+requiring the full timing contract.
 
 ## Time and lateness
 
@@ -36,7 +46,7 @@ allowed lateness, clock-skew tolerance, and one of these late policies:
 | `drop_with_audit` | Do not change state; retain the decision as an audit |
 | `history_only` | Preserve evidence without changing the derived Situation |
 | `correct` | Recompute the affected state and publish a correction |
-| `correct_and_reconsider` | Correct state and admit a deduplicated reconsideration |
+| `correct_and_reconsider` | Correct state and reevaluate for a deduplicated reconsideration, subject to eligibility |
 
 Missing heartbeat and source-health signals can make completeness uncertain.
 Incomplete evidence is explicit state, not a silent default.

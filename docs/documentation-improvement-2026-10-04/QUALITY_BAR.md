@@ -5,7 +5,6 @@ Audience: maintainers. Scope: acceptance for this clarity and teaching pass.
 Text and visuals take priority. Use concrete stories and everyday explanations;
 include numeric examples only when they clarify time or fixture behavior.
 
-
 Scope: reader-facing edits stay inside `documentation/`; the plan, quality bar,
 and review records live in this working folder under `docs/`. Runtime code,
 fixtures, root entrypoints, and validation tools remain read-only authorities.
@@ -19,7 +18,7 @@ records separate self-review lenses and does not claim independent reviewer sign
 | Plain language | Each new concept starts with a concrete explanation; technical names follow; acronyms are expanded at first use |
 | Progressive diagrams | First diagram has at most four nodes; new learning diagrams have at most six; detailed maps are introduced only after the basic model |
 | Diagram meaning | Each diagram has a question, text equivalent, and source reference; shapes/labels carry meaning without color |
-| Diagram legibility | Static overview is inspected at a 720 px reading width; labels fit, arrows are unambiguous, and SVG has title/description |
+| Diagram legibility | Static overview is inspected at a 720 px reading width; all public Mermaid diagrams are rendered and inspected in the browser; labels fit and SVG has title/description |
 | Page focus | Each new learning page answers one primary question and stays under 180 lines |
 | Source alignment | Numeric examples are labeled as illustrations; fixture thresholds and operational claims link to current source |
 | Runnable proof | Build, validate, replay twice with fresh temporary databases, compare history hashes, and run the documented local live batch |

@@ -37,25 +37,28 @@ instruction to keep waiting.
 
 ## Capability and effect boundaries
 
+What crosses the worker boundary?
+
 ```mermaid
 sequenceDiagram
     participant R as Runtime
-    participant W as Go EpisodeWorker
+    participant W as Go worker
     participant E as EvidenceTools
-    participant A as Action plane
-    R->>W: Handshake + immutable bounded request
-    R->>W: Short-lived capability token
-    W->>E: Scoped evidence.get(token, query)
-    E-->>W: Bounded observation / artifact reference
-    W-->>R: Streamed telemetry + Decision proposal
-    R->>R: Validate identity, digest, schema, freshness, fence
-    R->>A: Only policy-approved Command
-    A-->>R: Outcome or durable unknown/reconciliation
+    R->>W: Handshake and bounded request
+    R->>W: Scoped capability token
+    W->>E: Read scoped evidence
+    E-->>W: Bounded observations
+    W-->>R: Telemetry and Decision proposal
+    R->>R: Validate proposal and attempt
 ```
 
-Text equivalent: the runtime sends an immutable bounded request and short-lived
-capability to a worker; the worker reads scoped evidence and returns a proposal;
-the runtime validates it before the action plane can create an outcome.
+Text equivalent: the runtime sends a bounded request and scoped capability;
+the worker reads permitted evidence and returns telemetry plus a proposal.
+The runtime validates that proposal. The separate
+[policy and action path](../design/decisions-and-actions.md) decides whether
+any accepted Intent can become an effect.
+Source: [worker protocol](../contracts/worker-protocol.md) and
+[executor conformance](../../internal/executor/conformance/).
 
 The worker receives no effector handle, production credential, shell capability,
 or arbitrary network capability. Evidence results are bounded and can spill to

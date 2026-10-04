@@ -3,34 +3,44 @@
 The action path is deliberately longer than “model output → API call.” Each
 boundary turns an untrusted proposal into a more constrained durable record.
 
-## Governance flow
+## Two authority boundaries
+
+How is a model proposal accepted?
 
 ```mermaid
-sequenceDiagram
-    participant M as Model / worker
-    participant E as Episode runtime
-    participant V as Decision validator
-    participant P as Policy gateway
-    participant O as Outbox
-    participant D as Dispatcher
-    participant F as Effector
-    M-->>E: Decision + typed Intents
-    E->>V: Schema, identity, digest, fence, budget
-    V-->>E: accepted or durable rejection
-    E->>P: Evaluate each accepted Intent
-    P->>P: Freshness; completeness; risk; approval
-    P->>P: Quota; rate limit; interlock; calibration; epoch
-    P->>O: Governed Command + idempotency key
-    O->>D: Leased command
-    D->>D: Revalidate immediately before effect
-    D->>F: Authorized dispatch
-    F-->>D: success, failure, or unknown
-    D->>O: Durable outcome / reconciliation state
+flowchart LR
+    D["Decision and Intents"] --> V["Validate proposal"]
+    V --> P["Policy"]
+    P -->|permitted| C["Command"]
 ```
 
-Text equivalent: a worker proposal is validated, policy rechecks current state,
-the outbox records an idempotent command, the dispatcher revalidates before an
-effector call, and the result is recorded as success, failure, or unknown.
+Text equivalent: a proposal must pass binding/schema validation and current
+policy before it becomes a Command. Rejection, deferral, or an approval need
+can stop this path. Source: [Decision validator](../../internal/decisions/validator.go)
+and [policy](../../internal/policy/policy.go).
+
+How is an accepted Command dispatched?
+
+```mermaid
+flowchart LR
+    C["Leased Command"] --> R["Readiness check"]
+    R -->|permitted| E["Effector"]
+    E --> O["Outcome"]
+```
+
+Text equivalent: dispatch leases an accepted Command, checks current authority,
+calls the configured effector only when permitted, and records the result.
+Source: [dispatcher](../../internal/actions/dispatcher.go).
+
+## Why validate twice?
+
+The first boundary rejects proposals that are malformed, stale, out of scope,
+or disallowed. The second accounts for change while an accepted Command waits:
+owner, epoch controls, interlocks, or device readiness can change.
+
+The extra checks and durable queue add work and may add latency. They also
+keep model output from carrying its own execution authority. A prior approval
+cannot become a shortcut past a later stop.
 
 ## Validation
 
@@ -63,7 +73,8 @@ It does not blindly retry an effect that could duplicate external work.
 - Decision validation: [`internal/decisions/validator.go`](../../internal/decisions/validator.go)
 - Policy gateway: [`internal/policy/policy.go`](../../internal/policy/policy.go)
 - Dispatcher: [`internal/actions/dispatcher.go`](../../internal/actions/dispatcher.go)
-- Effectors: [`internal/actions/`](../../internal/actions/)
+- Effect adapters: [`internal/device/`](../../internal/device/) and [`internal/watch/`](../../internal/watch/)
+- Approved effect contracts: [`internal/actionport/`](../../internal/actionport/)
 
 ## Next reads
 

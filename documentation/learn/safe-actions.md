@@ -24,10 +24,10 @@ How does a proposal reach an external system?
 
 ```mermaid
 flowchart LR
-    I["Validated Intent"] --> P["Policy checks current state"]
-    P -->|accepted| C["Durable Command"]
-    C --> R["Final readiness check"]
-    R -->|permitted| E["Effector and outcome"]
+    I["Intent"] --> P["Policy"]
+    P -->|accepted| C["Command"]
+    C --> R["Readiness"]
+    R -->|permitted| E["Effector / outcome"]
 ```
 
 Text equivalent: policy evaluates a validated proposal against current state.

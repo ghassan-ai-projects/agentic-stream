@@ -6,25 +6,35 @@ authority and validates again at each boundary where authority increases.
 
 ## Trust boundaries
 
+Where does untrusted data enter?
+
 ```mermaid
-flowchart TB
-    U["External event / trace\nuntrusted data"] --> V["Ingress validation\nidentity + schema + quarantine"]
-    V --> D["Deterministic stream\ndurable state only"]
-    D --> S["Immutable Situation snapshot"]
-    S --> W["Worker / model\nuntrusted proposal"]
-    W --> X["Decision + Intent validation\nidentity + digest + schema"]
-    X --> P["Policy gateway\ncurrent state + risk + approval"]
-    P --> O["Command outbox\ndurable authorization"]
-    O --> A["Effector boundary\nfinal authorization + idempotency"]
-    A --> E["External effect"]
-    C["Credentials / secrets"] -. never passed to .-> W
-    C -.-> A
+flowchart LR
+    E["Untrusted events"] --> V["Validation"]
+    V --> S["Stream state"]
+    S --> B["Scoped snapshot"]
 ```
 
-Text equivalent: untrusted events are validated before durable stream state;
-workers and models propose typed output; validation and policy add authority;
-the outbox and effector perform the final controlled transition. Credentials
-never flow into the worker/model proposal path.
+Text equivalent: external data passes evidence validation before durable stream
+state; episodes receive a scoped snapshot. Source:
+[event log](../../internal/eventlog/) and [evidence boundary](../../internal/evidence/).
+
+Where can a proposal gain execution authority?
+
+```mermaid
+flowchart LR
+    W["Worker proposal"] --> V["Validation and policy"]
+    V --> C["Command"]
+    C -->|if permitted| E["Effector"]
+```
+
+Text equivalent: worker output is still an untrusted proposal. Runtime validation,
+policy, and final current-authority checks govern its path to an effector.
+Source: [decisions](../../internal/decisions/), [policy](../../internal/policy/),
+and [actions](../../internal/actions/).
+
+Production effect credentials remain outside the model/worker request and scoped
+evidence tools. The proposal path carries data; it cannot mint authority.
 
 ## Security rules
 
@@ -39,8 +49,8 @@ never flow into the worker/model proposal path.
   action boundary.
 - Unknown external outcomes stop automatic retry and require reconciliation.
 - Replay has no credentials or production effectors by construction.
-- Subscriber and control surfaces are authenticated; `serve` refuses remote
-  listeners without an authenticated deployment proxy.
+- Subscriber and control surfaces are authenticated; `serve` refuses every non-loopback
+  listen address. Remote access requires an authenticated proxy to loopback.
 
 ## Secret handling
 

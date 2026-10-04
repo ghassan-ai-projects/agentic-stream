@@ -15,27 +15,33 @@ not currently exposed as separate CLI subcommands.
 
 ## Mode separation
 
+Which boundary can replay reach?
+
 ```mermaid
 flowchart LR
-    T["Trace + SituationSpec"] --> R["Replay runtime"]
-    R --> D["Deterministic\nstream history"]
-    R --> L["Recorded ledger\nread-only"]
-    R --> S["Shadow executor\nreport-only"]
-    R --> C["Counterfactual simulator\nexplicit capability"]
-    D --> H["Versions hash"]
-    L --> H
-    S --> H
-    C --> H
-    R -. forbidden .-> X["Production effector"]
+    T["Trace and spec"] --> R["Replay runtime"]
+    R --> O["History or evaluation report"]
+    E["Production effectors: excluded"]
 ```
 
-Text equivalent: one trace and spec feed deterministic, recorded, shadow, or
-explicit counterfactual branches; every branch produces evidence or simulator
-output, while production effectors remain outside the replay graph.
+Text equivalent: replay consumes evidence and produces history or evaluation
+artifacts. The isolated production-effector node has no execution edge from
+replay. An explicit counterfactual simulator is a separate capability, described
+in the mode table. Source: [replay implementation](../../internal/replay/replay.go).
 
-The replay package is constructed without credentials, effectors, or a
-resolver. The runtime reports `EffectsAllowed=false` for all modes. A
-counterfactual simulator is a distinct capability from a production effector.
+Replay is constructed without production credentials, effectors, or an effect
+resolver. It reports `EffectsAllowed=false` for all modes.
+
+## Why keep replay separate?
+
+Reprocessing evidence should not create another real ticket or repeat a device
+change. The replay boundary lets a maintainer compare stream history or evaluate
+reasoning while keeping production effects excluded by construction.
+
+Deterministic replay proves repeatable stream behavior. It does not prove that
+a model always gives the same answer, that a simulation predicts a physical
+system, or that a new executor is ready for production. Each needs its own
+evaluation evidence.
 
 ## Shadow evaluation
 

@@ -19,10 +19,10 @@ Does this version deserve reasoning now?
 
 ```mermaid
 flowchart TD
-    V["New Situation version"] --> G["Evaluate trigger and queue gates"]
-    G --> N["Record no episode"]
-    G --> W["Wait or replace pending work"]
-    G --> E["Admit a bounded episode"]
+    V["Situation version"] --> G["Trigger and queue gates"]
+    G --> N["No episode"]
+    G --> W["Wait / replace work"]
+    G --> E["Bounded episode"]
 ```
 
 Text equivalent: the runtime may record that no episode is needed, delay or

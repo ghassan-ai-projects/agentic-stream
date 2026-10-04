@@ -20,9 +20,8 @@ sidecar.
 
 ## `serve` exits before listening
 
-Common causes are a missing `AGENTIC_STREAM_SUBSCRIBER_TOKEN`, only one of
-`--spec`/`--trace`, a non-positive `--poll-interval`, a non-loopback listener
-without an authenticated proxy, invalid worker TLS/evidence combinations, a
+Common causes are a missing `AGENTIC_STREAM_SUBSCRIBER_TOKEN`, a `--spec` without exactly
+one of `--trace`/`--live-socket`, a non-positive `--poll-interval`, a non-loopback `--listen` value, invalid worker TLS/evidence combinations, a
 stale owner lease, or a failed SQLite migration.
 
 ## Worker handshake or execution fails
@@ -37,8 +36,9 @@ printing the key.
 Inspect event identity, schema version, tenant, partition key, event/ingestion
 times, and source heartbeat. A late event may be intentionally dropped,
 history-only, corrective, or reconsideration-producing according to the spec.
-Do not edit the database to “fix” a late-data result; use the supported
-redrive path and preserve the audit.
+Do not edit the database to “fix” a late-data result. Quarantine release and
+redrive are internal capabilities; there is no packaged public CLI or HTTP
+redrive command. Use approved deployment tooling and preserve the audit.
 
 ## `/v1/events` does not resume
 

@@ -8,7 +8,7 @@ the meaning of a partition or duplicating a known effect.
 
 The runtime uses SQLite in WAL mode through `modernc.org/sqlite`. Database open
 applies the numbered migrations under [`migrations/`](../../migrations/). The
-current repository contains 28 migrations; migration order is append-only.
+current repository contains 30 migrations; migration order is append-only.
 
 Important durable record families include:
 

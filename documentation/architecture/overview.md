@@ -4,37 +4,32 @@ Agentic Stream is a modular monolith with a strict direction of authority.
 The stream plane is deterministic; the cognition plane is bounded; the policy
 and action planes are the only path to external effects.
 
-## Runtime flow
+## Main runtime boundaries
+
+For a first explanation, read [the four-stage story](../learn/README.md).
+This diagram adds the runtime owners. Detailed calculations and recovery
+steps appear on their own design pages.
+
+What are the major handoffs?
 
 ```mermaid
-flowchart LR
-    E["Evidence sources"] --> I["Ingress adapters"]
-    I --> L["Event log\nidentity + schema + dedup"]
-    L --> S["Stream engine\nwatermarks + partitions"]
-    S --> O["Operators\nwindows + features"]
-    O --> V["Situation versions\nimmutable + digest"]
-    V --> C["Cognitive scheduler\ntrigger + budget + freshness"]
-    C --> P["Episode\nbounded snapshot"]
-    P --> W["Executor / Go worker\nread-only evidence"]
-    W --> D["Decision + Intents"]
-    D --> G["Policy gateway\nrevalidate + govern"]
-    G --> Q["Command outbox"]
-    Q --> A["Action dispatcher"]
-    A --> X["Effector / outcome"]
-    V -.-> N["Durable records + notifications"]
-    C -.-> N
-    D -.-> N
-    X -.-> N
+flowchart TD
+    E["Evidence log"] --> S["Situation versions"]
+    S -->|eligible change| C["Scheduler and admission"]
+    C --> B["Bounded episode"]
+    B -->|typed proposal| P["Validation and policy"]
+    P -->|permitted Command| A["Dispatch and outcome"]
 ```
 
-Text equivalent: evidence enters ingress and the event log, becomes
-event-time-derived Situation versions, and may wake a bounded episode. Only a
-validated Decision reaches policy, then the durable outbox and action
-dispatcher can reach an effector; notifications are an observation projection.
+Text equivalent: accepted evidence becomes versioned stream state. An eligible
+change can reach admission and bounded reasoning. Its typed proposal passes
+validation and policy before governed dispatch. Each arrow is a possible
+handoff, not a promise that every event traverses the whole path.
+Source: [runtime composition](../../internal/runtime/pipeline.go).
 
-Each major boundary is typed and durable where state crosses a recovery
-boundary. The dashed path is observability
-and notification evidence; it is not a shortcut to execution.
+API notifications observe durable records. They do not add an alternate path
+to execution. [Observability](../design/observability.md) explains that separate
+relationship.
 
 ## Planes and authority
 
@@ -50,23 +45,19 @@ and notification evidence; it is not a shortcut to execution.
 
 ## Dependency direction
 
-The implementation follows this direction:
+Data flow and package imports are different maps. The diagram above shows
+work moving through the runtime. The [module ownership map](modules.md) shows
+which packages may depend on which owners, including lifecycle ledgers,
+runtime control, and device ports.
 
-```text
-cmd
-  -> runtime / api / ingress / replay
-  -> engine / situations / cognition / episodes
-  -> decisions / policy / actions
-  -> eventlog / storage / clock / contractsv1
-```
+Composition roots wire implementations. Transport stays at the edge;
+modules call lower owners through permitted dependencies. Shared SQLite
+storage does not grant every module permission to change every lifecycle.
+Layer and SQL ownership tests enforce these rules.
 
-The [module ownership map](modules.md) separates device adapters, runtime control,
-approval/episode/queue lifecycle, authority and qualification from shared storage.
-Layer and SQL ownership tests enforce these boundaries.
-
-Transport code stays at the edge. Business behavior lives in internal domain
-packages. The runtime is deliberately not a graph engine and does not put an
-LLM in the event hot path.
+The runtime keeps model calls and effector calls outside the deterministic
+stream transaction. This preserves ordering and makes the stream history
+repeatable without waiting on external services.
 
 ## Deployment shape
 
@@ -88,6 +79,8 @@ semantics explicit before any broker or distributed scheduler is introduced.
 - Repository map: [repository-map.md](repository-map.md)
 
 ## Next reads
+
+- [Understand the design choices](../learn/design-choices.md)
 
 - [Business modules and ownership](modules.md)
 - [Durability and recovery](durability.md)

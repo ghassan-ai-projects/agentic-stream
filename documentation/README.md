@@ -27,47 +27,6 @@ not every reading needs reasoning, and not every proposal may execute.
 | Build and run the local example | [Quickstart](getting-started/quickstart.md) |
 | Check an exact contract or command | [Reference](reference/README.md) and [contracts](contracts/README.md) |
 
-## Choose a path
-
-### I want to run it
-
-- [Install and build](getting-started/install.md)
-- [Quickstart](getting-started/quickstart.md)
-- [Live runtime](getting-started/live-runtime.md)
-- [Predictive-maintenance walkthrough](guides/predictive-maintenance.md)
-- [Troubleshooting](guides/troubleshoot.md)
-
-### I want to understand it
-
-- [Learn step by step](learn/README.md) — purpose, motor story, time, reasoning, actions, and design choices.
-- [Core concepts](overview/concepts.md) — a short vocabulary reference.
-- [Architecture overview](architecture/overview.md)
-- [Business modules and ownership](architecture/modules.md)
-- [Durability and recovery](architecture/durability.md)
-- [Worker boundary](architecture/worker-boundary.md)
-- [Security model](architecture/security-model.md)
-- [Product invariants](architecture/invariants.md)
-- [Public design reading order](design/README.md)
-
-### I want to integrate or extend it
-
-- [Author a SituationSpec](getting-started/first-situation.md)
-- [Add a domain](guides/add-a-domain.md)
-- [Build a Go worker](guides/build-a-go-worker.md)
-- [Contract index](contracts/README.md)
-- [CLI reference](reference/cli.md)
-- [HTTP and SSE reference](reference/http-api.md)
-
-### I want to operate or review it
-
-- [Operations](operations/README.md)
-- [Recovery runbook](operations/recovery.md)
-- [Security hardening](operations/security-hardening.md)
-- [Telemetry](operations/observability.md)
-- [Quality and release gates](governance/quality.md)
-- [Release evidence](governance/release.md)
-- [Roadmap](roadmap.md)
-
 ## Documentation map
 
 | Area | Purpose |

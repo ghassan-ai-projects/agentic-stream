@@ -10,12 +10,19 @@ the archive path is not a second public documentation entrypoint.
 
 ## Start from a known-good example
 
-Copy the predictive-maintenance example conceptually, then change one domain
-area at a time:
+Build the binary with [the quickstart](quickstart.md), then copy the example
+to a temporary working file. This keeps the committed test fixture intact:
 
-```text
-docs/design/examples/predictive-maintenance.situation.yaml
+```bash
+spec_dir=$(mktemp -d)
+cp docs/design/examples/predictive-maintenance.situation.yaml "$spec_dir/motor.situation.yaml"
+./bin/agentic-stream validate "$spec_dir/motor.situation.yaml"
 ```
+
+Keep this terminal open so `spec_dir` remains available for the later command.
+Edit the copied file with your editor. Start with `metadata.description`, then
+validate again. Make one kind of behavioral change at a time; keep a trace and
+expected result for each change.
 
 The schema is committed at
 [`internal/spec/schema.json`](../../internal/spec/schema.json). The compiler
@@ -44,12 +51,28 @@ sections to a spec until an enforcing contract is introduced.
 ## Validate before deploying
 
 ```bash
-./bin/agentic-stream validate path/to/example.situation.yaml
+./bin/agentic-stream validate "$spec_dir/motor.situation.yaml"
 ```
 
-The compiler emits canonical JSON and a `sha256:` digest. Equivalent YAML
+The default output reports the spec name, version, schema, and `sha256:` digest.
+Use `validate --json` to print the canonical JSON. Equivalent YAML
 representations should produce the same canonical identity. A digest change is
 an explicit deployment/versioning event.
+
+## Change one part of the story at a time
+
+| You want to change… | Read and edit | Check afterward |
+| --- | --- | --- |
+| Which evidence is accepted | `inputs` and the event registry | Validate field names, schema, units, and tenant identity |
+| How observations are summarized | `time`, `windows`, `operators` | Replay a trace, including duplicates and late evidence |
+| When the condition changes phase | `situation` | Check opening, duration, recovery, and version history |
+| When reasoning may start | `cognition` | Check eligible and suppressed triggers, queue timing, and budgets |
+| Which proposals are allowed | `actions` | Review Intent schemas/risk and current runtime policy limits |
+
+A spec passing validation is the first check. It does not establish that its
+rules fit real sensor behavior or that an external effect is safe. Start with
+the simulated effect profile and use [the domain guide](../guides/add-a-domain.md)
+when adding a schema or action type.
 
 ## Domain-data rule
 

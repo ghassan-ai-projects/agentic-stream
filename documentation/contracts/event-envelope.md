@@ -29,6 +29,10 @@ payload type and declared fields.
 - **Simulator JSONL:** the streams-simulator `trace-record-v0.1` adapter,
   selected with `--trace-format simulator` on live workflows.
 
+- **Live normalized JSONL socket:** `serve --live-socket` accepts normalized
+  envelopes over a Unix domain socket. It is mutually exclusive with `--trace`
+  and requires `--trace-format normalized`.
+
 HTTP, Kafka, NATS, and MQTT adapters are not part of the current runtime.
 
 ## Data quality behavior
@@ -63,6 +67,7 @@ inventing evidence.
 - Envelope type and validation: [`internal/contractsv1/envelope.go`](../../internal/contractsv1/envelope.go)
 - JSONL adapter: [`internal/ingress/jsonl.go`](../../internal/ingress/jsonl.go)
 - Simulator adapter: [`internal/ingress/simulator.go`](../../internal/ingress/simulator.go)
+- Live socket adapter: [`internal/ingress/live_socket.go`](../../internal/ingress/live_socket.go)
 - Schema registry data: [`internal/eventschema/registry_data.json`](../../internal/eventschema/registry_data.json)
 
 ## Next reads

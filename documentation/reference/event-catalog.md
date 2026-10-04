@@ -11,6 +11,8 @@ The current catalog includes these families:
 | Reefer | ambient/return/supply temperature, setpoint, defrost, door, link, power |
 | Pond | dissolved oxygen, ammonia, pH, water temperature, aerator current, feeding, heartbeat |
 | Bay | air temperature, humidity, CO₂, PAR light, leaf wetness, vent position/event, heartbeat |
+| Shipment | position, leg status, hub event, customs status, ETA slack, leg delay, heartbeat |
+| Thermal zone | temperature, ambient temperature, fan tachometer, humidity, heartbeat |
 | Generic fixture | sensor temperature |
 
 Entries use versioned event types such as

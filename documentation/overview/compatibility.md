@@ -17,7 +17,7 @@ support.
 | Local API | Go `net/http`, JSON health/readiness, metrics, Server-Sent Events |
 | Worker protocol | Current-v1 Protobuf/gRPC, Unix domain socket by default |
 | Telemetry | OpenTelemetry traces and runtime metrics; OTLP/HTTP when configured |
-| Ingress | Normalized JSONL and simulator JSONL adapter |
+| Ingress | Normalized JSONL files, simulator adapter, and live normalized JSONL Unix socket |
 
 The module path is
 `github.com/ghassan-ai-projects/agentic-stream`. The exact dependency set is
@@ -29,8 +29,8 @@ in [`go.mod`](../../go.mod); it is the compatibility authority.
 - A stable external SDK or public Go package contract beyond the documented
   worker and data boundaries.
 - Kafka, NATS, MQTT, or other broker-backed ingress in the runtime binary.
-- A remote listener directly exposed by `serve`; non-loopback deployment needs
-  an authenticated proxy.
+- A non-loopback listener directly exposed by `serve`; remote access needs
+  an authenticated proxy forwarding to loopback.
 - Exactly-once guarantees for arbitrary external providers. Unknown outcomes
   are durable and require reconciliation.
 

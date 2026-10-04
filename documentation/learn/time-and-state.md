@@ -41,9 +41,9 @@ What happens to earlier conclusions when new evidence arrives?
 
 ```mermaid
 flowchart LR
-    E["New evidence"] --> S["Update current state"]
-    S --> V["Publish version 2"]
-    V1["Version 1 stays unchanged"]
+    E["New evidence"] --> S["Update state"]
+    S --> V["Version 2"]
+    V1["Version 1: retained"]
 ```
 
 Text equivalent: new evidence updates current state and may publish a new

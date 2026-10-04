@@ -75,8 +75,9 @@ The live socket is a source of normalized evidence, not a device-control
 socket. Replay-file restrictions remain unchanged, and receipt data never
 stands in for independent effect verification.
 
-The server is loopback-only by default. A non-loopback address is refused
-unless an authenticated deployment proxy is placed in front of it.
+The server accepts only loopback listen addresses. To expose remote access,
+place an authenticated deployment proxy in front of the loopback service;
+the proxy does not enable a non-loopback `--listen` value.
 
 ## Worker mode
 

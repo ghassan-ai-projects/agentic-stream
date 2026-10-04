@@ -9,7 +9,7 @@ support the claim, not that every production deployment scenario is complete.
 | Area | Evidence |
 | --- | --- |
 | SituationSpec compilation, semantic validation, CEL restrictions, canonical digests | `internal/spec/`, `internal/spec/schema.json`, compiler tests |
-| Normalized JSONL and simulator trace ingress | `internal/ingress/`, `examples/predictive-maintenance/testdata/` |
+| Normalized JSONL, simulator files, and live normalized JSONL Unix socket ingress | `internal/ingress/`, `examples/predictive-maintenance/testdata/` |
 | SQLite WAL storage and migrations | `internal/storage/`, `migrations/` |
 | Deduplication, event-time processing, watermarks, late correction, quarantine, gaps | `internal/eventlog/`, `internal/engine/`, `internal/operators/` |
 | Immutable Situation versions and provenance | `internal/situations/`, `internal/engine/` |
@@ -17,7 +17,8 @@ support the claim, not that every production deployment scenario is complete.
 | Bounded episodes, budgets, cancellation, fencing, recovery, rebind | `internal/episodes/` |
 | Decision/Intent schema and binding validation | `internal/decisions/`, `internal/contractsv1/` |
 | Deterministic policy, approvals, interlocks, calibration and epoch controls | `internal/policy/`, `internal/interlock/`, `internal/storage/` |
-| Idempotent outbox dispatch, simulated/watch effectors, unknown outcomes | `internal/actions/` |
+| Idempotent outbox dispatch, simulated/watch effectors, unknown outcomes | `internal/actions/`, `internal/device/`, `internal/watch/` |
+| Typed device-gateway integration with authority and reconciliation records; hardware qualification remains separate | `internal/device/`, `internal/authority/`, CLI effect-profile tests |
 | Native deterministic/OpenAI-compatible executor and Go EpisodeWorker boundary | `internal/executor/`, `internal/worker/`, `proto/` |
 | Deterministic, recorded, shadow, and counterfactual replay modes | `internal/replay/` |
 | Loopback HTTP, readiness, metrics, durable SSE notifications, drain/kill control | `internal/api/`, `internal/notify/`, `internal/telemetry/` |
@@ -25,11 +26,12 @@ support the claim, not that every production deployment scenario is complete.
 
 ## Partial or operationally restricted
 
-- The executable supports JSONL ingestion and a simulator adapter. Durable
+- The executable supports JSONL files, a simulator adapter, and live normalized
+  JSONL over a Unix domain socket. Durable
   Kafka/NATS/MQTT connectors are not present.
-- `serve` binds loopback by default and refuses non-loopback listeners without
-  an authenticated deployment proxy. A deployment must provide that proxy and
-  its operational controls.
+- `serve` accepts only loopback listen addresses. For remote access, a deployment
+  must provide an authenticated proxy that forwards to the loopback service,
+  together with its operational controls.
 - A simulated effector is the safe default proof surface. Concrete external
   effectors require an integration-specific implementation and review.
 - Environment-level release evidence, long-running soak evidence, and a
@@ -46,7 +48,7 @@ support the claim, not that every production deployment scenario is complete.
 ## Deliberately deferred
 
 - Web UI, graph engine, multi-agent mesh, general workflow orchestration,
-  Python workers, and direct production model credentials in the runtime.
+  Python workers, and direct model access to production effect credentials.
 - Distributed scale-out and broker adapters before single-node deterministic
   semantics are proven in the target workload.
 

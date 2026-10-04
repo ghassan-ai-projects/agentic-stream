@@ -15,21 +15,28 @@ explicitly approved packages at a lower architecture level. Composition roots
 wire implementations; effect adapters consume ports and cannot reach the
 services that decide or dispatch work.
 
+This is the most detailed diagram in the reading path. Read the
+[architecture overview](overview.md) first. Expand it when reviewing imports
+or durable write ownership; it is a selected dependency map, not an event flow.
+
+<details>
+<summary>Selected package dependencies and lifecycle owners</summary>
+
 ```mermaid
 flowchart TD
-    R["Runtime / CLI composition"] --> A["Governed dispatcher"]
-    R --> D["Device adapters"]
-    A --> P["Approved command / effect ports"]
+    R["Runtime / CLI"] --> A["actions"]
+    R --> D["device"]
+    A --> P["actionport"]
     D --> P
-    R --> C["Runtime ownership / epoch control"]
-    C --> E["Episode lifecycle ledger"]
-    S["Cognitive scheduling"] --> E
-    S --> Q["Queue lifecycle ledger"]
-    S --> H["Approval lifecycle ledger"]
-    G["Policy permission / signature checks"] --> H
-    D --> T["Device authority / reconciliation"]
+    R --> C["control"]
+    C --> E["episodeledger"]
+    S["cognition"] --> E
+    S --> Q["scheduleledger"]
+    S --> H["approvalledger"]
+    G["policy"] --> H
+    D --> T["authority"]
     T --> C
-    E --> DB["Shared transaction / SQLite infrastructure"]
+    E --> DB["storage"]
     Q --> DB
     H --> DB
 ```
@@ -39,6 +46,8 @@ shared effect port. Control and scheduling call lower lifecycle ledgers. Device
 authority depends on runtime ownership. Each ledger participates in the caller's
 existing transaction; an import boundary does not split an atomic operation.
 The diagram shows selected dependencies rather than every package import.
+
+</details>
 
 Cancellation flows from composition through control and lifecycle operations.
 Execution observes durable cancellation/fencing state. Effect authorization is

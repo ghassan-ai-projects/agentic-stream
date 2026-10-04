@@ -34,7 +34,7 @@ Agentic Stream is not:
 - a web UI or a replacement for a domain system of record.
 
 The runtime intentionally starts with a modular monolith, SQLite WAL, JSONL
-ingress, and Go worker boundaries. Kafka, NATS, MQTT, and broader deployment
+ingress from files or a live Unix socket, and Go worker boundaries. Kafka, NATS, MQTT, and broader deployment
 topologies are deferred until the single-node semantics are proven.
 
 ## Who it is for
@@ -52,7 +52,7 @@ and [limitations](limitations.md) pages describe the evidence boundary.
 ## The first proof
 
 The predictive-maintenance example models a motor with temperature, vibration,
-current, RPM, heartbeat, operating mode, and maintenance events. The acceptance
+current, and heartbeat events. The acceptance
 path requires deterministic replay, duplicate and out-of-order handling,
 hysteresis/debounce/cooldown, stale-episode cancellation, typed and governed
 intents, idempotent effects, shadow mode, and explainability.
