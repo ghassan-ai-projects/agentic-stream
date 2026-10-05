@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
@@ -93,7 +95,7 @@ func (s *DeviceSession) applyRefreshedState(ctx context.Context, state map[strin
 	s.capabilityDigest = stateString(state, "capability_digest")
 	s.safeState, _ = state["safe_state"].(bool)
 	var err error
-	s.stateDigest, err = stateDigest(state)
+	s.stateDigest, err = domain.StateDigest(state)
 	if err != nil {
 		return fmt.Errorf("digest device state refresh: %w", err)
 	}

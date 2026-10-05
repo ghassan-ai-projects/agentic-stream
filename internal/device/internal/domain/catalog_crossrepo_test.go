@@ -1,4 +1,4 @@
-package device_test
+package domain_test
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
@@ -24,11 +24,11 @@ func physicalSensorRoot(t *testing.T) string {
 }
 
 func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDAndFanCommands(t *testing.T) {
-	data, err := os.ReadFile("../contractsv1/conformance/v1/thermal-capability-catalog.json")
+	data, err := os.ReadFile("../../../contractsv1/conformance/v1/thermal-capability-catalog.json")
 	if err != nil {
 		t.Fatalf("read canonical physical catalog: %v", err)
 	}
-	catalog, err := device.LoadCapabilityCatalog(data)
+	catalog, err := domain.LoadCapabilityCatalog(data)
 	if err != nil {
 		t.Fatalf("load physical catalog: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDAndFanCommands(t *test
 		if err != nil {
 			t.Fatalf("read physical catalog copy: %v", err)
 		}
-		externalCatalog, err := device.LoadCapabilityCatalog(externalData)
+		externalCatalog, err := domain.LoadCapabilityCatalog(externalData)
 		if err != nil {
 			t.Fatalf("load physical catalog copy: %v", err)
 		}

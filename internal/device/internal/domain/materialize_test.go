@@ -1,4 +1,4 @@
-package device_test
+package domain_test
 
 import (
 	"os"
@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
@@ -20,13 +20,13 @@ import (
 
 const boot = "boot-A"
 
-func loadThermalCatalog(t *testing.T) *device.CapabilityCatalog {
+func loadThermalCatalog(t *testing.T) *domain.CapabilityCatalog {
 	t.Helper()
-	data, err := os.ReadFile("../contractsv1/conformance/v1/thermal-capability-catalog.json")
+	data, err := os.ReadFile("../../../contractsv1/conformance/v1/thermal-capability-catalog.json")
 	if err != nil {
 		t.Fatalf("read catalog: %v", err)
 	}
-	catalog, err := device.LoadCapabilityCatalog(data)
+	catalog, err := domain.LoadCapabilityCatalog(data)
 	if err != nil {
 		t.Fatalf("load catalog: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestMaterializeReEnforcesHardBounds(t *testing.T) {
         }
       }
     }`
-	catalog, err := device.LoadCapabilityCatalog([]byte(overBound))
+	catalog, err := domain.LoadCapabilityCatalog([]byte(overBound))
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestLoadCapabilityCatalogRejectsInvalid(t *testing.T) {
 		body := body
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := device.LoadCapabilityCatalog([]byte(body)); err == nil {
+			if _, err := domain.LoadCapabilityCatalog([]byte(body)); err == nil {
 				t.Fatalf("expected %s to be rejected", name)
 			}
 		})

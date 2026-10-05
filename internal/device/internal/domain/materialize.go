@@ -1,4 +1,4 @@
-package device
+package domain
 
 import (
 	"encoding/json"
@@ -7,11 +7,10 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
-// serial_materialize.go — the deterministic intent→device-command materializer
+// The deterministic intent→device-command materializer
 // for the physical (serial) effector boundary (Real-World Sensor HIL-0, Phase 03
 // Task 3.2). It is the guarantee that no arbitrary target, pin, opcode, or PWM
 // value ever comes from model output: a policy-approved actionport.Command carries
@@ -59,7 +58,7 @@ func (c *CapabilityCatalog) materializeRoute(command actionport.Command, expecte
 
 // checkTarget requires the command's normalized target to be the route's
 // catalog target or one of its declared bindings.
-func (spec OperationSpec) checkTarget(command actionport.Command) error {
+func (spec Route) checkTarget(command actionport.Command) error {
 	if command.NormalizedTarget == "" {
 		return fmt.Errorf("normalized target is required to materialize a device command")
 	}
@@ -74,7 +73,7 @@ func (spec OperationSpec) checkTarget(command actionport.Command) error {
 
 // boundedParameters copies the selected preset (the ONLY source of device
 // parameters) and re-enforces every hard bound at this last boundary.
-func (spec OperationSpec) boundedParameters(command actionport.Command) (map[string]any, error) {
+func (spec Route) boundedParameters(command actionport.Command) (map[string]any, error) {
 	selectorValue, ok := command.Payload[spec.SelectorField].(string)
 	if !ok || selectorValue == "" {
 		return nil, fmt.Errorf("route %q requires a string selector %q in the command payload", command.EffectorRoute, spec.SelectorField)
@@ -86,7 +85,7 @@ func (spec OperationSpec) boundedParameters(command actionport.Command) (map[str
 	return spec.enforcePresetBounds(command.EffectorRoute, preset)
 }
 
-func (spec OperationSpec) enforcePresetBounds(route string, preset map[string]any) (map[string]any, error) {
+func (spec Route) enforcePresetBounds(route string, preset map[string]any) (map[string]any, error) {
 	parameters := make(map[string]any, len(preset))
 	for key, value := range preset {
 		parameters[key] = value
@@ -103,7 +102,7 @@ func (spec OperationSpec) enforcePresetBounds(route string, preset map[string]an
 	return parameters, nil
 }
 
-func sortedKeys(m map[string]NumericBound) []string {
+func sortedKeys(m map[string]Bound) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -112,7 +111,7 @@ func sortedKeys(m map[string]NumericBound) []string {
 	return keys
 }
 
-func (bound NumericBound) check(route, param string, raw any) error {
+func (bound Bound) check(route, param string, raw any) error {
 	number, ok := toFloat(raw)
 	if !ok {
 		return fmt.Errorf("route %q parameter %q is not numeric and cannot be bounded", route, param)
@@ -142,7 +141,7 @@ func toFloat(value any) (float64, bool) {
 	}
 }
 
-func (c *CapabilityCatalog) deviceCommandDocument(command actionport.Command, expectedBootID string, spec OperationSpec, parameters map[string]any) (map[string]any, error) {
+func (c *CapabilityCatalog) deviceCommandDocument(command actionport.Command, expectedBootID string, spec Route, parameters map[string]any) (map[string]any, error) {
 	document := map[string]any{
 		"message_type":       "command",
 		"protocol_version":   c.ProtocolVersion,
@@ -183,7 +182,7 @@ func (c *CapabilityCatalog) MaterializeSafeStop(target, expectedBootID string) (
 	return c.safeStopDocument(target, expectedBootID, spec)
 }
 
-func (c *CapabilityCatalog) safeStopDocument(target, expectedBootID string, spec SafeStopSpec) (map[string]any, error) {
+func (c *CapabilityCatalog) safeStopDocument(target, expectedBootID string, spec SafeStopRoute) (map[string]any, error) {
 	catalogDigest, err := c.Digest()
 	if err != nil {
 		return nil, fmt.Errorf("digest safe stop catalog: %w", err)
@@ -201,9 +200,7 @@ func (c *CapabilityCatalog) safeStopDocument(target, expectedBootID string, spec
 }
 
 func sealSafeStopDocument(document map[string]any) (map[string]any, error) {
-	identity := cloneDocument(document)
-	delete(identity, "command_id")
-	idempotencyKey, err := canonicaljson.Digest(canonicaljson.DomainCommand, identity)
+	idempotencyKey, err := CommandIdentity(document)
 	if err != nil {
 		return nil, fmt.Errorf("digest safe stop command identity: %w", err)
 	}

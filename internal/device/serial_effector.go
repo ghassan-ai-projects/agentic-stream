@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
@@ -168,32 +170,12 @@ func (e *SerialEffector) verifyMaterializedCommand(ctx context.Context, wireComm
 
 func verifyObservedOutput(evidence, wireCommand map[string]any) (string, map[string]any, error) {
 	state, _ := evidence["state"].(map[string]any)
-	output, _ := state["current_output"].(map[string]any)
-	observedTarget, _ := output["target"].(string)
-	observedOperation, _ := output["operation"].(string)
-	observedEnergized, _ := output["energized"].(bool)
-	expectedValue, expectedEnergized := expectedOutput(wireCommand)
-	observedValue, _ := output["value"].(float64)
-	// Both closed device routes carry a numeric output value: LED brightness or
-	// fan duty. A fan is not verified merely because it is energized; a stale or
-	// misconfigured duty must fail reconciliation just like a wrong LED value.
-	valueMatches := observedValue == expectedValue
-	if observedTarget != wireCommand["target"] || observedOperation != wireCommand["operation"] || observedEnergized != expectedEnergized || !valueMatches {
+	verified, err := domain.OutputVerified(state, wireCommand)
+	if err != nil {
+		return "", evidence, fmt.Errorf("verify device output: %w", err)
+	}
+	if !verified {
 		return "failed", evidence, nil
 	}
 	return "succeeded", evidence, nil
-}
-
-func expectedOutput(command map[string]any) (float64, bool) {
-	parameters, _ := command["parameters"].(map[string]any)
-	for name, raw := range parameters {
-		if name == "lease_ms" {
-			continue
-		}
-		value, ok := raw.(float64)
-		if ok {
-			return value, value > 0
-		}
-	}
-	return 0, false
 }

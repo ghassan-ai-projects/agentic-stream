@@ -1,4 +1,4 @@
-package device
+package domain
 
 import (
 	"bytes"
@@ -11,29 +11,29 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
-// NumericBound is an inclusive hard limit re-enforced on a materialized device
+// Bound is an inclusive hard limit re-enforced on a materialized device
 // parameter. An absent Min or Max means that side is unbounded.
-type NumericBound struct {
+type Bound struct {
 	Min *float64 `json:"min,omitempty"`
 	Max *float64 `json:"max,omitempty"`
 }
 
-// OperationSpec is the closed mapping from one accepted intent route to one
+// Route is the closed mapping from one accepted intent route to one
 // bounded device operation. The model may only select a preset by name; it can
 // never introduce a target, operation, or parameter value.
-type OperationSpec struct {
+type Route struct {
 	Operation      string                    `json:"operation"`
 	Target         string                    `json:"target"`
 	TargetBindings map[string]string         `json:"target_bindings,omitempty"`
 	SelectorField  string                    `json:"selector_field"`
 	ExpiresAfterMs int                       `json:"expires_after_ms"`
 	Presets        map[string]map[string]any `json:"presets"`
-	Bounds         map[string]NumericBound   `json:"bounds,omitempty"`
+	Bounds         map[string]Bound          `json:"bounds,omitempty"`
 }
 
-// SafeStopSpec is a catalog-owned, parameter-free operation that requests the
+// SafeStopRoute is a catalog-owned, parameter-free operation that requests the
 // device's safe state. It is never produced from model or intent payloads.
-type SafeStopSpec struct {
+type SafeStopRoute struct {
 	Operation      string `json:"operation"`
 	ExpiresAfterMs int    `json:"expires_after_ms"`
 }
@@ -43,8 +43,8 @@ type SafeStopSpec struct {
 // concrete bench values live in a JSON file the hardware owner tunes.
 type CapabilityCatalog struct {
 	ProtocolVersion int                      `json:"protocol_version"`
-	Routes          map[string]OperationSpec `json:"routes"`
-	SafeStops       map[string]SafeStopSpec  `json:"safe_stops,omitempty"`
+	Routes          map[string]Route         `json:"routes"`
+	SafeStops       map[string]SafeStopRoute `json:"safe_stops,omitempty"`
 }
 
 // Digest returns the canonical identity of this validated capability catalog.
@@ -106,7 +106,7 @@ func (c *CapabilityCatalog) validate() error {
 	return c.validateSafeStops()
 }
 
-func (spec OperationSpec) validate(route string) error {
+func (spec Route) validate(route string) error {
 	if route == "" {
 		return fmt.Errorf("capability catalog contains an empty route")
 	}
@@ -119,7 +119,7 @@ func (spec OperationSpec) validate(route string) error {
 	return spec.validatePresets(route)
 }
 
-func (spec OperationSpec) validateTargetBindings(route string) error {
+func (spec Route) validateTargetBindings(route string) error {
 	for logicalTarget, physicalTarget := range spec.TargetBindings {
 		if logicalTarget == "" || physicalTarget == "" {
 			return fmt.Errorf("route %q contains an empty target binding", route)
@@ -131,7 +131,7 @@ func (spec OperationSpec) validateTargetBindings(route string) error {
 	return nil
 }
 
-func (spec OperationSpec) validatePresets(route string) error {
+func (spec Route) validatePresets(route string) error {
 	if spec.ExpiresAfterMs < 1 {
 		return fmt.Errorf("route %q must set a positive expires_after_ms", route)
 	}
@@ -144,7 +144,7 @@ func (spec OperationSpec) validatePresets(route string) error {
 // validateBounds requires every bounded parameter to be produced by every
 // preset, so a selector can never silently bypass a declared hard bound, and
 // every bound to be finite and ordered.
-func (spec OperationSpec) validateBounds(route string) error {
+func (spec Route) validateBounds(route string) error {
 	for param := range spec.Bounds {
 		if err := spec.requireBoundedByEveryPreset(route, param); err != nil {
 			return err
@@ -158,7 +158,7 @@ func (spec OperationSpec) validateBounds(route string) error {
 	return nil
 }
 
-func (spec OperationSpec) requireBoundedByEveryPreset(route, param string) error {
+func (spec Route) requireBoundedByEveryPreset(route, param string) error {
 	if param == "" {
 		return fmt.Errorf("route %q contains an empty bounds parameter", route)
 	}
@@ -171,7 +171,7 @@ func (spec OperationSpec) requireBoundedByEveryPreset(route, param string) error
 }
 
 // validate requires finite limits with the minimum at or below the maximum.
-func (bound NumericBound) validate(route, param string) error {
+func (bound Bound) validate(route, param string) error {
 	if bound.Min != nil && !isFinite(*bound.Min) {
 		return fmt.Errorf("route %q bound %q has a non-finite minimum", route, param)
 	}

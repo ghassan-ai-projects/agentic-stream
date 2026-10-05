@@ -1,11 +1,11 @@
-package device_test
+package domain_test
 
 import (
 	"encoding/json"
 	"os"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
@@ -14,11 +14,11 @@ const thermalCapabilityCatalogDigest = "sha256:0d61225286c628cfba8cbf7aea514e1fd
 
 func TestThermalCapabilityCatalogDigest(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../contractsv1/conformance/v1/thermal-capability-catalog.json")
+	data, err := os.ReadFile("../../../contractsv1/conformance/v1/thermal-capability-catalog.json")
 	if err != nil {
 		t.Fatalf("read canonical catalog: %v", err)
 	}
-	catalog, err := device.LoadCapabilityCatalog(data)
+	catalog, err := domain.LoadCapabilityCatalog(data)
 	if err != nil {
 		t.Fatalf("load canonical catalog: %v", err)
 	}

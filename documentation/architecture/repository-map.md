@@ -22,6 +22,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/watch/` | derived-trigger watches: install as an effect, fire on matching evidence, expire |
 | `internal/actionport/` | approved command/effect contracts |
 | `internal/device/` | concrete device sessions, materialization, gateway transport and the simulated effector |
+| `internal/device/internal/domain/` | device-boundary rules: capability catalog, materialization, effect profiles, record matching, output verification |
 | `internal/episodeledger/` | durable episode/attempt lifecycle, fencing and recovery |
 | `internal/scheduleledger/` | durable queue identity, admission and coalescing |
 | `internal/approvalledger/` | human approval lifecycle and supersession notification |

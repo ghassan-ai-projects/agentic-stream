@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
+
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 )
 
@@ -30,7 +32,7 @@ func (s *DeviceSession) QueryStateEvidence(ctx context.Context, target string) (
 
 // stateFeedback is the device's own observation of its current output.
 func stateFeedback(state map[string]any) (map[string]any, error) {
-	digest, err := stateDigest(state)
+	digest, err := domain.StateDigest(state)
 	if err != nil {
 		return nil, fmt.Errorf("digest device state evidence: %w", err)
 	}

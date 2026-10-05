@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
+
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
@@ -180,7 +182,7 @@ func (s *DeviceSession) bindHandshakeState(ctx context.Context, state map[string
 	s.firmwareDigest, s.capabilityDigest = stateString(state, "firmware_digest"), stateString(state, "capability_digest")
 	s.safeState, _ = state["safe_state"].(bool)
 	var err error
-	s.stateDigest, err = stateDigest(state)
+	s.stateDigest, err = domain.StateDigest(state)
 	if err != nil {
 		return fmt.Errorf("digest device state handshake: %w", err)
 	}

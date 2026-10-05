@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
@@ -96,7 +98,7 @@ func (s *DeviceSession) completeSafeStopExchange(ctx context.Context, command ma
 		return s.failedSafeStopReceive(ctx, claim, requestedErr, err)
 	}
 	receipt, err := DecodeDeviceRecord(reply)
-	if err != nil || !receiptMatchesCommand(receipt, command, s.bootID) {
+	if err != nil || !domain.ReceiptMatches(receipt, command, s.bootID) {
 		return s.failedSafeStopReceipt(ctx, claim, requestedErr, nil, err)
 	}
 	result, resultErr := s.receiveDeviceResult(ctx, command, receipt)

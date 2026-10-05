@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
+
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 )
 
@@ -73,7 +75,7 @@ func prepareCommand(command map[string]any) ([]byte, string, string, error) {
 	if err != nil {
 		return nil, "", "", fmt.Errorf("encode device command: %w", err)
 	}
-	semanticDigest, err := semanticCommandDigest(command)
+	semanticDigest, err := domain.CommandIdentity(command)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("digest device command identity: %w", err)
 	}
@@ -166,16 +168,10 @@ func (s *DeviceSession) receiveCommandOutcome(ctx context.Context, command map[s
 		}
 		return s.unknownDeviceOutcome(ctx, nil, fmt.Errorf("decode device receipt: %w", err))
 	}
-	if !receiptMatchesCommand(receipt, command, s.bootID) {
+	if !domain.ReceiptMatches(receipt, command, s.bootID) {
 		return s.unknownDeviceOutcome(ctx, nil, errors.New("device receipt identity mismatch"))
 	}
 	return s.completeCommandOutcome(ctx, command, receipt, claim, semanticDigest, idempotencyKey)
-}
-
-func receiptMatchesCommand(receipt, command map[string]any, bootID string) bool {
-	return receipt["message_type"] == "receipt" &&
-		receipt["command_id"] == command["command_id"] &&
-		receipt["boot_id"] == bootID
 }
 
 func (s *DeviceSession) completeCommandOutcome(ctx context.Context, command, receipt map[string]any, claim deviceauthority.TargetClaim, semanticDigest, idempotencyKey string) (*DeviceExchange, bool, error) {
@@ -204,33 +200,10 @@ func (s *DeviceSession) receiveDeviceResult(ctx context.Context, command, receip
 		}
 		return nil, fmt.Errorf("decode device result: %w", err)
 	}
-	if !resultMatchesCommand(result, command, s.bootID, receipt) {
+	if !domain.ResultMatches(result, command, s.bootID, receipt) {
 		return nil, errors.New("device result identity or status mismatch")
 	}
 	return result, nil
-}
-
-func resultMatchesCommand(result, command map[string]any, bootID string, receipt map[string]any) bool {
-	if result["message_type"] != "result" || result["command_id"] != command["command_id"] || result["boot_id"] != bootID {
-		return false
-	}
-	status, _ := result["status"].(string)
-	if status == "" {
-		return false
-	}
-	return resultMatchesReceipt(result, command, receipt, status)
-}
-
-func resultMatchesReceipt(result, command, receipt map[string]any, status string) bool {
-	accepted, _ := receipt["accepted"].(bool)
-	if accepted {
-		operation, _ := command["operation"].(string)
-		if operation == "safe_stop" {
-			return status == "safe_state" && result["error_code"] == nil
-		}
-		return status == "executed" && result["error_code"] == nil
-	}
-	return status == "rejected" && result["error_code"] == receipt["reject_code"]
 }
 
 func (s *DeviceSession) cacheCommandOutcome(ctx context.Context, partial *DeviceExchange, result map[string]any, claim deviceauthority.TargetClaim, semanticDigest, idempotencyKey string) (*DeviceExchange, bool, error) {
