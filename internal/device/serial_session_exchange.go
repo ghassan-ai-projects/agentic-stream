@@ -16,20 +16,10 @@ type DeviceExchange struct {
 	Result  map[string]any
 }
 
-// Exchange sends one already-materialized command and consumes its receipt and
-// terminal result. The bool reports whether bytes were handed to the transport;
-// callers must treat a post-send receive error as an unknown outcome.
-func (s *DeviceSession) Exchange(ctx context.Context, command map[string]any) (map[string]any, bool, error) {
-	exchange, sent, err := s.exchange(ctx, command)
-	if exchange == nil {
-		return nil, sent, err
-	}
-	return exchange.Receipt, sent, err
-}
-
-// ExchangeWithResult is the result-bearing form of Exchange used by the
-// action plane when it must persist both admission and terminal execution
-// evidence.
+// ExchangeWithResult sends one already-materialized command and consumes its
+// receipt and terminal result. The bool reports whether bytes were handed to
+// the transport; callers must treat a post-send receive error as an unknown
+// outcome.
 func (s *DeviceSession) ExchangeWithResult(ctx context.Context, command map[string]any) (DeviceExchange, bool, error) {
 	exchange, sent, err := s.exchange(ctx, command)
 	if exchange == nil {

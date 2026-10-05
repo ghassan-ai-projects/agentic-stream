@@ -119,7 +119,7 @@ func TestSerialEffectorVerificationRejectsMismatchedFanDuty(t *testing.T) {
 }
 
 func TestSerialEffectorVerificationDoesNotAcceptBootRollover(t *testing.T) {
-	session, transport, catalog := openThermalSession(t)
+	session, transport, catalog, control := openThermalSessionWithControl(t)
 	defer func() { _ = session.Close() }()
 	digest, err := catalog.Digest()
 	if err != nil {
@@ -144,7 +144,7 @@ func TestSerialEffectorVerificationDoesNotAcceptBootRollover(t *testing.T) {
 	if err == nil || status != "" {
 		t.Fatalf("boot rollover verification status=%q err=%v, want unresolved error", status, err)
 	}
-	if !session.ReconciliationRequired() {
+	if !reconciliationRequired(t, control) {
 		t.Fatal("boot rollover must open the reconciliation barrier")
 	}
 }
@@ -213,10 +213,10 @@ func TestSerialEffectorPreservesReceiptWhenResultIsUntrustworthy(t *testing.T) {
 	if result, ok := effect.ProviderResult["result"].(map[string]any); ok && result != nil {
 		t.Fatalf("untrusted result must remain unavailable: %#v", effect.ProviderResult)
 	}
-	if !transport.closed || !session.ReconciliationRequired() {
-		t.Fatalf("invalid result must close transport and require reconciliation closed=%v barrier=%v", transport.closed, session.ReconciliationRequired())
+	if !transport.closed || !reconciliationRequired(t, control) {
+		t.Fatalf("invalid result must close transport and require reconciliation closed=%v barrier=%v", transport.closed, reconciliationRequired(t, control))
 	}
-	if _, sent, nextErr := session.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-after-bad-result", idemKey())); nextErr == nil || sent {
+	if _, sent, nextErr := session.ExchangeWithResult(context.Background(), materializedCommand(t, catalog, "cmd-after-bad-result", idemKey())); nextErr == nil || sent {
 		t.Fatalf("session reused after invalid result sent=%v err=%v", sent, nextErr)
 	}
 	required, controlErr := control.authority.ReconciliationRequired(context.Background(), "thermal-01")
@@ -243,7 +243,7 @@ func TestSerialEffectorSafeStopRejectionPreservesKnownEvidence(t *testing.T) {
 	if !ok || result["status"] != "rejected" || result["error_code"] != "not_ready" {
 		t.Fatalf("safe-stop rejection result=%#v", effect.ProviderResult)
 	}
-	if _, sent, ordinaryErr := session.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-after-safe-stop-rejection", idemKey())); ordinaryErr == nil || sent {
+	if _, sent, ordinaryErr := session.ExchangeWithResult(context.Background(), materializedCommand(t, catalog, "cmd-after-safe-stop-rejection", idemKey())); ordinaryErr == nil || sent {
 		t.Fatalf("ordinary command crossed latched safe-stop sent=%v err=%v", sent, ordinaryErr)
 	}
 }
@@ -264,7 +264,7 @@ func TestSerialEffectorSafeStopReceiveFailureInvalidatesTransport(t *testing.T) 
 	if controlErr != nil || !required {
 		t.Fatalf("safe-stop receive failure barrier required=%v err=%v", required, controlErr)
 	}
-	if _, sent, nextErr := session.SafeStop(context.Background(), "fan-01"); nextErr == nil || sent {
+	if _, sent, nextErr := session.SafeStopWithResult(context.Background(), "fan-01"); nextErr == nil || sent {
 		t.Fatalf("safe-stop retried on invalidated transport sent=%v err=%v", sent, nextErr)
 	}
 	if transport.sendCount() != 1 {
@@ -293,8 +293,8 @@ func TestSerialEffectorPreservesSafeStopReceiptWhenResultIsUntrustworthy(t *test
 	if result, ok := effect.ProviderResult["result"].(map[string]any); ok && result != nil {
 		t.Fatalf("untrusted safe-stop result must remain unavailable: %#v", effect.ProviderResult)
 	}
-	if !transport.closed || !session.ReconciliationRequired() {
-		t.Fatalf("untrustworthy safe-stop result closed=%v barrier=%v", transport.closed, session.ReconciliationRequired())
+	if !transport.closed || !reconciliationRequired(t, control) {
+		t.Fatalf("untrustworthy safe-stop result closed=%v barrier=%v", transport.closed, reconciliationRequired(t, control))
 	}
 	if required, controlErr := control.authority.ReconciliationRequired(context.Background(), "thermal-01"); controlErr != nil || !required {
 		t.Fatalf("untrustworthy safe-stop result barrier required=%v err=%v", required, controlErr)
@@ -319,8 +319,8 @@ func TestSerialEffectorSafeStopRejectionWithUndurableEvidenceIsUnknown(t *testin
 	if !ok || result["status"] != "rejected" || result["error_code"] != "not_ready" {
 		t.Fatalf("undurable safe-stop rejection evidence=%#v", effect.ProviderResult)
 	}
-	if !transport.closed || !session.ReconciliationRequired() {
-		t.Fatalf("undurable safe-stop rejection closed=%v barrier=%v", transport.closed, session.ReconciliationRequired())
+	if !transport.closed || !reconciliationRequired(t, control) {
+		t.Fatalf("undurable safe-stop rejection closed=%v barrier=%v", transport.closed, reconciliationRequired(t, control))
 	}
 	var failedEvents int
 	if err := control.db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM device_authority_events WHERE event_type = 'safe_stop_failed'`).Scan(&failedEvents); err != nil {
@@ -349,7 +349,7 @@ func TestSerialEffectorSafeStopRejectionWithUndurableEvidenceIsUnknown(t *testin
 		t.Fatalf("restart after undurable safe-stop rejection: %v", err)
 	}
 	defer func() { _ = restarted.Close() }()
-	if _, sent, restartErr := restarted.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-after-undurable-safe-stop", idemKey())); restartErr == nil || sent {
+	if _, sent, restartErr := restarted.ExchangeWithResult(context.Background(), materializedCommand(t, catalog, "cmd-after-undurable-safe-stop", idemKey())); restartErr == nil || sent {
 		t.Fatalf("restart crossed safe-stop/barrier sent=%v err=%v", sent, restartErr)
 	}
 }
@@ -368,7 +368,7 @@ func TestSerialEffectorConvertsAmbiguousReceiptToUnknownOutcome(t *testing.T) {
 	if transport.sendCount() != 1 {
 		t.Fatalf("transport sends=%d, want 1", transport.sendCount())
 	}
-	if !session.ReconciliationRequired() {
+	if !reconciliationRequired(t, control) {
 		t.Fatal("ambiguous receipt did not open the reconciliation barrier")
 	}
 	if _, err := session.ResolveReconciliation(context.Background(), "succeeded", map[string]any{"state_digest": "stale"}); err == nil {
@@ -394,7 +394,7 @@ func TestSerialEffectorConvertsAmbiguousReceiptToUnknownOutcome(t *testing.T) {
 		t.Fatalf("restart after ambiguous receipt: %v", err)
 	}
 	defer func() { _ = restarted.Close() }()
-	if _, sent, err := restarted.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-after-restart", idemKey())); err == nil || sent {
+	if _, sent, err := restarted.ExchangeWithResult(context.Background(), materializedCommand(t, catalog, "cmd-after-restart", idemKey())); err == nil || sent {
 		t.Fatalf("ordinary command crossed durable ambiguity barrier after restart sent=%v err=%v", sent, err)
 	}
 }
@@ -420,7 +420,7 @@ func TestSerialEffectorPersistsBarrierAfterReceiptContextCancellation(t *testing
 }
 
 func TestSerialEffectorSafeStopUnknownOutcomeOpensReconciliationBarrier(t *testing.T) {
-	session, transport, catalog := openThermalSession(t)
+	session, transport, catalog, control := openThermalSessionWithControl(t)
 	defer func() { _ = session.Close() }()
 	transport.frames = append(transport.frames, []byte("{"))
 
@@ -428,7 +428,7 @@ func TestSerialEffectorSafeStopUnknownOutcomeOpensReconciliationBarrier(t *testi
 	if err == nil || !actionport.IsUnknownOutcome(err) {
 		t.Fatalf("malformed safe-stop receipt err=%v", err)
 	}
-	if !session.ReconciliationRequired() {
+	if !reconciliationRequired(t, control) {
 		t.Fatal("unknown safe-stop outcome did not open the reconciliation barrier")
 	}
 }
@@ -492,4 +492,14 @@ func TestSerialEffectorRejectsCatalogDifferentFromHandshake(t *testing.T) {
 	if transport.sendCount() != 0 || catalog == other {
 		t.Fatalf("catalog mismatch crossed transport: sends=%d same=%v", transport.sendCount(), catalog == other)
 	}
+}
+
+// reconciliationRequired reads the durable reconciliation state of the test device.
+func reconciliationRequired(t *testing.T, control deviceControl) bool {
+	t.Helper()
+	required, err := control.authority.ReconciliationRequired(context.Background(), "thermal-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return required
 }

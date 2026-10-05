@@ -42,12 +42,6 @@ func DialUDSTransport(ctx context.Context, path string) (*UDSTransport, error) {
 	return newUDSTransport(conn), nil
 }
 
-// NewUDSTransport wraps an already-connected gateway link. It is used by tests
-// and by callers that own connection setup.
-func NewUDSTransport(conn net.Conn) *UDSTransport {
-	return newUDSTransport(conn)
-}
-
 func newUDSTransport(conn net.Conn) *UDSTransport {
 	writeGate := make(chan struct{}, 1)
 	writeGate <- struct{}{}

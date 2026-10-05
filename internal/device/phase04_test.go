@@ -50,7 +50,7 @@ func TestSerialSessionBootBarrierSurvivesAndClearsOnlyWithBoundState(t *testing.
 		t.Fatalf("state queries=%d, want 1", transport.stateQueries)
 	}
 	command := materializedCommandWithBoot(t, catalog, "cmd-barrier", idemKey(), "boot-B")
-	if _, sent, err := session.Exchange(t.Context(), command); err == nil || sent {
+	if _, sent, err := session.ExchangeWithResult(t.Context(), command); err == nil || sent {
 		t.Fatalf("barrier allowed ordinary command sent=%v err=%v", sent, err)
 	}
 	evidence := reconciliationEvidence(t, bootB, "fan-01")
@@ -61,7 +61,7 @@ func TestSerialSessionBootBarrierSurvivesAndClearsOnlyWithBoundState(t *testing.
 	receipt := acceptedReceipt("cmd-barrier")
 	receipt["boot_id"] = "boot-B"
 	transport.frames = append(transport.frames, mustDeviceFrames(t, receipt)...)
-	if _, sent, err := session.Exchange(t.Context(), command); err != nil || !sent {
+	if _, sent, err := session.ExchangeWithResult(t.Context(), command); err != nil || !sent {
 		t.Fatalf("cleared barrier did not allow command sent=%v err=%v", sent, err)
 	}
 	var status string
@@ -105,7 +105,7 @@ func TestSerialSessionSafeStopWinsOverBarrierAndRejectsLaterOrdinaryWork(t *test
 	if _, err := effector.SafeStop(t.Context(), "fan-01"); err != nil {
 		t.Fatalf("safe stop behind barrier failed: %v", err)
 	}
-	if _, sent, err := session.Exchange(t.Context(), materializedCommandWithBoot(t, catalog, "cmd-after-stop", idemKey(), "boot-B")); err == nil || sent {
+	if _, sent, err := session.ExchangeWithResult(t.Context(), materializedCommandWithBoot(t, catalog, "cmd-after-stop", idemKey(), "boot-B")); err == nil || sent {
 		t.Fatalf("ordinary command crossed safe stop sent=%v err=%v", sent, err)
 	}
 	if transport.sendCount() != 1 {
@@ -131,7 +131,7 @@ func TestSerialSessionSafeStopWinsOverBarrierAndRejectsLaterOrdinaryWork(t *test
 		t.Fatal(err)
 	}
 	defer func() { _ = restarted.Close() }()
-	if _, sent, err := restarted.Exchange(t.Context(), materializedCommandWithBoot(t, catalog, "cmd-after-restart", idemKey(), "boot-B")); err == nil || sent {
+	if _, sent, err := restarted.ExchangeWithResult(t.Context(), materializedCommandWithBoot(t, catalog, "cmd-after-restart", idemKey(), "boot-B")); err == nil || sent {
 		t.Fatalf("ordinary command crossed durable safe-stop after restart sent=%v err=%v", sent, err)
 	}
 }
@@ -167,7 +167,7 @@ func TestSerialSessionAuthorityLossAfterTransportIsUnknown(t *testing.T) {
 	receipt := acceptedReceipt("cmd-unknown")
 	transport.frames = append(transport.frames, mustDeviceFrames(t, receipt)...)
 	transport.receiveHook = func() { clk.Advance(11 * time.Second) }
-	if _, sent, err := session.Exchange(t.Context(), materializedCommand(t, catalog, "cmd-unknown", idemKey())); err == nil || !sent {
+	if _, sent, err := session.ExchangeWithResult(t.Context(), materializedCommand(t, catalog, "cmd-unknown", idemKey())); err == nil || !sent {
 		t.Fatalf("authority loss after transport was not unknown sent=%v err=%v", sent, err)
 	}
 	var status string
@@ -205,7 +205,7 @@ func TestSerialSessionDisablesAfterReconciliationPersistenceFailure(t *testing.T
 	if _, err := session.QueryState(t.Context()); err == nil {
 		t.Fatal("refresh unexpectedly succeeded after reconciliation store failure")
 	}
-	if _, sent, err := session.Exchange(t.Context(), materializedCommand(t, catalog, "cmd-after-store-failure", idemKey())); err == nil || sent {
+	if _, sent, err := session.ExchangeWithResult(t.Context(), materializedCommand(t, catalog, "cmd-after-store-failure", idemKey())); err == nil || sent {
 		t.Fatalf("session exchanged after reconciliation store failure sent=%v err=%v", sent, err)
 	}
 	if transport.sendCount() != 0 {

@@ -151,7 +151,7 @@ func TestUDSTransportRejectsOversizedFrameBeforeDecoding(t *testing.T) {
 	client, server := net.Pipe()
 	defer func() { _ = client.Close() }()
 	defer func() { _ = server.Close() }()
-	transport := device.NewUDSTransport(client)
+	transport := device.NewUDSTransportForTest(client)
 
 	writeDone := make(chan struct{})
 	go func() {
@@ -177,7 +177,7 @@ func TestUDSTransportClosesAfterOversizedFrame(t *testing.T) {
 	client, server := net.Pipe()
 	defer func() { _ = client.Close() }()
 	defer func() { _ = server.Close() }()
-	transport := device.NewUDSTransport(client)
+	transport := device.NewUDSTransportForTest(client)
 	writeDone := make(chan struct{})
 	go func() {
 		_, _ = server.Write(bytes.Repeat([]byte{'x'}, 64*1024))
@@ -205,7 +205,7 @@ func TestUDSTransportOperationsHonorCancellation(t *testing.T) {
 		defer func() { _ = client.Close() }()
 		defer func() { _ = server.Close() }()
 		conn := newNotifyingConn(client)
-		transport := device.NewUDSTransport(conn)
+		transport := device.NewUDSTransportForTest(conn)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		errCh := make(chan error, 1)
@@ -230,7 +230,7 @@ func TestUDSTransportOperationsHonorCancellation(t *testing.T) {
 		defer func() { _ = client.Close() }()
 		defer func() { _ = server.Close() }()
 		conn := newNotifyingConn(client)
-		transport := device.NewUDSTransport(conn)
+		transport := device.NewUDSTransportForTest(conn)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		errCh := make(chan error, 1)
@@ -262,7 +262,7 @@ func TestUDSTransportSendValidatesOneBoundedFrame(t *testing.T) {
 			client, server := net.Pipe()
 			defer func() { _ = client.Close() }()
 			defer func() { _ = server.Close() }()
-			transport := device.NewUDSTransport(client)
+			transport := device.NewUDSTransportForTest(client)
 			if err := transport.Send(context.Background(), frame); err == nil {
 				t.Fatal("invalid outgoing frame was accepted")
 			}
@@ -275,7 +275,7 @@ func TestUDSTransportSendWaitHonorsCancellation(t *testing.T) {
 	defer func() { _ = client.Close() }()
 	defer func() { _ = server.Close() }()
 	conn := newNotifyingConn(client)
-	transport := device.NewUDSTransport(conn)
+	transport := device.NewUDSTransportForTest(conn)
 	firstErr := make(chan error, 1)
 	firstFrame := append(bytes.Repeat([]byte{'x'}, 64*1024-1), '\n')
 	go func() { firstErr <- transport.Send(context.Background(), firstFrame) }()

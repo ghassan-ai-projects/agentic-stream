@@ -9,23 +9,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
-// EmulatorEffectorConfig configures a serial effector wired to a device gateway
-// over a Unix domain socket — the emulator effect profile. It carries a typed
-// capability catalog and durable authority, never a raw serial path or a model
-// credential.
-type EmulatorEffectorConfig struct {
-	// SocketPath is the device gateway UDS (e.g. the Streams Simulator
-	// `streamsim device serve --socket` link).
-	SocketPath string
-	Catalog    *CapabilityCatalog
-	// AllowedFirmwareDigests is the firmware allow-list checked at handshake.
-	AllowedFirmwareDigests []string
-	OwnerEpoch             string
-	OwnerInstance          string
-	Authority              *deviceauthority.Service
-	Telemetry              *telemetry.Runtime
-}
-
 // GatewayEffectorConfig configures a serial effector around an already-open
 // typed gateway link. The caller owns the transport before this function is
 // called; the returned close function owns it after a successful handshake.
@@ -37,46 +20,6 @@ type GatewayEffectorConfig struct {
 	OwnerInstance          string
 	Authority              *deviceauthority.Service
 	Telemetry              *telemetry.Runtime
-}
-
-// NewEmulatorEffector dials the device gateway, opens a validated device session
-// (reading and checking the opening state handshake), and returns a serial
-// effector plus a close function that tears the session and transport down. It
-// is the single wiring point the CLI and the HIL-0 harness use to drive the
-// emulator; the device must already be listening on SocketPath.
-func NewEmulatorEffector(ctx context.Context, config EmulatorEffectorConfig) (*SerialEffector, func() error, error) {
-	if config.Catalog == nil {
-		return nil, nil, fmt.Errorf("emulator effector requires a capability catalog")
-	}
-	if config.SocketPath == "" {
-		return nil, nil, fmt.Errorf("emulator effector requires a device socket path")
-	}
-	transport, err := DialUDSTransport(ctx, config.SocketPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	return openEmulatorGateway(ctx, config, transport)
-}
-
-func openEmulatorGateway(ctx context.Context, config EmulatorEffectorConfig, transport DeviceTransport) (*SerialEffector, func() error, error) {
-	effector, closeFn, err := NewGatewayEffector(ctx, emulatorGatewayConfig(config, transport))
-	if err != nil {
-		_ = transport.Close()
-		return nil, nil, err
-	}
-	return effector, closeFn, nil
-}
-
-func emulatorGatewayConfig(config EmulatorEffectorConfig, transport DeviceTransport) GatewayEffectorConfig {
-	return GatewayEffectorConfig{
-		Transport:              transport,
-		Catalog:                config.Catalog,
-		AllowedFirmwareDigests: config.AllowedFirmwareDigests,
-		OwnerEpoch:             config.OwnerEpoch,
-		OwnerInstance:          config.OwnerInstance,
-		Authority:              config.Authority,
-		Telemetry:              config.Telemetry,
-	}
 }
 
 // NewGatewayEffector opens a governed serial effector over a typed gateway

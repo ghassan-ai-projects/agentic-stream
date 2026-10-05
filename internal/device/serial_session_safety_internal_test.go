@@ -46,14 +46,14 @@ func TestSafeStopPossiblySentFailureInvalidatesTransport(t *testing.T) {
 	}
 	defer func() { _ = session.Close() }()
 
-	_, sent, err := session.SafeStop(context.Background(), "fan-01")
+	_, sent, err := session.SafeStopWithResult(context.Background(), "fan-01")
 	if err == nil || !sent {
 		t.Fatalf("partial safe-stop send sent=%v err=%v", sent, err)
 	}
 	if !transport.closed {
 		t.Fatal("partial safe-stop send left transport open")
 	}
-	if _, sent, nextErr := session.SafeStop(context.Background(), "fan-01"); nextErr == nil || sent {
+	if _, sent, nextErr := session.SafeStopWithResult(context.Background(), "fan-01"); nextErr == nil || sent {
 		t.Fatalf("safe-stop retried on invalidated transport sent=%v err=%v", sent, nextErr)
 	}
 	if transport.sends != 1 {

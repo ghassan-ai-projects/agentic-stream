@@ -10,20 +10,11 @@ import (
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 )
 
-// SafeStop sends the catalog-owned safe-state command through a priority path.
-// It does not consult the ordinary authority or reconciliation barrier, and
-// there is intentionally no method that clears a physical e-stop.
-func (s *DeviceSession) SafeStop(ctx context.Context, target string) (map[string]any, bool, error) {
-	exchange, sent, err := s.SafeStopWithResult(ctx, target)
-	if exchange.Receipt == nil {
-		return nil, sent, err
-	}
-	return exchange.Receipt, sent, err
-}
-
-// SafeStopWithResult consumes and returns the ordered receipt/result pair for
-// the catalog-owned safe-state command. The result is device-reported terminal
-// status; query-state verification remains separate.
+// SafeStopWithResult sends the catalog-owned safe-state command through the
+// priority lane and returns its ordered receipt/result pair. It does not
+// consult ordinary authority or the reconciliation barrier, and there is
+// intentionally no method that clears a physical e-stop. The result is
+// device-reported terminal status; query-state verification remains separate.
 func (s *DeviceSession) SafeStopWithResult(ctx context.Context, target string) (DeviceExchange, bool, error) {
 	if s == nil {
 		return DeviceExchange{}, false, fmt.Errorf("device session is not open")

@@ -17,7 +17,7 @@ import (
 )
 
 // devicePeer is an in-process device that speaks the wire contract over a UDS
-// with the digests this session expects, so NewEmulatorEffector can complete a
+// with the digests this session expects, so the gateway effector can complete a
 // real handshake + governed command exchange without a cross-repo binary. It is
 // the same behavior `streamsim device serve` provides.
 func devicePeer(t *testing.T, conn net.Conn, capabilityDigest string) {
@@ -105,8 +105,12 @@ func TestEmulatorEffectorDrivesDeviceOverUDS(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	effector, closeFn, err := device.NewEmulatorEffector(ctx, device.EmulatorEffectorConfig{
-		SocketPath:             socket,
+	transport, err := device.DialUDSTransport(ctx, socket)
+	if err != nil {
+		t.Fatalf("dial device gateway: %v", err)
+	}
+	effector, closeFn, err := device.NewGatewayEffector(ctx, device.GatewayEffectorConfig{
+		Transport:              transport,
 		Catalog:                catalog,
 		AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)},
 		OwnerEpoch:             "epoch-1",
@@ -114,7 +118,7 @@ func TestEmulatorEffectorDrivesDeviceOverUDS(t *testing.T) {
 		Authority:              control.authority,
 	})
 	if err != nil {
-		t.Fatalf("open emulator effector: %v", err)
+		t.Fatalf("open gateway effector: %v", err)
 	}
 	defer func() { _ = closeFn() }()
 

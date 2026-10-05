@@ -260,19 +260,19 @@ func TestDeviceSessionCachesOnlyMatchingIdempotentCommands(t *testing.T) {
 	defer func() { _ = session.Close() }()
 	idempotency := idemKey()
 	command := materializedCommand(t, catalog, "cmd-1", idempotency)
-	first, sent, err := session.Exchange(context.Background(), command)
-	if err != nil || !sent || first["command_id"] != "cmd-1" {
+	first, sent, err := session.ExchangeWithResult(context.Background(), command)
+	if err != nil || !sent || first.Receipt["command_id"] != "cmd-1" {
 		t.Fatalf("first exchange receipt=%v sent=%v err=%v", first, sent, err)
 	}
 	duplicate := materializedCommand(t, catalog, "cmd-2", idempotency)
-	second, sent, err := session.Exchange(context.Background(), duplicate)
-	if err != nil || !sent || second["command_id"] != "cmd-1" {
+	second, sent, err := session.ExchangeWithResult(context.Background(), duplicate)
+	if err != nil || !sent || second.Receipt["command_id"] != "cmd-1" {
 		t.Fatalf("duplicate exchange receipt=%v sent=%v err=%v", second, sent, err)
 	}
 	conflicting := materializedCommand(t, catalog, "cmd-3", idemKey())
 	conflicting["parameters"] = map[string]any{"brightness_permille": 1, "pattern": "off"}
 	conflicting["idempotency_key"] = idempotency
-	if _, sent, err := session.Exchange(context.Background(), conflicting); err == nil || sent {
+	if _, sent, err := session.ExchangeWithResult(context.Background(), conflicting); err == nil || sent {
 		t.Fatalf("conflicting idempotency exchange sent=%v err=%v", sent, err)
 	}
 	if got := transport.sendCount(); got != 1 {
@@ -284,7 +284,7 @@ func TestDeviceSessionTreatsPostSendFailureAsAmbiguous(t *testing.T) {
 	session, transport, catalog := openThermalSession(t)
 	defer func() { _ = session.Close() }()
 	transport.receiveErr = errors.New("gateway receive timeout")
-	_, sent, err := session.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-1", idemKey()))
+	_, sent, err := session.ExchangeWithResult(context.Background(), materializedCommand(t, catalog, "cmd-1", idemKey()))
 	if err == nil || !sent {
 		t.Fatalf("post-send failure sent=%v err=%v", sent, err)
 	}
@@ -294,7 +294,7 @@ func TestDeviceSessionTreatsSendFailureAsPreSend(t *testing.T) {
 	session, transport, catalog := openThermalSession(t)
 	defer func() { _ = session.Close() }()
 	transport.sendErr = errors.New("gateway refused write")
-	_, sent, err := session.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-1", idemKey()))
+	_, sent, err := session.ExchangeWithResult(context.Background(), materializedCommand(t, catalog, "cmd-1", idemKey()))
 	if err == nil || sent {
 		t.Fatalf("send failure sent=%v err=%v", sent, err)
 	}
@@ -313,10 +313,10 @@ func TestDeviceSessionInvalidatesAfterFailedRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	transport.frames = append(transport.frames, frame)
-	if err := session.RefreshState(context.Background()); err == nil {
+	if _, err := session.QueryState(context.Background()); err == nil {
 		t.Fatal("invalid refresh unexpectedly succeeded")
 	}
-	if _, sent, err := session.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-1", idemKey())); err == nil || sent {
+	if _, sent, err := session.ExchangeWithResult(context.Background(), materializedCommand(t, catalog, "cmd-1", idemKey())); err == nil || sent {
 		t.Fatalf("invalidated session exchanged command sent=%v err=%v", sent, err)
 	}
 }
@@ -325,7 +325,7 @@ func TestDeviceSessionRefreshFencesBootAndReceipts(t *testing.T) {
 	session, transport, catalog := openThermalSession(t, acceptedReceipt("cmd-1"))
 	defer func() { _ = session.Close() }()
 	command := materializedCommand(t, catalog, "cmd-1", idemKey())
-	if _, _, err := session.Exchange(context.Background(), command); err != nil {
+	if _, _, err := session.ExchangeWithResult(context.Background(), command); err != nil {
 		t.Fatal(err)
 	}
 	state := goldenDeviceState()
@@ -340,13 +340,13 @@ func TestDeviceSessionRefreshFencesBootAndReceipts(t *testing.T) {
 		t.Fatal(err)
 	}
 	transport.frames = append(transport.frames, frame)
-	if err := session.RefreshState(context.Background()); err != nil {
+	if _, err := session.QueryState(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if session.BootID() != "boot-B" {
 		t.Fatalf("boot id=%q, want boot-B", session.BootID())
 	}
-	if _, sent, err := session.Exchange(context.Background(), command); err == nil || sent {
+	if _, sent, err := session.ExchangeWithResult(context.Background(), command); err == nil || sent {
 		t.Fatalf("old-boot command sent=%v err=%v", sent, err)
 	}
 }

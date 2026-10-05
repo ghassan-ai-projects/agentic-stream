@@ -10,19 +10,9 @@ import (
 
 const reconciliationPersistTimeout = 5 * time.Second
 
-// DeviceID returns the handshake-bound device identity.
-func (s *DeviceSession) DeviceID() string {
-	return s.readString(func(s *DeviceSession) string { return s.deviceID })
-}
-
 // BootID returns the current handshake-bound boot identity.
 func (s *DeviceSession) BootID() string {
 	return s.readString(func(s *DeviceSession) string { return s.bootID })
-}
-
-// OwnerEpoch returns the runtime authority epoch bound to the session.
-func (s *DeviceSession) OwnerEpoch() string {
-	return s.readString(func(s *DeviceSession) string { return s.ownerEpoch })
 }
 
 // CapabilityDigest returns the capability catalog digest accepted during the
@@ -40,29 +30,6 @@ func (s *DeviceSession) readString(read func(*DeviceSession) string) string {
 	return read(s)
 }
 
-// SafeState reports the last safe_state value received from the device. It is
-// informational here; firmware and the gateway remain responsible for the
-// device's real watchdog and safe-state behavior.
-func (s *DeviceSession) SafeState() bool {
-	if s == nil {
-		return false
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.safeState
-}
-
-// ReconciliationRequired reports whether the device boot barrier blocks
-// ordinary energizing commands.
-func (s *DeviceSession) ReconciliationRequired() bool {
-	if s == nil {
-		return true
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.reconciliationRequired
-}
-
 // WithTelemetry connects session protocol observations to runtime telemetry.
 func (s *DeviceSession) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *DeviceSession {
 	if s == nil {
@@ -72,14 +39,6 @@ func (s *DeviceSession) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *Devi
 	defer s.mu.Unlock()
 	s.telemetry = runtimeTelemetry
 	return s
-}
-
-// RefreshState reads another device.state record. A changed boot invalidates
-// cached receipts before the new boot is accepted, so a prior semantic effect
-// cannot be mistaken for a receipt from the new device lifetime.
-func (s *DeviceSession) RefreshState(ctx context.Context) error {
-	_, err := s.QueryState(ctx)
-	return err
 }
 
 // QueryState receives and validates one typed device.state record. A new boot
