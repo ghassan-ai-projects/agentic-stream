@@ -29,14 +29,14 @@ func LoadReconciliation(ctx context.Context, r Reader, deviceID string) (*domain
 
 const insertFirstStateSQL = `
 		INSERT INTO device_reconciliation
-			(device_id, boot_id, status, opening_boot_id, state_json, state_sha256, authority_epoch, opened_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+			(device_id, boot_id, status, state_json, state_sha256, owner_epoch, first_seen_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
 // InsertFirstState records the first state a device reports, with no open
 // reconciliation.
 func InsertFirstState(ctx context.Context, tx *sql.Tx, state domain.DeviceState, owner domain.Owner, now time.Time) error {
 	if _, err := tx.ExecContext(ctx, insertFirstStateSQL, state.Device.DeviceID, state.Device.BootID,
-		string(domain.ReconciliationClear), state.Device.BootID, state.JSON, state.SHA256, owner.Epoch,
+		string(domain.ReconciliationClear), state.JSON, state.SHA256, owner.Epoch,
 		formatTime(now), formatTime(now)); err != nil {
 		return fmt.Errorf("insert device state: %w", err)
 	}
@@ -47,7 +47,7 @@ func InsertFirstState(ctx context.Context, tx *sql.Tx, state domain.DeviceState,
 // reconciliation status and any resolution are kept.
 func RefreshState(ctx context.Context, tx *sql.Tx, state domain.DeviceState, owner domain.Owner, now time.Time) error {
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE device_reconciliation SET state_json = ?, state_sha256 = ?, authority_epoch = ?, updated_at = ?
+		UPDATE device_reconciliation SET state_json = ?, state_sha256 = ?, owner_epoch = ?, updated_at = ?
 		WHERE device_id = ?`,
 		state.JSON, state.SHA256, owner.Epoch, formatTime(now), state.Device.DeviceID); err != nil {
 		return fmt.Errorf("refresh device state: %w", err)
@@ -56,8 +56,8 @@ func RefreshState(ctx context.Context, tx *sql.Tx, state domain.DeviceState, own
 }
 
 const recordRebootSQL = `
-		UPDATE device_reconciliation SET boot_id = ?, opening_boot_id = ?, status = ?,
-			state_json = ?, state_sha256 = ?, authority_epoch = ?,
+		UPDATE device_reconciliation SET boot_id = ?, status = ?,
+			state_json = ?, state_sha256 = ?, owner_epoch = ?,
 			last_resolution_status = NULL, resolution_evidence_json = NULL, resolution_sha256 = NULL, resolved_at = NULL,
 			updated_at = ?
 		WHERE device_id = ?`
@@ -65,7 +65,7 @@ const recordRebootSQL = `
 // RecordReboot records the state of a new device boot with reconciliation
 // required, discarding the previous boot's resolution.
 func RecordReboot(ctx context.Context, tx *sql.Tx, state domain.DeviceState, owner domain.Owner, now time.Time) error {
-	if _, err := tx.ExecContext(ctx, recordRebootSQL, state.Device.BootID, state.Device.BootID,
+	if _, err := tx.ExecContext(ctx, recordRebootSQL, state.Device.BootID,
 		string(domain.ReconciliationRequired), state.JSON, state.SHA256, owner.Epoch, formatTime(now),
 		state.Device.DeviceID); err != nil {
 		return fmt.Errorf("record device reboot: %w", err)
