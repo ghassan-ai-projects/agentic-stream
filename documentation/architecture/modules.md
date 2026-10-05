@@ -65,8 +65,8 @@ records or returned values, not reverse service dependencies.
 | `watch` | Bounded, expiring derived-trigger watches: install through the effect port, fire on matching evidence, expire; owns `watch_conditions`/`watch_fires` |
 | `episodeledger` | Episode/attempt state, fencing identity, rejection audit, recovery and cancellation mutations |
 | `admission` | Turning due scheduler items into epoch-stamped episodes; drain stop, fixture refusal and recorded skips for unadmittable items |
-| `episodes` | Validated request assembly, bounded execution through the `Executor` port, failure accounting and Decision acceptance |
-| `executor/native`, `executor/remote` | Concrete executors: the in-process Go executor, and the streamed EpisodeWorker adapter with per-attempt evidence capability and budget accounting |
+| `episodes` | Configured Service facade; app assembles and runs bounded reasoning, domain owns pure contracts/rules, opaque store transactions preserve lifecycle and Decision handoffs |
+| `executor/fixture`, `executor/native`, `executor/remote` | Concrete executors: deterministic demo fixtures, the in-process Go executor, and the streamed EpisodeWorker adapter with per-attempt evidence capability and budget accounting |
 | `scheduleledger` | Durable queue identity, admission, coalescing and skipped opportunities |
 | `cognition` | Trigger evaluation, admission priorities, reconsideration and cost-refusal explanation |
 | `approvalledger` | Pending approval, assertion binding, resolution/expiry, and atomic supersession notification |

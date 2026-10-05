@@ -33,7 +33,7 @@ func (r *Runner) recordShadow(ctx context.Context, tx *store.Tx, decisionID stri
 	// intent is always present here.
 	score, reason := domain.ShadowScore(validated)
 	shadow := domain.NewShadowDecision(r.shadowIdentity(decisionID, req), reqIdentity(req), outcome.DecisionJSON, decisionDigest, score, reason)
-	return store.RecordShadowDecision(ctx, tx, shadow, now)
+	return store.RecordShadowDecision(ctx, tx, r.shadowStore, shadow, now)
 }
 
 // reqIdentity projects the request's bound worker identity.

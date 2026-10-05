@@ -83,7 +83,7 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	admitter := admission.New(admission.Config{DB: db, Assembler: episodeService, Clock: clock.Physical(), TenantID: "default"})
+	admitter := admission.New(admission.Config{DB: db, Episodes: episodeService, Clock: clock.Physical(), TenantID: "default"})
 	replay := ingress.NewJSONLReplay(db, log, "default", latePath, "live-jsonl:"+latePath)
 	if count, err := replay.Run(ctx); err != nil {
 		t.Fatalf("ingest correction: %v", err)

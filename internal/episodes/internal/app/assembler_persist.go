@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -35,15 +34,11 @@ func (a *Assembler) reserveCost(ctx context.Context, tx *store.Tx, req *Request,
 	if a.cost == nil {
 		return nil
 	}
-	var payload struct {
-		Budget struct {
-			CostMicrounits uint64 `json:"cost_microunits"`
-		} `json:"budget"`
+	budget, err := domain.CostBudget(req.RequestJSON)
+	if err != nil {
+		return err
 	}
-	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
-		return fmt.Errorf("decode episode cost budget: %w", err)
-	}
-	if err := tx.ReserveCost(ctx, a.cost, req.EpisodeID, req.TenantID, payload.Budget.CostMicrounits, now.UTC().Format(time.RFC3339Nano)); err != nil {
+	if err := tx.ReserveCost(ctx, a.cost, req.EpisodeID, req.TenantID, budget, now.UTC().Format(time.RFC3339Nano)); err != nil {
 		return fmt.Errorf("reserve episode cost: %w", err)
 	}
 	return nil
@@ -63,8 +58,6 @@ func (a *Assembler) Rebind(ctx context.Context, tx *store.Tx, req *Request, live
 	if err != nil {
 		return nil, err
 	}
-	if evidence.EntityID != req.EntityID {
-		return nil, fmt.Errorf("live snapshot entity %q does not match bound entity %q", evidence.EntityID, req.EntityID)
-	}
+
 	return domain.RebindRequest(req, liveVersion, evidence)
 }

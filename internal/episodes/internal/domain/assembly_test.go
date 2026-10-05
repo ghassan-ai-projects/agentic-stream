@@ -136,3 +136,21 @@ func snapshotDocumentDigest(t *testing.T, document map[string]any) []byte {
 	}
 	return persistedDigestOf(t, raw)
 }
+
+func TestRebindRefusesEntityChangeBeforeMalformedRequest(t *testing.T) {
+	t.Parallel()
+	req := &Request{EntityID: "original", RequestJSON: []byte("{")}
+	if _, err := RebindRequest(req, 2, &SnapshotEvidence{EntityID: "different"}); err == nil || !strings.HasPrefix(err.Error(), "live snapshot entity") {
+		t.Fatalf("rebind precedence=%v", err)
+	}
+}
+
+func TestCostBudgetPreservesAdmissionCeiling(t *testing.T) {
+	t.Parallel()
+	if cost, err := CostBudget([]byte(`{"budget":{"cost_microunits":42}}`)); err != nil || cost != 42 {
+		t.Fatalf("ceiling=%d err=%v", cost, err)
+	}
+	if _, err := CostBudget([]byte("{")); err == nil || !strings.HasPrefix(err.Error(), "decode episode cost budget:") {
+		t.Fatalf("invalid cost document=%v", err)
+	}
+}

@@ -46,3 +46,11 @@ func TerminalAttemptStatus(outcome *Outcome, hasDecision, validDecision bool) ep
 		return episodeledger.AttemptStatus(outcome.Status)
 	}
 }
+
+// OutcomeIdentityRejection distinguishes stale fences from other identity mismatches.
+func OutcomeIdentityRejection(current, incoming episodeledger.Identity) episodeledger.RejectionReason {
+	if incoming.Fence < current.Fence {
+		return episodeledger.RejectStaleAttempt
+	}
+	return episodeledger.RejectWrongAttempt
+}

@@ -1,5 +1,5 @@
-// Package store holds every episodes SQL statement. The module's use cases
-// are transaction-scoped (the public API takes the caller's *sql.Tx, like
-// episodeledger), so store methods receive that transaction and decide
-// nothing: they select rows and insert records named after domain actions.
+// Package store owns episode SQL and opaque transaction plumbing. Admission
+// joins its caller-owned transaction; runner units of work own their claim and
+// conclusion transactions. Ledger, cost, epoch and qualification ports receive
+// the original transaction, with no domain decisions in the adapter.
 package store

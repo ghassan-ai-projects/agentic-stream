@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
 
 func TestDispatchBindingBoundsStaleRebinds(t *testing.T) {
@@ -56,5 +58,16 @@ func TestEpochRefusalRetainsSentinelCause(t *testing.T) {
 	}
 	if reason, err := DecisionEpochRefusal(unexpected, unbound, killed); reason != "" || !errors.Is(err, unexpected) {
 		t.Fatalf("unexpected refusal=%s error=%v", reason, err)
+	}
+}
+
+func TestOutcomeIdentityRejectsStaleFenceBeforeWrongAttempt(t *testing.T) {
+	t.Parallel()
+	current := episodeledger.Identity{AttemptID: "current", Fence: 3}
+	if got := OutcomeIdentityRejection(current, episodeledger.Identity{AttemptID: "wrong", Fence: 2}); got != episodeledger.RejectStaleAttempt {
+		t.Fatalf("stale fence=%s", got)
+	}
+	if got := OutcomeIdentityRejection(current, episodeledger.Identity{AttemptID: "wrong", Fence: 3}); got != episodeledger.RejectWrongAttempt {
+		t.Fatalf("wrong attempt=%s", got)
 	}
 }

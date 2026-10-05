@@ -74,7 +74,7 @@ reconsideration evidence are preserved. The durable limit is three rebindings
 across retries; invalid live evidence abandons the episode as `rebind_failed`.
 Each started attempt uses its fixed request. See
 [ADR-013](../../docs/design/DECISIONS.md#adr-013-re-bind-stale-episodes-to-the-live-situation-version-before-dispatch)
-and [rebinding tests](../../internal/episodes/rebind_test.go).
+and [rebinding tests](../../internal/episodes/internal/app/rebind_test.go).
 
 ## Cancellation and reconsideration
 
@@ -98,7 +98,7 @@ reconsideration does not reverse an effect automatically. Source:
 
 - Scheduler: [`internal/cognition/`](../../internal/cognition/)
 - Episode lifecycle: [`internal/episodeledger/lifecycle.go`](../../internal/episodeledger/lifecycle.go)
-- Episode assembler: [`internal/episodes/assembler.go`](../../internal/episodes/assembler.go)
+- Episode assembler: [`internal/episodes/internal/domain/assembly.go`](../../internal/episodes/internal/domain/assembly.go)
 - Cancellation/recovery tests: [`internal/episodes/`](../../internal/episodes/)
 
 ## Next reads

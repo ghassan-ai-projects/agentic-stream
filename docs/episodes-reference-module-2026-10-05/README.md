@@ -20,3 +20,5 @@ flowchart TD
 - [Design](DESIGN.md)
 - [Rounds and validation](PLAN.md)
 - [Dead and test-only code audit](CODE_AUDIT.md)
+
+- [Validation, review and ratings](VALIDATION.md)

@@ -11,7 +11,7 @@ transactions behind an opaque wrapper.
 | App can still reach SQL | `internal/store/tx.go` aliases `sql.Tx`; app calls ledger and cost APIs with it | Opaque `Tx`; SQL and transactional owner calls stay in store |
 | Facade contains an epoch rule | `epoch_refusal.go` classifies control errors and silently allows missing control | Store asserts the supplied epoch check; domain classifies the result; execution configuration requires it |
 | Pure rules drifted to app | `decision.go`, `failure.go`, `shadow.go`, `intent_catalog.go`, request budget cache | Move rules and vocabulary back to domain with their tests |
-| Mutable public configuration | Constructors plus `With*` setters allow incomplete dispatch wiring | One `Service`, `New(Config)`; explicit assembly-only construction, required execution dependencies |
+| Mutable public configuration | Constructors plus `With*` setters allow incomplete dispatch wiring | One `Service`, `New(Config)`; three operations, explicit assembly-only construction, required execution dependencies |
 | Concrete executor leaks into lifecycle | `app/fake_executor.go`; runtime demo composition uses it | Move to `executor/fixture`; keep production demo behavior and test it there |
 | Documentation describes a different layout | module README and this folder retain facade use cases and deferred app migration | Rewrite around the actual final layers |
 | Shadow vocabulary is wrong | guide calls inserted intents shadow-mode intents; active mode inserts, shadow only scores | Correct guide, comments and language |

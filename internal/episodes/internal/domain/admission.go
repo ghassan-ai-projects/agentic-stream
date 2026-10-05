@@ -11,6 +11,7 @@ import (
 // RequestDigests are the decoded immutable admission provenance.
 type RequestDigests struct{ snapshot, prompt, objective []byte }
 
+// DecodeRequestDigests decodes snapshot, prompt and objective in their established order.
 func DecodeRequestDigests(req *Request) (RequestDigests, error) {
 	var digests RequestDigests
 	var err error
@@ -26,6 +27,7 @@ func DecodeRequestDigests(req *Request) (RequestDigests, error) {
 	return digests, nil
 }
 
+// AdmittedEpisode binds the request to the lifecycle owner admission record.
 func AdmittedEpisode(req *Request, digests RequestDigests) episodeledger.Admission {
 	return episodeledger.Admission{EpisodeID: req.EpisodeID, SchedulerItemID: req.SchedulerItemID,
 		Kind: req.Kind, TenantID: req.TenantID, SituationID: req.SituationID, SituationVersion: req.SituationVersion,
@@ -35,7 +37,11 @@ func AdmittedEpisode(req *Request, digests RequestDigests) episodeledger.Admissi
 		DispatchPolicy: req.DispatchPolicy, PolicyEpoch: req.PolicyEpoch}
 }
 
+// RebindRequest refreshes the snapshot while preserving the admission evidence.
 func RebindRequest(req *Request, liveVersion int, evidence *SnapshotEvidence) (*Request, error) {
+	if evidence.EntityID != req.EntityID {
+		return nil, fmt.Errorf("live snapshot entity %q does not match bound entity %q", evidence.EntityID, req.EntityID)
+	}
 	requestJSON, err := reboundRequestJSON(req, liveVersion, evidence)
 	if err != nil {
 		return nil, err
@@ -62,4 +68,17 @@ func reboundRequestJSON(req *Request, liveVersion int, evidence *SnapshotEvidenc
 		return nil, fmt.Errorf("marshal re-bound request: %w", err)
 	}
 	return requestJSON, nil
+}
+
+// CostBudget reads the admitted cost ceiling before opening a reservation.
+func CostBudget(raw []byte) (uint64, error) {
+	var payload struct {
+		Budget struct {
+			CostMicrounits uint64 `json:"cost_microunits"`
+		} `json:"budget"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return 0, fmt.Errorf("decode episode cost budget: %w", err)
+	}
+	return payload.Budget.CostMicrounits, nil
 }

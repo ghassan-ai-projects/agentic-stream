@@ -96,7 +96,7 @@ Steps:
    grep `internal/spec` tests for the example load pattern).
 
 **Exit:** the spec compiles and `SaveDeployment` accepts it; the intent catalog
-digests cleanly (`internal/episodes/intent_catalog.go`).
+digests cleanly (`internal/episodes/internal/domain/intent_catalog.go`).
 
 ---
 

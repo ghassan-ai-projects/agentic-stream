@@ -59,7 +59,7 @@ func InsertDecision(ctx context.Context, tx *Tx, row DecisionInsert) error {
 	return nil
 }
 
-// ValidatedIntentInsert is one shadow-mode validated intent.
+// ValidatedIntentInsert is one active-mode validated intent.
 type ValidatedIntentInsert struct {
 	Intent           decisions.Intent
 	DecisionID       string

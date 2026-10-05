@@ -136,7 +136,7 @@ func composeConfig(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, gi
 		t.Fatal(err)
 	}
 	return admission.Config{
-		DB: db, Assembler: assembler, Clock: clock.Physical(), TenantID: "default",
+		DB: db, Episodes: assembler, Clock: clock.Physical(), TenantID: "default",
 		Owner: owner, OwnerEpoch: ownerEpoch, EpochControl: control, DemoMode: given.demo,
 	}
 }

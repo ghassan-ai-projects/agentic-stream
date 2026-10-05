@@ -3,14 +3,12 @@ package app
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -29,13 +27,6 @@ type episodeClaim struct {
 	// quarantined reports that the episode was durably abandoned inside the
 	// claim transaction. A quarantined claim must not be executed.
 	quarantined bool
-}
-
-type persistedRequestTrace struct {
-	Traceparent     string `json:"traceparent"`
-	Tracestate      string `json:"tracestate"`
-	CancellationKey string `json:"cancellation_key"`
-	SupersessionKey string `json:"supersession_key"`
 }
 
 // claimEpisode selects the oldest dispatchable episode, re-checks its
@@ -106,40 +97,10 @@ func episodeClaimFromDispatched(episode store.DispatchedEpisode) *episodeClaim {
 
 func hydrateEpisodeClaim(claim *episodeClaim) (*episodeClaim, error) {
 	claim.req.EpisodeID = claim.episodeID
-	if err := hydratePersistedRequest(&claim.req); err != nil {
+	if err := domain.HydratePersistedRequest(&claim.req); err != nil {
 		return nil, err
 	}
 	return claim, nil
-}
-
-// hydratePersistedRequest restores and validates the request fields that are
-// stored only inside request_json.
-func hydratePersistedRequest(req *Request) error {
-	var trace persistedRequestTrace
-	if err := json.Unmarshal(req.RequestJSON, &trace); err != nil {
-		return fmt.Errorf("decode persisted request trace context: %w", err)
-	}
-	if _, err := contractsv1.ParseTraceContext(trace.Traceparent, trace.Tracestate); err != nil {
-		return fmt.Errorf("validate persisted request trace context: %w", err)
-	}
-	req.Traceparent = trace.Traceparent
-	req.Tracestate = trace.Tracestate
-	req.CancellationKey = trace.CancellationKey
-	req.SupersessionKey = trace.SupersessionKey
-	return hydrateRequestBudgetEntity(req)
-}
-
-func hydrateRequestBudgetEntity(req *Request) error {
-
-	if _, err := req.WallTimeBudget(); err != nil {
-		return fmt.Errorf("validate persisted episode budget: %w", err)
-	}
-	entityID, err := requestEntityID(req.RequestJSON)
-	if err != nil {
-		return fmt.Errorf("load persisted request entity: %w", err)
-	}
-	req.EntityID = entityID
-	return nil
 }
 
 // bindLiveSituation enforces P8 freshness: the situation version is rechecked

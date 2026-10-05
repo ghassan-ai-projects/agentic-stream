@@ -9,7 +9,7 @@ private app use cases through an opaque store unit of work.
 | C0 | Survey and corrected plan, preserve existing worktree | Read production surface, references, ownership and tests | Complete |
 | C1 | Opaque store transaction; pure domain contracts/rules; private application use cases | Episode tests, transaction rollback tests, root architecture gates, lint | Complete |
 | C2 | Validated public service; caller updates; fixture executor extraction; code audit | Facade construction/delegation tests, adapter/conformance/replay/runtime tests, production and test reachability | Complete |
-| C3 | Enforcement, injection proofs, guide/map updates, final review | Full CI targets, uncached race suite, coverage, diff check | Pending |
+| C3 | Finish remaining domain rules, enforcement, injection proofs, guide/map updates, final review | Full CI targets, uncached race suite, coverage, diff check | Complete |
 
 Commit this plan separately before additional code changes. Include the user's
 existing staged migration only in the implementation round, never in C0.
@@ -60,3 +60,18 @@ package remains above 60%. Whole-tree lint reports zero issues. Test-aware
 reachability reports zero unreachable functions. The only remaining episode
 facade candidate in the CLI scan is catalog compilation; source consumers
 justify retaining it. Public Rebind was removed as test-only surface.
+
+C3 self-review moved the remaining pure request hydration, entity-rebind
+validation, cost-ceiling decoding and Decision storage/rejection rules into
+domain. ID allocation remains between Decision validation and storage digest
+preparation; error precedence and clock reads are unchanged. Added direct
+positive and rejection tests for those boundaries. Admission now names its
+service dependency `Episodes`. Shadow persistence uses the actual configured
+qualification collaborator on the same transaction.
+
+Seven injected violations were rejected: facade rule, application raw SQL,
+domain I/O, SQL outside store, nested worker transport, SQL transaction alias,
+and public database handle. All fixtures were removed and gates pass again.
+The first full CI attempt identified four stale public links; those were
+updated to the relocated files. The final CI run and full uncached non-short
+race suite pass. Final coverage, review and ratings are recorded in VALIDATION.md.

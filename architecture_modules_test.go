@@ -99,7 +99,7 @@ func TestEpisodeLifecycleImportsNoExecutorTransport(t *testing.T) {
 	t.Parallel()
 
 	for _, file := range productionGoFiles(t, repoRoot(t)) {
-		if path.Dir(file.rel) != "internal/episodes" {
+		if pkg := path.Dir(file.rel); pkg != "internal/episodes" && !strings.HasPrefix(pkg, "internal/episodes/") {
 			continue
 		}
 		for _, imported := range fileImports(t, file) {

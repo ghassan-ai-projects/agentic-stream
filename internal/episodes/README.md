@@ -1,59 +1,73 @@
-# Episodes reference module
+# Episodes
 
-Episodes turns scheduler items into bounded reasoning units: it assembles
-deterministic requests from immutable situation snapshots, admits them with
-cost reservation, claims the oldest dispatchable episode inside one
-transaction (re-binding stale episodes to live versions, refusing killed
-policy epochs), executes it under a supersession watch and wall-time budget,
-and persists validated decisions — governing active dispatches while shadow
-dispatches only score.
-
-The module's public API is **transaction-threaded** (`Assemble`, `Persist`,
-`Rebind` and the runner's claim/conclude steps take the caller's `*sql.Tx`),
-exactly like `episodeledger`. That contract dictates the layer shape: the
-transaction-scoped use cases stay in the facade package, pure rules live in a
-domain layer, and every SQL statement lives in a store layer that receives
-the caller's transaction. A conventional app layer is impossible without
-redesigning the cross-module transaction contract (recorded as a deferred
-follow-up), and the layer arithmetic agrees — admission and the executors
-(level 6) import episodes, pinning the facade at level 5.
+Episodes owns deterministic request assembly and bounded reasoning execution.
+Consumers use `Service`, constructed once by `New(Config)`. The facade exposes
+`Assemble`, `Persist` and `RunOnce`; its methods only delegate. Rebinding is
+private to the runner. Concrete executors implement the public `Executor` port
+and live under `internal/executor/`.
 
 ```mermaid
 flowchart TD
-    A["admission, replay store, runtime"] --> F["episodes: tx-scoped use cases"]
-    F --> D["internal/domain: budgets, snapshot evidence, failure classification, decision digests"]
-    F --> S["internal/store: all episode SQL, caller transactions"]
-    S --> L["episodeledger, scheduleledger, qualification"]
+    C["admission · replay · runtime"] --> F["episodes.Service"]
+    F --> A["internal/app: assemble → claim → execute → conclude"]
+    A --> D["internal/domain: immutable evidence and pure decisions"]
+    A --> S["internal/store: opaque unit of work and SQL"]
+    S --> L["owning ledgers · cost control · epoch check · qualification"]
+    X["executor/native · executor/remote · executor/fixture"] --> F
 ```
-
-## Responsibilities
 
 | Layer | Responsibility |
 | --- | --- |
-| Facade | Public API (`Request`, `Outcome`, `Executor` port, `Assembler`, `Runner`, `FakeExecutor`, catalog compile, budget errors) and the transaction-scoped claim → re-bind → fence → execute → validate → persist → conclude sequencing |
-| Domain | Pure rules with table tests: wall-time budget parsing, snapshot evidence validation and binding, execution failure classification (the budget error types live here and are aliased by the facade), decision digests and validation-failure documents |
-| Store | Every SQL statement behind domain-named methods taking the caller's transaction: assembly loads, the dispatchable-episode read, live-situation and attempt-status reads, decision and validated-intent inserts, retry and lifecycle updates through the ledger |
+| Facade | Configuration adaptation, domain aliases, executor port and three delegating operations |
+| App | Ordered use cases; clock reads, ID allocation, telemetry, supersession cancellation; uses domain decisions and transactional ports |
+| Domain | Requests/outcomes, budget cache, snapshot validation, canonical assembly and provenance, catalog authority, decision validation/storage rules, failure/epoch classification, freshness/retry limits and shadow scoring |
+| Store | SQL projections and decision/intent producer writes; opaque transaction joins; calls owning ledger, reservation, epoch and shadow APIs on the original transaction |
+| Executors | Native reasoning, worker protocol and deterministic demo fixtures, behind the same episode port |
 
-## Preserved sequences
+## Construction
 
-Claim atomicity (an episode quarantine commits inside the claim transaction so
-the queue never blocks), the stale re-bind bound of three, the epoch kill
-gate, the detached persist context with its five-second budget, supersession
-cancellation, budget-exhaustion classification, and shadow decisions scoring
-without ever touching intents or commands. All pinned by the package's suites
-(golden assembler, runner, rebind, cancellation, dispatch-freshness and
-shadow-dispatch tests) which ran unchanged through the migration.
+Assembly-only consumers such as replay materialization pass `Config{Spec: ...}`.
+`Execution == nil` explicitly selects assembly-only use; `RunOnce` returns an
+error before touching a database or executor. An execution configuration must
+supply a database, executor and decision-epoch check. A shadow spec also needs
+shadow persistence. Clock and ID generator retain their existing defaults;
+aggregate cost accounting is an optional configured feature.
 
-## Evidence and limits
+Runtime composition supplies the same explicit epoch port used by policy.
+Unowned fixture composition keeps its existing explicit permissive check;
+live owner-scoped composition supplies the control gate. Missing execution
+ports are constructor errors. There are no public setters or compatibility
+constructors that can silently omit a required check.
 
-Coverage: facade 74.6%, domain 88.9%, store 67.1%. Gates enforce downward
-imports, domain purity and store-only SQL, each proven by injected violations
-during migration; durable ownership of `decisions` and the `intents` insert
-handoff moved to the store layer (authority/policy/eventlog precedent).
-Deferred: the app layer needs an episodeledger-style unit contract agreed
-across admission, replay and runtime; `CompileIntentCatalog` and the executor
-document stay facade-side until the spec projection has a second consumer.
+## Atomic ownership
 
-- [Episodes language](UBIQUITOUS_LANGUAGE.md)
-- [Migration design](../../docs/episodes-reference-module-2026-10-05/DESIGN.md)
-- [Plan and rounds](../../docs/episodes-reference-module-2026-10-05/PLAN.md)
+Admission and replay pass their caller-owned `*sql.Tx` to the facade. It joins
+that transaction through `store.Join`; the private `Tx` exposes no SQL handle,
+query methods, commit or rollback. Ledger, cost and epoch ports receive the
+same underlying transaction. Joined use cases never open a second transaction.
+
+The runner opens one claim transaction and a separate conclusion transaction,
+executing outside both. Claim-time quarantine commits so an unusable oldest
+row cannot block the queue. Rebind and retry budgets remain three. Epoch checks
+occur before dispatch and inside the conclusion transaction. A cancelled
+parent context does not cancel the detached five-second persistence budget.
+
+The store owns decisions and the declared intent-producer handoff. Active
+execution inserts validated pending intents for downstream policy. Shadow
+execution writes qualification-owned scores and no intents or commands.
+Episode/scheduler lifecycle tables remain owned by their ledgers; foreign
+mutations are not permitted. Existing transactional read projections over
+scheduler, situation and reconsideration evidence remain in store.
+
+## Evidence and audit
+
+Canonical request bytes, digest domains, admission identities, error precedence,
+clock reads, cancellation and golden fixtures are unchanged. Regression tests
+prove caller rollback, fencing, refusal, stale rebinds, deadline handling,
+shadow isolation and replay parity. Architecture gates enforce facade
+operations, opaque transactions, store-only SQL, pure domain rules, application
+ports and transport isolation across every episode layer.
+
+The [completion record](../../docs/episodes-reference-module-2026-10-05/README.md)
+contains the plan, validation and [dead/test-only code decisions](../../docs/episodes-reference-module-2026-10-05/CODE_AUDIT.md).
+See [module language](UBIQUITOUS_LANGUAGE.md) for matching code/storage terms.

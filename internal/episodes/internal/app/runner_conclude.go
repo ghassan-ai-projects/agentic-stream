@@ -33,12 +33,9 @@ func (r *Runner) recordExecution(ctx context.Context, claim *episodeClaim, outco
 }
 
 func (r *Runner) rejectOutcomeIdentity(ctx context.Context, identity episodeledger.Identity, outcome *Outcome) error {
-	reason := episodeledger.RejectWrongAttempt
-	if outcome.Fence < identity.Fence {
-		reason = episodeledger.RejectStaleAttempt
-	}
+
 	incoming := episodeledger.Identity{EpisodeID: identity.EpisodeID, AttemptID: outcome.AttemptID, Fence: outcome.Fence}
-	return r.failAttemptWithRejection(ctx, identity, incoming, reason, "worker_identity_mismatch")
+	return r.failAttemptWithRejection(ctx, identity, incoming, domain.OutcomeIdentityRejection(identity, incoming), "worker_identity_mismatch")
 }
 
 // concludeAttempt persists a usable outcome in one transaction: the proposed
@@ -96,7 +93,7 @@ func (r *Runner) settleAbandonedCost(ctx context.Context, tx *store.Tx, episodeI
 // finishAttempt records the attempt terminal, settles cost, and concludes the
 // episode.
 func (r *Runner) finishAttempt(ctx context.Context, tx *store.Tx, claim *episodeClaim, outcome *Outcome, record *decisionRecord, now string) error {
-	attemptStatus := domain.TerminalAttemptStatus(outcome, record != nil, record != nil && record.validationErr == nil)
+	attemptStatus := domain.TerminalAttemptStatus(outcome, record != nil, record != nil && record.ValidationErr == nil)
 	if !episodeledger.IsTerminalAttempt(attemptStatus) {
 		return fmt.Errorf("executor returned non-terminal attempt status %q", attemptStatus)
 	}

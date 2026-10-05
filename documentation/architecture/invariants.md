@@ -35,7 +35,7 @@ attempt starts, bounded rebinding may repoint the episode to a validated live
 version. It preserves identity, admission evidence, and finite budget; it does
 not mutate either published snapshot or a running attempt's request. See
 [the episode explanation](../learn/reasoning.md) and
-[rebinding tests](../../internal/episodes/rebind_test.go).
+[rebinding tests](../../internal/episodes/internal/app/rebind_test.go).
 
 ## Invariant-to-system map
 

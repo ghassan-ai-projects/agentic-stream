@@ -1,5 +1,5 @@
-// Package app holds the episode use cases: deterministic request assembly,
-// bounded execution and decision persistence, all inside the callers transaction.
+// Package app holds deterministic request assembly in caller-owned transactions
+// and bounded execution between separate claim and conclusion transactions.
 package app
 
 import (

@@ -83,7 +83,7 @@ func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.
 }
 
 func composeAdmission(cfg PipelineConfig, episodeService *episodes.Service) *admission.Admitter {
-	return admission.New(admission.Config{DB: cfg.DB, Assembler: episodeService, Clock: cfg.Clock, TenantID: cfg.TenantID, Owner: cfg.Owner, OwnerEpoch: cfg.OwnerEpoch, EpochControl: cfg.EpochControl, DemoMode: cfg.DemoMode})
+	return admission.New(admission.Config{DB: cfg.DB, Episodes: episodeService, Clock: cfg.Clock, TenantID: cfg.TenantID, Owner: cfg.Owner, OwnerEpoch: cfg.OwnerEpoch, EpochControl: cfg.EpochControl, DemoMode: cfg.DemoMode})
 }
 
 func composeEpisodes(cfg PipelineConfig) (*episodes.Service, error) {

@@ -60,7 +60,7 @@ APIs and tests; a public CLI for selecting them is not yet implemented.
 
 - Replay implementation: [`internal/replay/replay.go`](../../internal/replay/replay.go)
 - Replay tests: [`internal/replay/replay_test.go`](../../internal/replay/replay_test.go)
-- Shadow/mode tests: [`internal/episodes/shadow_dispatch_test.go`](../../internal/episodes/shadow_dispatch_test.go), [dispatch modes](../../internal/runtime/internal/app/dispatch_mode_test.go), [epoch controls](../../internal/runtime/internal/app/epoch_control_test.go)
+- Shadow/mode tests: [`internal/episodes/internal/app/shadow_dispatch_test.go`](../../internal/episodes/internal/app/shadow_dispatch_test.go), [dispatch modes](../../internal/runtime/internal/app/dispatch_mode_test.go), [epoch controls](../../internal/runtime/internal/app/epoch_control_test.go)
 
 ## Next reads
 

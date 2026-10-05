@@ -138,7 +138,7 @@ that **do not exist** in the compiler and will fail validation. This plan does
 
 - `intents[].parameterSchema` — the full JSON Schema of the intent's parameters
   (`type: object`, `additionalProperties: false` required); carried and digested
-  verbatim by `internal/episodes/intent_catalog.go`.
+  verbatim by `internal/episodes/internal/domain/intent_catalog.go`.
 - `intents[].modelWritableFields` — the *only* parameter names the model may
   write. Everything else is fixed.
 - `intents[].presets` — named, bounded parameter sets the deterministic policy

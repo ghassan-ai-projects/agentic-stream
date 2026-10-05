@@ -74,31 +74,6 @@ func loadTriggerContext(ctx context.Context, tx *store.Tx, item schedulerItem, i
 	return inputs, nil
 }
 
-func requestEntityID(raw []byte) (string, error) {
-	var request struct {
-		Snapshot json.RawMessage `json:"snapshot"`
-	}
-	if err := json.Unmarshal(raw, &request); err != nil {
-		return "", fmt.Errorf("decode request snapshot: %w", err)
-	}
-	if len(request.Snapshot) == 0 {
-		return "", nil
-	}
-	return requestSnapshotEntity(request.Snapshot)
-}
-
-func requestSnapshotEntity(raw []byte) (string, error) {
-	var snapshot struct {
-		Entity struct {
-			ID string `json:"id"`
-		} `json:"entity"`
-	}
-	if err := json.Unmarshal(raw, &snapshot); err != nil {
-		return "", fmt.Errorf("decode request snapshot entity: %w", err)
-	}
-	return snapshot.Entity.ID, nil
-}
-
 func (a *Assembler) loadSchedulerItem(ctx context.Context, tx *store.Tx, id string) (schedulerItem, error) {
 	return store.LoadSchedulerItem(ctx, tx, id) //nolint:wrapcheck // Store owns the query error context.
 }
