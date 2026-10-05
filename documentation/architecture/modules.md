@@ -72,7 +72,7 @@ records or returned values, not reverse service dependencies.
 | `approvalledger` | Pending approval, assertion binding, resolution/expiry, and atomic supersession notification |
 | `policy` | Permission, principal/signature verification, risk, freshness, rate limits and command publication |
 | `control` | Runtime ownership lease, epoch drain/kill and final read-only readiness capability |
-| `authority` | Target claims, command bindings, boot/reconciliation barriers and safety evidence |
+| `authority` | Target claims, command bindings, device reconciliation, safe-stop latching and safety evidence. Reference structure: one `Service`, pure `internal/domain` rules, and `internal/store`, the only writer of its tables |
 | `qualification` | Calibration activation and report-only shadow decisions/comparisons |
 | `storage` | SQLite configuration, migrations, transactions, replay-path reservation and busy retry |
 | `runtime` / `cmd` | Wiring, lifecycle and orchestration; concrete device selection lives here |

@@ -11,7 +11,7 @@ A word that is not here should not appear in the module's public API.
 | Term | Meaning | Code | Storage |
 | --- | --- | --- | --- |
 | **Owner** | The runtime process that holds the singleton runtime lease. Identified by owner epoch and owner instance. | `Owner{Epoch, Instance}` | `owner_epoch`, `owner_instance` |
-| **Owner epoch** | Opaque generation ID of one ownership period. A new owner always has a new epoch. | `Owner.Epoch` | `owner_epoch` |
+| **Owner epoch** | Opaque generation ID of one ownership period. A new owner always has a new epoch. | `Owner.Epoch`; `OwnerEpoch` in `device` configuration | `owner_epoch` |
 | **Owner instance** | Identity of the process that holds the epoch. | `Owner.Instance` | `owner_instance` |
 | **Device boot** | One power-on of one device. A reboot is a new device boot. | `DeviceBoot{DeviceID, BootID}` | `device_id`, `boot_id` |
 | **Target** | One addressable output of a device, for example `fan-01`. | `string` | `target` |
@@ -21,8 +21,8 @@ A word that is not here should not appear in the module's public API.
 
 | Term | Meaning | Code |
 | --- | --- | --- |
-| **Ordinary admission** | The owner's lease is valid and its epoch is neither draining nor killed. Every ordinary operation passes it inside its own transaction. | `admitOrdinary` |
-| **Priority path** | Writes that make the device safer: safe-stop stages and opening a reconciliation after authority loss. They skip ordinary admission. | `withPriorityTx` |
+| **Ordinary admission** | The owner's lease is valid and its epoch is neither draining nor killed. Every ordinary operation passes it as the first step of its own transaction. | `admitOrdinary`, `withAdmittedTx` |
+| **Priority path** | Writes that must succeed whatever the authority state: safe-stop stages, opening a reconciliation after authority loss, releasing a claim, and recording safety evidence. They make the device safer, give up authority, or preserve evidence, and they skip ordinary admission. | `withPriorityTx` |
 | **Authority loss** | The owner's lease expired, or its epoch is draining or killed. | `ErrRuntimeOwnerBusy`, `ErrEpochDraining`, `ErrEpochKilled` (from `control`) |
 
 ## Target claims
@@ -53,6 +53,7 @@ A word that is not here should not appear in the module's public API.
 | Term | Meaning | Code | Storage / event |
 | --- | --- | --- | --- |
 | **Device state** | The typed state document a device reports on handshake or query. Canonical JSON plus its SHA-256 digest. | `DeviceState`, `RecordDeviceState` | `state_json`, `state_sha256` |
+| **First seen** | When the device's first state was recorded. | — | `first_seen_at` |
 | **Reboot** | A device state whose boot ID differs from the recorded one. | `StateRebooted` | — |
 | **Reconciliation** | A case opened for a device boot when the runtime can no longer trust what the device did: a reboot, an untrusted receipt, or an unknown outcome. | `domain.Reconciliation` | `device_reconciliation` |
 | **Reconciliation required** | A reconciliation is open. Ordinary commands to the device are blocked. This is the **barrier**. | `ReconciliationRequired`, `ErrReconciliationRequired` | `status = 'required'` |
@@ -91,4 +92,5 @@ A word that is not here should not appear in the module's public API.
 | `Require` / `Required` | `OpenReconciliation` / `ReconciliationRequired` | A verb and a predicate that differ by one letter. |
 | `Assert` (claim) | `AssertClaim` | Distinguishes it from `AssertRuntime`. |
 | opening boot | — | Always equal to the current boot; the column is dropped. |
+| opened at (for the first state) | first seen at | The column never recorded when a reconciliation opened. |
 | `TargetAuthority`, `ReconciliationStore`, `SafetyLedger` | `authority.Service` | One entry point for one context. |

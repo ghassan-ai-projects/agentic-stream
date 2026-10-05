@@ -97,7 +97,7 @@ rules.
   open, which is the opposite of what the error says.
 - Device-wide audit events build a `TargetClaim` whose target is the device ID,
   with no name for that convention.
-- `fmt.Errorf("%w", err)` wraps nothing (`authority.go`, `authority_binding.go`).
+- `fmt.Errorf("%w", err)` wraps nothing (`authority.go`, `authority_binding.go`). It exists only to satisfy `wrapcheck`; the same pattern appears 28 times across `internal/`.
 - `device` keeps a fallback `ReconciliationStore.RecordSafeStop` path that is
   unreachable because the session already requires `TargetAuthority`.
 

@@ -52,6 +52,13 @@ module's own `internal/` directory, so no other package can import them.
 
 ### Application layer and public API (`internal/authority`)
 
+| File | Holds |
+| --- | --- |
+| `api.go` | value-type aliases, outcome and stage constants, sentinel errors, stateless rules |
+| `service.go` | `Config`, `New`, `Service`, identity checks, `AssertRuntime` |
+| `tx.go` | `withAdmittedTx`, `withPriorityTx`, `admitOrdinary`, the clock read |
+| `claims.go`, `commands.go`, `reconciliation.go`, `resolution.go`, `safety.go` | one file per operation group |
+
 One entry type:
 
 ```go
@@ -96,12 +103,18 @@ because `actions` verifies evidence inside its own reconciliation transaction.
    audit share it, so an audit failure rolls the state change back.
 3. **Admission is the first statement in the transaction.** Ordinary operations
    use `withAdmittedTx`; priority-path operations use `withPriorityTx`, which
-   is the only place admission is skipped.
+   is the only place admission is skipped. The priority path is
+   `RecordSafeStop`, `OpenReconciliationAfterAuthorityLoss`, `ReleaseClaim` and
+   `RecordSafetyEvent`.
 4. **One clock read per operation**, taken before the transaction, from the
    configured `clock.Clock`.
 5. **Every state change is audited** in the same transaction.
-6. **Errors:** sentinel errors for outcomes callers branch on; `%w` wrapping
-   with the operation name everywhere else.
+6. **Errors:** sentinel errors for outcomes callers branch on. Each public
+   operation wraps once with its name (`claim target "fan-01": …`). Errors
+   from the module's own `domain` and `store` pass through unwrapped; `store`
+   names the failed statement itself. `wrapcheck` is configured to accept this
+   (`ignore-package-globs: */internal/*/internal/*`) and to accept
+   `storage.DB.WithTx`, which returns its callback's error unchanged.
 
 ## Enforcement
 
@@ -116,7 +129,8 @@ because `actions` verifies evidence inside its own reconciliation transaction.
 
 ## Schema changes
 
-A new migration aligns storage with the language:
+Migration `031_device_reconciliation_language.sql` aligns storage with the
+language:
 
 - drop `device_reconciliation.opening_boot_id` (always equal to `boot_id`);
 - rename `device_reconciliation.authority_epoch` to `owner_epoch`;
