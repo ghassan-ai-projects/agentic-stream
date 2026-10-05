@@ -18,6 +18,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/cognition/` | scheduler, trigger evaluation, reconsideration |
 | `internal/admission/` | episode admission: due scheduler items to epoch-stamped episodes, or recorded skips |
 | `internal/episodes/` | request assembly, bounded execution lifecycle, budgets and the `Executor` port |
+| `internal/episodes/internal/domain/` | pure episode rules: budgets, snapshot evidence, failure classification, decision digests |
 | `internal/evidence/` | capability tokens, evidence server, call ledger |
 | `internal/decisions/` | Decision and Intent validation |
 | `internal/policy/` | policy configuration and delegation facade |

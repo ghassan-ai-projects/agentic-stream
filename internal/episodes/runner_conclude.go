@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
@@ -15,7 +16,7 @@ func (r *Runner) recordExecution(ctx context.Context, claim *episodeClaim, outco
 	identity := claim.identity
 	switch {
 	case executionErr != nil:
-		return r.failAttemptStatus(ctx, identity, executionFailureStatus(executionErr), executionFailureReason(executionErr))
+		return r.failAttemptStatus(ctx, identity, domain.ExecutionFailureStatus(executionErr), domain.ExecutionFailureReason(executionErr))
 	case outcome == nil:
 		return r.failAttemptStatus(ctx, identity, episodeledger.AttemptFailed, "executor_returned_nil_outcome")
 	case outcome.AttemptID != identity.AttemptID || outcome.Fence != identity.Fence:

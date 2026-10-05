@@ -1,33 +1,21 @@
 package episodes
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 )
 
 // assemblyInputs are the durable facts one scheduler item is assembled from.
 type assemblyInputs struct {
 	evaluation      evaluation
-	snapshot        *snapshotEvidence
+	snapshot        *domain.SnapshotEvidence
 	delta           map[string]any
 	reconsideration map[string]any
-}
-
-// snapshotEvidence is a situation snapshot validated against the persisted
-// version row: schema, identity, entity, and the stored snapshot digest.
-type snapshotEvidence struct {
-	json        []byte
-	document    map[string]any
-	entityID    string
-	digest      string
-	traceparent string
-	tracestate  string
 }
 
 type schedulerItem struct {
@@ -79,12 +67,12 @@ func (a *Assembler) loadEvaluation(ctx context.Context, tx *sql.Tx, triggerID st
 // loadValidatedSnapshot loads a situation snapshot for a version and validates
 // it — the single guard both Assemble and Rebind use so a snapshot can never
 // reach a worker unvalidated or unbound to its persisted digest.
-func (a *Assembler) loadValidatedSnapshot(ctx context.Context, tx *sql.Tx, situationID string, version int, tenantID string) (*snapshotEvidence, error) {
+func (a *Assembler) loadValidatedSnapshot(ctx context.Context, tx *sql.Tx, situationID string, version int, tenantID string) (*domain.SnapshotEvidence, error) {
 	snapshotJSON, persistedDigest, traceparent, tracestate, err := a.loadSnapshotJSON(ctx, tx, situationID, version)
 	if err != nil {
 		return nil, fmt.Errorf("load snapshot: %w", err)
 	}
-	return validateSnapshotEvidence(snapshotJSON, persistedDigest, traceparent, tracestate, situationID, version, tenantID)
+	return domain.ValidateSnapshotEvidence(snapshotJSON, persistedDigest, traceparent, tracestate, situationID, version, tenantID)
 }
 
 func (a *Assembler) loadSnapshotJSON(ctx context.Context, tx *sql.Tx, situationID string, version int) ([]byte, []byte, string, string, error) {
@@ -103,65 +91,6 @@ func (a *Assembler) loadSnapshotJSON(ctx context.Context, tx *sql.Tx, situationI
 	return snapshotJSON, snapshotDigest, traceparent.String, tracestate.String, nil
 }
 
-func validateSnapshotEvidence(snapshotJSON, persistedDigest []byte, traceparent, tracestate, situationID string, version int, tenantID string) (*snapshotEvidence, error) {
-	var snapshot map[string]any
-	if err := json.Unmarshal(snapshotJSON, &snapshot); err != nil {
-		return nil, fmt.Errorf("unmarshal snapshot: %w", err)
-	}
-	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, snapshot); err != nil {
-		return nil, fmt.Errorf("validate snapshot: %w", err)
-	}
-	if snapshotString(snapshot, "situation_id") != situationID ||
-		snapshotInt(snapshot, "situation_version") != version ||
-		snapshotString(snapshot, "tenant_id") != tenantID {
-		return nil, fmt.Errorf("snapshot identity does not match episode admission")
-	}
-	return bindSnapshotEvidence(snapshotJSON, persistedDigest, traceparent, tracestate, snapshot)
-}
-
-func snapshotString(snapshot map[string]any, key string) string {
-	value, _ := snapshot[key].(string)
-	return value
-}
-
-func snapshotInt(snapshot map[string]any, key string) int {
-	value, _ := snapshot[key].(float64)
-	return int(value)
-}
-
-func bindSnapshotEvidence(snapshotJSON, persistedDigest []byte, traceparent, tracestate string, snapshot map[string]any) (*snapshotEvidence, error) {
-	entityID, err := snapshotEntityID(snapshotJSON)
-	if err != nil {
-		return nil, fmt.Errorf("load snapshot entity: %w", err)
-	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, snapshot)
-	if err != nil {
-		return nil, fmt.Errorf("digest snapshot: %w", err)
-	}
-	decodedDigest, err := canonicaljson.DecodeDigest(digest)
-	if err != nil || !bytes.Equal(decodedDigest, persistedDigest) {
-		return nil, fmt.Errorf("snapshot digest does not match persisted situation version")
-	}
-	return &snapshotEvidence{
-		json: snapshotJSON, document: snapshot, entityID: entityID, digest: digest, traceparent: traceparent, tracestate: tracestate,
-	}, nil
-}
-
-func snapshotEntityID(raw []byte) (string, error) {
-	var snapshot struct {
-		Entity struct {
-			ID string `json:"id"`
-		} `json:"entity"`
-	}
-	if err := json.Unmarshal(raw, &snapshot); err != nil {
-		return "", fmt.Errorf("decode snapshot entity: %w", err)
-	}
-	if snapshot.Entity.ID == "" {
-		return "", fmt.Errorf("snapshot entity id is required")
-	}
-	return snapshot.Entity.ID, nil
-}
-
 func loadTriggerContext(ctx context.Context, tx *sql.Tx, item schedulerItem, inputs assemblyInputs) (assemblyInputs, error) {
 	var err error
 	if len(inputs.evaluation.DeltaJSON) > 0 {
@@ -170,7 +99,7 @@ func loadTriggerContext(ctx context.Context, tx *sql.Tx, item schedulerItem, inp
 		}
 	}
 	if item.Kind == "reconsider" {
-		inputs.reconsideration, err = loadReconsideration(ctx, tx, item, inputs.evaluation, inputs.delta, inputs.snapshot.document)
+		inputs.reconsideration, err = loadReconsideration(ctx, tx, item, inputs.evaluation, inputs.delta, inputs.snapshot.Document)
 		if err != nil {
 			return assemblyInputs{}, fmt.Errorf("load reconsideration: %w", err)
 		}

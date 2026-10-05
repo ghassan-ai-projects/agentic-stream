@@ -9,6 +9,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -36,15 +37,11 @@ type Outcome struct {
 
 // BudgetExceededError reports that an executor stopped an attempt because it
 // consumed more than its admitted budget for Metric.
-type BudgetExceededError struct{ Metric string }
-
-func (e *BudgetExceededError) Error() string { return "episode budget exceeded: " + e.Metric }
+type BudgetExceededError = domain.BudgetExceededError
 
 // BudgetTelemetryMissingError reports that an executor could not prove an
 // attempt stayed within budget because the usage telemetry was absent.
-type BudgetTelemetryMissingError struct{}
-
-func (BudgetTelemetryMissingError) Error() string { return "episode budget telemetry is missing" }
+type BudgetTelemetryMissingError = domain.BudgetTelemetryMissingError
 
 // Runner polls admitted episodes and executes them deterministically.
 type Runner struct {

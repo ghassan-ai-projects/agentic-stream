@@ -11,6 +11,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -52,6 +53,9 @@ type Request struct {
 	DispatchPolicy string
 	PolicyEpoch    string
 }
+
+// snapshotEvidence is the domain's validated snapshot evidence.
+type snapshotEvidence = domain.SnapshotEvidence
 
 // Assembler builds deterministic episode requests.
 type Assembler struct {
@@ -144,13 +148,13 @@ func (a *Assembler) bindRequestCapabilities(request, executorDocument map[string
 }
 
 func bindRequestEvidence(request map[string]any, episodeID string, item schedulerItem, inputs assemblyInputs) {
-	request["snapshot"] = inputs.snapshot.document
-	request["snapshot_digest"] = inputs.snapshot.digest
+	request["snapshot"] = inputs.snapshot.Document
+	request["snapshot_digest"] = inputs.snapshot.Digest
 	request["delta"] = inputs.delta
 	request["cancellation_key"] = "episode:" + episodeID
 	request["supersession_key"] = "situation:" + item.SituationID
-	request["traceparent"] = inputs.snapshot.traceparent
-	request["tracestate"] = inputs.snapshot.tracestate
+	request["traceparent"] = inputs.snapshot.Traceparent
+	request["tracestate"] = inputs.snapshot.Tracestate
 	if inputs.reconsideration != nil {
 		request["reconsideration"] = inputs.reconsideration
 	}
@@ -160,12 +164,12 @@ func (a *Assembler) newRequest(episodeID string, item schedulerItem, evidence *s
 	admissionKey := sha256.Sum256([]byte(episodeID + "|" + item.SchedulerItemID))
 	return &Request{
 		EpisodeID: episodeID, SchedulerItemID: item.SchedulerItemID, Kind: item.Kind, TenantID: item.TenantID,
-		SituationID: item.SituationID, SituationVersion: item.SituationVersion, EntityID: evidence.entityID,
+		SituationID: item.SituationID, SituationVersion: item.SituationVersion, EntityID: evidence.EntityID,
 		ExecutorName: a.spec.Cognition.Executor.Name, ExecutorVersion: a.spec.Digest,
 		ModelPolicy: a.spec.Cognition.Executor.ModelPolicy, PromptVersion: a.spec.Cognition.Executor.PromptVersion,
 		PromptSHA256: executorDocument["prompt_sha256"].(string), ObjectiveSHA256: executorDocument["objective_sha256"].(string),
-		SnapshotSHA256: evidence.digest, AdmissionKey: admissionKey[:], RequestJSON: requestJSON,
-		Traceparent: evidence.traceparent, Tracestate: evidence.tracestate,
+		SnapshotSHA256: evidence.Digest, AdmissionKey: admissionKey[:], RequestJSON: requestJSON,
+		Traceparent: evidence.Traceparent, Tracestate: evidence.Tracestate,
 		CancellationKey: "episode:" + episodeID, SupersessionKey: "situation:" + item.SituationID,
 		DispatchPolicy: a.spec.Cognition.Executor.DispatchPolicy,
 	}

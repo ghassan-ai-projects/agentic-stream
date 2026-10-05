@@ -96,8 +96,8 @@ func (a *Assembler) Rebind(ctx context.Context, tx *sql.Tx, req *Request, liveVe
 	if err != nil {
 		return nil, err
 	}
-	if evidence.entityID != req.EntityID {
-		return nil, fmt.Errorf("live snapshot entity %q does not match bound entity %q", evidence.entityID, req.EntityID)
+	if evidence.EntityID != req.EntityID {
+		return nil, fmt.Errorf("live snapshot entity %q does not match bound entity %q", evidence.EntityID, req.EntityID)
 	}
 	return rebindRequest(req, liveVersion, evidence)
 }
@@ -110,8 +110,8 @@ func rebindRequest(req *Request, liveVersion int, evidence *snapshotEvidence) (*
 
 	fresh := *req
 	fresh.SituationVersion = liveVersion
-	fresh.EntityID = evidence.entityID
-	fresh.SnapshotSHA256 = evidence.digest
+	fresh.EntityID = evidence.EntityID
+	fresh.SnapshotSHA256 = evidence.Digest
 	fresh.RequestJSON = requestJSON
 	return &fresh, nil
 }
@@ -121,9 +121,9 @@ func reboundRequestJSON(req *Request, liveVersion int, evidence *snapshotEvidenc
 	if err := json.Unmarshal(req.RequestJSON, &request); err != nil {
 		return nil, fmt.Errorf("decode bound episode request: %w", err)
 	}
-	request["snapshot"] = evidence.document
+	request["snapshot"] = evidence.Document
 	request["situation_version"] = liveVersion
-	request["snapshot_digest"] = evidence.digest
+	request["snapshot_digest"] = evidence.Digest
 	requestJSON, err := canonicaljson.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("marshal re-bound request: %w", err)

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 )
 
 type reconsiderationRow struct {
@@ -67,8 +68,8 @@ func loadReconsideration(ctx context.Context, tx *sql.Tx, item schedulerItem, ev
 // outcome for a reconsider item, preferring the exact scheduler item, then
 // the trigger, then the superseded version and command.
 func queryReconsideration(ctx context.Context, tx *sql.Tx, item schedulerItem, delta map[string]any) (reconsiderationRow, error) {
-	supersededVersion := snapshotInt(delta, "superseded_version")
-	invalidatedCommandID := snapshotString(delta, "invalidated_command_id")
+	supersededVersion := domain.SnapshotInt(delta, "superseded_version")
+	invalidatedCommandID := domain.SnapshotString(delta, "invalidated_command_id")
 	var row reconsiderationRow
 	query := tx.QueryRowContext(ctx, queryReconsiderationSQL, item.TenantID, item.SituationID, item.SituationVersion,
 		item.SchedulerItemID, item.TriggerID, supersededVersion, invalidatedCommandID, item.SchedulerItemID, item.TriggerID)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
@@ -32,10 +33,10 @@ func TestExecutionFailureClassificationSurvivesWrapping(t *testing.T) {
 			t.Parallel()
 
 			wrapped := fmt.Errorf("execute episode attempt: %w", tt.err)
-			if got := executionFailureStatus(wrapped); got != tt.wantStatus {
+			if got := domain.ExecutionFailureStatus(wrapped); got != tt.wantStatus {
 				t.Fatalf("status = %q, want %q", got, tt.wantStatus)
 			}
-			if got := executionFailureReason(wrapped); got != tt.wantReason {
+			if got := domain.ExecutionFailureReason(wrapped); got != tt.wantReason {
 				t.Fatalf("reason = %q, want %q", got, tt.wantReason)
 			}
 		})

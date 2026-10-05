@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -38,35 +37,6 @@ func (r *Runner) watchSupersession(ctx context.Context, episodeID string, cancel
 			}
 		}
 	}
-}
-
-func executionFailureReason(err error) string {
-	var budgetErr *BudgetExceededError
-	if errors.As(err, &budgetErr) {
-		return "budget_exhausted"
-	}
-	var telemetryErr BudgetTelemetryMissingError
-	if errors.As(err, &telemetryErr) {
-		return "budget_telemetry_missing"
-	}
-	switch executionFailureStatus(err) {
-	case episodeledger.AttemptCancelled:
-		return "worker_cancelled" //nolint:misspell // Durable protocol reason is frozen as cancelled.
-	case episodeledger.AttemptTimedOut:
-		return "worker_deadline_exceeded"
-	default:
-		return "worker_execution_failed"
-	}
-}
-
-func executionFailureStatus(err error) episodeledger.AttemptStatus {
-	if errors.Is(err, context.Canceled) {
-		return episodeledger.AttemptCancelled
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return episodeledger.AttemptTimedOut
-	}
-	return episodeledger.AttemptFailed
 }
 
 // failAttemptStatus fails the current attempt, then retries the episode or
