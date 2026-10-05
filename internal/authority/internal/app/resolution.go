@@ -1,8 +1,7 @@
-package authority
+package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -15,12 +14,12 @@ import (
 // reconciliation of a device boot, and reports whether it cleared. Command
 // outcomes must already be reconciled by the dispatcher; manual review keeps
 // the reconciliation required.
-func (s *Service) ResolveReconciliation(ctx context.Context, device DeviceBoot, owner Owner, outcome ResolutionOutcome, evidence map[string]any) (bool, error) {
+func (s *Service) ResolveReconciliation(ctx context.Context, device domain.DeviceBoot, owner domain.Owner, outcome domain.ResolutionOutcome, evidence map[string]any) (bool, error) {
 	if err := s.checkResolution(device, owner, outcome, evidence); err != nil {
 		return false, err
 	}
 	now := s.now()
-	err := s.withAdmittedTx(ctx, owner.Epoch, func(tx *sql.Tx) error {
+	err := s.inAdmittedTx(ctx, owner.Epoch, func(tx *store.Tx) error {
 		return resolveReconciliation(ctx, tx, device, owner, outcome, evidence, now)
 	})
 	if err != nil {
@@ -29,7 +28,7 @@ func (s *Service) ResolveReconciliation(ctx context.Context, device DeviceBoot, 
 	return outcome.Clears(), nil
 }
 
-func (s *Service) checkResolution(device DeviceBoot, owner Owner, outcome ResolutionOutcome, evidence map[string]any) error {
+func (s *Service) checkResolution(device domain.DeviceBoot, owner domain.Owner, outcome domain.ResolutionOutcome, evidence map[string]any) error {
 	if !outcome.Valid() {
 		return fmt.Errorf("invalid resolution outcome %q", outcome)
 	}
@@ -39,7 +38,7 @@ func (s *Service) checkResolution(device DeviceBoot, owner Owner, outcome Resolu
 	return s.checkOwner(owner)
 }
 
-func resolveReconciliation(ctx context.Context, tx *sql.Tx, device DeviceBoot, owner Owner, outcome ResolutionOutcome, evidence map[string]any, now time.Time) error {
+func resolveReconciliation(ctx context.Context, tx *store.Tx, device domain.DeviceBoot, owner domain.Owner, outcome domain.ResolutionOutcome, evidence map[string]any, now time.Time) error {
 	resolution, err := domain.NewResolution(device, owner, outcome, evidence)
 	if err != nil {
 		return err
@@ -47,23 +46,23 @@ func resolveReconciliation(ctx context.Context, tx *sql.Tx, device DeviceBoot, o
 	if err := checkResolvable(ctx, tx, resolution); err != nil {
 		return err
 	}
-	if err := store.RecordResolution(ctx, tx, resolution, now); err != nil {
+	if err := tx.RecordResolution(ctx, resolution, now); err != nil {
 		return err
 	}
-	return store.AppendAuthorityEvent(ctx, tx, domain.ResolutionEvent(resolution, now))
+	return tx.AppendAuthorityEvent(ctx, domain.ResolutionEvent(resolution, now))
 }
 
 // checkResolvable requires an open reconciliation bound by the evidence and
 // no command of the boot still awaiting reconciliation.
-func checkResolvable(ctx context.Context, tx *sql.Tx, resolution domain.Resolution) error {
-	recorded, err := store.LoadReconciliation(ctx, tx, resolution.Device.DeviceID)
+func checkResolvable(ctx context.Context, tx *store.Tx, resolution domain.Resolution) error {
+	recorded, err := tx.LoadReconciliation(ctx, resolution.Device.DeviceID)
 	if err != nil {
 		return err
 	}
 	if err := domain.CheckResolvable(recorded, resolution); err != nil {
 		return err
 	}
-	unresolved, err := store.CountUnresolvedCommands(ctx, tx, resolution.Device)
+	unresolved, err := tx.CountUnresolvedCommands(ctx, resolution.Device)
 	if err != nil {
 		return err
 	}

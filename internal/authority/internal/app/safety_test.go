@@ -1,9 +1,9 @@
-package authority_test
+package app_test
 
 import (
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
 )
 
 func TestSafeStopLatchesTheBootOnThePriorityPath(t *testing.T) {
@@ -13,7 +13,7 @@ func TestSafeStopLatchesTheBootOnThePriorityPath(t *testing.T) {
 		t.Fatalf("latched before any safe stop: %v, %v", latched, err)
 	}
 	f.clock.Advance(runtimeLease)
-	if err := f.service.RecordSafeStop(t.Context(), fanClaim, authority.SafeStopRequested, map[string]any{"reason": "operator"}); err != nil {
+	if err := f.service.RecordSafeStop(t.Context(), fanClaim, domain.SafeStopRequested, map[string]any{"reason": "operator"}); err != nil {
 		t.Fatalf("safe stop after authority loss: %v", err)
 	}
 	if latched, err := f.service.SafeStopLatched(t.Context(), bootA); err != nil || !latched {
@@ -25,7 +25,7 @@ func TestSafeStopLatchesTheBootOnThePriorityPath(t *testing.T) {
 	if err := f.service.RecordSafeStop(t.Context(), fanClaim, "safe_stop_cleared", nil); err == nil {
 		t.Fatal("unknown safe-stop stage was accepted")
 	}
-	if _, err := f.service.SafeStopLatched(t.Context(), authority.DeviceBoot{DeviceID: "d"}); err == nil {
+	if _, err := f.service.SafeStopLatched(t.Context(), domain.DeviceBoot{DeviceID: "d"}); err == nil {
 		t.Fatal("partial device boot was accepted")
 	}
 }
@@ -33,10 +33,10 @@ func TestSafeStopLatchesTheBootOnThePriorityPath(t *testing.T) {
 func TestRecordSafetyEventValidatesAndStores(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	if err := f.service.RecordSafetyEvent(t.Context(), authority.SafetyEvent{Type: "unknown", Target: "fan-01"}); err == nil {
+	if err := f.service.RecordSafetyEvent(t.Context(), domain.SafetyEvent{Type: "unknown", Target: "fan-01"}); err == nil {
 		t.Fatal("unknown safety event type was accepted")
 	}
-	if err := f.service.RecordSafetyEvent(t.Context(), authority.SafetyEvent{Type: "physical_transition", Target: "fan-01", Details: map[string]any{
+	if err := f.service.RecordSafetyEvent(t.Context(), domain.SafetyEvent{Type: "physical_transition", Target: "fan-01", Details: map[string]any{
 		"evidence_complete": true, "source": "independent-feedback",
 		"evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
 	}}); err != nil {
@@ -45,7 +45,7 @@ func TestRecordSafetyEventValidatesAndStores(t *testing.T) {
 	if f.count(t, `SELECT COUNT(*) FROM device_safety_events WHERE occurred_at = '2026-10-05T12:00:00.000000000Z'`) != 1 {
 		t.Fatal("safety event was not stored at the service clock time")
 	}
-	if !authority.PhysicalEvidenceComplete(map[string]any{"evidence_complete": true, "source": "s",
+	if !domain.PhysicalEvidenceComplete(map[string]any{"evidence_complete": true, "source": "s",
 		"evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}) {
 		t.Fatal("complete physical evidence was rejected")
 	}

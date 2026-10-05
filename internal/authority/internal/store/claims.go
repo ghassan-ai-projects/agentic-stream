@@ -16,10 +16,10 @@ const loadClaimSQL = `
 
 // LoadClaim returns the claim held on target, or nil when the target has
 // never been claimed.
-func LoadClaim(ctx context.Context, r Reader, target string) (*domain.HeldClaim, error) {
+func (t *Tx) LoadClaim(ctx context.Context, target string) (*domain.HeldClaim, error) {
 	held := domain.HeldClaim{TargetClaim: domain.TargetClaim{Target: target}}
 	var leaseUntil, status string
-	err := r.QueryRowContext(ctx, loadClaimSQL, target).Scan(&held.Device.DeviceID, &held.Device.BootID,
+	err := t.tx.QueryRowContext(ctx, loadClaimSQL, target).Scan(&held.Device.DeviceID, &held.Device.BootID,
 		&held.Owner.Epoch, &held.Owner.Instance, &held.Fence, &leaseUntil, &status)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -50,8 +50,8 @@ const writeClaimSQL = `
 
 // WriteClaim records claim as the active claim on its target with fence and
 // lease.
-func WriteClaim(ctx context.Context, tx *sql.Tx, claim domain.TargetClaim, fence int64, leaseUntil, now time.Time) error {
-	if _, err := tx.ExecContext(ctx, writeClaimSQL,
+func (t *Tx) WriteClaim(ctx context.Context, claim domain.TargetClaim, fence int64, leaseUntil, now time.Time) error {
+	if _, err := t.tx.ExecContext(ctx, writeClaimSQL,
 		claim.Target, claim.Device.DeviceID, claim.Owner.Epoch, claim.Owner.Instance, claim.Device.BootID,
 		fence, formatTime(leaseUntil), string(domain.ClaimActive), formatTime(now)); err != nil {
 		return fmt.Errorf("write target claim: %w", err)
@@ -60,8 +60,8 @@ func WriteClaim(ctx context.Context, tx *sql.Tx, claim domain.TargetClaim, fence
 }
 
 // MarkClaimReleased records the claim on target as released.
-func MarkClaimReleased(ctx context.Context, tx *sql.Tx, target string, now time.Time) error {
-	if _, err := tx.ExecContext(ctx, `UPDATE device_target_claims SET status = ?, updated_at = ? WHERE target = ?`,
+func (t *Tx) MarkClaimReleased(ctx context.Context, target string, now time.Time) error {
+	if _, err := t.tx.ExecContext(ctx, `UPDATE device_target_claims SET status = ?, updated_at = ? WHERE target = ?`,
 		string(domain.ClaimReleased), formatTime(now), target); err != nil {
 		return fmt.Errorf("release target claim: %w", err)
 	}

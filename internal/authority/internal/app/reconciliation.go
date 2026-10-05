@@ -1,8 +1,7 @@
-package authority
+package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -14,7 +13,7 @@ import (
 // RecordDeviceState records the state a device reported and reports whether
 // a reconciliation is required. The first state is clear, the same boot keeps
 // its status, and a reboot opens a reconciliation.
-func (s *Service) RecordDeviceState(ctx context.Context, owner Owner, document map[string]any) (bool, error) {
+func (s *Service) RecordDeviceState(ctx context.Context, owner domain.Owner, document map[string]any) (bool, error) {
 	if err := s.checkOwner(owner); err != nil {
 		return false, err
 	}
@@ -29,9 +28,9 @@ func (s *Service) RecordDeviceState(ctx context.Context, owner Owner, document m
 	return transition.Required, nil
 }
 
-func (s *Service) observeDeviceState(ctx context.Context, state domain.DeviceState, owner Owner, now time.Time) (domain.StateTransition, error) {
+func (s *Service) observeDeviceState(ctx context.Context, state domain.DeviceState, owner domain.Owner, now time.Time) (domain.StateTransition, error) {
 	var transition domain.StateTransition
-	err := s.withAdmittedTx(ctx, owner.Epoch, func(tx *sql.Tx) error {
+	err := s.inAdmittedTx(ctx, owner.Epoch, func(tx *store.Tx) error {
 		var err error
 		transition, err = recordState(ctx, tx, state, owner, now)
 		return err
@@ -39,8 +38,8 @@ func (s *Service) observeDeviceState(ctx context.Context, state domain.DeviceSta
 	return transition, err
 }
 
-func recordState(ctx context.Context, tx *sql.Tx, state domain.DeviceState, owner Owner, now time.Time) (domain.StateTransition, error) {
-	recorded, err := store.LoadReconciliation(ctx, tx, state.Device.DeviceID)
+func recordState(ctx context.Context, tx *store.Tx, state domain.DeviceState, owner domain.Owner, now time.Time) (domain.StateTransition, error) {
+	recorded, err := tx.LoadReconciliation(ctx, state.Device.DeviceID)
 	if err != nil {
 		return domain.StateTransition{}, err
 	}
@@ -48,17 +47,17 @@ func recordState(ctx context.Context, tx *sql.Tx, state domain.DeviceState, owne
 	return transition, applyStateTransition(ctx, tx, transition, state, owner, now)
 }
 
-func applyStateTransition(ctx context.Context, tx *sql.Tx, transition domain.StateTransition, state domain.DeviceState, owner Owner, now time.Time) error {
+func applyStateTransition(ctx context.Context, tx *store.Tx, transition domain.StateTransition, state domain.DeviceState, owner domain.Owner, now time.Time) error {
 	switch transition.Change {
 	case domain.StateFirstSeen:
-		return store.InsertFirstState(ctx, tx, state, owner, now)
+		return tx.InsertFirstState(ctx, state, owner, now)
 	case domain.StateRefreshed:
-		return store.RefreshState(ctx, tx, state, owner, now)
+		return tx.RefreshState(ctx, state, owner, now)
 	default:
-		if err := store.RecordReboot(ctx, tx, state, owner, now); err != nil {
+		if err := tx.RecordReboot(ctx, state, owner, now); err != nil {
 			return err
 		}
-		return store.AppendAuthorityEvent(ctx, tx, domain.RebootEvent(transition, state.Device, owner, now))
+		return tx.AppendAuthorityEvent(ctx, domain.RebootEvent(transition, state.Device, owner, now))
 	}
 }
 
@@ -68,7 +67,7 @@ func (s *Service) ReconciliationRequired(ctx context.Context, deviceID string) (
 	if deviceID == "" {
 		return false, errors.New("device ID is required")
 	}
-	recorded, err := store.LoadReconciliation(ctx, s.db, deviceID)
+	recorded, err := s.store.LoadReconciliation(ctx, deviceID)
 	if err != nil {
 		return false, err
 	}
@@ -78,12 +77,12 @@ func (s *Service) ReconciliationRequired(ctx context.Context, deviceID string) (
 // OpenReconciliation opens a reconciliation for the current device boot, for
 // example when a command may have crossed the gateway but its receipt cannot
 // be trusted. A later process observes the same required state.
-func (s *Service) OpenReconciliation(ctx context.Context, device DeviceBoot, owner Owner, reason string) error {
+func (s *Service) OpenReconciliation(ctx context.Context, device domain.DeviceBoot, owner domain.Owner, reason string) error {
 	if err := s.checkOpening(device, owner, reason); err != nil {
 		return err
 	}
 	now := s.now()
-	err := s.withAdmittedTx(ctx, owner.Epoch, func(tx *sql.Tx) error {
+	err := s.inAdmittedTx(ctx, owner.Epoch, func(tx *store.Tx) error {
 		return openReconciliation(ctx, tx, device, owner, reason, now)
 	})
 	return wrapOpening(err)
@@ -93,26 +92,26 @@ func (s *Service) OpenReconciliation(ctx context.Context, device DeviceBoot, own
 // priority path, for an unknown outcome whose bytes may have crossed the
 // gateway after the owner's lease expired or its epoch was fenced. It only
 // makes future commands safer; resolving still needs an admitted owner.
-func (s *Service) OpenReconciliationAfterAuthorityLoss(ctx context.Context, device DeviceBoot, owner Owner, reason string) error {
+func (s *Service) OpenReconciliationAfterAuthorityLoss(ctx context.Context, device domain.DeviceBoot, owner domain.Owner, reason string) error {
 	if err := s.checkOpening(device, owner, reason); err != nil {
 		return err
 	}
 	now := s.now()
-	err := s.withPriorityTx(ctx, func(tx *sql.Tx) error {
+	err := s.inPriorityTx(ctx, func(tx *store.Tx) error {
 		return openReconciliation(ctx, tx, device, owner, reason, now)
 	})
 	return wrapOpening(err)
 }
 
-func (s *Service) checkOpening(device DeviceBoot, owner Owner, reason string) error {
+func (s *Service) checkOpening(device domain.DeviceBoot, owner domain.Owner, reason string) error {
 	if !device.Complete() || reason == "" {
 		return errors.New("device boot and reconciliation reason are required")
 	}
 	return s.checkOwner(owner)
 }
 
-func openReconciliation(ctx context.Context, tx *sql.Tx, device DeviceBoot, owner Owner, reason string, now time.Time) error {
-	recorded, err := store.LoadReconciliation(ctx, tx, device.DeviceID)
+func openReconciliation(ctx context.Context, tx *store.Tx, device domain.DeviceBoot, owner domain.Owner, reason string, now time.Time) error {
+	recorded, err := tx.LoadReconciliation(ctx, device.DeviceID)
 	if err != nil {
 		return err
 	}
@@ -121,11 +120,11 @@ func openReconciliation(ctx context.Context, tx *sql.Tx, device DeviceBoot, owne
 		return err
 	}
 	if !alreadyRequired {
-		if err := store.MarkRequired(ctx, tx, device, now); err != nil {
+		if err := tx.MarkRequired(ctx, device, now); err != nil {
 			return err
 		}
 	}
-	return store.AppendAuthorityEvent(ctx, tx, domain.OpeningEvent(device, owner, reason, now))
+	return tx.AppendAuthorityEvent(ctx, domain.OpeningEvent(device, owner, reason, now))
 }
 
 func wrapOpening(err error) error {

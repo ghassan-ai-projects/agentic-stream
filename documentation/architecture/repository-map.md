@@ -26,9 +26,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/scheduleledger/` | durable queue identity, admission and coalescing |
 | `internal/approvalledger/` | human approval lifecycle and supersession notification |
 | `internal/control/` | runtime ownership, epoch control and readiness capability |
-| `internal/authority/` | device target claims, bindings, reconciliation and safety evidence: public API and transactions |
+| `internal/authority/` | device target claims, bindings, reconciliation and safety evidence: public API only (configuration and delegation) |
+| `internal/authority/internal/app/` | device-authority use cases: validation, admission, unit of work, audit (reference module layer) |
 | `internal/authority/internal/domain/` | device-authority vocabulary and pure rules (reference module layer) |
-| `internal/authority/internal/store/` | the only SQL for the device-authority tables (reference module layer) |
+| `internal/authority/internal/store/` | device-authority persistence: transactions and the only SQL for its tables (reference module layer) |
 | `internal/qualification/` | calibration and shadow evidence |
 | `internal/costcontrol/` | reservation, bounded usage and settlement |
 | `internal/interlock/` | durable readiness state and read-only assertions |

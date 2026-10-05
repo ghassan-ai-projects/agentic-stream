@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"fmt"
 	"strings"
 
@@ -18,13 +17,13 @@ const appendAuthorityEventSQL = `
 
 // AppendAuthorityEvent appends an audit record with canonical details and
 // their digest.
-func AppendAuthorityEvent(ctx context.Context, tx *sql.Tx, event domain.AuthorityEvent) error {
+func (t *Tx) AppendAuthorityEvent(ctx context.Context, event domain.AuthorityEvent) error {
 	details, sum, err := canonicalDocument("authority event", event.Details)
 	if err != nil {
 		return err
 	}
 	subject := event.Subject
-	if _, err := tx.ExecContext(ctx, appendAuthorityEventSQL, subject.Target, subject.Device.DeviceID,
+	if _, err := t.tx.ExecContext(ctx, appendAuthorityEventSQL, subject.Target, subject.Device.DeviceID,
 		string(event.Type), subject.Owner.Epoch, subject.Owner.Instance, subject.Device.BootID,
 		details, sum, formatTime(event.OccurredAt)); err != nil {
 		return fmt.Errorf("record authority event: %w", err)
@@ -34,10 +33,10 @@ func AppendAuthorityEvent(ctx context.Context, tx *sql.Tx, event domain.Authorit
 
 // SafeStopLatched reports whether any safe-stop stage is recorded for the
 // device boot.
-func SafeStopLatched(ctx context.Context, r Reader, device domain.DeviceBoot) (bool, error) {
+func (s *Store) SafeStopLatched(ctx context.Context, device domain.DeviceBoot) (bool, error) {
 	query, args := safeStopLatchQuery(device)
 	var count int64
-	if err := r.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
 		return false, fmt.Errorf("read safe-stop latch: %w", err)
 	}
 	return count > 0, nil
@@ -60,12 +59,12 @@ const appendSafetyEventSQL = `
 		VALUES (?, ?, ?, ?, ?, ?)`
 
 // AppendSafetyEvent appends one piece of safety evidence.
-func AppendSafetyEvent(ctx context.Context, tx *sql.Tx, event domain.SafetyEvent) error {
+func (t *Tx) AppendSafetyEvent(ctx context.Context, event domain.SafetyEvent) error {
 	details, sum, err := canonicalDocument("safety event", event.Details)
 	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, appendSafetyEventSQL, string(event.Type), event.Target, nullable(event.CommandID),
+	if _, err := t.tx.ExecContext(ctx, appendSafetyEventSQL, string(event.Type), event.Target, nullable(event.CommandID),
 		details, sum, formatTime(event.Occurred)); err != nil {
 		return fmt.Errorf("record safety event: %w", err)
 	}

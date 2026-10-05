@@ -1,4 +1,4 @@
-package authority_test
+package app_test
 
 import (
 	"errors"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
 )
 
 func TestClaimFencesAnotherOwnerUntilTheClaimExpires(t *testing.T) {
@@ -18,10 +18,10 @@ func TestClaimFencesAnotherOwnerUntilTheClaimExpires(t *testing.T) {
 	if err := f.runtime.Release(t.Context(), ownerOne.Epoch); err != nil { // the runtime lease ends; the target claim does not
 		t.Fatal(err)
 	}
-	ownerTwo := authority.Owner{Epoch: "epoch-2", Instance: "instance-2"}
+	ownerTwo := domain.Owner{Epoch: "epoch-2", Instance: "instance-2"}
 	_, second := f.admit(t, ownerTwo, runtimeLease)
-	takeover := authority.TargetClaim{Target: "fan-01", Device: bootB, Owner: ownerTwo}
-	if err := second.Claim(t.Context(), takeover); !errors.Is(err, authority.ErrTargetClaimBusy) {
+	takeover := domain.TargetClaim{Target: "fan-01", Device: bootB, Owner: ownerTwo}
+	if err := second.Claim(t.Context(), takeover); !errors.Is(err, domain.ErrTargetClaimBusy) {
 		t.Fatalf("live claim of another owner = %v", err)
 	}
 	if f.count(t, `SELECT COUNT(*) FROM device_authority_events WHERE event_type = 'claim_rejected'`) != 1 {
@@ -45,17 +45,17 @@ func TestAssertClaimRequiresTheExactLiveHolder(t *testing.T) {
 	if err := f.service.Claim(t.Context(), fanClaim); err != nil {
 		t.Fatal(err)
 	}
-	for _, mutate := range []func(*authority.TargetClaim){
-		func(c *authority.TargetClaim) { c.Device.DeviceID = "other" },
-		func(c *authority.TargetClaim) { c.Device.BootID = "other" },
-		func(c *authority.TargetClaim) { c.Target = "other" },
+	for _, mutate := range []func(*domain.TargetClaim){
+		func(c *domain.TargetClaim) { c.Device.DeviceID = "other" },
+		func(c *domain.TargetClaim) { c.Device.BootID = "other" },
+		func(c *domain.TargetClaim) { c.Target = "other" },
 	} {
 		other := fanClaim
 		mutate(&other)
-		if err := f.service.AssertClaim(t.Context(), other); !errors.Is(err, authority.ErrTargetClaimNotOwned) {
+		if err := f.service.AssertClaim(t.Context(), other); !errors.Is(err, domain.ErrTargetClaimNotOwned) {
 			t.Fatalf("assert %+v = %v", other, err)
 		}
-		if err := f.service.ReleaseClaim(t.Context(), other); !errors.Is(err, authority.ErrTargetClaimNotOwned) {
+		if err := f.service.ReleaseClaim(t.Context(), other); !errors.Is(err, domain.ErrTargetClaimNotOwned) {
 			t.Fatalf("release %+v = %v", other, err)
 		}
 	}
@@ -63,7 +63,7 @@ func TestAssertClaimRequiresTheExactLiveHolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.clock.Advance(10 * time.Minute)
-	if err := f.service.AssertClaim(t.Context(), fanClaim); !errors.Is(err, authority.ErrTargetClaimNotOwned) {
+	if err := f.service.AssertClaim(t.Context(), fanClaim); !errors.Is(err, domain.ErrTargetClaimNotOwned) {
 		t.Fatalf("assert at claim expiry = %v", err)
 	}
 }
@@ -97,7 +97,7 @@ func TestReleaseStaysAvailableAfterAuthorityLoss(t *testing.T) {
 	if err := f.service.ReleaseClaim(t.Context(), fanClaim); err != nil {
 		t.Fatalf("release after authority loss: %v", err)
 	}
-	if err := f.service.ReleaseClaim(t.Context(), fanClaim); !errors.Is(err, authority.ErrTargetClaimNotOwned) {
+	if err := f.service.ReleaseClaim(t.Context(), fanClaim); !errors.Is(err, domain.ErrTargetClaimNotOwned) {
 		t.Fatalf("second release = %v", err)
 	}
 }

@@ -48,6 +48,24 @@ func TestDomainPackagesArePure(t *testing.T) {
 	}
 }
 
+// databaseImports are packages only a store layer may use.
+var databaseImports = []string{"database/sql", "internal/storage"}
+
+// TestApplicationLayersDoNotTouchTheDatabase enforces that a module's use
+// cases reach persistence only through its store's units of work.
+func TestApplicationLayersDoNotTouchTheDatabase(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	module := readModulePath(t, filepath.Join(root, "go.mod"))
+	for _, file := range layerFiles(t, root, "app") {
+		for _, imported := range importPaths(t, file, parseGoFile(t, file)) {
+			if slices.Contains(databaseImports, strings.TrimPrefix(imported, module+"/")) {
+				t.Errorf("%s: application layer imports %s; use the store's unit of work", file.rel, imported)
+			}
+		}
+	}
+}
+
 // TestModuleSQLStaysInStore enforces that a module with a store layer keeps
 // every SQL statement there.
 func TestModuleSQLStaysInStore(t *testing.T) {

@@ -1,17 +1,19 @@
-package authority_test
+package app_test
 
 import (
 	"database/sql"
 	"strings"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/store"
 )
 
 func TestBindCommandIsIdempotentAndRefusesConflicts(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	binding := authority.CommandBinding{CommandID: "cmd-1", Target: "fan-01", Device: bootA, Owner: ownerOne,
+	binding := domain.CommandBinding{CommandID: "cmd-1", Target: "fan-01", Device: bootA, Owner: ownerOne,
 		CommandDigest: "sha256:abababababababababababababababababababababababababababababababab"}
 	for range 2 {
 		if err := f.service.BindCommand(t.Context(), binding); err != nil {
@@ -23,7 +25,7 @@ func TestBindCommandIsIdempotentAndRefusesConflicts(t *testing.T) {
 	if err := f.service.BindCommand(t.Context(), conflict); err == nil || !strings.Contains(err.Error(), "already bound") {
 		t.Fatalf("conflicting binding = %v", err)
 	}
-	if err := f.service.BindCommand(t.Context(), authority.CommandBinding{CommandID: "cmd-2", Owner: ownerOne}); err == nil {
+	if err := f.service.BindCommand(t.Context(), domain.CommandBinding{CommandID: "cmd-2", Owner: ownerOne}); err == nil {
 		t.Fatal("incomplete binding was accepted")
 	}
 	if f.count(t, `SELECT COUNT(*) FROM device_command_bindings`) != 1 {
@@ -35,14 +37,14 @@ func TestVerifyCommandEvidenceUsesTheBinding(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	state, _ := f.recordState(t, bootA)
-	binding := authority.CommandBinding{CommandID: "cmd-1", Target: "fan-01", Device: bootA, Owner: ownerOne}
+	binding := domain.CommandBinding{CommandID: "cmd-1", Target: "fan-01", Device: bootA, Owner: ownerOne}
 	if err := f.service.BindCommand(t.Context(), binding); err != nil {
 		t.Fatal(err)
 	}
 	evidence := evidenceFor(t, state, "fan-01")
 	verify := func(commandID, target string) error {
 		return f.db.WithTx(t.Context(), func(tx *sql.Tx) error {
-			return authority.VerifyCommandEvidence(t.Context(), tx, commandID, target, evidence)
+			return app.VerifyCommandEvidence(t.Context(), store.Join(tx), commandID, target, evidence)
 		})
 	}
 	if err := verify("cmd-1", "fan-01"); err != nil {

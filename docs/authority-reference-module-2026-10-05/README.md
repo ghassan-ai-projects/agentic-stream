@@ -25,14 +25,16 @@ database handles. Several rules exist twice, once in Go and once in SQL, and
 the vocabulary drifts between "authority epoch" and "owner epoch", "device
 lifetime" and "boot", "require" and "required".
 
-The target is one module with three enforced layers:
+The target is one module with four enforced layers:
 
 ```
-internal/authority/                 public API + application services (transactions, admission)
-internal/authority/internal/domain/ pure vocabulary and rules (no I/O, no clock reads)
-internal/authority/internal/store/  every SQL statement for the module's tables
+internal/authority/                 facade: public API, configuration, delegation
+internal/authority/internal/app/    logic: use cases, admission, units of work
+internal/authority/internal/domain/ rules: pure vocabulary and decisions
+internal/authority/internal/store/  database: transactions and every SQL statement
 ```
 
-Go's `internal/` directory makes `domain` and `store` invisible outside the
-module. Architecture tests make `domain` pure and make `store` the only writer
-of the module's tables.
+Go's `internal/` directory makes `app`, `domain` and `store` invisible outside
+the module. Architecture tests keep `domain` pure, keep `app` away from the
+database, keep SQL in `store`, and make `store` the only writer of the
+module's tables.

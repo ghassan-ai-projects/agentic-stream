@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ var (
 	claim   = domain.TargetClaim{Target: "fan-01", Device: bootA, Owner: owner}
 )
 
-func openDB(t *testing.T) *storage.DB {
+func openStore(t *testing.T) (*Store, *storage.DB) {
 	t.Helper()
 	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "runtime.db"))
 	if err != nil {
@@ -26,86 +27,134 @@ func openDB(t *testing.T) *storage.DB {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	db.SetMaxOpenConns(1)
-	return db
+	return New(db), db
 }
 
-// inTx runs fn in a committed transaction and fails the test on error.
-func inTx(t *testing.T, db *storage.DB, fn func(*sql.Tx) error) {
+// work runs fn in a committed priority unit of work and fails the test on error.
+func work(t *testing.T, s *Store, fn func(*Tx) error) {
 	t.Helper()
-	if err := db.WithTx(t.Context(), fn); err != nil {
+	if err := s.InTx(t.Context(), fn); err != nil {
 		t.Fatal(err)
 	}
 }
 
+func TestUnitOfWorkRunsFencesOnItsTransaction(t *testing.T) {
+	t.Parallel()
+	s, _ := openStore(t)
+	refused := errors.New("fence refused")
+	var seenEpoch string
+	fence := func(_ context.Context, tx *sql.Tx, epoch string) error {
+		seenEpoch = epoch
+		if tx == nil {
+			return errors.New("fence ran outside the transaction")
+		}
+		return refused
+	}
+	err := s.InTx(t.Context(), func(tx *Tx) error { return tx.Assert(t.Context(), fence, "epoch-1") })
+	if !errors.Is(err, refused) || seenEpoch != "epoch-1" {
+		t.Fatalf("fence err=%v epoch=%q", err, seenEpoch)
+	}
+}
+
+func TestUnitOfWorkRollsBackTogether(t *testing.T) {
+	t.Parallel()
+	s, _ := openStore(t)
+	failed := errors.New("audit failed")
+	err := s.InTx(t.Context(), func(tx *Tx) error {
+		if err := tx.WriteClaim(t.Context(), claim, 1, testNow.Add(time.Minute), testNow); err != nil {
+			return err
+		}
+		return failed
+	})
+	if !errors.Is(err, failed) {
+		t.Fatalf("unit of work = %v", err)
+	}
+	work(t, s, func(tx *Tx) error {
+		held, err := tx.LoadClaim(t.Context(), claim.Target)
+		if err != nil || held != nil {
+			t.Fatalf("claim survived rollback: %+v, %v", held, err)
+		}
+		return nil
+	})
+}
+
 func TestClaimsRoundTrip(t *testing.T) {
 	t.Parallel()
-	db := openDB(t)
-	if held, err := LoadClaim(t.Context(), db, claim.Target); err != nil || held != nil {
-		t.Fatalf("unclaimed target = %+v, %v", held, err)
-	}
+	s, _ := openStore(t)
 	lease := testNow.Add(time.Minute)
-	inTx(t, db, func(tx *sql.Tx) error { return WriteClaim(t.Context(), tx, claim, 3, lease, testNow) })
-	held, err := LoadClaim(t.Context(), db, claim.Target)
-	if err != nil || held.TargetClaim != claim || held.Fence != 3 || !held.LeaseUntil.Equal(lease) || held.Status != domain.ClaimActive {
-		t.Fatalf("held claim = %+v, %v", held, err)
-	}
-	inTx(t, db, func(tx *sql.Tx) error { return MarkClaimReleased(t.Context(), tx, claim.Target, testNow) })
-	if held, err = LoadClaim(t.Context(), db, claim.Target); err != nil || held.Status != domain.ClaimReleased {
-		t.Fatalf("released claim = %+v, %v", held, err)
-	}
+	work(t, s, func(tx *Tx) error { return tx.WriteClaim(t.Context(), claim, 3, lease, testNow) })
+	work(t, s, func(tx *Tx) error {
+		held, err := tx.LoadClaim(t.Context(), claim.Target)
+		if err != nil || held.TargetClaim != claim || held.Fence != 3 || !held.LeaseUntil.Equal(lease) || held.Status != domain.ClaimActive {
+			t.Fatalf("held claim = %+v, %v", held, err)
+		}
+		return tx.MarkClaimReleased(t.Context(), claim.Target, testNow)
+	})
+	work(t, s, func(tx *Tx) error {
+		if held, err := tx.LoadClaim(t.Context(), claim.Target); err != nil || held.Status != domain.ClaimReleased {
+			t.Fatalf("released claim = %+v, %v", held, err)
+		}
+		return nil
+	})
 }
 
 func TestBindingsRoundTrip(t *testing.T) {
 	t.Parallel()
-	db := openDB(t)
+	s, db := openStore(t)
 	digest := "sha256:abababababababababababababababababababababababababababababababab"
 	withDigest := domain.CommandBinding{CommandID: "cmd-1", Target: "fan-01", Device: bootA, Owner: owner, CommandDigest: digest}
 	withoutDigest := withDigest
 	withoutDigest.CommandID, withoutDigest.CommandDigest = "cmd-2", ""
-	inTx(t, db, func(tx *sql.Tx) error { return InsertBinding(t.Context(), tx, withDigest, testNow) })
-	inTx(t, db, func(tx *sql.Tx) error { return InsertBinding(t.Context(), tx, withoutDigest, testNow) })
-	for _, want := range []domain.CommandBinding{withDigest, withoutDigest} {
-		if got, err := LoadBinding(t.Context(), db, want.CommandID); err != nil || *got != want {
-			t.Fatalf("binding = %+v, %v; want %+v", got, err, want)
+	work(t, s, func(tx *Tx) error { return tx.InsertBinding(t.Context(), withDigest, testNow) })
+	work(t, s, func(tx *Tx) error { return tx.InsertBinding(t.Context(), withoutDigest, testNow) })
+	inCallerTx := func(fn func(*Tx) error) {
+		if err := db.WithTx(t.Context(), func(tx *sql.Tx) error { return fn(Join(tx)) }); err != nil {
+			t.Fatal(err)
 		}
 	}
-	if got, err := LoadBinding(t.Context(), db, "unbound"); err != nil || got != nil {
-		t.Fatalf("unbound command = %+v, %v", got, err)
-	}
+	inCallerTx(func(tx *Tx) error {
+		for _, want := range []domain.CommandBinding{withDigest, withoutDigest} {
+			if got, err := tx.LoadBinding(t.Context(), want.CommandID); err != nil || *got != want {
+				t.Fatalf("binding = %+v, %v; want %+v", got, err, want)
+			}
+		}
+		if got, err := tx.LoadBinding(t.Context(), "unbound"); err != nil || got != nil {
+			t.Fatalf("unbound command = %+v, %v", got, err)
+		}
+		return nil
+	})
 	invalid := withDigest
 	invalid.CommandID, invalid.CommandDigest = "cmd-3", "bad"
-	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error { return InsertBinding(t.Context(), tx, invalid, testNow) }); err == nil {
+	if err := s.InTx(t.Context(), func(tx *Tx) error { return tx.InsertBinding(t.Context(), invalid, testNow) }); err == nil {
 		t.Fatal("invalid digest was stored")
 	}
 }
 
 func TestEventsAndSafeStopLatch(t *testing.T) {
 	t.Parallel()
-	db := openDB(t)
-	inTx(t, db, func(tx *sql.Tx) error {
-		return AppendAuthorityEvent(t.Context(), tx, domain.ReleaseEvent(claim, testNow))
-	})
-	if latched, err := SafeStopLatched(t.Context(), db, bootA); err != nil || latched {
+	s, _ := openStore(t)
+	work(t, s, func(tx *Tx) error { return tx.AppendAuthorityEvent(t.Context(), domain.ReleaseEvent(claim, testNow)) })
+	if latched, err := s.SafeStopLatched(t.Context(), bootA); err != nil || latched {
 		t.Fatalf("latched without a safe stop = %v, %v", latched, err)
 	}
-	inTx(t, db, func(tx *sql.Tx) error {
-		return AppendAuthorityEvent(t.Context(), tx, domain.SafeStopEvent(claim, domain.SafeStopFailed, nil, testNow))
+	work(t, s, func(tx *Tx) error {
+		return tx.AppendAuthorityEvent(t.Context(), domain.SafeStopEvent(claim, domain.SafeStopFailed, nil, testNow))
 	})
-	if latched, err := SafeStopLatched(t.Context(), db, bootA); err != nil || !latched {
+	if latched, err := s.SafeStopLatched(t.Context(), bootA); err != nil || !latched {
 		t.Fatalf("safe stop did not latch = %v, %v", latched, err)
 	}
 	otherBoot := domain.DeviceBoot{DeviceID: bootA.DeviceID, BootID: "boot-B"}
-	if latched, err := SafeStopLatched(t.Context(), db, otherBoot); err != nil || latched {
+	if latched, err := s.SafeStopLatched(t.Context(), otherBoot); err != nil || latched {
 		t.Fatalf("latch leaked to a new boot = %v, %v", latched, err)
 	}
 }
 
 func TestSafetyEventsStoreOptionalCommand(t *testing.T) {
 	t.Parallel()
-	db := openDB(t)
+	s, db := openStore(t)
 	for _, commandID := range []string{"", "cmd-1"} {
 		event := domain.SafetyEvent{Type: domain.SafetyUnsafeOutput, Target: "fan-01", CommandID: commandID, Details: map[string]any{}, Occurred: testNow}
-		inTx(t, db, func(tx *sql.Tx) error { return AppendSafetyEvent(t.Context(), tx, event) })
+		work(t, s, func(tx *Tx) error { return tx.AppendSafetyEvent(t.Context(), event) })
 	}
 	var withCommand, total int
 	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(command_id), COUNT(*) FROM device_safety_events`).Scan(&withCommand, &total); err != nil {

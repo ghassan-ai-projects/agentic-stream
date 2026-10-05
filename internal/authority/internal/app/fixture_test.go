@@ -1,4 +1,4 @@
-package authority_test
+package app_test
 
 import (
 	"context"
@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
@@ -14,10 +16,10 @@ import (
 )
 
 var (
-	ownerOne = authority.Owner{Epoch: "epoch-1", Instance: "instance-1"}
-	bootA    = authority.DeviceBoot{DeviceID: "thermal-01", BootID: "boot-A"}
-	bootB    = authority.DeviceBoot{DeviceID: "thermal-01", BootID: "boot-B"}
-	fanClaim = authority.TargetClaim{Target: "fan-01", Device: bootA, Owner: ownerOne}
+	ownerOne = domain.Owner{Epoch: "epoch-1", Instance: "instance-1"}
+	bootA    = domain.DeviceBoot{DeviceID: "thermal-01", BootID: "boot-A"}
+	bootB    = domain.DeviceBoot{DeviceID: "thermal-01", BootID: "boot-B"}
+	fanClaim = domain.TargetClaim{Target: "fan-01", Device: bootA, Owner: ownerOne}
 )
 
 // fixture is one admitted runtime owner with its device-authority service.
@@ -25,7 +27,7 @@ type fixture struct {
 	db      *storage.DB
 	clock   *clock.Virtual
 	runtime *control.RuntimeOwner
-	service *authority.Service
+	service *app.Service
 }
 
 // runtimeLease is how long ownerOne stays admitted without renewal; target
@@ -48,24 +50,24 @@ func newFixture(t *testing.T) *fixture {
 }
 
 // admit claims the runtime lease for owner and returns it with its service.
-func (f *fixture) admit(t *testing.T, owner authority.Owner, lease time.Duration) (*control.RuntimeOwner, *authority.Service) {
+func (f *fixture) admit(t *testing.T, owner domain.Owner, lease time.Duration) (*control.RuntimeOwner, *app.Service) {
 	t.Helper()
 	runtimeOwner := &control.RuntimeOwner{DB: f.db, InstanceID: owner.Instance, Lease: lease, Now: f.clock.Now}
 	if err := runtimeOwner.Claim(t.Context(), owner.Epoch); err != nil {
 		t.Fatalf("claim runtime owner: %v", err)
 	}
-	service, err := authority.New(authority.Config{
-		DB: f.db, Owner: runtimeOwner, Epochs: &control.EpochControl{DB: f.db},
-		ClaimLease: 10 * time.Minute, Clock: f.clock,
+	service := app.New(app.Config{
+		Store:         store.New(f.db),
+		Fences:        app.Fences{RuntimeOwner: runtimeOwner.Assert, EpochControl: (&control.EpochControl{DB: f.db}).AssertOrdinaryTx},
+		OwnerInstance: owner.Instance,
+		ClaimLease:    10 * time.Minute,
+		Clock:         f.clock,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	return runtimeOwner, service
 }
 
 // recordState records a device state for device and returns the document.
-func (f *fixture) recordState(t *testing.T, device authority.DeviceBoot) (map[string]any, bool) {
+func (f *fixture) recordState(t *testing.T, device domain.DeviceBoot) (map[string]any, bool) {
 	t.Helper()
 	state := map[string]any{"device_id": device.DeviceID, "boot_id": device.BootID, "safe_state": true}
 	required, err := f.service.RecordDeviceState(t.Context(), ownerOne, state)

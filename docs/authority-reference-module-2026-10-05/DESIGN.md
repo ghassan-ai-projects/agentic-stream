@@ -2,64 +2,45 @@
 
 ## Layers
 
+Four layers, each with one responsibility:
+
 ```
-            callers (device, actions, soak, cmd)
-                         │  public API only
-                         ▼
-┌────────────────────────────────────────────────────────────┐
-│ internal/authority            application layer + API       │
-│  Service, Config, New; value types (aliases); sentinel     │
-│  errors. Each operation: validate → open transaction →     │
-│  admit → load → decide (domain) → persist (store) → audit. │
-└───────────────┬───────────────────────────┬────────────────┘
-                │                           │
-                ▼                           ▼
-┌──────────────────────────────┐ ┌──────────────────────────────┐
-│ internal/domain              │◄┤ internal/store               │
-│ vocabulary and rules; pure   │ │ SQL only; maps rows to and   │
-│ functions over values        │ │ from domain values           │
-└──────────────────────────────┘ └──────────────────────────────┘
+          callers (device, actions, soak, cmd)
+                       │  public API only
+                       ▼
+ internal/authority                  FACADE: API, configuration, delegation
+   Service, Config, New, aliases, errors
+                       │
+                       ▼
+ internal/authority/internal/app     LOGIC: use cases
+   validate → unit of work → admit → load → decide → persist → audit
+              │                               │
+              ▼                               ▼
+ internal/authority/internal/domain   internal/authority/internal/store
+ RULES: pure functions over values    DATABASE: transactions and SQL
+              ▲                               │
+              └───────────────────────────────┘
+                   store maps rows to domain values
 ```
 
-Dependencies point inward: the application layer uses `domain` and `store`;
-`store` uses `domain`; `domain` uses neither. `domain` and `store` sit under the
-module's own `internal/` directory, so no other package can import them.
+Dependencies point one way: facade → app → domain and store; store → domain.
+`app`, `domain` and `store` sit under the module's own `internal/` directory,
+so no other package can import them.
 
-### Domain (`internal/authority/internal/domain`)
+| Layer | Responsibility | Must not |
+| --- | --- | --- |
+| Facade (`internal/authority`) | Public types, `New(Config)` and its validation, one-line delegation of each operation | hold logic, SQL or transactions |
+| Logic (`internal/app`) | Use cases: input checks, which operations need admission, running admission, ordering load → decide → persist → audit | import `database/sql` or `storage`; contain SQL |
+| Rules (`internal/domain`) | Vocabulary and every decision as a pure function | perform I/O, read a clock, open a transaction |
+| Database (`internal/store`) | Transactions (`InTx`), units of work (`Tx`), every SQL statement, storage encodings | decide anything |
 
-- Holds the vocabulary from the [ubiquitous language](UBIQUITOUS_LANGUAGE.md)
-  as types, constants and sentinel errors.
-- Holds every decision as a pure function: claim decisions and fences, claim
-  checks, binding comparison, the device-state transition, reconciliation
-  opening and resolution checks, evidence validation, safe-stop and safety-event
-  validation.
-- Takes time as a parameter. It never reads a clock, opens a transaction,
-  imports `database/sql`, or performs I/O.
-- Computes digests that are part of a rule (device-state and evidence digests),
-  because evidence binding compares them.
-
-### Store (`internal/authority/internal/store`)
-
-- Owns every SQL statement for `device_target_claims`, `device_command_bindings`,
-  `device_reconciliation`, `device_authority_events` and `device_safety_events`.
-- Mutations take a `*sql.Tx`. A write cannot run outside a transaction.
-- Reads take a small `Reader` interface (`QueryRowContext`), so a read runs in
-  the caller's transaction when it must, or on the database handle when it is
-  a standalone query.
-- Owns storage encodings: time format, digest bytes, canonical event details.
-- Contains no decisions. A `WHERE` clause selects rows; it does not decide
-  whether an operation is allowed.
-
-### Application layer and public API (`internal/authority`)
+### Facade (`internal/authority`)
 
 | File | Holds |
 | --- | --- |
 | `api.go` | value-type aliases, outcome and stage constants, sentinel errors, stateless rules |
-| `service.go` | `Config`, `New`, `Service`, identity checks, `AssertRuntime` |
-| `tx.go` | `withAdmittedTx`, `withPriorityTx`, `admitOrdinary`, the clock read |
-| `claims.go`, `commands.go`, `reconciliation.go`, `resolution.go`, `safety.go` | one file per operation group |
-
-One entry type:
+| `service.go` | `Config`, its validation and defaults, `New`, `Service` |
+| `operations.go` | one documented line per public operation, delegating to `app` |
 
 ```go
 func New(cfg Config) (*Service, error)
@@ -73,9 +54,10 @@ type Config struct {
 }
 ```
 
-`New` refuses a missing database, owner or epoch control, and refuses
-components that use different databases. After `New` succeeds, no method needs
-a nil guard.
+`Config.DB` is the facade's only contact with the database: it is handed to
+`store.New`. `New` refuses a missing database, owner or epoch control, and
+components on different databases, so after `New` no operation needs a nil
+guard.
 
 | Group | Operation |
 | --- | --- |
@@ -86,23 +68,57 @@ a nil guard.
 | Reconciliation | `RecordDeviceState(ctx, owner, state)`, `ReconciliationRequired(ctx, deviceID)`, `OpenReconciliation(ctx, device, owner, reason)`, `OpenReconciliationAfterAuthorityLoss(...)`, `ResolveReconciliation(ctx, device, owner, outcome, evidence)`; package function `ValidateReconciliationEvidence(evidence, device)` |
 | Safety | `RecordSafeStop(ctx, claim, stage, details)`, `SafeStopLatched(ctx, device)`, `RecordSafetyEvent(ctx, event)`; package function `PhysicalEvidenceComplete(details)` |
 
-Value types (`Owner`, `DeviceBoot`, `TargetClaim`, `CommandBinding`,
-`SafetyEvent`, `ResolutionOutcome`, `SafeStopStage`) are aliases of domain types.
-The aliases expose data, not the domain's internal model: `HeldClaim`,
-`Reconciliation`, `AuthorityEvent` and the decision types are not re-exported.
+Value types are aliases of domain types; the domain's internal model
+(`HeldClaim`, `Reconciliation`, `AuthorityEvent`, decisions) is not exported.
+`VerifyCommandEvidence` takes the caller's `*sql.Tx` because `actions` verifies
+evidence inside its own transaction; the facade only wraps it with
+`store.Join` and delegates.
 
-The package functions are stateless rules or reads that run inside another
-module's transaction. `VerifyCommandEvidence` takes the caller's `*sql.Tx`
-because `actions` verifies evidence inside its own reconciliation transaction.
+### Logic (`internal/authority/internal/app`)
+
+| File | Holds |
+| --- | --- |
+| `service.go` | `Config`, `Fences`, `Service`, identity checks, `AssertRuntime`, the clock read |
+| `tx.go` | `inAdmittedTx`, `inPriorityTx`, `admitOrdinary` |
+| `claims.go`, `commands.go`, `reconciliation.go`, `resolution.go`, `safety.go` | one file per use-case group |
+
+Admission is logic: the rule "ordinary operations run behind the
+runtime-owner and epoch fences; the priority path does not" lives here. The
+fences themselves belong to `control`; `app` receives them as `store.Fence`
+values and runs them as the first step of the unit of work.
+
+### Rules (`internal/authority/internal/domain`)
+
+- The vocabulary from the [ubiquitous language](UBIQUITOUS_LANGUAGE.md) as
+  types, constants and sentinel errors.
+- Every decision as a pure function: claim decisions and fences, holder checks,
+  binding comparison, the device-state transition, reconciliation opening and
+  resolution checks, evidence validation, safe-stop and safety-event
+  validation.
+- Time arrives as a parameter. Digests that a rule compares (device state,
+  evidence) are computed here.
+
+### Database (`internal/authority/internal/store`)
+
+- `Store.InTx` opens a transaction and hands the use case a `Tx`; `Join` wraps
+  a transaction another module opened.
+- `Tx` methods are named after domain actions (`LoadClaim`, `RecordReboot`,
+  `AppendAuthorityEvent`) and hold every SQL statement for the module's five
+  tables. `Store` serves the two standalone reads that must not take the write
+  lock.
+- `Tx.Assert(ctx, fence, epoch)` runs another module's transactional check on
+  the open transaction. It forwards; it does not decide.
+- Owns storage encodings: time format, digest bytes, canonical event details.
 
 ## Rules every operation follows
 
 1. **Validate first.** Identity completeness and owner-instance checks run
    before any transaction.
-2. **One transaction per operation.** Admission, load, decision, persistence and
-   audit share it, so an audit failure rolls the state change back.
+2. **One unit of work per operation.** Admission, load, decision, persistence
+   and audit share one store transaction, so an audit failure rolls the state
+   change back.
 3. **Admission is the first statement in the transaction.** Ordinary operations
-   use `withAdmittedTx`; priority-path operations use `withPriorityTx`, which
+   use `inAdmittedTx`; priority-path operations use `inPriorityTx`, which
    is the only place admission is skipped. The priority path is
    `RecordSafeStop`, `OpenReconciliationAfterAuthorityLoss`, `ReleaseClaim` and
    `RecordSafetyEvent`.
@@ -121,9 +137,10 @@ because `actions` verifies evidence inside its own reconciliation transaction.
 | Rule | Check |
 | --- | --- |
 | Only `store` writes the module's tables | `durableOwners` in `architecture_ownership_test.go` names `internal/authority/internal/store` |
+| The logic layer does not touch the database | new `TestApplicationLayersDoNotTouchTheDatabase` (no `database/sql` or `storage` in `.../internal/app`) |
 | A package named `.../internal/domain` is pure: no `database/sql`, `net`, `os`, storage or control imports, and no `time.Now` | new `TestDomainPackagesArePure` |
 | SQL text in a module that has a `.../internal/store` package lives only in that store | new `TestModuleSQLStaysInStore` |
-| Layer order `domain` < `store` < `authority` | `packageLayers`, `allowedImports` |
+| Layer order `domain` < `store` < `app` < `authority` | `packageLayers`, `allowedImports` |
 | No other module imports `domain` or `store` | Go's `internal/` rule (compiler) |
 | `New` refuses missing safety dependencies | unit tests in `internal/authority` |
 

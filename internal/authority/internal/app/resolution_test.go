@@ -1,16 +1,16 @@
-package authority_test
+package app_test
 
 import (
 	"crypto/sha256"
 	"strings"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
 )
 
 // insertUnknownOutcome records a command bound to device whose outcome the
 // action ledger still treats as unknown.
-func (f *fixture) insertUnknownOutcome(t *testing.T, commandID string, device authority.DeviceBoot) {
+func (f *fixture) insertUnknownOutcome(t *testing.T, commandID string, device domain.DeviceBoot) {
 	t.Helper()
 	if _, err := f.db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
 		t.Fatal(err)
@@ -22,7 +22,7 @@ func (f *fixture) insertUnknownOutcome(t *testing.T, commandID string, device au
 		commandID, "intent-"+commandID, key[:], []byte("{}"), make([]byte, 32)); err != nil {
 		t.Fatalf("insert command: %v", err)
 	}
-	if err := f.service.BindCommand(t.Context(), authority.CommandBinding{CommandID: commandID, Target: "led-b", Device: device, Owner: ownerOne}); err != nil {
+	if err := f.service.BindCommand(t.Context(), domain.CommandBinding{CommandID: commandID, Target: "led-b", Device: device, Owner: ownerOne}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -30,8 +30,8 @@ func (f *fixture) insertUnknownOutcome(t *testing.T, commandID string, device au
 func TestResolutionWaitsOnlyForTheSameDeviceBootsCommands(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	deviceA := authority.DeviceBoot{DeviceID: "thermal-a", BootID: "boot-a"}
-	deviceB := authority.DeviceBoot{DeviceID: "thermal-b", BootID: "boot-b"}
+	deviceA := domain.DeviceBoot{DeviceID: "thermal-a", BootID: "boot-a"}
+	deviceB := domain.DeviceBoot{DeviceID: "thermal-b", BootID: "boot-b"}
 	stateA, _ := f.recordState(t, deviceA)
 	f.recordState(t, deviceB)
 	f.insertUnknownOutcome(t, "cmd-device-b", deviceB)
@@ -39,14 +39,14 @@ func TestResolutionWaitsOnlyForTheSameDeviceBootsCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	evidence := evidenceFor(t, stateA, "led-a")
-	if cleared, err := f.service.ResolveReconciliation(t.Context(), deviceA, ownerOne, authority.ResolutionSucceeded, evidence); err != nil || !cleared {
+	if cleared, err := f.service.ResolveReconciliation(t.Context(), deviceA, ownerOne, domain.ResolutionSucceeded, evidence); err != nil || !cleared {
 		t.Fatalf("device A was blocked by device B: cleared=%v err=%v", cleared, err)
 	}
 	f.insertUnknownOutcome(t, "cmd-device-a", deviceA)
 	if err := f.service.OpenReconciliation(t.Context(), deviceA, ownerOne, "again"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.service.ResolveReconciliation(t.Context(), deviceA, ownerOne, authority.ResolutionSucceeded, evidence); err == nil || !strings.Contains(err.Error(), "still require dispatcher reconciliation") {
+	if _, err := f.service.ResolveReconciliation(t.Context(), deviceA, ownerOne, domain.ResolutionSucceeded, evidence); err == nil || !strings.Contains(err.Error(), "still require dispatcher reconciliation") {
 		t.Fatalf("unresolved command of device A = %v", err)
 	}
 }

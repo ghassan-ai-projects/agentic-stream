@@ -12,7 +12,9 @@ ci-check` runs before handoff.
 | R2 | `d821f2d` | domain coverage 97.8% |
 | R3 + R4 | `0b4df2b` | Merged: the store became the only table owner in the same commit that removed the old writers, so the ownership gate never saw two writers. Coverage: authority 86.8%, store 80.6%. |
 | R5 | `36b246f` | |
-| R6 | final round | `TestDomainPackagesArePure` and `TestModuleSQLStaysInStore` fail on an injected `time.Now`, an `os` import, and a SQL literal outside the store. |
+| R6 | `c1bb686` | `TestDomainPackagesArePure` and `TestModuleSQLStaysInStore` fail on an injected `time.Now`, an `os` import, and a SQL literal outside the store. |
+
+| R7 | this round | Facade made thin: use cases and admission moved to `internal/app`; `store` reduced to transactions and SQL. Coverage: facade 94.3%, app 86.1%, domain 97.8%, store 82.0%. `TestApplicationLayersDoNotTouchTheDatabase` fails on an injected `database/sql` import. |
 
 Found during implementation and applied:
 

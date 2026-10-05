@@ -1,11 +1,11 @@
-package authority_test
+package app_test
 
 import (
 	"errors"
 	"strings"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 )
 
@@ -19,18 +19,18 @@ func TestRebootRequiresReconciliationAcrossRestartAndManualReview(t *testing.T) 
 	if !required {
 		t.Fatal("reboot did not require reconciliation")
 	}
-	_, restarted := f.admit(t, authority.Owner{Epoch: ownerOne.Epoch, Instance: ownerOne.Instance}, runtimeLease)
+	_, restarted := f.admit(t, domain.Owner{Epoch: ownerOne.Epoch, Instance: ownerOne.Instance}, runtimeLease)
 	if required, err := restarted.ReconciliationRequired(t.Context(), bootB.DeviceID); err != nil || !required {
 		t.Fatalf("restart lost the reconciliation: %v, %v", required, err)
 	}
 	evidence := evidenceFor(t, state, "fan-01")
-	if cleared, err := f.service.ResolveReconciliation(t.Context(), bootB, ownerOne, authority.ResolutionManualReview, evidence); err != nil || cleared {
+	if cleared, err := f.service.ResolveReconciliation(t.Context(), bootB, ownerOne, domain.ResolutionManualReview, evidence); err != nil || cleared {
 		t.Fatalf("manual review cleared=%v err=%v", cleared, err)
 	}
-	if cleared, err := f.service.ResolveReconciliation(t.Context(), bootB, ownerOne, authority.ResolutionSucceeded, evidence); err != nil || !cleared {
+	if cleared, err := f.service.ResolveReconciliation(t.Context(), bootB, ownerOne, domain.ResolutionSucceeded, evidence); err != nil || !cleared {
 		t.Fatalf("success cleared=%v err=%v", cleared, err)
 	}
-	if _, required := f.recordState(t, authority.DeviceBoot{DeviceID: bootA.DeviceID, BootID: "boot-C"}); !required {
+	if _, required := f.recordState(t, domain.DeviceBoot{DeviceID: bootA.DeviceID, BootID: "boot-C"}); !required {
 		t.Fatal("new boot did not require reconciliation")
 	}
 	if f.count(t, `SELECT COUNT(*) FROM device_reconciliation WHERE last_resolution_status IS NOT NULL`) != 0 {
@@ -46,14 +46,14 @@ func TestResolveRefusesWithoutAnOpenReconciliation(t *testing.T) {
 	f := newFixture(t)
 	state, _ := f.recordState(t, bootA)
 	evidence := evidenceFor(t, state, "fan-01")
-	if _, err := f.service.ResolveReconciliation(t.Context(), bootA, ownerOne, authority.ResolutionSucceeded, evidence); !errors.Is(err, authority.ErrNoOpenReconciliation) {
+	if _, err := f.service.ResolveReconciliation(t.Context(), bootA, ownerOne, domain.ResolutionSucceeded, evidence); !errors.Is(err, domain.ErrNoOpenReconciliation) {
 		t.Fatalf("resolve on a clear device = %v", err)
 	}
 	if _, err := f.service.ResolveReconciliation(t.Context(), bootA, ownerOne, "cleared", evidence); err == nil {
 		t.Fatal("unknown outcome was accepted")
 	}
-	unknown := authority.DeviceBoot{DeviceID: "unknown", BootID: "b"}
-	if _, err := f.service.ResolveReconciliation(t.Context(), unknown, ownerOne, authority.ResolutionSucceeded, evidence); err == nil {
+	unknown := domain.DeviceBoot{DeviceID: "unknown", BootID: "b"}
+	if _, err := f.service.ResolveReconciliation(t.Context(), unknown, ownerOne, domain.ResolutionSucceeded, evidence); err == nil {
 		t.Fatal("resolution for a device without state was accepted")
 	}
 }
@@ -118,8 +118,8 @@ func TestOpeningRefusesAPreviousBootOrAnUnknownDevice(t *testing.T) {
 	if err := f.service.OpenReconciliationAfterAuthorityLoss(t.Context(), bootA, ownerOne, "unknown receipt"); err == nil || !strings.Contains(err.Error(), "does not match current device boot") {
 		t.Fatalf("previous boot = %v", err)
 	}
-	unknown := authority.DeviceBoot{DeviceID: "unknown", BootID: "b"}
-	if err := f.service.OpenReconciliation(t.Context(), unknown, ownerOne, "reason"); !errors.Is(err, authority.ErrNoRecordedState) {
+	unknown := domain.DeviceBoot{DeviceID: "unknown", BootID: "b"}
+	if err := f.service.OpenReconciliation(t.Context(), unknown, ownerOne, "reason"); !errors.Is(err, domain.ErrNoRecordedState) {
 		t.Fatalf("unknown device = %v", err)
 	}
 	if err := f.service.OpenReconciliation(t.Context(), bootB, ownerOne, ""); err == nil {

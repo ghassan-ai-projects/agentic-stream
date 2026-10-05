@@ -7,9 +7,8 @@ import (
 	"time"
 )
 
-// Reader runs a single-row query. *sql.Tx and *sql.DB satisfy it, so a read
-// joins the caller's transaction when it must and runs alone otherwise.
-type Reader interface {
+// reader runs a single-row query; *sql.Tx and *storage.DB satisfy it.
+type reader interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 

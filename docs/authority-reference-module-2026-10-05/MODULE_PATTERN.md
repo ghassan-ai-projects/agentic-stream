@@ -9,11 +9,12 @@ functions or a thin adapter does not need it.
 ```
 internal/<module>/
   doc.go                package comment: the business capability it owns
-  <module>.go           Service, Config, New; aliases and sentinel errors
-  tx.go                 withAdmittedTx / withPriorityTx (or the module's equivalents)
-  <operation group>.go  one file per group of public operations
+  api.go                aliases, constants and sentinel errors callers use
+  service.go            Config, validation, New, Service
+  operations.go         one delegating line per public operation
+  internal/app/         use cases: checks, admission, unit of work, audit
   internal/domain/      vocabulary and rules; pure
-  internal/store/       SQL for the module's tables
+  internal/store/       transactions and SQL for the module's tables
 ```
 
 ## Steps
@@ -24,14 +25,15 @@ internal/<module>/
 2. **Lock behavior.** Make sure the existing tests exercise the public
    operations, and add tests for edge cases before moving anything.
 3. **Extract the store.** Move every SQL statement into `internal/store` with
-   no change in meaning. Mutations take `*sql.Tx`; reads take a `Reader`.
-   Store functions are named after domain actions (`RecordReboot`, not
-   `UpdateRow`).
+   no change in meaning, as methods on a unit of work (`Tx`) opened by
+   `Store.InTx`. Name them after domain actions (`RecordReboot`, not
+   `UpdateRow`). The store decides nothing.
 4. **Extract the domain.** Move each decision into a pure function that takes
    the loaded values and `now`, and returns a decision or an error. Remove the
    duplicate of that rule from SQL. Give it a table-driven test.
-5. **Reduce the root package to orchestration.** Each public operation reads as:
-   validate → transaction → admit → load → decide → persist → audit.
+5. **Move orchestration into `internal/app`.** Each use case reads as:
+   validate → unit of work → admit → load → decide → persist → audit. The
+   root package keeps only configuration and one-line delegation.
 6. **Replace struct literals with `New(Config)`.** Unexport fields. Make safety
    dependencies required. Remove nil guards that the constructor now
    guarantees.
@@ -45,6 +47,7 @@ internal/<module>/
 ## Review questions
 
 - Can every rule be tested without a database?
+- Does the root package contain anything besides configuration and delegation?
 - Does any SQL statement decide something a domain function also decides?
 - Can a caller build a half-configured value?
 - Does a caller need to know a table or column name?

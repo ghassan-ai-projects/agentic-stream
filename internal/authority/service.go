@@ -1,12 +1,12 @@
 package authority
 
 import (
-	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -26,13 +26,10 @@ type Config struct {
 	Clock      clock.Clock
 }
 
-// Service is the device-authority module's only entry point.
+// Service is the device-authority module's only entry point. It delegates
+// every operation to the module's use cases.
 type Service struct {
-	db         *storage.DB
-	owner      *control.RuntimeOwner
-	epochs     *control.EpochControl
-	claimLease time.Duration
-	clock      clock.Clock
+	app *app.Service
 }
 
 // New returns a Service, refusing a configuration that would silently skip
@@ -41,14 +38,13 @@ func New(cfg Config) (*Service, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
-	service := &Service{db: cfg.DB, owner: cfg.Owner, epochs: cfg.Epochs, claimLease: cfg.ClaimLease, clock: cfg.Clock}
-	if service.claimLease == 0 {
-		service.claimLease = defaultClaimLease
-	}
-	if service.clock == nil {
-		service.clock = clock.Physical()
-	}
-	return service, nil
+	return &Service{app: app.New(app.Config{
+		Store:         store.New(cfg.DB),
+		Fences:        app.Fences{RuntimeOwner: cfg.Owner.Assert, EpochControl: cfg.Epochs.AssertOrdinaryTx},
+		OwnerInstance: cfg.Owner.InstanceID,
+		ClaimLease:    cfg.claimLease(),
+		Clock:         cfg.clock(),
+	})}, nil
 }
 
 func (cfg Config) validate() error {
@@ -67,36 +63,16 @@ func (cfg Config) validate() error {
 	return nil
 }
 
-// OwnerInstance is the runtime owner instance every operation must name.
-func (s *Service) OwnerInstance() string {
-	return s.owner.InstanceID
+func (cfg Config) claimLease() time.Duration {
+	if cfg.ClaimLease == 0 {
+		return defaultClaimLease
+	}
+	return cfg.ClaimLease
 }
 
-// AssertRuntime verifies ordinary admission for epoch without touching device
-// state.
-func (s *Service) AssertRuntime(ctx context.Context, epoch string) error {
-	if epoch == "" {
-		return errors.New("owner epoch is required")
+func (cfg Config) clock() clock.Clock {
+	if cfg.Clock == nil {
+		return clock.Physical()
 	}
-	if err := s.withAdmittedTx(ctx, epoch, func(*sql.Tx) error { return nil }); err != nil {
-		return fmt.Errorf("assert runtime authority: %w", err)
-	}
-	return nil
-}
-
-func (s *Service) checkOwner(owner Owner) error {
-	if !owner.Complete() {
-		return errors.New("owner epoch and owner instance are required")
-	}
-	if owner.Instance != s.owner.InstanceID {
-		return fmt.Errorf("owner instance %q does not match runtime owner %q", owner.Instance, s.owner.InstanceID)
-	}
-	return nil
-}
-
-func (s *Service) checkClaim(claim TargetClaim) error {
-	if !claim.Complete() {
-		return errors.New("target, device, boot, owner epoch and owner instance are required")
-	}
-	return s.checkOwner(claim.Owner)
+	return cfg.Clock
 }
