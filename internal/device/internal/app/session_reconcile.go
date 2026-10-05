@@ -1,4 +1,4 @@
-package device
+package app
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 // barrier. Unknown command outcomes must already have gone through the
 // dispatcher reconciliation path; the durable store refuses to clear while
 // command ledgers remain unresolved. Manual review leaves the barrier open.
-func (s *DeviceSession) ResolveReconciliation(ctx context.Context, finalStatus string, evidence map[string]any) (bool, error) {
+func (s *Session) ResolveReconciliation(ctx context.Context, finalStatus string, evidence map[string]any) (bool, error) {
 	if s == nil {
 		return false, fmt.Errorf("device session is not open")
 	}
@@ -28,7 +28,7 @@ func (s *DeviceSession) ResolveReconciliation(ctx context.Context, finalStatus s
 	return s.resolveCurrentState(ctx, finalStatus, evidence)
 }
 
-func (s *DeviceSession) resolveCurrentState(ctx context.Context, finalStatus string, evidence map[string]any) (bool, error) {
+func (s *Session) resolveCurrentState(ctx context.Context, finalStatus string, evidence map[string]any) (bool, error) {
 	if s.stateQueryRequired {
 		return false, fmt.Errorf("device state query is required before reconciliation can be resolved")
 	}
@@ -41,7 +41,7 @@ func (s *DeviceSession) resolveCurrentState(ctx context.Context, finalStatus str
 	return s.persistResolvedState(ctx, finalStatus, evidence)
 }
 
-func (s *DeviceSession) persistResolvedState(ctx context.Context, finalStatus string, evidence map[string]any) (bool, error) {
+func (s *Session) persistResolvedState(ctx context.Context, finalStatus string, evidence map[string]any) (bool, error) {
 	cleared, err := s.authority.ResolveReconciliation(ctx, deviceauthority.ResolutionRequest{
 		Device: s.deviceBoot(), Owner: s.owner(), Outcome: deviceauthority.ResolutionOutcome(finalStatus), Evidence: evidence,
 	})
@@ -54,7 +54,7 @@ func (s *DeviceSession) persistResolvedState(ctx context.Context, finalStatus st
 	return cleared, nil
 }
 
-func (s *DeviceSession) requireReconciliation(ctx context.Context, reason string) error {
+func (s *Session) requireReconciliation(ctx context.Context, reason string) error {
 	wasRequired := s.reconciliationRequired
 	s.stateQueryRequired = true
 	s.reconciliationRequired = true
@@ -63,28 +63,24 @@ func (s *DeviceSession) requireReconciliation(ctx context.Context, reason string
 	return s.finishReconciliationBarrier(persistCtx, reason, wasRequired, s.openReconciliation(persistCtx, reason))
 }
 
-// openReconciliation persists the barrier for the current boot. A session
-// without an authority cannot prove the barrier, so it fails closed.
-func (s *DeviceSession) openReconciliation(ctx context.Context, reason string) error {
-	if s.authority == nil {
-		return errors.New("device authority is not configured")
-	}
+// openReconciliation persists the reconciliation for the current boot.
+func (s *Session) openReconciliation(ctx context.Context, reason string) error {
 	return s.authority.OpenReconciliation(ctx, s.reconciliationOpening(reason)) //nolint:wrapcheck // finishReconciliationBarrier wraps it.
 }
 
-func (s *DeviceSession) finishReconciliationBarrier(persistCtx context.Context, reason string, wasRequired bool, barrierErr error) error {
+func (s *Session) finishReconciliationBarrier(persistCtx context.Context, reason string, wasRequired bool, barrierErr error) error {
 	barrierErr = s.recoverReconciliationBarrier(persistCtx, reason, barrierErr)
 	if barrierErr != nil {
 		s.opened = false
 		return fmt.Errorf("persist reconciliation barrier: %w", barrierErr)
 	}
-	if !wasRequired && s.telemetry != nil {
+	if !wasRequired {
 		s.telemetry.ObserveReconciliationBarrier()
 	}
 	return nil
 }
 
-func (s *DeviceSession) recoverReconciliationBarrier(persistCtx context.Context, reason string, barrierErr error) error {
+func (s *Session) recoverReconciliationBarrier(persistCtx context.Context, reason string, barrierErr error) error {
 	if isAuthorityFailure(barrierErr) {
 		recoveryErr := s.authority.OpenReconciliationAfterAuthorityLoss(persistCtx, s.reconciliationOpening(reason))
 		if recoveryErr == nil {

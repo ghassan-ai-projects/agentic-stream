@@ -15,6 +15,16 @@ Each round is reviewed, tested, linted and committed.
 | D6 | Typed device records (`State`, `Command`, `Receipt`, `Result`) parsed once in `wire`, keeping the original document where a digest depends on it. | full suite |
 | D7 | Polish: drop the redundant `AssertRuntime` calls, share the `DispatchAuthorized` preamble, request values for long signatures. | full suite |
 
+## Status
+
+| Round | Commit | Notes |
+| --- | --- | --- |
+| D0 | `544a45f` | Also adds the reusable refactor prompt. |
+| D1 | `9589659` | Dead code removed; tests assert the durable reconciliation state. |
+| D2 | `205319e` | Domain coverage 84.7%. |
+| D3 | `898bb97` | `transport.PartialSendError` exported: any transport, including test doubles, may report a partial send. |
+| D4 + D5 | this round | Session and effectors in `internal/app`; facade 93.3% covered by driving every operation over a real socket; nil-authority branches and telemetry nil checks gone; gates extended. |
+
 ## Behavior that stays the same
 
 - Handshake checks, boot binding, receipt cache and idempotency conflicts.

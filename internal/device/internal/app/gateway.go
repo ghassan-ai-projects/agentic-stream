@@ -1,20 +1,22 @@
-package device
+package app
 
 import (
 	"context"
 	"fmt"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
-// GatewayEffectorConfig configures a serial effector around an already-open
+// GatewayConfig configures a serial effector around an already-open
 // typed gateway link. The caller owns the transport before this function is
 // called; the returned close function owns it after a successful handshake.
-type GatewayEffectorConfig struct {
-	Transport              DeviceTransport
-	Catalog                *CapabilityCatalog
+type GatewayConfig struct {
+	Transport              Transport
+	Catalog                *domain.CapabilityCatalog
 	AllowedFirmwareDigests []string
 	OwnerEpoch             string
 	OwnerInstance          string
@@ -22,10 +24,10 @@ type GatewayEffectorConfig struct {
 	Telemetry              *telemetry.Runtime
 }
 
-// NewGatewayEffector opens a governed serial effector over a typed gateway
+// OpenGatewayEffector opens a governed serial effector over a typed gateway
 // link. It performs the capability and device-state handshake before exposing
 // the effector to the action plane.
-func NewGatewayEffector(ctx context.Context, config GatewayEffectorConfig) (*SerialEffector, func() error, error) {
+func OpenGatewayEffector(ctx context.Context, config GatewayConfig) (*GatewayEffector, func() error, error) {
 	if config.Transport == nil {
 		return nil, nil, fmt.Errorf("gateway effector requires a device transport")
 	}
@@ -36,19 +38,19 @@ func NewGatewayEffector(ctx context.Context, config GatewayEffectorConfig) (*Ser
 	if err != nil {
 		return nil, nil, fmt.Errorf("digest device capability catalog: %w", err)
 	}
-	return openGatewayEffector(ctx, config, catalogDigest)
+	return openGatewaySession(ctx, config, catalogDigest)
 }
 
-func openGatewayEffector(ctx context.Context, config GatewayEffectorConfig, catalogDigest string) (*SerialEffector, func() error, error) {
-	session, err := OpenDeviceSession(ctx, gatewaySessionConfig(config, catalogDigest))
+func openGatewaySession(ctx context.Context, config GatewayConfig, catalogDigest string) (*GatewayEffector, func() error, error) {
+	session, err := OpenSession(ctx, gatewaySessionConfig(config, catalogDigest))
 	if err != nil {
 		return nil, nil, fmt.Errorf("open device session: %w", err)
 	}
 	return exposeSessionEffector(session, config)
 }
 
-func gatewaySessionConfig(config GatewayEffectorConfig, catalogDigest string) DeviceSessionConfig {
-	return DeviceSessionConfig{
+func gatewaySessionConfig(config GatewayConfig, catalogDigest string) SessionConfig {
+	return SessionConfig{
 		Transport:                config.Transport,
 		Catalog:                  config.Catalog,
 		AllowedCapabilityDigests: []string{catalogDigest},
@@ -60,10 +62,8 @@ func gatewaySessionConfig(config GatewayEffectorConfig, catalogDigest string) De
 	}
 }
 
-func exposeSessionEffector(session *DeviceSession, config GatewayEffectorConfig) (*SerialEffector, func() error, error) {
-	effector := NewSerialEffector(session, config.Catalog)
-	if config.Telemetry != nil {
-		effector = effector.WithTelemetry(config.Telemetry)
-	}
+func exposeSessionEffector(session *Session, config GatewayConfig) (*GatewayEffector, func() error, error) {
+	effector := NewGatewayEffector(session, config.Catalog)
+	effector = effector.WithTelemetry(config.Telemetry)
 	return effector, session.Close, nil
 }

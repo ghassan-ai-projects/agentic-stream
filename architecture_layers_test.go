@@ -48,19 +48,21 @@ func TestDomainPackagesArePure(t *testing.T) {
 	}
 }
 
-// databaseImports are packages only a store layer may use.
-var databaseImports = []string{"database/sql", "internal/storage"}
+// infrastructureImports are packages only a store or adapter layer may use:
+// the database and the network.
+var infrastructureImports = []string{"database/sql", "internal/storage", "net", "net/http"}
 
-// TestApplicationLayersDoNotTouchTheDatabase enforces that a module's use
-// cases reach persistence only through its store's units of work.
-func TestApplicationLayersDoNotTouchTheDatabase(t *testing.T) {
+// TestApplicationLayersDoNotTouchInfrastructure enforces that a module's use
+// cases reach the database and the network only through its store or adapter
+// layers.
+func TestApplicationLayersDoNotTouchInfrastructure(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	module := readModulePath(t, filepath.Join(root, "go.mod"))
 	for _, file := range layerFiles(t, root, "app") {
 		for _, imported := range importPaths(t, file, parseGoFile(t, file)) {
-			if slices.Contains(databaseImports, strings.TrimPrefix(imported, module+"/")) {
-				t.Errorf("%s: application layer imports %s; use the store's unit of work", file.rel, imported)
+			if slices.Contains(infrastructureImports, strings.TrimPrefix(imported, module+"/")) {
+				t.Errorf("%s: application layer imports %s; go through the store or an adapter layer", file.rel, imported)
 			}
 		}
 	}

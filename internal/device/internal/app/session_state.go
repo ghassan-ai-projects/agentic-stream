@@ -1,4 +1,4 @@
-package device
+package app
 
 import (
 	"context"
@@ -13,17 +13,17 @@ import (
 const reconciliationPersistTimeout = 5 * time.Second
 
 // BootID returns the current handshake-bound boot identity.
-func (s *DeviceSession) BootID() string {
-	return s.readString(func(s *DeviceSession) string { return s.bootID })
+func (s *Session) BootID() string {
+	return s.readString(func(s *Session) string { return s.bootID })
 }
 
 // CapabilityDigest returns the capability catalog digest accepted during the
 // device handshake.
-func (s *DeviceSession) CapabilityDigest() string {
-	return s.readString(func(s *DeviceSession) string { return s.capabilityDigest })
+func (s *Session) CapabilityDigest() string {
+	return s.readString(func(s *Session) string { return s.capabilityDigest })
 }
 
-func (s *DeviceSession) readString(read func(*DeviceSession) string) string {
+func (s *Session) readString(read func(*Session) string) string {
 	if s == nil {
 		return ""
 	}
@@ -33,7 +33,7 @@ func (s *DeviceSession) readString(read func(*DeviceSession) string) string {
 }
 
 // WithTelemetry connects session protocol observations to runtime telemetry.
-func (s *DeviceSession) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *DeviceSession {
+func (s *Session) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *Session {
 	if s == nil {
 		return nil
 	}
@@ -45,7 +45,7 @@ func (s *DeviceSession) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *Devi
 
 // QueryState receives and validates one typed device.state record. A new boot
 // opens the reconciliation barrier before the state is exposed for commands.
-func (s *DeviceSession) QueryState(ctx context.Context) (map[string]any, error) {
+func (s *Session) QueryState(ctx context.Context) (map[string]any, error) {
 	if s == nil {
 		return nil, fmt.Errorf("device session is not open")
 	}
@@ -57,7 +57,7 @@ func (s *DeviceSession) QueryState(ctx context.Context) (map[string]any, error) 
 	return s.queryCurrentState(ctx)
 }
 
-func (s *DeviceSession) queryCurrentState(ctx context.Context) (map[string]any, error) {
+func (s *Session) queryCurrentState(ctx context.Context) (map[string]any, error) {
 	catalogDigest, err := s.catalog.Digest()
 	if err != nil {
 		return nil, fmt.Errorf("digest device capability catalog: %w", err)
@@ -73,7 +73,7 @@ func (s *DeviceSession) queryCurrentState(ctx context.Context) (map[string]any, 
 	return s.acceptCurrentState(ctx, state)
 }
 
-func (s *DeviceSession) acceptCurrentState(ctx context.Context, state map[string]any) (map[string]any, error) {
+func (s *Session) acceptCurrentState(ctx context.Context, state map[string]any) (map[string]any, error) {
 	if stateString(state, "device_id") != s.deviceID {
 		s.opened = false
 		return nil, fmt.Errorf("device identity changed from %q to %q", s.deviceID, stateString(state, "device_id"))
@@ -84,7 +84,7 @@ func (s *DeviceSession) acceptCurrentState(ctx context.Context, state map[string
 	return cloneDocument(state), nil
 }
 
-func (s *DeviceSession) applyRefreshedState(ctx context.Context, state map[string]any) error {
+func (s *Session) applyRefreshedState(ctx context.Context, state map[string]any) error {
 	previousSafeState := s.safeState
 	if bootID := stateString(state, "boot_id"); bootID != s.bootID {
 		s.bootID = bootID
@@ -102,17 +102,17 @@ func (s *DeviceSession) applyRefreshedState(ctx context.Context, state map[strin
 	return s.completeStateRefresh(ctx, state, previousSafeState)
 }
 
-func (s *DeviceSession) completeStateRefresh(ctx context.Context, state map[string]any, previousSafeState bool) error {
+func (s *Session) completeStateRefresh(ctx context.Context, state map[string]any, previousSafeState bool) error {
 	if err := s.bindRefreshedState(ctx, state); err != nil {
 		return err
 	}
-	if !previousSafeState && s.safeState && s.telemetry != nil {
+	if !previousSafeState && s.safeState {
 		s.telemetry.ObserveSafeStateEntry()
 	}
 	return nil
 }
 
-func (s *DeviceSession) bindRefreshedState(ctx context.Context, state map[string]any) error {
+func (s *Session) bindRefreshedState(ctx context.Context, state map[string]any) error {
 	if err := s.authority.AssertRuntime(ctx, s.ownerEpoch); err != nil {
 		s.reconciliationRequired = true
 		s.opened = false
@@ -121,7 +121,7 @@ func (s *DeviceSession) bindRefreshedState(ctx context.Context, state map[string
 	return s.persistRefreshedState(ctx, state)
 }
 
-func (s *DeviceSession) persistRefreshedState(ctx context.Context, state map[string]any) error {
+func (s *Session) persistRefreshedState(ctx context.Context, state map[string]any) error {
 	wasRequired := s.reconciliationRequired
 	required, err := s.authority.RecordDeviceState(ctx, s.owner(), state)
 	if err != nil {
@@ -133,16 +133,14 @@ func (s *DeviceSession) persistRefreshedState(ctx context.Context, state map[str
 	}
 	s.reconciliationRequired = required
 	s.stateQueryRequired = false
-	if !wasRequired && s.reconciliationRequired && s.telemetry != nil {
+	if !wasRequired && s.reconciliationRequired {
 		s.telemetry.ObserveReconciliationBarrier()
 	}
 	return nil
 }
 
-func (s *DeviceSession) failStateRefresh(err error) (map[string]any, error) {
-	if s.telemetry != nil {
-		s.telemetry.ObserveDeviceFrameError()
-	}
+func (s *Session) failStateRefresh(err error) (map[string]any, error) {
+	s.telemetry.ObserveDeviceFrameError()
 	s.opened = false
 	return nil, err
 }
@@ -150,7 +148,7 @@ func (s *DeviceSession) failStateRefresh(err error) (map[string]any, error) {
 // invalidateTransportLocked makes the current session unusable after a
 // partial or invalid wire exchange. The caller holds s.mu; Close can still be
 // called later to release claims and perform its normal cleanup.
-func (s *DeviceSession) invalidateTransportLocked() {
+func (s *Session) invalidateTransportLocked() {
 	s.opened = false
 	if s.transport != nil {
 		_ = s.transport.Close()

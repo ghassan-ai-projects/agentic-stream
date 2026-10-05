@@ -21,7 +21,8 @@ historical design map where the code has chosen a more specific package name.
 | `internal/actions/` | governed outbox dispatch, verification and reconciliation |
 | `internal/watch/` | derived-trigger watches: install as an effect, fire on matching evidence, expire |
 | `internal/actionport/` | approved command/effect contracts |
-| `internal/device/` | concrete device sessions, materialization, gateway transport and the simulated effector |
+| `internal/device/` | device effect boundary facade: effect profiles, catalog loading, gateway dial and effector constructors |
+| `internal/device/internal/app/` | device session use cases and the gateway, simulated and fail-closed effectors |
 | `internal/device/internal/wire/` | device record codec: canonical NDJSON frames validated by message type |
 | `internal/device/internal/transport/` | Unix-socket gateway link: framing, deadlines and the may-have-sent signal |
 | `internal/device/internal/domain/` | device-boundary rules: capability catalog, materialization, effect profiles, record matching, output verification |

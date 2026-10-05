@@ -14,7 +14,7 @@ ci-check` runs before handoff.
 | R5 | `36b246f` | |
 | R6 | `c1bb686` | `TestDomainPackagesArePure` and `TestModuleSQLStaysInStore` fail on an injected `time.Now`, an `os` import, and a SQL literal outside the store. |
 
-| R7 | `5bf8eee` | Facade made thin: use cases and admission moved to `internal/app`; `store` reduced to transactions and SQL. Coverage: facade 94.3%, app 86.1%, domain 97.8%, store 82.0%. `TestApplicationLayersDoNotTouchTheDatabase` fails on an injected `database/sql` import. |
+| R7 | `5bf8eee` | Facade made thin: use cases and admission moved to `internal/app`; `store` reduced to transactions and SQL. Coverage: facade 94.3%, app 86.1%, domain 97.8%, store 82.0%. `TestApplicationLayersDoNotTouchInfrastructure` fails on an injected `database/sql` import. |
 | R8 | `c88a708` | Typed `ReconciliationEvidence`; the authority seals and parses evidence, `device` stops re-implementing the digest scheme. Unknown evidence fields are now rejected. |
 | R9 | `8d03b35` | `authority` no longer reads `commands`: `actions.CountUnresolvedOutcomes` is a required `OutcomeLedger`, wired by `cmd`. |
 | R10 | `30c6df3` | `soak` reads `authority.ReadSafetyRecord` instead of three authority tables; tampered safety evidence fails the read. |

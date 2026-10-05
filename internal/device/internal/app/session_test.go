@@ -1,4 +1,4 @@
-package device_test
+package app_test
 
 import (
 	"bytes"
@@ -9,11 +9,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/app"
 
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
@@ -91,12 +93,12 @@ func (t *fakeDeviceTransport) sendCount() int {
 	return t.sends
 }
 
-func openThermalSession(t *testing.T, replies ...map[string]any) (*device.DeviceSession, *fakeDeviceTransport, *device.CapabilityCatalog) {
+func openThermalSession(t *testing.T, replies ...map[string]any) (*app.Session, *fakeDeviceTransport, *domain.CapabilityCatalog) {
 	session, transport, catalog, _ := openThermalSessionWithControl(t, replies...)
 	return session, transport, catalog
 }
 
-func openThermalSessionWithControl(t *testing.T, replies ...map[string]any) (*device.DeviceSession, *fakeDeviceTransport, *device.CapabilityCatalog, deviceControl) {
+func openThermalSessionWithControl(t *testing.T, replies ...map[string]any) (*app.Session, *fakeDeviceTransport, *domain.CapabilityCatalog, deviceControl) {
 	t.Helper()
 	catalog := loadThermalCatalog(t)
 	catalogDigest, err := catalog.Digest()
@@ -114,7 +116,7 @@ func openThermalSessionWithControl(t *testing.T, replies ...map[string]any) (*de
 	for _, reply := range replies {
 		transport.frames = append(transport.frames, mustDeviceFrames(t, reply)...)
 	}
-	session, err := device.OpenDeviceSession(context.Background(), device.DeviceSessionConfig{
+	session, err := app.OpenSession(context.Background(), app.SessionConfig{
 		Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{catalogDigest},
 		AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
 		OwnerInstance: "instance-1", Authority: control.authority,
@@ -125,7 +127,7 @@ func openThermalSessionWithControl(t *testing.T, replies ...map[string]any) (*de
 	return session, transport, catalog, control
 }
 
-func materializedCommand(t *testing.T, catalog *device.CapabilityCatalog, commandID, idempotency string) map[string]any {
+func materializedCommand(t *testing.T, catalog *domain.CapabilityCatalog, commandID, idempotency string) map[string]any {
 	t.Helper()
 	command, err := catalog.Materialize(actionport.Command{
 		CommandID: commandID, EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
@@ -189,7 +191,7 @@ func TestOpenDeviceSessionRequiresHandshakeAgreement(t *testing.T) {
 			}
 			transport := &fakeDeviceTransport{frames: [][]byte{badFrame}}
 			control := newDeviceControl(t)
-			_, openErr := device.OpenDeviceSession(context.Background(), device.DeviceSessionConfig{
+			_, openErr := app.OpenSession(context.Background(), app.SessionConfig{
 				Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
 				AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
 				OwnerInstance: "instance-1", Authority: control.authority,
@@ -212,7 +214,7 @@ func TestOpenDeviceSessionRequiresHandshakeAgreement(t *testing.T) {
 		frame = bytes.Replace(frame, []byte("\"protocol_version\":1"), []byte("\"protocol_version\":2"), 1)
 		transport := &fakeDeviceTransport{frames: [][]byte{frame}}
 		control := newDeviceControl(t)
-		if _, openErr := device.OpenDeviceSession(context.Background(), device.DeviceSessionConfig{
+		if _, openErr := app.OpenSession(context.Background(), app.SessionConfig{
 			Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest}, OwnerEpoch: "epoch-1",
 			OwnerInstance: "instance-1", Authority: control.authority,
 		}); openErr == nil {
@@ -229,7 +231,7 @@ func TestOpenDeviceSessionRequiresFirmwareAllowList(t *testing.T) {
 		t.Fatal(err)
 	}
 	control := newDeviceControl(t)
-	_, openErr := device.OpenDeviceSession(context.Background(), device.DeviceSessionConfig{
+	_, openErr := app.OpenSession(context.Background(), app.SessionConfig{
 		Transport: &fakeDeviceTransport{}, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
 		OwnerEpoch: "epoch-1", OwnerInstance: "instance-1", Authority: control.authority,
 	})
@@ -262,19 +264,19 @@ func TestDeviceSessionCachesOnlyMatchingIdempotentCommands(t *testing.T) {
 	defer func() { _ = session.Close() }()
 	idempotency := idemKey()
 	command := materializedCommand(t, catalog, "cmd-1", idempotency)
-	first, sent, err := session.ExchangeWithResult(context.Background(), command)
+	first, sent, err := session.Exchange(context.Background(), command)
 	if err != nil || !sent || first.Receipt["command_id"] != "cmd-1" {
 		t.Fatalf("first exchange receipt=%v sent=%v err=%v", first, sent, err)
 	}
 	duplicate := materializedCommand(t, catalog, "cmd-2", idempotency)
-	second, sent, err := session.ExchangeWithResult(context.Background(), duplicate)
+	second, sent, err := session.Exchange(context.Background(), duplicate)
 	if err != nil || !sent || second.Receipt["command_id"] != "cmd-1" {
 		t.Fatalf("duplicate exchange receipt=%v sent=%v err=%v", second, sent, err)
 	}
 	conflicting := materializedCommand(t, catalog, "cmd-3", idemKey())
 	conflicting["parameters"] = map[string]any{"brightness_permille": 1, "pattern": "off"}
 	conflicting["idempotency_key"] = idempotency
-	if _, sent, err := session.ExchangeWithResult(context.Background(), conflicting); err == nil || sent {
+	if _, sent, err := session.Exchange(context.Background(), conflicting); err == nil || sent {
 		t.Fatalf("conflicting idempotency exchange sent=%v err=%v", sent, err)
 	}
 	if got := transport.sendCount(); got != 1 {
@@ -286,7 +288,7 @@ func TestDeviceSessionTreatsPostSendFailureAsAmbiguous(t *testing.T) {
 	session, transport, catalog := openThermalSession(t)
 	defer func() { _ = session.Close() }()
 	transport.receiveErr = errors.New("gateway receive timeout")
-	_, sent, err := session.ExchangeWithResult(context.Background(), materializedCommand(t, catalog, "cmd-1", idemKey()))
+	_, sent, err := session.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-1", idemKey()))
 	if err == nil || !sent {
 		t.Fatalf("post-send failure sent=%v err=%v", sent, err)
 	}
@@ -296,7 +298,7 @@ func TestDeviceSessionTreatsSendFailureAsPreSend(t *testing.T) {
 	session, transport, catalog := openThermalSession(t)
 	defer func() { _ = session.Close() }()
 	transport.sendErr = errors.New("gateway refused write")
-	_, sent, err := session.ExchangeWithResult(context.Background(), materializedCommand(t, catalog, "cmd-1", idemKey()))
+	_, sent, err := session.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-1", idemKey()))
 	if err == nil || sent {
 		t.Fatalf("send failure sent=%v err=%v", sent, err)
 	}
@@ -318,7 +320,7 @@ func TestDeviceSessionInvalidatesAfterFailedRefresh(t *testing.T) {
 	if _, err := session.QueryState(context.Background()); err == nil {
 		t.Fatal("invalid refresh unexpectedly succeeded")
 	}
-	if _, sent, err := session.ExchangeWithResult(context.Background(), materializedCommand(t, catalog, "cmd-1", idemKey())); err == nil || sent {
+	if _, sent, err := session.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-1", idemKey())); err == nil || sent {
 		t.Fatalf("invalidated session exchanged command sent=%v err=%v", sent, err)
 	}
 }
@@ -327,7 +329,7 @@ func TestDeviceSessionRefreshFencesBootAndReceipts(t *testing.T) {
 	session, transport, catalog := openThermalSession(t, acceptedReceipt("cmd-1"))
 	defer func() { _ = session.Close() }()
 	command := materializedCommand(t, catalog, "cmd-1", idemKey())
-	if _, _, err := session.ExchangeWithResult(context.Background(), command); err != nil {
+	if _, _, err := session.Exchange(context.Background(), command); err != nil {
 		t.Fatal(err)
 	}
 	state := goldenDeviceState()
@@ -348,7 +350,7 @@ func TestDeviceSessionRefreshFencesBootAndReceipts(t *testing.T) {
 	if session.BootID() != "boot-B" {
 		t.Fatalf("boot id=%q, want boot-B", session.BootID())
 	}
-	if _, sent, err := session.ExchangeWithResult(context.Background(), command); err == nil || sent {
+	if _, sent, err := session.Exchange(context.Background(), command); err == nil || sent {
 		t.Fatalf("old-boot command sent=%v err=%v", sent, err)
 	}
 }

@@ -1,4 +1,4 @@
-package device_test
+package app_test
 
 import (
 	"context"
@@ -7,11 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/app"
 
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
@@ -35,7 +37,7 @@ func TestSerialSessionBootBarrierSurvivesAndClearsOnlyWithBoundState(t *testing.
 	bootB["capability_digest"] = digest
 	bootB["boot_id"] = "boot-B"
 	transport := &fakeDeviceTransport{frames: mustDeviceFrames(t, initial)}
-	session, err := device.OpenDeviceSession(t.Context(), device.DeviceSessionConfig{
+	session, err := app.OpenSession(t.Context(), app.SessionConfig{
 		Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
 		AllowedFirmwareDigests: []string{initial["firmware_digest"].(string)},
 		OwnerEpoch:             "epoch-1", OwnerInstance: "instance-1", Authority: control.authority,
@@ -52,7 +54,7 @@ func TestSerialSessionBootBarrierSurvivesAndClearsOnlyWithBoundState(t *testing.
 		t.Fatalf("state queries=%d, want 1", transport.stateQueries)
 	}
 	command := materializedCommandWithBoot(t, catalog, "cmd-barrier", idemKey(), "boot-B")
-	if _, sent, err := session.ExchangeWithResult(t.Context(), command); err == nil || sent {
+	if _, sent, err := session.Exchange(t.Context(), command); err == nil || sent {
 		t.Fatalf("barrier allowed ordinary command sent=%v err=%v", sent, err)
 	}
 	evidence := reconciliationEvidence(t, bootB, "fan-01")
@@ -63,7 +65,7 @@ func TestSerialSessionBootBarrierSurvivesAndClearsOnlyWithBoundState(t *testing.
 	receipt := acceptedReceipt("cmd-barrier")
 	receipt["boot_id"] = "boot-B"
 	transport.frames = append(transport.frames, mustDeviceFrames(t, receipt)...)
-	if _, sent, err := session.ExchangeWithResult(t.Context(), command); err != nil || !sent {
+	if _, sent, err := session.Exchange(t.Context(), command); err != nil || !sent {
 		t.Fatalf("cleared barrier did not allow command sent=%v err=%v", sent, err)
 	}
 	var status string
@@ -91,7 +93,7 @@ func TestSerialSessionSafeStopWinsOverBarrierAndRejectsLaterOrdinaryWork(t *test
 	bootB["capability_digest"] = digest
 	bootB["boot_id"] = "boot-B"
 	transport := &fakeDeviceTransport{frames: append(mustDeviceFrames(t, state), mustDeviceFrames(t, bootB, safeReceipt)...)}
-	session, err := device.OpenDeviceSession(t.Context(), device.DeviceSessionConfig{
+	session, err := app.OpenSession(t.Context(), app.SessionConfig{
 		Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
 		AllowedFirmwareDigests: []string{state["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
 		OwnerInstance: "instance-1", Authority: control.authority,
@@ -103,11 +105,11 @@ func TestSerialSessionSafeStopWinsOverBarrierAndRejectsLaterOrdinaryWork(t *test
 	if _, err := session.QueryState(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	effector := device.NewSerialEffector(session, catalog)
+	effector := app.NewGatewayEffector(session, catalog)
 	if _, err := effector.SafeStop(t.Context(), "fan-01"); err != nil {
 		t.Fatalf("safe stop behind barrier failed: %v", err)
 	}
-	if _, sent, err := session.ExchangeWithResult(t.Context(), materializedCommandWithBoot(t, catalog, "cmd-after-stop", idemKey(), "boot-B")); err == nil || sent {
+	if _, sent, err := session.Exchange(t.Context(), materializedCommandWithBoot(t, catalog, "cmd-after-stop", idemKey(), "boot-B")); err == nil || sent {
 		t.Fatalf("ordinary command crossed safe stop sent=%v err=%v", sent, err)
 	}
 	if transport.sendCount() != 1 {
@@ -124,7 +126,7 @@ func TestSerialSessionSafeStopWinsOverBarrierAndRejectsLaterOrdinaryWork(t *test
 		t.Fatal(err)
 	}
 	restartedTransport := &fakeDeviceTransport{frames: mustDeviceFrames(t, bootB)}
-	restarted, err := device.OpenDeviceSession(t.Context(), device.DeviceSessionConfig{
+	restarted, err := app.OpenSession(t.Context(), app.SessionConfig{
 		Transport: restartedTransport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
 		AllowedFirmwareDigests: []string{bootB["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
 		OwnerInstance: "instance-1", Authority: control.authority,
@@ -133,7 +135,7 @@ func TestSerialSessionSafeStopWinsOverBarrierAndRejectsLaterOrdinaryWork(t *test
 		t.Fatal(err)
 	}
 	defer func() { _ = restarted.Close() }()
-	if _, sent, err := restarted.ExchangeWithResult(t.Context(), materializedCommandWithBoot(t, catalog, "cmd-after-restart", idemKey(), "boot-B")); err == nil || sent {
+	if _, sent, err := restarted.Exchange(t.Context(), materializedCommandWithBoot(t, catalog, "cmd-after-restart", idemKey(), "boot-B")); err == nil || sent {
 		t.Fatalf("ordinary command crossed durable safe-stop after restart sent=%v err=%v", sent, err)
 	}
 }
@@ -157,7 +159,7 @@ func TestSerialSessionAuthorityLossAfterTransportIsUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := device.OpenDeviceSession(t.Context(), device.DeviceSessionConfig{
+	session, err := app.OpenSession(t.Context(), app.SessionConfig{
 		Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
 		AllowedFirmwareDigests: []string{state["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
 		OwnerInstance: "instance-1", Authority: authority,
@@ -169,7 +171,7 @@ func TestSerialSessionAuthorityLossAfterTransportIsUnknown(t *testing.T) {
 	receipt := acceptedReceipt("cmd-unknown")
 	transport.frames = append(transport.frames, mustDeviceFrames(t, receipt)...)
 	transport.receiveHook = func() { clk.Advance(11 * time.Second) }
-	if _, sent, err := session.ExchangeWithResult(t.Context(), materializedCommand(t, catalog, "cmd-unknown", idemKey())); err == nil || !sent {
+	if _, sent, err := session.Exchange(t.Context(), materializedCommand(t, catalog, "cmd-unknown", idemKey())); err == nil || !sent {
 		t.Fatalf("authority loss after transport was not unknown sent=%v err=%v", sent, err)
 	}
 	var status string
@@ -191,7 +193,7 @@ func TestSerialSessionDisablesAfterReconciliationPersistenceFailure(t *testing.T
 	state := goldenDeviceState()
 	state["capability_digest"] = digest
 	transport := &fakeDeviceTransport{frames: mustDeviceFrames(t, state)}
-	session, err := device.OpenDeviceSession(t.Context(), device.DeviceSessionConfig{
+	session, err := app.OpenSession(t.Context(), app.SessionConfig{
 		Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
 		AllowedFirmwareDigests: []string{state["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
 		OwnerInstance: "instance-1", Authority: control.authority,
@@ -207,7 +209,7 @@ func TestSerialSessionDisablesAfterReconciliationPersistenceFailure(t *testing.T
 	if _, err := session.QueryState(t.Context()); err == nil {
 		t.Fatal("refresh unexpectedly succeeded after reconciliation store failure")
 	}
-	if _, sent, err := session.ExchangeWithResult(t.Context(), materializedCommand(t, catalog, "cmd-after-store-failure", idemKey())); err == nil || sent {
+	if _, sent, err := session.Exchange(t.Context(), materializedCommand(t, catalog, "cmd-after-store-failure", idemKey())); err == nil || sent {
 		t.Fatalf("session exchanged after reconciliation store failure sent=%v err=%v", sent, err)
 	}
 	if transport.sendCount() != 0 {
@@ -228,13 +230,13 @@ func TestSerialSessionStartupBarrierRequiresFreshStateQuery(t *testing.T) {
 	stateB["capability_digest"] = digest
 	stateB["boot_id"] = "boot-B"
 	transport1 := &fakeDeviceTransport{frames: append(mustDeviceFrames(t, stateA), mustDeviceFrames(t, stateB)...)}
-	config := device.DeviceSessionConfig{
+	config := app.SessionConfig{
 		Catalog: catalog, AllowedCapabilityDigests: []string{digest},
 		AllowedFirmwareDigests: []string{stateA["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
 		OwnerInstance: "instance-1", Authority: control.authority,
 	}
 	config.Transport = transport1
-	session1, err := device.OpenDeviceSession(t.Context(), config)
+	session1, err := app.OpenSession(t.Context(), config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +249,7 @@ func TestSerialSessionStartupBarrierRequiresFreshStateQuery(t *testing.T) {
 
 	transport2 := &fakeDeviceTransport{frames: append(mustDeviceFrames(t, stateB), mustDeviceFrames(t, stateB)...)}
 	config.Transport = transport2
-	session2, err := device.OpenDeviceSession(t.Context(), config)
+	session2, err := app.OpenSession(t.Context(), config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +330,7 @@ func reconciliationEvidence(t *testing.T, state map[string]any, target string) m
 	return evidence
 }
 
-func materializedCommandWithBoot(t *testing.T, catalog *device.CapabilityCatalog, commandID, idempotency, bootID string) map[string]any {
+func materializedCommandWithBoot(t *testing.T, catalog *domain.CapabilityCatalog, commandID, idempotency, bootID string) map[string]any {
 	t.Helper()
 	command, err := catalog.Materialize(actionport.Command{
 		CommandID: commandID, EffectorRoute: "set_indicator", NormalizedTarget: "led-01",

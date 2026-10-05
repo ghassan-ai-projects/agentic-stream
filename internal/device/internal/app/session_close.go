@@ -1,4 +1,4 @@
-package device
+package app
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 )
 
 // Close releases the gateway link. It is safe to call more than once.
-func (s *DeviceSession) Close() error {
+func (s *Session) Close() error {
 	if s == nil {
 		return nil
 	}
@@ -22,7 +22,7 @@ func (s *DeviceSession) Close() error {
 	return s.closeSessionTransport()
 }
 
-func (s *DeviceSession) closeSessionTransport() error {
+func (s *Session) closeSessionTransport() error {
 	releaseErr := s.releaseClaims()
 	if s.transport == nil {
 		if releaseErr != nil {
@@ -36,10 +36,7 @@ func (s *DeviceSession) closeSessionTransport() error {
 	return nil
 }
 
-func (s *DeviceSession) releaseClaims() error {
-	if s.authority == nil {
-		return nil
-	}
+func (s *Session) releaseClaims() error {
 	var releaseErr error
 	for target := range s.claimedTargets {
 		err := s.authority.ReleaseClaim(context.Background(), s.targetClaim(target))

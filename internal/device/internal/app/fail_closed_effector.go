@@ -1,8 +1,10 @@
-package device
+package app
 
 import (
 	"context"
 	"fmt"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 )
@@ -11,12 +13,12 @@ import (
 // configured effector. It prevents a live device profile from silently
 // converting an unsupported route into a simulated success.
 type FailClosedEffector struct {
-	profile EffectProfile
+	profile domain.EffectProfile
 }
 
 // NewFailClosedEffector creates the fallback for live profiles whose
 // non-device routes must not be simulated.
-func NewFailClosedEffector(profile EffectProfile) *FailClosedEffector {
+func NewFailClosedEffector(profile domain.EffectProfile) *FailClosedEffector {
 	return &FailClosedEffector{profile: profile}
 }
 

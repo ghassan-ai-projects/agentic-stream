@@ -83,7 +83,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/actions` - governed dispatch plane, idempotency, verification
 - `internal/watch` - derived-trigger watches installed by approved commands
 - `internal/actionport` - approved-command/effect contracts without implementation dependencies
-- `internal/device` - concrete device adapters, sessions, materialization and gateway links
+- `internal/device` - device effect boundary; the reference adapter module: thin facade, session use cases in `internal/app`, pure `internal/domain`, record codec in `internal/wire`, gateway link in `internal/transport` (record in [docs/device-reference-module-2026-10-05](docs/device-reference-module-2026-10-05/README.md))
 - `internal/episodeledger` / `internal/scheduleledger` / `internal/approvalledger` - durable lifecycle owners shared through transaction-scoped operations
 - `internal/control` - runtime ownership, epoch drain/kill and final readiness capability
 - `internal/authority` - device claims, bindings, reconciliation and safety evidence; the reference module: thin `Service` facade, use cases in `internal/app`, pure `internal/domain`, transactions and SQL in `internal/store` (see [module pattern](docs/authority-reference-module-2026-10-05/MODULE_PATTERN.md) and its [ubiquitous language](docs/authority-reference-module-2026-10-05/UBIQUITOUS_LANGUAGE.md)). To bring another package to this standard, follow [the reference module refactor prompt](.agents/prompts/reference-module-refactor.md)

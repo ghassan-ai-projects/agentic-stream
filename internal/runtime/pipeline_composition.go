@@ -46,13 +46,13 @@ func composeEffectors(cfg PipelineConfig) (actionport.Effector, *watch.Effector)
 	watch := watch.NewEffectorWithClock(cfg.DB, cfg.Clock)
 	watch.WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch)
 	watch.WithInterlock(interlock.DurableReader{})
-	serialEffector := cfg.SerialEffector
-	if serialEffector != nil {
-		serialEffector.WithTelemetry(cfg.Telemetry)
+	gatewayEffector := cfg.GatewayEffector
+	if gatewayEffector != nil {
+		gatewayEffector.WithTelemetry(cfg.Telemetry)
 	}
 	compositeEffector := NewCompositeEffector(watch, cfg.Effector)
-	if serialEffector != nil {
-		compositeEffector.WithSerial(serialEffector)
+	if gatewayEffector != nil {
+		compositeEffector.WithSerial(gatewayEffector)
 	}
 	return compositeEffector, watch
 }

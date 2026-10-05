@@ -151,7 +151,7 @@ values and runs them as the first step of the unit of work.
 | Rule | Check |
 | --- | --- |
 | Only `store` writes the module's tables | `durableOwners` in `architecture_ownership_test.go` names `internal/authority/internal/store` |
-| The logic layer does not touch the database | new `TestApplicationLayersDoNotTouchTheDatabase` (no `database/sql` or `storage` in `.../internal/app`) |
+| The logic layer does not touch the database | new `TestApplicationLayersDoNotTouchInfrastructure` (no `database/sql` or `storage` in `.../internal/app`) |
 | A package named `.../internal/domain` is pure: no `database/sql`, `net`, `os`, storage or control imports, and no `time.Now` | new `TestDomainPackagesArePure` |
 | SQL text in a module that has a `.../internal/store` package lives only in that store | new `TestModuleSQLStaysInStore` |
 | Layer order `domain` < `store` < `app` < `authority` | `packageLayers`, `allowedImports` |

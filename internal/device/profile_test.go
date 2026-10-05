@@ -8,7 +8,7 @@ import (
 
 func TestEffectProfilesFenceReplayAndLiveLinks(t *testing.T) {
 	t.Parallel()
-	transport := &fakeDeviceTransport{}
+	transport := idleLink{}
 	cases := []struct {
 		name   string
 		config device.EffectProfileConfig
@@ -35,3 +35,6 @@ func TestEffectProfilesFenceReplayAndLiveLinks(t *testing.T) {
 		})
 	}
 }
+
+// idleLink is a gateway link the profile check only needs to be present.
+type idleLink struct{ device.Transport }

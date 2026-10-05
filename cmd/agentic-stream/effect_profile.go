@@ -100,7 +100,7 @@ func checkEffectProfile(prefix string, config device.EffectProfileConfig) error 
 // open creates the action-plane effector after the runtime owner has started.
 // Device profiles use a typed UDS gateway link; the serial effector remains
 // explicitly routed by runtime.NewPipeline.
-func (o effectProfileOptions) open(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, replaySource bool) (actionport.Effector, *device.SerialEffector, func() error, error) {
+func (o effectProfileOptions) open(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, replaySource bool) (actionport.Effector, *device.GatewayEffector, func() error, error) {
 	if err := o.validate(replaySource); err != nil {
 		return nil, nil, nil, err
 	}
@@ -156,7 +156,7 @@ func (o effectProfileOptions) validateGatewayLink(transport *device.UDSTransport
 	return nil
 }
 
-func (o effectProfileOptions) openGatewayEffector(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, transport *device.UDSTransport, catalog *device.CapabilityCatalog) (actionport.Effector, *device.SerialEffector, func() error, error) {
+func (o effectProfileOptions) openGatewayEffector(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, transport *device.UDSTransport, catalog *device.CapabilityCatalog) (actionport.Effector, *device.GatewayEffector, func() error, error) {
 	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: epochControl, Outcomes: actions.CountUnresolvedOutcomes, ClaimLease: owner.Lease})
 	if err != nil {
 		_ = transport.Close()

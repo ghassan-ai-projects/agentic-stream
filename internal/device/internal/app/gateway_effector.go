@@ -1,4 +1,4 @@
-package device
+package app
 
 import (
 	"context"
@@ -11,24 +11,24 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
-// SerialEffector is the governed action-plane adapter for a typed gateway
-// link. It never opens a raw serial port; DeviceSession owns that boundary.
-type SerialEffector struct {
-	session   *DeviceSession
-	catalog   *CapabilityCatalog
+// GatewayEffector is the governed action-plane adapter for a typed gateway
+// link. It never opens a raw serial port; Session owns that boundary.
+type GatewayEffector struct {
+	session   *Session
+	catalog   *domain.CapabilityCatalog
 	telemetry *telemetry.Runtime
 }
 
-// NewSerialEffector creates an effector for an already-open device session.
+// NewGatewayEffector creates an effector for an already-open device session.
 // The catalog must be the same closed catalog whose digest was bound during
 // the session handshake.
-func NewSerialEffector(session *DeviceSession, catalog *CapabilityCatalog) *SerialEffector {
-	return &SerialEffector{session: session, catalog: catalog}
+func NewGatewayEffector(session *Session, catalog *domain.CapabilityCatalog) *GatewayEffector {
+	return &GatewayEffector{session: session, catalog: catalog}
 }
 
 // WithTelemetry connects action-boundary counters to the runtime telemetry
 // surface. It is optional for embedders and tests.
-func (e *SerialEffector) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *SerialEffector {
+func (e *GatewayEffector) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *GatewayEffector {
 	if e != nil {
 		e.telemetry = runtimeTelemetry
 		if e.session != nil {
@@ -41,13 +41,13 @@ func (e *SerialEffector) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *Ser
 // Dispatch sends one materialized command. Direct callers should prefer
 // DispatchAuthorized when an interlock is available; the dispatcher uses the
 // authorized method whenever it has a live interlock.
-func (e *SerialEffector) Dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
+func (e *GatewayEffector) Dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
 	return e.dispatch(ctx, command)
 }
 
 // DispatchAuthorized performs the final authorization check immediately
 // before materialization and transport delivery.
-func (e *SerialEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
+func (e *GatewayEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
 	if authorization.Check == nil {
 		return actionport.Effect{}, fmt.Errorf("dispatch authorization is required")
 	}
@@ -57,7 +57,7 @@ func (e *SerialEffector) DispatchAuthorized(ctx context.Context, command actionp
 	return e.dispatch(ctx, command)
 }
 
-func (e *SerialEffector) dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
+func (e *GatewayEffector) dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
 	if e == nil || e.session == nil || e.catalog == nil {
 		return actionport.Effect{}, fmt.Errorf("serial effector session and catalog are required")
 	}
@@ -71,35 +71,33 @@ func (e *SerialEffector) dispatch(ctx context.Context, command actionport.Comman
 	return e.dispatchMaterialized(ctx, command)
 }
 
-func (e *SerialEffector) dispatchMaterialized(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
+func (e *GatewayEffector) dispatchMaterialized(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
 	bootID := e.session.BootID()
 	wireCommand, err := e.catalog.Materialize(command, bootID)
 	if err != nil {
 		return actionport.Effect{}, fmt.Errorf("materialize serial command: %w", err)
 	}
-	exchange, sent, err := e.session.ExchangeWithResult(ctx, wireCommand)
+	exchange, sent, err := e.session.Exchange(ctx, wireCommand)
 	if err != nil {
 		return e.failedDeviceEffect(exchange, sent, err)
 	}
 	return e.acceptedDeviceEffect(exchange)
 }
 
-func (e *SerialEffector) failedDeviceEffect(exchange DeviceExchange, sent bool, err error) (actionport.Effect, error) {
+func (e *GatewayEffector) failedDeviceEffect(exchange Exchange, sent bool, err error) (actionport.Effect, error) {
 	providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
 	if sent {
-		if e.telemetry != nil {
-			e.telemetry.ObserveActionUnknownOutcome()
-		}
+		e.telemetry.ObserveActionUnknownOutcome()
 		return actionport.Effect{ProviderResult: providerResult}, &actionport.UnknownOutcomeError{Err: err}
 	}
 	return actionport.Effect{}, fmt.Errorf("exchange serial command: %w", err)
 }
 
-func (e *SerialEffector) acceptedDeviceEffect(exchange DeviceExchange) (actionport.Effect, error) {
+func (e *GatewayEffector) acceptedDeviceEffect(exchange Exchange) (actionport.Effect, error) {
 	providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
 	accepted, _ := exchange.Receipt["accepted"].(bool)
 	effect := actionport.Effect{ProviderResult: providerResult, VerificationPending: accepted}
-	if accepted && e.telemetry != nil {
+	if accepted {
 		e.telemetry.ObserveVerificationPending()
 	}
 	if !accepted {
@@ -111,15 +109,15 @@ func (e *SerialEffector) acceptedDeviceEffect(exchange DeviceExchange) (actionpo
 
 // SafeStop requests the catalog-owned safe state through the session priority
 // lane. It is intentionally separate from policy-approved ordinary dispatch.
-func (e *SerialEffector) SafeStop(ctx context.Context, target string) (actionport.Effect, error) {
+func (e *GatewayEffector) SafeStop(ctx context.Context, target string) (actionport.Effect, error) {
 	if e == nil || e.session == nil {
 		return actionport.Effect{}, fmt.Errorf("serial effector session is required")
 	}
-	exchange, sent, err := e.session.SafeStopWithResult(ctx, target)
+	exchange, sent, err := e.session.SafeStop(ctx, target)
 	return classifySafeStop(exchange, sent, err)
 }
 
-func classifySafeStop(exchange DeviceExchange, sent bool, err error) (actionport.Effect, error) {
+func classifySafeStop(exchange Exchange, sent bool, err error) (actionport.Effect, error) {
 	providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
 	switch {
 	case err == nil:
@@ -144,7 +142,7 @@ func classifySafeStop(exchange DeviceExchange, sent bool, err error) (actionport
 // VerifyDeviceCommand reads one fresh state record and compares the observed
 // output with the bounded command materialized from the catalog. The returned
 // evidence is suitable for durable unknown-outcome reconciliation.
-func (e *SerialEffector) VerifyDeviceCommand(ctx context.Context, command actionport.Command) (string, map[string]any, error) {
+func (e *GatewayEffector) VerifyDeviceCommand(ctx context.Context, command actionport.Command) (string, map[string]any, error) {
 	if e == nil || e.session == nil || e.catalog == nil {
 		return "", nil, fmt.Errorf("serial effector session and catalog are required")
 	}
@@ -156,7 +154,7 @@ func (e *SerialEffector) VerifyDeviceCommand(ctx context.Context, command action
 	return e.verifyMaterializedCommand(ctx, wireCommand, expectedBootID)
 }
 
-func (e *SerialEffector) verifyMaterializedCommand(ctx context.Context, wireCommand map[string]any, expectedBootID string) (string, map[string]any, error) {
+func (e *GatewayEffector) verifyMaterializedCommand(ctx context.Context, wireCommand map[string]any, expectedBootID string) (string, map[string]any, error) {
 	evidence, err := e.session.QueryStateEvidence(ctx, documentString(wireCommand, "target"))
 	if err != nil {
 		return "", nil, err

@@ -1,4 +1,4 @@
-package device
+package app
 
 import (
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
@@ -6,7 +6,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
 )
 
-func validateDeviceState(frame []byte, catalog *CapabilityCatalog, catalogDigest string, allowedCapabilityDigests, allowedFirmwareDigests []string) (map[string]any, error) {
+func validateDeviceState(frame []byte, catalog *domain.CapabilityCatalog, catalogDigest string, allowedCapabilityDigests, allowedFirmwareDigests []string) (map[string]any, error) {
 	state, err := wire.Decode(frame)
 	if err != nil {
 		return nil, err
@@ -54,21 +54,21 @@ func cloneDocument(document map[string]any) map[string]any {
 }
 
 // owner is the runtime owner the session commands as.
-func (s *DeviceSession) owner() deviceauthority.Owner {
+func (s *Session) owner() deviceauthority.Owner {
 	return deviceauthority.Owner{Epoch: s.ownerEpoch, Instance: s.ownerInstance}
 }
 
 // deviceBoot is the device boot the session is currently bound to.
-func (s *DeviceSession) deviceBoot() deviceauthority.DeviceBoot {
+func (s *Session) deviceBoot() deviceauthority.DeviceBoot {
 	return deviceauthority.DeviceBoot{DeviceID: s.deviceID, BootID: s.bootID}
 }
 
 // targetClaim is the session's claim on one target of the current boot.
-func (s *DeviceSession) targetClaim(target string) deviceauthority.TargetClaim {
+func (s *Session) targetClaim(target string) deviceauthority.TargetClaim {
 	return deviceauthority.TargetClaim{Target: target, Device: s.deviceBoot(), Owner: s.owner()}
 }
 
 // reconciliationOpening asks to open a reconciliation for the current boot.
-func (s *DeviceSession) reconciliationOpening(reason string) deviceauthority.ReconciliationOpening {
+func (s *Session) reconciliationOpening(reason string) deviceauthority.ReconciliationOpening {
 	return deviceauthority.ReconciliationOpening{Device: s.deviceBoot(), Owner: s.owner(), Reason: reason}
 }

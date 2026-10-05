@@ -1,4 +1,4 @@
-package device
+package app
 
 import (
 	"context"
@@ -12,14 +12,14 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
-// DeviceTransport is the typed gateway link used by the serial effector. The
+// Transport is the typed gateway link used by the serial effector. The
 // gateway owns raw serial framing, reconnect, and device identity; this
 // interface carries one validated device record at a time and preserves the
-// receipt/result ordering required by DeviceSession.
-type DeviceTransport interface {
+// receipt/result ordering required by Session.
+type Transport interface {
 	// Send and Receive are one request/receipt/result exchange. Callers must
 	// serialize the full exchange and must not overlap it with QueryState;
-	// DeviceSession provides that serialization. QueryState serializes its own
+	// Session provides that serialization. QueryState serializes its own
 	// control write and read.
 	Send(context.Context, []byte) error
 	Receive(context.Context) ([]byte, error)
@@ -30,10 +30,10 @@ type DeviceTransport interface {
 	Close() error
 }
 
-// DeviceSessionConfig configures the state handshake and capability allowlist.
-type DeviceSessionConfig struct {
-	Transport                DeviceTransport
-	Catalog                  *CapabilityCatalog
+// SessionConfig configures the state handshake and capability allowlist.
+type SessionConfig struct {
+	Transport                Transport
+	Catalog                  *domain.CapabilityCatalog
 	AllowedCapabilityDigests []string
 	AllowedFirmwareDigests   []string
 	OwnerEpoch               string
@@ -42,13 +42,13 @@ type DeviceSessionConfig struct {
 	Telemetry                *telemetry.Runtime
 }
 
-// DeviceSession is the only action-plane object allowed to use a
-// DeviceTransport. It serializes request/receipt exchanges and remembers
+// Session is the only action-plane object allowed to use a
+// Transport. It serializes request/receipt exchanges and remembers
 // accepted idempotency keys for the current device boot.
-type DeviceSession struct {
+type Session struct {
 	mu                     sync.Mutex
-	transport              DeviceTransport
-	catalog                *CapabilityCatalog
+	transport              Transport
+	catalog                *domain.CapabilityCatalog
 	ownerEpoch             string
 	ownerInstance          string
 	authority              *deviceauthority.Service
@@ -65,15 +65,15 @@ type DeviceSession struct {
 	reconciliationRequired bool
 	stateQueryRequired     bool
 	stopMu                 sync.RWMutex
-	safeStopRequested      bool
+	safeStopLatched        bool
 	opened                 bool
 	closed                 bool
 }
 
-// OpenDeviceSession performs the mandatory device.state handshake. No command
+// OpenSession performs the mandatory device.state handshake. No command
 // can be exchanged until protocol, firmware, capability, and authority
 // configuration are accepted.
-func OpenDeviceSession(ctx context.Context, config DeviceSessionConfig) (*DeviceSession, error) {
+func OpenSession(ctx context.Context, config SessionConfig) (*Session, error) {
 	if err := validateSessionConfig(config); err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func OpenDeviceSession(ctx context.Context, config DeviceSessionConfig) (*Device
 	return openCatalogSession(ctx, config)
 }
 
-func validateSessionConfig(config DeviceSessionConfig) error {
+func validateSessionConfig(config SessionConfig) error {
 	if config.Transport == nil || config.Catalog == nil {
 		return fmt.Errorf("device transport and capability catalog are required")
 	}
@@ -100,21 +100,21 @@ func validateSessionConfig(config DeviceSessionConfig) error {
 	return nil
 }
 
-func resolveOwnerInstance(config DeviceSessionConfig) string {
+func resolveOwnerInstance(config SessionConfig) string {
 	if config.OwnerInstance != "" {
 		return config.OwnerInstance
 	}
 	return config.Authority.OwnerInstance()
 }
 
-func validateOwnerInstance(config DeviceSessionConfig) error {
+func validateOwnerInstance(config SessionConfig) error {
 	if config.OwnerInstance == "" || config.Authority.OwnerInstance() != config.OwnerInstance {
 		return fmt.Errorf("device owner instance must match runtime owner")
 	}
 	return nil
 }
 
-func openCatalogSession(ctx context.Context, config DeviceSessionConfig) (*DeviceSession, error) {
+func openCatalogSession(ctx context.Context, config SessionConfig) (*Session, error) {
 	if len(config.AllowedCapabilityDigests) == 0 {
 		return nil, fmt.Errorf("device capability allow-list is required")
 	}
@@ -129,7 +129,7 @@ func openCatalogSession(ctx context.Context, config DeviceSessionConfig) (*Devic
 	return handshakeDeviceSession(ctx, config, catalogDigest)
 }
 
-func handshakeDeviceSession(ctx context.Context, config DeviceSessionConfig, catalogDigest string) (*DeviceSession, error) {
+func handshakeDeviceSession(ctx context.Context, config SessionConfig, catalogDigest string) (*Session, error) {
 	session := newDeviceSession(config)
 	defer func() {
 		if !session.opened {
@@ -139,8 +139,8 @@ func handshakeDeviceSession(ctx context.Context, config DeviceSessionConfig, cat
 	return session.acceptHandshake(ctx, catalogDigest)
 }
 
-func newDeviceSession(config DeviceSessionConfig) *DeviceSession {
-	return &DeviceSession{
+func newDeviceSession(config SessionConfig) *Session {
+	return &Session{
 		transport: config.Transport, catalog: config.Catalog,
 		ownerEpoch: config.OwnerEpoch, ownerInstance: config.OwnerInstance,
 		authority: config.Authority,
@@ -150,7 +150,7 @@ func newDeviceSession(config DeviceSessionConfig) *DeviceSession {
 	}
 }
 
-func (s *DeviceSession) acceptHandshake(ctx context.Context, catalogDigest string) (*DeviceSession, error) {
+func (s *Session) acceptHandshake(ctx context.Context, catalogDigest string) (*Session, error) {
 	state, err := s.receiveHandshake(ctx, catalogDigest)
 	if err != nil {
 		return nil, err
@@ -162,22 +162,20 @@ func (s *DeviceSession) acceptHandshake(ctx context.Context, catalogDigest strin
 	return s, nil
 }
 
-func (s *DeviceSession) receiveHandshake(ctx context.Context, catalogDigest string) (map[string]any, error) {
+func (s *Session) receiveHandshake(ctx context.Context, catalogDigest string) (map[string]any, error) {
 	frame, err := s.transport.Receive(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("receive device state handshake: %w", err)
 	}
 	state, err := validateDeviceState(frame, s.catalog, catalogDigest, []string{catalogDigest}, s.allowedFirmwareDigests)
 	if err != nil {
-		if s.telemetry != nil {
-			s.telemetry.ObserveDeviceFrameError()
-		}
+		s.telemetry.ObserveDeviceFrameError()
 		return nil, fmt.Errorf("validate device state handshake: %w", err)
 	}
 	return state, nil
 }
 
-func (s *DeviceSession) bindHandshakeState(ctx context.Context, state map[string]any) error {
+func (s *Session) bindHandshakeState(ctx context.Context, state map[string]any) error {
 	s.deviceID, s.bootID = stateString(state, "device_id"), stateString(state, "boot_id")
 	s.firmwareDigest, s.capabilityDigest = stateString(state, "firmware_digest"), stateString(state, "capability_digest")
 	s.safeState, _ = state["safe_state"].(bool)
@@ -189,7 +187,7 @@ func (s *DeviceSession) bindHandshakeState(ctx context.Context, state map[string
 	return s.bindHandshakeBarrier(ctx, state)
 }
 
-func (s *DeviceSession) bindHandshakeBarrier(ctx context.Context, state map[string]any) error {
+func (s *Session) bindHandshakeBarrier(ctx context.Context, state map[string]any) error {
 	if err := s.authority.AssertRuntime(ctx, s.ownerEpoch); err != nil {
 		return fmt.Errorf("assert authority before binding device state: %w", err)
 	}
@@ -200,7 +198,7 @@ func (s *DeviceSession) bindHandshakeBarrier(ctx context.Context, state map[stri
 	return s.persistHandshakeBarrier(ctx, state, priorBarrier)
 }
 
-func (s *DeviceSession) persistHandshakeBarrier(ctx context.Context, state map[string]any, priorBarrier bool) error {
+func (s *Session) persistHandshakeBarrier(ctx context.Context, state map[string]any, priorBarrier bool) error {
 	wasRequired := s.reconciliationRequired
 	required, err := s.authority.RecordDeviceState(ctx, s.owner(), state)
 	if err != nil {
@@ -208,19 +206,19 @@ func (s *DeviceSession) persistHandshakeBarrier(ctx context.Context, state map[s
 	}
 	s.reconciliationRequired = required
 	s.stateQueryRequired = priorBarrier || required
-	if !wasRequired && s.reconciliationRequired && s.telemetry != nil {
+	if !wasRequired && s.reconciliationRequired {
 		s.telemetry.ObserveReconciliationBarrier()
 	}
 	return s.restoreSafeStopState(ctx)
 }
 
-func (s *DeviceSession) restoreSafeStopState(ctx context.Context) error {
+func (s *Session) restoreSafeStopState(ctx context.Context) error {
 	var err error
-	s.safeStopRequested, err = s.authority.SafeStopLatched(ctx, s.deviceBoot())
+	s.safeStopLatched, err = s.authority.SafeStopLatched(ctx, s.deviceBoot())
 	if err != nil {
 		return fmt.Errorf("read durable safe-stop state: %w", err)
 	}
-	if s.safeState && s.telemetry != nil {
+	if s.safeState {
 		s.telemetry.ObserveSafeStateEntry()
 	}
 	return nil

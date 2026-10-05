@@ -18,7 +18,7 @@ type EffectProfileConfig struct {
 	Profile         EffectProfile
 	ReplaySource    bool
 	Shadow          bool
-	GatewayLink     DeviceTransport
+	GatewayLink     Transport
 	LiveActuation   bool
 	OwnerAuthorized bool
 }

@@ -1,4 +1,4 @@
-package device_test
+package app_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/app"
 
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 
@@ -19,7 +19,7 @@ import (
 func TestSerialEffectorReturnsPendingReceiptAfterAuthorization(t *testing.T) {
 	session, transport, catalog := openThermalSession(t, acceptedReceipt("cmd-1"))
 	defer func() { _ = session.Close() }()
-	effector := device.NewSerialEffector(session, catalog)
+	effector := app.NewGatewayEffector(session, catalog)
 	checked := false
 	effect, err := effector.DispatchAuthorized(context.Background(), actionport.Command{
 		CommandID: "cmd-1", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
@@ -69,7 +69,7 @@ func TestSerialEffectorVerificationRejectsMismatchedIndicatorValue(t *testing.T)
 	}
 	transport.frames = append(transport.frames, frame)
 
-	status, evidence, err := device.NewSerialEffector(session, catalog).VerifyDeviceCommand(context.Background(), actionport.Command{
+	status, evidence, err := app.NewGatewayEffector(session, catalog).VerifyDeviceCommand(context.Background(), actionport.Command{
 		CommandID: "cmd-alert", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
 		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "alert"},
 	})
@@ -105,7 +105,7 @@ func TestSerialEffectorVerificationRejectsMismatchedFanDuty(t *testing.T) {
 	}
 	transport.frames = append(transport.frames, frame)
 
-	status, evidence, err := device.NewSerialEffector(session, catalog).VerifyDeviceCommand(context.Background(), actionport.Command{
+	status, evidence, err := app.NewGatewayEffector(session, catalog).VerifyDeviceCommand(context.Background(), actionport.Command{
 		CommandID: "cmd-fan", EffectorRoute: "select_thermal_mode", NormalizedTarget: "fan-01",
 		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"mode": "bounded_cooling"},
 	})
@@ -139,7 +139,7 @@ func TestSerialEffectorVerificationDoesNotAcceptBootRollover(t *testing.T) {
 	}
 	transport.frames = append(transport.frames, frame)
 
-	status, _, err := device.NewSerialEffector(session, catalog).VerifyDeviceCommand(context.Background(), actionport.Command{
+	status, _, err := app.NewGatewayEffector(session, catalog).VerifyDeviceCommand(context.Background(), actionport.Command{
 		CommandID: "cmd-watch", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
 		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"},
 	})
@@ -154,7 +154,7 @@ func TestSerialEffectorVerificationDoesNotAcceptBootRollover(t *testing.T) {
 func TestSerialEffectorRejectsBeforeSendAndDoesNotBypassAuthorization(t *testing.T) {
 	session, transport, catalog := openThermalSession(t, acceptedReceipt("unused"))
 	defer func() { _ = session.Close() }()
-	effector := device.NewSerialEffector(session, catalog)
+	effector := app.NewGatewayEffector(session, catalog)
 	if _, err := effector.DispatchAuthorized(context.Background(), actionport.Command{
 		CommandID: "cmd-1", EffectorRoute: "select_thermal_mode", NormalizedTarget: "fan-01",
 		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"mode": "not-a-mode"},
@@ -172,7 +172,7 @@ func TestSerialEffectorReturnsOrdinaryErrorForDeviceRejection(t *testing.T) {
 	receipt["reject_code"] = "expired"
 	session, transport, catalog := openThermalSession(t, receipt)
 	defer func() { _ = session.Close() }()
-	effect, err := device.NewSerialEffector(session, catalog).Dispatch(context.Background(), actionport.Command{
+	effect, err := app.NewGatewayEffector(session, catalog).Dispatch(context.Background(), actionport.Command{
 		CommandID: "cmd-1", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
 		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"},
 	})
@@ -201,7 +201,7 @@ func TestSerialEffectorPreservesReceiptWhenResultIsUntrustworthy(t *testing.T) {
 	}
 	transport.frames = append(transport.frames, receiptFrame, []byte("{"))
 
-	effect, err := device.NewSerialEffector(session, catalog).Dispatch(context.Background(), actionport.Command{
+	effect, err := app.NewGatewayEffector(session, catalog).Dispatch(context.Background(), actionport.Command{
 		CommandID: "cmd-result-bad", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
 		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"},
 	})
@@ -218,7 +218,7 @@ func TestSerialEffectorPreservesReceiptWhenResultIsUntrustworthy(t *testing.T) {
 	if !transport.closed || !reconciliationRequired(t, control) {
 		t.Fatalf("invalid result must close transport and require reconciliation closed=%v barrier=%v", transport.closed, reconciliationRequired(t, control))
 	}
-	if _, sent, nextErr := session.ExchangeWithResult(context.Background(), materializedCommand(t, catalog, "cmd-after-bad-result", idemKey())); nextErr == nil || sent {
+	if _, sent, nextErr := session.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-after-bad-result", idemKey())); nextErr == nil || sent {
 		t.Fatalf("session reused after invalid result sent=%v err=%v", sent, nextErr)
 	}
 	required, controlErr := control.authority.ReconciliationRequired(context.Background(), "thermal-01")
@@ -234,7 +234,7 @@ func TestSerialEffectorSafeStopRejectionPreservesKnownEvidence(t *testing.T) {
 	session, _, catalog := openThermalSession(t, receipt)
 	defer func() { _ = session.Close() }()
 
-	effect, err := device.NewSerialEffector(session, catalog).SafeStop(context.Background(), "fan-01")
+	effect, err := app.NewGatewayEffector(session, catalog).SafeStop(context.Background(), "fan-01")
 	if err == nil || actionport.IsUnknownOutcome(err) {
 		t.Fatalf("known safe-stop rejection err=%v", err)
 	}
@@ -245,7 +245,7 @@ func TestSerialEffectorSafeStopRejectionPreservesKnownEvidence(t *testing.T) {
 	if !ok || result["status"] != "rejected" || result["error_code"] != "not_ready" {
 		t.Fatalf("safe-stop rejection result=%#v", effect.ProviderResult)
 	}
-	if _, sent, ordinaryErr := session.ExchangeWithResult(context.Background(), materializedCommand(t, catalog, "cmd-after-safe-stop-rejection", idemKey())); ordinaryErr == nil || sent {
+	if _, sent, ordinaryErr := session.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-after-safe-stop-rejection", idemKey())); ordinaryErr == nil || sent {
 		t.Fatalf("ordinary command crossed latched safe-stop sent=%v err=%v", sent, ordinaryErr)
 	}
 }
@@ -255,7 +255,7 @@ func TestSerialEffectorSafeStopReceiveFailureInvalidatesTransport(t *testing.T) 
 	defer func() { _ = session.Close() }()
 	transport.receiveErr = errors.New("safe-stop receipt timeout")
 
-	_, err := device.NewSerialEffector(session, catalog).SafeStop(context.Background(), "fan-01")
+	_, err := app.NewGatewayEffector(session, catalog).SafeStop(context.Background(), "fan-01")
 	if err == nil || !actionport.IsUnknownOutcome(err) {
 		t.Fatalf("safe-stop receive failure err=%v", err)
 	}
@@ -266,7 +266,7 @@ func TestSerialEffectorSafeStopReceiveFailureInvalidatesTransport(t *testing.T) 
 	if controlErr != nil || !required {
 		t.Fatalf("safe-stop receive failure barrier required=%v err=%v", required, controlErr)
 	}
-	if _, sent, nextErr := session.SafeStopWithResult(context.Background(), "fan-01"); nextErr == nil || sent {
+	if _, sent, nextErr := session.SafeStop(context.Background(), "fan-01"); nextErr == nil || sent {
 		t.Fatalf("safe-stop retried on invalidated transport sent=%v err=%v", sent, nextErr)
 	}
 	if transport.sendCount() != 1 {
@@ -284,7 +284,7 @@ func TestSerialEffectorPreservesSafeStopReceiptWhenResultIsUntrustworthy(t *test
 	}
 	transport.frames = append(transport.frames, receiptFrame, []byte("{"))
 
-	effect, err := device.NewSerialEffector(session, catalog).SafeStop(context.Background(), "fan-01")
+	effect, err := app.NewGatewayEffector(session, catalog).SafeStop(context.Background(), "fan-01")
 	if err == nil || !actionport.IsUnknownOutcome(err) {
 		t.Fatalf("untrustworthy safe-stop result err=%v", err)
 	}
@@ -313,7 +313,7 @@ func TestSerialEffectorSafeStopRejectionWithUndurableEvidenceIsUnknown(t *testin
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	transport.sendHook = cancel
-	effect, err := device.NewSerialEffector(session, catalog).SafeStop(ctx, "fan-01")
+	effect, err := app.NewGatewayEffector(session, catalog).SafeStop(ctx, "fan-01")
 	if err == nil || !actionport.IsUnknownOutcome(err) {
 		t.Fatalf("undurable safe-stop rejection err=%v", err)
 	}
@@ -342,7 +342,7 @@ func TestSerialEffectorSafeStopRejectionWithUndurableEvidenceIsUnknown(t *testin
 	restartedState := goldenDeviceState()
 	restartedState["capability_digest"] = digest
 	restartedTransport := &fakeDeviceTransport{frames: mustDeviceFrames(t, restartedState)}
-	restarted, err := device.OpenDeviceSession(context.Background(), device.DeviceSessionConfig{
+	restarted, err := app.OpenSession(context.Background(), app.SessionConfig{
 		Transport: restartedTransport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
 		AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
 		OwnerInstance: "instance-1", Authority: control.authority,
@@ -351,7 +351,7 @@ func TestSerialEffectorSafeStopRejectionWithUndurableEvidenceIsUnknown(t *testin
 		t.Fatalf("restart after undurable safe-stop rejection: %v", err)
 	}
 	defer func() { _ = restarted.Close() }()
-	if _, sent, restartErr := restarted.ExchangeWithResult(context.Background(), materializedCommand(t, catalog, "cmd-after-undurable-safe-stop", idemKey())); restartErr == nil || sent {
+	if _, sent, restartErr := restarted.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-after-undurable-safe-stop", idemKey())); restartErr == nil || sent {
 		t.Fatalf("restart crossed safe-stop/barrier sent=%v err=%v", sent, restartErr)
 	}
 }
@@ -360,7 +360,7 @@ func TestSerialEffectorConvertsAmbiguousReceiptToUnknownOutcome(t *testing.T) {
 	session, transport, catalog, control := openThermalSessionWithControl(t)
 	defer func() { _ = session.Close() }()
 	transport.frames = append(transport.frames, []byte("{\"message_type\":\"receipt\"}"))
-	_, err := device.NewSerialEffector(session, catalog).Dispatch(context.Background(), actionport.Command{
+	_, err := app.NewGatewayEffector(session, catalog).Dispatch(context.Background(), actionport.Command{
 		CommandID: "cmd-1", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
 		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"},
 	})
@@ -387,7 +387,7 @@ func TestSerialEffectorConvertsAmbiguousReceiptToUnknownOutcome(t *testing.T) {
 	restartedState := goldenDeviceState()
 	restartedState["capability_digest"] = digest
 	restartedTransport := &fakeDeviceTransport{frames: mustDeviceFrames(t, restartedState)}
-	restarted, err := device.OpenDeviceSession(context.Background(), device.DeviceSessionConfig{
+	restarted, err := app.OpenSession(context.Background(), app.SessionConfig{
 		Transport: restartedTransport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
 		AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
 		OwnerInstance: "instance-1", Authority: control.authority,
@@ -396,7 +396,7 @@ func TestSerialEffectorConvertsAmbiguousReceiptToUnknownOutcome(t *testing.T) {
 		t.Fatalf("restart after ambiguous receipt: %v", err)
 	}
 	defer func() { _ = restarted.Close() }()
-	if _, sent, err := restarted.ExchangeWithResult(context.Background(), materializedCommand(t, catalog, "cmd-after-restart", idemKey())); err == nil || sent {
+	if _, sent, err := restarted.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-after-restart", idemKey())); err == nil || sent {
 		t.Fatalf("ordinary command crossed durable ambiguity barrier after restart sent=%v err=%v", sent, err)
 	}
 }
@@ -408,7 +408,7 @@ func TestSerialEffectorPersistsBarrierAfterReceiptContextCancellation(t *testing
 	ctx, cancel := context.WithCancel(context.Background())
 	transport.sendHook = cancel
 
-	_, err := device.NewSerialEffector(session, catalog).Dispatch(ctx, actionport.Command{
+	_, err := app.NewGatewayEffector(session, catalog).Dispatch(ctx, actionport.Command{
 		CommandID: "cmd-canceled", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
 		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"},
 	})
@@ -426,7 +426,7 @@ func TestSerialEffectorSafeStopUnknownOutcomeOpensReconciliationBarrier(t *testi
 	defer func() { _ = session.Close() }()
 	transport.frames = append(transport.frames, []byte("{"))
 
-	_, err := device.NewSerialEffector(session, catalog).SafeStop(context.Background(), "fan-01")
+	_, err := app.NewGatewayEffector(session, catalog).SafeStop(context.Background(), "fan-01")
 	if err == nil || !actionport.IsUnknownOutcome(err) {
 		t.Fatalf("malformed safe-stop receipt err=%v", err)
 	}
@@ -439,7 +439,7 @@ func TestSerialEffectorExportsPendingUnknownAndFrameMetrics(t *testing.T) {
 	metrics := telemetry.NewRuntime(time.Unix(1, 0))
 	session, transport, catalog := openThermalSession(t, acceptedReceipt("cmd-1"))
 	defer func() { _ = session.Close() }()
-	effector := device.NewSerialEffector(session, catalog).WithTelemetry(metrics)
+	effector := app.NewGatewayEffector(session, catalog).WithTelemetry(metrics)
 	command := actionport.Command{CommandID: "cmd-1", EffectorRoute: "set_indicator", NormalizedTarget: "led-01", IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"}}
 	if _, err := effector.Dispatch(context.Background(), command); err != nil {
 		t.Fatal(err)
@@ -459,7 +459,7 @@ func TestSerialEffectorExportsPendingUnknownAndFrameMetrics(t *testing.T) {
 func TestSerialEffectorDuplicateUsesSessionReceiptCache(t *testing.T) {
 	session, transport, catalog := openThermalSession(t, acceptedReceipt("cmd-1"))
 	defer func() { _ = session.Close() }()
-	effector := device.NewSerialEffector(session, catalog)
+	effector := app.NewGatewayEffector(session, catalog)
 	command := actionport.Command{CommandID: "cmd-1", EffectorRoute: "set_indicator", NormalizedTarget: "led-01", IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"}}
 	first, err := effector.Dispatch(context.Background(), command)
 	if err != nil {
@@ -484,7 +484,7 @@ func TestSerialEffectorRejectsCatalogDifferentFromHandshake(t *testing.T) {
 	spec := other.Routes["set_indicator"]
 	spec.Operation = "different_led_operation"
 	other.Routes["set_indicator"] = spec
-	_, err := device.NewSerialEffector(session, other).Dispatch(context.Background(), actionport.Command{
+	_, err := app.NewGatewayEffector(session, other).Dispatch(context.Background(), actionport.Command{
 		CommandID: "cmd-1", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
 		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"},
 	})
@@ -496,7 +496,7 @@ func TestSerialEffectorRejectsCatalogDifferentFromHandshake(t *testing.T) {
 	}
 }
 
-// reconciliationRequired reads the durable reconciliation state of the test device.
+// reconciliationRequired reads the durable reconciliation state of the test app.
 func reconciliationRequired(t *testing.T, control deviceControl) bool {
 	t.Helper()
 	required, err := control.authority.ReconciliationRequired(context.Background(), "thermal-01")

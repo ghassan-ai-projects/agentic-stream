@@ -1,12 +1,14 @@
-package device_test
+package app_test
 
 import (
 	"context"
 	"path/filepath"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 
@@ -16,7 +18,7 @@ import (
 func TestCompositeEffectorRoutesThermalToSerialAndUnknownFailsClosed(t *testing.T) {
 	session, transport, catalog := openThermalSession(t, acceptedReceipt("cmd-thermal"))
 	defer func() { _ = session.Close() }()
-	effector := runtime.NewCompositeEffector(nil, nil).WithSerial(device.NewSerialEffector(session, catalog))
+	effector := runtime.NewCompositeEffector(nil, nil).WithSerial(app.NewGatewayEffector(session, catalog))
 	effect, err := effector.Dispatch(context.Background(), actionport.Command{
 		CommandID: "cmd-thermal", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
 		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"},
@@ -39,7 +41,7 @@ func TestCompositeEffectorRoutesWatchBeforeSimulatedFallback(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	effector := runtime.NewCompositeEffector(watch.NewEffector(db), device.NewSimulatedEffector())
+	effector := runtime.NewCompositeEffector(watch.NewEffector(db), app.NewSimulatedEffector())
 	watchCommand := actionport.Command{
 		CommandID:     "cmd-watch",
 		TenantID:      "tenant-1",
@@ -83,7 +85,7 @@ func TestCompositeEffectorRoutesWatchBeforeSimulatedFallback(t *testing.T) {
 }
 
 func TestFailClosedEffectorRejectsUnmappedLiveRoute(t *testing.T) {
-	effector := runtime.NewCompositeEffector(nil, device.NewFailClosedEffector(device.EffectProfilePhysical))
+	effector := runtime.NewCompositeEffector(nil, app.NewFailClosedEffector(domain.EffectProfilePhysical))
 	if _, err := effector.Dispatch(t.Context(), actionport.Command{EffectorRoute: "start_aerator"}); err == nil {
 		t.Fatal("physical fallback accepted an unmapped route")
 	}

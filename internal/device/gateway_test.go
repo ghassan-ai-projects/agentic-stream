@@ -61,17 +61,21 @@ func devicePeer(t *testing.T, conn net.Conn, capabilityDigest string) {
 		}) {
 			return
 		}
+		status := "executed"
+		if command["operation"] == "safe_stop" {
+			status = "safe_state"
+		}
 		if !write(map[string]any{
 			"message_type": "result", "protocol_version": float64(1),
 			"command_id": command["command_id"], "boot_id": "boot-A",
-			"status": "executed", "completed_mono_us": float64(1),
+			"status": status, "completed_mono_us": float64(1),
 		}) {
 			return
 		}
 	}
 }
 
-func TestEmulatorEffectorDrivesDeviceOverUDS(t *testing.T) {
+func TestGatewayEffectorDrivesDeviceOverUDS(t *testing.T) {
 	catalog := loadThermalCatalog(t)
 	catalogDigest, err := catalog.Digest()
 	if err != nil {
@@ -136,5 +140,35 @@ func TestEmulatorEffectorDrivesDeviceOverUDS(t *testing.T) {
 	}
 	if !effect.VerificationPending {
 		t.Fatal("an accepted device command must leave verification pending, not proven")
+	}
+	effector = effector.WithTelemetry(nil)
+	authorized, err := effector.DispatchAuthorized(ctx, actionport.Command{
+		CommandID: "cmd-2", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
+		IdempotencyKey: "sha256:" + strings.Repeat("e", 64), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"},
+	}, actionport.Authorization{Check: func(context.Context) error { return nil }})
+	if err != nil || !authorized.VerificationPending {
+		t.Fatalf("authorized dispatch = %+v, %v", authorized, err)
+	}
+	status, evidence, err := effector.VerifyDeviceCommand(ctx, actionport.Command{
+		CommandID: "cmd-1", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
+		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "watch"},
+	})
+	if err != nil || (status != "succeeded" && status != "failed") || evidence["evidence_digest"] == nil {
+		t.Fatalf("verification = %q, %v, %v", status, evidence, err)
+	}
+	if _, err := effector.SafeStop(ctx, "fan-01"); err != nil {
+		t.Fatalf("safe stop over UDS: %v", err)
+	}
+}
+
+func TestFallbackEffectors(t *testing.T) {
+	t.Parallel()
+	command := actionport.Command{CommandID: "c", EffectorRoute: "notify", IdempotencyKey: idemKey()}
+	allow := actionport.Authorization{Check: func(context.Context) error { return nil }}
+	if effect, err := device.NewSimulatedEffector().DispatchAuthorized(t.Context(), command, allow); err != nil || effect.ProviderResult["accepted"] != true {
+		t.Fatalf("simulated effector = %+v, %v", effect, err)
+	}
+	if _, err := device.NewFailClosedEffector(device.EffectProfilePhysical).DispatchAuthorized(t.Context(), command, allow); err == nil {
+		t.Fatal("fail-closed effector accepted an unmapped route")
 	}
 }

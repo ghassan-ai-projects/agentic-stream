@@ -39,8 +39,8 @@ QueryState, Close); `transport.UDS` implements it.
 | --- | --- |
 | Effect profile | `EffectProfile` and its three values, `EffectProfileConfig`, `ValidateEffectProfile` |
 | Catalog | `CapabilityCatalog`, `LoadCapabilityCatalog` |
-| Gateway | `Transport` (port), `DialGateway(ctx, socketPath)` |
-| Effectors | `NewGatewayEffector(ctx, GatewayConfig)`, `GatewayEffector` (`Dispatch`, `DispatchAuthorized`, `SafeStop`, `VerifyCommand`), `NewSimulatedEffector`, `NewFailClosedEffector` |
+| Gateway | `Transport` (port), `UDSTransport`, `DialUDSTransport(ctx, socketPath)` |
+| Effectors | `NewGatewayEffector(ctx, GatewayEffectorConfig)`, `GatewayEffector` (`Dispatch`, `DispatchAuthorized`, `SafeStop`, `VerifyDeviceCommand` — the last name is fixed by `actionport.DeviceStateVerifier`), `NewSimulatedEffector` and `NewFailClosedEffector` (both return `actionport.AuthorizedEffector`) |
 
 Everything else — sessions, record codec, materialization helpers — stays
 internal and is tested in its own layer.
@@ -66,8 +66,8 @@ internal and is tested in its own layer.
 | Rule | Check |
 | --- | --- |
 | Domain is pure | `TestDomainPackagesArePure` (already generic) |
-| App touches no database | `TestApplicationLayersDoNotTouchTheDatabase` (already generic) |
-| App does not touch sockets or encode bytes | new: `internal/<pkg>/internal/app` must not import `net` |
+| App touches neither the database nor the network | `TestApplicationLayersDoNotTouchInfrastructure` (generic; now also forbids `net` and `net/http`) |
+| Reasoning and replay cannot reach the device implementation | `TestReasoningAndReplayCannotReachEffectImplementations` now also targets `internal/device/internal/app` and `internal/device/internal/transport` |
 | Layer order | `packageLayers`, `allowedImports` |
 
 ## Deferred: production entry points

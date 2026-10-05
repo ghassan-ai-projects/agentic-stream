@@ -1,10 +1,12 @@
-package device
+package app
 
 import (
 	"errors"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
@@ -30,8 +32,8 @@ func TestOrdinaryCommandAdmissionKeepsSafetyPrecedence(t *testing.T) {
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			transport := &partialSafeStopTransport{}
-			session := &DeviceSession{opened: test.open, safeStopRequested: test.stop, bootID: "boot-B", reconciliationRequired: true, transport: transport}
-			_, sent, err := session.ExchangeWithResult(t.Context(), test.document)
+			session := &Session{opened: test.open, safeStopLatched: test.stop, bootID: "boot-B", reconciliationRequired: true, transport: transport}
+			_, sent, err := session.Exchange(t.Context(), test.document)
 			if sent || err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("sent=%v, error=%v, want %q", sent, err, test.want)
 			}
@@ -40,20 +42,20 @@ func TestOrdinaryCommandAdmissionKeepsSafetyPrecedence(t *testing.T) {
 			}
 		})
 	}
-	session := &DeviceSession{opened: true, bootID: "boot-A", reconciliationRequired: true, transport: &partialSafeStopTransport{}}
-	_, sent, err := session.ExchangeWithResult(t.Context(), command)
+	session := &Session{opened: true, bootID: "boot-A", reconciliationRequired: true, transport: &partialSafeStopTransport{}}
+	_, sent, err := session.Exchange(t.Context(), command)
 	if sent || !errors.Is(err, authority.ErrReconciliationRequired) {
 		t.Fatalf("barrier admission sent=%v, error=%v", sent, err)
 	}
 }
 
-func admissionCatalog(t *testing.T) *CapabilityCatalog {
+func admissionCatalog(t *testing.T) *domain.CapabilityCatalog {
 	t.Helper()
-	data, err := os.ReadFile("../contractsv1/conformance/v1/thermal-capability-catalog.json")
+	data, err := os.ReadFile("../../../contractsv1/conformance/v1/thermal-capability-catalog.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := LoadCapabilityCatalog(data)
+	catalog, err := domain.LoadCapabilityCatalog(data)
 	if err != nil {
 		t.Fatal(err)
 	}

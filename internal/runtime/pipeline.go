@@ -48,9 +48,9 @@ type PipelineConfig struct {
 	// set, admission refuses new episodes while the epoch is draining and
 	// every later decision is refused once the epoch is killed.
 	EpochControl *runtimecontrol.EpochControl
-	// SerialEffector is optional and supplies the explicitly routed thermal
+	// GatewayEffector is optional and supplies the explicitly routed thermal
 	// action boundary. It is never used by replay or shadow execution.
-	SerialEffector *device.SerialEffector
+	GatewayEffector *device.GatewayEffector
 }
 
 // PipelineReport describes one completed live batch.

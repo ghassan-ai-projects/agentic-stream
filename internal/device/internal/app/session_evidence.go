@@ -1,4 +1,4 @@
-package device
+package app
 
 import (
 	"context"
@@ -14,7 +14,7 @@ const deviceStateSource = "device.query_state"
 
 // QueryStateEvidence performs one fresh device-state query about target and
 // returns it as sealed reconciliation evidence in its wire form.
-func (s *DeviceSession) QueryStateEvidence(ctx context.Context, target string) (map[string]any, error) {
+func (s *Session) QueryStateEvidence(ctx context.Context, target string) (map[string]any, error) {
 	state, err := s.QueryState(ctx)
 	if err != nil {
 		return nil, err
