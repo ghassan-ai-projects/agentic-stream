@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
@@ -122,7 +123,7 @@ func openCatalogSession(ctx context.Context, config SessionConfig) (*Session, er
 	if err != nil {
 		return nil, fmt.Errorf("digest device capability catalog: %w", err)
 	}
-	if !contains(config.AllowedCapabilityDigests, catalogDigest) {
+	if !slices.Contains(config.AllowedCapabilityDigests, catalogDigest) {
 		return nil, fmt.Errorf("capability catalog digest is not allow-listed")
 	}
 
@@ -188,9 +189,6 @@ func (s *Session) bindHandshakeState(ctx context.Context, state domain.State) er
 }
 
 func (s *Session) bindHandshakeBarrier(ctx context.Context, state domain.State) error {
-	if err := s.authority.AssertRuntime(ctx, s.ownerEpoch); err != nil {
-		return fmt.Errorf("assert authority before binding device state: %w", err)
-	}
 	priorBarrier, err := s.authority.ReconciliationRequired(ctx, s.deviceID)
 	if err != nil {
 		return fmt.Errorf("read device reconciliation barrier: %w", err)

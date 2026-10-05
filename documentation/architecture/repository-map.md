@@ -23,7 +23,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/actionport/` | approved command/effect contracts |
 | `internal/device/` | device effect boundary facade: effect profiles, catalog loading, gateway dial and effector constructors |
 | `internal/device/internal/app/` | device session use cases and the gateway, simulated and fail-closed effectors |
-| `internal/device/internal/wire/` | device record codec: canonical NDJSON frames validated by message type |
+| `internal/device/internal/wire/` | device record codec: schema-validated canonical NDJSON, typed records and original evidence documents |
 | `internal/device/internal/transport/` | Unix-socket gateway link: framing, deadlines and the may-have-sent signal |
 | `internal/device/internal/domain/` | device-boundary rules: capability catalog, materialization, effect profiles, record matching, output verification |
 | `internal/episodeledger/` | durable episode/attempt lifecycle, fencing and recovery |

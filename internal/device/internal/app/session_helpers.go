@@ -33,15 +33,6 @@ type deviceExchangeError struct{ err error }
 func (e *deviceExchangeError) Error() string { return e.err.Error() }
 func (e *deviceExchangeError) Unwrap() error { return e.err }
 
-func contains(values []string, wanted string) bool {
-	for _, value := range values {
-		if value == wanted {
-			return true
-		}
-	}
-	return false
-}
-
 // owner is the runtime owner the session commands as.
 func (s *Session) owner() deviceauthority.Owner {
 	return deviceauthority.Owner{Epoch: s.ownerEpoch, Instance: s.ownerInstance}

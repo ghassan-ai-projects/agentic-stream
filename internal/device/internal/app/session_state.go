@@ -106,22 +106,13 @@ func (s *Session) applyRefreshedState(ctx context.Context, state domain.State) e
 }
 
 func (s *Session) completeStateRefresh(ctx context.Context, state domain.State, previousSafeState bool) error {
-	if err := s.bindRefreshedState(ctx, state); err != nil {
+	if err := s.persistRefreshedState(ctx, state); err != nil {
 		return err
 	}
 	if !previousSafeState && s.safeState {
 		s.telemetry.ObserveSafeStateEntry()
 	}
 	return nil
-}
-
-func (s *Session) bindRefreshedState(ctx context.Context, state domain.State) error {
-	if err := s.authority.AssertRuntime(ctx, s.ownerEpoch); err != nil {
-		s.reconciliationRequired = true
-		s.opened = false
-		return fmt.Errorf("assert authority before binding refreshed state: %w", err)
-	}
-	return s.persistRefreshedState(ctx, state)
 }
 
 func (s *Session) persistRefreshedState(ctx context.Context, state domain.State) error {

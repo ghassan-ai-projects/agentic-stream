@@ -18,13 +18,19 @@ device records, materializes approved commands into bounded device commands,
 and keeps a session's protocol state. Its durable facts are recorded through
 `authority`.
 
-Today one package mixes the device protocol rules, session orchestration,
+At the baseline, one package mixed the device protocol rules, session orchestration,
 the socket transport, the record codec, three effectors and the effect-profile
-policy. Device records are `map[string]any` everywhere, 64 symbols are
-exported although production callers use about 15, and several safety calls
-are skipped when the authority is nil.
+policy. Device records were `map[string]any` everywhere, 64 symbols were
+exported although production callers used about 15, and several safety calls
+were skipped when the authority was nil.
 
-Target shape, the adapter-module form of the pattern:
+Rounds D0–D7 complete the structure below. Sessions require authority, incoming
+records are typed once at the wire boundary, and digests and evidence retain
+the original documents. Command delivery and safe-stop attempts carry named
+request values; ordinary admission remains enforced in authority transactions.
+See [validation and review](VALIDATION.md) for evidence and remaining limits.
+
+Implemented shape, the adapter-module form of the pattern:
 
 ```
 internal/device/                      facade: effect profiles, effector constructors, catalog loading, gateway dial

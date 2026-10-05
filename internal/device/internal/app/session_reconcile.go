@@ -35,9 +35,6 @@ func (s *Session) resolveCurrentState(ctx context.Context, finalStatus string, e
 	if evidence == nil || evidence["state_digest"] != s.stateDigest {
 		return false, fmt.Errorf("reconciliation evidence must bind the latest device state digest")
 	}
-	if err := s.authority.AssertRuntime(ctx, s.ownerEpoch); err != nil {
-		return false, fmt.Errorf("assert reconciliation authority: %w", err)
-	}
 	return s.persistResolvedState(ctx, finalStatus, evidence)
 }
 

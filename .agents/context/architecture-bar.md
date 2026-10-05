@@ -29,7 +29,9 @@ contracts and services, never on upstream composition.
 Additional modules have current concrete responsibilities:
 
 - `actionport`: typed approved commands, outcomes, final authorization, and effect interfaces.
-- `device`: capability materialization, device sessions, gateway transport and concrete device effectors.
+- `device`: thin effect-boundary facade; app session use cases; pure domain rules
+  and typed records; wire schema validation/parsing; gateway transport. Authority
+  owns durable admission and device safety facts.
 - `episodeledger`: episode/attempt identities, durable lifecycle transitions and recovery mutations.
 - `scheduleledger`: durable queue lifecycle transitions shared by admission and episode assembly.
 - `approvalledger`: pending approval, signed assertion and supersession/expiry lifecycle.

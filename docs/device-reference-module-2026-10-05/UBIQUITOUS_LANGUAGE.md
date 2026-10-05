@@ -39,7 +39,7 @@ the words below.
 | **Result** | The device's terminal execution status for a command. Not physical confirmation. | `Result` | `result` |
 | **Device state** | The device's report of identity, digests, safe state and current output. | `State` | `state` |
 | **Exchange** | One command's send, receipt and result, in order. | `Exchange` | — |
-| **Command identity** | A command's digest without its command ID; equal identities are the same command. | `CommandIdentity` | — |
+| **Command identity** | A command's digest without its command ID; equal identities are the same command. | `Command.Identity` | — |
 
 ## Session
 
