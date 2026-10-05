@@ -21,13 +21,13 @@ func baselineFixtureInput() ShadowInput {
 func predictiveStyleIntents() []Intent {
 	return []Intent{{
 		Type: "create_maintenance_ticket", Risk: "R1",
-		ParameterSchema: map[string]any{
+		Schema: ParseParameterSchema(map[string]any{
 			"properties": map[string]any{
 				"entity_id": map[string]any{"type": "string"},
 				"priority":  map[string]any{"type": "string", "enum": []any{"low", "high"}},
 			},
 			"required": []any{"entity_id", "priority"},
-		},
+		}),
 	}}
 }
 
@@ -71,13 +71,13 @@ func TestBaselinePolicyMapsPhaseToDeclaredStateAndModeEnums(t *testing.T) {
 	t.Parallel()
 	intents := []Intent{{
 		Type: "set_cooling", Risk: "R1",
-		ParameterSchema: map[string]any{
+		Schema: ParseParameterSchema(map[string]any{
 			"properties": map[string]any{
 				"state": map[string]any{"type": "string", "enum": []any{"watch", "alert"}},
 				"mode":  map[string]any{"type": "string", "enum": []any{"hold", "bounded_cooling"}},
 			},
 			"required": []any{"state", "mode"},
-		},
+		}),
 	}}
 	policy, err := NewBaselinePolicy(intents)
 	if err != nil {
@@ -108,10 +108,10 @@ func TestBaselinePolicyMapsPhaseToDeclaredStateAndModeEnums(t *testing.T) {
 func TestBaselinePolicyAbstainsWhenRequiredParameterIsUnavailable(t *testing.T) {
 	t.Parallel()
 	intents := predictiveStyleIntents()
-	intents[0].ParameterSchema = map[string]any{
+	intents[0].Schema = ParseParameterSchema(map[string]any{
 		"properties": map[string]any{"entity_id": map[string]any{"type": "string"}},
 		"required":   []any{"entity_id", "missing_field"},
-	}
+	})
 	policy, err := NewBaselinePolicy(intents)
 	if err != nil {
 		t.Fatal(err)

@@ -21,7 +21,7 @@ const (
 
 func TestRunDeterministicSessionCollectsCanonicalResult(t *testing.T) {
 	t.Parallel()
-	result, err := Run(context.Background(), filepath.Join(t.TempDir(), "run.db"), fixtureSpec, fixtureTrace, "default")
+	result, err := Run(context.Background(), domain.Request{DBPath: filepath.Join(t.TempDir(), "run.db"), SpecPath: fixtureSpec, TracePath: fixtureTrace, TenantID: "default"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestRunRejectsExistingDatabase(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not a replay database"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Run(context.Background(), path, fixtureSpec, fixtureTrace, "default")
+	_, err := Run(context.Background(), domain.Request{DBPath: path, SpecPath: fixtureSpec, TracePath: fixtureTrace, TenantID: "default"})
 	if err == nil || !strings.Contains(err.Error(), "open db") {
 		t.Fatalf("err = %v", err)
 	}
@@ -50,7 +50,7 @@ func TestRunModeFailsClosedBeforeWorkWithoutCapabilities(t *testing.T) {
 	for _, mode := range []domain.Mode{domain.ModeRecorded, domain.ModeShadow, domain.ModeCounterfactual} {
 		t.Run(string(mode), func(t *testing.T) {
 			t.Parallel()
-			result, err := RunMode(context.Background(), mode, filepath.Join(t.TempDir(), "mode.db"), fixtureSpec, fixtureTrace, "default")
+			result, err := RunMode(context.Background(), mode, domain.Request{DBPath: filepath.Join(t.TempDir(), "mode.db"), SpecPath: fixtureSpec, TracePath: fixtureTrace, TenantID: "default"})
 			if !errors.Is(err, domain.ErrModeCapabilityRequired) {
 				t.Fatalf("err = %v", err)
 			}
@@ -63,11 +63,11 @@ func TestRunModeFailsClosedBeforeWorkWithoutCapabilities(t *testing.T) {
 
 func TestRunModeRejectsUnknownModeAndDuplicateCapabilities(t *testing.T) {
 	t.Parallel()
-	_, err := RunMode(context.Background(), domain.Mode("future"), filepath.Join(t.TempDir(), "mode.db"), fixtureSpec, fixtureTrace, "default")
+	_, err := RunMode(context.Background(), domain.Mode("future"), domain.Request{DBPath: filepath.Join(t.TempDir(), "mode.db"), SpecPath: fixtureSpec, TracePath: fixtureTrace, TenantID: "default"})
 	if !errors.Is(err, domain.ErrUnsupportedMode) {
 		t.Fatalf("err = %v", err)
 	}
-	_, err = RunMode(context.Background(), domain.ModeRecorded, filepath.Join(t.TempDir(), "mode.db"), fixtureSpec, fixtureTrace, "default", domain.Capabilities{}, domain.Capabilities{})
+	_, err = RunMode(context.Background(), domain.ModeRecorded, domain.Request{DBPath: filepath.Join(t.TempDir(), "mode.db"), SpecPath: fixtureSpec, TracePath: fixtureTrace, TenantID: "default"}, domain.Capabilities{}, domain.Capabilities{})
 	if err == nil || !strings.Contains(err.Error(), "at most one replay capability set") {
 		t.Fatalf("err = %v", err)
 	}
@@ -75,14 +75,14 @@ func TestRunModeRejectsUnknownModeAndDuplicateCapabilities(t *testing.T) {
 
 func TestRunNTimesRepeatsDeterministically(t *testing.T) {
 	t.Parallel()
-	results, err := RunNTimes(context.Background(), fixtureSpec, fixtureTrace, "default", 2)
+	results, err := RunNTimes(context.Background(), domain.Request{SpecPath: fixtureSpec, TracePath: fixtureTrace, TenantID: "default"}, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !domain.AllHashesEqual(results) {
 		t.Fatalf("repeated runs differ: %+v", results)
 	}
-	if _, err := RunNTimes(context.Background(), fixtureSpec, fixtureTrace, "default", 0); err == nil {
+	if _, err := RunNTimes(context.Background(), domain.Request{SpecPath: fixtureSpec, TracePath: fixtureTrace, TenantID: "default"}, 0); err == nil {
 		t.Fatal("n = 0 accepted")
 	}
 }
@@ -185,7 +185,7 @@ func stubShadowOutput(input domain.ShadowInput, executorVersion string) (domain.
 func TestShadowPhaseExecutesPairAndRecordsComparison(t *testing.T) {
 	t.Parallel()
 	workingSpec := alwaysTriggerSpec(t)
-	result, err := RunMode(context.Background(), domain.ModeShadow, filepath.Join(t.TempDir(), "shadow.db"), workingSpec, fixtureTrace, "default",
+	result, err := RunMode(context.Background(), domain.ModeShadow, domain.Request{DBPath: filepath.Join(t.TempDir(), "shadow.db"), SpecPath: workingSpec, TracePath: fixtureTrace, TenantID: "default"},
 		domain.Capabilities{BaselineExecutor: stubBaseline{}, ShadowExecutor: stubShadow{}})
 	if err != nil {
 		t.Fatal(err)
@@ -244,7 +244,7 @@ func recordedEntryFor(episode domain.ReplayEpisode) (domain.RecordedEntry, error
 func TestRecordedPhaseValidatesCompleteLedger(t *testing.T) {
 	t.Parallel()
 	workingSpec := alwaysTriggerSpec(t)
-	result, err := RunMode(context.Background(), domain.ModeRecorded, filepath.Join(t.TempDir(), "recorded.db"), workingSpec, fixtureTrace, "default",
+	result, err := RunMode(context.Background(), domain.ModeRecorded, domain.Request{DBPath: filepath.Join(t.TempDir(), "recorded.db"), SpecPath: workingSpec, TracePath: fixtureTrace, TenantID: "default"},
 		domain.Capabilities{RecordedLedger: replayViewLedger{}})
 	if err != nil {
 		t.Fatal(err)

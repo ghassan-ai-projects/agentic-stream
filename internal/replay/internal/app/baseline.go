@@ -18,7 +18,7 @@ func baselineIntents(compiled *spec.CompiledSpec) []domain.Intent {
 	}
 	intents := make([]domain.Intent, 0, len(compiled.Actions.Intents))
 	for _, configured := range compiled.Actions.Intents {
-		intents = append(intents, domain.Intent{Type: configured.Type, Risk: configured.Risk, ParameterSchema: configured.ParameterSchema})
+		intents = append(intents, domain.Intent{Type: configured.Type, Risk: configured.Risk, Schema: domain.ParseParameterSchema(configured.ParameterSchema)})
 	}
 	return intents
 }

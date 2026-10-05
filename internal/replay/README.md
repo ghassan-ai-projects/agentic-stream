@@ -36,8 +36,8 @@ store-owned transactions; replay owns no durable table.
 
 ## Public operations
 
-- `Run(ctx, dbPath, specPath, tracePath, tenantID)` — deterministic session.
-- `RunMode(ctx, mode, ..., capabilities...)` — worker-aware modes; each fails
+- `Run(ctx, Request)` — deterministic session; `Request` carries the isolated database path, spec, trace and tenant.
+- `RunMode(ctx, mode, Request, capabilities...)` — worker-aware modes; each fails
   closed with `ErrModeCapabilityRequired` before any replay work.
 - `RunNTimes` / `AllHashesEqual` — determinism proof loop.
 - `NewDeterministicBaseline(compiled)` — the default non-model baseline.
@@ -50,8 +50,8 @@ Each layer has its own tests (facade 100%, app 75%, domain 71%, store 81%,
 transport 92% coverage). Gates enforce downward imports, pure domain rules,
 app infrastructure isolation, store-only SQL and the effect/replay isolation
 now covering every replay layer; injected violations were rejected during
-migration. `Result.SimulatedResults` stays `[]map[string]any` until the
-simulator contract needs typing, and worker-aware modes are not yet wired
+migration. `Result.SimulatedResults` stays `[]map[string]any` by contract:
+the simulator port returns arbitrary outcome JSON, and worker-aware modes are not yet wired
 into the CLI (deferred follow-up in the migration plan).
 
 - [Ubiquitous language](UBIQUITOUS_LANGUAGE.md)

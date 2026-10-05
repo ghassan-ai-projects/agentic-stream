@@ -9,22 +9,26 @@ import (
 	transport "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/transport"
 )
 
-// Run replays tracePath against specPath deterministically and returns the
-// canonical result.
-func Run(ctx context.Context, dbPath, specPath, tracePath, tenantID string) (domain.Result, error) {
-	return runSession(ctx, sessionRequest{dbPath: dbPath, specPath: specPath, tracePath: tracePath, tenantID: tenantID})
+// Request identifies one replay session: the isolated database path, the
+// compiled spec file, the trace file and the tenant.
+type Request = domain.Request
+
+// Run replays the request's trace against its spec deterministically and
+// returns the canonical result.
+func Run(ctx context.Context, request Request) (domain.Result, error) {
+	return runSession(ctx, sessionRequest{request: request})
 }
 
 // RunMode executes a replay mode without accepting credentials, effectors,
 // or a resolver. Worker-aware modes run their explicit capability phase after
 // the deterministic stream replay.
-func RunMode(ctx context.Context, mode domain.Mode, dbPath, specPath, tracePath, tenantID string, capabilities ...domain.Capabilities) (domain.Result, error) {
+func RunMode(ctx context.Context, mode domain.Mode, request Request, capabilities ...domain.Capabilities) (domain.Result, error) {
 	caps, err := domain.AdmitCapabilities(capabilities)
 	if err != nil {
 		return domain.Result{}, err
 	}
 	if mode == domain.ModeDeterministic {
-		return runDeterministicMode(ctx, mode, dbPath, specPath, tracePath, tenantID)
+		return runDeterministicMode(ctx, mode, request)
 	}
 	if !domain.WorkerAwareMode(mode) {
 		return domain.Result{}, fmt.Errorf("%w: %s", domain.ErrUnsupportedMode, mode)
@@ -32,31 +36,30 @@ func RunMode(ctx context.Context, mode domain.Mode, dbPath, specPath, tracePath,
 	if err := caps.Validate(mode); err != nil {
 		return domain.Result{Mode: mode, EffectsAllowed: false}, err
 	}
-	return runCapabilityMode(ctx, mode, dbPath, specPath, tracePath, tenantID, caps)
+	return runCapabilityMode(ctx, mode, request, caps)
 }
 
 type sessionRequest struct {
-	dbPath, specPath, tracePath, tenantID string
-	cognitionEnabled                      bool
-	phase                                 capabilityPhase
-	mode                                  domain.Mode
-	caps                                  domain.Capabilities
+	request          domain.Request
+	cognitionEnabled bool
+	phase            capabilityPhase
+	mode             domain.Mode
+	caps             domain.Capabilities
 }
 
-func runDeterministicMode(ctx context.Context, mode domain.Mode, dbPath, specPath, tracePath, tenantID string) (domain.Result, error) {
-	result, err := Run(ctx, dbPath, specPath, tracePath, tenantID)
+func runDeterministicMode(ctx context.Context, mode domain.Mode, request Request) (domain.Result, error) {
+	result, err := Run(ctx, request)
 	result.Mode = mode
 	result.WorkerInvoked = false
 	result.EffectsAllowed = false
 	return result, err
 }
 
-func runCapabilityMode(ctx context.Context, mode domain.Mode, dbPath, specPath, tracePath, tenantID string, caps domain.Capabilities) (domain.Result, error) {
-	request := sessionRequest{
-		dbPath: dbPath, specPath: specPath, tracePath: tracePath, tenantID: tenantID,
-		cognitionEnabled: true, mode: mode, caps: caps, phase: applyCapabilities,
+func runCapabilityMode(ctx context.Context, mode domain.Mode, request Request, caps domain.Capabilities) (domain.Result, error) {
+	session := sessionRequest{
+		request: request, cognitionEnabled: true, mode: mode, caps: caps, phase: applyCapabilities,
 	}
-	result, err := runSession(ctx, request)
+	result, err := runSession(ctx, session)
 	if err != nil {
 		return result, err
 	}
@@ -66,13 +69,13 @@ func runCapabilityMode(ctx context.Context, mode domain.Mode, dbPath, specPath, 
 }
 
 func runSession(ctx context.Context, request sessionRequest) (domain.Result, error) {
-	database, err := transport.OpenIsolatedDatabase(ctx, request.dbPath)
+	database, err := transport.OpenIsolatedDatabase(ctx, request.request.DBPath)
 	if err != nil {
 		return domain.Result{}, fmt.Errorf("open db: %w", err)
 	}
 	defer func() { _ = database.Close() }()
 
-	session, err := prepareReplaySession(ctx, database, request.specPath, request.tracePath, request.tenantID)
+	session, err := prepareReplaySession(ctx, database, request.request.SpecPath, request.request.TracePath, request.request.TenantID)
 	if err != nil {
 		return domain.Result{}, err
 	}
@@ -80,7 +83,7 @@ func runSession(ctx context.Context, request sessionRequest) (domain.Result, err
 }
 
 func (s *replaySession) execute(ctx context.Context, request sessionRequest) (domain.Result, error) {
-	processed, err := s.processTrace(ctx, request.tracePath, request.cognitionEnabled)
+	processed, err := s.processTrace(ctx, request.request.TracePath, request.cognitionEnabled)
 	if err != nil {
 		return domain.Result{}, err
 	}
@@ -100,16 +103,16 @@ func (s *replaySession) completeReplay(ctx context.Context, request sessionReque
 	return result, nil
 }
 
-// RunNTimes replays the same trace n times against fresh isolated databases
-// and returns the canonical result of each run. All versions hashes must be
-// identical for the replay to be deterministic.
-func RunNTimes(ctx context.Context, specPath, tracePath, tenantID string, n int) ([]domain.Result, error) {
+// RunNTimes replays the same request n times against fresh isolated
+// databases and returns the canonical result of each run. All versions
+// hashes must be identical for the replay to be deterministic.
+func RunNTimes(ctx context.Context, request Request, n int) ([]domain.Result, error) {
 	if n <= 0 {
 		return nil, fmt.Errorf("n must be > 0")
 	}
 	var results []domain.Result
 	err := transport.WithRunDirectory(func(dir string) error {
-		repeated, err := repeatReplay(ctx, dir, specPath, tracePath, tenantID, n)
+		repeated, err := repeatReplay(ctx, dir, request, n)
 		results = repeated
 		return err
 	})
@@ -119,11 +122,12 @@ func RunNTimes(ctx context.Context, specPath, tracePath, tenantID string, n int)
 	return results, nil
 }
 
-func repeatReplay(ctx context.Context, dir, specPath, tracePath, tenantID string, n int) ([]domain.Result, error) {
+func repeatReplay(ctx context.Context, dir string, request Request, n int) ([]domain.Result, error) {
 	results := make([]domain.Result, n)
 	for i := 0; i < n; i++ {
-		dbPath := filepath.Join(dir, fmt.Sprintf("replay-%d.db", i))
-		res, err := Run(ctx, dbPath, specPath, tracePath, tenantID)
+		repeat := request
+		repeat.DBPath = filepath.Join(dir, fmt.Sprintf("replay-%d.db", i))
+		res, err := Run(ctx, repeat)
 		if err != nil {
 			return nil, fmt.Errorf("run %d: %w", i, err)
 		}

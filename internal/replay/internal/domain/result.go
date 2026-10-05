@@ -1,5 +1,14 @@
 package domain
 
+// Request identifies one replay session: the isolated database path, the
+// spec file, the trace file and the tenant.
+type Request struct {
+	DBPath    string
+	SpecPath  string
+	TracePath string
+	TenantID  string
+}
+
 // Result is the deterministic output of a replay run.
 type Result struct {
 	EventsProcessed   int

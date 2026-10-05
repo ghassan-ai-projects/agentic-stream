@@ -14,12 +14,51 @@ import (
 const deterministicBaselineVersion = "deterministic-baseline-v1"
 
 // Intent is the baseline's projection of a catalog intent: its type, risk
-// class and parameter schema. The application layer compiles it from the
-// spec so this policy stays independent of spec compilation.
+// class and typed parameter schema. The application layer decodes the schema
+// once at the boundary so this policy never asserts on raw maps.
 type Intent struct {
-	Type            string
-	Risk            string
-	ParameterSchema map[string]any
+	Type   string
+	Risk   string
+	Schema ParameterSchema
+}
+
+// ParameterSchema is the closed subset of a catalog intent's JSON Schema the
+// baseline selects parameters from.
+type ParameterSchema struct {
+	Properties map[string]ParameterProperty
+	Required   []any
+}
+
+// ParameterProperty is one declared parameter field.
+type ParameterProperty struct {
+	Type string
+	Enum []any
+}
+
+// ParseParameterSchema decodes a spec intent's raw schema document once,
+// tolerating absent or malformed parts exactly as the raw-map policy did.
+func ParseParameterSchema(raw map[string]any) ParameterSchema {
+	properties, _ := raw["properties"].(map[string]any)
+	schema := ParameterSchema{Properties: make(map[string]ParameterProperty, len(properties))}
+	for field, value := range properties {
+		schema.Properties[field] = parseParameterProperty(value)
+	}
+	if required, ok := raw["required"].([]any); ok {
+		schema.Required = required
+	}
+	return schema
+}
+
+func parseParameterProperty(value any) ParameterProperty {
+	property, _ := value.(map[string]any)
+	decoded := ParameterProperty{Enum: propertyEnum(property)}
+	decoded.Type, _ = property["type"].(string)
+	return decoded
+}
+
+func propertyEnum(property map[string]any) []any {
+	enum, _ := property["enum"].([]any)
+	return enum
 }
 
 // BaselinePolicy is the in-repository non-model shadow policy. It selects
@@ -150,32 +189,29 @@ func baselineManifestDigest(input ShadowInput, decisionDigest string) (string, e
 }
 
 func baselineParameters(configured Intent, entityID, phase string) (map[string]any, bool) {
-	properties, _ := configured.ParameterSchema["properties"].(map[string]any)
 	parameters := make(map[string]any)
-	if _, ok := properties["entity_id"]; ok {
+	if _, ok := configured.Schema.Properties["entity_id"]; ok {
 		if entityID == "" {
 			return nil, false
 		}
 		parameters["entity_id"] = entityID
 	}
-	fillBaselineEnums(parameters, properties, phase)
-	if !requiredBaselineParametersPresent(configured.ParameterSchema, parameters) {
+	fillBaselineEnums(parameters, configured.Schema.Properties, phase)
+	if !requiredBaselineParametersPresent(configured.Schema.Required, parameters) {
 		return nil, false
 	}
 	return parameters, true
 }
 
-func fillBaselineEnums(parameters, properties map[string]any, phase string) {
-	for field, raw := range properties {
+func fillBaselineEnums(parameters map[string]any, properties map[string]ParameterProperty, phase string) {
+	for field, property := range properties {
 		if field == "entity_id" {
 			continue
 		}
-		property, _ := raw.(map[string]any)
-		enum, _ := property["enum"].([]any)
-		if len(enum) == 0 {
+		if len(property.Enum) == 0 {
 			continue
 		}
-		parameters[field] = baselineEnumValue(field, enum, phase)
+		parameters[field] = baselineEnumValue(field, property.Enum, phase)
 	}
 }
 
@@ -190,8 +226,7 @@ func baselineEnumValue(field string, enum []any, phase string) any {
 	return value
 }
 
-func requiredBaselineParametersPresent(schema, parameters map[string]any) bool {
-	required, _ := schema["required"].([]any)
+func requiredBaselineParametersPresent(required []any, parameters map[string]any) bool {
 	for _, raw := range required {
 		field, ok := raw.(string)
 		if !ok {
