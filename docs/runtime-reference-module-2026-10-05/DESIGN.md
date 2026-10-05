@@ -11,8 +11,8 @@
 
 Public operations remain NewPipeline/run/start/close and approval operations,
 NewService/start/ready/close, and NewWorkerRuntime/executor/errors/close.
-Composite effect routing remains a governed adapter-facing facade. Public
-RecoveryCoordinator is removed; the readiness use case still performs atomic
+Composite effect routing is internal to app and composition. Test-only public
+CompositeEffector and RecoveryCoordinator are removed; the readiness use case still performs atomic
 recovery. No schema, protocol, key, digest or permission changes are planned.
 
 Natural dependency levels will be recorded explicitly as layers are added;

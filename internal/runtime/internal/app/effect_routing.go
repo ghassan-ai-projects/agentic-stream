@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
 
@@ -48,13 +49,13 @@ func (e *CompositeEffector) route(route string) (actionport.Effector, error) {
 	if e == nil {
 		return nil, fmt.Errorf("composite effector is not configured")
 	}
-	switch route {
-	case "install_watch_condition":
+	switch domain.ClassifyRoute(route) {
+	case domain.WatchRoute:
 		if e.watch == nil {
 			return nil, fmt.Errorf("watch effector is not configured")
 		}
 		return e.watch, nil
-	case "set_indicator", "select_thermal_mode":
+	case domain.DeviceRoute:
 		return e.serialRoute(route)
 	default:
 		return e.fallbackRoute(route)
@@ -106,8 +107,8 @@ func (e *CompositeEffector) VerifyDeviceCommand(ctx context.Context, command act
 	if e == nil {
 		return "", nil, nil
 	}
-	switch command.EffectorRoute {
-	case "set_indicator", "select_thermal_mode":
+	switch domain.ClassifyRoute(command.EffectorRoute) {
+	case domain.DeviceRoute:
 		if e.serial == nil {
 			return "", nil, nil
 		}

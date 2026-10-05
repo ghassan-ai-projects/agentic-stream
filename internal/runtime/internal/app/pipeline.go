@@ -22,9 +22,8 @@ type PipelineReport = domain.PipelineReport
 
 const watchReadBatchSize = 1000
 
-// Pipeline composes the deterministic stream, cognition, episode, policy,
-// and action planes. It is intentionally batch-oriented at this stage: the
-// same methods are called repeatedly by a future continuous ingestion loop.
+// Pipeline advances the stream, cognition, episode, policy and action planes
+// in order, with runtime-owned maintenance between source advancements.
 type Pipeline struct {
 	transactions *store.PipelineStore
 	sources      *transport.Sources

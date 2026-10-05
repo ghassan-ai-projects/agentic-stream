@@ -26,3 +26,18 @@ Focused runtime/policy/API/CLI and architecture checks pass; lint autofix is
 clean. Runtime layers with statements exceed 60% coverage. Pagination and
 reconsideration admission regressions remain, with staged ports constructed
 explicitly rather than reaching through the public pipeline's private fields.
+
+R2: recovery units of work moved to store; readiness/heartbeat and worker setup
+sequencing to app; connection/evidence/TLS/native resources to transport; worker
+construction to composition; report and option/routing rules to domain.
+Recovery regression tests retain atomic rollback and the ownership claim time.
+New tests cover setup order, partial failure cleanup, TLS configuration, resource
+closure and loss of readiness. Native-constructor injection is private to
+composition tests. Root delegates through the actual production constructor.
+
+Deliberate API reduction: test-only public RecoveryCoordinator and
+CompositeEffector are removed. Production routing remains in app, and its
+authorization/watch/device/fallback regressions follow that owner. The real
+gateway dispatch test stays with device. No live caller or wire contract changes.
+Uncached runtime/policy/API/CLI race checks pass, and all runtime layers exceed
+60% short-test coverage; domain rules have 100%.

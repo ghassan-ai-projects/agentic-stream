@@ -2,10 +2,10 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -51,7 +51,7 @@ func (p *Pipeline) RunLiveSocket(ctx context.Context, path string) error {
 	err := p.sources.RunLiveSocket(ctx, path, func(sinkCtx context.Context, env contractsv1.Envelope) error {
 		return p.ingestLiveEvent(sinkCtx, env)
 	})
-	if err != nil && !normalLiveSocketShutdown(ctx, err) {
+	if err != nil && !domain.NormalLiveSocketShutdown(ctx.Err(), err) {
 		return fmt.Errorf("run live socket source: %w", err)
 	}
 	return nil
@@ -71,10 +71,6 @@ func (p *Pipeline) ingestLiveEvent(ctx context.Context, env contractsv1.Envelope
 	}
 	_, err = p.runAfterIngest(ctx, PipelineReport{EventsIngested: 1}, before)
 	return err
-}
-
-func normalLiveSocketShutdown(ctx context.Context, err error) bool {
-	return ctx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
 }
 
 // RunSimulatorJSONL ingests the strict streams-simulator adapter format and

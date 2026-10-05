@@ -1,4 +1,4 @@
-package runtime_test
+package app_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
 )
 
 type guardedRoute struct{ calls int }
@@ -28,7 +28,7 @@ func (*guardedRoute) VerifyDeviceCommand(context.Context, actionport.Command) (s
 func TestEffectRoutingPreservesAuthorizationAndCannotFallbackDeviceRoutes(t *testing.T) {
 	t.Parallel()
 	fallback, physical := &guardedRoute{}, &guardedRoute{}
-	routes := runtime.NewCompositeEffector(nil, fallback)
+	routes := app.NewCompositeEffector(nil, fallback)
 	for _, route := range []string{"set_indicator", "select_thermal_mode"} {
 		if _, err := routes.Dispatch(t.Context(), actionport.Command{EffectorRoute: route}); err == nil {
 			t.Fatalf("missing device route %s fell through to fallback", route)

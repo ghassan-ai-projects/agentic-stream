@@ -2,247 +2,38 @@ package runtime
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"net"
-	"os"
-	"time"
-
-	"google.golang.org/grpc"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
-	nativeexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
-	remoteexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/remote"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
-	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
+	app "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
+	composition "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/composition"
+	transport "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/transport"
 )
 
-// newNativeExecutor is the native-executor constructor, injectable so the
-// P1 gate-8 adversarial test can prove a tamoz route never constructs it.
-var newNativeExecutor = nativeexecutor.New
+// WorkerRuntimeConfig is the complete native/remote connection configuration.
+type WorkerRuntimeConfig = transport.WorkerRuntimeConfig
 
-// WorkerRuntimeConfig contains the complete validated composition for native
-// or process-isolated episode execution. The same configuration is used by
-// run-live and serve so their worker and evidence boundaries cannot drift.
-type WorkerRuntimeConfig struct {
-	DB               *storage.DB
-	Ledger           *evidence.Ledger
-	RuntimeEpoch     string
-	WorkerSocket     string
-	WorkerName       string
-	WorkerCA         string
-	WorkerCert       string
-	WorkerKey        string
-	WorkerServerName string
-	EvidenceSocket   string
-	EvidenceKey      string
-	ModelEndpoint    string
-	ModelName        string
-}
-
-// WorkerRuntime owns the executor connection and the runtime-side evidence
-// gRPC server. Close is safe to call on partially initialized instances.
+// WorkerRuntime exposes the selected Executor and delegates resource lifetimes.
 type WorkerRuntime struct {
-	Executor         episodes.Executor
-	workerConn       *grpc.ClientConn
-	evidenceGRPC     *grpc.Server
-	evidenceListener net.Listener
-	evidenceErrors   chan error
+	Executor    episodes.Executor
+	application *app.WorkerRuntime
 }
 
-// NewWorkerRuntime constructs the native executor by default and replaces it
-// with the authenticated EpisodeWorker client when WorkerSocket is configured.
-// Evidence tools, when configured, are started before the worker handshake.
+// NewWorkerRuntime constructs only the configured native or remote route.
 func NewWorkerRuntime(ctx context.Context, cfg WorkerRuntimeConfig) (*WorkerRuntime, error) {
-	if cfg.DB == nil {
-		return nil, fmt.Errorf("worker runtime database is required")
-	}
-	if err := ValidateWorkerRuntimeConfig(cfg); err != nil {
-		return nil, err
-	}
-	if cfg.WorkerName == "" {
-		cfg.WorkerName = "native"
-	}
-	return initializeWorkerRuntime(ctx, cfg)
-}
-
-func initializeWorkerRuntime(ctx context.Context, cfg WorkerRuntimeConfig) (*WorkerRuntime, error) {
-	r := &WorkerRuntime{evidenceErrors: make(chan error, 1)}
-	cleanupOnError := true
-	defer func() {
-		if cleanupOnError {
-			_ = r.Close()
-		}
-	}()
-
-	if err := r.configureExecutor(ctx, cfg); err != nil {
-		return nil, err
-	}
-	cleanupOnError = false
-	return r, nil
-}
-
-func (r *WorkerRuntime) configureExecutor(ctx context.Context, cfg WorkerRuntimeConfig) error {
-	// P1 gate 8 (B1): the native executor is NEVER constructed on a tamoz
-	// route. A configured worker socket IS the tamoz route (the Go runtime
-	// delegates the episode to the out-of-process Ruby worker); constructing
-	// the native executor here would violate "on an ExecutorName=tamoz route
-	// the Go native executor is never constructed". Native mode keeps the
-	// constructor.
-	if cfg.WorkerSocket == "" {
-		nativeExecutor, err := newRuntimeNativeExecutor(cfg)
-		if err != nil {
-			return err
-		}
-		r.Executor = nativeExecutor
-	}
-	return r.configureWorkerEvidence(ctx, cfg)
-}
-
-func newRuntimeNativeExecutor(cfg WorkerRuntimeConfig) (episodes.Executor, error) {
-	var provider nativeexecutor.ModelProvider = &nativeexecutor.DeterministicProvider{}
-	if cfg.ModelEndpoint != "" {
-		provider = &nativeexecutor.OpenAICompatibleProvider{Endpoint: cfg.ModelEndpoint, APIKey: os.Getenv("AGENTIC_STREAM_MODEL_API_KEY"), Model: cfg.ModelName}
-	}
-	nativeExecutor, err := newNativeExecutor(nativeexecutor.Config{
-		Provider:    provider,
-		ToolFactory: nativeEvidenceTools(cfg.DB),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("configure native executor: %w", err)
-	}
-	return nativeExecutor, nil
-}
-
-func nativeEvidenceTools(db *storage.DB) func(*episodes.Request) []nativeexecutor.Tool {
-	return func(req *episodes.Request) []nativeexecutor.Tool {
-		return []nativeexecutor.Tool{nativeexecutor.NewSQLiteEvidenceTool(db, "evidence_get", req.TenantID, req.EntityID), nativeexecutor.NewSQLiteEvidenceTool(db, "evidence.get", req.TenantID, req.EntityID)}
-	}
-}
-
-func (r *WorkerRuntime) configureWorkerEvidence(ctx context.Context, cfg WorkerRuntimeConfig) error {
-	var evidenceSecret []byte
-	if cfg.EvidenceSocket != "" {
-		var err error
-		if evidenceSecret, err = r.startEvidenceServer(cfg); err != nil {
-			return err
-		}
-	}
-	if cfg.WorkerSocket != "" {
-		if err := r.connectWorker(ctx, cfg, evidenceSecret); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// startEvidenceServer serves the ledger-backed evidence tools on the private
-// evidence socket and returns the capability signing key.
-func (r *WorkerRuntime) startEvidenceServer(cfg WorkerRuntimeConfig) ([]byte, error) {
-	evidenceSecret, err := decodeEvidenceKey(cfg.EvidenceKey)
+	application, err := composition.NewWorkerRuntime(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	if cfg.Ledger == nil {
-		return nil, fmt.Errorf("evidence ledger is required with --evidence-socket")
-	}
-	listener, err := worker.ListenEvidenceSocket(cfg.EvidenceSocket)
-	if err != nil {
-		return nil, fmt.Errorf("listen evidence socket: %w", err)
-	}
-	r.evidenceListener = listener
-	r.serveEvidence(cfg, evidenceSecret, listener)
-	return evidenceSecret, nil
+	return &WorkerRuntime{Executor: application.Executor, application: application}, nil
 }
-
-func (r *WorkerRuntime) serveEvidence(cfg WorkerRuntimeConfig, evidenceSecret []byte, listener net.Listener) {
-	evidenceGRPC := grpc.NewServer()
-	r.evidenceGRPC = evidenceGRPC
-	issuer := evidenceIssuer(evidenceSecret)
-	runtimev1.RegisterEvidenceToolsServer(evidenceGRPC, &evidence.Server{
-		Verifier: &evidence.Verifier{Issuer: issuer.Issuer, Audience: issuer.Audience, Keys: issuer.Keys},
-		Query:    evidence.EventLogQuery(cfg.DB), Ledger: cfg.Ledger, RuntimeEpoch: cfg.RuntimeEpoch, RequireLedger: true,
-	})
-	go r.runEvidenceServer(evidenceGRPC, listener)
-}
-
-func (r *WorkerRuntime) runEvidenceServer(evidenceGRPC *grpc.Server, listener net.Listener) {
-	if serveErr := evidenceGRPC.Serve(listener); serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
-		r.evidenceErrors <- fmt.Errorf("evidence server: %w", serveErr)
-	}
-}
-
-// connectWorker dials the EpisodeWorker over its socket, with mTLS when
-// configured, and negotiates evidence tools when the evidence server runs.
-func (r *WorkerRuntime) connectWorker(ctx context.Context, cfg WorkerRuntimeConfig, evidenceSecret []byte) error {
-	tlsConfig, err := loadWorkerTLS(cfg.WorkerCA, cfg.WorkerCert, cfg.WorkerKey, cfg.WorkerServerName)
-	if err != nil {
-		return err
-	}
-	conn, err := worker.DialEpisodeWorkerSocketTLS(ctx, cfg.WorkerSocket, tlsConfig)
-	if err != nil {
-		return fmt.Errorf("dial episode worker socket: %w", err)
-	}
-	r.workerConn = conn
-	r.installRemoteExecutor(cfg, evidenceSecret, conn)
-	return nil
-}
-
-func (r *WorkerRuntime) installRemoteExecutor(cfg WorkerRuntimeConfig, evidenceSecret []byte, conn *grpc.ClientConn) {
-	client := runtimev1.NewEpisodeWorkerClient(conn)
-	if cfg.EvidenceSocket == "" {
-		r.Executor = remoteexecutor.NewExecutor(client, cfg.WorkerName, cfg.RuntimeEpoch, nil)
-		return
-	}
-	factory := &remoteexecutor.AttemptCapabilityIssuer{
-		Issuer: evidenceIssuer(evidenceSecret), RuntimeEpoch: cfg.RuntimeEpoch, Tools: []string{"evidence.get"},
-		From: time.Now().UTC().Add(-24 * time.Hour), Until: time.Now().UTC().Add(24 * time.Hour), MaxRows: 1000, MaxBytes: 1 << 20,
-	}
-	features := []string{worker.EvidenceToolsFeature}
-	r.Executor = remoteexecutor.NewExecutorWithEvidence(client, cfg.WorkerName, cfg.RuntimeEpoch, features, cfg.EvidenceSocket, factory)
-}
-
-func evidenceIssuer(secret []byte) *evidence.Issuer {
-	return &evidence.Issuer{Issuer: "agentic-stream", Audience: "evidence-tools", KeyID: "runtime", Keys: map[string][]byte{"runtime": secret}}
-}
-
-// Errors reports asynchronous evidence-server failures. A closed channel is
-// not used: callers select it alongside their process lifecycle context.
-func (r *WorkerRuntime) Errors() <-chan error {
-	if r == nil || r.evidenceErrors == nil {
-		return nil
-	}
-	return r.evidenceErrors
-}
-
-// Close stops the evidence server and closes the worker connection.
-func (r *WorkerRuntime) Close() error {
+func (r *WorkerRuntime) useCases() *app.WorkerRuntime {
 	if r == nil {
 		return nil
 	}
-	var errs []error
-	errs = r.closeEvidenceServer(errs)
-	if r.workerConn != nil {
-		if err := r.workerConn.Close(); err != nil {
-			errs = append(errs, err)
-		}
-		r.workerConn = nil
-	}
-	return errors.Join(errs...)
+	return r.application
 }
 
-func (r *WorkerRuntime) closeEvidenceServer(errs []error) []error {
-	if r.evidenceGRPC != nil {
-		r.evidenceGRPC.Stop()
-		r.evidenceGRPC = nil
-	}
-	if r.evidenceListener != nil {
-		if err := r.evidenceListener.Close(); err != nil {
-			errs = append(errs, err)
-		}
-		r.evidenceListener = nil
-	}
-	return errs
-}
+// Errors reports asynchronous evidence-server failures.
+func (r *WorkerRuntime) Errors() <-chan error { return r.useCases().Errors() }
+
+// Close releases worker/evidence resources, including partial initialization.
+func (r *WorkerRuntime) Close() error { return r.useCases().Close() }
