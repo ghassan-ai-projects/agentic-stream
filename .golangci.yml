@@ -77,6 +77,14 @@ linters:
         - errors.New
         - "*.Error() string"
         - errors.Join
+        # storage.DB.WithTx returns its callback's error unchanged and wraps
+        # its own begin/commit failures; the caller already named the work.
+        - .WithTx(
+      # A module's private layers (internal/<module>/internal/<layer>) are
+      # part of that module: the module's public operation wraps once with
+      # the operation name, so its layers' errors need no second wrap.
+      ignore-package-globs:
+        - "*/internal/*/internal/*"
 
     nakedret:
       # Naked returns in funcs over 30 lines

@@ -51,8 +51,8 @@ func (s *DeviceSession) deliverSafeStop(ctx context.Context, target string) (Dev
 	if err != nil {
 		return DeviceExchange{}, false, err
 	}
-	claim := deviceauthority.TargetClaim{Target: target, DeviceID: s.deviceID, BootID: s.bootID, AuthorityEpoch: s.authorityEpoch, OwnerInstance: s.ownerInstance}
-	requestedErr := s.recordSafeStop(ctx, claim, "safe_stop_requested", map[string]any{
+	claim := s.targetClaim(target)
+	requestedErr := s.recordSafeStop(ctx, claim, deviceauthority.SafeStopRequested, map[string]any{
 		"command_id": command["command_id"], "state_digest": s.stateDigest,
 	})
 	if s.telemetry != nil {
@@ -89,7 +89,7 @@ func (s *DeviceSession) recordFailedSafeStop(ctx context.Context, claim deviceau
 	if sent {
 		details["sent"] = true
 	}
-	recordErr := s.recordSafeStop(ctx, claim, "safe_stop_failed", details)
+	recordErr := s.recordSafeStop(ctx, claim, deviceauthority.SafeStopFailed, details)
 	if s.telemetry != nil {
 		s.telemetry.ObserveSafeStopFailure()
 	}
@@ -118,7 +118,7 @@ func (s *DeviceSession) completeSafeStopExchange(ctx context.Context, command ma
 func (s *DeviceSession) failedSafeStopReceive(ctx context.Context, claim deviceauthority.TargetClaim, requestedErr, err error) (DeviceExchange, bool, error) {
 	s.invalidateTransportLocked()
 	barrierErr := s.requireReconciliation(ctx, "safe-stop receipt was not received")
-	recordErr := s.recordSafeStop(ctx, claim, "safe_stop_failed", map[string]any{"error": err.Error(), "sent": true})
+	recordErr := s.recordSafeStop(ctx, claim, deviceauthority.SafeStopFailed, map[string]any{"error": err.Error(), "sent": true})
 	if s.telemetry != nil {
 		s.telemetry.ObserveSafeStopFailure()
 	}
@@ -134,7 +134,7 @@ func (s *DeviceSession) failedSafeStopReceipt(ctx context.Context, claim devicea
 	} else {
 		details["error"] = "safe-stop receipt identity mismatch"
 	}
-	recordErr := s.recordSafeStop(ctx, claim, "safe_stop_failed", details)
+	recordErr := s.recordSafeStop(ctx, claim, deviceauthority.SafeStopFailed, details)
 	if s.telemetry != nil {
 		s.telemetry.ObserveSafeStopFailure()
 	}
@@ -160,7 +160,7 @@ func (s *DeviceSession) concludeSafeStopResponse(ctx context.Context, command, r
 }
 
 func (s *DeviceSession) rejectedSafeStop(ctx context.Context, command, receipt, result map[string]any, claim deviceauthority.TargetClaim, requestedErr error) (DeviceExchange, bool, error) {
-	recordErr := s.recordSafeStop(ctx, claim, "safe_stop_failed", map[string]any{
+	recordErr := s.recordSafeStop(ctx, claim, deviceauthority.SafeStopFailed, map[string]any{
 		"command_id": command["command_id"], "accepted": false,
 		"result_status": result["status"], "error_code": result["error_code"],
 	})
@@ -181,7 +181,7 @@ func (s *DeviceSession) classifySafeStopRejection(ctx context.Context, receipt, 
 }
 
 func (s *DeviceSession) recordCompletedSafeStop(ctx context.Context, claim deviceauthority.TargetClaim, command, receipt, result map[string]any, requestedErr error) (DeviceExchange, bool, error) {
-	completedErr := s.recordSafeStop(ctx, claim, "safe_stop_completed", map[string]any{
+	completedErr := s.recordSafeStop(ctx, claim, deviceauthority.SafeStopCompleted, map[string]any{
 		"command_id": command["command_id"], "accepted": receipt["accepted"], "result_status": result["status"],
 	})
 	if lifecycleErr := errors.Join(requestedErr, completedErr); lifecycleErr != nil {
@@ -197,20 +197,14 @@ func (s *DeviceSession) recordCompletedSafeStop(ctx context.Context, claim devic
 	return DeviceExchange{Receipt: receipt, Result: result}, true, nil
 }
 
-func (s *DeviceSession) recordSafeStop(ctx context.Context, claim deviceauthority.TargetClaim, eventType string, details map[string]any) error {
-	if s.authority != nil {
-		if err := s.authority.RecordSafeStop(ctx, claim, eventType, details); err != nil {
-			return fmt.Errorf("record safe-stop event: %w", err)
-		}
-		return nil
+func (s *DeviceSession) recordSafeStop(ctx context.Context, claim deviceauthority.TargetClaim, stage deviceauthority.SafeStopStage, details map[string]any) error {
+	if s.authority == nil {
+		return fmt.Errorf("safe-stop lifecycle store is not configured")
 	}
-	if s.reconciliation != nil {
-		if err := s.reconciliation.RecordSafeStop(ctx, claim.Target, claim.DeviceID, claim.BootID, claim.AuthorityEpoch, claim.OwnerInstance, eventType, details); err != nil {
-			return fmt.Errorf("record safe-stop event: %w", err)
-		}
-		return nil
+	if err := s.authority.RecordSafeStop(ctx, claim, stage, details); err != nil {
+		return fmt.Errorf("record safe-stop event: %w", err)
 	}
-	return fmt.Errorf("safe-stop lifecycle store is not configured")
+	return nil
 }
 
 func (s *DeviceSession) stopRequested() bool {

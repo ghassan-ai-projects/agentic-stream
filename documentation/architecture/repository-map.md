@@ -28,6 +28,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/control/` | runtime ownership, epoch control and readiness capability |
 | `internal/authority/` | device target claims, bindings, reconciliation and safety evidence: public API and transactions |
 | `internal/authority/internal/domain/` | device-authority vocabulary and pure rules (reference module layer) |
+| `internal/authority/internal/store/` | the only SQL for the device-authority tables (reference module layer) |
 | `internal/qualification/` | calibration and shadow evidence |
 | `internal/costcontrol/` | reservation, bounded usage and settlement |
 | `internal/interlock/` | durable readiness state and read-only assertions |

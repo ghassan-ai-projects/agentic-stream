@@ -42,7 +42,7 @@ func TestSafeStopPossiblySentFailureInvalidatesTransport(t *testing.T) {
 	transport := &partialSafeStopTransport{}
 	session := &DeviceSession{
 		transport: transport, catalog: catalog, deviceID: "thermal-01", bootID: "boot-A",
-		authorityEpoch: "epoch-1", ownerInstance: "instance-1", opened: true,
+		ownerEpoch: "epoch-1", ownerInstance: "instance-1", opened: true,
 	}
 	defer func() { _ = session.Close() }()
 

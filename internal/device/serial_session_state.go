@@ -20,9 +20,9 @@ func (s *DeviceSession) BootID() string {
 	return s.readString(func(s *DeviceSession) string { return s.bootID })
 }
 
-// AuthorityEpoch returns the runtime authority epoch bound to the session.
-func (s *DeviceSession) AuthorityEpoch() string {
-	return s.readString(func(s *DeviceSession) string { return s.authorityEpoch })
+// OwnerEpoch returns the runtime authority epoch bound to the session.
+func (s *DeviceSession) OwnerEpoch() string {
+	return s.readString(func(s *DeviceSession) string { return s.ownerEpoch })
 }
 
 // CapabilityDigest returns the capability catalog digest accepted during the
@@ -152,7 +152,7 @@ func (s *DeviceSession) completeStateRefresh(ctx context.Context, state map[stri
 }
 
 func (s *DeviceSession) bindRefreshedState(ctx context.Context, state map[string]any) error {
-	if err := s.authority.AssertRuntime(ctx, s.authorityEpoch); err != nil {
+	if err := s.authority.AssertRuntime(ctx, s.ownerEpoch); err != nil {
 		s.reconciliationRequired = true
 		s.opened = false
 		return fmt.Errorf("assert authority before binding refreshed state: %w", err)
@@ -162,7 +162,7 @@ func (s *DeviceSession) bindRefreshedState(ctx context.Context, state map[string
 
 func (s *DeviceSession) persistRefreshedState(ctx context.Context, state map[string]any) error {
 	wasRequired := s.reconciliationRequired
-	required, err := s.reconciliation.BindState(ctx, state, s.authorityEpoch, s.ownerInstance)
+	required, err := s.authority.RecordDeviceState(ctx, s.owner(), state)
 	if err != nil {
 		// A refresh is a durable safety transition. If its barrier write cannot
 		// be proven, this session is no longer safe to use.

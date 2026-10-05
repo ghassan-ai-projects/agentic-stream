@@ -14,6 +14,7 @@ import (
 
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 type fakeDeviceTransport struct {
@@ -112,8 +113,8 @@ func openThermalSessionWithControl(t *testing.T, replies ...map[string]any) (*de
 	}
 	session, err := device.OpenDeviceSession(context.Background(), device.DeviceSessionConfig{
 		Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{catalogDigest},
-		AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, AuthorityEpoch: "epoch-1",
-		OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: control.reconciliation,
+		AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
+		OwnerInstance: "instance-1", Authority: control.authority,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -187,8 +188,8 @@ func TestOpenDeviceSessionRequiresHandshakeAgreement(t *testing.T) {
 			control := newDeviceControl(t)
 			_, openErr := device.OpenDeviceSession(context.Background(), device.DeviceSessionConfig{
 				Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
-				AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, AuthorityEpoch: "epoch-1",
-				OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: control.reconciliation,
+				AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
+				OwnerInstance: "instance-1", Authority: control.authority,
 			})
 			if openErr == nil {
 				t.Fatal("handshake mismatch opened a session")
@@ -209,8 +210,8 @@ func TestOpenDeviceSessionRequiresHandshakeAgreement(t *testing.T) {
 		transport := &fakeDeviceTransport{frames: [][]byte{frame}}
 		control := newDeviceControl(t)
 		if _, openErr := device.OpenDeviceSession(context.Background(), device.DeviceSessionConfig{
-			Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest}, AuthorityEpoch: "epoch-1",
-			OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: control.reconciliation,
+			Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest}, OwnerEpoch: "epoch-1",
+			OwnerInstance: "instance-1", Authority: control.authority,
 		}); openErr == nil {
 			t.Fatal("unsupported protocol opened a session")
 		}
@@ -227,8 +228,7 @@ func TestOpenDeviceSessionRequiresFirmwareAllowList(t *testing.T) {
 	control := newDeviceControl(t)
 	_, openErr := device.OpenDeviceSession(context.Background(), device.DeviceSessionConfig{
 		Transport: &fakeDeviceTransport{}, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
-		AuthorityEpoch: "epoch-1", OwnerInstance: "instance-1", Authority: control.authority,
-		Reconciliation: control.reconciliation,
+		OwnerEpoch: "epoch-1", OwnerInstance: "instance-1", Authority: control.authority,
 	})
 	if openErr == nil || !strings.Contains(openErr.Error(), "firmware allow-list is required") {
 		t.Fatalf("empty firmware allow-list error = %v", openErr)
@@ -236,8 +236,8 @@ func TestOpenDeviceSessionRequiresFirmwareAllowList(t *testing.T) {
 }
 
 type deviceControl struct {
-	authority      *deviceauthority.TargetAuthority
-	reconciliation *deviceauthority.ReconciliationStore
+	db        *storage.DB
+	authority *deviceauthority.Service
 }
 
 func newDeviceControl(t *testing.T) deviceControl {
@@ -247,11 +247,11 @@ func newDeviceControl(t *testing.T) deviceControl {
 	if err := owner.Claim(context.Background(), "epoch-1"); err != nil {
 		t.Fatal(err)
 	}
-	epochControl := &runtimecontrol.EpochControl{DB: db}
-	authority := &deviceauthority.TargetAuthority{DB: db, Owner: owner, EpochControl: epochControl, InstanceID: "instance-1", Lease: time.Minute}
-	return deviceControl{
-		authority: authority, reconciliation: &deviceauthority.ReconciliationStore{DB: db, Authority: authority},
+	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: &runtimecontrol.EpochControl{DB: db}})
+	if err != nil {
+		t.Fatal(err)
 	}
+	return deviceControl{db: db, authority: authority}
 }
 
 func TestDeviceSessionCachesOnlyMatchingIdempotentCommands(t *testing.T) {

@@ -101,7 +101,7 @@ func (s *DeviceSession) validateCommandLifetime(command map[string]any) error {
 
 func (s *DeviceSession) claimCommand(ctx context.Context, command map[string]any, semanticDigest string) (deviceauthority.TargetClaim, error) {
 	target, _ := command["target"].(string)
-	claim := deviceauthority.TargetClaim{Target: target, DeviceID: s.deviceID, BootID: s.bootID, AuthorityEpoch: s.authorityEpoch, OwnerInstance: s.ownerInstance}
+	claim := s.targetClaim(target)
 	if s.authority == nil {
 		return claim, nil
 	}
@@ -113,11 +113,10 @@ func (s *DeviceSession) claimCommand(ctx context.Context, command map[string]any
 
 func (s *DeviceSession) bindClaimedCommand(ctx context.Context, command map[string]any, claim deviceauthority.TargetClaim, semanticDigest string) (deviceauthority.TargetClaim, error) {
 	if err := s.authority.BindCommand(ctx, deviceauthority.CommandBinding{
-		CommandID: documentString(command, "command_id"), Target: claim.Target, DeviceID: s.deviceID,
-		BootID: s.bootID, AuthorityEpoch: s.authorityEpoch, OwnerInstance: s.ownerInstance,
-		CommandDigest: semanticDigest,
+		CommandID: documentString(command, "command_id"), Target: claim.Target, Device: claim.Device,
+		Owner: claim.Owner, CommandDigest: semanticDigest,
 	}); err != nil {
-		releaseErr := s.authority.Release(ctx, claim)
+		releaseErr := s.authority.ReleaseClaim(ctx, claim)
 		if errors.Is(releaseErr, deviceauthority.ErrTargetClaimNotOwned) {
 			releaseErr = nil
 		}
@@ -131,7 +130,7 @@ func (s *DeviceSession) assertClaimBeforeDelivery(ctx context.Context, claim dev
 	// Claim performs the durable admission check. Repeat it directly before
 	// transport delivery to minimize the revoke-to-send race; a post-send
 	// failure remains an unknown outcome because bytes cannot be retracted.
-	if err := s.authority.Assert(ctx, claim); err != nil {
+	if err := s.authority.AssertClaim(ctx, claim); err != nil {
 		return claim, fmt.Errorf("assert device target authority: %w", err)
 	}
 	return claim, nil
@@ -192,7 +191,7 @@ func receiptMatchesCommand(receipt, command map[string]any, bootID string) bool 
 func (s *DeviceSession) completeCommandOutcome(ctx context.Context, command, receipt map[string]any, claim deviceauthority.TargetClaim, semanticDigest, idempotencyKey string) (*DeviceExchange, bool, error) {
 	partial := &DeviceExchange{Receipt: receipt}
 	if s.authority != nil {
-		if err := s.authority.Assert(ctx, claim); err != nil {
+		if err := s.authority.AssertClaim(ctx, claim); err != nil {
 			return s.unknownDeviceOutcome(ctx, partial, fmt.Errorf("authority lost during device exchange: %w", err))
 		}
 	}
@@ -247,7 +246,7 @@ func resultMatchesReceipt(result, command, receipt map[string]any, status string
 func (s *DeviceSession) cacheCommandOutcome(ctx context.Context, partial *DeviceExchange, result map[string]any, claim deviceauthority.TargetClaim, semanticDigest, idempotencyKey string) (*DeviceExchange, bool, error) {
 	partial.Result = result
 	if s.authority != nil {
-		if err := s.authority.Assert(ctx, claim); err != nil {
+		if err := s.authority.AssertClaim(ctx, claim); err != nil {
 			return s.unknownDeviceOutcome(ctx, partial, fmt.Errorf("authority lost during device result: %w", err))
 		}
 	}

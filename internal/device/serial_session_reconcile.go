@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 )
 
@@ -34,14 +35,14 @@ func (s *DeviceSession) resolveCurrentState(ctx context.Context, finalStatus str
 	if evidence == nil || evidence["state_digest"] != s.stateDigest {
 		return false, fmt.Errorf("reconciliation evidence must bind the latest device state digest")
 	}
-	if err := s.authority.AssertRuntime(ctx, s.authorityEpoch); err != nil {
+	if err := s.authority.AssertRuntime(ctx, s.ownerEpoch); err != nil {
 		return false, fmt.Errorf("assert reconciliation authority: %w", err)
 	}
 	return s.persistResolvedState(ctx, finalStatus, evidence)
 }
 
 func (s *DeviceSession) persistResolvedState(ctx context.Context, finalStatus string, evidence map[string]any) (bool, error) {
-	cleared, err := s.reconciliation.Resolve(ctx, s.deviceID, s.bootID, finalStatus, evidence, s.authorityEpoch, s.ownerInstance)
+	cleared, err := s.authority.ResolveReconciliation(ctx, s.deviceBoot(), s.owner(), deviceauthority.ResolutionOutcome(finalStatus), evidence)
 	if err != nil {
 		return false, fmt.Errorf("resolve device reconciliation: %w", err)
 	}
@@ -57,8 +58,16 @@ func (s *DeviceSession) requireReconciliation(ctx context.Context, reason string
 	s.reconciliationRequired = true
 	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), reconciliationPersistTimeout)
 	defer cancel()
-	barrierErr := s.reconciliation.Require(persistCtx, s.deviceID, s.bootID, s.authorityEpoch, s.ownerInstance, reason)
-	return s.finishReconciliationBarrier(persistCtx, reason, wasRequired, barrierErr)
+	return s.finishReconciliationBarrier(persistCtx, reason, wasRequired, s.openReconciliation(persistCtx, reason))
+}
+
+// openReconciliation persists the barrier for the current boot. A session
+// without an authority cannot prove the barrier, so it fails closed.
+func (s *DeviceSession) openReconciliation(ctx context.Context, reason string) error {
+	if s.authority == nil {
+		return errors.New("device authority is not configured")
+	}
+	return s.authority.OpenReconciliation(ctx, s.deviceBoot(), s.owner(), reason) //nolint:wrapcheck // finishReconciliationBarrier wraps it.
 }
 
 func (s *DeviceSession) finishReconciliationBarrier(persistCtx context.Context, reason string, wasRequired bool, barrierErr error) error {
@@ -75,7 +84,7 @@ func (s *DeviceSession) finishReconciliationBarrier(persistCtx context.Context, 
 
 func (s *DeviceSession) recoverReconciliationBarrier(persistCtx context.Context, reason string, barrierErr error) error {
 	if isAuthorityFailure(barrierErr) {
-		recoveryErr := s.reconciliation.RequireAfterAuthorityLoss(persistCtx, s.deviceID, s.bootID, s.authorityEpoch, s.ownerInstance, reason)
+		recoveryErr := s.authority.OpenReconciliationAfterAuthorityLoss(persistCtx, s.deviceBoot(), s.owner(), reason)
 		if recoveryErr == nil {
 			barrierErr = nil
 		} else {

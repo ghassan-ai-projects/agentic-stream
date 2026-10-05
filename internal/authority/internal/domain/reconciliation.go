@@ -94,6 +94,7 @@ type Resolution struct {
 	Device         DeviceBoot
 	Owner          Owner
 	Outcome        ResolutionOutcome
+	Evidence       map[string]any
 	EvidenceJSON   []byte
 	EvidenceSHA256 []byte
 }
@@ -108,20 +109,20 @@ func NewResolution(device DeviceBoot, owner Owner, outcome ResolutionOutcome, ev
 		return Resolution{}, fmt.Errorf("canonicalize reconciliation evidence: %w", err)
 	}
 	sum := sha256.Sum256(evidenceJSON)
-	return Resolution{Device: device, Owner: owner, Outcome: outcome, EvidenceJSON: evidenceJSON, EvidenceSHA256: sum[:]}, nil
+	return Resolution{Device: device, Owner: owner, Outcome: outcome, Evidence: evidence, EvidenceJSON: evidenceJSON, EvidenceSHA256: sum[:]}, nil
 }
 
-// CheckResolvable requires an open reconciliation for the same boot, and
-// evidence whose typed state matches both its own digest and the latest
+// CheckResolvable requires an open reconciliation for the resolution's boot,
+// and evidence whose typed state matches both its own digest and the latest
 // reported state.
-func CheckResolvable(recorded *Reconciliation, device DeviceBoot, evidence map[string]any) error {
+func CheckResolvable(recorded *Reconciliation, resolution Resolution) error {
 	if recorded == nil {
-		return fmt.Errorf("resolve reconciliation for %q: %w", device.DeviceID, ErrNoRecordedState)
+		return fmt.Errorf("resolve reconciliation for %q: %w", resolution.Device.DeviceID, ErrNoRecordedState)
 	}
-	if !recorded.Required() || recorded.Device.BootID != device.BootID {
+	if !recorded.Required() || recorded.Device.BootID != resolution.Device.BootID {
 		return ErrNoOpenReconciliation
 	}
-	return checkLatestStateEvidence(evidence, recorded.StateSHA256)
+	return checkLatestStateEvidence(resolution.Evidence, recorded.StateSHA256)
 }
 
 func checkLatestStateEvidence(evidence map[string]any, latestStateSHA256 []byte) error {

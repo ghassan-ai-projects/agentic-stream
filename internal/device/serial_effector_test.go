@@ -80,7 +80,7 @@ func TestSerialEffectorVerificationRejectsMismatchedIndicatorValue(t *testing.T)
 	if evidence["target"] != "led-01" {
 		t.Fatalf("reconciliation evidence target=%v, want led-01", evidence["target"])
 	}
-	if err := deviceauthority.ValidateDeviceReconciliationEvidence(evidence, "thermal-01", "boot-A"); err != nil {
+	if err := deviceauthority.ValidateReconciliationEvidence(evidence, deviceauthority.DeviceBoot{DeviceID: "thermal-01", BootID: "boot-A"}); err != nil {
 		t.Fatalf("query-state evidence must pass durable validation: %v", err)
 	}
 }
@@ -219,7 +219,7 @@ func TestSerialEffectorPreservesReceiptWhenResultIsUntrustworthy(t *testing.T) {
 	if _, sent, nextErr := session.Exchange(context.Background(), materializedCommand(t, catalog, "cmd-after-bad-result", idemKey())); nextErr == nil || sent {
 		t.Fatalf("session reused after invalid result sent=%v err=%v", sent, nextErr)
 	}
-	required, controlErr := control.reconciliation.Required(context.Background(), "thermal-01")
+	required, controlErr := control.authority.ReconciliationRequired(context.Background(), "thermal-01")
 	if controlErr != nil || !required {
 		t.Fatalf("invalid result did not persist reconciliation barrier required=%v err=%v", required, controlErr)
 	}
@@ -260,7 +260,7 @@ func TestSerialEffectorSafeStopReceiveFailureInvalidatesTransport(t *testing.T) 
 	if !transport.closed {
 		t.Fatal("safe-stop receive failure left transport open")
 	}
-	required, controlErr := control.reconciliation.Required(context.Background(), "thermal-01")
+	required, controlErr := control.authority.ReconciliationRequired(context.Background(), "thermal-01")
 	if controlErr != nil || !required {
 		t.Fatalf("safe-stop receive failure barrier required=%v err=%v", required, controlErr)
 	}
@@ -296,7 +296,7 @@ func TestSerialEffectorPreservesSafeStopReceiptWhenResultIsUntrustworthy(t *test
 	if !transport.closed || !session.ReconciliationRequired() {
 		t.Fatalf("untrustworthy safe-stop result closed=%v barrier=%v", transport.closed, session.ReconciliationRequired())
 	}
-	if required, controlErr := control.reconciliation.Required(context.Background(), "thermal-01"); controlErr != nil || !required {
+	if required, controlErr := control.authority.ReconciliationRequired(context.Background(), "thermal-01"); controlErr != nil || !required {
 		t.Fatalf("untrustworthy safe-stop result barrier required=%v err=%v", required, controlErr)
 	}
 }
@@ -323,7 +323,7 @@ func TestSerialEffectorSafeStopRejectionWithUndurableEvidenceIsUnknown(t *testin
 		t.Fatalf("undurable safe-stop rejection closed=%v barrier=%v", transport.closed, session.ReconciliationRequired())
 	}
 	var failedEvents int
-	if err := control.authority.DB.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM device_authority_events WHERE event_type = 'safe_stop_failed'`).Scan(&failedEvents); err != nil {
+	if err := control.db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM device_authority_events WHERE event_type = 'safe_stop_failed'`).Scan(&failedEvents); err != nil {
 		t.Fatal(err)
 	}
 	if failedEvents != 0 {
@@ -342,8 +342,8 @@ func TestSerialEffectorSafeStopRejectionWithUndurableEvidenceIsUnknown(t *testin
 	restartedTransport := &fakeDeviceTransport{frames: mustDeviceFrames(t, restartedState)}
 	restarted, err := device.OpenDeviceSession(context.Background(), device.DeviceSessionConfig{
 		Transport: restartedTransport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
-		AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, AuthorityEpoch: "epoch-1",
-		OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: control.reconciliation,
+		AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
+		OwnerInstance: "instance-1", Authority: control.authority,
 	})
 	if err != nil {
 		t.Fatalf("restart after undurable safe-stop rejection: %v", err)
@@ -374,7 +374,7 @@ func TestSerialEffectorConvertsAmbiguousReceiptToUnknownOutcome(t *testing.T) {
 	if _, err := session.ResolveReconciliation(context.Background(), "succeeded", map[string]any{"state_digest": "stale"}); err == nil {
 		t.Fatal("ambiguous receipt allowed reconciliation without a fresh state query")
 	}
-	required, err := control.reconciliation.Required(context.Background(), "thermal-01")
+	required, err := control.authority.ReconciliationRequired(context.Background(), "thermal-01")
 	if err != nil || !required {
 		t.Fatalf("ambiguous receipt did not persist reconciliation barrier required=%v err=%v", required, err)
 	}
@@ -387,8 +387,8 @@ func TestSerialEffectorConvertsAmbiguousReceiptToUnknownOutcome(t *testing.T) {
 	restartedTransport := &fakeDeviceTransport{frames: mustDeviceFrames(t, restartedState)}
 	restarted, err := device.OpenDeviceSession(context.Background(), device.DeviceSessionConfig{
 		Transport: restartedTransport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
-		AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, AuthorityEpoch: "epoch-1",
-		OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: control.reconciliation,
+		AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
+		OwnerInstance: "instance-1", Authority: control.authority,
 	})
 	if err != nil {
 		t.Fatalf("restart after ambiguous receipt: %v", err)
@@ -413,7 +413,7 @@ func TestSerialEffectorPersistsBarrierAfterReceiptContextCancellation(t *testing
 	if err == nil || !actionport.IsUnknownOutcome(err) {
 		t.Fatalf("canceled receipt err=%v", err)
 	}
-	required, err := control.reconciliation.Required(context.Background(), "thermal-01")
+	required, err := control.authority.ReconciliationRequired(context.Background(), "thermal-01")
 	if err != nil || !required {
 		t.Fatalf("canceled receipt did not persist reconciliation barrier required=%v err=%v", required, err)
 	}

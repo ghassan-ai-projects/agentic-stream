@@ -42,7 +42,7 @@ func (s *DeviceSession) releaseClaims() error {
 	}
 	var releaseErr error
 	for target := range s.claimedTargets {
-		err := s.authority.Release(context.Background(), deviceauthority.TargetClaim{Target: target, DeviceID: s.deviceID, BootID: s.bootID, AuthorityEpoch: s.authorityEpoch, OwnerInstance: s.ownerInstance})
+		err := s.authority.ReleaseClaim(context.Background(), s.targetClaim(target))
 		if errors.Is(err, deviceauthority.ErrTargetClaimNotOwned) {
 			continue
 		}

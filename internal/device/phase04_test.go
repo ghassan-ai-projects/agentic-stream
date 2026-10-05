@@ -14,13 +14,13 @@ import (
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestSerialSessionBootBarrierSurvivesAndClearsOnlyWithBoundState(t *testing.T) {
 	control := newDeviceControl(t)
-	db := control.authority.DB
-	store := control.reconciliation
+	db := control.db
 	catalog := loadThermalCatalog(t)
 	digest, err := catalog.Digest()
 	if err != nil {
@@ -35,7 +35,7 @@ func TestSerialSessionBootBarrierSurvivesAndClearsOnlyWithBoundState(t *testing.
 	session, err := device.OpenDeviceSession(t.Context(), device.DeviceSessionConfig{
 		Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
 		AllowedFirmwareDigests: []string{initial["firmware_digest"].(string)},
-		AuthorityEpoch:         "epoch-1", OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: store,
+		OwnerEpoch:             "epoch-1", OwnerInstance: "instance-1", Authority: control.authority,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -74,8 +74,7 @@ func TestSerialSessionBootBarrierSurvivesAndClearsOnlyWithBoundState(t *testing.
 
 func TestSerialSessionSafeStopWinsOverBarrierAndRejectsLaterOrdinaryWork(t *testing.T) {
 	control := newDeviceControl(t)
-	db := control.authority.DB
-	store := control.reconciliation
+	db := control.db
 	catalog := loadThermalCatalog(t)
 	digest, err := catalog.Digest()
 	if err != nil {
@@ -91,8 +90,8 @@ func TestSerialSessionSafeStopWinsOverBarrierAndRejectsLaterOrdinaryWork(t *test
 	transport := &fakeDeviceTransport{frames: append(mustDeviceFrames(t, state), mustDeviceFrames(t, bootB, safeReceipt)...)}
 	session, err := device.OpenDeviceSession(t.Context(), device.DeviceSessionConfig{
 		Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
-		AllowedFirmwareDigests: []string{state["firmware_digest"].(string)}, AuthorityEpoch: "epoch-1",
-		OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: store,
+		AllowedFirmwareDigests: []string{state["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
+		OwnerInstance: "instance-1", Authority: control.authority,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -124,8 +123,8 @@ func TestSerialSessionSafeStopWinsOverBarrierAndRejectsLaterOrdinaryWork(t *test
 	restartedTransport := &fakeDeviceTransport{frames: mustDeviceFrames(t, bootB)}
 	restarted, err := device.OpenDeviceSession(t.Context(), device.DeviceSessionConfig{
 		Transport: restartedTransport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
-		AllowedFirmwareDigests: []string{bootB["firmware_digest"].(string)}, AuthorityEpoch: "epoch-1",
-		OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: store,
+		AllowedFirmwareDigests: []string{bootB["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
+		OwnerInstance: "instance-1", Authority: control.authority,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -146,18 +145,19 @@ func TestSerialSessionAuthorityLossAfterTransportIsUnknown(t *testing.T) {
 	state := goldenDeviceState()
 	state["capability_digest"] = digest
 	transport := &fakeDeviceTransport{frames: mustDeviceFrames(t, state)}
-	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
-	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: 10, Now: func() time.Time { return now }}
+	clk := clock.NewVirtual(time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC))
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: 10, Now: clk.Now}
 	if err := owner.Claim(t.Context(), "epoch-1"); err != nil {
 		t.Fatal(err)
 	}
-	epochControl := &runtimecontrol.EpochControl{DB: db}
-	authority := &deviceauthority.TargetAuthority{DB: db, Owner: owner, EpochControl: epochControl, InstanceID: "instance-1", Lease: 10, Now: func() time.Time { return now }}
-	store := &deviceauthority.ReconciliationStore{DB: db, Authority: authority, Now: func() time.Time { return now }}
+	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: &runtimecontrol.EpochControl{DB: db}, ClaimLease: 10, Clock: clk})
+	if err != nil {
+		t.Fatal(err)
+	}
 	session, err := device.OpenDeviceSession(t.Context(), device.DeviceSessionConfig{
 		Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
-		AllowedFirmwareDigests: []string{state["firmware_digest"].(string)}, AuthorityEpoch: "epoch-1",
-		OwnerInstance: "instance-1", Authority: authority, Reconciliation: store,
+		AllowedFirmwareDigests: []string{state["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
+		OwnerInstance: "instance-1", Authority: authority,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -165,7 +165,7 @@ func TestSerialSessionAuthorityLossAfterTransportIsUnknown(t *testing.T) {
 	defer func() { _ = session.Close() }()
 	receipt := acceptedReceipt("cmd-unknown")
 	transport.frames = append(transport.frames, mustDeviceFrames(t, receipt)...)
-	transport.receiveHook = func() { now = now.Add(11 * time.Second) }
+	transport.receiveHook = func() { clk.Advance(11 * time.Second) }
 	if _, sent, err := session.Exchange(t.Context(), materializedCommand(t, catalog, "cmd-unknown", idemKey())); err == nil || !sent {
 		t.Fatalf("authority loss after transport was not unknown sent=%v err=%v", sent, err)
 	}
@@ -190,14 +190,14 @@ func TestSerialSessionDisablesAfterReconciliationPersistenceFailure(t *testing.T
 	transport := &fakeDeviceTransport{frames: mustDeviceFrames(t, state)}
 	session, err := device.OpenDeviceSession(t.Context(), device.DeviceSessionConfig{
 		Transport: transport, Catalog: catalog, AllowedCapabilityDigests: []string{digest},
-		AllowedFirmwareDigests: []string{state["firmware_digest"].(string)}, AuthorityEpoch: "epoch-1",
-		OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: control.reconciliation,
+		AllowedFirmwareDigests: []string{state["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
+		OwnerInstance: "instance-1", Authority: control.authority,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = session.Close() }()
-	if _, err := control.authority.DB.ExecContext(t.Context(), "DROP TABLE device_reconciliation"); err != nil {
+	if _, err := control.db.ExecContext(t.Context(), "DROP TABLE device_reconciliation"); err != nil {
 		t.Fatal(err)
 	}
 	transport.frames = append(transport.frames, mustDeviceFrames(t, state)...)
@@ -227,8 +227,8 @@ func TestSerialSessionStartupBarrierRequiresFreshStateQuery(t *testing.T) {
 	transport1 := &fakeDeviceTransport{frames: append(mustDeviceFrames(t, stateA), mustDeviceFrames(t, stateB)...)}
 	config := device.DeviceSessionConfig{
 		Catalog: catalog, AllowedCapabilityDigests: []string{digest},
-		AllowedFirmwareDigests: []string{stateA["firmware_digest"].(string)}, AuthorityEpoch: "epoch-1",
-		OwnerInstance: "instance-1", Authority: control.authority, Reconciliation: control.reconciliation,
+		AllowedFirmwareDigests: []string{stateA["firmware_digest"].(string)}, OwnerEpoch: "epoch-1",
+		OwnerInstance: "instance-1", Authority: control.authority,
 	}
 	config.Transport = transport1
 	session1, err := device.OpenDeviceSession(t.Context(), config)

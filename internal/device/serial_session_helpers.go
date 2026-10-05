@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
@@ -87,4 +88,19 @@ func validateStateIdentity(state map[string]any, catalogDigest string, allowedCa
 		return nil, fmt.Errorf("device handshake identity is incomplete")
 	}
 	return state, nil
+}
+
+// owner is the runtime owner the session commands as.
+func (s *DeviceSession) owner() deviceauthority.Owner {
+	return deviceauthority.Owner{Epoch: s.ownerEpoch, Instance: s.ownerInstance}
+}
+
+// deviceBoot is the device boot the session is currently bound to.
+func (s *DeviceSession) deviceBoot() deviceauthority.DeviceBoot {
+	return deviceauthority.DeviceBoot{DeviceID: s.deviceID, BootID: s.bootID}
+}
+
+// targetClaim is the session's claim on one target of the current boot.
+func (s *DeviceSession) targetClaim(target string) deviceauthority.TargetClaim {
+	return deviceauthority.TargetClaim{Target: target, Device: s.deviceBoot(), Owner: s.owner()}
 }

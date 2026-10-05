@@ -20,10 +20,9 @@ type EmulatorEffectorConfig struct {
 	Catalog    *CapabilityCatalog
 	// AllowedFirmwareDigests is the firmware allow-list checked at handshake.
 	AllowedFirmwareDigests []string
-	AuthorityEpoch         string
+	OwnerEpoch             string
 	OwnerInstance          string
-	Authority              *deviceauthority.TargetAuthority
-	Reconciliation         *deviceauthority.ReconciliationStore
+	Authority              *deviceauthority.Service
 	Telemetry              *telemetry.Runtime
 }
 
@@ -34,10 +33,9 @@ type GatewayEffectorConfig struct {
 	Transport              DeviceTransport
 	Catalog                *CapabilityCatalog
 	AllowedFirmwareDigests []string
-	AuthorityEpoch         string
+	OwnerEpoch             string
 	OwnerInstance          string
-	Authority              *deviceauthority.TargetAuthority
-	Reconciliation         *deviceauthority.ReconciliationStore
+	Authority              *deviceauthority.Service
 	Telemetry              *telemetry.Runtime
 }
 
@@ -74,10 +72,9 @@ func emulatorGatewayConfig(config EmulatorEffectorConfig, transport DeviceTransp
 		Transport:              transport,
 		Catalog:                config.Catalog,
 		AllowedFirmwareDigests: config.AllowedFirmwareDigests,
-		AuthorityEpoch:         config.AuthorityEpoch,
+		OwnerEpoch:             config.OwnerEpoch,
 		OwnerInstance:          config.OwnerInstance,
 		Authority:              config.Authority,
-		Reconciliation:         config.Reconciliation,
 		Telemetry:              config.Telemetry,
 	}
 }
@@ -113,10 +110,9 @@ func gatewaySessionConfig(config GatewayEffectorConfig, catalogDigest string) De
 		Catalog:                  config.Catalog,
 		AllowedCapabilityDigests: []string{catalogDigest},
 		AllowedFirmwareDigests:   config.AllowedFirmwareDigests,
-		AuthorityEpoch:           config.AuthorityEpoch,
+		OwnerEpoch:               config.OwnerEpoch,
 		OwnerInstance:            config.OwnerInstance,
 		Authority:                config.Authority,
-		Reconciliation:           config.Reconciliation,
 		Telemetry:                config.Telemetry,
 	}
 }

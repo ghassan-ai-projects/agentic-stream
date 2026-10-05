@@ -109,10 +109,9 @@ func TestEmulatorEffectorDrivesDeviceOverUDS(t *testing.T) {
 		SocketPath:             socket,
 		Catalog:                catalog,
 		AllowedFirmwareDigests: []string{goldenDeviceState()["firmware_digest"].(string)},
-		AuthorityEpoch:         "epoch-1",
+		OwnerEpoch:             "epoch-1",
 		OwnerInstance:          "instance-1",
 		Authority:              control.authority,
-		Reconciliation:         control.reconciliation,
 	})
 	if err != nil {
 		t.Fatalf("open emulator effector: %v", err)

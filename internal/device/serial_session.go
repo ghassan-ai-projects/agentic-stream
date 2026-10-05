@@ -34,10 +34,9 @@ type DeviceSessionConfig struct {
 	Catalog                  *CapabilityCatalog
 	AllowedCapabilityDigests []string
 	AllowedFirmwareDigests   []string
-	AuthorityEpoch           string
+	OwnerEpoch               string
 	OwnerInstance            string
-	Authority                *deviceauthority.TargetAuthority
-	Reconciliation           *deviceauthority.ReconciliationStore
+	Authority                *deviceauthority.Service
 	Telemetry                *telemetry.Runtime
 }
 
@@ -48,10 +47,9 @@ type DeviceSession struct {
 	mu                     sync.Mutex
 	transport              DeviceTransport
 	catalog                *CapabilityCatalog
-	authorityEpoch         string
+	ownerEpoch             string
 	ownerInstance          string
-	authority              *deviceauthority.TargetAuthority
-	reconciliation         *deviceauthority.ReconciliationStore
+	authority              *deviceauthority.Service
 	deviceID               string
 	bootID                 string
 	firmwareDigest         string
@@ -88,24 +86,14 @@ func validateSessionConfig(config DeviceSessionConfig) error {
 	if config.Transport == nil || config.Catalog == nil {
 		return fmt.Errorf("device transport and capability catalog are required")
 	}
-	if config.AuthorityEpoch == "" {
-		return fmt.Errorf("device authority epoch is required")
+	if config.OwnerEpoch == "" {
+		return fmt.Errorf("device owner epoch is required")
 	}
-	if config.Authority == nil || config.Reconciliation == nil {
-		return fmt.Errorf("device target authority and reconciliation store are required")
+	if config.Authority == nil {
+		return fmt.Errorf("device authority is required")
 	}
-	if config.Authority.Owner == nil || config.Authority.EpochControl == nil {
-		return fmt.Errorf("device target authority requires runtime owner and epoch control")
-	}
-	return validateSessionStores(config)
-}
-
-func validateSessionStores(config DeviceSessionConfig) error {
 	if len(config.AllowedFirmwareDigests) == 0 {
 		return fmt.Errorf("device firmware allow-list is required")
-	}
-	if config.Authority.DB != config.Reconciliation.DB || config.Authority.DB != config.Authority.Owner.DB || config.Authority.DB != config.Authority.EpochControl.DB {
-		return fmt.Errorf("device authority components must share one database")
 	}
 	return nil
 }
@@ -114,18 +102,12 @@ func resolveOwnerInstance(config DeviceSessionConfig) string {
 	if config.OwnerInstance != "" {
 		return config.OwnerInstance
 	}
-	if config.Authority.InstanceID != "" {
-		return config.Authority.InstanceID
-	}
-	return config.Authority.Owner.InstanceID
+	return config.Authority.OwnerInstance()
 }
 
 func validateOwnerInstance(config DeviceSessionConfig) error {
-	if config.OwnerInstance == "" || config.Authority.Owner.InstanceID != config.OwnerInstance {
+	if config.OwnerInstance == "" || config.Authority.OwnerInstance() != config.OwnerInstance {
 		return fmt.Errorf("device owner instance must match runtime owner")
-	}
-	if config.Authority.InstanceID != "" && config.Authority.InstanceID != config.OwnerInstance {
-		return fmt.Errorf("device owner instance must match target authority")
 	}
 	return nil
 }
@@ -158,9 +140,9 @@ func handshakeDeviceSession(ctx context.Context, config DeviceSessionConfig, cat
 func newDeviceSession(config DeviceSessionConfig) *DeviceSession {
 	return &DeviceSession{
 		transport: config.Transport, catalog: config.Catalog,
-		authorityEpoch: config.AuthorityEpoch, ownerInstance: config.OwnerInstance,
-		authority: config.Authority, reconciliation: config.Reconciliation,
-		receipts: make(map[string]cachedReceipt), claimedTargets: make(map[string]struct{}),
+		ownerEpoch: config.OwnerEpoch, ownerInstance: config.OwnerInstance,
+		authority: config.Authority,
+		receipts:  make(map[string]cachedReceipt), claimedTargets: make(map[string]struct{}),
 		telemetry:              config.Telemetry,
 		allowedFirmwareDigests: append([]string(nil), config.AllowedFirmwareDigests...),
 	}
@@ -206,10 +188,10 @@ func (s *DeviceSession) bindHandshakeState(ctx context.Context, state map[string
 }
 
 func (s *DeviceSession) bindHandshakeBarrier(ctx context.Context, state map[string]any) error {
-	if err := s.authority.AssertRuntime(ctx, s.authorityEpoch); err != nil {
+	if err := s.authority.AssertRuntime(ctx, s.ownerEpoch); err != nil {
 		return fmt.Errorf("assert authority before binding device state: %w", err)
 	}
-	priorBarrier, err := s.reconciliation.Required(ctx, s.deviceID)
+	priorBarrier, err := s.authority.ReconciliationRequired(ctx, s.deviceID)
 	if err != nil {
 		return fmt.Errorf("read device reconciliation barrier: %w", err)
 	}
@@ -218,7 +200,7 @@ func (s *DeviceSession) bindHandshakeBarrier(ctx context.Context, state map[stri
 
 func (s *DeviceSession) persistHandshakeBarrier(ctx context.Context, state map[string]any, priorBarrier bool) error {
 	wasRequired := s.reconciliationRequired
-	required, err := s.reconciliation.BindState(ctx, state, s.authorityEpoch, s.ownerInstance)
+	required, err := s.authority.RecordDeviceState(ctx, s.owner(), state)
 	if err != nil {
 		return fmt.Errorf("bind device reconciliation state: %w", err)
 	}
@@ -232,7 +214,7 @@ func (s *DeviceSession) persistHandshakeBarrier(ctx context.Context, state map[s
 
 func (s *DeviceSession) restoreSafeStopState(ctx context.Context) error {
 	var err error
-	s.safeStopRequested, err = s.authority.SafeStopRequested(ctx, s.deviceID, s.bootID)
+	s.safeStopRequested, err = s.authority.SafeStopLatched(ctx, s.deviceBoot())
 	if err != nil {
 		return fmt.Errorf("read durable safe-stop state: %w", err)
 	}
