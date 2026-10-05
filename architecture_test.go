@@ -40,21 +40,21 @@ var foundationPackages = []string{
 // than just tidiness: models propose but never reach the policy or action
 // plane, and replay never performs external effects.
 var forbiddenImports = map[string][]string{
-	"internal/cognition":              {"internal/policy", "internal/actions"},
-	"internal/decisions":              {"internal/policy", "internal/actions"},
-	"internal/episodes":               {"internal/policy", "internal/actions", "internal/worker", "proto/agenticstream/runtime/v1", "internal/evidence"},
-	"internal/evidence":               {"internal/policy", "internal/actions"},
-	"internal/executor/native":        {"internal/policy", "internal/actions"},
-	"internal/executor/remote":        {"internal/policy", "internal/actions"},
-	"internal/worker":                 {"internal/policy", "internal/actions"},
-	"internal/actions":                {"internal/device", "internal/watch"},
-	"internal/watch":                  {"internal/actions", "internal/policy", "internal/episodes", "internal/cognition"},
-	"internal/replay":                      {"internal/actions", "internal/runtime"},
-	"internal/executor/conformance":        {"internal/actions"},
-	"internal/replay/internal/app":         {"internal/actions", "internal/runtime"},
-	"internal/replay/internal/domain":      {"internal/actions", "internal/runtime"},
-	"internal/replay/internal/store":       {"internal/actions", "internal/runtime"},
-	"internal/replay/internal/transport":   {"internal/actions", "internal/runtime"},
+	"internal/cognition":                 {"internal/policy", "internal/actions"},
+	"internal/decisions":                 {"internal/policy", "internal/actions"},
+	"internal/episodes":                  {"internal/policy", "internal/actions", "internal/worker", "proto/agenticstream/runtime/v1", "internal/evidence"},
+	"internal/evidence":                  {"internal/policy", "internal/actions"},
+	"internal/executor/native":           {"internal/policy", "internal/actions"},
+	"internal/executor/remote":           {"internal/policy", "internal/actions"},
+	"internal/worker":                    {"internal/policy", "internal/actions"},
+	"internal/actions":                   {"internal/device", "internal/watch"},
+	"internal/watch":                     {"internal/actions", "internal/policy", "internal/episodes", "internal/cognition"},
+	"internal/replay":                    {"internal/actions", "internal/runtime"},
+	"internal/executor/conformance":      {"internal/actions"},
+	"internal/replay/internal/app":       {"internal/actions", "internal/runtime"},
+	"internal/replay/internal/domain":    {"internal/actions", "internal/runtime"},
+	"internal/replay/internal/store":     {"internal/actions", "internal/runtime"},
+	"internal/replay/internal/transport": {"internal/actions", "internal/runtime"},
 }
 
 // allowedImports is the reviewed internal dependency graph. A new edge must

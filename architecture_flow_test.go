@@ -63,7 +63,8 @@ func TestReasoningAndReplayCannotReachEffectImplementations(t *testing.T) {
 	module := readModulePath(t, filepath.Join(root, "go.mod"))
 	graph := productionImportGraph(t, root, module)
 	reasoning := []string{"internal/cognition", "internal/decisions", "internal/engine", "internal/episodes", "internal/evidence", "internal/executor/native", "internal/executor/remote", "internal/executor/conformance", "internal/worker"}
-	for _, source := range append(reasoning, "internal/replay") {
+	replayLayers := []string{"internal/replay", "internal/replay/internal/app", "internal/replay/internal/domain", "internal/replay/internal/store", "internal/replay/internal/transport"}
+	for _, source := range append(reasoning, replayLayers...) {
 		for _, target := range []string{"internal/actions", "internal/device", "internal/device/internal/app", "internal/device/internal/transport", "internal/watch", "internal/runtime", "internal/runtime/internal/app", "internal/runtime/internal/composition", "internal/runtime/internal/store", "internal/runtime/internal/transport", "cmd/agentic-stream"} {
 			if path := dependencyPath(graph, source, target); len(path) > 0 {
 				t.Errorf("effect implementation reachable: %s", strings.Join(path, " -> "))
