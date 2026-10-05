@@ -1,11 +1,9 @@
-package runtime
+package composition
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/admission"
@@ -19,7 +17,11 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
+	app "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
+	store "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
+	transport "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/transport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
+	"time"
 )
 
 func pipelineDefaults(cfg PipelineConfig) PipelineConfig {
@@ -53,14 +55,14 @@ func composeEffectors(cfg PipelineConfig) (actionport.Effector, *watch.Effector)
 	if gatewayEffector != nil {
 		gatewayEffector.WithTelemetry(cfg.Telemetry)
 	}
-	compositeEffector := NewCompositeEffector(watch, cfg.Effector)
+	compositeEffector := app.NewCompositeEffector(watch, cfg.Effector)
 	if gatewayEffector != nil {
 		compositeEffector.WithSerial(gatewayEffector)
 	}
 	return compositeEffector, watch
 }
 
-func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.Engine, watch *watch.Effector) (*Pipeline, error) {
+func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.Engine, watch *watch.Effector) (*app.Pipeline, error) {
 	assembler, runner := composeCognition(cfg)
 	admitter := admission.New(admission.Config{
 		DB: cfg.DB, Assembler: assembler, Clock: cfg.Clock, TenantID: cfg.TenantID,
@@ -70,12 +72,12 @@ func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.
 	if err != nil {
 		return nil, err
 	}
-	dispatcher := composeDispatcher(cfg)
-	return &Pipeline{
-		db: cfg.DB, log: log, engine: stream, admission: admitter, runner: runner,
-		policy: policyGateway, dispatcher: dispatcher, watch: watch, telemetry: cfg.Telemetry,
-		owner: cfg.Owner, ownerEpoch: cfg.OwnerEpoch, clk: cfg.Clock, tenantID: cfg.TenantID,
-	}, nil
+	return app.NewPipeline(app.PipelineDependencies{
+		Log: log, Engine: stream, Admission: admitter, Runner: runner, Dispatcher: composeDispatcher(cfg), Watch: watch, Telemetry: cfg.Telemetry,
+		Transactions: &store.PipelineStore{DB: cfg.DB, Policy: policyGateway, Owner: cfg.Owner, OwnerEpoch: cfg.OwnerEpoch},
+		Sources:      &transport.Sources{DB: cfg.DB, Log: log, TenantID: cfg.TenantID, Telemetry: cfg.Telemetry},
+		Clock:        cfg.Clock, TenantID: cfg.TenantID,
+	}), nil
 }
 
 func composeCognition(cfg PipelineConfig) (*episodes.Assembler, *episodes.Runner) {

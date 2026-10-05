@@ -1,9 +1,10 @@
-package runtime
+package app
 
 import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 	"path/filepath"
 	"testing"
 	"time"
@@ -22,11 +23,11 @@ func TestApprovalTransactionsPreserveMissingRequestAndOwnerErrors(t *testing.T) 
 	defer func() { _ = db.Close() }()
 	ownerErr := errors.New("owner lost")
 	for _, failure := range []error{nil, ownerErr} {
-		service, err := policy.New(policy.Config{PolicyVersion: "test", Interlock: interlock.DurableReader{}, RuntimeOwner: func(context.Context, *sql.Tx, string) error { return failure }, DecisionEpoch: unownedPolicyCheck})
+		service, err := policy.New(policy.Config{PolicyVersion: "test", Interlock: interlock.DurableReader{}, RuntimeOwner: func(context.Context, *sql.Tx, string) error { return failure }, DecisionEpoch: func(context.Context, *sql.Tx, string) error { return nil }})
 		if err != nil {
 			t.Fatal(err)
 		}
-		pipeline := &Pipeline{db: db, policy: service, tenantID: "tenant", clk: clock.NewVirtual(time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC))}
+		pipeline := &Pipeline{transactions: &store.PipelineStore{DB: db, Policy: service}, tenantID: "tenant", clk: clock.NewVirtual(time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC))}
 		expected := failure
 		if expected == nil {
 			expected = policy.ErrApprovalNotFound

@@ -1,9 +1,8 @@
-package runtime
+package app
 
 import (
 	"context"
 	"fmt"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 

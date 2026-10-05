@@ -1,4 +1,4 @@
-package runtime_test
+package composition_test
 
 import (
 	"context"
@@ -24,7 +24,7 @@ func TestPipelineRunsNormalizedBatchThroughAllPlanes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	compiled, err := spec.CompileFile(ctx, "../../docs/design/examples/predictive-maintenance.situation.yaml")
+	compiled, err := spec.CompileFile(ctx, "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestPipelineRunsNormalizedBatchThroughAllPlanes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := pipeline.RunJSONL(ctx, "../../examples/predictive-maintenance/testdata/trace-opening.jsonl")
+	report, err := pipeline.RunJSONL(ctx, "../../../../examples/predictive-maintenance/testdata/trace-opening.jsonl")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestPipelineSurvivesWatchExpressionEvaluationError(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	compiled, err := spec.CompileFile(ctx, "../../docs/design/examples/predictive-maintenance.situation.yaml")
+	compiled, err := spec.CompileFile(ctx, "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestPipelineSurvivesWatchExpressionEvaluationError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pipeline.RunJSONL(ctx, "../../examples/predictive-maintenance/testdata/trace-opening.jsonl"); err != nil {
+	if _, err := pipeline.RunJSONL(ctx, "../../../../examples/predictive-maintenance/testdata/trace-opening.jsonl"); err != nil {
 		t.Fatalf("pipeline stopped on watch expression evaluation error: %v", err)
 	}
 

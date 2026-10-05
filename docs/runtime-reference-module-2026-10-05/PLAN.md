@@ -18,3 +18,11 @@ round. Do not fix the separately audited synchronous-source/backlog concerns as
 part of this behavior-preserving migration.
 
 R0: design recorded against `e8f33a0`; no runtime migration code changed yet.
+
+R1: pipeline and effect-routing use cases extracted to app; construction to
+composition; source creation to transport; policy/owner/cost transactions to
+store; batch report to domain. Public pipeline and effect facades delegate.
+Focused runtime/policy/API/CLI and architecture checks pass; lint autofix is
+clean. Runtime layers with statements exceed 60% coverage. Pagination and
+reconsideration admission regressions remain, with staged ports constructed
+explicitly rather than reaching through the public pipeline's private fields.

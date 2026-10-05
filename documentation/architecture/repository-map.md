@@ -78,3 +78,13 @@ versioned JSON contracts, and current-v1 worker protocol.
 - [Business modules and ownership](modules.md)
 - [Contract index](../contracts/README.md)
 - [Contributing](../../CONTRIBUTING.md)
+
+Runtime reference layers:
+
+| Package | Responsibility |
+| --- | --- |
+| `internal/runtime/internal/app/` | Ordered live-runtime use cases and process lifetimes |
+| `internal/runtime/internal/composition/` | Concrete plane and adapter wiring |
+| `internal/runtime/internal/domain/` | Pure runtime values and configuration rules |
+| `internal/runtime/internal/store/` | Transaction plumbing through lifecycle owners |
+| `internal/runtime/internal/transport/` | Source and worker connection adapters |

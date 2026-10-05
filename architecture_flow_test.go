@@ -14,6 +14,7 @@ import (
 // packageLayers are reviewed dependency levels, not automatically computed
 // depths. Adding an acyclic edge still fails if it crosses upward or sideways.
 var packageLayers = map[string]int{
+	"internal/runtime/internal/domain": 1, "internal/runtime/internal/transport": 7, "internal/runtime/internal/store": 8, "internal/runtime/internal/app": 9, "internal/runtime/internal/composition": 10,
 	"internal/actionport": 0, "internal/canonicaljson": 0, "internal/clock": 0, "internal/costcontrol": 0,
 	"internal/duration": 0, "internal/eventschema": 0, "internal/ids": 0, "internal/interlock": 0, "internal/telemetry": 0,
 	"migrations": 0, "proto/agenticstream/runtime/v1": 0,
@@ -24,7 +25,7 @@ var packageLayers = map[string]int{
 	"internal/api": 4, "internal/approvalledger": 4, "internal/watch": 4, "internal/authority": 4, "internal/situations": 4,
 	"internal/actions": 5, "internal/cognition": 5, "internal/device/internal/app": 5, "internal/episodes": 5, "internal/policy/internal/store": 5, "internal/policy/internal/app": 6, "internal/policy": 7, "internal/soak": 5,
 	"internal/admission": 6, "internal/device": 6, "internal/engine": 6, "internal/executor/conformance": 6, "internal/executor/native": 6, "internal/executor/remote": 6, "internal/runartifact": 8,
-	"internal/replay": 8, "internal/runtime": 8, "cmd/agentic-stream": 9,
+	"internal/replay": 8, "internal/runtime": 11, "cmd/agentic-stream": 12,
 }
 
 func TestImportsOnlyPointToLowerArchitectureLayers(t *testing.T) {
@@ -63,7 +64,7 @@ func TestReasoningAndReplayCannotReachEffectImplementations(t *testing.T) {
 	graph := productionImportGraph(t, root, module)
 	reasoning := []string{"internal/cognition", "internal/decisions", "internal/engine", "internal/episodes", "internal/evidence", "internal/executor/native", "internal/executor/remote", "internal/executor/conformance", "internal/worker"}
 	for _, source := range append(reasoning, "internal/replay") {
-		for _, target := range []string{"internal/actions", "internal/device", "internal/device/internal/app", "internal/device/internal/transport", "internal/watch", "internal/runtime", "cmd/agentic-stream"} {
+		for _, target := range []string{"internal/actions", "internal/device", "internal/device/internal/app", "internal/device/internal/transport", "internal/watch", "internal/runtime", "internal/runtime/internal/app", "internal/runtime/internal/composition", "internal/runtime/internal/store", "internal/runtime/internal/transport", "cmd/agentic-stream"} {
 			if path := dependencyPath(graph, source, target); len(path) > 0 {
 				t.Errorf("effect implementation reachable: %s", strings.Join(path, " -> "))
 			}

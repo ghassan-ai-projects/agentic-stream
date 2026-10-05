@@ -1,19 +1,14 @@
-package runtime
+package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // RunJSONL ingests normalized JSONL, evaluates the stream and cognition,
@@ -25,8 +20,7 @@ func (p *Pipeline) RunJSONL(ctx context.Context, path string) (PipelineReport, e
 		return PipelineReport{}, err
 	}
 	var report PipelineReport
-	replay := ingress.NewJSONLReplay(p.db, p.log, p.tenantID, path, "live-jsonl:"+path)
-	report.EventsIngested, err = replay.Run(ctx)
+	report.EventsIngested, err = p.sources.RunJSONL(ctx, path)
 	if err != nil {
 		return report, fmt.Errorf("ingest live JSONL: %w", err)
 	}
@@ -54,8 +48,7 @@ func (p *Pipeline) RunLiveSocket(ctx context.Context, path string) error {
 	if err := p.assertOwner(ctx); err != nil {
 		return err
 	}
-	source := ingress.NewLiveUDSSource(p.log, p.tenantID, path).WithTelemetry(p.telemetry)
-	err := source.Run(ctx, func(sinkCtx context.Context, env contractsv1.Envelope) error {
+	err := p.sources.RunLiveSocket(ctx, path, func(sinkCtx context.Context, env contractsv1.Envelope) error {
 		return p.ingestLiveEvent(sinkCtx, env)
 	})
 	if err != nil && !normalLiveSocketShutdown(ctx, err) {
@@ -91,8 +84,7 @@ func (p *Pipeline) RunSimulatorJSONL(ctx context.Context, path string) (Pipeline
 	if err != nil {
 		return PipelineReport{}, err
 	}
-	replay := ingress.NewSimulatorJSONLReplay(p.db, p.log, ingress.SimulatorOptions{TenantID: p.tenantID}, path, "live-simulator:"+path)
-	count, err := replay.Run(ctx)
+	count, err := p.sources.RunSimulatorJSONL(ctx, path)
 	if err != nil {
 		return PipelineReport{}, fmt.Errorf("ingest simulator JSONL: %w", err)
 	}
@@ -221,7 +213,7 @@ func (p *Pipeline) fireWatchRecord(ctx context.Context, cursor eventlog.LogPosit
 
 func (p *Pipeline) evaluatePendingIntents(ctx context.Context, report *PipelineReport) error {
 	for {
-		intentID, found, err := policy.NextPendingIntent(ctx, p.db.DB, p.tenantID)
+		intentID, found, err := p.transactions.NextPendingIntent(ctx, p.tenantID)
 		if err != nil || !found {
 			return err //nolint:wrapcheck // Policy names the failed read; the batch error text is unchanged.
 		}
@@ -232,16 +224,6 @@ func (p *Pipeline) evaluatePendingIntents(ctx context.Context, report *PipelineR
 	}
 }
 
-// evaluateIntent runs policy for one intent in its own transaction.
 func (p *Pipeline) evaluateIntent(ctx context.Context, intentID string) error {
-	now := p.clk.Now().UTC()
-	if err := p.db.WithTx(ctx, func(tx *sql.Tx) error {
-		if _, err := p.policy.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now}); err != nil {
-			return fmt.Errorf("evaluate intent: %w", err)
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("evaluate intent %s: %w", intentID, err)
-	}
-	return nil
+	return p.transactions.EvaluateIntent(ctx, intentID, p.clk.Now().UTC())
 }
