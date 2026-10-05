@@ -37,6 +37,6 @@ None.
 | Round | Status |
 | --- | --- |
 | R0 | Accepted, this commit |
-| R1 | Pending |
-| R2 | Pending |
-| R3 | Pending |
+| R1 | Accepted: domain layer at level 3 with pure rules and table tests (budgets, snapshot evidence, failure classification with the budget error types, decision digests); facade aliases the error types; suites unchanged and green, domain 88.9% |
+| R2 | Accepted: every SQL statement moved to the store layer behind domain-named methods taking the caller's transaction; durable ownership of `decisions` and the `intents` insert handoff moved to the store; the P8-labelled test files renamed to behavior names. Store coverage 67.1% |
+| R3 | Accepted: injected violations (SQL in facade, `os` in domain, forbidden imports in store and facade) each rejected; module guide and language guide added; AGENTS.md and repository map updated. Full `make ci-check` recorded in the final report |

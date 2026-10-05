@@ -75,7 +75,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/situations` - Situation state machine, versioning, publication
 - `internal/cognition` - deterministic cognitive scheduler
 - `internal/admission` - episode admission from the scheduler queue
-- `internal/episodes` - bounded episode lifecycle
+- `internal/episodes` - bounded episode lifecycle; pure episode rules in `internal/episodes/internal/domain`, all episode SQL in `internal/store` under the caller's transaction (see [episodes module guide](internal/episodes/README.md))
 - `internal/executor/native`, `internal/executor/remote` - concrete executors behind the episode `Executor` port (in-process and streamed worker protocol)
 - `internal/evidence` - evidence/tool boundary for episodes
 - `internal/decisions` - typed Decision model
