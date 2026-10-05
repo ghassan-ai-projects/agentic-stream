@@ -2,7 +2,7 @@
 
 | Layer | Owns | Must not |
 | --- | --- | --- |
-| Facade | Public domain aliases, executor port, validated configuration, four delegating service methods, catalog delegation | SQL, transaction ownership, epoch classification or lifecycle rules |
+| Facade | Public domain aliases, executor port, validated configuration, three delegating service methods, catalog delegation | SQL, transaction ownership, epoch classification or lifecycle rules |
 | App | Assembly and bounded lifecycle sequencing; clock reads, identity allocation, telemetry, cancellation; chooses which domain decision to persist | Database imports, raw SQL transaction access, ledger/cost methods accepting SQL |
 | Domain | Request/outcome vocabulary, cached wall budget, catalog admission, provenance, decision validation input/digests, failure classification, freshness/retry/terminal and shadow rules | I/O, control implementation, clock reads |
 | Store | Join caller transactions, open runner units of work, SQL projections/writes, ledger/cost/epoch/shadow calls on the original transaction | Domain decisions, hidden commits during joined operations |
@@ -10,7 +10,7 @@
 
 Public surface: `Service`, `Config`, `ExecutionConfig`, `New`, `Request`,
 `Outcome`, `Executor`, both budget errors and `CompileIntentCatalog`.
-`Service` exposes `Assemble`, `Persist`, `Rebind`, `RunOnce`. `Execution == nil`
+`Service` exposes `Assemble`, `Persist`, `RunOnce`; rebind is a private runner use case. `Execution == nil`
 is explicit assembly-only configuration: `RunOnce` refuses it. Configured
 execution requires a database, executor and decision-epoch check. Clock and
 ID generator keep their previous defaults. Cost accounting remains an

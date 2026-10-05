@@ -131,8 +131,10 @@ func composeConfig(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, gi
 	if given.costKill {
 		setCostKillSwitch(t, db)
 	}
-	assembler := episodes.NewAssembler(compiled, ids.Deterministic())
-	assembler.WithCostControl(&costcontrol.Controller{})
+	assembler, err := episodes.New(episodes.Config{Spec: compiled, IDGenerator: ids.Deterministic(), CostControl: &costcontrol.Controller{}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	return admission.Config{
 		DB: db, Assembler: assembler, Clock: clock.Physical(), TenantID: "default",
 		Owner: owner, OwnerEpoch: ownerEpoch, EpochControl: control, DemoMode: given.demo,

@@ -20,7 +20,10 @@ type executableItem struct {
 // MaterializeEpisodes turns every executable scheduler item into a durable
 // episode through the episodes module's assembler, in one transaction.
 func (s Store) MaterializeEpisodes(ctx context.Context, compiled *spec.CompiledSpec, tenantID string, now time.Time) error {
-	assembler := episodes.NewAssembler(compiled, ids.Deterministic())
+	assembler, err := episodes.New(episodes.Config{Spec: compiled, IDGenerator: ids.Deterministic()})
+	if err != nil {
+		return fmt.Errorf("configure replay episodes: %w", err)
+	}
 	if err := s.DB.WithTx(ctx, func(tx *sql.Tx) error {
 		return persistExecutableEpisodes(ctx, tx, assembler, tenantID, now)
 	}); err != nil {
@@ -29,7 +32,7 @@ func (s Store) MaterializeEpisodes(ctx context.Context, compiled *spec.CompiledS
 	return nil
 }
 
-func persistExecutableEpisodes(ctx context.Context, tx *sql.Tx, assembler *episodes.Assembler, tenantID string, now time.Time) error {
+func persistExecutableEpisodes(ctx context.Context, tx *sql.Tx, assembler *episodes.Service, tenantID string, now time.Time) error {
 	executable, err := executableSchedulerItems(ctx, tx, tenantID, now)
 	if err != nil {
 		return err
@@ -42,7 +45,7 @@ func persistExecutableEpisodes(ctx context.Context, tx *sql.Tx, assembler *episo
 	return nil
 }
 
-func persistReplayEpisode(ctx context.Context, tx *sql.Tx, assembler *episodes.Assembler, item executableItem, tenantID string) error {
+func persistReplayEpisode(ctx context.Context, tx *sql.Tx, assembler *episodes.Service, item executableItem, tenantID string) error {
 	req, err := assembler.Assemble(ctx, tx, item.id, tenantID)
 	if err != nil {
 		return fmt.Errorf("assemble scheduler item %s: %w", item.id, err)

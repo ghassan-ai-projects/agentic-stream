@@ -1,4 +1,4 @@
-package app
+package app_test
 
 import (
 	"context"
@@ -8,6 +8,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
@@ -32,7 +35,7 @@ func TestRunnerPersistsCancellationAfterExecutorCancelsContext(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	seedEpisode(t, ctx, db, "epi-cancel")
 
-	runner := NewRunner(store.New(db), cancelingExecutor{cancel: cancel}, clock.Physical(), ids.Deterministic())
+	runner := app.NewRunner(store.New(db), cancelingExecutor{cancel: cancel}, clock.Physical(), ids.Deterministic())
 	processed, err := runner.RunOnce(ctx, "tenant")
 	if err != nil || !processed {
 		t.Fatalf("run processed=%v err=%v", processed, err)
@@ -64,7 +67,7 @@ func TestRunnerPersistsSuccessfulOutcomeAfterParentCancellation(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	seedEpisode(t, ctx, db, "epi-cancel-success")
 
-	runner := NewRunner(store.New(db), successfulCancelingExecutor{cancel: cancel}, clock.Physical(), ids.Deterministic())
+	runner := app.NewRunner(store.New(db), successfulCancelingExecutor{cancel: cancel}, clock.Physical(), ids.Deterministic())
 	processed, err := runner.RunOnce(ctx, "tenant")
 	if err != nil || !processed {
 		t.Fatalf("run processed=%v err=%v", processed, err)
@@ -99,7 +102,7 @@ func TestRunnerPersistsProducedOutcomeAfterParentCancellation(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	seedProducedEpisode(t, ctx, db, "epi-cancel-produced")
 
-	runner := NewRunner(store.New(db), producedCancelingExecutor{cancel: cancel}, clock.Physical(), ids.Deterministic())
+	runner := app.NewRunner(store.New(db), producedCancelingExecutor{cancel: cancel}, clock.Physical(), ids.Deterministic())
 	processed, err := runner.RunOnce(ctx, "tenant")
 	if err != nil || !processed {
 		t.Fatalf("run processed=%v err=%v", processed, err)
@@ -135,7 +138,7 @@ func TestRunnerCancelsSupersededStreamedAttempt(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	seedEpisode(t, ctx, db, "epi-supersede")
 	started := make(chan struct{})
-	runner := NewRunner(store.New(db), blockingExecutor{started: started}, clock.Physical(), ids.Deterministic())
+	runner := app.NewRunner(store.New(db), blockingExecutor{started: started}, clock.Physical(), ids.Deterministic())
 	result := make(chan error, 1)
 	go func() { _, runErr := runner.RunOnce(ctx, "tenant"); result <- runErr }()
 	select {
@@ -184,7 +187,7 @@ func TestRunnerQuarantinesAlreadyKilledEpochBeforeAttempt(t *testing.T) {
 	}
 
 	control := &runtimecontrol.EpochControl{DB: db}
-	runner := withEpochControl(NewRunner(store.New(db), producedCancelingExecutor{}, clock.Physical(), ids.Deterministic()), control)
+	runner := withEpochControl(app.NewRunner(store.New(db), producedCancelingExecutor{}, clock.Physical(), ids.Deterministic()), control)
 	processed, err := runner.RunOnce(ctx, "tenant")
 	if err != nil || !processed {
 		t.Fatalf("run processed=%v err=%v", processed, err)
@@ -214,7 +217,7 @@ func TestRunnerQuarantinesUnboundEpochBeforeAttempt(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	seedEpisode(t, ctx, db, "epi-unbound-epoch")
 	control := &runtimecontrol.EpochControl{DB: db}
-	runner := withEpochControl(NewRunner(store.New(db), producedCancelingExecutor{}, clock.Physical(), ids.Deterministic()), control)
+	runner := withEpochControl(app.NewRunner(store.New(db), producedCancelingExecutor{}, clock.Physical(), ids.Deterministic()), control)
 	processed, err := runner.RunOnce(ctx, "tenant")
 	if err != nil || !processed {
 		t.Fatalf("run processed=%v err=%v", processed, err)
@@ -255,7 +258,7 @@ func TestRunnerQuarantinesLateOutcomeAfterEpochKill(t *testing.T) {
 		}
 	})
 	control := &runtimecontrol.EpochControl{DB: db}
-	runner := withEpochControl(NewRunner(store.New(db), lateProducedOutcomeExecutor{started: started, release: release}, clock.Physical(), ids.Deterministic()), control)
+	runner := withEpochControl(app.NewRunner(store.New(db), lateProducedOutcomeExecutor{started: started, release: release}, clock.Physical(), ids.Deterministic()), control)
 	result := make(chan error, 1)
 	go func() {
 		_, runErr := runner.RunOnce(ctx, "tenant")
@@ -301,36 +304,36 @@ func TestRunnerQuarantinesLateOutcomeAfterEpochKill(t *testing.T) {
 
 type cancelingExecutor struct{ cancel context.CancelFunc }
 
-func (e cancelingExecutor) Execute(context.Context, *Request) (*Outcome, error) {
+func (e cancelingExecutor) Execute(context.Context, *app.Request) (*app.Outcome, error) {
 	e.cancel()
 	return nil, context.Canceled
 }
 
-var _ Executor = cancelingExecutor{}
+var _ app.Executor = cancelingExecutor{}
 
 type successfulCancelingExecutor struct{ cancel context.CancelFunc }
 
-func (e successfulCancelingExecutor) Execute(_ context.Context, req *Request) (*Outcome, error) {
+func (e successfulCancelingExecutor) Execute(_ context.Context, req *app.Request) (*app.Outcome, error) {
 	e.cancel()
-	return &Outcome{Status: string(episodeledger.AttemptDeclined), AttemptID: req.AttemptID, Fence: req.Fence}, nil
+	return &app.Outcome{Status: string(episodeledger.AttemptDeclined), AttemptID: req.AttemptID, Fence: req.Fence}, nil
 }
 
-var _ Executor = successfulCancelingExecutor{}
+var _ app.Executor = successfulCancelingExecutor{}
 
 type producedCancelingExecutor struct{ cancel context.CancelFunc }
 
-func (e producedCancelingExecutor) Execute(_ context.Context, req *Request) (*Outcome, error) {
+func (e producedCancelingExecutor) Execute(_ context.Context, req *app.Request) (*app.Outcome, error) {
 	if e.cancel != nil {
 		e.cancel()
 	}
-	return NewFakeExecutor().Execute(context.Background(), req)
+	return fixture.New().Execute(context.Background(), req)
 }
 
-var _ Executor = producedCancelingExecutor{}
+var _ app.Executor = producedCancelingExecutor{}
 
 type blockingExecutor struct{ started chan<- struct{} }
 
-func (e blockingExecutor) Execute(ctx context.Context, _ *Request) (*Outcome, error) {
+func (e blockingExecutor) Execute(ctx context.Context, _ *app.Request) (*app.Outcome, error) {
 	close(e.started)
 	<-ctx.Done()
 	return nil, fmt.Errorf("blocking executor canceled: %w", ctx.Err())
@@ -341,13 +344,13 @@ type lateProducedOutcomeExecutor struct {
 	release <-chan struct{}
 }
 
-func (e lateProducedOutcomeExecutor) Execute(_ context.Context, req *Request) (*Outcome, error) {
+func (e lateProducedOutcomeExecutor) Execute(_ context.Context, req *app.Request) (*app.Outcome, error) {
 	close(e.started)
 	<-e.release
-	return NewFakeExecutor().Execute(context.Background(), req)
+	return fixture.New().Execute(context.Background(), req)
 }
 
-var _ Executor = lateProducedOutcomeExecutor{}
+var _ app.Executor = lateProducedOutcomeExecutor{}
 
 func seedProducedEpisode(t *testing.T, ctx context.Context, db *storage.DB, episodeID string) {
 	t.Helper()

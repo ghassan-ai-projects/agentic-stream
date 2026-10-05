@@ -1,4 +1,4 @@
-package app
+package app_test
 
 import (
 	"context"
@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 
@@ -107,7 +110,7 @@ func seedFreshnessEpisode(t *testing.T, db *storage.DB, episodeID, situationID s
 
 func runOnceExpectingStale(t *testing.T, db *storage.DB) {
 	t.Helper()
-	runner := withEpochRunner(db, NewFakeExecutor(), clock.Physical(), ids.Deterministic())
+	runner := withEpochRunner(db, fixture.New(), clock.Physical(), ids.Deterministic())
 	processed, err := runner.RunOnce(context.Background(), "tenant")
 	if err != nil {
 		t.Fatalf("a stale refusal must be a committed skip, not an error: %v", err)
@@ -148,7 +151,7 @@ func TestDispatchProceedsOnFreshSituation(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	seedFreshnessEpisode(t, db, "epi-fresh", "sit-fresh", 1, 1)
-	runner := withEpochRunner(db, NewFakeExecutor(), clock.Physical(), ids.Deterministic())
+	runner := withEpochRunner(db, fixture.New(), clock.Physical(), ids.Deterministic())
 	processed, err := runner.RunOnce(context.Background(), "tenant")
 	if err != nil {
 		t.Fatalf("fresh dispatch must run: %v", err)
@@ -176,7 +179,7 @@ func TestDispatchDeadlineNeverExtended(t *testing.T) {
 		"SELECT request_json FROM episodes WHERE episode_id = 'epi-deadline'").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	runner := withEpochRunner(db, NewFakeExecutor(), clock.Physical(), ids.Deterministic())
+	runner := withEpochRunner(db, fixture.New(), clock.Physical(), ids.Deterministic())
 	if _, err := runner.RunOnce(context.Background(), "tenant"); err != nil {
 		t.Fatal(err)
 	}
@@ -255,9 +258,9 @@ func TestDispatchDecisionAfterDeadlineIsRefused(t *testing.T) {
 
 type slowExecutor struct{}
 
-func (slowExecutor) Execute(ctx context.Context, req *Request) (*Outcome, error) {
+func (slowExecutor) Execute(ctx context.Context, req *app.Request) (*app.Outcome, error) {
 	time.Sleep(50 * time.Millisecond)
-	outcome, err := NewFakeExecutor().Execute(ctx, req)
+	outcome, err := fixture.New().Execute(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("slow executor: %w", err)
 	}
@@ -269,7 +272,7 @@ func (slowExecutor) Execute(ctx context.Context, req *Request) (*Outcome, error)
 // package).
 type p8BlockingExecutor struct{ started chan<- struct{} }
 
-func (e p8BlockingExecutor) Execute(ctx context.Context, _ *Request) (*Outcome, error) {
+func (e p8BlockingExecutor) Execute(ctx context.Context, _ *app.Request) (*app.Outcome, error) {
 	close(e.started)
 	<-ctx.Done()
 	return nil, fmt.Errorf("blocking executor canceled: %w", ctx.Err())

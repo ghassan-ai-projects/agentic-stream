@@ -69,12 +69,15 @@ func replayedStore(t *testing.T) *storage.DB {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	assembler := episodes.NewAssembler(compiled, ids.Deterministic())
+	assembler, err := episodes.New(episodes.Config{Spec: compiled, IDGenerator: ids.Deterministic()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	admitOne(t, db, assembler)
 	return db
 }
 
-func admitOne(t *testing.T, db *storage.DB, assembler *episodes.Assembler) {
+func admitOne(t *testing.T, db *storage.DB, assembler *episodes.Service) {
 	t.Helper()
 	ctx := context.Background()
 	var itemID string

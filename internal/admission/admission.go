@@ -21,7 +21,7 @@ var ErrFixtureRejected = errors.New("fixture executor rejected")
 // Config is the owner-scoped admission composition for one tenant.
 type Config struct {
 	DB         *storage.DB
-	Assembler  *episodes.Assembler
+	Assembler  *episodes.Service
 	Clock      clock.Clock
 	TenantID   string
 	Owner      *runtimecontrol.RuntimeOwner

@@ -51,6 +51,6 @@ func LoadReconsideration(ctx context.Context, tx *Tx, item SchedulerItem, supers
 	); err != nil {
 		return ReconsiderationRow{}, fmt.Errorf("query reconsideration evidence: %w", err)
 	}
-	row.ReconciliationStatus = domain.NullString{String: reconciliationStatus.String, Valid: reconciliationStatus.Valid}
+	row.ReconciliationStatus = reconciliationStatus.String
 	return row, nil
 }

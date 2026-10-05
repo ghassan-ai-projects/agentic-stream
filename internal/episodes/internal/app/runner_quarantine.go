@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 )
 
@@ -88,10 +89,8 @@ func (r *Runner) abandonRefusedEpoch(ctx context.Context, tx *store.Tx, claim *e
 // epochRefusal asks the configured refusal projection why the recorded
 // policy epoch refuses a decision; "" means it allows one.
 func (r *Runner) epochRefusal(ctx context.Context, tx *store.Tx, policyEpoch string) (string, error) {
-	if r.epochRefusalFn == nil {
-		return "", nil
-	}
-	return r.epochRefusalFn(ctx, tx, policyEpoch)
+	epochErr := tx.AssertDecisionEpoch(ctx, r.decisionEpoch, policyEpoch)
+	return domain.DecisionEpochRefusal(epochErr, store.ErrEpochUnbound, store.ErrEpochKilled)
 }
 
 // abandonEpisode durably quarantines an episode with a terminal reason.

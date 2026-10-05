@@ -1,4 +1,4 @@
-package app
+package fixture
 
 import (
 	"context"
@@ -6,22 +6,23 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
-// FakeExecutor is a deterministic executor for tests and replay. It produces a
+// Executor is a deterministic executor for tests and replay. It produces a
 // structured Decision without calling a real model.
-type FakeExecutor struct{}
+type Executor struct{}
 
-// NewFakeExecutor creates a deterministic fake executor.
-func NewFakeExecutor() *FakeExecutor {
-	return &FakeExecutor{}
+// New creates a deterministic fake executor.
+func New() *Executor {
+	return &Executor{}
 }
 
 // Execute returns a deterministic Decision based on the request snapshot.
-func (e *FakeExecutor) Execute(ctx context.Context, req *Request) (*Outcome, error) {
+func (e *Executor) Execute(ctx context.Context, req *episodes.Request) (*episodes.Outcome, error) {
 	_ = ctx
 	phase, triggerName, err := fakeExecutorInputs(req)
 	if err != nil {
@@ -37,7 +38,7 @@ func (e *FakeExecutor) Execute(ctx context.Context, req *Request) (*Outcome, err
 
 // fakeExecutorInputs reads the snapshot phase and trigger name, defaulting
 // each to "unknown".
-func fakeExecutorInputs(req *Request) (string, string, error) {
+func fakeExecutorInputs(req *episodes.Request) (string, string, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
 		return "", "", fmt.Errorf("unmarshal request: %w", err)
@@ -56,7 +57,7 @@ func fakeExecutorInputs(req *Request) (string, string, error) {
 }
 
 // fakeIntent is a digest-bound R1 maintenance-ticket intent for the episode.
-func fakeIntent(req *Request, phase string) (map[string]any, error) {
+func fakeIntent(req *episodes.Request, phase string) (map[string]any, error) {
 	parameters := map[string]any{"reason": phase}
 	if req.EntityID != "" {
 		parameters["entity_id"] = req.EntityID
@@ -70,7 +71,7 @@ func fakeIntent(req *Request, phase string) (map[string]any, error) {
 	return intent, nil
 }
 
-func fakeMaintenanceIntent(req *Request, parameters map[string]any) map[string]any {
+func fakeMaintenanceIntent(req *episodes.Request, parameters map[string]any) map[string]any {
 	return map[string]any{
 		"intent_id":         "int_" + req.EpisodeID,
 		"decision_id":       "dec_" + req.EpisodeID,
@@ -84,7 +85,7 @@ func fakeMaintenanceIntent(req *Request, parameters map[string]any) map[string]a
 	}
 }
 
-func fakeDecision(req *Request, phase, triggerName string, intent map[string]any) map[string]any {
+func fakeDecision(req *episodes.Request, phase, triggerName string, intent map[string]any) map[string]any {
 	return map[string]any{
 		"decision_id":       "dec_" + req.EpisodeID,
 		"episode_id":        req.EpisodeID,
@@ -102,7 +103,7 @@ func fakeDecision(req *Request, phase, triggerName string, intent map[string]any
 
 // producedOutcome canonicalizes and digests the decision as a produced
 // outcome for the request's attempt.
-func producedOutcome(req *Request, decision map[string]any) (*Outcome, error) {
+func producedOutcome(req *episodes.Request, decision map[string]any) (*episodes.Outcome, error) {
 	decisionJSON, err := canonicaljson.Marshal(decision)
 	if err != nil {
 		return nil, fmt.Errorf("marshal decision: %w", err)
@@ -111,7 +112,7 @@ func producedOutcome(req *Request, decision map[string]any) (*Outcome, error) {
 	if err != nil {
 		return nil, fmt.Errorf("digest decision: %w", err)
 	}
-	return &Outcome{
+	return &episodes.Outcome{
 		Status: string(episodeledger.AttemptProduced), AttemptID: req.AttemptID, Fence: req.Fence,
 		DecisionJSON:   decisionJSON,
 		DecisionSHA256: decisionDigest,

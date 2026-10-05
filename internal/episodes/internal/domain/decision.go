@@ -43,12 +43,12 @@ func decisionDigestForStorage(raw []byte) ([]byte, bool) {
 	if err := json.Unmarshal(canonical, &document); err != nil {
 		return nil, false
 	}
-	return DocumentDigestForStorage(document)
+	return documentDigestForStorage(document)
 }
 
-// DocumentDigestForStorage digests a decision document over the decision
+// documentDigestForStorage digests a decision document over the decision
 // domain, reporting whether the digest could be derived.
-func DocumentDigestForStorage(document map[string]any) ([]byte, bool) {
+func documentDigestForStorage(document map[string]any) ([]byte, bool) {
 	digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
 	if err != nil {
 		return nil, false

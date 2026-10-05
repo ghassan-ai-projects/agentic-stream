@@ -58,7 +58,7 @@ func TestRequestAssemblyBindsProvenanceAndEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	admission := AdmittedEpisode(req, digests)
-	if !bytes.Equal(admission.SnapshotSHA256, persistedDigestOf(t, inputs.Snapshot.JSON)) {
+	if !bytes.Equal(admission.SnapshotSHA256, snapshotDocumentDigest(t, inputs.Snapshot.Document)) {
 		t.Fatal("admission lost snapshot digest")
 	}
 	again, err := AssembleRequest(compiled, "epi", item, inputs)
@@ -126,4 +126,13 @@ func TestRebindPreservesAdmissionEvidence(t *testing.T) {
 	if !bytes.Equal(a, b) {
 		t.Fatal("rebind changed original trigger, budget or correction evidence")
 	}
+}
+
+func snapshotDocumentDigest(t *testing.T, document map[string]any) []byte {
+	t.Helper()
+	raw, err := canonicaljson.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return persistedDigestOf(t, raw)
 }

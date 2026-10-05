@@ -20,20 +20,6 @@ type Assembler struct {
 	cost  *costcontrol.Controller
 }
 
-// WithCostControl enables durable aggregate cost reservation at admission.
-func (a *Assembler) WithCostControl(controller *costcontrol.Controller) *Assembler {
-	a.cost = controller
-	return a
-}
-
-// NewAssembler creates an assembler for the given spec.
-func NewAssembler(compiled *spec.CompiledSpec, idGen ids.Generator) *Assembler {
-	if idGen == nil {
-		idGen = ids.Random()
-	}
-	return &Assembler{spec: compiled, idGen: idGen}
-}
-
 // Assemble builds a Request from a pending scheduler item. It loads the trigger
 // evaluation and situation version inside the supplied transaction and returns
 // a ready-to-persist Request without mutating the database.

@@ -96,7 +96,7 @@ func (r *Runner) settleAbandonedCost(ctx context.Context, tx *store.Tx, episodeI
 // finishAttempt records the attempt terminal, settles cost, and concludes the
 // episode.
 func (r *Runner) finishAttempt(ctx context.Context, tx *store.Tx, claim *episodeClaim, outcome *Outcome, record *decisionRecord, now string) error {
-	attemptStatus := terminalAttemptStatus(outcome, record)
+	attemptStatus := domain.TerminalAttemptStatus(outcome, record != nil, record != nil && record.validationErr == nil)
 	if !episodeledger.IsTerminalAttempt(attemptStatus) {
 		return fmt.Errorf("executor returned non-terminal attempt status %q", attemptStatus)
 	}
@@ -108,22 +108,6 @@ func (r *Runner) finishAttempt(ctx context.Context, tx *store.Tx, claim *episode
 		return fmt.Errorf("finish episode attempt: %w", err)
 	}
 	return r.concludeSettledEpisode(ctx, tx, claim, outcome, now, terminalJSON)
-}
-
-// terminalAttemptStatus derives the attempt terminal: a Decision makes it
-// produced or failed by validation; otherwise the executor's status stands,
-// and an empty status means the executor declined.
-func terminalAttemptStatus(outcome *Outcome, record *decisionRecord) episodeledger.AttemptStatus {
-	switch {
-	case record != nil && record.validationErr == nil:
-		return episodeledger.AttemptProduced
-	case record != nil:
-		return episodeledger.AttemptFailed
-	case outcome.Status == "":
-		return episodeledger.AttemptDeclined
-	default:
-		return episodeledger.AttemptStatus(outcome.Status)
-	}
 }
 
 func (r *Runner) concludeSettledEpisode(ctx context.Context, tx *store.Tx, claim *episodeClaim, outcome *Outcome, now string, terminalJSON []byte) error {

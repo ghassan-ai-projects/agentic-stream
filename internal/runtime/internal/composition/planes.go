@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/admission"
@@ -13,6 +15,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
@@ -21,7 +24,6 @@ import (
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 	transport "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/transport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
-	"time"
 )
 
 func pipelineDefaults(cfg PipelineConfig) PipelineConfig {
@@ -39,7 +41,7 @@ func pipelineDefaults(cfg PipelineConfig) PipelineConfig {
 
 func pipelineExecutionDefaults(cfg PipelineConfig) PipelineConfig {
 	if cfg.Executor == nil {
-		cfg.Executor = episodes.NewFakeExecutor()
+		cfg.Executor = fixture.New()
 	}
 	if cfg.Effector == nil {
 		cfg.Effector = device.NewSimulatedEffector()
@@ -63,33 +65,33 @@ func composeEffectors(cfg PipelineConfig) (actionport.Effector, *watch.Effector)
 }
 
 func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.Engine, watch *watch.Effector) (*app.Pipeline, error) {
-	assembler, runner := composeCognition(cfg)
-	admitter := admission.New(admission.Config{
-		DB: cfg.DB, Assembler: assembler, Clock: cfg.Clock, TenantID: cfg.TenantID,
-		Owner: cfg.Owner, OwnerEpoch: cfg.OwnerEpoch, EpochControl: cfg.EpochControl, DemoMode: cfg.DemoMode,
-	})
+	episodeService, err := composeEpisodes(cfg)
+	if err != nil {
+		return nil, err
+	}
+	admitter := composeAdmission(cfg, episodeService)
 	policyGateway, err := composePolicy(cfg)
 	if err != nil {
 		return nil, err
 	}
 	return app.NewPipeline(app.PipelineDependencies{
-		Log: log, Engine: stream, Admission: admitter, Runner: runner, Dispatcher: composeDispatcher(cfg), Watch: watch, Telemetry: cfg.Telemetry,
+		Log: log, Engine: stream, Admission: admitter, Runner: episodeService, Dispatcher: composeDispatcher(cfg), Watch: watch, Telemetry: cfg.Telemetry,
 		Transactions: &store.PipelineStore{DB: cfg.DB, Policy: policyGateway, Owner: cfg.Owner, OwnerEpoch: cfg.OwnerEpoch},
 		Sources:      &transport.Sources{DB: cfg.DB, Log: log, TenantID: cfg.TenantID, Telemetry: cfg.Telemetry},
 		Clock:        cfg.Clock, TenantID: cfg.TenantID,
 	}), nil
 }
 
-func composeCognition(cfg PipelineConfig) (*episodes.Assembler, *episodes.Runner) {
-	assembler := episodes.NewAssembler(cfg.Spec, cfg.IDGenerator)
-	assembler.WithCostControl(&costcontrol.Controller{})
-	runner := episodes.NewRunnerWithEpoch(cfg.DB, cfg.Executor, cfg.Clock, cfg.IDGenerator, cfg.OwnerEpoch)
-	runner.WithAssembler(assembler)
-	runner.WithCostControl(&costcontrol.Controller{})
-	runner.WithEpochControl(cfg.EpochControl)
-	runner.WithShadowStore(&qualification.ShadowStore{DB: cfg.DB})
-	runner.WithTelemetry(cfg.Telemetry)
-	return assembler, runner
+func composeAdmission(cfg PipelineConfig, episodeService *episodes.Service) *admission.Admitter {
+	return admission.New(admission.Config{DB: cfg.DB, Assembler: episodeService, Clock: cfg.Clock, TenantID: cfg.TenantID, Owner: cfg.Owner, OwnerEpoch: cfg.OwnerEpoch, EpochControl: cfg.EpochControl, DemoMode: cfg.DemoMode})
+}
+
+func composeEpisodes(cfg PipelineConfig) (*episodes.Service, error) {
+	service, err := episodes.New(episodes.Config{Spec: cfg.Spec, IDGenerator: cfg.IDGenerator, CostControl: &costcontrol.Controller{}, Execution: &episodes.ExecutionConfig{DB: cfg.DB, Executor: cfg.Executor, Clock: cfg.Clock, OwnerEpoch: cfg.OwnerEpoch, DecisionEpoch: policyEpochCheck(cfg), ShadowStore: &qualification.ShadowStore{DB: cfg.DB}, Telemetry: cfg.Telemetry}})
+	if err != nil {
+		return nil, fmt.Errorf("compose episodes: %w", err)
+	}
+	return service, nil
 }
 
 func composePolicy(cfg PipelineConfig) (*policy.Service, error) {

@@ -1,0 +1,53 @@
+package app
+
+import (
+	"context"
+	"database/sql"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+)
+
+// WithDecisionEpoch installs an explicit test fence without reimplementing refusal rules.
+func (r *Runner) WithDecisionEpoch(check store.DecisionEpochCheck) *Runner {
+	r.decisionEpoch = check
+	return r
+}
+
+// NewAssembler creates an assembler for the given spec.
+func NewAssembler(compiled *spec.CompiledSpec, idGen ids.Generator) *Assembler {
+	if idGen == nil {
+		idGen = ids.Random()
+	}
+	return &Assembler{spec: compiled, idGen: idGen}
+}
+
+// WithShadowStore enables P8 shadow scoring: shadow decisions are scored
+// and persisted to shadow_decisions (never to intents/commands).
+func (r *Runner) WithShadowStore(store *qualification.ShadowStore) *Runner {
+	r.shadowStore = store
+	return r
+}
+
+// WithAssembler enables the ISSUE-061 re-bind path: an admitted episode whose
+// situation advanced past its bound version is re-bound to the live version
+// and dispatched instead of abandoned. Without an assembler the runner keeps
+// the pre-fix abandon behavior (tests and minimal wiring).
+func (r *Runner) WithAssembler(assembler *Assembler) *Runner {
+	r.assembler = assembler
+	return r
+}
+
+// NewRunner creates an isolated test runner with an explicit permissive fixture fence.
+func NewRunner(db store.Store, executor Executor, clk clock.Clock, idGen ids.Generator) *Runner {
+	if clk == nil {
+		clk = clock.Physical()
+	}
+	if idGen == nil {
+		idGen = ids.Random()
+	}
+	return &Runner{episodes: db, executor: executor, clk: clk, idGen: idGen, decisionEpoch: func(context.Context, *sql.Tx, string) error { return nil }}
+}

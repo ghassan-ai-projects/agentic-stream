@@ -15,76 +15,16 @@ import (
 
 // Runner polls admitted episodes and executes them deterministically.
 type Runner struct {
-	episodes       store.Store
-	executor       Executor
-	clk            clock.Clock
-	idGen          ids.Generator
-	ownerEpoch     string
-	cost           *costcontrol.Controller
-	epochRefusalFn func(context.Context, *store.Tx, string) (string, error)
-	shadowStore    *qualification.ShadowStore
-	telemetry      *telemetry.Runtime
-	assembler      *Assembler
-}
-
-const maxEpisodeAttempts = 3
-
-// maxStaleRebinds bounds how many times an admitted episode may be re-bound to
-// a newer live situation version before it is abandoned as stale. Dense
-// entities churn versions faster than the dispatch poll; the durable
-// stale_rebind_count column tracks the budget across batches and restarts.
-const maxStaleRebinds = 3
-
-// WithCostControl enables settlement of durable episode cost reservations.
-func (r *Runner) WithCostControl(controller *costcontrol.Controller) *Runner {
-	r.cost = controller
-	return r
-}
-
-// WithEpochRefusal injects the epoch refusal projection (the kill gate).
-func (r *Runner) WithEpochRefusal(refusal func(context.Context, *store.Tx, string) (string, error)) *Runner {
-	r.epochRefusalFn = refusal
-	return r
-}
-
-// WithShadowStore enables P8 shadow scoring: shadow decisions are scored
-// and persisted to shadow_decisions (never to intents/commands).
-func (r *Runner) WithShadowStore(store *qualification.ShadowStore) *Runner {
-	r.shadowStore = store
-	return r
-}
-
-// WithTelemetry enables the P8 freshness/latency surface: stale-decision
-// rejections and dispatch→decision durations feed the /metrics percentiles.
-func (r *Runner) WithTelemetry(telemetry *telemetry.Runtime) *Runner {
-	r.telemetry = telemetry
-	return r
-}
-
-// WithAssembler enables the ISSUE-061 re-bind path: an admitted episode whose
-// situation advanced past its bound version is re-bound to the live version
-// and dispatched instead of abandoned. Without an assembler the runner keeps
-// the pre-fix abandon behavior (tests and minimal wiring).
-func (r *Runner) WithAssembler(assembler *Assembler) *Runner {
-	r.assembler = assembler
-	return r
-}
-
-// NewRunner creates a runner for the given executor and clock.
-func NewRunner(db store.Store, executor Executor, clk clock.Clock, idGen ids.Generator) *Runner {
-	return NewRunnerWithEpoch(db, executor, clk, idGen, "")
-}
-
-// NewRunnerWithEpoch creates a runner that fences every attempt to ownerEpoch.
-// Live runtime composition must use a freshly claimed epoch.
-func NewRunnerWithEpoch(db store.Store, executor Executor, clk clock.Clock, idGen ids.Generator, ownerEpoch string) *Runner {
-	if clk == nil {
-		clk = clock.Physical()
-	}
-	if idGen == nil {
-		idGen = ids.Random()
-	}
-	return &Runner{episodes: db, executor: executor, clk: clk, idGen: idGen, ownerEpoch: ownerEpoch}
+	episodes      store.Store
+	executor      Executor
+	clk           clock.Clock
+	idGen         ids.Generator
+	ownerEpoch    string
+	cost          *costcontrol.Controller
+	decisionEpoch store.DecisionEpochCheck
+	shadowStore   *qualification.ShadowStore
+	telemetry     *telemetry.Runtime
+	assembler     *Assembler
 }
 
 // RunOnce finds one admitted episode, fences a worker attempt, executes it,

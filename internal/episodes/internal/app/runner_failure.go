@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 )
 
@@ -76,7 +77,7 @@ func (r *Runner) markCancelling(ctx context.Context, tx *store.Tx, identity epis
 
 // retryOrConcludeFailedEpisode keeps a failed episode running for another
 // attempt, or concludes it and settles its cost when the episode was
-// superseded or has used maxEpisodeAttempts.
+// superseded or has used three attempts.
 func (r *Runner) retryOrConcludeFailedEpisode(ctx context.Context, tx *store.Tx, episodeID string) error {
 	lifecycle, err := store.EpisodeLifecycle(ctx, tx, episodeID)
 	if err != nil {
@@ -91,7 +92,7 @@ func (r *Runner) retryOrConcludeFailedEpisode(ctx context.Context, tx *store.Tx,
 }
 
 func (r *Runner) resolveFailedEpisode(ctx context.Context, tx *store.Tx, episodeID string, superseded bool, failedAttempts int) error {
-	if !superseded && failedAttempts < maxEpisodeAttempts {
+	if domain.ShouldRetry(superseded, failedAttempts) {
 		return store.RetainForRetry(ctx, tx, episodeID)
 	}
 	return r.concludeFailedEpisode(ctx, tx, episodeID, superseded)
@@ -142,14 +143,14 @@ func (r *Runner) failRejectedAttempt(ctx context.Context, tx *store.Tx, current 
 }
 
 // retryOrConcludeRejectedEpisode keeps the episode running for another
-// attempt until maxEpisodeAttempts have failed, then settles its cost and
+// attempt until three attempts have failed, then settles its cost and
 // concludes it with the rejection terminal.
 func (r *Runner) retryOrConcludeRejectedEpisode(ctx context.Context, tx *store.Tx, episodeID string, terminalJSON []byte) error {
 	failedAttempts, err := store.CountFailedAttempts(ctx, tx, episodeID)
 	if err != nil {
 		return fmt.Errorf("count identity-failed attempts: %w", err)
 	}
-	if failedAttempts < maxEpisodeAttempts {
+	if domain.ShouldRetry(false, failedAttempts) {
 		if err := tx.RetainForRetry(ctx, episodeID); err != nil {
 			return fmt.Errorf("retain episode for retry: %w", err)
 		}

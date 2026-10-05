@@ -18,7 +18,7 @@ type PipelineDependencies struct {
 	Log          *eventlog.EventLog
 	Engine       *engine.Engine
 	Admission    *admission.Admitter
-	Runner       *episodes.Runner
+	Runner       *episodes.Service
 	Dispatcher   *actions.Dispatcher
 	Watch        *watch.Effector
 	Telemetry    *telemetry.Runtime

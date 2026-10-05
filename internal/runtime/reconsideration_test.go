@@ -3,12 +3,14 @@ package runtime
 import (
 	"context"
 	"database/sql"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/admission"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/admission"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
@@ -60,7 +62,7 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	idGenerator := ids.Deterministic()
 	pipeline, err := NewPipeline(ctx, PipelineConfig{
 		DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: idGenerator,
-		Executor: episodes.NewFakeExecutor(), Effector: device.NewSimulatedEffector(),
+		Executor: fixture.New(), Effector: device.NewSimulatedEffector(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +79,11 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	admitter := admission.New(admission.Config{DB: db, Assembler: episodes.NewAssembler(compiled, idGenerator), Clock: clock.Physical(), TenantID: "default"})
+	episodeService, err := episodes.New(episodes.Config{Spec: compiled, IDGenerator: idGenerator})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admitter := admission.New(admission.Config{DB: db, Assembler: episodeService, Clock: clock.Physical(), TenantID: "default"})
 	replay := ingress.NewJSONLReplay(db, log, "default", latePath, "live-jsonl:"+latePath)
 	if count, err := replay.Run(ctx); err != nil {
 		t.Fatalf("ingest correction: %v", err)

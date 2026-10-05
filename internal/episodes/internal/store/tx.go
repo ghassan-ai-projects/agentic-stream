@@ -10,10 +10,10 @@ import (
 )
 
 // Store opens runner units of work and polls episode lifecycle state.
-type Store struct{ DB *storage.DB }
+type Store struct{ db *storage.DB }
 
 // New wraps the episode database.
-func New(db *storage.DB) Store { return Store{DB: db} }
+func New(db *storage.DB) Store { return Store{db: db} }
 
 // Tx joins a caller-owned transaction without exposing SQL to use cases.
 type Tx struct{ tx *sql.Tx }
@@ -40,5 +40,8 @@ func (tx *Tx) AssertDecisionEpoch(ctx context.Context, check DecisionEpochCheck,
 
 // WithTx runs a runner step in one owned transaction.
 func (s Store) WithTx(ctx context.Context, work func(*Tx) error) error {
-	return s.DB.WithTx(ctx, func(tx *sql.Tx) error { return work(Join(tx)) })
+	return s.db.WithTx(ctx, func(tx *sql.Tx) error { return work(Join(tx)) })
 }
+
+// Configured reports whether the database adapter was supplied.
+func (s Store) Configured() bool { return s.db != nil }

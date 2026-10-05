@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/domain"
 )
@@ -54,7 +56,7 @@ func TestWorkerSetupOrderAndFailureCleanup(t *testing.T) {
 		{"worker failure", domain.WorkerOptions{WorkerSocket: "worker", EvidenceSocket: "evidence"}, "worker", []string{"evidence", "worker", "close"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := &workerProbe{fail: tc.fail, sentinel: sentinel, executor: episodes.NewFakeExecutor(), errors: make(chan error, 1)}
+			p := &workerProbe{fail: tc.fail, sentinel: sentinel, executor: fixture.New(), errors: make(chan error, 1)}
 			r, err := NewWorkerRuntime(t.Context(), tc.cfg, p)
 			if !reflect.DeepEqual(p.calls, tc.calls) {
 				t.Fatalf("setup calls=%v want %v", p.calls, tc.calls)

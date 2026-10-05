@@ -1,0 +1,62 @@
+package episodes_test
+
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+)
+
+func TestConstructionRejectsIncompleteExecution(t *testing.T) {
+	t.Parallel()
+	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "config.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	compiled, err := spec.CompileFile(t.Context(), "../../docs/design/examples/predictive-maintenance.situation.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := &control.EpochControl{DB: db}
+	tests := []struct {
+		name string
+		cfg  episodes.Config
+	}{
+		{"missing spec", episodes.Config{}},
+		{"missing database", episodes.Config{Spec: compiled, Execution: &episodes.ExecutionConfig{Executor: declinedExecutor{}, DecisionEpoch: control.AssertDecisionTx}}},
+		{"missing executor", episodes.Config{Spec: compiled, Execution: &episodes.ExecutionConfig{DB: db, DecisionEpoch: control.AssertDecisionTx}}},
+		{"missing epoch check", episodes.Config{Spec: compiled, Execution: &episodes.ExecutionConfig{DB: db, Executor: declinedExecutor{}}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if service, err := episodes.New(test.cfg); err == nil || service != nil {
+				t.Fatalf("construction=(%v,%v)", service, err)
+			}
+		})
+	}
+	shadowSpec := *compiled
+	shadowSpec.Cognition.Executor.DispatchPolicy = "shadow"
+	if service, err := episodes.New(episodes.Config{Spec: &shadowSpec, Execution: &episodes.ExecutionConfig{DB: db, Executor: declinedExecutor{}, DecisionEpoch: control.AssertDecisionTx}}); err == nil || service != nil {
+		t.Fatalf("missing shadow persistence accepted: %v %v", service, err)
+	}
+}
+
+func TestAssemblyOnlyServiceRefusesExecution(t *testing.T) {
+	t.Parallel()
+	compiled, err := spec.CompileFile(t.Context(), "../../docs/design/examples/predictive-maintenance.situation.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := episodes.New(episodes.Config{Spec: compiled})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if processed, err := service.RunOnce(t.Context(), "tenant"); err == nil || processed {
+		t.Fatalf("assembly-only execution=(%v,%v)", processed, err)
+	}
+}

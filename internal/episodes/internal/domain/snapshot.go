@@ -10,10 +10,9 @@ import (
 )
 
 // SnapshotEvidence is the validated immutable Situation snapshot an episode
-// reasons over: the raw bytes, the decoded document, the bound entity and the
+// reasons over: the decoded document, the bound entity and the
 // verified digest.
 type SnapshotEvidence struct {
-	JSON        []byte
 	Document    map[string]any
 	EntityID    string
 	Digest      string
@@ -54,7 +53,7 @@ func bindSnapshotEvidence(snapshotJSON, persistedDigest []byte, traceparent, tra
 		return nil, fmt.Errorf("snapshot digest does not match persisted situation version")
 	}
 	return &SnapshotEvidence{
-		JSON: snapshotJSON, Document: snapshot, EntityID: entityID, Digest: digest, Traceparent: traceparent, Tracestate: tracestate,
+		Document: snapshot, EntityID: entityID, Digest: digest, Traceparent: traceparent, Tracestate: tracestate,
 	}, nil
 }
 

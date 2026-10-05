@@ -6,10 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
@@ -39,7 +40,7 @@ func TestPipelineCompletesDecisionToSimulatedOutcome(t *testing.T) {
 	if err := os.WriteFile(path, []byte(trace), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: ids.Deterministic(), Executor: episodes.NewFakeExecutor(), Effector: device.NewSimulatedEffector()})
+	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: ids.Deterministic(), Executor: fixture.New(), Effector: device.NewSimulatedEffector()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +87,7 @@ func TestPipelineCorrectsLateWindowAndAdmitsOneReconsideration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: ids.Deterministic(), Executor: episodes.NewFakeExecutor(), Effector: device.NewSimulatedEffector()})
+	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: ids.Deterministic(), Executor: fixture.New(), Effector: device.NewSimulatedEffector()})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-package app
+package app_test
 
 import (
 	"context"
@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 
@@ -104,7 +107,7 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 		t.Fatalf("query scheduler item: %v", err)
 	}
 
-	asm := NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, ids.Deterministic())
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		req, err := asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
 		if err != nil {
@@ -115,7 +118,7 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 		t.Fatalf("assemble and persist: %v", err)
 	}
 
-	runner := NewRunner(store.New(db), NewFakeExecutor(), clock.Physical(), ids.Deterministic())
+	runner := app.NewRunner(store.New(db), fixture.New(), clock.Physical(), ids.Deterministic())
 	ran, err := runner.RunOnce(ctx, "default")
 	if err != nil {
 		t.Fatalf("run once: %v", err)
@@ -182,7 +185,7 @@ func TestRunnerNoWorkWhenEmpty(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	runner := NewRunner(store.New(db), NewFakeExecutor(), clock.Physical(), ids.Deterministic())
+	runner := app.NewRunner(store.New(db), fixture.New(), clock.Physical(), ids.Deterministic())
 	ran, err := runner.RunOnce(ctx, "default")
 	if err != nil {
 		t.Fatalf("run once: %v", err)
@@ -194,10 +197,10 @@ func TestRunnerNoWorkWhenEmpty(t *testing.T) {
 
 type failOnceExecutor struct {
 	calls    int
-	delegate *FakeExecutor
+	delegate *fixture.Executor
 }
 
-func (e *failOnceExecutor) Execute(ctx context.Context, req *Request) (*Outcome, error) {
+func (e *failOnceExecutor) Execute(ctx context.Context, req *app.Request) (*app.Outcome, error) {
 	e.calls++
 	if e.calls == 1 {
 		return nil, fmt.Errorf("transient worker failure")
@@ -264,8 +267,8 @@ func TestRunnerRetriesFailedAttemptWithNextFence(t *testing.T) {
 		t.Fatalf("seed situation registry: %v", err)
 	}
 
-	executor := &failOnceExecutor{delegate: NewFakeExecutor()}
-	runner := NewRunner(store.New(db), executor, clock.Physical(), ids.Deterministic())
+	executor := &failOnceExecutor{delegate: fixture.New()}
+	runner := app.NewRunner(store.New(db), executor, clock.Physical(), ids.Deterministic())
 	processed, err := runner.RunOnce(ctx, "tenant")
 	if err != nil || !processed {
 		t.Fatalf("first run processed=%v err=%v", processed, err)

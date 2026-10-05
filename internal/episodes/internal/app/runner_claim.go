@@ -78,7 +78,7 @@ func (r *Runner) claimEpisodeInTx(ctx context.Context, tx *store.Tx, tenantID st
 // loadDispatchableEpisode reads the oldest admitted or running episode and
 // rebuilds its validated Request. It returns nil when there is none.
 func (r *Runner) loadDispatchableEpisode(ctx context.Context, tx *store.Tx, tenantID string) (*episodeClaim, error) {
-	episode, err := store.DispatchableEpisode(ctx, tx, tenantID, r.epochRefusalFn != nil)
+	episode, err := store.DispatchableEpisode(ctx, tx, tenantID, true)
 	if errors.Is(err, store.ErrNoRows) {
 		return nil, nil
 	}
@@ -155,13 +155,14 @@ func (r *Runner) bindLiveSituation(ctx context.Context, tx *store.Tx, claim *epi
 	if err != nil {
 		return err
 	}
-	if liveVersion == int64(claim.req.SituationVersion) {
+	switch domain.DispatchBinding(claim.req.SituationVersion, liveVersion, r.assembler != nil, claim.rebindCount) {
+	case domain.SnapshotCurrent:
 		return nil
-	}
-	if r.assembler == nil || claim.rebindCount >= maxStaleRebinds {
+	case domain.SnapshotQuarantine:
 		return r.quarantineStale(ctx, tx, claim, liveVersion)
+	default:
+		return r.rebindClaim(ctx, tx, claim, liveVersion)
 	}
-	return r.rebindClaim(ctx, tx, claim, liveVersion)
 }
 
 func (r *Runner) rebindClaim(ctx context.Context, tx *store.Tx, claim *episodeClaim, liveVersion int64) error {

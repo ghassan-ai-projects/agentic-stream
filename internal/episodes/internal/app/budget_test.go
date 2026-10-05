@@ -1,9 +1,11 @@
-package app
+package app_test
 
 import (
 	"context"
 	"path/filepath"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 
@@ -53,7 +55,7 @@ func TestRunnerOrdersEpisodesByChronologicalAcceptedAt(t *testing.T) {
 	}
 
 	executor := &recordingDeclinedExecutor{}
-	runner := NewRunner(store.New(db), executor, clock.Physical(), ids.Deterministic())
+	runner := app.NewRunner(store.New(db), executor, clock.Physical(), ids.Deterministic())
 	processed, err := runner.RunOnce(ctx, "tenant")
 	if err != nil || !processed {
 		t.Fatalf("run processed=%v err=%v", processed, err)
@@ -67,9 +69,9 @@ type recordingDeclinedExecutor struct {
 	episodeIDs []string
 }
 
-func (e *recordingDeclinedExecutor) Execute(_ context.Context, req *Request) (*Outcome, error) {
+func (e *recordingDeclinedExecutor) Execute(_ context.Context, req *app.Request) (*app.Outcome, error) {
 	e.episodeIDs = append(e.episodeIDs, req.EpisodeID)
-	return &Outcome{Status: string(episodeledger.AttemptDeclined), AttemptID: req.AttemptID, Fence: req.Fence}, nil
+	return &app.Outcome{Status: string(episodeledger.AttemptDeclined), AttemptID: req.AttemptID, Fence: req.Fence}, nil
 }
 
-var _ Executor = (*recordingDeclinedExecutor)(nil)
+var _ app.Executor = (*recordingDeclinedExecutor)(nil)

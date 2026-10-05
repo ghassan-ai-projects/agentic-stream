@@ -8,7 +8,7 @@ private app use cases through an opaque store unit of work.
 | --- | --- | --- | --- |
 | C0 | Survey and corrected plan, preserve existing worktree | Read production surface, references, ownership and tests | Complete |
 | C1 | Opaque store transaction; pure domain contracts/rules; private application use cases | Episode tests, transaction rollback tests, root architecture gates, lint | Complete |
-| C2 | Validated public service; caller updates; fixture executor extraction; code audit | Facade construction/delegation tests, adapter/conformance/replay/runtime tests, production and test reachability | Pending |
+| C2 | Validated public service; caller updates; fixture executor extraction; code audit | Facade construction/delegation tests, adapter/conformance/replay/runtime tests, production and test reachability | Complete |
 | C3 | Enforcement, injection proofs, guide/map updates, final review | Full CI targets, uncached race suite, coverage, diff check | Pending |
 
 Commit this plan separately before additional code changes. Include the user's
@@ -52,3 +52,11 @@ zero issues. Domain coverage 76.3%, app 70.4%, store 76.3%. The temporary
 public facade remains below the coverage floor (56.2%); C2 replaces and tests
 that surface. Store regressions prove joined checks and lifecycle handoffs
 roll back in the original transaction, and read/write errors retain cancellation.
+
+C2: episode/admission/executor/replay/runtime focused tests pass uncached with
+race detection, including local Unix socket conformance and resource-lifetime
+tests after sandbox escalation. Facade coverage 100%, fixture 90%; every changed
+package remains above 60%. Whole-tree lint reports zero issues. Test-aware
+reachability reports zero unreachable functions. The only remaining episode
+facade candidate in the CLI scan is catalog compilation; source consumers
+justify retaining it. Public Rebind was removed as test-only surface.

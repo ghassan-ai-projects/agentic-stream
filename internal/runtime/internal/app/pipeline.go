@@ -3,6 +3,9 @@ package app
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/admission"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
@@ -14,8 +17,6 @@ import (
 	transport "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/transport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
-	"sync"
-	"time"
 )
 
 // PipelineReport counts durable stages completed during one source advancement.
@@ -31,7 +32,7 @@ type Pipeline struct {
 	log          *eventlog.EventLog
 	engine       *engine.Engine
 	admission    *admission.Admitter
-	runner       *episodes.Runner
+	runner       *episodes.Service
 	dispatcher   *actions.Dispatcher
 	watch        *watch.Effector
 	clk          clock.Clock

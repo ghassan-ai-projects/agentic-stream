@@ -6,13 +6,6 @@ import (
 	"fmt"
 )
 
-// NullString mirrors the scanned nullable text column without importing
-// database/sql into the domain layer.
-type NullString struct {
-	String string
-	Valid  bool
-}
-
 // Evaluation is one trigger evaluation as scanned.
 type Evaluation struct {
 	TriggerID   string
@@ -42,29 +35,29 @@ type ReconsiderationRow struct {
 	OutcomeStatus        string
 	ProviderResultJSON   []byte
 	ObservedEffectJSON   []byte
-	ReconciliationStatus NullString
+	ReconciliationStatus string
 	OutcomeSHA256        []byte
 }
 
 func (row ReconsiderationRow) ReconsiderationDocument(ev Evaluation, delta, snapshot map[string]any) (map[string]any, error) {
-	priorDecision, err := row.PriorDecisionDocument()
+	priorDecision, err := row.priorDecisionDocument()
 	if err != nil {
 		return nil, err
 	}
-	command, err := row.CommandDocument()
+	command, err := row.commandDocument()
 	if err != nil {
 		return nil, err
 	}
-	outcome, err := row.OutcomeDocument()
+	outcome, err := row.outcomeDocument()
 	if err != nil {
 		return nil, err
 	}
 
-	correction := row.CorrectionDocument(ev, delta, snapshot)
+	correction := row.correctionDocument(ev, delta, snapshot)
 	return row.reconsiderationFields(priorDecision, command, outcome, correction), nil
 }
 
-func (row ReconsiderationRow) PriorDecisionDocument() (map[string]any, error) {
+func (row ReconsiderationRow) priorDecisionDocument() (map[string]any, error) {
 	priorDecision, err := jsonDocument(row.PriorDecisionJSON, "prior decision")
 	if err != nil {
 		return nil, err
@@ -77,7 +70,7 @@ func (row ReconsiderationRow) PriorDecisionDocument() (map[string]any, error) {
 }
 
 // commandDocument is the executed command with its durable identity and status.
-func (row ReconsiderationRow) CommandDocument() (map[string]any, error) {
+func (row ReconsiderationRow) commandDocument() (map[string]any, error) {
 	command, err := jsonDocument(row.CommandJSON, "executed command")
 	if err != nil {
 		return nil, err
@@ -104,14 +97,14 @@ func (row ReconsiderationRow) bindCommandContext(command map[string]any) map[str
 }
 
 // outcomeDocument is the observed outcome of the invalidated command.
-func (row ReconsiderationRow) OutcomeDocument() (map[string]any, error) {
+func (row ReconsiderationRow) outcomeDocument() (map[string]any, error) {
 	outcome := map[string]any{
 		"outcome_id":            row.OutcomeID,
 		"command_id":            row.InvalidatedCommandID,
 		"ordinal":               row.OutcomeOrdinal,
 		"status":                row.OutcomeStatus,
 		"outcome_sha256":        "sha256:" + hex.EncodeToString(row.OutcomeSHA256),
-		"reconciliation_status": row.ReconciliationStatus.String,
+		"reconciliation_status": row.ReconciliationStatus,
 	}
 	return row.bindOutcomeEvidence(outcome)
 }
@@ -134,7 +127,7 @@ func (row ReconsiderationRow) bindOutcomeEvidence(outcome map[string]any) (map[s
 	return outcome, nil
 }
 
-func (row ReconsiderationRow) CorrectionDocument(ev Evaluation, delta, snapshot map[string]any) map[string]any {
+func (row ReconsiderationRow) correctionDocument(ev Evaluation, delta, snapshot map[string]any) map[string]any {
 
 	correction := copyDocument(snapshot)
 	if nested, ok := delta["correction"].(map[string]any); ok {

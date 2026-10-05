@@ -21,7 +21,7 @@ func EpisodeLifecycle(ctx context.Context, tx *Tx, episodeID string) (string, er
 // caller's to ignore; the poll retries.
 func (s Store) EpisodeSupersededNow(ctx context.Context, episodeID string) bool {
 	var lifecycle string
-	return s.DB.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = ?", episodeID).Scan(&lifecycle) == nil &&
+	return s.db.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = ?", episodeID).Scan(&lifecycle) == nil &&
 		lifecycle == string(episodeledger.LifecycleSuperseded)
 }
 

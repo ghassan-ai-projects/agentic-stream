@@ -1,4 +1,4 @@
-package app
+package app_test
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
@@ -170,8 +172,8 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 		t.Fatalf("query scheduler item: %v", err)
 	}
 
-	asm := NewAssembler(&compiled, ids.Deterministic())
-	var req *Request
+	asm := app.NewAssembler(&compiled, ids.Deterministic())
+	var req *app.Request
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
 		req, err = asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
@@ -232,7 +234,7 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			floor := tt.floor
 			compiled.Actions.WatchConfidenceFloor = &floor
-			var explicitReq *Request
+			var explicitReq *app.Request
 			if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 				var err error
 				explicitReq, err = asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
@@ -444,7 +446,7 @@ func TestAssemblerPersistsReconsiderationPayload(t *testing.T) {
 		t.Fatalf("seed reconsideration: %v", err)
 	}
 
-	asm := NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, ids.Deterministic())
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		req, err := asm.Assemble(ctx, store.Join(tx), "sch-reconsider", "default")
 		if err != nil {
@@ -571,7 +573,7 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 		t.Fatalf("query scheduler item: %v", err)
 	}
 
-	asm := NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, ids.Deterministic())
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		req, err := asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
 		if err != nil {
@@ -709,9 +711,9 @@ func TestAssemblerMarksReconsiderationLiveEpisodeConflict(t *testing.T) {
 		t.Fatalf("seed reconsideration item: %v", err)
 	}
 
-	asm := NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, ids.Deterministic())
 	err = db.WithTx(ctx, func(tx *sql.Tx) error {
-		return asm.Persist(ctx, store.Join(tx), &Request{
+		return asm.Persist(ctx, store.Join(tx), &app.Request{
 			EpisodeID:        "epi-live-second",
 			SchedulerItemID:  "sch-live-reconsider",
 			Kind:             "reconsider",
@@ -822,9 +824,9 @@ func TestAssemblerIsDeterministic(t *testing.T) {
 		t.Fatalf("query scheduler item: %v", err)
 	}
 
-	asm := NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, ids.Deterministic())
 
-	var req1, req2 *Request
+	var req1, req2 *app.Request
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
 		req1, err = asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
@@ -928,8 +930,8 @@ func TestAssemblerRequestContainsDelta(t *testing.T) {
 		t.Fatalf("query scheduler item: %v", err)
 	}
 
-	asm := NewAssembler(&compiled, ids.Deterministic())
-	var req *Request
+	asm := app.NewAssembler(&compiled, ids.Deterministic())
+	var req *app.Request
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
 		req, err = asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
@@ -1027,7 +1029,7 @@ func TestAssemblerTenantMismatch(t *testing.T) {
 		t.Fatalf("query scheduler item: %v", err)
 	}
 
-	asm := NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, ids.Deterministic())
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		_, err := asm.Assemble(ctx, store.Join(tx), schedulerItemID, "other-tenant")
 		if err == nil {
@@ -1116,7 +1118,7 @@ func TestAssemblerPersistRejectsNonPending(t *testing.T) {
 		t.Fatalf("query scheduler item: %v", err)
 	}
 
-	asm := NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, ids.Deterministic())
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		req, err := asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
 		if err != nil {
