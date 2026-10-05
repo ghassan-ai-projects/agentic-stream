@@ -45,7 +45,7 @@ var durableOwners = map[string]string{
 	"outcomes":                      "internal/actions",
 	"partition_checkpoints":         "internal/engine",
 	"policy_evaluations":            "internal/policy/internal/store",
-	"reconsiderations":              "internal/cognition",
+	"reconsiderations":              "internal/cognition/internal/store",
 	"runtime_interlock":             "internal/interlock",
 	"runtime_owner":                 "internal/control",
 	"scheduler_items":               "internal/scheduleledger",
@@ -56,7 +56,7 @@ var durableOwners = map[string]string{
 	"situations":                    "internal/engine",
 	"spec_deployments":              "internal/spec",
 	"timers":                        "internal/engine",
-	"trigger_evaluations":           "internal/cognition",
+	"trigger_evaluations":           "internal/cognition/internal/store",
 	"verifications":                 "internal/actions",
 	"watch_conditions":              "internal/watch",
 	"watch_fires":                   "internal/watch",
@@ -110,7 +110,7 @@ func ownsMutation(pkg string, m sqlMutation) bool {
 		}
 		return pkg == "internal/policy/internal/store" && m.operation == "update" && columnsWithin(m.columns, []string{"policy_status", "updated_at"})
 	case "situations":
-		if pkg == "internal/cognition" {
+		if pkg == "internal/cognition/internal/store" {
 			return m.operation == "update" && columnsWithin(m.columns, []string{"last_reasoned_version"})
 		}
 	}
@@ -132,16 +132,16 @@ func columnsWithin(actual, allowed []string) bool {
 func TestHandoffOwnershipRejectsAuthorityAndPayloadBypasses(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ pkg, query string }{
-		{"internal/cognition", "UPDATE episodes SET lifecycle_status='superseded'"},
+		{"internal/cognition/internal/store", "UPDATE episodes SET lifecycle_status='superseded'"},
 		{"internal/control", "UPDATE episodes SET lifecycle_status='superseded'"},
 		{"internal/runtime", "UPDATE scheduler_items SET status='coalesced'"},
-		{"internal/cognition", "UPDATE approvals SET status='denied'"},
+		{"internal/cognition/internal/store", "UPDATE approvals SET status='denied'"},
 		{"internal/policy/internal/store", "UPDATE commands SET status='dispatching'"},
 		{"internal/policy/internal/store", "DELETE FROM commands"},
 		{"internal/actions", "INSERT INTO commands(command_id) VALUES ('bypass')"},
 		{"internal/actions", "UPDATE commands SET command_json=?"},
 		{"internal/policy/internal/store", "UPDATE intents SET intent_json=?"},
-		{"internal/cognition", "UPDATE situations SET current_version=2"},
+		{"internal/cognition/internal/store", "UPDATE situations SET current_version=2"},
 		{"internal/episodes", "DELETE FROM intents"},
 		{"internal/policy/internal/store", "REPLACE INTO commands(command_id) VALUES ('bypass')"},
 		{"internal/policy/internal/store", "INSERT OR REPLACE INTO outbox(payload_json) VALUES ('bypass')"},

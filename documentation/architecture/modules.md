@@ -129,3 +129,6 @@ physical hardware, deployment readiness, or every possible runtime behavior.
 
 The [decisions module guide](../../internal/decisions/README.md) explains its pure
 validation facade, compiled authority and supported public results.
+
+The [cognition module guide](../../internal/cognition/README.md) documents
+transaction-scoped evaluation, queue replacement and correction admission.

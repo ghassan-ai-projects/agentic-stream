@@ -135,7 +135,7 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.NewEngine(db, testSpecDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -536,7 +536,7 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.NewEngine(db, testSpecDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -787,7 +787,7 @@ func TestAssemblerIsDeterministic(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.NewEngine(db, testSpecDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -893,7 +893,7 @@ func TestAssemblerRequestContainsDelta(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.NewEngine(db, testSpecDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -992,7 +992,7 @@ func TestAssemblerTenantMismatch(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.NewEngine(db, testSpecDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -1081,7 +1081,7 @@ func TestAssemblerPersistRejectsNonPending(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.NewEngine(db, testSpecDigest, "default", &compiled, ids.Deterministic(), clock.Physical())
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}

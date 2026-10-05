@@ -1,4 +1,4 @@
-package cognition
+package app
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/store"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -47,7 +49,7 @@ func TestCostRejectionAuditUsesCallerTransactionAndLeavesQueueStateToOwner(t *te
 	rejection := errors.New("budget exhausted")
 	rollback := errors.New("queue transition failed")
 	record := func(ctx context.Context, tx *sql.Tx) error {
-		return RecordCostRejectionReason(ctx, tx, "item", rejection)
+		return RecordCostRejectionReason(ctx, store.Join(tx), "item", rejection)
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := record(ctx, tx); err != nil {

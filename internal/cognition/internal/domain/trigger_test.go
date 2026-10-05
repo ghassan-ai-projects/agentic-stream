@@ -1,12 +1,10 @@
-package cognition
+package domain
 
 import (
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -29,11 +27,11 @@ func TestTriggerEvaluationPreservesGateOrderAndPartialScore(t *testing.T) {
 			trigger := spec.Trigger{Name: "test", When: tc.when, Score: tc.score, MaterialDelta: tc.material, Threshold: 5, Lane: "fast"}
 			compiled := &spec.CompiledSpec{Cognition: spec.Cognition{Triggers: []spec.Trigger{trigger}}}
 			now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-			engine, err := NewEngine(nil, "deployment", "tenant", compiled, ids.Deterministic(), clock.NewVirtual(now))
+			engine, err := NewRules(compiled)
 			if err != nil {
 				t.Fatal(err)
 			}
-			eval, err := engine.evaluate(t.Context(), trigger, situations.Version{SituationID: "s1", Version: 1}, nil)
+			eval, err := engine.Evaluate(EvaluationInput{Trigger: trigger, Current: situations.Version{SituationID: "s1", Version: 1}, Now: now, DeploymentID: "deployment"})
 			if (err != nil) != tc.wantError || eval.Score != tc.wantScore || eval.Outcome != tc.outcome || !eval.EvaluatedAt.Equal(now) {
 				t.Fatalf("evaluation=%+v err=%v", eval, err)
 			}

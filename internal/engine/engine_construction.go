@@ -57,7 +57,7 @@ func (e *Engine) buildPlanes(ctx context.Context, cognitionEnabled bool) error {
 	if err := restoreSituations(ctx, e.db, e.spec.Digest, e.tenantID, e.sitEngine); err != nil {
 		return fmt.Errorf("restore situations: %w", err)
 	}
-	e.cogEngine, err = newCognitionEngine(e.db, e.spec, e.tenantID, e.clock, idGen, cognitionEnabled)
+	e.cogEngine, err = newCognitionEngine(e.spec, e.tenantID, e.clock, idGen, cognitionEnabled)
 	return err
 }
 
@@ -73,11 +73,11 @@ func configureSchemaValidation(log *eventlog.EventLog, compiled *spec.CompiledSp
 	log.RequireSchemaValidation()
 }
 
-func newCognitionEngine(db *storage.DB, compiled *spec.CompiledSpec, tenantID string, clk clock.Clock, idGen ids.Generator, enabled bool) (*cognition.Engine, error) {
+func newCognitionEngine(compiled *spec.CompiledSpec, tenantID string, clk clock.Clock, idGen ids.Generator, enabled bool) (*cognition.Service, error) {
 	if !enabled {
 		return nil, nil
 	}
-	engine, err := cognition.NewEngine(db, compiled.Digest, tenantID, compiled, idGen, clk)
+	engine, err := cognition.New(cognition.Config{DeploymentID: compiled.Digest, TenantID: tenantID, Spec: compiled, IDGen: idGen, Clock: clk})
 	if err != nil {
 		return nil, fmt.Errorf("cognition engine: %w", err)
 	}

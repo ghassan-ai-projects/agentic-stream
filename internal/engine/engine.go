@@ -32,7 +32,7 @@ type Engine struct {
 
 	opRuntime *operators.OperatorRuntime
 	sitEngine *situations.Engine
-	cogEngine *cognition.Engine
+	cogEngine *cognition.Service
 }
 
 // WithRuntimeOwner fences stream state transactions to the active runtime

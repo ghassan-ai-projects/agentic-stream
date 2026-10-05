@@ -1,10 +1,12 @@
-package cognition
+package app
 
 import (
 	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/store"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
 
@@ -83,7 +85,7 @@ func TestInsertItemIgnoresDeterministicIDCollision(t *testing.T) {
 			return err
 		}
 
-		scheduler := &Scheduler{idGen: ids.Deterministic(), clk: clock.NewVirtual(now)}
+		scheduler := &scheduler{idGen: ids.Deterministic(), clk: clock.NewVirtual(now)}
 		item := scheduleledger.Item{
 			SchedulerItemID:  scheduler.itemID(),
 			Kind:             "standard",
@@ -98,7 +100,7 @@ func TestInsertItemIgnoresDeterministicIDCollision(t *testing.T) {
 		if item.SchedulerItemID != knownItemID {
 			t.Fatalf("deterministic item ID = %q, want %q", item.SchedulerItemID, knownItemID)
 		}
-		return scheduler.insertItem(ctx, tx, item, tenantID)
+		return scheduler.insertItem(ctx, store.Join(tx), item, tenantID)
 	}); err != nil {
 		t.Fatalf("insert item with existing scheduler item ID: %v", err)
 	}

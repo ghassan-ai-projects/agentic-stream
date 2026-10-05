@@ -33,11 +33,11 @@ encapsulation where existing tests do not prove them.
 
 | Round | Scope | Proof | Status |
 | --- | --- | --- | --- |
-| C0 | Survey, canonical language, dated findings/design/plan | Reviewed call graph, data ownership, terms, behavior contract | Ready for parent commit |
-| C1 | Extract pure domain records, deterministic IDs, trigger/delta/CEL and reconsideration decisions | Gate-order/partial-score, digest/identity parity, domain coverage | Not started |
-| C2 | Move SQL, storage JSON handling, notification and transaction-owned ledger handoffs to store; make transaction opaque | Same-transaction rollback, foreign handoff ordering, store-only SQL scan | Not started |
-| C3 | Move use-case sequencing to app; introduce configured facade; update engine and test callers | Facade-only public surface, constructor safety, unchanged stream/timer/cost paths | Not started |
-| C4 | Shared architecture gates, module maps, package guide, audits and final validation | Injected gate failures, full CI, uncached race, diff/docs checks | Parent integration |
+| C0 | Survey, canonical language, dated findings/design/plan | Reviewed call graph, data ownership, terms, behavior contract | Complete; ec50ace |
+| C1 | Extract pure domain records, deterministic IDs, trigger/delta/CEL and reconsideration decisions | Gate-order/partial-score, digest/identity parity, domain coverage | Complete |
+| C2 | Move SQL, storage JSON handling, notification and transaction-owned ledger handoffs to store; make transaction opaque | Same-transaction rollback, foreign handoff ordering, store-only SQL scan | Complete |
+| C3 | Move use-case sequencing to app; introduce configured facade; update engine and test callers | Facade-only public surface, constructor safety, unchanged stream/timer/cost paths | Complete |
+| C4 | Shared architecture gates, module maps, package guide, audits and final validation | Injected gate failures, full CI, uncached race, diff/docs checks | Final integrated gates pending |
 
 Implementation begins only after the parent commits this C0 plan. Each code
 round receives focused tests and review before its commit; the parent owns the
@@ -69,3 +69,7 @@ These follow-ups do not permit new writers: cognition remains the sole owner of
 `trigger_evaluations` and `reconsiderations`, scheduleledger remains owner of
 `scheduler_items`, and cognition retains only its documented last-reasoned
 Situation handoff.
+
+Missing caller transaction and nil refusal now fail explicitly before I/O.
+Implementation is completed directly after stopping the agents. Focused tests,
+coverage, lint and injection results are recorded in VALIDATION.md.

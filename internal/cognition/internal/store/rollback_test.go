@@ -1,13 +1,16 @@
-package cognition
+package store_test
 
 import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
@@ -17,7 +20,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-func TestReconsiderationAdmissionIsReplayDeduplicated(t *testing.T) {
+func TestReconsiderationStoreRetainsCallerRollback(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name              string
@@ -102,7 +105,7 @@ func runReconsiderationAdmissionTest(t *testing.T, versionCount, commandVersion,
 		t.Fatalf("enable foreign keys: %v", err)
 	}
 	compiled := &spec.CompiledSpec{Digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000", Time: spec.TimePolicy{LatePolicy: "correct_and_reconsider"}}
-	eng, err := NewEngine(db, "dep", "tenant", compiled, ids.Deterministic(), clock.NewVirtual(now))
+	eng, err := cognition.New(cognition.Config{DeploymentID: "dep", TenantID: "tenant", Spec: compiled, IDGen: ids.Deterministic(), Clock: clock.NewVirtual(now)})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -113,6 +116,19 @@ func runReconsiderationAdmissionTest(t *testing.T, versionCount, commandVersion,
 	}
 	currentJSON, _ := canonicaljson.Marshal(currentSnapshot)
 	current := situations.Version{SituationID: "sit-reconsider", Version: correctionVersion, PreviousVersion: previousVersion, Phase: "corrected", Completeness: "corrected", EventHorizon: now, Watermark: now, SnapshotJSON: currentJSON}
+	rollback := errors.New("caller rollback")
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := eng.Process(ctx, tx, current); err != nil {
+			return err
+		}
+		return rollback
+	}); !errors.Is(err, rollback) {
+		t.Fatalf("rollback: %v", err)
+	}
+	var before int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM reconsiderations").Scan(&before); err != nil || before != 0 {
+		t.Fatalf("rollback leaked reconsideration: count=%d err=%v", before, err)
+	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error { return eng.Process(ctx, tx, current) }); err != nil {
 		t.Fatalf("first correction process: %v", err)
 	}

@@ -134,7 +134,7 @@ func isExecutorTransport(imported string) bool {
 var compositionRoots = []string{"internal/runtime", "cmd/agentic-stream"}
 
 // sqlStatement matches a string literal that is a SQL statement.
-var sqlStatement = regexp.MustCompile(`(?i)^\s*(SELECT|INSERT|UPDATE|DELETE|REPLACE|WITH)\s`)
+var sqlStatement = regexp.MustCompile(`(?i)^\s*(SELECT|INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE|REPLACE|WITH)\s`)
 
 // TestCompositionRootsContainNoSQL enforces architecture-bar rule A10: reads
 // and writes belong to the module that owns the data, never to composition.
@@ -175,4 +175,16 @@ func stringLiterals(t *testing.T, file goFile) []string {
 func firstLine(text string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
 	return line
+}
+
+// TestSQLGateDistinguishesInsertStatementsFromErrorMessages preserves error text.
+func TestSQLGateDistinguishesInsertStatementsFromErrorMessages(t *testing.T) {
+	for _, query := range []string{"INSERT INTO items(id) VALUES (?)", "INSERT OR IGNORE INTO items(id) VALUES (?)", "insert or replace into items(id) values (?)"} {
+		if !sqlStatement.MatchString(query) {
+			t.Errorf("SQL missed: %s", query)
+		}
+	}
+	if sqlStatement.MatchString("insert item: %w") || sqlStatement.MatchString("insert reconsideration item: %w") {
+		t.Fatal("error prefix classified as executable SQL")
+	}
 }

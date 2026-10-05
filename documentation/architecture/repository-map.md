@@ -15,7 +15,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/engine/` | deterministic partitioned stream processing |
 | `internal/operators/` | aggregates, slopes, missing-heartbeat and related features |
 | `internal/situations/` | Situation state and immutable versions |
-| `internal/cognition/` | scheduler, trigger evaluation, reconsideration |
+| `internal/cognition/` | configured deterministic scheduler facade |
+| `internal/cognition/internal/app/` | ordered trigger, queue and correction use cases |
+| `internal/cognition/internal/domain/` | pure evaluation, timing, capacity and correction rules |
+| `internal/cognition/internal/store/` | opaque caller transaction, cognition SQL and owning-ledger handoffs |
 | `internal/admission/` | episode admission: due scheduler items to epoch-stamped episodes, or recorded skips |
 | `internal/episodes/` | public facade over episode assembly and bounded execution |
 | `internal/episodes/internal/app/` | transaction-scoped episode use cases: assembly, claim, execution, decisions |

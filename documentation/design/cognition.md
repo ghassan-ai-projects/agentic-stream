@@ -91,8 +91,8 @@ The correction remains admission evidence even if a later live snapshot is
 used by a rebound attempt. Its accepted Decision is recorded against that live
 version. Any compensating proposal must pass governance as a new Intent;
 reconsideration does not reverse an effect automatically. Source:
-[selection](../../internal/cognition/reconsideration_evidence.go) and
-[admission/deduplication](../../internal/cognition/reconsideration.go).
+[selection](../../internal/cognition/internal/store/reconsideration.go) and
+[admission/deduplication](../../internal/cognition/internal/app/correction.go).
 
 ## Source evidence
 
