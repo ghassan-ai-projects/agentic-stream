@@ -49,14 +49,14 @@ func (s *Session) deliverSafeStop(ctx context.Context, target string) (Exchange,
 	}
 	claim := s.targetClaim(target)
 	requestedErr := s.recordSafeStop(ctx, claim, deviceauthority.SafeStopRequested, map[string]any{
-		"command_id": command["command_id"], "state_digest": s.stateDigest,
+		"command_id": command.CommandID, "state_digest": s.stateDigest,
 	})
 	s.telemetry.ObserveSafeStopRequested()
 	return s.sendSafeStop(ctx, command, claim, requestedErr)
 }
 
-func (s *Session) sendSafeStop(ctx context.Context, command map[string]any, claim deviceauthority.TargetClaim, requestedErr error) (Exchange, bool, error) {
-	frame, err := wire.Encode(command)
+func (s *Session) sendSafeStop(ctx context.Context, command domain.Command, claim deviceauthority.TargetClaim, requestedErr error) (Exchange, bool, error) {
+	frame, err := wire.Encode(command.Document())
 	if err != nil {
 		return s.failedSafeStop(ctx, claim, requestedErr, fmt.Errorf("encode safe stop: %w", err), "safe-stop preparation failed", false)
 	}
@@ -91,12 +91,12 @@ func (s *Session) recordFailedSafeStop(ctx context.Context, claim deviceauthorit
 	return Exchange{}, false, fmt.Errorf("%s: %w", prefix, errors.Join(cause, requestedErr, recordErr))
 }
 
-func (s *Session) completeSafeStopExchange(ctx context.Context, command map[string]any, claim deviceauthority.TargetClaim, requestedErr error) (Exchange, bool, error) {
+func (s *Session) completeSafeStopExchange(ctx context.Context, command domain.Command, claim deviceauthority.TargetClaim, requestedErr error) (Exchange, bool, error) {
 	reply, err := s.transport.Receive(ctx)
 	if err != nil {
 		return s.failedSafeStopReceive(ctx, claim, requestedErr, err)
 	}
-	receipt, err := wire.Decode(reply)
+	receipt, err := wire.DecodeReceipt(reply)
 	if err != nil || !domain.ReceiptMatches(receipt, command, s.bootID) {
 		return s.failedSafeStopReceipt(ctx, claim, requestedErr, nil, err)
 	}
@@ -139,24 +139,23 @@ func failedSafeStopResponse(partial *Exchange, decodeErr, requestedErr, recordEr
 	return *partial, true, &deviceExchangeError{err: errors.Join(fmt.Errorf("decode safe-stop response: %w", decodeErr), requestedErr, recordErr, barrierErr)}
 }
 
-func (s *Session) concludeSafeStopResponse(ctx context.Context, command, receipt, result map[string]any, claim deviceauthority.TargetClaim, requestedErr error) (Exchange, bool, error) {
-	accepted, _ := receipt["accepted"].(bool)
-	if !accepted {
+func (s *Session) concludeSafeStopResponse(ctx context.Context, command domain.Command, receipt domain.Receipt, result domain.Result, claim deviceauthority.TargetClaim, requestedErr error) (Exchange, bool, error) {
+	if !receipt.Accepted {
 		return s.rejectedSafeStop(ctx, command, receipt, result, claim, requestedErr)
 	}
 	return s.recordCompletedSafeStop(ctx, claim, command, receipt, result, requestedErr)
 }
 
-func (s *Session) rejectedSafeStop(ctx context.Context, command, receipt, result map[string]any, claim deviceauthority.TargetClaim, requestedErr error) (Exchange, bool, error) {
+func (s *Session) rejectedSafeStop(ctx context.Context, command domain.Command, receipt domain.Receipt, result domain.Result, claim deviceauthority.TargetClaim, requestedErr error) (Exchange, bool, error) {
 	recordErr := s.recordSafeStop(ctx, claim, deviceauthority.SafeStopFailed, map[string]any{
-		"command_id": command["command_id"], "accepted": false,
-		"result_status": result["status"], "error_code": result["error_code"],
+		"command_id": command.CommandID, "accepted": false,
+		"result_status": result.Status, "error_code": result.Document["error_code"],
 	})
 	s.telemetry.ObserveSafeStopFailure()
 	return s.classifySafeStopRejection(ctx, receipt, result, requestedErr, recordErr)
 }
 
-func (s *Session) classifySafeStopRejection(ctx context.Context, receipt, result map[string]any, requestedErr, recordErr error) (Exchange, bool, error) {
+func (s *Session) classifySafeStopRejection(ctx context.Context, receipt domain.Receipt, result domain.Result, requestedErr, recordErr error) (Exchange, bool, error) {
 	lifecycleErr := errors.Join(requestedErr, recordErr)
 	if lifecycleErr != nil {
 		s.invalidateTransportLocked()
@@ -166,9 +165,9 @@ func (s *Session) classifySafeStopRejection(ctx context.Context, receipt, result
 	return Exchange{Receipt: receipt, Result: result}, true, &deviceExchangeError{err: errors.Join(errors.New("device rejected safe stop"), requestedErr, recordErr)}
 }
 
-func (s *Session) recordCompletedSafeStop(ctx context.Context, claim deviceauthority.TargetClaim, command, receipt, result map[string]any, requestedErr error) (Exchange, bool, error) {
+func (s *Session) recordCompletedSafeStop(ctx context.Context, claim deviceauthority.TargetClaim, command domain.Command, receipt domain.Receipt, result domain.Result, requestedErr error) (Exchange, bool, error) {
 	completedErr := s.recordSafeStop(ctx, claim, deviceauthority.SafeStopCompleted, map[string]any{
-		"command_id": command["command_id"], "accepted": receipt["accepted"], "result_status": result["status"],
+		"command_id": command.CommandID, "accepted": receipt.Accepted, "result_status": result.Status,
 	})
 	if lifecycleErr := errors.Join(requestedErr, completedErr); lifecycleErr != nil {
 		barrierErr := s.requireReconciliation(ctx, "safe-stop lifecycle evidence was not durable")

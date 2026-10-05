@@ -6,29 +6,26 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
 )
 
-func validateDeviceState(frame []byte, catalog *domain.CapabilityCatalog, catalogDigest string, allowedCapabilityDigests, allowedFirmwareDigests []string) (map[string]any, error) {
-	state, err := wire.Decode(frame)
+// decodeState decodes a state record and requires it to match the catalog
+// and the firmware allow-list.
+func decodeState(frame []byte, catalog *domain.CapabilityCatalog, catalogDigest string, allowedFirmwareDigests []string) (domain.State, error) {
+	state, err := wire.DecodeState(frame)
 	if err != nil {
-		return nil, err
+		return domain.State{}, err //nolint:wrapcheck // the caller names the handshake or refresh.
 	}
 	if err := domain.CheckState(state, domain.StateAllowlist{
 		ProtocolVersion: catalog.ProtocolVersion, CatalogDigest: catalogDigest,
-		CapabilityDigest: allowedCapabilityDigests, FirmwareDigests: allowedFirmwareDigests,
+		CapabilityDigest: []string{catalogDigest}, FirmwareDigests: allowedFirmwareDigests,
 	}); err != nil {
-		return nil, err //nolint:wrapcheck // the caller names the handshake or refresh.
+		return domain.State{}, err //nolint:wrapcheck // the caller names the handshake or refresh.
 	}
 	return state, nil
 }
 
-func stateString(state map[string]any, key string) string {
-	value, _ := state[key].(string)
-	return value
-}
-
-type cachedReceipt struct {
-	commandDigest string
-	receipt       map[string]any
-	result        map[string]any
+// cachedExchange is the first answer to an idempotency key on this boot.
+type cachedExchange struct {
+	commandIdentity string
+	exchange        Exchange
 }
 
 type deviceExchangeError struct{ err error }
@@ -43,14 +40,6 @@ func contains(values []string, wanted string) bool {
 		}
 	}
 	return false
-}
-
-func cloneDocument(document map[string]any) map[string]any {
-	clone := make(map[string]any, len(document))
-	for key, value := range document {
-		clone[key] = value
-	}
-	return clone
 }
 
 // owner is the runtime owner the session commands as.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/transport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
@@ -17,15 +18,38 @@ import (
 // Receipt proves admission; Result is the device-reported terminal execution
 // status. Neither is physical confirmation by itself.
 type Exchange struct {
-	Receipt map[string]any
-	Result  map[string]any
+	Receipt domain.Receipt
+	Result  domain.Result
+}
+
+// clone copies the records' documents, so a caller cannot change what the
+// session cached.
+func (e Exchange) clone() Exchange {
+	e.Receipt.Document = maps.Clone(e.Receipt.Document)
+	e.Result.Document = maps.Clone(e.Result.Document)
+	e.Receipt.RejectCode = cloneCode(e.Receipt.RejectCode)
+	e.Result.ErrorCode = cloneCode(e.Result.ErrorCode)
+	return e
+}
+
+func cloneCode(code *string) *string {
+	if code == nil {
+		return nil
+	}
+	value := *code
+	return &value
+}
+
+// document preserves the provider result contract, including absent replies.
+func (e Exchange) document() map[string]any {
+	return map[string]any{"receipt": e.Receipt.Document, "result": e.Result.Document}
 }
 
 // Exchange sends one already-materialized command and consumes its
 // receipt and terminal result. The bool reports whether bytes were handed to
 // the transport; callers must treat a post-send receive error as an unknown
 // outcome.
-func (s *Session) Exchange(ctx context.Context, command map[string]any) (Exchange, bool, error) {
+func (s *Session) Exchange(ctx context.Context, command domain.Command) (Exchange, bool, error) {
 	exchange, sent, err := s.exchange(ctx, command)
 	if exchange == nil {
 		return Exchange{}, sent, err
@@ -33,7 +57,7 @@ func (s *Session) Exchange(ctx context.Context, command map[string]any) (Exchang
 	return *exchange, sent, err
 }
 
-func (s *Session) exchange(ctx context.Context, command map[string]any) (*Exchange, bool, error) {
+func (s *Session) exchange(ctx context.Context, command domain.Command) (*Exchange, bool, error) {
 	if s == nil {
 		return nil, false, fmt.Errorf("device session is not open")
 	}
@@ -55,8 +79,8 @@ func (s *Session) ensureOpen() error {
 	return nil
 }
 
-func (s *Session) exchangeOrdinaryCommand(ctx context.Context, command map[string]any) (*Exchange, bool, error) {
-	frame, commandIdentity, idempotencyKey, err := prepareCommand(command)
+func (s *Session) exchangeOrdinaryCommand(ctx context.Context, command domain.Command) (*Exchange, bool, error) {
+	frame, commandIdentity, err := prepareCommand(command)
 	if err != nil {
 		return nil, false, err
 	}
@@ -70,42 +94,39 @@ func (s *Session) exchangeOrdinaryCommand(ctx context.Context, command map[strin
 	if err != nil {
 		return nil, false, err
 	}
-	return s.deliverClaimedCommand(ctx, command, claim, frame, commandIdentity, idempotencyKey)
+	return s.deliverClaimedCommand(ctx, command, claim, frame, commandIdentity)
 }
 
-func prepareCommand(command map[string]any) ([]byte, string, string, error) {
-	frame, err := wire.Encode(command)
+func prepareCommand(command domain.Command) ([]byte, string, error) {
+	frame, err := wire.Encode(command.Document())
 	if err != nil {
-		return nil, "", "", fmt.Errorf("encode device command: %w", err)
+		return nil, "", fmt.Errorf("encode device command: %w", err)
 	}
-	commandIdentity, err := domain.CommandIdentity(command)
+	commandIdentity, err := command.Identity()
 	if err != nil {
-		return nil, "", "", fmt.Errorf("digest device command identity: %w", err)
+		return nil, "", err
 	}
-	idempotencyKey, _ := command["idempotency_key"].(string)
-	return frame, commandIdentity, idempotencyKey, nil
+	return frame, commandIdentity, nil
 }
 
-func (s *Session) validateCommandLifetime(command map[string]any) error {
-	expectedBoot, _ := command["expected_boot_id"].(string)
-	if expectedBoot != s.bootID {
-		return fmt.Errorf("device boot changed: command expects %q, session is %q", expectedBoot, s.bootID)
+func (s *Session) validateCommandLifetime(command domain.Command) error {
+	if command.ExpectedBootID != s.bootID {
+		return fmt.Errorf("device boot changed: command expects %q, session is %q", command.ExpectedBootID, s.bootID)
 	}
 	return nil
 }
 
-func (s *Session) claimCommand(ctx context.Context, command map[string]any, commandIdentity string) (deviceauthority.TargetClaim, error) {
-	target, _ := command["target"].(string)
-	claim := s.targetClaim(target)
+func (s *Session) claimCommand(ctx context.Context, command domain.Command, commandIdentity string) (deviceauthority.TargetClaim, error) {
+	claim := s.targetClaim(command.Target)
 	if err := s.authority.Claim(ctx, claim); err != nil {
 		return claim, fmt.Errorf("claim device target: %w", err)
 	}
 	return s.bindClaimedCommand(ctx, command, claim, commandIdentity)
 }
 
-func (s *Session) bindClaimedCommand(ctx context.Context, command map[string]any, claim deviceauthority.TargetClaim, commandIdentity string) (deviceauthority.TargetClaim, error) {
+func (s *Session) bindClaimedCommand(ctx context.Context, command domain.Command, claim deviceauthority.TargetClaim, commandIdentity string) (deviceauthority.TargetClaim, error) {
 	if err := s.authority.BindCommand(ctx, deviceauthority.CommandBinding{
-		CommandID: documentString(command, "command_id"), Target: claim.Target, Device: claim.Device,
+		CommandID: command.CommandID, Target: claim.Target, Device: claim.Device,
 		Owner: claim.Owner, CommandDigest: commandIdentity,
 	}); err != nil {
 		releaseErr := s.authority.ReleaseClaim(ctx, claim)
@@ -128,12 +149,9 @@ func (s *Session) assertClaimBeforeDelivery(ctx context.Context, claim deviceaut
 	return claim, nil
 }
 
-func (s *Session) deliverClaimedCommand(ctx context.Context, command map[string]any, claim deviceauthority.TargetClaim, frame []byte, commandIdentity, idempotencyKey string) (*Exchange, bool, error) {
-	if receipt, ok, err := s.cachedReceipt(idempotencyKey, commandIdentity); ok || err != nil {
-		if err != nil {
-			return nil, ok, err
-		}
-		return &Exchange{Receipt: receipt, Result: cloneDocument(s.receipts[idempotencyKey].result)}, ok, nil
+func (s *Session) deliverClaimedCommand(ctx context.Context, command domain.Command, claim deviceauthority.TargetClaim, frame []byte, commandIdentity string) (*Exchange, bool, error) {
+	if cached, ok, err := s.cachedExchange(command.IdempotencyKey, commandIdentity); ok || err != nil {
+		return cached, ok, err
 	}
 	if err := s.transport.Send(ctx, frame); err != nil {
 		sent := transport.MayHaveSent(err)
@@ -142,26 +160,29 @@ func (s *Session) deliverClaimedCommand(ctx context.Context, command map[string]
 		}
 		return nil, sent, fmt.Errorf("send device command: %w", err)
 	}
-	return s.receiveCommandOutcome(ctx, command, claim, commandIdentity, idempotencyKey)
+	return s.receiveCommandOutcome(ctx, command, claim, commandIdentity)
 }
 
-func (s *Session) cachedReceipt(idempotencyKey, commandIdentity string) (map[string]any, bool, error) {
+// cachedExchange returns the first answer to a repeated idempotency key. A key
+// reused for a different command is a conflict.
+func (s *Session) cachedExchange(idempotencyKey, commandIdentity string) (*Exchange, bool, error) {
 	cached, ok := s.receipts[idempotencyKey]
 	if !ok {
 		return nil, false, nil
 	}
-	if cached.commandDigest != commandIdentity {
+	if cached.commandIdentity != commandIdentity {
 		return nil, false, fmt.Errorf("idempotency key %q conflicts with the prior device command", idempotencyKey)
 	}
-	return cloneDocument(cached.receipt), true, nil
+	exchange := cached.exchange.clone()
+	return &exchange, true, nil
 }
 
-func (s *Session) receiveCommandOutcome(ctx context.Context, command map[string]any, claim deviceauthority.TargetClaim, commandIdentity, idempotencyKey string) (*Exchange, bool, error) {
+func (s *Session) receiveCommandOutcome(ctx context.Context, command domain.Command, claim deviceauthority.TargetClaim, commandIdentity string) (*Exchange, bool, error) {
 	reply, err := s.transport.Receive(ctx)
 	if err != nil {
 		return s.unknownDeviceOutcome(ctx, nil, err)
 	}
-	receipt, err := wire.Decode(reply)
+	receipt, err := wire.DecodeReceipt(reply)
 	if err != nil {
 		s.telemetry.ObserveDeviceFrameError()
 		return s.unknownDeviceOutcome(ctx, nil, fmt.Errorf("decode device receipt: %w", err))
@@ -169,10 +190,10 @@ func (s *Session) receiveCommandOutcome(ctx context.Context, command map[string]
 	if !domain.ReceiptMatches(receipt, command, s.bootID) {
 		return s.unknownDeviceOutcome(ctx, nil, errors.New("device receipt identity mismatch"))
 	}
-	return s.completeCommandOutcome(ctx, command, receipt, claim, commandIdentity, idempotencyKey)
+	return s.completeCommandOutcome(ctx, command, receipt, claim, commandIdentity)
 }
 
-func (s *Session) completeCommandOutcome(ctx context.Context, command, receipt map[string]any, claim deviceauthority.TargetClaim, commandIdentity, idempotencyKey string) (*Exchange, bool, error) {
+func (s *Session) completeCommandOutcome(ctx context.Context, command domain.Command, receipt domain.Receipt, claim deviceauthority.TargetClaim, commandIdentity string) (*Exchange, bool, error) {
 	partial := &Exchange{Receipt: receipt}
 	if err := s.authority.AssertClaim(ctx, claim); err != nil {
 		return s.unknownDeviceOutcome(ctx, partial, fmt.Errorf("authority lost during device exchange: %w", err))
@@ -181,32 +202,32 @@ func (s *Session) completeCommandOutcome(ctx context.Context, command, receipt m
 	if err != nil {
 		return s.unknownDeviceOutcome(ctx, partial, err)
 	}
-	return s.cacheCommandOutcome(ctx, partial, result, claim, commandIdentity, idempotencyKey)
+	return s.cacheCommandOutcome(ctx, partial, result, claim, commandIdentity, command.IdempotencyKey)
 }
 
-func (s *Session) receiveDeviceResult(ctx context.Context, command, receipt map[string]any) (map[string]any, error) {
+func (s *Session) receiveDeviceResult(ctx context.Context, command domain.Command, receipt domain.Receipt) (domain.Result, error) {
 	resultFrame, err := s.transport.Receive(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("receive device result: %w", err)
+		return domain.Result{}, fmt.Errorf("receive device result: %w", err)
 	}
-	result, err := wire.Decode(resultFrame)
+	result, err := wire.DecodeResult(resultFrame)
 	if err != nil {
 		s.telemetry.ObserveDeviceFrameError()
-		return nil, fmt.Errorf("decode device result: %w", err)
+		return domain.Result{}, fmt.Errorf("decode device result: %w", err)
 	}
 	if !domain.ResultMatches(result, command, s.bootID, receipt) {
-		return nil, errors.New("device result identity or status mismatch")
+		return domain.Result{}, errors.New("device result identity or status mismatch")
 	}
 	return result, nil
 }
 
-func (s *Session) cacheCommandOutcome(ctx context.Context, partial *Exchange, result map[string]any, claim deviceauthority.TargetClaim, commandIdentity, idempotencyKey string) (*Exchange, bool, error) {
+func (s *Session) cacheCommandOutcome(ctx context.Context, partial *Exchange, result domain.Result, claim deviceauthority.TargetClaim, commandIdentity, idempotencyKey string) (*Exchange, bool, error) {
 	partial.Result = result
 	if err := s.authority.AssertClaim(ctx, claim); err != nil {
 		return s.unknownDeviceOutcome(ctx, partial, fmt.Errorf("authority lost during device result: %w", err))
 	}
-	s.receipts[idempotencyKey] = cachedReceipt{commandDigest: commandIdentity, receipt: cloneDocument(partial.Receipt), result: cloneDocument(result)}
-	return &Exchange{Receipt: partial.Receipt, Result: result}, true, nil
+	s.receipts[idempotencyKey] = cachedExchange{commandIdentity: commandIdentity, exchange: partial.clone()}
+	return partial, true, nil
 }
 
 func (s *Session) unknownDeviceOutcome(ctx context.Context, partial *Exchange, err error) (*Exchange, bool, error) {

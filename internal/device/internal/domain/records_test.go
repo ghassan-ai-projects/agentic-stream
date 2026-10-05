@@ -6,19 +6,20 @@ import (
 )
 
 func TestResultMatchesCommandUsesExplicitReceiptResultMatrix(t *testing.T) {
-	command := map[string]any{"command_id": "cmd-1", "operation": "set_led"}
+	expired, notReady := "expired", "not_ready"
+	command := Command{CommandID: "cmd-1", Operation: "set_led"}
 	cases := []struct {
 		name    string
-		receipt map[string]any
-		result  map[string]any
+		receipt Receipt
+		result  Result
 		matches bool
 	}{
-		{name: "accepted ordinary executed", receipt: map[string]any{"accepted": true}, result: map[string]any{"message_type": "result", "command_id": "cmd-1", "boot_id": "boot-A", "status": "executed"}, matches: true},
-		{name: "accepted ordinary safe state", receipt: map[string]any{"accepted": true}, result: map[string]any{"message_type": "result", "command_id": "cmd-1", "boot_id": "boot-A", "status": "safe_state"}},
-		{name: "accepted ordinary expired", receipt: map[string]any{"accepted": true}, result: map[string]any{"message_type": "result", "command_id": "cmd-1", "boot_id": "boot-A", "status": "expired"}},
-		{name: "rejected matching code", receipt: map[string]any{"accepted": false, "reject_code": "expired"}, result: map[string]any{"message_type": "result", "command_id": "cmd-1", "boot_id": "boot-A", "status": "rejected", "error_code": "expired"}, matches: true},
-		{name: "rejected wrong status", receipt: map[string]any{"accepted": false, "reject_code": "expired"}, result: map[string]any{"message_type": "result", "command_id": "cmd-1", "boot_id": "boot-A", "status": "expired", "error_code": "expired"}},
-		{name: "rejected wrong code", receipt: map[string]any{"accepted": false, "reject_code": "expired"}, result: map[string]any{"message_type": "result", "command_id": "cmd-1", "boot_id": "boot-A", "status": "rejected", "error_code": "not_ready"}},
+		{name: "accepted ordinary executed", receipt: Receipt{Accepted: true}, result: Result{MessageType: "result", CommandID: "cmd-1", BootID: "boot-A", Status: "executed"}, matches: true},
+		{name: "accepted ordinary safe state", receipt: Receipt{Accepted: true}, result: Result{MessageType: "result", CommandID: "cmd-1", BootID: "boot-A", Status: "safe_state"}},
+		{name: "accepted ordinary expired", receipt: Receipt{Accepted: true}, result: Result{MessageType: "result", CommandID: "cmd-1", BootID: "boot-A", Status: "expired"}},
+		{name: "rejected matching code", receipt: Receipt{Accepted: false, RejectCode: &expired}, result: Result{MessageType: "result", CommandID: "cmd-1", BootID: "boot-A", Status: "rejected", ErrorCode: &expired}, matches: true},
+		{name: "rejected wrong status", receipt: Receipt{Accepted: false, RejectCode: &expired}, result: Result{MessageType: "result", CommandID: "cmd-1", BootID: "boot-A", Status: "expired", ErrorCode: &expired}},
+		{name: "rejected wrong code", receipt: Receipt{Accepted: false, RejectCode: &expired}, result: Result{MessageType: "result", CommandID: "cmd-1", BootID: "boot-A", Status: "rejected", ErrorCode: &notReady}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -30,15 +31,15 @@ func TestResultMatchesCommandUsesExplicitReceiptResultMatrix(t *testing.T) {
 }
 
 func TestResultMatchesCommandRequiresSafeStateForSafeStop(t *testing.T) {
-	command := map[string]any{"command_id": "safe-stop/fan-01", "operation": "safe_stop"}
-	receipt := map[string]any{"accepted": true}
+	command := Command{CommandID: "safe-stop/fan-01", Operation: "safe_stop"}
+	receipt := Receipt{Accepted: true}
 	for _, status := range []string{"executed", "rejected", "expired", "superseded"} {
-		result := map[string]any{"message_type": "result", "command_id": command["command_id"], "boot_id": "boot-A", "status": status}
+		result := Result{MessageType: "result", CommandID: command.CommandID, BootID: "boot-A", Status: status}
 		if ResultMatches(result, command, "boot-A", receipt) {
 			t.Fatalf("safe-stop status %q was accepted", status)
 		}
 	}
-	result := map[string]any{"message_type": "result", "command_id": command["command_id"], "boot_id": "boot-A", "status": "safe_state"}
+	result := Result{MessageType: "result", CommandID: command.CommandID, BootID: "boot-A", Status: "safe_state"}
 	if !ResultMatches(result, command, "boot-A", receipt) {
 		t.Fatal("safe_state result was rejected")
 	}
@@ -46,12 +47,12 @@ func TestResultMatchesCommandRequiresSafeStateForSafeStop(t *testing.T) {
 
 func TestReceiptMatchesCommandAndBoot(t *testing.T) {
 	t.Parallel()
-	command := map[string]any{"command_id": "cmd-1"}
-	receipt := map[string]any{"message_type": "receipt", "command_id": "cmd-1", "boot_id": "boot-A"}
+	command := Command{CommandID: "cmd-1"}
+	receipt := Receipt{MessageType: "receipt", CommandID: "cmd-1", BootID: "boot-A"}
 	if !ReceiptMatches(receipt, command, "boot-A") || ReceiptMatches(receipt, command, "boot-B") {
 		t.Fatal("receipt boot binding")
 	}
-	if ReceiptMatches(map[string]any{"message_type": "result", "command_id": "cmd-1", "boot_id": "boot-A"}, command, "boot-A") {
+	if ReceiptMatches(Receipt{MessageType: "result", CommandID: "cmd-1", BootID: "boot-A"}, command, "boot-A") {
 		t.Fatal("a result was accepted as a receipt")
 	}
 }
@@ -60,24 +61,21 @@ func TestCheckStateRequiresAllowedIdentity(t *testing.T) {
 	t.Parallel()
 	catalogDigest, firmware := "sha256:"+strings.Repeat("d", 64), "sha256:"+strings.Repeat("c", 64)
 	allowed := StateAllowlist{ProtocolVersion: 1, CatalogDigest: catalogDigest, CapabilityDigest: []string{catalogDigest}, FirmwareDigests: []string{firmware}}
-	valid := func() map[string]any {
-		return map[string]any{"message_type": "state", "protocol_version": float64(1), "device_id": "d", "boot_id": "b",
-			"capability_digest": catalogDigest, "firmware_digest": firmware}
-	}
+	valid := State{MessageType: "state", ProtocolVersion: 1, DeviceID: "d", BootID: "b", CapabilityDigest: catalogDigest, FirmwareDigest: firmware}
 	for _, tt := range []struct {
 		name   string
-		mutate func(map[string]any)
+		mutate func(*State)
 		want   string
 	}{
-		{"valid", func(map[string]any) {}, ""},
-		{"not a state", func(s map[string]any) { s["message_type"] = "receipt" }, "want state"},
-		{"protocol", func(s map[string]any) { s["protocol_version"] = float64(2) }, "protocol version 2"},
-		{"capability", func(s map[string]any) { s["capability_digest"] = firmware }, "capability digest"},
-		{"firmware", func(s map[string]any) { s["firmware_digest"] = catalogDigest }, "firmware digest"},
-		{"identity", func(s map[string]any) { s["boot_id"] = "" }, "identity is incomplete"},
+		{"valid", func(*State) {}, ""},
+		{"not a state", func(s *State) { s.MessageType = "receipt" }, "want state"},
+		{"protocol", func(s *State) { s.ProtocolVersion = 2 }, "protocol version 2"},
+		{"capability", func(s *State) { s.CapabilityDigest = firmware }, "capability digest"},
+		{"firmware", func(s *State) { s.FirmwareDigest = catalogDigest }, "firmware digest"},
+		{"identity", func(s *State) { s.BootID = "" }, "identity is incomplete"},
 	} {
-		state := valid()
-		tt.mutate(state)
+		state := valid
+		tt.mutate(&state)
 		err := CheckState(state, allowed)
 		if tt.want == "" && err != nil || tt.want != "" && (err == nil || !strings.Contains(err.Error(), tt.want)) {
 			t.Errorf("%s: CheckState = %v, want %q", tt.name, err, tt.want)
@@ -87,12 +85,12 @@ func TestCheckStateRequiresAllowedIdentity(t *testing.T) {
 
 func TestCommandIdentityIgnoresCommandID(t *testing.T) {
 	t.Parallel()
-	first, err := CommandIdentity(map[string]any{"command_id": "a", "target": "fan-01"})
+	first, err := Command{CommandID: "a", Target: "fan-01"}.Identity()
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, _ := CommandIdentity(map[string]any{"command_id": "b", "target": "fan-01"})
-	other, _ := CommandIdentity(map[string]any{"command_id": "a", "target": "led-01"})
+	second, _ := Command{CommandID: "b", Target: "fan-01"}.Identity()
+	other, _ := Command{CommandID: "a", Target: "led-01"}.Identity()
 	if first != second || first == other {
 		t.Fatal("command identity must ignore only the command ID")
 	}

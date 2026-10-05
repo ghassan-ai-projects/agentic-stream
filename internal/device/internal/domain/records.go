@@ -2,29 +2,19 @@ package domain
 
 import (
 	"fmt"
-	"maps"
 	"slices"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
-// CommandIdentity is a device command's digest without its command ID: two
-// commands with the same identity are the same command, so a repeated
-// idempotency key must carry the same identity.
-func CommandIdentity(command map[string]any) (string, error) {
-	identity := maps.Clone(command)
-	delete(identity, "command_id")
-	digest, err := canonicaljson.Digest(canonicaljson.DomainCommand, identity)
-	if err != nil {
-		return "", fmt.Errorf("digest device command identity: %w", err)
-	}
-	return digest, nil
+func commandDigest(document map[string]any) (string, error) {
+	return canonicaljson.Digest(canonicaljson.DomainCommand, document) //nolint:wrapcheck // documentDigest names the command identity.
 }
 
 // StateDigest is the sha256 reference of a device state's canonical JSON.
 // Reconciliation evidence binds the latest state by this digest.
-func StateDigest(state map[string]any) (string, error) {
-	data, err := canonicaljson.Marshal(state)
+func StateDigest(document map[string]any) (string, error) {
+	data, err := canonicaljson.Marshal(document)
 	if err != nil {
 		return "", fmt.Errorf("canonicalize device state: %w", err)
 	}
@@ -42,25 +32,24 @@ type StateAllowlist struct {
 
 // CheckState requires a state record whose protocol, capability and firmware
 // digests are allowed and whose device and boot identity are complete.
-func CheckState(state map[string]any, allowed StateAllowlist) error {
-	if state["message_type"] != "state" {
-		return fmt.Errorf("device handshake returned %v, want state", state["message_type"])
+func CheckState(state State, allowed StateAllowlist) error {
+	if state.MessageType != "state" {
+		return fmt.Errorf("device handshake returned %v, want state", state.Document["message_type"])
 	}
-	if protocol := documentInt64(state, "protocol_version"); protocol != int64(allowed.ProtocolVersion) {
-		return fmt.Errorf("device protocol version %d is unsupported", protocol)
+	if state.ProtocolVersion != int64(allowed.ProtocolVersion) {
+		return fmt.Errorf("device protocol version %d is unsupported", state.ProtocolVersion)
 	}
 	return checkStateIdentity(state, allowed)
 }
 
-func checkStateIdentity(state map[string]any, allowed StateAllowlist) error {
-	capabilityDigest := documentString(state, "capability_digest")
-	if capabilityDigest != allowed.CatalogDigest || !slices.Contains(allowed.CapabilityDigest, capabilityDigest) {
-		return fmt.Errorf("device capability digest %q does not match the allow-listed catalog", capabilityDigest)
+func checkStateIdentity(state State, allowed StateAllowlist) error {
+	if state.CapabilityDigest != allowed.CatalogDigest || !slices.Contains(allowed.CapabilityDigest, state.CapabilityDigest) {
+		return fmt.Errorf("device capability digest %q does not match the allow-listed catalog", state.CapabilityDigest)
 	}
-	if firmwareDigest := documentString(state, "firmware_digest"); !slices.Contains(allowed.FirmwareDigests, firmwareDigest) {
-		return fmt.Errorf("device firmware digest %q is not allow-listed", firmwareDigest)
+	if !slices.Contains(allowed.FirmwareDigests, state.FirmwareDigest) {
+		return fmt.Errorf("device firmware digest %q is not allow-listed", state.FirmwareDigest)
 	}
-	if documentString(state, "device_id") == "" || documentString(state, "boot_id") == "" {
+	if state.DeviceID == "" || state.BootID == "" {
 		return fmt.Errorf("device handshake identity is incomplete")
 	}
 	return nil
@@ -68,44 +57,23 @@ func checkStateIdentity(state map[string]any, allowed StateAllowlist) error {
 
 // ReceiptMatches reports whether a receipt answers the command on the current
 // boot.
-func ReceiptMatches(receipt, command map[string]any, bootID string) bool {
-	return receipt["message_type"] == "receipt" &&
-		receipt["command_id"] == command["command_id"] &&
-		receipt["boot_id"] == bootID
+func ReceiptMatches(receipt Receipt, command Command, bootID string) bool {
+	return receipt.MessageType == "receipt" && receipt.CommandID == command.CommandID && receipt.BootID == bootID
 }
 
 // ResultMatches reports whether a result answers the command on the current
 // boot and agrees with its receipt: an accepted command executed (or, for a
 // safe stop, reached the safe state) without an error code, and a rejected
 // command reports the receipt's reject code.
-func ResultMatches(result, command map[string]any, bootID string, receipt map[string]any) bool {
-	if result["message_type"] != "result" || result["command_id"] != command["command_id"] || result["boot_id"] != bootID {
+func ResultMatches(result Result, command Command, bootID string, receipt Receipt) bool {
+	if result.MessageType != "result" || result.CommandID != command.CommandID || result.BootID != bootID || result.Status == "" {
 		return false
 	}
-	status, _ := result["status"].(string)
-	if status == "" {
-		return false
+	if !receipt.Accepted {
+		return result.Status == "rejected" && sameOptional(result.ErrorCode, receipt.RejectCode)
 	}
-	return resultAgreesWithReceipt(result, command, receipt, status)
-}
-
-func resultAgreesWithReceipt(result, command, receipt map[string]any, status string) bool {
-	accepted, _ := receipt["accepted"].(bool)
-	if !accepted {
-		return status == "rejected" && result["error_code"] == receipt["reject_code"]
+	if command.IsSafeStop() {
+		return result.Status == "safe_state" && result.ErrorCode == nil
 	}
-	if documentString(command, "operation") == "safe_stop" {
-		return status == "safe_state" && result["error_code"] == nil
-	}
-	return status == "executed" && result["error_code"] == nil
-}
-
-func documentString(document map[string]any, key string) string {
-	value, _ := document[key].(string)
-	return value
-}
-
-func documentInt64(document map[string]any, key string) int64 {
-	value, _ := document[key].(float64)
-	return int64(value)
+	return result.Status == "executed" && result.ErrorCode == nil
 }

@@ -43,10 +43,10 @@ func TestMaterializeProducesBoundedDeviceCommands(t *testing.T) {
 
 	t.Run("led indicator", func(t *testing.T) {
 		t.Parallel()
-		doc, err := catalog.Materialize(actionport.Command{
+		doc, err := documentOf(catalog.Materialize(actionport.Command{
 			CommandID: "cmd-1", EffectorRoute: "set_indicator", NormalizedTarget: "led-01", IdempotencyKey: idemKey(), PolicyDigest: policyKey(),
 			Payload: map[string]any{"entity_id": "zone-01", "state": "alert"},
-		}, boot)
+		}, boot))
 		if err != nil {
 			t.Fatalf("materialize: %v", err)
 		}
@@ -66,10 +66,10 @@ func TestMaterializeProducesBoundedDeviceCommands(t *testing.T) {
 
 	t.Run("logical target resolves through closed binding", func(t *testing.T) {
 		t.Parallel()
-		doc, err := catalog.Materialize(actionport.Command{
+		doc, err := documentOf(catalog.Materialize(actionport.Command{
 			CommandID: "cmd-logical", EffectorRoute: "set_indicator", NormalizedTarget: "zone-01", IdempotencyKey: idemKey(), PolicyDigest: policyKey(),
 			Payload: map[string]any{"entity_id": "zone-01", "state": "watch"},
-		}, boot)
+		}, boot))
 		if err != nil {
 			t.Fatalf("materialize logical target: %v", err)
 		}
@@ -80,10 +80,10 @@ func TestMaterializeProducesBoundedDeviceCommands(t *testing.T) {
 
 	t.Run("bounded cooling mode", func(t *testing.T) {
 		t.Parallel()
-		doc, err := catalog.Materialize(actionport.Command{
+		doc, err := documentOf(catalog.Materialize(actionport.Command{
 			CommandID: "cmd-2", EffectorRoute: "select_thermal_mode", NormalizedTarget: "fan-01", IdempotencyKey: idemKey(), PolicyDigest: policyKey(),
 			Payload: map[string]any{"entity_id": "zone-01", "mode": "bounded_cooling"},
-		}, boot)
+		}, boot))
 		if err != nil {
 			t.Fatalf("materialize: %v", err)
 		}
@@ -106,10 +106,10 @@ func TestMaterializeProducesBoundedDeviceCommands(t *testing.T) {
 func TestMaterializeIgnoresModelSuppliedParameters(t *testing.T) {
 	t.Parallel()
 	catalog := loadThermalCatalog(t)
-	doc, err := catalog.Materialize(actionport.Command{
+	doc, err := documentOf(catalog.Materialize(actionport.Command{
 		CommandID: "cmd-3", EffectorRoute: "select_thermal_mode", NormalizedTarget: "fan-01", IdempotencyKey: idemKey(), PolicyDigest: policyKey(),
 		Payload: map[string]any{"mode": "bounded_cooling", "duty_permille": float64(999), "lease_ms": float64(99999), "target": "pump-01"},
-	}, boot)
+	}, boot))
 	if err != nil {
 		t.Fatalf("materialize: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestMaterializeFailsClosed(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := catalog.Materialize(tc.cmd, tc.boot); err == nil {
+			if _, err := documentOf(catalog.Materialize(tc.cmd, tc.boot)); err == nil {
 				t.Fatalf("expected %s to fail closed", tc.name)
 			}
 		})
@@ -169,10 +169,10 @@ func TestMaterializeReEnforcesHardBounds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if _, err := catalog.Materialize(actionport.Command{
+	if _, err := documentOf(catalog.Materialize(actionport.Command{
 		CommandID: "c", EffectorRoute: "select_thermal_mode", NormalizedTarget: "fan-01", IdempotencyKey: idemKey(), PolicyDigest: policyKey(),
 		Payload: map[string]any{"mode": "bounded_cooling"},
-	}, boot); err == nil {
+	}, boot)); err == nil {
 		t.Fatal("preset above hard max must be rejected at materialization")
 	}
 }
@@ -201,4 +201,10 @@ func TestLoadCapabilityCatalogRejectsInvalid(t *testing.T) {
 			}
 		})
 	}
+}
+
+// documentOf is a materialized command's wire form, so assertions check the
+// exact document the device receives.
+func documentOf(command domain.Command, err error) (map[string]any, error) {
+	return command.Document(), err
 }

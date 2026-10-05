@@ -22,7 +22,7 @@ func TestOrdinaryCommandAdmissionKeepsSafetyPrecedence(t *testing.T) {
 	cases := []struct {
 		name       string
 		open, stop bool
-		document   map[string]any
+		document   domain.Command
 		want       string
 	}{
 		{name: "closed before priority", stop: true, want: "device session is not open"},

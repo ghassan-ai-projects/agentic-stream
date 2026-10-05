@@ -66,14 +66,14 @@ func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDAndFanCommands(t *test
 		t.Logf("optional cross-repository physical catalog check skipped: REAL_WORLD_SENSOR_ROOT is not set")
 	}
 
-	command, err := catalog.Materialize(actionport.Command{
+	command, err := documentOf(catalog.Materialize(actionport.Command{
 		CommandID:        "cross-repo-led",
 		EffectorRoute:    "set_indicator",
 		NormalizedTarget: "zone-01",
 		IdempotencyKey:   "sha256:" + strings.Repeat("a", 64),
 		PolicyDigest:     "sha256:" + strings.Repeat("b", 64),
 		Payload:          map[string]any{"entity_id": "zone-01", "state": "alert"},
-	}, "boot-cross")
+	}, "boot-cross"))
 	if err != nil {
 		t.Fatalf("materialize physical LED command: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDAndFanCommands(t *test
 		t.Fatalf("materialized physical command must validate: %v", err)
 	}
 
-	safeStop, err := catalog.MaterializeSafeStop("led-01", "boot-cross")
+	safeStop, err := documentOf(catalog.MaterializeSafeStop("led-01", "boot-cross"))
 	if err != nil {
 		t.Fatalf("materialize physical safe stop: %v", err)
 	}
@@ -98,14 +98,14 @@ func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDAndFanCommands(t *test
 		t.Fatalf("materialized physical safe stop must validate: %v", err)
 	}
 
-	fanCommand, err := catalog.Materialize(actionport.Command{
+	fanCommand, err := documentOf(catalog.Materialize(actionport.Command{
 		CommandID:        "cross-repo-fan",
 		EffectorRoute:    "select_thermal_mode",
 		NormalizedTarget: "zone-01",
 		IdempotencyKey:   "sha256:" + strings.Repeat("d", 64),
 		PolicyDigest:     "sha256:" + strings.Repeat("e", 64),
 		Payload:          map[string]any{"entity_id": "zone-01", "mode": "bounded_cooling"},
-	}, "boot-cross")
+	}, "boot-cross"))
 	if err != nil {
 		t.Fatalf("materialize physical fan command: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDAndFanCommands(t *test
 		t.Fatalf("materialized physical fan command must validate: %v", err)
 	}
 
-	fanSafeStop, err := catalog.MaterializeSafeStop("fan-01", "boot-cross")
+	fanSafeStop, err := documentOf(catalog.MaterializeSafeStop("fan-01", "boot-cross"))
 	if err != nil {
 		t.Fatalf("materialize physical fan safe stop: %v", err)
 	}

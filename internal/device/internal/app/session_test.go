@@ -127,7 +127,7 @@ func openThermalSessionWithControl(t *testing.T, replies ...map[string]any) (*ap
 	return session, transport, catalog, control
 }
 
-func materializedCommand(t *testing.T, catalog *domain.CapabilityCatalog, commandID, idempotency string) map[string]any {
+func materializedCommand(t *testing.T, catalog *domain.CapabilityCatalog, commandID, idempotency string) domain.Command {
 	t.Helper()
 	command, err := catalog.Materialize(actionport.Command{
 		CommandID: commandID, EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
@@ -265,17 +265,17 @@ func TestDeviceSessionCachesOnlyMatchingIdempotentCommands(t *testing.T) {
 	idempotency := idemKey()
 	command := materializedCommand(t, catalog, "cmd-1", idempotency)
 	first, sent, err := session.Exchange(context.Background(), command)
-	if err != nil || !sent || first.Receipt["command_id"] != "cmd-1" {
+	if err != nil || !sent || first.Receipt.CommandID != "cmd-1" {
 		t.Fatalf("first exchange receipt=%v sent=%v err=%v", first, sent, err)
 	}
 	duplicate := materializedCommand(t, catalog, "cmd-2", idempotency)
 	second, sent, err := session.Exchange(context.Background(), duplicate)
-	if err != nil || !sent || second.Receipt["command_id"] != "cmd-1" {
+	if err != nil || !sent || second.Receipt.CommandID != "cmd-1" {
 		t.Fatalf("duplicate exchange receipt=%v sent=%v err=%v", second, sent, err)
 	}
 	conflicting := materializedCommand(t, catalog, "cmd-3", idemKey())
-	conflicting["parameters"] = map[string]any{"brightness_permille": 1, "pattern": "off"}
-	conflicting["idempotency_key"] = idempotency
+	conflicting.Parameters = map[string]any{"brightness_permille": 1, "pattern": "off"}
+	conflicting.IdempotencyKey = idempotency
 	if _, sent, err := session.Exchange(context.Background(), conflicting); err == nil || sent {
 		t.Fatalf("conflicting idempotency exchange sent=%v err=%v", sent, err)
 	}

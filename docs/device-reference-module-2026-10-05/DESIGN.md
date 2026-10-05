@@ -30,6 +30,12 @@
 | Codec (`internal/wire`) | Encode and decode device records: size limit, single NDJSON line, schema by `message_type` | decide anything beyond well-formedness |
 | Transport (`internal/transport`) | The Unix-socket gateway link: framing, deadlines, cancellation, the "may have been sent" signal | interpret records |
 
+Incoming records are parsed once in `wire` into domain `State`, `Receipt`
+and `Result` values. Catalog materialization produces a domain `Command`.
+Original received documents are retained for canonical digests, authority
+handoffs and provider results; those external JSON contracts stay unchanged.
+Verification uses the same typed state that produced its sealed evidence.
+
 `app` sees the gateway only through a `Transport` port (Send, Receive,
 QueryState, Close); `transport.UDS` implements it.
 

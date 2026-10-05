@@ -59,7 +59,7 @@ type Session struct {
 	safeState              bool
 	telemetry              *telemetry.Runtime
 	allowedFirmwareDigests []string
-	receipts               map[string]cachedReceipt
+	receipts               map[string]cachedExchange
 	claimedTargets         map[string]struct{}
 	stateDigest            string
 	reconciliationRequired bool
@@ -144,7 +144,7 @@ func newDeviceSession(config SessionConfig) *Session {
 		transport: config.Transport, catalog: config.Catalog,
 		ownerEpoch: config.OwnerEpoch, ownerInstance: config.OwnerInstance,
 		authority: config.Authority,
-		receipts:  make(map[string]cachedReceipt), claimedTargets: make(map[string]struct{}),
+		receipts:  make(map[string]cachedExchange), claimedTargets: make(map[string]struct{}),
 		telemetry:              config.Telemetry,
 		allowedFirmwareDigests: append([]string(nil), config.AllowedFirmwareDigests...),
 	}
@@ -162,32 +162,32 @@ func (s *Session) acceptHandshake(ctx context.Context, catalogDigest string) (*S
 	return s, nil
 }
 
-func (s *Session) receiveHandshake(ctx context.Context, catalogDigest string) (map[string]any, error) {
+func (s *Session) receiveHandshake(ctx context.Context, catalogDigest string) (domain.State, error) {
 	frame, err := s.transport.Receive(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("receive device state handshake: %w", err)
+		return domain.State{}, fmt.Errorf("receive device state handshake: %w", err)
 	}
-	state, err := validateDeviceState(frame, s.catalog, catalogDigest, []string{catalogDigest}, s.allowedFirmwareDigests)
+	state, err := decodeState(frame, s.catalog, catalogDigest, s.allowedFirmwareDigests)
 	if err != nil {
 		s.telemetry.ObserveDeviceFrameError()
-		return nil, fmt.Errorf("validate device state handshake: %w", err)
+		return domain.State{}, fmt.Errorf("validate device state handshake: %w", err)
 	}
 	return state, nil
 }
 
-func (s *Session) bindHandshakeState(ctx context.Context, state map[string]any) error {
-	s.deviceID, s.bootID = stateString(state, "device_id"), stateString(state, "boot_id")
-	s.firmwareDigest, s.capabilityDigest = stateString(state, "firmware_digest"), stateString(state, "capability_digest")
-	s.safeState, _ = state["safe_state"].(bool)
+func (s *Session) bindHandshakeState(ctx context.Context, state domain.State) error {
+	s.deviceID, s.bootID = state.DeviceID, state.BootID
+	s.firmwareDigest, s.capabilityDigest = state.FirmwareDigest, state.CapabilityDigest
+	s.safeState = state.SafeState
 	var err error
-	s.stateDigest, err = domain.StateDigest(state)
+	s.stateDigest, err = state.Digest()
 	if err != nil {
 		return fmt.Errorf("digest device state handshake: %w", err)
 	}
 	return s.bindHandshakeBarrier(ctx, state)
 }
 
-func (s *Session) bindHandshakeBarrier(ctx context.Context, state map[string]any) error {
+func (s *Session) bindHandshakeBarrier(ctx context.Context, state domain.State) error {
 	if err := s.authority.AssertRuntime(ctx, s.ownerEpoch); err != nil {
 		return fmt.Errorf("assert authority before binding device state: %w", err)
 	}
@@ -198,9 +198,9 @@ func (s *Session) bindHandshakeBarrier(ctx context.Context, state map[string]any
 	return s.persistHandshakeBarrier(ctx, state, priorBarrier)
 }
 
-func (s *Session) persistHandshakeBarrier(ctx context.Context, state map[string]any, priorBarrier bool) error {
+func (s *Session) persistHandshakeBarrier(ctx context.Context, state domain.State, priorBarrier bool) error {
 	wasRequired := s.reconciliationRequired
-	required, err := s.authority.RecordDeviceState(ctx, s.owner(), state)
+	required, err := s.authority.RecordDeviceState(ctx, s.owner(), state.Document)
 	if err != nil {
 		return fmt.Errorf("bind device reconciliation state: %w", err)
 	}

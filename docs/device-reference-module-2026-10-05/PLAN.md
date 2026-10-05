@@ -23,7 +23,23 @@ Each round is reviewed, tested, linted and committed.
 | D1 | `9589659` | Dead code removed; tests assert the durable reconciliation state. |
 | D2 | `205319e` | Domain coverage 84.7%. |
 | D3 | `898bb97` | `transport.PartialSendError` exported: any transport, including test doubles, may report a partial send. |
-| D4 + D5 | this round | Session and effectors in `internal/app`; facade 93.3% covered by driving every operation over a real socket; nil-authority branches and telemetry nil checks gone; gates extended. |
+| D4 + D5 | `9e5f8f0` | Session and effectors in `internal/app`; facade 93.3% covered by driving every operation over a real socket; nil-authority branches and telemetry nil checks gone; gates extended. |
+
+## D6 validation
+
+Typed `State`, `Command`, `Receipt` and `Result` now flow through session,
+safe stop and verification. The wire adapter validates incoming frames and
+parses their fields once; original documents remain the source of state
+and command digests, sealed evidence and provider results. The codec depends
+on the pure domain values; dependency levels retain strictly downward imports.
+
+The interrupted round already contained production edits, so test-first was
+not possible for that portion. New tests cover state digest/document parity,
+optional reply codes and invalid frames. A test first exposed shared optional
+code pointers in cached exchanges; cloning them restores caller isolation.
+
+Device and architecture tests pass with `-race -count=1`; whole-tree lint
+reports zero issues. Full repository qualification follows D7.
 
 ## Behavior that stays the same
 

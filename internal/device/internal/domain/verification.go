@@ -16,21 +16,19 @@ const leaseParameter = "lease_ms"
 // verified merely because it is energized; a wrong duty fails like a wrong LED
 // level. A command with more than one numeric output parameter cannot be
 // verified unambiguously and is an error.
-func OutputVerified(state, command map[string]any) (bool, error) {
+func OutputVerified(state State, command Command) (bool, error) {
 	expectedValue, expectedEnergized, err := expectedOutput(command)
 	if err != nil {
 		return false, err
 	}
-	output, _ := state["current_output"].(map[string]any)
-	observedEnergized, _ := output["energized"].(bool)
-	observedValue, _ := output["value"].(float64)
-	return output["target"] == command["target"] && output["operation"] == command["operation"] &&
-		observedEnergized == expectedEnergized && observedValue == expectedValue, nil
+	output := state.Output
+	return output.Target == command.Target && output.Operation == command.Operation &&
+		output.Energized == expectedEnergized && output.Value == expectedValue, nil
 }
 
 // expectedOutput is the command's single numeric output parameter.
-func expectedOutput(command map[string]any) (float64, bool, error) {
-	parameters, _ := command["parameters"].(map[string]any)
+func expectedOutput(command Command) (float64, bool, error) {
+	parameters := command.Parameters
 	var outputs []float64
 	for _, name := range slices.Sorted(maps.Keys(parameters)) {
 		if value, ok := parameters[name].(float64); ok && name != leaseParameter {

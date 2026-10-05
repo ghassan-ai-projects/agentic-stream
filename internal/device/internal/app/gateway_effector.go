@@ -85,7 +85,7 @@ func (e *GatewayEffector) dispatchMaterialized(ctx context.Context, command acti
 }
 
 func (e *GatewayEffector) failedDeviceEffect(exchange Exchange, sent bool, err error) (actionport.Effect, error) {
-	providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
+	providerResult := exchange.document()
 	if sent {
 		e.telemetry.ObserveActionUnknownOutcome()
 		return actionport.Effect{ProviderResult: providerResult}, &actionport.UnknownOutcomeError{Err: err}
@@ -94,14 +94,17 @@ func (e *GatewayEffector) failedDeviceEffect(exchange Exchange, sent bool, err e
 }
 
 func (e *GatewayEffector) acceptedDeviceEffect(exchange Exchange) (actionport.Effect, error) {
-	providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
-	accepted, _ := exchange.Receipt["accepted"].(bool)
+	providerResult := exchange.document()
+	accepted := exchange.Receipt.Accepted
 	effect := actionport.Effect{ProviderResult: providerResult, VerificationPending: accepted}
 	if accepted {
 		e.telemetry.ObserveVerificationPending()
 	}
 	if !accepted {
-		rejectCode, _ := exchange.Receipt["reject_code"].(string)
+		rejectCode := ""
+		if exchange.Receipt.RejectCode != nil {
+			rejectCode = *exchange.Receipt.RejectCode
+		}
 		return effect, fmt.Errorf("device rejected serial command: %s", rejectCode)
 	}
 	return effect, nil
@@ -118,18 +121,18 @@ func (e *GatewayEffector) SafeStop(ctx context.Context, target string) (actionpo
 }
 
 func classifySafeStop(exchange Exchange, sent bool, err error) (actionport.Effect, error) {
-	providerResult := map[string]any{"receipt": exchange.Receipt, "result": exchange.Result}
+	providerResult := exchange.document()
 	switch {
 	case err == nil:
 		return actionport.Effect{ProviderResult: providerResult, VerificationPending: true}, nil
 	case !sent:
 		// Nothing reached the device, so the failure is known.
 		return actionport.Effect{}, err
-	case exchange.Receipt == nil && exchange.Result == nil:
+	case exchange.Receipt.Document == nil && exchange.Result.Document == nil:
 		return actionport.Effect{}, &actionport.UnknownOutcomeError{Err: err}
 	case actionport.IsUnknownOutcome(err):
 		return actionport.Effect{ProviderResult: providerResult}, err
-	case exchange.Receipt != nil && exchange.Result != nil:
+	case exchange.Receipt.Document != nil && exchange.Result.Document != nil:
 		// A correlated receipt/result pair is a known terminal device
 		// response, including a rejected safe stop. Keep it out of the
 		// unknown-outcome lane while the safe-stop request remains latched.
@@ -154,20 +157,19 @@ func (e *GatewayEffector) VerifyDeviceCommand(ctx context.Context, command actio
 	return e.verifyMaterializedCommand(ctx, wireCommand, expectedBootID)
 }
 
-func (e *GatewayEffector) verifyMaterializedCommand(ctx context.Context, wireCommand map[string]any, expectedBootID string) (string, map[string]any, error) {
-	evidence, err := e.session.QueryStateEvidence(ctx, documentString(wireCommand, "target"))
+func (e *GatewayEffector) verifyMaterializedCommand(ctx context.Context, wireCommand domain.Command, expectedBootID string) (string, map[string]any, error) {
+	state, evidence, err := e.session.QueryStateEvidence(ctx, wireCommand.Target)
 	if err != nil {
 		return "", nil, err
 	}
-	observedBootID := documentString(evidence, "boot_id")
+	observedBootID := state.BootID
 	if observedBootID != expectedBootID {
 		return "", evidence, fmt.Errorf("device boot changed during verification from %q to %q", expectedBootID, observedBootID)
 	}
-	return verifyObservedOutput(evidence, wireCommand)
+	return verifyObservedOutput(state, evidence, wireCommand)
 }
 
-func verifyObservedOutput(evidence, wireCommand map[string]any) (string, map[string]any, error) {
-	state, _ := evidence["state"].(map[string]any)
+func verifyObservedOutput(state domain.State, evidence map[string]any, wireCommand domain.Command) (string, map[string]any, error) {
 	verified, err := domain.OutputVerified(state, wireCommand)
 	if err != nil {
 		return "", evidence, fmt.Errorf("verify device output: %w", err)

@@ -330,7 +330,7 @@ func reconciliationEvidence(t *testing.T, state map[string]any, target string) m
 	return evidence
 }
 
-func materializedCommandWithBoot(t *testing.T, catalog *domain.CapabilityCatalog, commandID, idempotency, bootID string) map[string]any {
+func materializedCommandWithBoot(t *testing.T, catalog *domain.CapabilityCatalog, commandID, idempotency, bootID string) domain.Command {
 	t.Helper()
 	command, err := catalog.Materialize(actionport.Command{
 		CommandID: commandID, EffectorRoute: "set_indicator", NormalizedTarget: "led-01",

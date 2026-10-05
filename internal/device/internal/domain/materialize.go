@@ -25,33 +25,33 @@ import (
 // command to the live device session. A route outside the catalog, a selector
 // outside the preset set, or a parameter beyond its hard bound is rejected with
 // zero commands emitted — never clamped silently.
-func (c *CapabilityCatalog) Materialize(command actionport.Command, expectedBootID string) (map[string]any, error) {
+func (c *CapabilityCatalog) Materialize(command actionport.Command, expectedBootID string) (Command, error) {
 	if c == nil {
-		return nil, fmt.Errorf("capability catalog is required to materialize a device command")
+		return Command{}, fmt.Errorf("capability catalog is required to materialize a device command")
 	}
 	if c.ProtocolVersion != contractsv1.DeviceProtocolVersion {
-		return nil, fmt.Errorf("capability catalog protocol_version %d is unsupported, want %d", c.ProtocolVersion, contractsv1.DeviceProtocolVersion)
+		return Command{}, fmt.Errorf("capability catalog protocol_version %d is unsupported, want %d", c.ProtocolVersion, contractsv1.DeviceProtocolVersion)
 	}
 	if command.CommandID == "" || command.IdempotencyKey == "" || command.PolicyDigest == "" {
-		return nil, fmt.Errorf("command identity and policy digest are required to materialize a device command")
+		return Command{}, fmt.Errorf("command identity and policy digest are required to materialize a device command")
 	}
 	if expectedBootID == "" {
-		return nil, fmt.Errorf("expected boot id is required to materialize a device command")
+		return Command{}, fmt.Errorf("expected boot id is required to materialize a device command")
 	}
 	return c.materializeRoute(command, expectedBootID)
 }
 
-func (c *CapabilityCatalog) materializeRoute(command actionport.Command, expectedBootID string) (map[string]any, error) {
+func (c *CapabilityCatalog) materializeRoute(command actionport.Command, expectedBootID string) (Command, error) {
 	spec, ok := c.Routes[command.EffectorRoute]
 	if !ok {
-		return nil, fmt.Errorf("route %q is not in the device capability catalog", command.EffectorRoute)
+		return Command{}, fmt.Errorf("route %q is not in the device capability catalog", command.EffectorRoute)
 	}
 	if err := spec.checkTarget(command); err != nil {
-		return nil, err
+		return Command{}, err
 	}
 	parameters, err := spec.boundedParameters(command)
 	if err != nil {
-		return nil, err
+		return Command{}, err
 	}
 	return c.deviceCommandDocument(command, expectedBootID, spec, parameters)
 }
@@ -141,72 +141,51 @@ func toFloat(value any) (float64, bool) {
 	}
 }
 
-func (c *CapabilityCatalog) deviceCommandDocument(command actionport.Command, expectedBootID string, spec Route, parameters map[string]any) (map[string]any, error) {
-	document := map[string]any{
-		"message_type":       "command",
-		"protocol_version":   c.ProtocolVersion,
-		"command_id":         command.CommandID,
-		"idempotency_key":    command.IdempotencyKey,
-		"target":             spec.Target,
-		"operation":          spec.Operation,
-		"parameters":         parameters,
-		"expected_boot_id":   expectedBootID,
-		"not_before_mono_us": command.NotBeforeMonoUS,
-		"expires_after_ms":   spec.ExpiresAfterMs,
-		"policy_digest":      command.PolicyDigest,
-	}
-	return validateMaterializedCommand(document)
+func (c *CapabilityCatalog) deviceCommandDocument(command actionport.Command, expectedBootID string, spec Route, parameters map[string]any) (Command, error) {
+	return validatedCommand(Command{
+		ProtocolVersion: c.ProtocolVersion, CommandID: command.CommandID, IdempotencyKey: command.IdempotencyKey,
+		Target: spec.Target, Operation: spec.Operation, Parameters: parameters, ExpectedBootID: expectedBootID,
+		NotBeforeMonoUS: command.NotBeforeMonoUS, ExpiresAfterMs: spec.ExpiresAfterMs, PolicyDigest: command.PolicyDigest,
+	}, "materialized device command")
 }
 
-func validateMaterializedCommand(document map[string]any) (map[string]any, error) {
-	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, document); err != nil {
-		return nil, fmt.Errorf("materialized device command is invalid: %w", err)
+func validatedCommand(command Command, what string) (Command, error) {
+	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, command.Document()); err != nil {
+		return Command{}, fmt.Errorf("%s is invalid: %w", what, err)
 	}
-	return document, nil
+	return command, nil
 }
 
 // MaterializeSafeStop creates the fixed catalog-owned safe-state command for a
 // target. It has no caller-supplied parameters or policy authority and cannot
 // be used to clear a physical e-stop.
-func (c *CapabilityCatalog) MaterializeSafeStop(target, expectedBootID string) (map[string]any, error) {
+func (c *CapabilityCatalog) MaterializeSafeStop(target, expectedBootID string) (Command, error) {
 	if c == nil {
-		return nil, fmt.Errorf("capability catalog is required to materialize a safe stop")
+		return Command{}, fmt.Errorf("capability catalog is required to materialize a safe stop")
 	}
 	if expectedBootID == "" {
-		return nil, fmt.Errorf("expected boot id is required to materialize a safe stop")
+		return Command{}, fmt.Errorf("expected boot id is required to materialize a safe stop")
 	}
 	spec, ok := c.SafeStops[target]
 	if !ok {
-		return nil, fmt.Errorf("safe stop target %q is not in the capability catalog", target)
+		return Command{}, fmt.Errorf("safe stop target %q is not in the capability catalog", target)
 	}
-	return c.safeStopDocument(target, expectedBootID, spec)
+	return c.safeStopCommand(target, expectedBootID, spec)
 }
 
-func (c *CapabilityCatalog) safeStopDocument(target, expectedBootID string, spec SafeStopRoute) (map[string]any, error) {
+// safeStopCommand builds the safe stop and keys it by its own identity, so the
+// same safe stop on the same boot is always the same command.
+func (c *CapabilityCatalog) safeStopCommand(target, expectedBootID string, spec SafeStopRoute) (Command, error) {
 	catalogDigest, err := c.Digest()
 	if err != nil {
-		return nil, fmt.Errorf("digest safe stop catalog: %w", err)
+		return Command{}, fmt.Errorf("digest safe stop catalog: %w", err)
 	}
-	parameters := map[string]any{}
-	commandID := "safe-stop/" + target
-	document := map[string]any{
-		"message_type": "command", "protocol_version": c.ProtocolVersion,
-		"command_id": commandID, "target": target, "operation": spec.Operation,
-		"parameters": parameters, "expected_boot_id": expectedBootID,
-		"not_before_mono_us": 0, "expires_after_ms": spec.ExpiresAfterMs,
-		"policy_digest": catalogDigest,
+	command := Command{
+		ProtocolVersion: c.ProtocolVersion, CommandID: "safe-stop/" + target, Target: target, Operation: spec.Operation,
+		Parameters: map[string]any{}, ExpectedBootID: expectedBootID, ExpiresAfterMs: spec.ExpiresAfterMs, PolicyDigest: catalogDigest,
 	}
-	return sealSafeStopDocument(document)
-}
-
-func sealSafeStopDocument(document map[string]any) (map[string]any, error) {
-	idempotencyKey, err := CommandIdentity(document)
-	if err != nil {
-		return nil, fmt.Errorf("digest safe stop command identity: %w", err)
+	if command.IdempotencyKey, err = command.Identity(); err != nil {
+		return Command{}, fmt.Errorf("digest safe stop command identity: %w", err)
 	}
-	document["idempotency_key"] = idempotencyKey
-	if err := contractsv1.Validate(contractsv1.SchemaDeviceCommand, document); err != nil {
-		return nil, fmt.Errorf("materialized safe stop is invalid: %w", err)
-	}
-	return document, nil
+	return validatedCommand(command, "materialized safe stop")
 }

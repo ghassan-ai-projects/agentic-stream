@@ -76,7 +76,7 @@ var allowedImports = map[string][]string{
 	"internal/decisions":                 {"internal/canonicaljson", "internal/contractsv1"},
 	"internal/device/internal/app":       {"internal/actionport", "internal/authority", "internal/control", "internal/device/internal/domain", "internal/device/internal/transport", "internal/device/internal/wire", "internal/telemetry"},
 	"internal/device/internal/transport": {"internal/device/internal/wire"},
-	"internal/device/internal/wire":      {"internal/canonicaljson", "internal/contractsv1"},
+	"internal/device/internal/wire":      {"internal/canonicaljson", "internal/contractsv1", "internal/device/internal/domain"},
 	"internal/device/internal/domain":    {"internal/actionport", "internal/canonicaljson", "internal/contractsv1"},
 	"internal/device":                    {"internal/actionport", "internal/authority", "internal/device/internal/app", "internal/device/internal/domain", "internal/device/internal/transport", "internal/telemetry"},
 	"internal/duration":                  {},
