@@ -59,7 +59,7 @@ var forbiddenImports = map[string][]string{
 var allowedImports = map[string][]string{
 	"internal/policy/internal/store":     {"internal/approvalledger", "internal/contractsv1", "internal/interlock", "internal/notify", "internal/policy/internal/domain"},
 	"internal/policy/internal/app":       {"internal/control", "internal/ids", "internal/interlock", "internal/policy/internal/domain", "internal/policy/internal/store"},
-	"cmd/agentic-stream":                 {"internal/actionport", "internal/actions", "internal/api", "internal/authority", "internal/contractsv1", "internal/control", "internal/device", "internal/evidence", "internal/ids", "internal/replay", "internal/runartifact", "internal/runtime", "internal/spec", "internal/storage", "internal/telemetry"},
+	"cmd/agentic-stream":                 {"internal/actionport", "internal/actions", "internal/api", "internal/authority", "internal/contractsv1", "internal/control", "internal/device", "internal/evidence", "internal/ids", "internal/policy", "internal/replay", "internal/runartifact", "internal/runtime", "internal/spec", "internal/storage", "internal/telemetry"},
 	"internal/actionport":                {},
 	"internal/actions":                   {"internal/actionport", "internal/authority", "internal/canonicaljson", "internal/clock", "internal/contractsv1", "internal/control", "internal/ids", "internal/interlock", "internal/notify", "internal/storage", "internal/telemetry"},
 	"internal/admission":                 {"internal/clock", "internal/cognition", "internal/control", "internal/costcontrol", "internal/episodeledger", "internal/episodes", "internal/scheduleledger", "internal/storage"},

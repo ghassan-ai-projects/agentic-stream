@@ -76,3 +76,11 @@ Follow-up decision: retain the unwired approval workflow and document its future
 production integration in [APPROVAL_INTEGRATION.md](../../internal/policy/APPROVAL_INTEGRATION.md).
 The inventory, contract decisions and acceptance checks are open work, not
 completed production capabilities.
+
+P5: connect authenticated loopback presentation/resolution to the production
+pipeline. Scope lookup by tenant; bind relay at transport composition, clock
+at runtime and decision boolean in canonical assertions. Sign and authorize
+denials too; invalid fresh submissions roll back instead of consuming requests.
+Drain durable commands independently of sensor input. Remove obsolete public
+signing facade. Full CI and focused uncached race tests pass; app coverage rises
+to 82.9%. Production reachability reports zero unreachable policy functions.

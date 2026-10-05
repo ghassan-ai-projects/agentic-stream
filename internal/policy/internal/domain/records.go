@@ -2,17 +2,18 @@ package domain
 
 // Result is the durable policy result for one Intent evaluation.
 type Result struct {
-	IntentID   string
-	DecisionID string
-	Result     string
-	Reason     string
-	CommandID  string
-	ApprovalID string
+	IntentID   string `json:"intent_id"`
+	DecisionID string `json:"decision_id"`
+	Result     string `json:"result"`
+	Reason     string `json:"reason"`
+	CommandID  string `json:"command_id,omitempty"`
+	ApprovalID string `json:"approval_id,omitempty"`
 }
 
 // ApprovalAssertion is the signed, single-use approval binding. The runtime
 // reconstructs the canonical bytes from durable rows before verifying it.
 type ApprovalAssertion struct {
+	Approved         bool
 	ApprovalID       string
 	IntentID         string
 	DecisionID       string

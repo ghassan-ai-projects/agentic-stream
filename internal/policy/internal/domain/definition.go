@@ -22,7 +22,7 @@ func canonicalApprovalAssertion(assertion ApprovalAssertion) ([]byte, error) {
 		"situation_version": assertion.SituationVersion, "risk_class": assertion.RiskClass,
 		"intent_digest": assertion.IntentDigest, "decision_digest": assertion.DecisionDigest,
 		"expires_at": assertion.ExpiresAt, "nonce": assertion.Nonce,
-		"approver_id": assertion.ApproverID, "relay_id": assertion.RelayID,
+		"approver_id": assertion.ApproverID, "relay_id": assertion.RelayID, "approved": assertion.Approved,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("canonicalize approval assertion: %w", err)

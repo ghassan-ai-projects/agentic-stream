@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // CommandRecord is the sealed command and its durable identity.
 type CommandRecord struct {
@@ -10,7 +13,10 @@ type CommandRecord struct {
 }
 
 // ApprovalRecord is a read-only projection of the approval lifecycle.
-type ApprovalRecord struct{ IntentID, Status, ExpiresAt string }
+type ApprovalRecord struct {
+	IntentID, Status, ExpiresAt string
+	JSON                        json.RawMessage
+}
 
 // EvaluationRequest identifies the intent and evaluation time.
 type EvaluationRequest struct {
@@ -20,6 +26,7 @@ type EvaluationRequest struct {
 
 // ApprovalResolution carries a human decision and its signed principals.
 type ApprovalResolution struct {
+	TenantID        string
 	ID              string
 	Approved        bool
 	Approver, Relay string

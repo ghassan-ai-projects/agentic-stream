@@ -5,14 +5,6 @@ import "github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/d
 // Result is the durable outcome of one policy evaluation.
 type Result = domain.Result
 
-// ApprovalAssertion is the signed single-use durable approval binding.
-type ApprovalAssertion = domain.ApprovalAssertion
-
-// ApprovalAssertionSigningBytes returns the domain-separated assertion bytes.
-func ApprovalAssertionSigningBytes(assertion ApprovalAssertion) ([]byte, error) {
-	return domain.ApprovalAssertionSigningBytes(assertion)
-}
-
 // DigestForVersion identifies the deterministic rules bound to version.
 func DigestForVersion(version string) (string, error) { return domain.DigestForVersion(version) }
 
@@ -26,3 +18,18 @@ type EvaluationRequest = domain.EvaluationRequest
 
 // ApprovalResolution carries the signed human decision.
 type ApprovalResolution = domain.ApprovalResolution
+
+// ApprovalLookup binds a signing request to a tenant and independent principals.
+type ApprovalLookup = domain.ApprovalLookup
+
+// ApprovalPresentation is the durable approval and exact assertion bytes.
+type ApprovalPresentation = domain.ApprovalPresentation
+
+// ErrApprovalNotFound covers unknown and foreign-tenant requests.
+var ErrApprovalNotFound = domain.ErrApprovalNotFound
+
+// ErrApprovalUnauthorized indicates an invalid principal or signature.
+var ErrApprovalUnauthorized = domain.ErrApprovalUnauthorized
+
+// ErrApprovalResolved indicates that a request can no longer be signed.
+var ErrApprovalResolved = domain.ErrApprovalResolved

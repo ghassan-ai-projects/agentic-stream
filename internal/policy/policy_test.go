@@ -32,4 +32,9 @@ func TestFacadeDelegatesOwnershipFailure(t *testing.T) {
 	if !errors.Is(err, sentinel) || r.ApprovalID != "approval" || calls != 2 {
 		t.Fatal(r, err, calls)
 	}
+	_, err = service.ApprovalForSigning(t.Context(), nil, ApprovalLookup{ID: "approval", TenantID: "tenant"})
+	if !errors.Is(err, sentinel) || calls != 3 {
+		t.Fatal(err, calls)
+	}
+
 }

@@ -36,8 +36,9 @@ flowchart TD
 - `Service.ResolveApproval(ctx, tx, ApprovalResolution)` records a human decision,
   then re-runs evaluation before commanding.
 - `NextPendingIntent(ctx, db, tenant)` selects the oldest pending intent.
-- Policy definition/digest and approval signing-byte functions are pure exports
-  used by replay and artifacts, or retained for the required human approval contract.
+- `Service.ApprovalForSigning(ctx, tx, ApprovalLookup)` presents a tenant-bound
+  request and exact decision-bound signing bytes to authorized principals.
+- Policy definition/digest functions are pure exports used by replay and artifacts.
 
 Existing unowned simulation/test composition supplies explicit checks. Real
 runtime composition binds `RuntimeOwner.Assert` and
@@ -76,14 +77,17 @@ principal and command handoff records. Moving those projections to owner ports
 would be a separate multi-module change. Mutable internal document maps and
 opaque effector parameters remain current data-encapsulation limits.
 
-Production reachability analysis identifies 33 functions in the human approval
-resolution/signing path that are exercised only by tests. `ResolveApproval` and
-`ApprovalAssertionSigningBytes` have no production caller. The required workflow
-is retained; connecting a production approval entrypoint remains unfinished
-integration work, tracked in [the approval integration follow-up](APPROVAL_INTEGRATION.md).
-No other policy functions are unreachable in that analysis.
+Human approval presentation and resolution are connected to authenticated
+loopback HTTP routes through the owner-scoped runtime pipeline. Both grants and
+denials require signed, authorized human decisions. The runtime owns tenant and
+time; invalid fresh submissions do not consume pending approvals. Maintenance
+drains committed command outbox work without new sensor input. The old public
+signing helper is removed; signing stays in domain and clients receive exact
+bytes through presentation. See [the HTTP design](APPROVAL_HTTP_DESIGN.md).
 
 ## Package documentation
+
+- [Proposed approval HTTP design](APPROVAL_HTTP_DESIGN.md) defines the integration being implemented and its security/test contract.
 
 - [Approval integration follow-up](APPROVAL_INTEGRATION.md) records the missing production path, 33 affected functions and completion checks.
 - [Ubiquitous language](UBIQUITOUS_LANGUAGE.md) maps governance terms to code and durable records.

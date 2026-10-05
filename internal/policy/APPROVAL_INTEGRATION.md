@@ -1,10 +1,11 @@
 # Human approval integration follow-up
 
-Status: open. Recorded 2026-10-05 against `7f1cf94`.
-The resolution/signing implementation and its tests are retained for future
-integration. This record supersedes the proposed deletion of that workflow.
+Status: HTTP integration implemented on 2026-10-05; validated; see the linked design record.
+The original findings below were recorded against `7f1cf94` and are historical.
+The production path is defined in [APPROVAL_HTTP_DESIGN.md](APPROVAL_HTTP_DESIGN.md).
+CLI client and deployment qualification remain separate follow-up work.
 
-## Problem and evidence
+## Original problem and evidence
 
 Production evaluates intents and can persist an approval request and its
 notification. It does not provide an entrypoint that accepts a human decision
@@ -28,7 +29,7 @@ Supporting sources:
 - [Signed resolution integration tests](internal/app/policy_test.go).
 - [Stale approval precedence tests](internal/app/approval_order_test.go).
 
-## Reachability inventory
+## Original reachability inventory
 
 On the current host with default build tags, production analysis reports the
 following 33 functions unreachable. Test-inclusive analysis reports zero
@@ -56,7 +57,7 @@ deadcode -test -filter='/internal/policy($|/)' ./...
 | `internal/store/notifications.go` | `Tx.AppendApprovalWithdrawn` |
 | `internal/store/principals.go` | `Tx.ApprovalEntity`, `Tx.RelayActivity`, `Tx.ApproverKey`, `Tx.ApprovalAuthority` |
 
-## Work to complete later
+## Integration checklist
 
 1. Agree the operator/relay contract and document it before implementation:
    HTTP or CLI entrypoint, tenant-scoped request lookup, immutable assertion
@@ -100,5 +101,6 @@ deadcode -test -filter='/internal/policy($|/)' ./...
   full CI gate. Re-run production reachability and explain any remaining signing
   helper that is intentionally client-facing rather than called by runtime main.
 
-This is a future integration task. The present documentation does not claim a
-working operator approval surface or production qualification.
+The HTTP integration now implements this checklist. The old public signing
+helper has been removed; clients sign bytes returned by the presentation route.
+This record does not claim CLI completion or production qualification.

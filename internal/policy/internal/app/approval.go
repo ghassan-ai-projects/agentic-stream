@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
@@ -18,7 +19,7 @@ func (g *Service) ResolveApproval(ctx context.Context, tx *store.Tx, r domain.Ap
 	if err := g.assertOwner(ctx, tx); err != nil {
 		return domain.Result{ApprovalID: r.ID}, err
 	}
-	approval, err := tx.LoadApproval(ctx, r.ID)
+	approval, err := tx.LoadApproval(ctx, r.ID, r.TenantID)
 	if err != nil {
 		return domain.Result{ApprovalID: r.ID}, err
 	}
@@ -66,10 +67,8 @@ func (g *Service) expireApproval(ctx context.Context, tx *store.Tx, a approvalAt
 	return g.finish(ctx, tx, a.evaluation, domain.Outcome{Status: "expired", Reason: "approval_expired"})
 }
 func (g *Service) resolveAuthorizedApproval(ctx context.Context, tx *store.Tx, a approvalAttempt) (domain.Result, error) {
-	if a.request.Approved {
-		if err := g.authorizeApproval(ctx, tx, a.evaluation.row, a.request); err != nil {
-			return g.denyUnauthorizedApproval(ctx, tx, a, err)
-		}
+	if err := g.authorizeApproval(ctx, tx, a.evaluation.row, a.request); err != nil {
+		return a.evaluation.result, fmt.Errorf("%w: %w", domain.ErrApprovalUnauthorized, err)
 	}
 	if err := recordApprovalResolution(ctx, tx, a); err != nil {
 		return a.evaluation.result, err
@@ -78,18 +77,6 @@ func (g *Service) resolveAuthorizedApproval(ctx context.Context, tx *store.Tx, a
 		return g.audit(ctx, tx, a.evaluation, domain.Outcome{Status: "denied", Reason: "approval_denied"})
 	}
 	return g.EvaluateIntent(ctx, tx, domain.EvaluationRequest{IntentID: a.evaluation.row.IntentID, Now: a.request.Now})
-}
-func (g *Service) denyUnauthorizedApproval(ctx context.Context, tx *store.Tx, a approvalAttempt, authErr error) (domain.Result, error) {
-	r := a.request
-	r.Reason = authErr.Error()
-	if err := tx.ResolveApproval(ctx, r, "denied", "record unauthorized approval"); err != nil {
-		return a.evaluation.result, err
-	}
-	event := domain.ApprovalEvent{Intent: a.evaluation.row, ID: r.ID, Status: "denied", Reason: "approval_principal_not_authorized", Now: r.Now}
-	if err := tx.AppendApprovalResolved(ctx, event); err != nil {
-		return a.evaluation.result, err
-	}
-	return g.finish(ctx, tx, a.evaluation, domain.Outcome{Status: "denied", Reason: "approval_principal_not_authorized"})
 }
 func recordApprovalResolution(ctx context.Context, tx *store.Tx, a approvalAttempt) error {
 	status, policyStatus := domain.ApprovalDecision(a.request.Approved)

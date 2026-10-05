@@ -151,7 +151,7 @@ func TestApprovalLedgerAndReadProjections(t *testing.T) {
 		if err := tx.AppendApprovalRequested(ctx, row, request, now); err != nil {
 			return err
 		}
-		approval, err := tx.LoadApproval(ctx, request.ID)
+		approval, err := tx.LoadApproval(ctx, request.ID, "tenant")
 		if err != nil || approval.IntentID != id || approval.Status != "pending" {
 			t.Fatal(approval, err)
 		}
@@ -242,7 +242,7 @@ func TestClosedTransactionErrorsRemainDistinguishable(t *testing.T) {
 	row := domain.IntentRecord{IntentID: id}
 	ctx := t.Context()
 	checks := []func() error{
-		func() error { _, err := tx.LoadIntent(ctx, id); return err }, func() error { _, err := tx.ExistingCommandID(ctx, id); return err }, func() error { _, err := tx.PendingApproval(ctx, id); return err }, func() error { _, err := tx.ApprovedApproval(ctx, id); return err }, func() error { _, _, err := tx.PendingApprovalExpiry(ctx, id); return err }, func() error { _, _, err := tx.AssertionBinding(ctx, id); return err }, func() error { _, err := tx.LoadApproval(ctx, id); return err }, func() error { _, err := tx.ApprovalSnapshotDigest(ctx, row); return err }, func() error { _, err := tx.ApprovalDelta(ctx, id); return err }, func() error { _, _, err := tx.CompensationTenant(ctx, id); return err }, func() error { _, err := tx.DispatchWithinLimit(ctx, row, now); return err }, func() error {
+		func() error { _, err := tx.LoadIntent(ctx, id); return err }, func() error { _, err := tx.ExistingCommandID(ctx, id); return err }, func() error { _, err := tx.PendingApproval(ctx, id); return err }, func() error { _, err := tx.ApprovedApproval(ctx, id); return err }, func() error { _, _, err := tx.PendingApprovalExpiry(ctx, id); return err }, func() error { _, _, err := tx.AssertionBinding(ctx, id); return err }, func() error { _, err := tx.LoadApproval(ctx, id, "tenant"); return err }, func() error { _, err := tx.ApprovalSnapshotDigest(ctx, row); return err }, func() error { _, err := tx.ApprovalDelta(ctx, id); return err }, func() error { _, _, err := tx.CompensationTenant(ctx, id); return err }, func() error { _, err := tx.DispatchWithinLimit(ctx, row, now); return err }, func() error {
 			return tx.SetIntentStatus(ctx, domain.IntentStatusChange{IntentID: id, Status: "denied", Now: now, Operation: SetPolicyStatus})
 		}, func() error { return tx.RecordEvaluation(ctx, domain.EvaluationAudit{}) }, func() error { _, err := tx.InsertCommand(ctx, row, domain.CommandRecord{}, now); return err }, func() error { return tx.InsertCommandOutbox(ctx, id, nil, now) }, func() error { return tx.RemovePreparedCommand(ctx, id, id) },
 	}

@@ -185,6 +185,12 @@ func TestDefinitionAndAssertionCanonicalBytes(t *testing.T) {
 	if !bytes.Equal(signed, append([]byte(canonicaljson.DomainApproval), raw...)) {
 		t.Fatal("assertion domain changed")
 	}
+	assertion.Approved = !assertion.Approved
+	opposite, err := ApprovalAssertionSigningBytes(assertion)
+	if err != nil || bytes.Equal(signed, opposite) {
+		t.Fatal("approval decision not signed", err)
+	}
+	assertion.Approved = !assertion.Approved
 	assertion.RelayID = "other"
 	changed, err := ApprovalAssertionSigningBytes(assertion)
 	if err != nil {

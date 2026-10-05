@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/hex"
-	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
@@ -54,12 +52,5 @@ func approvalSigningBytes(ctx context.Context, tx *store.Tx, row domain.IntentRe
 	if err != nil {
 		return nil, err
 	}
-	assertion, err := domain.ApprovalAssertionSigningBytes(domain.ApprovalAssertion{
-		ApprovalID: r.ID, IntentID: row.IntentID, DecisionID: row.DecisionID, TenantID: row.TenantID, SituationID: row.SituationID, SituationVersion: row.SituationVersion, RiskClass: row.RiskClass,
-		IntentDigest: "sha256:" + hex.EncodeToString(row.IntentSHA), DecisionDigest: "sha256:" + hex.EncodeToString(row.DecisionSHA), ExpiresAt: expires, Nonce: nonce, ApproverID: r.Approver, RelayID: r.Relay,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("approval assertion signature is invalid")
-	}
-	return assertion, nil
+	return domain.ApprovalAssertionSigningBytes(assertionFor(row, r, expires, nonce))
 }

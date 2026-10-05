@@ -38,6 +38,7 @@ type cleanups []func()
 // database, a fresh runtime epoch with its owner lease and evidence ledger,
 // epoch control, and the started runtime service.
 type runtimeCore struct {
+	pipeline     *runtime.Pipeline
 	db           *storage.DB
 	epoch        string
 	owner        *runtimecontrol.RuntimeOwner

@@ -20,3 +20,8 @@ func (s *Service) EvaluateIntent(ctx context.Context, tx *sql.Tx, r EvaluationRe
 func (s *Service) ResolveApproval(ctx context.Context, tx *sql.Tx, r ApprovalResolution) (Result, error) {
 	return s.app.ResolveApproval(ctx, store.Join(tx), r)
 }
+
+// ApprovalForSigning presents a tenant-scoped request to registered principals.
+func (s *Service) ApprovalForSigning(ctx context.Context, tx *sql.Tx, r ApprovalLookup) (ApprovalPresentation, error) {
+	return s.app.ApprovalForSigning(ctx, store.Join(tx), r)
+}

@@ -21,6 +21,7 @@ func startContinuousPipeline(ctx context.Context, stop context.CancelFunc, core 
 	if err != nil {
 		return err
 	}
+	core.pipeline = pipeline
 	return startContinuousSource(ctx, stop, pipeline, flags, failures)
 }
 

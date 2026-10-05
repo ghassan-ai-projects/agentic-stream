@@ -10,6 +10,8 @@ placeholder.
 | --- | --- | --- |
 | `AGENTIC_STREAM_MODEL_API_KEY` | native model provider | secret; sent as a Bearer header when configured |
 | `AGENTIC_STREAM_SUBSCRIBER_TOKEN` | `serve`/SSE | required by `serve`; clients use `Bearer` form |
+| `AGENTIC_STREAM_APPROVAL_TOKEN` | approval HTTP routes | optional separate relay credential; requires approval relay and `--spec` |
+| `AGENTIC_STREAM_APPROVAL_RELAY` | approval HTTP routes | registered principal bound to the token and served tenant |
 | `AGENTIC_STREAM_CONTROL_TOKEN` | drain/kill controls | full `Authorization` header value is compared |
 | `AGENTIC_STREAM_OTLP_ENDPOINT` | telemetry | highest-priority OTLP/HTTP endpoint |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | telemetry | trace-specific fallback |

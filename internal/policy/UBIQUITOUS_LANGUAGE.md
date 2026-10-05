@@ -11,7 +11,7 @@
 | Runtime ownership check | Original transaction's owner fence | configured `RuntimeOwner` check |
 | Decision epoch check | Refuse the episode's killed/unbound policy epoch | configured `DecisionEpoch` check |
 | Approval resolution | Human decision, principals, signature, reason and time | `ApprovalResolution`, `approvals` |
-| Approval assertion | Signed, domain-separated binding of the durable request | `ApprovalAssertion` |
+| Approval assertion | Signed, domain-separated binding of the durable request | domain `ApprovalAssertion`; exposed as signing bytes |
 | Prepared command | Immutable command bytes and identity before outbox publication | `CommandRecord`, `CommandPreparation`, `commands` |
 | Approval context | Bound snapshot digest, trigger delta and accepted decision | `ApprovalContext` |
 | Compensation | Intent naming the command it compensates; tenant must match | Intent `compensates` |

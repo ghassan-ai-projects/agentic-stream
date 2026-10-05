@@ -151,7 +151,7 @@ func (p *Pipeline) maintainWatches(watchCtx context.Context, done chan struct{})
 }
 
 func (p *Pipeline) expireMaintainedWatches(ctx context.Context) error {
-	if err := p.watch.Expire(ctx); err != nil {
+	if err := p.maintainApprovedWork(ctx); err != nil {
 		p.watchMu.Lock()
 		p.watchErr = err
 		p.watchMu.Unlock()

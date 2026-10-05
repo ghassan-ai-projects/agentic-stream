@@ -11,8 +11,4 @@ func TestDefinitionFacade(t *testing.T) {
 	if CanonicalDocumentForVersion("v1")["policy_version"] != "v1" {
 		t.Fatal("definition delegation")
 	}
-	signed, err := ApprovalAssertionSigningBytes(ApprovalAssertion{ApprovalID: "approval"})
-	if err != nil || len(signed) == 0 {
-		t.Fatal(err)
-	}
 }

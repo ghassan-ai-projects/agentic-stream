@@ -32,7 +32,7 @@ func TestApprovalStalenessPrecedesExpiryAndAuthorization(t *testing.T) {
 			return err
 		}
 		var err error
-		resolved, err = gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{ID: requested.ApprovalID, Approved: true, Approver: "same", Relay: "same", Signature: nil, Reason: "", Now: now})
+		resolved, err = gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{TenantID: "tenant", ID: requested.ApprovalID, Approved: true, Approver: "same", Relay: "same", Signature: nil, Reason: "", Now: now})
 		return err
 	}); err != nil {
 		t.Fatal(err)

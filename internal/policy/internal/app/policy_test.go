@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
@@ -136,26 +136,13 @@ func TestGatewayResolvesApprovalBeforeCommanding(t *testing.T) {
 	}
 	var resolved policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		var nonce string
-		if err := tx.QueryRowContext(ctx, "SELECT nonce FROM approvals WHERE approval_id = ?", approval.ApprovalID).Scan(&nonce); err != nil {
-			return fmt.Errorf("load approval nonce: %w", err)
-		}
-		var intentSHA, decisionSHA []byte
-		if err := tx.QueryRowContext(ctx, "SELECT i.intent_sha256, d.decision_sha256 FROM intents i JOIN decisions d ON d.decision_id = i.decision_id WHERE i.intent_id = ?", intentID).Scan(&intentSHA, &decisionSHA); err != nil {
-			return fmt.Errorf("load approval digests: %w", err)
-		}
-		assertion, err := policy.ApprovalAssertionSigningBytes(policy.ApprovalAssertion{
-			ApprovalID: approval.ApprovalID, IntentID: intentID, DecisionID: "dec-policy", TenantID: "tenant",
-			SituationID: "sit-policy", SituationVersion: 1, RiskClass: "R2",
-			IntentDigest: "sha256:" + hex.EncodeToString(intentSHA), DecisionDigest: "sha256:" + hex.EncodeToString(decisionSHA),
-			ExpiresAt: "2099-01-01T00:00:00Z", Nonce: nonce, ApproverID: "operator-1", RelayID: "relay-1",
-		})
+		presentation, err := gateway.ApprovalForSigning(ctx, tx, policy.ApprovalLookup{ID: approval.ApprovalID, TenantID: "tenant", Approver: "operator-1", Relay: "relay-1", Approved: true})
 		if err != nil {
 			return err
 		}
+
 		privateKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
-		resolved, err = gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{ID: approval.ApprovalID, Approved: true, Approver: "operator-1", Relay: "relay-1", Signature: ed25519.Sign(privateKey, assertion), Reason: "approved for maintenance", Now: now})
+		resolved, err = gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{TenantID: "tenant", ID: approval.ApprovalID, Approved: true, Approver: "operator-1", Relay: "relay-1", Signature: ed25519.Sign(privateKey, presentation.SigningBytes), Reason: "approved for maintenance", Now: now})
 		return err
 	}); err != nil {
 		t.Fatalf("resolve approval: %v", err)
@@ -227,25 +214,13 @@ func TestEvaluateIntentApprovedRequiresApprovalDispatches(t *testing.T) {
 
 	var resolved policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		var nonce string
-		if err := tx.QueryRowContext(ctx, "SELECT nonce FROM approvals WHERE approval_id = ?", approval.ApprovalID).Scan(&nonce); err != nil {
-			return fmt.Errorf("load approval nonce: %w", err)
-		}
-		var intentSHA, decisionSHA []byte
-		if err := tx.QueryRowContext(ctx, "SELECT i.intent_sha256, d.decision_sha256 FROM intents i JOIN decisions d ON d.decision_id = i.decision_id WHERE i.intent_id = ?", intentID).Scan(&intentSHA, &decisionSHA); err != nil {
-			return fmt.Errorf("load approval digests: %w", err)
-		}
-		assertion, err := policy.ApprovalAssertionSigningBytes(policy.ApprovalAssertion{
-			ApprovalID: approval.ApprovalID, IntentID: intentID, DecisionID: "dec-policy", TenantID: "tenant",
-			SituationID: "sit-policy", SituationVersion: 1, RiskClass: "R1",
-			IntentDigest: "sha256:" + hex.EncodeToString(intentSHA), DecisionDigest: "sha256:" + hex.EncodeToString(decisionSHA),
-			ExpiresAt: "2099-01-01T00:00:00Z", Nonce: nonce, ApproverID: "operator-1", RelayID: "relay-1",
-		})
+		presentation, err := gateway.ApprovalForSigning(ctx, tx, policy.ApprovalLookup{ID: approval.ApprovalID, TenantID: "tenant", Approver: "operator-1", Relay: "relay-1", Approved: true})
 		if err != nil {
 			return err
 		}
+
 		privateKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
-		resolved, err = gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{ID: approval.ApprovalID, Approved: true, Approver: "operator-1", Relay: "relay-1", Signature: ed25519.Sign(privateKey, assertion), Reason: "approved", Now: now})
+		resolved, err = gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{TenantID: "tenant", ID: approval.ApprovalID, Approved: true, Approver: "operator-1", Relay: "relay-1", Signature: ed25519.Sign(privateKey, presentation.SigningBytes), Reason: "approved", Now: now})
 		return err
 	}); err != nil {
 		t.Fatalf("resolve approval: %v", err)
@@ -279,18 +254,21 @@ func TestGatewayRejectsSamePrincipalRelay(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("request approval: %v", err)
 	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		resolved, err := gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{ID: approval.ApprovalID, Approved: true, Approver: "operator-1", Relay: "operator-1", Signature: nil, Reason: "invalid", Now: now})
-		if err != nil {
-			return err
-		}
-		if resolved.Result != "denied" || resolved.Reason != "approval_principal_not_authorized" {
-			t.Fatalf("resolved approval = %+v", resolved)
-		}
-		return nil
-	}); err != nil {
-		t.Fatalf("resolve unauthorized approval: %v", err)
+	err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		_, err := gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{TenantID: "tenant", ID: approval.ApprovalID, Approved: true, Approver: "operator-1", Relay: "operator-1", Now: now})
+		return err
+	})
+	if !errors.Is(err, policy.ErrApprovalUnauthorized) {
+		t.Fatalf("unauthorized resolution: %v", err)
 	}
+	var status string
+	if err := db.QueryRowContext(ctx, "SELECT status FROM approvals WHERE approval_id = ?", approval.ApprovalID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "pending" {
+		t.Fatal("unauthorized submission consumed request", status)
+	}
+
 }
 
 func TestGatewayFailsClosedWhenInterlockTripped(t *testing.T) {

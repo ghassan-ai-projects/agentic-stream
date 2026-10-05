@@ -12,6 +12,8 @@ delete runtime records.
 | `GET` | `/health/ready` | none | `{ "status": "ready" }` or RFC 9457-style problem |
 | `GET` | `/v1/events` | subscriber bearer token | cursor-resumable SSE notification stream |
 | `GET` | `/metrics` | none in the handler; deployment boundary | low-cardinality runtime metrics |
+| `GET` | `/v1/approvals/{id}` | approval relay bearer token | immutable request and exact bytes for an authorized human decision |
+| `POST` | `/v1/approvals/{id}` | approval relay bearer token + approver signature | commit approve/deny and revalidate before command creation |
 | `POST` | `/control/drain` | exact control Authorization header | refuse new admission for current epoch |
 | `POST` | `/control/kill` | exact control Authorization header | refuse later decisions for current epoch |
 
@@ -44,6 +46,53 @@ The current control handler expects the configured token as the full
 `Authorization` header value. It returns the current epoch and state as JSON.
 Treat these endpoints as privileged operator actions; put them behind a local
 administrative boundary and audit every call.
+
+## Human approvals
+
+Approval routes are enabled only with `serve --spec` and both
+`AGENTIC_STREAM_APPROVAL_TOKEN` and `AGENTIC_STREAM_APPROVAL_RELAY` set. The
+credential authenticates one configured relay in the served tenant; it is
+independent of subscriber and control credentials. Existing durable principals,
+Ed25519 verification keys, roles and tenant/entity/risk authorities must be
+provisioned by the deployment. There is no public provisioning endpoint.
+
+Fetch `/v1/approvals/{id}?approver={principal}&approved=true` (or `false`) using
+`Authorization: Bearer $AGENTIC_STREAM_APPROVAL_TOKEN`. The response includes
+`approval_id`, `status`, immutable `request` JSON and base64 `signing_bytes`.
+The independent human approver signs the decoded bytes with their Ed25519 key.
+The relay then submits:
+
+```json
+{
+  "approver_id": "operator-1",
+  "approved": true,
+  "signature": "<base64 Ed25519 signature>",
+  "reason": "Reviewed the bound evidence"
+}
+```
+
+The signed bytes bind the decision boolean, durable digests, nonce, expiry and
+principals. Older signatures without the decision boolean are incompatible.
+Both approval and denial require authorization and a valid signature. The
+reason is relay-supplied audit metadata, not a signed assertion field. Tenant,
+relay identity and evaluation time come from server configuration and runtime;
+they cannot be overridden by JSON. Bodies are limited to 16 KiB and must contain
+one JSON document with only the fields shown above.
+
+Unknown and foreign-tenant IDs both return 404. Invalid fresh submissions return
+403 without consuming the pending request. Invalid bodies return 400;
+infrastructure or ownership failures return 503. Terminal requests cannot be
+presented for signing (409). Resolution retries return the durable disposition
+without creating another command. Responses use `Cache-Control: no-store`.
+
+A 200 response confirms committed governance, including denied/stale/expired
+outcomes; inspect the result and reason. It does not confirm an external effect.
+Approved commands enter the durable outbox, which runtime maintenance drains
+without waiting for new sensor input. Existing dispatch fences and verification
+still apply. Observe durable events for delivery and outcome evidence.
+
+The [package integration design](../../internal/policy/APPROVAL_HTTP_DESIGN.md)
+records the contract and validation. A CLI approval client remains follow-up work.
 
 ## Not current
 
