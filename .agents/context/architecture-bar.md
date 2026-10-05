@@ -28,6 +28,11 @@ contracts and services, never on upstream composition.
 
 Additional modules have current concrete responsibilities:
 
+- `runtime`: thin pipeline/readiness/worker facades; private composition assembles
+  existing planes; app orders runtime use cases and process lifetimes; domain owns
+  pure options/routing/report rules; store joins original transactions through
+  table-owning modules; transport owns sources and worker/evidence resources.
+  Runtime owns no foreign lifecycle tables. See [runtime guide](../../internal/runtime/README.md).
 - `actionport`: typed approved commands, outcomes, final authorization, and effect interfaces.
 - `device`: thin effect-boundary facade; app session use cases; pure domain rules
   and typed records; wire schema validation/parsing; gateway transport. Authority

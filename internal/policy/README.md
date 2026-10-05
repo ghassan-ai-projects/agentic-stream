@@ -87,9 +87,9 @@ bytes through presentation. See [the HTTP design](APPROVAL_HTTP_DESIGN.md).
 
 ## Package documentation
 
-- [Proposed approval HTTP design](APPROVAL_HTTP_DESIGN.md) defines the integration being implemented and its security/test contract.
+- [Approval HTTP design](APPROVAL_HTTP_DESIGN.md) defines the implemented integration and its security/test contract.
 
-- [Approval integration follow-up](APPROVAL_INTEGRATION.md) records the missing production path, 33 affected functions and completion checks.
+- [Approval integration record](APPROVAL_INTEGRATION.md) retains the original 33-function inventory, completed HTTP path and remaining CLI/deployment work.
 - [Ubiquitous language](UBIQUITOUS_LANGUAGE.md) maps governance terms to code and durable records.
 - [Refactor plan](../../docs/policy-reference-module-2026-10-05/PLAN.md) and
   [validation](../../docs/policy-reference-module-2026-10-05/VALIDATION.md) retain the dated change history and evidence.

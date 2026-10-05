@@ -7,7 +7,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 )
 
-// ApprovalForSigning supplies the pipeline's tenant rather than trusting a caller.
+// ApprovalForSigning joins tenant-bound presentation to the pipeline transaction.
 func (p *PipelineStore) ApprovalForSigning(ctx context.Context, r policy.ApprovalLookup) (policy.ApprovalPresentation, error) {
 	var result policy.ApprovalPresentation
 	err := p.DB.WithTx(ctx, func(tx *sql.Tx) error {

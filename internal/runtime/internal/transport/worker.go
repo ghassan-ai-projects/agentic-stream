@@ -59,7 +59,17 @@ func NewWorkerBackend(cfg WorkerRuntimeConfig, constructor NativeConstructor) *W
 // WorkerOptions projects pure configuration for validation and setup ordering.
 func WorkerOptions(cfg WorkerRuntimeConfig) domain.WorkerOptions {
 	return domain.WorkerOptions{
-		RuntimeEpoch: cfg.RuntimeEpoch, WorkerSocket: cfg.WorkerSocket, WorkerName: cfg.WorkerName, WorkerCA: cfg.WorkerCA, WorkerCert: cfg.WorkerCert, WorkerKey: cfg.WorkerKey, WorkerServerName: cfg.WorkerServerName, EvidenceSocket: cfg.EvidenceSocket, EvidenceKey: cfg.EvidenceKey, ModelEndpoint: cfg.ModelEndpoint, ModelName: cfg.ModelName,
+		RuntimeEpoch:     cfg.RuntimeEpoch,
+		WorkerSocket:     cfg.WorkerSocket,
+		WorkerName:       cfg.WorkerName,
+		WorkerCA:         cfg.WorkerCA,
+		WorkerCert:       cfg.WorkerCert,
+		WorkerKey:        cfg.WorkerKey,
+		WorkerServerName: cfg.WorkerServerName,
+		EvidenceSocket:   cfg.EvidenceSocket,
+		EvidenceKey:      cfg.EvidenceKey,
+		ModelEndpoint:    cfg.ModelEndpoint,
+		ModelName:        cfg.ModelName,
 	}
 }
 

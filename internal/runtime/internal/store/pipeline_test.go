@@ -46,8 +46,9 @@ func TestPipelineStorePreservesOriginalFenceAndOperationErrors(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := adapter.NextPendingIntent(t.Context(), "tenant"); err == nil {
-		t.Fatal("closed database accepted")
+	_, _, wantErr := policy.NextPendingIntent(t.Context(), db.DB, "tenant")
+	if _, _, err := adapter.NextPendingIntent(t.Context(), "tenant"); err == nil || err.Error() != wantErr.Error() {
+		t.Fatalf("pending read error = %v, want original %v", err, wantErr)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"time"
 )
 
+// RecoveryReport reports the episode and evidence repairs committed together.
 type RecoveryReport = domain.RecoveryReport
 
 // RecoveryCoordinator claims a fresh runtime epoch and atomically recovers

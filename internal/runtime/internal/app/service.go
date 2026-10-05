@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+// RecoveryReport is the pure value returned after atomic durable recovery.
 type RecoveryReport = domain.RecoveryReport
 
 // Service owns the live runtime lease and readiness lifecycle. Ingestion and

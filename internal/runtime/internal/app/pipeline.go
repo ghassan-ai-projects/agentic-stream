@@ -18,6 +18,7 @@ import (
 	"time"
 )
 
+// PipelineReport counts durable stages completed during one source advancement.
 type PipelineReport = domain.PipelineReport
 
 const watchReadBatchSize = 1000

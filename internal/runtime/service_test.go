@@ -42,3 +42,20 @@ func TestServiceReadinessFollowsRecoveryAndClose(t *testing.T) {
 		t.Fatal("service remained ready after close")
 	}
 }
+
+func TestReadinessFacadeRejectsMissingConfiguration(t *testing.T) {
+	t.Parallel()
+	if _, err := NewService(nil, nil, ""); err == nil {
+		t.Fatal("missing service dependencies accepted")
+	}
+	var service *Service
+	if _, err := service.Start(t.Context()); err == nil {
+		t.Fatal("nil service started")
+	}
+	if service.Ready() == nil {
+		t.Fatal("nil service ready")
+	}
+	if err := service.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}

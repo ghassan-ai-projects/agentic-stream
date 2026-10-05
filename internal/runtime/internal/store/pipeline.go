@@ -18,6 +18,7 @@ type PipelineStore struct {
 	OwnerEpoch string
 }
 
+// AssertOwner checks the bound owner epoch in the original transaction scope.
 func (p *PipelineStore) AssertOwner(ctx context.Context) error {
 	if p.Owner == nil || p.OwnerEpoch == "" {
 		return nil
@@ -32,11 +33,7 @@ func (p *PipelineStore) AssertOwner(ctx context.Context) error {
 
 // NextPendingIntent delegates the policy-owned queue projection.
 func (p *PipelineStore) NextPendingIntent(ctx context.Context, tenant string) (string, bool, error) {
-	id, found, err := policy.NextPendingIntent(ctx, p.DB.DB, tenant)
-	if err != nil {
-		return id, found, fmt.Errorf("read pending intent: %w", err)
-	}
-	return id, found, nil
+	return policy.NextPendingIntent(ctx, p.DB.DB, tenant) //nolint:wrapcheck // Policy names the failed read; preserve the existing batch error text.
 }
 
 // EvaluateIntent commits one policy evaluation on the original transaction.

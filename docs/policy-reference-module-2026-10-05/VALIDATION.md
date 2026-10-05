@@ -119,3 +119,12 @@ P4 validation: full `make ci-check` passes with pinned protoc 35.1. Explicit
 lint autofix reports zero issues. Uncached race tests pass for policy, runtime
 and root architecture gates; coverage is facade 100%, app 69.5%, domain 94.3%
 and store 82.4%. `git diff --check` passes.
+
+P5: authenticated HTTP approval presentation and resolution are connected through
+the owner-scoped runtime pipeline (`e8f33a0`). Both decisions require authorized
+signatures; fresh invalid replies roll back and leave the request pending.
+Policy coverage is now facade 100%, app 82.9%, domain 94.3%, store 82.0%.
+The final production-only analyzer reports zero unreachable policy functions.
+The earlier 33-function result above records the pre-integration state.
+Full CI and runtime-migration integration checks pass. See the current
+[approval contract](../../internal/policy/APPROVAL_HTTP_DESIGN.md).

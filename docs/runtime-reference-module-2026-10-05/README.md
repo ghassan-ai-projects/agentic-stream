@@ -8,3 +8,7 @@ Target: thin facade → composition → app → domain and store/transport adapt
 Composition builds concrete dependencies; app coordinates domain operations;
 store owns transaction plumbing; transport owns files, sockets, TLS and executor
 connections. Package guides live under `internal/runtime/`.
+
+Migration completed. The canonical [module guide](../../internal/runtime/README.md)
+and [language](../../internal/runtime/UBIQUITOUS_LANGUAGE.md) live at the package
+root; this folder retains the dated design, rounds and [validation](VALIDATION.md).
