@@ -95,7 +95,7 @@ var allowedImports = map[string][]string{
 	"internal/runtime":               {"internal/actionport", "internal/actions", "internal/admission", "internal/clock", "internal/contractsv1", "internal/control", "internal/costcontrol", "internal/device", "internal/engine", "internal/episodeledger", "internal/episodes", "internal/eventlog", "internal/evidence", "internal/executor/native", "internal/executor/remote", "internal/ids", "internal/ingress", "internal/interlock", "internal/policy", "internal/qualification", "internal/spec", "internal/storage", "internal/telemetry", "internal/watch", "internal/worker", "proto/agenticstream/runtime/v1"},
 	"internal/scheduleledger":        {},
 	"internal/situations":            {"internal/canonicaljson", "internal/contractsv1", "internal/duration", "internal/ids", "internal/operators", "internal/spec"},
-	"internal/soak":                  {"internal/authority", "internal/storage"},
+	"internal/soak":                  {"internal/authority", "internal/canonicaljson", "internal/storage"},
 	"internal/spec":                  {"internal/canonicaljson", "internal/eventschema", "internal/storage"},
 	"internal/storage":               {"migrations"},
 	"internal/telemetry":             {},

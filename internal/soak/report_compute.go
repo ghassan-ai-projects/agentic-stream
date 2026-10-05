@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 func computeTx(ctx context.Context, tx *sql.Tx, tenantID string) (Report, error) {
@@ -44,7 +45,7 @@ func scanSafetyEvents(ctx context.Context, tx *sql.Tx, report *Report) error {
 }
 
 func decodeSafetyEvent(eventID int64, details, digest []byte) (map[string]any, error) {
-	if err := deviceauthority.VerifyStoredJSONDigest(details, digest); err != nil {
+	if err := canonicaljson.VerifyStored(details, digest); err != nil {
 		return nil, fmt.Errorf("verify safety event %d: %w", eventID, err)
 	}
 	var values map[string]any

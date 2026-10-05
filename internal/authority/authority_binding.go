@@ -2,9 +2,7 @@ package authority
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -134,23 +132,6 @@ func nullableText(value string) any {
 	return value
 }
 
-// VerifyStoredJSONDigest verifies a canonical JSON blob and its raw SHA-256.
-// It is shared by artifact and safety readers that must fail closed on
-// tampered durable evidence.
-func VerifyStoredJSONDigest(data, digest []byte) error {
-	if len(digest) != sha256.Size {
-		return fmt.Errorf("stored digest has %d bytes", len(digest))
-	}
-	if err := checkStoredCanonicalJSON(data); err != nil {
-		return err
-	}
-	hash := sha256.Sum256(data)
-	if string(hash[:]) != string(digest) {
-		return fmt.Errorf("stored JSON digest mismatch")
-	}
-	return nil
-}
-
 func (a *TargetAuthority) bindCommandTx(ctx context.Context, tx *sql.Tx, binding CommandBinding) error {
 	if err := a.assertOrdinaryTx(ctx, tx, binding.AuthorityEpoch); err != nil {
 		return err
@@ -164,15 +145,3 @@ func (a *TargetAuthority) bindCommandTx(ctx context.Context, tx *sql.Tx, binding
 
 const readCommandBindingSQL = `SELECT target, device_id, boot_id, owner_epoch, owner_instance, command_sha256
 		FROM device_command_bindings WHERE command_id = ?`
-
-func checkStoredCanonicalJSON(data []byte) error {
-	var value any
-	if err := json.Unmarshal(data, &value); err != nil {
-		return fmt.Errorf("stored JSON is invalid: %w", err)
-	}
-	canonical, err := canonicaljson.Marshal(value)
-	if err != nil || string(canonical) != string(data) {
-		return fmt.Errorf("stored JSON is not canonical")
-	}
-	return nil
-}

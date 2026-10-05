@@ -1,7 +1,6 @@
 package authority
 
 import (
-	"crypto/sha256"
 	"strings"
 	"testing"
 )
@@ -24,14 +23,5 @@ func TestReconciliationEvidenceRejectsMetadataBeforeBinding(t *testing.T) {
 				t.Fatalf("validation = %v, want %s", err, tt.want)
 			}
 		})
-	}
-}
-
-func TestStoredEvidenceRejectsNonCanonicalJSONBeforeDigestMismatch(t *testing.T) {
-	t.Parallel()
-	data := []byte(` {"value":1}`)
-	wrongDigest := sha256.Sum256([]byte(`{}`))
-	if err := VerifyStoredJSONDigest(data, wrongDigest[:]); err == nil || err.Error() != "stored JSON is not canonical" {
-		t.Fatalf("validation precedence = %v", err)
 	}
 }
