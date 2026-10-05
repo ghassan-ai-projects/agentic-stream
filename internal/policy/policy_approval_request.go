@@ -13,6 +13,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
 func (g *Gateway) requireApproval(ctx context.Context, tx *sql.Tx, row intentRow, intent map[string]any, result Result, expiresAt, now time.Time) (Result, error) {
@@ -36,7 +37,7 @@ func (g *Gateway) openApproval(ctx context.Context, tx *sql.Tx, row intentRow, i
 	if err != nil {
 		return result, err
 	}
-	if err := approvalledger.Request(ctx, tx, request.id, row.IntentID, formatTime(now), formatTime(expiresAt), request.json, request.nonce); err != nil {
+	if err := approvalledger.Request(ctx, tx, request.id, row.IntentID, domain.FormatTime(now), domain.FormatTime(expiresAt), request.json, request.nonce); err != nil {
 		return result, fmt.Errorf("insert approval: %w", err)
 	}
 	return g.publishApprovalRequest(ctx, tx, row, request, result, now)
@@ -69,7 +70,7 @@ func approvalRequestJSON(row intentRow, intent map[string]any, request approvalR
 }
 
 func (g *Gateway) publishApprovalRequest(ctx context.Context, tx *sql.Tx, row intentRow, request approvalRequestDocument, result Result, now time.Time) (Result, error) {
-	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = 'approval_required', updated_at = ? WHERE intent_id = ?", formatTime(now), row.IntentID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = 'approval_required', updated_at = ? WHERE intent_id = ?", domain.FormatTime(now), row.IntentID); err != nil {
 		return result, fmt.Errorf("mark approval required: %w", err)
 	}
 	if err := notify.AppendLifecycleEventWithTrace(ctx, tx, "approval.requested:"+request.id, row.TenantID, notify.TypeApprovalRequested, "approval/"+request.id, row.SituationID, request.data, now, traceContext(row)); err != nil {

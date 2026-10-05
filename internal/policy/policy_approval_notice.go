@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
 type approvalContext struct {
@@ -112,7 +113,7 @@ func intentEvidence(intent map[string]any) []string {
 }
 
 func approvalDecisionText(decision map[string]any, field, fallback, decisionID string) string {
-	value := documentString(decision, field)
+	value := domain.DocumentString(decision, field)
 	if strings.TrimSpace(value) == "" {
 		return fmt.Sprintf(fallback, decisionID)
 	}

@@ -10,18 +10,19 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
 func newCommand(g *Gateway, row intentRow, intent map[string]any, now time.Time) (commandDocument, error) {
 	commandID := g.idGen.New(ids.PrefixCommand)
-	target := normalizedTarget(row.IntentID, intent)
+	target := domain.NormalizedTarget(row.IntentID, intent)
 	idempotency := sha256.Sum256([]byte(row.TenantID + "|" + row.IntentID + "|" + row.IntentType + "|" + target))
 	document := map[string]any{
 		"command_id": commandID, "intent_id": row.IntentID, "tenant_id": row.TenantID,
 		"effector_route": row.IntentType, "normalized_target": target,
 		"idempotency_key": "sha256:" + hex.EncodeToString(idempotency[:]),
 		"status":          "prepared", "not_before_mono_us": 0, "policy_digest": g.policyDigest,
-		"payload": intent["parameters"], "created_at": formatTime(now),
+		"payload": intent["parameters"], "created_at": domain.FormatTime(now),
 	}
 	return sealCommand(document, commandID, target, idempotency)
 }
@@ -29,7 +30,7 @@ func newCommand(g *Gateway, row intentRow, intent map[string]any, now time.Time)
 func insertCommand(ctx context.Context, tx *sql.Tx, row intentRow, command commandDocument, now time.Time) (bool, error) {
 	result, err := tx.ExecContext(ctx, insertPolicyCommandSQL,
 		command.ID, row.IntentID, row.TenantID, row.IntentType, command.Target,
-		command.Key, command.JSON, command.SHA, formatTime(now), formatTime(now),
+		command.Key, command.JSON, command.SHA, domain.FormatTime(now), domain.FormatTime(now),
 	)
 	if err != nil {
 		return false, fmt.Errorf("insert command: %w", err)
@@ -59,7 +60,7 @@ func insertCommandOutbox(ctx context.Context, tx *sql.Tx, commandID string, comm
 			available_at, created_at
 		) VALUES ('command', ?, 1, ?, 'pending', ?, ?)
 		ON CONFLICT(kind, aggregate_id, aggregate_version) DO NOTHING`,
-		commandID, commandJSON, formatTime(now), formatTime(now),
+		commandID, commandJSON, domain.FormatTime(now), domain.FormatTime(now),
 	); err != nil {
 		return fmt.Errorf("insert command outbox: %w", err)
 	}

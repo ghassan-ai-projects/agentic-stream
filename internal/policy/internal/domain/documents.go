@@ -1,4 +1,4 @@
-package policy
+package domain
 
 import (
 	"crypto/sha256"
@@ -13,7 +13,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
-func canonicalDocumentMatches(raw, digest []byte, domain canonicaljson.Domain) bool {
+func CanonicalDocumentMatches(raw, digest []byte, domain canonicaljson.Domain) bool {
 	var document map[string]any
 	if json.Unmarshal(raw, &document) != nil || len(digest) != sha256.Size {
 		return false
@@ -31,7 +31,7 @@ func canonicalDocumentMatches(raw, digest []byte, domain canonicaljson.Domain) b
 	return canonicaljson.Verify(domain, document, "sha256:"+hex.EncodeToString(digest))
 }
 
-func normalizedTarget(intentID string, document map[string]any) string {
+func NormalizedTarget(intentID string, document map[string]any) string {
 	parameters, _ := document["parameters"].(map[string]any)
 	for _, key := range []string{"target", "entity_id"} {
 		candidate, ok := parameters[key].(string)
@@ -39,7 +39,7 @@ func normalizedTarget(intentID string, document map[string]any) string {
 			continue
 		}
 		candidate = strings.TrimSpace(candidate)
-		if candidate == "" || len(candidate) > 256 || containsControl(candidate) {
+		if candidate == "" || len(candidate) > 256 || ContainsControl(candidate) {
 			return intentID
 		}
 		return candidate
@@ -47,7 +47,7 @@ func normalizedTarget(intentID string, document map[string]any) string {
 	return intentID
 }
 
-func containsControl(value string) bool {
+func ContainsControl(value string) bool {
 	for _, r := range value {
 		if unicode.IsControl(r) {
 			return true
@@ -56,16 +56,16 @@ func containsControl(value string) bool {
 	return false
 }
 
-func documentString(document map[string]any, key string) string {
+func DocumentString(document map[string]any, key string) string {
 	value, _ := document[key].(string)
 	return value
 }
 
-func documentInt(document map[string]any, key string) int {
+func DocumentInt(document map[string]any, key string) int {
 	value, _ := document[key].(float64)
 	return int(value)
 }
 
-func formatTime(value time.Time) string {
+func FormatTime(value time.Time) string {
 	return value.UTC().Format(time.RFC3339Nano)
 }

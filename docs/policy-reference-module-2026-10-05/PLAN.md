@@ -28,7 +28,14 @@ identities. No schema, protocol or top-level dependency change.
 
 ## Status
 
-P0: baseline policy and root tests pass. Implementation has not started.
+P0: baseline policy and root tests pass; committed `c9bc465`.
+
+P1: pure domain extraction and unused capability-host removal complete. Focused
+policy/root tests pass; domain coverage 94.5%, facade/orchestration 66.9%; lint
+passes. Schema/digest/identity, target fallback, expiry and assertion regression
+tests preserve the existing boundary semantics. Authority/device comparison
+confirmed the facade/app/domain/adapter pattern and caller-owned transaction
+adaptation described in DESIGN.md.
 
 ## Limits
 

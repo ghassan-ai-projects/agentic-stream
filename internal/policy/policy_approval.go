@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
 type approvalRow struct {
@@ -61,19 +62,14 @@ func (g *Gateway) resolvePendingApproval(ctx context.Context, tx *sql.Tx, row in
 	if request.approved && row.CurrentSituation != row.SituationVersion {
 		return g.withdrawStaleApproval(ctx, tx, row, request.id, result, request.now)
 	}
-	if approvalExpired(approval.expiresAt, request.now) {
+	if domain.ApprovalExpired(approval.expiresAt, request.now) {
 		return g.expireApproval(ctx, tx, row, request.id, result, request.now)
 	}
 	return g.resolveAuthorizedApproval(ctx, tx, row, request, result)
 }
 
-func approvalExpired(expiresAt string, now time.Time) bool {
-	expires, err := time.Parse(time.RFC3339Nano, expiresAt)
-	return err != nil || !expires.After(now)
-}
-
 func (g *Gateway) withdrawStaleApproval(ctx context.Context, tx *sql.Tx, row intentRow, approvalID string, result Result, now time.Time) (Result, error) {
-	if err := approvalledger.Withdraw(ctx, tx, approvalID, formatTime(now)); err != nil {
+	if err := approvalledger.Withdraw(ctx, tx, approvalID, domain.FormatTime(now)); err != nil {
 		return result, fmt.Errorf("withdraw stale approval: %w", err)
 	}
 	if err := appendApprovalWithdrawn(ctx, tx, row, approvalID, "situation_version_conflict", now); err != nil {
@@ -86,7 +82,7 @@ func (g *Gateway) withdrawStaleApproval(ctx context.Context, tx *sql.Tx, row int
 }
 
 func (g *Gateway) expireApproval(ctx context.Context, tx *sql.Tx, row intentRow, approvalID string, result Result, now time.Time) (Result, error) {
-	if err := approvalledger.Expire(ctx, tx, approvalID, formatTime(now)); err != nil {
+	if err := approvalledger.Expire(ctx, tx, approvalID, domain.FormatTime(now)); err != nil {
 		return result, fmt.Errorf("expire approval %s: %w", approvalID, err)
 	}
 	if err := appendApprovalResolved(ctx, tx, row, approvalID, "expired", "approval_expired", now); err != nil {
@@ -111,7 +107,7 @@ func (g *Gateway) resolveAuthorizedApproval(ctx context.Context, tx *sql.Tx, row
 }
 
 func (g *Gateway) denyUnauthorizedApproval(ctx context.Context, tx *sql.Tx, row intentRow, approvalID, approver, relay string, authErr error, result Result, now time.Time) (Result, error) {
-	if err := approvalledger.Resolve(ctx, tx, approvalID, "denied", approver, relay, authErr.Error(), formatTime(now)); err != nil {
+	if err := approvalledger.Resolve(ctx, tx, approvalID, "denied", approver, relay, authErr.Error(), domain.FormatTime(now)); err != nil {
 		return result, fmt.Errorf("record unauthorized approval: %w", err)
 	}
 	if err := appendApprovalResolved(ctx, tx, row, approvalID, "denied", "approval_principal_not_authorized", now); err != nil {
@@ -121,19 +117,12 @@ func (g *Gateway) denyUnauthorizedApproval(ctx context.Context, tx *sql.Tx, row 
 }
 
 func recordApprovalResolution(ctx context.Context, tx *sql.Tx, row intentRow, request approvalResolution) error {
-	status, policyStatus := approvalDecision(request.approved)
-	if err := approvalledger.Resolve(ctx, tx, request.id, status, request.approver, request.relay, request.reason, formatTime(request.now)); err != nil {
+	status, policyStatus := domain.ApprovalDecision(request.approved)
+	if err := approvalledger.Resolve(ctx, tx, request.id, status, request.approver, request.relay, request.reason, domain.FormatTime(request.now)); err != nil {
 		return fmt.Errorf("resolve approval %s: %w", request.id, err)
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = ?, updated_at = ? WHERE intent_id = ?", policyStatus, formatTime(request.now), row.IntentID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = ?, updated_at = ? WHERE intent_id = ?", policyStatus, domain.FormatTime(request.now), row.IntentID); err != nil {
 		return fmt.Errorf("update approved intent %s: %w", row.IntentID, err)
 	}
 	return appendApprovalResolved(ctx, tx, row, request.id, status, request.reason, request.now)
-}
-
-func approvalDecision(approved bool) (status, policyStatus string) {
-	if approved {
-		return "approved", "pending"
-	}
-	return "denied", "denied"
 }

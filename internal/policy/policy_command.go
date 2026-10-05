@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
 // approveAutomatic approves an R0/R1 intent: it passes the interlock, gets
@@ -65,7 +66,7 @@ func (g *Gateway) queueApprovedCommand(ctx context.Context, tx *sql.Tx, row inte
 	if err := insertCommandOutbox(ctx, tx, command.ID, command.JSON, now); err != nil {
 		return result, err
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = 'approved', updated_at = ? WHERE intent_id = ?", formatTime(now), row.IntentID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = 'approved', updated_at = ? WHERE intent_id = ?", domain.FormatTime(now), row.IntentID); err != nil {
 		return result, fmt.Errorf("approve intent: %w", err)
 	}
 	if result.Reason == "" {
@@ -88,7 +89,7 @@ func (g *Gateway) assertInterlock(ctx context.Context, tx *sql.Tx, row intentRow
 	if g.interlock == nil {
 		return nil
 	}
-	if err := g.interlock.Assert(ctx, tx, row.TenantID, normalizedTarget(row.IntentID, intent), row.RiskClass); err != nil {
+	if err := g.interlock.Assert(ctx, tx, row.TenantID, domain.NormalizedTarget(row.IntentID, intent), row.RiskClass); err != nil {
 		return fmt.Errorf("assert action interlock: %w", err)
 	}
 	return nil

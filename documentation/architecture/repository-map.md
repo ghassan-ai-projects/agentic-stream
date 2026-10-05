@@ -18,6 +18,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/evidence/` | capability tokens, evidence server, call ledger |
 | `internal/decisions/` | Decision and Intent validation |
 | `internal/policy/` | deterministic governance and approvals |
+| `internal/policy/internal/domain/` | pure policy records, canonical definitions and governance checks |
 | `internal/actions/` | governed outbox dispatch, verification and reconciliation |
 | `internal/watch/` | derived-trigger watches: install as an effect, fire on matching evidence, expire |
 | `internal/actionport/` | approved command/effect contracts |

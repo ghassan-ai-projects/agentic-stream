@@ -9,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 )
 
@@ -72,7 +73,7 @@ func (g *Gateway) expireExistingApproval(ctx context.Context, tx *sql.Tx, row in
 }
 
 func (g *Gateway) markStale(ctx context.Context, tx *sql.Tx, row intentRow, result Result, now time.Time) (Result, error) {
-	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = 'stale', updated_at = ? WHERE intent_id = ?", formatTime(now), row.IntentID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = 'stale', updated_at = ? WHERE intent_id = ?", domain.FormatTime(now), row.IntentID); err != nil {
 		return result, fmt.Errorf("mark stale intent: %w", err)
 	}
 	return g.audit(ctx, tx, row, result, "stale", "situation_version_stale", now)

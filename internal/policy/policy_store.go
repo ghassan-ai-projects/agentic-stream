@@ -10,6 +10,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
 func (g *Gateway) assertOwner(ctx context.Context, tx *sql.Tx) error {
@@ -38,7 +39,7 @@ func (g *Gateway) finish(ctx context.Context, tx *sql.Tx, row intentRow, result 
 }
 
 func (g *Gateway) finishWithAuditReason(ctx context.Context, tx *sql.Tx, row intentRow, result Result, policyStatus, resultReason, auditReason string, now time.Time) (Result, error) {
-	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = ?, updated_at = ? WHERE intent_id = ?", policyStatus, formatTime(now), row.IntentID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE intents SET policy_status = ?, updated_at = ? WHERE intent_id = ?", policyStatus, domain.FormatTime(now), row.IntentID); err != nil {
 		return result, fmt.Errorf("set intent policy status: %w", err)
 	}
 	return g.auditWithReason(ctx, tx, row, result, policyStatus, resultReason, auditReason, now)
@@ -58,7 +59,7 @@ func (g *Gateway) auditWithReason(ctx context.Context, tx *sql.Tx, row intentRow
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		g.idGen.New(ids.PrefixPolicy), row.IntentID, row.DecisionID, g.policyVersion,
 		policyResult, g.policyDigest, row.IntentSHA, row.DecisionSHA,
-		nullableID(result.CommandID), nullableID(result.ApprovalID), auditReason, row.CurrentSituation, formatTime(now),
+		nullableID(result.CommandID), nullableID(result.ApprovalID), auditReason, row.CurrentSituation, domain.FormatTime(now),
 	); err != nil {
 		return result, fmt.Errorf("record policy evaluation: %w", err)
 	}
