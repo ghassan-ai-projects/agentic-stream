@@ -66,7 +66,7 @@ func (f serveFlags) validate() (string, error) {
 	if err := runtime.ValidateWorkerRuntimeConfig(f.worker); err != nil {
 		return "", fmt.Errorf("worker runtime config: %w", err)
 	}
-	return f.validateSubscriberAccess()
+	return f.validateOperatorAccess()
 }
 
 func (f serveFlags) validateSources() error {
@@ -165,11 +165,11 @@ func (core *runtimeCore) servePipeline(runCtx context.Context, stop context.Canc
 }
 
 func (core *runtimeCore) runtimeHandler(flags serveFlags, subscriberToken string, metrics *telemetry.Runtime) http.Handler {
-	return api.NewRuntimeHandler(core.service, core.db, api.SSEConfig{
+	return core.approvalHandler(api.NewRuntimeHandler(core.service, core.db, api.SSEConfig{
 		TenantID:  flags.tenantID,
 		MaxLag:    1000,
 		Authorize: api.BearerTokenAuthorizer(subscriberToken),
-	}, metrics.Handler(), core.epochControl, core.epoch, os.Getenv("AGENTIC_STREAM_CONTROL_TOKEN"))
+	}, metrics.Handler(), core.epochControl, core.epoch, os.Getenv("AGENTIC_STREAM_CONTROL_TOKEN")))
 }
 
 // serveHTTP serves handler until ctx ends, then shuts down gracefully.

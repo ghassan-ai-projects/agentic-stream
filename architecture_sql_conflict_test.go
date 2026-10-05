@@ -19,7 +19,7 @@ func TestInsertConflictClassifierDistinguishesIgnoreFromRewrite(t *testing.T) {
 		if len(mutations) != 1 || mutations[0].rewritesExisting != tc.rewrites {
 			t.Fatalf("conflict rewrite classification: %s: %+v", tc.query, mutations)
 		}
-		if allowed := ownsMutation("internal/policy", mutations[0]); allowed == tc.rewrites {
+		if allowed := ownsMutation("internal/policy/internal/store", mutations[0]); allowed == tc.rewrites {
 			t.Fatalf("prepared command creation permission: %s: allowed=%v", tc.query, allowed)
 		}
 	}

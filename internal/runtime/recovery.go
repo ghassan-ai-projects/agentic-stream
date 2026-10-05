@@ -1,86 +1,8 @@
-// Package runtime contains live-runtime composition primitives.
 package runtime
 
 import (
-	"context"
-	"database/sql"
-	"fmt"
-	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-
-	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/domain"
 )
 
-// RecoveryReport combines episode and evidence state repaired before runtime
-// readiness. Both changes are committed with ownership in one transaction.
-type RecoveryReport struct {
-	Episodes            episodeledger.RecoveryReport
-	InterruptedEvidence int
-}
-
-// RecoveryCoordinator claims a fresh runtime epoch and atomically recovers
-// unfinished attempts and evidence calls. It does not expose readiness or
-// start ingestion; the live command owns that sequencing.
-type RecoveryCoordinator struct {
-	Owner  *runtimecontrol.RuntimeOwner
-	Ledger *evidence.Ledger
-	Epoch  string
-	Now    func() time.Time
-	Costs  *costcontrol.Controller
-}
-
-// ClaimAndRecover acquires ownership and commits all recovery mutations before
-// returning. A failure rolls back ownership and all recovery changes.
-func (c *RecoveryCoordinator) ClaimAndRecover(ctx context.Context) (RecoveryReport, error) {
-	if c == nil || c.Owner == nil || c.Ledger == nil || c.Epoch == "" {
-		return RecoveryReport{}, fmt.Errorf("runtime recovery is not configured")
-	}
-	if c.Ledger.RuntimeEpoch != c.Epoch {
-		return RecoveryReport{}, fmt.Errorf("ledger runtime epoch does not match owner epoch")
-	}
-	return c.claimRecovery(ctx)
-}
-
-func (c *RecoveryCoordinator) claimRecovery(ctx context.Context) (RecoveryReport, error) {
-	c.Ledger.Owner = c.Owner
-	now := c.recoveryTime()
-	var report RecoveryReport
-	err := c.Owner.ClaimAndRecover(ctx, c.Epoch, func(tx *sql.Tx, claimedAt time.Time) error {
-		if c.Now == nil {
-			now = claimedAt
-		}
-		var err error
-		report, err = c.recoverLedgers(ctx, tx, now)
-		return err
-	})
-	if err != nil {
-		return RecoveryReport{}, fmt.Errorf("claim and recover runtime: %w", err)
-	}
-	return report, nil
-}
-
-func (c *RecoveryCoordinator) recoveryTime() time.Time {
-	now := time.Now().UTC()
-	if c.Now != nil {
-		now = c.Now().UTC()
-	}
-	return now
-}
-
-func (c *RecoveryCoordinator) recoverLedgers(ctx context.Context, tx *sql.Tx, now time.Time) (RecoveryReport, error) {
-	var report RecoveryReport
-	var err error
-	report.Episodes, err = episodeledger.RecoverUnfinishedAttemptsWithCost(ctx, tx, c.Epoch, now, c.Costs)
-	if err != nil {
-		return RecoveryReport{}, fmt.Errorf("recover episode attempts: %w", err)
-	}
-	report.InterruptedEvidence, err = c.Ledger.RecoverTx(ctx, tx, now)
-	if err != nil {
-		return RecoveryReport{}, fmt.Errorf("recover evidence calls: %w", err)
-	}
-	return report, nil
-}
+// RecoveryReport describes repairs committed before runtime readiness.
+type RecoveryReport = domain.RecoveryReport

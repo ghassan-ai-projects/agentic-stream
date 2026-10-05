@@ -23,7 +23,7 @@ only applies in `warning` or `incident`.
 - Opening trace: [`trace-opening.jsonl`](../../examples/predictive-maintenance/testdata/trace-opening.jsonl)
 - Heartbeat trace: [`trace-heartbeat.jsonl`](../../examples/predictive-maintenance/testdata/trace-heartbeat.jsonl)
 - Watch trace: [`trace-watch.jsonl`](../../examples/predictive-maintenance/testdata/trace-watch.jsonl)
-- Synthetic runtime proof for the later action path: [`internal/runtime/pipeline_e2e_test.go`](../../internal/runtime/pipeline_e2e_test.go)
+- Synthetic runtime proof for the later action path: [`internal/runtime/internal/app/pipeline_e2e_test.go`](../../internal/runtime/internal/app/pipeline_e2e_test.go)
 
 ## Run it
 

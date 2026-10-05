@@ -1,18 +1,15 @@
 package device
 
-import "fmt"
+import "github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 
-// EffectProfile selects the action boundary used by a runtime process.
-type EffectProfile string
+// EffectProfile selects the effect boundary a runtime process may use.
+type EffectProfile = domain.EffectProfile
 
+// Effect profiles.
 const (
-	// EffectProfileSimulated is the safe default and has no gateway link.
-	EffectProfileSimulated EffectProfile = "simulated"
-	// EffectProfileEmulator uses a typed gateway link backed by an emulator.
-	EffectProfileEmulator EffectProfile = "emulator"
-	// EffectProfilePhysical permits a real gateway link only with explicit
-	// operator authorization.
-	EffectProfilePhysical EffectProfile = "physical"
+	EffectProfileSimulated = domain.EffectProfileSimulated
+	EffectProfileEmulator  = domain.EffectProfileEmulator
+	EffectProfilePhysical  = domain.EffectProfilePhysical
 )
 
 // EffectProfileConfig describes startup-time effect-boundary choices. It
@@ -21,7 +18,7 @@ type EffectProfileConfig struct {
 	Profile         EffectProfile
 	ReplaySource    bool
 	Shadow          bool
-	GatewayLink     DeviceTransport
+	GatewayLink     Transport
 	LiveActuation   bool
 	OwnerAuthorized bool
 }
@@ -30,60 +27,8 @@ type EffectProfileConfig struct {
 // shadow process to an effect boundary. Physical actuation also requires an
 // explicit live-actuation flag and owner authorization.
 func ValidateEffectProfile(config EffectProfileConfig) error {
-	profile := config.Profile
-	if profile == "" {
-		profile = EffectProfileSimulated
-	}
-	return validateSelectedProfile(profile, config)
-}
-
-func validateSelectedProfile(profile EffectProfile, config EffectProfileConfig) error {
-	switch profile {
-	case EffectProfileSimulated:
-		return requireSimulatedProfile(config)
-	case EffectProfileEmulator:
-		return requireLiveGateway(profile, config)
-	case EffectProfilePhysical:
-		return requirePhysicalProfile(profile, config)
-	default:
-		return fmt.Errorf("unsupported effect profile %q", profile)
-	}
-}
-
-func requireSimulatedProfile(config EffectProfileConfig) error {
-	if config.GatewayLink != nil {
-		return fmt.Errorf("simulated effect profile cannot configure a gateway link")
-	}
-	return nil
-}
-
-func requirePhysicalProfile(profile EffectProfile, config EffectProfileConfig) error {
-	if err := requireLiveGateway(profile, config); err != nil {
-		return err
-	}
-	return requireActuationConsent(config)
-}
-
-// requireLiveGateway keeps device profiles away from replay and shadow
-// sources and requires a gateway link.
-func requireLiveGateway(profile EffectProfile, config EffectProfileConfig) error {
-	if config.ReplaySource || config.Shadow {
-		return fmt.Errorf("%s effect profile cannot be combined with replay or shadow", profile)
-	}
-	if config.GatewayLink == nil {
-		return fmt.Errorf("%s effect profile requires a gateway link", profile)
-	}
-	return nil
-}
-
-// requireActuationConsent requires both explicit live actuation and owner
-// authorization for physical effects.
-func requireActuationConsent(config EffectProfileConfig) error {
-	if !config.LiveActuation {
-		return fmt.Errorf("physical effect profile requires explicit live actuation")
-	}
-	if !config.OwnerAuthorized {
-		return fmt.Errorf("physical effect profile requires owner authorization")
-	}
-	return nil
+	return domain.CheckEffectProfile(domain.ProfileRequest{
+		Profile: config.Profile, ReplaySource: config.ReplaySource, Shadow: config.Shadow,
+		HasGatewayLink: config.GatewayLink != nil, LiveActuation: config.LiveActuation, OwnerAuthorized: config.OwnerAuthorized,
+	})
 }

@@ -79,14 +79,15 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/executor/native`, `internal/executor/remote` - concrete executors behind the episode `Executor` port (in-process and streamed worker protocol)
 - `internal/evidence` - evidence/tool boundary for episodes
 - `internal/decisions` - typed Decision model
-- `internal/policy` - policy plane; revalidates every intent before dispatch
+- `internal/policy` - policy plane; revalidates every intent before dispatch. Reference structure: thin `Service` facade, ordered use cases in `internal/app`, pure governance records/rules in `internal/domain`, and caller-owned transaction plumbing plus SQL in `internal/store` (see [policy module pattern](internal/policy/README.md))
 - `internal/actions` - governed dispatch plane, idempotency, verification
 - `internal/watch` - derived-trigger watches installed by approved commands
 - `internal/actionport` - approved-command/effect contracts without implementation dependencies
-- `internal/device` - concrete device adapters, sessions, materialization and gateway links
+- `internal/device` - device effect boundary; the reference adapter module: thin facade, session use cases in `internal/app`, pure `internal/domain`, record codec in `internal/wire`, gateway link in `internal/transport` (record in [docs/device-reference-module-2026-10-05](docs/device-reference-module-2026-10-05/README.md))
 - `internal/episodeledger` / `internal/scheduleledger` / `internal/approvalledger` - durable lifecycle owners shared through transaction-scoped operations
+- `internal/runtime` - thin live-pipeline, readiness and worker facades; concrete assembly in `internal/composition`, ordered use cases in `internal/app`, pure rules/reports in `internal/domain`, transaction plumbing in `internal/store`, source and worker resource adapters in `internal/transport` (see [runtime module guide](internal/runtime/README.md)).
 - `internal/control` - runtime ownership, epoch drain/kill and final readiness capability
-- `internal/authority` - device claims, bindings, reconciliation and safety evidence
+- `internal/authority` - device claims, bindings, reconciliation and safety evidence; the reference module: thin `Service` facade, use cases in `internal/app`, pure `internal/domain`, transactions and SQL in `internal/store` (see [module pattern](docs/authority-reference-module-2026-10-05/MODULE_PATTERN.md) and its [ubiquitous language](docs/authority-reference-module-2026-10-05/UBIQUITOUS_LANGUAGE.md)). To bring another package to this standard, follow [the reference module refactor prompt](.agents/prompts/reference-module-refactor.md)
 - `internal/qualification` - calibration and shadow evidence
 - `internal/replay` - deterministic replay; replay never performs external effects
 - `internal/api` - JSON/HTTP plus Server-Sent Events

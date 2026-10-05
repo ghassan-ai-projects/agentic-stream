@@ -17,16 +17,26 @@ historical design map where the code has chosen a more specific package name.
 | `internal/episodes/` | request assembly, bounded execution lifecycle, budgets and the `Executor` port |
 | `internal/evidence/` | capability tokens, evidence server, call ledger |
 | `internal/decisions/` | Decision and Intent validation |
-| `internal/policy/` | deterministic governance and approvals |
+| `internal/policy/` | policy configuration and delegation facade |
+| `internal/policy/internal/app/` | ordered intent evaluation and human approval use cases |
+| `internal/policy/internal/store/` | caller-owned transactions, policy SQL and ledger/notification plumbing |
+| `internal/policy/internal/domain/` | pure policy records, canonical definitions and governance checks |
 | `internal/actions/` | governed outbox dispatch, verification and reconciliation |
 | `internal/watch/` | derived-trigger watches: install as an effect, fire on matching evidence, expire |
 | `internal/actionport/` | approved command/effect contracts |
-| `internal/device/` | concrete device sessions, materialization, gateway transport and the simulated effector |
+| `internal/device/` | device effect boundary facade: effect profiles, catalog loading, gateway dial and effector constructors |
+| `internal/device/internal/app/` | device session use cases and the gateway, simulated and fail-closed effectors |
+| `internal/device/internal/wire/` | device record codec: schema-validated canonical NDJSON, typed records and original evidence documents |
+| `internal/device/internal/transport/` | Unix-socket gateway link: framing, deadlines and the may-have-sent signal |
+| `internal/device/internal/domain/` | device-boundary rules: capability catalog, materialization, effect profiles, record matching, output verification |
 | `internal/episodeledger/` | durable episode/attempt lifecycle, fencing and recovery |
 | `internal/scheduleledger/` | durable queue identity, admission and coalescing |
 | `internal/approvalledger/` | human approval lifecycle and supersession notification |
 | `internal/control/` | runtime ownership, epoch control and readiness capability |
-| `internal/authority/` | device target claims, bindings, reconciliation and safety evidence |
+| `internal/authority/` | device target claims, bindings, reconciliation and safety evidence: public API only (configuration and delegation) |
+| `internal/authority/internal/app/` | device-authority use cases: validation, admission, unit of work, audit (reference module layer) |
+| `internal/authority/internal/domain/` | device-authority vocabulary and pure rules (reference module layer) |
+| `internal/authority/internal/store/` | device-authority persistence: transactions and the only SQL for its tables (reference module layer) |
 | `internal/qualification/` | calibration and shadow evidence |
 | `internal/costcontrol/` | reservation, bounded usage and settlement |
 | `internal/interlock/` | durable readiness state and read-only assertions |
@@ -35,7 +45,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/executor/native/`, `internal/executor/remote/`, `internal/executor/conformance/`, `internal/worker/` | in-process and out-of-process executors, executor qualification and worker protocol transport |
 | `internal/soak/`, `internal/runartifact/` | bounded operational evidence and immutable artifact verification |
 | `internal/replay/` | effect-safe replay modes |
-| `internal/runtime/` | service/pipeline orchestration, recovery and concrete composition |
+| `internal/runtime/` | thin live-pipeline, readiness and worker facades; [module guide](../../internal/runtime/README.md) |
 | `internal/storage/` | SQLite infrastructure, migrations and transactions |
 | `internal/contractsv1/` | versioned envelope/schema contracts |
 | `internal/telemetry/` | OpenTelemetry and runtime metrics |
@@ -68,3 +78,13 @@ versioned JSON contracts, and current-v1 worker protocol.
 - [Business modules and ownership](modules.md)
 - [Contract index](../contracts/README.md)
 - [Contributing](../../CONTRIBUTING.md)
+
+Runtime reference layers:
+
+| Package | Responsibility |
+| --- | --- |
+| `internal/runtime/internal/app/` | Ordered live-runtime use cases and process lifetimes |
+| `internal/runtime/internal/composition/` | Concrete plane and adapter wiring |
+| `internal/runtime/internal/domain/` | Pure runtime values and configuration rules |
+| `internal/runtime/internal/store/` | Transaction plumbing through lifecycle owners |
+| `internal/runtime/internal/transport/` | Source and worker connection adapters |

@@ -3,6 +3,9 @@ package runtime
 import (
 	"context"
 	"database/sql"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/admission"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -54,8 +57,9 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	idGenerator := ids.Deterministic()
 	pipeline, err := NewPipeline(ctx, PipelineConfig{
-		DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: ids.Deterministic(),
+		DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: idGenerator,
 		Executor: episodes.NewFakeExecutor(), Effector: device.NewSimulatedEffector(),
 	})
 	if err != nil {
@@ -68,16 +72,22 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 		t.Fatalf("insert second invalidated command: %v", err)
 	}
 
-	replay := ingress.NewJSONLReplay(db, pipeline.log, "default", latePath, "live-jsonl:"+latePath)
+	log := eventlog.NewEventLog(db)
+	stream, err := engine.NewEngine(ctx, db, log, clock.Physical(), compiled, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admitter := admission.New(admission.Config{DB: db, Assembler: episodes.NewAssembler(compiled, idGenerator), Clock: clock.Physical(), TenantID: "default"})
+	replay := ingress.NewJSONLReplay(db, log, "default", latePath, "live-jsonl:"+latePath)
 	if count, err := replay.Run(ctx); err != nil {
 		t.Fatalf("ingest correction: %v", err)
 	} else if count != 1 {
 		t.Fatalf("correction events ingested = %d, want 1", count)
 	}
-	if _, err := pipeline.engine.RunGlobal(ctx, nil); err != nil {
+	if _, err := stream.RunGlobal(ctx, nil); err != nil {
 		t.Fatalf("process correction: %v", err)
 	}
-	if admitted, err := pipeline.admission.AdmitPending(ctx); err != nil {
+	if admitted, err := admitter.AdmitPending(ctx); err != nil {
 		t.Fatalf("assemble reconsiderations: %v", err)
 	} else if admitted != 1 {
 		t.Fatalf("episodes admitted = %d, want 1", admitted)

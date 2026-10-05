@@ -121,12 +121,12 @@ def main() -> int:
             errors.append(f"CLI source marker missing: {source_marker}")
 
     http_page = (PUBLIC / "reference" / "http-api.md").read_text(encoding="utf-8")
-    for route in ("/health/live", "/health/ready", "/v1/events", "/metrics", "/control/drain", "/control/kill"):
+    for route in ("/health/live", "/health/ready", "/v1/events", "/metrics", "/control/drain", "/control/kill", "/v1/approvals/{id}"):
         if route not in http_page:
             errors.append(f"HTTP reference omits route: {route}")
 
     config_page = (PUBLIC / "reference" / "configuration.md").read_text(encoding="utf-8")
-    for variable in ("AGENTIC_STREAM_MODEL_API_KEY", "AGENTIC_STREAM_SUBSCRIBER_TOKEN", "AGENTIC_STREAM_CONTROL_TOKEN", "AGENTIC_STREAM_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT"):
+    for variable in ("AGENTIC_STREAM_MODEL_API_KEY", "AGENTIC_STREAM_SUBSCRIBER_TOKEN", "AGENTIC_STREAM_CONTROL_TOKEN", "AGENTIC_STREAM_APPROVAL_TOKEN", "AGENTIC_STREAM_APPROVAL_RELAY", "AGENTIC_STREAM_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT"):
         if variable not in config_page:
             errors.append(f"configuration reference omits environment variable: {variable}")
 

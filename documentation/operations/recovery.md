@@ -67,7 +67,7 @@ deduplicate by CloudEvent source/id because delivery is at-least-once.
 
 ## Source evidence
 
-- Runtime recovery: [`internal/runtime/recovery.go`](../../internal/runtime/recovery.go)
+- Runtime recovery: [`runtime recovery store`](../../internal/runtime/internal/store/recovery.go)
 - Owner fencing: [`internal/control/runtime_owner.go`](../../internal/control/runtime_owner.go)
 - Quarantine/redrive: [`internal/eventlog/quarantine.go`](../../internal/eventlog/quarantine.go)
 - Episode recovery: [`internal/episodeledger/recovery.go`](../../internal/episodeledger/recovery.go)

@@ -107,7 +107,7 @@ and which version an episode used. Deterministic replay checks the stream
 history with effects disabled. That does not make a model's answer deterministic.
 
 Sources: [time policy and stream processing](../design/stream-processing.md),
-[late-correction test](../../internal/runtime/pipeline_e2e_test.go), and
+[late-correction test](../../internal/runtime/internal/app/pipeline_e2e_test.go), and
 [replay design](../design/replay-and-shadow.md).
 
 ## Next reads

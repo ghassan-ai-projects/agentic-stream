@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
@@ -99,7 +100,7 @@ func checkEffectProfile(prefix string, config device.EffectProfileConfig) error 
 // open creates the action-plane effector after the runtime owner has started.
 // Device profiles use a typed UDS gateway link; the serial effector remains
 // explicitly routed by runtime.NewPipeline.
-func (o effectProfileOptions) open(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, replaySource bool) (actionport.Effector, *device.SerialEffector, func() error, error) {
+func (o effectProfileOptions) open(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, replaySource bool) (actionport.Effector, *device.GatewayEffector, func() error, error) {
 	if err := o.validate(replaySource); err != nil {
 		return nil, nil, nil, err
 	}
@@ -155,9 +156,13 @@ func (o effectProfileOptions) validateGatewayLink(transport *device.UDSTransport
 	return nil
 }
 
-func (o effectProfileOptions) openGatewayEffector(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, transport *device.UDSTransport, catalog *device.CapabilityCatalog) (actionport.Effector, *device.SerialEffector, func() error, error) {
-	config := o.gatewayEffectorConfig(db, owner, epochControl, epoch, telemetryRuntime, transport, catalog)
-	serial, closeFn, err := device.NewGatewayEffector(ctx, config)
+func (o effectProfileOptions) openGatewayEffector(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, transport *device.UDSTransport, catalog *device.CapabilityCatalog) (actionport.Effector, *device.GatewayEffector, func() error, error) {
+	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: epochControl, Outcomes: actions.CountUnresolvedOutcomes, ClaimLease: owner.Lease})
+	if err != nil {
+		_ = transport.Close()
+		return nil, nil, nil, fmt.Errorf("configure device authority: %w", err)
+	}
+	serial, closeFn, err := device.NewGatewayEffector(ctx, o.gatewayEffectorConfig(authority, epoch, telemetryRuntime, transport, catalog))
 	if err != nil {
 		_ = transport.Close()
 		return nil, nil, nil, fmt.Errorf("open gateway effector: %w", err)
@@ -165,19 +170,14 @@ func (o effectProfileOptions) openGatewayEffector(ctx context.Context, db *stora
 	return fallbackEffector(o.profile()), serial, closeFn, nil
 }
 
-func (o effectProfileOptions) gatewayEffectorConfig(db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, transport *device.UDSTransport, catalog *device.CapabilityCatalog) device.GatewayEffectorConfig {
-	authority := &deviceauthority.TargetAuthority{
-		DB: db, Owner: owner, EpochControl: epochControl, InstanceID: epoch, Lease: owner.Lease,
-	}
-	reconciliation := &deviceauthority.ReconciliationStore{DB: db, Authority: authority}
+func (o effectProfileOptions) gatewayEffectorConfig(authority *deviceauthority.Service, epoch string, telemetryRuntime *telemetry.Runtime, transport *device.UDSTransport, catalog *device.CapabilityCatalog) device.GatewayEffectorConfig {
 	return device.GatewayEffectorConfig{
 		Transport:              transport,
 		Catalog:                catalog,
 		AllowedFirmwareDigests: o.AllowedFirmwareDigests,
-		AuthorityEpoch:         epoch,
+		OwnerEpoch:             epoch,
 		OwnerInstance:          epoch,
 		Authority:              authority,
-		Reconciliation:         reconciliation,
 		Telemetry:              telemetryRuntime,
 	}
 }

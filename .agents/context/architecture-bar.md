@@ -16,6 +16,7 @@ This extends Q5; Q1–Q7 remain mandatory. Package count is not a quality target
 | A9 | Every production package states its business or infrastructure responsibility in its package comment, and the public module map lists every package. | `TestEveryPackageDocumentsItsResponsibility`, `TestModuleMapListsEveryPackage`. |
 | A10 | Composition roots (`runtime`, `cmd`) wire modules and drive loops only. They contain no SQL and no business decision; episode admission, intent selection, cost-ceiling configuration and evidence reads are calls into the owning module. | `TestCompositionRootsContainNoSQL`; admission, cost and evidence regressions in the owning modules. |
 | A11 | The governed dispatcher (`actions`) contains dispatch only. Internal effect adapters (watches, the simulator) live in their own modules behind `actionport`, so the event pipeline never calls into the action plane. `watch` owns `watch_conditions` and `watch_fires`. | `forbiddenImports`, `durableOwners`, watch and routing regressions. |
+| A12 | A module that owns tables and real rules adopts the reference module pattern of `authority` when it is built or refactored: a thin facade (one `Service` built by `New(Config)` with required safety dependencies, delegating only); `internal/<module>/internal/app` holds the use cases and never touches the database; `internal/<module>/internal/domain` holds pure rules (no I/O, no clock reads); `internal/<module>/internal/store` holds transactions and every SQL statement and is the declared owner of the module's tables. The checks apply to every module that has these layers. | `TestDomainPackagesArePure`, `TestApplicationLayersDoNotTouchInfrastructure`, `TestModuleSQLStaysInStore`, `durableOwners`; [module pattern](../../docs/authority-reference-module-2026-10-05/MODULE_PATTERN.md). |
 
 ## Module map and flow
 
@@ -27,11 +28,23 @@ contracts and services, never on upstream composition.
 
 Additional modules have current concrete responsibilities:
 
+- `runtime`: thin pipeline/readiness/worker facades; private composition assembles
+  existing planes; app orders runtime use cases and process lifetimes; domain owns
+  pure options/routing/report rules; store joins original transactions through
+  table-owning modules; transport owns sources and worker/evidence resources.
+  Runtime owns no foreign lifecycle tables. See [runtime guide](../../internal/runtime/README.md).
 - `actionport`: typed approved commands, outcomes, final authorization, and effect interfaces.
-- `device`: capability materialization, device sessions, gateway transport and concrete device effectors.
+- `device`: thin effect-boundary facade; app session use cases; pure domain rules
+  and typed records; wire schema validation/parsing; gateway transport. Authority
+  owns durable admission and device safety facts.
 - `episodeledger`: episode/attempt identities, durable lifecycle transitions and recovery mutations.
 - `scheduleledger`: durable queue lifecycle transitions shared by admission and episode assembly.
 - `approvalledger`: pending approval, signed assertion and supersession/expiry lifecycle.
+- `policy`: thin configured facade; app evaluation and human approval use cases;
+  pure domain rules and typed documents; store joins the caller transaction and
+  owns policy SQL. Owner, epoch and readiness checks are required constructor
+  inputs. Read-only handoff projections retain the original transaction. See
+  [policy pattern](../../internal/policy/README.md).
 - `control`: singleton runtime ownership and epoch drain/kill; cancellation calls the episode ledger in the same transaction.
 - `authority`: target claims, command bindings, device reconciliation and safety evidence.
 - `qualification`: calibration activation and shadow decision/comparison evidence.

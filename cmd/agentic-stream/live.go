@@ -38,6 +38,7 @@ type cleanups []func()
 // database, a fresh runtime epoch with its owner lease and evidence ledger,
 // epoch control, and the started runtime service.
 type runtimeCore struct {
+	pipeline     *runtime.Pipeline
 	db           *storage.DB
 	epoch        string
 	owner        *runtimecontrol.RuntimeOwner
@@ -49,7 +50,7 @@ type runtimeCore struct {
 // effects is the opened effect profile.
 type effects struct {
 	effector actionport.Effector
-	serial   *device.SerialEffector
+	serial   *device.GatewayEffector
 }
 
 // registerShared adds the effect-profile and worker-runtime flags.
@@ -123,14 +124,14 @@ func (core *runtimeCore) startService(ctx context.Context, cleanup *cleanups) er
 }
 
 func (core *runtimeCore) openEffects(ctx context.Context, options effectProfileOptions, metrics *telemetry.Runtime, replaySource bool, cleanup *cleanups) (effects, error) {
-	effector, serialEffector, closeEffector, err := options.open(ctx, core.db, core.owner, core.epochControl, core.epoch, metrics, replaySource)
+	effector, gatewayEffector, closeEffector, err := options.open(ctx, core.db, core.owner, core.epochControl, core.epoch, metrics, replaySource)
 	if err != nil {
 		return effects{}, fmt.Errorf("configure effect profile: %w", err)
 	}
 	if closeEffector != nil {
 		cleanup.add(func() { _ = closeEffector() })
 	}
-	return effects{effector: effector, serial: serialEffector}, nil
+	return effects{effector: effector, serial: gatewayEffector}, nil
 }
 
 func (core *runtimeCore) openWorkerRuntime(ctx context.Context, config runtime.WorkerRuntimeConfig, cleanup *cleanups) (*runtime.WorkerRuntime, error) {
@@ -148,7 +149,7 @@ func (core *runtimeCore) openWorkerRuntime(ctx context.Context, config runtime.W
 func (core *runtimeCore) startPipeline(ctx context.Context, compiled *spec.CompiledSpec, tenantID string, workerRuntime *runtime.WorkerRuntime, opened effects, metrics *telemetry.Runtime, demoMode bool, cleanup *cleanups) (*runtime.Pipeline, error) {
 	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{
 		DB: core.db, Spec: compiled, TenantID: tenantID, Owner: core.owner, OwnerEpoch: core.epoch,
-		Executor: workerRuntime.Executor, Effector: opened.effector, SerialEffector: opened.serial,
+		Executor: workerRuntime.Executor, Effector: opened.effector, GatewayEffector: opened.serial,
 		IDGenerator: ids.Random(), Telemetry: metrics, EpochControl: core.epochControl, DemoMode: demoMode,
 	})
 	if err != nil {

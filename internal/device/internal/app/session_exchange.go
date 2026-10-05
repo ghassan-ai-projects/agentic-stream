@@ -1,0 +1,224 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/transport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
+
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+)
+
+// Exchange is the ordered terminal response to one device command.
+// Receipt proves admission; Result is the device-reported terminal execution
+// status. Neither is physical confirmation by itself.
+type Exchange struct {
+	Receipt domain.Receipt
+	Result  domain.Result
+}
+
+// Exchange sends one already-materialized command and consumes its
+// receipt and terminal result. The bool reports whether bytes were handed to
+// the transport; callers must treat a post-send receive error as an unknown
+// outcome.
+func (s *Session) Exchange(ctx context.Context, command domain.Command) (Exchange, bool, error) {
+	exchange, sent, err := s.exchange(ctx, command)
+	if exchange == nil {
+		return Exchange{}, sent, err
+	}
+	return *exchange, sent, err
+}
+
+func (s *Session) exchange(ctx context.Context, command domain.Command) (*Exchange, bool, error) {
+	if s == nil {
+		return nil, false, fmt.Errorf("device session is not open")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.ensureOpen(); err != nil {
+		return nil, false, err
+	}
+	if s.isSafeStopLatched() {
+		return nil, false, fmt.Errorf("safe stop has priority over ordinary device commands")
+	}
+	return s.exchangeOrdinaryCommand(ctx, command)
+}
+
+func (s *Session) ensureOpen() error {
+	if !s.opened || s.closed {
+		return fmt.Errorf("device session is not open")
+	}
+	return nil
+}
+
+// commandDelivery binds the prepared bytes and identity to their target claim.
+type commandDelivery struct {
+	command  domain.Command
+	frame    []byte
+	identity string
+	claim    deviceauthority.TargetClaim
+}
+
+func (s *Session) exchangeOrdinaryCommand(ctx context.Context, command domain.Command) (*Exchange, bool, error) {
+	delivery, err := prepareCommand(command)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := s.validateCommandLifetime(command); err != nil {
+		return nil, false, err
+	}
+	if s.reconciliationRequired {
+		return nil, false, deviceauthority.ErrReconciliationRequired
+	}
+	delivery.claim, err = s.claimCommand(ctx, command, delivery.identity)
+	if err != nil {
+		return nil, false, err
+	}
+	return s.deliverClaimedCommand(ctx, delivery)
+}
+
+func prepareCommand(command domain.Command) (commandDelivery, error) {
+	frame, err := wire.Encode(command.Document())
+	if err != nil {
+		return commandDelivery{}, fmt.Errorf("encode device command: %w", err)
+	}
+	identity, err := command.Identity()
+	if err != nil {
+		return commandDelivery{}, err
+	}
+	return commandDelivery{command: command, frame: frame, identity: identity}, nil
+}
+
+func (s *Session) validateCommandLifetime(command domain.Command) error {
+	if command.ExpectedBootID != s.bootID {
+		return fmt.Errorf("device boot changed: command expects %q, session is %q", command.ExpectedBootID, s.bootID)
+	}
+	return nil
+}
+
+func (s *Session) claimCommand(ctx context.Context, command domain.Command, commandIdentity string) (deviceauthority.TargetClaim, error) {
+	claim := s.targetClaim(command.Target)
+	if err := s.authority.Claim(ctx, claim); err != nil {
+		return claim, fmt.Errorf("claim device target: %w", err)
+	}
+	return s.bindClaimedCommand(ctx, command, claim, commandIdentity)
+}
+
+func (s *Session) bindClaimedCommand(ctx context.Context, command domain.Command, claim deviceauthority.TargetClaim, commandIdentity string) (deviceauthority.TargetClaim, error) {
+	if err := s.authority.BindCommand(ctx, deviceauthority.CommandBinding{
+		CommandID: command.CommandID, Target: claim.Target, Device: claim.Device,
+		Owner: claim.Owner, CommandDigest: commandIdentity,
+	}); err != nil {
+		releaseErr := s.authority.ReleaseClaim(ctx, claim)
+		if errors.Is(releaseErr, deviceauthority.ErrTargetClaimNotOwned) {
+			releaseErr = nil
+		}
+		return claim, fmt.Errorf("bind device command: %w", errors.Join(err, releaseErr))
+	}
+	return s.assertClaimBeforeDelivery(ctx, claim)
+}
+
+func (s *Session) assertClaimBeforeDelivery(ctx context.Context, claim deviceauthority.TargetClaim) (deviceauthority.TargetClaim, error) {
+	s.claimedTargets[claim.Target] = struct{}{}
+	// Claim performs the durable admission check. Repeat it directly before
+	// transport delivery to minimize the revoke-to-send race; a post-send
+	// failure remains an unknown outcome because bytes cannot be retracted.
+	if err := s.authority.AssertClaim(ctx, claim); err != nil {
+		return claim, fmt.Errorf("assert device target authority: %w", err)
+	}
+	return claim, nil
+}
+
+func (s *Session) deliverClaimedCommand(ctx context.Context, delivery commandDelivery) (*Exchange, bool, error) {
+	if cached, ok, err := s.cachedExchange(delivery.command.IdempotencyKey, delivery.identity); ok || err != nil {
+		return cached, ok, err
+	}
+	if err := s.transport.Send(ctx, delivery.frame); err != nil {
+		sent := transport.MayHaveSent(err)
+		if sent {
+			return s.unknownDeviceOutcome(ctx, nil, errors.Join(err, fmt.Errorf("command send may have crossed the gateway")))
+		}
+		return nil, sent, fmt.Errorf("send device command: %w", err)
+	}
+	return s.receiveCommandOutcome(ctx, delivery)
+}
+
+// cachedExchange returns the first answer to a repeated idempotency key. A key
+// reused for a different command is a conflict.
+func (s *Session) cachedExchange(idempotencyKey, commandIdentity string) (*Exchange, bool, error) {
+	cached, ok := s.receipts[idempotencyKey]
+	if !ok {
+		return nil, false, nil
+	}
+	if cached.commandIdentity != commandIdentity {
+		return nil, false, fmt.Errorf("idempotency key %q conflicts with the prior device command", idempotencyKey)
+	}
+	exchange := cached.exchange.clone()
+	return &exchange, true, nil
+}
+
+func (s *Session) receiveCommandOutcome(ctx context.Context, delivery commandDelivery) (*Exchange, bool, error) {
+	reply, err := s.transport.Receive(ctx)
+	if err != nil {
+		return s.unknownDeviceOutcome(ctx, nil, err)
+	}
+	receipt, err := wire.DecodeReceipt(reply)
+	if err != nil {
+		s.telemetry.ObserveDeviceFrameError()
+		return s.unknownDeviceOutcome(ctx, nil, fmt.Errorf("decode device receipt: %w", err))
+	}
+	if !domain.ReceiptMatches(receipt, delivery.command, s.bootID) {
+		return s.unknownDeviceOutcome(ctx, nil, errors.New("device receipt identity mismatch"))
+	}
+	return s.completeCommandOutcome(ctx, delivery, receipt)
+}
+
+func (s *Session) completeCommandOutcome(ctx context.Context, delivery commandDelivery, receipt domain.Receipt) (*Exchange, bool, error) {
+	partial := &Exchange{Receipt: receipt}
+	if err := s.authority.AssertClaim(ctx, delivery.claim); err != nil {
+		return s.unknownDeviceOutcome(ctx, partial, fmt.Errorf("authority lost during device exchange: %w", err))
+	}
+	result, err := s.receiveDeviceResult(ctx, delivery.command, receipt)
+	if err != nil {
+		return s.unknownDeviceOutcome(ctx, partial, err)
+	}
+	return s.cacheCommandOutcome(ctx, delivery, partial, result)
+}
+
+func (s *Session) receiveDeviceResult(ctx context.Context, command domain.Command, receipt domain.Receipt) (domain.Result, error) {
+	resultFrame, err := s.transport.Receive(ctx)
+	if err != nil {
+		return domain.Result{}, fmt.Errorf("receive device result: %w", err)
+	}
+	result, err := wire.DecodeResult(resultFrame)
+	if err != nil {
+		s.telemetry.ObserveDeviceFrameError()
+		return domain.Result{}, fmt.Errorf("decode device result: %w", err)
+	}
+	if !domain.ResultMatches(result, command, s.bootID, receipt) {
+		return domain.Result{}, errors.New("device result identity or status mismatch")
+	}
+	return result, nil
+}
+
+func (s *Session) cacheCommandOutcome(ctx context.Context, delivery commandDelivery, partial *Exchange, result domain.Result) (*Exchange, bool, error) {
+	partial.Result = result
+	if err := s.authority.AssertClaim(ctx, delivery.claim); err != nil {
+		return s.unknownDeviceOutcome(ctx, partial, fmt.Errorf("authority lost during device result: %w", err))
+	}
+	s.receipts[delivery.command.IdempotencyKey] = cachedExchange{commandIdentity: delivery.identity, exchange: partial.clone()}
+	return partial, true, nil
+}
+
+func (s *Session) unknownDeviceOutcome(ctx context.Context, partial *Exchange, err error) (*Exchange, bool, error) {
+	barrierErr := s.requireReconciliation(ctx, "device exchange was not trustworthy")
+	// A malformed, incomplete, or mismatched pair leaves the next frame's
+	// meaning unknowable. Do not let a caller reuse a potentially desynchronized
+	// transport; a fresh handshake is required.
+	s.invalidateTransportLocked()
+	return partial, true, &deviceExchangeError{err: errors.Join(err, barrierErr)}
+}

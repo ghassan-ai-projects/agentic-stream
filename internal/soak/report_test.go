@@ -2,17 +2,34 @@ package soak_test
 
 import (
 	"testing"
+	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/soak"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
+// newAuthority admits epoch-1 of instance-1 and returns its device authority.
+func newAuthority(t *testing.T, db *storage.DB) *deviceauthority.Service {
+	t.Helper()
+	owner := &control.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Hour}
+	if err := owner.Claim(t.Context(), "epoch-1"); err != nil {
+		t.Fatal(err)
+	}
+	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: &control.EpochControl{DB: db}, Outcomes: actions.CountUnresolvedOutcomes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return authority
+}
+
 func TestComputePassesCompletePhysicalTransitions(t *testing.T) {
 	db, _ := openSoakDB(t)
-	ledger := &deviceauthority.SafetyLedger{DB: db}
-	if err := ledger.Record(t.Context(), deviceauthority.SafetyEvent{Type: "physical_transition", Target: "fan-01", Details: completeEvidence()}); err != nil {
+	authority := newAuthority(t, db)
+	if err := authority.RecordSafetyEvent(t.Context(), deviceauthority.SafetyEvent{Type: "physical_transition", Target: "fan-01", Details: completeEvidence()}); err != nil {
 		t.Fatal(err)
 	}
 	report, err := soak.Compute(t.Context(), db)
@@ -47,12 +64,12 @@ func TestComputeFailsUnresolvedActionOutcome(t *testing.T) {
 
 func TestComputeFailsAnyZeroToleranceEventOrIncompleteEvidence(t *testing.T) {
 	db, _ := openSoakDB(t)
-	ledger := &deviceauthority.SafetyLedger{DB: db}
+	authority := newAuthority(t, db)
 	for _, event := range []deviceauthority.SafetyEvent{
 		{Type: "unsafe_output", Target: "fan-01"},
 		{Type: "physical_transition", Target: "fan-01", Details: map[string]any{"evidence_complete": false}},
 	} {
-		if err := ledger.Record(t.Context(), event); err != nil {
+		if err := authority.RecordSafetyEvent(t.Context(), event); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -67,10 +84,12 @@ func TestComputeFailsAnyZeroToleranceEventOrIncompleteEvidence(t *testing.T) {
 
 func TestComputeFailsWithActiveReconciliationBarrier(t *testing.T) {
 	db, _ := openSoakDB(t)
-	if _, err := db.ExecContext(t.Context(), `INSERT INTO device_reconciliation
-		(device_id, boot_id, status, opening_boot_id, state_json, state_sha256, authority_epoch, opened_at, updated_at)
-		VALUES ('thermal-01', 'boot-B', 'required', 'boot-B', ?, ?, 'epoch-1', '2026-08-29T12:00:00.000000000Z', '2026-08-29T12:00:00.000000000Z')`, []byte("{}"), make([]byte, 32)); err != nil {
-		t.Fatal(err)
+	authority := newAuthority(t, db)
+	owner := deviceauthority.Owner{Epoch: "epoch-1", Instance: "instance-1"}
+	for _, boot := range []string{"boot-A", "boot-B"} { // the reboot requires reconciliation
+		if _, err := authority.RecordDeviceState(t.Context(), owner, map[string]any{"device_id": "thermal-01", "boot_id": boot}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	report, err := soak.Compute(t.Context(), db)
 	if err != nil {

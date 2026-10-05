@@ -17,11 +17,11 @@ var durableOwners = map[string]string{
 	"cost_limits":                   "internal/costcontrol",
 	"cost_reservations":             "internal/costcontrol",
 	"decisions":                     "internal/episodes",
-	"device_authority_events":       "internal/authority",
-	"device_command_bindings":       "internal/authority",
-	"device_reconciliation":         "internal/authority",
-	"device_safety_events":          "internal/authority",
-	"device_target_claims":          "internal/authority",
+	"device_authority_events":       "internal/authority/internal/store",
+	"device_command_bindings":       "internal/authority/internal/store",
+	"device_reconciliation":         "internal/authority/internal/store",
+	"device_safety_events":          "internal/authority/internal/store",
+	"device_target_claims":          "internal/authority/internal/store",
 	"episode_attempts":              "internal/episodeledger",
 	"episode_rejections":            "internal/episodeledger",
 	"episodes":                      "internal/episodeledger",
@@ -32,8 +32,8 @@ var durableOwners = map[string]string{
 	"event_quarantine":              "internal/eventlog",
 	"event_schemas":                 "internal/eventschema",
 	"evidence_call_ledger":          "internal/evidence",
-	"intent_dispatch_counts":        "internal/policy",
-	"intents":                       "internal/policy",
+	"intent_dispatch_counts":        "internal/policy/internal/store",
+	"intents":                       "internal/policy/internal/store",
 	"lineage_sets":                  "internal/engine",
 	"notification_audits":           "internal/notify",
 	"notification_cursors":          "internal/notify",
@@ -44,7 +44,7 @@ var durableOwners = map[string]string{
 	"outbox":                        "internal/actions",
 	"outcomes":                      "internal/actions",
 	"partition_checkpoints":         "internal/engine",
-	"policy_evaluations":            "internal/policy",
+	"policy_evaluations":            "internal/policy/internal/store",
 	"reconsiderations":              "internal/cognition",
 	"runtime_interlock":             "internal/interlock",
 	"runtime_owner":                 "internal/control",
@@ -91,11 +91,11 @@ func ownsMutation(pkg string, m sqlMutation) bool {
 	case "commands", "outbox":
 		// Policy may discard only its prepared, pending command before outbox publication.
 		if m.table == "commands" && m.operation == "delete" {
-			return pkg == "internal/policy" && strings.EqualFold(strings.Join(strings.Fields(m.query), " "),
+			return pkg == "internal/policy/internal/store" && strings.EqualFold(strings.Join(strings.Fields(m.query), " "),
 				"DELETE FROM commands WHERE intent_id = ? AND command_id = ? AND status = 'pending'")
 		}
 		if m.operation == "insert" {
-			return pkg == "internal/policy" && !m.rewritesExisting
+			return pkg == "internal/policy/internal/store" && !m.rewritesExisting
 		}
 		if pkg != "internal/actions" || m.operation != "update" {
 			return false
@@ -108,7 +108,7 @@ func ownsMutation(pkg string, m sqlMutation) bool {
 		if m.operation == "insert" {
 			return pkg == "internal/episodes" && !m.rewritesExisting
 		}
-		return pkg == "internal/policy" && m.operation == "update" && columnsWithin(m.columns, []string{"policy_status", "updated_at"})
+		return pkg == "internal/policy/internal/store" && m.operation == "update" && columnsWithin(m.columns, []string{"policy_status", "updated_at"})
 	case "situations":
 		if pkg == "internal/cognition" {
 			return m.operation == "update" && columnsWithin(m.columns, []string{"last_reasoned_version"})
@@ -136,16 +136,16 @@ func TestHandoffOwnershipRejectsAuthorityAndPayloadBypasses(t *testing.T) {
 		{"internal/control", "UPDATE episodes SET lifecycle_status='superseded'"},
 		{"internal/runtime", "UPDATE scheduler_items SET status='coalesced'"},
 		{"internal/cognition", "UPDATE approvals SET status='denied'"},
-		{"internal/policy", "UPDATE commands SET status='dispatching'"},
-		{"internal/policy", "DELETE FROM commands"},
+		{"internal/policy/internal/store", "UPDATE commands SET status='dispatching'"},
+		{"internal/policy/internal/store", "DELETE FROM commands"},
 		{"internal/actions", "INSERT INTO commands(command_id) VALUES ('bypass')"},
 		{"internal/actions", "UPDATE commands SET command_json=?"},
-		{"internal/policy", "UPDATE intents SET intent_json=?"},
+		{"internal/policy/internal/store", "UPDATE intents SET intent_json=?"},
 		{"internal/cognition", "UPDATE situations SET current_version=2"},
 		{"internal/episodes", "DELETE FROM intents"},
-		{"internal/policy", "REPLACE INTO commands(command_id) VALUES ('bypass')"},
-		{"internal/policy", "INSERT OR REPLACE INTO outbox(payload_json) VALUES ('bypass')"},
-		{"internal/policy", "INSERT INTO commands(command_id) VALUES ('bypass') ON CONFLICT DO UPDATE SET command_json=?"},
+		{"internal/policy/internal/store", "REPLACE INTO commands(command_id) VALUES ('bypass')"},
+		{"internal/policy/internal/store", "INSERT OR REPLACE INTO outbox(payload_json) VALUES ('bypass')"},
+		{"internal/policy/internal/store", "INSERT INTO commands(command_id) VALUES ('bypass') ON CONFLICT DO UPDATE SET command_json=?"},
 		{"internal/episodes", "INSERT INTO intents(intent_id) VALUES ('bypass') ON CONFLICT DO UPDATE SET policy_status='approved'"},
 		{"internal/actions", "UPDATE commands SET status=?, (command_json,idempotency_key)=(?,?)"},
 	} {

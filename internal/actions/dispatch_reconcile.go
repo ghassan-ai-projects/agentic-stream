@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"time"
 
@@ -147,27 +146,10 @@ func loadReconcilableCommand(ctx context.Context, tx *sql.Tx, commandID string) 
 // verifyDeviceBinding requires evidence for a device-bound command to name
 // the bound target and carry valid boot-bound device evidence.
 func verifyDeviceBinding(ctx context.Context, tx *sql.Tx, command reconcilableCommand, evidence map[string]any) error {
-	var boundTarget, deviceID, bootID string
-	err := tx.QueryRowContext(ctx, `SELECT target, device_id, boot_id
-		FROM device_command_bindings WHERE command_id = ?`, command.commandID).Scan(&boundTarget, &deviceID, &bootID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("load device command binding: %w", err)
-	}
-	return verifyBoundDeviceEvidence(command, evidence, boundTarget, deviceID, bootID)
-}
-
-func verifyBoundDeviceEvidence(command reconcilableCommand, evidence map[string]any, boundTarget, deviceID, bootID string) error {
-	if boundTarget != command.target {
-		return fmt.Errorf("device command binding target does not match command %q", command.commandID)
-	}
-	if evidenceTarget, _ := evidence["target"].(string); evidenceTarget != boundTarget {
-		return fmt.Errorf("device reconciliation evidence target does not match command %q", command.commandID)
-	}
-	if err := deviceauthority.ValidateDeviceReconciliationEvidence(evidence, deviceID, bootID); err != nil {
-		return fmt.Errorf("validate device reconciliation evidence: %w", err)
+	if err := deviceauthority.VerifyCommandEvidence(ctx, tx, deviceauthority.CommandEvidence{
+		CommandID: command.commandID, Target: command.target, Evidence: evidence,
+	}); err != nil {
+		return fmt.Errorf("verify device command evidence: %w", err)
 	}
 	return nil
 }
