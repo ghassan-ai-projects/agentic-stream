@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
@@ -247,7 +248,7 @@ func newDeviceControl(t *testing.T) deviceControl {
 	if err := owner.Claim(context.Background(), "epoch-1"); err != nil {
 		t.Fatal(err)
 	}
-	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: &runtimecontrol.EpochControl{DB: db}})
+	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: &runtimecontrol.EpochControl{DB: db}, Outcomes: actions.CountUnresolvedOutcomes})
 	if err != nil {
 		t.Fatal(err)
 	}

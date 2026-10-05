@@ -1,6 +1,8 @@
 package authority
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -16,12 +18,18 @@ import (
 // when Config.ClaimLease is zero.
 const defaultClaimLease = time.Minute
 
-// Config wires a Service. DB, Owner and Epochs are safety dependencies and
-// are required; they must all use the same database.
+// OutcomeLedger counts, inside tx, the commands among commandIDs whose
+// outcome is still unresolved. actions.CountUnresolvedOutcomes implements it;
+// the action ledger owns what "unresolved" means.
+type OutcomeLedger func(ctx context.Context, tx *sql.Tx, commandIDs []string) (int64, error)
+
+// Config wires a Service. DB, Owner, Epochs and Outcomes are safety
+// dependencies and are required; they must all use the same database.
 type Config struct {
 	DB         *storage.DB
 	Owner      *control.RuntimeOwner
 	Epochs     *control.EpochControl
+	Outcomes   OutcomeLedger
 	ClaimLease time.Duration
 	Clock      clock.Clock
 }
@@ -41,6 +49,7 @@ func New(cfg Config) (*Service, error) {
 	return &Service{app: app.New(app.Config{
 		Store:         store.New(cfg.DB),
 		Fences:        app.Fences{RuntimeOwner: cfg.Owner.Assert, EpochControl: cfg.Epochs.AssertOrdinaryTx},
+		Outcomes:      store.OutcomeLedger(cfg.Outcomes),
 		OwnerInstance: cfg.Owner.InstanceID,
 		ClaimLease:    cfg.claimLease(),
 		Clock:         cfg.clock(),
@@ -48,8 +57,8 @@ func New(cfg Config) (*Service, error) {
 }
 
 func (cfg Config) validate() error {
-	if cfg.DB == nil || cfg.Owner == nil || cfg.Epochs == nil {
-		return errors.New("device authority requires a database, runtime owner and epoch control")
+	if cfg.DB == nil || cfg.Owner == nil || cfg.Epochs == nil || cfg.Outcomes == nil {
+		return errors.New("device authority requires a database, runtime owner, epoch control and outcome ledger")
 	}
 	if cfg.Owner.DB != cfg.DB || cfg.Epochs.DB != cfg.DB {
 		return errors.New("device authority, runtime owner and epoch control must share one database")

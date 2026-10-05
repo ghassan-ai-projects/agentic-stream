@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -30,18 +31,20 @@ func TestNewRefusesConfigurationThatSkipsSafetyChecks(t *testing.T) {
 	db, other := openDB(t, "runtime.db"), openDB(t, "other.db")
 	owner := &control.RuntimeOwner{DB: db, InstanceID: "instance-1"}
 	epochs := &control.EpochControl{DB: db}
+	ledger := authority.OutcomeLedger(actions.CountUnresolvedOutcomes)
 	tests := []struct {
 		name   string
 		config authority.Config
 		want   string
 	}{
-		{"missing database", authority.Config{Owner: owner, Epochs: epochs}, "requires a database"},
-		{"missing runtime owner", authority.Config{DB: db, Epochs: epochs}, "requires a database"},
-		{"missing epoch control", authority.Config{DB: db, Owner: owner}, "requires a database"},
-		{"owner on another database", authority.Config{DB: db, Owner: &control.RuntimeOwner{DB: other, InstanceID: "i"}, Epochs: epochs}, "share one database"},
-		{"epochs on another database", authority.Config{DB: db, Owner: owner, Epochs: &control.EpochControl{DB: other}}, "share one database"},
-		{"owner without instance", authority.Config{DB: db, Owner: &control.RuntimeOwner{DB: db}, Epochs: epochs}, "runtime owner instance"},
-		{"negative lease", authority.Config{DB: db, Owner: owner, Epochs: epochs, ClaimLease: -time.Second}, "negative"},
+		{"missing database", authority.Config{Owner: owner, Epochs: epochs, Outcomes: ledger}, "requires a database"},
+		{"missing runtime owner", authority.Config{DB: db, Epochs: epochs, Outcomes: ledger}, "requires a database"},
+		{"missing epoch control", authority.Config{DB: db, Owner: owner, Outcomes: ledger}, "requires a database"},
+		{"missing outcome ledger", authority.Config{DB: db, Owner: owner, Epochs: epochs}, "outcome ledger"},
+		{"owner on another database", authority.Config{DB: db, Owner: &control.RuntimeOwner{DB: other, InstanceID: "i"}, Epochs: epochs, Outcomes: ledger}, "share one database"},
+		{"epochs on another database", authority.Config{DB: db, Owner: owner, Epochs: &control.EpochControl{DB: other}, Outcomes: ledger}, "share one database"},
+		{"owner without instance", authority.Config{DB: db, Owner: &control.RuntimeOwner{DB: db}, Epochs: epochs, Outcomes: ledger}, "runtime owner instance"},
+		{"negative lease", authority.Config{DB: db, Owner: owner, Epochs: epochs, Outcomes: ledger, ClaimLease: -time.Second}, "negative"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -63,7 +66,7 @@ func TestServiceDelegatesEveryOperation(t *testing.T) {
 	if err := runtimeOwner.Claim(ctx, "epoch-1"); err != nil {
 		t.Fatal(err)
 	}
-	service, err := authority.New(authority.Config{DB: db, Owner: runtimeOwner, Epochs: &control.EpochControl{DB: db}})
+	service, err := authority.New(authority.Config{DB: db, Owner: runtimeOwner, Epochs: &control.EpochControl{DB: db}, Outcomes: actions.CountUnresolvedOutcomes})
 	if err != nil {
 		t.Fatal(err)
 	}

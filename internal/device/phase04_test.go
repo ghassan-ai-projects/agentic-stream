@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
@@ -150,7 +151,7 @@ func TestSerialSessionAuthorityLossAfterTransportIsUnknown(t *testing.T) {
 	if err := owner.Claim(t.Context(), "epoch-1"); err != nil {
 		t.Fatal(err)
 	}
-	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: &runtimecontrol.EpochControl{DB: db}, ClaimLease: 10, Clock: clk})
+	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: &runtimecontrol.EpochControl{DB: db}, Outcomes: actions.CountUnresolvedOutcomes, ClaimLease: 10, Clock: clk})
 	if err != nil {
 		t.Fatal(err)
 	}

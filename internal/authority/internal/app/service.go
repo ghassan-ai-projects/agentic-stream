@@ -22,6 +22,7 @@ type Fences struct {
 type Config struct {
 	Store         *store.Store
 	Fences        Fences
+	Outcomes      store.OutcomeLedger // counts bound commands whose outcome is unresolved
 	OwnerInstance string
 	ClaimLease    time.Duration // how long a target claim stays live without renewal
 	Clock         clock.Clock   // read once per operation
@@ -31,6 +32,7 @@ type Config struct {
 type Service struct {
 	store         *store.Store
 	fences        Fences
+	outcomes      store.OutcomeLedger
 	ownerInstance string
 	claimLease    time.Duration
 	clock         clock.Clock
@@ -38,7 +40,10 @@ type Service struct {
 
 // New returns the use cases configured by cfg.
 func New(cfg Config) *Service {
-	return &Service{store: cfg.Store, fences: cfg.Fences, ownerInstance: cfg.OwnerInstance, claimLease: cfg.ClaimLease, clock: cfg.Clock}
+	return &Service{
+		store: cfg.Store, fences: cfg.Fences, outcomes: cfg.Outcomes,
+		ownerInstance: cfg.OwnerInstance, claimLease: cfg.ClaimLease, clock: cfg.Clock,
+	}
 }
 
 // OwnerInstance is the runtime owner instance every operation must name.

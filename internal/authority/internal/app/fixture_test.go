@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/store"
@@ -59,6 +60,7 @@ func (f *fixture) admit(t *testing.T, owner domain.Owner, lease time.Duration) (
 	service := app.New(app.Config{
 		Store:         store.New(f.db),
 		Fences:        app.Fences{RuntimeOwner: runtimeOwner.Assert, EpochControl: (&control.EpochControl{DB: f.db}).AssertOrdinaryTx},
+		Outcomes:      actions.CountUnresolvedOutcomes,
 		OwnerInstance: owner.Instance,
 		ClaimLease:    10 * time.Minute,
 		Clock:         f.clock,

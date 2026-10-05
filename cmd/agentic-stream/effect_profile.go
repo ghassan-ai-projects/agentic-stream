@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
@@ -156,7 +157,7 @@ func (o effectProfileOptions) validateGatewayLink(transport *device.UDSTransport
 }
 
 func (o effectProfileOptions) openGatewayEffector(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, transport *device.UDSTransport, catalog *device.CapabilityCatalog) (actionport.Effector, *device.SerialEffector, func() error, error) {
-	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: epochControl, ClaimLease: owner.Lease})
+	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: epochControl, Outcomes: actions.CountUnresolvedOutcomes, ClaimLease: owner.Lease})
 	if err != nil {
 		_ = transport.Close()
 		return nil, nil, nil, fmt.Errorf("configure device authority: %w", err)

@@ -1,7 +1,10 @@
 package store
 
 import (
-	"crypto/sha256"
+	"context"
+	"database/sql"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
@@ -73,31 +76,35 @@ func TestReconciliationLifecycle(t *testing.T) {
 	}
 }
 
-func TestCountUnresolvedCommandsIsScopedToTheDeviceBoot(t *testing.T) {
+func TestBoundCommandsAreScopedToTheDeviceBoot(t *testing.T) {
 	t.Parallel()
-	s, db := openStore(t)
-	if _, err := db.ExecContext(t.Context(), `PRAGMA foreign_keys = OFF`); err != nil {
-		t.Fatal(err)
-	}
-	insertCommand := func(commandID, status string, device domain.DeviceBoot) {
-		key := sha256.Sum256([]byte(commandID))
-		if _, err := db.ExecContext(t.Context(), `INSERT INTO commands (command_id, intent_id, tenant_id, effector_route,
-			normalized_target, idempotency_key, command_json, command_sha256, status, created_at, updated_at)
-			VALUES (?, ?, 'tenant', 'set_indicator', 'fan-01', ?, ?, ?, ?, 'now', 'now')`,
-			commandID, "intent-"+commandID, key[:], []byte("{}"), make([]byte, 32), status); err != nil {
-			t.Fatal(err)
-		}
+	s, _ := openStore(t)
+	bootB := domain.DeviceBoot{DeviceID: bootA.DeviceID, BootID: "boot-B"}
+	for commandID, device := range map[string]domain.DeviceBoot{"cmd-2": bootA, "cmd-1": bootA, "cmd-other-boot": bootB} {
 		work(t, s, func(tx *Tx) error {
 			return tx.InsertBinding(t.Context(), domain.CommandBinding{CommandID: commandID, Target: "fan-01", Device: device, Owner: owner}, testNow)
 		})
 	}
-	insertCommand("cmd-unknown", "outcome_unknown", bootA)
-	insertCommand("cmd-done", "succeeded", bootA)
-	insertCommand("cmd-other-boot", "reconciling", domain.DeviceBoot{DeviceID: bootA.DeviceID, BootID: "boot-B"})
+	var asked []string
+	ledger := func(_ context.Context, tx *sql.Tx, commandIDs []string) (int64, error) {
+		if tx == nil {
+			return 0, errors.New("ledger ran outside the transaction")
+		}
+		asked = commandIDs
+		return int64(len(commandIDs)), nil
+	}
 	work(t, s, func(tx *Tx) error {
-		if count, err := tx.CountUnresolvedCommands(t.Context(), bootA); err != nil || count != 1 {
+		commandIDs, err := tx.BoundCommands(t.Context(), bootA)
+		if err != nil {
+			return err
+		}
+		count, err := tx.CountUnresolved(t.Context(), ledger, commandIDs)
+		if err != nil || count != 2 {
 			t.Fatalf("unresolved = %d, %v", count, err)
 		}
 		return nil
 	})
+	if strings.Join(asked, ",") != "cmd-1,cmd-2" {
+		t.Fatalf("ledger asked about %v", asked)
+	}
 }

@@ -44,3 +44,14 @@ type Fence func(ctx context.Context, tx *sql.Tx, epoch string) error
 func (t *Tx) Assert(ctx context.Context, fence Fence, epoch string) error {
 	return fence(ctx, t.tx, epoch)
 }
+
+// OutcomeLedger is another module's transactional read: it counts the
+// commands among commandIDs whose outcome is still unresolved, such as
+// actions.CountUnresolvedOutcomes.
+type OutcomeLedger func(ctx context.Context, tx *sql.Tx, commandIDs []string) (int64, error)
+
+// CountUnresolved runs ledger for commandIDs on this unit of work's
+// transaction.
+func (t *Tx) CountUnresolved(ctx context.Context, ledger OutcomeLedger, commandIDs []string) (int64, error) {
+	return ledger(ctx, t.tx, commandIDs)
+}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // LoadReconciliation returns the recorded reconciliation of a device inside
@@ -115,22 +116,19 @@ func (t *Tx) RecordResolution(ctx context.Context, resolution domain.Resolution,
 	return nil
 }
 
-// countUnresolvedCommandsSQL reads the action ledger owned by actions. The
-// statuses are that ledger's names for an outcome still awaiting
-// reconciliation.
-const countUnresolvedCommandsSQL = `
-		SELECT COUNT(*)
-		FROM commands AS c
-		JOIN device_command_bindings AS b ON b.command_id = c.command_id
-		WHERE b.device_id = ? AND b.boot_id = ?
-			AND c.status IN ('outcome_unknown', 'reconciling', 'manual_review')`
-
-// CountUnresolvedCommands counts commands bound to the device boot whose
-// outcome still awaits dispatcher reconciliation.
-func (t *Tx) CountUnresolvedCommands(ctx context.Context, device domain.DeviceBoot) (int64, error) {
-	var unresolved int64
-	if err := t.tx.QueryRowContext(ctx, countUnresolvedCommandsSQL, device.DeviceID, device.BootID).Scan(&unresolved); err != nil {
-		return 0, fmt.Errorf("count unresolved command outcomes: %w", err)
+// BoundCommands lists the commands bound to the device boot.
+func (t *Tx) BoundCommands(ctx context.Context, device domain.DeviceBoot) ([]string, error) {
+	rows, err := t.tx.QueryContext(ctx, `SELECT command_id FROM device_command_bindings WHERE device_id = ? AND boot_id = ? ORDER BY command_id`,
+		device.DeviceID, device.BootID)
+	if err != nil {
+		return nil, fmt.Errorf("list bound commands: %w", err)
 	}
-	return unresolved, nil
+	commandIDs, err := storage.CollectRows(rows, "bound commands", func(rows *sql.Rows) (string, error) {
+		var commandID string
+		return commandID, rows.Scan(&commandID)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list bound commands: %w", err)
+	}
+	return commandIDs, nil
 }
