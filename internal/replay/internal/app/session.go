@@ -1,60 +1,68 @@
-package replay
+package app
 
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
+	store "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/store"
+	transport "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/transport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// replaySession owns the isolated database, compiled policy, and virtual clock
-// shared by ingestion, stream processing, and result collection.
+// capabilityPhase runs a worker-aware mode's report-only work after the
+// deterministic stream replay, with the session clock's current time.
+type capabilityPhase func(ctx context.Context, session *replaySession, mode domain.Mode, caps domain.Capabilities, evaluationTime time.Time, result *domain.Result) error
+
+// replaySession owns the isolated database, compiled policy and virtual
+// clock shared by ingestion, stream processing and result collection.
 type replaySession struct {
-	db       *storage.DB
+	database transport.Database
+	store    store.Store
 	compiled *spec.CompiledSpec
 	log      *eventlog.EventLog
 	clk      *clock.Virtual
 	tenantID string
 }
 
-func prepareReplaySession(ctx context.Context, db *storage.DB, specPath, tracePath, tenantID string) (*replaySession, error) {
+func prepareReplaySession(ctx context.Context, database transport.Database, specPath, tracePath, tenantID string) (*replaySession, error) {
 	compiled, err := spec.CompileFile(ctx, specPath)
 	if err != nil {
 		return nil, fmt.Errorf("compile spec: %w", err)
 	}
 
+	session := &replaySession{database: database, store: store.New(database.DB), compiled: compiled, tenantID: tenantID}
 	// Register the compiled schemas before deriving the virtual clock epoch.
 	// Epoch derivation must inspect the same ingress validity boundary as
 	// JSONLReplay; otherwise a quarantined future-dated line could move the
 	// replay clock and change the result of valid evidence.
-	if err := spec.SaveDeployment(ctx, db, tenantID, compiled); err != nil {
+	if err := session.store.SaveSpecDeployment(ctx, tenantID, compiled); err != nil {
 		return nil, fmt.Errorf("prepare replay deployment: %w", err)
 	}
-	log, clk, err := prepareReplayClock(ctx, db, compiled, tracePath, tenantID)
+	log, clk, err := session.prepareReplayClock(ctx, tracePath)
 	if err != nil {
 		return nil, err
 	}
-	return &replaySession{db: db, compiled: compiled, log: log, clk: clk, tenantID: tenantID}, nil
+	session.log, session.clk = log, clk
+	return session, nil
 }
 
-func prepareReplayClock(ctx context.Context, db *storage.DB, compiled *spec.CompiledSpec, tracePath, tenantID string) (*eventlog.EventLog, *clock.Virtual, error) {
-	requireSchemas := allInputSchemasDeclared(compiled)
-	validationLog := eventlog.NewEventLog(db)
+func (s *replaySession) prepareReplayClock(ctx context.Context, tracePath string) (*eventlog.EventLog, *clock.Virtual, error) {
+	requireSchemas := allInputSchemasDeclared(s.compiled)
+	validationLog := eventlog.NewEventLog(s.database.DB)
 	if requireSchemas {
 		validationLog.RequireSchemaValidation()
 	}
-	epoch, err := traceEpoch(ctx, tracePath, tenantID, validationLog)
+	epoch, err := s.traceEpoch(ctx, tracePath, validationLog)
 	if err != nil {
 		return nil, nil, fmt.Errorf("derive replay epoch: %w", err)
 	}
 	clk := clock.NewVirtual(epoch)
-	log := eventlog.NewEventLogWithClock(db, clk)
+	log := eventlog.NewEventLogWithClock(s.database.DB, clk)
 	// Register the compiled input schemas before replay ingestion. The stream
 	// engine also enables this guard during construction, but doing it here is
 	// essential: JSONLReplay is the boundary that quarantines malformed and
@@ -81,18 +89,16 @@ func (s *replaySession) processTrace(ctx context.Context, tracePath string, cogn
 	if err := s.ingestTrace(ctx, tracePath); err != nil {
 		return 0, err
 	}
-
 	eng, err := s.newReplayEngine(ctx, cognitionEnabled)
 	if err != nil {
 		return 0, err
 	}
-
 	return s.runTraceEngine(ctx, eng, cognitionEnabled)
 }
 
 func (s *replaySession) ingestTrace(ctx context.Context, tracePath string) error {
-	conn := ingress.NewJSONLReplayWithClock(s.db, s.log, s.tenantID, tracePath, "replay:"+tracePath, s.clk)
-	if _, err := conn.Run(ctx); err != nil {
+	sources := transport.Sources{DB: s.database.DB, Log: s.log, TenantID: s.tenantID}
+	if _, err := sources.RunJSONLTrace(ctx, tracePath, s.clk); err != nil {
 		return fmt.Errorf("replay trace: %w", err)
 	}
 	return nil
@@ -102,9 +108,9 @@ func (s *replaySession) newReplayEngine(ctx context.Context, cognitionEnabled bo
 	var eng *engine.Engine
 	var err error
 	if cognitionEnabled {
-		eng, err = engine.NewEngine(ctx, s.db, s.log, s.clk, s.compiled, s.tenantID)
+		eng, err = engine.NewEngine(ctx, s.database.DB, s.log, s.clk, s.compiled, s.tenantID)
 	} else {
-		eng, err = engine.NewStreamEngine(ctx, s.db, s.log, s.clk, s.compiled, s.tenantID)
+		eng, err = engine.NewStreamEngine(ctx, s.database.DB, s.log, s.clk, s.compiled, s.tenantID)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("new engine: %w", err)
@@ -113,7 +119,7 @@ func (s *replaySession) newReplayEngine(ctx context.Context, cognitionEnabled bo
 }
 
 func (s *replaySession) runTraceEngine(ctx context.Context, eng *engine.Engine, cognitionEnabled bool) (int, error) {
-	processed, err := runAllPartitions(ctx, eng, s.advanceToRecordTime)
+	processed, err := s.runAllPartitions(ctx, eng)
 	if err != nil {
 		return 0, fmt.Errorf("run partitions: %w", err)
 	}
@@ -123,11 +129,20 @@ func (s *replaySession) runTraceEngine(ctx context.Context, eng *engine.Engine, 
 	return processed, nil
 }
 
+func (s *replaySession) runAllPartitions(ctx context.Context, eng *engine.Engine) (int, error) {
+	count, err := eng.RunGlobal(ctx, s.advanceToRecordTime)
+	if err != nil {
+		return 0, fmt.Errorf("run global replay: %w", err)
+	}
+	return count, nil
+}
+
 func (s *replaySession) materializeEpisodes(ctx context.Context, cognitionEnabled bool) error {
-	if cognitionEnabled {
-		if err := materializeReplayEpisodes(ctx, s.db, s.compiled, s.tenantID, s.clk.Now()); err != nil {
-			return fmt.Errorf("materialize replay episodes: %w", err)
-		}
+	if !cognitionEnabled {
+		return nil
+	}
+	if err := s.store.MaterializeEpisodes(ctx, s.compiled, s.tenantID, s.clk.Now()); err != nil {
+		return fmt.Errorf("materialize replay episodes: %w", err)
 	}
 	return nil
 }
@@ -140,18 +155,16 @@ func (s *replaySession) advanceToRecordTime(record eventlog.Record) error {
 	return nil
 }
 
-func (s *replaySession) collectResult(ctx context.Context, processed int) (Result, error) {
-	versionsHash, versionCount, err := hashSituationVersions(ctx, s.db, s.compiled.Digest)
+func (s *replaySession) collectResult(ctx context.Context, processed int) (domain.Result, error) {
+	versions, err := s.store.SituationVersionDigests(ctx, s.compiled.Digest)
 	if err != nil {
-		return Result{}, fmt.Errorf("hash situations: %w", err)
+		return domain.Result{}, fmt.Errorf("hash situations: %w", err)
 	}
-
-	result := Result{
+	return domain.Result{
 		EventsProcessed: processed,
-		VersionCount:    versionCount,
-		VersionsHash:    versionsHash,
-		Mode:            ModeDeterministic,
+		VersionCount:    len(versions),
+		VersionsHash:    domain.HashVersionDigests(versions),
+		Mode:            domain.ModeDeterministic,
 		EffectsAllowed:  false,
-	}
-	return result, nil
+	}, nil
 }

@@ -45,7 +45,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/executor/native/`, `internal/executor/remote/`, `internal/executor/conformance/`, `internal/worker/` | in-process and out-of-process executors, executor qualification and worker protocol transport |
 | `internal/soak/`, `internal/runartifact/` | bounded operational evidence and immutable artifact verification |
 | `internal/replay/` | effect-safe replay modes |
+| `internal/replay/internal/app/` | replay sessions: epoch derivation, ingestion, engine runs and capability phases |
 | `internal/replay/internal/domain/` | pure replay verification rules and vocabulary (reference module layer) |
+| `internal/replay/internal/store/` | replay SQL and transactions against the isolated database (reference module layer) |
+| `internal/replay/internal/transport/` | trace files, isolated databases and trace ingestion (reference module layer) |
 | `internal/runtime/` | thin live-pipeline, readiness and worker facades; [module guide](../../internal/runtime/README.md) |
 | `internal/storage/` | SQLite infrastructure, migrations and transactions |
 | `internal/contractsv1/` | versioned envelope/schema contracts |

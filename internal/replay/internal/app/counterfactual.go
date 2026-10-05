@@ -1,4 +1,4 @@
-package replay
+package app
 
 import (
 	"context"
@@ -9,14 +9,14 @@ import (
 
 // applyCounterfactual sends each distinct, complete counterfactual command to
 // the simulator only. Replay never reaches an effector.
-func applyCounterfactual(ctx context.Context, caps Capabilities, result *Result) error {
+func applyCounterfactual(ctx context.Context, caps domain.Capabilities, result *domain.Result) error {
 	if len(caps.Commands) == 0 {
 		return fmt.Errorf("counterfactual command set is empty")
 	}
 	return simulateCommands(ctx, caps, result)
 }
 
-func simulateCommands(ctx context.Context, caps Capabilities, result *Result) error {
+func simulateCommands(ctx context.Context, caps domain.Capabilities, result *domain.Result) error {
 	seenCommands := make(map[string]struct{}, len(caps.Commands))
 	for _, command := range caps.Commands {
 		if err := domain.AdmitSimulatedCommand(command, seenCommands); err != nil {
@@ -29,7 +29,7 @@ func simulateCommands(ctx context.Context, caps Capabilities, result *Result) er
 	return nil
 }
 
-func simulateCommand(ctx context.Context, simulator domain.Simulator, command domain.SimulatedCommand, result *Result) error {
+func simulateCommand(ctx context.Context, simulator domain.Simulator, command domain.SimulatedCommand, result *domain.Result) error {
 	output, err := simulator.Simulate(ctx, command)
 	if err != nil {
 		return fmt.Errorf("simulate command %s: %w", command.CommandID, err)

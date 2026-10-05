@@ -1,13 +1,7 @@
 package replay
 
 import (
-	"context"
-	"fmt"
-	"time"
-
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // Mode is an effect-safe replay mode. Replay has no credential or resolver
@@ -30,6 +24,16 @@ var ErrModeCapabilityRequired = domain.ErrModeCapabilityRequired
 // ErrUnsupportedMode means the caller supplied a mode outside the frozen
 // replay contract.
 var ErrUnsupportedMode = domain.ErrUnsupportedMode
+
+// Result is the deterministic output of a replay run.
+type Result = domain.Result
+
+// Finding is a deterministic, non-effectful replay observation.
+type Finding = domain.Finding
+
+// ShadowComparisonResult identifies the durable report produced for one
+// paired shadow trial.
+type ShadowComparisonResult = domain.ShadowComparisonResult
 
 // RecordedEntry is the immutable worker result recorded with an episode.
 // Replay compares by the stable situation/version/trigger key and never calls
@@ -57,6 +61,9 @@ type ShadowOutput = domain.ShadowOutput
 type ShadowExecutor = domain.ShadowExecutor
 
 // BaselineExecutor is the deterministic, non-model side of a shadow trial.
+// It has the same effect-free input/output boundary as ShadowExecutor but is
+// named separately so a trial cannot accidentally compare an executor with
+// itself.
 type BaselineExecutor = domain.BaselineExecutor
 
 // SimulatedCommand is a typed counterfactual command. It is intentionally
@@ -68,42 +75,3 @@ type Simulator = domain.Simulator
 
 // Capabilities are explicit, non-credential replay adapters.
 type Capabilities = domain.Capabilities
-
-// RunMode executes a replay mode without accepting credentials, effectors, or
-// a resolver. Only counterfactual simulation may be added at a higher layer.
-func RunMode(ctx context.Context, mode Mode, dbPath, specPath, tracePath, tenantID string, capabilities ...Capabilities) (Result, error) {
-	caps, err := domain.AdmitCapabilities(capabilities)
-	if err != nil {
-		return Result{}, err
-	}
-	if mode == ModeDeterministic {
-		return runDeterministicMode(ctx, mode, dbPath, specPath, tracePath, tenantID)
-	}
-	if !domain.WorkerAwareMode(mode) {
-		return Result{}, fmt.Errorf("%w: %s", domain.ErrUnsupportedMode, mode)
-	}
-	if err := caps.Validate(mode); err != nil {
-		return Result{Mode: mode, EffectsAllowed: false}, err
-	}
-	return runCapabilityMode(ctx, mode, dbPath, specPath, tracePath, tenantID, caps)
-}
-
-func runDeterministicMode(ctx context.Context, mode Mode, dbPath, specPath, tracePath, tenantID string) (Result, error) {
-	result, err := Run(ctx, dbPath, specPath, tracePath, tenantID)
-	result.Mode = mode
-	result.WorkerInvoked = false
-	result.EffectsAllowed = false
-	return result, err
-}
-
-func runCapabilityMode(ctx context.Context, mode Mode, dbPath, specPath, tracePath, tenantID string, caps Capabilities) (Result, error) {
-	result, err := run(ctx, dbPath, specPath, tracePath, tenantID, true, func(db *storage.DB, result *Result, compiled *spec.CompiledSpec, evaluationTime time.Time) error {
-		return applyCapabilities(ctx, db, tenantID, mode, caps, compiled, evaluationTime, result)
-	})
-	if err != nil {
-		return result, err
-	}
-	result.Mode = mode
-	result.EffectsAllowed = false
-	return result, err
-}

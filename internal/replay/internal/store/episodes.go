@@ -1,4 +1,4 @@
-package replay
+package store
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 type executableItem struct {
@@ -18,9 +17,11 @@ type executableItem struct {
 	admitAt time.Time
 }
 
-func materializeReplayEpisodes(ctx context.Context, db *storage.DB, compiled *spec.CompiledSpec, tenantID string, now time.Time) error {
+// MaterializeEpisodes turns every executable scheduler item into a durable
+// episode through the episodes module's assembler, in one transaction.
+func (s Store) MaterializeEpisodes(ctx context.Context, compiled *spec.CompiledSpec, tenantID string, now time.Time) error {
 	assembler := episodes.NewAssembler(compiled, ids.Deterministic())
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+	if err := s.DB.WithTx(ctx, func(tx *sql.Tx) error {
 		return persistExecutableEpisodes(ctx, tx, assembler, tenantID, now)
 	}); err != nil {
 		return fmt.Errorf("materialize replay episodes: %w", err)

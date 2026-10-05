@@ -49,9 +49,12 @@ var forbiddenImports = map[string][]string{
 	"internal/worker":                 {"internal/policy", "internal/actions"},
 	"internal/actions":                {"internal/device", "internal/watch"},
 	"internal/watch":                  {"internal/actions", "internal/policy", "internal/episodes", "internal/cognition"},
-	"internal/replay":                 {"internal/actions", "internal/runtime"},
-	"internal/executor/conformance":   {"internal/actions"},
-	"internal/replay/internal/domain": {"internal/actions", "internal/runtime"},
+	"internal/replay":                      {"internal/actions", "internal/runtime"},
+	"internal/executor/conformance":        {"internal/actions"},
+	"internal/replay/internal/app":         {"internal/actions", "internal/runtime"},
+	"internal/replay/internal/domain":      {"internal/actions", "internal/runtime"},
+	"internal/replay/internal/store":       {"internal/actions", "internal/runtime"},
+	"internal/replay/internal/transport":   {"internal/actions", "internal/runtime"},
 }
 
 // allowedImports is the reviewed internal dependency graph. A new edge must
@@ -106,8 +109,11 @@ var allowedImports = map[string][]string{
 	"internal/policy/internal/domain":       {"internal/canonicaljson", "internal/contractsv1"},
 	"internal/policy":                       {"internal/ids", "internal/interlock", "internal/policy/internal/app", "internal/policy/internal/domain", "internal/policy/internal/store"},
 	"internal/qualification":                {"internal/storage"},
-	"internal/replay":                       {"internal/clock", "internal/contractsv1", "internal/decisions", "internal/engine", "internal/episodes", "internal/eventlog", "internal/ids", "internal/ingress", "internal/policy", "internal/qualification", "internal/replay/internal/domain", "internal/spec", "internal/storage"},
+	"internal/replay":                       {"internal/replay/internal/app", "internal/replay/internal/domain", "internal/spec"},
+	"internal/replay/internal/app":          {"internal/clock", "internal/contractsv1", "internal/decisions", "internal/engine", "internal/episodes", "internal/eventlog", "internal/policy", "internal/replay/internal/domain", "internal/replay/internal/store", "internal/replay/internal/transport", "internal/spec"},
 	"internal/replay/internal/domain":       {"internal/canonicaljson", "internal/contractsv1", "internal/decisions"},
+	"internal/replay/internal/store":        {"internal/episodes", "internal/ids", "internal/replay/internal/domain", "internal/qualification", "internal/spec", "internal/storage"},
+	"internal/replay/internal/transport":    {"internal/clock", "internal/eventlog", "internal/ingress", "internal/storage"},
 	"internal/runartifact":                  {"internal/canonicaljson", "internal/policy", "internal/soak", "internal/storage"},
 	"internal/runtime":                      {"internal/control", "internal/episodes", "internal/evidence", "internal/policy", "internal/runtime/internal/app", "internal/runtime/internal/composition", "internal/runtime/internal/domain", "internal/runtime/internal/transport"},
 	"internal/scheduleledger":               {},
