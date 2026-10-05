@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -89,40 +90,9 @@ func executableSchedulerItem(rows *sql.Rows, now time.Time) (executableItem, boo
 	if err := rows.Scan(&itemID, &createdAt, &notBefore, &expiresAt); err != nil {
 		return executableItem{}, false, fmt.Errorf("scan executable scheduler item: %w", err)
 	}
-	admitAt, expires, err := admissionWindow(createdAt, notBefore, expiresAt)
+	admitAt, expires, err := domain.AdmissionWindow(createdAt, notBefore.String, expiresAt)
 	if err != nil {
 		return executableItem{}, false, err
 	}
-	return executableItem{id: itemID, admitAt: admitAt}, expires.After(admitAt) && !admitAt.After(now), nil
-}
-
-// admissionWindow parses when a scheduler item may first be admitted and when
-// it expires.
-func admissionWindow(createdAt string, notBefore sql.NullString, expiresAt string) (time.Time, time.Time, error) {
-	admitAt, err := time.Parse(time.RFC3339Nano, createdAt)
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("parse scheduler creation time: %w", err)
-	}
-	expires, err := time.Parse(time.RFC3339Nano, expiresAt)
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("parse scheduler expiry: %w", err)
-	}
-	admitAt, err = applyNotBefore(admitAt, notBefore)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
-	return admitAt, expires, nil
-}
-
-func applyNotBefore(admitAt time.Time, notBefore sql.NullString) (time.Time, error) {
-	if notBefore.Valid {
-		notBeforeTime, err := time.Parse(time.RFC3339Nano, notBefore.String)
-		if err != nil {
-			return time.Time{}, fmt.Errorf("parse scheduler not-before: %w", err)
-		}
-		if notBeforeTime.After(admitAt) {
-			admitAt = notBeforeTime
-		}
-	}
-	return admitAt, nil
+	return executableItem{id: itemID, admitAt: admitAt}, domain.AdmissionReady(admitAt, expires, now), nil
 }

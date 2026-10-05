@@ -8,6 +8,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -132,10 +133,7 @@ func (s *replaySession) materializeEpisodes(ctx context.Context, cognitionEnable
 }
 
 func (s *replaySession) advanceToRecordTime(record eventlog.Record) error {
-	processingTime := record.IngestedAt.UTC()
-	if processingTime.IsZero() {
-		processingTime = record.EventTime.UTC()
-	}
+	processingTime := domain.RecordProcessingTime(record.IngestedAt, record.EventTime)
 	if processingTime.After(s.clk.Now()) {
 		s.clk.Advance(processingTime.Sub(s.clk.Now()))
 	}

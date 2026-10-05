@@ -3,6 +3,8 @@ package replay
 import (
 	"context"
 	"fmt"
+
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 )
 
 // applyCounterfactual sends each distinct, complete counterfactual command to
@@ -17,7 +19,7 @@ func applyCounterfactual(ctx context.Context, caps Capabilities, result *Result)
 func simulateCommands(ctx context.Context, caps Capabilities, result *Result) error {
 	seenCommands := make(map[string]struct{}, len(caps.Commands))
 	for _, command := range caps.Commands {
-		if err := admitSimulatedCommand(command, seenCommands); err != nil {
+		if err := domain.AdmitSimulatedCommand(command, seenCommands); err != nil {
 			return err
 		}
 		if err := simulateCommand(ctx, caps.Simulator, command, result); err != nil {
@@ -27,18 +29,7 @@ func simulateCommands(ctx context.Context, caps Capabilities, result *Result) er
 	return nil
 }
 
-func admitSimulatedCommand(command SimulatedCommand, seenCommands map[string]struct{}) error {
-	if command.CommandID == "" || command.Route == "" || command.Target == "" {
-		return fmt.Errorf("counterfactual command is incomplete")
-	}
-	if _, exists := seenCommands[command.CommandID]; exists {
-		return fmt.Errorf("counterfactual command %q is duplicated", command.CommandID)
-	}
-	seenCommands[command.CommandID] = struct{}{}
-	return nil
-}
-
-func simulateCommand(ctx context.Context, simulator Simulator, command SimulatedCommand, result *Result) error {
+func simulateCommand(ctx context.Context, simulator domain.Simulator, command domain.SimulatedCommand, result *Result) error {
 	output, err := simulator.Simulate(ctx, command)
 	if err != nil {
 		return fmt.Errorf("simulate command %s: %w", command.CommandID, err)

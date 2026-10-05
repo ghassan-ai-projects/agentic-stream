@@ -3,10 +3,7 @@ package replay
 import (
 	"bufio"
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,14 +11,9 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
-
-type versionDigest struct {
-	situationID string
-	version     int
-	sha256      []byte
-}
 
 const situationVersionDigestsQuery = `
 		SELECT situation_id, version, snapshot_sha256
@@ -41,29 +33,26 @@ func traceEpoch(ctx context.Context, path, tenantID string, log *eventlog.EventL
 }
 
 func scanTraceEpoch(ctx context.Context, scanner *bufio.Scanner, tenantID string, log *eventlog.EventLog) (time.Time, error) {
-	var first time.Time
+	var earliest time.Time
 	for scanner.Scan() {
 		processingTime, valid := traceProcessingTime(ctx, scanner.Bytes(), tenantID, log)
 		if !valid {
 			continue
 		}
-		if first.IsZero() || processingTime.Before(first) {
-			first = processingTime.UTC()
+		if earliest.IsZero() || processingTime.Before(earliest) {
+			earliest = processingTime.UTC()
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return time.Time{}, fmt.Errorf("scan trace: %w", err)
 	}
-	return epochOrUnixOrigin(first), nil
+	return domain.EpochFromEarliest(earliest), nil
 }
 
 // traceProcessingTime shares ingress validity before a line can affect the clock.
 func traceProcessingTime(ctx context.Context, line []byte, tenantID string, log *eventlog.EventLog) (time.Time, bool) {
-	if len(line) == 0 {
-		return time.Time{}, false
-	}
-	var envelope contractsv1.Envelope
-	if err := json.Unmarshal(line, &envelope); err != nil {
+	envelope, ok := domain.TraceEnvelope(line)
+	if !ok {
 		// JSONLReplay owns malformed-line quarantine. Epoch derivation is
 		// only a clock bootstrap and must not turn a quarantinable line into
 		// a whole-replay failure.
@@ -72,14 +61,12 @@ func traceProcessingTime(ctx context.Context, line []byte, tenantID string, log 
 	if !validTraceEnvelope(ctx, &envelope, tenantID, log) {
 		return time.Time{}, false
 	}
-	return envelopeProcessingTime(envelope)
+	return domain.EnvelopeProcessingTime(envelope)
 }
 
 func validTraceEnvelope(ctx context.Context, envelope *contractsv1.Envelope, tenantID string, log *eventlog.EventLog) bool {
-	if envelope.TenantID == "" {
-		envelope.TenantID = tenantID
-	}
-	if err := contractsv1.ValidateEnvelope(*envelope, tenantID); err != nil {
+	*envelope = domain.AdoptTenant(*envelope, tenantID)
+	if !domain.ContractValidEnvelope(*envelope, tenantID) {
 		return false
 	}
 	if err := log.ValidateEnvelope(ctx, *envelope); err != nil {
@@ -88,28 +75,8 @@ func validTraceEnvelope(ctx context.Context, envelope *contractsv1.Envelope, ten
 	return true
 }
 
-func envelopeProcessingTime(envelope contractsv1.Envelope) (time.Time, bool) {
-	processingTime := envelope.IngestedAt
-	if processingTime.IsZero() {
-		processingTime = envelope.EventTime
-	}
-	if processingTime.IsZero() {
-		return time.Time{}, false
-	}
-	return processingTime, true
-}
-
-func epochOrUnixOrigin(first time.Time) time.Time {
-	if first.IsZero() {
-		return time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
-	}
-	return first
-}
-
 func hashSituationVersions(ctx context.Context, db *storage.DB, deploymentID string) (string, int, error) {
-	rows, err := db.QueryContext(ctx, situationVersionDigestsQuery,
-		deploymentID,
-	)
+	rows, err := db.QueryContext(ctx, situationVersionDigestsQuery, deploymentID)
 	if err != nil {
 		return "", 0, fmt.Errorf("query versions: %w", err)
 	}
@@ -119,14 +86,14 @@ func hashSituationVersions(ctx context.Context, db *storage.DB, deploymentID str
 	if err != nil {
 		return "", 0, err
 	}
-	return hashVersionDigests(versions), len(versions), nil
+	return domain.HashVersionDigests(versions), len(versions), nil
 }
 
-func collectVersionDigests(rows *sql.Rows) ([]versionDigest, error) {
-	var versions []versionDigest
+func collectVersionDigests(rows *sql.Rows) ([]domain.VersionDigest, error) {
+	var versions []domain.VersionDigest
 	for rows.Next() {
-		var r versionDigest
-		if err := rows.Scan(&r.situationID, &r.version, &r.sha256); err != nil {
+		var r domain.VersionDigest
+		if err := rows.Scan(&r.SituationID, &r.Version, &r.SHA256); err != nil {
 			return nil, fmt.Errorf("scan version: %w", err)
 		}
 		versions = append(versions, r)
@@ -136,16 +103,6 @@ func collectVersionDigests(rows *sql.Rows) ([]versionDigest, error) {
 	}
 
 	return versions, nil
-}
-
-func hashVersionDigests(versions []versionDigest) string {
-	// Deterministic canonical hash over ordered version digests.
-	h := sha256.New()
-	for _, v := range versions {
-		_, _ = fmt.Fprintf(h, "%s%d", v.situationID, v.version)
-		_, _ = h.Write(v.sha256)
-	}
-	return hex.EncodeToString(h.Sum(nil))
 }
 
 // RunNTimes replays the same trace n times against fresh isolated databases
@@ -179,14 +136,5 @@ func repeatReplay(ctx context.Context, dir, specPath, tracePath, tenantID string
 
 // AllHashesEqual reports whether every result has the same VersionsHash.
 func AllHashesEqual(results []Result) bool {
-	if len(results) == 0 {
-		return true
-	}
-	first := results[0].VersionsHash
-	for _, r := range results[1:] {
-		if r.VersionsHash != first {
-			return false
-		}
-	}
-	return true
+	return domain.AllHashesEqual(results)
 }

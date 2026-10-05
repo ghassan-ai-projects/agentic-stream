@@ -25,7 +25,7 @@ var packageLayers = map[string]int{
 	"internal/api": 4, "internal/approvalledger": 4, "internal/watch": 4, "internal/authority": 4, "internal/situations": 4,
 	"internal/actions": 5, "internal/cognition": 5, "internal/device/internal/app": 5, "internal/episodes": 5, "internal/policy/internal/store": 5, "internal/policy/internal/app": 6, "internal/policy": 7, "internal/soak": 5,
 	"internal/admission": 6, "internal/device": 6, "internal/engine": 6, "internal/executor/conformance": 6, "internal/executor/native": 6, "internal/executor/remote": 6, "internal/runartifact": 8,
-	"internal/replay": 8, "internal/runtime": 11, "cmd/agentic-stream": 12,
+	"internal/replay": 8, "internal/replay/internal/domain": 3, "internal/runtime": 11, "cmd/agentic-stream": 12,
 }
 
 func TestImportsOnlyPointToLowerArchitectureLayers(t *testing.T) {

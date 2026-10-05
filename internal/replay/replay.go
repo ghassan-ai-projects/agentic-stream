@@ -9,39 +9,20 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // Result is the deterministic output of a replay run.
-type Result struct {
-	EventsProcessed   int
-	VersionCount      int
-	VersionsHash      string
-	Mode              Mode
-	WorkerInvoked     bool
-	EffectsAllowed    bool
-	CapabilityCalls   int
-	SimulatedResults  []map[string]any
-	ShadowComparisons []ShadowComparisonResult
-	Findings          []Finding
-}
+type Result = domain.Result
+
+// Finding is a deterministic, non-effectful replay observation.
+type Finding = domain.Finding
 
 // ShadowComparisonResult identifies the durable report produced for one
 // paired shadow trial.
-type ShadowComparisonResult struct {
-	EpisodeKey             string
-	ComparisonSHA256       string
-	BaselineDecisionSHA256 string
-	TamozDecisionSHA256    string
-	DecisionsEqual         bool
-}
-
-// Finding is a deterministic, non-effectful replay observation.
-type Finding struct {
-	Code    string
-	Message string
-}
+type ShadowComparisonResult = domain.ShadowComparisonResult
 
 // Run replays tracePath against specPath and returns the canonical result.
 func Run(ctx context.Context, dbPath, specPath, tracePath, tenantID string) (Result, error) {
@@ -94,8 +75,4 @@ func runAllPartitions(ctx context.Context, eng *engine.Engine, beforeApply func(
 		return 0, fmt.Errorf("run global replay: %w", err)
 	}
 	return count, nil
-}
-
-func replayEpisodeKey(situationID string, version int, triggerID string) string {
-	return fmt.Sprintf("%s/%d/%s", situationID, version, triggerID)
 }

@@ -7,38 +7,31 @@ import (
 	"fmt"
 	"time"
 
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
-
-type replayItem struct {
-	TriggerID        string
-	SituationID      string
-	SituationVersion int
-	EpisodeID        string
-	SnapshotDigest   string
-}
 
 // applyCapabilities runs the worker-aware part of a replay mode: recorded
 // decisions are verified against the replay worklist, shadow executors are
 // compared report-only, and counterfactual commands go only to the simulator.
 func applyCapabilities(ctx context.Context, db *storage.DB, tenantID string, mode Mode, caps Capabilities, compiled *spec.CompiledSpec, evaluationTime time.Time, result *Result) error {
-	items, err := loadReplayItems(ctx, db, tenantID)
+	episodes, err := loadReplayEpisodes(ctx, db, tenantID)
 	if err != nil {
 		return err
 	}
 	switch mode {
 	case ModeRecorded:
-		return applyRecorded(ctx, db, caps.RecordedLedger, items, result)
+		return applyRecorded(ctx, db, caps.RecordedLedger, episodes, result)
 	case ModeShadow:
-		return applyPairedShadow(ctx, db, tenantID, caps, compiled, items, evaluationTime, result)
+		return applyPairedShadow(ctx, db, tenantID, caps, compiled, episodes, evaluationTime, result)
 	case ModeCounterfactual:
 		return applyCounterfactual(ctx, caps, result)
 	}
 	return nil
 }
 
-func loadReplayItems(ctx context.Context, db *storage.DB, tenantID string) ([]replayItem, error) {
+func loadReplayEpisodes(ctx context.Context, db *storage.DB, tenantID string) ([]domain.ReplayEpisode, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT DISTINCT si.trigger_id, si.situation_id, si.situation_version, e.episode_id, sv.snapshot_sha256
 		FROM scheduler_items si
@@ -50,22 +43,22 @@ func loadReplayItems(ctx context.Context, db *storage.DB, tenantID string) ([]re
 		return nil, fmt.Errorf("query replay items: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	return collectReplayItems(rows)
+	return collectReplayEpisodes(rows)
 }
 
-func collectReplayItems(rows *sql.Rows) ([]replayItem, error) {
-	var items []replayItem
+func collectReplayEpisodes(rows *sql.Rows) ([]domain.ReplayEpisode, error) {
+	var episodes []domain.ReplayEpisode
 	for rows.Next() {
-		var item replayItem
+		var episode domain.ReplayEpisode
 		var snapshotDigest []byte
-		if err := rows.Scan(&item.TriggerID, &item.SituationID, &item.SituationVersion, &item.EpisodeID, &snapshotDigest); err != nil {
+		if err := rows.Scan(&episode.TriggerID, &episode.SituationID, &episode.SituationVersion, &episode.EpisodeID, &snapshotDigest); err != nil {
 			return nil, fmt.Errorf("scan replay item: %w", err)
 		}
-		item.SnapshotDigest = "sha256:" + hex.EncodeToString(snapshotDigest)
-		items = append(items, item)
+		episode.SnapshotDigest = "sha256:" + hex.EncodeToString(snapshotDigest)
+		episodes = append(episodes, episode.Keyed())
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate replay items: %w", err)
 	}
-	return items, nil
+	return episodes, nil
 }

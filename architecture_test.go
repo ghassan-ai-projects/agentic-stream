@@ -40,17 +40,18 @@ var foundationPackages = []string{
 // than just tidiness: models propose but never reach the policy or action
 // plane, and replay never performs external effects.
 var forbiddenImports = map[string][]string{
-	"internal/cognition":            {"internal/policy", "internal/actions"},
-	"internal/decisions":            {"internal/policy", "internal/actions"},
-	"internal/episodes":             {"internal/policy", "internal/actions", "internal/worker", "proto/agenticstream/runtime/v1", "internal/evidence"},
-	"internal/evidence":             {"internal/policy", "internal/actions"},
-	"internal/executor/native":      {"internal/policy", "internal/actions"},
-	"internal/executor/remote":      {"internal/policy", "internal/actions"},
-	"internal/worker":               {"internal/policy", "internal/actions"},
-	"internal/actions":              {"internal/device", "internal/watch"},
-	"internal/watch":                {"internal/actions", "internal/policy", "internal/episodes", "internal/cognition"},
-	"internal/replay":               {"internal/actions", "internal/runtime"},
-	"internal/executor/conformance": {"internal/actions"},
+	"internal/cognition":              {"internal/policy", "internal/actions"},
+	"internal/decisions":              {"internal/policy", "internal/actions"},
+	"internal/episodes":               {"internal/policy", "internal/actions", "internal/worker", "proto/agenticstream/runtime/v1", "internal/evidence"},
+	"internal/evidence":               {"internal/policy", "internal/actions"},
+	"internal/executor/native":        {"internal/policy", "internal/actions"},
+	"internal/executor/remote":        {"internal/policy", "internal/actions"},
+	"internal/worker":                 {"internal/policy", "internal/actions"},
+	"internal/actions":                {"internal/device", "internal/watch"},
+	"internal/watch":                  {"internal/actions", "internal/policy", "internal/episodes", "internal/cognition"},
+	"internal/replay":                 {"internal/actions", "internal/runtime"},
+	"internal/executor/conformance":   {"internal/actions"},
+	"internal/replay/internal/domain": {"internal/actions", "internal/runtime"},
 }
 
 // allowedImports is the reviewed internal dependency graph. A new edge must
@@ -105,7 +106,8 @@ var allowedImports = map[string][]string{
 	"internal/policy/internal/domain":       {"internal/canonicaljson", "internal/contractsv1"},
 	"internal/policy":                       {"internal/ids", "internal/interlock", "internal/policy/internal/app", "internal/policy/internal/domain", "internal/policy/internal/store"},
 	"internal/qualification":                {"internal/storage"},
-	"internal/replay":                       {"internal/canonicaljson", "internal/clock", "internal/contractsv1", "internal/decisions", "internal/engine", "internal/episodes", "internal/eventlog", "internal/ids", "internal/ingress", "internal/policy", "internal/qualification", "internal/spec", "internal/storage"},
+	"internal/replay":                       {"internal/clock", "internal/contractsv1", "internal/decisions", "internal/engine", "internal/episodes", "internal/eventlog", "internal/ids", "internal/ingress", "internal/policy", "internal/qualification", "internal/replay/internal/domain", "internal/spec", "internal/storage"},
+	"internal/replay/internal/domain":       {"internal/canonicaljson", "internal/contractsv1", "internal/decisions"},
 	"internal/runartifact":                  {"internal/canonicaljson", "internal/policy", "internal/soak", "internal/storage"},
 	"internal/runtime":                      {"internal/control", "internal/episodes", "internal/evidence", "internal/policy", "internal/runtime/internal/app", "internal/runtime/internal/composition", "internal/runtime/internal/domain", "internal/runtime/internal/transport"},
 	"internal/scheduleledger":               {},

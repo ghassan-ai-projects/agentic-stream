@@ -44,7 +44,7 @@ acceptance contract).
 
 | Round | Status |
 | --- | --- |
-| R0 | Accepted, this commit |
-| R1 | Pending |
+| R0 | Accepted, `514200d` |
+| R1 | Accepted: domain layer extracted with table tests; facade aliases domain types and delegates moved rules; layer registered in gates and repository map. Facade golden/thermal tests unchanged and green; domain coverage 70.9% |
 | R2 | Pending |
 | R3 | Pending |
