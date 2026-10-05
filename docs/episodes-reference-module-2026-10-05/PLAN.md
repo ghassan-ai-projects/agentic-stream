@@ -1,42 +1,48 @@
-# Plan
+# Completion plan
 
-| Round | Scope | Proof |
-| --- | --- | --- |
-| R0 | Survey, layer design, this folder | Full CI baseline green on `2838d05` |
-| R1 | Domain layer: budget rules, snapshot evidence validation, request document building, decision digest rules, failure classification, quarantine reason mapping, catalog entry construction, reconsideration document assembly — with table tests; registered in gates | Domain tests, unchanged package suites, lint |
-| R2 | Store layer: every SQL statement with the caller's transaction; facade rewires loads/inserts through it | Unchanged package suites green, SQL gate, coverage ≥ 60% |
-| R3 | Injection proofs, module README and language guide, AGENTS.md and map updates, rating | Injected violations rejected, `make ci-check`, final report |
+This continues the user's partial app extraction. The earlier three-layer
+implementation is superseded; a caller-owned transaction is compatible with
+private app use cases through an opaque store unit of work.
 
-## Behavior that must not change
+| Round | Scope | Required proof | Status |
+| --- | --- | --- | --- |
+| C0 | Survey and corrected plan, preserve existing worktree | Read production surface, references, ownership and tests | Complete |
+| C1 | Opaque store transaction; pure domain contracts/rules; private application use cases | Episode tests, transaction rollback tests, root architecture gates, lint | Pending |
+| C2 | Validated public service; caller updates; fixture executor extraction; code audit | Facade construction/delegation tests, adapter/conformance/replay/runtime tests, production and test reachability | Pending |
+| C3 | Enforcement, injection proofs, guide/map updates, final review | Full CI targets, uncached race suite, coverage, diff check | Pending |
 
-- Claim atomicity (quarantine commits inside the claim transaction), rebind
-  bound of 3, epoch kill refusal, supersession watch, detached persist context
-  with its five-second budget.
-- Digest inputs: admission keys, request JSON documents, snapshot digests,
-  decision digests and validation-failure documents.
-- Error strings and precedence across assembly, budget validation, decision
-  validation and failure classification.
-- Transaction boundaries and their owner APIs (episodeledger, scheduleledger,
-  qualification, costcontrol), locks and fence semantics.
-- The public API, including every `*sql.Tx` parameter.
+Commit this plan separately before additional code changes. Include the user's
+existing staged migration only in the implementation round, never in C0.
+Test-first configuration and transaction regressions where feasible; relocating
+existing behavior tests alongside the rule is the proof for pure moves.
 
-## Deliberate behavior changes
+## Preserve
 
-None.
+Error precedence and sentinel wrapping; identity/digest inputs; canonical
+request and Decision documents; clock reads; serial claim transactions; stale
+rebind bound of three; retry bound of three; epoch checks before dispatch and
+inside post-execution persistence; detached five-second persistence budget;
+supersession cancellation; shadow effect isolation; original atomic ledger,
+reservation and decision handoffs. Do not change golden fixtures or thresholds.
 
-## Deferred follow-ups
+## Deliberate changes
 
-- A full app layer requires an episodeledger-style unit contract agreed with
-  admission, replay and runtime so use cases can sequence transactions
-  without naming `database/sql`; recorded as a cross-module design change.
-- `CompileIntentCatalog` and the executor document stay facade-side until the
-  spec projection has a second consumer.
+- Replace mutable public Assembler/Runner constructors and setters with one
+  validated Service configuration, updating consumers without compatibility shims.
+- Reject missing execution safety dependencies at construction. Assembly-only
+  services explicitly refuse RunOnce.
+- Move the deterministic fixture executor to its own adapter; it remains
+  available for the existing demo route.
+- Remove confirmed dead functions and move helpers that only support tests
+  into test files. Record each decision in CODE_AUDIT.md.
 
-## Status
+## Follow-ups
 
-| Round | Status |
-| --- | --- |
-| R0 | Accepted, this commit |
-| R1 | Accepted: domain layer at level 3 with pure rules and table tests (budgets, snapshot evidence, failure classification with the budget error types, decision digests); facade aliases the error types; suites unchanged and green, domain 88.9% |
-| R2 | Accepted: every SQL statement moved to the store layer behind domain-named methods taking the caller's transaction; durable ownership of `decisions` and the `intents` insert handoff moved to the store; the P8-labelled test files renamed to behavior names. Store coverage 67.1% |
-| R3 | Accepted: injected violations (SQL in facade, `os` in domain, forbidden imports in store and facade) each rejected; module guide and language guide added; AGENTS.md and repository map updated. Full `make ci-check` recorded in the final report |
+Keep cross-module read projections in the store on the caller transaction.
+Replacing them with new read ports across every owning module is a separate
+migration; the current change does not grant foreign mutation authority.
+
+## Validation record
+
+The first focused baseline attempt could not access part of the host Go build
+cache. Retry with a task-local cache; do not count the failed attempt as proof.

@@ -1,22 +1,22 @@
 # Episodes reference-module migration
 
-Episodes becomes the next reference module with the shape its transaction
-contract dictates: a thin-ish facade holding the transaction-scoped use cases
-(assembler and runner — the module's public API takes `*sql.Tx`, like
-episodeledger), pure assembly, validation and classification rules in a
-domain layer, and every SQL statement in a store layer that also takes the
-caller's transaction. Behavior, public API and transaction boundaries are
-preserved.
+Complete the in-progress migration to a public facade, private application use
+cases, pure domain rules and transaction-scoped persistence. Admission and
+replay retain their original transactions: the facade joins them through an
+opaque store transaction, just as policy does. Concrete deterministic fixture
+execution belongs to `internal/executor/fixture` behind the episode port.
 
 ```mermaid
 flowchart TD
-    A["admission, replay store, runtime"] --> F["episodes: tx-scoped use cases"]
-    F --> D["internal/domain: assembly, validation and classification rules"]
-    F --> S["internal/store: all episode SQL, caller transactions"]
-    S --> L["episodeledger, scheduleledger, qualification (owner APIs)"]
+    C["admission, replay, runtime, executors"] --> F["episodes: configuration and delegation"]
+    F --> A["internal/app: assemble, claim, execute, conclude"]
+    A --> D["internal/domain: requests, budgets, decisions, freshness, retry, shadow"]
+    A --> S["internal/store: opaque transaction, SQL and owner-API plumbing"]
+    S --> L["episodeledger, scheduleledger, costcontrol, qualification, control"]
 ```
 
 - [Findings](FINDINGS.md)
-- [Ubiquitous language](UBIQUITOUS_LANGUAGE.md)
+- [Language](UBIQUITOUS_LANGUAGE.md)
 - [Design](DESIGN.md)
-- [Plan and rounds](PLAN.md)
+- [Rounds and validation](PLAN.md)
+- [Dead and test-only code audit](CODE_AUDIT.md)

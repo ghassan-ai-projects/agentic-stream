@@ -1,74 +1,30 @@
-# Findings
+# Completion survey
 
-Survey of `internal/episodes` (15 production files, ~2,400 lines, 47 importing
-files) against the reference-module principles.
+The starting worktree already moves episode use cases to `internal/app`, adds
+a public delegation file and registers the app layer. Preserve that work.
+The previous guide's claim that a SQL-free application layer is impossible is
+incorrect: `internal/policy/internal/store/tx.go` already joins caller-owned
+transactions behind an opaque wrapper.
 
-## The defining constraint: a transaction-threaded public API
+| Problem | Evidence | Resolution |
+| --- | --- | --- |
+| App can still reach SQL | `internal/store/tx.go` aliases `sql.Tx`; app calls ledger and cost APIs with it | Opaque `Tx`; SQL and transactional owner calls stay in store |
+| Facade contains an epoch rule | `epoch_refusal.go` classifies control errors and silently allows missing control | Store asserts the supplied epoch check; domain classifies the result; execution configuration requires it |
+| Pure rules drifted to app | `decision.go`, `failure.go`, `shadow.go`, `intent_catalog.go`, request budget cache | Move rules and vocabulary back to domain with their tests |
+| Mutable public configuration | Constructors plus `With*` setters allow incomplete dispatch wiring | One `Service`, `New(Config)`; explicit assembly-only construction, required execution dependencies |
+| Concrete executor leaks into lifecycle | `app/fake_executor.go`; runtime demo composition uses it | Move to `executor/fixture`; keep production demo behavior and test it there |
+| Documentation describes a different layout | module README and this folder retain facade use cases and deferred app migration | Rewrite around the actual final layers |
+| Shadow vocabulary is wrong | guide calls inserted intents shadow-mode intents; active mode inserts, shadow only scores | Correct guide, comments and language |
 
-Unlike runtime, replay and eventlog, episodes' public operations take the
-caller's `*sql.Tx`: `Assembler.Assemble(ctx, tx, ...)`, `Persist(ctx, tx, ...)`,
-`Rebind(ctx, tx, ...)` and the runner's claim/conclude sequences run inside
-one caller-owned transaction. Admission, replay's store and runtime depend on
-this contract (they open the transaction and hand it in) — the same pattern as
-`episodeledger` and `scheduleledger` ("durable lifecycle owners shared through
-transaction-scoped operations").
+Direct reads span scheduler items, trigger evaluations, situations/versions,
+episode lifecycle/attempts, reconsiderations, commands, intents, decisions,
+outcomes and epoch control. Keep existing read projections in store and record
+ownership limits; do not widen mutation authority. Decisions and intent producer
+writes already belong to the episode store. Lifecycle transitions remain owned
+by their ledgers, all on the original transaction.
 
-A conventional app layer (no `database/sql`) is therefore impossible without
-redesigning that cross-module contract, and the layer arithmetic agrees: the
-facade must stay at level 5 because `internal/admission` and the executors
-(level 6) import it, leaving no room above domain/store for an app level that
-imports `control` (level 3) inside transactions. The chosen shape is
-facade · domain · store with the transaction-scoped use cases remaining in the
-facade package; a full app layer is recorded as a deferred follow-up that
-first needs an episodeledger-style unit contract agreed across callers.
-
-## Mixed responsibilities
-
-- `assembler_inputs.go` mixes SQL loads (scheduler item, evaluation, snapshot)
-  with pure snapshot validation (schema, identity, entity, digest).
-- `runner_claim.go` mixes the dispatchable-episode SQL and hydration with
-  freshness decisions (stale vs re-bind vs quarantine) and attempt fencing.
-- `runner_decision.go` mixes decision validation, digest rules and the
-  `decisions`/`intents` INSERT statements.
-- `runner_failure.go` mixes failure classification (pure) with attempt-status
-  SQL and episode-terminating transactions.
-- `intent_catalog.go` mixes spec compilation glue with pure catalog rules
-  (type admission, schema and parameter validation, entry construction).
-- `budget.go`, `reconsideration_request.go` document assembly, and the
-  quarantine reason mapping are pure rules living beside SQL.
-
-## Durable ownership (verified)
-
-Lifecycle writes already go through owner APIs: `episodeledger.Admit`,
-`StartAttempt(Owned)`, `TransitionAttempt`, `Rebind`, `BindRequest`;
-`scheduleledger.MarkAdmitted`. Direct SQL is read-only against
-`situations`/`situation_versions`/`scheduler_items`/`trigger_evaluations`/
-`reconsiderations`/`epoch_control`, plus the module's own handoff writes:
-`decisions` (owned) and `intents` INSERT (explicit handoff phase). This moves
-to the store layer unchanged.
-
-## Public surface
-
-Used across 47 files: `Request` (70 uses), `Outcome` (43), `NewFakeExecutor`
-(24), `NewAssembler` (18), `Executor` (17), `NewRunner` (14),
-`BudgetExceededError` (12), `CompileIntentCatalog` (8), `Assembler`, `Runner`,
-`BudgetTelemetryMissingError`, `NewRunnerWithEpoch`. Every symbol and
-signature is preserved, including the `*sql.Tx` parameters.
-
-## Smaller defects
-
-- `newRequest` asserts `executorDocument["prompt_sha256"].(string)` — an
-  unchecked map assertion on a document the assembler itself built.
-- Failure reason/status classification is interleaved with the transactions
-  it decides for, so it has no table-driven tests of its own.
-- `Request` carries parsed budget state (`wallTime`, `wallTimeValidated`)
-  beside its durable fields — honest caching, but undocumented as a
-  boundary-parse.
-
-## Non-findings (verified clean)
-
-- No effect imports (`forbiddenImports` blocks policy/actions/worker/proto/
-  evidence); no clock reads outside `clk.Now()`; lint-clean.
-- Claim atomicity, rebind bound (3), epoch kill gate, budget errors, shadow
-  scoring and intent handoff are pinned by ten test files including
-  `assembly_boundary_test.go`, `p8_*`, `rebind_test.go`, `cancellation_test.go`.
+Production consumers use assembly/persistence through admission and replay,
+execution through runtime, and request/outcome/error contracts through the
+native and remote adapters. Catalog compilation is also used by replay and
+executor conformance. Fixture execution is used by live demo composition, so
+it is not test-only code. Audit remaining reachability with and without tests.
