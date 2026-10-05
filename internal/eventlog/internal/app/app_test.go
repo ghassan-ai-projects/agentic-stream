@@ -81,8 +81,11 @@ func TestReadStreamsDecodableRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	var ids []string
-	err := service.Read(ctx, domain.ReadRequest{TenantID: "tenant", PartitionID: -1}, func(e domain.ScannedEvent) error {
-		ids = append(ids, e.EventID)
+	err := service.Read(ctx, domain.ReadRequest{TenantID: "tenant", PartitionID: -1}, func(r Record) error {
+		ids = append(ids, r.EventID)
+		if r.Envelope.ID != r.EventID || r.Envelope.Data["celsius"] != float64(30) || r.EventTime.IsZero() {
+			t.Fatalf("record is not fully rebuilt: %+v", r)
+		}
 		return nil
 	})
 	if err != nil || len(ids) != 1 || ids[0] != "evt-1" {

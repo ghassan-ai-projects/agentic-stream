@@ -64,11 +64,6 @@ func (s *Service) validateSchema(ctx context.Context, u *store.Unit, env contrac
 	return schema.CheckPayload(env.Data)
 }
 
-// Read streams scanned records matching req into visit in log order.
-func (s *Service) Read(ctx context.Context, req domain.ReadRequest, visit func(domain.ScannedEvent) error) error {
-	return s.store.ReadRecords(ctx, req, visit) //nolint:wrapcheck // Store owns the query error context.
-}
-
 // ReadEntityEvents streams one entity window's events until visit wants no
 // more.
 func (s *Service) ReadEntityEvents(ctx context.Context, window domain.EntityWindow, visit func(domain.EntityEvent) (bool, error)) error {

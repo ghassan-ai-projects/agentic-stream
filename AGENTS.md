@@ -69,7 +69,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/contractsv1` - versioned envelopes and JSON contracts
 - `internal/spec` - SituationSpec authoring, YAML in, canonical JSON digest
 - `internal/ingress` - ingress adapters (normalized JSONL and simulator replay; HTTP/MQTT deferred)
-- `internal/eventlog` - normalized event log, watermark/completeness tracking
+- `internal/eventlog` - normalized event log, watermark/completeness tracking; append/quarantine/redrive use cases in `internal/app`, pure admission and identity rules in `internal/domain`, all SQL in `internal/store` (see [event log module guide](internal/eventlog/README.md))
 - `internal/engine` - deterministic stream engine core
 - `internal/operators` - deterministic operators (hysteresis, debounce, cooldown)
 - `internal/situations` - Situation state machine, versioning, publication
