@@ -56,3 +56,16 @@ func TestPrepareSafetyEvent(t *testing.T) {
 		t.Fatal("physical evidence completeness")
 	}
 }
+
+func TestTallySafetyEvents(t *testing.T) {
+	t.Parallel()
+	complete := map[string]any{"evidence_complete": true, "source": "s", "evidence_digest": digestOther}
+	record := TallySafetyEvents([]SafetyEvent{
+		{Type: SafetyUnsafeOutput}, {Type: SafetyUnsafeOutput},
+		{Type: SafetyPhysicalTransition, Details: complete},
+		{Type: SafetyPhysicalTransition, Details: map[string]any{"evidence_complete": false}},
+	})
+	if record.EventCounts[SafetyUnsafeOutput] != 2 || record.PhysicalTransitions != 2 || record.CompleteTransitions != 1 {
+		t.Fatalf("record = %+v", record)
+	}
+}

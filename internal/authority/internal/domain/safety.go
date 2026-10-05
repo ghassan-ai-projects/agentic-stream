@@ -100,3 +100,31 @@ func claimsComplete(details map[string]any) bool {
 	complete, _ := details["evidence_complete"].(bool)
 	return complete
 }
+
+// SafetyRecord summarizes the durable safety evidence a soak verdict reads:
+// safety events by type, physical transitions by completeness, open
+// reconciliations and the size of the authority audit log.
+type SafetyRecord struct {
+	EventCounts         map[SafetyEventType]uint64
+	PhysicalTransitions uint64
+	CompleteTransitions uint64
+	OpenReconciliations uint64
+	AuthorityEvents     uint64
+}
+
+// TallySafetyEvents counts events by type and physical transitions by
+// whether their evidence is complete.
+func TallySafetyEvents(events []SafetyEvent) SafetyRecord {
+	record := SafetyRecord{EventCounts: map[SafetyEventType]uint64{}}
+	for _, event := range events {
+		record.EventCounts[event.Type]++
+		if event.Type != SafetyPhysicalTransition {
+			continue
+		}
+		record.PhysicalTransitions++
+		if PhysicalEvidenceComplete(event.Details) {
+			record.CompleteTransitions++
+		}
+	}
+	return record
+}

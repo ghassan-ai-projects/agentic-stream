@@ -164,3 +164,32 @@ func TestSafetyEventsStoreOptionalCommand(t *testing.T) {
 		t.Fatalf("safety events with command=%d total=%d", withCommand, total)
 	}
 }
+
+func TestSafetyRecordReadsVerifyStoredEvidence(t *testing.T) {
+	t.Parallel()
+	s, db := openStore(t)
+	event := domain.SafetyEvent{Type: domain.SafetyPhysicalTransition, Target: "fan-01", Details: map[string]any{"source": "s"}, Occurred: testNow}
+	work(t, s, func(tx *Tx) error { return tx.AppendSafetyEvent(t.Context(), event) })
+	work(t, s, func(tx *Tx) error { return tx.InsertFirstState(t.Context(), deviceState(t, bootA), owner, testNow) })
+	work(t, s, func(tx *Tx) error {
+		events, err := tx.SafetyEvents(t.Context())
+		if err != nil || len(events) != 1 || events[0].Details["source"] != "s" || !events[0].Occurred.Equal(testNow) {
+			t.Fatalf("events = %+v, %v", events, err)
+		}
+		open, err := tx.CountOpenReconciliations(t.Context())
+		if err != nil || open != 0 {
+			t.Fatalf("open reconciliations = %d, %v", open, err)
+		}
+		return nil
+	})
+	if _, err := db.ExecContext(t.Context(), `UPDATE device_safety_events SET details_json = CAST('{"source":"x"}' AS BLOB)`); err != nil {
+		t.Fatal(err)
+	}
+	err := s.InTx(t.Context(), func(tx *Tx) error {
+		_, err := tx.SafetyEvents(t.Context())
+		return err
+	})
+	if err == nil {
+		t.Fatal("tampered safety evidence was read")
+	}
+}

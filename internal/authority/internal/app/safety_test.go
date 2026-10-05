@@ -1,9 +1,12 @@
 package app_test
 
 import (
+	"database/sql"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/store"
 )
 
 func TestSafeStopLatchesTheBootOnThePriorityPath(t *testing.T) {
@@ -48,5 +51,26 @@ func TestRecordSafetyEventValidatesAndStores(t *testing.T) {
 	if !domain.PhysicalEvidenceComplete(map[string]any{"evidence_complete": true, "source": "s",
 		"evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}) {
 		t.Fatal("complete physical evidence was rejected")
+	}
+}
+
+func TestReadSafetyRecordSummarizesDurableEvidence(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.recordState(t, bootA)
+	f.recordState(t, bootB)
+	if err := f.service.RecordSafetyEvent(t.Context(), domain.SafetyEvent{Type: domain.SafetyUnsafeOutput, Target: "fan-01"}); err != nil {
+		t.Fatal(err)
+	}
+	var record domain.SafetyRecord
+	if err := f.db.WithTx(t.Context(), func(tx *sql.Tx) error {
+		var err error
+		record, err = app.ReadSafetyRecord(t.Context(), store.Join(tx))
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if record.EventCounts[domain.SafetyUnsafeOutput] != 1 || record.OpenReconciliations != 1 || record.AuthorityEvents != 1 {
+		t.Fatalf("record = %+v", record)
 	}
 }

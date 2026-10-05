@@ -97,3 +97,9 @@ func (s *Service) RecordSafetyEvent(ctx context.Context, event SafetyEvent) erro
 func VerifyCommandEvidence(ctx context.Context, tx *sql.Tx, commandID, target string, evidence map[string]any) error {
 	return app.VerifyCommandEvidence(ctx, store.Join(tx), commandID, target, evidence)
 }
+
+// ReadSafetyRecord reads the durable safety evidence inside the caller's
+// transaction. Stored evidence that no longer matches its digest fails the read.
+func ReadSafetyRecord(ctx context.Context, tx *sql.Tx) (SafetyRecord, error) {
+	return app.ReadSafetyRecord(ctx, store.Join(tx))
+}

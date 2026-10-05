@@ -95,7 +95,16 @@ func TestServiceDelegatesEveryOperation(t *testing.T) {
 	must(t, service.RecordSafeStop(ctx, claim, authority.SafeStopRequested, nil))
 	latched, err := service.SafeStopLatched(ctx, device)
 	must(t, err)
-	must(t, service.RecordSafetyEvent(ctx, authority.SafetyEvent{Type: "unsafe_output", Target: claim.Target}))
+	must(t, service.RecordSafetyEvent(ctx, authority.SafetyEvent{Type: authority.SafetyUnsafeOutput, Target: claim.Target}))
+	var record authority.SafetyRecord
+	must(t, db.WithTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		record, err = authority.ReadSafetyRecord(ctx, tx)
+		return err
+	}))
+	if record.EventCounts[authority.SafetyUnsafeOutput] != 1 || record.AuthorityEvents == 0 {
+		t.Fatalf("safety record = %+v", record)
+	}
 	must(t, service.ReleaseClaim(ctx, claim))
 	if !required || !cleared || !latched {
 		t.Fatalf("required=%v cleared=%v latched=%v", required, cleared, latched)

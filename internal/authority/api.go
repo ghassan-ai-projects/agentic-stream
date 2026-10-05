@@ -23,6 +23,19 @@ type (
 	SafetyEventType = domain.SafetyEventType
 	// ReconciliationEvidence is digest-bound evidence about one device boot.
 	ReconciliationEvidence = domain.ReconciliationEvidence
+	// SafetyRecord summarizes the durable safety evidence a soak verdict reads.
+	SafetyRecord = domain.SafetyRecord
+)
+
+// Safety event types: zero-tolerance violations and physical transitions.
+const (
+	SafetyUnsafeOutput                  = domain.SafetyUnsafeOutput
+	SafetyStaleEnergizingEffect         = domain.SafetyStaleEnergizingEffect
+	SafetyDuplicateNetEnergizingEffect  = domain.SafetyDuplicateNetEnergizingEffect
+	SafetyUnexplainedActuatorTransition = domain.SafetyUnexplainedActuatorTransition
+	SafetyFalseVerifiedSuccess          = domain.SafetyFalseVerifiedSuccess
+	SafetySafeStateDeadlineMiss         = domain.SafetySafeStateDeadlineMiss
+	SafetyPhysicalTransition            = domain.SafetyPhysicalTransition
 )
 
 // Resolution outcomes.
