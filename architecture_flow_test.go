@@ -14,18 +14,18 @@ import (
 // packageLayers are reviewed dependency levels, not automatically computed
 // depths. Adding an acyclic edge still fails if it crosses upward or sideways.
 var packageLayers = map[string]int{
-	"internal/runtime/internal/domain": 1, "internal/runtime/internal/transport": 8, "internal/runtime/internal/store": 8, "internal/runtime/internal/app": 9, "internal/runtime/internal/composition": 10,
+	"internal/runtime/internal/domain": 1, "internal/runtime/internal/transport": 9, "internal/runtime/internal/store": 8, "internal/runtime/internal/app": 10, "internal/runtime/internal/composition": 11,
 	"internal/actionport": 0, "internal/canonicaljson": 0, "internal/clock": 0, "internal/costcontrol": 0,
 	"internal/duration": 0, "internal/eventschema": 0, "internal/ids": 0, "internal/interlock": 0, "internal/telemetry": 0,
 	"migrations": 0, "proto/agenticstream/runtime/v1": 0,
 	"internal/authority/internal/domain": 1, "internal/contractsv1": 1, "internal/storage": 1,
-	"internal/policy/internal/domain": 2, "internal/decisions": 2, "internal/device/internal/domain": 2, "internal/device/internal/wire": 3, "internal/episodeledger": 2, "internal/eventlog": 4, "internal/evidence": 6, "internal/evidence/internal/domain": 2, "internal/evidence/internal/wire": 3, "internal/evidence/internal/store": 3, "internal/evidence/internal/app": 4, "internal/evidence/internal/transport": 5,
+	"internal/policy/internal/domain": 2, "internal/decisions": 3, "internal/decisions/internal/domain": 2, "internal/device/internal/domain": 2, "internal/device/internal/wire": 3, "internal/episodeledger": 2, "internal/eventlog": 4, "internal/evidence": 6, "internal/evidence/internal/domain": 2, "internal/evidence/internal/wire": 3, "internal/evidence/internal/store": 3, "internal/evidence/internal/app": 4, "internal/evidence/internal/transport": 5,
 	"internal/authority/internal/store": 2, "internal/notifycontract": 2, "internal/qualification": 2, "internal/scheduleledger": 2, "internal/spec": 2, "internal/worker": 2,
 	"internal/authority/internal/app": 3, "internal/control": 3, "internal/device/internal/transport": 4, "internal/eventlog/internal/domain": 1, "internal/eventlog/internal/store": 2, "internal/eventlog/internal/app": 3, "internal/ingress": 5, "internal/notify": 3, "internal/operators": 3,
 	"internal/api": 4, "internal/approvalledger": 4, "internal/watch": 4, "internal/authority": 4, "internal/situations": 4,
-	"internal/actions": 5, "internal/cognition": 5, "internal/device/internal/app": 5, "internal/episodes": 6, "internal/episodes/internal/domain": 3, "internal/episodes/internal/store": 4, "internal/episodes/internal/app": 5, "internal/policy/internal/store": 5, "internal/policy/internal/app": 6, "internal/policy": 7, "internal/soak": 5,
-	"internal/admission": 7, "internal/device": 6, "internal/engine": 6, "internal/executor/conformance": 7, "internal/executor/fixture": 7, "internal/executor/native": 7, "internal/executor/remote": 7, "internal/runartifact": 8,
-	"internal/replay": 10, "internal/replay/internal/domain": 3, "internal/replay/internal/transport": 7, "internal/replay/internal/store": 8, "internal/replay/internal/app": 9, "internal/runtime": 11, "cmd/agentic-stream": 12,
+	"internal/actions": 5, "internal/cognition": 5, "internal/device/internal/app": 5, "internal/episodes": 7, "internal/episodes/internal/domain": 4, "internal/episodes/internal/store": 5, "internal/episodes/internal/app": 6, "internal/policy/internal/store": 5, "internal/policy/internal/app": 6, "internal/policy": 7, "internal/soak": 5,
+	"internal/admission": 8, "internal/device": 6, "internal/engine": 6, "internal/executor/conformance": 8, "internal/executor/fixture": 8, "internal/executor/native": 8, "internal/executor/remote": 8, "internal/runartifact": 8,
+	"internal/replay": 10, "internal/replay/internal/domain": 4, "internal/replay/internal/transport": 7, "internal/replay/internal/store": 8, "internal/replay/internal/app": 9, "internal/runtime": 12, "cmd/agentic-stream": 13,
 }
 
 func TestImportsOnlyPointToLowerArchitectureLayers(t *testing.T) {
@@ -65,7 +65,7 @@ func TestReasoningAndReplayCannotReachEffectImplementations(t *testing.T) {
 	reasoning := []string{"internal/cognition", "internal/decisions", "internal/engine", "internal/episodes", "internal/evidence", "internal/executor/native", "internal/executor/remote", "internal/executor/conformance", "internal/worker"}
 	replayLayers := []string{"internal/replay", "internal/replay/internal/app", "internal/replay/internal/domain", "internal/replay/internal/store", "internal/replay/internal/transport"}
 	for _, source := range append(reasoning, replayLayers...) {
-		for _, target := range []string{"internal/actions", "internal/device", "internal/device/internal/app", "internal/device/internal/transport", "internal/watch", "internal/runtime", "internal/runtime/internal/app", "internal/runtime/internal/composition", "internal/runtime/internal/store", "internal/runtime/internal/transport", "cmd/agentic-stream"} {
+		for _, target := range []string{"internal/actions", "internal/actions/internal/app", "internal/actions/internal/store", "internal/device", "internal/device/internal/app", "internal/device/internal/transport", "internal/watch", "internal/runtime", "internal/runtime/internal/app", "internal/runtime/internal/composition", "internal/runtime/internal/store", "internal/runtime/internal/transport", "cmd/agentic-stream"} {
 			if path := dependencyPath(graph, source, target); len(path) > 0 {
 				t.Errorf("effect implementation reachable: %s", strings.Join(path, " -> "))
 			}

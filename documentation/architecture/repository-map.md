@@ -27,7 +27,8 @@ historical design map where the code has chosen a more specific package name.
 | `internal/evidence/internal/app/` | capability issuance/verification, call admission/query and durable lifecycle use cases |
 | `internal/evidence/internal/store/` | opaque original transactions, evidence-call ledger SQL and ownership assertions |
 | `internal/evidence/internal/transport/` | gRPC adaptation and the eventlog owner-provided evidence source |
-| `internal/decisions/` | Decision and Intent validation |
+| `internal/decisions/` | thin facade over pure Decision and Intent validation |
+| `internal/decisions/internal/domain/` | pure binding, catalog authority, risk, freshness and evidence rules |
 | `internal/policy/` | policy configuration and delegation facade |
 | `internal/policy/internal/app/` | ordered intent evaluation and human approval use cases |
 | `internal/policy/internal/store/` | caller-owned transactions, policy SQL and ledger/notification plumbing |

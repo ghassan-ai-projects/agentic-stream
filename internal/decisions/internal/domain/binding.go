@@ -1,4 +1,4 @@
-package decisions
+package domain
 
 // checkDecisionBinding requires the Decision to name the dispatched episode,
 // attempt, fence, snapshot, and Situation version, and to be unexpired. It

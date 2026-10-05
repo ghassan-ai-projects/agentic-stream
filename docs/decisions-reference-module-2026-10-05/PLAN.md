@@ -28,9 +28,9 @@
 
 | Round | Change | Proof | Status |
 | --- | --- | --- | --- |
-| 0 | Survey, canonical glossary, findings, design and this plan | Dated folder and pre-change package/caller inventory | Planned |
-| 1 | Move pure vocabulary, parsing, catalog compilation and validation to `internal/domain`; keep only aliases and delegating operations in root | Focused decisions, episodes and replay tests; facade/domain coverage; lint and diff checks | Planned |
-| 2 | Encapsulate compiled catalog authority and remove unused result projections; adapt meaningful tests/callers if any hidden repository references are found | Source-mutation regression; successful digest/canonical-byte parity; full consumer tests | Planned |
+| 0 | Survey, canonical glossary, findings, design and this plan | Dated folder and pre-change package/caller inventory | Complete |
+| 1 | Move pure vocabulary, parsing, catalog compilation and validation to `internal/domain`; keep only aliases and delegating operations in root | Focused decisions, episodes and replay tests; facade/domain coverage; lint and diff checks | Complete |
+| 2 | Encapsulate compiled catalog authority and remove unused result projections; adapt meaningful tests/callers if any hidden repository references are found | Source-mutation regression; successful digest/canonical-byte parity; full consumer tests | Complete |
 | 3 | Record audit and final validation; prove shared import/layer/facade gates with injected violations | Architecture injection proofs; `make ci-check`; uncached non-short race suite | Planned |
 
 Round 0 must be committed before implementation starts. The parent owns the
@@ -49,5 +49,6 @@ round-zero commit confirmation before code changes.
 
 ## Status
 
-No implementation or validation round has started. Round 0 documents are ready
-for review and commit.
+Round 0 is committed as cef7ceb. Pure extraction and catalog encapsulation
+are complete. Independent focused race, lint, architecture and documentation
+checks pass; final full-tree gates will run after the integrated migrations.

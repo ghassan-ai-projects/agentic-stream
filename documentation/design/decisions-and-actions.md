@@ -17,7 +17,7 @@ flowchart LR
 
 Text equivalent: a proposal must pass binding/schema validation and current
 policy before it becomes a Command. Rejection, deferral, or an approval need
-can stop this path. Source: [Decision validator](../../internal/decisions/validator.go)
+can stop this path. Source: [Decision validator](../../internal/decisions/internal/domain/validator.go)
 and [policy](../../internal/policy/policy.go).
 
 How is an accepted Command dispatched?
@@ -71,7 +71,7 @@ It does not blindly retry an effect that could duplicate external work.
 
 ## Source evidence
 
-- Decision validation: [`internal/decisions/validator.go`](../../internal/decisions/validator.go)
+- Decision validation: [`internal/decisions/internal/domain/validator.go`](../../internal/decisions/internal/domain/validator.go)
 - Policy gateway: [`internal/policy/policy.go`](../../internal/policy/policy.go)
 - Dispatcher: [`internal/actions/dispatcher.go`](../../internal/actions/dispatcher.go)
 - Effect adapters: [`internal/device/`](../../internal/device/) and [`internal/watch/`](../../internal/watch/)

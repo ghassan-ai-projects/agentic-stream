@@ -1,4 +1,4 @@
-package decisions
+package domain
 
 import (
 	"encoding/json"
@@ -34,8 +34,6 @@ type Input struct {
 type Result struct {
 	DecisionID     string
 	DecisionDigest string
-	CanonicalJSON  []byte
-	Document       map[string]any
 	Intents        []Intent
 }
 
@@ -47,7 +45,6 @@ type Intent struct {
 	ExpiresAt        time.Time
 	Digest           string
 	CanonicalJSON    []byte
-	Document         map[string]any
 	RateLimitPerHour int
 	RequiresApproval bool
 }
@@ -74,7 +71,7 @@ func Validate(raw []byte, transmittedDigest string, input Input) (*Result, error
 	if err := checkTrustedInput(input); err != nil {
 		return nil, err
 	}
-	canonical, document, err := parseDecision(raw, transmittedDigest)
+	document, err := parseDecision(raw, transmittedDigest)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +79,7 @@ func Validate(raw []byte, transmittedDigest string, input Input) (*Result, error
 	if err != nil {
 		return nil, err
 	}
-	return acceptDecision(canonical, document, transmittedDigest, decisionID, input)
+	return acceptDecision(document, transmittedDigest, decisionID, input)
 }
 
 func validateDecisionIntents(rawIntents []any, input Input, decisionID string, document map[string]any) ([]Intent, error) {
@@ -104,22 +101,22 @@ func validateDecisionIntents(rawIntents []any, input Input, decisionID string, d
 
 // parseDecision canonicalizes the raw Decision, validates it against the
 // shared schema, and verifies the transmitted digest.
-func parseDecision(raw []byte, transmittedDigest string) ([]byte, map[string]any, error) {
+func parseDecision(raw []byte, transmittedDigest string) (map[string]any, error) {
 	canonical, err := canonicaljson.Marshal(json.RawMessage(raw))
 	if err != nil {
-		return nil, nil, reject("schema_invalid", "canonical_json", err.Error())
+		return nil, reject("schema_invalid", "canonical_json", err.Error())
 	}
 	var document map[string]any
 	if err := json.Unmarshal(canonical, &document); err != nil {
-		return nil, nil, reject("schema_invalid", "json", err.Error())
+		return nil, reject("schema_invalid", "json", err.Error())
 	}
 	if err := contractsv1.Validate(contractsv1.SchemaDecision, document); err != nil {
-		return nil, nil, reject("schema_invalid", "decision_schema", err.Error())
+		return nil, reject("schema_invalid", "decision_schema", err.Error())
 	}
 	if _, err := canonicaljson.DecodeDigest(transmittedDigest); err != nil || !canonicaljson.Verify(canonicaljson.DomainDecision, document, transmittedDigest) {
-		return nil, nil, reject("schema_invalid", "decision_digest", "decision digest is missing or does not match canonical JSON")
+		return nil, reject("schema_invalid", "decision_digest", "decision digest is missing or does not match canonical JSON")
 	}
-	return canonical, document, nil
+	return document, nil
 }
 
 func documentString(document map[string]any, key string) string {
@@ -179,7 +176,7 @@ func checkTrustedInput(input Input) error {
 	return nil
 }
 
-func acceptDecision(canonical []byte, document map[string]any, transmittedDigest, decisionID string, input Input) (*Result, error) {
+func acceptDecision(document map[string]any, transmittedDigest, decisionID string, input Input) (*Result, error) {
 	rawIntents, err := decisionIntents(document)
 	if err != nil {
 		return nil, err
@@ -187,8 +184,6 @@ func acceptDecision(canonical []byte, document map[string]any, transmittedDigest
 	result := &Result{
 		DecisionID:     decisionID,
 		DecisionDigest: transmittedDigest,
-		CanonicalJSON:  canonical,
-		Document:       document,
 	}
 	result.Intents, err = validateDecisionIntents(rawIntents, input, decisionID, document)
 	if err != nil {

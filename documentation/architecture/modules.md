@@ -126,3 +126,6 @@ physical hardware, deployment readiness, or every possible runtime behavior.
 - [Durability and recovery](durability.md)
 - [Repository map](repository-map.md)
 - [Quality governance](../governance/quality.md)
+
+The [decisions module guide](../../internal/decisions/README.md) explains its pure
+validation facade, compiled authority and supported public results.

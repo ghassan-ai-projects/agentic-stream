@@ -1,4 +1,4 @@
-package decisions
+package domain
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
-func checkIntentParameters(document map[string]any, input Input, decisionDocument map[string]any, entry *IntentEntry) error {
+func checkIntentParameters(document map[string]any, input Input, decisionDocument map[string]any, entry *intentEntry) error {
 	// P4: parameters must satisfy the catalog's per-intent schema.
 	parameters, _ := document["parameters"].(map[string]any)
 	if err := entry.ParameterSchema.Validate(parameters); err != nil {
@@ -69,7 +69,7 @@ func bindExpiryParameter(parameters, decisionDocument map[string]any) error {
 // the preset's — the worker may only override the fields the catalog marks
 // writable. Unknown keys (not in the preset, not writable) are schema-level
 // noise and fail the schema check already.
-func verifyPresetEquality(document map[string]any, entry *IntentEntry) error {
+func verifyPresetEquality(document map[string]any, entry *intentEntry) error {
 	parameters, _ := document["parameters"].(map[string]any)
 	defaultPreset := entry.Presets["default"]
 	for key, presetValue := range defaultPreset {

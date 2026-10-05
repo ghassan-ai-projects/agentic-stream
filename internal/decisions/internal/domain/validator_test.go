@@ -1,6 +1,7 @@
-package decisions
+package domain
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -29,7 +30,16 @@ func TestValidateBindsDecisionAndIntents(t *testing.T) {
 	if result.DecisionID != "dec-1" || len(result.Intents) != 1 {
 		t.Fatalf("result = decision %q with %d intents", result.DecisionID, len(result.Intents))
 	}
-	if result.Intents[0].Digest == "" || result.Intents[0].ID != "int-1" {
+	intentDocument := document["intents"].([]any)[0].(map[string]any)
+	canonicalIntent, err := canonicaljson.Marshal(intentDocument)
+	if err != nil {
+		t.Fatalf("marshal expected intent: %v", err)
+	}
+	intentDigest, err := contractsv1.IntentDigest(intentDocument)
+	if err != nil {
+		t.Fatalf("digest expected intent: %v", err)
+	}
+	if result.DecisionDigest != digest || result.Intents[0].Digest != intentDigest || !bytes.Equal(result.Intents[0].CanonicalJSON, canonicalIntent) || result.Intents[0].ID != "int-1" {
 		t.Fatalf("intent provenance = %+v", result.Intents[0])
 	}
 }
@@ -74,7 +84,7 @@ func TestValidateRejectsImplicitAbstention(t *testing.T) {
 }
 
 func TestValidateCompensatingIntentTypes(t *testing.T) {
-	compiled, err := spec.CompileFile(context.Background(), "../../docs/design/examples/predictive-maintenance.situation.yaml")
+	compiled, err := spec.CompileFile(context.Background(), "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
 	if err != nil {
 		t.Fatalf("compile predictive-maintenance spec: %v", err)
 	}
@@ -297,6 +307,10 @@ func TestCompileIntentCatalogFailsClosed(t *testing.T) {
 	noSchema := []map[string]any{{"type": "x", "risk_class": "R1"}}
 	if _, err := CompileIntentCatalog(noSchema); err == nil {
 		t.Fatal("a missing parameter schema must fail compilation")
+	}
+	remoteSchema := []map[string]any{{"type": "x", "risk_class": "R1", "parameter_schema": map[string]any{"$ref": "https://example.invalid/schema.json"}}}
+	if _, err := CompileIntentCatalog(remoteSchema); err == nil {
+		t.Fatal("an external parameter schema must not be loaded")
 	}
 }
 

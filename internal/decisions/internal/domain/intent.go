@@ -1,4 +1,4 @@
-package decisions
+package domain
 
 import (
 	"fmt"
@@ -52,7 +52,7 @@ func checkIntentSituation(document map[string]any, input Input) error {
 // checkIntentAuthority checks the intent type against the episode allowlist
 // and the catalog, and its risk against the catalog and the ceiling. It
 // returns the catalog entry.
-func checkIntentAuthority(document map[string]any, input Input) (*IntentEntry, error) {
+func checkIntentAuthority(document map[string]any, input Input) (*intentEntry, error) {
 	intentType, _ := document["type"].(string)
 	if err := checkIntentPermission(document, input, intentType); err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func checkIntentAuthority(document map[string]any, input Input) (*IntentEntry, e
 	// proposed risk must EQUAL the declared risk — a risk-label attack (the
 	// worker claiming R0 for an R2 action) is rejected, not merely clamped to
 	// the ceiling.
-	entry, declared := input.IntentCatalog.Entries[intentType]
+	entry, declared := input.IntentCatalog.entries[intentType]
 	if !declared {
 		return nil, reject("intent_type_not_in_catalog", "intent.type", "intent type is not declared in the intent catalog")
 	}
@@ -87,7 +87,7 @@ func checkIntentPermission(document map[string]any, input Input, intentType stri
 	return nil
 }
 
-func checkIntentRisk(document map[string]any, input Input, entry *IntentEntry, intentType string) error {
+func checkIntentRisk(document map[string]any, input Input, entry *intentEntry, intentType string) error {
 	risk, _ := document["risk_class"].(string)
 	if risk != entry.RiskClass {
 		return reject("risk_label_mismatch", "intent.risk_class",
@@ -100,7 +100,7 @@ func checkIntentRisk(document map[string]any, input Input, entry *IntentEntry, i
 }
 
 // buildIntent checks the intent expiry and builds the validated Intent.
-func buildIntent(document map[string]any, input Input, entry *IntentEntry) (*Intent, error) {
+func buildIntent(document map[string]any, input Input, entry *intentEntry) (*Intent, error) {
 	expiresAtString, _ := document["expires_at"].(string)
 	expiresAt, err := time.Parse(time.RFC3339Nano, expiresAtString)
 	if err != nil {
@@ -112,7 +112,7 @@ func buildIntent(document map[string]any, input Input, entry *IntentEntry) (*Int
 	return materializeIntent(document, entry, expiresAt)
 }
 
-func materializeIntent(document map[string]any, entry *IntentEntry, expiresAt time.Time) (*Intent, error) {
+func materializeIntent(document map[string]any, entry *intentEntry, expiresAt time.Time) (*Intent, error) {
 	canonical, err := canonicaljson.Marshal(document)
 	if err != nil {
 		return nil, reject("schema_invalid", "intent", err.Error())
@@ -124,7 +124,7 @@ func materializeIntent(document map[string]any, entry *IntentEntry, expiresAt ti
 	return validatedIntent(document, entry, expiresAt, canonical, digest), nil
 }
 
-func validatedIntent(document map[string]any, entry *IntentEntry, expiresAt time.Time, canonical []byte, digest string) *Intent {
+func validatedIntent(document map[string]any, entry *intentEntry, expiresAt time.Time, canonical []byte, digest string) *Intent {
 	intentID, _ := document["intent_id"].(string)
 	intentType, _ := document["type"].(string)
 	risk, _ := document["risk_class"].(string)
@@ -135,7 +135,6 @@ func validatedIntent(document map[string]any, entry *IntentEntry, expiresAt time
 		ExpiresAt:        expiresAt,
 		Digest:           digest,
 		CanonicalJSON:    canonical,
-		Document:         document,
 		RateLimitPerHour: entry.RateLimitPerHour,
 		RequiresApproval: entry.RequiresApproval,
 	}

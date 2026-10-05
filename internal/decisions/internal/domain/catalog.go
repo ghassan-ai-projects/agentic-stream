@@ -1,4 +1,4 @@
-package decisions
+package domain
 
 import (
 	"fmt"
@@ -8,11 +8,11 @@ import (
 
 // IntentCatalog is the compiled catalog the validator enforces independently.
 type IntentCatalog struct {
-	Entries map[string]*IntentEntry
+	entries map[string]*intentEntry
 }
 
-// IntentEntry is one declared action type's authority.
-type IntentEntry struct {
+// intentEntry is one declared action type's compiled authority.
+type intentEntry struct {
 	Type             string
 	RiskClass        string
 	ParameterSchema  *jsonschema.Schema
@@ -31,7 +31,7 @@ func CompileIntentCatalog(doc []map[string]any) (*IntentCatalog, error) {
 	if len(doc) == 0 {
 		return nil, fmt.Errorf("intent catalog is empty")
 	}
-	catalog := &IntentCatalog{Entries: make(map[string]*IntentEntry, len(doc))}
+	catalog := &IntentCatalog{entries: make(map[string]*intentEntry, len(doc))}
 	compiler := jsonschema.NewCompiler()
 	compiler.AssertFormat()
 	compiler.UseLoader(denyNetworkLoader{})
@@ -48,20 +48,20 @@ func (catalog *IntentCatalog) addEntry(compiler *jsonschema.Compiler, entry map[
 	if entryType == "" {
 		return fmt.Errorf("intent catalog entry has no type")
 	}
-	if _, exists := catalog.Entries[entryType]; exists {
+	if _, exists := catalog.entries[entryType]; exists {
 		return fmt.Errorf("intent catalog duplicates type %q", entryType)
 	}
 	compiled, err := compileCatalogEntry(compiler, entryType, entry)
 	if err != nil {
 		return err
 	}
-	catalog.Entries[entryType] = compiled
+	catalog.entries[entryType] = compiled
 	return nil
 }
 
 // compileCatalogEntry validates one wire catalog entry and compiles its
 // parameter schema.
-func compileCatalogEntry(compiler *jsonschema.Compiler, entryType string, entry map[string]any) (*IntentEntry, error) {
+func compileCatalogEntry(compiler *jsonschema.Compiler, entryType string, entry map[string]any) (*intentEntry, error) {
 	risk, _ := entry["risk_class"].(string)
 	if riskRank(risk) == 0 {
 		return nil, fmt.Errorf("intent %q has invalid declared risk %q", entryType, risk)
@@ -79,7 +79,7 @@ func compileCatalogEntry(compiler *jsonschema.Compiler, entryType string, entry 
 
 func compileParameterSchema(compiler *jsonschema.Compiler, entryType string, schema map[string]any) (*jsonschema.Schema, error) {
 	schemaID := "urn:situation-runtime:catalog:" + entryType + ":schema:v1"
-	if err := compiler.AddResource(schemaID, schema); err != nil {
+	if err := compiler.AddResource(schemaID, cloneJSONMap(schema)); err != nil {
 		return nil, fmt.Errorf("compile intent %q schema: %w", entryType, err)
 	}
 	compiled, err := compiler.Compile(schemaID)
@@ -89,8 +89,8 @@ func compileParameterSchema(compiler *jsonschema.Compiler, entryType string, sch
 	return compiled, nil
 }
 
-func catalogAuthority(entryType, risk string, compiled *jsonschema.Schema, entry map[string]any) *IntentEntry {
-	return &IntentEntry{
+func catalogAuthority(entryType, risk string, compiled *jsonschema.Schema, entry map[string]any) *intentEntry {
+	return &intentEntry{
 		Type:             entryType,
 		RiskClass:        risk,
 		ParameterSchema:  compiled,
@@ -106,10 +106,33 @@ func catalogPresets(entry map[string]any) map[string]map[string]any {
 	raw, _ := entry["presets"].(map[string]any)
 	for name, value := range raw {
 		if parameters, ok := value.(map[string]any); ok {
-			presets[name] = parameters
+			presets[name] = cloneJSONMap(parameters)
 		}
 	}
 	return presets
+}
+
+func cloneJSONMap(source map[string]any) map[string]any {
+	cloned := make(map[string]any, len(source))
+	for key, value := range source {
+		cloned[key] = cloneJSONValue(value)
+	}
+	return cloned
+}
+
+func cloneJSONValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return cloneJSONMap(typed)
+	case []any:
+		cloned := make([]any, len(typed))
+		for index, item := range typed {
+			cloned[index] = cloneJSONValue(item)
+		}
+		return cloned
+	default:
+		return value
+	}
 }
 
 // requiresApproval reads the catalog policy, which is part of the

@@ -1,4 +1,4 @@
-package decisions
+package domain
 
 import (
 	"errors"
