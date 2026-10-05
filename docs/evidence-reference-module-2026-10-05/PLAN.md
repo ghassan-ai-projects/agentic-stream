@@ -5,7 +5,7 @@
 | E0 | Survey, architecture and plan | Read production/tests/consumers and ownership | Complete |
 | E1 | Pure domain, token wire codecs and rules | Focused tests, token/fingerprint parity, root gates, whole-tree lint | Complete |
 | E2 | Opaque SQL store, app use cases, transport and configured facade; all consumers | Durable replay/integrity, cancellation/ownership/rollback tests, worker/runtime regressions, coverage and lint | Complete |
-| E3 | Architecture injection proofs, reachability audit, documentation and final review | Full CI, non-short uncached race, all packages at least 60%, diff check | Pending |
+| E3 | Architecture injection proofs, reachability audit, documentation and final review | Full CI, non-short uncached race, all packages at least 60%, diff check | Complete |
 
 Existing behavior tests move with their implementation; add focused pure tests
 and constructor/rollback regressions before accepting each implementation round.
@@ -45,3 +45,8 @@ transport. Removed the test-only Recover convenience, unused result-hash field
 and unused issuer clock-skew field. Callers now use the configured Service;
 RecoverTx joins the original owner transaction, and no caller mutates an Owner
 field after construction.
+
+E3: full make ci-check and uncached non-short whole-tree race tests pass. All
+private layers meet the coverage floor. Eight injected architecture violations
+were rejected and removed. Canonical package language and guides, the code audit,
+ratings and ordered future improvements are published.

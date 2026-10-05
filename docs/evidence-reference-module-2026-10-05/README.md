@@ -24,3 +24,7 @@ flowchart TD
 - [Language](UBIQUITOUS_LANGUAGE.md)
 - [Design](DESIGN.md)
 - [Plan](PLAN.md)
+
+- [Package guide](../../internal/evidence/README.md)
+- [Dead and test-only code audit](CODE_AUDIT.md)
+- [Validation and ratings](VALIDATION.md)

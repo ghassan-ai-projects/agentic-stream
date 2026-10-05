@@ -1,6 +1,6 @@
 # Design
 
-Facade exposes New(Config), Scope/Call/QueryResult aliases, Issue, Verify, Call,
+Facade exposes New(Config), Scope/Call/QueryResult aliases, Issue, Verify, IssueTime, Call,
 RecoverTx, ReclaimExpired and RuntimeEpoch. NewRuntimeEpoch delegates random
 identity generation; EventLogQuery delegates the existing owner-provided read
 adapter. Public operations contain no rules, codecs or SQL.
@@ -16,9 +16,9 @@ refuse operations they are not configured to perform.
 | --- | --- | --- |
 | app | Clocks, ID issuance, admission sequence, transactions through ports, deadlines/cancellation | SQL, raw DB handles, protobuf/gRPC |
 | domain | Scope defaults/validity, envelope authorization, deadline/result bounds, attempt and reservation rules | I/O, clock reads, wire encoding |
-| store | Private DB/Tx handles, SQL, ownership plumbing, eventlog read port | Permission/lifecycle decisions |
+| store | Private DB/Tx handles, SQL and ownership plumbing | Permission/lifecycle decisions |
 | wire | Typed v1 token claims, HMAC/base64, argument JSON, request fingerprint, protobuf conversion | Query/ledger orchestration or authorization |
-| transport | gRPC request/result and status adaptation | Scope decisions, SQL, execution |
+| transport | gRPC request/result and status adaptation; eventlog owner-provided query | Scope decisions, SQL, execution |
 
 Preserve admission ordering: envelope, trace, token verification, numeric bounds,
 identity/tool/trace/epoch, evidence time range, arguments/entity, deadline.

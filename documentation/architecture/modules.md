@@ -66,6 +66,7 @@ records or returned values, not reverse service dependencies.
 | `episodeledger` | Episode/attempt state, fencing identity, rejection audit, recovery and cancellation mutations |
 | `admission` | Turning due scheduler items into epoch-stamped episodes; drain stop, fixture refusal and recorded skips for unadmittable items |
 | `episodes` | Configured Service facade; app assembles and runs bounded reasoning, domain owns pure contracts/rules, opaque store transactions preserve lifecycle and Decision handoffs |
+| `evidence` | Configured Service facade; app orders capability admission and durable query/recovery use cases; domain owns pure scope/lifecycle rules; store alone writes `evidence_call_ledger`; wire owns exact codecs; transport adapts gRPC and the eventlog-owned source. See [module guide](../../internal/evidence/README.md) |
 | `executor/fixture`, `executor/native`, `executor/remote` | Concrete executors: deterministic demo fixtures, the in-process Go executor, and the streamed EpisodeWorker adapter with per-attempt evidence capability and budget accounting |
 | `scheduleledger` | Durable queue identity, admission, coalescing and skipped opportunities |
 | `cognition` | Trigger evaluation, admission priorities, reconsideration and cost-refusal explanation |
