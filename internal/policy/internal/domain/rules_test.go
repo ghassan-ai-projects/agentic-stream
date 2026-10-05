@@ -151,10 +151,6 @@ func TestRuleBoundaries(t *testing.T) {
 			t.Fatal(status, policy)
 		}
 	}
-	r := Result{Reason: "original"}
-	if r.WithReason("changed").Reason != "changed" || r.Reason != "original" {
-		t.Fatal("reason mutation")
-	}
 }
 
 func TestDefinitionAndAssertionCanonicalBytes(t *testing.T) {

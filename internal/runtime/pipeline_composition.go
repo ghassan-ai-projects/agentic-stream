@@ -91,11 +91,21 @@ func composeCognition(cfg PipelineConfig) (*episodes.Assembler, *episodes.Runner
 }
 
 func composePolicy(cfg PipelineConfig) (*policy.Service, error) {
-	service, err := policy.New(policy.Config{PolicyVersion: cfg.Spec.Digest, IDGenerator: cfg.IDGenerator, OwnerEpoch: cfg.OwnerEpoch, RuntimeOwner: policyOwnershipCheck(cfg), DecisionEpoch: policyEpochCheck(cfg), Interlock: interlock.DurableReader{}, Calibration: &qualification.CalibrationStore{DB: cfg.DB}})
+	service, err := policy.New(policy.Config{PolicyVersion: cfg.Spec.Digest, IDGenerator: cfg.IDGenerator, OwnerEpoch: cfg.OwnerEpoch, RuntimeOwner: policyOwnershipCheck(cfg), DecisionEpoch: policyEpochCheck(cfg), Interlock: interlock.DurableReader{}, Calibration: policyCalibrationCheck(cfg)})
 	if err != nil {
 		return nil, fmt.Errorf("compose policy: %w", err)
 	}
 	return service, nil
+}
+
+func policyCalibrationCheck(cfg PipelineConfig) policy.CalibrationCheck {
+	calibration := &qualification.CalibrationStore{DB: cfg.DB}
+	return func(ctx context.Context, tx *sql.Tx, situationType, executorVersion string) error {
+		if err := calibration.AssertCalibration(ctx, tx, qualification.CalibrationArtifact{Domain: situationType, ModelRevision: executorVersion}); err != nil {
+			return fmt.Errorf("check policy calibration: %w", err)
+		}
+		return nil
+	}
 }
 
 func policyOwnershipCheck(cfg PipelineConfig) func(context.Context, *sql.Tx, string) error {

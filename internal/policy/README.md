@@ -37,14 +37,15 @@ flowchart TD
   then re-runs evaluation before commanding.
 - `NextPendingIntent(ctx, db, tenant)` selects the oldest pending intent.
 - Policy definition/digest and approval signing-byte functions are pure exports
-  needed by replay, artifacts and human approval clients.
+  used by replay and artifacts, or retained for the required human approval contract.
 
 Existing unowned simulation/test composition supplies explicit checks. Real
 runtime composition binds `RuntimeOwner.Assert` and
 `EpochControl.AssertDecisionTx` when those controls are configured. Policy
 always invokes its supplied checks. A callback's actual authority is supplied
 by composition; constructor validation cannot verify what a callback does.
-Optional calibration is a permission source: absent or failed calibration sends
+Calibration is supplied as a narrow transaction-scoped check; runtime composition
+adapts the qualification store. Optional calibration is a permission source: absent or failed calibration sends
 R2 intents to human approval. It does not enable automatic consequential work.
 
 ## Preserved sequences
@@ -74,6 +75,12 @@ Store retains read-only joins across accepted decision, episode, Situation,
 principal and command handoff records. Moving those projections to owner ports
 would be a separate multi-module change. Mutable internal document maps and
 opaque effector parameters remain current data-encapsulation limits.
+
+Production reachability analysis identifies 33 functions in the human approval
+resolution/signing path that are exercised only by tests. `ResolveApproval` and
+`ApprovalAssertionSigningBytes` have no production caller. The required workflow
+is retained; connecting a production approval entrypoint remains unfinished
+integration work. No other policy functions are unreachable in that analysis.
 
 ## Package documentation
 

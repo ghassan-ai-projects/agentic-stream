@@ -64,3 +64,10 @@ now live at the policy package root; this dated folder retains work records.
 Full uncached race verification passes. `policy.go` contains only the service
 type and two delegation methods; configuration/validation is in `config.go`.
 Documentation, focused tests and lint autofix pass after the final file moves.
+
+P4: replace the concrete calibration store dependency with a transaction-scoped
+function port, adapting qualification at runtime composition. Remove unused
+`Result.WithReason` and its implementation-only test. Move facade delegation
+tests into `policy_test.go` and pure export tests into `api_test.go`. Production
+and test-inclusive deadcode analyses distinguish the unwired approval workflow
+from removable helpers; retain the required approval contract.

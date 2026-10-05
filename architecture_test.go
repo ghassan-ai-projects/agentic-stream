@@ -57,8 +57,8 @@ var forbiddenImports = map[string][]string{
 // follow the data flow in .agents/context/architecture.md and be added here in
 // the same change.
 var allowedImports = map[string][]string{
-	"internal/policy/internal/store":     {"internal/approvalledger", "internal/contractsv1", "internal/interlock", "internal/notify", "internal/policy/internal/domain", "internal/qualification"},
-	"internal/policy/internal/app":       {"internal/control", "internal/ids", "internal/interlock", "internal/policy/internal/domain", "internal/policy/internal/store", "internal/qualification"},
+	"internal/policy/internal/store":     {"internal/approvalledger", "internal/contractsv1", "internal/interlock", "internal/notify", "internal/policy/internal/domain"},
+	"internal/policy/internal/app":       {"internal/control", "internal/ids", "internal/interlock", "internal/policy/internal/domain", "internal/policy/internal/store"},
 	"cmd/agentic-stream":                 {"internal/actionport", "internal/actions", "internal/api", "internal/authority", "internal/contractsv1", "internal/control", "internal/device", "internal/evidence", "internal/ids", "internal/replay", "internal/runartifact", "internal/runtime", "internal/spec", "internal/storage", "internal/telemetry"},
 	"internal/actionport":                {},
 	"internal/actions":                   {"internal/actionport", "internal/authority", "internal/canonicaljson", "internal/clock", "internal/contractsv1", "internal/control", "internal/ids", "internal/interlock", "internal/notify", "internal/storage", "internal/telemetry"},
@@ -98,7 +98,7 @@ var allowedImports = map[string][]string{
 	"internal/notifycontract":            {"internal/contractsv1"},
 	"internal/operators":                 {"internal/contractsv1", "internal/duration", "internal/eventschema", "internal/ids", "internal/spec"},
 	"internal/policy/internal/domain":    {"internal/canonicaljson", "internal/contractsv1"},
-	"internal/policy":                    {"internal/ids", "internal/interlock", "internal/policy/internal/app", "internal/policy/internal/domain", "internal/policy/internal/store", "internal/qualification"},
+	"internal/policy":                    {"internal/ids", "internal/interlock", "internal/policy/internal/app", "internal/policy/internal/domain", "internal/policy/internal/store"},
 	"internal/qualification":             {"internal/storage"},
 	"internal/replay":                    {"internal/canonicaljson", "internal/clock", "internal/contractsv1", "internal/decisions", "internal/engine", "internal/episodes", "internal/eventlog", "internal/ids", "internal/ingress", "internal/policy", "internal/qualification", "internal/spec", "internal/storage"},
 	"internal/runartifact":               {"internal/canonicaljson", "internal/policy", "internal/soak", "internal/storage"},

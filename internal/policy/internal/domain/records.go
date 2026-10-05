@@ -10,12 +10,6 @@ type Result struct {
 	ApprovalID string
 }
 
-// WithReason returns a copy with Reason set (used by calibrated automation).
-func (r Result) WithReason(reason string) Result {
-	r.Reason = reason
-	return r
-}
-
 // ApprovalAssertion is the signed, single-use approval binding. The runtime
 // reconstructs the canonical bytes from durable rows before verifying it.
 type ApprovalAssertion struct {

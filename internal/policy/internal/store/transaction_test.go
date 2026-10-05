@@ -7,7 +7,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 	"testing"
 	"time"
 )
@@ -88,12 +87,12 @@ func TestJoinedTransactionPersistsOnlyOnCallerCommit(t *testing.T) {
 		if err := tx.AssertInterlock(ctx, interlock.DurableReader{}, row.TenantID, "motor", "R1"); err != nil {
 			return err
 		}
-		if err := tx.AssertCalibration(ctx, func(_ context.Context, got *sql.Tx, _ qualification.CalibrationArtifact) error {
+		if err := tx.AssertCalibration(ctx, func(_ context.Context, got *sql.Tx, _, _ string) error {
 			if got != original {
 				t.Fatal("calibration transaction changed")
 			}
 			return nil
-		}, qualification.CalibrationArtifact{}); err != nil {
+		}, row.SituationType, row.ExecutorVersion); err != nil {
 			return err
 		}
 		return rollback

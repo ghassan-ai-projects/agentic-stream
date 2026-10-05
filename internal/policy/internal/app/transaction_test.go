@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"testing"
@@ -77,6 +78,42 @@ func TestEpochFailureCannotPrepareCommand(t *testing.T) {
 				return err
 			}); err != nil {
 				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestCalibrationPortUsesOriginalTransactionAndExactBinding(t *testing.T) {
+	for _, checkErr := range []error{nil, errors.New("missing artifact")} {
+		t.Run(fmt.Sprint(checkErr), func(t *testing.T) {
+			db, id := openPolicyFixture(t, "R2", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
+			defer func() { _ = db.Close() }()
+			var original *sql.Tx
+			calls := 0
+			service := newTestService(t, func(c *policy.Config) {
+				c.Calibration = func(_ context.Context, tx *sql.Tx, situationType, executorVersion string) error {
+					if tx != original || situationType != "test" || executorVersion != "v1" {
+						t.Fatal("calibration binding changed", situationType, executorVersion)
+					}
+					calls++
+					return checkErr
+				}
+			})
+			if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
+				original = tx
+				r, err := service.EvaluateIntent(t.Context(), tx, policy.EvaluationRequest{IntentID: id, Now: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)})
+				if checkErr == nil && (r.Result != "approved" || r.Reason != "calibrated_automation" || r.CommandID == "") {
+					t.Fatal(r)
+				}
+				if checkErr != nil && (r.Result != "approval_required" || r.CommandID != "") {
+					t.Fatal(r)
+				}
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if calls != 1 {
+				t.Fatal("calibration calls", calls)
 			}
 		})
 	}

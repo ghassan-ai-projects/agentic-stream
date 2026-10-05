@@ -1,6 +1,6 @@
 # Policy validation and review
 
-Scope: P0–P3 on `general-improvements-1`; authority/device patterns compared
+Scope: P0–P4 on `general-improvements-1`; authority/device patterns compared
 against their code and records. Unrelated architecture audit files are excluded.
 
 ## Completed round evidence
@@ -28,8 +28,10 @@ lint policy are unchanged.
 - Final focused policy/root tests and documentation checks pass after moving
   package guides, renaming/strengthening calibration tests and splitting facade
   configuration. Lint autofix reports zero issues.
-- `git diff --check` passes. `deadcode` and `govulncheck` are unavailable and were
-  explicitly skipped by the Makefile; those optional checks are unverified.
+- `git diff --check` passes. At P3, `deadcode` and `govulncheck` were unavailable and explicitly skipped
+  by the Makefile. P4 builds deadcode from cached x/tools v0.51.0 without changing
+  repository dependencies and runs it explicitly; vulnerability scanning remains
+  unverified.
 
 | Policy layer | Statement coverage from CI |
 | --- | --- |
@@ -85,3 +87,35 @@ Maintainability assessments; these are not deployment qualification scores.
    stronger immutable values would improve encapsulation.
 3. Production approval entrypoints and deployment qualification remain separate
    work. This refactor retains the existing approval contract and integrations.
+
+## P4 boundary and reachability review
+
+Calibration now accepts a function over the original transaction, Situation type
+and executor version. The qualification store is adapted only at runtime
+composition. Regression tests pin transaction identity, exact binding, approved
+command creation and human-approval fallback. SQL transaction parameters remain
+intentional because publication and audit must commit atomically with the caller.
+
+`policy_test.go` explicitly covers both service delegates and ownership-error
+propagation; `api_test.go` covers pure definition exports. Existing app integration
+tests exercise successful signed resolution through the public facade. Tests
+are organized by responsibility rather than requiring one test file per source.
+
+Reachability commands, run on the current host/default build configuration:
+
+```sh
+deadcode -filter='/internal/policy($|/)' ./...
+deadcode -test -filter='/internal/policy($|/)' ./...
+```
+
+The production run reports 33 functions, all in the approval resolution/signing
+path. The test-inclusive run reports zero policy functions. Public
+`Service.ResolveApproval` and `ApprovalAssertionSigningBytes` have no production
+caller. These results identify an unwired required workflow, not authority to
+delete the approval contract and its safety regressions. The genuinely unused
+`Result.WithReason` helper and its implementation-only test are removed.
+
+P4 validation: full `make ci-check` passes with pinned protoc 35.1. Explicit
+lint autofix reports zero issues. Uncached race tests pass for policy, runtime
+and root architecture gates; coverage is facade 100%, app 69.5%, domain 94.3%
+and store 82.4%. `git diff --check` passes.

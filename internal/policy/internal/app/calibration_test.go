@@ -46,7 +46,7 @@ func TestConsequentialIntentWithoutCalibrationRequiresApproval(t *testing.T) {
 	db, intentID, store := calibrationFixture(t, "R2", "test", "sha256:1111", "")
 	defer func() { _ = db.Close() }()
 
-	gateway := newTestService(t, func(c *policy.Config) { c.Calibration = store })
+	gateway := newTestService(t, func(c *policy.Config) { c.Calibration = calibrationCheck(store) })
 	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
@@ -68,7 +68,7 @@ func TestConsequentialIntentWithExactCalibrationIsApproved(t *testing.T) {
 	db, intentID, store := calibrationFixture(t, "R2", "test", "sha256:1111", "sha256:1111")
 	defer func() { _ = db.Close() }()
 
-	gateway := newTestService(t, func(c *policy.Config) { c.Calibration = store })
+	gateway := newTestService(t, func(c *policy.Config) { c.Calibration = calibrationCheck(store) })
 	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
@@ -98,7 +98,7 @@ func TestConsequentialIntentWithMismatchedCalibrationRequiresApproval(t *testing
 		t.Fatal(err)
 	}
 
-	gateway := newTestService(t, func(c *policy.Config) { c.Calibration = store })
+	gateway := newTestService(t, func(c *policy.Config) { c.Calibration = calibrationCheck(store) })
 	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
@@ -119,7 +119,7 @@ func TestLowRiskIntentDoesNotRequireCalibration(t *testing.T) {
 	db, intentID, store := calibrationFixture(t, "R1", "test", "sha256:1111", "")
 	defer func() { _ = db.Close() }()
 
-	gateway := newTestService(t, func(c *policy.Config) { c.Calibration = store })
+	gateway := newTestService(t, func(c *policy.Config) { c.Calibration = calibrationCheck(store) })
 	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
@@ -131,5 +131,11 @@ func TestLowRiskIntentDoesNotRequireCalibration(t *testing.T) {
 	if result.Result != "approved" || result.CommandID == "" {
 		t.Fatalf("R1 without calibration must be approved, got %s/%s",
 			result.Result, result.Reason)
+	}
+}
+
+func calibrationCheck(store *qualification.CalibrationStore) policy.CalibrationCheck {
+	return func(ctx context.Context, tx *sql.Tx, situationType, executorVersion string) error {
+		return store.AssertCalibration(ctx, tx, qualification.CalibrationArtifact{Domain: situationType, ModelRevision: executorVersion})
 	}
 }

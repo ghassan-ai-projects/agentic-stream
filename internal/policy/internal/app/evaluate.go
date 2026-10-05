@@ -8,7 +8,6 @@ import (
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 )
 
 // EvaluateIntent runs ordered governance gates on the caller transaction.
@@ -88,9 +87,7 @@ func (g *Service) routeIntent(ctx context.Context, tx *store.Tx, e evaluation) (
 
 func (g *Service) routeConsequentialIntent(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
 	if g.calibration != nil && e.row.SituationType != "" && e.row.ExecutorVersion != "" {
-		if err := tx.AssertCalibration(ctx, g.calibration, qualification.CalibrationArtifact{
-			Domain: e.row.SituationType, ModelRevision: e.row.ExecutorVersion,
-		}); err == nil {
+		if err := tx.AssertCalibration(ctx, g.calibration, e.row.SituationType, e.row.ExecutorVersion); err == nil {
 			e.result.Reason = "calibrated_automation"
 			return g.approveAutomatic(ctx, tx, e)
 		}

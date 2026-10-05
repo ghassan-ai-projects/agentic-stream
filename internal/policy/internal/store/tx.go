@@ -7,14 +7,13 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 )
 
 // Fence runs a lower control check on the original transaction.
 type Fence func(context.Context, *sql.Tx, string) error
 
 // CalibrationCheck verifies the exact executor calibration artifact.
-type CalibrationCheck func(context.Context, *sql.Tx, qualification.CalibrationArtifact) error
+type CalibrationCheck func(context.Context, *sql.Tx, string, string) error
 
 // Tx is a caller-owned transaction; it never begins or commits a transaction.
 type Tx struct{ tx *sql.Tx }
@@ -36,6 +35,6 @@ func (tx *Tx) AssertInterlock(ctx context.Context, reader interlock.Reader, tena
 }
 
 // AssertCalibration asks the configured permission source on the same transaction.
-func (tx *Tx) AssertCalibration(ctx context.Context, check CalibrationCheck, artifact qualification.CalibrationArtifact) error {
-	return check(ctx, tx.tx, artifact)
+func (tx *Tx) AssertCalibration(ctx context.Context, check CalibrationCheck, situationType, executorVersion string) error {
+	return check(ctx, tx.tx, situationType, executorVersion)
 }
