@@ -7,7 +7,7 @@ private app use cases through an opaque store unit of work.
 | Round | Scope | Required proof | Status |
 | --- | --- | --- | --- |
 | C0 | Survey and corrected plan, preserve existing worktree | Read production surface, references, ownership and tests | Complete |
-| C1 | Opaque store transaction; pure domain contracts/rules; private application use cases | Episode tests, transaction rollback tests, root architecture gates, lint | Pending |
+| C1 | Opaque store transaction; pure domain contracts/rules; private application use cases | Episode tests, transaction rollback tests, root architecture gates, lint | Complete |
 | C2 | Validated public service; caller updates; fixture executor extraction; code audit | Facade construction/delegation tests, adapter/conformance/replay/runtime tests, production and test reachability | Pending |
 | C3 | Enforcement, injection proofs, guide/map updates, final review | Full CI targets, uncached race suite, coverage, diff check | Pending |
 
@@ -46,3 +46,9 @@ migration; the current change does not grant foreign mutation authority.
 
 The first focused baseline attempt could not access part of the host Go build
 cache. Retry with a task-local cache; do not count the failed attempt as proof.
+
+C1: focused episode and root architecture tests pass; whole-tree lint reports
+zero issues. Domain coverage 76.3%, app 70.4%, store 76.3%. The temporary
+public facade remains below the coverage floor (56.2%); C2 replaces and tests
+that surface. Store regressions prove joined checks and lifecycle handoffs
+roll back in the original transaction, and read/write errors retain cancellation.

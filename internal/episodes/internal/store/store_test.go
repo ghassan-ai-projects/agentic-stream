@@ -99,7 +99,7 @@ func TestDispatchableEpisodeReadsOldestAdmittedEpisode(t *testing.T) {
 	var episode store.DispatchedEpisode
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		episode, err = store.DispatchableEpisode(ctx, tx, "default", false)
+		episode, err = store.DispatchableEpisode(ctx, store.Join(tx), "default", false)
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestDispatchableEpisodeReadsOldestAdmittedEpisode(t *testing.T) {
 		t.Fatalf("dispatched episode = %+v", episode)
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		_, err := store.DispatchableEpisode(ctx, tx, "missing-tenant", false)
+		_, err := store.DispatchableEpisode(ctx, store.Join(tx), "missing-tenant", false)
 		return err
 	}); err == nil {
 		t.Fatal("unknown tenant produced an episode")
@@ -126,24 +126,24 @@ func TestLifecycleReadsAndAttemptCounts(t *testing.T) {
 	var lifecycle string
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		lifecycle, err = store.EpisodeLifecycle(ctx, tx, episodeID)
+		lifecycle, err = store.EpisodeLifecycle(ctx, store.Join(tx), episodeID)
 		return err
 	}); err != nil || lifecycle != "admitted" {
 		t.Fatalf("lifecycle = %q err = %v", lifecycle, err)
 	}
-	if store.EpisodeSupersededNow(ctx, db, episodeID) {
+	if store.New(db).EpisodeSupersededNow(ctx, episodeID) {
 		t.Fatal("admitted episode reported superseded")
 	}
 	var failed int
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		failed, err = store.CountFailedAttempts(ctx, tx, episodeID)
+		failed, err = store.CountFailedAttempts(ctx, store.Join(tx), episodeID)
 		return err
 	}); err != nil || failed != 0 {
 		t.Fatalf("failed attempts = %d err = %v", failed, err)
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		_, err := store.AttemptStatus(ctx, tx, episodeledger.Identity{EpisodeID: episodeID, AttemptID: "att-missing", Fence: 1})
+		_, err := store.AttemptStatus(ctx, store.Join(tx), episodeledger.Identity{EpisodeID: episodeID, AttemptID: "att-missing", Fence: 1})
 		return err
 	}); err == nil {
 		t.Fatal("missing attempt status read succeeded")
@@ -159,25 +159,25 @@ func TestSchedulerEvaluationAndSnapshotLoads(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		item, err := store.LoadSchedulerItem(ctx, tx, itemID)
+		item, err := store.LoadSchedulerItem(ctx, store.Join(tx), itemID)
 		if err != nil {
 			return err
 		}
 		if item.TenantID != "default" || item.SituationID == "" {
 			t.Fatalf("scheduler item = %+v", item)
 		}
-		if _, err := store.LoadEvaluation(ctx, tx, item.TriggerID); err != nil {
+		if _, err := store.LoadEvaluation(ctx, store.Join(tx), item.TriggerID); err != nil {
 			return err
 		}
-		_, _, _, _, err = store.LoadSnapshot(ctx, tx, item.SituationID, item.SituationVersion)
+		_, _, _, _, err = store.LoadSnapshot(ctx, store.Join(tx), item.SituationID, item.SituationVersion)
 		if err != nil {
 			return err
 		}
-		live, err := store.LiveSituationVersion(ctx, tx, item.TenantID, item.SituationID)
+		live, err := store.LiveSituationVersion(ctx, store.Join(tx), item.TenantID, item.SituationID)
 		if err != nil || live < 1 {
 			t.Fatalf("live version = %d err = %v", live, err)
 		}
-		_, err = store.LoadSchedulerItem(ctx, tx, "missing-item")
+		_, err = store.LoadSchedulerItem(ctx, store.Join(tx), "missing-item")
 		return err
 	}); err == nil {
 		t.Fatal("missing scheduler item accepted")
@@ -202,17 +202,17 @@ func TestDecisionAndIntentInsertsAnnotateAndAccept(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err := store.InsertDecision(ctx, tx, store.DecisionInsert{
+		if err := store.InsertDecision(ctx, store.Join(tx), store.DecisionInsert{
 			DecisionID: "dec-1", EpisodeID: episodeID, AttemptID: identity.AttemptID, Fence: identity.Fence,
 			SituationID: situationID, SituationVersion: situationVersion, RawJSON: []byte(`{"decision_id":"dec-1"}`),
 			Digest: bytesOf(1), ValidationStatus: "proposed", ValidationJSON: []byte(`{}`), Now: "2026-01-01T00:00:00Z",
 		}); err != nil {
 			return err
 		}
-		if err := store.AnnotateRejectedDecision(ctx, tx, "dec-1", "schema_invalid"); err != nil {
+		if err := store.AnnotateRejectedDecision(ctx, store.Join(tx), "dec-1", "schema_invalid"); err != nil {
 			return err
 		}
-		return store.AcceptDecision(ctx, tx, "dec-1")
+		return store.AcceptDecision(ctx, store.Join(tx), "dec-1")
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -225,7 +225,7 @@ func TestDecisionAndIntentInsertsAnnotateAndAccept(t *testing.T) {
 		t.Fatalf("decision = (%q, %q)", status, reason)
 	}
 	err = db.WithTx(ctx, func(tx *sql.Tx) error {
-		return store.InsertValidatedIntent(ctx, tx, store.ValidatedIntentInsert{
+		return store.InsertValidatedIntent(ctx, store.Join(tx), store.ValidatedIntentInsert{
 			Intent:     intentFixture(),
 			DecisionID: "dec-1", TenantID: "default", SituationID: situationID, SituationVersion: situationVersion,
 			Now: "2026-01-01T00:00:00Z",

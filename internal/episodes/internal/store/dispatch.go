@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 )
 
@@ -33,9 +32,9 @@ type DispatchedEpisode struct {
 // episodes without an attempt under a killed policy epoch, so the runner can
 // release their reservation and quarantine them. It returns sql.ErrNoRows
 // when nothing is dispatchable.
-func DispatchableEpisode(ctx context.Context, tx *sql.Tx, tenantID string, killedSuperseded bool) (DispatchedEpisode, error) {
+func DispatchableEpisode(ctx context.Context, tx *Tx, tenantID string, killedSuperseded bool) (DispatchedEpisode, error) {
 	var episode DispatchedEpisode
-	err := tx.QueryRowContext(ctx, dispatchableEpisodeQuery(killedSuperseded), tenantID).Scan(
+	err := tx.tx.QueryRowContext(ctx, dispatchableEpisodeQuery(killedSuperseded), tenantID).Scan(
 		&episode.EpisodeID, &episode.SchedulerItemID, &episode.TenantID, &episode.SituationID, &episode.SituationVersion,
 		&episode.ExecutorName, &episode.ExecutorVersion, &episode.ModelPolicy, &episode.PromptVersion,
 		&episode.SnapshotSHA256, &episode.PromptSHA256, &episode.ObjectiveSHA256, &episode.AdmissionKey, &episode.RequestJSON,

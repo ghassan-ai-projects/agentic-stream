@@ -6,14 +6,10 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 )
 
-// RiskRank orders intent risk classes for shadow scoring and catalog
-// admission.
-var RiskRank = map[string]int{"R0": 0, "R1": 1, "R2": 2, "R3": 3, "R4": 4}
-
 // ShadowScore is the would-be policy outcome of a shadow decision: the
 // highest-risk intent's result under the live policy.
 func ShadowScore(validated *decisions.Result) (qualification.ShadowScore, string) {
-	highest := HighestRiskIntent(validated)
+	highest := highestRiskIntent(validated)
 	switch highest.RiskClass {
 	case "R0", "R1":
 		return qualification.ShadowWouldApprove, "would_approve_" + highest.RiskClass
@@ -24,11 +20,11 @@ func ShadowScore(validated *decisions.Result) (qualification.ShadowScore, string
 	}
 }
 
-// HighestRiskIntent returns the validated decision's highest-risk intent.
-func HighestRiskIntent(validated *decisions.Result) decisions.Intent {
+// highestRiskIntent returns the validated decision's highest-risk intent.
+func highestRiskIntent(validated *decisions.Result) decisions.Intent {
 	highest := validated.Intents[0]
 	for _, intent := range validated.Intents[1:] {
-		if RiskRank[intent.RiskClass] > RiskRank[highest.RiskClass] {
+		if riskRank(intent.RiskClass) > riskRank(highest.RiskClass) {
 			highest = intent
 		}
 	}
@@ -56,5 +52,20 @@ func NewShadowDecision(identity ShadowDecisionIdentity, attempt episodeledger.Id
 		ShadowScore: score, ScoreReason: reason,
 		TenantID: identity.TenantID, SituationID: identity.SituationID, SituationVersion: identity.SituationVersion,
 		PolicyEpoch: identity.PolicyEpoch,
+	}
+}
+
+func riskRank(risk string) int {
+	switch risk {
+	case "R1":
+		return 1
+	case "R2":
+		return 2
+	case "R3":
+		return 3
+	case "R4":
+		return 4
+	default:
+		return 0
 	}
 }

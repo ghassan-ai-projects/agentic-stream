@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 )
 
@@ -36,10 +37,10 @@ const queryReconsiderationSQL = `
 // LoadReconsideration loads the invalidated command, its decision, and its
 // outcome for a reconsider item, preferring the exact scheduler item, then
 // the trigger, then the superseded version and command.
-func LoadReconsideration(ctx context.Context, tx *sql.Tx, item SchedulerItem, supersededVersion int, invalidatedCommandID string) (ReconsiderationRow, error) {
+func LoadReconsideration(ctx context.Context, tx *Tx, item SchedulerItem, supersededVersion int, invalidatedCommandID string) (ReconsiderationRow, error) {
 	var row ReconsiderationRow
 	var reconciliationStatus sql.NullString
-	query := tx.QueryRowContext(ctx, queryReconsiderationSQL, item.TenantID, item.SituationID, item.SituationVersion,
+	query := tx.tx.QueryRowContext(ctx, queryReconsiderationSQL, item.TenantID, item.SituationID, item.SituationVersion,
 		item.SchedulerItemID, item.TriggerID, supersededVersion, invalidatedCommandID, item.SchedulerItemID, item.TriggerID)
 	if err := query.Scan(
 		&row.ReconsiderationID, &row.SituationID, &row.SupersededVersion, &row.CorrectionVersion,

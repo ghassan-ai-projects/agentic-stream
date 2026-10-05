@@ -14,7 +14,7 @@ import (
 // packageLayers are reviewed dependency levels, not automatically computed
 // depths. Adding an acyclic edge still fails if it crosses upward or sideways.
 var packageLayers = map[string]int{
-	"internal/runtime/internal/domain": 1, "internal/runtime/internal/transport": 7, "internal/runtime/internal/store": 8, "internal/runtime/internal/app": 9, "internal/runtime/internal/composition": 10,
+	"internal/runtime/internal/domain": 1, "internal/runtime/internal/transport": 8, "internal/runtime/internal/store": 8, "internal/runtime/internal/app": 9, "internal/runtime/internal/composition": 10,
 	"internal/actionport": 0, "internal/canonicaljson": 0, "internal/clock": 0, "internal/costcontrol": 0,
 	"internal/duration": 0, "internal/eventschema": 0, "internal/ids": 0, "internal/interlock": 0, "internal/telemetry": 0,
 	"migrations": 0, "proto/agenticstream/runtime/v1": 0,
@@ -23,8 +23,8 @@ var packageLayers = map[string]int{
 	"internal/authority/internal/store": 2, "internal/notifycontract": 2, "internal/qualification": 2, "internal/scheduleledger": 2, "internal/spec": 2, "internal/worker": 2,
 	"internal/authority/internal/app": 3, "internal/control": 3, "internal/device/internal/transport": 4, "internal/eventlog/internal/domain": 1, "internal/eventlog/internal/store": 2, "internal/eventlog/internal/app": 3, "internal/ingress": 5, "internal/notify": 3, "internal/operators": 3,
 	"internal/api": 4, "internal/approvalledger": 4, "internal/watch": 4, "internal/authority": 4, "internal/situations": 4,
-	"internal/actions": 5, "internal/cognition": 5, "internal/device/internal/app": 5, "internal/episodes": 5, "internal/episodes/internal/domain": 3, "internal/episodes/internal/store": 4, "internal/policy/internal/store": 5, "internal/policy/internal/app": 6, "internal/policy": 7, "internal/soak": 5,
-	"internal/admission": 6, "internal/device": 6, "internal/engine": 6, "internal/executor/conformance": 6, "internal/executor/native": 6, "internal/executor/remote": 6, "internal/runartifact": 8,
+	"internal/actions": 5, "internal/cognition": 5, "internal/device/internal/app": 5, "internal/episodes": 6, "internal/episodes/internal/domain": 3, "internal/episodes/internal/store": 4, "internal/episodes/internal/app": 5, "internal/policy/internal/store": 5, "internal/policy/internal/app": 6, "internal/policy": 7, "internal/soak": 5,
+	"internal/admission": 7, "internal/device": 6, "internal/engine": 6, "internal/executor/conformance": 7, "internal/executor/native": 7, "internal/executor/remote": 7, "internal/runartifact": 8,
 	"internal/replay": 10, "internal/replay/internal/domain": 3, "internal/replay/internal/transport": 7, "internal/replay/internal/store": 8, "internal/replay/internal/app": 9, "internal/runtime": 11, "cmd/agentic-stream": 12,
 }
 

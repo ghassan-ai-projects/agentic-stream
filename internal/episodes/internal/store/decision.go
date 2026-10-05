@@ -43,12 +43,12 @@ type DecisionInsert struct {
 
 // InsertDecision allocates the episode's next decision ordinal and inserts
 // the decision record inside the caller's transaction.
-func InsertDecision(ctx context.Context, tx *sql.Tx, row DecisionInsert) error {
+func InsertDecision(ctx context.Context, tx *Tx, row DecisionInsert) error {
 	var ordinal int
-	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(ordinal), 0) + 1 FROM decisions WHERE episode_id = ?", row.EpisodeID).Scan(&ordinal); err != nil {
+	if err := tx.tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(ordinal), 0) + 1 FROM decisions WHERE episode_id = ?", row.EpisodeID).Scan(&ordinal); err != nil {
 		return fmt.Errorf("allocate decision ordinal: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, insertDecisionSQL,
+	if _, err := tx.tx.ExecContext(ctx, insertDecisionSQL,
 		row.DecisionID, row.EpisodeID, row.AttemptID, row.Fence, ordinal,
 		row.SituationID, row.SituationVersion,
 		row.RawJSON, row.Digest, row.ValidationStatus, row.ValidationJSON,
@@ -71,12 +71,12 @@ type ValidatedIntentInsert struct {
 
 // InsertValidatedIntent inserts one validated intent (policy_status pending,
 // never governed) inside the caller's transaction.
-func InsertValidatedIntent(ctx context.Context, tx *sql.Tx, row ValidatedIntentInsert) error {
+func InsertValidatedIntent(ctx context.Context, tx *Tx, row ValidatedIntentInsert) error {
 	digest, err := canonicaljson.DecodeDigest(row.Intent.Digest)
 	if err != nil {
 		return fmt.Errorf("decode intent digest: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, insertValidatedIntentSQL,
+	if _, err := tx.tx.ExecContext(ctx, insertValidatedIntentSQL,
 		row.Intent.ID, row.DecisionID, row.TenantID, row.SituationID, row.SituationVersion,
 		row.Intent.Type, row.Intent.RiskClass, row.Intent.CanonicalJSON, digest,
 		row.Intent.ExpiresAt.UTC().Format(time.RFC3339Nano), row.Intent.RateLimitPerHour,
