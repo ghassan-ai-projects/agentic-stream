@@ -47,27 +47,6 @@ func TestOrdinaryCommandAdmissionKeepsSafetyPrecedence(t *testing.T) {
 	}
 }
 
-func TestDeviceDecodeRejectsTrailingDataBeforeMessageSchema(t *testing.T) {
-	t.Parallel()
-	_, err := DecodeDeviceRecord([]byte("{\"message_type\":\"unsupported\"}\n{}\n"))
-	if err == nil || err.Error() != "device frame contains trailing JSON" {
-		t.Fatalf("decode error=%v", err)
-	}
-}
-
-func TestWriteCleanupPreservesOriginalFailureWithoutResetError(t *testing.T) {
-	t.Parallel()
-	cause := errors.New("original write failure")
-	if got := resetWriteDeadline(cause, func() error { return nil }, 1); got != cause { //nolint:errorlint // Exact identity proves cleanup does not introduce a wrapper when no reset fails.
-		t.Fatalf("cleanup replaced original failure: %v", got)
-	}
-	reset := errors.New("deadline reset failure")
-	got := resetWriteDeadline(cause, func() error { return reset }, 1)
-	if !errors.Is(got, cause) || !errors.Is(got, reset) || !transportMayHaveSent(got) {
-		t.Fatalf("cleanup lost cause or sent classification: %v", got)
-	}
-}
-
 func admissionCatalog(t *testing.T) *CapabilityCatalog {
 	t.Helper()
 	data, err := os.ReadFile("../contractsv1/conformance/v1/thermal-capability-catalog.json")

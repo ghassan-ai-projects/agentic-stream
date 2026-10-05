@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/transport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
@@ -71,7 +74,7 @@ func (s *DeviceSession) exchangeOrdinaryCommand(ctx context.Context, command map
 }
 
 func prepareCommand(command map[string]any) ([]byte, string, string, error) {
-	frame, err := EncodeDeviceRecord(command)
+	frame, err := wire.Encode(command)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("encode device command: %w", err)
 	}
@@ -136,7 +139,7 @@ func (s *DeviceSession) deliverClaimedCommand(ctx context.Context, command map[s
 		return &DeviceExchange{Receipt: receipt, Result: cloneDocument(s.receipts[idempotencyKey].result)}, ok, nil
 	}
 	if err := s.transport.Send(ctx, frame); err != nil {
-		sent := transportMayHaveSent(err)
+		sent := transport.MayHaveSent(err)
 		if sent {
 			return s.unknownDeviceOutcome(ctx, nil, errors.Join(err, fmt.Errorf("command send may have crossed the gateway")))
 		}
@@ -161,7 +164,7 @@ func (s *DeviceSession) receiveCommandOutcome(ctx context.Context, command map[s
 	if err != nil {
 		return s.unknownDeviceOutcome(ctx, nil, err)
 	}
-	receipt, err := DecodeDeviceRecord(reply)
+	receipt, err := wire.Decode(reply)
 	if err != nil {
 		if s.telemetry != nil {
 			s.telemetry.ObserveDeviceFrameError()
@@ -193,7 +196,7 @@ func (s *DeviceSession) receiveDeviceResult(ctx context.Context, command, receip
 	if err != nil {
 		return nil, fmt.Errorf("receive device result: %w", err)
 	}
-	result, err := DecodeDeviceRecord(resultFrame)
+	result, err := wire.Decode(resultFrame)
 	if err != nil {
 		if s.telemetry != nil {
 			s.telemetry.ObserveDeviceFrameError()

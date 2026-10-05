@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 
@@ -43,7 +45,7 @@ func TestSerialEffectorReturnsPendingReceiptAfterAuthorization(t *testing.T) {
 	if transport.sendCount() != 1 {
 		t.Fatalf("transport sends=%d, want 1", transport.sendCount())
 	}
-	sent, err := device.DecodeDeviceRecord(transport.sentFrames[0])
+	sent, err := wire.Decode(transport.sentFrames[0])
 	if err != nil || sent["target"] != "led-01" || sent["operation"] != "set_led" {
 		t.Fatalf("sent device command=%v err=%v", sent, err)
 	}
@@ -61,7 +63,7 @@ func TestSerialEffectorVerificationRejectsMismatchedIndicatorValue(t *testing.T)
 	state["current_output"] = map[string]any{
 		"target": "led-01", "operation": "set_led", "value": float64(500), "energized": true,
 	}
-	frame, err := device.EncodeDeviceRecord(state)
+	frame, err := wire.Encode(state)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +99,7 @@ func TestSerialEffectorVerificationRejectsMismatchedFanDuty(t *testing.T) {
 	state["current_output"] = map[string]any{
 		"target": "fan-01", "operation": "set_pwm_lease", "value": float64(300), "energized": true,
 	}
-	frame, err := device.EncodeDeviceRecord(state)
+	frame, err := wire.Encode(state)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +133,7 @@ func TestSerialEffectorVerificationDoesNotAcceptBootRollover(t *testing.T) {
 	state["current_output"] = map[string]any{
 		"target": "led-01", "operation": "set_led", "value": float64(500), "energized": true,
 	}
-	frame, err := device.EncodeDeviceRecord(state)
+	frame, err := wire.Encode(state)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +195,7 @@ func TestSerialEffectorPreservesReceiptWhenResultIsUntrustworthy(t *testing.T) {
 	session, transport, catalog, control := openThermalSessionWithControl(t)
 	defer func() { _ = session.Close() }()
 	receipt := acceptedReceipt("cmd-result-bad")
-	receiptFrame, err := device.EncodeDeviceRecord(receipt)
+	receiptFrame, err := wire.Encode(receipt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +278,7 @@ func TestSerialEffectorPreservesSafeStopReceiptWhenResultIsUntrustworthy(t *test
 	session, transport, catalog, control := openThermalSessionWithControl(t)
 	defer func() { _ = session.Close() }()
 	receipt := acceptedReceipt("safe-stop/fan-01")
-	receiptFrame, err := device.EncodeDeviceRecord(receipt)
+	receiptFrame, err := wire.Encode(receipt)
 	if err != nil {
 		t.Fatal(err)
 	}

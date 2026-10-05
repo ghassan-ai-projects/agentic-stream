@@ -1,4 +1,4 @@
-package device_test
+package transport_test
 
 import (
 	"bufio"
@@ -15,7 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/transport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
@@ -95,7 +96,7 @@ func TestUDSTransportSpeaksTheContract(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	transport, err := device.DialUDSTransport(ctx, socket)
+	transport, err := transport.Dial(ctx, socket)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,13 +107,13 @@ func TestUDSTransportSpeaksTheContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("receive opening state: %v", err)
 	}
-	state, err := device.DecodeDeviceRecord(stateFrame)
+	state, err := wire.Decode(stateFrame)
 	if err != nil || state["message_type"] != "state" {
 		t.Fatalf("opening frame must be a valid state: %v (%v)", state, err)
 	}
 
 	// Send a command, read its receipt.
-	command, err := device.EncodeDeviceRecord(contractsv1.ConformanceValidFrame("command"))
+	command, err := wire.Encode(contractsv1.ConformanceValidFrame("command"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +124,7 @@ func TestUDSTransportSpeaksTheContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("receive receipt: %v", err)
 	}
-	receipt, err := device.DecodeDeviceRecord(receiptFrame)
+	receipt, err := wire.Decode(receiptFrame)
 	if err != nil || receipt["message_type"] != "receipt" {
 		t.Fatalf("expected a valid receipt, got %v (%v)", receipt, err)
 	}
@@ -131,7 +132,7 @@ func TestUDSTransportSpeaksTheContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("receive result: %v", err)
 	}
-	result, err := device.DecodeDeviceRecord(resultFrame)
+	result, err := wire.Decode(resultFrame)
 	if err != nil || result["message_type"] != "result" {
 		t.Fatalf("expected a valid result, got %v (%v)", result, err)
 	}
@@ -141,7 +142,7 @@ func TestUDSTransportSpeaksTheContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query state: %v", err)
 	}
-	refreshed, err := device.DecodeDeviceRecord(queried)
+	refreshed, err := wire.Decode(queried)
 	if err != nil || refreshed["message_type"] != "state" {
 		t.Fatalf("query_state must return a valid state, got %v (%v)", refreshed, err)
 	}
@@ -151,7 +152,7 @@ func TestUDSTransportRejectsOversizedFrameBeforeDecoding(t *testing.T) {
 	client, server := net.Pipe()
 	defer func() { _ = client.Close() }()
 	defer func() { _ = server.Close() }()
-	transport := device.NewUDSTransportForTest(client)
+	transport := transport.NewForTest(client)
 
 	writeDone := make(chan struct{})
 	go func() {
@@ -177,7 +178,7 @@ func TestUDSTransportClosesAfterOversizedFrame(t *testing.T) {
 	client, server := net.Pipe()
 	defer func() { _ = client.Close() }()
 	defer func() { _ = server.Close() }()
-	transport := device.NewUDSTransportForTest(client)
+	transport := transport.NewForTest(client)
 	writeDone := make(chan struct{})
 	go func() {
 		_, _ = server.Write(bytes.Repeat([]byte{'x'}, 64*1024))
@@ -205,7 +206,7 @@ func TestUDSTransportOperationsHonorCancellation(t *testing.T) {
 		defer func() { _ = client.Close() }()
 		defer func() { _ = server.Close() }()
 		conn := newNotifyingConn(client)
-		transport := device.NewUDSTransportForTest(conn)
+		transport := transport.NewForTest(conn)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		errCh := make(chan error, 1)
@@ -230,7 +231,7 @@ func TestUDSTransportOperationsHonorCancellation(t *testing.T) {
 		defer func() { _ = client.Close() }()
 		defer func() { _ = server.Close() }()
 		conn := newNotifyingConn(client)
-		transport := device.NewUDSTransportForTest(conn)
+		transport := transport.NewForTest(conn)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		errCh := make(chan error, 1)
@@ -262,7 +263,7 @@ func TestUDSTransportSendValidatesOneBoundedFrame(t *testing.T) {
 			client, server := net.Pipe()
 			defer func() { _ = client.Close() }()
 			defer func() { _ = server.Close() }()
-			transport := device.NewUDSTransportForTest(client)
+			transport := transport.NewForTest(client)
 			if err := transport.Send(context.Background(), frame); err == nil {
 				t.Fatal("invalid outgoing frame was accepted")
 			}
@@ -275,7 +276,7 @@ func TestUDSTransportSendWaitHonorsCancellation(t *testing.T) {
 	defer func() { _ = client.Close() }()
 	defer func() { _ = server.Close() }()
 	conn := newNotifyingConn(client)
-	transport := device.NewUDSTransportForTest(conn)
+	transport := transport.NewForTest(conn)
 	firstErr := make(chan error, 1)
 	firstFrame := append(bytes.Repeat([]byte{'x'}, 64*1024-1), '\n')
 	go func() { firstErr <- transport.Send(context.Background(), firstFrame) }()

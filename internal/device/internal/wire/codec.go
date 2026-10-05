@@ -1,4 +1,4 @@
-package device
+package wire
 
 import (
 	"bytes"
@@ -10,50 +10,51 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
-const maxDeviceFrameBytes = 64 * 1024
+// MaxFrameBytes is the largest device record, newline included.
+const MaxFrameBytes = 64 * 1024
 
-// EncodeDeviceRecord validates one supported device record and emits exactly
+// Encode validates one supported device record and emits exactly
 // one canonical NDJSON line. Raw framing remains the gateway's responsibility.
-func EncodeDeviceRecord(document map[string]any) ([]byte, error) {
+func Encode(document map[string]any) ([]byte, error) {
 	if document == nil {
 		return nil, fmt.Errorf("device record is required")
 	}
-	schema, err := deviceSchema(document)
+	schema, err := schemaFor(document)
 	if err != nil {
 		return nil, err
 	}
 	if err := contractsv1.Validate(schema, document); err != nil {
 		return nil, fmt.Errorf("validate device record: %w", err)
 	}
-	return encodeDeviceFrame(document)
+	return encodeFrame(document)
 }
 
-func encodeDeviceFrame(document map[string]any) ([]byte, error) {
+func encodeFrame(document map[string]any) ([]byte, error) {
 	encoded, err := canonicaljson.Marshal(document)
 	if err != nil {
 		return nil, fmt.Errorf("encode device record: %w", err)
 	}
 	encoded = append(encoded, '\n')
-	if len(encoded) > maxDeviceFrameBytes {
-		return nil, fmt.Errorf("device record exceeds %d bytes", maxDeviceFrameBytes)
+	if len(encoded) > MaxFrameBytes {
+		return nil, fmt.Errorf("device record exceeds %d bytes", MaxFrameBytes)
 	}
 	return encoded, nil
 }
 
-// DecodeDeviceRecord decodes one supported NDJSON device record. It rejects
+// Decode decodes one supported NDJSON device record. It rejects
 // trailing records, unknown message types, oversized input, and schema-invalid
 // content before returning a document to the session.
-func DecodeDeviceRecord(frame []byte) (map[string]any, error) {
+func Decode(frame []byte) (map[string]any, error) {
 	if len(frame) == 0 {
 		return nil, fmt.Errorf("device frame is empty")
 	}
-	if len(frame) > maxDeviceFrameBytes {
-		return nil, fmt.Errorf("device frame exceeds %d bytes", maxDeviceFrameBytes)
+	if len(frame) > MaxFrameBytes {
+		return nil, fmt.Errorf("device frame exceeds %d bytes", MaxFrameBytes)
 	}
-	return decodeDeviceFrame(frame)
+	return decodeFrame(frame)
 }
 
-func decodeDeviceFrame(frame []byte) (map[string]any, error) {
+func decodeFrame(frame []byte) (map[string]any, error) {
 	decoder := json.NewDecoder(bytes.NewReader(frame))
 	var document map[string]any
 	if err := decoder.Decode(&document); err != nil {
@@ -73,7 +74,7 @@ func validateDecodedFrame(decoder *json.Decoder, document map[string]any) (map[s
 		}
 		return nil, fmt.Errorf("decode trailing device frame data: %w", err)
 	}
-	schema, err := deviceSchema(document)
+	schema, err := schemaFor(document)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +84,7 @@ func validateDecodedFrame(decoder *json.Decoder, document map[string]any) (map[s
 	return document, nil
 }
 
-func deviceSchema(document map[string]any) (contractsv1.SchemaName, error) {
+func schemaFor(document map[string]any) (contractsv1.SchemaName, error) {
 	messageType, ok := document["message_type"].(string)
 	if !ok || messageType == "" {
 		return "", fmt.Errorf("device message_type is required")

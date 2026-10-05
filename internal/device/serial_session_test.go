@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
@@ -103,7 +105,7 @@ func openThermalSessionWithControl(t *testing.T, replies ...map[string]any) (*de
 	}
 	state := goldenDeviceState()
 	state["capability_digest"] = catalogDigest
-	stateFrame, err := device.EncodeDeviceRecord(state)
+	stateFrame, err := wire.Encode(state)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +183,7 @@ func TestOpenDeviceSessionRequiresHandshakeAgreement(t *testing.T) {
 			state := goldenDeviceState()
 			state["capability_digest"] = digest
 			tc.mutate(state)
-			badFrame, encodeErr := device.EncodeDeviceRecord(state)
+			badFrame, encodeErr := wire.Encode(state)
 			if encodeErr != nil {
 				t.Fatal(encodeErr)
 			}
@@ -203,7 +205,7 @@ func TestOpenDeviceSessionRequiresHandshakeAgreement(t *testing.T) {
 	t.Run("wrong protocol", func(t *testing.T) {
 		state := goldenDeviceState()
 		state["capability_digest"] = digest
-		frame, encodeErr := device.EncodeDeviceRecord(state)
+		frame, encodeErr := wire.Encode(state)
 		if encodeErr != nil {
 			t.Fatal(encodeErr)
 		}
@@ -308,7 +310,7 @@ func TestDeviceSessionInvalidatesAfterFailedRefresh(t *testing.T) {
 	defer func() { _ = session.Close() }()
 	state := goldenDeviceState()
 	state["capability_digest"] = "sha256:" + strings.Repeat("e", 64)
-	frame, err := device.EncodeDeviceRecord(state)
+	frame, err := wire.Encode(state)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +337,7 @@ func TestDeviceSessionRefreshFencesBootAndReceipts(t *testing.T) {
 	}
 	state["capability_digest"] = digest
 	state["boot_id"] = "boot-B"
-	frame, err := device.EncodeDeviceRecord(state)
+	frame, err := wire.Encode(state)
 	if err != nil {
 		t.Fatal(err)
 	}

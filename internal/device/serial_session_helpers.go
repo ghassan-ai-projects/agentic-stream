@@ -3,10 +3,11 @@ package device
 import (
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
 )
 
 func validateDeviceState(frame []byte, catalog *CapabilityCatalog, catalogDigest string, allowedCapabilityDigests, allowedFirmwareDigests []string) (map[string]any, error) {
-	state, err := DecodeDeviceRecord(frame)
+	state, err := wire.Decode(frame)
 	if err != nil {
 		return nil, err
 	}

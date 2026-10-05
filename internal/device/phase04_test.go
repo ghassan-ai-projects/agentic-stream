@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
@@ -275,13 +277,13 @@ func mustDeviceFrames(t *testing.T, documents ...map[string]any) [][]byte {
 	t.Helper()
 	frames := make([][]byte, 0, len(documents)*2)
 	for _, document := range documents {
-		frame, err := device.EncodeDeviceRecord(document)
+		frame, err := wire.Encode(document)
 		if err != nil {
 			t.Fatal(err)
 		}
 		frames = append(frames, frame)
 		if document["message_type"] == "receipt" {
-			resultFrame, resultErr := device.EncodeDeviceRecord(terminalResult(document))
+			resultFrame, resultErr := wire.Encode(terminalResult(document))
 			if resultErr != nil {
 				t.Fatal(resultErr)
 			}

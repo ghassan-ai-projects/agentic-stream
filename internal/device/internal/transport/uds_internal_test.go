@@ -1,4 +1,4 @@
-package device
+package transport
 
 import (
 	"context"
@@ -14,13 +14,13 @@ func TestUDSTransportMarksPartialWriteAsPossiblySent(t *testing.T) {
 	defer func() { _ = client.Close() }()
 	defer func() { _ = server.Close() }()
 	cause := errors.New("write interrupted")
-	transport := newUDSTransport(&partialWriteConn{Conn: client, cause: cause})
+	transport := newUDS(&partialWriteConn{Conn: client, cause: cause})
 
 	err := transport.Send(context.Background(), []byte("{}\n"))
 	if !errors.Is(err, cause) {
 		t.Fatalf("send error = %v, want %v", err, cause)
 	}
-	if !transportMayHaveSent(err) {
+	if !MayHaveSent(err) {
 		t.Fatal("partial write was not classified as possibly sent")
 	}
 }
@@ -58,7 +58,7 @@ func TestUDSQueryStateDoesNotHoldReadLockWhileWaitingToWrite(t *testing.T) {
 	client, server := net.Pipe()
 	defer func() { _ = client.Close() }()
 	defer func() { _ = server.Close() }()
-	transport := newUDSTransport(client)
+	transport := newUDS(client)
 	<-transport.writeGate
 	transport.readMu.Lock()
 
@@ -117,4 +117,17 @@ func (c *partialWriteConn) Write(p []byte) (int, error) {
 		return 0, c.cause
 	}
 	return 1, c.cause
+}
+
+func TestWriteCleanupPreservesOriginalFailureWithoutResetError(t *testing.T) {
+	t.Parallel()
+	cause := errors.New("original write failure")
+	if got := resetWriteDeadline(cause, func() error { return nil }, 1); got != cause { //nolint:errorlint // Exact identity proves cleanup does not introduce a wrapper when no reset fails.
+		t.Fatalf("cleanup replaced original failure: %v", got)
+	}
+	reset := errors.New("deadline reset failure")
+	got := resetWriteDeadline(cause, func() error { return reset }, 1)
+	if !errors.Is(got, cause) || !errors.Is(got, reset) || !MayHaveSent(got) {
+		t.Fatalf("cleanup lost cause or sent classification: %v", got)
+	}
 }

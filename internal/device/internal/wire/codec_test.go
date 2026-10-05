@@ -1,11 +1,11 @@
-package device_test
+package wire_test
 
 import (
 	"bytes"
 	"strings"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
@@ -69,14 +69,14 @@ func TestDeviceCodecAcceptsCanonicalRecords(t *testing.T) {
 		name, document := name, document
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			frame, err := device.EncodeDeviceRecord(document)
+			frame, err := wire.Encode(document)
 			if err != nil {
 				t.Fatalf("encode: %v", err)
 			}
 			if !bytes.HasSuffix(frame, []byte{'\n'}) || bytes.Count(frame, []byte{'\n'}) != 1 {
 				t.Fatalf("frame is not one NDJSON line: %q", frame)
 			}
-			decoded, err := device.DecodeDeviceRecord(frame)
+			decoded, err := wire.Decode(frame)
 			if err != nil {
 				t.Fatalf("decode: %v", err)
 			}
@@ -89,7 +89,7 @@ func TestDeviceCodecAcceptsCanonicalRecords(t *testing.T) {
 
 func TestDeviceCodecFailsClosed(t *testing.T) {
 	t.Parallel()
-	valid, err := device.EncodeDeviceRecord(goldenDeviceCommand())
+	valid, err := wire.Encode(goldenDeviceCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,16 +105,16 @@ func TestDeviceCodecFailsClosed(t *testing.T) {
 		name, frame := name, frame
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := device.DecodeDeviceRecord(frame); err == nil {
+			if _, err := wire.Decode(frame); err == nil {
 				t.Fatalf("invalid %s frame was accepted", name)
 			}
 		})
 	}
 	oversized := append(append([]byte(nil), valid...), bytes.Repeat([]byte{' '}, 64*1024)...)
-	if _, err := device.DecodeDeviceRecord(oversized); err == nil {
+	if _, err := wire.Decode(oversized); err == nil {
 		t.Fatal("oversized frame was accepted")
 	}
-	if _, err := device.EncodeDeviceRecord(map[string]any{
+	if _, err := wire.Encode(map[string]any{
 		"message_type": "command", "protocol_version": 1, "command_id": "cmd-1", "idempotency_key": idemKey(),
 		"target": "led-01", "operation": "set_led", "parameters": map[string]any{"padding": strings.Repeat("x", 70*1024)},
 		"expected_boot_id": "boot-A", "not_before_mono_us": 0, "expires_after_ms": 1000, "policy_digest": policyKey(),
@@ -123,15 +123,15 @@ func TestDeviceCodecFailsClosed(t *testing.T) {
 	}
 }
 
-func FuzzDecodeDeviceRecord(f *testing.F) {
-	valid, err := device.EncodeDeviceRecord(goldenDeviceCommand())
+func FuzzDecode(f *testing.F) {
+	valid, err := wire.Encode(goldenDeviceCommand())
 	if err != nil {
 		f.Fatal(err)
 	}
 	f.Add(valid)
 	f.Add([]byte("{\"message_type\":\"command\",\"protocol_version\":999}"))
 	f.Fuzz(func(t *testing.T, frame []byte) {
-		document, err := device.DecodeDeviceRecord(frame)
+		document, err := wire.Decode(frame)
 		if err != nil {
 			return
 		}
@@ -153,5 +153,17 @@ func schemaForMessageType(document map[string]any) contractsv1.SchemaName {
 		return contractsv1.SchemaDeviceResult
 	default:
 		return contractsv1.SchemaDeviceState
+	}
+}
+
+func idemKey() string { return "sha256:" + strings.Repeat("a", 64) }
+
+func policyKey() string { return "sha256:" + strings.Repeat("b", 64) }
+
+func TestDeviceDecodeRejectsTrailingDataBeforeMessageSchema(t *testing.T) {
+	t.Parallel()
+	_, err := wire.Decode([]byte("{\"message_type\":\"unsupported\"}\n{}\n"))
+	if err == nil || err.Error() != "device frame contains trailing JSON" {
+		t.Fatalf("decode error=%v", err)
 	}
 }

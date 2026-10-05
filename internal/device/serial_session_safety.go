@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/transport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
@@ -55,12 +58,12 @@ func (s *DeviceSession) deliverSafeStop(ctx context.Context, target string) (Dev
 }
 
 func (s *DeviceSession) sendSafeStop(ctx context.Context, command map[string]any, claim deviceauthority.TargetClaim, requestedErr error) (DeviceExchange, bool, error) {
-	frame, err := EncodeDeviceRecord(command)
+	frame, err := wire.Encode(command)
 	if err != nil {
 		return s.failedSafeStop(ctx, claim, requestedErr, fmt.Errorf("encode safe stop: %w", err), "safe-stop preparation failed", false)
 	}
 	if err := s.transport.Send(ctx, frame); err != nil {
-		return s.failedSafeStop(ctx, claim, requestedErr, fmt.Errorf("send safe stop: %w", err), "safe-stop send failed", transportMayHaveSent(err))
+		return s.failedSafeStop(ctx, claim, requestedErr, fmt.Errorf("send safe stop: %w", err), "safe-stop send failed", transport.MayHaveSent(err))
 	}
 	return s.completeSafeStopExchange(ctx, command, claim, requestedErr)
 }
@@ -97,7 +100,7 @@ func (s *DeviceSession) completeSafeStopExchange(ctx context.Context, command ma
 	if err != nil {
 		return s.failedSafeStopReceive(ctx, claim, requestedErr, err)
 	}
-	receipt, err := DecodeDeviceRecord(reply)
+	receipt, err := wire.Decode(reply)
 	if err != nil || !domain.ReceiptMatches(receipt, command, s.bootID) {
 		return s.failedSafeStopReceipt(ctx, claim, requestedErr, nil, err)
 	}

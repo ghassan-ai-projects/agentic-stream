@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/transport"
 )
 
 type partialSafeStopTransport struct {
@@ -14,7 +16,7 @@ type partialSafeStopTransport struct {
 
 func (t *partialSafeStopTransport) Send(context.Context, []byte) error {
 	t.sends++
-	return &possiblySentError{err: errors.New("partial safe-stop write")}
+	return &transport.PartialSendError{Err: errors.New("partial safe-stop write")}
 }
 
 func (t *partialSafeStopTransport) Receive(context.Context) ([]byte, error) {

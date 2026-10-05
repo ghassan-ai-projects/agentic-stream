@@ -1,4 +1,4 @@
-package device
+package transport
 
 import (
 	"bufio"
@@ -7,15 +7,17 @@ import (
 	"fmt"
 	"net"
 	"sync"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
 )
 
-// UDSTransport is a DeviceTransport over a Unix-domain-socket gateway link. The
+// UDS is a gateway link over a Unix domain socket. The
 // device end (the Streams Simulator emulator, `streamsim device serve`) speaks
 // the same newline-delimited device wire records. Agentic Stream opens no serial
 // port: this is the typed gateway link for the emulator effect profile, and raw
 // serial framing on hardware remains the edge gateway's job behind the same
 // interface.
-type UDSTransport struct {
+type UDS struct {
 	writeGate chan struct{}
 	readMu    sync.Mutex
 	stateMu   sync.RWMutex
@@ -31,34 +33,34 @@ var errDeviceFrameTooLarge = errors.New("device frame exceeds maximum size")
 // transport control, not one of the four device wire records.
 const queryStateControl = "{\"message_type\":\"query_state\"}\n"
 
-// DialUDSTransport connects to a device gateway listening on the Unix socket at
+// Dial connects to a device gateway listening on the Unix socket at
 // path.
-func DialUDSTransport(ctx context.Context, path string) (*UDSTransport, error) {
+func Dial(ctx context.Context, path string) (*UDS, error) {
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "unix", path)
 	if err != nil {
 		return nil, fmt.Errorf("dial device gateway %s: %w", path, err)
 	}
-	return newUDSTransport(conn), nil
+	return newUDS(conn), nil
 }
 
-func newUDSTransport(conn net.Conn) *UDSTransport {
+func newUDS(conn net.Conn) *UDS {
 	writeGate := make(chan struct{}, 1)
 	writeGate <- struct{}{}
-	return &UDSTransport{writeGate: writeGate, conn: conn, reader: bufio.NewReaderSize(conn, maxDeviceFrameBytes)}
+	return &UDS{writeGate: writeGate, conn: conn, reader: bufio.NewReaderSize(conn, wire.MaxFrameBytes)}
 }
 
 // Send writes one already-encoded device frame (it includes its trailing
 // newline). Callers serialize each send/receive pair; the write gate also keeps
 // a QueryState control write from interleaving with another write.
-func (t *UDSTransport) Send(ctx context.Context, frame []byte) (err error) {
+func (t *UDS) Send(ctx context.Context, frame []byte) (err error) {
 	if err := validateOutgoingFrame(frame); err != nil {
 		return fmt.Errorf("validate outgoing device frame: %w", err)
 	}
 	return t.writeFrame(ctx, frame)
 }
 
-func (t *UDSTransport) writeFrame(ctx context.Context, frame []byte) (err error) {
+func (t *UDS) writeFrame(ctx context.Context, frame []byte) (err error) {
 	if err := t.ensureOpen(); err != nil {
 		return err
 	}
@@ -69,7 +71,7 @@ func (t *UDSTransport) writeFrame(ctx context.Context, frame []byte) (err error)
 	return t.writeFrameWithWriteGate(ctx, frame)
 }
 
-func (t *UDSTransport) writeFrameWithWriteGate(ctx context.Context, frame []byte) (err error) {
+func (t *UDS) writeFrameWithWriteGate(ctx context.Context, frame []byte) (err error) {
 	cleanup, err := t.prepareWrite(ctx)
 	if err != nil {
 		return fmt.Errorf("prepare device frame send: %w", err)
@@ -84,7 +86,7 @@ func classifyDeviceWrite(ctx context.Context, written int, writeErr error) error
 	if writeErr != nil {
 		writeErr = fmt.Errorf("send device frame: %w", contextError(ctx, writeErr))
 		if written > 0 {
-			return &possiblySentError{err: writeErr}
+			return &PartialSendError{Err: writeErr}
 		}
 		return writeErr
 	}
@@ -95,7 +97,7 @@ func resetWriteDeadline(err error, cleanup func() error, written int) error {
 	if cleanupErr := cleanup(); cleanupErr != nil {
 		resetErr := fmt.Errorf("reset device frame deadline: %w", cleanupErr)
 		if written > 0 {
-			return errors.Join(err, &possiblySentError{err: resetErr})
+			return errors.Join(err, &PartialSendError{Err: resetErr})
 		}
 		return errors.Join(err, resetErr)
 	}
@@ -103,7 +105,7 @@ func resetWriteDeadline(err error, cleanup func() error, written int) error {
 }
 
 // Receive reads one newline-delimited device frame.
-func (t *UDSTransport) Receive(ctx context.Context) ([]byte, error) {
+func (t *UDS) Receive(ctx context.Context) ([]byte, error) {
 	if err := t.ensureOpen(); err != nil {
 		return nil, err
 	}
@@ -114,7 +116,7 @@ func (t *UDSTransport) Receive(ctx context.Context) ([]byte, error) {
 
 // QueryState requests a fresh device.state and reads the reply. Callers must
 // serialize this request/response with any Send/Receive pair.
-func (t *UDSTransport) QueryState(ctx context.Context) ([]byte, error) {
+func (t *UDS) QueryState(ctx context.Context) ([]byte, error) {
 	if err := t.ensureOpen(); err != nil {
 		return nil, err
 	}
@@ -133,7 +135,7 @@ func (t *UDSTransport) QueryState(ctx context.Context) ([]byte, error) {
 	return t.readFrame(ctx)
 }
 
-func (t *UDSTransport) readFrame(ctx context.Context) (line []byte, err error) {
+func (t *UDS) readFrame(ctx context.Context) (line []byte, err error) {
 	if err := t.ensureOpen(); err != nil {
 		return nil, err
 	}
@@ -145,7 +147,7 @@ func (t *UDSTransport) readFrame(ctx context.Context) (line []byte, err error) {
 	return t.receiveBoundedFrame(ctx)
 }
 
-func (t *UDSTransport) receiveBoundedFrame(ctx context.Context) ([]byte, error) {
+func (t *UDS) receiveBoundedFrame(ctx context.Context) ([]byte, error) {
 	line, err := readBoundedFrame(t.reader)
 	if err != nil {
 		if errors.Is(err, errDeviceFrameTooLarge) {
@@ -156,15 +158,15 @@ func (t *UDSTransport) receiveBoundedFrame(ctx context.Context) ([]byte, error) 
 	return line, nil
 }
 
-func (t *UDSTransport) prepareRead(ctx context.Context) (func() error, error) {
+func (t *UDS) prepareRead(ctx context.Context) (func() error, error) {
 	return prepareDeadline(ctx, t.conn.SetReadDeadline, t.Close)
 }
 
-func (t *UDSTransport) prepareWrite(ctx context.Context) (func() error, error) {
+func (t *UDS) prepareWrite(ctx context.Context) (func() error, error) {
 	return prepareDeadline(ctx, t.conn.SetWriteDeadline, t.Close)
 }
 
-func (t *UDSTransport) ensureOpen() error {
+func (t *UDS) ensureOpen() error {
 	if t == nil {
 		return fmt.Errorf("device transport is not configured")
 	}
@@ -176,7 +178,7 @@ func (t *UDSTransport) ensureOpen() error {
 	return nil
 }
 
-func (t *UDSTransport) acquireWrite(ctx context.Context) error {
+func (t *UDS) acquireWrite(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return fmt.Errorf("wait for device write slot: %w", ctx.Err())
@@ -185,12 +187,12 @@ func (t *UDSTransport) acquireWrite(ctx context.Context) error {
 	}
 }
 
-func (t *UDSTransport) releaseWrite() {
+func (t *UDS) releaseWrite() {
 	t.writeGate <- struct{}{}
 }
 
 // Close closes the gateway link.
-func (t *UDSTransport) Close() error {
+func (t *UDS) Close() error {
 	if t == nil {
 		return nil
 	}

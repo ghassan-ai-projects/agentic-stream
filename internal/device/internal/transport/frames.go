@@ -1,4 +1,4 @@
-package device
+package transport
 
 import (
 	"bufio"
@@ -9,9 +9,13 @@ import (
 	"io"
 	"net"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
 )
 
-type possiblySentError struct{ err error }
+// PartialSendError reports a send that failed after some bytes may have
+// reached the gateway, so the command's outcome is unknown rather than failed.
+type PartialSendError struct{ Err error }
 
 func prepareDeadline(ctx context.Context, setDeadline func(time.Time) error, closeConnection func() error) (func() error, error) {
 	if err := ctx.Err(); err != nil {
@@ -76,14 +80,16 @@ func writeAll(conn net.Conn, frame []byte) (written int, err error) {
 	return written, nil
 }
 
-func (e *possiblySentError) Error() string {
-	return "device frame may have been sent: " + e.err.Error()
+func (e *PartialSendError) Error() string {
+	return "device frame may have been sent: " + e.Err.Error()
 }
 
-func (e *possiblySentError) Unwrap() error { return e.err }
+func (e *PartialSendError) Unwrap() error { return e.Err }
 
-func transportMayHaveSent(err error) bool {
-	var sentErr *possiblySentError
+// MayHaveSent reports whether a failed send may have put bytes on the link,
+// which makes the command's outcome unknown rather than failed.
+func MayHaveSent(err error) bool {
+	var sentErr *PartialSendError
 	return errors.As(err, &sentErr)
 }
 
@@ -91,8 +97,8 @@ func validateOutgoingFrame(frame []byte) error {
 	if len(frame) == 0 {
 		return fmt.Errorf("device frame is empty")
 	}
-	if len(frame) > maxDeviceFrameBytes {
-		return fmt.Errorf("device frame exceeds %d bytes", maxDeviceFrameBytes)
+	if len(frame) > wire.MaxFrameBytes {
+		return fmt.Errorf("device frame exceeds %d bytes", wire.MaxFrameBytes)
 	}
 	if frame[len(frame)-1] != '\n' || bytes.Count(frame, []byte{'\n'}) != 1 {
 		return fmt.Errorf("device frame must contain exactly one trailing newline")
@@ -102,11 +108,11 @@ func validateOutgoingFrame(frame []byte) error {
 
 func readBoundedFrame(reader *bufio.Reader) ([]byte, error) {
 	var frame bytes.Buffer
-	frame.Grow(maxDeviceFrameBytes)
+	frame.Grow(wire.MaxFrameBytes)
 	for {
 		part, err := reader.ReadSlice('\n')
-		if frame.Len()+len(part) > maxDeviceFrameBytes {
-			return nil, fmt.Errorf("device frame exceeds %d bytes: %w", maxDeviceFrameBytes, errDeviceFrameTooLarge)
+		if frame.Len()+len(part) > wire.MaxFrameBytes {
+			return nil, fmt.Errorf("device frame exceeds %d bytes: %w", wire.MaxFrameBytes, errDeviceFrameTooLarge)
 		}
 		_, _ = frame.Write(part)
 		if err == nil {

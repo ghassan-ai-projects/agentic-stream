@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 
@@ -48,7 +50,7 @@ func devicePeer(t *testing.T, conn net.Conn, capabilityDigest string) {
 			}
 			continue
 		}
-		command, err := device.DecodeDeviceRecord([]byte(line))
+		command, err := wire.Decode([]byte(line))
 		if err != nil {
 			return
 		}
