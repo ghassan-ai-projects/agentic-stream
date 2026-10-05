@@ -17,7 +17,7 @@ var packageLayers = map[string]int{
 	"internal/actionport": 0, "internal/canonicaljson": 0, "internal/clock": 0, "internal/costcontrol": 0,
 	"internal/duration": 0, "internal/eventschema": 0, "internal/ids": 0, "internal/interlock": 0, "internal/telemetry": 0,
 	"migrations": 0, "proto/agenticstream/runtime/v1": 0,
-	"internal/contractsv1": 1, "internal/storage": 1,
+	"internal/authority/internal/domain": 1, "internal/contractsv1": 1, "internal/storage": 1,
 	"internal/decisions": 2, "internal/episodeledger": 2, "internal/eventlog": 2, "internal/evidence": 4,
 	"internal/notifycontract": 2, "internal/qualification": 2, "internal/scheduleledger": 2, "internal/spec": 2, "internal/worker": 2,
 	"internal/control": 3, "internal/ingress": 3, "internal/notify": 3, "internal/operators": 3,
