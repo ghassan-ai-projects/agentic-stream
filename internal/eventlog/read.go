@@ -1,10 +1,11 @@
 package eventlog
 
 import (
-	"cmp"
 	"context"
 	"database/sql"
 	"fmt"
+
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
 )
 
 // ReadRequest selects a range of records from the log.
@@ -44,7 +45,7 @@ func recordQuery(req ReadRequest) (string, []any) {
 		query += " AND partition_id = ?"
 		args = append(args, req.PartitionID)
 	}
-	return query + " ORDER BY position LIMIT ?", append(args, cmp.Or(max(req.Limit, 0), 1000))
+	return query + " ORDER BY position LIMIT ?", append(args, domain.ReadLimit(req.Limit))
 }
 
 const selectRecordsSQL = `

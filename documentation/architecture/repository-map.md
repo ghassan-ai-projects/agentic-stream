@@ -9,6 +9,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/spec/` | SituationSpec schema, compiler, CEL, deployment persistence |
 | `internal/ingress/` | normalized/simulator JSONL files and live normalized JSONL Unix socket |
 | `internal/eventlog/` | append-only events, validation, dedup, quarantine, gaps |
+| `internal/eventlog/internal/domain/` | pure evidence admission, quarantine identity and decode rules (reference module layer) |
 | `internal/engine/` | deterministic partitioned stream processing |
 | `internal/operators/` | aggregates, slopes, missing-heartbeat and related features |
 | `internal/situations/` | Situation state and immutable versions |

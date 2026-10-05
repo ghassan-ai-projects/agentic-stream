@@ -1,34 +1,44 @@
 package eventlog
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
 )
 
 // Quarantine records an invalid event durably without placing it in the
 // executable event log. Repeated delivery increments a bounded retry count.
 func (l *EventLog) Quarantine(ctx context.Context, tenantID string, env map[string]any, reason, now string) error {
-	if tenantID == "" || reason == "" || now == "" {
-		return fmt.Errorf("tenant, reason, and time are required")
+	if err := domain.ValidQuarantine(tenantID, reason, now); err != nil {
+		return err
 	}
 	record, err := newQuarantineRecord(tenantID, env, reason, now)
 	if err != nil {
 		return err
 	}
+	return l.deliverQuarantine(ctx, record)
+}
+
+func newQuarantineRecord(tenantID string, env map[string]any, reason, now string) (quarantineRecord, error) {
+	payload, err := domain.NewQuarantinePayload(env)
+	if err != nil {
+		return quarantineRecord{}, err
+	}
+	return quarantineRecord{payload: payload, tenantID: tenantID, reason: reason, now: now}, nil
+}
+
+func (l *EventLog) deliverQuarantine(ctx context.Context, record quarantineRecord) error {
 	conflict, err := l.persistQuarantine(ctx, record)
 	if err != nil {
 		return err
 	}
 	if conflict {
-		return fmt.Errorf("event id %s has conflicting quarantined payload", record.eventID)
+		return fmt.Errorf("event id %s has conflicting quarantined payload", record.payload.EventID)
 	}
 	return nil
 }
@@ -45,37 +55,13 @@ func (l *EventLog) persistQuarantine(ctx context.Context, record quarantineRecor
 	return conflict, nil
 }
 
-// newQuarantineRecord identifies an invalid event by its declared id, or by a
-// payload digest when it has none, and derives a stable quarantine id.
-func newQuarantineRecord(tenantID string, env map[string]any, reason, now string) (quarantineRecord, error) {
-	payload, err := json.Marshal(env)
-	if err != nil {
-		return quarantineRecord{}, fmt.Errorf("marshal quarantined payload: %w", err)
-	}
-	digest := sha256.Sum256(payload)
-	record := quarantineRecord{tenantID: tenantID, reason: reason, payload: payload, digest: digest[:], now: now}
-	record.readHeader(env)
-	if record.eventID == "" {
-		record.eventID = "payload:" + hex.EncodeToString(digest[:12])
-	}
-	idDigest := sha256.Sum256(append([]byte(record.eventID+"|"), payload...))
-	record.quarantineID = "q_" + hex.EncodeToString(idDigest[:12])
-	return record, nil
-}
-
-// readHeader copies whatever identity fields the invalid envelope carries.
-func (q *quarantineRecord) readHeader(env map[string]any) {
-	q.eventID, _ = env["id"].(string)
-	q.eventType, _ = env["type"].(string)
-	q.schemaVersion, _ = env["schema_version"].(string)
-	q.source, _ = env["source"].(string)
-}
-
-// quarantineRecord is one invalid event as it is quarantined.
+// quarantineRecord is one invalid event as it is quarantined: its derived
+// payload identity plus the tenant, reason and time of this delivery.
 type quarantineRecord struct {
-	quarantineID, tenantID, eventID, eventType, schemaVersion, source, reason string
-	payload, digest                                                           []byte
-	now                                                                       string
+	payload  domain.QuarantinePayload
+	tenantID string
+	reason   string
+	now      string
 }
 
 // persist inserts the record or counts a repeated delivery of the same
@@ -104,22 +90,22 @@ func (q quarantineRecord) persist(ctx context.Context, tx *sql.Tx) (bool, error)
 // with a different payload.
 func (q quarantineRecord) conflictsWithExisting(ctx context.Context, tx *sql.Tx) (bool, error) {
 	var existingDigest []byte
-	err := tx.QueryRowContext(ctx, "SELECT payload_sha256 FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", q.tenantID, q.eventID).Scan(&existingDigest)
+	err := tx.QueryRowContext(ctx, "SELECT payload_sha256 FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", q.tenantID, q.payload.EventID).Scan(&existingDigest)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, fmt.Errorf("load existing quarantine: %w", err)
 	}
-	return !bytes.Equal(existingDigest, q.digest), nil
+	return q.payload.ConflictingPayload(existingDigest), nil
 }
 
 // upsert inserts the record or counts a repeated delivery of the same
 // payload, returning the number of affected rows.
 func (q quarantineRecord) upsert(ctx context.Context, tx *sql.Tx) (int64, error) {
 	result, err := tx.ExecContext(ctx, upsertQuarantineSQL,
-		q.quarantineID, q.tenantID, q.eventID, q.eventType, q.schemaVersion, q.source,
-		q.reason, q.payload, q.digest, q.now, q.now)
+		q.payload.QuarantineID, q.tenantID, q.payload.EventID, q.payload.EventType, q.payload.SchemaVersion, q.payload.Source,
+		q.reason, q.payload.Payload, q.payload.Digest, q.now, q.now)
 	if err != nil {
 		return 0, fmt.Errorf("persist event quarantine: %w", err)
 	}
@@ -143,7 +129,7 @@ const upsertQuarantineSQL = `
 		WHERE event_quarantine.payload_sha256 = excluded.payload_sha256`
 
 func (q quarantineRecord) rejectConflict(ctx context.Context, tx *sql.Tx) error {
-	if _, err := tx.ExecContext(ctx, "UPDATE event_quarantine SET status = 'rejected', reason_code = 'event_id_hash_conflict', last_seen_at = ? WHERE tenant_id = ? AND event_id = ?", q.now, q.tenantID, q.eventID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE event_quarantine SET status = 'rejected', reason_code = 'event_id_hash_conflict', last_seen_at = ? WHERE tenant_id = ? AND event_id = ?", q.now, q.tenantID, q.payload.EventID); err != nil {
 		return fmt.Errorf("record quarantine hash conflict: %w", err)
 	}
 	return nil
@@ -152,13 +138,13 @@ func (q quarantineRecord) rejectConflict(ctx context.Context, tx *sql.Tx) error 
 // recordOverflow records an event gap once the record's retries are spent.
 func (q quarantineRecord) recordOverflow(ctx context.Context, tx *sql.Tx) error {
 	var status string
-	if err := tx.QueryRowContext(ctx, "SELECT status FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", q.tenantID, q.eventID).Scan(&status); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT status FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", q.tenantID, q.payload.EventID).Scan(&status); err != nil {
 		return fmt.Errorf("read quarantine status: %w", err)
 	}
 	if status != "rejected" {
 		return nil
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO event_gaps (gap_id, tenant_id, partition_id, from_position, to_position, reason_code, created_at) VALUES (?, ?, 0, 0, 0, 'quarantine_retry_exhausted', ?) ON CONFLICT(gap_id) DO NOTHING`, q.quarantineID+":gap", q.tenantID, q.now); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO event_gaps (gap_id, tenant_id, partition_id, from_position, to_position, reason_code, created_at) VALUES (?, ?, 0, 0, 0, 'quarantine_retry_exhausted', ?) ON CONFLICT(gap_id) DO NOTHING`, q.payload.OverflowGapID(), q.tenantID, q.now); err != nil {
 		return fmt.Errorf("record quarantine overflow gap: %w", err)
 	}
 	return nil
@@ -187,8 +173,8 @@ func (l *EventLog) QuarantineRaw(ctx context.Context, tenantID, eventID string, 
 
 // ReleaseQuarantine marks one record ready for an explicit re-drive.
 func (l *EventLog) ReleaseQuarantine(ctx context.Context, tenantID, eventID, now string) error {
-	if tenantID == "" || eventID == "" || now == "" {
-		return fmt.Errorf("tenant, event, and time are required")
+	if err := domain.ValidRelease(tenantID, eventID, now); err != nil {
+		return err
 	}
 	if err := l.db.WithTx(ctx, func(tx *sql.Tx) error {
 		return releaseQuarantined(ctx, tx, tenantID, eventID, now)
@@ -215,8 +201,8 @@ func releaseQuarantined(ctx context.Context, tx *sql.Tx, tenantID, eventID, now 
 
 // RedriveQuarantine validates and appends a released envelope atomically.
 func (l *EventLog) RedriveQuarantine(ctx context.Context, tenantID, eventID, now string) (LogPosition, error) {
-	if tenantID == "" || eventID == "" || now == "" {
-		return -1, fmt.Errorf("tenant, event, and time are required")
+	if err := domain.ValidRelease(tenantID, eventID, now); err != nil {
+		return -1, err
 	}
 	position := LogPosition(-1)
 	if err := l.db.WithTx(ctx, func(tx *sql.Tx) error {
@@ -274,8 +260,8 @@ func markRedriven(ctx context.Context, tx *sql.Tx, tenantID, eventID, now string
 // RecordGap records a durable discontinuity caused by bounded overflow or
 // explicit operator action. It never deletes the original evidence.
 func (l *EventLog) RecordGap(ctx context.Context, gapID, tenantID string, partitionID int, fromPosition, toPosition int64, reason, now string) error {
-	if gapID == "" || tenantID == "" || partitionID < 0 || fromPosition < 0 || toPosition < fromPosition || reason == "" || now == "" {
-		return fmt.Errorf("invalid event gap")
+	if err := domain.ValidGap(gapID, tenantID, partitionID, fromPosition, toPosition, reason, now); err != nil {
+		return err
 	}
 	if _, err := l.db.ExecContext(ctx, `INSERT INTO event_gaps (gap_id, tenant_id, partition_id, from_position, to_position, reason_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, gapID, tenantID, partitionID, fromPosition, toPosition, reason, now); err != nil {
 		return fmt.Errorf("record event gap: %w", err)

@@ -2,13 +2,12 @@ package eventlog
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
 )
 
 // Append inserts envelopes into the event log. Duplicate event IDs for the same
@@ -55,33 +54,14 @@ func (l *EventLog) appendOne(ctx context.Context, tx *sql.Tx, tenantID string, e
 	if _, err := contractsv1.ParseTraceContext(env.Traceparent, env.Tracestate); err != nil {
 		return -1, fmt.Errorf("validate trace context: %w", err)
 	}
-	body, err := encodeEventBody(env)
+	body, err := domain.EncodeEventBody(env.Data, env.Quality)
 	if err != nil {
 		return -1, err
 	}
-	return l.insertEnvelope(ctx, tx, tenantID, env, body)
+	return l.insertEnvelope(ctx, tx, tenantID, env, body, l.clk.Now().UTC().Format(time.RFC3339Nano))
 }
 
-// eventBody is an envelope's stored JSON columns.
-type eventBody struct {
-	payloadJSON, payloadSHA256, qualityJSON []byte
-}
-
-func encodeEventBody(env contractsv1.Envelope) (eventBody, error) {
-	payloadJSON, err := json.Marshal(env.Data)
-	if err != nil {
-		return eventBody{}, fmt.Errorf("marshal payload: %w", err)
-	}
-	payloadHash := sha256.Sum256(payloadJSON)
-	qualityJSON, err := json.Marshal(env.Quality)
-	if err != nil {
-		return eventBody{}, fmt.Errorf("marshal quality: %w", err)
-	}
-	return eventBody{payloadJSON: payloadJSON, payloadSHA256: payloadHash[:], qualityJSON: qualityJSON}, nil
-}
-
-func (l *EventLog) insertEnvelope(ctx context.Context, tx *sql.Tx, tenantID string, env contractsv1.Envelope, body eventBody) (LogPosition, error) {
-	createdAt := l.clk.Now().UTC().Format(time.RFC3339Nano)
+func (l *EventLog) insertEnvelope(ctx context.Context, tx *sql.Tx, tenantID string, env contractsv1.Envelope, body domain.EncodedEvent, createdAt string) (LogPosition, error) {
 	res, err := tx.ExecContext(ctx, insertEventSQL, eventColumns(tenantID, env, body, createdAt)...)
 	if err != nil {
 		return -1, fmt.Errorf("insert event: %w", err)
@@ -103,13 +83,13 @@ const insertEventSQL = `
 		ON CONFLICT(tenant_id, event_id) DO NOTHING`
 
 // eventColumns lists one envelope in insertEventSQL column order.
-func eventColumns(tenantID string, env contractsv1.Envelope, body eventBody, createdAt string) []any {
+func eventColumns(tenantID string, env contractsv1.Envelope, body domain.EncodedEvent, createdAt string) []any {
 	return []any{
 		tenantID, env.PartitionID(0), env.ID, env.Type, env.SchemaVersion,
 		env.Source, env.PartitionKey, env.Entity.Type, env.Entity.ID, env.EventTime.Format(time.RFC3339Nano),
 		nullableTime(env.ObservedAt), env.IngestedAt.Format(time.RFC3339Nano), nullableText(env.CorrelationID), nullableText(env.CausationID),
-		nullableText(env.Traceparent), nullableText(env.Tracestate), string(env.Classification), body.qualityJSON, body.payloadJSON,
-		body.payloadSHA256, createdAt,
+		nullableText(env.Traceparent), nullableText(env.Tracestate), string(env.Classification), body.QualityJSON, body.PayloadJSON,
+		body.PayloadSHA256, createdAt,
 	}
 }
 

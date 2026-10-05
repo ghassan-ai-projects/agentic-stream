@@ -55,6 +55,7 @@ var forbiddenImports = map[string][]string{
 	"internal/replay/internal/domain":    {"internal/actions", "internal/runtime"},
 	"internal/replay/internal/store":     {"internal/actions", "internal/runtime"},
 	"internal/replay/internal/transport": {"internal/actions", "internal/runtime"},
+	"internal/eventlog/internal/domain":  {"internal/actions", "internal/runtime"},
 }
 
 // allowedImports is the reviewed internal dependency graph. A new edge must
@@ -94,7 +95,8 @@ var allowedImports = map[string][]string{
 	"internal/engine":                       {"internal/canonicaljson", "internal/clock", "internal/cognition", "internal/contractsv1", "internal/control", "internal/duration", "internal/eventlog", "internal/ids", "internal/operators", "internal/situations", "internal/spec", "internal/storage"},
 	"internal/episodeledger":                {"internal/costcontrol"},
 	"internal/episodes":                     {"internal/canonicaljson", "internal/clock", "internal/contractsv1", "internal/control", "internal/costcontrol", "internal/decisions", "internal/duration", "internal/episodeledger", "internal/ids", "internal/qualification", "internal/scheduleledger", "internal/spec", "internal/storage", "internal/telemetry"},
-	"internal/eventlog":                     {"internal/clock", "internal/contractsv1", "internal/storage"},
+	"internal/eventlog":                     {"internal/clock", "internal/contractsv1", "internal/eventlog/internal/domain", "internal/storage"},
+	"internal/eventlog/internal/domain":     {},
 	"internal/eventschema":                  {},
 	"internal/evidence":                     {"internal/contractsv1", "internal/control", "internal/eventlog", "internal/storage", "proto/agenticstream/runtime/v1"},
 	"internal/executor/conformance":         {"internal/canonicaljson", "internal/episodeledger", "internal/episodes", "internal/spec"},

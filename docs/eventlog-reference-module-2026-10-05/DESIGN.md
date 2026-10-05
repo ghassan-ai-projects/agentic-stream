@@ -14,10 +14,18 @@ database handle.
 | Domain `internal/eventlog/internal/domain` | Vocabulary (`Record`, `LogPosition`, `ReadRequest`, `EntityWindow`, `EntityEvent`) and pure rules: registered-schema payload checking (declared fields, JSON types, enums, required), quarantine identity derivation, payload conflict decision, encoded event columns, stored-record decoding, gap and quarantine input validation | Any I/O, clock reads, `database/sql`, `os`, `net`, storage |
 | Store `internal/eventlog/internal/store` | Every SQL statement and transaction: event insert with duplicate-ignore, record queries, current position, quarantine upsert/conflict/overflow/release/redrive, gap insert, schema load, entity window scan; a `Unit` type gives app caller-owned transaction plumbing | Decide admission, derive identities, or parse schemas |
 
-Dependency levels: domain 1 (imports only `contractsv1`), store 2 (storage +
-domain + contractsv1), app 3 (domain + store + contractsv1 + clock), facade 4
-(clock + storage for constructors + the inner layers). Everything stays above
-the existing importers' expectations; `durableOwners` is unchanged.
+Dependency levels: domain 1 (contract-free pure rules, like authority's
+domain), store 2, app 3, facade 4. The public package currently sits at layer
+2 with importers at layers 3-4, so the split requires three reviewed
+re-levelings recorded in the same commit: `internal/eventlog` 2→4 (below its
+importers engine 6 and the runtime/replay layers), `internal/ingress` 3→5 and
+`internal/evidence` 4→5 (all of their importers are layer 6 or above). No
+other edge changes; `durableOwners` is unchanged.
+
+The domain layer deliberately does not import `contractsv1`: the public
+`Record` (which carries an `Envelope`) stays defined in the facade, and domain
+rules operate on plain values (payload maps, schema bytes, times as text),
+which is what keeps the whole module under the ingress/evidence ceiling.
 
 ## Public API (unchanged)
 

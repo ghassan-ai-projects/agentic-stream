@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
 )
 
 func scanRecord(rows *sql.Rows) (Record, error) {
@@ -36,29 +36,21 @@ type storedEvent struct {
 // record parses the stored times and rebuilds the normalized envelope.
 func (s storedEvent) record() (Record, error) {
 	rec := s.rec
-	var err error
-	if rec.EventTime, err = time.Parse(time.RFC3339Nano, s.eventTime); err != nil {
-		return rec, fmt.Errorf("parse event_time: %w", err)
-	}
-	if rec.IngestedAt, err = time.Parse(time.RFC3339Nano, s.ingestedAt); err != nil {
-		return rec, fmt.Errorf("parse ingested_at: %w", err)
-	}
-	if rec.ObservedAt, err = s.parseObservedAt(); err != nil {
+	times := domain.StoredTimes{EventTime: s.eventTime, IngestedAt: s.ingestedAt, ObservedAt: observedAtPtr(s.observedAt)}
+	eventTime, ingestedAt, observedAt, err := times.Parse()
+	if err != nil {
 		return rec, err
 	}
+	rec.EventTime, rec.IngestedAt, rec.ObservedAt = eventTime, ingestedAt, observedAt
 	rec.Envelope, err = s.envelope(rec)
 	return rec, err
 }
 
-func (s storedEvent) parseObservedAt() (*time.Time, error) {
-	if !s.observedAt.Valid {
-		return nil, nil
+func observedAtPtr(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
 	}
-	t, err := time.Parse(time.RFC3339Nano, s.observedAt.String)
-	if err != nil {
-		return nil, fmt.Errorf("parse observed_at: %w", err)
-	}
-	return &t, nil
+	return &value.String
 }
 
 func (s storedEvent) envelope(rec Record) (contractsv1.Envelope, error) {
