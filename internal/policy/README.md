@@ -80,10 +80,12 @@ Production reachability analysis identifies 33 functions in the human approval
 resolution/signing path that are exercised only by tests. `ResolveApproval` and
 `ApprovalAssertionSigningBytes` have no production caller. The required workflow
 is retained; connecting a production approval entrypoint remains unfinished
-integration work. No other policy functions are unreachable in that analysis.
+integration work, tracked in [the approval integration follow-up](APPROVAL_INTEGRATION.md).
+No other policy functions are unreachable in that analysis.
 
 ## Package documentation
 
+- [Approval integration follow-up](APPROVAL_INTEGRATION.md) records the missing production path, 33 affected functions and completion checks.
 - [Ubiquitous language](UBIQUITOUS_LANGUAGE.md) maps governance terms to code and durable records.
 - [Refactor plan](../../docs/policy-reference-module-2026-10-05/PLAN.md) and
   [validation](../../docs/policy-reference-module-2026-10-05/VALIDATION.md) retain the dated change history and evidence.

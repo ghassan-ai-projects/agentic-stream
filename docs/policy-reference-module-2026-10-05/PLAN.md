@@ -71,3 +71,8 @@ function port, adapting qualification at runtime composition. Remove unused
 tests into `policy_test.go` and pure export tests into `api_test.go`. Production
 and test-inclusive deadcode analyses distinguish the unwired approval workflow
 from removable helpers; retain the required approval contract.
+
+Follow-up decision: retain the unwired approval workflow and document its future
+production integration in [APPROVAL_INTEGRATION.md](../../internal/policy/APPROVAL_INTEGRATION.md).
+The inventory, contract decisions and acceptance checks are open work, not
+completed production capabilities.
