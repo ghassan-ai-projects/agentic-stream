@@ -5,8 +5,7 @@
 ```text
 internal/actions (configured facade, layer 7)
   └── internal/app (dispatch and reconciliation use cases, layer 6)
-        ├── internal/domain (authorization and outcome decisions, layer 2)
-        ├── internal/wire (validated document codecs, layer 3)
+        ├── internal/domain (decisions and document checks, layer 2)
         ├── internal/store (opaque transactions and owned SQL, layer 5)
         └── actionport (effector boundary, layer 0)
 ```

@@ -80,7 +80,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/evidence` - configured Service facade over capability-scoped read tools and durable call recovery; app use cases, pure domain rules, opaque store transactions/SQL, exact wire codecs and gRPC/eventlog adapters (see [evidence module guide](internal/evidence/README.md))
 - `internal/decisions` - pure Decision/Intent validator; thin facade over `internal/domain`, with opaque compiled intent authority (see [decisions module guide](internal/decisions/README.md))
 - `internal/policy` - policy plane; revalidates every intent before dispatch. Reference structure: thin `Service` facade, ordered use cases in `internal/app`, pure governance records/rules in `internal/domain`, and caller-owned transaction plumbing plus SQL in `internal/store` (see [policy module pattern](internal/policy/README.md))
-- `internal/actions` - governed dispatch plane, idempotency, verification
+- `internal/actions` - configured dispatch facade; ordered app use cases, pure domain rules and document checks, and an opaque-transaction store that owns the command, outbox, outcome and verification ledgers (see [actions module guide](internal/actions/README.md))
 - `internal/watch` - derived-trigger watches installed by approved commands
 - `internal/actionport` - approved-command/effect contracts without implementation dependencies
 - `internal/device` - device effect boundary; the reference adapter module: thin facade, session use cases in `internal/app`, pure `internal/domain`, record codec in `internal/wire`, gateway link in `internal/transport` (record in [docs/device-reference-module-2026-10-05](docs/device-reference-module-2026-10-05/README.md))

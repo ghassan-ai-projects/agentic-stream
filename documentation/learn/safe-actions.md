@@ -34,7 +34,7 @@ Text equivalent: policy evaluates a validated proposal against current state.
 An accepted request becomes a Command; the dispatcher checks authority again
 before an effector performs it and records an outcome. Denial, deferral,
 approval requirements, or failed readiness can stop this path.
-Source: [policy](../../internal/policy/) and [dispatcher](../../internal/actions/dispatcher.go).
+Source: [policy](../../internal/policy/) and [dispatcher](../../internal/actions/internal/app/dispatch.go).
 
 The model can propose allowed Intent types. It cannot grant itself a higher
 risk ceiling, create a governed Command, or call an effector. Evidence tools
@@ -78,7 +78,7 @@ Counterfactual mode can use an explicitly supplied simulator. None of these
 modes authorizes a production effect.
 
 Sources: [Decision/Intent contract](../contracts/decision-intent.md),
-[unknown-outcome tests](../../internal/actions/dispatcher_test.go),
+[unknown-outcome tests](../../internal/actions/internal/app/dispatch_test.go),
 [recovery](../operations/recovery.md), and [replay](../design/replay-and-shadow.md).
 
 ## Next reads

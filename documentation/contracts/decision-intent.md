@@ -57,7 +57,7 @@ No model output bypasses the validator or creates a Command directly.
 - Schemas: [`internal/contractsv1/schemas/v1/`](../../internal/contractsv1/schemas/v1/)
 - Validation: [`internal/decisions/internal/domain/validator.go`](../../internal/decisions/internal/domain/validator.go)
 - Policy: [`internal/policy/policy.go`](../../internal/policy/policy.go)
-- Action dispatch: [`internal/actions/dispatcher.go`](../../internal/actions/dispatcher.go)
+- Action dispatch: [`internal/actions/internal/app/dispatch.go`](../../internal/actions/internal/app/dispatch.go)
 
 ## Next reads
 

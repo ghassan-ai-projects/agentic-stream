@@ -36,7 +36,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/policy/internal/app/` | ordered intent evaluation and human approval use cases |
 | `internal/policy/internal/store/` | caller-owned transactions, policy SQL and ledger/notification plumbing |
 | `internal/policy/internal/domain/` | pure policy records, canonical definitions and governance checks |
-| `internal/actions/` | governed outbox dispatch, verification and reconciliation |
+| `internal/actions/` | governed dispatch configuration and delegation facade |
+| `internal/actions/internal/app/` | ordered lease, authorization, dispatch, verification and reconciliation use cases |
+| `internal/actions/internal/store/` | opaque transactions, command/outbox/outcome/verification SQL and owner, interlock, authority and notification plumbing |
+| `internal/actions/internal/domain/` | pure dispatch, authorization and reconciliation rules with command, intent, decision and outcome document checks |
 | `internal/watch/` | derived-trigger watches: install as an effect, fire on matching evidence, expire |
 | `internal/actionport/` | approved command/effect contracts |
 | `internal/device/` | device effect boundary facade: effect profiles, catalog loading, gateway dial and effector constructors |

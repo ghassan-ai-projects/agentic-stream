@@ -6,8 +6,7 @@
 | --- | --- | --- |
 | Facade (`internal/actions`) | `New(Config)`, public domain aliases, and one-line `Service` operations; public unresolved-outcome read delegate needed by authority | Dispatch logic, SQL, transaction management, codecs, mutable after-construction safety setters |
 | App (`internal/app`) | Ordered dispatch/reconciliation use cases, clocks, deadlines, effector calls, device verification, and transaction sequencing through ports | SQL, database handles, raw transactions, JSON field access, or wire encoding |
-| Domain (`internal/domain`) | Lease liveness, authorization identity/currentness, approval expiry, effect-result classification, reconciliation admission/status decisions | I/O, clock reads, database/protocol types, persistence, or external effects |
-| Wire (`internal/wire`) | Command/intent/decision/outcome schema parsing and document serialization/digest codecs | SQL, lease orchestration, approval/lifecycle decisions, or effector calls |
+| Domain (`internal/domain`) | Lease liveness, candidate admission, authorization identity/currentness, approval expiry, effect-result classification, reconciliation admission/status decisions, and command/intent/decision/outcome schema and digest checks | I/O, clock reads, database/protocol types, persistence, or external effects |
 | Store (`internal/store`) | Opaque SQL transactions, actions-owned reads/writes, read projections, and same-transaction owner/interlock/authority/notification plumbing | Authorization, lifecycle, lease, reconciliation, or status decisions |
 
 ```text
@@ -15,8 +14,12 @@ runtime composition -> actions facade -> app -> domain / wire / store -> storage
                                       app ---------------------------> actionport.Effector
 ```
 
-The internal layer levels proposed for the repository graph are domain 2,
-wire 3, store 5, app 6, facade 7. Store sits at layer 5 because it joins
+The internal layer levels in the repository graph are domain 2, store 5, app 6,
+facade 7. The planned `wire` layer was merged into domain during implementation:
+the document codecs are a handful of schema-and-digest checks over
+`canonicaljson` and `contractsv1`, perform no I/O, and a separate package of that
+size would only add an import hop (domain of `policy` already holds its
+documents the same way). Store sits at layer 5 because it joins
 authority's layer-4 evidence verification while owning one original transaction.
 No concrete `device` or `watch` package is imported by actions.
 
@@ -24,7 +27,7 @@ No concrete `device` or `watch` package is imported by actions.
 
 | API | Purpose |
 | --- | --- |
-| `New(Config) (*Service, error)` | Validate the database, effector, runtime owner/epoch, and interlock, then compose the private use cases and store. |
+| `New(Config) (*Service, error)` | Validate the database, effector, runtime ownership check and interlock, then compose the private use cases and store. The epoch is passed to the ownership check, which owns its meaning; composition without a runtime owner supplies an explicit always-pass check, as for policy. |
 | `(*Service).DispatchOnce(ctx) (bool, error)` | Lease, revalidate, dispatch, independently verify when supported, and finalize at most one command. |
 | `CountUnresolvedOutcomes(ctx, tx, commandIDs)` | Count unresolved commands within a caller's existing transaction for the device-authority port. This is a one-line delegate to the store. |
 
