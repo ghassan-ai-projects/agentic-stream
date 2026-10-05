@@ -35,10 +35,10 @@ func (s *Server) authorizedCall(req *runtimev1.EvidenceToolCall, scope Scope, tr
 	}
 	fence := int64(req.GetFence())                       //nolint:gosec // Checked against MaxInt64 immediately above.
 	situationVersion := int64(req.GetSituationVersion()) //nolint:gosec // Checked against MaxInt64 immediately above.
-	if !scope.grants(req, fence, situationVersion) || (s.RuntimeEpoch != "" && scope.RuntimeEpoch != s.RuntimeEpoch) {
+	if !scopeGrants(scope, req, fence, situationVersion) || (s.RuntimeEpoch != "" && scope.RuntimeEpoch != s.RuntimeEpoch) {
 		return Call{}, status.Error(codes.PermissionDenied, "capability scope mismatch") //nolint:wrapcheck // gRPC wire boundary.
 	}
-	if !scope.coversTimeRange(req) {
+	if !scopeCoversTimeRange(scope, req) {
 		return Call{}, status.Error(codes.PermissionDenied, "evidence time range exceeds capability") //nolint:wrapcheck // gRPC wire boundary.
 	}
 	arguments, err := decodeEvidenceGetArguments(req.GetArgumentsJson())
@@ -53,7 +53,7 @@ func (s *Server) authorizedCall(req *runtimev1.EvidenceToolCall, scope Scope, tr
 
 // grants reports whether the capability names exactly this call's attempt,
 // situation version, entity, tool, and trace.
-func (scope Scope) grants(req *runtimev1.EvidenceToolCall, fence, situationVersion int64) bool {
+func scopeGrants(scope Scope, req *runtimev1.EvidenceToolCall, fence, situationVersion int64) bool {
 	return scope.EpisodeID == req.GetEpisodeId() && scope.AttemptID == req.GetAttemptId() && scope.Fence == fence &&
 		scope.TenantID == req.GetTenantId() && scope.SituationID == req.GetSituationId() &&
 		scope.SituationVersion == situationVersion && scope.EntityID == req.GetEntityId() &&
@@ -63,7 +63,7 @@ func (scope Scope) grants(req *runtimev1.EvidenceToolCall, fence, situationVersi
 
 // coversTimeRange reports whether the call asks for a valid, ordered time
 // range inside the capability's evidence range.
-func (scope Scope) coversTimeRange(req *runtimev1.EvidenceToolCall) bool {
+func scopeCoversTimeRange(scope Scope, req *runtimev1.EvidenceToolCall) bool {
 	from, until := req.GetTimeFrom(), req.GetTimeUntil()
 	if from == nil || until == nil || !from.IsValid() || !until.IsValid() {
 		return false

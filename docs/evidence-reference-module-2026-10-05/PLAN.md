@@ -3,7 +3,7 @@
 | Round | Scope | Proof | Status |
 | --- | --- | --- | --- |
 | E0 | Survey, architecture and plan | Read production/tests/consumers and ownership | Complete |
-| E1 | Pure domain, token wire codecs and rules | Focused tests, token/fingerprint parity, root gates, whole-tree lint | Pending |
+| E1 | Pure domain, token wire codecs and rules | Focused tests, token/fingerprint parity, root gates, whole-tree lint | Complete |
 | E2 | Opaque SQL store, app use cases, transport and configured facade; all consumers | Durable replay/integrity, cancellation/ownership/rollback tests, worker/runtime regressions, coverage and lint | Pending |
 | E3 | Architecture injection proofs, reachability audit, documentation and final review | Full CI, non-short uncached race, all packages at least 60%, diff check | Pending |
 
@@ -21,3 +21,9 @@ configuration. Tests will exercise the same durable query path as production.
 Deferred: owner-provided transactional attempt read ports, coordinated with the
 owner module migration. Existing reads remain in store and grant no foreign
 mutation authority. Round validation and final rating will be recorded here.
+
+E1: token claims are pinned byte-for-byte; pure scope/time and cryptographic
+round-trip/tampering tests pass. Existing evidence tests pass, including UDS
+after approved local socket execution. Root architecture gates pass; whole-tree
+lint reports zero issues. Scope/time rules and v1 encoding now have separate
+private packages. Public constructors remain temporary until E2.

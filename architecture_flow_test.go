@@ -19,7 +19,7 @@ var packageLayers = map[string]int{
 	"internal/duration": 0, "internal/eventschema": 0, "internal/ids": 0, "internal/interlock": 0, "internal/telemetry": 0,
 	"migrations": 0, "proto/agenticstream/runtime/v1": 0,
 	"internal/authority/internal/domain": 1, "internal/contractsv1": 1, "internal/storage": 1,
-	"internal/policy/internal/domain": 2, "internal/decisions": 2, "internal/device/internal/domain": 2, "internal/device/internal/wire": 3, "internal/episodeledger": 2, "internal/eventlog": 4, "internal/evidence": 5,
+	"internal/policy/internal/domain": 2, "internal/decisions": 2, "internal/device/internal/domain": 2, "internal/device/internal/wire": 3, "internal/episodeledger": 2, "internal/eventlog": 4, "internal/evidence": 5, "internal/evidence/internal/domain": 2, "internal/evidence/internal/wire": 3,
 	"internal/authority/internal/store": 2, "internal/notifycontract": 2, "internal/qualification": 2, "internal/scheduleledger": 2, "internal/spec": 2, "internal/worker": 2,
 	"internal/authority/internal/app": 3, "internal/control": 3, "internal/device/internal/transport": 4, "internal/eventlog/internal/domain": 1, "internal/eventlog/internal/store": 2, "internal/eventlog/internal/app": 3, "internal/ingress": 5, "internal/notify": 3, "internal/operators": 3,
 	"internal/api": 4, "internal/approvalledger": 4, "internal/watch": 4, "internal/authority": 4, "internal/situations": 4,
