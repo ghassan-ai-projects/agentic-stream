@@ -12,7 +12,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/eventlog/internal/domain/` | pure evidence admission, quarantine identity and decode rules (reference module layer) |
 | `internal/eventlog/internal/app/` | append, quarantine, release/redrive and read use cases |
 | `internal/eventlog/internal/store/` | event-log SQL and units of work (reference module layer) |
-| `internal/engine/` | deterministic partitioned stream processing |
+| `internal/engine/` | engine configuration and global-run delegation facade |
+| `internal/engine/internal/app/` | serialised runs, per-record transactions, timers and rollback restore |
+| `internal/engine/internal/store/` | opaque transactions, engine SQL and owner fence |
+| `internal/engine/internal/domain/` | pure watermark, Situation state, lineage, timer and heartbeat rules |
 | `internal/operators/` | aggregates, slopes, missing-heartbeat and related features |
 | `internal/situations/` | Situation state and immutable versions |
 | `internal/cognition/` | configured deterministic scheduler facade |

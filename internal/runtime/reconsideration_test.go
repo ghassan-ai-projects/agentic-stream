@@ -75,7 +75,7 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	}
 
 	log := eventlog.NewEventLog(db)
-	stream, err := engine.NewEngine(ctx, db, log, clock.Physical(), compiled, "default")
+	stream, err := engine.New(ctx, engine.Config{DB: db, Log: log, Clock: clock.Physical(), Spec: compiled, TenantID: "default", RuntimeOwner: engine.ReplayOwnership, Cognition: true})
 	if err != nil {
 		t.Fatal(err)
 	}

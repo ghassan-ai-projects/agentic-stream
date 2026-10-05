@@ -72,11 +72,11 @@ func composeOwnedPipeline(ctx context.Context, cfg PipelineConfig, watch *watch.
 	return composePipeline(cfg, log, stream, watch)
 }
 
-func newOwnedStream(ctx context.Context, cfg PipelineConfig, log *eventlog.EventLog) (*engine.Engine, error) {
-	stream, err := engine.NewEngine(ctx, cfg.DB, log, cfg.Clock, cfg.Spec, cfg.TenantID)
+func newOwnedStream(ctx context.Context, cfg PipelineConfig, log *eventlog.EventLog) (*engine.Service, error) {
+	stream, err := engine.New(ctx, engine.Config{DB: cfg.DB, Log: log, Clock: cfg.Clock, Spec: cfg.Spec, TenantID: cfg.TenantID,
+		RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch, Cognition: true})
 	if err != nil {
 		return nil, fmt.Errorf("create stream engine: %w", err)
 	}
-	stream.WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch)
 	return stream, nil
 }

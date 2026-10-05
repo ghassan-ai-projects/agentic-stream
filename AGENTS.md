@@ -70,7 +70,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/spec` - SituationSpec authoring, YAML in, canonical JSON digest
 - `internal/ingress` - ingress adapters (normalized JSONL and simulator replay; HTTP/MQTT deferred)
 - `internal/eventlog` - normalized event log, watermark/completeness tracking; append/quarantine/redrive use cases in `internal/app`, pure admission and identity rules in `internal/domain`, all SQL in `internal/store` (see [event log module guide](internal/eventlog/README.md))
-- `internal/engine` - deterministic stream engine core
+- `internal/engine` - configured stream-engine facade; app use cases, pure domain rules and an opaque-transaction store that owns the inbox, checkpoint, operator-state, Situation, lineage and timer tables (see [engine module guide](internal/engine/README.md))
 - `internal/operators` - deterministic operators (hysteresis, debounce, cooldown)
 - `internal/situations` - Situation state machine, versioning, publication
 - `internal/cognition` - configured scheduler facade; ordered app use cases, pure domain rules, and opaque caller-transaction store (see [cognition module guide](internal/cognition/README.md))

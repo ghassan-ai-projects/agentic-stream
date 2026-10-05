@@ -30,7 +30,7 @@ type Pipeline struct {
 	transactions *store.PipelineStore
 	sources      *transport.Sources
 	log          *eventlog.EventLog
-	engine       *engine.Engine
+	engine       *engine.Service
 	admission    *admission.Admitter
 	runner       *episodes.Service
 	dispatcher   *actions.Service

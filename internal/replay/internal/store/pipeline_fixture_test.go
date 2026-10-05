@@ -48,7 +48,7 @@ func replayedStore(t *testing.T) (Store, string) {
 	if _, err := (ingress.NewJSONLReplayWithClock(db, log, "default", fixtureTracePath, "replay:"+fixtureTracePath, clk)).Run(ctx); err != nil {
 		t.Fatal(err)
 	}
-	eng, err := engine.NewEngine(ctx, db, log, clk, compiled, "default")
+	eng, err := engine.New(ctx, engine.Config{DB: db, Log: log, Clock: clk, Spec: compiled, TenantID: "default", RuntimeOwner: engine.ReplayOwnership, Cognition: true})
 	if err != nil {
 		t.Fatal(err)
 	}

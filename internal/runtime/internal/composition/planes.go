@@ -65,7 +65,7 @@ func composeEffectors(cfg PipelineConfig) (actionport.Effector, *watch.Service, 
 	return compositeEffector, watch, nil
 }
 
-func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.Engine, watch *watch.Service) (*app.Pipeline, error) {
+func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.Service, watch *watch.Service) (*app.Pipeline, error) {
 	episodeService, err := composeEpisodes(cfg)
 	if err != nil {
 		return nil, err

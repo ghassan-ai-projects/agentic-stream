@@ -3,9 +3,11 @@
 | Round | Scope | Proof | Status |
 | --- | --- | --- | --- |
 | 0 | Findings, language, design, plan | Review | Complete |
-| 1 | Domain: watermark, state integrity, version write, lineage, timers, heartbeat | Domain table tests incl. the lineage collision test | Pending |
-| 2 | Store and app and facade together (ownership gate); update runtime composition, replay and test callers | Engine, runtime, replay, admission tests; golden replay | Pending |
-| 3 | Architecture gates, injection proof, module guide, maps, validation | Injected failures, full CI, race | Pending |
+| 1 | Domain: watermark, state integrity, version write, lineage, timers, heartbeat | Domain table tests incl. the lineage collision test | Complete |
+| 2 | Store and app and facade together (ownership gate); update runtime composition, replay and test callers | Engine, runtime, replay, admission tests; golden replay | Complete |
+| 3 | Architecture gates, injection proof, module guide, maps, validation | Injected failures, full CI, race | Complete |
+
+Layer numbers moved: engine is 10 (domain 5, store 6, app 9), so `runtime/internal/app` is 11, `runtime/internal/composition` 12, `runtime` 13, `replay/internal/store` 11, `replay/internal/app` 12, `replay` 13 and `cmd/agentic-stream` 14. These are reviewed levels, not behavior.
 
 ## Behavior that must not change
 

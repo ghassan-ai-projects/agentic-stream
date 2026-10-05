@@ -103,7 +103,7 @@ func pendingItem(t *testing.T, given scenario) (*storage.DB, *admission.Admitter
 func runStream(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec) {
 	t.Helper()
 	log := eventlog.NewEventLogWithClock(db, clock.Physical())
-	stream, err := engine.NewEngine(t.Context(), db, log, clock.Physical(), compiled, "default")
+	stream, err := engine.New(t.Context(), engine.Config{DB: db, Log: log, Clock: clock.Physical(), Spec: compiled, TenantID: "default", RuntimeOwner: engine.ReplayOwnership, Cognition: true})
 	if err != nil {
 		t.Fatal(err)
 	}

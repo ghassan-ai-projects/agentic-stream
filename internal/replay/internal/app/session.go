@@ -104,21 +104,16 @@ func (s *replaySession) ingestTrace(ctx context.Context, tracePath string) error
 	return nil
 }
 
-func (s *replaySession) newReplayEngine(ctx context.Context, cognitionEnabled bool) (*engine.Engine, error) {
-	var eng *engine.Engine
-	var err error
-	if cognitionEnabled {
-		eng, err = engine.NewEngine(ctx, s.database.DB, s.log, s.clk, s.compiled, s.tenantID)
-	} else {
-		eng, err = engine.NewStreamEngine(ctx, s.database.DB, s.log, s.clk, s.compiled, s.tenantID)
-	}
+func (s *replaySession) newReplayEngine(ctx context.Context, cognitionEnabled bool) (*engine.Service, error) {
+	eng, err := engine.New(ctx, engine.Config{DB: s.database.DB, Log: s.log, Clock: s.clk, Spec: s.compiled, TenantID: s.tenantID,
+		RuntimeOwner: engine.ReplayOwnership, Cognition: cognitionEnabled})
 	if err != nil {
 		return nil, fmt.Errorf("new engine: %w", err)
 	}
 	return eng, nil
 }
 
-func (s *replaySession) runTraceEngine(ctx context.Context, eng *engine.Engine, cognitionEnabled bool) (int, error) {
+func (s *replaySession) runTraceEngine(ctx context.Context, eng *engine.Service, cognitionEnabled bool) (int, error) {
 	processed, err := s.runAllPartitions(ctx, eng)
 	if err != nil {
 		return 0, fmt.Errorf("run partitions: %w", err)
@@ -129,7 +124,7 @@ func (s *replaySession) runTraceEngine(ctx context.Context, eng *engine.Engine, 
 	return processed, nil
 }
 
-func (s *replaySession) runAllPartitions(ctx context.Context, eng *engine.Engine) (int, error) {
+func (s *replaySession) runAllPartitions(ctx context.Context, eng *engine.Service) (int, error) {
 	count, err := eng.RunGlobal(ctx, s.advanceToRecordTime)
 	if err != nil {
 		return 0, fmt.Errorf("run global replay: %w", err)

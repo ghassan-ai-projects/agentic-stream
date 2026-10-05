@@ -1,4 +1,4 @@
-package engine
+package domain
 
 import "testing"
 
@@ -9,7 +9,6 @@ import "testing"
 // a situation version.
 func TestLineageIDNoConcatenationCollision(t *testing.T) {
 	t.Parallel()
-	e := &Engine{}
 	cases := []struct {
 		name string
 		a, b []string
@@ -22,16 +21,24 @@ func TestLineageIDNoConcatenationCollision(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got, other := e.lineageID(tc.a), e.lineageID(tc.b); got == other {
+			if got, other := LineageID(tc.a), LineageID(tc.b); got == other {
 				t.Fatalf("distinct evidence sets collided: %v and %v both hash to %s", tc.a, tc.b, got)
 			}
 		})
 	}
-
-	// Identical evidence must be stable across calls.
 	same := []string{"evt-1", "evt-2"}
-	first := e.lineageID(same)
-	if e.lineageID(same) != first {
-		t.Fatal("lineageID is not stable for identical evidence")
+	if first := LineageID(same); LineageID(same) != first {
+		t.Fatal("LineageID is not stable for identical evidence")
+	}
+}
+
+func TestNewLineageBindsIdentityDigestAndReferences(t *testing.T) {
+	t.Parallel()
+	lineage, err := NewLineage([]string{"evt-1", "evt-2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lineage.ID != LineageID([]string{"evt-1", "evt-2"}) || len(lineage.Digest) != 32 || string(lineage.ReferencesJSON) != `["evt-1","evt-2"]` {
+		t.Fatalf("lineage = %+v", lineage)
 	}
 }

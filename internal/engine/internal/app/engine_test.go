@@ -1,4 +1,4 @@
-package engine_test
+package app_test
 
 import (
 	"context"
@@ -13,7 +13,6 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -28,14 +27,14 @@ func TestEngineAdvancesCheckpoint(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	compiled, err := spec.CompileFile(ctx, "../../docs/design/examples/predictive-maintenance.situation.yaml")
+	compiled, err := spec.CompileFile(ctx, "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
 	if err != nil {
 		t.Fatalf("compile spec: %v", err)
 	}
 
 	log := eventlog.NewEventLog(db)
 	clk := clock.Physical()
-	eng, err := engine.NewEngine(ctx, db, log, clk, compiled, "default")
+	eng, err := newService(ctx, db, log, clk, compiled, "default", true)
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -95,7 +94,7 @@ func TestEngineRetriesApplyAfterTransientSQLiteBusy(t *testing.T) {
 
 	compiled := restartSpec()
 	log := eventlog.NewEventLog(db)
-	eng, err := engine.NewStreamEngine(ctx, db, log, clock.Physical(), &compiled, "default")
+	eng, err := newService(ctx, db, log, clock.Physical(), &compiled, "default", false)
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -159,7 +158,7 @@ func TestEngineRestoresSituationStateAcrossRestart(t *testing.T) {
 		t.Fatalf("open db: %v", err)
 	}
 	log := eventlog.NewEventLogWithClock(db, clk)
-	eng, err := engine.NewStreamEngine(ctx, db, log, clk, &compiled, "default")
+	eng, err := newService(ctx, db, log, clk, &compiled, "default", false)
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -182,7 +181,7 @@ func TestEngineRestoresSituationStateAcrossRestart(t *testing.T) {
 		t.Fatalf("mark unsupported state codec: %v", err)
 	}
 	legacyLog := eventlog.NewEventLogWithClock(legacyDB, clk)
-	if _, err := engine.NewStreamEngine(ctx, legacyDB, legacyLog, clk, &compiled, "default"); err == nil || !strings.Contains(err.Error(), "requires rebuild") {
+	if _, err := newService(ctx, legacyDB, legacyLog, clk, &compiled, "default", false); err == nil || !strings.Contains(err.Error(), "requires rebuild") {
 		t.Fatalf("expected legacy state to be refused, got %v", err)
 	}
 	if _, err := legacyDB.ExecContext(ctx, "UPDATE situations SET state_codec_version = 1"); err != nil {
@@ -198,7 +197,7 @@ func TestEngineRestoresSituationStateAcrossRestart(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	log = eventlog.NewEventLogWithClock(db, clk)
-	eng, err = engine.NewStreamEngine(ctx, db, log, clk, &compiled, "default")
+	eng, err = newService(ctx, db, log, clk, &compiled, "default", false)
 	if err != nil {
 		t.Fatalf("restore engine: %v", err)
 	}
@@ -241,7 +240,7 @@ func TestEngineFiresDurableProcessingTimerExactlyOnce(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	log := eventlog.NewEventLogWithClock(db, clk)
-	eng, err := engine.NewStreamEngine(ctx, db, log, clk, &compiled, "default")
+	eng, err := newService(ctx, db, log, clk, &compiled, "default", false)
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -265,7 +264,7 @@ func TestEngineFiresDurableProcessingTimerExactlyOnce(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	log = eventlog.NewEventLogWithClock(db, clk)
-	eng, err = engine.NewStreamEngine(ctx, db, log, clk, &compiled, "default")
+	eng, err = newService(ctx, db, log, clk, &compiled, "default", false)
 	if err != nil {
 		t.Fatalf("restore timer engine: %v", err)
 	}
@@ -338,7 +337,7 @@ func TestEngineRetiresTimerFromPreviousDeviceBoot(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	log := eventlog.NewEventLogWithClock(db, clk)
-	eng, err := engine.NewStreamEngine(ctx, db, log, clk, &compiled, "default")
+	eng, err := newService(ctx, db, log, clk, &compiled, "default", false)
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -438,7 +437,7 @@ func TestGlobalRunFailurePreservesProgressAndInboxDeduplication(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 	compiled := restartSpec()
 	log := eventlog.NewEventLog(db)
-	eng, err := engine.NewStreamEngine(ctx, db, log, clock.Physical(), &compiled, "default")
+	eng, err := newService(ctx, db, log, clock.Physical(), &compiled, "default", false)
 	if err != nil {
 		t.Fatal(err)
 	}

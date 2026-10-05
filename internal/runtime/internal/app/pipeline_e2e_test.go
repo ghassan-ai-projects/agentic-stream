@@ -105,7 +105,7 @@ func TestPipelineCorrectsLateWindowAndAdmitsOneReconsideration(t *testing.T) {
 	} else if ingested != 1 {
 		t.Fatalf("second batch ingested %d events, want 1", ingested)
 	}
-	stream, err := engine.NewEngine(ctx, db, secondLog, clock.Physical(), compiled, "default")
+	stream, err := engine.New(ctx, engine.Config{DB: db, Log: secondLog, Clock: clock.Physical(), Spec: compiled, TenantID: "default", RuntimeOwner: engine.ReplayOwnership, Cognition: true})
 	if err != nil {
 		t.Fatal(err)
 	}
