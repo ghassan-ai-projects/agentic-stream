@@ -94,17 +94,19 @@ type Resolution struct {
 	Device         DeviceBoot
 	Owner          Owner
 	Outcome        ResolutionOutcome
-	Evidence       map[string]any
+	Evidence       ReconciliationEvidence
 	EvidenceJSON   []byte
 	EvidenceSHA256 []byte
 }
 
-// NewResolution validates the evidence for the device boot and canonicalizes it.
-func NewResolution(device DeviceBoot, owner Owner, outcome ResolutionOutcome, evidence map[string]any) (Resolution, error) {
-	if err := ValidateReconciliationEvidence(evidence, device); err != nil {
+// NewResolution parses the evidence document for the device boot and keeps
+// its canonical form, which is what gets stored.
+func NewResolution(device DeviceBoot, owner Owner, outcome ResolutionOutcome, document map[string]any) (Resolution, error) {
+	evidence, err := ParseReconciliationEvidence(document, device)
+	if err != nil {
 		return Resolution{}, err
 	}
-	evidenceJSON, err := canonicaljson.Marshal(evidence)
+	evidenceJSON, err := canonicaljson.Marshal(document)
 	if err != nil {
 		return Resolution{}, fmt.Errorf("canonicalize reconciliation evidence: %w", err)
 	}
@@ -125,16 +127,15 @@ func CheckResolvable(recorded *Reconciliation, resolution Resolution) error {
 	return checkLatestStateEvidence(resolution.Evidence, recorded.StateSHA256)
 }
 
-func checkLatestStateEvidence(evidence map[string]any, latestStateSHA256 []byte) error {
-	stateDigest, _ := evidence["state_digest"].(string)
-	if stateDigest != canonicaljson.EncodeDigest(latestStateSHA256) {
+func checkLatestStateEvidence(evidence ReconciliationEvidence, latestStateSHA256 []byte) error {
+	if evidence.StateDigest != canonicaljson.EncodeDigest(latestStateSHA256) {
 		return fmt.Errorf("reconciliation evidence does not bind the latest device state")
 	}
-	stateJSON, err := canonicaljson.Marshal(evidence["state"])
+	stateDigest, err := documentDigest("reconciliation state evidence", evidence.State)
 	if err != nil {
-		return fmt.Errorf("canonicalize reconciliation state evidence: %w", err)
+		return err
 	}
-	if stateDigest != canonicaljson.ContentDigest(stateJSON) {
+	if evidence.StateDigest != stateDigest {
 		return fmt.Errorf("reconciliation state digest does not match typed state evidence")
 	}
 	return nil

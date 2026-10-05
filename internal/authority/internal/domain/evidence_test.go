@@ -36,7 +36,7 @@ func cloneEvidence(evidence map[string]any) map[string]any {
 	return maps.Clone(evidence)
 }
 
-func TestValidateReconciliationEvidence(t *testing.T) {
+func TestParseReconciliationEvidence(t *testing.T) {
 	t.Parallel()
 	valid := validEvidence(t, bootOne, "fan-01")
 	tests := []struct {
@@ -56,25 +56,56 @@ func TestValidateReconciliationEvidence(t *testing.T) {
 		{"missing feedback", func(e map[string]any) { delete(e, "feedback") }, "must include independent feedback"},
 		{"tampered bundle", func(e map[string]any) { e["source"] = "someone-else" }, "evidence_digest does not match"},
 		{"tampered feedback", func(e map[string]any) { e["feedback_digest"] = digestOther; e["evidence_digest"] = rehash(e) }, "feedback_digest does not match"},
+		{"unknown field", func(e map[string]any) { e["note"] = "x"; e["evidence_digest"] = rehash(e) }, `unknown field "note"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			evidence := cloneEvidence(valid)
 			tt.mutate(evidence)
-			err := ValidateReconciliationEvidence(evidence, bootOne)
+			_, err := ParseReconciliationEvidence(evidence, bootOne)
 			if tt.want == "" && err != nil || tt.want != "" && (err == nil || !strings.Contains(err.Error(), tt.want)) {
 				t.Fatalf("validation = %v, want %q", err, tt.want)
 			}
 		})
 	}
-	if err := ValidateReconciliationEvidence(nil, bootOne); err == nil {
+	if _, err := ParseReconciliationEvidence(nil, bootOne); err == nil {
 		t.Fatal("empty evidence was accepted")
 	}
 }
 
+func TestSealedEvidenceParsesBackToItself(t *testing.T) {
+	t.Parallel()
+	state := map[string]any{"device_id": bootOne.DeviceID, "boot_id": bootOne.BootID, "safe_state": true}
+	feedback := map[string]any{"target": "fan-01", "observed_state": "safe"}
+	for _, target := range []string{"", "fan-01"} {
+		sealed, err := SealReconciliationEvidence("device.query_state", target, state, feedback)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := ParseReconciliationEvidence(sealed.Document(), bootOne)
+		if err != nil {
+			t.Fatalf("target %q: sealed evidence did not parse: %v", target, err)
+		}
+		if parsed.EvidenceDigest != sealed.EvidenceDigest || parsed.Target != target || parsed.Device != bootOne {
+			t.Fatalf("parsed = %+v, sealed = %+v", parsed, sealed)
+		}
+	}
+	if sealed, err := SealReconciliationEvidence("independent-feedback", "fan-01", state, feedback); err != nil || sealed.Document()["evidence_digest"] != validEvidence(t, bootOne, "fan-01")["evidence_digest"] {
+		t.Fatalf("sealing disagrees with the reference digest scheme: %v", err)
+	}
+	if _, err := SealReconciliationEvidence("", "", state, feedback); err == nil {
+		t.Fatal("evidence without a source was sealed")
+	}
+	if _, err := SealReconciliationEvidence("s", "", map[string]any{"device_id": "d"}, feedback); err == nil {
+		t.Fatal("evidence for a state without a boot was sealed")
+	}
+}
+
 func rehash(evidence map[string]any) string {
-	data, err := canonicaljson.Marshal(evidenceWithoutDigest(evidence))
+	bundle := maps.Clone(evidence)
+	delete(bundle, "evidence_digest")
+	data, err := canonicaljson.Marshal(bundle)
 	if err != nil {
 		panic(err)
 	}

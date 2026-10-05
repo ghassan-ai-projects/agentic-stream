@@ -155,16 +155,13 @@ func (e *SerialEffector) VerifyDeviceCommand(ctx context.Context, command action
 }
 
 func (e *SerialEffector) verifyMaterializedCommand(ctx context.Context, wireCommand map[string]any, expectedBootID string) (string, map[string]any, error) {
-	evidence, err := e.session.QueryStateEvidence(ctx)
+	evidence, err := e.session.QueryStateEvidence(ctx, documentString(wireCommand, "target"))
 	if err != nil {
 		return "", nil, err
 	}
 	observedBootID := documentString(evidence, "boot_id")
 	if observedBootID != expectedBootID {
 		return "", evidence, fmt.Errorf("device boot changed during verification from %q to %q", expectedBootID, observedBootID)
-	}
-	if err := setEvidenceTarget(evidence, documentString(wireCommand, "target")); err != nil {
-		return "", nil, err
 	}
 	return verifyObservedOutput(evidence, wireCommand)
 }

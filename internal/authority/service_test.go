@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -82,7 +81,9 @@ func TestServiceDelegatesEveryOperation(t *testing.T) {
 	must(t, service.OpenReconciliationAfterAuthorityLoss(ctx, device, owner, "unknown outcome"))
 	required, err := service.ReconciliationRequired(ctx, device.DeviceID)
 	must(t, err)
-	evidence := evidenceFor(t, state, claim.Target)
+	sealed, err := authority.SealReconciliationEvidence("independent-feedback", claim.Target, state, map[string]any{"observed_state": "safe"})
+	must(t, err)
+	evidence := sealed.Document()
 	cleared, err := service.ResolveReconciliation(ctx, device, owner, authority.ResolutionSucceeded, evidence)
 	must(t, err)
 	must(t, db.WithTx(ctx, func(tx *sql.Tx) error {
@@ -99,7 +100,7 @@ func TestServiceDelegatesEveryOperation(t *testing.T) {
 	if err := service.AssertClaim(ctx, claim); !errors.Is(err, authority.ErrTargetClaimNotOwned) {
 		t.Fatalf("released claim = %v", err)
 	}
-	if err := authority.ValidateReconciliationEvidence(evidence, device); err != nil || !authority.PhysicalEvidenceComplete(map[string]any{
+	if _, err := authority.ParseReconciliationEvidence(evidence, device); err != nil || !authority.PhysicalEvidenceComplete(map[string]any{
 		"evidence_complete": true, "source": "s", "evidence_digest": evidence["state_digest"],
 	}) {
 		t.Fatalf("stateless rules: %v", err)
@@ -111,27 +112,4 @@ func must(t *testing.T, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-}
-
-// evidenceFor builds digest-consistent reconciliation evidence for a state.
-func evidenceFor(t *testing.T, state map[string]any, target string) map[string]any {
-	t.Helper()
-	feedback := map[string]any{"target": target, "observed_state": "safe"}
-	evidence := map[string]any{
-		"device_id": state["device_id"], "boot_id": state["boot_id"], "target": target,
-		"evidence_type": "device_state_feedback", "source": "independent-feedback",
-		"state": state, "state_digest": digest(t, state),
-		"feedback": feedback, "feedback_digest": digest(t, feedback),
-	}
-	evidence["evidence_digest"] = digest(t, evidence)
-	return evidence
-}
-
-func digest(t *testing.T, value any) string {
-	t.Helper()
-	data, err := canonicaljson.Marshal(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return canonicaljson.ContentDigest(data)
 }

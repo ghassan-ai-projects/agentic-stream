@@ -109,7 +109,7 @@ func TestCheckResolvable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := CheckResolvable(tt.recorded, Resolution{Device: bootOne, Evidence: tt.evidence})
+			err := CheckResolvable(tt.recorded, Resolution{Device: bootOne, Evidence: mustParse(t, tt.evidence)})
 			if tt.wantText != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantText) {
 					t.Fatalf("CheckResolvable = %v, want %q", err, tt.wantText)
@@ -130,8 +130,9 @@ func TestStateEvidenceMustMatchItsOwnDigest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	evidence["state"] = map[string]any{"device_id": "thermal-01", "boot_id": "boot-1", "safe_state": false}
-	err = CheckResolvable(&Reconciliation{Device: bootOne, Status: ReconciliationRequired, StateSHA256: stateSHA}, Resolution{Device: bootOne, Evidence: evidence})
+	tampered := mustParse(t, evidence)
+	tampered.State = map[string]any{"device_id": "thermal-01", "boot_id": "boot-1", "safe_state": false}
+	err = CheckResolvable(&Reconciliation{Device: bootOne, Status: ReconciliationRequired, StateSHA256: stateSHA}, Resolution{Device: bootOne, Evidence: tampered})
 	if err == nil || !strings.Contains(err.Error(), "does not match typed state evidence") {
 		t.Fatalf("tampered state = %v", err)
 	}
@@ -159,4 +160,13 @@ func TestResolutionRecordsCanonicalEvidence(t *testing.T) {
 func canonicalSHA(value any) ([]byte, error) {
 	state, err := NewDeviceState(value.(map[string]any))
 	return state.SHA256, err
+}
+
+func mustParse(t *testing.T, document map[string]any) ReconciliationEvidence {
+	t.Helper()
+	evidence, err := ParseReconciliationEvidence(document, bootOne)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return evidence
 }

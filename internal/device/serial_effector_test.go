@@ -80,7 +80,7 @@ func TestSerialEffectorVerificationRejectsMismatchedIndicatorValue(t *testing.T)
 	if evidence["target"] != "led-01" {
 		t.Fatalf("reconciliation evidence target=%v, want led-01", evidence["target"])
 	}
-	if err := deviceauthority.ValidateReconciliationEvidence(evidence, deviceauthority.DeviceBoot{DeviceID: "thermal-01", BootID: "boot-A"}); err != nil {
+	if _, err := deviceauthority.ParseReconciliationEvidence(evidence, deviceauthority.DeviceBoot{DeviceID: "thermal-01", BootID: "boot-A"}); err != nil {
 		t.Fatalf("query-state evidence must pass durable validation: %v", err)
 	}
 }

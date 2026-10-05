@@ -56,17 +56,17 @@ func sameDigest(existing, requested string) bool {
 // CheckCommandEvidence requires reconciliation evidence for a device-bound
 // command to name the bound target and the bound device boot. A command with
 // no binding was not delivered to a device and needs no device evidence.
-func CheckCommandEvidence(binding *CommandBinding, commandID, target string, evidence map[string]any) error {
+func CheckCommandEvidence(binding *CommandBinding, commandID, target string, document map[string]any) error {
 	if binding == nil {
 		return nil
 	}
 	if binding.Target != target {
 		return fmt.Errorf("device command binding target does not match command %q", commandID)
 	}
-	if evidenceTarget, _ := evidence["target"].(string); evidenceTarget != binding.Target {
+	if evidenceTarget, _ := document["target"].(string); evidenceTarget != binding.Target {
 		return fmt.Errorf("device reconciliation evidence target does not match command %q", commandID)
 	}
-	if err := ValidateReconciliationEvidence(evidence, binding.Device); err != nil {
+	if _, err := ParseReconciliationEvidence(document, binding.Device); err != nil {
 		return fmt.Errorf("validate device reconciliation evidence: %w", err)
 	}
 	return nil

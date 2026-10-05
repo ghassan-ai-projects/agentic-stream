@@ -21,6 +21,8 @@ type (
 	SafetyEvent = domain.SafetyEvent
 	// SafetyEventType names one kind of safety evidence.
 	SafetyEventType = domain.SafetyEventType
+	// ReconciliationEvidence is digest-bound evidence about one device boot.
+	ReconciliationEvidence = domain.ReconciliationEvidence
 )
 
 // Resolution outcomes.
@@ -51,11 +53,17 @@ var (
 	ErrNoRecordedState = domain.ErrNoRecordedState
 )
 
-// ValidateReconciliationEvidence validates a typed, boot-bound reconciliation
-// evidence envelope for device. It is a stateless rule other modules apply to
-// evidence before they persist it.
-func ValidateReconciliationEvidence(evidence map[string]any, device DeviceBoot) error {
-	return domain.ValidateReconciliationEvidence(evidence, device)
+// SealReconciliationEvidence builds evidence for the device boot named by
+// state, with its state, feedback and bundle digests. Its Document is the wire
+// form the authority later parses.
+func SealReconciliationEvidence(source, target string, state, feedback map[string]any) (ReconciliationEvidence, error) {
+	return domain.SealReconciliationEvidence(source, target, state, feedback)
+}
+
+// ParseReconciliationEvidence validates an evidence document for device and
+// returns it typed.
+func ParseReconciliationEvidence(document map[string]any, device DeviceBoot) (ReconciliationEvidence, error) {
+	return domain.ParseReconciliationEvidence(document, device)
 }
 
 // PhysicalEvidenceComplete reports whether a physical transition marked
