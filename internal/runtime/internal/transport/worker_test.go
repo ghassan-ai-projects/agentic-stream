@@ -89,21 +89,38 @@ func TestWorkerBackendEvidenceAndRemoteLifetime(t *testing.T) {
 
 func TestWorkerBackendSetupFailures(t *testing.T) {
 	t.Parallel()
+	socketDir, err := os.MkdirTemp("", "as-evidence-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
+	occupiedPath := filepath.Join(socketDir, "evidence.sock")
+	if err := os.WriteFile(occupiedPath, []byte("existing file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
+		name string
 		cfg  WorkerRuntimeConfig
 		want string
 	}{
-		{WorkerRuntimeConfig{EvidenceKey: "zz"}, "--evidence-key"},
-		{WorkerRuntimeConfig{EvidenceKey: evidenceTestKey}, "evidence ledger is required"},
-		{WorkerRuntimeConfig{EvidenceKey: evidenceTestKey, Ledger: &evidence.Ledger{}, EvidenceSocket: filepath.Join(t.TempDir(), "missing", "evidence.sock")}, "listen evidence socket"},
+		{"invalid key", WorkerRuntimeConfig{EvidenceKey: "zz"}, "--evidence-key"},
+		{"missing ledger", WorkerRuntimeConfig{EvidenceKey: evidenceTestKey}, "evidence ledger is required"},
+		{"occupied socket path", WorkerRuntimeConfig{EvidenceKey: evidenceTestKey, Ledger: &evidence.Ledger{}, EvidenceSocket: occupiedPath}, "listen evidence socket: refusing unsafe existing socket path"},
 	} {
-		r := NewWorkerBackend(tc.cfg, nativeexecutor.New)
-		if _, err := r.StartEvidence(); err == nil || !strings.Contains(err.Error(), tc.want) {
-			t.Fatalf("evidence error=%v want %s", err, tc.want)
-		}
-		if err := r.Close(); err != nil {
-			t.Fatal(err)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			r := NewWorkerBackend(tc.cfg, nativeexecutor.New)
+			t.Cleanup(func() {
+				if err := r.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			if _, err := r.StartEvidence(); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("evidence error=%v want %s", err, tc.want)
+			}
+		})
+	}
+	if content, err := os.ReadFile(occupiedPath); err != nil || string(content) != "existing file" {
+		t.Fatalf("occupied path was changed: content=%q error=%v", content, err)
 	}
 	r := NewWorkerBackend(WorkerRuntimeConfig{WorkerCA: "/missing/ca"}, nativeexecutor.New)
 	if _, err := r.ConnectWorker(t.Context(), nil); err == nil || !strings.Contains(err.Error(), "read worker CA") {
