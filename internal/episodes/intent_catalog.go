@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -15,10 +16,6 @@ import (
 // (B9/B10). The digest binds the parsed array under the shared
 // situation-runtime/intent-catalog domain; a forged or malformed catalog
 // fails closed on both sides.
-
-var intentRiskRanks = map[string]int{
-	"R0": 0, "R1": 1, "R2": 2, "R3": 3, "R4": 4,
-}
 
 // CompileIntentCatalog converts the spec's declared intents into the canonical
 // wire catalog (the exact shape the Ruby worker parses) and digests it under
@@ -86,7 +83,7 @@ func compileIntentEntry(intent spec.Intent) (map[string]any, error) {
 
 // validateIntentSchema requires a declared risk and a closed object schema.
 func validateIntentSchema(intent spec.Intent) error {
-	if _, ok := intentRiskRanks[intent.Risk]; !ok {
+	if _, ok := domain.RiskRank[intent.Risk]; !ok {
 		return fmt.Errorf("intent %q has invalid declared risk %q", intent.Type, intent.Risk)
 	}
 	if intent.ParameterSchema == nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 )
 
 // SchedulerItem is one pending scheduler item as scanned.
@@ -16,15 +17,7 @@ type SchedulerItem struct {
 	SituationVersion int
 }
 
-// Evaluation is one trigger evaluation as scanned.
-type Evaluation struct {
-	TriggerID   string
-	TriggerName string
-	Score       float64
-	Threshold   float64
-	Lane        string
-	DeltaJSON   []byte
-}
+type Evaluation = domain.Evaluation
 
 // LoadSchedulerItem reads one scheduler item inside the caller's transaction.
 func LoadSchedulerItem(ctx context.Context, tx *sql.Tx, id string) (SchedulerItem, error) {

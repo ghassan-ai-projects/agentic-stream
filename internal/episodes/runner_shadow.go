@@ -4,73 +4,47 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
+	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 )
 
 func (r *Runner) persistValidatedIntents(ctx context.Context, tx *sql.Tx, validated *decisions.Result, req *Request, now string) error {
 	for _, intent := range validated.Intents {
-		if err := store.InsertValidatedIntent(ctx, tx, store.ValidatedIntentInsert{Intent: intent, DecisionID: validated.DecisionID, TenantID: req.TenantID, SituationID: req.SituationID, SituationVersion: req.SituationVersion, Now: now}); err != nil {
+		row := store.ValidatedIntentInsert{Intent: intent, DecisionID: validated.DecisionID, TenantID: req.TenantID, SituationID: req.SituationID, SituationVersion: req.SituationVersion, Now: now}
+		if err := store.InsertValidatedIntent(ctx, tx, row); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// recordShadow scores a shadow decision: the would-be policy outcome computed
-// from the validated intents, persisted ONLY to the shadow_decisions table —
-// never to intents or commands. The score is the highest-risk intent's would-be
-// result under the live policy (R0/R1 automatic, R2 requires approval, R3/R4
-// denied). The decision is correlated by decision_id, so a shadow row is
-// traceable to the decision it scored.
+// recordShadow scores a shadow decision and persists it ONLY to the
+// shadow_decisions table — never to intents or commands. The score is the
+// highest-risk intent's would-be result under the live policy.
 func (r *Runner) recordShadow(ctx context.Context, tx *sql.Tx, decisionID string, decisionDigest []byte, req *Request, outcome *Outcome, validated *decisions.Result, now string) error {
-	// decisions.Validate rejects a decision with zero intents, so the first
-	// intent is always present here.
-	score, reason := shadowScore(validated)
-	decisionSHA := decisionDigest
 	if r.shadowStore == nil {
 		return fmt.Errorf("shadow dispatch but no shadow store configured — scores would be silently dropped")
 	}
-	shadow := r.shadowDecision(decisionID, decisionSHA, req, outcome, score, reason)
-	if err := r.shadowStore.Record(ctx, tx, shadow, now); err != nil {
-		return fmt.Errorf("record shadow decision: %w", err)
-	}
-	return nil
+	// decisions.Validate rejects a decision with zero intents, so the first
+	// intent is always present here.
+	score, reason := domain.ShadowScore(validated)
+	shadow := domain.NewShadowDecision(r.shadowIdentity(decisionID, req), reqIdentity(req), outcome.DecisionJSON, decisionDigest, score, reason)
+	return store.RecordShadowDecision(ctx, tx, shadow, now)
 }
 
-func shadowScore(validated *decisions.Result) (qualification.ShadowScore, string) {
-	highest := highestRiskIntent(validated)
-	switch highest.RiskClass {
-	case "R0", "R1":
-		return qualification.ShadowWouldApprove, "would_approve_" + highest.RiskClass
-	case "R2":
-		return qualification.ShadowWouldRequireApproval, "would_require_approval_r2"
-	default:
-		return qualification.ShadowWouldDeny, "would_deny_" + highest.RiskClass
-	}
+// reqIdentity projects the request's bound worker identity.
+func reqIdentity(req *Request) episodeledger.Identity {
+	return episodeledger.Identity{EpisodeID: req.EpisodeID, AttemptID: req.AttemptID, Fence: req.Fence}
 }
 
-func highestRiskIntent(validated *decisions.Result) decisions.Intent {
-	highest := validated.Intents[0]
-	for _, intent := range validated.Intents[1:] {
-		if intentRiskRanks[intent.RiskClass] > intentRiskRanks[highest.RiskClass] {
-			highest = intent
-		}
-	}
-
-	return highest
-}
-
-func (r *Runner) shadowDecision(decisionID string, decisionSHA []byte, req *Request, outcome *Outcome, score qualification.ShadowScore, reason string) qualification.ShadowDecision {
-	return qualification.ShadowDecision{
-		ShadowDecisionID: r.idGen.New(ids.PrefixShadow),
-		EpisodeID:        req.EpisodeID, DecisionID: decisionID, AttemptID: req.AttemptID, Fence: req.Fence,
-		DecisionJSON: outcome.DecisionJSON, DecisionSHA256: decisionSHA,
-		ShadowScore: score, ScoreReason: reason,
-		TenantID: req.TenantID, SituationID: req.SituationID, SituationVersion: req.SituationVersion,
-		PolicyEpoch: req.PolicyEpoch,
+func (r *Runner) shadowIdentity(decisionID string, req *Request) domain.ShadowDecisionIdentity {
+	return domain.ShadowDecisionIdentity{
+		ShadowDecisionID: r.idGen.New(ids.PrefixShadow), EpisodeID: req.EpisodeID, DecisionID: decisionID,
+		TenantID: req.TenantID, SituationID: req.SituationID,
+		SituationVersion: req.SituationVersion, PolicyEpoch: req.PolicyEpoch,
 	}
 }

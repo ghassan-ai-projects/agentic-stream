@@ -4,33 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 )
 
-// ReconsiderationRow is the reconsideration evidence join as scanned: the
-// reconsideration, its prior decision, the invalidated command's intent and
-// the invalidated outcome.
-type ReconsiderationRow struct {
-	ReconsiderationID    string
-	SituationID          string
-	SupersededVersion    int
-	CorrectionVersion    int
-	InvalidatedCommandID string
-	InvalidatedOutcomeID string
-	PriorDecisionID      string
-	PriorDecisionJSON    []byte
-	CommandJSON          []byte
-	CommandStatus        string
-	IntentID             string
-	IntentType           string
-	RiskClass            string
-	OutcomeID            string
-	OutcomeOrdinal       int
-	OutcomeStatus        string
-	ProviderResultJSON   []byte
-	ObservedEffectJSON   []byte
-	ReconciliationStatus sql.NullString
-	OutcomeSHA256        []byte
-}
+type ReconsiderationRow = domain.ReconsiderationRow
 
 const queryReconsiderationSQL = `
 		SELECT r.reconsideration_id, r.situation_id, r.superseded_version, r.correction_version,
@@ -61,6 +38,7 @@ const queryReconsiderationSQL = `
 // the trigger, then the superseded version and command.
 func LoadReconsideration(ctx context.Context, tx *sql.Tx, item SchedulerItem, supersededVersion int, invalidatedCommandID string) (ReconsiderationRow, error) {
 	var row ReconsiderationRow
+	var reconciliationStatus sql.NullString
 	query := tx.QueryRowContext(ctx, queryReconsiderationSQL, item.TenantID, item.SituationID, item.SituationVersion,
 		item.SchedulerItemID, item.TriggerID, supersededVersion, invalidatedCommandID, item.SchedulerItemID, item.TriggerID)
 	if err := query.Scan(
@@ -68,9 +46,10 @@ func LoadReconsideration(ctx context.Context, tx *sql.Tx, item SchedulerItem, su
 		&row.InvalidatedCommandID, &row.InvalidatedOutcomeID,
 		&row.PriorDecisionID, &row.PriorDecisionJSON, &row.CommandJSON, &row.CommandStatus, &row.IntentID, &row.IntentType, &row.RiskClass,
 		&row.OutcomeID, &row.OutcomeOrdinal, &row.OutcomeStatus, &row.ProviderResultJSON, &row.ObservedEffectJSON,
-		&row.ReconciliationStatus, &row.OutcomeSHA256,
+		&reconciliationStatus, &row.OutcomeSHA256,
 	); err != nil {
 		return ReconsiderationRow{}, fmt.Errorf("query reconsideration evidence: %w", err)
 	}
+	row.ReconciliationStatus = domain.NullString{String: reconciliationStatus.String, Valid: reconciliationStatus.Valid}
 	return row, nil
 }

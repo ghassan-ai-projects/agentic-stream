@@ -180,17 +180,3 @@ func (r *Runner) governDecision(ctx context.Context, tx *sql.Tx, claim *episodeC
 	}
 	return nil
 }
-
-func bindAttemptIdentity(raw []byte, identity episodeledger.Identity) ([]byte, error) {
-	var document map[string]any
-	if err := json.Unmarshal(raw, &document); err != nil {
-		return nil, fmt.Errorf("decode request json: %w", err)
-	}
-	document["attempt_id"] = identity.AttemptID
-	document["fence"] = identity.Fence
-	bound, err := canonicaljson.Marshal(document)
-	if err != nil {
-		return nil, fmt.Errorf("canonicalize request json: %w", err)
-	}
-	return bound, nil
-}

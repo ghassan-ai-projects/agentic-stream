@@ -12,6 +12,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 )
@@ -214,7 +215,7 @@ func bindClaimIdentity(ctx context.Context, tx *sql.Tx, claim *episodeClaim, ide
 	claim.identity = identity
 	claim.req.AttemptID = identity.AttemptID
 	claim.req.Fence = identity.Fence
-	claim.req.RequestJSON, err = bindAttemptIdentity(claim.req.RequestJSON, identity)
+	claim.req.RequestJSON, err = domain.BindAttemptIdentity(claim.req.RequestJSON, identity)
 	if err != nil {
 		return fmt.Errorf("bind worker identity to request: %w", err)
 	}
