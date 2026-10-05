@@ -12,7 +12,7 @@ import (
 var durableOwners = map[string]string{
 	"approvals":                     "internal/approvalledger",
 	"calibration_artifacts":         "internal/qualification",
-	"commands":                      "internal/actions",
+	"commands":                      "internal/actions/internal/store",
 	"connector_checkpoints":         "internal/ingress",
 	"cost_limits":                   "internal/costcontrol",
 	"cost_reservations":             "internal/costcontrol",
@@ -41,8 +41,8 @@ var durableOwners = map[string]string{
 	"notification_poison_attempts":  "internal/notify",
 	"notifications":                 "internal/notify",
 	"operator_state":                "internal/engine",
-	"outbox":                        "internal/actions",
-	"outcomes":                      "internal/actions",
+	"outbox":                        "internal/actions/internal/store",
+	"outcomes":                      "internal/actions/internal/store",
 	"partition_checkpoints":         "internal/engine",
 	"policy_evaluations":            "internal/policy/internal/store",
 	"reconsiderations":              "internal/cognition/internal/store",
@@ -57,7 +57,7 @@ var durableOwners = map[string]string{
 	"spec_deployments":              "internal/spec",
 	"timers":                        "internal/engine",
 	"trigger_evaluations":           "internal/cognition/internal/store",
-	"verifications":                 "internal/actions",
+	"verifications":                 "internal/actions/internal/store",
 	"watch_conditions":              "internal/watch",
 	"watch_fires":                   "internal/watch",
 }
@@ -97,7 +97,7 @@ func ownsMutation(pkg string, m sqlMutation) bool {
 		if m.operation == "insert" {
 			return pkg == "internal/policy/internal/store" && !m.rewritesExisting
 		}
-		if pkg != "internal/actions" || m.operation != "update" {
+		if pkg != "internal/actions/internal/store" || m.operation != "update" {
 			return false
 		}
 		if m.table == "commands" {
@@ -139,7 +139,10 @@ func TestHandoffOwnershipRejectsAuthorityAndPayloadBypasses(t *testing.T) {
 		{"internal/policy/internal/store", "UPDATE commands SET status='dispatching'"},
 		{"internal/policy/internal/store", "DELETE FROM commands"},
 		{"internal/actions", "INSERT INTO commands(command_id) VALUES ('bypass')"},
+		{"internal/actions/internal/app", "UPDATE outbox SET status='delivered'"},
 		{"internal/actions", "UPDATE commands SET command_json=?"},
+		{"internal/actions/internal/store", "UPDATE commands SET command_json=?"},
+		{"internal/actions/internal/store", "DELETE FROM outbox"},
 		{"internal/policy/internal/store", "UPDATE intents SET intent_json=?"},
 		{"internal/cognition/internal/store", "UPDATE situations SET current_version=2"},
 		{"internal/episodes", "DELETE FROM intents"},
@@ -148,6 +151,7 @@ func TestHandoffOwnershipRejectsAuthorityAndPayloadBypasses(t *testing.T) {
 		{"internal/policy/internal/store", "INSERT INTO commands(command_id) VALUES ('bypass') ON CONFLICT DO UPDATE SET command_json=?"},
 		{"internal/episodes", "INSERT INTO intents(intent_id) VALUES ('bypass') ON CONFLICT DO UPDATE SET policy_status='approved'"},
 		{"internal/actions", "UPDATE commands SET status=?, (command_json,idempotency_key)=(?,?)"},
+		{"internal/actions/internal/store", "UPDATE commands SET status=?, (command_json,idempotency_key)=(?,?)"},
 	} {
 		mutations := sqlMutations(tc.query)
 		if len(mutations) != 1 {

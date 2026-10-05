@@ -1,4 +1,4 @@
-package actions_test
+package app_test
 
 import (
 	"context"
@@ -13,7 +13,8 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
@@ -93,7 +94,7 @@ func TestDispatcherRecordsSuccessAndDoesNotRedispatchDeliveredOutbox(t *testing.
 	db, commandID := openActionFixture(t)
 	defer func() { _ = db.Close() }()
 	effector := &recordingEffector{}
-	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute)
+	dispatcher := newService(t, db, effector, "test-dispatcher", time.Minute)
 
 	processed, err := dispatcher.DispatchOnce(context.Background())
 	if err != nil || !processed {
@@ -151,7 +152,7 @@ func TestDispatcherDoesNotBlindlyRetryUnknownOutcome(t *testing.T) {
 	db, commandID := openActionFixture(t)
 	defer func() { _ = db.Close() }()
 	effector := &recordingEffector{unknown: true}
-	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute)
+	dispatcher := newService(t, db, effector, "test-dispatcher", time.Minute)
 
 	processed, err := dispatcher.DispatchOnce(context.Background())
 	if err != nil || !processed {
@@ -215,7 +216,7 @@ func TestDispatcherKeepsAcceptedTransportAwaitingVerification(t *testing.T) {
 	db, commandID := openActionFixture(t)
 	defer func() { _ = db.Close() }()
 	effector := &recordingEffector{verificationPending: true}
-	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute)
+	dispatcher := newService(t, db, effector, "test-dispatcher", time.Minute)
 
 	processed, err := dispatcher.DispatchOnce(context.Background())
 	if err != nil || !processed {
@@ -260,7 +261,7 @@ func TestDispatcherVerifiesDeviceOutcomeAfterDispatch(t *testing.T) {
 			"feedback_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		},
 	}
-	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute)
+	dispatcher := newService(t, db, effector, "test-dispatcher", time.Minute)
 	processed, err := dispatcher.DispatchOnce(context.Background())
 	if err != nil || !processed {
 		t.Fatalf("verified dispatch processed=%v err=%v", processed, err)
@@ -293,7 +294,7 @@ func TestDispatcherReconcilesUnknownDeviceOutcomeFromState(t *testing.T) {
 			"feedback_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		},
 	}
-	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute)
+	dispatcher := newService(t, db, effector, "test-dispatcher", time.Minute)
 	processed, err := dispatcher.DispatchOnce(context.Background())
 	if err != nil || !processed {
 		t.Fatalf("unknown verified dispatch processed=%v err=%v", processed, err)
@@ -321,7 +322,7 @@ func TestDispatcherKeepsVerificationQueryFailureUnknown(t *testing.T) {
 	db, commandID := openActionFixture(t)
 	defer func() { _ = db.Close() }()
 	effector := &verifyingEffector{verifyErr: errors.New("state query failed")}
-	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute)
+	dispatcher := newService(t, db, effector, "test-dispatcher", time.Minute)
 	processed, err := dispatcher.DispatchOnce(context.Background())
 	if err != nil || !processed {
 		t.Fatalf("failed verification dispatch processed=%v err=%v", processed, err)
@@ -342,7 +343,7 @@ func TestDispatcherBoundsVerificationByDispatchLease(t *testing.T) {
 	db, commandID := openActionFixture(t)
 	defer func() { _ = db.Close() }()
 	effector := &verifyingEffector{waitForContext: true}
-	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", 50*time.Millisecond)
+	dispatcher := newService(t, db, effector, "test-dispatcher", 50*time.Millisecond)
 	started := time.Now()
 	processed, err := dispatcher.DispatchOnce(context.Background())
 	if err != nil || !processed {
@@ -369,7 +370,7 @@ func TestDispatcherRefusesCommandWhenInterlockTrips(t *testing.T) {
 		t.Fatalf("trip interlock: %v", err)
 	}
 	effector := &recordingEffector{}
-	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute).WithInterlock(interlock.DurableReader{})
+	dispatcher := newService(t, db, effector, "test-dispatcher", time.Minute)
 	processed, err := dispatcher.DispatchOnce(context.Background())
 	if err != nil || !processed {
 		t.Fatalf("dispatch tripped command processed=%v err=%v", processed, err)
@@ -390,7 +391,7 @@ func TestDispatcherEffectorAcceptanceRechecksInterlock(t *testing.T) {
 	db, commandID := openActionFixture(t)
 	defer func() { _ = db.Close() }()
 	effector := &tripBeforeAcceptEffector{db: db}
-	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute).WithInterlock(interlock.DurableReader{})
+	dispatcher := newService(t, db, effector, "test-dispatcher", time.Minute)
 	processed, err := dispatcher.DispatchOnce(context.Background())
 	if err != nil || !processed {
 		t.Fatalf("dispatch race command processed=%v err=%v", processed, err)
@@ -423,7 +424,7 @@ func TestDispatcherReclaimsExpiredLease(t *testing.T) {
 	}
 
 	effector := &recordingEffector{}
-	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "test-dispatcher", time.Minute)
+	dispatcher := newService(t, db, effector, "test-dispatcher", time.Minute)
 	processed, err := dispatcher.DispatchOnce(ctx)
 	if err != nil {
 		t.Fatalf("reclaim expired lease: %v", err)
@@ -636,7 +637,7 @@ func TestDispatcherTreatsProviderDeadlineAsUnknownWithoutRetry(t *testing.T) {
 	t.Parallel()
 	db, commandID := openActionFixture(t)
 	effector := &deadlineEffector{}
-	dispatcher := actions.NewDispatcher(db, effector, clock.Physical(), ids.Deterministic(), "deadline-owner", time.Minute)
+	dispatcher := newService(t, db, effector, "deadline-owner", time.Minute)
 	processed, err := dispatcher.DispatchOnce(t.Context())
 	if err != nil || !processed {
 		t.Fatalf("dispatch processed=%v err=%v", processed, err)
@@ -649,4 +650,38 @@ func TestDispatcherTreatsProviderDeadlineAsUnknownWithoutRetry(t *testing.T) {
 	if err != nil || processed || effector.calls != 1 {
 		t.Fatalf("retry processed=%v calls=%d err=%v", processed, effector.calls, err)
 	}
+}
+
+func newService(t *testing.T, db *storage.DB, effector actionport.Effector, leaseOwner string, leaseFor time.Duration) *app.Service {
+	t.Helper()
+	return newServiceWithOwner(t, db, effector, leaseOwner, leaseFor, func(context.Context, *sql.Tx, string) error { return nil })
+}
+
+func newServiceWithOwner(t *testing.T, db *storage.DB, effector actionport.Effector, leaseOwner string, leaseFor time.Duration, owner store.OwnerCheck) *app.Service {
+	t.Helper()
+	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch", interlock.DurableReader{}), Effector: effector,
+		Clock: clock.Physical(), IDs: ids.Deterministic(), LeaseOwner: leaseOwner, LeaseFor: leaseFor})
+	if err != nil {
+		t.Fatalf("new action service: %v", err)
+	}
+	return service
+}
+
+func authorizedDispatch(ctx context.Context, authorization actionport.Authorization, command actionport.Command, dispatch func(context.Context, actionport.Command) (actionport.Effect, error)) (actionport.Effect, error) {
+	if err := authorization.Check(ctx); err != nil {
+		return actionport.Effect{}, fmt.Errorf("check authorization: %w", err)
+	}
+	return dispatch(ctx, command)
+}
+
+func (e *recordingEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
+	return authorizedDispatch(ctx, authorization, command, e.Dispatch)
+}
+
+func (e *verifyingEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
+	return authorizedDispatch(ctx, authorization, command, e.Dispatch)
+}
+
+func (e *deadlineEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
+	return authorizedDispatch(ctx, authorization, command, e.Dispatch)
 }

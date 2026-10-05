@@ -69,17 +69,30 @@ func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.
 	if err != nil {
 		return nil, err
 	}
-	admitter := composeAdmission(cfg, episodeService)
-	policyGateway, err := composePolicy(cfg)
+	policyGateway, dispatcher, err := composeGovernance(cfg)
 	if err != nil {
 		return nil, err
 	}
 	return app.NewPipeline(app.PipelineDependencies{
-		Log: log, Engine: stream, Admission: admitter, Runner: episodeService, Dispatcher: composeDispatcher(cfg), Watch: watch, Telemetry: cfg.Telemetry,
+		Log: log, Engine: stream, Admission: composeAdmission(cfg, episodeService), Runner: episodeService, Dispatcher: dispatcher, Watch: watch, Telemetry: cfg.Telemetry,
 		Transactions: &store.PipelineStore{DB: cfg.DB, Policy: policyGateway, Owner: cfg.Owner, OwnerEpoch: cfg.OwnerEpoch},
 		Sources:      &transport.Sources{DB: cfg.DB, Log: log, TenantID: cfg.TenantID, Telemetry: cfg.Telemetry},
 		Clock:        cfg.Clock, TenantID: cfg.TenantID,
 	}), nil
+}
+
+// composeGovernance builds the policy plane and the action plane that executes
+// what policy approves.
+func composeGovernance(cfg PipelineConfig) (*policy.Service, *actions.Service, error) {
+	policyGateway, err := composePolicy(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	dispatcher, err := composeDispatcher(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return policyGateway, dispatcher, nil
 }
 
 func composeAdmission(cfg PipelineConfig, episodeService *episodes.Service) *admission.Admitter {
@@ -95,7 +108,7 @@ func composeEpisodes(cfg PipelineConfig) (*episodes.Service, error) {
 }
 
 func composePolicy(cfg PipelineConfig) (*policy.Service, error) {
-	service, err := policy.New(policy.Config{PolicyVersion: cfg.Spec.Digest, IDGenerator: cfg.IDGenerator, OwnerEpoch: cfg.OwnerEpoch, RuntimeOwner: policyOwnershipCheck(cfg), DecisionEpoch: policyEpochCheck(cfg), Interlock: interlock.DurableReader{}, Calibration: policyCalibrationCheck(cfg)})
+	service, err := policy.New(policy.Config{PolicyVersion: cfg.Spec.Digest, IDGenerator: cfg.IDGenerator, OwnerEpoch: cfg.OwnerEpoch, RuntimeOwner: runtimeOwnershipCheck(cfg), DecisionEpoch: policyEpochCheck(cfg), Interlock: interlock.DurableReader{}, Calibration: policyCalibrationCheck(cfg)})
 	if err != nil {
 		return nil, fmt.Errorf("compose policy: %w", err)
 	}
@@ -112,26 +125,28 @@ func policyCalibrationCheck(cfg PipelineConfig) policy.CalibrationCheck {
 	}
 }
 
-func policyOwnershipCheck(cfg PipelineConfig) func(context.Context, *sql.Tx, string) error {
+func runtimeOwnershipCheck(cfg PipelineConfig) func(context.Context, *sql.Tx, string) error {
 	if cfg.Owner == nil || cfg.OwnerEpoch == "" {
-		return unownedPolicyCheck
+		return unownedCheck
 	}
 	return cfg.Owner.Assert
 }
 
 func policyEpochCheck(cfg PipelineConfig) func(context.Context, *sql.Tx, string) error {
 	if cfg.EpochControl == nil {
-		return unownedPolicyCheck
+		return unownedCheck
 	}
 	return cfg.EpochControl.AssertDecisionTx
 }
 
-func unownedPolicyCheck(context.Context, *sql.Tx, string) error { return nil }
+func unownedCheck(context.Context, *sql.Tx, string) error { return nil }
 
-func composeDispatcher(cfg PipelineConfig) *actions.Dispatcher {
-	dispatcher := actions.NewDispatcher(cfg.DB, cfg.Effector, cfg.Clock, cfg.IDGenerator, "runtime-actions/"+cfg.OwnerEpoch, time.Minute)
-	dispatcher.WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch)
-	dispatcher.WithInterlock(interlock.DurableReader{})
-	dispatcher.WithTelemetry(cfg.Telemetry)
-	return dispatcher
+func composeDispatcher(cfg PipelineConfig) (*actions.Service, error) {
+	service, err := actions.New(actions.Config{DB: cfg.DB, Effector: cfg.Effector, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch,
+		Interlock: interlock.DurableReader{}, Clock: cfg.Clock, IDs: cfg.IDGenerator, LeaseOwner: "runtime-actions/" + cfg.OwnerEpoch,
+		LeaseFor: time.Minute, Telemetry: cfg.Telemetry})
+	if err != nil {
+		return nil, fmt.Errorf("compose actions: %w", err)
+	}
+	return service, nil
 }

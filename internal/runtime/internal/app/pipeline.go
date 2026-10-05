@@ -33,7 +33,7 @@ type Pipeline struct {
 	engine       *engine.Engine
 	admission    *admission.Admitter
 	runner       *episodes.Service
-	dispatcher   *actions.Dispatcher
+	dispatcher   *actions.Service
 	watch        *watch.Effector
 	clk          clock.Clock
 	tenantID     string

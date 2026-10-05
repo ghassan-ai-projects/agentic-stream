@@ -19,7 +19,7 @@ type PipelineDependencies struct {
 	Engine       *engine.Engine
 	Admission    *admission.Admitter
 	Runner       *episodes.Service
-	Dispatcher   *actions.Dispatcher
+	Dispatcher   *actions.Service
 	Watch        *watch.Effector
 	Telemetry    *telemetry.Runtime
 	Transactions *store.PipelineStore
