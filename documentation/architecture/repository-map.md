@@ -40,7 +40,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/actions/internal/app/` | ordered lease, authorization, dispatch, verification and reconciliation use cases |
 | `internal/actions/internal/store/` | opaque transactions, command/outbox/outcome/verification SQL and owner, interlock, authority and notification plumbing |
 | `internal/actions/internal/domain/` | pure dispatch, authorization and reconciliation rules with command, intent, decision and outcome document checks |
-| `internal/watch/` | derived-trigger watches: install as an effect, fire on matching evidence, expire |
+| `internal/watch/` | watch configuration and effect-port delegation facade |
+| `internal/watch/internal/app/` | install, fire and expire use cases with busy retry |
+| `internal/watch/internal/store/` | opaque transactions, watch SQL and owner/interlock plumbing |
+| `internal/watch/internal/domain/` | pure payload rules, watch identity, CEL validation and evaluation |
 | `internal/actionport/` | approved command/effect contracts |
 | `internal/device/` | device effect boundary facade: effect profiles, catalog loading, gateway dial and effector constructors |
 | `internal/device/internal/app/` | device session use cases and the gateway, simulated and fail-closed effectors |

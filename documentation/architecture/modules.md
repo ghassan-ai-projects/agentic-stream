@@ -62,7 +62,7 @@ records or returned values, not reverse service dependencies.
 | `actionport` | Approved command, effect outcome, final authorization and effector contracts; no database/network implementation |
 | `device` | Closed capability catalog, deterministic materialization, session/boot checks, safe stop, gateway transport and the simulated effector |
 | `actions` | Configured Service facade; app leases and dispatches approved commands, domain owns authorization and reconciliation rules, opaque store transactions keep ledger writes, owner and interlock checks atomic |
-| `watch` | Bounded, expiring derived-trigger watches: install through the effect port, fire on matching evidence, expire; owns `watch_conditions`/`watch_fires` |
+| `watch` | Configured facade; app installs, fires and expires bounded derived-trigger watches, domain owns payload and CEL rules, the opaque store owns `watch_conditions`/`watch_fires` |
 | `episodeledger` | Episode/attempt state, fencing identity, rejection audit, recovery and cancellation mutations |
 | `admission` | Turning due scheduler items into epoch-stamped episodes; drain stop, fixture refusal and recorded skips for unadmittable items |
 | `episodes` | Configured Service facade; app assembles and runs bounded reasoning, domain owns pure contracts/rules, opaque store transactions preserve lifecycle and Decision handoffs |
@@ -132,6 +132,9 @@ validation facade, compiled authority and supported public results.
 
 The [cognition module guide](../../internal/cognition/README.md) documents
 transaction-scoped evaluation, queue replacement and correction admission.
+
+The [watch module guide](../../internal/watch/README.md) documents install, fire and
+expire ordering.
 
 The [actions module guide](../../internal/actions/README.md) documents lease,
 authorization, dispatch and reconciliation ordering.

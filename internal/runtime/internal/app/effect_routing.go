@@ -12,13 +12,13 @@ import (
 // effector and all other routes to the configured external/simulated effector.
 // It keeps the watch implementation independent of the spec store.
 type CompositeEffector struct {
-	watch    *watch.Effector
+	watch    *watch.Service
 	serial   actionport.VerifiedEffector
 	fallback actionport.Effector
 }
 
 // NewCompositeEffector creates the production action-plane composition.
-func NewCompositeEffector(watch *watch.Effector, fallback actionport.Effector) *CompositeEffector {
+func NewCompositeEffector(watch *watch.Service, fallback actionport.Effector) *CompositeEffector {
 	return &CompositeEffector{watch: watch, fallback: fallback}
 }
 

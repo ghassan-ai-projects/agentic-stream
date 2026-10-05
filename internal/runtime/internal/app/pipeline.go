@@ -34,7 +34,7 @@ type Pipeline struct {
 	admission    *admission.Admitter
 	runner       *episodes.Service
 	dispatcher   *actions.Service
-	watch        *watch.Effector
+	watch        *watch.Service
 	clk          clock.Clock
 	tenantID     string
 	watchMu      sync.Mutex

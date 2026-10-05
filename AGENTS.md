@@ -81,7 +81,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/decisions` - pure Decision/Intent validator; thin facade over `internal/domain`, with opaque compiled intent authority (see [decisions module guide](internal/decisions/README.md))
 - `internal/policy` - policy plane; revalidates every intent before dispatch. Reference structure: thin `Service` facade, ordered use cases in `internal/app`, pure governance records/rules in `internal/domain`, and caller-owned transaction plumbing plus SQL in `internal/store` (see [policy module pattern](internal/policy/README.md))
 - `internal/actions` - configured dispatch facade; ordered app use cases, pure domain rules and document checks, and an opaque-transaction store that owns the command, outbox, outcome and verification ledgers (see [actions module guide](internal/actions/README.md))
-- `internal/watch` - derived-trigger watches installed by approved commands
+- `internal/watch` - derived-trigger watches installed by approved commands; configured facade, app use cases, pure domain rules and an opaque-transaction store (see [watch module guide](internal/watch/README.md))
 - `internal/actionport` - approved-command/effect contracts without implementation dependencies
 - `internal/device` - device effect boundary; the reference adapter module: thin facade, session use cases in `internal/app`, pure `internal/domain`, record codec in `internal/wire`, gateway link in `internal/transport` (record in [docs/device-reference-module-2026-10-05](docs/device-reference-module-2026-10-05/README.md))
 - `internal/episodeledger` / `internal/scheduleledger` / `internal/approvalledger` - durable lifecycle owners shared through transaction-scoped operations

@@ -52,8 +52,15 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*app.Pipeline, error)
 		return nil, fmt.Errorf("pipeline database and spec are required")
 	}
 	cfg = pipelineDefaults(cfg)
-	var watch *watch.Effector
-	cfg.Effector, watch = composeEffectors(cfg)
+	effector, watch, err := composeEffectors(cfg)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Effector = effector
+	return composeOwnedPipeline(ctx, cfg, watch)
+}
+
+func composeOwnedPipeline(ctx context.Context, cfg PipelineConfig, watch *watch.Service) (*app.Pipeline, error) {
 	log := eventlog.NewEventLogWithClock(cfg.DB, cfg.Clock)
 	stream, err := newOwnedStream(ctx, cfg, log)
 	if err != nil {

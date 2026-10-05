@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 
 	"go.opentelemetry.io/otel/trace/noop"
 
@@ -24,7 +23,7 @@ func TestFireRecentWatchesPaginatesPastFullPage(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	watch := watch.NewEffector(db)
+	watch := newWatch(t, db)
 	if _, err := watch.Dispatch(ctx, actionport.Command{
 		CommandID:     "watch-pagination",
 		TenantID:      "default",

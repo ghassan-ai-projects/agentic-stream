@@ -9,7 +9,6 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -57,7 +56,7 @@ func TestPipelineSurvivesWatchExpressionEvaluationError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	watch := watch.NewEffector(db)
+	watch := newWatch(t, db)
 	command := actionport.Command{
 		CommandID: "cmd-pipeline-watch-evaluation-error", TenantID: "default", EffectorRoute: "install_watch_condition",
 		Payload: map[string]any{

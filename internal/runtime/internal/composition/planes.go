@@ -49,10 +49,11 @@ func pipelineExecutionDefaults(cfg PipelineConfig) PipelineConfig {
 	return cfg
 }
 
-func composeEffectors(cfg PipelineConfig) (actionport.Effector, *watch.Effector) {
-	watch := watch.NewEffectorWithClock(cfg.DB, cfg.Clock)
-	watch.WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch)
-	watch.WithInterlock(interlock.DurableReader{})
+func composeEffectors(cfg PipelineConfig) (actionport.Effector, *watch.Service, error) {
+	watch, err := watch.New(watch.Config{DB: cfg.DB, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch, Interlock: interlock.DurableReader{}, Clock: cfg.Clock})
+	if err != nil {
+		return nil, nil, fmt.Errorf("compose watch: %w", err)
+	}
 	gatewayEffector := cfg.GatewayEffector
 	if gatewayEffector != nil {
 		gatewayEffector.WithTelemetry(cfg.Telemetry)
@@ -61,10 +62,10 @@ func composeEffectors(cfg PipelineConfig) (actionport.Effector, *watch.Effector)
 	if gatewayEffector != nil {
 		compositeEffector.WithSerial(gatewayEffector)
 	}
-	return compositeEffector, watch
+	return compositeEffector, watch, nil
 }
 
-func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.Engine, watch *watch.Effector) (*app.Pipeline, error) {
+func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.Engine, watch *watch.Service) (*app.Pipeline, error) {
 	episodeService, err := composeEpisodes(cfg)
 	if err != nil {
 		return nil, err

@@ -1,7 +1,6 @@
-package watch
+package domain
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -9,16 +8,19 @@ import (
 	"github.com/google/cel-go/ext"
 )
 
-func validateWatchExpression(expression string) error {
+// ValidateExpression requires a watch expression that avoids forbidden syntax
+// and compiles as CEL over `features` and `situation`.
+func ValidateExpression(expression string) error {
 	if strings.ContainsAny(expression, "{};`") {
 		return fmt.Errorf("watch expression contains forbidden syntax")
 	}
-	_, _, err := compileWatchExpression(expression)
+	_, _, err := compile(expression)
 	return err
 }
 
-func evaluateWatchExpression(expression string, features map[string]any) (bool, error) {
-	env, ast, err := compileWatchExpression(expression)
+// Evaluate reports whether the expression matches the event features.
+func Evaluate(expression string, features map[string]any) (bool, error) {
+	env, ast, err := compile(expression)
 	if err != nil {
 		return false, err
 	}
@@ -26,10 +28,10 @@ func evaluateWatchExpression(expression string, features map[string]any) (bool, 
 	if err != nil {
 		return false, fmt.Errorf("build watch expression program: %w", err)
 	}
-	return evaluateWatchProgram(program, features)
+	return evaluateProgram(program, features)
 }
 
-func compileWatchExpression(expression string) (*cel.Env, *cel.Ast, error) {
+func compile(expression string) (*cel.Env, *cel.Ast, error) {
 	env, err := cel.NewEnv(cel.Variable("features", cel.MapType(cel.StringType, cel.DynType)), cel.Variable("situation", cel.MapType(cel.StringType, cel.DynType)), ext.Bindings())
 	if err != nil {
 		return nil, nil, fmt.Errorf("create watch expression environment: %w", err)
@@ -41,7 +43,7 @@ func compileWatchExpression(expression string) (*cel.Env, *cel.Ast, error) {
 	return env, ast, nil
 }
 
-func evaluateWatchProgram(program cel.Program, features map[string]any) (bool, error) {
+func evaluateProgram(program cel.Program, features map[string]any) (bool, error) {
 	value, _, err := program.Eval(map[string]any{"features": features, "situation": map[string]any{}})
 	if err != nil {
 		return false, fmt.Errorf("evaluate watch expression: %w", err)
@@ -51,20 +53,4 @@ func evaluateWatchProgram(program cel.Program, features map[string]any) (bool, e
 		return false, fmt.Errorf("watch expression must return bool")
 	}
 	return matched, nil
-}
-
-func integerPayload(value any) (int, bool) {
-	switch number := value.(type) {
-	case int:
-		return number, true
-	case int64:
-		return int(number), true
-	case float64:
-		return int(number), number == float64(int(number))
-	case json.Number:
-		parsed, err := number.Int64()
-		return int(parsed), err == nil
-	default:
-		return 0, false
-	}
 }

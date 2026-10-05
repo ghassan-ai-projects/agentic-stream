@@ -5,7 +5,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 	"path/filepath"
 	"testing"
 )
@@ -17,7 +16,7 @@ func TestCompositeEffectorRoutesWatchBeforeSimulatedFallback(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	effector := app.NewCompositeEffector(watch.NewEffector(db), device.NewSimulatedEffector())
+	effector := app.NewCompositeEffector(newWatch(t, db), device.NewSimulatedEffector())
 	watchCommand := actionport.Command{
 		CommandID:     "cmd-watch",
 		TenantID:      "tenant-1",
