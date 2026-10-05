@@ -3,12 +3,11 @@ package domain
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 func TestTargetResolutionPreservesFallbackPrecedence(t *testing.T) {

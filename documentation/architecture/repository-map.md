@@ -17,7 +17,9 @@ historical design map where the code has chosen a more specific package name.
 | `internal/episodes/` | request assembly, bounded execution lifecycle, budgets and the `Executor` port |
 | `internal/evidence/` | capability tokens, evidence server, call ledger |
 | `internal/decisions/` | Decision and Intent validation |
-| `internal/policy/` | deterministic governance and approvals |
+| `internal/policy/` | policy configuration and delegation facade |
+| `internal/policy/internal/app/` | ordered intent evaluation and human approval use cases |
+| `internal/policy/internal/store/` | caller-owned transactions, policy SQL and ledger/notification plumbing |
 | `internal/policy/internal/domain/` | pure policy records, canonical definitions and governance checks |
 | `internal/actions/` | governed outbox dispatch, verification and reconciliation |
 | `internal/watch/` | derived-trigger watches: install as an effect, fire on matching evidence, expire |

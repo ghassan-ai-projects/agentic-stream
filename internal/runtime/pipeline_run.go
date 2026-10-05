@@ -236,7 +236,7 @@ func (p *Pipeline) evaluatePendingIntents(ctx context.Context, report *PipelineR
 func (p *Pipeline) evaluateIntent(ctx context.Context, intentID string) error {
 	now := p.clk.Now().UTC()
 	if err := p.db.WithTx(ctx, func(tx *sql.Tx) error {
-		if _, err := p.policy.EvaluateIntent(ctx, tx, intentID, now); err != nil {
+		if _, err := p.policy.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now}); err != nil {
 			return fmt.Errorf("evaluate intent: %w", err)
 		}
 		return nil

@@ -43,3 +43,13 @@ This is governance structure and behavior preservation, not deployment or
 physical-device qualification. Production approval entrypoints and broader
 runtime ownership mode design are separate work. Read-only handoff projections
 stay on the original transaction; lifecycle writes remain with their owners.
+
+P2: facade/app/store extraction complete. `New(Config)` requires supplied owner,
+epoch and interlock checks; production runtime composition binds existing lower
+control methods. Evaluation and approval use named request values. Store joins
+the original transaction; ledger lifecycle remains delegated to approvalledger.
+Dependency, ownership and module-map gates are updated. Focused policy, runtime
+and root tests pass, with facade 95.5%, app 67.5%, domain 94.0%, store 81.7%
+coverage. Whole-repository lint passes. Transaction identity/rollback, epoch
+refusal, command/outbox idempotency, exact prepared-command deletion and approval
+ledger/read-projection tests pass on real migrations.

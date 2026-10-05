@@ -2,10 +2,9 @@ package domain
 
 import (
 	"encoding/json"
-	"time"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"time"
 )
 
 func PendingDecisionFailure(row IntentRecord) string {

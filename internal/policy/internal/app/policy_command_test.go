@@ -1,16 +1,15 @@
-package policy
+package app_test
 
 import (
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 )
 
 type stubInterlock struct {
@@ -26,10 +25,10 @@ func TestGatewayPropagatesInterlockInfrastructureFailure(t *testing.T) {
 	db, intentID := openPolicyFixture(t, "R1", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
 	defer func() { _ = db.Close() }()
 	wantErr := errors.New("temporary interlock storage failure")
-	gateway := NewGateway("policy-v1", ids.Deterministic()).WithInterlock(stubInterlock{err: wantErr})
+	gateway := newTestService(t, func(c *policy.Config) { c.Interlock = stubInterlock{err: wantErr} })
 
 	err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		_, err := gateway.EvaluateIntent(ctx, tx, intentID, time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC))
+		_, err := gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)})
 		return err
 	})
 	if err == nil || !errors.Is(err, wantErr) {
@@ -59,13 +58,15 @@ func TestGatewayRecordsInterlockDenialCauseWithoutChangingStableReason(t *testin
 	ctx := context.Background()
 	db, intentID := openPolicyFixture(t, "R1", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
 	defer func() { _ = db.Close() }()
-	gateway := NewGateway("policy-v1", ids.Deterministic()).WithInterlock(stubInterlock{
-		err: fmt.Errorf("%w: operator stop", interlock.ErrTripped),
+	gateway := newTestService(t, func(c *policy.Config) {
+		c.Interlock = stubInterlock{
+			err: fmt.Errorf("%w: operator stop", interlock.ErrTripped),
+		}
 	})
-	var result Result
+	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		result, err = gateway.EvaluateIntent(ctx, tx, intentID, time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC))
+		result, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)})
 		return err
 	}); err != nil {
 		t.Fatalf("evaluate tripped interlock: %v", err)
@@ -97,10 +98,10 @@ func TestRateLimitDenialDoesNotConsumeDispatchBudget(t *testing.T) {
 		t.Fatalf("seed dispatch count: %v", err)
 	}
 
-	var result Result
+	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		result, err = NewGateway("policy-v1", ids.Deterministic()).EvaluateIntent(ctx, tx, intentID, now)
+		result, err = newTestService(t).EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
 		return err
 	}); err != nil {
 		t.Fatalf("evaluate rate-limited intent: %v", err)

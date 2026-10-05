@@ -1,18 +1,15 @@
-package policy
+package app
 
 import (
 	"context"
-	"database/sql"
-	"errors"
-	"fmt"
-	"time"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
+	"time"
 )
 
-func (g *Gateway) evaluatePending(ctx context.Context, tx *sql.Tx, row intentRow, result Result, now time.Time) (Result, error) {
+func (g *Service) evaluatePending(ctx context.Context, tx *store.Tx, row domain.IntentRecord, result domain.Result, now time.Time) (domain.Result, error) {
 	intent, reason, err := g.pendingIntentDocument(ctx, tx, row)
 	if err != nil {
 		return result, err
@@ -23,7 +20,7 @@ func (g *Gateway) evaluatePending(ctx context.Context, tx *sql.Tx, row intentRow
 	return g.evaluateFreshPending(ctx, tx, row, intent, result, now)
 }
 
-func (g *Gateway) pendingIntentDocument(ctx context.Context, tx *sql.Tx, row intentRow) (map[string]any, string, error) {
+func (g *Service) pendingIntentDocument(ctx context.Context, tx *store.Tx, row domain.IntentRecord) (map[string]any, string, error) {
 	if reason := domain.PendingDecisionFailure(row); reason != "" {
 		return nil, reason, nil
 	}
@@ -37,7 +34,7 @@ func (g *Gateway) pendingIntentDocument(ctx context.Context, tx *sql.Tx, row int
 	return g.validatePendingIntent(ctx, tx, row, intent)
 }
 
-func (g *Gateway) validatePendingIntent(ctx context.Context, tx *sql.Tx, row intentRow, intent map[string]any) (map[string]any, string, error) {
+func (g *Service) validatePendingIntent(ctx context.Context, tx *store.Tx, row domain.IntentRecord, intent map[string]any) (map[string]any, string, error) {
 	if reason, err := g.compensationFailure(ctx, tx, row, intent); err != nil {
 		return nil, "", err
 	} else if reason != "" {
@@ -49,17 +46,17 @@ func (g *Gateway) validatePendingIntent(ctx context.Context, tx *sql.Tx, row int
 	return intent, "", nil
 }
 
-func (g *Gateway) compensationFailure(ctx context.Context, tx *sql.Tx, row intentRow, document map[string]any) (string, error) {
+func (g *Service) compensationFailure(ctx context.Context, tx *store.Tx, row domain.IntentRecord, document map[string]any) (string, error) {
 	compensates, ok := document["compensates"].(string)
 	if !ok || compensates == "" {
 		return "", nil
 	}
-	var commandTenant string
-	if err := tx.QueryRowContext(ctx, "SELECT tenant_id FROM commands WHERE command_id = ?", compensates).Scan(&commandTenant); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "compensation_target_missing", nil
-		}
-		return "", fmt.Errorf("load compensation target: %w", err)
+	commandTenant, found, err := tx.CompensationTenant(ctx, compensates)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "compensation_target_missing", nil
 	}
 	if commandTenant != row.TenantID {
 		return "compensation_tenant_mismatch", nil
@@ -67,7 +64,7 @@ func (g *Gateway) compensationFailure(ctx context.Context, tx *sql.Tx, row inten
 	return "", nil
 }
 
-func (g *Gateway) evaluateFreshPending(ctx context.Context, tx *sql.Tx, row intentRow, intent map[string]any, result Result, now time.Time) (Result, error) {
+func (g *Service) evaluateFreshPending(ctx context.Context, tx *store.Tx, row domain.IntentRecord, intent map[string]any, result domain.Result, now time.Time) (domain.Result, error) {
 	if !domain.EpisodeConcluded(row) {
 		return g.finish(ctx, tx, row, result, "denied", "episode_not_concluded", now)
 	}
@@ -77,7 +74,7 @@ func (g *Gateway) evaluateFreshPending(ctx context.Context, tx *sql.Tx, row inte
 	return g.evaluateHealthyPending(ctx, tx, row, intent, result, now)
 }
 
-func (g *Gateway) evaluateHealthyPending(ctx context.Context, tx *sql.Tx, row intentRow, intent map[string]any, result Result, now time.Time) (Result, error) {
+func (g *Service) evaluateHealthyPending(ctx context.Context, tx *store.Tx, row domain.IntentRecord, intent map[string]any, result domain.Result, now time.Time) (domain.Result, error) {
 	if domain.SourceHealthIncomplete(row) {
 		return g.finish(ctx, tx, row, result, "denied", "source_health_incomplete", now)
 	}

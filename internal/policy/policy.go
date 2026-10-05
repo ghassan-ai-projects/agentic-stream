@@ -1,66 +1,65 @@
-// Package policy owns the deterministic authorization boundary between
-// accepted Intents and Commands.
+// Package policy exposes deterministic intent governance and human approval.
 package policy
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
-
-	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 )
 
-// Gateway evaluates accepted Intents against current durable state.
-type Gateway struct {
-	policyVersion string
-	policyDigest  string
-	idGen         ids.Generator
-	owner         *runtimecontrol.RuntimeOwner
-	ownerEpoch    string
-	interlock     interlock.Reader
-	// P8: automatic consequential intents require an exact calibration artifact.
-	calibration *qualification.CalibrationStore
-	// P8: decisions admitted under a killed policy epoch are refused here.
-	epochControl *runtimecontrol.EpochControl
+// Config requires ownership, epoch and action-readiness checks. Calibration is
+// optional: without an exact artifact, consequential intents need human approval.
+type Config struct {
+	PolicyVersion, OwnerEpoch   string
+	IDGenerator                 ids.Generator
+	RuntimeOwner, DecisionEpoch func(context.Context, *sql.Tx, string) error
+	Interlock                   interlock.Reader
+	Calibration                 *qualification.CalibrationStore
 }
 
-// WithCalibration enables the calibration gate for automatic consequential intents.
-func (g *Gateway) WithCalibration(store *qualification.CalibrationStore) *Gateway {
-	g.calibration = store
-	return g
-}
+// Service is the public facade over policy use cases.
+type Service struct{ app *app.Service }
 
-// WithEpochControl enables the kill gate at the governance boundary.
-func (g *Gateway) WithEpochControl(control *runtimecontrol.EpochControl) *Gateway {
-	g.epochControl = control
-	return g
-}
-
-// NewGateway creates a deterministic policy gateway.
-func NewGateway(policyVersion string, idGen ids.Generator) *Gateway {
-	return newGateway(policyVersion, idGen, nil, "")
-}
-
-// NewGatewayWithOwner creates a policy gateway that fences every mutation to
-// the active runtime lease.
-func NewGatewayWithOwner(policyVersion string, idGen ids.Generator, owner *runtimecontrol.RuntimeOwner, ownerEpoch string) *Gateway {
-	return newGateway(policyVersion, idGen, owner, ownerEpoch)
-}
-
-// WithInterlock adds the durable read-only action readiness check.
-func (g *Gateway) WithInterlock(reader interlock.Reader) *Gateway {
-	g.interlock = reader
-	return g
-}
-
-func newGateway(policyVersion string, idGen ids.Generator, owner *runtimecontrol.RuntimeOwner, ownerEpoch string) *Gateway {
-	if idGen == nil {
-		idGen = ids.Random()
+// New validates configuration before constructing a policy service.
+func New(c Config) (*Service, error) {
+	if err := validateConfig(c); err != nil {
+		return nil, err
 	}
-	policyDigest, err := DigestForVersion(policyVersion)
+	digest, err := DigestForVersion(c.PolicyVersion)
 	if err != nil {
-		panic(fmt.Sprintf("construct policy gateway: %v", err))
+		return nil, fmt.Errorf("construct policy service: %w", err)
 	}
-	return &Gateway{policyVersion: policyVersion, policyDigest: policyDigest, idGen: idGen, owner: owner, ownerEpoch: ownerEpoch}
+	return &Service{app: app.New(applicationConfig(c, digest))}, nil
+}
+func validateConfig(c Config) error {
+	if c.RuntimeOwner == nil || c.DecisionEpoch == nil || c.Interlock == nil {
+		return fmt.Errorf("policy ownership, decision epoch and interlock checks are required")
+	}
+	return nil
+}
+func applicationConfig(c Config, digest string) app.Config {
+	generator := c.IDGenerator
+	if generator == nil {
+		generator = ids.Random()
+	}
+	cfg := app.Config{PolicyVersion: c.PolicyVersion, PolicyDigest: digest, OwnerEpoch: c.OwnerEpoch, IDGenerator: generator, Fences: app.Fences{RuntimeOwner: c.RuntimeOwner, DecisionEpoch: c.DecisionEpoch}, Interlock: c.Interlock}
+	if c.Calibration != nil {
+		cfg.Calibration = c.Calibration.AssertCalibration
+	}
+	return cfg
+}
+
+// EvaluateIntent runs ordered gates and atomically records the outcome on tx.
+func (s *Service) EvaluateIntent(ctx context.Context, tx *sql.Tx, r EvaluationRequest) (Result, error) {
+	return s.app.EvaluateIntent(ctx, store.Join(tx), r)
+}
+
+// ResolveApproval records a human decision and re-evaluates before dispatch.
+func (s *Service) ResolveApproval(ctx context.Context, tx *sql.Tx, r ApprovalResolution) (Result, error) {
+	return s.app.ResolveApproval(ctx, store.Join(tx), r)
 }

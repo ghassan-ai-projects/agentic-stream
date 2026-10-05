@@ -5,12 +5,11 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"strings"
 	"time"
 	"unicode"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 func CanonicalDocumentMatches(raw, digest []byte, domain canonicaljson.Domain) bool {

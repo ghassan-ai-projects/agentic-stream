@@ -72,7 +72,7 @@ type Pipeline struct {
 	engine     *engine.Engine
 	admission  *admission.Admitter
 	runner     *episodes.Runner
-	policy     *policy.Gateway
+	policy     *policy.Service
 	dispatcher *actions.Dispatcher
 	watch      *watch.Effector
 	owner      *runtimecontrol.RuntimeOwner
@@ -103,7 +103,7 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*Pipeline, error) {
 	if err := configureCostLimits(ctx, cfg); err != nil {
 		return nil, err
 	}
-	return composePipeline(cfg, log, stream, watch), nil
+	return composePipeline(cfg, log, stream, watch)
 }
 
 func newOwnedStream(ctx context.Context, cfg PipelineConfig, log *eventlog.EventLog) (*engine.Engine, error) {

@@ -1,12 +1,11 @@
-package policy
+package app_test
 
 import (
 	"context"
 	"database/sql"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"testing"
 	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 )
 
 // P4: the catalog's per-intent hourly rate limit is enforced before dispatch.
@@ -46,11 +45,11 @@ func TestEvaluateIntentEnforcesTheCatalogRateLimit(t *testing.T) {
 				}
 			}
 
-			gateway := NewGateway("policy-v1", ids.Deterministic())
-			var result Result
+			gateway := newTestService(t)
+			var result policy.Result
 			if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 				var err error
-				result, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
+				result, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
 				return err
 			}); err != nil {
 				t.Fatalf("evaluate intent: %v", err)
@@ -80,11 +79,11 @@ func TestEvaluateIntentHonorsTheCatalogApprovalPolicy(t *testing.T) {
 		t.Fatalf("set requires_approval: %v", err)
 	}
 
-	gateway := NewGateway("policy-v1", ids.Deterministic())
-	var result Result
+	gateway := newTestService(t)
+	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		result, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
+		result, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
 		return err
 	}); err != nil {
 		t.Fatalf("evaluate intent: %v", err)

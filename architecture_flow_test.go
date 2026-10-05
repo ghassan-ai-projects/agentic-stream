@@ -22,9 +22,9 @@ var packageLayers = map[string]int{
 	"internal/authority/internal/store": 2, "internal/notifycontract": 2, "internal/qualification": 2, "internal/scheduleledger": 2, "internal/spec": 2, "internal/worker": 2,
 	"internal/authority/internal/app": 3, "internal/control": 3, "internal/device/internal/transport": 4, "internal/ingress": 3, "internal/notify": 3, "internal/operators": 3,
 	"internal/api": 4, "internal/approvalledger": 4, "internal/watch": 4, "internal/authority": 4, "internal/situations": 4,
-	"internal/actions": 5, "internal/cognition": 5, "internal/device/internal/app": 5, "internal/episodes": 5, "internal/policy": 5, "internal/soak": 5,
-	"internal/admission": 6, "internal/device": 6, "internal/engine": 6, "internal/executor/conformance": 6, "internal/executor/native": 6, "internal/executor/remote": 6, "internal/runartifact": 6,
-	"internal/replay": 7, "internal/runtime": 8, "cmd/agentic-stream": 9,
+	"internal/actions": 5, "internal/cognition": 5, "internal/device/internal/app": 5, "internal/episodes": 5, "internal/policy/internal/store": 5, "internal/policy/internal/app": 6, "internal/policy": 7, "internal/soak": 5,
+	"internal/admission": 6, "internal/device": 6, "internal/engine": 6, "internal/executor/conformance": 6, "internal/executor/native": 6, "internal/executor/remote": 6, "internal/runartifact": 8,
+	"internal/replay": 8, "internal/runtime": 8, "cmd/agentic-stream": 9,
 }
 
 func TestImportsOnlyPointToLowerArchitectureLayers(t *testing.T) {
@@ -70,8 +70,10 @@ func TestReasoningAndReplayCannotReachEffectImplementations(t *testing.T) {
 		}
 	}
 	for _, source := range reasoning {
-		if path := dependencyPath(graph, source, "internal/policy"); len(path) > 0 {
-			t.Errorf("reasoning reaches policy: %s", strings.Join(path, " -> "))
+		for _, target := range []string{"internal/policy", "internal/policy/internal/app", "internal/policy/internal/store", "internal/policy/internal/domain"} {
+			if path := dependencyPath(graph, source, target); len(path) > 0 {
+				t.Errorf("reasoning reaches policy: %s", strings.Join(path, " -> "))
+			}
 		}
 	}
 	for _, adapter := range []string{"internal/device", "internal/device/internal/app"} {

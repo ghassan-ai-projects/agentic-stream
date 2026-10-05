@@ -1,4 +1,4 @@
-package policy
+package app_test
 
 import (
 	"context"
@@ -7,39 +7,28 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
-
-func TestNewGatewayRejectsEmptyPolicyVersion(t *testing.T) {
-	t.Helper()
-	defer func() {
-		if recovered := recover(); recovered == nil {
-			t.Fatal("NewGateway accepted an empty policy version")
-		}
-	}()
-	_ = NewGateway("", ids.Deterministic())
-}
 
 func TestGatewayAutomaticCommandIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	db, intentID := openPolicyFixture(t, "R1", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
 	defer func() { _ = db.Close() }()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-	gateway := NewGateway("policy-v1", ids.Deterministic())
+	gateway := newTestService(t)
 
-	var first Result
+	var first policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		first, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
+		first, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
 		return err
 	}); err != nil {
 		t.Fatalf("evaluate intent: %v", err)
@@ -62,10 +51,10 @@ func TestGatewayAutomaticCommandIsIdempotent(t *testing.T) {
 		t.Fatalf("generated command missing device freshness/policy binding: %#v", commandDocument)
 	}
 
-	var second Result
+	var second policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		second, err = gateway.EvaluateIntent(ctx, tx, intentID, now.Add(time.Second))
+		second, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now.Add(time.Second)})
 		return err
 	}); err != nil {
 		t.Fatalf("repeat evaluation: %v", err)
@@ -105,11 +94,11 @@ func TestGatewayRiskFreshnessAndExpiry(t *testing.T) {
 			ctx := context.Background()
 			db, intentID := openPolicyFixture(t, test.risk, test.currentVersion, test.intentVersion, test.expiresAt)
 			defer func() { _ = db.Close() }()
-			var result Result
+			var result policy.Result
 			now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 			if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 				var err error
-				result, err = NewGateway("policy-v1", ids.Deterministic()).EvaluateIntent(ctx, tx, intentID, now)
+				result, err = newTestService(t).EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
 				return err
 			}); err != nil {
 				t.Fatalf("evaluate intent: %v", err)
@@ -126,11 +115,11 @@ func TestGatewayResolvesApprovalBeforeCommanding(t *testing.T) {
 	db, intentID := openPolicyFixture(t, "R2", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
 	defer func() { _ = db.Close() }()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-	gateway := NewGateway("policy-v1", ids.Deterministic())
-	var approval Result
+	gateway := newTestService(t)
+	var approval policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		approval, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
+		approval, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
 		return err
 	}); err != nil {
 		t.Fatalf("request approval: %v", err)
@@ -145,7 +134,7 @@ func TestGatewayResolvesApprovalBeforeCommanding(t *testing.T) {
 	if requestedType != notify.TypeApprovalRequested {
 		t.Fatalf("approval notification type=%q", requestedType)
 	}
-	var resolved Result
+	var resolved policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
 		var nonce string
@@ -156,7 +145,7 @@ func TestGatewayResolvesApprovalBeforeCommanding(t *testing.T) {
 		if err := tx.QueryRowContext(ctx, "SELECT i.intent_sha256, d.decision_sha256 FROM intents i JOIN decisions d ON d.decision_id = i.decision_id WHERE i.intent_id = ?", intentID).Scan(&intentSHA, &decisionSHA); err != nil {
 			return fmt.Errorf("load approval digests: %w", err)
 		}
-		assertion, err := ApprovalAssertionSigningBytes(ApprovalAssertion{
+		assertion, err := policy.ApprovalAssertionSigningBytes(policy.ApprovalAssertion{
 			ApprovalID: approval.ApprovalID, IntentID: intentID, DecisionID: "dec-policy", TenantID: "tenant",
 			SituationID: "sit-policy", SituationVersion: 1, RiskClass: "R2",
 			IntentDigest: "sha256:" + hex.EncodeToString(intentSHA), DecisionDigest: "sha256:" + hex.EncodeToString(decisionSHA),
@@ -166,7 +155,7 @@ func TestGatewayResolvesApprovalBeforeCommanding(t *testing.T) {
 			return err
 		}
 		privateKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
-		resolved, err = gateway.ResolveApproval(ctx, tx, approval.ApprovalID, true, "operator-1", "relay-1", ed25519.Sign(privateKey, assertion), "approved for maintenance", now)
+		resolved, err = gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{ID: approval.ApprovalID, Approved: true, Approver: "operator-1", Relay: "relay-1", Signature: ed25519.Sign(privateKey, assertion), Reason: "approved for maintenance", Now: now})
 		return err
 	}); err != nil {
 		t.Fatalf("resolve approval: %v", err)
@@ -189,10 +178,10 @@ func TestEvaluateIntentDeniesHighRiskDespiteRequiresApproval(t *testing.T) {
 			if _, err := db.ExecContext(ctx, "UPDATE intents SET requires_approval = 1 WHERE intent_id = ?", intentID); err != nil {
 				t.Fatalf("set requires_approval: %v", err)
 			}
-			var result Result
+			var result policy.Result
 			if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 				var err error
-				result, err = NewGateway("policy-v1", ids.Deterministic()).EvaluateIntent(ctx, tx, intentID, now)
+				result, err = newTestService(t).EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
 				return err
 			}); err != nil {
 				t.Fatalf("evaluate intent: %v", err)
@@ -222,12 +211,12 @@ func TestEvaluateIntentApprovedRequiresApprovalDispatches(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `INSERT INTO approval_authorities (tenant_id, entity_id, risk_class, role_id) VALUES ('tenant', 'motor-1', 'R1', 'role-approver')`); err != nil {
 		t.Fatalf("insert R1 approval authority: %v", err)
 	}
-	gateway := NewGateway("policy-v1", ids.Deterministic())
+	gateway := newTestService(t)
 
-	var approval Result
+	var approval policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		approval, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
+		approval, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
 		return err
 	}); err != nil {
 		t.Fatalf("request approval: %v", err)
@@ -236,7 +225,7 @@ func TestEvaluateIntentApprovedRequiresApprovalDispatches(t *testing.T) {
 		t.Fatalf("approval result = %+v, want an approval request", approval)
 	}
 
-	var resolved Result
+	var resolved policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var nonce string
 		if err := tx.QueryRowContext(ctx, "SELECT nonce FROM approvals WHERE approval_id = ?", approval.ApprovalID).Scan(&nonce); err != nil {
@@ -246,7 +235,7 @@ func TestEvaluateIntentApprovedRequiresApprovalDispatches(t *testing.T) {
 		if err := tx.QueryRowContext(ctx, "SELECT i.intent_sha256, d.decision_sha256 FROM intents i JOIN decisions d ON d.decision_id = i.decision_id WHERE i.intent_id = ?", intentID).Scan(&intentSHA, &decisionSHA); err != nil {
 			return fmt.Errorf("load approval digests: %w", err)
 		}
-		assertion, err := ApprovalAssertionSigningBytes(ApprovalAssertion{
+		assertion, err := policy.ApprovalAssertionSigningBytes(policy.ApprovalAssertion{
 			ApprovalID: approval.ApprovalID, IntentID: intentID, DecisionID: "dec-policy", TenantID: "tenant",
 			SituationID: "sit-policy", SituationVersion: 1, RiskClass: "R1",
 			IntentDigest: "sha256:" + hex.EncodeToString(intentSHA), DecisionDigest: "sha256:" + hex.EncodeToString(decisionSHA),
@@ -256,7 +245,7 @@ func TestEvaluateIntentApprovedRequiresApprovalDispatches(t *testing.T) {
 			return err
 		}
 		privateKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
-		resolved, err = gateway.ResolveApproval(ctx, tx, approval.ApprovalID, true, "operator-1", "relay-1", ed25519.Sign(privateKey, assertion), "approved", now)
+		resolved, err = gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{ID: approval.ApprovalID, Approved: true, Approver: "operator-1", Relay: "relay-1", Signature: ed25519.Sign(privateKey, assertion), Reason: "approved", Now: now})
 		return err
 	}); err != nil {
 		t.Fatalf("resolve approval: %v", err)
@@ -281,17 +270,17 @@ func TestGatewayRejectsSamePrincipalRelay(t *testing.T) {
 	db, intentID := openPolicyFixture(t, "R2", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
 	defer func() { _ = db.Close() }()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-	gateway := NewGateway("policy-v1", ids.Deterministic())
-	var approval Result
+	gateway := newTestService(t)
+	var approval policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		approval, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
+		approval, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
 		return err
 	}); err != nil {
 		t.Fatalf("request approval: %v", err)
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		resolved, err := gateway.ResolveApproval(ctx, tx, approval.ApprovalID, true, "operator-1", "operator-1", nil, "invalid", now)
+		resolved, err := gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{ID: approval.ApprovalID, Approved: true, Approver: "operator-1", Relay: "operator-1", Signature: nil, Reason: "invalid", Now: now})
 		if err != nil {
 			return err
 		}
@@ -309,14 +298,14 @@ func TestGatewayFailsClosedWhenInterlockTripped(t *testing.T) {
 	db, intentID := openPolicyFixture(t, "R1", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
 	defer func() { _ = db.Close() }()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-	gateway := NewGateway("policy-v1", ids.Deterministic()).WithInterlock(interlock.DurableReader{})
-	var result Result
+	gateway := newTestService(t, func(c *policy.Config) { c.Interlock = interlock.DurableReader{} })
+	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := interlock.Set(ctx, tx, "tripped", "operator stop", 2, now.Format(time.RFC3339Nano)); err != nil {
 			return fmt.Errorf("trip interlock: %w", err)
 		}
 		var err error
-		result, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
+		result, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
 		return err
 	}); err != nil {
 		t.Fatalf("evaluate tripped intent: %v", err)
@@ -337,10 +326,10 @@ func TestGatewayDeniesConsequentialIntentWhenCompletenessIsProvisional(t *testin
 	if _, err := db.ExecContext(ctx, `UPDATE situation_versions SET completeness = 'provisional', snapshot_json = ?, snapshot_sha256 = ?, lineage_id = 'lineage-health' WHERE situation_id = 'sit-policy' AND version = 1`, []byte("{}"), digest); err != nil {
 		t.Fatal(err)
 	}
-	var result Result
+	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		result, err = NewGateway("policy-v1", ids.Deterministic()).EvaluateIntent(ctx, tx, intentID, time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC))
+		result, err = newTestService(t).EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)})
 		return err
 	}); err != nil {
 		t.Fatal(err)

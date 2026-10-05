@@ -1,6 +1,9 @@
 package runtime
 
 import (
+	"context"
+	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
@@ -57,19 +60,22 @@ func composeEffectors(cfg PipelineConfig) (actionport.Effector, *watch.Effector)
 	return compositeEffector, watch
 }
 
-func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.Engine, watch *watch.Effector) *Pipeline {
+func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.Engine, watch *watch.Effector) (*Pipeline, error) {
 	assembler, runner := composeCognition(cfg)
 	admitter := admission.New(admission.Config{
 		DB: cfg.DB, Assembler: assembler, Clock: cfg.Clock, TenantID: cfg.TenantID,
 		Owner: cfg.Owner, OwnerEpoch: cfg.OwnerEpoch, EpochControl: cfg.EpochControl, DemoMode: cfg.DemoMode,
 	})
-	policyGateway := composePolicy(cfg)
+	policyGateway, err := composePolicy(cfg)
+	if err != nil {
+		return nil, err
+	}
 	dispatcher := composeDispatcher(cfg)
 	return &Pipeline{
 		db: cfg.DB, log: log, engine: stream, admission: admitter, runner: runner,
 		policy: policyGateway, dispatcher: dispatcher, watch: watch, telemetry: cfg.Telemetry,
 		owner: cfg.Owner, ownerEpoch: cfg.OwnerEpoch, clk: cfg.Clock, tenantID: cfg.TenantID,
-	}
+	}, nil
 }
 
 func composeCognition(cfg PipelineConfig) (*episodes.Assembler, *episodes.Runner) {
@@ -84,13 +90,29 @@ func composeCognition(cfg PipelineConfig) (*episodes.Assembler, *episodes.Runner
 	return assembler, runner
 }
 
-func composePolicy(cfg PipelineConfig) *policy.Gateway {
-	policyGateway := policy.NewGatewayWithOwner(cfg.Spec.Digest, cfg.IDGenerator, cfg.Owner, cfg.OwnerEpoch)
-	policyGateway.WithInterlock(interlock.DurableReader{})
-	policyGateway.WithCalibration(&qualification.CalibrationStore{DB: cfg.DB})
-	policyGateway.WithEpochControl(cfg.EpochControl)
-	return policyGateway
+func composePolicy(cfg PipelineConfig) (*policy.Service, error) {
+	service, err := policy.New(policy.Config{PolicyVersion: cfg.Spec.Digest, IDGenerator: cfg.IDGenerator, OwnerEpoch: cfg.OwnerEpoch, RuntimeOwner: policyOwnershipCheck(cfg), DecisionEpoch: policyEpochCheck(cfg), Interlock: interlock.DurableReader{}, Calibration: &qualification.CalibrationStore{DB: cfg.DB}})
+	if err != nil {
+		return nil, fmt.Errorf("compose policy: %w", err)
+	}
+	return service, nil
 }
+
+func policyOwnershipCheck(cfg PipelineConfig) func(context.Context, *sql.Tx, string) error {
+	if cfg.Owner == nil || cfg.OwnerEpoch == "" {
+		return unownedPolicyCheck
+	}
+	return cfg.Owner.Assert
+}
+
+func policyEpochCheck(cfg PipelineConfig) func(context.Context, *sql.Tx, string) error {
+	if cfg.EpochControl == nil {
+		return unownedPolicyCheck
+	}
+	return cfg.EpochControl.AssertDecisionTx
+}
+
+func unownedPolicyCheck(context.Context, *sql.Tx, string) error { return nil }
 
 func composeDispatcher(cfg PipelineConfig) *actions.Dispatcher {
 	dispatcher := actions.NewDispatcher(cfg.DB, cfg.Effector, cfg.Clock, cfg.IDGenerator, "runtime-actions/"+cfg.OwnerEpoch, time.Minute)

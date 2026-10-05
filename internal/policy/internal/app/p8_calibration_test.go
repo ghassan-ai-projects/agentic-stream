@@ -1,14 +1,13 @@
-package policy
+package app_test
 
 import (
 	"context"
 	"database/sql"
-	"testing"
-	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"testing"
+	"time"
 )
 
 // P8 (docs/new-design/PHASE_P8_ROLLOUT.md): calibration-gated automation. An
@@ -49,11 +48,11 @@ func TestP8R2AutomaticWithoutCalibrationIsWatchOnly(t *testing.T) {
 	db, intentID, store := calibrationFixture(t, "R2", "test", "sha256:1111", "")
 	defer func() { _ = db.Close() }()
 
-	gateway := NewGateway("policy-v1", ids.Deterministic()).WithCalibration(store)
-	var result Result
+	gateway := newTestService(t, func(c *policy.Config) { c.Calibration = store })
+	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		result, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
+		result, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -72,11 +71,11 @@ func TestP8R2AutomaticWithExactCalibrationIsApproved(t *testing.T) {
 	db, intentID, store := calibrationFixture(t, "R2", "test", "sha256:1111", "sha256:1111")
 	defer func() { _ = db.Close() }()
 
-	gateway := NewGateway("policy-v1", ids.Deterministic()).WithCalibration(store)
-	var result Result
+	gateway := newTestService(t, func(c *policy.Config) { c.Calibration = store })
+	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		result, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
+		result, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -104,11 +103,11 @@ func TestP8R2AutomaticWithMismatchedCalibrationIsWatchOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	gateway := NewGateway("policy-v1", ids.Deterministic()).WithCalibration(store)
-	var result Result
+	gateway := newTestService(t, func(c *policy.Config) { c.Calibration = store })
+	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		result, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
+		result, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -126,11 +125,11 @@ func TestP8R1AutomaticIgnoresCalibration(t *testing.T) {
 	db, intentID, store := calibrationFixture(t, "R1", "test", "sha256:1111", "")
 	defer func() { _ = db.Close() }()
 
-	gateway := NewGateway("policy-v1", ids.Deterministic()).WithCalibration(store)
-	var result Result
+	gateway := newTestService(t, func(c *policy.Config) { c.Calibration = store })
+	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		result, err = gateway.EvaluateIntent(ctx, tx, intentID, now)
+		result, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
 		return err
 	}); err != nil {
 		t.Fatal(err)
