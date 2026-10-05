@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 )
 
 // deadlineExceeded reports whether the attempt ran past its wall_time budget.
@@ -30,8 +31,7 @@ func (r *Runner) watchSupersession(ctx context.Context, episodeID string, cancel
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			var lifecycle string
-			if err := r.db.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = ?", episodeID).Scan(&lifecycle); err == nil && lifecycle == string(episodeledger.LifecycleSuperseded) {
+			if store.EpisodeSupersededNow(ctx, r.db, episodeID) {
 				cancel()
 				return
 			}
@@ -62,9 +62,9 @@ func (r *Runner) failAttemptStatus(ctx context.Context, identity episodeledger.I
 // markCancelling moves the attempt through episodeledger.AttemptCancelling, which the
 // attempt lifecycle requires before episodeledger.AttemptCancelled.
 func (r *Runner) markCancelling(ctx context.Context, tx *sql.Tx, identity episodeledger.Identity) error {
-	var current episodeledger.AttemptStatus
-	if err := tx.QueryRowContext(ctx, "SELECT status FROM episode_attempts WHERE attempt_id = ? AND episode_id = ? AND fence = ?", identity.AttemptID, identity.EpisodeID, identity.Fence).Scan(&current); err != nil {
-		return fmt.Errorf("read episode attempt status: %w", err)
+	current, err := store.AttemptStatus(ctx, tx, identity)
+	if err != nil {
+		return err
 	}
 	if current == episodeledger.AttemptCancelling {
 		return nil
@@ -79,11 +79,11 @@ func (r *Runner) markCancelling(ctx context.Context, tx *sql.Tx, identity episod
 // attempt, or concludes it and settles its cost when the episode was
 // superseded or has used maxEpisodeAttempts.
 func (r *Runner) retryOrConcludeFailedEpisode(ctx context.Context, tx *sql.Tx, episodeID string) error {
-	var lifecycle string
-	if err := tx.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = ?", episodeID).Scan(&lifecycle); err != nil {
-		return fmt.Errorf("read episode lifecycle: %w", err)
+	lifecycle, err := store.EpisodeLifecycle(ctx, tx, episodeID)
+	if err != nil {
+		return err
 	}
-	failedAttempts, err := countFailedAttempts(ctx, tx, episodeID)
+	failedAttempts, err := store.CountFailedAttempts(ctx, tx, episodeID)
 	if err != nil {
 		return fmt.Errorf("count failed episode attempts: %w", err)
 	}
@@ -93,10 +93,7 @@ func (r *Runner) retryOrConcludeFailedEpisode(ctx context.Context, tx *sql.Tx, e
 
 func (r *Runner) resolveFailedEpisode(ctx context.Context, tx *sql.Tx, episodeID string, superseded bool, failedAttempts int) error {
 	if !superseded && failedAttempts < maxEpisodeAttempts {
-		if err := episodeledger.RetainForRetry(ctx, tx, episodeID); err != nil {
-			return fmt.Errorf("update episode failed: %w", err)
-		}
-		return nil
+		return store.RetainForRetry(ctx, tx, episodeID)
 	}
 	return r.concludeFailedEpisode(ctx, tx, episodeID, superseded)
 }
@@ -149,7 +146,7 @@ func (r *Runner) failRejectedAttempt(ctx context.Context, tx *sql.Tx, current ep
 // attempt until maxEpisodeAttempts have failed, then settles its cost and
 // concludes it with the rejection terminal.
 func (r *Runner) retryOrConcludeRejectedEpisode(ctx context.Context, tx *sql.Tx, episodeID string, terminalJSON []byte) error {
-	failedAttempts, err := countFailedAttempts(ctx, tx, episodeID)
+	failedAttempts, err := store.CountFailedAttempts(ctx, tx, episodeID)
 	if err != nil {
 		return fmt.Errorf("count identity-failed attempts: %w", err)
 	}
@@ -172,12 +169,4 @@ func (r *Runner) concludeRejectedEpisode(ctx context.Context, tx *sql.Tx, episod
 		return fmt.Errorf("conclude identity-failed episode: %w", err)
 	}
 	return nil
-}
-
-func countFailedAttempts(ctx context.Context, tx *sql.Tx, episodeID string) (int, error) {
-	var failedAttempts int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM episode_attempts WHERE episode_id = ? AND status IN ('failed', 'timed_out', 'cancelled')`, episodeID).Scan(&failedAttempts); err != nil {
-		return 0, fmt.Errorf("count failed attempts: %w", err)
-	}
-	return failedAttempts, nil
 }

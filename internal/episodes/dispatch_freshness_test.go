@@ -19,7 +19,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// P8 (docs/new-design/PHASE_P8_ROLLOUT.md): freshness. The situation version
+// Dispatch freshness (introduced in phase P8): the situation version
 // is rechecked immediately before dispatch; an episode whose bound snapshot
 // is no longer current is refused (stale), and validity windows are never
 // extended to let a slow model pass.
@@ -128,7 +128,7 @@ func runOnceExpectingStale(t *testing.T, db *storage.DB) {
 // A dispatch whose situation advanced past the bound snapshot is refused —
 // the model is not given the old facts, and no path extends the validity
 // window to let it pass.
-func TestP8DispatchRefusesStaleSituation(t *testing.T) {
+func TestDispatchRefusesStaleSituation(t *testing.T) {
 	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "freshness.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -140,7 +140,7 @@ func TestP8DispatchRefusesStaleSituation(t *testing.T) {
 }
 
 // A fresh dispatch (bound == live) runs normally — the gate does not overfire.
-func TestP8DispatchProceedsOnFreshSituation(t *testing.T) {
+func TestDispatchProceedsOnFreshSituation(t *testing.T) {
 	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "freshness-fresh.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -160,7 +160,7 @@ func TestP8DispatchProceedsOnFreshSituation(t *testing.T) {
 // The deadline gate: a produced decision is timestamped by the executor; the
 // runner's budget deadline is never extended. This pins the invariant that
 // nothing mutates the episode's deadline after admission.
-func TestP8DeadlineNeverExtended(t *testing.T) {
+func TestDispatchDeadlineNeverExtended(t *testing.T) {
 	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "deadline.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -203,7 +203,7 @@ func TestP8DeadlineNeverExtended(t *testing.T) {
 // A decision that arrives after the wall_time deadline is refused (terminal
 // timed_out) — the deadline is never extended, and an in-process executor
 // cannot bypass the gate.
-func TestP8DecisionAfterDeadlineIsRefused(t *testing.T) {
+func TestDispatchDecisionAfterDeadlineIsRefused(t *testing.T) {
 	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "deadline-refusal.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -279,7 +279,7 @@ func (e p8BlockingExecutor) Execute(ctx context.Context, _ *episodes.Request) (*
 // watcher cancels the provider call; the in-flight outcome is refused and the
 // attempt is canceled. A worker that keeps producing after the kill cannot
 // slip a decision into governance.
-func TestP8KillCancelsInFlightAndRefusesItsDecision(t *testing.T) {
+func TestDispatchKillCancelsInFlightAndRefusesItsDecision(t *testing.T) {
 	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "kill-inflight.db"))
 	if err != nil {
 		t.Fatal(err)

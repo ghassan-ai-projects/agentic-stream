@@ -12,6 +12,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 )
 
@@ -77,59 +78,35 @@ func (r *Runner) claimEpisodeInTx(ctx context.Context, tx *sql.Tx, tenantID stri
 // loadDispatchableEpisode reads the oldest admitted or running episode and
 // rebuilds its validated Request. It returns nil when there is none.
 func (r *Runner) loadDispatchableEpisode(ctx context.Context, tx *sql.Tx, tenantID string) (*episodeClaim, error) {
-	query := r.dispatchableEpisodeQuery()
-
-	var claim episodeClaim
-	var snapshotHash, promptHash, objectiveHash []byte
-	err := scanEpisodeClaim(tx.QueryRowContext(ctx, query, tenantID), &claim, &snapshotHash, &promptHash, &objectiveHash)
+	episode, err := store.DispatchableEpisode(ctx, tx, tenantID, r.epochControl != nil)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query admitted episode: %w", err)
 	}
-	return hydrateEpisodeClaim(&claim, snapshotHash, promptHash, objectiveHash)
+	return hydrateEpisodeClaim(episodeClaimFromDispatched(episode))
 }
 
-func (r *Runner) dispatchableEpisodeQuery() string {
-	lifecyclePredicate := "lifecycle_status IN ('admitted', 'running')"
-	if r.epochControl != nil {
-		// Kill supersedes admitted episodes that have not started an attempt.
-		// Include only those rows so the runner can release their reservation
-		// and durably quarantine them; other superseded episodes are terminal
-		// for a different reason and must not be dispatched again.
-		lifecyclePredicate += ` OR (lifecycle_status = 'superseded' AND current_attempt_id IS NULL
-			AND EXISTS (SELECT 1 FROM epoch_control WHERE epoch = episodes.policy_epoch AND state = 'killed'))`
+// episodeClaimFromDispatched binds a scanned episode into a claim.
+func episodeClaimFromDispatched(episode store.DispatchedEpisode) *episodeClaim {
+	req := Request{
+		SchedulerItemID: episode.SchedulerItemID, TenantID: episode.TenantID,
+		SituationID: episode.SituationID, SituationVersion: episode.SituationVersion,
+		ExecutorName: episode.ExecutorName, ExecutorVersion: episode.ExecutorVersion,
+		ModelPolicy: episode.ModelPolicy, PromptVersion: episode.PromptVersion,
+		SnapshotSHA256:  "sha256:" + hex.EncodeToString(episode.SnapshotSHA256),
+		PromptSHA256:    "sha256:" + hex.EncodeToString(episode.PromptSHA256),
+		ObjectiveSHA256: "sha256:" + hex.EncodeToString(episode.ObjectiveSHA256),
+		AdmissionKey:    episode.AdmissionKey, RequestJSON: episode.RequestJSON,
+		DispatchPolicy: episode.DispatchPolicy, PolicyEpoch: episode.PolicyEpoch,
 	}
-	query := fmt.Sprintf(`
-		SELECT episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
-		       executor_name, executor_version, model_policy, prompt_version,
-		       snapshot_sha256, prompt_sha256, objective_sha256, admission_key, request_json,
-		       dispatch_policy, policy_epoch, stale_rebind_count
-		FROM episodes
-		WHERE tenant_id = ? AND (%s)
-		ORDER BY accepted_at, episode_id LIMIT 1`, lifecyclePredicate)
-
-	return query
+	return &episodeClaim{episodeID: episode.EpisodeID, req: req, rebindCount: episode.StaleRebindCount}
 }
 
-func scanEpisodeClaim(query *sql.Row, claim *episodeClaim, snapshotHash, promptHash, objectiveHash *[]byte) error {
-	req := &claim.req
-	return query.Scan( //nolint:wrapcheck // caller distinguishes no rows and preserves query error context.
-		&claim.episodeID, &req.SchedulerItemID, &req.TenantID, &req.SituationID, &req.SituationVersion,
-		&req.ExecutorName, &req.ExecutorVersion, &req.ModelPolicy, &req.PromptVersion,
-		snapshotHash, promptHash, objectiveHash, &req.AdmissionKey, &req.RequestJSON,
-		&req.DispatchPolicy, &req.PolicyEpoch, &claim.rebindCount,
-	)
-}
-
-func hydrateEpisodeClaim(claim *episodeClaim, snapshotHash, promptHash, objectiveHash []byte) (*episodeClaim, error) {
-	req := &claim.req
-	req.EpisodeID = claim.episodeID
-	req.SnapshotSHA256 = "sha256:" + hex.EncodeToString(snapshotHash)
-	req.PromptSHA256 = "sha256:" + hex.EncodeToString(promptHash)
-	req.ObjectiveSHA256 = "sha256:" + hex.EncodeToString(objectiveHash)
-	if err := hydratePersistedRequest(req); err != nil {
+func hydrateEpisodeClaim(claim *episodeClaim) (*episodeClaim, error) {
+	claim.req.EpisodeID = claim.episodeID
+	if err := hydratePersistedRequest(&claim.req); err != nil {
 		return nil, err
 	}
 	return claim, nil
@@ -174,13 +151,9 @@ func hydrateRequestBudgetEntity(req *Request) error {
 // exhausted, no assembler is wired, or the live snapshot cannot be validated,
 // the episode is quarantined.
 func (r *Runner) bindLiveSituation(ctx context.Context, tx *sql.Tx, claim *episodeClaim) error {
-	var liveVersion int64
-	if err := tx.QueryRowContext(ctx, `
-		SELECT current_version FROM situations
-		WHERE tenant_id = ? AND situation_id = ?`,
-		claim.req.TenantID, claim.req.SituationID,
-	).Scan(&liveVersion); err != nil {
-		return fmt.Errorf("recheck live situation version: %w", err)
+	liveVersion, err := store.LiveSituationVersion(ctx, tx, claim.req.TenantID, claim.req.SituationID)
+	if err != nil {
+		return err
 	}
 	if liveVersion == int64(claim.req.SituationVersion) {
 		return nil

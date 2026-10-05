@@ -15,7 +15,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// P8 (docs/new-design/PHASE_P8_ROLLOUT.md): shadow-first. A shadow dispatch
+// Shadow-first dispatch (introduced in phase P8): a shadow dispatch
 // persists and scores the produced decision but NEVER writes to intents or
 // commands — nothing from a shadow run enters action governance.
 
@@ -89,7 +89,7 @@ func seedShadowEpisode(t *testing.T, db *storage.DB, episodeID, dispatchPolicy s
 
 // A shadow dispatch scores the decision but never persists an intent or a
 // command.
-func TestP8ShadowDispatchScoresWithoutGovernance(t *testing.T) {
+func TestShadowDispatchScoresWithoutGovernance(t *testing.T) {
 	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "shadow.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +133,7 @@ func TestP8ShadowDispatchScoresWithoutGovernance(t *testing.T) {
 
 // An ACTIVE dispatch still persists intents (the control: the shadow path is
 // the only one that skips governance).
-func TestP8ActiveDispatchPersistsIntents(t *testing.T) {
+func TestActiveDispatchPersistsIntents(t *testing.T) {
 	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "active.db"))
 	if err != nil {
 		t.Fatal(err)

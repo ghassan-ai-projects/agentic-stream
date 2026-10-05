@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
+	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
@@ -34,13 +35,6 @@ type decisionRequestAuthority struct {
 	} `json:"executor"`
 }
 
-const insertDecisionSQL = `
-		INSERT INTO decisions (
-			decision_id, episode_id, attempt_id, fence, ordinal, situation_id,
-			situation_version, raw_json, decision_sha256, validation_status,
-			validation_json, traceparent, tracestate, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-
 // persistDecision validates and stores the outcome's Decision, then sends a
 // valid one to governance and records why an invalid one was rejected. It
 // returns nil when the outcome carries no Decision.
@@ -52,7 +46,7 @@ func (r *Runner) persistDecision(ctx context.Context, tx *sql.Tx, claim *episode
 	if err != nil {
 		return nil, err
 	}
-	if err := insertDecision(ctx, tx, claim, outcome, record, now); err != nil {
+	if err := store.InsertDecision(ctx, tx, decisionInsert(claim, outcome, record, now)); err != nil {
 		return nil, err
 	}
 	if record.validationErr != nil {
@@ -139,32 +133,18 @@ func (record *decisionRecord) finishValidation(raw []byte, digest []byte, hasCon
 	return record, nil
 }
 
-func insertDecision(ctx context.Context, tx *sql.Tx, claim *episodeClaim, outcome *Outcome, record *decisionRecord, now string) error {
+// decisionInsert binds a validated decision record to its episode attempt.
+func decisionInsert(claim *episodeClaim, outcome *Outcome, record *decisionRecord, now string) store.DecisionInsert {
 	validationStatus := "rejected"
 	if record.validationErr == nil {
 		validationStatus = "proposed"
 	}
-	var ordinal int
-	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(ordinal), 0) + 1 FROM decisions WHERE episode_id = ?", claim.episodeID).Scan(&ordinal); err != nil {
-		return fmt.Errorf("allocate decision ordinal: %w", err)
+	return store.DecisionInsert{
+		DecisionID: record.id, EpisodeID: claim.episodeID, AttemptID: claim.identity.AttemptID, Fence: claim.identity.Fence,
+		SituationID: claim.req.SituationID, SituationVersion: claim.req.SituationVersion,
+		RawJSON: outcome.DecisionJSON, Digest: record.digest, ValidationStatus: validationStatus,
+		ValidationJSON: record.validationJSON, Traceparent: claim.req.Traceparent, Tracestate: claim.req.Tracestate, Now: now,
 	}
-	return insertDecisionRow(ctx, tx, claim, outcome, record, now, ordinal, validationStatus)
-}
-
-func insertDecisionRow(ctx context.Context, tx *sql.Tx, claim *episodeClaim, outcome *Outcome, record *decisionRecord, now string, ordinal int, validationStatus string) error {
-	if _, err := tx.ExecContext(ctx, insertDecisionSQL,
-		record.id, claim.episodeID, claim.identity.AttemptID, claim.identity.Fence, ordinal,
-		claim.req.SituationID, claim.req.SituationVersion,
-		outcome.DecisionJSON, record.digest, validationStatus, record.validationJSON,
-		nullableString(claim.req.Traceparent), nullableString(claim.req.Tracestate), now,
-	); err != nil {
-		return fmt.Errorf("insert decision: %w", err)
-	}
-	return nil
-}
-
-func nullableString(value string) sql.NullString {
-	return sql.NullString{String: value, Valid: value != ""}
 }
 
 func (r *Runner) rejectDecision(ctx context.Context, tx *sql.Tx, identity episodeledger.Identity, record *decisionRecord) error {
@@ -176,8 +156,8 @@ func (r *Runner) rejectDecision(ctx context.Context, tx *sql.Tx, identity episod
 	if err := episodeledger.RecordRejection(ctx, tx, identity, episodeledger.RejectionReason(reason), record.validationJSON, r.clk.Now()); err != nil {
 		return fmt.Errorf("record decision rejection: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE decisions SET rejection_reason = ? WHERE decision_id = ?", reason, record.id); err != nil {
-		return fmt.Errorf("annotate rejected decision: %w", err)
+	if err := store.AnnotateRejectedDecision(ctx, tx, record.id, reason); err != nil {
+		return err
 	}
 	return nil
 }
@@ -195,8 +175,8 @@ func (r *Runner) governDecision(ctx context.Context, tx *sql.Tx, claim *episodeC
 	} else if err := r.persistValidatedIntents(ctx, tx, record.validated, &claim.req, now); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE decisions SET validation_status = 'accepted' WHERE decision_id = ?", record.id); err != nil {
-		return fmt.Errorf("accept decision: %w", err)
+	if err := store.AcceptDecision(ctx, tx, record.id); err != nil {
+		return err
 	}
 	return nil
 }

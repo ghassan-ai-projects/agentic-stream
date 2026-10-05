@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
+	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
@@ -131,8 +132,8 @@ func (r *Runner) concludeSettledEpisode(ctx context.Context, tx *sql.Tx, claim *
 			return fmt.Errorf("settle episode cost: %w", err)
 		}
 	}
-	if err := episodeledger.Conclude(ctx, tx, claim.episodeID, now, terminalJSON); err != nil {
-		return fmt.Errorf("update episode terminal: %w", err)
+	if err := store.ConcludeEpisode(ctx, tx, claim.episodeID, now, terminalJSON); err != nil {
+		return err
 	}
 	return nil
 }

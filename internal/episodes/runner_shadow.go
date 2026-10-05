@@ -4,51 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
+	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 )
 
-const insertValidatedIntentSQL = `
-			INSERT INTO intents (
-				intent_id, decision_id, tenant_id, situation_id, situation_version,
-				intent_type, risk_class, intent_json, intent_sha256, expires_at,
-				rate_limit_per_hour, requires_approval, policy_status, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
-
 func (r *Runner) persistValidatedIntents(ctx context.Context, tx *sql.Tx, validated *decisions.Result, req *Request, now string) error {
 	for _, intent := range validated.Intents {
-		if err := insertValidatedIntent(ctx, tx, intent, validated.DecisionID, req, now); err != nil {
+		if err := store.InsertValidatedIntent(ctx, tx, store.ValidatedIntentInsert{Intent: intent, DecisionID: validated.DecisionID, TenantID: req.TenantID, SituationID: req.SituationID, SituationVersion: req.SituationVersion, Now: now}); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func insertValidatedIntent(ctx context.Context, tx *sql.Tx, intent decisions.Intent, decisionID string, req *Request, now string) error {
-	digest, err := canonicaljson.DecodeDigest(intent.Digest)
-	if err != nil {
-		return fmt.Errorf("decode intent digest: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, insertValidatedIntentSQL,
-		intent.ID, decisionID, req.TenantID, req.SituationID, req.SituationVersion,
-		intent.Type, intent.RiskClass, intent.CanonicalJSON, digest,
-		intent.ExpiresAt.UTC().Format(time.RFC3339Nano), intent.RateLimitPerHour,
-		boolToInt(intent.RequiresApproval), now, now,
-	); err != nil {
-		return fmt.Errorf("insert intent %s: %w", intent.ID, err)
-	}
-	return nil
-}
-
-func boolToInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }
 
 // recordShadow scores a shadow decision: the would-be policy outcome computed

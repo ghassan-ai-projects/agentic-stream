@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
+	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 )
 
 // assemblyInputs are the durable facts one scheduler item is assembled from.
@@ -18,23 +19,9 @@ type assemblyInputs struct {
 	reconsideration map[string]any
 }
 
-type schedulerItem struct {
-	SchedulerItemID  string
-	Kind             string
-	TriggerID        string
-	TenantID         string
-	SituationID      string
-	SituationVersion int
-}
+type schedulerItem = store.SchedulerItem
 
-type evaluation struct {
-	TriggerID   string
-	TriggerName string
-	Score       float64
-	Threshold   float64
-	Lane        string
-	DeltaJSON   []byte
-}
+type evaluation = store.Evaluation
 
 // loadInputs reads the trigger evaluation, the validated Situation snapshot,
 // and, for a reconsider item, the reconsideration context.
@@ -53,15 +40,7 @@ func (a *Assembler) loadInputs(ctx context.Context, tx *sql.Tx, item schedulerIt
 }
 
 func (a *Assembler) loadEvaluation(ctx context.Context, tx *sql.Tx, triggerID string) (evaluation, error) {
-	var ev evaluation
-	if err := tx.QueryRowContext(ctx, `
-		SELECT trigger_id, trigger_name, score, threshold, lane, delta_json
-		FROM trigger_evaluations WHERE trigger_id = ?`,
-		triggerID,
-	).Scan(&ev.TriggerID, &ev.TriggerName, &ev.Score, &ev.Threshold, &ev.Lane, &ev.DeltaJSON); err != nil {
-		return ev, fmt.Errorf("query evaluation: %w", err)
-	}
-	return ev, nil
+	return store.LoadEvaluation(ctx, tx, triggerID) //nolint:wrapcheck // Store owns the query error context.
 }
 
 // loadValidatedSnapshot loads a situation snapshot for a version and validates
@@ -76,19 +55,14 @@ func (a *Assembler) loadValidatedSnapshot(ctx context.Context, tx *sql.Tx, situa
 }
 
 func (a *Assembler) loadSnapshotJSON(ctx context.Context, tx *sql.Tx, situationID string, version int) ([]byte, []byte, string, string, error) {
-	var snapshotJSON []byte
-	var snapshotDigest []byte
-	var traceparent, tracestate sql.NullString
-	if err := tx.QueryRowContext(ctx, `
-		SELECT snapshot_json, snapshot_sha256, traceparent, tracestate FROM situation_versions
-		WHERE situation_id = ? AND version = ?`,
-		situationID, version).Scan(&snapshotJSON, &snapshotDigest, &traceparent, &tracestate); err != nil {
-		return nil, nil, "", "", fmt.Errorf("query situation version: %w", err)
+	snapshotJSON, snapshotDigest, traceparent, tracestate, err := store.LoadSnapshot(ctx, tx, situationID, version)
+	if err != nil {
+		return nil, nil, "", "", err
 	}
-	if _, err := contractsv1.ParseTraceContext(traceparent.String, tracestate.String); err != nil {
+	if _, err := contractsv1.ParseTraceContext(traceparent, tracestate); err != nil {
 		return nil, nil, "", "", fmt.Errorf("validate situation trace context: %w", err)
 	}
-	return snapshotJSON, snapshotDigest, traceparent.String, tracestate.String, nil
+	return snapshotJSON, snapshotDigest, traceparent, tracestate, nil
 }
 
 func loadTriggerContext(ctx context.Context, tx *sql.Tx, item schedulerItem, inputs assemblyInputs) (assemblyInputs, error) {
@@ -133,13 +107,5 @@ func requestSnapshotEntity(raw []byte) (string, error) {
 }
 
 func (a *Assembler) loadSchedulerItem(ctx context.Context, tx *sql.Tx, id string) (schedulerItem, error) {
-	var item schedulerItem
-	if err := tx.QueryRowContext(ctx, `
-		SELECT scheduler_item_id, kind, trigger_id, tenant_id, situation_id, situation_version
-		FROM scheduler_items WHERE scheduler_item_id = ?`,
-		id,
-	).Scan(&item.SchedulerItemID, &item.Kind, &item.TriggerID, &item.TenantID, &item.SituationID, &item.SituationVersion); err != nil {
-		return item, fmt.Errorf("query scheduler item: %w", err)
-	}
-	return item, nil
+	return store.LoadSchedulerItem(ctx, tx, id) //nolint:wrapcheck // Store owns the query error context.
 }

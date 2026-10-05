@@ -16,7 +16,7 @@ var durableOwners = map[string]string{
 	"connector_checkpoints":         "internal/ingress",
 	"cost_limits":                   "internal/costcontrol",
 	"cost_reservations":             "internal/costcontrol",
-	"decisions":                     "internal/episodes",
+	"decisions":                     "internal/episodes/internal/store",
 	"device_authority_events":       "internal/authority/internal/store",
 	"device_command_bindings":       "internal/authority/internal/store",
 	"device_reconciliation":         "internal/authority/internal/store",
@@ -106,7 +106,7 @@ func ownsMutation(pkg string, m sqlMutation) bool {
 		return columnsWithin(m.columns, []string{"status", "lease_owner", "lease_until", "attempt_count", "last_error_code", "delivered_at"})
 	case "intents":
 		if m.operation == "insert" {
-			return pkg == "internal/episodes" && !m.rewritesExisting
+			return pkg == "internal/episodes/internal/store" && !m.rewritesExisting
 		}
 		return pkg == "internal/policy/internal/store" && m.operation == "update" && columnsWithin(m.columns, []string{"policy_status", "updated_at"})
 	case "situations":
