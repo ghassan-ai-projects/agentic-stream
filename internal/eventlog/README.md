@@ -52,7 +52,10 @@ conflict and redrive behavior. Gates enforce downward imports, domain purity,
 app infrastructure isolation, store-only SQL and single durable ownership
 (now pointing at the store layer); injected violations were rejected during
 migration. `ReadEntityWindow` still takes the raw database handle; moving its
-callers onto a facade method is a recorded follow-up.
+callers onto a facade method is a recorded follow-up. `RecordGap` takes the
+typed `Gap` record (deliberate public API change replacing eight positional
+arguments); `Quarantine` keeps `map[string]any` because an invalid envelope
+is, by definition, an untyped document.
 
 - [Event log language](UBIQUITOUS_LANGUAGE.md)
 - [Migration design](../../docs/eventlog-reference-module-2026-10-05/DESIGN.md)

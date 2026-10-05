@@ -26,7 +26,11 @@
 
 ## Deliberate behavior changes
 
-None. The public API keeps every symbol and signature, including
+None in rounds R0-R3. A later type-safety polish round changed three public
+signatures without behavior changes: `RecordGap(ctx, gap Gap)` replaces eight
+positional arguments (no production caller existed); the app `Record` type and
+row rebuilding moved from the facade to keep `log.go` thin; see the plan
+status. The public API keeps every symbol and signature, including
 `ReadEntityWindow(ctx, db, ...)` taking the database handle (its callers in
 other modules own that handle; changing the signature is a cross-module
 follow-up, not part of this migration).
@@ -44,4 +48,5 @@ follow-up, not part of this migration).
 | R0 | Accepted, this commit |
 | R1 | Accepted: domain layer with pure rules (schema checking, quarantine identity, encoding, stored-time decoding, input validation) at layer 1; eventlog re-leveled 2→4 with ingress 3→5 and evidence 4→5; suite unchanged and green, domain 81% |
 | R2 | Accepted: all SQL and transactions in store behind domain-named methods and a caller-owned Unit; use cases in app; facade keeps the public method set and Record. Durable ownership moved to the store layer (authority/policy precedent). Coverage: facade 79%, app 75%, domain 81%, store 76% |
+| Polish | Accepted: `RecordGap` takes the typed `Gap` record; the facade's row-to-`Record` rebuilding lives in `internal/app` (`read.go`) so `log.go` stays aliases and delegation |
 | R3 | Accepted: injected violations (storage in app, SQL in app, `os` in domain, `actions` in store) each rejected; module guide and language guide added; AGENTS.md and repository map updated. Full `make ci-check` recorded in the final report |

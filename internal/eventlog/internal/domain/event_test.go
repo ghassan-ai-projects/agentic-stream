@@ -70,12 +70,13 @@ func TestUseCaseInputsFailClosed(t *testing.T) {
 	if err := ValidRelease("tenant", "", "now"); err == nil {
 		t.Fatal("eventless release accepted")
 	}
-	for name, check := range map[string]func() error{
-		"no gap id":     func() error { return ValidGap("", "t", 0, 0, 1, "r", "n") },
-		"reversed span": func() error { return ValidGap("g", "t", 0, 2, 1, "r", "n") },
-		"negative from": func() error { return ValidGap("g", "t", 0, -1, 1, "r", "n") },
-		"no reason":     func() error { return ValidGap("g", "t", 0, 0, 1, "", "n") },
+	for name, gap := range map[string]Gap{
+		"no gap id":     {ID: "", TenantID: "t", PartitionID: 0, From: 0, To: 1, Reason: "r", CreatedAt: "n"},
+		"reversed span": {ID: "g", TenantID: "t", PartitionID: 0, From: 2, To: 1, Reason: "r", CreatedAt: "n"},
+		"negative from": {ID: "g", TenantID: "t", PartitionID: 0, From: -1, To: 1, Reason: "r", CreatedAt: "n"},
+		"no reason":     {ID: "g", TenantID: "t", PartitionID: 0, From: 0, To: 1, Reason: "", CreatedAt: "n"},
 	} {
+		check := gap.Valid
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			if err := check(); err == nil {
@@ -83,7 +84,7 @@ func TestUseCaseInputsFailClosed(t *testing.T) {
 			}
 		})
 	}
-	if err := ValidGap("g", "t", 0, 1, 2, "r", "n"); err != nil {
+	if err := (Gap{ID: "g", TenantID: "t", PartitionID: 0, From: 1, To: 2, Reason: "r", CreatedAt: "n"}).Valid(); err != nil {
 		t.Fatalf("valid gap rejected: %v", err)
 	}
 }

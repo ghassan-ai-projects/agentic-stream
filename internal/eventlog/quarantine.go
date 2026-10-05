@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
 )
 
 // Quarantine records an invalid event durably without placing it in the
@@ -32,8 +33,12 @@ func (l *EventLog) RedriveQuarantine(ctx context.Context, tenantID, eventID, now
 	return l.service.RedriveQuarantine(ctx, tenantID, eventID, now)
 }
 
+// Gap is one durable discontinuity: an ordered position span in a partition,
+// with the reason it was recorded and the recording time.
+type Gap = domain.Gap
+
 // RecordGap records a durable discontinuity caused by bounded overflow or
 // explicit operator action. It never deletes the original evidence.
-func (l *EventLog) RecordGap(ctx context.Context, gapID, tenantID string, partitionID int, fromPosition, toPosition int64, reason, now string) error {
-	return l.service.RecordGap(ctx, gapID, tenantID, partitionID, fromPosition, toPosition, reason, now)
+func (l *EventLog) RecordGap(ctx context.Context, gap Gap) error {
+	return l.service.RecordGap(ctx, gap)
 }

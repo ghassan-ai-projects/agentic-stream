@@ -65,7 +65,8 @@ func TestRecordGapPreservesDiscontinuity(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	log := eventlog.NewEventLog(db)
-	if err := log.RecordGap(ctx, "gap-1", "tenant-1", 2, 10, 12, "quarantine_overflow", "2026-08-12T12:00:00Z"); err != nil {
+	gap := eventlog.Gap{ID: "gap-1", TenantID: "tenant-1", PartitionID: 2, From: 10, To: 12, Reason: "quarantine_overflow", CreatedAt: "2026-08-12T12:00:00Z"}
+	if err := log.RecordGap(ctx, gap); err != nil {
 		t.Fatal(err)
 	}
 	var reason string

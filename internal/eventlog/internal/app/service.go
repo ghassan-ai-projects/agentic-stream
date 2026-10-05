@@ -71,11 +71,11 @@ func (s *Service) ReadEntityEvents(ctx context.Context, window domain.EntityWind
 }
 
 // RecordGap records a durable discontinuity. It never deletes evidence.
-func (s *Service) RecordGap(ctx context.Context, gapID, tenantID string, partitionID int, fromPosition, toPosition int64, reason, now string) error {
-	if err := domain.ValidGap(gapID, tenantID, partitionID, fromPosition, toPosition, reason, now); err != nil {
+func (s *Service) RecordGap(ctx context.Context, gap domain.Gap) error {
+	if err := gap.Valid(); err != nil {
 		return err
 	}
-	return s.store.RecordGap(ctx, gapID, tenantID, partitionID, fromPosition, toPosition, reason, now)
+	return s.store.RecordGap(ctx, gap) //nolint:wrapcheck // Store owns the insert error context.
 }
 
 // admit validates the envelope contract and, when required, the registered
