@@ -67,3 +67,27 @@ func TestCapabilityTimeChecks(t *testing.T) {
 		t.Fatal("excess TTL accepted")
 	}
 }
+
+func TestConfiguredAuthorityAndLeaseDefaults(t *testing.T) {
+	scope := completeScope()
+	scope.Issuer = ""
+	scope.Audience = ""
+	now := scope.IssuedAt
+	got, err := CompleteScope(scope, Authority{Issuer: "runtime", Audience: "tools", MaxTTL: DefaultCapabilityTTL}, now)
+	if err != nil || got.Issuer != "runtime" || got.Audience != "tools" {
+		t.Fatal(got, err)
+	}
+	if err := CheckAuthority(got, "runtime", "tools"); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckAuthority(got, "other", "tools"); err == nil {
+		t.Fatal("foreign issuer accepted")
+	}
+	scope.Fence = 0
+	if _, err := CompleteScope(scope, Authority{}, now); err == nil {
+		t.Fatal("invalid scope accepted")
+	}
+	if ReservationLease(0) != time.Minute || ReservationLease(2*time.Minute) != 2*time.Minute {
+		t.Fatal("lease defaults changed")
+	}
+}

@@ -11,7 +11,7 @@ import (
 // AttemptCapabilityIssuer derives one short-lived evidence capability from a
 // trusted durable Request. The raw token exists only in the dispatch call.
 type AttemptCapabilityIssuer struct {
-	Issuer       *evidence.Issuer
+	Issuer       *evidence.Service
 	RuntimeEpoch string
 	Tools        []string
 	From         time.Time
@@ -34,10 +34,7 @@ func (i *AttemptCapabilityIssuer) Issue(req *episodes.Request) ([]byte, error) {
 }
 
 func (i *AttemptCapabilityIssuer) issueScopedCapability(req *episodes.Request) ([]byte, error) {
-	now := time.Now().UTC()
-	if i.Issuer.Now != nil {
-		now = i.Issuer.Now().UTC()
-	}
+	now := i.Issuer.IssueTime()
 	expiresAt := i.ExpiresAt
 	if expiresAt.IsZero() {
 		expiresAt = now.Add(15 * time.Minute)
@@ -47,7 +44,6 @@ func (i *AttemptCapabilityIssuer) issueScopedCapability(req *episodes.Request) (
 
 func (i *AttemptCapabilityIssuer) signAttemptScope(req *episodes.Request, now, expiresAt time.Time) ([]byte, error) {
 	token, err := i.Issuer.Issue(evidence.Scope{
-		KeyID: i.Issuer.KeyID, Issuer: i.Issuer.Issuer, Audience: i.Issuer.Audience,
 		EpisodeID: req.EpisodeID, AttemptID: req.AttemptID, Fence: req.Fence,
 		TenantID: req.TenantID, SituationID: req.SituationID, SituationVersion: int64(req.SituationVersion), EntityID: req.EntityID,
 		Tools: append([]string(nil), i.Tools...), NotBefore: now, ExpiresAt: expiresAt,

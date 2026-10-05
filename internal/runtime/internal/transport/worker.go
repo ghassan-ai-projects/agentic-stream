@@ -23,7 +23,7 @@ import (
 // run-live and serve so their worker and evidence boundaries cannot drift.
 type WorkerRuntimeConfig struct {
 	DB               *storage.DB
-	Ledger           *evidence.Ledger
+	Ledger           *evidence.Service
 	RuntimeEpoch     string
 	WorkerSocket     string
 	WorkerName       string
@@ -104,6 +104,18 @@ func (r *WorkerBackend) StartEvidence() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	listener, err := r.listenEvidence(cfg)
+	if err != nil {
+		return nil, err
+	}
+	r.evidenceListener = listener
+	if err := r.serveEvidence(cfg, evidenceSecret, listener); err != nil {
+		return nil, err
+	}
+	return evidenceSecret, nil
+}
+
+func (r *WorkerBackend) listenEvidence(cfg WorkerRuntimeConfig) (net.Listener, error) {
 	if cfg.Ledger == nil {
 		return nil, fmt.Errorf("evidence ledger is required with --evidence-socket")
 	}
@@ -111,20 +123,23 @@ func (r *WorkerBackend) StartEvidence() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listen evidence socket: %w", err)
 	}
-	r.evidenceListener = listener
-	r.serveEvidence(cfg, evidenceSecret, listener)
-	return evidenceSecret, nil
+	return listener, nil
 }
 
-func (r *WorkerBackend) serveEvidence(cfg WorkerRuntimeConfig, evidenceSecret []byte, listener net.Listener) {
+func (r *WorkerBackend) serveEvidence(cfg WorkerRuntimeConfig, evidenceSecret []byte, listener net.Listener) error {
+	capabilities, err := evidenceIssuer(evidenceSecret)
+	if err != nil {
+		return err
+	}
+	service, err := evidence.New(evidence.Config{Calls: &evidence.CallConfig{Capabilities: capabilities, Ledger: cfg.Ledger, Query: evidence.EventLogQuery(cfg.DB), RuntimeEpoch: cfg.RuntimeEpoch}})
+	if err != nil {
+		return fmt.Errorf("configure evidence calls: %w", err)
+	}
 	evidenceGRPC := grpc.NewServer()
 	r.evidenceGRPC = evidenceGRPC
-	issuer := evidenceIssuer(evidenceSecret)
-	runtimev1.RegisterEvidenceToolsServer(evidenceGRPC, &evidence.Server{
-		Verifier: &evidence.Verifier{Issuer: issuer.Issuer, Audience: issuer.Audience, Keys: issuer.Keys},
-		Query:    evidence.EventLogQuery(cfg.DB), Ledger: cfg.Ledger, RuntimeEpoch: cfg.RuntimeEpoch, RequireLedger: true,
-	})
+	runtimev1.RegisterEvidenceToolsServer(evidenceGRPC, service)
 	go r.runEvidenceServer(evidenceGRPC, listener)
+	return nil
 }
 
 func (r *WorkerBackend) runEvidenceServer(evidenceGRPC *grpc.Server, listener net.Listener) {
@@ -146,24 +161,32 @@ func (r *WorkerBackend) ConnectWorker(ctx context.Context, evidenceSecret []byte
 		return nil, fmt.Errorf("dial episode worker socket: %w", err)
 	}
 	r.workerConn = conn
-	return r.installRemoteExecutor(cfg, evidenceSecret, conn), nil
+	return r.installRemoteExecutor(cfg, evidenceSecret, conn)
 }
 
-func (r *WorkerBackend) installRemoteExecutor(cfg WorkerRuntimeConfig, evidenceSecret []byte, conn *grpc.ClientConn) episodes.Executor {
+func (r *WorkerBackend) installRemoteExecutor(cfg WorkerRuntimeConfig, evidenceSecret []byte, conn *grpc.ClientConn) (episodes.Executor, error) {
 	client := runtimev1.NewEpisodeWorkerClient(conn)
 	if cfg.EvidenceSocket == "" {
-		return remoteexecutor.NewExecutor(client, cfg.WorkerName, cfg.RuntimeEpoch, nil)
+		return remoteexecutor.NewExecutor(client, cfg.WorkerName, cfg.RuntimeEpoch, nil), nil
+	}
+	issuer, err := evidenceIssuer(evidenceSecret)
+	if err != nil {
+		return nil, err
 	}
 	factory := &remoteexecutor.AttemptCapabilityIssuer{
-		Issuer: evidenceIssuer(evidenceSecret), RuntimeEpoch: cfg.RuntimeEpoch, Tools: []string{"evidence.get"},
+		Issuer: issuer, RuntimeEpoch: cfg.RuntimeEpoch, Tools: []string{"evidence.get"},
 		From: time.Now().UTC().Add(-24 * time.Hour), Until: time.Now().UTC().Add(24 * time.Hour), MaxRows: 1000, MaxBytes: 1 << 20,
 	}
 	features := []string{worker.EvidenceToolsFeature}
-	return remoteexecutor.NewExecutorWithEvidence(client, cfg.WorkerName, cfg.RuntimeEpoch, features, cfg.EvidenceSocket, factory)
+	return remoteexecutor.NewExecutorWithEvidence(client, cfg.WorkerName, cfg.RuntimeEpoch, features, cfg.EvidenceSocket, factory), nil
 }
 
-func evidenceIssuer(secret []byte) *evidence.Issuer {
-	return &evidence.Issuer{Issuer: "agentic-stream", Audience: "evidence-tools", KeyID: "runtime", Keys: map[string][]byte{"runtime": secret}}
+func evidenceIssuer(secret []byte) (*evidence.Service, error) {
+	service, err := evidence.New(evidence.Config{Capabilities: &evidence.CapabilityConfig{Issuer: "agentic-stream", Audience: "evidence-tools", KeyID: "runtime", Keys: map[string][]byte{"runtime": secret}}})
+	if err != nil {
+		return nil, fmt.Errorf("configure evidence capabilities: %w", err)
+	}
+	return service, nil
 }
 
 // Errors reports asynchronous evidence-server failures. A closed channel is

@@ -23,11 +23,11 @@ func TestEpisodeFacadeOnlyDelegates(t *testing.T) {
 				continue
 			}
 			if function.Recv != nil {
-				if !slices.Contains(operations, function.Name.Name) || !episodeDelegation(function, "app") {
+				if !slices.Contains(operations, function.Name.Name) || !facadeDelegation(function, "app") {
 					t.Errorf("%s: %s must only delegate to the private application", file.rel, function.Name)
 				}
 			} else if function.Name.Name == "CompileIntentCatalog" {
-				if !episodeDelegation(function, "domain") {
+				if !facadeDelegation(function, "domain") {
 					t.Errorf("%s: catalog compilation must delegate to domain", file.rel)
 				}
 			} else if !slices.Contains(construction, function.Name.Name) {
@@ -37,7 +37,7 @@ func TestEpisodeFacadeOnlyDelegates(t *testing.T) {
 	}
 }
 
-func episodeDelegation(function *ast.FuncDecl, target string) bool {
+func facadeDelegation(function *ast.FuncDecl, target string) bool {
 	if function.Body == nil || len(function.Body.List) != 1 {
 		return false
 	}

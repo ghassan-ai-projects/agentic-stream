@@ -305,7 +305,7 @@ func TestRemoteExecutorIssuesFreshScopedCapabilityPerDispatch(t *testing.T) {
 	})
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	keys := map[string][]byte{"k1": []byte("01234567890123456789012345678901")}
-	factory := &AttemptCapabilityIssuer{Issuer: &evidence.Issuer{Issuer: "runtime", Audience: "evidence-tools", KeyID: "k1", Keys: keys, Now: func() time.Time { return now }}, RuntimeEpoch: "epoch-1", Tools: []string{"evidence.get"}, From: now.Add(-time.Hour), Until: now, MaxRows: 10, MaxBytes: 1024, ExpiresAt: now.Add(10 * time.Minute)}
+	factory := &AttemptCapabilityIssuer{Issuer: testCapabilities(t, evidence.CapabilityConfig{Issuer: "runtime", Audience: "evidence-tools", KeyID: "k1", Keys: keys, Now: func() time.Time { return now }}), RuntimeEpoch: "epoch-1", Tools: []string{"evidence.get"}, From: now.Add(-time.Hour), Until: now, MaxRows: 10, MaxBytes: 1024, ExpiresAt: now.Add(10 * time.Minute)}
 	req := validWorkerRequest()
 	req.EntityID = "motor-1"
 	executor := NewExecutorWithEvidence(client, "worker-1", "runtime-1", []string{worker.EvidenceToolsFeature}, filepath.Join(t.TempDir(), "evidence.sock"), factory)
@@ -318,7 +318,7 @@ func TestRemoteExecutorIssuesFreshScopedCapabilityPerDispatch(t *testing.T) {
 	if len(seen) != 2 || string(seen[0]) == string(seen[1]) {
 		t.Fatalf("capabilities were not freshly issued: %d", len(seen))
 	}
-	scope, err := (&evidence.Verifier{Issuer: "runtime", Audience: "evidence-tools", Keys: keys, Now: func() time.Time { return now }}).Verify(seen[0])
+	scope, err := testCapabilities(t, evidence.CapabilityConfig{KeyID: "k1", Issuer: "runtime", Audience: "evidence-tools", Keys: keys, Now: func() time.Time { return now }}).Verify(seen[0])
 	if err != nil || scope.EntityID != "motor-1" || scope.RuntimeEpoch != "epoch-1" {
 		t.Fatalf("issued scope = %+v, err=%v", scope, err)
 	}

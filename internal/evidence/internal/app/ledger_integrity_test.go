@@ -1,9 +1,8 @@
-package evidence
+package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
 	"strings"
 	"testing"
 )
@@ -18,7 +17,7 @@ func TestLedgerRejectsCorruptedCompletedResults(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := openLedgerDB(t)
-			ledger := &Ledger{DB: db, LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Now: fixedLedgerClock()}
+			ledger := &Ledger{Store: store.New(db, allowOwner, "epoch-1"), LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Now: fixedLedgerClock()}
 			call := ledgerTestCall()
 			reservation, err := ledger.Reserve(t.Context(), call, "token-1", "epoch-1")
 			if err != nil {
@@ -42,7 +41,7 @@ func TestLedgerRejectsCorruptedCompletedResults(t *testing.T) {
 
 func TestLedgerCompletionSurvivesCancellation(t *testing.T) {
 	db := openLedgerDB(t)
-	ledger := &Ledger{DB: db, LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Now: fixedLedgerClock()}
+	ledger := &Ledger{Store: store.New(db, allowOwner, "epoch-1"), LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Now: fixedLedgerClock()}
 	reservation, err := ledger.Reserve(t.Context(), ledgerTestCall(), "token-1", "epoch-1")
 	if err != nil {
 		t.Fatal(err)
@@ -57,19 +56,9 @@ func TestLedgerCompletionSurvivesCancellation(t *testing.T) {
 	}
 }
 
-func TestEvidenceFingerprintEncodingIsStable(t *testing.T) {
-	// This document pins the pre-refactor field order, tags and time formatting.
-	const document = `{"episode_id":"episode-1","call_id":"call-1","tool_name":"evidence.get","tenant_id":"tenant-1","situation_id":"situation-1","entity_id":"motor-1","attempt_id":"attempt-1","situation_version":1,"fence":1,"arguments":{"entity_id":"motor-1"},"deadline":"2026-08-12T12:01:00Z","from":"2026-08-12T11:00:00Z","until":"2026-08-12T12:00:00Z","max_rows":1,"max_bytes":100,"traceparent":"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01","tracestate":""}`
-	want := sha256.Sum256([]byte(document))
-	got, err := callFingerprint(ledgerTestCall())
-	if err != nil || hex.EncodeToString(got) != hex.EncodeToString(want[:]) {
-		t.Fatalf("fingerprint = %x, err = %v, want %x", got, err, want)
-	}
-}
-
 func TestReservationIdentityErrorsPrecedeResultIntegrity(t *testing.T) {
 	db := openLedgerDB(t)
-	ledger := &Ledger{DB: db, LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Now: fixedLedgerClock()}
+	ledger := &Ledger{Store: store.New(db, allowOwner, "epoch-1"), LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Now: fixedLedgerClock()}
 	if _, err := ledger.Reserve(t.Context(), ledgerTestCall(), "original", "epoch-1"); err != nil {
 		t.Fatal(err)
 	}

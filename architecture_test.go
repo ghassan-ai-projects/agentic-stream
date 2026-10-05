@@ -62,6 +62,9 @@ var forbiddenImports = map[string][]string{
 // follow the data flow in .agents/context/architecture.md and be added here in
 // the same change.
 var allowedImports = map[string][]string{
+	"internal/evidence/internal/app":        {"internal/contractsv1", "internal/evidence/internal/domain", "internal/evidence/internal/store", "internal/evidence/internal/wire"},
+	"internal/evidence/internal/store":      {"internal/evidence/internal/domain", "internal/storage"},
+	"internal/evidence/internal/transport":  {"internal/evidence/internal/app", "internal/evidence/internal/domain", "internal/evidence/internal/wire", "internal/eventlog", "internal/storage", "proto/agenticstream/runtime/v1"},
 	"internal/executor/fixture":             {"internal/canonicaljson", "internal/contractsv1", "internal/episodeledger", "internal/episodes"},
 	"internal/runtime/internal/transport":   {"internal/contractsv1", "internal/episodes", "internal/eventlog", "internal/evidence", "internal/executor/native", "internal/executor/remote", "internal/ingress", "internal/runtime/internal/domain", "internal/storage", "internal/telemetry", "internal/worker", "proto/agenticstream/runtime/v1"},
 	"internal/runtime/internal/store":       {"internal/clock", "internal/control", "internal/costcontrol", "internal/episodeledger", "internal/evidence", "internal/policy", "internal/runtime/internal/domain", "internal/storage"},
@@ -104,9 +107,9 @@ var allowedImports = map[string][]string{
 	"internal/eventlog/internal/domain":     {},
 	"internal/eventlog/internal/store":      {"internal/contractsv1", "internal/eventlog/internal/domain", "internal/storage"},
 	"internal/eventschema":                  {},
-	"internal/evidence":                     {"internal/contractsv1", "internal/control", "internal/eventlog", "internal/storage", "proto/agenticstream/runtime/v1", "internal/evidence/internal/domain", "internal/evidence/internal/wire"},
+	"internal/evidence":                     {"internal/evidence/internal/app", "internal/evidence/internal/domain", "internal/evidence/internal/store", "internal/evidence/internal/transport", "internal/evidence/internal/wire", "internal/storage", "proto/agenticstream/runtime/v1"},
 	"internal/evidence/internal/domain":     {"internal/contractsv1"},
-	"internal/evidence/internal/wire":       {"internal/evidence/internal/domain"},
+	"internal/evidence/internal/wire":       {"internal/evidence/internal/domain", "proto/agenticstream/runtime/v1"},
 	"internal/executor/conformance":         {"internal/canonicaljson", "internal/episodeledger", "internal/episodes", "internal/spec"},
 	"internal/executor/native":              {"internal/canonicaljson", "internal/episodeledger", "internal/episodes", "internal/eventlog", "internal/storage"},
 	"internal/executor/remote":              {"internal/canonicaljson", "internal/episodeledger", "internal/episodes", "internal/evidence", "internal/spec", "internal/telemetry", "internal/worker", "proto/agenticstream/runtime/v1"},

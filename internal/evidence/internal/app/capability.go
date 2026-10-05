@@ -1,5 +1,5 @@
-// Package evidence implements bounded, capability-scoped evidence tools.
-package evidence
+// Package app orders bounded evidence authorization, querying and durable lifecycle use cases.
+package app
 
 import (
 	"cmp"
@@ -9,20 +9,16 @@ import (
 	"time"
 )
 
-// Scope is the complete authorization scope of one capability.
-type Scope = domain.Scope
-
 const defaultCapabilityTTL = domain.DefaultCapabilityTTL
 
 // Issuer signs opaque capability tokens with an HMAC-SHA256 key ring.
 type Issuer struct {
-	Issuer    string
-	Audience  string
-	KeyID     string
-	Keys      map[string][]byte
-	Now       func() time.Time
-	MaxTTL    time.Duration
-	ClockSkew time.Duration
+	Issuer   string
+	Audience string
+	KeyID    string
+	Keys     map[string][]byte
+	Now      func() time.Time
+	MaxTTL   time.Duration
 }
 
 // Issue signs a short-lived attempt capability.
@@ -43,16 +39,12 @@ func (i *Issuer) Issue(scope Scope) ([]byte, error) {
 }
 func (i *Issuer) completeScope(scope Scope, now time.Time) (Scope, error) {
 	maxTTL := cmp.Or(i.MaxTTL, defaultCapabilityTTL)
+	scope.KeyID = cmp.Or(scope.KeyID, i.KeyID)
 	scope, err := prepareScope(scope, now, maxTTL)
 	if err != nil {
 		return Scope{}, err
 	}
-	scope.Issuer = cmp.Or(scope.Issuer, i.Issuer)
-	scope.Audience = cmp.Or(scope.Audience, i.Audience)
-	if err := domain.CheckIssuable(scope, now, maxTTL); err != nil {
-		return Scope{}, err
-	}
-	return scope, nil
+	return domain.CompleteScope(scope, domain.Authority{Issuer: i.Issuer, Audience: i.Audience, MaxTTL: maxTTL}, now)
 }
 func prepareScope(scope Scope, now time.Time, maxTTL time.Duration) (Scope, error) {
 	scope, err := domain.PrepareScope(scope, now, maxTTL)
@@ -62,11 +54,5 @@ func prepareScope(scope Scope, now time.Time, maxTTL time.Duration) (Scope, erro
 	if scope.TokenID, err = wire.TokenID(scope.TokenID); err != nil {
 		return Scope{}, err
 	}
-	if err := domain.ValidateScope(scope); err != nil {
-		return Scope{}, err
-	}
 	return scope, nil
 }
-
-// NewRuntimeEpoch generates an opaque owner identity.
-func NewRuntimeEpoch() (string, error) { return wire.NewRuntimeEpoch() }

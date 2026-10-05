@@ -20,7 +20,7 @@ type RecoveryReport = domain.RecoveryReport
 // start ingestion; the live command owns that sequencing.
 type RecoveryCoordinator struct {
 	Owner  *runtimecontrol.RuntimeOwner
-	Ledger *evidence.Ledger
+	Ledger *evidence.Service
 	Epoch  string
 	Now    func() time.Time
 	Costs  *costcontrol.Controller
@@ -32,14 +32,13 @@ func (c *RecoveryCoordinator) ClaimAndRecover(ctx context.Context) (RecoveryRepo
 	if c == nil || c.Owner == nil || c.Ledger == nil || c.Epoch == "" {
 		return RecoveryReport{}, fmt.Errorf("runtime recovery is not configured")
 	}
-	if c.Ledger.RuntimeEpoch != c.Epoch {
+	if c.Ledger.RuntimeEpoch() != c.Epoch {
 		return RecoveryReport{}, fmt.Errorf("ledger runtime epoch does not match owner epoch")
 	}
 	return c.claimRecovery(ctx)
 }
 
 func (c *RecoveryCoordinator) claimRecovery(ctx context.Context) (RecoveryReport, error) {
-	c.Ledger.Owner = c.Owner
 	now := c.recoveryTime()
 	var report RecoveryReport
 	err := c.Owner.ClaimAndRecover(ctx, c.Epoch, func(tx *sql.Tx, claimedAt time.Time) error {

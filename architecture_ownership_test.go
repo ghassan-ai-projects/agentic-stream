@@ -31,7 +31,7 @@ var durableOwners = map[string]string{
 	"event_log":                     "internal/eventlog/internal/store",
 	"event_quarantine":              "internal/eventlog/internal/store",
 	"event_schemas":                 "internal/eventschema",
-	"evidence_call_ledger":          "internal/evidence",
+	"evidence_call_ledger":          "internal/evidence/internal/store",
 	"intent_dispatch_counts":        "internal/policy/internal/store",
 	"intents":                       "internal/policy/internal/store",
 	"lineage_sets":                  "internal/engine",

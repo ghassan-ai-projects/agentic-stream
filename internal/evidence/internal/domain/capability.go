@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"cmp"
 	"fmt"
 	"time"
 )
@@ -78,4 +79,39 @@ func timeOr(value, fallback time.Time) time.Time {
 		return fallback
 	}
 	return value
+}
+
+// Authority is the configured capability issuer/audience and maximum lifetime.
+type Authority struct {
+	Issuer, Audience string
+	MaxTTL           time.Duration
+}
+
+// CompleteScope binds defaults after the token identity was assigned.
+func CompleteScope(scope Scope, authority Authority, now time.Time) (Scope, error) {
+	if err := ValidateScope(scope); err != nil {
+		return Scope{}, err
+	}
+	scope.Issuer = cmp.Or(scope.Issuer, authority.Issuer)
+	scope.Audience = cmp.Or(scope.Audience, authority.Audience)
+	if err := CheckIssuable(scope, now, authority.MaxTTL); err != nil {
+		return Scope{}, err
+	}
+	return scope, nil
+}
+
+// CheckAuthority requires the exact configured issuer and audience.
+func CheckAuthority(scope Scope, issuer, audience string) error {
+	if scope.Issuer != issuer || scope.Audience != audience {
+		return fmt.Errorf("capability issuer or audience mismatch")
+	}
+	return nil
+}
+
+// ReservationLease retains the existing default for an unspecified lease.
+func ReservationLease(lease time.Duration) time.Duration {
+	if lease <= 0 {
+		return time.Minute
+	}
+	return lease
 }

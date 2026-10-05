@@ -1,8 +1,7 @@
-package evidence
+package app
 
 import (
 	"cmp"
-	"fmt"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/wire"
 	"time"
@@ -29,8 +28,8 @@ func (v *Verifier) Verify(token []byte) (Scope, error) {
 	if err != nil {
 		return Scope{}, err
 	}
-	if scope.Issuer != v.Issuer || scope.Audience != v.Audience {
-		return Scope{}, fmt.Errorf("capability issuer or audience mismatch")
+	if err := domain.CheckAuthority(scope, v.Issuer, v.Audience); err != nil {
+		return Scope{}, err
 	}
 	if err := v.checkValidity(scope); err != nil {
 		return Scope{}, err

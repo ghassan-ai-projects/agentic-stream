@@ -1,6 +1,8 @@
 package transport
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"net"
 	"os"
@@ -54,7 +56,7 @@ func TestWorkerBackendEvidenceAndRemoteLifetime(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
-	cfg := WorkerRuntimeConfig{DB: db, Ledger: &evidence.Ledger{DB: db}, RuntimeEpoch: "epoch", WorkerSocket: filepath.Join(t.TempDir(), "worker.sock"), WorkerName: "worker", EvidenceSocket: filepath.Join(socketDir, "evidence.sock"), EvidenceKey: evidenceTestKey}
+	cfg := WorkerRuntimeConfig{DB: db, Ledger: testEvidenceLedger(t, db), RuntimeEpoch: "epoch", WorkerSocket: filepath.Join(t.TempDir(), "worker.sock"), WorkerName: "worker", EvidenceSocket: filepath.Join(socketDir, "evidence.sock"), EvidenceKey: evidenceTestKey}
 	r := NewWorkerBackend(cfg, nativeexecutor.New)
 	defer func() { _ = r.Close() }()
 	secret, err := r.StartEvidence()
@@ -105,7 +107,7 @@ func TestWorkerBackendSetupFailures(t *testing.T) {
 	}{
 		{"invalid key", WorkerRuntimeConfig{EvidenceKey: "zz"}, "--evidence-key"},
 		{"missing ledger", WorkerRuntimeConfig{EvidenceKey: evidenceTestKey}, "evidence ledger is required"},
-		{"occupied socket path", WorkerRuntimeConfig{EvidenceKey: evidenceTestKey, Ledger: &evidence.Ledger{}, EvidenceSocket: occupiedPath}, "listen evidence socket: refusing unsafe existing socket path"},
+		{"occupied socket path", WorkerRuntimeConfig{EvidenceKey: evidenceTestKey, Ledger: testEvidenceLedger(t, nil), EvidenceSocket: occupiedPath}, "listen evidence socket: refusing unsafe existing socket path"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := NewWorkerBackend(tc.cfg, nativeexecutor.New)
@@ -130,4 +132,21 @@ func TestWorkerBackendSetupFailures(t *testing.T) {
 	if absent.Errors() != nil || absent.Close() != nil {
 		t.Fatal("nil backend lifecycle changed")
 	}
+}
+
+func testEvidenceLedger(t *testing.T, db *storage.DB) *evidence.Service {
+	t.Helper()
+	if db == nil {
+		var err error
+		db, err = storage.Open(t.Context(), filepath.Join(t.TempDir(), "evidence.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = db.Close() })
+	}
+	service, err := evidence.New(evidence.Config{Ledger: &evidence.LedgerConfig{DB: db, LeaseOwner: "fixture", RuntimeEpoch: "epoch", OwnerCheck: func(context.Context, *sql.Tx, string) error { return nil }}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service
 }

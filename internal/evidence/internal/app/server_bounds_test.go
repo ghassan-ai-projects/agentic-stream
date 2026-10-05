@@ -1,8 +1,9 @@
-package evidence
+package app_test
 
 import (
 	"context"
 	"errors"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"testing"
 	"time"
 
@@ -22,17 +23,14 @@ func boundsScope() Scope {
 	return Scope{KeyID: "k1", EpisodeID: "episode-1", AttemptID: "attempt-1", Fence: 1, TenantID: "tenant-1", SituationID: "situation-1", SituationVersion: 1, EntityID: "motor-1", Tools: []string{"evidence.get"}, NotBefore: boundsNow, ExpiresAt: boundsNow.Add(10 * time.Minute), From: boundsNow.Add(-time.Hour), Until: boundsNow.Add(time.Hour), MaxRows: 10, MaxBytes: 1024, Traceparent: boundsTraceparent, RuntimeEpoch: "epoch-1"}
 }
 
-func boundsServer(t *testing.T, query Query) (*Server, []byte) {
+func boundsServer(t *testing.T, db *storage.DB, epoch string, query Query) (*Server, []byte) {
 	t.Helper()
-	keys := map[string][]byte{"k1": []byte("01234567890123456789012345678901")}
-	clock := func() time.Time { return boundsNow }
-	issuer := &Issuer{Issuer: "runtime", Audience: "evidence-tools", KeyID: "k1", Keys: keys, Now: clock}
+	issuer := testCapabilities(t, boundsNow)
 	token, err := issuer.Issue(boundsScope())
 	if err != nil {
-		t.Fatalf("issue token: %v", err)
+		t.Fatal(err)
 	}
-	verifier := &Verifier{Issuer: "runtime", Audience: "evidence-tools", Keys: keys, Now: clock}
-	return &Server{Verifier: verifier, Now: clock, Query: query}, token
+	return testServer(t, db, issuer, boundsNow, 1, epoch, query), token
 }
 
 func boundsCall(token []byte, callID string) *runtimev1.EvidenceToolCall {
@@ -81,11 +79,10 @@ func TestCallRefusesEveryOutOfScopeRequest(t *testing.T) {
 			t.Parallel()
 
 			queried := false
-			server, token := boundsServer(t, func(ctx context.Context, call Call) (QueryResult, error) {
+			server, token := boundsServer(t, openLedgerDB(t), effectiveEpoch(tt.epoch), func(ctx context.Context, call Call) (QueryResult, error) {
 				queried = true
 				return okQuery(ctx, call)
 			})
-			server.RuntimeEpoch = tt.epoch
 			request := boundsCall(token, "call-1")
 			tt.mutate(request)
 			_, err := server.Call(t.Context(), request)
@@ -114,9 +111,7 @@ func TestCallEnforcesResultBoundsAndRecordsFailures(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := openLedgerDB(t)
-			server, token := boundsServer(t, func(context.Context, Call) (QueryResult, error) { return tt.result, tt.queryErr })
-			server.RuntimeEpoch = "epoch-1"
-			server.Ledger = &Ledger{DB: db, LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Lease: time.Minute, Now: fixedLedgerClock()}
+			server, token := boundsServer(t, db, "epoch-1", func(context.Context, Call) (QueryResult, error) { return tt.result, tt.queryErr })
 
 			if _, err := server.Call(t.Context(), boundsCall(token, "call-1")); status.Code(err) != tt.want {
 				t.Fatalf("code = %v, want %v (err %v)", status.Code(err), tt.want, err)
@@ -134,12 +129,10 @@ func TestCallEnforcesResultBoundsAndRecordsFailures(t *testing.T) {
 func TestLedgerReplaysCompletedCallWithoutQuerying(t *testing.T) {
 	db := openLedgerDB(t)
 	queries := 0
-	server, token := boundsServer(t, func(context.Context, Call) (QueryResult, error) {
+	server, token := boundsServer(t, db, "epoch-1", func(context.Context, Call) (QueryResult, error) {
 		queries++
 		return QueryResult{JSON: []byte(`{"rows":[{"value":7}]}`), RowCount: 1}, nil
 	})
-	server.RuntimeEpoch = "epoch-1"
-	server.Ledger = &Ledger{DB: db, LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Lease: time.Minute, Now: fixedLedgerClock()}
 
 	first, err := server.Call(t.Context(), boundsCall(token, "call-1"))
 	if err != nil {
@@ -157,24 +150,36 @@ func TestLedgerReplaysCompletedCallWithoutQuerying(t *testing.T) {
 	}
 }
 
-func TestInMemoryCallIdentityIsReleasedOnlyOnQueryFailure(t *testing.T) {
-	t.Parallel()
-
-	fail := true
-	server, token := boundsServer(t, func(ctx context.Context, call Call) (QueryResult, error) {
-		if fail {
-			return QueryResult{}, errors.New("transient")
-		}
-		return okQuery(ctx, call)
+func TestDurableQueryFailureNeverReusesCallIdentity(t *testing.T) {
+	db := openLedgerDB(t)
+	queries := 0
+	server, token := boundsServer(t, db, "epoch-1", func(context.Context, Call) (QueryResult, error) {
+		queries++
+		return QueryResult{}, errors.New("transient")
 	})
 	if _, err := server.Call(t.Context(), boundsCall(token, "call-1")); status.Code(err) != codes.Internal {
-		t.Fatalf("failed query = %v", err)
+		t.Fatalf("first=%v", err)
 	}
-	fail = false
-	if _, err := server.Call(t.Context(), boundsCall(token, "call-1")); err != nil {
-		t.Fatalf("retry after a failed query: %v", err)
+	if _, err := server.Call(t.Context(), boundsCall(token, "call-1")); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("repeat=%v", err)
 	}
-	if _, err := server.Call(t.Context(), boundsCall(token, "call-1")); status.Code(err) != codes.AlreadyExists {
-		t.Fatalf("reuse after success = %v, want AlreadyExists", err)
+	if queries != 1 {
+		t.Fatalf("queries=%d", queries)
+	}
+}
+
+func TestCanceledQueryRecordsFailureWithDetachedContext(t *testing.T) {
+	db := openLedgerDB(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server, token := boundsServer(t, db, "epoch-1", func(context.Context, Call) (QueryResult, error) {
+		cancel()
+		return QueryResult{}, errors.New("provider private details")
+	})
+	if _, err := server.Call(ctx, boundsCall(token, "call-1")); status.Code(err) != codes.Canceled {
+		t.Fatalf("canceled=%v", err)
+	}
+	if state, code := readLedgerStatus(t, db, "call-1"); state != "failed" || code != "query_failed" {
+		t.Fatalf("state=%s code=%s", state, code)
 	}
 }

@@ -21,9 +21,12 @@ historical design map where the code has chosen a more specific package name.
 | `internal/episodes/internal/app/` | transaction-scoped episode use cases: assembly, claim, execution, decisions |
 | `internal/episodes/internal/domain/` | pure episode contracts and rules: request assembly, budgets, decisions, failures, shadow scoring |
 | `internal/episodes/internal/store/` | opaque caller transaction, episode SQL and atomic ledger/cost/epoch handoffs |
-| `internal/evidence/` | capability tokens, evidence server, call ledger |
+| `internal/evidence/` | configured capability, bounded-query and recovery facade |
 | `internal/evidence/internal/domain/` | pure evidence scope, lifetime and authorization rules |
 | `internal/evidence/internal/wire/` | exact v1 token, argument and result codecs |
+| `internal/evidence/internal/app/` | capability issuance/verification, call admission/query and durable lifecycle use cases |
+| `internal/evidence/internal/store/` | opaque original transactions, evidence-call ledger SQL and ownership assertions |
+| `internal/evidence/internal/transport/` | gRPC adaptation and the eventlog owner-provided evidence source |
 | `internal/decisions/` | Decision and Intent validation |
 | `internal/policy/` | policy configuration and delegation facade |
 | `internal/policy/internal/app/` | ordered intent evaluation and human approval use cases |

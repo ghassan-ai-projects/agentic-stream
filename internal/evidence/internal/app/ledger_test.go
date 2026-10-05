@@ -1,8 +1,9 @@
-package evidence
+package app
 
 import (
 	"context"
 	"database/sql"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -15,7 +16,7 @@ import (
 func TestLedgerReservesAndReplaysCompletedCall(t *testing.T) {
 	db := openLedgerDB(t)
 	call := ledgerTestCall()
-	ledger := &Ledger{DB: db, LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Lease: time.Minute, Now: func() time.Time { return time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC) }}
+	ledger := &Ledger{Store: store.New(db, allowOwner, "epoch-1"), LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Lease: time.Minute, Now: func() time.Time { return time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC) }}
 	first, err := ledger.Reserve(t.Context(), call, "token-1", "epoch-1")
 	if err != nil {
 		t.Fatalf("reserve: %v", err)
@@ -49,7 +50,7 @@ func TestLedgerConcurrentReservationHasOneWinner(t *testing.T) {
 	results := make(chan error, 2)
 	for range 2 {
 		go func() {
-			ledger := &Ledger{DB: db, LeaseOwner: "owner", RuntimeEpoch: "epoch", Lease: time.Minute}
+			ledger := &Ledger{Store: store.New(db, allowOwner, "epoch"), LeaseOwner: "owner", RuntimeEpoch: "epoch", Lease: time.Minute}
 			reservation, err := ledger.Reserve(context.Background(), call, "token", "epoch")
 			if err == nil && reservation.Created {
 				winners.Add(1)
@@ -80,12 +81,12 @@ func TestLedgerRecoverTxInterruptsPriorEpochOnly(t *testing.T) {
 			'owner', '2026-08-12T12:10:00Z', '2026-08-12T12:00:00Z')`, legacyHash); err != nil {
 		t.Fatalf("insert old evidence call: %v", err)
 	}
-	ledger := &Ledger{DB: db, LeaseOwner: "owner", RuntimeEpoch: "epoch-new"}
+	ledger := &Ledger{Store: store.New(db, allowOwner, "epoch-new"), LeaseOwner: "owner", RuntimeEpoch: "epoch-new"}
 	now := time.Date(2026, 8, 12, 12, 2, 0, 0, time.UTC)
 	var recovered int
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		var err error
-		recovered, err = ledger.RecoverTx(t.Context(), tx, now)
+		recovered, err = ledger.RecoverTx(t.Context(), ledger.Store.Join(tx), now)
 		return err
 	}); err != nil {
 		t.Fatalf("recover evidence calls: %v", err)
@@ -101,7 +102,7 @@ func TestLedgerRecoverTxInterruptsPriorEpochOnly(t *testing.T) {
 		t.Fatalf("recovered call status=%q code=%q", status, code)
 	}
 	tx := mustBeginTx(t, db)
-	if recovered, err := ledger.RecoverTx(t.Context(), tx, now); err != nil || recovered != 0 {
+	if recovered, err := ledger.RecoverTx(t.Context(), ledger.Store.Join(tx), now); err != nil || recovered != 0 {
 		t.Fatalf("repeat recovery = %d, err=%v; want zero", recovered, err)
 	}
 }
@@ -162,7 +163,7 @@ func readLedgerStatus(t *testing.T, db *storage.DB, callID string) (string, stri
 
 func TestLedgerFailIsTerminalAndSurvivesCanceledRequest(t *testing.T) {
 	db := openLedgerDB(t)
-	ledger := &Ledger{DB: db, LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Lease: time.Minute, Now: fixedLedgerClock()}
+	ledger := &Ledger{Store: store.New(db, allowOwner, "epoch-1"), LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Lease: time.Minute, Now: fixedLedgerClock()}
 	reservation, err := ledger.Reserve(t.Context(), ledgerTestCall(), "token-1", "epoch-1")
 	if err != nil {
 		t.Fatalf("reserve: %v", err)
@@ -186,13 +187,13 @@ func TestLedgerFailIsTerminalAndSurvivesCanceledRequest(t *testing.T) {
 
 func TestLedgerRecoverInterruptsExpiredAndForeignEpochCalls(t *testing.T) {
 	db := openLedgerDB(t)
-	previous := &Ledger{DB: db, LeaseOwner: "owner-old", RuntimeEpoch: "epoch-old", Lease: time.Minute, Now: fixedLedgerClock()}
+	previous := &Ledger{Store: store.New(db, allowOwner, "epoch-old"), LeaseOwner: "owner-old", RuntimeEpoch: "epoch-old", Lease: time.Minute, Now: fixedLedgerClock()}
 	if _, err := previous.Reserve(t.Context(), ledgerTestCall(), "token-1", "epoch-old"); err != nil {
 		t.Fatalf("reserve under previous epoch: %v", err)
 	}
 
-	current := &Ledger{DB: db, LeaseOwner: "owner-new", RuntimeEpoch: "epoch-new", Now: fixedLedgerClock()}
-	if err := current.Recover(t.Context()); err != nil {
+	current := &Ledger{Store: store.New(db, allowOwner, "epoch-new"), LeaseOwner: "owner-new", RuntimeEpoch: "epoch-new", Now: fixedLedgerClock()}
+	if err := current.ReclaimExpired(t.Context(), fixedLedgerClock()()); err != nil {
 		t.Fatalf("recover: %v", err)
 	}
 	if status, code := readLedgerStatus(t, db, "call-1"); status != "interrupted" || code != "lease_expired" {
@@ -201,9 +202,9 @@ func TestLedgerRecoverInterruptsExpiredAndForeignEpochCalls(t *testing.T) {
 
 	for name, ledger := range map[string]*Ledger{
 		"nil":      nil,
-		"no epoch": {DB: db},
+		"no epoch": {},
 	} {
-		if err := ledger.Recover(t.Context()); err == nil {
+		if err := ledger.ReclaimExpired(t.Context(), fixedLedgerClock()()); err == nil {
 			t.Fatalf("%s ledger recovered without configuration", name)
 		}
 	}
@@ -211,3 +212,5 @@ func TestLedgerRecoverInterruptsExpiredAndForeignEpochCalls(t *testing.T) {
 		t.Fatal("ledger without a database reclaimed calls")
 	}
 }
+
+func allowOwner(context.Context, *sql.Tx, string) error { return nil }

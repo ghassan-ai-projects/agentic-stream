@@ -21,7 +21,10 @@ func TestServiceReadinessFollowsRecoveryAndClose(t *testing.T) {
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	epoch := "epoch-service"
 	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-service", Lease: time.Minute, Now: func() time.Time { return now }}
-	ledger := &evidence.Ledger{DB: db, LeaseOwner: "instance-service", RuntimeEpoch: epoch, Lease: time.Minute}
+	ledger, ledgerErr := evidence.New(evidence.Config{Ledger: &evidence.LedgerConfig{OwnerCheck: owner.Assert, DB: db, LeaseOwner: "instance-service", RuntimeEpoch: epoch, Lease: time.Minute}})
+	if ledgerErr != nil {
+		t.Fatal(ledgerErr)
+	}
 	service, err := NewService(owner, ledger, epoch)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
