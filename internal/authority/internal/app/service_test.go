@@ -17,7 +17,7 @@ func TestOperationsRefuseAnotherOwnerInstance(t *testing.T) {
 	checks := map[string]error{
 		"claim":         f.service.Claim(t.Context(), claim),
 		"safe stop":     f.service.RecordSafeStop(t.Context(), claim, domain.SafeStopRequested, nil),
-		"open":          f.service.OpenReconciliation(t.Context(), bootA, foreign, "reason"),
+		"open":          f.service.OpenReconciliation(t.Context(), domain.ReconciliationOpening{Device: bootA, Owner: foreign, Reason: "reason"}),
 		"bind command":  f.service.BindCommand(t.Context(), domain.CommandBinding{CommandID: "c", Target: "fan-01", Device: bootA, Owner: foreign}),
 		"partial owner": f.service.Claim(t.Context(), domain.TargetClaim{Target: "fan-01", Device: bootA, Owner: domain.Owner{Instance: "instance-1"}}),
 	}

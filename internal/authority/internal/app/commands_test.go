@@ -44,7 +44,7 @@ func TestVerifyCommandEvidenceUsesTheBinding(t *testing.T) {
 	evidence := evidenceFor(t, state, "fan-01")
 	verify := func(commandID, target string) error {
 		return f.db.WithTx(t.Context(), func(tx *sql.Tx) error {
-			return app.VerifyCommandEvidence(t.Context(), store.Join(tx), commandID, target, evidence)
+			return app.VerifyCommandEvidence(t.Context(), store.Join(tx), domain.CommandEvidence{CommandID: commandID, Target: target, Evidence: evidence})
 		})
 	}
 	if err := verify("cmd-1", "fan-01"); err != nil {

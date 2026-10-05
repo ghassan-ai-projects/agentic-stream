@@ -27,27 +27,31 @@ func TestObserveState(t *testing.T) {
 	t.Parallel()
 	clearState := &Reconciliation{Device: bootOne, Status: ReconciliationClear}
 	required := &Reconciliation{Device: bootOne, Status: ReconciliationRequired}
-	rebooted := DeviceBoot{DeviceID: bootOne.DeviceID, BootID: "boot-2"}
+	current := mustState(t, bootOne)
+	rebooted := mustState(t, DeviceBoot{DeviceID: bootOne.DeviceID, BootID: "boot-2"})
 	tests := []struct {
-		name     string
-		recorded *Reconciliation
-		reported DeviceBoot
-		want     StateTransition
+		name           string
+		recorded       *Reconciliation
+		reported       DeviceState
+		change         StateChange
+		required       bool
+		previousBootID string
 	}{
-		{"first state is clear", nil, bootOne, StateTransition{Change: StateFirstSeen}},
-		{"same boot stays clear", clearState, bootOne, StateTransition{Change: StateRefreshed}},
-		{"same boot stays required", required, bootOne, StateTransition{Change: StateRefreshed, Required: true}},
-		{"reboot requires reconciliation", clearState, rebooted, StateTransition{Change: StateRebooted, Required: true, PreviousBootID: "boot-1"}},
+		{"first state is clear", nil, current, StateFirstSeen, false, ""},
+		{"same boot stays clear", clearState, current, StateRefreshed, false, ""},
+		{"same boot stays required", required, current, StateRefreshed, true, ""},
+		{"reboot requires reconciliation", clearState, rebooted, StateRebooted, true, "boot-1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := ObserveState(tt.recorded, tt.reported); got != tt.want {
-				t.Fatalf("ObserveState = %+v, want %+v", got, tt.want)
+			got := ObserveState(tt.recorded, tt.reported, ownerA)
+			if got.Change != tt.change || got.Required != tt.required || got.PreviousBootID != tt.previousBootID || got.Owner != ownerA {
+				t.Fatalf("ObserveState = %+v", got)
 			}
 		})
 	}
-	event := RebootEvent(StateTransition{Change: StateRebooted, PreviousBootID: "boot-0"}, bootOne, ownerA, testNow)
+	event := RebootEvent(StateObservation{State: current, Owner: ownerA, Change: StateRebooted, PreviousBootID: "boot-0"}, testNow)
 	if event.Type != EventReconciliationOpened || event.Details["reason"] != "device_rebooted" || event.Subject.Target != bootOne.DeviceID {
 		t.Fatalf("reboot event = %+v", event)
 	}
@@ -66,7 +70,7 @@ func TestCheckOpenable(t *testing.T) {
 	if err != nil || !already {
 		t.Fatalf("already open = %v, %v", already, err)
 	}
-	if event := OpeningEvent(bootOne, ownerA, "unknown receipt", testNow); event.Details["reason"] != "unknown receipt" {
+	if event := OpeningEvent(ReconciliationOpening{Device: bootOne, Owner: ownerA, Reason: "unknown receipt"}, testNow); event.Details["reason"] != "unknown receipt" {
 		t.Fatalf("opening event = %+v", event)
 	}
 }
@@ -141,7 +145,7 @@ func TestStateEvidenceMustMatchItsOwnDigest(t *testing.T) {
 func TestResolutionRecordsCanonicalEvidence(t *testing.T) {
 	t.Parallel()
 	evidence := validEvidence(t, bootOne, "fan-01")
-	resolution, err := NewResolution(bootOne, ownerA, ResolutionManualReview, evidence)
+	resolution, err := NewResolution(ResolutionRequest{Device: bootOne, Owner: ownerA, Outcome: ResolutionManualReview, Evidence: evidence})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +153,7 @@ func TestResolutionRecordsCanonicalEvidence(t *testing.T) {
 	if event.Details["barrier_cleared"] != false || event.Details["final_status"] != "manual_review" || len(resolution.EvidenceSHA256) != 32 {
 		t.Fatalf("resolution event = %+v", event)
 	}
-	if _, err := NewResolution(bootOne, ownerA, ResolutionSucceeded, map[string]any{"source": "x"}); err == nil {
+	if _, err := NewResolution(ResolutionRequest{Device: bootOne, Owner: ownerA, Outcome: ResolutionSucceeded, Evidence: map[string]any{"source": "x"}}); err == nil {
 		t.Fatal("invalid evidence produced a resolution")
 	}
 	if err := CheckCommandsReconciled(2); err == nil || CheckCommandsReconciled(0) != nil {
@@ -169,4 +173,35 @@ func mustParse(t *testing.T, document map[string]any) ReconciliationEvidence {
 		t.Fatal(err)
 	}
 	return evidence
+}
+
+func mustState(t *testing.T, device DeviceBoot) DeviceState {
+	t.Helper()
+	state, err := NewDeviceState(map[string]any{"device_id": device.DeviceID, "boot_id": device.BootID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return state
+}
+
+func TestResolutionRequestCheck(t *testing.T) {
+	t.Parallel()
+	evidence := map[string]any{"source": "s"}
+	for _, tt := range []struct {
+		name    string
+		request ResolutionRequest
+		wantErr bool
+	}{
+		{"complete", ResolutionRequest{Device: bootOne, Outcome: ResolutionSucceeded, Evidence: evidence}, false},
+		{"unknown outcome", ResolutionRequest{Device: bootOne, Outcome: "cleared", Evidence: evidence}, true},
+		{"no evidence", ResolutionRequest{Device: bootOne, Outcome: ResolutionFailed}, true},
+		{"partial device", ResolutionRequest{Device: DeviceBoot{DeviceID: "d"}, Outcome: ResolutionFailed, Evidence: evidence}, true},
+	} {
+		if err := tt.request.Check(); (err != nil) != tt.wantErr {
+			t.Errorf("%s: Check = %v", tt.name, err)
+		}
+	}
+	if (ReconciliationOpening{Device: bootOne, Owner: ownerA}).Complete() {
+		t.Error("opening without a reason is complete")
+	}
 }

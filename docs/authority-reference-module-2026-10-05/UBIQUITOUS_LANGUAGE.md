@@ -46,7 +46,8 @@ A word that is not here should not appear in the module's public API.
 | --- | --- | --- | --- |
 | **Command binding** | Immutable record tying a command to the target, device boot and owner that delivered it, plus its digest. Written immediately before delivery. Repeating the identical binding is idempotent; any difference is a conflict. | `CommandBinding`, `BindCommand` | `device_command_bindings` |
 | **Command evidence** | Reconciliation evidence presented for one bound command. It must name the bound target and the bound device boot. | `VerifyCommandEvidence` | — |
-| **Unresolved command** | A command bound to a device boot whose outcome the action ledger still treats as unknown, reconciling or under manual review. | `CountUnresolvedCommands` (store) | `commands.status` |
+| **Unresolved command** | A command bound to a device boot whose outcome the action ledger still treats as unresolved. The action ledger owns that definition. | `OutcomeLedger`, `actions.CountUnresolvedOutcomes` | `commands.status` (owned by `actions`) |
+| **Command evidence** request | The command, its target and the evidence presented to reconcile it. | `CommandEvidence` | — |
 
 ## Reconciliation
 
@@ -59,7 +60,11 @@ A word that is not here should not appear in the module's public API.
 | **Reconciliation required** | A reconciliation is open. Ordinary commands to the device are blocked. This is the **barrier**. | `ReconciliationRequired`, `ErrReconciliationRequired` | `status = 'required'` |
 | **Clear** | No reconciliation is open. | `ReconciliationClear` | `status = 'clear'` |
 | **Open** a reconciliation | Move the device boot to required and audit the reason. | `OpenReconciliation`, `OpenReconciliationAfterAuthorityLoss` | `reconciliation_opened` |
-| **Reconciliation evidence** | Independent, digest-bound feedback about one device boot: source, type `device_state_feedback`, typed state, feedback, and three SHA-256 references. | `ValidateReconciliationEvidence` | `resolution_evidence_json` |
+| **Reconciliation evidence** | Independent, digest-bound feedback about one device boot: source, type `device_state_feedback`, typed state, feedback, and three SHA-256 references. A closed set of fields. | `ReconciliationEvidence`, `SealReconciliationEvidence`, `ParseReconciliationEvidence` | `resolution_evidence_json` |
+| **Seal** evidence | Compute the state, feedback and bundle digests of evidence. | `SealReconciliationEvidence` | — |
+| **Opening** request | The device boot, owner and reason for opening a reconciliation. | `ReconciliationOpening` | — |
+| **Resolution** request | The device boot, owner, outcome and evidence for resolving one. | `ResolutionRequest` | — |
+| **State observation** | A reported device state and what it does: first seen, refreshed, or rebooted. | `StateObservation`, `ObserveState` | — |
 | **Resolve** | Record evidence and an outcome for an open reconciliation. | `ResolveReconciliation` | `reconciliation_recorded` |
 | **Resolution outcome** | `succeeded` or `failed` clears the reconciliation; `manual_review` keeps it required. | `ResolutionOutcome` | `last_resolution_status` |
 | **No open reconciliation** | Resolution was attempted when the device boot is clear. | `ErrNoOpenReconciliation` | — |
@@ -72,6 +77,7 @@ A word that is not here should not appear in the module's public API.
 | **Safe-stop stage** | `requested`, `completed` or `failed`. Recorded on the priority path. | `SafeStopStage` | `safe_stop_*` events |
 | **Safe-stop latch** | Once any stage is recorded for a device boot, that boot stays latched. There is no clear operation; only a new boot resets it. | `SafeStopLatched` | — |
 | **Safety event** | Evidence for the soak verdict: a zero-tolerance violation or a physical transition. | `SafetyEvent`, `RecordSafetyEvent` | `device_safety_events` |
+| **Safety record** | The tally a soak verdict reads: safety events by type, physical transitions by completeness, open reconciliations, audit-log size. | `SafetyRecord`, `ReadSafetyRecord` | — |
 | **Complete physical evidence** | A physical transition marked complete that names its source and a SHA-256 evidence digest. | `PhysicalEvidenceComplete` | — |
 
 ## Audit

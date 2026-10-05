@@ -43,8 +43,11 @@ const (
 	StateRebooted  StateChange = "rebooted"
 )
 
-// StateTransition is the effect of one reported device state.
-type StateTransition struct {
+// StateObservation is one reported device state and what it does to the
+// device's reconciliation.
+type StateObservation struct {
+	State          DeviceState
+	Owner          Owner
 	Change         StateChange
 	Required       bool
 	PreviousBootID string
@@ -53,20 +56,22 @@ type StateTransition struct {
 // ObserveState decides what a reported state does to the device's
 // reconciliation: the first state is clear, the same boot keeps its status,
 // and a reboot requires reconciliation.
-func ObserveState(recorded *Reconciliation, reported DeviceBoot) StateTransition {
+func ObserveState(recorded *Reconciliation, state DeviceState, owner Owner) StateObservation {
+	observation := StateObservation{State: state, Owner: owner}
 	switch {
 	case recorded == nil:
-		return StateTransition{Change: StateFirstSeen}
-	case recorded.Device.BootID != reported.BootID:
-		return StateTransition{Change: StateRebooted, Required: true, PreviousBootID: recorded.Device.BootID}
+		observation.Change = StateFirstSeen
+	case recorded.Device.BootID != state.Device.BootID:
+		observation.Change, observation.Required, observation.PreviousBootID = StateRebooted, true, recorded.Device.BootID
 	default:
-		return StateTransition{Change: StateRefreshed, Required: recorded.Required()}
+		observation.Change, observation.Required = StateRefreshed, recorded.Required()
 	}
+	return observation
 }
 
 // RebootEvent is the audit record of the reconciliation a reboot opens.
-func RebootEvent(transition StateTransition, device DeviceBoot, owner Owner, now time.Time) AuthorityEvent {
-	return newEvent(EventReconciliationOpened, DeviceSubject(device, owner), map[string]any{
-		"reason": "device_rebooted", "previous_boot_id": transition.PreviousBootID,
+func RebootEvent(observation StateObservation, now time.Time) AuthorityEvent {
+	return newEvent(EventReconciliationOpened, DeviceSubject(observation.State.Device, observation.Owner), map[string]any{
+		"reason": "device_rebooted", "previous_boot_id": observation.PreviousBootID,
 	}, now)
 }

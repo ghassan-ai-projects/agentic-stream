@@ -14,7 +14,11 @@ ci-check` runs before handoff.
 | R5 | `36b246f` | |
 | R6 | `c1bb686` | `TestDomainPackagesArePure` and `TestModuleSQLStaysInStore` fail on an injected `time.Now`, an `os` import, and a SQL literal outside the store. |
 
-| R7 | this round | Facade made thin: use cases and admission moved to `internal/app`; `store` reduced to transactions and SQL. Coverage: facade 94.3%, app 86.1%, domain 97.8%, store 82.0%. `TestApplicationLayersDoNotTouchTheDatabase` fails on an injected `database/sql` import. |
+| R7 | `5bf8eee` | Facade made thin: use cases and admission moved to `internal/app`; `store` reduced to transactions and SQL. Coverage: facade 94.3%, app 86.1%, domain 97.8%, store 82.0%. `TestApplicationLayersDoNotTouchTheDatabase` fails on an injected `database/sql` import. |
+| R8 | `c88a708` | Typed `ReconciliationEvidence`; the authority seals and parses evidence, `device` stops re-implementing the digest scheme. Unknown evidence fields are now rejected. |
+| R9 | `8d03b35` | `authority` no longer reads `commands`: `actions.CountUnresolvedOutcomes` is a required `OutcomeLedger`, wired by `cmd`. |
+| R10 | `30c6df3` | `soak` reads `authority.ReadSafetyRecord` instead of three authority tables; tampered safety evidence fails the read. |
+| R11 | final round | Request values (`ReconciliationOpening`, `ResolutionRequest`, `CommandEvidence`, `StateObservation`); the claim lease end is decided in `domain`. No function in the module takes more than four parameters except the facade's `VerifyCommandEvidence` (three plus context and transaction). |
 
 Found during implementation and applied:
 
@@ -70,10 +74,11 @@ Found during implementation and applied:
    when `device` is refactored.
 2. Replace the 28 remaining `fmt.Errorf("%w", err)` no-op wraps elsewhere in
    `internal/`.
-3. Replace the authority read of `commands` with a port that `actions`
-   implements (needs `cmd`/`runtime` wiring).
-4. Give `soak` and `runartifact` read APIs instead of direct table reads.
-5. Rename the package to `deviceauthority`.
-6. Replace `map[string]any` device state and evidence with typed records.
-7. Apply the [module pattern](MODULE_PATTERN.md) to `control`, `approvalledger`
+3. `runartifact` still exports the five authority tables with `SELECT *`. It
+   exports raw tables of every module by design (an audit archive), so it
+   stays a documented read model: a schema change must update the export.
+4. Rename the package to `deviceauthority`.
+5. The device state document stays `map[string]any`: its fields belong to the
+   device protocol, and the authority only reads its identity and digest.
+6. Apply the [module pattern](MODULE_PATTERN.md) to `control`, `approvalledger`
    and `qualification`.

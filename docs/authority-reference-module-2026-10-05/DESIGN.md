@@ -49,6 +49,7 @@ type Config struct {
 	DB         *storage.DB
 	Owner      *control.RuntimeOwner // required: runtime-owner fence
 	Epochs     *control.EpochControl // required: drain/kill fence
+	Outcomes   OutcomeLedger         // required: actions.CountUnresolvedOutcomes
 	ClaimLease time.Duration         // default one minute
 	Clock      clock.Clock           // default physical clock
 }
@@ -64,9 +65,19 @@ guard.
 | Identity | `OwnerInstance() string` |
 | Admission | `AssertRuntime(ctx, epoch)` |
 | Claims | `Claim`, `AssertClaim`, `ReleaseClaim` (each takes a `TargetClaim`) |
-| Commands | `BindCommand(ctx, CommandBinding)`; package function `VerifyCommandEvidence(ctx, tx, commandID, target, evidence)` |
-| Reconciliation | `RecordDeviceState(ctx, owner, state)`, `ReconciliationRequired(ctx, deviceID)`, `OpenReconciliation(ctx, device, owner, reason)`, `OpenReconciliationAfterAuthorityLoss(...)`, `ResolveReconciliation(ctx, device, owner, outcome, evidence)`; package function `ValidateReconciliationEvidence(evidence, device)` |
-| Safety | `RecordSafeStop(ctx, claim, stage, details)`, `SafeStopLatched(ctx, device)`, `RecordSafetyEvent(ctx, event)`; package function `PhysicalEvidenceComplete(details)` |
+| Commands | `BindCommand(ctx, CommandBinding)`; package function `VerifyCommandEvidence(ctx, tx, CommandEvidence)` |
+| Reconciliation | `RecordDeviceState(ctx, owner, state)`, `ReconciliationRequired(ctx, deviceID)`, `OpenReconciliation(ctx, ReconciliationOpening)`, `OpenReconciliationAfterAuthorityLoss(ctx, ReconciliationOpening)`, `ResolveReconciliation(ctx, ResolutionRequest)` |
+| Evidence | `SealReconciliationEvidence(source, target, state, feedback)`, `ParseReconciliationEvidence(document, device)`; `ReconciliationEvidence.Document()` is the wire form |
+| Safety | `RecordSafeStop(ctx, claim, stage, details)`, `SafeStopLatched(ctx, device)`, `RecordSafetyEvent(ctx, event)`; package functions `ReadSafetyRecord(ctx, tx)` and `PhysicalEvidenceComplete(details)` |
+
+Operations with more than a few inputs take one request value
+(`ReconciliationOpening`, `ResolutionRequest`, `CommandEvidence`), so call
+sites name every field.
+
+Evidence documents are parsed once at the boundary into a typed
+`ReconciliationEvidence` with a closed set of fields; the rules read typed
+fields. The authority also seals evidence, so the producer (`device`) and the
+verifier share one digest scheme.
 
 Value types are aliases of domain types; the domain's internal model
 (`HeldClaim`, `Reconciliation`, `AuthorityEvent`, decisions) is not exported.
@@ -106,8 +117,11 @@ values and runs them as the first step of the unit of work.
   `AppendAuthorityEvent`) and hold every SQL statement for the module's five
   tables. `Store` serves the two standalone reads that must not take the write
   lock.
-- `Tx.Assert(ctx, fence, epoch)` runs another module's transactional check on
-  the open transaction. It forwards; it does not decide.
+- `Tx.Assert(ctx, fence, epoch)` and `Tx.CountUnresolved(ctx, ledger, ids)`
+  run another module's transactional check or read on the open transaction.
+  They forward; they do not decide. The store reads only its own tables: it
+  lists the commands bound to a device boot, and `actions` (through the
+  ledger) says which of them are unresolved.
 - Owns storage encodings: time format, digest bytes, canonical event details.
 
 ## Rules every operation follows

@@ -46,10 +46,10 @@ func bindCommand(ctx context.Context, tx *store.Tx, binding domain.CommandBindin
 // the caller's transaction. Evidence for a device-bound command must name the
 // bound target and device boot; a command that was never bound to a device
 // needs no device evidence.
-func VerifyCommandEvidence(ctx context.Context, tx *store.Tx, commandID, target string, evidence map[string]any) error {
-	binding, err := tx.LoadBinding(ctx, commandID)
+func VerifyCommandEvidence(ctx context.Context, tx *store.Tx, presented domain.CommandEvidence) error {
+	binding, err := tx.LoadBinding(ctx, presented.CommandID)
 	if err != nil {
 		return err
 	}
-	return domain.CheckCommandEvidence(binding, commandID, target, evidence)
+	return domain.CheckCommandEvidence(binding, presented)
 }

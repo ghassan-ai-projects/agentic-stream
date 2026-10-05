@@ -35,18 +35,18 @@ func TestResolutionWaitsOnlyForTheSameDeviceBootsCommands(t *testing.T) {
 	stateA, _ := f.recordState(t, deviceA)
 	f.recordState(t, deviceB)
 	f.insertUnknownOutcome(t, "cmd-device-b", deviceB)
-	if err := f.service.OpenReconciliation(t.Context(), deviceA, ownerOne, "device A receipt was not trustworthy"); err != nil {
+	if err := f.service.OpenReconciliation(t.Context(), domain.ReconciliationOpening{Device: deviceA, Owner: ownerOne, Reason: "device A receipt was not trustworthy"}); err != nil {
 		t.Fatal(err)
 	}
 	evidence := evidenceFor(t, stateA, "led-a")
-	if cleared, err := f.service.ResolveReconciliation(t.Context(), deviceA, ownerOne, domain.ResolutionSucceeded, evidence); err != nil || !cleared {
+	if cleared, err := f.service.ResolveReconciliation(t.Context(), domain.ResolutionRequest{Device: deviceA, Owner: ownerOne, Outcome: domain.ResolutionSucceeded, Evidence: evidence}); err != nil || !cleared {
 		t.Fatalf("device A was blocked by device B: cleared=%v err=%v", cleared, err)
 	}
 	f.insertUnknownOutcome(t, "cmd-device-a", deviceA)
-	if err := f.service.OpenReconciliation(t.Context(), deviceA, ownerOne, "again"); err != nil {
+	if err := f.service.OpenReconciliation(t.Context(), domain.ReconciliationOpening{Device: deviceA, Owner: ownerOne, Reason: "again"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.service.ResolveReconciliation(t.Context(), deviceA, ownerOne, domain.ResolutionSucceeded, evidence); err == nil || !strings.Contains(err.Error(), "still require dispatcher reconciliation") {
+	if _, err := f.service.ResolveReconciliation(t.Context(), domain.ResolutionRequest{Device: deviceA, Owner: ownerOne, Outcome: domain.ResolutionSucceeded, Evidence: evidence}); err == nil || !strings.Contains(err.Error(), "still require dispatcher reconciliation") {
 		t.Fatalf("unresolved command of device A = %v", err)
 	}
 }

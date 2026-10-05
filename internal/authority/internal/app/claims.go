@@ -42,9 +42,9 @@ func (s *Service) claimTarget(ctx context.Context, tx *store.Tx, claim domain.Ta
 	if err != nil {
 		return domain.ClaimDecision{}, err
 	}
-	decision := domain.DecideClaim(held, claim, now)
+	decision := domain.DecideClaim(held, claim, now, s.claimLease)
 	if !decision.Rejected() {
-		if err := tx.WriteClaim(ctx, claim, decision.Fence, now.Add(s.claimLease), now); err != nil {
+		if err := tx.WriteClaim(ctx, claim, decision, now); err != nil {
 			return decision, err
 		}
 	}

@@ -61,7 +61,7 @@ func TestUnitOfWorkRollsBackTogether(t *testing.T) {
 	s, _ := openStore(t)
 	failed := errors.New("audit failed")
 	err := s.InTx(t.Context(), func(tx *Tx) error {
-		if err := tx.WriteClaim(t.Context(), claim, 1, testNow.Add(time.Minute), testNow); err != nil {
+		if err := tx.WriteClaim(t.Context(), claim, domain.ClaimDecision{Fence: 1, LeaseUntil: testNow.Add(time.Minute)}, testNow); err != nil {
 			return err
 		}
 		return failed
@@ -82,7 +82,9 @@ func TestClaimsRoundTrip(t *testing.T) {
 	t.Parallel()
 	s, _ := openStore(t)
 	lease := testNow.Add(time.Minute)
-	work(t, s, func(tx *Tx) error { return tx.WriteClaim(t.Context(), claim, 3, lease, testNow) })
+	work(t, s, func(tx *Tx) error {
+		return tx.WriteClaim(t.Context(), claim, domain.ClaimDecision{Fence: 3, LeaseUntil: lease}, testNow)
+	})
 	work(t, s, func(tx *Tx) error {
 		held, err := tx.LoadClaim(t.Context(), claim.Target)
 		if err != nil || held.TargetClaim != claim || held.Fence != 3 || !held.LeaseUntil.Equal(lease) || held.Status != domain.ClaimActive {

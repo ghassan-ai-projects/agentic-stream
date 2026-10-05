@@ -43,11 +43,12 @@ func (h *HeldClaim) is(claim TargetClaim) bool {
 	return h != nil && h.TargetClaim == claim
 }
 
-// ClaimDecision is the outcome of a claim attempt: the audited event and the
-// fence the written claim carries.
+// ClaimDecision is the outcome of a claim attempt: the audited event, and for
+// an accepted claim the fence it carries and when its lease ends.
 type ClaimDecision struct {
-	Event EventType
-	Fence int64
+	Event      EventType
+	Fence      int64
+	LeaseUntil time.Time
 }
 
 // Rejected reports whether the attempt must be refused as busy.
@@ -57,8 +58,9 @@ func (d ClaimDecision) Rejected() bool {
 
 // DecideClaim rejects a claim while another owner holds a live claim. Otherwise
 // the claim is acquired, or renewed when the same owner's claim is still
-// active, and the fence is kept only for a live renewal.
-func DecideClaim(held *HeldClaim, claim TargetClaim, now time.Time) ClaimDecision {
+// active; the fence is kept only for a live renewal, and the lease runs for
+// lease from now.
+func DecideClaim(held *HeldClaim, claim TargetClaim, now time.Time, lease time.Duration) ClaimDecision {
 	if held.Live(now) && !held.heldBy(claim.Owner) {
 		return ClaimDecision{Event: EventClaimRejected}
 	}
@@ -66,7 +68,7 @@ func DecideClaim(held *HeldClaim, claim TargetClaim, now time.Time) ClaimDecisio
 	if held.heldBy(claim.Owner) && held.Status == ClaimActive {
 		event = EventClaimRenewed
 	}
-	return ClaimDecision{Event: event, Fence: nextFence(held, claim.Owner, now)}
+	return ClaimDecision{Event: event, Fence: nextFence(held, claim.Owner, now), LeaseUntil: now.Add(lease)}
 }
 
 // nextFence keeps the fence for a live renewal by the same owner and advances

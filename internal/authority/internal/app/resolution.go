@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -14,32 +13,25 @@ import (
 // reconciliation of a device boot, and reports whether it cleared. Command
 // outcomes must already be reconciled by the dispatcher; manual review keeps
 // the reconciliation required.
-func (s *Service) ResolveReconciliation(ctx context.Context, device domain.DeviceBoot, owner domain.Owner, outcome domain.ResolutionOutcome, evidence map[string]any) (bool, error) {
-	if err := s.checkResolution(device, owner, outcome, evidence); err != nil {
+func (s *Service) ResolveReconciliation(ctx context.Context, request domain.ResolutionRequest) (bool, error) {
+	if err := request.Check(); err != nil {
+		return false, err
+	}
+	if err := s.checkOwner(request.Owner); err != nil {
 		return false, err
 	}
 	now := s.now()
-	err := s.inAdmittedTx(ctx, owner.Epoch, func(tx *store.Tx) error {
-		return s.resolveReconciliation(ctx, tx, device, owner, outcome, evidence, now)
+	err := s.inAdmittedTx(ctx, request.Owner.Epoch, func(tx *store.Tx) error {
+		return s.resolveReconciliation(ctx, tx, request, now)
 	})
 	if err != nil {
 		return false, fmt.Errorf("resolve device reconciliation: %w", err)
 	}
-	return outcome.Clears(), nil
+	return request.Outcome.Clears(), nil
 }
 
-func (s *Service) checkResolution(device domain.DeviceBoot, owner domain.Owner, outcome domain.ResolutionOutcome, evidence map[string]any) error {
-	if !outcome.Valid() {
-		return fmt.Errorf("invalid resolution outcome %q", outcome)
-	}
-	if !device.Complete() || len(evidence) == 0 {
-		return errors.New("device boot and reconciliation evidence are required")
-	}
-	return s.checkOwner(owner)
-}
-
-func (s *Service) resolveReconciliation(ctx context.Context, tx *store.Tx, device domain.DeviceBoot, owner domain.Owner, outcome domain.ResolutionOutcome, evidence map[string]any, now time.Time) error {
-	resolution, err := domain.NewResolution(device, owner, outcome, evidence)
+func (s *Service) resolveReconciliation(ctx context.Context, tx *store.Tx, request domain.ResolutionRequest, now time.Time) error {
+	resolution, err := domain.NewResolution(request)
 	if err != nil {
 		return err
 	}

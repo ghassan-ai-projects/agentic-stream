@@ -58,20 +58,20 @@ func (s *Service) ReconciliationRequired(ctx context.Context, deviceID string) (
 
 // OpenReconciliation opens a reconciliation for the current device boot, for
 // example when a receipt cannot be trusted.
-func (s *Service) OpenReconciliation(ctx context.Context, device DeviceBoot, owner Owner, reason string) error {
-	return s.app.OpenReconciliation(ctx, device, owner, reason)
+func (s *Service) OpenReconciliation(ctx context.Context, opening ReconciliationOpening) error {
+	return s.app.OpenReconciliation(ctx, opening)
 }
 
 // OpenReconciliationAfterAuthorityLoss opens the same reconciliation on the
 // priority path, after the owner's lease expired or its epoch was fenced.
-func (s *Service) OpenReconciliationAfterAuthorityLoss(ctx context.Context, device DeviceBoot, owner Owner, reason string) error {
-	return s.app.OpenReconciliationAfterAuthorityLoss(ctx, device, owner, reason)
+func (s *Service) OpenReconciliationAfterAuthorityLoss(ctx context.Context, opening ReconciliationOpening) error {
+	return s.app.OpenReconciliationAfterAuthorityLoss(ctx, opening)
 }
 
 // ResolveReconciliation records evidence and an outcome for the open
 // reconciliation of a device boot, and reports whether it cleared.
-func (s *Service) ResolveReconciliation(ctx context.Context, device DeviceBoot, owner Owner, outcome ResolutionOutcome, evidence map[string]any) (bool, error) {
-	return s.app.ResolveReconciliation(ctx, device, owner, outcome, evidence)
+func (s *Service) ResolveReconciliation(ctx context.Context, request ResolutionRequest) (bool, error) {
+	return s.app.ResolveReconciliation(ctx, request)
 }
 
 // RecordSafeStop records one safe-stop stage on the priority path. Any
@@ -94,8 +94,8 @@ func (s *Service) RecordSafetyEvent(ctx context.Context, event SafetyEvent) erro
 // VerifyCommandEvidence checks reconciliation evidence for a command inside
 // the caller's transaction. Evidence for a device-bound command must name the
 // bound target and device boot; an unbound command needs no device evidence.
-func VerifyCommandEvidence(ctx context.Context, tx *sql.Tx, commandID, target string, evidence map[string]any) error {
-	return app.VerifyCommandEvidence(ctx, store.Join(tx), commandID, target, evidence)
+func VerifyCommandEvidence(ctx context.Context, tx *sql.Tx, presented CommandEvidence) error {
+	return app.VerifyCommandEvidence(ctx, store.Join(tx), presented)
 }
 
 // ReadSafetyRecord reads the durable safety evidence inside the caller's

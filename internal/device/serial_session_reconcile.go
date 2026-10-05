@@ -42,7 +42,9 @@ func (s *DeviceSession) resolveCurrentState(ctx context.Context, finalStatus str
 }
 
 func (s *DeviceSession) persistResolvedState(ctx context.Context, finalStatus string, evidence map[string]any) (bool, error) {
-	cleared, err := s.authority.ResolveReconciliation(ctx, s.deviceBoot(), s.owner(), deviceauthority.ResolutionOutcome(finalStatus), evidence)
+	cleared, err := s.authority.ResolveReconciliation(ctx, deviceauthority.ResolutionRequest{
+		Device: s.deviceBoot(), Owner: s.owner(), Outcome: deviceauthority.ResolutionOutcome(finalStatus), Evidence: evidence,
+	})
 	if err != nil {
 		return false, fmt.Errorf("resolve device reconciliation: %w", err)
 	}
@@ -67,7 +69,7 @@ func (s *DeviceSession) openReconciliation(ctx context.Context, reason string) e
 	if s.authority == nil {
 		return errors.New("device authority is not configured")
 	}
-	return s.authority.OpenReconciliation(ctx, s.deviceBoot(), s.owner(), reason) //nolint:wrapcheck // finishReconciliationBarrier wraps it.
+	return s.authority.OpenReconciliation(ctx, s.reconciliationOpening(reason)) //nolint:wrapcheck // finishReconciliationBarrier wraps it.
 }
 
 func (s *DeviceSession) finishReconciliationBarrier(persistCtx context.Context, reason string, wasRequired bool, barrierErr error) error {
@@ -84,7 +86,7 @@ func (s *DeviceSession) finishReconciliationBarrier(persistCtx context.Context, 
 
 func (s *DeviceSession) recoverReconciliationBarrier(persistCtx context.Context, reason string, barrierErr error) error {
 	if isAuthorityFailure(barrierErr) {
-		recoveryErr := s.authority.OpenReconciliationAfterAuthorityLoss(persistCtx, s.deviceBoot(), s.owner(), reason)
+		recoveryErr := s.authority.OpenReconciliationAfterAuthorityLoss(persistCtx, s.reconciliationOpening(reason))
 		if recoveryErr == nil {
 			barrierErr = nil
 		} else {

@@ -72,7 +72,7 @@ func TestCheckCommandEvidence(t *testing.T) {
 			t.Parallel()
 			evidence := cloneEvidence(valid)
 			tt.mutate(evidence)
-			err := CheckCommandEvidence(tt.binding, "cmd-1", tt.target, evidence)
+			err := CheckCommandEvidence(tt.binding, CommandEvidence{CommandID: "cmd-1", Target: tt.target, Evidence: evidence})
 			if tt.want == "" && err != nil || tt.want != "" && (err == nil || !strings.Contains(err.Error(), tt.want)) {
 				t.Fatalf("CheckCommandEvidence = %v, want %q", err, tt.want)
 			}

@@ -104,3 +104,8 @@ func (s *DeviceSession) deviceBoot() deviceauthority.DeviceBoot {
 func (s *DeviceSession) targetClaim(target string) deviceauthority.TargetClaim {
 	return deviceauthority.TargetClaim{Target: target, Device: s.deviceBoot(), Owner: s.owner()}
 }
+
+// reconciliationOpening asks to open a reconciliation for the current boot.
+func (s *DeviceSession) reconciliationOpening(reason string) deviceauthority.ReconciliationOpening {
+	return deviceauthority.ReconciliationOpening{Device: s.deviceBoot(), Owner: s.owner(), Reason: reason}
+}

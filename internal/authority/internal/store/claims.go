@@ -48,12 +48,12 @@ const writeClaimSQL = `
 			status = excluded.status,
 			updated_at = excluded.updated_at`
 
-// WriteClaim records claim as the active claim on its target with fence and
-// lease.
-func (t *Tx) WriteClaim(ctx context.Context, claim domain.TargetClaim, fence int64, leaseUntil, now time.Time) error {
+// WriteClaim records claim as the active claim on its target with the fence
+// and lease of an accepted decision.
+func (t *Tx) WriteClaim(ctx context.Context, claim domain.TargetClaim, decision domain.ClaimDecision, now time.Time) error {
 	if _, err := t.tx.ExecContext(ctx, writeClaimSQL,
 		claim.Target, claim.Device.DeviceID, claim.Owner.Epoch, claim.Owner.Instance, claim.Device.BootID,
-		fence, formatTime(leaseUntil), string(domain.ClaimActive), formatTime(now)); err != nil {
+		decision.Fence, formatTime(decision.LeaseUntil), string(domain.ClaimActive), formatTime(now)); err != nil {
 		return fmt.Errorf("write target claim: %w", err)
 	}
 	return nil

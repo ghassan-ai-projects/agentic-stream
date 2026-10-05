@@ -55,11 +55,10 @@ In the opposite direction, `internal/authority/reconciliation_resolve.go`
 `countUnresolvedCommands` reads `commands`, which `actions` owns, and hard-codes
 the action ledger's status vocabulary.
 
-The `actions` read is business logic and moves behind the authority API in this
-work. The soak and export reads are read models over durable evidence; they are
-recorded as follow-ups. The reverse read needs a port that `actions`
-implements, which is a wiring change across `cmd`, `runtime` and `actions`; it
-is also a follow-up.
+Resolved: the `actions` read moved behind `VerifyCommandEvidence`, `soak`
+reads `ReadSafetyRecord`, and the reverse read goes through an `OutcomeLedger`
+that `actions` implements. `runartifact` remains a raw-table exporter by
+design.
 
 ## F5. Vocabulary drift
 

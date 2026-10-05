@@ -25,6 +25,12 @@ type (
 	ReconciliationEvidence = domain.ReconciliationEvidence
 	// SafetyRecord summarizes the durable safety evidence a soak verdict reads.
 	SafetyRecord = domain.SafetyRecord
+	// ReconciliationOpening asks to open a reconciliation for a device boot.
+	ReconciliationOpening = domain.ReconciliationOpening
+	// ResolutionRequest asks to resolve the open reconciliation of a device boot.
+	ResolutionRequest = domain.ResolutionRequest
+	// CommandEvidence is reconciliation evidence presented for one command.
+	CommandEvidence = domain.CommandEvidence
 )
 
 // Safety event types: zero-tolerance violations and physical transitions.

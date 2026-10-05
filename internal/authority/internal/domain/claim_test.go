@@ -28,18 +28,18 @@ func TestDecideClaim(t *testing.T) {
 		claim TargetClaim
 		want  ClaimDecision
 	}{
-		{"unclaimed target is acquired with the first fence", nil, claimByA, ClaimDecision{EventClaimAcquired, 1}},
-		{"live renewal keeps the fence", heldBy(claimByA, 4, liveLease, ClaimActive), claimByA, ClaimDecision{EventClaimRenewed, 4}},
-		{"expired renewal advances the fence", heldBy(claimByA, 4, pastLease, ClaimActive), claimByA, ClaimDecision{EventClaimRenewed, 5}},
+		{"unclaimed target is acquired with the first fence", nil, claimByA, ClaimDecision{Event: EventClaimAcquired, Fence: 1, LeaseUntil: testNow.Add(time.Minute)}},
+		{"live renewal keeps the fence", heldBy(claimByA, 4, liveLease, ClaimActive), claimByA, ClaimDecision{Event: EventClaimRenewed, Fence: 4, LeaseUntil: testNow.Add(time.Minute)}},
+		{"expired renewal advances the fence", heldBy(claimByA, 4, pastLease, ClaimActive), claimByA, ClaimDecision{Event: EventClaimRenewed, Fence: 5, LeaseUntil: testNow.Add(time.Minute)}},
 		{"another owner's live claim rejects", heldBy(claimByB, 4, liveLease, ClaimActive), claimByA, ClaimDecision{Event: EventClaimRejected}},
-		{"another owner's expired claim is taken over", heldBy(claimByB, 4, pastLease, ClaimActive), claimByA, ClaimDecision{EventClaimAcquired, 5}},
-		{"released claim is reacquired with a new fence", heldBy(claimByA, 4, liveLease, ClaimReleased), claimByA, ClaimDecision{EventClaimAcquired, 5}},
-		{"lease ending exactly now is expired", heldBy(claimByB, 4, testNow, ClaimActive), claimByA, ClaimDecision{EventClaimAcquired, 5}},
+		{"another owner's expired claim is taken over", heldBy(claimByB, 4, pastLease, ClaimActive), claimByA, ClaimDecision{Event: EventClaimAcquired, Fence: 5, LeaseUntil: testNow.Add(time.Minute)}},
+		{"released claim is reacquired with a new fence", heldBy(claimByA, 4, liveLease, ClaimReleased), claimByA, ClaimDecision{Event: EventClaimAcquired, Fence: 5, LeaseUntil: testNow.Add(time.Minute)}},
+		{"lease ending exactly now is expired", heldBy(claimByB, 4, testNow, ClaimActive), claimByA, ClaimDecision{Event: EventClaimAcquired, Fence: 5, LeaseUntil: testNow.Add(time.Minute)}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := DecideClaim(tt.held, tt.claim, testNow); got != tt.want {
+			if got := DecideClaim(tt.held, tt.claim, testNow, time.Minute); got != tt.want {
 				t.Fatalf("DecideClaim = %+v, want %+v", got, tt.want)
 			}
 		})

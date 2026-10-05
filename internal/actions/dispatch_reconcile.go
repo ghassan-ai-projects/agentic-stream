@@ -146,7 +146,9 @@ func loadReconcilableCommand(ctx context.Context, tx *sql.Tx, commandID string) 
 // verifyDeviceBinding requires evidence for a device-bound command to name
 // the bound target and carry valid boot-bound device evidence.
 func verifyDeviceBinding(ctx context.Context, tx *sql.Tx, command reconcilableCommand, evidence map[string]any) error {
-	if err := deviceauthority.VerifyCommandEvidence(ctx, tx, command.commandID, command.target, evidence); err != nil {
+	if err := deviceauthority.VerifyCommandEvidence(ctx, tx, deviceauthority.CommandEvidence{
+		CommandID: command.commandID, Target: command.target, Evidence: evidence,
+	}); err != nil {
 		return fmt.Errorf("verify device command evidence: %w", err)
 	}
 	return nil

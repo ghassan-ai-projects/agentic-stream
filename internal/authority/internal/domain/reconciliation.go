@@ -42,6 +42,18 @@ func (r *Reconciliation) Required() bool {
 	return r != nil && r.Status == ReconciliationRequired
 }
 
+// ReconciliationOpening asks to open a reconciliation for a device boot.
+type ReconciliationOpening struct {
+	Device DeviceBoot
+	Owner  Owner
+	Reason string
+}
+
+// Complete reports whether the opening names its device boot, owner and reason.
+func (o ReconciliationOpening) Complete() bool {
+	return o.Device.Complete() && o.Owner.Complete() && o.Reason != ""
+}
+
 // CheckOpenable requires a recorded state for the same boot. It reports
 // whether a reconciliation is already open, in which case only the reason is
 // audited again.
@@ -56,8 +68,8 @@ func CheckOpenable(recorded *Reconciliation, device DeviceBoot) (bool, error) {
 }
 
 // OpeningEvent is the audit record of an opened reconciliation.
-func OpeningEvent(device DeviceBoot, owner Owner, reason string, now time.Time) AuthorityEvent {
-	return newEvent(EventReconciliationOpened, DeviceSubject(device, owner), map[string]any{"reason": reason}, now)
+func OpeningEvent(opening ReconciliationOpening, now time.Time) AuthorityEvent {
+	return newEvent(EventReconciliationOpened, DeviceSubject(opening.Device, opening.Owner), map[string]any{"reason": opening.Reason}, now)
 }
 
 // ResolutionOutcome is the result recorded when a reconciliation is resolved.
@@ -89,6 +101,26 @@ func (o ResolutionOutcome) StatusAfter() ReconciliationStatus {
 	return ReconciliationRequired
 }
 
+// ResolutionRequest asks to resolve the open reconciliation of a device boot
+// with an outcome and an evidence document.
+type ResolutionRequest struct {
+	Device   DeviceBoot
+	Owner    Owner
+	Outcome  ResolutionOutcome
+	Evidence map[string]any
+}
+
+// Check requires a known outcome, a device boot and an evidence document.
+func (r ResolutionRequest) Check() error {
+	if !r.Outcome.Valid() {
+		return fmt.Errorf("invalid resolution outcome %q", r.Outcome)
+	}
+	if !r.Device.Complete() || len(r.Evidence) == 0 {
+		return errors.New("device boot and reconciliation evidence are required")
+	}
+	return nil
+}
+
 // Resolution is a validated resolution ready to be recorded.
 type Resolution struct {
 	Device         DeviceBoot
@@ -99,19 +131,19 @@ type Resolution struct {
 	EvidenceSHA256 []byte
 }
 
-// NewResolution parses the evidence document for the device boot and keeps
-// its canonical form, which is what gets stored.
-func NewResolution(device DeviceBoot, owner Owner, outcome ResolutionOutcome, document map[string]any) (Resolution, error) {
-	evidence, err := ParseReconciliationEvidence(document, device)
+// NewResolution parses the request's evidence for its device boot and keeps
+// the document's canonical form, which is what gets stored.
+func NewResolution(request ResolutionRequest) (Resolution, error) {
+	evidence, err := ParseReconciliationEvidence(request.Evidence, request.Device)
 	if err != nil {
 		return Resolution{}, err
 	}
-	evidenceJSON, err := canonicaljson.Marshal(document)
+	evidenceJSON, err := canonicaljson.Marshal(request.Evidence)
 	if err != nil {
 		return Resolution{}, fmt.Errorf("canonicalize reconciliation evidence: %w", err)
 	}
 	sum := sha256.Sum256(evidenceJSON)
-	return Resolution{Device: device, Owner: owner, Outcome: outcome, Evidence: evidence, EvidenceJSON: evidenceJSON, EvidenceSHA256: sum[:]}, nil
+	return Resolution{Device: request.Device, Owner: request.Owner, Outcome: request.Outcome, Evidence: evidence, EvidenceJSON: evidenceJSON, EvidenceSHA256: sum[:]}, nil
 }
 
 // CheckResolvable requires an open reconciliation for the resolution's boot,
