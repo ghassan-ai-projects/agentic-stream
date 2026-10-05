@@ -3,23 +3,25 @@ package store
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
-	"time"
 )
 
 // RequestApproval delegates lifecycle creation to the approval ledger.
-func (tx *Tx) RequestApproval(ctx context.Context, intentID string, r domain.ApprovalRequest, expiresAt, now time.Time) error {
-	if err := approvalledger.Request(ctx, tx.tx, r.ID, intentID, domain.FormatTime(now), domain.FormatTime(expiresAt), r.JSON, r.Nonce); err != nil {
+func (tx *Tx) RequestApproval(ctx context.Context, p domain.ApprovalPublication) error {
+	r := p.Request
+	if err := approvalledger.Request(ctx, tx.tx, r.ID, p.IntentID, domain.FormatTime(p.Now), domain.FormatTime(p.ExpiresAt), r.JSON, r.Nonce); err != nil {
 		return fmt.Errorf("insert approval: %w", err)
 	}
 	return nil
 }
 
 // ResolveApproval delegates a human decision to the approval ledger.
-func (tx *Tx) ResolveApproval(ctx context.Context, r domain.ApprovalResolution, status string) error {
+func (tx *Tx) ResolveApproval(ctx context.Context, r domain.ApprovalResolution, status, operation string) error {
 	if err := approvalledger.Resolve(ctx, tx.tx, r.ID, status, r.Approver, r.Relay, r.Reason, domain.FormatTime(r.Now)); err != nil {
-		return fmt.Errorf("resolve approval %s: %w", r.ID, err)
+		return fmt.Errorf("%s: %w", operation, err)
 	}
 	return nil
 }

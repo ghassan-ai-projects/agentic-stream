@@ -2,25 +2,24 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
+// ApprovalSnapshotDigest reads the snapshot digest bound to the intent version.
 func (tx *Tx) ApprovalSnapshotDigest(ctx context.Context, row domain.IntentRecord) ([]byte, error) {
 	var digest []byte
 	if err := tx.tx.QueryRowContext(ctx, "SELECT snapshot_sha256 FROM situation_versions WHERE situation_id = ? AND version = ?", row.SituationID, row.SituationVersion).Scan(&digest); err != nil {
 		return nil, fmt.Errorf("load approval snapshot digest: %w", err)
 	}
-	if len(digest) != sha256.Size {
-		return nil, fmt.Errorf("approval snapshot digest is incomplete")
-	}
 	return digest, nil
 }
 
+// ApprovalDelta decodes the latest trigger delta or an empty object when absent.
 func (tx *Tx) ApprovalDelta(ctx context.Context, episodeID string) (map[string]any, error) {
 	delta := map[string]any{}
 	var raw []byte

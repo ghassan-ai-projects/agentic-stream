@@ -24,7 +24,7 @@ func TestJoinedTransactionPersistsOnlyOnCallerCommit(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		command, err := domain.NewCommand("command", "sha256:policy", row, map[string]any{"parameters": map[string]any{"target": "motor"}}, now)
+		command, err := domain.NewCommand(domain.CommandPreparation{ID: "command", PolicyDigest: "sha256:policy", Row: row, Intent: domain.ProjectIntent(map[string]any{"parameters": map[string]any{"target": "motor"}}), Now: now})
 		if err != nil {
 			return err
 		}
@@ -68,7 +68,7 @@ func TestJoinedTransactionPersistsOnlyOnCallerCommit(t *testing.T) {
 		if _, _, err := tx.StoreCommandOnce(ctx, row, command, now); err != nil {
 			return err
 		}
-		if err := tx.SetIntentStatus(ctx, id, "approved", now, ApproveIntentStatus); err != nil {
+		if err := tx.SetIntentStatus(ctx, domain.IntentStatusChange{IntentID: id, Status: "approved", Now: now, Operation: ApproveIntentStatus}); err != nil {
 			return err
 		}
 		if err := tx.RecordEvaluation(ctx, domain.EvaluationAudit{ID: "eval", PolicyVersion: "v1", PolicyDigest: "policy", Row: row, Result: domain.Result{Result: "approved", CommandID: command.ID}, Reason: "tested", Now: now}); err != nil {
@@ -140,13 +140,13 @@ func TestApprovalLedgerAndReadProjections(t *testing.T) {
 		if reason != "" {
 			t.Fatal(reason)
 		}
-		decision, err := domain.DecodeApprovalDecision(row.DecisionJSON)
-		if err != nil {
-			return err
+		decision, reason := domain.ParseDecision(row)
+		if reason != "" {
+			t.Fatal(reason)
 		}
-		data := domain.BuildApprovalNotification(row, "approval", now.Add(time.Hour), intent, domain.ApprovalContext{Snapshot: sha, Delta: delta, Decision: decision, Source: tx.NotificationSource(row.TenantID)})
+		data := domain.BuildApprovalNotification(domain.ApprovalNotice{Row: row, ID: "approval", ExpiresAt: now.Add(time.Hour), Intent: domain.ProjectIntent(intent), Context: domain.ApprovalContext{Snapshot: sha, Delta: delta, Decision: decision, Source: tx.NotificationSource(row.TenantID)}})
 		request := domain.ApprovalRequest{ID: "approval", Nonce: "nonce", Data: data, JSON: []byte("{}")}
-		if err := tx.RequestApproval(ctx, id, request, now.Add(time.Hour), now); err != nil {
+		if err := tx.RequestApproval(ctx, domain.ApprovalPublication{IntentID: id, Request: request, ExpiresAt: now.Add(time.Hour), Now: now}); err != nil {
 			return err
 		}
 		if err := tx.AppendApprovalRequested(ctx, row, request, now); err != nil {
@@ -168,17 +168,26 @@ func TestApprovalLedgerAndReadProjections(t *testing.T) {
 		if err != nil || nonce != "nonce" {
 			t.Fatal(nonce, err)
 		}
-		entity, key, err := tx.LoadApprovalPrincipals(ctx, row, "operator-1", "relay-1")
-		if err != nil || entity != "motor-1" || len(key) != 32 {
-			t.Fatal(entity, key, err)
+		entity, err := tx.ApprovalEntity(ctx, row.SituationID)
+		if err != nil || entity != "motor-1" {
+			t.Fatal(entity, err)
 		}
-		if err := tx.RequireApprovalAuthority(ctx, row, entity, "operator-1"); err != nil {
-			return err
+		active, err := tx.RelayActivity(ctx, row.TenantID, "relay-1")
+		if err != nil || active != 1 {
+			t.Fatal(active, err)
+		}
+		key, err := tx.ApproverKey(ctx, row.TenantID, "operator-1")
+		if err != nil || len(key) != 32 {
+			t.Fatal(key, err)
+		}
+		active, err = tx.ApprovalAuthority(ctx, row, entity, "operator-1")
+		if err != nil || active != 1 {
+			t.Fatal(active, err)
 		}
 		if err := tx.BindAssertion(ctx, request.ID, make([]byte, 32)); err != nil {
 			return err
 		}
-		if err := tx.ResolveApproval(ctx, domain.ApprovalResolution{ID: request.ID, Approver: "operator-1", Relay: "relay-1", Now: now}, "approved"); err != nil {
+		if err := tx.ResolveApproval(ctx, domain.ApprovalResolution{ID: request.ID, Approver: "operator-1", Relay: "relay-1", Now: now}, "approved", "resolve approval "+"approval"); err != nil {
 			return err
 		}
 		got, err = tx.ApprovedApproval(ctx, id)
@@ -190,28 +199,28 @@ func TestApprovalLedgerAndReadProjections(t *testing.T) {
 		if err := tx.BindExistingResult(ctx, row, &result); err != nil {
 			return err
 		}
-		if err := tx.AppendApprovalResolved(ctx, row, request.ID, "approved", "human", now); err != nil {
+		if err := tx.AppendApprovalResolved(ctx, domain.ApprovalEvent{Intent: row, ID: request.ID, Status: "approved", Reason: "human", Now: now}); err != nil {
 			return err
 		}
 		request.ID = "expired"
-		if err := tx.RequestApproval(ctx, id, request, now, now); err != nil {
+		if err := tx.RequestApproval(ctx, domain.ApprovalPublication{IntentID: id, Request: request, ExpiresAt: now, Now: now}); err != nil {
 			return err
 		}
 		if err := tx.ExpireApproval(ctx, request.ID, now); err != nil {
 			return err
 		}
 		request.ID = "withdrawn"
-		if err := tx.RequestApproval(ctx, id, request, now, now); err != nil {
+		if err := tx.RequestApproval(ctx, domain.ApprovalPublication{IntentID: id, Request: request, ExpiresAt: now, Now: now}); err != nil {
 			return err
 		}
 		if err := tx.WithdrawApproval(ctx, request.ID, now); err != nil {
 			return err
 		}
-		if err := tx.AppendApprovalWithdrawn(ctx, row, request.ID, "stale", now); err != nil {
+		if err := tx.AppendApprovalWithdrawn(ctx, domain.ApprovalEvent{Intent: row, ID: request.ID, Reason: "stale", Now: now}); err != nil {
 			return err
 		}
 		request.ID = "expire-intent"
-		if err := tx.RequestApproval(ctx, id, request, now, now); err != nil {
+		if err := tx.RequestApproval(ctx, domain.ApprovalPublication{IntentID: id, Request: request, ExpiresAt: now, Now: now}); err != nil {
 			return err
 		}
 		return tx.ExpireIntentApproval(ctx, id)
@@ -234,7 +243,9 @@ func TestClosedTransactionErrorsRemainDistinguishable(t *testing.T) {
 	row := domain.IntentRecord{IntentID: id}
 	ctx := t.Context()
 	checks := []func() error{
-		func() error { _, err := tx.LoadIntent(ctx, id); return err }, func() error { _, err := tx.ExistingCommandID(ctx, id); return err }, func() error { _, err := tx.PendingApproval(ctx, id); return err }, func() error { _, err := tx.ApprovedApproval(ctx, id); return err }, func() error { _, _, err := tx.PendingApprovalExpiry(ctx, id); return err }, func() error { _, _, err := tx.AssertionBinding(ctx, id); return err }, func() error { _, err := tx.LoadApproval(ctx, id); return err }, func() error { _, err := tx.ApprovalSnapshotDigest(ctx, row); return err }, func() error { _, err := tx.ApprovalDelta(ctx, id); return err }, func() error { _, _, err := tx.CompensationTenant(ctx, id); return err }, func() error { _, err := tx.DispatchWithinLimit(ctx, row, now); return err }, func() error { return tx.SetIntentStatus(ctx, id, "denied", now, SetPolicyStatus) }, func() error { return tx.RecordEvaluation(ctx, domain.EvaluationAudit{}) }, func() error { _, err := tx.InsertCommand(ctx, row, domain.CommandRecord{}, now); return err }, func() error { return tx.InsertCommandOutbox(ctx, id, nil, now) }, func() error { return tx.RemovePreparedCommand(ctx, id, id) },
+		func() error { _, err := tx.LoadIntent(ctx, id); return err }, func() error { _, err := tx.ExistingCommandID(ctx, id); return err }, func() error { _, err := tx.PendingApproval(ctx, id); return err }, func() error { _, err := tx.ApprovedApproval(ctx, id); return err }, func() error { _, _, err := tx.PendingApprovalExpiry(ctx, id); return err }, func() error { _, _, err := tx.AssertionBinding(ctx, id); return err }, func() error { _, err := tx.LoadApproval(ctx, id); return err }, func() error { _, err := tx.ApprovalSnapshotDigest(ctx, row); return err }, func() error { _, err := tx.ApprovalDelta(ctx, id); return err }, func() error { _, _, err := tx.CompensationTenant(ctx, id); return err }, func() error { _, err := tx.DispatchWithinLimit(ctx, row, now); return err }, func() error {
+			return tx.SetIntentStatus(ctx, domain.IntentStatusChange{IntentID: id, Status: "denied", Now: now, Operation: SetPolicyStatus})
+		}, func() error { return tx.RecordEvaluation(ctx, domain.EvaluationAudit{}) }, func() error { _, err := tx.InsertCommand(ctx, row, domain.CommandRecord{}, now); return err }, func() error { return tx.InsertCommandOutbox(ctx, id, nil, now) }, func() error { return tx.RemovePreparedCommand(ctx, id, id) },
 	}
 	for i, check := range checks {
 		if err := check(); !errors.Is(err, sql.ErrTxDone) {

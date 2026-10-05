@@ -53,3 +53,14 @@ and root tests pass, with facade 95.5%, app 67.5%, domain 94.0%, store 81.7%
 coverage. Whole-repository lint passes. Transaction identity/rollback, epoch
 refusal, command/outbox idempotency, exact prepared-command deletion and approval
 ledger/read-projection tests pass on real migrations.
+
+P3: typed governance documents, pure risk/freshness/approval/signature rules,
+named evaluation/approval attempts and publication/outcome values complete.
+All five injected architecture violations are rejected and removed. Full CI
+passes using pinned protoc 35.1; lint autofix reports zero issues. Phase-based
+calibration tests are renamed to `calibration_test.go`, with behavior names and
+explicit approval-versus-command assertions. Durable module/language guides
+now live at the policy package root; this dated folder retains work records.
+Full uncached race verification passes. `policy.go` contains only the service
+type and two delegation methods; configuration/validation is in `config.go`.
+Documentation, focused tests and lint autofix pass after the final file moves.

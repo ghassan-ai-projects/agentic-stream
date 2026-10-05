@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
+// ExistingCommandID distinguishes an absent command from a lookup failure.
 func (tx *Tx) ExistingCommandID(ctx context.Context, intentID string) (string, error) {
 	var commandID string
 	err := tx.tx.QueryRowContext(ctx, "SELECT command_id FROM commands WHERE intent_id = ?", intentID).Scan(&commandID)
@@ -21,6 +23,7 @@ func (tx *Tx) ExistingCommandID(ctx context.Context, intentID string) (string, e
 	return commandID, nil
 }
 
+// StoreCommandOnce inserts once and returns the winning command identity on conflict.
 func (tx *Tx) StoreCommandOnce(ctx context.Context, row domain.IntentRecord, command domain.CommandRecord, now time.Time) (domain.CommandRecord, string, error) {
 	inserted, err := tx.InsertCommand(ctx, row, command, now)
 	if err != nil || inserted {

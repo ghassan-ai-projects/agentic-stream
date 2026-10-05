@@ -30,3 +30,6 @@ retain original documents where canonical bytes and evidence depend on them.
 Register domain/store/app/facade dependencies and SQL ownership in the existing
 gates; extend transitive policy exclusion to every private policy layer for
 reasoning. Read-only replay definition exports remain allowed.
+
+The implemented public API and preserved operation sequences are recorded in
+[MODULE_PATTERN.md](../../internal/policy/README.md).

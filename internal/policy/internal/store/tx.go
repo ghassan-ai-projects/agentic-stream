@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 )
@@ -29,7 +30,7 @@ func (tx *Tx) Assert(ctx context.Context, fence Fence, epoch string) error {
 // AssertInterlock asks the action-readiness reader using the same transaction.
 func (tx *Tx) AssertInterlock(ctx context.Context, reader interlock.Reader, tenant, target, risk string) error {
 	if err := reader.Assert(ctx, tx.tx, tenant, target, risk); err != nil {
-		return fmt.Errorf("%w", err)
+		return fmt.Errorf("assert action interlock: %w", err)
 	}
 	return nil
 }

@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
+// LoadIntent reads the accepted intent and its current governance context.
 func (tx *Tx) LoadIntent(ctx context.Context, intentID string) (domain.IntentRecord, error) {
 	row, err := scanPolicyIntent(tx.tx.QueryRowContext(ctx, loadPolicyIntentSQL, intentID))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -20,6 +22,7 @@ func (tx *Tx) LoadIntent(ctx context.Context, intentID string) (domain.IntentRec
 	return row, nil
 }
 
+// DispatchWithinLimit increments the hourly dispatch counter or reports a full bucket.
 func (tx *Tx) DispatchWithinLimit(ctx context.Context, row domain.IntentRecord, now time.Time) (bool, error) {
 	bucket := now.UTC().Format("2006-01-02T15:00")
 	var count int

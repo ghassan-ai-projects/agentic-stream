@@ -3,24 +3,23 @@ package app_test
 import (
 	"context"
 	"database/sql"
+	"testing"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
-	"testing"
-	"time"
 )
 
-// P8 (docs/new-design/PHASE_P8_ROLLOUT.md): calibration-gated automation. An
-// automatic consequential intent (R2+) is refused — falling back to the
-// human-approval path (watch-only) — until an exact calibration artifact
-// exists for the domain (model revision = the compiled-spec digest + domain).
-// R0/R1 automatic intents are unaffected.
+// Consequential R2 intents need either an exact calibration artifact or human
+// approval. Calibration binds the Situation type and episode executor version.
+// Low-risk R0/R1 intents do not require calibration; R3/R4 remain denied.
 
 func calibrationFixture(t *testing.T, risk, domain, modelRevision, artifactSHA string) (*storage.DB, string, *qualification.CalibrationStore) {
 	t.Helper()
 	db, intentID := openPolicyFixture(t, risk, 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
 	// The calibration gate needs the episode's model revision and the
-	// situation's domain — the fixture defaults them empty, so pin them.
+	// situation's domain, so pin both values for this case.
 	if _, err := db.ExecContext(context.Background(),
 		"UPDATE episodes SET executor_version = ? WHERE episode_id = 'epi-policy'", modelRevision); err != nil {
 		t.Fatal(err)
@@ -40,9 +39,8 @@ func calibrationFixture(t *testing.T, risk, domain, modelRevision, artifactSHA s
 	return db, intentID, store
 }
 
-// An R2 automatic intent with NO calibration artifact is refused — it falls
-// through to the human-approval path (watch-only), never to silent automation.
-func TestP8R2AutomaticWithoutCalibrationIsWatchOnly(t *testing.T) {
+// Missing calibration routes R2 intents to human approval.
+func TestConsequentialIntentWithoutCalibrationRequiresApproval(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	db, intentID, store := calibrationFixture(t, "R2", "test", "sha256:1111", "")
@@ -57,15 +55,14 @@ func TestP8R2AutomaticWithoutCalibrationIsWatchOnly(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if result.Result != "approval_required" {
-		t.Fatalf("R2 without calibration must be watch-only (approval_required), got %s/%s",
+	if result.Result != "approval_required" || result.CommandID != "" {
+		t.Fatalf("R2 without calibration must require approval, got %s/%s",
 			result.Result, result.Reason)
 	}
 }
 
-// An R2 automatic intent WITH the exact artifact is auto-approved via the
-// calibrated-automation path.
-func TestP8R2AutomaticWithExactCalibrationIsApproved(t *testing.T) {
+// Matching calibration permits automatic R2 approval.
+func TestConsequentialIntentWithExactCalibrationIsApproved(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	db, intentID, store := calibrationFixture(t, "R2", "test", "sha256:1111", "sha256:1111")
@@ -80,7 +77,7 @@ func TestP8R2AutomaticWithExactCalibrationIsApproved(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if result.Result != "approved" {
+	if result.Result != "approved" || result.CommandID == "" {
 		t.Fatalf("R2 with exact calibration must be approved, got %s/%s", result.Result, result.Reason)
 	}
 	if result.Reason != "calibrated_automation" {
@@ -88,14 +85,12 @@ func TestP8R2AutomaticWithExactCalibrationIsApproved(t *testing.T) {
 	}
 }
 
-// A MISMATCHED artifact (model revision changed) is refused — missing or
-// mismatched = watch-only.
-func TestP8R2AutomaticWithMismatchedCalibrationIsWatchOnly(t *testing.T) {
+// A changed executor version requires fresh matching calibration.
+func TestConsequentialIntentWithMismatchedCalibrationRequiresApproval(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
-	// Activate an artifact for revision 1111, then deploy a NEW spec revision
-	// (2222) for the same domain: the compiled-spec digest changed, so the
-	// artifact no longer matches — watch-only until re-registered.
+	// Activate revision 1111, then evaluate an episode from executor revision
+	// 2222 for the same domain; the existing artifact no longer authorizes it.
 	db, intentID, store := calibrationFixture(t, "R2", "test", "sha256:1111", "sha256:1111")
 	defer func() { _ = db.Close() }()
 	if _, err := db.ExecContext(context.Background(),
@@ -112,14 +107,13 @@ func TestP8R2AutomaticWithMismatchedCalibrationIsWatchOnly(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if result.Result != "approval_required" {
-		t.Fatalf("mismatched calibration must be watch-only, got %s/%s", result.Result, result.Reason)
+	if result.Result != "approval_required" || result.CommandID != "" {
+		t.Fatalf("mismatched calibration must require approval, got %s/%s", result.Result, result.Reason)
 	}
 }
 
-// R1 automatic intents are NOT gated by calibration — watch-only active
-// (R0/R1) is always allowed.
-func TestP8R1AutomaticIgnoresCalibration(t *testing.T) {
+// R1 approval does not depend on the consequential calibration gate.
+func TestLowRiskIntentDoesNotRequireCalibration(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	db, intentID, store := calibrationFixture(t, "R1", "test", "sha256:1111", "")
@@ -134,8 +128,8 @@ func TestP8R1AutomaticIgnoresCalibration(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if result.Result != "approved" {
-		t.Fatalf("R1 without calibration must be approved (watch-only active), got %s/%s",
+	if result.Result != "approved" || result.CommandID == "" {
+		t.Fatalf("R1 without calibration must be approved, got %s/%s",
 			result.Result, result.Reason)
 	}
 }

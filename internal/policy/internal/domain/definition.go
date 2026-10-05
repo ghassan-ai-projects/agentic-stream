@@ -2,8 +2,18 @@ package domain
 
 import (
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
+
+// ApprovalAssertionSigningBytes returns the domain-separated durable assertion bytes.
+func ApprovalAssertionSigningBytes(assertion ApprovalAssertion) ([]byte, error) {
+	canonical, err := canonicalApprovalAssertion(assertion)
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(canonicaljson.DomainApproval), canonical...), nil
+}
 
 func canonicalApprovalAssertion(assertion ApprovalAssertion) ([]byte, error) {
 	result, err := canonicaljson.Marshal(map[string]any{
@@ -20,14 +30,7 @@ func canonicalApprovalAssertion(assertion ApprovalAssertion) ([]byte, error) {
 	return result, nil
 }
 
-func ApprovalAssertionSigningBytes(assertion ApprovalAssertion) ([]byte, error) {
-	canonical, err := canonicalApprovalAssertion(assertion)
-	if err != nil {
-		return nil, err
-	}
-	return append([]byte(canonicaljson.DomainApproval), canonical...), nil
-}
-
+// DigestForVersion identifies the deterministic rules bound to a policy version.
 func DigestForVersion(policyVersion string) (string, error) {
 	if policyVersion == "" {
 		return "", fmt.Errorf("policy version is required")
@@ -39,6 +42,7 @@ func DigestForVersion(policyVersion string) (string, error) {
 	return digest, nil
 }
 
+// CanonicalDocumentForVersion returns the exact definition bound into policy evidence.
 func CanonicalDocumentForVersion(policyVersion string) map[string]any {
 	return map[string]any{
 		"policy_version": policyVersion,

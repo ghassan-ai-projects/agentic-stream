@@ -34,6 +34,7 @@ type ApprovalAssertion struct {
 	RelayID          string
 }
 
+// IntentRecord is the read-only durable handoff projection used by governance.
 type IntentRecord struct {
 	IntentID            string
 	DecisionID          string

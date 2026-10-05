@@ -26,7 +26,7 @@ func TestTargetResolutionPreservesFallbackPrecedence(t *testing.T) {
 		{"missing", nil, "intent"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := NormalizedTarget("intent", map[string]any{"parameters": tc.parameters}); got != tc.want {
+			if got := NormalizedTarget("intent", testParameters(tc.parameters)); got != tc.want {
 				t.Fatalf("target=%q want=%q", got, tc.want)
 			}
 		})
@@ -52,7 +52,7 @@ func TestDecisionValidationPrecedenceAndBinding(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := good
 			tc.change(&r)
-			if got := PendingDecisionFailure(r); got != tc.want {
+			if _, got := ParseDecision(r); got != tc.want {
 				t.Fatalf("reason=%q want=%q", got, tc.want)
 			}
 		})
@@ -93,7 +93,7 @@ func TestIntentDigestChecksOriginalDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !CanonicalDocumentMatches(raw, sha, canonicaljson.DomainIntent) {
+	if !documentMatchesBytes(raw, sha, canonicaljson.DomainIntent) {
 		t.Fatal("valid intent digest rejected")
 	}
 	document["type"] = "changed"
@@ -101,10 +101,10 @@ func TestIntentDigestChecksOriginalDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if CanonicalDocumentMatches(raw, sha, canonicaljson.DomainIntent) {
+	if documentMatchesBytes(raw, sha, canonicaljson.DomainIntent) {
 		t.Fatal("mutated intent digest accepted")
 	}
-	if CanonicalDocumentMatches([]byte("{"), sha, canonicaljson.DomainIntent) || CanonicalDocumentMatches(raw, nil, canonicaljson.DomainIntent) {
+	if documentMatchesBytes([]byte("{"), sha, canonicaljson.DomainIntent) || documentMatchesBytes(raw, nil, canonicaljson.DomainIntent) {
 		t.Fatal("invalid document accepted")
 	}
 	document["type"] = "ticket"
@@ -117,11 +117,11 @@ func TestIntentDigestChecksOriginalDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	row := IntentRecord{IntentID: "intent", DecisionID: "decision", TenantID: "tenant", SituationID: "situation", SituationVersion: 1, IntentType: "ticket", RiskClass: "R1"}
-	if !MatchesIntentIdentity(row, decoded) {
+	if !MatchesIntentIdentity(row, ProjectIntent(decoded)) {
 		t.Fatal("identity rejected")
 	}
 	row.RiskClass = "R2"
-	if MatchesIntentIdentity(row, decoded) {
+	if MatchesIntentIdentity(row, ProjectIntent(decoded)) {
 		t.Fatal("risk mismatch accepted")
 	}
 }
@@ -198,3 +198,13 @@ func TestDefinitionAndAssertionCanonicalBytes(t *testing.T) {
 		t.Fatal("relay not bound")
 	}
 }
+
+func documentMatchesBytes(raw, digest []byte, domain canonicaljson.Domain) bool {
+	var document map[string]any
+	if json.Unmarshal(raw, &document) != nil {
+		return false
+	}
+	return DocumentDigestMatches(document, digest, domain)
+}
+
+func testParameters(value any) map[string]any { v, _ := value.(map[string]any); return v }

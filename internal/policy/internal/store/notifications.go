@@ -3,28 +3,31 @@ package store
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
-	"time"
 )
 
-func (tx *Tx) AppendApprovalWithdrawn(ctx context.Context, row domain.IntentRecord, approvalID, reason string, now time.Time) error {
-	if err := notify.AppendLifecycleEventWithTrace(ctx, tx.tx, "approval.withdrawn:"+approvalID, row.TenantID, notify.TypeApprovalWithdrawn, "approval/"+approvalID, row.SituationID, map[string]any{
-		"tenant_id": row.TenantID, "approval_id": approvalID, "intent_id": row.IntentID, "situation_id": row.SituationID,
-		"situation_version": row.SituationVersion, "reason": reason, "source_authority": notify.SourceForTenant(row.TenantID),
-	}, now, traceContext(row)); err != nil {
+// AppendApprovalWithdrawn publishes stale approval withdrawal evidence.
+func (tx *Tx) AppendApprovalWithdrawn(ctx context.Context, event domain.ApprovalEvent) error {
+	if err := notify.AppendLifecycleEventWithTrace(ctx, tx.tx, "approval.withdrawn:"+event.ID, event.Intent.TenantID, notify.TypeApprovalWithdrawn, "approval/"+event.ID, event.Intent.SituationID, map[string]any{
+		"tenant_id": event.Intent.TenantID, "approval_id": event.ID, "intent_id": event.Intent.IntentID, "situation_id": event.Intent.SituationID,
+		"situation_version": event.Intent.SituationVersion, "reason": event.Reason, "source_authority": notify.SourceForTenant(event.Intent.TenantID),
+	}, event.Now, traceContext(event.Intent)); err != nil {
 		return fmt.Errorf("append approval withdrawn notification: %w", err)
 	}
 	return nil
 }
 
-func (tx *Tx) AppendApprovalResolved(ctx context.Context, row domain.IntentRecord, approvalID, status, reason string, now time.Time) error {
-	if err := notify.AppendLifecycleEventWithTrace(ctx, tx.tx, "approval.resolved:"+approvalID+":"+status, row.TenantID, notify.TypeApprovalResolved, "approval/"+approvalID, row.SituationID, map[string]any{
-		"tenant_id": row.TenantID, "approval_id": approvalID, "intent_id": row.IntentID, "decision_id": row.DecisionID,
-		"situation_id": row.SituationID, "situation_version": row.SituationVersion,
-		"status": status, "reason": reason, "source_authority": notify.SourceForTenant(row.TenantID),
-	}, now, traceContext(row)); err != nil {
+// AppendApprovalResolved publishes a durable approval disposition.
+func (tx *Tx) AppendApprovalResolved(ctx context.Context, event domain.ApprovalEvent) error {
+	if err := notify.AppendLifecycleEventWithTrace(ctx, tx.tx, "approval.resolved:"+event.ID+":"+event.Status, event.Intent.TenantID, notify.TypeApprovalResolved, "approval/"+event.ID, event.Intent.SituationID, map[string]any{
+		"tenant_id": event.Intent.TenantID, "approval_id": event.ID, "intent_id": event.Intent.IntentID, "decision_id": event.Intent.DecisionID,
+		"situation_id": event.Intent.SituationID, "situation_version": event.Intent.SituationVersion,
+		"status": event.Status, "reason": event.Reason, "source_authority": notify.SourceForTenant(event.Intent.TenantID),
+	}, event.Now, traceContext(event.Intent)); err != nil {
 		return fmt.Errorf("append approval resolved notification: %w", err)
 	}
 	return nil

@@ -7,6 +7,7 @@ import (
 	"fmt"
 )
 
+// PendingApproval distinguishes a missing pending approval from a lookup failure.
 func (tx *Tx) PendingApproval(ctx context.Context, intentID string) (string, error) {
 	var approvalID string
 	err := tx.tx.QueryRowContext(ctx, "SELECT approval_id FROM approvals WHERE intent_id = ? AND status = 'pending'", intentID).Scan(&approvalID)

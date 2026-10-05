@@ -3,9 +3,11 @@ package store
 import (
 	"context"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
+// LoadApproval reads the durable human approval lifecycle projection.
 func (tx *Tx) LoadApproval(ctx context.Context, approvalID string) (domain.ApprovalRecord, error) {
 	var approval domain.ApprovalRecord
 	err := tx.tx.QueryRowContext(ctx, "SELECT intent_id, status, expires_at FROM approvals WHERE approval_id = ?", approvalID).

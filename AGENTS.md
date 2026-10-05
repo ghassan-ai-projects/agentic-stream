@@ -79,7 +79,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/executor/native`, `internal/executor/remote` - concrete executors behind the episode `Executor` port (in-process and streamed worker protocol)
 - `internal/evidence` - evidence/tool boundary for episodes
 - `internal/decisions` - typed Decision model
-- `internal/policy` - policy plane; revalidates every intent before dispatch
+- `internal/policy` - policy plane; revalidates every intent before dispatch. Reference structure: thin `Service` facade, ordered use cases in `internal/app`, pure governance records/rules in `internal/domain`, and caller-owned transaction plumbing plus SQL in `internal/store` (see [policy module pattern](internal/policy/README.md))
 - `internal/actions` - governed dispatch plane, idempotency, verification
 - `internal/watch` - derived-trigger watches installed by approved commands
 - `internal/actionport` - approved-command/effect contracts without implementation dependencies

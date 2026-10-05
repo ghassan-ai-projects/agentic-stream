@@ -3,14 +3,14 @@ package store
 import (
 	"context"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
-	"time"
 )
 
 // SetIntentStatus updates only policy's governance columns.
-func (tx *Tx) SetIntentStatus(ctx context.Context, intentID, status string, now time.Time, operation string) error {
-	if _, err := tx.tx.ExecContext(ctx, "UPDATE intents SET policy_status = ?, updated_at = ? WHERE intent_id = ?", status, domain.FormatTime(now), intentID); err != nil {
-		return fmt.Errorf("%s: %w", operation, err)
+func (tx *Tx) SetIntentStatus(ctx context.Context, c domain.IntentStatusChange) error {
+	if _, err := tx.tx.ExecContext(ctx, "UPDATE intents SET policy_status = ?, updated_at = ? WHERE intent_id = ?", c.Status, domain.FormatTime(c.Now), c.IntentID); err != nil {
+		return fmt.Errorf("%s: %w", c.Operation, err)
 	}
 	return nil
 }

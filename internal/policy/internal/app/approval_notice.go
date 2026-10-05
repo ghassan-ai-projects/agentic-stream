@@ -2,36 +2,32 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
-	"time"
 )
 
-func approvalNotificationData(ctx context.Context, tx *store.Tx, row domain.IntentRecord, approvalID string, expiresAt time.Time, intent map[string]any) (map[string]any, error) {
-	if len(row.IntentSHA) != sha256.Size {
-		return nil, fmt.Errorf("intent digest is incomplete")
+func approvalNotificationData(ctx context.Context, tx *store.Tx, e evaluation, approvalID string) (map[string]any, error) {
+	if err := domain.CompleteDigest(e.row.IntentSHA, "intent"); err != nil {
+		return nil, err
 	}
-	context, err := loadApprovalContext(ctx, tx, row)
+	evidence, err := loadApprovalContext(ctx, tx, e)
 	if err != nil {
 		return nil, err
 	}
-	return domain.BuildApprovalNotification(row, approvalID, expiresAt, intent, context), nil
+	return domain.BuildApprovalNotification(domain.ApprovalNotice{Row: e.row, ID: approvalID, ExpiresAt: e.expiresAt, Intent: e.documents.Intent, Context: evidence}), nil
 }
-
-func loadApprovalContext(ctx context.Context, tx *store.Tx, row domain.IntentRecord) (domain.ApprovalContext, error) {
-	snapshotSHA, err := tx.ApprovalSnapshotDigest(ctx, row)
+func loadApprovalContext(ctx context.Context, tx *store.Tx, e evaluation) (domain.ApprovalContext, error) {
+	snapshot, err := tx.ApprovalSnapshotDigest(ctx, e.row)
 	if err != nil {
 		return domain.ApprovalContext{}, err
 	}
-	delta, err := tx.ApprovalDelta(ctx, row.EpisodeID)
+	if err := domain.CompleteDigest(snapshot, "approval snapshot"); err != nil {
+		return domain.ApprovalContext{}, err
+	}
+	delta, err := tx.ApprovalDelta(ctx, e.row.EpisodeID)
 	if err != nil {
 		return domain.ApprovalContext{}, err
 	}
-	decision, err := domain.DecodeApprovalDecision(row.DecisionJSON)
-	if err != nil {
-		return domain.ApprovalContext{}, err
-	}
-	return domain.ApprovalContext{Snapshot: snapshotSHA, Delta: delta, Decision: decision, Source: tx.NotificationSource(row.TenantID)}, nil
+	return domain.ApprovalContext{Snapshot: snapshot, Delta: delta, Decision: e.documents.Decision, Source: tx.NotificationSource(e.row.TenantID)}, nil
 }

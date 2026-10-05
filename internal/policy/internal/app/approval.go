@@ -2,96 +2,103 @@ package app
 
 import (
 	"context"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
-	"time"
 )
 
-func (g *Service) ResolveApproval(ctx context.Context, tx *store.Tx, request domain.ApprovalResolution) (domain.Result, error) {
+type approvalAttempt struct {
+	evaluation evaluation
+	approval   domain.ApprovalRecord
+	request    domain.ApprovalResolution
+}
+
+// ResolveApproval records the human decision and re-evaluates before publication.
+func (g *Service) ResolveApproval(ctx context.Context, tx *store.Tx, r domain.ApprovalResolution) (domain.Result, error) {
 	if err := g.assertOwner(ctx, tx); err != nil {
-		return domain.Result{ApprovalID: request.ID}, err
+		return domain.Result{ApprovalID: r.ID}, err
 	}
-	approval, err := tx.LoadApproval(ctx, request.ID)
+	approval, err := tx.LoadApproval(ctx, r.ID)
 	if err != nil {
-		return domain.Result{ApprovalID: request.ID}, err
+		return domain.Result{ApprovalID: r.ID}, err
 	}
 	row, err := tx.LoadIntent(ctx, approval.IntentID)
 	if err != nil {
-		return domain.Result{IntentID: approval.IntentID, ApprovalID: request.ID}, err
+		return domain.Result{IntentID: approval.IntentID, ApprovalID: r.ID}, err
 	}
-	result := domain.Result{IntentID: approval.IntentID, DecisionID: row.DecisionID, ApprovalID: request.ID}
-	return g.resolvePendingApproval(ctx, tx, row, approval, request, result)
+	e := newEvaluation(row, r.Now)
+	e.result.ApprovalID = r.ID
+	return g.resolvePendingApproval(ctx, tx, approvalAttempt{evaluation: e, approval: approval, request: r})
 }
-
-func (g *Service) resolvePendingApproval(ctx context.Context, tx *store.Tx, row domain.IntentRecord, approval domain.ApprovalRecord, request domain.ApprovalResolution, result domain.Result) (domain.Result, error) {
-	if approval.Status != "pending" {
-		result.Result, result.Reason = approval.Status, "approval_already_resolved"
-		return g.audit(ctx, tx, row, result, result.Result, result.Reason, request.Now)
+func (g *Service) resolvePendingApproval(ctx context.Context, tx *store.Tx, a approvalAttempt) (domain.Result, error) {
+	switch domain.ApprovalDisposition(a.evaluation.row, a.approval, a.request) {
+	case "resolved":
+		return g.audit(ctx, tx, a.evaluation, domain.Outcome{Status: a.approval.Status, Reason: "approval_already_resolved"})
+	case "stale":
+		return g.withdrawStaleApproval(ctx, tx, a)
+	case "expired":
+		return g.expireApproval(ctx, tx, a)
+	default:
+		return g.resolveAuthorizedApproval(ctx, tx, a)
 	}
-	if request.Approved && row.CurrentSituation != row.SituationVersion {
-		return g.withdrawStaleApproval(ctx, tx, row, request.ID, result, request.Now)
-	}
-	if domain.ApprovalExpired(approval.ExpiresAt, request.Now) {
-		return g.expireApproval(ctx, tx, row, request.ID, result, request.Now)
-	}
-	return g.resolveAuthorizedApproval(ctx, tx, row, request, result)
 }
-
-func (g *Service) withdrawStaleApproval(ctx context.Context, tx *store.Tx, row domain.IntentRecord, approvalID string, result domain.Result, now time.Time) (domain.Result, error) {
-	if err := tx.WithdrawApproval(ctx, approvalID, now); err != nil {
-		return result, err
+func (g *Service) withdrawStaleApproval(ctx context.Context, tx *store.Tx, a approvalAttempt) (domain.Result, error) {
+	if err := tx.WithdrawApproval(ctx, a.request.ID, a.request.Now); err != nil {
+		return a.evaluation.result, err
 	}
-	if err := tx.AppendApprovalWithdrawn(ctx, row, approvalID, "situation_version_conflict", now); err != nil {
-		return result, err
+	event := domain.ApprovalEvent{Intent: a.evaluation.row, ID: a.request.ID, Status: "denied", Reason: "situation_version_conflict", Now: a.request.Now}
+	if err := tx.AppendApprovalWithdrawn(ctx, event); err != nil {
+		return a.evaluation.result, err
 	}
-	if err := tx.AppendApprovalResolved(ctx, row, approvalID, "denied", "situation_version_conflict", now); err != nil {
-		return result, err
+	if err := tx.AppendApprovalResolved(ctx, event); err != nil {
+		return a.evaluation.result, err
 	}
-	return g.finish(ctx, tx, row, result, "denied", "situation_version_conflict", now)
+	return g.finish(ctx, tx, a.evaluation, domain.Outcome{Status: "denied", Reason: "situation_version_conflict"})
 }
-
-func (g *Service) expireApproval(ctx context.Context, tx *store.Tx, row domain.IntentRecord, approvalID string, result domain.Result, now time.Time) (domain.Result, error) {
-	if err := tx.ExpireApproval(ctx, approvalID, now); err != nil {
-		return result, err
+func (g *Service) expireApproval(ctx context.Context, tx *store.Tx, a approvalAttempt) (domain.Result, error) {
+	if err := tx.ExpireApproval(ctx, a.request.ID, a.request.Now); err != nil {
+		return a.evaluation.result, err
 	}
-	if err := tx.AppendApprovalResolved(ctx, row, approvalID, "expired", "approval_expired", now); err != nil {
-		return result, err
+	event := domain.ApprovalEvent{Intent: a.evaluation.row, ID: a.request.ID, Status: "expired", Reason: "approval_expired", Now: a.request.Now}
+	if err := tx.AppendApprovalResolved(ctx, event); err != nil {
+		return a.evaluation.result, err
 	}
-	return g.finish(ctx, tx, row, result, "expired", "approval_expired", now)
+	return g.finish(ctx, tx, a.evaluation, domain.Outcome{Status: "expired", Reason: "approval_expired"})
 }
-
-func (g *Service) resolveAuthorizedApproval(ctx context.Context, tx *store.Tx, row domain.IntentRecord, request domain.ApprovalResolution, result domain.Result) (domain.Result, error) {
-	if request.Approved {
-		if err := g.authorizeApproval(ctx, tx, row, request.ID, request.Approver, request.Relay, request.Signature); err != nil {
-			return g.denyUnauthorizedApproval(ctx, tx, row, request.ID, request.Approver, request.Relay, err, result, request.Now)
+func (g *Service) resolveAuthorizedApproval(ctx context.Context, tx *store.Tx, a approvalAttempt) (domain.Result, error) {
+	if a.request.Approved {
+		if err := g.authorizeApproval(ctx, tx, a.evaluation.row, a.request); err != nil {
+			return g.denyUnauthorizedApproval(ctx, tx, a, err)
 		}
 	}
-	if err := recordApprovalResolution(ctx, tx, row, request); err != nil {
-		return result, err
+	if err := recordApprovalResolution(ctx, tx, a); err != nil {
+		return a.evaluation.result, err
 	}
-	if !request.Approved {
-		return g.audit(ctx, tx, row, result, "denied", "approval_denied", request.Now)
+	if !a.request.Approved {
+		return g.audit(ctx, tx, a.evaluation, domain.Outcome{Status: "denied", Reason: "approval_denied"})
 	}
-	return g.EvaluateIntent(ctx, tx, domain.EvaluationRequest{IntentID: row.IntentID, Now: request.Now})
+	return g.EvaluateIntent(ctx, tx, domain.EvaluationRequest{IntentID: a.evaluation.row.IntentID, Now: a.request.Now})
 }
-
-func (g *Service) denyUnauthorizedApproval(ctx context.Context, tx *store.Tx, row domain.IntentRecord, approvalID, approver, relay string, authErr error, result domain.Result, now time.Time) (domain.Result, error) {
-	if err := tx.ResolveApproval(ctx, domain.ApprovalResolution{ID: approvalID, Approver: approver, Relay: relay, Reason: authErr.Error(), Now: now}, "denied"); err != nil {
-		return result, err
+func (g *Service) denyUnauthorizedApproval(ctx context.Context, tx *store.Tx, a approvalAttempt, authErr error) (domain.Result, error) {
+	r := a.request
+	r.Reason = authErr.Error()
+	if err := tx.ResolveApproval(ctx, r, "denied", "record unauthorized approval"); err != nil {
+		return a.evaluation.result, err
 	}
-	if err := tx.AppendApprovalResolved(ctx, row, approvalID, "denied", "approval_principal_not_authorized", now); err != nil {
-		return result, err
+	event := domain.ApprovalEvent{Intent: a.evaluation.row, ID: r.ID, Status: "denied", Reason: "approval_principal_not_authorized", Now: r.Now}
+	if err := tx.AppendApprovalResolved(ctx, event); err != nil {
+		return a.evaluation.result, err
 	}
-	return g.finish(ctx, tx, row, result, "denied", "approval_principal_not_authorized", now)
+	return g.finish(ctx, tx, a.evaluation, domain.Outcome{Status: "denied", Reason: "approval_principal_not_authorized"})
 }
-
-func recordApprovalResolution(ctx context.Context, tx *store.Tx, row domain.IntentRecord, request domain.ApprovalResolution) error {
-	status, policyStatus := domain.ApprovalDecision(request.Approved)
-	if err := tx.ResolveApproval(ctx, request, status); err != nil {
+func recordApprovalResolution(ctx context.Context, tx *store.Tx, a approvalAttempt) error {
+	status, policyStatus := domain.ApprovalDecision(a.request.Approved)
+	if err := tx.ResolveApproval(ctx, a.request, status, "resolve approval "+a.request.ID); err != nil {
 		return err
 	}
-	if err := tx.SetIntentStatus(ctx, row.IntentID, policyStatus, request.Now, store.ResolveIntentStatus); err != nil {
+	change := domain.IntentStatusChange{IntentID: a.evaluation.row.IntentID, Status: policyStatus, Now: a.request.Now, Operation: store.ResolveIntentStatus}
+	if err := tx.SetIntentStatus(ctx, change); err != nil {
 		return err
 	}
-	return tx.AppendApprovalResolved(ctx, row, request.ID, status, request.Reason, request.Now)
+	return tx.AppendApprovalResolved(ctx, domain.ApprovalEvent{Intent: a.evaluation.row, ID: a.request.ID, Status: status, Reason: a.request.Reason, Now: a.request.Now})
 }

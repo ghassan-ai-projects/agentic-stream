@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
-	"time"
 )
 
+// EvaluateIntent runs ordered governance gates on the caller transaction.
 func (g *Service) EvaluateIntent(ctx context.Context, tx *store.Tx, request domain.EvaluationRequest) (domain.Result, error) {
 	if err := g.assertOwner(ctx, tx); err != nil {
 		return domain.Result{IntentID: request.IntentID}, err
@@ -19,14 +20,17 @@ func (g *Service) EvaluateIntent(ctx context.Context, tx *store.Tx, request doma
 	if err != nil {
 		return domain.Result{IntentID: request.IntentID}, err
 	}
-	if err := g.assertPolicyEpoch(ctx, tx, row); err != nil {
-		return g.denyEpochIntent(ctx, tx, row, err, request.Now)
+	return g.evaluateLoaded(ctx, tx, newEvaluation(row, request.Now))
+}
+
+func (g *Service) evaluateLoaded(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
+	if err := g.assertPolicyEpoch(ctx, tx, e.row); err != nil {
+		return g.denyEpochIntent(ctx, tx, e, err)
 	}
-	result := domain.Result{IntentID: row.IntentID, DecisionID: row.DecisionID}
-	if row.PolicyStatus != "pending" {
-		return g.evaluateExisting(ctx, tx, row, result, request.Now)
+	if e.row.PolicyStatus != "pending" {
+		return g.evaluateExisting(ctx, tx, e)
 	}
-	return g.evaluatePending(ctx, tx, row, result, request.Now)
+	return g.evaluatePending(ctx, tx, e)
 }
 
 func (g *Service) assertPolicyEpoch(ctx context.Context, tx *store.Tx, row domain.IntentRecord) error {
@@ -36,70 +40,62 @@ func (g *Service) assertPolicyEpoch(ctx context.Context, tx *store.Tx, row domai
 	return nil
 }
 
-func (g *Service) evaluateExisting(ctx context.Context, tx *store.Tx, row domain.IntentRecord, result domain.Result, now time.Time) (domain.Result, error) {
-	if row.PolicyStatus == "approval_required" {
-		if result, expired, err := g.expireExistingApproval(ctx, tx, row, result, now); expired || err != nil {
+func (g *Service) evaluateExisting(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
+	if e.row.PolicyStatus == "approval_required" {
+		if result, expired, err := g.expireExistingApproval(ctx, tx, e); expired || err != nil {
 			return result, err
 		}
 	}
-	result.Result = row.PolicyStatus
-	result.Reason = "already_evaluated"
-	if err := tx.BindExistingResult(ctx, row, &result); err != nil {
-		return result, err
+	e.result.Result = e.row.PolicyStatus
+	e.result.Reason = "already_evaluated"
+	if err := tx.BindExistingResult(ctx, e.row, &e.result); err != nil {
+		return e.result, err
 	}
-	return g.audit(ctx, tx, row, result, result.Result, result.Reason, now)
+	return g.audit(ctx, tx, e, domain.Outcome{Status: e.result.Result, Reason: e.result.Reason})
 }
 
-func (g *Service) expireExistingApproval(ctx context.Context, tx *store.Tx, row domain.IntentRecord, result domain.Result, now time.Time) (domain.Result, bool, error) {
-	approvalID, expiry, err := tx.PendingApprovalExpiry(ctx, row.IntentID)
+func (g *Service) expireExistingApproval(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, bool, error) {
+	approvalID, expiry, err := tx.PendingApprovalExpiry(ctx, e.row.IntentID)
 	if err != nil || approvalID == "" {
-		return result, false, err
+		return e.result, false, err
 	}
-	expiresAt, err := time.Parse(time.RFC3339Nano, expiry)
-	if err == nil && expiresAt.After(now) {
-		return result, false, nil
+	if !domain.ApprovalExpired(expiry, e.now) {
+		return e.result, false, nil
 	}
-	return g.recordExpiredApproval(ctx, tx, row, approvalID, result, now)
+	return g.recordExpiredApproval(ctx, tx, e, approvalID)
 }
 
-func (g *Service) markStale(ctx context.Context, tx *store.Tx, row domain.IntentRecord, result domain.Result, now time.Time) (domain.Result, error) {
-	if err := tx.SetIntentStatus(ctx, row.IntentID, "stale", now, store.MarkStaleStatus); err != nil {
-		return result, err
+func (g *Service) markStale(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
+	if err := tx.SetIntentStatus(ctx, domain.IntentStatusChange{IntentID: e.row.IntentID, Status: "stale", Now: e.now, Operation: store.MarkStaleStatus}); err != nil {
+		return e.result, err
 	}
-	return g.audit(ctx, tx, row, result, "stale", "situation_version_stale", now)
+	return g.audit(ctx, tx, e, domain.Outcome{Status: "stale", Reason: "situation_version_stale"})
 }
 
-func (g *Service) routeIntent(ctx context.Context, tx *store.Tx, row domain.IntentRecord, intent map[string]any, result domain.Result, expiresAt, now time.Time) (domain.Result, error) {
-	// The risk-class policy document is authoritative and enforced first: R3/R4
-	// are unconditionally denied regardless of a catalog requires_approval flag.
-	// requires_approval is an override only for the auto-approvable R0/R1 tier,
-	// and it consults an already-approved approval before creating a new request
-	// so a resolved approval terminates in dispatch instead of spawning another
-	// approval on the next EvaluateIntent (the approve -> re-pending loop).
-	switch row.RiskClass {
-	case "R0", "R1":
-		if row.RequiresApproval != 0 {
-			return g.approveOrRequireApproval(ctx, tx, row, intent, result, expiresAt, now)
-		}
-		return g.approveAutomatic(ctx, tx, row, intent, result, now)
-	case "R2":
-		return g.routeConsequentialIntent(ctx, tx, row, intent, result, expiresAt, now)
-	case "R3", "R4":
-		return g.finish(ctx, tx, row, result, "denied", "risk_policy_denied", now)
+func (g *Service) routeIntent(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
+	route, reason := domain.RiskRoute(e.row)
+	switch route {
+	case "automatic":
+		return g.approveAutomatic(ctx, tx, e)
+	case "approval":
+		return g.approveOrRequireApproval(ctx, tx, e)
+	case "calibration":
+		return g.routeConsequentialIntent(ctx, tx, e)
 	default:
-		return g.finish(ctx, tx, row, result, "denied", "unknown_risk_class", now)
+		return g.finish(ctx, tx, e, domain.Outcome{Status: "denied", Reason: reason})
 	}
 }
 
-func (g *Service) routeConsequentialIntent(ctx context.Context, tx *store.Tx, row domain.IntentRecord, intent map[string]any, result domain.Result, expiresAt, now time.Time) (domain.Result, error) {
-	if g.calibration != nil && row.SituationType != "" && row.ExecutorVersion != "" {
+func (g *Service) routeConsequentialIntent(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
+	if g.calibration != nil && e.row.SituationType != "" && e.row.ExecutorVersion != "" {
 		if err := tx.AssertCalibration(ctx, g.calibration, qualification.CalibrationArtifact{
-			Domain: row.SituationType, ModelRevision: row.ExecutorVersion,
+			Domain: e.row.SituationType, ModelRevision: e.row.ExecutorVersion,
 		}); err == nil {
-			return g.approveAutomatic(ctx, tx, row, intent, result.WithReason("calibrated_automation"), now)
+			e.result.Reason = "calibrated_automation"
+			return g.approveAutomatic(ctx, tx, e)
 		}
 	}
-	return g.approveOrRequireApproval(ctx, tx, row, intent, result, expiresAt, now)
+	return g.approveOrRequireApproval(ctx, tx, e)
 }
 
 // approveOrRequireApproval dispatches when a human has already approved this
@@ -107,35 +103,35 @@ func (g *Service) routeConsequentialIntent(ctx context.Context, tx *store.Tx, ro
 // approval is what breaks the approve -> re-pending -> new-approval loop: once
 // ResolveApproval marks the approval 'approved' and re-runs EvaluateIntent,
 // this path finds that row and terminates in dispatch.
-func (g *Service) approveOrRequireApproval(ctx context.Context, tx *store.Tx, row domain.IntentRecord, intent map[string]any, result domain.Result, expiresAt, now time.Time) (domain.Result, error) {
-	approvedApproval, err := tx.ApprovedApproval(ctx, row.IntentID)
+func (g *Service) approveOrRequireApproval(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
+	approvedApproval, err := tx.ApprovedApproval(ctx, e.row.IntentID)
 	switch {
 	case err == nil && approvedApproval != "":
-		result.ApprovalID = approvedApproval
-		result.Reason = "approved_by_human"
-		return g.approveAutomatic(ctx, tx, row, intent, result, now)
+		e.result.ApprovalID = approvedApproval
+		e.result.Reason = "approved_by_human"
+		return g.approveAutomatic(ctx, tx, e)
 	case err == nil:
-		return g.requireApproval(ctx, tx, row, intent, result, expiresAt, now)
+		return g.requireApproval(ctx, tx, e)
 	default:
-		return result, err
+		return e.result, err
 	}
 }
 
-func (g *Service) denyEpochIntent(ctx context.Context, tx *store.Tx, row domain.IntentRecord, err error, now time.Time) (domain.Result, error) {
+func (g *Service) denyEpochIntent(ctx context.Context, tx *store.Tx, e evaluation, err error) (domain.Result, error) {
 	reason := "epoch_killed"
 	if errors.Is(err, runtimecontrol.ErrEpochUnbound) {
 		reason = "epoch_unbound"
 	}
-	return g.finish(ctx, tx, row, domain.Result{IntentID: row.IntentID, DecisionID: row.DecisionID}, "denied", reason, now)
+	return g.finish(ctx, tx, e, domain.Outcome{Status: "denied", Reason: reason})
 }
 
-func (g *Service) recordExpiredApproval(ctx context.Context, tx *store.Tx, row domain.IntentRecord, approvalID string, result domain.Result, now time.Time) (domain.Result, bool, error) {
-	if err := tx.ExpireIntentApproval(ctx, row.IntentID); err != nil {
-		return result, true, err
+func (g *Service) recordExpiredApproval(ctx context.Context, tx *store.Tx, e evaluation, approvalID string) (domain.Result, bool, error) {
+	if err := tx.ExpireIntentApproval(ctx, e.row.IntentID); err != nil {
+		return e.result, true, err
 	}
-	if err := tx.AppendApprovalResolved(ctx, row, approvalID, "expired", "approval_expired", now); err != nil {
-		return result, true, err
+	if err := tx.AppendApprovalResolved(ctx, domain.ApprovalEvent{Intent: e.row, ID: approvalID, Status: "expired", Reason: "approval_expired", Now: e.now}); err != nil {
+		return e.result, true, err
 	}
-	result, err := g.finish(ctx, tx, row, result, "expired", "approval_expired", now)
+	result, err := g.finish(ctx, tx, e, domain.Outcome{Status: "expired", Reason: "approval_expired"})
 	return result, true, err
 }

@@ -6,7 +6,7 @@ identities and transaction-scoped producer handoffs. Internal Go compatibility
 is not a goal. External contracts, database schema and replay output stay fixed.
 
 - [Findings](FINDINGS.md)
-- [Ubiquitous language](UBIQUITOUS_LANGUAGE.md)
+- [Ubiquitous language](../../internal/policy/UBIQUITOUS_LANGUAGE.md)
 - [Design](DESIGN.md)
 - [Plan](PLAN.md)
 
@@ -20,3 +20,7 @@ runtime / exporters / replay
 internal/domain  internal/store
   pure rules      original transaction, SQL, ledger handoffs
 ```
+
+The final [module pattern](../../internal/policy/README.md) compares authority/device reuse
+and documents the caller-owned transaction adaptation. See [validation](VALIDATION.md)
+for accepted-round evidence and remaining limits.

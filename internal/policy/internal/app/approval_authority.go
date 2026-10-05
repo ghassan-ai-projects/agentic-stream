@@ -2,52 +2,61 @@ package app
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
 )
 
-func (g *Service) authorizeApproval(ctx context.Context, tx *store.Tx, row domain.IntentRecord, approvalID, approver, relay string, signature []byte) error {
-	if approver == "" || relay == "" || approver == relay {
-		return fmt.Errorf("relay and approver must be distinct registered principals")
+func (g *Service) authorizeApproval(ctx context.Context, tx *store.Tx, row domain.IntentRecord, r domain.ApprovalResolution) error {
+	if err := domain.DistinctPrincipals(r); err != nil {
+		return err
 	}
-	entityID, key, err := tx.LoadApprovalPrincipals(ctx, row, approver, relay)
+	entity, key, err := loadApprovalPrincipals(ctx, tx, row, r)
 	if err != nil {
 		return err
 	}
-	if err := verifyApprovalAssertion(ctx, tx, row, approvalID, approver, relay, key, signature); err != nil {
+	if err := verifyApprovalAssertion(ctx, tx, row, r, key); err != nil {
 		return err
 	}
-	return tx.RequireApprovalAuthority(ctx, row, entityID, approver)
+	active, err := tx.ApprovalAuthority(ctx, row, entity, r.Approver)
+	return domain.AuthorizedApprover(active, err != nil)
 }
-
-func verifyApprovalAssertion(ctx context.Context, tx *store.Tx, row domain.IntentRecord, approvalID, approver, relay string, publicKey, signature []byte) error {
-	assertion, err := approvalSigningBytes(ctx, tx, row, approvalID, approver, relay)
+func loadApprovalPrincipals(ctx context.Context, tx *store.Tx, row domain.IntentRecord, r domain.ApprovalResolution) (string, []byte, error) {
+	entity, err := tx.ApprovalEntity(ctx, row.SituationID)
+	if err != nil {
+		return "", nil, err
+	}
+	active, err := tx.RelayActivity(ctx, row.TenantID, r.Relay)
+	if err := domain.ActiveRelay(active, err != nil); err != nil {
+		return "", nil, err
+	}
+	key, err := tx.ApproverKey(ctx, row.TenantID, r.Approver)
+	if err := domain.ValidApproverKey(key, err != nil); err != nil {
+		return "", nil, err
+	}
+	return entity, key, nil
+}
+func verifyApprovalAssertion(ctx context.Context, tx *store.Tx, row domain.IntentRecord, r domain.ApprovalResolution, key []byte) error {
+	assertion, err := approvalSigningBytes(ctx, tx, row, r)
 	if err != nil {
 		return err
 	}
-	if !ed25519.Verify(ed25519.PublicKey(publicKey), assertion, signature) {
-		return fmt.Errorf("approval assertion signature is invalid")
-	}
-	assertionDigest := sha256.Sum256(assertion)
-	if err := tx.BindAssertion(ctx, approvalID, assertionDigest[:]); err != nil {
+	digest, err := domain.VerifyAssertion(key, assertion, r.Signature)
+	if err != nil {
 		return err
 	}
-	return nil
+	return tx.BindAssertion(ctx, r.ID, digest)
 }
-func approvalSigningBytes(ctx context.Context, tx *store.Tx, row domain.IntentRecord, approvalID, approver, relay string) ([]byte, error) {
-	expiresAt, nonce, err := tx.AssertionBinding(ctx, approvalID)
+func approvalSigningBytes(ctx context.Context, tx *store.Tx, row domain.IntentRecord, r domain.ApprovalResolution) ([]byte, error) {
+	expires, nonce, err := tx.AssertionBinding(ctx, r.ID)
 	if err != nil {
 		return nil, err
 	}
 	assertion, err := domain.ApprovalAssertionSigningBytes(domain.ApprovalAssertion{
-		ApprovalID: approvalID, IntentID: row.IntentID, DecisionID: row.DecisionID, TenantID: row.TenantID,
-		SituationID: row.SituationID, SituationVersion: row.SituationVersion, RiskClass: row.RiskClass,
-		IntentDigest: "sha256:" + hex.EncodeToString(row.IntentSHA), DecisionDigest: "sha256:" + hex.EncodeToString(row.DecisionSHA),
-		ExpiresAt: expiresAt, Nonce: nonce, ApproverID: approver, RelayID: relay,
+		ApprovalID: r.ID, IntentID: row.IntentID, DecisionID: row.DecisionID, TenantID: row.TenantID, SituationID: row.SituationID, SituationVersion: row.SituationVersion, RiskClass: row.RiskClass,
+		IntentDigest: "sha256:" + hex.EncodeToString(row.IntentSHA), DecisionDigest: "sha256:" + hex.EncodeToString(row.DecisionSHA), ExpiresAt: expires, Nonce: nonce, ApproverID: r.Approver, RelayID: r.Relay,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("approval assertion signature is invalid")

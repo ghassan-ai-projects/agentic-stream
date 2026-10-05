@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
+// BindExistingResult projects command or approval identity for an evaluated intent.
 func (tx *Tx) BindExistingResult(ctx context.Context, row domain.IntentRecord, result *domain.Result) error {
 	if row.PolicyStatus == "approved" {
 		if err := tx.tx.QueryRowContext(ctx, "SELECT command_id FROM commands WHERE intent_id = ?", row.IntentID).Scan(&result.CommandID); err != nil && !errors.Is(err, sql.ErrNoRows) {

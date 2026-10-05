@@ -2,28 +2,12 @@ package domain
 
 import (
 	"encoding/json"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
-func PendingDecisionFailure(row IntentRecord) string {
-	if row.ValidationStatus != "accepted" {
-		return "decision_not_accepted"
-	}
-	decision, reason := DecodeDocument(row.DecisionJSON, contractsv1.SchemaDecision)
-	if reason != "" {
-		return reason
-	}
-	if !MatchesDecisionIdentity(row, decision) {
-		return "identity_mismatch"
-	}
-	if !CanonicalDocumentMatches(row.DecisionJSON, row.DecisionSHA, canonicaljson.DomainDecision) {
-		return "decision_digest_mismatch"
-	}
-	return ""
-}
-
+// DecodeDocument decodes and schema-validates a governance contract.
 func DecodeDocument(raw []byte, schema contractsv1.SchemaName) (map[string]any, string) {
 	var document map[string]any
 	if err := json.Unmarshal(raw, &document); err != nil {
@@ -35,40 +19,46 @@ func DecodeDocument(raw []byte, schema contractsv1.SchemaName) (map[string]any, 
 	return document, ""
 }
 
-func MatchesDecisionIdentity(row IntentRecord, document map[string]any) bool {
-	return DocumentString(document, "decision_id") == row.DecisionID &&
-		DocumentString(document, "episode_id") == row.EpisodeID &&
-		DocumentString(document, "situation_id") == row.SituationID &&
-		DocumentInt(document, "situation_version") == row.SituationVersion &&
+// MatchesDecisionIdentity binds the decision to the accepted episode and Situation.
+func MatchesDecisionIdentity(row IntentRecord, document DecisionDocument) bool {
+	return document.ID == row.DecisionID &&
+		document.EpisodeID == row.EpisodeID &&
+		document.SituationID == row.SituationID &&
+		document.SituationVersion == row.SituationVersion &&
 		row.EpisodeTenant == row.TenantID && row.SituationTenant == row.TenantID &&
 		row.DecisionSituation == row.SituationID && row.DecisionVersion == row.SituationVersion &&
 		row.EpisodeSituation == row.SituationID && row.EpisodeVersion == row.SituationVersion
 }
 
-func MatchesIntentIdentity(row IntentRecord, document map[string]any) bool {
-	return DocumentString(document, "intent_id") == row.IntentID &&
-		DocumentString(document, "decision_id") == row.DecisionID &&
-		DocumentString(document, "tenant_id") == row.TenantID &&
-		DocumentString(document, "situation_id") == row.SituationID &&
-		DocumentInt(document, "situation_version") == row.SituationVersion &&
-		DocumentString(document, "type") == row.IntentType &&
-		DocumentString(document, "risk_class") == row.RiskClass
+// MatchesIntentIdentity binds intent fields to their accepted durable projection.
+func MatchesIntentIdentity(row IntentRecord, document IntentDocument) bool {
+	return document.ID == row.IntentID &&
+		document.DecisionID == row.DecisionID &&
+		document.TenantID == row.TenantID &&
+		document.SituationID == row.SituationID &&
+		document.SituationVersion == row.SituationVersion &&
+		document.Type == row.IntentType &&
+		document.RiskClass == row.RiskClass
 }
 
+// EpisodeConcluded permits governance only after the episode has concluded.
 func EpisodeConcluded(row IntentRecord) bool {
 	return row.EpisodeLifecycle == "concluded" || row.EpisodeLifecycle == "closed"
 }
 
+// SourceHealthIncomplete refuses consequential work from incomplete current evidence.
 func SourceHealthIncomplete(row IntentRecord) bool {
 	consequential := row.RiskClass == "R2" || row.RiskClass == "R3" || row.RiskClass == "R4"
 	return consequential && (row.CurrentCompleteness == "provisional" || row.CurrentCompleteness == "uncertain")
 }
 
+// ApprovalExpired treats invalid expiry and the deadline itself as expired.
 func ApprovalExpired(expiresAt string, now time.Time) bool {
 	expires, err := time.Parse(time.RFC3339Nano, expiresAt)
 	return err != nil || !expires.After(now)
 }
 
+// ApprovalDecision chooses lifecycle and intent status for a human decision.
 func ApprovalDecision(approved bool) (status, policyStatus string) {
 	if approved {
 		return "approved", "pending"

@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
+// InsertCommand creates only a new pending command without rewriting existing work.
 func (tx *Tx) InsertCommand(ctx context.Context, row domain.IntentRecord, command domain.CommandRecord, now time.Time) (bool, error) {
 	result, err := tx.tx.ExecContext(ctx, insertPolicyCommandSQL,
 		command.ID, row.IntentID, row.TenantID, row.IntentType, command.Target,
@@ -19,6 +21,7 @@ func (tx *Tx) InsertCommand(ctx context.Context, row domain.IntentRecord, comman
 	return commandInsertResult(result)
 }
 
+// RemovePreparedCommand deletes exactly the specified pending command for an intent.
 func (tx *Tx) RemovePreparedCommand(ctx context.Context, intentID, commandID string) error {
 	result, err := tx.tx.ExecContext(ctx, "DELETE FROM commands WHERE intent_id = ? AND command_id = ? AND status = 'pending'", intentID, commandID)
 	if err != nil {
@@ -34,6 +37,7 @@ func (tx *Tx) RemovePreparedCommand(ctx context.Context, intentID, commandID str
 	return nil
 }
 
+// InsertCommandOutbox publishes the immutable command once.
 func (tx *Tx) InsertCommandOutbox(ctx context.Context, commandID string, commandJSON []byte, now time.Time) error {
 	if _, err := tx.tx.ExecContext(ctx, `
 		INSERT INTO outbox (

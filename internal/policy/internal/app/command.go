@@ -3,55 +3,54 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strings"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
-	"strings"
-	"time"
 )
 
-func (g *Service) approveAutomatic(ctx context.Context, tx *store.Tx, row domain.IntentRecord, intent map[string]any, result domain.Result, now time.Time) (domain.Result, error) {
-	if err := g.assertInterlock(ctx, tx, row, intent); err != nil {
+func (g *Service) approveAutomatic(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
+	if err := g.assertInterlock(ctx, tx, e); err != nil {
 		if !errors.Is(err, interlock.ErrTripped) {
-			return result, err
+			return e.result, err
 		}
-		return g.finishWithAuditReason(ctx, tx, row, result, "denied", "interlock_not_ready", interlockDenialAuditReason(err), now)
+		return g.finish(ctx, tx, e, domain.Outcome{Status: "denied", Reason: "interlock_not_ready", AuditDetail: interlockDenialAuditReason(err)})
 	}
-	command, existingID, err := g.commandForIntent(ctx, tx, row, intent, now)
+	command, existingID, err := g.commandForIntent(ctx, tx, e)
 	if err != nil {
-		return result, err
+		return e.result, err
 	}
-	return g.approvePreparedCommand(ctx, tx, row, command, existingID, result, now)
+	return g.approvePreparedCommand(ctx, tx, e, command, existingID)
 }
 
 // commandForIntent returns the ID of the intent's existing command, or
 // inserts a new command and returns it. A concurrent insert that wins the
 // race is reported as existing.
-func (g *Service) commandForIntent(ctx context.Context, tx *store.Tx, row domain.IntentRecord, intent map[string]any, now time.Time) (domain.CommandRecord, string, error) {
-	commandID, err := tx.ExistingCommandID(ctx, row.IntentID)
+func (g *Service) commandForIntent(ctx context.Context, tx *store.Tx, e evaluation) (domain.CommandRecord, string, error) {
+	commandID, err := tx.ExistingCommandID(ctx, e.row.IntentID)
 	if err != nil || commandID != "" {
 		return domain.CommandRecord{}, commandID, err
 	}
-	command, err := domain.NewCommand(g.idGen.New(ids.PrefixCommand), g.policyDigest, row, intent, now)
+	command, err := domain.NewCommand(domain.CommandPreparation{ID: g.idGen.New(ids.PrefixCommand), PolicyDigest: g.policyDigest, Row: e.row, Intent: e.documents.Intent, Now: e.now})
 	if err != nil {
 		return domain.CommandRecord{}, "", err
 	}
-	return tx.StoreCommandOnce(ctx, row, command, now)
+	return tx.StoreCommandOnce(ctx, e.row, command, e.now)
 }
 
 // rateLimited withdraws the prepared command and reports true when the
 // intent type has used its hourly dispatch limit.
-func (g *Service) rateLimited(ctx context.Context, tx *store.Tx, row domain.IntentRecord, commandID string, now time.Time) (bool, error) {
-	if row.RateLimitPerHour <= 0 {
+func (g *Service) rateLimited(ctx context.Context, tx *store.Tx, e evaluation, commandID string) (bool, error) {
+	if e.row.RateLimitPerHour <= 0 {
 		return false, nil
 	}
-	overLimit, err := tx.DispatchWithinLimit(ctx, row, now)
+	overLimit, err := tx.DispatchWithinLimit(ctx, e.row, e.now)
 	if err != nil || !overLimit {
 		return false, err
 	}
-	if err := tx.RemovePreparedCommand(ctx, row.IntentID, commandID); err != nil {
+	if err := tx.RemovePreparedCommand(ctx, e.row.IntentID, commandID); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -59,18 +58,18 @@ func (g *Service) rateLimited(ctx context.Context, tx *store.Tx, row domain.Inte
 
 // queueApprovedCommand writes the command outbox row, marks the intent
 // approved, and audits the approval.
-func (g *Service) queueApprovedCommand(ctx context.Context, tx *store.Tx, row domain.IntentRecord, command domain.CommandRecord, result domain.Result, now time.Time) (domain.Result, error) {
-	if err := tx.InsertCommandOutbox(ctx, command.ID, command.JSON, now); err != nil {
-		return result, err
+func (g *Service) queueApprovedCommand(ctx context.Context, tx *store.Tx, e evaluation, command domain.CommandRecord) (domain.Result, error) {
+	if err := tx.InsertCommandOutbox(ctx, command.ID, command.JSON, e.now); err != nil {
+		return e.result, err
 	}
-	if err := tx.SetIntentStatus(ctx, row.IntentID, "approved", now, store.ApproveIntentStatus); err != nil {
-		return result, err
+	if err := tx.SetIntentStatus(ctx, domain.IntentStatusChange{IntentID: e.row.IntentID, Status: "approved", Now: e.now, Operation: store.ApproveIntentStatus}); err != nil {
+		return e.result, err
 	}
-	if result.Reason == "" {
-		result.Reason = "automatic_r0_r1"
+	if e.result.Reason == "" {
+		e.result.Reason = "automatic_r0_r1"
 	}
-	result.Result, result.CommandID = "approved", command.ID
-	return g.audit(ctx, tx, row, result, result.Result, result.Reason, now)
+	e.result.Result, e.result.CommandID = "approved", command.ID
+	return g.audit(ctx, tx, e, domain.Outcome{Status: e.result.Result, Reason: e.result.Reason})
 }
 
 func interlockDenialAuditReason(err error) string {
@@ -82,28 +81,21 @@ func interlockDenialAuditReason(err error) string {
 	return "interlock_not_ready: " + detail
 }
 
-func (g *Service) assertInterlock(ctx context.Context, tx *store.Tx, row domain.IntentRecord, intent map[string]any) error {
-	if err := tx.AssertInterlock(ctx, g.interlock, row.TenantID, domain.NormalizedTarget(row.IntentID, intent), row.RiskClass); err != nil {
-		return fmt.Errorf("assert action interlock: %w", err)
-	}
-	return nil
+func (g *Service) assertInterlock(ctx context.Context, tx *store.Tx, e evaluation) error {
+	return tx.AssertInterlock(ctx, g.interlock, e.row.TenantID, domain.NormalizedTarget(e.row.IntentID, e.documents.Intent.Parameters), e.row.RiskClass)
 }
 
-// existingCommandID returns an empty ID when the intent has no command. All
-// other lookup failures are returned so callers cannot confuse missing data
-// with a storage failure.
-
-func (g *Service) approvePreparedCommand(ctx context.Context, tx *store.Tx, row domain.IntentRecord, command domain.CommandRecord, existingID string, result domain.Result, now time.Time) (domain.Result, error) {
+func (g *Service) approvePreparedCommand(ctx context.Context, tx *store.Tx, e evaluation, command domain.CommandRecord, existingID string) (domain.Result, error) {
 	if existingID != "" {
-		result.Result, result.Reason, result.CommandID = "approved", "already_commanded", existingID
-		return g.audit(ctx, tx, row, result, "approved", result.Reason, now)
+		e.result.Result, e.result.Reason, e.result.CommandID = "approved", "already_commanded", existingID
+		return g.audit(ctx, tx, e, domain.Outcome{Status: "approved", Reason: e.result.Reason})
 	}
-	limited, err := g.rateLimited(ctx, tx, row, command.ID, now)
+	limited, err := g.rateLimited(ctx, tx, e, command.ID)
 	if err != nil {
-		return result, err
+		return e.result, err
 	}
 	if limited {
-		return g.finish(ctx, tx, row, result, "denied", "rate_limited", now)
+		return g.finish(ctx, tx, e, domain.Outcome{Status: "denied", Reason: "rate_limited"})
 	}
-	return g.queueApprovedCommand(ctx, tx, row, command, result, now)
+	return g.queueApprovedCommand(ctx, tx, e, command)
 }
