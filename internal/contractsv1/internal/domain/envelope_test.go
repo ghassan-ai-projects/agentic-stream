@@ -1,4 +1,4 @@
-package contractsv1
+package domain
 
 import (
 	"strings"

@@ -1,22 +1,22 @@
-package contractsv1_test
+package domain_test
 
 import (
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/internal/domain"
 )
 
 func TestSharedSchemaIDsAndValidation(t *testing.T) {
 	tests := []struct {
 		name   string
-		schema contractsv1.SchemaName
+		schema domain.SchemaName
 		valid  map[string]any
 	}{
 		{
 			name:   "snapshot",
-			schema: contractsv1.SchemaSnapshot,
+			schema: domain.SchemaSnapshot,
 			valid: map[string]any{
 				"situation_id": "sit_1", "situation_version": 1, "situation_type": "test",
 				"tenant_id": "default", "entity": map[string]any{"type": "motor", "id": "m1"},
@@ -28,7 +28,7 @@ func TestSharedSchemaIDsAndValidation(t *testing.T) {
 		},
 		{
 			name:   "decision",
-			schema: contractsv1.SchemaDecision,
+			schema: domain.SchemaDecision,
 			valid: map[string]any{
 				"decision_id": "dec_1", "episode_id": "epi_1",
 				"attempt_id": "att_1", "fence": 1,
@@ -38,7 +38,7 @@ func TestSharedSchemaIDsAndValidation(t *testing.T) {
 		},
 		{
 			name:   "intent",
-			schema: contractsv1.SchemaIntent,
+			schema: domain.SchemaIntent,
 			valid: map[string]any{
 				"intent_id": "int_1", "intent_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444", "decision_id": "dec_1", "tenant_id": "default",
 				"situation_id": "sit_1", "situation_version": 1, "type": "maintenance.ticket",
@@ -47,7 +47,7 @@ func TestSharedSchemaIDsAndValidation(t *testing.T) {
 		},
 		{
 			name:   "command",
-			schema: contractsv1.SchemaCommand,
+			schema: domain.SchemaCommand,
 			valid: map[string]any{
 				"command_id": "cmd_1", "intent_id": "int_1", "tenant_id": "default",
 				"effector_route": "maintenance.ticket", "normalized_target": "motor/m1",
@@ -57,7 +57,7 @@ func TestSharedSchemaIDsAndValidation(t *testing.T) {
 		},
 		{
 			name:   "outcome",
-			schema: contractsv1.SchemaOutcome,
+			schema: domain.SchemaOutcome,
 			valid: map[string]any{
 				"outcome_id": "out_1", "command_id": "cmd_1", "status": "succeeded",
 				"observed_at": "2026-08-04T23:27:00.000000000Z",
@@ -67,14 +67,14 @@ func TestSharedSchemaIDsAndValidation(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			id, err := contractsv1.SchemaID(test.schema)
+			id, err := domain.SchemaID(test.schema)
 			if err != nil {
 				t.Fatalf("SchemaID: %v", err)
 			}
 			if id != "urn:situation-runtime:schema:"+string(test.schema)+":v1" {
 				t.Fatalf("schema id = %q", id)
 			}
-			if err := contractsv1.Validate(test.schema, test.valid); err != nil {
+			if err := domain.Validate(test.schema, test.valid); err != nil {
 				t.Fatalf("valid document rejected: %v", err)
 			}
 		})
@@ -88,14 +88,14 @@ func TestSharedSchemaRejectsUnknownProperties(t *testing.T) {
 		"snapshot_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
 		"confidence":      0.8, "decision_type": "need_more_evidence", "intents": []any{}, "unexpected": true,
 	}
-	if err := contractsv1.Validate(contractsv1.SchemaDecision, valid); err == nil {
+	if err := domain.Validate(domain.SchemaDecision, valid); err == nil {
 		t.Fatal("expected unknown decision property to be rejected")
 	}
 }
 
 func TestCloudEventEnvelopeDigestBindsMetadataAndData(t *testing.T) {
 	now := time.Date(2026, 8, 4, 22, 26, 0, 0, time.UTC)
-	event := contractsv1.CloudEvent{
+	event := domain.CloudEvent{
 		SpecVersion:     "1.0",
 		ID:              "evt_notification_1",
 		Source:          "//agentic-stream/tenants/default/situations",
@@ -108,7 +108,7 @@ func TestCloudEventEnvelopeDigestBindsMetadataAndData(t *testing.T) {
 		TenantID:        "default",
 		PartitionKey:    "motor-1",
 		IngestedTime:    now.Add(time.Second),
-		Classification:  contractsv1.ClassificationInternal,
+		Classification:  domain.ClassificationInternal,
 	}
 	digest, err := event.ComputeEnvelopeDigest()
 	if err != nil {
@@ -133,7 +133,7 @@ func TestCloudEventEnvelopeDigestBindsMetadataAndData(t *testing.T) {
 }
 
 func TestTraceContextValidationAndSpanLink(t *testing.T) {
-	ctx, err := contractsv1.ParseTraceContext("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", "vendor=value")
+	ctx, err := domain.ParseTraceContext("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", "vendor=value")
 	if err != nil {
 		t.Fatalf("parse trace context: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestTraceContextValidationAndSpanLink(t *testing.T) {
 		{"state without parent", "", "vendor=value"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := contractsv1.ParseTraceContext(tc.parent, tc.state); err == nil {
+			if _, err := domain.ParseTraceContext(tc.parent, tc.state); err == nil {
 				t.Fatal("expected invalid trace context")
 			}
 		})

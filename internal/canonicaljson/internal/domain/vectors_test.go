@@ -170,7 +170,7 @@ func readVectors(t *testing.T) canonicalizationVectors {
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	path := filepath.Join(filepath.Dir(source), "..", "..", "..", "contractsv1", "testdata", "canonicalization-vectors.json")
+	path := filepath.Join(filepath.Dir(source), "..", "..", "..", "contractsv1", "internal", "domain", "testdata", "canonicalization-vectors.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read vectors: %v", err)

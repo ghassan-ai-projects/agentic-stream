@@ -1,9 +1,9 @@
-package contractsv1_test
+package domain_test
 
 import (
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/internal/domain"
 )
 
 // Device wire schemas for the serial effector boundary (Real-World Sensor
@@ -19,15 +19,15 @@ import (
 
 func TestDeviceWireGoldenFramesValidate(t *testing.T) {
 	t.Parallel()
-	for _, messageType := range contractsv1.ConformanceValidMessageTypes() {
+	for _, messageType := range domain.ConformanceValidMessageTypes() {
 		messageType := messageType
 		t.Run(messageType, func(t *testing.T) {
 			t.Parallel()
-			schema, ok := contractsv1.SchemaForMessageType(messageType)
+			schema, ok := domain.SchemaForMessageType(messageType)
 			if !ok {
 				t.Fatalf("no schema for message_type %q", messageType)
 			}
-			if err := contractsv1.Validate(schema, contractsv1.ConformanceValidFrame(messageType)); err != nil {
+			if err := domain.Validate(schema, domain.ConformanceValidFrame(messageType)); err != nil {
 				t.Fatalf("golden %s frame must validate: %v", messageType, err)
 			}
 		})
@@ -36,7 +36,7 @@ func TestDeviceWireGoldenFramesValidate(t *testing.T) {
 
 func TestDeviceWireFramesFailClosed(t *testing.T) {
 	t.Parallel()
-	frames := contractsv1.ConformanceInvalidFrames()
+	frames := domain.ConformanceInvalidFrames()
 	if len(frames) == 0 {
 		t.Fatal("expected a non-empty invalid conformance corpus")
 	}
@@ -44,7 +44,7 @@ func TestDeviceWireFramesFailClosed(t *testing.T) {
 		frame := frame
 		t.Run(frame.Name, func(t *testing.T) {
 			t.Parallel()
-			if err := contractsv1.Validate(frame.Schema, frame.Doc); err == nil {
+			if err := domain.Validate(frame.Schema, frame.Doc); err == nil {
 				t.Fatalf("mutated %s frame must fail closed, but validated", frame.Name)
 			}
 		})

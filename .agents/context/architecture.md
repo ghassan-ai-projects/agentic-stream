@@ -18,7 +18,7 @@ The authoritative architecture is [docs/design/TECHNICAL_DESIGN.md](../../docs/d
 - `cmd/agentic-stream/`: entrypoint, flags, wiring, shutdown
 - `internal/contractsv1` · `internal/spec` · `internal/ingress` · `internal/eventlog` · `internal/engine` · `internal/operators` · `internal/situations` · `internal/cognition` · `internal/episodes` · `internal/evidence` · `internal/decisions` · `internal/policy` · `internal/actions` · `internal/replay` · `internal/api` · `internal/telemetry` · `internal/storage` · `internal/notify` · `internal/eventschema` · `internal/runtime`
 - `proto/agenticstream/runtime/v1/`: worker protocol (Protobuf/gRPC over UDS)
-- `internal/spec/schema.json` · `internal/contractsv1/schemas/v1/` · `migrations/` · `examples/predictive-maintenance/`
+- `internal/spec/schema.json` · `internal/contractsv1/internal/domain/schemas/v1/` · `migrations/` · `examples/predictive-maintenance/`
 
 ## Data Flow
 

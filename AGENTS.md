@@ -96,7 +96,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/storage` - SQLite WAL via `modernc.org/sqlite`
 - `internal/sources` - injected time and identity sources: physical/virtual clock, random/deterministic id generators and the id prefixes
 - `proto/agenticstream/runtime/v1/` - worker protocol (Protobuf/gRPC over UDS)
-- `internal/spec/schema.json` and `internal/contractsv1/schemas/v1/` - embedded JSON Schemas
+- `internal/spec/schema.json` and `internal/contractsv1/internal/domain/schemas/v1/` - embedded JSON Schemas
 - `migrations/` - SQLite migrations
 - `examples/predictive-maintenance/` - the first product fixture and acceptance work
 - `examples/predictive-maintenance/testdata/` - replay and simulator traces

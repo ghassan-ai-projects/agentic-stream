@@ -1,4 +1,4 @@
-package contractsv1
+package domain
 
 // ContractVersion is the shared JSON contract package major version.
 const ContractVersion = "situation-runtime-contracts/v1"

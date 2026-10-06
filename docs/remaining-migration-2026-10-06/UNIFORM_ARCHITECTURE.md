@@ -14,6 +14,8 @@ layers its work needs, with a `UBIQUITOUS_LANGUAGE.md` and a record under `docs/
 | talks to an external system | `app`, `transport` (and `wire` for a protocol) |
 | is pure rules | none: facade + `domain` |
 
+The facade exposes only what other packages use. Exported code nothing outside the module uses stays inside `domain` and is listed in [EXPOSURE.md](EXPOSURE.md) as a candidate for deletion, for the owner to decide.
+
 A package under about 300 production lines does not stand alone: it merges into
 the module whose vocabulary it belongs to. The only stand-alone small packages
 allowed are listed under "Exceptions", each with the dependency reason. Test
@@ -74,5 +76,7 @@ renumbering may be needed again for `actionport` (it gains a store).
 | `interlock` into `actionport` | **Tried and reverted.** `actionport` is a contract package that must not import `database/sql` (the interlock reader is defined on `*sql.Tx`), and its layer would sit level with its own consumers. `control` stays rejected (it widens the imports of policy, actions and watch). Result: `interlock` stays a documented stand-alone exception unless you choose `control` |
 | `executor/conformance` to `internal/testsupport/executorconformance` | Done |
 | `executor/fixture` to `testsupport` | Held: composition imports it for demo mode, so it is production code; moving it needs a decision on demo mode |
-| `contractsv1`, `operators`, `situations` to facade + domain; `spec`, `worker`, `telemetry`, `api` layered | Not started |
+| `contractsv1` to facade (production-used surface only) + domain, with its schemas and conformance data under `internal/domain`; see [EXPOSURE.md](EXPOSURE.md) | Done |
+| `operators`, `situations` to facade + domain; `spec`, `worker`, `telemetry`, `api` layered | Not started |
+| Rename `contractsv1` to `contracts` (drop the version from the package name; the version stays in `ContractVersion`, `schemas/v1` and the wire ids) | Proposed, awaiting your decision |
 | One gate requiring facade + `internal/domain` for every module | Not started |

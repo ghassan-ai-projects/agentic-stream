@@ -41,7 +41,7 @@ func (t *partialSafeStopTransport) Close() error {
 }
 
 func TestSafeStopPossiblySentFailureInvalidatesTransport(t *testing.T) {
-	catalogData, err := os.ReadFile("../../../contractsv1/conformance/v1/thermal-capability-catalog.json")
+	catalogData, err := os.ReadFile("../../../contractsv1/internal/domain/conformance/v1/thermal-capability-catalog.json")
 	if err != nil {
 		t.Fatal(err)
 	}

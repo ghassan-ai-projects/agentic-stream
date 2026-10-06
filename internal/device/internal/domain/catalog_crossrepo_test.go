@@ -24,7 +24,7 @@ func physicalSensorRoot(t *testing.T) string {
 }
 
 func TestPhysicalArduinoCatalogMaterializesAndValidatesLEDAndFanCommands(t *testing.T) {
-	data, err := os.ReadFile("../../../contractsv1/conformance/v1/thermal-capability-catalog.json")
+	data, err := os.ReadFile("../../../contractsv1/internal/domain/conformance/v1/thermal-capability-catalog.json")
 	if err != nil {
 		t.Fatalf("read canonical physical catalog: %v", err)
 	}

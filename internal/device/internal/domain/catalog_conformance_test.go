@@ -14,7 +14,7 @@ const thermalCapabilityCatalogDigest = "sha256:0d61225286c628cfba8cbf7aea514e1fd
 
 func TestThermalCapabilityCatalogDigest(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../../contractsv1/conformance/v1/thermal-capability-catalog.json")
+	data, err := os.ReadFile("../../../contractsv1/internal/domain/conformance/v1/thermal-capability-catalog.json")
 	if err != nil {
 		t.Fatalf("read canonical catalog: %v", err)
 	}

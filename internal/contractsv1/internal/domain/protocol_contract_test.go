@@ -1,4 +1,4 @@
-package contractsv1
+package domain
 
 import (
 	"os"
@@ -13,7 +13,7 @@ func TestRuntimeProtocolFreezesWorkerBoundary(t *testing.T) {
 	if !ok {
 		t.Fatal("runtime.Caller did not return the test path")
 	}
-	protoPath := filepath.Join(filepath.Dir(filename), "..", "..", "docs", "design", "contracts", "runtime-v1.proto")
+	protoPath := filepath.Join(filepath.Dir(filename), "..", "..", "..", "..", "docs", "design", "contracts", "runtime-v1.proto")
 	proto, err := os.ReadFile(protoPath)
 	if err != nil {
 		t.Fatalf("read runtime protocol: %v", err)
