@@ -47,9 +47,14 @@ func (o SimulatorOptions) parseEvent(record map[string]any) (simulatorEvent, err
 		return simulatorEvent{}, err
 	}
 	event := simulatorEvent{simulatorIdentity: ident, eventTime: eventTime, arrival: arrival}
-	event.value, event.hasValue = fields["value"]
-	event.unit, _ = fields["unit"].(string)
+	event.readValue(fields)
 	return event, nil
+}
+
+// readValue takes the optional value and unit from the event fields.
+func (e *simulatorEvent) readValue(fields map[string]any) {
+	e.value, e.hasValue = fields["value"]
+	e.unit, _ = fields["unit"].(string)
 }
 
 // simulatorIdentity names one simulator event and its entity and channel.
