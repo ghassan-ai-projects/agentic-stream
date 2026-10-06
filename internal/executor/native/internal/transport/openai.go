@@ -1,4 +1,4 @@
-package native
+package transport
 
 import (
 	"bytes"
@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
 )
 
 // OpenAICompatibleProvider speaks the JSON/SSE subset shared by OpenAI-style
@@ -38,23 +40,23 @@ var defaultOpenAIHTTPClient = &http.Client{
 func (p *OpenAICompatibleProvider) Name() string { return "openai-compatible" }
 
 // Stream sends one bounded structured-output turn and normalizes either a
-// regular JSON response or Server-Sent Events into ModelResponse.
-func (p *OpenAICompatibleProvider) Stream(ctx context.Context, req ModelRequest) (ModelResponse, error) {
+// regular JSON response or Server-Sent Events into domain.ModelResponse.
+func (p *OpenAICompatibleProvider) Stream(ctx context.Context, req domain.ModelRequest) (domain.ModelResponse, error) {
 	if p == nil || strings.TrimSpace(p.Endpoint) == "" || strings.TrimSpace(p.Model) == "" {
-		return ModelResponse{}, errors.New("openai-compatible endpoint and model are required")
+		return domain.ModelResponse{}, errors.New("openai-compatible endpoint and model are required")
 	}
 	httpRequest, err := p.buildHTTPRequest(ctx, req)
 	if err != nil {
-		return ModelResponse{}, err
+		return domain.ModelResponse{}, err
 	}
 	client, err := p.boundedHTTPClient()
 	if err != nil {
-		return ModelResponse{}, err
+		return domain.ModelResponse{}, err
 	}
 	return callProvider(client, httpRequest)
 }
 
-func (p *OpenAICompatibleProvider) buildHTTPRequest(ctx context.Context, req ModelRequest) (*http.Request, error) {
+func (p *OpenAICompatibleProvider) buildHTTPRequest(ctx context.Context, req domain.ModelRequest) (*http.Request, error) {
 	userContent, err := buildUserContent(req)
 	if err != nil {
 		return nil, fmt.Errorf("build provider user content: %w", err)
@@ -103,7 +105,7 @@ type openAIMessage struct {
 	Content string `json:"content"`
 }
 
-func buildUserContent(req ModelRequest) (string, error) {
+func buildUserContent(req domain.ModelRequest) (string, error) {
 	document := map[string]any{
 		"objective":            req.Objective,
 		"snapshot":             req.Snapshot,
@@ -121,7 +123,7 @@ func buildUserContent(req ModelRequest) (string, error) {
 	return string(raw), nil
 }
 
-func providerTools(definitions []ToolDefinition) []openAITool {
+func providerTools(definitions []domain.ToolDefinition) []openAITool {
 	result := make([]openAITool, 0, len(definitions))
 	for _, definition := range definitions {
 		result = append(result, openAITool{Type: "function", Function: struct {
@@ -133,14 +135,14 @@ func providerTools(definitions []ToolDefinition) []openAITool {
 	return result
 }
 
-func callProvider(client *http.Client, httpRequest *http.Request) (ModelResponse, error) {
+func callProvider(client *http.Client, httpRequest *http.Request) (domain.ModelResponse, error) {
 	response, err := client.Do(httpRequest)
 	if err != nil {
-		return ModelResponse{}, fmt.Errorf("call model provider: %w", err)
+		return domain.ModelResponse{}, fmt.Errorf("call model provider: %w", err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if err := checkProviderStatus(response); err != nil {
-		return ModelResponse{}, err
+		return domain.ModelResponse{}, err
 	}
 	return decodeProviderResponse(response)
 }

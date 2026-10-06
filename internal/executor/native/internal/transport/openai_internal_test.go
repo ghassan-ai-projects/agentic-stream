@@ -1,4 +1,4 @@
-package native
+package transport
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
 )
 
 func TestOpenAICompatibleProviderUsesBoundedDefaultClient(t *testing.T) {
@@ -35,7 +37,7 @@ func TestOpenAICompatibleProviderUsesBoundedDefaultClient(t *testing.T) {
 	}
 
 	provider := &OpenAICompatibleProvider{Endpoint: "https://model.invalid/v1/chat/completions", Model: "test-model"}
-	if _, err := provider.Stream(context.Background(), ModelRequest{DecisionSchema: []byte(`{"type":"object"}`)}); err != nil {
+	if _, err := provider.Stream(context.Background(), domain.ModelRequest{DecisionSchema: []byte(`{"type":"object"}`)}); err != nil {
 		t.Fatalf("default client request: %v", err)
 	}
 	if !called {

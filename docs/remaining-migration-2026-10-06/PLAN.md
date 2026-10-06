@@ -79,10 +79,26 @@ they join the read-port work rather than blocking it.
 | 4b `runartifact` layering | Done, see [record](../runartifact-reference-module-2026-10-06/README.md) | this commit |
 | 5a `executor/remote` layering | Done, see [record](../executor-remote-reference-module-2026-10-06/README.md) | this commit |
 | 5b `worker` split | Held (reference server kept until the owner decides) | — |
-| 6 `executor/native` | Not started | — |
+| 6 `executor/native` layering | Done, see [record](../executor-native-reference-module-2026-10-06/README.md) | this commit |
 | 7 Gates and docs | Not started | — |
 | 7b Ubiquitous language everywhere | Done | this commit |
 | 8 Operator levers | Blocked on owner decision | — |
 
 Update the migration-status README and `deadcode-production-unreachable.txt`
 (`deadcode ./... > ...`) as each round lands.
+
+## Findings made while migrating
+
+- **`engine.RunGlobal` re-reads the whole event log from position 0 on every
+  call** and relies on the inbox to skip applied events, so each pipeline
+  iteration is O(log size). The deleted-candidate per-partition path used the
+  checkpoint. Not changed; decide whether `RunGlobal` should resume from the
+  checkpoint (P2 performance, needs a replay-determinism check).
+- **Dead-code review corrections**: `episodes.CompileIntentCatalog` is called by
+  `replay`'s shadow path, `authority.ParseReconciliationEvidence` backs a
+  device-to-authority contract test, and `control.SetCostLimit` is used by tests
+  in two packages, so none of them is a plain deletion. Deletions are held for the
+  owner either way.
+- **Layer table**: adding the remote and native layers moved every package at
+  layer 11 or above up by three (runtime transport 14, runtime app 15,
+  composition 16, replay 14/15/16, runtime 17, cmd 18).

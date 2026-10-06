@@ -1,257 +1,79 @@
-// Package native implements the in-process Go episode executor.
-//
-// The executor owns the bounded model/tool loop. Providers only propose model
-// output; tools are read-only capabilities and every Decision still returns to
-// the episodes and policy packages for authoritative validation.
 package native
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"slices"
-	"strings"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
+	app "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/app"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/transport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// Config controls the provider and read-only capabilities used by the native
-// loop. Episode resource ceilings come from each trusted Request. Structured
-// output repair is always limited to one attempt.
-type Config struct {
-	Provider      ModelProvider
-	Tools         []Tool
-	ArtifactStore ArtifactStore
-	ToolFactory   func(*episodes.Request) []Tool
-}
+// ErrInterrupt is a provider or tool interruption. Non-interactive episodes
+// fail immediately when this error is returned; they never wait for input.
+var ErrInterrupt = domain.ErrInterrupt
 
-// Executor is a bounded native Go episode executor.
-type Executor struct {
-	provider    ModelProvider
-	tools       map[string]Tool
-	artifacts   ArtifactStore
-	maxRepair   uint32
-	toolFactory func(*episodes.Request) []Tool
-}
+type (
+	// RetryableError marks a provider failure that may consume the separate
+	// provider-retry allowance.
+	RetryableError = domain.RetryableError
+	// Usage is provider-reported usage, treated as cumulative consumption.
+	Usage = domain.Usage
+	// ToolCall is a provider-proposed read operation.
+	ToolCall = domain.ToolCall
+	// ModelResponse is one provider turn.
+	ModelResponse = domain.ModelResponse
+	// ModelRequest is the immutable episode projection plus bounded observations.
+	ModelRequest = domain.ModelRequest
+	// ToolDefinition is the provider-facing declaration of one read capability.
+	ToolDefinition = domain.ToolDefinition
+	// ModelProvider is the narrow provider port used by the native executor.
+	ModelProvider = domain.ModelProvider
+	// Tool is a read-only episode capability.
+	Tool = domain.Tool
+	// ToolResult is a bounded structured observation.
+	ToolResult = domain.ToolResult
+	// Observation is the durable-safe projection sent to the provider.
+	Observation = domain.Observation
+	// ArtifactRef identifies a bounded externalized tool result.
+	ArtifactRef = domain.ArtifactRef
+	// ArtifactStore receives oversized tool results.
+	ArtifactStore = domain.ArtifactStore
+	// DeterministicProvider is the built-in provider for replay and tests.
+	DeterministicProvider = domain.DeterministicProvider
+	// MemoryArtifactStore is a bounded test and reference artifact store.
+	MemoryArtifactStore = domain.MemoryArtifactStore
+	// OpenAICompatibleProvider is the HTTP provider for chat-completions endpoints.
+	OpenAICompatibleProvider = transport.OpenAICompatibleProvider
+	// SQLiteEvidenceTool exposes bounded, read-only event evidence.
+	SQLiteEvidenceTool = store.SQLiteEvidenceTool
+	// Config controls the provider and read-only capabilities of the loop.
+	Config = app.Config
+	// Executor is a bounded native Go episode executor.
+	Executor = app.Executor
+	// BatchResult is one benchmark cell's comparator outcome.
+	BatchResult = app.BatchResult
+)
 
-type requestPayload struct {
-	Snapshot map[string]any `json:"snapshot"`
-	Executor struct {
-		Prompt         string          `json:"prompt"`
-		Objective      string          `json:"objective"`
-		DecisionSchema json.RawMessage `json:"decision_schema"`
-	} `json:"executor"`
-	Tools              []map[string]any `json:"tools"`
-	AllowedIntentTypes []string         `json:"allowed_intent_types"`
-	RiskCeiling        string           `json:"risk_ceiling"`
-	Budget             struct {
-		ModelCalls           uint32 `json:"model_calls"`
-		InputTokens          uint64 `json:"input_tokens"`
-		OutputTokens         uint64 `json:"output_tokens"`
-		ToolCalls            uint32 `json:"tool_calls"`
-		ToolResultBytes      uint64 `json:"tool_result_bytes"`
-		TotalToolResultBytes uint64 `json:"total_tool_result_bytes"`
-		ProviderRetries      uint32 `json:"provider_retries"`
-		CostMicrounits       uint64 `json:"cost_microunits"`
-	} `json:"budget"`
-}
+// NewMemoryArtifactStore creates an in-memory artifact store.
+func NewMemoryArtifactStore() *MemoryArtifactStore { return domain.NewMemoryArtifactStore() }
 
-// Ensure the native executor remains a valid episode executor.
-var _ episodes.Executor = (*Executor)(nil)
+// NewSQLiteEvidenceTool creates a scoped native evidence tool.
+func NewSQLiteEvidenceTool(db *storage.DB, name, tenantID, entityID string) *SQLiteEvidenceTool {
+	return store.NewSQLiteEvidenceTool(db, name, tenantID, entityID)
+}
 
 // New creates a native executor and rejects duplicate or empty tool names.
-func New(cfg Config) (*Executor, error) {
-	if cfg.Provider == nil {
-		return nil, errors.New("native provider is required")
-	}
-	tools := make(map[string]Tool, len(cfg.Tools))
-	for _, tool := range cfg.Tools {
-		if tool == nil || strings.TrimSpace(tool.Name()) == "" {
-			return nil, errors.New("native tool name is required")
-		}
-		if _, exists := tools[tool.Name()]; exists {
-			return nil, fmt.Errorf("duplicate native tool %q", tool.Name())
-		}
-		tools[tool.Name()] = tool
-	}
-	return &Executor{provider: cfg.Provider, tools: tools, artifacts: cfg.ArtifactStore, maxRepair: 1, toolFactory: cfg.ToolFactory}, nil
+func New(cfg Config) (*Executor, error) { return app.New(cfg) } //nolint:wrapcheck // The application names each failed step.
+
+// RunBatch drives the executor over benchmark cells, reporting every cell.
+func RunBatch(ctx context.Context, executor episodes.Executor, requests []*episodes.Request, cellIDs []string) ([]BatchResult, error) {
+	return app.RunBatch(ctx, executor, requests, cellIDs) //nolint:wrapcheck // The application names each failed step.
 }
 
-// Execute runs the provider/read-tool loop and returns a typed attempt
-// terminal. It never mutates episode, situation, or action state.
-func (e *Executor) Execute(ctx context.Context, req *episodes.Request) (*episodes.Outcome, error) {
-	if e == nil || e.provider == nil {
-		return nil, errors.New("native executor is not configured")
-	}
-	if req == nil {
-		return nil, errors.New("episode request is required")
-	}
-	payload, err := decodeRequest(req.RequestJSON)
-	if err != nil {
-		return nil, err
-	}
-	return e.executePayload(ctx, req, payload)
-}
-
-func (e *Executor) executePayload(ctx context.Context, req *episodes.Request, payload requestPayload) (*episodes.Outcome, error) {
-	budget, err := requestBudget(req, payload)
-	if err != nil {
-		return nil, err
-	}
-	tools := e.toolsFor(req)
-	if budget.WallTime > 0 {
-		return e.executeBounded(ctx, req, payload, budget, tools)
-	}
-	return e.executeLoop(ctx, req, payload, budget, tools)
-}
-
-func requestBudget(req *episodes.Request, payload requestPayload) (budgetConfig, error) {
-	wallTime, err := req.WallTimeBudget()
-	if err != nil {
-		return budgetConfig{}, fmt.Errorf("validate episode budget: %w", err)
-	}
-	budget := budgetConfig{
-		WallTime: wallTime, ModelCalls: payload.Budget.ModelCalls,
-		InputTokens: payload.Budget.InputTokens, OutputTokens: payload.Budget.OutputTokens,
-		ToolCalls: payload.Budget.ToolCalls, ToolResultBytes: payload.Budget.ToolResultBytes,
-		TotalToolResultBytes: payload.Budget.TotalToolResultBytes, ProviderRetries: payload.Budget.ProviderRetries,
-		CostMicrounits: payload.Budget.CostMicrounits,
-	}
-	if budget.WallTime <= 0 && budget.ModelCalls == 0 {
-		return budgetConfig{}, errors.New("finite episode budget requires wall_time or model_calls")
-	}
-	return budget, nil
-}
-
-func (e *Executor) toolsFor(req *episodes.Request) map[string]Tool {
-	tools := make(map[string]Tool, len(e.tools))
-	for name, tool := range e.tools {
-		tools[name] = tool
-	}
-	if e.toolFactory != nil {
-		for _, tool := range e.toolFactory(req) {
-			if tool != nil && strings.TrimSpace(tool.Name()) != "" {
-				tools[tool.Name()] = tool
-			}
-		}
-	}
-	return tools
-}
-
-func decodeRequest(raw []byte) (requestPayload, error) {
-	var payload requestPayload
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return payload, fmt.Errorf("decode native episode request: %w", err)
-	}
-	if payload.Snapshot == nil || payload.Executor.DecisionSchema == nil {
-		return payload, errors.New("native episode request requires snapshot and decision schema")
-	}
-	return payload, nil
-}
-
-func toolDefinitions(raw []map[string]any, tools map[string]Tool) []ToolDefinition {
-	result := make([]ToolDefinition, 0, len(tools))
-	seen := make(map[string]struct{})
-	for _, item := range raw {
-		name := configuredToolName(item)
-		if !acceptToolDefinition(name, tools, seen) {
-			continue
-		}
-		result = append(result, configuredToolDefinition(name, item))
-	}
-	slices.SortFunc(result, func(a, b ToolDefinition) int { return strings.Compare(a.Name, b.Name) })
-	return result
-}
-
-func configuredToolName(item map[string]any) string {
-	name, _ := item["name"].(string)
-	if name == "" {
-		name, _ = item["type"].(string)
-	}
-	return name
-}
-
-func acceptToolDefinition(name string, tools map[string]Tool, seen map[string]struct{}) bool {
-	if name == "" {
-		return false
-	}
-	if _, ok := tools[name]; !ok {
-		return false
-	}
-	if _, ok := seen[name]; ok {
-		return false
-	}
-	seen[name] = struct{}{}
-	return true
-}
-
-func configuredToolDefinition(name string, item map[string]any) ToolDefinition {
-	description, _ := item["description"].(string)
-	parameters := json.RawMessage(`{"type":"object","additionalProperties":false}`)
-	if schema, ok := item["schema"].(map[string]any); ok {
-		if encoded, err := json.Marshal(schema); err == nil {
-			parameters = encoded
-		}
-	}
-	return ToolDefinition{Name: name, Description: description, Parameters: parameters}
-}
-
-func (e *Executor) observe(ctx context.Context, call ToolCall, result ToolResult, budget budgetConfig) (Observation, error) {
-	data := result.JSON
-	if len(data) == 0 {
-		data = []byte(`null`)
-	}
-	if !json.Valid(data) {
-		return Observation{}, fmt.Errorf("tool_result_invalid:%s", call.Name)
-	}
-	bytesRead := result.Bytes
-	if bytesRead == 0 {
-		bytesRead = uint64(len(data))
-	}
-	return e.observationForResult(ctx, call, data, bytesRead, budget)
-}
-
-func (e *Executor) observationForResult(ctx context.Context, call ToolCall, data []byte, bytesRead uint64, budget budgetConfig) (Observation, error) {
-	if budget.ToolResultBytes > 0 && bytesRead > budget.ToolResultBytes {
-		if e.artifacts == nil {
-			return Observation{}, fmt.Errorf("tool_result_oversized:%s", call.Name)
-		}
-		ref, err := e.artifacts.Put(ctx, data)
-		if err != nil {
-			return Observation{}, fmt.Errorf("store_tool_artifact:%w", err)
-		}
-		return Observation{CallID: call.ID, ToolName: call.Name, Artifact: &ref, Bytes: bytesRead}, nil
-	}
-	return Observation{CallID: call.ID, ToolName: call.Name, ResultJSON: append([]byte(nil), data...), Bytes: bytesRead}, nil
-}
-
-func validateDecision(req *episodes.Request, raw []byte, allowed []string) (map[string]any, error) {
-	var decision map[string]any
-	if err := json.Unmarshal(raw, &decision); err != nil {
-		return nil, errors.New("decision_json_invalid")
-	}
-	if decision["episode_id"] != req.EpisodeID || decision["attempt_id"] != req.AttemptID || number(decision["fence"]) != float64(req.Fence) || decision["situation_id"] != req.SituationID || number(decision["situation_version"]) != float64(req.SituationVersion) || decision["snapshot_digest"] != req.SnapshotSHA256 {
-		return nil, errors.New("decision_identity_mismatch")
-	}
-	if err := validateAllowedIntents(decision, allowed); err != nil {
-		return nil, err
-	}
-	return decision, nil
-}
-
-func validateAllowedIntents(decision map[string]any, allowed []string) error {
-	if intents, ok := decision["intents"].([]any); ok {
-		for _, rawIntent := range intents {
-			intent, ok := rawIntent.(map[string]any)
-			if !ok {
-				return errors.New("intent_invalid")
-			}
-			typeName, _ := intent["type"].(string)
-			if !slices.Contains(allowed, typeName) {
-				return fmt.Errorf("intent_not_allowed:%s", typeName)
-			}
-		}
-	}
-	return nil
+// RunBatchJSON is the wire form of RunBatch.
+func RunBatchJSON(ctx context.Context, executor episodes.Executor, requests []*episodes.Request, cellIDs []string) ([]byte, error) {
+	return app.RunBatchJSON(ctx, executor, requests, cellIDs) //nolint:wrapcheck // The application names each failed step.
 }

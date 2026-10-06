@@ -1,4 +1,4 @@
-package native
+package transport
 
 import (
 	"encoding/json"
@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
 )
 
 func checkProviderStatus(response *http.Response) error {
@@ -14,23 +16,23 @@ func checkProviderStatus(response *http.Response) error {
 		message, _ := io.ReadAll(io.LimitReader(response.Body, 16<<10))
 		failure := fmt.Errorf("model provider returned %s: %s", response.Status, strings.TrimSpace(string(message)))
 		if response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500 {
-			return &RetryableError{Err: failure}
+			return &domain.RetryableError{Err: failure}
 		}
 		return failure
 	}
 	return nil
 }
 
-func decodeProviderResponse(response *http.Response) (ModelResponse, error) {
+func decodeProviderResponse(response *http.Response) (domain.ModelResponse, error) {
 	if strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") {
 		return decodeProviderStream(response.Body)
 	}
 	parsed, err := parseJSONResponse(response.Body)
 	if err != nil {
-		return ModelResponse{}, err
+		return domain.ModelResponse{}, err
 	}
 	if !parsed.UsageReported {
-		return ModelResponse{}, errors.New("model provider response omitted usage")
+		return domain.ModelResponse{}, errors.New("model provider response omitted usage")
 	}
 	return parsed, nil
 }
@@ -66,32 +68,32 @@ type openAIResponse struct {
 	} `json:"usage,omitempty"`
 }
 
-func parseJSONResponse(reader io.Reader) (ModelResponse, error) {
+func parseJSONResponse(reader io.Reader) (domain.ModelResponse, error) {
 	var response openAIResponse
 	if err := json.NewDecoder(io.LimitReader(reader, 16<<20)).Decode(&response); err != nil {
-		return ModelResponse{}, fmt.Errorf("decode model response: %w", err)
+		return domain.ModelResponse{}, fmt.Errorf("decode model response: %w", err)
 	}
 	if len(response.Choices) == 0 {
-		return ModelResponse{}, errors.New("model response contains no choices")
+		return domain.ModelResponse{}, errors.New("model response contains no choices")
 	}
 	choice := response.Choices[0]
 	usage, reported := responseUsage(response)
-	result := ModelResponse{DecisionJSON: []byte(choice.Message.Content), Usage: usage, UsageReported: reported}
+	result := domain.ModelResponse{DecisionJSON: []byte(choice.Message.Content), Usage: usage, UsageReported: reported}
 	result.ToolCalls = normalizeToolCalls(choice.Message.ToolCalls)
 	return result, nil
 }
 
-func normalizeToolCalls(calls []openAIToolCall) []ToolCall {
-	result := make([]ToolCall, 0, len(calls))
+func normalizeToolCalls(calls []openAIToolCall) []domain.ToolCall {
+	result := make([]domain.ToolCall, 0, len(calls))
 	for _, call := range calls {
-		result = append(result, ToolCall{ID: call.ID, Name: call.Function.Name, Arguments: json.RawMessage(call.Function.Arguments)})
+		result = append(result, domain.ToolCall{ID: call.ID, Name: call.Function.Name, Arguments: json.RawMessage(call.Function.Arguments)})
 	}
 	return result
 }
 
-func responseUsage(response openAIResponse) (Usage, bool) {
+func responseUsage(response openAIResponse) (domain.Usage, bool) {
 	if response.Usage == nil {
-		return Usage{}, false
+		return domain.Usage{}, false
 	}
 	input := response.Usage.InputTokens
 	if input == 0 {
@@ -101,16 +103,16 @@ func responseUsage(response openAIResponse) (Usage, bool) {
 	if output == 0 {
 		output = response.Usage.CompletionTokens
 	}
-	return Usage{InputTokens: input, OutputTokens: output, CostMicrounits: response.Usage.CostMicrounits}, true
+	return domain.Usage{InputTokens: input, OutputTokens: output, CostMicrounits: response.Usage.CostMicrounits}, true
 }
 
-func decodeProviderStream(reader io.Reader) (ModelResponse, error) {
+func decodeProviderStream(reader io.Reader) (domain.ModelResponse, error) {
 	parsed, err := parseSSE(reader)
 	if err != nil {
-		return ModelResponse{}, err
+		return domain.ModelResponse{}, err
 	}
 	if !parsed.UsageReported {
-		return ModelResponse{}, errors.New("model provider stream omitted usage")
+		return domain.ModelResponse{}, errors.New("model provider stream omitted usage")
 	}
 	return parsed, nil
 }

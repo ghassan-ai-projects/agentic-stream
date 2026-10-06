@@ -1,4 +1,4 @@
-package native
+package transport
 
 import (
 	"bufio"
@@ -7,23 +7,25 @@ import (
 	"io"
 	"slices"
 	"strings"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
 )
 
 type providerStream struct {
 	content       strings.Builder
-	toolCalls     map[int]*ToolCall
-	usage         Usage
+	toolCalls     map[int]*domain.ToolCall
+	usage         domain.Usage
 	usageReported bool
 }
 
-func parseSSE(reader io.Reader) (ModelResponse, error) {
+func parseSSE(reader io.Reader) (domain.ModelResponse, error) {
 	scanner := bufio.NewScanner(io.LimitReader(reader, 16<<20))
 	scanner.Buffer(make([]byte, 4096), 1<<20)
-	stream := providerStream{toolCalls: make(map[int]*ToolCall)}
+	stream := providerStream{toolCalls: make(map[int]*domain.ToolCall)}
 	for scanner.Scan() {
 		done, err := stream.acceptLine(scanner.Text())
 		if err != nil {
-			return ModelResponse{}, err
+			return domain.ModelResponse{}, err
 		}
 		if done {
 			break
@@ -51,7 +53,7 @@ func (s *providerStream) acceptLine(raw string) (bool, error) {
 
 func (s *providerStream) acceptChunk(response openAIResponse) {
 	chunkUsage, reported := responseUsage(response)
-	s.usage = addUsage(s.usage, chunkUsage)
+	s.usage = domain.AddUsage(s.usage, chunkUsage)
 	s.usageReported = s.usageReported || reported
 	if len(response.Choices) == 0 {
 		return
@@ -60,22 +62,22 @@ func (s *providerStream) acceptChunk(response openAIResponse) {
 	appendToolCallDeltas(s.toolCalls, response.Choices[0].Delta.ToolCalls)
 }
 
-func (stream *providerStream) finish(err error) (ModelResponse, error) {
+func (stream *providerStream) finish(err error) (domain.ModelResponse, error) {
 	if err != nil {
-		return ModelResponse{}, fmt.Errorf("read model stream: %w", err)
+		return domain.ModelResponse{}, fmt.Errorf("read model stream: %w", err)
 	}
 	return stream.response(), nil
 }
 
-func (s *providerStream) response() ModelResponse {
-	return ModelResponse{DecisionJSON: []byte(strings.TrimSpace(s.content.String())), Usage: s.usage, UsageReported: s.usageReported, ToolCalls: orderedToolCalls(s.toolCalls)}
+func (s *providerStream) response() domain.ModelResponse {
+	return domain.ModelResponse{DecisionJSON: []byte(strings.TrimSpace(s.content.String())), Usage: s.usage, UsageReported: s.usageReported, ToolCalls: orderedToolCalls(s.toolCalls)}
 }
 
-func appendToolCallDeltas(toolCalls map[int]*ToolCall, deltas []openAIToolCall) {
+func appendToolCallDeltas(toolCalls map[int]*domain.ToolCall, deltas []openAIToolCall) {
 	for _, call := range deltas {
 		index := call.Index
 		if toolCalls[index] == nil {
-			toolCalls[index] = &ToolCall{ID: call.ID, Name: call.Function.Name}
+			toolCalls[index] = &domain.ToolCall{ID: call.ID, Name: call.Function.Name}
 		}
 		if call.ID != "" {
 			toolCalls[index].ID = call.ID
@@ -87,8 +89,8 @@ func appendToolCallDeltas(toolCalls map[int]*ToolCall, deltas []openAIToolCall) 
 	}
 }
 
-func orderedToolCalls(toolCalls map[int]*ToolCall) []ToolCall {
-	var result []ToolCall
+func orderedToolCalls(toolCalls map[int]*domain.ToolCall) []domain.ToolCall {
+	var result []domain.ToolCall
 	indices := make([]int, 0, len(toolCalls))
 	for index := range toolCalls {
 		indices = append(indices, index)

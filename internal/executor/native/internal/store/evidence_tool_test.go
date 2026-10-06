@@ -1,4 +1,4 @@
-package native
+package store
 
 import (
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -37,7 +38,7 @@ func seedEvidence(t *testing.T, count int) *storage.DB {
 	return db
 }
 
-func callEvidence(t *testing.T, tool *SQLiteEvidenceTool, args string) (ToolResult, []map[string]any) {
+func callEvidence(t *testing.T, tool *SQLiteEvidenceTool, args string) (domain.ToolResult, []map[string]any) {
 	t.Helper()
 	result, err := tool.Call(t.Context(), json.RawMessage(args))
 	if err != nil {

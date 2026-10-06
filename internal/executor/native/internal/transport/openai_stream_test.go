@@ -1,4 +1,4 @@
-package native
+package transport
 
 import (
 	"errors"
@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
 )
 
 func TestProviderStreamKeepsToolOrderFragmentsAndUsage(t *testing.T) {
@@ -44,7 +46,7 @@ func TestProviderStatusPreservesRetryClassificationAndBodyBound(t *testing.T) {
 			t.Parallel()
 			response := &http.Response{StatusCode: tc.code, Status: http.StatusText(tc.code), Body: io.NopCloser(strings.NewReader(strings.Repeat("a", 16<<10) + "secret-tail"))}
 			err := checkProviderStatus(response)
-			var retryable *RetryableError
+			var retryable *domain.RetryableError
 			if err == nil || errors.As(err, &retryable) != tc.retryable || strings.Contains(err.Error(), "secret-tail") {
 				t.Fatalf("status classification or bound changed: err=%v", err)
 			}

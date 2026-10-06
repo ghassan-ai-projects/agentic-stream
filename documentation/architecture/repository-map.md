@@ -57,6 +57,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/executor/remote/internal/app/` | worker episode execution: budget bound, handshake, capability, stream consumption |
 | `internal/executor/remote/internal/domain/` | pure wire-request mapping, handshake and stream validation, budget accounting |
 | `internal/executor/remote/internal/transport/` | EpisodeWorker gRPC calls and cancellation mapping |
+| `internal/executor/native/internal/app/` | native episode loop: budgets, tool runs, repair, artifacts |
+| `internal/executor/native/internal/domain/` | pure provider and tool contracts, budget accounting, request decoding, Decision and evidence-scope rules |
+| `internal/executor/native/internal/transport/` | OpenAI-compatible HTTP provider and response decoding |
+| `internal/executor/native/internal/store/` | scope-bound event-log evidence tool |
 | `internal/actionport/` | approved command/effect contracts |
 | `internal/device/` | device effect boundary facade: effect profiles, catalog loading, gateway dial and effector constructors |
 | `internal/device/internal/app/` | device session use cases and the gateway, simulated and fail-closed effectors |

@@ -1,4 +1,4 @@
-package native
+package app
 
 import (
 	"context"
@@ -27,7 +27,7 @@ type BatchResult struct {
 // RunBatch drives the native executor over the benchmark cells. It is the Go
 // side of the `go_native_executor` baseline: the same frozen protocol cells,
 // executed by a separate architecture, reported as one JSON document the
-// harness merges. A failed cell is reported, never replaced (intention-to-treat).
+// harness merges. A domain.Failed cell is reported, never replaced (intention-to-treat).
 func RunBatch(ctx context.Context, executor episodes.Executor, requests []*episodes.Request, cellIDs []string) ([]BatchResult, error) {
 	if executor == nil {
 		return nil, fmt.Errorf("native executor is required")

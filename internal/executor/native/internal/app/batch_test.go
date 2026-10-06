@@ -1,4 +1,4 @@
-package native_test
+package app_test
 
 import (
 	"context"
@@ -78,7 +78,7 @@ func (failingProvider) Stream(context.Context, native.ModelRequest) (native.Mode
 	return native.ModelResponse{}, errors.New("provider exploded")
 }
 
-// Intention-to-treat: a failed cell is REPORTED with its failure, never
+// Intention-to-treat: a domain.Failed cell is REPORTED with its failure, never
 // replaced or dropped — the batch has an entry for every cell.
 func TestRunBatchReportsFailedCellsIntentionToTreat(t *testing.T) {
 	executor, err := native.New(native.Config{Provider: failingProvider{}})
@@ -101,6 +101,6 @@ func TestRunBatchReportsFailedCellsIntentionToTreat(t *testing.T) {
 		t.Fatalf("expected the executor's typed failure reason, got %#v", result.Reasons)
 	}
 	if len(result.Decision) != 0 {
-		t.Fatal("a failed cell must not carry a decision")
+		t.Fatal("a domain.Failed cell must not carry a decision")
 	}
 }

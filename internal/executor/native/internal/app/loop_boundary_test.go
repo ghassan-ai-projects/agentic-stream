@@ -1,4 +1,4 @@
-package native
+package app
 
 import (
 	"context"
@@ -7,13 +7,14 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
 )
 
 func TestFailedToolCallCannotBeRepeated(t *testing.T) {
 	t.Parallel()
 	calls := 0
-	loop := episodeLoop{req: &episodes.Request{AttemptID: "attempt", Fence: 2}, tools: map[string]Tool{"read": failingReadTool{calls: &calls}}, seenCalls: make(map[string]struct{})}
-	call := ToolCall{ID: "first", Name: "read", Arguments: json.RawMessage(`{}`)}
+	loop := episodeLoop{req: &episodes.Request{AttemptID: "attempt", Fence: 2}, tools: map[string]domain.Tool{"read": failingReadTool{calls: &calls}}, seenCalls: make(map[string]struct{})}
+	call := domain.ToolCall{ID: "first", Name: "read", Arguments: json.RawMessage(`{}`)}
 	if outcome := loop.runTool(t.Context(), call); outcome != nil {
 		t.Fatalf("first failure should become observation: %#v", outcome)
 	}
@@ -33,15 +34,15 @@ func TestFailedToolCallCannotBeRepeated(t *testing.T) {
 type failingReadTool struct{ calls *int }
 
 func (f failingReadTool) Name() string { return "read" }
-func (f failingReadTool) Call(context.Context, json.RawMessage) (ToolResult, error) {
+func (f failingReadTool) Call(context.Context, json.RawMessage) (domain.ToolResult, error) {
 	*f.calls++
-	return ToolResult{}, errors.New("read failed")
+	return domain.ToolResult{}, errors.New("read domain.Failed")
 }
 
 func TestToolResultBudgetAccountsRejectedBytes(t *testing.T) {
 	t.Parallel()
-	loop := episodeLoop{executor: &Executor{}, req: &episodes.Request{AttemptID: "attempt"}, budget: budgetConfig{TotalToolResultBytes: 4}, toolResultBytes: 3}
-	outcome := loop.recordToolResult(t.Context(), ToolCall{ID: "call", Name: "read"}, ToolResult{JSON: []byte(`{}`)})
+	loop := episodeLoop{executor: &Executor{}, req: &episodes.Request{AttemptID: "attempt"}, budget: domain.Budget{TotalToolResultBytes: 4}, toolResultBytes: 3}
+	outcome := loop.recordToolResult(t.Context(), domain.ToolCall{ID: "call", Name: "read"}, domain.ToolResult{JSON: []byte(`{}`)})
 	if outcome == nil || outcome.Reasons[0] != "budget_exhausted:total_tool_result_bytes" {
 		t.Fatalf("result: %#v", outcome)
 	}

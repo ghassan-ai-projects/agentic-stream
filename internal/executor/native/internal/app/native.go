@@ -1,0 +1,124 @@
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
+)
+
+// Config controls the provider and read-only capabilities used by the native
+// loop. Episode resource ceilings come from each trusted Request. Structured
+// output repair is always limited to one attempt.
+type Config struct {
+	Provider      domain.ModelProvider
+	Tools         []domain.Tool
+	ArtifactStore domain.ArtifactStore
+	ToolFactory   func(*episodes.Request) []domain.Tool
+}
+
+// Executor is a bounded native Go episode executor.
+type Executor struct {
+	provider    domain.ModelProvider
+	tools       map[string]domain.Tool
+	artifacts   domain.ArtifactStore
+	maxRepair   uint32
+	toolFactory func(*episodes.Request) []domain.Tool
+}
+
+// Ensure the native executor remains a valid episode executor.
+var _ episodes.Executor = (*Executor)(nil)
+
+// New creates a native executor and rejects duplicate or empty tool names.
+func New(cfg Config) (*Executor, error) {
+	if cfg.Provider == nil {
+		return nil, errors.New("native provider is required")
+	}
+	tools := make(map[string]domain.Tool, len(cfg.Tools))
+	for _, tool := range cfg.Tools {
+		if tool == nil || strings.TrimSpace(tool.Name()) == "" {
+			return nil, errors.New("native tool name is required")
+		}
+		if _, exists := tools[tool.Name()]; exists {
+			return nil, fmt.Errorf("duplicate native tool %q", tool.Name())
+		}
+		tools[tool.Name()] = tool
+	}
+	return &Executor{provider: cfg.Provider, tools: tools, artifacts: cfg.ArtifactStore, maxRepair: 1, toolFactory: cfg.ToolFactory}, nil
+}
+
+// Execute runs the provider/read-tool loop and returns a typed attempt
+// terminal. It never mutates episode, situation, or action state.
+func (e *Executor) Execute(ctx context.Context, req *episodes.Request) (*episodes.Outcome, error) {
+	if e == nil || e.provider == nil {
+		return nil, errors.New("native executor is not configured")
+	}
+	if req == nil {
+		return nil, errors.New("episode request is required")
+	}
+	payload, err := domain.DecodeRequest(req.RequestJSON)
+	if err != nil {
+		return nil, err
+	}
+	return e.executePayload(ctx, req, payload)
+}
+
+func (e *Executor) executePayload(ctx context.Context, req *episodes.Request, payload domain.RequestPayload) (*episodes.Outcome, error) {
+	budget, err := domain.RequestBudget(req, payload)
+	if err != nil {
+		return nil, err
+	}
+	tools := e.toolsFor(req)
+	if budget.WallTime > 0 {
+		return e.executeBounded(ctx, req, payload, budget, tools)
+	}
+	return e.executeLoop(ctx, req, payload, budget, tools)
+}
+
+func (e *Executor) toolsFor(req *episodes.Request) map[string]domain.Tool {
+	tools := make(map[string]domain.Tool, len(e.tools))
+	for name, tool := range e.tools {
+		tools[name] = tool
+	}
+	if e.toolFactory != nil {
+		for _, tool := range e.toolFactory(req) {
+			if tool != nil && strings.TrimSpace(tool.Name()) != "" {
+				tools[tool.Name()] = tool
+			}
+		}
+	}
+	return tools
+}
+
+func (e *Executor) observe(ctx context.Context, call domain.ToolCall, result domain.ToolResult, budget domain.Budget) (domain.Observation, error) {
+	data := result.JSON
+	if len(data) == 0 {
+		data = []byte(`null`)
+	}
+	if !json.Valid(data) {
+		return domain.Observation{}, fmt.Errorf("tool_result_invalid:%s", call.Name)
+	}
+	bytesRead := result.Bytes
+	if bytesRead == 0 {
+		bytesRead = uint64(len(data))
+	}
+	return e.observationForResult(ctx, call, data, bytesRead, budget)
+}
+
+func (e *Executor) observationForResult(ctx context.Context, call domain.ToolCall, data []byte, bytesRead uint64, budget domain.Budget) (domain.Observation, error) {
+	if budget.ToolResultBytes > 0 && bytesRead > budget.ToolResultBytes {
+		if e.artifacts == nil {
+			return domain.Observation{}, fmt.Errorf("tool_result_oversized:%s", call.Name)
+		}
+		ref, err := e.artifacts.Put(ctx, data)
+		if err != nil {
+			return domain.Observation{}, fmt.Errorf("store_tool_artifact:%w", err)
+		}
+		return domain.Observation{CallID: call.ID, ToolName: call.Name, Artifact: &ref, Bytes: bytesRead}, nil
+	}
+	return domain.Observation{CallID: call.ID, ToolName: call.Name, ResultJSON: append([]byte(nil), data...), Bytes: bytesRead}, nil
+}

@@ -1,4 +1,4 @@
-package native_test
+package transport_test
 
 import (
 	"context"
