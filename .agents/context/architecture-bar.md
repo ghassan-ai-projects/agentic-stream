@@ -64,7 +64,7 @@ Additional modules have current concrete responsibilities:
   owns policy SQL. Owner, epoch and readiness checks are required constructor
   inputs. Read-only handoff projections retain the original transaction. See
   [policy pattern](../../internal/policy/README.md).
-- `control`: singleton runtime ownership and epoch drain/kill; cancellation calls the episode ledger in the same transaction.
+- `control`: singleton runtime ownership, epoch drain/kill and aggregate cost control; cancellation calls the episode ledger in the same transaction and releases unstarted cost reservations.
 - `authority`: target claims, command bindings, device reconciliation and safety evidence.
 - `qualification`: calibration activation and shadow decision/comparison evidence.
 - `executor/remote`: the out-of-process EpisodeWorker protocol adapter: request mapping, streamed budget accounting and terminal outcome assembly.

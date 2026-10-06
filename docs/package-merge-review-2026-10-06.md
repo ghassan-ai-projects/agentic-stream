@@ -31,7 +31,7 @@ dependency rule or a cross-repository contract forbids the merge.
 
 ## Not migrated, and why
 
-`control`, `qualification`, `episodeledger`,
+`qualification`, `episodeledger`,
 `scheduleledger` and `approvalledger` are shared, transaction-scoped stores:
 stateless functions over a caller's transaction that other modules' stores call.
 They already are the store layer of their tables. Giving each facade/app/domain
