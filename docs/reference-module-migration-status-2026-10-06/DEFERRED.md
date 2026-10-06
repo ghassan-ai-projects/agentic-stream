@@ -11,6 +11,7 @@ Each is also recorded in the module's `PLAN.md`.
 - **runtime composition**: composition without a runtime owner passes an explicit always-pass check; a non-authorized effector fails composition.
 - **notify**: `New(db)` replaces the free `ReadPage`/`Prune` functions and rejects a nil database; `AppendLifecycleEventWithTrace` became `AppendLifecycleEvent(LifecycleEvent)` with typed payloads (the payload fixes the event type; the domain stamps tenant and source authority); `notifycontract` merged into `notify`; the SSE handler answers 503 `runtime_not_ready` when the service cannot be built; audit details marshalling errors are returned.
 - **control**: `costcontrol` merged into `control` (`CostLedger`, `SetCostLimit`, `ApplyCostCeilings`, `ErrCostReservationRejected`); `episodeledger` recovery takes a `CostSettler` port; control is layered facade/app/domain/store, which moved `api`, `authority`, `soak`, `actions`, `device`, `episodes` and the executors up a level.
+- **episodeledger**: `scheduleledger` merged into `episodeledger` (queue operations renamed `...SchedulerItem...`); `RecoverUnfinishedAttemptsWithCost` is `RecoverUnfinishedAttempts` with an optional `CostSettler`; layered facade/app/domain/store, which moved the executors, `episodes`, `actions`, `device`, `control`, `admission` and `runtime` up one level; a few error texts changed (see its PLAN).
 - **layer table**: engine 10, runtime/internal/app 11, composition 12, runtime 13, replay store/app/facade 11/12/13, cmd 14.
 
 ## Deferred work

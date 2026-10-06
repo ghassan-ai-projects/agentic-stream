@@ -70,7 +70,7 @@ deduplicate by CloudEvent source/id because delivery is at-least-once.
 - Runtime recovery: [`runtime recovery store`](../../internal/runtime/internal/store/recovery.go)
 - Owner fencing: [`internal/control/owner.go`](../../internal/control/owner.go)
 - Quarantine/redrive: [`internal/eventlog/quarantine.go`](../../internal/eventlog/quarantine.go)
-- Episode recovery: [`internal/episodeledger/recovery.go`](../../internal/episodeledger/recovery.go)
+- Episode recovery: [`internal/episodeledger/internal/app/recovery.go`](../../internal/episodeledger/internal/app/recovery.go)
 - Action recovery: [`internal/actions/internal/app/lease.go`](../../internal/actions/internal/app/lease.go)
 
 ## Next reads

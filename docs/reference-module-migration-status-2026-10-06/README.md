@@ -31,6 +31,7 @@ fits the pattern, not yet done. **N/A** = pure rules, foundation or infrastructu
 | `watch` | Derived-trigger watches installed as effects | [watch](../watch-reference-module-2026-10-06/) |
 | `engine` | Deterministic stream engine, timers, Situation persistence | [engine](../engine-reference-module-2026-10-06/) |
 | `ingress` | JSONL, simulator and live-socket sources, checkpoints | [ingress](../ingress-reference-module-2026-10-06/) |
+| `episodeledger` (with `scheduleledger`) | Scheduler queue, episodes, fenced attempts, rejection audit, recovery | [ledgers](../ledgers-reference-module-2026-10-06/) |
 | `control` (with `costcontrol`) | Owner lease, epoch drain/kill, cost control, readiness gate | [control](../control-reference-module-2026-10-06/) |
 | `notify` (with `notifycontract`) | Notification outbox, cursors, poison handling, lifecycle contract | [notify](../notify-reference-module-2026-10-06/) |
 
@@ -39,7 +40,6 @@ fits the pattern, not yet done. **N/A** = pure rules, foundation or infrastructu
 | Package | Description | Reason |
 | --- | --- | --- |
 | `qualification` | Calibration artifacts, shadow decisions and comparisons | Same |
-| `episodeledger` | Episode/attempt lifecycle writes | Shared ledger kernel |
 | `approvalledger` | Approval lifecycle writes | Shared ledger kernel; merging into `policy` would make cognition import policy |
 | `interlock` | Runtime interlock reader/writer | Tiny layer-0 leaf; merging into `control` widens dependencies |
 | `admission` | Admits scheduler items into episodes | Thin orchestrator, no tables; merge blocked by layering |

@@ -4,8 +4,8 @@
 | --- | --- | --- | --- |
 | 0 | Findings, merge decision, design, plan | Review | Complete |
 | 1 | Merge `scheduleledger` into `episodeledger` as one flat package; rename queue operations; update callers | Full tests, lint, gates | Complete |
-| 2 | Layer `episodeledger`: domain, store, app, facade; layer table; ownership | Layer, purity and ownership gates; tests per layer | |
-| 3 | Gates, injection proof, `UBIQUITOUS_LANGUAGE.md`, module guide, docs | Injected failures, full CI | |
+| 2 | Layer `episodeledger`: domain, store, app, facade; layer table; ownership | Layer, purity and ownership gates; tests per layer | Complete |
+| 3 | Gates, injection proof, `UBIQUITOUS_LANGUAGE.md`, module guide, docs | Injected failures, full CI | Complete (episodeledger) |
 | 4 | `approvalledger`: drop `notify`, layer it, language file, gates | Same, plus the withdrawal ordering test | |
 
 ## Behavior that must not change
@@ -26,3 +26,17 @@ scheduler item upsert identity rules; coalescing predicates; all SQL.
 ## Deferred
 
 Read ports for `runtime_owner`, `trigger_evaluations` and `intents`; typed lifecycle columns.
+
+## Result for episodeledger (rounds 2 and 3)
+
+- Layers: domain 0, store 1, app 2, facade 3 (the minimum the import graph allows); executors, `episodes`,
+  `actions`, `device`, `control`, `admission`, `api`, `authority`, `soak` and `runtime` moved up one level.
+- The 13 pre-existing ledger tests (fencing, recovery, cancellation acknowledgement, ownership, queue)
+  were converted to external tests of the facade and pass unchanged in behavior.
+- Gates: `architecture_episodeledger_test.go` plus the generic purity, layering, SQL-location, ownership and
+  language gates; proven by ten injected violations.
+- Deliberate differences: `RecoverUnfinishedAttemptsWithCost` is now `RecoverUnfinishedAttempts` with an optional
+  settler; the owner-lease check takes its instant from the facade; `ErrLiveEpisodeConflict` wraps the
+  store's "insert episode" error rather than the reverse; the two coalescers report "... rows affected";
+  one episode-read error text is shared by the fence and startable reads.
+- Found and recorded: the lease comparison uses a different time encoding than control writes (follow-up 3b).

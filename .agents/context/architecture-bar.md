@@ -56,7 +56,7 @@ Additional modules have current concrete responsibilities:
   catalog authority, risk, parameters, evidence and freshness. Compiled catalog
   entries are private and isolated from source mutation; time is caller-supplied.
   See [decisions guide](../../internal/decisions/README.md).
-- `episodeledger`: episode/attempt identities, durable lifecycle transitions and recovery mutations.
+- `episodeledger`: scheduler queue items, episode/attempt identities, durable lifecycle transitions and recovery mutations.
 - `approvalledger`: pending approval, signed assertion and supersession/expiry lifecycle.
 - `policy`: thin configured facade; app evaluation and human approval use cases;
   pure domain rules and typed documents; store joins the caller transaction and
