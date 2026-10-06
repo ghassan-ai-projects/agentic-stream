@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"time"
@@ -16,6 +17,10 @@ type PipelineStore struct {
 	Policy     *policy.Service
 	Owner      *runtimecontrol.RuntimeOwner
 	OwnerEpoch string
+	// Episodes and TenantID serve admission: the episode assembler and the
+	// tenant whose scheduler items are admitted.
+	Episodes *episodes.Service
+	TenantID string
 }
 
 // AssertOwner checks the bound owner epoch in the original transaction scope.

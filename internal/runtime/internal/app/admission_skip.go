@@ -1,27 +1,27 @@
-package admission
+package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 )
 
 // skipUnadmittable records a scheduler item that can never be admitted as it
 // stands, so it cannot block the queue. It reports false for any other error.
-func (a *Admitter) skipUnadmittable(ctx context.Context, itemID string, now time.Time, refused attempt, err error) (bool, error) {
+func (a *Admitter) skipUnadmittable(ctx context.Context, itemID string, now time.Time, refused domain.AdmissionAttempt, err error) (bool, error) {
 	switch {
 	case errors.Is(err, runtimecontrol.ErrCostReservationRejected):
 		return true, a.skipCostRejected(ctx, itemID, now, err)
-	case refused.kind == "reconsider" && errors.Is(err, episodeledger.ErrLiveEpisodeConflict):
+	case refused.Kind == domain.ReconsiderKind && errors.Is(err, episodeledger.ErrLiveEpisodeConflict):
 		return true, a.skipLiveReconsideration(ctx, itemID, now, refused, err)
-	case errors.Is(err, ErrFixtureRejected):
+	case errors.Is(err, domain.ErrFixtureRejected):
 		return true, a.skipFixture(ctx, itemID, now, refused, err)
 	default:
 		return false, nil
@@ -41,13 +41,13 @@ func (a *Admitter) skipCostRejected(ctx context.Context, itemID string, now time
 
 // skipLiveReconsideration enforces one live episode per Situation for
 // reconsiderations.
-func (a *Admitter) skipLiveReconsideration(ctx context.Context, itemID string, now time.Time, refused attempt, conflict error) error {
+func (a *Admitter) skipLiveReconsideration(ctx context.Context, itemID string, now time.Time, refused domain.AdmissionAttempt, conflict error) error {
 	if err := a.coalesceSkipped(ctx, itemID, now); err != nil {
 		return fmt.Errorf("record skipped reconsideration %s: %w", itemID, err)
 	}
 	slog.WarnContext(ctx, "reconsideration episode admission skipped",
 		"scheduler_item_id", itemID,
-		"situation_id", refused.situationID,
+		"situation_id", refused.SituationID,
 		"reason", "one_live_episode_per_situation",
 		"error", conflict,
 	)
@@ -56,13 +56,13 @@ func (a *Admitter) skipLiveReconsideration(ctx context.Context, itemID string, n
 
 // skipFixture quarantines the misconfigured item loudly instead of leaving it
 // pending forever, which would block the whole queue.
-func (a *Admitter) skipFixture(ctx context.Context, itemID string, now time.Time, refused attempt, refusal error) error {
+func (a *Admitter) skipFixture(ctx context.Context, itemID string, now time.Time, refused domain.AdmissionAttempt, refusal error) error {
 	if err := a.coalesceSkipped(ctx, itemID, now); err != nil {
 		return fmt.Errorf("record fixture-rejected scheduler item %s: %w", itemID, err)
 	}
 	slog.ErrorContext(ctx, "episode admission refused: fixture executor on a production route",
 		"scheduler_item_id", itemID,
-		"situation_id", refused.situationID,
+		"situation_id", refused.SituationID,
 		"error", refusal,
 	)
 	return nil
@@ -71,14 +71,14 @@ func (a *Admitter) skipFixture(ctx context.Context, itemID string, now time.Time
 // recordCostRejection explains the refusal and coalesces the item in one
 // owner-fenced transaction.
 func (a *Admitter) recordCostRejection(ctx context.Context, itemID string, now time.Time, rejection error) error {
-	if err := a.cfg.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := a.assertOwner(ctx, tx); err != nil {
+	if err := a.cfg.Store.InAdmission(ctx, func(tx *store.AdmissionTx) error {
+		if err := tx.AssertOwner(ctx); err != nil {
 			return fmt.Errorf("assert pipeline owner: %w", err)
 		}
-		if err := cognition.RecordCostRejectionReason(ctx, tx, itemID, rejection); err != nil {
-			return fmt.Errorf("%w", err)
+		if err := tx.RecordCostRejection(ctx, itemID, rejection); err != nil {
+			return err
 		}
-		return episodeledger.CoalesceCostRejectedItem(ctx, tx, itemID, now) //nolint:wrapcheck // The owning ledger's error is wrapped below.
+		return tx.CoalesceCostRejected(ctx, itemID, now)
 	}); err != nil {
 		return fmt.Errorf("skip cost-rejected scheduler item %s: %w", itemID, err)
 	}
@@ -86,11 +86,11 @@ func (a *Admitter) recordCostRejection(ctx context.Context, itemID string, now t
 }
 
 func (a *Admitter) coalesceSkipped(ctx context.Context, itemID string, now time.Time) error {
-	if err := a.cfg.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := a.assertOwner(ctx, tx); err != nil {
+	if err := a.cfg.Store.InAdmission(ctx, func(tx *store.AdmissionTx) error {
+		if err := tx.AssertOwner(ctx); err != nil {
 			return fmt.Errorf("assert pipeline owner: %w", err)
 		}
-		return episodeledger.CoalesceSkippedItem(ctx, tx, itemID, now) //nolint:wrapcheck // The owning ledger's error is wrapped below.
+		return tx.CoalesceSkipped(ctx, itemID, now)
 	}); err != nil {
 		return fmt.Errorf("coalesce scheduler item %s: %w", itemID, err)
 	}

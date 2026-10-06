@@ -74,7 +74,6 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/operators` - deterministic operators (hysteresis, debounce, cooldown)
 - `internal/situations` - Situation state machine, versioning, publication
 - `internal/cognition` - configured scheduler facade; ordered app use cases, pure domain rules, and opaque caller-transaction store (see [cognition module guide](internal/cognition/README.md))
-- `internal/admission` - episode admission from the scheduler queue
 - `internal/episodes` - configured `Service` facade; ordered assembly/execution use cases in `internal/app`, pure contracts and rules in `internal/domain`, opaque transaction joins and SQL in `internal/store` preserving the caller's transaction (see [episodes module guide](internal/episodes/README.md))
 - `internal/executor/fixture`, `internal/executor/native`, `internal/executor/remote` - concrete executors behind the episode `Executor` port (in-process and streamed worker protocol)
 - `internal/evidence` - configured Service facade over capability-scoped read tools and durable call recovery; app use cases, pure domain rules, opaque store transactions/SQL, exact wire codecs and gRPC/eventlog adapters (see [evidence module guide](internal/evidence/README.md))

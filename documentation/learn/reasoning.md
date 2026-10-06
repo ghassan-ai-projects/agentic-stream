@@ -35,7 +35,7 @@ flowchart TD
 Text equivalent: the runtime may record that no episode is needed, delay or
 replace pending work, or admit an episode. A published version is not a model
 call. Source: [cognitive scheduler](../../internal/cognition/)
-and [episode admission](../../internal/admission/).
+and [episode admission](../../internal/runtime/internal/app/admission.go).
 
 ## Why wait or replace work?
 

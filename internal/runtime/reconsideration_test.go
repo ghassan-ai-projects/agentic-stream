@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/admission"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
@@ -17,6 +16,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -83,7 +84,10 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	admitter := admission.New(admission.Config{DB: db, Episodes: episodeService, Clock: clock.Physical(), TenantID: "default"})
+	admitter, err := app.NewAdmitter(app.AdmitterConfig{Store: &store.PipelineStore{DB: db, Episodes: episodeService, TenantID: "default"}, Clock: clock.Physical()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	replay, err := ingress.New(ingress.Config{DB: db, Log: log, TenantID: "default"})
 	if err != nil {
 		t.Fatal(err)

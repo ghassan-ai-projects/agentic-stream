@@ -20,7 +20,7 @@ Text equivalent: an ineligible version records a reason without creating an
 episode. An eligible version can enter a timed queue; only due, admissible work
 becomes an episode. This is a conceptual summary, not the exact ordering of
 every validation check. Source: [cognition](../../internal/cognition/) and
-[admission](../../internal/admission/).
+[admission](../../internal/runtime/internal/app/admission.go).
 
 ## Why a scheduler instead of a model call per event?
 

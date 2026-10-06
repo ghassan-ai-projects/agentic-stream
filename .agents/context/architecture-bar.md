@@ -67,7 +67,7 @@ Additional modules have current concrete responsibilities:
 - `authority`: target claims, command bindings, device reconciliation and safety evidence.
 - Shadow evidence is owned by its writers: `episodes` records scored shadow decisions and `replay` records shadow comparisons; neither writes intents, commands or the outbox. The calibration artifacts that unlock automatic consequential intents are read by the `policy` store and provisioned by an operator.
 - `executor/remote`: the out-of-process EpisodeWorker protocol adapter: request mapping, streamed budget accounting and terminal outcome assembly.
-- `admission`: turns pending scheduler items into admitted, epoch-stamped episodes, or records why an item can never be admitted.
+- Episode admission (due scheduler items to epoch-stamped episodes, or a recorded skip) is a runtime use case in `runtime/internal/app`; its transactions are joined in the runtime store.
 - `watch`: bounded, expiring derived triggers installed by approved commands and fired by matching evidence.
 
 These are internal Go packages in the same modular monolith. They add no broker,

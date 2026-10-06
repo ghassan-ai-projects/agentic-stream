@@ -1,4 +1,4 @@
-package admission_test
+package app_test
 
 import (
 	"database/sql"
@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/admission"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
@@ -15,6 +14,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -86,7 +87,7 @@ type scenario struct {
 
 // pendingItem ingests one triggering event and runs the stream engine, leaving
 // exactly one pending scheduler item for an admitter in the given scenario.
-func pendingItem(t *testing.T, given scenario) (*storage.DB, *admission.Admitter) {
+func pendingItem(t *testing.T, given scenario) (*storage.DB, *app.Admitter) {
 	t.Helper()
 	ctx := t.Context()
 	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "admission.db"))
@@ -96,7 +97,11 @@ func pendingItem(t *testing.T, given scenario) (*storage.DB, *admission.Admitter
 	t.Cleanup(func() { _ = db.Close() })
 	compiled := testSpec(given.executor)
 	runStream(t, db, compiled)
-	return db, admission.New(composeConfig(t, db, compiled, given))
+	admitter, err := app.NewAdmitter(composeConfig(t, db, compiled, given))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db, admitter
 }
 
 func runStream(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec) {
@@ -119,7 +124,7 @@ func runStream(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec) {
 	}
 }
 
-func composeConfig(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, given scenario) admission.Config {
+func composeConfig(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, given scenario) app.AdmitterConfig {
 	t.Helper()
 	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "admission-instance"}
 	if err := owner.Claim(t.Context(), ownerEpoch); err != nil {
@@ -138,9 +143,9 @@ func composeConfig(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, gi
 	if err != nil {
 		t.Fatal(err)
 	}
-	return admission.Config{
-		DB: db, Episodes: assembler, Clock: clock.Physical(), TenantID: "default",
-		Owner: owner, OwnerEpoch: ownerEpoch, EpochControl: control, DemoMode: given.demo,
+	return app.AdmitterConfig{
+		Store: &store.PipelineStore{DB: db, Owner: owner, OwnerEpoch: ownerEpoch, Episodes: assembler, TenantID: "default"},
+		Clock: clock.Physical(), OwnerEpoch: ownerEpoch, EpochControl: control, DemoMode: given.demo,
 	}
 }
 
@@ -195,4 +200,17 @@ func itemStatus(t *testing.T, db *storage.DB) string {
 		t.Fatal(err)
 	}
 	return status
+}
+
+func TestAdmitterRequiresItsStoreAssemblerAndClock(t *testing.T) {
+	t.Parallel()
+	for name, cfg := range map[string]app.AdmitterConfig{
+		"empty":        {},
+		"no assembler": {Store: &store.PipelineStore{}, Clock: clock.Physical()},
+		"no clock":     {Store: &store.PipelineStore{}},
+	} {
+		if admitter, err := app.NewAdmitter(cfg); err == nil || admitter != nil {
+			t.Errorf("%s: construction = (%v, %v)", name, admitter, err)
+		}
+	}
 }

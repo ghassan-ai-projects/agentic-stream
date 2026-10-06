@@ -49,3 +49,13 @@ func TestEvidenceKeyRejectsMalformedHex(t *testing.T) {
 		t.Fatal("malformed key accepted")
 	}
 }
+
+func TestFixtureExecutorIsRefusedOnlyOnProductionRoutes(t *testing.T) {
+	t.Parallel()
+	if err := RefuseFixture(false, FixtureExecutor); !errors.Is(err, ErrFixtureRejected) {
+		t.Fatalf("production fixture = %v", err)
+	}
+	if RefuseFixture(true, FixtureExecutor) != nil || RefuseFixture(false, "native") != nil {
+		t.Fatal("demo fixtures and real executors must be admitted")
+	}
+}
