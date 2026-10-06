@@ -7,7 +7,7 @@ reservations and settlements). `costcontrol` was merged into it: a kill already
 releases cost reservations, and every cost caller also asks control about the
 epoch.
 
-Read [the vocabulary](../../docs/control-reference-module-2026-10-06/UBIQUITOUS_LANGUAGE.md) before changing rules.
+Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 
 | Layer | Responsibility |
 | --- | --- |

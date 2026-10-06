@@ -6,7 +6,7 @@ the result to the reference-module standard, following the
 Backward compatibility is not a goal.
 
 - [Findings](FINDINGS.md)
-- [Ubiquitous language](UBIQUITOUS_LANGUAGE.md)
+- [Ubiquitous language](../../internal/control/UBIQUITOUS_LANGUAGE.md)
 - [Target design](DESIGN.md)
 - [Plan](PLAN.md)
 

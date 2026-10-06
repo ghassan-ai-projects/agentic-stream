@@ -2,7 +2,7 @@
 
 The device boundary turns an approved command into bounded bytes for one
 physical device, and turns what the device says back into evidence. It shares
-the identity words of the [device-authority language](../authority-reference-module-2026-10-05/UBIQUITOUS_LANGUAGE.md)
+the identity words of the [device-authority language](../authority/UBIQUITOUS_LANGUAGE.md)
 (owner, device boot, target, target claim, reconciliation, safe stop) and adds
 the words below.
 

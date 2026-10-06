@@ -5,7 +5,7 @@ approved command installs through the effect port, that matching evidence fires
 at most `max_fires` times, and that expire without losing their audit rows. It
 never reaches dispatch, policy or reasoning.
 
-Read [the vocabulary](../../docs/watch-reference-module-2026-10-06/UBIQUITOUS_LANGUAGE.md) before changing rules.
+Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 
 | Layer | Responsibility |
 | --- | --- |

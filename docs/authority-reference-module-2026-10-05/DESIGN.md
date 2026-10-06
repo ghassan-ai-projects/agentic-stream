@@ -100,7 +100,7 @@ values and runs them as the first step of the unit of work.
 
 ### Rules (`internal/authority/internal/domain`)
 
-- The vocabulary from the [ubiquitous language](UBIQUITOUS_LANGUAGE.md) as
+- The vocabulary from the [ubiquitous language](../../internal/authority/UBIQUITOUS_LANGUAGE.md) as
   types, constants and sentinel errors.
 - Every decision as a pure function: claim decisions and fences, holder checks,
   binding comparison, the device-state transition, reconciliation opening and

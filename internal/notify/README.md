@@ -5,7 +5,7 @@ cursors, event deduplication with retention tombstones, bounded paged reads with
 lag and poison handling, and the versioned lifecycle contract every producer's
 event must satisfy. HTTP delivery lives in `api`.
 
-Read [the vocabulary](../../docs/notify-reference-module-2026-10-06/UBIQUITOUS_LANGUAGE.md) before changing rules.
+Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 
 | Layer | Responsibility |
 | --- | --- |
