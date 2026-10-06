@@ -57,7 +57,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/device/internal/wire/` | device record codec: schema-validated canonical NDJSON, typed records and original evidence documents |
 | `internal/device/internal/transport/` | Unix-socket gateway link: framing, deadlines and the may-have-sent signal |
 | `internal/device/internal/domain/` | device-boundary rules: capability catalog, materialization, effect profiles, record matching, output verification |
-| `internal/episodeledger/` | durable episode/attempt lifecycle, fencing and recovery |
+| `internal/episodeledger/` | scheduler queue, episode and attempt lifecycle facade: fencing, rejection audit, supersession and recovery |
+| `internal/episodeledger/internal/app/` | queue, admission, attempt, identity, rejection and recovery use cases |
+| `internal/episodeledger/internal/domain/` | pure statuses, identity and fence checks, transition table, rejection and recovery rules |
+| `internal/episodeledger/internal/store/` | the only SQL for `scheduler_items`, `episodes`, `episode_attempts` and `episode_rejections` |
 | `internal/approvalledger/` | human approval lifecycle and supersession notification |
 | `internal/control/` | runtime control plane facade: owner lease, epoch drain/kill, cost ledger and ceilings, readiness capability |
 | `internal/control/internal/app/` | owner, epoch, cost and dispatch-readiness use cases |

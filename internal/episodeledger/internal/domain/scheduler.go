@@ -1,6 +1,9 @@
-package episodeledger
+package domain
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // SchedulerItem is one durable scheduler entry.
 type SchedulerItem struct {
@@ -15,3 +18,18 @@ type SchedulerItem struct {
 	NotBefore        *time.Time // earliest time the item may be picked.
 	ExpiresAt        time.Time  // latest time the item remains useful.
 }
+
+// CheckStillPending fails when a pending-only transition changed no item.
+func CheckStillPending(rows int64, schedulerItemID string) error {
+	if rows != 1 {
+		return fmt.Errorf("scheduler item %s is no longer pending", schedulerItemID)
+	}
+	return nil
+}
+
+// Operation names for the two ways a pending scheduler item leaves the queue
+// unadmitted; they label errors.
+const (
+	OperationSkipCostRejected = "skip cost-rejected scheduler item"
+	OperationCoalesceSkipped  = "coalesce scheduler item"
+)

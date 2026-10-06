@@ -1,8 +1,9 @@
-package episodeledger
+package episodeledger_test
 
 import (
 	"database/sql"
 	"errors"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"path/filepath"
 	"testing"
 	"time"
@@ -22,11 +23,11 @@ func TestAdmissionOwnsShadowDefaultAndRejectsConflictingLiveEpisode(t *testing.T
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 10, 2, 12, 0, 0, 123456789, time.UTC)
-	admission := Admission{EpisodeID: "next", SchedulerItemID: "sch-next", TenantID: "tenant", SituationID: "other", SituationVersion: 1,
+	admission := episodeledger.Admission{EpisodeID: "next", SchedulerItemID: "sch-next", TenantID: "tenant", SituationID: "other", SituationVersion: 1,
 		ExecutorName: "executor", ExecutorVersion: "revision", ModelPolicy: "policy", PromptVersion: "prompt", SnapshotSHA256: make([]byte, 32),
 		PromptSHA256: make([]byte, 32), ObjectiveSHA256: make([]byte, 32), AdmissionKey: make([]byte, 32), RequestJSON: []byte(`{}`), PolicyEpoch: "epoch"}
 	admission.AdmissionKey[0] = 1
-	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error { return Admit(t.Context(), tx, admission, now) }); err != nil {
+	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error { return episodeledger.Admit(t.Context(), tx, admission, now) }); err != nil {
 		t.Fatal(err)
 	}
 	var policy, accepted string
@@ -41,8 +42,8 @@ func TestAdmissionOwnsShadowDefaultAndRejectsConflictingLiveEpisode(t *testing.T
 	admission.Kind = "reconsider"
 	admission.SituationID = "sit-test"
 	admission.AdmissionKey[0] = 2
-	err = db.WithTx(t.Context(), func(tx *sql.Tx) error { return Admit(t.Context(), tx, admission, now) })
-	if !errors.Is(err, ErrLiveEpisodeConflict) {
+	err = db.WithTx(t.Context(), func(tx *sql.Tx) error { return episodeledger.Admit(t.Context(), tx, admission, now) })
+	if !errors.Is(err, episodeledger.ErrLiveEpisodeConflict) {
 		t.Fatalf("live episode conflict lost: %v", err)
 	}
 }
@@ -61,22 +62,22 @@ func TestEpisodeMutationsRemainInsideCallerTransaction(t *testing.T) {
 	rollback := errors.New("abort composed transition")
 	err = db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		ctx := t.Context()
-		if err := Rebind(ctx, tx, "episode", 2, make([]byte, 32), []byte(`{"snapshot":"fresh"}`)); err != nil {
+		if err := episodeledger.Rebind(ctx, tx, "episode", 2, make([]byte, 32), []byte(`{"snapshot":"fresh"}`)); err != nil {
 			return err
 		}
-		if err := BindRequest(ctx, tx, "episode", []byte(`{"attempt":"bound"}`)); err != nil {
+		if err := episodeledger.BindRequest(ctx, tx, "episode", []byte(`{"attempt":"bound"}`)); err != nil {
 			return err
 		}
-		if err := AbandonRebind(ctx, tx, "episode", "first", []byte(`{"reason":"invalid"}`)); err != nil {
+		if err := episodeledger.AbandonRebind(ctx, tx, "episode", "first", []byte(`{"reason":"invalid"}`)); err != nil {
 			return err
 		}
-		if err := RetainForRetry(ctx, tx, "episode"); err != nil {
+		if err := episodeledger.RetainForRetry(ctx, tx, "episode"); err != nil {
 			return err
 		}
-		if err := Conclude(ctx, tx, "episode", "second", []byte(`{"status":"declined"}`)); err != nil {
+		if err := episodeledger.Conclude(ctx, tx, "episode", "second", []byte(`{"status":"declined"}`)); err != nil {
 			return err
 		}
-		if err := Abandon(ctx, tx, "episode", "final", []byte(`{"reason":"killed"}`)); err != nil {
+		if err := episodeledger.Abandon(ctx, tx, "episode", "final", []byte(`{"reason":"killed"}`)); err != nil {
 			return err
 		}
 		var state, ended string
@@ -111,18 +112,18 @@ func TestCancellationRecoveryAbandonsRatherThanRequeues(t *testing.T) {
 	seedEpisode(t, t.Context(), db, "episode")
 	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		identity, err := StartAttempt(t.Context(), tx, "episode", "attempt", now)
+		identity, err := episodeledger.StartAttempt(t.Context(), tx, "episode", "attempt", now)
 		if err != nil {
 			return err
 		}
-		return TransitionAttempt(t.Context(), tx, identity, AttemptCancelling, now, nil)
+		return episodeledger.TransitionAttempt(t.Context(), tx, identity, episodeledger.AttemptCancelling, now, nil)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	var report RecoveryReport
+	var report episodeledger.RecoveryReport
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		var err error
-		report, err = RecoverUnfinishedAttempts(t.Context(), tx, "new-owner", now)
+		report, err = episodeledger.RecoverUnfinishedAttempts(t.Context(), tx, "new-owner", now, nil)
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -146,10 +147,10 @@ func TestUnknownWorkerRejectionIsDurableAndIdempotent(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
-	identity := Identity{EpisodeID: "unknown", AttemptID: "forged", Fence: 7}
+	identity := episodeledger.Identity{EpisodeID: "unknown", AttemptID: "forged", Fence: 7}
 	for range 2 {
 		if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-			return RecordRejection(t.Context(), tx, identity, RejectUnknownEpisode, nil, now)
+			return episodeledger.RecordRejection(t.Context(), tx, identity, episodeledger.RejectUnknownEpisode, nil, now)
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -164,7 +165,7 @@ func TestUnknownWorkerRejectionIsDurableAndIdempotent(t *testing.T) {
 		t.Fatalf("rejection count=%d episode=%v reason=%s details=%s", count, episode, reason, details)
 	}
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		return RecordRejection(t.Context(), tx, identity, RejectionReason("invented"), nil, now)
+		return episodeledger.RecordRejection(t.Context(), tx, identity, episodeledger.RejectionReason("invented"), nil, now)
 	}); err == nil {
 		t.Fatal("unregistered rejection accepted")
 	}

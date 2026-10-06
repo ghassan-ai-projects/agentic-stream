@@ -72,7 +72,7 @@ func (c *RecoveryCoordinator) costSettler() episodeledger.CostSettler {
 }
 
 func (c *RecoveryCoordinator) recoverLedgers(ctx context.Context, tx *sql.Tx, now time.Time) (RecoveryReport, error) {
-	episodes, err := episodeledger.RecoverUnfinishedAttemptsWithCost(ctx, tx, c.Epoch, now, c.costSettler())
+	episodes, err := episodeledger.RecoverUnfinishedAttempts(ctx, tx, c.Epoch, now, c.costSettler())
 	if err != nil {
 		return RecoveryReport{}, fmt.Errorf("recover episode attempts: %w", err)
 	}

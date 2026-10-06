@@ -1,9 +1,10 @@
-package episodeledger
+package episodeledger_test
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"path/filepath"
 	"testing"
 	"time"
@@ -13,25 +14,25 @@ import (
 
 func TestCanTransitionAttempt(t *testing.T) {
 	tests := []struct {
-		from AttemptStatus
-		to   AttemptStatus
+		from episodeledger.AttemptStatus
+		to   episodeledger.AttemptStatus
 		want bool
 	}{
-		{AttemptDispatched, AttemptRunning, true},
-		{AttemptDispatched, AttemptFailed, true},
-		{AttemptRunning, AttemptProduced, true},
-		{AttemptRunning, AttemptDeclined, true},
-		{AttemptRunning, AttemptCancelling, true},
-		{AttemptCancelling, AttemptCancelled, true},
-		{AttemptCancelling, AttemptAbandoned, true},
-		{AttemptProduced, AttemptFailed, false},
-		{AttemptDeclined, AttemptRunning, false},
-		{AttemptCancelled, AttemptProduced, false},
+		{episodeledger.AttemptDispatched, episodeledger.AttemptRunning, true},
+		{episodeledger.AttemptDispatched, episodeledger.AttemptFailed, true},
+		{episodeledger.AttemptRunning, episodeledger.AttemptProduced, true},
+		{episodeledger.AttemptRunning, episodeledger.AttemptDeclined, true},
+		{episodeledger.AttemptRunning, episodeledger.AttemptCancelling, true},
+		{episodeledger.AttemptCancelling, episodeledger.AttemptCancelled, true},
+		{episodeledger.AttemptCancelling, episodeledger.AttemptAbandoned, true},
+		{episodeledger.AttemptProduced, episodeledger.AttemptFailed, false},
+		{episodeledger.AttemptDeclined, episodeledger.AttemptRunning, false},
+		{episodeledger.AttemptCancelled, episodeledger.AttemptProduced, false},
 	}
 	for _, test := range tests {
 		t.Run(string(test.from)+"_to_"+string(test.to), func(t *testing.T) {
-			if got := CanTransitionAttempt(test.from, test.to); got != test.want {
-				t.Fatalf("CanTransitionAttempt(%q, %q) = %t, want %t", test.from, test.to, got, test.want)
+			if got := episodeledger.CanTransitionAttempt(test.from, test.to); got != test.want {
+				t.Fatalf("episodeledger.CanTransitionAttempt(%q, %q) = %t, want %t", test.from, test.to, got, test.want)
 			}
 		})
 	}
@@ -48,25 +49,25 @@ func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 	seedEpisode(t, ctx, db, "epi-fenced")
 
 	now := time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC)
-	var first Identity
+	var first episodeledger.Identity
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		first, err = StartAttempt(ctx, tx, "epi-fenced", "att-first", now)
+		first, err = episodeledger.StartAttempt(ctx, tx, "epi-fenced", "att-first", now)
 		if err != nil {
 			return err
 		}
-		if err := TransitionAttempt(ctx, tx, first, AttemptRunning, now, nil); err != nil {
+		if err := episodeledger.TransitionAttempt(ctx, tx, first, episodeledger.AttemptRunning, now, nil); err != nil {
 			return err
 		}
-		return TransitionAttempt(ctx, tx, first, AttemptAbandoned, now.Add(time.Second), []byte(`{"reason":"grace_expired"}`))
+		return episodeledger.TransitionAttempt(ctx, tx, first, episodeledger.AttemptAbandoned, now.Add(time.Second), []byte(`{"reason":"grace_expired"}`))
 	}); err != nil {
 		t.Fatalf("finish first attempt: %v", err)
 	}
 
-	var second Identity
+	var second episodeledger.Identity
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		second, err = StartAttempt(ctx, tx, "epi-fenced", "att-second", now.Add(2*time.Second))
+		second, err = episodeledger.StartAttempt(ctx, tx, "epi-fenced", "att-second", now.Add(2*time.Second))
 		return err
 	}); err != nil {
 		t.Fatalf("start retry: %v", err)
@@ -76,31 +77,31 @@ func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 	}
 
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := ValidateWorkerIdentity(ctx, tx, first); !IsIdentityReason(err, RejectStaleAttempt) {
+		if err := episodeledger.ValidateWorkerIdentity(ctx, tx, first); !episodeledger.IsIdentityReason(err, episodeledger.RejectStaleAttempt) {
 			return testErrorf("late first attempt error = %v, want stale_attempt", err)
 		}
-		if err := RecordRejection(ctx, tx, first, RejectStaleAttempt, []byte(`{"same_snapshot":true}`), now.Add(3*time.Second)); err != nil {
+		if err := episodeledger.RecordRejection(ctx, tx, first, episodeledger.RejectStaleAttempt, []byte(`{"same_snapshot":true}`), now.Add(3*time.Second)); err != nil {
 			return err
 		}
-		return ValidateWorkerIdentity(ctx, tx, second)
+		return episodeledger.ValidateWorkerIdentity(ctx, tx, second)
 	}); err != nil {
 		t.Fatalf("validate fenced identities: %v", err)
 	}
 
 	var rejections int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM episode_rejections WHERE episode_id = ? AND reason = ?", "epi-fenced", RejectStaleAttempt).Scan(&rejections); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM episode_rejections WHERE episode_id = ? AND reason = ?", "epi-fenced", episodeledger.RejectStaleAttempt).Scan(&rejections); err != nil {
 		t.Fatalf("count rejection: %v", err)
 	}
 	if rejections != 1 {
 		t.Fatalf("rejection count = %d, want 1", rejections)
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		return RecordRejection(ctx, tx, Identity{EpisodeID: "missing-episode", AttemptID: "att-missing"}, RejectUnknownEpisode, nil, now.Add(4*time.Second))
+		return episodeledger.RecordRejection(ctx, tx, episodeledger.Identity{EpisodeID: "missing-episode", AttemptID: "att-missing"}, episodeledger.RejectUnknownEpisode, nil, now.Add(4*time.Second))
 	}); err != nil {
 		t.Fatalf("record unknown-episode rejection: %v", err)
 	}
 	var unknownRejections int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM episode_rejections WHERE episode_id IS NULL AND reason = ?", RejectUnknownEpisode).Scan(&unknownRejections); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM episode_rejections WHERE episode_id IS NULL AND reason = ?", episodeledger.RejectUnknownEpisode).Scan(&unknownRejections); err != nil {
 		t.Fatalf("count unknown-episode rejection: %v", err)
 	}
 	if unknownRejections != 1 {
@@ -111,7 +112,7 @@ func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 		if _, err := tx.ExecContext(ctx, "UPDATE episodes SET lifecycle_status = 'closed' WHERE episode_id = ?", "epi-fenced"); err != nil {
 			return fmt.Errorf("close episode fixture: %w", err)
 		}
-		if err := ValidateWorkerIdentity(ctx, tx, second); !IsIdentityReason(err, RejectEpisodeClosed) {
+		if err := episodeledger.ValidateWorkerIdentity(ctx, tx, second); !episodeledger.IsIdentityReason(err, episodeledger.RejectEpisodeClosed) {
 			return testErrorf("closed episode error = %v, want episode_closed", err)
 		}
 		return nil
@@ -142,10 +143,10 @@ func TestRecoveryAbandonsPriorEpochAndIsIdempotent(t *testing.T) {
 	}
 
 	now := time.Date(2026, 8, 12, 11, 0, 0, 0, time.UTC)
-	var report RecoveryReport
+	var report episodeledger.RecoveryReport
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		report, err = RecoverUnfinishedAttempts(ctx, tx, "epoch-new", now)
+		report, err = episodeledger.RecoverUnfinishedAttempts(ctx, tx, "epoch-new", now, nil)
 		return err
 	}); err != nil {
 		t.Fatalf("recover: %v", err)
@@ -160,18 +161,18 @@ func TestRecoveryAbandonsPriorEpochAndIsIdempotent(t *testing.T) {
 		WHERE a.attempt_id = 'att-recovery'`).Scan(&status, &lifecycle, &reason); err != nil {
 		t.Fatalf("read recovered state: %v", err)
 	}
-	if status != string(AttemptAbandoned) || lifecycle != string(LifecycleRunning) || reason != "runtime_restart" {
+	if status != string(episodeledger.AttemptAbandoned) || lifecycle != string(episodeledger.LifecycleRunning) || reason != "runtime_restart" {
 		t.Fatalf("recovered state status=%q lifecycle=%q reason=%q", status, lifecycle, reason)
 	}
 
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		report, err = RecoverUnfinishedAttempts(ctx, tx, "epoch-new", now.Add(time.Minute))
+		report, err = episodeledger.RecoverUnfinishedAttempts(ctx, tx, "epoch-new", now.Add(time.Minute), nil)
 		return err
 	}); err != nil {
 		t.Fatalf("repeat recovery: %v", err)
 	}
-	if report != (RecoveryReport{}) {
+	if report != (episodeledger.RecoveryReport{}) {
 		t.Fatalf("repeat recovery report = %+v, want zero", report)
 	}
 }
