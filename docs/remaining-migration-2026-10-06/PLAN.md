@@ -102,3 +102,4 @@ Update the migration-status README and `deadcode-production-unreachable.txt`
 - **Layer table**: adding the remote and native layers moved every package at
   layer 11 or above up by three (runtime transport 14, runtime app 15,
   composition 16, replay 14/15/16, runtime 17, cmd 18).
+- **Crash in shadow mode (P1)**: `episodes/internal/domain.ScoreShadowDecision` indexes `Intents[0]`, so a legitimate zero-intent Decision (`need_more_evidence`, which the native deterministic provider returns) panics the runtime under the default shadow dispatch policy. Found by running the example end to end; see [the walkthrough](../walkthrough-end-to-end-2026-10-06/README.md#defect-found-while-running-it).
