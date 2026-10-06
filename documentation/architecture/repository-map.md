@@ -73,7 +73,6 @@ historical design map where the code has chosen a more specific package name.
 | `internal/authority/internal/app/` | device-authority use cases: validation, admission, unit of work, audit (reference module layer) |
 | `internal/authority/internal/domain/` | device-authority vocabulary and pure rules (reference module layer) |
 | `internal/authority/internal/store/` | device-authority persistence: transactions and the only SQL for its tables (reference module layer) |
-| `internal/qualification/` | calibration and shadow evidence |
 | `internal/interlock/` | durable readiness state and read-only assertions |
 | `internal/canonicaljson/`, `internal/clock/`, `internal/duration/`, `internal/ids/` | deterministic digest, time, duration and identity primitives |
 | `internal/executor/fixture/` | deterministic episode executor for explicit demo and replay fixtures |

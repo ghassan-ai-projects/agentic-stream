@@ -83,7 +83,7 @@ for the intended operating environment. Calibration activation and report-only
 shadow comparisons are separate evidence mechanisms. Passing a motor
 test with simulated inputs does not qualify a physical installation.
 Source: [observability](../design/observability.md),
-[qualification owner](../../internal/qualification/doc.go), and
+[shadow decision store](../../internal/episodes/internal/store/shadow.go), and
 [current release posture](../overview/status.md).
 
 ## Next reads

@@ -75,3 +75,33 @@ func bytesOf(fill byte) []byte {
 	}
 	return value
 }
+
+func TestShadowComparisonIsAppendOnlyAndNeverCreatesActionRecords(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	s := newStore(t)
+	digest := bytesOf(1)
+	if _, err := s.DB.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		t.Fatal(err)
+	}
+	comparison := domain.Comparison{
+		ComparisonID: "comparison", ComparisonKey: "key", TenantID: "tenant", EpisodeID: "episode",
+		SituationID: "situation", SituationVersion: 1, SnapshotSHA256: digest, SpecSHA256: digest,
+		PolicySHA256: digest, BaselineManifestSHA256: digest, TamozManifestSHA256: digest,
+		BaselineDecisionJSON: []byte(`{}`), BaselineDecisionSHA256: digest,
+		TamozDecisionJSON: []byte(`{}`), TamozDecisionSHA256: digest,
+		ComparisonJSON: []byte(`{}`), ComparisonSHA256: digest,
+	}
+	if err := s.RecordShadowComparison(ctx, comparison); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordShadowComparison(ctx, comparison); err == nil {
+		t.Fatal("duplicate comparison overwrote the prior record")
+	}
+	for table, want := range map[string]int{"shadow_comparisons": 1, "intents": 0, "commands": 0, "outbox": 0} {
+		var count int
+		if err := s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil || count != want {
+			t.Fatalf("%s: count=%d want=%d err=%v", table, count, want, err)
+		}
+	}
+}

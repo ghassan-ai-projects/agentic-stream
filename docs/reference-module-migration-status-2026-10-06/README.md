@@ -40,7 +40,6 @@ fits the pattern, not yet done. **N/A** = pure rules, foundation or infrastructu
 
 | Package | Description | Reason |
 | --- | --- | --- |
-| `qualification` | Calibration artifacts, shadow decisions and comparisons | Same |
 | `interlock` | Runtime interlock reader/writer | Tiny layer-0 leaf; merging into `control` widens dependencies |
 | `admission` | Admits scheduler items into episodes | Thin orchestrator, no tables; merge blocked by layering |
 | `api` | HTTP and SSE handlers | Thin adapter, no tables |

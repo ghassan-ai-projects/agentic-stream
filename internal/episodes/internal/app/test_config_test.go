@@ -7,7 +7,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -23,13 +22,6 @@ func NewAssembler(compiled *spec.CompiledSpec, idGen ids.Generator) *Assembler {
 		idGen = ids.Random()
 	}
 	return &Assembler{spec: compiled, idGen: idGen}
-}
-
-// WithShadowStore enables P8 shadow scoring: shadow decisions are scored
-// and persisted to shadow_decisions (never to intents/commands).
-func (r *Runner) WithShadowStore(store *qualification.ShadowStore) *Runner {
-	r.shadowStore = store
-	return r
 }
 
 // WithAssembler enables the ISSUE-061 re-bind path: an admitted episode whose

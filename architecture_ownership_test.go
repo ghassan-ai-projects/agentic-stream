@@ -11,7 +11,6 @@ import (
 // aggregates whose permitted phases are further restricted below.
 var durableOwners = map[string]string{
 	"approvals":                     "internal/approvalledger/internal/store",
-	"calibration_artifacts":         "internal/qualification",
 	"commands":                      "internal/actions/internal/store",
 	"connector_checkpoints":         "internal/ingress/internal/store",
 	"cost_limits":                   "internal/control/internal/store",
@@ -50,8 +49,8 @@ var durableOwners = map[string]string{
 	"runtime_owner":                 "internal/control/internal/store",
 	"scheduler_items":               "internal/episodeledger/internal/store",
 	"schema_migrations":             "internal/storage",
-	"shadow_comparisons":            "internal/qualification",
-	"shadow_decisions":              "internal/qualification",
+	"shadow_comparisons":            "internal/replay/internal/store",
+	"shadow_decisions":              "internal/episodes/internal/store",
 	"situation_versions":            "internal/engine/internal/store",
 	"situations":                    "internal/engine/internal/store",
 	"spec_deployments":              "internal/spec",

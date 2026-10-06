@@ -9,7 +9,6 @@ import (
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
@@ -22,7 +21,6 @@ type Runner struct {
 	ownerEpoch    string
 	cost          *runtimecontrol.CostLedger
 	decisionEpoch store.DecisionEpochCheck
-	shadowStore   *qualification.ShadowStore
 	telemetry     *telemetry.Runtime
 	assembler     *Assembler
 }

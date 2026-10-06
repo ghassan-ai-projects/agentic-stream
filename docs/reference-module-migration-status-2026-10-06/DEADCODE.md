@@ -15,7 +15,7 @@ capability it cannot trigger.
 | `interlock` | 2 | `Set`: nothing in production can trip the interlock | 8 | Wire an operator command, or document DB-only |
 | `replay` (+4 layers) | 93 | Recorded, shadow, counterfactual, baseline modes, `RunNTimes`; CLI wires only `Run` | 8 | Wire to the CLI (shadow mode is a design acceptance item) |
 | `engine/internal/app` | 5 | Per-partition run path kept only for tests | 8 | Delete; move tests to `RunGlobal` |
-| `qualification` | 6 | Calibration `Activate`, `ShadowComparisonStore.Record` | 7 | Wire, or accept that consequential intents always need approval |
+| `qualification` | 6 | Calibration `Activate`, `ShadowComparisonStore.Record` | 7 | **Resolved (qualification dissolved):** `Activate` deleted; shadow decisions moved to `episodes`, shadow comparisons to `replay`, the calibration check to `policy`. Consequential intents still need approval until an operator provisions artifacts |
 | `notify` | 3 | `Prune`: retention never runs | 7 | **Decided (notify migration):** keep as `Service.Prune`; not scheduled until an operator chooses a retention. See the notify record |
 | `eventlog` (+3 layers) | 14 | Quarantine release/redrive, `RecordGap`; no operator path | 6 | Operator command or remove |
 | `executor/native` | 8 | `RunBatch`, `MemoryArtifactStore`; evaluation harness | 4 | Keep or move behind an eval package |

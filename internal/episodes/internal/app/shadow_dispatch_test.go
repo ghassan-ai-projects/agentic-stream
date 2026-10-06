@@ -12,8 +12,6 @@ import (
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -103,7 +101,6 @@ func TestShadowDispatchScoresWithoutGovernance(t *testing.T) {
 	seedShadowEpisode(t, db, "epi-shadow", "shadow")
 
 	runner := app.NewRunner(store.New(db), fixture.New(), clock.Physical(), ids.Deterministic())
-	runner.WithShadowStore(&qualification.ShadowStore{DB: db})
 	processed, err := runner.RunOnce(context.Background(), "tenant")
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +144,6 @@ func TestActiveDispatchPersistsIntents(t *testing.T) {
 	seedShadowEpisode(t, db, "epi-active", "active")
 
 	runner := app.NewRunner(store.New(db), fixture.New(), clock.Physical(), ids.Deterministic())
-	runner.WithShadowStore(&qualification.ShadowStore{DB: db})
 	processed, err := runner.RunOnce(context.Background(), "tenant")
 	if err != nil {
 		t.Fatal(err)

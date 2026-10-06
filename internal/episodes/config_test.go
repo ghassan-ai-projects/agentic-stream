@@ -39,10 +39,12 @@ func TestConstructionRejectsIncompleteExecution(t *testing.T) {
 			}
 		})
 	}
+	// Shadow persistence is the episode store's own table, so a shadow spec needs
+	// nothing beyond the database every execution already requires.
 	shadowSpec := *compiled
 	shadowSpec.Cognition.Executor.DispatchPolicy = "shadow"
-	if service, err := episodes.New(episodes.Config{Spec: &shadowSpec, Execution: &episodes.ExecutionConfig{DB: db, Executor: declinedExecutor{}, DecisionEpoch: control.AssertDecisionTx}}); err == nil || service != nil {
-		t.Fatalf("missing shadow persistence accepted: %v %v", service, err)
+	if service, err := episodes.New(episodes.Config{Spec: &shadowSpec, Execution: &episodes.ExecutionConfig{DB: db, Executor: declinedExecutor{}, DecisionEpoch: control.AssertDecisionTx}}); err != nil || service == nil {
+		t.Fatalf("shadow execution refused: %v %v", service, err)
 	}
 }
 

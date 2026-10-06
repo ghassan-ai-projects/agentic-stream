@@ -19,7 +19,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 	app "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 	transport "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/transport"
@@ -101,7 +100,7 @@ func composeAdmission(cfg PipelineConfig, episodeService *episodes.Service) *adm
 }
 
 func composeEpisodes(cfg PipelineConfig) (*episodes.Service, error) {
-	service, err := episodes.New(episodes.Config{Spec: cfg.Spec, IDGenerator: cfg.IDGenerator, CostControl: &runtimecontrol.CostLedger{}, Execution: &episodes.ExecutionConfig{DB: cfg.DB, Executor: cfg.Executor, Clock: cfg.Clock, OwnerEpoch: cfg.OwnerEpoch, DecisionEpoch: policyEpochCheck(cfg), ShadowStore: &qualification.ShadowStore{DB: cfg.DB}, Telemetry: cfg.Telemetry}})
+	service, err := episodes.New(episodes.Config{Spec: cfg.Spec, IDGenerator: cfg.IDGenerator, CostControl: &runtimecontrol.CostLedger{}, Execution: &episodes.ExecutionConfig{DB: cfg.DB, Executor: cfg.Executor, Clock: cfg.Clock, OwnerEpoch: cfg.OwnerEpoch, DecisionEpoch: policyEpochCheck(cfg), Telemetry: cfg.Telemetry}})
 	if err != nil {
 		return nil, fmt.Errorf("compose episodes: %w", err)
 	}
@@ -109,21 +108,11 @@ func composeEpisodes(cfg PipelineConfig) (*episodes.Service, error) {
 }
 
 func composePolicy(cfg PipelineConfig) (*policy.Service, error) {
-	service, err := policy.New(policy.Config{PolicyVersion: cfg.Spec.Digest, IDGenerator: cfg.IDGenerator, OwnerEpoch: cfg.OwnerEpoch, RuntimeOwner: runtimeOwnershipCheck(cfg), DecisionEpoch: policyEpochCheck(cfg), Interlock: interlock.DurableReader{}, Calibration: policyCalibrationCheck(cfg)})
+	service, err := policy.New(policy.Config{PolicyVersion: cfg.Spec.Digest, IDGenerator: cfg.IDGenerator, OwnerEpoch: cfg.OwnerEpoch, RuntimeOwner: runtimeOwnershipCheck(cfg), DecisionEpoch: policyEpochCheck(cfg), Interlock: interlock.DurableReader{}})
 	if err != nil {
 		return nil, fmt.Errorf("compose policy: %w", err)
 	}
 	return service, nil
-}
-
-func policyCalibrationCheck(cfg PipelineConfig) policy.CalibrationCheck {
-	calibration := &qualification.CalibrationStore{DB: cfg.DB}
-	return func(ctx context.Context, tx *sql.Tx, situationType, executorVersion string) error {
-		if err := calibration.AssertCalibration(ctx, tx, qualification.CalibrationArtifact{Domain: situationType, ModelRevision: executorVersion}); err != nil {
-			return fmt.Errorf("check policy calibration: %w", err)
-		}
-		return nil
-	}
 }
 
 func runtimeOwnershipCheck(cfg PipelineConfig) func(context.Context, *sql.Tx, string) error {

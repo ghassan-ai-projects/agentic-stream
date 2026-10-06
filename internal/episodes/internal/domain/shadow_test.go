@@ -5,24 +5,23 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 )
 
 func TestShadowScoreUsesHighestRisk(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		risk, reason string
-		score        qualification.ShadowScore
+		score        ShadowScore
 	}{
-		{"R1", "would_approve_R1", qualification.ShadowWouldApprove},
-		{"R2", "would_require_approval_r2", qualification.ShadowWouldRequireApproval},
-		{"R4", "would_deny_R4", qualification.ShadowWouldDeny},
+		{"R1", "would_approve_R1", ShadowWouldApprove},
+		{"R2", "would_require_approval_r2", ShadowWouldRequireApproval},
+		{"R4", "would_deny_R4", ShadowWouldDeny},
 	}
 	for _, test := range tests {
 		t.Run(test.risk, func(t *testing.T) {
 			t.Parallel()
 			validated := &decisions.Result{Intents: []decisions.Intent{{RiskClass: "R0"}, {RiskClass: test.risk}, {RiskClass: "R0"}}}
-			score, reason := ShadowScore(validated)
+			score, reason := ScoreShadowDecision(validated)
 			if score != test.score || reason != test.reason {
 				t.Fatalf("score=%s reason=%s", score, reason)
 			}

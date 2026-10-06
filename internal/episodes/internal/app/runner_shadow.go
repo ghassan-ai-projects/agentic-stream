@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 
@@ -26,14 +25,11 @@ func (r *Runner) persistValidatedIntents(ctx context.Context, tx *store.Tx, vali
 // shadow_decisions table — never to intents or commands. The score is the
 // highest-risk intent's would-be result under the live policy.
 func (r *Runner) recordShadow(ctx context.Context, tx *store.Tx, decisionID string, decisionDigest []byte, req *Request, outcome *Outcome, validated *decisions.Result, now string) error {
-	if r.shadowStore == nil {
-		return fmt.Errorf("shadow dispatch but no shadow store configured — scores would be silently dropped")
-	}
 	// decisions.Validate rejects a decision with zero intents, so the first
 	// intent is always present here.
-	score, reason := domain.ShadowScore(validated)
+	score, reason := domain.ScoreShadowDecision(validated)
 	shadow := domain.NewShadowDecision(r.shadowIdentity(decisionID, req), reqIdentity(req), outcome.DecisionJSON, decisionDigest, score, reason)
-	return store.RecordShadowDecision(ctx, tx, r.shadowStore, shadow, now)
+	return tx.RecordShadowDecision(ctx, shadow, now)
 }
 
 // reqIdentity projects the request's bound worker identity.

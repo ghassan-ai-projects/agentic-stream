@@ -86,8 +86,8 @@ func (g *Service) routeIntent(ctx context.Context, tx *store.Tx, e evaluation) (
 }
 
 func (g *Service) routeConsequentialIntent(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
-	if g.calibration != nil && e.row.SituationType != "" && e.row.ExecutorVersion != "" {
-		if err := tx.AssertCalibration(ctx, g.calibration, e.row.SituationType, e.row.ExecutorVersion); err == nil {
+	if e.row.SituationType != "" && e.row.ExecutorVersion != "" {
+		if active, err := tx.CalibrationActive(ctx, e.row.SituationType, e.row.ExecutorVersion); err == nil && active {
 			e.result.Reason = "calibrated_automation"
 			return g.approveAutomatic(ctx, tx, e)
 		}

@@ -83,37 +83,26 @@ func TestEpochFailureCannotPrepareCommand(t *testing.T) {
 	}
 }
 
-func TestCalibrationPortUsesOriginalTransactionAndExactBinding(t *testing.T) {
-	for _, checkErr := range []error{nil, errors.New("missing artifact")} {
-		t.Run(fmt.Sprint(checkErr), func(t *testing.T) {
+func TestCalibrationIsReadFromTheOriginalTransactionWithExactBinding(t *testing.T) {
+	for _, calibrated := range []bool{true, false} {
+		t.Run(fmt.Sprint(calibrated), func(t *testing.T) {
 			db, id := openPolicyFixture(t, "R2", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
 			defer func() { _ = db.Close() }()
-			var original *sql.Tx
-			calls := 0
-			service := newTestService(t, func(c *policy.Config) {
-				c.Calibration = func(_ context.Context, tx *sql.Tx, situationType, executorVersion string) error {
-					if tx != original || situationType != "test" || executorVersion != "v1" {
-						t.Fatal("calibration binding changed", situationType, executorVersion)
-					}
-					calls++
-					return checkErr
-				}
-			})
+			if calibrated {
+				activateCalibration(t, db, "test", "v1", "sha256:1111")
+			}
+			service := newTestService(t)
 			if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-				original = tx
 				r, err := service.EvaluateIntent(t.Context(), tx, policy.EvaluationRequest{IntentID: id, Now: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)})
-				if checkErr == nil && (r.Result != "approved" || r.Reason != "calibrated_automation" || r.CommandID == "") {
+				if calibrated && (r.Result != "approved" || r.Reason != "calibrated_automation" || r.CommandID == "") {
 					t.Fatal(r)
 				}
-				if checkErr != nil && (r.Result != "approval_required" || r.CommandID != "") {
+				if !calibrated && (r.Result != "approval_required" || r.CommandID != "") {
 					t.Fatal(r)
 				}
 				return err
 			}); err != nil {
 				t.Fatal(err)
-			}
-			if calls != 1 {
-				t.Fatal("calibration calls", calls)
 			}
 		})
 	}

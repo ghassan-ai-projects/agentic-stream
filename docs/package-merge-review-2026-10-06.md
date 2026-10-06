@@ -9,6 +9,7 @@ dependency rule or a cross-repository contract forbids the merge.
 | Decision | Evidence |
 | --- | --- |
 | `scheduleledger` merged into `episodeledger` | Same transactions and callers; 220 lines cannot carry four layers. See [ledgers record](ledgers-reference-module-2026-10-06/MERGE_DECISION.md). |
+| `qualification` dissolved | Three unrelated parts with one user each: shadow decisions (`episodes`), shadow comparisons (`replay`, which already had an identical `Comparison` type) and the calibration check (`policy`); the unused `Activate` was deleted. |
 | `costcontrol` merged into `control` | One control plane: `control.Kill` already settled cost, and every cost caller also asks `control` about the epoch. The cycle through `episodeledger` was cut with a `CostSettler` port. See [control record](control-reference-module-2026-10-06/README.md). |
 | `notifycontract` merged into `notify/internal/domain` | The Go package was `internal/` and only `notify` imported it; the JSON contract files moved with it and docs were relinked. Merging removed a duplicated type list and a layer. See [notify record](notify-reference-module-2026-10-06/README.md). |
 
@@ -25,18 +26,13 @@ dependency rule or a cross-repository contract forbids the merge.
 | --- | --- |
 | `interlock` into `control` | 100-line layer-0 leaf imported by `policy`, `actions` and `watch`, which would otherwise inherit control's transitive imports (episodes ledger, cost control, storage). |
 | `approvalledger` into `policy` | `cognition` withdraws approvals on supersession and would have to import policy, which reasoning layers are forbidden to reach. |
-| `qualification` into `control` or `episodes` | Different owners and tables; `replay`, `runtime` and `episodes` import `qualification` without `episodes`. |
 | `admission` into `episodes` | Admission imports `cognition`, which sits above `episodes` in the layer graph. |
 | `api` | Already a thin HTTP/SSE adapter with no tables; the playbook exempts thin adapters. |
 
 ## Not migrated, and why
 
-`qualification`, `episodeledger`,
-`approvalledger` was a shared, transaction-scoped store (now migrated; see the ledgers record):
-stateless functions over a caller's transaction that other modules' stores call.
-They already are the store layer of their tables. Giving each facade/app/domain
-layers would lift them above 20 dependants and renumber the layer table for no
-behavior gain. If that is wanted later, re-level the table from the import
-graph first. `spec`, `storage`, `telemetry`, `worker`, `runartifact`, `soak`,
-`executor/*`, `operators` and `situations` are pure rule sets, infrastructure or
-adapters.
+None of the shared transaction-scoped stores remain in their old shape: `notify`, `control` (with
+`costcontrol`), `episodeledger` (with `scheduleledger`) and `approvalledger` were layered, and
+`qualification` was dissolved. `spec`, `storage`, `telemetry`, `worker`, `runartifact`, `soak`,
+`executor/*`, `operators` and `situations` are pure rule sets, infrastructure or adapters (see the
+follow-ups for the shape review of the executors, `runartifact`, `worker` and `soak`).

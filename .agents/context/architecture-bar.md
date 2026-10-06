@@ -65,7 +65,7 @@ Additional modules have current concrete responsibilities:
   [policy pattern](../../internal/policy/README.md).
 - `control`: singleton runtime ownership, epoch drain/kill and aggregate cost control; cancellation calls the episode ledger in the same transaction and releases unstarted cost reservations.
 - `authority`: target claims, command bindings, device reconciliation and safety evidence.
-- `qualification`: calibration activation and shadow decision/comparison evidence.
+- Shadow evidence is owned by its writers: `episodes` records scored shadow decisions and `replay` records shadow comparisons; neither writes intents, commands or the outbox. The calibration artifacts that unlock automatic consequential intents are read by the `policy` store and provisioned by an operator.
 - `executor/remote`: the out-of-process EpisodeWorker protocol adapter: request mapping, streamed budget accounting and terminal outcome assembly.
 - `admission`: turns pending scheduler items into admitted, epoch-stamped episodes, or records why an item can never be admitted.
 - `watch`: bounded, expiring derived triggers installed by approved commands and fired by matching evidence.

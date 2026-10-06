@@ -73,7 +73,6 @@ records or returned values, not reverse service dependencies.
 | `policy` | Permission, principal/signature verification, risk, freshness, rate limits and command publication. Thin `Service` facade, app use cases, pure domain rules/typed governance documents, and a store that joins the caller transaction and owns policy SQL; [pattern](../../internal/policy/README.md) |
 | `control` | Facade over app use cases for the runtime owner lease, epoch drain/kill, cost reservation/settlement/ceilings and the read-only readiness capability; domain owns lease, epoch and cost rules; the opaque store owns `runtime_owner`, `epoch_control`, `cost_limits` and `cost_reservations` |
 | `authority` | Target claims, command bindings, device reconciliation, safe-stop latching and safety evidence. Reference structure: a thin `Service` facade, use cases in `internal/app`, pure `internal/domain` rules, and `internal/store`, the only writer of its tables |
-| `qualification` | Calibration activation and report-only shadow decisions/comparisons |
 | `storage` | SQLite configuration, migrations, transactions, replay-path reservation and busy retry |
 | `runtime` / `cmd` | Wiring, lifecycle and orchestration; concrete device selection lives here |
 

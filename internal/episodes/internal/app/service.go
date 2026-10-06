@@ -9,7 +9,6 @@ import (
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
@@ -29,7 +28,6 @@ type ExecutionConfig struct {
 	Clock         clock.Clock
 	OwnerEpoch    string
 	DecisionEpoch store.DecisionEpochCheck
-	ShadowStore   *qualification.ShadowStore
 	Telemetry     *telemetry.Runtime
 }
 
@@ -64,9 +62,6 @@ func validateExecution(cfg Config) error {
 	if !execution.Episodes.Configured() || execution.Executor == nil || execution.DecisionEpoch == nil {
 		return fmt.Errorf("episode execution database, executor and decision epoch check are required")
 	}
-	if cfg.Spec.Cognition.Executor.DispatchPolicy == "shadow" && execution.ShadowStore == nil {
-		return fmt.Errorf("shadow episode execution requires shadow persistence")
-	}
 	return nil
 }
 func configuredRunner(cfg Config, assembler *Assembler) *Runner {
@@ -77,7 +72,7 @@ func configuredRunner(cfg Config, assembler *Assembler) *Runner {
 	if execution.Clock == nil {
 		execution.Clock = clock.Physical()
 	}
-	return &Runner{episodes: execution.Episodes, executor: execution.Executor, clk: execution.Clock, idGen: cfg.IDGenerator, ownerEpoch: execution.OwnerEpoch, cost: cfg.CostControl, decisionEpoch: execution.DecisionEpoch, shadowStore: execution.ShadowStore, telemetry: execution.Telemetry, assembler: assembler}
+	return &Runner{episodes: execution.Episodes, executor: execution.Executor, clk: execution.Clock, idGen: cfg.IDGenerator, ownerEpoch: execution.OwnerEpoch, cost: cfg.CostControl, decisionEpoch: execution.DecisionEpoch, telemetry: execution.Telemetry, assembler: assembler}
 }
 
 // Assemble builds a situation-bound request in the joined transaction.

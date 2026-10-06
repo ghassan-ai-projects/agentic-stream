@@ -13,6 +13,7 @@ Each is also recorded in the module's `PLAN.md`.
 - **control**: `costcontrol` merged into `control` (`CostLedger`, `SetCostLimit`, `ApplyCostCeilings`, `ErrCostReservationRejected`); `episodeledger` recovery takes a `CostSettler` port; control is layered facade/app/domain/store, which moved `api`, `authority`, `soak`, `actions`, `device`, `episodes` and the executors up a level.
 - **episodeledger**: `scheduleledger` merged into `episodeledger` (queue operations renamed `...SchedulerItem...`); `RecoverUnfinishedAttemptsWithCost` is `RecoverUnfinishedAttempts` with an optional `CostSettler`; layered facade/app/domain/store, which moved the executors, `episodes`, `actions`, `device`, `control`, `admission` and `runtime` up one level; a few error texts changed (see its PLAN).
 - **approvalledger**: layered facade/app/domain/store; `WithdrawSuperseded` takes a `WithdrawalPublisher` instead of `(tenantID, clock)` and the ledger no longer imports `notify` (the cognition store builds the `approval.withdrawn` event); a nil publisher is refused; superseded approvals are listed before any write; the ledger sits at layer 3 instead of 5.
+- **qualification**: dissolved. `CalibrationStore.Activate` and its helpers were deleted (no production caller); `ShadowDecision`/`ShadowScore` and the insert moved into `episodes` (the `ShadowStore` config field and its nil checks are gone); `ShadowComparison` was merged into `replay`'s existing `Comparison`; the calibration check became `policy`'s store query `CalibrationActive`, and `policy.Config.Calibration`/`CalibrationCheck` and the runtime's `policyCalibrationCheck` were removed.
 - **layer table**: engine 10, runtime/internal/app 11, composition 12, runtime 13, replay store/app/facade 11/12/13, cmd 14.
 
 ## Deferred work
@@ -20,7 +21,7 @@ Each is also recorded in the module's `PLAN.md`.
 1. **Owner-provided read ports** for the authority projection. Actions, policy and cognition join foreign tables (`intents`, `decisions`, `episodes`, `situations`, `approvals`, `policy_evaluations`). It needs one cross-module design touching five owners' public APIs; not started.
 2. Typed provider and observed-effect results (actions); typed simulator records (ingress); typed operator-state and timer-payload records shared with `operators` (engine).
 3. One transaction spanning an ingress batch and its checkpoint; one transaction per global engine batch; per-watch fan-out in one transaction.
-4. Re-level the layer table from the import graph before layering `qualification` or the ledgers. `notify` and `control` were layered by moving `approvalledger`, `policy` and `runartifact` up one level each (see its record).
+4. Re-level the layer table from the import graph (the ledgers and `qualification` are done: see their records). `notify` and `control` were layered by moving `approvalledger`, `policy` and `runartifact` up one level each (see its record).
 5. Review the shape of `executor/native`, `executor/remote`, `runartifact`, `worker`.
 
 ## Open decisions (see DEADCODE.md)
