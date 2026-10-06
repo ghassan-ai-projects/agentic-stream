@@ -10,3 +10,4 @@ is computed over its exact form.
 
 | Round | Target | Maps before | Status |
 | --- | --- | --- | --- |
+| 1 | `ingress` simulator event (`simulator_event.go`) | 16 | Done: 16 to 13. The record enters as a JSON map and the envelope `Data` is an open contract map, so those stay; the identity, timestamps, value and unit are now one typed `simulatorEvent` parsed once with the same check order and messages. Little more is available here. |
