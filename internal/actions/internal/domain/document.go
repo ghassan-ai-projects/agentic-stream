@@ -2,7 +2,6 @@ package domain
 
 import (
 	"crypto/sha256"
-	"encoding/hex"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
@@ -51,7 +50,7 @@ func verifyDigest(domain canonicaljson.Domain, document Document, digest []byte)
 	if len(digest) != sha256.Size {
 		return false
 	}
-	return canonicaljson.Verify(domain, map[string]any(document), "sha256:"+hex.EncodeToString(digest))
+	return canonicaljson.Verify(domain, map[string]any(document), canonicaljson.EncodeDigest(digest))
 }
 
 // verifyIntentDigest reports whether digest binds the intent document, which
@@ -64,5 +63,5 @@ func verifyIntentDigest(document Document, digest []byte) bool {
 	if err != nil {
 		return false
 	}
-	return expected == "sha256:"+hex.EncodeToString(digest)
+	return expected == canonicaljson.EncodeDigest(digest)
 }

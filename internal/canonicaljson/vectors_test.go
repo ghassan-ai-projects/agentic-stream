@@ -43,7 +43,7 @@ func TestSharedCanonicalizationVectors(t *testing.T) {
 	for _, vector := range vectors.Accept {
 		vector := vector
 		t.Run(vector.Name, func(t *testing.T) {
-			gotCanonical, err := canonicaljson.MarshalString(vector.Input)
+			gotCanonical, err := marshalString(vector.Input)
 			if err != nil {
 				t.Fatalf("MarshalString failed: %v", err)
 			}
@@ -73,7 +73,7 @@ func TestNativeOnlyDoubleVectors(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := canonicaljson.MarshalString(map[string]any{"n": test.value})
+			got, err := marshalString(map[string]any{"n": test.value})
 			if err != nil {
 				t.Fatalf("MarshalString failed: %v", err)
 			}
@@ -135,7 +135,7 @@ func TestRawUnsafeIntegerSpellingsAreRejected(t *testing.T) {
 }
 
 func TestRawValidEscapedSurrogatePairIsAccepted(t *testing.T) {
-	got, err := canonicaljson.MarshalString(json.RawMessage(`{"k":"\ud83d\ude00"}`))
+	got, err := marshalString(json.RawMessage(`{"k":"\ud83d\ude00"}`))
 	if err != nil {
 		t.Fatalf("expected valid surrogate pair to be accepted: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestRawEscapedEquivalentDuplicateKeysAreRejected(t *testing.T) {
 }
 
 func TestExactlyRepresentableDoubleAtSafeBoundaryIsAccepted(t *testing.T) {
-	got, err := canonicaljson.MarshalString(map[string]any{"n": float64(1 << 53)})
+	got, err := marshalString(map[string]any{"n": float64(1 << 53)})
 	if err != nil {
 		t.Fatalf("expected exactly representable double to be accepted: %v", err)
 	}
@@ -182,4 +182,10 @@ func readVectors(t *testing.T) canonicalizationVectors {
 		t.Fatalf("decode vectors: %v", err)
 	}
 	return vectors
+}
+
+// marshalString is the canonical encoding as text.
+func marshalString(v any) (string, error) {
+	b, err := canonicaljson.Marshal(v)
+	return string(b), err
 }

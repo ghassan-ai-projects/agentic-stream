@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -86,9 +85,9 @@ func episodeClaimFromDispatched(episode store.DispatchedEpisode) *episodeClaim {
 		SituationID: episode.SituationID, SituationVersion: episode.SituationVersion,
 		ExecutorName: episode.ExecutorName, ExecutorVersion: episode.ExecutorVersion,
 		ModelPolicy: episode.ModelPolicy, PromptVersion: episode.PromptVersion,
-		SnapshotSHA256:  "sha256:" + hex.EncodeToString(episode.SnapshotSHA256),
-		PromptSHA256:    "sha256:" + hex.EncodeToString(episode.PromptSHA256),
-		ObjectiveSHA256: "sha256:" + hex.EncodeToString(episode.ObjectiveSHA256),
+		SnapshotSHA256:  canonicaljson.EncodeDigest(episode.SnapshotSHA256),
+		PromptSHA256:    canonicaljson.EncodeDigest(episode.PromptSHA256),
+		ObjectiveSHA256: canonicaljson.EncodeDigest(episode.ObjectiveSHA256),
 		AdmissionKey:    episode.AdmissionKey, RequestJSON: episode.RequestJSON,
 		DispatchPolicy: episode.DispatchPolicy, PolicyEpoch: episode.PolicyEpoch,
 	}

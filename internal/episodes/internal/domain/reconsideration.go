@@ -1,9 +1,10 @@
 package domain
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 // Evaluation is one trigger evaluation as scanned.
@@ -103,7 +104,7 @@ func (row ReconsiderationRow) outcomeDocument() (map[string]any, error) {
 		"command_id":            row.InvalidatedCommandID,
 		"ordinal":               row.OutcomeOrdinal,
 		"status":                row.OutcomeStatus,
-		"outcome_sha256":        "sha256:" + hex.EncodeToString(row.OutcomeSHA256),
+		"outcome_sha256":        canonicaljson.EncodeDigest(row.OutcomeSHA256),
 		"reconciliation_status": row.ReconciliationStatus,
 	}
 	return row.bindOutcomeEvidence(outcome)

@@ -37,7 +37,6 @@ const (
 	DomainPolicy            Domain = "situation-runtime/policy/v1\n"
 	DomainCapabilityCatalog Domain = "situation-runtime/capability-catalog/v1\n"
 	DomainShadowComparison  Domain = "situation-runtime/shadow-comparison/v1\n"
-	DomainTest              Domain = "situation-runtime/test/v1\n"
 )
 
 const digestPrefix = "sha256:"
@@ -49,15 +48,6 @@ func Marshal(v any) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
-}
-
-// MarshalString returns the canonical JSON string.
-func MarshalString(v any) (string, error) {
-	b, err := Marshal(v)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
 }
 
 // Digest computes a domain-separated SHA-256 digest of v.

@@ -3,7 +3,6 @@ package domain
 import (
 	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/hex"
 	"strings"
 	"time"
 	"unicode"
@@ -25,9 +24,9 @@ func DocumentDigestMatches(document map[string]any, digest []byte, domain canoni
 		if err != nil {
 			return false
 		}
-		return subtle.ConstantTimeCompare([]byte(expected), []byte("sha256:"+hex.EncodeToString(digest))) == 1
+		return subtle.ConstantTimeCompare([]byte(expected), []byte(canonicaljson.EncodeDigest(digest))) == 1
 	}
-	return canonicaljson.Verify(domain, document, "sha256:"+hex.EncodeToString(digest))
+	return canonicaljson.Verify(domain, document, canonicaljson.EncodeDigest(digest))
 }
 
 // NormalizedTarget resolves target before entity identity, retaining the intent fallback.

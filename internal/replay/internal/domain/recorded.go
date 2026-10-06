@@ -3,7 +3,6 @@ package domain
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
@@ -129,7 +128,7 @@ func ValidateRecordedSnapshot(entry RecordedEntry, episode ReplayEpisode, decisi
 	if got, ok := decision["situation_version"].(float64); !ok || int(got) != episode.SituationVersion {
 		return fmt.Errorf("recorded decision %q has mismatched situation version", entry.EpisodeKey)
 	}
-	if got, _ := decision["snapshot_digest"].(string); got != "sha256:"+hex.EncodeToString(snapshotDigest) {
+	if got, _ := decision["snapshot_digest"].(string); got != canonicaljson.EncodeDigest(snapshotDigest) {
 		return fmt.Errorf("recorded decision %q has mismatched snapshot digest", entry.EpisodeKey)
 	}
 	return nil

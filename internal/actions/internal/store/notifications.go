@@ -2,10 +2,10 @@ package store
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 )
 
@@ -46,7 +46,7 @@ func (tx *Tx) AppendOutcomeNotice(ctx context.Context, n domain.OutcomeNotice) e
 func outcomeRecorded(n domain.OutcomeNotice) notify.OutcomeRecorded {
 	return notify.OutcomeRecorded{
 		IntentID: n.Command.IntentID, CommandID: n.Command.CommandID, OutcomeID: n.OutcomeID,
-		OutcomeDigest: "sha256:" + hex.EncodeToString(n.Digest),
+		OutcomeDigest: canonicaljson.EncodeDigest(n.Digest),
 		Status:        domain.NotifiedStatus(n.Status), ReconciliationStatus: n.Reconciliation,
 	}
 }
@@ -71,7 +71,7 @@ func (tx *Tx) AppendReconciliationNotice(ctx context.Context, n domain.Reconcili
 func outcomeReconciled(n domain.ReconciliationNotice) notify.OutcomeReconciled {
 	return notify.OutcomeReconciled{
 		IntentID: n.IntentID, CommandID: n.CommandID, OutcomeID: n.OutcomeID,
-		OutcomeDigest: "sha256:" + hex.EncodeToString(n.Provenance.Digest),
+		OutcomeDigest: canonicaljson.EncodeDigest(n.Provenance.Digest),
 		FinalStatus:   n.FinalStatus, ReconciliationStatus: domain.ReconciliationReconciled,
 		Verdict: domain.Verdict(n.FinalStatus), ReconciliationVersion: n.Provenance.Version,
 	}

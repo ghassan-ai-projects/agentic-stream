@@ -1,10 +1,11 @@
 package domain
 
 import (
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 // BuildApprovalNotification renders typed governance context into the existing contract.
@@ -40,8 +41,8 @@ func approvalNotificationFields(n ApprovalNotice, summary, hypothesis string) Ap
 	return ApprovalNotification{
 		TenantID: n.Row.TenantID, ApprovalID: n.ID, IntentID: n.Row.IntentID, DecisionID: n.Row.DecisionID,
 		SituationID: n.Row.SituationID, SituationVersion: n.Row.SituationVersion,
-		IntentDigest:   "sha256:" + hex.EncodeToString(n.Row.IntentSHA),
-		SnapshotDigest: "sha256:" + hex.EncodeToString(n.Context.Snapshot), RiskClass: n.Row.RiskClass,
+		IntentDigest:   canonicaljson.EncodeDigest(n.Row.IntentSHA),
+		SnapshotDigest: canonicaljson.EncodeDigest(n.Context.Snapshot), RiskClass: n.Row.RiskClass,
 		ExpiresAt: n.ExpiresAt.UTC().Format(time.RFC3339Nano), Audience: "stream-approval-relay",
 		Summary: summary, Delta: objectOrEmpty(n.Context.Delta), Hypothesis: hypothesis, Evidence: n.Intent.Evidence,
 		Action: n.Intent.Parameters, DeclineConsequence: "The intent will not be dispatched.",

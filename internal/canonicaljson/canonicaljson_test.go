@@ -7,6 +7,9 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
+// testDomain is a digest domain private to these tests.
+const testDomain canonicaljson.Domain = "situation-runtime/test/v1\n"
+
 func TestMarshalSortsObjectKeys(t *testing.T) {
 	v := map[string]any{
 		"z": 1,
@@ -40,11 +43,11 @@ func TestMarshalNested(t *testing.T) {
 
 func TestDigestStable(t *testing.T) {
 	v := map[string]any{"b": 2, "a": 1}
-	d1, err := canonicaljson.Digest(canonicaljson.DomainTest, v)
+	d1, err := canonicaljson.Digest(testDomain, v)
 	if err != nil {
 		t.Fatalf("Digest error: %v", err)
 	}
-	d2, err := canonicaljson.Digest(canonicaljson.DomainTest, map[string]any{"a": 1, "b": 2})
+	d2, err := canonicaljson.Digest(testDomain, map[string]any{"a": 1, "b": 2})
 	if err != nil {
 		t.Fatalf("Digest error: %v", err)
 	}
@@ -83,14 +86,14 @@ func TestMarshalRejectsNegativeZero(t *testing.T) {
 }
 
 func TestDigestHasDomainSeparation(t *testing.T) {
-	got, err := canonicaljson.Digest(canonicaljson.DomainTest, map[string]any{"ok": true})
+	got, err := canonicaljson.Digest(testDomain, map[string]any{"ok": true})
 	if err != nil {
 		t.Fatalf("Digest error: %v", err)
 	}
 	if len(got) != len("sha256:")+64 || got[:len("sha256:")] != "sha256:" {
 		t.Fatalf("unexpected digest format: %s", got)
 	}
-	if !canonicaljson.Verify(canonicaljson.DomainTest, map[string]any{"ok": true}, got) {
+	if !canonicaljson.Verify(testDomain, map[string]any{"ok": true}, got) {
 		t.Fatal("expected digest to verify")
 	}
 	if canonicaljson.Verify(canonicaljson.DomainSnapshot, map[string]any{"ok": true}, got) {

@@ -57,7 +57,7 @@ func (s *MemoryArtifactStore) Put(_ context.Context, data []byte) (ArtifactRef, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.items[id] = append([]byte(nil), data...)
-	return ArtifactRef{ID: id, MediaType: "application/json", SizeBytes: uint64(len(data)), SHA256: "sha256:" + hex.EncodeToString(digest[:])}, nil
+	return ArtifactRef{ID: id, MediaType: "application/json", SizeBytes: uint64(len(data)), SHA256: canonicaljson.EncodeDigest(digest[:])}, nil
 }
 
 // Get returns a copy of an in-memory artifact.

@@ -28,7 +28,7 @@ capability it cannot trigger.
 | `contractsv1` | 6 | Conformance fixtures | 1 | Keep |
 | `notifycontract` | 2 | `Types`, `GoldenEvents` contract fixtures | 1 | **Removed (notify migration):** package merged into `notify`; `Types` and `GoldenEvents` left production code (goldens load in tests) |
 | `episodes` | 1 | `CompileIntentCatalog` wrapper | 1 | Delete or keep |
-| `canonicaljson` | 1 | `MarshalString` | 1 | Delete |
+| `canonicaljson` | 1 | `MarshalString` | 1 | **Deleted** |
 
 Decisions needed from the owner: the first six rows (wire or remove). Only the
 engine row is a certain removal.

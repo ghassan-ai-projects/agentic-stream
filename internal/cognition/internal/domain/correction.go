@@ -6,12 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
-	"time"
 )
 
 // ReconsiderationTrigger is the trigger name for corrected action evidence.
@@ -101,7 +102,7 @@ func (c InvalidatedCommand) PriorOutcome() map[string]any {
 	outcome := map[string]any{
 		"status": c.OutcomeStatus, "reconciliation_status": c.ReconciliationStatus,
 		"outcome_id": c.OutcomeID, "ordinal": c.OutcomeOrdinal,
-		"outcome_sha256": "sha256:" + hex.EncodeToString(c.OutcomeSHA),
+		"outcome_sha256": canonicaljson.EncodeDigest(c.OutcomeSHA),
 	}
 	if len(c.ProviderJSON) > 0 {
 		outcome["provider_result"] = json.RawMessage(c.ProviderJSON)
