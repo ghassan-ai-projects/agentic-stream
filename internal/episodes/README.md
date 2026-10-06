@@ -12,7 +12,7 @@ flowchart TD
     F --> A["internal/app: assemble → claim → execute → conclude"]
     A --> D["internal/domain: immutable evidence and pure decisions"]
     A --> S["internal/store: opaque unit of work and SQL"]
-    S --> L["owning ledgers · cost control · epoch check · qualification"]
+    S --> L["owning ledgers · cost control · epoch check"]
     X["executor/native · executor/remote · executor/fixture"] --> F
 ```
 
@@ -54,7 +54,7 @@ parent context does not cancel the detached five-second persistence budget.
 
 The store owns decisions and the declared intent-producer handoff. Active
 execution inserts validated pending intents for downstream policy. Shadow
-execution writes qualification-owned scores and no intents or commands.
+execution writes the store's own shadow scores and no intents or commands.
 Episode/scheduler lifecycle tables remain owned by their ledgers; foreign
 mutations are not permitted. Existing transactional read projections over
 scheduler, situation and reconsideration evidence remain in store.

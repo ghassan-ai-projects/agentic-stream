@@ -1,13 +1,18 @@
-package approvalledger
+package approvalledger_test
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -46,26 +51,26 @@ func TestApprovalTransitionsPreserveTerminalStateAndAssertionBinding(t *testing.
 	digest[0] = 7
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		for _, id := range []string{"old", "current", "expired", "denied"} {
-			if err := Request(ctx, tx, id, id, "now", "later", []byte(`{}`), "nonce-"+id); err != nil {
+			if err := approvalledger.Request(ctx, tx, id, id, "now", "later", []byte(`{}`), "nonce-"+id); err != nil {
 				return err
 			}
 		}
-		if err := BindAssertion(ctx, tx, "old", digest); err != nil {
+		if err := approvalledger.BindAssertion(ctx, tx, "old", digest); err != nil {
 			return err
 		}
-		if err := Resolve(ctx, tx, "old", "approved", "human", "relay", "allowed", "decided"); err != nil {
+		if err := approvalledger.Resolve(ctx, tx, "old", "approved", "human", "relay", "allowed", "decided"); err != nil {
 			return err
 		}
-		if err := Withdraw(ctx, tx, "old", "later"); err != nil {
+		if err := approvalledger.Withdraw(ctx, tx, "old", "later"); err != nil {
 			return err
 		}
-		if err := Expire(ctx, tx, "expired", "decided"); err != nil {
+		if err := approvalledger.Expire(ctx, tx, "expired", "decided"); err != nil {
 			return err
 		}
-		if err := ExpireIntent(ctx, tx, "current"); err != nil {
+		if err := approvalledger.ExpireIntent(ctx, tx, "current"); err != nil {
 			return err
 		}
-		return Withdraw(ctx, tx, "denied", "decided")
+		return approvalledger.Withdraw(ctx, tx, "denied", "decided")
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +100,7 @@ func TestSupersededWithdrawalAndNotificationShareTransaction(t *testing.T) {
 	clk := clock.NewVirtual(now)
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		for _, id := range []string{"old", "current"} {
-			if err := Request(ctx, tx, id, id, "now", "later", []byte(`{}`), "nonce-"+id); err != nil {
+			if err := approvalledger.Request(ctx, tx, id, id, "now", "later", []byte(`{}`), "nonce-"+id); err != nil {
 				return err
 			}
 		}
@@ -105,7 +110,7 @@ func TestSupersededWithdrawalAndNotificationShareTransaction(t *testing.T) {
 	}
 	rollback := errors.New("downstream participant failed")
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := WithdrawSuperseded(ctx, tx, "situation", "tenant", 2, "withdrawn", clk); err != nil {
+		if err := approvalledger.WithdrawSuperseded(ctx, tx, "situation", 2, "withdrawn", withdrawalPublisher("tenant", clk)); err != nil {
 			return err
 		}
 		return rollback
@@ -126,7 +131,9 @@ func TestSupersededWithdrawalAndNotificationShareTransaction(t *testing.T) {
 	if count != 0 {
 		t.Fatal("withdrawal notification escaped rollback")
 	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error { return WithdrawSuperseded(ctx, tx, "situation", "tenant", 2, "withdrawn", clk) }); err != nil {
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		return approvalledger.WithdrawSuperseded(ctx, tx, "situation", 2, "withdrawn", withdrawalPublisher("tenant", clk))
+	}); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []struct{ id, status string }{{"old", "denied"}, {"current", "pending"}} {
@@ -142,5 +149,31 @@ func TestSupersededWithdrawalAndNotificationShareTransaction(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("withdrawal notifications=%d", count)
+	}
+}
+
+// withdrawalPublisher publishes the approval.withdrawn notification the way the
+// cognition store does, reading the clock after each withdrawal.
+func withdrawalPublisher(tenantID string, clk clock.Clock) approvalledger.WithdrawalPublisher {
+	return func(ctx context.Context, tx *sql.Tx, w approvalledger.Withdrawal) error {
+		err := notify.AppendLifecycleEvent(ctx, tx, notify.LifecycleEvent{
+			ID: "approval.withdrawn:" + w.ApprovalID, TenantID: tenantID, Subject: "approval/" + w.ApprovalID, PartitionKey: w.SituationID,
+			Payload: notify.ApprovalWithdrawn{ApprovalID: w.ApprovalID, IntentID: w.IntentID, SituationID: w.SituationID, SituationVersion: w.SituationVersion, Reason: "situation_version_conflict"},
+			At:      clk.Now().UTC(), Trace: contractsv1.TraceContext{Traceparent: w.Traceparent, Tracestate: w.Tracestate},
+		})
+		if err != nil {
+			return fmt.Errorf("append superseded approval notification: %w", err)
+		}
+		return nil
+	}
+}
+
+func TestWithdrawingSupersededApprovalsRequiresAPublisher(t *testing.T) {
+	db := approvalDB(t)
+	err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
+		return approvalledger.WithdrawSuperseded(t.Context(), tx, "situation", 2, "withdrawn", nil)
+	})
+	if !errors.Is(err, approvalledger.ErrPublisherRequired) {
+		t.Fatalf("silent withdrawal accepted: %v", err)
 	}
 }

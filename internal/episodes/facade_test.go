@@ -8,10 +8,8 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
@@ -34,7 +32,7 @@ func TestFacadeDelegatesWithoutOwningTransactions(t *testing.T) {
 		t.Fatal(err)
 	}
 	gate := &control.EpochControl{DB: db}
-	service, err := episodes.New(episodes.Config{Spec: compiled, IDGenerator: ids.Deterministic(), CostControl: &costcontrol.Controller{}, Execution: &episodes.ExecutionConfig{DB: db, Executor: declinedExecutor{}, DecisionEpoch: gate.AssertDecisionTx, ShadowStore: &qualification.ShadowStore{DB: db}, Telemetry: &telemetry.Runtime{}}})
+	service, err := episodes.New(episodes.Config{Spec: compiled, IDGenerator: ids.Deterministic(), CostControl: &control.CostLedger{}, Execution: &episodes.ExecutionConfig{DB: db, Executor: declinedExecutor{}, DecisionEpoch: gate.AssertDecisionTx, Telemetry: &telemetry.Runtime{}}})
 	if err != nil {
 		t.Fatal(err)
 	}

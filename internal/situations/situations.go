@@ -220,7 +220,7 @@ func (e *Engine) newSituation(partitionID int, entityType, entityID string, even
 	identity := fmt.Sprintf("%s\x00%s\x00%d\x00%s\x00%s\x00%s", e.tenantID, e.deploymentID, partitionID, e.spec.Situation.Type, entityType, entityID)
 	hash := hex.EncodeToString(sha256Sum(identity))
 	return &Situation{
-		SituationID: "sit_" + hash, TenantID: e.tenantID, DeploymentID: e.deploymentID,
+		SituationID: ids.PrefixSituation + hash, TenantID: e.tenantID, DeploymentID: e.deploymentID,
 		Type: e.spec.Situation.Type, EntityType: entityType, EntityID: entityID, PartitionID: partitionID,
 		OccurrenceID: "occ_" + hash, Version: 0, Phase: e.spec.Situation.InitialPhase,
 		Severity: e.initialSeverity(), Confidence: 1.0, Completeness: string(operators.CompletenessProvisional),

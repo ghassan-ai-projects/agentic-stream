@@ -68,6 +68,7 @@ type sseStream struct {
 	flusher  http.Flusher
 	r        *http.Request
 	cfg      SSEConfig
+	outbox   *notify.Service
 	tenantID string
 	cursor   int64
 	seen     map[string]struct{}
@@ -85,12 +86,23 @@ func admitSubscriber(w http.ResponseWriter, r *http.Request, cfg SSEConfig) (*ss
 		writeSSEProblem(w, http.StatusBadRequest, "invalid_cursor", err.Error())
 		return nil, false
 	}
+	return openStream(w, r, cfg, tenantID, cursor)
+}
+
+// openStream binds the response, the notification outbox and the subscriber's
+// resume position into one stream.
+func openStream(w http.ResponseWriter, r *http.Request, cfg SSEConfig, tenantID string, cursor int64) (*sseStream, bool) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeSSEProblem(w, http.StatusInternalServerError, "stream_unsupported", "response writer does not support streaming")
 		return nil, false
 	}
-	return &sseStream{w: w, flusher: flusher, r: r, cfg: cfg, tenantID: tenantID, cursor: cursor, seen: make(map[string]struct{}, cfg.PageSize)}, true
+	outbox, err := notify.New(cfg.DB)
+	if err != nil {
+		writeSSEProblem(w, http.StatusServiceUnavailable, "runtime_not_ready", "notification store is not configured")
+		return nil, false
+	}
+	return &sseStream{w: w, flusher: flusher, r: r, cfg: cfg, outbox: outbox, tenantID: tenantID, cursor: cursor, seen: make(map[string]struct{}, cfg.PageSize)}, true
 }
 
 // subscriberTenant is the configured tenant, then the request's derived
@@ -107,7 +119,8 @@ func subscriberTenant(r *http.Request, cfg SSEConfig) string {
 }
 
 func (s *sseStream) readPage() (notify.Page, error) {
-	return notify.ReadPage(s.r.Context(), s.cfg.DB, s.tenantID, s.cursor, s.cfg.PageSize, s.cfg.MaxLag, s.cfg.Now().UTC()) //nolint:wrapcheck // The error detail is part of the SSE stream_error contract.
+	request := notify.PageRequest{TenantID: s.tenantID, Cursor: s.cursor, Limit: s.cfg.PageSize, MaxLag: s.cfg.MaxLag}
+	return s.outbox.ReadPage(s.r.Context(), request, s.cfg.Now().UTC()) //nolint:wrapcheck // The error detail is part of the SSE stream_error contract.
 }
 
 // beginResponse commits the event-stream headers and a connected comment.

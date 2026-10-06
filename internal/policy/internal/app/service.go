@@ -16,7 +16,6 @@ type Config struct {
 	IDGenerator                             ids.Generator
 	Fences                                  Fences
 	Interlock                               interlock.Reader
-	Calibration                             store.CalibrationCheck
 }
 
 // Service implements the deterministic policy use cases.
@@ -25,10 +24,9 @@ type Service struct {
 	idGen                                   ids.Generator
 	fences                                  Fences
 	interlock                               interlock.Reader
-	calibration                             store.CalibrationCheck
 }
 
 // New accepts dependencies already validated by the facade.
 func New(c Config) *Service {
-	return &Service{policyVersion: c.PolicyVersion, policyDigest: c.PolicyDigest, ownerEpoch: c.OwnerEpoch, idGen: c.IDGenerator, fences: c.Fences, interlock: c.Interlock, calibration: c.Calibration}
+	return &Service{policyVersion: c.PolicyVersion, policyDigest: c.PolicyDigest, ownerEpoch: c.OwnerEpoch, idGen: c.IDGenerator, fences: c.Fences, interlock: c.Interlock}
 }

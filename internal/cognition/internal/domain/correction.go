@@ -8,10 +8,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 )
@@ -79,9 +78,9 @@ func ReconsiderationKey(current situations.Version, commandID string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func ReconsiderationTriggerID(key string) string { return "trg_reconsider_" + key }
+func ReconsiderationTriggerID(key string) string { return ids.PrefixTrigger + "reconsider_" + key }
 
-func ReconsiderationSchedulerID(key string) string { return "sch_reconsider_" + key }
+func ReconsiderationSchedulerID(key string) string { return ids.PrefixScheduler + "reconsider_" + key }
 
 // EvidenceJSON returns canonical evidence for the reconsideration episode.
 func (r Reconsideration) EvidenceJSON(correction map[string]any) ([]byte, error) {
@@ -103,7 +102,7 @@ func (c InvalidatedCommand) PriorOutcome() map[string]any {
 	outcome := map[string]any{
 		"status": c.OutcomeStatus, "reconciliation_status": c.ReconciliationStatus,
 		"outcome_id": c.OutcomeID, "ordinal": c.OutcomeOrdinal,
-		"outcome_sha256": "sha256:" + hex.EncodeToString(c.OutcomeSHA),
+		"outcome_sha256": canonicaljson.EncodeDigest(c.OutcomeSHA),
 	}
 	if len(c.ProviderJSON) > 0 {
 		outcome["provider_result"] = json.RawMessage(c.ProviderJSON)
@@ -126,8 +125,8 @@ func ReconsiderationEvaluation(r Reconsideration, deltaJSON []byte, policyDigest
 	}
 }
 
-func ReconsiderationItem(r Reconsideration, now time.Time) scheduleledger.Item {
-	return scheduleledger.Item{
+func ReconsiderationItem(r Reconsideration, now time.Time) episodeledger.SchedulerItem {
+	return episodeledger.SchedulerItem{
 		SchedulerItemID: r.SchedulerItemID, Kind: "reconsider", TriggerID: r.TriggerID,
 		SituationID: r.Current.SituationID, SituationVersion: r.Current.Version,
 		Lane: "deep", Priority: 100, Status: "pending",

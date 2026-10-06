@@ -10,18 +10,15 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/app"
 )
 
-// CalibrationCheck asserts permission for a Situation type and executor version
-// using the caller's transaction. An error selects human approval.
-type CalibrationCheck = func(ctx context.Context, tx *sql.Tx, situationType, executorVersion string) error
-
 // Config requires ownership, epoch and action-readiness checks. Calibration is
-// optional: without an exact artifact, consequential intents need human approval.
+// not configuration: the policy store reads the active calibration artifact for
+// the Situation type and executor version, and without one consequential
+// intents need human approval.
 type Config struct {
 	PolicyVersion, OwnerEpoch   string
 	IDGenerator                 ids.Generator
 	RuntimeOwner, DecisionEpoch func(context.Context, *sql.Tx, string) error
 	Interlock                   interlock.Reader
-	Calibration                 CalibrationCheck
 }
 
 // New validates configuration before constructing a policy service.
@@ -46,6 +43,6 @@ func applicationConfig(c Config, digest string) app.Config {
 	if generator == nil {
 		generator = ids.Random()
 	}
-	cfg := app.Config{PolicyVersion: c.PolicyVersion, PolicyDigest: digest, OwnerEpoch: c.OwnerEpoch, IDGenerator: generator, Fences: app.Fences{RuntimeOwner: c.RuntimeOwner, DecisionEpoch: c.DecisionEpoch}, Interlock: c.Interlock, Calibration: c.Calibration}
+	cfg := app.Config{PolicyVersion: c.PolicyVersion, PolicyDigest: digest, OwnerEpoch: c.OwnerEpoch, IDGenerator: generator, Fences: app.Fences{RuntimeOwner: c.RuntimeOwner, DecisionEpoch: c.DecisionEpoch}, Interlock: c.Interlock}
 	return cfg
 }

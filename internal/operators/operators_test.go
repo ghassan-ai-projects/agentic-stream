@@ -24,9 +24,10 @@ func TestAggregateMean(t *testing.T) {
 	ps := &operators.PartitionState{}
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
+	eventIDs := ids.Deterministic()
 	for i := 0; i < 3; i++ {
 		env := contractsv1.Envelope{
-			ID:             ids.NewSequence("evt_").New(),
+			ID:             eventIDs.New(ids.PrefixEvent),
 			Type:           "sensor.temperature",
 			SchemaVersion:  "1.0",
 			TenantID:       "default",
@@ -67,9 +68,10 @@ func TestSlope(t *testing.T) {
 	ps := &operators.PartitionState{}
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
+	eventIDs := ids.Deterministic()
 	for i := 0; i < 3; i++ {
 		env := contractsv1.Envelope{
-			ID:             ids.NewSequence("evt_").New(),
+			ID:             eventIDs.New(ids.PrefixEvent),
 			Type:           "sensor.temperature",
 			SchemaVersion:  "1.0",
 			TenantID:       "default",

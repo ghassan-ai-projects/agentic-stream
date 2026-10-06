@@ -10,22 +10,21 @@ import (
 // durableOwners pin every current production mutation, including shared handoff
 // aggregates whose permitted phases are further restricted below.
 var durableOwners = map[string]string{
-	"approvals":                     "internal/approvalledger",
-	"calibration_artifacts":         "internal/qualification",
+	"approvals":                     "internal/approvalledger/internal/store",
 	"commands":                      "internal/actions/internal/store",
 	"connector_checkpoints":         "internal/ingress/internal/store",
-	"cost_limits":                   "internal/costcontrol",
-	"cost_reservations":             "internal/costcontrol",
+	"cost_limits":                   "internal/control/internal/store",
+	"cost_reservations":             "internal/control/internal/store",
 	"decisions":                     "internal/episodes/internal/store",
 	"device_authority_events":       "internal/authority/internal/store",
 	"device_command_bindings":       "internal/authority/internal/store",
 	"device_reconciliation":         "internal/authority/internal/store",
 	"device_safety_events":          "internal/authority/internal/store",
 	"device_target_claims":          "internal/authority/internal/store",
-	"episode_attempts":              "internal/episodeledger",
-	"episode_rejections":            "internal/episodeledger",
-	"episodes":                      "internal/episodeledger",
-	"epoch_control":                 "internal/control",
+	"episode_attempts":              "internal/episodeledger/internal/store",
+	"episode_rejections":            "internal/episodeledger/internal/store",
+	"episodes":                      "internal/episodeledger/internal/store",
+	"epoch_control":                 "internal/control/internal/store",
 	"event_gaps":                    "internal/eventlog/internal/store",
 	"event_inbox":                   "internal/engine/internal/store",
 	"event_log":                     "internal/eventlog/internal/store",
@@ -35,11 +34,11 @@ var durableOwners = map[string]string{
 	"intent_dispatch_counts":        "internal/policy/internal/store",
 	"intents":                       "internal/policy/internal/store",
 	"lineage_sets":                  "internal/engine/internal/store",
-	"notification_audits":           "internal/notify",
-	"notification_cursors":          "internal/notify",
-	"notification_event_tombstones": "internal/notify",
-	"notification_poison_attempts":  "internal/notify",
-	"notifications":                 "internal/notify",
+	"notification_audits":           "internal/notify/internal/store",
+	"notification_cursors":          "internal/notify/internal/store",
+	"notification_event_tombstones": "internal/notify/internal/store",
+	"notification_poison_attempts":  "internal/notify/internal/store",
+	"notifications":                 "internal/notify/internal/store",
 	"operator_state":                "internal/engine/internal/store",
 	"outbox":                        "internal/actions/internal/store",
 	"outcomes":                      "internal/actions/internal/store",
@@ -47,11 +46,11 @@ var durableOwners = map[string]string{
 	"policy_evaluations":            "internal/policy/internal/store",
 	"reconsiderations":              "internal/cognition/internal/store",
 	"runtime_interlock":             "internal/interlock",
-	"runtime_owner":                 "internal/control",
-	"scheduler_items":               "internal/scheduleledger",
+	"runtime_owner":                 "internal/control/internal/store",
+	"scheduler_items":               "internal/episodeledger/internal/store",
 	"schema_migrations":             "internal/storage",
-	"shadow_comparisons":            "internal/qualification",
-	"shadow_decisions":              "internal/qualification",
+	"shadow_comparisons":            "internal/replay/internal/store",
+	"shadow_decisions":              "internal/episodes/internal/store",
 	"situation_versions":            "internal/engine/internal/store",
 	"situations":                    "internal/engine/internal/store",
 	"spec_deployments":              "internal/spec",
@@ -75,7 +74,7 @@ func TestDurableMutationsHaveOneOwnerOrAnExplicitHandoffPhase(t *testing.T) {
 		if !ownsMutation(pkg, mutation) {
 			t.Errorf("%s: %s may not %s %s columns %v", position, pkg, mutation.operation, mutation.table, mutation.columns)
 		}
-		if file == "internal/control/dispatch_gate.go" {
+		if file == "internal/control/internal/store/dispatch.go" {
 			t.Errorf("%s: final authorization capability must be read-only", position)
 		}
 	})
@@ -133,7 +132,7 @@ func TestHandoffOwnershipRejectsAuthorityAndPayloadBypasses(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ pkg, query string }{
 		{"internal/cognition/internal/store", "UPDATE episodes SET lifecycle_status='superseded'"},
-		{"internal/control", "UPDATE episodes SET lifecycle_status='superseded'"},
+		{"internal/control/internal/store", "UPDATE episodes SET lifecycle_status='superseded'"},
 		{"internal/runtime", "UPDATE scheduler_items SET status='coalesced'"},
 		{"internal/cognition/internal/store", "UPDATE approvals SET status='denied'"},
 		{"internal/policy/internal/store", "UPDATE commands SET status='dispatching'"},

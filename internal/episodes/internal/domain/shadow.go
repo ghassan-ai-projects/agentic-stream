@@ -3,20 +3,50 @@ package domain
 import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
 )
 
-// ShadowScore is the would-be policy outcome of a shadow decision: the
+// ShadowScore is the would-be policy result for a shadow decision: what
+// EvaluateIntent WOULD have decided, computed but never written to intents or
+// commands.
+type ShadowScore string
+
+// Shadow scores.
+const (
+	ShadowWouldApprove         ShadowScore = "would_approve"
+	ShadowWouldRequireApproval ShadowScore = "would_require_approval"
+	ShadowWouldDeny            ShadowScore = "would_deny"
+)
+
+// ShadowDecision is one scored shadow dispatch. A shadow dispatch is scored and
+// recorded and NEVER written to intents or commands: nothing from a shadow run
+// enters action governance.
+type ShadowDecision struct {
+	ShadowDecisionID string
+	EpisodeID        string
+	DecisionID       string
+	AttemptID        string
+	Fence            int64
+	DecisionJSON     []byte
+	DecisionSHA256   []byte
+	ShadowScore      ShadowScore
+	ScoreReason      string
+	TenantID         string
+	SituationID      string
+	SituationVersion int
+	PolicyEpoch      string
+}
+
+// ScoreShadowDecision is the would-be policy outcome of a shadow decision: the
 // highest-risk intent's result under the live policy.
-func ShadowScore(validated *decisions.Result) (qualification.ShadowScore, string) {
+func ScoreShadowDecision(validated *decisions.Result) (ShadowScore, string) {
 	highest := highestRiskIntent(validated)
 	switch highest.RiskClass {
 	case "R0", "R1":
-		return qualification.ShadowWouldApprove, "would_approve_" + highest.RiskClass
+		return ShadowWouldApprove, "would_approve_" + highest.RiskClass
 	case "R2":
-		return qualification.ShadowWouldRequireApproval, "would_require_approval_r2"
+		return ShadowWouldRequireApproval, "would_require_approval_r2"
 	default:
-		return qualification.ShadowWouldDeny, "would_deny_" + highest.RiskClass
+		return ShadowWouldDeny, "would_deny_" + highest.RiskClass
 	}
 }
 
@@ -44,8 +74,8 @@ type ShadowDecisionIdentity struct {
 
 // NewShadowDecision builds the report-only shadow row for one scored
 // decision; nothing from it enters action governance.
-func NewShadowDecision(identity ShadowDecisionIdentity, attempt episodeledger.Identity, decisionJSON []byte, decisionSHA []byte, score qualification.ShadowScore, reason string) qualification.ShadowDecision {
-	return qualification.ShadowDecision{
+func NewShadowDecision(identity ShadowDecisionIdentity, attempt episodeledger.Identity, decisionJSON []byte, decisionSHA []byte, score ShadowScore, reason string) ShadowDecision {
+	return ShadowDecision{
 		ShadowDecisionID: identity.ShadowDecisionID,
 		EpisodeID:        identity.EpisodeID, DecisionID: identity.DecisionID, AttemptID: attempt.AttemptID, Fence: attempt.Fence,
 		DecisionJSON: decisionJSON, DecisionSHA256: decisionSHA,

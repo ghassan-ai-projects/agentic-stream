@@ -15,7 +15,7 @@ flowchart TD
     A --> S["internal/store: SQL and transactions"]
     A --> T["internal/transport: trace files, isolated DB, ingestion"]
     S --> D
-    S --> L["owning modules: episodes, qualification, spec"]
+    S --> L["owning modules: episodes, spec"]
     T --> I["ingress: JSONL replay adapter"]
 ```
 
@@ -26,7 +26,7 @@ flowchart TD
 | Facade | Public contract aliases and one-line delegation; no logic, SQL or files |
 | App | Session sequencing (compile, deployment, epoch, ingest, engine, materialize, collect) and the recorded/shadow/counterfactual phases |
 | Domain | Modes, capabilities, worklist episodes, trials and comparisons as pure rules: capability admission, recorded verification and matching, shadow binding precedence, comparison sealing, admission windows, epoch selection, baseline policy, versions hash |
-| Store | The only SQL: worklist, version and snapshot digests, spec deployment, episode materialization through the episodes assembler, comparison persistence through the qualification store |
+| Store | The only SQL: worklist, version and snapshot digests, spec deployment, episode materialization through the episodes assembler, comparison persistence into `shadow_comparisons` |
 | Transport | Trace line reading, isolated database lifecycle, trace ingestion through ingress |
 
 App imports no SQL, database, storage or network packages. Domain takes time

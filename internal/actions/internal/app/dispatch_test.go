@@ -119,10 +119,10 @@ func TestDispatcherRecordsSuccessAndDoesNotRedispatchDeliveredOutbox(t *testing.
 		t.Fatalf("success ledger command=%q outbox=%q outcome=%q reconciliation=%q", commandStatus, outboxStatus, outcomeStatus, reconciliation)
 	}
 	var recordedCount, reconciledCount int
-	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM notifications WHERE event_type = ?", notify.TypeOutcomeRecorded).Scan(&recordedCount); err != nil {
+	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM notifications WHERE event_type = ?", notify.OutcomeRecorded{}.EventType()).Scan(&recordedCount); err != nil {
 		t.Fatalf("count outcome.recorded notifications: %v", err)
 	}
-	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM notifications WHERE event_type = ?", notify.TypeOutcomeReconciled).Scan(&reconciledCount); err != nil {
+	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM notifications WHERE event_type = ?", notify.OutcomeReconciled{}.EventType()).Scan(&reconciledCount); err != nil {
 		t.Fatalf("count outcome.reconciled notifications: %v", err)
 	}
 	if recordedCount != 1 || reconciledCount != 1 {
@@ -133,19 +133,19 @@ func TestDispatcherRecordsSuccessAndDoesNotRedispatchDeliveredOutbox(t *testing.
 	if err := db.QueryRowContext(context.Background(), "SELECT outcome_id, outcome_sha256 FROM outcomes WHERE command_id = ?", commandID).Scan(&outcomeID, &outcomeSHA); err != nil {
 		t.Fatalf("read direct outcome ID: %v", err)
 	}
-	recordedData := readNotificationData(t, db, notify.TypeOutcomeRecorded)
+	recordedData := readNotificationData(t, db, notify.OutcomeRecorded{}.EventType())
 	if recordedData["outcome_id"] != outcomeID || recordedData["command_id"] != commandID || recordedData["intent_id"] != "int-action" || recordedData["status"] != "succeeded" || recordedData["reconciliation_status"] != "observed" || recordedData["outcome_digest"] != "sha256:"+hex.EncodeToString(outcomeSHA) {
 		t.Fatalf("unexpected outcome.recorded payload: %#v", recordedData)
 	}
-	reconciledData := readNotificationData(t, db, notify.TypeOutcomeReconciled)
+	reconciledData := readNotificationData(t, db, notify.OutcomeReconciled{}.EventType())
 	if reconciledData["outcome_id"] != outcomeID || reconciledData["command_id"] != commandID || reconciledData["intent_id"] != "int-action" || reconciledData["final_status"] != "succeeded" || reconciledData["reconciliation_status"] != "reconciled" || reconciledData["verdict"] != "verified" || reconciledData["source_authority"] != notify.SourceForTenant("tenant") {
 		t.Fatalf("unexpected outcome.reconciled payload: %#v", reconciledData)
 	}
 	if version, ok := reconciledData["reconciliation_version"].(float64); !ok || version != 1 {
 		t.Fatalf("outcome.reconciled reconciliation_version=%v, want 1", reconciledData["reconciliation_version"])
 	}
-	assertOutcomeNotificationAuthority(t, db, notify.TypeOutcomeRecorded)
-	assertOutcomeNotificationAuthority(t, db, notify.TypeOutcomeReconciled)
+	assertOutcomeNotificationAuthority(t, db, notify.OutcomeRecorded{}.EventType())
+	assertOutcomeNotificationAuthority(t, db, notify.OutcomeReconciled{}.EventType())
 }
 
 func TestDispatcherDoesNotBlindlyRetryUnknownOutcome(t *testing.T) {
@@ -199,11 +199,11 @@ func TestDispatcherDoesNotBlindlyRetryUnknownOutcome(t *testing.T) {
 	if err := db.QueryRowContext(context.Background(), "SELECT outcome_id FROM outcomes WHERE command_id = ? AND ordinal = 2", commandID).Scan(&reconciledOutcomeID); err != nil {
 		t.Fatalf("read reconciled outcome ID: %v", err)
 	}
-	recordedData := readNotificationData(t, db, notify.TypeOutcomeRecorded)
+	recordedData := readNotificationData(t, db, notify.OutcomeRecorded{}.EventType())
 	if recordedData["intent_id"] != "int-action" || recordedData["outcome_digest"] == "" {
 		t.Fatalf("unexpected unknown outcome.recorded payload: %#v", recordedData)
 	}
-	reconciledData := readNotificationData(t, db, notify.TypeOutcomeReconciled)
+	reconciledData := readNotificationData(t, db, notify.OutcomeReconciled{}.EventType())
 	if reconciledData["outcome_id"] != reconciledOutcomeID || reconciledData["command_id"] != commandID || reconciledData["intent_id"] != "int-action" || reconciledData["final_status"] != "succeeded" || reconciledData["verdict"] != "verified" || reconciledData["reconciliation_status"] != "reconciled" || reconciledData["source_authority"] != notify.SourceForTenant("tenant") {
 		t.Fatalf("unexpected reconciled resolution payload: %#v", reconciledData)
 	}
@@ -237,13 +237,13 @@ func TestDispatcherKeepsAcceptedTransportAwaitingVerification(t *testing.T) {
 	}
 
 	var reconciledCount int
-	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM notifications WHERE event_type = ?", notify.TypeOutcomeReconciled).Scan(&reconciledCount); err != nil {
+	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM notifications WHERE event_type = ?", notify.OutcomeReconciled{}.EventType()).Scan(&reconciledCount); err != nil {
 		t.Fatalf("count outcome.reconciled notifications: %v", err)
 	}
 	if reconciledCount != 0 {
 		t.Fatalf("accepted transport receipt emitted %d outcome.reconciled notifications", reconciledCount)
 	}
-	recordedData := readNotificationData(t, db, notify.TypeOutcomeRecorded)
+	recordedData := readNotificationData(t, db, notify.OutcomeRecorded{}.EventType())
 	if recordedData["status"] != "unknown" || recordedData["reconciliation_status"] != "required" {
 		t.Fatalf("accepted transport receipt notification status=%v reconciliation=%v", recordedData["status"], recordedData["reconciliation_status"])
 	}
@@ -448,7 +448,7 @@ func TestDispatcherReclaimsExpiredLease(t *testing.T) {
 	if commandStatus != "reconciling" || outboxStatus != "failed" || outcomeStatus != "unknown" || reconciliation != "required" {
 		t.Fatalf("reclaimed ledger command=%q outbox=%q outcome=%q reconciliation=%q", commandStatus, outboxStatus, outcomeStatus, reconciliation)
 	}
-	for _, eventType := range []string{notify.TypeCommandDispatched, notify.TypeOutcomeRecorded} {
+	for _, eventType := range []string{notify.CommandDispatched{}.EventType(), notify.OutcomeRecorded{}.EventType()} {
 		event := readNotification(t, db, eventType)
 		if event.TenantID != "tenant" || event.Source != notify.SourceForTenant("tenant") {
 			t.Fatalf("%s tenant/source = %q/%q, want tenant-scoped event", eventType, event.TenantID, event.Source)

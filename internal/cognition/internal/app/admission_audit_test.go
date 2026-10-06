@@ -11,8 +11,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/store"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -42,7 +41,7 @@ func TestCostRejectionAuditUsesCallerTransactionAndLeavesQueueStateToOwner(t *te
 	ctx := t.Context()
 	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		return scheduleledger.Upsert(ctx, tx, scheduleledger.Item{SchedulerItemID: "item", TriggerID: "trigger", SituationID: "situation", SituationVersion: 1, Kind: "standard", Lane: "fast", Status: "pending", ExpiresAt: now.Add(time.Hour)}, "tenant", make([]byte, 32), "now")
+		return episodeledger.UpsertSchedulerItem(ctx, tx, episodeledger.SchedulerItem{SchedulerItemID: "item", TriggerID: "trigger", SituationID: "situation", SituationVersion: 1, Kind: "standard", Lane: "fast", Status: "pending", ExpiresAt: now.Add(time.Hour)}, "tenant", make([]byte, 32), "now")
 	}); err != nil {
 		t.Fatal(err)
 	}

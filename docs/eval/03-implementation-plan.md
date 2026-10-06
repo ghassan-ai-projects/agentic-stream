@@ -15,7 +15,7 @@ runtime architecture.
 | `internal/replay` | add the three-run canonical projection digest, and use `DeterministicBaseline` as the Class C baseline | determinism and the non-model baseline both already live here |
 | `internal/actions` device and serial tests | add the S4.4 dispatch fault matrix over PTY and the emulator | the matrix is the largest real gap; the fault points already exist as code seams |
 | `internal/evidence` | capability-denial cells; the evidence ledger as the grader source | A6 needs the boundary that already denies capabilities |
-| `internal/costcontrol` | a per-cell cost record | the caps exist; the reporting granularity does not |
+| `internal/control` (cost files) | a per-cell cost record | the caps exist; the reporting granularity does not |
 | `cmd/agentic-stream` | `eval run` and `eval report`; `export-run` / `verify-run` keep the artifact plane | one documented entry point |
 
 ## 2. New package

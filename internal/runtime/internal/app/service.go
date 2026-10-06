@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
@@ -46,7 +45,7 @@ func (s *Service) Start(ctx context.Context) (RecoveryReport, error) {
 	if s == nil {
 		return RecoveryReport{}, fmt.Errorf("runtime service is nil")
 	}
-	coordinator := &store.RecoveryCoordinator{Owner: s.owner, Ledger: s.ledger, Epoch: s.epoch, Costs: &costcontrol.Controller{}}
+	coordinator := &store.RecoveryCoordinator{Owner: s.owner, Ledger: s.ledger, Epoch: s.epoch, Costs: &runtimecontrol.CostLedger{}}
 	report, err := coordinator.ClaimAndRecover(ctx)
 	if err != nil {
 		s.setNotReady(err)

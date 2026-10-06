@@ -2,7 +2,6 @@ package domain
 
 import (
 	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
@@ -15,7 +14,7 @@ func NewCommand(p CommandPreparation) (CommandRecord, error) {
 	document := map[string]any{
 		"command_id": p.ID, "intent_id": p.Row.IntentID, "tenant_id": p.Row.TenantID,
 		"effector_route": p.Row.IntentType, "normalized_target": target,
-		"idempotency_key": "sha256:" + hex.EncodeToString(idempotency[:]),
+		"idempotency_key": canonicaljson.EncodeDigest(idempotency[:]),
 		"status":          "prepared", "not_before_mono_us": 0, "policy_digest": p.PolicyDigest,
 		"payload": p.Intent.Parameters, "created_at": FormatTime(p.Now),
 	}

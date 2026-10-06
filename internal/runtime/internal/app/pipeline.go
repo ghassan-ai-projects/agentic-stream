@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/admission"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
@@ -31,7 +30,7 @@ type Pipeline struct {
 	sources      *transport.Sources
 	log          *eventlog.EventLog
 	engine       *engine.Service
-	admission    *admission.Admitter
+	admission    *Admitter
 	runner       *episodes.Service
 	dispatcher   *actions.Service
 	watch        *watch.Service

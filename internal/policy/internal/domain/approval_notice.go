@@ -1,14 +1,15 @@
 package domain
 
 import (
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 // BuildApprovalNotification renders typed governance context into the existing contract.
-func BuildApprovalNotification(n ApprovalNotice) map[string]any {
+func BuildApprovalNotification(n ApprovalNotice) ApprovalNotification {
 	if n.Intent.Parameters == nil {
 		n.Intent.Parameters = map[string]any{}
 		n.Intent.Document["parameters"] = n.Intent.Parameters
@@ -36,15 +37,32 @@ func approvalDecisionText(value, fallback, decisionID string) string {
 	return value
 }
 
-func approvalNotificationFields(n ApprovalNotice, summary, hypothesis string) map[string]any {
-	return map[string]any{
-		"tenant_id": n.Row.TenantID, "approval_id": n.ID, "intent_id": n.Row.IntentID, "decision_id": n.Row.DecisionID,
-		"situation_id": n.Row.SituationID, "situation_version": n.Row.SituationVersion,
-		"intent_digest":   "sha256:" + hex.EncodeToString(n.Row.IntentSHA),
-		"snapshot_digest": "sha256:" + hex.EncodeToString(n.Context.Snapshot), "risk_class": n.Row.RiskClass,
-		"expires_at": n.ExpiresAt.UTC().Format(time.RFC3339Nano), "audience": "stream-approval-relay",
-		"summary": summary, "delta": n.Context.Delta, "hypothesis": hypothesis, "evidence": n.Intent.Evidence,
-		"action": n.Intent.Parameters, "decline_consequence": "The intent will not be dispatched.",
-		"source_authority": n.Context.Source,
+func approvalNotificationFields(n ApprovalNotice, summary, hypothesis string) ApprovalNotification {
+	return ApprovalNotification{
+		TenantID: n.Row.TenantID, ApprovalID: n.ID, IntentID: n.Row.IntentID, DecisionID: n.Row.DecisionID,
+		SituationID: n.Row.SituationID, SituationVersion: n.Row.SituationVersion,
+		IntentDigest:   canonicaljson.EncodeDigest(n.Row.IntentSHA),
+		SnapshotDigest: canonicaljson.EncodeDigest(n.Context.Snapshot), RiskClass: n.Row.RiskClass,
+		ExpiresAt: n.ExpiresAt.UTC().Format(time.RFC3339Nano), Audience: "stream-approval-relay",
+		Summary: summary, Delta: objectOrEmpty(n.Context.Delta), Hypothesis: hypothesis, Evidence: n.Intent.Evidence,
+		Action: n.Intent.Parameters, DeclineConsequence: "The intent will not be dispatched.",
+		SourceAuthority: n.Context.Source,
 	}
+}
+
+// objectOrEmpty keeps an absent JSON object an empty object, never null.
+func objectOrEmpty(object map[string]any) map[string]any {
+	if object == nil {
+		return map[string]any{}
+	}
+	return object
+}
+
+// CheckBinding requires the notification to name the expected tenant and source
+// authority, the values the lifecycle contract stamps on the event.
+func (n ApprovalNotification) CheckBinding(tenantID, source string) error {
+	if n.TenantID != tenantID || n.SourceAuthority != source {
+		return fmt.Errorf("approval notification is not bound to tenant %q and its source authority", tenantID)
+	}
+	return nil
 }

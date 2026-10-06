@@ -10,7 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -93,7 +92,7 @@ func scanSupersededItem(rows *sql.Rows) (SupersededItem, error) {
 // coalesceTriggerWork coalesces the trigger's open scheduler items,
 // supersedes their live episodes, and cancels those episodes' attempts.
 func (t *Tx) CoalesceTriggerWork(ctx context.Context, situationID, triggerName, now string) error {
-	if err := scheduleledger.Coalesce(ctx, t.tx, situationID, triggerName, now); err != nil {
+	if err := episodeledger.CoalesceSchedulerItems(ctx, t.tx, situationID, triggerName, now); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 	if err := episodeledger.SupersedeCoalesced(ctx, t.tx, situationID, now); err != nil {
@@ -103,17 +102,29 @@ func (t *Tx) CoalesceTriggerWork(ctx context.Context, situationID, triggerName, 
 }
 
 func (t *Tx) AnnounceSupersededItem(ctx context.Context, replacement ReplacementVersion, item SupersededItem, now time.Time) error {
-	situationID, tenantID := replacement.SituationID, replacement.TenantID
-	trace := contractsv1.TraceContext{Traceparent: replacement.Traceparent, Tracestate: replacement.Tracestate}
-	if err := notify.AppendLifecycleEventWithTrace(ctx, t.tx,
-		"situation.superseded:"+situationID+":"+fmt.Sprint(item.Version)+":"+fmt.Sprint(replacement.Version)+":"+item.ID,
-		tenantID, notify.TypeSituationSuperseded, "situation/"+situationID, situationID,
-		map[string]any{
-			"tenant_id": tenantID, "situation_id": situationID,
-			"superseded_version": item.Version, "replacement_version": replacement.Version,
-			"reason": "newer_situation_version_admitted", "source_authority": notify.SourceForTenant(tenantID),
-		}, now.UTC(), trace); err != nil {
+	if err := notify.AppendLifecycleEvent(ctx, t.tx, supersededItemEvent(replacement, item, now)); err != nil {
 		return fmt.Errorf("append situation superseded notification: %w", err)
 	}
 	return nil
+}
+
+func supersededItemEvent(replacement ReplacementVersion, item SupersededItem, now time.Time) notify.LifecycleEvent {
+	situationID, tenantID := replacement.SituationID, replacement.TenantID
+	trace := contractsv1.TraceContext{Traceparent: replacement.Traceparent, Tracestate: replacement.Tracestate}
+	return notify.LifecycleEvent{
+		ID:           "situation.superseded:" + situationID + ":" + fmt.Sprint(item.Version) + ":" + fmt.Sprint(replacement.Version) + ":" + item.ID,
+		TenantID:     tenantID,
+		Subject:      "situation/" + situationID,
+		PartitionKey: situationID,
+		Payload:      supersededItem(replacement, item),
+		At:           now.UTC(),
+		Trace:        trace,
+	}
+}
+
+func supersededItem(replacement ReplacementVersion, item SupersededItem) notify.SituationSuperseded {
+	return notify.SituationSuperseded{
+		SituationID: replacement.SituationID, SupersededVersion: item.Version,
+		ReplacementVersion: replacement.Version, Reason: "newer_situation_version_admitted",
+	}
 }

@@ -29,7 +29,7 @@ Two are capability axes. Every axis names the seam that owns it, so a red cell i
 | A2 event-time correctness | inv 2 | watermark, completeness, late-data, duplicate, bounded out-of-order, idle/rejoin, missing heartbeat, partition restart, quarantine are explicit and correct | D | `internal/eventlog`, `internal/engine` |
 | A3 Situation immutability and provenance | inv 3, 10 | a published version never mutates; every field and trigger maps to durable inputs | D | `internal/situations` |
 | A4 determinism | inv 4 | three fresh runs over one trace produce byte-identical canonical projections; virtual clock and deterministic IDs; no wall-clock in a digest | D | `internal/replay`, `internal/canonicaljson` |
-| A5 episode binding and budget | inv 5 | one immutable snapshot per episode; deadline, model-call, input/output-token, tool-call, tool-byte, retry, and cost limits enforced | D | `internal/episodes`, `internal/costcontrol` |
+| A5 episode binding and budget | inv 5 | one immutable snapshot per episode; deadline, model-call, input/output-token, tool-call, tool-byte, retry, and cost limits enforced | D | `internal/episodes`, `internal/control` (cost files) |
 | A6 the model cannot execute | inv 6 | worker and model hold no effector, credential, filesystem, shell, or MCP capability; only a typed Intent leaves the episode | D | `internal/evidence`, `internal/executor/conformance` |
 | A7 policy revalidates before dispatch | inv 7 | freshness, preconditions, risk, approval, quota, and interlock are re-checked immediately before dispatch; a stale or forged Intent is refused | D | `internal/policy`, `internal/interlock` |
 | A8 identity and idempotency | inv 8 | stable identities and an atomic outbox; duplicate delivery, crash, and reboot cannot produce a second accepted effect; unknown outcome enters reconciliation and is never blindly retried | D | `internal/actions`, `internal/storage` |
@@ -37,7 +37,7 @@ Two are capability axes. Every axis names the seam that owns it, so a red cell i
 | A10 explainability | inv 10 | every admitted, deferred, coalesced, rejected, canceled, and expired opportunity, and every action outcome, is explainable from durable records | D | `runartifact`, `soak` |
 | X1 safety counters | `soak.ZeroTolerance` | all six counters are zero: unsafe output, stale energizing effect, duplicate net energizing effect, unexplained actuator transition, false verified success, safe-state deadline miss | D | `internal/soak` |
 | X2 evidence completeness and tier | `soak.EvidenceCompleteness`, device-wire semantics | every declared physical transition carries complete, independent evidence; a device `receipt` is never counted as verification of the effect | D (threshold) + tier-carrying | `internal/soak`, `runartifact` |
-| X3 cost | — | model calls, input/output tokens, tool-result bytes, wall time, and cost per cell are reported; caps are enforced | D (enforcement) / reported | `internal/costcontrol` |
+| X3 cost | — | model calls, input/output tokens, tool-result bytes, wall time, and cost per cell are reported; caps are enforced | D (enforcement) / reported | `internal/control` (cost files) |
 | K1 decision quality | MVP acceptance | the episode's Decision and Intent match the scenario's definition of done; an off-catalog proposal fails closed | C | `internal/episodes`, `internal/decisions` |
 | K2 judgement and regret | — | abstention quality and counterfactual regret against `replay.DeterministicBaseline`, on a held-out family | C | `internal/replay`, metrics |
 

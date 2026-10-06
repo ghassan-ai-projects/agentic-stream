@@ -2,18 +2,17 @@ package domain
 
 import (
 	"bytes"
-	"testing"
-	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+	"testing"
+	"time"
 )
 
 func TestSchedulingTimingAndReplacementRules(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
-	item := scheduleledger.Item{}
+	item := episodeledger.SchedulerItem{}
 	if err := ApplyTiming(&item, spec.Trigger{Debounce: "2s"}, now); err != nil {
 		t.Fatal(err)
 	}

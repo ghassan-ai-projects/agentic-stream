@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/domain"
@@ -23,7 +22,7 @@ type RecoveryCoordinator struct {
 	Ledger *evidence.Service
 	Epoch  string
 	Now    func() time.Time
-	Costs  *costcontrol.Controller
+	Costs  *runtimecontrol.CostLedger
 }
 
 // ClaimAndRecover acquires ownership and commits all recovery mutations before
@@ -63,8 +62,17 @@ func (c *RecoveryCoordinator) recoveryTime() time.Time {
 	return now
 }
 
+// costSettler is the configured cost ledger, or nothing when recovery has none
+// (a nil ledger must not become a non-nil port).
+func (c *RecoveryCoordinator) costSettler() episodeledger.CostSettler {
+	if c.Costs == nil {
+		return nil
+	}
+	return c.Costs
+}
+
 func (c *RecoveryCoordinator) recoverLedgers(ctx context.Context, tx *sql.Tx, now time.Time) (RecoveryReport, error) {
-	episodes, err := episodeledger.RecoverUnfinishedAttemptsWithCost(ctx, tx, c.Epoch, now, c.Costs)
+	episodes, err := episodeledger.RecoverUnfinishedAttempts(ctx, tx, c.Epoch, now, c.costSettler())
 	if err != nil {
 		return RecoveryReport{}, fmt.Errorf("recover episode attempts: %w", err)
 	}

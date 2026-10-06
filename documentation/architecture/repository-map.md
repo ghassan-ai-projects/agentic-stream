@@ -26,7 +26,6 @@ historical design map where the code has chosen a more specific package name.
 | `internal/cognition/internal/app/` | ordered trigger, queue and correction use cases |
 | `internal/cognition/internal/domain/` | pure evaluation, timing, capacity and correction rules |
 | `internal/cognition/internal/store/` | opaque caller transaction, cognition SQL and owning-ledger handoffs |
-| `internal/admission/` | episode admission: due scheduler items to epoch-stamped episodes, or recorded skips |
 | `internal/episodes/` | public facade over episode assembly and bounded execution |
 | `internal/episodes/internal/app/` | transaction-scoped episode use cases: assembly, claim, execution, decisions |
 | `internal/episodes/internal/domain/` | pure episode contracts and rules: request assembly, budgets, decisions, failures, shadow scoring |
@@ -57,19 +56,26 @@ historical design map where the code has chosen a more specific package name.
 | `internal/device/internal/wire/` | device record codec: schema-validated canonical NDJSON, typed records and original evidence documents |
 | `internal/device/internal/transport/` | Unix-socket gateway link: framing, deadlines and the may-have-sent signal |
 | `internal/device/internal/domain/` | device-boundary rules: capability catalog, materialization, effect profiles, record matching, output verification |
-| `internal/episodeledger/` | durable episode/attempt lifecycle, fencing and recovery |
-| `internal/scheduleledger/` | durable queue identity, admission and coalescing |
-| `internal/approvalledger/` | human approval lifecycle and supersession notification |
-| `internal/control/` | runtime ownership, epoch control and readiness capability |
+| `internal/episodeledger/` | scheduler queue, episode and attempt lifecycle facade: fencing, rejection audit, supersession and recovery |
+| `internal/episodeledger/internal/app/` | queue, admission, attempt, identity, rejection and recovery use cases |
+| `internal/episodeledger/internal/domain/` | pure statuses, identity and fence checks, transition table, rejection and recovery rules |
+| `internal/episodeledger/internal/store/` | the only SQL for `scheduler_items`, `episodes`, `episode_attempts` and `episode_rejections` |
+| `internal/approvalledger/` | human approval lifecycle facade: request, expiry, resolution, assertion binding, withdrawal |
+| `internal/approvalledger/internal/app/` | lifecycle writes and the superseded-approval withdrawal with caller-published notifications |
+| `internal/approvalledger/internal/domain/` | approval states, stable reasons and the withdrawal fact |
+| `internal/approvalledger/internal/store/` | the only SQL for `approvals` |
+| `internal/control/` | runtime control plane facade: owner lease, epoch drain/kill, cost ledger and ceilings, readiness capability |
+| `internal/control/internal/app/` | owner, epoch, cost and dispatch-readiness use cases |
+| `internal/control/internal/domain/` | pure lease, epoch-refusal and cost rules |
+| `internal/control/internal/store/` | the only SQL for `runtime_owner`, `epoch_control`, `cost_limits` and `cost_reservations` |
 | `internal/authority/` | device target claims, bindings, reconciliation and safety evidence: public API only (configuration and delegation) |
 | `internal/authority/internal/app/` | device-authority use cases: validation, admission, unit of work, audit (reference module layer) |
 | `internal/authority/internal/domain/` | device-authority vocabulary and pure rules (reference module layer) |
 | `internal/authority/internal/store/` | device-authority persistence: transactions and the only SQL for its tables (reference module layer) |
-| `internal/qualification/` | calibration and shadow evidence |
-| `internal/costcontrol/` | reservation, bounded usage and settlement |
 | `internal/interlock/` | durable readiness state and read-only assertions |
-| `internal/notifycontract/` | versioned notification names and metadata |
-| `internal/canonicaljson/`, `internal/clock/`, `internal/duration/`, `internal/ids/` | deterministic digest, time, duration and identity primitives |
+| `internal/canonicaljson/` | RFC 8785 canonical JSON and domain-separated digests: thin facade (public API only) |
+| `internal/canonicaljson/internal/domain/` | pure canonical encoder, number and string rules, strict validation, digest and stored-document rules (reference module layer) |
+| `internal/clock/`, `internal/duration/`, `internal/ids/` | deterministic digest, time, duration and identity primitives |
 | `internal/executor/fixture/` | deterministic episode executor for explicit demo and replay fixtures |
 | `internal/executor/native/`, `internal/executor/remote/`, `internal/executor/conformance/`, `internal/worker/` | in-process and out-of-process executors, executor qualification and worker protocol transport |
 | `internal/soak/`, `internal/runartifact/` | bounded operational evidence and immutable artifact verification |
@@ -82,7 +88,11 @@ historical design map where the code has chosen a more specific package name.
 | `internal/storage/` | SQLite infrastructure, migrations and transactions |
 | `internal/contractsv1/` | versioned envelope/schema contracts |
 | `internal/telemetry/` | OpenTelemetry and runtime metrics |
-| `internal/api/` and `internal/notify/` | HTTP health, controls and SSE delivery; the durable notification outbox |
+| `internal/api/` | HTTP health, controls and SSE delivery |
+| `internal/notify/` | durable notification outbox facade: transactional append, paged reads, retention |
+| `internal/notify/internal/app/` | append, lifecycle append, page read with resume, lag and poison handling, prune |
+| `internal/notify/internal/domain/` | lifecycle contract (schema and binding), sealing, dedupe, resume, poison and retention rules |
+| `internal/notify/internal/store/` | the only SQL for notifications, cursors, tombstones, poison attempts and audits |
 | `internal/eventschema/` | data-driven event schema registry |
 | `proto/agenticstream/runtime/v1/` | generated current-v1 Go protocol |
 | `migrations/` | ordered SQLite schema changes |

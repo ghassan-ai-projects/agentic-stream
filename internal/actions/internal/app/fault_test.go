@@ -33,9 +33,9 @@ func TestEveryDispatchWriteBoundaryRollsBackTheWholeOutcome(t *testing.T) {
 		"command close":       `CREATE TRIGGER fault BEFORE UPDATE ON commands WHEN NEW.status = 'succeeded' BEGIN SELECT RAISE(ABORT, 'injected'); END`,
 		"outbox close":        `CREATE TRIGGER fault BEFORE UPDATE ON outbox WHEN NEW.status = 'delivered' BEGIN SELECT RAISE(ABORT, 'injected'); END`,
 		"verification insert": `CREATE TRIGGER fault BEFORE INSERT ON verifications BEGIN SELECT RAISE(ABORT, 'injected'); END`,
-		"dispatched notice":   `CREATE TRIGGER fault BEFORE INSERT ON notifications WHEN NEW.event_type = '` + notify.TypeCommandDispatched + `' BEGIN SELECT RAISE(ABORT, 'injected'); END`,
-		"recorded notice":     `CREATE TRIGGER fault BEFORE INSERT ON notifications WHEN NEW.event_type = '` + notify.TypeOutcomeRecorded + `' BEGIN SELECT RAISE(ABORT, 'injected'); END`,
-		"reconciled notice":   `CREATE TRIGGER fault BEFORE INSERT ON notifications WHEN NEW.event_type = '` + notify.TypeOutcomeReconciled + `' BEGIN SELECT RAISE(ABORT, 'injected'); END`,
+		"dispatched notice":   `CREATE TRIGGER fault BEFORE INSERT ON notifications WHEN NEW.event_type = '` + notify.CommandDispatched{}.EventType() + `' BEGIN SELECT RAISE(ABORT, 'injected'); END`,
+		"recorded notice":     `CREATE TRIGGER fault BEFORE INSERT ON notifications WHEN NEW.event_type = '` + notify.OutcomeRecorded{}.EventType() + `' BEGIN SELECT RAISE(ABORT, 'injected'); END`,
+		"reconciled notice":   `CREATE TRIGGER fault BEFORE INSERT ON notifications WHEN NEW.event_type = '` + notify.OutcomeReconciled{}.EventType() + `' BEGIN SELECT RAISE(ABORT, 'injected'); END`,
 	}
 	for name, trigger := range faults {
 		t.Run(name, func(t *testing.T) {
@@ -64,7 +64,7 @@ func TestEveryReconciliationWriteBoundaryRollsBackTheWholeResolution(t *testing.
 		"outcome insert":      `CREATE TRIGGER fault BEFORE INSERT ON outcomes WHEN NEW.status = 'reconciled' BEGIN SELECT RAISE(ABORT, 'injected'); END`,
 		"command close":       `CREATE TRIGGER fault BEFORE UPDATE ON commands WHEN NEW.status = 'succeeded' BEGIN SELECT RAISE(ABORT, 'injected'); END`,
 		"verification update": `CREATE TRIGGER fault BEFORE UPDATE ON verifications BEGIN SELECT RAISE(ABORT, 'injected'); END`,
-		"reconciled notice":   `CREATE TRIGGER fault BEFORE INSERT ON notifications WHEN NEW.event_type = '` + notify.TypeOutcomeReconciled + `' BEGIN SELECT RAISE(ABORT, 'injected'); END`,
+		"reconciled notice":   `CREATE TRIGGER fault BEFORE INSERT ON notifications WHEN NEW.event_type = '` + notify.OutcomeReconciled{}.EventType() + `' BEGIN SELECT RAISE(ABORT, 'injected'); END`,
 	}
 	evidence := map[string]any{"source": "feedback", "evidence_type": "provider_observation",
 		"evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}

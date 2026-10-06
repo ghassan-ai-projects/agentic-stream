@@ -133,7 +133,7 @@ func TestEpisodeApplicationUsesTransactionalPorts(t *testing.T) {
 				return true
 			}
 			owner := aliases[receiver.Name]
-			if owner == "internal/scheduleledger" || owner == "internal/episodeledger" && !slices.Contains([]string{"IsTerminalAttempt", "RejectionReason"}, selector.Sel.Name) {
+			if owner == "internal/episodeledger" && !slices.Contains([]string{"IsTerminalAttempt", "RejectionReason"}, selector.Sel.Name) {
 				t.Errorf("%s: app calls transactional owner %s.%s directly", file.rel, owner, selector.Sel.Name)
 			}
 			return true

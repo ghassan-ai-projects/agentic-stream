@@ -2,7 +2,6 @@ package app
 
 import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/admission"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
@@ -17,7 +16,7 @@ import (
 type PipelineDependencies struct {
 	Log          *eventlog.EventLog
 	Engine       *engine.Service
-	Admission    *admission.Admitter
+	Admission    *Admitter
 	Runner       *episodes.Service
 	Dispatcher   *actions.Service
 	Watch        *watch.Service

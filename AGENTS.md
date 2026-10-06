@@ -67,6 +67,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 
 - `cmd/agentic-stream/` - entrypoint, flags, wiring, shutdown
 - `internal/contractsv1` - versioned envelopes and JSON contracts
+- `internal/canonicaljson` - RFC 8785 canonical JSON and domain-separated digests; thin facade over a pure domain (see [canonical JSON guide](internal/canonicaljson/README.md))
 - `internal/spec` - SituationSpec authoring, YAML in, canonical JSON digest
 - `internal/ingress` - configured ingress facade; app replay and live-serve use cases, pure domain admission and simulator rules, a checkpoint store and a file/socket transport (see [ingress module guide](internal/ingress/README.md))
 - `internal/eventlog` - normalized event log, watermark/completeness tracking; append/quarantine/redrive use cases in `internal/app`, pure admission and identity rules in `internal/domain`, all SQL in `internal/store` (see [event log module guide](internal/eventlog/README.md))
@@ -74,7 +75,6 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/operators` - deterministic operators (hysteresis, debounce, cooldown)
 - `internal/situations` - Situation state machine, versioning, publication
 - `internal/cognition` - configured scheduler facade; ordered app use cases, pure domain rules, and opaque caller-transaction store (see [cognition module guide](internal/cognition/README.md))
-- `internal/admission` - episode admission from the scheduler queue
 - `internal/episodes` - configured `Service` facade; ordered assembly/execution use cases in `internal/app`, pure contracts and rules in `internal/domain`, opaque transaction joins and SQL in `internal/store` preserving the caller's transaction (see [episodes module guide](internal/episodes/README.md))
 - `internal/executor/fixture`, `internal/executor/native`, `internal/executor/remote` - concrete executors behind the episode `Executor` port (in-process and streamed worker protocol)
 - `internal/evidence` - configured Service facade over capability-scoped read tools and durable call recovery; app use cases, pure domain rules, opaque store transactions/SQL, exact wire codecs and gRPC/eventlog adapters (see [evidence module guide](internal/evidence/README.md))
@@ -82,13 +82,14 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/policy` - policy plane; revalidates every intent before dispatch. Reference structure: thin `Service` facade, ordered use cases in `internal/app`, pure governance records/rules in `internal/domain`, and caller-owned transaction plumbing plus SQL in `internal/store` (see [policy module pattern](internal/policy/README.md))
 - `internal/actions` - configured dispatch facade; ordered app use cases, pure domain rules and document checks, and an opaque-transaction store that owns the command, outbox, outcome and verification ledgers (see [actions module guide](internal/actions/README.md))
 - `internal/watch` - derived-trigger watches installed by approved commands; configured facade, app use cases, pure domain rules and an opaque-transaction store (see [watch module guide](internal/watch/README.md))
+- `internal/notify` - durable notification outbox and lifecycle contract; configured facade, app use cases, pure domain rules (including the embedded Channel-B contract) and a store that owns the five notification tables (see [notify module guide](internal/notify/README.md))
 - `internal/actionport` - approved-command/effect contracts without implementation dependencies
 - `internal/device` - device effect boundary; the reference adapter module: thin facade, session use cases in `internal/app`, pure `internal/domain`, record codec in `internal/wire`, gateway link in `internal/transport` (record in [docs/device-reference-module-2026-10-05](docs/device-reference-module-2026-10-05/README.md))
-- `internal/episodeledger` / `internal/scheduleledger` / `internal/approvalledger` - durable lifecycle owners shared through transaction-scoped operations
+- `internal/episodeledger` - durable episode pipeline lifecycle (scheduler queue items, episodes, fenced attempts, rejection audit, recovery); configured facade, app use cases, pure domain rules and an opaque-transaction store (see [episode ledger guide](internal/episodeledger/README.md))
+- `internal/approvalledger` - durable human approval lifecycle (request, expiry, resolution, withdrawal); configured facade, app use cases, pure domain and an opaque-transaction store; imports no `notify`, the caller supplies the withdrawal publisher (see [approval ledger guide](internal/approvalledger/README.md))
 - `internal/runtime` - thin live-pipeline, readiness and worker facades; concrete assembly in `internal/composition`, ordered use cases in `internal/app`, pure rules/reports in `internal/domain`, transaction plumbing in `internal/store`, source and worker resource adapters in `internal/transport` (see [runtime module guide](internal/runtime/README.md)).
-- `internal/control` - runtime ownership, epoch drain/kill and final readiness capability
+- `internal/control` - runtime control plane: owner lease, epoch drain/kill, final readiness capability and cost control (ledger, ceilings, kill switch); configured facade, app use cases, pure domain rules and an opaque-transaction store (see [control module guide](internal/control/README.md))
 - `internal/authority` - device claims, bindings, reconciliation and safety evidence; the reference module: thin `Service` facade, use cases in `internal/app`, pure `internal/domain`, transactions and SQL in `internal/store` (see [module pattern](docs/authority-reference-module-2026-10-05/MODULE_PATTERN.md) and its [ubiquitous language](docs/authority-reference-module-2026-10-05/UBIQUITOUS_LANGUAGE.md)). To bring another package to this standard, follow [the reference module refactor prompt](.agents/prompts/reference-module-refactor.md)
-- `internal/qualification` - calibration and shadow evidence
 - `internal/replay` - effect-safe replay modes; ordered session use cases in `internal/app`, pure verification rules in `internal/domain`, all replay SQL in `internal/store`, trace files and isolated databases in `internal/transport` (see [replay module guide](internal/replay/README.md))
 - `internal/api` - JSON/HTTP plus Server-Sent Events
 - `internal/telemetry` - OpenTelemetry traces, metrics, logs

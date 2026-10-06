@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -130,5 +131,43 @@ func TestProjectionErrorsPreserveCancellation(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestShadowDecisionSharesCallerTransactionAndNeverCreatesActionRecords(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "shadow.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		t.Fatal(err)
+	}
+	digest := make([]byte, 32)
+	decision := domain.ShadowDecision{
+		ShadowDecisionID: "shadow", EpisodeID: "episode", DecisionID: "decision", AttemptID: "attempt",
+		DecisionJSON: []byte(`{}`), DecisionSHA256: digest, ShadowScore: domain.ShadowWouldApprove,
+		TenantID: "tenant", SituationID: "situation", SituationVersion: 1, PolicyEpoch: "epoch",
+	}
+	rollback := errors.New("caller failed after recording evidence")
+	if err := db.WithTx(ctx, func(raw *sql.Tx) error {
+		if err := store.Join(raw).RecordShadowDecision(ctx, decision, "now"); err != nil {
+			return err
+		}
+		return rollback
+	}); !errors.Is(err, rollback) {
+		t.Fatalf("record/rollback: %v", err)
+	}
+	if err := db.WithTx(ctx, func(raw *sql.Tx) error { return store.Join(raw).RecordShadowDecision(ctx, decision, "now") }); err != nil {
+		t.Fatal(err)
+	}
+	for table, want := range map[string]int{"shadow_decisions": 1, "intents": 0, "commands": 0, "outbox": 0} {
+		var count int
+		if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil || count != want {
+			t.Fatalf("%s: count=%d want=%d err=%v", table, count, want, err)
+		}
 	}
 }

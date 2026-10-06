@@ -67,7 +67,11 @@ func TestSSEExpiredCursorForcesAuditedResnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	prunedAt := now.Add(8*24*time.Hour + time.Second)
-	if _, err := notify.Prune(ctx, db, prunedAt, 8*24*time.Hour); err != nil {
+	outbox, err := notify.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := outbox.Prune(ctx, prunedAt, 8*24*time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	handler := api.NewSSEHandler(api.SSEConfig{DB: db, TenantID: "tenant", Now: func() time.Time { return prunedAt }})

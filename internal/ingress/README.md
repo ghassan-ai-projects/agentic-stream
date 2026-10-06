@@ -5,7 +5,7 @@ event log: a JSON Lines trace file, a streams-simulator trace, and a live
 Unix-domain socket. It owns one table, `connector_checkpoints`. It decides
 nothing about reasoning or effects.
 
-Read [the vocabulary](../../docs/ingress-reference-module-2026-10-06/UBIQUITOUS_LANGUAGE.md) before changing rules.
+Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 
 | Layer | Responsibility |
 | --- | --- |

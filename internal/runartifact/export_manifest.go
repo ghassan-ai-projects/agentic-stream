@@ -3,10 +3,11 @@ package runartifact
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 func enrichManifest(ctx context.Context, tx *sql.Tx, input Manifest) (Manifest, error) {
@@ -38,7 +39,7 @@ func fillManifestDigests(ctx context.Context, tx *sql.Tx, manifest *Manifest) {
 	if manifest.SpecDigest == "" {
 		var digest []byte
 		if err := tx.QueryRowContext(ctx, "SELECT spec_sha256 FROM spec_deployments WHERE tenant_id = ? ORDER BY created_at DESC, deployment_id DESC LIMIT 1", manifest.TenantID).Scan(&digest); err == nil {
-			manifest.SpecDigest = "sha256:" + hex.EncodeToString(digest)
+			manifest.SpecDigest = canonicaljson.EncodeDigest(digest)
 		}
 	}
 	if manifest.PolicyDigest == "" {

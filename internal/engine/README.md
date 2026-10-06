@@ -6,7 +6,7 @@ Situations with their lineage, fires durable processing-time timers, and hands
 each new Situation version to cognition in the same transaction. It never
 invokes models or effects.
 
-Read [the vocabulary](../../docs/engine-reference-module-2026-10-06/UBIQUITOUS_LANGUAGE.md) before changing rules.
+Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 
 | Layer | Responsibility |
 | --- | --- |

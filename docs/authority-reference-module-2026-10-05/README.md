@@ -6,7 +6,7 @@ on branch `general-improvements-1`. Backward compatibility is not a goal: the
 public API, call sites and the table schema may change.
 
 - [Findings](FINDINGS.md): what is wrong with the package today, with evidence.
-- [Ubiquitous language](UBIQUITOUS_LANGUAGE.md): the shared vocabulary of the
+- [Ubiquitous language](../../internal/authority/UBIQUITOUS_LANGUAGE.md): the shared vocabulary of the
   device-authority context, the words it retires, and where each term lives in
   code and storage.
 - [Target design](DESIGN.md): layers, public surface, transaction and clock

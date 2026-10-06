@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -21,7 +21,7 @@ func CapacityExhausted(pending, sameTrigger int) bool {
 
 // applyTiming sets the item's expiry and, when the trigger debounces, the
 // earliest time it may run.
-func ApplyTiming(item *scheduleledger.Item, trigger spec.Trigger, now time.Time) error {
+func ApplyTiming(item *episodeledger.SchedulerItem, trigger spec.Trigger, now time.Time) error {
 	expiresAfter, err := ParseOptionalDuration(trigger.ExpiresAfter, defaultExpiresAfter)
 	if err != nil {
 		return fmt.Errorf("parse expiresAfter: %w", err)
@@ -49,7 +49,7 @@ func ParseOptionalDuration(s string, defaultDur time.Duration) (time.Duration, e
 	return d, nil
 }
 
-func ApplyCooldown(item *scheduleledger.Item, latest time.Time, cooldown time.Duration) {
+func ApplyCooldown(item *episodeledger.SchedulerItem, latest time.Time, cooldown time.Duration) {
 	notBefore := latest.Add(cooldown)
 	if item.NotBefore == nil || notBefore.After(*item.NotBefore) {
 		item.NotBefore = &notBefore
@@ -87,6 +87,6 @@ func Supersedes(replacement, old int) bool { return old < replacement }
 func HasPreviousVersion(version int) bool { return version > 0 }
 
 // NewSchedulerItem binds an admitted evaluation to its pending queue record.
-func NewSchedulerItem(id string, eval Evaluation) scheduleledger.Item {
-	return scheduleledger.Item{SchedulerItemID: id, Kind: "standard", TriggerID: eval.TriggerID, SituationID: eval.SituationID, SituationVersion: eval.SituationVersion, Lane: eval.Lane, Priority: eval.Score, Status: "pending"}
+func NewSchedulerItem(id string, eval Evaluation) episodeledger.SchedulerItem {
+	return episodeledger.SchedulerItem{SchedulerItemID: id, Kind: "standard", TriggerID: eval.TriggerID, SituationID: eval.SituationID, SituationVersion: eval.SituationVersion, Lane: eval.Lane, Priority: eval.Score, Status: "pending"}
 }

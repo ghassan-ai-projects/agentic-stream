@@ -2,7 +2,8 @@
 
 Snapshot of every Go package after the migrations of this session. Companion
 files: [DEADCODE.md](DEADCODE.md) (production reachability review),
-[DEFERRED.md](DEFERRED.md) (behavior changes, deferred work, decisions to make)
+[DEFERRED.md](DEFERRED.md) (behavior changes, deferred work, decisions to make),
+[FOLLOW_UPS.md](FOLLOW_UPS.md) (prioritised work to do later)
 and [deadcode-production-unreachable.txt](deadcode-production-unreachable.txt)
 (raw `deadcode ./...` output).
 
@@ -30,21 +31,17 @@ fits the pattern, not yet done. **N/A** = pure rules, foundation or infrastructu
 | `watch` | Derived-trigger watches installed as effects | [watch](../watch-reference-module-2026-10-06/) |
 | `engine` | Deterministic stream engine, timers, Situation persistence | [engine](../engine-reference-module-2026-10-06/) |
 | `ingress` | JSONL, simulator and live-socket sources, checkpoints | [ingress](../ingress-reference-module-2026-10-06/) |
+| `canonicaljson` | RFC 8785 canonical JSON and domain-separated digests (pure rules: facade + domain) | [foundations](../foundations-reference-module-2026-10-06/) |
+| `approvalledger` | Human approval lifecycle, withdrawal of superseded approvals | [ledgers](../ledgers-reference-module-2026-10-06/) |
+| `episodeledger` (with `scheduleledger`) | Scheduler queue, episodes, fenced attempts, rejection audit, recovery | [ledgers](../ledgers-reference-module-2026-10-06/) |
+| `control` (with `costcontrol`) | Owner lease, epoch drain/kill, cost control, readiness gate | [control](../control-reference-module-2026-10-06/) |
+| `notify` (with `notifycontract`) | Notification outbox, cursors, poison handling, lifecycle contract | [notify](../notify-reference-module-2026-10-06/) |
 
 ## Decided: no migration
 
 | Package | Description | Reason |
 | --- | --- | --- |
-| `notify` | Durable notification outbox, cursors, poison handling | Shared transaction-scoped store used inside other modules' stores; layering lifts 20+ dependants (needs layer re-leveling) |
-| `control` | Runtime owner lease, epoch drain/kill, dispatch gate | Same: shared transaction-scoped store |
-| `costcontrol` | Cost limits, reservations, settlement | Same |
-| `qualification` | Calibration artifacts, shadow decisions and comparisons | Same |
-| `episodeledger` | Episode/attempt lifecycle writes | Shared ledger kernel |
-| `scheduleledger` | Scheduler item lifecycle writes | Shared ledger kernel |
-| `approvalledger` | Approval lifecycle writes | Shared ledger kernel; merging into `policy` would make cognition import policy |
 | `interlock` | Runtime interlock reader/writer | Tiny layer-0 leaf; merging into `control` widens dependencies |
-| `notifycontract` | Cross-repository notification contract | Public contract identity consumed downstream |
-| `admission` | Admits scheduler items into episodes | Thin orchestrator, no tables; merge blocked by layering |
 | `api` | HTTP and SSE handlers | Thin adapter, no tables |
 
 ## Candidates (not yet reviewed in depth)
@@ -64,7 +61,6 @@ fits the pattern, not yet done. **N/A** = pure rules, foundation or infrastructu
 | Package | Description |
 | --- | --- |
 | `actionport` | Approved-command and effector contracts |
-| `canonicaljson` | RFC 8785 canonical JSON and digests |
 | `clock` | Physical and virtual clocks |
 | `contractsv1` | Versioned envelopes, schemas, digests |
 | `duration` | Duration parsing |

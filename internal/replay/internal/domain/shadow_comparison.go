@@ -20,7 +20,7 @@ type ShadowComparisonResult struct {
 }
 
 // Comparison is the sealed, report-only record of one shadow trial, ready for
-// the qualification-owned comparison store.
+// the replay store; it never enters intents, commands or the outbox.
 type Comparison struct {
 	ComparisonID            string
 	ComparisonKey           string

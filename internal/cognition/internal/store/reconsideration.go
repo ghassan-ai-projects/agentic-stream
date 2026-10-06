@@ -42,18 +42,31 @@ func (t *Tx) RecordReconsideration(ctx context.Context, r domain.Reconsideration
 }
 
 func (t *Tx) AnnounceReconsideration(ctx context.Context, r domain.Reconsideration, tenantID string, now time.Time) error {
-	if err := notify.AppendLifecycleEventWithTrace(ctx, t.tx,
-		"reconsideration.admitted:"+r.ID, tenantID, notify.TypeReconsiderationAdmitted,
-		"situation/"+r.Current.SituationID, r.Current.SituationID, map[string]any{
-			"tenant_id": tenantID, "reconsideration_id": r.ID, "situation_id": r.Current.SituationID,
-			"superseded_version": r.Current.PreviousVersion, "correction_version": r.Current.Version,
-			"invalidated_command_id": r.Command.CommandID, "invalidated_outcome_id": r.Command.OutcomeID,
-			"trigger_id": r.TriggerID, "scheduler_item_id": r.SchedulerItemID,
-			"source_authority": notify.SourceForTenant(tenantID),
-		}, now.UTC(), contractsv1.TraceContext{Traceparent: r.Current.Traceparent, Tracestate: r.Current.Tracestate}); err != nil {
+	if err := notify.AppendLifecycleEvent(ctx, t.tx, reconsiderationEvent(r, tenantID, now)); err != nil {
 		return fmt.Errorf("append reconsideration notification: %w", err)
 	}
 	return nil
+}
+
+func reconsiderationEvent(r domain.Reconsideration, tenantID string, now time.Time) notify.LifecycleEvent {
+	return notify.LifecycleEvent{
+		ID:           "reconsideration.admitted:" + r.ID,
+		TenantID:     tenantID,
+		Subject:      "situation/" + r.Current.SituationID,
+		PartitionKey: r.Current.SituationID,
+		Payload:      reconsideration(r),
+		At:           now.UTC(),
+		Trace:        contractsv1.TraceContext{Traceparent: r.Current.Traceparent, Tracestate: r.Current.Tracestate},
+	}
+}
+
+func reconsideration(r domain.Reconsideration) notify.ReconsiderationAdmitted {
+	return notify.ReconsiderationAdmitted{
+		ReconsiderationID: r.ID, SituationID: r.Current.SituationID,
+		SupersededVersion: r.Current.PreviousVersion, CorrectionVersion: r.Current.Version,
+		InvalidatedCommandID: r.Command.CommandID, InvalidatedOutcomeID: r.Command.OutcomeID,
+		TriggerID: r.TriggerID, SchedulerItemID: r.SchedulerItemID,
+	}
 }
 
 func (t *Tx) InvalidatedCommands(ctx context.Context, current situations.Version) ([]domain.InvalidatedCommand, error) {

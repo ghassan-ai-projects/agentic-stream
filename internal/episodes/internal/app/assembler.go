@@ -5,8 +5,7 @@ package app
 import (
 	"context"
 	"fmt"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
@@ -17,7 +16,7 @@ import (
 type Assembler struct {
 	spec  *spec.CompiledSpec
 	idGen ids.Generator
-	cost  *costcontrol.Controller
+	cost  *runtimecontrol.CostLedger
 }
 
 // Assemble builds a Request from a pending scheduler item. It loads the trigger

@@ -6,7 +6,7 @@ following the [reference module refactor prompt](../../.agents/prompts/reference
 Backward compatibility is not a goal.
 
 - [Findings](FINDINGS.md)
-- [Ubiquitous language](UBIQUITOUS_LANGUAGE.md)
+- [Ubiquitous language](../../internal/device/UBIQUITOUS_LANGUAGE.md)
 - [Target design](DESIGN.md)
 - [Plan](PLAN.md)
 

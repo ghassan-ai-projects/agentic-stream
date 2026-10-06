@@ -38,8 +38,31 @@ type ApprovalResolution struct {
 // ApprovalRequest is a sealed request and its notification payload.
 type ApprovalRequest struct {
 	ID, Nonce string
-	Data      map[string]any
+	Data      ApprovalNotification
 	JSON      []byte
+}
+
+// ApprovalNotification is the approval presentation a human sees. It is sealed
+// into the approval request and published as the approval.requested payload.
+type ApprovalNotification struct {
+	TenantID           string         `json:"tenant_id"`
+	ApprovalID         string         `json:"approval_id"`
+	IntentID           string         `json:"intent_id"`
+	DecisionID         string         `json:"decision_id"`
+	SituationID        string         `json:"situation_id"`
+	SituationVersion   int            `json:"situation_version"`
+	IntentDigest       string         `json:"intent_digest"`
+	SnapshotDigest     string         `json:"snapshot_digest"`
+	RiskClass          string         `json:"risk_class"`
+	ExpiresAt          string         `json:"expires_at"`
+	Audience           string         `json:"audience"`
+	Summary            string         `json:"summary"`
+	Delta              map[string]any `json:"delta"`
+	Hypothesis         string         `json:"hypothesis"`
+	Evidence           []string       `json:"evidence"`
+	Action             map[string]any `json:"action"`
+	DeclineConsequence string         `json:"decline_consequence"`
+	SourceAuthority    string         `json:"source_authority"`
 }
 
 // ApprovalContext contains the evidence projection used in an approval notice.

@@ -139,7 +139,7 @@ conceptual explanation; operations pages own procedures and failure response.
 | SituationSpec runtime schema | `internal/spec/schema.json`, compiler tests | `contracts/situation-spec.md` |
 | Worker protocol | `docs/design/contracts/runtime-v1.proto`, generated stubs, proto tests | `contracts/worker-protocol.md` |
 | Runtime JSON schemas | `internal/contractsv1/schemas/v1/`, contract tests | `contracts/decision-intent.md` |
-| Notification schemas | `internal/notifycontract/contracts/`, contract tests | `contracts/notifications.md` |
+| Notification schemas | `internal/notify/internal/domain/contracts/`, contract tests | `contracts/notifications.md` |
 | Durable schema | `migrations/`, storage tests | `contracts/persistence.md`, `reference/migrations.md` |
 | Runtime behavior | subsystem packages and focused/E2E tests | `overview/status.md`, design summaries |
 | Release posture | `governance/release-status.json` | status, limitations, roadmap, release |

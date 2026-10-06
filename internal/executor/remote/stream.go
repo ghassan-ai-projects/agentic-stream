@@ -160,7 +160,7 @@ func verifyDecisionDigest(raw, digest []byte) error {
 	if err != nil {
 		return fmt.Errorf("compute worker decision digest: %w", err)
 	}
-	if computed != fmt.Sprintf("sha256:%x", digest) {
+	if computed != canonicaljson.EncodeDigest(digest) {
 		return fmt.Errorf("worker decision digest mismatch")
 	}
 	return nil
@@ -230,6 +230,6 @@ func (s *workerStream) producedOutcome(outcome *episodes.Outcome) (*episodes.Out
 	}
 	outcome.Status = string(episodeledger.AttemptProduced)
 	outcome.DecisionJSON = append([]byte(nil), s.decision.GetDecisionJson()...)
-	outcome.DecisionSHA256 = fmt.Sprintf("sha256:%x", s.decision.GetDecisionSha256())
+	outcome.DecisionSHA256 = canonicaljson.EncodeDigest(s.decision.GetDecisionSha256())
 	return outcome, nil
 }

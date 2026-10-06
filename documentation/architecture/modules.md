@@ -31,7 +31,6 @@ flowchart TD
     R --> C["control"]
     C --> E["episodeledger"]
     S["cognition"] --> E
-    S --> Q["scheduleledger"]
     S --> H["approvalledger"]
     G["policy"] --> H
     D --> T["authority"]
@@ -63,18 +62,16 @@ records or returned values, not reverse service dependencies.
 | `device` | Closed capability catalog, deterministic materialization, session/boot checks, safe stop, gateway transport and the simulated effector |
 | `actions` | Configured Service facade; app leases and dispatches approved commands, domain owns authorization and reconciliation rules, opaque store transactions keep ledger writes, owner and interlock checks atomic |
 | `watch` | Configured facade; app installs, fires and expires bounded derived-trigger watches, domain owns payload and CEL rules, the opaque store owns `watch_conditions`/`watch_fires` |
-| `episodeledger` | Episode/attempt state, fencing identity, rejection audit, recovery and cancellation mutations |
-| `admission` | Turning due scheduler items into epoch-stamped episodes; drain stop, fixture refusal and recorded skips for unadmittable items |
+| `notify` | Facade with transactional `Append`/`AppendLifecycleEvent` and a `Service` for paged reads and pruning; app orders seal, deduplication, cursor allocation, resume refusal and poison accounting; domain owns the lifecycle contract and rules; the opaque store owns the five `notification_*` tables |
+| `episodeledger` | Facade over app use cases for the scheduler queue and the episode/attempt lifecycle: fencing identity, rejection audit, recovery and cancellation mutations; domain owns statuses, identity and fence rules; the opaque store owns `scheduler_items`, `episodes`, `episode_attempts` and `episode_rejections` |
 | `episodes` | Configured Service facade; app assembles and runs bounded reasoning, domain owns pure contracts/rules, opaque store transactions preserve lifecycle and Decision handoffs |
 | `evidence` | Configured Service facade; app orders capability admission and durable query/recovery use cases; domain owns pure scope/lifecycle rules; store alone writes `evidence_call_ledger`; wire owns exact codecs; transport adapts gRPC and the eventlog-owned source. See [module guide](../../internal/evidence/README.md) |
 | `executor/fixture`, `executor/native`, `executor/remote` | Concrete executors: deterministic demo fixtures, the in-process Go executor, and the streamed EpisodeWorker adapter with per-attempt evidence capability and budget accounting |
-| `scheduleledger` | Durable queue identity, admission, coalescing and skipped opportunities |
 | `cognition` | Trigger evaluation, admission priorities, reconsideration and cost-refusal explanation |
-| `approvalledger` | Pending approval, assertion binding, resolution/expiry, and atomic supersession notification |
+| `approvalledger` | Facade over app use cases for pending approval, assertion binding, resolution/expiry and withdrawal of superseded approvals (notifications published by the caller in the same transaction); the opaque store owns `approvals` |
 | `policy` | Permission, principal/signature verification, risk, freshness, rate limits and command publication. Thin `Service` facade, app use cases, pure domain rules/typed governance documents, and a store that joins the caller transaction and owns policy SQL; [pattern](../../internal/policy/README.md) |
-| `control` | Runtime ownership lease, epoch drain/kill and final read-only readiness capability |
+| `control` | Facade over app use cases for the runtime owner lease, epoch drain/kill, cost reservation/settlement/ceilings and the read-only readiness capability; domain owns lease, epoch and cost rules; the opaque store owns `runtime_owner`, `epoch_control`, `cost_limits` and `cost_reservations` |
 | `authority` | Target claims, command bindings, device reconciliation, safe-stop latching and safety evidence. Reference structure: a thin `Service` facade, use cases in `internal/app`, pure `internal/domain` rules, and `internal/store`, the only writer of its tables |
-| `qualification` | Calibration activation and report-only shadow decisions/comparisons |
 | `storage` | SQLite configuration, migrations, transactions, replay-path reservation and busy retry |
 | `runtime` / `cmd` | Wiring, lifecycle and orchestration; concrete device selection lives here |
 

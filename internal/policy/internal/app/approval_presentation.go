@@ -2,9 +2,9 @@ package app
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
 )
@@ -55,6 +55,6 @@ func checkSigningPrincipals(ctx context.Context, tx *store.Tx, row domain.Intent
 func assertionFor(row domain.IntentRecord, r domain.ApprovalResolution, expiry, nonce string) domain.ApprovalAssertion {
 	return domain.ApprovalAssertion{
 		ApprovalID: r.ID, IntentID: row.IntentID, DecisionID: row.DecisionID, TenantID: row.TenantID, SituationID: row.SituationID, SituationVersion: row.SituationVersion, RiskClass: row.RiskClass,
-		IntentDigest: "sha256:" + hex.EncodeToString(row.IntentSHA), DecisionDigest: "sha256:" + hex.EncodeToString(row.DecisionSHA), ExpiresAt: expiry, Nonce: nonce, ApproverID: r.Approver, RelayID: r.Relay, Approved: r.Approved,
+		IntentDigest: canonicaljson.EncodeDigest(row.IntentSHA), DecisionDigest: canonicaljson.EncodeDigest(row.DecisionSHA), ExpiresAt: expiry, Nonce: nonce, ApproverID: r.Approver, RelayID: r.Relay, Approved: r.Approved,
 	}
 }

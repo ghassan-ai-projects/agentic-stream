@@ -131,7 +131,7 @@ func TestGatewayResolvesApprovalBeforeCommanding(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT event_type FROM notifications WHERE event_id = ?", "approval.requested:"+approval.ApprovalID).Scan(&requestedType); err != nil {
 		t.Fatalf("read approval notification: %v", err)
 	}
-	if requestedType != notify.TypeApprovalRequested {
+	if requestedType != (notify.ApprovalRequested{}).EventType() {
 		t.Fatalf("approval notification type=%q", requestedType)
 	}
 	var resolved policy.Result

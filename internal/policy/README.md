@@ -45,9 +45,9 @@ runtime composition binds `RuntimeOwner.Assert` and
 `EpochControl.AssertDecisionTx` when those controls are configured. Policy
 always invokes its supplied checks. A callback's actual authority is supplied
 by composition; constructor validation cannot verify what a callback does.
-Calibration is supplied as a narrow transaction-scoped check; runtime composition
-adapts the qualification store. Optional calibration is a permission source: absent or failed calibration sends
-R2 intents to human approval. It does not enable automatic consequential work.
+Calibration is read by the policy store: an active `calibration_artifacts` row for the Situation type and
+executor version permits automatic R2 work, and absent or failed calibration sends R2 intents to human
+approval. The runtime has no writer for the table; an operator provisions artifacts.
 
 ## Preserved sequences
 
