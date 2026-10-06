@@ -73,7 +73,7 @@ admitted and executed, 1 intent evaluated, 1 command dispatched.**
 
 | # | Stage | What happened | Evidence (table → rows) | Code |
 | --- | --- | --- | --- | --- |
-| 1 | Ingest | The JSONL file is read, each line validated against its registered event schema and appended. Duplicates and bad schemas never get in; they are quarantined | `event_log` 240 | `Pipeline.RunJSONL` (`runtime/internal/app/pipeline_run.go`), `ingress`, `eventlog` |
+| 1 | Ingest | The JSONL file is read, each line validated against its registered event schema and appended. An event that fails its schema is quarantined, and a repeated event id is not appended twice | `event_log` 240 | `Pipeline.RunJSONL` (`runtime/internal/app/pipeline_run.go`), `ingress`, `eventlog` |
 | 2 | Engine | Events are applied once, in log order (`event_inbox` 240 proves each was applied); watermarks and per-entity operator state advance | `event_inbox` 240, `operator_state` 3 (`vibration_rms`, `vibration_slope`, boot admission) | `engine.RunGlobal` (called from `advanceBatch`), `operators` |
 | 3 | Features and situations | Windows emit features (`vibration_rms_15m`, slopes). The Situation opens when `vibration_rms_15m > 4.5`, then moves only through guarded transitions that must hold for a minimum duration | `situation_versions` 126: `candidate` v1–20, `watch` from v21, `warning` from v53 to v126 | `operators`, `situations` |
 | 4 | Notifications | Each version and trigger evaluation is also published to a durable outbox that SSE clients read by cursor | `notifications` 166: 126 `situation.trigger.evaluated`, 37 `situation.superseded`, plus command and outcome events | `notify`, `api` SSE |
