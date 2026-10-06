@@ -15,6 +15,13 @@ import (
 
 type noopEffector struct{}
 
+func (noopEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
+	if err := authorization.Check(ctx); err != nil {
+		return actionport.Effect{}, err
+	}
+	return actionport.Effect{}, nil
+}
+
 func (noopEffector) Dispatch(context.Context, actionport.Command) (actionport.Effect, error) {
 	return actionport.Effect{}, nil
 }

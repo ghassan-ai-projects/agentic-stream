@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
@@ -61,28 +60,6 @@ func TestDispatchStopsWithoutRuntimeOwnership(t *testing.T) {
 	var status string
 	if err := db.QueryRowContext(t.Context(), "SELECT status FROM commands WHERE command_id = ?", commandID).Scan(&status); err != nil || status != "pending" {
 		t.Fatalf("status = %q, %v", status, err)
-	}
-}
-
-// plainEffector implements Effector but not AuthorizedEffector.
-type plainEffector struct{ calls int }
-
-func (e *plainEffector) Dispatch(context.Context, actionport.Command) (actionport.Effect, error) {
-	e.calls++
-	return actionport.Effect{}, nil
-}
-
-func TestEffectorWithoutDispatchAuthorizationFailsTheCommandClosed(t *testing.T) {
-	t.Parallel()
-	db, commandID := openActionFixture(t)
-	effector := &plainEffector{}
-	service := newService(t, db, effector, "owner", time.Minute)
-	if processed, err := service.DispatchOnce(t.Context()); err != nil || !processed {
-		t.Fatalf("processed=%v err=%v", processed, err)
-	}
-	var status string
-	if err := db.QueryRowContext(t.Context(), "SELECT status FROM commands WHERE command_id = ?", commandID).Scan(&status); err != nil || status != "failed" || effector.calls != 0 {
-		t.Fatalf("status=%q calls=%d err=%v; an effector that cannot enforce authorization must never be called", status, effector.calls, err)
 	}
 }
 

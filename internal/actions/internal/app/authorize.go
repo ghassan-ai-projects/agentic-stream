@@ -53,7 +53,7 @@ func (s *Service) requireLiveLease(ctx context.Context, tx *store.Tx, leased dom
 	return nil
 }
 
-func (s *Service) authorizeCurrentCommand(ctx context.Context, tx *store.Tx, leased domain.LeasedCommand, records domain.AuthorizationRecords, commandDocument domain.Document) error {
+func (s *Service) authorizeCurrentCommand(ctx context.Context, tx *store.Tx, leased domain.LeasedCommand, records domain.AuthorizationRecords, commandDocument domain.CommandDocument) error {
 	if err := records.RequireApprovedIntent(); err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func (s *Service) authorizeCurrentCommand(ctx context.Context, tx *store.Tx, lea
 	return s.authorizeCurrentDocuments(ctx, tx, leased, records, commandDocument)
 }
 
-func (s *Service) authorizeCurrentDocuments(ctx context.Context, tx *store.Tx, leased domain.LeasedCommand, records domain.AuthorizationRecords, commandDocument domain.Document) error {
+func (s *Service) authorizeCurrentDocuments(ctx context.Context, tx *store.Tx, leased domain.LeasedCommand, records domain.AuthorizationRecords, commandDocument domain.CommandDocument) error {
 	if err := records.RequireCurrent(); err != nil {
 		return err
 	}
@@ -84,8 +84,8 @@ func (s *Service) authorizeCurrentDocuments(ctx context.Context, tx *store.Tx, l
 
 // checkPolicyDigest requires a command that names a policy digest to match the
 // latest approving policy evaluation of its intent.
-func checkPolicyDigest(ctx context.Context, tx *store.Tx, commandDocument domain.Document, intentID string) error {
-	commanded := commandDocument.String("policy_digest")
+func checkPolicyDigest(ctx context.Context, tx *store.Tx, commandDocument domain.CommandDocument, intentID string) error {
+	commanded := commandDocument.PolicyDigest
 	if commanded == "" {
 		return nil
 	}

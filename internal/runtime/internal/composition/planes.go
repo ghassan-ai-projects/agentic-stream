@@ -143,7 +143,11 @@ func policyEpochCheck(cfg PipelineConfig) func(context.Context, *sql.Tx, string)
 func unownedCheck(context.Context, *sql.Tx, string) error { return nil }
 
 func composeDispatcher(cfg PipelineConfig) (*actions.Service, error) {
-	service, err := actions.New(actions.Config{DB: cfg.DB, Effector: cfg.Effector, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch,
+	effector, ok := cfg.Effector.(actionport.AuthorizedEffector)
+	if !ok {
+		return nil, fmt.Errorf("compose actions: effector must enforce dispatch authorization")
+	}
+	service, err := actions.New(actions.Config{DB: cfg.DB, Effector: effector, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch,
 		Interlock: interlock.DurableReader{}, Clock: cfg.Clock, IDs: cfg.IDGenerator, LeaseOwner: "runtime-actions/" + cfg.OwnerEpoch,
 		LeaseFor: time.Minute, Telemetry: cfg.Telemetry})
 	if err != nil {

@@ -38,6 +38,9 @@ integrator. Before the first code change, the integrator commits round 0.
 - The interlock is now required, so the "dispatcher has no interlock" branch (plain `Dispatch`) is gone: every command runs through `actionport.AuthorizedEffector.DispatchAuthorized`, and an effector that is not authorized fails the command closed. Production composition already set the interlock, so only test effectors change.
 - The "no effector configured" finalization is replaced by a constructor error.
 - Composition without a runtime owner passes an explicit always-pass ownership check (the policy precedent) instead of omitting the check, so the check can no longer be skipped by forgetting a setter.
+- Polish round: command, intent and decision documents and reconciliation evidence are parsed once into typed values (`CommandDocument`, `IntentDocument`, `DecisionDocument`, `Evidence`); the raw maps remain the digest and persistence inputs.
+- `Config.Effector` is `actionport.AuthorizedEffector`: an effector that cannot enforce the final authorization check is refused at construction (runtime composition fails closed the same way) instead of failing each command.
+- Reconciling a `manual_review` command now settles its status to the final status and verification; before, evidence was recorded but the status update matched no row.
 - Error text drift without behavior change: lease-inactive and reconciliation-validation errors no longer embed SQL no-rows text or an extra wrapper; reconciled-notification errors carry one wrapper, not two.
 
 ## Deferred work

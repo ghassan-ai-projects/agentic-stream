@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"time"
@@ -56,18 +55,21 @@ type AuthorizationRecords struct {
 
 // VerifiedCommand decodes the command document and requires it to be
 // schema-valid, digest-bound, and identical to its ledger columns.
-func (r AuthorizationRecords) VerifiedCommand() (Document, error) {
-	var document Document
+func (r AuthorizationRecords) VerifiedCommand() (CommandDocument, error) {
+	var raw Document
 	row := r.Command
-	if err := json.Unmarshal(row.JSON, &document); err != nil || contractsv1.Validate(contractsv1.SchemaCommand, map[string]any(document)) != nil ||
-		!verifyDigest(canonicaljson.DomainCommand, document, row.SHA) ||
-		document.String("command_id") != row.ID || document.String("intent_id") != row.IntentID ||
-		document.String("tenant_id") != row.TenantID || document.String("effector_route") != row.Route ||
-		document.String("normalized_target") != row.Target || !bytes.Equal(row.Idempotency, document.Digest("idempotency_key")) {
-		return nil, errors.New("command ledger identity mismatch")
+	if err := json.Unmarshal(row.JSON, &raw); err != nil || contractsv1.Validate(contractsv1.SchemaCommand, map[string]any(raw)) != nil ||
+		!verifyDigest(canonicaljson.DomainCommand, raw, row.SHA) {
+		return CommandDocument{}, errCommandIdentity
+	}
+	document := ParseCommandDocument(raw)
+	if !document.MatchesLedger(row) {
+		return CommandDocument{}, errCommandIdentity
 	}
 	return document, nil
 }
+
+var errCommandIdentity = errors.New("command ledger identity mismatch")
 
 // RequireApprovedIntent requires the policy plane's approval of the command's
 // intent and an accepted decision.
@@ -120,15 +122,7 @@ func (r AuthorizationRecords) CheckIntent(now time.Time) error {
 	if err := json.Unmarshal(row.JSON, &document); err != nil || contractsv1.Validate(contractsv1.SchemaIntent, map[string]any(document)) != nil || !verifyIntentDigest(document, row.SHA) {
 		return errors.New("intent authorization is invalid")
 	}
-	return row.requireIdentity(document)
-}
-
-// requireIdentity requires the intent document to carry the ledger row's identity.
-func (row IntentRow) requireIdentity(document Document) error {
-	if document.String("intent_id") != row.ID || document.String("decision_id") != row.DecisionID ||
-		document.String("tenant_id") != row.TenantID || document.String("situation_id") != row.SituationID ||
-		document.Int("situation_version") != row.Version || document.String("type") != row.Type ||
-		document.String("risk_class") != row.Risk {
+	if !ParseIntentDocument(document).MatchesLedger(row) {
 		return errors.New("intent authorization identity mismatch")
 	}
 	return nil
@@ -142,8 +136,8 @@ func (r AuthorizationRecords) CheckDecision() error {
 	if err := json.Unmarshal(row.JSON, &document); err != nil || contractsv1.Validate(contractsv1.SchemaDecision, map[string]any(document)) != nil || !verifyDigest(canonicaljson.DomainDecision, document, row.SHA) {
 		return errors.New("decision authorization is invalid")
 	}
-	if document.String("decision_id") != r.Intent.DecisionID || document.String("episode_id") != row.EpisodeID ||
-		document.String("situation_id") != r.Intent.SituationID || document.Int("situation_version") != r.Intent.Version {
+	if decision := ParseDecisionDocument(document); decision.DecisionID != r.Intent.DecisionID || decision.EpisodeID != row.EpisodeID ||
+		decision.SituationID != r.Intent.SituationID || decision.SituationVersion != r.Intent.Version {
 		return errors.New("decision authorization identity mismatch")
 	}
 	return nil

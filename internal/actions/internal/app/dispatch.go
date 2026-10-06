@@ -36,12 +36,8 @@ func (s *Service) dispatchContext(ctx context.Context) (context.Context, context
 // dispatchLeased calls the effector with the final authorization check, which
 // closes the validation-to-acceptance gap at the effect boundary.
 func (s *Service) dispatchLeased(ctx, callCtx context.Context, leased domain.LeasedCommand) error {
-	guarded, ok := s.effector.(actionport.AuthorizedEffector)
-	if !ok {
-		return s.finalize(ctx, leased, actionport.Effect{}, errors.New("configured effector does not enforce dispatch authorization"))
-	}
 	command := leased.Command
-	effect, err := guarded.DispatchAuthorized(callCtx, command, s.store.DispatchAuthorization(command.TenantID, command.NormalizedTarget))
+	effect, err := s.effector.DispatchAuthorized(callCtx, command, s.store.DispatchAuthorization(command.TenantID, command.NormalizedTarget))
 	return s.finalizeProviderDispatch(ctx, callCtx, leased, effect, err)
 }
 

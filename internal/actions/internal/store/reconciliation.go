@@ -53,7 +53,7 @@ func (tx *Tx) VerifyDeviceBinding(ctx context.Context, command domain.Reconcilab
 // the states the final status implies.
 func (tx *Tx) CloseReconciliation(ctx context.Context, closure domain.ReconciliationClosure) error {
 	at := formatTime(closure.At)
-	if _, err := tx.tx.ExecContext(ctx, "UPDATE commands SET status = ?, updated_at = ? WHERE command_id = ? AND status IN ('reconciling', 'outcome_unknown')", closure.FinalStatus, at, closure.Command.ID); err != nil {
+	if _, err := tx.tx.ExecContext(ctx, "UPDATE commands SET status = ?, updated_at = ? WHERE command_id = ? AND status IN ('reconciling', 'outcome_unknown', 'manual_review')", closure.FinalStatus, at, closure.Command.ID); err != nil {
 		return fmt.Errorf("close reconciled command: %w", err)
 	}
 	if _, err := tx.tx.ExecContext(ctx, updateReconciledVerificationSQL, closure.OutcomeID, domain.ReconciledVerificationStatus(closure.FinalStatus), at, at, closure.Command.ID); err != nil {

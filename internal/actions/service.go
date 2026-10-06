@@ -27,7 +27,7 @@ type Config struct {
 	// ownership assertion for Epoch, run on the dispatch transaction;
 	// control.RuntimeOwner.Assert is the production check.
 	DB           *storage.DB
-	Effector     actionport.Effector
+	Effector     actionport.AuthorizedEffector
 	RuntimeOwner func(context.Context, *sql.Tx, string) error
 	Epoch        string
 	Interlock    interlock.Reader

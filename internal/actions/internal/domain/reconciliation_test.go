@@ -26,7 +26,7 @@ func TestReconciliationEvidenceValidationOrder(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := ValidateReconciliation(tc.finalStatus, tc.evidence)
+			_, err := ParseReconciliation(tc.finalStatus, tc.evidence)
 			if tc.want == "" {
 				if err != nil {
 					t.Fatal(err)

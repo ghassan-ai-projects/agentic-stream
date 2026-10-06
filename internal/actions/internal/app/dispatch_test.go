@@ -652,12 +652,12 @@ func TestDispatcherTreatsProviderDeadlineAsUnknownWithoutRetry(t *testing.T) {
 	}
 }
 
-func newService(t *testing.T, db *storage.DB, effector actionport.Effector, leaseOwner string, leaseFor time.Duration) *app.Service {
+func newService(t *testing.T, db *storage.DB, effector actionport.AuthorizedEffector, leaseOwner string, leaseFor time.Duration) *app.Service {
 	t.Helper()
 	return newServiceWithOwner(t, db, effector, leaseOwner, leaseFor, func(context.Context, *sql.Tx, string) error { return nil })
 }
 
-func newServiceWithOwner(t *testing.T, db *storage.DB, effector actionport.Effector, leaseOwner string, leaseFor time.Duration, owner store.OwnerCheck) *app.Service {
+func newServiceWithOwner(t *testing.T, db *storage.DB, effector actionport.AuthorizedEffector, leaseOwner string, leaseFor time.Duration, owner store.OwnerCheck) *app.Service {
 	t.Helper()
 	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch", interlock.DurableReader{}), Effector: effector,
 		Clock: clock.Physical(), IDs: ids.Deterministic(), LeaseOwner: leaseOwner, LeaseFor: leaseFor})
@@ -684,4 +684,25 @@ func (e *verifyingEffector) DispatchAuthorized(ctx context.Context, command acti
 
 func (e *deadlineEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
 	return authorizedDispatch(ctx, authorization, command, e.Dispatch)
+}
+
+func TestReconcilingAManualReviewCommandSettlesItsStatus(t *testing.T) {
+	db, commandID := openActionFixture(t)
+	defer func() { _ = db.Close() }()
+	dispatcher := newService(t, db, &recordingEffector{verificationPending: true}, "test-dispatcher", time.Minute)
+	if processed, err := dispatcher.DispatchOnce(t.Context()); err != nil || !processed {
+		t.Fatalf("dispatch processed=%v err=%v", processed, err)
+	}
+	evidence := map[string]any{"source": "independent-feedback", "evidence_type": "provider_observation",
+		"evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}
+	if err := dispatcher.ReconcileUnknown(t.Context(), commandID, "failed", evidence); err != nil {
+		t.Fatal(err)
+	}
+	var status, verification string
+	if err := db.QueryRowContext(t.Context(), `SELECT c.status, v.status FROM commands c JOIN verifications v ON v.command_id = c.command_id WHERE c.command_id = ?`, commandID).Scan(&status, &verification); err != nil {
+		t.Fatal(err)
+	}
+	if status != "failed" || verification != "refuted" {
+		t.Fatalf("command=%q verification=%q; reconciling a manual-review command must settle both", status, verification)
+	}
 }

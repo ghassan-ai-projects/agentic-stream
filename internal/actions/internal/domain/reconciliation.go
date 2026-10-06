@@ -42,33 +42,60 @@ func (p ReconciledProvenance) Validate() error {
 	return nil
 }
 
-// ValidateReconciliation applies the evidence rules in order: allowed final
-// status, evidence presence, source, evidence type, required device-feedback
-// fields, then the first present digest.
-func ValidateReconciliation(finalStatus string, evidence map[string]any) error {
-	if finalStatus != CommandSucceeded && finalStatus != CommandFailed && finalStatus != CommandManualReview {
-		return fmt.Errorf("invalid reconciliation status %q", finalStatus)
-	}
-	if len(evidence) == 0 {
-		return errors.New("reconciliation evidence is required")
-	}
-	if source, _ := evidence["source"].(string); source == "" {
-		return errors.New("reconciliation evidence source is required")
-	}
-	evidenceType, _ := evidence["evidence_type"].(string)
-	if evidenceType != "provider_observation" && evidenceType != "device_state_feedback" {
-		return errors.New("reconciliation evidence_type is required")
-	}
-	return validateTypedEvidence(evidence, evidenceType)
+// EvidenceType names the kind of independent evidence that resolves an outcome.
+type EvidenceType string
+
+// Evidence types accepted for reconciliation.
+const (
+	ProviderObservation EvidenceType = "provider_observation"
+	DeviceStateFeedback EvidenceType = "device_state_feedback"
+)
+
+// Evidence is the typed view of reconciliation evidence. Raw is the original
+// document: it is persisted and embedded in the outcome digest unchanged.
+type Evidence struct {
+	Source string
+	Type   EvidenceType
+	Raw    map[string]any
 }
 
-func validateTypedEvidence(evidence map[string]any, evidenceType string) error {
-	if evidenceType == "device_state_feedback" {
-		if err := requireDeviceFeedbackFields(evidence); err != nil {
+// ParseReconciliation applies the evidence rules in order: allowed final
+// status, evidence presence, source, evidence type, required device-feedback
+// fields, then the first present digest.
+func ParseReconciliation(finalStatus string, raw map[string]any) (Evidence, error) {
+	if finalStatus != CommandSucceeded && finalStatus != CommandFailed && finalStatus != CommandManualReview {
+		return Evidence{}, fmt.Errorf("invalid reconciliation status %q", finalStatus)
+	}
+	if len(raw) == 0 {
+		return Evidence{}, errors.New("reconciliation evidence is required")
+	}
+	evidence, err := evidenceHeader(raw)
+	if err != nil {
+		return Evidence{}, err
+	}
+	return evidence, evidence.validateTyped()
+}
+
+// evidenceHeader reads the source and type, which must be present and known.
+func evidenceHeader(raw map[string]any) (Evidence, error) {
+	source, _ := raw["source"].(string)
+	if source == "" {
+		return Evidence{}, errors.New("reconciliation evidence source is required")
+	}
+	evidenceType, _ := raw["evidence_type"].(string)
+	if EvidenceType(evidenceType) != ProviderObservation && EvidenceType(evidenceType) != DeviceStateFeedback {
+		return Evidence{}, errors.New("reconciliation evidence_type is required")
+	}
+	return Evidence{Source: source, Type: EvidenceType(evidenceType), Raw: raw}, nil
+}
+
+func (e Evidence) validateTyped() error {
+	if e.Type == DeviceStateFeedback {
+		if err := requireDeviceFeedbackFields(e.Raw); err != nil {
 			return err
 		}
 	}
-	return requireEvidenceDigest(evidence)
+	return requireEvidenceDigest(e.Raw)
 }
 
 func requireDeviceFeedbackFields(evidence map[string]any) error {

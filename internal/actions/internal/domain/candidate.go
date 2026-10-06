@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"bytes"
 	"encoding/json"
 	"time"
 
@@ -98,7 +97,7 @@ func (c Candidate) admitCommandDocument(leased LeasedCommand) Admission {
 	if failureCode != "" {
 		return Admission{Step: FailInvalidCommand, FailureCode: failureCode, Leased: leased}
 	}
-	leased.Command = CommandFromDocument(leased.Command, document)
+	leased.Command = document.Command(leased.Command)
 	if c.CommandStatus == CommandSucceeded || c.CommandStatus == CommandOutcomeUnknown {
 		return Admission{Step: CloseOutboxOnly, OutboxClosure: outboxClosure(c.CommandStatus), Leased: leased}
 	}
@@ -123,39 +122,21 @@ func outboxClosure(commandStatus string) string {
 
 // VerifiedDocument decodes the command document and returns the lease failure
 // code when it is invalid or disagrees with its ledger columns.
-func (c Candidate) VerifiedDocument() (Document, string) {
-	var document Document
-	if err := json.Unmarshal(c.Command.JSON, &document); err != nil {
-		return nil, FailureCommandJSONInvalid
+func (c Candidate) VerifiedDocument() (CommandDocument, string) {
+	var raw Document
+	if err := json.Unmarshal(c.Command.JSON, &raw); err != nil {
+		return CommandDocument{}, FailureCommandJSONInvalid
 	}
-	if err := contractsv1.Validate(contractsv1.SchemaCommand, map[string]any(document)); err != nil {
-		return nil, FailureCommandSchemaInvalid
+	if err := contractsv1.Validate(contractsv1.SchemaCommand, map[string]any(raw)); err != nil {
+		return CommandDocument{}, FailureCommandSchemaInvalid
 	}
-	if !c.matchesLedger(document) {
-		return nil, FailureCommandDigestMismatch
+	document := ParseCommandDocument(raw)
+	if !c.matchesLedger(raw, document) {
+		return CommandDocument{}, FailureCommandDigestMismatch
 	}
 	return document, ""
 }
 
-func (c Candidate) matchesLedger(document Document) bool {
-	idempotency, err := canonicaljson.DecodeDigest(document.String("idempotency_key"))
-	row := c.Command
-	return err == nil && row.ID == document.String("command_id") &&
-		row.IntentID == document.String("intent_id") && row.TenantID == document.String("tenant_id") &&
-		row.Route == document.String("effector_route") && row.Target == document.String("normalized_target") &&
-		bytes.Equal(row.Idempotency, idempotency) && verifyDigest(canonicaljson.DomainCommand, document, row.SHA)
-}
-
-// CommandFromDocument fills the effector command from a verified document,
-// keeping the ledger command identity.
-func CommandFromDocument(command actionport.Command, document Document) actionport.Command {
-	command.IntentID = document.String("intent_id")
-	command.TenantID = document.String("tenant_id")
-	command.EffectorRoute = document.String("effector_route")
-	command.NormalizedTarget = document.String("normalized_target")
-	command.IdempotencyKey = document.String("idempotency_key")
-	command.PolicyDigest = document.String("policy_digest")
-	command.NotBeforeMonoUS = document.Int64("not_before_mono_us")
-	command.Payload = document.Object("payload")
-	return command
+func (c Candidate) matchesLedger(raw Document, document CommandDocument) bool {
+	return document.MatchesLedger(c.Command) && verifyDigest(canonicaljson.DomainCommand, raw, c.Command.SHA)
 }

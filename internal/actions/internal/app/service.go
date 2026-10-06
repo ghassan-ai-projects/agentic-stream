@@ -18,8 +18,10 @@ type LeaseObserver interface{ ObserveLeaseExpiry() }
 type Config struct {
 	// Store carries the database, runtime ownership check and interlock. It must
 	// be fully configured.
-	Store    store.Store
-	Effector actionport.Effector
+	Store store.Store
+	// Effector must enforce the final dispatch authorization check at the
+	// effect boundary; an effector that cannot is refused at construction.
+	Effector actionport.AuthorizedEffector
 	Clock    clock.Clock
 	IDs      ids.Generator
 	// LeaseOwner names this dispatcher in lease rows.
@@ -32,7 +34,7 @@ type Config struct {
 // Service owns the configured action use cases.
 type Service struct {
 	store    store.Store
-	effector actionport.Effector
+	effector actionport.AuthorizedEffector
 	clk      clock.Clock
 	ids      ids.Generator
 	owner    string
