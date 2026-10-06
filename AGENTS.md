@@ -67,6 +67,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 
 - `cmd/agentic-stream/` - entrypoint, flags, wiring, shutdown
 - `internal/contractsv1` - versioned envelopes and JSON contracts
+- `internal/canonicaljson` - RFC 8785 canonical JSON and domain-separated digests; thin facade over a pure domain (see [canonical JSON guide](internal/canonicaljson/README.md))
 - `internal/spec` - SituationSpec authoring, YAML in, canonical JSON digest
 - `internal/ingress` - configured ingress facade; app replay and live-serve use cases, pure domain admission and simulator rules, a checkpoint store and a file/socket transport (see [ingress module guide](internal/ingress/README.md))
 - `internal/eventlog` - normalized event log, watermark/completeness tracking; append/quarantine/redrive use cases in `internal/app`, pure admission and identity rules in `internal/domain`, all SQL in `internal/store` (see [event log module guide](internal/eventlog/README.md))

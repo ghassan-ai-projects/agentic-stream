@@ -11,17 +11,13 @@
   fourteen hand-written digest strings); `deadcode` is clean.
 - No `UBIQUITOUS_LANGUAGE.md`.
 
-## ids (about 80 lines)
+## ids (reviewed, not migrated)
 
-- One file holds the identity-space prefixes, the `Generator` contract, the
-  random generator (entropy from `crypto/rand`) and the deterministic one.
-- Deterministic-only packages (replay domain, native executor, ledger domains)
-  may not import it because it also holds the random generator; a split puts the
-  prefixes and the deterministic generator in a pure domain and the random source
-  in an adapter. The architecture gates still forbid those imports of the facade.
-- No `UBIQUITOUS_LANGUAGE.md`.
+An 80-line foundation: prefixes, the `Generator` contract and two generators. It was cleaned
+(`Sequence` and unused prefixes removed). The owner decided it needs no layering; the deterministic
+packages still may not import it because it holds the random generator (follow-up 9).
 
 ## Common
 
-- Both sit at layer 0 with 25 and 16 importers; layering them moves 34 layer
-  table entries up one level.
+- `canonicaljson` sits at layer 0 with 25 importers; layering it moves about 30 layer table
+  entries up one level.

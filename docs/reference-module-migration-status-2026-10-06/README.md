@@ -31,6 +31,7 @@ fits the pattern, not yet done. **N/A** = pure rules, foundation or infrastructu
 | `watch` | Derived-trigger watches installed as effects | [watch](../watch-reference-module-2026-10-06/) |
 | `engine` | Deterministic stream engine, timers, Situation persistence | [engine](../engine-reference-module-2026-10-06/) |
 | `ingress` | JSONL, simulator and live-socket sources, checkpoints | [ingress](../ingress-reference-module-2026-10-06/) |
+| `canonicaljson` | RFC 8785 canonical JSON and domain-separated digests (pure rules: facade + domain) | [foundations](../foundations-reference-module-2026-10-06/) |
 | `approvalledger` | Human approval lifecycle, withdrawal of superseded approvals | [ledgers](../ledgers-reference-module-2026-10-06/) |
 | `episodeledger` (with `scheduleledger`) | Scheduler queue, episodes, fenced attempts, rejection audit, recovery | [ledgers](../ledgers-reference-module-2026-10-06/) |
 | `control` (with `costcontrol`) | Owner lease, epoch drain/kill, cost control, readiness gate | [control](../control-reference-module-2026-10-06/) |
@@ -60,7 +61,6 @@ fits the pattern, not yet done. **N/A** = pure rules, foundation or infrastructu
 | Package | Description |
 | --- | --- |
 | `actionport` | Approved-command and effector contracts |
-| `canonicaljson` | RFC 8785 canonical JSON and digests |
 | `clock` | Physical and virtual clocks |
 | `contractsv1` | Versioned envelopes, schemas, digests |
 | `duration` | Duration parsing |

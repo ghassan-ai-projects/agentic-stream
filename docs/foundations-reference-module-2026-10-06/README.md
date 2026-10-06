@@ -1,7 +1,7 @@
 # Foundations as reference modules — October 2026
 
-Working record for rebuilding `internal/canonicaljson` and `internal/ids` to the
-reference-module standard, following the
+Working record for rebuilding `internal/canonicaljson` to the
+reference-module standard (`internal/ids` was reviewed and deliberately left as it is), following the
 [reference module refactor prompt](../../.agents/prompts/reference-module-refactor.md).
 Earlier cleanup rounds only removed dead code and duplicates; they did not apply
 the architecture. This record does. Each package's vocabulary lives in its own
@@ -13,19 +13,13 @@ the architecture. This record does. Each package's vocabulary lives in its own
 
 ## Summary
 
-Both are leaf foundations that do no database or network I/O, so they take the
-"pure rules" shape: a thin facade over `internal/domain`. `ids` also draws
-entropy from the operating system, which is an external source, so that one
-generator gets its own adapter package.
+`canonicaljson` does no database or network I/O, so it takes the "pure rules" shape: a thin
+facade over `internal/domain`. The facade sits one layer above its domain, so the layer table
+was re-derived from the import graph (about 30 entries move up one level). `ids` is not
+migrated: it is an 80-line foundation whose generators the deterministic packages may not
+import, and a split would not change who can use it.
 
 ```
 internal/canonicaljson/                 facade: Domain, Marshal, Digest, Verify, DecodeDigest, EncodeDigest, ContentDigest, VerifyStored
 internal/canonicaljson/internal/domain/ RFC 8785 encoding, number and string rules, strict validation, digest and stored-document rules
-
-internal/ids/                           facade: Generator, prefixes, Random, Deterministic
-internal/ids/internal/domain/           identity-space prefixes, the Generator contract, the deterministic generator
-internal/ids/internal/random/           adapter: crypto/rand generator
 ```
-
-The facades sit one layer above their domains, so the layer table is re-derived
-from the import graph (34 entries move up one level).
