@@ -48,7 +48,7 @@ var durableOwners = map[string]string{
 	"runtime_interlock":             "internal/interlock",
 	"runtime_owner":                 "internal/control/internal/store",
 	"scheduler_items":               "internal/episodeledger/internal/store",
-	"schema_migrations":             "internal/storage",
+	"schema_migrations":             "internal/storage/internal/store",
 	"shadow_comparisons":            "internal/replay/internal/store",
 	"shadow_decisions":              "internal/episodes/internal/store",
 	"situation_versions":            "internal/engine/internal/store",

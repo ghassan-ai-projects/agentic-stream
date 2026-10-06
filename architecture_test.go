@@ -29,6 +29,8 @@ var foundationPackages = []string{
 	"internal/contractsv1/internal/domain",
 	"internal/interlock",
 	"internal/storage",
+	"internal/storage/internal/domain",
+	"internal/storage/internal/store",
 	"internal/telemetry",
 	"internal/telemetry/internal/domain",
 	"internal/telemetry/internal/transport",
@@ -77,6 +79,8 @@ var forbiddenImports = map[string][]string{
 // follow the data flow in .agents/context/architecture.md and be added here in
 // the same change.
 var allowedImports = map[string][]string{
+	"internal/storage/internal/store":             {"internal/storage/internal/domain", "migrations"},
+	"internal/storage/internal/domain":            {"migrations"},
 	"internal/actionport/internal/domain":         {},
 	"internal/operators/internal/domain":          {"internal/contractsv1", "internal/sources", "internal/spec"},
 	"internal/situations/internal/domain":         {"internal/canonicaljson", "internal/contractsv1", "internal/operators", "internal/sources", "internal/spec"},
@@ -190,7 +194,7 @@ var allowedImports = map[string][]string{
 	"internal/runtime":                            {"internal/control", "internal/episodes", "internal/evidence", "internal/policy", "internal/runtime/internal/app", "internal/runtime/internal/composition", "internal/runtime/internal/domain", "internal/runtime/internal/transport"},
 	"internal/situations":                         {"internal/situations/internal/domain", "internal/sources", "internal/spec"},
 	"internal/spec":                               {"internal/spec/internal/app", "internal/spec/internal/domain", "internal/spec/internal/store", "internal/storage"},
-	"internal/storage":                            {"migrations"},
+	"internal/storage":                            {"internal/storage/internal/store"},
 	"internal/telemetry":                          {"internal/telemetry/internal/domain", "internal/telemetry/internal/transport"},
 	"internal/watch":                              {"internal/actionport", "internal/sources", "internal/interlock", "internal/storage", "internal/watch/internal/app", "internal/watch/internal/store"},
 	"internal/watch/internal/app":                 {"internal/actionport", "internal/sources", "internal/watch/internal/domain", "internal/watch/internal/store"},

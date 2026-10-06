@@ -1,14 +1,16 @@
-package storage
+package store
 
 import (
 	"fmt"
 	"os"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/internal/domain"
 )
 
 // reserveFreshDatabase owns the replay reservation until the caller opens
 // SQLite. Failure releases only the reservation, never existing files.
 func reserveFreshDatabase(path string) (string, error) {
-	reservationPath := path + ".replay-reservation"
+	reservationPath := domain.ReservationPath(path)
 	if err := os.Mkdir(reservationPath, 0o700); err != nil {
 		return "", fmt.Errorf("reserve replay directory: %w", err)
 	}
@@ -24,7 +26,7 @@ func reserveFreshDatabase(path string) (string, error) {
 }
 
 func checkFreshSidecars(path string) error {
-	for _, sidecar := range []string{path + "-wal", path + "-shm"} {
+	for _, sidecar := range domain.FreshSidecars(path) {
 		if _, err := os.Lstat(sidecar); err == nil {
 			return fmt.Errorf("fresh database sidecar already exists: %s", sidecar)
 		} else if !os.IsNotExist(err) {

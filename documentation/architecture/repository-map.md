@@ -105,7 +105,9 @@ historical design map where the code has chosen a more specific package name.
 | `internal/replay/internal/store/` | replay SQL and transactions against the isolated database (reference module layer) |
 | `internal/replay/internal/transport/` | trace files, isolated databases and trace ingestion (reference module layer) |
 | `internal/runtime/` | thin live-pipeline, readiness and worker facades; [module guide](../../internal/runtime/README.md) |
-| `internal/storage/` | SQLite infrastructure, migrations and transactions |
+| `internal/storage/` | SQLite infrastructure, migrations and transactions (facade) |
+| `internal/storage/internal/domain/` | pure connection string, busy-retry backoff, pending-migration and reservation rules |
+| `internal/storage/internal/store/` | SQLite adapter: open, migrate, transactions, busy retry, checkpoint, fresh replay databases |
 | `internal/contractsv1/` | versioned envelope/schema contracts (facade) |
 | `internal/contractsv1/internal/domain/` | pure envelope, CloudEvent, trace context, schema validation and digest rules |
 | `internal/telemetry/` | OpenTelemetry and runtime metrics (facade) |

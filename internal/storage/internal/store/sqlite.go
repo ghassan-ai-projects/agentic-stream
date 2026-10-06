@@ -1,4 +1,4 @@
-package storage
+package store
 
 import (
 	"context"
@@ -6,15 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/internal/domain"
+
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
-)
-
-const (
-	sqliteRetryAttempts      = 6
-	sqliteRetryInitialDelay  = 25 * time.Millisecond
-	sqliteRetryMaximumDelay  = time.Second
-	sqliteWALCheckpointPages = 256
 )
 
 // IsSQLiteBusy reports whether err is a retryable SQLite busy or locked
@@ -33,9 +28,9 @@ func IsSQLiteBusy(err error) bool {
 // before it returns so the next attempt starts on a clean connection.
 func RetrySQLiteBusy(ctx context.Context, fn func() error) error {
 	var err error
-	for attempt := 0; attempt < sqliteRetryAttempts; attempt++ {
+	for attempt := 0; attempt < domain.RetryAttempts; attempt++ {
 		err = fn()
-		if err == nil || !IsSQLiteBusy(err) || attempt == sqliteRetryAttempts-1 {
+		if err == nil || !domain.ShouldRetry(IsSQLiteBusy(err), attempt) {
 			return err
 		}
 
@@ -48,11 +43,7 @@ func RetrySQLiteBusy(ctx context.Context, fn func() error) error {
 
 // waitForSQLiteRetry bounds backoff and lets cancellation interrupt the wait.
 func waitForSQLiteRetry(ctx context.Context, attempt int) error {
-	delay := sqliteRetryInitialDelay << attempt
-	if delay > sqliteRetryMaximumDelay {
-		delay = sqliteRetryMaximumDelay
-	}
-	timer := time.NewTimer(delay)
+	timer := time.NewTimer(domain.RetryDelay(attempt))
 	select {
 	case <-ctx.Done():
 		timer.Stop()
