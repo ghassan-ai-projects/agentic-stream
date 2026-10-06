@@ -60,7 +60,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/episodeledger/` | durable episode/attempt lifecycle, fencing and recovery |
 | `internal/scheduleledger/` | durable queue identity, admission and coalescing |
 | `internal/approvalledger/` | human approval lifecycle and supersession notification |
-| `internal/control/` | runtime ownership, epoch control and readiness capability |
+| `internal/control/` | runtime control plane facade: owner lease, epoch drain/kill, cost ledger and ceilings, readiness capability |
+| `internal/control/internal/app/` | owner, epoch, cost and dispatch-readiness use cases |
+| `internal/control/internal/domain/` | pure lease, epoch-refusal and cost rules |
+| `internal/control/internal/store/` | the only SQL for `runtime_owner`, `epoch_control`, `cost_limits` and `cost_reservations` |
 | `internal/authority/` | device target claims, bindings, reconciliation and safety evidence: public API only (configuration and delegation) |
 | `internal/authority/internal/app/` | device-authority use cases: validation, admission, unit of work, audit (reference module layer) |
 | `internal/authority/internal/domain/` | device-authority vocabulary and pure rules (reference module layer) |

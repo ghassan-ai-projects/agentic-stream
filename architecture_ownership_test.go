@@ -14,8 +14,8 @@ var durableOwners = map[string]string{
 	"calibration_artifacts":         "internal/qualification",
 	"commands":                      "internal/actions/internal/store",
 	"connector_checkpoints":         "internal/ingress/internal/store",
-	"cost_limits":                   "internal/control",
-	"cost_reservations":             "internal/control",
+	"cost_limits":                   "internal/control/internal/store",
+	"cost_reservations":             "internal/control/internal/store",
 	"decisions":                     "internal/episodes/internal/store",
 	"device_authority_events":       "internal/authority/internal/store",
 	"device_command_bindings":       "internal/authority/internal/store",
@@ -25,7 +25,7 @@ var durableOwners = map[string]string{
 	"episode_attempts":              "internal/episodeledger",
 	"episode_rejections":            "internal/episodeledger",
 	"episodes":                      "internal/episodeledger",
-	"epoch_control":                 "internal/control",
+	"epoch_control":                 "internal/control/internal/store",
 	"event_gaps":                    "internal/eventlog/internal/store",
 	"event_inbox":                   "internal/engine/internal/store",
 	"event_log":                     "internal/eventlog/internal/store",
@@ -47,7 +47,7 @@ var durableOwners = map[string]string{
 	"policy_evaluations":            "internal/policy/internal/store",
 	"reconsiderations":              "internal/cognition/internal/store",
 	"runtime_interlock":             "internal/interlock",
-	"runtime_owner":                 "internal/control",
+	"runtime_owner":                 "internal/control/internal/store",
 	"scheduler_items":               "internal/scheduleledger",
 	"schema_migrations":             "internal/storage",
 	"shadow_comparisons":            "internal/qualification",
@@ -75,7 +75,7 @@ func TestDurableMutationsHaveOneOwnerOrAnExplicitHandoffPhase(t *testing.T) {
 		if !ownsMutation(pkg, mutation) {
 			t.Errorf("%s: %s may not %s %s columns %v", position, pkg, mutation.operation, mutation.table, mutation.columns)
 		}
-		if file == "internal/control/dispatch_gate.go" {
+		if file == "internal/control/internal/store/dispatch.go" {
 			t.Errorf("%s: final authorization capability must be read-only", position)
 		}
 	})
@@ -133,7 +133,7 @@ func TestHandoffOwnershipRejectsAuthorityAndPayloadBypasses(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ pkg, query string }{
 		{"internal/cognition/internal/store", "UPDATE episodes SET lifecycle_status='superseded'"},
-		{"internal/control", "UPDATE episodes SET lifecycle_status='superseded'"},
+		{"internal/control/internal/store", "UPDATE episodes SET lifecycle_status='superseded'"},
 		{"internal/runtime", "UPDATE scheduler_items SET status='coalesced'"},
 		{"internal/cognition/internal/store", "UPDATE approvals SET status='denied'"},
 		{"internal/policy/internal/store", "UPDATE commands SET status='dispatching'"},

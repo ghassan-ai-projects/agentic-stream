@@ -1,4 +1,4 @@
-package control
+package control_test
 
 import (
 	"database/sql"
@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -33,15 +34,15 @@ func TestApplyCeilingsPreservesUnspecifiedLimitsAndAtomicity(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = db.Close() })
 			if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-				if err := SetCostLimit(ctx, tx, "global", "", 100, true, "2026-01-01T00:00:00Z"); err != nil {
+				if err := control.SetCostLimit(ctx, tx, "global", "", 100, true, "2026-01-01T00:00:00Z"); err != nil {
 					return err
 				}
-				return SetCostLimit(ctx, tx, "tenant:tenant", "tenant", 10, true, "2026-01-01T00:00:00Z")
+				return control.SetCostLimit(ctx, tx, "tenant:tenant", "tenant", 10, true, "2026-01-01T00:00:00Z")
 			}); err != nil {
 				t.Fatal(err)
 			}
 			err = db.WithTx(ctx, func(tx *sql.Tx) error {
-				return ApplyCostCeilings(ctx, tx, CostCeilings{Global: tc.global, Tenant: tc.tenant, KillSwitch: tc.kill}, "tenant", "2026-01-01T00:00:00Z")
+				return control.ApplyCostCeilings(ctx, tx, control.CostCeilings{Global: tc.global, Tenant: tc.tenant, KillSwitch: tc.kill}, "tenant", "2026-01-01T00:00:00Z")
 			})
 			if (err != nil) != tc.wantError {
 				t.Fatalf("configuration err=%v", err)
@@ -52,8 +53,9 @@ func TestApplyCeilingsPreservesUnspecifiedLimitsAndAtomicity(t *testing.T) {
 					ceiling uint64
 					kill    bool
 				}{{"global", tc.wantGlobal, tc.wantGlobalKill}, {"tenant:tenant", tc.wantTenant, tc.wantTenantKill}} {
-					ceiling, kill, err := readCostLimit(ctx, tx, want.scope)
-					if err != nil {
+					var ceiling uint64
+					var kill bool
+					if err := tx.QueryRowContext(ctx, "SELECT max_micro, kill_switch FROM cost_limits WHERE scope_key = ?", want.scope).Scan(&ceiling, &kill); err != nil {
 						return err
 					}
 					if ceiling != want.ceiling || kill != want.kill {
