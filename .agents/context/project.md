@@ -8,7 +8,7 @@ The design is implementation-ready and committed under `docs/`; the curated publ
 
 ## Current State
 
-- Design baseline v1 is complete under `docs/design/`; v0 and v0.1 iterations are archived under `docs/design-v0/` and `docs/design-v0.1/`; notification mirrors are in `docs/contracts/`; runtime contract sources are under `docs/design/contracts/`, `internal/contractsv1/`, `internal/spec/schema.json`, `proto/`, and `migrations/`; research reports are in `docs/research/`.
+- Design baseline v1 is complete under `docs/design/`; v0 and v0.1 iterations are archived under `docs/design-v0/` and `docs/design-v0.1/`; notification mirrors are in `docs/contracts/`; runtime contract sources are under `docs/design/contracts/`, `internal/contractsv1/`, `internal/spec/internal/domain/schema.json`, `proto/`, and `migrations/`; research reports are in `docs/research/`.
 - Module path `github.com/ghassan-ai-projects/agentic-stream` is set.
 - The CLI lives in `cmd/agentic-stream/`; runtime packages live under `internal/`; generated worker stubs live under `proto/agenticstream/runtime/v1/`.
 - The current implementation includes deterministic replay, live JSONL processing, bounded cognition/episodes, policy/actions, worker/evidence boundaries, notifications, telemetry, and storage recovery. The remaining release posture is documented in `documentation/governance/release-status.json`.

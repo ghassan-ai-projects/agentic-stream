@@ -1,5 +1,4 @@
-// Package duration parses the runtime's duration string format.
-package spec
+package domain
 
 import (
 	"fmt"

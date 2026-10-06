@@ -1,4 +1,4 @@
-package spec
+package store
 
 import (
 	"context"
@@ -6,11 +6,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
 )
 
 // Register stores one immutable event schema version. Re-registering the same
 // event type and version is allowed only when the bytes are identical.
-func RegisterEventSchema(ctx context.Context, tx *sql.Tx, definition EventSchema, schemaJSON []byte, now string) error {
+func RegisterEventSchema(ctx context.Context, tx *sql.Tx, definition domain.EventSchema, schemaJSON []byte, now string) error {
 	if definition.Ref == "" || definition.EventType == "" || definition.SchemaVersion == "" || len(schemaJSON) == 0 || now == "" {
 		return fmt.Errorf("event schema identity, bytes, and time are required")
 	}
@@ -25,7 +27,7 @@ func RegisterEventSchema(ctx context.Context, tx *sql.Tx, definition EventSchema
 	return insertSchema(ctx, tx, definition, schemaJSON, digest[:], now)
 }
 
-func insertSchema(ctx context.Context, tx *sql.Tx, definition EventSchema, schemaJSON, digest []byte, now string) error {
+func insertSchema(ctx context.Context, tx *sql.Tx, definition domain.EventSchema, schemaJSON, digest []byte, now string) error {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO event_schemas (schema_id, event_type, schema_version, schema_json, schema_sha256, status, created_at)
 		VALUES (?, ?, ?, ?, ?, 'active', ?)`, definition.Ref, definition.EventType, definition.SchemaVersion, schemaJSON, digest, now); err != nil {
@@ -36,7 +38,7 @@ func insertSchema(ctx context.Context, tx *sql.Tx, definition EventSchema, schem
 
 // checkRegisteredDigest reports whether the schema version is already
 // registered, failing when its stored bytes differ from digest.
-func checkRegisteredDigest(ctx context.Context, tx *sql.Tx, definition EventSchema, digest []byte) (bool, error) {
+func checkRegisteredDigest(ctx context.Context, tx *sql.Tx, definition domain.EventSchema, digest []byte) (bool, error) {
 	var existing []byte
 	err := tx.QueryRowContext(ctx, "SELECT schema_sha256 FROM event_schemas WHERE event_type = ? AND schema_version = ?", definition.EventType, definition.SchemaVersion).Scan(&existing)
 	if err == sql.ErrNoRows { //nolint:errorlint // Scan returns sql.ErrNoRows unwrapped.

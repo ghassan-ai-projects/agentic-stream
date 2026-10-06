@@ -1,4 +1,4 @@
-package spec_test
+package domain_test
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
 )
 
 func TestCompilePreservesValidationPrecedence(t *testing.T) {
@@ -51,7 +51,7 @@ func TestCompilePreservesValidationPrecedence(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			compiled, err := spec.NewCompiler().CompileBytes(t.Context(), []byte(tt.source), "input.yaml")
+			compiled, err := domain.NewCompiler().CompileBytes(t.Context(), []byte(tt.source), "input.yaml")
 			if err == nil || !strings.Contains(err.Error(), tt.want) || compiled != nil {
 				t.Fatalf("compile: hasCompiled=%t err=%v, want %q", compiled != nil, err, tt.want)
 			}
@@ -61,7 +61,7 @@ func TestCompilePreservesValidationPrecedence(t *testing.T) {
 
 func TestCompilerReusePreservesJSONAndYAMLDigestParity(t *testing.T) {
 	t.Parallel()
-	compiler := spec.NewCompiler()
+	compiler := domain.NewCompiler()
 	// CEL source is text: preserve "1.0" through the format conversion.
 	source := []byte(strings.Replace(minimalSpecYAML(), "score: 1.0", `score: "1.0"`, 1))
 	first, err := compiler.CompileBytes(t.Context(), source, "first.yaml")

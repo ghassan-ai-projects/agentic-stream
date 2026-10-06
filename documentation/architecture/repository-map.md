@@ -6,7 +6,10 @@ historical design map where the code has chosen a more specific package name.
 | Path | Responsibility |
 | --- | --- |
 | `cmd/agentic-stream/` | CLI entrypoint and runtime wiring |
-| `internal/spec/` | SituationSpec schema, compiler, CEL, deployment persistence |
+| `internal/spec/` | SituationSpec schema, compiler, CEL, deployment persistence (facade) |
+| `internal/spec/internal/domain/` | pure spec parsing, validation, normalization, reference resolution, CEL, durations and the event schema registry |
+| `internal/spec/internal/app/` | compile a spec from a file |
+| `internal/spec/internal/store/` | spec deployment and event schema SQL |
 | `internal/ingress/` | ingress configuration and replay/serve delegation facade |
 | `internal/ingress/internal/app/` | JSONL and simulator replay loops, admission, quarantine and live line handling |
 | `internal/ingress/internal/store/` | connector checkpoint SQL |

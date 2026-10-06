@@ -1,6 +1,4 @@
-// Event schemas are the deterministic catalog the spec compiler binds inputs to;
-// registering one is part of deploying a spec.
-package spec
+package domain
 
 import (
 	_ "embed"

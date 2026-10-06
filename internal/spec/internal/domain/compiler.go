@@ -1,9 +1,8 @@
-package spec
+package domain
 
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
@@ -18,15 +17,6 @@ type Compiler struct {
 // NewCompiler creates a compiler with the embedded v1 JSON Schema.
 func NewCompiler() *Compiler {
 	return &Compiler{}
-}
-
-// CompileFile reads a spec from path and compiles it.
-func (c *Compiler) CompileFile(ctx context.Context, path string) (*CompiledSpec, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read file: %w", err)
-	}
-	return c.CompileBytes(ctx, data, path)
 }
 
 // CompileBytes parses and validates raw spec bytes.

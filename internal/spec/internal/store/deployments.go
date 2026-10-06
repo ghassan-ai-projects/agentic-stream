@@ -1,4 +1,4 @@
-package spec
+package store
 
 import (
 	"context"
@@ -7,13 +7,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // SaveDeployment persists a compiled spec as an active deployment record.
 // It is idempotent: duplicate inserts for the same deployment_id are ignored.
-func SaveDeployment(ctx context.Context, db *storage.DB, tenantID string, compiled *CompiledSpec) error {
+func SaveDeployment(ctx context.Context, db *storage.DB, tenantID string, compiled *domain.CompiledSpec) error {
 	record, err := newDeploymentRecord(tenantID, compiled)
 	if err != nil {
 		return err
@@ -41,13 +43,13 @@ func (r deploymentRecord) persist(ctx context.Context, tx *sql.Tx) error {
 // deploymentRecord is a compiled spec in its stored form.
 type deploymentRecord struct {
 	tenantID               string
-	compiled               *CompiledSpec
+	compiled               *domain.CompiledSpec
 	specDigest             []byte
 	sourceJSON, compiledIR []byte
 	now                    string
 }
 
-func newDeploymentRecord(tenantID string, compiled *CompiledSpec) (deploymentRecord, error) {
+func newDeploymentRecord(tenantID string, compiled *domain.CompiledSpec) (deploymentRecord, error) {
 	if compiled == nil {
 		return deploymentRecord{}, fmt.Errorf("compiled spec is nil")
 	}
@@ -97,13 +99,13 @@ func (r deploymentRecord) retirePriorVersions(ctx context.Context, tx *sql.Tx) e
 
 // registerInputSchemas registers the event schema of every input whose
 // schema is known to the registry.
-func registerInputSchemas(ctx context.Context, tx *sql.Tx, inputs []Input, now string) error {
+func registerInputSchemas(ctx context.Context, tx *sql.Tx, inputs []domain.Input, now string) error {
 	for _, input := range inputs {
-		definition, ok := LookupEventSchema(input.SchemaRef)
+		definition, ok := domain.LookupEventSchema(input.SchemaRef)
 		if !ok {
 			continue
 		}
-		schemaJSON, err := EventSchemaJSON(definition)
+		schemaJSON, err := domain.EventSchemaJSON(definition)
 		if err != nil {
 			return fmt.Errorf("build event schema %s: %w", input.SchemaRef, err)
 		}

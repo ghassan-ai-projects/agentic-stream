@@ -1,11 +1,12 @@
-package spec_test
+package store_test
 
 import (
 	"context"
 	"path/filepath"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -26,11 +27,11 @@ func TestP8SameDigestRedeployKeepsTheDeploymentActive(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	specDoc := p8VersionedSpec(t, "graph-test", "1.0", "sha256:0000000000000000000000000000000000000000000000000000000000000003")
-	if err := spec.SaveDeployment(ctx, db, "tenant", specDoc); err != nil {
+	if err := store.SaveDeployment(ctx, db, "tenant", specDoc); err != nil {
 		t.Fatal(err)
 	}
 	// A second boot with the same digest: the row must stay active.
-	if err := spec.SaveDeployment(ctx, db, "tenant", specDoc); err != nil {
+	if err := store.SaveDeployment(ctx, db, "tenant", specDoc); err != nil {
 		t.Fatal(err)
 	}
 	var status string
@@ -54,10 +55,10 @@ func TestP8GraphVersionChangeIsAFreshNamespace(t *testing.T) {
 
 	base := p8VersionedSpec(t, "graph-test", "1.0", "sha256:0000000000000000000000000000000000000000000000000000000000000001")
 	next := p8VersionedSpec(t, "graph-test", "2.0", "sha256:0000000000000000000000000000000000000000000000000000000000000002")
-	if err := spec.SaveDeployment(ctx, db, "tenant", base); err != nil {
+	if err := store.SaveDeployment(ctx, db, "tenant", base); err != nil {
 		t.Fatal(err)
 	}
-	if err := spec.SaveDeployment(ctx, db, "tenant", next); err != nil {
+	if err := store.SaveDeployment(ctx, db, "tenant", next); err != nil {
 		t.Fatal(err)
 	}
 
@@ -106,22 +107,22 @@ func TestP8GraphVersionChangeIsAFreshNamespace(t *testing.T) {
 	}
 }
 
-func p8VersionedSpec(t *testing.T, name, version, digest string) *spec.CompiledSpec {
+func p8VersionedSpec(t *testing.T, name, version, digest string) *domain.CompiledSpec {
 	t.Helper()
-	return &spec.CompiledSpec{
+	return &domain.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
-		Metadata:      spec.Metadata{Name: name, Version: version},
+		Metadata:      domain.Metadata{Name: name, Version: version},
 		Digest:        digest,
-		Inputs: []spec.Input{{Name: "level", EventType: "test.observed", SchemaVersion: "1.0",
+		Inputs: []domain.Input{{Name: "level", EventType: "test.observed", SchemaVersion: "1.0",
 			PartitionKey: "entity.id", EntityType: "thing", Classification: "internal"}},
-		Time: spec.TimePolicy{MaxOutOfOrderness: "1m"},
-		Situation: spec.Situation{Type: "test", InitialPhase: "candidate",
-			Phases:     []spec.Phase{{Name: "candidate", Severity: 10}},
-			Occurrence: spec.Occurrence{OpenWhen: "features.level > 10"}},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{{Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast"}},
-			Executor: spec.Executor{Name: "native", ModelPolicy: "test", PromptVersion: "v1",
-				DecisionSchema: "schemas/decision.json", Budget: spec.Budget{WallTime: "5s"}},
+		Time: domain.TimePolicy{MaxOutOfOrderness: "1m"},
+		Situation: domain.Situation{Type: "test", InitialPhase: "candidate",
+			Phases:     []domain.Phase{{Name: "candidate", Severity: 10}},
+			Occurrence: domain.Occurrence{OpenWhen: "features.level > 10"}},
+		Cognition: domain.Cognition{
+			Triggers: []domain.Trigger{{Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast"}},
+			Executor: domain.Executor{Name: "native", ModelPolicy: "test", PromptVersion: "v1",
+				DecisionSchema: "schemas/decision.json", Budget: domain.Budget{WallTime: "5s"}},
 		},
 	}
 }

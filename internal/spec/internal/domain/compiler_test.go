@@ -1,15 +1,16 @@
-package spec_test
+package domain_test
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
 )
 
 func TestCompilePredictiveMaintenance(t *testing.T) {
-	compiled, err := spec.CompileFile(context.Background(), "../../docs/design/examples/predictive-maintenance.situation.yaml")
+	compiled, err := compileFile("../../../../docs/design/examples/predictive-maintenance.situation.yaml")
 	if err != nil {
 		t.Fatalf("CompileFile failed: %v", err)
 	}
@@ -25,7 +26,7 @@ func TestCompilePredictiveMaintenance(t *testing.T) {
 }
 
 func TestCompileRotatingMachinery(t *testing.T) {
-	compiled, err := spec.CompileFile(context.Background(), "../../docs/design/examples/rotating-machinery.situation.yaml")
+	compiled, err := compileFile("../../../../docs/design/examples/rotating-machinery.situation.yaml")
 	if err != nil {
 		t.Fatalf("CompileFile failed: %v", err)
 	}
@@ -45,7 +46,7 @@ func TestCompileZoneThermal(t *testing.T) {
 	// CURRENT schema grammar — it deliberately avoids the invented fields
 	// (schema:, supervisor:, expectedFeedback:, aggregate: latest) that made the
 	// round-1 starter fail. docs/plans/real-world-sensor-hil/01-telemetry-vertical.md
-	compiled, err := spec.CompileFile(context.Background(), "../../docs/design/examples/zone-thermal.situation.yaml")
+	compiled, err := compileFile("../../../../docs/design/examples/zone-thermal.situation.yaml")
 	if err != nil {
 		t.Fatalf("CompileFile failed: %v", err)
 	}
@@ -66,7 +67,7 @@ func TestCompileZoneThermal(t *testing.T) {
 func TestCompileStableDigestForEquivalentYAML(t *testing.T) {
 	yaml := minimalSpecYAML()
 
-	c1, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "a.yaml")
+	c1, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "a.yaml")
 	if err != nil {
 		t.Fatalf("first compile failed: %v", err)
 	}
@@ -74,7 +75,7 @@ func TestCompileStableDigestForEquivalentYAML(t *testing.T) {
 	yaml2 := strings.ReplaceAll(yaml, "  name: test\n  version: 0.1.0\n", "  version: 0.1.0\n  name: test\n")
 	yaml2 = strings.ReplaceAll(yaml2, "  name: test\n", "  name:    test\n")
 
-	c2, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml2), "b.yaml")
+	c2, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml2), "b.yaml")
 	if err != nil {
 		t.Fatalf("second compile failed: %v", err)
 	}
@@ -86,11 +87,11 @@ func TestCompileStableDigestForEquivalentYAML(t *testing.T) {
 func TestCompilePromptContentChangesDigestWithoutVersionChange(t *testing.T) {
 	base := minimalSpecYAML()
 	changed := strings.Replace(base, "prompt: Analyze the situation and return a typed decision.", "prompt: Return a typed decision with explicit evidence.", 1)
-	first, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(base), "base.yaml")
+	first, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(base), "base.yaml")
 	if err != nil {
 		t.Fatalf("compile base: %v", err)
 	}
-	second, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(changed), "changed.yaml")
+	second, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(changed), "changed.yaml")
 	if err != nil {
 		t.Fatalf("compile changed: %v", err)
 	}
@@ -104,12 +105,12 @@ func TestEffectiveWatchConfidenceFloor(t *testing.T) {
 	explicitCustom := 0.7
 	tests := []struct {
 		name    string
-		actions spec.Actions
+		actions domain.Actions
 		want    float64
 	}{
 		{name: "omitted", want: 0.5},
-		{name: "custom", actions: spec.Actions{WatchConfidenceFloor: &explicitCustom}, want: 0.7},
-		{name: "opt out", actions: spec.Actions{WatchConfidenceFloor: &explicitZero}, want: 0},
+		{name: "custom", actions: domain.Actions{WatchConfidenceFloor: &explicitCustom}, want: 0.7},
+		{name: "opt out", actions: domain.Actions{WatchConfidenceFloor: &explicitZero}, want: 0},
 	}
 
 	for _, tt := range tests {
@@ -140,7 +141,7 @@ func TestCompileWatchConfidenceFloorSchemaValidation(t *testing.T) {
 				"actions:\n  watch_confidence_floor: "+tt.value+"\n",
 				1,
 			)
-			compiled, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
+			compiled, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected schema validation error")
@@ -159,7 +160,7 @@ func TestCompileWatchConfidenceFloorSchemaValidation(t *testing.T) {
 
 func TestCompileRejectsUndeclaredPayloadField(t *testing.T) {
 	yaml := strings.Replace(minimalSpecYAML(), "field: data.value", "field: data.not_declared", 1)
-	_, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
+	_, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
 	if err == nil || !strings.Contains(err.Error(), "not_declared") {
 		t.Fatalf("expected undeclared payload field diagnostic, got %v", err)
 	}
@@ -167,7 +168,7 @@ func TestCompileRejectsUndeclaredPayloadField(t *testing.T) {
 
 func TestCompileRejectsPayloadUnitMismatch(t *testing.T) {
 	yaml := strings.Replace(minimalSpecYAML(), "    aggregate: mean\n", "    aggregate: mean\n    unit: kelvin\n", 1)
-	_, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
+	_, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
 	if err == nil || !strings.Contains(err.Error(), "does not match") {
 		t.Fatalf("expected unit mismatch diagnostic, got %v", err)
 	}
@@ -175,7 +176,7 @@ func TestCompileRejectsPayloadUnitMismatch(t *testing.T) {
 
 func TestCompileAcceptsLatestAggregate(t *testing.T) {
 	yaml := strings.Replace(minimalSpecYAML(), "    aggregate: mean\n", "    aggregate: latest\n", 1)
-	if _, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "latest.yaml"); err != nil {
+	if _, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "latest.yaml"); err != nil {
 		t.Fatalf("compile latest aggregate: %v", err)
 	}
 }
@@ -187,7 +188,7 @@ func TestCompileAcceptsDigestPinnedExecutorSkills(t *testing.T) {
 		"    tools: []\n    skills:\n      - name: diagnostic_playbook\n        tree_sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n",
 		1,
 	)
-	compiled, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "skills.yaml")
+	compiled, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "skills.yaml")
 	if err != nil {
 		t.Fatalf("compile skill-enabled spec: %v", err)
 	}
@@ -232,7 +233,7 @@ func TestCompileRejectsUnsupportedRuntimeSurface(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(tt.edit(minimalSpecYAML())), tt.name+".yaml"); err == nil {
+			if _, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(tt.edit(minimalSpecYAML())), tt.name+".yaml"); err == nil {
 				t.Fatal("expected schema validation error")
 			}
 		})
@@ -251,7 +252,7 @@ func TestCompileRejectsUnenforcedTopLevelControls(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			yaml := minimalSpecYAML() + tt.field + ":\n" + tt.value
-			_, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), tt.name+".yaml")
+			_, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), tt.name+".yaml")
 			if err == nil || !strings.Contains(err.Error(), tt.field) {
 				t.Fatalf("expected %s to be rejected explicitly, got %v", tt.field, err)
 			}
@@ -263,7 +264,7 @@ func TestCompileRejectsUnknownOperatorOutput(t *testing.T) {
 	yaml := strings.ReplaceAll(minimalSpecYAML(),
 		"      input: mean_value",
 		"      input: unknown_output")
-	_, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
+	_, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
 	if err == nil {
 		t.Fatal("expected error for unknown operator output")
 	}
@@ -276,7 +277,7 @@ func TestCompileRejectsInvalidCEL(t *testing.T) {
 	yaml := strings.ReplaceAll(minimalSpecYAML(),
 		"      when: features.mean_value > 1.0",
 		"      when: features.mean_value >")
-	_, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
+	_, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
 	if err == nil {
 		t.Fatal("expected error for invalid CEL")
 	}
@@ -289,7 +290,7 @@ func TestCompileRejectsDuplicateYAMLKey(t *testing.T) {
 	yaml := strings.ReplaceAll(minimalSpecYAML(),
 		"  name: test\n",
 		"  name: test\n  name: test2\n")
-	_, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
+	_, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
 	if err == nil {
 		t.Fatal("expected error for duplicate YAML key")
 	}
@@ -302,7 +303,7 @@ func TestCompileRejectsDuplicateWindowName(t *testing.T) {
 	yaml := strings.ReplaceAll(minimalSpecYAML(),
 		"  - name: w1\n    kind: tumbling\n    size: 1m",
 		"  - name: w1\n    kind: tumbling\n    size: 1m\n  - name: w1\n    kind: tumbling\n    size: 2m")
-	_, err := spec.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
+	_, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
 	if err == nil {
 		t.Fatal("expected error for duplicate window name")
 	}
@@ -399,4 +400,12 @@ actions:
             type: string
         additionalProperties: false
 `
+}
+
+func compileFile(path string) (*domain.CompiledSpec, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return domain.NewCompiler().CompileBytes(context.Background(), data, path)
 }

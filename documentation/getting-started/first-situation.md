@@ -26,7 +26,7 @@ validate again. Make one kind of behavioral change at a time; keep a trace and
 expected result for each change.
 
 The schema is committed at
-[`internal/spec/schema.json`](../../internal/spec/schema.json). The compiler
+[`internal/spec/internal/domain/schema.json`](../../internal/spec/internal/domain/schema.json). The compiler
 also performs semantic checks that a JSON Schema alone cannot express.
 
 ## Required top-level sections

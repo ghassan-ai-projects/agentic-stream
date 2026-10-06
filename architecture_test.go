@@ -77,6 +77,9 @@ var forbiddenImports = map[string][]string{
 // follow the data flow in .agents/context/architecture.md and be added here in
 // the same change.
 var allowedImports = map[string][]string{
+	"internal/spec/internal/store":                {"internal/canonicaljson", "internal/spec/internal/domain", "internal/storage"},
+	"internal/spec/internal/domain":               {"internal/canonicaljson"},
+	"internal/spec/internal/app":                  {"internal/spec/internal/domain"},
 	"internal/api/internal/transport":             {"internal/api/internal/domain", "internal/control", "internal/notify", "internal/storage"},
 	"internal/api/internal/domain":                {"internal/canonicaljson"},
 	"internal/worker/internal/transport":          {"internal/worker/internal/domain", "proto/agenticstream/runtime/v1"},
@@ -183,7 +186,7 @@ var allowedImports = map[string][]string{
 	"internal/runartifact/internal/transport":     {"internal/runartifact/internal/domain"},
 	"internal/runtime":                            {"internal/control", "internal/episodes", "internal/evidence", "internal/policy", "internal/runtime/internal/app", "internal/runtime/internal/composition", "internal/runtime/internal/domain", "internal/runtime/internal/transport"},
 	"internal/situations":                         {"internal/canonicaljson", "internal/contractsv1", "internal/operators", "internal/sources", "internal/spec"},
-	"internal/spec":                               {"internal/canonicaljson", "internal/storage"},
+	"internal/spec":                               {"internal/spec/internal/app", "internal/spec/internal/domain", "internal/spec/internal/store", "internal/storage"},
 	"internal/storage":                            {"migrations"},
 	"internal/telemetry":                          {"internal/telemetry/internal/domain", "internal/telemetry/internal/transport"},
 	"internal/watch":                              {"internal/actionport", "internal/sources", "internal/interlock", "internal/storage", "internal/watch/internal/app", "internal/watch/internal/store"},

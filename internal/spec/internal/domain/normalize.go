@@ -1,4 +1,4 @@
-package spec
+package domain
 
 // normalizeSpec copies the raw spec and fills defaults so semantically equivalent
 // specs produce the same digest.

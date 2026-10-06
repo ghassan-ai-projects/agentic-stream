@@ -8,7 +8,7 @@ contract guide.
 
 | Contract | Machine authority | Generated or mirrored artifact |
 | --- | --- | --- |
-| SituationSpec v1 | `internal/spec/schema.json` plus compiler semantics | `docs/design/contracts/situation-spec-v1.schema.json` is the design/archive copy |
+| SituationSpec v1 | `internal/spec/internal/domain/schema.json` plus compiler semantics | `docs/design/contracts/situation-spec-v1.schema.json` is the design/archive copy |
 | Normalized event envelope | `internal/contractsv1/internal/domain/envelope.go` and ingress validation | `docs/design/TECHNICAL_DESIGN.md` describes the projection |
 | Snapshot/Decision/Intent/Command/Outcome | `internal/contractsv1/internal/domain/schemas/v1/` and `internal/contractsv1/` tests | schema pages and protocol payloads |
 | Notification contract v1 | `internal/notify/internal/domain/contracts/` and `internal/notify/internal/domain/lifecycle_contract.go` | `docs/contracts/` contains the repository-level mirror |

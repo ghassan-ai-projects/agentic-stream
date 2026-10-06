@@ -42,7 +42,7 @@ does not create a fresh occurrence automatically after resolution. The
 occurrence field does not yet support a complete history of separate, recurring
 incidents. Source: [`newSituation` and
 `openOccurrence`](../../internal/situations/) and [deployment
-versioning](../../internal/spec/deployments.go).
+versioning](../../internal/spec/internal/store/deployments.go).
 
 ## Evidence becomes features, then facts
 

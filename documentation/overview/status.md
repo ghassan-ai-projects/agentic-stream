@@ -8,7 +8,7 @@ environment; the table is not deployment approval.
 
 | Area | Evidence |
 | --- | --- |
-| SituationSpec compilation, semantic validation, CEL restrictions, canonical digests | `internal/spec/`, `internal/spec/schema.json`, compiler tests |
+| SituationSpec compilation, semantic validation, CEL restrictions, canonical digests | `internal/spec/`, `internal/spec/internal/domain/schema.json`, compiler tests |
 | Normalized JSONL, simulator files, and live normalized JSONL Unix socket ingress | `internal/ingress/`, `examples/predictive-maintenance/testdata/` |
 | SQLite WAL storage and migrations | `internal/storage/`, `migrations/` |
 | Deduplication, event-time processing, watermarks, late correction, quarantine, gaps | `internal/eventlog/`, `internal/engine/`, `internal/operators/` |
