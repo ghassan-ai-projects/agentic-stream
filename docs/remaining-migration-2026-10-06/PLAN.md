@@ -72,11 +72,11 @@ they join the read-port work rather than blocking it.
 | Round | Status | Commit |
 | --- | --- | --- |
 | 0 Plan | Done | `3856e5c` |
-| 1 Dead-code deletions | Not started | — |
-| 2 Test support moves | Not started | — |
+| 1 Dead-code deletions | Held: the owner will decide what to delete | — |
+| 2 Test support moves | Held with round 1 | — |
 | 3 `spec` store | Dropped (see above) | — |
 | 4a `soak` merged into `runartifact` | Done | `478882b` |
-| 4b `runartifact` layering | Not started | — |
+| 4b `runartifact` layering | Done, see [record](../runartifact-reference-module-2026-10-06/README.md) | this commit |
 | 5 `worker` + `executor/remote` | Not started | — |
 | 6 `executor/native` | Not started | — |
 | 7 Gates and docs | Not started | — |

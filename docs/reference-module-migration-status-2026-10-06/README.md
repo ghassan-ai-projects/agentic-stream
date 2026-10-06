@@ -34,6 +34,7 @@ fits the pattern, not yet done. **N/A** = pure rules, foundation or infrastructu
 | `engine` | Deterministic stream engine, timers, Situation persistence | [engine](../engine-reference-module-2026-10-06/) |
 | `ingress` | JSONL, simulator and live-socket sources, checkpoints | [ingress](../ingress-reference-module-2026-10-06/) |
 | `canonicaljson` | RFC 8785 canonical JSON and domain-separated digests (pure rules: facade + domain) | [foundations](../foundations-reference-module-2026-10-06/) |
+| `runartifact` (with `soak`) | Run export and verification artifacts, soak verdict | [runartifact](../runartifact-reference-module-2026-10-06/) |
 | `approvalledger` | Human approval lifecycle, withdrawal of superseded approvals | [ledgers](../ledgers-reference-module-2026-10-06/) |
 | `episodeledger` (with `scheduleledger`) | Scheduler queue, episodes, fenced attempts, rejection audit, recovery | [ledgers](../ledgers-reference-module-2026-10-06/) |
 | `control` (with `costcontrol`) | Owner lease, epoch drain/kill, cost control, readiness gate | [control](../control-reference-module-2026-10-06/) |
@@ -55,8 +56,6 @@ fits the pattern, not yet done. **N/A** = pure rules, foundation or infrastructu
 | `executor/fixture` | Fixture executor | Small; likely stays |
 | `executor/conformance` | Executor conformance harness | Test-support; likely stays |
 | `worker` | Reference worker server and UDS dialing | Mostly test-only reference; see DEADCODE.md |
-| `runartifact` | Run export and verification artifacts | 1.2k lines; review shape |
-| `soak` | Soak report computation | Small |
 
 ## N/A (pure rules, foundation, infrastructure)
 

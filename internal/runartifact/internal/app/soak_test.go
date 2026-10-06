@@ -1,7 +1,6 @@
-package runartifact
+package app
 
 import (
-	"database/sql"
 	"testing"
 	"time"
 
@@ -9,6 +8,8 @@ import (
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runartifact/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runartifact/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -101,14 +102,15 @@ func TestSoakReportFailsWithActiveReconciliationBarrier(t *testing.T) {
 }
 
 // computeSoak derives the report for the test tenant in one read transaction.
-func computeSoak(t *testing.T, db *storage.DB) (soakReport, error) {
+func computeSoak(t *testing.T, db *storage.DB) (domain.SoakReport, error) {
 	t.Helper()
-	tx, err := db.BeginTx(t.Context(), &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	return computeSoakReport(t.Context(), tx, "tenant")
+	var report domain.SoakReport
+	err := store.New(db).InSnapshot(t.Context(), func(snapshot *store.Snapshot) error {
+		evidence, err := snapshot.SafetyEvidence(t.Context(), "tenant")
+		report = domain.DeriveSoakReport(evidence)
+		return err
+	})
+	return report, err
 }
 
 func completeEvidence() map[string]any {

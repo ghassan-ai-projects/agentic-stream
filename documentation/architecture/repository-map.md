@@ -50,6 +50,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/watch/internal/app/` | install, fire and expire use cases with busy retry |
 | `internal/watch/internal/store/` | opaque transactions, watch SQL and owner/interlock plumbing |
 | `internal/watch/internal/domain/` | pure payload rules, watch identity, CEL validation and evaluation |
+| `internal/runartifact/internal/app/` | export and verify use cases |
+| `internal/runartifact/internal/store/` | read-only snapshot SQL and the device authority safety read |
+| `internal/runartifact/internal/domain/` | pure manifest, ledger encoding, checksum, binding, soak verdict and verification rules |
+| `internal/runartifact/internal/transport/` | artifact directory: reserve, atomic publish, read |
 | `internal/actionport/` | approved command/effect contracts |
 | `internal/device/` | device effect boundary facade: effect profiles, catalog loading, gateway dial and effector constructors |
 | `internal/device/internal/app/` | device session use cases and the gateway, simulated and fail-closed effectors |
@@ -78,7 +82,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/clock/`, `internal/duration/`, `internal/ids/` | deterministic digest, time, duration and identity primitives |
 | `internal/executor/fixture/` | deterministic episode executor for explicit demo and replay fixtures |
 | `internal/executor/native/`, `internal/executor/remote/`, `internal/executor/conformance/`, `internal/worker/` | in-process and out-of-process executors, executor qualification and worker protocol transport |
-| `internal/runartifact/` | bounded operational evidence (soak verdict) and immutable artifact verification |
+| `internal/runartifact/` | bounded operational evidence (soak verdict) and immutable artifact verification; facade, `internal/app`, pure `internal/domain`, read-only `internal/store`, artifact directory in `internal/transport` |
 | `internal/replay/` | effect-safe replay modes |
 | `internal/replay/internal/app/` | replay sessions: epoch derivation, ingestion, engine runs and capability phases |
 | `internal/replay/internal/domain/` | pure replay verification rules and vocabulary (reference module layer) |
