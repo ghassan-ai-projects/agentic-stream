@@ -81,4 +81,4 @@ renumbering may be needed again for `actionport` (it gains a store).
 | `telemetry`, `worker`, `api`, `spec` layered (facade + domain + transport/store/app as each needs); `spec` now owns `spec_deployments` and `event_schemas` through `spec/internal/store` | Done |
 | `operators`, `situations` to facade + domain | Done |
 | Rename `contractsv1` to `contracts` (drop the version from the package name; the version stays in `ContractVersion`, `schemas/v1` and the wire ids) | Proposed, awaiting your decision |
-| One gate requiring facade + `internal/domain` for every module | Not started |
+| One gate requiring facade + `internal/domain` for every module (`TestEveryModuleHasAFacadeAndADomain`, proven by injection; exceptions are listed in `moduleShapeExceptions` with reasons) | Done |
