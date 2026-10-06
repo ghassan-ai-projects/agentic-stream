@@ -1,4 +1,4 @@
-package remote
+package app
 
 import (
 	"context"
@@ -24,130 +24,6 @@ import (
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
-func TestEpisodeKind(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		value   string
-		want    runtimev1.EpisodeKind
-		wantErr bool
-	}{
-		{name: "standard", value: "standard", want: runtimev1.EpisodeKind_EPISODE_KIND_DIAGNOSE},
-		{name: "diagnose", value: "diagnose", want: runtimev1.EpisodeKind_EPISODE_KIND_DIAGNOSE},
-		{name: "reconsider", value: "reconsider", want: runtimev1.EpisodeKind_EPISODE_KIND_RECONSIDER},
-		{name: "invalid", value: "unsupported", wantErr: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got, err := episodeKind(tt.value)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("episodeKind() error = nil, want error")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("episodeKind() error = %v", err)
-			}
-			if got != tt.want {
-				t.Fatalf("episodeKind() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestEpisodeRequestMapsReconsiderationPayload(t *testing.T) {
-	t.Parallel()
-
-	req := validWorkerRequest()
-	var payload map[string]any
-	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
-		t.Fatalf("decode request fixture: %v", err)
-	}
-	payload["kind"] = "reconsider"
-	payload["reconsideration"] = map[string]any{
-		"prior_decision": map[string]any{"decision_id": "dec-prior"},
-		"commands":       []map[string]any{{"command_id": "cmd-prior", "intent_type": "maintenance.ticket", "status": "succeeded"}},
-		"outcomes":       []map[string]any{{"outcome_id": "out-prior", "command_id": "cmd-prior", "status": "succeeded"}},
-		"correction":     map[string]any{"invalidates": []string{"cmd-prior"}, "superseded_version": 1},
-	}
-	encoded, err := canonicaljson.Marshal(payload)
-	if err != nil {
-		t.Fatalf("encode request fixture: %v", err)
-	}
-	req.RequestJSON = encoded
-
-	wire, err := episodeRequest(req)
-	if err != nil {
-		t.Fatalf("build worker request: %v", err)
-	}
-	if wire.GetKind() != runtimev1.EpisodeKind_EPISODE_KIND_RECONSIDER {
-		t.Fatalf("wire kind = %v, want reconsider", wire.GetKind())
-	}
-	if wire.GetReconsideration() == nil {
-		t.Fatal("expected wire reconsideration payload")
-	}
-	if got := string(wire.GetReconsideration().GetPriorDecisionJson()); got != `{"decision_id":"dec-prior"}` {
-		t.Fatalf("prior decision json = %s", got)
-	}
-	if len(wire.GetReconsideration().GetExecutedCommandJson()) != 1 ||
-		string(wire.GetReconsideration().GetExecutedCommandJson()[0]) != `{"command_id":"cmd-prior","intent_type":"maintenance.ticket","status":"succeeded"}` {
-		t.Fatalf("executed command json = %s", wire.GetReconsideration().GetExecutedCommandJson())
-	}
-}
-
-func TestEpisodeRequestMapsWatchConfidenceFloor(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		value   *float64
-		wantSet bool
-		want    float64
-	}{
-		{name: "omitted", wantSet: false},
-		{name: "custom", value: func() *float64 { v := 0.7; return &v }(), wantSet: true, want: 0.7},
-		{name: "opt out", value: func() *float64 { v := 0.0; return &v }(), wantSet: true, want: 0},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			req := validWorkerRequest()
-			var payload map[string]any
-			if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
-				t.Fatalf("decode request fixture: %v", err)
-			}
-			if tt.value == nil {
-				delete(payload, "watch_confidence_floor")
-			} else {
-				payload["watch_confidence_floor"] = *tt.value
-			}
-			encoded, err := canonicaljson.Marshal(payload)
-			if err != nil {
-				t.Fatalf("encode request fixture: %v", err)
-			}
-			req.RequestJSON = encoded
-
-			wire, err := episodeRequest(req)
-			if err != nil {
-				t.Fatalf("build worker request: %v", err)
-			}
-			if (wire.WatchConfidenceFloor != nil) != tt.wantSet {
-				t.Fatalf("watch confidence floor presence = %v, want %v", wire.WatchConfidenceFloor != nil, tt.wantSet)
-			}
-			if tt.wantSet && wire.GetWatchConfidenceFloor() != tt.want {
-				t.Fatalf("watch confidence floor = %v, want %v", wire.GetWatchConfidenceFloor(), tt.want)
-			}
-		})
-	}
-}
-
 func TestRemoteExecutorConsumesFencedStream(t *testing.T) {
 	client := testWorkerClient(t, func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		decisionJSON := []byte(`{"decision_id":"d-1"}`)
@@ -166,7 +42,7 @@ func TestRemoteExecutorConsumesFencedStream(t *testing.T) {
 			Payload: &runtimev1.EpisodeEvent_Terminal{Terminal: &runtimev1.Terminal{Status: runtimev1.TerminalStatus_TERMINAL_STATUS_PRODUCED, ReasonCode: "complete"}},
 		})
 	})
-	executor := NewExecutor(client, "worker-1", "runtime-1", nil)
+	executor := New(client, "worker-1", "runtime-1", nil)
 	outcome, err := executor.Execute(t.Context(), validWorkerRequest())
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -185,7 +61,7 @@ func TestRemoteExecutorStopsWhenBudgetUpdateExceedsCeiling(t *testing.T) {
 	})
 	req := validWorkerRequest()
 	req.RequestJSON = requestWithBudget(req, map[string]any{"model_calls": 1})
-	_, err := NewExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+	_, err := New(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
 	if err == nil || !strings.Contains(err.Error(), "budget exceeded: model_calls") {
 		t.Fatalf("expected budget rejection, got %v", err)
 	}
@@ -200,7 +76,7 @@ func TestRemoteExecutorEnforcesModelUsageCeiling(t *testing.T) {
 	})
 	req := validWorkerRequest()
 	req.RequestJSON = requestWithBudget(req, map[string]any{"input_tokens": 1})
-	_, err := NewExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+	_, err := New(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
 	if err == nil || !strings.Contains(err.Error(), "budget exceeded: input_tokens") {
 		t.Fatalf("expected input token budget rejection, got %v", err)
 	}
@@ -223,7 +99,7 @@ func TestRemoteExecutorSettlesCumulativeUsageWhenTerminalOmitsUsage(t *testing.T
 	})
 	req := validWorkerRequest()
 	req.RequestJSON = requestWithBudget(req, map[string]any{"input_tokens": 10, "output_tokens": 10, "cost_microunits": 100})
-	outcome, err := NewExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+	outcome, err := New(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
@@ -258,7 +134,7 @@ func TestRemoteExecutorRequiresReportedCostUsage(t *testing.T) {
 			})
 			req := validWorkerRequest()
 			req.RequestJSON = requestWithBudget(req, map[string]any{"cost_microunits": 1_000_000})
-			_, err := NewExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+			_, err := New(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("execute: %v", err)
@@ -281,7 +157,7 @@ func TestRemoteExecutorRequiresBudgetTelemetry(t *testing.T) {
 	})
 	req := validWorkerRequest()
 	req.RequestJSON = requestWithBudget(req, map[string]any{"provider_retries": 1})
-	_, err := NewExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
+	_, err := New(client, "worker-1", "runtime-1", nil).Execute(t.Context(), req)
 	if err == nil || !strings.Contains(err.Error(), "budget telemetry is missing") {
 		t.Fatalf("expected missing budget telemetry rejection, got %v", err)
 	}
@@ -291,7 +167,7 @@ func TestRemoteExecutorRequiresTerminal(t *testing.T) {
 	client := testWorkerClient(t, func(context.Context, *runtimev1.EpisodeRequest, func(*runtimev1.EpisodeEvent) error) error {
 		return nil
 	})
-	_, err := NewExecutor(client, "worker-1", "runtime-1", nil).Execute(t.Context(), validWorkerRequest())
+	_, err := New(client, "worker-1", "runtime-1", nil).Execute(t.Context(), validWorkerRequest())
 	if err == nil {
 		t.Fatal("expected missing-terminal error")
 	}
@@ -308,7 +184,7 @@ func TestRemoteExecutorIssuesFreshScopedCapabilityPerDispatch(t *testing.T) {
 	factory := &AttemptCapabilityIssuer{Issuer: testCapabilities(t, evidence.CapabilityConfig{Issuer: "runtime", Audience: "evidence-tools", KeyID: "k1", Keys: keys, Now: func() time.Time { return now }}), RuntimeEpoch: "epoch-1", Tools: []string{"evidence.get"}, From: now.Add(-time.Hour), Until: now, MaxRows: 10, MaxBytes: 1024, ExpiresAt: now.Add(10 * time.Minute)}
 	req := validWorkerRequest()
 	req.EntityID = "motor-1"
-	executor := NewExecutorWithEvidence(client, "worker-1", "runtime-1", []string{worker.EvidenceToolsFeature}, filepath.Join(t.TempDir(), "evidence.sock"), factory)
+	executor := NewWithEvidence(client, "worker-1", "runtime-1", []string{worker.EvidenceToolsFeature}, filepath.Join(t.TempDir(), "evidence.sock"), factory)
 	if _, err := executor.Execute(t.Context(), req); err != nil {
 		t.Fatalf("first execute: %v", err)
 	}

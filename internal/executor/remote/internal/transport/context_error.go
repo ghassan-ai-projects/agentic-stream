@@ -1,4 +1,4 @@
-package remote
+package transport
 
 import (
 	"context"
@@ -7,10 +7,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// asContextError lets the episode runner classify worker transport
+// AsContextError lets the episode runner classify worker transport
 // cancellation and deadline statuses as the matching context errors, without
 // importing the transport. Other errors pass through unchanged.
-func asContextError(err error) error {
+func AsContextError(err error) error {
 	switch status.Code(err) {
 	case codes.Canceled:
 		return contextError{transport: err, cause: context.Canceled}

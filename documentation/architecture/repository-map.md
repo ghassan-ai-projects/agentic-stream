@@ -54,6 +54,9 @@ historical design map where the code has chosen a more specific package name.
 | `internal/runartifact/internal/store/` | read-only snapshot SQL and the device authority safety read |
 | `internal/runartifact/internal/domain/` | pure manifest, ledger encoding, checksum, binding, soak verdict and verification rules |
 | `internal/runartifact/internal/transport/` | artifact directory: reserve, atomic publish, read |
+| `internal/executor/remote/internal/app/` | worker episode execution: budget bound, handshake, capability, stream consumption |
+| `internal/executor/remote/internal/domain/` | pure wire-request mapping, handshake and stream validation, budget accounting |
+| `internal/executor/remote/internal/transport/` | EpisodeWorker gRPC calls and cancellation mapping |
 | `internal/actionport/` | approved command/effect contracts |
 | `internal/device/` | device effect boundary facade: effect profiles, catalog loading, gateway dial and effector constructors |
 | `internal/device/internal/app/` | device session use cases and the gateway, simulated and fail-closed effectors |

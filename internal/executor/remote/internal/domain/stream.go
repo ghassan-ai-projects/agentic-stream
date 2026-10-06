@@ -1,10 +1,8 @@
-package remote
+package domain
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 
 	"google.golang.org/protobuf/proto"
 
@@ -15,15 +13,10 @@ import (
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
-// eventReceiver is the receive side of the EpisodeWorker Execute stream.
-type eventReceiver interface {
-	Recv() (*runtimev1.EpisodeEvent, error)
-}
-
-// workerStream validates one EpisodeWorker server stream event by event and
+// Stream validates one EpisodeWorker server stream event by event and
 // accumulates the trusted view of it: identity and ordering, size limits,
 // budget usage, and at most one Decision and one terminal.
-type workerStream struct {
+type Stream struct {
 	req           *episodes.Request
 	budget        *runtimev1.EpisodeBudget
 	maxEventBytes uint64
@@ -38,27 +31,13 @@ type workerStream struct {
 	usage          budgetUsage
 }
 
-func newWorkerStream(req *episodes.Request, budget *runtimev1.EpisodeBudget, maxEventBytes uint64) *workerStream {
-	return &workerStream{req: req, budget: budget, maxEventBytes: maxEventBytes, nextSequence: 1}
+func NewStream(req *episodes.Request, budget *runtimev1.EpisodeBudget, maxEventBytes uint64) *Stream {
+	return &Stream{req: req, budget: budget, maxEventBytes: maxEventBytes, nextSequence: 1}
 }
 
-// consume reads the stream to EOF, rejecting the first invalid event.
-func (s *workerStream) consume(stream eventReceiver) error {
-	for {
-		event, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("receive worker event: %w", err)
-		}
-		if err := s.accept(event); err != nil {
-			return err
-		}
-	}
-}
-
-func (s *workerStream) accept(event *runtimev1.EpisodeEvent) error {
+// Accept validates one event against everything accepted before it and adds
+// it to the trusted view of the stream.
+func (s *Stream) Accept(event *runtimev1.EpisodeEvent) error {
 	if event == nil {
 		return fmt.Errorf("worker emitted nil event")
 	}
@@ -76,7 +55,7 @@ func (s *workerStream) accept(event *runtimev1.EpisodeEvent) error {
 
 // admitSize enforces the negotiated per-event limit and the runtime's stream
 // limits, then counts the event.
-func (s *workerStream) admitSize(event *runtimev1.EpisodeEvent) error {
+func (s *Stream) admitSize(event *runtimev1.EpisodeEvent) error {
 	eventBytes := uint64(proto.Size(event)) //nolint:gosec // protobuf Size is non-negative.
 	if s.maxEventBytes > 0 && eventBytes > s.maxEventBytes {
 		return fmt.Errorf("worker event exceeds negotiated size limit")
@@ -91,7 +70,7 @@ func (s *workerStream) admitSize(event *runtimev1.EpisodeEvent) error {
 
 // checkOrder enforces attempt identity, gapless sequencing, a single leading
 // started event, and nothing after the terminal.
-func (s *workerStream) checkOrder(event *runtimev1.EpisodeEvent) error {
+func (s *Stream) checkOrder(event *runtimev1.EpisodeEvent) error {
 	if event.GetEpisodeId() != s.req.EpisodeID || event.GetAttemptId() != s.req.AttemptID || event.GetFence() != uint64(s.req.Fence) || event.GetSequence() != s.nextSequence { //nolint:gosec // Request.Fence is database-validated non-negative.
 		return fmt.Errorf("worker event identity or sequence mismatch")
 	}
@@ -104,7 +83,7 @@ func (s *workerStream) checkOrder(event *runtimev1.EpisodeEvent) error {
 	return s.checkStarted(event)
 }
 
-func (s *workerStream) checkStarted(event *runtimev1.EpisodeEvent) error {
+func (s *Stream) checkStarted(event *runtimev1.EpisodeEvent) error {
 	if s.nextSequence == 1 && event.GetStarted() == nil {
 		return fmt.Errorf("worker stream did not start with episode.started")
 	}
@@ -117,7 +96,7 @@ func (s *workerStream) checkStarted(event *runtimev1.EpisodeEvent) error {
 	return nil
 }
 
-func (s *workerStream) acceptPayload(event *runtimev1.EpisodeEvent) error {
+func (s *Stream) acceptPayload(event *runtimev1.EpisodeEvent) error {
 	if event.GetBudget() != nil {
 		s.sawBudget = true
 	}
@@ -134,7 +113,7 @@ func (s *workerStream) acceptPayload(event *runtimev1.EpisodeEvent) error {
 	return nil
 }
 
-func (s *workerStream) acceptDecision(candidate *runtimev1.DecisionProposed) error {
+func (s *Stream) acceptDecision(candidate *runtimev1.DecisionProposed) error {
 	if candidate == nil {
 		return nil
 	}
@@ -168,7 +147,7 @@ func verifyDecisionDigest(raw, digest []byte) error {
 
 // outcome converts a fully consumed stream into the aggregate Outcome. It
 // never accepts a Decision without a matching terminal.
-func (s *workerStream) outcome() (*episodes.Outcome, error) {
+func (s *Stream) Outcome() (*episodes.Outcome, error) {
 	if err := s.checkComplete(); err != nil {
 		return nil, err
 	}
@@ -179,7 +158,7 @@ func (s *workerStream) outcome() (*episodes.Outcome, error) {
 
 // checkComplete requires a started and terminated stream and the budget
 // telemetry that the request's limits depend on.
-func (s *workerStream) checkComplete() error {
+func (s *Stream) checkComplete() error {
 	if !s.sawStarted || s.terminal == nil {
 		return fmt.Errorf("worker stream ended without terminal")
 	}
@@ -196,7 +175,7 @@ func (s *workerStream) checkComplete() error {
 	return s.requireUsageTelemetry()
 }
 
-func (s *workerStream) requireUsageTelemetry() error {
+func (s *Stream) requireUsageTelemetry() error {
 	if hasUsageBudget(s.budget) && !s.usage.usageReported {
 		if s.budget.GetMaxCostMicrounits() > 0 {
 			return fmt.Errorf("worker cost telemetry is missing")
@@ -206,7 +185,7 @@ func (s *workerStream) requireUsageTelemetry() error {
 	return nil
 }
 
-func (s *workerStream) bindTerminalOutcome(outcome *episodes.Outcome) (*episodes.Outcome, error) {
+func (s *Stream) bindTerminalOutcome(outcome *episodes.Outcome) (*episodes.Outcome, error) {
 	switch s.terminal.GetStatus() {
 	case runtimev1.TerminalStatus_TERMINAL_STATUS_PRODUCED:
 		return s.producedOutcome(outcome)
@@ -224,7 +203,7 @@ func (s *workerStream) bindTerminalOutcome(outcome *episodes.Outcome) (*episodes
 	return outcome, nil
 }
 
-func (s *workerStream) producedOutcome(outcome *episodes.Outcome) (*episodes.Outcome, error) {
+func (s *Stream) producedOutcome(outcome *episodes.Outcome) (*episodes.Outcome, error) {
 	if s.decision == nil {
 		return nil, fmt.Errorf("produced worker terminal has no decision")
 	}

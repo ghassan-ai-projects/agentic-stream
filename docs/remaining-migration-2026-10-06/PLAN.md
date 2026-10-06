@@ -77,7 +77,8 @@ they join the read-port work rather than blocking it.
 | 3 `spec` store | Dropped (see above) | — |
 | 4a `soak` merged into `runartifact` | Done | `478882b` |
 | 4b `runartifact` layering | Done, see [record](../runartifact-reference-module-2026-10-06/README.md) | this commit |
-| 5 `worker` + `executor/remote` | Not started | — |
+| 5a `executor/remote` layering | Done, see [record](../executor-remote-reference-module-2026-10-06/README.md) | this commit |
+| 5b `worker` split | Held (reference server kept until the owner decides) | — |
 | 6 `executor/native` | Not started | — |
 | 7 Gates and docs | Not started | — |
 | 7b Ubiquitous language everywhere | Done | this commit |

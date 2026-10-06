@@ -1,4 +1,4 @@
-package remote
+package transport
 
 import (
 	"context"
@@ -30,9 +30,9 @@ func TestTransportStatusesClassifyAsContextErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := asContextError(tt.err)
+			got := AsContextError(tt.err)
 			if !errors.Is(got, tt.cause) || status.Code(got) != tt.code || got.Error() != tt.err.Error() {
-				t.Fatalf("asContextError(%v) = %v: is cause %v, code %v", tt.err, got, errors.Is(got, tt.cause), status.Code(got))
+				t.Fatalf("AsContextError(%v) = %v: is cause %v, code %v", tt.err, got, errors.Is(got, tt.cause), status.Code(got))
 			}
 		})
 	}
@@ -42,10 +42,10 @@ func TestOtherErrorsPassThroughUnchanged(t *testing.T) {
 	t.Parallel()
 
 	for _, err := range []error{nil, errors.New("boom"), status.Error(codes.Unavailable, "down")} {
-		if got := asContextError(err); got != err { //nolint:errorlint // Identity is the property under test.
-			t.Fatalf("asContextError(%v) = %v, want the same error", err, got)
+		if got := AsContextError(err); got != err { //nolint:errorlint // Identity is the property under test.
+			t.Fatalf("AsContextError(%v) = %v, want the same error", err, got)
 		}
-		if errors.Is(asContextError(err), context.Canceled) {
+		if errors.Is(AsContextError(err), context.Canceled) {
 			t.Fatalf("%v classified as cancellation", err)
 		}
 	}

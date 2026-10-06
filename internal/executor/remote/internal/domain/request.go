@@ -1,4 +1,4 @@
-package remote
+package domain
 
 import (
 	"crypto/sha256"
@@ -75,7 +75,7 @@ type requestShape struct {
 	reconsideration *runtimev1.Reconsideration
 }
 
-func episodeRequest(req *episodes.Request) (*runtimev1.EpisodeRequest, error) {
+func WireRequest(req *episodes.Request) (*runtimev1.EpisodeRequest, error) {
 	if req.SituationVersion <= 0 {
 		return nil, fmt.Errorf("situation version must be positive")
 	}
