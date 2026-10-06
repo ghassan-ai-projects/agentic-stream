@@ -10,7 +10,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/admission"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
@@ -101,7 +101,7 @@ func composeAdmission(cfg PipelineConfig, episodeService *episodes.Service) *adm
 }
 
 func composeEpisodes(cfg PipelineConfig) (*episodes.Service, error) {
-	service, err := episodes.New(episodes.Config{Spec: cfg.Spec, IDGenerator: cfg.IDGenerator, CostControl: &costcontrol.Controller{}, Execution: &episodes.ExecutionConfig{DB: cfg.DB, Executor: cfg.Executor, Clock: cfg.Clock, OwnerEpoch: cfg.OwnerEpoch, DecisionEpoch: policyEpochCheck(cfg), ShadowStore: &qualification.ShadowStore{DB: cfg.DB}, Telemetry: cfg.Telemetry}})
+	service, err := episodes.New(episodes.Config{Spec: cfg.Spec, IDGenerator: cfg.IDGenerator, CostControl: &runtimecontrol.CostLedger{}, Execution: &episodes.ExecutionConfig{DB: cfg.DB, Executor: cfg.Executor, Clock: cfg.Clock, OwnerEpoch: cfg.OwnerEpoch, DecisionEpoch: policyEpochCheck(cfg), ShadowStore: &qualification.ShadowStore{DB: cfg.DB}, Telemetry: cfg.Telemetry}})
 	if err != nil {
 		return nil, fmt.Errorf("compose episodes: %w", err)
 	}

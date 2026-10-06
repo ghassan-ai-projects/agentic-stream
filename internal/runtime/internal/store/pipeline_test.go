@@ -10,7 +10,6 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -73,7 +72,7 @@ func TestCostConfigurationCommitsUnderOwnerFence(t *testing.T) {
 	if err := ConfigureCostLimits(t.Context(), cfg); err != nil {
 		t.Fatal(err)
 	}
-	cfg.Ceilings = costcontrol.Ceilings{Global: &ceiling}
+	cfg.Ceilings = control.CostCeilings{Global: &ceiling}
 	if err := ConfigureCostLimits(t.Context(), cfg); err != nil {
 		t.Fatal(err)
 	}

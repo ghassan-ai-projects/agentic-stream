@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
@@ -18,7 +18,7 @@ import (
 type Config struct {
 	Spec        *spec.CompiledSpec
 	IDGenerator ids.Generator
-	CostControl *costcontrol.Controller
+	CostControl *runtimecontrol.CostLedger
 	Execution   *ExecutionConfig
 }
 

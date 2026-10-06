@@ -15,7 +15,7 @@ import (
 // depths. Adding an acyclic edge still fails if it crosses upward or sideways.
 var packageLayers = map[string]int{
 	"internal/runtime/internal/domain": 1, "internal/runtime/internal/transport": 9, "internal/runtime/internal/store": 9, "internal/runtime/internal/app": 11, "internal/runtime/internal/composition": 12,
-	"internal/actionport": 0, "internal/canonicaljson": 0, "internal/clock": 0, "internal/costcontrol": 0,
+	"internal/actionport": 0, "internal/canonicaljson": 0, "internal/clock": 0,
 	"internal/duration": 0, "internal/eventschema": 0, "internal/ids": 0, "internal/interlock": 0, "internal/telemetry": 0,
 	"migrations": 0, "proto/agenticstream/runtime/v1": 0,
 	"internal/authority/internal/domain": 1, "internal/contractsv1": 1, "internal/storage": 1,

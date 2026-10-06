@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"time"
 )
@@ -17,7 +16,7 @@ type CostConfiguration struct {
 	Owner                *runtimecontrol.RuntimeOwner
 	OwnerEpoch, TenantID string
 	Clock                clock.Clock
-	Ceilings             costcontrol.Ceilings
+	Ceilings             runtimecontrol.CostCeilings
 }
 
 // configureCostLimits applies the operator's cost ceilings under the runtime
@@ -32,7 +31,7 @@ func ConfigureCostLimits(ctx context.Context, cfg CostConfiguration) error {
 			return err
 		}
 		now := cfg.Clock.Now().UTC().Format(time.RFC3339Nano)
-		return costcontrol.ApplyCeilings(ctx, tx, ceilings, cfg.TenantID, now) //nolint:wrapcheck // Wrapped below with the configuration step.
+		return runtimecontrol.ApplyCostCeilings(ctx, tx, ceilings, cfg.TenantID, now) //nolint:wrapcheck // Wrapped below with the configuration step.
 	}); err != nil {
 		return fmt.Errorf("configure cost limits: %w", err)
 	}

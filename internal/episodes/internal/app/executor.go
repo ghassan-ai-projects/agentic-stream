@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/qualification"
@@ -20,7 +20,7 @@ type Runner struct {
 	clk           clock.Clock
 	idGen         ids.Generator
 	ownerEpoch    string
-	cost          *costcontrol.Controller
+	cost          *runtimecontrol.CostLedger
 	decisionEpoch store.DecisionEpochCheck
 	shadowStore   *qualification.ShadowStore
 	telemetry     *telemetry.Runtime

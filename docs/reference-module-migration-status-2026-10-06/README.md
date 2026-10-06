@@ -37,7 +37,6 @@ fits the pattern, not yet done. **N/A** = pure rules, foundation or infrastructu
 | Package | Description | Reason |
 | --- | --- | --- |
 | `control` | Runtime owner lease, epoch drain/kill, dispatch gate | Same: shared transaction-scoped store |
-| `costcontrol` | Cost limits, reservations, settlement | Same |
 | `qualification` | Calibration artifacts, shadow decisions and comparisons | Same |
 | `episodeledger` | Episode/attempt lifecycle writes | Shared ledger kernel |
 | `scheduleledger` | Scheduler item lifecycle writes | Shared ledger kernel |

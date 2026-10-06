@@ -10,7 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/admission"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -135,7 +134,7 @@ func composeConfig(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, gi
 	if given.costKill {
 		setCostKillSwitch(t, db)
 	}
-	assembler, err := episodes.New(episodes.Config{Spec: compiled, IDGenerator: ids.Deterministic(), CostControl: &costcontrol.Controller{}})
+	assembler, err := episodes.New(episodes.Config{Spec: compiled, IDGenerator: ids.Deterministic(), CostControl: &runtimecontrol.CostLedger{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +147,7 @@ func composeConfig(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, gi
 func setCostKillSwitch(t *testing.T, db *storage.DB) {
 	t.Helper()
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		return costcontrol.SetLimit(t.Context(), tx, "global", "", 0, true, time.Now().UTC().Format(time.RFC3339Nano))
+		return runtimecontrol.SetCostLimit(t.Context(), tx, "global", "", 0, true, time.Now().UTC().Format(time.RFC3339Nano))
 	}); err != nil {
 		t.Fatal(err)
 	}

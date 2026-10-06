@@ -6,9 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 )
+
+// CostSettler releases or settles the cost reservation of an episode inside the
+// caller's transaction. The runtime's cost ledger satisfies it; the episode
+// ledger depends only on this shape.
+type CostSettler interface {
+	Settle(ctx context.Context, tx *sql.Tx, episodeID string, actual uint64, now string) error
+}
 
 // RecoveryReport describes active attempt state abandoned during a runtime
 // restart. Recovery is transaction-scoped so callers can commit it together
@@ -31,7 +36,7 @@ func RecoverUnfinishedAttempts(ctx context.Context, tx *sql.Tx, currentEpoch str
 // RecoverUnfinishedAttemptsWithCost also releases reservations for attempts
 // that are permanently abandoned during restart. Requeued episodes retain
 // their reservation for the next fenced attempt.
-func RecoverUnfinishedAttemptsWithCost(ctx context.Context, tx *sql.Tx, currentEpoch string, now time.Time, costs *costcontrol.Controller) (RecoveryReport, error) {
+func RecoverUnfinishedAttemptsWithCost(ctx context.Context, tx *sql.Tx, currentEpoch string, now time.Time, costs CostSettler) (RecoveryReport, error) {
 	if tx == nil || currentEpoch == "" {
 		return RecoveryReport{}, fmt.Errorf("recovery transaction and current epoch are required")
 	}
@@ -74,7 +79,7 @@ func listUnfinishedAttempts(ctx context.Context, tx *sql.Tx, currentEpoch string
 type attemptRecovery struct {
 	tx     *sql.Tx
 	now    string
-	costs  *costcontrol.Controller
+	costs  CostSettler
 	report RecoveryReport
 }
 

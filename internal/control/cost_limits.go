@@ -1,4 +1,4 @@
-package costcontrol
+package control
 
 import (
 	"context"
@@ -7,9 +7,9 @@ import (
 	"math"
 )
 
-// SetLimit configures a ceiling or kill switch. It is intended to run inside
+// SetCostLimit configures a ceiling or kill switch. It is intended to run inside
 // an owner-fenced transaction.
-func SetLimit(ctx context.Context, tx *sql.Tx, scopeKey, tenantID string, maxMicro uint64, killSwitch bool, now string) error {
+func SetCostLimit(ctx context.Context, tx *sql.Tx, scopeKey, tenantID string, maxMicro uint64, killSwitch bool, now string) error {
 	if scopeKey == "" || now == "" || maxMicro > math.MaxInt64 {
 		return fmt.Errorf("invalid cost limit")
 	}
@@ -72,7 +72,7 @@ func requireReserved(result sql.Result, scopeKey string) error {
 		return fmt.Errorf("reserve %s cost rows affected: %w", scopeKey, err)
 	}
 	if count != 1 {
-		return fmt.Errorf("%w: %s", ErrReservationRejected, scopeKey)
+		return fmt.Errorf("%w: %s", ErrCostReservationRejected, scopeKey)
 	}
 	return nil
 }

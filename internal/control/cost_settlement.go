@@ -1,4 +1,4 @@
-package costcontrol
+package control
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 
 // Settle releases the reservation and records actual worker cost. If actual
 // spend crosses a ceiling, the corresponding kill switch is tripped.
-func (Controller) Settle(ctx context.Context, tx *sql.Tx, episodeID string, actual uint64, now string) error {
+func (CostLedger) Settle(ctx context.Context, tx *sql.Tx, episodeID string, actual uint64, now string) error {
 	if episodeID == "" || now == "" || actual > math.MaxInt64 {
 		return fmt.Errorf("invalid cost settlement")
 	}

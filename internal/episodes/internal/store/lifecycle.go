@@ -2,11 +2,10 @@ package store
 
 import (
 	"context"
-	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
+	"time"
 )
 
 // Admit persists an episode through its lifecycle owner.
@@ -70,11 +69,11 @@ func (tx *Tx) Conclude(ctx context.Context, id, now string, terminal []byte) err
 }
 
 // ReserveCost reserves the admitted episode budget on the same transaction.
-func (tx *Tx) ReserveCost(ctx context.Context, controller *costcontrol.Controller, id, tenant string, budget uint64, now string) error {
+func (tx *Tx) ReserveCost(ctx context.Context, controller *runtimecontrol.CostLedger, id, tenant string, budget uint64, now string) error {
 	return controller.Reserve(ctx, tx.tx, id, tenant, budget, now) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
 }
 
 // SettleCost settles a reservation on the same transaction.
-func (tx *Tx) SettleCost(ctx context.Context, controller *costcontrol.Controller, id string, cost uint64, now string) error {
+func (tx *Tx) SettleCost(ctx context.Context, controller *runtimecontrol.CostLedger, id string, cost uint64, now string) error {
 	return controller.Settle(ctx, tx.tx, id, cost, now) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
 }

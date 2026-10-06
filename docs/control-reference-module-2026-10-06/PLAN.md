@@ -3,7 +3,7 @@
 | Round | Scope | Proof | Status |
 | --- | --- | --- | --- |
 | 0 | Findings, language, design, plan | Review | Complete |
-| 1 | Merge `costcontrol` into `control` as one flat package; `CostSettler` port in `episodeledger`; renames; update all callers | Full tests, lint, layer table unchanged except the removed package | |
+| 1 | Merge `costcontrol` into `control` as one flat package; `CostSettler` port in `episodeledger`; renames; update all callers | Full tests, lint, layer table unchanged except the removed package | Complete |
 | 2 | Domain, store, app and facade; layer re-level; ownership and allowlist gates | Layer, ownership and purity gates, tests per layer, lint | |
 | 3 | Gates, injection proof, module guide, maps, status docs | Injected failures, full CI, race | |
 

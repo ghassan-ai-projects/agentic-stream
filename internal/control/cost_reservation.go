@@ -1,5 +1,4 @@
-// Package costcontrol provides durable aggregate cognition cost controls.
-package costcontrol
+package control
 
 import (
 	"context"
@@ -9,18 +8,18 @@ import (
 	"math"
 )
 
-// ErrReservationRejected means an aggregate cost limit or kill switch denied
+// ErrCostReservationRejected means an aggregate cost limit or kill switch denied
 // a new episode reservation. It is an expected admission outcome, not a
 // storage failure.
-var ErrReservationRejected = errors.New("cost ceiling or kill switch rejected")
+var ErrCostReservationRejected = errors.New("cost ceiling or kill switch rejected")
 
-// Controller reserves configured episode cost before admission and settles
+// CostLedger reserves configured episode cost before admission and settles
 // actual worker-reported cost at terminal persistence.
-type Controller struct{}
+type CostLedger struct{}
 
 // Reserve atomically reserves amount for an episode. A zero max means
 // unlimited; a kill switch always rejects new reservations.
-func (Controller) Reserve(ctx context.Context, tx *sql.Tx, episodeID, tenantID string, amount uint64, now string) error {
+func (CostLedger) Reserve(ctx context.Context, tx *sql.Tx, episodeID, tenantID string, amount uint64, now string) error {
 	if episodeID == "" || tenantID == "" || now == "" || amount > math.MaxInt64 {
 		return fmt.Errorf("invalid cost reservation")
 	}
@@ -66,7 +65,7 @@ func requireInactiveCeiling(rows *sql.Rows) error {
 		return fmt.Errorf("scan %s cost ceiling: %w", scopeKey, err)
 	}
 	if maxMicro > 0 || killSwitch != 0 {
-		return fmt.Errorf("%w: cost estimate is required while aggregate cost control is active", ErrReservationRejected)
+		return fmt.Errorf("%w: cost estimate is required while aggregate cost control is active", ErrCostReservationRejected)
 	}
 	return nil
 }

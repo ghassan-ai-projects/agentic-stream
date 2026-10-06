@@ -51,7 +51,7 @@ and `examples/thermal-chamber/testdata/trace-{quiet,ambient-tracking,reboot-back
 | Cell | Asserts | Oracle | Coverage |
 | --- | --- | --- | --- |
 | S3.1 snapshot binding | an episode binds exactly one immutable snapshot; a superseded snapshot cannot be substituted | record | partial |
-| S3.2 budget matrix | each of deadline, model calls, input tokens, output tokens, tool calls, tool bytes, retries, and cost is independently capped, and exceeding one stops the episode with a typed reason | record + counter | partial — `internal/costcontrol`, `internal/episodes` |
+| S3.2 budget matrix | each of deadline, model calls, input tokens, output tokens, tool calls, tool bytes, retries, and cost is independently capped, and exceeding one stops the episode with a typed reason | record + counter | partial — `internal/control` (cost files), `internal/episodes` |
 | S3.3 no model per event | an event that does not warrant reasoning starts no episode | record | partial |
 | S3.4 lifecycle machines | episode aggregate, worker attempt, Decision validation, and outcome verification are separate durable state machines | record | partial |
 | S3.5 supersession and staleness | cancellation, supersession, coalescing, expiration, abandonment, and stale output are durable, explainable, and idempotent | record | partial |
@@ -114,7 +114,7 @@ definition of done; the episode's Decision and Intent are graded against it.
 | S7.3 abstention quality | on cells where abstaining is correct, the runtime abstains; on cells where acting is correct, it does not | record + statistics | missing |
 | S7.4 counterfactual regret | paired against `replay.DeterministicBaseline`, regret and win/loss clear a stated minimum effect | statistics | missing |
 | S7.5 holdout | the family is held out from any prompt or catalog tuning and recorded by digest | contract | missing |
-| S7.6 cost per cell | model calls, tokens, tool bytes, and wall time are reported per cell, not aggregated away | counter | partial — `internal/costcontrol` |
+| S7.6 cost per cell | model calls, tokens, tool bytes, and wall time are reported per cell, not aggregated away | counter | partial — `internal/control` (cost files) |
 
 `k >= 3` trials per scenario, paired, with an interval that clears zero. Fixtures and
 scripted providers never enter S7.

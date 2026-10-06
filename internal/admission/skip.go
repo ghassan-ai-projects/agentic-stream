@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
 )
@@ -18,7 +18,7 @@ import (
 // stands, so it cannot block the queue. It reports false for any other error.
 func (a *Admitter) skipUnadmittable(ctx context.Context, itemID string, now time.Time, refused attempt, err error) (bool, error) {
 	switch {
-	case errors.Is(err, costcontrol.ErrReservationRejected):
+	case errors.Is(err, runtimecontrol.ErrCostReservationRejected):
 		return true, a.skipCostRejected(ctx, itemID, now, err)
 	case refused.kind == "reconsider" && errors.Is(err, episodeledger.ErrLiveEpisodeConflict):
 		return true, a.skipLiveReconsideration(ctx, itemID, now, refused, err)

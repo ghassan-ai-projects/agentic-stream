@@ -1,4 +1,4 @@
-package costcontrol_test
+package control_test
 
 import (
 	"database/sql"
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -16,14 +16,14 @@ func TestReservationRollsBackGlobalAccountingOnTenantRejection(t *testing.T) {
 	t.Parallel()
 	db := newCostDB(t)
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		return costcontrol.SetLimit(t.Context(), tx, "tenant:tenant", "tenant", 3, false, "now")
+		return control.SetCostLimit(t.Context(), tx, "tenant:tenant", "tenant", 3, false, "now")
 	}); err != nil {
 		t.Fatal(err)
 	}
 	err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		return (costcontrol.Controller{}).Reserve(t.Context(), tx, "episode", "tenant", 4, "now")
+		return (control.CostLedger{}).Reserve(t.Context(), tx, "episode", "tenant", 4, "now")
 	})
-	if !errors.Is(err, costcontrol.ErrReservationRejected) || !strings.Contains(err.Error(), "tenant:tenant") {
+	if !errors.Is(err, control.ErrCostReservationRejected) || !strings.Contains(err.Error(), "tenant:tenant") {
 		t.Fatalf("tenant rejection = %v", err)
 	}
 	assertCostTotals(t, db, 0, 0, 0)
@@ -37,17 +37,17 @@ func TestGlobalCostRejectionPrecedesTenantRejection(t *testing.T) {
 	t.Parallel()
 	db := newCostDB(t)
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		if err := costcontrol.SetLimit(t.Context(), tx, "global", "", 1, true, "now"); err != nil {
+		if err := control.SetCostLimit(t.Context(), tx, "global", "", 1, true, "now"); err != nil {
 			return err
 		}
-		return costcontrol.SetLimit(t.Context(), tx, "tenant:tenant", "tenant", 1, true, "now")
+		return control.SetCostLimit(t.Context(), tx, "tenant:tenant", "tenant", 1, true, "now")
 	}); err != nil {
 		t.Fatal(err)
 	}
 	err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		return (costcontrol.Controller{}).Reserve(t.Context(), tx, "episode", "tenant", 1, "now")
+		return (control.CostLedger{}).Reserve(t.Context(), tx, "episode", "tenant", 1, "now")
 	})
-	if !errors.Is(err, costcontrol.ErrReservationRejected) || !strings.HasSuffix(err.Error(), ": global") {
+	if !errors.Is(err, control.ErrCostReservationRejected) || !strings.HasSuffix(err.Error(), ": global") {
 		t.Fatalf("scope precedence = %v", err)
 	}
 	assertCostTotals(t, db, 0, 0, 1)
@@ -56,9 +56,9 @@ func TestGlobalCostRejectionPrecedesTenantRejection(t *testing.T) {
 func TestSettlementRollsBackAllAccountingOnTenantWriteFailure(t *testing.T) {
 	t.Parallel()
 	db := newCostDB(t)
-	controller := costcontrol.Controller{}
+	controller := control.CostLedger{}
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		if err := costcontrol.SetLimit(t.Context(), tx, "tenant:tenant", "tenant", 10, false, "now"); err != nil {
+		if err := control.SetCostLimit(t.Context(), tx, "tenant:tenant", "tenant", 10, false, "now"); err != nil {
 			return err
 		}
 		return controller.Reserve(t.Context(), tx, "episode", "tenant", 4, "now")
@@ -85,9 +85,9 @@ func TestSettlementRollsBackAllAccountingOnTenantWriteFailure(t *testing.T) {
 func TestRepeatedSettlementDoesNotSpendTwiceOrChangeKillSwitch(t *testing.T) {
 	t.Parallel()
 	db := newCostDB(t)
-	controller := costcontrol.Controller{}
+	controller := control.CostLedger{}
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		if err := costcontrol.SetLimit(t.Context(), tx, "global", "", 5, false, "now"); err != nil {
+		if err := control.SetCostLimit(t.Context(), tx, "global", "", 5, false, "now"); err != nil {
 			return err
 		}
 		return controller.Reserve(t.Context(), tx, "episode", "tenant", 4, "now")
@@ -108,14 +108,14 @@ func TestRepeatedSettlementDoesNotSpendTwiceOrChangeKillSwitch(t *testing.T) {
 
 func TestCostRangeValidationPrecedesTransactionAccess(t *testing.T) {
 	t.Parallel()
-	controller := costcontrol.Controller{}
+	controller := control.CostLedger{}
 	if err := controller.Reserve(t.Context(), nil, "episode", "tenant", math.MaxUint64, "now"); err == nil || err.Error() != "invalid cost reservation" {
 		t.Fatalf("overflow reservation = %v", err)
 	}
 	if err := controller.Settle(t.Context(), nil, "episode", math.MaxUint64, "now"); err == nil || err.Error() != "invalid cost settlement" {
 		t.Fatalf("overflow settlement = %v", err)
 	}
-	if err := costcontrol.SetLimit(t.Context(), nil, "global", "", math.MaxUint64, false, "now"); err == nil || err.Error() != "invalid cost limit" {
+	if err := control.SetCostLimit(t.Context(), nil, "global", "", math.MaxUint64, false, "now"); err == nil || err.Error() != "invalid cost limit" {
 		t.Fatalf("overflow limit = %v", err)
 	}
 }

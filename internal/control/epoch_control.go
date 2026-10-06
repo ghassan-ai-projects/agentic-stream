@@ -10,8 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/costcontrol"
 )
 
 // ErrEpochKilled means the epoch was killed and every later decision under it
@@ -90,7 +88,7 @@ func unstartedReservedEpisodes(ctx context.Context, tx *sql.Tx, epoch string) ([
 
 func releaseEpisodeCosts(ctx context.Context, tx *sql.Tx, episodeIDs []string, now time.Time) error {
 	for _, episodeID := range episodeIDs {
-		if err := (costcontrol.Controller{}).Settle(ctx, tx, episodeID, 0, formatRuntimeTime(now)); err != nil {
+		if err := (CostLedger{}).Settle(ctx, tx, episodeID, 0, formatRuntimeTime(now)); err != nil {
 			return fmt.Errorf("release admitted episode cost %s: %w", episodeID, err)
 		}
 	}
