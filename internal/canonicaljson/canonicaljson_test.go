@@ -1,111 +1,39 @@
 package canonicaljson_test
 
 import (
-	"math"
+	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
-// testDomain is a digest domain private to these tests.
-const testDomain canonicaljson.Domain = "situation-runtime/test/v1\n"
-
-func TestMarshalSortsObjectKeys(t *testing.T) {
-	v := map[string]any{
-		"z": 1,
-		"a": 2,
-		"m": 3,
+// The facade exposes each domain rule unchanged: the same input gives the same
+// canonical bytes, digests and verdicts through the public API.
+func TestFacadeDelegatesEveryOperationToTheDomain(t *testing.T) {
+	t.Parallel()
+	document := map[string]any{"b": 1, "a": []any{"x", true}}
+	raw, err := canonicaljson.Marshal(document)
+	if err != nil || string(raw) != `{"a":["x",true],"b":1}` {
+		t.Fatalf("marshal = %s err=%v", raw, err)
 	}
-	got, err := canonicaljson.Marshal(v)
-	if err != nil {
-		t.Fatalf("Marshal error: %v", err)
+	digest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, document)
+	if err != nil || !strings.HasPrefix(digest, "sha256:") {
+		t.Fatalf("digest = %q err=%v", digest, err)
 	}
-	want := `{"a":2,"m":3,"z":1}`
-	if string(got) != want {
-		t.Fatalf("got %s, want %s", got, want)
+	if !canonicaljson.Verify(canonicaljson.DomainSnapshot, document, digest) || canonicaljson.Verify(canonicaljson.DomainDecision, document, digest) {
+		t.Fatal("verify did not bind the digest to its domain")
 	}
-}
-
-func TestMarshalNested(t *testing.T) {
-	v := map[string]any{
-		"b": []any{map[string]any{"y": 1, "x": 2}},
-		"a": true,
+	sum, err := canonicaljson.DecodeDigest(digest)
+	if err != nil || canonicaljson.EncodeDigest(sum) != digest {
+		t.Fatalf("decode/encode round trip failed: %v", err)
 	}
-	got, err := canonicaljson.Marshal(v)
-	if err != nil {
-		t.Fatalf("Marshal error: %v", err)
+	content := canonicaljson.ContentDigest(raw)
+	stored, err := canonicaljson.DecodeDigest(content)
+	if err != nil || canonicaljson.VerifyStored(raw, stored) != nil {
+		t.Fatalf("stored verification failed: %v", err)
 	}
-	want := `{"a":true,"b":[{"x":2,"y":1}]}`
-	if string(got) != want {
-		t.Fatalf("got %s, want %s", got, want)
-	}
-}
-
-func TestDigestStable(t *testing.T) {
-	v := map[string]any{"b": 2, "a": 1}
-	d1, err := canonicaljson.Digest(testDomain, v)
-	if err != nil {
-		t.Fatalf("Digest error: %v", err)
-	}
-	d2, err := canonicaljson.Digest(testDomain, map[string]any{"a": 1, "b": 2})
-	if err != nil {
-		t.Fatalf("Digest error: %v", err)
-	}
-	if d1 != d2 {
-		t.Fatalf("digests differ: %s vs %s", d1, d2)
-	}
-}
-
-func TestMarshalFloat(t *testing.T) {
-	got, err := canonicaljson.Marshal(map[string]any{"v": 1.5})
-	if err != nil {
-		t.Fatalf("Marshal error: %v", err)
-	}
-	want := `{"v":1.5}`
-	if string(got) != want {
-		t.Fatalf("got %s, want %s", got, want)
-	}
-}
-
-func TestMarshalRejectsNonFinite(t *testing.T) {
-	_, err := canonicaljson.Marshal(map[string]any{"v": math.Inf(1)})
-	if err == nil {
-		t.Fatal("expected error for +Inf")
-	}
-	_, err = canonicaljson.Marshal(map[string]any{"v": math.NaN()})
-	if err == nil {
-		t.Fatal("expected error for NaN")
-	}
-}
-
-func TestMarshalRejectsNegativeZero(t *testing.T) {
-	_, err := canonicaljson.Marshal(map[string]any{"v": math.Copysign(0, -1)})
-	if err == nil {
-		t.Fatal("expected error for negative zero")
-	}
-}
-
-func TestDigestHasDomainSeparation(t *testing.T) {
-	got, err := canonicaljson.Digest(testDomain, map[string]any{"ok": true})
-	if err != nil {
-		t.Fatalf("Digest error: %v", err)
-	}
-	if len(got) != len("sha256:")+64 || got[:len("sha256:")] != "sha256:" {
-		t.Fatalf("unexpected digest format: %s", got)
-	}
-	if !canonicaljson.Verify(testDomain, map[string]any{"ok": true}, got) {
-		t.Fatal("expected digest to verify")
-	}
-	if canonicaljson.Verify(canonicaljson.DomainSnapshot, map[string]any{"ok": true}, got) {
-		t.Fatal("digest verified under the wrong domain")
-	}
-}
-
-func TestDecodeDigestRequiresCanonicalPrefix(t *testing.T) {
-	if _, err := canonicaljson.DecodeDigest("0000000000000000000000000000000000000000000000000000000000000000"); err == nil {
-		t.Fatal("expected unprefixed digest to be rejected")
-	}
-	if got, err := canonicaljson.DecodeDigest("sha256:0000000000000000000000000000000000000000000000000000000000000000"); err != nil || len(got) != 32 {
-		t.Fatalf("expected prefixed digest to decode, got %x, %v", got, err)
+	if err := canonicaljson.VerifyStored(bytes.ToUpper(raw), stored); err == nil {
+		t.Fatal("tampered stored document accepted")
 	}
 }

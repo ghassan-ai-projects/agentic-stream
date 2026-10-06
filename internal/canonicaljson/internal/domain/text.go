@@ -1,4 +1,4 @@
-package canonicaljson
+package domain
 
 import (
 	"bytes"

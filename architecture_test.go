@@ -23,6 +23,7 @@ const maxProductionFileLines = 299
 // each other but never a domain plane (quality-bar rule Q5).
 var foundationPackages = []string{
 	"internal/canonicaljson",
+	"internal/canonicaljson/internal/domain",
 	"internal/clock",
 	"internal/contractsv1",
 	"internal/duration",
@@ -93,7 +94,8 @@ var allowedImports = map[string][]string{
 	"internal/authority/internal/app":         {"internal/authority/internal/domain", "internal/authority/internal/store", "internal/clock"},
 	"internal/authority/internal/domain":      {"internal/canonicaljson"},
 	"internal/authority/internal/store":       {"internal/authority/internal/domain", "internal/canonicaljson", "internal/storage"},
-	"internal/canonicaljson":                  {},
+	"internal/canonicaljson":                  {"internal/canonicaljson/internal/domain"},
+	"internal/canonicaljson/internal/domain":  {},
 	"internal/cognition/internal/app":         {"internal/clock", "internal/cognition/internal/domain", "internal/cognition/internal/store", "internal/episodeledger", "internal/ids", "internal/situations", "internal/spec"},
 	"internal/cognition/internal/domain":      {"internal/canonicaljson", "internal/contractsv1", "internal/duration", "internal/episodeledger", "internal/ids", "internal/situations", "internal/spec"},
 	"internal/cognition/internal/store":       {"internal/approvalledger", "internal/canonicaljson", "internal/clock", "internal/cognition/internal/domain", "internal/contractsv1", "internal/episodeledger", "internal/notify", "internal/situations", "internal/storage"},

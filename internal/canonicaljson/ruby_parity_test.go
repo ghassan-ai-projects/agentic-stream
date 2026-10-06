@@ -1,19 +1,21 @@
-package canonicaljson
+package canonicaljson_test
 
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
-// P1 cross-repo parity: the Ruby frame verifies the prompt digest with the
+// Cross-repository parity: the Ruby frame verifies the prompt digest with the
 // SAME domain + canonicalization as the Go assembler, and the Ruby
 // DiagnosisCatalog.verify_wire binds the diagnosis-catalog digest over the
 // PARSED catalog ARRAY (not a wrapped string). The frozen vectors below are
 // byte-identical to the Ruby computations (verified both sides); a change on
 // either side breaks the other side's fail-closed gate.
-func TestP1CrossRepoDigestParity(t *testing.T) {
+func TestRubyDigestParity(t *testing.T) {
 	prompt := "You are the pond supervisor's diagnostic assistant."
-	promptDigest, err := Digest(DomainPrompt, map[string]any{"version": "1.0", "text": prompt})
+	promptDigest, err := canonicaljson.Digest(canonicaljson.DomainPrompt, map[string]any{"version": "1.0", "text": prompt})
 	if err != nil {
 		t.Fatalf("prompt digest: %v", err)
 	}
@@ -27,7 +29,7 @@ func TestP1CrossRepoDigestParity(t *testing.T) {
 	if err := json.Unmarshal([]byte(catalog), &parsed); err != nil {
 		t.Fatalf("decode catalog: %v", err)
 	}
-	catalogDigest, err := Digest(DomainDiagnosisCatalog, parsed)
+	catalogDigest, err := canonicaljson.Digest(canonicaljson.DomainDiagnosisCatalog, parsed)
 	if err != nil {
 		t.Fatalf("catalog digest: %v", err)
 	}

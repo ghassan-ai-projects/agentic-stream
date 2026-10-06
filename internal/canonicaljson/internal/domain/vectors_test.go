@@ -1,4 +1,4 @@
-package canonicaljson_test
+package domain
 
 import (
 	"encoding/json"
@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 type canonicalizationVectors struct {
@@ -50,7 +48,7 @@ func TestSharedCanonicalizationVectors(t *testing.T) {
 			if gotCanonical != vector.Canonical {
 				t.Fatalf("canonical = %q, want %q", gotCanonical, vector.Canonical)
 			}
-			gotDigest, err := canonicaljson.Digest(canonicaljson.Domain(vector.Domain), vector.Input)
+			gotDigest, err := Digest(Domain(vector.Domain), vector.Input)
 			if err != nil {
 				t.Fatalf("Digest failed: %v", err)
 			}
@@ -109,7 +107,7 @@ func TestSharedRejectVectors(t *testing.T) {
 			default:
 				t.Fatalf("unknown input form %q", vector.InputForm)
 			}
-			if _, err := canonicaljson.Marshal(value); err == nil {
+			if _, err := Marshal(value); err == nil {
 				t.Fatal("expected vector to be rejected")
 			}
 		})
@@ -117,7 +115,7 @@ func TestSharedRejectVectors(t *testing.T) {
 }
 
 func TestNativeIntegerOutsideExactRangeIsRejected(t *testing.T) {
-	if _, err := canonicaljson.Marshal(int64(9007199254740993)); err == nil {
+	if _, err := Marshal(int64(9007199254740993)); err == nil {
 		t.Fatal("expected unsafe native integer to be rejected")
 	}
 }
@@ -128,7 +126,7 @@ func TestRawUnsafeIntegerSpellingsAreRejected(t *testing.T) {
 		`{"n":9007199254740993.0}`,
 		`{"n":9007199254740993e0}`,
 	} {
-		if _, err := canonicaljson.Marshal(json.RawMessage(raw)); err == nil {
+		if _, err := Marshal(json.RawMessage(raw)); err == nil {
 			t.Fatalf("expected unsafe integer spelling %s to be rejected", raw)
 		}
 	}
@@ -145,7 +143,7 @@ func TestRawValidEscapedSurrogatePairIsAccepted(t *testing.T) {
 }
 
 func TestRawEscapedEquivalentDuplicateKeysAreRejected(t *testing.T) {
-	if _, err := canonicaljson.Marshal(json.RawMessage(`{"a":1,"\u0061":2}`)); err == nil {
+	if _, err := Marshal(json.RawMessage(`{"a":1,"\u0061":2}`)); err == nil {
 		t.Fatal("expected escaped-equivalent duplicate keys to be rejected")
 	}
 }
@@ -161,7 +159,7 @@ func TestExactlyRepresentableDoubleAtSafeBoundaryIsAccepted(t *testing.T) {
 }
 
 func TestNativeInvalidUnicodeIsRejected(t *testing.T) {
-	if _, err := canonicaljson.Marshal(string([]byte{'\xc3', '('})); err == nil {
+	if _, err := Marshal(string([]byte{'\xc3', '('})); err == nil {
 		t.Fatal("expected invalid UTF-8 to be rejected")
 	}
 }
@@ -172,7 +170,7 @@ func readVectors(t *testing.T) canonicalizationVectors {
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	path := filepath.Join(filepath.Dir(source), "..", "contractsv1", "testdata", "canonicalization-vectors.json")
+	path := filepath.Join(filepath.Dir(source), "..", "..", "..", "contractsv1", "testdata", "canonicalization-vectors.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read vectors: %v", err)
@@ -186,6 +184,6 @@ func readVectors(t *testing.T) canonicalizationVectors {
 
 // marshalString is the canonical encoding as text.
 func marshalString(v any) (string, error) {
-	b, err := canonicaljson.Marshal(v)
+	b, err := Marshal(v)
 	return string(b), err
 }
