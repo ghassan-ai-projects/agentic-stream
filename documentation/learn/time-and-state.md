@@ -80,7 +80,7 @@ features. The current scheduler does not enforce the schema-visible trigger
 conditions, such as the heartbeat check, when those checks must affect
 admission. Source: [feature emission](../../internal/operators/), [Situation
 update](../../internal/situations/reducers.go), and [trigger
-evaluation](../../internal/cognition/engine_trigger.go).
+evaluation](../../internal/cognition/internal/domain/trigger_rules.go).
 
 ## Correction, reconsideration, and compensation
 
@@ -96,8 +96,8 @@ that its type is allowed, that it identifies the prior Command correctly, and
 that policy and current dispatch conditions permit it. A corrected snapshot
 does not undo a ticket or reverse a device operation automatically. The prior
 Command and its recorded outcome remain in history. Source:
-[reconsideration selection and evidence](../../internal/cognition/reconsideration_evidence.go),
-[deduplication](../../internal/cognition/reconsideration.go), and
+[reconsideration selection and evidence](../../internal/cognition/internal/store/reconsideration.go),
+[deduplication](../../internal/cognition/internal/app/correction.go), and
 [Intent contract](../contracts/decision-intent.md).
 
 ## Why preserve the history?

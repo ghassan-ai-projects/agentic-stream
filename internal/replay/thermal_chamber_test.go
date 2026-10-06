@@ -50,7 +50,7 @@ func TestThermalChamberOpensOnlyOnRealOverTemp(t *testing.T) {
 		t.Run(tc.trace, func(t *testing.T) {
 			t.Parallel()
 			dbPath := filepath.Join(t.TempDir(), "replay.db")
-			result, err := replay.Run(context.Background(), dbPath, thermalSpec, thermalTrace(tc.trace), "default")
+			result, err := replay.Run(context.Background(), replay.Request{DBPath: dbPath, SpecPath: thermalSpec, TracePath: thermalTrace(tc.trace), TenantID: "default"})
 			if err != nil {
 				t.Fatalf("replay %s: %v", tc.trace, err)
 			}
@@ -82,7 +82,7 @@ func TestThermalChamberAmbientDiscountHoldsInWatch(t *testing.T) {
 		t.Run(tc.trace, func(t *testing.T) {
 			t.Parallel()
 			dbPath := filepath.Join(t.TempDir(), "replay.db")
-			if _, err := replay.Run(context.Background(), dbPath, thermalSpec, thermalTrace(tc.trace), "default"); err != nil {
+			if _, err := replay.Run(context.Background(), replay.Request{DBPath: dbPath, SpecPath: thermalSpec, TracePath: thermalTrace(tc.trace), TenantID: "default"}); err != nil {
 				t.Fatalf("replay %s: %v", tc.trace, err)
 			}
 			if tc.wantPhase == "" {
@@ -106,7 +106,7 @@ func TestThermalChamberAmbientDiscountHoldsInWatch(t *testing.T) {
 func TestThermalChamberRebootWrapAndBacklogStayBootScoped(t *testing.T) {
 	t.Parallel()
 	dbPath := filepath.Join(t.TempDir(), "reboot-backlog.db")
-	result, err := replay.Run(context.Background(), dbPath, thermalSpec, thermalTrace("trace-reboot-backlog.jsonl"), "default")
+	result, err := replay.Run(context.Background(), replay.Request{DBPath: dbPath, SpecPath: thermalSpec, TracePath: thermalTrace("trace-reboot-backlog.jsonl"), TenantID: "default"})
 	if err != nil {
 		t.Fatalf("replay reboot/backlog trace: %v", err)
 	}
@@ -132,7 +132,7 @@ func queryThermalDB(t *testing.T, dbPath, query string, dest *int) error {
 // replay contract, on a physical-evidence domain.
 func TestThermalChamberReplayIsDeterministic(t *testing.T) {
 	t.Parallel()
-	results, err := replay.RunNTimes(context.Background(), thermalSpec, thermalTrace("trace-opening.jsonl"), "default", 3)
+	results, err := replay.RunNTimes(context.Background(), replay.Request{SpecPath: thermalSpec, TracePath: thermalTrace("trace-opening.jsonl"), TenantID: "default"}, 3)
 	if err != nil {
 		t.Fatalf("run n times: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestThermalReplayQuarantinesMalformedInputAfterSchemaSetup(t *testing.T) {
 		t.Fatal(err)
 	}
 	dbPath := filepath.Join(t.TempDir(), "replay.db")
-	result, err := replay.Run(context.Background(), dbPath, thermalSpec, path, "default")
+	result, err := replay.Run(context.Background(), replay.Request{DBPath: dbPath, SpecPath: thermalSpec, TracePath: path, TenantID: "default"})
 	if err != nil {
 		t.Fatalf("replay malformed trace: %v", err)
 	}

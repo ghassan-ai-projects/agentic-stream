@@ -52,8 +52,15 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*app.Pipeline, error)
 		return nil, fmt.Errorf("pipeline database and spec are required")
 	}
 	cfg = pipelineDefaults(cfg)
-	var watch *watch.Effector
-	cfg.Effector, watch = composeEffectors(cfg)
+	effector, watch, err := composeEffectors(cfg)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Effector = effector
+	return composeOwnedPipeline(ctx, cfg, watch)
+}
+
+func composeOwnedPipeline(ctx context.Context, cfg PipelineConfig, watch *watch.Service) (*app.Pipeline, error) {
 	log := eventlog.NewEventLogWithClock(cfg.DB, cfg.Clock)
 	stream, err := newOwnedStream(ctx, cfg, log)
 	if err != nil {
@@ -65,11 +72,11 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*app.Pipeline, error)
 	return composePipeline(cfg, log, stream, watch)
 }
 
-func newOwnedStream(ctx context.Context, cfg PipelineConfig, log *eventlog.EventLog) (*engine.Engine, error) {
-	stream, err := engine.NewEngine(ctx, cfg.DB, log, cfg.Clock, cfg.Spec, cfg.TenantID)
+func newOwnedStream(ctx context.Context, cfg PipelineConfig, log *eventlog.EventLog) (*engine.Service, error) {
+	stream, err := engine.New(ctx, engine.Config{DB: cfg.DB, Log: log, Clock: cfg.Clock, Spec: cfg.Spec, TenantID: cfg.TenantID,
+		RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch, Cognition: true})
 	if err != nil {
 		return nil, fmt.Errorf("create stream engine: %w", err)
 	}
-	stream.WithRuntimeOwner(cfg.Owner, cfg.OwnerEpoch)
 	return stream, nil
 }

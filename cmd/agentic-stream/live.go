@@ -42,7 +42,7 @@ type runtimeCore struct {
 	db           *storage.DB
 	epoch        string
 	owner        *runtimecontrol.RuntimeOwner
-	ledger       *evidence.Ledger
+	ledger       *evidence.Service
 	epochControl *runtimecontrol.EpochControl
 	service      *runtime.Service
 }
@@ -104,8 +104,11 @@ func newRuntimeCore(db *storage.DB, lease time.Duration) (*runtimeCore, error) {
 	core := &runtimeCore{
 		db: db, epoch: epoch,
 		owner:        &runtimecontrol.RuntimeOwner{DB: db, InstanceID: epoch, Lease: lease},
-		ledger:       &evidence.Ledger{DB: db, LeaseOwner: epoch, RuntimeEpoch: epoch, Lease: lease},
 		epochControl: &runtimecontrol.EpochControl{DB: db},
+	}
+	core.ledger, err = evidence.New(evidence.Config{Ledger: &evidence.LedgerConfig{DB: db, OwnerCheck: core.owner.Assert, LeaseOwner: epoch, RuntimeEpoch: epoch, Lease: lease}})
+	if err != nil {
+		return nil, fmt.Errorf("configure evidence ledger: %w", err)
 	}
 	return core, nil
 }

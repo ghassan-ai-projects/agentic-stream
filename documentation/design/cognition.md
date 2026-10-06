@@ -74,7 +74,7 @@ reconsideration evidence are preserved. The durable limit is three rebindings
 across retries; invalid live evidence abandons the episode as `rebind_failed`.
 Each started attempt uses its fixed request. See
 [ADR-013](../../docs/design/DECISIONS.md#adr-013-re-bind-stale-episodes-to-the-live-situation-version-before-dispatch)
-and [rebinding tests](../../internal/episodes/rebind_test.go).
+and [rebinding tests](../../internal/episodes/internal/app/rebind_test.go).
 
 ## Cancellation and reconsideration
 
@@ -91,14 +91,14 @@ The correction remains admission evidence even if a later live snapshot is
 used by a rebound attempt. Its accepted Decision is recorded against that live
 version. Any compensating proposal must pass governance as a new Intent;
 reconsideration does not reverse an effect automatically. Source:
-[selection](../../internal/cognition/reconsideration_evidence.go) and
-[admission/deduplication](../../internal/cognition/reconsideration.go).
+[selection](../../internal/cognition/internal/store/reconsideration.go) and
+[admission/deduplication](../../internal/cognition/internal/app/correction.go).
 
 ## Source evidence
 
 - Scheduler: [`internal/cognition/`](../../internal/cognition/)
 - Episode lifecycle: [`internal/episodeledger/lifecycle.go`](../../internal/episodeledger/lifecycle.go)
-- Episode assembler: [`internal/episodes/assembler.go`](../../internal/episodes/assembler.go)
+- Episode assembler: [`internal/episodes/internal/domain/assembly.go`](../../internal/episodes/internal/domain/assembly.go)
 - Cancellation/recovery tests: [`internal/episodes/`](../../internal/episodes/)
 
 ## Next reads

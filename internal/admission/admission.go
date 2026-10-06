@@ -21,7 +21,7 @@ var ErrFixtureRejected = errors.New("fixture executor rejected")
 // Config is the owner-scoped admission composition for one tenant.
 type Config struct {
 	DB         *storage.DB
-	Assembler  *episodes.Assembler
+	Episodes   *episodes.Service
 	Clock      clock.Clock
 	TenantID   string
 	Owner      *runtimecontrol.RuntimeOwner
@@ -129,7 +129,7 @@ func (a *Admitter) persistAdmission(ctx context.Context, tx *sql.Tx, itemID stri
 	}
 	req.PolicyEpoch = a.cfg.OwnerEpoch
 	assembled := attempt{kind: req.Kind, situationID: req.SituationID}
-	return assembled, a.cfg.Assembler.Persist(ctx, tx, req, now) //nolint:wrapcheck // Wrapped by admitItem with the admission step.
+	return assembled, a.cfg.Episodes.Persist(ctx, tx, req, now) //nolint:wrapcheck // Wrapped by admitItem with the admission step.
 }
 
 // assembleOwned fences the transaction to the runtime owner, then assembles
@@ -138,7 +138,7 @@ func (a *Admitter) assembleOwned(ctx context.Context, tx *sql.Tx, itemID string)
 	if err := a.assertOwner(ctx, tx); err != nil {
 		return nil, fmt.Errorf("assert pipeline owner: %w", err)
 	}
-	req, err := a.cfg.Assembler.Assemble(ctx, tx, itemID, a.cfg.TenantID)
+	req, err := a.cfg.Episodes.Assemble(ctx, tx, itemID, a.cfg.TenantID)
 	if err != nil {
 		return nil, fmt.Errorf("assemble scheduler item: %w", err)
 	}

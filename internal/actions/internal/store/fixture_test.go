@@ -1,0 +1,142 @@
+package store
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+)
+
+func openActionFixture(t *testing.T) (*storage.DB, string) {
+	t.Helper()
+	ctx := context.Background()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "actions.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		t.Fatalf("disable foreign keys: %v", err)
+	}
+	now := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
+	commandID := "cmd-action"
+	expiresAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)
+	intent := map[string]any{
+		"intent_id": "int-action", "decision_id": "dec-action", "tenant_id": "tenant",
+		"situation_id": "sit-action", "situation_version": 1, "type": "maintenance.ticket",
+		"risk_class": "R1", "parameters": map[string]any{"target": "motor/1"}, "expires_at": expiresAt,
+	}
+	intentDigest, err := contractsv1.IntentDigest(intent)
+	if err != nil {
+		t.Fatalf("digest intent: %v", err)
+	}
+	intent["intent_digest"] = intentDigest
+	intentJSON, err := canonicaljson.Marshal(intent)
+	if err != nil {
+		t.Fatalf("marshal intent: %v", err)
+	}
+	intentSHA := mustDecode(t, intentDigest)
+	decision := map[string]any{
+		"decision_id": "dec-action", "episode_id": "epi-action", "attempt_id": "att-action", "fence": 1,
+		"snapshot_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+		"situation_id":    "sit-action", "situation_version": 1, "confidence": 0.9,
+		"intents": []any{intent},
+	}
+	decisionJSON, err := canonicaljson.Marshal(decision)
+	if err != nil {
+		t.Fatalf("marshal decision: %v", err)
+	}
+	decisionDigest, err := canonicaljson.Digest(canonicaljson.DomainDecision, decision)
+	if err != nil {
+		t.Fatalf("digest decision: %v", err)
+	}
+	command := map[string]any{
+		"command_id": commandID, "intent_id": "int-action", "tenant_id": "tenant",
+		"effector_route": "maintenance.ticket", "normalized_target": "motor/1",
+		"idempotency_key": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+		"status":          "prepared", "payload": map[string]any{"reason": "test"},
+		"created_at": now,
+	}
+	commandJSON, err := canonicaljson.Marshal(command)
+	if err != nil {
+		t.Fatalf("marshal command: %v", err)
+	}
+	commandDigest, err := canonicaljson.Digest(canonicaljson.DomainCommand, command)
+	if err != nil {
+		t.Fatalf("digest command: %v", err)
+	}
+	commandSHA, err := canonicaljson.DecodeDigest(commandDigest)
+	if err != nil {
+		t.Fatalf("decode command digest: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO situations (
+			situation_id, tenant_id, deployment_id, situation_type, entity_type, entity_id,
+			partition_id, occurrence_id, current_version, phase, status,
+			first_event_time, latest_event_time, updated_at, created_at
+		) VALUES ('sit-action', 'tenant', 'dep', 'test', 'motor', 'motor-1', 0, 'occ-action', 1, 'watch', 'open', ?, ?, ?, ?)`,
+		now, now, now, now); err != nil {
+		t.Fatalf("insert situation: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO episodes (
+			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
+			executor_name, executor_version, model_policy, prompt_version, snapshot_sha256,
+			admission_key, request_json, lifecycle_status, current_fence, accepted_at
+		) VALUES ('epi-action', 'sch-action', 'tenant', 'sit-action', 1,
+			'executor', 'v1', 'policy', 'prompt', ?, ?, X'7B7D', 'concluded', 1, ?)`,
+		make([]byte, 32), make([]byte, 32), now); err != nil {
+		t.Fatalf("insert episode: %v", err)
+	}
+	decisionSHA := mustDecode(t, decisionDigest)
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO decisions (
+			decision_id, episode_id, attempt_id, fence, ordinal, situation_id,
+			situation_version, raw_json, decision_sha256, validation_status, validation_json, created_at
+		) VALUES ('dec-action', 'epi-action', 'att-action', 1, 1, 'sit-action', 1, ?, ?, 'accepted', X'7B7D', ?)`,
+		decisionJSON, decisionSHA, now); err != nil {
+		t.Fatalf("insert decision: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO commands (
+			command_id, intent_id, tenant_id, effector_route, normalized_target,
+			idempotency_key, command_json, command_sha256, status, created_at, updated_at
+		) VALUES (?, 'int-action', 'tenant', 'maintenance.ticket', 'motor/1', ?, ?, ?, 'pending', ?, ?)`,
+		commandID, mustDecode(t, command["idempotency_key"].(string)), commandJSON, commandSHA,
+		now, now); err != nil {
+		t.Fatalf("insert command: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO outbox (kind, aggregate_id, aggregate_version, payload_json, status, available_at, created_at)
+		VALUES ('command', ?, 1, ?, 'pending', ?, ?)`, commandID, commandJSON,
+		now, now); err != nil {
+		t.Fatalf("insert outbox: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO intents (
+			intent_id, decision_id, tenant_id, situation_id, situation_version,
+			intent_type, risk_class, intent_json, intent_sha256, expires_at,
+			policy_status, created_at, updated_at
+		) VALUES ('int-action', 'dec-action', 'tenant', 'sit-action', 1,
+			'maintenance.ticket', 'R1', ?, ?, ?, 'approved', ?, ?)`,
+		intentJSON, intentSHA, expiresAt, now, now); err != nil {
+		t.Fatalf("insert intent: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
+		t.Fatalf("enable foreign keys: %v", err)
+	}
+	return db, commandID
+}
+
+func mustDecode(t *testing.T, digest string) []byte {
+	t.Helper()
+	decoded, err := canonicaljson.DecodeDigest(digest)
+	if err != nil {
+		t.Fatalf("decode digest: %v", err)
+	}
+	return decoded
+}

@@ -69,7 +69,7 @@ The watch owner records matching events and spends the remaining allowance;
 it does not call policy, dispatch, or reasoning itself. A firing is a durable
 match record, not permission to execute another effect or proof of a model
 call. Source: [watch ownership](../../internal/watch/doc.go)
-and [firing rules](../../internal/watch/fire.go).
+and [firing rules](../../internal/watch/internal/app/fire.go).
 
 ## Explainability and qualification answer different questions
 

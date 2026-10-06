@@ -86,7 +86,7 @@ uncertainty from that confidence. It also does not track changes to the main hyp
 across later versions. These fields must not be read as a measured diagnosis
 probability or a working hypothesis-management system.
 Source: [state initialization](../../internal/situations/situations.go)
-and [cognition's state view](../../internal/cognition/engine_cel.go).
+and [cognition's state view](../../internal/cognition/internal/domain/delta.go).
 
 A **hypothesis** is a proposed explanation, such as bearing wear rather than
 a faulty sensor. It belongs in the reasoning output and its evidence; it is

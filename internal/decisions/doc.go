@@ -1,3 +1,3 @@
-// Package decisions validates worker-proposed Decisions and their typed
-// Intents against the closed intent catalog before they reach policy.
+// Package decisions exposes the pure Decision and Intent validator used by
+// episode execution and replay.
 package decisions

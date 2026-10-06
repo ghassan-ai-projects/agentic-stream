@@ -103,12 +103,16 @@ func pendingItem(t *testing.T, given scenario) (*storage.DB, *admission.Admitter
 func runStream(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec) {
 	t.Helper()
 	log := eventlog.NewEventLogWithClock(db, clock.Physical())
-	stream, err := engine.NewEngine(t.Context(), db, log, clock.Physical(), compiled, "default")
+	stream, err := engine.New(t.Context(), engine.Config{DB: db, Log: log, Clock: clock.Physical(), Spec: compiled, TenantID: "default", RuntimeOwner: engine.ReplayOwnership, Cognition: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	path := traceFile(t)
-	if _, err := ingress.NewJSONLReplay(db, log, "default", path, "test:"+path).Run(t.Context()); err != nil {
+	ingestor, err := ingress.New(ingress.Config{DB: db, Log: log, TenantID: "default"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ingestor.ReplayJSONL(t.Context(), path, "test:"+path); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := stream.RunGlobal(t.Context(), nil); err != nil {
@@ -131,10 +135,12 @@ func composeConfig(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, gi
 	if given.costKill {
 		setCostKillSwitch(t, db)
 	}
-	assembler := episodes.NewAssembler(compiled, ids.Deterministic())
-	assembler.WithCostControl(&costcontrol.Controller{})
+	assembler, err := episodes.New(episodes.Config{Spec: compiled, IDGenerator: ids.Deterministic(), CostControl: &costcontrol.Controller{}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	return admission.Config{
-		DB: db, Assembler: assembler, Clock: clock.Physical(), TenantID: "default",
+		DB: db, Episodes: assembler, Clock: clock.Physical(), TenantID: "default",
 		Owner: owner, OwnerEpoch: ownerEpoch, EpochControl: control, DemoMode: given.demo,
 	}
 }

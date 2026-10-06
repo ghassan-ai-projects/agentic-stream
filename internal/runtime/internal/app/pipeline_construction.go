@@ -16,11 +16,11 @@ import (
 // PipelineDependencies are fully composed planes; app owns no database handle.
 type PipelineDependencies struct {
 	Log          *eventlog.EventLog
-	Engine       *engine.Engine
+	Engine       *engine.Service
 	Admission    *admission.Admitter
-	Runner       *episodes.Runner
-	Dispatcher   *actions.Dispatcher
-	Watch        *watch.Effector
+	Runner       *episodes.Service
+	Dispatcher   *actions.Service
+	Watch        *watch.Service
 	Telemetry    *telemetry.Runtime
 	Transactions *store.PipelineStore
 	Sources      *transport.Sources

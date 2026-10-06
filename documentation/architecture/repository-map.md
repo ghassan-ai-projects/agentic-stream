@@ -7,22 +7,50 @@ historical design map where the code has chosen a more specific package name.
 | --- | --- |
 | `cmd/agentic-stream/` | CLI entrypoint and runtime wiring |
 | `internal/spec/` | SituationSpec schema, compiler, CEL, deployment persistence |
-| `internal/ingress/` | normalized/simulator JSONL files and live normalized JSONL Unix socket |
+| `internal/ingress/` | ingress configuration and replay/serve delegation facade |
+| `internal/ingress/internal/app/` | JSONL and simulator replay loops, admission, quarantine and live line handling |
+| `internal/ingress/internal/store/` | connector checkpoint SQL |
+| `internal/ingress/internal/domain/` | pure envelope admission, simulator trace grammar and conversion, identities, checkpoint codec |
+| `internal/ingress/internal/transport/` | trace file and Unix-socket framing, listener safety and client plumbing |
 | `internal/eventlog/` | append-only events, validation, dedup, quarantine, gaps |
-| `internal/engine/` | deterministic partitioned stream processing |
+| `internal/eventlog/internal/domain/` | pure evidence admission, quarantine identity and decode rules (reference module layer) |
+| `internal/eventlog/internal/app/` | append, quarantine, release/redrive and read use cases |
+| `internal/eventlog/internal/store/` | event-log SQL and units of work (reference module layer) |
+| `internal/engine/` | engine configuration and global-run delegation facade |
+| `internal/engine/internal/app/` | serialised runs, per-record transactions, timers and rollback restore |
+| `internal/engine/internal/store/` | opaque transactions, engine SQL and owner fence |
+| `internal/engine/internal/domain/` | pure watermark, Situation state, lineage, timer and heartbeat rules |
 | `internal/operators/` | aggregates, slopes, missing-heartbeat and related features |
 | `internal/situations/` | Situation state and immutable versions |
-| `internal/cognition/` | scheduler, trigger evaluation, reconsideration |
+| `internal/cognition/` | configured deterministic scheduler facade |
+| `internal/cognition/internal/app/` | ordered trigger, queue and correction use cases |
+| `internal/cognition/internal/domain/` | pure evaluation, timing, capacity and correction rules |
+| `internal/cognition/internal/store/` | opaque caller transaction, cognition SQL and owning-ledger handoffs |
 | `internal/admission/` | episode admission: due scheduler items to epoch-stamped episodes, or recorded skips |
-| `internal/episodes/` | request assembly, bounded execution lifecycle, budgets and the `Executor` port |
-| `internal/evidence/` | capability tokens, evidence server, call ledger |
-| `internal/decisions/` | Decision and Intent validation |
+| `internal/episodes/` | public facade over episode assembly and bounded execution |
+| `internal/episodes/internal/app/` | transaction-scoped episode use cases: assembly, claim, execution, decisions |
+| `internal/episodes/internal/domain/` | pure episode contracts and rules: request assembly, budgets, decisions, failures, shadow scoring |
+| `internal/episodes/internal/store/` | opaque caller transaction, episode SQL and atomic ledger/cost/epoch handoffs |
+| `internal/evidence/` | configured capability, bounded-query and recovery facade |
+| `internal/evidence/internal/domain/` | pure evidence scope, lifetime and authorization rules |
+| `internal/evidence/internal/wire/` | exact v1 token, argument and result codecs |
+| `internal/evidence/internal/app/` | capability issuance/verification, call admission/query and durable lifecycle use cases |
+| `internal/evidence/internal/store/` | opaque original transactions, evidence-call ledger SQL and ownership assertions |
+| `internal/evidence/internal/transport/` | gRPC adaptation and the eventlog owner-provided evidence source |
+| `internal/decisions/` | thin facade over pure Decision and Intent validation |
+| `internal/decisions/internal/domain/` | pure binding, catalog authority, risk, freshness and evidence rules |
 | `internal/policy/` | policy configuration and delegation facade |
 | `internal/policy/internal/app/` | ordered intent evaluation and human approval use cases |
 | `internal/policy/internal/store/` | caller-owned transactions, policy SQL and ledger/notification plumbing |
 | `internal/policy/internal/domain/` | pure policy records, canonical definitions and governance checks |
-| `internal/actions/` | governed outbox dispatch, verification and reconciliation |
-| `internal/watch/` | derived-trigger watches: install as an effect, fire on matching evidence, expire |
+| `internal/actions/` | governed dispatch configuration and delegation facade |
+| `internal/actions/internal/app/` | ordered lease, authorization, dispatch, verification and reconciliation use cases |
+| `internal/actions/internal/store/` | opaque transactions, command/outbox/outcome/verification SQL and owner, interlock, authority and notification plumbing |
+| `internal/actions/internal/domain/` | pure dispatch, authorization and reconciliation rules with command, intent, decision and outcome document checks |
+| `internal/watch/` | watch configuration and effect-port delegation facade |
+| `internal/watch/internal/app/` | install, fire and expire use cases with busy retry |
+| `internal/watch/internal/store/` | opaque transactions, watch SQL and owner/interlock plumbing |
+| `internal/watch/internal/domain/` | pure payload rules, watch identity, CEL validation and evaluation |
 | `internal/actionport/` | approved command/effect contracts |
 | `internal/device/` | device effect boundary facade: effect profiles, catalog loading, gateway dial and effector constructors |
 | `internal/device/internal/app/` | device session use cases and the gateway, simulated and fail-closed effectors |
@@ -42,9 +70,14 @@ historical design map where the code has chosen a more specific package name.
 | `internal/interlock/` | durable readiness state and read-only assertions |
 | `internal/notifycontract/` | versioned notification names and metadata |
 | `internal/canonicaljson/`, `internal/clock/`, `internal/duration/`, `internal/ids/` | deterministic digest, time, duration and identity primitives |
+| `internal/executor/fixture/` | deterministic episode executor for explicit demo and replay fixtures |
 | `internal/executor/native/`, `internal/executor/remote/`, `internal/executor/conformance/`, `internal/worker/` | in-process and out-of-process executors, executor qualification and worker protocol transport |
 | `internal/soak/`, `internal/runartifact/` | bounded operational evidence and immutable artifact verification |
 | `internal/replay/` | effect-safe replay modes |
+| `internal/replay/internal/app/` | replay sessions: epoch derivation, ingestion, engine runs and capability phases |
+| `internal/replay/internal/domain/` | pure replay verification rules and vocabulary (reference module layer) |
+| `internal/replay/internal/store/` | replay SQL and transactions against the isolated database (reference module layer) |
+| `internal/replay/internal/transport/` | trace files, isolated databases and trace ingestion (reference module layer) |
 | `internal/runtime/` | thin live-pipeline, readiness and worker facades; [module guide](../../internal/runtime/README.md) |
 | `internal/storage/` | SQLite infrastructure, migrations and transactions |
 | `internal/contractsv1/` | versioned envelope/schema contracts |

@@ -17,18 +17,33 @@ type Sources struct {
 	Telemetry *telemetry.Runtime
 }
 
-// RunJSONL ingests normalized trace records through the existing durable adapter.
+func (s *Sources) service() (*ingress.Service, error) {
+	return ingress.New(ingress.Config{DB: s.DB, Log: s.Log, TenantID: s.TenantID, Telemetry: s.Telemetry}) //nolint:wrapcheck // Ingress names the missing dependency.
+}
+
+// RunJSONL ingests normalized trace records through the durable adapter.
 func (s *Sources) RunJSONL(ctx context.Context, path string) (int, error) {
-	return ingress.NewJSONLReplay(s.DB, s.Log, s.TenantID, path, "live-jsonl:"+path).Run(ctx) //nolint:wrapcheck // App supplies operation context; preserve original ingress errors.
+	service, err := s.service()
+	if err != nil {
+		return 0, err
+	}
+	return service.ReplayJSONL(ctx, path, "live-jsonl:"+path) //nolint:wrapcheck // App supplies operation context; preserve original ingress errors.
 }
 
 // RunSimulatorJSONL ingests simulator records through its strict adapter.
 func (s *Sources) RunSimulatorJSONL(ctx context.Context, path string) (int, error) {
-	return ingress.NewSimulatorJSONLReplay(s.DB, s.Log, ingress.SimulatorOptions{TenantID: s.TenantID}, path, "live-simulator:"+path).Run(ctx) //nolint:wrapcheck // App supplies operation context; preserve original ingress errors.
+	service, err := s.service()
+	if err != nil {
+		return 0, err
+	}
+	return service.ReplaySimulator(ctx, ingress.SimulatorOptions{TenantID: s.TenantID}, path, "live-simulator:"+path) //nolint:wrapcheck // App supplies operation context; preserve original ingress errors.
 }
 
-// RunLiveSocket owns the live UDS source and forwards accepted envelopes to app.
+// RunLiveSocket serves the live socket source and forwards accepted envelopes to app.
 func (s *Sources) RunLiveSocket(ctx context.Context, path string, sink func(context.Context, contractsv1.Envelope) error) error {
-	source := ingress.NewLiveUDSSource(s.Log, s.TenantID, path).WithTelemetry(s.Telemetry)
-	return source.Run(ctx, sink) //nolint:wrapcheck // App classifies cancellation and supplies source operation context.
+	service, err := s.service()
+	if err != nil {
+		return err
+	}
+	return service.ServeLive(ctx, path, sink) //nolint:wrapcheck // App classifies cancellation and supplies source operation context.
 }

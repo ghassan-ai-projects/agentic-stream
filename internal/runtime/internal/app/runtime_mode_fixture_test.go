@@ -8,11 +8,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
+
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -74,7 +75,7 @@ func newModePipeline(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, 
 	cfg.TenantID = "default"
 	cfg.Clock = clock.Physical()
 	cfg.IDGenerator = ids.Deterministic()
-	cfg.Executor = episodes.NewFakeExecutor()
+	cfg.Executor = fixture.New()
 	cfg.Effector = device.NewSimulatedEffector()
 	pipeline, err := runtime.NewPipeline(context.Background(), cfg)
 	if err != nil {

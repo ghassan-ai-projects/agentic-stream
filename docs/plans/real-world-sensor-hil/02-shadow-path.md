@@ -85,7 +85,7 @@ decision exist against the identical immutable snapshot.
 - Adversarial evidence: add a fixture where device data/metadata contains
   injected instruction-like text. Assert Agentic Stream treats it as evidence
   only and that a decision citing out-of-catalog operations is rejected by the
-  intent-catalog validator (`internal/episodes/intent_catalog.go` +
+  intent-catalog validator (`internal/episodes/internal/domain/intent_catalog.go` +
   `internal/decisions/validator.go`). (Invariant 1.)
 
 **Exit:** abstention is representable and rewarded; adversarial evidence cannot

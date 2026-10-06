@@ -23,7 +23,7 @@ navigation summary, not a replacement catalog.
 ## Simulator mappings
 
 The simulator channel-to-field mapping is in
-[`internal/ingress/simulator_data.json`](../../internal/ingress/simulator_data.json).
+[`internal/ingress/internal/domain/simulator_data.json`](../../internal/ingress/internal/domain/simulator_data.json).
 Use `--trace-format simulator` only for the documented simulator record shape.
 
 ## Adding an event

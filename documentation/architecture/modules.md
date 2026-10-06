@@ -61,12 +61,13 @@ records or returned values, not reverse service dependencies.
 | --- | --- |
 | `actionport` | Approved command, effect outcome, final authorization and effector contracts; no database/network implementation |
 | `device` | Closed capability catalog, deterministic materialization, session/boot checks, safe stop, gateway transport and the simulated effector |
-| `actions` | Approved-command leases, governed dispatch, outcome verification and reconciliation |
-| `watch` | Bounded, expiring derived-trigger watches: install through the effect port, fire on matching evidence, expire; owns `watch_conditions`/`watch_fires` |
+| `actions` | Configured Service facade; app leases and dispatches approved commands, domain owns authorization and reconciliation rules, opaque store transactions keep ledger writes, owner and interlock checks atomic |
+| `watch` | Configured facade; app installs, fires and expires bounded derived-trigger watches, domain owns payload and CEL rules, the opaque store owns `watch_conditions`/`watch_fires` |
 | `episodeledger` | Episode/attempt state, fencing identity, rejection audit, recovery and cancellation mutations |
 | `admission` | Turning due scheduler items into epoch-stamped episodes; drain stop, fixture refusal and recorded skips for unadmittable items |
-| `episodes` | Validated request assembly, bounded execution through the `Executor` port, failure accounting and Decision acceptance |
-| `executor/native`, `executor/remote` | Concrete executors: the in-process Go executor, and the streamed EpisodeWorker adapter with per-attempt evidence capability and budget accounting |
+| `episodes` | Configured Service facade; app assembles and runs bounded reasoning, domain owns pure contracts/rules, opaque store transactions preserve lifecycle and Decision handoffs |
+| `evidence` | Configured Service facade; app orders capability admission and durable query/recovery use cases; domain owns pure scope/lifecycle rules; store alone writes `evidence_call_ledger`; wire owns exact codecs; transport adapts gRPC and the eventlog-owned source. See [module guide](../../internal/evidence/README.md) |
+| `executor/fixture`, `executor/native`, `executor/remote` | Concrete executors: deterministic demo fixtures, the in-process Go executor, and the streamed EpisodeWorker adapter with per-attempt evidence capability and budget accounting |
 | `scheduleledger` | Durable queue identity, admission, coalescing and skipped opportunities |
 | `cognition` | Trigger evaluation, admission priorities, reconsideration and cost-refusal explanation |
 | `approvalledger` | Pending approval, assertion binding, resolution/expiry, and atomic supersession notification |
@@ -125,3 +126,21 @@ physical hardware, deployment readiness, or every possible runtime behavior.
 - [Durability and recovery](durability.md)
 - [Repository map](repository-map.md)
 - [Quality governance](../governance/quality.md)
+
+The [decisions module guide](../../internal/decisions/README.md) explains its pure
+validation facade, compiled authority and supported public results.
+
+The [cognition module guide](../../internal/cognition/README.md) documents
+transaction-scoped evaluation, queue replacement and correction admission.
+
+The [ingress module guide](../../internal/ingress/README.md) documents admission,
+quarantine and checkpoint ordering.
+
+The [engine module guide](../../internal/engine/README.md) documents per-record
+transactions, timers and rollback restore.
+
+The [watch module guide](../../internal/watch/README.md) documents install, fire and
+expire ordering.
+
+The [actions module guide](../../internal/actions/README.md) documents lease,
+authorization, dispatch and reconciliation ordering.

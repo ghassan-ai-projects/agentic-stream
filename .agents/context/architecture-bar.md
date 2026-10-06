@@ -12,11 +12,11 @@ This extends Q5; Q1–Q7 remain mandatory. Package count is not a quality target
 | A5 | Forward evidence/decision/command flow and control cancellation are explicit. Results and feedback are returned values or durable records, never adapter callbacks into upstream services. Replay cannot reach live effect adapters, directly or transitively. | `TestReasoningAndReplayCannotReachEffectImplementations`, final-authorization construction checks; documented flow. |
 | A6 | Module extraction preserves identities, digest inputs, error precedence, clocks, locks, cancellation, atomic transactions, write fencing, unknown outcomes, and fail-closed behavior. No schema/protocol/dependency changes. | Existing replay, worker, policy, action, recovery and device tests, unchanged golden fixtures; new boundary regressions. |
 | A7 | Every implementation round is reviewed, focused-tested, and committed. Final full CI and uncached race suite pass, including coverage of new packages. | Round log and final validation record. |
-| A8 | The episode lifecycle depends only on the `Executor` port. Concrete executors (in-process native, out-of-process worker protocol) live under `internal/executor/`; `episodes` imports no worker protocol, gRPC or protobuf package, and classifies failures from transport-neutral errors. | `forbiddenImports`, `TestEpisodeLifecycleImportsNoExecutorTransport`; worker conformance and failure-classification regressions. |
+| A8 | The episode lifecycle depends only on the `Executor` port. Concrete executors (in-process native, out-of-process worker protocol) live under `internal/executor/`; `episodes` imports no worker protocol, gRPC or protobuf package, and classifies failures from transport-neutral errors. | `forbiddenImports`, `TestEpisodeLifecycleImportsNoExecutorTransport` across all episode layers; worker conformance and failure-classification regressions. |
 | A9 | Every production package states its business or infrastructure responsibility in its package comment, and the public module map lists every package. | `TestEveryPackageDocumentsItsResponsibility`, `TestModuleMapListsEveryPackage`. |
 | A10 | Composition roots (`runtime`, `cmd`) wire modules and drive loops only. They contain no SQL and no business decision; episode admission, intent selection, cost-ceiling configuration and evidence reads are calls into the owning module. | `TestCompositionRootsContainNoSQL`; admission, cost and evidence regressions in the owning modules. |
 | A11 | The governed dispatcher (`actions`) contains dispatch only. Internal effect adapters (watches, the simulator) live in their own modules behind `actionport`, so the event pipeline never calls into the action plane. `watch` owns `watch_conditions` and `watch_fires`. | `forbiddenImports`, `durableOwners`, watch and routing regressions. |
-| A12 | A module that owns tables and real rules adopts the reference module pattern of `authority` when it is built or refactored: a thin facade (one `Service` built by `New(Config)` with required safety dependencies, delegating only); `internal/<module>/internal/app` holds the use cases and never touches the database; `internal/<module>/internal/domain` holds pure rules (no I/O, no clock reads); `internal/<module>/internal/store` holds transactions and every SQL statement and is the declared owner of the module's tables. The checks apply to every module that has these layers. | `TestDomainPackagesArePure`, `TestApplicationLayersDoNotTouchInfrastructure`, `TestModuleSQLStaysInStore`, `durableOwners`; [module pattern](../../docs/authority-reference-module-2026-10-05/MODULE_PATTERN.md). |
+| A12 | A module that owns tables and real rules adopts the reference module pattern of `authority` when it is built or refactored: a thin facade (one `Service` built by `New(Config)` with required safety dependencies, delegating only); `internal/<module>/internal/app` holds the use cases and never touches the database; `internal/<module>/internal/domain` holds pure rules (no I/O, no clock reads); `internal/<module>/internal/store` holds transactions and every SQL statement and is the declared owner of the module's tables. Pure-rule modules use only facade and domain when there is no I/O or configuration use case. The checks apply to every module that has these layers. | `TestDomainPackagesArePure`, `TestApplicationLayersDoNotTouchInfrastructure`, `TestModuleSQLStaysInStore`, `TestIngressFacadeOnlyDelegates`, `TestIngressStoreKeepsTransactionsOpaque`, `TestIngressApplicationUsesTransactionalPorts`, `TestEngineFacadeOnlyDelegates`, `TestEngineStoreKeepsTransactionsOpaque`, `TestEngineApplicationUsesTransactionalPorts`, `TestWatchFacadeOnlyDelegates`, `TestWatchStoreKeepsTransactionsOpaque`, `TestWatchApplicationUsesTransactionalPorts`, `TestActionsFacadeOnlyDelegates`, `TestActionsStoreKeepsTransactionsOpaque`, `TestActionsApplicationUsesTransactionalPorts`, `TestCognitionFacadeOnlyDelegates`, `TestCognitionStoreKeepsTransactionsOpaque`, `TestCognitionApplicationUsesTransactionalPorts`, `TestDecisionFacadeOnlyDelegates`, `TestDecisionCatalogKeepsAuthorityPrivate`, `TestEpisodeFacadeOnlyDelegates`, `TestEpisodeStoreKeepsTransactionsOpaque`, `TestEpisodeApplicationUsesTransactionalPorts`, `TestEvidenceFacadeOnlyDelegates`, `TestEvidenceStoreKeepsInfrastructurePrivate`, `TestEvidenceRulesExcludeProtocolAndCodecs`, `TestEvidenceApplicationUsesOpaquePorts`, `durableOwners`; [module pattern](../../docs/authority-reference-module-2026-10-05/MODULE_PATTERN.md). |
 
 ## Module map and flow
 
@@ -37,6 +37,25 @@ Additional modules have current concrete responsibilities:
 - `device`: thin effect-boundary facade; app session use cases; pure domain rules
   and typed records; wire schema validation/parsing; gateway transport. Authority
   owns durable admission and device safety facts.
+- `episodes`: configured Service facade; app assembles, claims, executes and concludes;
+  domain owns pure request/decision rules; store joins the original transaction
+  behind an opaque Tx and owns episode SQL. The facade delegates only; app
+  cannot call SQL or ledger transactions directly. The deterministic fixture
+  executor lives beside native/remote adapters. See [episode guide](../../internal/episodes/README.md).
+- `evidence`: configured Service facade; app orders capability issuance/verification,
+  bounded query and durable call lifecycle/recovery; domain owns pure authorization,
+  deadline, result and live-attempt rules; store owns ledger SQL and opaque original
+  transactions; wire owns exact codecs; transport adapts gRPC and eventlog-owned
+  evidence reads. Ownership, keys and durable call ports are required configured
+  dependencies. See [evidence guide](../../internal/evidence/README.md).
+- `cognition`: configured scheduler facade, pure CEL/evaluation/timing/correction
+  rules, ordered app use cases and an opaque caller-transaction store. Ledger
+  handoffs and notifications keep the exact original transaction. See the
+  [cognition guide](../../internal/cognition/README.md).
+- `decisions`: pure validator facade; private domain binds attempt/snapshot identity,
+  catalog authority, risk, parameters, evidence and freshness. Compiled catalog
+  entries are private and isolated from source mutation; time is caller-supplied.
+  See [decisions guide](../../internal/decisions/README.md).
 - `episodeledger`: episode/attempt identities, durable lifecycle transitions and recovery mutations.
 - `scheduleledger`: durable queue lifecycle transitions shared by admission and episode assembly.
 - `approvalledger`: pending approval, signed assertion and supersession/expiry lifecycle.

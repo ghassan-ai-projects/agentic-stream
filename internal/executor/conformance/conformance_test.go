@@ -11,13 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/conformance"
 	remoteexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/remote"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
@@ -46,7 +47,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestFakeExecutorConforms(t *testing.T) {
-	if err := conformance.Run(context.Background(), episodes.NewFakeExecutor()); err != nil {
+	if err := conformance.Run(context.Background(), fixture.New()); err != nil {
 		t.Fatal(err)
 	}
 }

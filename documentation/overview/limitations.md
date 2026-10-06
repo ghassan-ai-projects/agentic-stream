@@ -78,8 +78,8 @@ is not independently enforced by the current scheduler.
 
 See [the domain model](../learn/domain-model.md),
 [state initialization](../../internal/situations/situations.go),
-[trigger state view](../../internal/cognition/engine_cel.go), and
-[trigger gates](../../internal/cognition/engine_trigger.go).
+[trigger state view](../../internal/cognition/internal/domain/delta.go), and
+[trigger gates](../../internal/cognition/internal/domain/trigger_rules.go).
 
 ### Operator inspection and redrive are internal capabilities
 

@@ -61,7 +61,7 @@ versioned interfaces:
 Both adapters map onto a **closed capability profile** per device: discovery of an
 external sensor/actuator produces a fixed allow-list of typed quantities and
 operations. No arbitrary register/tag/topic write ever reaches the model-facing
-intent catalog (`internal/episodes/intent_catalog.go`).
+intent catalog (`internal/episodes/internal/domain/intent_catalog.go`).
 
 **Exit:** a documented `Adapter` / ecosystem-effector interface with conformance
 fixtures; the reference serial path from Phase 01/03 is re-expressed as the first

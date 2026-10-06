@@ -11,7 +11,10 @@ import (
 func TestRecoveryWithoutOverrideUsesClaimTimestamp(t *testing.T) {
 	db, now := seedRecoveryState(t)
 	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-new", Lease: time.Minute, Now: func() time.Time { return now }}
-	ledger := &evidence.Ledger{DB: db, LeaseOwner: "instance-new", RuntimeEpoch: "epoch-new", Lease: time.Minute}
+	ledger, ledgerErr := evidence.New(evidence.Config{Ledger: &evidence.LedgerConfig{OwnerCheck: owner.Assert, DB: db, LeaseOwner: "instance-new", RuntimeEpoch: "epoch-new", Lease: time.Minute}})
+	if ledgerErr != nil {
+		t.Fatal(ledgerErr)
+	}
 	coordinator := &RecoveryCoordinator{Owner: owner, Ledger: ledger, Epoch: "epoch-new"}
 	if _, err := coordinator.ClaimAndRecover(t.Context()); err != nil {
 		t.Fatal(err)

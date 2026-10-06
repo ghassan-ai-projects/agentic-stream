@@ -15,7 +15,7 @@ to the domain, such as a new phase.
 The runtime compares the new publication with the most recently evaluated
 version, even when that earlier evaluation started no episode. It does not
 mean “everything that changed since the last model response.” Source:
-[delta baseline](../../internal/cognition/engine.go).
+[delta baseline](../../internal/cognition/internal/app/service.go).
 
 Passing a trigger creates an opportunity for reasoning. Queue timing,
 capacity, expiry, and admission still determine whether an episode starts.
@@ -48,7 +48,7 @@ and [episode admission](../../internal/admission/).
 
 Here, debounce is a queue delay. It does not promise that the domain condition
 has held continuously; phase `minDuration` rules handle that separate question.
-See [scheduler timing](../../internal/cognition/scheduler.go) for the exact
+See [scheduler timing](../../internal/cognition/internal/domain/timing.go) for the exact
 not-before behavior.
 
 ## An episode has a beginning and an end

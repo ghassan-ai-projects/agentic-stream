@@ -55,7 +55,7 @@ Use the prompt files under `.agents/prompts/` when the task matches them.
   episodes, decisions, policy, actions, worker runtime, and storage. The worker
   protocol is `proto/agenticstream/runtime/v1/`; migrations live in `migrations/`.
   Domain data is extracted to `internal/eventschema/registry_data.json`,
-  `internal/ingress/simulator_data.json`, and
+  `internal/ingress/internal/domain/simulator_data.json`, and
   `internal/episodes/testdata/aquaculture_intents.json` (see
   `docs/design/impl/GO_DOMAIN_DATA_EXTRACTION.md`).
 
@@ -68,20 +68,20 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `cmd/agentic-stream/` - entrypoint, flags, wiring, shutdown
 - `internal/contractsv1` - versioned envelopes and JSON contracts
 - `internal/spec` - SituationSpec authoring, YAML in, canonical JSON digest
-- `internal/ingress` - ingress adapters (normalized JSONL and simulator replay; HTTP/MQTT deferred)
-- `internal/eventlog` - normalized event log, watermark/completeness tracking
-- `internal/engine` - deterministic stream engine core
+- `internal/ingress` - configured ingress facade; app replay and live-serve use cases, pure domain admission and simulator rules, a checkpoint store and a file/socket transport (see [ingress module guide](internal/ingress/README.md))
+- `internal/eventlog` - normalized event log, watermark/completeness tracking; append/quarantine/redrive use cases in `internal/app`, pure admission and identity rules in `internal/domain`, all SQL in `internal/store` (see [event log module guide](internal/eventlog/README.md))
+- `internal/engine` - configured stream-engine facade; app use cases, pure domain rules and an opaque-transaction store that owns the inbox, checkpoint, operator-state, Situation, lineage and timer tables (see [engine module guide](internal/engine/README.md))
 - `internal/operators` - deterministic operators (hysteresis, debounce, cooldown)
 - `internal/situations` - Situation state machine, versioning, publication
-- `internal/cognition` - deterministic cognitive scheduler
+- `internal/cognition` - configured scheduler facade; ordered app use cases, pure domain rules, and opaque caller-transaction store (see [cognition module guide](internal/cognition/README.md))
 - `internal/admission` - episode admission from the scheduler queue
-- `internal/episodes` - bounded episode lifecycle
-- `internal/executor/native`, `internal/executor/remote` - concrete executors behind the episode `Executor` port (in-process and streamed worker protocol)
-- `internal/evidence` - evidence/tool boundary for episodes
-- `internal/decisions` - typed Decision model
+- `internal/episodes` - configured `Service` facade; ordered assembly/execution use cases in `internal/app`, pure contracts and rules in `internal/domain`, opaque transaction joins and SQL in `internal/store` preserving the caller's transaction (see [episodes module guide](internal/episodes/README.md))
+- `internal/executor/fixture`, `internal/executor/native`, `internal/executor/remote` - concrete executors behind the episode `Executor` port (in-process and streamed worker protocol)
+- `internal/evidence` - configured Service facade over capability-scoped read tools and durable call recovery; app use cases, pure domain rules, opaque store transactions/SQL, exact wire codecs and gRPC/eventlog adapters (see [evidence module guide](internal/evidence/README.md))
+- `internal/decisions` - pure Decision/Intent validator; thin facade over `internal/domain`, with opaque compiled intent authority (see [decisions module guide](internal/decisions/README.md))
 - `internal/policy` - policy plane; revalidates every intent before dispatch. Reference structure: thin `Service` facade, ordered use cases in `internal/app`, pure governance records/rules in `internal/domain`, and caller-owned transaction plumbing plus SQL in `internal/store` (see [policy module pattern](internal/policy/README.md))
-- `internal/actions` - governed dispatch plane, idempotency, verification
-- `internal/watch` - derived-trigger watches installed by approved commands
+- `internal/actions` - configured dispatch facade; ordered app use cases, pure domain rules and document checks, and an opaque-transaction store that owns the command, outbox, outcome and verification ledgers (see [actions module guide](internal/actions/README.md))
+- `internal/watch` - derived-trigger watches installed by approved commands; configured facade, app use cases, pure domain rules and an opaque-transaction store (see [watch module guide](internal/watch/README.md))
 - `internal/actionport` - approved-command/effect contracts without implementation dependencies
 - `internal/device` - device effect boundary; the reference adapter module: thin facade, session use cases in `internal/app`, pure `internal/domain`, record codec in `internal/wire`, gateway link in `internal/transport` (record in [docs/device-reference-module-2026-10-05](docs/device-reference-module-2026-10-05/README.md))
 - `internal/episodeledger` / `internal/scheduleledger` / `internal/approvalledger` - durable lifecycle owners shared through transaction-scoped operations
@@ -89,7 +89,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/control` - runtime ownership, epoch drain/kill and final readiness capability
 - `internal/authority` - device claims, bindings, reconciliation and safety evidence; the reference module: thin `Service` facade, use cases in `internal/app`, pure `internal/domain`, transactions and SQL in `internal/store` (see [module pattern](docs/authority-reference-module-2026-10-05/MODULE_PATTERN.md) and its [ubiquitous language](docs/authority-reference-module-2026-10-05/UBIQUITOUS_LANGUAGE.md)). To bring another package to this standard, follow [the reference module refactor prompt](.agents/prompts/reference-module-refactor.md)
 - `internal/qualification` - calibration and shadow evidence
-- `internal/replay` - deterministic replay; replay never performs external effects
+- `internal/replay` - effect-safe replay modes; ordered session use cases in `internal/app`, pure verification rules in `internal/domain`, all replay SQL in `internal/store`, trace files and isolated databases in `internal/transport` (see [replay module guide](internal/replay/README.md))
 - `internal/api` - JSON/HTTP plus Server-Sent Events
 - `internal/telemetry` - OpenTelemetry traces, metrics, logs
 - `internal/storage` - SQLite WAL via `modernc.org/sqlite`
@@ -199,7 +199,7 @@ Before accepting a refactoring round:
 - Do not give models direct access to effectors or production credentials.
 - Do not re-author domain data in Go code. Event schemas live in
   `internal/eventschema/registry_data.json`, the simulator channel→field mapping in
-  `internal/ingress/simulator_data.json`, and the aquaculture intent catalog in
+  `internal/ingress/internal/domain/simulator_data.json`, and the aquaculture intent catalog in
   `internal/episodes/testdata/aquaculture_intents.json` — loaded by machinery
   (go:embed + sync.OnceValues, or os.ReadFile in the test). Adding a schema, channel,
   or intent means editing those JSON files, never a Go literal. Data changes are

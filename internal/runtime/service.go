@@ -11,7 +11,7 @@ import (
 type Service struct{ application *app.Service }
 
 // NewService requires an owner, evidence ledger and bound epoch.
-func NewService(owner *runtimecontrol.RuntimeOwner, ledger *evidence.Ledger, epoch string) (*Service, error) {
+func NewService(owner *runtimecontrol.RuntimeOwner, ledger *evidence.Service, epoch string) (*Service, error) {
 	application, err := app.NewService(owner, ledger, epoch)
 	if err != nil {
 		return nil, err

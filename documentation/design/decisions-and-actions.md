@@ -17,7 +17,7 @@ flowchart LR
 
 Text equivalent: a proposal must pass binding/schema validation and current
 policy before it becomes a Command. Rejection, deferral, or an approval need
-can stop this path. Source: [Decision validator](../../internal/decisions/validator.go)
+can stop this path. Source: [Decision validator](../../internal/decisions/internal/domain/validator.go)
 and [policy](../../internal/policy/policy.go).
 
 How is an accepted Command dispatched?
@@ -31,7 +31,7 @@ flowchart LR
 
 Text equivalent: dispatch leases an accepted Command, checks current authority,
 calls the configured effector only when permitted, and records the result.
-Source: [dispatcher](../../internal/actions/dispatcher.go).
+Source: [dispatch use case](../../internal/actions/internal/app/dispatch.go).
 
 ## Why validate twice?
 
@@ -71,9 +71,9 @@ It does not blindly retry an effect that could duplicate external work.
 
 ## Source evidence
 
-- Decision validation: [`internal/decisions/validator.go`](../../internal/decisions/validator.go)
+- Decision validation: [`internal/decisions/internal/domain/validator.go`](../../internal/decisions/internal/domain/validator.go)
 - Policy gateway: [`internal/policy/policy.go`](../../internal/policy/policy.go)
-- Dispatcher: [`internal/actions/dispatcher.go`](../../internal/actions/dispatcher.go)
+- Dispatcher: [`internal/actions/internal/app/dispatch.go`](../../internal/actions/internal/app/dispatch.go)
 - Effect adapters: [`internal/device/`](../../internal/device/) and [`internal/watch/`](../../internal/watch/)
 - Approved effect contracts: [`internal/actionport/`](../../internal/actionport/)
 

@@ -124,7 +124,7 @@ func runReplayCommand(cmd *cobra.Command, dbPath *string, tenantID string) error
 	if *dbPath == "" {
 		*dbPath = tracePath + ".replay.db"
 	}
-	result, err := replay.Run(cmd.Context(), *dbPath, specPath, tracePath, tenantID)
+	result, err := replay.Run(cmd.Context(), replay.Request{DBPath: *dbPath, SpecPath: specPath, TracePath: tracePath, TenantID: tenantID})
 	if err != nil {
 		return fmt.Errorf("run replay: %w", err)
 	}

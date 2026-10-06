@@ -21,7 +21,7 @@ type RecoveryReport = domain.RecoveryReport
 // reports ready.
 type Service struct {
 	owner  *runtimecontrol.RuntimeOwner
-	ledger *evidence.Ledger
+	ledger *evidence.Service
 	epoch  string
 
 	mu       sync.RWMutex
@@ -33,7 +33,7 @@ type Service struct {
 
 // NewService creates a runtime lifecycle around an already configured owner,
 // ledger, and epoch.
-func NewService(owner *runtimecontrol.RuntimeOwner, ledger *evidence.Ledger, epoch string) (*Service, error) {
+func NewService(owner *runtimecontrol.RuntimeOwner, ledger *evidence.Service, epoch string) (*Service, error) {
 	if owner == nil || ledger == nil || epoch == "" {
 		return nil, fmt.Errorf("runtime service is not configured")
 	}

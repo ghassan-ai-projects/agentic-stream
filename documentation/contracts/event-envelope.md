@@ -66,9 +66,9 @@ identify missing input; they do not invent replacement evidence.
 ## Source evidence
 
 - Envelope type and validation: [`internal/contractsv1/envelope.go`](../../internal/contractsv1/envelope.go)
-- JSONL adapter: [`internal/ingress/jsonl.go`](../../internal/ingress/jsonl.go)
-- Simulator adapter: [`internal/ingress/simulator.go`](../../internal/ingress/simulator.go)
-- Live socket adapter: [`internal/ingress/live_socket.go`](../../internal/ingress/live_socket.go)
+- JSONL adapter: [`internal/ingress/internal/app/jsonl.go`](../../internal/ingress/internal/app/jsonl.go)
+- Simulator adapter: [`internal/ingress/internal/app/simulator.go`](../../internal/ingress/internal/app/simulator.go)
+- Live socket adapter: [`internal/ingress/internal/app/live.go`](../../internal/ingress/internal/app/live.go)
 - Schema registry data: [`internal/eventschema/registry_data.json`](../../internal/eventschema/registry_data.json)
 
 ## Next reads
