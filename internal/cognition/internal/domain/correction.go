@@ -6,14 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
+	"time"
 )
 
 // ReconsiderationTrigger is the trigger name for corrected action evidence.
@@ -126,8 +124,8 @@ func ReconsiderationEvaluation(r Reconsideration, deltaJSON []byte, policyDigest
 	}
 }
 
-func ReconsiderationItem(r Reconsideration, now time.Time) scheduleledger.Item {
-	return scheduleledger.Item{
+func ReconsiderationItem(r Reconsideration, now time.Time) episodeledger.SchedulerItem {
+	return episodeledger.SchedulerItem{
 		SchedulerItemID: r.SchedulerItemID, Kind: "reconsider", TriggerID: r.TriggerID,
 		SituationID: r.Current.SituationID, SituationVersion: r.Current.Version,
 		Lane: "deep", Priority: 100, Status: "pending",

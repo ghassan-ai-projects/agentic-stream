@@ -40,7 +40,6 @@ fits the pattern, not yet done. **N/A** = pure rules, foundation or infrastructu
 | --- | --- | --- |
 | `qualification` | Calibration artifacts, shadow decisions and comparisons | Same |
 | `episodeledger` | Episode/attempt lifecycle writes | Shared ledger kernel |
-| `scheduleledger` | Scheduler item lifecycle writes | Shared ledger kernel |
 | `approvalledger` | Approval lifecycle writes | Shared ledger kernel; merging into `policy` would make cognition import policy |
 | `interlock` | Runtime interlock reader/writer | Tiny layer-0 leaf; merging into `control` widens dependencies |
 | `admission` | Admits scheduler items into episodes | Thin orchestrator, no tables; merge blocked by layering |

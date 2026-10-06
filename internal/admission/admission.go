@@ -9,8 +9,8 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -64,7 +64,7 @@ func (a *Admitter) admitNext(ctx context.Context) (admitted, more bool, err erro
 	if a.draining(ctx) {
 		return false, false, nil
 	}
-	itemID, found, err := scheduleledger.NextPending(ctx, a.cfg.DB.DB, a.cfg.TenantID, now)
+	itemID, found, err := episodeledger.NextPendingSchedulerItem(ctx, a.cfg.DB.DB, a.cfg.TenantID, now)
 	if err != nil || !found {
 		return false, false, err //nolint:wrapcheck // The ledger names the failed read; the batch error text is unchanged.
 	}

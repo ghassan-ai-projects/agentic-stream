@@ -1,4 +1,4 @@
-package scheduleledger
+package episodeledger
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// MarkAdmitted requires the scheduler item to still be pending.
-func MarkAdmitted(ctx context.Context, tx *sql.Tx, schedulerItemID string, now time.Time) error {
+// MarkSchedulerItemAdmitted requires the scheduler item to still be pending.
+func MarkSchedulerItemAdmitted(ctx context.Context, tx *sql.Tx, schedulerItemID string, now time.Time) error {
 	res, err := tx.ExecContext(ctx, `
 		UPDATE scheduler_items SET status = 'admitted', updated_at = ?
 		WHERE scheduler_item_id = ? AND status = 'pending'`,
@@ -33,8 +33,8 @@ func requireStillPending(result sql.Result, schedulerItemID, label string) error
 	return nil
 }
 
-// Coalesce marks the trigger's open queue items replaced by newer work.
-func Coalesce(ctx context.Context, tx *sql.Tx, situationID, triggerName, now string) error {
+// CoalesceSchedulerItems marks the trigger's open queue items replaced by newer work.
+func CoalesceSchedulerItems(ctx context.Context, tx *sql.Tx, situationID, triggerName, now string) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE scheduler_items SET status = 'coalesced', updated_at = ?
 		WHERE situation_id = ? AND trigger_id IN (

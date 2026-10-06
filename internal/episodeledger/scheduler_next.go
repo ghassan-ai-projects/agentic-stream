@@ -1,4 +1,4 @@
-package scheduleledger
+package episodeledger
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-// NextPending returns the tenant's next pending scheduler item that is due at
+// NextPendingSchedulerItem returns the tenant's next pending scheduler item that is due at
 // now, in queue order: not_before, then creation, then identity.
-func NextPending(ctx context.Context, db *sql.DB, tenantID string, now time.Time) (string, bool, error) {
+func NextPendingSchedulerItem(ctx context.Context, db *sql.DB, tenantID string, now time.Time) (string, bool, error) {
 	var itemID string
 	err := db.QueryRowContext(ctx, `
 		SELECT scheduler_item_id FROM scheduler_items

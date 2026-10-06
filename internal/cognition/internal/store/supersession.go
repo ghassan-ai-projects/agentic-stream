@@ -10,7 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -93,7 +92,7 @@ func scanSupersededItem(rows *sql.Rows) (SupersededItem, error) {
 // coalesceTriggerWork coalesces the trigger's open scheduler items,
 // supersedes their live episodes, and cancels those episodes' attempts.
 func (t *Tx) CoalesceTriggerWork(ctx context.Context, situationID, triggerName, now string) error {
-	if err := scheduleledger.Coalesce(ctx, t.tx, situationID, triggerName, now); err != nil {
+	if err := episodeledger.CoalesceSchedulerItems(ctx, t.tx, situationID, triggerName, now); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 	if err := episodeledger.SupersedeCoalesced(ctx, t.tx, situationID, now); err != nil {

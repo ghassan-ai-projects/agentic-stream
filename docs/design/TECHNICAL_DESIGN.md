@@ -203,8 +203,7 @@ methods, not one interface per table.
 The implementation further separates `actionport` (approved effect contracts),
 `device` (concrete gateway adapters), `control` (runtime ownership and epoch
 control), `authority` (device authority/reconciliation/safety), `qualification`
-(calibration and shadow evidence), `episodeledger` (episode/attempt lifecycle),
-`scheduleledger` (queue lifecycle), and `approvalledger` (approval lifecycle). `storage` owns SQLite infrastructure only.
+(calibration and shadow evidence), `episodeledger` (scheduler queue, episode and attempt lifecycle), and `approvalledger` (approval lifecycle). `storage` owns SQLite infrastructure only.
 `runtime`/`cmd` wire concrete adapters; domain packages consume downward contracts.
 All ledger operations share the original transaction. See
 [ADR-017](DECISIONS.md#adr-017-business-ownership-and-directed-module-boundaries)

@@ -31,7 +31,6 @@ flowchart TD
     R --> C["control"]
     C --> E["episodeledger"]
     S["cognition"] --> E
-    S --> Q["scheduleledger"]
     S --> H["approvalledger"]
     G["policy"] --> H
     D --> T["authority"]
@@ -69,7 +68,6 @@ records or returned values, not reverse service dependencies.
 | `episodes` | Configured Service facade; app assembles and runs bounded reasoning, domain owns pure contracts/rules, opaque store transactions preserve lifecycle and Decision handoffs |
 | `evidence` | Configured Service facade; app orders capability admission and durable query/recovery use cases; domain owns pure scope/lifecycle rules; store alone writes `evidence_call_ledger`; wire owns exact codecs; transport adapts gRPC and the eventlog-owned source. See [module guide](../../internal/evidence/README.md) |
 | `executor/fixture`, `executor/native`, `executor/remote` | Concrete executors: deterministic demo fixtures, the in-process Go executor, and the streamed EpisodeWorker adapter with per-attempt evidence capability and budget accounting |
-| `scheduleledger` | Durable queue identity, admission, coalescing and skipped opportunities |
 | `cognition` | Trigger evaluation, admission priorities, reconsideration and cost-refusal explanation |
 | `approvalledger` | Pending approval, assertion binding, resolution/expiry, and atomic supersession notification |
 | `policy` | Permission, principal/signature verification, risk, freshness, rate limits and command publication. Thin `Service` facade, app use cases, pure domain rules/typed governance documents, and a store that joins the caller transaction and owns policy SQL; [pattern](../../internal/policy/README.md) |

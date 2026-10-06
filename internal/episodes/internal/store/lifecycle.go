@@ -4,7 +4,6 @@ import (
 	"context"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
 	"time"
 )
 
@@ -15,7 +14,7 @@ func (tx *Tx) Admit(ctx context.Context, admission episodeledger.Admission, now 
 
 // MarkAdmitted hands off the pending scheduler item atomically.
 func (tx *Tx) MarkAdmitted(ctx context.Context, id string, now time.Time) error {
-	return scheduleledger.MarkAdmitted(ctx, tx.tx, id, now) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
+	return episodeledger.MarkSchedulerItemAdmitted(ctx, tx.tx, id, now) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
 }
 
 // StartAttemptOwned fences an attempt to the runtime owner.

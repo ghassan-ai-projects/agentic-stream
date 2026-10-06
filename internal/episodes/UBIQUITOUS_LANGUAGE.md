@@ -8,7 +8,7 @@ Names mean the same thing in conversation, code, storage and audit trails.
 | --- | --- | --- | --- |
 | Episode | One bounded reasoning unit over an immutable situation version | `Request` / `episodes` row | `episodes` |
 | Episode request | The durable canonical executor input document | `Request.RequestJSON` | `episodes.request_json` |
-| Admission | Persisting an assembled episode and marking its scheduler item | `Service.Persist` | `episodeledger.Admit`, `scheduleledger.MarkAdmitted` |
+| Admission | Persisting an assembled episode and marking its scheduler item | `Service.Persist` | `episodeledger.Admit`, `episodeledger.MarkSchedulerItemAdmitted` |
 | Admission key | 32-byte episode+item identity bound at admission | `Request.AdmissionKey` | `episodes.admission_key` |
 | Claim | Fencing the oldest dispatchable episode to a new attempt in one transaction | `Service.RunOnce` / private runner claim | attempt row |
 | Attempt | One fenced worker execution with identity and fence | `episodeledger.Identity` | `episode_attempts` |

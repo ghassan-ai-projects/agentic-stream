@@ -7,8 +7,8 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -34,7 +34,7 @@ func (s *scheduler) Admit(ctx context.Context, tx *store.Tx, eval domain.Evaluat
 // otherwise it supersedes stale pending items for the same Situation and
 // trigger (and their episodes, so the new episode fits the one-live-episode
 // constraint) and queues the item.
-func (s *scheduler) enqueueOrDefer(ctx context.Context, tx *store.Tx, eval domain.Evaluation, item scheduleledger.Item, tenantID, deploymentID string) error {
+func (s *scheduler) enqueueOrDefer(ctx context.Context, tx *store.Tx, eval domain.Evaluation, item episodeledger.SchedulerItem, tenantID, deploymentID string) error {
 	full, err := s.capacityExhausted(ctx, tx, eval, tenantID)
 	if err != nil {
 		return err
@@ -80,7 +80,7 @@ func (s *scheduler) saveEvaluation(ctx context.Context, tx *store.Tx, eval domai
 	return tx.AnnounceEvaluation(ctx, eval, tenantID)
 }
 
-func (s *scheduler) buildItem(ctx context.Context, tx *store.Tx, eval domain.Evaluation) (scheduleledger.Item, error) {
+func (s *scheduler) buildItem(ctx context.Context, tx *store.Tx, eval domain.Evaluation) (episodeledger.SchedulerItem, error) {
 	item := domain.NewSchedulerItem(s.itemID(), eval)
 	trigger, err := domain.FindTrigger(s.spec, eval.TriggerName)
 	if err != nil {
@@ -93,7 +93,7 @@ func (s *scheduler) buildItem(ctx context.Context, tx *store.Tx, eval domain.Eva
 	return item, err
 }
 
-func (s *scheduler) applyTriggerCooldown(ctx context.Context, tx *store.Tx, item *scheduleledger.Item, eval domain.Evaluation, trigger spec.Trigger) error {
+func (s *scheduler) applyTriggerCooldown(ctx context.Context, tx *store.Tx, item *episodeledger.SchedulerItem, eval domain.Evaluation, trigger spec.Trigger) error {
 	cooldown, err := domain.ParseOptionalDuration(trigger.Cooldown, 0)
 	if err != nil {
 		return fmt.Errorf("parse cooldown: %w", err)
@@ -106,7 +106,7 @@ func (s *scheduler) applyTriggerCooldown(ctx context.Context, tx *store.Tx, item
 
 // applyCooldown delays the item until cooldown after the trigger's latest
 // admission, when that is later than its current not-before time.
-func (s *scheduler) applyCooldown(ctx context.Context, tx *store.Tx, item *scheduleledger.Item, eval domain.Evaluation, cooldown time.Duration) error {
+func (s *scheduler) applyCooldown(ctx context.Context, tx *store.Tx, item *episodeledger.SchedulerItem, eval domain.Evaluation, cooldown time.Duration) error {
 	latest, err := tx.LatestAdmittedTime(ctx, eval.SituationID, eval.TriggerName, eval.TriggerID)
 	if err != nil || latest == nil {
 		return err
@@ -119,7 +119,7 @@ func (s *scheduler) itemID() string {
 	return s.idGen.New(ids.PrefixScheduler)
 }
 
-func (s *scheduler) insertItem(ctx context.Context, tx *store.Tx, item scheduleledger.Item, tenantID string) error {
+func (s *scheduler) insertItem(ctx context.Context, tx *store.Tx, item episodeledger.SchedulerItem, tenantID string) error {
 	now := s.clk.Now().UTC().Format(time.RFC3339Nano)
 	key := domain.SchedulerDedupeKey(item.SituationID, item.SituationVersion, item.TriggerID)
 	if err := tx.InsertItem(ctx, item, tenantID, key, now); err != nil {

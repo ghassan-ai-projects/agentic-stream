@@ -1,4 +1,4 @@
-package scheduleledger
+package episodeledger
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// CoalesceCostRejected prevents a cost-rejected opportunity from blocking the queue.
-func CoalesceCostRejected(ctx context.Context, tx *sql.Tx, schedulerItemID string, now time.Time) error {
+// CoalesceCostRejectedItem prevents a cost-rejected opportunity from blocking the queue.
+func CoalesceCostRejectedItem(ctx context.Context, tx *sql.Tx, schedulerItemID string, now time.Time) error {
 	result, err := tx.ExecContext(ctx, `
 			UPDATE scheduler_items SET status = 'coalesced', updated_at = ?
 			WHERE scheduler_item_id = ? AND status = 'pending'`,
@@ -26,8 +26,8 @@ func CoalesceCostRejected(ctx context.Context, tx *sql.Tx, schedulerItemID strin
 	return nil
 }
 
-// CoalesceSkipped removes an unavailable opportunity from the pending queue.
-func CoalesceSkipped(ctx context.Context, tx *sql.Tx, schedulerItemID string, now time.Time) error {
+// CoalesceSkippedItem removes an unavailable opportunity from the pending queue.
+func CoalesceSkippedItem(ctx context.Context, tx *sql.Tx, schedulerItemID string, now time.Time) error {
 	result, err := tx.ExecContext(ctx, `
 			UPDATE scheduler_items SET status = 'coalesced', updated_at = ?
 			WHERE scheduler_item_id = ? AND status = 'pending'`,

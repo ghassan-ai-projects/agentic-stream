@@ -11,7 +11,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/scheduleledger"
 )
 
 // skipUnadmittable records a scheduler item that can never be admitted as it
@@ -79,7 +78,7 @@ func (a *Admitter) recordCostRejection(ctx context.Context, itemID string, now t
 		if err := cognition.RecordCostRejectionReason(ctx, tx, itemID, rejection); err != nil {
 			return fmt.Errorf("%w", err)
 		}
-		return scheduleledger.CoalesceCostRejected(ctx, tx, itemID, now) //nolint:wrapcheck // The owning ledger's error is wrapped below.
+		return episodeledger.CoalesceCostRejectedItem(ctx, tx, itemID, now) //nolint:wrapcheck // The owning ledger's error is wrapped below.
 	}); err != nil {
 		return fmt.Errorf("skip cost-rejected scheduler item %s: %w", itemID, err)
 	}
@@ -91,7 +90,7 @@ func (a *Admitter) coalesceSkipped(ctx context.Context, itemID string, now time.
 		if err := a.assertOwner(ctx, tx); err != nil {
 			return fmt.Errorf("assert pipeline owner: %w", err)
 		}
-		return scheduleledger.CoalesceSkipped(ctx, tx, itemID, now) //nolint:wrapcheck // The owning ledger's error is wrapped below.
+		return episodeledger.CoalesceSkippedItem(ctx, tx, itemID, now) //nolint:wrapcheck // The owning ledger's error is wrapped below.
 	}); err != nil {
 		return fmt.Errorf("coalesce scheduler item %s: %w", itemID, err)
 	}

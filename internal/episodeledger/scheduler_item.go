@@ -1,9 +1,9 @@
-package scheduleledger
+package episodeledger
 
 import "time"
 
-// Item is one durable scheduler entry.
-type Item struct {
+// SchedulerItem is one durable scheduler entry.
+type SchedulerItem struct {
 	SchedulerItemID  string     // unique scheduler item identity.
 	Kind             string     // standard or reconsider.
 	TriggerID        string     // trigger evaluation that admitted this item.

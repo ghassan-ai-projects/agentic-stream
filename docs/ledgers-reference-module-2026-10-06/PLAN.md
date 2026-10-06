@@ -3,7 +3,7 @@
 | Round | Scope | Proof | Status |
 | --- | --- | --- | --- |
 | 0 | Findings, merge decision, design, plan | Review | Complete |
-| 1 | Merge `scheduleledger` into `episodeledger` as one flat package; rename queue operations; update callers | Full tests, lint, gates | |
+| 1 | Merge `scheduleledger` into `episodeledger` as one flat package; rename queue operations; update callers | Full tests, lint, gates | Complete |
 | 2 | Layer `episodeledger`: domain, store, app, facade; layer table; ownership | Layer, purity and ownership gates; tests per layer | |
 | 3 | Gates, injection proof, `UBIQUITOUS_LANGUAGE.md`, module guide, docs | Injected failures, full CI | |
 | 4 | `approvalledger`: drop `notify`, layer it, language file, gates | Same, plus the withdrawal ordering test | |

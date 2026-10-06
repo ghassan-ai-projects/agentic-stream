@@ -58,7 +58,6 @@ historical design map where the code has chosen a more specific package name.
 | `internal/device/internal/transport/` | Unix-socket gateway link: framing, deadlines and the may-have-sent signal |
 | `internal/device/internal/domain/` | device-boundary rules: capability catalog, materialization, effect profiles, record matching, output verification |
 | `internal/episodeledger/` | durable episode/attempt lifecycle, fencing and recovery |
-| `internal/scheduleledger/` | durable queue identity, admission and coalescing |
 | `internal/approvalledger/` | human approval lifecycle and supersession notification |
 | `internal/control/` | runtime control plane facade: owner lease, epoch drain/kill, cost ledger and ceilings, readiness capability |
 | `internal/control/internal/app/` | owner, epoch, cost and dispatch-readiness use cases |

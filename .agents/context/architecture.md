@@ -59,8 +59,8 @@ Avoid:
 
 ## Business ownership refinement (ADR-017)
 
-Additional current modules: `actionport`, `device`, `episodeledger`,
-`scheduleledger`, `approvalledger`, `control`, `authority`, `qualification`,
+Additional current modules: `actionport`, `device`, `episodeledger`
+(scheduler queue and episode lifecycle), `approvalledger`, `control`, `authority`, `qualification`,
 and `executor/remote` (the streamed worker adapter behind the episode
 `Executor` port; `episodes` never imports worker transport, rule A8).
 Their contracts are in [architecture-bar.md](architecture-bar.md); the full

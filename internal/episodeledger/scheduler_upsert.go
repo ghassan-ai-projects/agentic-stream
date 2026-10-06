@@ -1,4 +1,4 @@
-package scheduleledger
+package episodeledger
 
 import (
 	"context"
@@ -12,13 +12,13 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-// Upsert persists an admitted trigger opportunity and its deduplication identity.
-func Upsert(ctx context.Context, tx *sql.Tx, item Item, tenantID string, dedupeKey []byte, now string) error {
+// UpsertSchedulerItem persists an admitted trigger opportunity and its deduplication identity.
+func UpsertSchedulerItem(ctx context.Context, tx *sql.Tx, item SchedulerItem, tenantID string, dedupeKey []byte, now string) error {
 	values := queueItemValues(item, tenantID, dedupeKey, now)
 	return persistQueueItem(ctx, tx, values)
 }
 
-func queueItemValues(item Item, tenantID string, dedupeKey []byte, now string) []any {
+func queueItemValues(item SchedulerItem, tenantID string, dedupeKey []byte, now string) []any {
 	notBefore := sql.NullString{}
 	if item.NotBefore != nil {
 		notBefore = sql.NullString{String: item.NotBefore.Format(time.RFC3339Nano), Valid: true}

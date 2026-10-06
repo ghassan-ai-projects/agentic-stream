@@ -1,4 +1,4 @@
-package scheduleledger
+package episodeledger
 
 import (
 	"context"
@@ -37,21 +37,21 @@ func TestQueueAdmissionAndCoalescingShareCallerTransaction(t *testing.T) {
 	db := queueDB(t)
 	ctx := t.Context()
 	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
-	item := Item{SchedulerItemID: "item", TriggerID: "trigger", SituationID: "situation", SituationVersion: 1, Kind: "standard", Lane: "fast", Status: "pending", ExpiresAt: now.Add(time.Hour), NotBefore: &now}
+	item := SchedulerItem{SchedulerItemID: "item", TriggerID: "trigger", SituationID: "situation", SituationVersion: 1, Kind: "standard", Lane: "fast", Status: "pending", ExpiresAt: now.Add(time.Hour), NotBefore: &now}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		return Upsert(ctx, tx, item, "tenant", make([]byte, 32), now.Format(time.RFC3339Nano))
+		return UpsertSchedulerItem(ctx, tx, item, "tenant", make([]byte, 32), now.Format(time.RFC3339Nano))
 	}); err != nil {
 		t.Fatal(err)
 	}
 	rollback := errors.New("later participant failed")
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := MarkAdmitted(ctx, tx, "item", now); err != nil {
+		if err := MarkSchedulerItemAdmitted(ctx, tx, "item", now); err != nil {
 			return err
 		}
-		if err := MarkAdmitted(ctx, tx, "item", now); err == nil {
+		if err := MarkSchedulerItemAdmitted(ctx, tx, "item", now); err == nil {
 			t.Fatal("already admitted item was admitted twice")
 		}
-		if err := Coalesce(ctx, tx, "situation", "alarm", "coalesced-at"); err != nil {
+		if err := CoalesceSchedulerItems(ctx, tx, "situation", "alarm", "coalesced-at"); err != nil {
 			return err
 		}
 		var status string
@@ -78,11 +78,11 @@ func TestUpsertPreservesDeterministicItemIdentityAcrossConflicts(t *testing.T) {
 	db := queueDB(t)
 	ctx := t.Context()
 	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
-	item := Item{SchedulerItemID: "item", TriggerID: "trigger", SituationID: "situation", SituationVersion: 1, Kind: "standard", Lane: "fast", Status: "pending", ExpiresAt: now.Add(time.Hour)}
-	upsert := func(item Item, key byte) error {
+	item := SchedulerItem{SchedulerItemID: "item", TriggerID: "trigger", SituationID: "situation", SituationVersion: 1, Kind: "standard", Lane: "fast", Status: "pending", ExpiresAt: now.Add(time.Hour)}
+	upsert := func(item SchedulerItem, key byte) error {
 		digest := make([]byte, 32)
 		digest[0] = key
-		return db.WithTx(ctx, func(tx *sql.Tx) error { return Upsert(ctx, tx, item, "tenant", digest, "now") })
+		return db.WithTx(ctx, func(tx *sql.Tx) error { return UpsertSchedulerItem(ctx, tx, item, "tenant", digest, "now") })
 	}
 	if err := upsert(item, 1); err != nil {
 		t.Fatal(err)
@@ -113,13 +113,13 @@ func TestSkippedOpportunitiesCoalesceOnlyWhilePending(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		skip func(context.Context, *sql.Tx, string, time.Time) error
-	}{{"cost rejection", CoalesceCostRejected}, {"unavailable executor", CoalesceSkipped}} {
+	}{{"cost rejection", CoalesceCostRejectedItem}, {"unavailable executor", CoalesceSkippedItem}} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := queueDB(t)
 			ctx := t.Context()
 			now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
-			item := Item{SchedulerItemID: "item", TriggerID: "trigger", SituationID: "situation", SituationVersion: 1, Kind: "standard", Lane: "fast", Status: "pending", ExpiresAt: now.Add(time.Hour)}
-			if err := db.WithTx(ctx, func(tx *sql.Tx) error { return Upsert(ctx, tx, item, "tenant", make([]byte, 32), "now") }); err != nil {
+			item := SchedulerItem{SchedulerItemID: "item", TriggerID: "trigger", SituationID: "situation", SituationVersion: 1, Kind: "standard", Lane: "fast", Status: "pending", ExpiresAt: now.Add(time.Hour)}
+			if err := db.WithTx(ctx, func(tx *sql.Tx) error { return UpsertSchedulerItem(ctx, tx, item, "tenant", make([]byte, 32), "now") }); err != nil {
 				t.Fatal(err)
 			}
 			if err := db.WithTx(ctx, func(tx *sql.Tx) error { return tc.skip(ctx, tx, "item", now) }); err != nil {
