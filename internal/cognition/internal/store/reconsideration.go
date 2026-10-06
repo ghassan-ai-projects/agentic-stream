@@ -52,22 +52,20 @@ func reconsiderationEvent(r domain.Reconsideration, tenantID string, now time.Ti
 	return notify.LifecycleEvent{
 		ID:           "reconsideration.admitted:" + r.ID,
 		TenantID:     tenantID,
-		Type:         notify.TypeReconsiderationAdmitted,
 		Subject:      "situation/" + r.Current.SituationID,
 		PartitionKey: r.Current.SituationID,
-		Data:         reconsiderationData(r, tenantID),
+		Payload:      reconsideration(r),
 		At:           now.UTC(),
 		Trace:        contractsv1.TraceContext{Traceparent: r.Current.Traceparent, Tracestate: r.Current.Tracestate},
 	}
 }
 
-func reconsiderationData(r domain.Reconsideration, tenantID string) map[string]any {
-	return map[string]any{
-		"tenant_id": tenantID, "reconsideration_id": r.ID, "situation_id": r.Current.SituationID,
-		"superseded_version": r.Current.PreviousVersion, "correction_version": r.Current.Version,
-		"invalidated_command_id": r.Command.CommandID, "invalidated_outcome_id": r.Command.OutcomeID,
-		"trigger_id": r.TriggerID, "scheduler_item_id": r.SchedulerItemID,
-		"source_authority": notify.SourceForTenant(tenantID),
+func reconsideration(r domain.Reconsideration) notify.ReconsiderationAdmitted {
+	return notify.ReconsiderationAdmitted{
+		ReconsiderationID: r.ID, SituationID: r.Current.SituationID,
+		SupersededVersion: r.Current.PreviousVersion, CorrectionVersion: r.Current.Version,
+		InvalidatedCommandID: r.Command.CommandID, InvalidatedOutcomeID: r.Command.OutcomeID,
+		TriggerID: r.TriggerID, SchedulerItemID: r.SchedulerItemID,
 	}
 }
 

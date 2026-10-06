@@ -319,7 +319,7 @@ func TestReconciliationClosesCommandAndCitesStoredOutcome(t *testing.T) {
 	if err := db.QueryRowContext(t.Context(), "SELECT status FROM commands WHERE command_id = ?", commandID).Scan(&status); err != nil || status != "succeeded" {
 		t.Fatalf("status = %q, %v", status, err)
 	}
-	assertNotification(t, db, notify.TypeOutcomeReconciled)
+	assertNotification(t, db, notify.OutcomeReconciled{}.EventType())
 }
 
 func TestDispatchNoticesCarryTenantAndSource(t *testing.T) {
@@ -334,8 +334,8 @@ func TestDispatchNoticesCarryTenantAndSource(t *testing.T) {
 		return tx.AppendOutcomeNotice(t.Context(), domain.OutcomeNotice{Command: command, OutcomeID: "out-1", Status: domain.OutcomeReconcileRequired,
 			Reconciliation: domain.ReconciliationRequired, Digest: make([]byte, sha256.Size), At: now})
 	})
-	assertNotification(t, db, notify.TypeCommandDispatched)
-	assertNotification(t, db, notify.TypeOutcomeRecorded)
+	assertNotification(t, db, notify.CommandDispatched{}.EventType())
+	assertNotification(t, db, notify.OutcomeRecorded{}.EventType())
 }
 
 func TestWriteInsideFailedUnitOfWorkRollsBack(t *testing.T) {

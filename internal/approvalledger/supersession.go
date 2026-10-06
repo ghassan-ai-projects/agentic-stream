@@ -86,12 +86,11 @@ func supersededWithdrawalEvent(approval supersededApproval, tenantID string, clk
 	return notify.LifecycleEvent{
 		ID:           "approval.withdrawn:" + approval.approvalID,
 		TenantID:     tenantID,
-		Type:         notify.TypeApprovalWithdrawn,
 		Subject:      "approval/" + approval.approvalID,
 		PartitionKey: approval.situationID,
-		Data: map[string]any{
-			"tenant_id": tenantID, "approval_id": approval.approvalID, "intent_id": approval.intentID, "situation_id": approval.situationID,
-			"situation_version": approval.situationVersion, "reason": "situation_version_conflict", "source_authority": notify.SourceForTenant(tenantID),
+		Payload: notify.ApprovalWithdrawn{
+			ApprovalID: approval.approvalID, IntentID: approval.intentID, SituationID: approval.situationID,
+			SituationVersion: approval.situationVersion, Reason: "situation_version_conflict",
 		},
 		At:    clk.Now().UTC(),
 		Trace: contractsv1.TraceContext{Traceparent: approval.traceparent.String, Tracestate: approval.tracestate.String},

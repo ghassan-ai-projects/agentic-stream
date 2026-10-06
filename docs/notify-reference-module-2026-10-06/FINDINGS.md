@@ -44,7 +44,7 @@
   type and is part of stored event digests, so it is left as is and listed as deferred.
 - "notification", "event" and "record" are used interchangeably for the stored row.
 
-## Untyped records
+## Untyped records (resolved in round 3)
 
 - Lifecycle `data` is `map[string]any` at all eight producers; producers also repeat
   `tenant_id` and `source_authority`, which the contract requires to equal the envelope.

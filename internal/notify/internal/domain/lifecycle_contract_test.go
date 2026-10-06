@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
@@ -107,50 +109,104 @@ func TestValidateLifecycleRejectsWrongSchemaAndOrphanTracestate(t *testing.T) {
 	}
 }
 
-func TestNewLifecycleEventBuildsSealedContractEvent(t *testing.T) {
-	t.Parallel()
-	golden := loadGoldens(t)[0]
-	at := time.Date(2026, 8, 12, 12, 0, 0, 0, time.FixedZone("x", 3600))
-	request := LifecycleEvent{
-		ID: "life-1", TenantID: golden.TenantID, Type: golden.Type, Subject: golden.Subject, PartitionKey: golden.PartitionKey,
-		Data: golden.Data.(map[string]any), At: at, Trace: contractsv1.TraceContext{Traceparent: golden.Traceparent, Tracestate: golden.Tracestate},
-	}
+// payloadFrom decodes a golden event's data into its typed payload, refusing
+// any field the payload does not declare. The tenant and source authority are
+// stamped by the domain and are dropped first.
+func payloadFrom(t *testing.T, event contractsv1.CloudEvent) Payload {
+	t.Helper()
 	data := map[string]any{}
-	for key, value := range request.Data {
-		data[key] = value
+	for key, value := range event.Data.(map[string]any) {
+		if key != "tenant_id" && key != "source_authority" {
+			data[key] = value
+		}
 	}
-	data["source_authority"] = SourceForTenant(golden.TenantID)
-	request.Data = data
-	event, err := NewLifecycleEvent(request)
+	raw, err := json.Marshal(data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if event.Source != SourceForTenant(golden.TenantID) || !event.Time.Equal(at) || event.Time.Location() != time.UTC || event.DataSchema != SchemaID {
+	payload := map[string]Payload{
+		TypeOutcomeRecorded: &OutcomeRecorded{}, TypeOutcomeReconciled: &OutcomeReconciled{},
+		TypeApprovalRequested: &ApprovalRequested{}, TypeApprovalWithdrawn: &ApprovalWithdrawn{}, TypeApprovalResolved: &ApprovalResolved{},
+		TypeCommandDispatched: &CommandDispatched{}, TypeSituationSuperseded: &SituationSuperseded{}, TypeReconsiderationAdmitted: &ReconsiderationAdmitted{},
+	}[event.Type]
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(payload); err != nil {
+		t.Fatalf("%s: payload does not match its contract fields: %v", event.Type, err)
+	}
+	return payload
+}
+
+func TestTypedPayloadsReproduceEveryGoldenEvent(t *testing.T) {
+	t.Parallel()
+	goldens := loadGoldens(t)
+	if len(goldens) != len(lifecycleTypes) {
+		t.Fatalf("goldens = %d, want %d", len(goldens), len(lifecycleTypes))
+	}
+	for _, golden := range goldens {
+		t.Run(golden.Type, func(t *testing.T) {
+			t.Parallel()
+			event, err := NewLifecycleEvent(LifecycleEvent{
+				ID: golden.ID, TenantID: golden.TenantID, Subject: golden.Subject, PartitionKey: golden.PartitionKey,
+				Payload: payloadFrom(t, golden), At: golden.Time, Trace: contractsv1.TraceContext{Traceparent: golden.Traceparent, Tracestate: golden.Tracestate},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, _ := canonicaljson.Marshal(golden.Data)
+			got, _ := canonicaljson.Marshal(event.Data)
+			if event.Type != golden.Type || event.Source != golden.Source || !bytes.Equal(got, want) {
+				t.Fatalf("event type=%s source=%s\n data=%s\nwant=%s", event.Type, event.Source, got, want)
+			}
+		})
+	}
+}
+
+func TestNewLifecycleEventSealsInUTC(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 12, 12, 0, 0, 0, time.FixedZone("x", 3600))
+	event, err := NewLifecycleEvent(LifecycleEvent{ID: "i", TenantID: "acme", Subject: "s", PartitionKey: "p", At: at, Payload: validSuperseded()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !event.Time.Equal(at) || event.Time.Location() != time.UTC || !event.IngestedTime.Equal(at) || event.Source != SourceForTenant("acme") {
 		t.Fatalf("event = %+v", event)
 	}
 	if digest, _ := event.ComputeEnvelopeDigest(); digest != event.EnvelopeDigest {
 		t.Fatalf("event is not sealed: %q != %q", event.EnvelopeDigest, digest)
 	}
+	data := event.Data.(map[string]any)
+	if data["tenant_id"] != "acme" || data["source_authority"] != SourceForTenant("acme") {
+		t.Fatalf("data not bound to the envelope: %v", data)
+	}
 }
 
-func TestNewLifecycleEventRefusesIncompleteIdentityAndBadTrace(t *testing.T) {
+func validSuperseded() SituationSuperseded {
+	return SituationSuperseded{SituationID: "s1", SupersededVersion: 1, ReplacementVersion: 2, Reason: "newer_situation_version_admitted"}
+}
+
+func TestNewLifecycleEventRefusesIncompleteIdentityBadTraceAndBadPayload(t *testing.T) {
 	t.Parallel()
-	golden := loadGoldens(t)[0]
-	valid := LifecycleEvent{ID: "i", TenantID: golden.TenantID, Type: golden.Type, Subject: "s", PartitionKey: "p", Data: map[string]any{}, At: time.Now()}
+	valid := LifecycleEvent{ID: "i", TenantID: "acme", Subject: "s", PartitionKey: "p", Payload: validSuperseded(), At: time.Now()}
 	for name, mutate := range map[string]func(*LifecycleEvent){
 		"missing id":        func(r *LifecycleEvent) { r.ID = "" },
 		"missing tenant":    func(r *LifecycleEvent) { r.TenantID = "" },
-		"missing type":      func(r *LifecycleEvent) { r.Type = "" },
 		"missing subject":   func(r *LifecycleEvent) { r.Subject = "" },
 		"missing partition": func(r *LifecycleEvent) { r.PartitionKey = "" },
+		"missing payload":   func(r *LifecycleEvent) { r.Payload = nil },
 		"bad traceparent":   func(r *LifecycleEvent) { r.Trace.Traceparent = "nonsense" },
 		"orphan tracestate": func(r *LifecycleEvent) { r.Trace.Tracestate = "a=b" },
-		"binding mismatch":  func(r *LifecycleEvent) {},
+		"zero version":      func(r *LifecycleEvent) { r.Payload = SituationSuperseded{SituationID: "s1", Reason: "x"} },
+		"empty required":    func(r *LifecycleEvent) { r.Payload = SituationSuperseded{SupersededVersion: 1, ReplacementVersion: 2} },
+		"nil approval maps": func(r *LifecycleEvent) { r.Payload = ApprovalRequested{ApprovalID: "a"} },
 	} {
 		request := valid
 		mutate(&request)
 		if _, err := NewLifecycleEvent(request); err == nil {
 			t.Errorf("%s: request was accepted", name)
 		}
+	}
+	if _, err := NewLifecycleEvent(valid); err != nil {
+		t.Fatalf("valid request refused: %v", err)
 	}
 }

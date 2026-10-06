@@ -9,7 +9,7 @@ Each is also recorded in the module's `PLAN.md`.
 - **engine**: `New(ctx, Config)` replaces `NewEngine`/`NewStreamEngine`/`WithRuntimeOwner`; ownership is required and replay passes `engine.ReplayOwnership`; `Run`/`RunDueTimers` are test-only.
 - **ingress**: `New(Config)` with `ReplayJSONL`, `ReplaySimulator`, `ServeLive`; a storage error reading a simulator checkpoint stops the replay instead of restarting at line 0; both checkpoint writers share one upsert and codec; simulator data moved to `internal/ingress/internal/domain/simulator_data.json`.
 - **runtime composition**: composition without a runtime owner passes an explicit always-pass check; a non-authorized effector fails composition.
-- **notify**: `New(db)` replaces the free `ReadPage`/`Prune` functions and rejects a nil database; `AppendLifecycleEventWithTrace` became `AppendLifecycleEvent(LifecycleEvent)`; `notifycontract` merged into `notify`; the SSE handler answers 503 `runtime_not_ready` when the service cannot be built; audit details marshalling errors are returned.
+- **notify**: `New(db)` replaces the free `ReadPage`/`Prune` functions and rejects a nil database; `AppendLifecycleEventWithTrace` became `AppendLifecycleEvent(LifecycleEvent)` with typed payloads (the payload fixes the event type; the domain stamps tenant and source authority); `notifycontract` merged into `notify`; the SSE handler answers 503 `runtime_not_ready` when the service cannot be built; audit details marshalling errors are returned.
 - **layer table**: engine 10, runtime/internal/app 11, composition 12, runtime 13, replay store/app/facade 11/12/13, cmd 14.
 
 ## Deferred work

@@ -7,13 +7,13 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
 )
 
-func approvalNotificationData(ctx context.Context, tx *store.Tx, e evaluation, approvalID string) (map[string]any, error) {
+func approvalNotificationData(ctx context.Context, tx *store.Tx, e evaluation, approvalID string) (domain.ApprovalNotification, error) {
 	if err := domain.CompleteDigest(e.row.IntentSHA, "intent"); err != nil {
-		return nil, err
+		return domain.ApprovalNotification{}, err
 	}
 	evidence, err := loadApprovalContext(ctx, tx, e)
 	if err != nil {
-		return nil, err
+		return domain.ApprovalNotification{}, err
 	}
 	return domain.BuildApprovalNotification(domain.ApprovalNotice{Row: e.row, ID: approvalID, ExpiresAt: e.expiresAt, Intent: e.documents.Intent, Context: evidence}), nil
 }

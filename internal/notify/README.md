@@ -20,8 +20,9 @@ at any level above it.
 
 `New` requires the database. Appends have no dependencies and use the caller's
 transaction so a state change and its notification commit together. A producer
-passes a `LifecycleEvent`; the domain stamps the stable source, seals the digest
-and validates the contract before anything is stored, so an event that violates
+passes a `LifecycleEvent` whose `Payload` is one of eight typed structs (the payload fixes
+the event type); the domain stamps the tenant, the stable source and the source authority, seals
+the digest and validates the contract before anything is stored, so an event that violates
 the contract never reaches the outbox.
 
 Reads check the limit, then the tenant's retained bounds: a cursor before the

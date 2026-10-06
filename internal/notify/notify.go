@@ -30,17 +30,28 @@ type PageRequest = domain.PageRequest
 // notification.
 type LifecycleEvent = domain.LifecycleEvent
 
-// Lifecycle event types are stable Channel B contracts for downstream outcome
-// and approval consumers.
-const (
-	TypeApprovalRequested       = domain.TypeApprovalRequested
-	TypeApprovalWithdrawn       = domain.TypeApprovalWithdrawn
-	TypeApprovalResolved        = domain.TypeApprovalResolved
-	TypeCommandDispatched       = domain.TypeCommandDispatched
-	TypeOutcomeRecorded         = domain.TypeOutcomeRecorded
-	TypeOutcomeReconciled       = domain.TypeOutcomeReconciled
-	TypeSituationSuperseded     = domain.TypeSituationSuperseded
-	TypeReconsiderationAdmitted = domain.TypeReconsiderationAdmitted
+// Payload is the typed data of one lifecycle event; it fixes the event type.
+type Payload = domain.Payload
+
+// Lifecycle payloads, one per stable Channel B event type. The tenant and
+// source authority are stamped from the request, never supplied.
+type (
+	// ApprovalRequested asks a human to approve an intent.
+	ApprovalRequested = domain.ApprovalRequested
+	// ApprovalWithdrawn records that a pending approval was withdrawn.
+	ApprovalWithdrawn = domain.ApprovalWithdrawn
+	// ApprovalResolved records the disposition of an approval.
+	ApprovalResolved = domain.ApprovalResolved
+	// CommandDispatched records that a dispatch result was recorded.
+	CommandDispatched = domain.CommandDispatched
+	// OutcomeRecorded records that an outcome was recorded.
+	OutcomeRecorded = domain.OutcomeRecorded
+	// OutcomeReconciled records that independent evidence settled an outcome.
+	OutcomeReconciled = domain.OutcomeReconciled
+	// SituationSuperseded records that a newer Situation version replaced work.
+	SituationSuperseded = domain.SituationSuperseded
+	// ReconsiderationAdmitted records an admitted correction.
+	ReconsiderationAdmitted = domain.ReconsiderationAdmitted
 )
 
 // Refusals a reader can receive.

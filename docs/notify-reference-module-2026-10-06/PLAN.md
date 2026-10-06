@@ -5,6 +5,7 @@
 | 0 | Findings, language, design, plan | Review | Complete |
 | 1 | Domain (with merged contract), store, app, facade, caller updates and the layer re-level in one commit (the ownership gate would otherwise see two writers) | Layer tests, notify/api/actions/policy/cognition/approvalledger tests, lint | Complete |
 | 2 | Architecture gates, injection proof, module guide, maps, status docs | Injected failures, full CI, race | Complete |
+| 3 | Typed lifecycle payloads: one struct per event type, tenant and source authority stamped by the domain, all eight producers converted, policy's approval notification typed | Golden reproduction per type, JSON-shape regression test, full CI | Complete |
 
 ## Layer re-level
 
@@ -35,7 +36,6 @@ contract JSON content.
 ## Deferred
 
 - Wire `Prune` into an operator command or runtime job once a retention value is chosen.
-- Typed lifecycle payloads; domain-filled `tenant_id`/`source_authority`.
 - One transaction for `Prune`; the `tenants`/`tenant` source drift for `situation.trigger.evaluated`.
 
 ## Gates added (round 2)
@@ -47,3 +47,17 @@ layer table, import allowlists. Each was proven by injecting a violation (clock 
 domain, `database/sql` in app, SQL literal in app, logic in facade, exported store field,
 domain importing storage, store importing domain, notify importing api, a foreign writer of
 `notifications`) and watching it fail.
+
+## Round 3: typed lifecycle payloads
+
+- `LifecycleEvent` carries a `Payload` whose type fixes the event type; the `Type` field and the
+  `Type*` facade constants are gone, so a type and its data cannot disagree.
+- `tenant_id` and `source_authority` are no longer written by producers; the domain stamps both
+  from the envelope, so the binding rule can no longer be violated by a producer.
+- Payload structs have exactly the contract's fields; the contract test decodes every golden event
+  into its struct with unknown fields refused and compares the produced data with the golden.
+- `policy` seals an `ApprovalNotification` struct (same canonical JSON as the old map; a nil `delta`
+  stays `{}`, covered by a regression test) and its store checks the notification is bound to the
+  row's tenant before publishing.
+- Still untyped: enum-like strings (`status`, `verdict`, `risk_class`) are validated by the schema, not
+  by Go types; `ApprovalRequested.Delta` and `.Action` are open objects by contract.

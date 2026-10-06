@@ -115,20 +115,17 @@ func supersededItemEvent(replacement ReplacementVersion, item SupersededItem, no
 	return notify.LifecycleEvent{
 		ID:           "situation.superseded:" + situationID + ":" + fmt.Sprint(item.Version) + ":" + fmt.Sprint(replacement.Version) + ":" + item.ID,
 		TenantID:     tenantID,
-		Type:         notify.TypeSituationSuperseded,
 		Subject:      "situation/" + situationID,
 		PartitionKey: situationID,
-		Data:         supersededItemData(replacement, item),
+		Payload:      supersededItem(replacement, item),
 		At:           now.UTC(),
 		Trace:        trace,
 	}
 }
 
-func supersededItemData(replacement ReplacementVersion, item SupersededItem) map[string]any {
-	situationID, tenantID := replacement.SituationID, replacement.TenantID
-	return map[string]any{
-		"tenant_id": tenantID, "situation_id": situationID,
-		"superseded_version": item.Version, "replacement_version": replacement.Version,
-		"reason": "newer_situation_version_admitted", "source_authority": notify.SourceForTenant(tenantID),
+func supersededItem(replacement ReplacementVersion, item SupersededItem) notify.SituationSuperseded {
+	return notify.SituationSuperseded{
+		SituationID: replacement.SituationID, SupersededVersion: item.Version,
+		ReplacementVersion: replacement.Version, Reason: "newer_situation_version_admitted",
 	}
 }
