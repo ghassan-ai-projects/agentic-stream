@@ -10,7 +10,7 @@ import (
 // durableOwners pin every current production mutation, including shared handoff
 // aggregates whose permitted phases are further restricted below.
 var durableOwners = map[string]string{
-	"approvals":                     "internal/approvalledger",
+	"approvals":                     "internal/approvalledger/internal/store",
 	"calibration_artifacts":         "internal/qualification",
 	"commands":                      "internal/actions/internal/store",
 	"connector_checkpoints":         "internal/ingress/internal/store",

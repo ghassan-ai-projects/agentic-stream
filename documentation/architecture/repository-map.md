@@ -61,7 +61,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/episodeledger/internal/app/` | queue, admission, attempt, identity, rejection and recovery use cases |
 | `internal/episodeledger/internal/domain/` | pure statuses, identity and fence checks, transition table, rejection and recovery rules |
 | `internal/episodeledger/internal/store/` | the only SQL for `scheduler_items`, `episodes`, `episode_attempts` and `episode_rejections` |
-| `internal/approvalledger/` | human approval lifecycle and supersession notification |
+| `internal/approvalledger/` | human approval lifecycle facade: request, expiry, resolution, assertion binding, withdrawal |
+| `internal/approvalledger/internal/app/` | lifecycle writes and the superseded-approval withdrawal with caller-published notifications |
+| `internal/approvalledger/internal/domain/` | approval states, stable reasons and the withdrawal fact |
+| `internal/approvalledger/internal/store/` | the only SQL for `approvals` |
 | `internal/control/` | runtime control plane facade: owner lease, epoch drain/kill, cost ledger and ceilings, readiness capability |
 | `internal/control/internal/app/` | owner, epoch, cost and dispatch-readiness use cases |
 | `internal/control/internal/domain/` | pure lease, epoch-refusal and cost rules |

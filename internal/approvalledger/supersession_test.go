@@ -1,7 +1,8 @@
-package approvalledger
+package approvalledger_test
 
 import (
 	"database/sql"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +15,7 @@ func TestWithdrawalReadsClockAfterEachOrderedMutationAndRollsBackOnPublishFailur
 	ctx := t.Context()
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		for _, id := range []string{"old", "denied"} {
-			if err := Request(ctx, tx, id, id, "now", "later", []byte(`{}`), "nonce-"+id); err != nil {
+			if err := approvalledger.Request(ctx, tx, id, id, "now", "later", []byte(`{}`), "nonce-"+id); err != nil {
 				return err
 			}
 		}
@@ -37,7 +38,7 @@ func TestWithdrawalReadsClockAfterEachOrderedMutationAndRollsBackOnPublishFailur
 			}
 			reads++
 		}}
-		return WithdrawSuperseded(ctx, tx, "situation", "tenant", 2, "withdrawn", clk)
+		return approvalledger.WithdrawSuperseded(ctx, tx, "situation", 2, "withdrawn", withdrawalPublisher("tenant", clk))
 	})
 	if err == nil || !strings.Contains(err.Error(), "append superseded approval notification:") || reads != 2 {
 		t.Fatalf("ordered publication failure: err=%v clock reads=%d", err, reads)
