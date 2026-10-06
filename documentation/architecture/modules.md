@@ -63,6 +63,7 @@ records or returned values, not reverse service dependencies.
 | `device` | Closed capability catalog, deterministic materialization, session/boot checks, safe stop, gateway transport and the simulated effector |
 | `actions` | Configured Service facade; app leases and dispatches approved commands, domain owns authorization and reconciliation rules, opaque store transactions keep ledger writes, owner and interlock checks atomic |
 | `watch` | Configured facade; app installs, fires and expires bounded derived-trigger watches, domain owns payload and CEL rules, the opaque store owns `watch_conditions`/`watch_fires` |
+| `notify` | Facade with transactional `Append`/`AppendLifecycleEvent` and a `Service` for paged reads and pruning; app orders seal, deduplication, cursor allocation, resume refusal and poison accounting; domain owns the lifecycle contract and rules; the opaque store owns the five `notification_*` tables |
 | `episodeledger` | Episode/attempt state, fencing identity, rejection audit, recovery and cancellation mutations |
 | `admission` | Turning due scheduler items into epoch-stamped episodes; drain stop, fixture refusal and recorded skips for unadmittable items |
 | `episodes` | Configured Service facade; app assembles and runs bounded reasoning, domain owns pure contracts/rules, opaque store transactions preserve lifecycle and Decision handoffs |

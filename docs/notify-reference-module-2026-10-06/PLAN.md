@@ -3,8 +3,8 @@
 | Round | Scope | Proof | Status |
 | --- | --- | --- | --- |
 | 0 | Findings, language, design, plan | Review | Complete |
-| 1 | Domain (with merged contract), store, app, facade, caller updates and the layer re-level in one commit (the ownership gate would otherwise see two writers) | Layer tests, notify/api/actions/policy/cognition/approvalledger tests, lint | |
-| 2 | Architecture gates, injection proof, module guide, maps, status docs | Injected failures, full CI, race | |
+| 1 | Domain (with merged contract), store, app, facade, caller updates and the layer re-level in one commit (the ownership gate would otherwise see two writers) | Layer tests, notify/api/actions/policy/cognition/approvalledger tests, lint | Complete |
+| 2 | Architecture gates, injection proof, module guide, maps, status docs | Injected failures, full CI, race | Complete |
 
 ## Layer re-level
 
@@ -37,3 +37,13 @@ contract JSON content.
 - Wire `Prune` into an operator command or runtime job once a retention value is chosen.
 - Typed lifecycle payloads; domain-filled `tenant_id`/`source_authority`.
 - One transaction for `Prune`; the `tenants`/`tenant` source drift for `situation.trigger.evaluated`.
+
+## Gates added (round 2)
+
+`architecture_notify_test.go`: facade only delegates, store `Store`/`Tx` fields private,
+app uses no raw SQL calls. Existing generic gates now also cover notify: pure domain,
+no `database/sql` in app, SQL only in store, table ownership (`internal/notify/internal/store`),
+layer table, import allowlists. Each was proven by injecting a violation (clock read in
+domain, `database/sql` in app, SQL literal in app, logic in facade, exported store field,
+domain importing storage, store importing domain, notify importing api, a foreign writer of
+`notifications`) and watching it fail.

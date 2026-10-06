@@ -16,7 +16,7 @@ capability it cannot trigger.
 | `replay` (+4 layers) | 93 | Recorded, shadow, counterfactual, baseline modes, `RunNTimes`; CLI wires only `Run` | 8 | Wire to the CLI (shadow mode is a design acceptance item) |
 | `engine/internal/app` | 5 | Per-partition run path kept only for tests | 8 | Delete; move tests to `RunGlobal` |
 | `qualification` | 6 | Calibration `Activate`, `ShadowComparisonStore.Record` | 7 | Wire, or accept that consequential intents always need approval |
-| `notify` | 3 | `Prune`: retention never runs | 7 | Schedule from the runtime |
+| `notify` | 3 | `Prune`: retention never runs | 7 | **Decided (notify migration):** keep as `Service.Prune`; not scheduled until an operator chooses a retention. See the notify record |
 | `eventlog` (+3 layers) | 14 | Quarantine release/redrive, `RecordGap`; no operator path | 6 | Operator command or remove |
 | `executor/native` | 8 | `RunBatch`, `MemoryArtifactStore`; evaluation harness | 4 | Keep or move behind an eval package |
 | `episodeledger` | 1 | Non-transactional `RecoverUnfinishedAttempts` (the `Tx` variant is used) | 3 | Delete |
@@ -26,7 +26,7 @@ capability it cannot trigger.
 | `soak` | 3 | `Compute` wrappers (export uses `ComputeTx`) | 2 | Keep or trim |
 | `authority` | 2 | Exported wrappers over domain helpers | 2 | Unexport or delete |
 | `contractsv1` | 6 | Conformance fixtures | 1 | Keep |
-| `notifycontract` | 2 | `Types`, `GoldenEvents` contract fixtures | 1 | Keep |
+| `notifycontract` | 2 | `Types`, `GoldenEvents` contract fixtures | 1 | **Removed (notify migration):** package merged into `notify`; `Types` and `GoldenEvents` left production code (goldens load in tests) |
 | `episodes` | 1 | `CompileIntentCatalog` wrapper | 1 | Delete or keep |
 | `canonicaljson` | 1 | `MarshalString` | 1 | Delete |
 
