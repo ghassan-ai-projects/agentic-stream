@@ -1,6 +1,6 @@
-// Package conformance contains the semantic executor contract shared by the
+// Package executorconformance contains the semantic executor contract shared by the
 // in-process Go fixture and the streamed EpisodeWorker fixture.
-package conformance
+package executorconformance
 
 import (
 	"context"

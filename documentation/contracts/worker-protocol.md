@@ -49,7 +49,7 @@ late, wrong, incomplete, or budget-violating streams.
 ```bash
 make proto-generate
 make proto-check
-go test ./internal/executor/conformance ./internal/worker ./internal/episodes
+go test ./internal/testsupport/executorconformance ./internal/worker ./internal/episodes
 ```
 
 Protocol changes require an ADR or accepted decision, compatibility analysis,

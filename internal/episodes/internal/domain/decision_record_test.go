@@ -11,13 +11,13 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/conformance"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/executorconformance"
 )
 
 func TestValidDecisionStorageUsesVerifiedDigest(t *testing.T) {
 	t.Parallel()
-	req := conformance.FixtureRequest()
+	req := executorconformance.FixtureRequest()
 	outcome, err := fixture.New().Execute(t.Context(), req)
 	if err != nil {
 		t.Fatal(err)

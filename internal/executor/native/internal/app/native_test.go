@@ -12,8 +12,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/conformance"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/executorconformance"
 )
 
 func TestDeterministicNativeExecutorConforms(t *testing.T) {
@@ -21,7 +21,7 @@ func TestDeterministicNativeExecutorConforms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := conformance.Run(context.Background(), executor); err != nil {
+	if err := executorconformance.Run(context.Background(), executor); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -35,7 +35,7 @@ func TestNativeExecutorRunsReadToolThenDecision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	outcome, err := executor.Execute(context.Background(), conformance.FixtureRequest())
+	outcome, err := executor.Execute(context.Background(), executorconformance.FixtureRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestNativeExecutorSpillsOversizedResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := conformance.FixtureRequest()
+	request := executorconformance.FixtureRequest()
 	request.RequestJSON = replaceBudget(request.RequestJSON, `{"tool_result_bytes":4,"model_calls":3}`)
 	outcome, err := executor.Execute(context.Background(), request)
 	if err != nil {
@@ -73,7 +73,7 @@ func TestNativeExecutorFailsInterruptImmediately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	outcome, err := executor.Execute(context.Background(), conformance.FixtureRequest())
+	outcome, err := executor.Execute(context.Background(), executorconformance.FixtureRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestNativeExecutorUsesBoundedProviderRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := conformance.FixtureRequest()
+	request := executorconformance.FixtureRequest()
 	request.RequestJSON = replaceBudget(request.RequestJSON, `{"provider_retries":1,"model_calls":3}`)
 	outcome, err := executor.Execute(context.Background(), request)
 	if err != nil {
@@ -115,7 +115,7 @@ func TestNativeExecutorEnforcesReportedUsageBudgets(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			request := conformance.FixtureRequest()
+			request := executorconformance.FixtureRequest()
 			request.RequestJSON = replaceBudget(request.RequestJSON, test.limit)
 			outcome, err := executor.Execute(context.Background(), request)
 			if err != nil || outcome.Status != string(episodeledger.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != test.want {
@@ -130,7 +130,7 @@ func TestNativeExecutorEnforcesWallTimeAfterLateProviderResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := conformance.FixtureRequest()
+	request := executorconformance.FixtureRequest()
 	request.RequestJSON = replaceBudget(request.RequestJSON, `{"wall_time":"1ms"}`)
 	outcome, err := executor.Execute(context.Background(), request)
 	if err != nil || outcome.Status != string(episodeledger.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != "timed_out" || outcome.CostMicrounits != 42 {
@@ -144,7 +144,7 @@ func TestNativeExecutorRejectsUnboundedRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := conformance.FixtureRequest()
+	request := executorconformance.FixtureRequest()
 	request.RequestJSON = replaceBudget(request.RequestJSON, `{}`)
 	if _, err := executor.Execute(context.Background(), request); err == nil {
 		t.Fatal("unbounded request succeeded")
@@ -161,7 +161,7 @@ func TestNativeExecutorRejectsMissingUsageForUsageBound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := conformance.FixtureRequest()
+	request := executorconformance.FixtureRequest()
 	request.RequestJSON = replaceBudget(request.RequestJSON, `{"input_tokens":10,"model_calls":1}`)
 	outcome, err := executor.Execute(context.Background(), request)
 	if err != nil {
@@ -184,7 +184,7 @@ func TestNativeExecutorPreservesUsageOnCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := conformance.FixtureRequest()
+	request := executorconformance.FixtureRequest()
 	request.RequestJSON = replaceBudget(request.RequestJSON, `{"model_calls":3}`)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -224,7 +224,7 @@ func TestNativeExecutorBacksOffProviderRetries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := conformance.FixtureRequest()
+	request := executorconformance.FixtureRequest()
 	request.RequestJSON = replaceBudget(request.RequestJSON, `{"model_calls":3,"provider_retries":1}`)
 	outcome, err := executor.Execute(context.Background(), request)
 	if err != nil || outcome.Status != string(episodeledger.AttemptProduced) {
@@ -241,7 +241,7 @@ func TestNativeExecutorCapsProviderRetries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := conformance.FixtureRequest()
+	request := executorconformance.FixtureRequest()
 	request.RequestJSON = replaceBudget(request.RequestJSON, `{"model_calls":5,"provider_retries":1}`)
 	outcome, err := executor.Execute(context.Background(), request)
 	if err != nil {
@@ -261,7 +261,7 @@ func TestNativeExecutorCancellationStopsRetryBackoff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := conformance.FixtureRequest()
+	request := executorconformance.FixtureRequest()
 	request.RequestJSON = replaceBudget(request.RequestJSON, `{"model_calls":5,"provider_retries":3}`)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

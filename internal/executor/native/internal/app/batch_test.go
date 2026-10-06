@@ -9,8 +9,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/conformance"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/executorconformance"
 )
 
 func TestRunBatchReportsEveryCellIntentionToTreat(t *testing.T) {
@@ -21,7 +21,7 @@ func TestRunBatchReportsEveryCellIntentionToTreat(t *testing.T) {
 	requests := make([]*episodes.Request, 3)
 	cellIDs := []string{"pilot.do-crash.001", "pilot.do-crash.002", "pilot.do-crash.003"}
 	for i := range requests {
-		requests[i] = conformance.FixtureRequest()
+		requests[i] = executorconformance.FixtureRequest()
 		requests[i].EpisodeID = cellIDs[i]
 	}
 	results, err := native.RunBatch(context.Background(), executor, requests, cellIDs)
@@ -46,7 +46,7 @@ func TestRunBatchJSONRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := conformance.FixtureRequest()
+	request := executorconformance.FixtureRequest()
 	raw, err := native.RunBatchJSON(context.Background(), executor, []*episodes.Request{request}, []string{"cell-1"})
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ func TestRunBatchRejectsMismatchedLengths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = native.RunBatch(context.Background(), executor, []*episodes.Request{conformance.FixtureRequest()}, nil)
+	_, err = native.RunBatch(context.Background(), executor, []*episodes.Request{executorconformance.FixtureRequest()}, nil)
 	if err == nil {
 		t.Fatal("expected a length mismatch error")
 	}
@@ -85,7 +85,7 @@ func TestRunBatchReportsFailedCellsIntentionToTreat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := conformance.FixtureRequest()
+	request := executorconformance.FixtureRequest()
 	results, err := native.RunBatch(context.Background(), executor, []*episodes.Request{request}, []string{"cell-fail-1"})
 	if err != nil {
 		t.Fatal(err)

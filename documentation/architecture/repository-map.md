@@ -88,7 +88,8 @@ historical design map where the code has chosen a more specific package name.
 | `internal/canonicaljson/internal/domain/` | pure canonical encoder, number and string rules, strict validation, digest and stored-document rules (reference module layer) |
 | `internal/sources/` | deterministic digest, time, duration and identity primitives |
 | `internal/executor/fixture/` | deterministic episode executor for explicit demo and replay fixtures |
-| `internal/executor/native/`, `internal/executor/remote/`, `internal/executor/conformance/`, `internal/worker/` | in-process and out-of-process executors, executor qualification and worker protocol transport |
+| `internal/executor/native/`, `internal/executor/remote/`, `internal/worker/` | in-process and out-of-process executors and worker protocol transport |
+| `internal/testsupport/executorconformance/` | test support: the semantic contract every episode executor must meet |
 | `internal/runartifact/` | bounded operational evidence (soak verdict) and immutable artifact verification; facade, `internal/app`, pure `internal/domain`, read-only `internal/store`, artifact directory in `internal/transport` |
 | `internal/replay/` | effect-safe replay modes |
 | `internal/replay/internal/app/` | replay sessions: epoch derivation, ingestion, engine runs and capability phases |

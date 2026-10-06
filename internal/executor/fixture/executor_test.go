@@ -7,13 +7,13 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/conformance"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/executorconformance"
 )
 
 func TestFixtureExecutorConforms(t *testing.T) {
 	t.Parallel()
-	if err := conformance.Run(t.Context(), fixture.New()); err != nil {
+	if err := executorconformance.Run(t.Context(), fixture.New()); err != nil {
 		t.Fatal(err)
 	}
 }

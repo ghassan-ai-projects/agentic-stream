@@ -10,7 +10,7 @@ Start with:
 
 - [Worker protocol](../contracts/worker-protocol.md)
 - [`docs/design/contracts/runtime-v1.proto`](../../docs/design/contracts/runtime-v1.proto)
-- [`internal/executor/conformance/`](../../internal/executor/conformance/)
+- [`internal/testsupport/executorconformance/`](../../internal/testsupport/executorconformance/)
 
 The runtime calls `Handshake`, then `Execute`. The worker streams events and
 must emit exactly one terminal event for each attempt.
@@ -36,7 +36,7 @@ Generated stubs are refreshed and checked with:
 
 ```bash
 make proto-check
-go test ./internal/executor/conformance ./internal/worker ./internal/episodes
+go test ./internal/testsupport/executorconformance ./internal/worker ./internal/episodes
 ```
 
 The conformance suite exercises the fake, streamed, and separate-process

@@ -46,6 +46,7 @@ Already uniform: the 21 layered modules plus `canonicaljson` and `decisions`.
 
 - `storage`: the database adapter itself.
 - `testsupport/*`: test helpers.
+- `interlock`: a 61-line SQL-bound port that no contract package, and no module without widening dependencies, can host.
 
 ## Order
 
@@ -70,7 +71,8 @@ renumbering may be needed again for `actionport` (it gains a store).
 | --- | --- |
 | `duration` and `eventschema` merged into `spec` (`spec.ParseDuration`, `spec.EventSchema`, `spec.RegisterEventSchema`; `event_schemas` is now owned by `spec`; data file `internal/spec/event_schema_data.json`) | Done |
 | `ids` + `clock` merged into `internal/sources`. The id prefixes stay beside the generators (not `contractsv1`: the action plane may not import it). The old import ban on clock for deterministic layers became a symbol-level gate: domain layers and the replay store may use `sources.Prefix*` and `sources.Deterministic` but never `Clock`, `Physical`, `Virtual`, `Random` (`TestDeterministicLayersDoNotUseTimeOrRandomSources`, proven by injection) | Done |
-| `interlock` into `actionport` (facade + domain + store) | Decided, not started |
-| `executor/conformance` and `executor/fixture` to `testsupport` (decided by the owner; note composition imports the fixture for demo mode) | Decided, not started |
+| `interlock` into `actionport` | **Tried and reverted.** `actionport` is a contract package that must not import `database/sql` (the interlock reader is defined on `*sql.Tx`), and its layer would sit level with its own consumers. `control` stays rejected (it widens the imports of policy, actions and watch). Result: `interlock` stays a documented stand-alone exception unless you choose `control` |
+| `executor/conformance` to `internal/testsupport/executorconformance` | Done |
+| `executor/fixture` to `testsupport` | Held: composition imports it for demo mode, so it is production code; moving it needs a decision on demo mode |
 | `contractsv1`, `operators`, `situations` to facade + domain; `spec`, `worker`, `telemetry`, `api` layered | Not started |
 | One gate requiring facade + `internal/domain` for every module | Not started |

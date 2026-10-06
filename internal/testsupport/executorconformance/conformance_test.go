@@ -1,4 +1,4 @@
-package conformance_test
+package executorconformance
 
 import (
 	"bytes"
@@ -19,7 +19,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/conformance"
 	remoteexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/remote"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
@@ -47,7 +46,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestFakeExecutorConforms(t *testing.T) {
-	if err := conformance.Run(context.Background(), fixture.New()); err != nil {
+	if err := Run(context.Background(), fixture.New()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -65,7 +64,7 @@ func TestStreamedWorkerConforms(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 	executor := remoteexecutor.NewExecutor(runtimev1.NewEpisodeWorkerClient(conn), "worker-1", "runtime", nil)
-	if err := conformance.Run(context.Background(), executor); err != nil {
+	if err := Run(context.Background(), executor); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -131,7 +130,7 @@ func TestSeparateProcessWorkerConforms(t *testing.T) {
 	executor := remoteexecutor.NewExecutor(runtimev1.NewEpisodeWorkerClient(conn), "worker-1", "runtime", nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := conformance.Run(ctx, executor); err != nil {
+	if err := Run(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -140,7 +139,7 @@ func conformanceWorker() *worker.Server {
 	return &worker.Server{WorkerName: "worker-1", WorkerVersion: "test", ExecuteFunc: func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		decision := map[string]any{
 			"decision_id": "dec-conformance", "episode_id": "epi-conformance", "attempt_id": "att-conformance", "fence": 1,
-			"snapshot_digest": conformance.FixtureRequest().SnapshotSHA256, "situation_id": "sit-conformance", "situation_version": 1,
+			"snapshot_digest": FixtureRequest().SnapshotSHA256, "situation_id": "sit-conformance", "situation_version": 1,
 			"decision_type": "need_more_evidence", "intents": []any{},
 		}
 		decisionJSON, err := canonicaljson.Marshal(decision)
