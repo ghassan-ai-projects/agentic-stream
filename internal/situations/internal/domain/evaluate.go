@@ -1,4 +1,4 @@
-package situations
+package domain
 
 import (
 	"context"

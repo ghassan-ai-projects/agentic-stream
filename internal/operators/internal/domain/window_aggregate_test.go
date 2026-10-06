@@ -1,4 +1,4 @@
-package operators
+package domain
 
 import (
 	"math"

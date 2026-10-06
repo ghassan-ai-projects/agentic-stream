@@ -23,8 +23,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/engine/internal/app/` | serialised runs, per-record transactions, timers and rollback restore |
 | `internal/engine/internal/store/` | opaque transactions, engine SQL and owner fence |
 | `internal/engine/internal/domain/` | pure watermark, Situation state, lineage, timer and heartbeat rules |
-| `internal/operators/` | aggregates, slopes, missing-heartbeat and related features |
-| `internal/situations/` | Situation state and immutable versions |
+| `internal/operators/` | aggregates, slopes, missing-heartbeat and related features (facade) |
+| `internal/operators/internal/domain/` | pure operator runtime: windows, aggregates, slopes, heartbeats and boot admission |
+| `internal/situations/` | Situation state and immutable versions (facade) |
+| `internal/situations/internal/domain/` | pure Situation engine: reducers, transition evaluation, materialization and versioning |
 | `internal/cognition/` | configured deterministic scheduler facade |
 | `internal/cognition/internal/app/` | ordered trigger, queue and correction use cases |
 | `internal/cognition/internal/domain/` | pure evaluation, timing, capacity and correction rules |

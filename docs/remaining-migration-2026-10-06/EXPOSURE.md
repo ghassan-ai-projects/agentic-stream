@@ -16,3 +16,15 @@ Exported in the domain but **not exposed** (no other package uses them; candidat
 
 Exposed because other exposed signatures mention them, yet never named outside: `EventSchema`.
 
+## situations
+
+Exposed to other packages: 5 symbols used by production code, plus 0 used only by other packages' tests (``).
+
+Exported in the domain but **not exposed** (no other package uses them; candidates for deletion or for staying internal): ``.
+
+## operators
+
+Exposed to other packages: 7 symbols used by production code, plus 2 used only by other packages' tests (`CompletenessOnTime, CompletenessUncertain`).
+
+Exported in the domain but **not exposed** (no other package uses them; candidates for deletion or for staying internal): `Completeness, CompletenessCorrected, CompletenessFinalByPolicy, RuntimeOperatorID, RuntimeState, Sample, State, TimerIdentity, WindowState`.
+

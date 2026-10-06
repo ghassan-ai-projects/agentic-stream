@@ -77,6 +77,8 @@ var forbiddenImports = map[string][]string{
 // follow the data flow in .agents/context/architecture.md and be added here in
 // the same change.
 var allowedImports = map[string][]string{
+	"internal/operators/internal/domain":          {"internal/contractsv1", "internal/sources", "internal/spec"},
+	"internal/situations/internal/domain":         {"internal/canonicaljson", "internal/contractsv1", "internal/operators", "internal/sources", "internal/spec"},
 	"internal/spec/internal/store":                {"internal/canonicaljson", "internal/spec/internal/domain", "internal/storage"},
 	"internal/spec/internal/domain":               {"internal/canonicaljson"},
 	"internal/spec/internal/app":                  {"internal/spec/internal/domain"},
@@ -171,7 +173,7 @@ var allowedImports = map[string][]string{
 	"internal/notify/internal/app":                {"internal/contractsv1", "internal/notify/internal/domain", "internal/notify/internal/store", "internal/sources"},
 	"internal/notify/internal/domain":             {"internal/canonicaljson", "internal/contractsv1"},
 	"internal/notify/internal/store":              {"internal/storage"},
-	"internal/operators":                          {"internal/contractsv1", "internal/sources", "internal/spec"},
+	"internal/operators":                          {"internal/operators/internal/domain", "internal/sources", "internal/spec"},
 	"internal/policy/internal/domain":             {"internal/canonicaljson", "internal/contractsv1"},
 	"internal/policy":                             {"internal/interlock", "internal/policy/internal/app", "internal/policy/internal/domain", "internal/policy/internal/store", "internal/sources"},
 	"internal/replay":                             {"internal/replay/internal/app", "internal/replay/internal/domain", "internal/spec"},
@@ -185,7 +187,7 @@ var allowedImports = map[string][]string{
 	"internal/runartifact/internal/store":         {"internal/authority", "internal/runartifact/internal/domain", "internal/storage"},
 	"internal/runartifact/internal/transport":     {"internal/runartifact/internal/domain"},
 	"internal/runtime":                            {"internal/control", "internal/episodes", "internal/evidence", "internal/policy", "internal/runtime/internal/app", "internal/runtime/internal/composition", "internal/runtime/internal/domain", "internal/runtime/internal/transport"},
-	"internal/situations":                         {"internal/canonicaljson", "internal/contractsv1", "internal/operators", "internal/sources", "internal/spec"},
+	"internal/situations":                         {"internal/situations/internal/domain", "internal/sources", "internal/spec"},
 	"internal/spec":                               {"internal/spec/internal/app", "internal/spec/internal/domain", "internal/spec/internal/store", "internal/storage"},
 	"internal/storage":                            {"migrations"},
 	"internal/telemetry":                          {"internal/telemetry/internal/domain", "internal/telemetry/internal/transport"},

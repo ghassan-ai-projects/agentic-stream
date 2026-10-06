@@ -1,5 +1,4 @@
-// Package operators implements deterministic, keyed stream operators.
-package operators
+package domain
 
 import "time"
 

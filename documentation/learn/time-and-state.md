@@ -79,7 +79,7 @@ features. The current scheduler does not enforce the schema-visible trigger
 `completeness` field as a separate admission gate; use explicit trigger
 conditions, such as the heartbeat check, when those checks must affect
 admission. Source: [feature emission](../../internal/operators/), [Situation
-update](../../internal/situations/reducers.go), and [trigger
+update](../../internal/situations/internal/domain/reducers.go), and [trigger
 evaluation](../../internal/cognition/internal/domain/trigger_rules.go).
 
 ## Correction, reconsideration, and compensation
