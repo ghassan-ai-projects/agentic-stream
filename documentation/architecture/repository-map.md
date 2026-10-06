@@ -66,7 +66,8 @@ historical design map where the code has chosen a more specific package name.
 | `internal/executor/native/internal/domain/` | pure provider and tool contracts, budget accounting, request decoding, Decision and evidence-scope rules |
 | `internal/executor/native/internal/transport/` | OpenAI-compatible HTTP provider and response decoding |
 | `internal/executor/native/internal/store/` | scope-bound event-log evidence tool |
-| `internal/actionport/` | approved command/effect contracts |
+| `internal/actionport/` | approved command/effect contracts (facade) |
+| `internal/actionport/internal/domain/` | the effect port contracts: command, effect, effector interfaces and the unknown-outcome error |
 | `internal/device/` | device effect boundary facade: effect profiles, catalog loading, gateway dial and effector constructors |
 | `internal/device/internal/app/` | device session use cases and the gateway, simulated and fail-closed effectors |
 | `internal/device/internal/wire/` | device record codec: schema-validated canonical NDJSON, typed records and original evidence documents |

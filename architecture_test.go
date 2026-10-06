@@ -77,6 +77,7 @@ var forbiddenImports = map[string][]string{
 // follow the data flow in .agents/context/architecture.md and be added here in
 // the same change.
 var allowedImports = map[string][]string{
+	"internal/actionport/internal/domain":         {},
 	"internal/operators/internal/domain":          {"internal/contractsv1", "internal/sources", "internal/spec"},
 	"internal/situations/internal/domain":         {"internal/canonicaljson", "internal/contractsv1", "internal/operators", "internal/sources", "internal/spec"},
 	"internal/spec/internal/store":                {"internal/canonicaljson", "internal/spec/internal/domain", "internal/storage"},
@@ -100,7 +101,7 @@ var allowedImports = map[string][]string{
 	"internal/policy/internal/store":              {"internal/approvalledger", "internal/contractsv1", "internal/interlock", "internal/notify", "internal/policy/internal/domain"},
 	"internal/policy/internal/app":                {"internal/canonicaljson", "internal/control", "internal/interlock", "internal/policy/internal/domain", "internal/policy/internal/store", "internal/sources"},
 	"cmd/agentic-stream":                          {"internal/actionport", "internal/actions", "internal/api", "internal/authority", "internal/contractsv1", "internal/control", "internal/device", "internal/evidence", "internal/policy", "internal/replay", "internal/runartifact", "internal/runtime", "internal/sources", "internal/spec", "internal/storage", "internal/telemetry"},
-	"internal/actionport":                         {},
+	"internal/actionport":                         {"internal/actionport/internal/domain"},
 	"internal/actions":                            {"internal/actionport", "internal/actions/internal/app", "internal/actions/internal/store", "internal/sources", "internal/interlock", "internal/storage", "internal/telemetry"},
 	"internal/actions/internal/app":               {"internal/actionport", "internal/actions/internal/domain", "internal/actions/internal/store", "internal/sources"},
 	"internal/actions/internal/domain":            {"internal/actionport", "internal/canonicaljson", "internal/contractsv1"},

@@ -56,7 +56,6 @@ var moduleShapeExceptions = map[string]string{
 	"internal/storage":          "the database adapter itself",
 	"internal/sources":          "injected time and identity sources; the deterministic packages share its vocabulary",
 	"internal/interlock":        "SQL-bound port that no contract package or module can host without widening imports",
-	"internal/actionport":       "the effect port: adapters implement it without importing the action plane",
 	"internal/executor/fixture": "demo executor used by composition; held for the owner",
 }
 

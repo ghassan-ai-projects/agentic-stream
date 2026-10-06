@@ -28,3 +28,9 @@ Exposed to other packages: 7 symbols used by production code, plus 2 used only b
 
 Exported in the domain but **not exposed** (no other package uses them; candidates for deletion or for staying internal): `Completeness, CompletenessCorrected, CompletenessFinalByPolicy, RuntimeOperatorID, RuntimeState, Sample, State, TimerIdentity, WindowState`.
 
+## actionport
+
+Exposed to other packages: 9 symbols used by production code, plus 0 used only by other packages' tests (``).
+
+Exported in the domain but **not exposed** (no other package uses them; candidates for deletion or for staying internal): ``.
+
