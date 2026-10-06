@@ -80,13 +80,5 @@ const (
 	RejectUngroundedEvidence      = domain.RejectUngroundedEvidence
 )
 
-// IsIdentityReason reports whether err is a fencing rejection with reason.
-func IsIdentityReason(err error, reason RejectionReason) bool {
-	return domain.IsIdentityReason(err, reason)
-}
-
-// CanTransitionAttempt reports whether an attempt state transition is valid.
-func CanTransitionAttempt(from, to AttemptStatus) bool { return domain.CanTransitionAttempt(from, to) }
-
 // IsTerminalAttempt reports whether an attempt state is terminal.
 func IsTerminalAttempt(status AttemptStatus) bool { return domain.IsTerminalAttempt(status) }

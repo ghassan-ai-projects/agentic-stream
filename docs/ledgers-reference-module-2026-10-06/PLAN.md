@@ -40,3 +40,10 @@ Read ports for `runtime_owner`, `trigger_evaluations` and `intents`; typed lifec
   store's "insert episode" error rather than the reverse; the two coalescers report "... rows affected";
   one episode-read error text is shared by the fence and startable reads.
 - Found and recorded: the lease comparison uses a different time encoding than control writes (follow-up 3b).
+
+## Unused functionality (checked with `deadcode ./...` and production callers)
+
+Every facade operation has a production caller except three that only tests used:
+`ValidateWorkerIdentity` (production validates inside `TransitionAttempt`), `IsIdentityReason` and
+`CanTransitionAttempt` (the domain keeps them for its own checks). They were removed from the facade and
+their tests now go through `TransitionAttempt` and the domain; `deadcode` reports nothing for the module.

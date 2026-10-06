@@ -3,6 +3,7 @@ package episodeledger_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"path/filepath"
@@ -11,32 +12,6 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
-
-func TestCanTransitionAttempt(t *testing.T) {
-	tests := []struct {
-		from episodeledger.AttemptStatus
-		to   episodeledger.AttemptStatus
-		want bool
-	}{
-		{episodeledger.AttemptDispatched, episodeledger.AttemptRunning, true},
-		{episodeledger.AttemptDispatched, episodeledger.AttemptFailed, true},
-		{episodeledger.AttemptRunning, episodeledger.AttemptProduced, true},
-		{episodeledger.AttemptRunning, episodeledger.AttemptDeclined, true},
-		{episodeledger.AttemptRunning, episodeledger.AttemptCancelling, true},
-		{episodeledger.AttemptCancelling, episodeledger.AttemptCancelled, true},
-		{episodeledger.AttemptCancelling, episodeledger.AttemptAbandoned, true},
-		{episodeledger.AttemptProduced, episodeledger.AttemptFailed, false},
-		{episodeledger.AttemptDeclined, episodeledger.AttemptRunning, false},
-		{episodeledger.AttemptCancelled, episodeledger.AttemptProduced, false},
-	}
-	for _, test := range tests {
-		t.Run(string(test.from)+"_to_"+string(test.to), func(t *testing.T) {
-			if got := episodeledger.CanTransitionAttempt(test.from, test.to); got != test.want {
-				t.Fatalf("episodeledger.CanTransitionAttempt(%q, %q) = %t, want %t", test.from, test.to, got, test.want)
-			}
-		})
-	}
-}
 
 func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 	ctx := context.Background()
@@ -77,13 +52,13 @@ func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 	}
 
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := episodeledger.ValidateWorkerIdentity(ctx, tx, first); !episodeledger.IsIdentityReason(err, episodeledger.RejectStaleAttempt) {
+		if err := episodeledger.TransitionAttempt(ctx, tx, first, episodeledger.AttemptProduced, now, nil); !reasonIs(err, episodeledger.RejectStaleAttempt) {
 			return testErrorf("late first attempt error = %v, want stale_attempt", err)
 		}
 		if err := episodeledger.RecordRejection(ctx, tx, first, episodeledger.RejectStaleAttempt, []byte(`{"same_snapshot":true}`), now.Add(3*time.Second)); err != nil {
 			return err
 		}
-		return episodeledger.ValidateWorkerIdentity(ctx, tx, second)
+		return episodeledger.TransitionAttempt(ctx, tx, second, episodeledger.AttemptRunning, now.Add(3*time.Second), nil)
 	}); err != nil {
 		t.Fatalf("validate fenced identities: %v", err)
 	}
@@ -112,7 +87,7 @@ func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 		if _, err := tx.ExecContext(ctx, "UPDATE episodes SET lifecycle_status = 'closed' WHERE episode_id = ?", "epi-fenced"); err != nil {
 			return fmt.Errorf("close episode fixture: %w", err)
 		}
-		if err := episodeledger.ValidateWorkerIdentity(ctx, tx, second); !episodeledger.IsIdentityReason(err, episodeledger.RejectEpisodeClosed) {
+		if err := episodeledger.TransitionAttempt(ctx, tx, second, episodeledger.AttemptProduced, now.Add(4*time.Second), nil); !reasonIs(err, episodeledger.RejectEpisodeClosed) {
 			return testErrorf("closed episode error = %v, want episode_closed", err)
 		}
 		return nil
@@ -215,4 +190,10 @@ func (e testError) Error() string { return string(e) }
 
 func testErrorf(format string, args ...any) error {
 	return testError(fmt.Sprintf(format, args...))
+}
+
+// reasonIs reports whether err is a fencing rejection with the given reason.
+func reasonIs(err error, reason episodeledger.RejectionReason) bool {
+	var identityErr *episodeledger.IdentityError
+	return errors.As(err, &identityErr) && identityErr.Reason == reason
 }

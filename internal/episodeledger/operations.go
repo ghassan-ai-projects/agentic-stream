@@ -33,13 +33,6 @@ func TransitionAttempt(ctx context.Context, tx *sql.Tx, identity Identity, to At
 	return app.TransitionAttempt(ctx, store.Join(tx), identity, to, now, terminalJSON, time.Now().UTC())
 }
 
-// ValidateWorkerIdentity validates a worker identity against the current
-// episode fence, the owner lease and the attempt state. Snapshot equality is
-// intentionally not part of this check.
-func ValidateWorkerIdentity(ctx context.Context, tx *sql.Tx, identity Identity) error {
-	return app.ValidateWorkerIdentity(ctx, store.Join(tx), identity, time.Now().UTC())
-}
-
 // RecordRejection durably records a rejected worker input or Decision. It is
 // idempotent for the same identity, reason, details, and timestamp.
 func RecordRejection(ctx context.Context, tx *sql.Tx, identity Identity, reason RejectionReason, detailsJSON []byte, now time.Time) error {

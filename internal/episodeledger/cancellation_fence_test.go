@@ -52,7 +52,7 @@ func TestSupersededAttemptOnlyAcceptsCurrentCancellation(t *testing.T) {
 			if tt.reason == "" && err != nil {
 				t.Fatal(err)
 			}
-			if tt.reason != "" && !episodeledger.IsIdentityReason(err, tt.reason) {
+			if tt.reason != "" && !reasonIs(err, tt.reason) {
 				t.Fatalf("transition = %v, want %s", err, tt.reason)
 			}
 		})

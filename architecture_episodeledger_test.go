@@ -10,7 +10,7 @@ import (
 // episodeLedgerOperations are the facade functions; each delegates to the app
 // layer (the pure helpers delegate to the domain).
 var episodeLedgerOperations = []string{
-	"Admit", "StartAttempt", "StartAttemptOwned", "TransitionAttempt", "ValidateWorkerIdentity", "RecordRejection", "RecoverUnfinishedAttempts",
+	"Admit", "StartAttempt", "StartAttemptOwned", "TransitionAttempt", "RecordRejection", "RecoverUnfinishedAttempts",
 	"Rebind", "BindRequest", "AbandonRebind", "Abandon", "Conclude", "RetainForRetry", "SupersedeEpoch", "SupersedeCoalesced",
 	"UpsertSchedulerItem", "MarkSchedulerItemAdmitted", "CoalesceSchedulerItems", "CoalesceCostRejectedItem", "CoalesceSkippedItem", "NextPendingSchedulerItem",
 }
@@ -28,7 +28,7 @@ func TestEpisodeLedgerFacadeOnlyDelegates(t *testing.T) {
 				continue
 			}
 			target := "app"
-			if slices.Contains([]string{"IsIdentityReason", "CanTransitionAttempt", "IsTerminalAttempt"}, function.Name.Name) {
+			if slices.Contains([]string{"IsTerminalAttempt"}, function.Name.Name) {
 				target = "domain"
 			} else if !slices.Contains(episodeLedgerOperations, function.Name.Name) {
 				t.Errorf("%s: %s is not an episode ledger operation", file.rel, function.Name)

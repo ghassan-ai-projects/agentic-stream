@@ -9,7 +9,7 @@
 
 ## episodeledger operations (unchanged names)
 
-`Admit`, `StartAttempt(Owned)`, `TransitionAttempt`, `ValidateWorkerIdentity`, `RecordRejection`,
+`Admit`, `StartAttempt(Owned)`, `TransitionAttempt` (which validates the worker identity first), `RecordRejection`,
 `Rebind`, `BindRequest`, `AbandonRebind`, `Abandon`, `Conclude`, `RetainForRetry`, `SupersedeEpoch`,
 `SupersedeCoalesced`, `RecoverUnfinishedAttemptsWithCost`; plus the merged queue operations
 `UpsertSchedulerItem`, `MarkSchedulerItemAdmitted`, `CoalesceSchedulerItems`, `CoalesceCostRejectedItem`,

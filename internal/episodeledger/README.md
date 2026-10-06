@@ -10,7 +10,7 @@ Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 | Layer | Responsibility |
 | --- | --- |
 | Facade | Aliases of the domain vocabulary; one-line operations that join the caller's `*sql.Tx`; the wall-clock default for the owner-lease check |
-| App | Use cases in order: read state, decide (domain), write; worker identity validation, attempt start and transition under fencing, recovery loop, queue operations |
+| App | Use cases in order: read state, decide (domain), write; worker identity validation (run by every transition), attempt start and transition under fencing, recovery loop, queue operations |
 | Domain | Statuses, `Identity`, fence and attempt checks over values the store read, the transition table, rejection reasons and ids, admission defaults, the recovery terminal |
 | Store | The only SQL for `scheduler_items`, `episodes`, `episode_attempts`, `episode_rejections`; reads the runtime owner lease; classifies unique violations |
 
