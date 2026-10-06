@@ -21,7 +21,7 @@ golden digest only when the data change is reviewed.
 For simulator traces, update:
 
 ```text
-internal/ingress/simulator_data.json
+internal/ingress/internal/domain/simulator_data.json
 ```
 
 Keep adapter channel-to-field mapping out of Go literals. Add conversion tests

@@ -1,4 +1,4 @@
-package ingress
+package app
 
 import (
 	"context"
@@ -8,12 +8,12 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 )
 
-// appendBatchSize is how many envelopes a file connector appends per event
-// log transaction.
+// appendBatchSize is how many envelopes a file connector appends per event log
+// transaction.
 const appendBatchSize = 100
 
-// envelopeBatch buffers validated envelopes and appends them to the event log
-// in batches, counting only the envelopes the log had not seen.
+// envelopeBatch buffers validated envelopes and appends them to the event log in
+// batches, counting only the envelopes the log had not seen.
 type envelopeBatch struct {
 	log      *eventlog.EventLog
 	tenantID string

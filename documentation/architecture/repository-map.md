@@ -7,7 +7,11 @@ historical design map where the code has chosen a more specific package name.
 | --- | --- |
 | `cmd/agentic-stream/` | CLI entrypoint and runtime wiring |
 | `internal/spec/` | SituationSpec schema, compiler, CEL, deployment persistence |
-| `internal/ingress/` | normalized/simulator JSONL files and live normalized JSONL Unix socket |
+| `internal/ingress/` | ingress configuration and replay/serve delegation facade |
+| `internal/ingress/internal/app/` | JSONL and simulator replay loops, admission, quarantine and live line handling |
+| `internal/ingress/internal/store/` | connector checkpoint SQL |
+| `internal/ingress/internal/domain/` | pure envelope admission, simulator trace grammar and conversion, identities, checkpoint codec |
+| `internal/ingress/internal/transport/` | trace file and Unix-socket framing, listener safety and client plumbing |
 | `internal/eventlog/` | append-only events, validation, dedup, quarantine, gaps |
 | `internal/eventlog/internal/domain/` | pure evidence admission, quarantine identity and decode rules (reference module layer) |
 | `internal/eventlog/internal/app/` | append, quarantine, release/redrive and read use cases |

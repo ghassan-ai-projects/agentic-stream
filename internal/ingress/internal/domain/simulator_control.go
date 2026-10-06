@@ -1,14 +1,9 @@
-package ingress
+package domain
 
 import (
-	"context"
-	_ "embed"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func validateSimulatorControl(recordType string, record map[string]any) error {
@@ -91,34 +86,4 @@ func integerValue(value any) (int64, bool) {
 		return 0, false
 	}
 	return int64(number), true
-}
-
-func loadLineCheckpoint(ctx context.Context, db *storage.DB, connectorID string) (int, error) {
-	var blob []byte
-	if err := db.QueryRowContext(ctx, "SELECT checkpoint_blob FROM connector_checkpoints WHERE connector_id = ?", connectorID).Scan(&blob); err != nil {
-		return 0, nil
-	}
-	var checkpoint struct {
-		LastLine int `json:"last_line"`
-	}
-	if err := json.Unmarshal(blob, &checkpoint); err != nil {
-		return 0, fmt.Errorf("decode connector checkpoint: %w", err)
-	}
-	return checkpoint.LastLine, nil
-}
-
-func saveLineCheckpoint(ctx context.Context, db *storage.DB, connectorID string, line int, now time.Time) error {
-	blob, err := json.Marshal(map[string]any{"version": 1, "last_line": line})
-	if err != nil {
-		return fmt.Errorf("encode connector checkpoint: %w", err)
-	}
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO connector_checkpoints (connector_id, connector_kind, checkpoint_version, checkpoint_blob, updated_at)
-		VALUES (?, 'simulator-jsonl', 1, ?, ?)
-		ON CONFLICT(connector_id) DO UPDATE SET checkpoint_blob = excluded.checkpoint_blob, updated_at = excluded.updated_at`,
-		connectorID, blob, now.UTC().Format(time.RFC3339Nano))
-	if err != nil {
-		return fmt.Errorf("save connector checkpoint: %w", err)
-	}
-	return nil
 }

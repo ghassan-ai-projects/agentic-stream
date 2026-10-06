@@ -45,7 +45,11 @@ func replayedStore(t *testing.T) (Store, string) {
 	clk := clock.NewVirtual(firstTraceTime(t))
 	log := eventlog.NewEventLogWithClock(db, clk)
 	log.RequireSchemaValidation()
-	if _, err := (ingress.NewJSONLReplayWithClock(db, log, "default", fixtureTracePath, "replay:"+fixtureTracePath, clk)).Run(ctx); err != nil {
+	ingestor, err := ingress.New(ingress.Config{DB: db, Log: log, Clock: clk, TenantID: "default"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ingestor.ReplayJSONL(ctx, fixtureTracePath, "replay:"+fixtureTracePath); err != nil {
 		t.Fatal(err)
 	}
 	eng, err := engine.New(ctx, engine.Config{DB: db, Log: log, Clock: clk, Spec: compiled, TenantID: "default", RuntimeOwner: engine.ReplayOwnership, Cognition: true})

@@ -1,4 +1,4 @@
-package ingress_test
+package app_test
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -32,7 +31,7 @@ func TestJSONLReplayAppendsEvents(t *testing.T) {
 	}
 
 	log := eventlog.NewEventLog(db)
-	conn := ingress.NewJSONLReplay(db, log, "default", tracePath, "test-connector")
+	conn := newJSONL(t, db, log, "default", tracePath, "test-connector")
 	count, err := conn.Run(ctx)
 	if err != nil {
 		t.Fatalf("run connector: %v", err)
@@ -68,7 +67,7 @@ func TestJSONLReplayFillsMissingTenantID(t *testing.T) {
 	}
 
 	log := eventlog.NewEventLog(db)
-	conn := ingress.NewJSONLReplay(db, log, "default", tracePath, "")
+	conn := newJSONL(t, db, log, "default", tracePath, "")
 	if _, err := conn.Run(ctx); err != nil {
 		t.Fatalf("run connector: %v", err)
 	}
@@ -112,7 +111,7 @@ func TestJSONLReplayQuarantinesMalformedAndSchemaInvalidLines(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	conn := ingress.NewJSONLReplay(db, log, "default", tracePath, "malformed-test")
+	conn := newJSONL(t, db, log, "default", tracePath, "malformed-test")
 	count, err := conn.Run(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +156,7 @@ func TestJSONLReplayQuarantineIDsAreConnectorScoped(t *testing.T) {
 		if err := os.WriteFile(tracePath, []byte("not-json-"+connectorID+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		conn := ingress.NewJSONLReplay(db, log, "default", tracePath, connectorID)
+		conn := newJSONL(t, db, log, "default", tracePath, connectorID)
 		if _, err := conn.Run(ctx); err != nil {
 			t.Fatalf("run %d (%s): %v", i, connectorID, err)
 		}
@@ -192,7 +191,7 @@ func TestJSONLReplayQuarantinesOversizedLine(t *testing.T) {
 	}
 
 	log := eventlog.NewEventLog(db)
-	conn := ingress.NewJSONLReplay(db, log, "default", tracePath, "oversized-test")
+	conn := newJSONL(t, db, log, "default", tracePath, "oversized-test")
 	count, err := conn.Run(ctx)
 	if err != nil {
 		t.Fatalf("run connector: %v", err)

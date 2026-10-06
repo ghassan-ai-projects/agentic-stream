@@ -1,4 +1,4 @@
-package ingress
+package transport
 
 import (
 	"bufio"
@@ -23,12 +23,12 @@ func TestBoundedTraceLinesPreserveBoundaries(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			reader := bufio.NewReaderSize(strings.NewReader(tc.input), 16)
-			line, oversized, err := readBoundedLine(reader, tc.limit)
+			reader := &BoundedReader{reader: bufio.NewReaderSize(strings.NewReader(tc.input), 16), max: tc.limit}
+			line, oversized, err := reader.Next()
 			if err != nil || string(line) != tc.first || oversized != tc.oversized {
 				t.Fatalf("first line=%q oversized=%v err=%v", line, oversized, err)
 			}
-			line, oversized, err = readBoundedLine(reader, tc.limit)
+			line, oversized, err = reader.Next()
 			if strings.HasSuffix(tc.input, "x\n") {
 				if err != nil || string(line) != "x\n" || oversized {
 					t.Fatalf("resynchronized line=%q oversized=%v err=%v", line, oversized, err)

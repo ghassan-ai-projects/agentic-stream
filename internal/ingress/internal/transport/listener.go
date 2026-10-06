@@ -1,4 +1,4 @@
-package ingress
+package transport
 
 import (
 	"context"
@@ -6,45 +6,11 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 )
 
-func (s *LiveUDSSource) addClient(conn net.Conn) {
-	s.connectionsMu.Lock()
-	defer s.connectionsMu.Unlock()
-	s.connections[conn] = struct{}{}
-}
-
-func (s *LiveUDSSource) removeClient(conn net.Conn) {
-	s.connectionsMu.Lock()
-	delete(s.connections, conn)
-	s.connectionsMu.Unlock()
-	_ = conn.Close()
-}
-
-func (s *LiveUDSSource) closeClients() {
-	s.connectionsMu.Lock()
-	clients := make([]net.Conn, 0, len(s.connections))
-	for conn := range s.connections {
-		clients = append(clients, conn)
-	}
-	s.connectionsMu.Unlock()
-	for _, conn := range clients {
-		_ = conn.Close()
-	}
-}
-
-func validateLiveSocketPath(path string) error {
-	if path == "" || !filepath.IsAbs(path) || strings.Contains(path, "\x00") || strings.Contains(path, "://") || filepath.Clean(path) != path {
-		return fmt.Errorf("live socket must be a clean absolute Unix path")
-	}
-	return nil
-}
-
-func listenLiveSocket(path string) (net.Listener, error) {
+func listenSocket(path string) (net.Listener, error) {
 	if err := refuseExistingSocketPath(path); err != nil {
 		return nil, err
 	}

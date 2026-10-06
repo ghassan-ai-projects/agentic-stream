@@ -1,7 +1,6 @@
-package ingress
+package domain
 
 import (
-	_ "embed"
 	"fmt"
 	"strings"
 	"time"
@@ -9,8 +8,9 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
-func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.Envelope, error) {
-	event, ident, err := r.identifiedEvent(record)
+// ConvertEvent maps one simulator event record to a normalized envelope.
+func (o SimulatorOptions) ConvertEvent(record map[string]any) (contractsv1.Envelope, error) {
+	event, ident, err := o.identifiedEvent(record)
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
@@ -22,16 +22,16 @@ func (r *SimulatorJSONLReplay) convertEvent(record map[string]any) (contractsv1.
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
-	return r.envelope(ident, eventTime, arrival, data), nil
+	return o.envelope(ident, eventTime, arrival, data), nil
 }
 
 // identifiedEvent extracts the event object and its identity.
-func (r *SimulatorJSONLReplay) identifiedEvent(record map[string]any) (map[string]any, simulatorIdentity, error) {
+func (o SimulatorOptions) identifiedEvent(record map[string]any) (map[string]any, simulatorIdentity, error) {
 	event, err := simulatorEventFields(record)
 	if err != nil {
 		return nil, simulatorIdentity{}, err
 	}
-	ident, err := r.eventIdentity(event)
+	ident, err := o.eventIdentity(event)
 	if err != nil {
 		return nil, simulatorIdentity{}, err
 	}
@@ -45,14 +45,14 @@ type simulatorIdentity struct {
 
 // eventIdentity reads the required identity strings, requiring the entity
 // type to match the configured one when set.
-func (r *SimulatorJSONLReplay) eventIdentity(event map[string]any) (simulatorIdentity, error) {
+func (o SimulatorOptions) eventIdentity(event map[string]any) (simulatorIdentity, error) {
 	values, err := requiredStrings(event, "id", "entity_id", "entity_type")
 	if err != nil {
 		return simulatorIdentity{}, err
 	}
 	ident := simulatorIdentity{id: values[0], entityID: values[1], entityType: values[2]}
-	if r.options.EntityType != "" && r.options.EntityType != ident.entityType {
-		return simulatorIdentity{}, fmt.Errorf("entity_type %q does not match configured type %q", ident.entityType, r.options.EntityType)
+	if o.EntityType != "" && o.EntityType != ident.entityType {
+		return simulatorIdentity{}, fmt.Errorf("entity_type %q does not match configured type %q", ident.entityType, o.EntityType)
 	}
 	if ident.channel, err = requiredString(event, "type"); err != nil {
 		return simulatorIdentity{}, err
@@ -80,10 +80,10 @@ func requiredString(event map[string]any, key string) (string, error) {
 	return value, nil
 }
 
-func (r *SimulatorJSONLReplay) envelope(ident simulatorIdentity, eventTime, arrival time.Time, data map[string]any) contractsv1.Envelope {
+func (o SimulatorOptions) envelope(ident simulatorIdentity, eventTime, arrival time.Time, data map[string]any) contractsv1.Envelope {
 	return contractsv1.Envelope{
-		ID: ident.id, Type: r.eventTypePrefix(ident.entityType, ident.channel) + ident.channel + ".observed", SchemaVersion: "1.0",
-		TenantID: r.options.TenantID, Source: r.options.Source, PartitionKey: ident.entityID,
+		ID: ident.id, Type: o.eventTypePrefix(ident.entityType, ident.channel) + ident.channel + ".observed", SchemaVersion: "1.0",
+		TenantID: o.TenantID, Source: o.Source, PartitionKey: ident.entityID,
 		Entity: contractsv1.EntityRef{Type: ident.entityType, ID: ident.entityID}, EventTime: eventTime,
 		ObservedAt: &arrival, IngestedAt: arrival, Classification: contractsv1.ClassificationInternal,
 		Quality: []contractsv1.QualityFlag{}, Data: data,
@@ -104,19 +104,6 @@ func simulatorEventFields(record map[string]any) (map[string]any, error) {
 		return nil, fmt.Errorf("unknown event field %q", key)
 	}
 	return event, nil
-}
-
-// eventTypePrefix is the configured prefix, defaulting to the entity type,
-// unless the channel already carries it.
-func (r *SimulatorJSONLReplay) eventTypePrefix(entityType, channel string) string {
-	prefix := r.options.EventTypePrefix
-	if prefix == "" {
-		prefix = entityType + "."
-	}
-	if strings.HasPrefix(channel, prefix) {
-		return ""
-	}
-	return prefix
 }
 
 func simulatorEventTimes(event map[string]any) (time.Time, time.Time, error) {

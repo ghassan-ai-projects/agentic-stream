@@ -133,6 +133,9 @@ validation facade, compiled authority and supported public results.
 The [cognition module guide](../../internal/cognition/README.md) documents
 transaction-scoped evaluation, queue replacement and correction admission.
 
+The [ingress module guide](../../internal/ingress/README.md) documents admission,
+quarantine and checkpoint ordering.
+
 The [engine module guide](../../internal/engine/README.md) documents per-record
 transactions, timers and rollback restore.
 

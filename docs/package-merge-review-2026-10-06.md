@@ -8,7 +8,7 @@ dependency rule or a cross-repository contract forbids the merge.
 
 | Decision | Evidence |
 | --- | --- |
-| No `wire` layer for `actions`, `watch` or `engine`; document and payload checks live in `domain` | Each codec is a few schema, digest or integer checks over `canonicaljson`/`contractsv1` with no I/O; `policy` already keeps its documents in domain. `device` and `evidence` keep `wire` because they encode protocol frames and protobuf. |
+| No `wire` layer for `actions`, `watch`, `engine` or `ingress`; document and payload checks live in `domain` | Each codec is a few schema, digest or integer checks over `canonicaljson`/`contractsv1` with no I/O; `policy` already keeps its documents in domain. `device` and `evidence` keep `wire` because they encode protocol frames and protobuf. |
 | `watch` keeps its own module | `actions` may not reach concrete effectors; reasoning and replay layers may not reach effect implementations. |
 
 ## Considered and rejected

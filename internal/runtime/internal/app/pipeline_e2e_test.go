@@ -99,8 +99,11 @@ func TestPipelineCorrectsLateWindowAndAdmitsOneReconsideration(t *testing.T) {
 		t.Fatalf("first batch did not complete the prior action: %+v", firstReport)
 	}
 	secondLog := eventlog.NewEventLogWithClock(db, clock.Physical())
-	secondReplay := ingress.NewJSONLReplay(db, secondLog, "default", secondPath, "live-jsonl:"+secondPath)
-	if ingested, err := secondReplay.Run(ctx); err != nil {
+	secondReplay, err := ingress.New(ingress.Config{DB: db, Log: secondLog, TenantID: "default"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ingested, err := secondReplay.ReplayJSONL(ctx, secondPath, "live-jsonl:"+secondPath); err != nil {
 		t.Fatal(err)
 	} else if ingested != 1 {
 		t.Fatalf("second batch ingested %d events, want 1", ingested)
@@ -114,7 +117,7 @@ func TestPipelineCorrectsLateWindowAndAdmitsOneReconsideration(t *testing.T) {
 	} else if processed < 1 {
 		t.Fatalf("second batch processed %d events, want at least 1", processed)
 	}
-	if ingested, err := secondReplay.Run(ctx); err != nil {
+	if ingested, err := secondReplay.ReplayJSONL(ctx, secondPath, "live-jsonl:"+secondPath); err != nil {
 		t.Fatal(err)
 	} else if ingested != 0 {
 		t.Fatalf("replayed late batch ingested %d events, want 0", ingested)

@@ -108,7 +108,11 @@ func runStream(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec) {
 		t.Fatal(err)
 	}
 	path := traceFile(t)
-	if _, err := ingress.NewJSONLReplay(db, log, "default", path, "test:"+path).Run(t.Context()); err != nil {
+	ingestor, err := ingress.New(ingress.Config{DB: db, Log: log, TenantID: "default"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ingestor.ReplayJSONL(t.Context(), path, "test:"+path); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := stream.RunGlobal(t.Context(), nil); err != nil {

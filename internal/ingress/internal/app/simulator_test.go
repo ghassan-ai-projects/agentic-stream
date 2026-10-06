@@ -1,4 +1,4 @@
-package ingress_test
+package app_test
 
 import (
 	"context"
@@ -8,8 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -30,7 +29,7 @@ func TestSimulatorJSONLReplayConvertsControlsAndEvents(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	replay := ingress.NewSimulatorJSONLReplay(db, eventlog.NewEventLog(db), ingress.SimulatorOptions{TenantID: "default"}, path, "test-sim")
+	replay := newSimulator(t, db, domain.SimulatorOptions{TenantID: "default"}, path, "test-sim")
 	count, err := replay.Run(context.Background())
 	if err != nil || count != 4 {
 		t.Fatalf("count=%d err=%v", count, err)
@@ -94,7 +93,7 @@ func TestSimulatorJSONLReplayRejectsFlattenedAndOutOfOrderRecords(t *testing.T) 
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	replay := ingress.NewSimulatorJSONLReplay(db, eventlog.NewEventLog(db), ingress.SimulatorOptions{}, path, "test-sim")
+	replay := newSimulator(t, db, domain.SimulatorOptions{}, path, "test-sim")
 	if _, err := replay.Run(context.Background()); err == nil {
 		t.Fatal("expected flattened event rejection")
 	}
@@ -110,7 +109,7 @@ func TestSimulatorJSONLReplayRejectsUnknownRecord(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"record_type":"unknown"}`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	replay := ingress.NewSimulatorJSONLReplay(db, eventlog.NewEventLog(db), ingress.SimulatorOptions{}, path, "test-sim")
+	replay := newSimulator(t, db, domain.SimulatorOptions{}, path, "test-sim")
 	if _, err := replay.Run(context.Background()); err == nil {
 		t.Fatal("expected unknown record rejection")
 	}

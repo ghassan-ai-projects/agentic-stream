@@ -55,7 +55,7 @@ Use the prompt files under `.agents/prompts/` when the task matches them.
   episodes, decisions, policy, actions, worker runtime, and storage. The worker
   protocol is `proto/agenticstream/runtime/v1/`; migrations live in `migrations/`.
   Domain data is extracted to `internal/eventschema/registry_data.json`,
-  `internal/ingress/simulator_data.json`, and
+  `internal/ingress/internal/domain/simulator_data.json`, and
   `internal/episodes/testdata/aquaculture_intents.json` (see
   `docs/design/impl/GO_DOMAIN_DATA_EXTRACTION.md`).
 
@@ -68,7 +68,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `cmd/agentic-stream/` - entrypoint, flags, wiring, shutdown
 - `internal/contractsv1` - versioned envelopes and JSON contracts
 - `internal/spec` - SituationSpec authoring, YAML in, canonical JSON digest
-- `internal/ingress` - ingress adapters (normalized JSONL and simulator replay; HTTP/MQTT deferred)
+- `internal/ingress` - configured ingress facade; app replay and live-serve use cases, pure domain admission and simulator rules, a checkpoint store and a file/socket transport (see [ingress module guide](internal/ingress/README.md))
 - `internal/eventlog` - normalized event log, watermark/completeness tracking; append/quarantine/redrive use cases in `internal/app`, pure admission and identity rules in `internal/domain`, all SQL in `internal/store` (see [event log module guide](internal/eventlog/README.md))
 - `internal/engine` - configured stream-engine facade; app use cases, pure domain rules and an opaque-transaction store that owns the inbox, checkpoint, operator-state, Situation, lineage and timer tables (see [engine module guide](internal/engine/README.md))
 - `internal/operators` - deterministic operators (hysteresis, debounce, cooldown)
@@ -199,7 +199,7 @@ Before accepting a refactoring round:
 - Do not give models direct access to effectors or production credentials.
 - Do not re-author domain data in Go code. Event schemas live in
   `internal/eventschema/registry_data.json`, the simulator channel→field mapping in
-  `internal/ingress/simulator_data.json`, and the aquaculture intent catalog in
+  `internal/ingress/internal/domain/simulator_data.json`, and the aquaculture intent catalog in
   `internal/episodes/testdata/aquaculture_intents.json` — loaded by machinery
   (go:embed + sync.OnceValues, or os.ReadFile in the test). Adding a schema, channel,
   or intent means editing those JSON files, never a Go literal. Data changes are

@@ -3,8 +3,8 @@
 | Round | Scope | Proof | Status |
 | --- | --- | --- | --- |
 | 0 | Findings, language, design, plan | Review | Complete |
-| 1 | Domain, store, transport, app and facade together (ownership gate); move the embedded simulator data with domain; update runtime and replay callers | Domain, store, transport, app and facade tests; runtime and replay suites | Pending |
-| 2 | Architecture gates, injection proof, guide, maps, validation | Injected failures, full CI, race | Pending |
+| 1 | Domain, store, transport, app and facade together (ownership gate); move the embedded simulator data with domain; update runtime and replay callers | Domain, store, transport, app and facade tests; runtime and replay suites | Complete |
+| 2 | Architecture gates, injection proof, guide, maps, validation | Injected failures, full CI, race | Complete |
 
 ## Behavior that must not change
 

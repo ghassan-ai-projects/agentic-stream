@@ -13,7 +13,7 @@ var durableOwners = map[string]string{
 	"approvals":                     "internal/approvalledger",
 	"calibration_artifacts":         "internal/qualification",
 	"commands":                      "internal/actions/internal/store",
-	"connector_checkpoints":         "internal/ingress",
+	"connector_checkpoints":         "internal/ingress/internal/store",
 	"cost_limits":                   "internal/costcontrol",
 	"cost_reservations":             "internal/costcontrol",
 	"decisions":                     "internal/episodes/internal/store",

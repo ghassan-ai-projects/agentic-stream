@@ -1,4 +1,4 @@
-package ingress
+package domain
 
 import (
 	"testing"
@@ -10,9 +10,9 @@ import (
 // value fallback, and the unit passthrough. In-package so convertEvent is
 // reachable without a test-only production API.
 func TestSimulatorChannelFieldMappingEdges(t *testing.T) {
-	replay := NewSimulatorJSONLReplay(nil, nil, SimulatorOptions{
+	options := SimulatorOptions{
 		TenantID: "acme", EntityType: "pump", Source: "sim", EventTypePrefix: "pump.",
-	}, "", "test-sim")
+	}.Normalized()
 
 	convert := func(channel string, value any, unit string) map[string]any {
 		event := map[string]any{
@@ -23,7 +23,7 @@ func TestSimulatorChannelFieldMappingEdges(t *testing.T) {
 		if unit != "" {
 			event["unit"] = unit
 		}
-		envelope, err := replay.convertEvent(map[string]any{"event": event})
+		envelope, err := options.ConvertEvent(map[string]any{"event": event})
 		if err != nil {
 			t.Fatalf("convert %s: %v", channel, err)
 		}
