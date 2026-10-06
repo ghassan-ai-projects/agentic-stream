@@ -53,7 +53,9 @@ var forbiddenImports = map[string][]string{
 	"internal/executor/remote/internal/app":       {"internal/policy", "internal/actions"},
 	"internal/executor/remote/internal/domain":    {"internal/policy", "internal/actions"},
 	"internal/executor/remote/internal/transport": {"internal/policy", "internal/actions"},
-	"internal/worker":                             {"internal/policy", "internal/actions"},
+	"internal/worker/internal/domain":             {"internal/policy", "internal/actions"},
+	"internal/worker/internal/transport":          {"internal/policy", "internal/actions"},
+	"internal/worker":                             {"internal/actions", "internal/policy"},
 	"internal/actions":                            {"internal/device", "internal/watch"},
 	"internal/actions/internal/app":               {"internal/contractsv1", "internal/device", "internal/watch"},
 	"internal/actions/internal/domain":            {"internal/device", "internal/watch"},
@@ -75,6 +77,8 @@ var forbiddenImports = map[string][]string{
 // follow the data flow in .agents/context/architecture.md and be added here in
 // the same change.
 var allowedImports = map[string][]string{
+	"internal/worker/internal/transport":          {"internal/worker/internal/domain", "proto/agenticstream/runtime/v1"},
+	"internal/worker/internal/domain":             {"internal/contractsv1", "proto/agenticstream/runtime/v1"},
 	"internal/telemetry/internal/transport":       {"internal/telemetry/internal/domain"},
 	"internal/telemetry/internal/domain":          {},
 	"internal/evidence/internal/app":              {"internal/contractsv1", "internal/evidence/internal/domain", "internal/evidence/internal/store", "internal/evidence/internal/wire"},
@@ -184,7 +188,7 @@ var allowedImports = map[string][]string{
 	"internal/watch/internal/app":                 {"internal/actionport", "internal/sources", "internal/watch/internal/domain", "internal/watch/internal/store"},
 	"internal/watch/internal/domain":              {"internal/actionport"},
 	"internal/watch/internal/store":               {"internal/interlock", "internal/storage", "internal/watch/internal/domain"},
-	"internal/worker":                             {"internal/contractsv1", "proto/agenticstream/runtime/v1"},
+	"internal/worker":                             {"internal/worker/internal/domain", "internal/worker/internal/transport", "proto/agenticstream/runtime/v1"},
 	"migrations":                                  {},
 	"proto/agenticstream/runtime/v1":              {},
 }

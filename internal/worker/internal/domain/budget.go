@@ -1,4 +1,4 @@
-package worker
+package domain
 
 import (
 	"fmt"

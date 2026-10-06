@@ -1,4 +1,4 @@
-package worker
+package transport
 
 import (
 	"context"
@@ -7,12 +7,13 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/worker/internal/domain"
 )
 
 // ListenEvidenceSocket creates a private runtime-owned Unix socket. It
@@ -59,7 +60,7 @@ func refuseExistingEvidenceSocket(path string) error {
 // carry no remote-network trust. Application capability validation remains
 // mandatory for every call.
 func DialEvidenceSocket(ctx context.Context, path string) (*grpc.ClientConn, error) {
-	if err := ValidateEvidenceSocketPath(path); err != nil {
+	if err := domain.ValidateEvidenceSocketPath(path); err != nil {
 		return nil, err
 	}
 	conn, err := grpc.NewClient("passthrough:///evidence", grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
@@ -84,7 +85,7 @@ func DialEpisodeWorkerSocket(ctx context.Context, path string) (*grpc.ClientConn
 // tlsConfig is non-nil. This supports local UDS workers and remote-style
 // certificate authentication without changing the application protocol.
 func DialEpisodeWorkerSocketTLS(ctx context.Context, path string, tlsConfig *tls.Config) (*grpc.ClientConn, error) {
-	if err := ValidateEvidenceSocketPath(path); err != nil {
+	if err := domain.ValidateEvidenceSocketPath(path); err != nil {
 		return nil, err
 	}
 	transport := grpc.WithTransportCredentials(insecure.NewCredentials())
@@ -114,17 +115,8 @@ func (l *cleanListener) Close() error {
 	return l.removeOwnedSocket()
 }
 
-// ValidateEvidenceSocketPath is the v1 transport rule: only an absolute local
-// filesystem path is accepted. URI schemes and remote endpoints are absent.
-func ValidateEvidenceSocketPath(path string) error {
-	if path == "" || !filepath.IsAbs(path) || strings.Contains(path, "\x00") || strings.Contains(path, "://") || filepath.Clean(path) != path {
-		return fmt.Errorf("evidence socket must be a clean absolute Unix path")
-	}
-	return nil
-}
-
 func prepareEvidenceSocket(path string) error {
-	if err := ValidateEvidenceSocketPath(path); err != nil {
+	if err := domain.ValidateEvidenceSocketPath(path); err != nil {
 		return err
 	}
 	if err := prepareEvidenceSocketDirectory(path); err != nil {

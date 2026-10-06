@@ -1,4 +1,4 @@
-package worker
+package transport
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/worker/internal/domain"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
@@ -31,7 +32,7 @@ func TestServerHandshakeAndExecute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handshake: %v", err)
 	}
-	if handshake.GetProtocolVersion() != ProtocolVersion || handshake.GetMaxEventBytes() != DefaultMaxEventBytes {
+	if handshake.GetProtocolVersion() != domain.ProtocolVersion || handshake.GetMaxEventBytes() != domain.DefaultMaxEventBytes {
 		t.Fatalf("unexpected handshake response: %v", handshake)
 	}
 
