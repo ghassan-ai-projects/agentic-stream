@@ -76,12 +76,24 @@ func scanSupersededApproval(rows *sql.Rows) (supersededApproval, error) {
 }
 
 func publishSupersededWithdrawal(ctx context.Context, tx *sql.Tx, approval supersededApproval, tenantID string, clk clock.Clock) error {
-	if err := notify.AppendLifecycleEventWithTrace(ctx, tx, "approval.withdrawn:"+approval.approvalID,
-		tenantID, notify.TypeApprovalWithdrawn, "approval/"+approval.approvalID, approval.situationID, map[string]any{
-			"tenant_id": tenantID, "approval_id": approval.approvalID, "intent_id": approval.intentID, "situation_id": approval.situationID,
-			"situation_version": approval.situationVersion, "reason": "situation_version_conflict", "source_authority": notify.SourceForTenant(tenantID),
-		}, clk.Now().UTC(), contractsv1.TraceContext{Traceparent: approval.traceparent.String, Tracestate: approval.tracestate.String}); err != nil {
+	if err := notify.AppendLifecycleEvent(ctx, tx, supersededWithdrawalEvent(approval, tenantID, clk)); err != nil {
 		return fmt.Errorf("append superseded approval notification: %w", err)
 	}
 	return nil
+}
+
+func supersededWithdrawalEvent(approval supersededApproval, tenantID string, clk clock.Clock) notify.LifecycleEvent {
+	return notify.LifecycleEvent{
+		ID:           "approval.withdrawn:" + approval.approvalID,
+		TenantID:     tenantID,
+		Type:         notify.TypeApprovalWithdrawn,
+		Subject:      "approval/" + approval.approvalID,
+		PartitionKey: approval.situationID,
+		Data: map[string]any{
+			"tenant_id": tenantID, "approval_id": approval.approvalID, "intent_id": approval.intentID, "situation_id": approval.situationID,
+			"situation_version": approval.situationVersion, "reason": "situation_version_conflict", "source_authority": notify.SourceForTenant(tenantID),
+		},
+		At:    clk.Now().UTC(),
+		Trace: contractsv1.TraceContext{Traceparent: approval.traceparent.String, Tracestate: approval.tracestate.String},
+	}
 }

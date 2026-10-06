@@ -14,17 +14,17 @@ import (
 // packageLayers are reviewed dependency levels, not automatically computed
 // depths. Adding an acyclic edge still fails if it crosses upward or sideways.
 var packageLayers = map[string]int{
-	"internal/runtime/internal/domain": 1, "internal/runtime/internal/transport": 9, "internal/runtime/internal/store": 8, "internal/runtime/internal/app": 11, "internal/runtime/internal/composition": 12,
+	"internal/runtime/internal/domain": 1, "internal/runtime/internal/transport": 9, "internal/runtime/internal/store": 9, "internal/runtime/internal/app": 11, "internal/runtime/internal/composition": 12,
 	"internal/actionport": 0, "internal/canonicaljson": 0, "internal/clock": 0, "internal/costcontrol": 0,
 	"internal/duration": 0, "internal/eventschema": 0, "internal/ids": 0, "internal/interlock": 0, "internal/telemetry": 0,
 	"migrations": 0, "proto/agenticstream/runtime/v1": 0,
 	"internal/authority/internal/domain": 1, "internal/contractsv1": 1, "internal/storage": 1,
 	"internal/policy/internal/domain": 2, "internal/decisions": 3, "internal/decisions/internal/domain": 2, "internal/device/internal/domain": 2, "internal/device/internal/wire": 3, "internal/episodeledger": 2, "internal/eventlog": 4, "internal/evidence": 6, "internal/evidence/internal/domain": 2, "internal/evidence/internal/wire": 3, "internal/evidence/internal/store": 3, "internal/evidence/internal/app": 4, "internal/evidence/internal/transport": 5,
-	"internal/authority/internal/store": 2, "internal/notifycontract": 2, "internal/qualification": 2, "internal/scheduleledger": 2, "internal/spec": 2, "internal/worker": 2,
-	"internal/authority/internal/app": 3, "internal/control": 3, "internal/device/internal/transport": 4, "internal/eventlog/internal/domain": 1, "internal/eventlog/internal/store": 2, "internal/eventlog/internal/app": 3, "internal/ingress": 6, "internal/ingress/internal/domain": 2, "internal/ingress/internal/store": 3, "internal/ingress/internal/transport": 3, "internal/ingress/internal/app": 5, "internal/notify": 3, "internal/operators": 3,
-	"internal/api": 4, "internal/approvalledger": 4, "internal/watch": 5, "internal/watch/internal/domain": 2, "internal/watch/internal/store": 3, "internal/watch/internal/app": 4, "internal/authority": 4, "internal/situations": 4,
-	"internal/actions": 7, "internal/actions/internal/domain": 2, "internal/actions/internal/store": 5, "internal/actions/internal/app": 6, "internal/cognition": 8, "internal/cognition/internal/domain": 5, "internal/cognition/internal/store": 6, "internal/cognition/internal/app": 7, "internal/device/internal/app": 5, "internal/episodes": 7, "internal/episodes/internal/domain": 4, "internal/episodes/internal/store": 5, "internal/episodes/internal/app": 6, "internal/policy/internal/store": 5, "internal/policy/internal/app": 6, "internal/policy": 7, "internal/soak": 5,
-	"internal/admission": 9, "internal/device": 6, "internal/engine": 10, "internal/engine/internal/domain": 5, "internal/engine/internal/store": 6, "internal/engine/internal/app": 9, "internal/executor/conformance": 8, "internal/executor/fixture": 8, "internal/executor/native": 8, "internal/executor/remote": 8, "internal/runartifact": 8,
+	"internal/authority/internal/store": 2, "internal/qualification": 2, "internal/scheduleledger": 2, "internal/spec": 2, "internal/worker": 2,
+	"internal/authority/internal/app": 3, "internal/control": 3, "internal/device/internal/transport": 4, "internal/eventlog/internal/domain": 1, "internal/eventlog/internal/store": 2, "internal/eventlog/internal/app": 3, "internal/ingress": 6, "internal/ingress/internal/domain": 2, "internal/ingress/internal/store": 3, "internal/ingress/internal/transport": 3, "internal/ingress/internal/app": 5, "internal/notify": 4, "internal/notify/internal/domain": 2, "internal/notify/internal/store": 2, "internal/notify/internal/app": 3, "internal/operators": 3,
+	"internal/api": 5, "internal/approvalledger": 5, "internal/watch": 5, "internal/watch/internal/domain": 2, "internal/watch/internal/store": 3, "internal/watch/internal/app": 4, "internal/authority": 4, "internal/situations": 4,
+	"internal/actions": 7, "internal/actions/internal/domain": 2, "internal/actions/internal/store": 5, "internal/actions/internal/app": 6, "internal/cognition": 8, "internal/cognition/internal/domain": 5, "internal/cognition/internal/store": 6, "internal/cognition/internal/app": 7, "internal/device/internal/app": 5, "internal/episodes": 7, "internal/episodes/internal/domain": 4, "internal/episodes/internal/store": 5, "internal/episodes/internal/app": 6, "internal/policy/internal/store": 6, "internal/policy/internal/app": 7, "internal/policy": 8, "internal/soak": 5,
+	"internal/admission": 9, "internal/device": 6, "internal/engine": 10, "internal/engine/internal/domain": 5, "internal/engine/internal/store": 6, "internal/engine/internal/app": 9, "internal/executor/conformance": 8, "internal/executor/fixture": 8, "internal/executor/native": 8, "internal/executor/remote": 8, "internal/runartifact": 9,
 	"internal/replay": 13, "internal/replay/internal/domain": 4, "internal/replay/internal/transport": 7, "internal/replay/internal/store": 11, "internal/replay/internal/app": 12, "internal/runtime": 13, "cmd/agentic-stream": 14,
 }
 
@@ -123,7 +123,7 @@ func TestContractPackagesExcludePersistenceAndTransport(t *testing.T) {
 	root := repoRoot(t)
 	for _, file := range productionGoFiles(t, root) {
 		pkg := filepath.ToSlash(filepath.Dir(file.rel))
-		if pkg != "internal/actionport" && pkg != "internal/contractsv1" && pkg != "internal/notifycontract" {
+		if pkg != "internal/actionport" && pkg != "internal/contractsv1" {
 			continue
 		}
 		parsed, err := parser.ParseFile(token.NewFileSet(), file.abs, nil, 0)

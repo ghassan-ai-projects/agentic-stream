@@ -12,25 +12,51 @@ import (
 
 // AppendApprovalWithdrawn publishes stale approval withdrawal evidence.
 func (tx *Tx) AppendApprovalWithdrawn(ctx context.Context, event domain.ApprovalEvent) error {
-	if err := notify.AppendLifecycleEventWithTrace(ctx, tx.tx, "approval.withdrawn:"+event.ID, event.Intent.TenantID, notify.TypeApprovalWithdrawn, "approval/"+event.ID, event.Intent.SituationID, map[string]any{
-		"tenant_id": event.Intent.TenantID, "approval_id": event.ID, "intent_id": event.Intent.IntentID, "situation_id": event.Intent.SituationID,
-		"situation_version": event.Intent.SituationVersion, "reason": event.Reason, "source_authority": notify.SourceForTenant(event.Intent.TenantID),
-	}, event.Now, traceContext(event.Intent)); err != nil {
+	if err := notify.AppendLifecycleEvent(ctx, tx.tx, approvalWithdrawnEvent(event)); err != nil {
 		return fmt.Errorf("append approval withdrawn notification: %w", err)
 	}
 	return nil
 }
 
+func approvalWithdrawnEvent(event domain.ApprovalEvent) notify.LifecycleEvent {
+	return notify.LifecycleEvent{
+		ID:           "approval.withdrawn:" + event.ID,
+		TenantID:     event.Intent.TenantID,
+		Type:         notify.TypeApprovalWithdrawn,
+		Subject:      "approval/" + event.ID,
+		PartitionKey: event.Intent.SituationID,
+		Data: map[string]any{
+			"tenant_id": event.Intent.TenantID, "approval_id": event.ID, "intent_id": event.Intent.IntentID, "situation_id": event.Intent.SituationID,
+			"situation_version": event.Intent.SituationVersion, "reason": event.Reason, "source_authority": notify.SourceForTenant(event.Intent.TenantID),
+		},
+		At:    event.Now,
+		Trace: traceContext(event.Intent),
+	}
+}
+
 // AppendApprovalResolved publishes a durable approval disposition.
 func (tx *Tx) AppendApprovalResolved(ctx context.Context, event domain.ApprovalEvent) error {
-	if err := notify.AppendLifecycleEventWithTrace(ctx, tx.tx, "approval.resolved:"+event.ID+":"+event.Status, event.Intent.TenantID, notify.TypeApprovalResolved, "approval/"+event.ID, event.Intent.SituationID, map[string]any{
-		"tenant_id": event.Intent.TenantID, "approval_id": event.ID, "intent_id": event.Intent.IntentID, "decision_id": event.Intent.DecisionID,
-		"situation_id": event.Intent.SituationID, "situation_version": event.Intent.SituationVersion,
-		"status": event.Status, "reason": event.Reason, "source_authority": notify.SourceForTenant(event.Intent.TenantID),
-	}, event.Now, traceContext(event.Intent)); err != nil {
+	if err := notify.AppendLifecycleEvent(ctx, tx.tx, approvalResolvedEvent(event)); err != nil {
 		return fmt.Errorf("append approval resolved notification: %w", err)
 	}
 	return nil
+}
+
+func approvalResolvedEvent(event domain.ApprovalEvent) notify.LifecycleEvent {
+	return notify.LifecycleEvent{
+		ID:           "approval.resolved:" + event.ID + ":" + event.Status,
+		TenantID:     event.Intent.TenantID,
+		Type:         notify.TypeApprovalResolved,
+		Subject:      "approval/" + event.ID,
+		PartitionKey: event.Intent.SituationID,
+		Data: map[string]any{
+			"tenant_id": event.Intent.TenantID, "approval_id": event.ID, "intent_id": event.Intent.IntentID, "decision_id": event.Intent.DecisionID,
+			"situation_id": event.Intent.SituationID, "situation_version": event.Intent.SituationVersion,
+			"status": event.Status, "reason": event.Reason, "source_authority": notify.SourceForTenant(event.Intent.TenantID),
+		},
+		At:    event.Now,
+		Trace: traceContext(event.Intent),
+	}
 }
 
 func traceContext(row domain.IntentRecord) contractsv1.TraceContext {
@@ -42,7 +68,16 @@ func (tx *Tx) NotificationSource(tenant string) string { return notify.SourceFor
 
 // AppendApprovalRequested publishes the sealed request notification.
 func (tx *Tx) AppendApprovalRequested(ctx context.Context, row domain.IntentRecord, request domain.ApprovalRequest, now time.Time) error {
-	if err := notify.AppendLifecycleEventWithTrace(ctx, tx.tx, "approval.requested:"+request.ID, row.TenantID, notify.TypeApprovalRequested, "approval/"+request.ID, row.SituationID, request.Data, now, traceContext(row)); err != nil {
+	if err := notify.AppendLifecycleEvent(ctx, tx.tx, notify.LifecycleEvent{
+		ID:           "approval.requested:" + request.ID,
+		TenantID:     row.TenantID,
+		Type:         notify.TypeApprovalRequested,
+		Subject:      "approval/" + request.ID,
+		PartitionKey: row.SituationID,
+		Data:         request.Data,
+		At:           now,
+		Trace:        traceContext(row),
+	}); err != nil {
 		return fmt.Errorf("append approval requested notification: %w", err)
 	}
 	return nil

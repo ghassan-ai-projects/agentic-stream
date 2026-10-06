@@ -103,17 +103,32 @@ func (t *Tx) CoalesceTriggerWork(ctx context.Context, situationID, triggerName, 
 }
 
 func (t *Tx) AnnounceSupersededItem(ctx context.Context, replacement ReplacementVersion, item SupersededItem, now time.Time) error {
-	situationID, tenantID := replacement.SituationID, replacement.TenantID
-	trace := contractsv1.TraceContext{Traceparent: replacement.Traceparent, Tracestate: replacement.Tracestate}
-	if err := notify.AppendLifecycleEventWithTrace(ctx, t.tx,
-		"situation.superseded:"+situationID+":"+fmt.Sprint(item.Version)+":"+fmt.Sprint(replacement.Version)+":"+item.ID,
-		tenantID, notify.TypeSituationSuperseded, "situation/"+situationID, situationID,
-		map[string]any{
-			"tenant_id": tenantID, "situation_id": situationID,
-			"superseded_version": item.Version, "replacement_version": replacement.Version,
-			"reason": "newer_situation_version_admitted", "source_authority": notify.SourceForTenant(tenantID),
-		}, now.UTC(), trace); err != nil {
+	if err := notify.AppendLifecycleEvent(ctx, t.tx, supersededItemEvent(replacement, item, now)); err != nil {
 		return fmt.Errorf("append situation superseded notification: %w", err)
 	}
 	return nil
+}
+
+func supersededItemEvent(replacement ReplacementVersion, item SupersededItem, now time.Time) notify.LifecycleEvent {
+	situationID, tenantID := replacement.SituationID, replacement.TenantID
+	trace := contractsv1.TraceContext{Traceparent: replacement.Traceparent, Tracestate: replacement.Tracestate}
+	return notify.LifecycleEvent{
+		ID:           "situation.superseded:" + situationID + ":" + fmt.Sprint(item.Version) + ":" + fmt.Sprint(replacement.Version) + ":" + item.ID,
+		TenantID:     tenantID,
+		Type:         notify.TypeSituationSuperseded,
+		Subject:      "situation/" + situationID,
+		PartitionKey: situationID,
+		Data:         supersededItemData(replacement, item),
+		At:           now.UTC(),
+		Trace:        trace,
+	}
+}
+
+func supersededItemData(replacement ReplacementVersion, item SupersededItem) map[string]any {
+	situationID, tenantID := replacement.SituationID, replacement.TenantID
+	return map[string]any{
+		"tenant_id": tenantID, "situation_id": situationID,
+		"superseded_version": item.Version, "replacement_version": replacement.Version,
+		"reason": "newer_situation_version_admitted", "source_authority": notify.SourceForTenant(tenantID),
+	}
 }

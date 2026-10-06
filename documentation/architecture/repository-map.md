@@ -68,7 +68,6 @@ historical design map where the code has chosen a more specific package name.
 | `internal/qualification/` | calibration and shadow evidence |
 | `internal/costcontrol/` | reservation, bounded usage and settlement |
 | `internal/interlock/` | durable readiness state and read-only assertions |
-| `internal/notifycontract/` | versioned notification names and metadata |
 | `internal/canonicaljson/`, `internal/clock/`, `internal/duration/`, `internal/ids/` | deterministic digest, time, duration and identity primitives |
 | `internal/executor/fixture/` | deterministic episode executor for explicit demo and replay fixtures |
 | `internal/executor/native/`, `internal/executor/remote/`, `internal/executor/conformance/`, `internal/worker/` | in-process and out-of-process executors, executor qualification and worker protocol transport |
@@ -82,7 +81,11 @@ historical design map where the code has chosen a more specific package name.
 | `internal/storage/` | SQLite infrastructure, migrations and transactions |
 | `internal/contractsv1/` | versioned envelope/schema contracts |
 | `internal/telemetry/` | OpenTelemetry and runtime metrics |
-| `internal/api/` and `internal/notify/` | HTTP health, controls and SSE delivery; the durable notification outbox |
+| `internal/api/` | HTTP health, controls and SSE delivery |
+| `internal/notify/` | durable notification outbox facade: transactional append, paged reads, retention |
+| `internal/notify/internal/app/` | append, lifecycle append, page read with resume, lag and poison handling, prune |
+| `internal/notify/internal/domain/` | lifecycle contract (schema and binding), sealing, dedupe, resume, poison and retention rules |
+| `internal/notify/internal/store/` | the only SQL for notifications, cursors, tombstones, poison attempts and audits |
 | `internal/eventschema/` | data-driven event schema registry |
 | `proto/agenticstream/runtime/v1/` | generated current-v1 Go protocol |
 | `migrations/` | ordered SQLite schema changes |
