@@ -30,6 +30,8 @@ var foundationPackages = []string{
 	"internal/contractsv1",
 	"internal/contractsv1/internal/domain",
 	"internal/interlock",
+	"internal/interlock/internal/domain",
+	"internal/interlock/internal/store",
 	"internal/storage",
 	"internal/storage/internal/domain",
 	"internal/storage/internal/store",
@@ -81,6 +83,8 @@ var forbiddenImports = map[string][]string{
 // follow the data flow in .agents/context/architecture.md and be added here in
 // the same change.
 var allowedImports = map[string][]string{
+	"internal/interlock/internal/store":           {"internal/interlock/internal/domain"},
+	"internal/interlock/internal/domain":          {},
 	"internal/sources/internal/transport":         {"internal/sources/internal/domain"},
 	"internal/sources/internal/domain":            {},
 	"internal/storage/internal/store":             {"internal/storage/internal/domain", "migrations"},
@@ -177,7 +181,7 @@ var allowedImports = map[string][]string{
 	"internal/ingress/internal/domain":            {"internal/contractsv1"},
 	"internal/ingress/internal/store":             {"internal/ingress/internal/domain", "internal/storage"},
 	"internal/ingress/internal/transport":         {"internal/ingress/internal/domain"},
-	"internal/interlock":                          {},
+	"internal/interlock":                          {"internal/interlock/internal/domain", "internal/interlock/internal/store"},
 	"internal/notify":                             {"internal/contractsv1", "internal/notify/internal/app", "internal/notify/internal/domain", "internal/notify/internal/store", "internal/storage"},
 	"internal/notify/internal/app":                {"internal/contractsv1", "internal/notify/internal/domain", "internal/notify/internal/store", "internal/sources"},
 	"internal/notify/internal/domain":             {"internal/canonicaljson", "internal/contractsv1"},

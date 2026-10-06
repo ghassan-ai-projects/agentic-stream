@@ -89,7 +89,9 @@ historical design map where the code has chosen a more specific package name.
 | `internal/authority/internal/app/` | device-authority use cases: validation, admission, unit of work, audit (reference module layer) |
 | `internal/authority/internal/domain/` | device-authority vocabulary and pure rules (reference module layer) |
 | `internal/authority/internal/store/` | device-authority persistence: transactions and the only SQL for its tables (reference module layer) |
-| `internal/interlock/` | durable readiness state and read-only assertions |
+| `internal/interlock/` | durable readiness state and read-only assertions (facade) |
+| `internal/interlock/internal/domain/` | pure interlock statuses, tripped sentinel and change validation |
+| `internal/interlock/internal/store/` | `runtime_interlock` read and write SQL |
 | `internal/canonicaljson/` | RFC 8785 canonical JSON and domain-separated digests: thin facade (public API only) |
 | `internal/canonicaljson/internal/domain/` | pure canonical encoder, number and string rules, strict validation, digest and stored-document rules (reference module layer) |
 | `internal/sources/` | injected time and identity sources (facade) |
