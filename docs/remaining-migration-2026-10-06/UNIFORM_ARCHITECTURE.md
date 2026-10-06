@@ -46,7 +46,6 @@ Already uniform: the 21 layered modules plus `canonicaljson` and `decisions`.
 
 ## Exceptions (stand-alone, no layers)
 
-- `storage`: the database adapter itself.
 - `testsupport/*`: test helpers.
 - `actionport`: an 87-line contract package (the effect port). Merging it into `actions` would make `device` and `watch` import the action plane to implement `Effector`, which the forbidden-import invariants rule out. It stays a port.
 - `interlock`: a 61-line SQL-bound port that no contract package, and no module without widening dependencies, can host.
@@ -78,7 +77,7 @@ renumbering may be needed again for `actionport` (it gains a store).
 | `executor/conformance` to `internal/testsupport/executorconformance` | Done |
 | `executor/fixture` to `testsupport` | Held: composition imports it for demo mode, so it is production code; moving it needs a decision on demo mode |
 | `contractsv1` to facade (production-used surface only) + domain, with its schemas and conformance data under `internal/domain`; see [EXPOSURE.md](EXPOSURE.md) | Done |
-| `telemetry`, `worker`, `api`, `spec` layered (facade + domain + transport/store/app as each needs); `spec` now owns `spec_deployments` and `event_schemas` through `spec/internal/store` | Done |
+| `sources`, `storage` and `actionport` also migrated (sources: domain + transport for the real clock and random generator; storage: domain + SQLite store; actionport: facade over its domain). `telemetry`, `worker`, `api`, `spec` layered (facade + domain + transport/store/app as each needs); `spec` now owns `spec_deployments` and `event_schemas` through `spec/internal/store` | Done |
 | `operators`, `situations` to facade + domain | Done |
 | Rename `contractsv1` to `contracts` (drop the version from the package name; the version stays in `ContractVersion`, `schemas/v1` and the wire ids) | Proposed, awaiting your decision |
 | One gate requiring facade + `internal/domain` for every module (`TestEveryModuleHasAFacadeAndADomain`, proven by injection; exceptions are listed in `moduleShapeExceptions` with reasons) | Done |

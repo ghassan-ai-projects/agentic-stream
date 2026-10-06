@@ -53,7 +53,6 @@ func hasProductionGoFiles(dir string) bool {
 // layer, each with the reason it must not: see
 // docs/remaining-migration-2026-10-06/UNIFORM_ARCHITECTURE.md.
 var moduleShapeExceptions = map[string]string{
-	"internal/sources":          "injected time and identity sources; the deterministic packages share its vocabulary",
 	"internal/interlock":        "SQL-bound port that no contract package or module can host without widening imports",
 	"internal/executor/fixture": "demo executor used by composition; held for the owner",
 }

@@ -1,27 +1,9 @@
-package sources
+package domain
 
 import (
-	"strings"
 	"sync"
 	"testing"
 )
-
-func TestRandomIsPrefixedAndUnique(t *testing.T) {
-	t.Parallel()
-
-	generator := Random()
-	seen := map[string]bool{}
-	for range 1000 {
-		id := generator.New(PrefixEvent)
-		if !strings.HasPrefix(id, PrefixEvent) || len(id) != len(PrefixEvent)+16 {
-			t.Fatalf("id %q is not a %s-prefixed 12-byte base64url value", id, PrefixEvent)
-		}
-		if seen[id] {
-			t.Fatalf("duplicate id %q", id)
-		}
-		seen[id] = true
-	}
-}
 
 func TestDeterministicSequenceIsReproducible(t *testing.T) {
 	t.Parallel()

@@ -92,7 +92,9 @@ historical design map where the code has chosen a more specific package name.
 | `internal/interlock/` | durable readiness state and read-only assertions |
 | `internal/canonicaljson/` | RFC 8785 canonical JSON and domain-separated digests: thin facade (public API only) |
 | `internal/canonicaljson/internal/domain/` | pure canonical encoder, number and string rules, strict validation, digest and stored-document rules (reference module layer) |
-| `internal/sources/` | deterministic digest, time, duration and identity primitives |
+| `internal/sources/` | injected time and identity sources (facade) |
+| `internal/sources/internal/domain/` | pure clock and generator contracts, virtual clock, deterministic generator, id prefixes |
+| `internal/sources/internal/transport/` | the operating-system clock and the cryptographic random generator |
 | `internal/executor/fixture/` | deterministic episode executor for explicit demo and replay fixtures |
 | `internal/executor/native/`, `internal/executor/remote/`, `internal/worker/` | in-process and out-of-process executors and the worker protocol (facade) |
 | `internal/worker/internal/domain/` | pure protocol constants, limits, handshake, request and stream validation, budget rule |

@@ -1,12 +1,6 @@
-// Package sources holds the runtime's injected sources of non-determinism:
-// time (a physical clock and a virtual one for replay) and identifiers (a random
-// generator and a deterministic one for replay and tests). Rules receive them
-// as parameters and never read the wall clock or a random source themselves.
-package sources
+package domain
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"sync"
 )
@@ -36,22 +30,6 @@ const (
 type Generator interface {
 	// New returns a new identifier with the given prefix.
 	New(prefix string) string
-}
-
-// Random returns a generator that produces base64url-encoded random IDs.
-func Random() Generator {
-	return &randomGenerator{}
-}
-
-type randomGenerator struct{}
-
-func (randomGenerator) New(prefix string) string {
-	var b [12]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		// crypto/rand only fails under catastrophic conditions.
-		panic(fmt.Sprintf("ids: crypto/rand failed: %v", err))
-	}
-	return prefix + base64.RawURLEncoding.EncodeToString(b[:])
 }
 
 // Deterministic returns a generator that produces numbered IDs for tests and

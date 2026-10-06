@@ -25,6 +25,8 @@ var foundationPackages = []string{
 	"internal/canonicaljson",
 	"internal/canonicaljson/internal/domain",
 	"internal/sources",
+	"internal/sources/internal/domain",
+	"internal/sources/internal/transport",
 	"internal/contractsv1",
 	"internal/contractsv1/internal/domain",
 	"internal/interlock",
@@ -79,6 +81,8 @@ var forbiddenImports = map[string][]string{
 // follow the data flow in .agents/context/architecture.md and be added here in
 // the same change.
 var allowedImports = map[string][]string{
+	"internal/sources/internal/transport":         {"internal/sources/internal/domain"},
+	"internal/sources/internal/domain":            {},
 	"internal/storage/internal/store":             {"internal/storage/internal/domain", "migrations"},
 	"internal/storage/internal/domain":            {"migrations"},
 	"internal/actionport/internal/domain":         {},
@@ -124,7 +128,7 @@ var allowedImports = map[string][]string{
 	"internal/cognition/internal/app":             {"internal/cognition/internal/domain", "internal/cognition/internal/store", "internal/episodeledger", "internal/situations", "internal/sources", "internal/spec"},
 	"internal/cognition/internal/domain":          {"internal/canonicaljson", "internal/contractsv1", "internal/episodeledger", "internal/situations", "internal/sources", "internal/spec"},
 	"internal/cognition/internal/store":           {"internal/approvalledger", "internal/canonicaljson", "internal/sources", "internal/cognition/internal/domain", "internal/contractsv1", "internal/episodeledger", "internal/notify", "internal/situations", "internal/storage"},
-	"internal/sources":                            {},
+	"internal/sources":                            {"internal/sources/internal/domain", "internal/sources/internal/transport"},
 	"internal/cognition":                          {"internal/cognition/internal/app", "internal/cognition/internal/store", "internal/situations"},
 	"internal/contractsv1":                        {"internal/contractsv1/internal/domain"},
 	"internal/contractsv1/internal/domain":        {"internal/canonicaljson"},

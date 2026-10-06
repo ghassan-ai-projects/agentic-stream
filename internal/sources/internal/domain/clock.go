@@ -1,4 +1,4 @@
-package sources
+package domain
 
 import (
 	"cmp"
@@ -35,27 +35,6 @@ type Timer interface {
 	// stopped before it fired.
 	Stop() bool
 }
-
-// Physical returns a clock backed by the operating system.
-func Physical() Clock {
-	return physicalClock{}
-}
-
-type physicalClock struct{}
-
-func (physicalClock) Now() time.Time { return time.Now().UTC() }
-
-func (physicalClock) NewTimer(d time.Duration) Timer {
-	return physicalTimer{time.NewTimer(d)}
-}
-
-type physicalTimer struct {
-	t *time.Timer
-}
-
-func (t physicalTimer) C() <-chan time.Time { return t.t.C }
-
-func (t physicalTimer) Stop() bool { return t.t.Stop() }
 
 // Virtual is a deterministic clock for tests and replay. It starts at start
 // and advances only when Advance is called. During an Advance, every timer due
