@@ -105,7 +105,9 @@ historical design map where the code has chosen a more specific package name.
 | `internal/telemetry/` | OpenTelemetry and runtime metrics (facade) |
 | `internal/telemetry/internal/domain/` | pure runtime counters, latency histogram and percentiles |
 | `internal/telemetry/internal/transport/` | Prometheus metrics handler and OpenTelemetry tracer provider, spans and links |
-| `internal/api/` | HTTP health, controls and SSE delivery |
+| `internal/api/` | HTTP health, controls and SSE delivery (facade) |
+| `internal/api/internal/domain/` | pure problem document, approval decoding, bearer matching, SSE frames, cursors and failure mapping |
+| `internal/api/internal/transport/` | net/http handlers: health, controls, approvals and the SSE stream |
 | `internal/notify/` | durable notification outbox facade: transactional append, paged reads, retention |
 | `internal/notify/internal/app/` | append, lifecycle append, page read with resume, lag and poison handling, prune |
 | `internal/notify/internal/domain/` | lifecycle contract (schema and binding), sealing, dedupe, resume, poison and retention rules |

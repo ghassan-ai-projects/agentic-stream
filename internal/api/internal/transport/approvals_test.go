@@ -1,4 +1,4 @@
-package api
+package transport
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/api/internal/domain"
 )
 
 func TestApprovalTransportRejectsInvalidInputsBeforeResolution(t *testing.T) {
@@ -34,7 +36,7 @@ func TestApprovalTransportRejectsInvalidInputsBeforeResolution(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			cfg := ApprovalConfig{Token: "token", Relay: "relay", ErrorStatus: func(error) int { return 503 }, Present: func(context.Context, ApprovalSelection) (any, error) { calls++; return nil, nil }, Resolve: func(context.Context, ApprovalSubmission) (any, error) { calls++; return nil, nil }}
+			cfg := domain.ApprovalConfig{Token: "token", Relay: "relay", ErrorStatus: func(error) int { return 503 }, Present: func(context.Context, domain.ApprovalSelection) (any, error) { calls++; return nil, nil }, Resolve: func(context.Context, domain.ApprovalSubmission) (any, error) { calls++; return nil, nil }}
 			h := WithApprovals(NewHealthHandler(nil), cfg)
 			req := httptest.NewRequestWithContext(t.Context(), tc.method, tc.path, strings.NewReader(tc.body))
 			req.Header.Set("Authorization", tc.token)
@@ -53,17 +55,17 @@ func TestApprovalTransportRejectsInvalidInputsBeforeResolution(t *testing.T) {
 func TestApprovalTransportBindsRelayAndRoutesFailures(t *testing.T) {
 	for _, method := range []string{"GET", "POST"} {
 		t.Run(method, func(t *testing.T) {
-			cfg := ApprovalConfig{Token: "token", Relay: "registered-relay", ErrorStatus: func(error) int { return 403 }}
-			check := func(r ApprovalSelection) {
+			cfg := domain.ApprovalConfig{Token: "token", Relay: "registered-relay", ErrorStatus: func(error) int { return 403 }}
+			check := func(r domain.ApprovalSelection) {
 				if r.ID != "id" || r.Approver != "human" || r.Relay != "registered-relay" || r.Approved {
 					t.Fatal(r)
 				}
 			}
-			cfg.Present = func(_ context.Context, r ApprovalSelection) (any, error) {
+			cfg.Present = func(_ context.Context, r domain.ApprovalSelection) (any, error) {
 				check(r)
 				return nil, errors.New("secret database details")
 			}
-			cfg.Resolve = func(_ context.Context, r ApprovalSubmission) (any, error) {
+			cfg.Resolve = func(_ context.Context, r domain.ApprovalSubmission) (any, error) {
 				check(r.ApprovalSelection)
 				return nil, errors.New("secret database details")
 			}
@@ -81,12 +83,12 @@ func TestApprovalTransportBindsRelayAndRoutesFailures(t *testing.T) {
 
 func TestApprovalTransportFailsClosedWithoutConfiguration(t *testing.T) {
 	rec := httptest.NewRecorder()
-	WithApprovals(NewHealthHandler(nil), ApprovalConfig{}).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), "GET", "/v1/approvals/id", nil))
+	WithApprovals(NewHealthHandler(nil), domain.ApprovalConfig{}).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), "GET", "/v1/approvals/id", nil))
 	if rec.Code != 503 {
 		t.Fatal(rec.Code)
 	}
 	rec = httptest.NewRecorder()
-	WithApprovals(NewHealthHandler(nil), ApprovalConfig{}).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), "GET", "/health/live", nil))
+	WithApprovals(NewHealthHandler(nil), domain.ApprovalConfig{}).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), "GET", "/health/live", nil))
 	if rec.Code != 200 {
 		t.Fatal(rec.Code)
 	}

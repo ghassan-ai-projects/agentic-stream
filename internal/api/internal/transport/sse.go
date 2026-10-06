@@ -1,10 +1,11 @@
-package api
+package transport
 
 import (
-	"crypto/subtle"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/api/internal/domain"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -17,10 +18,8 @@ type AuthorizeSubscriber func(*http.Request, string) bool
 // BearerTokenAuthorizer creates a constant-time subscriber credential check.
 // The token is intentionally separate from worker capability tokens.
 func BearerTokenAuthorizer(expected string) AuthorizeSubscriber {
-	expected = strings.TrimSpace(expected)
 	return func(r *http.Request, _ string) bool {
-		provided := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
-		return expected != "" && subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
+		return domain.LooseBearer(r.Header.Get("Authorization"), expected)
 	}
 }
 
@@ -42,9 +41,7 @@ type SSEConfig struct {
 // NewSSEHandler creates a cursor-resumable Server-Sent Events handler. The
 // handler is at-least-once: clients must deduplicate by CloudEvent source/id.
 func NewSSEHandler(cfg SSEConfig) http.Handler {
-	if cfg.PageSize <= 0 || cfg.PageSize > 1000 {
-		cfg.PageSize = 100
-	}
+	cfg.PageSize = domain.NormalizePageSize(cfg.PageSize)
 	cfg = defaultStreamTiming(cfg)
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -71,7 +68,7 @@ type sseStream struct {
 	outbox   *notify.Service
 	tenantID string
 	cursor   int64
-	seen     map[string]struct{}
+	seen     *domain.Dedup
 }
 
 // admitSubscriber requires a GET from an authorized subscriber for a known
@@ -102,7 +99,7 @@ func openStream(w http.ResponseWriter, r *http.Request, cfg SSEConfig, tenantID 
 		writeSSEProblem(w, http.StatusServiceUnavailable, "runtime_not_ready", "notification store is not configured")
 		return nil, false
 	}
-	return &sseStream{w: w, flusher: flusher, r: r, cfg: cfg, outbox: outbox, tenantID: tenantID, cursor: cursor, seen: make(map[string]struct{}, cfg.PageSize)}, true
+	return &sseStream{w: w, flusher: flusher, r: r, cfg: cfg, outbox: outbox, tenantID: tenantID, cursor: cursor, seen: domain.NewDedup(cfg.PageSize)}, true
 }
 
 // subscriberTenant is the configured tenant, then the request's derived
@@ -182,15 +179,8 @@ func (s *sseStream) pollOnce() error {
 }
 
 func defaultStreamTiming(cfg SSEConfig) SSEConfig {
-	if cfg.PollInterval <= 0 {
-		cfg.PollInterval = 500 * time.Millisecond
-	}
-	if cfg.IdleInterval <= 0 {
-		cfg.IdleInterval = 15 * time.Second
-	}
-	if cfg.RetryAfter <= 0 {
-		cfg.RetryAfter = 2 * time.Second
-	}
+	timing := domain.StreamTiming{PollInterval: cfg.PollInterval, IdleInterval: cfg.IdleInterval, RetryAfter: cfg.RetryAfter}.WithDefaults()
+	cfg.PollInterval, cfg.IdleInterval, cfg.RetryAfter = timing.PollInterval, timing.IdleInterval, timing.RetryAfter
 	return cfg
 }
 

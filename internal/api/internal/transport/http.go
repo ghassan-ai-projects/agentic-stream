@@ -1,32 +1,19 @@
-// Package api provides the small, loopback-safe HTTP surface: liveness,
-// readiness, epoch controls and the Server-Sent Events delivery of durable
-// notifications. Business operations remain in internal packages.
-package api
+// Package transport serves the loopback HTTP surface: liveness, readiness, epoch
+// controls, approvals and the Server-Sent Events stream. Handlers translate HTTP
+// to calls supplied by the caller and decide through the domain rules.
+package transport
 
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/api/internal/domain"
 )
-
-// Readiness reports whether the runtime can safely accept work.
-type Readiness interface {
-	Ready() error
-}
-
-// Problem is RFC 9457 Problem Details for HTTP API failures.
-type Problem struct {
-	Type      string `json:"type"`
-	Title     string `json:"title"`
-	Status    int    `json:"status"`
-	Detail    string `json:"detail,omitempty"`
-	Instance  string `json:"instance,omitempty"`
-	RequestID string `json:"request_id,omitempty"`
-}
 
 // NewHealthHandler creates /health/live and /health/ready handlers. The
 // handler does not expose dependency details; readiness logs/audits those at
 // the owning service boundary.
-func NewHealthHandler(readiness Readiness) http.Handler {
+func NewHealthHandler(readiness domain.Readiness) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", serveLiveness)
 	mux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +30,7 @@ func serveLiveness(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "live"})
 }
 
-func serveReadiness(w http.ResponseWriter, r *http.Request, readiness Readiness) {
+func serveReadiness(w http.ResponseWriter, r *http.Request, readiness domain.Readiness) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -62,7 +49,7 @@ func serveReadiness(w http.ResponseWriter, r *http.Request, readiness Readiness)
 func writeProblem(w http.ResponseWriter, r *http.Request, status int, detail string) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(Problem{
+	_ = json.NewEncoder(w).Encode(domain.Problem{
 		Type: "urn:agentic-stream:problem:runtime-not-ready", Title: http.StatusText(status),
 		Status: status, Detail: detail, Instance: r.URL.Path,
 	})

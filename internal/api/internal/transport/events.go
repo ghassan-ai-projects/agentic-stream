@@ -1,7 +1,9 @@
-package api
+package transport
 
 import (
 	"net/http"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/api/internal/domain"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
@@ -12,12 +14,12 @@ import (
 // stream exposed at /v1/events. The notification handler may be nil when a
 // process only needs liveness and readiness.
 //
-// P8: when control is non-nil the handler exposes /control/drain and
+// When control is non-nil the handler exposes /control/drain and
 // /control/kill for the CURRENT policy epoch. A killed epoch refuses every
 // later decision; a drained epoch refuses only new admission. The endpoints
 // require the Authorization header to equal `controlToken` exactly, compared
 // in constant time — an operator action, not an anonymous kill switch.
-func NewRuntimeHandler(readiness Readiness, db *storage.DB, events SSEConfig, metrics http.Handler, control *runtimecontrol.EpochControl, epoch string, controlToken string) http.Handler {
+func NewRuntimeHandler(readiness domain.Readiness, db *storage.DB, events SSEConfig, metrics http.Handler, control *runtimecontrol.EpochControl, epoch string, controlToken string) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", NewHealthHandler(readiness))
 	if db != nil {

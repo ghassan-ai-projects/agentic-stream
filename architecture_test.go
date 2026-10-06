@@ -77,6 +77,8 @@ var forbiddenImports = map[string][]string{
 // follow the data flow in .agents/context/architecture.md and be added here in
 // the same change.
 var allowedImports = map[string][]string{
+	"internal/api/internal/transport":             {"internal/api/internal/domain", "internal/control", "internal/notify", "internal/storage"},
+	"internal/api/internal/domain":                {"internal/canonicaljson"},
 	"internal/worker/internal/transport":          {"internal/worker/internal/domain", "proto/agenticstream/runtime/v1"},
 	"internal/worker/internal/domain":             {"internal/contractsv1", "proto/agenticstream/runtime/v1"},
 	"internal/telemetry/internal/transport":       {"internal/telemetry/internal/domain"},
@@ -98,7 +100,7 @@ var allowedImports = map[string][]string{
 	"internal/actions/internal/app":               {"internal/actionport", "internal/actions/internal/domain", "internal/actions/internal/store", "internal/sources"},
 	"internal/actions/internal/domain":            {"internal/actionport", "internal/canonicaljson", "internal/contractsv1"},
 	"internal/actions/internal/store":             {"internal/actionport", "internal/actions/internal/domain", "internal/authority", "internal/canonicaljson", "internal/contractsv1", "internal/control", "internal/interlock", "internal/notify", "internal/storage"},
-	"internal/api":                                {"internal/canonicaljson", "internal/control", "internal/notify", "internal/storage"},
+	"internal/api":                                {"internal/api/internal/domain", "internal/api/internal/transport", "internal/control", "internal/storage"},
 	"internal/approvalledger":                     {"internal/approvalledger/internal/app", "internal/approvalledger/internal/domain", "internal/approvalledger/internal/store"},
 	"internal/approvalledger/internal/app":        {"internal/approvalledger/internal/domain", "internal/approvalledger/internal/store"},
 	"internal/approvalledger/internal/domain":     {},

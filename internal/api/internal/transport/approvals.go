@@ -1,38 +1,17 @@
-package api
+package transport
 
 import (
-	"context"
-	"crypto/subtle"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/api/internal/domain"
 )
 
-// ApprovalSelection identifies a request and the human decision to sign.
-type ApprovalSelection struct {
-	ID, Approver, Relay string
-	Approved            bool
-}
-
-// ApprovalSubmission carries a signed decision; tenant and time belong to runtime.
-type ApprovalSubmission struct {
-	ApprovalSelection
-	Signature []byte
-	Reason    string
-}
-
-// ApprovalConfig binds transport callbacks to one authenticated relay.
-type ApprovalConfig struct {
-	Present      func(context.Context, ApprovalSelection) (any, error)
-	Resolve      func(context.Context, ApprovalSubmission) (any, error)
-	ErrorStatus  func(error) int
-	Token, Relay string
-}
-
-type approvalHandler struct{ cfg ApprovalConfig }
+type approvalHandler struct{ cfg domain.ApprovalConfig }
 
 // WithApprovals mounts authenticated approval operations alongside existing routes.
-func WithApprovals(base http.Handler, cfg ApprovalConfig) http.Handler {
+func WithApprovals(base http.Handler, cfg domain.ApprovalConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", base)
 	mux.Handle("/v1/approvals/", &approvalHandler{cfg: cfg})
@@ -54,10 +33,10 @@ func (h *approvalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *approvalHandler) checkAccess(r *http.Request) int {
-	if h.cfg.Present == nil || h.cfg.Resolve == nil || h.cfg.ErrorStatus == nil || h.cfg.Token == "" || h.cfg.Relay == "" {
+	if !h.cfg.Configured() {
 		return http.StatusServiceUnavailable
 	}
-	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+h.cfg.Token)) != 1 {
+	if !domain.ExactBearer(r.Header.Get("Authorization"), h.cfg.Token) {
 		return http.StatusUnauthorized
 	}
 	return 0
@@ -81,7 +60,7 @@ func (h *approvalHandler) present(w http.ResponseWriter, r *http.Request, id str
 		approvalProblem(w, r, http.StatusBadRequest)
 		return
 	}
-	result, err := h.cfg.Present(r.Context(), ApprovalSelection{ID: id, Approver: r.URL.Query().Get("approver"), Relay: h.cfg.Relay, Approved: approved})
+	result, err := h.cfg.Present(r.Context(), domain.ApprovalSelection{ID: id, Approver: r.URL.Query().Get("approver"), Relay: h.cfg.Relay, Approved: approved})
 	if err != nil {
 		approvalProblem(w, r, h.cfg.ErrorStatus(err))
 		return
@@ -95,7 +74,7 @@ func (h *approvalHandler) resolve(w http.ResponseWriter, r *http.Request, id str
 		approvalProblem(w, r, http.StatusBadRequest)
 		return
 	}
-	result, err := h.cfg.Resolve(r.Context(), ApprovalSubmission{ApprovalSelection: ApprovalSelection{ID: id, Approver: input.Approver, Relay: h.cfg.Relay, Approved: *input.Approved}, Signature: input.Signature, Reason: input.Reason})
+	result, err := h.cfg.Resolve(r.Context(), domain.ApprovalSubmission{ApprovalSelection: domain.ApprovalSelection{ID: id, Approver: input.Approver, Relay: h.cfg.Relay, Approved: *input.Approved}, Signature: input.Signature, Reason: input.Reason})
 	if err != nil {
 		approvalProblem(w, r, h.cfg.ErrorStatus(err))
 		return
@@ -106,5 +85,5 @@ func (h *approvalHandler) resolve(w http.ResponseWriter, r *http.Request, id str
 func approvalProblem(w http.ResponseWriter, r *http.Request, status int) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSONProblem(w, status, Problem{Type: "urn:agentic-stream:problem:approval", Title: http.StatusText(status), Status: status, Instance: r.URL.Path})
+	writeJSONProblem(w, status, domain.Problem{Type: "urn:agentic-stream:problem:approval", Title: http.StatusText(status), Status: status, Instance: r.URL.Path})
 }
