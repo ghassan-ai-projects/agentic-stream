@@ -15,10 +15,10 @@ or package that would be tiny is merged instead.
 | --- | --- | --- | --- | --- |
 | `executor/native` | 1387 | 2 | Model loop, tools, OpenAI-compatible provider over HTTP, deterministic provider, artifact store, benchmark batch runner | **Migrate** (adapter shape). Delete `batch.go` (no caller); move `MemoryArtifactStore` to test support |
 | `executor/remote` | 1143 | 1 | Streamed `EpisodeWorker` executor over gRPC: request building, budgets, capability checks, stream state | **Migrate** (adapter shape) |
-| `runartifact` + `soak` | 1042 + 220 | 1 + 1 | Read-only run export, manifest, verification; soak verdict computed only for the export | **Merge `soak` into `runartifact`, then migrate** (read-only module: facade · app · domain · store · transport) |
+| `runartifact` + `soak` | 1042 + 220 | 1 + 1 | Read-only run export, manifest, verification; soak verdict computed only for the export | **Merged** (`soak` is now unexported files in `runartifact`, commit `478882b`); **then migrate** (read-only module: facade · app · domain · store · transport) |
 | `worker` | 685 | 4 | Protocol constants, UDS socket helpers (prod); reference `Server`, handshake and stream validation (only tests register it) | **Split**: reference server to `worker/workertest`; the remaining ~250 lines stay one package (below the size where layers pay off) |
-| `spec` | 1014 | 34 | Compiler, schema, references (pure) plus `deployments.go` with SQL on `spec_deployments` | **Extract `spec/internal/store`** for the deployment writer; compiler stays flat |
-| `eventschema` | 183 | 3 | Embedded registry (pure) plus `storage.go`, the only writer of `event_schemas`, called only by `spec/deployments.go` | **Fold `Register` into the spec store**; `event_schemas` writer becomes `spec/internal/store`; package becomes pure registry |
+| `spec` | 1014 | 34 | Compiler, schema, references (pure) plus `deployments.go` (131 lines) with SQL on `spec_deployments` | **Decided: no.** A store layer for one 131-line writer is the tiny layer the merge rule rejects; `deployments.go` stays beside the compiler it persists |
+| `eventschema` | 183 | 3 | Embedded registry (pure) plus `storage.go`, the only writer of `event_schemas` | **Decided: no merge.** `Register` has one production caller (`spec`) but four test seeders in `eventlog` and `ingress`, `eventlog` reads the table, and `spec` (layer 2) may not import `eventlog` (layer 3). It stays the layer-1 owner of the table |
 | `contractsv1` | 580 | 69 | Envelopes and schemas; `conformance.go` holds six test-only fixture functions | **Move `conformance.go`** to a `contractsv1/contractstest` support package; rest stays |
 | `executor/conformance` | 81 | 0 | Shared executor contract harness, imported by 7 tests | **Keep** as test support; documented as such |
 | `executor/fixture` | 124 | 1 | Deterministic fixture executor used by composition and 17 tests | **Keep** |
@@ -50,9 +50,10 @@ No package is deleted outright: every one has a production importer except
   (`runartifact/export_snapshot.go`). `soak.Compute` and `soak.ComputeTx` are
   never called; export uses `ComputeTenantTx`. Both read tables they do not own
   (`soak` reads device authority through `authority.ReadSafetyRecord`).
-- `spec` and `eventschema`: `eventschema.Register` has one caller,
-  `spec.registerInputSchemas`, which already runs inside the deployment
-  transaction. Moving it removes a second SQL-owning package outside a store layer.
+- `spec` and `eventschema`: `eventschema.Register` has one production caller,
+  `spec.registerInputSchemas`, but also four test callers in
+  `eventlog` and `ingress` that seed schemas. Folding it into a `spec` store would
+  make those tests import `spec` internals or build whole deployments. Not worth it.
 
 ## Gates that change
 

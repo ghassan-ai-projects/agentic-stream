@@ -15,14 +15,15 @@ threshold. Each layered module gets its own dated record folder and an
 | 0 | This folder | Docs only |
 | 1 | **Dead-code deletions** ([DEADCODE](DEADCODE.md)): engine per-partition path, native batch runner, authority wrappers, `episodes.CompileIntentCatalog`, `control.SetCostLimit` unexport | `deadcode ./...` drops 14 symbols; replaced tests still pass; engine golden replay unchanged |
 | 2 | **Test support moves**: `worker/workertest`, `contractsv1/contractstest`, native `MemoryArtifactStore` | `deadcode` drops 43 symbols; architecture gate still forbids production imports of the support packages |
-| 3 | **`spec` store**: extract `spec/internal/store` for deployments, absorb `eventschema.Register`, make `eventschema` pure; update `durableOwners` for `event_schemas` and `spec_deployments` | Deployment golden digests unchanged; SQL-in-store gate covers `spec`; `eventschema` has no `database/sql` import |
-| 4 | **`runartifact` + `soak`**: merge `soak` in, then facade · app (export, verify) · domain (manifest, file digests, soak verdict) · store (read-only snapshot SQL) · transport (artifact directory) | Exported artifact byte-identical for a fixed database (golden), `Verify` rejects each tampered-file case as before, read-only store has no `Exec` |
+| 3 | ~~`spec` store~~ **Dropped**: a store layer for 131 lines is a tiny layer; `eventschema.Register` has four test callers and `spec` may not import `eventlog`. Both packages stay as they are | — |
+| 4 | **`runartifact` + `soak`**: ~~merge `soak` in~~ (done, commit `478882b`), then facade · app (export, verify) · domain (manifest, file digests, soak verdict) · store (read-only snapshot SQL) · transport (artifact directory) | Exported artifact byte-identical for a fixed database (golden), `Verify` rejects each tampered-file case as before, read-only store has no `Exec` |
 | 5 | **`worker` + `executor/remote`**: `worker` keeps protocol constants, `ValidateBudget`, sockets; `executor/remote` becomes facade · app (stream session) · domain (request, budget, capability, event checks) · transport (gRPC stream) | `executor/conformance` passes against the streamed worker; error classification (`transport_error`) tests unchanged; worker-boundary gate still lists only executors as transport importers |
 | 6 | **`executor/native`**: facade · app (model/tool loop) · domain (types, usage, retry classification, decision checks) · transport (OpenAI-compatible provider, stream parsing) | Conformance passes; usage and cost accounting identical; no network calls in unit tests (provider tests use `httptest`) |
 | 7 | **Gates and docs**: extend architecture tests, prove each new gate by injecting a violation, update `AGENTS.md`, `.agents/context/architecture-bar.md`, `documentation/architecture/repository-map.md`, and the migration-status README | Each gate fails on an injected violation, then passes |
+| 7b | **Ubiquitous language for every package** (done in this commit): 20 files added, `TestEveryModuleHasItsUbiquitousLanguage` now covers every package with production Go files | Gate fails when a file is removed (proven) | 
 | 8 | **Operator levers** (after owner decisions): `replay --mode/--repeat`, `quarantine`, `interlock`, `RecordGap` resolution | Each CLI command has an end-to-end test; `deadcode` shows only the conformance harness |
 
-Rounds 1 to 3 are independent of 4 to 6. Rounds 4, 5 and 6 are independent of
+Rounds 1 and 2 are independent of 4 to 6. Rounds 4, 5 and 6 are independent of
 each other, except that round 5 follows round 2 (the reference worker moves
 first). Round 8 does not block the others.
 
@@ -45,7 +46,7 @@ first). Round 8 does not block the others.
 | `soak.Compute`/`ComputeTx` removed; export uses the tenant variant only | 1, 4 | Never called |
 | `control.SetCostLimit` unexported | 1 | Production writes ceilings through `ApplyCostCeilings` |
 | `native.RunBatch*` removed | 1 | No caller; the benchmark harness belongs with its protocol |
-| `eventschema.Register` becomes a spec-store method; `event_schemas` writer is `spec` | 3 | One writer, inside the deployment transaction |
+| `soak` global report path (`Compute`, `ComputeTx`, global diagnostic queries) removed; `soak` is unexported inside `runartifact` and always tenant-scoped | 4 | Export is the only caller and passes a tenant |
 | `worker.Server` moves to `worker/workertest` | 2 | Test-only; the public protocol is the proto, not this Go server |
 
 ## Owner decisions needed
@@ -70,14 +71,16 @@ they join the read-port work rather than blocking it.
 
 | Round | Status | Commit |
 | --- | --- | --- |
-| 0 Plan | Written, not committed | — |
+| 0 Plan | Done | `3856e5c` |
 | 1 Dead-code deletions | Not started | — |
 | 2 Test support moves | Not started | — |
-| 3 `spec` store | Not started | — |
-| 4 `runartifact` + `soak` | Not started | — |
+| 3 `spec` store | Dropped (see above) | — |
+| 4a `soak` merged into `runartifact` | Done | `478882b` |
+| 4b `runartifact` layering | Not started | — |
 | 5 `worker` + `executor/remote` | Not started | — |
 | 6 `executor/native` | Not started | — |
 | 7 Gates and docs | Not started | — |
+| 7b Ubiquitous language everywhere | Done | this commit |
 | 8 Operator levers | Blocked on owner decision | — |
 
 Update the migration-status README and `deadcode-production-unreachable.txt`

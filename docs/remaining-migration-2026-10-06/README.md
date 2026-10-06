@@ -21,11 +21,10 @@ Companion records: [migration status](../reference-module-migration-status-2026-
 19 packages are migrated or dissolved. Four unmigrated packages carry real
 structure and should be layered: `executor/native`, `executor/remote`,
 `runartifact` (absorbing `soak`) and `worker` (split: its reference server is
-test support). Three small changes remove misplaced SQL or test-only code from
-production packages: `spec` deployment SQL (absorbing the `event_schemas`
-writer from `eventschema`), `contractsv1` conformance fixtures, and the
-`executor/native` batch runner. One package merges (`soak` into `runartifact`),
-nothing is deleted wholesale. Of the 182 unreachable symbols, 17 are plain
+test support). Two small changes remove test-only code from production packages:
+`contractsv1` conformance fixtures and the `executor/native` batch runner. One
+package merged (`soak` into `runartifact`, done); a second candidate
+(`eventschema` into `spec`) was examined and rejected. Nothing is deleted wholesale. Of the 182 unreachable symbols, 17 are plain
 deletions, 49 are test support that moves out of production packages, and 116
 are operator levers with no production caller (93 are `replay` modes, 14
 `eventlog` quarantine/gap, 7 `notify` pruning, 2 `interlock`), which need an
@@ -37,7 +36,7 @@ owner decision to wire or remove.
 Layered (done)          Layered (this plan)          Leave as is
 authority device ...    executor/native              interlock  api  clock  storage
 (19 packages)           executor/remote              telemetry  actionport  ids
-                        runartifact (+ soak)         duration  situations  operators
+                        runartifact (soak merged)    duration  situations  operators
                         worker (protocol + sockets)  contractsv1  eventschema (pure)
-                        spec (deployment store)      executor/fixture, conformance
+                                                     executor/fixture, conformance, spec
 ```
