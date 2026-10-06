@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/soak"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -45,7 +44,7 @@ func buildSnapshotFiles(ctx context.Context, tx *sql.Tx, input Manifest) (map[st
 
 // addReportFiles adds the manifest, the soak metrics, and the verdict.
 func addReportFiles(ctx context.Context, tx *sql.Tx, manifest Manifest, files map[string][]byte) error {
-	report, err := soak.ComputeTenantTx(ctx, tx, manifest.TenantID)
+	report, err := computeSoakReport(ctx, tx, manifest.TenantID)
 	if err != nil {
 		return fmt.Errorf("compute run soak report: %w", err)
 	}

@@ -1,4 +1,4 @@
-package soak
+package runartifact
 
 import (
 	"context"
@@ -9,30 +9,43 @@ import (
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 )
 
-func computeTx(ctx context.Context, tx *sql.Tx, tenantID string) (Report, error) {
-	if tx == nil {
-		return Report{}, fmt.Errorf("soak transaction is required")
+// computeSoakReport derives a tenant's report from the caller's consistent
+// read transaction. Device authority and safety ledgers remain global because
+// the current device tables do not carry a tenant column.
+func computeSoakReport(ctx context.Context, tx *sql.Tx, tenantID string) (soakReport, error) {
+	if err := requireSoakScope(tx, tenantID); err != nil {
+		return soakReport{}, err
 	}
-	report := Report{SchemaVersion: 1, Diagnostics: make(map[string]uint64)}
+	report := soakReport{SchemaVersion: 1, Diagnostics: make(map[string]uint64)}
 	record, err := deviceauthority.ReadSafetyRecord(ctx, tx)
 	if err != nil {
-		return Report{}, fmt.Errorf("read device safety record: %w", err)
+		return soakReport{}, fmt.Errorf("read device safety record: %w", err)
 	}
 	applySafetyRecord(&report, record)
 	setEvidenceRatio(&report)
 	if err := addDiagnostics(ctx, tx, tenantID, &report); err != nil {
-		return Report{}, err
+		return soakReport{}, err
 	}
 	setVerdict(&report)
 	return report, nil
 }
 
+func requireSoakScope(tx *sql.Tx, tenantID string) error {
+	if tx == nil {
+		return fmt.Errorf("soak transaction is required")
+	}
+	if tenantID == "" {
+		return fmt.Errorf("soak tenant is required")
+	}
+	return nil
+}
+
 // applySafetyRecord copies the device authority's safety evidence into the
 // report: zero-tolerance counters, physical-evidence completeness, and the
 // authority diagnostics.
-func applySafetyRecord(report *Report, record deviceauthority.SafetyRecord) {
+func applySafetyRecord(report *soakReport, record deviceauthority.SafetyRecord) {
 	counts := record.EventCounts
-	report.ZeroTolerance = ZeroTolerance{
+	report.ZeroTolerance = zeroTolerance{
 		UnsafeOutputCount:             counts[deviceauthority.SafetyUnsafeOutput],
 		StaleEnergizingEffectCount:    counts[deviceauthority.SafetyStaleEnergizingEffect],
 		DuplicateNetEnergizingCount:   counts[deviceauthority.SafetyDuplicateNetEnergizingEffect],
@@ -46,7 +59,7 @@ func applySafetyRecord(report *Report, record deviceauthority.SafetyRecord) {
 	report.Diagnostics["authority_events"] = record.AuthorityEvents
 }
 
-func setEvidenceRatio(report *Report) {
+func setEvidenceRatio(report *soakReport) {
 	if report.EvidenceCompleteness.Transitions == 0 {
 		report.EvidenceCompleteness.Ratio = 1
 		return
@@ -60,8 +73,8 @@ type diagnosticQuery struct {
 	args  []any
 }
 
-func addDiagnostics(ctx context.Context, tx *sql.Tx, tenantID string, report *Report) error {
-	for _, item := range diagnosticQueries(tenantID) {
+func addDiagnostics(ctx context.Context, tx *sql.Tx, tenantID string, report *soakReport) error {
+	for _, item := range tenantDiagnosticQueries(tenantID) {
 		var count int64
 		if err := tx.QueryRowContext(ctx, item.query, item.args...).Scan(&count); err != nil {
 			return fmt.Errorf("count %s: %w", item.name, err)
@@ -72,24 +85,6 @@ func addDiagnostics(ctx context.Context, tx *sql.Tx, tenantID string, report *Re
 		report.Diagnostics[item.name] = uint64(count)
 	}
 	return nil
-}
-
-func diagnosticQueries(tenantID string) []diagnosticQuery {
-	if tenantID == "" {
-		return globalDiagnosticQueries()
-	}
-	return tenantDiagnosticQueries(tenantID)
-}
-
-func globalDiagnosticQueries() []diagnosticQuery {
-	return []diagnosticQuery{
-		{name: "commands", query: "SELECT COUNT(*) FROM commands"},
-		{name: "unknown_outcomes", query: "SELECT COUNT(*) FROM commands WHERE status IN ('outcome_unknown', 'reconciling')"},
-		{name: "awaiting_verification", query: "SELECT COUNT(*) FROM verifications WHERE status = 'awaiting'"},
-		{name: "unresolved_action_outcomes", query: `SELECT COUNT(*)
-				FROM commands c LEFT JOIN verifications v ON v.command_id = c.command_id
-				WHERE c.status IN ('outcome_unknown', 'reconciling') OR v.status = 'awaiting'`},
-	}
 }
 
 func tenantDiagnosticQueries(tenantID string) []diagnosticQuery {
@@ -103,7 +98,7 @@ func tenantDiagnosticQueries(tenantID string) []diagnosticQuery {
 	}
 }
 
-func setVerdict(report *Report) {
+func setVerdict(report *soakReport) {
 	report.FailureReasons = failureReasons(*report)
 	if len(report.FailureReasons) == 0 {
 		report.Verdict = "pass"
@@ -112,7 +107,7 @@ func setVerdict(report *Report) {
 	report.Verdict = "fail"
 }
 
-func failureReasons(report Report) []string {
+func failureReasons(report soakReport) []string {
 	reasons := make([]string, 0, 9)
 	for name, value := range report.failureCounts() {
 		if value > 0 {
@@ -126,7 +121,7 @@ func failureReasons(report Report) []string {
 	return reasons
 }
 
-func (report Report) failureCounts() map[string]uint64 {
+func (report soakReport) failureCounts() map[string]uint64 {
 	return map[string]uint64{
 		"unsafe_output_count":                   report.ZeroTolerance.UnsafeOutputCount,
 		"stale_energizing_effect_count":         report.ZeroTolerance.StaleEnergizingEffectCount,

@@ -1,6 +1,7 @@
-package soak_test
+package runartifact
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
@@ -8,7 +9,6 @@ import (
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/soak"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -26,13 +26,13 @@ func newAuthority(t *testing.T, db *storage.DB) *deviceauthority.Service {
 	return authority
 }
 
-func TestComputePassesCompletePhysicalTransitions(t *testing.T) {
+func TestSoakReportPassesCompletePhysicalTransitions(t *testing.T) {
 	db, _ := openSoakDB(t)
 	authority := newAuthority(t, db)
 	if err := authority.RecordSafetyEvent(t.Context(), deviceauthority.SafetyEvent{Type: "physical_transition", Target: "fan-01", Details: completeEvidence()}); err != nil {
 		t.Fatal(err)
 	}
-	report, err := soak.Compute(t.Context(), db)
+	report, err := computeSoak(t, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestComputePassesCompletePhysicalTransitions(t *testing.T) {
 	}
 }
 
-func TestComputeFailsUnresolvedActionOutcome(t *testing.T) {
+func TestSoakReportFailsUnresolvedActionOutcome(t *testing.T) {
 	db, _ := openSoakDB(t)
 	zeroDigest := make([]byte, 32)
 	if _, err := db.ExecContext(t.Context(), `PRAGMA foreign_keys = OFF`); err != nil {
@@ -53,7 +53,7 @@ func TestComputeFailsUnresolvedActionOutcome(t *testing.T) {
 		VALUES ('cmd-unknown', 'intent-missing', 'tenant', 'safe_stop', 'fan-01', ?, ?, ?, 'reconciling', '2026-08-29T12:00:00Z', '2026-08-29T12:00:00Z')`, zeroDigest, []byte("{}"), zeroDigest); err != nil {
 		t.Fatal(err)
 	}
-	report, err := soak.Compute(t.Context(), db)
+	report, err := computeSoak(t, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestComputeFailsUnresolvedActionOutcome(t *testing.T) {
 	}
 }
 
-func TestComputeFailsAnyZeroToleranceEventOrIncompleteEvidence(t *testing.T) {
+func TestSoakReportFailsAnyZeroToleranceEventOrIncompleteEvidence(t *testing.T) {
 	db, _ := openSoakDB(t)
 	authority := newAuthority(t, db)
 	for _, event := range []deviceauthority.SafetyEvent{
@@ -73,7 +73,7 @@ func TestComputeFailsAnyZeroToleranceEventOrIncompleteEvidence(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	report, err := soak.Compute(t.Context(), db)
+	report, err := computeSoak(t, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestComputeFailsAnyZeroToleranceEventOrIncompleteEvidence(t *testing.T) {
 	}
 }
 
-func TestComputeFailsWithActiveReconciliationBarrier(t *testing.T) {
+func TestSoakReportFailsWithActiveReconciliationBarrier(t *testing.T) {
 	db, _ := openSoakDB(t)
 	authority := newAuthority(t, db)
 	owner := deviceauthority.Owner{Epoch: "epoch-1", Instance: "instance-1"}
@@ -91,13 +91,24 @@ func TestComputeFailsWithActiveReconciliationBarrier(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	report, err := soak.Compute(t.Context(), db)
+	report, err := computeSoak(t, db)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if report.Verdict != "fail" || report.Diagnostics["reconciliation_barriers"] != 1 {
 		t.Fatalf("report=%+v", report)
 	}
+}
+
+// computeSoak derives the report for the test tenant in one read transaction.
+func computeSoak(t *testing.T, db *storage.DB) (soakReport, error) {
+	t.Helper()
+	tx, err := db.BeginTx(t.Context(), &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	return computeSoakReport(t.Context(), tx, "tenant")
 }
 
 func completeEvidence() map[string]any {
