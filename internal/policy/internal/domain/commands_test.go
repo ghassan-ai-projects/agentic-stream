@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 func TestCommandIdentityAndPayloadRemainBound(t *testing.T) {

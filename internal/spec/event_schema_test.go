@@ -1,4 +1,4 @@
-package eventschema
+package spec
 
 import (
 	"crypto/sha256"
@@ -13,12 +13,12 @@ import (
 func TestJSONEmitsStringEnum(t *testing.T) {
 	t.Parallel()
 
-	definition := Definition{Fields: map[string]Field{
+	definition := EventSchema{Fields: map[string]EventField{
 		"quality": {Path: "quality", Type: "string", Optional: true, Enum: []string{"valid", "invalid"}},
 		"value":   {Path: "value", Unit: "celsius"},
 	}}
 
-	raw, err := JSON(definition)
+	raw, err := EventSchemaJSON(definition)
 	if err != nil {
 		t.Fatalf("JSON: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestThermalSchemasDeclareQualityAndProvenance(t *testing.T) {
 		ref := ref
 		t.Run(ref, func(t *testing.T) {
 			t.Parallel()
-			definition, ok := Lookup(ref)
+			definition, ok := LookupEventSchema(ref)
 			if !ok {
 				t.Fatalf("schema %q is not registered", ref)
 			}
@@ -91,9 +91,9 @@ func TestThermalSchemasDeclareQualityAndProvenance(t *testing.T) {
 				}
 			}
 
-			raw, err := JSON(definition)
+			raw, err := EventSchemaJSON(definition)
 			if err != nil {
-				t.Fatalf("JSON(%q): %v", ref, err)
+				t.Fatalf("EventSchemaJSON(%q): %v", ref, err)
 			}
 			var document struct {
 				Properties map[string]struct {
@@ -102,7 +102,7 @@ func TestThermalSchemasDeclareQualityAndProvenance(t *testing.T) {
 				} `json:"properties"`
 			}
 			if err := json.Unmarshal(raw, &document); err != nil {
-				t.Fatalf("decode JSON(%q): %v", ref, err)
+				t.Fatalf("decode EventSchemaJSON(%q): %v", ref, err)
 			}
 			if !reflect.DeepEqual(document.Properties["quality"].Enum, wantQuality) {
 				t.Fatalf("generated quality enum = %v, want %v", document.Properties["quality"].Enum, wantQuality)
@@ -135,13 +135,13 @@ func TestRotatingMachinerySchemasDescribeAdapterPayloads(t *testing.T) {
 		t.Run(tt.ref, func(t *testing.T) {
 			t.Parallel()
 
-			definition, ok := Lookup(tt.ref)
+			definition, ok := LookupEventSchema(tt.ref)
 			if !ok {
 				t.Fatalf("schema %q is not registered", tt.ref)
 			}
-			raw, err := JSON(definition)
+			raw, err := EventSchemaJSON(definition)
 			if err != nil {
-				t.Fatalf("JSON(%q): %v", tt.ref, err)
+				t.Fatalf("EventSchemaJSON(%q): %v", tt.ref, err)
 			}
 			var document struct {
 				Properties map[string]struct {
@@ -150,7 +150,7 @@ func TestRotatingMachinerySchemasDescribeAdapterPayloads(t *testing.T) {
 				Required []string `json:"required"`
 			}
 			if err := json.Unmarshal(raw, &document); err != nil {
-				t.Fatalf("decode JSON(%q): %v", tt.ref, err)
+				t.Fatalf("decode EventSchemaJSON(%q): %v", tt.ref, err)
 			}
 			for _, field := range tt.required {
 				if !contains(document.Required, field) {
@@ -178,7 +178,7 @@ func TestPondDissolvedOxygenSchemaDescribesAdapterPayload(t *testing.T) {
 	t.Parallel()
 
 	ref := "pond.dissolved_oxygen.observed/1.0"
-	definition, ok := Lookup(ref)
+	definition, ok := LookupEventSchema(ref)
 	if !ok {
 		t.Fatalf("schema %q is not registered", ref)
 	}
@@ -193,9 +193,9 @@ func TestPondDissolvedOxygenSchemaDescribesAdapterPayload(t *testing.T) {
 		t.Fatalf("mg_l field = %+v, want path and unit mg_l", field)
 	}
 
-	raw, err := JSON(definition)
+	raw, err := EventSchemaJSON(definition)
 	if err != nil {
-		t.Fatalf("JSON(%q): %v", ref, err)
+		t.Fatalf("EventSchemaJSON(%q): %v", ref, err)
 	}
 	var document struct {
 		Properties map[string]struct {
@@ -204,7 +204,7 @@ func TestPondDissolvedOxygenSchemaDescribesAdapterPayload(t *testing.T) {
 		Required []string `json:"required"`
 	}
 	if err := json.Unmarshal(raw, &document); err != nil {
-		t.Fatalf("decode JSON(%q): %v", ref, err)
+		t.Fatalf("decode EventSchemaJSON(%q): %v", ref, err)
 	}
 	if !contains(document.Required, "mg_l") {
 		t.Fatalf("required fields %v do not include mg_l", document.Required)
@@ -237,7 +237,7 @@ func TestBaySchemasDescribeAdapterPayloads(t *testing.T) {
 		t.Run(tt.ref, func(t *testing.T) {
 			t.Parallel()
 
-			definition, ok := Lookup(tt.ref)
+			definition, ok := LookupEventSchema(tt.ref)
 			if !ok {
 				t.Fatalf("schema %q is not registered", tt.ref)
 			}
@@ -264,7 +264,7 @@ func TestBaySchemasDescribeAdapterPayloads(t *testing.T) {
 func TestZoneHumiditySchemaDescribesAdapterPayload(t *testing.T) {
 	t.Parallel()
 
-	definition, ok := Lookup("zone.humidity.observed/1.0")
+	definition, ok := LookupEventSchema("zone.humidity.observed/1.0")
 	if !ok {
 		t.Fatal("zone humidity schema is not registered")
 	}
@@ -290,7 +290,7 @@ func contains(values []string, want string) bool {
 }
 
 // Domain-data extraction (docs/design/impl/GO_DOMAIN_DATA_EXTRACTION.md):
-// the catalog now lives in registry_data.json. Every ref must load and expose
+// the catalog now lives in event_schema_data.json. Every ref must load and expose
 // its declared fields. The golden digest pins every ref's event_type /
 // schema_version / fields (path, unit, type, optional, enum) VALUES — a typo in any
 // entry, even one the targeted tables above do not cover, breaks the digest.

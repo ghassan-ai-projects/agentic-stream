@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/cel-go/cel"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/google/cel-go/cel"
 )
 
 // Evaluation is the deterministic result of evaluating one trigger.

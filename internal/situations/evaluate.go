@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/cel-go/cel"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -95,7 +94,7 @@ func (e *Engine) applyTransition(ctx context.Context, sit *Situation, tr spec.Tr
 		return false, nil
 	}
 	start := conditionStart(sit, key, in.eventTime)
-	minDur, _ := duration.Parse(tr.MinDuration)
+	minDur, _ := spec.ParseDuration(tr.MinDuration)
 	return in.eventTime.Sub(start) >= minDur && e.transition(sit, tr.To, in.watermark), nil
 }
 

@@ -9,7 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -203,16 +203,16 @@ func TestReleaseAndRedriveSQL(t *testing.T) {
 func TestLoadEventSchemaFailsClosed(t *testing.T) {
 	t.Parallel()
 	st := newStore(t)
-	definition, ok := eventschema.Lookup("sensor.temperature/1.0")
+	definition, ok := spec.LookupEventSchema("sensor.temperature/1.0")
 	if !ok {
 		t.Fatal("temperature schema missing from catalog")
 	}
-	schemaJSON, err := eventschema.JSON(definition)
+	schemaJSON, err := spec.EventSchemaJSON(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := st.DB.WithTx(context.Background(), func(tx *sql.Tx) error {
-		return eventschema.Register(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
+		return spec.RegisterEventSchema(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -4,11 +4,12 @@ package evidence
 import (
 	"context"
 	"database/sql"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/transport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
-	"time"
 )
 
 // CapabilityConfig defines the immutable issuing/verifying authority.

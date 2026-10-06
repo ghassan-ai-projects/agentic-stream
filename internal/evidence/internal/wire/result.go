@@ -2,8 +2,9 @@ package wire
 
 import (
 	"crypto/sha256"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 // ResultMessage preserves the response bytes, hash and echoed request identity.

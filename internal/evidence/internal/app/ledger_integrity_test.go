@@ -2,9 +2,10 @@ package app
 
 import (
 	"context"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
 	"strings"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
 )
 
 func TestLedgerRejectsCorruptedCompletedResults(t *testing.T) {

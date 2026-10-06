@@ -3,9 +3,10 @@ package app_test
 import (
 	"context"
 	"errors"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

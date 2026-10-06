@@ -2,10 +2,11 @@ package wire
 
 import (
 	"encoding/base64"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 )
 
 func TestTokenEncodingAndIntegrity(t *testing.T) {

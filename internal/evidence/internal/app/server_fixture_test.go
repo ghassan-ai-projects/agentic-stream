@@ -3,11 +3,12 @@ package app_test
 import (
 	"context"
 	"database/sql"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 type Scope = evidence.Scope

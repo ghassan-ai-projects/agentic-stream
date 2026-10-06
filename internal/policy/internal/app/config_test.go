@@ -3,10 +3,11 @@ package app_test
 import (
 	"context"
 	"database/sql"
+	"testing"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
-	"testing"
 )
 
 func newTestService(t *testing.T, configure ...func(*policy.Config)) *policy.Service {

@@ -4,9 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 func validEnvelope(s Scope) Envelope {

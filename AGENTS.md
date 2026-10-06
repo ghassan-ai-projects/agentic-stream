@@ -54,7 +54,7 @@ Use the prompt files under `.agents/prompts/` when the task matches them.
   holds the spec compiler, ingress, eventlog, operators, situations, cognition,
   episodes, decisions, policy, actions, worker runtime, and storage. The worker
   protocol is `proto/agenticstream/runtime/v1/`; migrations live in `migrations/`.
-  Domain data is extracted to `internal/eventschema/registry_data.json`,
+  Domain data is extracted to `internal/spec/event_schema_data.json`,
   `internal/ingress/internal/domain/simulator_data.json`, and
   `internal/episodes/testdata/aquaculture_intents.json` (see
   `docs/design/impl/GO_DOMAIN_DATA_EXTRACTION.md`).
@@ -199,7 +199,7 @@ Before accepting a refactoring round:
 - Do not add graph engines, brokers, LangChain/LangGraph, or a web UI into the version-1 core (see design README).
 - Do not give models direct access to effectors or production credentials.
 - Do not re-author domain data in Go code. Event schemas live in
-  `internal/eventschema/registry_data.json`, the simulator channel→field mapping in
+  `internal/spec/event_schema_data.json`, the simulator channel→field mapping in
   `internal/ingress/internal/domain/simulator_data.json`, and the aquaculture intent catalog in
   `internal/episodes/testdata/aquaculture_intents.json` — loaded by machinery
   (go:embed + sync.OnceValues, or os.ReadFile in the test). Adding a schema, channel,

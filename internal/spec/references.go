@@ -4,8 +4,6 @@ import (
 	_ "embed"
 	"fmt"
 	"strings"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
 )
 
 func resolveReferences(spec *CompiledSpec) error {
@@ -109,7 +107,7 @@ func addUniqueName(seen map[string]struct{}, name, path, kind string) error {
 }
 
 func checkInputSchema(in Input) error {
-	definition, ok := eventschema.Lookup(in.SchemaRef)
+	definition, ok := LookupEventSchema(in.SchemaRef)
 	if !ok {
 		return &CompileError{Path: fmt.Sprintf("inputs.%s.schema", in.Name), Message: fmt.Sprintf("unknown event schema %q", in.SchemaRef)}
 	}
@@ -171,7 +169,7 @@ func operatorInputs(spec *CompiledSpec, op Operator) []Input {
 // checkOperatorField requires the input's schema to declare the payload
 // field, with a matching unit for an aggregate.
 func checkOperatorField(op Operator, fieldName string, in Input) error {
-	definition, _ := eventschema.Lookup(in.SchemaRef)
+	definition, _ := LookupEventSchema(in.SchemaRef)
 	field, exists := definition.Fields[fieldName]
 	if !exists {
 		return &CompileError{Path: fmt.Sprintf("operators.%s.field", op.Name), Message: fmt.Sprintf("payload field %q is not declared by schema %q", fieldName, in.SchemaRef)}

@@ -4,8 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 )
 
 // CallFingerprint preserves the persisted request identity encoding.

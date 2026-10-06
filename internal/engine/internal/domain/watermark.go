@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -33,7 +32,7 @@ func RequiresSchemaValidation(inputs []spec.Input) bool {
 // WatermarkFor derives a record's watermark as its event time minus the
 // maximum out-of-orderness, never moving before the previous watermark.
 func WatermarkFor(eventTime time.Time, maxOutOfOrderness, previous string) (time.Time, error) {
-	maxLag, err := duration.Parse(maxOutOfOrderness)
+	maxLag, err := spec.ParseDuration(maxOutOfOrderness)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("parse maxOutOfOrderness: %w", err)
 	}

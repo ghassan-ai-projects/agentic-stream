@@ -2,9 +2,10 @@ package app_test
 
 import (
 	"context"
+	"testing"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/app"
-	"testing"
 )
 
 func TestGatewayEffectorDispatchesThermalRoute(t *testing.T) {

@@ -15,6 +15,10 @@
 | Executor (spec) | The named executor, objective, prompt and budget for an episode. | `Executor`, `Budget`, `SkillRef` | `cognition.executor` |
 | Intent catalog | The intent types an episode may propose, each with a risk class and parameter schema. | `Intent`, `Actions` | `actions.intents[]` |
 | Deployment | A compiled spec stored as the active version of its name. A new version retires the previous one; redeploying the same digest is idempotent. | `SaveDeployment` | `spec_deployments` |
+| Duration string | The runtime's textual duration: any `time.ParseDuration` unit plus whole days (a fixed 24 hours, positive, no overflow). All spec duration fields use it. | `ParseDuration` | `15m`, `6h`, `30d` |
+| Event schema | A schema bound to one normalized event type and version, with its payload fields keyed by name. Domain data, never a Go literal. | `EventSchema`, `EventField` | `event_schema_data.json` |
+| Schema reference | The name a spec input uses to select an event schema. | `LookupEventSchema` | `schemaRef` in the spec |
+| Registered schema | One immutable, digested event schema version stored for the event log to validate against. Re-registering identical bytes is allowed; different bytes are refused. `spec` is the only writer of the table. | `RegisterEventSchema` | `event_schemas` |
 
 ## Retired words
 

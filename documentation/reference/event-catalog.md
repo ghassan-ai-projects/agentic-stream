@@ -1,7 +1,7 @@
 # Event catalog reference
 
 The built-in event registry is data-driven and loaded from
-[`internal/eventschema/registry_data.json`](../../internal/eventschema/registry_data.json).
+[`internal/spec/event_schema_data.json`](../../internal/spec/event_schema_data.json).
 The current catalog includes these families:
 
 | Family | Examples |

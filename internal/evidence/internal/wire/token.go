@@ -8,9 +8,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"strings"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 )
 
 const tokenVersion = "v1"

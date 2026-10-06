@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
 	"strings"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
 )
 
 func TestLedgerOwnerLossAndSupersessionRefuseCompletion(t *testing.T) {

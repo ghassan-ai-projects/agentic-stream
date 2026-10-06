@@ -1,6 +1,6 @@
-// Package eventschema contains the deterministic catalog used by the spec
-// compiler. Durable schema registrations are persisted separately.
-package eventschema
+// Event schemas are the deterministic catalog the spec compiler binds inputs to;
+// registering one is part of deploying a spec.
+package spec
 
 import (
 	_ "embed"
@@ -10,11 +10,11 @@ import (
 	"sync"
 )
 
-//go:embed registry_data.json
+//go:embed event_schema_data.json
 var registryData []byte
 
-// Field describes one payload field exposed to deterministic operators.
-type Field struct {
+// EventField describes one payload field exposed to deterministic operators.
+type EventField struct {
 	Path     string
 	Unit     string
 	Type     string
@@ -22,39 +22,39 @@ type Field struct {
 	Enum     []string
 }
 
-// Definition identifies a schema bound to one normalized event type.
-type Definition struct {
+// EventSchema identifies a schema bound to one normalized event type.
+type EventSchema struct {
 	Ref           string
 	EventType     string
 	SchemaVersion string
-	Fields        map[string]Field
+	Fields        map[string]EventField
 }
 
 // The event-schema catalog (motor/sensor/pump/pond/bay) lives in
-// registry_data.json — domain DATA, not code (see
+// event_schema_data.json — domain DATA, not code (see
 // docs/design/impl/GO_DOMAIN_DATA_EXTRACTION.md). Loaded once at first use.
 var builtins = sync.OnceValues(loadRegistry)
 
-func loadRegistry() (map[string]Definition, error) {
+func loadRegistry() (map[string]EventSchema, error) {
 	var document map[string]registryEntry
 	if err := json.Unmarshal(registryData, &document); err != nil {
 		return nil, fmt.Errorf("decode eventschema registry data: %w", err)
 	}
-	registry := make(map[string]Definition, len(document))
+	registry := make(map[string]EventSchema, len(document))
 	for ref, entry := range document {
 		registry[ref] = entry.definition(ref)
 	}
 	return registry, nil
 }
 
-// registryEntry is one schema in registry_data.json.
+// registryEntry is one schema in event_schema_data.json.
 type registryEntry struct {
 	EventType     string                   `json:"event_type"`
 	SchemaVersion string                   `json:"schema_version"`
 	Fields        map[string]registryField `json:"fields"`
 }
 
-// registryField is one payload field in registry_data.json.
+// registryField is one payload field in event_schema_data.json.
 type registryField struct {
 	Path     string   `json:"path"`
 	Unit     string   `json:"unit"`
@@ -63,16 +63,16 @@ type registryField struct {
 	Enum     []string `json:"enum"`
 }
 
-func (e registryEntry) definition(ref string) Definition {
-	fields := make(map[string]Field, len(e.Fields))
+func (e registryEntry) definition(ref string) EventSchema {
+	fields := make(map[string]EventField, len(e.Fields))
 	for name, field := range e.Fields {
-		fields[name] = Field(field)
+		fields[name] = EventField(field)
 	}
-	return Definition{Ref: ref, EventType: e.EventType, SchemaVersion: e.SchemaVersion, Fields: fields}
+	return EventSchema{Ref: ref, EventType: e.EventType, SchemaVersion: e.SchemaVersion, Fields: fields}
 }
 
 // Lookup returns a registered built-in definition.
-func Lookup(ref string) (Definition, bool) {
+func LookupEventSchema(ref string) (EventSchema, bool) {
 	registry, err := builtins()
 	if err != nil {
 		// The catalog is embedded at build time; a decode failure is a
@@ -85,7 +85,7 @@ func Lookup(ref string) (Definition, bool) {
 }
 
 // JSON returns the structural schema for a built-in definition.
-func JSON(definition Definition) ([]byte, error) {
+func EventSchemaJSON(definition EventSchema) ([]byte, error) {
 	result, err := json.Marshal(map[string]any{
 		"type": "object", "additionalProperties": false,
 		"properties": definition.schemaProperties(), "required": definition.requiredFields(),
@@ -96,7 +96,7 @@ func JSON(definition Definition) ([]byte, error) {
 	return result, nil
 }
 
-func (d Definition) schemaProperties() map[string]map[string]any {
+func (d EventSchema) schemaProperties() map[string]map[string]any {
 	properties := make(map[string]map[string]any, len(d.Fields))
 	for name, field := range d.Fields {
 		properties[name] = field.schemaProperty()
@@ -105,7 +105,7 @@ func (d Definition) schemaProperties() map[string]map[string]any {
 }
 
 // requiredFields lists the non-optional field names in sorted order.
-func (d Definition) requiredFields() []string {
+func (d EventSchema) requiredFields() []string {
 	required := make([]string, 0, len(d.Fields))
 	for name, field := range d.Fields {
 		if !field.Optional {
@@ -118,7 +118,7 @@ func (d Definition) requiredFields() []string {
 
 // schemaProperty is the field's JSON Schema property; untyped fields are
 // numbers.
-func (f Field) schemaProperty() map[string]any {
+func (f EventField) schemaProperty() map[string]any {
 	fieldType := f.Type
 	if fieldType == "" {
 		fieldType = "number"

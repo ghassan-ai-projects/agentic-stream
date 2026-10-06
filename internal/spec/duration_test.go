@@ -1,4 +1,4 @@
-package duration
+package spec
 
 import (
 	"testing"
@@ -30,12 +30,12 @@ func TestParse(t *testing.T) {
 		t.Run(tt.in, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := Parse(tt.in)
+			got, err := ParseDuration(tt.in)
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("Parse(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
+				t.Fatalf("ParseDuration(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
 			}
 			if got != tt.want {
-				t.Fatalf("Parse(%q) = %v, want %v", tt.in, got, tt.want)
+				t.Fatalf("ParseDuration(%q) = %v, want %v", tt.in, got, tt.want)
 			}
 		})
 	}

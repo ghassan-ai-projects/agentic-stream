@@ -4,8 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 )
 
 // InsertReservation persists a new running call.

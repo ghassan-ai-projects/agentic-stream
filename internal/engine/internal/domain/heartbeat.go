@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -38,7 +37,7 @@ func HeartbeatTimers(deploymentID, tenantID string, partitionID int, operatorSpe
 }
 
 func operatorHeartbeatTimers(deploymentID, tenantID string, partitionID int, operator spec.Operator, state *operators.PartitionState) ([]HeartbeatTimer, error) {
-	delay, err := duration.Parse(operator.Duration)
+	delay, err := spec.ParseDuration(operator.Duration)
 	if err != nil {
 		return nil, fmt.Errorf("parse %s duration: %w", operator.Name, err)
 	}

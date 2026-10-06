@@ -2,8 +2,9 @@ package app
 
 import (
 	"context"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 )
 
 // Server sequences admitted durable evidence queries.

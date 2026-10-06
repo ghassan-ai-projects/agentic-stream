@@ -1,5 +1,5 @@
 // Package duration parses the runtime's duration string format.
-package duration
+package spec
 
 import (
 	"fmt"
@@ -9,10 +9,10 @@ import (
 	"time"
 )
 
-// Parse converts a duration string such as "15m", "6h", or "30d" into a
+// ParseDuration converts a duration string such as "15m", "6h", or "30d" into a
 // time.Duration. It accepts the same base units as time.ParseDuration plus
 // days ("d").
-func Parse(s string) (time.Duration, error) {
+func ParseDuration(s string) (time.Duration, error) {
 	if s == "" {
 		return 0, fmt.Errorf("empty duration")
 	}

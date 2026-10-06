@@ -1,4 +1,4 @@
-package eventschema_test
+package spec_test
 
 import (
 	"bytes"
@@ -8,7 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -19,17 +20,17 @@ func TestSchemaRegistrationIsImmutableAndTransactionScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	definition, ok := eventschema.Lookup("bay.air_temp.observed/1.0")
+	definition, ok := spec.LookupEventSchema("bay.air_temp.observed/1.0")
 	if !ok {
 		t.Fatal("builtin schema missing")
 	}
-	raw, err := eventschema.JSON(definition)
+	raw, err := spec.EventSchemaJSON(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rollback := errors.New("abort caller transaction")
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := eventschema.Register(ctx, tx, definition, raw, "first"); err != nil {
+		if err := spec.RegisterEventSchema(ctx, tx, definition, raw, "first"); err != nil {
 			return err
 		}
 		return rollback
@@ -45,13 +46,13 @@ func TestSchemaRegistrationIsImmutableAndTransactionScoped(t *testing.T) {
 	}
 	for _, timestamp := range []string{"first", "second"} {
 		if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-			return eventschema.Register(ctx, tx, definition, raw, timestamp)
+			return spec.RegisterEventSchema(ctx, tx, definition, raw, timestamp)
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	err = db.WithTx(ctx, func(tx *sql.Tx) error {
-		return eventschema.Register(ctx, tx, definition, append(bytes.Clone(raw), ' '), "conflict")
+		return spec.RegisterEventSchema(ctx, tx, definition, append(bytes.Clone(raw), ' '), "conflict")
 	})
 	if err == nil || !strings.Contains(err.Error(), "conflicting bytes") {
 		t.Fatalf("byte conflict = %v", err)
@@ -67,11 +68,11 @@ func TestSchemaRegistrationIsImmutableAndTransactionScoped(t *testing.T) {
 }
 
 func TestSchemaRegistrationValidatesBeforeStorage(t *testing.T) {
-	definition := eventschema.Definition{Ref: "test/1", EventType: "test", SchemaVersion: "1"}
-	if err := eventschema.Register(t.Context(), nil, definition, nil, "now"); err == nil || !strings.Contains(err.Error(), "required") {
+	definition := spec.EventSchema{Ref: "test/1", EventType: "test", SchemaVersion: "1"}
+	if err := spec.RegisterEventSchema(t.Context(), nil, definition, nil, "now"); err == nil || !strings.Contains(err.Error(), "required") {
 		t.Fatalf("empty bytes = %v", err)
 	}
-	if err := eventschema.Register(t.Context(), nil, definition, []byte("invalid"), "now"); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
+	if err := spec.RegisterEventSchema(t.Context(), nil, definition, []byte("invalid"), "now"); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
 		t.Fatalf("invalid JSON = %v", err)
 	}
 }

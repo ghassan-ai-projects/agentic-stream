@@ -3,8 +3,9 @@ package policy
 import (
 	"context"
 	"database/sql"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 )
 
 func validConfig() Config {

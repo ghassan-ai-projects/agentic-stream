@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 )
 

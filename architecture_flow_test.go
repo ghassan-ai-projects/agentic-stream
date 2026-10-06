@@ -16,7 +16,7 @@ import (
 var packageLayers = map[string]int{
 	"internal/runtime/internal/domain": 1, "internal/runtime/internal/transport": 14, "internal/runtime/internal/store": 10, "internal/runtime/internal/app": 15, "internal/runtime/internal/composition": 16,
 	"internal/actionport": 0, "internal/canonicaljson": 1, "internal/canonicaljson/internal/domain": 0, "internal/clock": 0,
-	"internal/duration": 0, "internal/eventschema": 0, "internal/ids": 0, "internal/interlock": 0, "internal/telemetry": 0,
+	"internal/ids": 0, "internal/interlock": 0, "internal/telemetry": 0,
 	"migrations": 0, "proto/agenticstream/runtime/v1": 0,
 	"internal/authority/internal/domain": 2, "internal/contractsv1": 2, "internal/storage": 1,
 	"internal/policy/internal/domain": 3, "internal/decisions": 4, "internal/decisions/internal/domain": 3, "internal/device/internal/domain": 3, "internal/device/internal/wire": 4, "internal/episodeledger": 3, "internal/episodeledger/internal/domain": 0, "internal/episodeledger/internal/store": 1, "internal/episodeledger/internal/app": 2, "internal/eventlog": 5, "internal/evidence": 7, "internal/evidence/internal/domain": 3, "internal/evidence/internal/wire": 4, "internal/evidence/internal/store": 4, "internal/evidence/internal/app": 5, "internal/evidence/internal/transport": 6,

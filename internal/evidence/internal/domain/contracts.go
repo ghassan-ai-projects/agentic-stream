@@ -3,8 +3,9 @@ package domain
 
 import (
 	"context"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 // Scope is the complete authorization scope of one short-lived capability.

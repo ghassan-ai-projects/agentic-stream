@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -150,7 +149,7 @@ func checkSlide(size, slide time.Duration) error {
 }
 
 func parseDuration(s string) (time.Duration, error) {
-	d, err := duration.Parse(s)
+	d, err := spec.ParseDuration(s)
 	if err != nil {
 		return 0, fmt.Errorf("parse duration: %w", err)
 	}

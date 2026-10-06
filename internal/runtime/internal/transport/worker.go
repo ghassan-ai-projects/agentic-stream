@@ -4,6 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"os"
+	"time"
+
+	"google.golang.org/grpc"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	nativeexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
@@ -12,10 +18,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
-	"google.golang.org/grpc"
-	"net"
-	"os"
-	"time"
 )
 
 // WorkerRuntimeConfig contains the complete validated composition for native

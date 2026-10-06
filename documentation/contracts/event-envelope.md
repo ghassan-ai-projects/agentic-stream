@@ -69,7 +69,7 @@ identify missing input; they do not invent replacement evidence.
 - JSONL adapter: [`internal/ingress/internal/app/jsonl.go`](../../internal/ingress/internal/app/jsonl.go)
 - Simulator adapter: [`internal/ingress/internal/app/simulator.go`](../../internal/ingress/internal/app/simulator.go)
 - Live socket adapter: [`internal/ingress/internal/app/live.go`](../../internal/ingress/internal/app/live.go)
-- Schema registry data: [`internal/eventschema/registry_data.json`](../../internal/eventschema/registry_data.json)
+- Schema registry data: [`internal/spec/event_schema_data.json`](../../internal/spec/event_schema_data.json)
 
 ## Next reads
 

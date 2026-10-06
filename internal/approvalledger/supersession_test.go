@@ -2,10 +2,11 @@ package approvalledger_test
 
 import (
 	"database/sql"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 )

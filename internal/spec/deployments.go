@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -100,15 +99,15 @@ func (r deploymentRecord) retirePriorVersions(ctx context.Context, tx *sql.Tx) e
 // schema is known to the registry.
 func registerInputSchemas(ctx context.Context, tx *sql.Tx, inputs []Input, now string) error {
 	for _, input := range inputs {
-		definition, ok := eventschema.Lookup(input.SchemaRef)
+		definition, ok := LookupEventSchema(input.SchemaRef)
 		if !ok {
 			continue
 		}
-		schemaJSON, err := eventschema.JSON(definition)
+		schemaJSON, err := EventSchemaJSON(definition)
 		if err != nil {
 			return fmt.Errorf("build event schema %s: %w", input.SchemaRef, err)
 		}
-		if err := eventschema.Register(ctx, tx, definition, schemaJSON, now); err != nil {
+		if err := RegisterEventSchema(ctx, tx, definition, schemaJSON, now); err != nil {
 			return fmt.Errorf("register event schema %s: %w", input.SchemaRef, err)
 		}
 	}

@@ -5,10 +5,11 @@ import (
 
 	"encoding/json"
 	"errors"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 

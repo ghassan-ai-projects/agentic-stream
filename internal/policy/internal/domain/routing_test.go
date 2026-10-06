@@ -3,10 +3,11 @@ package domain
 import (
 	"bytes"
 	"crypto/ed25519"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 func TestRiskRulesRemainAuthoritative(t *testing.T) {

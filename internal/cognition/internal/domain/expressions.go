@@ -3,9 +3,10 @@ package domain
 import (
 	"fmt"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types/ref"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 func (e *Rules) compilePrograms() error {

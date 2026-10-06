@@ -86,7 +86,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/interlock/` | durable readiness state and read-only assertions |
 | `internal/canonicaljson/` | RFC 8785 canonical JSON and domain-separated digests: thin facade (public API only) |
 | `internal/canonicaljson/internal/domain/` | pure canonical encoder, number and string rules, strict validation, digest and stored-document rules (reference module layer) |
-| `internal/clock/`, `internal/duration/`, `internal/ids/` | deterministic digest, time, duration and identity primitives |
+| `internal/clock/`, `internal/ids/` | deterministic digest, time, duration and identity primitives |
 | `internal/executor/fixture/` | deterministic episode executor for explicit demo and replay fixtures |
 | `internal/executor/native/`, `internal/executor/remote/`, `internal/executor/conformance/`, `internal/worker/` | in-process and out-of-process executors, executor qualification and worker protocol transport |
 | `internal/runartifact/` | bounded operational evidence (soak verdict) and immutable artifact verification; facade, `internal/app`, pure `internal/domain`, read-only `internal/store`, artifact directory in `internal/transport` |
@@ -104,7 +104,6 @@ historical design map where the code has chosen a more specific package name.
 | `internal/notify/internal/app/` | append, lifecycle append, page read with resume, lag and poison handling, prune |
 | `internal/notify/internal/domain/` | lifecycle contract (schema and binding), sealing, dedupe, resume, poison and retention rules |
 | `internal/notify/internal/store/` | the only SQL for notifications, cursors, tombstones, poison attempts and audits |
-| `internal/eventschema/` | data-driven event schema registry |
 | `proto/agenticstream/runtime/v1/` | generated current-v1 Go protocol |
 | `migrations/` | ordered SQLite schema changes |
 | `examples/` | trace fixtures and predictive-maintenance evidence |
