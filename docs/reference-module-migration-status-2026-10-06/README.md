@@ -2,7 +2,7 @@
 
 Snapshot of every Go package after the migrations of this session. Companion
 files: [DEADCODE.md](DEADCODE.md) (production reachability review),
-[DEFERRED.md](DEFERRED.md) (behavior changes, deferred work, decisions to make)
+[DEFERRED.md](DEFERRED.md), [FOLLOW_UPS.md](FOLLOW_UPS.md) (prioritised work to do later) (behavior changes, deferred work, decisions to make)
 and [deadcode-production-unreachable.txt](deadcode-production-unreachable.txt)
 (raw `deadcode ./...` output).
 
