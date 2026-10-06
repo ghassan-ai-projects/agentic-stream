@@ -32,7 +32,7 @@ dependency rule or a cross-repository contract forbids the merge.
 ## Not migrated, and why
 
 `qualification`, `episodeledger`,
-`approvalledger` is a shared, transaction-scoped store:
+`approvalledger` was a shared, transaction-scoped store (now migrated; see the ledgers record):
 stateless functions over a caller's transaction that other modules' stores call.
 They already are the store layer of their tables. Giving each facade/app/domain
 layers would lift them above 20 dependants and renumber the layer table for no

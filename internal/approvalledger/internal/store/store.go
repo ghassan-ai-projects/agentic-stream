@@ -17,12 +17,8 @@ type Tx struct {
 	tx *sql.Tx
 }
 
-// Join wraps a transaction the caller owns; a nil transaction yields a Tx that
-// reports itself as not open.
+// Join wraps a transaction the caller owns.
 func Join(tx *sql.Tx) *Tx { return &Tx{tx: tx} }
-
-// Open reports whether the unit of work has a transaction behind it.
-func (t *Tx) Open() bool { return t.tx != nil }
 
 // Publish hands the transaction to the publisher for one withdrawal.
 func (t *Tx) Publish(ctx context.Context, publish Publisher, withdrawal domain.Withdrawal) error {

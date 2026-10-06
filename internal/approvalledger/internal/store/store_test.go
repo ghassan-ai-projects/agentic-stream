@@ -38,13 +38,6 @@ func status(t *testing.T, ctx context.Context, raw *sql.Tx, id string) string {
 	return state
 }
 
-func TestOpenness(t *testing.T) {
-	t.Parallel()
-	if store.Join(nil).Open() {
-		t.Fatal("nil transaction reported open")
-	}
-}
-
 func TestEveryTransitionStartsFromPending(t *testing.T) {
 	t.Parallel()
 	within(t, func(ctx context.Context, tx *store.Tx, raw *sql.Tx) {

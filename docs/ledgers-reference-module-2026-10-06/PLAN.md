@@ -6,7 +6,7 @@
 | 1 | Merge `scheduleledger` into `episodeledger` as one flat package; rename queue operations; update callers | Full tests, lint, gates | Complete |
 | 2 | Layer `episodeledger`: domain, store, app, facade; layer table; ownership | Layer, purity and ownership gates; tests per layer | Complete |
 | 3 | Gates, injection proof, `UBIQUITOUS_LANGUAGE.md`, module guide, docs | Injected failures, full CI | Complete (episodeledger) |
-| 4 | `approvalledger`: drop `notify`, layer it, language file, gates | Same, plus the withdrawal ordering test | |
+| 4 | `approvalledger`: drop `notify`, layer it, language file, gates | Same, plus the withdrawal ordering test | Complete |
 
 ## Behavior that must not change
 
@@ -47,3 +47,13 @@ Every facade operation has a production caller except three that only tests used
 `ValidateWorkerIdentity` (production validates inside `TransitionAttempt`), `IsIdentityReason` and
 `CanTransitionAttempt` (the domain keeps them for its own checks). They were removed from the facade and
 their tests now go through `TransitionAttempt` and the domain; `deadcode` reports nothing for the module.
+
+## Result for approvalledger (round 4)
+
+- Layers: domain 0, store 1, app 2, facade 3 (was 5 while it imported `notify`); no other package moved.
+- `WithdrawSuperseded(ctx, tx, situationID, replacementVersion, now, publish)`: the cognition store supplies the
+  publisher; the ordering test (clock read after each withdrawal, rollback on a failed publication) passes unchanged
+  in behavior. A nil publisher is refused with `ErrPublisherRequired`.
+- Superseded approvals are collected before the first write (the old code wrote while iterating its own result set).
+- Gates: `architecture_approvalledger_test.go` (including "the ledger does not import notify") plus the generic ones;
+  proven by nine injected violations. `deadcode` reports nothing for the module.
