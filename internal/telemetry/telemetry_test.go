@@ -47,7 +47,7 @@ func TestRuntimeCountersAndMetricsAreLowCardinality(t *testing.T) {
 		}
 	}
 	response := httptest.NewRecorder()
-	runtime.Handler().ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", nil))
+	telemetry.MetricsHandler(runtime).ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", nil))
 	if !strings.Contains(response.Body.String(), "agentic_stream_pipeline_failures_total 1") || strings.Contains(response.Body.String(), "tenant") {
 		t.Fatalf("metrics=%s", response.Body.String())
 	}

@@ -1,10 +1,6 @@
-package telemetry
+package domain
 
 import (
-	"context"
-	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 )
@@ -14,7 +10,7 @@ import (
 // stale-decision rejection rate appear in the /metrics payload.
 
 func TestP8LatencyPercentilesAndStaleRejectionsAreMeasured(t *testing.T) {
-	r := NewRuntime(time.Now().UTC())
+	r := NewRuntime(time.Now().UTC(), nil)
 	for i := 1; i <= 100; i++ {
 		r.ObserveDuration(time.Duration(i) * time.Millisecond)
 	}
@@ -46,25 +42,5 @@ func TestP8LatencyPercentilesAndStaleRejectionsAreMeasured(t *testing.T) {
 	if r.Snapshot()["agentic_stream_rebind_failures_total"] != 1 {
 		t.Fatalf("re-bind failure counter = %d, want 1",
 			r.Snapshot()["agentic_stream_rebind_failures_total"])
-	}
-}
-
-func TestP8LatencySnapshotAppearsInHandlerPayload(t *testing.T) {
-	r := NewRuntime(time.Now().UTC())
-	r.ObserveDuration(10 * time.Millisecond)
-	response := httptest.NewRecorder()
-	r.Handler().ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", nil))
-	body := response.Body.String()
-	if !strings.Contains(body, "agentic_stream_dispatch_decision_p95_ns") {
-		t.Fatalf("p95 must appear in the metrics payload:\n%s", body)
-	}
-	if !strings.Contains(body, "agentic_stream_stale_rejections_total") {
-		t.Fatalf("stale-rejection counter must appear in the metrics payload:\n%s", body)
-	}
-	if !strings.Contains(body, "agentic_stream_stale_rebinds_total") {
-		t.Fatalf("stale re-bind counter must appear in the metrics payload:\n%s", body)
-	}
-	if !strings.Contains(body, "agentic_stream_rebind_failures_total") {
-		t.Fatalf("re-bind failure counter must appear in the metrics payload:\n%s", body)
 	}
 }

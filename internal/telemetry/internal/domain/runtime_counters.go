@@ -1,4 +1,4 @@
-package telemetry
+package domain
 
 import (
 	"sync/atomic"

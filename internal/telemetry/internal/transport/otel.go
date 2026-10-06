@@ -1,4 +1,4 @@
-package telemetry
+package transport
 
 import (
 	"context"
@@ -16,7 +16,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const instrumentationName = "github.com/ghassan-ai-projects/agentic-stream"
+// InstrumentationName names the tracer every runtime span uses.
+const InstrumentationName = "github.com/ghassan-ai-projects/agentic-stream"
 
 // NewTracerProvider creates an OpenTelemetry tracer provider. When endpoint
 // is empty, spans are recorded by the SDK but no exporter is configured. When
@@ -93,7 +94,7 @@ func Configure(ctx context.Context, serviceName, endpoint string) (*sdktrace.Tra
 
 // StartSpan starts an application span using the process tracer provider.
 func StartSpan(ctx context.Context, name string, options ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return otel.Tracer(instrumentationName).Start(ctx, name, options...)
+	return otel.Tracer(InstrumentationName).Start(ctx, name, options...)
 }
 
 // AddLinkFromW3C adds a causal link from a durable W3C trace context. Links

@@ -169,7 +169,7 @@ func (core *runtimeCore) runtimeHandler(flags serveFlags, subscriberToken string
 		TenantID:  flags.tenantID,
 		MaxLag:    1000,
 		Authorize: api.BearerTokenAuthorizer(subscriberToken),
-	}, metrics.Handler(), core.epochControl, core.epoch, os.Getenv("AGENTIC_STREAM_CONTROL_TOKEN")))
+	}, telemetry.MetricsHandler(metrics), core.epochControl, core.epoch, os.Getenv("AGENTIC_STREAM_CONTROL_TOKEN")))
 }
 
 // serveHTTP serves handler until ctx ends, then shuts down gracefully.

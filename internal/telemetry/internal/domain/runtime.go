@@ -1,18 +1,12 @@
-// Package telemetry contains the runtime's low-cardinality operational
-// measurements. It is intentionally provider-neutral; deployments can bridge
-// the snapshot to OpenTelemetry or Prometheus without changing stream logic.
-package telemetry
+package domain
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -59,20 +53,10 @@ type Runtime struct {
 	durations              []time.Duration
 }
 
-// NewRuntime creates an operational counter set.
-func NewRuntime(now time.Time) *Runtime {
-	return NewRuntimeWithTracer(now, otel.Tracer(instrumentationName))
-}
-
-// NewRuntimeWithTracer creates an operational counter set with an explicit
-// tracer, which keeps tests and embedded runtimes independent of global setup.
-func NewRuntimeWithTracer(now time.Time, tracer trace.Tracer) *Runtime {
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
-	if tracer == nil {
-		tracer = otel.Tracer(instrumentationName)
-	}
+// NewRuntime creates an operational counter set with an explicit tracer, which
+// keeps tests and embedded runtimes independent of global setup. A nil tracer
+// disables runtime spans.
+func NewRuntime(now time.Time, tracer trace.Tracer) *Runtime {
 	return &Runtime{started: now.UTC(), tracer: tracer}
 }
 
@@ -181,18 +165,4 @@ func (r *Runtime) LatencySnapshot() map[string]uint64 {
 		"agentic_stream_dispatch_decision_p95_ns": latencyNanos(r.Percentile(95)),
 		"agentic_stream_dispatch_decision_p99_ns": latencyNanos(r.Percentile(99)),
 	}
-}
-
-// Handler exposes low-cardinality Prometheus text without leaking tenant or
-// event data. It is safe to mount behind the same local HTTP listener.
-func (r *Runtime) Handler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		for name, value := range r.Snapshot() {
-			_, _ = fmt.Fprintf(w, "%s %d\n", name, value)
-		}
-		for name, value := range r.LatencySnapshot() {
-			_, _ = fmt.Fprintf(w, "%s %d\n", name, value)
-		}
-	})
 }

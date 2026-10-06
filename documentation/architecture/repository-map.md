@@ -100,7 +100,9 @@ historical design map where the code has chosen a more specific package name.
 | `internal/storage/` | SQLite infrastructure, migrations and transactions |
 | `internal/contractsv1/` | versioned envelope/schema contracts (facade) |
 | `internal/contractsv1/internal/domain/` | pure envelope, CloudEvent, trace context, schema validation and digest rules |
-| `internal/telemetry/` | OpenTelemetry and runtime metrics |
+| `internal/telemetry/` | OpenTelemetry and runtime metrics (facade) |
+| `internal/telemetry/internal/domain/` | pure runtime counters, latency histogram and percentiles |
+| `internal/telemetry/internal/transport/` | Prometheus metrics handler and OpenTelemetry tracer provider, spans and links |
 | `internal/api/` | HTTP health, controls and SSE delivery |
 | `internal/notify/` | durable notification outbox facade: transactional append, paged reads, retention |
 | `internal/notify/internal/app/` | append, lifecycle append, page read with resume, lag and poison handling, prune |

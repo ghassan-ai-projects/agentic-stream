@@ -30,6 +30,8 @@ var foundationPackages = []string{
 	"internal/interlock",
 	"internal/storage",
 	"internal/telemetry",
+	"internal/telemetry/internal/domain",
+	"internal/telemetry/internal/transport",
 	"migrations",
 	"proto/agenticstream/runtime/v1",
 }
@@ -73,6 +75,8 @@ var forbiddenImports = map[string][]string{
 // follow the data flow in .agents/context/architecture.md and be added here in
 // the same change.
 var allowedImports = map[string][]string{
+	"internal/telemetry/internal/transport":       {"internal/telemetry/internal/domain"},
+	"internal/telemetry/internal/domain":          {},
 	"internal/evidence/internal/app":              {"internal/contractsv1", "internal/evidence/internal/domain", "internal/evidence/internal/store", "internal/evidence/internal/wire"},
 	"internal/evidence/internal/store":            {"internal/evidence/internal/domain", "internal/storage"},
 	"internal/evidence/internal/transport":        {"internal/evidence/internal/app", "internal/evidence/internal/domain", "internal/evidence/internal/wire", "internal/eventlog", "internal/storage", "proto/agenticstream/runtime/v1"},
@@ -175,7 +179,7 @@ var allowedImports = map[string][]string{
 	"internal/situations":                         {"internal/canonicaljson", "internal/contractsv1", "internal/operators", "internal/sources", "internal/spec"},
 	"internal/spec":                               {"internal/canonicaljson", "internal/storage"},
 	"internal/storage":                            {"migrations"},
-	"internal/telemetry":                          {},
+	"internal/telemetry":                          {"internal/telemetry/internal/domain", "internal/telemetry/internal/transport"},
 	"internal/watch":                              {"internal/actionport", "internal/sources", "internal/interlock", "internal/storage", "internal/watch/internal/app", "internal/watch/internal/store"},
 	"internal/watch/internal/app":                 {"internal/actionport", "internal/sources", "internal/watch/internal/domain", "internal/watch/internal/store"},
 	"internal/watch/internal/domain":              {"internal/actionport"},
