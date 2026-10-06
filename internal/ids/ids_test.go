@@ -41,7 +41,6 @@ func TestGeneratorsAreSafeForConcurrentUse(t *testing.T) {
 	t.Parallel()
 
 	deterministic := Deterministic()
-	sequence := NewSequence(PrefixOutcome)
 	var mu sync.Mutex
 	seen := map[string]bool{}
 	var wg sync.WaitGroup
@@ -50,7 +49,7 @@ func TestGeneratorsAreSafeForConcurrentUse(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range 100 {
-				ids := []string{deterministic.New(PrefixIntent), sequence.New()}
+				ids := []string{deterministic.New(PrefixIntent), deterministic.New(PrefixOutcome)}
 				mu.Lock()
 				for _, id := range ids {
 					if seen[id] {
@@ -63,7 +62,8 @@ func TestGeneratorsAreSafeForConcurrentUse(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if sequence.New() != "out_0000000000000321" {
-		t.Fatal("sequence did not count every concurrent call")
+	// 8 goroutines x 100 iterations x 2 ids: the next one is call 1601 (0x641).
+	if got := deterministic.New(PrefixOutcome); got != "out_0000000000000641" {
+		t.Fatalf("generator did not count every concurrent call: %q", got)
 	}
 }

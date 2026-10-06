@@ -6,10 +6,12 @@ import (
 	"encoding/base64"
 	"fmt"
 	"sync"
-	"sync/atomic"
 )
 
-// Prefixes for the different runtime identity spaces.
+// Prefixes for the different runtime identity spaces. Packages that must stay
+// deterministic (the replay domain, the native executor, the ledger domains)
+// never import this package because it also holds the random generator; they
+// keep their literal prefixes.
 const (
 	PrefixEvent           = "evt_"
 	PrefixSituation       = "sit_"
@@ -26,8 +28,7 @@ const (
 	PrefixVerification    = "ver_"
 	PrefixLease           = "lease_"
 	PrefixReconsideration = "rec_"
-	PrefixArtifact        = "art_"
-	PrefixReplay          = "rpl_"
+	PrefixAudit           = "aud_"
 	PrefixShadow          = "shd_"
 )
 
@@ -70,20 +71,4 @@ func (g *deterministicGenerator) New(prefix string) string {
 	defer g.mu.Unlock()
 	g.seq++
 	return fmt.Sprintf("%s%016x", prefix, g.seq)
-}
-
-// Sequence is a convenience wrapper for a single prefix.
-type Sequence struct {
-	prefix string
-	n      atomic.Uint64
-}
-
-// NewSequence creates a sequence generator for prefix.
-func NewSequence(prefix string) *Sequence {
-	return &Sequence{prefix: prefix}
-}
-
-// New returns the next value in the sequence.
-func (s *Sequence) New() string {
-	return fmt.Sprintf("%s%016x", s.prefix, s.n.Add(1))
 }

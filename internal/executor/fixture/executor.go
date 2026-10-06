@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
@@ -73,8 +74,8 @@ func fakeIntent(req *episodes.Request, phase string) (map[string]any, error) {
 
 func fakeMaintenanceIntent(req *episodes.Request, parameters map[string]any) map[string]any {
 	return map[string]any{
-		"intent_id":         "int_" + req.EpisodeID,
-		"decision_id":       "dec_" + req.EpisodeID,
+		"intent_id":         ids.PrefixIntent + req.EpisodeID,
+		"decision_id":       ids.PrefixDecision + req.EpisodeID,
 		"tenant_id":         req.TenantID,
 		"situation_id":      req.SituationID,
 		"situation_version": req.SituationVersion,
@@ -87,7 +88,7 @@ func fakeMaintenanceIntent(req *episodes.Request, parameters map[string]any) map
 
 func fakeDecision(req *episodes.Request, phase, triggerName string, intent map[string]any) map[string]any {
 	return map[string]any{
-		"decision_id":       "dec_" + req.EpisodeID,
+		"decision_id":       ids.PrefixDecision + req.EpisodeID,
 		"episode_id":        req.EpisodeID,
 		"attempt_id":        req.AttemptID,
 		"fence":             req.Fence,

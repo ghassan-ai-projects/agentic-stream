@@ -77,9 +77,9 @@ func ReconsiderationKey(current situations.Version, commandID string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func ReconsiderationTriggerID(key string) string { return "trg_reconsider_" + key }
+func ReconsiderationTriggerID(key string) string { return ids.PrefixTrigger + "reconsider_" + key }
 
-func ReconsiderationSchedulerID(key string) string { return "sch_reconsider_" + key }
+func ReconsiderationSchedulerID(key string) string { return ids.PrefixScheduler + "reconsider_" + key }
 
 // EvidenceJSON returns canonical evidence for the reconsideration episode.
 func (r Reconsideration) EvidenceJSON(correction map[string]any) ([]byte, error) {

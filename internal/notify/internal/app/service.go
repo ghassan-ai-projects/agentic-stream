@@ -14,5 +14,5 @@ type Service struct {
 
 // New creates a Service over the store; audit ids are random.
 func New(s store.Store) *Service {
-	return &Service{store: s, newAuditID: func() string { return ids.Random().New(ids.PrefixPolicy) }}
+	return &Service{store: s, newAuditID: func() string { return ids.Random().New(ids.PrefixAudit) }}
 }
