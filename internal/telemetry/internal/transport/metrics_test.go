@@ -11,7 +11,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry/internal/domain"
 )
 
-func TestP8LatencySnapshotAppearsInHandlerPayload(t *testing.T) {
+func TestMetricsHandlerExposesLatencyAndFreshnessCounters(t *testing.T) {
 	r := domain.NewRuntime(time.Now().UTC(), nil)
 	r.ObserveDuration(10 * time.Millisecond)
 	response := httptest.NewRecorder()

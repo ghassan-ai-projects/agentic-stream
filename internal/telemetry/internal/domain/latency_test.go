@@ -9,7 +9,7 @@ import (
 // SLOs are measured and exported — the dispatch→decision percentiles and the
 // stale-decision rejection rate appear in the /metrics payload.
 
-func TestP8LatencyPercentilesAndStaleRejectionsAreMeasured(t *testing.T) {
+func TestLatencyPercentilesAndStaleRejectionsAreMeasured(t *testing.T) {
 	r := NewRuntime(time.Now().UTC(), nil)
 	for i := 1; i <= 100; i++ {
 		r.ObserveDuration(time.Duration(i) * time.Millisecond)

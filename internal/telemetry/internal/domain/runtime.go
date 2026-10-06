@@ -22,7 +22,7 @@ type Runtime struct {
 	intentsEvaluated   atomic.Uint64
 	commandsDispatched atomic.Uint64
 	streamFailures     atomic.Uint64
-	// P8: the freshness/latency surface — stale-decision rejections and the
+	// The freshness/latency surface — stale-decision rejections and the
 	// dispatch→decision duration histogram (p95/p99), exported via /metrics
 	// so the freshness SLO is one honest number.
 	staleRejections atomic.Uint64
