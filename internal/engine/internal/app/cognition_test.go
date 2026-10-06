@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -63,7 +63,7 @@ func TestEngineCreatesTriggerAndSchedulerItem(t *testing.T) {
 	}
 
 	log := eventlog.NewEventLog(db)
-	eng, err := newService(ctx, db, log, clock.Physical(), &compiled, "default", true)
+	eng, err := newService(ctx, db, log, sources.Physical(), &compiled, "default", true)
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}

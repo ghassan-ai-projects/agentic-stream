@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -49,7 +49,7 @@ func TestRunStopsWithoutRuntimeOwnershipAndAppliesNothing(t *testing.T) {
 	log := eventlog.NewEventLog(db)
 	lost := errors.New("ownership lost")
 	owner := func(context.Context, *sql.Tx, string) error { return lost }
-	service, err := app.New(ctx, app.Config{Store: store.New(db, owner, "epoch", "default", compiled.Digest), Log: log, Clock: clock.Physical(), Spec: &compiled, TenantID: "default"})
+	service, err := app.New(ctx, app.Config{Store: store.New(db, owner, "epoch", "default", compiled.Digest), Log: log, Clock: sources.Physical(), Spec: &compiled, TenantID: "default"})
 	if err != nil {
 		t.Fatal(err)
 	}

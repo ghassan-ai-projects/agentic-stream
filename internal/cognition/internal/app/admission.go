@@ -8,8 +8,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -116,7 +116,7 @@ func (s *scheduler) applyCooldown(ctx context.Context, tx *store.Tx, item *episo
 }
 
 func (s *scheduler) itemID() string {
-	return s.idGen.New(ids.PrefixScheduler)
+	return s.idGen.New(sources.PrefixScheduler)
 }
 
 func (s *scheduler) insertItem(ctx context.Context, tx *store.Tx, item episodeledger.SchedulerItem, tenantID string) error {

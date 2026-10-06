@@ -8,19 +8,18 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	app "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 	transport "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/transport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
 
@@ -29,10 +28,10 @@ func pipelineDefaults(cfg PipelineConfig) PipelineConfig {
 		cfg.TenantID = "default"
 	}
 	if cfg.Clock == nil {
-		cfg.Clock = clock.Physical()
+		cfg.Clock = sources.Physical()
 	}
 	if cfg.IDGenerator == nil {
-		cfg.IDGenerator = ids.Random()
+		cfg.IDGenerator = sources.Random()
 	}
 	return pipelineExecutionDefaults(cfg)
 }

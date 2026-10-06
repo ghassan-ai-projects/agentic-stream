@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -45,7 +45,7 @@ func TestPipelineRunLiveSocketOpensSituation(t *testing.T) {
 		},
 	}
 	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{
-		DB: db, Spec: compiled, TenantID: "default", IDGenerator: ids.Deterministic(),
+		DB: db, Spec: compiled, TenantID: "default", IDGenerator: sources.Deterministic(),
 		Executor: fixture.New(), Effector: device.NewSimulatedEffector(),
 	})
 	if err != nil {

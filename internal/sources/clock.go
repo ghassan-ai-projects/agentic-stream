@@ -1,5 +1,4 @@
-// Package clock abstracts physical and virtual time for deterministic replay.
-package clock
+package sources
 
 import (
 	"cmp"

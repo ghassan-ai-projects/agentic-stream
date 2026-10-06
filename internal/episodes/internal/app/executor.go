@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
@@ -16,8 +15,8 @@ import (
 type Runner struct {
 	episodes      store.Store
 	executor      Executor
-	clk           clock.Clock
-	idGen         ids.Generator
+	clk           sources.Clock
+	idGen         sources.Generator
 	ownerEpoch    string
 	cost          *runtimecontrol.CostLedger
 	decisionEpoch store.DecisionEpochCheck

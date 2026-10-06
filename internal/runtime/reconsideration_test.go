@@ -10,11 +10,10 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
@@ -60,9 +59,9 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	idGenerator := ids.Deterministic()
+	idGenerator := sources.Deterministic()
 	pipeline, err := NewPipeline(ctx, PipelineConfig{
-		DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: idGenerator,
+		DB: db, Spec: compiled, TenantID: "default", Clock: sources.Physical(), IDGenerator: idGenerator,
 		Executor: fixture.New(), Effector: device.NewSimulatedEffector(),
 	})
 	if err != nil {
@@ -76,7 +75,7 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	}
 
 	log := eventlog.NewEventLog(db)
-	stream, err := engine.New(ctx, engine.Config{DB: db, Log: log, Clock: clock.Physical(), Spec: compiled, TenantID: "default", RuntimeOwner: engine.ReplayOwnership, Cognition: true})
+	stream, err := engine.New(ctx, engine.Config{DB: db, Log: log, Clock: sources.Physical(), Spec: compiled, TenantID: "default", RuntimeOwner: engine.ReplayOwnership, Cognition: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +83,7 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	admitter, err := app.NewAdmitter(app.AdmitterConfig{Store: &store.PipelineStore{DB: db, Episodes: episodeService, TenantID: "default"}, Clock: clock.Physical()})
+	admitter, err := app.NewAdmitter(app.AdmitterConfig{Store: &store.PipelineStore{DB: db, Episodes: episodeService, TenantID: "default"}, Clock: sources.Physical()})
 	if err != nil {
 		t.Fatal(err)
 	}

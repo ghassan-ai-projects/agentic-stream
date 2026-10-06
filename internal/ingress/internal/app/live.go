@@ -6,9 +6,9 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/transport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // ServeLive listens on the Unix socket at path and hands each admitted envelope
@@ -23,7 +23,7 @@ func (s *Service) ServeLive(ctx context.Context, path string, sink EnvelopeSink)
 	if err := domain.ValidateSocketPath(path); err != nil {
 		return err //nolint:wrapcheck // The domain rule names the unsafe path.
 	}
-	instanceID := ids.Random().New("live_uds_")
+	instanceID := sources.Random().New("live_uds_")
 	cfg := transport.ServerConfig{Path: path, QueueSize: s.queueSize, Logger: s.logger}
 	return transport.Serve(ctx, cfg, func(ctx context.Context, line domain.LiveLine) error { //nolint:wrapcheck // The transport wraps handler failures.
 		return s.processLine(ctx, instanceID, line, sink)

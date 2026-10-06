@@ -5,10 +5,10 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 func (g *Service) approveAutomatic(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
@@ -33,7 +33,7 @@ func (g *Service) commandForIntent(ctx context.Context, tx *store.Tx, e evaluati
 	if err != nil || commandID != "" {
 		return domain.CommandRecord{}, commandID, err
 	}
-	command, err := domain.NewCommand(domain.CommandPreparation{ID: g.idGen.New(ids.PrefixCommand), PolicyDigest: g.policyDigest, Row: e.row, Intent: e.documents.Intent, Now: e.now})
+	command, err := domain.NewCommand(domain.CommandPreparation{ID: g.idGen.New(sources.PrefixCommand), PolicyDigest: g.policyDigest, Row: e.row, Intent: e.documents.Intent, Now: e.now})
 	if err != nil {
 		return domain.CommandRecord{}, "", err
 	}

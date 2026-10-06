@@ -7,12 +7,11 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -40,7 +39,7 @@ func TestPipelineCompletesDecisionToSimulatedOutcome(t *testing.T) {
 	if err := os.WriteFile(path, []byte(trace), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: ids.Deterministic(), Executor: fixture.New(), Effector: device.NewSimulatedEffector()})
+	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{DB: db, Spec: compiled, TenantID: "default", Clock: sources.Physical(), IDGenerator: sources.Deterministic(), Executor: fixture.New(), Effector: device.NewSimulatedEffector()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +86,7 @@ func TestPipelineCorrectsLateWindowAndAdmitsOneReconsideration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: ids.Deterministic(), Executor: fixture.New(), Effector: device.NewSimulatedEffector()})
+	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{DB: db, Spec: compiled, TenantID: "default", Clock: sources.Physical(), IDGenerator: sources.Deterministic(), Executor: fixture.New(), Effector: device.NewSimulatedEffector()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +97,7 @@ func TestPipelineCorrectsLateWindowAndAdmitsOneReconsideration(t *testing.T) {
 	if firstReport.EpisodesExecuted != 1 || firstReport.CommandsDispatched != 1 {
 		t.Fatalf("first batch did not complete the prior action: %+v", firstReport)
 	}
-	secondLog := eventlog.NewEventLogWithClock(db, clock.Physical())
+	secondLog := eventlog.NewEventLogWithClock(db, sources.Physical())
 	secondReplay, err := ingress.New(ingress.Config{DB: db, Log: secondLog, TenantID: "default"})
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +107,7 @@ func TestPipelineCorrectsLateWindowAndAdmitsOneReconsideration(t *testing.T) {
 	} else if ingested != 1 {
 		t.Fatalf("second batch ingested %d events, want 1", ingested)
 	}
-	stream, err := engine.New(ctx, engine.Config{DB: db, Log: secondLog, Clock: clock.Physical(), Spec: compiled, TenantID: "default", RuntimeOwner: engine.ReplayOwnership, Cognition: true})
+	stream, err := engine.New(ctx, engine.Config{DB: db, Log: secondLog, Clock: sources.Physical(), Spec: compiled, TenantID: "default", RuntimeOwner: engine.ReplayOwnership, Cognition: true})
 	if err != nil {
 		t.Fatal(err)
 	}

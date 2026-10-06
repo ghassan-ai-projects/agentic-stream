@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -33,7 +33,7 @@ func TestRecordWriteFailureRollsBackAndTheEventAppliesOnceAfterRecovery(t *testi
 			defer func() { _ = db.Close() }()
 			compiled := restartSpec()
 			log := eventlog.NewEventLog(db)
-			eng, err := newService(ctx, db, log, clock.Physical(), &compiled, "default", false)
+			eng, err := newService(ctx, db, log, sources.Physical(), &compiled, "default", false)
 			if err != nil {
 				t.Fatal(err)
 			}

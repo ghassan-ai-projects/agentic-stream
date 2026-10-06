@@ -44,7 +44,7 @@ not mutate either published snapshot or a running attempt's request. See
 | 1, 6, 7 | `internal/decisions`, `internal/policy`, `internal/actions`, worker/evidence boundary |
 | 2, 3, 4 | `internal/eventlog`, `internal/engine`, `internal/operators`, `internal/situations` |
 | 5, 10 | `internal/cognition`, `internal/episodes`, `internal/notify`, `internal/storage` |
-| 8 | `internal/ids`, `internal/storage`, `internal/evidence`, `internal/actions`, `internal/notify` |
+| 8 | `internal/sources`, `internal/storage`, `internal/evidence`, `internal/actions`, `internal/notify` |
 | 9 | `internal/replay`, `internal/runtime`, replay isolation tests |
 
 ## Review questions

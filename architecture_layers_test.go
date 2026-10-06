@@ -24,7 +24,7 @@ var impureDomainImports = []string{
 }
 
 // impureDomainModulePackages are module packages a domain layer must not use.
-var impureDomainModulePackages = []string{"internal/storage", "internal/control", "internal/clock"}
+var impureDomainModulePackages = []string{"internal/storage", "internal/control"}
 
 // clockReads are time functions that read the wall clock.
 var clockReads = []string{"Now", "Since", "Until"}
@@ -166,4 +166,44 @@ func clockCalls(parsed *ast.File) []string {
 		return true
 	})
 	return calls
+}
+
+// nondeterministicSources are the symbols of internal/sources that read the wall
+// clock or a random generator. Deterministic layers may share the package's
+// vocabulary (identity prefixes and the deterministic generator) but never these.
+var nondeterministicSources = []string{"Clock", "Timer", "Virtual", "Physical", "NewVirtual", "Quality", "Random"}
+
+// TestDeterministicLayersDoNotUseTimeOrRandomSources enforces that domain layers
+// and the replay store take time and randomness as parameters instead of
+// reaching for a clock or a random generator.
+func TestDeterministicLayersDoNotUseTimeOrRandomSources(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	for _, file := range productionGoFiles(t, root) {
+		pkg := path.Dir(file.rel)
+		if path.Base(pkg) != "domain" && pkg != "internal/replay/internal/store" {
+			continue
+		}
+		for _, symbol := range sourceSelectors(parseGoFile(t, file)) {
+			if slices.Contains(nondeterministicSources, symbol) {
+				t.Errorf("%s: deterministic layer uses sources.%s; take it as a parameter", file.rel, symbol)
+			}
+		}
+	}
+}
+
+// sourceSelectors lists the names selected from the sources package.
+func sourceSelectors(parsed *ast.File) []string {
+	var names []string
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if ident, ok := selector.X.(*ast.Ident); ok && ident.Name == "sources" {
+			names = append(names, selector.Sel.Name)
+		}
+		return true
+	})
+	return names
 }

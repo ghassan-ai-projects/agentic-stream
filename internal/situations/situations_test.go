@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -39,7 +39,7 @@ func TestSituationTransitionsOnFeature(t *testing.T) {
 		},
 	}
 
-	eng, err := situations.NewEngine("d1", "default", 0, &compiled, ids.Deterministic())
+	eng, err := situations.NewEngine("d1", "default", 0, &compiled, sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewEngine: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestSituationPublishesCompletenessChangeFromSourceHealth(t *testing.T) {
 			Reducers:     []spec.Reducer{{Field: "facts.heartbeat_missing_5m", Strategy: "latest_event_time", Input: "heartbeat_missing_5m"}},
 		},
 	}
-	eng, err := situations.NewEngine("d1", "default", 0, &compiled, ids.Deterministic())
+	eng, err := situations.NewEngine("d1", "default", 0, &compiled, sources.Deterministic())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestSituationSkipsNilFactWhenBuildingFeatures(t *testing.T) {
 			Reducers:     []spec.Reducer{{Field: "facts.level", Strategy: "latest_event_time", Input: "level"}},
 		},
 	}
-	eng, err := situations.NewEngine("d1", "default", 0, &compiled, ids.Deterministic())
+	eng, err := situations.NewEngine("d1", "default", 0, &compiled, sources.Deterministic())
 	if err != nil {
 		t.Fatal(err)
 	}

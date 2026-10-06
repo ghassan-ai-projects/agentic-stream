@@ -7,8 +7,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 func TestWithdrawalReadsClockAfterEachOrderedMutationAndRollsBackOnPublishFailure(t *testing.T) {
@@ -28,7 +27,7 @@ func TestWithdrawalReadsClockAfterEachOrderedMutationAndRollsBackOnPublishFailur
 	}
 	reads := 0
 	err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		clk := withdrawalClock{Clock: clock.NewVirtual(time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)), beforeRead: func() {
+		clk := withdrawalClock{Clock: sources.NewVirtual(time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)), beforeRead: func() {
 			id := []string{"denied", "old"}[reads]
 			var state string
 			if err := tx.QueryRowContext(ctx, "SELECT status FROM approvals WHERE approval_id=?", id).Scan(&state); err != nil {
@@ -63,7 +62,7 @@ func TestWithdrawalReadsClockAfterEachOrderedMutationAndRollsBackOnPublishFailur
 }
 
 type withdrawalClock struct {
-	clock.Clock
+	sources.Clock
 	beforeRead func()
 }
 

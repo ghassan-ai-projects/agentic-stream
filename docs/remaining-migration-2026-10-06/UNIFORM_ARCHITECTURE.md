@@ -69,7 +69,7 @@ renumbering may be needed again for `actionport` (it gains a store).
 | Step | Status |
 | --- | --- |
 | `duration` and `eventschema` merged into `spec` (`spec.ParseDuration`, `spec.EventSchema`, `spec.RegisterEventSchema`; `event_schemas` is now owned by `spec`; data file `internal/spec/event_schema_data.json`) | Done |
-| `ids` + `clock` into one sources package; id prefixes to `contractsv1` | Decided, not started |
+| `ids` + `clock` merged into `internal/sources`. The id prefixes stay beside the generators (not `contractsv1`: the action plane may not import it). The old import ban on clock for deterministic layers became a symbol-level gate: domain layers and the replay store may use `sources.Prefix*` and `sources.Deterministic` but never `Clock`, `Physical`, `Virtual`, `Random` (`TestDeterministicLayersDoNotUseTimeOrRandomSources`, proven by injection) | Done |
 | `interlock` into `actionport` (facade + domain + store) | Decided, not started |
 | `executor/conformance` and `executor/fixture` to `testsupport` (decided by the owner; note composition imports the fixture for demo mode) | Decided, not started |
 | `contractsv1`, `operators`, `situations` to facade + domain; `spec`, `worker`, `telemetry`, `api` layered | Not started |

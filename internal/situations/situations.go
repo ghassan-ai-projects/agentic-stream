@@ -13,8 +13,8 @@ import (
 	"github.com/google/cel-go/cel"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -24,7 +24,7 @@ type Engine struct {
 	tenantID     string
 	partitionID  int
 	spec         *spec.CompiledSpec
-	idGen        ids.Generator
+	idGen        sources.Generator
 	celEnv       *cel.Env
 
 	active map[situationKey]*Situation
@@ -174,7 +174,7 @@ func cloneSet(values map[string]struct{}) map[string]struct{} {
 }
 
 // NewEngine creates a situation engine.
-func NewEngine(deploymentID, tenantID string, partitionID int, compiled *spec.CompiledSpec, idGen ids.Generator) (*Engine, error) {
+func NewEngine(deploymentID, tenantID string, partitionID int, compiled *spec.CompiledSpec, idGen sources.Generator) (*Engine, error) {
 	env, err := spec.NewCELEnv()
 	if err != nil {
 		return nil, fmt.Errorf("cel env: %w", err)
@@ -220,7 +220,7 @@ func (e *Engine) newSituation(partitionID int, entityType, entityID string, even
 	identity := fmt.Sprintf("%s\x00%s\x00%d\x00%s\x00%s\x00%s", e.tenantID, e.deploymentID, partitionID, e.spec.Situation.Type, entityType, entityID)
 	hash := hex.EncodeToString(sha256Sum(identity))
 	return &Situation{
-		SituationID: ids.PrefixSituation + hash, TenantID: e.tenantID, DeploymentID: e.deploymentID,
+		SituationID: sources.PrefixSituation + hash, TenantID: e.tenantID, DeploymentID: e.deploymentID,
 		Type: e.spec.Situation.Type, EntityType: entityType, EntityID: entityID, PartitionID: partitionID,
 		OccurrenceID: "occ_" + hash, Version: 0, Phase: e.spec.Situation.InitialPhase,
 		Severity: e.initialSeverity(), Confidence: 1.0, Completeness: string(operators.CompletenessProvisional),

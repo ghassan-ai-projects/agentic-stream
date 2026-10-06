@@ -1,5 +1,8 @@
-// Package ids generates stable identifiers for the runtime.
-package ids
+// Package sources holds the runtime's injected sources of non-determinism:
+// time (a physical clock and a virtual one for replay) and identifiers (a random
+// generator and a deterministic one for replay and tests). Rules receive them
+// as parameters and never read the wall clock or a random source themselves.
+package sources
 
 import (
 	"crypto/rand"
@@ -8,10 +11,7 @@ import (
 	"sync"
 )
 
-// Prefixes for the different runtime identity spaces. Packages that must stay
-// deterministic (the replay domain, the native executor, the ledger domains)
-// never import this package because it also holds the random generator; they
-// keep their literal prefixes.
+// Prefixes for the runtime identity spaces, one per kind of durable record.
 const (
 	PrefixEvent           = "evt_"
 	PrefixSituation       = "sit_"

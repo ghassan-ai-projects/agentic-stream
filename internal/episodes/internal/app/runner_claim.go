@@ -6,11 +6,11 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 )
 
 // episodeClaim is the oldest dispatchable episode, fenced to a new attempt in
@@ -148,7 +148,7 @@ func (r *Runner) rebindClaim(ctx context.Context, tx *store.Tx, claim *episodeCl
 // persisted request.
 func (r *Runner) startClaimedAttempt(ctx context.Context, tx *store.Tx, claim *episodeClaim) error {
 	claim.req.AttemptID = ""
-	attemptID := r.idGen.New(ids.PrefixAttempt)
+	attemptID := r.idGen.New(sources.PrefixAttempt)
 	identity, err := r.startOwnedAttempt(ctx, tx, claim.episodeID, attemptID)
 	if err != nil {
 		return fmt.Errorf("start episode attempt: %w", err)

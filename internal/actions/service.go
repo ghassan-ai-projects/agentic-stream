@@ -12,9 +12,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
@@ -33,8 +32,8 @@ type Config struct {
 	Interlock    interlock.Reader
 	// Clock, IDs, LeaseOwner and LeaseFor default to the physical clock, random
 	// identities, "actions" and one minute.
-	Clock      clock.Clock
-	IDs        ids.Generator
+	Clock      sources.Clock
+	IDs        sources.Generator
 	LeaseOwner string
 	LeaseFor   time.Duration
 	// Telemetry is optional.

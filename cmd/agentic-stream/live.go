@@ -8,13 +8,13 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
 	"github.com/spf13/cobra"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -153,7 +153,7 @@ func (core *runtimeCore) startPipeline(ctx context.Context, compiled *spec.Compi
 	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{
 		DB: core.db, Spec: compiled, TenantID: tenantID, Owner: core.owner, OwnerEpoch: core.epoch,
 		Executor: workerRuntime.Executor, Effector: opened.effector, GatewayEffector: opened.serial,
-		IDGenerator: ids.Random(), Telemetry: metrics, EpochControl: core.epochControl, DemoMode: demoMode,
+		IDGenerator: sources.Random(), Telemetry: metrics, EpochControl: core.epochControl, DemoMode: demoMode,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create runtime pipeline: %w", err)

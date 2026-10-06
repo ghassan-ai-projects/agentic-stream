@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 	transport "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/transport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
@@ -34,7 +34,7 @@ type Pipeline struct {
 	runner       *episodes.Service
 	dispatcher   *actions.Service
 	watch        *watch.Service
-	clk          clock.Clock
+	clk          sources.Clock
 	tenantID     string
 	watchMu      sync.Mutex
 	watchStop    context.CancelFunc

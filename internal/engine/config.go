@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -24,7 +24,7 @@ import (
 type Config struct {
 	DB           *storage.DB
 	Log          *eventlog.EventLog
-	Clock        clock.Clock
+	Clock        sources.Clock
 	Spec         *spec.CompiledSpec
 	TenantID     string
 	RuntimeOwner func(context.Context, *sql.Tx, string) error

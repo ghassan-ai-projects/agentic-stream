@@ -6,9 +6,9 @@ import (
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 )
 
 type decisionRecord = domain.DecisionRecord
@@ -42,7 +42,7 @@ func (r *Runner) validateDecision(claim *episodeClaim, outcome *Outcome) (*decis
 	}
 	record := domain.ValidateDecision(outcome, validationInput)
 	if record.ID == "" {
-		record.ID = r.idGen.New(ids.PrefixDecision)
+		record.ID = r.idGen.New(sources.PrefixDecision)
 	}
 	return record.PrepareStorage(outcome.DecisionJSON)
 }

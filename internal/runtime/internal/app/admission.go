@@ -6,18 +6,18 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // AdmitterConfig is the owner-scoped admission composition for one tenant.
 type AdmitterConfig struct {
 	// Store carries the database, the runtime owner, the episode assembler and the tenant.
 	Store *store.PipelineStore
-	Clock clock.Clock
+	Clock sources.Clock
 	// OwnerEpoch is the policy epoch every admitted episode is stamped with.
 	OwnerEpoch string
 	// EpochControl, when set, stops new admissions while the epoch drains.

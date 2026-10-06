@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *OperatorStateBlob, env contractsv1.Envelope, watermark, processingTime time.Time) ([]Feature, error) {
@@ -58,7 +58,7 @@ func (hs *HeartbeatState) adoptBoot(bootID string) {
 // A missing heartbeat is uncertain and timed at processing time.
 func (r *OperatorRuntime) heartbeatFeature(inst *operatorInstance, env contractsv1.Envelope, bootID string, watermark, processingTime time.Time, missing bool) Feature {
 	feature := Feature{
-		FeatureID: r.idGen.New(ids.PrefixEvent), OperatorID: inst.def.Name, OutputName: inst.def.Output,
+		FeatureID: r.idGen.New(sources.PrefixEvent), OperatorID: inst.def.Name, OutputName: inst.def.Output,
 		TenantID: env.TenantID, EntityType: env.Entity.Type, EntityID: env.Entity.ID,
 		StateKey: operatorStateKey(env), BootID: bootID, PartitionID: env.PartitionID(0),
 		WindowStart: env.EventTime, WindowEnd: watermark, Value: missing,
@@ -178,7 +178,7 @@ func heartbeatOverdue(hs *HeartbeatState, processingTime time.Time, duration tim
 // feature that continues the last heartbeat's trace.
 func (r *OperatorRuntime) missedHeartbeatFeature(inst *operatorInstance, stateKey string, hs *HeartbeatState, identity TimerIdentity, watermark, processingTime time.Time) Feature {
 	return Feature{
-		FeatureID: r.idGen.New(ids.PrefixEvent), OperatorID: inst.def.Name, OutputName: inst.def.Output,
+		FeatureID: r.idGen.New(sources.PrefixEvent), OperatorID: inst.def.Name, OutputName: inst.def.Output,
 		// For Phase 2 the entity type is known from the spec input.
 		TenantID: identity.TenantID, EntityType: r.entityTypeForOperator(inst.def.Name),
 		EntityID: entityIDFromStateKey(stateKey), StateKey: stateKey, BootID: hs.BootID, PartitionID: identity.PartitionID,

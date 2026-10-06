@@ -6,13 +6,12 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -55,7 +54,7 @@ func TestRunnerOrdersEpisodesByChronologicalAcceptedAt(t *testing.T) {
 	}
 
 	executor := &recordingDeclinedExecutor{}
-	runner := app.NewRunner(store.New(db), executor, clock.Physical(), ids.Deterministic())
+	runner := app.NewRunner(store.New(db), executor, sources.Physical(), sources.Deterministic())
 	processed, err := runner.RunOnce(ctx, "tenant")
 	if err != nil || !processed {
 		t.Fatalf("run processed=%v err=%v", processed, err)

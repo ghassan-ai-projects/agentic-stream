@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
@@ -16,7 +15,7 @@ import (
 // Config binds request assembly and optional execution dependencies.
 type Config struct {
 	Spec        *spec.CompiledSpec
-	IDGenerator ids.Generator
+	IDGenerator sources.Generator
 	CostControl *runtimecontrol.CostLedger
 	Execution   *ExecutionConfig
 }
@@ -25,7 +24,7 @@ type Config struct {
 type ExecutionConfig struct {
 	Episodes      store.Store
 	Executor      Executor
-	Clock         clock.Clock
+	Clock         sources.Clock
 	OwnerEpoch    string
 	DecisionEpoch store.DecisionEpochCheck
 	Telemetry     *telemetry.Runtime
@@ -43,7 +42,7 @@ func New(cfg Config) (*Service, error) {
 		return nil, err
 	}
 	if cfg.IDGenerator == nil {
-		cfg.IDGenerator = ids.Random()
+		cfg.IDGenerator = sources.Random()
 	}
 	assembler := &Assembler{spec: cfg.Spec, idGen: cfg.IDGenerator, cost: cfg.CostControl}
 	return &Service{assembler: assembler, runner: configuredRunner(cfg, assembler)}, nil
@@ -70,7 +69,7 @@ func configuredRunner(cfg Config, assembler *Assembler) *Runner {
 	}
 	execution := *cfg.Execution
 	if execution.Clock == nil {
-		execution.Clock = clock.Physical()
+		execution.Clock = sources.Physical()
 	}
 	return &Runner{episodes: execution.Episodes, executor: execution.Executor, clk: execution.Clock, idGen: cfg.IDGenerator, ownerEpoch: execution.OwnerEpoch, cost: cfg.CostControl, decisionEpoch: execution.DecisionEpoch, telemetry: execution.Telemetry, assembler: assembler}
 }

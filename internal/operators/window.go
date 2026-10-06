@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *OperatorStateBlob, env contractsv1.Envelope, watermark time.Time) ([]Feature, error) {
@@ -104,7 +104,7 @@ func windowEmissions(emit string, corrected, closeDue, hasSamples bool) []string
 
 func (r *OperatorRuntime) windowFeature(inst *operatorInstance, env contractsv1.Envelope, ws *WindowState, agg float64, watermark time.Time, completeness string) Feature {
 	return Feature{
-		FeatureID: r.idGen.New(ids.PrefixEvent), OperatorID: inst.def.Name, OutputName: inst.def.Output,
+		FeatureID: r.idGen.New(sources.PrefixEvent), OperatorID: inst.def.Name, OutputName: inst.def.Output,
 		TenantID: env.TenantID, EntityType: env.Entity.Type, EntityID: env.Entity.ID,
 		StateKey: operatorStateKey(env), BootID: deviceBootID(env), PartitionID: env.PartitionID(0),
 		WindowStart: watermark.Add(-inst.window.size), WindowEnd: watermark,

@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -22,7 +21,7 @@ import (
 type Config struct {
 	Store     store.Store
 	Log       *eventlog.EventLog
-	Clock     clock.Clock
+	Clock     sources.Clock
 	Spec      *spec.CompiledSpec
 	TenantID  string
 	Cognition bool
@@ -34,7 +33,7 @@ type Service struct {
 	mu           sync.Mutex
 	store        store.Store
 	log          *eventlog.EventLog
-	clock        clock.Clock
+	clock        sources.Clock
 	spec         *spec.CompiledSpec
 	tenantID     string
 	deploymentID string
@@ -63,9 +62,9 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	return service, nil
 }
 
-func orPhysical(clk clock.Clock) clock.Clock {
+func orPhysical(clk sources.Clock) sources.Clock {
 	if clk == nil {
-		return clock.Physical()
+		return sources.Physical()
 	}
 	return clk
 }
@@ -74,7 +73,7 @@ func orPhysical(clk clock.Clock) clock.Clock {
 // deterministic ID sequence, restores durable Situations, then attaches
 // cognition.
 func (s *Service) buildPlanes(ctx context.Context, cognitionEnabled bool) error {
-	idGen := ids.Deterministic()
+	idGen := sources.Deterministic()
 	var err error
 	if s.opRuntime, err = operators.NewOperatorRuntime(s.spec.Digest, s.spec, idGen); err != nil {
 		return fmt.Errorf("operator runtime: %w", err)
@@ -89,7 +88,7 @@ func (s *Service) buildPlanes(ctx context.Context, cognitionEnabled bool) error 
 	return err
 }
 
-func (s *Service) newCognition(idGen ids.Generator, enabled bool) (*cognition.Service, error) {
+func (s *Service) newCognition(idGen sources.Generator, enabled bool) (*cognition.Service, error) {
 	if !enabled {
 		return nil, nil
 	}

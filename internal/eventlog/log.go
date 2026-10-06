@@ -5,11 +5,11 @@ import (
 	"context"
 	"errors"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	app "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/app"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -33,13 +33,13 @@ type EventLog struct {
 
 // NewEventLog creates an EventLog backed by db and the physical clock.
 func NewEventLog(db *storage.DB) *EventLog {
-	return NewEventLogWithClock(db, clock.Physical())
+	return NewEventLogWithClock(db, sources.Physical())
 }
 
 // NewEventLogWithClock creates an EventLog backed by db and the given clock.
-func NewEventLogWithClock(db *storage.DB, clk clock.Clock) *EventLog {
+func NewEventLogWithClock(db *storage.DB, clk sources.Clock) *EventLog {
 	if clk == nil {
-		clk = clock.Physical()
+		clk = sources.Physical()
 	}
 	return &EventLog{service: app.New(clk, store.New(db))}
 }

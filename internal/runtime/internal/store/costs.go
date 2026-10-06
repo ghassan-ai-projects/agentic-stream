@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -16,7 +16,7 @@ type CostConfiguration struct {
 	DB                   *storage.DB
 	Owner                *runtimecontrol.RuntimeOwner
 	OwnerEpoch, TenantID string
-	Clock                clock.Clock
+	Clock                sources.Clock
 	Ceilings             runtimecontrol.CostCeilings
 }
 

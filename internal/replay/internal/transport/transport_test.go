@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -106,8 +106,8 @@ func TestSourcesIngestTraceThroughIngress(t *testing.T) {
 	}
 	log := eventlog.NewEventLog(database.DB)
 	log.RequireSchemaValidation()
-	sources := Sources{DB: database.DB, Log: log, TenantID: "default"}
-	processed, err := sources.RunJSONLTrace(ctx, "../../../../examples/predictive-maintenance/testdata/trace-heartbeat.jsonl", clock.NewVirtual(time.Unix(0, 0).UTC()))
+	traceSources := Sources{DB: database.DB, Log: log, TenantID: "default"}
+	processed, err := traceSources.RunJSONLTrace(ctx, "../../../../examples/predictive-maintenance/testdata/trace-heartbeat.jsonl", sources.NewVirtual(time.Unix(0, 0).UTC()))
 	if err != nil {
 		t.Fatal(err)
 	}

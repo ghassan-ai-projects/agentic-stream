@@ -11,8 +11,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -26,7 +26,7 @@ var (
 // fixture is one admitted runtime owner with its device-authority service.
 type fixture struct {
 	db      *storage.DB
-	clock   *clock.Virtual
+	clock   *sources.Virtual
 	runtime *control.RuntimeOwner
 	service *app.Service
 }
@@ -45,7 +45,7 @@ func newFixture(t *testing.T) *fixture {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	db.SetMaxOpenConns(1)
-	f := &fixture{db: db, clock: clock.NewVirtual(time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC))}
+	f := &fixture{db: db, clock: sources.NewVirtual(time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC))}
 	f.runtime, f.service = f.admit(t, ownerOne, runtimeLease)
 	return f
 }

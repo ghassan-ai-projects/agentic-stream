@@ -1,15 +1,13 @@
-package clock_test
+package sources
 
 import (
 	"testing"
 	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 )
 
 func TestVirtualClockAdvances(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	v := clock.NewVirtual(start)
+	v := NewVirtual(start)
 	if got := v.Now(); !got.Equal(start) {
 		t.Fatalf("Now() = %v, want %v", got, start)
 	}
@@ -21,7 +19,7 @@ func TestVirtualClockAdvances(t *testing.T) {
 
 func TestVirtualTimerFires(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	v := clock.NewVirtual(start)
+	v := NewVirtual(start)
 	timer := v.NewTimer(time.Minute)
 
 	select {
@@ -46,7 +44,7 @@ func TestVirtualAdvanceFiresDueTimersBehindLaterHead(t *testing.T) {
 	// Advance in which they become due, even when a not-yet-due timer was
 	// scheduled first and would otherwise sit at the head of the queue.
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	v := clock.NewVirtual(start)
+	v := NewVirtual(start)
 
 	t10 := v.NewTimer(10 * time.Minute)
 	t5 := v.NewTimer(5 * time.Minute)
@@ -54,7 +52,7 @@ func TestVirtualAdvanceFiresDueTimersBehindLaterHead(t *testing.T) {
 
 	v.Advance(7 * time.Minute)
 
-	fired := func(name string, timer clock.Timer) bool {
+	fired := func(name string, timer Timer) bool {
 		select {
 		case f := <-timer.C():
 			_ = f
@@ -83,7 +81,7 @@ func TestVirtualAdvanceFiresDueTimersBehindLaterHead(t *testing.T) {
 
 func TestVirtualTimerStop(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	v := clock.NewVirtual(start)
+	v := NewVirtual(start)
 	timer := v.NewTimer(time.Minute)
 	if !timer.Stop() {
 		t.Fatal("Stop returned false for pending timer")

@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -58,7 +58,7 @@ func TestCostConfigurationCommitsUnderOwnerFence(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	now := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
-	clk := clock.NewVirtual(now)
+	clk := sources.NewVirtual(now)
 	owner := &control.RuntimeOwner{DB: db, InstanceID: "owner", Lease: time.Minute, Now: clk.Now}
 	if err := owner.Claim(t.Context(), "epoch"); err != nil {
 		t.Fatal(err)

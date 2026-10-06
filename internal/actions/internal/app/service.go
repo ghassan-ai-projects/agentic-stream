@@ -6,8 +6,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // LeaseObserver counts dispatch leases that expired before a result was recorded.
@@ -22,8 +21,8 @@ type Config struct {
 	// Effector must enforce the final dispatch authorization check at the
 	// effect boundary; an effector that cannot is refused at construction.
 	Effector actionport.AuthorizedEffector
-	Clock    clock.Clock
-	IDs      ids.Generator
+	Clock    sources.Clock
+	IDs      sources.Generator
 	// LeaseOwner names this dispatcher in lease rows.
 	LeaseOwner string
 	LeaseFor   time.Duration
@@ -35,8 +34,8 @@ type Config struct {
 type Service struct {
 	store    store.Store
 	effector actionport.AuthorizedEffector
-	clk      clock.Clock
-	ids      ids.Generator
+	clk      sources.Clock
+	ids      sources.Generator
 	owner    string
 	leaseFor time.Duration
 	observer LeaseObserver
@@ -55,16 +54,16 @@ func New(cfg Config) (*Service, error) {
 		owner: orDefault(cfg.LeaseOwner, "actions"), leaseFor: orMinute(cfg.LeaseFor), observer: cfg.Observer}, nil
 }
 
-func orPhysical(clk clock.Clock) clock.Clock {
+func orPhysical(clk sources.Clock) sources.Clock {
 	if clk == nil {
-		return clock.Physical()
+		return sources.Physical()
 	}
 	return clk
 }
 
-func orRandom(generator ids.Generator) ids.Generator {
+func orRandom(generator sources.Generator) sources.Generator {
 	if generator == nil {
-		return ids.Random()
+		return sources.Random()
 	}
 	return generator
 }

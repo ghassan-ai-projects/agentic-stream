@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -14,7 +14,7 @@ import (
 type OperatorRuntime struct {
 	deploymentID string
 	spec         *spec.CompiledSpec
-	idGen        ids.Generator
+	idGen        sources.Generator
 
 	// operators keyed by direct input name.
 	byInput map[string][]*operatorInstance
@@ -32,7 +32,7 @@ type windowConfig struct {
 }
 
 // NewRuntime creates an operator runtime for the compiled spec.
-func NewOperatorRuntime(deploymentID string, compiled *spec.CompiledSpec, idGen ids.Generator) (*OperatorRuntime, error) {
+func NewOperatorRuntime(deploymentID string, compiled *spec.CompiledSpec, idGen sources.Generator) (*OperatorRuntime, error) {
 	windowConfigs, err := buildWindowConfigs(compiled.Windows)
 	if err != nil {
 		return nil, err

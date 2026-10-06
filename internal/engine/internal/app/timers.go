@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 func (s *Service) runDueTimersForAllPartitions(ctx context.Context) (int, error) {
@@ -118,7 +118,7 @@ func (s *Service) applyMatchedTimerFeatures(ctx context.Context, tx *store.Tx, p
 // fireTimer records the firing's provenance and applies the feature.
 func (s *Service) fireTimer(ctx context.Context, tx *store.Tx, partitionID int, firing domain.TimerFiring, watermark, now time.Time) (operators.Feature, error) {
 	feature := firing.Feature
-	domain.EnrichTimerFeature(&feature, s.tenantID, partitionID, firing.Timer, now, clock.Quality(s.clock))
+	domain.EnrichTimerFeature(&feature, s.tenantID, partitionID, firing.Timer, now, sources.Quality(s.clock))
 	return feature, s.saveTimerFeature(ctx, tx, partitionID, feature, watermark)
 }
 

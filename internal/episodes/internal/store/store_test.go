@@ -11,15 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -47,7 +46,7 @@ func replayedStore(t *testing.T) *storage.DB {
 	if err := spec.SaveDeployment(ctx, db, "default", compiled); err != nil {
 		t.Fatal(err)
 	}
-	clk := clock.NewVirtual(firstTraceTime(t))
+	clk := sources.NewVirtual(firstTraceTime(t))
 	log := eventlog.NewEventLogWithClock(db, clk)
 	log.RequireSchemaValidation()
 	ingestor, err := ingress.New(ingress.Config{DB: db, Log: log, Clock: clk, TenantID: "default"})
@@ -73,7 +72,7 @@ func replayedStore(t *testing.T) *storage.DB {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	assembler, err := episodes.New(episodes.Config{Spec: compiled, IDGenerator: ids.Deterministic()})
+	assembler, err := episodes.New(episodes.Config{Spec: compiled, IDGenerator: sources.Deterministic()})
 	if err != nil {
 		t.Fatal(err)
 	}

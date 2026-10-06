@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -28,7 +28,7 @@ func TestApprovalTransactionsPreserveMissingRequestAndOwnerErrors(t *testing.T) 
 		if err != nil {
 			t.Fatal(err)
 		}
-		pipeline := &Pipeline{transactions: &store.PipelineStore{DB: db, Policy: service}, tenantID: "tenant", clk: clock.NewVirtual(time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC))}
+		pipeline := &Pipeline{transactions: &store.PipelineStore{DB: db, Policy: service}, tenantID: "tenant", clk: sources.NewVirtual(time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC))}
 		expected := failure
 		if expected == nil {
 			expected = policy.ErrApprovalNotFound

@@ -5,11 +5,11 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // EnvelopeSink receives one validated normalized envelope from a live source.
@@ -27,7 +27,7 @@ type Telemetry interface {
 type Config struct {
 	Store         store.Store
 	Log           *eventlog.EventLog
-	Clock         clock.Clock
+	Clock         sources.Clock
 	TenantID      string
 	Logger        *slog.Logger
 	Telemetry     Telemetry
@@ -38,7 +38,7 @@ type Config struct {
 type Service struct {
 	store     store.Store
 	log       *eventlog.EventLog
-	clk       clock.Clock
+	clk       sources.Clock
 	tenantID  string
 	logger    *slog.Logger
 	telemetry Telemetry
@@ -55,9 +55,9 @@ func New(cfg Config) (*Service, error) {
 		logger: orDefaultLogger(cfg.Logger), telemetry: cfg.Telemetry, queueSize: orDefaultQueue(cfg.LiveQueueSize)}, nil
 }
 
-func orPhysical(clk clock.Clock) clock.Clock {
+func orPhysical(clk sources.Clock) sources.Clock {
 	if clk == nil {
-		return clock.Physical()
+		return sources.Physical()
 	}
 	return clk
 }

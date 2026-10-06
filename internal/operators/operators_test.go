@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 func TestAggregateMean(t *testing.T) {
-	rt, err := operators.NewOperatorRuntime("d1", meanSpec(), ids.Deterministic())
+	rt, err := operators.NewOperatorRuntime("d1", meanSpec(), sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewOperatorRuntime: %v", err)
 	}
@@ -24,10 +24,10 @@ func TestAggregateMean(t *testing.T) {
 	ps := &operators.PartitionState{}
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	eventIDs := ids.Deterministic()
+	eventIDs := sources.Deterministic()
 	for i := 0; i < 3; i++ {
 		env := contractsv1.Envelope{
-			ID:             eventIDs.New(ids.PrefixEvent),
+			ID:             eventIDs.New(sources.PrefixEvent),
 			Type:           "sensor.temperature",
 			SchemaVersion:  "1.0",
 			TenantID:       "default",
@@ -59,7 +59,7 @@ func TestAggregateMean(t *testing.T) {
 }
 
 func TestSlope(t *testing.T) {
-	rt, err := operators.NewOperatorRuntime("d1", slopeSpec(), ids.Deterministic())
+	rt, err := operators.NewOperatorRuntime("d1", slopeSpec(), sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewOperatorRuntime: %v", err)
 	}
@@ -68,10 +68,10 @@ func TestSlope(t *testing.T) {
 	ps := &operators.PartitionState{}
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	eventIDs := ids.Deterministic()
+	eventIDs := sources.Deterministic()
 	for i := 0; i < 3; i++ {
 		env := contractsv1.Envelope{
-			ID:             eventIDs.New(ids.PrefixEvent),
+			ID:             eventIDs.New(sources.PrefixEvent),
 			Type:           "sensor.temperature",
 			SchemaVersion:  "1.0",
 			TenantID:       "default",
@@ -101,7 +101,7 @@ func TestLateEventCorrectsPreviouslyEmittedWindow(t *testing.T) {
 		AllowedLateness:   "5m",
 		LatePolicy:        "correct_and_reconsider",
 	}
-	rt, err := operators.NewOperatorRuntime("d1", compiled, ids.Deterministic())
+	rt, err := operators.NewOperatorRuntime("d1", compiled, sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewOperatorRuntime: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestLateEventCorrectsPreviouslyEmittedWindow(t *testing.T) {
 }
 
 func TestMissingHeartbeatTimerUsesDetectionTime(t *testing.T) {
-	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), ids.Deterministic())
+	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewOperatorRuntime: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestMissingHeartbeatTimerUsesDetectionTime(t *testing.T) {
 }
 
 func TestMissingHeartbeatEventUsesDetectionTimeWhenLate(t *testing.T) {
-	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), ids.Deterministic())
+	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewOperatorRuntime: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestOnCloseWindowEmitsAtWatermarkSlideBoundary(t *testing.T) {
 	compiled := meanSpec()
 	// An omitted emit value is normalized to the schema/runtime default.
 	compiled.Windows[0] = spec.Window{Name: "w1", Kind: "sliding", Size: "5m", Slide: "2m"}
-	rt, err := operators.NewOperatorRuntime("d1", compiled, ids.Deterministic())
+	rt, err := operators.NewOperatorRuntime("d1", compiled, sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewOperatorRuntime: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestUnsupportedWindowConfigurationFailsClosed(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			compiled := meanSpec()
 			compiled.Windows = []spec.Window{tt.window}
-			if _, err := operators.NewOperatorRuntime("d1", compiled, ids.Deterministic()); err == nil {
+			if _, err := operators.NewOperatorRuntime("d1", compiled, sources.Deterministic()); err == nil {
 				t.Fatal("NewOperatorRuntime succeeded for unsupported window configuration")
 			}
 		})
@@ -325,7 +325,7 @@ func TestUnsupportedWindowConfigurationFailsClosed(t *testing.T) {
 func TestEarlyAndCloseWindowEmitsProvisionalUpdates(t *testing.T) {
 	compiled := meanSpec()
 	compiled.Windows[0] = spec.Window{Name: "w1", Kind: "sliding", Size: "5m", Slide: "2m", Emit: "early_and_close"}
-	rt, err := operators.NewOperatorRuntime("d1", compiled, ids.Deterministic())
+	rt, err := operators.NewOperatorRuntime("d1", compiled, sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewOperatorRuntime: %v", err)
 	}
@@ -364,7 +364,7 @@ func TestQualityAdmissionIsPerOperator(t *testing.T) {
 			{Name: "heartbeat", Kind: "missing_heartbeat", Inputs: []string{"zone"}, Duration: "5m", Output: "heartbeat_missing"},
 		},
 	}
-	rt, err := operators.NewOperatorRuntime("d1", compiled, ids.Deterministic())
+	rt, err := operators.NewOperatorRuntime("d1", compiled, sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewOperatorRuntime: %v", err)
 	}
@@ -382,7 +382,7 @@ func TestQualityAdmissionIsPerOperator(t *testing.T) {
 }
 
 func TestHeartbeatTimerCarriesExplicitTenantAndPartition(t *testing.T) {
-	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), ids.Deterministic())
+	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewOperatorRuntime: %v", err)
 	}
@@ -414,7 +414,7 @@ func TestHeartbeatTimerCarriesExplicitTenantAndPartition(t *testing.T) {
 }
 
 func TestApplyTimerHonorsCancellation(t *testing.T) {
-	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), ids.Deterministic())
+	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewOperatorRuntime: %v", err)
 	}
@@ -446,7 +446,7 @@ func TestNumericQualityGate(t *testing.T) {
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rt, err := operators.NewOperatorRuntime("d1", meanSpec(), ids.Deterministic())
+			rt, err := operators.NewOperatorRuntime("d1", meanSpec(), sources.Deterministic())
 			if err != nil {
 				t.Fatalf("NewOperatorRuntime: %v", err)
 			}
@@ -498,7 +498,7 @@ func TestLatestAggregateUsesDeterministicEventTimeOrdering(t *testing.T) {
 				{Name: "latest", Kind: "aggregate", Inputs: []string{"temp"}, Field: "data.celsius", Aggregate: "latest", Window: "w1", Output: "latest_value"},
 				{Name: "maximum", Kind: "aggregate", Inputs: []string{"temp"}, Field: "data.celsius", Aggregate: "max", Window: "w1", Output: "max_value"},
 			}
-			rt, err := operators.NewOperatorRuntime("d1", compiled, ids.Deterministic())
+			rt, err := operators.NewOperatorRuntime("d1", compiled, sources.Deterministic())
 			if err != nil {
 				t.Fatalf("NewOperatorRuntime: %v", err)
 			}
@@ -567,7 +567,7 @@ func TestWindowStateBootBoundaryAndSequenceWrap(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			compiled := meanSpec()
 			compiled.Operators[0].Aggregate = "max"
-			rt, err := operators.NewOperatorRuntime("d1", compiled, ids.Deterministic())
+			rt, err := operators.NewOperatorRuntime("d1", compiled, sources.Deterministic())
 			if err != nil {
 				t.Fatalf("NewOperatorRuntime: %v", err)
 			}
@@ -614,7 +614,7 @@ func TestWindowStateBootBoundaryAndSequenceWrap(t *testing.T) {
 
 func TestStaleBootCannotMutateWindow(t *testing.T) {
 	t.Parallel()
-	rt, err := operators.NewOperatorRuntime("d1", meanSpec(), ids.Deterministic())
+	rt, err := operators.NewOperatorRuntime("d1", meanSpec(), sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewOperatorRuntime: %v", err)
 	}
@@ -650,7 +650,7 @@ func TestStaleBootCannotMutateWindow(t *testing.T) {
 
 func TestHeartbeatTimerSkipsPreviousBootState(t *testing.T) {
 	t.Parallel()
-	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), ids.Deterministic())
+	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewOperatorRuntime: %v", err)
 	}
@@ -681,7 +681,7 @@ func TestHeartbeatTimerSkipsPreviousBootState(t *testing.T) {
 
 func TestHeartbeatTimerSkipsBootlessStateAfterBootAdmission(t *testing.T) {
 	t.Parallel()
-	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), ids.Deterministic())
+	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewOperatorRuntime: %v", err)
 	}
@@ -716,7 +716,7 @@ func TestHeartbeatTimerSkipsBootlessStateAfterBootAdmission(t *testing.T) {
 
 func TestHeartbeatTimerFeatureCarriesBootScopedStateKey(t *testing.T) {
 	t.Parallel()
-	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), ids.Deterministic())
+	rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), sources.Deterministic())
 	if err != nil {
 		t.Fatalf("NewOperatorRuntime: %v", err)
 	}
@@ -753,7 +753,7 @@ func TestInvalidHeartbeatDoesNotRefreshLiveness(t *testing.T) {
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), ids.Deterministic())
+			rt, err := operators.NewOperatorRuntime("d1", heartbeatSpec(), sources.Deterministic())
 			if err != nil {
 				t.Fatalf("NewOperatorRuntime: %v", err)
 			}

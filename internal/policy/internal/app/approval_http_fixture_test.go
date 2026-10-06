@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -24,7 +24,7 @@ type approvalHTTPFixture struct {
 	db       *storage.DB
 	handler  http.Handler
 	pipeline *runtime.Pipeline
-	clock    *clock.Virtual
+	clock    *sources.Virtual
 	id       string
 }
 
@@ -46,7 +46,7 @@ func openApprovalHTTP(t *testing.T, configure ...func(*runtime.PipelineConfig)) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	clk := clock.NewVirtual(now)
+	clk := sources.NewVirtual(now)
 	cfg := runtime.PipelineConfig{DB: db, Spec: compiled, TenantID: "tenant", Clock: clk}
 	for _, change := range configure {
 		change(&cfg)

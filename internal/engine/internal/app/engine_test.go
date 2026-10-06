@@ -11,9 +11,9 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -33,7 +33,7 @@ func TestEngineAdvancesCheckpoint(t *testing.T) {
 	}
 
 	log := eventlog.NewEventLog(db)
-	clk := clock.Physical()
+	clk := sources.Physical()
 	eng, err := newService(ctx, db, log, clk, compiled, "default", true)
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
@@ -94,7 +94,7 @@ func TestEngineRetriesApplyAfterTransientSQLiteBusy(t *testing.T) {
 
 	compiled := restartSpec()
 	log := eventlog.NewEventLog(db)
-	eng, err := newService(ctx, db, log, clock.Physical(), &compiled, "default", false)
+	eng, err := newService(ctx, db, log, sources.Physical(), &compiled, "default", false)
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestEngineRestoresSituationStateAcrossRestart(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "restart.db")
 	compiled := restartSpec()
-	clk := clock.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	clk := sources.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 
 	db, err := storage.Open(ctx, dbPath)
 	if err != nil {
@@ -232,7 +232,7 @@ func TestEngineRestoresSituationStateAcrossRestart(t *testing.T) {
 func TestEngineFiresDurableProcessingTimerExactlyOnce(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	clk := clock.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	clk := sources.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	compiled := heartbeatSpec()
 	db, err := storage.Open(ctx, filepath.Join(dir, "timer.db"))
 	if err != nil {
@@ -329,7 +329,7 @@ func TestEngineFiresDurableProcessingTimerExactlyOnce(t *testing.T) {
 func TestEngineRetiresTimerFromPreviousDeviceBoot(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	clk := clock.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	clk := sources.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	compiled := heartbeatSpec()
 	db, err := storage.Open(ctx, filepath.Join(dir, "stale-timer.db"))
 	if err != nil {
@@ -437,7 +437,7 @@ func TestGlobalRunFailurePreservesProgressAndInboxDeduplication(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 	compiled := restartSpec()
 	log := eventlog.NewEventLog(db)
-	eng, err := newService(ctx, db, log, clock.Physical(), &compiled, "default", false)
+	eng, err := newService(ctx, db, log, sources.Physical(), &compiled, "default", false)
 	if err != nil {
 		t.Fatal(err)
 	}
