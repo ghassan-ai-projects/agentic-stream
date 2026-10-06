@@ -5,24 +5,24 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // Service holds the evidence-log use cases over one store and clock.
 type Service struct {
 	store          store.Store
-	clk            clock.Clock
+	clk            sources.Clock
 	requireSchemas bool
 }
 
 // New creates the use-case service over a store and clock. A nil clock falls
 // back to the physical clock.
-func New(clk clock.Clock, st store.Store) *Service {
+func New(clk sources.Clock, st store.Store) *Service {
 	if clk == nil {
-		clk = clock.Physical()
+		clk = sources.Physical()
 	}
 	return &Service{store: st, clk: clk}
 }

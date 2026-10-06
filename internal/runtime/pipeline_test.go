@@ -1,8 +1,9 @@
 package runtime_test
 
 import (
-	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 )
 
 func TestPipelineFacadeRequiresConfiguredUseCases(t *testing.T) {

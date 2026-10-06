@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
 
@@ -19,7 +20,6 @@ import (
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -150,7 +150,7 @@ func TestSerialSessionAuthorityLossAfterTransportIsUnknown(t *testing.T) {
 	state := goldenDeviceState()
 	state["capability_digest"] = digest
 	transport := &fakeDeviceTransport{frames: mustDeviceFrames(t, state)}
-	clk := clock.NewVirtual(time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC))
+	clk := sources.NewVirtual(time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC))
 	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: 10, Now: clk.Now}
 	if err := owner.Claim(t.Context(), "epoch-1"); err != nil {
 		t.Fatal(err)

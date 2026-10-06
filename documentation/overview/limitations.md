@@ -77,7 +77,7 @@ not a certified all-source coverage measure; the trigger `completeness` field
 is not independently enforced by the current scheduler.
 
 See [the domain model](../learn/domain-model.md),
-[state initialization](../../internal/situations/situations.go),
+[state initialization](../../internal/situations/internal/domain/situations.go),
 [trigger state view](../../internal/cognition/internal/domain/delta.go), and
 [trigger gates](../../internal/cognition/internal/domain/trigger_rules.go).
 

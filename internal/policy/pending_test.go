@@ -1,10 +1,11 @@
 package policy_test
 
 import (
-	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"path/filepath"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestNextPendingIntentReportsAnEmptyQueue(t *testing.T) {

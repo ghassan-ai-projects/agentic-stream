@@ -6,12 +6,11 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -29,7 +28,7 @@ func TestPipelineRunsNormalizedBatchThroughAllPlanes(t *testing.T) {
 		t.Fatal(err)
 	}
 	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{
-		DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: ids.Deterministic(),
+		DB: db, Spec: compiled, TenantID: "default", Clock: sources.Physical(), IDGenerator: sources.Deterministic(),
 		Executor: fixture.New(), Effector: device.NewSimulatedEffector(),
 	})
 	if err != nil {
@@ -69,7 +68,7 @@ func TestPipelineSurvivesWatchExpressionEvaluationError(t *testing.T) {
 	}
 
 	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{
-		DB: db, Spec: compiled, TenantID: "default", Clock: clock.Physical(), IDGenerator: ids.Deterministic(),
+		DB: db, Spec: compiled, TenantID: "default", Clock: sources.Physical(), IDGenerator: sources.Deterministic(),
 		Executor: fixture.New(), Effector: device.NewSimulatedEffector(),
 	})
 	if err != nil {

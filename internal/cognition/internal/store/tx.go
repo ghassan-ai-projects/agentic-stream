@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 type Tx struct{ tx *sql.Tx }
@@ -25,14 +25,14 @@ func (t *Tx) InsertItem(ctx context.Context, item episodeledger.SchedulerItem, t
 // WithdrawSuperseded withdraws the approvals a newer Situation version
 // superseded and publishes each withdrawal in this transaction, reading the
 // clock after each withdrawal.
-func (t *Tx) WithdrawSuperseded(ctx context.Context, situationID, tenantID string, version int, now string, clk clock.Clock) error {
+func (t *Tx) WithdrawSuperseded(ctx context.Context, situationID, tenantID string, version int, now string, clk sources.Clock) error {
 	publish := withdrawalPublisher(tenantID, clk)
 	return approvalledger.WithdrawSuperseded(ctx, t.tx, situationID, version, now, publish) //nolint:wrapcheck // Preserve the owning ledger error contract.
 }
 
 // withdrawalPublisher publishes the approval.withdrawn notification of a
 // superseded approval in the withdrawing transaction.
-func withdrawalPublisher(tenantID string, clk clock.Clock) approvalledger.WithdrawalPublisher {
+func withdrawalPublisher(tenantID string, clk sources.Clock) approvalledger.WithdrawalPublisher {
 	return func(ctx context.Context, tx *sql.Tx, w approvalledger.Withdrawal) error {
 		if err := notify.AppendLifecycleEvent(ctx, tx, supersededWithdrawalEvent(w, tenantID, clk)); err != nil {
 			return fmt.Errorf("append superseded approval notification: %w", err)
@@ -41,7 +41,7 @@ func withdrawalPublisher(tenantID string, clk clock.Clock) approvalledger.Withdr
 	}
 }
 
-func supersededWithdrawalEvent(w approvalledger.Withdrawal, tenantID string, clk clock.Clock) notify.LifecycleEvent {
+func supersededWithdrawalEvent(w approvalledger.Withdrawal, tenantID string, clk sources.Clock) notify.LifecycleEvent {
 	return notify.LifecycleEvent{
 		ID:           "approval.withdrawn:" + w.ApprovalID,
 		TenantID:     tenantID,

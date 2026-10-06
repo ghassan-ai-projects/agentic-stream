@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -42,7 +42,7 @@ func replayedStore(t *testing.T) (Store, string) {
 	if err := store.SaveSpecDeployment(ctx, "default", compiled); err != nil {
 		t.Fatal(err)
 	}
-	clk := clock.NewVirtual(firstTraceTime(t))
+	clk := sources.NewVirtual(firstTraceTime(t))
 	log := eventlog.NewEventLogWithClock(db, clk)
 	log.RequireSchemaValidation()
 	ingestor, err := ingress.New(ingress.Config{DB: db, Log: log, Clock: clk, TenantID: "default"})
@@ -89,7 +89,7 @@ func alwaysTriggerSpec(t *testing.T) string {
 	return path
 }
 
-func recordClockAdvance(clk *clock.Virtual) func(eventlog.Record) error {
+func recordClockAdvance(clk *sources.Virtual) func(eventlog.Record) error {
 	return func(record eventlog.Record) error {
 		processingTime := domain.RecordProcessingTime(record.IngestedAt, record.EventTime)
 		if processingTime.After(clk.Now()) {

@@ -4,11 +4,10 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
@@ -18,7 +17,7 @@ import (
 // CostControl enables the optional durable aggregate cost budget.
 type Config struct {
 	Spec        *spec.CompiledSpec
-	IDGenerator ids.Generator
+	IDGenerator sources.Generator
 	CostControl *runtimecontrol.CostLedger
 	Execution   *ExecutionConfig
 }
@@ -28,7 +27,7 @@ type Config struct {
 type ExecutionConfig struct {
 	DB            *storage.DB
 	Executor      Executor
-	Clock         clock.Clock
+	Clock         sources.Clock
 	OwnerEpoch    string
 	DecisionEpoch func(context.Context, *sql.Tx, string) error
 	Telemetry     *telemetry.Runtime

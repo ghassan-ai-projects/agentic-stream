@@ -10,32 +10,51 @@ import (
 
 // ConvertEvent maps one simulator event record to a normalized envelope.
 func (o SimulatorOptions) ConvertEvent(record map[string]any) (contractsv1.Envelope, error) {
-	event, ident, err := o.identifiedEvent(record)
+	event, err := o.parseEvent(record)
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
-	eventTime, arrival, err := simulatorEventTimes(event)
+	data, err := event.data(strings.TrimPrefix(event.channel, event.entityType+"."))
 	if err != nil {
 		return contractsv1.Envelope{}, err
 	}
-	data, err := simulatorEventData(event, strings.TrimPrefix(ident.channel, ident.entityType+"."))
-	if err != nil {
-		return contractsv1.Envelope{}, err
-	}
-	return o.envelope(ident, eventTime, arrival, data), nil
+	return o.envelope(event.simulatorIdentity, event.eventTime, event.arrival, data), nil
 }
 
-// identifiedEvent extracts the event object and its identity.
-func (o SimulatorOptions) identifiedEvent(record map[string]any) (map[string]any, simulatorIdentity, error) {
-	event, err := simulatorEventFields(record)
+// simulatorEvent is one simulator event record parsed once: its identity, its
+// timestamps and its value, with the closed field set already enforced.
+type simulatorEvent struct {
+	simulatorIdentity
+	eventTime, arrival time.Time
+	value              any
+	hasValue           bool
+	unit               string
+}
+
+// parseEvent reads the record into a typed event. The checks run in a fixed
+// order: unknown fields, identity, timestamps, then the value.
+func (o SimulatorOptions) parseEvent(record map[string]any) (simulatorEvent, error) {
+	fields, err := simulatorEventFields(record)
 	if err != nil {
-		return nil, simulatorIdentity{}, err
+		return simulatorEvent{}, err
 	}
-	ident, err := o.eventIdentity(event)
+	ident, err := o.eventIdentity(fields)
 	if err != nil {
-		return nil, simulatorIdentity{}, err
+		return simulatorEvent{}, err
 	}
-	return event, ident, nil
+	eventTime, arrival, err := simulatorEventTimes(fields)
+	if err != nil {
+		return simulatorEvent{}, err
+	}
+	event := simulatorEvent{simulatorIdentity: ident, eventTime: eventTime, arrival: arrival}
+	event.readValue(fields)
+	return event, nil
+}
+
+// readValue takes the optional value and unit from the event fields.
+func (e *simulatorEvent) readValue(fields map[string]any) {
+	e.value, e.hasValue = fields["value"]
+	e.unit, _ = fields["unit"].(string)
 }
 
 // simulatorIdentity names one simulator event and its entity and channel.
@@ -121,22 +140,22 @@ func simulatorEventTimes(event map[string]any) (time.Time, time.Time, error) {
 	return eventTime, arrival, nil
 }
 
-// simulatorEventData maps the event value to its data field. The
+// data maps the event value to its data field. The
 // channel-to-field mapping is DATA (simulator_data.json): the heartbeat
 // sentinel (present, empty target) emits no data field, and an ABSENT channel
 // falls back to data["value"].
-func simulatorEventData(event map[string]any, channelName string) (map[string]any, error) {
+func (e simulatorEvent) data(channelName string) (map[string]any, error) {
 	data := make(map[string]any)
-	if value, ok := event["value"]; ok {
-		if err := mapChannelValue(data, channelName, value); err != nil {
+	if e.hasValue {
+		if err := mapChannelValue(data, channelName, e.value); err != nil {
 			return nil, err
 		}
 	}
-	if unit, ok := event["unit"].(string); ok && unit != "" {
-		data["unit"] = unit
+	if e.unit != "" {
+		data["unit"] = e.unit
 	}
-	if value, ok := event["value"]; ok && channelName == "mode" {
-		data["mode"] = value
+	if e.hasValue && channelName == "mode" {
+		data["mode"] = e.value
 	}
 	return data, nil
 }

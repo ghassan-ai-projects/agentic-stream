@@ -3,10 +3,11 @@ package evidence
 import (
 	"context"
 	"database/sql"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/transport"
-	"github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
-	"time"
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 // Service is the sole public evidence implementation; its operations delegate.

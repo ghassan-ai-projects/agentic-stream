@@ -9,10 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -94,7 +93,7 @@ func TestTriggerIgnoredWhenConditionFalse(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -171,7 +170,7 @@ func TestTriggerHandlesNilFeatureValue(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -248,8 +247,8 @@ func TestDebounceSetsNotBefore(t *testing.T) {
 		t.Fatalf("save deployment: %v", err)
 	}
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	clk := clock.NewVirtual(base)
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clk})
+	clk := sources.NewVirtual(base)
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: clk})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -325,8 +324,8 @@ func TestCooldownDelaysNotBefore(t *testing.T) {
 		t.Fatalf("save deployment: %v", err)
 	}
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	clk := clock.NewVirtual(base)
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clk})
+	clk := sources.NewVirtual(base)
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: clk})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -422,7 +421,7 @@ func TestMaterialDeltaFalseIgnores(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -517,7 +516,7 @@ func TestDeltaUsesPreviousVersion(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -611,7 +610,7 @@ func TestSameVersionReevaluationUpserts(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -690,7 +689,7 @@ func TestScoreBelowThresholdIgnores(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -764,7 +763,7 @@ func TestPolicySHA256Stored(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -842,7 +841,7 @@ func TestEmptyMaterialDeltaDefaultsToMaterial(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}

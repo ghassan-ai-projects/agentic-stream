@@ -5,17 +5,18 @@ package app
 import (
 	"context"
 	"fmt"
+
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 // Assembler builds deterministic episode requests.
 type Assembler struct {
 	spec  *spec.CompiledSpec
-	idGen ids.Generator
+	idGen sources.Generator
 	cost  *runtimecontrol.CostLedger
 }
 
@@ -34,5 +35,5 @@ func (a *Assembler) Assemble(ctx context.Context, tx *store.Tx, schedulerItemID,
 	if err != nil {
 		return nil, err
 	}
-	return domain.AssembleRequest(a.spec, a.idGen.New(ids.PrefixEpisode), item, inputs)
+	return domain.AssembleRequest(a.spec, a.idGen.New(sources.PrefixEpisode), item, inputs)
 }

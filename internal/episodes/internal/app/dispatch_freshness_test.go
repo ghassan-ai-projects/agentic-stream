@@ -10,6 +10,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 
@@ -17,8 +18,6 @@ import (
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -110,7 +109,7 @@ func seedFreshnessEpisode(t *testing.T, db *storage.DB, episodeID, situationID s
 
 func runOnceExpectingStale(t *testing.T, db *storage.DB) {
 	t.Helper()
-	runner := withEpochRunner(db, fixture.New(), clock.Physical(), ids.Deterministic())
+	runner := withEpochRunner(db, fixture.New(), sources.Physical(), sources.Deterministic())
 	processed, err := runner.RunOnce(context.Background(), "tenant")
 	if err != nil {
 		t.Fatalf("a stale refusal must be a committed skip, not an error: %v", err)
@@ -151,7 +150,7 @@ func TestDispatchProceedsOnFreshSituation(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	seedFreshnessEpisode(t, db, "epi-fresh", "sit-fresh", 1, 1)
-	runner := withEpochRunner(db, fixture.New(), clock.Physical(), ids.Deterministic())
+	runner := withEpochRunner(db, fixture.New(), sources.Physical(), sources.Deterministic())
 	processed, err := runner.RunOnce(context.Background(), "tenant")
 	if err != nil {
 		t.Fatalf("fresh dispatch must run: %v", err)
@@ -179,7 +178,7 @@ func TestDispatchDeadlineNeverExtended(t *testing.T) {
 		"SELECT request_json FROM episodes WHERE episode_id = 'epi-deadline'").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	runner := withEpochRunner(db, fixture.New(), clock.Physical(), ids.Deterministic())
+	runner := withEpochRunner(db, fixture.New(), sources.Physical(), sources.Deterministic())
 	if _, err := runner.RunOnce(context.Background(), "tenant"); err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +237,7 @@ func TestDispatchDecisionAfterDeadlineIsRefused(t *testing.T) {
 		"UPDATE episodes SET request_json = ? WHERE episode_id = 'epi-slow'", rewritten); err != nil {
 		t.Fatal(err)
 	}
-	runner := withEpochRunner(db, slowExecutor{}, clock.Physical(), ids.Deterministic())
+	runner := withEpochRunner(db, slowExecutor{}, sources.Physical(), sources.Deterministic())
 	processed, err := runner.RunOnce(context.Background(), "tenant")
 	if err != nil {
 		t.Fatal(err)
@@ -296,7 +295,7 @@ func TestDispatchKillCancelsInFlightAndRefusesItsDecision(t *testing.T) {
 		t.Fatal(err)
 	}
 	started := make(chan struct{})
-	runner := withEpochRunner(db, p8BlockingExecutor{started: started}, clock.Physical(), ids.Deterministic())
+	runner := withEpochRunner(db, p8BlockingExecutor{started: started}, sources.Physical(), sources.Deterministic())
 	result := make(chan error, 1)
 	go func() {
 		_, runErr := runner.RunOnce(context.Background(), "tenant")

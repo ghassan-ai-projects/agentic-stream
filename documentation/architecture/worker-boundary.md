@@ -58,7 +58,7 @@ The runtime validates that proposal. The separate
 [policy and action path](../design/decisions-and-actions.md) decides whether
 any accepted Intent can become an effect.
 Source: [worker protocol](../contracts/worker-protocol.md) and
-[executor conformance](../../internal/executor/conformance/).
+[executor conformance](../../internal/testsupport/executorconformance/).
 
 The worker receives no effector handle, production credential, shell capability,
 or arbitrary network capability. Evidence results are bounded and can spill to
@@ -75,7 +75,7 @@ TLS flags are rejected without `--worker-socket`.
 ## Conformance
 
 The shared executor conformance suite is under
-[`internal/executor/conformance/`](../../internal/executor/conformance/). A
+[`internal/testsupport/executorconformance/`](../../internal/testsupport/executorconformance/). A
 separate worker integration must pass that suite before it is treated as a
 compatible executor.
 

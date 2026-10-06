@@ -11,10 +11,9 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -105,7 +104,7 @@ func runReconsiderationAdmissionTest(t *testing.T, versionCount, commandVersion,
 		t.Fatalf("enable foreign keys: %v", err)
 	}
 	compiled := &spec.CompiledSpec{Digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000", Time: spec.TimePolicy{LatePolicy: "correct_and_reconsider"}}
-	eng, err := cognition.New(cognition.Config{DeploymentID: "dep", TenantID: "tenant", Spec: compiled, IDGen: ids.Deterministic(), Clock: clock.NewVirtual(now)})
+	eng, err := cognition.New(cognition.Config{DeploymentID: "dep", TenantID: "tenant", Spec: compiled, IDGen: sources.Deterministic(), Clock: sources.NewVirtual(now)})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}

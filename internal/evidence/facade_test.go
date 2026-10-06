@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
-	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 func mustCapabilities(t *testing.T, now time.Time, keys map[string][]byte) *Service {

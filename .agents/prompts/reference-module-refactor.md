@@ -73,7 +73,7 @@ Create `docs/<pkg>-reference-module-<YYYY-MM-DD>/` with:
 | --- | --- |
 | `README.md` | One-paragraph summary and the target layer diagram. |
 | `FINDINGS.md` | Problems with file references, grouped by principle: mixed responsibilities, leaking public surface, optional safety dependencies, cross-module data access, vocabulary drift, untyped records, smaller defects. |
-| `internal/<pkg>/UBIQUITOUS_LANGUAGE.md` | Written in the package, not in the dated folder (the folder's README links to it). Tables of terms: meaning, code name, storage or wire name. A "retired words" table with the replacement and why. An architecture gate requires it for every layered module. |
+| `internal/<pkg>/UBIQUITOUS_LANGUAGE.md` | Written in the package, not in the dated folder (the folder's README links to it). Tables of terms: meaning, code name, storage or wire name. A "retired words" table with the replacement and why. An architecture gate requires it for every package under `internal/` and `internal/executor/` that has production Go files, layered or not. |
 | `DESIGN.md` | Layers, responsibilities and "must not" per layer, public API table, rules every operation follows, enforcement table, schema or wire changes. |
 | `PLAN.md` | Rounds with proof per round, behavior that must not change, deliberate behavior changes, deferred follow-ups, and a status table filled in as rounds land. |
 

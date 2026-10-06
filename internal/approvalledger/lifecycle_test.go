@@ -5,12 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -97,7 +98,7 @@ func TestSupersededWithdrawalAndNotificationShareTransaction(t *testing.T) {
 	db := approvalDB(t)
 	ctx := t.Context()
 	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
-	clk := clock.NewVirtual(now)
+	clk := sources.NewVirtual(now)
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		for _, id := range []string{"old", "current"} {
 			if err := approvalledger.Request(ctx, tx, id, id, "now", "later", []byte(`{}`), "nonce-"+id); err != nil {
@@ -154,7 +155,7 @@ func TestSupersededWithdrawalAndNotificationShareTransaction(t *testing.T) {
 
 // withdrawalPublisher publishes the approval.withdrawn notification the way the
 // cognition store does, reading the clock after each withdrawal.
-func withdrawalPublisher(tenantID string, clk clock.Clock) approvalledger.WithdrawalPublisher {
+func withdrawalPublisher(tenantID string, clk sources.Clock) approvalledger.WithdrawalPublisher {
 	return func(ctx context.Context, tx *sql.Tx, w approvalledger.Withdrawal) error {
 		err := notify.AppendLifecycleEvent(ctx, tx, notify.LifecycleEvent{
 			ID: "approval.withdrawn:" + w.ApprovalID, TenantID: tenantID, Subject: "approval/" + w.ApprovalID, PartitionKey: w.SituationID,

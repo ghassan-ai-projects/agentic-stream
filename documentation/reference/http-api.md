@@ -17,8 +17,8 @@ delete runtime records.
 | `POST` | `/control/drain` | exact control Authorization header | refuse new admission for current epoch |
 | `POST` | `/control/kill` | exact control Authorization header | refuse later decisions for current epoch |
 
-Source: [`internal/api/events.go`](../../internal/api/events.go) and
-[`internal/api/http.go`](../../internal/api/http.go).
+Source: [`internal/api/internal/transport/events.go`](../../internal/api/internal/transport/events.go) and
+[`internal/api/internal/transport/http.go`](../../internal/api/internal/transport/http.go).
 
 ## Problem responses
 

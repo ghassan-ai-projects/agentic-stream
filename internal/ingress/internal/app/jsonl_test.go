@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -98,16 +98,16 @@ func TestJSONLReplayQuarantinesMalformedAndSchemaInvalidLines(t *testing.T) {
 	log := eventlog.NewEventLog(db).RequireSchemaValidation()
 	// The deployment path normally registers schemas. This test registers the
 	// built-in schema directly to exercise the connector boundary in isolation.
-	definition, ok := eventschema.Lookup("motor.vibration.observed/1.0")
+	definition, ok := spec.LookupEventSchema("motor.vibration.observed/1.0")
 	if !ok {
 		t.Fatal("vibration schema is not registered in the built-in catalog")
 	}
-	schemaJSON, err := eventschema.JSON(definition)
+	schemaJSON, err := spec.EventSchemaJSON(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		return eventschema.Register(ctx, tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
+		return spec.RegisterEventSchema(ctx, tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
 	}); err != nil {
 		t.Fatal(err)
 	}

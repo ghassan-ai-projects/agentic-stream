@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/store"
 	transport "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/transport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -25,7 +25,7 @@ type replaySession struct {
 	store    store.Store
 	compiled *spec.CompiledSpec
 	log      *eventlog.EventLog
-	clk      *clock.Virtual
+	clk      *sources.Virtual
 	tenantID string
 }
 
@@ -51,7 +51,7 @@ func prepareReplaySession(ctx context.Context, database transport.Database, spec
 	return session, nil
 }
 
-func (s *replaySession) prepareReplayClock(ctx context.Context, tracePath string) (*eventlog.EventLog, *clock.Virtual, error) {
+func (s *replaySession) prepareReplayClock(ctx context.Context, tracePath string) (*eventlog.EventLog, *sources.Virtual, error) {
 	requireSchemas := allInputSchemasDeclared(s.compiled)
 	validationLog := eventlog.NewEventLog(s.database.DB)
 	if requireSchemas {
@@ -61,7 +61,7 @@ func (s *replaySession) prepareReplayClock(ctx context.Context, tracePath string
 	if err != nil {
 		return nil, nil, fmt.Errorf("derive replay epoch: %w", err)
 	}
-	clk := clock.NewVirtual(epoch)
+	clk := sources.NewVirtual(epoch)
 	log := eventlog.NewEventLogWithClock(s.database.DB, clk)
 	// Register the compiled input schemas before replay ingestion. The stream
 	// engine also enables this guard during construction, but doing it here is

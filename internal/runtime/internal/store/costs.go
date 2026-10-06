@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
-	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"time"
+
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // CostConfiguration binds operator ceilings to an original owner-fenced transaction.
@@ -15,7 +16,7 @@ type CostConfiguration struct {
 	DB                   *storage.DB
 	Owner                *runtimecontrol.RuntimeOwner
 	OwnerEpoch, TenantID string
-	Clock                clock.Clock
+	Clock                sources.Clock
 	Ceilings             runtimecontrol.CostCeilings
 }
 

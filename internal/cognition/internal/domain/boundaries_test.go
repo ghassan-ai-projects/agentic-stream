@@ -2,11 +2,12 @@ package domain
 
 import (
 	"bytes"
+	"testing"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"testing"
-	"time"
 )
 
 func TestSchedulingTimingAndReplacementRules(t *testing.T) {

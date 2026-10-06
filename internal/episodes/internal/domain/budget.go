@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	runtimeDuration "github.com/ghassan-ai-projects/agentic-stream/internal/duration"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 // ParseWallTimeBudget validates and returns the durable wall-time budget
@@ -18,7 +18,7 @@ func ParseWallTimeBudget(requestJSON []byte) (time.Duration, error) {
 	if wallTime == "" {
 		return 0, nil
 	}
-	duration, err := runtimeDuration.Parse(wallTime)
+	duration, err := spec.ParseDuration(wallTime)
 	if err != nil || duration <= 0 {
 		return 0, fmt.Errorf("invalid wall_time budget %q", wallTime)
 	}

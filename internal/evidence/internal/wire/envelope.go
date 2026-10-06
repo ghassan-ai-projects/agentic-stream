@@ -1,10 +1,11 @@
 package wire
 
 import (
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 // DecodeEnvelope projects validated protobuf framing without granting authority.

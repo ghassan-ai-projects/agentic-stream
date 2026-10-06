@@ -12,13 +12,12 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -660,7 +659,7 @@ func newService(t *testing.T, db *storage.DB, effector actionport.AuthorizedEffe
 func newServiceWithOwner(t *testing.T, db *storage.DB, effector actionport.AuthorizedEffector, leaseOwner string, leaseFor time.Duration, owner store.OwnerCheck) *app.Service {
 	t.Helper()
 	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch", interlock.DurableReader{}), Effector: effector,
-		Clock: clock.Physical(), IDs: ids.Deterministic(), LeaseOwner: leaseOwner, LeaseFor: leaseFor})
+		Clock: sources.Physical(), IDs: sources.Deterministic(), LeaseOwner: leaseOwner, LeaseFor: leaseFor})
 	if err != nil {
 		t.Fatalf("new action service: %v", err)
 	}

@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"io"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 )
 
 // DecodeEvidenceGetArguments parses the closed v1 tool argument schema.

@@ -9,22 +9,22 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/eventschema"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func registerTemperatureSchema(t *testing.T, db *storage.DB) {
 	t.Helper()
-	definition, ok := eventschema.Lookup("sensor.temperature/1.0")
+	definition, ok := spec.LookupEventSchema("sensor.temperature/1.0")
 	if !ok {
 		t.Fatal("temperature schema is not registered in the built-in catalog")
 	}
-	schemaJSON, err := eventschema.JSON(definition)
+	schemaJSON, err := spec.EventSchemaJSON(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
-		return eventschema.Register(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
+		return spec.RegisterEventSchema(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -32,16 +32,16 @@ func registerTemperatureSchema(t *testing.T, db *storage.DB) {
 
 func registerSchema(t *testing.T, db *storage.DB, ref string) {
 	t.Helper()
-	definition, ok := eventschema.Lookup(ref)
+	definition, ok := spec.LookupEventSchema(ref)
 	if !ok {
 		t.Fatalf("schema %q is not registered in the built-in catalog", ref)
 	}
-	schemaJSON, err := eventschema.JSON(definition)
+	schemaJSON, err := spec.EventSchemaJSON(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
-		return eventschema.Register(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
+		return spec.RegisterEventSchema(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
 	}); err != nil {
 		t.Fatal(err)
 	}

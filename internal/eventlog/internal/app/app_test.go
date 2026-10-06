@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -21,7 +21,7 @@ func newService(t *testing.T) *Service {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return New(clock.Physical(), store.New(db))
+	return New(sources.Physical(), store.New(db))
 }
 
 func envelope(id string) contractsv1.Envelope {

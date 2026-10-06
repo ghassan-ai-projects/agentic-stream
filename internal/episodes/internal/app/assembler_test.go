@@ -12,14 +12,13 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -135,7 +134,7 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -172,7 +171,7 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 		t.Fatalf("query scheduler item: %v", err)
 	}
 
-	asm := app.NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, sources.Deterministic())
 	var req *app.Request
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
@@ -446,7 +445,7 @@ func TestAssemblerPersistsReconsiderationPayload(t *testing.T) {
 		t.Fatalf("seed reconsideration: %v", err)
 	}
 
-	asm := app.NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, sources.Deterministic())
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		req, err := asm.Assemble(ctx, store.Join(tx), "sch-reconsider", "default")
 		if err != nil {
@@ -536,7 +535,7 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -573,7 +572,7 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 		t.Fatalf("query scheduler item: %v", err)
 	}
 
-	asm := app.NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, sources.Deterministic())
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		req, err := asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
 		if err != nil {
@@ -711,7 +710,7 @@ func TestAssemblerMarksReconsiderationLiveEpisodeConflict(t *testing.T) {
 		t.Fatalf("seed reconsideration item: %v", err)
 	}
 
-	asm := app.NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, sources.Deterministic())
 	err = db.WithTx(ctx, func(tx *sql.Tx) error {
 		return asm.Persist(ctx, store.Join(tx), &app.Request{
 			EpisodeID:        "epi-live-second",
@@ -787,7 +786,7 @@ func TestAssemblerIsDeterministic(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -824,7 +823,7 @@ func TestAssemblerIsDeterministic(t *testing.T) {
 		t.Fatalf("query scheduler item: %v", err)
 	}
 
-	asm := app.NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, sources.Deterministic())
 
 	var req1, req2 *app.Request
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
@@ -893,7 +892,7 @@ func TestAssemblerRequestContainsDelta(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -930,7 +929,7 @@ func TestAssemblerRequestContainsDelta(t *testing.T) {
 		t.Fatalf("query scheduler item: %v", err)
 	}
 
-	asm := app.NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, sources.Deterministic())
 	var req *app.Request
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
@@ -992,7 +991,7 @@ func TestAssemblerTenantMismatch(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -1029,7 +1028,7 @@ func TestAssemblerTenantMismatch(t *testing.T) {
 		t.Fatalf("query scheduler item: %v", err)
 	}
 
-	asm := app.NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, sources.Deterministic())
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		_, err := asm.Assemble(ctx, store.Join(tx), schedulerItemID, "other-tenant")
 		if err == nil {
@@ -1081,7 +1080,7 @@ func TestAssemblerPersistRejectsNonPending(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -1118,7 +1117,7 @@ func TestAssemblerPersistRejectsNonPending(t *testing.T) {
 		t.Fatalf("query scheduler item: %v", err)
 	}
 
-	asm := app.NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, sources.Deterministic())
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		req, err := asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
 		if err != nil {

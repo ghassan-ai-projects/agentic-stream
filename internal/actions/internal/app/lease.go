@@ -9,7 +9,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // leaseNext claims the oldest available command for dispatch. It reports found
@@ -70,7 +70,7 @@ func (s *Service) observeLeaseExpiry() {
 // acquireLease takes a fresh lease on the outbox row and marks the command
 // dispatching. It reports false when another dispatcher won the row.
 func (s *Service) acquireLease(ctx context.Context, tx *store.Tx, leased domain.LeasedCommand, now time.Time) (domain.LeasedCommand, bool, error) {
-	leased.LeaseOwner = s.owner + "/" + s.ids.New(ids.PrefixLease)
+	leased.LeaseOwner = s.owner + "/" + s.ids.New(sources.PrefixLease)
 	acquired, err := tx.AcquireLease(ctx, leased.OutboxID, leased.LeaseOwner, now.Add(s.leaseFor), now)
 	if err != nil || !acquired {
 		return leased, false, err

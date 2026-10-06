@@ -11,13 +11,12 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -70,7 +69,7 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -107,7 +106,7 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 		t.Fatalf("query scheduler item: %v", err)
 	}
 
-	asm := app.NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, sources.Deterministic())
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		req, err := asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
 		if err != nil {
@@ -118,7 +117,7 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 		t.Fatalf("assemble and persist: %v", err)
 	}
 
-	runner := app.NewRunner(store.New(db), fixture.New(), clock.Physical(), ids.Deterministic())
+	runner := app.NewRunner(store.New(db), fixture.New(), sources.Physical(), sources.Deterministic())
 	ran, err := runner.RunOnce(ctx, "default")
 	if err != nil {
 		t.Fatalf("run once: %v", err)
@@ -185,7 +184,7 @@ func TestRunnerNoWorkWhenEmpty(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	runner := app.NewRunner(store.New(db), fixture.New(), clock.Physical(), ids.Deterministic())
+	runner := app.NewRunner(store.New(db), fixture.New(), sources.Physical(), sources.Deterministic())
 	ran, err := runner.RunOnce(ctx, "default")
 	if err != nil {
 		t.Fatalf("run once: %v", err)
@@ -268,7 +267,7 @@ func TestRunnerRetriesFailedAttemptWithNextFence(t *testing.T) {
 	}
 
 	executor := &failOnceExecutor{delegate: fixture.New()}
-	runner := app.NewRunner(store.New(db), executor, clock.Physical(), ids.Deterministic())
+	runner := app.NewRunner(store.New(db), executor, sources.Physical(), sources.Deterministic())
 	processed, err := runner.RunOnce(ctx, "tenant")
 	if err != nil || !processed {
 		t.Fatalf("first run processed=%v err=%v", processed, err)

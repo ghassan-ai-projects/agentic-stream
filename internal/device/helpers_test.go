@@ -18,7 +18,7 @@ import (
 
 func loadThermalCatalog(t *testing.T) *device.CapabilityCatalog {
 	t.Helper()
-	data, err := os.ReadFile("../contractsv1/conformance/v1/thermal-capability-catalog.json")
+	data, err := os.ReadFile("../contractsv1/internal/domain/conformance/v1/thermal-capability-catalog.json")
 	if err != nil {
 		t.Fatalf("read catalog: %v", err)
 	}

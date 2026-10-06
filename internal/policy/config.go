@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // Config requires ownership, epoch and action-readiness checks. Calibration is
@@ -16,7 +16,7 @@ import (
 // intents need human approval.
 type Config struct {
 	PolicyVersion, OwnerEpoch   string
-	IDGenerator                 ids.Generator
+	IDGenerator                 sources.Generator
 	RuntimeOwner, DecisionEpoch func(context.Context, *sql.Tx, string) error
 	Interlock                   interlock.Reader
 }
@@ -41,7 +41,7 @@ func validateConfig(c Config) error {
 func applicationConfig(c Config, digest string) app.Config {
 	generator := c.IDGenerator
 	if generator == nil {
-		generator = ids.Random()
+		generator = sources.Random()
 	}
 	cfg := app.Config{PolicyVersion: c.PolicyVersion, PolicyDigest: digest, OwnerEpoch: c.OwnerEpoch, IDGenerator: generator, Fences: app.Fences{RuntimeOwner: c.RuntimeOwner, DecisionEpoch: c.DecisionEpoch}, Interlock: c.Interlock}
 	return cfg

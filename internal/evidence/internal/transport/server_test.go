@@ -4,6 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/app"
@@ -11,12 +19,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
-	"path/filepath"
-	"testing"
-	"time"
 )
 
 var fixedNow = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)

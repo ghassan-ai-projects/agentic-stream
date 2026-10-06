@@ -3,12 +3,14 @@ package wire
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"testing"
+	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
-	"google.golang.org/protobuf/types/known/timestamppb"
-	"testing"
-	"time"
 )
 
 func ledgerTestCall() domain.Call {

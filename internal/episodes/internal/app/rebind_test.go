@@ -13,14 +13,13 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -206,9 +205,9 @@ func TestStaleEpisodeRebindsToLiveVersionAndDispatches(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	seedRebindEpisode(t, db, "epi-rebind", "sit-rebind", false, 0, 2)
-	asm := app.NewAssembler(rebindSpec(), ids.Deterministic())
+	asm := app.NewAssembler(rebindSpec(), sources.Deterministic())
 	rec := &recordingExecutor{delegate: fixture.New()}
-	runner := app.NewRunner(store.New(db), rec, clock.Physical(), ids.Deterministic()).WithAssembler(asm)
+	runner := app.NewRunner(store.New(db), rec, sources.Physical(), sources.Deterministic()).WithAssembler(asm)
 	processed, err := runner.RunOnce(context.Background(), "tenant")
 	if err != nil {
 		t.Fatalf("re-bound dispatch must not error: %v", err)
@@ -300,7 +299,7 @@ func TestRebindOnlyMutatesSnapshotFields(t *testing.T) {
 		EpisodeID: "epi-b3", SchedulerItemID: "sch-fresh", TenantID: "tenant",
 		SituationID: "sit-b3", SituationVersion: 1, EntityID: "ent-1", RequestJSON: boundJSON,
 	}
-	asm := app.NewAssembler(rebindSpec(), ids.Deterministic())
+	asm := app.NewAssembler(rebindSpec(), sources.Deterministic())
 	var fresh *app.Request
 	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
 		var err error
@@ -358,8 +357,8 @@ func TestRebindLimitExhaustedAbandons(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	seedRebindEpisode(t, db, "epi-limit", "sit-limit", false, 3, 2)
-	asm := app.NewAssembler(rebindSpec(), ids.Deterministic())
-	runner := app.NewRunner(store.New(db), fixture.New(), clock.Physical(), ids.Deterministic()).WithAssembler(asm)
+	asm := app.NewAssembler(rebindSpec(), sources.Deterministic())
+	runner := app.NewRunner(store.New(db), fixture.New(), sources.Physical(), sources.Deterministic()).WithAssembler(asm)
 	processed, err := runner.RunOnce(context.Background(), "tenant")
 	if err != nil {
 		t.Fatal(err)
@@ -405,9 +404,9 @@ func TestRebindFailsClosedOnCorruptLiveSnapshot(t *testing.T) {
 		"UPDATE episodes SET accepted_at = '2026-08-12T10:00:01Z' WHERE episode_id = 'epi-fresh'"); err != nil {
 		t.Fatal(err)
 	}
-	asm := app.NewAssembler(rebindSpec(), ids.Deterministic())
+	asm := app.NewAssembler(rebindSpec(), sources.Deterministic())
 	rec := &recordingExecutor{delegate: fixture.New()}
-	runner := app.NewRunner(store.New(db), rec, clock.Physical(), ids.Deterministic()).WithAssembler(asm)
+	runner := app.NewRunner(store.New(db), rec, sources.Physical(), sources.Deterministic()).WithAssembler(asm)
 	processed, err := runner.RunOnce(context.Background(), "tenant")
 	if err != nil {
 		t.Fatalf("a quarantine must be a committed skip, not an error: %v", err)
@@ -494,7 +493,7 @@ func TestRebindRaceReproducesWaterM7(t *testing.T) {
 	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: ids.Deterministic(), Clock: clock.Physical()})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -537,7 +536,7 @@ func TestRebindRaceReproducesWaterM7(t *testing.T) {
 		"SELECT scheduler_item_id FROM scheduler_items WHERE situation_id = 'sit-race'").Scan(&schedulerItemID); err != nil {
 		t.Fatalf("query scheduler item: %v", err)
 	}
-	asm := app.NewAssembler(&compiled, ids.Deterministic())
+	asm := app.NewAssembler(&compiled, sources.Deterministic())
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		req, err := asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
 		if err != nil {
@@ -548,7 +547,7 @@ func TestRebindRaceReproducesWaterM7(t *testing.T) {
 		t.Fatalf("assemble and persist: %v", err)
 	}
 	rec := &recordingExecutor{delegate: fixture.New()}
-	runner := app.NewRunner(store.New(db), rec, clock.Physical(), ids.Deterministic()).WithAssembler(asm)
+	runner := app.NewRunner(store.New(db), rec, sources.Physical(), sources.Deterministic()).WithAssembler(asm)
 	processed, err := runner.RunOnce(ctx, "default")
 	if err != nil {
 		t.Fatalf("run once: %v", err)

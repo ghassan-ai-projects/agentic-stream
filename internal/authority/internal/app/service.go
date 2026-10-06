@@ -8,7 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // Fences are the runtime checks ordinary admission runs inside each admitted
@@ -25,7 +25,7 @@ type Config struct {
 	Outcomes      store.OutcomeLedger // counts bound commands whose outcome is unresolved
 	OwnerInstance string
 	ClaimLease    time.Duration // how long a target claim stays live without renewal
-	Clock         clock.Clock   // read once per operation
+	Clock         sources.Clock // read once per operation
 }
 
 // Service runs the device-authority use cases for one runtime owner instance.
@@ -35,7 +35,7 @@ type Service struct {
 	outcomes      store.OutcomeLedger
 	ownerInstance string
 	claimLease    time.Duration
-	clock         clock.Clock
+	clock         sources.Clock
 }
 
 // New returns the use cases configured by cfg.

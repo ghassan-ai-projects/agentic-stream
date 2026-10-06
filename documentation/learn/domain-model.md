@@ -18,7 +18,7 @@ flowchart LR
 Text equivalent: one motor can be the subject of a bearing-degradation
 Situation. That Situation has a history of immutable versions. The arrows
 express relationships, not processing steps or a promise that every motor
-already has a Situation. Source: [Situation identities and state](../../internal/situations/situations.go).
+already has a Situation. Source: [Situation identities and state](../../internal/situations/internal/domain/situations.go).
 
 | Concept | Question it answers | Motor example |
 | --- | --- | --- |
@@ -42,7 +42,7 @@ does not create a fresh occurrence automatically after resolution. The
 occurrence field does not yet support a complete history of separate, recurring
 incidents. Source: [`newSituation` and
 `openOccurrence`](../../internal/situations/) and [deployment
-versioning](../../internal/spec/deployments.go).
+versioning](../../internal/spec/internal/store/deployments.go).
 
 ## Evidence becomes features, then facts
 
@@ -60,8 +60,8 @@ Facts are derived values. Evidence identities identify the observations that
 support them. **Provenance** connects the published interpretation to its spec,
 evidence, time boundary, and content digest so it can be inspected later.
 Source: [motor spec](../../docs/design/examples/predictive-maintenance.situation.yaml),
-[reducers](../../internal/situations/reducers.go), and
-[snapshot materialization](../../internal/situations/materialize.go).
+[reducers](../../internal/situations/internal/domain/reducers.go), and
+[snapshot materialization](../../internal/situations/internal/domain/materialize.go).
 
 ## Phases express the domain's interpretation
 
@@ -85,7 +85,7 @@ not calculate or update it from the evidence. The cognition view derives
 uncertainty from that confidence. It also does not track changes to the main hypothesis
 across later versions. These fields must not be read as a measured diagnosis
 probability or a working hypothesis-management system.
-Source: [state initialization](../../internal/situations/situations.go)
+Source: [state initialization](../../internal/situations/internal/domain/situations.go)
 and [cognition's state view](../../internal/cognition/internal/domain/delta.go).
 
 A **hypothesis** is a proposed explanation, such as bearing wear rather than
@@ -108,8 +108,8 @@ The current engine publishes when the occurrence opens, a lifecycle transition
 changes phase, or completeness changes after publication. A fact update alone
 does not necessarily publish a new version. The next publication includes
 the facts held at that time; a snapshot is not a live view of every incoming reading.
-Source: [publication gates](../../internal/situations/evaluate.go)
-and [current-state versus snapshot persistence](../../internal/situations/materialize.go).
+Source: [publication gates](../../internal/situations/internal/domain/evaluate.go)
+and [current-state versus snapshot persistence](../../internal/situations/internal/domain/materialize.go).
 
 A canonical **digest** identifies content serialized in a consistent form.
 It helps detect mismatches and bind work to the intended definition or snapshot.

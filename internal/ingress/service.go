@@ -4,11 +4,11 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
@@ -27,7 +27,7 @@ type SimulatorOptions = domain.SimulatorOptions
 type Config struct {
 	DB            *storage.DB
 	Log           *eventlog.EventLog
-	Clock         clock.Clock
+	Clock         sources.Clock
 	TenantID      string
 	Logger        *slog.Logger
 	Telemetry     *telemetry.Runtime

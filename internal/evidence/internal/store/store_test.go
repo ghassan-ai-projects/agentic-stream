@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func openLedgerDB(t *testing.T) *storage.DB {

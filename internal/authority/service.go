@@ -9,8 +9,8 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -31,7 +31,7 @@ type Config struct {
 	Epochs     *control.EpochControl
 	Outcomes   OutcomeLedger
 	ClaimLease time.Duration
-	Clock      clock.Clock
+	Clock      sources.Clock
 }
 
 // Service is the device-authority module's only entry point. It delegates
@@ -79,9 +79,9 @@ func (cfg Config) claimLease() time.Duration {
 	return cfg.ClaimLease
 }
 
-func (cfg Config) clock() clock.Clock {
+func (cfg Config) clock() sources.Clock {
 	if cfg.Clock == nil {
-		return clock.Physical()
+		return sources.Physical()
 	}
 	return cfg.Clock
 }

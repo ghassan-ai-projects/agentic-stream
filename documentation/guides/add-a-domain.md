@@ -9,7 +9,7 @@ branches.
 Add or update event schema data in:
 
 ```text
-internal/eventschema/registry_data.json
+internal/spec/internal/domain/event_schema_data.json
 ```
 
 Include event type, schema version, payload fields, units, and constraints that

@@ -5,8 +5,8 @@ import (
 	"database/sql"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/store"
@@ -23,7 +23,7 @@ type Config struct {
 	RuntimeOwner func(context.Context, *sql.Tx, string) error
 	Epoch        string
 	Interlock    interlock.Reader
-	Clock        clock.Clock
+	Clock        sources.Clock
 }
 
 // Service installs, fires and expires watch conditions. It implements the

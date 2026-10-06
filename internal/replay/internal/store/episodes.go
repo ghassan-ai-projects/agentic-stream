@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -20,7 +20,7 @@ type executableItem struct {
 // MaterializeEpisodes turns every executable scheduler item into a durable
 // episode through the episodes module's assembler, in one transaction.
 func (s Store) MaterializeEpisodes(ctx context.Context, compiled *spec.CompiledSpec, tenantID string, now time.Time) error {
-	assembler, err := episodes.New(episodes.Config{Spec: compiled, IDGenerator: ids.Deterministic()})
+	assembler, err := episodes.New(episodes.Config{Spec: compiled, IDGenerator: sources.Deterministic()})
 	if err != nil {
 		return fmt.Errorf("configure replay episodes: %w", err)
 	}

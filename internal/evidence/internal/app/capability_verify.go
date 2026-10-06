@@ -2,9 +2,10 @@ package app
 
 import (
 	"cmp"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/wire"
-	"time"
 )
 
 // Verifier validates token integrity, issuer/audience, time bounds, and the

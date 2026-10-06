@@ -33,8 +33,8 @@ func TestModulePathSingleSourceOfTruth(t *testing.T) {
 		want string
 	}{
 		{
-			file: "internal/telemetry/otel.go",
-			want: `const instrumentationName = "` + module + `"`,
+			file: "internal/telemetry/internal/transport/otel.go",
+			want: `const InstrumentationName = "` + module + `"`,
 		},
 		{
 			file: "docs/design/contracts/runtime-v1.proto",

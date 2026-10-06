@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/google/cel-go/cel"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 // Evaluation is the deterministic result of evaluating one trigger.
@@ -83,7 +84,7 @@ func (e *Rules) newEvaluation(input EvaluationInput) Evaluation {
 func (e *Rules) triggerID(deploymentID, name, situationID string, version int) string {
 	h := sha256.New()
 	_, _ = fmt.Fprintf(h, "%s|%s|%d|%s", deploymentID, situationID, version, name)
-	return ids.PrefixTrigger + hex.EncodeToString(h.Sum(nil))[:24]
+	return sources.PrefixTrigger + hex.EncodeToString(h.Sum(nil))[:24]
 }
 
 func (eval *Evaluation) recordVerdict(verdict triggerVerdict) {

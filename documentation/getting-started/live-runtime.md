@@ -64,7 +64,7 @@ telemetry socket:
   --live-socket /tmp/agentic-stream-live.sock \
   --effect-profile emulator \
   --device-socket /tmp/device-gateway.sock \
-  --device-catalog internal/contractsv1/conformance/v1/thermal-capability-catalog.json \
+  --device-catalog internal/contractsv1/internal/domain/conformance/v1/thermal-capability-catalog.json \
   --device-firmware-digest sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ```
 

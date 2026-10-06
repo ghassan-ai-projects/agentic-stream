@@ -3,15 +3,16 @@ package app_test
 import (
 	"context"
 	"database/sql"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"testing"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
-	"testing"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 func newTestService(t *testing.T, configure ...func(*policy.Config)) *policy.Service {
 	t.Helper()
-	cfg := policy.Config{PolicyVersion: "policy-v1", IDGenerator: ids.Deterministic(), RuntimeOwner: unownedCheck, DecisionEpoch: unownedCheck, Interlock: interlock.DurableReader{}}
+	cfg := policy.Config{PolicyVersion: "policy-v1", IDGenerator: sources.Deterministic(), RuntimeOwner: unownedCheck, DecisionEpoch: unownedCheck, Interlock: interlock.DurableReader{}}
 	for _, change := range configure {
 		change(&cfg)
 	}

@@ -6,10 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -83,7 +82,7 @@ func TestInsertItemIgnoresDeterministicIDCollision(t *testing.T) {
 			return err
 		}
 
-		scheduler := &scheduler{idGen: ids.Deterministic(), clk: clock.NewVirtual(now)}
+		scheduler := &scheduler{idGen: sources.Deterministic(), clk: sources.NewVirtual(now)}
 		item := episodeledger.SchedulerItem{
 			SchedulerItemID:  scheduler.itemID(),
 			Kind:             "standard",

@@ -7,6 +7,8 @@ files: [DEADCODE.md](DEADCODE.md) (production reachability review),
 and [deadcode-production-unreachable.txt](deadcode-production-unreachable.txt)
 (raw `deadcode ./...` output).
 
+**Superseded for open work:** the remaining migrations, merges and dead-code decisions are planned and tracked in [remaining-migration-2026-10-06](../remaining-migration-2026-10-06/README.md).
+
 Status legend: **Migrated** = facade, app, domain, store/adapter layers with
 architecture gates and a dated record under `docs/`. **Decided: no** = reviewed
 and deliberately left as is (reason given; see
@@ -32,6 +34,9 @@ fits the pattern, not yet done. **N/A** = pure rules, foundation or infrastructu
 | `engine` | Deterministic stream engine, timers, Situation persistence | [engine](../engine-reference-module-2026-10-06/) |
 | `ingress` | JSONL, simulator and live-socket sources, checkpoints | [ingress](../ingress-reference-module-2026-10-06/) |
 | `canonicaljson` | RFC 8785 canonical JSON and domain-separated digests (pure rules: facade + domain) | [foundations](../foundations-reference-module-2026-10-06/) |
+| `runartifact` (with `soak`) | Run export and verification artifacts, soak verdict | [runartifact](../runartifact-reference-module-2026-10-06/) |
+| `executor/remote` | Remote worker executor over gRPC | [executor/remote](../executor-remote-reference-module-2026-10-06/) |
+| `executor/native` | In-process episode executor, provider and evidence tool | [executor/native](../executor-native-reference-module-2026-10-06/) |
 | `approvalledger` | Human approval lifecycle, withdrawal of superseded approvals | [ledgers](../ledgers-reference-module-2026-10-06/) |
 | `episodeledger` (with `scheduleledger`) | Scheduler queue, episodes, fenced attempts, rejection audit, recovery | [ledgers](../ledgers-reference-module-2026-10-06/) |
 | `control` (with `costcontrol`) | Owner lease, epoch drain/kill, cost control, readiness gate | [control](../control-reference-module-2026-10-06/) |
@@ -48,13 +53,9 @@ fits the pattern, not yet done. **N/A** = pure rules, foundation or infrastructu
 
 | Package | Description | Note |
 | --- | --- | --- |
-| `executor/native` | In-process episode executor, batch runner | 2.1k lines; adapter with artifact store; review shape |
-| `executor/remote` | Remote worker executor over gRPC | 1.5k lines; adapter; review shape |
 | `executor/fixture` | Fixture executor | Small; likely stays |
 | `executor/conformance` | Executor conformance harness | Test-support; likely stays |
 | `worker` | Reference worker server and UDS dialing | Mostly test-only reference; see DEADCODE.md |
-| `runartifact` | Run export and verification artifacts | 1.2k lines; review shape |
-| `soak` | Soak report computation | Small |
 
 ## N/A (pure rules, foundation, infrastructure)
 

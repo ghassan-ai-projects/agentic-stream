@@ -2,12 +2,12 @@ package app
 
 import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 	transport "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/transport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
@@ -23,7 +23,7 @@ type PipelineDependencies struct {
 	Telemetry    *telemetry.Runtime
 	Transactions *store.PipelineStore
 	Sources      *transport.Sources
-	Clock        clock.Clock
+	Clock        sources.Clock
 	TenantID     string
 }
 

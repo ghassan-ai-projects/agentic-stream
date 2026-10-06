@@ -3,9 +3,10 @@ package app
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
-	"time"
 )
 
 func (l *Ledger) Complete(ctx context.Context, reservation ledgerReservation, result QueryResult) error {

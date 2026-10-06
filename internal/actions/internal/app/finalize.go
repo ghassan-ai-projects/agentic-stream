@@ -8,7 +8,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 func (s *Service) finalize(ctx context.Context, leased domain.LeasedCommand, effect actionport.Effect, dispatchErr error) error {
@@ -60,7 +60,7 @@ func (s *Service) recordFinalDispatch(ctx context.Context, tx *store.Tx, leased 
 	if err := tx.InsertOutcome(ctx, outcome); err != nil {
 		return err
 	}
-	closure := domain.DispatchClosure{Leased: leased, Result: result, OutcomeID: outcome.ID, VerificationID: s.ids.New(ids.PrefixVerification), At: now}
+	closure := domain.DispatchClosure{Leased: leased, Result: result, OutcomeID: outcome.ID, VerificationID: s.ids.New(sources.PrefixVerification), At: now}
 	if err := tx.CloseDispatch(ctx, closure); err != nil {
 		return err
 	}
@@ -68,7 +68,7 @@ func (s *Service) recordFinalDispatch(ctx context.Context, tx *store.Tx, leased 
 }
 
 func (s *Service) dispatchOutcome(leased domain.LeasedCommand, effect actionport.Effect, result domain.DispatchResult, now time.Time) (domain.OutcomeRecord, error) {
-	outcomeID := s.ids.New(ids.PrefixOutcome)
+	outcomeID := s.ids.New(sources.PrefixOutcome)
 	document := domain.OutcomeDocument(leased.Command.CommandID, outcomeID, result.Status, effect.ProviderResult, result.ErrorCode, now)
 	digest, err := domain.OutcomeDigest(document)
 	if err != nil {

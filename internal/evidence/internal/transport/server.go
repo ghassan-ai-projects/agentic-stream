@@ -4,12 +4,14 @@ package transport
 import (
 	"context"
 	"errors"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/wire"
-	"github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 // Server exposes the worker protocol without authorization rules.

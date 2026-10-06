@@ -7,7 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // reconcileUnknown closes an outcome_unknown command using independently
@@ -45,7 +45,7 @@ func (s *Service) reconcileIn(ctx context.Context, tx *store.Tx, commandID, fina
 
 func (s *Service) recordReconciliation(ctx context.Context, tx *store.Tx, command domain.ReconcilableCommand, finalStatus string, evidence domain.Evidence) error {
 	now := s.clk.Now().UTC()
-	outcomeID := s.ids.New(ids.PrefixOutcome)
+	outcomeID := s.ids.New(sources.PrefixOutcome)
 	digest, err := domain.OutcomeDigest(domain.ReconciliationOutcomeDocument(command.ID, outcomeID, finalStatus, evidence.Raw, now))
 	if err != nil {
 		return fmt.Errorf("reconciliation outcome: %w", err)

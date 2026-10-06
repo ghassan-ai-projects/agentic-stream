@@ -3,7 +3,7 @@ package app
 import (
 	"errors"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/store"
 )
 
@@ -11,13 +11,13 @@ import (
 // optional clock.
 type Config struct {
 	Store store.Store
-	Clock clock.Clock
+	Clock sources.Clock
 }
 
 // Service owns the configured watch use cases.
 type Service struct {
 	store store.Store
-	clk   clock.Clock
+	clk   sources.Clock
 }
 
 // New requires a fully configured store and defaults the clock to the physical
@@ -28,7 +28,7 @@ func New(cfg Config) (*Service, error) {
 	}
 	clk := cfg.Clock
 	if clk == nil {
-		clk = clock.Physical()
+		clk = sources.Physical()
 	}
 	return &Service{store: cfg.Store, clk: clk}, nil
 }

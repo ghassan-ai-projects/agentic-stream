@@ -11,8 +11,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // ReconsiderationTrigger is the trigger name for corrected action evidence.
@@ -67,7 +67,7 @@ func NewReconsideration(current situations.Version, command InvalidatedCommand) 
 	key := ReconsiderationKey(current, command.CommandID)
 	return Reconsideration{
 		Current: current, Command: command,
-		ID: ids.PrefixReconsideration + key, TriggerID: ReconsiderationTriggerID(key),
+		ID: sources.PrefixReconsideration + key, TriggerID: ReconsiderationTriggerID(key),
 		SchedulerItemID: ReconsiderationSchedulerID(key),
 	}
 }
@@ -78,9 +78,13 @@ func ReconsiderationKey(current situations.Version, commandID string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func ReconsiderationTriggerID(key string) string { return ids.PrefixTrigger + "reconsider_" + key }
+func ReconsiderationTriggerID(key string) string {
+	return sources.PrefixTrigger + "reconsider_" + key
+}
 
-func ReconsiderationSchedulerID(key string) string { return ids.PrefixScheduler + "reconsider_" + key }
+func ReconsiderationSchedulerID(key string) string {
+	return sources.PrefixScheduler + "reconsider_" + key
+}
 
 // EvidenceJSON returns canonical evidence for the reconsideration episode.
 func (r Reconsideration) EvidenceJSON(correction map[string]any) ([]byte, error) {

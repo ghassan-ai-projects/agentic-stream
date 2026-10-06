@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -17,20 +16,20 @@ type Service struct {
 	spec                   *spec.CompiledSpec
 	rules                  *domain.Rules
 	scheduler              *scheduler
-	clk                    clock.Clock
+	clk                    sources.Clock
 }
 
 type scheduler struct {
 	spec  *spec.CompiledSpec
-	idGen ids.Generator
-	clk   clock.Clock
+	idGen sources.Generator
+	clk   sources.Clock
 }
 
 type Config struct {
 	DeploymentID, TenantID string
 	Spec                   *spec.CompiledSpec
-	IDGen                  ids.Generator
-	Clock                  clock.Clock
+	IDGen                  sources.Generator
+	Clock                  sources.Clock
 }
 
 func New(c Config) (*Service, error) {
@@ -38,10 +37,10 @@ func New(c Config) (*Service, error) {
 		return nil, fmt.Errorf("cognition spec, deployment and tenant are required")
 	}
 	if c.Clock == nil {
-		c.Clock = clock.Physical()
+		c.Clock = sources.Physical()
 	}
 	if c.IDGen == nil {
-		c.IDGen = ids.Random()
+		c.IDGen = sources.Random()
 	}
 	rules, err := domain.NewRules(c.Spec)
 	if err != nil {

@@ -3,15 +3,15 @@ package composition
 import (
 	"context"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	app "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
@@ -25,10 +25,10 @@ type PipelineConfig struct {
 	TenantID          string
 	Owner             *runtimecontrol.RuntimeOwner
 	OwnerEpoch        string
-	Clock             clock.Clock
+	Clock             sources.Clock
 	Executor          episodes.Executor
 	Effector          actionport.Effector
-	IDGenerator       ids.Generator
+	IDGenerator       sources.Generator
 	GlobalCostCeiling *uint64
 	TenantCostCeiling *uint64
 	CostKillSwitch    *bool

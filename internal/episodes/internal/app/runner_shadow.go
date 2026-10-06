@@ -4,11 +4,11 @@ import (
 	"context"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 )
 
 func (r *Runner) persistValidatedIntents(ctx context.Context, tx *store.Tx, validated *decisions.Result, req *Request, now string) error {
@@ -39,7 +39,7 @@ func reqIdentity(req *Request) episodeledger.Identity {
 
 func (r *Runner) shadowIdentity(decisionID string, req *Request) domain.ShadowDecisionIdentity {
 	return domain.ShadowDecisionIdentity{
-		ShadowDecisionID: r.idGen.New(ids.PrefixShadow), EpisodeID: req.EpisodeID, DecisionID: decisionID,
+		ShadowDecisionID: r.idGen.New(sources.PrefixShadow), EpisodeID: req.EpisodeID, DecisionID: decisionID,
 		TenantID: req.TenantID, SituationID: req.SituationID,
 		SituationVersion: req.SituationVersion, PolicyEpoch: req.PolicyEpoch,
 	}

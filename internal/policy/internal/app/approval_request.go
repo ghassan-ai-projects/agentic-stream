@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 func (g *Service) requireApproval(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
@@ -31,7 +31,7 @@ func (g *Service) openApproval(ctx context.Context, tx *store.Tx, e evaluation) 
 }
 
 func (g *Service) prepareApprovalRequest(ctx context.Context, tx *store.Tx, e evaluation) (domain.ApprovalRequest, error) {
-	request := domain.ApprovalRequest{ID: g.idGen.New(ids.PrefixApproval)}
+	request := domain.ApprovalRequest{ID: g.idGen.New(sources.PrefixApproval)}
 	request.Nonce = domain.ApprovalNonce(request.ID, e.row.IntentID)
 	var err error
 	request.Data, err = approvalNotificationData(ctx, tx, e, request.ID)

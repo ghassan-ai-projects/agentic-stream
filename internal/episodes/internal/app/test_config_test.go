@@ -4,9 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/clock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -17,9 +16,9 @@ func (r *Runner) WithDecisionEpoch(check store.DecisionEpochCheck) *Runner {
 }
 
 // NewAssembler creates an assembler for the given spec.
-func NewAssembler(compiled *spec.CompiledSpec, idGen ids.Generator) *Assembler {
+func NewAssembler(compiled *spec.CompiledSpec, idGen sources.Generator) *Assembler {
 	if idGen == nil {
-		idGen = ids.Random()
+		idGen = sources.Random()
 	}
 	return &Assembler{spec: compiled, idGen: idGen}
 }
@@ -34,12 +33,12 @@ func (r *Runner) WithAssembler(assembler *Assembler) *Runner {
 }
 
 // NewRunner creates an isolated test runner with an explicit permissive fixture fence.
-func NewRunner(db store.Store, executor Executor, clk clock.Clock, idGen ids.Generator) *Runner {
+func NewRunner(db store.Store, executor Executor, clk sources.Clock, idGen sources.Generator) *Runner {
 	if clk == nil {
-		clk = clock.Physical()
+		clk = sources.Physical()
 	}
 	if idGen == nil {
-		idGen = ids.Random()
+		idGen = sources.Random()
 	}
 	return &Runner{episodes: db, executor: executor, clk: clk, idGen: idGen, decisionEpoch: func(context.Context, *sql.Tx, string) error { return nil }}
 }

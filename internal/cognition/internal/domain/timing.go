@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/duration"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -42,7 +41,7 @@ func ParseOptionalDuration(s string, defaultDur time.Duration) (time.Duration, e
 	if s == "" {
 		return defaultDur, nil
 	}
-	d, err := duration.Parse(s)
+	d, err := spec.ParseDuration(s)
 	if err != nil {
 		return 0, fmt.Errorf("parse duration %q: %w", s, err)
 	}

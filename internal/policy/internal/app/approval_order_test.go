@@ -2,9 +2,10 @@ package app_test
 
 import (
 	"database/sql"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 )
 
 func TestApprovalStalenessPrecedesExpiryAndAuthorization(t *testing.T) {

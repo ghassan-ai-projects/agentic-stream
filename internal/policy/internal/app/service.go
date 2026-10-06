@@ -2,9 +2,9 @@
 package app
 
 import (
-	"github.com/ghassan-ai-projects/agentic-stream/internal/ids"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // Fences are required lower runtime checks on the current transaction.
@@ -13,7 +13,7 @@ type Fences struct{ RuntimeOwner, DecisionEpoch store.Fence }
 // Config contains validated dependencies supplied by the policy facade.
 type Config struct {
 	PolicyVersion, PolicyDigest, OwnerEpoch string
-	IDGenerator                             ids.Generator
+	IDGenerator                             sources.Generator
 	Fences                                  Fences
 	Interlock                               interlock.Reader
 }
@@ -21,7 +21,7 @@ type Config struct {
 // Service implements the deterministic policy use cases.
 type Service struct {
 	policyVersion, policyDigest, ownerEpoch string
-	idGen                                   ids.Generator
+	idGen                                   sources.Generator
 	fences                                  Fences
 	interlock                               interlock.Reader
 }
