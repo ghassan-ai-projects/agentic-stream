@@ -13,6 +13,8 @@ order, lease compare-and-swap, ledger closure atomicity and rollback.
 `make ci-check` (tidy, build, vet, lint, coverage floor, deadcode, vulncheck, docs) passes. Non-short race
 tests pass for actions, runtime, cmd, device, soak and the architecture gates.
 
+Fault injection: a storage failure at every write boundary of dispatch and of reconciliation rolls the whole outcome back.
+
 Gates proven by injection: facade logic (`TestActionsFacadeOnlyDelegates`),
 `database/sql` in app and a raw `Exec` call (`TestApplicationLayersDoNotTouchInfrastructure`,
 `TestActionsApplicationUsesTransactionalPorts`), an exported field on `store.Tx`
@@ -24,17 +26,12 @@ Gates proven by injection: facade logic (`TestActionsFacadeOnlyDelegates`),
 | --- | --- | --- |
 | Layering | 9 | Authority-row reads still join foreign tables in the store |
 | Domain rules | 9 | Documents stay `map[string]any` behind `Document` to keep digest bytes |
-| Fail-closed safety | 9 | Dispatch-time (not construction-time) check that the effector is authorized |
+| Fail-closed safety | 9 | None known |
 | Ubiquitous language | 9 | Statuses are constants, not a typed state machine |
 | Tests | 8 | Store fault injection per write boundary is thin |
 | Encapsulation | 9 | `store.Tx` is opaque; owner and interlock are injected ports |
-| Type safety | 7 | Command, effect and evidence documents are untyped maps |
+| Type safety | 8 | Effect provider and observed results stay maps |
 | Simplicity | 9 | Three internal layers; wire merged into domain |
 
 Future work, in order: owner-provided transactional read ports for the
-authorization projection; typed command and evidence records parsed once at the
-boundary; resolve `manual_review` reconciliation semantics (the status update
-matches only `reconciling` and `outcome_unknown`, so reconciling a `manual_review`
-command records evidence without changing its status); require
-`AuthorizedEffector` in `Config` so the per-command check can become a
-constructor error; targeted persistence and notification fault tests.
+authorization projection; typed provider and observed-effect results.

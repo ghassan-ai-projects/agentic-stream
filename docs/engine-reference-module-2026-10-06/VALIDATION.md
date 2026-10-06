@@ -13,6 +13,8 @@ timer matching with boot fencing, heartbeat identity, entity-scoped operator
 state, lineage and runtime-state guards, timer replacement and acknowledgement,
 and rollback.
 
+Fault injection: a storage failure at each write boundary of an install, fire or record leaves no trace and the event applies exactly once after the fault clears.
+
 Gates proven by injection: facade logic, an exported field on `store.Tx`, a raw
 `Exec` and `database/sql` in app, SQL outside the store, and a `timers` write
 from app.
@@ -26,7 +28,7 @@ admission, episodes and the architecture gates.
 | Domain rules | 9 | Operator state and features are shared types from `operators` |
 | Fail-closed safety | 9 | Replay opts out of ownership by an explicit named value |
 | Ubiquitous language | 9 | Statuses and codec versions are literals in SQL |
-| Tests | 8 | Fault injection per write is thin |
+| Tests | 9 | Fault injection rolls back every write boundary |
 | Encapsulation | 9 | Opaque `store.Tx`, injected owner port |
 | Type safety | 7 | Facts and timer metadata are untyped maps |
 | Simplicity | 8 | The deterministic ID coupling between planes remains |
