@@ -7,6 +7,8 @@ files: [DEADCODE.md](DEADCODE.md) (production reachability review),
 and [deadcode-production-unreachable.txt](deadcode-production-unreachable.txt)
 (raw `deadcode ./...` output).
 
+**Superseded for open work:** the remaining migrations, merges and dead-code decisions are planned and tracked in [remaining-migration-2026-10-06](../remaining-migration-2026-10-06/README.md).
+
 Status legend: **Migrated** = facade, app, domain, store/adapter layers with
 architecture gates and a dated record under `docs/`. **Decided: no** = reviewed
 and deliberately left as is (reason given; see
