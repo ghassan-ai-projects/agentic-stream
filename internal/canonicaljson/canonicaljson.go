@@ -3,7 +3,11 @@
 // It is a thin facade over internal/domain; see README.md.
 package canonicaljson
 
-import "github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson/internal/domain"
+import (
+	"github.com/santhosh-tekuri/jsonschema/v6"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson/internal/domain"
+)
 
 // Domain identifies the contract namespace included in a digest preimage. The
 // newline is part of every domain and prevents concatenation ambiguity.
@@ -57,3 +61,16 @@ func ContentDigest(data []byte) string { return domain.ContentDigest(data) }
 // VerifyStored checks a stored canonical JSON document against its raw
 // SHA-256. A non-canonical document is reported before a digest mismatch.
 func VerifyStored(data, digest []byte) error { return domain.VerifyStored(data, digest) }
+
+// CompileSchema compiles a JSON Schema document under the given URN id with
+// format assertions on and every external reference refused, so validation
+// never touches the network.
+func CompileSchema(id string, document any) (*jsonschema.Schema, error) {
+	return domain.CompileSchema(id, document)
+}
+
+// CompileSchemaJSON decodes a JSON Schema document and compiles it as
+// CompileSchema does.
+func CompileSchemaJSON(id string, data []byte) (*jsonschema.Schema, error) {
+	return domain.CompileSchemaJSON(id, data)
+}

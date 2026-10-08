@@ -1,6 +1,6 @@
 # DUP-020: The offline JSON-Schema compiler is copied in four modules
 
-- Status: open
+- Status: fixed
 - Severity: medium
 - Verdict (finders): REAL
 - Themes: contracts and shapes
@@ -33,4 +33,13 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Verified: all four sites confirmed. Each built `jsonschema.NewCompiler()` + `AssertFormat()` + a private `denyNetworkLoader`; contractsv1, notify and spec also repeated read/unmarshal/AddResource/Compile. The only differences were the loader text (notify said "external notification schema load denied") and the cache shape. One extra difference found: decisions shared a single compiler across all catalog entries.
+
+Changed:
+- `internal/canonicaljson/internal/domain/schema.go` (new): `CompileSchema(id, document)` and `CompileSchemaJSON(id, data)` over one private `offlineCompiler` (AssertFormat, deny-network loader, "external schema load denied: <url>"). Facade delegations added in `internal/canonicaljson/canonicaljson.go`; README rows updated. No allowedImports edit was needed (every consumer already imports canonicaljson).
+- contractsv1 `schemas.go`, notify `lifecycle_schema.go`, spec `compiler_schema.go`, decisions `catalog.go`: call the owner; the four `denyNetworkLoader` types, `offlineCompiler`, `embeddedSchemaDocument`, `contractDocument` and `compileSpecSchema` are deleted. notify's mutex cache became `sync.OnceValues`. spec's per-Compiler cache and contractsv1's per-name map are kept (different shapes, one use each). spec's `prepareSchema` now wraps the error.
+- `contractsv1/internal/domain/envelope_test.go`: `TestSchemaLoaderDeniesNetwork` removed (it tested the deleted private type); the rule is now pinned at the owner.
+
+Decisions: decisions now compiles each catalog entry with a fresh compiler instead of one shared compiler. A parameter schema could previously `$ref` an earlier entry's URN; that now fails closed. No catalog uses `$ref`. Error text changed only in wrapping (notify's loader text now matches the others; compile errors gain the schema id); no test asserted the old strings.
+
+Pinned by: `TestCompileSchemaPolicy` (http and file `$ref` refused with "external schema load denied", date-time and email formats asserted, malformed and non-JSON schemas) and `TestCompileSchemaAcceptsDecodedDocument` in `internal/canonicaljson/internal/domain/schema_test.go`; existing consumer tests (decisions `$ref https://example.invalid` catalog test, spec/contractsv1/notify suites) still pass.

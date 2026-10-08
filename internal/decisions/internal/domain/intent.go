@@ -93,7 +93,7 @@ func checkIntentRisk(document map[string]any, input Input, entry *intentEntry, i
 		return reject("risk_label_mismatch", "intent.risk_class",
 			fmt.Sprintf("proposed risk %s does not equal the declared %s for %s", risk, entry.RiskClass, intentType))
 	}
-	if riskRank(risk) > riskRank(input.RiskCeiling) {
+	if !contractsv1.RiskClass(risk).AtMost(contractsv1.RiskClass(input.RiskCeiling)) {
 		return reject("risk_ceiling_exceeded", "intent.risk_class", "intent risk exceeds the episode ceiling")
 	}
 	return nil

@@ -10,6 +10,7 @@
 | Authorized effector | An effector that takes an `Authorization`, closing the gap between validation and acceptance. | `AuthorizedEffector.DispatchAuthorized` | — |
 | Device state verifier | Verifies a device-backed command with one fresh state query. | `DeviceStateVerifier.VerifyDeviceCommand` | — |
 | Unknown outcome | The request may have reached the provider. The dispatcher records that reconciliation is required and never retries blindly. | `UnknownOutcomeError`, `IsUnknownOutcome` | command status `outcome_unknown` |
+| Unresolved command | A command whose outcome still awaits reconciliation: `outcome_unknown`, `reconciling` or `manual_review`. The authority barrier, the operator list and the soak safety report all use this one set. | `UnresolvedCommandStatuses`, `IsUnresolvedCommandStatus` | `commands.status` |
 
 ## Retired words
 

@@ -13,6 +13,7 @@ type IntentRow struct {
 	ID, TenantID, DecisionID, SituationID string
 	Version                               int
 	Type, Risk, ExpiresAt, PolicyStatus   string
+	RequiresApproval                      bool
 	JSON, SHA                             []byte
 }
 
@@ -72,7 +73,7 @@ func (r AuthorizationRecords) RequireApprovedIntent() error {
 }
 
 func (r AuthorizationRecords) CheckApproval(now time.Time) error {
-	if r.Intent.Risk != "R2" {
+	if contractsv1.RouteFor(contractsv1.RiskClass(r.Intent.Risk), r.Intent.RequiresApproval) != contractsv1.RouteApproval {
 		return nil
 	}
 	if !r.Approval.Present {

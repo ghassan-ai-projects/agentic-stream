@@ -98,7 +98,7 @@ func (c Candidate) admitCommandDocument(leased LeasedCommand) Admission {
 		return Admission{Step: FailInvalidCommand, FailureCode: failureCode, Leased: leased}
 	}
 	leased.Command = document.Command(leased.Command)
-	if c.CommandStatus == CommandSucceeded || c.CommandStatus == CommandOutcomeUnknown {
+	if c.CommandStatus == actionport.CommandSucceeded || c.CommandStatus == actionport.CommandOutcomeUnknown {
 		return Admission{Step: CloseOutboxOnly, OutboxClosure: outboxClosure(c.CommandStatus), Leased: leased}
 	}
 	return Admission{Step: AcquireLease, Leased: leased}
@@ -114,7 +114,7 @@ func (c Candidate) withLedgerIdentity(leased LeasedCommand) LeasedCommand {
 }
 
 func outboxClosure(commandStatus string) string {
-	if commandStatus == CommandOutcomeUnknown {
+	if commandStatus == actionport.CommandOutcomeUnknown {
 		return OutboxFailed
 	}
 	return OutboxDelivered

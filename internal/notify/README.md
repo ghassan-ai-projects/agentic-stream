@@ -9,7 +9,7 @@ Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 
 | Layer | Responsibility |
 | --- | --- |
-| Facade | `Append` and `AppendLifecycleEvent` (join the caller's transaction), `SourceForTenant`, `New(db)` → `Service.ReadPage`, `Service.Prune` |
+| Facade | `Append` and `AppendLifecycleEvent` (join the caller's transaction), `SourceForTenant`, the per-payload `<Payload>Event` constructors, `New(db)` → `Service.ReadPage`, `Service.Prune` |
 | App | Seal → deduplicate → tombstone check → allocate → insert; lifecycle build and append; page read with resume refusal, audit and poison accounting; prune |
 | Domain | Lifecycle contract (embedded JSON Schema plus tenant/authority binding), sealing, payload-conflict and tombstone decisions, resume/lag refusal, poison budget, retention floor, audit details |
 | Store | The only SQL for `notifications`, `notification_cursors`, `notification_event_tombstones`, `notification_poison_attempts` and `notification_audits`; an opaque `Tx` that is the caller's transaction, one opened by `WithTx`, or autocommit |

@@ -48,7 +48,7 @@ func EpisodeConcluded(row IntentRecord) bool {
 
 // SourceHealthIncomplete refuses consequential work from incomplete current evidence.
 func SourceHealthIncomplete(row IntentRecord) bool {
-	consequential := row.RiskClass == "R2" || row.RiskClass == "R3" || row.RiskClass == "R4"
+	consequential := contractsv1.RiskClass(row.RiskClass).Consequential()
 	return consequential && (row.CurrentCompleteness == "provisional" || row.CurrentCompleteness == "uncertain")
 }
 

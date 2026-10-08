@@ -8,10 +8,10 @@ Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 
 | Layer | Responsibility |
 | --- | --- |
-| Facade | The public API: `Marshal`, `Digest`, `Verify`, `DecodeDigest`, `EncodeDigest`, `ContentDigest`, `VerifyStored`, and the `Domain` constants; one-line delegations only |
-| Domain | The RFC 8785 encoder, number formatting (exact integers, shortest doubles), string escaping and UTF-16 key ordering, strict raw-JSON validation, the digest preimage and reference format, stored-document verification |
+| Facade | The public API: `Marshal`, `Digest`, `Verify`, `DecodeDigest`, `EncodeDigest`, `ContentDigest`, `VerifyStored`, `CompileSchema`, `CompileSchemaJSON`, and the `Domain` constants; one-line delegations only |
+| Domain | The RFC 8785 encoder, number formatting (exact integers, shortest doubles), string escaping and UTF-16 key ordering, strict raw-JSON validation, the digest preimage and reference format, stored-document verification, the offline JSON-Schema compiler (format assertions on, every external `$ref` refused) |
 
-The module does no I/O, so it has no app or store layer. It is a layer-0 foundation: the foundation gate
+The module does no I/O (the offline schema compiler never loads external documents), so it has no app or store layer. It is a layer-0 foundation: the foundation gate
 lets it import only other foundations. Cross-repository vectors (`contractsv1/internal/domain/testdata`) and the frozen
 Ruby digests are the contract tests; a change that moves a digest breaks both repositories.
 

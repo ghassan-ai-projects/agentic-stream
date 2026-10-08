@@ -13,12 +13,15 @@ const (
 )
 
 // EffectProfileConfig describes startup-time effect-boundary choices. It
-// contains a typed link, never a raw serial path or credential.
+// contains a typed link, never a raw serial path or credential. GatewayOptions
+// stands for a link the caller has fully configured but not yet dialed, so a
+// process can apply the whole profile rule before it connects.
 type EffectProfileConfig struct {
 	Profile         EffectProfile
 	ReplaySource    bool
 	Shadow          bool
 	GatewayLink     Transport
+	GatewayOptions  bool
 	LiveActuation   bool
 	OwnerAuthorized bool
 }
@@ -29,6 +32,6 @@ type EffectProfileConfig struct {
 func ValidateEffectProfile(config EffectProfileConfig) error {
 	return domain.CheckEffectProfile(domain.ProfileRequest{
 		Profile: config.Profile, ReplaySource: config.ReplaySource, Shadow: config.Shadow,
-		HasGatewayLink: config.GatewayLink != nil, LiveActuation: config.LiveActuation, OwnerAuthorized: config.OwnerAuthorized,
+		HasGatewayLink: config.GatewayLink != nil || config.GatewayOptions, LiveActuation: config.LiveActuation, OwnerAuthorized: config.OwnerAuthorized,
 	})
 }

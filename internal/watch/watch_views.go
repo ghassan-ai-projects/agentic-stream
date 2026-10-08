@@ -20,3 +20,9 @@ type FireView = app.FireView
 func Watch(ctx context.Context, db *storage.DB, tenantID, watchID string) (WatchView, bool, error) {
 	return app.Watch(ctx, store.Reader(db), tenantID, watchID)
 }
+
+// InstalledWatchID returns the watch identity an install effect reported in its
+// provider result, or empty when the result names no watch.
+func InstalledWatchID(providerResult []byte) string {
+	return app.InstalledWatchID(providerResult)
+}

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
@@ -157,4 +158,23 @@ func validWorkerRequest() *episodes.Request {
 
 func ticketSchema() map[string]any {
 	return map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"entity_id": map[string]any{"type": "string"}, "reason": map[string]any{"type": "string"}}}
+}
+
+func TestRiskCeilingMapsEveryClassAndNothingElse(t *testing.T) {
+	t.Parallel()
+	want := []runtimev1.RiskClass{
+		runtimev1.RiskClass_RISK_CLASS_R0, runtimev1.RiskClass_RISK_CLASS_R1, runtimev1.RiskClass_RISK_CLASS_R2,
+		runtimev1.RiskClass_RISK_CLASS_R3, runtimev1.RiskClass_RISK_CLASS_R4,
+	}
+	for index, class := range contractstest.RiskClasses() {
+		got, err := riskClass(string(class))
+		if err != nil || got != want[index] {
+			t.Fatalf("%s: got %v, %v", class, got, err)
+		}
+	}
+	for _, value := range []string{"", "r1", " R1 ", "R5"} {
+		if _, err := riskClass(value); err == nil {
+			t.Fatalf("%q accepted", value)
+		}
+	}
 }

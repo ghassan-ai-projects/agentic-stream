@@ -1,6 +1,6 @@
 # DUP-001: Risk class order, routes and "needs approval" are decided in eight places
 
-- Status: open
+- Status: fixed
 - Severity: high (probable bug)
 - Verdict (finders): DIVERGED
 - Themes: business rules, contracts and shapes, persistence
@@ -102,4 +102,40 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Status: fixed. Commit: pending (reviewer commits).
+
+Verified (every site re-read):
+- Confirmed: `policy` `RiskRoute`, the digest document in `CanonicalDocumentForVersion`, `SourceHealthIncomplete` and `approvableRisks` each spelled the R0..R4 table separately; nothing tied the digested document to the code that enforced it.
+- Confirmed (probable bug): actions `CheckApproval` only checked the approval record for `R2`, so an R0/R1 intent with `requires_approval` (the spec default is `policy: approval`) was routed to approval by policy but skipped the approval-present and not-expired re-check at dispatch. `IntentRow` carried no such flag.
+- Confirmed (bug): `ScoreShadowDecision` ignored `decisions.Intent.RequiresApproval`, so shadow reported `would_approve` where live routes to approval.
+- Confirmed: two `riskRank` functions with different numbering (decisions R0=1, episodes R0=0); a five-way `!=` validity chain in `episodes/intent_catalog.go`; the remote executor accepted `r1` and ` R1 ` by byte arithmetic while every other site rejects them.
+- Confirmed: the `"R1"` default ceiling existed in `spec` (live), `episodes` `effectiveRiskCeiling` and `replay` `ShadowRules.ValidateOutput`. The last two were dead in production (spec compile always fills it, and `decision_input.go` refuses an empty ceiling), but several test fixtures hand-built specs without a ceiling and relied on the episodes fallback.
+- Not changed, as the issue says: SQL CHECK constraints, `spec` schema.json, `notification-contract-v1.json`, the fixture executor's literal `"R1"` intent risk. `spec` (layer 9/11) cannot import `contractsv1` (12), so its `"R1"` stays the one live default.
+
+What changed:
+- New `internal/contractsv1/internal/domain/risk.go` (facade in `contractsv1.go`): `RiskClass` (`Valid`, `Rank`, `AtMost`, `Consequential`, `Approvable`), `RiskClasses()`, `Route` and `RouteFor(risk, requiresApproval)`, plus `RiskPolicyDocument()` and `IncompleteSourceHealthDocument()`. One ordered table drives all of them.
+- `policy`: `RiskRoute` calls `RouteFor` and keeps the reasons `risk_policy_denied` and `unknown_risk_class`; `SourceHealthIncomplete` uses `Consequential`; `CanonicalDocumentForVersion` builds `risk_policy` and `incomplete_source_health` from the contractsv1 documents; `approvableRisks` is gone (`Approvable`).
+- `decisions`: `riskRank` deleted; validity via `Valid`, ceiling via `AtMost`.
+- `episodes`: `riskRank`, the five-way chain and `effectiveRiskCeiling` deleted; `ScoreShadowDecision` scores from `RouteFor`.
+- `replay`: dead `"R1"` fallback and the redundant `riskCeiling` parameter of `validateDecision` removed.
+- `executor/remote`: `riskClass` uses `Valid` and the proto name table; new allowedImports edge `executor/remote/internal/domain -> contractsv1`.
+- `actions`: `IntentRow.RequiresApproval` loaded from `intents.requires_approval`; `CheckApproval` applies wherever `RouteFor == approval` (R2 always, R0/R1 when flagged).
+- Test fixtures that relied on the dead default now set `RiskCeiling: "R1"` (as the compiler does): `episodes/internal/app/lifecycle_fixture_test.go` and five spec literals under `internal/runtime`.
+- `internal/contractsv1/UBIQUITOUS_LANGUAGE.md`: Risk class and Route rows.
+
+Behaviour changes made on purpose:
+1. Shadow scores for R0/R1 intents with `requires_approval` are now `would_require_approval` with reason `would_require_approval_r0|r1` (was `would_approve_R0|R1`). R2 and R3/R4 reasons are byte-identical (`would_require_approval_r2`, `would_deny_R3`).
+2. Dispatch now re-checks the approval record (present, not expired) for R0/R1 intents with `requires_approval`. `authorization_test.go` `TestOnlyR2IntentsNeedAnUnexpiredApproval` was replaced because its R1 case has `requires_approval` false and so stays valid; the new tests cover the flagged case.
+3. The remote executor rejects `r1` and ` R1 ` (fail closed; the ceiling is always spec-normalised `R0..R4` before it reaches it).
+4. A spec without a risk ceiling no longer gets `R1` at assembly or replay: the request is refused ("request has no explicit risk ceiling") or every intent exceeds the ceiling. Compiled specs always carry it.
+
+Preserved: `DigestForVersion("v1")` is byte-identical (pinned at `sha256:473ca136...5fb75e`, captured before the change); reasons `risk_label_mismatch`, `risk_ceiling_exceeded`, `risk_policy_denied`, `unknown_risk_class`, `source_health_incomplete`; error text "intent %q has invalid declared risk %q"; actions text "approved intent has no approved approval record" and "approval is expired".
+
+Deferred / concern: `highestRiskIntent` still picks the highest-ranked intent only. A decision with an R1 automatic intent and an R0 intent that requires approval is scored on the R1 intent, while live would hold the R0 intent for approval. Scoring by the strictest route is a separate behaviour change; left for a decision.
+
+Tests that pin the rule:
+- contractsv1: `TestRiskClassesAreOrderedAndClosed` (order R0<..<R4, rejects "", "r1", " R1", "R5"), `TestRiskCeilingComparesByRank`, `TestRouteForEveryRiskAndApprovalFlag`, `TestPolicyDocumentsDeriveFromTheRiskTable`, `TestSchemaRiskEnumMatchesTheRiskTable` (intent-v1.json enum equals the table).
+- policy: `TestPolicyDocumentAndRoutesAgreeWithTheRiskTable` (RiskRoute, digest document and SourceHealthIncomplete agree for every class and flag), `TestPolicyDigestIsPinned`, `TestOnlyApprovableRisksMayBeGranted`.
+- actions: `TestApprovalIsCheckedExactlyWhereThePolicyRoutesToApproval`, `TestApprovalRequiredIntentsNeedAnUnexpiredApproval`, store `TestAuthorizationRecordsCarryTheCatalogApprovalRequirement`.
+- episodes: `TestShadowScoreAgreesWithTheLiveRouteForEveryRisk`, `TestShadowScoreHonoursRequiresApprovalOnLowRisk`, `TestHighestRiskIntentFollowsTheRiskOrder`.
+- remote: `TestRiskCeilingMapsEveryClassAndNothingElse`.

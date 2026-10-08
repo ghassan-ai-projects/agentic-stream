@@ -1,6 +1,6 @@
 # DUP-022: cmd re-derives rules and shapes owned by device, watch and replay
 
-- Status: open
+- Status: fixed
 - Severity: medium
 - Verdict (finders): REAL
 - Themes: business rules, contracts and shapes
@@ -47,4 +47,26 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Verified (all claims held):
+
+- R7 confirmed: `effect_profile.go` `validatePhysicalAuthorization` restated the two consent texts of `device/internal/domain/profile.go` `requireActuationConsent`, and the replay/emulator/physical switch arms restated the replay fence. The only genuinely CLI-level rules are the "simulated cannot take gateway flags" check and the socket/catalog/firmware-digest flag presence checks. `validateGatewayLink` evaluates the device rule a second time, with the dialed link.
+- S12 confirmed: `reportedWatchID` re-declared the `watch_id` key that watch's install writes, and `shadowReport`/`shadowComparison`/`shadowFinding`/`differingComparisons` re-projected `replay.Result` in cmd.
+
+Changed:
+
+- `internal/device/profile.go`: `EffectProfileConfig.GatewayOptions` (a gateway link configured but not yet dialed) counts as a gateway link, so `ValidateEffectProfile` applies the whole rule before connecting. Chosen over the finder's `HasGatewayLink` name to avoid two spellings next to `GatewayLink`.
+- `cmd/agentic-stream/effect_profile.go`: `validate` now only checks flag presence (`rejectGatewayFlags`, `requireGatewayOptions`) and then calls the device rule through `profileConfig`; `validatePhysicalAuthorization` and the per-profile switch arms are deleted; `validateGatewayLink` builds its config from the same `profileConfig`. The post-connect check is kept: it validates the real link. The wrap prefix is now uniformly "validate effect profile" (was "validate simulated/replay effect profile" for two arms; tests match by substring and `live_test.go` expects "validate effect profile").
+- `internal/watch`: new `internal/domain/install_result.go` (`InstallResult` writer and `InstalledWatchID` reader share one `watch_id` constant); `install.go` uses `domain.InstallResult`; facade `watch.InstalledWatchID` delegates through `app.InstalledWatchID` (the watch facade gate requires delegation through `app`, so `architecture_watch_test.go` lists the new operation). cmd `reportedWatchID` deleted.
+- `internal/replay`: new `internal/domain/shadow_report.go` (`ShadowReport`, `ShadowReportItem`, `ReportFinding`, `Result.ShadowReport()`, `Result.DifferingComparisons()`), type aliases in `contract.go`. cmd `shadowReport` types, `newShadowReport` and `differingComparisons` deleted; `experiment_shadow_test.go` decodes into `replay.ShadowReport`. JSON field names and order are unchanged.
+
+Pinning tests:
+
+- `TestEffectProfilesFenceReplayAndLiveLinks` (device, new `GatewayOptions` rows)
+- `TestEffectProfileConsentComesFromTheDeviceRule` (cmd: pre-connect error equals the device rule's error verbatim) and `TestEffectProfileOptionsValidate` (unchanged)
+- `TestInstalledWatchIDReadsWhatInstallResultWrites`, `TestInstalledWatchIDIgnoresResultsWithoutAWatch` (watch domain)
+- `TestShadowReportJSONContract`, `TestShadowReportListsAreNeverNull`, `TestDifferingComparisonsCountsUnequalDecisions` (replay domain), plus `TestExperimentShadowReplayComparesTheCandidate` (cmd)
+
+Checks run: `go build ./...`, `go vet` and `go test -count=1` on cmd, device, watch, replay, actions all pass; `golangci-lint run` on cmd, device, watch, replay reports 0 issues. Root gate `go test .` only fails in other fixers' areas (notify facade, executor/remote allowedImports) at the time of the run.
+
+Deferred: none.
+

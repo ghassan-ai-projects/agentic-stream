@@ -15,6 +15,12 @@ import (
 	"strings"
 )
 
+// RiskClasses lists every risk class in rising order, for tests that must
+// cover each class.
+func RiskClasses() []string {
+	return []string{"R0", "R1", "R2", "R3", "R4"}
+}
+
 // MessageTypes are the four device-wire record types, in wire order.
 var MessageTypes = []string{"command", "receipt", "result", "state"}
 

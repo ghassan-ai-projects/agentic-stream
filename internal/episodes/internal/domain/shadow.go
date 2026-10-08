@@ -1,6 +1,9 @@
 package domain
 
 import (
+	"strings"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
@@ -37,14 +40,16 @@ type ShadowDecision struct {
 }
 
 // ScoreShadowDecision is the would-be policy outcome of a shadow decision: the
-// highest-risk intent's result under the live policy.
+// highest-risk intent's route under the live policy, including its catalog
+// requires_approval flag.
 func ScoreShadowDecision(validated *decisions.Result) (ShadowScore, string) {
 	highest := highestRiskIntent(validated)
-	switch highest.RiskClass {
-	case "R0", "R1":
+	risk := contractsv1.RiskClass(highest.RiskClass)
+	switch contractsv1.RouteFor(risk, highest.RequiresApproval) {
+	case contractsv1.RouteAutomatic:
 		return ShadowWouldApprove, "would_approve_" + highest.RiskClass
-	case "R2":
-		return ShadowWouldRequireApproval, "would_require_approval_r2"
+	case contractsv1.RouteApproval:
+		return ShadowWouldRequireApproval, "would_require_approval_" + strings.ToLower(highest.RiskClass)
 	default:
 		return ShadowWouldDeny, "would_deny_" + highest.RiskClass
 	}
@@ -54,7 +59,7 @@ func ScoreShadowDecision(validated *decisions.Result) (ShadowScore, string) {
 func highestRiskIntent(validated *decisions.Result) decisions.Intent {
 	highest := validated.Intents[0]
 	for _, intent := range validated.Intents[1:] {
-		if riskRank(intent.RiskClass) > riskRank(highest.RiskClass) {
+		if contractsv1.RiskClass(intent.RiskClass).Rank() > contractsv1.RiskClass(highest.RiskClass).Rank() {
 			highest = intent
 		}
 	}
@@ -82,20 +87,5 @@ func NewShadowDecision(identity ShadowDecisionIdentity, attempt episodeledger.Id
 		ShadowScore: score, ScoreReason: reason,
 		TenantID: identity.TenantID, SituationID: identity.SituationID, SituationVersion: identity.SituationVersion,
 		PolicyEpoch: identity.PolicyEpoch,
-	}
-}
-
-func riskRank(risk string) int {
-	switch risk {
-	case "R1":
-		return 1
-	case "R2":
-		return 2
-	case "R3":
-		return 3
-	case "R4":
-		return 4
-	default:
-		return 0
 	}
 }

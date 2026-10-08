@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/internal/store"
 )
@@ -26,6 +27,12 @@ func OpenFresh(ctx context.Context, path string) (*DB, error) {
 // IsSQLiteBusy reports whether err is a retryable SQLite busy or locked result.
 func IsSQLiteBusy(err error) bool { return store.IsSQLiteBusy(err) }
 
+// IsUniqueViolation reports whether err is a SQLite uniqueness failure (primary
+// key or unique index) on column, written as table.column.
+func IsUniqueViolation(err error, column string) bool {
+	return store.IsUniqueViolation(err, column)
+}
+
 // RetrySQLiteBusy retries fn after transient SQLite writer contention. The
 // callback must roll back its transaction before it returns.
 func RetrySQLiteBusy(ctx context.Context, fn func() error) error {
@@ -41,6 +48,16 @@ func CollectRows[T any](rows *sql.Rows, what string, scan func(*sql.Rows) (T, er
 // NullIfEmpty is the SQL NULL for an empty string and the string otherwise.
 func NullIfEmpty(value string) sql.NullString {
 	return sql.NullString{String: value, Valid: value != ""}
+}
+
+// InClause is the SQL condition `column IN (?, ?, ...)` for values and the
+// arguments that bind its placeholders, in order.
+func InClause(column string, values []string) (string, []any) {
+	args := make([]any, len(values))
+	for i, value := range values {
+		args[i] = value
+	}
+	return column + " IN (" + strings.TrimSuffix(strings.Repeat("?, ", len(values)), ", ") + ")", args
 }
 
 // RowsAffected is the number of rows a statement changed, or zero when the

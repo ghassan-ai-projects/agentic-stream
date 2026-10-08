@@ -46,26 +46,36 @@ type workerRuntimeFlagTargets struct {
 // validate checks command-line profile inputs before opening a database or
 // connecting to a device gateway. replaySource identifies the file-backed
 // --trace path only; the normalized --live-socket source is intentionally not
-// replay and may be used with the emulator or physical profile.
+// replay and may be used with the emulator or physical profile. The profile
+// rule itself, including physical-actuation consent, belongs to the device
+// module; this command only checks that the gateway flags are present.
 func (o effectProfileOptions) validate(replaySource bool) error {
-	profile := o.profile()
-	switch profile {
-	case device.EffectProfileSimulated:
-		if o.hasGatewayConfiguration() {
-			return fmt.Errorf("simulated effect profile cannot configure device gateway options")
-		}
-		return checkEffectProfile("validate simulated effect profile", device.EffectProfileConfig{Profile: profile, ReplaySource: replaySource})
-	case device.EffectProfileEmulator, device.EffectProfilePhysical:
-		if replaySource {
-			return checkEffectProfile("validate replay effect profile", device.EffectProfileConfig{Profile: profile, ReplaySource: true})
-		}
-		return o.validateGatewayOptions(profile)
-	default:
-		return checkEffectProfile("validate effect profile", device.EffectProfileConfig{Profile: profile, ReplaySource: replaySource})
+	if err := o.requireGatewayFlags(replaySource); err != nil {
+		return err
 	}
+	return checkEffectProfile("validate effect profile", o.profileConfig(replaySource))
 }
 
-func (o effectProfileOptions) validateGatewayOptions(profile device.EffectProfile) error {
+func (o effectProfileOptions) requireGatewayFlags(replaySource bool) error {
+	switch profile := o.profile(); profile {
+	case device.EffectProfileSimulated:
+		return o.rejectGatewayFlags()
+	case device.EffectProfileEmulator, device.EffectProfilePhysical:
+		if !replaySource {
+			return o.requireGatewayOptions(profile)
+		}
+	}
+	return nil
+}
+
+func (o effectProfileOptions) rejectGatewayFlags() error {
+	if o.hasGatewayConfiguration() {
+		return fmt.Errorf("simulated effect profile cannot configure device gateway options")
+	}
+	return nil
+}
+
+func (o effectProfileOptions) requireGatewayOptions(profile device.EffectProfile) error {
 	if o.DeviceSocket == "" {
 		return fmt.Errorf("%s effect profile requires --device-socket", profile)
 	}
@@ -75,19 +85,17 @@ func (o effectProfileOptions) validateGatewayOptions(profile device.EffectProfil
 	if len(o.AllowedFirmwareDigests) == 0 {
 		return fmt.Errorf("%s effect profile requires at least one --device-firmware-digest", profile)
 	}
-	return o.validatePhysicalAuthorization(profile)
+	return nil
 }
 
-func (o effectProfileOptions) validatePhysicalAuthorization(profile device.EffectProfile) error {
-	if profile == device.EffectProfilePhysical {
-		if !o.LiveActuation {
-			return fmt.Errorf("physical effect profile requires explicit live actuation")
-		}
-		if !o.OwnerAuthorized {
-			return fmt.Errorf("physical effect profile requires owner authorization")
-		}
+func (o effectProfileOptions) profileConfig(replaySource bool) device.EffectProfileConfig {
+	return device.EffectProfileConfig{
+		Profile:         o.profile(),
+		ReplaySource:    replaySource,
+		GatewayOptions:  o.DeviceSocket != "",
+		LiveActuation:   o.LiveActuation,
+		OwnerAuthorized: o.OwnerAuthorized,
 	}
-	return nil
 }
 
 func checkEffectProfile(prefix string, config device.EffectProfileConfig) error {
@@ -144,16 +152,9 @@ func (o effectProfileOptions) loadDeviceCatalog() (*device.CapabilityCatalog, er
 }
 
 func (o effectProfileOptions) validateGatewayLink(transport *device.UDSTransport) error {
-	profileConfig := device.EffectProfileConfig{
-		Profile:         o.profile(),
-		GatewayLink:     transport,
-		LiveActuation:   o.LiveActuation,
-		OwnerAuthorized: o.OwnerAuthorized,
-	}
-	if err := device.ValidateEffectProfile(profileConfig); err != nil {
-		return fmt.Errorf("validate effect profile: %w", err)
-	}
-	return nil
+	config := o.profileConfig(false)
+	config.GatewayLink = transport
+	return checkEffectProfile("validate effect profile", config)
 }
 
 func (o effectProfileOptions) openGatewayEffector(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, transport *device.UDSTransport, catalog *device.CapabilityCatalog) (actionport.Effector, *device.GatewayEffector, func() error, error) {

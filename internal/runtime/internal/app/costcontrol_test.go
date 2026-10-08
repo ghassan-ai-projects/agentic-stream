@@ -38,7 +38,7 @@ func TestPipelineKeepsIngestingWhenCostReservationIsRejected(t *testing.T) {
 			Triggers: []spec.Trigger{{Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast"}},
 			Executor: spec.Executor{
 				Name: "native", ModelPolicy: "test", PromptVersion: "v1", DecisionSchema: "schemas/decision.json",
-				Budget: spec.Budget{WallTime: "5s", CostMicrounits: 2},
+				Budget: spec.Budget{WallTime: "5s", CostMicrounits: 2}, RiskCeiling: "R1",
 			},
 		},
 		Actions: spec.Actions{Intents: []spec.Intent{{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: runtimeTicketSchema(), Policy: "automatic"}}},

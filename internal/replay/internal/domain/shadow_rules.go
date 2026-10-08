@@ -34,11 +34,7 @@ func (r ShadowRules) ValidateOutput(input ShadowInput, output ShadowOutput, now 
 	if err != nil {
 		return ValidatedOutput{}, err
 	}
-	riskCeiling := r.RiskCeiling
-	if riskCeiling == "" {
-		riskCeiling = "R1"
-	}
-	return r.validateDecision(input, bound, entityID, riskCeiling, now)
+	return r.validateDecision(input, bound, entityID, now)
 }
 
 func (r ShadowRules) bindOutput(output ShadowOutput) (ValidatedOutput, error) {
@@ -94,12 +90,12 @@ func bindShadowDecisionDigest(output ShadowOutput, document map[string]any) ([]b
 	return decisionSHA, nil
 }
 
-func (r ShadowRules) validateDecision(input ShadowInput, bound ValidatedOutput, entityID, riskCeiling string, now time.Time) (ValidatedOutput, error) {
+func (r ShadowRules) validateDecision(input ShadowInput, bound ValidatedOutput, entityID string, now time.Time) (ValidatedOutput, error) {
 	validated, err := decisions.Validate(bound.Canonical, bound.Output.DecisionSHA256, decisions.Input{
 		EpisodeID: input.EpisodeID, AttemptID: input.AttemptID, Fence: input.Fence,
 		TenantID: input.TenantID, SituationID: input.SituationID,
 		SituationVersion: input.SituationVersion, EntityID: entityID, SnapshotDigest: input.SnapshotDigest,
-		AllowedIntentTypes: r.AllowedTypes, RiskCeiling: riskCeiling, IntentCatalog: r.Catalog,
+		AllowedIntentTypes: r.AllowedTypes, RiskCeiling: r.RiskCeiling, IntentCatalog: r.Catalog,
 		Kind: "standard", Now: now,
 	})
 	if err != nil {

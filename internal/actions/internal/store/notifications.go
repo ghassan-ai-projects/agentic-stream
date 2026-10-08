@@ -12,15 +12,8 @@ import (
 // AppendDispatchNotice publishes the durable fact that a dispatch result was recorded.
 func (tx *Tx) AppendDispatchNotice(ctx context.Context, n domain.DispatchNotice) error {
 	command := n.Command
-	if err := notify.AppendLifecycleEvent(ctx, tx.tx, notify.LifecycleEvent{
-		ID:           "command.dispatched:" + command.CommandID + ":" + n.OutcomeID,
-		TenantID:     command.TenantID,
-		Subject:      "command/" + command.CommandID,
-		PartitionKey: command.CommandID,
-		Payload:      notify.CommandDispatched{CommandID: command.CommandID, IntentID: command.IntentID, OutcomeID: n.OutcomeID, Status: n.Status},
-		At:           n.At,
-		Trace:        n.Trace,
-	}); err != nil {
+	payload := notify.CommandDispatched{CommandID: command.CommandID, IntentID: command.IntentID, OutcomeID: n.OutcomeID, Status: n.Status}
+	if err := notify.AppendLifecycleEvent(ctx, tx.tx, notify.CommandDispatchedEvent(command.TenantID, payload, n.At, n.Trace)); err != nil {
 		return fmt.Errorf("append command dispatched notification: %w", err)
 	}
 	return nil
@@ -28,16 +21,7 @@ func (tx *Tx) AppendDispatchNotice(ctx context.Context, n domain.DispatchNotice)
 
 // AppendOutcomeNotice publishes the durable fact that an outcome was recorded.
 func (tx *Tx) AppendOutcomeNotice(ctx context.Context, n domain.OutcomeNotice) error {
-	command := n.Command
-	if err := notify.AppendLifecycleEvent(ctx, tx.tx, notify.LifecycleEvent{
-		ID:           "outcome.recorded:" + n.OutcomeID,
-		TenantID:     command.TenantID,
-		Subject:      "outcome/" + n.OutcomeID,
-		PartitionKey: command.CommandID,
-		Payload:      outcomeRecorded(n),
-		At:           n.At,
-		Trace:        n.Trace,
-	}); err != nil {
+	if err := notify.AppendLifecycleEvent(ctx, tx.tx, notify.OutcomeRecordedEvent(n.Command.TenantID, outcomeRecorded(n), n.At, n.Trace)); err != nil {
 		return fmt.Errorf("append outcome recorded notification: %w", err)
 	}
 	return nil
@@ -54,15 +38,7 @@ func outcomeRecorded(n domain.OutcomeNotice) notify.OutcomeRecorded {
 // AppendReconciliationNotice publishes the durable fact that independent
 // evidence settled an outcome.
 func (tx *Tx) AppendReconciliationNotice(ctx context.Context, n domain.ReconciliationNotice) error {
-	if err := notify.AppendLifecycleEvent(ctx, tx.tx, notify.LifecycleEvent{
-		ID:           "outcome.reconciled:" + n.OutcomeID,
-		TenantID:     n.TenantID,
-		Subject:      "outcome/" + n.OutcomeID,
-		PartitionKey: n.CommandID,
-		Payload:      outcomeReconciled(n),
-		At:           n.At,
-		Trace:        n.Provenance.Trace,
-	}); err != nil {
+	if err := notify.AppendLifecycleEvent(ctx, tx.tx, notify.OutcomeReconciledEvent(n.TenantID, outcomeReconciled(n), n.At, n.Provenance.Trace)); err != nil {
 		return fmt.Errorf("append outcome.reconciled notification: %w", err)
 	}
 	return nil

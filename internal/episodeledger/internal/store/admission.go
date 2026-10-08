@@ -2,14 +2,10 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"strings"
-
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // InsertEpisode inserts an admitted episode. The error wraps the database
@@ -29,11 +25,7 @@ func (t *Tx) InsertEpisode(ctx context.Context, req domain.Admission, dispatchPo
 // IsLiveEpisodeViolation reports whether err is the one-live-episode-per-
 // situation uniqueness violation.
 func IsLiveEpisodeViolation(err error) bool {
-	var sqliteErr *sqlite.Error
-	if !errors.As(err, &sqliteErr) || sqliteErr.Code() != sqlite3.SQLITE_CONSTRAINT_UNIQUE {
-		return false
-	}
-	return strings.Contains(err.Error(), "UNIQUE constraint failed: episodes.situation_id")
+	return storage.IsUniqueViolation(err, "episodes.situation_id")
 }
 
 const admitEpisodeSQL = `

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -81,7 +82,7 @@ func compileIntentEntry(intent spec.Intent) (map[string]any, error) {
 
 // validateIntentSchema requires a declared risk and a closed object schema.
 func validateIntentSchema(intent spec.Intent) error {
-	if intent.Risk != "R0" && intent.Risk != "R1" && intent.Risk != "R2" && intent.Risk != "R3" && intent.Risk != "R4" {
+	if !contractsv1.RiskClass(intent.Risk).Valid() {
 		return fmt.Errorf("intent %q has invalid declared risk %q", intent.Type, intent.Risk)
 	}
 	if intent.ParameterSchema == nil {

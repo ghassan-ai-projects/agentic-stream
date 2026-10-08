@@ -3,15 +3,11 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
-	"strings"
 	"time"
 
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // UpsertSchedulerItem inserts a queue item or refreshes the item already
@@ -35,16 +31,7 @@ func (t *Tx) writeSchedulerItem(ctx context.Context, statement, operation string
 
 // IsSchedulerItemIDConflict reports whether err is a scheduler item id uniqueness failure.
 func IsSchedulerItemIDConflict(err error) bool {
-	var sqliteErr *sqlite.Error
-	if !errors.As(err, &sqliteErr) {
-		return false
-	}
-	switch sqliteErr.Code() {
-	case sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY, sqlite3.SQLITE_CONSTRAINT_UNIQUE:
-		return strings.Contains(err.Error(), "UNIQUE constraint failed: scheduler_items.scheduler_item_id")
-	default:
-		return false
-	}
+	return storage.IsUniqueViolation(err, "scheduler_items.scheduler_item_id")
 }
 
 func itemValues(item domain.SchedulerItem, tenantID string, dedupeKey []byte, now string) []any {

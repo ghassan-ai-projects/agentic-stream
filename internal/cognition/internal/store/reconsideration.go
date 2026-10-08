@@ -45,15 +45,8 @@ func (t *Tx) AnnounceReconsideration(ctx context.Context, r domain.Reconsiderati
 }
 
 func reconsiderationEvent(r domain.Reconsideration, tenantID string, now time.Time) notify.LifecycleEvent {
-	return notify.LifecycleEvent{
-		ID:           "reconsideration.admitted:" + r.ID,
-		TenantID:     tenantID,
-		Subject:      "situation/" + r.Current.SituationID,
-		PartitionKey: r.Current.SituationID,
-		Payload:      reconsideration(r),
-		At:           now.UTC(),
-		Trace:        contractsv1.TraceContext{Traceparent: r.Current.Traceparent, Tracestate: r.Current.Tracestate},
-	}
+	trace := contractsv1.TraceContext{Traceparent: r.Current.Traceparent, Tracestate: r.Current.Tracestate}
+	return notify.ReconsiderationAdmittedEvent(tenantID, reconsideration(r), now.UTC(), trace)
 }
 
 func reconsideration(r domain.Reconsideration) notify.ReconsiderationAdmitted {

@@ -36,21 +36,21 @@ type DispatchResult struct {
 
 // ClassifyDispatch maps a provider effect and error to the ledger states.
 func ClassifyDispatch(effect actionport.Effect, dispatchErr error) DispatchResult {
-	result := DispatchResult{Status: OutcomeSucceeded, Reconciliation: ReconciliationObserved, CommandStatus: CommandSucceeded,
-		OutboxStatus: OutboxDelivered, VerificationStatus: VerificationObserved}
+	result := DispatchResult{Status: OutcomeSucceeded, Reconciliation: ReconciliationObserved, CommandStatus: actionport.CommandSucceeded,
+		OutboxStatus: OutboxDelivered, VerificationStatus: actionport.VerificationObserved}
 	switch {
 	case dispatchErr != nil && actionport.IsUnknownOutcome(dispatchErr):
-		result.Status, result.Reconciliation, result.CommandStatus = OutcomeUnknown, ReconciliationRequired, CommandReconciling
+		result.Status, result.Reconciliation, result.CommandStatus = OutcomeUnknown, ReconciliationRequired, actionport.CommandReconciling
 		result.ErrorCode = ErrorOutcomeUnknown
 	case dispatchErr != nil:
-		result.Status, result.Reconciliation, result.CommandStatus = OutcomeFailed, ReconciliationNotRequired, CommandFailed
+		result.Status, result.Reconciliation, result.CommandStatus = OutcomeFailed, ReconciliationNotRequired, actionport.CommandFailed
 		result.ErrorCode = ErrorDispatchFailed
 	case effect.VerificationPending:
 		// A transport receipt is not physical success. Keep the command in the
 		// existing non-terminal manual-review state until an independent
 		// feedback verifier closes it; the outbox is delivered because no blind
 		// resend is safe after the provider accepted the frame.
-		result.Status, result.Reconciliation, result.CommandStatus = OutcomeReconcileRequired, ReconciliationRequired, CommandManualReview
+		result.Status, result.Reconciliation, result.CommandStatus = OutcomeReconcileRequired, ReconciliationRequired, actionport.CommandManualReview
 	}
 	return completeClassification(result, effect, dispatchErr)
 }
@@ -60,7 +60,7 @@ func completeClassification(result DispatchResult, effect actionport.Effect, dis
 		result.OutboxStatus = OutboxFailed
 	}
 	if dispatchErr != nil || effect.VerificationPending {
-		result.VerificationStatus = VerificationAwaiting
+		result.VerificationStatus = actionport.VerificationAwaiting
 	}
 	result.Settled = !effect.VerificationPending && (result.Status == OutcomeSucceeded || result.Status == OutcomeFailed)
 	return result
@@ -142,7 +142,7 @@ func ClassifyDeviceVerification(check DeviceCheck) DeviceCheck {
 		check.DispatchErr = &actionport.UnknownOutcomeError{Err: fmt.Errorf("verify device state: %w", check.VerifyErr)}
 	case check.FinalStatus != "":
 		check.Effect.VerificationPending = false
-		if check.FinalStatus == CommandFailed {
+		if check.FinalStatus == actionport.CommandFailed {
 			check.DispatchErr = errors.New("device state verification failed")
 		}
 	}

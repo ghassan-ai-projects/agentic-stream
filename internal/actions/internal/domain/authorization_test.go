@@ -3,6 +3,9 @@ package domain
 import (
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 )
 
 func TestAuthorizationAcceptsCurrentApprovedRecords(t *testing.T) {
@@ -69,21 +72,33 @@ func TestIntentExpiresAtItsDeadline(t *testing.T) {
 	}
 }
 
-func TestOnlyR2IntentsNeedAnUnexpiredApproval(t *testing.T) {
+func TestApprovalIsCheckedExactlyWhereThePolicyRoutesToApproval(t *testing.T) {
 	t.Parallel()
-	r1 := authorizationRecords(t, "R1")
-	r1.Approval = ApprovalRow{}
-	if err := r1.CheckApproval(testNow); err != nil {
-		t.Fatalf("R1 needs no approval: %v", err)
+	for _, risk := range contractstest.RiskClasses() {
+		for _, flagged := range []bool{false, true} {
+			records := authorizationRecords(t, string(risk))
+			records.Intent.RequiresApproval = flagged
+			records.Approval = ApprovalRow{}
+			needsApproval := contractsv1.RouteFor(contractsv1.RiskClass(risk), flagged) == contractsv1.RouteApproval
+			err := records.CheckApproval(testNow)
+			if needsApproval != (err != nil) || err != nil && err.Error() != "approved intent has no approved approval record" {
+				t.Fatalf("%s requires_approval=%t: err = %v", risk, flagged, err)
+			}
+		}
 	}
-	r2 := authorizationRecords(t, "R2")
-	r2.Approval = ApprovalRow{}
-	if err := r2.CheckApproval(testNow); err == nil || err.Error() != "approved intent has no approved approval record" {
-		t.Fatalf("missing approval err = %v", err)
-	}
-	r2 = authorizationRecords(t, "R2")
-	if err := r2.CheckApproval(testNow.Add(2 * time.Hour)); err == nil || err.Error() != "approval is expired" {
-		t.Fatalf("expired approval err = %v", err)
+}
+
+func TestApprovalRequiredIntentsNeedAnUnexpiredApproval(t *testing.T) {
+	t.Parallel()
+	for _, risk := range []string{"R1", "R2"} {
+		records := authorizationRecords(t, risk)
+		records.Intent.RequiresApproval = true
+		if err := records.CheckApproval(testNow); err != nil {
+			t.Fatalf("%s current approval: %v", risk, err)
+		}
+		if err := records.CheckApproval(testNow.Add(2 * time.Hour)); err == nil || err.Error() != "approval is expired" {
+			t.Fatalf("%s expired approval err = %v", risk, err)
+		}
 	}
 }
 

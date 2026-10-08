@@ -108,11 +108,3 @@ func TestIntentDigestExcludesItselfAndVerifies(t *testing.T) {
 		t.Fatal("non-string digest verified")
 	}
 }
-
-func TestSchemaLoaderDeniesNetwork(t *testing.T) {
-	t.Parallel()
-
-	if _, err := (denyNetworkLoader{}).Load("https://example.com/schema.json"); err == nil {
-		t.Fatal("external schema load was allowed")
-	}
-}

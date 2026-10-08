@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"path"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -19,12 +20,13 @@ func TestNotifyFacadeOnlyDelegates(t *testing.T) {
 			if !ok || (function.Recv == nil && function.Name.Name == "New") {
 				continue
 			}
-			if !slices.Contains([]string{"ReadPage", "Prune", "Prunable", "Append", "AppendLifecycleEvent"}, function.Name.Name) && function.Name.Name != "SourceForTenant" {
+			domainOperation := function.Name.Name == "SourceForTenant" || strings.HasSuffix(function.Name.Name, "Event") && function.Name.Name != "AppendLifecycleEvent"
+			if !slices.Contains([]string{"ReadPage", "Prune", "Prunable", "Append", "AppendLifecycleEvent"}, function.Name.Name) && !domainOperation {
 				t.Errorf("%s: %s is not a notify operation", file.rel, function.Name)
 				continue
 			}
 			target := "app"
-			if function.Name.Name == "SourceForTenant" {
+			if domainOperation {
 				target = "domain"
 			}
 			if !facadeDelegation(function, target) {

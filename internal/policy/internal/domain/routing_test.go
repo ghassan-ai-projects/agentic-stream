@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 )
 
 func TestRiskRulesRemainAuthoritative(t *testing.T) {
@@ -168,5 +169,56 @@ func TestTypedIntentRetainsDigestInput(t *testing.T) {
 	r.ValidationStatus = "rejected"
 	if _, reason := ParseGovernanceDocuments(r); reason != "decision_not_accepted" {
 		t.Fatal(reason)
+	}
+}
+
+func TestPolicyDocumentAndRoutesAgreeWithTheRiskTable(t *testing.T) {
+	t.Parallel()
+	document := CanonicalDocumentForVersion("v1")
+	riskPolicy := document["risk_policy"].(map[string]any)
+	health := document["incomplete_source_health"].(map[string]any)
+	for _, risk := range contractstest.RiskClasses() {
+		for _, approval := range []int{0, 1} {
+			route, _ := RiskRoute(IntentRecord{RiskClass: string(risk), RequiresApproval: approval})
+			if want := contractsv1.RouteFor(contractsv1.RiskClass(risk), approval != 0); route != string(want) {
+				t.Fatalf("%s %d: route %s, want %s", risk, approval, route, want)
+			}
+		}
+		if got := riskPolicy[string(risk)]; got != string(contractsv1.RouteFor(contractsv1.RiskClass(risk), false)) {
+			t.Fatalf("%s: document route %v", risk, got)
+		}
+		_, documented := health[string(risk)]
+		incomplete := SourceHealthIncomplete(IntentRecord{RiskClass: string(risk), CurrentCompleteness: "uncertain"})
+		if documented != incomplete {
+			t.Fatalf("%s: document incomplete=%t, rule=%t", risk, documented, incomplete)
+		}
+	}
+}
+
+func TestPolicyDigestIsPinned(t *testing.T) {
+	t.Parallel()
+	digest, err := DigestForVersion("v1")
+	if err != nil || digest != "sha256:473ca13620fa9323385b275037070a405ab5f1d9a3c911d1403d3475dc5fb75e" {
+		t.Fatal(digest, err)
+	}
+}
+
+func TestOnlyApprovableRisksMayBeGranted(t *testing.T) {
+	t.Parallel()
+	for _, name := range append(contractstest.RiskClasses(), "R5", "") {
+		risk := contractsv1.RiskClass(name)
+		authority := AuthorityEntry{Entity: "motor", Risks: []string{name}}
+		if granted := authority.validate("operator") == nil; granted != risk.Approvable() {
+			t.Fatalf("%q granted=%t approvable=%t", risk, granted, risk.Approvable())
+		}
+	}
+}
+
+func TestWithdrawnApprovalIsNeverWithdrawnAgainByThePolicyPath(t *testing.T) {
+	t.Parallel()
+	superseded := IntentRecord{SituationVersion: 1, LastMaterialVersion: 2}
+	resolution := ApprovalResolution{Approved: true, Now: time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)}
+	if got := ApprovalDisposition(superseded, ApprovalRecord{Status: "withdrawn"}, resolution); got != "resolved" {
+		t.Fatalf("disposition of a withdrawn approval = %q, want resolved", got)
 	}
 }

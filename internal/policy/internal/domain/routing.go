@@ -6,21 +6,24 @@ import (
 	"encoding/hex"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 func RiskRoute(row IntentRecord) (route, reason string) {
-	switch row.RiskClass {
-	case "R0", "R1":
-		if row.RequiresApproval != 0 {
-			return "approval", ""
-		}
-		return "automatic", ""
-	case "R2":
-		return "approval", ""
-	case "R3", "R4":
-		return "denied", "risk_policy_denied"
+	risk := contractsv1.RiskClass(row.RiskClass)
+	routed := contractsv1.RouteFor(risk, row.RequiresApproval != 0)
+	return string(routed), denialReason(risk, routed)
+}
+
+func denialReason(risk contractsv1.RiskClass, route contractsv1.Route) string {
+	switch {
+	case !risk.Valid():
+		return "unknown_risk_class"
+	case route == contractsv1.RouteDenied:
+		return "risk_policy_denied"
 	default:
-		return "denied", "unknown_risk_class"
+		return ""
 	}
 }
 

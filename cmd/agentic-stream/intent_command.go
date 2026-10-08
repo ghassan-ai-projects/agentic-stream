@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -63,7 +62,7 @@ func inspectCommands(cmd *cobra.Command, db *storage.DB, tenantID, intentID stri
 
 func installedWatch(cmd *cobra.Command, db *storage.DB, tenantID string, command actions.CommandView) (*watch.WatchView, error) {
 	for _, outcome := range command.Outcomes {
-		watchID := reportedWatchID(outcome)
+		watchID := watch.InstalledWatchID(outcome.ProviderResult)
 		if watchID == "" {
 			continue
 		}
@@ -77,16 +76,6 @@ func installedWatch(cmd *cobra.Command, db *storage.DB, tenantID string, command
 		return &installed, nil
 	}
 	return nil, nil
-}
-
-func reportedWatchID(outcome actions.OutcomeView) string {
-	var result struct {
-		WatchID string `json:"watch_id"`
-	}
-	if json.Unmarshal(outcome.ProviderResult, &result) != nil {
-		return ""
-	}
-	return result.WatchID
 }
 
 func (i intentInspection) text() string {

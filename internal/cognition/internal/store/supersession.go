@@ -109,17 +109,8 @@ func (t *Tx) AnnounceSupersededItem(ctx context.Context, replacement Replacement
 }
 
 func supersededItemEvent(replacement ReplacementVersion, item SupersededItem, now time.Time) notify.LifecycleEvent {
-	situationID, tenantID := replacement.SituationID, replacement.TenantID
 	trace := contractsv1.TraceContext{Traceparent: replacement.Traceparent, Tracestate: replacement.Tracestate}
-	return notify.LifecycleEvent{
-		ID:           "situation.superseded:" + situationID + ":" + fmt.Sprint(item.Version) + ":" + fmt.Sprint(replacement.Version) + ":" + item.ID,
-		TenantID:     tenantID,
-		Subject:      "situation/" + situationID,
-		PartitionKey: situationID,
-		Payload:      supersededItem(replacement, item),
-		At:           now.UTC(),
-		Trace:        trace,
-	}
+	return notify.SituationSupersededEvent(replacement.TenantID, item.ID, supersededItem(replacement, item), now.UTC(), trace)
 }
 
 func supersededItem(replacement ReplacementVersion, item SupersededItem) notify.SituationSuperseded {

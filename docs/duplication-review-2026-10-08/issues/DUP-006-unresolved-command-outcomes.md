@@ -1,6 +1,6 @@
 # DUP-006: The "unresolved command outcome" set differs between actions and the soak report
 
-- Status: open
+- Status: fixed
 - Severity: high (probable bug)
 - Verdict (finders): DIVERGED
 - Themes: business rules, persistence
@@ -49,4 +49,32 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Status: fixed. Commit: pending (reviewer commits).
+
+Verified (all claims held):
+- `actions/internal/domain/status.go` `UnresolvedCommandStatuses` = outcome_unknown, reconciling, manual_review: confirmed; used by the authority barrier (`CountUnresolvedOutcomes`).
+- `actions/internal/store/reconciliation.go` close guard and `AwaitingReconciliation` re-spelled the three states as SQL literals: confirmed. A fourth copy was found: `ReconcilableCommand.RequireAwaitingReconciliation` switched over the same three states in domain.
+- `runartifact/internal/store/safety.go` omitted `manual_review` in both `unknown_outcomes` and `unresolved_action_outcomes`: confirmed. The `OR v.status = 'awaiting'` arm does not rescue it, because reconciling a command to manual_review sets its verification to `inconclusive`. So a parked command blocked the authority barrier but passed the soak gate. Real bug.
+- `cmd/agentic-stream/commands_command.go:23` help text lists the three states: confirmed, correct, left as is (it is user text).
+
+Changed:
+- `internal/actionport/internal/domain/status.go` (new): command-state and verification-state vocabulary, `UnresolvedCommandStatuses()` (fresh slice each call), `IsUnresolvedCommandStatus`.
+- `internal/actionport/status.go` (new): facade re-export with doc comments.
+- `internal/actions/internal/domain/status.go`: removed the Command*/Verification* consts and the `UnresolvedCommandStatuses` var. Every use in actions (domain, tests, store test) now reads `actionport.X`, rewritten with a go/ast offset-rewrite program, no aliases left behind.
+- `internal/actions/internal/domain/reconciliation.go`: `RequireAwaitingReconciliation` uses `actionport.IsUnresolvedCommandStatus`.
+- `internal/actions/internal/store/unresolved.go`, `reconciliation.go`: the barrier count, the close guard and the awaiting list all build `status IN (...)` from `unresolvedCommandFilter()`, which takes the list from actionport. Local `placeholders` helper deleted.
+- `internal/storage/storage.go`: new `storage.InClause(column, values)` (the rejected.md placeholder note says to fold the builder into the fix that generates an IN list); used by actions and runartifact. The authority/events.go and engine/timers.go placeholder builders are untouched (outside this issue).
+- `internal/runartifact/internal/store/safety.go`: the diagnostics queries are built from actionport (`UnresolvedCommandStatuses`, `VerificationAwaiting`) instead of literals. The `architecture_test.go` edge `runartifact/internal/store -> internal/actionport` was needed and is present in `allowedImports`.
+- `internal/actionport/UBIQUITOUS_LANGUAGE.md`: new row for the unresolved command set.
+
+Decisions:
+- The soak gate now counts `manual_review` (deliberate bug fix; behaviour change). Diagnostic keys `unknown_outcomes` and `unresolved_action_outcomes` and the verdict reason text are unchanged.
+- `unknown_outcomes` (a diagnostic, not a verdict input) now also counts manual_review: it uses the same single set rather than a second hand-typed list. Its value can rise for runs that have a manual_review command; no consumer reads it.
+- Owner is actionport (rank 5, importable by both actions and runartifact), as the reviewer notes proposed. Authority still receives the count through the injected `OutcomeLedger`.
+- Outbox/outcome/reconciliation/error-code vocabularies stay in actions (not shared).
+
+Tests pinning the rule:
+- `TestUnresolvedCommandStatusesAreExactlyTheStatesAwaitingReconciliation`, `TestUnresolvedCommandStatusesCannotBeMutatedByCallers` (internal/actionport/status_test.go).
+- `TestSoakReportCountsEveryCommandStatusLikeTheReconciliationBarrier` (internal/runartifact/internal/app/soak_test.go): every command status; soak count, `actions.CountUnresolvedOutcomes` and the verdict must agree, so the manual_review case fails without the fix.
+- `TestInClauseBindsOnePlaceholderPerValue` (internal/storage/storage_test.go).
+- Existing `TestReconcilableCommandAcceptsOnlyAwaitingStatuses`, `TestSoakReportFailsUnresolvedActionOutcome` pass unchanged.

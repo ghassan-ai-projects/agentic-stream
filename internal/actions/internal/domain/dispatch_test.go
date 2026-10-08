@@ -17,10 +17,10 @@ func TestClassifyDispatchMapsEveryLedger(t *testing.T) {
 		err    error
 		want   DispatchResult
 	}{
-		{"success", actionport.Effect{}, nil, DispatchResult{Status: OutcomeSucceeded, Reconciliation: ReconciliationObserved, CommandStatus: CommandSucceeded, OutboxStatus: OutboxDelivered, VerificationStatus: VerificationObserved, Settled: true}},
-		{"unknown", actionport.Effect{}, unknown, DispatchResult{Status: OutcomeUnknown, Reconciliation: ReconciliationRequired, CommandStatus: CommandReconciling, ErrorCode: ErrorOutcomeUnknown, OutboxStatus: OutboxFailed, VerificationStatus: VerificationAwaiting}},
-		{"failure", actionport.Effect{}, errors.New("rejected"), DispatchResult{Status: OutcomeFailed, Reconciliation: ReconciliationNotRequired, CommandStatus: CommandFailed, ErrorCode: ErrorDispatchFailed, OutboxStatus: OutboxFailed, VerificationStatus: VerificationAwaiting, Settled: true}},
-		{"pending verification", actionport.Effect{VerificationPending: true}, nil, DispatchResult{Status: OutcomeReconcileRequired, Reconciliation: ReconciliationRequired, CommandStatus: CommandManualReview, OutboxStatus: OutboxDelivered, VerificationStatus: VerificationAwaiting}},
+		{"success", actionport.Effect{}, nil, DispatchResult{Status: OutcomeSucceeded, Reconciliation: ReconciliationObserved, CommandStatus: actionport.CommandSucceeded, OutboxStatus: OutboxDelivered, VerificationStatus: actionport.VerificationObserved, Settled: true}},
+		{"unknown", actionport.Effect{}, unknown, DispatchResult{Status: OutcomeUnknown, Reconciliation: ReconciliationRequired, CommandStatus: actionport.CommandReconciling, ErrorCode: ErrorOutcomeUnknown, OutboxStatus: OutboxFailed, VerificationStatus: actionport.VerificationAwaiting}},
+		{"failure", actionport.Effect{}, errors.New("rejected"), DispatchResult{Status: OutcomeFailed, Reconciliation: ReconciliationNotRequired, CommandStatus: actionport.CommandFailed, ErrorCode: ErrorDispatchFailed, OutboxStatus: OutboxFailed, VerificationStatus: actionport.VerificationAwaiting, Settled: true}},
+		{"pending verification", actionport.Effect{VerificationPending: true}, nil, DispatchResult{Status: OutcomeReconcileRequired, Reconciliation: ReconciliationRequired, CommandStatus: actionport.CommandManualReview, OutboxStatus: OutboxDelivered, VerificationStatus: actionport.VerificationAwaiting}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -71,11 +71,11 @@ func TestDeviceVerificationOutcomes(t *testing.T) {
 	if !actionport.IsUnknownOutcome(check.DispatchErr) || check.Effect.VerificationPending {
 		t.Fatalf("verification error must make the dispatch unknown: %+v", check)
 	}
-	check = ClassifyDeviceVerification(DeviceCheck{Effect: actionport.Effect{VerificationPending: true}, FinalStatus: CommandFailed})
+	check = ClassifyDeviceVerification(DeviceCheck{Effect: actionport.Effect{VerificationPending: true}, FinalStatus: actionport.CommandFailed})
 	if check.DispatchErr == nil || actionport.IsUnknownOutcome(check.DispatchErr) || check.Effect.VerificationPending {
 		t.Fatalf("failed verification must make the dispatch failed: %+v", check)
 	}
-	check = ClassifyDeviceVerification(DeviceCheck{Effect: actionport.Effect{VerificationPending: true}, FinalStatus: CommandSucceeded})
+	check = ClassifyDeviceVerification(DeviceCheck{Effect: actionport.Effect{VerificationPending: true}, FinalStatus: actionport.CommandSucceeded})
 	if check.DispatchErr != nil || check.Effect.VerificationPending {
 		t.Fatalf("successful verification must settle the dispatch: %+v", check)
 	}
@@ -93,10 +93,10 @@ func TestReconcilesUnknownNeedsUnknownDispatchAndCleanVerification(t *testing.T)
 		check DeviceCheck
 		want  bool
 	}{
-		{"settled unknown", DeviceCheck{DispatchErr: unknown, FinalStatus: CommandSucceeded}, true},
+		{"settled unknown", DeviceCheck{DispatchErr: unknown, FinalStatus: actionport.CommandSucceeded}, true},
 		{"no final status", DeviceCheck{DispatchErr: unknown}, false},
-		{"verification error", DeviceCheck{DispatchErr: unknown, FinalStatus: CommandSucceeded, VerifyErr: errors.New("x")}, false},
-		{"known failure", DeviceCheck{DispatchErr: errors.New("rejected"), FinalStatus: CommandFailed}, false},
+		{"verification error", DeviceCheck{DispatchErr: unknown, FinalStatus: actionport.CommandSucceeded, VerifyErr: errors.New("x")}, false},
+		{"known failure", DeviceCheck{DispatchErr: errors.New("rejected"), FinalStatus: actionport.CommandFailed}, false},
 	}
 	for _, tc := range cases {
 		if got := tc.check.ReconcilesUnknown(); got != tc.want {

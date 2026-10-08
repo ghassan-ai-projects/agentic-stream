@@ -72,3 +72,29 @@ func TestFacadeNullIfEmptyAndQueryAll(t *testing.T) {
 		t.Fatal("a failing query was accepted")
 	}
 }
+
+func TestInClauseBindsOnePlaceholderPerValue(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		values []string
+		clause string
+	}{
+		{"one", []string{"a"}, "c IN (?)"},
+		{"many", []string{"a", "b", "c"}, "c IN (?, ?, ?)"},
+		{"none", nil, "c IN ()"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			clause, args := storage.InClause("c", tc.values)
+			if clause != tc.clause || len(args) != len(tc.values) {
+				t.Fatalf("clause = %q args = %v", clause, args)
+			}
+			for i, value := range tc.values {
+				if args[i] != value {
+					t.Fatalf("arg %d = %v, want %q", i, args[i], value)
+				}
+			}
+		})
+	}
+}

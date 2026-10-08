@@ -13,7 +13,7 @@ const loadAuthorizationRecordsSQL = `
 			       c.idempotency_key, c.command_json, c.command_sha256,
 			       i.tenant_id, i.intent_id, i.decision_id, i.situation_id,
 			       i.situation_version, i.intent_type, i.risk_class, i.intent_json,
-			       i.intent_sha256, i.expires_at, i.policy_status,
+			       i.intent_sha256, i.expires_at, i.policy_status, i.requires_approval,
 			       (SELECT a.approval_id FROM approvals a WHERE a.intent_id = i.intent_id AND a.status = 'approved' ORDER BY a.decided_at DESC LIMIT 1),
 			       (SELECT a.expires_at FROM approvals a WHERE a.intent_id = i.intent_id AND a.status = 'approved' ORDER BY a.decided_at DESC LIMIT 1),
 			       d.validation_status, d.raw_json, d.decision_sha256, d.situation_id, d.situation_version, d.episode_id,
@@ -55,7 +55,7 @@ func commandDests(c *domain.CommandRow) []any {
 }
 
 func intentDests(i *domain.IntentRow) []any {
-	return []any{&i.TenantID, &i.ID, &i.DecisionID, &i.SituationID, &i.Version, &i.Type, &i.Risk, &i.JSON, &i.SHA, &i.ExpiresAt, &i.PolicyStatus}
+	return []any{&i.TenantID, &i.ID, &i.DecisionID, &i.SituationID, &i.Version, &i.Type, &i.Risk, &i.JSON, &i.SHA, &i.ExpiresAt, &i.PolicyStatus, &i.RequiresApproval}
 }
 
 func decisionDests(d *domain.DecisionRow) []any {

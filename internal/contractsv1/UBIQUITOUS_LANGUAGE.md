@@ -10,6 +10,8 @@
 | Payload hash | SHA-256 of the original normalized payload. | `PayloadHash` | `payload_sha256` (event quarantine) |
 | Trace context | W3C `traceparent` and `tracestate`, kept durably so asynchronous work can link back. | `TraceContext`, `ParseTraceContext` | `traceparent`, `tracestate` |
 | Schema | An embedded JSON Schema for one contract document. | `SchemaName`, `Validate`, `SchemaID` | `schemas/v1/*.json` |
+| Risk class | The closed, ordered set R0 to R4 an intent declares; the single owner of its order, validity and default routes. | `RiskClass`, `RiskClasses`, `Rank`, `AtMost` | `risk_class` |
+| Route | What the policy plane does with an intent of a risk class: run automatically, wait for approval, or refuse. `requires_approval` lifts an automatic class to approval. Policy, dispatch and shadow scoring all call the one rule. | `Route`, `RouteFor` | `automatic`, `approval`, `denied` |
 | Intent digest | Digest over an intent document's canonical JSON. | `IntentDigest`, `VerifyIntentDigest` | `intent_sha256` |
 | Partition count | Number of virtual partitions; deterministic state changes are serial per partition. | `PartitionCount` | `partition_id` |
 | Tenant | The single default tenant of version 1. | `TenantID` | `tenant_id` |

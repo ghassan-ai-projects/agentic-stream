@@ -127,23 +127,6 @@ func integerField(document map[string]any, name string) (int, bool) {
 	return int(value), true
 }
 
-func riskRank(risk string) int {
-	switch risk {
-	case "R0":
-		return 1
-	case "R1":
-		return 2
-	case "R2":
-		return 3
-	case "R3":
-		return 4
-	case "R4":
-		return 5
-	default:
-		return 0
-	}
-}
-
 func reject(reason, field, message string) *ValidationError {
 	return &ValidationError{Reason: reason, Details: map[string]any{
 		"field": field, "message": message,

@@ -1,6 +1,6 @@
 # DUP-021: SQLite constraint classification lives in episodeledger and depends on message text
 
-- Status: open
+- Status: fixed
 - Severity: low
 - Verdict (finders): REAL
 - Themes: contracts and shapes
@@ -32,4 +32,14 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Verified: all three sites confirmed. The two constraint matchers did accept different code sets (PRIMARYKEY+UNIQUE versus UNIQUE only) and both matched driver message text; episodeledger imported `modernc.org/sqlite` directly. The accepted-code difference is harmless in practice (a primary key clash on `episodes.situation_id` cannot occur, since that column is only constrained by a partial unique index), so one rule accepting both codes preserves behaviour.
+
+Changed:
+- `internal/storage/internal/store/sqlite.go`: new `IsUniqueViolation(err, column)` next to `IsSQLiteBusy` (extended codes CONSTRAINT_PRIMARYKEY or CONSTRAINT_UNIQUE, then one text match on `UNIQUE constraint failed: <table.column>`).
+- `internal/storage/storage.go`: facade `IsUniqueViolation`.
+- `internal/episodeledger/internal/store/scheduler.go` and `admission.go`: `IsSchedulerItemIDConflict` and `IsLiveEpisodeViolation` now delegate to `storage.IsUniqueViolation` with their column; the driver, `errors` and `strings` imports are gone. The two named predicates stay because they name the domain meaning and fix the column, and `app` and the existing tests call them. No new architecture edge was needed (episodeledger/internal/store already imports storage).
+- `internal/storage/internal/store/unique_violation_test.go`: new.
+
+Pinned by `TestIsUniqueViolationClassifiesPrimaryKeyAndUniqueIndex` (real SQLite primary key, partial unique index, wrapped error, other column, non-sqlite and plain-text errors, nil) in storage, and by the existing episodeledger store tests `TestSchedulerQueueRoundTrip` (id clash) and the second-live-episode assertion that still exercise the real driver through the shared rule.
+
+Results: go build, go vet, go test -count=1 on internal/storage/..., internal/episodeledger/..., internal/runtime/... and the root architecture gates pass; golangci-lint on storage and episodeledger: 0 issues.

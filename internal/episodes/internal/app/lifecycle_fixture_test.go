@@ -27,6 +27,9 @@ type admittedSituation struct {
 }
 
 func triggeredSpec(executor spec.Executor, intents ...spec.Intent) *spec.CompiledSpec {
+	if executor.RiskCeiling == "" {
+		executor.RiskCeiling = "R1"
+	}
 	return &spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
 		Digest:        testSpecDigest,

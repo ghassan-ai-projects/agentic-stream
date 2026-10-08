@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
@@ -112,9 +113,9 @@ func episodeLane(value string) (runtimev1.EpisodeLane, error) {
 }
 
 func riskClass(value string) (runtimev1.RiskClass, error) {
-	value = strings.ToUpper(strings.TrimSpace(value))
-	if len(value) != 2 || value[0] != 'R' || value[1] < '0' || value[1] > '4' {
+	risk := contractsv1.RiskClass(value)
+	if !risk.Valid() {
 		return 0, fmt.Errorf("unsupported risk ceiling %q", value)
 	}
-	return runtimev1.RiskClass(int32(runtimev1.RiskClass_RISK_CLASS_R0) + int32(value[1]-'0')), nil
+	return runtimev1.RiskClass(runtimev1.RiskClass_value["RISK_CLASS_"+string(risk)]), nil
 }

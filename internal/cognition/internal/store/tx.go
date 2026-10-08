@@ -42,16 +42,10 @@ func withdrawalPublisher(tenantID string, clk sources.Clock) approvalledger.With
 }
 
 func supersededWithdrawalEvent(w approvalledger.Withdrawal, tenantID string, clk sources.Clock) notify.LifecycleEvent {
-	return notify.LifecycleEvent{
-		ID:           "approval.withdrawn:" + w.ApprovalID,
-		TenantID:     tenantID,
-		Subject:      "approval/" + w.ApprovalID,
-		PartitionKey: w.SituationID,
-		Payload: notify.ApprovalWithdrawn{
-			ApprovalID: w.ApprovalID, IntentID: w.IntentID, SituationID: w.SituationID,
-			SituationVersion: w.SituationVersion, Reason: "situation_version_conflict",
-		},
-		At:    clk.Now().UTC(),
-		Trace: contractsv1.TraceContext{Traceparent: w.Traceparent, Tracestate: w.Tracestate},
+	payload := notify.ApprovalWithdrawn{
+		ApprovalID: w.ApprovalID, IntentID: w.IntentID, SituationID: w.SituationID,
+		SituationVersion: w.SituationVersion, Reason: "situation_version_conflict",
 	}
+	trace := contractsv1.TraceContext{Traceparent: w.Traceparent, Tracestate: w.Tracestate}
+	return notify.ApprovalWithdrawnEvent(tenantID, payload, clk.Now().UTC(), trace)
 }

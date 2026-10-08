@@ -7,6 +7,7 @@
 | Highwater | Next cursor to allocate for a tenant | `NextCursor` | `notification_cursors.next_cursor` |
 | Page | Bounded delivery result; `NextCursor` advances past skipped poison rows | `domain.Page` | — |
 | Lifecycle event | A Channel-B event of one of the eight pinned v1 types | `LifecycleEvent` + `Payload` | `io.agenticstream.*.v1` |
+| Event identity | The event id, subject and partition key a payload always receives, so one fact yields one event from every producer | `ApprovalWithdrawnEvent`, `OutcomeRecordedEvent`, ... | `approval.withdrawn:<approval>`, `approval/<approval>` |
 | Lifecycle contract | Schema + tenant/authority binding every lifecycle event satisfies | `domain.ValidateLifecycle` | `notification-contract-v1.json` |
 | Source authority | The tenant's stable CloudEvents source | `SourceForTenant` | `//agentic-stream/tenant/<id>` |
 | Seal | Canonical JSON and SHA-256 of an event | `domain.Seal` | `event_json`, `event_sha256` |

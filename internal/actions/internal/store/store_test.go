@@ -232,6 +232,27 @@ func TestAuthorizationRecordsProjectTheLedgerJoin(t *testing.T) {
 	})
 }
 
+func TestAuthorizationRecordsCarryTheCatalogApprovalRequirement(t *testing.T) {
+	t.Parallel()
+	for _, flagged := range []int{0, 1} {
+		db, commandID := openActionFixture(t)
+		if _, err := db.ExecContext(t.Context(), `UPDATE intents SET requires_approval = ?`, flagged); err != nil {
+			t.Fatal(err)
+		}
+		inTx(t, db, func(tx *Tx) error { return tx.MarkCommandDispatching(t.Context(), commandID, time.Now().UTC()) })
+		inTx(t, db, func(tx *Tx) error {
+			records, err := tx.LoadAuthorizationRecords(t.Context(), commandID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if records.Intent.RequiresApproval != (flagged == 1) {
+				t.Fatalf("requires_approval %d loaded as %t", flagged, records.Intent.RequiresApproval)
+			}
+			return nil
+		})
+	}
+}
+
 func TestOutcomesAppendWithIncreasingOrdinals(t *testing.T) {
 	t.Parallel()
 	db, commandID := openActionFixture(t)
@@ -297,14 +318,14 @@ func TestReconciliationClosesCommandAndCitesStoredOutcome(t *testing.T) {
 	}
 	inTx(t, db, func(tx *Tx) error {
 		command, err := tx.LoadReconcilableCommand(t.Context(), commandID)
-		if err != nil || command.Status != domain.CommandReconciling || command.IntentID != "int-action" {
+		if err != nil || command.Status != actionport.CommandReconciling || command.IntentID != "int-action" {
 			t.Fatalf("command = %+v err=%v", command, err)
 		}
 		if err := tx.InsertOutcome(t.Context(), domain.OutcomeRecord{ID: "out-r", CommandID: commandID, Status: domain.OutcomeReconciled,
 			Reconciliation: domain.ReconciliationReconciled, SHA: make([]byte, sha256.Size), At: now}); err != nil {
 			return err
 		}
-		if err := tx.CloseReconciliation(t.Context(), domain.ReconciliationClosure{Command: command, FinalStatus: domain.CommandSucceeded, OutcomeID: "out-r", At: now}); err != nil {
+		if err := tx.CloseReconciliation(t.Context(), domain.ReconciliationClosure{Command: command, FinalStatus: actionport.CommandSucceeded, OutcomeID: "out-r", At: now}); err != nil {
 			return err
 		}
 		provenance, err := tx.LoadReconciledProvenance(t.Context(), "out-r", commandID, "int-action")
@@ -312,7 +333,7 @@ func TestReconciliationClosesCommandAndCitesStoredOutcome(t *testing.T) {
 			t.Fatalf("provenance = %+v err=%v", provenance, err)
 		}
 		return tx.AppendReconciliationNotice(t.Context(), domain.ReconciliationNotice{TenantID: "tenant", IntentID: "int-action", CommandID: commandID, OutcomeID: "out-r",
-			FinalStatus: domain.CommandSucceeded, Provenance: provenance, At: now})
+			FinalStatus: actionport.CommandSucceeded, Provenance: provenance, At: now})
 	})
 	var status string
 	if err := db.QueryRowContext(t.Context(), "SELECT status FROM commands WHERE command_id = ?", commandID).Scan(&status); err != nil || status != "succeeded" {
@@ -327,7 +348,7 @@ func TestDispatchNoticesCarryTenantAndSource(t *testing.T) {
 	now := time.Now().UTC()
 	command := actionport.Command{CommandID: commandID, TenantID: "tenant", IntentID: "int-action"}
 	inTx(t, db, func(tx *Tx) error {
-		if err := tx.AppendDispatchNotice(t.Context(), domain.DispatchNotice{Command: command, Status: domain.CommandSucceeded, OutcomeID: "out-1", At: now}); err != nil {
+		if err := tx.AppendDispatchNotice(t.Context(), domain.DispatchNotice{Command: command, Status: actionport.CommandSucceeded, OutcomeID: "out-1", At: now}); err != nil {
 			return err
 		}
 		return tx.AppendOutcomeNotice(t.Context(), domain.OutcomeNotice{Command: command, OutcomeID: "out-1", Status: domain.OutcomeReconcileRequired,

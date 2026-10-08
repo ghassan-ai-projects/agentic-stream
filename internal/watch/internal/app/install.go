@@ -42,7 +42,7 @@ func (s *Service) install(ctx context.Context, command actionport.Command, want 
 	}); err != nil {
 		return actionport.Effect{}, fmt.Errorf("watch condition transaction: %w", err)
 	}
-	return actionport.Effect{ProviderResult: map[string]any{"accepted": true, "watch_id": watchID}}, nil
+	return actionport.Effect{ProviderResult: domain.InstallResult(watchID)}, nil
 }
 
 // installOnce installs the watch, or accepts an identical earlier install of

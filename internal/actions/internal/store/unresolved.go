@@ -3,9 +3,9 @@ package store
 import (
 	"context"
 	"fmt"
-	"strings"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // CountUnresolvedOutcomes counts, in this transaction, the commands among
@@ -23,18 +23,11 @@ func (tx *Tx) CountUnresolvedOutcomes(ctx context.Context, commandIDs []string) 
 }
 
 func unresolvedOutcomesQuery(commandIDs []string) (string, []any) {
-	statuses := domain.UnresolvedCommandStatuses
-	args := make([]any, 0, len(commandIDs)+len(statuses))
-	for _, commandID := range commandIDs {
-		args = append(args, commandID)
-	}
-	for _, status := range statuses {
-		args = append(args, status)
-	}
-	return `SELECT COUNT(*) FROM commands WHERE command_id IN (` + placeholders(len(commandIDs)) +
-		`) AND status IN (` + placeholders(len(statuses)) + `)`, args
+	ids, idArgs := storage.InClause("command_id", commandIDs)
+	unresolved, statusArgs := unresolvedCommandFilter()
+	return "SELECT COUNT(*) FROM commands WHERE " + ids + " AND " + unresolved, append(idArgs, statusArgs...)
 }
 
-func placeholders(count int) string {
-	return strings.TrimSuffix(strings.Repeat("?, ", count), ", ")
+func unresolvedCommandFilter() (string, []any) {
+	return storage.InClause("status", actionport.UnresolvedCommandStatuses())
 }

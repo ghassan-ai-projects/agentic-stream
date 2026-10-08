@@ -1,6 +1,6 @@
 # DUP-025: approval.withdrawn is built in two places with different payloads; notification ids and sources drift
 
-- Status: open
+- Status: fixed
 - Severity: medium
 - Verdict (finders): DIVERGED
 - Themes: mechanisms
@@ -33,4 +33,23 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Commit: pending (reviewer commits)
+
+Verified:
+- Two `approval.withdrawn` builders (policy `approvalWithdrawnEvent`, cognition `supersededWithdrawalEvent`) with the same id, subject, partition and payload shape: confirmed. Reason was an argument in policy and the literal `situation_version_conflict` in cognition (the policy caller also passes that literal). `At` differed (event time vs clock read), which is why a second append would conflict.
+- Both paths can fire for one approval: wrong. Both only act on `approvals.status = 'pending'` and each moves it to `withdrawn` (`approvalledger.Withdraw`) in the same transaction; policy's `ApprovalDisposition` returns `resolved` for any non-pending approval, so a withdrawn approval is never withdrawn again. No latent abort; the mutual exclusion is now pinned by a test.
+- Other literal id/subject/partition spellings (policy requested/resolved, actions dispatched/recorded/reconciled, cognition superseded/reconsideration): confirmed, all drift-prone copies of the same convention.
+- Source drift `tenants/` vs `tenant/` for `situation.trigger.evaluated` (known follow-up #8): confirmed (`internal/cognition/internal/store/evaluations.go`). Not in the unfinished-work review scope, and the source is part of stored digests, so it is deferred.
+
+Changed:
+- `internal/notify/internal/domain/lifecycle_identity.go` (new): one constructor per payload, `ApprovalRequestedEvent`, `ApprovalWithdrawnEvent`, `ApprovalResolvedEvent`, `CommandDispatchedEvent`, `OutcomeRecordedEvent`, `OutcomeReconciledEvent`, `SituationSupersededEvent` (takes the superseded work item id, which is not in the payload), `ReconsiderationAdmittedEvent`. They derive id, subject and partition key from the payload; callers pass tenant, payload, time and trace.
+- `internal/notify/notify.go`: one delegating facade function per constructor.
+- `architecture_notify_test.go`: the facade gate now allows `*Event` constructors delegating to domain.
+- Callers rewritten to use the constructors, with the same ids, subjects, partitions and payloads: `internal/policy/internal/store/notifications.go`, `internal/cognition/internal/store/tx.go`, `supersession.go`, `reconsideration.go`, `internal/actions/internal/store/notifications.go`.
+- `internal/notify/README.md`, `UBIQUITOUS_LANGUAGE.md`: name the constructors.
+
+Decisions: for approval.requested the id and partition now come from the sealed payload (`ApprovalID`, `SituationID`) instead of `request.ID` and the intent row; they are equal in production (`approvalNotificationData` is built from `request.ID` and the same intent row). No allowedImports edge was needed.
+
+Deferred: trigger-evaluated source (follow-up #8) and its contract registration; changing it requires a deliberate digest/golden change.
+
+Pinning tests: `TestLifecycleConstructorsFixEveryEventIdentity`, `TestEveryLifecycleTypeHasAConstructor` (notify domain); `TestApprovalWithdrawnEventUsesTheSharedNotifyIdentity` (policy store); `TestSupersededWithdrawalEventUsesTheSharedNotifyIdentity` (cognition store); `TestWithdrawnApprovalIsNeverWithdrawnAgainByThePolicyPath` (policy domain); `TestNotifyFacadeOnlyDelegates` (root).
