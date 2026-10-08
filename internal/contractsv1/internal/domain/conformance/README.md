@@ -10,7 +10,7 @@ program repos copy and test against:
 - **Firmware** — the Arduino sketch, when it exists.
 
 Agentic Stream owns the schemas (`../schemas/v1/device-*-v1.json`) and generates
-these example frames from one Go source (`../conformance.go`). Consumers must not
+these example frames from one Go source (`internal/contractsv1/contractstest`). Consumers must not
 re-invent the frames — copy these bytes.
 
 ## Layout
@@ -61,7 +61,7 @@ digest test lives with the action materializer.
 ## Changing the contract
 
 These JSON files are the **source of truth** — data, not generated from Go
-literals. `../conformance.go` loads them via `go:embed`, and
+literals. `internal/contractsv1/contractstest` loads them from disk, and
 `../conformance_test.go` validates every `valid/` fixture against its schema and
 asserts every `invalid/` fixture fails closed. So editing a fixture here is how
 you change an example; the tests catch any fixture that drifts from the schema

@@ -1,6 +1,6 @@
 # U07 — Remove test-only facade exports
 
-Status: todo · Decision: **delete or move, per row** · Priority: P2 · Size: M
+Status: done · Decision: **delete or move, per row** · Priority: P2 · Size: M
 
 ## Finding and decision per symbol
 
@@ -33,3 +33,13 @@ runbook passes that path to `serve --device-catalog`, and X01 pins it.
 - `architecture_episodes_test.go` and `architecture_decisions_test.go`, which
   name `CompileIntentCatalog`, are updated.
 - `TestAquacultureIntentCatalogDigestParity` still passes unchanged.
+
+## Result
+
+- Deleted: `api.NewHealthHandler`, `api.NewSSEHandler`, the authority evidence
+  wrappers, `runtime.Pipeline.Advance` (tests drive `AdvanceEvery`).
+- Moved to test-support packages: `control/controltest.SetCostLimit`,
+  `spec/spectest` (event schema seeding), `contractsv1/contractstest`
+  (conformance frames, read from their pinned path on disk).
+- Kept: `episodes.CompileIntentCatalog`, because replay shadow mode (U21) calls
+  it from production code.

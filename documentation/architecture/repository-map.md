@@ -101,6 +101,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/executor/native/`, `internal/executor/remote/`, `internal/worker/` | in-process and out-of-process executors and the worker protocol (facade) |
 | `internal/worker/internal/domain/` | pure protocol constants, limits, handshake, request and stream validation, budget rule |
 | `internal/worker/internal/transport/` | reference worker gRPC server and the private Unix sockets |
+| `internal/contractsv1/contractstest/` | test support: loads the committed device-wire conformance frames |
 | `internal/spec/spectest/` | test support: registers a built-in event schema directly, as deployment does in production |
 | `internal/control/controltest/` | test support: writes one cost limit directly; production uses `control.ApplyCostCeilings` |
 | `internal/testsupport/executorconformance/` | test support: the semantic contract every episode executor must meet |

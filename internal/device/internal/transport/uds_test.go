@@ -19,7 +19,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 )
 
 // contractPeer is a minimal in-process device that speaks the device wire
@@ -30,7 +30,7 @@ import (
 func contractPeer(t *testing.T, conn net.Conn) {
 	t.Helper()
 	defer func() { _ = conn.Close() }()
-	if !writeContractFrame(t, conn, contractsv1.ConformanceValidFrame("state")) {
+	if !writeContractFrame(t, conn, contractstest.ValidFrame("state")) {
 		return
 	}
 	reader := bufio.NewReader(conn)
@@ -40,15 +40,15 @@ func contractPeer(t *testing.T, conn net.Conn) {
 			return
 		}
 		if isStateQuery(line) {
-			if !writeContractFrame(t, conn, contractsv1.ConformanceValidFrame("state")) {
+			if !writeContractFrame(t, conn, contractstest.ValidFrame("state")) {
 				return
 			}
 			continue
 		}
-		if !writeContractFrame(t, conn, contractsv1.ConformanceValidFrame("receipt")) {
+		if !writeContractFrame(t, conn, contractstest.ValidFrame("receipt")) {
 			return
 		}
-		if !writeContractFrame(t, conn, contractsv1.ConformanceValidFrame("result")) {
+		if !writeContractFrame(t, conn, contractstest.ValidFrame("result")) {
 			return
 		}
 	}
@@ -113,7 +113,7 @@ func TestUDSTransportSpeaksTheContract(t *testing.T) {
 	}
 
 	// Send a command, read its receipt.
-	command, err := wire.Encode(contractsv1.ConformanceValidFrame("command"))
+	command, err := wire.Encode(contractstest.ValidFrame("command"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -135,6 +135,7 @@ var allowedImports = map[string][]string{
 	"internal/sources":                            {"internal/sources/internal/domain", "internal/sources/internal/transport"},
 	"internal/cognition":                          {"internal/cognition/internal/app", "internal/cognition/internal/store", "internal/situations"},
 	"internal/contractsv1":                        {"internal/contractsv1/internal/domain"},
+	"internal/contractsv1/contractstest":          {},
 	"internal/contractsv1/internal/domain":        {"internal/canonicaljson"},
 	"internal/control/controltest":                {"internal/control/internal/app", "internal/control/internal/store"},
 	"internal/control":                            {"internal/actionport", "internal/control/internal/app", "internal/control/internal/domain", "internal/control/internal/store", "internal/interlock", "internal/storage"},
