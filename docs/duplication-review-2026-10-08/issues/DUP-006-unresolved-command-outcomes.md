@@ -49,7 +49,7 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Status: fixed. Commit: pending (reviewer commits).
+Status: fixed. Commit: 2179bfb.
 
 Verified (all claims held):
 - `actions/internal/domain/status.go` `UnresolvedCommandStatuses` = outcome_unknown, reconciling, manual_review: confirmed; used by the authority barrier (`CountUnresolvedOutcomes`).

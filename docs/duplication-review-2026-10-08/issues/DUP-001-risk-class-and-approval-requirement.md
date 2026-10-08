@@ -102,7 +102,7 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Status: fixed. Commit: pending (reviewer commits).
+Status: fixed. Commit: 2179bfb.
 
 Verified (every site re-read):
 - Confirmed: `policy` `RiskRoute`, the digest document in `CanonicalDocumentForVersion`, `SourceHealthIncomplete` and `approvableRisks` each spelled the R0..R4 table separately; nothing tied the digested document to the code that enforced it.

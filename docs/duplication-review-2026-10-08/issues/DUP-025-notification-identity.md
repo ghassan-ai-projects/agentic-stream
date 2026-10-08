@@ -33,7 +33,7 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Commit: pending (reviewer commits)
+Commit: 2179bfb
 
 Verified:
 - Two `approval.withdrawn` builders (policy `approvalWithdrawnEvent`, cognition `supersededWithdrawalEvent`) with the same id, subject, partition and payload shape: confirmed. Reason was an argument in policy and the literal `situation_version_conflict` in cognition (the policy caller also passes that literal). `At` differed (event time vs clock read), which is why a second append would conflict.
