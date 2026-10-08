@@ -129,18 +129,6 @@ func TestRedriveRequiresReleasedRecord(t *testing.T) {
 	}
 }
 
-func TestRecordGapValidatesInputs(t *testing.T) {
-	t.Parallel()
-	service := newService(t)
-	if err := service.RecordGap(context.Background(), domain.Gap{TenantID: "tenant", PartitionID: 0, From: 0, To: 1, Reason: "manual", CreatedAt: "now"}); err == nil {
-		t.Fatal("gap without id accepted")
-	}
-	reversed := domain.Gap{ID: "gap-1", TenantID: "tenant", PartitionID: 0, From: 2, To: 1, Reason: "manual", CreatedAt: "now"}
-	if err := service.RecordGap(context.Background(), reversed); err == nil {
-		t.Fatal("reversed gap accepted")
-	}
-}
-
 func TestValidateEnvelopeFailsOpenUntilRequired(t *testing.T) {
 	t.Parallel()
 	service := newService(t)

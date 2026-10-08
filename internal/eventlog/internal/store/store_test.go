@@ -144,9 +144,6 @@ func TestQuarantineLifecycleSQL(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.RecordGap(ctx, domain.Gap{ID: "gap-1", TenantID: "tenant", PartitionID: 0, From: 1, To: 2, Reason: "manual", CreatedAt: "now"}); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func quarantineThroughUnit(ctx context.Context, u *Unit, payload domain.QuarantinePayload) (bool, error) {

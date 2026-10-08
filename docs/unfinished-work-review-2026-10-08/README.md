@@ -136,7 +136,7 @@ as the change.
 | X07 | [Joined rehearsal: simulator, then bench](tasks/X07-joined-rehearsal.md) | Run the proof | P0 | M | X03–X06, U15 | todo |
 | U01 | [Reject unenforced intent policies](tasks/U01-reject-unenforced-intent-policies.md) | Fix | P0 | S | — | done |
 | U02 | [Delete counterfactual replay](tasks/U02-delete-counterfactual-replay.md) | Delete | P2 | S | — | done |
-| U03 | [Delete eventlog gap writer and map quarantine](tasks/U03-delete-eventlog-gap-writer-and-map-quarantine.md) | Delete | P2 | S | — | todo |
+| U03 | [Delete eventlog gap writer and map quarantine](tasks/U03-delete-eventlog-gap-writer-and-map-quarantine.md) | Delete | P2 | S | — | done |
 | U04 | [Delete engine per-partition run path](tasks/U04-delete-engine-partition-run-path.md) | Delete | P2 | S | — | todo |
 | U05 | [Delete native batch runner and artifact store](tasks/U05-delete-native-batch-runner-and-artifact-store.md) | Delete | P2 | S | — | todo |
 | U06 | [Move reference worker server to test support](tasks/U06-move-reference-worker-server-to-testsupport.md) | Move | P2 | M | — | todo |

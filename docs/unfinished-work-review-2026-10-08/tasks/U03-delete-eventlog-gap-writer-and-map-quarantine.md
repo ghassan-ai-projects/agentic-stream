@@ -1,6 +1,6 @@
 # U03 — Delete the eventlog gap writer and the map quarantine wrapper
 
-Status: todo · Decision: **delete** · Priority: P2 · Size: S
+Status: done · Decision: **delete** · Priority: P2 · Size: S
 
 ## Finding
 

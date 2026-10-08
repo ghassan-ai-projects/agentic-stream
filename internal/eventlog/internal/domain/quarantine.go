@@ -74,23 +74,3 @@ func ValidRelease(tenantID, eventID, now string) error {
 	}
 	return nil
 }
-
-// Gap is one durable discontinuity: an ordered position span in a partition,
-// with the reason it was recorded and the recording time.
-type Gap struct {
-	ID          string
-	TenantID    string
-	PartitionID int
-	From, To    int64
-	Reason      string
-	CreatedAt   string
-}
-
-// Valid requires a coherent gap interval: ordered positions, a partition and
-// a reason and time.
-func (g Gap) Valid() error {
-	if g.ID == "" || g.TenantID == "" || g.PartitionID < 0 || g.From < 0 || g.To < g.From || g.Reason == "" || g.CreatedAt == "" {
-		return fmt.Errorf("invalid event gap")
-	}
-	return nil
-}

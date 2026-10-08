@@ -70,14 +70,6 @@ func (s *Service) ReadEntityEvents(ctx context.Context, window domain.EntityWind
 	return s.store.ReadEntityEvents(ctx, window, visit) //nolint:wrapcheck // Store owns the query error context.
 }
 
-// RecordGap records a durable discontinuity. It never deletes evidence.
-func (s *Service) RecordGap(ctx context.Context, gap domain.Gap) error {
-	if err := gap.Valid(); err != nil {
-		return err
-	}
-	return s.store.RecordGap(ctx, gap) //nolint:wrapcheck // Store owns the insert error context.
-}
-
 // admit validates the envelope contract and, when required, the registered
 // event schema inside the open unit.
 func (s *Service) admit(ctx context.Context, u *store.Unit, tenantID string, env contractsv1.Envelope) error {

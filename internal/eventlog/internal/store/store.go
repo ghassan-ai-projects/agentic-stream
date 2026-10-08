@@ -49,11 +49,3 @@ func (s Store) CurrentPosition(ctx context.Context, tenantID string) (domain.Log
 	}
 	return domain.LogPosition(position), nil
 }
-
-// RecordGap inserts one durable gap record.
-func (s Store) RecordGap(ctx context.Context, gap domain.Gap) error {
-	if _, err := s.DB.ExecContext(ctx, `INSERT INTO event_gaps (gap_id, tenant_id, partition_id, from_position, to_position, reason_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, gap.ID, gap.TenantID, gap.PartitionID, gap.From, gap.To, gap.Reason, gap.CreatedAt); err != nil {
-		return fmt.Errorf("record event gap: %w", err)
-	}
-	return nil
-}
