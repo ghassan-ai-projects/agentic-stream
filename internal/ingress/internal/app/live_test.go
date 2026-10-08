@@ -39,12 +39,7 @@ func TestLiveUDSSourceQuarantinesMalformedLinesAndCountsValidLines(t *testing.T)
 		t.Fatalf("process malformed line: %v", err)
 	}
 
-	envelope := contractsv1.Envelope{
-		ID: "evt-live-1", Type: "motor.vibration.observed", SchemaVersion: "1.0", TenantID: "default",
-		Source: "gateway", PartitionKey: "motor-1", Entity: contractsv1.EntityRef{Type: "motor", ID: "motor-1"},
-		EventTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), IngestedAt: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
-		Classification: contractsv1.ClassificationInternal, Data: map[string]any{"rms_mm_s": 1.0},
-	}
+	envelope := liveEnvelope("evt-live-1")
 	line, err := json.Marshal(envelope)
 	if err != nil {
 		t.Fatal(err)
@@ -132,12 +127,7 @@ func TestLiveUDSSourceAcceptsReconnects(t *testing.T) {
 			t.Fatal(dialErr)
 		}
 		defer func() { _ = conn.Close() }()
-		env := contractsv1.Envelope{
-			ID: id, Type: "motor.vibration.observed", SchemaVersion: "1.0", TenantID: "default", Source: "gateway",
-			PartitionKey: "motor-1", Entity: contractsv1.EntityRef{Type: "motor", ID: "motor-1"},
-			EventTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), IngestedAt: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
-			Classification: contractsv1.ClassificationInternal, Data: map[string]any{"rms_mm_s": 1.0},
-		}
+		env := liveEnvelope(id)
 		line, marshalErr := json.Marshal(env)
 		if marshalErr != nil {
 			t.Fatal(marshalErr)
@@ -204,12 +194,7 @@ func TestLiveUDSSourcePropagatesSinkDeadlineWithActiveParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	envelope := contractsv1.Envelope{
-		ID: "evt-live-deadline", Type: "motor.vibration.observed", SchemaVersion: "1.0", TenantID: "default", Source: "gateway",
-		PartitionKey: "motor-1", Entity: contractsv1.EntityRef{Type: "motor", ID: "motor-1"},
-		EventTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), IngestedAt: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
-		Classification: contractsv1.ClassificationInternal, Data: map[string]any{"rms_mm_s": 1.0},
-	}
+	envelope := liveEnvelope("evt-live-deadline")
 	line, err := json.Marshal(envelope)
 	if err != nil {
 		t.Fatal(err)
@@ -226,6 +211,15 @@ func TestLiveUDSSourcePropagatesSinkDeadlineWithActiveParent(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("live source did not surface sink deadline")
+	}
+}
+
+func liveEnvelope(id string) contractsv1.Envelope {
+	return contractsv1.Envelope{
+		ID: id, Type: "motor.vibration.observed", SchemaVersion: "1.0", TenantID: "default", Source: "gateway",
+		PartitionKey: "motor-1", Entity: contractsv1.EntityRef{Type: "motor", ID: "motor-1"},
+		EventTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), IngestedAt: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
+		Classification: contractsv1.ClassificationInternal, Data: map[string]any{"rms_mm_s": 1.0},
 	}
 }
 

@@ -21,61 +21,13 @@ const testSpecDigest = "sha256:0000000000000000000000000000000000000000000000000
 func TestTriggerAdmittedWhenConditionTrue(t *testing.T) {
 	ctx := context.Background()
 	db := storagetest.OpenTemp(t)
-
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
-		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:          "high",
-					When:          "features.level > 10",
-					Score:         "situation.severity",
-					Threshold:     5,
-					Lane:          "fast",
-					MaterialDelta: "delta.phase_changed",
-				},
-			},
-		},
-	}
-
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
+	trigger := fastTrigger()
+	trigger.MaterialDelta = "delta.phase_changed"
+	eng := newSchedulingEngine(t, db, trigger, sources.Physical())
 
 	base := time.Now().UTC()
-	v := situations.Version{
-		SituationID:  "sit-1",
-		Version:      1,
-		Phase:        "candidate",
-		Severity:     10,
-		Confidence:   1.0,
-		Completeness: "provisional",
-		EventHorizon: base,
-		Watermark:    base,
-		Facts:        map[string]any{"facts.level": 15.0},
-	}
-
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v)
-	}); err != nil {
-		t.Fatalf("process: %v", err)
-	}
+	v := candidateVersion("sit-1", 1, base, 15.0)
+	processVersion(t, db, eng, v)
 
 	var outcome, lane string
 	if err := db.QueryRowContext(ctx,
@@ -95,63 +47,15 @@ func TestTriggerAdmittedWhenConditionTrue(t *testing.T) {
 func TestCapacityExhaustionDefers(t *testing.T) {
 	ctx := context.Background()
 	db := storagetest.OpenTemp(t)
-
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
-		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:      "high",
-					When:      "features.level > 10",
-					Score:     "situation.severity",
-					Threshold: 5,
-					Lane:      "fast",
-				},
-			},
-		},
-	}
-
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
+	eng := newSchedulingEngine(t, db, fastTrigger(), sources.Physical())
 
 	base := time.Now().UTC()
 	if err := fillPendingSchedulerItems(ctx, db, testSpecDigest, "default", 100, base); err != nil {
 		t.Fatalf("fill pending: %v", err)
 	}
 
-	v := situations.Version{
-		SituationID:  "sit-cap",
-		Version:      1,
-		Phase:        "candidate",
-		Severity:     10,
-		Confidence:   1.0,
-		Completeness: "provisional",
-		EventHorizon: base,
-		Watermark:    base,
-		Facts:        map[string]any{"facts.level": 15.0},
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v)
-	}); err != nil {
-		t.Fatalf("process: %v", err)
-	}
+	v := candidateVersion("sit-cap", 1, base, 15.0)
+	processVersion(t, db, eng, v)
 
 	var outcome string
 	if err := db.QueryRowContext(ctx,
@@ -177,79 +81,12 @@ func TestCapacityExhaustionDefers(t *testing.T) {
 func TestCoalescingPendingItem(t *testing.T) {
 	ctx := context.Background()
 	db := storagetest.OpenTemp(t)
-
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
-		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:      "high",
-					When:      "features.level > 10",
-					Score:     "situation.severity",
-					Threshold: 5,
-					Lane:      "fast",
-				},
-			},
-		},
-	}
-
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
+	eng := newSchedulingEngine(t, db, fastTrigger(), sources.Physical())
 
 	base := time.Now().UTC()
-	v1 := situations.Version{
-		SituationID:  "sit-1",
-		Version:      1,
-		Phase:        "candidate",
-		Severity:     10,
-		Confidence:   1.0,
-		Completeness: "provisional",
-		EventHorizon: base,
-		Watermark:    base,
-		Facts:        map[string]any{"facts.level": 15.0},
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v1, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v1)
-	}); err != nil {
-		t.Fatalf("process v1: %v", err)
-	}
-
-	v2 := situations.Version{
-		SituationID:  "sit-1",
-		Version:      2,
-		Phase:        "candidate",
-		Severity:     10,
-		Confidence:   1.0,
-		Completeness: "provisional",
-		EventHorizon: base.Add(time.Minute),
-		Watermark:    base.Add(time.Minute),
-		Facts:        map[string]any{"facts.level": 20.0},
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v2, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v2)
-	}); err != nil {
-		t.Fatalf("process v2: %v", err)
-	}
+	v1 := candidateVersion("sit-1", 1, base, 15.0)
+	processVersion(t, db, eng, v1)
+	processVersion(t, db, eng, candidateVersion("sit-1", 2, base.Add(time.Minute), 20.0))
 
 	var pending, coalesced int
 	if err := db.QueryRowContext(ctx, `
@@ -271,83 +108,18 @@ func TestCoalescingPendingItem(t *testing.T) {
 func TestDebounceAndCooldownTogether(t *testing.T) {
 	ctx := context.Background()
 	db := storagetest.OpenTemp(t)
-
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
-		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:      "high",
-					When:      "features.level > 10",
-					Score:     "situation.severity",
-					Threshold: 5,
-					Lane:      "fast",
-					Debounce:  "3m",
-					Cooldown:  "10m",
-				},
-			},
-		},
-	}
-
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
+	trigger := fastTrigger()
+	trigger.Debounce = "3m"
+	trigger.Cooldown = "10m"
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	clk := sources.NewVirtual(base)
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: clk})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
+	eng := newSchedulingEngine(t, db, trigger, clk)
 
-	v1 := situations.Version{
-		SituationID:  "sit-1",
-		Version:      1,
-		Phase:        "candidate",
-		Severity:     10,
-		Confidence:   1.0,
-		Completeness: "provisional",
-		EventHorizon: base,
-		Watermark:    base,
-		Facts:        map[string]any{"facts.level": 15.0},
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v1, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v1)
-	}); err != nil {
-		t.Fatalf("process v1: %v", err)
-	}
+	processVersion(t, db, eng, candidateVersion("sit-1", 1, base, 15.0))
 
 	clk.Advance(2 * time.Minute)
-	v2 := situations.Version{
-		SituationID:  "sit-1",
-		Version:      2,
-		Phase:        "candidate",
-		Severity:     10,
-		Confidence:   1.0,
-		Completeness: "provisional",
-		EventHorizon: base.Add(2 * time.Minute),
-		Watermark:    base.Add(2 * time.Minute),
-		Facts:        map[string]any{"facts.level": 20.0},
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v2, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v2)
-	}); err != nil {
-		t.Fatalf("process v2: %v", err)
-	}
+	v2 := candidateVersion("sit-1", 2, base.Add(2*time.Minute), 20.0)
+	processVersion(t, db, eng, v2)
 
 	var notBefore string
 	if err := db.QueryRowContext(ctx,
@@ -360,6 +132,68 @@ func TestDebounceAndCooldownTogether(t *testing.T) {
 	want := base.Add(10 * time.Minute).Format(time.RFC3339Nano)
 	if notBefore != want {
 		t.Fatalf("expected not_before %s, got %s", want, notBefore)
+	}
+}
+
+func fastTrigger() spec.Trigger {
+	return spec.Trigger{
+		Name:      "high",
+		When:      "features.level > 10",
+		Score:     "situation.severity",
+		Threshold: 5,
+		Lane:      "fast",
+	}
+}
+
+func newSchedulingEngine(t *testing.T, db *storage.DB, trigger spec.Trigger, clock sources.Clock) *cognition.Service {
+	t.Helper()
+	compiled := spec.CompiledSpec{
+		SchemaVersion: "agentic-stream/v1",
+		Digest:        testSpecDigest,
+		Situation: spec.Situation{
+			Type:         "test",
+			InitialPhase: "candidate",
+			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
+			Reducers: []spec.Reducer{
+				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
+			},
+		},
+		Cognition: spec.Cognition{Triggers: []spec.Trigger{trigger}},
+	}
+	if err := spec.SaveDeployment(t.Context(), db, "default", &compiled); err != nil {
+		t.Fatalf("save deployment: %v", err)
+	}
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: clock})
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+	return eng
+}
+
+func candidateVersion(situationID string, version int, at time.Time, level float64) situations.Version {
+	return situations.Version{
+		SituationID:  situationID,
+		Version:      version,
+		Phase:        "candidate",
+		Severity:     10,
+		Confidence:   1.0,
+		Completeness: "provisional",
+		EventHorizon: at,
+		Watermark:    at,
+		Facts:        map[string]any{"facts.level": level},
+	}
+}
+
+func processVersion(t *testing.T, db *storage.DB, eng *cognition.Service, v situations.Version) {
+	t.Helper()
+	ctx := t.Context()
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
+			return err
+		}
+		return eng.Process(ctx, tx, v)
+	}); err != nil {
+		t.Fatalf("process v%d: %v", v.Version, err)
 	}
 }
 

@@ -59,38 +59,34 @@ func (viewRecordedLedger) EntriesForReplay(_ context.Context, episodes []replay.
 	return entries, nil
 }
 
-type testShadowExecutor struct {
+type testExecutor struct {
 	calls       int
 	manifest    string
 	snapshots   [][]byte
 	mutateInput bool
 	summary     string
 }
+
+type (
+	testShadowExecutor   testExecutor
+	testBaselineExecutor testExecutor
+)
 
 func (e *testShadowExecutor) ExecuteShadow(_ context.Context, input replay.ShadowInput) (replay.ShadowOutput, error) {
-	e.calls++
-	e.snapshots = append(e.snapshots, append([]byte(nil), input.SnapshotJSON...))
-	if e.mutateInput && len(input.SnapshotJSON) > 0 {
-		input.SnapshotJSON[0] = ' '
-	}
-	return testShadowOutput(input, "tamoz-test-v1", e.manifest, e.summary)
-}
-
-type testBaselineExecutor struct {
-	calls       int
-	manifest    string
-	snapshots   [][]byte
-	mutateInput bool
-	summary     string
+	return (*testExecutor)(e).execute(input, "tamoz-test-v1")
 }
 
 func (e *testBaselineExecutor) ExecuteBaseline(_ context.Context, input replay.ShadowInput) (replay.ShadowOutput, error) {
+	return (*testExecutor)(e).execute(input, "baseline-test-v1")
+}
+
+func (e *testExecutor) execute(input replay.ShadowInput, executorVersion string) (replay.ShadowOutput, error) {
 	e.calls++
 	e.snapshots = append(e.snapshots, append([]byte(nil), input.SnapshotJSON...))
 	if e.mutateInput && len(input.SnapshotJSON) > 0 {
 		input.SnapshotJSON[0] = ' '
 	}
-	return testShadowOutput(input, "baseline-test-v1", e.manifest, e.summary)
+	return testShadowOutput(input, executorVersion, e.manifest, e.summary)
 }
 
 func testShadowOutput(input replay.ShadowInput, executorVersion, configuredManifest, summary string) (replay.ShadowOutput, error) {

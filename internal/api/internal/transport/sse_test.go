@@ -26,18 +26,7 @@ func TestSSEStreamsDurableEventsAndResumesFromLastEventID(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	for i, id := range []string{"evt-1", "evt-2"} {
-		event := sseTestEvent(id, now.Add(time.Duration(i)*time.Second))
-		if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-			_, err := notify.Append(ctx, tx, event, now)
-			if err != nil {
-				return fmt.Errorf("append event: %w", err)
-			}
-			return nil
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
+	appendSSEEvents(t, db, now, "evt-1", "evt-2")
 	handler := transport.NewSSEHandler(transport.SSEConfig{DB: db, TenantID: "tenant", PollInterval: time.Millisecond, IdleInterval: time.Hour, Now: func() time.Time { return now }})
 	body := serveUntilCanceled(t, handler, "/v1/events", "")
 	if !strings.Contains(body, "id: 1\nevent: situation.version.published") || !strings.Contains(body, `"id":"evt-1"`) {
@@ -58,16 +47,7 @@ func TestSSEExpiredCursorForcesAuditedResnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	event := sseTestEvent("evt-1", now)
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		_, err := notify.Append(ctx, tx, event, now)
-		if err != nil {
-			return fmt.Errorf("append event: %w", err)
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
+	appendSSEEvents(t, db, now, "evt-1")
 	prunedAt := now.Add(8*24*time.Hour + time.Second)
 	outbox, err := notify.New(db)
 	if err != nil {
@@ -98,18 +78,7 @@ func TestSSEDisconnectsSlowSubscriber(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	for i, id := range []string{"evt-1", "evt-2"} {
-		event := sseTestEvent(id, now.Add(time.Duration(i)*time.Second))
-		if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-			_, err := notify.Append(ctx, tx, event, now)
-			if err != nil {
-				return fmt.Errorf("append event: %w", err)
-			}
-			return nil
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
+	appendSSEEvents(t, db, now, "evt-1", "evt-2")
 	handler := transport.NewSSEHandler(transport.SSEConfig{DB: db, TenantID: "tenant", MaxLag: 1, Now: func() time.Time { return now }})
 	request := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/events", nil)
 	response := httptest.NewRecorder()
@@ -165,6 +134,23 @@ func (w *cancelOnFlushWriter) Flush() {
 	w.flushes++
 	if w.flushes >= 2 {
 		w.cancel()
+	}
+}
+
+func appendSSEEvents(t *testing.T, db *storage.DB, now time.Time, ids ...string) {
+	t.Helper()
+	ctx := t.Context()
+	for i, id := range ids {
+		event := sseTestEvent(id, now.Add(time.Duration(i)*time.Second))
+		if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+			_, err := notify.Append(ctx, tx, event, now)
+			if err != nil {
+				return fmt.Errorf("append event: %w", err)
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

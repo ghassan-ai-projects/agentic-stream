@@ -35,22 +35,7 @@ func TestEngineAdvancesCheckpoint(t *testing.T) {
 		t.Fatalf("new engine: %v", err)
 	}
 
-	env := contractsv1.Envelope{
-		ID:             "evt-1",
-		Type:           "motor.vibration.observed",
-		SchemaVersion:  "1.0",
-		TenantID:       "default",
-		Source:         "simulator",
-		PartitionKey:   "motor-17",
-		Entity:         contractsv1.EntityRef{Type: "motor", ID: "motor-17"},
-		EventTime:      time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		IngestedAt:     time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
-		Classification: contractsv1.ClassificationInternal,
-		Data:           map[string]any{"rms_mm_s": 5.0},
-	}
-	if _, err := log.Append(ctx, "default", []contractsv1.Envelope{env}); err != nil {
-		t.Fatalf("append event: %v", err)
-	}
+	appendObservedEvent(t, log, "motor.vibration.observed", "simulator", contractsv1.EntityRef{Type: "motor", ID: "motor-17"}, map[string]any{"rms_mm_s": 5.0})
 
 	processed, err := eng.RunGlobal(ctx, nil)
 	if err != nil {

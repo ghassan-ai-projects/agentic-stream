@@ -3,7 +3,6 @@ package app_test
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -62,22 +61,7 @@ func TestEngineCreatesTriggerAndSchedulerItem(t *testing.T) {
 		t.Fatalf("new engine: %v", err)
 	}
 
-	env := contractsv1.Envelope{
-		ID:             "evt-1",
-		Type:           "test.observed",
-		SchemaVersion:  "1.0",
-		TenantID:       "default",
-		Source:         "sim",
-		PartitionKey:   "ent-1",
-		Entity:         contractsv1.EntityRef{Type: "thing", ID: "ent-1"},
-		EventTime:      time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		IngestedAt:     time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
-		Classification: contractsv1.ClassificationInternal,
-		Data:           map[string]any{"level": 15.0},
-	}
-	if _, err := log.Append(ctx, "default", []contractsv1.Envelope{env}); err != nil {
-		t.Fatalf("append event: %v", err)
-	}
+	appendObservedEvent(t, log, "test.observed", "sim", contractsv1.EntityRef{Type: "thing", ID: "ent-1"}, map[string]any{"level": 15.0})
 
 	if _, err := eng.RunGlobal(ctx, nil); err != nil {
 		t.Fatalf("run engine: %v", err)

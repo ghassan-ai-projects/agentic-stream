@@ -41,14 +41,7 @@ func TestAdmitPendingStampsTheOwnerEpoch(t *testing.T) {
 
 func TestAdmitPendingQuarantinesFixtureOnProductionRoute(t *testing.T) {
 	t.Parallel()
-	db, admitter := pendingItem(t, scenario{executor: "fixture"})
-	admitted, err := admitter.AdmitPending(t.Context())
-	if err != nil || admitted != 0 {
-		t.Fatalf("AdmitPending = %d, %v; want a quarantined item and no error", admitted, err)
-	}
-	if status := itemStatus(t, db); status != "coalesced" {
-		t.Fatalf("scheduler item status = %q, want coalesced", status)
-	}
+	assertNoAdmission(t, scenario{executor: "fixture"}, "coalesced", "a quarantined item and no error")
 }
 
 func TestAdmitPendingAdmitsFixtureInDemoMode(t *testing.T) {
@@ -61,23 +54,22 @@ func TestAdmitPendingAdmitsFixtureInDemoMode(t *testing.T) {
 
 func TestAdmitPendingStopsWhileTheEpochDrains(t *testing.T) {
 	t.Parallel()
-	db, admitter := pendingItem(t, scenario{executor: "native", drain: true})
-	if admitted, err := admitter.AdmitPending(t.Context()); err != nil || admitted != 0 {
-		t.Fatalf("AdmitPending = %d, %v; want no admission while draining", admitted, err)
-	}
-	if status := itemStatus(t, db); status != "pending" {
-		t.Fatalf("scheduler item status = %q, want pending", status)
-	}
+	assertNoAdmission(t, scenario{executor: "native", drain: true}, "pending", "no admission while draining")
 }
 
 func TestAdmitPendingSkipsCostRejectedItems(t *testing.T) {
 	t.Parallel()
-	db, admitter := pendingItem(t, scenario{executor: "native", costKill: true})
+	assertNoAdmission(t, scenario{executor: "native", costKill: true}, "coalesced", "a cost-rejected skip")
+}
+
+func assertNoAdmission(t *testing.T, given scenario, wantStatus, wantOutcome string) {
+	t.Helper()
+	db, admitter := pendingItem(t, given)
 	if admitted, err := admitter.AdmitPending(t.Context()); err != nil || admitted != 0 {
-		t.Fatalf("AdmitPending = %d, %v; want a cost-rejected skip", admitted, err)
+		t.Fatalf("AdmitPending = %d, %v; want %s", admitted, err, wantOutcome)
 	}
-	if status := itemStatus(t, db); status != "coalesced" {
-		t.Fatalf("scheduler item status = %q, want coalesced", status)
+	if status := itemStatus(t, db); status != wantStatus {
+		t.Fatalf("scheduler item status = %q, want %s", status, wantStatus)
 	}
 }
 

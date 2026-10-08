@@ -55,12 +55,8 @@ func TestAppendRejectsUnknownAndWrongTypedPayloadsAgainstDurableSchema(t *testin
 
 	registerTemperatureSchema(t, db)
 	log := eventlog.NewEventLog(db).RequireSchemaValidation()
-	env := contractsv1.Envelope{
-		ID: "evt-invalid", Type: "sensor.temperature", SchemaVersion: "1.0", TenantID: "default", Source: "test",
-		PartitionKey: "motor-17", Entity: contractsv1.EntityRef{Type: "motor", ID: "motor-17"},
-		EventTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), IngestedAt: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
-		Classification: contractsv1.ClassificationInternal, Data: map[string]any{"value": "hot", "unexpected": true},
-	}
+	env := boundaryEnvelope("evt-invalid", "default")
+	env.Data = map[string]any{"value": "hot", "unexpected": true}
 	if _, err := log.Append(ctx, "default", []contractsv1.Envelope{env}); err == nil {
 		t.Fatal("expected durable schema rejection")
 	}
@@ -134,12 +130,8 @@ func TestReleasedQuarantineCanBeValidatedAndRedrivenOnce(t *testing.T) {
 
 	registerTemperatureSchema(t, db)
 	log := eventlog.NewEventLog(db).RequireSchemaValidation()
-	env := contractsv1.Envelope{
-		ID: "evt-redrive", Type: "sensor.temperature", SchemaVersion: "1.0", TenantID: "default", Source: "test",
-		PartitionKey: "motor-17", Entity: contractsv1.EntityRef{Type: "motor", ID: "motor-17"},
-		EventTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), IngestedAt: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
-		Classification: contractsv1.ClassificationInternal, Data: map[string]any{"value": 42.0},
-	}
+	env := boundaryEnvelope("evt-redrive", "default")
+	env.Data = map[string]any{"value": 42.0}
 	if err := log.QuarantineEnvelope(ctx, "default", env, "operator_hold", "2026-08-12T12:00:00Z"); err != nil {
 		t.Fatal(err)
 	}

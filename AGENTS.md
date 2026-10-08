@@ -266,10 +266,11 @@ review checklist (Q8) has stopped finding duplicates.
    private types that only look alike (each module's opaque `Join`, each
    module's `Tx`) are not duplicates; helpers with the same body are.
 
-Fix with the refactoring tools above, then run `make lint`. Test files are
-outside the `dupl` gate, but repeated test setup still moves into a helper.
+Fix with the refactoring tools above, then run `make lint`. The `dupl` gate
+covers test files too; repeated test setup moves into a helper
+(`storagetest.OpenTemp` opens a migrated temporary database).
 
-Known duplication to burn down: clones in test files; at threshold 60 the
+Known duplication to burn down: at threshold 60 the
 `dupl` pairs `principals`/`notifications` (operator command constructors),
 `scanCommandView`/`scanAwaitingCommand` (`actions` store) and `LoadSchedulerItem`/
 `LoadEvaluation` (`episodes` store) are structural twins that a shared helper
