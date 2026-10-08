@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -394,22 +395,7 @@ func openPolicyFixture(t *testing.T, risk string, currentVersion, intentVersion 
 		intentVersion, "2026-08-12T00:00:00Z", "2026-08-12T00:00:00Z", []byte(`{"phase":"watch"}`), snapshotSHA, "2026-08-12T00:00:00Z"); err != nil {
 		t.Fatalf("insert policy situation version: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO roles (role_id, role_name) VALUES ('role-approver', 'approver')`); err != nil {
-		t.Fatalf("insert approval role: %v", err)
-	}
-	publicKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)).Public().(ed25519.PublicKey)
-	if _, err := db.ExecContext(ctx, `INSERT INTO principals (principal_id, tenant_id, status, created_at, public_key) VALUES ('operator-1', 'tenant', 'active', '2026-08-12T00:00:00Z', ?)`, []byte(publicKey)); err != nil {
-		t.Fatalf("insert approver principal: %v", err)
-	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO principals (principal_id, tenant_id, status, created_at) VALUES ('relay-1', 'tenant', 'active', '2026-08-12T00:00:00Z')`); err != nil {
-		t.Fatalf("insert relay principal: %v", err)
-	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO principal_roles (principal_id, role_id) VALUES ('operator-1', 'role-approver')`); err != nil {
-		t.Fatalf("bind approval role: %v", err)
-	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO approval_authorities (tenant_id, entity_id, risk_class, role_id) VALUES ('tenant', 'motor-1', 'R2', 'role-approver')`); err != nil {
-		t.Fatalf("insert approval authority: %v", err)
-	}
+	provisionFixtureGovernance(t, db)
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO episodes (
 			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
@@ -448,5 +434,36 @@ func setMaterialVersion(t *testing.T, db *storage.DB, version int) {
 	t.Helper()
 	if _, err := db.ExecContext(t.Context(), "UPDATE situations SET last_material_version = ? WHERE situation_id = 'sit-policy'", version); err != nil {
 		t.Fatalf("set material version: %v", err)
+	}
+}
+
+// provisionFixtureGovernance registers the relay, the approver with its
+// Ed25519 key and the approver's R2 authority on motor-1 through the
+// provisioning use case operators run (`principals apply`).
+func provisionFixtureGovernance(t *testing.T, db *storage.DB) {
+	t.Helper()
+	publicKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	document, err := policy.ParsePrincipals([]byte(`tenant: tenant
+principals:
+  - id: operator-1
+    public_key: ` + base64.StdEncoding.EncodeToString(publicKey) + `
+  - id: relay-1
+roles:
+  - id: role-approver
+    name: approver
+    members: [operator-1]
+    authorities:
+      - entity: motor-1
+        risks: [R2]
+`))
+	if err != nil {
+		t.Fatalf("parse fixture governance: %v", err)
+	}
+	fence := policy.Ownership{Check: func(context.Context, *sql.Tx, string) error { return nil }, Epoch: "fixture"}
+	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
+		_, err := policy.ApplyPrincipals(t.Context(), tx, fence, document, time.Date(2026, 8, 12, 0, 0, 0, 0, time.UTC))
+		return err
+	}); err != nil {
+		t.Fatalf("provision fixture governance: %v", err)
 	}
 }

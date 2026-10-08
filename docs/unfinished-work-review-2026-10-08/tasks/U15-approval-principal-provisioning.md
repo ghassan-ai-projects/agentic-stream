@@ -1,6 +1,6 @@
 # U15 — Approval principal provisioning
 
-Status: todo · Decision: **complete** · Priority: P1 · Size: M · Depends on: U13
+Status: done · Decision: **complete** · Priority: P1 · Size: M · Depends on: U13
 
 ## Finding
 
@@ -49,3 +49,11 @@ facade operation.
 - The HTTP reference replaces "must be provisioned by the deployment" with the
   command, and the file format is documented with an example under
   `examples/`.
+
+## Result
+
+`policy.ApplyPrincipals` (domain document and validation, store SQL, app fence)
+and `agentic-stream principals apply|show`. The policy approval tests now
+provision their relay, approver and authority through it, so the signed
+approval, denial, authority and rollback tests all run on data provisioned the
+way an operator does.

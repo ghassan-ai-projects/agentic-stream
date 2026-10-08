@@ -123,6 +123,17 @@ effect. `trip` blocks every effect and needs no lease; `clear` reopens the
 action plane and needs the lease. Each change is versioned and records its
 reason and time. It does not replace a physical e-stop.
 
+### `principals apply --file <principals.yaml> [--dry-run] | show`
+
+Provisions the approval governance the `/v1/approvals` flow checks: relays,
+approvers with their Ed25519 public keys, roles, role membership, and which
+entity and risk (R0–R2) each role may approve. `apply` makes the tenant's
+governance match the document in one transaction under the runtime owner
+lease: principals the document omits are disabled, never deleted, so past
+approvals keep their signers; memberships and authorities are replaced.
+`--dry-run` reports the result and changes nothing. Unknown fields, repeated
+ids, members without a key and R3/R4 authorities are refused.
+
 ## `config effective`
 
 Registered as a placeholder. It currently prints `config effective: not yet

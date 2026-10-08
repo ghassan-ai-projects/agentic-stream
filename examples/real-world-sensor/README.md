@@ -24,6 +24,17 @@ agentic-stream validate examples/real-world-sensor/zone-thermal-bench.situation.
 `policy_digest` is the value the bench gateway allow-lists
 (`arduino_gateway.py --device-policy-digest`).
 
+## Approval governance
+
+The fan intent (`select_thermal_mode`, R2) needs a signed human approval.
+Provision the relay, the approver and their authority before starting `serve`
+with [`principals.example.yaml`](principals.example.yaml) (replace the test
+key):
+
+```bash
+agentic-stream principals apply --db runtime.db --file principals.yaml
+```
+
 ## What CI pins
 
 | Pin | Test |

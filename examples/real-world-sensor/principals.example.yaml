@@ -1,0 +1,24 @@
+# Approval governance for the real-world-sensor bench. Apply with the runtime
+# stopped:
+#
+#   agentic-stream principals apply --db runtime.db --file principals.yaml
+#
+# Replace the public key with your approver's Ed25519 public key (standard
+# base64). The key below is a well-known test key and must not be used for a
+# real approval.
+tenant: default
+principals:
+  # The relay forwards signed approvals (Tamoz's approval relay); it needs no
+  # key. Its id is AGENTIC_STREAM_APPROVAL_RELAY for `serve`.
+  - id: tamoz-relay
+  # The human who signs approvals for the fan.
+  - id: bench-operator
+    public_key: O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik=
+roles:
+  - id: thermal-bench-approver
+    name: Thermal bench approver
+    members: [bench-operator]
+    authorities:
+      # select_thermal_mode is R2: a human approval is required for the fan.
+      - entity: zone-01
+        risks: [R2]
