@@ -1,6 +1,6 @@
 # U01 — Reject unenforced intent policies
 
-Status: todo · Decision: **fix (reject at compile)** · Priority: P0 · Size: S
+Status: done · Decision: **fix (reject at compile)** · Priority: P0 · Size: S
 
 ## Finding
 

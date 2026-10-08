@@ -669,7 +669,7 @@
           "maxLength": 512
         },
         "policy": {
-          "enum": ["automatic", "approval", "deny", "simulate"],
+          "enum": ["automatic", "approval"],
           "default": "approval"
         },
         "rateLimitPerHour": {

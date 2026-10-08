@@ -60,9 +60,9 @@ readiness](../../docs/design/OPERATIONS_READINESS.md).
 
 ### Some spec controls are not runtime controls yet
 
-The schema accepts action policy values such as `automatic`, `approval`,
-`deny`, and `simulate`, but the current catalog/runtime path does not provide
-complete, separately enforced behavior for all four values. Data retention
+An intent's `policy` is `automatic` or `approval`; both are enforced, and
+`automatic` never relaxes the risk route (R2 always needs approval, R3 and R4
+are denied). An intent that must never run is simply not declared. Data retention
 is an operational release concern and the SituationSpec intentionally does not
 expose a retention or telemetry control until the runtime can enforce it.
 

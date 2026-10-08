@@ -67,10 +67,10 @@ definitions it used.
 - Cognition declares triggers, thresholds, lanes, executor identity, and hard
   budgets.
 - Actions declare the allowed Intent vocabulary, risk, parameter schema, and
-  policy mode. The schema accepts `automatic`, `approval`, `deny`, and
-  `simulate`; current runtime enforcement is not complete for every value, so
-  treat the non-approval modes as a documented gap until dedicated tests close
-  it.
+  policy mode: `automatic` or `approval` (the default). `automatic` never
+  relaxes the risk route: R2 always needs approval and R3/R4 are denied. An
+  Intent that must never run is not declared at all; undeclared types are
+  refused by Decision validation.
 
 ## Next reads
 

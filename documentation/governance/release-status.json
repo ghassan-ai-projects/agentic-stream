@@ -22,7 +22,6 @@
     "external effector integrations",
     "continuous JSONL serving operations",
     "remote worker deployment",
-    "complete Intent policy-mode enforcement",
     "runtime enforcement for spec retention/telemetry controls",
     "packaged operator inspection, approval, reconciliation, and redrive tooling",
     "physical device qualification and hardware-in-the-loop evidence"
