@@ -2,8 +2,6 @@ package domain
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"sync"
 
@@ -37,33 +35,4 @@ func (p *DeterministicProvider) Stream(_ context.Context, req ModelRequest) (Mod
 		return ModelResponse{}, fmt.Errorf("marshal deterministic decision: %w", err)
 	}
 	return ModelResponse{DecisionJSON: raw, Usage: Usage{InputTokens: uint64(len(req.Prompt) + len(req.Objective)), OutputTokens: uint64(len(raw))}, UsageReported: true, FinishReason: "stop"}, nil
-}
-
-// MemoryArtifactStore is a bounded test/reference artifact store.
-type MemoryArtifactStore struct {
-	mu    sync.Mutex
-	items map[string][]byte
-}
-
-// NewMemoryArtifactStore creates an in-memory artifact store.
-func NewMemoryArtifactStore() *MemoryArtifactStore {
-	return &MemoryArtifactStore{items: make(map[string][]byte)}
-}
-
-// Put stores bytes under their content digest.
-func (s *MemoryArtifactStore) Put(_ context.Context, data []byte) (ArtifactRef, error) {
-	digest := sha256.Sum256(data)
-	id := "artifact-" + hex.EncodeToString(digest[:])
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.items[id] = append([]byte(nil), data...)
-	return ArtifactRef{ID: id, MediaType: "application/json", SizeBytes: uint64(len(data)), SHA256: canonicaljson.EncodeDigest(digest[:])}, nil
-}
-
-// Get returns a copy of an in-memory artifact.
-func (s *MemoryArtifactStore) Get(id string) ([]byte, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	data, ok := s.items[id]
-	return append([]byte(nil), data...), ok
 }

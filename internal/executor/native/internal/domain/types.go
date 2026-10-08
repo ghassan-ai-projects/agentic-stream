@@ -92,27 +92,13 @@ type ToolResult struct {
 	Bytes uint64
 }
 
-// Observation is the durable-safe projection sent to the provider. Artifact
-// observations contain only metadata, never an unbounded result body.
+// Observation is the durable-safe projection sent to the provider. A result
+// over the episode's tool-result budget fails the attempt; it is never stored
+// elsewhere and referenced, which would let an episode read past its budget.
 type Observation struct {
 	CallID     string
 	ToolName   string
 	ResultJSON []byte
-	Artifact   *ArtifactRef
 	ErrorCode  string
 	Bytes      uint64
-}
-
-// ArtifactRef identifies a bounded externalized tool result.
-type ArtifactRef struct {
-	ID        string `json:"id"`
-	MediaType string `json:"media_type"`
-	SizeBytes uint64 `json:"size_bytes"`
-	SHA256    string `json:"sha256"`
-}
-
-// ArtifactStore receives oversized tool results. A production implementation
-// should back this interface with the runtime artifact repository.
-type ArtifactStore interface {
-	Put(context.Context, []byte) (ArtifactRef, error)
 }

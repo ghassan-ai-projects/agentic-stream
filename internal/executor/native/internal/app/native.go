@@ -15,17 +15,15 @@ import (
 // loop. Episode resource ceilings come from each trusted Request. Structured
 // output repair is always limited to one attempt.
 type Config struct {
-	Provider      domain.ModelProvider
-	Tools         []domain.Tool
-	ArtifactStore domain.ArtifactStore
-	ToolFactory   func(*episodes.Request) []domain.Tool
+	Provider    domain.ModelProvider
+	Tools       []domain.Tool
+	ToolFactory func(*episodes.Request) []domain.Tool
 }
 
 // Executor is a bounded native Go episode executor.
 type Executor struct {
 	provider    domain.ModelProvider
 	tools       map[string]domain.Tool
-	artifacts   domain.ArtifactStore
 	maxRepair   uint32
 	toolFactory func(*episodes.Request) []domain.Tool
 }
@@ -48,7 +46,7 @@ func New(cfg Config) (*Executor, error) {
 		}
 		tools[tool.Name()] = tool
 	}
-	return &Executor{provider: cfg.Provider, tools: tools, artifacts: cfg.ArtifactStore, maxRepair: 1, toolFactory: cfg.ToolFactory}, nil
+	return &Executor{provider: cfg.Provider, tools: tools, maxRepair: 1, toolFactory: cfg.ToolFactory}, nil
 }
 
 // Execute runs the provider/read-tool loop and returns a typed attempt
@@ -111,14 +109,7 @@ func (e *Executor) observe(ctx context.Context, call domain.ToolCall, result dom
 
 func (e *Executor) observationForResult(ctx context.Context, call domain.ToolCall, data []byte, bytesRead uint64, budget domain.Budget) (domain.Observation, error) {
 	if budget.ToolResultBytes > 0 && bytesRead > budget.ToolResultBytes {
-		if e.artifacts == nil {
-			return domain.Observation{}, fmt.Errorf("tool_result_oversized:%s", call.Name)
-		}
-		ref, err := e.artifacts.Put(ctx, data)
-		if err != nil {
-			return domain.Observation{}, fmt.Errorf("store_tool_artifact:%w", err)
-		}
-		return domain.Observation{CallID: call.ID, ToolName: call.Name, Artifact: &ref, Bytes: bytesRead}, nil
+		return domain.Observation{}, fmt.Errorf("tool_result_oversized:%s", call.Name)
 	}
 	return domain.Observation{CallID: call.ID, ToolName: call.Name, ResultJSON: append([]byte(nil), data...), Bytes: bytesRead}, nil
 }

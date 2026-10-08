@@ -86,14 +86,6 @@ func TestDeterministicProviderAndMemoryStore(t *testing.T) {
 	if err != nil || len(second.DecisionJSON) == 0 || !second.UsageReported || provider.Name() != "deterministic" {
 		t.Fatalf("default = %+v err %v", second, err)
 	}
-	store := NewMemoryArtifactStore()
-	ref, err := store.Put(t.Context(), []byte("data"))
-	if err != nil || ref.SizeBytes != 4 {
-		t.Fatalf("ref %+v err %v", ref, err)
-	}
-	if got, ok := store.Get(ref.ID); !ok || string(got) != "data" {
-		t.Fatalf("get = %q %v", got, ok)
-	}
 }
 
 func TestRetryableErrorUnwrapsItsCause(t *testing.T) {

@@ -1,6 +1,6 @@
 # U05 — Delete the native batch runner and the artifact store port
 
-Status: todo · Decision: **delete** · Priority: P2 · Size: S
+Status: done · Decision: **delete** · Priority: P2 · Size: S
 
 ## Finding
 

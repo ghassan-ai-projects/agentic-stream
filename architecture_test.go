@@ -167,7 +167,7 @@ var allowedImports = map[string][]string{
 	"internal/evidence/internal/domain":           {"internal/contractsv1"},
 	"internal/evidence/internal/wire":             {"internal/evidence/internal/domain", "proto/agenticstream/runtime/v1"},
 	"internal/testsupport/executorconformance":    {"internal/canonicaljson", "internal/episodeledger", "internal/episodes", "internal/spec"},
-	"internal/executor/native":                    {"internal/episodes", "internal/executor/native/internal/app", "internal/executor/native/internal/domain", "internal/executor/native/internal/store", "internal/executor/native/internal/transport", "internal/storage"},
+	"internal/executor/native":                    {"internal/executor/native/internal/app", "internal/executor/native/internal/domain", "internal/executor/native/internal/store", "internal/executor/native/internal/transport", "internal/storage"},
 	"internal/executor/native/internal/app":       {"internal/canonicaljson", "internal/episodeledger", "internal/episodes", "internal/executor/native/internal/domain"},
 	"internal/executor/native/internal/domain":    {"internal/canonicaljson", "internal/episodeledger", "internal/episodes"},
 	"internal/executor/native/internal/transport": {"internal/executor/native/internal/domain"},
