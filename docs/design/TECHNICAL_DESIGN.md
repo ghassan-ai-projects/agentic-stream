@@ -722,7 +722,13 @@ On supersession:
 
 Compatible newer versions may permit Decision revalidation against a bounded
 delta. Version 1 defaults to rejection unless compatibility is explicitly
-declared.
+declared. A trigger's materialDelta is that declaration (ADR-018): a newer
+version is compatible unless some trigger's materialDelta holds for it, it ends
+the occurrence, or a trigger declares no materialDelta. Cognition records the
+latest material version with each published version.
+
+Live episodes execute beside ingestion, one attempt at a time, so new evidence,
+timers and supersession keep advancing while a worker reasons (ADR-018).
 
 ## 12. Episode runtime
 
@@ -841,7 +847,8 @@ Every Intent passes this fail-closed ordered pipeline:
 1. Verify Decision acceptance and signature/hash.
 2. Validate Intent schema and target.
 3. Verify executor capability allowed this Intent type.
-4. Reload current Situation and compare version/freshness.
+4. Reload current Situation and refuse the intent if a material version newer
+   than the intent's exists (§11.5, ADR-018).
 5. Evaluate explicit preconditions.
 6. Resolve risk class.
 7. Apply tenant, entity, and action rate/cost limits.

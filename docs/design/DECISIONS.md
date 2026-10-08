@@ -436,3 +436,63 @@ dispatcher package also owned derived-trigger watches, which the ingest loop
 fired, so the first pipeline stage called the last. Watches move to
 `internal/watch` and the simulated effector to `device`; `actions` keeps
 governed dispatch only. Behavior, transactions and durable records are unchanged.
+
+## ADR-018: Live episodes run beside ingestion; intents stay fresh until a material change
+
+**Status.** Accepted 2026-10-08 by the owner, from the real-world-sensor
+closed-loop review (`docs/unfinished-work-review-2026-10-08/EXPERIMENT_DESIGN.md`,
+gaps G2, G8, G9). Refines §11.4, §11.5 and §13.1 of the technical design. No
+worker protocol, schema, policy-document or digest change.
+
+**Context.** Three defects made the live closed loop work only on a paused
+feed, as the X01 end-to-end tests in `cmd/agentic-stream` showed:
+
+1. The live socket pipeline advanced only when an event arrived, so due
+   cognition, approved commands and silence timers waited for the next event
+   (fixed by advancing on `--poll-interval`, task X08).
+2. The pipeline executed admitted episodes synchronously inside the ingest
+   batch. While a worker reasoned, nothing was ingested, no timer fired and no
+   version was published, so §11.4's overload order (preserve ingress and
+   deterministic state first) and §11.5's cancellation of a running episode on
+   a material supersession could not happen live.
+3. Policy evaluation, approval resolution and dispatch authorization required
+   the Situation's current version to equal the intent's version. The engine
+   publishes a version on every lifecycle or completeness change, and with
+   every source reporting, each window slide publishes a `provisional` and an
+   `on_time` version without any material change. Any intent awaiting an
+   episode, a human approval or the outbox crossed such a slide and was
+   refused as stale.
+
+**Decision.**
+
+- *Live episodes run beside ingestion.* `serve` executes admitted episodes on
+  their own loop, one attempt at a time (the global worker permit), outside the
+  serialized batch. The batch keeps every deterministic stage (engine, timers,
+  cognition, admission, policy, dispatch) serial. The existing supersession
+  watch cancels a running attempt when cognition supersedes its episode, and
+  episode fencing rejects any late Decision. Batch commands (`run-live`,
+  polling `--trace`) and replay keep executing episodes inline.
+- *Freshness is material.* A version is material when the materialDelta of any
+  trigger holds for it against the previously evaluated version, evaluated
+  whether or not the trigger's `when` holds. A trigger without materialDelta,
+  a first version and a terminal phase are always material, and so is a
+  materialDelta that fails to evaluate. Cognition records the latest material
+  version per Situation (`situations.last_material_version`) in the
+  transaction that publishes the version. Policy evaluation, approval
+  resolution and dispatch authorization refuse an intent as stale when a
+  material version newer than its own exists, instead of when any newer
+  version exists. This is the explicit compatibility declaration §11.5 allows
+  ("Version 1 defaults to rejection unless compatibility is explicitly
+  declared"); the spec author declares it per trigger through materialDelta.
+
+**Consequences.** Invariant 7 holds: every intent is still revalidated
+immediately before dispatch against durable current state, which now includes
+cognition's recorded materiality, plus source health, expiry, approval,
+interlock, rate limit, owner epoch and device authority. Invariant 4 holds: the
+episode loop changes only the episode, attempt, decision and intent ledgers,
+never stream state. Reason codes are unchanged (`situation_version_stale`).
+The policy document is unchanged, so the policy digest gateways allow-list
+does not change. A spec whose triggers declare no materialDelta keeps the
+strict behavior. The guard is
+`cmd/agentic-stream/experiment_live_feed_test.go`: a continuous four-source
+feed with a slow worker must still close the loop.
