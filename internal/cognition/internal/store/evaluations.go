@@ -99,24 +99,22 @@ func evaluationEvent(eval domain.Evaluation, tenantID string) contractsv1.CloudE
 	}
 }
 
+const (
+	markReasonedSQL = "UPDATE situations SET last_reasoned_version = ? WHERE situation_id = ?"
+	markMaterialSQL = "UPDATE situations SET last_material_version = ? WHERE situation_id = ?"
+)
+
 func (t *Tx) MarkVersionReasoned(ctx context.Context, v situations.Version) error {
-
-	if _, err := t.tx.ExecContext(ctx,
-		"UPDATE situations SET last_reasoned_version = ? WHERE situation_id = ?",
-		v.Version, v.SituationID,
-	); err != nil {
-		return fmt.Errorf("update last reasoned version: %w", err)
-	}
-
-	return nil
+	return t.markVersion(ctx, markReasonedSQL, "reasoned", v)
 }
 
 func (t *Tx) MarkVersionMaterial(ctx context.Context, v situations.Version) error {
-	if _, err := t.tx.ExecContext(ctx,
-		"UPDATE situations SET last_material_version = ? WHERE situation_id = ?",
-		v.Version, v.SituationID,
-	); err != nil {
-		return fmt.Errorf("update last material version: %w", err)
+	return t.markVersion(ctx, markMaterialSQL, "material", v)
+}
+
+func (t *Tx) markVersion(ctx context.Context, statement, kind string, v situations.Version) error {
+	if _, err := t.tx.ExecContext(ctx, statement, v.Version, v.SituationID); err != nil {
+		return fmt.Errorf("update last %s version: %w", kind, err)
 	}
 	return nil
 }

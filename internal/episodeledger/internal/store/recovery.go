@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // UnfinishedAttempts lists the active attempts owned by an epoch other than
@@ -61,7 +62,7 @@ func (t *Tx) AbandonOpenEpisode(ctx context.Context, episodeID, endedAt string, 
 	if err != nil {
 		return 0, fmt.Errorf("abandon canceling episode %s: %w", episodeID, err)
 	}
-	return rowsOrZero(result), nil
+	return storage.RowsAffected(result), nil
 }
 
 // EpisodeLifecycle reads the episode's lifecycle status.

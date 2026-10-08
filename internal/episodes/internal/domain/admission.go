@@ -72,13 +72,8 @@ func reboundRequestJSON(req *Request, liveVersion int, evidence *SnapshotEvidenc
 
 // CostBudget reads the admitted cost ceiling before opening a reservation.
 func CostBudget(raw []byte) (uint64, error) {
-	var payload struct {
-		Budget struct {
-			CostMicrounits uint64 `json:"cost_microunits"`
-		} `json:"budget"`
-	}
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return 0, fmt.Errorf("decode episode cost budget: %w", err)
-	}
-	return payload.Budget.CostMicrounits, nil
+	budget, err := decodeBudget[struct {
+		CostMicrounits uint64 `json:"cost_microunits"`
+	}](raw, "decode episode cost budget")
+	return budget.CostMicrounits, err
 }

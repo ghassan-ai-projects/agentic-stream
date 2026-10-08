@@ -80,16 +80,9 @@ func InsertValidatedIntent(ctx context.Context, tx *Tx, row ValidatedIntentInser
 		row.Intent.ID, row.DecisionID, row.TenantID, row.SituationID, row.SituationVersion,
 		row.Intent.Type, row.Intent.RiskClass, row.Intent.CanonicalJSON, digest,
 		row.Intent.ExpiresAt.UTC().Format(time.RFC3339Nano), row.Intent.RateLimitPerHour,
-		boolToInt(row.Intent.RequiresApproval), row.Now, row.Now,
+		storage.BoolInt(row.Intent.RequiresApproval), row.Now, row.Now,
 	); err != nil {
 		return fmt.Errorf("insert intent %s: %w", row.Intent.ID, err)
 	}
 	return nil
-}
-
-func boolToInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }

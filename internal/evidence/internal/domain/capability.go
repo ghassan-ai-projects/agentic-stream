@@ -107,11 +107,3 @@ func CheckAuthority(scope Scope, issuer, audience string) error {
 	}
 	return nil
 }
-
-// ReservationLease retains the existing default for an unspecified lease.
-func ReservationLease(lease time.Duration) time.Duration {
-	if lease <= 0 {
-		return time.Minute
-	}
-	return lease
-}

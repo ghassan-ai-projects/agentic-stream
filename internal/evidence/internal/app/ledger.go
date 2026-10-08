@@ -8,6 +8,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/wire"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // Ledger stores evidence-call reservations and completed bounded results.
@@ -25,7 +26,7 @@ func (l *Ledger) Reserve(ctx context.Context, call Call, tokenID, runtimeEpoch s
 	if l == nil || !l.Store.Configured() || l.LeaseOwner == "" || l.RuntimeEpoch == "" || runtimeEpoch == "" || runtimeEpoch != l.RuntimeEpoch || tokenID == "" {
 		return ledgerReservation{}, fmt.Errorf("evidence ledger is not configured")
 	}
-	now, lease := l.now(), domain.ReservationLease(l.Lease)
+	now, lease := l.now(), sources.OrLease(l.Lease)
 	fingerprint, err := wire.CallFingerprint(call)
 	if err != nil {
 		return ledgerReservation{}, err

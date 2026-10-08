@@ -93,3 +93,15 @@ const ContractVersion = domain.ContractVersion
 const ProtocolVersion = domain.ProtocolVersion
 
 const DeviceProtocolVersion = domain.DeviceProtocolVersion
+
+// DocumentString projects a decoded JSON string field without coercion; an
+// absent or non-string field is the empty string.
+func DocumentString(document map[string]any, key string) string {
+	return domain.DocumentString(document, key)
+}
+
+// DocumentInt projects a decoded JSON number field as an integer without
+// string coercion; an absent or non-number field is zero.
+func DocumentInt(document map[string]any, key string) int {
+	return domain.DocumentInt(document, key)
+}

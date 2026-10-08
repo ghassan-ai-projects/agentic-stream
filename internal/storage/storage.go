@@ -43,9 +43,31 @@ func NullIfEmpty(value string) sql.NullString {
 	return sql.NullString{String: value, Valid: value != ""}
 }
 
+// RowsAffected is the number of rows a statement changed, or zero when the
+// driver cannot report it.
+func RowsAffected(result sql.Result) int64 {
+	count, err := result.RowsAffected()
+	if err != nil {
+		return 0
+	}
+	return count
+}
+
+// BoolInt is the SQL integer of a boolean: 1 for true, 0 for false.
+func BoolInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
 // Querier is anything that can run a query: *sql.DB, *sql.Tx and *DB.
-type Querier interface {
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+type Querier = store.Querier
+
+// QueryOptional scans the first column of the first row of query. A query
+// without rows reports found as false and no error; callers add the operation.
+func QueryOptional[T any](ctx context.Context, q Querier, query string, args ...any) (value T, found bool, err error) {
+	return store.QueryOptional[T](ctx, q, query, args...) //nolint:wrapcheck // The store names the failed step.
 }
 
 // QueryAll runs query, scans every row with scan and closes the rows. A query

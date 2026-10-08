@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -20,10 +19,7 @@ func newQuarantineCommand() *cobra.Command {
 }
 
 func newQuarantineListCommand() *cobra.Command {
-	return newDatabaseCommand("list", "List quarantined, released, redriven and rejected evidence, newest first.", cobra.NoArgs,
-		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB, _ []string) error {
-			return runQuarantineList(cmd, flags, db)
-		})
+	return newListCommand("list", "List quarantined, released, redriven and rejected evidence, newest first.", runQuarantineList)
 }
 
 type quarantineChange func(context.Context, *storage.DB, string, string) (string, error)
@@ -44,26 +40,18 @@ func runQuarantineList(cmd *cobra.Command, flags operatorFlags, db *storage.DB) 
 }
 
 func quarantineTable(records []eventlog.QuarantineRecord) string {
-	if len(records) == 0 {
-		return "quarantine: empty"
-	}
-	lines := make([]string, 0, len(records))
-	for _, record := range records {
-		lines = append(lines, fmt.Sprintf("%s\t%s\t%s\tattempts=%d\tlast_seen=%s\t%s", record.EventID, record.Status, record.ReasonCode, record.AttemptCount, record.LastSeenAt, record.EventType))
-	}
-	return strings.Join(lines, "\n")
+	return tableText(records, "quarantine: empty", func(record eventlog.QuarantineRecord) string {
+		return fmt.Sprintf("%s\t%s\t%s\tattempts=%d\tlast_seen=%s\t%s", record.EventID, record.Status, record.ReasonCode, record.AttemptCount, record.LastSeenAt, record.EventType)
+	})
 }
 
 func runQuarantineChange(cmd *cobra.Command, flags operatorFlags, change quarantineChange, eventID string) error {
-	db, err := flags.openOperatorDatabase(cmd.Context())
-	if err != nil {
-		return err
-	}
-	defer func() { _ = db.Close() }()
 	var outcome string
-	if err := withRuntimeOwnership(cmd.Context(), db, func(operatorOwnership) (err error) {
-		outcome, err = change(cmd.Context(), db, flags.tenantID, eventID)
-		return err
+	if err := withOperatorDatabase(cmd, flags, func(db *storage.DB) error {
+		return withRuntimeOwnership(cmd.Context(), db, func(operatorOwnership) (err error) {
+			outcome, err = change(cmd.Context(), db, flags.tenantID, eventID)
+			return err
+		})
 	}); err != nil {
 		return err
 	}

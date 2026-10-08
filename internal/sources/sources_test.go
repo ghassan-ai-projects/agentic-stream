@@ -48,3 +48,16 @@ func TestOrPhysicalAndOrRandomKeepTheCallersChoice(t *testing.T) {
 		t.Fatalf("the default generator repeated %q", first)
 	}
 }
+
+func TestOrLeaseDefaultsAnUnspecifiedLease(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct{ in, want time.Duration }{
+		"zero":     {0, sources.DefaultLease},
+		"negative": {-time.Second, sources.DefaultLease},
+		"chosen":   {2 * time.Minute, 2 * time.Minute},
+	} {
+		if got := sources.OrLease(tc.in); got != tc.want {
+			t.Errorf("%s: OrLease(%v) = %v, want %v", name, tc.in, got, tc.want)
+		}
+	}
+}

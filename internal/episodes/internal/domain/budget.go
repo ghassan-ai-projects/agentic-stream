@@ -26,13 +26,18 @@ func ParseWallTimeBudget(requestJSON []byte) (time.Duration, error) {
 }
 
 func requestWallTime(raw []byte) (string, error) {
+	budget, err := decodeBudget[struct {
+		WallTime string `json:"wall_time"`
+	}](raw, "decode episode budget")
+	return budget.WallTime, err
+}
+
+func decodeBudget[T any](raw []byte, failure string) (T, error) {
 	var payload struct {
-		Budget struct {
-			WallTime string `json:"wall_time"`
-		} `json:"budget"`
+		Budget T `json:"budget"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return "", fmt.Errorf("decode episode budget: %w", err)
+		return payload.Budget, fmt.Errorf("%s: %w", failure, err)
 	}
-	return payload.Budget.WallTime, nil
+	return payload.Budget, nil
 }

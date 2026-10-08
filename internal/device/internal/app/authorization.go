@@ -7,6 +7,14 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 )
 
+// dispatchAuthorized runs dispatch only after the final interlock check passes.
+func dispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization, dispatch func(context.Context, actionport.Command) (actionport.Effect, error)) (actionport.Effect, error) {
+	if err := authorizeDispatch(ctx, authorization); err != nil {
+		return actionport.Effect{}, err
+	}
+	return dispatch(ctx, command)
+}
+
 // authorizeDispatch checks the final interlock before any effector work.
 func authorizeDispatch(ctx context.Context, authorization actionport.Authorization) error {
 	if authorization.Check == nil {

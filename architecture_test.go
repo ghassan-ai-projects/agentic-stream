@@ -101,7 +101,7 @@ var allowedImports = map[string][]string{
 	"internal/worker/internal/domain":             {"proto/agenticstream/runtime/v1"},
 	"internal/telemetry/internal/transport":       {"internal/telemetry/internal/domain"},
 	"internal/telemetry/internal/domain":          {},
-	"internal/evidence/internal/app":              {"internal/contractsv1", "internal/evidence/internal/domain", "internal/evidence/internal/store", "internal/evidence/internal/wire"},
+	"internal/evidence/internal/app":              {"internal/contractsv1", "internal/evidence/internal/domain", "internal/evidence/internal/store", "internal/evidence/internal/wire", "internal/sources"},
 	"internal/evidence/internal/store":            {"internal/evidence/internal/domain", "internal/storage"},
 	"internal/evidence/internal/transport":        {"internal/evidence/internal/app", "internal/evidence/internal/domain", "internal/evidence/internal/wire", "internal/eventlog", "internal/storage", "proto/agenticstream/runtime/v1"},
 	"internal/executor/fixture":                   {"internal/canonicaljson", "internal/contractsv1", "internal/episodeledger", "internal/episodes", "internal/sources"},

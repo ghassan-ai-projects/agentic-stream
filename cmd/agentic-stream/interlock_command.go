@@ -26,8 +26,8 @@ func newInterlockCommand() *cobra.Command {
 
 func newInterlockOperationCommand(name, short string, needsReason bool, operation interlockOperation) *cobra.Command {
 	var reason string
-	return newDatabaseCommand(name, short, cobra.NoArgs,
-		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB, _ []string) error {
+	return newListCommand(name, short,
+		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB) error {
 			return runInterlock(cmd, flags, db, operation, reason)
 		},
 		func(cmd *cobra.Command) {

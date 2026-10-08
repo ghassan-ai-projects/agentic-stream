@@ -31,9 +31,9 @@ func ValidateSnapshotEvidence(snapshotJSON, persistedDigest []byte, traceparent,
 	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, snapshot); err != nil {
 		return nil, fmt.Errorf("validate snapshot: %w", err)
 	}
-	if SnapshotString(snapshot, "situation_id") != situationID ||
-		SnapshotInt(snapshot, "situation_version") != version ||
-		SnapshotString(snapshot, "tenant_id") != tenantID {
+	if contractsv1.DocumentString(snapshot, "situation_id") != situationID ||
+		contractsv1.DocumentInt(snapshot, "situation_version") != version ||
+		contractsv1.DocumentString(snapshot, "tenant_id") != tenantID {
 		return nil, fmt.Errorf("snapshot identity does not match episode admission")
 	}
 	return bindSnapshotEvidence(snapshotJSON, persistedDigest, traceparent, tracestate, snapshot)
@@ -71,14 +71,4 @@ func SnapshotEntityID(raw []byte) (string, error) {
 		return "", fmt.Errorf("snapshot entity id is required")
 	}
 	return snapshot.Entity.ID, nil
-}
-
-func SnapshotString(snapshot map[string]any, key string) string {
-	value, _ := snapshot[key].(string)
-	return value
-}
-
-func SnapshotInt(snapshot map[string]any, key string) int {
-	value, _ := snapshot[key].(float64)
-	return int(value)
 }

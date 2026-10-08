@@ -40,11 +40,7 @@ func (tx *Tx) LiveEpisode(ctx context.Context, call domain.Call) (domain.Episode
 
 // LiveAttempt loads the exact fenced attempt status.
 func (tx *Tx) LiveAttempt(ctx context.Context, call domain.Call) (string, error) {
-	var status string
-	if err := tx.tx.QueryRowContext(ctx, `SELECT status FROM episode_attempts WHERE episode_id = ? AND attempt_id = ? AND fence = ?`, call.EpisodeID, call.AttemptID, call.Fence).Scan(&status); err != nil {
-		return "", fmt.Errorf("load evidence attempt: %w", err)
-	}
-	return status, nil
+	return tx.attemptStatus(ctx, "load evidence attempt", call.EpisodeID, call.AttemptID, call.Fence)
 }
 
 // CompletionEpisode loads the current binding without changing the original query.
@@ -58,9 +54,13 @@ func (tx *Tx) CompletionEpisode(ctx context.Context, key domain.ReservationKey) 
 
 // CompletionAttempt loads the reserved fenced attempt at conclusion.
 func (tx *Tx) CompletionAttempt(ctx context.Context, key domain.ReservationKey) (string, error) {
+	return tx.attemptStatus(ctx, "load completion attempt", key.EpisodeID, key.AttemptID, key.Fence)
+}
+
+func (tx *Tx) attemptStatus(ctx context.Context, failure, episodeID, attemptID string, fence int64) (string, error) {
 	var status string
-	if err := tx.tx.QueryRowContext(ctx, `SELECT status FROM episode_attempts WHERE attempt_id = ? AND episode_id = ? AND fence = ?`, key.AttemptID, key.EpisodeID, key.Fence).Scan(&status); err != nil {
-		return "", fmt.Errorf("load completion attempt: %w", err)
+	if err := tx.tx.QueryRowContext(ctx, `SELECT status FROM episode_attempts WHERE episode_id = ? AND attempt_id = ? AND fence = ?`, episodeID, attemptID, fence).Scan(&status); err != nil {
+		return "", fmt.Errorf("%s: %w", failure, err)
 	}
 	return status, nil
 }

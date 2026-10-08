@@ -119,11 +119,6 @@ func parseDecision(raw []byte, transmittedDigest string) (map[string]any, error)
 	return document, nil
 }
 
-func documentString(document map[string]any, key string) string {
-	value, _ := document[key].(string)
-	return value
-}
-
 func integerField(document map[string]any, name string) (int, bool) {
 	value, ok := document[name].(float64)
 	if !ok || value != float64(int(value)) {

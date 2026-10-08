@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -21,10 +20,7 @@ func newCommandsCommand() *cobra.Command {
 }
 
 func newCommandsListCommand() *cobra.Command {
-	return newDatabaseCommand("list", "List commands awaiting reconciliation (outcome_unknown, reconciling, manual_review).", cobra.NoArgs,
-		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB, _ []string) error {
-			return runCommandsList(cmd, flags, db)
-		})
+	return newListCommand("list", "List commands awaiting reconciliation (outcome_unknown, reconciling, manual_review).", runCommandsList)
 }
 
 func newCommandsResolveCommand() *cobra.Command {
@@ -57,14 +53,9 @@ func refuseWrites(context.Context, *sql.Tx, string) error {
 }
 
 func awaitingTable(awaiting []actions.AwaitingCommand) string {
-	if len(awaiting) == 0 {
-		return "commands: none awaiting reconciliation"
-	}
-	lines := make([]string, 0, len(awaiting))
-	for _, command := range awaiting {
-		lines = append(lines, fmt.Sprintf("%s\t%s\t%s -> %s\tintent=%s\tupdated=%s", command.CommandID, command.Status, command.Route, command.Target, command.IntentID, command.UpdatedAt))
-	}
-	return strings.Join(lines, "\n")
+	return tableText(awaiting, "commands: none awaiting reconciliation", func(command actions.AwaitingCommand) string {
+		return fmt.Sprintf("%s\t%s\t%s -> %s\tintent=%s\tupdated=%s", command.CommandID, command.Status, command.Route, command.Target, command.IntentID, command.UpdatedAt)
+	})
 }
 
 func runCommandsResolve(cmd *cobra.Command, flags operatorFlags, commandID, status, evidenceFile string) error {
@@ -72,12 +63,9 @@ func runCommandsResolve(cmd *cobra.Command, flags operatorFlags, commandID, stat
 	if err != nil {
 		return err
 	}
-	db, err := flags.openOperatorDatabase(cmd.Context())
-	if err != nil {
-		return err
-	}
-	defer func() { _ = db.Close() }()
-	if err := resolveCommand(cmd.Context(), db, commandID, status, evidence); err != nil {
+	if err := withOperatorDatabase(cmd, flags, func(db *storage.DB) error {
+		return resolveCommand(cmd.Context(), db, commandID, status, evidence)
+	}); err != nil {
 		return err
 	}
 	return printResult(cmd, flags.asJSON, map[string]string{"command_id": commandID, "status": status}, func() string { return "commands: " + commandID + " resolved " + status })

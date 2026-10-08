@@ -30,10 +30,7 @@ func (e *SimulatedEffector) Dispatch(ctx context.Context, command actionport.Com
 // DispatchAuthorized checks the live interlock immediately before applying
 // the simulated effect.
 func (e *SimulatedEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
-	if err := authorizeDispatch(ctx, authorization); err != nil {
-		return actionport.Effect{}, err
-	}
-	return e.dispatch(ctx, command)
+	return dispatchAuthorized(ctx, command, authorization, e.dispatch)
 }
 
 func (e *SimulatedEffector) dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {

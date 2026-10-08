@@ -94,3 +94,14 @@ func OrRandom(generator Generator) Generator {
 	}
 	return generator
 }
+
+// DefaultLease is the lease duration used when a caller does not choose one.
+const DefaultLease = time.Minute
+
+// OrLease returns lease, or DefaultLease when lease is not positive.
+func OrLease(lease time.Duration) time.Duration {
+	if lease <= 0 {
+		return DefaultLease
+	}
+	return lease
+}

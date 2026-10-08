@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // PendingApprovalExpiry reads the unresolved approval's identity and expiry.
@@ -22,11 +24,7 @@ func (tx *Tx) PendingApprovalExpiry(ctx context.Context, intentID string) (strin
 
 // ApprovedApproval reads the latest resolved human approval.
 func (tx *Tx) ApprovedApproval(ctx context.Context, intentID string) (string, error) {
-	var id string
-	err := tx.tx.QueryRowContext(ctx, "SELECT approval_id FROM approvals WHERE intent_id = ? AND status = 'approved' ORDER BY decided_at DESC LIMIT 1", intentID).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
-	}
+	id, _, err := storage.QueryOptional[string](ctx, tx.tx, "SELECT approval_id FROM approvals WHERE intent_id = ? AND status = 'approved' ORDER BY decided_at DESC LIMIT 1", intentID)
 	if err != nil {
 		return "", fmt.Errorf("load approved approval: %w", err)
 	}
@@ -35,15 +33,11 @@ func (tx *Tx) ApprovedApproval(ctx context.Context, intentID string) (string, er
 
 // CompensationTenant projects command ownership for compensation validation.
 func (tx *Tx) CompensationTenant(ctx context.Context, commandID string) (string, bool, error) {
-	var tenant string
-	err := tx.tx.QueryRowContext(ctx, "SELECT tenant_id FROM commands WHERE command_id = ?", commandID).Scan(&tenant)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", false, nil
-	}
+	tenant, found, err := storage.QueryOptional[string](ctx, tx.tx, "SELECT tenant_id FROM commands WHERE command_id = ?", commandID)
 	if err != nil {
 		return "", false, fmt.Errorf("load compensation target: %w", err)
 	}
-	return tenant, true, nil
+	return tenant, found, nil
 }
 
 // AssertionBinding reads the durable single-use assertion identity.

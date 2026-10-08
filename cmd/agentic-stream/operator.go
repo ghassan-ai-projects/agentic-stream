@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -98,6 +99,27 @@ func withOperatorDatabase(cmd *cobra.Command, flags operatorFlags, use func(*sto
 	}
 	defer func() { _ = db.Close() }()
 	return use(db)
+}
+
+// newListCommand is a database command that takes no arguments.
+func newListCommand(use, short string, run func(*cobra.Command, operatorFlags, *storage.DB) error, extra ...func(*cobra.Command)) *cobra.Command {
+	return newDatabaseCommand(use, short, cobra.NoArgs,
+		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB, _ []string) error {
+			return run(cmd, flags, db)
+		},
+		extra...)
+}
+
+// tableText renders one line per row, or empty when there are no rows.
+func tableText[T any](rows []T, empty string, line func(T) string) string {
+	if len(rows) == 0 {
+		return empty
+	}
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		lines = append(lines, line(row))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // newByIDCommand is a database command that takes exactly one identifier.

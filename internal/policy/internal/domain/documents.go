@@ -55,18 +55,6 @@ func ContainsControl(value string) bool {
 	return false
 }
 
-// DocumentString projects a JSON string field without coercion.
-func DocumentString(document map[string]any, key string) string {
-	value, _ := document[key].(string)
-	return value
-}
-
-// DocumentInt projects a decoded JSON integer field without string coercion.
-func DocumentInt(document map[string]any, key string) int {
-	value, _ := document[key].(float64)
-	return int(value)
-}
-
 // FormatTime formats durable timestamps in UTC with nanosecond precision.
 func FormatTime(value time.Time) string {
 	return value.UTC().Format(time.RFC3339Nano)

@@ -17,17 +17,18 @@ import (
 // UpsertSchedulerItem inserts a queue item or refreshes the item already
 // queued for the same trigger. IsSchedulerItemIDConflict classifies an id clash.
 func (t *Tx) UpsertSchedulerItem(ctx context.Context, item domain.SchedulerItem, tenantID string, dedupeKey []byte, now string) error {
-	if _, err := t.q.ExecContext(ctx, upsertSchedulerItemSQL, itemValues(item, tenantID, dedupeKey, now)...); err != nil {
-		return fmt.Errorf("upsert scheduler item: %w", err)
-	}
-	return nil
+	return t.writeSchedulerItem(ctx, upsertSchedulerItemSQL, "upsert scheduler item", item, tenantID, dedupeKey, now)
 }
 
 // InsertSchedulerItemIfAbsent inserts the item unless its id already exists,
 // keeping the existing item's identity.
 func (t *Tx) InsertSchedulerItemIfAbsent(ctx context.Context, item domain.SchedulerItem, tenantID string, dedupeKey []byte, now string) error {
-	if _, err := t.q.ExecContext(ctx, insertSchedulerItemSQL, itemValues(item, tenantID, dedupeKey, now)...); err != nil {
-		return fmt.Errorf("ignore scheduler item ID conflict: %w", err)
+	return t.writeSchedulerItem(ctx, insertSchedulerItemSQL, "ignore scheduler item ID conflict", item, tenantID, dedupeKey, now)
+}
+
+func (t *Tx) writeSchedulerItem(ctx context.Context, statement, operation string, item domain.SchedulerItem, tenantID string, dedupeKey []byte, now string) error {
+	if _, err := t.q.ExecContext(ctx, statement, itemValues(item, tenantID, dedupeKey, now)...); err != nil {
+		return fmt.Errorf("%s: %w", operation, err)
 	}
 	return nil
 }
