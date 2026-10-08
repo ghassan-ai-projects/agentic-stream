@@ -104,6 +104,11 @@ func prepareEvidenceSocket(path string) error {
 }
 
 func secureEvidenceListener(path string, listener net.Listener) (net.Listener, error) {
+	// The stdlib would unlink the path on close whatever is there by then;
+	// removeOwnedSocket removes it only while it is still this socket.
+	if unix, ok := listener.(*net.UnixListener); ok {
+		unix.SetUnlinkOnClose(false)
+	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		_ = listener.Close()
 		_ = os.Remove(path)
