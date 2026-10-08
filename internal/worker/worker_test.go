@@ -44,9 +44,7 @@ func TestFacadeListensAndDialsPrivateSockets(t *testing.T) {
 	}
 	defer func() { _ = listener.Close() }()
 	for name, dial := range map[string]func() (*grpc.ClientConn, error){
-		"evidence": func() (*grpc.ClientConn, error) { return worker.DialEvidenceSocket(t.Context(), path) },
-		"worker":   func() (*grpc.ClientConn, error) { return worker.DialEpisodeWorkerSocket(t.Context(), path) },
-		"tls-off":  func() (*grpc.ClientConn, error) { return worker.DialEpisodeWorkerSocketTLS(t.Context(), path, nil) },
+		"tls-off": func() (*grpc.ClientConn, error) { return worker.DialEpisodeWorkerSocketTLS(t.Context(), path, nil) },
 	} {
 		conn, err := dial()
 		if err != nil {

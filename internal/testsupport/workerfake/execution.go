@@ -1,4 +1,4 @@
-package transport
+package workerfake
 
 import (
 	"context"
@@ -7,8 +7,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/worker/internal/domain"
 )
 
 // Execute validates the request, emits a Started event, and validates the
@@ -16,21 +14,21 @@ import (
 func (s *Server) Execute(req *runtimev1.EpisodeRequest, stream runtimev1.EpisodeWorker_ExecuteServer) (err error) { //nolint:wrapcheck // gRPC status errors are the public wire contract.
 	defer func() {
 		if recover() != nil {
-			err = domain.WireError(codes.Internal, "worker handler panic")
+			err = WireError(codes.Internal, "worker handler panic")
 		}
 	}()
-	if err := domain.ValidateRequest(req, s.limits(), s.now()); err != nil {
+	if err := ValidateRequest(req, s.limits(), s.now()); err != nil {
 		return err
 	}
 	if s.ExecuteFunc == nil {
-		return domain.WireError(codes.Unimplemented, "worker execute handler is not configured")
+		return WireError(codes.Unimplemented, "worker execute handler is not configured")
 	}
 	return s.executeStream(req, stream)
 }
 
 func (s *Server) executeStream(req *runtimev1.EpisodeRequest, stream runtimev1.EpisodeWorker_ExecuteServer) error {
-	guarded := &guardedStream{validator: domain.NewStreamValidator(req, s.limits()), stream: stream}
-	if err := guarded.emit(domain.StartedEvent(req, s.WorkerName, s.WorkerVersion, s.now())); err != nil {
+	guarded := &guardedStream{validator: NewStreamValidator(req, s.limits()), stream: stream}
+	if err := guarded.emit(StartedEvent(req, s.WorkerName, s.WorkerVersion, s.now())); err != nil {
 		return err
 	}
 	executionContext, cancel, err := boundedExecutionContext(stream.Context(), req)
@@ -46,10 +44,10 @@ func (s *Server) concludeStream(executionContext context.Context, req *runtimev1
 		return err
 	}
 	if err := executionContext.Err(); err != nil {
-		return domain.WireError(codes.DeadlineExceeded, "episode execution deadline exceeded")
+		return WireError(codes.DeadlineExceeded, "episode execution deadline exceeded")
 	}
 	if !guarded.validator.Terminated() {
-		return domain.WireError(codes.FailedPrecondition, "worker stream ended without terminal event")
+		return WireError(codes.FailedPrecondition, "worker stream ended without terminal event")
 	}
 	return nil
 }
@@ -62,7 +60,7 @@ func (s *Server) executeHandler(ctx context.Context, req *runtimev1.EpisodeReque
 		if status.Code(err) != codes.Unknown {
 			return err
 		}
-		return domain.WireErrorf(codes.Internal, "worker execution failed: %v", err)
+		return WireErrorf(codes.Internal, "worker execution failed: %v", err)
 	}
 	return nil
 }
@@ -81,7 +79,7 @@ func applyWallBudget(executionContext context.Context, cancel context.CancelFunc
 		wallTime := budget.GetWallTime().AsDuration()
 		if wallTime <= 0 {
 			cancel()
-			return nil, nil, domain.WireError(codes.InvalidArgument, "wall_time budget must be positive")
+			return nil, nil, WireError(codes.InvalidArgument, "wall_time budget must be positive")
 		}
 		deadlineCancel := cancel
 		var budgetCancel context.CancelFunc

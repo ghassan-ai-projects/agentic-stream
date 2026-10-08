@@ -56,31 +56,6 @@ func refuseExistingEvidenceSocket(path string) error {
 	return nil
 }
 
-// DialEvidenceSocket dials only a Unix socket with transport credentials that
-// carry no remote-network trust. Application capability validation remains
-// mandatory for every call.
-func DialEvidenceSocket(ctx context.Context, path string) (*grpc.ClientConn, error) {
-	if err := domain.ValidateEvidenceSocketPath(path); err != nil {
-		return nil, err
-	}
-	conn, err := grpc.NewClient("passthrough:///evidence", grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
-		dialCtx, cancel := context.WithTimeout(ctx, time.Second)
-		defer cancel()
-		return (&net.Dialer{}).DialContext(dialCtx, "unix", path)
-	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, fmt.Errorf("dial evidence socket: %w", err)
-	}
-	return conn, nil
-}
-
-// DialEpisodeWorkerSocket dials a local EpisodeWorker over a private Unix
-// socket. The worker protocol remains responsible for handshake and identity
-// validation; this helper only constrains transport to the local socket.
-func DialEpisodeWorkerSocket(ctx context.Context, path string) (*grpc.ClientConn, error) {
-	return DialEpisodeWorkerSocketTLS(ctx, path, nil)
-}
-
 // DialEpisodeWorkerSocketTLS dials an EpisodeWorker over UDS using TLS when
 // tlsConfig is non-nil. This supports local UDS workers and remote-style
 // certificate authentication without changing the application protocol.

@@ -1,6 +1,6 @@
 # U06 — Move the reference worker server to test support
 
-Status: todo · Decision: **move** · Priority: P2 · Size: M
+Status: done · Decision: **move** · Priority: P2 · Size: M
 
 ## Finding
 

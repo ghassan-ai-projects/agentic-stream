@@ -1,6 +1,7 @@
-package domain
+package workerfake
 
 import (
+	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ func ValidateRequest(req *runtimev1.EpisodeRequest, limits Limits, now time.Time
 	if err := validateRequestIdentity(req); err != nil {
 		return err
 	}
-	if err := ValidateBudget(req.GetBudget()); err != nil {
+	if err := worker.ValidateBudget(req.GetBudget()); err != nil {
 		return WireErrorf(codes.InvalidArgument, "episode budget: %v", err)
 	}
 	return validateRequestContext(req, now)
@@ -34,7 +35,7 @@ func validateRequestProtocol(req *runtimev1.EpisodeRequest, limits Limits) error
 	if uint64(proto.Size(req)) > limits.MaxRequestBytes { //nolint:gosec // protobuf Size is non-negative and bounded by the configured request limit.
 		return WireError(codes.ResourceExhausted, "episode request exceeds size limit")
 	}
-	if strings.TrimSpace(req.GetProtocolVersion()) != strings.TrimSpace(ProtocolVersion) {
+	if strings.TrimSpace(req.GetProtocolVersion()) != strings.TrimSpace(worker.ProtocolVersion) {
 		return WireErrorf(codes.FailedPrecondition, "unsupported protocol version %q", req.GetProtocolVersion())
 	}
 	return nil
@@ -100,7 +101,7 @@ func validateEvidenceEndpoint(req *runtimev1.EpisodeRequest) error {
 		return WireError(codes.InvalidArgument, "evidence endpoint and capability token must be supplied together")
 	}
 	if req.GetEvidenceToolsEndpoint() != "" {
-		if err := ValidateEvidenceSocketPath(req.GetEvidenceToolsEndpoint()); err != nil {
+		if err := worker.ValidateEvidenceSocketPath(req.GetEvidenceToolsEndpoint()); err != nil {
 			return WireError(codes.PermissionDenied, "evidence endpoint must be a private Unix socket")
 		}
 	}

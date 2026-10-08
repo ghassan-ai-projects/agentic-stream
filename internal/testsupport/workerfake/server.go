@@ -1,7 +1,8 @@
-// Package transport serves and dials the episode worker protocol over gRPC: the
-// reference worker Server, the private Unix sockets (evidence and worker) and the
-// per-stream send guard. The protocol rules live in domain.
-package transport
+// Package workerfake is test support: a validating EpisodeWorker that speaks
+// the worker protocol like a real worker (Tamoz, or a separate Go worker) and
+// checks every request and event it sees. The runtime is the protocol's
+// client; production code never serves it. Import it from tests only.
+package workerfake
 
 import (
 	"context"
@@ -10,8 +11,6 @@ import (
 	"time"
 
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/worker/internal/domain"
 )
 
 // ExecuteFunc emits worker-originated events after the server has emitted the
@@ -35,20 +34,20 @@ type Server struct {
 	ExecuteFunc       ExecuteFunc
 }
 
-func (s *Server) limits() domain.Limits {
-	return domain.Limits{MaxRequestBytes: s.MaxRequestBytes, MaxEventBytes: s.MaxEventBytes, MaxEvents: s.MaxEvents, MaxStreamBytes: s.MaxStreamBytes}.Resolved()
+func (s *Server) limits() Limits {
+	return Limits{MaxRequestBytes: s.MaxRequestBytes, MaxEventBytes: s.MaxEventBytes, MaxEvents: s.MaxEvents, MaxStreamBytes: s.MaxStreamBytes}.Resolved()
 }
 
 // Handshake accepts only the current protocol and contract versions and
 // rejects required features that this worker does not advertise.
 func (s *Server) Handshake(_ context.Context, req *runtimev1.HandshakeRequest) (*runtimev1.HandshakeResponse, error) { //nolint:wrapcheck // gRPC status errors are the public wire contract.
-	if err := domain.ValidateHandshake(req); err != nil {
+	if err := ValidateHandshake(req); err != nil {
 		return nil, err //nolint:wrapcheck // gRPC status errors are the public wire contract.
 	}
-	if err := domain.RequireFeatures(s.SupportedFeatures, req.GetRequestedFeatures()); err != nil {
+	if err := RequireFeatures(s.SupportedFeatures, req.GetRequestedFeatures()); err != nil {
 		return nil, err //nolint:wrapcheck // gRPC status errors are the public wire contract.
 	}
-	return domain.NewHandshakeResponse(s.WorkerName, s.WorkerVersion, s.SupportedFeatures, s.limits()), nil
+	return NewHandshakeResponse(s.WorkerName, s.WorkerVersion, s.SupportedFeatures, s.limits()), nil
 }
 
 func (s *Server) now() time.Time {
@@ -62,7 +61,7 @@ func (s *Server) now() time.Time {
 // event before it reaches the wire.
 type guardedStream struct {
 	mu        sync.Mutex
-	validator *domain.StreamValidator
+	validator *StreamValidator
 	stream    runtimev1.EpisodeWorker_ExecuteServer
 }
 

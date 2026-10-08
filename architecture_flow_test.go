@@ -130,6 +130,7 @@ var packageLayers = map[string]int{
 	"internal/runartifact":                        25,
 	"internal/runtime/internal/store":             25,
 	"internal/testsupport/executorconformance":    25,
+	"internal/testsupport/workerfake":             25,
 	"internal/executor/native/internal/store":     26,
 	"internal/executor/native/internal/transport": 26,
 	"internal/executor/remote/internal/transport": 26,

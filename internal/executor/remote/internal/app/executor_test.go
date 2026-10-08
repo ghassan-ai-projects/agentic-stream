@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
 	"net"
 	"path/filepath"
 	"strings"
@@ -240,15 +241,15 @@ func requestWithBudget(req *episodes.Request, budget map[string]any) []byte {
 	return encoded
 }
 
-func testWorkerClient(t *testing.T, execute worker.ExecuteFunc) runtimev1.EpisodeWorkerClient {
+func testWorkerClient(t *testing.T, execute workerfake.ExecuteFunc) runtimev1.EpisodeWorkerClient {
 	return testWorkerClientWithFeatures(t, nil, execute)
 }
 
-func testWorkerClientWithFeatures(t *testing.T, features []string, execute worker.ExecuteFunc) runtimev1.EpisodeWorkerClient {
+func testWorkerClientWithFeatures(t *testing.T, features []string, execute workerfake.ExecuteFunc) runtimev1.EpisodeWorkerClient {
 	t.Helper()
 	listener := bufconn.Listen(1 << 20)
 	grpcServer := grpc.NewServer()
-	runtimev1.RegisterEpisodeWorkerServer(grpcServer, &worker.Server{WorkerName: "worker-1", WorkerVersion: "v1", SupportedFeatures: features, ExecuteFunc: execute})
+	runtimev1.RegisterEpisodeWorkerServer(grpcServer, &workerfake.Server{WorkerName: "worker-1", WorkerVersion: "v1", SupportedFeatures: features, ExecuteFunc: execute})
 	go func() { _ = grpcServer.Serve(listener) }()
 	t.Cleanup(func() { grpcServer.Stop(); _ = listener.Close() })
 	conn, err := grpc.NewClient("passthrough:///bufnet", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return listener.Dial() }), grpc.WithTransportCredentials(insecure.NewCredentials()))

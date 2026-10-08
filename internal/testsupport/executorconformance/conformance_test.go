@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
 	"net"
 	"os"
 	"os/exec"
@@ -122,7 +123,7 @@ func TestSeparateProcessWorkerConforms(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	conn, err := worker.DialEpisodeWorkerSocket(context.Background(), socketPath)
+	conn, err := worker.DialEpisodeWorkerSocketTLS(context.Background(), socketPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,8 +136,8 @@ func TestSeparateProcessWorkerConforms(t *testing.T) {
 	}
 }
 
-func conformanceWorker() *worker.Server {
-	return &worker.Server{WorkerName: "worker-1", WorkerVersion: "test", ExecuteFunc: func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
+func conformanceWorker() *workerfake.Server {
+	return &workerfake.Server{WorkerName: "worker-1", WorkerVersion: "test", ExecuteFunc: func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		decision := map[string]any{
 			"decision_id": "dec-conformance", "episode_id": "epi-conformance", "attempt_id": "att-conformance", "fence": 1,
 			"snapshot_digest": FixtureRequest().SnapshotSHA256, "situation_id": "sit-conformance", "situation_version": 1,

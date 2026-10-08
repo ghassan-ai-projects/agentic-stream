@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
 	"net"
 	"sync"
 	"testing"
@@ -39,12 +40,12 @@ func serveTamozStandIn(t *testing.T, socketPath string, delay time.Duration) {
 		t.Fatalf("listen worker socket: %v", err)
 	}
 	server := grpc.NewServer()
-	runtimev1.RegisterEpisodeWorkerServer(server, &worker.Server{WorkerName: "tamoz", WorkerVersion: "stand-in", ExecuteFunc: proposeIndicatorAlertAfter(delay)})
+	runtimev1.RegisterEpisodeWorkerServer(server, &workerfake.Server{WorkerName: "tamoz", WorkerVersion: "stand-in", ExecuteFunc: proposeIndicatorAlertAfter(delay)})
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
 }
 
-func proposeIndicatorAlertAfter(delay time.Duration) worker.ExecuteFunc {
+func proposeIndicatorAlertAfter(delay time.Duration) workerfake.ExecuteFunc {
 	return func(ctx context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		select {
 		case <-ctx.Done():

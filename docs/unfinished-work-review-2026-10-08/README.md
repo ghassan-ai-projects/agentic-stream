@@ -140,7 +140,7 @@ as the change.
 | U03 | [Delete eventlog gap writer and map quarantine](tasks/U03-delete-eventlog-gap-writer-and-map-quarantine.md) | Delete | P2 | S | — | done |
 | U04 | [Delete engine per-partition run path](tasks/U04-delete-engine-partition-run-path.md) | Delete | P2 | S | — | done |
 | U05 | [Delete native batch runner and artifact store](tasks/U05-delete-native-batch-runner-and-artifact-store.md) | Delete | P2 | S | — | done |
-| U06 | [Move reference worker server to test support](tasks/U06-move-reference-worker-server-to-testsupport.md) | Move | P2 | M | — | todo |
+| U06 | [Move reference worker server to test support](tasks/U06-move-reference-worker-server-to-testsupport.md) | Move | P2 | M | — | done |
 | U07 | [Remove test-only facade exports](tasks/U07-remove-test-only-facade-exports.md) | Delete / move | P2 | M | — | done |
 | U08 | [Resolve unused exported constants](tasks/U08-resolve-unused-exported-constants.md) | Delete / keep | P3 | XS | — | done |
 | U09 | [Delete `config effective` placeholder](tasks/U09-delete-config-effective-placeholder.md) | Delete | P3 | XS | — | done |
