@@ -30,20 +30,32 @@ const standInFirmwareDigest = "sha256:cccccccccccccccccccccccccccccccccccccccccc
 
 // serveTamozStandIn serves an EpisodeWorker that answers like Tamoz's
 // DecisionBuilder: one actionable intent from the request's catalog, with the
-// model writing only the catalog's model-writable field.
-func serveTamozStandIn(t *testing.T, socketPath string) {
+// model writing only the catalog's model-writable field. It reasons for delay
+// before deciding, as a model call does.
+func serveTamozStandIn(t *testing.T, socketPath string, delay time.Duration) {
 	t.Helper()
 	listener, err := worker.ListenEvidenceSocket(socketPath)
 	if err != nil {
 		t.Fatalf("listen worker socket: %v", err)
 	}
 	server := grpc.NewServer()
-	runtimev1.RegisterEpisodeWorkerServer(server, &worker.Server{WorkerName: "tamoz", WorkerVersion: "stand-in", ExecuteFunc: proposeIndicatorAlert})
+	runtimev1.RegisterEpisodeWorkerServer(server, &worker.Server{WorkerName: "tamoz", WorkerVersion: "stand-in", ExecuteFunc: proposeIndicatorAlertAfter(delay)})
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
 }
 
-func proposeIndicatorAlert(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
+func proposeIndicatorAlertAfter(delay time.Duration) worker.ExecuteFunc {
+	return func(ctx context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+		return proposeIndicatorAlert(req, emit)
+	}
+}
+
+func proposeIndicatorAlert(req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 	decision, err := indicatorDecision(req)
 	if err != nil {
 		return err

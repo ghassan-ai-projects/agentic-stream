@@ -40,26 +40,25 @@ DHT11 ─▶ Mega firmware ─USB─▶ gateway (serial owner) ─UDS─▶ live
 only), so the Situation never opens and nothing downstream can happen. The spec
 was written for the simulator's four-sensor world.
 
-**G2. Every Situation version makes pending intents stale. This is the core
-blocker.** Policy evaluation (`policy/internal/domain/routing.go:33`), approval
-resolution (`routing.go:62`) and dispatch authorization
-(`actions/internal/domain/authorization.go:107`, `RequireCurrent`) all require
-`current_version == intent.situation_version`. With live telemetry the engine
-publishes a version whenever a fact changes. In pass2, versions 1–22 were
-published within 1.6 s, and versions 8–22 had the same phase and severity. The
-LED intent on version 22 was approved only because the feed then stopped for
-20 s. This is why RUNBOOK-G1 says to "send one additional heartbeat" around
-cooldown. A live sensor never pauses. Any episode (Tamoz takes seconds), any
-human approval (tens of seconds) and even the outbox poll between policy and
-dispatch (1 s) will see a newer version, so the intent ends `stale`. The loop
-can only close on a quiet feed, which a physical rig is not.
+**G2. Window completeness flips make pending intents stale.** *(Corrected
+2026-10-08 from X01's continuous-feed test.)* Policy evaluation
+(`policy/internal/domain/routing.go:33`), approval resolution (`routing.go:62`)
+and dispatch authorization (`actions/internal/domain/authorization.go:107`)
+require `current_version == intent.situation_version`. The engine publishes a
+version only on a lifecycle change (open, close, phase transition) or a
+completeness change (`situations/internal/domain/evaluate.go`), not for every
+reading. But with all sources streaming, every window slide flips completeness
+`provisional → on_time` and publishes **two versions** with the same phase and
+severity: pass 2's versions 8–22 are exactly these pairs, one pair per 30 s
+slide. An intent therefore goes stale if a slide happens before it dispatches:
 
-Cognition already distinguishes material from non-material change: the
-trigger's `materialDelta` decides admission, and an admitted version supersedes
-older pending items, cancels their attempts and withdraws their pending
-approvals (`cognition/internal/app/supersession.go`, ADR-017). Policy and
-actions do not use that rule; they use raw version equality. The two halves of
-the runtime disagree on what "stale" means.
+- for R2, a human approval almost always takes longer than the time to the next
+  slide, so the fan path resolves `stale`;
+- for R1 it is hidden today only because the episode blocks ingestion (G9);
+  once that is fixed, any slide inside an episode stales its intent.
+
+TECHNICAL_DESIGN §11.5 already anticipates this: "Version 1 defaults to
+rejection unless compatibility is explicitly declared." D1 is that declaration.
 
 **G3. Intent vocabulary seam.** Tamoz's thermal domain proposes
 `request_bounded_cooling` (and `downgrade_cooling`, `withdraw_cooling`). The spec
@@ -93,9 +92,21 @@ X01's end-to-end test. Due cognition, approved commands and silence timers
 waited for the next event, so a quiet feed stalled the loop and a dead link
 was never detected. Fixed in [X08](tasks/X08-live-pipeline-clock.md).
 
+**G9. Episodes run inside the ingest batch.** `runner.RunOnce` calls the
+worker synchronously from `advanceBatch`, which runs for each ingested event.
+While Tamoz reasons (up to the spec's 30 s wall time), ingestion, the stream
+engine, silence timers, phase transitions and dispatch all stop, and readings
+back up in the bounded socket queue until the gateway blocks. This contradicts
+TECHNICAL_DESIGN §11.4 ("preserve ingress, evidence log, deterministic state")
+and makes §11.5 impossible live: a running episode cannot be cancelled by a
+material supersession, because no new version is computed while it runs. That
+MVP item ("cancel a stale episode after material supersession") holds only in
+replay. On the bench it means an over-temperature escalation or a dead link is
+not processed while the model thinks. Fix: [X09](tasks/X09-episodes-beside-ingestion.md).
+
 ## Decisions
 
-### D1 — Material freshness (Agentic Stream core; new ADR)
+### D1 — Material freshness: declared compatibility (Agentic Stream core; new ADR)
 
 **Decision.** An intent is fresh while no **material** Situation change has
 happened since the version it was reasoned on. "Material" is the rule cognition
@@ -234,7 +245,9 @@ needs a coordinated firmware, catalog and pin update.
 | X05 | [Checked-in experiment specs](tasks/X05-checked-in-experiment-specs.md) | agentic-stream | G1, G4, G7 | X01 |
 | X06 | [Bench mapping and heartbeat](tasks/X06-bench-mapping-and-heartbeat.md) | research | G6, D4 | X05 |
 | U15 | [Approval principal provisioning](tasks/U15-approval-principal-provisioning.md) | agentic-stream | G5 | U13 |
-| X07 | [Joined rehearsal: simulator, then bench](tasks/X07-joined-rehearsal.md) | all | proof | X03–X06, U15 |
+| X08 | [The live pipeline advances on a clock](tasks/X08-live-pipeline-clock.md) | agentic-stream | G8 | done |
+| X09 | [Episodes run beside ingestion](tasks/X09-episodes-beside-ingestion.md) | agentic-stream | G9 | X03 |
+| X07 | [Joined rehearsal: simulator, then bench](tasks/X07-joined-rehearsal.md) | all | proof | X03–X06, X09, U15 |
 
 After X07, the experiment-relevant tasks from the main review follow:
 U21 (shadow, G3 gate), U14 (software interlock for G4c), U01 (safety). The

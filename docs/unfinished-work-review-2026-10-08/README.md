@@ -132,6 +132,7 @@ as the change.
 | X05 | [Checked-in experiment specs](tasks/X05-checked-in-experiment-specs.md) | Complete | P0 | S | X01 | todo |
 | X06 | [Bench mapping and heartbeat](tasks/X06-bench-mapping-and-heartbeat.md) | Research repo config | P0 | S | X05 | todo |
 | X08 | [The live pipeline advances on a clock](tasks/X08-live-pipeline-clock.md) | Fix (found by X01) | P0 | S | — | done |
+| X09 | [Episodes run beside ingestion](tasks/X09-episodes-beside-ingestion.md) | Complete (design §11.4–11.5) | P0 | M | X03 | todo |
 | X07 | [Joined rehearsal: simulator, then bench](tasks/X07-joined-rehearsal.md) | Run the proof | P0 | M | X03–X06, U15 | todo |
 | U01 | [Reject unenforced intent policies](tasks/U01-reject-unenforced-intent-policies.md) | Fix | P0 | S | — | todo |
 | U02 | [Delete counterfactual replay](tasks/U02-delete-counterfactual-replay.md) | Delete | P2 | S | — | todo |
@@ -165,7 +166,7 @@ Sizes: XS under an hour, S about half a day, M one to two days.
 
 1. **X01 and X02**: protect the experiment and repair the two existing breaks.
    X01 then runs on every later commit.
-2. **The experiment path, X03–X06, U13, U15, then X07**: material freshness,
+2. **The experiment path, X03 with X09, X05, U13, U15, then X07**: material freshness,
    one intent vocabulary, checked-in specs, bench mapping, approval
    provisioning, then the joined rehearsal in the simulator and on the bench.
 3. **U01** (fail-open policy values), small and independent; it can land any time.

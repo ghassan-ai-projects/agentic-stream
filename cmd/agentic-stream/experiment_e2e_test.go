@@ -30,6 +30,13 @@ const (
 	experimentTrace   = "../../examples/thermal-chamber/testdata/trace-opening.jsonl"
 )
 
+// experimentOptions vary one run: spec text replacements on top of the
+// runbook's edits, and how long the worker reasons before it decides.
+type experimentOptions struct {
+	specEdits   map[string]string
+	workerDelay time.Duration
+}
+
 // experimentRun is one running `serve` with its stand-ins.
 type experimentRun struct {
 	dir, db, specPath, liveSocket string
@@ -38,7 +45,7 @@ type experimentRun struct {
 }
 
 func TestExperimentClosedLoopThroughServe(t *testing.T) {
-	run := startExperiment(t)
+	run := startExperiment(t, experimentOptions{})
 	trace := shiftedTrace(t, time.Now().Add(-time.Second))
 	feedLive(t, run.liveSocket, trace, "{not json")
 	waitForRow(t, run.db, fmt.Sprintf("SELECT (SELECT COUNT(*) FROM event_log) = %d AND (SELECT COUNT(*) FROM event_quarantine) = 1", len(trace)), 60*time.Second)
@@ -50,13 +57,13 @@ func TestExperimentClosedLoopThroughServe(t *testing.T) {
 	assertRunArtifactVerifies(t, run)
 }
 
-func startExperiment(t *testing.T) experimentRun {
+func startExperiment(t *testing.T, options experimentOptions) experimentRun {
 	t.Helper()
 	disableTelemetryExport(t)
 	t.Setenv("AGENTIC_STREAM_SUBSCRIBER_TOKEN", "subscriber-secret")
 	dir := privateSocketDir(t)
-	run := experimentRun{dir: dir, db: filepath.Join(dir, "stream.db"), specPath: tamozActiveSpec(t, dir), liveSocket: filepath.Join(dir, "telemetry.sock")}
-	serveTamozStandIn(t, filepath.Join(dir, "worker.sock"))
+	run := experimentRun{dir: dir, db: filepath.Join(dir, "stream.db"), specPath: tamozActiveSpec(t, dir, options.specEdits), liveSocket: filepath.Join(dir, "telemetry.sock")}
+	serveTamozStandIn(t, filepath.Join(dir, "worker.sock"), options.workerDelay)
 	run.device = serveDeviceStandIn(t, filepath.Join(dir, "device.sock"), thermalCatalogDigest(t))
 	run.stop = startServe(t, run, freeLoopbackAddress(t))
 	return run
@@ -75,8 +82,9 @@ func privateSocketDir(t *testing.T) string {
 }
 
 // tamozActiveSpec copies the canonical spec with the two edits RUNBOOK-G1
-// makes: the Tamoz executor and the active dispatch policy.
-func tamozActiveSpec(t *testing.T, dir string) string {
+// makes, the Tamoz executor and the active dispatch policy, plus any edits the
+// test asks for.
+func tamozActiveSpec(t *testing.T, dir string, edits map[string]string) string {
 	t.Helper()
 	data, err := os.ReadFile(experimentSpec)
 	if err != nil {
@@ -85,6 +93,12 @@ func tamozActiveSpec(t *testing.T, dir string) string {
 	edited := strings.Replace(string(data), "    name: native\n", "    name: tamoz\n    dispatchPolicy: active\n", 1)
 	if edited == string(data) {
 		t.Fatal("zone-thermal executor block changed; update the runbook edit and this test")
+	}
+	for old, replacement := range edits {
+		if !strings.Contains(edited, old) {
+			t.Fatalf("zone-thermal has no %q to edit", old)
+		}
+		edited = strings.ReplaceAll(edited, old, replacement)
 	}
 	path := filepath.Join(dir, "zone-thermal-active.situation.yaml")
 	if err := os.WriteFile(path, []byte(edited), 0o600); err != nil { //nolint:gosec // path is inside the test's own MkdirTemp directory
