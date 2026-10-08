@@ -144,7 +144,7 @@ as the change.
 | U07 | [Remove test-only facade exports](tasks/U07-remove-test-only-facade-exports.md) | Delete / move | P2 | M | — | done |
 | U08 | [Resolve unused exported constants](tasks/U08-resolve-unused-exported-constants.md) | Delete / keep | P3 | XS | — | done |
 | U09 | [Delete `config effective` placeholder](tasks/U09-delete-config-effective-placeholder.md) | Delete | P3 | XS | — | done |
-| U10 | [Define the primary-hypothesis delta key](tasks/U10-remove-primary-hypothesis-delta-key.md) | Keep key, drop from plan (revised for the experiment) | P3 | XS | — | todo |
+| U10 | [Define the primary-hypothesis delta key](tasks/U10-remove-primary-hypothesis-delta-key.md) | Keep key, drop from plan (revised for the experiment) | P3 | XS | — | done |
 | U11 | [Drop unused tables](tasks/U11-drop-unused-tables.md) | Delete | P3 | S | U02 | done |
 | U12 | [Dead-code gate](tasks/U12-deadcode-gate.md) | Complete | P1 | S | U02–U07 | todo |
 | U13 | [Operator command foundation](tasks/U13-operator-command-foundation.md) | Complete | P1 | S | — | done |

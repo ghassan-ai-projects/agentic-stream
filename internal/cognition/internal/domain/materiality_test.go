@@ -62,3 +62,15 @@ func TestMaterialityFollowsTheSpecsDeclaration(t *testing.T) {
 		})
 	}
 }
+
+// primary_hypothesis_changed is a defined constant, not a tracked value: true
+// for a Situation's first reasoned version, false for every later one.
+func TestPrimaryHypothesisChangedIsTrueOnlyForTheFirstVersion(t *testing.T) {
+	t.Parallel()
+	rules := materialityRules(t)
+	first := rules.buildDelta(situations.Version{Version: 1, Phase: "cooling"}, nil)
+	later := rules.buildDelta(situations.Version{Version: 2, Phase: "recovering"}, &situations.Version{Version: 1, Phase: "cooling"})
+	if first[spec.DeltaKeys.PrimaryHypothesisChanged] != true || later[spec.DeltaKeys.PrimaryHypothesisChanged] != false {
+		t.Fatalf("first=%v later=%v", first[spec.DeltaKeys.PrimaryHypothesisChanged], later[spec.DeltaKeys.PrimaryHypothesisChanged])
+	}
+}

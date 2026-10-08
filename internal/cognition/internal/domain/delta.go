@@ -46,8 +46,10 @@ func changeDelta(current, previous situations.Version, prevFacts map[string]any)
 	return map[string]any{
 		spec.DeltaKeys.PhaseChanged: phaseChanged, spec.DeltaKeys.SeverityChange: current.Severity - previous.Severity,
 		spec.DeltaKeys.CompletenessChanged: current.Completeness != previous.Completeness,
-		// Primary-hypothesis tracking is not implemented in this slice; it is
-		// intentionally false so triggers can reference the key deterministically.
+		// A Situation carries no hypothesis: hypotheses are Decision output, and
+		// feeding them back into Situation state would make history depend on
+		// recorded cognition. The key is true for a first reasoned version and
+		// false after it, so specs can reference it deterministically.
 		spec.DeltaKeys.PrimaryHypothesisChanged: false, spec.DeltaKeys.FactsChanged: factsChanged,
 		spec.DeltaKeys.Facts: prevFacts, spec.DeltaKeys.NewFacts: current.Facts,
 		spec.DeltaKeys.Novelty: novelty(phaseChanged || factsChanged),

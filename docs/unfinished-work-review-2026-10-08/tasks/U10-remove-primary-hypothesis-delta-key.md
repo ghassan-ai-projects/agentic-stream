@@ -1,6 +1,6 @@
 # U10 — Define the primary-hypothesis delta key (keep it)
 
-Status: todo · Decision: **keep the key, define it, remove the implementation from the plan** (revised for the experiment) · Priority: P2 · Size: S
+Status: done · Decision: **keep the key, define it, remove the implementation from the plan** (revised for the experiment) · Priority: P2 · Size: S
 
 ## Finding
 

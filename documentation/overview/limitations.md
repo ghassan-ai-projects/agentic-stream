@@ -71,8 +71,9 @@ expose a retention or telemetry control until the runtime can enforce it.
 The current engine keeps a stable Situation/occurrence identity for the
 tenant, deployment, partition, type, and entity; it does not automatically
 create a new occurrence after resolution. Confidence starts at `1.0` without
-a calibrated update mechanism, and subsequent primary-hypothesis change
-tracking is not implemented. Completeness is an evidence-processing status,
+a calibrated update mechanism. Hypotheses are Decision output, not Situation
+state, so the trigger delta key `primary_hypothesis_changed` is true only for a
+Situation's first reasoned version. Completeness is an evidence-processing status,
 not a certified all-source coverage measure; the trigger `completeness` field
 is not independently enforced by the current scheduler.
 
