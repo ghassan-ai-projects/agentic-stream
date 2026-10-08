@@ -1,8 +1,8 @@
 # Operational observability
 
 Use health checks and telemetry to observe the running service. Use stored
-records to explain its decisions, including after a restart. This guide also
-identifies the inspection tools that are not yet exposed publicly.
+records to explain its decisions, including after a restart, with the
+read-only inspection commands.
 
 ## Health and metrics
 
@@ -52,10 +52,12 @@ event -> situation_version -> scheduler_item -> episode/attempt
       -> decision -> intent -> policy_audit -> command/outbox -> outcome
 ```
 
-The public API does not currently expose a general query endpoint or packaged
-inspection CLI for every record. Durable rows can be examined with approved,
-read-only deployment tooling; quarantine release, approval resolution, and
-unknown-outcome reconciliation remain internal operational capabilities.
+The chain is inspectable read-only from the CLI: `situation list|show`,
+`explain situation|trigger`, `episode show` and `intent show` (through the
+command's outcome, verification and any watch it installed). There is no HTTP
+query endpoint. Changes go through their own commands: `quarantine release`,
+`commands resolve` for uncertain outcomes, and the signed `/v1/approvals/{id}`
+flow for approvals. See the [CLI reference](../reference/cli.md).
 
 ## Next reads
 

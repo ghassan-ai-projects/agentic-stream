@@ -36,18 +36,35 @@ Malformed input and input that fails schema validation are quarantined. A releas
 again before redrive. Gap records identify missing input. Resolve them using authoritative source
 data rather than inventing replacement events.
 
-The current public CLI and HTTP API do not expose quarantine release or
-redrive. The underlying release path is an internal API; use only approved
-deployment tooling and preserve the audit trail. Do not invent a public
-endpoint or edit the database directly.
+Recover quarantined evidence with the CLI, with the runtime stopped (release
+and redrive need the runtime owner lease):
+
+1. `agentic-stream quarantine list --db <db>` shows each record's status and
+   reason: `quarantined`, `released`, `redriven`, or `rejected` when its
+   retries ran out (the log records a gap for it).
+2. Fix the cause first: register the missing schema by deploying the spec that
+   declares it, or fix the producer. A redriven record is validated against
+   the schemas registered *now*.
+3. `agentic-stream quarantine release <event-id> --db <db> --reason <text>`
+   records the decision to admit the record again.
+4. `agentic-stream quarantine redrive <event-id> --db <db>` validates and
+   appends it to the log exactly once; the engine processes it on the next
+   run. A record that still fails stays released with its new reason, and
+   redriving a redriven record does nothing.
+
+Do not edit the database directly; the release and redrive rows are the audit
+trail.
 
 ## 5. Handle episodes and effects
 
 Recovery can abandon prior-epoch attempts and resume eligible work with a new
 attempt/fence. Late output from the old attempt must be rejected. For commands,
 inspect outbox lease, command status, idempotency key, outcome, and
-reconciliation state. Unknown outcomes require provider-side reconciliation;
-never blindly replay them.
+reconciliation state (`agentic-stream intent show <intent-id>` prints them).
+Unknown outcomes require provider-side reconciliation; never blindly replay
+them. Once the provider's evidence is in hand, close the command with
+`agentic-stream commands resolve <command-id> --status succeeded|failed|manual_review --evidence <file>`
+(`commands list` shows the commands waiting).
 
 ## 6. Restore and backup
 
