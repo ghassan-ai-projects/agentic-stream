@@ -1,7 +1,7 @@
 # DUP-007: Stored intent/decision/snapshot/command verification is implemented separately in twelve places
 
 - Status: fixed
-- Commit: pending (reviewer commits)
+- Commit: 60c7b98
 - Severity: high
 - Verdict (finders): DIVERGED
 - Themes: contracts and shapes

@@ -1,7 +1,7 @@
 # DUP-026: Execution deadline and cancel are classified three ways across executors
 
 - Status: fixed
-- Commit: pending (reviewer commits)
+- Commit: 60c7b98
 - Severity: medium
 - Verdict (finders): DIVERGED
 - Themes: mechanisms

@@ -46,7 +46,7 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Status: fixed. Commit: pending (reviewer commits).
+Status: fixed. Commit: 60c7b98.
 
 ### Verified
 
