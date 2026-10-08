@@ -78,3 +78,19 @@ func Physical() Clock { return transport.Physical() }
 
 // Random returns a generator that produces base64url-encoded random identifiers.
 func Random() Generator { return transport.Random() }
+
+// OrPhysical returns clock, or the physical clock when clock is nil.
+func OrPhysical(clock Clock) Clock {
+	if clock == nil {
+		return Physical()
+	}
+	return clock
+}
+
+// OrRandom returns generator, or the random generator when generator is nil.
+func OrRandom(generator Generator) Generator {
+	if generator == nil {
+		return Random()
+	}
+	return generator
+}

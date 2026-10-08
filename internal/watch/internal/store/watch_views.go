@@ -27,12 +27,7 @@ func (s Store) Watch(ctx context.Context, tenantID, watchID string) (domain.Watc
 }
 
 func (s Store) fires(ctx context.Context, watchID string) ([]domain.FireView, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT event_id, fired_at FROM watch_fires WHERE watch_id = ? ORDER BY fired_at, event_id`, watchID)
-	if err != nil {
-		return nil, fmt.Errorf("read watch fires: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	fires, err := storage.CollectRows(rows, "watch fires", scanFire)
+	fires, err := storage.QueryAll(ctx, s.db, "watch fires", scanFire, `SELECT event_id, fired_at FROM watch_fires WHERE watch_id = ? ORDER BY fired_at, event_id`, watchID)
 	if err != nil {
 		return nil, fmt.Errorf("read watch fires: %w", err)
 	}

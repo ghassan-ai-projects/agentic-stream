@@ -17,40 +17,18 @@ func newSituationCommand() *cobra.Command {
 }
 
 func newSituationListCommand() *cobra.Command {
-	var flags operatorFlags
 	var entityID string
-	cmd := &cobra.Command{
-		Use: "list", Short: "List Situations, newest evidence first.", Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return readOperatorDatabase(cmd, flags, func(db *storage.DB) error { return printSituations(cmd, flags, db, entityID) })
+	return newDatabaseCommand("list", "List Situations, newest evidence first.", cobra.NoArgs,
+		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB, _ []string) error {
+			return printSituations(cmd, flags, db, entityID)
 		},
-	}
-	flags.register(cmd)
-	cmd.Flags().StringVar(&entityID, "entity", "", "Only Situations of this entity")
-	return cmd
+		func(cmd *cobra.Command) {
+			cmd.Flags().StringVar(&entityID, "entity", "", "Only Situations of this entity")
+		})
 }
 
 func newSituationShowCommand() *cobra.Command {
-	var flags operatorFlags
-	var version int
-	cmd := &cobra.Command{
-		Use: "show <situation-id>", Short: "Show one Situation version with its snapshot and evidence set.", Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return readOperatorDatabase(cmd, flags, func(db *storage.DB) error { return printSituationVersion(cmd, flags, db, args[0], version) })
-		},
-	}
-	flags.register(cmd)
-	cmd.Flags().IntVar(&version, "version", 0, "Situation version (default: current)")
-	return cmd
-}
-
-func readOperatorDatabase(cmd *cobra.Command, flags operatorFlags, read func(*storage.DB) error) error {
-	db, err := flags.openOperatorDatabase(cmd.Context())
-	if err != nil {
-		return err
-	}
-	defer func() { _ = db.Close() }()
-	return read(db)
+	return newVersionedCommand("show <situation-id>", "Show one Situation version with its snapshot and evidence set.", printSituationVersion)
 }
 
 func printSituations(cmd *cobra.Command, flags operatorFlags, db *storage.DB, entityID string) error {

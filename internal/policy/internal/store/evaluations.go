@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // SetIntentStatus updates only policy's governance columns.
@@ -18,7 +19,7 @@ func (tx *Tx) SetIntentStatus(ctx context.Context, c domain.IntentStatusChange) 
 // RecordEvaluation persists the evidence for a completed evaluation.
 func (tx *Tx) RecordEvaluation(ctx context.Context, a domain.EvaluationAudit) error {
 	r := a.Row
-	if _, err := tx.tx.ExecContext(ctx, recordEvaluationSQL, a.ID, r.IntentID, r.DecisionID, a.PolicyVersion, a.Result.Result, a.PolicyDigest, r.IntentSHA, r.DecisionSHA, nullableID(a.Result.CommandID), nullableID(a.Result.ApprovalID), a.Reason, r.CurrentSituation, domain.FormatTime(a.Now)); err != nil {
+	if _, err := tx.tx.ExecContext(ctx, recordEvaluationSQL, a.ID, r.IntentID, r.DecisionID, a.PolicyVersion, a.Result.Result, a.PolicyDigest, r.IntentSHA, r.DecisionSHA, storage.NullIfEmpty(a.Result.CommandID), storage.NullIfEmpty(a.Result.ApprovalID), a.Reason, r.CurrentSituation, domain.FormatTime(a.Now)); err != nil {
 		return fmt.Errorf("record policy evaluation: %w", err)
 	}
 	return nil

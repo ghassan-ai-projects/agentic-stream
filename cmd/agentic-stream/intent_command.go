@@ -15,17 +15,8 @@ import (
 )
 
 func newIntentCommand() *cobra.Command {
-	var flags operatorFlags
-	show := &cobra.Command{
-		Use: "show <intent-id>", Short: "Show an intent: policy evaluations, approvals, commands, outcomes, verifications and watches.", Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return readOperatorDatabase(cmd, flags, func(db *storage.DB) error { return printIntent(cmd, flags, db, args[0]) })
-		},
-	}
-	flags.register(show)
-	cmd := &cobra.Command{Use: "intent", Short: "Inspect an intent."}
-	cmd.AddCommand(show)
-	return cmd
+	return newShowGroup("intent", "Inspect an intent.", "intent-id",
+		"Show an intent: policy evaluations, approvals, commands, outcomes, verifications and watches.", printIntent)
 }
 
 type intentInspection struct {

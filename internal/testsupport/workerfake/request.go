@@ -1,9 +1,10 @@
 package workerfake
 
 import (
-	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	"strings"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/proto"

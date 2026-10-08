@@ -3,11 +3,12 @@ package workerfake
 import (
 	"context"
 	"errors"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	"io"
 	"net"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

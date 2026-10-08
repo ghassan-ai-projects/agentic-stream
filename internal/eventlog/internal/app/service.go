@@ -18,9 +18,7 @@ type Service struct {
 }
 
 func New(clk sources.Clock, st store.Store) *Service {
-	if clk == nil {
-		clk = sources.Physical()
-	}
+	clk = sources.OrPhysical(clk)
 	return &Service{store: st, clk: clk}
 }
 

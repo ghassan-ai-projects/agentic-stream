@@ -3,10 +3,11 @@ package eventlog_test
 import (
 	"context"
 	"database/sql"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"

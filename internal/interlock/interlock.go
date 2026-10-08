@@ -65,19 +65,19 @@ func Clear(ctx context.Context, db Transactor, fence Fence, reason string, now t
 
 // TripIn blocks every effect inside the caller's transaction.
 func TripIn(ctx context.Context, tx *sql.Tx, reason string, now time.Time) (State, error) {
-	state, err := store.Change(ctx, tx, domain.StatusTripped, reason, now.UTC().Format(timeLayout))
-	if err != nil {
-		return State{}, fmt.Errorf("trip interlock: %w", err)
-	}
-	return state, nil
+	return changeIn(ctx, tx, "trip", domain.StatusTripped, reason, now)
 }
 
 // ClearIn reopens the action plane inside the caller's transaction; the caller
 // owns the fence.
 func ClearIn(ctx context.Context, tx *sql.Tx, reason string, now time.Time) (State, error) {
-	state, err := store.Change(ctx, tx, domain.StatusReady, reason, now.UTC().Format(timeLayout))
+	return changeIn(ctx, tx, "clear", domain.StatusReady, reason, now)
+}
+
+func changeIn(ctx context.Context, tx *sql.Tx, verb, status, reason string, now time.Time) (State, error) {
+	state, err := store.Change(ctx, tx, status, reason, now.UTC().Format(timeLayout))
 	if err != nil {
-		return State{}, fmt.Errorf("clear interlock: %w", err)
+		return State{}, fmt.Errorf("%s interlock: %w", verb, err)
 	}
 	return state, nil
 }

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
@@ -40,12 +41,7 @@ const recordedDecisionsQuery = `
 	ORDER BY si.situation_id, si.situation_version, si.trigger_id`
 
 func (l SourceLedger) Entries(ctx context.Context) ([]domain.RecordedEntry, error) {
-	rows, err := l.db.QueryContext(ctx, recordedDecisionsQuery, l.tenantID, l.specDigest)
-	if err != nil {
-		return nil, fmt.Errorf("read recorded decisions: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	entries, err := storage.CollectRows(rows, "recorded decisions", scanRecordedEntry)
+	entries, err := storage.QueryAll(ctx, l.db, "recorded decisions", scanRecordedEntry, recordedDecisionsQuery, l.tenantID, l.specDigest)
 	if err != nil {
 		return nil, fmt.Errorf("read recorded decisions: %w", err)
 	}

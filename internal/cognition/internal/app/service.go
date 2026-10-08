@@ -36,12 +36,8 @@ func New(c Config) (*Service, error) {
 	if c.Spec == nil || c.DeploymentID == "" || c.TenantID == "" {
 		return nil, fmt.Errorf("cognition spec, deployment and tenant are required")
 	}
-	if c.Clock == nil {
-		c.Clock = sources.Physical()
-	}
-	if c.IDGen == nil {
-		c.IDGen = sources.Random()
-	}
+	c.Clock = sources.OrPhysical(c.Clock)
+	c.IDGen = sources.OrRandom(c.IDGen)
 	rules, err := domain.NewRules(c.Spec)
 	if err != nil {
 		return nil, err

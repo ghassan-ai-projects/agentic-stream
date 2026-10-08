@@ -21,29 +21,11 @@ func newExplainCommand() *cobra.Command {
 }
 
 func newExplainSituationCommand() *cobra.Command {
-	var flags operatorFlags
-	var version int
-	cmd := &cobra.Command{
-		Use: "situation <situation-id>", Short: "Explain each field of a Situation version, its evidence and its trigger evaluations.", Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return readOperatorDatabase(cmd, flags, func(db *storage.DB) error { return printSituationExplanation(cmd, flags, db, args[0], version) })
-		},
-	}
-	flags.register(cmd)
-	cmd.Flags().IntVar(&version, "version", 0, "Situation version (default: current)")
-	return cmd
+	return newVersionedCommand("situation <situation-id>", "Explain each field of a Situation version, its evidence and its trigger evaluations.", printSituationExplanation)
 }
 
 func newExplainTriggerCommand() *cobra.Command {
-	var flags operatorFlags
-	cmd := &cobra.Command{
-		Use: "trigger <trigger-id>", Short: "Explain a trigger evaluation and what became of it.", Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return readOperatorDatabase(cmd, flags, func(db *storage.DB) error { return printTriggerExplanation(cmd, flags, db, args[0]) })
-		},
-	}
-	flags.register(cmd)
-	return cmd
+	return newByIDCommand("trigger <trigger-id>", "Explain a trigger evaluation and what became of it.", printTriggerExplanation)
 }
 
 type situationExplanation struct {

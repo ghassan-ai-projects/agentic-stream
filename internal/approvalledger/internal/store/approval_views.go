@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger/internal/domain"
@@ -19,12 +20,7 @@ const approvalsSQL = `
 	FROM approvals WHERE intent_id = ? ORDER BY requested_at, approval_id`
 
 func (r Reader) Approvals(ctx context.Context, intentID string) ([]domain.ApprovalView, error) {
-	rows, err := r.db.QueryContext(ctx, approvalsSQL, intentID)
-	if err != nil {
-		return nil, fmt.Errorf("read approvals: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	approvals, err := storage.CollectRows(rows, "approvals", scanApprovalView)
+	approvals, err := storage.QueryAll(ctx, r.db, "approvals", scanApprovalView, approvalsSQL, intentID)
 	if err != nil {
 		return nil, fmt.Errorf("read approvals: %w", err)
 	}

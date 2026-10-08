@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"

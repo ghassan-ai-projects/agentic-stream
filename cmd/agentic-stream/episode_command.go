@@ -13,17 +13,8 @@ import (
 )
 
 func newEpisodeCommand() *cobra.Command {
-	var flags operatorFlags
-	show := &cobra.Command{
-		Use: "show <episode-id>", Short: "Show an episode: its attempts, refused results, Decisions and their intents.", Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return readOperatorDatabase(cmd, flags, func(db *storage.DB) error { return printEpisode(cmd, flags, db, args[0]) })
-		},
-	}
-	flags.register(show)
-	cmd := &cobra.Command{Use: "episode", Short: "Inspect an episode."}
-	cmd.AddCommand(show)
-	return cmd
+	return newShowGroup("episode", "Inspect an episode.", "episode-id",
+		"Show an episode: its attempts, refused results, Decisions and their intents.", printEpisode)
 }
 
 type episodeInspection struct {

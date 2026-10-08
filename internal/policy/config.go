@@ -36,9 +36,7 @@ func validateConfig(c Config) error {
 }
 func applicationConfig(c Config, digest string) app.Config {
 	generator := c.IDGenerator
-	if generator == nil {
-		generator = sources.Random()
-	}
+	generator = sources.OrRandom(generator)
 	cfg := app.Config{PolicyVersion: c.PolicyVersion, PolicyDigest: digest, OwnerEpoch: c.OwnerEpoch, IDGenerator: generator, Fences: app.Fences{RuntimeOwner: c.RuntimeOwner, DecisionEpoch: c.DecisionEpoch}}
 	return cfg
 }

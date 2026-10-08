@@ -23,12 +23,7 @@ const listSituationsSQL = `
 	ORDER BY latest_event_time DESC, situation_id`
 
 func (r Reader) ListSituations(ctx context.Context, tenantID, entityID string) ([]domain.SituationSummary, error) {
-	rows, err := r.db.QueryContext(ctx, listSituationsSQL, tenantID, entityID, entityID)
-	if err != nil {
-		return nil, fmt.Errorf("list situations: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	summaries, err := storage.CollectRows(rows, "situations", scanSituationSummary)
+	summaries, err := storage.QueryAll(ctx, r.db, "situations", scanSituationSummary, listSituationsSQL, tenantID, entityID, entityID)
 	if err != nil {
 		return nil, fmt.Errorf("list situations: %w", err)
 	}

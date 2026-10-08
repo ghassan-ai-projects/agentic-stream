@@ -43,3 +43,31 @@ func collect(t *testing.T, db *storage.DB, query string, scan func(*sql.Rows) (i
 	defer func() { _ = rows.Close() }()
 	return storage.CollectRows(rows, "values", scan)
 }
+
+func TestQueryAllScansEveryRowAndNamesWhatFailed(t *testing.T) {
+	t.Parallel()
+	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "rows.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	scanInt := func(rows *sql.Rows) (int, error) {
+		var value int
+		return value, rows.Scan(&value)
+	}
+	values, err := storage.QueryAll(t.Context(), db, "numbers", scanInt, "SELECT 1 UNION SELECT 2")
+	if err != nil || len(values) != 2 {
+		t.Fatalf("values = %v, %v", values, err)
+	}
+	empty, err := storage.QueryAll(t.Context(), db, "numbers", scanInt, "SELECT 1 WHERE 0")
+	if err != nil || empty == nil || len(empty) != 0 {
+		t.Fatalf("no rows = %v, %v; want an empty slice", empty, err)
+	}
+	if _, err := storage.QueryAll(t.Context(), db, "numbers", scanInt, "SELECT * FROM missing_table"); err == nil || !strings.Contains(err.Error(), "run query") {
+		t.Fatalf("a failing query = %v", err)
+	}
+	failing := func(*sql.Rows) (int, error) { return 0, errors.New("scan failed") }
+	if _, err := storage.QueryAll(t.Context(), db, "numbers", failing, "SELECT 1"); err == nil || !strings.Contains(err.Error(), "scan failed") {
+		t.Fatalf("a failing scan = %v", err)
+	}
+}

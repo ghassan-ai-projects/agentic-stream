@@ -48,12 +48,7 @@ func (r Reader) intents(ctx context.Context, query string, args ...any) ([]domai
 }
 
 func (r Reader) scanIntents(ctx context.Context, query string, args ...any) ([]domain.IntentView, error) {
-	rows, err := r.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("read intents: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	views, err := storage.CollectRows(rows, "intents", scanIntentView)
+	views, err := storage.QueryAll(ctx, r.db, "intents", scanIntentView, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("read intents: %w", err)
 	}
@@ -69,14 +64,9 @@ func scanIntentView(rows *sql.Rows) (domain.IntentView, error) {
 }
 
 func (r Reader) evaluations(ctx context.Context, intentID string) ([]domain.PolicyEvaluationView, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	evaluations, err := storage.QueryAll(ctx, r.db, "policy evaluations", scanPolicyEvaluation, `
 		SELECT evaluation_id, result, reason, policy_version, policy_digest, COALESCE(command_id, ''), COALESCE(approval_id, ''), situation_version, evaluated_at
 		FROM policy_evaluations WHERE intent_id = ? ORDER BY evaluated_at, evaluation_id`, intentID)
-	if err != nil {
-		return nil, fmt.Errorf("read policy evaluations: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	evaluations, err := storage.CollectRows(rows, "policy evaluations", scanPolicyEvaluation)
 	if err != nil {
 		return nil, fmt.Errorf("read policy evaluations: %w", err)
 	}

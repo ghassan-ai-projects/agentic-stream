@@ -3,11 +3,12 @@ package app_test
 import (
 	"context"
 	"database/sql"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"

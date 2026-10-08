@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // InsertEvent inserts one envelope and returns its position, or -1 when the
@@ -38,8 +39,8 @@ func eventColumns(tenantID string, env contractsv1.Envelope, body domain.Encoded
 	return []any{
 		tenantID, env.PartitionID(0), env.ID, env.Type, env.SchemaVersion,
 		env.Source, env.PartitionKey, env.Entity.Type, env.Entity.ID, env.EventTime.Format(time.RFC3339Nano),
-		nullableTime(env.ObservedAt), env.IngestedAt.Format(time.RFC3339Nano), nullableText(env.CorrelationID), nullableText(env.CausationID),
-		nullableText(env.Traceparent), nullableText(env.Tracestate), string(env.Classification), body.QualityJSON, body.PayloadJSON,
+		nullableTime(env.ObservedAt), env.IngestedAt.Format(time.RFC3339Nano), storage.NullIfEmpty(env.CorrelationID), storage.NullIfEmpty(env.CausationID),
+		storage.NullIfEmpty(env.Traceparent), storage.NullIfEmpty(env.Tracestate), string(env.Classification), body.QualityJSON, body.PayloadJSON,
 		body.PayloadSHA256, createdAt,
 	}
 }
@@ -59,10 +60,6 @@ func insertedPosition(res sql.Result) (domain.LogPosition, error) {
 		return -1, fmt.Errorf("last insert id: %w", err)
 	}
 	return domain.LogPosition(position), nil
-}
-
-func nullableText(value string) sql.NullString {
-	return sql.NullString{String: value, Valid: value != ""}
 }
 
 func nullableTime(value *time.Time) sql.NullString {

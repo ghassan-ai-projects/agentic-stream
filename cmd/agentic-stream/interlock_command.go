@@ -25,17 +25,16 @@ func newInterlockCommand() *cobra.Command {
 }
 
 func newInterlockOperationCommand(name, short string, needsReason bool, operation interlockOperation) *cobra.Command {
-	var flags operatorFlags
 	var reason string
-	cmd := &cobra.Command{
-		Use: name, Short: short, Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error { return runInterlock(cmd, flags, operation, reason) },
-	}
-	flags.register(cmd)
-	if needsReason {
-		cmd.Flags().StringVar(&reason, "reason", "", "Why the interlock changes (required)")
-	}
-	return cmd
+	return newDatabaseCommand(name, short, cobra.NoArgs,
+		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB, _ []string) error {
+			return runInterlock(cmd, flags, db, operation, reason)
+		},
+		func(cmd *cobra.Command) {
+			if needsReason {
+				cmd.Flags().StringVar(&reason, "reason", "", "Why the interlock changes (required)")
+			}
+		})
 }
 
 func readInterlock(ctx context.Context, db *storage.DB, _ string) (interlock.State, error) {
@@ -67,12 +66,7 @@ func clearInterlock(ctx context.Context, db *storage.DB, reason string) (interlo
 	return state, err
 }
 
-func runInterlock(cmd *cobra.Command, flags operatorFlags, operation interlockOperation, reason string) error {
-	db, err := flags.openOperatorDatabase(cmd.Context())
-	if err != nil {
-		return err
-	}
-	defer func() { _ = db.Close() }()
+func runInterlock(cmd *cobra.Command, flags operatorFlags, db *storage.DB, operation interlockOperation, reason string) error {
 	state, err := operation(cmd.Context(), db, reason)
 	if err != nil {
 		return err

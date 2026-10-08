@@ -33,6 +33,7 @@ linters:
     - gocyclo        # Q2: cyclomatic complexity
     - nestif         # Q2: deeply nested if statements
     - funlen         # Q2: function length
+    - dupl           # Q8: no copied code (token clones of 100+ tokens)
 
   # Linter exclusions: skip these paths entirely (analyzed but not reported).
   # v2 moved this from a top-level `exclusions:` block to `linters.exclusions`.
@@ -48,7 +49,7 @@ linters:
     rules:
       # Q2 applies to production code. Table-driven tests are long by design.
       - path: _test\.go
-        linters: [gocognit, gocyclo, nestif, funlen]
+        linters: [gocognit, gocyclo, nestif, funlen, dupl]
       # wrapcheck exists to give production errors context. Test helpers and
       # transaction closures feed t.Fatal directly, where wrapping adds none.
       - path: _test\.go
@@ -62,6 +63,10 @@ linters:
 # ---------------------------------------------------------------------------
 
   settings:
+    dupl:
+      # Token-clone detection. Lower this threshold as the codebase gets cleaner.
+      threshold: 100
+
     gosec:
       # G101: hardcoded credentials (false positives in tests)
       # G304: file path from variable (often legitimate)

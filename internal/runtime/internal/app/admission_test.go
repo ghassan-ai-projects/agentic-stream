@@ -2,11 +2,12 @@ package app_test
 
 import (
 	"database/sql"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"

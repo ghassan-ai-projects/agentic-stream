@@ -55,18 +55,11 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	if domain.RequiresSchemaValidation(cfg.Spec.Inputs) {
 		cfg.Log.RequireSchemaValidation()
 	}
-	service := &Service{store: cfg.Store, log: cfg.Log, clock: orPhysical(cfg.Clock), spec: cfg.Spec, tenantID: cfg.TenantID, deploymentID: cfg.Spec.Digest}
+	service := &Service{store: cfg.Store, log: cfg.Log, clock: sources.OrPhysical(cfg.Clock), spec: cfg.Spec, tenantID: cfg.TenantID, deploymentID: cfg.Spec.Digest}
 	if err := service.buildPlanes(ctx, cfg.Cognition); err != nil {
 		return nil, err
 	}
 	return service, nil
-}
-
-func orPhysical(clk sources.Clock) sources.Clock {
-	if clk == nil {
-		return sources.Physical()
-	}
-	return clk
 }
 
 // buildPlanes creates the operator runtime and situation engine over one

@@ -23,29 +23,24 @@ func newPrincipalsCommand() *cobra.Command {
 }
 
 func newPrincipalsApplyCommand() *cobra.Command {
-	var flags operatorFlags
 	var file string
 	var dryRun bool
-	cmd := &cobra.Command{
-		Use:   "apply --file <principals.yaml>",
-		Short: "Make the tenant's approval governance match a principal document (the runtime must be stopped).",
-		Args:  cobra.NoArgs,
-		RunE:  func(cmd *cobra.Command, _ []string) error { return runPrincipalsApply(cmd, flags, file, dryRun) },
-	}
-	flags.register(cmd)
-	cmd.Flags().StringVar(&file, "file", "", "Principal document (YAML)")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Report the result without changing anything")
-	return cmd
+	return newOperatorCommand("apply --file <principals.yaml>",
+		"Make the tenant's approval governance match a principal document (the runtime must be stopped).", cobra.NoArgs,
+		func(cmd *cobra.Command, flags operatorFlags, _ []string) error {
+			return runPrincipalsApply(cmd, flags, file, dryRun)
+		},
+		func(cmd *cobra.Command) {
+			cmd.Flags().StringVar(&file, "file", "", "Principal document (YAML)")
+			cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Report the result without changing anything")
+		})
 }
 
 func newPrincipalsShowCommand() *cobra.Command {
-	var flags operatorFlags
-	cmd := &cobra.Command{
-		Use: "show", Short: "Count the tenant's approval governance.", Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error { return runPrincipalsShow(cmd, flags) },
-	}
-	flags.register(cmd)
-	return cmd
+	return newDatabaseCommand("show", "Count the tenant's approval governance.", cobra.NoArgs,
+		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB, _ []string) error {
+			return runPrincipalsShow(cmd, flags, db)
+		})
 }
 
 func runPrincipalsApply(cmd *cobra.Command, flags operatorFlags, file string, dryRun bool) error {
@@ -105,12 +100,7 @@ func applyPrincipals(ctx context.Context, tx *sql.Tx, ownership operatorOwnershi
 	return summary, nil
 }
 
-func runPrincipalsShow(cmd *cobra.Command, flags operatorFlags) error {
-	db, err := flags.openOperatorDatabase(cmd.Context())
-	if err != nil {
-		return err
-	}
-	defer func() { _ = db.Close() }()
+func runPrincipalsShow(cmd *cobra.Command, flags operatorFlags, db *storage.DB) error {
 	summary, err := governanceSummary(cmd.Context(), db, flags.tenantID)
 	if err != nil {
 		return err

@@ -14,6 +14,7 @@ recorded in the same change, never a way to get a diff green.
 | Q5 | Package imports follow the declared layering. Foundation packages import no domain package; cognition and episodes never import policy or actions; replay never imports actions or the runtime; nothing under `internal/` imports `cmd/`. | `TestPackageLayering` (`architecture_test.go`) |
 | Q6 | The existing gates stay green: proto, tidy, build, vet, race tests, deadcode (no production function reachable only from tests), vulncheck, docs. | `make ci-check` |
 | Q7 | Functions read top-down as intent, following the clean-function rules below. | Code review, checked against [review-checklist.md](review-checklist.md) |
+| Q8 | No copied code: production Go has no token clone of 100 or more tokens, and a change adds no second implementation of something the repo already does. The threshold only goes down. | `dupl` in `.golangci.yml`; the duplication scan in AGENTS.md for the rest |
 
 ## Q7: clean functions
 

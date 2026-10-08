@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
@@ -33,13 +34,8 @@ func (t *Tx) Episode(ctx context.Context, tenantID, episodeID string) (domain.Ep
 }
 
 func (t *Tx) attempts(ctx context.Context, episodeID string) ([]domain.AttemptView, error) {
-	rows, err := t.q.QueryContext(ctx, `SELECT attempt_id, fence, status, started_at, COALESCE(ended_at, ''), terminal_json
+	attempts, err := storage.QueryAll(ctx, t.q, "episode attempts", scanAttemptView, `SELECT attempt_id, fence, status, started_at, COALESCE(ended_at, ''), terminal_json
 		FROM episode_attempts WHERE episode_id = ? ORDER BY fence`, episodeID)
-	if err != nil {
-		return nil, fmt.Errorf("read episode attempts: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	attempts, err := storage.CollectRows(rows, "episode attempts", scanAttemptView)
 	if err != nil {
 		return nil, fmt.Errorf("read episode attempts: %w", err)
 	}

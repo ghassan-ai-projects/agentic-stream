@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
@@ -32,14 +33,9 @@ func (t *Tx) Scheduling(ctx context.Context, tenantID, triggerID string) (domain
 }
 
 func (t *Tx) Rejections(ctx context.Context, episodeID string) ([]domain.RejectionRecord, error) {
-	rows, err := t.q.QueryContext(ctx, `
+	rejections, err := storage.QueryAll(ctx, t.q, "episode rejections", scanRejection, `
 		SELECT reason, COALESCE(attempt_id, ''), fence, details_json, created_at
 		FROM episode_rejections WHERE episode_id = ? ORDER BY created_at, rejection_id`, episodeID)
-	if err != nil {
-		return nil, fmt.Errorf("read episode rejections: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	rejections, err := storage.CollectRows(rows, "episode rejections", scanRejection)
 	if err != nil {
 		return nil, fmt.Errorf("read episode rejections: %w", err)
 	}

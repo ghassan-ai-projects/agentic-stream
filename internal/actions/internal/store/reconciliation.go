@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
@@ -70,13 +71,8 @@ func (tx *Tx) LoadReconciledProvenance(ctx context.Context, outcomeID, commandID
 }
 
 func (s Store) AwaitingReconciliation(ctx context.Context, tenantID string) ([]domain.AwaitingCommand, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT command_id, intent_id, effector_route, normalized_target, status, updated_at FROM commands
+	awaiting, err := storage.QueryAll(ctx, s.db, "commands awaiting reconciliation", scanAwaitingCommand, `SELECT command_id, intent_id, effector_route, normalized_target, status, updated_at FROM commands
 		WHERE tenant_id = ? AND status IN ('reconciling', 'outcome_unknown', 'manual_review') ORDER BY updated_at, command_id`, tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("list commands awaiting reconciliation: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	awaiting, err := storage.CollectRows(rows, "commands awaiting reconciliation", scanAwaitingCommand)
 	if err != nil {
 		return nil, fmt.Errorf("list commands awaiting reconciliation: %w", err)
 	}

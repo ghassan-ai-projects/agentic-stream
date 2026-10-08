@@ -44,13 +44,8 @@ func (s Store) CurrentPosition(ctx context.Context, tenantID string) (domain.Log
 const quarantineListLimit = 500
 
 func (s Store) Quarantined(ctx context.Context, tenantID string) ([]domain.QuarantineRecord, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT event_id, event_type, reason_code, status, redriven_at IS NOT NULL, attempt_count, first_seen_at, last_seen_at
+	records, err := storage.QueryAll(ctx, s.DB, "quarantine records", scanQuarantineRecord, `SELECT event_id, event_type, reason_code, status, redriven_at IS NOT NULL, attempt_count, first_seen_at, last_seen_at
 		FROM event_quarantine WHERE tenant_id = ? ORDER BY last_seen_at DESC, event_id LIMIT ?`, tenantID, quarantineListLimit)
-	if err != nil {
-		return nil, fmt.Errorf("list quarantine: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	records, err := storage.CollectRows(rows, "quarantine records", scanQuarantineRecord)
 	if err != nil {
 		return nil, fmt.Errorf("list quarantine: %w", err)
 	}

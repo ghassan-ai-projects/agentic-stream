@@ -48,40 +48,22 @@ func registerWorkerMonitor(ctx context.Context, workerErrors <-chan error, failu
 }
 
 func startContinuousSource(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, flags serveFlags, failures chan error) error {
-	if flags.liveSocket != "" {
-		go runLiveSocketSource(ctx, stop, pipeline, flags.liveSocket, failures)
-		go runPipelineClock(ctx, stop, pipeline, flags.pollInterval, failures)
-		go runEpisodeLoop(ctx, stop, pipeline, flags.pollInterval, failures)
-		return waitForLiveSocket(ctx, flags.liveSocket, failures)
+	run := func(name string, source func(context.Context) error) { go runSource(ctx, stop, failures, name, source) }
+	if flags.liveSocket == "" {
+		run("continuous pipeline", func(ctx context.Context) error {
+			return pollTrace(ctx, pipeline, flags.traceFormat, flags.tracePath, flags.pollInterval)
+		})
+		return nil
 	}
-	go runPollingSource(ctx, stop, pipeline, flags, failures)
-	return nil
+	run("live socket pipeline", func(ctx context.Context) error { return pipeline.RunLiveSocket(ctx, flags.liveSocket) })
+	run("pipeline clock", func(ctx context.Context) error { return pipeline.AdvanceEvery(ctx, flags.pollInterval) })
+	run("episode loop", func(ctx context.Context) error { return pipeline.RunEpisodesEvery(ctx, flags.pollInterval) })
+	return waitForLiveSocket(ctx, flags.liveSocket, failures)
 }
 
-func runLiveSocketSource(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, path string, failures chan error) {
-	if runErr := pipeline.RunLiveSocket(ctx, path); runErr != nil && !errors.Is(runErr, context.Canceled) {
-		failures <- fmt.Errorf("live socket pipeline: %w", runErr)
-		stop()
-	}
-}
-
-func runPipelineClock(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, interval time.Duration, failures chan error) {
-	if runErr := pipeline.AdvanceEvery(ctx, interval); runErr != nil && !errors.Is(runErr, context.Canceled) {
-		failures <- fmt.Errorf("pipeline clock: %w", runErr)
-		stop()
-	}
-}
-
-func runEpisodeLoop(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, interval time.Duration, failures chan error) {
-	if runErr := pipeline.RunEpisodesEvery(ctx, interval); runErr != nil && !errors.Is(runErr, context.Canceled) {
-		failures <- fmt.Errorf("episode loop: %w", runErr)
-		stop()
-	}
-}
-
-func runPollingSource(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, flags serveFlags, failures chan error) {
-	if runErr := pollTrace(ctx, pipeline, flags.traceFormat, flags.tracePath, flags.pollInterval); runErr != nil {
-		failures <- fmt.Errorf("continuous pipeline: %w", runErr)
+func runSource(ctx context.Context, stop context.CancelFunc, failures chan error, name string, source func(context.Context) error) {
+	if err := source(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		failures <- fmt.Errorf("%s: %w", name, err)
 		stop()
 	}
 }

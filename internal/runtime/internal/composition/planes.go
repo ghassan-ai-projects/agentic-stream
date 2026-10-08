@@ -26,12 +26,8 @@ func pipelineDefaults(cfg PipelineConfig) PipelineConfig {
 	if cfg.TenantID == "" {
 		cfg.TenantID = "default"
 	}
-	if cfg.Clock == nil {
-		cfg.Clock = sources.Physical()
-	}
-	if cfg.IDGenerator == nil {
-		cfg.IDGenerator = sources.Random()
-	}
+	cfg.Clock = sources.OrPhysical(cfg.Clock)
+	cfg.IDGenerator = sources.OrRandom(cfg.IDGenerator)
 	return pipelineExecutionDefaults(cfg)
 }
 

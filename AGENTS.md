@@ -227,6 +227,52 @@ comments, break formatting and leave the compiler to find what they missed.
   before the tests, and read the diff: a tool that changes exactly what you
   intended produces a small, uniform diff.
 
+## Duplication Scan
+
+Duplicated code is a defect to fix in the change that finds it, not to leave
+behind or to note for later. Run this scan on every file you add or change,
+before handoff, and repeat it after fixing, until nothing is left. This stays a
+required step until the repository is clean at the current threshold and the
+review checklist (Q8) has stopped finding duplicates.
+
+1. **Token clones.** `make lint` runs `dupl` at the threshold in
+   `.golangci.yml`. For a stricter look at your files, run it at a lower
+   threshold: copy `.golangci.yml`, set `linters.settings.dupl.threshold` to 60,
+   and run `golangci-lint run --config <copy> ./...`; fix what falls in files
+   you touched.
+2. **Same job, different code.** Before adding a helper, search the repo for the
+   job it does (`grep -rn` for the verb and for `func` names such as `nullable`,
+   `orPhysical`, `collect`, `format`). Use what exists:
+   `storage.QueryAll` and `storage.CollectRows` (read rows),
+   `storage.NullIfEmpty` (empty string to NULL),
+   `sources.OrPhysical` and `sources.OrRandom` (default clock and identities),
+   `interlock.Assert` (the interlock check), and `newOperatorCommand`,
+   `newDatabaseCommand`, `newByIDCommand` (operator CLI). If two modules need
+   the same helper, put one in the module that owns the concept and call it.
+3. **Wrappers.** For every new function whose body is one call into another
+   module, ask whether the caller can call the target directly. Keep a wrapper
+   only when an architecture gate requires it (a facade delegating to `app`, an
+   opaque `store.Tx` method) or it adds something: a fence, a transaction,
+   context for the error. Two modules defining the same operation over a third
+   module's data (the old `control` interlock copy) is the case to catch.
+4. **Same query twice.** Search for the table name in `internal/**/store`; one
+   `SELECT` of a row belongs in one place.
+5. **Identical bodies.** Find functions whose bodies print the same with a
+   throwaway `go/ast` program (group `FuncDecl` bodies by `printer.Fprint`
+   output, report groups of 2 or more with at least 4 lines). Per-module
+   private types that only look alike (each module's opaque `Join`, each
+   module's `Tx`) are not duplicates; helpers with the same body are.
+
+Fix with the refactoring tools above, then run `make lint`. Test files are
+outside the `dupl` gate, but repeated test setup still moves into a helper.
+
+Known duplication to burn down: `LoadSchedulerItem` and `LoadEvaluation` in
+`internal/episodes/internal/store/assembler.go` share a single-row load shape;
+`orMinute` (`actions`) and `ReservationLease` (`evidence`) default a lease to one
+minute independently; clones in test files. Remove an item from this list when
+you fix it, add one only for a duplicate you could not fix in the same change
+and say why in the change.
+
 ## Forbidden Changes
 
 - Do not add secrets, credentials, or machine-specific private data.

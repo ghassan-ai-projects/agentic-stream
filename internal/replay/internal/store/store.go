@@ -39,53 +39,37 @@ func (s Store) SaveSpecDeployment(ctx context.Context, tenantID string, compiled
 }
 
 func (s Store) EpisodeWorklist(ctx context.Context, tenantID string) ([]domain.ReplayEpisode, error) {
-	rows, err := s.DB.QueryContext(ctx, episodeWorklistQuery, tenantID)
+	episodes, err := storage.QueryAll(ctx, s.DB, "replay items", scanReplayEpisode, episodeWorklistQuery, tenantID)
 	if err != nil {
-		return nil, fmt.Errorf("query replay items: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	return collectReplayEpisodes(rows)
-}
-
-func collectReplayEpisodes(rows *sql.Rows) ([]domain.ReplayEpisode, error) {
-	var episodes []domain.ReplayEpisode
-	for rows.Next() {
-		var episode domain.ReplayEpisode
-		var snapshotDigest []byte
-		if err := rows.Scan(&episode.TriggerID, &episode.SituationID, &episode.SituationVersion, &episode.EpisodeID, &snapshotDigest); err != nil {
-			return nil, fmt.Errorf("scan replay item: %w", err)
-		}
-		episode.SnapshotDigest = "sha256:" + hex.EncodeToString(snapshotDigest)
-		episodes = append(episodes, episode.Keyed())
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate replay items: %w", err)
+		return nil, fmt.Errorf("list replay episodes: %w", err)
 	}
 	return episodes, nil
 }
 
-func (s Store) SituationVersionDigests(ctx context.Context, deploymentID string) ([]domain.VersionDigest, error) {
-	rows, err := s.DB.QueryContext(ctx, situationVersionDigestsQuery, deploymentID)
-	if err != nil {
-		return nil, fmt.Errorf("query versions: %w", err)
+func scanReplayEpisode(rows *sql.Rows) (domain.ReplayEpisode, error) {
+	var episode domain.ReplayEpisode
+	var snapshotDigest []byte
+	if err := rows.Scan(&episode.TriggerID, &episode.SituationID, &episode.SituationVersion, &episode.EpisodeID, &snapshotDigest); err != nil {
+		return domain.ReplayEpisode{}, fmt.Errorf("scan replay item: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
-	return collectVersionDigests(rows)
+	episode.SnapshotDigest = "sha256:" + hex.EncodeToString(snapshotDigest)
+	return episode.Keyed(), nil
 }
 
-func collectVersionDigests(rows *sql.Rows) ([]domain.VersionDigest, error) {
-	var versions []domain.VersionDigest
-	for rows.Next() {
-		var r domain.VersionDigest
-		if err := rows.Scan(&r.SituationID, &r.Version, &r.SHA256); err != nil {
-			return nil, fmt.Errorf("scan version: %w", err)
-		}
-		versions = append(versions, r)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate versions: %w", err)
+func (s Store) SituationVersionDigests(ctx context.Context, deploymentID string) ([]domain.VersionDigest, error) {
+	versions, err := storage.QueryAll(ctx, s.DB, "versions", scanVersionDigest, situationVersionDigestsQuery, deploymentID)
+	if err != nil {
+		return nil, fmt.Errorf("list situation versions: %w", err)
 	}
 	return versions, nil
+}
+
+func scanVersionDigest(rows *sql.Rows) (domain.VersionDigest, error) {
+	var version domain.VersionDigest
+	if err := rows.Scan(&version.SituationID, &version.Version, &version.SHA256); err != nil {
+		return domain.VersionDigest{}, fmt.Errorf("scan version: %w", err)
+	}
+	return version, nil
 }
 
 func (s Store) RecordedSnapshotDigest(ctx context.Context, situationID string, version int) ([]byte, error) {

@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 

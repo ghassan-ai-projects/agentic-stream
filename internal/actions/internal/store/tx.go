@@ -79,10 +79,3 @@ func (tx *Tx) AssertInterlock(ctx context.Context) error {
 func formatTime(value time.Time) string {
 	return value.UTC().Format(time.RFC3339Nano)
 }
-
-func nullableString(value string) any {
-	if value == "" {
-		return nil
-	}
-	return value
-}

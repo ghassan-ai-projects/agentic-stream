@@ -27,8 +27,6 @@ func New(cfg Config) (*Service, error) {
 		return nil, errors.New("watch requires a database and runtime owner check")
 	}
 	clk := cfg.Clock
-	if clk == nil {
-		clk = sources.Physical()
-	}
+	clk = sources.OrPhysical(clk)
 	return &Service{store: cfg.Store, clk: clk}, nil
 }

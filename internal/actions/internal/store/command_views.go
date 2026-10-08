@@ -28,13 +28,8 @@ func (s Store) IntentCommands(ctx context.Context, intentID string) ([]domain.Co
 }
 
 func (s Store) intentCommandRows(ctx context.Context, intentID string) ([]domain.CommandView, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT command_id, effector_route, normalized_target, status, created_at, updated_at
+	commands, err := storage.QueryAll(ctx, s.db, "intent commands", scanCommandView, `SELECT command_id, effector_route, normalized_target, status, created_at, updated_at
 		FROM commands WHERE intent_id = ? ORDER BY created_at, command_id`, intentID)
-	if err != nil {
-		return nil, fmt.Errorf("read intent commands: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	commands, err := storage.CollectRows(rows, "intent commands", scanCommandView)
 	if err != nil {
 		return nil, fmt.Errorf("read intent commands: %w", err)
 	}
@@ -50,13 +45,8 @@ func scanCommandView(rows *sql.Rows) (domain.CommandView, error) {
 }
 
 func (s Store) outcomeViews(ctx context.Context, commandID string) ([]domain.OutcomeView, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT outcome_id, ordinal, status, COALESCE(reconciliation_status, ''), provider_result_json, occurred_at
+	outcomes, err := storage.QueryAll(ctx, s.db, "command outcomes", scanOutcomeView, `SELECT outcome_id, ordinal, status, COALESCE(reconciliation_status, ''), provider_result_json, occurred_at
 		FROM outcomes WHERE command_id = ? ORDER BY ordinal`, commandID)
-	if err != nil {
-		return nil, fmt.Errorf("read command outcomes: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	outcomes, err := storage.CollectRows(rows, "command outcomes", scanOutcomeView)
 	if err != nil {
 		return nil, fmt.Errorf("read command outcomes: %w", err)
 	}
@@ -76,13 +66,8 @@ func scanOutcomeView(rows *sql.Rows) (domain.OutcomeView, error) {
 }
 
 func (s Store) verificationViews(ctx context.Context, commandID string) ([]domain.VerificationView, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT verification_id, COALESCE(outcome_id, ''), status, verdict_json, updated_at
+	verifications, err := storage.QueryAll(ctx, s.db, "command verifications", scanVerificationView, `SELECT verification_id, COALESCE(outcome_id, ''), status, verdict_json, updated_at
 		FROM verifications WHERE command_id = ? ORDER BY updated_at, verification_id`, commandID)
-	if err != nil {
-		return nil, fmt.Errorf("read command verifications: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	verifications, err := storage.CollectRows(rows, "command verifications", scanVerificationView)
 	if err != nil {
 		return nil, fmt.Errorf("read command verifications: %w", err)
 	}

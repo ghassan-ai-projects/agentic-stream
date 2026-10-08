@@ -50,22 +50,8 @@ func New(cfg Config) (*Service, error) {
 	if cfg.Effector == nil {
 		return nil, errors.New("actions require an effector")
 	}
-	return &Service{store: cfg.Store, effector: cfg.Effector, clk: orPhysical(cfg.Clock), ids: orRandom(cfg.IDs),
+	return &Service{store: cfg.Store, effector: cfg.Effector, clk: sources.OrPhysical(cfg.Clock), ids: sources.OrRandom(cfg.IDs),
 		owner: orDefault(cfg.LeaseOwner, "actions"), leaseFor: orMinute(cfg.LeaseFor), observer: cfg.Observer}, nil
-}
-
-func orPhysical(clk sources.Clock) sources.Clock {
-	if clk == nil {
-		return sources.Physical()
-	}
-	return clk
-}
-
-func orRandom(generator sources.Generator) sources.Generator {
-	if generator == nil {
-		return sources.Random()
-	}
-	return generator
 }
 
 func orDefault(value, fallback string) string {

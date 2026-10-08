@@ -35,13 +35,6 @@ func (tx *Tx) DispatchWithinLimit(ctx context.Context, row domain.IntentRecord, 
 	return false, nil
 }
 
-func nullableID(value string) any {
-	if value == "" {
-		return nil
-	}
-	return value
-}
-
 func scanPolicyIntent(query *sql.Row) (domain.IntentRecord, error) {
 	var row domain.IntentRecord
 	var traceparent, tracestate sql.NullString

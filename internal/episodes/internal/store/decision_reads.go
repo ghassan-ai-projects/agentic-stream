@@ -5,21 +5,17 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 )
 
 func (s Store) Decisions(ctx context.Context, episodeID string) ([]domain.DecisionView, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	decisions, err := storage.QueryAll(ctx, s.db, "episode decisions", scanDecisionView, `
 		SELECT decision_id, COALESCE(attempt_id, ''), COALESCE(fence, 0), ordinal, situation_version, validation_status,
 			COALESCE(rejection_reason, ''), decision_sha256, raw_json, created_at
 		FROM decisions WHERE episode_id = ? ORDER BY ordinal`, episodeID)
-	if err != nil {
-		return nil, fmt.Errorf("read episode decisions: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	decisions, err := storage.CollectRows(rows, "episode decisions", scanDecisionView)
 	if err != nil {
 		return nil, fmt.Errorf("read episode decisions: %w", err)
 	}

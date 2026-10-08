@@ -18,21 +18,17 @@ func newNotificationsCommand() *cobra.Command {
 }
 
 func newNotificationsPruneCommand() *cobra.Command {
-	var flags operatorFlags
 	var retention time.Duration
 	var dryRun bool
-	cmd := &cobra.Command{
-		Use:   "prune --retention <duration>",
-		Short: "Retire notifications older than the retention (at least 168h); the runtime must be stopped.",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+	return newOperatorCommand("prune --retention <duration>",
+		"Retire notifications older than the retention (at least 168h); the runtime must be stopped.", cobra.NoArgs,
+		func(cmd *cobra.Command, flags operatorFlags, _ []string) error {
 			return runNotificationsPrune(cmd, flags, retention, dryRun)
 		},
-	}
-	flags.register(cmd)
-	cmd.Flags().DurationVar(&retention, "retention", 0, "Keep notifications newer than this (minimum 168h)")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Count what would be retired without changing anything")
-	return cmd
+		func(cmd *cobra.Command) {
+			cmd.Flags().DurationVar(&retention, "retention", 0, "Keep notifications newer than this (minimum 168h)")
+			cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Count what would be retired without changing anything")
+		})
 }
 
 func runNotificationsPrune(cmd *cobra.Command, flags operatorFlags, retention time.Duration, dryRun bool) error {

@@ -20,33 +20,22 @@ func newQuarantineCommand() *cobra.Command {
 }
 
 func newQuarantineListCommand() *cobra.Command {
-	var flags operatorFlags
-	cmd := &cobra.Command{
-		Use: "list", Short: "List quarantined, released, redriven and rejected evidence, newest first.", Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error { return runQuarantineList(cmd, flags) },
-	}
-	flags.register(cmd)
-	return cmd
+	return newDatabaseCommand("list", "List quarantined, released, redriven and rejected evidence, newest first.", cobra.NoArgs,
+		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB, _ []string) error {
+			return runQuarantineList(cmd, flags, db)
+		})
 }
 
 type quarantineChange func(context.Context, *storage.DB, string, string) (string, error)
 
 func newQuarantineChangeCommand(name, short string, change quarantineChange) *cobra.Command {
-	var flags operatorFlags
-	cmd := &cobra.Command{
-		Use: name + " <event-id>", Short: short, Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error { return runQuarantineChange(cmd, flags, change, args[0]) },
-	}
-	flags.register(cmd)
-	return cmd
+	return newOperatorCommand(name+" <event-id>", short, cobra.ExactArgs(1),
+		func(cmd *cobra.Command, flags operatorFlags, args []string) error {
+			return runQuarantineChange(cmd, flags, change, args[0])
+		})
 }
 
-func runQuarantineList(cmd *cobra.Command, flags operatorFlags) error {
-	db, err := flags.openOperatorDatabase(cmd.Context())
-	if err != nil {
-		return err
-	}
-	defer func() { _ = db.Close() }()
+func runQuarantineList(cmd *cobra.Command, flags operatorFlags, db *storage.DB) error {
 	records, err := eventlog.NewEventLog(db).Quarantined(cmd.Context(), flags.tenantID)
 	if err != nil {
 		return fmt.Errorf("list quarantine: %w", err)

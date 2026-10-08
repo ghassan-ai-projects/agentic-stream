@@ -21,38 +21,26 @@ func newCommandsCommand() *cobra.Command {
 }
 
 func newCommandsListCommand() *cobra.Command {
-	var flags operatorFlags
-	cmd := &cobra.Command{
-		Use: "list", Short: "List commands awaiting reconciliation (outcome_unknown, reconciling, manual_review).", Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error { return runCommandsList(cmd, flags) },
-	}
-	flags.register(cmd)
-	return cmd
+	return newDatabaseCommand("list", "List commands awaiting reconciliation (outcome_unknown, reconciling, manual_review).", cobra.NoArgs,
+		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB, _ []string) error {
+			return runCommandsList(cmd, flags, db)
+		})
 }
 
 func newCommandsResolveCommand() *cobra.Command {
-	var flags operatorFlags
 	var status, evidenceFile string
-	cmd := &cobra.Command{
-		Use:   "resolve <command-id> --status succeeded|failed|manual_review --evidence <evidence.json>",
-		Short: "Close an uncertain command with independent evidence (the runtime must be stopped).",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+	return newOperatorCommand("resolve <command-id> --status succeeded|failed|manual_review --evidence <evidence.json>",
+		"Close an uncertain command with independent evidence (the runtime must be stopped).", cobra.ExactArgs(1),
+		func(cmd *cobra.Command, flags operatorFlags, args []string) error {
 			return runCommandsResolve(cmd, flags, args[0], status, evidenceFile)
 		},
-	}
-	flags.register(cmd)
-	cmd.Flags().StringVar(&status, "status", "", "Final status: succeeded, failed or manual_review")
-	cmd.Flags().StringVar(&evidenceFile, "evidence", "", "JSON evidence with source and evidence_type")
-	return cmd
+		func(cmd *cobra.Command) {
+			cmd.Flags().StringVar(&status, "status", "", "Final status: succeeded, failed or manual_review")
+			cmd.Flags().StringVar(&evidenceFile, "evidence", "", "JSON evidence with source and evidence_type")
+		})
 }
 
-func runCommandsList(cmd *cobra.Command, flags operatorFlags) error {
-	db, err := flags.openOperatorDatabase(cmd.Context())
-	if err != nil {
-		return err
-	}
-	defer func() { _ = db.Close() }()
+func runCommandsList(cmd *cobra.Command, flags operatorFlags, db *storage.DB) error {
 	reconciler, err := actions.NewReconciler(actions.ReconcilerConfig{DB: db, RuntimeOwner: refuseWrites, Epoch: "read-only"})
 	if err != nil {
 		return fmt.Errorf("open reconciler: %w", err)

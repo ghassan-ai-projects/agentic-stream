@@ -6,11 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
 	"net"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"

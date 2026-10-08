@@ -18,7 +18,7 @@ func NewReconciler(st store.Store, clk sources.Clock, ids sources.Generator) (*R
 	if !st.Configured() {
 		return nil, errors.New("reconciliation requires a database and runtime owner check")
 	}
-	return &Reconciler{service: &Service{store: st, clk: orPhysical(clk), ids: orRandom(ids)}}, nil
+	return &Reconciler{service: &Service{store: st, clk: sources.OrPhysical(clk), ids: sources.OrRandom(ids)}}, nil
 }
 
 func (r *Reconciler) Resolve(ctx context.Context, commandID, finalStatus string, evidence map[string]any) error {
