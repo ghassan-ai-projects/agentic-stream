@@ -28,8 +28,10 @@ count, Situation-version count, and versions hash.
 | `--trace` | required | normalized JSONL trace path |
 | `--db` | `<trace>.replay.db` | fresh replay database path |
 | `--tenant` | `default` | runtime tenant |
+| `--repeat` | `1` | replay N times in fresh databases and fail unless every Situation history hash is identical (cannot be combined with `--db`) |
 
-Replay has no external effects.
+Replay has no external effects. `--repeat 3` is the determinism check of the
+release bar: three fresh runs must produce byte-identical Situation history.
 
 ## `run-live --spec <spec.yaml> --trace <trace.jsonl>`
 

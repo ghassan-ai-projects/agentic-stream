@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -132,5 +133,24 @@ func TestWorkerRuntimeErrorMonitorForwardsAndCancels(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("worker runtime error monitor did not stop")
+	}
+}
+
+func TestRunRepeatProvesDeterminism(t *testing.T) {
+	t.Parallel()
+	cmd := newRunCommand()
+	var out strings.Builder
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--spec", testSpec, "--trace", testTrace, "--repeat", "3"})
+	if err := cmd.ExecuteContext(t.Context()); err != nil {
+		t.Fatalf("run --repeat: %v", err)
+	}
+	if !strings.Contains(out.String(), "deterministic: 3 identical runs") || strings.Count(out.String(), "versions_hash=") != 3 {
+		t.Fatalf("output = %q", out.String())
+	}
+	bad := newRunCommand()
+	bad.SetArgs([]string{"--spec", testSpec, "--trace", testTrace, "--repeat", "2", "--db", filepath.Join(t.TempDir(), "x.db")})
+	if err := bad.ExecuteContext(t.Context()); err == nil {
+		t.Fatal("--repeat with a shared --db was accepted")
 	}
 }

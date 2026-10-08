@@ -1,6 +1,6 @@
 # U19 — `run --repeat N`
 
-Status: todo · Decision: **complete** · Priority: P2 · Size: XS
+Status: done · Decision: **complete** · Priority: P2 · Size: XS
 
 ## Finding
 
