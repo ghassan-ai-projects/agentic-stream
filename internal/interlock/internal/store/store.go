@@ -11,11 +11,14 @@ import (
 type DurableReader struct{}
 
 func (DurableReader) Assert(ctx context.Context, tx *sql.Tx, _ string, _ string, _ string) error {
-	var status, reason string
-	if err := tx.QueryRowContext(ctx, "SELECT status, reason FROM runtime_interlock WHERE singleton_id = 1").Scan(&status, &reason); err != nil {
-		return fmt.Errorf("read runtime interlock: %w", err)
+	state, err := Read(ctx, tx)
+	if err != nil {
+		return err
 	}
-	return domain.RequireReady(status, reason) //nolint:wrapcheck // The sentinel is the public contract.
+	if err := domain.RequireReady(state.Status, state.Reason); err != nil {
+		return fmt.Errorf("action interlock: %w", err)
+	}
+	return nil
 }
 
 func Read(ctx context.Context, tx *sql.Tx) (domain.State, error) {
