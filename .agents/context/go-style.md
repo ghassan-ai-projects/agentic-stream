@@ -54,3 +54,9 @@
 - helpers that save only one or two lines while hiding behavior
 - placeholder TODO logic shipped as if complete
 - unrelated refactors in the same change
+
+## Mechanical Changes
+
+Use `gopls`, `gofmt -r`, `goimports` or a throwaway `go/ast` program for renames,
+signature changes and table edits; never `sed` or regex on Go source. See
+AGENTS.md, "Refactoring Go Code".

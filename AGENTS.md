@@ -205,6 +205,28 @@ Before accepting a refactoring round:
   explicit; passing lint alone does not demonstrate clean functions.
 
 
+## Refactoring Go Code
+
+Change Go code with Go tooling that understands syntax, not with `sed`, regular
+expressions or find-and-replace. Text edits miss call sites, hit strings and
+comments, break formatting and leave the compiler to find what they missed.
+
+- Rename a symbol, find its references or implementations: `gopls rename`,
+  `gopls references`, `gopls implementation`.
+- Rewrite a call or expression pattern across files: `gofmt -r 'old -> new'`.
+- Fix imports after any edit: `goimports -w`.
+- For anything else (remove a parameter or struct field, change a signature,
+  move comments, edit an entry of a table literal such as `allowedImports`,
+  strip or restructure many functions), write a small `go/parser` + `go/ast` +
+  `go/format` program, run it over the files, and keep it outside the repo
+  (the session scratchpad). The architecture tests in the repo root show the
+  pattern.
+- `sed`, `awk` and regex are for non-Go text only: Markdown, YAML, JSON, the
+  Makefile.
+- After a mechanical change run `gofmt -l`, `go build ./...` and `go vet ./...`
+  before the tests, and read the diff: a tool that changes exactly what you
+  intended produces a small, uniform diff.
+
 ## Forbidden Changes
 
 - Do not add secrets, credentials, or machine-specific private data.
