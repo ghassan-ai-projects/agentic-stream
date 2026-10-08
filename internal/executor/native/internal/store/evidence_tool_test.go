@@ -10,6 +10,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 var evidenceBase = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
@@ -18,7 +19,7 @@ var evidenceBase = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 // event for another entity that must never be returned.
 func seedEvidence(t *testing.T, count int) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "evidence.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "evidence.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

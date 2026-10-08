@@ -10,14 +10,14 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 var base = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 
 func openStore(t *testing.T) store.Store {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

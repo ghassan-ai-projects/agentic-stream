@@ -15,12 +15,13 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestSSEStreamsDurableEventsAndResumesFromLastEventID(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-	db, err := storage.Open(ctx, t.TempDir()+"/sse.db")
+	db, err := storagetest.Open(ctx, t.TempDir()+"/sse.db")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +53,7 @@ func TestSSEStreamsDurableEventsAndResumesFromLastEventID(t *testing.T) {
 func TestSSEExpiredCursorForcesAuditedResnapshot(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-	db, err := storage.Open(ctx, t.TempDir()+"/sse-expired.db")
+	db, err := storagetest.Open(ctx, t.TempDir()+"/sse-expired.db")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +93,7 @@ func TestSSEExpiredCursorForcesAuditedResnapshot(t *testing.T) {
 func TestSSEDisconnectsSlowSubscriber(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-	db, err := storage.Open(ctx, t.TempDir()+"/sse-slow.db")
+	db, err := storagetest.Open(ctx, t.TempDir()+"/sse-slow.db")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +178,7 @@ func sseTestEvent(id string, at time.Time) contractsv1.CloudEvent {
 func TestSSEAdmissionPreservesProblemPrecedence(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	db, err := storage.Open(ctx, t.TempDir()+"/admission.db")
+	db, err := storagetest.Open(ctx, t.TempDir()+"/admission.db")
 	if err != nil {
 		t.Fatal(err)
 	}

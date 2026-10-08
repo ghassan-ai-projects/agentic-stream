@@ -5,12 +5,12 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestNextPendingIntentReportsAnEmptyQueue(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "pending.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "pending.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

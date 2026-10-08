@@ -8,13 +8,13 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func newTestLog(t *testing.T) (*eventlog.EventLog, func()) {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := storage.Open(context.Background(), filepath.Join(dir, "test.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

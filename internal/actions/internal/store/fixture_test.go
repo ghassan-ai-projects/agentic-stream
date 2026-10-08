@@ -9,12 +9,13 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func openActionFixture(t *testing.T) (*storage.DB, string) {
 	t.Helper()
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "actions.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "actions.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 
@@ -19,13 +20,12 @@ import (
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 func TestRunnerNoWorkWhenEmpty(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -213,7 +213,7 @@ func (e *failOnceExecutor) Execute(ctx context.Context, req *app.Request) (*app.
 
 func TestRunnerRetriesFailedAttemptWithNextFence(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "retry.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "retry.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

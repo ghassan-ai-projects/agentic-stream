@@ -10,13 +10,14 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "lifecycle.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "lifecycle.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -99,7 +100,7 @@ func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 
 func TestRecoveryAbandonsPriorEpochAndIsIdempotent(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "recovery.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "recovery.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

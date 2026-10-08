@@ -13,6 +13,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
@@ -21,7 +22,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 const testDigest = "0000000000000000000000000000000000000000000000000000000000000000"
@@ -89,7 +89,7 @@ func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Versio
 func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 
 func TestAssemblerPersistsReconsiderationPayload(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "reconsideration.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "reconsideration.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -492,7 +492,7 @@ func TestAssemblerPersistsReconsiderationPayload(t *testing.T) {
 func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -619,7 +619,7 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 
 func TestAssemblerMarksReconsiderationLiveEpisodeConflict(t *testing.T) {
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "live-conflict.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "live-conflict.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -743,7 +743,7 @@ func TestAssemblerMarksReconsiderationLiveEpisodeConflict(t *testing.T) {
 func TestAssemblerIsDeterministic(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -855,7 +855,7 @@ func TestAssemblerIsDeterministic(t *testing.T) {
 func TestAssemblerRequestContainsDelta(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -954,7 +954,7 @@ func TestAssemblerRequestContainsDelta(t *testing.T) {
 func TestAssemblerTenantMismatch(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -1043,7 +1043,7 @@ func TestAssemblerTenantMismatch(t *testing.T) {
 func TestAssemblerPersistRejectsNonPending(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	nativeexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestWorkerRuntimeFacade(t *testing.T) {
@@ -16,7 +16,7 @@ func TestWorkerRuntimeFacade(t *testing.T) {
 	if _, err := NewWorkerRuntime(t.Context(), WorkerRuntimeConfig{}); err == nil {
 		t.Fatal("missing database accepted")
 	}
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "worker.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "worker.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

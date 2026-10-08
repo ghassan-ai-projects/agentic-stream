@@ -13,6 +13,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 // A reading quarantined because its schema was not registered yet is released
@@ -46,7 +47,7 @@ func TestQuarantineReleaseAndRedriveRecoverEvidence(t *testing.T) {
 
 func quarantineReading(t *testing.T, path string) {
 	t.Helper()
-	db, err := storage.Open(context.Background(), path)
+	db, err := storagetest.Open(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}

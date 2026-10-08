@@ -14,6 +14,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	nativeexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 const evidenceTestKey = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
@@ -46,7 +47,7 @@ func TestNativeBackendSelectsProviderAndScopedTools(t *testing.T) {
 }
 
 func TestWorkerBackendEvidenceAndRemoteLifetime(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "worker.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "worker.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +139,7 @@ func testEvidenceLedger(t *testing.T, db *storage.DB) *evidence.Service {
 	t.Helper()
 	if db == nil {
 		var err error
-		db, err = storage.Open(t.Context(), filepath.Join(t.TempDir(), "evidence.db"))
+		db, err = storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "evidence.db"))
 		if err != nil {
 			t.Fatal(err)
 		}

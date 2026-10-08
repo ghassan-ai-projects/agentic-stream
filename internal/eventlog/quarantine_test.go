@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestQuarantineIsBoundedAndReleasable(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "quarantine.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "quarantine.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestQuarantineIsBoundedAndReleasable(t *testing.T) {
 
 func TestQuarantineRejectsEventIDHashConflict(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "conflict.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "conflict.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

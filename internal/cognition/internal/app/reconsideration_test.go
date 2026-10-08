@@ -11,6 +11,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
@@ -41,7 +42,7 @@ func TestReconsiderationAdmissionIsReplayDeduplicated(t *testing.T) {
 func runReconsiderationAdmissionTest(t *testing.T, versionCount, commandVersion, correctionVersion, previousVersion int) {
 	t.Helper()
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "reconsideration.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "reconsideration.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

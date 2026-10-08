@@ -9,6 +9,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
@@ -27,7 +28,7 @@ func (noopEffector) Dispatch(context.Context, actionport.Command) (actionport.Ef
 
 func openDB(t *testing.T) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "actions.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "actions.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

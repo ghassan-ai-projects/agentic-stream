@@ -11,6 +11,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
@@ -23,7 +24,7 @@ import (
 
 func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "reconsideration.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "reconsideration.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

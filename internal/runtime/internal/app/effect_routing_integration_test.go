@@ -7,11 +7,11 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestCompositeEffectorRoutesWatchBeforeSimulatedFallback(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "composite.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "composite.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

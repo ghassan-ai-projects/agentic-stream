@@ -14,6 +14,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 const testSpecDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
@@ -21,7 +22,7 @@ const testSpecDigest = "sha256:0000000000000000000000000000000000000000000000000
 func TestTriggerAdmittedWhenConditionTrue(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -100,7 +101,7 @@ func TestTriggerAdmittedWhenConditionTrue(t *testing.T) {
 func TestCapacityExhaustionDefers(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -187,7 +188,7 @@ func TestCapacityExhaustionDefers(t *testing.T) {
 func TestCoalescingPendingItem(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -286,7 +287,7 @@ func TestCoalescingPendingItem(t *testing.T) {
 func TestDebounceAndCooldownTogether(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

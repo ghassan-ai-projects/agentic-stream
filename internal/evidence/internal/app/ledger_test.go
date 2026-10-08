@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -121,7 +122,7 @@ func mustBeginTx(t *testing.T, db *storage.DB) *sql.Tx {
 func openLedgerDB(t *testing.T) *storage.DB {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := storage.Open(t.Context(), filepath.Join(dir, "runtime.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(dir, "runtime.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

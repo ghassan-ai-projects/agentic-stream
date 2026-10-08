@@ -11,11 +11,11 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runartifact"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestExportPublishesVerifiableArtifactAndRefusesImplicitOverwrite(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestExportPublishesVerifiableArtifactAndRefusesImplicitOverwrite(t *testing
 }
 
 func TestVerifyDetectsTamperedJSONL(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestVerifyDetectsTamperedJSONL(t *testing.T) {
 }
 
 func TestVerifyDetectsStaleDurableCommandDigest(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestVerifyDetectsStaleDurableCommandDigest(t *testing.T) {
 }
 
 func TestVerifyDetectsStaleSafetyEventDigest(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

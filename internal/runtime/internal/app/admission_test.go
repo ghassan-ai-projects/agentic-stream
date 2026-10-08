@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
@@ -91,7 +92,7 @@ type scenario struct {
 func pendingItem(t *testing.T, given scenario) (*storage.DB, *app.Admitter) {
 	t.Helper()
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "admission.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "admission.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

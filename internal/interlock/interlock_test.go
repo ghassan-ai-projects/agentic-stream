@@ -10,6 +10,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 var now = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
@@ -21,7 +22,7 @@ func allow(t *testing.T) interlock.Fence {
 
 func openDB(t *testing.T) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "interlock.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "interlock.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

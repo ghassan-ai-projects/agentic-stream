@@ -21,6 +21,7 @@ import (
 // beside ingestion (X09) this test needs material freshness (X03) to pass. See
 // docs/unfinished-work-review-2026-10-08/EXPERIMENT_DESIGN.md (G2, G9).
 func TestExperimentClosedLoopUnderAContinuousFeed(t *testing.T) {
+	t.Parallel()
 	run := startExperiment(t, experimentOptions{specEdits: map[string]string{"slide: 30s": "slide: 2s"}, workerDelay: 5 * time.Second})
 	trace := shiftedTrace(t, time.Now().Add(-time.Second))
 	feedLive(t, run.liveSocket, trace)

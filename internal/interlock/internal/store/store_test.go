@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestAssertFailsClosedAndVersionIsMonotonic(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "interlock.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "interlock.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

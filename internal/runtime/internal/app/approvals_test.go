@@ -10,13 +10,13 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestApprovalTransactionsPreserveMissingRequestAndOwnerErrors(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "approval.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "approval.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -42,7 +43,7 @@ func TestRecoveryCoordinatorAtomicallyRecoversEpisodesAndEvidence(t *testing.T) 
 
 func seedRecoveryState(t *testing.T) (*storage.DB, time.Time) {
 	t.Helper()
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "runtime.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "runtime.db"))
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}

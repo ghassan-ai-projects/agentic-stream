@@ -11,6 +11,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
@@ -19,7 +20,7 @@ import (
 
 func approvalDB(t *testing.T) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "approval.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "approval.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

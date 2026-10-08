@@ -14,6 +14,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 
@@ -199,7 +200,7 @@ func rebindSpec() *spec.CompiledSpec {
 // A stale episode is re-bound to the live version and dispatched against the
 // live snapshot; the decision is recorded at the live version (B1).
 func TestStaleEpisodeRebindsToLiveVersionAndDispatches(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "rebind.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "rebind.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +264,7 @@ func TestStaleEpisodeRebindsToLiveVersionAndDispatches(t *testing.T) {
 // The bound payload carries trace context, trigger delta and reconsideration
 // evidence — all preserved byte-identically across the re-bind.
 func TestRebindOnlyMutatesSnapshotFields(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "rebind-b3.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "rebind-b3.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +352,7 @@ func TestRebindOnlyMutatesSnapshotFields(t *testing.T) {
 // The constant is unexported and this test is external, so the seeded value 3
 // is pinned here — keep it in sync with maxStaleRebinds.
 func TestRebindLimitExhaustedAbandons(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "rebind-limit.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "rebind-limit.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +392,7 @@ func TestRebindLimitExhaustedAbandons(t *testing.T) {
 // (rebind_failed) and does NOT stall the queue — the next admitted episode
 // still dispatches (B4).
 func TestRebindFailsClosedOnCorruptLiveSnapshot(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "rebind-corrupt.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "rebind-corrupt.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +452,7 @@ func TestRebindFailsClosedOnCorruptLiveSnapshot(t *testing.T) {
 // the runner must re-bind to v2 and produce a decision at v2 (B6).
 func TestRebindRaceReproducesWaterM7(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "rebind-race.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "rebind-race.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

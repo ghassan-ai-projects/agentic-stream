@@ -13,6 +13,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
@@ -464,7 +465,7 @@ func TestDispatcherReclaimsExpiredLease(t *testing.T) {
 func openActionFixture(t *testing.T) (*storage.DB, string) {
 	t.Helper()
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "actions.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "actions.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestApplyCeilingsPreservesUnspecifiedLimitsAndAtomicity(t *testing.T) {
@@ -30,7 +30,7 @@ func TestApplyCeilingsPreservesUnspecifiedLimitsAndAtomicity(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ctx := t.Context()
-			db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "limits.db"))
+			db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "limits.db"))
 			if err != nil {
 				t.Fatal(err)
 			}

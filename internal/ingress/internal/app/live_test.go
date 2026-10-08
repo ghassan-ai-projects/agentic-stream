@@ -20,11 +20,12 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
 func TestLiveUDSSourceQuarantinesMalformedLinesAndCountsValidLines(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "live.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "live.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,7 @@ func TestLiveUDSSourceQuarantinesMalformedLinesAndCountsValidLines(t *testing.T)
 }
 
 func TestLiveUDSSourceAcceptsReconnects(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "live.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "live.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +175,7 @@ func TestLiveUDSSourceAcceptsReconnects(t *testing.T) {
 }
 
 func TestLiveUDSSourcePropagatesSinkDeadlineWithActiveParent(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "live.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "live.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +254,7 @@ func newLiveService(t *testing.T, db *storage.DB, runtimeTelemetry *telemetry.Ru
 }
 
 func TestOversizedLiveLineIsQuarantinedAsItsBoundedPrefix(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "live.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "live.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

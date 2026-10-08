@@ -10,6 +10,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
@@ -52,7 +53,7 @@ func modeTraceForEntity(t *testing.T, level int, eventID, entityID string) strin
 
 func openModeDB(t *testing.T, name string) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), name))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), name))
 	if err != nil {
 		t.Fatal(err)
 	}

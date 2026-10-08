@@ -7,7 +7,7 @@ import (
 
 	nativeexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/transport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestWorkerCompositionValidatesBeforeOpeningResources(t *testing.T) {
@@ -18,7 +18,7 @@ func TestWorkerCompositionValidatesBeforeOpeningResources(t *testing.T) {
 	if _, err := newWorkerRuntime(t.Context(), transport.WorkerRuntimeConfig{}, constructor); err == nil || err.Error() != "worker runtime database is required" {
 		t.Fatalf("database validation=%v", err)
 	}
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "composition.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "composition.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

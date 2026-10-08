@@ -9,12 +9,12 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func within(t *testing.T, work func(ctx context.Context, tx *store.Tx, raw *sql.Tx)) {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

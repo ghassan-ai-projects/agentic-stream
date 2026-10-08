@@ -11,11 +11,11 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestPipelineStorePreservesOriginalFenceAndOperationErrors(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "runtime.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "runtime.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestPipelineStorePreservesOriginalFenceAndOperationErrors(t *testing.T) {
 }
 
 func TestCostConfigurationCommitsUnderOwnerFence(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "cost.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "cost.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

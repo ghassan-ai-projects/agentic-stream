@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -51,7 +52,7 @@ func registerSchema(t *testing.T, db *storage.DB, ref string) {
 
 func TestAppendRejectsUnknownAndWrongTypedPayloadsAgainstDurableSchema(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "schema.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "schema.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +79,7 @@ func TestAppendRejectsUnknownAndWrongTypedPayloadsAgainstDurableSchema(t *testin
 
 func TestAppendRejectsThermalQualityOutsideSchemaEnum(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "thermal-schema.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "thermal-schema.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +115,7 @@ func TestAppendRejectsThermalQualityOutsideSchemaEnum(t *testing.T) {
 
 func TestAppendAcceptsThermalHumidityEnvelopeAgainstDurableSchema(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "humidity-schema.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "humidity-schema.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +140,7 @@ func TestAppendAcceptsThermalHumidityEnvelopeAgainstDurableSchema(t *testing.T) 
 
 func TestReleasedQuarantineCanBeValidatedAndRedrivenOnce(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "redrive.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "redrive.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

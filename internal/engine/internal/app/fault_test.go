@@ -7,7 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 // TestRecordWriteFailureRollsBackAndTheEventAppliesOnceAfterRecovery injects a
@@ -26,7 +26,7 @@ func TestRecordWriteFailureRollsBackAndTheEventAppliesOnceAfterRecovery(t *testi
 	for name, trigger := range faults {
 		t.Run(name, func(t *testing.T) {
 			ctx := t.Context()
-			db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "engine.db"))
+			db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "engine.db"))
 			if err != nil {
 				t.Fatal(err)
 			}

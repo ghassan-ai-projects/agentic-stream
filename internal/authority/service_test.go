@@ -13,11 +13,12 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func openDB(t *testing.T, name string) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), name))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), name))
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}

@@ -7,7 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestRegisterEventSchemaIsIdempotent(t *testing.T) {
@@ -20,7 +20,7 @@ func TestRegisterEventSchemaIsIdempotent(t *testing.T) {
 	if err != nil || len(schemaJSON) == 0 {
 		t.Fatalf("schema json: %v", err)
 	}
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "spec.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "spec.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

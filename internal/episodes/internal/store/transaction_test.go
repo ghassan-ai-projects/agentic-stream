@@ -11,12 +11,12 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestJoinedTransactionKeepsCallerOwnership(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "join.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "join.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestProjectionErrorsPreserveCancellation(t *testing.T) {
 func TestShadowDecisionSharesCallerTransactionAndNeverCreatesActionRecords(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "shadow.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "shadow.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

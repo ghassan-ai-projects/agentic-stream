@@ -8,13 +8,13 @@ import (
 	"time"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestServiceReadinessFollowsRecoveryAndClose(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "service.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "service.db"))
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestServiceConfigurationAndAbsentLifecycle(t *testing.T) {
 }
 
 func TestServiceLeaseFailureClearsReadiness(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "lease.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "lease.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

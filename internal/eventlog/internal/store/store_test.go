@@ -8,16 +8,16 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func newStore(t *testing.T) Store {
 	t.Helper()
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "store.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

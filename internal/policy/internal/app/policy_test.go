@@ -19,6 +19,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestGatewayAutomaticCommandIsIdempotent(t *testing.T) {
@@ -328,7 +329,7 @@ func TestGatewayDeniesConsequentialIntentWhenCompletenessIsProvisional(t *testin
 func openPolicyFixture(t *testing.T, risk string, currentVersion, intentVersion int, expiresAt time.Time) (*storage.DB, string) {
 	t.Helper()
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "policy.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "policy.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

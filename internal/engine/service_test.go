@@ -7,13 +7,13 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestNewRefusesEveryMissingSafetyDependency(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "engine.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "engine.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

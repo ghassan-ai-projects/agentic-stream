@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestApprovalsReadsWhatTheLifecycleRecorded(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "approvals.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "approvals.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

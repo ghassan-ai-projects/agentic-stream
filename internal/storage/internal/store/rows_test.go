@@ -8,11 +8,12 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestCollectRowsScansInOrderAndPropagatesScanErrors(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "rows.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "rows.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +47,7 @@ func collect(t *testing.T, db *storage.DB, query string, scan func(*sql.Rows) (i
 
 func TestQueryAllScansEveryRowAndNamesWhatFailed(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "rows.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "rows.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +75,7 @@ func TestQueryAllScansEveryRowAndNamesWhatFailed(t *testing.T) {
 
 func TestQueryOptionalReportsAbsenceWithoutError(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "optional.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "optional.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

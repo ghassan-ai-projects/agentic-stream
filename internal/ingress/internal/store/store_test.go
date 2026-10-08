@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func openStore(t *testing.T) (Store, *storage.DB) {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "ingress.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "ingress.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

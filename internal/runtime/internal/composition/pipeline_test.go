@@ -7,18 +7,18 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestPipelineRunsNormalizedBatchThroughAllPlanes(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "pipeline.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "pipeline.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestPipelineRunsNormalizedBatchThroughAllPlanes(t *testing.T) {
 
 func TestPipelineSurvivesWatchExpressionEvaluationError(t *testing.T) {
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "pipeline-watch-evaluation-error.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "pipeline-watch-evaluation-error.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -124,7 +125,7 @@ func TestCostRangeValidationPrecedesTransactionAccess(t *testing.T) {
 
 func newCostDB(t *testing.T) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "cost.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "cost.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

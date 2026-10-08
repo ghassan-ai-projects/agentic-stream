@@ -9,13 +9,14 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func queueDB(t *testing.T) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "queue.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "queue.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

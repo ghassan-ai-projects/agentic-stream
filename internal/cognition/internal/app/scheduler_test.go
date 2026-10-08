@@ -9,14 +9,14 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestInsertItemIgnoresDeterministicIDCollision(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

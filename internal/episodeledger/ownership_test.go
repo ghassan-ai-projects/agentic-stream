@@ -8,12 +8,11 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestAdmissionOwnsShadowDefaultAndRejectsConflictingLiveEpisode(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +49,7 @@ func TestAdmissionOwnsShadowDefaultAndRejectsConflictingLiveEpisode(t *testing.T
 }
 
 func TestEpisodeMutationsRemainInsideCallerTransaction(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +104,7 @@ func TestEpisodeMutationsRemainInsideCallerTransaction(t *testing.T) {
 }
 
 func TestCancellationRecoveryAbandonsRatherThanRequeues(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +141,7 @@ func TestCancellationRecoveryAbandonsRatherThanRequeues(t *testing.T) {
 }
 
 func TestUnknownWorkerRejectionIsDurableAndIdempotent(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

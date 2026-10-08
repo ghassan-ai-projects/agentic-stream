@@ -10,12 +10,12 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestSaveDeploymentStoresCanonicalDigestBytes(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestSaveDeploymentStoresCanonicalDigestBytes(t *testing.T) {
 
 func TestSaveDeploymentRejectsUnprefixedDigest(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

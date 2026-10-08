@@ -9,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 type Scope = evidence.Scope
@@ -54,7 +55,7 @@ func testServer(t *testing.T, db *storage.DB, capabilities *evidence.Service, no
 func openLedgerDB(t *testing.T) *storage.DB {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := storage.Open(t.Context(), filepath.Join(dir, "runtime.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(dir, "runtime.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

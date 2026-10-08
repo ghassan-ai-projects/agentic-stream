@@ -10,13 +10,12 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/store"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestSchemaRegistrationIsImmutableAndTransactionScoped(t *testing.T) {
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "schemas.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "schemas.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

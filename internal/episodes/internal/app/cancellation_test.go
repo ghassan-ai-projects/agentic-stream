@@ -12,6 +12,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
@@ -27,7 +28,7 @@ import (
 func TestRunnerPersistsCancellationAfterExecutorCancelsContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "cancel.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "cancel.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -59,7 +60,7 @@ func TestRunnerPersistsCancellationAfterExecutorCancelsContext(t *testing.T) {
 func TestRunnerPersistsSuccessfulOutcomeAfterParentCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "cancel-success.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "cancel-success.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -94,7 +95,7 @@ func TestRunnerPersistsSuccessfulOutcomeAfterParentCancellation(t *testing.T) {
 func TestRunnerPersistsProducedOutcomeAfterParentCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "cancel-produced.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "cancel-produced.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -130,7 +131,7 @@ func TestRunnerPersistsProducedOutcomeAfterParentCancellation(t *testing.T) {
 
 func TestRunnerCancelsSupersededStreamedAttempt(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "supersede.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "supersede.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -170,7 +171,7 @@ func TestRunnerCancelsSupersededStreamedAttempt(t *testing.T) {
 
 func TestRunnerQuarantinesAlreadyKilledEpochBeforeAttempt(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "kill-before-attempt.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "kill-before-attempt.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -209,7 +210,7 @@ func TestRunnerQuarantinesAlreadyKilledEpochBeforeAttempt(t *testing.T) {
 
 func TestRunnerQuarantinesUnboundEpochBeforeAttempt(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "unbound-epoch.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "unbound-epoch.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -234,7 +235,7 @@ func TestRunnerQuarantinesUnboundEpochBeforeAttempt(t *testing.T) {
 
 func TestRunnerQuarantinesLateOutcomeAfterEpochKill(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "kill-late.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "kill-late.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

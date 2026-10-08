@@ -12,7 +12,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 var testNow = time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
@@ -21,7 +21,7 @@ func allowOwner(context.Context, *sql.Tx, string) error { return nil }
 
 func openStore(t *testing.T) Store {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "engine.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "engine.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

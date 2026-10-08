@@ -7,17 +7,16 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestRunnerOrdersEpisodesByChronologicalAcceptedAt(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "accepted-order.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "accepted-order.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

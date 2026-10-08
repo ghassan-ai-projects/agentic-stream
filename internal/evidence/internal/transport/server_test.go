@@ -18,6 +18,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
@@ -28,7 +29,7 @@ const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
 func openLedgerDB(t *testing.T) *storage.DB {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := storage.Open(t.Context(), filepath.Join(dir, "runtime.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(dir, "runtime.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

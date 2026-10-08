@@ -21,6 +21,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 const (
@@ -34,7 +35,7 @@ const (
 func replayedStore(t *testing.T) *storage.DB {
 	t.Helper()
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "episodes.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "episodes.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

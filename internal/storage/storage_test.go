@@ -7,11 +7,12 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestFacadeOpensRunsTransactionsAndCollectsRows(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "facade.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "facade.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +57,7 @@ func TestFacadeNullIfEmptyAndQueryAll(t *testing.T) {
 	if storage.NullIfEmpty("").Valid || !storage.NullIfEmpty("x").Valid || storage.NullIfEmpty("x").String != "x" {
 		t.Fatal("NullIfEmpty must be NULL only for the empty string")
 	}
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "queryall.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "queryall.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

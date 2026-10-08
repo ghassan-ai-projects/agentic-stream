@@ -7,12 +7,12 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestNewRefusesMissingDependencies(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "ingress.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "ingress.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestNewRefusesMissingDependencies(t *testing.T) {
 func TestServiceReplaysAndResumesThroughTheFacade(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	db, err := storage.Open(t.Context(), filepath.Join(dir, "ingress.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(dir, "ingress.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

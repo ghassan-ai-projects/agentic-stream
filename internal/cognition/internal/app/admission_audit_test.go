@@ -13,11 +13,12 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func auditDB(t *testing.T) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "queue.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "queue.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

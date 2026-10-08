@@ -9,6 +9,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
@@ -92,7 +93,7 @@ func seedShadowEpisode(t *testing.T, db *storage.DB, episodeID, dispatchPolicy s
 // A shadow dispatch scores the decision but never persists an intent or a
 // command.
 func TestShadowDispatchScoresWithoutGovernance(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "shadow.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "shadow.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +136,7 @@ func TestShadowDispatchScoresWithoutGovernance(t *testing.T) {
 // An ACTIVE dispatch still persists intents (the control: the shadow path is
 // the only one that skips governance).
 func TestActiveDispatchPersistsIntents(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "active.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "active.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

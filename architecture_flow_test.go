@@ -34,6 +34,7 @@ var packageLayers = map[string]int{
 	"internal/storage":                            7,
 	"internal/telemetry":                          7,
 	"internal/approvalledger/internal/store":      8,
+	"internal/storage/storagetest":                8,
 	"internal/canonicaljson":                      8,
 	"internal/control/internal/domain":            8,
 	"internal/episodeledger/internal/store":       8,

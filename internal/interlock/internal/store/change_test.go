@@ -7,12 +7,12 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestChangeMovesTheInterlockOneVersionAtATime(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "interlock.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "interlock.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

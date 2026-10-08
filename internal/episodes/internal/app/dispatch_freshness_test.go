@@ -11,6 +11,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 
@@ -132,7 +133,7 @@ func runOnceExpectingStale(t *testing.T, db *storage.DB) {
 // the model is not given the old facts, and no path extends the validity
 // window to let it pass.
 func TestDispatchRefusesStaleSituation(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "freshness.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "freshness.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +145,7 @@ func TestDispatchRefusesStaleSituation(t *testing.T) {
 
 // A fresh dispatch (bound == live) runs normally — the gate does not overfire.
 func TestDispatchProceedsOnFreshSituation(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "freshness-fresh.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "freshness-fresh.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +165,7 @@ func TestDispatchProceedsOnFreshSituation(t *testing.T) {
 // runner's budget deadline is never extended. This pins the invariant that
 // nothing mutates the episode's deadline after admission.
 func TestDispatchDeadlineNeverExtended(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "deadline.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "deadline.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +208,7 @@ func TestDispatchDeadlineNeverExtended(t *testing.T) {
 // timed_out) — the deadline is never extended, and an in-process executor
 // cannot bypass the gate.
 func TestDispatchDecisionAfterDeadlineIsRefused(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "deadline-refusal.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "deadline-refusal.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +284,7 @@ func (e p8BlockingExecutor) Execute(ctx context.Context, _ *app.Request) (*app.O
 // attempt is canceled. A worker that keeps producing after the kill cannot
 // slip a decision into governance.
 func TestDispatchKillCancelsInFlightAndRefusesItsDecision(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "kill-inflight.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "kill-inflight.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

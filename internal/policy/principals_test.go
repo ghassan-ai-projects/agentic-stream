@@ -10,6 +10,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 const approverKey = "O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik="
@@ -37,7 +38,7 @@ func apply(t *testing.T, db *storage.DB, fence policy.Ownership, document policy
 
 func TestApplyPrincipalsMakesGovernanceMatchTheDocument(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "governance.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "governance.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

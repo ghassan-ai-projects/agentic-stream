@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestReserveSettleAndKillSwitch(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "cost.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "cost.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestReserveSettleAndKillSwitch(t *testing.T) {
 
 func TestZeroEstimateIsRejectedByTenantCeiling(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "cost.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "cost.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

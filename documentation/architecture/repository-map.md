@@ -116,6 +116,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/storage/` | SQLite infrastructure, migrations and transactions (facade) |
 | `internal/storage/internal/domain/` | pure connection string, busy-retry backoff, pending-migration and reservation rules |
 | `internal/storage/internal/store/` | SQLite adapter: open, migrate, transactions, busy retry, checkpoint, fresh replay databases |
+| `internal/storage/storagetest/` | test support: opens a migrated runtime database from a template built once per migration set, so tests skip the migration replay |
 | `internal/contractsv1/` | versioned envelope/schema contracts (facade) |
 | `internal/contractsv1/internal/domain/` | pure envelope, CloudEvent, trace context, schema validation and digest rules |
 | `internal/telemetry/` | OpenTelemetry and runtime metrics (facade) |

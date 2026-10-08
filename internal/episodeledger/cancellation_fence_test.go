@@ -7,12 +7,11 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestSupersededAttemptOnlyAcceptsCurrentCancellation(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "cancel-fence.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "cancel-fence.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

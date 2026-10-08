@@ -6,11 +6,11 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runartifact/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runartifact/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestSnapshotReadsEveryLedgerAndProvenance(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestSnapshotReadsEveryLedgerAndProvenance(t *testing.T) {
 }
 
 func TestSnapshotReadsRecordedDigestsAndSafetyEvidence(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

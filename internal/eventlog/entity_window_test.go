@@ -8,11 +8,12 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestReadEntityWindowIsScopedOrderedAndStoppable(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "window.db"))
+	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "window.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

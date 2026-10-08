@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
@@ -15,12 +16,11 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestPipelineCompletesDecisionToSimulatedOutcome(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "e2e.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "e2e.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestPipelineCompletesDecisionToSimulatedOutcome(t *testing.T) {
 
 func TestPipelineCorrectsLateWindowAndAdmitsOneReconsideration(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "late-correction.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "late-correction.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -13,7 +13,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 type testRecordedLedger struct{ entries []replay.RecordedEntry }
@@ -122,6 +122,7 @@ func testShadowOutput(input replay.ShadowInput, executorVersion, configuredManif
 }
 
 func TestGoldenTracesAreDeterministic(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	specPath := "../../docs/design/examples/predictive-maintenance.situation.yaml"
 	traces := []string{
@@ -132,6 +133,7 @@ func TestGoldenTracesAreDeterministic(t *testing.T) {
 
 	for _, tracePath := range traces {
 		t.Run(filepath.Base(tracePath), func(t *testing.T) {
+			t.Parallel()
 			if _, err := os.Stat(tracePath); err != nil {
 				t.Fatalf("trace file %s: %v", tracePath, err)
 			}
@@ -153,11 +155,13 @@ func TestGoldenTracesAreDeterministic(t *testing.T) {
 }
 
 func TestReplayModesHaveNoCredentialOrEffectorBoundary(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	specPath := "../../docs/design/examples/predictive-maintenance.situation.yaml"
 	tracePath := "../../examples/predictive-maintenance/testdata/trace-opening.jsonl"
 	for _, mode := range []replay.Mode{replay.ModeDeterministic, replay.ModeRecorded, replay.ModeShadow} {
 		t.Run(string(mode), func(t *testing.T) {
+			t.Parallel()
 			result, err := replay.RunMode(ctx, mode, replay.Request{DBPath: filepath.Join(t.TempDir(), "replay.db"), SpecPath: specPath, TracePath: tracePath, TenantID: "default"})
 			if mode != replay.ModeDeterministic {
 				if !errors.Is(err, replay.ErrModeCapabilityRequired) {
@@ -185,6 +189,7 @@ func TestReplayModesHaveNoCredentialOrEffectorBoundary(t *testing.T) {
 }
 
 func TestReplayRejectsExistingDatabaseAndSidecars(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "replay.db")
 	if err := os.WriteFile(path, []byte("not a replay database"), 0o600); err != nil {
@@ -206,13 +211,14 @@ func TestReplayRejectsExistingDatabaseAndSidecars(t *testing.T) {
 }
 
 func TestDeterministicReplayDoesNotInvokeCognition(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "stream-only.db")
 	_, err := replay.Run(context.Background(), replay.Request{DBPath: path, SpecPath: "../../docs/design/examples/predictive-maintenance.situation.yaml", TracePath: "../../examples/predictive-maintenance/testdata/trace-opening.jsonl", TenantID: "default"})
 	if err != nil {
 		t.Fatalf("replay: %v", err)
 	}
-	db, err := storage.Open(context.Background(), path)
+	db, err := storagetest.Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("reopen replay database: %v", err)
 	}
@@ -227,6 +233,7 @@ func TestDeterministicReplayDoesNotInvokeCognition(t *testing.T) {
 }
 
 func TestWorkerAwareModesRequireExplicitCapabilities(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	specPath := "../../docs/design/examples/predictive-maintenance.situation.yaml"
 	tracePath := "../../examples/predictive-maintenance/testdata/trace-opening.jsonl"
@@ -241,6 +248,7 @@ func TestWorkerAwareModesRequireExplicitCapabilities(t *testing.T) {
 }
 
 func TestWorkerAwareModesUseOnlySuppliedCapabilities(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	specPath := "../../docs/design/examples/predictive-maintenance.situation.yaml"
 	tracePath := "../../examples/predictive-maintenance/testdata/trace-opening.jsonl"
@@ -270,6 +278,7 @@ func TestWorkerAwareModesUseOnlySuppliedCapabilities(t *testing.T) {
 // Counterfactual replay was removed: there was no simulator and its commands
 // did not come from the replayed decisions. The mode name is now refused.
 func TestCounterfactualModeIsRefused(t *testing.T) {
+	t.Parallel()
 	_, err := replay.RunMode(context.Background(), replay.Mode("counterfactual"), replay.Request{DBPath: filepath.Join(t.TempDir(), "replay.db"), SpecPath: "../../docs/design/examples/predictive-maintenance.situation.yaml", TracePath: "../../examples/predictive-maintenance/testdata/trace-opening.jsonl", TenantID: "default"})
 	if !errors.Is(err, replay.ErrUnsupportedMode) {
 		t.Fatalf("counterfactual replay = %v, want ErrUnsupportedMode", err)
@@ -277,6 +286,7 @@ func TestCounterfactualModeIsRefused(t *testing.T) {
 }
 
 func TestRecordedReplayRejectsUnverifiableLedgerEntries(t *testing.T) {
+	t.Parallel()
 	_, err := replay.RunMode(context.Background(), replay.ModeRecorded, replay.Request{DBPath: filepath.Join(t.TempDir(), "recorded.db"), SpecPath: "../../docs/design/examples/predictive-maintenance.situation.yaml", TracePath: "../../examples/predictive-maintenance/testdata/trace-opening.jsonl", TenantID: "default"}, replay.Capabilities{RecordedLedger: testRecordedLedger{entries: []replay.RecordedEntry{{
 		EpisodeKey:     "situation/1/trigger",
 		DecisionJSON:   []byte(`{}`),
@@ -288,6 +298,7 @@ func TestRecordedReplayRejectsUnverifiableLedgerEntries(t *testing.T) {
 }
 
 func TestShadowReplayValidatesAnExecutableOpportunity(t *testing.T) {
+	t.Parallel()
 	workingSpec := alwaysTriggerSpec(t)
 	baseline := &testBaselineExecutor{}
 	shadow := &testShadowExecutor{}
@@ -305,6 +316,7 @@ func TestShadowReplayValidatesAnExecutableOpportunity(t *testing.T) {
 }
 
 func TestShadowReplayPersistsPairedComparisonWithoutEffects(t *testing.T) {
+	t.Parallel()
 	workingSpec := alwaysTriggerSpec(t)
 	tracePath := "../../examples/predictive-maintenance/testdata/trace-opening.jsonl"
 	baseline := &testBaselineExecutor{mutateInput: true}
@@ -324,7 +336,7 @@ func TestShadowReplayPersistsPairedComparisonWithoutEffects(t *testing.T) {
 			t.Fatalf("shadow inputs differ at index %d", index)
 		}
 	}
-	db, err := storage.Open(context.Background(), dbPath)
+	db, err := storagetest.Open(context.Background(), dbPath)
 	if err != nil {
 		t.Fatalf("reopen shadow database: %v", err)
 	}
@@ -363,6 +375,7 @@ func TestShadowReplayPersistsPairedComparisonWithoutEffects(t *testing.T) {
 }
 
 func TestShadowReplayReportsDecisionDifferences(t *testing.T) {
+	t.Parallel()
 	workingSpec := alwaysTriggerSpec(t)
 	result, err := replay.RunMode(context.Background(), replay.ModeShadow, replay.Request{DBPath: filepath.Join(t.TempDir(), "shadow.db"), SpecPath: workingSpec, TracePath: "../../examples/predictive-maintenance/testdata/trace-opening.jsonl", TenantID: "default"}, replay.Capabilities{
 		BaselineExecutor: &testBaselineExecutor{summary: "baseline"},
@@ -414,6 +427,7 @@ func (outOfCatalogShadowExecutor) ExecuteShadow(_ context.Context, input replay.
 }
 
 func TestShadowReplayRejectsOutOfCatalogIntent(t *testing.T) {
+	t.Parallel()
 	workingSpec := alwaysTriggerSpec(t)
 	result, err := replay.RunMode(context.Background(), replay.ModeShadow, replay.Request{DBPath: filepath.Join(t.TempDir(), "shadow.db"), SpecPath: workingSpec, TracePath: "../../examples/predictive-maintenance/testdata/trace-opening.jsonl", TenantID: "default"}, replay.Capabilities{BaselineExecutor: &testBaselineExecutor{}, ShadowExecutor: outOfCatalogShadowExecutor{}})
 	if err != nil || len(result.ShadowComparisons) != 0 || !hasFinding(result, "shadow_candidate_invalid", "intent_type_not_allowed") {
@@ -422,6 +436,7 @@ func TestShadowReplayRejectsOutOfCatalogIntent(t *testing.T) {
 }
 
 func TestDeterministicBaselineProducesAValidatedRecommendation(t *testing.T) {
+	t.Parallel()
 	compiled, err := spec.CompileFile(context.Background(), "../../docs/design/examples/predictive-maintenance.situation.yaml")
 	if err != nil {
 		t.Fatalf("compile predictive spec: %v", err)
@@ -446,6 +461,7 @@ func TestDeterministicBaselineProducesAValidatedRecommendation(t *testing.T) {
 }
 
 func TestRecordedReplayValidatesACompleteLedger(t *testing.T) {
+	t.Parallel()
 	workingSpec := alwaysTriggerSpec(t)
 	result, err := replay.RunMode(context.Background(), replay.ModeRecorded, replay.Request{DBPath: filepath.Join(t.TempDir(), "recorded.db"), SpecPath: workingSpec, TracePath: "../../examples/predictive-maintenance/testdata/trace-opening.jsonl", TenantID: "default"}, replay.Capabilities{RecordedLedger: viewRecordedLedger{}})
 	if err != nil {

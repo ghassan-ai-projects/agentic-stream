@@ -7,6 +7,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runartifact/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runartifact/internal/store"
@@ -123,7 +124,7 @@ func completeEvidence() map[string]any {
 
 func openSoakDB(t *testing.T) (*storage.DB, string) {
 	t.Helper()
-	db, err := storage.Open(t.Context(), t.TempDir()+"/soak.db")
+	db, err := storagetest.Open(t.Context(), t.TempDir()+"/soak.db")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,11 +9,11 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestSimulatorJSONLReplayConvertsControlsAndEvents(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "sim.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "sim.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestSimulatorJSONLReplayConvertsControlsAndEvents(t *testing.T) {
 }
 
 func TestSimulatorJSONLReplayRejectsFlattenedAndOutOfOrderRecords(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "sim.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "sim.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestSimulatorJSONLReplayRejectsFlattenedAndOutOfOrderRecords(t *testing.T) 
 }
 
 func TestSimulatorJSONLReplayRejectsUnknownRecord(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "sim.db"))
+	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "sim.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

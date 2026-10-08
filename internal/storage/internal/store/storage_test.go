@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 	"github.com/ghassan-ai-projects/agentic-stream/migrations"
 
 	_ "modernc.org/sqlite"
@@ -20,7 +20,7 @@ func TestOpenCreatesDatabaseAndRunsMigrations(t *testing.T) {
 	dbPath := filepath.Join(dir, "test.db")
 
 	ctx := context.Background()
-	db, err := storage.Open(ctx, dbPath)
+	db, err := storagetest.Open(ctx, dbPath)
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestLifecycleMigrationMapsEveryFormerEpisodeStatus(t *testing.T) {
 		t.Fatalf("close legacy db: %v", err)
 	}
 
-	db, err := storage.Open(ctx, dbPath)
+	db, err := storagetest.Open(ctx, dbPath)
 	if err != nil {
 		t.Fatalf("run lifecycle migration: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestOpenIsIdempotent(t *testing.T) {
 	dbPath := filepath.Join(dir, "test.db")
 
 	ctx := context.Background()
-	db1, err := storage.Open(ctx, dbPath)
+	db1, err := storagetest.Open(ctx, dbPath)
 	if err != nil {
 		t.Fatalf("first Open failed: %v", err)
 	}
@@ -340,7 +340,7 @@ func TestOpenIsIdempotent(t *testing.T) {
 		t.Fatalf("stat db: %v", err)
 	}
 
-	db2, err := storage.Open(ctx, dbPath)
+	db2, err := storagetest.Open(ctx, dbPath)
 	if err != nil {
 		t.Fatalf("second Open failed: %v", err)
 	}
