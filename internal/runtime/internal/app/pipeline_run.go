@@ -17,6 +17,11 @@ import (
 // executes all admitted episodes, applies policy, and dispatches approved
 // commands. Each stage is idempotent against the durable ledgers.
 func (p *Pipeline) RunJSONL(ctx context.Context, path string) (PipelineReport, error) {
+	unlock, err := p.lockBatch()
+	if err != nil {
+		return PipelineReport{}, err
+	}
+	defer unlock()
 	before, err := p.prepareIngest(ctx)
 	if err != nil {
 		return PipelineReport{}, err
@@ -60,24 +65,41 @@ func (p *Pipeline) RunLiveSocket(ctx context.Context, path string) error {
 }
 
 func (p *Pipeline) ingestLiveEvent(ctx context.Context, env contractsv1.Envelope) error {
+	unlock, err := p.lockBatch()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	before, err := p.prepareIngest(ctx)
 	if err != nil {
 		return err
 	}
-	positions, err := p.log.Append(ctx, p.tenantID, []contractsv1.Envelope{env})
-	if err != nil {
-		return fmt.Errorf("append live event: %w", err)
-	}
-	if len(positions) != 1 || positions[0] < 0 {
-		return nil
+	appended, err := p.appendLiveEvent(ctx, env)
+	if err != nil || !appended {
+		return err
 	}
 	_, err = p.runAfterIngest(ctx, PipelineReport{EventsIngested: 1}, before)
 	return err
 }
 
+// appendLiveEvent appends one envelope and reports whether it entered the log
+// (a duplicate or quarantined envelope does not).
+func (p *Pipeline) appendLiveEvent(ctx context.Context, env contractsv1.Envelope) (bool, error) {
+	positions, err := p.log.Append(ctx, p.tenantID, []contractsv1.Envelope{env})
+	if err != nil {
+		return false, fmt.Errorf("append live event: %w", err)
+	}
+	return len(positions) == 1 && positions[0] >= 0, nil
+}
+
 // RunSimulatorJSONL ingests the strict streams-simulator adapter format and
 // runs the same pipeline stages as RunJSONL.
 func (p *Pipeline) RunSimulatorJSONL(ctx context.Context, path string) (PipelineReport, error) {
+	unlock, err := p.lockBatch()
+	if err != nil {
+		return PipelineReport{}, err
+	}
+	defer unlock()
 	before, err := p.prepareIngest(ctx)
 	if err != nil {
 		return PipelineReport{}, err

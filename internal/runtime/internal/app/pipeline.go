@@ -36,11 +36,13 @@ type Pipeline struct {
 	watch        *watch.Service
 	clk          sources.Clock
 	tenantID     string
-	watchMu      sync.Mutex
-	watchStop    context.CancelFunc
-	watchDone    chan struct{}
-	watchErr     error
-	telemetry    *telemetry.Runtime
+	// batchMu serializes source batches with scheduled advances.
+	batchMu   sync.Mutex
+	watchMu   sync.Mutex
+	watchStop context.CancelFunc
+	watchDone chan struct{}
+	watchErr  error
+	telemetry *telemetry.Runtime
 }
 
 // Start begins runtime-owned maintenance loops. It is safe to call once for

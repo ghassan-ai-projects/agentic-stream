@@ -47,7 +47,7 @@ func registerServeFlags(cmd *cobra.Command, flags *serveFlags) {
 	cmd.Flags().StringVar(&flags.tenantID, "tenant", "default", "tenant served by this runtime process")
 	cmd.Flags().StringVar(&flags.listenAddress, "listen", "127.0.0.1:8080", "loopback HTTP listen address")
 	cmd.Flags().DurationVar(&flags.ownerLease, "owner-lease", time.Minute, "runtime owner lease duration")
-	cmd.Flags().DurationVar(&flags.pollInterval, "poll-interval", time.Second, "continuous source polling interval")
+	cmd.Flags().DurationVar(&flags.pollInterval, "poll-interval", time.Second, "interval for polling a --trace source and for advancing timers, debounced cognition and approved commands while a --live-socket is quiet")
 	cmd.Flags().BoolVar(&flags.demoMode, "demo-mode", false, "admit fixture executors (demos and tests only; a production route never admits fixture)")
 }
 

@@ -72,7 +72,9 @@ func newModePipeline(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, 
 	cfg.DB = db
 	cfg.Spec = compiled
 	cfg.TenantID = "default"
-	cfg.Clock = sources.Physical()
+	if cfg.Clock == nil {
+		cfg.Clock = sources.Physical()
+	}
 	cfg.IDGenerator = sources.Deterministic()
 	cfg.Executor = fixture.New()
 	cfg.Effector = device.NewSimulatedEffector()

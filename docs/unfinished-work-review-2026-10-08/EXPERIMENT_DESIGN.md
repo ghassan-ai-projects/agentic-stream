@@ -88,6 +88,11 @@ so a bench command fails closed. The simulator path uses `zone-01`.
 hand. That caused B1 (saved copies no longer validate) and G4 (missing ceiling),
 and the gateway's policy-digest allow-list must follow whatever was edited.
 
+**G8. The live pipeline only advanced when an event arrived.** Found by
+X01's end-to-end test. Due cognition, approved commands and silence timers
+waited for the next event, so a quiet feed stalled the loop and a dead link
+was never detected. Fixed in [X08](tasks/X08-live-pipeline-clock.md).
+
 ## Decisions
 
 ### D1 — Material freshness (Agentic Stream core; new ADR)

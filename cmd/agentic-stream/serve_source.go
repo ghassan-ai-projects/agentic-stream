@@ -53,6 +53,7 @@ func registerWorkerMonitor(ctx context.Context, workerErrors <-chan error, failu
 func startContinuousSource(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, flags serveFlags, failures chan error) error {
 	if flags.liveSocket != "" {
 		go runLiveSocketSource(ctx, stop, pipeline, flags.liveSocket, failures)
+		go runPipelineClock(ctx, stop, pipeline, flags.pollInterval, failures)
 		return waitForLiveSocket(ctx, flags.liveSocket, failures)
 	}
 	go runPollingSource(ctx, stop, pipeline, flags, failures)
@@ -62,6 +63,14 @@ func startContinuousSource(ctx context.Context, stop context.CancelFunc, pipelin
 func runLiveSocketSource(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, path string, failures chan error) {
 	if runErr := pipeline.RunLiveSocket(ctx, path); runErr != nil && !errors.Is(runErr, context.Canceled) {
 		failures <- fmt.Errorf("live socket pipeline: %w", runErr)
+		stop()
+	}
+}
+
+// runPipelineClock advances time-driven work while the live socket is quiet.
+func runPipelineClock(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, interval time.Duration, failures chan error) {
+	if runErr := pipeline.AdvanceEvery(ctx, interval); runErr != nil && !errors.Is(runErr, context.Canceled) {
+		failures <- fmt.Errorf("pipeline clock: %w", runErr)
 		stop()
 	}
 }
