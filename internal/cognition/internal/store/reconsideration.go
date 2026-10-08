@@ -10,6 +10,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -30,7 +31,7 @@ func (t *Tx) RecordReconsideration(ctx context.Context, r domain.Reconsideration
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.ID, tenantID, r.Current.SituationID, r.Current.PreviousVersion,
 		r.Current.Version, correctionDigest, r.Command.CommandID, r.Command.OutcomeID, r.Command.OutcomeSHA,
-		now.UTC().Format(time.RFC3339Nano)); err != nil {
+		sources.FormatTime(now)); err != nil {
 		return fmt.Errorf("insert reconsideration: %w", err)
 	}
 	return nil

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -29,7 +30,7 @@ func (tx *Tx) LoadOutboxLease(ctx context.Context, outboxID int64) (domain.Outbo
 
 // LeaseIsLive reports whether owner holds an unexpired lease on the outbox row.
 func (tx *Tx) LeaseIsLive(ctx context.Context, outboxID int64, owner string, now time.Time) (bool, error) {
-	_, live, err := storage.QueryOptional[int](ctx, tx.tx, `SELECT 1 FROM outbox WHERE outbox_id = ? AND status = 'leased' AND lease_owner = ? AND lease_until > ?`, outboxID, owner, formatTime(now))
+	_, live, err := storage.QueryOptional[int](ctx, tx.tx, `SELECT 1 FROM outbox WHERE outbox_id = ? AND status = 'leased' AND lease_owner = ? AND lease_until > ?`, outboxID, owner, sources.FormatTime(now))
 	if err != nil {
 		return false, fmt.Errorf("check dispatch lease: %w", err)
 	}
@@ -38,7 +39,7 @@ func (tx *Tx) LeaseIsLive(ctx context.Context, outboxID int64, owner string, now
 
 // RefreshLease extends a live lease. It reports false when the lease was lost.
 func (tx *Tx) RefreshLease(ctx context.Context, outboxID int64, owner string, until, now time.Time) (bool, error) {
-	result, err := tx.tx.ExecContext(ctx, `UPDATE outbox SET lease_until = ? WHERE outbox_id = ? AND status = 'leased' AND lease_owner = ? AND lease_until > ?`, formatTime(until), outboxID, owner, formatTime(now))
+	result, err := tx.tx.ExecContext(ctx, `UPDATE outbox SET lease_until = ? WHERE outbox_id = ? AND status = 'leased' AND lease_owner = ? AND lease_until > ?`, sources.FormatTime(until), outboxID, owner, sources.FormatTime(now))
 	if err != nil {
 		return false, fmt.Errorf("refresh dispatch lease: %w", err)
 	}

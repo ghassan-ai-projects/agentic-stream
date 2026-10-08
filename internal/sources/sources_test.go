@@ -61,3 +61,11 @@ func TestOrLeaseDefaultsAnUnspecifiedLease(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatTimeIsUTCWithNanoseconds(t *testing.T) {
+	t.Parallel()
+	local := time.Date(2026, 8, 12, 14, 0, 0, 123456789, time.FixedZone("plus2", 2*3600))
+	if got, want := sources.FormatTime(local), "2026-08-12T12:00:00.123456789Z"; got != want {
+		t.Fatalf("FormatTime = %q, want %q", got, want)
+	}
+}

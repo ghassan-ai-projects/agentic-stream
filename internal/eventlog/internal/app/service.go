@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
@@ -74,6 +73,6 @@ func (s *Service) appendOne(ctx context.Context, u *store.Unit, tenantID string,
 	if err != nil {
 		return -1, err
 	}
-	createdAt := s.clk.Now().UTC().Format(time.RFC3339Nano)
+	createdAt := sources.FormatTime(s.clk.Now())
 	return u.InsertEvent(ctx, tenantID, env, body, createdAt)
 }

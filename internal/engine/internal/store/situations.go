@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -17,7 +18,7 @@ func (tx *Tx) RecordLineage(ctx context.Context, lineage domain.Lineage, now tim
 		INSERT INTO lineage_sets (lineage_id, sha256, reference_count, references_json, created_at)
 		VALUES (?, ?, 1, ?, ?)
 		ON CONFLICT(lineage_id) DO NOTHING`,
-		lineage.ID, lineage.Digest, lineage.ReferencesJSON, formatTime(now),
+		lineage.ID, lineage.Digest, lineage.ReferencesJSON, sources.FormatTime(now),
 	); err != nil {
 		return fmt.Errorf("insert lineage set: %w", err)
 	}
@@ -26,7 +27,7 @@ func (tx *Tx) RecordLineage(ctx context.Context, lineage domain.Lineage, now tim
 
 // UpsertSituation writes the Situation's current row for a published version.
 func (tx *Tx) UpsertSituation(ctx context.Context, partitionID int, version situations.Version, write domain.SituationWrite, now time.Time) error {
-	at := formatTime(now)
+	at := sources.FormatTime(now)
 	if _, err := tx.tx.ExecContext(ctx, upsertSituationSQL,
 		version.SituationID, tx.tenantID, tx.deploymentID, version.Type, version.EntityType,
 		version.EntityID, partitionID, write.OccurrenceID, version.Version, version.Phase,
@@ -66,7 +67,7 @@ func (tx *Tx) InsertSituationVersion(ctx context.Context, version situations.Ver
 		version.Severity, version.Confidence, version.Completeness,
 		version.EventHorizon.Format(time.RFC3339Nano), version.Watermark.Format(time.RFC3339Nano),
 		version.EventHorizon.Format(time.RFC3339Nano), version.SnapshotJSON, snapshotDigest,
-		lineageID, storage.NullIfEmpty(version.Traceparent), storage.NullIfEmpty(version.Tracestate), formatTime(now),
+		lineageID, storage.NullIfEmpty(version.Traceparent), storage.NullIfEmpty(version.Tracestate), sources.FormatTime(now),
 	); err != nil {
 		return fmt.Errorf("insert situation version: %w", err)
 	}
@@ -96,7 +97,7 @@ func (tx *Tx) SaveSituationRuntimeState(ctx context.Context, situation situation
 		SET phase = ?, latest_event_time = ?, updated_at = ?, state_codec_version = 1,
 		    state_json = ?, state_sha256 = ?
 		WHERE situation_id = ? AND tenant_id = ? AND deployment_id = ? AND current_version = ?`,
-		situation.Phase, situation.LatestEventTime.Format(time.RFC3339Nano), formatTime(now),
+		situation.Phase, situation.LatestEventTime.Format(time.RFC3339Nano), sources.FormatTime(now),
 		stateJSON, stateDigest, situation.SituationID, tx.tenantID, tx.deploymentID, situation.Version)
 	if err != nil {
 		return fmt.Errorf("update situation runtime state: %w", err)

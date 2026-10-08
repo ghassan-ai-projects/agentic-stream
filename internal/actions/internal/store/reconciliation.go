@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
@@ -49,7 +50,7 @@ func (tx *Tx) VerifyDeviceBinding(ctx context.Context, command domain.Reconcilab
 }
 
 func (tx *Tx) CloseReconciliation(ctx context.Context, closure domain.ReconciliationClosure) error {
-	at := formatTime(closure.At)
+	at := sources.FormatTime(closure.At)
 	if _, err := tx.tx.ExecContext(ctx, "UPDATE commands SET status = ?, updated_at = ? WHERE command_id = ? AND status IN ('reconciling', 'outcome_unknown', 'manual_review')", closure.FinalStatus, at, closure.Command.ID); err != nil {
 		return fmt.Errorf("close reconciled command: %w", err)
 	}

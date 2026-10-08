@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
@@ -74,8 +73,4 @@ func (tx *Tx) AssertInterlock(ctx context.Context) error {
 		return fmt.Errorf("interlock rejected command: %w", err)
 	}
 	return nil
-}
-
-func formatTime(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
 }

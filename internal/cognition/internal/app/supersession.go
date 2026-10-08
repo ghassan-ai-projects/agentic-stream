@@ -3,10 +3,10 @@ package app
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // supersedePending coalesces the trigger's pending and admitted scheduler
@@ -14,7 +14,7 @@ import (
 // attempts, then announces each superseded older version and withdraws its
 // pending approvals.
 func (s *scheduler) supersedePending(ctx context.Context, tx *store.Tx, situationID, triggerName string) error {
-	now := s.clk.Now().UTC().Format(time.RFC3339Nano)
+	now := sources.FormatTime(s.clk.Now())
 	replacement, items, err := tx.LoadSupersession(ctx, situationID, triggerName)
 	if err != nil {
 		return err

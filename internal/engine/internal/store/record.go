@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -21,7 +22,7 @@ func (tx *Tx) EventApplied(ctx context.Context, eventID string) (bool, error) {
 
 // RecordApplied advances the partition checkpoint and marks the event applied.
 func (tx *Tx) RecordApplied(ctx context.Context, partitionID int, eventID string, position int64, watermark, now time.Time) error {
-	at := now.UTC().Format(time.RFC3339Nano)
+	at := sources.FormatTime(now)
 	if _, err := tx.tx.ExecContext(ctx, `
 		INSERT INTO partition_checkpoints (consumer_name, tenant_id, partition_id, last_position, watermark, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)

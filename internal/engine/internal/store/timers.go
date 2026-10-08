@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // TimerPartitions lists the partitions that have pending processing-time timers.
@@ -113,7 +114,7 @@ func (tx *Tx) ArmHeartbeatTimer(ctx context.Context, partitionID int, timer doma
 		tx.deploymentID, tx.tenantID, partitionID, timer.OperatorID, timer.StateKey); err != nil {
 		return fmt.Errorf("cancel prior heartbeat timer: %w", err)
 	}
-	return tx.insertHeartbeatTimer(ctx, partitionID, timer, formatTime(now))
+	return tx.insertHeartbeatTimer(ctx, partitionID, timer, sources.FormatTime(now))
 }
 
 func (tx *Tx) insertHeartbeatTimer(ctx context.Context, partitionID int, timer domain.HeartbeatTimer, now string) error {

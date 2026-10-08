@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // CloudEvent is the JSON CloudEvents 1.0 notification envelope used at
@@ -107,7 +108,7 @@ func (e CloudEvent) ComputeEnvelopeDigest() (string, error) {
 func (e CloudEvent) envelopeProjection(dataDigest string) map[string]any {
 	projection := map[string]any{
 		"specversion": e.SpecVersion, "type": e.Type, "source": e.Source, "id": e.ID,
-		"subject": e.Subject, "time": e.Time.UTC().Format(time.RFC3339Nano),
+		"subject": e.Subject, "time": sources.FormatTime(e.Time),
 		"dataschema": e.DataSchema, "tenantid": e.TenantID, "partitionkey": e.PartitionKey,
 		"classification": e.Classification, "datadigest": dataDigest,
 	}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 type ShadowComparisonResult struct {
@@ -150,6 +151,6 @@ func comparisonRecord(input ShadowInput, baseline, tamoz ValidatedOutput, tenant
 		BaselineManifestSHA256: baseline.ManifestSHA, TamozManifestSHA256: tamoz.ManifestSHA,
 		BaselineDecisionJSON: baseline.Canonical, BaselineDecisionSHA256: baseline.DecisionSHA,
 		TamozDecisionJSON: tamoz.Canonical, TamozDecisionSHA256: tamoz.DecisionSHA,
-		ComparisonJSON: comparisonJSON, ComparisonSHA256: comparisonSHA, CreatedAt: createdAt.UTC().Format(time.RFC3339Nano),
+		ComparisonJSON: comparisonJSON, ComparisonSHA256: comparisonSHA, CreatedAt: sources.FormatTime(createdAt),
 	}
 }

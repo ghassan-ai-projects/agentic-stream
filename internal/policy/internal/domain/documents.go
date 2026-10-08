@@ -9,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // DocumentDigestMatches verifies the original decoded document, including the intent self-digest.
@@ -57,5 +58,5 @@ func ContainsControl(value string) bool {
 
 // FormatTime formats durable timestamps in UTC with nanosecond precision.
 func FormatTime(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
+	return sources.FormatTime(value)
 }

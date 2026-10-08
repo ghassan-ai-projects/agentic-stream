@@ -9,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 const nextCandidateSQL = `
@@ -33,7 +34,7 @@ const acquireLeaseSQL = `
 
 // NextCandidate selects the oldest command outbox row available at now.
 func (tx *Tx) NextCandidate(ctx context.Context, now time.Time) (domain.Candidate, bool, error) {
-	row := tx.tx.QueryRowContext(ctx, nextCandidateSQL, formatTime(now), formatTime(now))
+	row := tx.tx.QueryRowContext(ctx, nextCandidateSQL, sources.FormatTime(now), sources.FormatTime(now))
 	var c domain.Candidate
 	var trace, lease nullPair
 	err := row.Scan(&c.OutboxID, &c.Command.ID, &c.Command.JSON, &c.Command.SHA, &c.CommandStatus,
@@ -56,7 +57,7 @@ type nullPair struct{ first, second sql.NullString }
 // AcquireLease claims the outbox row for owner until the given time. It reports
 // false when another dispatcher won the row.
 func (tx *Tx) AcquireLease(ctx context.Context, outboxID int64, owner string, until, now time.Time) (bool, error) {
-	result, err := tx.tx.ExecContext(ctx, acquireLeaseSQL, owner, formatTime(until), outboxID, formatTime(now))
+	result, err := tx.tx.ExecContext(ctx, acquireLeaseSQL, owner, sources.FormatTime(until), outboxID, sources.FormatTime(now))
 	if err != nil {
 		return false, fmt.Errorf("lease command outbox: %w", err)
 	}
@@ -69,7 +70,7 @@ func (tx *Tx) AcquireLease(ctx context.Context, outboxID int64, owner string, un
 
 // MarkCommandDispatching moves a leased command to the dispatching state.
 func (tx *Tx) MarkCommandDispatching(ctx context.Context, commandID string, now time.Time) error {
-	if _, err := tx.tx.ExecContext(ctx, "UPDATE commands SET status = 'dispatching', updated_at = ? WHERE command_id = ? AND status IN ('pending', 'failed', 'dispatching')", formatTime(now), commandID); err != nil {
+	if _, err := tx.tx.ExecContext(ctx, "UPDATE commands SET status = 'dispatching', updated_at = ? WHERE command_id = ? AND status IN ('pending', 'failed', 'dispatching')", sources.FormatTime(now), commandID); err != nil {
 		return fmt.Errorf("mark command dispatching: %w", err)
 	}
 	return nil
@@ -77,7 +78,7 @@ func (tx *Tx) MarkCommandDispatching(ctx context.Context, commandID string, now 
 
 // FailInvalidCommand fails a command and its outbox row with the lease failure code.
 func (tx *Tx) FailInvalidCommand(ctx context.Context, outboxID int64, commandID, code string, now time.Time) error {
-	if _, err := tx.tx.ExecContext(ctx, "UPDATE commands SET status = 'failed', updated_at = ? WHERE command_id = ?", formatTime(now), commandID); err != nil {
+	if _, err := tx.tx.ExecContext(ctx, "UPDATE commands SET status = 'failed', updated_at = ? WHERE command_id = ?", sources.FormatTime(now), commandID); err != nil {
 		return fmt.Errorf("mark invalid command failed: %w", err)
 	}
 	if _, err := tx.tx.ExecContext(ctx, `UPDATE outbox SET status = 'failed', last_error_code = ?, lease_owner = NULL, lease_until = NULL WHERE outbox_id = ?`, code, outboxID); err != nil {
@@ -89,7 +90,7 @@ func (tx *Tx) FailInvalidCommand(ctx context.Context, outboxID int64, commandID,
 // CloseOutboxOnly finishes the outbox row of a command that already reached a
 // terminal state.
 func (tx *Tx) CloseOutboxOnly(ctx context.Context, outboxID int64, status string, now time.Time) error {
-	_, err := tx.tx.ExecContext(ctx, `UPDATE outbox SET status = ?, lease_owner = NULL, lease_until = NULL, delivered_at = CASE WHEN ? = 'delivered' THEN ? ELSE delivered_at END WHERE outbox_id = ?`, status, status, formatTime(now), outboxID)
+	_, err := tx.tx.ExecContext(ctx, `UPDATE outbox SET status = ?, lease_owner = NULL, lease_until = NULL, delivered_at = CASE WHEN ? = 'delivered' THEN ? ELSE delivered_at END WHERE outbox_id = ?`, status, status, sources.FormatTime(now), outboxID)
 	if err != nil {
 		return fmt.Errorf("finish outbox: %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -45,7 +46,7 @@ func (t *Tx) CoalescePendingSchedulerItem(ctx context.Context, schedulerItemID s
 	result, err := t.q.ExecContext(ctx, `
 			UPDATE scheduler_items SET status = 'coalesced', updated_at = ?
 			WHERE scheduler_item_id = ? AND status = 'pending'`,
-		now.UTC().Format(time.RFC3339Nano), schedulerItemID)
+		sources.FormatTime(now), schedulerItemID)
 	if err != nil {
 		return 0, fmt.Errorf("%s: %w", operation, err)
 	}

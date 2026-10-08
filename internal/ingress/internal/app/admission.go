@@ -3,10 +3,10 @@ package app
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // admit decodes a line, checks the envelope contract, then the registered event
@@ -22,7 +22,7 @@ func (s *Service) admit(ctx context.Context, line []byte) domain.LineVerdict {
 	return verdict
 }
 
-func (s *Service) nowText() string { return s.clk.Now().UTC().Format(time.RFC3339Nano) }
+func (s *Service) nowText() string { return sources.FormatTime(s.clk.Now()) }
 
 // quarantineRaw records a refused line as raw bytes.
 func (s *Service) quarantineRaw(ctx context.Context, eventID string, line []byte, reason, now string) error {

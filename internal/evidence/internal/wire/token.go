@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 const tokenVersion = "v1"
@@ -31,12 +32,12 @@ func SignToken(scope domain.Scope, key []byte) ([]byte, error) {
 
 func newTokenPayload(scope domain.Scope) tokenPayload {
 	return tokenPayload{
-		Issuer: scope.Issuer, Audience: scope.Audience, TokenID: scope.TokenID, IssuedAt: scope.IssuedAt.UTC().Format(time.RFC3339Nano), EpisodeID: scope.EpisodeID,
+		Issuer: scope.Issuer, Audience: scope.Audience, TokenID: scope.TokenID, IssuedAt: sources.FormatTime(scope.IssuedAt), EpisodeID: scope.EpisodeID,
 		AttemptID: scope.AttemptID, Fence: scope.Fence, TenantID: scope.TenantID,
 		SituationID: scope.SituationID, SituationVersion: scope.SituationVersion, EntityID: scope.EntityID, Tools: append([]string(nil), scope.Tools...),
-		NotBefore: scope.NotBefore.UTC().Format(time.RFC3339Nano), ExpiresAt: scope.ExpiresAt.UTC().Format(time.RFC3339Nano),
+		NotBefore: sources.FormatTime(scope.NotBefore), ExpiresAt: sources.FormatTime(scope.ExpiresAt),
 		MaxRows: scope.MaxRows, MaxBytes: scope.MaxBytes,
-		From: scope.From.UTC().Format(time.RFC3339Nano), Until: scope.Until.UTC().Format(time.RFC3339Nano), Traceparent: scope.Traceparent, Tracestate: scope.Tracestate, RuntimeEpoch: scope.RuntimeEpoch,
+		From: sources.FormatTime(scope.From), Until: sources.FormatTime(scope.Until), Traceparent: scope.Traceparent, Tracestate: scope.Tracestate, RuntimeEpoch: scope.RuntimeEpoch,
 	}
 }
 

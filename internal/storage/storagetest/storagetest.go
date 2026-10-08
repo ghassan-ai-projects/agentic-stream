@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -21,6 +23,30 @@ func Open(ctx context.Context, path string) (*storage.DB, error) {
 		return nil, fmt.Errorf("open seeded database: %w", err)
 	}
 	return db, nil
+}
+
+// OpenTemp opens a migrated runtime database in the test's temporary
+// directory and closes it when the test ends. It fails the test on error.
+func OpenTemp(tb testing.TB) *storage.DB {
+	tb.Helper()
+	db, err := Open(tb.Context(), filepath.Join(tb.TempDir(), "runtime.db"))
+	if err != nil {
+		tb.Fatalf("open runtime database: %v", err)
+	}
+	tb.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+// OpenTempWithoutForeignKeys is OpenTemp for tests that seed rows without
+// their parents: one connection, foreign key enforcement off.
+func OpenTempWithoutForeignKeys(tb testing.TB) *storage.DB {
+	tb.Helper()
+	db := OpenTemp(tb)
+	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(tb.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
+		tb.Fatalf("disable foreign keys: %v", err)
+	}
+	return db
 }
 
 func seedFromTemplate(path string) error {

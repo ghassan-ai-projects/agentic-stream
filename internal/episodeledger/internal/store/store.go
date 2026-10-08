@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // querier is what both a database handle and a transaction can run.
@@ -41,7 +43,7 @@ func Reader(db *sql.DB) *Tx {
 func (t *Tx) Open() bool { return t.q != nil }
 
 // TimeText encodes a time as UTC RFC 3339 with nanoseconds.
-func TimeText(value time.Time) string { return value.UTC().Format(time.RFC3339Nano) }
+func TimeText(value time.Time) string { return sources.FormatTime(value) }
 
 // AcceptedAtText encodes accepted_at, which is ordered as SQLite TEXT:
 // fixed-width nanoseconds keep lexical order identical to chronological order.

@@ -11,6 +11,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 func (t *Tx) LoadEvaluationReasons(ctx context.Context, schedulerItemID string) (string, []string, error) {
@@ -89,7 +90,7 @@ func (t *Tx) AnnounceEvaluation(ctx context.Context, eval domain.Evaluation, ten
 
 func evaluationEvent(eval domain.Evaluation, tenantID string) contractsv1.CloudEvent {
 	return contractsv1.CloudEvent{
-		SpecVersion: "1.0", ID: eval.TriggerID + ":" + eval.Outcome + ":" + eval.EvaluatedAt.UTC().Format(time.RFC3339Nano), Source: "//agentic-stream/tenants/" + tenantID,
+		SpecVersion: "1.0", ID: eval.TriggerID + ":" + eval.Outcome + ":" + sources.FormatTime(eval.EvaluatedAt), Source: "//agentic-stream/tenants/" + tenantID,
 		Type: "situation.trigger.evaluated", Subject: "situation/" + eval.SituationID,
 		Time: eval.EvaluatedAt, DataContentType: "application/json",
 		DataSchema: "urn:situation-runtime:schema:trigger-evaluation:v1",

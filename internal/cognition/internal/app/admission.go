@@ -120,7 +120,7 @@ func (s *scheduler) itemID() string {
 }
 
 func (s *scheduler) insertItem(ctx context.Context, tx *store.Tx, item episodeledger.SchedulerItem, tenantID string) error {
-	now := s.clk.Now().UTC().Format(time.RFC3339Nano)
+	now := sources.FormatTime(s.clk.Now())
 	key := domain.SchedulerDedupeKey(item.SituationID, item.SituationVersion, item.TriggerID)
 	if err := tx.InsertItem(ctx, item, tenantID, key, now); err != nil {
 		return fmt.Errorf("%w", err)

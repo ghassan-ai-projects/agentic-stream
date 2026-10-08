@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -73,7 +74,7 @@ func (tx *Tx) InsertNotification(ctx context.Context, n Notification) (bool, err
 	result, err := tx.q.ExecContext(ctx, `
 		INSERT INTO notifications (tenant_id, cursor, event_id, event_type, event_json, event_sha256, traceparent, tracestate, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(tenant_id, event_id) DO NOTHING`,
-		n.TenantID, n.Cursor, n.EventID, n.EventType, n.EventJSON, n.EventSHA, storage.NullIfEmpty(n.Traceparent), storage.NullIfEmpty(n.Tracestate), formatTime(n.CreatedAt))
+		n.TenantID, n.Cursor, n.EventID, n.EventType, n.EventJSON, n.EventSHA, storage.NullIfEmpty(n.Traceparent), storage.NullIfEmpty(n.Tracestate), sources.FormatTime(n.CreatedAt))
 	if err != nil {
 		return false, fmt.Errorf("append notification: %w", err)
 	}
@@ -111,5 +112,3 @@ func (tx *Tx) NotificationCursor(ctx context.Context, tenantID, eventID string) 
 	}
 	return cursor, nil
 }
-
-func formatTime(at time.Time) string { return at.UTC().Format(time.RFC3339Nano) }

@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"time"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // quarantineStale abandons an episode whose re-bind budget is spent.
@@ -107,5 +107,5 @@ func (r *Runner) abandonEpisode(ctx context.Context, tx *store.Tx, episodeID str
 
 // runtimeNow formats the runner clock for durable timestamps.
 func (r *Runner) runtimeNow() string {
-	return r.clk.Now().UTC().Format(time.RFC3339Nano)
+	return sources.FormatTime(r.clk.Now())
 }

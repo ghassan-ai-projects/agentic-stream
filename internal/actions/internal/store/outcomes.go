@@ -6,6 +6,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -41,7 +42,7 @@ func (tx *Tx) InsertOutcome(ctx context.Context, outcome domain.OutcomeRecord) e
 	}
 	if _, err := tx.tx.ExecContext(ctx, insertOutcomeSQL,
 		outcome.ID, outcome.CommandID, outcome.CommandID, outcome.Status, providerJSON, observedJSON,
-		outcome.Reconciliation, outcome.SHA, storage.NullIfEmpty(outcome.Trace.Traceparent), storage.NullIfEmpty(outcome.Trace.Tracestate), formatTime(outcome.At)); err != nil {
+		outcome.Reconciliation, outcome.SHA, storage.NullIfEmpty(outcome.Trace.Traceparent), storage.NullIfEmpty(outcome.Trace.Tracestate), sources.FormatTime(outcome.At)); err != nil {
 		return fmt.Errorf("record action outcome: %w", err)
 	}
 	return nil
@@ -50,7 +51,7 @@ func (tx *Tx) InsertOutcome(ctx context.Context, outcome domain.OutcomeRecord) e
 // CloseDispatch moves the command, outbox and verification rows to the states
 // the dispatch result implies.
 func (tx *Tx) CloseDispatch(ctx context.Context, closure domain.DispatchClosure) error {
-	command, result, at := closure.Leased.Command, closure.Result, formatTime(closure.At)
+	command, result, at := closure.Leased.Command, closure.Result, sources.FormatTime(closure.At)
 	if _, err := tx.tx.ExecContext(ctx, closeDispatchCommandSQL, result.CommandStatus, at, command.CommandID); err != nil {
 		return fmt.Errorf("record command status: %w", err)
 	}

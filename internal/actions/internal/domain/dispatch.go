@@ -8,6 +8,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // OutboxLease is the lease state of one command outbox row.
@@ -73,7 +74,7 @@ func ExpiredLeaseResult() (actionport.Effect, error) {
 
 // OutcomeDocument is the schema document an outcome digest binds.
 func OutcomeDocument(commandID, outcomeID, status string, result map[string]any, errorCode string, at time.Time) Document {
-	document := Document{"outcome_id": outcomeID, "command_id": commandID, "status": status, "observed_at": at.UTC().Format(time.RFC3339Nano)}
+	document := Document{"outcome_id": outcomeID, "command_id": commandID, "status": status, "observed_at": sources.FormatTime(at)}
 	if result != nil {
 		document["result"] = result
 	}

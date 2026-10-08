@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
@@ -103,8 +102,4 @@ func (tx *Tx) AssertOwner(ctx context.Context) error {
 
 func (tx *Tx) ProcessVersion(ctx context.Context, processor VersionProcessor, version situations.Version) error {
 	return processor.Process(ctx, tx.tx, version) //nolint:wrapcheck // The caller names the failed step.
-}
-
-func formatTime(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
 }

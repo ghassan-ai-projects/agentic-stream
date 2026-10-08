@@ -105,3 +105,8 @@ func OrLease(lease time.Duration) time.Duration {
 	}
 	return lease
 }
+
+// FormatTime is the durable text of an instant: UTC, RFC 3339 with nanoseconds.
+func FormatTime(at time.Time) string {
+	return at.UTC().Format(time.RFC3339Nano)
+}

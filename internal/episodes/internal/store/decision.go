@@ -3,10 +3,10 @@ package store
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -79,7 +79,7 @@ func InsertValidatedIntent(ctx context.Context, tx *Tx, row ValidatedIntentInser
 	if _, err := tx.tx.ExecContext(ctx, insertValidatedIntentSQL,
 		row.Intent.ID, row.DecisionID, row.TenantID, row.SituationID, row.SituationVersion,
 		row.Intent.Type, row.Intent.RiskClass, row.Intent.CanonicalJSON, digest,
-		row.Intent.ExpiresAt.UTC().Format(time.RFC3339Nano), row.Intent.RateLimitPerHour,
+		sources.FormatTime(row.Intent.ExpiresAt), row.Intent.RateLimitPerHour,
 		storage.BoolInt(row.Intent.RequiresApproval), row.Now, row.Now,
 	); err != nil {
 		return fmt.Errorf("insert intent %s: %w", row.Intent.ID, err)

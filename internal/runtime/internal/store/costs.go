@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
@@ -31,7 +30,7 @@ func ConfigureCostLimits(ctx context.Context, cfg CostConfiguration) error {
 		if err := assertCostConfigurationOwner(ctx, tx, cfg); err != nil {
 			return err
 		}
-		now := cfg.Clock.Now().UTC().Format(time.RFC3339Nano)
+		now := sources.FormatTime(cfg.Clock.Now())
 		return runtimecontrol.ApplyCostCeilings(ctx, tx, ceilings, cfg.TenantID, now) //nolint:wrapcheck // Wrapped below with the configuration step.
 	}); err != nil {
 		return fmt.Errorf("configure cost limits: %w", err)

@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // ReadRecords streams the tenant's scanned records after a position,
@@ -98,7 +98,7 @@ func nullStringPtr(value sql.NullString) *string {
 // ReadEntityEvents streams one entity window's events in event-time then log
 // order, at most MaxRows of them, until visit reports it wants no more.
 func (s Store) ReadEntityEvents(ctx context.Context, window domain.EntityWindow, visit func(domain.EntityEvent) (bool, error)) error {
-	rows, err := s.DB.QueryContext(ctx, `SELECT event_id, event_type, event_time, payload_json FROM event_log WHERE tenant_id = ? AND entity_id = ? AND event_time >= ? AND event_time <= ? ORDER BY event_time, position LIMIT ?`, window.TenantID, window.EntityID, window.From.UTC().Format(time.RFC3339Nano), window.Until.UTC().Format(time.RFC3339Nano), window.MaxRows)
+	rows, err := s.DB.QueryContext(ctx, `SELECT event_id, event_type, event_time, payload_json FROM event_log WHERE tenant_id = ? AND entity_id = ? AND event_time >= ? AND event_time <= ? ORDER BY event_time, position LIMIT ?`, window.TenantID, window.EntityID, sources.FormatTime(window.From), sources.FormatTime(window.Until), window.MaxRows)
 	if err != nil {
 		return fmt.Errorf("query evidence events: %w", err)
 	}

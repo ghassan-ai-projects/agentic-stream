@@ -9,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 func (e *Engine) materialize(sit *Situation, watermark time.Time) (*Version, error) {
@@ -138,7 +139,7 @@ func stateFacts(sit *Situation) map[string]any {
 	facts := make(map[string]any, len(sit.Facts))
 	for key, value := range sit.Facts {
 		if timestamp, ok := value.(time.Time); ok {
-			facts[key] = timestamp.UTC().Format(time.RFC3339Nano)
+			facts[key] = sources.FormatTime(timestamp)
 			continue
 		}
 		facts[key] = value
@@ -149,7 +150,7 @@ func stateFacts(sit *Situation) map[string]any {
 func stateConditionStart(sit *Situation) map[string]string {
 	conditionStart := make(map[string]string, len(sit.ConditionStart))
 	for key, value := range sit.ConditionStart {
-		conditionStart[key] = value.UTC().Format(time.RFC3339Nano)
+		conditionStart[key] = sources.FormatTime(value)
 	}
 	return conditionStart
 }

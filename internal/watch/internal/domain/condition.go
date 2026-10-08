@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // InstallRoute is the effector route that installs a watch condition.
@@ -67,7 +68,7 @@ func (c Condition) withValidatedExpiry(expiresAt string, now time.Time) (Conditi
 	if err != nil || !parsedExpiry.After(now) {
 		return Condition{}, errors.New("watch condition expiry is invalid")
 	}
-	c.ExpiresAt = parsedExpiry.UTC().Format(time.RFC3339Nano)
+	c.ExpiresAt = sources.FormatTime(parsedExpiry)
 	return c, nil
 }
 
