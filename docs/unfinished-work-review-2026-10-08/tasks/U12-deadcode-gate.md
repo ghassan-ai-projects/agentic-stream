@@ -1,6 +1,6 @@
 # U12 — Dead-code gate
 
-Status: todo · Decision: **complete** · Priority: P1 · Size: S · Depends on: U02–U07
+Status: done · Decision: **complete** · Priority: P1 · Size: S · Depends on: U02–U07
 
 ## Finding
 
@@ -33,3 +33,21 @@ entry has an owner. Once U21 lands, the allow-list should be empty.
   tests, and when a stale allow-list line remains.
 - `.agents/context/quality-bar.md` and `testing.md` describe the gate.
 - The raw-file follow-up (FOLLOW_UPS #17) is marked done.
+
+## Result
+
+`make deadcode` (part of `make ci-check`, so CI runs it) calls
+`scripts/check-deadcode.sh`: `deadcode ./...` without `-test`, minus
+`internal/testsupport/...` and packages whose name ends in `test`. Any other
+finding fails the build. The `deadcode` version is pinned in the Makefile
+(`GO_TOOLS_VERSION`, matching CI).
+
+No allow-list file: once U14–U21 landed, the only production findings left
+were `replay.RunMode` and `replay.NewDeterministicBaseline`, which only the
+package's own tests called. They moved to `internal/replay/export_test.go`, so
+the list would have started empty, and an empty list with a "must only shrink"
+rule is machinery without a use. If an in-progress task ever needs one, add it
+then.
+
+Verified: the gate passes on the tree and fails on a probe function called only
+by a test.

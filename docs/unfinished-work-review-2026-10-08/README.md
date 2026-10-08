@@ -146,7 +146,7 @@ as the change.
 | U09 | [Delete `config effective` placeholder](tasks/U09-delete-config-effective-placeholder.md) | Delete | P3 | XS | — | done |
 | U10 | [Define the primary-hypothesis delta key](tasks/U10-remove-primary-hypothesis-delta-key.md) | Keep key, drop from plan (revised for the experiment) | P3 | XS | — | done |
 | U11 | [Drop unused tables](tasks/U11-drop-unused-tables.md) | Delete | P3 | S | U02 | done |
-| U12 | [Dead-code gate](tasks/U12-deadcode-gate.md) | Complete | P1 | S | U02–U07 | todo |
+| U12 | [Dead-code gate](tasks/U12-deadcode-gate.md) | Complete | P1 | S | U02–U07 | done |
 | U13 | [Operator command foundation](tasks/U13-operator-command-foundation.md) | Complete | P1 | S | — | done |
 | U14 | [Interlock trip/clear command](tasks/U14-interlock-operator-command.md) | Complete | P1 | S | U13 | done |
 | U15 | [Approval principal provisioning](tasks/U15-approval-principal-provisioning.md) | Complete | P0 (experiment: R2 fan approval) | M | U13 | done |

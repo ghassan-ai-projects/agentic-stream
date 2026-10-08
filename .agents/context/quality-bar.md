@@ -12,7 +12,7 @@ recorded in the same change, never a way to get a diff green.
 | Q3 | Production Go files stay under 300 lines. Generated files are exempt. | `TestProductionFileSize` (`architecture_test.go`) |
 | Q4 | Every package with statements has its own tests and at least 60% statement coverage, measured with `-short`. Generated protobuf stubs are exempt. | `make coverage-check` (`scripts/check-coverage.py`) |
 | Q5 | Package imports follow the declared layering. Foundation packages import no domain package; cognition and episodes never import policy or actions; replay never imports actions or the runtime; nothing under `internal/` imports `cmd/`. | `TestPackageLayering` (`architecture_test.go`) |
-| Q6 | The existing gates stay green: proto, tidy, build, vet, race tests, deadcode, vulncheck, docs. | `make ci-check` |
+| Q6 | The existing gates stay green: proto, tidy, build, vet, race tests, deadcode (no production function reachable only from tests), vulncheck, docs. | `make ci-check` |
 | Q7 | Functions read top-down as intent, following the clean-function rules below. | Code review, checked against [review-checklist.md](review-checklist.md) |
 
 ## Q7: clean functions

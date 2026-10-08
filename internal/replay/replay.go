@@ -17,12 +17,6 @@ func Run(ctx context.Context, request Request) (Result, error) {
 	return app.Run(ctx, request)
 }
 
-// RunMode executes a replay mode without accepting credentials, effectors, or
-// a resolver.
-func RunMode(ctx context.Context, mode Mode, request Request, capabilities ...Capabilities) (Result, error) {
-	return app.RunMode(ctx, mode, request, capabilities...)
-}
-
 // RunRecorded replays the request's trace and verifies every replayed episode
 // against the accepted decision a live runtime recorded in the database at
 // sourcePath, which is opened read-only. No worker is called.

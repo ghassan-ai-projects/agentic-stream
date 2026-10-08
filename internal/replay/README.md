@@ -36,12 +36,16 @@ store-owned transactions; replay owns no durable table.
 ## Public operations
 
 - `Run(ctx, Request)` — deterministic session; `Request` carries the isolated database path, spec, trace and tenant.
-- `RunMode(ctx, mode, Request, capabilities...)` — worker-aware modes; each fails
-  closed with `ErrModeCapabilityRequired` before any replay work.
-- `RunNTimes` / `AllHashesEqual` — determinism proof loop.
-- `NewDeterministicBaseline(compiled)` — the default non-model baseline.
-- Capability ports: `RecordedLedger`, `ShadowExecutor`, `BaselineExecutor`,
-  `Simulator` — explicit, non-credential adapters supplied by the caller.
+- `RunRecorded(ctx, Request, sourceDB)` — recorded mode: verifies every
+  replayed episode against the accepted decision a live runtime recorded in
+  `sourceDB`, opened read-only (`run --source-db`).
+- `RunShadow(ctx, Request, workerSocket, workerName)` — shadow mode: pairs the
+  deterministic baseline with a candidate worker on every replayed episode
+  (`run --worker-socket`).
+- `RunNTimes` / `AllHashesEqual` — determinism proof loop (`run --repeat`).
+- Capability ports: `RecordedLedger`, `ShadowExecutor`, `BaselineExecutor` —
+  the contracts the recorded ledger and the shadow worker adapter implement.
+  The package's own tests inject doubles through `RunMode` in `export_test.go`.
 
 ## Evidence and limits
 

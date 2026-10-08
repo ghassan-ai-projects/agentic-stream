@@ -18,6 +18,8 @@ PROTO     := docs/design/contracts/runtime-v1.proto
 PROTO_OUT ?= .
 TOOLS_BIN ?= $(CURDIR)/.tools/bin
 PROTOC_VERSION ?= 35.1
+# Matches GO_TOOLS_VERSION in .github/workflows/ci.yml (golang.org/x/tools: deadcode).
+GO_TOOLS_VERSION ?= v0.45.0
 PROTOC_GEN_GO_VERSION ?= v1.36.11
 PROTOC_GEN_GO_GRPC_VERSION ?= v1.6.2
 
@@ -169,13 +171,13 @@ proto-check: ## Verify generated worker protocol stubs are current
 		diff -ru proto "$$tmp_dir/proto"
 
 # ---- Tools ----------------------------------------------------------------
-deadcode: ## Detect unused exported functions
+deadcode: ## Fail when production code is reachable only from tests
 	@if ! command -v deadcode >/dev/null 2>&1; then \
-	  echo "(deadcode not installed -- run: go install golang.org/x/tools/cmd/deadcode@latest)"; \
+	  echo "(deadcode not installed -- run: go install golang.org/x/tools/cmd/deadcode@$(GO_TOOLS_VERSION))"; \
 	elif [ "$(HAS_MAIN)" != "yes" ]; then \
 	  echo "(no main package yet -- skipping deadcode)"; \
 	else \
-	  deadcode -test ./...; \
+	  ./scripts/check-deadcode.sh; \
 	fi
 
 vulncheck: ## Run govulncheck
