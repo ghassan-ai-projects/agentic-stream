@@ -11,7 +11,6 @@ internal APIs and are not exposed as separate CLI subcommands.
 | Deterministic | Replays trace and hashes Situation-version history | Never |
 | Recorded | Reuses a durable recorded worker ledger | Never |
 | Shadow | Runs a shadow executor against immutable snapshots and reports differences | Never |
-| Counterfactual | Sends typed commands only to an explicit simulator | Simulator only; never production |
 
 ## Mode separation
 
@@ -26,8 +25,8 @@ flowchart LR
 
 Text equivalent: replay consumes evidence and produces history or evaluation
 artifacts. The isolated production-effector node has no execution edge from
-replay. An explicit counterfactual simulator is a separate capability, described
-in the mode table. Source: [replay implementation](../../internal/replay/replay.go).
+replay. Rehearsing effects without hardware is done live with the `emulator`
+effect profile, not in replay. Source: [replay implementation](../../internal/replay/replay.go).
 
 Replay is constructed without production credentials, effectors, or an effect
 resolver. It reports `EffectsAllowed=false` for all modes.
@@ -53,7 +52,7 @@ request and checked at governance boundaries.
 ## CLI reality
 
 The current CLI exposes deterministic replay through `agentic-stream run`.
-Recorded, shadow, and counterfactual modes are covered by internal runtime
+Recorded and shadow modes are covered by internal runtime
 APIs and tests; a public CLI for selecting them is not yet implemented.
 
 ## Source evidence

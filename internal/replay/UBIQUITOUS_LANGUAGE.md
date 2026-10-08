@@ -19,9 +19,8 @@ Names mean the same thing in conversation, code, storage and audit trails.
 | Tamoz | The model-under-test executor of a shadow trial | `ShadowExecutor` port | comparison `tamoz` fields |
 | Shadow comparison | Sealed report of one shadow trial | `domain.Comparison` | `shadow_comparisons` record |
 | Finding | Deterministic, non-effectful replay observation | `domain.Finding` | result JSON |
-| Simulated command | Typed counterfactual command, simulator-only | `domain.SimulatedCommand` | simulator payload |
 | Capability | Explicit non-credential adapter a mode requires | `domain.Capabilities` | — |
-| Mode | Effect-safe replay mode (deterministic, recorded, shadow, counterfactual) | `domain.Mode` | result `mode` |
+| Mode | Effect-safe replay mode (deterministic, recorded, shadow) | `domain.Mode` | result `mode` |
 | Versions hash | Ordered SHA-256 over all situation-version digests | `domain.HashVersionDigests` | result `versions_hash` |
 | Admission window | Earliest admission time and expiry of a scheduler item | `domain.AdmissionWindow` | `created_at`, `not_before`, `expires_at` |
 

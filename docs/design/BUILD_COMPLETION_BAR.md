@@ -75,7 +75,7 @@ part of this build unless a phase explicitly adopts them.
   physical effect; unknown outcomes enter reconciliation and are never blindly
   retried.
 - Replay modes cannot load production effectors, tokens, credentials, or
-  outboxes. Counterfactual mode uses an explicit simulator only.
+  outboxes.
 
 ### Gate D — operational and integration release (postponed)
 
@@ -118,7 +118,7 @@ The predictive-maintenance example is the release proof: repeated replay is
 identical; bad, duplicate, late, and missing evidence are handled explicitly;
 episodes are rare, bounded, cancelable, and fenced; accepted intents are
 policy-governed and idempotent; uncertain effects reconcile; recorded, shadow,
-and counterfactual replay are effect-safe; notifications and explanations are
+replay are effect-safe; notifications and explanations are
 durable; and operations have measurable recovery and soak evidence.
 
 ## Implementation loop

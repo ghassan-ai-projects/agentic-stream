@@ -18,7 +18,6 @@ type Result struct {
 	WorkerInvoked     bool
 	EffectsAllowed    bool
 	CapabilityCalls   int
-	SimulatedResults  []map[string]any
 	ShadowComparisons []ShadowComparisonResult
 	Findings          []Finding
 }

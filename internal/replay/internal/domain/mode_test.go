@@ -23,15 +23,9 @@ func (stubShadow) ExecuteShadow(context.Context, ShadowInput) (ShadowOutput, err
 	return ShadowOutput{}, nil
 }
 
-type stubSimulator struct{}
-
-func (stubSimulator) Simulate(context.Context, SimulatedCommand) (map[string]any, error) {
-	return nil, nil
-}
-
 func TestCapabilitiesValidateFailsClosedPerMode(t *testing.T) {
 	t.Parallel()
-	complete := Capabilities{RecordedLedger: stubLedger{}, BaselineExecutor: stubBaseline{}, ShadowExecutor: stubShadow{}, Simulator: stubSimulator{}}
+	complete := Capabilities{RecordedLedger: stubLedger{}, BaselineExecutor: stubBaseline{}, ShadowExecutor: stubShadow{}}
 	for _, tc := range []struct {
 		mode Mode
 		caps Capabilities
@@ -42,8 +36,7 @@ func TestCapabilitiesValidateFailsClosedPerMode(t *testing.T) {
 		{ModeShadow, complete, nil},
 		{ModeShadow, Capabilities{ShadowExecutor: stubShadow{}}, ErrModeCapabilityRequired},
 		{ModeShadow, Capabilities{BaselineExecutor: stubBaseline{}}, ErrModeCapabilityRequired},
-		{ModeCounterfactual, Capabilities{Simulator: stubSimulator{}}, nil},
-		{ModeCounterfactual, Capabilities{}, ErrModeCapabilityRequired},
+		{Mode("counterfactual"), complete, ErrUnsupportedMode},
 		{Mode("future"), complete, ErrUnsupportedMode},
 	} {
 		t.Run(string(tc.mode)+fmt.Sprintf("%T", tc.caps.RecordedLedger), func(t *testing.T) {
@@ -64,13 +57,13 @@ func TestCapabilitiesValidateFailsClosedPerMode(t *testing.T) {
 
 func TestAdmitCapabilitiesAcceptsAtMostOneSet(t *testing.T) {
 	t.Parallel()
-	single := Capabilities{Simulator: stubSimulator{}}
+	single := Capabilities{RecordedLedger: stubLedger{}}
 	got, err := AdmitCapabilities(nil)
-	if err != nil || got.RecordedLedger != nil || got.Simulator != nil {
+	if err != nil || got.RecordedLedger != nil {
 		t.Fatalf("empty admission = %+v err=%v", got, err)
 	}
 	got, err = AdmitCapabilities([]Capabilities{single})
-	if err != nil || got.Simulator == nil {
+	if err != nil || got.RecordedLedger == nil {
 		t.Fatalf("single admission = %+v err=%v", got, err)
 	}
 	if _, err = AdmitCapabilities([]Capabilities{single, single}); err == nil {
@@ -81,35 +74,11 @@ func TestAdmitCapabilitiesAcceptsAtMostOneSet(t *testing.T) {
 func TestWorkerAwareModeClassification(t *testing.T) {
 	t.Parallel()
 	for mode, want := range map[Mode]bool{
-		ModeDeterministic: false, ModeRecorded: true, ModeShadow: true, ModeCounterfactual: true,
+		ModeDeterministic: false, ModeRecorded: true, ModeShadow: true, Mode("counterfactual"): false,
 	} {
 		if got := WorkerAwareMode(mode); got != want {
 			t.Fatalf("WorkerAwareMode(%s) = %v want %v", mode, got, want)
 		}
-	}
-}
-
-func TestAdmitSimulatedCommandRejectsIncompleteAndDuplicate(t *testing.T) {
-	t.Parallel()
-	seen := map[string]struct{}{}
-	complete := SimulatedCommand{CommandID: "one", Route: "simulated", Target: "motor"}
-	if err := AdmitSimulatedCommand(complete, seen); err != nil {
-		t.Fatalf("complete command rejected: %v", err)
-	}
-	if err := AdmitSimulatedCommand(complete, seen); err == nil {
-		t.Fatal("duplicate command accepted")
-	}
-	for name, command := range map[string]SimulatedCommand{
-		"no id":     {Route: "simulated", Target: "motor"},
-		"no route":  {CommandID: "two", Target: "motor"},
-		"no target": {CommandID: "three", Route: "simulated"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			if err := AdmitSimulatedCommand(command, map[string]struct{}{}); err == nil {
-				t.Fatal("incomplete command accepted")
-			}
-		})
 	}
 }
 

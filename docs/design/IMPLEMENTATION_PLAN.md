@@ -562,7 +562,6 @@ Implement:
 - deterministic replay;
 - recorded-cognition replay;
 - shadow executor replay;
-- counterfactual simulated effector;
 - isolated replay database;
 - result comparison and first-divergence report;
 - CLI `replay` and `compare`.

@@ -49,8 +49,6 @@ type Capabilities struct {
 	RecordedLedger   RecordedLedger
 	BaselineExecutor BaselineExecutor
 	ShadowExecutor   ShadowExecutor
-	Simulator        Simulator
-	Commands         []SimulatedCommand
 }
 
 // Clone returns the input with a private copy of the snapshot bytes so one

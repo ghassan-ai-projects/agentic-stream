@@ -5,20 +5,19 @@ import (
 )
 
 // Mode is an effect-safe replay mode. Replay has no credential or resolver
-// input by construction; recorded mode uses durable ledgers, shadow reports
-// differences without effects, and counterfactual is simulator-only.
+// input by construction; recorded mode uses durable ledgers and shadow reports
+// differences without effects.
 type Mode = domain.Mode
 
 // Effect-safe replay modes.
 const (
-	ModeDeterministic  = domain.ModeDeterministic
-	ModeRecorded       = domain.ModeRecorded
-	ModeShadow         = domain.ModeShadow
-	ModeCounterfactual = domain.ModeCounterfactual
+	ModeDeterministic = domain.ModeDeterministic
+	ModeRecorded      = domain.ModeRecorded
+	ModeShadow        = domain.ModeShadow
 )
 
 // ErrModeCapabilityRequired means a worker-aware replay mode was requested
-// without its explicit ledger, worker, or simulator capability.
+// without its explicit ledger or worker capability.
 var ErrModeCapabilityRequired = domain.ErrModeCapabilityRequired
 
 // ErrUnsupportedMode means the caller supplied a mode outside the frozen
@@ -65,13 +64,6 @@ type ShadowExecutor = domain.ShadowExecutor
 // named separately so a trial cannot accidentally compare an executor with
 // itself.
 type BaselineExecutor = domain.BaselineExecutor
-
-// SimulatedCommand is a typed counterfactual command. It is intentionally
-// separate from the production action-plane command.
-type SimulatedCommand = domain.SimulatedCommand
-
-// Simulator is the only capability accepted by counterfactual replay.
-type Simulator = domain.Simulator
 
 // Capabilities are explicit, non-credential replay adapters.
 type Capabilities = domain.Capabilities

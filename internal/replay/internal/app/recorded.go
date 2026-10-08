@@ -9,8 +9,8 @@ import (
 )
 
 // applyCapabilities runs the worker-aware part of a replay mode: recorded
-// decisions are verified against the replay worklist, shadow executors are
-// compared report-only, and counterfactual commands go only to the simulator.
+// decisions are verified against the replay worklist and shadow executors are
+// compared report-only.
 func applyCapabilities(ctx context.Context, session *replaySession, mode domain.Mode, caps domain.Capabilities, evaluationTime time.Time, result *domain.Result) error {
 	episodes, err := session.store.EpisodeWorklist(ctx, session.tenantID)
 	if err != nil {
@@ -21,8 +21,6 @@ func applyCapabilities(ctx context.Context, session *replaySession, mode domain.
 		return applyRecorded(ctx, session, caps.RecordedLedger, episodes, result)
 	case domain.ModeShadow:
 		return applyPairedShadow(ctx, session, caps, episodes, evaluationTime, result)
-	case domain.ModeCounterfactual:
-		return applyCounterfactual(ctx, caps, result)
 	}
 	return nil
 }

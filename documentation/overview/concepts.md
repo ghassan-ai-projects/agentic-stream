@@ -122,8 +122,7 @@ these boundaries remain separate during normal execution and recovery.
 
 **Deterministic replay** rebuilds stream history with effects disabled.
 **Recorded replay** reuses a worker ledger. **Shadow** evaluates an executor
-without entering governance. **Counterfactual** evaluates through an explicit
-simulator. The CLI's `run` command exposes deterministic replay; the other
+without entering governance. The CLI's `run` command exposes deterministic replay; the other
 modes are library/runtime capabilities, not separate CLI subcommands.
 
 Sources: [stream design](../design/stream-processing.md),

@@ -20,7 +20,7 @@ environment; the table is not deployment approval.
 | Idempotent outbox dispatch, simulated/watch effectors, unknown outcomes | `internal/actions/`, `internal/device/`, `internal/watch/` |
 | Typed device-gateway integration with authority and reconciliation records; hardware qualification remains separate | `internal/device/`, `internal/authority/`, CLI effect-profile tests |
 | Native deterministic/OpenAI-compatible executor and Go EpisodeWorker boundary | `internal/executor/`, `internal/worker/`, `proto/` |
-| Deterministic, recorded, shadow, and counterfactual replay modes | `internal/replay/` |
+| Deterministic, recorded, and shadow replay modes | `internal/replay/` |
 | Loopback HTTP, readiness, metrics, durable SSE notifications, drain/kill control | `internal/api/`, `internal/notify/`, `internal/telemetry/` |
 | Predictive-maintenance fixtures and stream-plane path | `internal/runtime/pipeline_test.go`, `examples/` |
 

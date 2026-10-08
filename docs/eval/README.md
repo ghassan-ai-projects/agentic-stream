@@ -26,7 +26,7 @@ artifact.** This directory is that design.
 | Class | What it is | Grading | A failure means |
 | --- | --- | --- | --- |
 | **D — deterministic guarantee** | replay determinism, immutability, idempotency, fencing, policy revalidation, replay isolation, contract conformance, explainability, safety counters | exact, record- and byte-based; one counterexample fails | a regression or a safety defect — release-blocking |
-| **C — model-dependent judgement** | whether the episode's Decision/Intent matched the scenario's definition of done; abstention quality; counterfactual regret; cost | `k >= 3` trials, paired against `replay.DeterministicBaseline`, a held-out scenario family, confidence interval | a capability signal — never a release gate on its own |
+| **C — model-dependent judgement** | whether the episode's Decision/Intent matched the scenario's definition of done; abstention quality; regret against the baseline; cost | `k >= 3` trials, paired against `replay.DeterministicBaseline`, a held-out scenario family, confidence interval | a capability signal — never a release gate on its own |
 
 **A Class D failure invalidates every Class C claim from the same run.** That is the same
 safety property the runtime exists to provide, applied to its own evaluation. Averaging the two

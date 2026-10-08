@@ -18,7 +18,7 @@ func Run(ctx context.Context, request Request) (Result, error) {
 }
 
 // RunMode executes a replay mode without accepting credentials, effectors, or
-// a resolver. Only counterfactual simulation may be added at a higher layer.
+// a resolver.
 func RunMode(ctx context.Context, mode Mode, request Request, capabilities ...Capabilities) (Result, error) {
 	return app.RunMode(ctx, mode, request, capabilities...)
 }

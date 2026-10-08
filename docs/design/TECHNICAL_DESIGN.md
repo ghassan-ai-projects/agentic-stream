@@ -68,7 +68,7 @@ not maximum agent activity.
 - Provider-neutral native model execution and optional external executors.
 - Deterministic policy between model output and external effects.
 - Crash-safe replay and duplicate-effect prevention.
-- First-class deterministic, recorded, shadow, and counterfactual evaluation.
+- First-class deterministic, recorded, and shadow evaluation.
 - One-command local operation and low-overhead edge deployment.
 - Explicit contracts, migrations, observability, and compatibility tests.
 
@@ -1121,8 +1121,8 @@ shares:
 - worker capability tokens;
 - effector credentials.
 
-The only way to exercise an effector is counterfactual simulation through a
-registered simulator.
+Replay never exercises an effector. Effects are rehearsed live against the
+device emulator profile, through the real policy and action plane.
 
 ### 16.3 Comparison
 

@@ -121,13 +121,6 @@ func testShadowOutput(input replay.ShadowInput, executorVersion, configuredManif
 	return replay.ShadowOutput{ExecutorVersion: executorVersion, ManifestSHA256: manifest, DecisionJSON: decisionJSON, DecisionSHA256: decisionDigest}, nil
 }
 
-type testSimulator struct{ calls int }
-
-func (s *testSimulator) Simulate(context.Context, replay.SimulatedCommand) (map[string]any, error) {
-	s.calls++
-	return map[string]any{"simulated": true}, nil
-}
-
 func TestGoldenTracesAreDeterministic(t *testing.T) {
 	ctx := context.Background()
 	specPath := "../../docs/design/examples/predictive-maintenance.situation.yaml"
@@ -163,7 +156,7 @@ func TestReplayModesHaveNoCredentialOrEffectorBoundary(t *testing.T) {
 	ctx := context.Background()
 	specPath := "../../docs/design/examples/predictive-maintenance.situation.yaml"
 	tracePath := "../../examples/predictive-maintenance/testdata/trace-opening.jsonl"
-	for _, mode := range []replay.Mode{replay.ModeDeterministic, replay.ModeRecorded, replay.ModeShadow, replay.ModeCounterfactual} {
+	for _, mode := range []replay.Mode{replay.ModeDeterministic, replay.ModeRecorded, replay.ModeShadow} {
 		t.Run(string(mode), func(t *testing.T) {
 			result, err := replay.RunMode(ctx, mode, replay.Request{DBPath: filepath.Join(t.TempDir(), "replay.db"), SpecPath: specPath, TracePath: tracePath, TenantID: "default"})
 			if mode != replay.ModeDeterministic {
@@ -237,7 +230,7 @@ func TestWorkerAwareModesRequireExplicitCapabilities(t *testing.T) {
 	ctx := context.Background()
 	specPath := "../../docs/design/examples/predictive-maintenance.situation.yaml"
 	tracePath := "../../examples/predictive-maintenance/testdata/trace-opening.jsonl"
-	for _, mode := range []replay.Mode{replay.ModeRecorded, replay.ModeShadow, replay.ModeCounterfactual} {
+	for _, mode := range []replay.Mode{replay.ModeRecorded, replay.ModeShadow} {
 		t.Run(string(mode), func(t *testing.T) {
 			_, err := replay.RunMode(ctx, mode, replay.Request{DBPath: filepath.Join(t.TempDir(), "replay.db"), SpecPath: specPath, TracePath: tracePath, TenantID: "default"})
 			if !errors.Is(err, replay.ErrModeCapabilityRequired) {
@@ -272,17 +265,14 @@ func TestWorkerAwareModesUseOnlySuppliedCapabilities(t *testing.T) {
 	if shadowResult.EffectsAllowed || shadowResult.CapabilityCalls != shadow.calls+baseline.calls {
 		t.Fatalf("shadow capability accounting mismatch: result=%+v baseline=%d tamoz=%d", shadowResult, baseline.calls, shadow.calls)
 	}
+}
 
-	simulator := &testSimulator{}
-	counterfactual, err := replay.RunMode(ctx, replay.ModeCounterfactual, replay.Request{DBPath: filepath.Join(t.TempDir(), "counterfactual.db"), SpecPath: specPath, TracePath: tracePath, TenantID: "default"}, replay.Capabilities{
-		Simulator: simulator,
-		Commands:  []replay.SimulatedCommand{{CommandID: "cmd-1", Route: "simulated", Target: "motor-17"}},
-	})
-	if err != nil {
-		t.Fatalf("counterfactual replay: %v", err)
-	}
-	if counterfactual.EffectsAllowed || counterfactual.CapabilityCalls != simulator.calls {
-		t.Fatalf("counterfactual capability accounting mismatch: result=%+v calls=%d", counterfactual, simulator.calls)
+// Counterfactual replay was removed: there was no simulator and its commands
+// did not come from the replayed decisions. The mode name is now refused.
+func TestCounterfactualModeIsRefused(t *testing.T) {
+	_, err := replay.RunMode(context.Background(), replay.Mode("counterfactual"), replay.Request{DBPath: filepath.Join(t.TempDir(), "replay.db"), SpecPath: "../../docs/design/examples/predictive-maintenance.situation.yaml", TracePath: "../../examples/predictive-maintenance/testdata/trace-opening.jsonl", TenantID: "default"})
+	if !errors.Is(err, replay.ErrUnsupportedMode) {
+		t.Fatalf("counterfactual replay = %v, want ErrUnsupportedMode", err)
 	}
 }
 

@@ -54,7 +54,7 @@ The runtime treats these boundaries differently:
 
 The default replay creates a fresh database, processes the trace, and computes
 the Situation-version history hash. It is constructed without credentials or
-effectors. Recorded, shadow, and counterfactual modes require explicit
+effectors. Recorded and shadow modes require explicit
 capabilities that cannot perform production effects and keep `EffectsAllowed` false.
 
 ## Recovery operator expectations

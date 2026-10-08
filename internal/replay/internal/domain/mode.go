@@ -7,18 +7,17 @@ import (
 
 // Mode is an effect-safe replay mode. Replay has no credential or resolver
 // input by construction; recorded mode uses durable ledgers, shadow reports
-// differences without effects, and counterfactual is simulator-only.
+// differences without effects.
 type Mode string
 
 const (
-	ModeDeterministic  Mode = "deterministic"
-	ModeRecorded       Mode = "recorded"
-	ModeShadow         Mode = "shadow"
-	ModeCounterfactual Mode = "counterfactual"
+	ModeDeterministic Mode = "deterministic"
+	ModeRecorded      Mode = "recorded"
+	ModeShadow        Mode = "shadow"
 )
 
 // ErrModeCapabilityRequired means a worker-aware replay mode was requested
-// without its explicit ledger, worker, or simulator capability.
+// without its explicit ledger or worker capability.
 var ErrModeCapabilityRequired = errors.New("replay mode capability required")
 
 // ErrUnsupportedMode means the caller supplied a mode outside the frozen
@@ -28,7 +27,7 @@ var ErrUnsupportedMode = errors.New("unsupported replay mode")
 // WorkerAwareMode reports whether a mode executes worker-aware capability
 // phases after the deterministic stream replay.
 func WorkerAwareMode(mode Mode) bool {
-	return mode == ModeRecorded || mode == ModeShadow || mode == ModeCounterfactual
+	return mode == ModeRecorded || mode == ModeShadow
 }
 
 // AdmitCapabilities accepts at most one explicit capability set per replay.
@@ -49,8 +48,6 @@ func (c Capabilities) Validate(mode Mode) error {
 		return requireReplayCapability(c.RecordedLedger != nil, "recorded ledger")
 	case ModeShadow:
 		return c.requireShadowExecutors()
-	case ModeCounterfactual:
-		return requireReplayCapability(c.Simulator != nil, "counterfactual simulator")
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedMode, mode)
 	}

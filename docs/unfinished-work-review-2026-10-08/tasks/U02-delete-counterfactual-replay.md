@@ -1,6 +1,6 @@
 # U02 — Delete counterfactual replay mode
 
-Status: todo · Decision: **delete from code and plans** · Priority: P2 · Size: S
+Status: done · Decision: **delete from code and plans** · Priority: P2 · Size: S
 
 ## Finding
 
@@ -47,3 +47,12 @@ no simulator and no command source to feed it.
   `documentation/design/replay-and-shadow.md`, `documentation/overview/concepts.md`,
   `documentation/learn/safe-actions.md`, `documentation/architecture/durability.md`,
   `docs/eval` A9/S5.2).
+
+## Result
+
+Mode, simulator types, admission rule and their tests are gone; `"counterfactual"`
+returns `ErrUnsupportedMode` (`TestCounterfactualModeIsRefused`). The worker
+protocol's `counterfactual_capable` handshake field stays: the proto is a wire
+contract vendored by Tamoz and pinned. The `replay_jobs` check constraint goes
+with the table in U11. Dated module records (`docs/replay-reference-module-*`)
+are history and stay unchanged.
