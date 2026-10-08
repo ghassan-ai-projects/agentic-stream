@@ -4,21 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // QuarantineDigest loads the payload digest already quarantined under an
 // event id, if any.
 func (u *Unit) QuarantineDigest(ctx context.Context, tenantID, eventID string) ([]byte, error) {
-	var existingDigest []byte
-	err := u.tx.QueryRowContext(ctx, "SELECT payload_sha256 FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", tenantID, eventID).Scan(&existingDigest)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
+	existingDigest, _, err := storage.QueryOptional[[]byte](ctx, u.tx, "SELECT payload_sha256 FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", tenantID, eventID)
 	if err != nil {
 		return nil, fmt.Errorf("load existing quarantine: %w", err)
 	}

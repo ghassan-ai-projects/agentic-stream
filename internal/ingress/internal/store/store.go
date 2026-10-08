@@ -4,8 +4,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
@@ -25,13 +23,12 @@ func (s Store) Configured() bool { return s.db != nil }
 // LoadLine reads the last line a connector has read. A connector with no
 // checkpoint starts at line 0.
 func (s Store) LoadLine(ctx context.Context, connectorID string) (int, error) {
-	var blob []byte
-	err := s.db.QueryRowContext(ctx, "SELECT checkpoint_blob FROM connector_checkpoints WHERE connector_id = ?", connectorID).Scan(&blob)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
-	}
+	blob, found, err := storage.QueryOptional[[]byte](ctx, s.db, "SELECT checkpoint_blob FROM connector_checkpoints WHERE connector_id = ?", connectorID)
 	if err != nil {
 		return 0, fmt.Errorf("load connector checkpoint: %w", err)
+	}
+	if !found {
+		return 0, nil
 	}
 	return domain.DecodeCheckpoint(blob) //nolint:wrapcheck // The domain codec names the failed decode.
 }

@@ -2,24 +2,19 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // EpisodeExists reports whether the ledger knows the episode.
 func (t *Tx) EpisodeExists(ctx context.Context, episodeID string) (bool, error) {
-	var exists int
-	err := t.q.QueryRowContext(ctx, "SELECT 1 FROM episodes WHERE episode_id = ?", episodeID).Scan(&exists)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
+	_, exists, err := storage.QueryOptional[int](ctx, t.q, "SELECT 1 FROM episodes WHERE episode_id = ?", episodeID)
 	if err != nil {
 		return false, fmt.Errorf("check rejected episode: %w", err)
 	}
-	return true, nil
+	return exists, nil
 }
 
 // InsertRejection records a rejection once; a repeat of the same id is ignored.

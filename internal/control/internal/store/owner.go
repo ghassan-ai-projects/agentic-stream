@@ -3,9 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // ClaimLease writes the singleton lease for the epoch and instance. A lease
@@ -48,15 +49,11 @@ func (t *Tx) ReleaseLease(ctx context.Context, epoch, instance, nowText string) 
 
 // HoldsLease reports whether the epoch and instance own an unexpired lease at nowText.
 func (t *Tx) HoldsLease(ctx context.Context, epoch, instance, nowText string) (bool, error) {
-	var current string
-	err := t.q.QueryRowContext(ctx, holdsOwnerLeaseSQL, epoch, instance, nowText).Scan(&current)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
+	_, held, err := storage.QueryOptional[string](ctx, t.q, holdsOwnerLeaseSQL, epoch, instance, nowText)
 	if err != nil {
 		return false, fmt.Errorf("assert runtime owner: %w", err)
 	}
-	return true, nil
+	return held, nil
 }
 
 // Recover hands the claiming transaction to the caller's recovery writes.

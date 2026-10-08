@@ -2,8 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -11,15 +9,11 @@ import (
 
 // LimitExists reports whether the scope has a cost limit row.
 func (t *Tx) LimitExists(ctx context.Context, scopeKey string) (bool, error) {
-	var exists int
-	err := t.q.QueryRowContext(ctx, "SELECT 1 FROM cost_limits WHERE scope_key = ?", scopeKey).Scan(&exists)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
+	_, exists, err := storage.QueryOptional[int](ctx, t.q, "SELECT 1 FROM cost_limits WHERE scope_key = ?", scopeKey)
 	if err != nil {
 		return false, fmt.Errorf("read %s cost limit: %w", scopeKey, err)
 	}
-	return true, nil
+	return exists, nil
 }
 
 // ReadLimit reads the scope's ceiling and kill switch.

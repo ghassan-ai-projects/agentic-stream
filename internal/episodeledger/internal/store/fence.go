@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // ReadEpisodeFence reads the episode's lifecycle, current attempt and fence;
@@ -89,15 +90,11 @@ func (t *Tx) ReadEpisodeAttemptStatus(ctx context.Context, episodeID, attemptID 
 // OwnerHoldsLease reports whether the epoch owns an unexpired runtime lease at
 // nowText. The lease table belongs to control; this is a read of its row.
 func (t *Tx) OwnerHoldsLease(ctx context.Context, epoch, nowText string) (bool, error) {
-	var current string
-	err := t.q.QueryRowContext(ctx, `
+	_, held, err := storage.QueryOptional[string](ctx, t.q, `
 		SELECT owner_epoch FROM runtime_owner
-		WHERE singleton_id = 1 AND owner_epoch = ? AND lease_until > ?`, epoch, nowText).Scan(&current)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
+		WHERE singleton_id = 1 AND owner_epoch = ? AND lease_until > ?`, epoch, nowText)
 	if err != nil {
 		return false, fmt.Errorf("assert runtime owner epoch: %w", err)
 	}
-	return true, nil
+	return held, nil
 }

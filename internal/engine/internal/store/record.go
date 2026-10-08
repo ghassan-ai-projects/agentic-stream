@@ -2,20 +2,18 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // EventApplied reports whether the inbox already holds the event.
 func (tx *Tx) EventApplied(ctx context.Context, eventID string) (bool, error) {
-	var applied bool
-	err := tx.tx.QueryRowContext(ctx,
+	_, applied, err := storage.QueryOptional[int](ctx, tx.tx,
 		"SELECT 1 FROM event_inbox WHERE consumer_name = ? AND tenant_id = ? AND event_id = ?",
-		ConsumerName, tx.tenantID, eventID,
-	).Scan(&applied)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		ConsumerName, tx.tenantID, eventID)
+	if err != nil {
 		return false, fmt.Errorf("check inbox: %w", err)
 	}
 	return applied, nil

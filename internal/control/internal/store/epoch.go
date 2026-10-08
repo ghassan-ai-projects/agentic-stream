@@ -3,10 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // RecordEpochState records a drain or kill. Kill is terminal: once an epoch is
@@ -20,14 +20,11 @@ func (t *Tx) RecordEpochState(ctx context.Context, epoch, state, nowText string)
 
 // EpochState reads the epoch's control state; what names the read in errors.
 func (t *Tx) EpochState(ctx context.Context, epoch, what string) (state string, found bool, err error) {
-	err = t.q.QueryRowContext(ctx, `SELECT state FROM epoch_control WHERE epoch = ?`, epoch).Scan(&state)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", false, nil
-	}
+	state, found, err = storage.QueryOptional[string](ctx, t.q, `SELECT state FROM epoch_control WHERE epoch = ?`, epoch)
 	if err != nil {
 		return "", false, fmt.Errorf("read %s: %w", what, err)
 	}
-	return state, true, nil
+	return state, found, nil
 }
 
 // SupersedeEpoch cancels the epoch's in-flight episodes through the episode

@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
@@ -15,15 +14,11 @@ import (
 )
 
 func (t *Tx) ReconsiderationExists(ctx context.Context, current situations.Version, commandID string) (bool, error) {
-	var existing int
-	err := t.tx.QueryRowContext(ctx, `SELECT 1 FROM reconsiderations WHERE situation_id = ? AND superseded_version = ? AND invalidated_command_id = ?`, current.SituationID, current.PreviousVersion, commandID).Scan(&existing)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
+	_, found, err := storage.QueryOptional[int](ctx, t.tx, `SELECT 1 FROM reconsiderations WHERE situation_id = ? AND superseded_version = ? AND invalidated_command_id = ?`, current.SituationID, current.PreviousVersion, commandID)
 	if err != nil {
 		return false, fmt.Errorf("check reconsideration dedupe: %w", err)
 	}
-	return true, nil
+	return found, nil
 }
 
 func (t *Tx) RecordReconsideration(ctx context.Context, r domain.Reconsideration, correctionDigest []byte, tenantID string, now time.Time) error {

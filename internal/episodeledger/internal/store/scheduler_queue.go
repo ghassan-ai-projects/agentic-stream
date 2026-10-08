@@ -2,10 +2,10 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // AdmitPendingSchedulerItem marks a pending item admitted and returns the rows it changed.
@@ -59,17 +59,13 @@ func (t *Tx) CoalescePendingSchedulerItem(ctx context.Context, schedulerItemID s
 // NextPendingSchedulerItem returns the tenant's next pending item that is due
 // at now, in queue order: not_before, then creation, then identity.
 func (t *Tx) NextPendingSchedulerItem(ctx context.Context, tenantID string, now time.Time) (string, bool, error) {
-	var itemID string
-	err := t.q.QueryRowContext(ctx, `
+	itemID, found, err := storage.QueryOptional[string](ctx, t.q, `
 		SELECT scheduler_item_id FROM scheduler_items
 		WHERE tenant_id = ? AND status = 'pending' AND (not_before IS NULL OR not_before <= ?)
 		ORDER BY not_before, created_at, scheduler_item_id LIMIT 1`,
-		tenantID, now.Format(time.RFC3339Nano)).Scan(&itemID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", false, nil
-	}
+		tenantID, now.Format(time.RFC3339Nano))
 	if err != nil {
 		return "", false, fmt.Errorf("find pending scheduler item: %w", err)
 	}
-	return itemID, true, nil
+	return itemID, found, nil
 }
