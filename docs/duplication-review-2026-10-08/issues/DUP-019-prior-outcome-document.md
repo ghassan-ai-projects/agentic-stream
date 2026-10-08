@@ -5,7 +5,7 @@
 - Verdict (finders): REAL
 - Themes: persistence
 - Wave: 2b
-- Commit: pending (reviewer commits)
+- Commit: 7268242
 - Finder sources: P12 (P persistence, R rules, S shapes, M mechanisms)
 
 ## Reviewer notes

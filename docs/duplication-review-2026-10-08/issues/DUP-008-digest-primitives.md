@@ -75,7 +75,7 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Status: fixed. Commit: pending (reviewer commits).
+Status: fixed. Commit: 7268242.
 
 Verified (all four finder reports held; the sites were re-opened and read):
 - S6 held. Every listed `Digest` then `DecodeDigest` hop (episodes snapshot and decision, cognition correction, actions `OutcomeDigest`, policy `sealCommand`, replay shadow snapshot and `sealComparison`, engine `verifyStateDigest`, runartifact `expectedDigest`) was a pure round trip through text. The Marshal-then-Digest pairs (native loop, fixture executor, replay baseline, policy command, replay comparison) marshalled the same value twice; situations `snapshot` and spec `sealSpec` had the same shape and are fixed too.
