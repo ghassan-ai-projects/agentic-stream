@@ -286,7 +286,7 @@ func TestGatewayFailsClosedWhenInterlockTripped(t *testing.T) {
 	gateway := newTestService(t, func(c *policy.Config) { c.Interlock = interlock.DurableReader{} })
 	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := interlock.Set(ctx, tx, "tripped", "operator stop", 2, now.Format(time.RFC3339Nano)); err != nil {
+		if _, err := interlock.Trip(ctx, tx, "operator stop", now.Format(time.RFC3339Nano)); err != nil {
 			return fmt.Errorf("trip interlock: %w", err)
 		}
 		var err error

@@ -328,3 +328,19 @@ func schedulerQueue(t *testing.T, db *sql.DB) string {
 	}
 	return strings.Join(items, " ") + " now=" + time.Now().UTC().Format(time.RFC3339Nano)
 }
+
+// A tripped interlock is the experiment's software emergency stop: with it
+// tripped, the loop still reasons and governs, but no command reaches the
+// device.
+func TestExperimentInterlockStopsEffects(t *testing.T) {
+	run := startExperiment(t, experimentOptions{})
+	if out, err := runOperatorCommand(t, "interlock", "trip", "--db", run.db, "--reason", "operator stop"); err != nil {
+		t.Fatalf("trip = %q, %v", out, err)
+	}
+	feedLive(t, run.liveSocket, shiftedTrace(t, time.Now().Add(-time.Second)))
+	waitForRow(t, run.db, "SELECT COUNT(*) FROM policy_evaluations", 60*time.Second)
+	time.Sleep(time.Second)
+	if commands := run.device.received(); len(commands) != 0 {
+		t.Fatalf("a tripped interlock let %d commands reach the device: %v", len(commands), commands)
+	}
+}

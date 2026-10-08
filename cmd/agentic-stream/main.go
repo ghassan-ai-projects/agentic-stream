@@ -58,6 +58,7 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(newRunLiveCommand())
 	root.AddCommand(newExportRunCommand())
 	root.AddCommand(newVerifyRunCommand())
+	root.AddCommand(newInterlockCommand())
 
 }
 

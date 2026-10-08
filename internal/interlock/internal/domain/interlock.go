@@ -26,6 +26,22 @@ func ValidateChange(status, reason string, version int64, now string) error {
 	return nil
 }
 
+// State is the durable global interlock.
+type State struct {
+	Status, Reason, UpdatedAt string
+	Version                   int64
+}
+
+// NextState is the change of current to status for reason at now: one version
+// later, so a stale writer cannot overwrite a newer decision.
+func NextState(current State, status, reason, now string) (State, error) {
+	next := State{Status: status, Reason: reason, UpdatedAt: now, Version: current.Version + 1}
+	if err := ValidateChange(next.Status, next.Reason, next.Version, next.UpdatedAt); err != nil {
+		return State{}, err
+	}
+	return next, nil
+}
+
 // RequireReady fails closed unless the stored status is ready, carrying the
 // stored reason in the error.
 func RequireReady(status, reason string) error {

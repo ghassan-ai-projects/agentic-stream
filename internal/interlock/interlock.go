@@ -21,8 +21,23 @@ type Reader interface {
 // and fails closed when it is absent or not ready.
 type DurableReader = store.DurableReader
 
-// Set changes the durable interlock state. Callers must separately fence this
-// mutation with the active runtime owner.
-func Set(ctx context.Context, tx *sql.Tx, status, reason string, version int64, now string) error {
-	return store.Set(ctx, tx, status, reason, version, now) //nolint:wrapcheck // The store names the failed step.
+// State is the durable global interlock: its status, why, when, and version.
+type State = domain.State
+
+// Read returns the interlock inside the caller's transaction.
+func Read(ctx context.Context, tx *sql.Tx) (State, error) {
+	return store.Read(ctx, tx) //nolint:wrapcheck // The store names the failed step.
+}
+
+// Trip blocks the action plane for reason. Tripping only stops effects, so it
+// needs no runtime ownership: an emergency stop must work when the runtime is
+// hung.
+func Trip(ctx context.Context, tx *sql.Tx, reason, now string) (State, error) {
+	return store.Change(ctx, tx, domain.StatusTripped, reason, now) //nolint:wrapcheck // The store names the failed step.
+}
+
+// Clear reopens the action plane for reason. Callers must fence it with the
+// runtime owner inside the same transaction, so it cannot race a dispatch.
+func Clear(ctx context.Context, tx *sql.Tx, reason, now string) (State, error) {
+	return store.Change(ctx, tx, domain.StatusReady, reason, now) //nolint:wrapcheck // The store names the failed step.
 }

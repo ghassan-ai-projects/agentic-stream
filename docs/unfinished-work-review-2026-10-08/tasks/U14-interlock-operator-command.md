@@ -1,6 +1,6 @@
 # U14 — Interlock trip/clear command
 
-Status: todo · Decision: **complete** · Priority: P1 · Size: S · Depends on: U13
+Status: done · Decision: **complete** · Priority: P1 · Size: S · Depends on: U13
 
 ## Finding
 

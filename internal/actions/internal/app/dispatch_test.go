@@ -67,7 +67,8 @@ func (e *tripBeforeAcceptEffector) Dispatch(context.Context, actionport.Command)
 
 func (e *tripBeforeAcceptEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
 	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
-		return interlock.Set(ctx, tx, "tripped", "race stop", 2, time.Now().UTC().Format(time.RFC3339Nano))
+		_, err := interlock.Trip(ctx, tx, "race stop", time.Now().UTC().Format(time.RFC3339Nano))
+		return err
 	}); err != nil {
 		return actionport.Effect{}, fmt.Errorf("trip interlock: %w", err)
 	}
@@ -364,7 +365,8 @@ func TestDispatcherRefusesCommandWhenInterlockTrips(t *testing.T) {
 	db, commandID := openActionFixture(t)
 	defer func() { _ = db.Close() }()
 	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
-		return interlock.Set(context.Background(), tx, "tripped", "maintenance stop", 2, time.Now().UTC().Format(time.RFC3339Nano))
+		_, err := interlock.Trip(context.Background(), tx, "maintenance stop", time.Now().UTC().Format(time.RFC3339Nano))
+		return err
 	}); err != nil {
 		t.Fatalf("trip interlock: %v", err)
 	}

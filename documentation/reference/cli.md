@@ -107,6 +107,22 @@ use `--live-socket` rather than `--trace`. The physical profile additionally
 requires both explicit actuation and owner-authorization flags. Agentic Stream
 never opens a raw serial port.
 
+## Operator commands
+
+Operator commands act on a runtime database (`--db`, `--tenant`, `--json`).
+A command that changes runtime state first claims the runtime owner lease, so
+it is refused while `serve` or `run-live` holds it: stop the runtime first.
+Read-only commands take no lease. The interlock trip is the exception: it only
+stops effects, so it works while the runtime runs or is hung.
+
+### `interlock status | trip --reason <text> | clear --reason <text>`
+
+The interlock is the global software stop for the action plane. Policy checks
+it before creating a command and again immediately before delivering an
+effect. `trip` blocks every effect and needs no lease; `clear` reopens the
+action plane and needs the lease. Each change is versioned and records its
+reason and time. It does not replace a physical e-stop.
+
 ## `config effective`
 
 Registered as a placeholder. It currently prints `config effective: not yet

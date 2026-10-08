@@ -1,6 +1,7 @@
 package control_test
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"testing"
@@ -12,17 +13,17 @@ import (
 func TestDispatchCapabilityReadsCurrentInterlockWithoutUpstreamCallback(t *testing.T) {
 	db, _ := openOwnerDB(t)
 	ctx := t.Context()
-	set := func(status string, version int64) error {
-		return db.WithTx(ctx, func(tx *sql.Tx) error { return interlock.Set(ctx, tx, status, "operator", version, "now") })
+	set := func(change func(context.Context, *sql.Tx, string, string) (interlock.State, error)) error {
+		return db.WithTx(ctx, func(tx *sql.Tx) error { _, err := change(ctx, tx, "operator", "now"); return err })
 	}
-	if err := set("ready", 2); err != nil {
+	if err := set(interlock.Clear); err != nil {
 		t.Fatal(err)
 	}
 	gate := runtimecontrol.NewDispatchAuthorization(db, interlock.DurableReader{}, "tenant", "target")
 	if err := gate.Check(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := set("tripped", 3); err != nil {
+	if err := set(interlock.Trip); err != nil {
 		t.Fatal(err)
 	}
 	if err := gate.Check(ctx); !errors.Is(err, interlock.ErrTripped) {

@@ -146,8 +146,8 @@ as the change.
 | U10 | [Define the primary-hypothesis delta key](tasks/U10-remove-primary-hypothesis-delta-key.md) | Keep key, drop from plan (revised for the experiment) | P3 | XS | — | todo |
 | U11 | [Drop unused tables](tasks/U11-drop-unused-tables.md) | Delete | P3 | S | U02 | todo |
 | U12 | [Dead-code gate](tasks/U12-deadcode-gate.md) | Complete | P1 | S | U02–U07 | todo |
-| U13 | [Operator command foundation](tasks/U13-operator-command-foundation.md) | Complete | P1 | S | — | todo |
-| U14 | [Interlock trip/clear command](tasks/U14-interlock-operator-command.md) | Complete | P1 | S | U13 | todo |
+| U13 | [Operator command foundation](tasks/U13-operator-command-foundation.md) | Complete | P1 | S | — | done |
+| U14 | [Interlock trip/clear command](tasks/U14-interlock-operator-command.md) | Complete | P1 | S | U13 | done |
 | U15 | [Approval principal provisioning](tasks/U15-approval-principal-provisioning.md) | Complete | P0 (experiment: R2 fan approval) | M | U13 | todo |
 | U16 | [Quarantine list/release/redrive](tasks/U16-quarantine-operator-commands.md) | Complete | P1 | M | U13, U03 | todo |
 | U17 | [Notification retention command](tasks/U17-notification-retention-command.md) | Complete | P1 | S | U13 | todo |

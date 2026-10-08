@@ -1,6 +1,6 @@
 # U13 — Operator command foundation
 
-Status: todo · Decision: **complete** · Priority: P1 · Size: S
+Status: done · Decision: **complete** · Priority: P1 · Size: S
 
 ## Finding
 
