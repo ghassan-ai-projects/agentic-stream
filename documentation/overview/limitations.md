@@ -82,13 +82,15 @@ See [the domain model](../learn/domain-model.md),
 [trigger state view](../../internal/cognition/internal/domain/delta.go), and
 [trigger gates](../../internal/cognition/internal/domain/trigger_rules.go).
 
-### Operator inspection and redrive are internal capabilities
+### Operator tooling is CLI over the runtime database
 
-Durable quarantine, approval, reconciliation, and explainability records exist
-inside the runtime. Quarantine redrive, approval governance, the interlock and
-unknown-outcome reconciliation have CLI commands; the public CLI and HTTP API do
-not yet expose general inspection. A deployment needs approved internal tooling and
-runbooks for those actions; they are not available as ready-to-use public operations.
+Quarantine redrive, approval governance, the interlock, notification retention,
+unknown-outcome reconciliation and read-only inspection (`situation`,
+`explain`, `episode`, `intent`) are CLI commands that act on the runtime
+database. Commands that change state need the runtime owner lease, so they run
+while the runtime is stopped (the interlock trip is the exception). There is no
+HTTP inspection API, and a deployment still needs its own runbooks for when to
+use each command.
 
 ## Deliberate non-goals
 

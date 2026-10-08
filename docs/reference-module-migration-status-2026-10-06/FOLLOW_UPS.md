@@ -13,7 +13,7 @@ found and what "done" looks like. Priority: **P1** safety or correctness gap,
 | 2 | ~~Done 2026-10-08 (one transaction, U17).~~ **`Prune` is three autocommit statements.** A crash between tombstoning and deleting leaves harmless but inconsistent state. | notify PLAN | One transaction, with a crash-between-statements test. |
 | 3 | **Optional cost settler in recovery.** `RecoveryCoordinator.Costs` may be nil and recovery then skips cost release silently. | control FINDINGS | Cost settler is a constructor requirement; a missing one fails construction. |
 | 3b | **Owner-lease time encodings differ.** `episodeledger` compares `runtime_owner.lease_until` with RFC 3339 text while `control` writes fixed-width nanoseconds; text comparison is wrong within one nanosecond and when `now` has a zero fraction. | ledgers FINDINGS | One shared encoding (or the lease check moves behind control) with a boundary test. |
-| 4 | **No operator path for several safety levers**: interlock trip (`interlock.Set`), calibration provisioning (the `Activate` writer was deleted; `calibration_artifacts` now has no writer at all, so R2 intents always need approval), quarantine release/redrive, replay shadow/counterfactual/baseline. Reachable from tests only. | DEADCODE.md | Each is either wired to the CLI or removed with its tests. |
+| 4 | ~~Done 2026-10-08 (interlock, quarantine and replay modes wired to the CLI; calibration removed; U13, U16, U20, U21, U24).~~ **No operator path for several safety levers**: interlock trip (`interlock.Set`), calibration provisioning (the `Activate` writer was deleted; `calibration_artifacts` now has no writer at all, so R2 intents always need approval), quarantine release/redrive, replay shadow/counterfactual/baseline. Reachable from tests only. | DEADCODE.md | Each is either wired to the CLI or removed with its tests. |
 
 ## P2 — structure and consistency
 
@@ -27,7 +27,7 @@ found and what "done" looks like. Priority: **P1** safety or correctness gap,
 | 10 | **Typed records** still pending: provider and observed-effect results (actions), simulator records (ingress), operator-state and timer payloads (engine, operators). | DEFERRED #2 | Typed structs parsed once at the boundary, original bytes kept where a digest needs them. |
 | 11 | **Transaction scope**: one transaction for an ingress batch and its checkpoint; one per global engine batch; per-watch fan-out in one transaction. Each changes delivery semantics and needs a decision. | DEFERRED #3 | Decision recorded, tests for crash between steps. |
 | 12 | **Remaining unmigrated packages.** every shared transaction-scoped store is now migrated or dissolved (`qualification` dissolved, `scheduleledger` merged into `episodeledger`); `executor/native`, `executor/remote`, `runartifact`, `worker`, `soak` need a shape review. | status README | Each migrated or recorded as "decided: no". |
-| 13 | **Test-only code** from the dead-code review: `engine` per-partition run path (certain removal), `episodeledger` non-transactional recovery wrapper, exported wrappers in `authority`. | DEADCODE.md | Deleted with their tests, or moved to test support. |
+| 13 | ~~Done 2026-10-08 (deleted or moved to test support; U04, U07).~~ **Test-only code** from the dead-code review: `engine` per-partition run path (certain removal), `episodeledger` non-transactional recovery wrapper, exported wrappers in `authority`. | DEADCODE.md | Deleted with their tests, or moved to test support. |
 
 ## P3 — polish
 

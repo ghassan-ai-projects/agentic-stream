@@ -7,10 +7,9 @@ it to canonical JSON, and computes a `sha256:` digest before deployment.
 ## Runtime authority
 
 The runtime embeds and validates against
-[`internal/spec/internal/domain/schema.json`](../../internal/spec/internal/domain/schema.json). The design
-package contains a reviewed schema copy at
-[`docs/design/contracts/situation-spec-v1.schema.json`](../../docs/design/contracts/situation-spec-v1.schema.json);
-the compiler tests are the authority for semantic behavior beyond the schema.
+[`internal/spec/internal/domain/schema.json`](../../internal/spec/internal/domain/schema.json), the only
+copy of the schema; the compiler tests are the authority for semantic behavior
+beyond it.
 
 ## Shape
 

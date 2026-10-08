@@ -232,6 +232,13 @@ Action latency includes validation or approval. Safety and audit improve.
 Replay mode is explicit in every run and trace. No replay mode silently enables
 real effectors.
 
+**Amended 2026-10-08.** `counterfactual` was removed: no simulator or outcome
+model existed to drive it, and effects are rehearsed live against the device
+emulator instead (TECHNICAL_DESIGN §16.2). v1 has three modes, all `run` flags:
+deterministic (`--repeat`), recorded (`--source-db`, matched by the stable
+situation/version/trigger key) and shadow (`--worker-socket`, paired with the
+deterministic baseline). See TECHNICAL_DESIGN §16.3.
+
 ## ADR-010: Agent frameworks are adapters
 
 **Context.** LangGraph supplies durable graph execution; LangChain supplies

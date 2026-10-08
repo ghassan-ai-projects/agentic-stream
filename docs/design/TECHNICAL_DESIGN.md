@@ -974,16 +974,12 @@ Important unique constraints:
 
 ### 14.3 Artifacts
 
-Large raw payloads, tool results, model transcripts, and replay outputs use a
-content-addressed artifact store:
-
-```text
-artifacts/sha256/ab/cd/<digest>
-```
-
-SQLite stores digest, size, media type, encryption/classification, creation,
-retention, and refcount metadata. Writes use temporary file, fsync, atomic
-rename, then database reference. Orphan cleanup is conservative and audited.
+v1 has no artifact store. Payloads, tool results and decisions are stored
+inline in SQLite, each with its own size bound; a tool result over its bound
+fails closed instead of spilling to an artifact. The `artifacts` table is
+reserved in the persistence contract (`event_log.original_artifact_id`
+references it) but nothing writes it. A content-addressed store needs a
+consumer first: a payload class that cannot be bounded inline.
 
 ### 14.4 Recovery
 
@@ -1007,16 +1003,16 @@ explicitly acknowledges the degraded state.
 
 ### 14.5 Retention
 
-Retention is layer-specific:
+v1 deletes one kind of record: notifications.
+`agentic-stream notifications prune --retention <duration>` (minimum seven
+days) retires them in one transaction under the runtime owner lease, keeps
+tombstones so a retired event identity is never accepted again, and sends a
+client whose cursor fell behind an audited `cursor_expired` resnapshot.
+`--dry-run` only counts. The operator schedules it with the host's scheduler.
 
-- raw events: configurable, with tier-to-artifact option;
-- features: based on window/replay needs;
-- Situation versions and Decisions: long-lived audit;
-- token deltas: short-lived unless required by investigation;
-- accepted model/tool records: enough for recorded replay;
-- commands and outcomes: longest relevant policy/legal period.
-
-Deletion is a durable job with dry-run and legal-hold checks.
+Raw events, features, Situation versions, decisions, commands and outcomes are
+not deleted in v1: replay, recorded verification and audit depend on them.
+Deleting evidence needs its own design (§24).
 
 ### 14.6 Recovery objectives
 
@@ -1036,70 +1032,69 @@ complete until command idempotency and reconciliation state are restored.
 
 ### 15.1 HTTP API
 
-Initial endpoints:
+The HTTP surface is loopback by default and each route has its own credential
+scope:
 
 ```text
-POST   /v1/events
-GET    /v1/events/stream
-GET    /v1/situations
-GET    /v1/situations/{id}
-GET    /v1/situations/{id}/versions
-GET    /v1/situations/{id}/explain
-GET    /v1/triggers/{id}/explain
-GET    /v1/episodes/{id}
-GET    /v1/episodes/{id}/events
-GET    /v1/intents
-POST   /v1/intents/{id}/approve
-POST   /v1/intents/{id}/deny
-POST   /v1/replays
-GET    /v1/replays/{id}
-POST   /v1/specs/validate
-POST   /v1/specs/deploy
 GET    /health/live
 GET    /health/ready
+GET    /v1/events                 subscriber token; cursor-resumable SSE notifications
+GET    /metrics                   deployment boundary; low-cardinality metrics
+GET    /v1/approvals/{id}         relay token; the exact bytes an approver signs
+POST   /v1/approvals/{id}         relay token + approver Ed25519 signature
+POST   /control/drain             control token; refuse new admission for the epoch
+POST   /control/kill              control token; refuse later decisions for the epoch
 ```
 
-Mutation requests accept `Idempotency-Key`. Errors use a stable envelope:
+Errors use `application/problem+json` (RFC 9457) with a stable problem type.
+SSE frames are CloudEvents with a tenant-local numeric id. Clients resume with
+`Last-Event-ID` (or `cursor`); a cursor outside retained history gets 409
+`cursor_expired` and an audited resnapshot. The stream is at-least-once.
 
-```json
-{
-  "error": {
-    "code": "situation_version_conflict",
-    "message": "Intent was based on a superseded Situation version",
-    "retryable": false,
-    "diagnostic_ref": "diag_..."
-  }
-}
-```
+Not part of v1, by decision:
 
-SSE event frames contain `id`, `type`, `time`, `aggregate`, `sequence`, and
-`data`. Clients resume with `Last-Event-ID`. Token deltas may be ephemeral;
-lifecycle and aggregate changes come from durable sequence positions.
+- Read routes for Situations, triggers, episodes and intents are deferred: the
+  CLI reads them first (§24: a UI follows once CLI workflows settle), and each
+  route needs its own credential scope.
+- Intent approval is `/v1/approvals/{id}`, signed by an independent approver
+  through a relay, not a bare approve/deny endpoint.
+- No HTTP event ingest: ingress is the trace file and the live Unix socket;
+  network ingress is ADR-015 (proposed).
+- No replay or spec-deploy endpoints: replay always runs offline in an isolated
+  database (§16.2), and a spec is deployed by starting `serve --spec`.
 
 ### 15.2 CLI
 
 ```text
-agentic-stream init
 agentic-stream validate <spec>
-agentic-stream run --spec <spec>
-agentic-stream run-live --db <runtime.db> --spec <spec.yaml> --trace <trace.jsonl>
-agentic-stream run-live --trace-format simulator --db <runtime.db> --spec <spec.yaml> --trace <simulator.jsonl>
-agentic-stream ingest <events.jsonl>
-agentic-stream simulate predictive-maintenance
-agentic-stream situation list
-agentic-stream situation show <id>
-agentic-stream explain situation <id> --version <n>
-agentic-stream explain trigger <id>
+agentic-stream run --spec <spec> --trace <trace> [--repeat N | --source-db <runtime.db> | --worker-socket <path>]
+agentic-stream run-live --db <runtime.db> --spec <spec.yaml> --trace <trace.jsonl> [--trace-format simulator]
+agentic-stream serve --db <runtime.db> --spec <spec.yaml> [--live-socket <path>] [...]
+agentic-stream export-run | verify-run
+agentic-stream situation list | show <id> [--version N]
+agentic-stream explain situation <id> [--version N] | trigger <id>
 agentic-stream episode show <id>
-agentic-stream intent approve|deny <id>
-agentic-stream replay <range> --mode deterministic
-agentic-stream compare <replay-a> <replay-b>
-agentic-stream doctor
+agentic-stream intent show <id>
+agentic-stream interlock status | trip | clear
+agentic-stream principals apply --file <principals.yaml> | show
+agentic-stream quarantine list | release <event-id> | redrive <event-id>
+agentic-stream notifications prune --retention <duration>
+agentic-stream commands list | resolve <command-id>
 ```
 
-Human-readable output defaults to concise tables. `--json` returns stable
-machine-readable contracts. Every command that can create external effects has
-an explicit confirmation or non-interactive authorization flag.
+Human-readable output is the default; `--json` returns machine-readable
+documents. Operator commands that change runtime state claim the runtime owner
+lease, so they are refused beside a running runtime; read-only commands take no
+lease. The CLI reference (`documentation/reference/cli.md`) is the authority
+for flags.
+
+Not part of v1, by decision: `init` and `doctor` (no defined behavior;
+`validate` and `/health/ready` cover the checks), `ingest` (`run-live` and the
+live socket are the ingest paths), `simulate` (`run-live --trace-format
+simulator` accepts simulator traces; generating them belongs to the Streams
+Simulator), `intent approve|deny` (approval is the signed HTTP flow), a
+separate `replay <range>` command (replay modes are `run` flags over a trace),
+and `compare` (`--repeat` checks hash equality; shadow mode compares models).
 
 ## 16. Replay and evaluation
 
@@ -1123,20 +1118,27 @@ shares:
 Replay never exercises an effector. Effects are rehearsed live against the
 device emulator profile, through the real policy and action plane.
 
-### 16.3 Comparison
+### 16.3 Modes and comparison
 
-A replay comparison reports:
+Replay runs from a trace into an isolated database, in one of three modes:
 
-- Situation histories and first divergence;
-- watermark and timer differences;
-- trigger admissions and missed/extra cognition;
-- episode terminal outcomes, cost, and latency;
-- Decision field differences;
-- policy and Intent differences;
-- expected outcome utility when labels exist.
+- **Deterministic** (`run`, `run --repeat N`): rebuilds the Situation history
+  and hashes it canonically; N fresh runs must produce byte-identical hashes.
+- **Recorded** (`run --source-db`): verifies a live run. Every replayed episode
+  must have exactly one accepted decision in the source runtime database,
+  opened read-only, matched by situation/version/trigger. The decision must
+  cite a version at or after its trigger whose snapshot digest replay
+  reproduces. Live episode ids are random and are not compared.
+- **Shadow** (`run --worker-socket`): pairs the deterministic baseline with a
+  candidate worker on the same immutable snapshot for every replayed episode,
+  validates both against the intent catalog and seals a comparison. A
+  disagreement or a candidate failure is a result, not an error.
 
-Canonical hashes allow byte-level equality for deterministic projections.
-Model comparisons use semantic field comparison, not answer-text equality.
+Canonical hashes give byte-level equality for deterministic projections. Model
+comparisons use semantic field comparison, not answer-text equality: Decision
+fields, intents and their policy outcome, and outcome utility when labels
+exist. Locating the first divergence between two histories is not built; a
+hash mismatch is investigated with `explain situation` on each database.
 
 ## 17. Security
 
@@ -1414,6 +1416,18 @@ storage internals.
 - Learning may propose spec/prompt/policy changes only through offline replay and
   reviewed deployment.
 - Multi-agent execution requires measured utility beyond one bounded executor.
+- SituationSpec features the first schema draft listed but v1 does not
+  implement, each needing its own determinism and late-data semantics: operator
+  kinds `map`, `filter`, `rate`, `correlation`, `duration`; aggregates beyond
+  `mean`, `rms`, `slope`, `count`, `sum`, `min`, `max`, `latest`; reducers
+  beyond `latest_event_time` and `set_union`; `count` and `decay` windows; and
+  the `retention` and `telemetry` spec blocks. The runtime schema
+  (`internal/spec/internal/domain/schema.json`) is the authoring contract.
+- Deleting evidence (raw events, features, Situation versions, decisions,
+  commands, outcomes) needs its own design, because replay and audit depend on
+  it. v1 retains them; only notifications are pruned.
+- Automated (no-approval) R2 intents need signed calibration evidence from the
+  evaluation suite; until then R2 always needs a human approval.
 
 ## 25. Design review checklist
 

@@ -8,7 +8,7 @@ Status values match the [task board](README.md#task-board).
 
 ## P01 — One SituationSpec schema, not two
 
-Status: todo · with: none
+Status: done · with: none
 
 **Finding.** `docs/design/contracts/situation-spec-v1.schema.json` and the
 embedded runtime schema `internal/spec/internal/domain/schema.json` have drifted:
@@ -36,7 +36,7 @@ it". Record the removed kinds in one line under TECHNICAL_DESIGN §24.
 
 ## P02 — TECHNICAL_DESIGN §15: the real CLI and API
 
-Status: todo · with: U09, U13–U23
+Status: done · with: U09, U13–U23
 
 **Finding.** §15.2 lists 17 CLI forms; 4 exist. §15.1 lists 18 HTTP endpoints;
 2 exist as written (`/health/live`, `/health/ready`). The runtime also serves
@@ -68,7 +68,7 @@ replay; keep the model-comparison bullets, which shadow mode covers.
 
 ## P03 — TECHNICAL_DESIGN §14.3 and §14.5
 
-Status: todo · with: U05, U17
+Status: done · with: U05, U17
 
 - **§14.3 Artifacts: remove.** No artifact store was built; oversized tool
   results fail closed (U05). Keep the reserved `artifacts` table note in the
@@ -82,7 +82,7 @@ Status: todo · with: U05, U17
 
 ## P04 — Counterfactual mode
 
-Status: todo · with: U02
+Status: done · with: U02
 
 Remove counterfactual mode from: IMPLEMENTATION_PLAN M3.5 ("counterfactual
 simulated effector"), BUILD_COMPLETION_BAR Gate C and the end-state paragraph,
@@ -96,7 +96,7 @@ permits an explicit simulation mode but does not require one.
 
 ## P05 — IMPLEMENTATION_PLAN M3.5 and the MVP list
 
-Status: todo · with: U19–U21
+Status: done · with: U19–U21
 
 Rewrite M3.5 to: deterministic replay with `--repeat`; recorded replay against
 a read-only source database; paired shadow replay over the worker protocol;
@@ -106,7 +106,7 @@ unchanged; U19–U23 are what make it true.
 
 ## P06 — Approval and calibration inputs
 
-Status: todo · with: U15, U24
+Status: done · with: U15, U24
 
 - `documentation/reference/http-api.md`: replace "must be provisioned by the
   deployment" with `principals apply` (U15).
@@ -116,7 +116,7 @@ Status: todo · with: U15, U24
 
 ## P07 — Status pages and release posture
 
-Status: todo · with: each completing task
+Status: done · with: each completing task
 
 Keep `documentation/governance/release-status.json`,
 `documentation/overview/status.md`, `limitations.md` and `roadmap.md` in step
@@ -131,7 +131,7 @@ with each task:
 
 ## P08 — Retire the earlier dead-code records
 
-Status: todo · with: none
+Status: done · with: none
 
 Add a one-line "Superseded by docs/unfinished-work-review-2026-10-08" status to
 `docs/remaining-migration-2026-10-06/DEADCODE.md`, `DEADCODE_REPORT.md`,

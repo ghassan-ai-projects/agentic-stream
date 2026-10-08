@@ -95,7 +95,8 @@ without waiting for new sensor input. Existing dispatch fences and verification
 still apply. Observe durable events for delivery and outcome evidence.
 
 The [package integration design](../../internal/policy/APPROVAL_HTTP_DESIGN.md)
-records the contract and validation. A CLI approval client remains follow-up work.
+records the contract and validation. There is no CLI approve or deny command, by
+decision: approval is this signed relay and approver flow.
 
 ## Not current
 

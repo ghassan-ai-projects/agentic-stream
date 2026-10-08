@@ -159,7 +159,7 @@ as the change.
 | U22 | [Explain situation and trigger](tasks/U22-explain-situation-and-trigger.md) | Complete | P1 | M | U13 | done |
 | U23 | [Inspect episode, intent and command](tasks/U23-inspect-episode-intent-command.md) | Complete | P2 | M | U22 | done |
 | U24 | [Remove the calibrated-automation route](tasks/U24-remove-calibrated-automation-route.md) | Remove from plan + code | P2 | S | — | done |
-| P01–P08 | [Plan and documentation changes](PLAN_CHANGES.md) | Remove from plans | P2 | S each | per row | todo |
+| P01–P08 | [Plan and documentation changes](PLAN_CHANGES.md) | Remove from plans | P2 | S each | per row | done |
 
 Sizes: XS under an hour, S about half a day, M one to two days.
 
