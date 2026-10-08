@@ -170,3 +170,19 @@ func TestSchedulerRules(t *testing.T) {
 		t.Fatal("pending check changed")
 	}
 }
+
+func TestRejectionIDIsPinnedForWholeSecondAndFractionalInstants(t *testing.T) {
+	t.Parallel()
+	identity := Identity{EpisodeID: "e", AttemptID: "a", Fence: 1}
+	for name, test := range map[string]struct {
+		at   time.Time
+		want string
+	}{
+		"whole second": {time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC), "rej_151d5295a1b297ed669b5b3b0c68e26c8b94c55475de86f1ac6076568f7641ed"},
+		"fractional":   {time.Date(2026, 8, 12, 12, 0, 0, 500_000_000, time.UTC), "rej_87cea6ff9879c8ab4ad11791c6b47330073a9edc0708a1c87af4df19ec0a5beb"},
+	} {
+		if got := RejectionID(identity, RejectStaleAttempt, []byte("{}"), test.at); got != test.want {
+			t.Errorf("%s: id = %s, want %s", name, got, test.want)
+		}
+	}
+}

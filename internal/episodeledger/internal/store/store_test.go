@@ -52,7 +52,8 @@ func TestSchedulerQueueRoundTrip(t *testing.T) {
 			t.Fatalf("id clash not classified: %v", err)
 		}
 		must(tx.InsertSchedulerItemIfAbsent(ctx, item("i1", "t2"), "tenant", make([]byte, 32), at))
-		pending, err := tx.PendingQueuedItems(ctx, "tenant")
+		queue, err := tx.PendingQueue(ctx, "tenant")
+		pending := queue.Items
 		if err != nil || len(pending) != 1 || pending[0].SchedulerItemID != "i1" || !pending[0].CreatedAt.Equal(at) || pending[0].NotBefore != nil {
 			t.Fatalf("pending = %+v %v", pending, err)
 		}
@@ -62,7 +63,7 @@ func TestSchedulerQueueRoundTrip(t *testing.T) {
 		if rows, _ := tx.AdmitPendingSchedulerItem(ctx, "i1", at); rows != 0 {
 			t.Fatalf("second admit rows=%d", rows)
 		}
-		if pending, _ := tx.PendingQueuedItems(ctx, "tenant"); len(pending) != 0 {
+		if queue, _ := tx.PendingQueue(ctx, "tenant"); len(queue.Items) != 0 {
 			t.Fatal("admitted item still pending")
 		}
 	})

@@ -19,7 +19,7 @@ func reconsiderationDelta() map[string]any {
 func TestTakeReconsiderationBuildsDocumentFromDeltaAndRemovesPriorEvidence(t *testing.T) {
 	t.Parallel()
 	delta := reconsiderationDelta()
-	document, err := TakeReconsideration(SchedulerItem{SituationID: "sit"}, Evaluation{TriggerName: "corrected"}, delta, nil)
+	document, err := TakeReconsideration(SchedulerItem{SituationID: "sit", SituationVersion: 3}, Evaluation{TriggerName: "corrected"}, delta, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,6 +48,14 @@ func TestTakeReconsiderationRequiresEveryPriorDocument(t *testing.T) {
 				t.Fatalf("error: %v", err)
 			}
 		})
+	}
+}
+
+func TestTakeReconsiderationRefusesADeltaForAnotherCorrectionVersion(t *testing.T) {
+	t.Parallel()
+	_, err := TakeReconsideration(SchedulerItem{SituationID: "sit", SituationVersion: 4}, Evaluation{}, reconsiderationDelta(), nil)
+	if err == nil || !strings.Contains(err.Error(), "does not match scheduler item version") {
+		t.Fatalf("error: %v", err)
 	}
 }
 

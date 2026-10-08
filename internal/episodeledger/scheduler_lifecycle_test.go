@@ -233,19 +233,19 @@ func admitInQueueOrder(t *testing.T, db *storage.DB, now time.Time) []string {
 	t.Helper()
 	var order []string
 	for {
-		id, found, err := episodeledger.NextPendingSchedulerItem(t.Context(), db.DB, "tenant", now)
-		if err != nil || !found {
+		poll, err := episodeledger.PollSchedulerQueue(t.Context(), db.DB, "tenant", now)
+		if err != nil || !poll.Found {
 			if err != nil {
 				t.Fatal(err)
 			}
 			return order
 		}
 		if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-			return episodeledger.MarkSchedulerItemAdmitted(t.Context(), tx, id, now)
+			return episodeledger.MarkSchedulerItemAdmitted(t.Context(), tx, poll.Next, now)
 		}); err != nil {
 			t.Fatal(err)
 		}
-		order = append(order, id)
+		order = append(order, poll.Next)
 	}
 }
 

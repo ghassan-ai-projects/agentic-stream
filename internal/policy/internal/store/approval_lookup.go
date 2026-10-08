@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,6 +10,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
+
+var ErrUnreadableApprovalExpiry = errors.New("approval expiry is unreadable")
 
 // PendingApproval distinguishes a missing pending approval from a lookup failure.
 func (tx *Tx) PendingApproval(ctx context.Context, intentID string) (string, error) {
@@ -30,7 +33,7 @@ func (tx *Tx) PendingApprovalExpiry(ctx context.Context, intentID string) (strin
 	}
 	expiresAt, err := kernel.ParseTime(approval.ExpiresAt)
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("parse pending approval %s expiry: %w", approval.ID, err)
+		return approval.ID, time.Time{}, fmt.Errorf("parse pending approval %s expiry: %w: %w", approval.ID, ErrUnreadableApprovalExpiry, err)
 	}
 	return approval.ID, expiresAt, nil
 }

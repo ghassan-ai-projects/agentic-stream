@@ -92,12 +92,14 @@ const claimOwnerLeaseSQL = `
 		WHERE (runtime_owner.owner_epoch = excluded.owner_epoch
 			AND runtime_owner.owner_instance = excluded.owner_instance)
 			OR (runtime_owner.owner_epoch <> excluded.owner_epoch
-				AND runtime_owner.lease_until <= excluded.heartbeat_at)`
+				AND (runtime_owner.lease_until <= excluded.heartbeat_at
+					OR NOT stored_time_ok(runtime_owner.lease_until)))`
 
 const renewOwnerLeaseSQL = `
 		UPDATE runtime_owner
 		SET heartbeat_at = ?, lease_until = ?
-		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ? AND lease_until > ?`
+		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ? AND lease_until > ?
+			AND stored_time_ok(lease_until)`
 
 const releaseOwnerLeaseSQL = `
 		UPDATE runtime_owner SET heartbeat_at = ?, lease_until = ?
@@ -105,4 +107,5 @@ const releaseOwnerLeaseSQL = `
 
 const holdsOwnerLeaseSQL = `
 		SELECT owner_epoch FROM runtime_owner
-		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ? AND lease_until > ?`
+		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ? AND lease_until > ?
+			AND stored_time_ok(lease_until)`

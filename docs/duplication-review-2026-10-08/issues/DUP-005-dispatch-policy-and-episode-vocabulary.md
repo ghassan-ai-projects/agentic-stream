@@ -99,3 +99,5 @@ Tests that pin the rule:
 - `TestAdmittedEpisodeDeclaresShadowWhenRequestHasNoPolicy` (episodes/internal/domain).
 - `TestAdmissionRefusesAnUndeclaredDispatchPolicy` (episodeledger; no hidden default in the ledger).
 - `TestDispatchPolicyEnumTreatsAnythingButActiveAsShadow`, `TestEpisodeLaneAcceptsOnlyDeclaredLanes`, `TestEpisodeKind` (executor/remote/internal/domain).
+
+Review fix R2-F4: the implicit `R1` risk ceiling is gone from `internal/episodes/internal/domain/assembly.go` (`effectiveRiskCeiling`) and `internal/replay/internal/domain/shadow_rules.go` (`riskCeiling == "" -> "R1"`). Compiled specs are always defaulted to `R1` by the spec compiler (`defaultCognition`), so production is unaffected. A `CompiledSpec` built by hand without the compiler now carries `risk_ceiling: ""`, which `DecisionInput` refuses ("request has no explicit risk ceiling") and which makes shadow validation reject every intent (rank 0). This fails closed. The single place that defaults the ceiling is the spec compiler; test fixtures that build a `CompiledSpec` directly must set `RiskCeiling`.

@@ -10,11 +10,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// OwnerCheck is the runtime owner assertion an owned identity is fenced by.
 type OwnerCheck = storage.OwnerCheck
 
-// ReadEpisodeFence reads the episode's tenant, lifecycle, current attempt and
-// fence; found is false for an unknown episode.
 func (t *Tx) ReadEpisodeFence(ctx context.Context, episodeID string) (domain.EpisodeFence, bool, error) {
 	var fence domain.EpisodeFence
 	var attempt sql.NullString
@@ -64,9 +61,6 @@ func (t *Tx) ReadEpisodeAttemptStatus(ctx context.Context, episodeID, attemptID 
 	return status, nil
 }
 
-// AssertOwner runs the runtime owner check for epoch on the caller's
-// transaction. The lease table belongs to control, so the ledger neither reads
-// nor interprets it; a missing check or transaction refuses the write.
 func (t *Tx) AssertOwner(ctx context.Context, owner storage.OwnerCheck, epoch string) error {
 	if owner == nil || t.tx == nil {
 		return errOwnerUnchecked

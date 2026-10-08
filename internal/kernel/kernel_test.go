@@ -53,3 +53,16 @@ func TestDigestTextRoundTripsAndRejectsNonCanonicalForms(t *testing.T) {
 		}
 	}
 }
+
+func TestParseStoredTimeAcceptsOnlyTheTextFormatTimeWrites(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 10, 9, 14, 0, 0, 5, time.UTC)
+	if parsed, err := kernel.ParseStoredTime(kernel.FormatTime(at)); err != nil || !parsed.Equal(at) {
+		t.Fatalf("ParseStoredTime(FormatTime) = %v, %v", parsed, err)
+	}
+	for _, text := range []string{"", "garbage", "2026-10-09T14:00:00Z", "2026-10-09T14:00:00.5Z", "2026-10-09T16:00:00.000000000+02:00", "2026-10-09 14:00:00.000000000Z"} {
+		if _, err := kernel.ParseStoredTime(text); err == nil {
+			t.Errorf("ParseStoredTime(%q) accepted text FormatTime never writes", text)
+		}
+	}
+}

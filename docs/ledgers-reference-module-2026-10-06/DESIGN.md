@@ -13,7 +13,7 @@
 `Rebind`, `BindRequest`, `AbandonRebind`, `Abandon`, `Conclude`, `RetainForRetry`, `SupersedeEpoch`,
 `SupersedeCoalesced`, `RecoverUnfinishedAttemptsWithCost`; plus the merged queue operations
 `UpsertSchedulerItem`, `MarkSchedulerItemAdmitted`, `CoalesceSchedulerItems`, `CoalesceCostRejectedItem`,
-`CoalesceSkippedItem`, `NextPendingSchedulerItem`.
+`CoalesceSkippedItem`, `PollSchedulerQueue`, `ExpireSchedulerItem`.
 
 ## Rules
 

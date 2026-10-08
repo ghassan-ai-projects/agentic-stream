@@ -53,6 +53,7 @@ func TestFreshnessAndApprovalPrecedence(t *testing.T) {
 			r.CurrentCompleteness = "uncertain"
 		}, "stale", "situation_version_stale"},
 		{"health before expiry", func(r *IntentRecord) { r.CurrentCompleteness = "uncertain"; r.ExpiresAt = time.Time{} }, "denied", "source_health_incomplete"},
+		{"unreadable expiry denies rather than expires", func(r *IntentRecord) { r.ExpiresAt, r.ExpiryUnreadable = time.Time{}, true }, "denied", "intent_expiry_unreadable"},
 		{"expiry inclusive", func(r *IntentRecord) { r.ExpiresAt = now }, "expired", "intent_expired"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

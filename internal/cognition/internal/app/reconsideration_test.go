@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/hex"
@@ -39,7 +40,38 @@ func TestReconsiderationAdmissionIsReplayDeduplicated(t *testing.T) {
 	}
 }
 
+type reconsiderationFixture struct {
+	db      *storage.DB
+	engine  *Service
+	current situations.Version
+	zero    []byte
+	now     time.Time
+}
+
 func runReconsiderationAdmissionTest(t *testing.T, versionCount, commandVersion, correctionVersion, previousVersion int) {
+	t.Helper()
+	ctx := context.Background()
+	f := newReconsiderationFixture(t, versionCount, commandVersion, correctionVersion, previousVersion)
+	db, eng, current := f.db, f.engine, f.current
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error { return eng.Process(ctx, store.Join(tx), current) }); err != nil {
+		t.Fatalf("first correction process: %v", err)
+	}
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error { return eng.Process(ctx, store.Join(tx), current) }); err != nil {
+		t.Fatalf("replayed correction process: %v", err)
+	}
+	var reconsiderations, items int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM reconsiderations").Scan(&reconsiderations); err != nil {
+		t.Fatalf("count reconsiderations: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_items WHERE kind = 'reconsider'").Scan(&items); err != nil {
+		t.Fatalf("count reconsideration items: %v", err)
+	}
+	if reconsiderations != 1 || items != 1 {
+		t.Fatalf("dedupe counts reconsiderations=%d items=%d", reconsiderations, items)
+	}
+}
+
+func newReconsiderationFixture(t *testing.T, versionCount, commandVersion, correctionVersion, previousVersion int) reconsiderationFixture {
 	t.Helper()
 	ctx := context.Background()
 	db := storagetest.OpenTempWithoutForeignKeys(t)
@@ -108,22 +140,7 @@ func runReconsiderationAdmissionTest(t *testing.T, versionCount, commandVersion,
 	}
 	currentJSON, _ := canonicaljson.Marshal(currentSnapshot)
 	current := situations.Version{SituationID: "sit-reconsider", Version: correctionVersion, PreviousVersion: previousVersion, Phase: "corrected", Completeness: "corrected", EventHorizon: now, Watermark: now, SnapshotJSON: currentJSON}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error { return eng.Process(ctx, store.Join(tx), current) }); err != nil {
-		t.Fatalf("first correction process: %v", err)
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error { return eng.Process(ctx, store.Join(tx), current) }); err != nil {
-		t.Fatalf("replayed correction process: %v", err)
-	}
-	var reconsiderations, items int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM reconsiderations").Scan(&reconsiderations); err != nil {
-		t.Fatalf("count reconsiderations: %v", err)
-	}
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_items WHERE kind = 'reconsider'").Scan(&items); err != nil {
-		t.Fatalf("count reconsideration items: %v", err)
-	}
-	if reconsiderations != 1 || items != 1 {
-		t.Fatalf("dedupe counts reconsiderations=%d items=%d", reconsiderations, items)
-	}
+	return reconsiderationFixture{db: db, engine: eng, current: current, zero: zero, now: now}
 }
 
 func nullablePrevious(version int) any {
@@ -170,4 +187,56 @@ func insertExecutedCommandFixture(ctx context.Context, db *storage.DB, commandID
 		return fmt.Errorf("insert outcome fixture: %w", err)
 	}
 	return nil
+}
+
+func TestUnreadablePriorDocumentsRejectOnlyThatReconsideration(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for name, corrupt := range map[string]string{
+		"prior decision is not an object":   "UPDATE decisions SET raw_json = X'5B5D' WHERE decision_id = 'dec-bad'",
+		"executed command is not json":      "UPDATE commands SET command_json = X'7B' WHERE command_id = 'cmd-bad'",
+		"provider result is not valid json": "UPDATE outcomes SET provider_result_json = X'7B' WHERE command_id = 'cmd-bad'",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			f := newReconsiderationFixture(t, 2, 1, 2, 1)
+			if _, err := f.db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+				t.Fatal(err)
+			}
+			if err := insertExecutedCommandFixture(ctx, f.db, "cmd-bad", "dec-bad", "epi-bad", "int-bad", 1, bytes.Repeat([]byte{1}, 32), f.now); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.db.ExecContext(ctx, corrupt); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.db.WithTx(ctx, func(tx *sql.Tx) error { return f.engine.Process(ctx, store.Join(tx), f.current) }); err != nil {
+				t.Fatalf("a malformed historical row blocked the corrected version: %v", err)
+			}
+			assertReconsiderationOutcomes(t, f.db)
+		})
+	}
+}
+
+func assertReconsiderationOutcomes(t *testing.T, db *storage.DB) {
+	t.Helper()
+	var admitted, items, rejected int
+	for query, into := range map[string]*int{
+		"SELECT COUNT(*) FROM reconsiderations WHERE invalidated_command_id = 'cmd-reconsider-1'":                           &admitted,
+		"SELECT COUNT(*) FROM scheduler_items WHERE kind = 'reconsider'":                                                    &items,
+		"SELECT COUNT(*) FROM trigger_evaluations WHERE trigger_name = 'prior_action_invalidated' AND outcome = 'rejected'": &rejected,
+	} {
+		if err := db.QueryRowContext(t.Context(), query).Scan(into); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var reasoned int
+	if err := db.QueryRowContext(t.Context(), "SELECT last_reasoned_version FROM situations WHERE situation_id = 'sit-reconsider'").Scan(&reasoned); err != nil {
+		t.Fatal(err)
+	}
+	if admitted != 1 || items != 1 || rejected != 1 || reasoned != 2 {
+		t.Fatalf("admitted=%d items=%d rejected=%d reasoned=%d, want the good command admitted, the bad one rejected and the version reasoned", admitted, items, rejected, reasoned)
+	}
 }

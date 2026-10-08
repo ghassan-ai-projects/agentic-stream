@@ -67,8 +67,6 @@ func (t *Tx) AbandonOpenEpisode(ctx context.Context, episodeID string, endedAt t
 	return storage.RowsAffected(result), nil
 }
 
-// EpisodeLifecycle reads the episode's lifecycle status; an unknown episode is
-// an error.
 func (t *Tx) EpisodeLifecycle(ctx context.Context, episodeID string) (domain.LifecycleStatus, error) {
 	fence, found, err := t.ReadEpisodeFence(ctx, episodeID)
 	if err != nil {

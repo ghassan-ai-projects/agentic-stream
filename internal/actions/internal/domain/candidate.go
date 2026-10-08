@@ -23,16 +23,30 @@ type CommandRow struct {
 }
 
 // Lease is the dispatch lease columns of a command outbox row. Absent columns
-// are distinguished from empty ones.
+// are distinguished from empty ones, and an expiry the store could not read is
+// marked Unreadable instead of failing the read.
 type Lease struct {
-	Owner              string
-	Until              time.Time
-	HasOwner, HasUntil bool
+	Owner                          string
+	Until                          time.Time
+	HasOwner, HasUntil, Unreadable bool
 }
 
 // Expired reports whether a leased row has no valid, unexpired lease at now.
 func (l Lease) Expired(now time.Time) bool {
 	return !l.HasOwner || !l.HasUntil || !l.Until.After(now)
+}
+
+// Reasons an in-flight lease is abandoned as an unknown outcome.
+const (
+	AbandonLeaseExpired    = "lease expired before dispatch"
+	AbandonLeaseUnreadable = "lease expiry unreadable before dispatch"
+)
+
+func (l Lease) abandonReason() string {
+	if l.Unreadable {
+		return AbandonLeaseUnreadable
+	}
+	return AbandonLeaseExpired
 }
 
 // Candidate is the oldest available command outbox row with the ledger columns
@@ -70,6 +84,8 @@ type Admission struct {
 	Step AdmissionStep
 	// FailureCode is set for FailInvalidCommand.
 	FailureCode string
+	// AbandonReason is set for AbandonExpiredLease.
+	AbandonReason string
 	// OutboxClosure is the outbox status for CloseOutboxOnly.
 	OutboxClosure string
 	Leased        LeasedCommand
@@ -84,7 +100,7 @@ func (c Candidate) Admit(now time.Time) Admission {
 	if c.OutboxStatus == OutboxLeased {
 		leased.LeaseOwner = c.Lease.Owner
 		if c.Lease.Expired(now) {
-			return Admission{Step: AbandonExpiredLease, Leased: c.withLedgerIdentity(leased)}
+			return Admission{Step: AbandonExpiredLease, AbandonReason: c.Lease.abandonReason(), Leased: c.withLedgerIdentity(leased)}
 		}
 	}
 	return c.admitCommandDocument(leased)

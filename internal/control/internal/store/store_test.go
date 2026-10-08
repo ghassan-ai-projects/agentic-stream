@@ -211,3 +211,38 @@ func TestHoldsLeaseJudgesEpochInstanceAndInstantTogether(t *testing.T) {
 		})
 	}
 }
+
+func TestUnreadableLeaseTextIsNeverHeldOrRenewedAndCanBeClaimed(t *testing.T) {
+	t.Parallel()
+	for name, corrupt := range map[string]string{
+		"empty":            "",
+		"offset":           "2999-01-01T00:00:00.000000000+02:00",
+		"space separated":  "2999-01-01 00:00:00.000000000Z",
+		"trimmed fraction": "2999-01-01T00:00:00Z",
+		"digits only":      "9999-99-99T99:99:99.999999999Z",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			persistence, db := openStore(t)
+			tx := persistence.Autocommit()
+			if err := tx.ClaimLease(t.Context(), "e1", "i1", instant, instant.Add(time.Hour)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.ExecContext(t.Context(), "UPDATE runtime_owner SET lease_until = ?", corrupt); err != nil {
+				t.Fatal(err)
+			}
+			if held, err := tx.HoldsLease(t.Context(), "e1", "i1", instant); err != nil || held {
+				t.Fatalf("held=%v err=%v, want not held", held, err)
+			}
+			if rows, err := tx.RenewLease(t.Context(), "e1", "i1", instant, instant.Add(time.Hour)); err != nil || rows != 0 {
+				t.Fatalf("renewed %d rows err=%v, want 0", rows, err)
+			}
+			if err := tx.ClaimLease(t.Context(), "e2", "i2", instant, instant.Add(time.Hour)); err != nil {
+				t.Fatal(err)
+			}
+			if epoch, _, err := tx.RecordedOwner(t.Context()); err != nil || epoch != "e2" {
+				t.Fatalf("owner after claim = %q err=%v, want e2", epoch, err)
+			}
+		})
+	}
+}

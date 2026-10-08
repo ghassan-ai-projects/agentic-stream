@@ -15,9 +15,6 @@ func StartAttempt(ctx context.Context, tx *store.Tx, episodeID, attemptID string
 	return startAttempt(ctx, tx, episodeID, attemptID, "", nil, now)
 }
 
-// StartAttemptOwned allocates an attempt fenced to the current runtime epoch,
-// which owner must confirm. Live composition uses this entry point;
-// StartAttempt serves isolated fixtures that do not model runtime ownership.
 func StartAttemptOwned(ctx context.Context, tx *store.Tx, episodeID, attemptID, ownerEpoch string, owner store.OwnerCheck, now time.Time) (domain.Identity, error) {
 	if ownerEpoch == "" {
 		return domain.Identity{}, fmt.Errorf("runtime owner epoch is required")

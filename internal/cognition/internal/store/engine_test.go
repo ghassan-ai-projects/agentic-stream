@@ -268,6 +268,40 @@ func TestCooldownDelaysNotBefore(t *testing.T) {
 	}
 }
 
+func TestUnreadableStoredTimesRefuseTheNextVersionOfThatSituationOnly(t *testing.T) {
+	for name, corrupt := range map[string]string{
+		"event horizon of the last reasoned version": "UPDATE situation_versions SET event_horizon = 'not a time' WHERE situation_id = 'sit-1'",
+		"watermark of the last reasoned version":     "UPDATE situation_versions SET watermark = 'not a time' WHERE situation_id = 'sit-1'",
+		"evaluation time of the last admission":      "UPDATE trigger_evaluations SET evaluated_at = 'not a time' WHERE situation_id = 'sit-1'",
+	} {
+		t.Run(name, func(t *testing.T) {
+			trigger := highLevelTrigger()
+			trigger.Cooldown = "10m"
+			base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+			clk := sources.NewVirtual(base)
+			f := newTriggerFixture(t, levelSpec(trigger), clk)
+			f.process(levelVersion(1, base, 15.0))
+			if _, err := f.db.ExecContext(f.ctx, corrupt); err != nil {
+				t.Fatal(err)
+			}
+			other := levelVersion(1, base, 15.0)
+			other.SituationID = "sit-2"
+			f.process(other)
+			next := levelVersion(2, base.Add(time.Minute), 20.0)
+			err := f.db.WithTx(f.ctx, func(tx *sql.Tx) error {
+				if err := insertSituationVersion(f.ctx, tx, next, testSpecDigest, "default"); err != nil {
+					return err
+				}
+				return f.eng.Process(f.ctx, tx, next)
+			})
+			if err == nil {
+				t.Fatal("a version whose predecessor has an unreadable time was processed")
+			}
+			f.requireOutcome(other, "admitted", " for the situation whose rows are readable")
+		})
+	}
+}
+
 func TestMaterialDeltaFalseIgnores(t *testing.T) {
 	trigger := highLevelTrigger()
 	trigger.MaterialDelta = "delta.phase_changed"

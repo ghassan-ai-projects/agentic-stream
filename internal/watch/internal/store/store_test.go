@@ -180,3 +180,41 @@ func TestLoadConditionFailsClosedOnUnreadableStoredExpiry(t *testing.T) {
 		return nil
 	})
 }
+
+func TestUnreadableStoredExpiryIsExpiredNotActive(t *testing.T) {
+	t.Parallel()
+	for name, corrupt := range map[string]string{
+		"garbage":         "soon",
+		"offset":          "2999-01-01T00:00:00.000000000+02:00",
+		"space separated": "2999-01-01 00:00:00.000000000Z",
+		"digits only":     "9999-99-99T99:99:99.999999999Z",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s := openStore(t)
+			inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), testNow) })
+			inTx(t, s, func(tx *Tx) error {
+				if _, err := tx.tx.ExecContext(t.Context(), "UPDATE watch_conditions SET expires_at = ? WHERE watch_id = 'w-1'", corrupt); err != nil {
+					return err
+				}
+				if _, found, err := tx.LoadActive(t.Context(), "w-1", testNow); err != nil || found {
+					t.Fatalf("LoadActive found=%v err=%v, want hidden", found, err)
+				}
+				if recorded, err := tx.RecordFire(t.Context(), "w-1", "evt-1", testNow); err != nil || recorded {
+					t.Fatalf("RecordFire recorded=%v err=%v, want refused", recorded, err)
+				}
+				return tx.ExpireDue(t.Context(), testNow)
+			})
+			if candidates, err := s.ActiveForTarget(t.Context(), "motor-1", testNow); err != nil || len(candidates) != 0 {
+				t.Fatalf("ActiveForTarget = %+v err=%v, want none", candidates, err)
+			}
+			var status string
+			inTx(t, s, func(tx *Tx) error {
+				return tx.tx.QueryRowContext(t.Context(), "SELECT status FROM watch_conditions WHERE watch_id = 'w-1'").Scan(&status)
+			})
+			if status != "expired" {
+				t.Fatalf("status = %q, want expired", status)
+			}
+		})
+	}
+}

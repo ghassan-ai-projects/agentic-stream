@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,9 +64,98 @@ func TestAdmitPendingSkipsCostRejectedItems(t *testing.T) {
 	assertNoAdmission(t, scenario{executor: "native", costKill: true}, "coalesced", "a cost-rejected skip")
 }
 
-func TestAdmitPendingLeavesAnExpiredItemUnadmitted(t *testing.T) {
+func TestAdmitPendingExpiresAnItemPastItsExpiry(t *testing.T) {
 	t.Parallel()
-	assertNoAdmission(t, scenario{executor: "native", stale: true}, "pending", "no admission after the item expired")
+	db, admitter := pendingItem(t, scenario{executor: "native", stale: true})
+	if admitted, err := admitter.AdmitPending(t.Context()); err != nil || admitted != 0 {
+		t.Fatalf("AdmitPending = %d, %v; want no admission after the item expired", admitted, err)
+	}
+	if status := itemStatus(t, db); status != "expired" {
+		t.Fatalf("scheduler item status = %q, want expired", status)
+	}
+	if reasons := evaluationReasons(t, db); !strings.Contains(reasons, "scheduler item expired: expired before admission") {
+		t.Fatalf("trigger evaluation reasons = %s", reasons)
+	}
+	if admitted, err := admitter.AdmitPending(t.Context()); err != nil || admitted != 0 {
+		t.Fatalf("second AdmitPending = %d, %v", admitted, err)
+	}
+}
+
+func TestExpiredItemsNoLongerFillGlobalCapacityOrTheNextPoll(t *testing.T) {
+	t.Parallel()
+	db, admitter := pendingItem(t, scenario{executor: "native", stale: true})
+	addPendingItems(t, db, 100, "2026-01-01T00:00:00.000000000Z")
+	if admitted, err := admitter.AdmitPending(t.Context()); err != nil || admitted != 0 {
+		t.Fatalf("AdmitPending = %d, %v", admitted, err)
+	}
+	counts := itemCounts(t, db)
+	if counts["pending"] != 0 || counts["expired"] != 101 {
+		t.Fatalf("item statuses after admission = %v, want 101 expired and none pending", counts)
+	}
+}
+
+func TestAnUnreadableSchedulerTimeExpiresThatItemAndAdmissionContinues(t *testing.T) {
+	t.Parallel()
+	db, admitter := pendingItem(t, scenario{executor: "native"})
+	addPendingItems(t, db, 1, "not a time")
+	if admitted, err := admitter.AdmitPending(t.Context()); err != nil || admitted != 1 {
+		t.Fatalf("AdmitPending = %d, %v; want the readable item admitted", admitted, err)
+	}
+	counts := itemCounts(t, db)
+	if counts["admitted"] != 1 || counts["expired"] != 1 || counts["pending"] != 0 {
+		t.Fatalf("item statuses = %v", counts)
+	}
+	if reasons := evaluationReasons(t, db); !strings.Contains(reasons, "scheduler item expired: unreadable expires_at") {
+		t.Fatalf("trigger evaluation reasons = %s", reasons)
+	}
+}
+
+func addPendingItems(t *testing.T, db *storage.DB, count int, expiresAt string) {
+	t.Helper()
+	const cloneEvaluations = `
+		WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?)
+		INSERT INTO trigger_evaluations (trigger_id, tenant_id, deployment_id, trigger_name, situation_id, situation_version, score, threshold, lane, outcome, reasons_json, policy_sha256, evaluated_at)
+		SELECT 'extra-' || i, tenant_id, deployment_id, trigger_name, situation_id, situation_version, score, threshold, lane, outcome, X'5B5D', policy_sha256, evaluated_at
+		FROM trigger_evaluations, n LIMIT ?`
+	const cloneItems = `
+		WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?)
+		INSERT INTO scheduler_items (scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version, kind, lane, priority, status, dedupe_key, not_before, expires_at, created_at, updated_at)
+		SELECT 'extra-item-' || i, 'extra-' || i, tenant_id, situation_id, situation_version, kind, lane, priority, 'pending', randomblob(32), NULL, ?, created_at, created_at
+		FROM scheduler_items, n LIMIT ?`
+	if _, err := db.ExecContext(t.Context(), cloneEvaluations, count, count); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(t.Context(), cloneItems, count, expiresAt, count); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func itemCounts(t *testing.T, db *storage.DB) map[string]int {
+	t.Helper()
+	counts := map[string]int{}
+	rows, err := db.QueryContext(t.Context(), "SELECT status, COUNT(*) FROM scheduler_items GROUP BY status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			t.Fatal(err)
+		}
+		counts[status] = count
+	}
+	return counts
+}
+
+func evaluationReasons(t *testing.T, db *storage.DB) string {
+	t.Helper()
+	var reasons string
+	if err := db.QueryRowContext(t.Context(), "SELECT group_concat(CAST(reasons_json AS TEXT)) FROM trigger_evaluations").Scan(&reasons); err != nil {
+		t.Fatal(err)
+	}
+	return reasons
 }
 
 func assertNoAdmission(t *testing.T, given scenario, wantStatus, wantOutcome string) {

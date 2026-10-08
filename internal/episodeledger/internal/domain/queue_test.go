@@ -73,3 +73,55 @@ func TestDueItemIsStaleFromItsExpiryInstant(t *testing.T) {
 		}
 	}
 }
+
+func TestPollSeparatesTheAdmittableItemFromThoseThatCanNeverRun(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(minutes int) time.Time { return base.Add(time.Duration(minutes) * time.Minute) }
+	debounced := at(5)
+	queue := PendingQueue{
+		Items: []QueuedItem{
+			{SchedulerItemID: "b-stale", CreatedAt: at(0), ExpiresAt: at(10)},
+			{SchedulerItemID: "a-fresh", CreatedAt: at(1), ExpiresAt: at(60)},
+			{SchedulerItemID: "c-later", CreatedAt: at(30), ExpiresAt: at(60)},
+			{SchedulerItemID: "d-dead-window", CreatedAt: at(0), NotBefore: &debounced, ExpiresAt: at(5)},
+			{SchedulerItemID: "e-dead-window", CreatedAt: at(0), NotBefore: &debounced, ExpiresAt: at(5)},
+		},
+		Unreadable: []UnreadableItem{{SchedulerItemID: "z-bad", Column: "expires_at"}, {SchedulerItemID: "y-bad", Column: "created_at"}},
+	}
+	poll := Poll(queue, at(12))
+	want := []ExpiredItem{
+		{SchedulerItemID: "y-bad", Reason: "unreadable created_at"},
+		{SchedulerItemID: "z-bad", Reason: "unreadable expires_at"},
+		{SchedulerItemID: "b-stale", Reason: ReasonExpired},
+		{SchedulerItemID: "d-dead-window", Reason: ReasonExpired},
+		{SchedulerItemID: "e-dead-window", Reason: ReasonExpired},
+	}
+	if poll.Next != "a-fresh" || !poll.Found || !slices.Equal(poll.Expired, want) {
+		t.Fatalf("poll = %+v, want next a-fresh and expired %v", poll, want)
+	}
+}
+
+func TestPollOfAnEmptyOrFutureQueueFindsNothing(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	future := QueuedItem{SchedulerItemID: "future", CreatedAt: now.Add(time.Minute), ExpiresAt: now.Add(time.Hour)}
+	for name, queue := range map[string]PendingQueue{"empty": {}, "future": {Items: []QueuedItem{future}}} {
+		if poll := Poll(queue, now); poll.Found || poll.Next != "" || len(poll.Expired) != 0 {
+			t.Errorf("%s: poll = %+v", name, poll)
+		}
+	}
+}
+
+func TestPollExpiresAnItemAtItsExpiryInstantAndNotOneNanosecondBefore(t *testing.T) {
+	t.Parallel()
+	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	expiry := created.Add(time.Hour)
+	queue := PendingQueue{Items: []QueuedItem{{SchedulerItemID: "item", CreatedAt: created, ExpiresAt: expiry}}}
+	if poll := Poll(queue, expiry.Add(-time.Nanosecond)); poll.Next != "item" || len(poll.Expired) != 0 {
+		t.Fatalf("one nanosecond before expiry: %+v", poll)
+	}
+	if poll := Poll(queue, expiry); poll.Found || len(poll.Expired) != 1 {
+		t.Fatalf("at expiry: %+v", poll)
+	}
+}

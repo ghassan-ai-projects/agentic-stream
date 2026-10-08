@@ -83,17 +83,30 @@ func TestIntentExpiresAtItsDeadline(t *testing.T) {
 
 func TestApprovalIsCheckedExactlyWhereThePolicyRoutesToApproval(t *testing.T) {
 	t.Parallel()
+	want := map[contractsv1.Route]string{
+		contractsv1.RouteAutomatic: "",
+		contractsv1.RouteApproval:  "approved intent has no approved approval record",
+		contractsv1.RouteDenied:    "risk policy denies the intent",
+	}
 	for _, risk := range contractstest.RiskClasses() {
 		for _, flagged := range []bool{false, true} {
 			records := authorizationRecords(t, string(risk))
 			records.Intent.RequiresApproval = flagged
 			records.Approval = ApprovalRow{}
-			needsApproval := contractsv1.RouteFor(contractsv1.RiskClass(risk), flagged) == contractsv1.RouteApproval
 			err := records.CheckApproval(testNow)
-			if needsApproval != (err != nil) || err != nil && err.Error() != "approved intent has no approved approval record" {
-				t.Fatalf("%s requires_approval=%t: err = %v", risk, flagged, err)
+			if message := want[contractsv1.RouteFor(contractsv1.RiskClass(risk), flagged)]; message == "" && err != nil || message != "" && (err == nil || err.Error() != message) {
+				t.Fatalf("%s requires_approval=%t: err = %v, want %q", risk, flagged, err, message)
 			}
 		}
+	}
+}
+
+func TestCheckApprovalRefusesAnUnrecognisedRiskClass(t *testing.T) {
+	t.Parallel()
+	records := authorizationRecords(t, "R1")
+	records.Intent.Risk = "R9"
+	if err := records.CheckApproval(testNow); err == nil {
+		t.Fatal("an unrecognized risk class passed the approval check")
 	}
 }
 

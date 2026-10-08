@@ -22,7 +22,7 @@ func TestCognitionFacadeOnlyDelegates(t *testing.T) {
 			if function.Recv == nil && slices.Contains([]string{"New", "applicationConfig"}, function.Name.Name) {
 				continue
 			}
-			if !slices.Contains([]string{"Process", "RecordCostRejectionReason", "TriggerEvaluation", "TriggerEvaluations"}, function.Name.Name) || !facadeDelegation(function, "app") {
+			if !slices.Contains([]string{"Process", "RecordCostRejectionReason", "RecordSchedulerExpiryReason", "TriggerEvaluation", "TriggerEvaluations"}, function.Name.Name) || !facadeDelegation(function, "app") {
 				t.Errorf("%s: %s must only delegate through the cognition facade", file.rel, function.Name)
 			}
 		}

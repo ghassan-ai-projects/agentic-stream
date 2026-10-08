@@ -13,28 +13,28 @@ import (
 )
 
 // LoadOutboxLease reads the lease columns of a command outbox row. It reports
-// false when the row is gone.
+// false when the row is gone. An absent or unreadable expiry is the zero time,
+// which no instant precedes: the lease is never live.
 func (tx *Tx) LoadOutboxLease(ctx context.Context, outboxID int64) (domain.OutboxLease, bool, error) {
 	var lease domain.OutboxLease
-	var until string
+	var owner, until sql.NullString
 	err := tx.tx.QueryRowContext(ctx, `
 		SELECT status, lease_owner, lease_until FROM outbox WHERE outbox_id = ?`,
-		outboxID).Scan(&lease.Status, &lease.Owner, &until)
+		outboxID).Scan(&lease.Status, &owner, &until)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.OutboxLease{}, false, nil
 	}
 	if err != nil {
 		return domain.OutboxLease{}, false, fmt.Errorf("verify command lease: %w", err)
 	}
-	if lease.Until, err = kernel.ParseTime(until); err != nil {
-		return domain.OutboxLease{}, false, fmt.Errorf("parse command lease of outbox row %d: %w", outboxID, err)
-	}
+	lease.Owner = owner.String
+	lease.Until, _ = kernel.ParseStoredTime(until.String)
 	return lease, true, nil
 }
 
 // LeaseIsLive reports whether owner holds an unexpired lease on the outbox row.
 func (tx *Tx) LeaseIsLive(ctx context.Context, outboxID int64, owner string, now time.Time) (bool, error) {
-	_, live, err := storage.QueryOptional[int](ctx, tx.tx, `SELECT 1 FROM outbox WHERE outbox_id = ? AND status = 'leased' AND lease_owner = ? AND lease_until > ?`, outboxID, owner, kernel.FormatTime(now))
+	_, live, err := storage.QueryOptional[int](ctx, tx.tx, liveLeaseSQL, outboxID, owner, kernel.FormatTime(now))
 	if err != nil {
 		return false, fmt.Errorf("check dispatch lease: %w", err)
 	}
@@ -43,10 +43,14 @@ func (tx *Tx) LeaseIsLive(ctx context.Context, outboxID int64, owner string, now
 
 // RefreshLease extends a live lease. It reports false when the lease was lost.
 func (tx *Tx) RefreshLease(ctx context.Context, outboxID int64, owner string, until, now time.Time) (bool, error) {
-	result, err := tx.tx.ExecContext(ctx, `UPDATE outbox SET lease_until = ? WHERE outbox_id = ? AND status = 'leased' AND lease_owner = ? AND lease_until > ?`, kernel.FormatTime(until), outboxID, owner, kernel.FormatTime(now))
+	result, err := tx.tx.ExecContext(ctx, refreshLeaseSQL, kernel.FormatTime(until), outboxID, owner, kernel.FormatTime(now))
 	if err != nil {
 		return false, fmt.Errorf("refresh dispatch lease: %w", err)
 	}
 	count, err := result.RowsAffected()
 	return err == nil && count == 1, nil
 }
+
+const liveLeaseSQL = `SELECT 1 FROM outbox WHERE outbox_id = ? AND status = 'leased' AND lease_owner = ? AND lease_until > ? AND stored_time_ok(lease_until)`
+
+const refreshLeaseSQL = `UPDATE outbox SET lease_until = ? WHERE outbox_id = ? AND status = 'leased' AND lease_owner = ? AND lease_until > ? AND stored_time_ok(lease_until)`

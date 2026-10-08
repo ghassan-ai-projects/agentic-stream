@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-// QueuedItem is a pending scheduler item with the times that decide when it
-// may be admitted.
 type QueuedItem struct {
 	SchedulerItemID string
 	CreatedAt       time.Time
@@ -15,18 +13,12 @@ type QueuedItem struct {
 	ExpiresAt       time.Time
 }
 
-// DueItem is a pending scheduler item whose admission window is open: the
-// earliest instant it may be admitted and the instant it stops being useful.
 type DueItem struct {
 	SchedulerItemID string
 	AdmitAt         time.Time
 	ExpiresAt       time.Time
 }
 
-// DueItems selects the queued items that may be admitted by now, in queue
-// order: not-before (none first), then creation, then identity. An item is due
-// when its admission time, the later of creation and not-before, has arrived
-// and still precedes its expiry.
 func DueItems(queued []QueuedItem, now time.Time) []DueItem {
 	ordered := slices.SortedFunc(slices.Values(queued), compareQueueOrder)
 	var due []DueItem
@@ -39,8 +31,68 @@ func DueItems(queued []QueuedItem, now time.Time) []DueItem {
 	return due
 }
 
-// Stale reports whether the item has reached its expiry by now.
 func (d DueItem) Stale(now time.Time) bool { return !d.ExpiresAt.After(now) }
+
+const ReasonExpired = "expired before admission"
+
+type UnreadableItem struct {
+	SchedulerItemID string
+	Column          string
+}
+
+type PendingQueue struct {
+	Items      []QueuedItem
+	Unreadable []UnreadableItem
+}
+
+type ExpiredItem struct {
+	SchedulerItemID string
+	Reason          string
+}
+
+type QueuePoll struct {
+	Next    string
+	Found   bool
+	Expired []ExpiredItem
+}
+
+func Poll(queue PendingQueue, now time.Time) QueuePoll {
+	poll := QueuePoll{Expired: unreadableExpiries(queue.Unreadable)}
+	poll.Expired = append(poll.Expired, staleExpiries(queue.Items, now)...)
+	poll.Next, poll.Found = firstAdmittable(DueItems(queue.Items, now), now)
+	return poll
+}
+
+func unreadableExpiries(unreadable []UnreadableItem) []ExpiredItem {
+	var expired []ExpiredItem
+	for _, item := range slices.SortedFunc(slices.Values(unreadable), compareUnreadable) {
+		expired = append(expired, ExpiredItem{SchedulerItemID: item.SchedulerItemID, Reason: "unreadable " + item.Column})
+	}
+	return expired
+}
+
+func compareUnreadable(a, b UnreadableItem) int {
+	return cmp.Compare(a.SchedulerItemID, b.SchedulerItemID)
+}
+
+func staleExpiries(queued []QueuedItem, now time.Time) []ExpiredItem {
+	var expired []ExpiredItem
+	for _, item := range slices.SortedFunc(slices.Values(queued), compareQueueOrder) {
+		if !item.ExpiresAt.After(now) {
+			expired = append(expired, ExpiredItem{SchedulerItemID: item.SchedulerItemID, Reason: ReasonExpired})
+		}
+	}
+	return expired
+}
+
+func firstAdmittable(due []DueItem, now time.Time) (string, bool) {
+	for _, item := range due {
+		if !item.Stale(now) {
+			return item.SchedulerItemID, true
+		}
+	}
+	return "", false
+}
 
 func (q QueuedItem) admitAt() time.Time {
 	if q.NotBefore != nil && q.NotBefore.After(q.CreatedAt) {
@@ -67,4 +119,12 @@ func compareNotBefore(a, b *time.Time) int {
 		return 1
 	}
 	return a.Compare(*b)
+}
+
+func (q *PendingQueue) Add(item QueuedItem, unreadableColumn string) {
+	if unreadableColumn != "" {
+		q.Unreadable = append(q.Unreadable, UnreadableItem{SchedulerItemID: item.SchedulerItemID, Column: unreadableColumn})
+		return
+	}
+	q.Items = append(q.Items, item)
 }

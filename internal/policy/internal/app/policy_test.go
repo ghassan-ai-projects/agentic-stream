@@ -97,6 +97,25 @@ func TestGatewayRiskFreshnessAndExpiry(t *testing.T) {
 	}
 }
 
+func TestUnreadableIntentExpiryDeniesThatIntentAndLeavesTheQueue(t *testing.T) {
+	for name, corrupt := range map[string]string{"garbage": "not a time", "empty": "", "space separated": "2099-01-01 00:00:00"} {
+		t.Run(name, func(t *testing.T) {
+			db, intentID := openPolicyFixture(t, "R1", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
+			defer func() { _ = db.Close() }()
+			if _, err := db.ExecContext(t.Context(), "UPDATE intents SET expires_at = ? WHERE intent_id = ?", corrupt, intentID); err != nil {
+				t.Fatal(err)
+			}
+			result := evaluateIntent(t, db, newTestService(t), intentID, time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC))
+			if result.Result != "denied" || result.Reason != "intent_expiry_unreadable" {
+				t.Fatalf("result = %+v, want denied/intent_expiry_unreadable", result)
+			}
+			if next, found, err := policy.NextPendingIntent(t.Context(), db.DB, "tenant"); err != nil || found {
+				t.Fatalf("pending intent %q found=%v err=%v, want the queue to move on", next, found, err)
+			}
+		})
+	}
+}
+
 func TestGatewayResolvesApprovalBeforeCommanding(t *testing.T) {
 	ctx := context.Background()
 	db, intentID := openPolicyFixture(t, "R2", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))

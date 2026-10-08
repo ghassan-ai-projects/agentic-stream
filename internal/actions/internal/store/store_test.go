@@ -257,25 +257,56 @@ func TestAuthorizationRecordsCarryTheCatalogApprovalRequirement(t *testing.T) {
 
 func TestAuthorizationRecordsBindOneApprovedApprovalWhenDecisionsTie(t *testing.T) {
 	t.Parallel()
-	db, commandID := openActionFixture(t)
-	for _, approval := range []struct{ id, expiresAt string }{{"approval-b", "2031-01-01T00:00:00Z"}, {"approval-a", "2032-01-01T00:00:00Z"}} {
-		if _, err := db.ExecContext(t.Context(), `INSERT INTO approvals (approval_id, intent_id, status, requested_at, expires_at, decided_at, approval_json)
+	smaller := struct{ id, expiresAt string }{"approval-a", "2032-01-01T00:00:00Z"}
+	larger := struct{ id, expiresAt string }{"approval-b", "2031-01-01T00:00:00Z"}
+	orders := map[string][]struct{ id, expiresAt string }{"larger inserted last": {smaller, larger}, "larger inserted first": {larger, smaller}}
+	for name, insertion := range orders {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			db, commandID := openActionFixture(t)
+			for _, approval := range insertion {
+				if _, err := db.ExecContext(t.Context(), `INSERT INTO approvals (approval_id, intent_id, status, requested_at, expires_at, decided_at, approval_json)
 			VALUES (?, 'int-action', 'approved', '2030-01-01T00:00:00Z', ?, '2030-01-02T00:00:00Z', X'7B7D')`, approval.id, approval.expiresAt); err != nil {
-			t.Fatal(err)
-		}
+					t.Fatal(err)
+				}
+			}
+			inTx(t, db, func(tx *Tx) error { return tx.MarkCommandDispatching(t.Context(), commandID, time.Now().UTC()) })
+			inTx(t, db, func(tx *Tx) error {
+				records, err := tx.LoadAuthorizationRecords(t.Context(), commandID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := domain.ApprovalRow{ID: "approval-b", ExpiresAt: time.Date(2031, 1, 1, 0, 0, 0, 0, time.UTC), Present: true}
+				if records.Approval != want {
+					t.Fatalf("approval = %+v, want %+v", records.Approval, want)
+				}
+				return nil
+			})
+		})
 	}
-	inTx(t, db, func(tx *Tx) error { return tx.MarkCommandDispatching(t.Context(), commandID, time.Now().UTC()) })
-	inTx(t, db, func(tx *Tx) error {
-		records, err := tx.LoadAuthorizationRecords(t.Context(), commandID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		want := domain.ApprovalRow{ID: "approval-b", ExpiresAt: time.Date(2031, 1, 1, 0, 0, 0, 0, time.UTC), Present: true}
-		if records.Approval != want {
-			t.Fatalf("approval = %+v, want %+v", records.Approval, want)
-		}
-		return nil
-	})
+}
+
+func TestAuthorizationRecordsRefuseUnreadableExpiryText(t *testing.T) {
+	t.Parallel()
+	for name, corrupt := range map[string]string{
+		"intent expiry":   `UPDATE intents SET expires_at = 'not a time'`,
+		"approval expiry": `INSERT INTO approvals (approval_id, intent_id, status, requested_at, expires_at, decided_at, approval_json) VALUES ('approval-x', 'int-action', 'approved', '2030-01-01T00:00:00Z', 'not a time', '2030-01-02T00:00:00Z', X'7B7D')`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			db, commandID := openActionFixture(t)
+			if _, err := db.ExecContext(t.Context(), corrupt); err != nil {
+				t.Fatal(err)
+			}
+			inTx(t, db, func(tx *Tx) error { return tx.MarkCommandDispatching(t.Context(), commandID, time.Now().UTC()) })
+			inTx(t, db, func(tx *Tx) error {
+				if _, err := tx.LoadAuthorizationRecords(t.Context(), commandID); err == nil {
+					t.Fatal("authorization records loaded with an unreadable expiry")
+				}
+				return nil
+			})
+		})
+	}
 }
 
 func TestOutcomesAppendWithIncreasingOrdinals(t *testing.T) {
@@ -468,16 +499,45 @@ func TestAuthorizationEpisodeFollowsTheLedgerDecisionPredicate(t *testing.T) {
 	}
 }
 
-func TestNextCandidateFailsClosedOnUnreadableLeaseExpiry(t *testing.T) {
+var unreadableLeaseTexts = map[string]string{
+	"low digit":       "1",
+	"empty":           "",
+	"space separated": "2999-01-01 00:00:00.000000000Z",
+	"offset":          "2999-01-01T00:00:00.000000000+02:00",
+	"trimmed":         "2999-01-01T00:00:00Z",
+	"digits only":     "9999-99-99T99:99:99.999999999Z",
+}
+
+func TestUnreadableLeaseExpiryIsExpiredAndNeverBlocksTheQueue(t *testing.T) {
 	t.Parallel()
-	db, _ := openActionFixture(t)
-	if _, err := db.ExecContext(t.Context(), "UPDATE outbox SET status = 'leased', lease_owner = 'w', lease_until = '1'"); err != nil {
-		t.Fatal(err)
+	for name, corrupt := range unreadableLeaseTexts {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			db, _ := openActionFixture(t)
+			if _, err := db.ExecContext(t.Context(), "UPDATE outbox SET status = 'leased', lease_owner = 'w', lease_until = ?", corrupt); err != nil {
+				t.Fatal(err)
+			}
+			now := time.Now().UTC()
+			inTx(t, db, func(tx *Tx) error {
+				candidate, found, err := tx.NextCandidate(t.Context(), now)
+				if err != nil || !found || !candidate.Lease.Unreadable || !candidate.Lease.Expired(now) {
+					t.Fatalf("candidate=%+v found=%v err=%v, want the row selected with an unreadable, expired lease", candidate.Lease, found, err)
+				}
+				if live, err := tx.LeaseIsLive(t.Context(), candidate.OutboxID, "w", now); err != nil || live {
+					t.Fatalf("live=%v err=%v, want never live", live, err)
+				}
+				if ok, err := tx.RefreshLease(t.Context(), candidate.OutboxID, "w", now.Add(time.Hour), now); err != nil || ok {
+					t.Fatalf("refresh ok=%v err=%v, want refused", ok, err)
+				}
+				lease, found, err := tx.LoadOutboxLease(t.Context(), candidate.OutboxID)
+				if held, live := lease.LeaseStanding("w", now); err != nil || !found || !held || live {
+					t.Fatalf("standing held=%v live=%v found=%v err=%v, want held and not live", held, live, found, err)
+				}
+				if ok, err := tx.AcquireLease(t.Context(), candidate.OutboxID, "next", now.Add(time.Minute), now); err != nil || !ok {
+					t.Fatalf("acquire over unreadable lease ok=%v err=%v", ok, err)
+				}
+				return nil
+			})
+		})
 	}
-	inTx(t, db, func(tx *Tx) error {
-		if _, found, err := tx.NextCandidate(t.Context(), time.Now()); err == nil || found {
-			t.Fatalf("unreadable lease expiry found=%v err=%v, want an error", found, err)
-		}
-		return nil
-	})
 }

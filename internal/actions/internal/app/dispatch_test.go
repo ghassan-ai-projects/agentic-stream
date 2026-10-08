@@ -462,6 +462,37 @@ func TestDispatcherReclaimsExpiredLease(t *testing.T) {
 	}
 }
 
+func TestDispatcherAbandonsUnreadableLeaseAsUnknownOutcomeWithoutError(t *testing.T) {
+	for name, corrupt := range map[string]string{
+		"offset in the far future": "2999-01-01T00:00:00.000000000+02:00",
+		"impossible digits":        "9999-99-99T99:99:99.999999999Z",
+		"empty":                    "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			db, commandID := openActionFixture(t)
+			t.Cleanup(func() { _ = db.Close() })
+			if _, err := db.ExecContext(t.Context(), `UPDATE commands SET status = 'dispatching' WHERE command_id = ?`, commandID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.ExecContext(t.Context(), `UPDATE outbox SET status = 'leased', lease_owner = 'crashed', lease_until = ?, attempt_count = 1 WHERE aggregate_id = ?`, corrupt, commandID); err != nil {
+				t.Fatal(err)
+			}
+			effector := &recordingEffector{}
+			processed, err := newService(t, db, effector, "test-dispatcher", time.Minute).DispatchOnce(t.Context())
+			if err != nil || processed || effector.calls != 0 {
+				t.Fatalf("processed=%v err=%v calls=%d, want the row abandoned without an error or a dispatch", processed, err, effector.calls)
+			}
+			var commandStatus, outcomeStatus string
+			if err := db.QueryRowContext(t.Context(), `SELECT c.status, r.status FROM commands c JOIN outcomes r ON r.command_id = c.command_id WHERE c.command_id = ?`, commandID).Scan(&commandStatus, &outcomeStatus); err != nil {
+				t.Fatal(err)
+			}
+			if commandStatus != "reconciling" || outcomeStatus != "unknown" {
+				t.Fatalf("command=%q outcome=%q, want reconciling and unknown", commandStatus, outcomeStatus)
+			}
+		})
+	}
+}
+
 func openActionFixture(t *testing.T) (*storage.DB, string) {
 	t.Helper()
 	ctx := context.Background()

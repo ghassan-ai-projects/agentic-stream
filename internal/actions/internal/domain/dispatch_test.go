@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/hex"
 	"errors"
 	"testing"
 	"time"
@@ -115,6 +116,9 @@ func TestOutcomeDigestBindsSchemaValidDocuments(t *testing.T) {
 	digest, err := OutcomeDigest(document)
 	if err != nil || len(digest) != 32 {
 		t.Fatalf("digest = %x, %v", digest, err)
+	}
+	if got := hex.EncodeToString(digest); got != "df440c12b477548adf8979b52d74acb466da3546d2e1c67668b44e1f841cc300" {
+		t.Fatalf("outcome digest = %s: observed_at is the nine-digit UTC text, so a change here moves every stored outcome_sha256", got)
 	}
 	if _, err := OutcomeDigest(Document{"outcome_id": "out-1"}); err == nil {
 		t.Fatal("schema-invalid outcome produced a digest")

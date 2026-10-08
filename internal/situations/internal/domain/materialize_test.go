@@ -62,3 +62,34 @@ func TestFeatureEvidencePreservesTraceContinuationAndMetadataOwnership(t *testin
 		t.Fatalf("fresh evidence state=%+v changed=%v", sit, changed)
 	}
 }
+
+func TestMaterializationPinsTheDigestsThatEmbedInstants(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	engine := &Engine{spec: &spec.CompiledSpec{Digest: "sha256:" + strings.Repeat("0", 64)}, tenantID: "tenant"}
+	sit := &Situation{
+		SituationID: "s1", TenantID: "tenant", Type: "test", Version: 2, Phase: "watch", PreviousPhase: "candidate",
+		EntityType: "motor", EntityID: "m1", Completeness: "on_time", Confidence: 1,
+		LatestEventTime: now, Facts: map[string]any{"level": 3.0, "level_event_time": now},
+		Evidence: map[string]struct{}{"evt-a": {}}, ConditionStart: map[string]time.Time{"watch": now},
+	}
+	version, err := engine.materialize(sit, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"event_horizon":"2026-01-01T00:00:00.000000000Z"`, `"watermark":"2026-01-01T00:00:00.000000000Z"`} {
+		if !strings.Contains(string(version.SnapshotJSON), want) {
+			t.Errorf("snapshot lacks %s: %s", want, version.SnapshotJSON)
+		}
+	}
+	for _, want := range []string{`"condition_start":{"watch":"2026-01-01T00:00:00.000000000Z"}`, `"level_event_time":"2026-01-01T00:00:00.000000000Z"`} {
+		if !strings.Contains(string(version.StateJSON), want) {
+			t.Errorf("state lacks %s: %s", want, version.StateJSON)
+		}
+	}
+	const snapshotDigest = "sha256:5743d9e535744ff865f0d39f85267c2e3dceabd5668bae2a153c52870a54d124"
+	const stateDigest = "sha256:cf9e74c5ef7ff610c4a935f180588a2dbcb526a5cb2567ff5828052e528f326f"
+	if version.SnapshotSHA256 != snapshotDigest || version.StateSHA256 != stateDigest {
+		t.Fatalf("snapshot digest %s, state digest %s: a change here moves every stored snapshot_sha256 and state_sha256", version.SnapshotSHA256, version.StateSHA256)
+	}
+}

@@ -43,8 +43,6 @@ func episodeFence(ctx context.Context, tx *store.Tx, episodeID string) (domain.E
 	return fence, nil
 }
 
-// requireOwnerLease refuses an identity whose owner epoch no longer owns the
-// runtime. An identity without an owner epoch is not fenced.
 func requireOwnerLease(ctx context.Context, tx *store.Tx, owner store.OwnerCheck, ownerEpoch string) error {
 	if ownerEpoch == "" {
 		return nil

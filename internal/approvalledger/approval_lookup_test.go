@@ -28,7 +28,8 @@ func TestLatestApprovedOfIntentPicksOneRowAndBreaksDecidedAtTiesByLargerID(t *te
 		{"no approval", nil, nil, "", false},
 		{"pending is not approved", []string{"a"}, nil, "", false},
 		{"later decision wins", []string{"a", "b"}, map[string]string{"a": "t2", "b": "t1"}, "a", true},
-		{"tie resolves to the larger id regardless of insertion order", []string{"z", "a"}, map[string]string{"z": "t1", "a": "t1"}, "z", true},
+		{"tie resolves to the larger id when it was inserted first", []string{"z", "a"}, map[string]string{"z": "t1", "a": "t1"}, "z", true},
+		{"tie resolves to the larger id when it was inserted last", []string{"a", "z"}, map[string]string{"z": "t1", "a": "t1"}, "z", true},
 	}
 	for _, step := range steps {
 		t.Run(step.name, func(t *testing.T) {

@@ -39,15 +39,24 @@ func CoalesceSkippedItem(ctx context.Context, tx *sql.Tx, schedulerItemID string
 // DueSchedulerItems lists the tenant's pending scheduler items whose admission
 // window is open at now, in queue order: not_before, then creation, then
 // identity. An item is due when the later of its creation and not_before has
-// arrived and still precedes its expiry.
+// arrived and still precedes its expiry. An item whose times are unreadable is
+// left out.
 func DueSchedulerItems(ctx context.Context, tx *sql.Tx, tenantID string, now time.Time) ([]DueItem, error) {
 	return app.DueSchedulerItems(ctx, store.Join(tx), tenantID, now)
 }
 
-// NextPendingSchedulerItem returns the first due scheduler item that has not
-// reached its expiry at now.
-func NextPendingSchedulerItem(ctx context.Context, db *sql.DB, tenantID string, now time.Time) (string, bool, error) {
-	return app.NextPendingSchedulerItem(ctx, store.Reader(db), tenantID, now)
+// ExpireSchedulerItem removes a pending item that can no longer be admitted,
+// because it passed its expiry or its times are unreadable.
+func ExpireSchedulerItem(ctx context.Context, tx *sql.Tx, schedulerItemID string, now time.Time) error {
+	return app.ExpireSchedulerItem(ctx, store.Join(tx), schedulerItemID, now)
+}
+
+// PollSchedulerQueue reads the tenant's pending queue at now: the next item
+// that may be admitted and the items that can never be admitted, each with
+// the reason. An item whose times are unreadable is reported as expired and
+// never blocks the others.
+func PollSchedulerQueue(ctx context.Context, db *sql.DB, tenantID string, now time.Time) (QueuePoll, error) {
+	return app.PollSchedulerQueue(ctx, store.Reader(db), tenantID, now)
 }
 
 // Scheduling reads what became of one trigger evaluation: its scheduler

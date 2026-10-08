@@ -44,13 +44,15 @@ func scanPolicyIntent(query *sql.Row) (domain.IntentRecord, error) {
 	var expiresAt string
 	err := query.Scan(policyIntentDests(&row, &traceparent, &tracestate, &lifecycle, &expiresAt)...)
 	if err != nil {
-		return row, err //nolint:wrapcheck // loadIntent preserves the database error text.
+		return row, fmt.Errorf("scan intent row: %w", err)
 	}
 	row.EpisodeProducedDecision = lifecycle.ProducedDecision()
 	row.Traceparent = traceparent.String
 	row.Tracestate = tracestate.String
-	row.ExpiresAt, err = kernel.ParseTime(expiresAt)
-	return row, err //nolint:wrapcheck // loadIntent wraps the parse failure with the intent ID.
+	if row.ExpiresAt, err = kernel.ParseTime(expiresAt); err != nil {
+		row.ExpiryUnreadable = true
+	}
+	return row, nil
 }
 
 func policyIntentDests(row *domain.IntentRecord, traceparent, tracestate *sql.NullString, lifecycle *episodeledger.LifecycleStatus, expiresAt *string) []any {

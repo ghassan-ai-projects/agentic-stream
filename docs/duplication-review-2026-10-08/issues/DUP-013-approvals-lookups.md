@@ -49,4 +49,8 @@ Changed:
 
 Decisions: the tie-break is the larger `approval_id` (deterministic, independent of insertion order). Behaviour change is limited to the previously undefined tie case.
 
+Review fix: the first tie tests inserted the larger id first, so SQLite's first-row-wins order satisfied them even without `approval_id DESC`. Both tests now run each insertion order (ledger: `tie resolves to the larger id when it was inserted last`; actions: subtests `larger inserted last` and `larger inserted first`), and removing `, approval_id DESC` from `latestApprovedOfIntentSQL` fails both.
+
+Wire text: approval `expires_at` stored by `RequestApproval` and carried in the notification and the Ed25519-signed assertion is the fixed-width `kernel.FormatTime` form (nine fractional digits). On `main` it was RFC3339Nano with trailing zeros trimmed. Pending approvals across the upgrade fail closed (the relay's signature covers the old bytes, the rebuilt bytes differ); this is accepted under the no-backward-compatibility decision.
+
 Pinning tests: `TestLatestApprovedOfIntentPicksOneRowAndBreaksDecidedAtTiesByLargerID`, `TestPendingLookupsReadTheUnresolvedApprovalOnly` (approvalledger), `TestAuthorizationRecordsBindOneApprovedApprovalWhenDecisionsTie` (actions store). Existing policy tests (`TestApprovalLedgerAndReadProjections` etc.) pass unchanged.

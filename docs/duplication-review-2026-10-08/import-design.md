@@ -94,7 +94,7 @@ Files changed:
 - cmd/agentic-stream/quarantine_command.go, experiment_e2e_test.go, experiment_live_feed_test.go: `kernel.FormatTime`/`ParseTime`.
 - internal/notify/internal/store/{append,audit,poison,retention}.go: `kernel.FormatTime` at the SQL boundary.
 - internal/evidence/internal/store/writes.go: `kernel.FormatTime`.
-- internal/evidence/internal/wire/{token,fingerprint}.go: token claims and the request fingerprint keep the fixed-width instant text (same bytes, digests unchanged) through `kernel.FormatTime`/`ParseTime`; `CallFingerprint` hashes with `crypto/sha256` instead of `canonicaljson.Sum`.
+- internal/evidence/internal/wire/{token,fingerprint}.go: token claims and the request fingerprint keep the fixed-width instant text (nine-digit instant text; `main` trimmed trailing zeros, so the bytes and digests moved, see "What moved" below) through `kernel.FormatTime`/`ParseTime`; `CallFingerprint` hashes with `crypto/sha256` instead of `canonicaljson.Sum`.
 - internal/evidence/internal/domain/{contracts,reservation}.go: `canonicaljson.Sum`/`HasSumLength` replaced by stdlib `sha256` (gate failure for the evidence domain).
 - internal/authority/internal/store/{bindings,claims,events,reconciliation,safety}.go: `kernel.FormatTime`/`ParseTime`; the domain already carried `time.Time`.
 - internal/control/internal/store/{owner,epoch}.go and internal/control/internal/app/{owner,epoch}.go: lease and epoch-state store methods now take `time.Time` (`ClaimLease`, `RenewLease`, `ReleaseLease`, `HoldsLease`, `RecordEpochState`, `SupersedeEpoch`) and encode inside the store; the app no longer formats. Tests: control/internal/app/app_test.go, control/internal/store/store_test.go, control/cost_reservation_test.go.
@@ -109,9 +109,11 @@ only (above); the control cost-ledger facade (`CostLedger.Reserve/Settle`,
 `now string`, because its callers live in other modules; the epoch kill path
 formats the text it hands to `Settle` with `kernel.FormatTime`.
 
-Goldens regenerated: none. Token claims, fingerprint and CloudEvent digests are
-byte-identical (token claim JSON is pinned by `TestTokenEncodingAndIntegrity`,
-the envelope time by `TestCloudEventEnvelopeDigestBindsMetadataAndData` in contractsv1).
+Goldens edited: `evidence/internal/wire/token_test.go` (claim JSON), `wire/records_test.go`
+(request fingerprint document) and `evidence/internal/transport/server_test.go` (result rows)
+moved to the nine-digit instant text. The CloudEvent digest is unchanged (it keeps its own
+trimmed wire form, pinned by `TestCloudEventEnvelopeDigestBindsMetadataAndData` in contractsv1).
+The token claim bytes and `request_sha256` are NOT unchanged: see "What moved" below.
 
 Edges needed: none. Open item for the gate owner:
 `TestTimestampTextHasOneOwner` (architecture_timetext_test.go) still names
@@ -144,14 +146,26 @@ Files changed:
 - policy: domain `records.go`, `workflow.go`, `routing.go`, `commands.go`, `approval_notice.go`, `definition.go`; app `evaluate.go`, `approval_presentation.go`, `principals.go`; store `approval_lifecycle.go`, `approval_lookup.go`, `approval_reads.go`, `command_writes.go`, `evaluations.go`, `intent_reads.go`, `principal_writes.go`; tests `routing_test.go`, `transaction_test.go`, `reads_test.go`, store `fixture_test.go`, app `policy_test.go`, `approval_order_test.go`
 - actions: domain `dispatch.go`, `candidate.go`, `authorization.go`; store `authorization.go`, `candidates.go`, `leases.go`, `outcomes.go`, `reconciliation.go`; tests under domain (`candidate_test.go`, `dispatch_test.go`, `authorization_test.go`, `fixture_test.go`), store (`store_test.go` new fail-closed test, `fixture_test.go`), app (`dispatch_test.go`, `service_test.go`)
 
-Goldens regenerated: none. Digest preimages keep the fixed-width text because they
-use `kernel.FormatTime` as before (command `created_at`, outcome `observed_at`,
-approval notification and assertion `expires_at`).
+Goldens edited: `policy/internal/domain/commands_test.go` (command `created_at`,
+notification golden `want`). Digest preimages did NOT keep their text: command
+`created_at`, outcome `observed_at` and approval `expires_at` (notification and signed
+assertion) were RFC3339Nano with trailing zeros trimmed on `main` and are now fixed-width,
+so the command digest, outcome digest and assertion signing bytes moved. Pending approvals
+across the upgrade fail closed (accepted). See "What moved" below.
 
 Behaviour changes on purpose:
-- An unreadable stored expiry or lease time now fails the read with a wrapped error
-  instead of being treated as expired. Tests that used an unparseable string now use
-  the zero `time.Time`, which the rules treat as expired.
+- An unreadable stored expiry or lease time is handled by the owner-approved rule "a
+  bad row refuses itself and never its neighbours". Authorization of a single item
+  (approval resolution, command authorization, watch load) fails the read with a wrapped
+  error. A row selected from a queue is isolated with an audit reason and the queue keeps
+  moving: a pending policy intent with an unreadable expiry is denied with reason
+  `intent_expiry_unreadable`; an outbox row with an unreadable lease is abandoned as an
+  unknown outcome. A lease or expiry decided by a SQL text comparison (`runtime_owner`,
+  `outbox`, `watch_conditions`, `evidence_call_ledger`) pairs the comparison with
+  `kernel.ReadableTimeSQL`, so text that is not exactly what `kernel.FormatTime` writes is
+  expired, never live (`kernel.ParseStoredTime` applies the same strictness in Go).
+  Tests that used an unparseable string now use the zero `time.Time`, which the rules treat
+  as expired.
 - Decision/intent `expires_at` parse errors keep the text `parse time: ...`.
 
 Edges needed: none. The gate failures that remain in `go test -count=1 .` name other
@@ -159,14 +173,14 @@ modules (engine, episodeledger, episodes, eventlog, ingress, replay, spec, kerne
 
 ## Group 2 result
 
-Scope: engine, situations, eventlog, ingress, cognition, episodeledger, episodes, spec, replay. The codec is `internal/kernel` (`kernel.FormatTime` / `kernel.ParseTime`, same fixed-width layout as the old `sources.FormatTime`), per the owner's design change. No `sources.FormatTime/ParseTime/Expired/LiveDeadline/FormatWireTime` or `storage.FormatTime/ParseTime` user is left in these modules (grep is empty). No allowedImports or packageLayers edit was made. Layout is unchanged, so no digest, id or golden moved; no golden was regenerated.
+Scope: engine, situations, eventlog, ingress, cognition, episodeledger, episodes, spec, replay. The codec is `internal/kernel` (`kernel.FormatTime` / `kernel.ParseTime`, same fixed-width layout as the old `sources.FormatTime`), per the owner's design change. No `sources.FormatTime/ParseTime/Expired/LiveDeadline/FormatWireTime` or `storage.FormatTime/ParseTime` user is left in these modules (grep is empty). No allowedImports or packageLayers edit was made. The stored column layout of authority, interlock and control is unchanged, but digests, ids and preimages that embed an instant are not: see "What moved" below.
 
 Principle applied: rules and records carry `time.Time`; the store parses once at the SQL boundary and fails closed with a wrapped error; stores and use cases that write a timestamp take a `time.Time` and the store formats it. `kernel` text is used only where a package must encode an instant: SQL columns, digest preimages (engine heartbeat timer ids, situations snapshot document, rejection ids, trigger evaluation event id) and document decoding (engine fact times, ingress simulator trace records).
 
 Domain record types changed:
 - engine: `Checkpoint.Watermark` is `time.Time` (zero before the first record); `StoredSituation.FirstEventTime/LatestEventTime/UpdatedAt` are `time.Time` (the domain `parseTimes` is gone; `WatermarkFor(previous)` and `TimerWatermark(checkpoint, now)` take instants and `TimerWatermark` no longer returns an error).
 - eventlog: `ScannedEvent` carries parsed `EventTime`, `IngestedAt`, `ObservedAt *time.Time`; `StoredTimes`, `DecodedEvent` and `ScannedEvent.Decode` are deleted; the store parses (errors keep `parse event_time` / `parse ingested_at` / `parse observed_at`). Quarantine operations (`QuarantineEnvelope`, `QuarantineRaw`, `ReleaseQuarantine`, `RedriveQuarantine`, `Quarantine`) and `ValidQuarantine/ValidRelease` take `time.Time`.
-- episodeledger: `Rejection.At` is `time.Time`, `RejectionID` takes an instant (hashes `kernel.FormatTime`, so ids are unchanged); store and facade methods that took `now`/`startedAt`/`endedAt` text now take `time.Time` (`InsertEpisode`, `InsertAttempt`, `FinishAttempt`, `OwnerHoldsLease`, `Abandon*`, `Conclude`, `Supersede*`, `UpsertSchedulerItem`, `CoalesceSchedulerItems`, `SettleEpisodeCost`, the queue reads).
+- episodeledger: `Rejection.At` is `time.Time`, `RejectionID` takes an instant and hashes `kernel.FormatTime` (always nine fractional digits). Rejection ids therefore CHANGED for every instant whose nanoseconds have trailing zeros (every whole-second virtual-clock time), because main hashed the trimmed RFC 3339 text; `TestRejectionIDIsPinnedForWholeSecondAndFractionalInstants` pins both forms; store and facade methods that took `now`/`startedAt`/`endedAt` text now take `time.Time` (`InsertEpisode`, `InsertAttempt`, `FinishAttempt`, `OwnerHoldsLease`, `Abandon*`, `Conclude`, `Supersede*`, `UpsertSchedulerItem`, `CoalesceSchedulerItems`, `SettleEpisodeCost`, the queue reads).
 - replay: `Comparison.CreatedAt` is `time.Time`.
 - episodes: runner and store `now` parameters and `DecisionInsert.Now`/`ValidatedIntentInsert.Now` are `time.Time`; `Runner.runtimeNow` is deleted.
 - cognition: `CoalesceTriggerWork`, `InsertItem`, `WithdrawSuperseded` take `time.Time`.
@@ -176,3 +190,7 @@ Cross-module edges I needed (not in my modules, no gate change): the cost ledger
 Tests: new `TestCorruptStoredTimesRefuseTheReadWithTheirColumn` and `TestCorruptCheckpointWatermarkRefusesTheRead` (engine store), `TestReadRecordsRefusesCorruptStoredTimesInColumnOrder` (eventlog store) replace the deleted domain parse tests; `TestCoalesceReturnsExactlyTheItemsItFlipped` now uses a distinct coalesce instant.
 
 Still failing at the repo root and naming my modules, but not about time: `internal/engine/internal/store`, `internal/episodeledger/internal/store`, `internal/eventlog/internal/domain` and `internal/replay/internal/store` import `internal/canonicaljson` for `Sum` / `EncodeDigest` (root cause 3, the hashing rework: engine `operator_state.go` and `situation_reads.go`, episodeledger `episode_reads.go`, eventlog domain `quarantine.go` and `event.go`, replay store `store.go` and `recorded_ledger.go`). I left these for the hashing group because they are a separate concern. `TestTimestampTextHasOneOwner` also still fails (it names `internal/kernel` and `contractsv1`, not my modules) because it still points at `sources`.
+
+## What moved (review R3 F1)
+
+On `main` every instant embedded in an id or digest preimage was formatted with `time.RFC3339Nano`, which trims trailing zeros (`2026-08-12T12:00:00Z`); it is now `kernel.FormatTime`, always nine fractional digits (`2026-08-12T12:00:00.000000000Z`). The text, and therefore the hash, differs for every instant whose nanoseconds end in zero (every whole-second virtual-clock time). Affected: the engine heartbeat timer id, its payload `due_at` and `timer_fired_at`; the episodeledger rejection id; the situations snapshot `event_horizon`/`watermark`, state facts and `condition_start`, so `snapshot_sha256`, `state_sha256` and every downstream `snapshot_digest`; the actions outcome `observed_at`, so the outcome digest; the policy command `created_at` (command digest), the approval notification `expires_at` and the approval assertion signing bytes; the cognition trigger-evaluated notification event id; the evidence `request_sha256` and token claims; and eventlog `event_time`, stored in UTC where `main` kept the producer's offset. No golden or pin on `main` covered the snapshot digest, timer id, rejection id, outcome digest or event id; the pins that did exist (token claims, request fingerprint, command `created_at`, notification golden, evidence server rows) were edited together with the change. The owner accepted the break under the no-backward-compatibility decision (2026-10-09): rows written by `main` are not migrated, replay of a `main`-written database with this binary does not reproduce the stored digests of these kinds, a heartbeat timer armed by `main` is re-armed under a new id, a pending approval signed over the trimmed `expires_at` fails closed, and an approval relay that re-renders `expires_at` instead of echoing it will fail signature verification. `docs/contracts/notification-goldens-v1.json` still shows the trimmed form and is not compared by any test. Pins added with literal values: `TestMaterializationPinsTheDigestsThatEmbedInstants`, `TestHeartbeatTimerPinsItsIdentityAndDueInstantText`, `TestTimerFiringPinsItsFiredInstantText`, `TestOutcomeDigestBindsSchemaValidDocuments` (outcome digest), `TestCommandDigestPinsTheCreatedAtText`, `TestApprovalAssertionSigningBytesPinTheExpiryText`, `TestApprovalNotificationKeepsItsSealedJSONShape`, `TestEvaluationEventPinsItsIdentityAndInstantText`, `TestTokenEncodingAndIntegrity`, `TestEvidenceFingerprintEncodingIsStable`, `TestRejectionIDIsPinnedForWholeSecondAndFractionalInstants`.

@@ -72,6 +72,26 @@ func TestAdmitRestoresLedgerIdentityOnAbandonedLease(t *testing.T) {
 	}
 }
 
+func TestAdmitNamesWhyAnInFlightLeaseWasAbandoned(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		lease Lease
+		want  string
+	}{
+		"expired":    {Lease{Owner: "w", Until: testNow.Add(-time.Minute), HasOwner: true, HasUntil: true}, AbandonLeaseExpired},
+		"unreadable": {Lease{Owner: "w", HasOwner: true, Unreadable: true}, AbandonLeaseUnreadable},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			candidate := pendingCandidate(t)
+			candidate.OutboxStatus, candidate.Lease = OutboxLeased, tc.lease
+			if got := candidate.Admit(testNow); got.Step != AbandonExpiredLease || got.AbandonReason != tc.want {
+				t.Fatalf("admission = %+v, want abandon with %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestLeaseExpiredTreatsZeroAndAbsentAsExpired(t *testing.T) {
 	t.Parallel()
 	future := testNow.Add(time.Minute)

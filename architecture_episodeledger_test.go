@@ -12,7 +12,7 @@ import (
 var episodeLedgerOperations = []string{
 	"Admit", "StartAttempt", "StartAttemptOwned", "TransitionAttempt", "RecordRejection", "RecoverUnfinishedAttempts",
 	"Rebind", "BindRequest", "AbandonRebind", "Abandon", "Conclude", "RetainForRetry", "SupersedeEpoch", "SupersedeCoalesced",
-	"UpsertSchedulerItem", "MarkSchedulerItemAdmitted", "CoalesceSchedulerItems", "CoalesceCostRejectedItem", "CoalesceSkippedItem", "DueSchedulerItems", "NextPendingSchedulerItem", "Scheduling", "Episode",
+	"UpsertSchedulerItem", "MarkSchedulerItemAdmitted", "CoalesceSchedulerItems", "CoalesceCostRejectedItem", "CoalesceSkippedItem", "DueSchedulerItems", "PollSchedulerQueue", "ExpireSchedulerItem", "Scheduling", "Episode",
 	"ReadEpisodeFence", "ReadAttemptStatus", "ReadEpisodeLifecycle", "NextDispatchableEpisode", "ReadAdmission",
 }
 

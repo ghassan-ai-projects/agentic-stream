@@ -40,30 +40,51 @@ type ShadowDecision struct {
 }
 
 // ScoreShadowDecision is the would-be policy outcome of a shadow decision: the
-// highest-risk intent's route under the live policy, including its catalog
-// requires_approval flag.
+// route of its strictest intent under the live policy, including the catalog
+// requires_approval flag. A denied route outranks approval, approval outranks
+// automatic, and risk rank breaks ties within one route.
 func ScoreShadowDecision(validated *decisions.Result) (ShadowScore, string) {
-	highest := highestRiskIntent(validated)
-	risk := contractsv1.RiskClass(highest.RiskClass)
-	switch contractsv1.RouteFor(risk, highest.RequiresApproval) {
+	strictest := strictestIntent(validated)
+	switch intentRoute(strictest) {
 	case contractsv1.RouteAutomatic:
-		return ShadowWouldApprove, "would_approve_" + highest.RiskClass
+		return ShadowWouldApprove, "would_approve_" + strictest.RiskClass
 	case contractsv1.RouteApproval:
-		return ShadowWouldRequireApproval, "would_require_approval_" + strings.ToLower(highest.RiskClass)
+		return ShadowWouldRequireApproval, "would_require_approval_" + strings.ToLower(strictest.RiskClass)
 	default:
-		return ShadowWouldDeny, "would_deny_" + highest.RiskClass
+		return ShadowWouldDeny, "would_deny_" + strictest.RiskClass
 	}
 }
 
-// highestRiskIntent returns the validated decision's highest-risk intent.
-func highestRiskIntent(validated *decisions.Result) decisions.Intent {
-	highest := validated.Intents[0]
+func strictestIntent(validated *decisions.Result) decisions.Intent {
+	strictest := validated.Intents[0]
 	for _, intent := range validated.Intents[1:] {
-		if contractsv1.RiskClass(intent.RiskClass).Rank() > contractsv1.RiskClass(highest.RiskClass).Rank() {
-			highest = intent
+		if stricterThan(intent, strictest) {
+			strictest = intent
 		}
 	}
-	return highest
+	return strictest
+}
+
+func stricterThan(candidate, incumbent decisions.Intent) bool {
+	if candidateStrictness, incumbentStrictness := routeStrictness(intentRoute(candidate)), routeStrictness(intentRoute(incumbent)); candidateStrictness != incumbentStrictness {
+		return candidateStrictness > incumbentStrictness
+	}
+	return contractsv1.RiskClass(candidate.RiskClass).Rank() > contractsv1.RiskClass(incumbent.RiskClass).Rank()
+}
+
+func intentRoute(intent decisions.Intent) contractsv1.Route {
+	return contractsv1.RouteFor(contractsv1.RiskClass(intent.RiskClass), intent.RequiresApproval)
+}
+
+func routeStrictness(route contractsv1.Route) int {
+	switch route {
+	case contractsv1.RouteAutomatic:
+		return 0
+	case contractsv1.RouteApproval:
+		return 1
+	default:
+		return 2
+	}
 }
 
 // ShadowDecisionIdentity binds a shadow row to the decision it scored.

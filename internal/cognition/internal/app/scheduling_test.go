@@ -129,7 +129,7 @@ func TestDebounceAndCooldownTogether(t *testing.T) {
 	).Scan(&notBefore); err != nil {
 		t.Fatalf("query not_before: %v", err)
 	}
-	// Cooldown from v1 (base) dominates debounce from v2 (base+2m+3m = base+5m).
+
 	want := kernel.FormatTime(base.Add(10 * time.Minute))
 	if notBefore != want {
 		t.Fatalf("expected not_before %s, got %s", want, notBefore)

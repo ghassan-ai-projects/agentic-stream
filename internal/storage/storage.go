@@ -51,7 +51,9 @@ func NullIfEmpty(value string) sql.NullString {
 }
 
 // InClause is the SQL condition `column IN (?, ?, ...)` for values and the
-// arguments that bind its placeholders, in order.
+// arguments that bind its placeholders, in order. The column is spliced into
+// the statement as text, so it must be a literal identifier of the caller's
+// own SQL, never data; only the values are bound.
 func InClause(column string, values []string) (string, []any) {
 	args := make([]any, len(values))
 	for i, value := range values {

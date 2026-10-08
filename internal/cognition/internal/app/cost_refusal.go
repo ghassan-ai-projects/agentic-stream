@@ -12,9 +12,24 @@ func RecordCostRejectionReason(ctx context.Context, tx *store.Tx, itemID string,
 	if !tx.Configured() || rejection == nil {
 		return fmt.Errorf("cognition cost refusal requires transaction and reason")
 	}
+	return appendEvaluationReason(ctx, tx, itemID, func(reasons []string) []string {
+		return domain.RecordCostRefusal(reasons, rejection.Error())
+	})
+}
+
+func RecordSchedulerExpiryReason(ctx context.Context, tx *store.Tx, itemID, reason string) error {
+	if !tx.Configured() || reason == "" {
+		return fmt.Errorf("cognition scheduler expiry requires transaction and reason")
+	}
+	return appendEvaluationReason(ctx, tx, itemID, func(reasons []string) []string {
+		return domain.RecordSchedulerExpiry(reasons, reason)
+	})
+}
+
+func appendEvaluationReason(ctx context.Context, tx *store.Tx, itemID string, add func([]string) []string) error {
 	trigger, reasons, err := tx.LoadEvaluationReasons(ctx, itemID)
 	if err != nil {
 		return err
 	}
-	return tx.RecordCostReason(ctx, trigger, domain.RecordCostRefusal(reasons, rejection.Error()))
+	return tx.RecordReasons(ctx, trigger, add(reasons))
 }

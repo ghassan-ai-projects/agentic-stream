@@ -60,6 +60,9 @@ func (db *DB) Close() error {
 }
 
 func open(ctx context.Context, path string) (*DB, error) {
+	if err := requireStoredTimeFunction(); err != nil {
+		return nil, err
+	}
 	sqlDB, err := sql.Open("sqlite", domain.ConnectionString(path))
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)

@@ -80,6 +80,48 @@ func TestSoakReportCountsEveryCommandStatusLikeTheReconciliationBarrier(t *testi
 	}
 }
 
+func TestSoakReportCountsOnlyAwaitingVerificationsOfSucceededCommands(t *testing.T) {
+	for _, tc := range []struct {
+		verification string
+		want         uint64
+	}{
+		{actionport.VerificationAwaiting, 1},
+		{actionport.VerificationReconciled, 0},
+		{actionport.VerificationObserved, 0},
+	} {
+		t.Run(tc.verification, func(t *testing.T) {
+			db, _ := openSoakDB(t)
+			insertCommand(t, db, "cmd-1", actionport.CommandSucceeded)
+			if _, err := db.ExecContext(t.Context(), `INSERT INTO verifications (verification_id, intent_id, command_id, outcome_id, status, updated_at)
+				VALUES ('ver-1', 'intent-missing', 'cmd-1', NULL, ?, '2026-08-29T12:00:00Z')`, tc.verification); err != nil {
+				t.Fatal(err)
+			}
+			report, err := computeSoak(t, db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.Diagnostics["awaiting_verification"] != tc.want || report.Diagnostics["unresolved_action_outcomes"] != tc.want || (report.Verdict == "fail") != (tc.want == 1) {
+				t.Fatalf("diagnostics=%v verdict=%q, want %d for a %s verification", report.Diagnostics, report.Verdict, tc.want, tc.verification)
+			}
+		})
+	}
+}
+
+func TestSoakReportBindsTenantBeforeTheStatusArguments(t *testing.T) {
+	db, _ := openSoakDB(t)
+	insertCommand(t, db, "cmd-1", actionport.CommandReconciling)
+	if _, err := db.ExecContext(t.Context(), `UPDATE commands SET tenant_id = 'other-tenant'`); err != nil {
+		t.Fatal(err)
+	}
+	report, err := computeSoak(t, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Diagnostics["unresolved_action_outcomes"] != 0 || report.Diagnostics["unknown_outcomes"] != 0 {
+		t.Fatalf("another tenant's command was counted: %v", report.Diagnostics)
+	}
+}
+
 func insertCommand(t *testing.T, db *storage.DB, commandID, status string) {
 	t.Helper()
 	zeroDigest := make([]byte, 32)

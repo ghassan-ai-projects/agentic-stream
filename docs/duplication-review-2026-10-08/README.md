@@ -53,7 +53,7 @@ than one place, so that one change needs several edits and can diverge.
 | Issue | Title | Severity | Status | Wave |
 | --- | --- | --- | --- | --- |
 | [DUP-001](issues/DUP-001-risk-class-and-approval-requirement.md) | Risk class order, routes and "needs approval" are decided in eight places | high (probable bug) | fixed | 1 |
-| [DUP-002](issues/DUP-002-timestamp-parse-format-and-expiry.md) | Durable timestamps: one writer, one parser, one expiry rule (layout unchanged) | medium | fixed | 2 |
+| [DUP-002](issues/DUP-002-timestamp-parse-format-and-expiry.md) | Durable timestamps: one writer, one parser, one expiry rule (one fixed-width layout) | medium | fixed | 2 |
 | [DUP-003](issues/DUP-003-ordered-timestamp-columns.md) | Text-compared timestamp columns mix fixed-width and variable-width encodings | high (latent bug) | fixed | - |
 | [DUP-004](issues/DUP-004-episode-lifecycle-and-attempt-state-sets.md) | Episode lifecycle and attempt state sets are re-spelled as literals and SQL lists | high | fixed | 2 |
 | [DUP-005](issues/DUP-005-dispatch-policy-and-episode-vocabulary.md) | Dispatch policy (shadow/active), kind and lane vocabularies; unset must mean shadow everywhere | high (fail-open polarity) | fixed | 2 |

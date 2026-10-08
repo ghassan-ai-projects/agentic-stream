@@ -44,25 +44,28 @@ func coalescePending(ctx context.Context, tx *store.Tx, schedulerItemID string, 
 	return domain.CheckStillPending(rows, schedulerItemID)
 }
 
+func ExpireSchedulerItem(ctx context.Context, tx *store.Tx, schedulerItemID string, now time.Time) error {
+	rows, err := tx.ExpirePendingSchedulerItem(ctx, schedulerItemID, now)
+	if err != nil {
+		return err
+	}
+	return domain.CheckStillPending(rows, schedulerItemID)
+}
+
 func DueSchedulerItems(ctx context.Context, tx *store.Tx, tenantID string, now time.Time) ([]domain.DueItem, error) {
-	queued, err := tx.PendingQueuedItems(ctx, tenantID)
+	queue, err := tx.PendingQueue(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
-	return domain.DueItems(queued, now), nil
+	return domain.DueItems(queue.Items, now), nil
 }
 
-func NextPendingSchedulerItem(ctx context.Context, tx *store.Tx, tenantID string, now time.Time) (string, bool, error) {
-	due, err := DueSchedulerItems(ctx, tx, tenantID, now)
+func PollSchedulerQueue(ctx context.Context, tx *store.Tx, tenantID string, now time.Time) (domain.QueuePoll, error) {
+	queue, err := tx.PendingQueue(ctx, tenantID)
 	if err != nil {
-		return "", false, err
+		return domain.QueuePoll{}, err
 	}
-	for _, item := range due {
-		if !item.Stale(now) {
-			return item.SchedulerItemID, true, nil
-		}
-	}
-	return "", false, nil
+	return domain.Poll(queue, now), nil
 }
 
 func Scheduling(ctx context.Context, tx *store.Tx, tenantID, triggerID string) (domain.SchedulingRecord, bool, error) {

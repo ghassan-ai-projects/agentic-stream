@@ -20,7 +20,7 @@ func (t *Tx) LoadEvaluationReasons(ctx context.Context, schedulerItemID string) 
 			SELECT trigger_id, reasons_json FROM trigger_evaluations
 			WHERE trigger_id = (SELECT trigger_id FROM scheduler_items WHERE scheduler_item_id = ?)`, schedulerItemID).
 		Scan(&triggerID, &reasonsJSON); err != nil {
-		return "", nil, fmt.Errorf("load cost-rejected trigger evaluation: %w", err)
+		return "", nil, fmt.Errorf("load trigger evaluation reasons: %w", err)
 	}
 	var reasons []string
 	if len(reasonsJSON) > 0 {
@@ -119,13 +119,13 @@ func (t *Tx) markVersion(ctx context.Context, statement, kind string, v situatio
 	return nil
 }
 
-func (t *Tx) RecordCostReason(ctx context.Context, triggerID string, reasons []string) error {
+func (t *Tx) RecordReasons(ctx context.Context, triggerID string, reasons []string) error {
 	encoded, err := json.Marshal(reasons)
 	if err != nil {
 		return fmt.Errorf("encode trigger evaluation reasons: %w", err)
 	}
 	if _, err := t.tx.ExecContext(ctx, "UPDATE trigger_evaluations SET reasons_json = ? WHERE trigger_id = ?", encoded, triggerID); err != nil {
-		return fmt.Errorf("record cost rejection reason: %w", err)
+		return fmt.Errorf("record trigger evaluation reasons: %w", err)
 	}
 	return nil
 }

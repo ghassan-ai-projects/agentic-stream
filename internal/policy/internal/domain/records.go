@@ -48,6 +48,7 @@ type IntentRecord struct {
 	RateLimitPerHour        int
 	RequiresApproval        int
 	ExpiresAt               time.Time
+	ExpiryUnreadable        bool
 	PolicyStatus            string
 	ValidationStatus        string
 	DecisionJSON            []byte

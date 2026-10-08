@@ -23,6 +23,9 @@ func TakeReconsideration(item SchedulerItem, ev Evaluation, delta, snapshot map[
 	if err != nil {
 		return nil, err
 	}
+	if correction := contractsv1.DocumentInt(delta, "correction_version"); correction != item.SituationVersion {
+		return nil, fmt.Errorf("reconsideration delta correction_version %d does not match scheduler item version %d", correction, item.SituationVersion)
+	}
 	for _, key := range priorEvidenceKeys {
 		delete(delta, key)
 	}

@@ -37,10 +37,20 @@ func FreshnessFailure(row IntentRecord, now time.Time) (status, reason string, e
 	if SourceHealthIncomplete(row) {
 		return "denied", "source_health_incomplete", time.Time{}
 	}
-	if !row.ExpiresAt.After(now) {
-		return "expired", "intent_expired", time.Time{}
+	if status, reason := expiryFailure(row, now); reason != "" {
+		return status, reason, time.Time{}
 	}
 	return "", "", row.ExpiresAt
+}
+
+func expiryFailure(row IntentRecord, now time.Time) (status, reason string) {
+	if row.ExpiryUnreadable {
+		return "denied", "intent_expiry_unreadable"
+	}
+	if !row.ExpiresAt.After(now) {
+		return "expired", "intent_expired"
+	}
+	return "", ""
 }
 
 func MateriallySuperseded(row IntentRecord) bool {

@@ -96,3 +96,25 @@ func (a *Admitter) coalesceSkipped(ctx context.Context, itemID string, now time.
 	}
 	return nil
 }
+
+func (a *Admitter) expireUnadmittable(ctx context.Context, expired []episodeledger.ExpiredItem, now time.Time) error {
+	for _, item := range expired {
+		if err := a.expireItem(ctx, item, now); err != nil {
+			return fmt.Errorf("expire scheduler item %s: %w", item.SchedulerItemID, err)
+		}
+		slog.WarnContext(ctx, "scheduler item expired without admission",
+			"scheduler_item_id", item.SchedulerItemID,
+			"reason", item.Reason,
+		)
+	}
+	return nil
+}
+
+func (a *Admitter) expireItem(ctx context.Context, item episodeledger.ExpiredItem, now time.Time) error {
+	return a.cfg.Store.InAdmission(ctx, func(tx *store.AdmissionTx) error {
+		if err := tx.AssertOwner(ctx); err != nil {
+			return fmt.Errorf("assert pipeline owner: %w", err)
+		}
+		return tx.Expire(ctx, item, now)
+	})
+}

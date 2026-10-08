@@ -23,14 +23,14 @@ const nextCandidateSQL = `
 		JOIN decisions d ON d.decision_id = i.decision_id
 		WHERE o.kind = 'command'
 		  AND o.available_at <= ?
-		  AND (o.status = 'pending' OR (o.status = 'leased' AND o.lease_until <= ?))
+		  AND (o.status = 'pending' OR (o.status = 'leased' AND (o.lease_until <= ? OR NOT stored_time_ok(o.lease_until))))
 		ORDER BY o.outbox_id
 		LIMIT 1`
 
 const acquireLeaseSQL = `
 		UPDATE outbox
 		SET status = 'leased', lease_owner = ?, lease_until = ?, attempt_count = attempt_count + 1
-		WHERE outbox_id = ? AND (status = 'pending' OR (status = 'leased' AND lease_until <= ?))`
+		WHERE outbox_id = ? AND (status = 'pending' OR (status = 'leased' AND (lease_until <= ? OR NOT stored_time_ok(lease_until))))`
 
 // NextCandidate selects the oldest command outbox row available at now.
 func (tx *Tx) NextCandidate(ctx context.Context, now time.Time) (domain.Candidate, bool, error) {
@@ -42,9 +42,7 @@ func (tx *Tx) NextCandidate(ctx context.Context, now time.Time) (domain.Candidat
 	if err != nil {
 		return domain.Candidate{}, false, fmt.Errorf("find command outbox: %w", err)
 	}
-	if c.Lease, err = leaseOf(lease); err != nil {
-		return domain.Candidate{}, false, fmt.Errorf("find command outbox %d: %w", c.OutboxID, err)
-	}
+	c.Lease = leaseOf(lease)
 	return c, true, nil
 }
 
@@ -55,19 +53,24 @@ func scanCandidate(row *sql.Row) (domain.Candidate, nullPair, error) {
 		&c.Command.IntentID, &c.Command.TenantID, &c.Command.Route, &c.Command.Target, &c.Command.Idempotency,
 		&trace.first, &trace.second, &c.OutboxStatus, &lease.first, &lease.second)
 	c.Trace = contractsv1.TraceContext{Traceparent: trace.first.String, Tracestate: trace.second.String}
-	return c, lease, err //nolint:wrapcheck // NextCandidate classifies and wraps the scan error.
+	if err != nil {
+		return c, lease, fmt.Errorf("scan command outbox candidate: %w", err)
+	}
+	return c, lease, nil
 }
 
-func leaseOf(columns nullPair) (domain.Lease, error) {
-	lease := domain.Lease{Owner: columns.first.String, HasOwner: columns.first.Valid, HasUntil: columns.second.Valid}
-	if !lease.HasUntil {
-		return lease, nil
+func leaseOf(columns nullPair) domain.Lease {
+	lease := domain.Lease{Owner: columns.first.String, HasOwner: columns.first.Valid}
+	if !columns.second.Valid {
+		return lease
 	}
-	var err error
-	if lease.Until, err = kernel.ParseTime(columns.second.String); err != nil {
-		return domain.Lease{}, fmt.Errorf("parse lease expiry: %w", err)
+	until, err := kernel.ParseStoredTime(columns.second.String)
+	if err != nil {
+		lease.Unreadable = true
+		return lease
 	}
-	return lease, nil
+	lease.Until, lease.HasUntil = until, true
+	return lease
 }
 
 // nullPair holds two adjacent nullable columns scanned together.

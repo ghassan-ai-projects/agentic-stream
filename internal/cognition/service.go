@@ -26,3 +26,8 @@ func (s *Service) Process(ctx context.Context, tx *sql.Tx, v situations.Version)
 func RecordCostRejectionReason(ctx context.Context, tx *sql.Tx, itemID string, rejection error) error {
 	return app.RecordCostRejectionReason(ctx, store.Join(tx), itemID, rejection)
 }
+
+// RecordSchedulerExpiryReason explains on the trigger evaluation why its scheduler item expired.
+func RecordSchedulerExpiryReason(ctx context.Context, tx *sql.Tx, itemID, reason string) error {
+	return app.RecordSchedulerExpiryReason(ctx, store.Join(tx), itemID, reason)
+}

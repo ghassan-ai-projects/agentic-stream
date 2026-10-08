@@ -18,12 +18,6 @@ func (s *Service) revalidateAuthorization(ctx context.Context, leased domain.Lea
 	return nil
 }
 
-// revalidateIn re-proves, immediately before the effector call, that the leased
-// command is still authorized: the lease is live, the command, intent and
-// decision documents still match their digests and ledger rows, the intent is
-// approved, unexpired and bound to the current Situation version, interlocks
-// and R2 approvals still hold, and the policy digest is current. It then
-// refreshes the lease.
 func (s *Service) revalidateIn(ctx context.Context, tx *store.Tx, leased domain.LeasedCommand) error {
 	if err := tx.AssertOwner(ctx); err != nil {
 		return err

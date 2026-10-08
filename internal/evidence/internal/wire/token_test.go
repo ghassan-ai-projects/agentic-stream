@@ -62,3 +62,19 @@ func TestOpaqueIdentities(t *testing.T) {
 		t.Fatalf("identities=%q/%q err=%v", a, b, err)
 	}
 }
+
+func TestDecodeScopeRefusesEveryUnreadableClaimTime(t *testing.T) {
+	t.Parallel()
+	const good = "2026-08-12T12:00:00.000000000Z"
+	for _, field := range []string{"nbf", "exp", "from", "until", "iat"} {
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+			claims := map[string]string{"nbf": good, "exp": good, "from": good, "until": good, "iat": good}
+			claims[field] = "not a time"
+			raw := `{"nbf":"` + claims["nbf"] + `","exp":"` + claims["exp"] + `","from":"` + claims["from"] + `","until":"` + claims["until"] + `","iat":"` + claims["iat"] + `"}`
+			if _, err := DecodeScope([]byte(raw), "k1"); err == nil {
+				t.Fatalf("a token with an unreadable %s decoded", field)
+			}
+		})
+	}
+}

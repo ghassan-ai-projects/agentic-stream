@@ -16,10 +16,6 @@ var (
 			AND EXISTS (SELECT 1 FROM epoch_control WHERE epoch = episodes.policy_epoch AND state = 'killed'))`
 )
 
-// NextDispatchableEpisode reads the tenant's oldest admitted or running
-// episode; found is false when nothing is dispatchable. With killedSuperseded
-// set it also admits superseded episodes without an attempt under a killed
-// policy epoch.
 func (t *Tx) NextDispatchableEpisode(ctx context.Context, tenantID string, killedSuperseded bool) (domain.DispatchableEpisode, bool, error) {
 	var episode domain.DispatchableEpisode
 	targets := append(admissionTargets(&episode.Admission), &episode.StaleRebindCount)

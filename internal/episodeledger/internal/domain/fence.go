@@ -5,8 +5,6 @@ import (
 	"fmt"
 )
 
-// ErrOwnerLost is what a runtime owner check reports when the epoch no longer
-// owns the runtime; any other check error is a failure to check.
 var ErrOwnerLost = errors.New("runtime owner lost")
 
 // EpisodeFence is what the ledger records about an episode's current attempt.

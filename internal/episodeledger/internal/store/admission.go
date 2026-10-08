@@ -48,8 +48,6 @@ func (t *Tx) InsertEpisode(ctx context.Context, req domain.Admission, acceptedAt
 	return nil
 }
 
-// ReadAdmission reads the admission record of an episode; an unknown episode
-// is an error.
 func (t *Tx) ReadAdmission(ctx context.Context, episodeID string) (domain.Admission, error) {
 	var admission domain.Admission
 	err := t.q.QueryRowContext(ctx, `SELECT `+admissionColumns+` FROM episodes WHERE episode_id = ?`, episodeID).Scan(admissionTargets(&admission)...)

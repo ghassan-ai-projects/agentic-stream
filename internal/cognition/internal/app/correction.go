@@ -70,12 +70,20 @@ func (e *Service) admitReconsideration(ctx context.Context, tx *store.Tx, curren
 	r := domain.NewReconsideration(current, command)
 	deltaJSON, err := r.EvidenceJSON(correction)
 	if err != nil {
-		return false, err
+		return false, e.rejectReconsideration(ctx, tx, r, err)
 	}
 	if err := e.persistReconsideration(ctx, tx, r, correctionDigest, deltaJSON); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+func (e *Service) rejectReconsideration(ctx context.Context, tx *store.Tx, r domain.Reconsideration, cause error) error {
+	rejected := domain.RejectedReconsiderationEvaluation(r, cause, e.spec.Digest, e.clk.Now().UTC())
+	if err := e.scheduler.saveEvaluation(ctx, tx, rejected, e.tenantID, e.deploymentID); err != nil {
+		return fmt.Errorf("save rejected reconsideration evaluation: %w", err)
+	}
+	return nil
 }
 
 // persistReconsideration records the domain.Reconsideration, schedules its episode

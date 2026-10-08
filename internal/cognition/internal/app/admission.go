@@ -86,33 +86,18 @@ func (s *scheduler) buildItem(ctx context.Context, tx *store.Tx, eval domain.Eva
 	if err != nil {
 		return item, err
 	}
-	if err := domain.ApplyTiming(&item, trigger, s.clk.Now().UTC()); err != nil {
+	latest, err := s.latestAdmission(ctx, tx, eval, trigger)
+	if err != nil {
 		return item, err
 	}
-	err = s.applyTriggerCooldown(ctx, tx, &item, eval, trigger)
-	return item, err
+	return item, domain.ApplyTiming(&item, trigger, s.clk.Now().UTC(), latest)
 }
 
-func (s *scheduler) applyTriggerCooldown(ctx context.Context, tx *store.Tx, item *episodeledger.SchedulerItem, eval domain.Evaluation, trigger spec.Trigger) error {
-	cooldown, err := domain.ParseOptionalDuration(trigger.Cooldown, 0)
-	if err != nil {
-		return fmt.Errorf("parse cooldown: %w", err)
+func (s *scheduler) latestAdmission(ctx context.Context, tx *store.Tx, eval domain.Evaluation, trigger spec.Trigger) (*time.Time, error) {
+	if trigger.Cooldown == "" {
+		return nil, nil
 	}
-	if cooldown <= 0 {
-		return nil
-	}
-	return s.applyCooldown(ctx, tx, item, eval, cooldown)
-}
-
-// applyCooldown delays the item until cooldown after the trigger's latest
-// admission, when that is later than its current not-before time.
-func (s *scheduler) applyCooldown(ctx context.Context, tx *store.Tx, item *episodeledger.SchedulerItem, eval domain.Evaluation, cooldown time.Duration) error {
-	latest, err := tx.LatestAdmittedTime(ctx, eval.SituationID, eval.TriggerName, eval.TriggerID)
-	if err != nil || latest == nil {
-		return err
-	}
-	domain.ApplyCooldown(item, *latest, cooldown)
-	return nil
+	return tx.LatestAdmittedTime(ctx, eval.SituationID, eval.TriggerName, eval.TriggerID)
 }
 
 func (s *scheduler) itemID() string {

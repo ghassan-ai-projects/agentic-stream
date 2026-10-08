@@ -26,6 +26,10 @@ type (
 	CoalescedItem = domain.CoalescedItem
 	// DueItem is a pending scheduler item whose admission window is open.
 	DueItem = domain.DueItem
+	// QueuePoll is the next admittable scheduler item and the items to expire.
+	QueuePoll = domain.QueuePoll
+	// ExpiredItem is a pending scheduler item that can never be admitted, with the reason.
+	ExpiredItem = domain.ExpiredItem
 	// SchedulingRecord is what became of one admitted trigger evaluation.
 	SchedulingRecord = domain.SchedulingRecord
 	// RejectionRecord is one worker result the ledger refused, with its reason.

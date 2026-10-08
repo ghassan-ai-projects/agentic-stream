@@ -21,3 +21,17 @@ func ParseTime(text string) (time.Time, error) {
 	}
 	return parsed.UTC(), nil
 }
+
+// ParseStoredTime reads a stored column that a SQL comparison also judges. It
+// accepts only the exact text FormatTime writes, so Go and SQL agree on which
+// values are readable.
+func ParseStoredTime(text string) (time.Time, error) {
+	parsed, err := ParseTime(text)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if FormatTime(parsed) != text {
+		return time.Time{}, fmt.Errorf("parse stored time %q: not durable time text", text)
+	}
+	return parsed, nil
+}

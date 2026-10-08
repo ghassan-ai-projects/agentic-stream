@@ -73,9 +73,17 @@ func (r AuthorizationRecords) RequireApprovedIntent() error {
 }
 
 func (r AuthorizationRecords) CheckApproval(now time.Time) error {
-	if contractsv1.RouteFor(contractsv1.RiskClass(r.Intent.Risk), r.Intent.RequiresApproval) != contractsv1.RouteApproval {
+	switch contractsv1.RouteFor(contractsv1.RiskClass(r.Intent.Risk), r.Intent.RequiresApproval) {
+	case contractsv1.RouteAutomatic:
 		return nil
+	case contractsv1.RouteApproval:
+		return r.checkApprovalRecord(now)
+	default:
+		return errors.New("risk policy denies the intent")
 	}
+}
+
+func (r AuthorizationRecords) checkApprovalRecord(now time.Time) error {
 	if !r.Approval.Present {
 		return errors.New("approved intent has no approved approval record")
 	}

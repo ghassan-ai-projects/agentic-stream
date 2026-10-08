@@ -25,7 +25,6 @@ type SupersededItem struct {
 	Version int
 }
 
-// LoadReplacement reads the Situation's Current Version with its trace context.
 func (t *Tx) LoadReplacement(ctx context.Context, situationID string) (ReplacementVersion, error) {
 	return loadReplacement(ctx, t.tx, situationID)
 }
@@ -43,9 +42,6 @@ func loadReplacement(ctx context.Context, tx *sql.Tx, situationID string) (Repla
 	return r, nil
 }
 
-// CoalesceTriggerWork coalesces the trigger's open scheduler items,
-// supersedes their live episodes, cancels those episodes' attempts and returns
-// the coalesced items.
 func (t *Tx) CoalesceTriggerWork(ctx context.Context, situationID, triggerName string, now time.Time) ([]SupersededItem, error) {
 	coalesced, err := episodeledger.CoalesceSchedulerItems(ctx, t.tx, situationID, triggerName, now)
 	if err != nil {

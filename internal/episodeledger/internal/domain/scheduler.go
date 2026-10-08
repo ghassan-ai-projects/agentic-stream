@@ -19,8 +19,6 @@ type SchedulerItem struct {
 	ExpiresAt        time.Time  // latest time the item remains useful.
 }
 
-// CoalescedItem is a scheduler item a newer trigger evaluation replaced, with
-// the Situation version it was bound to.
 type CoalescedItem struct {
 	SchedulerItemID  string
 	SituationVersion int
@@ -34,9 +32,10 @@ func CheckStillPending(rows int64, schedulerItemID string) error {
 	return nil
 }
 
-// Operation names for the two ways a pending scheduler item leaves the queue
+// Operation names for the ways a pending scheduler item leaves the queue
 // unadmitted; they label errors.
 const (
+	OperationExpire           = "expire scheduler item"
 	OperationSkipCostRejected = "skip cost-rejected scheduler item"
 	OperationCoalesceSkipped  = "coalesce scheduler item"
 )

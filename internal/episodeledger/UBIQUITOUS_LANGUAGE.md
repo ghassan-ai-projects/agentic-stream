@@ -30,6 +30,6 @@ names. The ledger runs every operation on the caller's transaction.
 | Retired | Replacement | Why |
 | --- | --- | --- |
 | `scheduleledger` (package) | `episodeledger` | The queue item is the episode's pre-admission state, written in the same transactions |
-| `Item`, `Upsert`, `MarkAdmitted`, `Coalesce`, `NextPending` | `SchedulerItem`, `UpsertSchedulerItem`, `MarkSchedulerItemAdmitted`, `CoalesceSchedulerItems`, `NextPendingSchedulerItem` | Meaningful without the old package prefix |
+| `Item`, `Upsert`, `MarkAdmitted`, `Coalesce`, `NextPending` | `SchedulerItem`, `UpsertSchedulerItem`, `MarkSchedulerItemAdmitted`, `CoalesceSchedulerItems`, `PollSchedulerQueue` | Meaningful without the old package prefix |
 | `RecoverUnfinishedAttemptsWithCost` and the cost-free wrapper | `RecoverUnfinishedAttempts(…, costs)` | One entry point; a nil settler skips cost release |
 | `Abandon`/`Conclude` (episode) vs attempt `Abandoned` | keep, but read the receiver: episode writers take an episode id, attempt states are `AttemptStatus` | Two lifecycles share a word on purpose |

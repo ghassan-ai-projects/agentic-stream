@@ -37,8 +37,6 @@ func ShouldReconsider(current situations.Version, latePolicy string) bool {
 	return current.Completeness == "corrected" && current.PreviousVersion > 0 && latePolicy == "correct_and_reconsider"
 }
 
-// DecodeCorrection strictly decodes and schema-validates the persisted
-// corrected snapshot.
 func DecodeCorrection(snapshotJSON []byte) (map[string]any, error) {
 	correction, err := contractsv1.DecodeDocument(snapshotJSON, contractsv1.SchemaSnapshot)
 	if err != nil {
@@ -47,8 +45,6 @@ func DecodeCorrection(snapshotJSON []byte) (map[string]any, error) {
 	return correction, nil
 }
 
-// MatchCorrectionDigest returns the persisted digest when it binds the
-// decoded correction snapshot.
 func MatchCorrectionDigest(correction map[string]any, persisted []byte) ([]byte, error) {
 	if !contractsv1.VerifyDocumentDigest(canonicaljson.DomainSnapshot, correction, persisted) {
 		return nil, fmt.Errorf("correction snapshot digest mismatch")
@@ -104,14 +100,22 @@ func (r Reconsideration) evidence(correction map[string]any, prior priorDocument
 	}
 }
 
-// reconsiderationEvaluation is the admitted deep-lane evaluation that
+// ReconsiderationEvaluation is the admitted deep-lane evaluation that
 // explains why the Reconsideration exists.
 func ReconsiderationEvaluation(r Reconsideration, deltaJSON []byte, policyDigest string, now time.Time) Evaluation {
+	return reconsiderationOutcome(r, "admitted", "accepted action invalidated by corrected Situation version", deltaJSON, policyDigest, now)
+}
+
+func RejectedReconsiderationEvaluation(r Reconsideration, cause error, policyDigest string, now time.Time) Evaluation {
+	return reconsiderationOutcome(r, "rejected", "prior documents unavailable: "+cause.Error(), []byte("{}"), policyDigest, now)
+}
+
+func reconsiderationOutcome(r Reconsideration, outcome, reason string, deltaJSON []byte, policyDigest string, now time.Time) Evaluation {
 	return Evaluation{
 		TriggerID: r.TriggerID, TriggerName: ReconsiderationTrigger,
 		SituationID: r.Current.SituationID, SituationVersion: r.Current.Version,
-		Score: 100, Threshold: 0, Lane: spec.LaneDeep, Outcome: "admitted",
-		Reasons:      []string{"accepted action invalidated by corrected Situation version"},
+		Score: 100, Threshold: 0, Lane: spec.LaneDeep, Outcome: outcome,
+		Reasons:      []string{reason},
 		PolicySHA256: policyDigest, DeltaJSON: deltaJSON, EvaluatedAt: now,
 	}
 }

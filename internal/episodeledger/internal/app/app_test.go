@@ -144,8 +144,8 @@ func TestSchedulerQueueRules(t *testing.T) {
 		if err := MarkSchedulerItemAdmitted(ctx, tx, "i", now); err == nil {
 			t.Fatal("admitting a non-pending item accepted")
 		}
-		if _, found, err := NextPendingSchedulerItem(ctx, tx, "tenant", now); err != nil || found {
-			t.Fatalf("found=%v err=%v", found, err)
+		if poll, err := PollSchedulerQueue(ctx, tx, "tenant", now); err != nil || poll.Found || len(poll.Expired) != 0 {
+			t.Fatalf("poll=%+v err=%v", poll, err)
 		}
 	})
 }
