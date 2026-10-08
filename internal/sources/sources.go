@@ -87,6 +87,20 @@ func OrPhysical(clock Clock) Clock {
 	return clock
 }
 
+// NowUTC reads now in UTC, or the physical clock when now is nil. Components
+// that carry a configured `Now func() time.Time` use it for every read.
+func NowUTC(now func() time.Time) time.Time {
+	if now == nil {
+		return Physical().Now()
+	}
+	return now().UTC()
+}
+
+// NowFunc returns a clock function that always reads through NowUTC.
+func NowFunc(now func() time.Time) func() time.Time {
+	return func() time.Time { return NowUTC(now) }
+}
+
 // OrRandom returns generator, or the random generator when generator is nil.
 func OrRandom(generator Generator) Generator {
 	if generator == nil {
@@ -104,9 +118,4 @@ func OrLease(lease time.Duration) time.Duration {
 		return DefaultLease
 	}
 	return lease
-}
-
-// FormatTime is the durable text of an instant: UTC, RFC 3339 with nanoseconds.
-func FormatTime(at time.Time) string {
-	return at.UTC().Format(time.RFC3339Nano)
 }

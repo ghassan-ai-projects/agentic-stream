@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 )
 
@@ -41,6 +42,6 @@ func columnValues(c domain.Comparison) []any {
 		c.BaselineManifestSHA256, c.TamozManifestSHA256,
 		c.BaselineDecisionJSON, c.BaselineDecisionSHA256,
 		c.TamozDecisionJSON, c.TamozDecisionSHA256,
-		c.ComparisonJSON, c.ComparisonSHA256, c.CreatedAt,
+		c.ComparisonJSON, c.ComparisonSHA256, kernel.FormatTime(c.CreatedAt),
 	}
 }

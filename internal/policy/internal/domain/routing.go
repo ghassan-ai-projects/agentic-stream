@@ -2,11 +2,11 @@ package domain
 
 import (
 	"crypto/ed25519"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
@@ -37,11 +37,10 @@ func FreshnessFailure(row IntentRecord, now time.Time) (status, reason string, e
 	if SourceHealthIncomplete(row) {
 		return "denied", "source_health_incomplete", time.Time{}
 	}
-	expires, err := time.Parse(time.RFC3339Nano, row.ExpiresAt)
-	if err != nil || !expires.After(now) {
+	if !row.ExpiresAt.After(now) {
 		return "expired", "intent_expired", time.Time{}
 	}
-	return "", "", expires
+	return "", "", row.ExpiresAt
 }
 
 func MateriallySuperseded(row IntentRecord) bool {
@@ -65,7 +64,7 @@ func ApprovalDisposition(row IntentRecord, a ApprovalRecord, r ApprovalResolutio
 	if r.Approved && MateriallySuperseded(row) {
 		return "stale"
 	}
-	if ApprovalExpired(a.ExpiresAt, r.Now) {
+	if !a.ExpiresAt.After(r.Now) {
 		return "expired"
 	}
 	return "authorize"
@@ -79,20 +78,18 @@ func DistinctPrincipals(r ApprovalResolution) error {
 }
 
 func ApprovalNonce(approvalID, intentID string) string {
-	digest := sha256.Sum256([]byte(approvalID + "|" + intentID))
-	return hex.EncodeToString(digest[:])
+	return hex.EncodeToString(canonicaljson.Sum([]byte(approvalID + "|" + intentID)))
 }
 
 func VerifyAssertion(publicKey, assertion, signature []byte) ([]byte, error) {
 	if len(publicKey) != ed25519.PublicKeySize || !ed25519.Verify(ed25519.PublicKey(publicKey), assertion, signature) {
 		return nil, fmt.Errorf("approval assertion signature is invalid")
 	}
-	digest := sha256.Sum256(assertion)
-	return digest[:], nil
+	return canonicaljson.Sum(assertion), nil
 }
 
 func CompleteDigest(digest []byte, kind string) error {
-	if len(digest) != sha256.Size {
+	if !canonicaljson.HasSumLength(digest) {
 		return fmt.Errorf("%s digest is incomplete", kind)
 	}
 	return nil

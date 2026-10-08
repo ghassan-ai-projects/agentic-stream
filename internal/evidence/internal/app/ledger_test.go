@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
@@ -207,6 +208,28 @@ func TestLedgerRecoverInterruptsExpiredAndForeignEpochCalls(t *testing.T) {
 	}
 	if err := (&Ledger{RuntimeEpoch: "epoch"}).ReclaimExpired(t.Context(), time.Now()); err == nil {
 		t.Fatal("ledger without a database reclaimed calls")
+	}
+}
+
+func TestLedgerReclaimsWithTheConfiguredVirtualClockWithoutSleeping(t *testing.T) {
+	db := openLedgerDB(t)
+	clock := sources.NewVirtual(fixedLedgerClock()())
+	ledger := &Ledger{Store: store.New(db, allowOwner, "epoch-1"), LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Lease: time.Minute, Now: clock.Now}
+	if _, err := ledger.Reserve(t.Context(), ledgerTestCall(), "token-1", "epoch-1"); err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+	if err := ledger.ReclaimExpired(t.Context(), ledger.now()); err != nil {
+		t.Fatalf("reclaim before lease expiry: %v", err)
+	}
+	if status, _ := readLedgerStatus(t, db, "call-1"); status != "running" {
+		t.Fatalf("call status before lease expiry = %q, want running", status)
+	}
+	clock.Advance(2 * time.Minute)
+	if err := ledger.ReclaimExpired(t.Context(), ledger.now()); err != nil {
+		t.Fatalf("reclaim after lease expiry: %v", err)
+	}
+	if status, code := readLedgerStatus(t, db, "call-1"); status != "interrupted" || code != "lease_expired" {
+		t.Fatalf("call status=%q code=%q after the virtual clock passed lease_until", status, code)
 	}
 }
 

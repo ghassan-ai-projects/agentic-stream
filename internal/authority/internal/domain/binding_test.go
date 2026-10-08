@@ -28,7 +28,7 @@ func TestDecideBinding(t *testing.T) {
 	}{
 		{"first binding", nil, bound, false, false},
 		{"identical repeat is idempotent", &bound, bound, true, false},
-		{"digest compares by value", &bound, with(func(b *CommandBinding) { b.CommandDigest = digestUpper }), true, false},
+		{"uppercase digest is not a canonical digest", &bound, with(func(b *CommandBinding) { b.CommandDigest = digestUpper }), false, true},
 		{"different digest conflicts", &bound, with(func(b *CommandBinding) { b.CommandDigest = digestOther }), false, true},
 		{"missing digest conflicts", &bound, with(func(b *CommandBinding) { b.CommandDigest = "" }), false, true},
 		{"invalid digest conflicts", &bound, with(func(b *CommandBinding) { b.CommandDigest = "bad" }), false, true},

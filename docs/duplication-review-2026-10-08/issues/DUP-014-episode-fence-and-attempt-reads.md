@@ -1,6 +1,6 @@
 # DUP-014: Episode fence and attempt-status point reads are re-written in evidence and episodes
 
-- Status: open
+- Status: fixed
 - Severity: medium
 - Verdict (finders): REAL
 - Themes: persistence
@@ -33,4 +33,15 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Verified: the core claim held. `evidence` (reads.go) and `episodes` (runner.go) each re-wrote the episodes fence read, the attempt status by (attempt, episode, fence) and lifecycle point reads that `episodeledger` already owned. Partly right: the finder's "stale-owner-epoch" test idea does not apply to evidence, because evidence calls carry no attempt owner epoch and are fenced by the runtime owner assertion (`AssertOwner`), which stays in evidence; owner-epoch fencing of attempts stays in the ledger's `ValidateWorkerIdentity`. The recovery.go lifecycle read was a seventh copy of the same SELECT inside the ledger.
+
+Changed:
+- `internal/episodeledger/reads.go` (new facade) exports `EpisodeFence`, `ReadEpisodeFence(tx)`, `ReadAttemptStatus(tx, identity)` and `ReadEpisodeLifecycle(db)`; `internal/episodeledger/internal/app/reads.go` (new) delegates to the store.
+- Ledger store `fence.go`: `ReadEpisodeFence` now also reads `tenant_id` (`EpisodeFence.TenantID`); `ReadTerminalEpisodeFence` and `ReadAttemptStatusOf` are deleted (the terminal-cancellation path uses `ReadEpisodeFence` and `ReadAttempt`); `recovery.go` `EpisodeLifecycle` reads through `ReadEpisodeFence`. `app/identity.go` gained `attemptRecord` (one found-or-refuse step).
+- `internal/evidence/internal/store/reads.go`: the three SQL copies are gone; `LiveEpisode` and `CompletionEpisode` read the ledger fence (tenant scoped in `LiveEpisode`) and ask `fence.CheckIdentity` whether the call is the current attempt; `attemptInFlight` uses `ReadAttemptStatus`. `EpisodeState` is now `{Current, Closed, Running}` and `CheckLiveEpisode`/`CheckCompletionEpisode` lost their unused key parameters (evidence domain, app/ledger.go).
+- `internal/episodes/internal/store/runner.go`: `EpisodeLifecycle` (now returns `LifecycleStatus`), `AttemptStatus` and `EpisodeSupersededNow` delegate to the ledger; `app/runner_failure.go` compares typed lifecycle.
+- `architecture_episodeledger_test.go` lists the new facade operations.
+
+Decisions: refusal text is unchanged (evidence keeps "evidence attempt is stale / no longer current / terminal / episode is unknown"; episodes keep "read episode lifecycle"/"read episode attempt status" prefixes). A missing attempt row at the ledger now refuses as `RejectWrongAttempt` (was a raw sql error) on the terminal-acknowledgement path and on the shared facade read. `ReadAttemptStatus(attemptID)` and `ReadEpisodeAttemptStatus(episode, attempt)` stay in the ledger store: they are keyed differently and used only inside the ledger.
+
+Pinned by: `TestEvidenceFenceVerdictsMatchTheLedgerIdentityRules` (evidence store: every lifecycle x current/stale/wrong attempt, evidence refusal iff ledger `CheckOpenIdentity` refuses, plus tenant mismatch is unknown), `TestEpisodeAndAttemptStateFollowTheLedgerPredicates`, `TestEpisodeFenceReadsReportUnknownEpisodes`, `TestLifecycleReadsAndAttemptCounts`, `TestEpisodeLedgerFacadeOnlyDelegates`.

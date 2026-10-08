@@ -50,6 +50,25 @@ func TestOrPhysicalAndOrRandomKeepTheCallersChoice(t *testing.T) {
 	}
 }
 
+func TestNowUTCReadsTheConfiguredClockInUTCOrThePhysicalClock(t *testing.T) {
+	t.Parallel()
+	zone := time.FixedZone("plus3", 3*60*60)
+	local := time.Date(2026, 8, 12, 15, 0, 0, 0, zone)
+	configured := func() time.Time { return local }
+	if got := sources.NowUTC(configured); !got.Equal(local) || got.Location() != time.UTC {
+		t.Fatalf("NowUTC(configured) = %v, want %v in UTC", got, local)
+	}
+	if got := sources.NowFunc(configured)(); !got.Equal(local) || got.Location() != time.UTC {
+		t.Fatalf("NowFunc(configured)() = %v, want %v in UTC", got, local)
+	}
+	before := time.Now()
+	for name, got := range map[string]time.Time{"NowUTC": sources.NowUTC(nil), "NowFunc": sources.NowFunc(nil)()} {
+		if got.Before(before) || time.Since(got) > time.Minute || got.Location() != time.UTC {
+			t.Fatalf("%s(nil) = %v, want the current time in UTC", name, got)
+		}
+	}
+}
+
 func TestOrLeaseDefaultsAnUnspecifiedLease(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct{ in, want time.Duration }{
@@ -60,14 +79,6 @@ func TestOrLeaseDefaultsAnUnspecifiedLease(t *testing.T) {
 		if got := sources.OrLease(tc.in); got != tc.want {
 			t.Errorf("%s: OrLease(%v) = %v, want %v", name, tc.in, got, tc.want)
 		}
-	}
-}
-
-func TestFormatTimeIsUTCWithNanoseconds(t *testing.T) {
-	t.Parallel()
-	local := time.Date(2026, 8, 12, 14, 0, 0, 123456789, time.FixedZone("plus2", 2*3600))
-	if got, want := sources.FormatTime(local), "2026-08-12T12:00:00.123456789Z"; got != want {
-		t.Fatalf("FormatTime = %q, want %q", got, want)
 	}
 }
 

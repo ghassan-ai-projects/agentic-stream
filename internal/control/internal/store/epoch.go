@@ -4,15 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // RecordEpochState records a drain or kill. Kill is terminal: once an epoch is
 // killed, neither a later drain nor a repeated kill rewrites the row.
-func (t *Tx) RecordEpochState(ctx context.Context, epoch, state, nowText string) error {
-	if _, err := t.q.ExecContext(ctx, epochControlUpsert, epoch, state, nowText); err != nil {
+func (t *Tx) RecordEpochState(ctx context.Context, epoch, state string, now time.Time) error {
+	if _, err := t.q.ExecContext(ctx, epochControlUpsert, epoch, state, kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("record epoch control: %w", err)
 	}
 	return nil
@@ -29,8 +31,8 @@ func (t *Tx) EpochState(ctx context.Context, epoch, what string) (state string, 
 
 // SupersedeEpoch cancels the epoch's in-flight episodes through the episode
 // ledger on this transaction.
-func (t *Tx) SupersedeEpoch(ctx context.Context, epoch, nowText string) error {
-	if err := episodeledger.SupersedeEpoch(ctx, t.tx, epoch, nowText); err != nil {
+func (t *Tx) SupersedeEpoch(ctx context.Context, epoch string, now time.Time) error {
+	if err := episodeledger.SupersedeEpoch(ctx, t.tx, epoch, now); err != nil {
 		return fmt.Errorf("supersede epoch episodes: %w", err)
 	}
 	return nil

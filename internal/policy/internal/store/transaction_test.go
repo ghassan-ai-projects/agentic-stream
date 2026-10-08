@@ -154,7 +154,7 @@ func TestApprovalLedgerAndReadProjections(t *testing.T) {
 			t.Fatal(got, err)
 		}
 		got, expiry, err := tx.PendingApprovalExpiry(ctx, id)
-		if err != nil || got != request.ID || expiry != domain.FormatTime(now.Add(time.Hour)) {
+		if err != nil || got != request.ID || !expiry.Equal(now.Add(time.Hour)) {
 			t.Fatal(got, expiry, err)
 		}
 		_, nonce, err := tx.AssertionBinding(ctx, request.ID)

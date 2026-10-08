@@ -30,12 +30,11 @@ func VerifiedSnapshot(snapshot, persistedDigest []byte) ([]byte, error) {
 }
 
 func verifySnapshotDigest(document map[string]any, persistedDigest []byte) error {
-	digest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, document)
+	sum, err := canonicaljson.DigestSum(canonicaljson.DomainSnapshot, document)
 	if err != nil {
 		return fmt.Errorf("digest shadow snapshot: %w", err)
 	}
-	decoded, err := canonicaljson.DecodeDigest(digest)
-	if err != nil || !bytes.Equal(decoded, persistedDigest) {
+	if !bytes.Equal(sum, persistedDigest) {
 		return fmt.Errorf("shadow snapshot digest mismatch")
 	}
 	return nil

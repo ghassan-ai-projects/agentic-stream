@@ -3,9 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -52,7 +53,7 @@ func scanReplayEpisode(rows *sql.Rows) (domain.ReplayEpisode, error) {
 	if err := rows.Scan(&episode.TriggerID, &episode.SituationID, &episode.SituationVersion, &episode.EpisodeID, &snapshotDigest); err != nil {
 		return domain.ReplayEpisode{}, fmt.Errorf("scan replay item: %w", err)
 	}
-	episode.SnapshotDigest = "sha256:" + hex.EncodeToString(snapshotDigest)
+	episode.SnapshotDigest = kernel.EncodeDigest(snapshotDigest)
 	return episode.Keyed(), nil
 }
 
@@ -91,13 +92,13 @@ func (s Store) ShadowSnapshot(ctx context.Context, episode domain.ReplayEpisode)
 }
 
 func (s Store) ShadowRequest(ctx context.Context, episode domain.ReplayEpisode) (domain.EpisodeRequest, error) {
-	var request domain.EpisodeRequest
-	var snapshotDigest []byte
-	if err := s.DB.QueryRowContext(ctx, `
-		SELECT executor_name, executor_version, model_policy, prompt_version, snapshot_sha256, request_json
-		FROM episodes WHERE episode_id = ?`, episode.EpisodeID).Scan(&request.ExecutorName, &request.ExecutorVersion, &request.ModelPolicy, &request.PromptVersion, &snapshotDigest, &request.RequestJSON); err != nil {
+	admission, err := episodeledger.ReadAdmission(ctx, s.DB.DB, episode.EpisodeID)
+	if err != nil {
 		return domain.EpisodeRequest{}, fmt.Errorf("load shadow episode request: %w", err)
 	}
-	request.SnapshotSHA256 = "sha256:" + hex.EncodeToString(snapshotDigest)
-	return request, nil
+	return domain.EpisodeRequest{
+		ExecutorName: admission.ExecutorName, ExecutorVersion: admission.ExecutorVersion,
+		ModelPolicy: admission.ModelPolicy, PromptVersion: admission.PromptVersion,
+		SnapshotSHA256: kernel.EncodeDigest(admission.SnapshotSHA256), RequestJSON: admission.RequestJSON,
+	}, nil
 }

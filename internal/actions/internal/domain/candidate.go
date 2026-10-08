@@ -25,14 +25,14 @@ type CommandRow struct {
 // Lease is the dispatch lease columns of a command outbox row. Absent columns
 // are distinguished from empty ones.
 type Lease struct {
-	Owner, Until       string
+	Owner              string
+	Until              time.Time
 	HasOwner, HasUntil bool
 }
 
 // Expired reports whether a leased row has no valid, unexpired lease at now.
 func (l Lease) Expired(now time.Time) bool {
-	expiresAt, err := time.Parse(time.RFC3339Nano, l.Until)
-	return err != nil || !l.HasOwner || !l.HasUntil || !expiresAt.After(now)
+	return !l.HasOwner || !l.HasUntil || !l.Until.After(now)
 }
 
 // Candidate is the oldest available command outbox row with the ledger columns

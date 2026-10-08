@@ -1,6 +1,6 @@
 # DUP-027: Nil-clock defaulting and wall-clock reads that bypass the injected clock
 
-- Status: open
+- Status: partly fixed
 - Severity: low
 - Verdict (finders): REAL
 - Themes: mechanisms
@@ -30,4 +30,20 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Verified (all sites re-read):
+- Confirmed: seven hand-written nil-clock defaults (control `utcNow`, evidence `Server.now`, `Service.IssueTime`, `Ledger.now`, `Issuer.Issue`, `Verifier.checkValidity`, runtime `recoveryTime`) and the api SSE default `cfg.Now = time.Now`. All produced UTC, except SSE which applied `.UTC()` at use, so the SSE default was equivalent.
+- Partly right: `recovery.go` also falls back to the owner's claim time when `Now == nil`. That is deliberate (recovery stamps rows with the claim transaction's time) and kept.
+- Wrong or not a determinism issue: the runtime heartbeat `ReclaimExpired(ctx, time.Now().UTC())` and `episodeledger.TransitionAttempt`'s identity-check clock. Live composition (`cmd/agentic-stream/live.go`) configures the evidence ledger and owner with no `Now`, so both are physical there; the heartbeat is a wall-time ticker and the doc comment on `TransitionAttempt` says the owner-lease check is deliberately at the wall clock. Replay never runs the heartbeat. `spec` deployments, `executor/native` evidence_tool, `runtime/transport/worker.go` and `workerfake` reads are live-only or fixture code and were left alone.
+
+Changed:
+- `internal/sources/sources.go`: new `NowUTC(now func() time.Time) time.Time` (nil -> physical, always UTC) and `NowFunc(now)` (function form for components that store a `func() time.Time`).
+- Deleted the copies: `internal/control/control.go` (`utcNow`; `owner.go` and `epoch.go` call `sources.NowFunc`), `internal/evidence/internal/app/{server,service,ledger,capability,capability_verify}.go`, `internal/runtime/internal/store/recovery.go` (`recoveryTime`), `internal/api/internal/transport/sse.go` (default block; read via `sources.NowUTC`).
+- `architecture_test.go` allowedImports: added `internal/control -> internal/sources` and `internal/api/internal/transport -> internal/sources` (the evidence app and runtime store already imported sources).
+
+Decisions: the helper lives in `sources` as the finder proposed (control's own copy could not be shared with evidence). The `Now func() time.Time` fields stay (migrating them to `sources.Clock` would change public configs for no determinism gain).
+
+Deferred: threading the configured clock into the heartbeat reclaim and the `TransitionAttempt` identity check. Both are wall-clock by design in live runs and `ReclaimExpired` takes an explicit instant (signature change, no current need).
+
+Pinned by: `TestNowUTCReadsTheConfiguredClockInUTCOrThePhysicalClock` (internal/sources), `TestLedgerReclaimsWithTheConfiguredVirtualClockWithoutSleeping` (internal/evidence/internal/app), plus the existing evidence, control, runtime recovery and SSE suites (unchanged, passing).
+
+Note: while this ran, other fixers' timestamp-format work made `internal/evidence/internal/wire` tests and `runtime/internal/store` `TestRecoveryWithoutOverrideUsesClaimTimestamp` fail on `.000000000Z` vs `Z` text; those files are not touched by this change.

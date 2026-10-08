@@ -54,6 +54,7 @@ func hasProductionGoFiles(dir string) bool {
 // docs/remaining-migration-2026-10-06/UNIFORM_ARCHITECTURE.md.
 var moduleShapeExceptions = map[string]string{
 	"internal/executor/fixture": "demo executor used by composition; held for the owner",
+	"internal/kernel":           "shared pure vocabulary with no rules of its own to separate; one package by design (TestKernelHasNoSubpackages)",
 }
 
 // TestEveryModuleHasAFacadeAndADomain requires each module to be a facade over

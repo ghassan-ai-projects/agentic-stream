@@ -3,6 +3,7 @@ package episodeledger
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/store"
@@ -19,17 +20,17 @@ func BindRequest(ctx context.Context, tx *sql.Tx, episodeID string, request []by
 }
 
 // AbandonRebind quarantines an invalid live snapshot and consumes one rebind.
-func AbandonRebind(ctx context.Context, tx *sql.Tx, episodeID, now string, terminal []byte) error {
+func AbandonRebind(ctx context.Context, tx *sql.Tx, episodeID string, now time.Time, terminal []byte) error {
 	return app.AbandonRebind(ctx, store.Join(tx), episodeID, now, terminal)
 }
 
 // Abandon records a terminal quarantine outcome.
-func Abandon(ctx context.Context, tx *sql.Tx, episodeID, now string, terminal []byte) error {
+func Abandon(ctx context.Context, tx *sql.Tx, episodeID string, now time.Time, terminal []byte) error {
 	return app.Abandon(ctx, store.Join(tx), episodeID, now, terminal)
 }
 
 // Conclude records the terminal execution outcome.
-func Conclude(ctx context.Context, tx *sql.Tx, episodeID, now string, terminal []byte) error {
+func Conclude(ctx context.Context, tx *sql.Tx, episodeID string, now time.Time, terminal []byte) error {
 	return app.Conclude(ctx, store.Join(tx), episodeID, now, terminal)
 }
 
@@ -39,11 +40,11 @@ func RetainForRetry(ctx context.Context, tx *sql.Tx, episodeID string) error {
 }
 
 // SupersedeEpoch cancels in-flight episodes of a killed epoch.
-func SupersedeEpoch(ctx context.Context, tx *sql.Tx, epoch, now string) error {
+func SupersedeEpoch(ctx context.Context, tx *sql.Tx, epoch string, now time.Time) error {
 	return app.SupersedeEpoch(ctx, store.Join(tx), epoch, now)
 }
 
 // SupersedeCoalesced cancels episodes and attempts bound to coalesced scheduler items.
-func SupersedeCoalesced(ctx context.Context, tx *sql.Tx, situationID, now string) error {
+func SupersedeCoalesced(ctx context.Context, tx *sql.Tx, situationID string, now time.Time) error {
 	return app.SupersedeCoalesced(ctx, store.Join(tx), situationID, now)
 }

@@ -57,7 +57,7 @@ func (g *Service) expireExistingApproval(ctx context.Context, tx *store.Tx, e ev
 	if err != nil || approvalID == "" {
 		return e.result, false, err
 	}
-	if !domain.ApprovalExpired(expiry, e.now) {
+	if expiry.After(e.now) {
 		return e.result, false, nil
 	}
 	return g.recordExpiredApproval(ctx, tx, e, approvalID)

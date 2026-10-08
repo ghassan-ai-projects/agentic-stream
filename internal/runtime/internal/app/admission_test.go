@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
@@ -62,6 +63,11 @@ func TestAdmitPendingSkipsCostRejectedItems(t *testing.T) {
 	assertNoAdmission(t, scenario{executor: "native", costKill: true}, "coalesced", "a cost-rejected skip")
 }
 
+func TestAdmitPendingLeavesAnExpiredItemUnadmitted(t *testing.T) {
+	t.Parallel()
+	assertNoAdmission(t, scenario{executor: "native", stale: true}, "pending", "no admission after the item expired")
+}
+
 func assertNoAdmission(t *testing.T, given scenario, wantStatus, wantOutcome string) {
 	t.Helper()
 	db, admitter := pendingItem(t, given)
@@ -75,8 +81,8 @@ func assertNoAdmission(t *testing.T, given scenario, wantStatus, wantOutcome str
 
 // scenario is the admission condition a test arranges.
 type scenario struct {
-	executor              string
-	demo, drain, costKill bool
+	executor                     string
+	demo, drain, costKill, stale bool
 }
 
 // pendingItem ingests one triggering event and runs the stream engine, leaving
@@ -135,14 +141,14 @@ func composeConfig(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, gi
 	}
 	return app.AdmitterConfig{
 		Store: &store.PipelineStore{DB: db, Owner: owner, OwnerEpoch: ownerEpoch, Episodes: assembler, TenantID: "default"},
-		Clock: sources.Physical(), OwnerEpoch: ownerEpoch, EpochControl: control, DemoMode: given.demo,
+		Clock: admissionClock(given), OwnerEpoch: ownerEpoch, EpochControl: control, DemoMode: given.demo,
 	}
 }
 
 func setCostKillSwitch(t *testing.T, db *storage.DB) {
 	t.Helper()
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		return controltest.SetCostLimit(t.Context(), tx, "global", "", 0, true, time.Now().UTC().Format(time.RFC3339Nano))
+		return controltest.SetCostLimit(t.Context(), tx, "global", "", 0, true, kernel.FormatTime(time.Now().UTC()))
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -203,4 +209,11 @@ func TestAdmitterRequiresItsStoreAssemblerAndClock(t *testing.T) {
 			t.Errorf("%s: construction = (%v, %v)", name, admitter, err)
 		}
 	}
+}
+
+func admissionClock(given scenario) sources.Clock {
+	if given.stale {
+		return sources.NewVirtual(time.Now().Add(24 * time.Hour))
+	}
+	return sources.Physical()
 }

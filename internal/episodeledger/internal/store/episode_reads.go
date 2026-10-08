@@ -3,9 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
@@ -24,7 +24,7 @@ func (t *Tx) Episode(ctx context.Context, tenantID, episodeID string) (domain.Ep
 		&r.PromptVersion, &r.DispatchPolicy, &snapshot, &r.LifecycleStatus, &r.CurrentAttemptID, &r.CurrentFence, &r.AcceptedAt, &r.EndedAt, &terminal); err != nil {
 		return domain.EpisodeRecord{}, fmt.Errorf("read episode %s: %w", episodeID, err)
 	}
-	r.SnapshotSHA256, r.Terminal = "sha256:"+hex.EncodeToString(snapshot), rawOrNil(terminal)
+	r.SnapshotSHA256, r.Terminal = kernel.EncodeDigest(snapshot), rawOrNil(terminal)
 	var err error
 	if r.Attempts, err = t.attempts(ctx, episodeID); err != nil {
 		return domain.EpisodeRecord{}, err

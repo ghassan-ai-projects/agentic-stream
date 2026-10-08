@@ -50,7 +50,7 @@ func claimAndRecover(ctx context.Context, o *Owner, tx *store.Tx, epoch string, 
 
 func claim(ctx context.Context, o *Owner, tx *store.Tx, epoch string, now time.Time) error {
 	until := now.Add(sources.OrLease(o.Lease))
-	if err := tx.ClaimLease(ctx, epoch, o.Instance, domain.TimeText(now), domain.TimeText(until)); err != nil {
+	if err := tx.ClaimLease(ctx, epoch, o.Instance, now, until); err != nil {
 		return err
 	}
 	recordedEpoch, recordedInstance, err := tx.RecordedOwner(ctx)
@@ -68,7 +68,7 @@ func Renew(ctx context.Context, o *Owner, epoch string) error {
 	}
 	now := o.Now()
 	until := now.Add(sources.OrLease(o.Lease))
-	rows, err := o.Store.Autocommit().RenewLease(ctx, epoch, o.Instance, domain.TimeText(now), domain.TimeText(until))
+	rows, err := o.Store.Autocommit().RenewLease(ctx, epoch, o.Instance, now, until)
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func Release(ctx context.Context, o *Owner, epoch string) error {
 	if o == nil || !o.Store.Configured() || epoch == "" {
 		return domain.ErrOwnerNotConfigured
 	}
-	rows, err := o.Store.Autocommit().ReleaseLease(ctx, epoch, o.Instance, domain.TimeText(o.Now()))
+	rows, err := o.Store.Autocommit().ReleaseLease(ctx, epoch, o.Instance, o.Now())
 	if err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func Assert(ctx context.Context, o *Owner, tx *store.Tx, epoch string) error {
 }
 
 func assert(ctx context.Context, o *Owner, tx *store.Tx, epoch string) error {
-	held, err := tx.HoldsLease(ctx, epoch, o.Instance, domain.TimeText(o.Now()))
+	held, err := tx.HoldsLease(ctx, epoch, o.Instance, o.Now())
 	if err != nil {
 		return err
 	}

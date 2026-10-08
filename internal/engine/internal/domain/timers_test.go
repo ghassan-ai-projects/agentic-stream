@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -65,7 +66,7 @@ func TestEnrichTimerFeatureRecordsProvenance(t *testing.T) {
 	feature := operators.Feature{Traceparent: "tp", Tracestate: "ts"}
 	EnrichTimerFeature(&feature, "tenant", 4, DueTimer{ID: "tmr-1", DueAt: "due"}, base, "virtual")
 	if feature.TenantID != "tenant" || feature.PartitionID != 4 || feature.Metadata["timer_id"] != "tmr-1" || feature.Metadata["clock_quality"] != "virtual" ||
-		feature.Metadata["source_traceparent"] != "tp" || feature.Metadata["timer_fired_at"] != base.Format(time.RFC3339Nano) {
+		feature.Metadata["source_traceparent"] != "tp" || feature.Metadata["timer_fired_at"] != kernel.FormatTime(base) {
 		t.Fatalf("metadata = %v", feature.Metadata)
 	}
 }

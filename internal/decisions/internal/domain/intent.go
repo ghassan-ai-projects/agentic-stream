@@ -6,6 +6,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 func validateIntent(document map[string]any, input Input, decisionID string, decisionDocument map[string]any, seenIDs map[string]struct{}) (*Intent, error) {
@@ -102,14 +103,14 @@ func checkIntentRisk(document map[string]any, input Input, entry *intentEntry, i
 // buildIntent checks the intent expiry and builds the validated Intent.
 func buildIntent(document map[string]any, input Input, entry *intentEntry) (*Intent, error) {
 	expiresAtString, _ := document["expires_at"].(string)
-	expiresAt, err := time.Parse(time.RFC3339Nano, expiresAtString)
+	expiresAt, err := kernel.ParseTime(expiresAtString)
 	if err != nil {
 		return nil, reject("schema_invalid", "intent.expires_at", err.Error())
 	}
 	if !expiresAt.After(input.Now) {
 		return nil, reject("expired", "intent.expires_at", "intent has expired")
 	}
-	return materializeIntent(document, entry, expiresAt)
+	return materializeIntent(document, entry, expiresAt.UTC())
 }
 
 func materializeIntent(document map[string]any, entry *intentEntry, expiresAt time.Time) (*Intent, error) {

@@ -12,7 +12,8 @@ import (
 var episodeLedgerOperations = []string{
 	"Admit", "StartAttempt", "StartAttemptOwned", "TransitionAttempt", "RecordRejection", "RecoverUnfinishedAttempts",
 	"Rebind", "BindRequest", "AbandonRebind", "Abandon", "Conclude", "RetainForRetry", "SupersedeEpoch", "SupersedeCoalesced",
-	"UpsertSchedulerItem", "MarkSchedulerItemAdmitted", "CoalesceSchedulerItems", "CoalesceCostRejectedItem", "CoalesceSkippedItem", "NextPendingSchedulerItem", "Scheduling", "Episode",
+	"UpsertSchedulerItem", "MarkSchedulerItemAdmitted", "CoalesceSchedulerItems", "CoalesceCostRejectedItem", "CoalesceSkippedItem", "DueSchedulerItems", "NextPendingSchedulerItem", "Scheduling", "Episode",
+	"ReadEpisodeFence", "ReadAttemptStatus", "ReadEpisodeLifecycle", "NextDispatchableEpisode", "ReadAdmission",
 }
 
 // TestEpisodeLedgerFacadeOnlyDelegates confines ledger rules and SQL to private layers.
@@ -28,7 +29,7 @@ func TestEpisodeLedgerFacadeOnlyDelegates(t *testing.T) {
 				continue
 			}
 			target := "app"
-			if slices.Contains([]string{"IsTerminalAttempt", "LifecycleSQL", "AttemptSQL"}, function.Name.Name) {
+			if slices.Contains([]string{"IsTerminalAttempt", "AttemptSQL"}, function.Name.Name) {
 				target = "domain"
 			} else if !slices.Contains(episodeLedgerOperations, function.Name.Name) {
 				t.Errorf("%s: %s is not an episode ledger operation", file.rel, function.Name)

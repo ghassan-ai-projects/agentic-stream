@@ -55,9 +55,9 @@ func persistTransition(ctx context.Context, tx *store.Tx, identity domain.Identi
 func writeTransition(ctx context.Context, tx *store.Tx, identity domain.Identity, to domain.AttemptStatus, now time.Time, terminal []byte) (int64, error) {
 	switch domain.KindOf(to) {
 	case domain.TransitionTerminal:
-		return tx.FinishAttempt(ctx, identity, to, store.TimeText(now), terminal)
+		return tx.FinishAttempt(ctx, identity, to, now, terminal)
 	case domain.TransitionRunning:
-		return tx.StartRunningAttempt(ctx, identity, store.TimeText(now))
+		return tx.StartRunningAttempt(ctx, identity, now)
 	default:
 		return tx.SetAttemptStatus(ctx, identity, to)
 	}

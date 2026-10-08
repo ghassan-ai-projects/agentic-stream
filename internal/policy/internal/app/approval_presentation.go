@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
@@ -52,7 +53,7 @@ func checkSigningPrincipals(ctx context.Context, tx *store.Tx, row domain.Intent
 	return domain.AuthorizedApprover(active, err != nil)
 }
 
-func assertionFor(row domain.IntentRecord, r domain.ApprovalResolution, expiry, nonce string) domain.ApprovalAssertion {
+func assertionFor(row domain.IntentRecord, r domain.ApprovalResolution, expiry time.Time, nonce string) domain.ApprovalAssertion {
 	return domain.ApprovalAssertion{
 		ApprovalID: r.ID, IntentID: row.IntentID, DecisionID: row.DecisionID, TenantID: row.TenantID, SituationID: row.SituationID, SituationVersion: row.SituationVersion, RiskClass: row.RiskClass,
 		IntentDigest: canonicaljson.EncodeDigest(row.IntentSHA), DecisionDigest: canonicaljson.EncodeDigest(row.DecisionSHA), ExpiresAt: expiry, Nonce: nonce, ApproverID: r.Approver, RelayID: r.Relay, Approved: r.Approved,

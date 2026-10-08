@@ -62,9 +62,8 @@ func requireStartableEpisode(ctx context.Context, tx *store.Tx, episodeID string
 }
 
 func recordStartedAttempt(ctx context.Context, tx *store.Tx, identity domain.Identity, now time.Time) error {
-	startedAt := store.TimeText(now)
-	if err := tx.InsertAttempt(ctx, identity, startedAt); err != nil {
+	if err := tx.InsertAttempt(ctx, identity, now); err != nil {
 		return err
 	}
-	return tx.RecordEpisodeAttempt(ctx, identity, startedAt)
+	return tx.RecordEpisodeAttempt(ctx, identity, now)
 }

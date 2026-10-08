@@ -1,13 +1,16 @@
 # DUP-019: The prior-outcome document and invalidated-command chain are built in cognition and again in episodes
 
-- Status: needs-decision
+- Status: fixed
 - Severity: medium
 - Verdict (finders): REAL
 - Themes: persistence
-- Wave: not scheduled
+- Wave: 2b
+- Commit: pending (reviewer commits)
 - Finder sources: P12 (P persistence, R rules, S shapes, M mechanisms)
 
 ## Reviewer notes
+
+**Decision (owner, 2026-10-09): derive the reconsideration prior-outcome once, in cognition, into `delta_json`; episodes reads it from there and loses its own six-table join and `outcomeDocument`. Request documents and digests change; regenerate goldens.**
 
 Not dispatched. Reusing `delta_json` changes the request document and its digests, so it needs a sign-off and a golden refresh. Until then, add the parity test the finder proposes.
 
@@ -32,4 +35,21 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Verified (re-read every site):
+- Confirmed: cognition (`InvalidatedCommands` + `PriorOutcome`) and episodes (`LoadReconsideration` + `outcomeDocument`) each joined commands/intents/decisions/outcomes and built the same outcome document; episodes' copy added `command_id`.
+- Partly right: the finder said only prior-decision/command fields were missing from `delta_json`; in fact the whole prior decision, executed command and reconsideration id were also absent, so episodes needed the full chain. The related trace-context scan boilerplate (actions, approvalledger) is a different duplication and was left alone.
+- Latent bug found and fixed: cognition scanned `outcomes.reconciliation_status` (nullable column) into a plain string, so a NULL would fail admission; episodes used `sql.NullString`. Cognition's query now uses `COALESCE(..., '')`.
+
+Changed (owner decision 2026-10-09: no compatibility, derive once in cognition):
+- `internal/cognition/internal/domain/prior_documents.go` (new): builds the prior decision, executed command and prior outcome documents once (`priorDocuments`, `PriorOutcome` now also carries `command_id`; identity checks and error texts moved from episodes).
+- `internal/cognition/internal/domain/correction.go`: `InvalidatedCommand` gains decision/command JSON, command status, intent id/type, risk class; `EvidenceJSON` now writes `reconsideration_id`, `invalidated_outcome_id`, `prior_decision`, `prior_command`, `prior_outcome` into `delta_json` (and can return an error).
+- `internal/cognition/internal/store/reconsideration.go`: the one query selects the extra columns.
+- `internal/episodes/internal/domain/reconsideration.go`: `ReconsiderationRow` and all its builders deleted; `TakeReconsideration` builds the worker `reconsideration` document from `delta_json` only and removes the three `prior_*` documents from the request `delta` (no duplicate copy in the request).
+- Deleted `internal/episodes/internal/store/reconsideration.go` (`LoadReconsideration`, six-table join) and `internal/episodes/internal/app/reconsideration_request.go`; `assembler_inputs.go` calls the domain directly (`bindTriggerContext`, no tx).
+- Episodes README paragraph updated.
+
+Behaviour changes on purpose: reconsider request documents change shape of `delta` (now holds `reconsideration_id`, `invalidated_outcome_id`; `prior_*` documents moved into `reconsideration`), and the prior decision/command/outcome are the admission-time facts rather than re-read at assembly time. Worker-facing `reconsideration` keys (`prior_decision`, `commands`, `outcomes`, `correction`) are unchanged. No stored rows are rewritten. Goldens: none contained a reconsider request (grep over examples, testdata and notify goldens found none), so none were regenerated. Fixtures changed: the seed in `internal/episodes/internal/app/assembler_test.go` now supplies the documents in `delta_json` and no longer seeds the unused decision/intent/command/outcome/reconsiderations rows; `internal/cognition/internal/domain/boundaries_test.go` fixture uses the full `priorFixture()`; the `LoadReconsideration` cancellation case was removed from `internal/episodes/internal/store/transaction_test.go`.
+
+Pinning tests: `TestPriorOutcomeDocumentKeys`, `TestReconsiderationEvidenceCarriesEveryPriorDocument`, `TestPriorDocumentsRejectIdentityBeforeCommand` (cognition domain); `TestTakeReconsiderationBuildsDocumentFromDeltaAndRemovesPriorEvidence`, `TestTakeReconsiderationRequiresEveryPriorDocument`, `TestReconsiderationCorrectionCopiesNestedEvidence` (episodes domain); `TestAssemblerPersistsReconsiderationPayload`; and the cross-module pin `assertReconsiderationRequestCarriesAdmittedEvidence` inside `TestPipelineSkipsSecondReconsiderationForOneSituation` (real cognition admission feeding real episode assembly).
+
+Deferred: the trace-context scan boilerplate noted in the finder report (separate issue).

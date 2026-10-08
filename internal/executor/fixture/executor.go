@@ -105,18 +105,14 @@ func fakeDecision(req *episodes.Request, phase, triggerName string, intent map[s
 // producedOutcome canonicalizes and digests the decision as a produced
 // outcome for the request's attempt.
 func producedOutcome(req *episodes.Request, decision map[string]any) (*episodes.Outcome, error) {
-	decisionJSON, err := canonicaljson.Marshal(decision)
+	decisionJSON, sum, err := canonicaljson.Seal(canonicaljson.DomainDecision, decision)
 	if err != nil {
-		return nil, fmt.Errorf("marshal decision: %w", err)
-	}
-	decisionDigest, err := canonicaljson.Digest(canonicaljson.DomainDecision, decision)
-	if err != nil {
-		return nil, fmt.Errorf("digest decision: %w", err)
+		return nil, fmt.Errorf("seal decision: %w", err)
 	}
 	return &episodes.Outcome{
 		Status: string(episodeledger.AttemptProduced), AttemptID: req.AttemptID, Fence: req.Fence,
 		DecisionJSON:   decisionJSON,
-		DecisionSHA256: decisionDigest,
+		DecisionSHA256: canonicaljson.EncodeDigest(sum),
 		Reasons:        []string{"deterministic fake outcome"},
 	}, nil
 }

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/store"
 )
@@ -17,17 +18,17 @@ func BindRequest(ctx context.Context, tx *store.Tx, episodeID string, request []
 }
 
 // AbandonRebind quarantines an invalid live snapshot and consumes one rebind.
-func AbandonRebind(ctx context.Context, tx *store.Tx, episodeID, now string, terminal []byte) error {
+func AbandonRebind(ctx context.Context, tx *store.Tx, episodeID string, now time.Time, terminal []byte) error {
 	return tx.AbandonRebind(ctx, episodeID, now, terminal)
 }
 
 // Abandon records a terminal quarantine outcome.
-func Abandon(ctx context.Context, tx *store.Tx, episodeID, now string, terminal []byte) error {
+func Abandon(ctx context.Context, tx *store.Tx, episodeID string, now time.Time, terminal []byte) error {
 	return tx.AbandonEpisode(ctx, episodeID, now, terminal)
 }
 
 // Conclude records the terminal execution outcome.
-func Conclude(ctx context.Context, tx *store.Tx, episodeID, now string, terminal []byte) error {
+func Conclude(ctx context.Context, tx *store.Tx, episodeID string, now time.Time, terminal []byte) error {
 	return tx.ConcludeEpisode(ctx, episodeID, now, terminal)
 }
 
@@ -39,12 +40,12 @@ func RetainForRetry(ctx context.Context, tx *store.Tx, episodeID string) error {
 // SupersedeEpoch cancels in-flight episodes of a killed epoch: the runner's
 // supersession watcher turns this into cancellation of the provider call, and
 // the decision gates refuse any outcome that still lands.
-func SupersedeEpoch(ctx context.Context, tx *store.Tx, epoch, now string) error {
+func SupersedeEpoch(ctx context.Context, tx *store.Tx, epoch string, now time.Time) error {
 	return tx.SupersedeEpochEpisodes(ctx, epoch, now)
 }
 
 // SupersedeCoalesced cancels episodes and attempts bound to coalesced scheduler items.
-func SupersedeCoalesced(ctx context.Context, tx *store.Tx, situationID, now string) error {
+func SupersedeCoalesced(ctx context.Context, tx *store.Tx, situationID string, now time.Time) error {
 	if err := tx.SupersedeCoalescedEpisodes(ctx, situationID, now); err != nil {
 		return err
 	}

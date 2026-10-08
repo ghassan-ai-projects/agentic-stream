@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -37,7 +38,7 @@ func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Versio
 		ON CONFLICT(situation_id) DO NOTHING`,
 		v.SituationID, tenantID, deploymentID, "test", v.EntityType, v.EntityID,
 		0, "occ-"+v.SituationID, v.Version, v.Phase,
-		v.EventHorizon.Format(time.RFC3339Nano), v.EventHorizon.Format(time.RFC3339Nano),
+		kernel.FormatTime(v.EventHorizon), kernel.FormatTime(v.EventHorizon),
 	); err != nil {
 		return fmt.Errorf("insert situation: %w", err)
 	}
@@ -49,8 +50,8 @@ func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Versio
 		) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'lin_test', datetime('now'))`,
 		v.SituationID, v.Version, v.Phase, v.PreviousPhase,
 		v.Severity, v.Confidence, v.Completeness,
-		v.EventHorizon.Format(time.RFC3339Nano), v.Watermark.Format(time.RFC3339Nano),
-		v.EventHorizon.Format(time.RFC3339Nano), []byte("{}"), make([]byte, 32),
+		kernel.FormatTime(v.EventHorizon), kernel.FormatTime(v.Watermark),
+		kernel.FormatTime(v.EventHorizon), []byte("{}"), make([]byte, 32),
 	); err != nil {
 		return fmt.Errorf("insert situation version: %w", err)
 	}
@@ -243,7 +244,7 @@ func TestDebounceSetsNotBefore(t *testing.T) {
 
 	f.process(v)
 
-	want := base.Add(5 * time.Minute).Format(time.RFC3339Nano)
+	want := kernel.FormatTime(base.Add(5 * time.Minute))
 	if notBefore := f.notBeforeOf(v); notBefore != want {
 		t.Fatalf("expected not_before %s, got %s", want, notBefore)
 	}
@@ -261,7 +262,7 @@ func TestCooldownDelaysNotBefore(t *testing.T) {
 	v2 := levelVersion(2, base.Add(2*time.Minute), 20.0)
 	f.process(v2)
 
-	want := base.Add(10 * time.Minute).Format(time.RFC3339Nano)
+	want := kernel.FormatTime(base.Add(10 * time.Minute))
 	if notBefore := f.notBeforeOf(v2); notBefore != want {
 		t.Fatalf("expected not_before %s, got %s", want, notBefore)
 	}

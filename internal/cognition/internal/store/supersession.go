@@ -10,7 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // ReplacementVersion is the Situation's Current Version, which supersedes
@@ -26,18 +25,9 @@ type SupersededItem struct {
 	Version int
 }
 
-// loadSupersession reads the replacement version and the open items it
-// supersedes.
-func (t *Tx) LoadSupersession(ctx context.Context, situationID, triggerName string) (ReplacementVersion, []SupersededItem, error) {
-	replacement, err := loadReplacement(ctx, t.tx, situationID)
-	if err != nil {
-		return ReplacementVersion{}, nil, err
-	}
-	items, err := supersededItems(ctx, t.tx, situationID, triggerName)
-	if err != nil {
-		return ReplacementVersion{}, nil, err
-	}
-	return replacement, items, nil
+// LoadReplacement reads the Situation's Current Version with its trace context.
+func (t *Tx) LoadReplacement(ctx context.Context, situationID string) (ReplacementVersion, error) {
+	return loadReplacement(ctx, t.tx, situationID)
 }
 
 func loadReplacement(ctx context.Context, tx *sql.Tx, situationID string) (ReplacementVersion, error) {
@@ -53,52 +43,26 @@ func loadReplacement(ctx context.Context, tx *sql.Tx, situationID string) (Repla
 	return r, nil
 }
 
-// supersededItems lists the trigger's pending and admitted scheduler items
-// for the Situation.
-func supersededItems(ctx context.Context, tx *sql.Tx, situationID, triggerName string) ([]SupersededItem, error) {
-	rows, err := tx.QueryContext(ctx, selectSupersededItemsSQL, situationID, situationID, triggerName)
+// CoalesceTriggerWork coalesces the trigger's open scheduler items,
+// supersedes their live episodes, cancels those episodes' attempts and returns
+// the coalesced items.
+func (t *Tx) CoalesceTriggerWork(ctx context.Context, situationID, triggerName string, now time.Time) ([]SupersededItem, error) {
+	coalesced, err := episodeledger.CoalesceSchedulerItems(ctx, t.tx, situationID, triggerName, now)
 	if err != nil {
-		return nil, fmt.Errorf("find superseded scheduler items: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	items, err := storage.CollectRows(rows, "superseded scheduler items", scanSupersededItem)
-	if err != nil {
-		return nil, err //nolint:wrapcheck // CollectRows names the failed step.
-	}
-	// Close before the caller's writes in the same transaction.
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("close superseded scheduler items: %w", err)
-	}
-	return items, nil
-}
-
-const selectSupersededItemsSQL = `
-		SELECT scheduler_item_id, situation_version
-		FROM scheduler_items
-		WHERE situation_id = ? AND trigger_id IN (
-			SELECT trigger_id FROM trigger_evaluations
-			WHERE situation_id = ? AND trigger_name = ? AND outcome = 'admitted'
-		) AND status IN ('pending', 'admitted')
-		ORDER BY scheduler_item_id`
-
-func scanSupersededItem(rows *sql.Rows) (SupersededItem, error) {
-	var item SupersededItem
-	if err := rows.Scan(&item.ID, &item.Version); err != nil {
-		return SupersededItem{}, fmt.Errorf("scan superseded scheduler item: %w", err)
-	}
-	return item, nil
-}
-
-// coalesceTriggerWork coalesces the trigger's open scheduler items,
-// supersedes their live episodes, and cancels those episodes' attempts.
-func (t *Tx) CoalesceTriggerWork(ctx context.Context, situationID, triggerName, now string) error {
-	if err := episodeledger.CoalesceSchedulerItems(ctx, t.tx, situationID, triggerName, now); err != nil {
-		return fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("%w", err)
 	}
 	if err := episodeledger.SupersedeCoalesced(ctx, t.tx, situationID, now); err != nil {
-		return fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("%w", err)
 	}
-	return nil
+	return supersededItems(coalesced), nil
+}
+
+func supersededItems(coalesced []episodeledger.CoalescedItem) []SupersededItem {
+	items := make([]SupersededItem, len(coalesced))
+	for i, item := range coalesced {
+		items[i] = SupersededItem{ID: item.SchedulerItemID, Version: item.SituationVersion}
+	}
+	return items
 }
 
 func (t *Tx) AnnounceSupersededItem(ctx context.Context, replacement ReplacementVersion, item SupersededItem, now time.Time) error {

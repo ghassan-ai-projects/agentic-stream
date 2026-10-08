@@ -6,13 +6,14 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestStatusEnumsMatchTheSchemaChecks(t *testing.T) {
 	db := storagetest.OpenTemp(t)
 	for _, test := range []struct{ table, column, want string }{
-		{"episodes", "lifecycle_status", episodeledger.LifecycleSQL(func(episodeledger.LifecycleStatus) bool { return true })},
+		{"episodes", "lifecycle_status", domain.LifecycleSQL(func(domain.LifecycleStatus) bool { return true })},
 		{"episode_attempts", "status", episodeledger.AttemptSQL(func(episodeledger.AttemptStatus) bool { return true })},
 	} {
 		var ddl string

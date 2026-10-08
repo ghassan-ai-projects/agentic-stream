@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -43,8 +45,8 @@ func collectUnfinishedAttempts(rows *sql.Rows) ([]domain.UnfinishedAttempt, erro
 }
 
 // AbandonUnfinishedAttempt abandons one active attempt and returns the rows it changed.
-func (t *Tx) AbandonUnfinishedAttempt(ctx context.Context, attemptID, episodeID, endedAt string, terminal []byte) (int64, error) {
-	result, err := t.q.ExecContext(ctx, abandonAttemptSQL, endedAt, terminal, attemptID, episodeID)
+func (t *Tx) AbandonUnfinishedAttempt(ctx context.Context, attemptID, episodeID string, endedAt time.Time, terminal []byte) (int64, error) {
+	result, err := t.q.ExecContext(ctx, abandonAttemptSQL, kernel.FormatTime(endedAt), terminal, attemptID, episodeID)
 	if err != nil {
 		return 0, fmt.Errorf("abandon attempt %s: %w", attemptID, err)
 	}
@@ -57,21 +59,25 @@ func (t *Tx) AbandonUnfinishedAttempt(ctx context.Context, attemptID, episodeID,
 
 // AbandonOpenEpisode abandons an episode that is not yet closed and returns
 // the rows it changed.
-func (t *Tx) AbandonOpenEpisode(ctx context.Context, episodeID, endedAt string, terminal []byte) (int64, error) {
-	result, err := t.q.ExecContext(ctx, abandonCancelingEpisodeSQL, endedAt, terminal, episodeID)
+func (t *Tx) AbandonOpenEpisode(ctx context.Context, episodeID string, endedAt time.Time, terminal []byte) (int64, error) {
+	result, err := t.q.ExecContext(ctx, abandonCancelingEpisodeSQL, kernel.FormatTime(endedAt), terminal, episodeID)
 	if err != nil {
 		return 0, fmt.Errorf("abandon canceling episode %s: %w", episodeID, err)
 	}
 	return storage.RowsAffected(result), nil
 }
 
-// EpisodeLifecycle reads the episode's lifecycle status.
+// EpisodeLifecycle reads the episode's lifecycle status; an unknown episode is
+// an error.
 func (t *Tx) EpisodeLifecycle(ctx context.Context, episodeID string) (domain.LifecycleStatus, error) {
-	var lifecycle domain.LifecycleStatus
-	if err := t.q.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = ?", episodeID).Scan(&lifecycle); err != nil {
-		return "", fmt.Errorf("load recovered episode %s: %w", episodeID, err)
+	fence, found, err := t.ReadEpisodeFence(ctx, episodeID)
+	if err != nil {
+		return "", err
 	}
-	return lifecycle, nil
+	if !found {
+		return "", fmt.Errorf("load episode lifecycle %s: %w", episodeID, sql.ErrNoRows)
+	}
+	return fence.Lifecycle, nil
 }
 
 var unfinishedAttemptsSQL = `
@@ -100,6 +106,6 @@ type Settler interface {
 
 // SettleEpisodeCost releases the episode's cost reservation through the
 // settler on this transaction.
-func (t *Tx) SettleEpisodeCost(ctx context.Context, settler Settler, episodeID, now string) error {
-	return settler.Settle(ctx, t.tx, episodeID, 0, now) //nolint:wrapcheck // The caller names the episode and operation.
+func (t *Tx) SettleEpisodeCost(ctx context.Context, settler Settler, episodeID string, now time.Time) error {
+	return settler.Settle(ctx, t.tx, episodeID, 0, kernel.FormatTime(now)) //nolint:wrapcheck // The caller names the episode and operation.
 }

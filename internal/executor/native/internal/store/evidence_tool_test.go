@@ -9,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
@@ -25,7 +26,7 @@ func seedEvidence(t *testing.T, count int) *storage.DB {
 		payload := []byte(fmt.Sprintf(`{"value":%d}`, at.Minute()))
 		if _, err := db.ExecContext(t.Context(), `INSERT INTO event_log (tenant_id, partition_id, event_id, event_type, schema_version, source, partition_key, entity_type, entity_id, event_time, ingested_at, classification, quality_json, payload_json, payload_sha256, created_at)
 			VALUES ('tenant-1', 0, ?, 'motor.temperature.observed', '1.0', 'test', ?, 'motor', ?, ?, ?, 'internal', CAST('[]' AS BLOB), ?, zeroblob(32), ?)`,
-			eventID, entityID, entityID, at.Format(time.RFC3339Nano), at.Format(time.RFC3339Nano), payload, at.Format(time.RFC3339Nano)); err != nil {
+			eventID, entityID, entityID, kernel.FormatTime(at), kernel.FormatTime(at), payload, kernel.FormatTime(at)); err != nil {
 			t.Fatal(err)
 		}
 	}

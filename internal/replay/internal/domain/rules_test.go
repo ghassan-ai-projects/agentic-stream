@@ -23,61 +23,6 @@ func TestRecordedAttemptIdentityPrecedesFence(t *testing.T) {
 	}
 }
 
-func TestAdmissionWindowAppliesNotBefore(t *testing.T) {
-	t.Parallel()
-	created := "2026-01-01T00:00:00Z"
-	later := "2026-01-02T00:00:00Z"
-	admitAt, expires, err := AdmissionWindow(created, later, "2026-01-03T00:00:00Z")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !admitAt.Equal(time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)) || !expires.After(admitAt) {
-		t.Fatalf("not-before was not applied: admitAt=%v expires=%v", admitAt, expires)
-	}
-}
-
-func TestAdmissionWindowRejectsUnparseableTimes(t *testing.T) {
-	for name, createdAt := range map[string]string{
-		"creation": "not-a-time",
-		"expiry":   "",
-	} {
-		t.Run(name, func(t *testing.T) {
-			times := [3]string{"2026-01-01T00:00:00Z", "", "2026-01-03T00:00:00Z"}
-			if name == "creation" {
-				times[0] = createdAt
-			} else {
-				times[2] = createdAt
-			}
-			if _, _, err := AdmissionWindow(times[0], times[1], times[2]); err == nil {
-				t.Fatal("expected parse failure")
-			}
-		})
-	}
-}
-
-func TestAdmissionReadyRequiresWindowOpenAndUnexpired(t *testing.T) {
-	t.Parallel()
-	admitAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	cases := []struct {
-		name    string
-		now     time.Time
-		expires time.Time
-		want    bool
-	}{
-		{"ready", admitAt, admitAt.Add(time.Hour), true},
-		{"not yet admissible", admitAt.Add(-time.Minute), admitAt.Add(time.Hour), false},
-		{"expired at admission", admitAt, admitAt, false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			if got := AdmissionReady(admitAt, tc.expires, tc.now); got != tc.want {
-				t.Fatalf("AdmissionReady=%v want %v", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestEpochFromEarliestDefaultsToUnixOrigin(t *testing.T) {
 	epoch := EpochFromEarliest(time.Time{})
 	if !epoch.Equal(time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)) {

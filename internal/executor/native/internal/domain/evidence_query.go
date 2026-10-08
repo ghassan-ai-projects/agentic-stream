@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // EvidenceScope is what the trusted episode request grants an evidence tool:
@@ -57,12 +59,12 @@ func (s EvidenceScope) scopedQuery(args evidenceArguments, now time.Time) (Evide
 func evidenceWindow(query EvidenceQuery, args evidenceArguments) (EvidenceQuery, error) {
 	var err error
 	if args.From != "" {
-		if query.From, err = time.Parse(time.RFC3339Nano, args.From); err != nil {
+		if query.From, err = kernel.ParseTime(args.From); err != nil {
 			return EvidenceQuery{}, fmt.Errorf("invalid evidence from: %w", err)
 		}
 	}
 	if args.Until != "" {
-		if query.Until, err = time.Parse(time.RFC3339Nano, args.Until); err != nil {
+		if query.Until, err = kernel.ParseTime(args.Until); err != nil {
 			return EvidenceQuery{}, fmt.Errorf("invalid evidence until: %w", err)
 		}
 	}

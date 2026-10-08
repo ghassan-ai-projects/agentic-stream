@@ -11,7 +11,7 @@ import (
 
 // UpsertSchedulerItem persists an admitted trigger opportunity and its
 // deduplication identity.
-func UpsertSchedulerItem(ctx context.Context, tx *sql.Tx, item SchedulerItem, tenantID string, dedupeKey []byte, now string) error {
+func UpsertSchedulerItem(ctx context.Context, tx *sql.Tx, item SchedulerItem, tenantID string, dedupeKey []byte, now time.Time) error {
 	return app.UpsertSchedulerItem(ctx, store.Join(tx), item, tenantID, dedupeKey, now)
 }
 
@@ -20,8 +20,9 @@ func MarkSchedulerItemAdmitted(ctx context.Context, tx *sql.Tx, schedulerItemID 
 	return app.MarkSchedulerItemAdmitted(ctx, store.Join(tx), schedulerItemID, now)
 }
 
-// CoalesceSchedulerItems marks the trigger's open queue items replaced by newer work.
-func CoalesceSchedulerItems(ctx context.Context, tx *sql.Tx, situationID, triggerName, now string) error {
+// CoalesceSchedulerItems marks the trigger's open queue items replaced by newer
+// work and returns the items it changed in identity order.
+func CoalesceSchedulerItems(ctx context.Context, tx *sql.Tx, situationID, triggerName string, now time.Time) ([]CoalescedItem, error) {
 	return app.CoalesceSchedulerItems(ctx, store.Join(tx), situationID, triggerName, now)
 }
 
@@ -35,8 +36,16 @@ func CoalesceSkippedItem(ctx context.Context, tx *sql.Tx, schedulerItemID string
 	return app.CoalesceSkippedItem(ctx, store.Join(tx), schedulerItemID, now)
 }
 
-// NextPendingSchedulerItem returns the tenant's next pending scheduler item
-// that is due at now, in queue order: not_before, then creation, then identity.
+// DueSchedulerItems lists the tenant's pending scheduler items whose admission
+// window is open at now, in queue order: not_before, then creation, then
+// identity. An item is due when the later of its creation and not_before has
+// arrived and still precedes its expiry.
+func DueSchedulerItems(ctx context.Context, tx *sql.Tx, tenantID string, now time.Time) ([]DueItem, error) {
+	return app.DueSchedulerItems(ctx, store.Join(tx), tenantID, now)
+}
+
+// NextPendingSchedulerItem returns the first due scheduler item that has not
+// reached its expiry at now.
 func NextPendingSchedulerItem(ctx context.Context, db *sql.DB, tenantID string, now time.Time) (string, bool, error) {
 	return app.NextPendingSchedulerItem(ctx, store.Reader(db), tenantID, now)
 }

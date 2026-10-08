@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -51,9 +52,12 @@ func (row storedSafetyEvent) decode() (domain.SafetyEvent, error) {
 	if err := json.Unmarshal(row.details, &event.Details); err != nil {
 		return domain.SafetyEvent{}, fmt.Errorf("decode safety event %d: %w", row.id, err)
 	}
-	var err error
-	event.Occurred, err = parseTime("safety event time", row.occurred)
-	return event, err
+	occurred, err := kernel.ParseTime(row.occurred)
+	if err != nil {
+		return domain.SafetyEvent{}, fmt.Errorf("parse safety event time: %w", err)
+	}
+	event.Occurred = occurred
+	return event, nil
 }
 
 // CountOpenReconciliations counts devices whose reconciliation is required.

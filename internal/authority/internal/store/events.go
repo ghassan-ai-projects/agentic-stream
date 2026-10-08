@@ -2,12 +2,12 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"strings"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 const appendAuthorityEventSQL = `
@@ -25,7 +25,7 @@ func (t *Tx) AppendAuthorityEvent(ctx context.Context, event domain.AuthorityEve
 	subject := event.Subject
 	if _, err := t.tx.ExecContext(ctx, appendAuthorityEventSQL, subject.Target, subject.Device.DeviceID,
 		string(event.Type), subject.Owner.Epoch, subject.Owner.Instance, subject.Device.BootID,
-		details, sum, formatTime(event.OccurredAt)); err != nil {
+		details, sum, kernel.FormatTime(event.OccurredAt)); err != nil {
 		return fmt.Errorf("record authority event: %w", err)
 	}
 	return nil
@@ -65,7 +65,7 @@ func (t *Tx) AppendSafetyEvent(ctx context.Context, event domain.SafetyEvent) er
 		return err
 	}
 	if _, err := t.tx.ExecContext(ctx, appendSafetyEventSQL, string(event.Type), event.Target, nullable(event.CommandID),
-		details, sum, formatTime(event.Occurred)); err != nil {
+		details, sum, kernel.FormatTime(event.Occurred)); err != nil {
 		return fmt.Errorf("record safety event: %w", err)
 	}
 	return nil
@@ -78,6 +78,5 @@ func canonicalDocument(what string, document map[string]any) ([]byte, []byte, er
 	if err != nil {
 		return nil, nil, fmt.Errorf("canonicalize %s: %w", what, err)
 	}
-	sum := sha256.Sum256(data)
-	return data, sum[:], nil
+	return data, canonicaljson.Sum(data), nil
 }

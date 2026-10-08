@@ -3,11 +3,11 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -65,7 +65,7 @@ func withVersionDetails(record domain.SituationVersionRecord, previous sql.NullI
 		value := int(previous.Int64)
 		record.PreviousVersion = &value
 	}
-	record.SnapshotSHA256 = "sha256:" + hex.EncodeToString(digest)
+	record.SnapshotSHA256 = kernel.EncodeDigest(digest)
 	if err := json.Unmarshal(references, &record.Evidence); err != nil {
 		return domain.SituationVersionRecord{}, fmt.Errorf("decode lineage %s: %w", record.LineageID, err)
 	}

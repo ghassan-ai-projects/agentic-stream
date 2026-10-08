@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -48,7 +48,7 @@ func (s Store) SaveLine(ctx context.Context, connectorID, kind string, lastLine 
 	if err != nil {
 		return err //nolint:wrapcheck // The domain codec names the failed encode.
 	}
-	if _, err := s.db.ExecContext(ctx, upsertCheckpointSQL, connectorID, kind, domain.CheckpointVersion, blob, sources.FormatTime(now)); err != nil {
+	if _, err := s.db.ExecContext(ctx, upsertCheckpointSQL, connectorID, kind, domain.CheckpointVersion, blob, kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("upsert checkpoint: %w", err)
 	}
 	return nil

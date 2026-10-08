@@ -2,7 +2,6 @@ package domain
 
 import (
 	"bufio"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -114,11 +113,11 @@ func expectedDigest(document map[string]any, documentField string, domain canoni
 	if domain == "" {
 		return plainDigest(document, documentField)
 	}
-	digest, err := canonicaljson.Digest(domain, document)
+	sum, err := canonicaljson.DigestSum(domain, document)
 	if err != nil {
 		return nil, fmt.Errorf("digest %s: %w", documentField, err)
 	}
-	return canonicaljson.DecodeDigest(digest) //nolint:wrapcheck // The digest was just produced; failure is not operator-facing.
+	return sum, nil
 }
 
 func plainDigest(document map[string]any, documentField string) ([]byte, error) {
@@ -126,8 +125,7 @@ func plainDigest(document map[string]any, documentField string) ([]byte, error) 
 	if err != nil {
 		return nil, fmt.Errorf("canonicalize %s: %w", documentField, err)
 	}
-	sum := sha256.Sum256(canonical)
-	return sum[:], nil
+	return canonicaljson.Sum(canonical), nil
 }
 
 func decodeRowDigest(row map[string]any, field string) ([]byte, error) {
@@ -136,7 +134,7 @@ func decodeRowDigest(row map[string]any, field string) ([]byte, error) {
 		return nil, fmt.Errorf("%s is not a base64 BLOB", field)
 	}
 	digest, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil || len(digest) != sha256.Size {
+	if err != nil || !canonicaljson.HasSumLength(digest) {
 		return nil, fmt.Errorf("%s is not a 32-byte base64 digest", field)
 	}
 	return digest, nil

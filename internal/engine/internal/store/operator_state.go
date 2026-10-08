@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // LoadOperatorState reads the operator state of one entity in a partition, or
@@ -101,7 +101,7 @@ func (tx *Tx) SaveOperatorState(ctx context.Context, partitionID int, entityID s
 	if err := tx.deleteOperatorState(ctx, partitionID, entityID); err != nil {
 		return err
 	}
-	at := sources.FormatTime(now)
+	at := kernel.FormatTime(now)
 	for operatorID, states := range state.OperatorStates {
 		for stateKey, blob := range states {
 			if err := tx.upsertOperatorState(ctx, partitionID, operatorID, stateKey, blob, at); err != nil {

@@ -49,7 +49,7 @@ func requireOwnerLease(ctx context.Context, tx *store.Tx, ownerEpoch string, now
 	if ownerEpoch == "" {
 		return nil
 	}
-	held, err := tx.OwnerHoldsLease(ctx, ownerEpoch, store.TimeText(now))
+	held, err := tx.OwnerHoldsLease(ctx, ownerEpoch, now)
 	if err != nil {
 		return err
 	}
@@ -62,14 +62,22 @@ func requireOwnerLease(ctx context.Context, tx *store.Tx, ownerEpoch string, now
 // checkAttemptOpen requires the attempt row to exist under the identity's
 // owner epoch and not be terminal.
 func checkAttemptOpen(ctx context.Context, tx *store.Tx, identity domain.Identity) error {
-	record, found, err := tx.ReadAttempt(ctx, identity)
+	record, err := attemptRecord(ctx, tx, identity)
 	if err != nil {
 		return err
 	}
-	if !found {
-		return domain.Refuse(domain.RejectWrongAttempt)
-	}
 	return domain.CheckAttemptOpen(identity, record)
+}
+
+func attemptRecord(ctx context.Context, tx *store.Tx, identity domain.Identity) (domain.AttemptRecord, error) {
+	record, found, err := tx.ReadAttempt(ctx, identity)
+	if err != nil {
+		return domain.AttemptRecord{}, err
+	}
+	if !found {
+		return domain.AttemptRecord{}, domain.Refuse(domain.RejectWrongAttempt)
+	}
+	return record, nil
 }
 
 // validateTerminalIdentity validates the acknowledgement of a cancellation on a
@@ -81,20 +89,17 @@ func validateTerminalIdentity(ctx context.Context, tx *store.Tx, identity domain
 	if err := requireOwnerLease(ctx, tx, identity.OwnerEpoch, now); err != nil {
 		return err
 	}
-	status, err := tx.ReadAttemptStatusOf(ctx, identity)
+	record, err := attemptRecord(ctx, tx, identity)
 	if err != nil {
 		return err
 	}
-	return domain.CheckAttemptNotTerminal(status)
+	return domain.CheckAttemptNotTerminal(record.Status)
 }
 
 func checkTerminalFence(ctx context.Context, tx *store.Tx, identity domain.Identity) error {
-	fence, found, err := tx.ReadTerminalEpisodeFence(ctx, identity.EpisodeID)
+	fence, err := episodeFence(ctx, tx, identity.EpisodeID)
 	if err != nil {
 		return err
-	}
-	if !found {
-		return domain.Refuse(domain.RejectUnknownEpisode)
 	}
 	return fence.CheckIdentity(identity)
 }

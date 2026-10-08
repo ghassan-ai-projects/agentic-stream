@@ -1,8 +1,6 @@
 package domain
 
 import (
-	"crypto/sha256"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
@@ -47,16 +45,13 @@ func (d Document) Digest(key string) []byte {
 
 // verifyDigest reports whether digest is the canonical domain digest of document.
 func verifyDigest(domain canonicaljson.Domain, document Document, digest []byte) bool {
-	if len(digest) != sha256.Size {
-		return false
-	}
-	return canonicaljson.Verify(domain, map[string]any(document), canonicaljson.EncodeDigest(digest))
+	return canonicaljson.VerifySum(domain, map[string]any(document), digest)
 }
 
 // verifyIntentDigest reports whether digest binds the intent document, which
 // excludes its own digest field from the hashed content.
 func verifyIntentDigest(document Document, digest []byte) bool {
-	if len(digest) != sha256.Size || !contractsv1.VerifyIntentDigest(document) {
+	if !canonicaljson.HasSumLength(digest) || !contractsv1.VerifyIntentDigest(document) {
 		return false
 	}
 	expected, err := contractsv1.IntentDigest(document)

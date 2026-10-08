@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // ReadRecords streams the tenant's scanned records after a position,
@@ -64,23 +65,50 @@ func scanScannedEvent(rows *sql.Rows) (domain.ScannedEvent, error) {
 	if err := rows.Scan(
 		&e.Position, &e.TenantID, &e.PartitionID, &e.EventID,
 		&e.EventType, &e.SchemaVersion, &e.Source, &e.PartitionKey,
-		&e.EntityType, &e.EntityID, &e.EventTime, &nulls.observedAt,
-		&e.IngestedAt, &nulls.correlationID, &nulls.causationID, &nulls.traceparent,
+		&e.EntityType, &e.EntityID, &nulls.eventTime, &nulls.observedAt,
+		&nulls.ingestedAt, &nulls.correlationID, &nulls.causationID, &nulls.traceparent,
 		&nulls.tracestate, &e.Classification, &e.QualityJSON, &e.PayloadJSON,
 	); err != nil {
 		return e, fmt.Errorf("scan record: %w", err)
 	}
-	e = withScannedNulls(e, nulls)
-	return e, nil
+	if err := parseScannedTimes(&e, nulls); err != nil {
+		return e, err
+	}
+	return withScannedNulls(e, nulls), nil
+}
+
+func parseScannedTimes(e *domain.ScannedEvent, nulls scannedNulls) error {
+	var err error
+	if e.EventTime, err = kernel.ParseTime(nulls.eventTime); err != nil {
+		return fmt.Errorf("parse event_time: %w", err)
+	}
+	if e.IngestedAt, err = kernel.ParseTime(nulls.ingestedAt); err != nil {
+		return fmt.Errorf("parse ingested_at: %w", err)
+	}
+	if e.ObservedAt, err = parseObservedAt(nulls.observedAt); err != nil {
+		return fmt.Errorf("parse observed_at: %w", err)
+	}
+	return nil
+}
+
+func parseObservedAt(value sql.NullString) (*time.Time, error) {
+	if !value.Valid || value.String == "" {
+		return nil, nil
+	}
+	parsed, err := kernel.ParseTime(value.String)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // The caller names the column.
+	}
+	return &parsed, nil
 }
 
 // scannedNulls holds the row's nullable text columns until projection.
 type scannedNulls struct {
 	observedAt, correlationID, causationID, traceparent, tracestate sql.NullString
+	eventTime, ingestedAt                                           string
 }
 
 func withScannedNulls(e domain.ScannedEvent, nulls scannedNulls) domain.ScannedEvent {
-	e.ObservedAt = nullStringPtr(nulls.observedAt)
 	e.CorrelationID = nullStringPtr(nulls.correlationID)
 	e.CausationID = nullStringPtr(nulls.causationID)
 	e.Traceparent = nullStringPtr(nulls.traceparent)
@@ -98,7 +126,7 @@ func nullStringPtr(value sql.NullString) *string {
 // ReadEntityEvents streams one entity window's events in event-time then log
 // order, at most MaxRows of them, until visit reports it wants no more.
 func (s Store) ReadEntityEvents(ctx context.Context, window domain.EntityWindow, visit func(domain.EntityEvent) (bool, error)) error {
-	rows, err := s.DB.QueryContext(ctx, `SELECT event_id, event_type, event_time, payload_json FROM event_log WHERE tenant_id = ? AND entity_id = ? AND event_time >= ? AND event_time <= ? ORDER BY event_time, position LIMIT ?`, window.TenantID, window.EntityID, sources.FormatTime(window.From), sources.FormatTime(window.Until), window.MaxRows)
+	rows, err := s.DB.QueryContext(ctx, `SELECT event_id, event_type, event_time, payload_json FROM event_log WHERE tenant_id = ? AND entity_id = ? AND event_time >= ? AND event_time <= ? ORDER BY event_time, position LIMIT ?`, window.TenantID, window.EntityID, kernel.FormatTime(window.From), kernel.FormatTime(window.Until), window.MaxRows)
 	if err != nil {
 		return fmt.Errorf("query evidence events: %w", err)
 	}

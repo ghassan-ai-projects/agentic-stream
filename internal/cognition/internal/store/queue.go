@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -16,7 +17,7 @@ func (t *Tx) LatestAdmittedTime(ctx context.Context, situationID, triggerName, e
 	if !found {
 		return nil, nil
 	}
-	parsed, err := time.Parse(time.RFC3339Nano, evaluatedAt)
+	parsed, err := kernel.ParseTime(evaluatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("parse evaluated_at: %w", err)
 	}

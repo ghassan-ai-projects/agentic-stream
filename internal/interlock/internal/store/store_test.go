@@ -8,13 +8,14 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestAssertFailsClosedAndVersionIsMonotonic(t *testing.T) {
 	db := storagetest.OpenTemp(t)
 
-	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
+	now := kernel.FormatTime(time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC))
 	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
 		return store.Assert(context.Background(), tx)
 	}); err != nil {

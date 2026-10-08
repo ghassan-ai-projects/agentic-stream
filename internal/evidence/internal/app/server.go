@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // Server sequences admitted durable evidence queries.
@@ -53,10 +54,7 @@ func (s *Server) commitResult(ctx context.Context, reservation ledgerReservation
 	return nil
 }
 func (s *Server) now() time.Time {
-	if s.Now != nil {
-		return s.Now().UTC()
-	}
-	return time.Now().UTC()
+	return sources.NowUTC(s.Now)
 }
 func (s *Server) runQuery(ctx context.Context, call Call, reservation ledgerReservation, now time.Time) (QueryResult, error) {
 	queryContext, cancel := context.WithTimeout(ctx, call.Deadline.Sub(now))

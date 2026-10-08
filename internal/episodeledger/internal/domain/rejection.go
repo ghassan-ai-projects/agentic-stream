@@ -5,6 +5,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // RejectionReason is a durable reason for refusing worker input or a
@@ -85,7 +88,7 @@ type Rejection struct {
 	Fence     int64
 	Reason    RejectionReason
 	Details   []byte
-	At        string
+	At        time.Time
 }
 
 // RejectionDetails defaults empty details to an empty JSON object.
@@ -97,9 +100,9 @@ func RejectionDetails(details []byte) []byte {
 }
 
 // RejectionID derives the idempotent identity of a rejection from the worker
-// identity, the reason, the details and the timestamp text.
-func RejectionID(identity Identity, reason RejectionReason, details []byte, at string) string {
-	material := fmt.Sprintf("%s|%s|%d|%s|%s|%s", identity.EpisodeID, identity.AttemptID, identity.Fence, reason, string(details), at)
+// identity, the reason, the details and the instant.
+func RejectionID(identity Identity, reason RejectionReason, details []byte, at time.Time) string {
+	material := fmt.Sprintf("%s|%s|%d|%s|%s|%s", identity.EpisodeID, identity.AttemptID, identity.Fence, reason, string(details), kernel.FormatTime(at))
 	hash := sha256.Sum256([]byte(material))
 	return "rej_" + hex.EncodeToString(hash[:])
 }

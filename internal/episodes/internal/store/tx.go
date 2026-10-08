@@ -21,9 +21,6 @@ type Tx struct{ tx *sql.Tx }
 // Join preserves the caller's transaction and its commit/rollback ownership.
 func Join(tx *sql.Tx) *Tx { return &Tx{tx: tx} }
 
-// ErrNoRows is the empty-projection sentinel.
-var ErrNoRows = sql.ErrNoRows
-
 // ErrEpochUnbound identifies an episode without a decision epoch.
 var ErrEpochUnbound = runtimecontrol.ErrEpochUnbound
 

@@ -58,7 +58,7 @@ func quarantineReading(t *testing.T, path string) {
 		EventTime: time.Date(2026, 10, 8, 10, 0, 0, 0, time.UTC), IngestedAt: time.Date(2026, 10, 8, 10, 0, 1, 0, time.UTC),
 		Classification: contractsv1.ClassificationInternal, Data: map[string]any{"celsius": 31.5, "quality": "valid"},
 	}
-	if err := eventlog.NewEventLog(db).QuarantineEnvelope(t.Context(), "default", reading, "schema_unregistered", "2026-10-08T10:00:01Z"); err != nil {
+	if err := eventlog.NewEventLog(db).QuarantineEnvelope(t.Context(), "default", reading, "schema_unregistered", time.Date(2026, 10, 8, 10, 0, 1, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
 	registerZoneTemperatureSchema(t, db)

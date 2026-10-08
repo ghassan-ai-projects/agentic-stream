@@ -5,6 +5,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // ApprovalAssertionSigningBytes returns the domain-separated durable assertion bytes.
@@ -22,7 +23,7 @@ func canonicalApprovalAssertion(assertion ApprovalAssertion) ([]byte, error) {
 		"tenant_id": assertion.TenantID, "situation_id": assertion.SituationID,
 		"situation_version": assertion.SituationVersion, "risk_class": assertion.RiskClass,
 		"intent_digest": assertion.IntentDigest, "decision_digest": assertion.DecisionDigest,
-		"expires_at": assertion.ExpiresAt, "nonce": assertion.Nonce,
+		"expires_at": kernel.FormatTime(assertion.ExpiresAt), "nonce": assertion.Nonce,
 		"approver_id": assertion.ApproverID, "relay_id": assertion.RelayID, "approved": assertion.Approved,
 	})
 	if err != nil {

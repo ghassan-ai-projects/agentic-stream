@@ -270,7 +270,7 @@ func TestAuthorizationRecordsBindOneApprovedApprovalWhenDecisionsTie(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := domain.ApprovalRow{ID: "approval-b", ExpiresAt: "2031-01-01T00:00:00Z", Present: true}
+		want := domain.ApprovalRow{ID: "approval-b", ExpiresAt: time.Date(2031, 1, 1, 0, 0, 0, 0, time.UTC), Present: true}
 		if records.Approval != want {
 			t.Fatalf("approval = %+v, want %+v", records.Approval, want)
 		}
@@ -466,4 +466,18 @@ func TestAuthorizationEpisodeFollowsTheLedgerDecisionPredicate(t *testing.T) {
 			return nil
 		})
 	}
+}
+
+func TestNextCandidateFailsClosedOnUnreadableLeaseExpiry(t *testing.T) {
+	t.Parallel()
+	db, _ := openActionFixture(t)
+	if _, err := db.ExecContext(t.Context(), "UPDATE outbox SET status = 'leased', lease_owner = 'w', lease_until = '1'"); err != nil {
+		t.Fatal(err)
+	}
+	inTx(t, db, func(tx *Tx) error {
+		if _, found, err := tx.NextCandidate(t.Context(), time.Now()); err == nil || found {
+			t.Fatalf("unreadable lease expiry found=%v err=%v, want an error", found, err)
+		}
+		return nil
+	})
 }

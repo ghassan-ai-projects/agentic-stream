@@ -7,6 +7,8 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // A physical sensor never pauses: all four thermal sources keep reporting while
@@ -96,7 +98,7 @@ func thermalReading(t *testing.T, id, kind string, seq int, data map[string]any)
 	reading, err := json.Marshal(map[string]any{
 		"id": id, "type": kind, "schema_version": "1.0", "tenant_id": "default",
 		"source": "thermal-chamber-fixture", "partition_key": "zone-01", "entity": map[string]any{"type": "thermal_zone", "id": "zone-01"},
-		"event_time": now.Add(-time.Second).Format(time.RFC3339Nano), "ingested_at": now.Format(time.RFC3339Nano), "classification": "internal",
+		"event_time": kernel.FormatTime(now.Add(-time.Second)), "ingested_at": kernel.FormatTime(now), "classification": "internal",
 		"data": data,
 	})
 	if err != nil {

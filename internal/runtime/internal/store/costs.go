@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -30,7 +31,7 @@ func ConfigureCostLimits(ctx context.Context, cfg CostConfiguration) error {
 		if err := assertCostConfigurationOwner(ctx, tx, cfg); err != nil {
 			return err
 		}
-		now := sources.FormatTime(cfg.Clock.Now())
+		now := kernel.FormatTime(cfg.Clock.Now())
 		return runtimecontrol.ApplyCostCeilings(ctx, tx, ceilings, cfg.TenantID, now) //nolint:wrapcheck // Wrapped below with the configuration step.
 	}); err != nil {
 		return fmt.Errorf("configure cost limits: %w", err)

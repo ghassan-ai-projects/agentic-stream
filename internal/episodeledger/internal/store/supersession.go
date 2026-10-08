@@ -3,12 +3,15 @@ package store
 import (
 	"context"
 	"fmt"
+	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // SupersedeCoalescedEpisodes ends the live episodes bound to coalesced
 // scheduler items of the situation.
-func (t *Tx) SupersedeCoalescedEpisodes(ctx context.Context, situationID, now string) error {
-	if _, err := t.q.ExecContext(ctx, supersedeCoalescedEpisodesSQL, now, situationID); err != nil {
+func (t *Tx) SupersedeCoalescedEpisodes(ctx context.Context, situationID string, now time.Time) error {
+	if _, err := t.q.ExecContext(ctx, supersedeCoalescedEpisodesSQL, kernel.FormatTime(now), situationID); err != nil {
 		return fmt.Errorf("supersede episodes: %w", err)
 	}
 	return nil

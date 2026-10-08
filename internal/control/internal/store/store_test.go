@@ -7,11 +7,14 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
-const now = "2026-01-01T00:00:00.000000000Z"
+var instant = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+var now = kernel.FormatTime(instant)
 
 func openStore(t *testing.T) (store.Store, *storage.DB) {
 	t.Helper()
@@ -35,29 +38,29 @@ func TestOwnerLeaseClaimRenewReleaseAndHold(t *testing.T) {
 	t.Parallel()
 	persistence, _ := openStore(t)
 	tx := persistence.Autocommit()
-	later := "2026-01-01T00:01:00.000000000Z"
-	if err := tx.ClaimLease(t.Context(), "e1", "i1", now, later); err != nil {
+	later := instant.Add(time.Minute)
+	if err := tx.ClaimLease(t.Context(), "e1", "i1", instant, later); err != nil {
 		t.Fatal(err)
 	}
 	if epoch, instance, err := tx.RecordedOwner(t.Context()); err != nil || epoch != "e1" || instance != "i1" {
 		t.Fatalf("recorded = %s %s %v", epoch, instance, err)
 	}
-	if held, err := tx.HoldsLease(t.Context(), "e1", "i1", now); err != nil || !held {
+	if held, err := tx.HoldsLease(t.Context(), "e1", "i1", instant); err != nil || !held {
 		t.Fatalf("held=%v err=%v", held, err)
 	}
-	if held, _ := tx.HoldsLease(t.Context(), "e2", "i1", now); held {
+	if held, _ := tx.HoldsLease(t.Context(), "e2", "i1", instant); held {
 		t.Fatal("other epoch holds the lease")
 	}
-	if rows, err := tx.RenewLease(t.Context(), "e1", "i1", now, later); err != nil || rows != 1 {
+	if rows, err := tx.RenewLease(t.Context(), "e1", "i1", instant, later); err != nil || rows != 1 {
 		t.Fatalf("renew rows=%d err=%v", rows, err)
 	}
-	if rows, _ := tx.RenewLease(t.Context(), "e2", "i1", now, later); rows != 0 {
+	if rows, _ := tx.RenewLease(t.Context(), "e2", "i1", instant, later); rows != 0 {
 		t.Fatalf("other epoch renewed: %d", rows)
 	}
-	if rows, err := tx.ReleaseLease(t.Context(), "e1", "i1", now); err != nil || rows != 1 {
+	if rows, err := tx.ReleaseLease(t.Context(), "e1", "i1", instant); err != nil || rows != 1 {
 		t.Fatalf("release rows=%d err=%v", rows, err)
 	}
-	if held, _ := tx.HoldsLease(t.Context(), "e1", "i1", now); held {
+	if held, _ := tx.HoldsLease(t.Context(), "e1", "i1", instant); held {
 		t.Fatal("released lease still held")
 	}
 }
@@ -87,7 +90,7 @@ func TestEpochStateRecordIsTerminalOnceKilled(t *testing.T) {
 		t.Fatalf("uncontrolled epoch found=%v err=%v", found, err)
 	}
 	for _, state := range []string{"draining", "killed", "draining"} {
-		if err := tx.RecordEpochState(t.Context(), "e", state, now); err != nil {
+		if err := tx.RecordEpochState(t.Context(), "e", state, instant); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
@@ -16,9 +17,9 @@ func openActionFixture(t *testing.T) (*storage.DB, string) {
 	ctx := context.Background()
 	db := storagetest.OpenTempWithoutForeignKeys(t)
 
-	now := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
+	now := kernel.FormatTime(time.Now().UTC().Add(-time.Minute))
 	commandID := "cmd-action"
-	expiresAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)
+	expiresAt := kernel.FormatTime(time.Now().UTC().Add(time.Hour))
 	intent := map[string]any{
 		"intent_id": "int-action", "decision_id": "dec-action", "tenant_id": "tenant",
 		"situation_id": "sit-action", "situation_version": 1, "type": "maintenance.ticket",

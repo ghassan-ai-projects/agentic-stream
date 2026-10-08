@@ -42,7 +42,7 @@ func TestNotifiedStatusHidesReconcileRequired(t *testing.T) {
 func TestLeaseStandingDistinguishesForeignExpiredAndLive(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
-	at := func(d time.Duration) string { return now.Add(d).Format(time.RFC3339Nano) }
+	at := func(d time.Duration) time.Time { return now.Add(d) }
 	cases := []struct {
 		name       string
 		lease      OutboxLease
@@ -50,7 +50,7 @@ func TestLeaseStandingDistinguishesForeignExpiredAndLive(t *testing.T) {
 	}{
 		{"live", OutboxLease{OutboxLeased, "me", at(time.Minute)}, true, true},
 		{"expired", OutboxLease{OutboxLeased, "me", at(-time.Second)}, true, false},
-		{"unparseable expiry", OutboxLease{OutboxLeased, "me", "soon"}, true, false},
+		{"zero expiry", OutboxLease{OutboxLeased, "me", time.Time{}}, true, false},
 		{"foreign owner", OutboxLease{OutboxLeased, "other", at(time.Minute)}, false, false},
 		{"not leased", OutboxLease{OutboxDelivered, "me", at(time.Minute)}, false, false},
 	}

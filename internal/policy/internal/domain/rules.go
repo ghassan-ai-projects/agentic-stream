@@ -2,7 +2,6 @@ package domain
 
 import (
 	"encoding/json"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
@@ -45,12 +44,6 @@ func MatchesIntentIdentity(row IntentRecord, document IntentDocument) bool {
 func SourceHealthIncomplete(row IntentRecord) bool {
 	consequential := contractsv1.RiskClass(row.RiskClass).Consequential()
 	return consequential && (row.CurrentCompleteness == "provisional" || row.CurrentCompleteness == "uncertain")
-}
-
-// ApprovalExpired treats invalid expiry and the deadline itself as expired.
-func ApprovalExpired(expiresAt string, now time.Time) bool {
-	expires, err := time.Parse(time.RFC3339Nano, expiresAt)
-	return err != nil || !expires.After(now)
 }
 
 // ApprovalDecision chooses lifecycle and intent status for a human decision.

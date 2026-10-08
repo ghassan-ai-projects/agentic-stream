@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
@@ -129,7 +128,6 @@ func TestIntentDigestChecksOriginalDocument(t *testing.T) {
 
 func TestRuleBoundaries(t *testing.T) {
 	t.Parallel()
-	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	for _, risk := range []string{"R0", "R1", "R2", "R3", "R4"} {
 		for _, health := range []string{"on_time", "provisional", "uncertain"} {
 			want := risk >= "R2" && health != "on_time"
@@ -137,9 +135,6 @@ func TestRuleBoundaries(t *testing.T) {
 				t.Fatalf("health=%s risk=%s", health, risk)
 			}
 		}
-	}
-	if !ApprovalExpired("invalid", now) || !ApprovalExpired(FormatTime(now), now) || ApprovalExpired(FormatTime(now.Add(time.Nanosecond)), now) {
-		t.Fatal("expiry boundary changed")
 	}
 	for _, approved := range []bool{true, false} {
 		status, policy := ApprovalDecision(approved)

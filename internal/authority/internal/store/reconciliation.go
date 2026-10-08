@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -48,7 +49,7 @@ const insertFirstStateSQL = `
 func (t *Tx) InsertFirstState(ctx context.Context, state domain.DeviceState, owner domain.Owner, now time.Time) error {
 	if _, err := t.tx.ExecContext(ctx, insertFirstStateSQL, state.Device.DeviceID, state.Device.BootID,
 		string(domain.ReconciliationClear), state.JSON, state.SHA256, owner.Epoch,
-		formatTime(now), formatTime(now)); err != nil {
+		kernel.FormatTime(now), kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("insert device state: %w", err)
 	}
 	return nil
@@ -60,7 +61,7 @@ func (t *Tx) RefreshState(ctx context.Context, state domain.DeviceState, owner d
 	if _, err := t.tx.ExecContext(ctx, `
 		UPDATE device_reconciliation SET state_json = ?, state_sha256 = ?, owner_epoch = ?, updated_at = ?
 		WHERE device_id = ?`,
-		state.JSON, state.SHA256, owner.Epoch, formatTime(now), state.Device.DeviceID); err != nil {
+		state.JSON, state.SHA256, owner.Epoch, kernel.FormatTime(now), state.Device.DeviceID); err != nil {
 		return fmt.Errorf("refresh device state: %w", err)
 	}
 	return nil
@@ -77,7 +78,7 @@ const recordRebootSQL = `
 // required, discarding the previous boot's resolution.
 func (t *Tx) RecordReboot(ctx context.Context, state domain.DeviceState, owner domain.Owner, now time.Time) error {
 	if _, err := t.tx.ExecContext(ctx, recordRebootSQL, state.Device.BootID,
-		string(domain.ReconciliationRequired), state.JSON, state.SHA256, owner.Epoch, formatTime(now),
+		string(domain.ReconciliationRequired), state.JSON, state.SHA256, owner.Epoch, kernel.FormatTime(now),
 		state.Device.DeviceID); err != nil {
 		return fmt.Errorf("record device reboot: %w", err)
 	}
@@ -93,7 +94,7 @@ const markRequiredSQL = `
 // MarkRequired opens a reconciliation for the device boot, discarding any
 // earlier resolution of that boot.
 func (t *Tx) MarkRequired(ctx context.Context, device domain.DeviceBoot, now time.Time) error {
-	if _, err := t.tx.ExecContext(ctx, markRequiredSQL, string(domain.ReconciliationRequired), formatTime(now),
+	if _, err := t.tx.ExecContext(ctx, markRequiredSQL, string(domain.ReconciliationRequired), kernel.FormatTime(now),
 		device.DeviceID, device.BootID); err != nil {
 		return fmt.Errorf("open device reconciliation: %w", err)
 	}
@@ -109,7 +110,7 @@ const recordResolutionSQL = `
 // status for its device boot.
 func (t *Tx) RecordResolution(ctx context.Context, resolution domain.Resolution, now time.Time) error {
 	if _, err := t.tx.ExecContext(ctx, recordResolutionSQL, string(resolution.Outcome.StatusAfter()),
-		string(resolution.Outcome), resolution.EvidenceJSON, resolution.EvidenceSHA256, formatTime(now), formatTime(now),
+		string(resolution.Outcome), resolution.EvidenceJSON, resolution.EvidenceSHA256, kernel.FormatTime(now), kernel.FormatTime(now),
 		resolution.Device.DeviceID, resolution.Device.BootID); err != nil {
 		return fmt.Errorf("record device reconciliation resolution: %w", err)
 	}

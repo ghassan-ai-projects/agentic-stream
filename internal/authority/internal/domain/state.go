@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"time"
 
@@ -29,8 +28,7 @@ func NewDeviceState(document map[string]any) (DeviceState, error) {
 	if err != nil {
 		return DeviceState{}, fmt.Errorf("canonicalize device state: %w", err)
 	}
-	sum := sha256.Sum256(stateJSON)
-	return DeviceState{Device: device, JSON: stateJSON, SHA256: sum[:]}, nil
+	return DeviceState{Device: device, JSON: stateJSON, SHA256: canonicaljson.Sum(stateJSON)}, nil
 }
 
 // StateChange classifies a reported device state against what is recorded.

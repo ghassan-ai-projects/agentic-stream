@@ -10,6 +10,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 )
 
@@ -75,7 +76,7 @@ const selectVersionSQL = `
 func (r versionRow) Version() (*situations.Version, error) {
 	v := r.v
 	var err error
-	if v.EventHorizon, err = time.Parse(time.RFC3339Nano, r.eventHorizon); err != nil {
+	if v.EventHorizon, err = kernel.ParseTime(r.eventHorizon); err != nil {
 		return nil, fmt.Errorf("parse event horizon: %w", err)
 	}
 	if v.Traceparent, v.Tracestate, err = r.traceContext(); err != nil {
@@ -101,7 +102,7 @@ func parseOptionalTime(value string) (time.Time, error) {
 	if value == "" {
 		return time.Time{}, nil
 	}
-	return time.Parse(time.RFC3339Nano, value) //nolint:wrapcheck // The caller names the field.
+	return kernel.ParseTime(value) //nolint:wrapcheck // The caller names the field.
 }
 
 // snapshotFacts returns the snapshot's facts object, or nil when it has none.

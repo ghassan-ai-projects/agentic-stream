@@ -170,7 +170,7 @@ func TestStoreRecordsShadowComparisonForReplayedEpisode(t *testing.T) {
 		BaselineManifestSHA256: bytesOf(4), TamozManifestSHA256: bytesOf(5),
 		BaselineDecisionJSON: []byte(`{}`), BaselineDecisionSHA256: bytesOf(6),
 		TamozDecisionJSON: []byte(`{}`), TamozDecisionSHA256: bytesOf(7),
-		ComparisonJSON: []byte(`{}`), ComparisonSHA256: bytesOf(8), CreatedAt: "2026-01-01T00:00:00Z",
+		ComparisonJSON: []byte(`{}`), ComparisonSHA256: bytesOf(8), CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
 	if err := store.RecordShadowComparison(t.Context(), comparison); err != nil {
 		t.Fatal(err)

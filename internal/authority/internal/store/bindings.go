@@ -9,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 const loadBindingSQL = `
@@ -47,7 +48,7 @@ func (t *Tx) InsertBinding(ctx context.Context, binding domain.CommandBinding, n
 	}
 	if _, err := t.tx.ExecContext(ctx, insertBindingSQL, binding.CommandID, binding.Target,
 		binding.Device.DeviceID, binding.Device.BootID, binding.Owner.Epoch, binding.Owner.Instance,
-		digest, formatTime(now)); err != nil {
+		digest, kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("record command binding: %w", err)
 	}
 	return nil

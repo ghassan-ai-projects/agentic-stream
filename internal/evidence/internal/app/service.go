@@ -7,6 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // CapabilityConfig supplies immutable authority names, key material and clocks.
@@ -130,10 +131,10 @@ func (s *Service) Verify(token []byte) (Scope, error) {
 
 // IssueTime provides the configured clock for attempt capability preparation.
 func (s *Service) IssueTime() time.Time {
-	if s.issuer != nil && s.issuer.Now != nil {
-		return s.issuer.Now().UTC()
+	if s.issuer == nil {
+		return sources.NowUTC(nil)
 	}
-	return time.Now().UTC()
+	return sources.NowUTC(s.issuer.Now)
 }
 
 // Call refuses services that were not configured for worker queries.

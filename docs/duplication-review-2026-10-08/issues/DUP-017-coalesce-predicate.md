@@ -1,6 +1,6 @@
 # DUP-017: The trigger open-item predicate is selected by cognition and updated by episodeledger as two statements
 
-- Status: open
+- Status: fixed
 - Severity: low
 - Verdict (finders): REAL
 - Themes: persistence
@@ -33,4 +33,6 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Found in the tree from the stopped run and checked complete in the Group 2 time rework: `Tx.CoalesceTriggerItems` (`internal/episodeledger/internal/store/scheduler_queue.go`) is one `UPDATE ... RETURNING scheduler_item_id, situation_version`, sorted by item id; cognition's `selectSupersededItemsSQL` is gone and `cognition/internal/store/supersession.go` announces exactly the returned items (`CoalesceTriggerWork`). The Group 2 change made the `now` argument of `CoalesceSchedulerItems` and `SupersedeCoalesced` a `time.Time` (the store formats it), so the facade no longer takes time text.
+
+Pinned by: `TestCoalesceReturnsExactlyTheItemsItFlipped` (`internal/episodeledger/scheduler_lifecycle_test.go`: the returned ids equal the rows whose `updated_at` moved to the coalesce instant, which is now distinct from the seed instant) and the cognition supersession tests.

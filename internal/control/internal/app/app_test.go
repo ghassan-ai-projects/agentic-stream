@@ -76,7 +76,7 @@ func TestClaimRollsBackWhenRecoveryFails(t *testing.T) {
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v", err)
 	}
-	held, _ := persistence.Autocommit().HoldsLease(t.Context(), "e1", "a", domain.TimeText(base))
+	held, _ := persistence.Autocommit().HoldsLease(t.Context(), "e1", "a", base)
 	if held {
 		t.Fatal("ownership committed despite the failed recovery")
 	}

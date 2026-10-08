@@ -16,7 +16,7 @@ func pendingCandidate(t *testing.T) Candidate {
 
 func TestAdmitDecidesEachCandidateKind(t *testing.T) {
 	t.Parallel()
-	expired := Lease{Owner: "crashed", Until: testNow.Add(-time.Minute).Format(time.RFC3339Nano), HasOwner: true, HasUntil: true}
+	expired := Lease{Owner: "crashed", Until: testNow.Add(-time.Minute), HasOwner: true, HasUntil: true}
 	cases := []struct {
 		name   string
 		mutate func(*Candidate)
@@ -62,7 +62,7 @@ func TestAdmitRestoresLedgerIdentityOnAbandonedLease(t *testing.T) {
 	t.Parallel()
 	candidate := pendingCandidate(t)
 	candidate.OutboxStatus = OutboxLeased
-	candidate.Lease = Lease{Owner: "crashed", Until: "2000-01-01T00:00:00Z", HasOwner: true, HasUntil: true}
+	candidate.Lease = Lease{Owner: "crashed", Until: time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC), HasOwner: true, HasUntil: true}
 	candidate.Command.JSON = []byte("{")
 	leased := candidate.Admit(testNow).Leased
 	if leased.LeaseOwner != "crashed" || leased.Command.TenantID != "tenant" || leased.Command.IntentID != "int-1" {
@@ -70,19 +70,19 @@ func TestAdmitRestoresLedgerIdentityOnAbandonedLease(t *testing.T) {
 	}
 }
 
-func TestLeaseExpiredTreatsUnparseableAndAbsentAsExpired(t *testing.T) {
+func TestLeaseExpiredTreatsZeroAndAbsentAsExpired(t *testing.T) {
 	t.Parallel()
-	future := testNow.Add(time.Minute).Format(time.RFC3339Nano)
+	future := testNow.Add(time.Minute)
 	cases := map[string]struct {
 		lease Lease
 		want  bool
 	}{
 		"live":              {Lease{Owner: "w", Until: future, HasOwner: true, HasUntil: true}, false},
-		"exactly now":       {Lease{Owner: "w", Until: testNow.Format(time.RFC3339Nano), HasOwner: true, HasUntil: true}, true},
-		"unparseable":       {Lease{Owner: "w", Until: "x", HasOwner: true, HasUntil: true}, true},
+		"exactly now":       {Lease{Owner: "w", Until: testNow, HasOwner: true, HasUntil: true}, true},
+		"zero expiry":       {Lease{Owner: "w", HasOwner: true, HasUntil: true}, true},
 		"missing owner":     {Lease{Until: future, HasUntil: true}, true},
 		"missing expiry":    {Lease{Owner: "w", HasOwner: true}, true},
-		"fractional second": {Lease{Owner: "w", Until: testNow.Add(500 * time.Millisecond).Format(time.RFC3339Nano), HasOwner: true, HasUntil: true}, false},
+		"fractional second": {Lease{Owner: "w", Until: testNow.Add(500 * time.Millisecond), HasOwner: true, HasUntil: true}, false},
 	}
 	for name, tc := range cases {
 		if got := tc.lease.Expired(testNow); got != tc.want {

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
@@ -68,34 +67,22 @@ func (r *Runner) claimEpisodeInTx(ctx context.Context, tx *store.Tx, tenantID st
 // loadDispatchableEpisode reads the oldest admitted or running episode and
 // rebuilds its validated Request. It returns nil when there is none.
 func (r *Runner) loadDispatchableEpisode(ctx context.Context, tx *store.Tx, tenantID string) (*episodeClaim, error) {
-	episode, err := store.DispatchableEpisode(ctx, tx, tenantID, true)
-	if errors.Is(err, store.ErrNoRows) {
-		return nil, nil
-	}
+	episode, found, err := store.DispatchableEpisode(ctx, tx, tenantID, true)
 	if err != nil {
 		return nil, fmt.Errorf("query admitted episode: %w", err)
+	}
+	if !found {
+		return nil, nil
 	}
 	return hydrateEpisodeClaim(episodeClaimFromDispatched(episode))
 }
 
-// episodeClaimFromDispatched binds a scanned episode into a claim.
-func episodeClaimFromDispatched(episode store.DispatchedEpisode) *episodeClaim {
-	req := Request{
-		SchedulerItemID: episode.SchedulerItemID, TenantID: episode.TenantID,
-		SituationID: episode.SituationID, SituationVersion: episode.SituationVersion,
-		ExecutorName: episode.ExecutorName, ExecutorVersion: episode.ExecutorVersion,
-		ModelPolicy: episode.ModelPolicy, PromptVersion: episode.PromptVersion,
-		SnapshotSHA256:  canonicaljson.EncodeDigest(episode.SnapshotSHA256),
-		PromptSHA256:    canonicaljson.EncodeDigest(episode.PromptSHA256),
-		ObjectiveSHA256: canonicaljson.EncodeDigest(episode.ObjectiveSHA256),
-		AdmissionKey:    episode.AdmissionKey, RequestJSON: episode.RequestJSON,
-		DispatchPolicy: episode.DispatchPolicy, PolicyEpoch: episode.PolicyEpoch,
-	}
-	return &episodeClaim{episodeID: episode.EpisodeID, req: req, rebindCount: episode.StaleRebindCount}
+// episodeClaimFromDispatched binds a dispatchable episode into a claim.
+func episodeClaimFromDispatched(episode episodeledger.DispatchableEpisode) *episodeClaim {
+	return &episodeClaim{episodeID: episode.EpisodeID, req: domain.AdmittedRequest(episode.Admission), rebindCount: episode.StaleRebindCount}
 }
 
 func hydrateEpisodeClaim(claim *episodeClaim) (*episodeClaim, error) {
-	claim.req.EpisodeID = claim.episodeID
 	if err := domain.HydratePersistedRequest(&claim.req); err != nil {
 		return nil, err
 	}

@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"time"
@@ -30,7 +29,7 @@ type ReconciledProvenance struct {
 }
 
 func (p ReconciledProvenance) Validate() error {
-	if p.Version < 1 || len(p.Digest) != sha256.Size {
+	if p.Version < 1 || !canonicaljson.HasSumLength(p.Digest) {
 		return errors.New("reconciled outcome provenance is incomplete")
 	}
 	return nil

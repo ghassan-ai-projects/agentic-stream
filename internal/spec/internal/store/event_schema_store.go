@@ -2,11 +2,11 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
 )
 
@@ -19,12 +19,12 @@ func RegisterEventSchema(ctx context.Context, tx *sql.Tx, definition domain.Even
 	if !json.Valid(schemaJSON) {
 		return fmt.Errorf("event schema %s is not valid JSON", definition.Ref)
 	}
-	digest := sha256.Sum256(schemaJSON)
-	registered, err := checkRegisteredDigest(ctx, tx, definition, digest[:])
+	digest := canonicaljson.Sum(schemaJSON)
+	registered, err := checkRegisteredDigest(ctx, tx, definition, digest)
 	if err != nil || registered {
 		return err
 	}
-	return insertSchema(ctx, tx, definition, schemaJSON, digest[:], now)
+	return insertSchema(ctx, tx, definition, schemaJSON, digest, now)
 }
 
 func insertSchema(ctx context.Context, tx *sql.Tx, definition domain.EventSchema, schemaJSON, digest []byte, now string) error {

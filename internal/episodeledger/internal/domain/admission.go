@@ -22,3 +22,10 @@ type Admission struct {
 // ReportsLiveConflict reports whether a live-episode uniqueness violation
 // counts as a conflict: only a reconsideration reports one.
 func (a Admission) ReportsLiveConflict() bool { return a.Kind == KindReconsider }
+
+// DispatchableEpisode is an admitted episode as the dispatcher sees it: its
+// admission record and how often it was re-bound to a newer Situation version.
+type DispatchableEpisode struct {
+	Admission
+	StaleRebindCount int
+}

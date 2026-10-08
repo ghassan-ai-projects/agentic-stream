@@ -12,7 +12,7 @@ import (
 // Admit admits the episode. A reconsideration that collides with a live
 // episode for its Situation reports ErrLiveEpisodeConflict.
 func Admit(ctx context.Context, tx *store.Tx, req domain.Admission, now time.Time) error {
-	err := tx.InsertEpisode(ctx, req, req.DispatchPolicy, store.AcceptedAtText(now))
+	err := tx.InsertEpisode(ctx, req, now)
 	if err != nil && req.ReportsLiveConflict() && store.IsLiveEpisodeViolation(err) {
 		return fmt.Errorf("%w: %w", domain.ErrLiveEpisodeConflict, err)
 	}
@@ -26,14 +26,13 @@ func RecordRejection(ctx context.Context, tx *store.Tx, identity domain.Identity
 		return err
 	}
 	details = domain.RejectionDetails(details)
-	at := store.TimeText(now)
 	known, err := episodeKnown(ctx, tx, identity.EpisodeID)
 	if err != nil {
 		return err
 	}
 	return tx.InsertRejection(ctx, domain.Rejection{
-		ID: domain.RejectionID(identity, reason, details, at), EpisodeID: identity.EpisodeID,
-		AttemptID: identity.AttemptID, Fence: identity.Fence, Reason: reason, Details: details, At: at,
+		ID: domain.RejectionID(identity, reason, details, now), EpisodeID: identity.EpisodeID,
+		AttemptID: identity.AttemptID, Fence: identity.Fence, Reason: reason, Details: details, At: now,
 	}, known)
 }
 

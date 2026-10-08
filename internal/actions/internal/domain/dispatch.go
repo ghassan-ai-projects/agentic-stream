@@ -8,11 +8,14 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // OutboxLease is the lease state of one command outbox row.
-type OutboxLease struct{ Status, Owner, Until string }
+type OutboxLease struct {
+	Status, Owner string
+	Until         time.Time
+}
 
 // LeaseStanding reports whether owner still holds the outbox lease and, when
 // it does, whether that lease is unexpired at now.
@@ -20,8 +23,7 @@ func (l OutboxLease) LeaseStanding(owner string, now time.Time) (held, live bool
 	if l.Status != OutboxLeased || l.Owner != owner {
 		return false, false
 	}
-	expiresAt, err := time.Parse(time.RFC3339Nano, l.Until)
-	return true, err == nil && expiresAt.After(now)
+	return true, l.Until.After(now)
 }
 
 // DispatchResult is how one dispatch is recorded across the outcome, command,
@@ -74,7 +76,7 @@ func ExpiredLeaseResult() (actionport.Effect, error) {
 
 // OutcomeDocument is the schema document an outcome digest binds.
 func OutcomeDocument(commandID, outcomeID, status string, result map[string]any, errorCode string, at time.Time) Document {
-	document := Document{"outcome_id": outcomeID, "command_id": commandID, "status": status, "observed_at": sources.FormatTime(at)}
+	document := Document{"outcome_id": outcomeID, "command_id": commandID, "status": status, "observed_at": kernel.FormatTime(at)}
 	if result != nil {
 		document["result"] = result
 	}
@@ -90,13 +92,9 @@ func OutcomeDigest(document Document) ([]byte, error) {
 	if err := contractsv1.Validate(contractsv1.SchemaOutcome, map[string]any(document)); err != nil {
 		return nil, fmt.Errorf("validate outcome: %w", err)
 	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainOutcome, map[string]any(document))
+	outcomeSHA, err := canonicaljson.DigestSum(canonicaljson.DomainOutcome, map[string]any(document))
 	if err != nil {
 		return nil, fmt.Errorf("digest outcome: %w", err)
-	}
-	outcomeSHA, err := canonicaljson.DecodeDigest(digest)
-	if err != nil {
-		return nil, fmt.Errorf("decode outcome digest: %w", err)
 	}
 	return outcomeSHA, nil
 }

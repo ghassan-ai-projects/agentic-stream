@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // TimerPartitions lists the partitions that have pending processing-time timers.
@@ -47,7 +47,7 @@ func (tx *Tx) LoadDueTimers(ctx context.Context, partitionID int, now time.Time)
 		WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?
 		  AND timer_kind = 'processing_time' AND status = 'pending' AND due_at <= ?
 		ORDER BY due_at, timer_id`,
-		tx.deploymentID, tx.tenantID, partitionID, now.Format(time.RFC3339Nano))
+		tx.deploymentID, tx.tenantID, partitionID, kernel.FormatTime(now))
 	if err != nil {
 		return nil, fmt.Errorf("query due timers: %w", err)
 	}
@@ -89,7 +89,7 @@ func scanDueTimer(rows *sql.Rows) (domain.DueTimer, error) {
 func (tx *Tx) AcknowledgeTimers(ctx context.Context, timers []domain.DueTimer, now time.Time) error {
 	placeholders := strings.TrimRight(strings.Repeat("?,", len(timers)), ",")
 	args := make([]any, 0, len(timers)+2)
-	args = append(args, now.Format(time.RFC3339Nano))
+	args = append(args, kernel.FormatTime(now))
 	for _, timer := range timers {
 		args = append(args, timer.ID)
 	}
@@ -114,7 +114,7 @@ func (tx *Tx) ArmHeartbeatTimer(ctx context.Context, partitionID int, timer doma
 		tx.deploymentID, tx.tenantID, partitionID, timer.OperatorID, timer.StateKey); err != nil {
 		return fmt.Errorf("cancel prior heartbeat timer: %w", err)
 	}
-	return tx.insertHeartbeatTimer(ctx, partitionID, timer, sources.FormatTime(now))
+	return tx.insertHeartbeatTimer(ctx, partitionID, timer, kernel.FormatTime(now))
 }
 
 func (tx *Tx) insertHeartbeatTimer(ctx context.Context, partitionID int, timer domain.HeartbeatTimer, now string) error {
@@ -127,7 +127,7 @@ func (tx *Tx) insertHeartbeatTimer(ctx context.Context, partitionID int, timer d
 		DO UPDATE SET status = 'pending', payload_json = excluded.payload_json
 		WHERE timers.status != 'fired'`,
 		timer.ID, tx.deploymentID, tx.tenantID, partitionID, timer.OperatorID, timer.StateKey,
-		timer.DueAt.Format(time.RFC3339Nano), timer.Payload, now); err != nil {
+		kernel.FormatTime(timer.DueAt), timer.Payload, now); err != nil {
 		return fmt.Errorf("insert heartbeat timer: %w", err)
 	}
 	return nil

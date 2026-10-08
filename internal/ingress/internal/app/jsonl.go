@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/domain"
@@ -99,7 +100,7 @@ func (s *Service) ingestLine(ctx context.Context, line []byte, lineNum int, tooL
 // oversized, malformed, or invalid line is quarantined instead of aborting the
 // replay; admitted reports whether env should be appended.
 func (s *Service) admitLine(ctx context.Context, line []byte, connectorID string, lineNum int, tooLarge bool) (contractsv1.Envelope, bool, error) {
-	now := s.nowText()
+	now := s.clk.Now()
 	if tooLarge {
 		return contractsv1.Envelope{}, false, quarantined(domain.ReasonLineTooLarge, s.quarantineRaw(ctx, domain.QuarantineID(connectorID, lineNum), line, domain.ReasonLineTooLarge, now))
 	}
@@ -115,7 +116,7 @@ func (s *Service) admitLine(ctx context.Context, line []byte, connectorID string
 
 // quarantineLine records a rejected line, as its envelope when it decoded and as
 // raw bytes otherwise.
-func (s *Service) quarantineLine(ctx context.Context, verdict domain.LineVerdict, line []byte, connectorID string, lineNum int, now string) error {
+func (s *Service) quarantineLine(ctx context.Context, verdict domain.LineVerdict, line []byte, connectorID string, lineNum int, now time.Time) error {
 	if verdict.Decoded {
 		return s.quarantineEnvelope(ctx, verdict.Envelope, verdict.Reason, now)
 	}

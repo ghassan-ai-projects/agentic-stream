@@ -12,14 +12,16 @@ import (
 type IntentRow struct {
 	ID, TenantID, DecisionID, SituationID string
 	Version                               int
-	Type, Risk, ExpiresAt, PolicyStatus   string
+	Type, Risk, PolicyStatus              string
+	ExpiresAt                             time.Time
 	RequiresApproval                      bool
 	JSON, SHA                             []byte
 }
 
 type ApprovalRow struct {
-	ID, ExpiresAt string
-	Present       bool
+	ID        string
+	ExpiresAt time.Time
+	Present   bool
 }
 
 type DecisionRow struct {
@@ -80,8 +82,7 @@ func (r AuthorizationRecords) CheckApproval(now time.Time) error {
 	if !r.Approval.Present {
 		return errors.New("approved intent has no approved approval record")
 	}
-	approvalExpires, err := time.Parse(time.RFC3339Nano, r.Approval.ExpiresAt)
-	if err != nil || !approvalExpires.After(now) {
+	if !r.Approval.ExpiresAt.After(now) {
 		return errors.New("approval is expired")
 	}
 	return nil
@@ -101,8 +102,7 @@ func (r AuthorizationRecords) RequireCurrent() error {
 
 func (r AuthorizationRecords) CheckIntent(now time.Time) error {
 	row := r.Intent
-	expiresAt, err := time.Parse(time.RFC3339Nano, row.ExpiresAt)
-	if err != nil || !expiresAt.After(now) {
+	if !row.ExpiresAt.After(now) {
 		return errors.New("intent authorization is expired")
 	}
 	var document Document

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -17,7 +18,7 @@ func TestMaterializationKeepsCanonicalEvidenceAndPrivateState(t *testing.T) {
 	sit := &Situation{
 		SituationID: "s1", TenantID: "tenant", Type: "test", Version: 2, Phase: "watch", PreviousPhase: "candidate",
 		EntityType: "motor", EntityID: "m1", Completeness: "on_time", Confidence: 1,
-		LatestEventTime: now, Facts: map[string]any{"level": 3.0, "level_event_time": now.Format(time.RFC3339Nano)},
+		LatestEventTime: now, Facts: map[string]any{"level": 3.0, "level_event_time": kernel.FormatTime(now)},
 		Evidence: map[string]struct{}{"evt-z": {}, "evt-a": {}}, ConditionStart: map[string]time.Time{"watch": now},
 	}
 	first, err := engine.materialize(sit, now)

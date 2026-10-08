@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -77,7 +79,9 @@ func (s Store) LoadCheckpoint(ctx context.Context, partitionID int) (domain.Chec
 		return result, fmt.Errorf("query checkpoint: %w", err)
 	}
 	if watermark.Valid {
-		result.Watermark = watermark.String
+		if result.Watermark, err = kernel.ParseTime(watermark.String); err != nil {
+			return result, fmt.Errorf("parse checkpoint watermark of partition %d: %w", partitionID, err)
+		}
 	}
 	return result, nil
 }

@@ -69,8 +69,7 @@ func CanonicalizeStored(data []byte) ([]byte, error) {
 func ChecksumIndex(files map[string][]byte) []byte {
 	var out []byte
 	for _, name := range slices.Sorted(maps.Keys(files)) {
-		hash := sha256.Sum256(files[name])
-		out = append(out, fmt.Sprintf("%s  %s\n", hex.EncodeToString(hash[:]), name)...)
+		out = append(out, fmt.Sprintf("%s  %s\n", hex.EncodeToString(canonicaljson.Sum(files[name])), name)...)
 	}
 	return out
 }
@@ -136,8 +135,7 @@ func RequireExpectedFiles(expected map[string]string) error {
 
 // VerifyChecksum compares a file's SHA-256 with the indexed digest.
 func VerifyChecksum(name string, data []byte, wanted string) error {
-	hash := sha256.Sum256(data)
-	if hex.EncodeToString(hash[:]) != wanted {
+	if hex.EncodeToString(canonicaljson.Sum(data)) != wanted {
 		return fmt.Errorf("checksum mismatch for %s", name)
 	}
 	return nil

@@ -22,6 +22,10 @@ type (
 	Admission = domain.Admission
 	// SchedulerItem is one durable scheduler entry.
 	SchedulerItem = domain.SchedulerItem
+	// CoalescedItem is a scheduler item replaced by newer work, with its Situation version.
+	CoalescedItem = domain.CoalescedItem
+	// DueItem is a pending scheduler item whose admission window is open.
+	DueItem = domain.DueItem
 	// SchedulingRecord is what became of one admitted trigger evaluation.
 	SchedulingRecord = domain.SchedulingRecord
 	// RejectionRecord is one worker result the ledger refused, with its reason.
@@ -90,11 +94,6 @@ const (
 
 // IsTerminalAttempt reports whether an attempt state is terminal.
 func IsTerminalAttempt(status AttemptStatus) bool { return domain.IsTerminalAttempt(status) }
-
-// LifecycleSQL renders the lifecycle statuses accepted by member as a SQL
-// value list, for example LifecycleSQL(LifecycleStatus.Live). A query built
-// from it selects exactly what the Go predicate selects.
-func LifecycleSQL(member func(LifecycleStatus) bool) string { return domain.LifecycleSQL(member) }
 
 // AttemptSQL renders the attempt statuses accepted by member as a SQL value
 // list, for example AttemptSQL(AttemptStatus.Unfinished).

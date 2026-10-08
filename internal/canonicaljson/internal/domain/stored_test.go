@@ -45,3 +45,27 @@ func TestVerifyStoredChecksCanonicalFormBeforeDigest(t *testing.T) {
 		})
 	}
 }
+
+func TestSumIsTheRawSHA256OfTheBytes(t *testing.T) {
+	t.Parallel()
+	data := []byte(`{"a":1}`)
+	want := sha256.Sum256(data)
+	if got := Sum(data); string(got) != string(want[:]) || !HasSumLength(got) {
+		t.Fatalf("Sum = %x, want %x", got, want)
+	}
+	if ContentDigest(data) != EncodeDigest(want[:]) {
+		t.Fatal("ContentDigest does not encode Sum")
+	}
+}
+
+func TestHasSumLengthRequiresExactlyThirtyTwoBytes(t *testing.T) {
+	t.Parallel()
+	for size, want := range map[int]bool{0: false, 31: false, 32: true, 33: false} {
+		if got := HasSumLength(make([]byte, size)); got != want {
+			t.Fatalf("HasSumLength(%d bytes) = %v, want %v", size, got, want)
+		}
+	}
+	if HasSumLength(nil) {
+		t.Fatal("nil is not a sum")
+	}
+}

@@ -8,6 +8,7 @@ names. The ledger runs every operation on the caller's transaction.
 | Scheduler item | One queued opportunity to reason about a Situation; the pre-admission state of an episode | `SchedulerItem` | `scheduler_items` |
 | Pending / admitted / coalesced | Queue states: waiting, taken by an episode, replaced or skipped | `Status` | `status` |
 | Coalesce | Remove a pending or admitted item because newer work replaced it, or it was skipped or cost-rejected | `CoalesceSchedulerItems`, `CoalesceSkippedItem`, `CoalesceCostRejectedItem` | `status = 'coalesced'` |
+| Due item | A pending item whose admission window is open: the later of `created_at` and `not_before` has arrived and precedes `expires_at`; live admission takes the first unexpired one, replay iterates all, in queue order (not_before, created_at, id) | `DueItem`, `DueSchedulerItems` | `scheduler_items` |
 | Episode | One bounded reasoning run admitted from a scheduler item | `Admission` | `episodes` |
 | Lifecycle | The episode's coordination state; not a Decision, intent or command | `LifecycleStatus` | `lifecycle_status` |
 | Admission | Persisting the episode and its identity once | `Admit` | `episodes` insert |

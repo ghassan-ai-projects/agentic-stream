@@ -6,18 +6,18 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // CallFingerprint preserves the persisted request identity encoding.
 func CallFingerprint(call domain.Call) ([]byte, error) {
-	document := fingerprintDocument{call.EpisodeID, call.CallID, call.ToolName, call.TenantID, call.SituationID, call.EntityID, call.AttemptID, call.SituationVersion, call.Fence, call.Arguments, sources.FormatTime(call.Deadline), sources.FormatTime(call.From), sources.FormatTime(call.Until), call.MaxRows, call.MaxBytes, call.Trace.Traceparent, call.Trace.Tracestate}
+	document := fingerprintDocument{call.EpisodeID, call.CallID, call.ToolName, call.TenantID, call.SituationID, call.EntityID, call.AttemptID, call.SituationVersion, call.Fence, call.Arguments, kernel.FormatTime(call.Deadline), kernel.FormatTime(call.From), kernel.FormatTime(call.Until), call.MaxRows, call.MaxBytes, call.Trace.Traceparent, call.Trace.Tracestate}
 	raw, err := json.Marshal(document)
 	if err != nil {
 		return nil, fmt.Errorf("marshal evidence fingerprint: %w", err)
 	}
-	hash := sha256.Sum256(raw)
-	return hash[:], nil
+	sum := sha256.Sum256(raw)
+	return sum[:], nil
 }
 
 // fingerprintDocument preserves the encoded request identity and field order.

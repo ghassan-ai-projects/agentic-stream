@@ -35,7 +35,7 @@ func TestRiskRulesRemainAuthoritative(t *testing.T) {
 func TestFreshnessAndApprovalPrecedence(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
-	base := IntentRecord{EpisodeProducedDecision: true, CurrentSituation: 1, SituationVersion: 1, RiskClass: "R2", CurrentCompleteness: "on_time", ExpiresAt: FormatTime(now.Add(time.Hour))}
+	base := IntentRecord{EpisodeProducedDecision: true, CurrentSituation: 1, SituationVersion: 1, RiskClass: "R2", CurrentCompleteness: "on_time", ExpiresAt: now.Add(time.Hour)}
 	for _, tc := range []struct {
 		name           string
 		change         func(*IntentRecord)
@@ -45,15 +45,15 @@ func TestFreshnessAndApprovalPrecedence(t *testing.T) {
 		{"lifecycle first", func(r *IntentRecord) {
 			r.EpisodeProducedDecision = false
 			r.CurrentSituation, r.LastMaterialVersion = 2, 2
-			r.ExpiresAt = "invalid"
+			r.ExpiresAt = time.Time{}
 		}, "denied", "episode_not_concluded"},
 		{"newer version that is not material stays fresh", func(r *IntentRecord) { r.CurrentSituation, r.LastMaterialVersion = 3, 1 }, "", ""},
 		{"stale before health", func(r *IntentRecord) {
 			r.CurrentSituation, r.LastMaterialVersion = 2, 2
 			r.CurrentCompleteness = "uncertain"
 		}, "stale", "situation_version_stale"},
-		{"health before expiry", func(r *IntentRecord) { r.CurrentCompleteness = "uncertain"; r.ExpiresAt = "invalid" }, "denied", "source_health_incomplete"},
-		{"expiry inclusive", func(r *IntentRecord) { r.ExpiresAt = FormatTime(now) }, "expired", "intent_expired"},
+		{"health before expiry", func(r *IntentRecord) { r.CurrentCompleteness = "uncertain"; r.ExpiresAt = time.Time{} }, "denied", "source_health_incomplete"},
+		{"expiry inclusive", func(r *IntentRecord) { r.ExpiresAt = now }, "expired", "intent_expired"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := base
@@ -64,7 +64,7 @@ func TestFreshnessAndApprovalPrecedence(t *testing.T) {
 			}
 		})
 	}
-	a := ApprovalRecord{Status: "pending", ExpiresAt: FormatTime(now)}
+	a := ApprovalRecord{Status: "pending", ExpiresAt: now}
 	r := ApprovalResolution{Approved: true, Now: now}
 	base.CurrentSituation = 2
 	if ApprovalDisposition(base, a, r) != "expired" {
@@ -83,7 +83,7 @@ func TestFreshnessAndApprovalPrecedence(t *testing.T) {
 	if ApprovalDisposition(base, a, r) != "expired" {
 		t.Fatal("decline expiry")
 	}
-	a.ExpiresAt = FormatTime(now.Add(time.Hour))
+	a.ExpiresAt = now.Add(time.Hour)
 	if ApprovalDisposition(base, a, r) != "authorize" {
 		t.Fatal("fresh decline")
 	}

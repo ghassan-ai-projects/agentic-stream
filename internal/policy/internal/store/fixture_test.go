@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
@@ -29,7 +30,7 @@ func openPolicyFixture(t *testing.T, risk string, currentVersion, intentVersion 
 		"intent_id": intentID, "decision_id": decisionID, "tenant_id": "tenant",
 		"situation_id": situationID, "situation_version": intentVersion,
 		"type": "create_ticket", "risk_class": risk, "parameters": map[string]any{"target": "motor/1"},
-		"expires_at": expiresAt.UTC().Format(time.RFC3339Nano),
+		"expires_at": kernel.FormatTime(expiresAt.UTC()),
 	}
 	intentDigest, err := contractsv1.IntentDigest(intent)
 	if err != nil {
@@ -115,7 +116,7 @@ func openPolicyFixture(t *testing.T, risk string, currentVersion, intentVersion 
 			risk_class, intent_json, intent_sha256, expires_at, policy_status, created_at, updated_at
 		) VALUES (?, ?, 'tenant', ?, ?, 'create_ticket', ?, ?, ?, ?, 'pending', ?, ?)`,
 		intentID, decisionID, situationID, intentVersion, risk, intentJSON, intentSHA,
-		expiresAt.UTC().Format(time.RFC3339Nano), "2026-08-12T00:00:00Z", "2026-08-12T00:00:00Z"); err != nil {
+		kernel.FormatTime(expiresAt.UTC()), "2026-08-12T00:00:00Z", "2026-08-12T00:00:00Z"); err != nil {
 		t.Fatalf("insert intent: %v", err)
 	}
 	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {

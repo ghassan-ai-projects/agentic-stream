@@ -38,6 +38,20 @@ func AdmittedEpisode(req *Request, digests RequestDigests) episodeledger.Admissi
 		DispatchPolicy: spec.EffectiveDispatchPolicy(req.DispatchPolicy), PolicyEpoch: req.PolicyEpoch}
 }
 
+// AdmittedRequest rebuilds the request skeleton from the lifecycle owner
+// admission record; it is the inverse of AdmittedEpisode.
+func AdmittedRequest(admission episodeledger.Admission) Request {
+	return Request{EpisodeID: admission.EpisodeID, SchedulerItemID: admission.SchedulerItemID,
+		TenantID: admission.TenantID, SituationID: admission.SituationID, SituationVersion: admission.SituationVersion,
+		ExecutorName: admission.ExecutorName, ExecutorVersion: admission.ExecutorVersion,
+		ModelPolicy: admission.ModelPolicy, PromptVersion: admission.PromptVersion,
+		SnapshotSHA256:  canonicaljson.EncodeDigest(admission.SnapshotSHA256),
+		PromptSHA256:    canonicaljson.EncodeDigest(admission.PromptSHA256),
+		ObjectiveSHA256: canonicaljson.EncodeDigest(admission.ObjectiveSHA256),
+		AdmissionKey:    admission.AdmissionKey, RequestJSON: admission.RequestJSON,
+		DispatchPolicy: admission.DispatchPolicy, PolicyEpoch: admission.PolicyEpoch}
+}
+
 // RebindRequest refreshes the snapshot while preserving the admission evidence.
 func RebindRequest(req *Request, liveVersion int, evidence *SnapshotEvidence) (*Request, error) {
 	if evidence.EntityID != req.EntityID {

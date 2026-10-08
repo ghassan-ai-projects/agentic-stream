@@ -50,7 +50,7 @@ func (s *Service) processLine(ctx context.Context, instanceID string, item domai
 func (s *Service) rejectRaw(ctx context.Context, instanceID string, item domain.LiveLine, reason string, cause error) error {
 	s.observeRejection(ctx, item, reason, cause)
 	eventID := domain.LiveQuarantineID(instanceID, item.ConnectionID, item.LineNumber)
-	if err := s.quarantineRaw(ctx, eventID, item.Data, reason, s.nowText()); err != nil {
+	if err := s.quarantineRaw(ctx, eventID, item.Data, reason, s.clk.Now()); err != nil {
 		return fmt.Errorf("quarantine live line: %w", err)
 	}
 	return nil
@@ -58,7 +58,7 @@ func (s *Service) rejectRaw(ctx context.Context, instanceID string, item domain.
 
 func (s *Service) rejectEnvelope(ctx context.Context, item domain.LiveLine, env contractsv1.Envelope, reason string, cause error) error {
 	s.observeRejection(ctx, item, reason, cause)
-	if err := s.quarantineEnvelope(ctx, env, reason, s.nowText()); err != nil {
+	if err := s.quarantineEnvelope(ctx, env, reason, s.clk.Now()); err != nil {
 		return fmt.Errorf("quarantine live envelope: %w", err)
 	}
 	return nil

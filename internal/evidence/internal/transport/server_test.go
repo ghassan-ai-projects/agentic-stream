@@ -108,7 +108,7 @@ func TestEventLogProviderPreservesExactScopedBytes(t *testing.T) {
 	query := EventLogQuery(db)
 	call := domain.Call{TenantID: "default", EntityID: "motor-1", From: now, Until: now.Add(time.Second), MaxRows: 1}
 	result, err := query(t.Context(), call)
-	const want = `{"rows":[{"data":{"celsius":42},"event_id":"evt-1","event_time":"2026-08-12T12:00:00Z","event_type":"sensor.temperature"}]}`
+	const want = `{"rows":[{"data":{"celsius":42},"event_id":"evt-1","event_time":"2026-08-12T12:00:00.000000000Z","event_type":"sensor.temperature"}]}`
 	if err != nil || result.RowCount != 1 || string(result.JSON) != want {
 		t.Fatalf("result=%s err=%v", result.JSON, err)
 	}

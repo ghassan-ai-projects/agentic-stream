@@ -3,15 +3,17 @@ package store
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
-func (tx *Tx) ReplaceGovernance(ctx context.Context, document domain.PrincipalDocument, now string) (domain.PrincipalSummary, error) {
+func (tx *Tx) ReplaceGovernance(ctx context.Context, document domain.PrincipalDocument, now time.Time) (domain.PrincipalSummary, error) {
 	if err := tx.disableTenantPrincipals(ctx, document.Tenant); err != nil {
 		return domain.PrincipalSummary{}, err
 	}
-	if err := tx.upsertPrincipals(ctx, document, now); err != nil {
+	if err := tx.upsertPrincipals(ctx, document, kernel.FormatTime(now)); err != nil {
 		return domain.PrincipalSummary{}, err
 	}
 	if err := tx.replaceRoles(ctx, document); err != nil {

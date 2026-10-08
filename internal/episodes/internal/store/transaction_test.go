@@ -73,7 +73,7 @@ func TestLifecycleHandoffRollsBackWithDecisionUnit(t *testing.T) {
 		if err := tx.RetainForRetry(t.Context(), episodeID); err != nil {
 			return err
 		}
-		if err := tx.Conclude(t.Context(), episodeID, "2026-10-05T00:00:00Z", []byte(`{}`)); err != nil {
+		if err := tx.Conclude(t.Context(), episodeID, time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC), []byte(`{}`)); err != nil {
 			return err
 		}
 		return rejected
@@ -116,7 +116,6 @@ func TestProjectionErrorsPreserveCancellation(t *testing.T) {
 			func() error {
 				return store.InsertValidatedIntent(ctx, tx, store.ValidatedIntentInsert{Intent: intentFixture()})
 			},
-			func() error { _, err := store.LoadReconsideration(ctx, tx, store.SchedulerItem{}, 1, ""); return err },
 		}
 		for i, operation := range operations {
 			if err := operation(); !errors.Is(err, context.Canceled) {
@@ -143,14 +142,16 @@ func TestShadowDecisionSharesCallerTransactionAndNeverCreatesActionRecords(t *te
 	}
 	rollback := errors.New("caller failed after recording evidence")
 	if err := db.WithTx(ctx, func(raw *sql.Tx) error {
-		if err := store.Join(raw).RecordShadowDecision(ctx, decision, "now"); err != nil {
+		if err := store.Join(raw).RecordShadowDecision(ctx, decision, time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)); err != nil {
 			return err
 		}
 		return rollback
 	}); !errors.Is(err, rollback) {
 		t.Fatalf("record/rollback: %v", err)
 	}
-	if err := db.WithTx(ctx, func(raw *sql.Tx) error { return store.Join(raw).RecordShadowDecision(ctx, decision, "now") }); err != nil {
+	if err := db.WithTx(ctx, func(raw *sql.Tx) error {
+		return store.Join(raw).RecordShadowDecision(ctx, decision, time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC))
+	}); err != nil {
 		t.Fatal(err)
 	}
 	for table, want := range map[string]int{"shadow_decisions": 1, "intents": 0, "commands": 0, "outbox": 0} {

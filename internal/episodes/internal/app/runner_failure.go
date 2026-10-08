@@ -87,7 +87,7 @@ func (r *Runner) retryOrConcludeFailedEpisode(ctx context.Context, tx *store.Tx,
 	if err != nil {
 		return fmt.Errorf("count failed episode attempts: %w", err)
 	}
-	superseded := lifecycle == string(episodeledger.LifecycleSuperseded)
+	superseded := lifecycle == episodeledger.LifecycleSuperseded
 	return r.resolveFailedEpisode(ctx, tx, episodeID, superseded, failedAttempts)
 }
 
@@ -104,12 +104,12 @@ func (r *Runner) concludeFailedEpisode(ctx context.Context, tx *store.Tx, episod
 		if err != nil {
 			return fmt.Errorf("marshal retry limit terminal: %w", err)
 		}
-		if err := tx.Conclude(ctx, episodeID, r.runtimeNow(), terminalJSON); err != nil {
+		if err := tx.Conclude(ctx, episodeID, r.clk.Now(), terminalJSON); err != nil {
 			return fmt.Errorf("conclude exhausted episode: %w", err)
 		}
 	}
 	if r.cost != nil {
-		if err := tx.SettleCost(ctx, r.cost, episodeID, 0, r.runtimeNow()); err != nil {
+		if err := tx.SettleCost(ctx, r.cost, episodeID, 0, r.clk.Now()); err != nil {
 			return fmt.Errorf("settle abandoned episode cost: %w", err)
 		}
 	}
@@ -161,11 +161,11 @@ func (r *Runner) retryOrConcludeRejectedEpisode(ctx context.Context, tx *store.T
 
 func (r *Runner) concludeRejectedEpisode(ctx context.Context, tx *store.Tx, episodeID string, terminalJSON []byte) error {
 	if r.cost != nil {
-		if err := tx.SettleCost(ctx, r.cost, episodeID, 0, r.runtimeNow()); err != nil {
+		if err := tx.SettleCost(ctx, r.cost, episodeID, 0, r.clk.Now()); err != nil {
 			return fmt.Errorf("settle exhausted episode cost: %w", err)
 		}
 	}
-	if err := tx.Conclude(ctx, episodeID, r.runtimeNow(), terminalJSON); err != nil {
+	if err := tx.Conclude(ctx, episodeID, r.clk.Now(), terminalJSON); err != nil {
 		return fmt.Errorf("conclude identity-failed episode: %w", err)
 	}
 	return nil

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
@@ -22,8 +23,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-const testDigest = "0000000000000000000000000000000000000000000000000000000000000000"
-
 const testSpecDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
 func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Version, deploymentID, tenantID string) error {
@@ -33,8 +32,8 @@ func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Versio
 		"entity":       map[string]any{"type": v.EntityType, "id": v.EntityID},
 		"partition_id": 0, "phase": v.Phase, "previous_phase": v.PreviousPhase,
 		"severity": v.Severity, "confidence": v.Confidence, "completeness": v.Completeness,
-		"event_horizon": v.EventHorizon.Format(time.RFC3339Nano),
-		"watermark":     v.Watermark.Format(time.RFC3339Nano), "spec_digest": testSpecDigest,
+		"event_horizon": kernel.FormatTime(v.EventHorizon),
+		"watermark":     kernel.FormatTime(v.Watermark), "spec_digest": testSpecDigest,
 		"facts": v.Facts, "evidence": []any{},
 	}
 	snapshotJSON, err := canonicaljson.Marshal(snapshot)
@@ -64,7 +63,7 @@ func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Versio
 		ON CONFLICT(situation_id) DO NOTHING`,
 		v.SituationID, tenantID, deploymentID, "test", v.EntityType, v.EntityID,
 		0, "occ-"+v.SituationID, v.Version, v.Phase,
-		v.EventHorizon.Format(time.RFC3339Nano), v.EventHorizon.Format(time.RFC3339Nano),
+		kernel.FormatTime(v.EventHorizon), kernel.FormatTime(v.EventHorizon),
 	); err != nil {
 		return fmt.Errorf("insert situation: %w", err)
 	}
@@ -76,8 +75,8 @@ func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Versio
 		) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'lin_test', datetime('now'))`,
 		v.SituationID, v.Version, v.Phase, v.PreviousPhase,
 		v.Severity, v.Confidence, v.Completeness,
-		v.EventHorizon.Format(time.RFC3339Nano), v.Watermark.Format(time.RFC3339Nano),
-		v.EventHorizon.Format(time.RFC3339Nano), snapshotJSON, snapshotSHA,
+		kernel.FormatTime(v.EventHorizon), kernel.FormatTime(v.Watermark),
+		kernel.FormatTime(v.EventHorizon), snapshotJSON, snapshotSHA,
 	); err != nil {
 		return fmt.Errorf("insert situation version: %w", err)
 	}
@@ -215,34 +214,17 @@ func TestAssemblerPersistsReconsiderationPayload(t *testing.T) {
 	zero := make([]byte, 32)
 	reconsiderationDedupe := make([]byte, 32)
 	reconsiderationDedupe[0] = 1
-	decisionJSON, err := canonicaljson.Marshal(map[string]any{
-		"decision_id":   "dec-prior",
-		"episode_id":    "epi-prior",
-		"confidence":    0.9,
-		"decision_type": "need_more_evidence", "intents": []any{},
-	})
-	if err != nil {
-		t.Fatalf("marshal prior decision: %v", err)
-	}
-	commandJSON, err := canonicaljson.Marshal(map[string]any{
-		"command_id":        "cmd-prior",
-		"intent_id":         "int-prior",
-		"tenant_id":         "default",
-		"effector_route":    "maintenance.ticket",
-		"normalized_target": "motor-1",
-		"idempotency_key":   "sha256:" + testDigest,
-		"status":            "prepared",
-		"payload":           map[string]any{"priority": "urgent"},
-	})
-	if err != nil {
-		t.Fatalf("marshal prior command: %v", err)
-	}
 	deltaJSON, err := canonicaljson.Marshal(map[string]any{
 		"reason":                 "prior_action_invalidated",
 		"superseded_version":     1,
 		"correction_version":     2,
 		"invalidated_command_id": "cmd-prior",
 		"prior_decision_id":      "dec-prior",
+		"reconsideration_id":     "rec-prior",
+		"invalidated_outcome_id": "out-prior",
+		"prior_decision":         map[string]any{"decision_id": "dec-prior", "decision_type": "need_more_evidence"},
+		"prior_command":          map[string]any{"command_id": "cmd-prior", "status": "succeeded"},
+		"prior_outcome":          map[string]any{"outcome_id": "out-prior", "command_id": "cmd-prior", "status": "succeeded"},
 		"correction": map[string]any{
 			"situation_id":      prior.SituationID,
 			"situation_version": 2,
@@ -263,65 +245,8 @@ func TestAssemblerPersistsReconsiderationPayload(t *testing.T) {
 			INSERT INTO trigger_evaluations (
 				trigger_id, tenant_id, deployment_id, trigger_name, situation_id, situation_version,
 				score, threshold, lane, outcome, reasons_json, policy_sha256, delta_json, evaluated_at
-			) VALUES ('trg-prior', 'default', ?, 'prior', ?, 1, 10, 5, 'fast', 'admitted', ?, ?, ?, ?)`,
-			testSpecDigest, prior.SituationID, []byte("[]"), zero, []byte("{}"), now.Format(time.RFC3339Nano)); err != nil {
-			return fmt.Errorf("insert prior evaluation: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO scheduler_items (
-				scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version, lane, priority,
-				status, dedupe_key, expires_at, created_at, updated_at
-			) VALUES ('sch-prior', 'trg-prior', 'default', ?, 1, 'fast', 10, 'completed', ?, ?, ?, ?)`,
-			prior.SituationID, zero, now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
-			return fmt.Errorf("insert prior scheduler item: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO episodes (
-				episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
-				executor_name, executor_version, model_policy, prompt_version, snapshot_sha256,
-				admission_key, request_json, lifecycle_status, current_fence, accepted_at
-			) VALUES ('epi-prior', 'sch-prior', 'default', ?, 1, 'native', ?, 'test', 'v1', ?, ?, ?, 'concluded', 1, ?)`,
-			prior.SituationID, testSpecDigest, zero, zero, []byte("{}"), now.Format(time.RFC3339Nano)); err != nil {
-			return fmt.Errorf("insert prior episode: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO decisions (
-				decision_id, episode_id, attempt_id, fence, ordinal, situation_id, situation_version,
-				raw_json, decision_sha256, validation_status, validation_json, created_at
-			) VALUES ('dec-prior', 'epi-prior', 'attempt-prior', 1, 1, ?, 1, ?, ?, 'accepted', ?, ?)`,
-			prior.SituationID, decisionJSON, zero, []byte("{}"), now.Format(time.RFC3339Nano)); err != nil {
-			return fmt.Errorf("insert prior decision: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO intents (
-				intent_id, decision_id, tenant_id, situation_id, situation_version, intent_type, risk_class,
-				intent_json, intent_sha256, expires_at, policy_status, created_at, updated_at
-			) VALUES ('int-prior', 'dec-prior', 'default', ?, 1, 'maintenance.ticket', 'R1', ?, ?, ?, 'approved', ?, ?)`,
-			prior.SituationID, []byte("{}"), zero, now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
-			return fmt.Errorf("insert prior intent: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO commands (
-				command_id, intent_id, tenant_id, effector_route, normalized_target, idempotency_key,
-				command_json, command_sha256, status, created_at, updated_at
-			) VALUES ('cmd-prior', 'int-prior', 'default', 'maintenance.ticket', 'motor-1', ?, ?, ?, 'succeeded', ?, ?)`,
-			zero, commandJSON, zero, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
-			return fmt.Errorf("insert prior command: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO outcomes (
-				outcome_id, command_id, ordinal, status, provider_result_json, observed_effect_json,
-				reconciliation_status, outcome_sha256, occurred_at
-			) VALUES ('out-prior', 'cmd-prior', 1, 'succeeded', ?, ?, 'observed', ?, ?)`,
-			[]byte(`{"accepted":true}`), []byte(`{"ticket":"T-1"}`), zero, now.Format(time.RFC3339Nano)); err != nil {
-			return fmt.Errorf("insert prior outcome: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO trigger_evaluations (
-				trigger_id, tenant_id, deployment_id, trigger_name, situation_id, situation_version,
-				score, threshold, lane, outcome, reasons_json, policy_sha256, delta_json, evaluated_at
 			) VALUES ('trg-reconsider', 'default', ?, 'prior_action_invalidated', ?, 2, 100, 0, 'deep', 'admitted', ?, ?, ?, ?)`,
-			testSpecDigest, correction.SituationID, []byte("[]"), zero, deltaJSON, now.Format(time.RFC3339Nano)); err != nil {
+			testSpecDigest, correction.SituationID, []byte("[]"), zero, deltaJSON, kernel.FormatTime(now)); err != nil {
 			return fmt.Errorf("insert reconsideration evaluation: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, `
@@ -329,17 +254,8 @@ func TestAssemblerPersistsReconsiderationPayload(t *testing.T) {
 				scheduler_item_id, kind, trigger_id, tenant_id, situation_id, situation_version, lane,
 				priority, status, dedupe_key, expires_at, created_at, updated_at
 			) VALUES ('sch-reconsider', 'reconsider', 'trg-reconsider', 'default', ?, 2, 'deep', 100, 'pending', ?, ?, ?, ?)`,
-			correction.SituationID, reconsiderationDedupe, now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+			correction.SituationID, reconsiderationDedupe, kernel.FormatTime(now.Add(time.Hour)), kernel.FormatTime(now), kernel.FormatTime(now)); err != nil {
 			return fmt.Errorf("insert reconsideration scheduler item: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO reconsiderations (
-				reconsideration_id, tenant_id, situation_id, superseded_version, correction_version,
-				correction_snapshot_sha256, invalidated_command_id, invalidated_outcome_id,
-				invalidated_outcome_sha256, trigger_id, scheduler_item_id, created_at
-			) VALUES ('rec-prior', 'default', ?, 1, 2, ?, 'cmd-prior', 'out-prior', ?, 'trg-reconsider', 'sch-reconsider', ?)`,
-			correction.SituationID, zero, zero, now.Format(time.RFC3339Nano)); err != nil {
-			return fmt.Errorf("insert reconsideration: %w", err)
 		}
 		return nil
 	}); err != nil {
@@ -469,7 +385,7 @@ func TestAssemblerMarksReconsiderationLiveEpisodeConflict(t *testing.T) {
 				trigger_id, tenant_id, deployment_id, trigger_name, situation_id, situation_version,
 				score, threshold, lane, outcome, reasons_json, policy_sha256, delta_json, evaluated_at
 			) VALUES ('trg-live-first', 'default', ?, 'first', ?, 1, 10, 0, 'deep', 'admitted', ?, ?, ?, ?)`,
-			testSpecDigest, v.SituationID, []byte("[]"), zero, []byte("{}"), now.Format(time.RFC3339Nano)); err != nil {
+			testSpecDigest, v.SituationID, []byte("[]"), zero, []byte("{}"), kernel.FormatTime(now)); err != nil {
 			return fmt.Errorf("insert first evaluation: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, `
@@ -477,7 +393,7 @@ func TestAssemblerMarksReconsiderationLiveEpisodeConflict(t *testing.T) {
 				scheduler_item_id, kind, trigger_id, tenant_id, situation_id, situation_version, lane,
 				priority, status, dedupe_key, expires_at, created_at, updated_at
 			) VALUES ('sch-live-first', 'standard', 'trg-live-first', 'default', ?, 1, 'deep', 10, 'admitted', ?, ?, ?, ?)`,
-			v.SituationID, zero, now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+			v.SituationID, zero, kernel.FormatTime(now.Add(time.Hour)), kernel.FormatTime(now), kernel.FormatTime(now)); err != nil {
 			return fmt.Errorf("insert first scheduler item: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, `
@@ -486,7 +402,7 @@ func TestAssemblerMarksReconsiderationLiveEpisodeConflict(t *testing.T) {
 				executor_name, executor_version, model_policy, prompt_version,
 				snapshot_sha256, admission_key, request_json, lifecycle_status, accepted_at
 			) VALUES ('epi-live-first', 'sch-live-first', 'default', ?, 1, 'native', ?, '', '', ?, ?, X'7B7D', 'admitted', ?)`,
-			v.SituationID, testSpecDigest, zero, zero, now.Format(time.RFC3339Nano)); err != nil {
+			v.SituationID, testSpecDigest, zero, zero, kernel.FormatTime(now)); err != nil {
 			return fmt.Errorf("insert live episode: %w", err)
 		}
 		return nil
@@ -503,7 +419,7 @@ func TestAssemblerMarksReconsiderationLiveEpisodeConflict(t *testing.T) {
 				trigger_id, tenant_id, deployment_id, trigger_name, situation_id, situation_version,
 				score, threshold, lane, outcome, reasons_json, policy_sha256, delta_json, evaluated_at
 			) VALUES ('trg-live-reconsider', 'default', ?, 'prior_action_invalidated', ?, 1, 100, 0, 'deep', 'admitted', ?, ?, ?, ?)`,
-			testSpecDigest, v.SituationID, []byte("[]"), zero, []byte("{}"), now.Format(time.RFC3339Nano)); err != nil {
+			testSpecDigest, v.SituationID, []byte("[]"), zero, []byte("{}"), kernel.FormatTime(now)); err != nil {
 			return fmt.Errorf("insert reconsideration evaluation: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, `
@@ -511,7 +427,7 @@ func TestAssemblerMarksReconsiderationLiveEpisodeConflict(t *testing.T) {
 				scheduler_item_id, kind, trigger_id, tenant_id, situation_id, situation_version, lane,
 				priority, status, dedupe_key, expires_at, created_at, updated_at
 			) VALUES ('sch-live-reconsider', 'reconsider', 'trg-live-reconsider', 'default', ?, 1, 'deep', 100, 'pending', ?, ?, ?, ?)`,
-			v.SituationID, dedupe, now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+			v.SituationID, dedupe, kernel.FormatTime(now.Add(time.Hour)), kernel.FormatTime(now), kernel.FormatTime(now)); err != nil {
 			return fmt.Errorf("insert reconsideration scheduler item: %w", err)
 		}
 		return nil

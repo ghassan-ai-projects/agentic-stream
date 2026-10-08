@@ -24,7 +24,7 @@ func ApplyPrincipals(ctx context.Context, tx *store.Tx, ownership Ownership, doc
 	if err := document.Validate(); err != nil {
 		return domain.PrincipalSummary{}, fmt.Errorf("validate principal document: %w", err)
 	}
-	return tx.ReplaceGovernance(ctx, document, domain.FormatTime(now))
+	return tx.ReplaceGovernance(ctx, document, now)
 }
 
 func GovernanceSummary(ctx context.Context, tx *store.Tx, tenant string) (domain.PrincipalSummary, error) {

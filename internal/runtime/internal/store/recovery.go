@@ -10,6 +10,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // RecoveryReport reports the episode and evidence repairs committed together.
@@ -39,7 +40,7 @@ func (c *RecoveryCoordinator) ClaimAndRecover(ctx context.Context) (RecoveryRepo
 }
 
 func (c *RecoveryCoordinator) claimRecovery(ctx context.Context) (RecoveryReport, error) {
-	now := c.recoveryTime()
+	now := sources.NowUTC(c.Now)
 	var report RecoveryReport
 	err := c.Owner.ClaimAndRecover(ctx, c.Epoch, func(tx *sql.Tx, claimedAt time.Time) error {
 		if c.Now == nil {
@@ -53,14 +54,6 @@ func (c *RecoveryCoordinator) claimRecovery(ctx context.Context) (RecoveryReport
 		return RecoveryReport{}, fmt.Errorf("claim and recover runtime: %w", err)
 	}
 	return report, nil
-}
-
-func (c *RecoveryCoordinator) recoveryTime() time.Time {
-	now := time.Now().UTC()
-	if c.Now != nil {
-		now = c.Now().UTC()
-	}
-	return now
 }
 
 // costSettler is the configured cost ledger, or nothing when recovery has none

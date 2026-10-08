@@ -19,11 +19,13 @@ var packageLayers = map[string]int{
 	"internal/canonicaljson/internal/domain":      0,
 	"internal/episodeledger/internal/domain":      0,
 	"internal/interlock/internal/domain":          0,
+	"internal/kernel":                             0,
 	"internal/sources/internal/domain":            0,
 	"internal/telemetry/internal/domain":          0,
 	"migrations":                                  0,
 	"proto/agenticstream/runtime/v1":              0,
 	"internal/interlock/internal/store":           1,
+	"internal/canonicaljson":                      8,
 	"internal/interlock":                          2,
 	"internal/sources/internal/transport":         3,
 	"internal/sources":                            4,
@@ -35,7 +37,6 @@ var packageLayers = map[string]int{
 	"internal/telemetry":                          7,
 	"internal/approvalledger/internal/store":      8,
 	"internal/storage/storagetest":                8,
-	"internal/canonicaljson":                      8,
 	"internal/control/internal/domain":            8,
 	"internal/episodeledger/internal/store":       8,
 	"internal/eventlog/internal/domain":           8,
@@ -166,7 +167,7 @@ func TestImportsOnlyPointToLowerArchitectureLayers(t *testing.T) {
 				t.Errorf("%s depends on unclassified %s", pkg, dependency)
 				continue
 			}
-			if lower >= layer {
+			if dependency != kernelPackage && lower >= layer {
 				t.Errorf("%s (layer %d) depends upward/sideways on %s (layer %d)", pkg, layer, dependency, lower)
 			}
 		}

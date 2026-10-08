@@ -1,6 +1,6 @@
 # DUP-008: Digest plumbing: Digest-then-Decode, Marshal-then-Digest, raw SHA-256 and hand-built sha256: strings
 
-- Status: open
+- Status: fixed
 - Severity: medium
 - Verdict (finders): REAL
 - Themes: business rules, contracts and shapes, persistence
@@ -75,4 +75,30 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Status: fixed. Commit: pending (reviewer commits).
+
+Verified (all four finder reports held; the sites were re-opened and read):
+- S6 held. Every listed `Digest` then `DecodeDigest` hop (episodes snapshot and decision, cognition correction, actions `OutcomeDigest`, policy `sealCommand`, replay shadow snapshot and `sealComparison`, engine `verifyStateDigest`, runartifact `expectedDigest`) was a pure round trip through text. The Marshal-then-Digest pairs (native loop, fixture executor, replay baseline, policy command, replay comparison) marshalled the same value twice; situations `snapshot` and spec `sealSpec` had the same shape and are fixed too.
+- Partly wrong: `internal/executor/native/internal/domain/deterministic.go:28` only canonicalizes, it never digests, so it is not a clone and is untouched. `internal/decisions` `DecodeDigest` before `Verify` was redundant (Verify already fails for any non-canonical digest text) and is dropped. engine `DecodeStateDigest` and `DecodeSnapshotDigest`, and `situations.Version`, take digest strings by contract (public type, inbound text), so those decodes stay.
+- S9 held for the stored-bytes hashes. Not touched on purpose: identity-derivation hashes (cognition reconsideration key, episodes admission key, replay `shortKey`, native `loop_tools`, episodeledger rejection, engine heartbeat, policy approval nonce), the streaming `sha256.New()` users, and HMAC in evidence `token.go`. They derive ids, they do not hash stored content, and the finder list excluded them.
+- R11 held: seven stores hand-built `"sha256:" + hex`.
+- Uppercase hex: confirmed that no stored value has it. Every digest column is a 32-byte BLOB (`*_sha256`), reads re-encode with `EncodeDigest` (always lowercase), every JSON schema pattern is `^sha256:[0-9a-f]{64}$`, and a repo-wide search (code, fixtures, testdata, docs) found uppercase digest text in exactly one place, the authority test constant `digestUpper`. So `DecodeDigest` now rejects uppercase hex.
+
+Changed:
+- `internal/canonicaljson` (facade, domain, tests, README, UBIQUITOUS_LANGUAGE): added `DigestSum`, `Seal` (canonical JSON plus raw domain sum, canonicalizes once), `VerifySum` (constant time, false for wrong length), `Sum`, `HasSumLength`; `Digest` now builds on `DigestSum`/`Seal`; `DecodeDigest` rejects uppercase hex; `ContentDigest`/`VerifyStored` use `Sum`/`HasSumLength`. Digest bytes are unchanged (golden and Ruby parity tests pass untouched).
+- Digest-then-decode and double-marshal sites now call `DigestSum`/`Seal`: episodes `snapshot.go`, `decision.go`; cognition `correction.go` (`DecodeCorrection` returns the raw sum, `MatchCorrectionDigest` takes it; app caller renamed) ; actions `dispatch.go`; policy `commands.go` (`sealCommand` takes `[]byte`); replay `shadow_snapshot.go`, `shadow_comparison.go` (`sealComparison` deleted), `baseline.go`; engine `situation_state.go`; runartifact `verify.go`; decisions `validator.go`; executor native `app/loop.go`, fixture `executor.go`; situations `materialize.go`; spec `compiler.go`.
+- Raw hashes and guards: `Sum`/`HasSumLength` replace inline `sha256.Sum256` and `len == sha256.Size` in notify (`seal.go`, `read.go`), evidence (`wire/fingerprint.go`, `wire/result.go`, `store/writes.go`, `domain/reservation.go`, new `QueryResult.SHA256()` so wire, store and the reservation check share one rule), authority (`state.go`, `reconciliation.go`, `store/events.go`), spec `store/event_schema_store.go`, engine (`version_write.go`, `situation_state.go`, `store/operator_state.go`), eventlog (`event.go`, `quarantine.go`), runartifact (`files.go`, `verify.go`), executor remote `request.go` (arrays became slices), actions (`document.go`, `reconciliation.go`), policy (`routing.go`, `documents.go`, which also folds onto `VerifySum`). The two private `sha256Sum` helpers (situations, episodes) are deleted.
+- R11: the seven hand-built digests now call `canonicaljson.EncodeDigest` (cognition `evaluation_reads.go`, episodes `decision_reads.go`, replay `store.go` x2 and `recorded_ledger.go`, engine `situation_reads.go`, episodeledger `episode_reads.go`).
+- Gates: `architecture_test.go` allowedImports gained `internal/canonicaljson` for engine/store, episodeledger/store, replay/store, evidence/domain, evidence/wire, eventlog/domain. `architecture_flow_test.go`: `internal/canonicaljson` moved from layer 8 to 1 (it imports only its layer-0 domain; layer 8 made the new edges from layer-8 packages sideways imports).
+
+Decisions:
+- `Seal` returns the raw sum, not the text digest; callers needing text call `EncodeDigest`. This avoids a re-decode and matches the BLOB columns.
+- Error text: the paired "marshal X"/"digest X" wraps became one "seal X" wrap (policy command, replay comparison and baseline, fixture executor, situations snapshot, spec); no test asserted the old text. The native loop's two failure codes `decision_digest_failed` and `decision_canonicalization_failed` collapsed to `decision_canonicalization_failed` (no other reference existed).
+- Intentional behaviour change: `DecodeDigest` rejects uppercase hex. The authority test row "digest compares by value" (`digestUpper`) now expects a conflict and was renamed "uppercase digest is not a canonical digest"; `sameDigest` comment updated.
+- Not folded onto `VerifySum`: runartifact `verifyRowDigest` (it mixes a domain digest with a plain content hash and has two distinct error messages) and episodes/replay/engine/cognition verifiers (they need the digest or the error from the same computation, so they compare the sum from `DigestSum` with `bytes.Equal`, as before).
+
+Deferred: test helpers that still do `Digest` then `DecodeDigest` (cognition, policy, executor remote tests); other fixers edit those files and the dupl gate does not flag them.
+
+Pinned by: `TestDecodeDigestRejectsMalformedReferences`, `TestSealCanonicalizesOnceAndMatchesDigestSum`, `TestSealAndDigestSumRefuseEmptyDomainAndUnencodableValues`, `TestVerifySumBindsSumToValueAndDomain`, `TestSumIsTheRawSHA256OfTheBytes`, `TestHasSumLengthRequiresExactlyThirtyTwoBytes` (canonicaljson domain), `TestFacadeRawSumOperationsAgreeWithTextForm` (facade), `TestDigestTextHasOneOwner` (root: no production package outside canonicaljson concatenates the bare `"sha256:"` prefix), `TestDecideBinding` (uppercase case).
+
+Not regenerated: no golden, pin or fixture changed; all digest values are byte-identical.

@@ -31,7 +31,7 @@ func (e *Service) admitReconsiderations(ctx context.Context, tx *store.Tx, curre
 }
 
 func verifiedCorrection(ctx context.Context, tx *store.Tx, current situations.Version) (map[string]any, []byte, error) {
-	correction, digest, err := domain.DecodeCorrection(current.SnapshotJSON)
+	correction, sum, err := domain.DecodeCorrection(current.SnapshotJSON)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -39,7 +39,7 @@ func verifiedCorrection(ctx context.Context, tx *store.Tx, current situations.Ve
 	if err != nil {
 		return nil, nil, err
 	}
-	decoded, err := domain.MatchCorrectionDigest(digest, persisted)
+	decoded, err := domain.MatchCorrectionDigest(sum, persisted)
 	return correction, decoded, err
 }
 

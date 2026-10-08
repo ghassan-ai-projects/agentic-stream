@@ -7,6 +7,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 const loadAuthorizationRecordsSQL = `
@@ -26,20 +27,31 @@ const loadAuthorizationRecordsSQL = `
 			WHERE c.command_id = ? AND c.status = 'dispatching'`
 
 func (tx *Tx) LoadAuthorizationRecords(ctx context.Context, commandID string) (domain.AuthorizationRecords, error) {
+	r, err := tx.scanAuthorizationRecords(ctx, commandID)
+	if err != nil {
+		return domain.AuthorizationRecords{}, err
+	}
+	if r.Approval, err = tx.loadApprovedApproval(ctx, r.Intent.ID); err != nil {
+		return domain.AuthorizationRecords{}, err
+	}
+	return r, nil
+}
+
+func (tx *Tx) scanAuthorizationRecords(ctx context.Context, commandID string) (domain.AuthorizationRecords, error) {
 	var r domain.AuthorizationRecords
 	var lifecycle episodeledger.LifecycleStatus
-	dests := concat(commandDests(&r.Command), intentDests(&r.Intent),
+	var intentExpiry string
+	dests := concat(commandDests(&r.Command), intentDests(&r.Intent, &intentExpiry),
 		decisionDests(&r.Decision), episodeDests(&r.Episode, &lifecycle), []any{&r.Situation.TenantID, &r.Situation.LastMaterialVersion})
 	if err := tx.tx.QueryRowContext(ctx, loadAuthorizationRecordsSQL, commandID).Scan(dests...); err != nil {
 		return domain.AuthorizationRecords{}, fmt.Errorf("load authorization records: %w", err)
 	}
 	r.Command.ID = commandID
 	r.Episode.ProducedDecision = lifecycle.ProducedDecision()
-	approval, err := tx.loadApprovedApproval(ctx, r.Intent.ID)
-	if err != nil {
-		return domain.AuthorizationRecords{}, err
+	var err error
+	if r.Intent.ExpiresAt, err = kernel.ParseTime(intentExpiry); err != nil {
+		return domain.AuthorizationRecords{}, fmt.Errorf("parse intent expiry of command %s: %w", commandID, err)
 	}
-	r.Approval = approval
 	return r, nil
 }
 
@@ -48,7 +60,14 @@ func (tx *Tx) loadApprovedApproval(ctx context.Context, intentID string) (domain
 	if err != nil {
 		return domain.ApprovalRow{}, fmt.Errorf("load approved approval of intent %s: %w", intentID, err)
 	}
-	return domain.ApprovalRow{ID: approval.ID, ExpiresAt: approval.ExpiresAt, Present: present}, nil
+	if !present {
+		return domain.ApprovalRow{}, nil
+	}
+	expiresAt, err := kernel.ParseTime(approval.ExpiresAt)
+	if err != nil {
+		return domain.ApprovalRow{}, fmt.Errorf("parse approval %s expiry: %w", approval.ID, err)
+	}
+	return domain.ApprovalRow{ID: approval.ID, ExpiresAt: expiresAt, Present: true}, nil
 }
 
 func (tx *Tx) ApprovedPolicyDigest(ctx context.Context, intentID string) (string, error) {
@@ -66,8 +85,8 @@ func commandDests(c *domain.CommandRow) []any {
 	return []any{&c.TenantID, &c.IntentID, &c.Route, &c.Target, &c.Idempotency, &c.JSON, &c.SHA}
 }
 
-func intentDests(i *domain.IntentRow) []any {
-	return []any{&i.TenantID, &i.ID, &i.DecisionID, &i.SituationID, &i.Version, &i.Type, &i.Risk, &i.JSON, &i.SHA, &i.ExpiresAt, &i.PolicyStatus, &i.RequiresApproval}
+func intentDests(i *domain.IntentRow, expiresAt *string) []any {
+	return []any{&i.TenantID, &i.ID, &i.DecisionID, &i.SituationID, &i.Version, &i.Type, &i.Risk, &i.JSON, &i.SHA, expiresAt, &i.PolicyStatus, &i.RequiresApproval}
 }
 
 func decisionDests(d *domain.DecisionRow) []any {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // Input is the immutable stream context against which a worker Decision is
@@ -113,7 +114,7 @@ func parseDecision(raw []byte, transmittedDigest string) (map[string]any, error)
 	if err := contractsv1.Validate(contractsv1.SchemaDecision, document); err != nil {
 		return nil, reject("schema_invalid", "decision_schema", err.Error())
 	}
-	if _, err := canonicaljson.DecodeDigest(transmittedDigest); err != nil || !canonicaljson.Verify(canonicaljson.DomainDecision, document, transmittedDigest) {
+	if !canonicaljson.Verify(canonicaljson.DomainDecision, document, transmittedDigest) {
 		return nil, reject("schema_invalid", "decision_digest", "decision digest is missing or does not match canonical JSON")
 	}
 	return document, nil
@@ -137,11 +138,8 @@ func reject(reason, field, message string) *ValidationError {
 // closed: an unparseable trusted-side timestamp is treated as expired so the
 // decision is rejected rather than admitted on a malformed validity window.
 func isExpired(now time.Time, value string) bool {
-	parsed, err := time.Parse(time.RFC3339Nano, value)
-	if err != nil {
-		return true
-	}
-	return !now.Before(parsed)
+	validUntil, err := kernel.ParseTime(value)
+	return err != nil || !validUntil.After(now)
 }
 
 func checkTrustedInput(input Input) error {

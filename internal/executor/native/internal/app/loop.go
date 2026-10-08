@@ -151,15 +151,11 @@ func (l *episodeLoop) decide(response domain.ModelResponse) *episodes.Outcome {
 }
 
 func (l *episodeLoop) produced(decision map[string]any) *episodes.Outcome {
-	digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, decision)
-	if err != nil {
-		return domain.Failed(l.req, "decision_digest_failed", l.usage)
-	}
-	decisionJSON, err := canonicaljson.Marshal(decision)
+	decisionJSON, sum, err := canonicaljson.Seal(canonicaljson.DomainDecision, decision)
 	if err != nil {
 		return domain.Failed(l.req, "decision_canonicalization_failed", l.usage)
 	}
-	return &episodes.Outcome{Status: string(episodeledger.AttemptProduced), AttemptID: l.req.AttemptID, Fence: l.req.Fence, DecisionJSON: decisionJSON, DecisionSHA256: digest, CostMicrounits: l.usage.CostMicrounits}
+	return &episodes.Outcome{Status: string(episodeledger.AttemptProduced), AttemptID: l.req.AttemptID, Fence: l.req.Fence, DecisionJSON: decisionJSON, DecisionSHA256: canonicaljson.EncodeDigest(sum), CostMicrounits: l.usage.CostMicrounits}
 }
 
 func waitProviderRetry(ctx context.Context) error {

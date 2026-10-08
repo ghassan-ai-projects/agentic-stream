@@ -44,16 +44,15 @@ func bindSnapshotEvidence(snapshotJSON, persistedDigest []byte, traceparent, tra
 	if err != nil {
 		return nil, fmt.Errorf("load snapshot entity: %w", err)
 	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, snapshot)
+	sum, err := canonicaljson.DigestSum(canonicaljson.DomainSnapshot, snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("digest snapshot: %w", err)
 	}
-	decodedDigest, err := canonicaljson.DecodeDigest(digest)
-	if err != nil || !bytes.Equal(decodedDigest, persistedDigest) {
+	if !bytes.Equal(sum, persistedDigest) {
 		return nil, fmt.Errorf("snapshot digest does not match persisted situation version")
 	}
 	return &SnapshotEvidence{
-		Document: snapshot, EntityID: entityID, Digest: digest, Traceparent: traceparent, Tracestate: tracestate,
+		Document: snapshot, EntityID: entityID, Digest: canonicaljson.EncodeDigest(sum), Traceparent: traceparent, Tracestate: tracestate,
 	}, nil
 }
 

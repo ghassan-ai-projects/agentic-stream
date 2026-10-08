@@ -36,11 +36,7 @@ func (l *Ledger) Reserve(ctx context.Context, call Call, tokenID, runtimeEpoch s
 	return l.reserveCall(ctx, call, pending, now, lease)
 }
 func (l *Ledger) now() time.Time {
-	now := time.Now().UTC()
-	if l.Now != nil {
-		now = l.Now().UTC()
-	}
-	return now
+	return sources.NowUTC(l.Now)
 }
 func (l *Ledger) reserveCall(ctx context.Context, call Call, pending ledgerReservation, now time.Time, lease time.Duration) (ledgerReservation, error) {
 	var reservation ledgerReservation
@@ -81,13 +77,13 @@ func assertLiveAttempt(ctx context.Context, tx *store.Tx, call Call) error {
 	return assertAttempt(ctx, call, tx.LiveEpisode, domain.CheckLiveEpisode, tx.LiveAttempt, domain.CheckLiveAttempt)
 }
 
-func assertAttempt[K any](ctx context.Context, key K, loadEpisode func(context.Context, K) (domain.EpisodeState, error), checkEpisode func(domain.EpisodeState, K) error,
+func assertAttempt[K any](ctx context.Context, key K, loadEpisode func(context.Context, K) (domain.EpisodeState, error), checkEpisode func(domain.EpisodeState) error,
 	loadAttempt func(context.Context, K) (bool, error), checkAttempt func(bool) error) error {
 	state, err := loadEpisode(ctx, key)
 	if err != nil {
 		return err
 	}
-	if err := checkEpisode(state, key); err != nil {
+	if err := checkEpisode(state); err != nil {
 		return err
 	}
 	inFlight, err := loadAttempt(ctx, key)

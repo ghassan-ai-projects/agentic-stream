@@ -132,13 +132,13 @@ func TestReleasedQuarantineCanBeValidatedAndRedrivenOnce(t *testing.T) {
 	log := eventlog.NewEventLog(db).RequireSchemaValidation()
 	env := boundaryEnvelope("evt-redrive", "default")
 	env.Data = map[string]any{"value": 42.0}
-	if err := log.QuarantineEnvelope(ctx, "default", env, "operator_hold", "2026-08-12T12:00:00Z"); err != nil {
+	if err := log.QuarantineEnvelope(ctx, "default", env, "operator_hold", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
-	if err := log.ReleaseQuarantine(ctx, "default", env.ID, "2026-08-12T12:01:00Z"); err != nil {
+	if err := log.ReleaseQuarantine(ctx, "default", env.ID, time.Date(2026, 8, 12, 12, 1, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
-	position, err := log.RedriveQuarantine(ctx, "default", env.ID, "2026-08-12T12:02:00Z")
+	position, err := log.RedriveQuarantine(ctx, "default", env.ID, time.Date(2026, 8, 12, 12, 2, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestReleasedQuarantineCanBeValidatedAndRedrivenOnce(t *testing.T) {
 	if redrivenAt == "" {
 		t.Fatal("redrive timestamp was not persisted")
 	}
-	if _, err := log.RedriveQuarantine(ctx, "default", env.ID, "2026-08-12T12:03:00Z"); err == nil {
+	if _, err := log.RedriveQuarantine(ctx, "default", env.ID, time.Date(2026, 8, 12, 12, 3, 0, 0, time.UTC)); err == nil {
 		t.Fatal("expected second redrive to fail")
 	}
 }

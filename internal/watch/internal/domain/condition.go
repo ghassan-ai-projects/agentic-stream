@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // InstallRoute is the effector route that installs a watch condition.
@@ -22,8 +22,9 @@ const (
 
 // Condition is the identity-defining content of an installed watch.
 type Condition struct {
-	TenantID, SituationID, Expression, Target, ExpiresAt string
-	SituationVersion, MaxFires                           int
+	TenantID, SituationID, Expression, Target string
+	ExpiresAt                                 time.Time
+	SituationVersion, MaxFires                int
 }
 
 // ActiveWatch is the part of a stored active watch that decides a fire.
@@ -64,18 +65,20 @@ func (c Condition) withValidatedExpiry(expiresAt string, now time.Time) (Conditi
 	if err := ValidateExpression(c.Expression); err != nil {
 		return Condition{}, err
 	}
-	parsedExpiry, err := time.Parse(time.RFC3339Nano, expiresAt)
+	parsedExpiry, err := kernel.ParseTime(expiresAt)
 	if err != nil || !parsedExpiry.After(now) {
 		return Condition{}, errors.New("watch condition expiry is invalid")
 	}
-	c.ExpiresAt = sources.FormatTime(parsedExpiry)
+	c.ExpiresAt = parsedExpiry.UTC()
 	return c, nil
 }
 
 // SameAs makes a repeated install idempotent: the same watch ID must carry the
 // same condition.
 func (c Condition) SameAs(stored Condition) error {
-	if c != stored {
+	sameExpiry := c.ExpiresAt.Equal(stored.ExpiresAt)
+	c.ExpiresAt, stored.ExpiresAt = time.Time{}, time.Time{}
+	if !sameExpiry || c != stored {
 		return errors.New("watch command idempotency conflict")
 	}
 	return nil

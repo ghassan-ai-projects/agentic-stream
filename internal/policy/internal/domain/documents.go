@@ -1,20 +1,17 @@
 package domain
 
 import (
-	"crypto/sha256"
 	"crypto/subtle"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // DocumentDigestMatches verifies the original decoded document, including the intent self-digest.
 func DocumentDigestMatches(document map[string]any, digest []byte, domain canonicaljson.Domain) bool {
-	if len(digest) != sha256.Size {
+	if !canonicaljson.HasSumLength(digest) {
 		return false
 	}
 	if domain == canonicaljson.DomainIntent {
@@ -27,7 +24,7 @@ func DocumentDigestMatches(document map[string]any, digest []byte, domain canoni
 		}
 		return subtle.ConstantTimeCompare([]byte(expected), []byte(canonicaljson.EncodeDigest(digest))) == 1
 	}
-	return canonicaljson.Verify(domain, document, canonicaljson.EncodeDigest(digest))
+	return canonicaljson.VerifySum(domain, document, digest)
 }
 
 // NormalizedTarget resolves target before entity identity, retaining the intent fallback.
@@ -54,9 +51,4 @@ func ContainsControl(value string) bool {
 		}
 	}
 	return false
-}
-
-// FormatTime formats durable timestamps in UTC with nanosecond precision.
-func FormatTime(value time.Time) string {
-	return sources.FormatTime(value)
 }

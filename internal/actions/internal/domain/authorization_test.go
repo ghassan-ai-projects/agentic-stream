@@ -66,9 +66,9 @@ func TestIntentExpiresAtItsDeadline(t *testing.T) {
 	if err := records.CheckIntent(testNow.Add(2 * time.Hour)); err == nil || err.Error() != "intent authorization is expired" {
 		t.Fatalf("expired intent err = %v", err)
 	}
-	records.Intent.ExpiresAt = "never"
+	records.Intent.ExpiresAt = time.Time{}
 	if err := records.CheckIntent(testNow); err == nil || err.Error() != "intent authorization is expired" {
-		t.Fatalf("unparseable expiry err = %v", err)
+		t.Fatalf("zero expiry err = %v", err)
 	}
 }
 

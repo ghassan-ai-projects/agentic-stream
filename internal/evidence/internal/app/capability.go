@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/wire"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // Issuer signs opaque capability tokens with an HMAC-SHA256 key ring.
@@ -22,11 +23,7 @@ type Issuer struct {
 
 // Issue signs a short-lived attempt capability.
 func (i *Issuer) Issue(scope Scope) ([]byte, error) {
-	now := time.Now().UTC()
-	if i.Now != nil {
-		now = i.Now().UTC()
-	}
-	scope, err := i.completeScope(scope, now)
+	scope, err := i.completeScope(scope, sources.NowUTC(i.Now))
 	if err != nil {
 		return nil, err
 	}

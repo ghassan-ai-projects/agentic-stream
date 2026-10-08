@@ -8,9 +8,9 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -31,7 +31,7 @@ func (t *Tx) RecordReconsideration(ctx context.Context, r domain.Reconsideration
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.ID, tenantID, r.Current.SituationID, r.Current.PreviousVersion,
 		r.Current.Version, correctionDigest, r.Command.CommandID, r.Command.OutcomeID, r.Command.OutcomeSHA,
-		sources.FormatTime(now)); err != nil {
+		kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("insert reconsideration: %w", err)
 	}
 	return nil
@@ -72,7 +72,8 @@ func (t *Tx) InvalidatedCommands(ctx context.Context, current situations.Version
 // outcome.
 const selectInvalidatedCommandsSQL = `
 		SELECT c.command_id, d.decision_id, o.outcome_id, o.ordinal, o.status, o.provider_result_json,
-		       o.observed_effect_json, o.reconciliation_status, o.outcome_sha256
+		       o.observed_effect_json, COALESCE(o.reconciliation_status, ''), o.outcome_sha256,
+		       d.raw_json, c.command_json, c.status, i.intent_id, i.intent_type, i.risk_class
 		FROM commands c
 		JOIN intents i ON i.intent_id = c.intent_id
 		JOIN decisions d ON d.decision_id = i.decision_id
@@ -92,7 +93,8 @@ const selectInvalidatedCommandsSQL = `
 
 func scanInvalidatedCommand(rows *sql.Rows) (domain.InvalidatedCommand, error) {
 	var c domain.InvalidatedCommand
-	if err := rows.Scan(&c.CommandID, &c.DecisionID, &c.OutcomeID, &c.OutcomeOrdinal, &c.OutcomeStatus, &c.ProviderJSON, &c.ObservedJSON, &c.ReconciliationStatus, &c.OutcomeSHA); err != nil {
+	if err := rows.Scan(&c.CommandID, &c.DecisionID, &c.OutcomeID, &c.OutcomeOrdinal, &c.OutcomeStatus, &c.ProviderJSON, &c.ObservedJSON, &c.ReconciliationStatus, &c.OutcomeSHA,
+		&c.DecisionJSON, &c.CommandJSON, &c.CommandStatus, &c.IntentID, &c.IntentType, &c.RiskClass); err != nil {
 		return domain.InvalidatedCommand{}, fmt.Errorf("scan invalidated command: %w", err)
 	}
 	return c, nil

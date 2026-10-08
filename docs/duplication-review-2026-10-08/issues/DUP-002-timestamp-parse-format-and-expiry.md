@@ -1,6 +1,6 @@
 # DUP-002: Durable timestamps: one writer, one parser, one expiry rule (layout unchanged)
 
-- Status: open
+- Status: fixed
 - Severity: medium
 - Verdict (finders): DIVERGED, REAL
 - Themes: business rules, contracts and shapes, mechanisms
@@ -67,4 +67,10 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Done through the import-design rework (see import-design.md, group results).
+
+- Verified: durable timestamps were written with three encodings and read with about 28 hand-written parses; text-compared columns mixed fixed-width and variable-width forms.
+- Changed: one fixed-width UTC layout, `kernel.FormatTime` and `kernel.ParseTime`, replaces every private copy. Domain records now carry `time.Time`; stores parse once and fail closed with a wrapped error; deadline rules use plain comparisons. `interlock` and `authority` use the kernel layout.
+- Pinned: `TestDurableTimeTextOrdersChronologicallyAndRoundTrips` (kernel), `TestTimestampTextHasOneOwner` (root gate: no other file formats or parses with RFC3339Nano, except the CloudEvent wire form), and the fail-closed store tests named in the group results.
+- Decisions: the CloudEvent digest keeps its trimmed RFC 3339 wire form in `contractsv1` because downstream consumers pin it. No stored rows are migrated (no backward compatibility, per the owner).
+- Commit: see the git history of the import-design rework.

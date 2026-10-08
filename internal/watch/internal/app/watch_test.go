@@ -14,6 +14,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/store"
@@ -131,7 +132,7 @@ func TestWatchEffectorEvaluatesExpressionAndExpiresWithoutAFire(t *testing.T) {
 	effector := newService(t, db, virtual)
 	command := actionport.Command{
 		CommandID: "cmd-expiry", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
-		Payload: map[string]any{"expression": "features.temperature > 90", "target": "motor-1", "expires_at": now.Add(time.Minute).Format(time.RFC3339Nano), "situation_id": "sit-1", "situation_version": 1, "max_fires": 2},
+		Payload: map[string]any{"expression": "features.temperature > 90", "target": "motor-1", "expires_at": kernel.FormatTime(now.Add(time.Minute)), "situation_id": "sit-1", "situation_version": 1, "max_fires": 2},
 	}
 	if _, err := effector.Dispatch(ctx, command); err != nil {
 		t.Fatal(err)
@@ -179,7 +180,7 @@ func lockExpiringWatch(t *testing.T) (*app.Service, *storage.DB, *sql.Conn) {
 		CommandID: "cmd-contended", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
 		Payload: map[string]any{
 			"expression": "features.temperature > 90", "target": "motor-1",
-			"expires_at": now.Add(time.Minute).Format(time.RFC3339Nano), "situation_id": "sit-1",
+			"expires_at": kernel.FormatTime(now.Add(time.Minute)), "situation_id": "sit-1",
 			"situation_version": 1, "max_fires": 1,
 		},
 	}

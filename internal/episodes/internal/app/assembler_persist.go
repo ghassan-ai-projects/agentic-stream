@@ -7,7 +7,6 @@ import (
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // Persist saves the episode request to the episodes table and marks the
@@ -39,7 +38,7 @@ func (a *Assembler) reserveCost(ctx context.Context, tx *store.Tx, req *Request,
 	if err != nil {
 		return err
 	}
-	if err := tx.ReserveCost(ctx, a.cost, req.EpisodeID, req.TenantID, budget, sources.FormatTime(now)); err != nil {
+	if err := tx.ReserveCost(ctx, a.cost, req.EpisodeID, req.TenantID, budget, now); err != nil {
 		return fmt.Errorf("reserve episode cost: %w", err)
 	}
 	return nil

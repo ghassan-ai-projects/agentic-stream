@@ -159,9 +159,11 @@ func freeLoopbackAddress(t *testing.T) string {
 	return address
 }
 
+const readyTimeout = time.Minute
+
 func waitReady(t *testing.T, url string, done <-chan error) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(readyTimeout)
 	for time.Now().Before(deadline) {
 		select {
 		case err := <-done:

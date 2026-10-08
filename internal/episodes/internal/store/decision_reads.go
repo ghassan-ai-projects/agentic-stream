@@ -3,9 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
@@ -28,6 +28,6 @@ func scanDecisionView(rows *sql.Rows) (domain.DecisionView, error) {
 	if err := rows.Scan(&r.DecisionID, &r.AttemptID, &r.Fence, &r.Ordinal, &r.SituationVersion, &r.ValidationStatus, &r.RejectionReason, &digest, &r.Decision, &r.CreatedAt); err != nil {
 		return domain.DecisionView{}, fmt.Errorf("scan episode decision: %w", err)
 	}
-	r.DecisionSHA256 = "sha256:" + hex.EncodeToString(digest)
+	r.DecisionSHA256 = canonicaljson.EncodeDigest(digest)
 	return r, nil
 }

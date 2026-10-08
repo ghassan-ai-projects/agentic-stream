@@ -93,19 +93,19 @@ func TestQuarantineConflictAndBoundFailClosed(t *testing.T) {
 	t.Parallel()
 	service := newService(t)
 	ctx := context.Background()
-	if err := service.Quarantine(ctx, "tenant", map[string]any{"id": "bad-1", "v": 1}, "malformed_json", "now"); err != nil {
+	if err := service.Quarantine(ctx, "tenant", map[string]any{"id": "bad-1", "v": 1}, "malformed_json", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.Quarantine(ctx, "tenant", map[string]any{"id": "bad-1", "v": 2}, "malformed_json", "now"); err == nil || !strings.Contains(err.Error(), "conflicting quarantined payload") {
+	if err := service.Quarantine(ctx, "tenant", map[string]any{"id": "bad-1", "v": 2}, "malformed_json", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err == nil || !strings.Contains(err.Error(), "conflicting quarantined payload") {
 		t.Fatalf("hash conflict accepted: %v", err)
 	}
-	if err := service.Quarantine(ctx, "", map[string]any{"id": "bad"}, "malformed_json", "now"); err == nil {
+	if err := service.Quarantine(ctx, "", map[string]any{"id": "bad"}, "malformed_json", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err == nil {
 		t.Fatal("tenantless quarantine accepted")
 	}
-	if err := service.QuarantineRaw(ctx, "tenant", "line-1", []byte("not-json"), "malformed_json", "now"); err != nil {
+	if err := service.QuarantineRaw(ctx, "tenant", "line-1", []byte("not-json"), "malformed_json", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatalf("raw quarantine = %v", err)
 	}
-	if err := service.QuarantineEnvelope(ctx, "tenant", envelope("bad-env"), "schema_mismatch", "now"); err != nil {
+	if err := service.QuarantineEnvelope(ctx, "tenant", envelope("bad-env"), "schema_mismatch", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatalf("envelope quarantine = %v", err)
 	}
 }
@@ -114,13 +114,13 @@ func TestRedriveRequiresReleasedRecord(t *testing.T) {
 	t.Parallel()
 	service := newService(t)
 	ctx := context.Background()
-	if _, err := service.RedriveQuarantine(ctx, "tenant", "unknown", "now"); err == nil || !strings.Contains(err.Error(), "load released quarantine") {
+	if _, err := service.RedriveQuarantine(ctx, "tenant", "unknown", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err == nil || !strings.Contains(err.Error(), "load released quarantine") {
 		t.Fatalf("err = %v", err)
 	}
-	if err := service.ReleaseQuarantine(ctx, "tenant", "unknown", "now"); err == nil || !strings.Contains(err.Error(), "not available for release") {
+	if err := service.ReleaseQuarantine(ctx, "tenant", "unknown", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err == nil || !strings.Contains(err.Error(), "not available for release") {
 		t.Fatalf("release err = %v", err)
 	}
-	if err := service.ReleaseQuarantine(ctx, "", "", ""); err == nil {
+	if err := service.ReleaseQuarantine(ctx, "", "", time.Time{}); err == nil {
 		t.Fatal("empty release inputs accepted")
 	}
 }

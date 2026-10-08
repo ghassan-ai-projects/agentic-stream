@@ -3,6 +3,9 @@ package store
 import (
 	"context"
 	"fmt"
+	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // RebindEpisode persists the validated live snapshot and consumes one rebind.
@@ -17,19 +20,19 @@ func (t *Tx) BindRequest(ctx context.Context, episodeID string, request []byte) 
 }
 
 // AbandonRebind quarantines an invalid live snapshot and consumes one rebind.
-func (t *Tx) AbandonRebind(ctx context.Context, episodeID, now string, terminal []byte) error {
+func (t *Tx) AbandonRebind(ctx context.Context, episodeID string, now time.Time, terminal []byte) error {
 	return t.write(ctx, `UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ?,
- stale_rebind_count = stale_rebind_count + 1 WHERE episode_id = ?`, now, terminal, episodeID)
+ stale_rebind_count = stale_rebind_count + 1 WHERE episode_id = ?`, kernel.FormatTime(now), terminal, episodeID)
 }
 
 // AbandonEpisode records a terminal quarantine outcome.
-func (t *Tx) AbandonEpisode(ctx context.Context, episodeID, now string, terminal []byte) error {
-	return t.write(ctx, `UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ? WHERE episode_id = ?`, now, terminal, episodeID)
+func (t *Tx) AbandonEpisode(ctx context.Context, episodeID string, now time.Time, terminal []byte) error {
+	return t.write(ctx, `UPDATE episodes SET lifecycle_status = 'abandoned', ended_at = ?, terminal_json = ? WHERE episode_id = ?`, kernel.FormatTime(now), terminal, episodeID)
 }
 
 // ConcludeEpisode records the terminal execution outcome.
-func (t *Tx) ConcludeEpisode(ctx context.Context, episodeID, now string, terminal []byte) error {
-	return t.write(ctx, `UPDATE episodes SET lifecycle_status = 'concluded', ended_at = ?, terminal_json = ? WHERE episode_id = ?`, now, terminal, episodeID)
+func (t *Tx) ConcludeEpisode(ctx context.Context, episodeID string, now time.Time, terminal []byte) error {
+	return t.write(ctx, `UPDATE episodes SET lifecycle_status = 'concluded', ended_at = ?, terminal_json = ? WHERE episode_id = ?`, kernel.FormatTime(now), terminal, episodeID)
 }
 
 // RetainEpisodeForRetry returns the episode to running for the next bounded attempt.
@@ -38,8 +41,8 @@ func (t *Tx) RetainEpisodeForRetry(ctx context.Context, episodeID string) error 
 }
 
 // SupersedeEpochEpisodes cancels the in-flight episodes of a killed epoch.
-func (t *Tx) SupersedeEpochEpisodes(ctx context.Context, epoch, now string) error {
-	if _, err := t.q.ExecContext(ctx, supersedeEpochEpisodesSQL, now, epoch); err != nil {
+func (t *Tx) SupersedeEpochEpisodes(ctx context.Context, epoch string, now time.Time) error {
+	if _, err := t.q.ExecContext(ctx, supersedeEpochEpisodesSQL, kernel.FormatTime(now), epoch); err != nil {
 		return fmt.Errorf("supersede in-flight episodes of killed epoch: %w", err)
 	}
 	return nil

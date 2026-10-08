@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 func (t *Tx) LoadEvaluationReasons(ctx context.Context, schedulerItemID string) (string, []string, error) {
@@ -55,7 +54,7 @@ func evaluationColumns(eval domain.Evaluation, tenantID, deploymentID, policyDig
 	return []any{
 		eval.TriggerID, tenantID, deploymentID, eval.TriggerName,
 		eval.SituationID, eval.SituationVersion, eval.Score, eval.Threshold, eval.Lane,
-		eval.Outcome, reasonsJSON, policySHA[:], eval.DeltaJSON, eval.EvaluatedAt.Format(time.RFC3339Nano),
+		eval.Outcome, reasonsJSON, policySHA[:], eval.DeltaJSON, kernel.FormatTime(eval.EvaluatedAt),
 	}, nil
 }
 
@@ -90,7 +89,7 @@ func (t *Tx) AnnounceEvaluation(ctx context.Context, eval domain.Evaluation, ten
 
 func evaluationEvent(eval domain.Evaluation, tenantID string) contractsv1.CloudEvent {
 	return contractsv1.CloudEvent{
-		SpecVersion: "1.0", ID: eval.TriggerID + ":" + eval.Outcome + ":" + sources.FormatTime(eval.EvaluatedAt), Source: "//agentic-stream/tenants/" + tenantID,
+		SpecVersion: "1.0", ID: eval.TriggerID + ":" + eval.Outcome + ":" + kernel.FormatTime(eval.EvaluatedAt), Source: "//agentic-stream/tenants/" + tenantID,
 		Type: "situation.trigger.evaluated", Subject: "situation/" + eval.SituationID,
 		Time: eval.EvaluatedAt, DataContentType: "application/json",
 		DataSchema: "urn:situation-runtime:schema:trigger-evaluation:v1",

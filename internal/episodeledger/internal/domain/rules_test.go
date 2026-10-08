@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAttemptTransitionTable(t *testing.T) {
@@ -131,11 +132,12 @@ func TestRejectionRules(t *testing.T) {
 		t.Fatal("details default changed")
 	}
 	identity := Identity{EpisodeID: "e", AttemptID: "a", Fence: 3}
-	first := RejectionID(identity, RejectStaleAttempt, []byte("{}"), "t")
-	if first != RejectionID(identity, RejectStaleAttempt, []byte("{}"), "t") || !strings.HasPrefix(first, "rej_") {
+	instant := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	first := RejectionID(identity, RejectStaleAttempt, []byte("{}"), instant)
+	if first != RejectionID(identity, RejectStaleAttempt, []byte("{}"), instant) || !strings.HasPrefix(first, "rej_") {
 		t.Fatalf("id = %s", first)
 	}
-	if first == RejectionID(identity, RejectWrongAttempt, []byte("{}"), "t") || first == RejectionID(identity, RejectStaleAttempt, []byte("{}"), "u") {
+	if first == RejectionID(identity, RejectWrongAttempt, []byte("{}"), instant) || first == RejectionID(identity, RejectStaleAttempt, []byte("{}"), instant.Add(time.Nanosecond)) {
 		t.Fatal("id ignores its inputs")
 	}
 }

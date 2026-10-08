@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 const loadClaimSQL = `
@@ -28,8 +29,8 @@ func (t *Tx) LoadClaim(ctx context.Context, target string) (*domain.HeldClaim, e
 		return nil, fmt.Errorf("load target claim: %w", err)
 	}
 	held.Status = domain.ClaimStatus(status)
-	if held.LeaseUntil, err = parseTime("target claim lease", leaseUntil); err != nil {
-		return nil, err
+	if held.LeaseUntil, err = kernel.ParseTime(leaseUntil); err != nil {
+		return nil, fmt.Errorf("parse target claim lease: %w", err)
 	}
 	return &held, nil
 }
@@ -53,7 +54,7 @@ const writeClaimSQL = `
 func (t *Tx) WriteClaim(ctx context.Context, claim domain.TargetClaim, decision domain.ClaimDecision, now time.Time) error {
 	if _, err := t.tx.ExecContext(ctx, writeClaimSQL,
 		claim.Target, claim.Device.DeviceID, claim.Owner.Epoch, claim.Owner.Instance, claim.Device.BootID,
-		decision.Fence, formatTime(decision.LeaseUntil), string(domain.ClaimActive), formatTime(now)); err != nil {
+		decision.Fence, kernel.FormatTime(decision.LeaseUntil), string(domain.ClaimActive), kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("write target claim: %w", err)
 	}
 	return nil
@@ -62,7 +63,7 @@ func (t *Tx) WriteClaim(ctx context.Context, claim domain.TargetClaim, decision 
 // MarkClaimReleased records the claim on target as released.
 func (t *Tx) MarkClaimReleased(ctx context.Context, target string, now time.Time) error {
 	if _, err := t.tx.ExecContext(ctx, `UPDATE device_target_claims SET status = ?, updated_at = ? WHERE target = ?`,
-		string(domain.ClaimReleased), formatTime(now), target); err != nil {
+		string(domain.ClaimReleased), kernel.FormatTime(now), target); err != nil {
 		return fmt.Errorf("release target claim: %w", err)
 	}
 	return nil

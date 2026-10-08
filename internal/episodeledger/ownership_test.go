@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
@@ -46,6 +47,7 @@ func TestAdmissionStoresDeclaredPolicyAndRejectsConflictingLiveEpisode(t *testin
 
 func TestEpisodeMutationsRemainInsideCallerTransaction(t *testing.T) {
 	db := storagetest.OpenTemp(t)
+	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 
 	seedEpisode(t, t.Context(), db, "episode")
 	// Isolate the row contract from unrelated upstream situation/scheduler fixtures.
@@ -61,16 +63,16 @@ func TestEpisodeMutationsRemainInsideCallerTransaction(t *testing.T) {
 		if err := episodeledger.BindRequest(ctx, tx, "episode", []byte(`{"attempt":"bound"}`)); err != nil {
 			return err
 		}
-		if err := episodeledger.AbandonRebind(ctx, tx, "episode", "first", []byte(`{"reason":"invalid"}`)); err != nil {
+		if err := episodeledger.AbandonRebind(ctx, tx, "episode", now, []byte(`{"reason":"invalid"}`)); err != nil {
 			return err
 		}
 		if err := episodeledger.RetainForRetry(ctx, tx, "episode"); err != nil {
 			return err
 		}
-		if err := episodeledger.Conclude(ctx, tx, "episode", "second", []byte(`{"status":"declined"}`)); err != nil {
+		if err := episodeledger.Conclude(ctx, tx, "episode", now.Add(time.Second), []byte(`{"status":"declined"}`)); err != nil {
 			return err
 		}
-		if err := episodeledger.Abandon(ctx, tx, "episode", "final", []byte(`{"reason":"killed"}`)); err != nil {
+		if err := episodeledger.Abandon(ctx, tx, "episode", now.Add(2*time.Second), []byte(`{"reason":"killed"}`)); err != nil {
 			return err
 		}
 		var state, ended string
@@ -78,7 +80,7 @@ func TestEpisodeMutationsRemainInsideCallerTransaction(t *testing.T) {
 		if err := tx.QueryRowContext(ctx, "SELECT lifecycle_status, ended_at, stale_rebind_count, situation_version FROM episodes WHERE episode_id='episode'").Scan(&state, &ended, &rebinds, &version); err != nil {
 			return err
 		}
-		if state != "abandoned" || ended != "final" || rebinds != 2 || version != 2 {
+		if state != "abandoned" || ended != kernel.FormatTime(now.Add(2*time.Second)) || rebinds != 2 || version != 2 {
 			t.Fatalf("composed state=%s ended=%s rebinds=%d version=%d", state, ended, rebinds, version)
 		}
 		return rollback

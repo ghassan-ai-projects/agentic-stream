@@ -21,7 +21,7 @@ func TestTokenEncodingAndIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = `{"iss":"runtime","aud":"tools","episode_id":"e","attempt_id":"a","fence":1,"tenant_id":"t","situation_id":"s","situation_version":1,"entity_id":"x","jti":"fixed","iat":"2026-08-12T12:00:00Z","tools":["evidence.get"],"nbf":"2026-08-12T12:00:00Z","exp":"2026-08-12T12:01:00Z","max_rows":1,"max_bytes":100,"from":"2026-08-12T12:00:00Z","until":"2026-08-12T12:00:00Z","traceparent":"trace","runtime_epoch":"epoch"}`
+	const want = `{"iss":"runtime","aud":"tools","episode_id":"e","attempt_id":"a","fence":1,"tenant_id":"t","situation_id":"s","situation_version":1,"entity_id":"x","jti":"fixed","iat":"2026-08-12T12:00:00.000000000Z","tools":["evidence.get"],"nbf":"2026-08-12T12:00:00.000000000Z","exp":"2026-08-12T12:01:00.000000000Z","max_rows":1,"max_bytes":100,"from":"2026-08-12T12:00:00.000000000Z","until":"2026-08-12T12:00:00.000000000Z","traceparent":"trace","runtime_epoch":"epoch"}`
 	if string(raw) != want {
 		t.Fatalf("claims changed: %s", raw)
 	}

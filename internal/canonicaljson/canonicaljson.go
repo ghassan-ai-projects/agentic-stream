@@ -41,8 +41,25 @@ func Marshal(v any) ([]byte, error) { return domain.Marshal(v) }
 // reference.
 func Digest(domainName Domain, v any) (string, error) { return domain.Digest(domainName, v) }
 
+// DigestSum computes the raw 32-byte domain-separated SHA-256 digest of v, the
+// form stored in BLOB columns.
+func DigestSum(domainName Domain, v any) ([]byte, error) { return domain.DigestSum(domainName, v) }
+
+// Seal returns the canonical JSON of v and its raw domain-separated digest,
+// canonicalizing v once.
+func Seal(domainName Domain, v any) (canonical, sum []byte, err error) {
+	return domain.Seal(domainName, v)
+}
+
+// VerifySum recomputes the domain-separated digest of v and compares it with
+// the raw sum in constant time.
+func VerifySum(domainName Domain, v any, sum []byte) bool {
+	return domain.VerifySum(domainName, v, sum)
+}
+
 // DecodeDigest converts a canonical "sha256:<hex>" digest into its 32-byte
-// storage representation. Unprefixed digests are invalid contract values.
+// storage representation. Unprefixed digests and uppercase hex are invalid
+// contract values.
 func DecodeDigest(digest string) ([]byte, error) { return domain.DecodeDigest(digest) }
 
 // Verify recomputes the digest of v in the domain and compares it with digest.
@@ -57,6 +74,13 @@ func EncodeDigest(sum []byte) string { return domain.EncodeDigest(sum) }
 // ContentDigest returns the "sha256:<hex>" reference of data's raw SHA-256,
 // without a domain prefix. It identifies stored canonical documents.
 func ContentDigest(data []byte) string { return domain.ContentDigest(data) }
+
+// Sum returns the raw 32-byte SHA-256 of data, the content hash of stored
+// bytes.
+func Sum(data []byte) []byte { return domain.Sum(data) }
+
+// HasSumLength reports whether b is a complete 32-byte SHA-256 sum.
+func HasSumLength(b []byte) bool { return domain.HasSumLength(b) }
 
 // VerifyStored checks a stored canonical JSON document against its raw
 // SHA-256. A non-canonical document is reported before a digest mismatch.

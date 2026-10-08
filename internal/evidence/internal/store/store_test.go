@@ -52,7 +52,7 @@ func TestStoreReadsWritesAndLeasePredicates(t *testing.T) {
 			return err
 		}
 		state, err := tx.LiveEpisode(t.Context(), call)
-		if err != nil || state.AttemptID != call.AttemptID {
+		if err != nil || !state.Current {
 			t.Fatalf("episode=%+v err=%v", state, err)
 		}
 		if _, err := tx.LiveAttempt(t.Context(), call); err != nil {
@@ -168,5 +168,47 @@ func TestEpisodeAndAttemptStateFollowTheLedgerPredicates(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestEvidenceFenceVerdictsMatchTheLedgerIdentityRules(t *testing.T) {
+	db := openLedgerDB(t)
+	s := New(db, func(context.Context, *sql.Tx, string) error { return nil }, "epoch-1")
+	base := ledgerTestCall()
+	stale, wrong, otherTenant := base, base, base
+	stale.Fence, wrong.AttemptID, otherTenant.TenantID = 0, "attempt-2", "tenant-2"
+	for _, lifecycle := range []episodeledger.LifecycleStatus{episodeledger.LifecycleAdmitted, episodeledger.LifecycleRunning, episodeledger.LifecycleConcluded, episodeledger.LifecycleSuperseded} {
+		if _, err := db.ExecContext(t.Context(), "UPDATE episodes SET lifecycle_status = ?", string(lifecycle)); err != nil {
+			t.Fatal(err)
+		}
+		for name, call := range map[string]domain.Call{"current": base, "stale fence": stale, "wrong attempt": wrong} {
+			err := s.WithTx(t.Context(), func(tx *Tx) error {
+				state, err := tx.LiveEpisode(t.Context(), call)
+				if err != nil {
+					return err
+				}
+				fence, _, err := episodeledger.ReadEpisodeFence(t.Context(), tx.tx, call.EpisodeID)
+				if err != nil {
+					return err
+				}
+				identity := episodeledger.Identity{EpisodeID: call.EpisodeID, AttemptID: call.AttemptID, Fence: call.Fence}
+				if refused := fence.CheckOpenIdentity(identity) != nil; refused != (domain.CheckLiveEpisode(state) != nil) {
+					t.Errorf("%s/%s: ledger refused=%v evidence=%v", lifecycle, name, refused, domain.CheckLiveEpisode(state))
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	err := s.WithTx(t.Context(), func(tx *Tx) error {
+		if _, err := tx.LiveEpisode(t.Context(), otherTenant); err == nil {
+			t.Error("episode of another tenant loaded")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

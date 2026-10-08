@@ -17,6 +17,7 @@ import (
 	_ "modernc.org/sqlite" // read-only view of the runtime database
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // The real-world-sensor experiment's Agentic Stream slice, run the way
@@ -210,11 +211,11 @@ func shiftEvent(t *testing.T, line string, offset time.Duration) string {
 		t.Fatal(err)
 	}
 	for _, field := range []string{"event_time", "ingested_at"} {
-		at, err := time.Parse(time.RFC3339Nano, event[field].(string))
+		at, err := kernel.ParseTime(event[field].(string))
 		if err != nil {
 			t.Fatal(err)
 		}
-		event[field] = at.Add(offset).UTC().Format(time.RFC3339Nano)
+		event[field] = kernel.FormatTime(at.Add(offset).UTC())
 	}
 	shifted, err := json.Marshal(event)
 	if err != nil {
@@ -351,7 +352,7 @@ func schedulerQueue(t *testing.T, db *sql.DB) string {
 			items = append(items, fmt.Sprintf("[%s v%d not_before=%s expires=%s created=%s]", status, version, notBefore, expiresAt, createdAt))
 		}
 	}
-	return strings.Join(items, " ") + " now=" + time.Now().UTC().Format(time.RFC3339Nano)
+	return strings.Join(items, " ") + " now=" + kernel.FormatTime(time.Now().UTC())
 }
 
 // A tripped interlock is the experiment's software emergency stop: with it

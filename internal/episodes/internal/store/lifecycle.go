@@ -6,6 +6,7 @@ import (
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // Admit persists an episode through its lifecycle owner.
@@ -49,12 +50,12 @@ func (tx *Tx) RecordRejection(ctx context.Context, identity episodeledger.Identi
 }
 
 // AbandonRebind records a failed rebind through the episode owner.
-func (tx *Tx) AbandonRebind(ctx context.Context, id, now string, terminal []byte) error {
+func (tx *Tx) AbandonRebind(ctx context.Context, id string, now time.Time, terminal []byte) error {
 	return episodeledger.AbandonRebind(ctx, tx.tx, id, now, terminal) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
 }
 
 // Abandon quarantines an episode through its lifecycle owner.
-func (tx *Tx) Abandon(ctx context.Context, id, now string, terminal []byte) error {
+func (tx *Tx) Abandon(ctx context.Context, id string, now time.Time, terminal []byte) error {
 	return episodeledger.Abandon(ctx, tx.tx, id, now, terminal) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
 }
 
@@ -64,16 +65,16 @@ func (tx *Tx) RetainForRetry(ctx context.Context, id string) error {
 }
 
 // Conclude persists an episode terminal through its owner.
-func (tx *Tx) Conclude(ctx context.Context, id, now string, terminal []byte) error {
+func (tx *Tx) Conclude(ctx context.Context, id string, now time.Time, terminal []byte) error {
 	return episodeledger.Conclude(ctx, tx.tx, id, now, terminal) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
 }
 
 // ReserveCost reserves the admitted episode budget on the same transaction.
-func (tx *Tx) ReserveCost(ctx context.Context, controller *runtimecontrol.CostLedger, id, tenant string, budget uint64, now string) error {
-	return controller.Reserve(ctx, tx.tx, id, tenant, budget, now) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
+func (tx *Tx) ReserveCost(ctx context.Context, controller *runtimecontrol.CostLedger, id, tenant string, budget uint64, now time.Time) error {
+	return controller.Reserve(ctx, tx.tx, id, tenant, budget, kernel.FormatTime(now)) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
 }
 
 // SettleCost settles a reservation on the same transaction.
-func (tx *Tx) SettleCost(ctx context.Context, controller *runtimecontrol.CostLedger, id string, cost uint64, now string) error {
-	return controller.Settle(ctx, tx.tx, id, cost, now) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
+func (tx *Tx) SettleCost(ctx context.Context, controller *runtimecontrol.CostLedger, id string, cost uint64, now time.Time) error {
+	return controller.Settle(ctx, tx.tx, id, cost, kernel.FormatTime(now)) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
 }

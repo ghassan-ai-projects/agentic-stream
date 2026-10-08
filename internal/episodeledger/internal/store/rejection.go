@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -28,7 +29,7 @@ func (t *Tx) InsertRejection(ctx context.Context, rejection domain.Rejection, ep
 	if rejection.AttemptID != "" {
 		attempt = rejection.AttemptID
 	}
-	_, err := t.q.ExecContext(ctx, insertWorkerRejectionSQL, rejection.ID, episode, attempt, rejection.Fence, rejection.Reason, rejection.Details, rejection.At)
+	_, err := t.q.ExecContext(ctx, insertWorkerRejectionSQL, rejection.ID, episode, attempt, rejection.Fence, rejection.Reason, rejection.Details, kernel.FormatTime(rejection.At))
 	if err != nil {
 		return fmt.Errorf("record rejection: %w", err)
 	}

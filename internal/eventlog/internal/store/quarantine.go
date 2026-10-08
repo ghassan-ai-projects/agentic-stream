@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -23,10 +25,10 @@ func (u *Unit) QuarantineDigest(ctx context.Context, tenantID, eventID string) (
 
 // UpsertQuarantine inserts the record or counts a repeated delivery of the
 // same payload, returning the number of affected rows.
-func (u *Unit) UpsertQuarantine(ctx context.Context, payload domain.QuarantinePayload, tenantID, reason, now string) (int64, error) {
+func (u *Unit) UpsertQuarantine(ctx context.Context, payload domain.QuarantinePayload, tenantID, reason string, now time.Time) (int64, error) {
 	result, err := u.tx.ExecContext(ctx, upsertQuarantineSQL,
 		payload.QuarantineID, tenantID, payload.EventID, payload.EventType, payload.SchemaVersion, payload.Source,
-		reason, payload.Payload, payload.Digest, now, now)
+		reason, payload.Payload, payload.Digest, kernel.FormatTime(now), kernel.FormatTime(now))
 	if err != nil {
 		return 0, fmt.Errorf("persist event quarantine: %w", err)
 	}
@@ -50,8 +52,8 @@ const upsertQuarantineSQL = `
 		WHERE event_quarantine.payload_sha256 = excluded.payload_sha256`
 
 // RejectQuarantineConflict marks a conflicting record rejected.
-func (u *Unit) RejectQuarantineConflict(ctx context.Context, tenantID, eventID, now string) error {
-	if _, err := u.tx.ExecContext(ctx, "UPDATE event_quarantine SET status = 'rejected', reason_code = 'event_id_hash_conflict', last_seen_at = ? WHERE tenant_id = ? AND event_id = ?", now, tenantID, eventID); err != nil {
+func (u *Unit) RejectQuarantineConflict(ctx context.Context, tenantID, eventID string, now time.Time) error {
+	if _, err := u.tx.ExecContext(ctx, "UPDATE event_quarantine SET status = 'rejected', reason_code = 'event_id_hash_conflict', last_seen_at = ? WHERE tenant_id = ? AND event_id = ?", kernel.FormatTime(now), tenantID, eventID); err != nil {
 		return fmt.Errorf("record quarantine hash conflict: %w", err)
 	}
 	return nil
@@ -67,8 +69,8 @@ func (u *Unit) QuarantineStatus(ctx context.Context, tenantID, eventID string) (
 }
 
 // InsertOverflowGap records the one gap a spent quarantine record owes.
-func (u *Unit) InsertOverflowGap(ctx context.Context, gapID, tenantID, now string) error {
-	if _, err := u.tx.ExecContext(ctx, `INSERT INTO event_gaps (gap_id, tenant_id, partition_id, from_position, to_position, reason_code, created_at) VALUES (?, ?, 0, 0, 0, 'quarantine_retry_exhausted', ?) ON CONFLICT(gap_id) DO NOTHING`, gapID, tenantID, now); err != nil {
+func (u *Unit) InsertOverflowGap(ctx context.Context, gapID, tenantID string, now time.Time) error {
+	if _, err := u.tx.ExecContext(ctx, `INSERT INTO event_gaps (gap_id, tenant_id, partition_id, from_position, to_position, reason_code, created_at) VALUES (?, ?, 0, 0, 0, 'quarantine_retry_exhausted', ?) ON CONFLICT(gap_id) DO NOTHING`, gapID, tenantID, kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("record quarantine overflow gap: %w", err)
 	}
 	return nil
@@ -76,8 +78,8 @@ func (u *Unit) InsertOverflowGap(ctx context.Context, gapID, tenantID, now strin
 
 // ReleaseQuarantined marks one quarantined record released; it fails when no
 // quarantined record was available.
-func (u *Unit) ReleaseQuarantined(ctx context.Context, tenantID, eventID, now string) error {
-	result, err := u.tx.ExecContext(ctx, `UPDATE event_quarantine SET status = 'released', released_at = ?, last_seen_at = ? WHERE tenant_id = ? AND event_id = ? AND status = 'quarantined'`, now, now, tenantID, eventID)
+func (u *Unit) ReleaseQuarantined(ctx context.Context, tenantID, eventID string, now time.Time) error {
+	result, err := u.tx.ExecContext(ctx, `UPDATE event_quarantine SET status = 'released', released_at = ?, last_seen_at = ? WHERE tenant_id = ? AND event_id = ? AND status = 'quarantined'`, kernel.FormatTime(now), kernel.FormatTime(now), tenantID, eventID)
 	if err != nil {
 		return fmt.Errorf("release quarantined event: %w", err)
 	}
@@ -110,8 +112,8 @@ func (u *Unit) ReleasedEnvelope(ctx context.Context, tenantID, eventID string) (
 }
 
 // MarkRedriven marks a released record redriven.
-func (u *Unit) MarkRedriven(ctx context.Context, tenantID, eventID, now string) error {
-	if _, err := u.tx.ExecContext(ctx, "UPDATE event_quarantine SET redriven_at = ? WHERE tenant_id = ? AND event_id = ? AND status = 'released'", now, tenantID, eventID); err != nil {
+func (u *Unit) MarkRedriven(ctx context.Context, tenantID, eventID string, now time.Time) error {
+	if _, err := u.tx.ExecContext(ctx, "UPDATE event_quarantine SET redriven_at = ? WHERE tenant_id = ? AND event_id = ? AND status = 'released'", kernel.FormatTime(now), tenantID, eventID); err != nil {
 		return fmt.Errorf("mark quarantine redriven: %w", err)
 	}
 	return nil

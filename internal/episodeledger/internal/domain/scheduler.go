@@ -19,6 +19,13 @@ type SchedulerItem struct {
 	ExpiresAt        time.Time  // latest time the item remains useful.
 }
 
+// CoalescedItem is a scheduler item a newer trigger evaluation replaced, with
+// the Situation version it was bound to.
+type CoalescedItem struct {
+	SchedulerItemID  string
+	SituationVersion int
+}
+
 // CheckStillPending fails when a pending-only transition changed no item.
 func CheckStillPending(rows int64, schedulerItemID string) error {
 	if rows != 1 {

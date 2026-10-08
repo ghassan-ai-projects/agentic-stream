@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"crypto/sha256"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
@@ -144,16 +143,11 @@ func intentCatalogEntry(intent spec.Intent, canonicalSchema []byte) map[string]a
 		"type":                    intent.Type,
 		"risk_class":              intent.Risk,
 		"parameter_schema":        intent.ParameterSchema,
-		"parameter_schema_digest": canonicaljson.EncodeDigest(sha256Sum(canonicalSchema)),
+		"parameter_schema_digest": canonicaljson.EncodeDigest(canonicaljson.Sum(canonicalSchema)),
 		"model_writable_fields":   writable,
 	}
 	addOptionalIntentFields(entry, intent)
 	return entry
-}
-
-func sha256Sum(bytes []byte) []byte {
-	sum := sha256.Sum256(bytes)
-	return sum[:]
 }
 
 // addOptionalIntentFields adds the fields the wire form omits when unset.

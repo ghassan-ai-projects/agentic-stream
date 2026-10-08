@@ -1,13 +1,15 @@
 # DUP-016: Which pending scheduler items are due is written twice, with different rules, for live and replay
 
-- Status: needs-decision
+- Status: fixed
 - Severity: high
 - Verdict (finders): DIVERGED
 - Themes: persistence
-- Wave: not scheduled
+- Wave: 2b
 - Finder sources: P4 (P persistence, R rules, S shapes, M mechanisms)
 
 ## Reviewer notes
+
+**Decision (owner, 2026-10-09): enforce `expires_at` on the live path and make replay use the very same selection. One read in `episodeledger` returns due items in live order (not_before, created_at, id) with the expiry and created_at rules applied; live takes the first, replay iterates all. Replay episode ids and goldens change; regenerate them.**
 
 Not dispatched. Live and replay disagree on order, on `created_at` gating and on expiry, and the answer changes deterministic ids. A product decision is needed: enforce `expires_at` live, or drop it from replay. Record it here, then it becomes a fix task.
 
@@ -31,4 +33,8 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Found in the tree from the stopped run and checked complete in the Group 2 time rework: `episodeledger.DueSchedulerItems` (one read, `domain.DueItems` in `internal/episodeledger/internal/domain/queue.go`) returns due items in live order (not_before with none first, created_at, id) with the created_at and expiry window applied. Live takes the first item that is not stale at now (`NextPendingSchedulerItem`, used by `runtime/internal/store/admission.go`); replay iterates all of them (`replay/internal/store/episodes.go`) and persists each at its admission instant. Replay's own `AdmissionWindow`/`AdmissionReady` are gone. Expiry is now enforced on the live path (owner decision). Replay episode ids follow the new iteration order; replay tests pass with no golden left to regenerate in the replay tree.
+
+The Group 2 change only moved the codec: the queue store parses `created_at`, `not_before` and `expires_at` once with `kernel.ParseTime` and fails closed with a wrapped error naming the item and column; the rule works on `time.Time` with stdlib comparisons.
+
+Pinned by: `TestDueItemsAppliesWindowRulesInQueueOrder`, `TestDueItemAdmitAtIsTheLaterOfCreationAndNotBefore`, `TestDueItemIsStaleFromItsExpiryInstant` (domain), `TestLiveAdmissionOrderEqualsTheReplaySelection`, `TestLiveAdmissionSkipsItemsPastTheirExpiry` (`internal/episodeledger/scheduler_lifecycle_test.go`).

@@ -2,7 +2,6 @@ package domain
 
 import (
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
@@ -66,42 +65,4 @@ func RecordProcessingTime(ingestedAt, eventTime time.Time) time.Time {
 		processingTime = eventTime.UTC()
 	}
 	return processingTime
-}
-
-// AdmissionWindow parses when a scheduler item may first be admitted and when
-// it expires; a later not-before defers admission.
-func AdmissionWindow(createdAt, notBefore, expiresAt string) (time.Time, time.Time, error) {
-	admitAt, err := time.Parse(time.RFC3339Nano, createdAt)
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("parse scheduler creation time: %w", err)
-	}
-	expires, err := time.Parse(time.RFC3339Nano, expiresAt)
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("parse scheduler expiry: %w", err)
-	}
-	admitAt, err = applyNotBefore(admitAt, notBefore)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
-	return admitAt, expires, nil
-}
-
-func applyNotBefore(admitAt time.Time, notBefore string) (time.Time, error) {
-	if notBefore == "" {
-		return admitAt, nil
-	}
-	notBeforeTime, err := time.Parse(time.RFC3339Nano, notBefore)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("parse scheduler not-before: %w", err)
-	}
-	if notBeforeTime.After(admitAt) {
-		admitAt = notBeforeTime
-	}
-	return admitAt, nil
-}
-
-// AdmissionReady decides whether a scheduler item whose admission window is
-// open by now is still executable before expiry.
-func AdmissionReady(admitAt, expires, now time.Time) bool {
-	return expires.After(admitAt) && !admitAt.After(now)
 }

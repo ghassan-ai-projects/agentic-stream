@@ -21,6 +21,11 @@ reservations only for canceling attempts, through the `CostSettler` port, becaus
 imports this ledger and cannot be imported back.
 
 The store reads `runtime_owner` (control's table) and the coalescing statement reads
-`trigger_evaluations` (cognition's table); both are recorded as follow-ups.
+`trigger_evaluations` (cognition's table); both are recorded as follow-ups. The dispatch read
+also checks `epoch_control` (control's table) for killed policy epochs.
+
+Other modules read `episodes` and `episode_attempts` only through the ledger: `ReadEpisodeFence`,
+`ReadAttemptStatus`, `ReadEpisodeLifecycle`, `NextDispatchableEpisode` and `ReadAdmission`. The
+admission columns have one list, `admissionColumns`, shared by the INSERT and both reads.
 
 [Migration record](../../docs/ledgers-reference-module-2026-10-06/README.md).

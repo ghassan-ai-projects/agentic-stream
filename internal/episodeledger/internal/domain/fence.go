@@ -4,6 +4,7 @@ import "fmt"
 
 // EpisodeFence is what the ledger records about an episode's current attempt.
 type EpisodeFence struct {
+	TenantID   string
 	Lifecycle  LifecycleStatus
 	Attempt    string
 	HasAttempt bool

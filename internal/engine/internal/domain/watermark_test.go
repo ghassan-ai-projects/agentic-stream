@@ -12,41 +12,35 @@ var base = time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
 
 func TestWatermarkTrailsEventTimeAndNeverMovesBackwards(t *testing.T) {
 	t.Parallel()
-	got, err := WatermarkFor(base, "5m", "")
+	got, err := WatermarkFor(base, "5m", time.Time{})
 	if err != nil || !got.Equal(base.Add(-5*time.Minute)) {
 		t.Fatalf("first watermark = %v, %v", got, err)
 	}
-	later := base.Add(-time.Minute).Format(time.RFC3339Nano)
+	later := base.Add(-time.Minute)
 	if got, err := WatermarkFor(base, "5m", later); err != nil || !got.Equal(base.Add(-time.Minute)) {
 		t.Fatalf("a watermark behind the previous must hold: %v, %v", got, err)
 	}
-	earlier := base.Add(-time.Hour).Format(time.RFC3339Nano)
+	earlier := base.Add(-time.Hour)
 	if got, err := WatermarkFor(base, "5m", earlier); err != nil || !got.Equal(base.Add(-5*time.Minute)) {
 		t.Fatalf("a watermark ahead of the previous must advance: %v, %v", got, err)
 	}
 }
 
-func TestWatermarkRefusesUnparseableInputsInOrder(t *testing.T) {
+func TestWatermarkRefusesAnUnparseableLag(t *testing.T) {
 	t.Parallel()
-	if _, err := WatermarkFor(base, "soon", "also bad"); err == nil || !strings.Contains(err.Error(), "parse maxOutOfOrderness") {
-		t.Fatalf("lag must be parsed first: %v", err)
-	}
-	if _, err := WatermarkFor(base, "5m", "bad"); err == nil || !strings.Contains(err.Error(), "parse prev watermark") {
-		t.Fatalf("previous watermark err = %v", err)
+	if _, err := WatermarkFor(base, "soon", base); err == nil || !strings.Contains(err.Error(), "parse maxOutOfOrderness") {
+		t.Fatalf("lag err = %v", err)
 	}
 }
 
 func TestTimerWatermarkFallsBackToNowBeforeTheFirstRecord(t *testing.T) {
 	t.Parallel()
-	if got, err := TimerWatermark("", base); err != nil || !got.Equal(base) {
-		t.Fatalf("no checkpoint: %v, %v", got, err)
+	if got := TimerWatermark(time.Time{}, base); !got.Equal(base) {
+		t.Fatalf("no checkpoint: %v", got)
 	}
 	checkpoint := base.Add(-time.Hour)
-	if got, err := TimerWatermark(checkpoint.Format(time.RFC3339Nano), base); err != nil || !got.Equal(checkpoint) {
-		t.Fatalf("checkpoint: %v, %v", got, err)
-	}
-	if _, err := TimerWatermark("bad", base); err == nil || !strings.Contains(err.Error(), "parse timer watermark") {
-		t.Fatalf("err = %v", err)
+	if got := TimerWatermark(checkpoint, base); !got.Equal(checkpoint) {
+		t.Fatalf("checkpoint: %v", got)
 	}
 }
 

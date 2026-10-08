@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/store"
 )
 
-func (s *Service) Quarantine(ctx context.Context, tenantID string, env map[string]any, reason, now string) error {
+func (s *Service) Quarantine(ctx context.Context, tenantID string, env map[string]any, reason string, now time.Time) error {
 	if err := domain.ValidQuarantine(tenantID, reason, now); err != nil {
 		return err
 	}
@@ -28,7 +29,7 @@ func (s *Service) Quarantine(ctx context.Context, tenantID string, env map[strin
 	return nil
 }
 
-func (s *Service) quarantineInUnit(ctx context.Context, payload domain.QuarantinePayload, tenantID, reason, now string) (bool, error) {
+func (s *Service) quarantineInUnit(ctx context.Context, payload domain.QuarantinePayload, tenantID, reason string, now time.Time) (bool, error) {
 	conflict := false
 	if err := s.store.Unit(ctx, func(u *store.Unit) error {
 		var err error
@@ -40,7 +41,7 @@ func (s *Service) quarantineInUnit(ctx context.Context, payload domain.Quarantin
 	return conflict, nil
 }
 
-func (s *Service) persistQuarantine(ctx context.Context, u *store.Unit, payload domain.QuarantinePayload, tenantID, reason, now string) (bool, error) {
+func (s *Service) persistQuarantine(ctx context.Context, u *store.Unit, payload domain.QuarantinePayload, tenantID, reason string, now time.Time) (bool, error) {
 	existing, err := u.QuarantineDigest(ctx, tenantID, payload.EventID)
 	if err != nil {
 		return false, err
@@ -58,7 +59,7 @@ func (s *Service) persistQuarantine(ctx context.Context, u *store.Unit, payload 
 	return false, s.recordOverflow(ctx, u, payload, tenantID, now)
 }
 
-func (s *Service) recordOverflow(ctx context.Context, u *store.Unit, payload domain.QuarantinePayload, tenantID, now string) error {
+func (s *Service) recordOverflow(ctx context.Context, u *store.Unit, payload domain.QuarantinePayload, tenantID string, now time.Time) error {
 	status, err := u.QuarantineStatus(ctx, tenantID, payload.EventID)
 	if err != nil {
 		return err
@@ -69,7 +70,7 @@ func (s *Service) recordOverflow(ctx context.Context, u *store.Unit, payload dom
 	return u.InsertOverflowGap(ctx, payload.OverflowGapID(), tenantID, now)
 }
 
-func (s *Service) QuarantineEnvelope(ctx context.Context, tenantID string, env contractsv1.Envelope, reason, now string) error {
+func (s *Service) QuarantineEnvelope(ctx context.Context, tenantID string, env contractsv1.Envelope, reason string, now time.Time) error {
 	encoded, err := json.Marshal(env)
 	if err != nil {
 		return fmt.Errorf("marshal quarantined envelope: %w", err)
@@ -81,14 +82,14 @@ func (s *Service) QuarantineEnvelope(ctx context.Context, tenantID string, env c
 	return s.Quarantine(ctx, tenantID, document, reason, now)
 }
 
-func (s *Service) QuarantineRaw(ctx context.Context, tenantID, eventID string, raw []byte, reason, now string) error {
+func (s *Service) QuarantineRaw(ctx context.Context, tenantID, eventID string, raw []byte, reason string, now time.Time) error {
 	return s.Quarantine(ctx, tenantID, map[string]any{
 		"id": eventID, "type": "", "schema_version": "", "source": "",
 		"data": map[string]any{"raw": string(raw)},
 	}, reason, now)
 }
 
-func (s *Service) ReleaseQuarantine(ctx context.Context, tenantID, eventID, now string) error {
+func (s *Service) ReleaseQuarantine(ctx context.Context, tenantID, eventID string, now time.Time) error {
 	if err := domain.ValidRelease(tenantID, eventID, now); err != nil {
 		return err
 	}
@@ -100,7 +101,7 @@ func (s *Service) ReleaseQuarantine(ctx context.Context, tenantID, eventID, now 
 	return nil
 }
 
-func (s *Service) RedriveQuarantine(ctx context.Context, tenantID, eventID, now string) (domain.LogPosition, error) {
+func (s *Service) RedriveQuarantine(ctx context.Context, tenantID, eventID string, now time.Time) (domain.LogPosition, error) {
 	if err := domain.ValidRelease(tenantID, eventID, now); err != nil {
 		return -1, err
 	}
@@ -115,7 +116,7 @@ func (s *Service) RedriveQuarantine(ctx context.Context, tenantID, eventID, now 
 	return position, nil
 }
 
-func (s *Service) redrive(ctx context.Context, u *store.Unit, tenantID, eventID, now string) (domain.LogPosition, error) {
+func (s *Service) redrive(ctx context.Context, u *store.Unit, tenantID, eventID string, now time.Time) (domain.LogPosition, error) {
 	env, err := u.ReleasedEnvelope(ctx, tenantID, eventID)
 	if err != nil {
 		return -1, err

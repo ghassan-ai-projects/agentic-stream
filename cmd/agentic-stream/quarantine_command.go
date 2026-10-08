@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -60,14 +59,14 @@ func runQuarantineChange(cmd *cobra.Command, flags operatorFlags, change quarant
 }
 
 func releaseQuarantine(ctx context.Context, db *storage.DB, tenantID, eventID string) (string, error) {
-	if err := eventlog.NewEventLog(db).ReleaseQuarantine(ctx, tenantID, eventID, sources.FormatTime(time.Now())); err != nil {
+	if err := eventlog.NewEventLog(db).ReleaseQuarantine(ctx, tenantID, eventID, time.Now()); err != nil {
 		return "", fmt.Errorf("release %s: %w", eventID, err)
 	}
 	return "released", nil
 }
 
 func redriveQuarantine(ctx context.Context, db *storage.DB, tenantID, eventID string) (string, error) {
-	position, err := eventlog.NewEventLog(db).RequireSchemaValidation().RedriveQuarantine(ctx, tenantID, eventID, sources.FormatTime(time.Now()))
+	position, err := eventlog.NewEventLog(db).RequireSchemaValidation().RedriveQuarantine(ctx, tenantID, eventID, time.Now())
 	if err != nil {
 		return "", fmt.Errorf("redrive %s: %w", eventID, err)
 	}

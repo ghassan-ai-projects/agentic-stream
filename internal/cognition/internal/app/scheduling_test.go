@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -129,7 +130,7 @@ func TestDebounceAndCooldownTogether(t *testing.T) {
 		t.Fatalf("query not_before: %v", err)
 	}
 	// Cooldown from v1 (base) dominates debounce from v2 (base+2m+3m = base+5m).
-	want := base.Add(10 * time.Minute).Format(time.RFC3339Nano)
+	want := kernel.FormatTime(base.Add(10 * time.Minute))
 	if notBefore != want {
 		t.Fatalf("expected not_before %s, got %s", want, notBefore)
 	}
@@ -213,7 +214,7 @@ func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Versio
 		ON CONFLICT(situation_id) DO NOTHING`,
 		v.SituationID, tenantID, deploymentID, "test", v.EntityType, v.EntityID,
 		0, "occ-"+v.SituationID, v.Version, v.Phase,
-		v.EventHorizon.Format(time.RFC3339Nano), v.EventHorizon.Format(time.RFC3339Nano),
+		kernel.FormatTime(v.EventHorizon), kernel.FormatTime(v.EventHorizon),
 	); err != nil {
 		return fmt.Errorf("insert situation: %w", err)
 	}
@@ -225,8 +226,8 @@ func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Versio
 		) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'lin_test', datetime('now'))`,
 		v.SituationID, v.Version, v.Phase, v.PreviousPhase,
 		v.Severity, v.Confidence, v.Completeness,
-		v.EventHorizon.Format(time.RFC3339Nano), v.Watermark.Format(time.RFC3339Nano),
-		v.EventHorizon.Format(time.RFC3339Nano), []byte("{}"), make([]byte, 32),
+		kernel.FormatTime(v.EventHorizon), kernel.FormatTime(v.Watermark),
+		kernel.FormatTime(v.EventHorizon), []byte("{}"), make([]byte, 32),
 	); err != nil {
 		return fmt.Errorf("insert situation version: %w", err)
 	}
@@ -253,7 +254,7 @@ func fillPendingSchedulerItems(ctx context.Context, db *storage.DB, deploymentID
 				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'active', ?, ?, datetime('now'), datetime('now'))`,
 				sitID, tenantID, deploymentID, "test", "thing", fmt.Sprintf("ent-%d", i),
 				0, "occ-"+sitID, 1, "candidate",
-				base.Format(time.RFC3339Nano), base.Format(time.RFC3339Nano),
+				kernel.FormatTime(base), kernel.FormatTime(base),
 			); err != nil {
 				return fmt.Errorf("insert situation %d: %w", i, err)
 			}
@@ -265,8 +266,8 @@ func fillPendingSchedulerItems(ctx context.Context, db *storage.DB, deploymentID
 				) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'lin_test', datetime('now'))`,
 				sitID, 1, "candidate", "",
 				10, 1.0, "provisional",
-				base.Format(time.RFC3339Nano), base.Format(time.RFC3339Nano),
-				base.Format(time.RFC3339Nano), []byte("{}"), make([]byte, 32),
+				kernel.FormatTime(base), kernel.FormatTime(base),
+				kernel.FormatTime(base), []byte("{}"), make([]byte, 32),
 			); err != nil {
 				return fmt.Errorf("insert version %d: %w", i, err)
 			}
@@ -279,7 +280,7 @@ func fillPendingSchedulerItems(ctx context.Context, db *storage.DB, deploymentID
 				trgID, tenantID, deploymentID, "fill",
 				sitID, 1, 10.0, 5.0, "fast",
 				[]byte("[]"), make([]byte, 32),
-				base.Format(time.RFC3339Nano),
+				kernel.FormatTime(base),
 			); err != nil {
 				return fmt.Errorf("insert evaluation %d: %w", i, err)
 			}
@@ -290,7 +291,7 @@ func fillPendingSchedulerItems(ctx context.Context, db *storage.DB, deploymentID
 				) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, datetime('now'), datetime('now'))`,
 				itemID, trgID, tenantID, sitID, 1,
 				"fast", 10.0, func(i int) []byte { h := sha256.Sum256([]byte(fmt.Sprintf("dedupe-%d", i))); return h[:] }(i),
-				base.Format(time.RFC3339Nano), base.Add(15*time.Minute).Format(time.RFC3339Nano),
+				kernel.FormatTime(base), kernel.FormatTime(base.Add(15*time.Minute)),
 			); err != nil {
 				return fmt.Errorf("insert item %d: %w", i, err)
 			}

@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 const tokenVersion = "v1"
@@ -32,12 +32,12 @@ func SignToken(scope domain.Scope, key []byte) ([]byte, error) {
 
 func newTokenPayload(scope domain.Scope) tokenPayload {
 	return tokenPayload{
-		Issuer: scope.Issuer, Audience: scope.Audience, TokenID: scope.TokenID, IssuedAt: sources.FormatTime(scope.IssuedAt), EpisodeID: scope.EpisodeID,
+		Issuer: scope.Issuer, Audience: scope.Audience, TokenID: scope.TokenID, IssuedAt: kernel.FormatTime(scope.IssuedAt), EpisodeID: scope.EpisodeID,
 		AttemptID: scope.AttemptID, Fence: scope.Fence, TenantID: scope.TenantID,
 		SituationID: scope.SituationID, SituationVersion: scope.SituationVersion, EntityID: scope.EntityID, Tools: append([]string(nil), scope.Tools...),
-		NotBefore: sources.FormatTime(scope.NotBefore), ExpiresAt: sources.FormatTime(scope.ExpiresAt),
+		NotBefore: kernel.FormatTime(scope.NotBefore), ExpiresAt: kernel.FormatTime(scope.ExpiresAt),
 		MaxRows: scope.MaxRows, MaxBytes: scope.MaxBytes,
-		From: sources.FormatTime(scope.From), Until: sources.FormatTime(scope.Until), Traceparent: scope.Traceparent, Tracestate: scope.Tracestate, RuntimeEpoch: scope.RuntimeEpoch,
+		From: kernel.FormatTime(scope.From), Until: kernel.FormatTime(scope.Until), Traceparent: scope.Traceparent, Tracestate: scope.Tracestate, RuntimeEpoch: scope.RuntimeEpoch,
 	}
 }
 
@@ -82,11 +82,11 @@ func (p tokenPayload) decodeTimes(scope *domain.Scope) error {
 		{p.From, "from", &scope.From}, {p.Until, "until", &scope.Until}, {p.IssuedAt, "issued-at", &scope.IssuedAt},
 	}
 	for _, field := range fields {
-		parsed, err := time.Parse(time.RFC3339Nano, field.value)
+		parsed, err := kernel.ParseTime(field.value)
 		if err != nil {
 			return fmt.Errorf("invalid capability %s: %w", field.name, err)
 		}
-		*field.target = parsed.UTC()
+		*field.target = parsed
 	}
 	return nil
 }

@@ -40,13 +40,8 @@ func (s *Service) Read(ctx context.Context, req domain.ReadRequest, visit func(R
 }
 
 // recordFromScanned decodes one scanned row into the public record with its
-// rebuilt envelope contract, in the stored column order: times, then quality,
-// then payload.
+// rebuilt envelope contract, in the stored column order: quality, then payload.
 func recordFromScanned(scanned domain.ScannedEvent) (Record, error) {
-	decoded, err := scanned.Decode()
-	if err != nil {
-		return Record{}, err
-	}
 	quality, err := qualityFlags(scanned.QualityJSON)
 	if err != nil {
 		return Record{}, err
@@ -55,16 +50,16 @@ func recordFromScanned(scanned domain.ScannedEvent) (Record, error) {
 	if err != nil {
 		return Record{}, err
 	}
-	return recordFromDecoded(decoded, envelopeFromDecoded(decoded, quality, data)), nil
+	return newRecord(scanned, envelopeFromScanned(scanned, quality, data)), nil
 }
 
-func recordFromDecoded(d domain.DecodedEvent, envelope contractsv1.Envelope) Record {
+func newRecord(d domain.ScannedEvent, envelope contractsv1.Envelope) Record {
 	return Record{
 		Position: d.Position, TenantID: d.TenantID, PartitionID: d.PartitionID,
 		EventID: d.EventID, EventType: d.EventType, SchemaVersion: d.SchemaVersion,
 		Source: d.Source, PartitionKey: d.PartitionKey, EntityType: d.EntityType,
-		EntityID: d.EntityID, EventTime: d.ParsedEventTime, ObservedAt: d.ParsedObservedAt,
-		IngestedAt: d.ParsedIngestedAt, Envelope: envelope,
+		EntityID: d.EntityID, EventTime: d.EventTime, ObservedAt: d.ObservedAt,
+		IngestedAt: d.IngestedAt, Envelope: envelope,
 	}
 }
 
@@ -76,14 +71,14 @@ func qualityFlags(qualityJSON []byte) ([]contractsv1.QualityFlag, error) {
 	return quality, nil
 }
 
-// envelopeFromDecoded rebuilds the normalized envelope contract from one
-// decoded row.
-func envelopeFromDecoded(d domain.DecodedEvent, quality []contractsv1.QualityFlag, data map[string]any) contractsv1.Envelope {
+// envelopeFromScanned rebuilds the normalized envelope contract from one
+// scanned row.
+func envelopeFromScanned(d domain.ScannedEvent, quality []contractsv1.QualityFlag, data map[string]any) contractsv1.Envelope {
 	return contractsv1.Envelope{
 		ID: d.EventID, Type: d.EventType, SchemaVersion: d.SchemaVersion, TenantID: d.TenantID,
 		Source: d.Source, PartitionKey: d.PartitionKey,
 		Entity:    contractsv1.EntityRef{Type: d.EntityType, ID: d.EntityID},
-		EventTime: d.ParsedEventTime, ObservedAt: d.ParsedObservedAt, IngestedAt: d.ParsedIngestedAt,
+		EventTime: d.EventTime, ObservedAt: d.ObservedAt, IngestedAt: d.IngestedAt,
 		CorrelationID: textOf(d.CorrelationID), CausationID: textOf(d.CausationID),
 		Traceparent: textOf(d.Traceparent), Tracestate: textOf(d.Tracestate),
 		Classification: contractsv1.Classification(d.Classification),

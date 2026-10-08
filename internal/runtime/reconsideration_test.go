@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -125,6 +126,44 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	}
 	if reconsiderations != 2 {
 		t.Fatalf("reconsiderations = %d, want 2", reconsiderations)
+	}
+	assertReconsiderationRequestCarriesAdmittedEvidence(t, db)
+}
+
+func assertReconsiderationRequestCarriesAdmittedEvidence(t *testing.T, db *storage.DB) {
+	t.Helper()
+	var requestJSON []byte
+	if err := db.QueryRowContext(t.Context(), `
+		SELECT e.request_json
+		FROM episodes e JOIN scheduler_items si ON si.scheduler_item_id = e.scheduler_item_id
+		WHERE si.kind = 'reconsider' AND e.lifecycle_status IN ('admitted', 'running')`).Scan(&requestJSON); err != nil {
+		t.Fatalf("load reconsideration request: %v", err)
+	}
+	var request struct {
+		Delta           map[string]any `json:"delta"`
+		Reconsideration struct {
+			ID            string           `json:"reconsideration_id"`
+			PriorDecision map[string]any   `json:"prior_decision"`
+			Commands      []map[string]any `json:"commands"`
+			Outcomes      []map[string]any `json:"outcomes"`
+			CommandID     string           `json:"invalidated_command_id"`
+			OutcomeID     string           `json:"invalidated_outcome_id"`
+		} `json:"reconsideration"`
+	}
+	if err := json.Unmarshal(requestJSON, &request); err != nil {
+		t.Fatalf("decode reconsideration request: %v", err)
+	}
+	got := request.Reconsideration
+	if got.ID == "" || got.PriorDecision["decision_id"] == nil || len(got.Commands) != 1 || len(got.Outcomes) != 1 {
+		t.Fatalf("reconsideration evidence incomplete: %s", requestJSON)
+	}
+	if got.Commands[0]["command_id"] != got.CommandID || got.Outcomes[0]["command_id"] != got.CommandID || got.Outcomes[0]["outcome_id"] != got.OutcomeID {
+		t.Fatalf("reconsideration outcome does not match invalidated command: %s", requestJSON)
+	}
+	for _, key := range []string{"prior_decision", "prior_command", "prior_outcome"} {
+		if _, duplicated := request.Delta[key]; duplicated {
+			t.Fatalf("request delta duplicates %s", key)
+		}
 	}
 }
 

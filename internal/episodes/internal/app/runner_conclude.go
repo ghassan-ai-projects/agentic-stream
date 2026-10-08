@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
@@ -42,7 +43,7 @@ func (r *Runner) rejectOutcomeIdentity(ctx context.Context, identity episodeledg
 // Decision, its governance or rejection, and the attempt and episode terminals.
 func (r *Runner) concludeAttempt(ctx context.Context, claim *episodeClaim, outcome *Outcome) error {
 	return r.withTx(ctx, func(tx *store.Tx) error {
-		now := r.runtimeNow()
+		now := r.clk.Now()
 		// P8 (kill, post-execute): the recorded epoch is re-asserted INSIDE
 		// the persistence transaction. An attempt dispatched before a kill
 		// that completes after it is refused here, so a hostile worker cannot
@@ -64,7 +65,7 @@ func (r *Runner) concludeAttempt(ctx context.Context, claim *episodeClaim, outco
 
 // abandonAfterExecute quarantines an episode whose epoch was killed or
 // unbound while its attempt ran.
-func (r *Runner) abandonAfterExecute(ctx context.Context, tx *store.Tx, claim *episodeClaim, outcome *Outcome, reason string, now string) error {
+func (r *Runner) abandonAfterExecute(ctx context.Context, tx *store.Tx, claim *episodeClaim, outcome *Outcome, reason string, now time.Time) error {
 	attemptTerminal, err := json.Marshal(map[string]any{
 		"status": string(episodeledger.AttemptAbandoned),
 		"reason": reason,
@@ -81,7 +82,7 @@ func (r *Runner) abandonAfterExecute(ctx context.Context, tx *store.Tx, claim *e
 	return r.settleAbandonedCost(ctx, tx, claim.episodeID, outcome.CostMicrounits, now)
 }
 
-func (r *Runner) settleAbandonedCost(ctx context.Context, tx *store.Tx, episodeID string, cost uint64, now string) error {
+func (r *Runner) settleAbandonedCost(ctx context.Context, tx *store.Tx, episodeID string, cost uint64, now time.Time) error {
 	if r.cost != nil {
 		if err := tx.SettleCost(ctx, r.cost, episodeID, cost, now); err != nil {
 			return fmt.Errorf("settle post-execute quarantined episode cost: %w", err)
@@ -92,7 +93,7 @@ func (r *Runner) settleAbandonedCost(ctx context.Context, tx *store.Tx, episodeI
 
 // finishAttempt records the attempt terminal, settles cost, and concludes the
 // episode.
-func (r *Runner) finishAttempt(ctx context.Context, tx *store.Tx, claim *episodeClaim, outcome *Outcome, record *decisionRecord, now string) error {
+func (r *Runner) finishAttempt(ctx context.Context, tx *store.Tx, claim *episodeClaim, outcome *Outcome, record *decisionRecord, now time.Time) error {
 	attemptStatus := domain.TerminalAttemptStatus(outcome, record != nil, record != nil && record.ValidationErr == nil)
 	if !episodeledger.IsTerminalAttempt(attemptStatus) {
 		return fmt.Errorf("executor returned non-terminal attempt status %q", attemptStatus)
@@ -107,7 +108,7 @@ func (r *Runner) finishAttempt(ctx context.Context, tx *store.Tx, claim *episode
 	return r.concludeSettledEpisode(ctx, tx, claim, outcome, now, terminalJSON)
 }
 
-func (r *Runner) concludeSettledEpisode(ctx context.Context, tx *store.Tx, claim *episodeClaim, outcome *Outcome, now string, terminalJSON []byte) error {
+func (r *Runner) concludeSettledEpisode(ctx context.Context, tx *store.Tx, claim *episodeClaim, outcome *Outcome, now time.Time, terminalJSON []byte) error {
 	if r.cost != nil {
 		if err := tx.SettleCost(ctx, r.cost, claim.identity.EpisodeID, outcome.CostMicrounits, now); err != nil {
 			return fmt.Errorf("settle episode cost: %w", err)

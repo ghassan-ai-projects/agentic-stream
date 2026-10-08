@@ -57,7 +57,9 @@ execution inserts validated pending intents for downstream policy. Shadow
 execution writes the store's own shadow scores and no intents or commands.
 Episode/scheduler lifecycle tables remain owned by their ledgers; foreign
 mutations are not permitted. Existing transactional read projections over
-scheduler, situation and reconsideration evidence remain in store.
+scheduler and situation evidence remain in store. Reconsideration evidence
+(prior decision, command and outcome) is built once by cognition into the
+trigger delta; assembly reads it from there and reads no action tables.
 
 ## Evidence and audit
 

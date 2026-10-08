@@ -32,7 +32,7 @@ func inTx(t *testing.T, s Store, use func(*Tx) error) {
 
 func condition() domain.Condition {
 	return domain.Condition{TenantID: "tenant", SituationID: "sit-1", Expression: "features.x > 1", Target: "motor-1",
-		ExpiresAt: testNow.Add(time.Hour).Format(time.RFC3339Nano), SituationVersion: 1, MaxFires: 2}
+		ExpiresAt: testNow.Add(time.Hour), SituationVersion: 1, MaxFires: 2}
 }
 
 func TestStoreRequiresEverySafetyPort(t *testing.T) {
@@ -161,6 +161,21 @@ func TestFailedUnitOfWorkRollsBack(t *testing.T) {
 	inTx(t, s, func(tx *Tx) error {
 		if _, found, err := tx.LoadCondition(t.Context(), "w-1"); err != nil || found {
 			t.Fatalf("rolled-back watch found=%v err=%v", found, err)
+		}
+		return nil
+	})
+}
+
+func TestLoadConditionFailsClosedOnUnreadableStoredExpiry(t *testing.T) {
+	t.Parallel()
+	s := openStore(t)
+	inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), testNow) })
+	inTx(t, s, func(tx *Tx) error {
+		if _, err := tx.tx.ExecContext(t.Context(), "UPDATE watch_conditions SET expires_at = 'soon' WHERE watch_id = 'w-1'"); err != nil {
+			return err
+		}
+		if _, found, err := tx.LoadCondition(t.Context(), "w-1"); err == nil || found {
+			t.Fatalf("unreadable expiry found=%v err=%v, want an error", found, err)
 		}
 		return nil
 	})

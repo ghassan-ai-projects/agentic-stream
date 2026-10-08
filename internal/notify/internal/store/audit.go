@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // Audit is one notification audit row.
@@ -22,7 +22,7 @@ type Audit struct {
 // RecordAudit appends an audit row.
 func (tx *Tx) RecordAudit(ctx context.Context, audit Audit) error {
 	_, err := tx.q.ExecContext(ctx, `INSERT INTO notification_audits (audit_id, tenant_id, action, requested_cursor, oldest_cursor, details_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		audit.ID, audit.TenantID, audit.Action, audit.Requested, audit.Oldest, audit.Details, sources.FormatTime(audit.At))
+		audit.ID, audit.TenantID, audit.Action, audit.Requested, audit.Oldest, audit.Details, kernel.FormatTime(audit.At))
 	if err != nil {
 		return fmt.Errorf("write notification audit: %w", err)
 	}

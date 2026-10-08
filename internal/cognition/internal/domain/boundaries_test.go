@@ -43,7 +43,7 @@ func TestReconsiderationEvidenceAndDigestRefusal(t *testing.T) {
 	if !ShouldReconsider(v, "correct_and_reconsider") || ShouldReconsider(v, "quarantine") {
 		t.Fatal("correction eligibility changed")
 	}
-	r := NewReconsideration(v, InvalidatedCommand{CommandID: "c", ProviderJSON: []byte(`{"accepted":true}`), ObservedJSON: []byte(`{"state":"off"}`), OutcomeSHA: make([]byte, 32)})
+	r := NewReconsideration(v, priorFixture())
 	if r.ID == "" || r.TriggerID == "" || r.SchedulerItemID == "" {
 		t.Fatal("correction identity missing")
 	}
@@ -58,7 +58,7 @@ func TestReconsiderationEvidenceAndDigestRefusal(t *testing.T) {
 	if _, _, err := DecodeCorrection([]byte(`{"invalid":true}`)); err == nil {
 		t.Fatal("invalid correction schema admitted")
 	}
-	if _, err := MatchCorrectionDigest("sha256:0000000000000000000000000000000000000000000000000000000000000000", make([]byte, 31)); err == nil {
+	if _, err := MatchCorrectionDigest(make([]byte, 32), make([]byte, 31)); err == nil {
 		t.Fatal("incomplete persisted digest admitted")
 	}
 }

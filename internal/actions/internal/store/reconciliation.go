@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 const updateReconciledVerificationSQL = `
@@ -50,7 +50,7 @@ func (tx *Tx) VerifyDeviceBinding(ctx context.Context, command domain.Reconcilab
 }
 
 func (tx *Tx) CloseReconciliation(ctx context.Context, closure domain.ReconciliationClosure) error {
-	at := sources.FormatTime(closure.At)
+	at := kernel.FormatTime(closure.At)
 	query, args := closeCommandQuery(closure, at)
 	if _, err := tx.tx.ExecContext(ctx, query, args...); err != nil {
 		return fmt.Errorf("close reconciled command: %w", err)

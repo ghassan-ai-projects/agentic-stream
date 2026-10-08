@@ -1,6 +1,6 @@
 # DUP-018: The episode admission columns have four parallel struct and column-list views
 
-- Status: open
+- Status: partly fixed
 - Severity: medium
 - Verdict (finders): REAL
 - Themes: persistence
@@ -34,4 +34,15 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Verified: confirmed. `episodes` re-listed the admission columns in a `DispatchedEpisode` struct, a 17-column SELECT and a Scan, and converted it to `Request` in `episodeClaimFromDispatched`; `replay` re-listed six of them and hand-formatted `sha256:`. The finder's "four views" were really: INSERT list (ledger), dispatch read (episodes), replay read, and `EpisodeRecord` (ledger inspection view). The dispatch SELECT's `epoch_control` read is a read of control's table, as the ledger already does for `runtime_owner`; no gate objects.
+
+Changed:
+- `internal/episodeledger/internal/store/admission.go`: one `admissionColumns` list with `admissionValues` and `admissionTargets`, used by the INSERT, the new `ReadAdmission`, and the dispatch read. `InsertEpisode` drops the redundant `dispatchPolicy` argument (always equal to `req.DispatchPolicy`).
+- `internal/episodeledger/internal/store/dispatch.go` (new): `NextDispatchableEpisode` with the live/killed-unstarted predicates and order `accepted_at, episode_id` (moved from episodes); `domain.DispatchableEpisode{Admission, StaleRebindCount}`; facade `NextDispatchableEpisode(tx, ...)` and `ReadAdmission(db, id)` (`reads.go`, app `reads.go`).
+- `internal/episodes/internal/store/dispatch.go` shrank to a delegating `DispatchableEpisode` returning `(episodeledger.DispatchableEpisode, found, error)`; `DispatchedEpisode`, its SQL and `store.ErrNoRows` are deleted. `internal/episodes/internal/domain/admission.go` gained `AdmittedRequest` (inverse of `AdmittedEpisode`); `app/runner_claim.go` uses it.
+- `internal/replay/internal/store/store.go` `ShadowRequest` uses `ReadAdmission` and `canonicaljson.EncodeDigest`.
+- README note in `internal/episodeledger/README.md`; `architecture_episodeledger_test.go` operations list.
+
+Deferred: `EpisodeRecord` (`episode_reads.go`) keeps its own projection; it is an inspection view that adds lifecycle, attempts and timestamps, with COALESCE and a different shape, not the admission record. Error text of the dispatch read now reads "query admitted episode: read dispatchable episode: load dispatchable episode: ...".
+
+Pinned by: `TestAdmissionColumnsRoundTripEveryField` (ledger store: reflection fills every `Admission` field, INSERT then `ReadAdmission` must return it unchanged, so a new field omitted from either list fails), `TestNextDispatchableEpisodeOrdersLiveEpisodesAndAdmitsKilledUnstarted` (order, stale_rebind_count, killed branch, tenant), `TestAdmissionRecordSurvivesTheRequestRoundTrip` (episodes domain: `AdmittedEpisode(AdmittedRequest(a)) == a` with every field non-zero), `TestDispatchableEpisodeReadsOldestAdmittedEpisode`, and the replay `recorded_ledger_test.go` ShadowRequest check.

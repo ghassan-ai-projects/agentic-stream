@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 	"github.com/ghassan-ai-projects/agentic-stream/migrations"
 
@@ -127,7 +128,7 @@ func TestLifecycleMigrationMapsEveryFormerEpisodeStatus(t *testing.T) {
 		}
 		if _, err := raw.ExecContext(ctx,
 			"INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
-			migration.Version, migration.Name, time.Now().UTC().Format(time.RFC3339Nano),
+			migration.Version, migration.Name, kernel.FormatTime(time.Now().UTC()),
 		); err != nil {
 			t.Fatalf("record migration %d: %v", migration.Version, err)
 		}

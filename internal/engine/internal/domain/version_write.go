@@ -96,8 +96,7 @@ func NewLineage(evidence []string) (Lineage, error) {
 	if err != nil {
 		return Lineage{}, fmt.Errorf("marshal evidence: %w", err)
 	}
-	digest := sha256.Sum256(referencesJSON)
-	return Lineage{ID: LineageID(evidence), Digest: digest[:], ReferencesJSON: referencesJSON}, nil
+	return Lineage{ID: LineageID(evidence), Digest: canonicaljson.Sum(referencesJSON), ReferencesJSON: referencesJSON}, nil
 }
 
 // LineageID derives the stable identity of an ordered evidence set. Each event

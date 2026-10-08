@@ -83,17 +83,16 @@ func TestAdmissionRulesPreserveOrderAndBounds(t *testing.T) {
 }
 
 func TestAttemptAndReservationRules(t *testing.T) {
-	call := Call{AttemptID: "a", Fence: 1}
 	key := ReservationKey{AttemptID: "a", Fence: 1}
-	state := EpisodeState{Running: true, AttemptID: "a", Fence: 1}
-	if err := CheckLiveEpisode(state, call); err != nil {
+	state := EpisodeState{Running: true, Current: true}
+	if err := CheckLiveEpisode(state); err != nil {
 		t.Fatal(err)
 	}
-	if err := CheckCompletionEpisode(state, key); err != nil {
+	if err := CheckCompletionEpisode(state); err != nil {
 		t.Fatal(err)
 	}
 	state.Closed, state.Running = true, false
-	if CheckLiveEpisode(state, call) == nil || CheckCompletionEpisode(state, key) == nil {
+	if CheckLiveEpisode(state) == nil || CheckCompletionEpisode(state) == nil {
 		t.Fatal("closed episode accepted")
 	}
 	if CheckLiveAttempt(true) != nil || CheckCompletionAttempt(true) != nil {

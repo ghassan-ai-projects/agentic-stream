@@ -73,6 +73,5 @@ func (s *Service) appendOne(ctx context.Context, u *store.Unit, tenantID string,
 	if err != nil {
 		return -1, err
 	}
-	createdAt := sources.FormatTime(s.clk.Now())
-	return u.InsertEvent(ctx, tenantID, env, body, createdAt)
+	return u.InsertEvent(ctx, tenantID, env, body, s.clk.Now())
 }

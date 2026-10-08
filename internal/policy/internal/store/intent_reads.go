@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
@@ -40,20 +41,23 @@ func scanPolicyIntent(query *sql.Row) (domain.IntentRecord, error) {
 	var row domain.IntentRecord
 	var traceparent, tracestate sql.NullString
 	var lifecycle episodeledger.LifecycleStatus
-	err := query.Scan(policyIntentDests(&row, &traceparent, &tracestate, &lifecycle)...)
-	if err == nil {
-		row.EpisodeProducedDecision = lifecycle.ProducedDecision()
-		row.Traceparent = traceparent.String
-		row.Tracestate = tracestate.String
+	var expiresAt string
+	err := query.Scan(policyIntentDests(&row, &traceparent, &tracestate, &lifecycle, &expiresAt)...)
+	if err != nil {
+		return row, err //nolint:wrapcheck // loadIntent preserves the database error text.
 	}
-	return row, err //nolint:wrapcheck // loadIntent preserves the database error text.
+	row.EpisodeProducedDecision = lifecycle.ProducedDecision()
+	row.Traceparent = traceparent.String
+	row.Tracestate = tracestate.String
+	row.ExpiresAt, err = kernel.ParseTime(expiresAt)
+	return row, err //nolint:wrapcheck // loadIntent wraps the parse failure with the intent ID.
 }
 
-func policyIntentDests(row *domain.IntentRecord, traceparent, tracestate *sql.NullString, lifecycle *episodeledger.LifecycleStatus) []any {
+func policyIntentDests(row *domain.IntentRecord, traceparent, tracestate *sql.NullString, lifecycle *episodeledger.LifecycleStatus, expiresAt *string) []any {
 	return []any{
 		&row.IntentID, &row.DecisionID, &row.TenantID, &row.SituationID,
 		&row.SituationVersion, &row.IntentType, &row.RiskClass, &row.IntentJSON,
-		&row.IntentSHA, &row.ExpiresAt, &row.PolicyStatus, &row.RateLimitPerHour, &row.RequiresApproval,
+		&row.IntentSHA, expiresAt, &row.PolicyStatus, &row.RateLimitPerHour, &row.RequiresApproval,
 		&row.ValidationStatus, &row.DecisionJSON, &row.DecisionSHA,
 		&row.DecisionSituation, &row.DecisionVersion, traceparent, tracestate,
 		&row.EpisodeID, &row.EpisodeTenant, &row.EpisodeSituation, &row.EpisodeVersion,

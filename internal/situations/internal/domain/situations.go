@@ -2,7 +2,6 @@ package domain
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -216,7 +215,7 @@ func (e *Engine) situationForFeature(feature operators.Feature) *Situation {
 
 func (e *Engine) newSituation(partitionID int, entityType, entityID string, eventTime time.Time) *Situation {
 	identity := fmt.Sprintf("%s\x00%s\x00%d\x00%s\x00%s\x00%s", e.tenantID, e.deploymentID, partitionID, e.spec.Situation.Type, entityType, entityID)
-	hash := hex.EncodeToString(sha256Sum(identity))
+	hash := hex.EncodeToString(canonicaljson.Sum([]byte(identity)))
 	return &Situation{
 		SituationID: sources.PrefixSituation + hash, TenantID: e.tenantID, DeploymentID: e.deploymentID,
 		Type: e.spec.Situation.Type, EntityType: entityType, EntityID: entityID, PartitionID: partitionID,
@@ -226,11 +225,6 @@ func (e *Engine) newSituation(partitionID int, entityType, entityID string, even
 		Facts: make(map[string]any), Evidence: make(map[string]struct{}), ConditionStart: make(map[string]time.Time),
 		OpenedAt: eventTime, UpdatedAt: eventTime, Traceparent: "", Tracestate: "",
 	}
-}
-
-func sha256Sum(value string) []byte {
-	hash := sha256.Sum256([]byte(value))
-	return hash[:]
 }
 
 func (e *Engine) initialSeverity() int {

@@ -30,35 +30,19 @@ type EntityEvent struct {
 	Payload                       []byte
 }
 
-// ScannedEvent is one event_log row exactly as scanned, before decoding.
+// ScannedEvent is one event_log row as scanned, with its times parsed and its
+// payload and quality documents still encoded.
 type ScannedEvent struct {
 	Position                                            LogPosition
 	TenantID                                            string
 	PartitionID                                         int
 	EventID, EventType, SchemaVersion, Source           string
 	PartitionKey, EntityType, EntityID                  string
-	EventTime, IngestedAt, Classification               string
-	ObservedAt                                          *string
+	Classification                                      string
+	EventTime, IngestedAt                               time.Time
+	ObservedAt                                          *time.Time
 	CorrelationID, CausationID, Traceparent, Tracestate *string
 	QualityJSON, PayloadJSON                            []byte
-}
-
-// DecodedEvent is a scanned event with parsed times; the payload and quality
-// documents are decoded separately so the envelope contract stays out of the
-// domain layer.
-type DecodedEvent struct {
-	ScannedEvent
-	ParsedEventTime, ParsedIngestedAt time.Time
-	ParsedObservedAt                  *time.Time
-}
-
-// Decode parses the stored times in column order.
-func (s ScannedEvent) Decode() (DecodedEvent, error) {
-	eventTime, ingestedAt, observedAt, err := StoredTimes{EventTime: s.EventTime, IngestedAt: s.IngestedAt, ObservedAt: s.ObservedAt}.Parse()
-	if err != nil {
-		return DecodedEvent{}, err
-	}
-	return DecodedEvent{ScannedEvent: s, ParsedEventTime: eventTime, ParsedIngestedAt: ingestedAt, ParsedObservedAt: observedAt}, nil
 }
 
 // DecodePayload decodes one stored payload document.

@@ -7,6 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -25,7 +26,7 @@ func (c *EpochControl) session() *app.Epochs {
 	if c == nil {
 		return nil
 	}
-	return &app.Epochs{Store: store.New(c.DB), Now: utcNow(c.Now)}
+	return &app.Epochs{Store: store.New(c.DB), Now: sources.NowFunc(c.Now)}
 }
 
 // Kill marks the epoch killed: every later decision under it is refused, and

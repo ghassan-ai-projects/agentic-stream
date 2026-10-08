@@ -127,12 +127,12 @@ func TestSchedulerQueueRules(t *testing.T) {
 	t.Parallel()
 	within(t, func(ctx context.Context, tx *store.Tx) {
 		item := domain.SchedulerItem{SchedulerItemID: "i", TriggerID: "t1", SituationID: "s", SituationVersion: 1, Kind: "standard", Lane: "fast", Status: "pending", ExpiresAt: now.Add(time.Hour)}
-		if err := UpsertSchedulerItem(ctx, tx, item, "tenant", make([]byte, 32), "now"); err != nil {
+		if err := UpsertSchedulerItem(ctx, tx, item, "tenant", make([]byte, 32), now); err != nil {
 			t.Fatal(err)
 		}
 		other := item
 		other.TriggerID = "t2"
-		if err := UpsertSchedulerItem(ctx, tx, other, "tenant", append([]byte{1}, make([]byte, 31)...), "now"); err != nil {
+		if err := UpsertSchedulerItem(ctx, tx, other, "tenant", append([]byte{1}, make([]byte, 31)...), now); err != nil {
 			t.Fatalf("id clash must keep the existing item: %v", err)
 		}
 		if err := CoalesceSkippedItem(ctx, tx, "i", now); err != nil {
@@ -179,11 +179,11 @@ func TestEpisodeLifecycleWritersAndSupersession(t *testing.T) {
 			"rebind":       Rebind(ctx, tx, "e1", 2, make([]byte, 32), []byte("{}")),
 			"bind":         BindRequest(ctx, tx, "e1", []byte("{}")),
 			"retain":       RetainForRetry(ctx, tx, "e1"),
-			"supersede":    SupersedeEpoch(ctx, tx, "epoch", "now"),
-			"coalesced":    SupersedeCoalesced(ctx, tx, "s-e1", "now"),
-			"conclude":     Conclude(ctx, tx, "e1", "now", []byte("{}")),
-			"abandon":      Abandon(ctx, tx, "e1", "now", []byte("{}")),
-			"abandon-bind": AbandonRebind(ctx, tx, "e1", "now", []byte("{}")),
+			"supersede":    SupersedeEpoch(ctx, tx, "epoch", now),
+			"coalesced":    SupersedeCoalesced(ctx, tx, "s-e1", now),
+			"conclude":     Conclude(ctx, tx, "e1", now, []byte("{}")),
+			"abandon":      Abandon(ctx, tx, "e1", now, []byte("{}")),
+			"abandon-bind": AbandonRebind(ctx, tx, "e1", now, []byte("{}")),
 		}
 		for name, err := range steps {
 			if err != nil {
@@ -210,16 +210,16 @@ func TestCancellationOfASupersededEpisodeIsAcknowledgedButOutputIsNot(t *testing
 		if err := TransitionAttempt(ctx, tx, identity, domain.AttemptRunning, now, nil, now); err != nil {
 			t.Fatal(err)
 		}
-		if err := SupersedeEpoch(ctx, tx, "", "now"); err != nil {
+		if err := SupersedeEpoch(ctx, tx, "", now); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := tx.SetAttemptStatus(ctx, identity, domain.AttemptRunning); err != nil {
 			t.Fatal(err)
 		}
-		if err := SupersedeCoalesced(ctx, tx, "s-e1", "now"); err != nil {
+		if err := SupersedeCoalesced(ctx, tx, "s-e1", now); err != nil {
 			t.Fatal(err)
 		}
-		if err := Abandon(ctx, tx, "e1", "now", nil); err != nil {
+		if err := Abandon(ctx, tx, "e1", now, nil); err != nil {
 			t.Fatal(err)
 		}
 		if err := TransitionAttempt(ctx, tx, identity, domain.AttemptProduced, now, nil, now); !domain.IsIdentityReason(err, domain.RejectEpisodeClosed) {

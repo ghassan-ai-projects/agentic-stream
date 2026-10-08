@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 type Result struct {
 	IntentID   string `json:"intent_id"`
 	DecisionID string `json:"decision_id"`
@@ -20,7 +22,7 @@ type ApprovalAssertion struct {
 	RiskClass        string
 	IntentDigest     string
 	DecisionDigest   string
-	ExpiresAt        string
+	ExpiresAt        time.Time
 	Nonce            string
 	ApproverID       string
 	RelayID          string
@@ -45,7 +47,7 @@ type IntentRecord struct {
 	IntentSHA               []byte
 	RateLimitPerHour        int
 	RequiresApproval        int
-	ExpiresAt               string
+	ExpiresAt               time.Time
 	PolicyStatus            string
 	ValidationStatus        string
 	DecisionJSON            []byte

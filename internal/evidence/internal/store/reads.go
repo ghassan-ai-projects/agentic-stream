@@ -28,14 +28,14 @@ func (tx *Tx) ReadReservation(ctx context.Context, key domain.ReservationKey) (*
 
 // LiveEpisode loads the tenant-bound episode at reservation time.
 func (tx *Tx) LiveEpisode(ctx context.Context, call domain.Call) (domain.EpisodeState, error) {
-	state, err := tx.episodeState(ctx, `SELECT lifecycle_status, COALESCE(current_attempt_id, ''), current_fence FROM episodes WHERE episode_id = ? AND tenant_id = ?`, call.EpisodeID, call.TenantID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return state, fmt.Errorf("evidence episode is unknown")
-	}
+	fence, found, err := episodeledger.ReadEpisodeFence(ctx, tx.tx, call.EpisodeID)
 	if err != nil {
-		return state, fmt.Errorf("load evidence episode: %w", err)
+		return domain.EpisodeState{}, fmt.Errorf("load evidence episode: %w", err)
 	}
-	return state, nil
+	if !found || fence.TenantID != call.TenantID {
+		return domain.EpisodeState{}, fmt.Errorf("evidence episode is unknown")
+	}
+	return episodeState(fence, call.EpisodeID, call.AttemptID, call.Fence), nil
 }
 
 // LiveAttempt loads the exact fenced attempt status.
@@ -45,11 +45,11 @@ func (tx *Tx) LiveAttempt(ctx context.Context, call domain.Call) (bool, error) {
 
 // CompletionEpisode loads the current binding without changing the original query.
 func (tx *Tx) CompletionEpisode(ctx context.Context, key domain.ReservationKey) (domain.EpisodeState, error) {
-	state, err := tx.episodeState(ctx, `SELECT lifecycle_status, COALESCE(current_attempt_id, ''), current_fence FROM episodes WHERE episode_id = ?`, key.EpisodeID)
+	fence, _, err := episodeledger.ReadEpisodeFence(ctx, tx.tx, key.EpisodeID)
 	if err != nil {
-		return state, fmt.Errorf("load completion episode: %w", err)
+		return domain.EpisodeState{}, fmt.Errorf("load completion episode: %w", err)
 	}
-	return state, nil
+	return episodeState(fence, key.EpisodeID, key.AttemptID, key.Fence), nil
 }
 
 // CompletionAttempt loads the reserved fenced attempt at conclusion.
@@ -57,20 +57,18 @@ func (tx *Tx) CompletionAttempt(ctx context.Context, key domain.ReservationKey) 
 	return tx.attemptInFlight(ctx, "load completion attempt", key.EpisodeID, key.AttemptID, key.Fence)
 }
 
-func (tx *Tx) episodeState(ctx context.Context, query string, args ...any) (domain.EpisodeState, error) {
-	var state domain.EpisodeState
-	var lifecycle episodeledger.LifecycleStatus
-	if err := tx.tx.QueryRowContext(ctx, query, args...).Scan(&lifecycle, &state.AttemptID, &state.Fence); err != nil {
-		return state, err //nolint:wrapcheck // Each caller wraps with its operation and distinguishes no rows.
+func episodeState(fence episodeledger.EpisodeFence, episodeID, attemptID string, attemptFence int64) domain.EpisodeState {
+	identity := episodeledger.Identity{EpisodeID: episodeID, AttemptID: attemptID, Fence: attemptFence}
+	return domain.EpisodeState{
+		Current: fence.CheckIdentity(identity) == nil,
+		Closed:  fence.Lifecycle.Closed(),
+		Running: fence.Lifecycle == episodeledger.LifecycleRunning,
 	}
-	state.Closed = lifecycle.Closed()
-	state.Running = lifecycle == episodeledger.LifecycleRunning
-	return state, nil
 }
 
 func (tx *Tx) attemptInFlight(ctx context.Context, failure, episodeID, attemptID string, fence int64) (bool, error) {
-	var status episodeledger.AttemptStatus
-	if err := tx.tx.QueryRowContext(ctx, `SELECT status FROM episode_attempts WHERE episode_id = ? AND attempt_id = ? AND fence = ?`, episodeID, attemptID, fence).Scan(&status); err != nil {
+	status, err := episodeledger.ReadAttemptStatus(ctx, tx.tx, episodeledger.Identity{EpisodeID: episodeID, AttemptID: attemptID, Fence: fence})
+	if err != nil {
 		return false, fmt.Errorf("%s: %w", failure, err)
 	}
 	return status.InFlight(), nil

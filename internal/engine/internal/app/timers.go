@@ -55,7 +55,7 @@ func (s *Service) timerWatermark(ctx context.Context, partitionID int, now time.
 	if err != nil {
 		return time.Time{}, fmt.Errorf("load timer checkpoint: %w", err)
 	}
-	return domain.TimerWatermark(checkpoint.Watermark, now) //nolint:wrapcheck // The domain rule names the failed parse.
+	return domain.TimerWatermark(checkpoint.Watermark, now), nil
 }
 
 // fireDueTimers applies the partition's due timers under the owner fence.
