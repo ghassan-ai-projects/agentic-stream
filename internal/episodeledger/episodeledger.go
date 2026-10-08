@@ -22,6 +22,10 @@ type (
 	Admission = domain.Admission
 	// SchedulerItem is one durable scheduler entry.
 	SchedulerItem = domain.SchedulerItem
+	// SchedulingRecord is what became of one admitted trigger evaluation.
+	SchedulingRecord = domain.SchedulingRecord
+	// RejectionRecord is one worker result the ledger refused, with its reason.
+	RejectionRecord = domain.RejectionRecord
 	// RecoveryReport describes active attempt state abandoned during a restart.
 	RecoveryReport = domain.RecoveryReport
 	// CostSettler settles or releases an episode's cost reservation on the

@@ -55,3 +55,8 @@ func coalescePending(ctx context.Context, tx *store.Tx, schedulerItemID string, 
 func NextPendingSchedulerItem(ctx context.Context, tx *store.Tx, tenantID string, now time.Time) (string, bool, error) {
 	return tx.NextPendingSchedulerItem(ctx, tenantID, now)
 }
+
+// Scheduling reads what became of one trigger evaluation.
+func Scheduling(ctx context.Context, tx *store.Tx, tenantID, triggerID string) (domain.SchedulingRecord, bool, error) {
+	return tx.Scheduling(ctx, tenantID, triggerID)
+}

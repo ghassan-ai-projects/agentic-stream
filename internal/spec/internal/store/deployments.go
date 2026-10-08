@@ -130,3 +130,16 @@ func (r deploymentRecord) insert(ctx context.Context, tx *sql.Tx) error {
 	}
 	return nil
 }
+
+// LoadDeployment reads the compiled spec a deployment stored.
+func LoadDeployment(ctx context.Context, db *storage.DB, deploymentID string) (*domain.CompiledSpec, error) {
+	var compiledIR []byte
+	if err := db.QueryRowContext(ctx, "SELECT compiled_ir FROM spec_deployments WHERE deployment_id = ?", deploymentID).Scan(&compiledIR); err != nil {
+		return nil, fmt.Errorf("load deployment %s: %w", deploymentID, err)
+	}
+	var compiled domain.CompiledSpec
+	if err := json.Unmarshal(compiledIR, &compiled); err != nil {
+		return nil, fmt.Errorf("decode deployment %s: %w", deploymentID, err)
+	}
+	return &compiled, nil
+}

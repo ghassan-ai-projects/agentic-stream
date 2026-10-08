@@ -61,6 +61,8 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(newQuarantineCommand())
 	root.AddCommand(newNotificationsCommand())
 	root.AddCommand(newCommandsCommand())
+	root.AddCommand(newSituationCommand())
+	root.AddCommand(newExplainCommand())
 
 }
 

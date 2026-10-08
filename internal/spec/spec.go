@@ -112,3 +112,12 @@ func CompileFile(ctx context.Context, path string) (*CompiledSpec, error) {
 func SaveDeployment(ctx context.Context, db *storage.DB, tenantID string, compiled *CompiledSpec) error {
 	return store.SaveDeployment(ctx, db, tenantID, compiled) //nolint:wrapcheck // The store names the failed step.
 }
+
+// FieldDerivation explains one Situation field from the spec: the reducer
+// that writes it and the operator that computes the reducer's input.
+type FieldDerivation = domain.FieldDerivation
+
+// LoadDeployment reads the compiled spec a deployment stored.
+func LoadDeployment(ctx context.Context, db *storage.DB, deploymentID string) (*CompiledSpec, error) {
+	return store.LoadDeployment(ctx, db, deploymentID) //nolint:wrapcheck // The store names the failed step.
+}

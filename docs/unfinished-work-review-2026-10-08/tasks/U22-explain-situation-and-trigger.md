@@ -1,6 +1,6 @@
 # U22 — Explain a Situation and a trigger decision
 
-Status: todo · Decision: **complete** · Priority: P1 · Size: M · Depends on: U13 (read-only helper)
+Status: done · Decision: **complete** · Priority: P1 · Size: M · Depends on: U13 (read-only helper)
 
 ## Finding
 
@@ -45,3 +45,25 @@ over the database needs none. The design's HTTP endpoints move to deferred
   in the trace has an explanation with a reason.
 - `lineage_sets` and `episode_rejections` have production readers.
 - The predictive-maintenance guide ends with an "explain what happened" step.
+
+## Result
+
+`agentic-stream situation list|show` and `explain situation|trigger`, read-only,
+no lease. Each module exposes its own read through its facade and app layer:
+`engine.ListSituations`/`SituationVersion` (Situations, versions, lineage),
+`cognition.TriggerEvaluation(s)`, `episodeledger.Scheduling` (scheduler item,
+episode, `episode_rejections`), `eventlog.EvidenceEvents`, and
+`spec.LoadDeployment` with `CompiledSpec.FieldDerivations` (field → reducer →
+operator). The CLI composes them.
+
+One correction to the plan: lineage is stored per version (the evidence event
+set), not per field, so `explain situation` shows each field's derivation from
+the spec plus the version's evidence set. It does not claim a per-field event
+attribution the records do not hold.
+
+Test: `TestExplainTracesTheFinalSituationAndEveryTrigger` runs the
+predictive-maintenance watch trace live; the final version's fields all have a
+derivation, every lineage id resolves to a logged event, and every trigger
+evaluation explains itself with a reason. On the experiment's live database
+`explain trigger` shows a coalesced item with no episode and an admitted item
+whose episode ran on version 17.

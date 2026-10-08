@@ -156,7 +156,7 @@ as the change.
 | U19 | [`run --repeat N`](tasks/U19-replay-repeat-flag.md) | Complete | P2 | XS | — | done |
 | U20 | [Recorded replay mode](tasks/U20-recorded-replay-mode.md) | Complete | P1 | M | U02 | done |
 | U21 | [Shadow replay mode](tasks/U21-shadow-replay-mode.md) | Complete | P1 | M | U20 | done |
-| U22 | [Explain situation and trigger](tasks/U22-explain-situation-and-trigger.md) | Complete | P1 | M | U13 | todo |
+| U22 | [Explain situation and trigger](tasks/U22-explain-situation-and-trigger.md) | Complete | P1 | M | U13 | done |
 | U23 | [Inspect episode, intent and command](tasks/U23-inspect-episode-intent-command.md) | Complete | P2 | M | U22 | todo |
 | U24 | [Remove the calibrated-automation route](tasks/U24-remove-calibrated-automation-route.md) | Remove from plan + code | P2 | S | — | done |
 | P01–P08 | [Plan and documentation changes](PLAN_CHANGES.md) | Remove from plans | P2 | S each | per row | todo |

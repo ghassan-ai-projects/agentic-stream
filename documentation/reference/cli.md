@@ -174,10 +174,29 @@ approvals keep their signers; memberships and authorities are replaced.
 `--dry-run` reports the result and changes nothing. Unknown fields, repeated
 ids, members without a key and R3/R4 authorities are refused.
 
+### `situation list [--entity <id>] | show <situation-id> [--version N]`
+
+Read-only. `list` shows the tenant's Situations, newest evidence first, with
+their current and last material version. `show` prints one version (default:
+current) with its snapshot and evidence set.
+
+### `explain situation <situation-id> [--version N] | trigger <trigger-id>`
+
+Read-only answers to "why", from durable records only. `explain situation`
+prints each field of the version with its value, the reducer that writes it
+and the operator that computes the reducer's input (from the deployed spec),
+then the evidence events the version was built from (log position, event id,
+type, source, event time) and the trigger evaluations of that version.
+Lineage is recorded per version, so evidence is the version's evidence set,
+not a per-field attribution. `explain trigger` prints the evaluation (outcome,
+score against threshold, lane, reasons and the delta it saw) and, when it
+admitted work, the scheduler item, the episode it led to (which may have
+assembled a later version) and any worker results the ledger refused.
+
 ## Not registered yet
 
 Design records may mention commands such as `init`, `ingest`, `simulate`,
-`situation`, `episode`, `intent`, `explain`, `compare`, or `doctor`. They are not
+`episode`, `intent`, `compare`, or `doctor`. They are not
 current CLI commands and must not be used as implementation claims.
 
 ## Next reads
