@@ -15,28 +15,30 @@ type Evaluation = domain.Evaluation
 
 // LoadSchedulerItem reads one scheduler item inside the caller's transaction.
 func LoadSchedulerItem(ctx context.Context, tx *Tx, id string) (SchedulerItem, error) {
-	var item SchedulerItem
-	if err := tx.tx.QueryRowContext(ctx, `
+	return loadRow(ctx, tx, "query scheduler item", `
 		SELECT scheduler_item_id, kind, trigger_id, tenant_id, situation_id, situation_version
-		FROM scheduler_items WHERE scheduler_item_id = ?`,
-		id,
-	).Scan(&item.SchedulerItemID, &item.Kind, &item.TriggerID, &item.TenantID, &item.SituationID, &item.SituationVersion); err != nil {
-		return item, fmt.Errorf("query scheduler item: %w", err)
-	}
-	return item, nil
+		FROM scheduler_items WHERE scheduler_item_id = ?`, id,
+		func(item *SchedulerItem) []any {
+			return []any{&item.SchedulerItemID, &item.Kind, &item.TriggerID, &item.TenantID, &item.SituationID, &item.SituationVersion}
+		})
 }
 
 // LoadEvaluation reads one trigger evaluation inside the caller's transaction.
 func LoadEvaluation(ctx context.Context, tx *Tx, triggerID string) (Evaluation, error) {
-	var ev Evaluation
-	if err := tx.tx.QueryRowContext(ctx, `
+	return loadRow(ctx, tx, "query evaluation", `
 		SELECT trigger_id, trigger_name, score, threshold, lane, delta_json
-		FROM trigger_evaluations WHERE trigger_id = ?`,
-		triggerID,
-	).Scan(&ev.TriggerID, &ev.TriggerName, &ev.Score, &ev.Threshold, &ev.Lane, &ev.DeltaJSON); err != nil {
-		return ev, fmt.Errorf("query evaluation: %w", err)
+		FROM trigger_evaluations WHERE trigger_id = ?`, triggerID,
+		func(ev *Evaluation) []any {
+			return []any{&ev.TriggerID, &ev.TriggerName, &ev.Score, &ev.Threshold, &ev.Lane, &ev.DeltaJSON}
+		})
+}
+
+func loadRow[T any](ctx context.Context, tx *Tx, failure, query, id string, destinations func(*T) []any) (T, error) {
+	var row T
+	if err := tx.tx.QueryRowContext(ctx, query, id).Scan(destinations(&row)...); err != nil {
+		return row, fmt.Errorf("%s: %w", failure, err)
 	}
-	return ev, nil
+	return row, nil
 }
 
 // LoadSnapshot reads one situation version's snapshot document, persisted

@@ -78,18 +78,23 @@ func derefReservation(reservation *ledgerReservation) ledgerReservation {
 }
 func (l *Ledger) assertOwner(ctx context.Context, tx *store.Tx) error { return tx.AssertOwner(ctx) }
 func assertLiveAttempt(ctx context.Context, tx *store.Tx, call Call) error {
-	state, err := tx.LiveEpisode(ctx, call)
+	return assertAttempt(ctx, call, tx.LiveEpisode, domain.CheckLiveEpisode, tx.LiveAttempt, domain.CheckLiveAttempt)
+}
+
+func assertAttempt[K any](ctx context.Context, key K, loadEpisode func(context.Context, K) (domain.EpisodeState, error), checkEpisode func(domain.EpisodeState, K) error,
+	loadAttempt func(context.Context, K) (string, error), checkAttempt func(string) error) error {
+	state, err := loadEpisode(ctx, key)
 	if err != nil {
 		return err
 	}
-	if err := domain.CheckLiveEpisode(state, call); err != nil {
+	if err := checkEpisode(state, key); err != nil {
 		return err
 	}
-	status, err := tx.LiveAttempt(ctx, call)
+	status, err := loadAttempt(ctx, key)
 	if err != nil {
 		return err
 	}
-	return domain.CheckLiveAttempt(status)
+	return checkAttempt(status)
 }
 func loadReservation(ctx context.Context, tx *store.Tx, pending ledgerReservation) (*ledgerReservation, error) {
 	row, err := tx.ReadReservation(ctx, pending.Key)

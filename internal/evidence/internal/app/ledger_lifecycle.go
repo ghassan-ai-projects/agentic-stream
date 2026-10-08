@@ -70,18 +70,7 @@ func (l *Ledger) RecoverTx(ctx context.Context, tx *store.Tx, now time.Time) (in
 	return tx.Recover(ctx, now)
 }
 func assertAttemptRunning(ctx context.Context, tx *store.Tx, key ledgerKey) error {
-	state, err := tx.CompletionEpisode(ctx, key)
-	if err != nil {
-		return err
-	}
-	if err := domain.CheckCompletionEpisode(state, key); err != nil {
-		return err
-	}
-	status, err := tx.CompletionAttempt(ctx, key)
-	if err != nil {
-		return err
-	}
-	return domain.CheckCompletionAttempt(status)
+	return assertAttempt(ctx, key, tx.CompletionEpisode, domain.CheckCompletionEpisode, tx.CompletionAttempt, domain.CheckCompletionAttempt)
 }
 func (l *Ledger) failTx(ctx context.Context, tx *store.Tx, reservation ledgerReservation, code string, now time.Time) error {
 	if err := l.assertOwner(ctx, tx); err != nil {
