@@ -26,6 +26,10 @@ func TestEpisodeFacadeOnlyDelegates(t *testing.T) {
 				if !slices.Contains(operations, function.Name.Name) || !facadeDelegation(function, "app") {
 					t.Errorf("%s: %s must only delegate to the private application", file.rel, function.Name)
 				}
+			} else if function.Name.Name == "Decisions" {
+				if !facadeDelegation(function, "app") {
+					t.Errorf("%s: decision reads must delegate to the private application", file.rel)
+				}
 			} else if function.Name.Name == "CompileIntentCatalog" {
 				if !facadeDelegation(function, "domain") {
 					t.Errorf("%s: catalog compilation must delegate to domain", file.rel)

@@ -1,6 +1,6 @@
 # U23 — Inspect an episode, an intent and a command
 
-Status: todo · Decision: **complete** · Priority: P2 · Size: M · Depends on: U22
+Status: done · Decision: **complete** · Priority: P2 · Size: M · Depends on: U22
 
 ## Finding
 
@@ -40,3 +40,18 @@ bypass that separation ([PLAN_CHANGES](../PLAN_CHANGES.md) P02).
 - `watch_fires` has a production reader.
 - The limitations page's "Operator inspection" section reflects U16, U18, U22 and
   U23, or is removed if nothing internal-only remains.
+
+## Result
+
+`agentic-stream episode show` and `intent show`, read-only. New read ports, each
+behind its module's facade and app layer: `episodeledger.Episode` (episode,
+attempts, rejections), `episodes.Decisions`, `policy.Intent`/`DecisionIntents`
+(with policy evaluations), `approvalledger.Approvals`, `actions.IntentCommands`
+(commands, outcomes, verifications) and `watch.Watch` (condition and
+`watch_fires`). The watch is found through the command outcome's
+`provider_result.watch_id`, which is how the watch effector reports it.
+
+Test: the experiment end-to-end test follows its dispatched device intent from
+`episode show` to `intent show`, which names the policy evaluation, the
+command, its outcome and its verification. The experiment flow has no approval
+step, so approvals are covered by the store read, not the end-to-end test.

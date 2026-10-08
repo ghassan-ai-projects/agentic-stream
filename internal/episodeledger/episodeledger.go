@@ -26,6 +26,10 @@ type (
 	SchedulingRecord = domain.SchedulingRecord
 	// RejectionRecord is one worker result the ledger refused, with its reason.
 	RejectionRecord = domain.RejectionRecord
+	// EpisodeRecord is one episode with its attempts and refused results.
+	EpisodeRecord = domain.EpisodeRecord
+	// AttemptView is one fenced worker attempt of an episode, as inspected.
+	AttemptView = domain.AttemptView
 	// RecoveryReport describes active attempt state abandoned during a restart.
 	RecoveryReport = domain.RecoveryReport
 	// CostSettler settles or releases an episode's cost reservation on the

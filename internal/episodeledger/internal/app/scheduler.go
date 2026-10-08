@@ -60,3 +60,9 @@ func NextPendingSchedulerItem(ctx context.Context, tx *store.Tx, tenantID string
 func Scheduling(ctx context.Context, tx *store.Tx, tenantID, triggerID string) (domain.SchedulingRecord, bool, error) {
 	return tx.Scheduling(ctx, tenantID, triggerID)
 }
+
+// Episode reads one of the tenant's episodes with its attempts and refused
+// results.
+func Episode(ctx context.Context, tx *store.Tx, tenantID, episodeID string) (domain.EpisodeRecord, error) {
+	return tx.Episode(ctx, tenantID, episodeID)
+}

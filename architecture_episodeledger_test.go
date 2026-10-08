@@ -12,7 +12,7 @@ import (
 var episodeLedgerOperations = []string{
 	"Admit", "StartAttempt", "StartAttemptOwned", "TransitionAttempt", "RecordRejection", "RecoverUnfinishedAttempts",
 	"Rebind", "BindRequest", "AbandonRebind", "Abandon", "Conclude", "RetainForRetry", "SupersedeEpoch", "SupersedeCoalesced",
-	"UpsertSchedulerItem", "MarkSchedulerItemAdmitted", "CoalesceSchedulerItems", "CoalesceCostRejectedItem", "CoalesceSkippedItem", "NextPendingSchedulerItem", "Scheduling",
+	"UpsertSchedulerItem", "MarkSchedulerItemAdmitted", "CoalesceSchedulerItems", "CoalesceCostRejectedItem", "CoalesceSkippedItem", "NextPendingSchedulerItem", "Scheduling", "Episode",
 }
 
 // TestEpisodeLedgerFacadeOnlyDelegates confines ledger rules and SQL to private layers.

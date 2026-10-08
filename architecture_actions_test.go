@@ -45,7 +45,7 @@ func TestActionsApplicationUsesTransactionalPorts(t *testing.T) {
 // DispatchOnce to the app service, CountUnresolvedOutcomes to the store join.
 func actionsFacadeOperation(function *ast.FuncDecl) bool {
 	switch function.Name.Name {
-	case "DispatchOnce", "Resolve", "Awaiting":
+	case "DispatchOnce", "Resolve", "Awaiting", "IntentCommands":
 		return facadeDelegation(function, "app")
 	case "CountUnresolvedOutcomes":
 		return function.Recv == nil && function.Body != nil && len(function.Body.List) == 1

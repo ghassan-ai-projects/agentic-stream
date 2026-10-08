@@ -48,22 +48,13 @@ cognitive scheduler decides reasoning is useful.`,
 	return root
 }
 
+// registerCommands adds the runtime commands, then the operator commands
+// that act on a runtime database.
 func registerCommands(root *cobra.Command) {
-	root.AddCommand(newVersionCommand())
-	root.AddCommand(newValidateCommand())
-	root.AddCommand(newRunCommand())
-	root.AddCommand(newServeCommand())
-	root.AddCommand(newRunLiveCommand())
-	root.AddCommand(newExportRunCommand())
-	root.AddCommand(newVerifyRunCommand())
-	root.AddCommand(newInterlockCommand())
-	root.AddCommand(newPrincipalsCommand())
-	root.AddCommand(newQuarantineCommand())
-	root.AddCommand(newNotificationsCommand())
-	root.AddCommand(newCommandsCommand())
-	root.AddCommand(newSituationCommand())
-	root.AddCommand(newExplainCommand())
-
+	root.AddCommand(newVersionCommand(), newValidateCommand(), newRunCommand(), newServeCommand(), newRunLiveCommand(),
+		newExportRunCommand(), newVerifyRunCommand())
+	root.AddCommand(newInterlockCommand(), newPrincipalsCommand(), newQuarantineCommand(), newNotificationsCommand(),
+		newCommandsCommand(), newSituationCommand(), newExplainCommand(), newEpisodeCommand(), newIntentCommand())
 }
 
 func newVersionCommand() *cobra.Command {

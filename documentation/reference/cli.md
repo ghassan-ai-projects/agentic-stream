@@ -193,10 +193,21 @@ score against threshold, lane, reasons and the delta it saw) and, when it
 admitted work, the scheduler item, the episode it led to (which may have
 assembled a later version) and any worker results the ledger refused.
 
+### `episode show <episode-id>` and `intent show <intent-id>`
+
+Read-only. `episode show` prints what the episode reasoned over (Situation
+version, snapshot digest, executor), every fenced attempt with its terminal
+record, every worker result the ledger refused, and each Decision with the
+intents it proposed. `intent show` follows an intent through governance to its
+effects: policy evaluations with reasons, approval requests and how they ended,
+commands with their outcomes and verifications, and the watch a command
+installed with its fires. There is no `intent approve`: approval is the signed
+HTTP flow.
+
 ## Not registered yet
 
 Design records may mention commands such as `init`, `ingest`, `simulate`,
-`episode`, `intent`, `compare`, or `doctor`. They are not
+`compare`, or `doctor`. They are not
 current CLI commands and must not be used as implementation claims.
 
 ## Next reads

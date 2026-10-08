@@ -47,3 +47,9 @@ func NextPendingSchedulerItem(ctx context.Context, db *sql.DB, tenantID string, 
 func Scheduling(ctx context.Context, db *sql.DB, tenantID, triggerID string) (SchedulingRecord, bool, error) {
 	return app.Scheduling(ctx, store.Reader(db), tenantID, triggerID)
 }
+
+// Episode reads one of the tenant's episodes with its attempts and the
+// results the ledger refused for it.
+func Episode(ctx context.Context, db *sql.DB, tenantID, episodeID string) (EpisodeRecord, error) {
+	return app.Episode(ctx, store.Reader(db), tenantID, episodeID)
+}
