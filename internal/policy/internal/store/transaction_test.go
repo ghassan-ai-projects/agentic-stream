@@ -88,9 +88,6 @@ func TestJoinedTransactionPersistsOnlyOnCallerCommit(t *testing.T) {
 		if err := tx.AssertInterlock(ctx, interlock.DurableReader{}, row.TenantID, "motor", "R1"); err != nil {
 			return err
 		}
-		if active, err := tx.CalibrationActive(ctx, row.SituationType, row.ExecutorVersion); err != nil || active {
-			t.Fatalf("calibration active=%v err=%v without an artifact", active, err)
-		}
 		return rollback
 	})
 	if !errors.Is(err, rollback) {

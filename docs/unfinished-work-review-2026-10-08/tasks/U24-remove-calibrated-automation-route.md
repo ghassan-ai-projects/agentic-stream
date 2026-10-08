@@ -1,6 +1,6 @@
 # U24 — Remove the calibrated-automation route
 
-Status: todo · Decision: **remove from code and plan** · Priority: P2 · Size: S
+Status: done · Decision: **remove from code and plan** · Priority: P2 · Size: S
 
 ## Finding
 

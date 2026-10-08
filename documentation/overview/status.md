@@ -16,7 +16,7 @@ environment; the table is not deployment approval.
 | Deterministic cognition scheduling, debounce, cooldown, coalescing, reconsideration | `internal/cognition/` |
 | Bounded episodes, budgets, cancellation, fencing, recovery, rebind | `internal/episodes/` |
 | Decision/Intent schema and binding validation | `internal/decisions/`, `internal/contractsv1/` |
-| Deterministic policy, approvals, interlocks, calibration and epoch controls | `internal/policy/`, `internal/interlock/`, `internal/storage/` |
+| Deterministic policy, approvals, interlocks and epoch controls | `internal/policy/`, `internal/interlock/`, `internal/storage/` |
 | Idempotent outbox dispatch, simulated/watch effectors, unknown outcomes | `internal/actions/`, `internal/device/`, `internal/watch/` |
 | Typed device-gateway integration with authority and reconciliation records; hardware qualification remains separate | `internal/device/`, `internal/authority/`, CLI effect-profile tests |
 | Native deterministic/OpenAI-compatible executor and Go EpisodeWorker boundary | `internal/executor/`, `internal/worker/`, `proto/` |

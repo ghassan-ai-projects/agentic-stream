@@ -11,14 +11,15 @@ notifications, evidence ledgers, runtime ownership, quarantine/redrive,
 cost/interlock controls, mode/shadow state, epoch control, calibration, and
 episode rebinding, paired shadow comparisons, device authority,
 reconciliation, and soak evidence, the device-reconciliation column names,
-and each Situation's latest material version.
+each Situation's latest material version, and the removal of unused tables.
 
 The current head is
-[`032_situation_material_version.sql`](../../migrations/032_situation_material_version.sql),
-which records the latest material Situation version that intent freshness
-checks against (ADR-018);
-[`031_device_reconciliation_language.sql`](../../migrations/031_device_reconciliation_language.sql)
-aligns `device_reconciliation` columns with the device-authority vocabulary.
+[`033_drop_unused_tables.sql`](../../migrations/033_drop_unused_tables.sql),
+which drops `calibration_artifacts`, `replay_jobs` and `episode_events`, none of
+which anything read or wrote;
+[`032_situation_material_version.sql`](../../migrations/032_situation_material_version.sql)
+records the latest material Situation version that intent freshness checks
+against (ADR-018).
 
 The filenames are the precise history. Read the SQL and storage tests before
 depending on a column or status value.

@@ -78,21 +78,9 @@ func (g *Service) routeIntent(ctx context.Context, tx *store.Tx, e evaluation) (
 		return g.approveAutomatic(ctx, tx, e)
 	case "approval":
 		return g.approveOrRequireApproval(ctx, tx, e)
-	case "calibration":
-		return g.routeConsequentialIntent(ctx, tx, e)
 	default:
 		return g.finish(ctx, tx, e, domain.Outcome{Status: "denied", Reason: reason})
 	}
-}
-
-func (g *Service) routeConsequentialIntent(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
-	if e.row.SituationType != "" && e.row.ExecutorVersion != "" {
-		if active, err := tx.CalibrationActive(ctx, e.row.SituationType, e.row.ExecutorVersion); err == nil && active {
-			e.result.Reason = "calibrated_automation"
-			return g.approveAutomatic(ctx, tx, e)
-		}
-	}
-	return g.approveOrRequireApproval(ctx, tx, e)
 }
 
 // approveOrRequireApproval dispatches when a human has already approved this

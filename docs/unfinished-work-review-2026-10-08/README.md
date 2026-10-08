@@ -145,7 +145,7 @@ as the change.
 | U08 | [Resolve unused exported constants](tasks/U08-resolve-unused-exported-constants.md) | Delete / keep | P3 | XS | — | done |
 | U09 | [Delete `config effective` placeholder](tasks/U09-delete-config-effective-placeholder.md) | Delete | P3 | XS | — | done |
 | U10 | [Define the primary-hypothesis delta key](tasks/U10-remove-primary-hypothesis-delta-key.md) | Keep key, drop from plan (revised for the experiment) | P3 | XS | — | todo |
-| U11 | [Drop unused tables](tasks/U11-drop-unused-tables.md) | Delete | P3 | S | U02 | todo |
+| U11 | [Drop unused tables](tasks/U11-drop-unused-tables.md) | Delete | P3 | S | U02 | done |
 | U12 | [Dead-code gate](tasks/U12-deadcode-gate.md) | Complete | P1 | S | U02–U07 | todo |
 | U13 | [Operator command foundation](tasks/U13-operator-command-foundation.md) | Complete | P1 | S | — | done |
 | U14 | [Interlock trip/clear command](tasks/U14-interlock-operator-command.md) | Complete | P1 | S | U13 | done |
@@ -158,7 +158,7 @@ as the change.
 | U21 | [Shadow replay mode](tasks/U21-shadow-replay-mode.md) | Complete | P1 | M | U20 | todo |
 | U22 | [Explain situation and trigger](tasks/U22-explain-situation-and-trigger.md) | Complete | P1 | M | U13 | todo |
 | U23 | [Inspect episode, intent and command](tasks/U23-inspect-episode-intent-command.md) | Complete | P2 | M | U22 | todo |
-| U24 | [Remove the calibrated-automation route](tasks/U24-remove-calibrated-automation-route.md) | Remove from plan + code | P2 | S | — | todo |
+| U24 | [Remove the calibrated-automation route](tasks/U24-remove-calibrated-automation-route.md) | Remove from plan + code | P2 | S | — | done |
 | P01–P08 | [Plan and documentation changes](PLAN_CHANGES.md) | Remove from plans | P2 | S each | per row | todo |
 
 Sizes: XS under an hour, S about half a day, M one to two days.

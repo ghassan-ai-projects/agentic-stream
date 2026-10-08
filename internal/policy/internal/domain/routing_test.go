@@ -23,7 +23,7 @@ func TestRiskRulesRemainAuthoritative(t *testing.T) {
 					want = "approval"
 				}
 			case "R2":
-				want = "calibration"
+				want = "approval"
 			}
 			if route != want || want == "denied" && reason == "" || want != "denied" && reason != "" {
 				t.Fatal(risk, approval, route, reason)

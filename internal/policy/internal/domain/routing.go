@@ -17,7 +17,7 @@ func RiskRoute(row IntentRecord) (route, reason string) {
 		}
 		return "automatic", ""
 	case "R2":
-		return "calibration", ""
+		return "approval", ""
 	case "R3", "R4":
 		return "denied", "risk_policy_denied"
 	default:

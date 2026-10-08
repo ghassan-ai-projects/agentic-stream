@@ -10,10 +10,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
-// Config requires ownership, epoch and action-readiness checks. Calibration is
-// not configuration: the policy store reads the active calibration artifact for
-// the Situation type and executor version, and without one consequential
-// intents need human approval.
+// Config requires ownership, epoch and action-readiness checks. Consequential
+// (R2) intents always need human approval.
 type Config struct {
 	PolicyVersion, OwnerEpoch   string
 	IDGenerator                 sources.Generator

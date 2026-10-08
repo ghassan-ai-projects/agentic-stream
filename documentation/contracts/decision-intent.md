@@ -32,7 +32,7 @@ The runtime checks:
 4. allowed Intent type and catalog binding;
 5. parameter schema and evidence references;
 6. expiration, budget, freshness, completeness, and lifecycle state;
-7. policy, approval, quota, rate limit, principal, interlock, calibration, and
+7. policy, approval, quota, rate limit, principal, interlock, and
    current epoch before command creation/dispatch.
 
 An invalid, stale, or superseded result is rejected and recorded with a reason.

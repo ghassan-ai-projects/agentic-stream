@@ -418,19 +418,6 @@ CREATE UNIQUE INDEX one_live_episode_per_situation
     ON episodes(situation_id)
     WHERE lifecycle_status IN ('admitted', 'running');
 
-CREATE TABLE episode_events (
-    episode_id          TEXT NOT NULL REFERENCES episodes(episode_id),
-    sequence            INTEGER NOT NULL CHECK (sequence >= 1),
-    attempt_id          TEXT,
-    fence               INTEGER CHECK (fence IS NULL OR fence >= 1),
-    event_type          TEXT NOT NULL,
-    event_json          BLOB NOT NULL,
-    event_sha256        BLOB NOT NULL CHECK (length(event_sha256) = 32),
-    durable             INTEGER NOT NULL CHECK (durable IN (0, 1)),
-    occurred_at         TEXT NOT NULL,
-    PRIMARY KEY (episode_id, sequence)
-) STRICT;
-
 CREATE TABLE episode_rejections (
     rejection_id  TEXT PRIMARY KEY,
     episode_id    TEXT,
@@ -636,26 +623,6 @@ CREATE TABLE outcomes (
     traceparent         TEXT,
     tracestate          TEXT,
     UNIQUE (command_id, ordinal)
-) STRICT;
-
-CREATE TABLE replay_jobs (
-    replay_id           TEXT PRIMARY KEY,
-    tenant_id           TEXT NOT NULL,
-    mode                TEXT NOT NULL CHECK (
-        mode IN ('deterministic', 'recorded', 'shadow', 'counterfactual')
-    ),
-    source_from         TEXT NOT NULL,
-    source_until        TEXT NOT NULL,
-    deployment_id       TEXT NOT NULL REFERENCES spec_deployments(deployment_id),
-    executor_name       TEXT,
-    status              TEXT NOT NULL CHECK (
-        status IN ('pending', 'running', 'completed', 'failed', 'cancelled')
-    ),
-    isolated_database   TEXT NOT NULL,
-    result_artifact_id  TEXT REFERENCES artifacts(artifact_id),
-    created_at          TEXT NOT NULL,
-    started_at          TEXT,
-    ended_at            TEXT
 ) STRICT;
 
 CREATE TABLE evidence_call_ledger (
@@ -922,23 +889,6 @@ CREATE INDEX shadow_decisions_decision
     ON shadow_decisions(decision_id);
 CREATE INDEX shadow_decisions_situation
     ON shadow_decisions(tenant_id, situation_id, situation_version);
-
-CREATE TABLE calibration_artifacts (
-    artifact_id              TEXT PRIMARY KEY,
-    domain                   TEXT NOT NULL,
-    model_revision           TEXT NOT NULL,
-    profile_digest           TEXT NOT NULL,
-    prompt_sha256            TEXT NOT NULL,
-    diagnosis_catalog_sha256 TEXT NOT NULL,
-    policy_digest            TEXT NOT NULL,
-    artifact_sha256          TEXT NOT NULL,
-    active                   INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
-    created_at               TEXT NOT NULL,
-    UNIQUE (domain, artifact_sha256)
-) STRICT;
-
-CREATE INDEX calibration_artifacts_active
-    ON calibration_artifacts(domain, active);
 
 CREATE TABLE shadow_comparisons (
     comparison_id              TEXT PRIMARY KEY,

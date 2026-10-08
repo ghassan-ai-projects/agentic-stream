@@ -1,6 +1,6 @@
 # U11 — Drop unused tables
 
-Status: todo · Decision: **drop two, keep one as reserved** · Priority: P3 · Size: S · Depends on: U02
+Status: done · Decision: **drop two, keep one as reserved** · Priority: P3 · Size: S · Depends on: U02
 
 ## Finding
 
