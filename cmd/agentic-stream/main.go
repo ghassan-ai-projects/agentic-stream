@@ -60,6 +60,7 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(newInterlockCommand())
 	root.AddCommand(newPrincipalsCommand())
 	root.AddCommand(newQuarantineCommand())
+	root.AddCommand(newNotificationsCommand())
 
 }
 

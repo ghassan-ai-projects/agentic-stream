@@ -36,3 +36,12 @@ func (tx *Tx) DeleteExpiredTombstones(ctx context.Context, cutoff time.Time) err
 	}
 	return nil
 }
+
+// CountNotificationsBefore counts the notifications created before cutoff.
+func (tx *Tx) CountNotificationsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	var count int64
+	if err := tx.q.QueryRowContext(ctx, "SELECT COUNT(*) FROM notifications WHERE created_at < ?", formatTime(cutoff)).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count retirable notifications: %w", err)
+	}
+	return count, nil
+}

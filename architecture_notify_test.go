@@ -19,7 +19,7 @@ func TestNotifyFacadeOnlyDelegates(t *testing.T) {
 			if !ok || (function.Recv == nil && function.Name.Name == "New") {
 				continue
 			}
-			if !slices.Contains([]string{"ReadPage", "Prune", "Append", "AppendLifecycleEvent"}, function.Name.Name) && function.Name.Name != "SourceForTenant" {
+			if !slices.Contains([]string{"ReadPage", "Prune", "Prunable", "Append", "AppendLifecycleEvent"}, function.Name.Name) && function.Name.Name != "SourceForTenant" {
 				t.Errorf("%s: %s is not a notify operation", file.rel, function.Name)
 				continue
 			}

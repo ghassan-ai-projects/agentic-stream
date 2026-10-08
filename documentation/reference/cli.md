@@ -133,6 +133,14 @@ released record against the schemas registered now and appends it to the log
 exactly once, so the engine processes it on the next run. Both changes need
 the runtime owner lease. A record that still fails validation stays released.
 
+### `notifications prune --retention <duration> [--dry-run]`
+
+Retires notifications older than the retention (minimum 168h) in one
+transaction under the runtime owner lease, keeping tombstones so a retired
+event identity is never accepted again and cursors stay monotonic. A client
+whose cursor fell behind the retention gets `cursor_expired` and resnapshots.
+`--dry-run` only counts. Schedule it with the host's own scheduler.
+
 ### `principals apply --file <principals.yaml> [--dry-run] | show`
 
 Provisions the approval governance the `/v1/approvals` flow checks: relays,
