@@ -43,12 +43,6 @@ type workerRuntimeFlagTargets struct {
 	evidenceKey      *string
 }
 
-// validate checks command-line profile inputs before opening a database or
-// connecting to a device gateway. replaySource identifies the file-backed
-// --trace path only; the normalized --live-socket source is intentionally not
-// replay and may be used with the emulator or physical profile. The profile
-// rule itself, including physical-actuation consent, belongs to the device
-// module; this command only checks that the gateway flags are present.
 func (o effectProfileOptions) validate(replaySource bool) error {
 	if err := o.requireGatewayFlags(replaySource); err != nil {
 		return err

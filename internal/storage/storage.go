@@ -91,7 +91,7 @@ type OwnerCheck = store.OwnerCheck
 // QueryOptional scans the first column of the first row of query. A query
 // without rows reports found as false and no error; callers add the operation.
 func QueryOptional[T any](ctx context.Context, q Querier, query string, args ...any) (value T, found bool, err error) {
-	return store.QueryOptional[T](ctx, q, query, args...) //nolint:wrapcheck // The store names the failed step.
+	return store.QueryOptional[T](ctx, q, query, args...) //nolint:wrapcheck // Single delegating facade return; the store reports the failed query and scan.
 }
 
 // QueryAll runs query, scans every row with scan and closes the rows. A query

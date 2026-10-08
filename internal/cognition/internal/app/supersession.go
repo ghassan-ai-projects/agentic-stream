@@ -23,7 +23,7 @@ func (s *scheduler) supersedePending(ctx context.Context, tx *store.Tx, situatio
 		return err
 	}
 	if err := tx.WithdrawSuperseded(ctx, situationID, replacement.TenantID, replacement.Version, now, s.clk); err != nil {
-		return fmt.Errorf("%w", err)
+		return fmt.Errorf("supersede pending work of situation %s: %w", situationID, err)
 	}
 	return nil
 }

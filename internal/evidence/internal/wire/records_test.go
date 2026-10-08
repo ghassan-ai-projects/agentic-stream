@@ -20,7 +20,6 @@ func traceForLedger() contractsv1.TraceContext {
 	return contractsv1.TraceContext{Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}
 }
 func TestEvidenceFingerprintEncodingIsStable(t *testing.T) {
-	// This document pins the field order, tags and nine-digit UTC time text of the request identity.
 	const document = `{"episode_id":"episode-1","call_id":"call-1","tool_name":"evidence.get","tenant_id":"tenant-1","situation_id":"situation-1","entity_id":"motor-1","attempt_id":"attempt-1","situation_version":1,"fence":1,"arguments":{"entity_id":"motor-1"},"deadline":"2026-08-12T12:01:00.000000000Z","from":"2026-08-12T11:00:00.000000000Z","until":"2026-08-12T12:00:00.000000000Z","max_rows":1,"max_bytes":100,"traceparent":"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01","tracestate":""}`
 	want := sha256.Sum256([]byte(document))
 	got, err := CallFingerprint(ledgerTestCall())

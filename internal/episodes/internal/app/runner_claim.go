@@ -77,7 +77,6 @@ func (r *Runner) loadDispatchableEpisode(ctx context.Context, tx *store.Tx, tena
 	return hydrateEpisodeClaim(episodeClaimFromDispatched(episode))
 }
 
-// episodeClaimFromDispatched binds a dispatchable episode into a claim.
 func episodeClaimFromDispatched(episode episodeledger.DispatchableEpisode) *episodeClaim {
 	return &episodeClaim{episodeID: episode.EpisodeID, req: domain.AdmittedRequest(episode.Admission), rebindCount: episode.StaleRebindCount}
 }

@@ -7,8 +7,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// OwnerCheck is a check owned by another module that must read its own state
-// inside this unit of work, such as control.RuntimeOwner.Assert.
 type OwnerCheck = storage.OwnerCheck
 
 // Store opens the module's units of work and serves its standalone reads.

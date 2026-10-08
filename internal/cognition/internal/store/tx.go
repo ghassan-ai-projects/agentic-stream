@@ -29,7 +29,10 @@ func (t *Tx) InsertItem(ctx context.Context, item episodeledger.SchedulerItem, t
 // clock after each withdrawal.
 func (t *Tx) WithdrawSuperseded(ctx context.Context, situationID, tenantID string, version int, now time.Time, clk sources.Clock) error {
 	publish := withdrawalPublisher(tenantID, clk)
-	return approvalledger.WithdrawSuperseded(ctx, t.tx, situationID, version, kernel.FormatTime(now), publish) //nolint:wrapcheck // Preserve the owning ledger error contract.
+	if err := approvalledger.WithdrawSuperseded(ctx, t.tx, situationID, version, kernel.FormatTime(now), publish); err != nil {
+		return fmt.Errorf("withdraw approvals superseded by situation %s version %d: %w", situationID, version, err)
+	}
+	return nil
 }
 
 // withdrawalPublisher publishes the approval.withdrawn notification of a

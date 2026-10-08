@@ -29,13 +29,11 @@ type Withdrawal struct {
 	Tracestate       string
 }
 
-// Approval is the identity and expiry of one approval request of an intent.
 type Approval struct {
 	ID        string
 	ExpiresAt string
 }
 
-// AssertionBinding is what a signed approver assertion is bound to.
 type AssertionBinding struct {
 	ExpiresAt string
 	Nonce     string

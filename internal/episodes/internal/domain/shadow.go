@@ -39,10 +39,6 @@ type ShadowDecision struct {
 	PolicyEpoch      string
 }
 
-// ScoreShadowDecision is the would-be policy outcome of a shadow decision: the
-// route of its strictest intent under the live policy, including the catalog
-// requires_approval flag. A denied route outranks approval, approval outranks
-// automatic, and risk rank breaks ties within one route.
 func ScoreShadowDecision(validated *decisions.Result) (ShadowScore, string) {
 	strictest := strictestIntent(validated)
 	switch intentRoute(strictest) {

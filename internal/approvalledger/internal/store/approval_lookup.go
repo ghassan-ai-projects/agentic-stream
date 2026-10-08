@@ -15,7 +15,6 @@ const latestApprovedOfIntentSQL = `SELECT approval_id, expires_at FROM approvals
 
 const pendingBindingSQL = `SELECT expires_at, nonce FROM approvals WHERE approval_id = ? AND status = ?`
 
-// PendingOfIntent reads the unresolved approval of an intent.
 func (t *Tx) PendingOfIntent(ctx context.Context, intentID string) (domain.Approval, bool, error) {
 	approval, found, err := t.lookup(ctx, pendingOfIntentSQL, intentID, domain.StatusPending)
 	if err != nil {
@@ -24,8 +23,6 @@ func (t *Tx) PendingOfIntent(ctx context.Context, intentID string) (domain.Appro
 	return approval, found, nil
 }
 
-// LatestApprovedOfIntent reads the most recently decided approved approval of
-// an intent; two approvals decided at the same instant resolve by the larger id.
 func (t *Tx) LatestApprovedOfIntent(ctx context.Context, intentID string) (domain.Approval, bool, error) {
 	approval, found, err := t.lookup(ctx, latestApprovedOfIntentSQL, intentID, domain.StatusApproved)
 	if err != nil {
@@ -34,7 +31,6 @@ func (t *Tx) LatestApprovedOfIntent(ctx context.Context, intentID string) (domai
 	return approval, found, nil
 }
 
-// PendingBinding reads the expiry and single-use nonce of a pending approval.
 func (t *Tx) PendingBinding(ctx context.Context, approvalID string) (domain.AssertionBinding, error) {
 	var binding domain.AssertionBinding
 	if err := t.tx.QueryRowContext(ctx, pendingBindingSQL, approvalID, domain.StatusPending).Scan(&binding.ExpiresAt, &binding.Nonce); err != nil {

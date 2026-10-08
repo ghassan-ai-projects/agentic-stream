@@ -9,7 +9,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// OwnerCheck is a write fence run on the episode transaction.
 type OwnerCheck = storage.OwnerCheck
 
 // Store opens runner units of work and polls episode lifecycle state.
@@ -21,13 +20,11 @@ type Store struct {
 // New wraps the episode database.
 func New(db *storage.DB) Store { return Store{db: db} }
 
-// Fenced binds the runtime owner check that owned attempts are fenced by.
 func (s Store) Fenced(owner storage.OwnerCheck) Store {
 	s.owner = ownerLostCheck(owner)
 	return s
 }
 
-// IsFenced reports whether a runtime owner check was bound.
 func (s Store) IsFenced() bool { return s.owner != nil }
 
 // Tx joins a caller-owned transaction without exposing SQL to use cases.

@@ -40,7 +40,6 @@ func sameBinding(existing, requested CommandBinding) bool {
 		existing.Owner == requested.Owner && sameDigest(existing.CommandDigest, requested.CommandDigest)
 }
 
-// sameDigest compares digests by value; both must be canonical digests.
 func sameDigest(existing, requested string) bool {
 	if requested == "" || existing == "" {
 		return requested == existing

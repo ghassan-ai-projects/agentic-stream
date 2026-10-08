@@ -59,7 +59,7 @@ func triggeredSpec(executor spec.Executor, intents ...spec.Intent) *spec.Compile
 
 func admitTriggeredSituation(t *testing.T, ctx context.Context, compiled *spec.CompiledSpec, situationID string) *admittedSituation {
 	t.Helper()
-	db := openMigratedDB(t, ctx)
+	db := storagetest.OpenTemp(t)
 	if err := spec.SaveDeployment(ctx, db, "default", compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
@@ -99,13 +99,6 @@ func admitTriggeredSituation(t *testing.T, ctx context.Context, compiled *spec.C
 		db: db, compiled: compiled, asm: app.NewAssembler(compiled, sources.Deterministic()),
 		version: v, base: base, schedulerItemID: schedulerItemID,
 	}
-}
-
-func openMigratedDB(t *testing.T, ctx context.Context) *storage.DB {
-	t.Helper()
-	db := storagetest.OpenTemp(t)
-
-	return db
 }
 
 func (s *admittedSituation) assemble(t *testing.T, ctx context.Context) *app.Request {

@@ -1,3 +1,6 @@
 package storagetest
 
-var LoadTemplate = loadTemplate
+var (
+	LoadTemplate = loadTemplate
+	TemplatePath = templatePath
+)

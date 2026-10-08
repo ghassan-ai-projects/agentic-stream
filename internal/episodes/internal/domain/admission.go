@@ -38,8 +38,6 @@ func AdmittedEpisode(req *Request, digests RequestDigests) episodeledger.Admissi
 		DispatchPolicy: spec.EffectiveDispatchPolicy(req.DispatchPolicy), PolicyEpoch: req.PolicyEpoch}
 }
 
-// AdmittedRequest rebuilds the request skeleton from the lifecycle owner
-// admission record; it is the inverse of AdmittedEpisode.
 func AdmittedRequest(admission episodeledger.Admission) Request {
 	return Request{EpisodeID: admission.EpisodeID, SchedulerItemID: admission.SchedulerItemID,
 		TenantID: admission.TenantID, SituationID: admission.SituationID, SituationVersion: admission.SituationVersion,

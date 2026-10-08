@@ -22,17 +22,14 @@ func loadTemplate(directory string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if content, err := os.ReadFile(path); err == nil {
+	if content, err := readSoundTemplate(path); err == nil {
 		return content, nil
 	}
 	if err := buildTemplate(path); err != nil {
 		return nil, err
 	}
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read template database: %w", err)
-	}
-	return content, nil
+	removeOtherTemplates(directory, path)
+	return readSoundTemplate(path)
 }
 
 func templatePath(directory string) (string, error) {

@@ -10,7 +10,10 @@
 ## Admission rule
 
 A symbol belongs here only when two or more modules need it and it is a stable
-representation rule, not business behaviour. Reading the clock, generating ids
+representation rule, not business behaviour. A codec pair is admitted
+together: `EncodeDigest` is used by several modules and `DecodeDigest` is its
+inverse, so the pair stays in one place even though one half has a single
+caller. Reading the clock, generating ids
 and anything that touches storage belong to `sources` and `storage`, which
 other packages must declare as imports.
 

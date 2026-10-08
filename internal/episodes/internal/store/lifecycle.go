@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
@@ -21,7 +22,11 @@ func (tx *Tx) MarkAdmitted(ctx context.Context, id string, now time.Time) error 
 
 // StartAttemptOwned fences an attempt to the runtime owner.
 func (tx *Tx) StartAttemptOwned(ctx context.Context, episode, attempt, owner string, now time.Time) (episodeledger.Identity, error) {
-	return episodeledger.StartAttemptOwned(ctx, tx.tx, episode, attempt, owner, tx.owner, now) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
+	identity, err := episodeledger.StartAttemptOwned(ctx, tx.tx, episode, attempt, owner, tx.owner, now)
+	if err != nil {
+		return identity, fmt.Errorf("start owned attempt %s of episode %s: %w", attempt, episode, err)
+	}
+	return identity, nil
 }
 
 // StartAttempt allocates a fenced attempt for unowned fixture execution.
@@ -31,7 +36,10 @@ func (tx *Tx) StartAttempt(ctx context.Context, episode, attempt string, now tim
 
 // TransitionAttempt performs the lifecycle owner's fenced transition.
 func (tx *Tx) TransitionAttempt(ctx context.Context, identity episodeledger.Identity, status episodeledger.AttemptStatus, now time.Time, terminal []byte) error {
-	return episodeledger.TransitionAttempt(ctx, tx.tx, identity, status, now, terminal, tx.owner) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
+	if err := episodeledger.TransitionAttempt(ctx, tx.tx, identity, status, now, terminal, tx.owner); err != nil {
+		return fmt.Errorf("transition attempt %s of episode %s to %s: %w", identity.AttemptID, identity.EpisodeID, status, err)
+	}
+	return nil
 }
 
 // Rebind updates the episode's immutable snapshot binding.
@@ -71,10 +79,16 @@ func (tx *Tx) Conclude(ctx context.Context, id string, now time.Time, terminal [
 
 // ReserveCost reserves the admitted episode budget on the same transaction.
 func (tx *Tx) ReserveCost(ctx context.Context, controller *runtimecontrol.CostLedger, id, tenant string, budget uint64, now time.Time) error {
-	return controller.Reserve(ctx, tx.tx, id, tenant, budget, kernel.FormatTime(now)) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
+	if err := controller.Reserve(ctx, tx.tx, id, tenant, budget, kernel.FormatTime(now)); err != nil {
+		return fmt.Errorf("reserve cost of episode %s: %w", id, err)
+	}
+	return nil
 }
 
 // SettleCost settles a reservation on the same transaction.
 func (tx *Tx) SettleCost(ctx context.Context, controller *runtimecontrol.CostLedger, id string, cost uint64, now time.Time) error {
-	return controller.Settle(ctx, tx.tx, id, cost, kernel.FormatTime(now)) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
+	if err := controller.Settle(ctx, tx.tx, id, cost, kernel.FormatTime(now)); err != nil {
+		return fmt.Errorf("settle cost of episode %s: %w", id, err)
+	}
+	return nil
 }

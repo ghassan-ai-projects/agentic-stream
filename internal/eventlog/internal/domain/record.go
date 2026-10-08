@@ -30,8 +30,6 @@ type EntityEvent struct {
 	Payload                       []byte
 }
 
-// ScannedEvent is one event_log row as scanned, with its times parsed and its
-// payload and quality documents still encoded.
 type ScannedEvent struct {
 	Position                                            LogPosition
 	TenantID                                            string

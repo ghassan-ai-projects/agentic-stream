@@ -51,10 +51,17 @@ came from two consolidations.
   2), plus `storagetest` and `kernel` (layer 0, exempt from the sideways rule).
 - `internal/kernel` is a foundation package that every package may import. Its
   gates: `TestKernelStaysPure` (standard library only; no `database/sql`, `os`,
-  `os/exec`, file or network packages, `syscall`, or random sources; no
-  `time.Now`, `Since`, `Until`, `Sleep` or timers) and `TestKernelHasNoSubpackages`. A symbol is admitted only when two
+  `os/exec`, `os/signal`, `os/user`, `plugin`, file, path or network packages,
+  `syscall`, or random sources and `hash/maphash`; no `time.Now`, `Since`,
+  `Until`, `Sleep`, timers, `time.Local` or `time.LoadLocation`, resolved
+  through the name each import is bound to, so an aliased `time` import is
+  checked and a dot-import of any package is refused;
+  `TestKernelPurityCheckCatchesEveryBypass` feeds the checker a snippet for each
+  bypass) and `TestKernelHasNoSubpackages`. A symbol is admitted only when two
   or more modules need it and it is a stable representation rule, not
-  business behaviour.
+  business behaviour. A codec pair is admitted together: `EncodeDigest` is used
+  by several modules and `DecodeDigest` is its inverse, so both live in the
+  kernel even though `DecodeDigest` has one caller today.
 - `allowedImports` may gain only: store to table-owning module edges (for
   example store to `episodeledger`), `storage` edges for stores that now use the
   time codec, and edges an issue names. No new `sources` or `canonicaljson`
@@ -82,7 +89,15 @@ layer 8 and `interlock` at layer 2.
 `sha256:<hex>` text form now lives in `kernel`, and `canonicaljson.EncodeDigest`
 and `DecodeDigest` delegate to it.
 
-## Group 3 result
+## Group results (historical)
+
+The three group results below are the fixers' hand-off reports as written at
+the time. Where a group says "no `allowedImports` change" or "edges needed:
+none", it means that group needed none for its own modules; the gate tables as
+they stand are described by "Gate rules for the rework" and "Edges kept". Every
+open item the groups listed has since been resolved and is marked as such.
+
+### Group 3 result
 
 Modules: evidence (with wire), authority, control, notify, runtime, executor
 (native, remote, fixture), contractsv1, api, storage/internal/store, testsupport,
@@ -115,14 +130,12 @@ moved to the nine-digit instant text. The CloudEvent digest is unchanged (it kee
 trimmed wire form, pinned by `TestCloudEventEnvelopeDigestBindsMetadataAndData` in contractsv1).
 The token claim bytes and `request_sha256` are NOT unchanged: see "What moved" below.
 
-Edges needed: none. Open item for the gate owner:
-`TestTimestampTextHasOneOwner` (architecture_timetext_test.go) still names
-`sources` as the owner and rejects `time.RFC3339Nano` in
-`contractsv1/internal/domain/cloud_event.go` (the pinned CloudEvent wire form);
-it needs to allow the `contractsv1` wire form and name `kernel` as the owner of
-the durable layout.
+Edges needed: none. Former open item (resolved): `TestTimestampTextHasOneOwner`
+(architecture_timetext_test.go) now names `internal/kernel` as the owner of the
+durable layout and exempts only the pinned CloudEvent wire form
+(`contractsv1/internal/domain/cloud_event.go`).
 
-## Group 1 result
+### Group 1 result
 
 Modules: actions, policy, decisions, watch, interlock (approvalledger touches no
 time text and is unchanged). No `sources.FormatTime/ParseTime/Expired/LiveDeadline/FormatWireTime`
@@ -171,7 +184,7 @@ Behaviour changes on purpose:
 Edges needed: none. The gate failures that remain in `go test -count=1 .` name other
 modules (engine, episodeledger, episodes, eventlog, ingress, replay, spec, kernel).
 
-## Group 2 result
+### Group 2 result
 
 Scope: engine, situations, eventlog, ingress, cognition, episodeledger, episodes, spec, replay. The codec is `internal/kernel` (`kernel.FormatTime` / `kernel.ParseTime`, same fixed-width layout as the old `sources.FormatTime`), per the owner's design change. No `sources.FormatTime/ParseTime/Expired/LiveDeadline/FormatWireTime` or `storage.FormatTime/ParseTime` user is left in these modules (grep is empty). No allowedImports or packageLayers edit was made. The stored column layout of authority, interlock and control is unchanged, but digests, ids and preimages that embed an instant are not: see "What moved" below.
 
@@ -189,7 +202,7 @@ Cross-module edges I needed (not in my modules, no gate change): the cost ledger
 
 Tests: new `TestCorruptStoredTimesRefuseTheReadWithTheirColumn` and `TestCorruptCheckpointWatermarkRefusesTheRead` (engine store), `TestReadRecordsRefusesCorruptStoredTimesInColumnOrder` (eventlog store) replace the deleted domain parse tests; `TestCoalesceReturnsExactlyTheItemsItFlipped` now uses a distinct coalesce instant.
 
-Still failing at the repo root and naming my modules, but not about time: `internal/engine/internal/store`, `internal/episodeledger/internal/store`, `internal/eventlog/internal/domain` and `internal/replay/internal/store` import `internal/canonicaljson` for `Sum` / `EncodeDigest` (root cause 3, the hashing rework: engine `operator_state.go` and `situation_reads.go`, episodeledger `episode_reads.go`, eventlog domain `quarantine.go` and `event.go`, replay store `store.go` and `recorded_ledger.go`). I left these for the hashing group because they are a separate concern. `TestTimestampTextHasOneOwner` also still fails (it names `internal/kernel` and `contractsv1`, not my modules) because it still points at `sources`.
+Still failing at the repo root and naming my modules, but not about time: `internal/engine/internal/store`, `internal/episodeledger/internal/store`, `internal/eventlog/internal/domain` and `internal/replay/internal/store` import `internal/canonicaljson` for `Sum` / `EncodeDigest` (root cause 3, the hashing rework: engine `operator_state.go` and `situation_reads.go`, episodeledger `episode_reads.go`, eventlog domain `quarantine.go` and `event.go`, replay store `store.go` and `recorded_ledger.go`). I left these for the hashing group because they are a separate concern (resolved: the hashing rework removed those imports, and `TestTimestampTextHasOneOwner` now names `internal/kernel`).
 
 ## What moved (review R3 F1)
 

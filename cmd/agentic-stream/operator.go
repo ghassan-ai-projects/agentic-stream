@@ -102,7 +102,6 @@ func withOperatorDatabase(cmd *cobra.Command, flags operatorFlags, use func(*sto
 	return use(db)
 }
 
-// newListCommand is a database command that takes no arguments.
 func newListCommand(use, short string, run func(*cobra.Command, operatorFlags, *storage.DB) error, extra ...func(*cobra.Command)) *cobra.Command {
 	return newDatabaseCommand(use, short, cobra.NoArgs,
 		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB, _ []string) error {
@@ -111,7 +110,6 @@ func newListCommand(use, short string, run func(*cobra.Command, operatorFlags, *
 		extra...)
 }
 
-// tableText renders one line per row, or empty when there are no rows.
 func tableText[T any](rows []T, empty string, line func(T) string) string {
 	if len(rows) == 0 {
 		return empty

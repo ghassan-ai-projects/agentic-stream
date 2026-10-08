@@ -39,8 +39,6 @@ func (s *Service) Read(ctx context.Context, req domain.ReadRequest, visit func(R
 	}) //nolint:wrapcheck // Store owns the query error context.
 }
 
-// recordFromScanned decodes one scanned row into the public record with its
-// rebuilt envelope contract, in the stored column order: quality, then payload.
 func recordFromScanned(scanned domain.ScannedEvent) (Record, error) {
 	quality, err := qualityFlags(scanned.QualityJSON)
 	if err != nil {
@@ -71,8 +69,6 @@ func qualityFlags(qualityJSON []byte) ([]contractsv1.QualityFlag, error) {
 	return quality, nil
 }
 
-// envelopeFromScanned rebuilds the normalized envelope contract from one
-// scanned row.
 func envelopeFromScanned(d domain.ScannedEvent, quality []contractsv1.QualityFlag, data map[string]any) contractsv1.Envelope {
 	return contractsv1.Envelope{
 		ID: d.EventID, Type: d.EventType, SchemaVersion: d.SchemaVersion, TenantID: d.TenantID,

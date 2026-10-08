@@ -37,9 +37,6 @@ type StoredSituation struct {
 	Confidence                                                   float64
 }
 
-// Restore rebuilds the in-memory Situation: it
-// verifies the persisted state's codec, digest and identity, and restores fact
-// times.
 func (r StoredSituation) Restore(tenantID, deploymentID string) (situations.Situation, error) {
 	state, err := r.decodeState()
 	if err != nil {

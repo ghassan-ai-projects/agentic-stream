@@ -12,7 +12,11 @@ import (
 )
 
 func (p *PipelineStore) PollSchedulerQueue(ctx context.Context, now time.Time) (episodeledger.QueuePoll, error) {
-	return episodeledger.PollSchedulerQueue(ctx, p.DB.DB, p.TenantID, now) //nolint:wrapcheck // The ledger names the failed read; the batch error text is unchanged.
+	poll, err := episodeledger.PollSchedulerQueue(ctx, p.DB.DB, p.TenantID, now)
+	if err != nil {
+		return poll, fmt.Errorf("poll scheduler queue of tenant %s: %w", p.TenantID, err)
+	}
+	return poll, nil
 }
 
 // AdmissionTx is one owner-fenced admission transaction. It joins the episode
@@ -65,5 +69,8 @@ func (t *AdmissionTx) Expire(ctx context.Context, expired episodeledger.ExpiredI
 	if err := cognition.RecordSchedulerExpiryReason(ctx, t.tx, expired.SchedulerItemID, expired.Reason); err != nil {
 		return fmt.Errorf("record scheduler item expiry: %w", err)
 	}
-	return episodeledger.ExpireSchedulerItem(ctx, t.tx, expired.SchedulerItemID, now) //nolint:wrapcheck // The owning ledger's error is wrapped by the caller.
+	if err := episodeledger.ExpireSchedulerItem(ctx, t.tx, expired.SchedulerItemID, now); err != nil {
+		return fmt.Errorf("expire scheduler item %s: %w", expired.SchedulerItemID, err)
+	}
+	return nil
 }

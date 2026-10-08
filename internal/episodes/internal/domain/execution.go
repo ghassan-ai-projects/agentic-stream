@@ -27,8 +27,6 @@ type Outcome struct {
 	CostMicrounits uint64   `json:"cost_microunits,omitempty"`
 }
 
-// ProducedOutcome seals decision as the produced outcome of the request's
-// attempt.
 func (r *Request) ProducedOutcome(decision map[string]any, costMicrounits uint64) (*Outcome, error) {
 	decisionJSON, sum, err := canonicaljson.Seal(canonicaljson.DomainDecision, decision)
 	if err != nil {

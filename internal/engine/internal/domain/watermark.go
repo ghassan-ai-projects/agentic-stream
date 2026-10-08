@@ -7,8 +7,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-// Checkpoint is the engine's progress in one partition: the last applied log
-// position and the watermark it reached (zero before the first record).
 type Checkpoint struct {
 	LastPosition int64
 	Watermark    time.Time

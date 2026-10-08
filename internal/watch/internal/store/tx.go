@@ -39,9 +39,11 @@ func (s Store) WithTx(ctx context.Context, use func(*Tx) error) error {
 	})
 }
 
-// RetryBusy runs fn again while SQLite reports writer contention.
 func (s Store) RetryBusy(ctx context.Context, fn func() error) error {
-	return storage.RetrySQLiteBusy(ctx, fn) //nolint:wrapcheck // The retry helper owns the contention error text.
+	if err := storage.RetrySQLiteBusy(ctx, fn); err != nil {
+		return fmt.Errorf("retry watch work on sqlite busy: %w", err)
+	}
+	return nil
 }
 
 // AssertOwner requires the configured runtime owner and epoch in this transaction.

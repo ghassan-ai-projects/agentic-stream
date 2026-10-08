@@ -9,9 +9,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/store"
 )
 
-// TransitionAttempt applies a valid attempt transition and records terminal
-// data. The identity is checked before the state mutation; owner confirms the
-// runtime ownership of an identity with an owner epoch.
 func TransitionAttempt(ctx context.Context, tx *store.Tx, identity domain.Identity, to domain.AttemptStatus, now time.Time, terminal []byte, owner store.OwnerCheck) error {
 	if err := validateTransitionIdentity(ctx, tx, identity, to, owner); err != nil {
 		return err

@@ -8,10 +8,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/store"
 )
 
-// ValidateWorkerIdentity validates a worker identity against the current
-// episode fence, the owner lease and the attempt state. Snapshot equality is
-// intentionally not part of this check. owner is the runtime owner check an
-// identity with an owner epoch is fenced by.
 func ValidateWorkerIdentity(ctx context.Context, tx *store.Tx, identity domain.Identity, owner store.OwnerCheck) error {
 	if err := checkEpisodeFence(ctx, tx, identity); err != nil {
 		return err

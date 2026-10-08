@@ -49,7 +49,6 @@ type QueryResult struct {
 	RowCount uint64
 }
 
-// SHA256 is the content hash stored and echoed with the result bytes.
 func (r QueryResult) SHA256() []byte {
 	sum := sha256.Sum256(r.JSON)
 	return sum[:]

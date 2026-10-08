@@ -6,13 +6,10 @@ import (
 	"fmt"
 )
 
-// Querier is anything that can run a query: *sql.DB, *sql.Tx and *DB.
 type Querier interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
-// QueryOptional scans the first column of the first row. A query without rows
-// reports found as false and no error.
 func QueryOptional[T any](ctx context.Context, q Querier, query string, args ...any) (value T, found bool, err error) {
 	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {

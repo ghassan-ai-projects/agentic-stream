@@ -97,7 +97,7 @@ func parseObservedAt(value sql.NullString) (*time.Time, error) {
 	}
 	parsed, err := kernel.ParseTime(value.String)
 	if err != nil {
-		return nil, err //nolint:wrapcheck // The caller names the column.
+		return nil, fmt.Errorf("parse observed time %q: %w", value.String, err)
 	}
 	return &parsed, nil
 }

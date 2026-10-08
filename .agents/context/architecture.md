@@ -16,7 +16,7 @@ The authoritative architecture is [docs/design/TECHNICAL_DESIGN.md](../../docs/d
 ## Target Structure (per design §23)
 
 - `cmd/agentic-stream/`: entrypoint, flags, wiring, shutdown
-- `internal/contractsv1` · `internal/spec` · `internal/ingress` · `internal/eventlog` · `internal/engine` · `internal/operators` · `internal/situations` · `internal/cognition` · `internal/episodes` · `internal/evidence` · `internal/decisions` · `internal/policy` · `internal/actions` · `internal/replay` · `internal/api` · `internal/telemetry` · `internal/storage` · `internal/notify` · `internal/eventschema` · `internal/runtime`
+- `internal/contractsv1` · `internal/spec` · `internal/ingress` · `internal/eventlog` · `internal/engine` · `internal/operators` · `internal/situations` · `internal/cognition` · `internal/episodes` · `internal/evidence` · `internal/decisions` · `internal/policy` · `internal/actions` · `internal/replay` · `internal/api` · `internal/telemetry` · `internal/storage` (and `internal/storage/storagetest`, migrated temporary databases for tests only) · `internal/kernel` (pure shared vocabulary) · `internal/notify` · `internal/eventschema` · `internal/runtime`
 - `proto/agenticstream/runtime/v1/`: worker protocol (Protobuf/gRPC over UDS)
 - `internal/spec/internal/domain/schema.json` · `internal/contractsv1/internal/domain/schemas/v1/` · `migrations/` · `examples/predictive-maintenance/`
 
@@ -65,7 +65,12 @@ and `executor/remote` (the streamed worker adapter behind the episode
 `Executor` port; `episodes` never imports worker transport, rule A8).
 Their contracts are in [architecture-bar.md](architecture-bar.md); the full
 maintainer map is [business modules](../../documentation/architecture/modules.md).
-`storage` is SQLite infrastructure. `runtime` and `cmd` alone wire concrete
+`storage` is SQLite infrastructure. `internal/kernel` is the shared pure
+vocabulary (durable time text, digest text): standard library only, importable
+by any production package without a declared edge, kept pure by
+`TestKernelStaysPure`; clocks and ids stay in `sources`, SQL in `storage`.
+`internal/storage/storagetest` is test support that opens migrated temporary
+databases; production code never imports it. `runtime` and `cmd` alone wire concrete
 adapters; dispatch and device implementations meet through `actionport`.
 
 Every production import is allowlisted and points to a strictly lower reviewed

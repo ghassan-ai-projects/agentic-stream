@@ -94,6 +94,8 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/api` - JSON/HTTP plus Server-Sent Events
 - `internal/telemetry` - OpenTelemetry traces, metrics, logs
 - `internal/storage` - SQLite WAL via `modernc.org/sqlite`
+- `internal/storage/storagetest` - test support only: opens a migrated temporary database from a template built once per migration set; import it from tests, never from production code
+- `internal/kernel` - the shared pure vocabulary: durable time text (`FormatTime`, `ParseTime`, `ParseStoredTime`) and digest text (`EncodeDigest`, `DecodeDigest`). Standard library only: no database, file, network, random source or clock read. Any production package may import it without declaring an `allowedImports` edge; `TestKernelStaysPure` enforces the purity. A symbol is admitted only when two or more modules need it and it is a stable representation rule, not business behaviour (see [kernel vocabulary](internal/kernel/UBIQUITOUS_LANGUAGE.md))
 - `internal/sources` - injected time and identity sources: physical/virtual clock, random/deterministic id generators and the id prefixes
 - `proto/agenticstream/runtime/v1/` - worker protocol (Protobuf/gRPC over UDS)
 - `internal/spec/internal/domain/schema.json` and `internal/contractsv1/internal/domain/schemas/v1/` - embedded JSON Schemas
@@ -237,7 +239,7 @@ review checklist (Q8) has stopped finding duplicates.
 
 1. **Token clones.** `make lint` runs `dupl` at the threshold in
    `.golangci.yml`. For a stricter look at your files, run it at a lower
-   threshold: copy `.golangci.yml`, set `linters.settings.dupl.threshold` to 50,
+   threshold: copy `.golangci.yml`, set `linters.settings.dupl.threshold` to 60,
    and run `golangci-lint run --config <copy> ./...`; fix what falls in files
    you touched.
 2. **Same job, different code.** Before adding a helper, search the repo for the

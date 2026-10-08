@@ -13,7 +13,6 @@ import (
 
 var ErrUnreadableApprovalExpiry = errors.New("approval expiry is unreadable")
 
-// PendingApproval distinguishes a missing pending approval from a lookup failure.
 func (tx *Tx) PendingApproval(ctx context.Context, intentID string) (string, error) {
 	approval, _, err := approvalledger.PendingOfIntent(ctx, tx.tx, intentID)
 	if err != nil {

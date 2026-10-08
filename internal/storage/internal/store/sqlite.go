@@ -24,9 +24,6 @@ func IsSQLiteBusy(err error) bool {
 	return code == sqlite3.SQLITE_BUSY || code == sqlite3.SQLITE_LOCKED
 }
 
-// IsUniqueViolation reports whether err is a SQLite uniqueness failure on
-// column, written as table.column, whether the constraint is a primary key or a
-// unique index.
 func IsUniqueViolation(err error, column string) bool {
 	var sqliteErr *sqlite.Error
 	if !errors.As(err, &sqliteErr) {

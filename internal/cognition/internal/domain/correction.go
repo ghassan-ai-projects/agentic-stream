@@ -100,8 +100,6 @@ func (r Reconsideration) evidence(correction map[string]any, prior priorDocument
 	}
 }
 
-// ReconsiderationEvaluation is the admitted deep-lane evaluation that
-// explains why the Reconsideration exists.
 func ReconsiderationEvaluation(r Reconsideration, deltaJSON []byte, policyDigest string, now time.Time) Evaluation {
 	return reconsiderationOutcome(r, "admitted", "accepted action invalidated by corrected Situation version", deltaJSON, policyDigest, now)
 }

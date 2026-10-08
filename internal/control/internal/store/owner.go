@@ -51,7 +51,6 @@ func (t *Tx) ReleaseLease(ctx context.Context, epoch, instance string, now time.
 	return affectedOwners(result, "released")
 }
 
-// HoldsLease reports whether the epoch and instance own an unexpired lease at now.
 func (t *Tx) HoldsLease(ctx context.Context, epoch, instance string, now time.Time) (bool, error) {
 	_, held, err := storage.QueryOptional[string](ctx, t.q, holdsOwnerLeaseSQL, epoch, instance, kernel.FormatTime(now))
 	if err != nil {

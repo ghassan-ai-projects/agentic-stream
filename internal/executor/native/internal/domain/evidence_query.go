@@ -32,8 +32,6 @@ type evidenceArguments struct {
 	MaxBytes uint64 `json:"max_bytes"`
 }
 
-// Query applies the caller's arguments to the scope. The window defaults to the
-// scope's Window before now.
 func (s EvidenceScope) Query(raw json.RawMessage, now time.Time) (EvidenceQuery, error) {
 	var args evidenceArguments
 	if err := json.Unmarshal(raw, &args); err != nil {

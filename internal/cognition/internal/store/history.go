@@ -102,7 +102,11 @@ func parseOptionalTime(value string) (time.Time, error) {
 	if value == "" {
 		return time.Time{}, nil
 	}
-	return kernel.ParseTime(value) //nolint:wrapcheck // The caller names the field.
+	parsed, err := kernel.ParseTime(value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse stored time %q: %w", value, err)
+	}
+	return parsed, nil
 }
 
 // snapshotFacts returns the snapshot's facts object, or nil when it has none.

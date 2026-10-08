@@ -3,6 +3,7 @@ package storagetest_test
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -129,5 +130,61 @@ func TestOpenTempWithoutForeignKeysAllowsOrphanRows(t *testing.T) {
 	found, _, err := storage.QueryOptional[int](t.Context(), db, "PRAGMA foreign_keys")
 	if err != nil || found != 0 {
 		t.Fatalf("PRAGMA foreign_keys = %d, %v; want 0", found, err)
+	}
+}
+
+func TestTemplateIsRebuiltWhenTheCachedFileIsUnsound(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		content []byte
+	}{
+		{"empty file", []byte{}},
+		{"not a database", []byte("this is not a sqlite database, but it is long enough to be read as one")},
+		{"truncated header", []byte("SQLite format 3\x00")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			directory := t.TempDir()
+			path, err := storagetest.TemplatePath(directory)
+			if err != nil {
+				t.Fatalf("template path: %v", err)
+			}
+			if err := os.WriteFile(path, test.content, 0o600); err != nil {
+				t.Fatalf("plant cached file: %v", err)
+			}
+			rebuilt, err := storagetest.LoadTemplate(directory)
+			if err != nil || len(rebuilt) == 0 || bytes.Equal(rebuilt, test.content) {
+				t.Fatalf("unsound cache was not rebuilt: %d bytes, err=%v", len(rebuilt), err)
+			}
+			if onDisk, err := os.ReadFile(path); err != nil || !bytes.Equal(onDisk, rebuilt) {
+				t.Fatalf("rebuilt template was not published: err=%v", err)
+			}
+		})
+	}
+}
+
+func TestTemplateBuildDeletesOlderTemplatesOnly(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	older := filepath.Join(directory, "template-0123456789abcdef.db")
+	unrelated := filepath.Join(directory, "notes.txt")
+	for _, planted := range []string{older, unrelated} {
+		if err := os.WriteFile(planted, []byte("planted"), 0o600); err != nil {
+			t.Fatalf("plant %s: %v", planted, err)
+		}
+	}
+	if _, err := storagetest.LoadTemplate(directory); err != nil {
+		t.Fatalf("build template: %v", err)
+	}
+	current, err := storagetest.TemplatePath(directory)
+	if err != nil {
+		t.Fatalf("template path: %v", err)
+	}
+	for planted, wantKept := range map[string]bool{older: false, unrelated: true, current: true} {
+		if _, err := os.Lstat(planted); (err == nil) != wantKept {
+			t.Errorf("%s kept = %t, want %t", filepath.Base(planted), err == nil, wantKept)
+		}
 	}
 }

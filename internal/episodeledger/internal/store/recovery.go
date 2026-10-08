@@ -105,5 +105,8 @@ type Settler interface {
 // SettleEpisodeCost releases the episode's cost reservation through the
 // settler on this transaction.
 func (t *Tx) SettleEpisodeCost(ctx context.Context, settler Settler, episodeID string, now time.Time) error {
-	return settler.Settle(ctx, t.tx, episodeID, 0, kernel.FormatTime(now)) //nolint:wrapcheck // The caller names the episode and operation.
+	if err := settler.Settle(ctx, t.tx, episodeID, 0, kernel.FormatTime(now)); err != nil {
+		return fmt.Errorf("settle cost of episode %s: %w", episodeID, err)
+	}
+	return nil
 }

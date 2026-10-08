@@ -55,14 +55,11 @@ func Digest(domain Domain, v any) (string, error) {
 	return EncodeDigest(sum), nil
 }
 
-// DigestSum computes the raw 32-byte domain-separated SHA-256 digest of v.
 func DigestSum(domain Domain, v any) ([]byte, error) {
 	_, sum, err := Seal(domain, v)
 	return sum, err
 }
 
-// Seal returns the canonical JSON of v and its raw domain-separated digest,
-// canonicalizing v once.
 func Seal(domain Domain, v any) ([]byte, []byte, error) {
 	if domain == "" {
 		return nil, nil, fmt.Errorf("canonicaljson: empty digest domain")
@@ -77,8 +74,6 @@ func Seal(domain Domain, v any) ([]byte, []byte, error) {
 	return canonical, h.Sum(nil), nil
 }
 
-// VerifySum recomputes the domain-separated digest of v and compares it with
-// sum in constant time. It returns false for malformed or non-canonical values.
 func VerifySum(domain Domain, v any, sum []byte) bool {
 	expected, err := DigestSum(domain, v)
 	if err != nil || len(expected) != len(sum) {
@@ -87,9 +82,6 @@ func VerifySum(domain Domain, v any, sum []byte) bool {
 	return subtle.ConstantTimeCompare(expected, sum) == 1
 }
 
-// DecodeDigest converts a canonical sha256 digest into its 32-byte storage
-// representation. Unprefixed digests and uppercase hex are invalid contract
-// values.
 func DecodeDigest(digest string) ([]byte, error) {
 	decoded, err := kernel.DecodeDigest(digest)
 	if err != nil {

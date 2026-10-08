@@ -99,8 +99,6 @@ func RejectionDetails(details []byte) []byte {
 	return details
 }
 
-// RejectionID derives the idempotent identity of a rejection from the worker
-// identity, the reason, the details and the instant.
 func RejectionID(identity Identity, reason RejectionReason, details []byte, at time.Time) string {
 	material := fmt.Sprintf("%s|%s|%d|%s|%s|%s", identity.EpisodeID, identity.AttemptID, identity.Fence, reason, string(details), kernel.FormatTime(at))
 	hash := sha256.Sum256([]byte(material))

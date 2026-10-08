@@ -12,9 +12,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// LoadOutboxLease reads the lease columns of a command outbox row. It reports
-// false when the row is gone. An absent or unreadable expiry is the zero time,
-// which no instant precedes: the lease is never live.
 func (tx *Tx) LoadOutboxLease(ctx context.Context, outboxID int64) (domain.OutboxLease, bool, error) {
 	var lease domain.OutboxLease
 	var owner, until sql.NullString

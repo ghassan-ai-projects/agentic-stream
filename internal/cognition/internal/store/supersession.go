@@ -45,10 +45,10 @@ func loadReplacement(ctx context.Context, tx *sql.Tx, situationID string) (Repla
 func (t *Tx) CoalesceTriggerWork(ctx context.Context, situationID, triggerName string, now time.Time) ([]SupersededItem, error) {
 	coalesced, err := episodeledger.CoalesceSchedulerItems(ctx, t.tx, situationID, triggerName, now)
 	if err != nil {
-		return nil, fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("coalesce scheduler items of trigger %s: %w", triggerName, err)
 	}
 	if err := episodeledger.SupersedeCoalesced(ctx, t.tx, situationID, now); err != nil {
-		return nil, fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("supersede coalesced episodes of situation %s: %w", situationID, err)
 	}
 	return supersededItems(coalesced), nil
 }

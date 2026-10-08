@@ -233,7 +233,7 @@ func TestLoadEventSchemaFailsClosed(t *testing.T) {
 func TestReadRecordsRefusesCorruptStoredTimesInColumnOrder(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ column, want string }{
-		{"event_time", "parse event_time"}, {"ingested_at", "parse ingested_at"}, {"observed_at", "parse observed_at"},
+		{"event_time", "parse event_time"}, {"ingested_at", "parse ingested_at"}, {"observed_at", "parse observed_at: parse observed time"},
 	} {
 		t.Run(tc.column, func(t *testing.T) {
 			t.Parallel()

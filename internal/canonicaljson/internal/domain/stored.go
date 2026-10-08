@@ -21,14 +21,11 @@ func ContentDigest(data []byte) string {
 	return EncodeDigest(Sum(data))
 }
 
-// Sum returns the raw 32-byte SHA-256 of data, the content hash of stored
-// bytes.
 func Sum(data []byte) []byte {
 	sum := sha256.Sum256(data)
 	return sum[:]
 }
 
-// HasSumLength reports whether b is a complete 32-byte SHA-256 sum.
 func HasSumLength(b []byte) bool {
 	return len(b) == sha256.Size
 }

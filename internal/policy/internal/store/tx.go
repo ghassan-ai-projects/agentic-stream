@@ -10,7 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// OwnerCheck is a write fence run on the policy transaction.
 type OwnerCheck = storage.OwnerCheck
 
 type Tx struct{ tx *sql.Tx }
