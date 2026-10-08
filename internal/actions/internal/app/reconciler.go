@@ -3,21 +3,17 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
-// AwaitingCommand is a command whose outcome is uncertain.
 type AwaitingCommand = domain.AwaitingCommand
 
-// Reconciler closes commands whose outcome is uncertain from independent
-// evidence an operator supplies. It never dispatches, so it needs no effector;
-// every resolution is owner-fenced and recorded like an automatic one.
 type Reconciler struct{ service *Service }
 
-// NewReconciler requires a fully configured store.
 func NewReconciler(st store.Store, clk sources.Clock, ids sources.Generator) (*Reconciler, error) {
 	if !st.Configured() {
 		return nil, errors.New("reconciliation requires a database, runtime owner check and interlock")
@@ -25,12 +21,17 @@ func NewReconciler(st store.Store, clk sources.Clock, ids sources.Generator) (*R
 	return &Reconciler{service: &Service{store: st, clk: orPhysical(clk), ids: orRandom(ids)}}, nil
 }
 
-// Resolve closes one command as finalStatus with the evidence.
 func (r *Reconciler) Resolve(ctx context.Context, commandID, finalStatus string, evidence map[string]any) error {
-	return r.service.reconcileUnknown(ctx, commandID, finalStatus, evidence)
+	if err := r.service.reconcileUnknown(ctx, commandID, finalStatus, evidence); err != nil {
+		return fmt.Errorf("resolve command %s as %s: %w", commandID, finalStatus, err)
+	}
+	return nil
 }
 
-// Awaiting lists the tenant's commands awaiting reconciliation.
 func (r *Reconciler) Awaiting(ctx context.Context, tenantID string) ([]domain.AwaitingCommand, error) {
-	return r.service.store.AwaitingReconciliation(ctx, tenantID) //nolint:wrapcheck // The store names the failed read.
+	awaiting, err := r.service.store.AwaitingReconciliation(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("commands awaiting reconciliation for tenant %s: %w", tenantID, err)
+	}
+	return awaiting, nil
 }

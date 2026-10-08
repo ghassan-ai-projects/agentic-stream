@@ -13,9 +13,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
-// RunJSONL ingests normalized JSONL, evaluates the stream and cognition,
-// executes all admitted episodes, applies policy, and dispatches approved
-// commands. Each stage is idempotent against the durable ledgers.
 func (p *Pipeline) RunJSONL(ctx context.Context, path string) (PipelineReport, error) {
 	unlock, err := p.lockBatch()
 	if err != nil {
@@ -44,10 +41,6 @@ func (p *Pipeline) prepareIngest(ctx context.Context) (eventlog.LogPosition, err
 	return p.currentEventPosition(ctx)
 }
 
-// RunLiveSocket serves normalized JSONL from a live Unix socket and advances
-// the same event, situation, cognition, policy, and action pipeline used by a
-// continuous file source. The live source is not replay: an emulator or
-// physical effect profile may be selected by the caller's startup guards.
 func (p *Pipeline) RunLiveSocket(ctx context.Context, path string) error {
 	if p == nil {
 		return fmt.Errorf("pipeline is nil")
@@ -82,8 +75,6 @@ func (p *Pipeline) ingestLiveEvent(ctx context.Context, env contractsv1.Envelope
 	return err
 }
 
-// appendLiveEvent appends one envelope and reports whether it entered the log
-// (a duplicate or quarantined envelope does not).
 func (p *Pipeline) appendLiveEvent(ctx context.Context, env contractsv1.Envelope) (bool, error) {
 	positions, err := p.log.Append(ctx, p.tenantID, []contractsv1.Envelope{env})
 	if err != nil {
@@ -92,8 +83,6 @@ func (p *Pipeline) appendLiveEvent(ctx context.Context, env contractsv1.Envelope
 	return len(positions) == 1 && positions[0] >= 0, nil
 }
 
-// RunSimulatorJSONL ingests the strict streams-simulator adapter format and
-// runs the same pipeline stages as RunJSONL.
 func (p *Pipeline) RunSimulatorJSONL(ctx context.Context, path string) (PipelineReport, error) {
 	unlock, err := p.lockBatch()
 	if err != nil {

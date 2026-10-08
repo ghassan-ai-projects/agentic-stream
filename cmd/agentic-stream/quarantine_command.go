@@ -29,7 +29,6 @@ func newQuarantineListCommand() *cobra.Command {
 	return cmd
 }
 
-// quarantineChange releases or redrives one event on an open database.
 type quarantineChange func(context.Context, *storage.DB, string, string) (string, error)
 
 func newQuarantineChangeCommand(name, short string, change quarantineChange) *cobra.Command {
@@ -66,8 +65,6 @@ func quarantineTable(records []eventlog.QuarantineRecord) string {
 	return strings.Join(lines, "\n")
 }
 
-// runQuarantineChange applies change under the runtime owner lease, so it
-// cannot race the ingestion of a running runtime.
 func runQuarantineChange(cmd *cobra.Command, flags operatorFlags, change quarantineChange, eventID string) error {
 	db, err := flags.openOperatorDatabase(cmd.Context())
 	if err != nil {
@@ -91,8 +88,6 @@ func releaseQuarantine(ctx context.Context, db *storage.DB, tenantID, eventID st
 	return "released", nil
 }
 
-// redriveQuarantine re-validates the released event against the schemas
-// registered now and appends it; an event that still fails stays released.
 func redriveQuarantine(ctx context.Context, db *storage.DB, tenantID, eventID string) (string, error) {
 	position, err := eventlog.NewEventLog(db).RequireSchemaValidation().RedriveQuarantine(ctx, tenantID, eventID, time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {

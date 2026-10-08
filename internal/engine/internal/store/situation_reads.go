@@ -11,10 +11,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// Reader reads Situations from a database without a transaction.
 type Reader struct{ db *storage.DB }
 
-// NewReader binds a Situation reader to an open database.
 func NewReader(db *storage.DB) Reader { return Reader{db: db} }
 
 const listSituationsSQL = `
@@ -24,23 +22,25 @@ const listSituationsSQL = `
 	WHERE tenant_id = ? AND (? = '' OR entity_id = ?)
 	ORDER BY latest_event_time DESC, situation_id`
 
-// ListSituations reads the tenant's Situations, newest evidence first,
-// optionally for one entity.
 func (r Reader) ListSituations(ctx context.Context, tenantID, entityID string) ([]domain.SituationSummary, error) {
 	rows, err := r.db.QueryContext(ctx, listSituationsSQL, tenantID, entityID, entityID)
 	if err != nil {
 		return nil, fmt.Errorf("list situations: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var summaries []domain.SituationSummary
-	for rows.Next() {
-		var s domain.SituationSummary
-		if err := rows.Scan(&s.SituationID, &s.DeploymentID, &s.SituationType, &s.EntityType, &s.EntityID, &s.OccurrenceID, &s.CurrentVersion, &s.LastMaterialVersion, &s.Phase, &s.Status, &s.FirstEventTime, &s.LatestEventTime); err != nil {
-			return nil, fmt.Errorf("scan situation: %w", err)
-		}
-		summaries = append(summaries, s)
+	summaries, err := storage.CollectRows(rows, "situations", scanSituationSummary)
+	if err != nil {
+		return nil, fmt.Errorf("list situations: %w", err)
 	}
-	return summaries, rows.Err() //nolint:wrapcheck // The iteration error is the driver's.
+	return summaries, nil
+}
+
+func scanSituationSummary(rows *sql.Rows) (domain.SituationSummary, error) {
+	var s domain.SituationSummary
+	if err := rows.Scan(&s.SituationID, &s.DeploymentID, &s.SituationType, &s.EntityType, &s.EntityID, &s.OccurrenceID, &s.CurrentVersion, &s.LastMaterialVersion, &s.Phase, &s.Status, &s.FirstEventTime, &s.LatestEventTime); err != nil {
+		return domain.SituationSummary{}, fmt.Errorf("scan situation: %w", err)
+	}
+	return s, nil
 }
 
 const situationVersionSQL = `
@@ -52,8 +52,6 @@ const situationVersionSQL = `
 	JOIN lineage_sets l ON l.lineage_id = v.lineage_id
 	WHERE s.tenant_id = ? AND v.situation_id = ? AND v.version = CASE WHEN ? > 0 THEN ? ELSE s.current_version END`
 
-// SituationVersion reads one version of a tenant's Situation with its
-// evidence set; version 0 means the current version.
 func (r Reader) SituationVersion(ctx context.Context, tenantID, situationID string, version int) (domain.SituationVersionRecord, error) {
 	var record domain.SituationVersionRecord
 	var previous sql.NullInt64

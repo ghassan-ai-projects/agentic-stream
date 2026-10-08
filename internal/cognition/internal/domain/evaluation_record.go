@@ -2,8 +2,6 @@ package domain
 
 import "encoding/json"
 
-// TriggerEvaluationRecord is one durable trigger evaluation: what the trigger
-// saw (the delta), its score against the threshold, and why it decided.
 type TriggerEvaluationRecord struct {
 	TriggerID        string          `json:"trigger_id"`
 	TriggerName      string          `json:"trigger_name"`

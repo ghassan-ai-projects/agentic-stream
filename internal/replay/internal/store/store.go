@@ -27,23 +27,17 @@ const episodeWorklistQuery = `
 		WHERE si.tenant_id = ?
 		ORDER BY si.situation_id, si.situation_version, si.trigger_id`
 
-// Store is the only replay layer that speaks SQL, always against the
-// session's isolated database.
 type Store struct {
 	DB *storage.DB
 }
 
-// New wraps the isolated session database.
 func New(db *storage.DB) Store { return Store{DB: db} }
 
-// SaveSpecDeployment registers the compiled spec in the isolated database.
 func (s Store) SaveSpecDeployment(ctx context.Context, tenantID string, compiled *spec.CompiledSpec) error {
 	err := spec.SaveDeployment(ctx, s.DB, tenantID, compiled)
 	return err //nolint:wrapcheck // App wraps with the session operation name.
 }
 
-// EpisodeWorklist lists the executable episodes this replay produced, in
-// canonical situation/version/trigger order.
 func (s Store) EpisodeWorklist(ctx context.Context, tenantID string) ([]domain.ReplayEpisode, error) {
 	rows, err := s.DB.QueryContext(ctx, episodeWorklistQuery, tenantID)
 	if err != nil {
@@ -70,8 +64,6 @@ func collectReplayEpisodes(rows *sql.Rows) ([]domain.ReplayEpisode, error) {
 	return episodes, nil
 }
 
-// SituationVersionDigests lists the ordered version digests of one
-// deployment for the canonical versions hash.
 func (s Store) SituationVersionDigests(ctx context.Context, deploymentID string) ([]domain.VersionDigest, error) {
 	rows, err := s.DB.QueryContext(ctx, situationVersionDigestsQuery, deploymentID)
 	if err != nil {
@@ -96,8 +88,6 @@ func collectVersionDigests(rows *sql.Rows) ([]domain.VersionDigest, error) {
 	return versions, nil
 }
 
-// RecordedSnapshotDigest loads the persisted snapshot digest of the situation
-// version a recorded decision cites.
 func (s Store) RecordedSnapshotDigest(ctx context.Context, situationID string, version int) ([]byte, error) {
 	var snapshotDigest []byte
 	if err := s.DB.QueryRowContext(ctx, `SELECT snapshot_sha256 FROM situation_versions WHERE situation_id = ? AND version = ?`, situationID, version).Scan(&snapshotDigest); err != nil {
@@ -106,8 +96,6 @@ func (s Store) RecordedSnapshotDigest(ctx context.Context, situationID string, v
 	return snapshotDigest, nil
 }
 
-// ShadowSnapshot loads the persisted snapshot document and digest of one
-// situation version for a shadow trial.
 func (s Store) ShadowSnapshot(ctx context.Context, episode domain.ReplayEpisode) ([]byte, []byte, error) {
 	var snapshot, persistedDigest []byte
 	if err := s.DB.QueryRowContext(ctx, `
@@ -118,8 +106,6 @@ func (s Store) ShadowSnapshot(ctx context.Context, episode domain.ReplayEpisode)
 	return snapshot, persistedDigest, nil
 }
 
-// ShadowRequest loads the episode request replay assembled for one episode,
-// which a candidate worker receives unchanged.
 func (s Store) ShadowRequest(ctx context.Context, episode domain.ReplayEpisode) (domain.EpisodeRequest, error) {
 	var request domain.EpisodeRequest
 	var snapshotDigest []byte

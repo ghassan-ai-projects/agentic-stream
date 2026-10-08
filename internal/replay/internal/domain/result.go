@@ -1,7 +1,5 @@
 package domain
 
-// Request identifies one replay session: the isolated database path, the
-// spec file, the trace file and the tenant.
 type Request struct {
 	DBPath    string
 	SpecPath  string
@@ -9,7 +7,6 @@ type Request struct {
 	TenantID  string
 }
 
-// Result is the deterministic output of a replay run.
 type Result struct {
 	EventsProcessed   int
 	VersionCount      int
@@ -22,13 +19,11 @@ type Result struct {
 	Findings          []Finding
 }
 
-// Finding is a deterministic, non-effectful replay observation.
 type Finding struct {
 	Code    string
 	Message string
 }
 
-// AllHashesEqual reports whether every result has the same VersionsHash.
 func AllHashesEqual(results []Result) bool {
 	if len(results) == 0 {
 		return true

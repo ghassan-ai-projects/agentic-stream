@@ -25,8 +25,8 @@ func TestCollectRowsScansInOrderAndPropagatesScanErrors(t *testing.T) {
 	if err != nil || len(values) != 2 || values[0] != 1 || values[1] != 2 {
 		t.Fatalf("CollectRows = %v, %v; want [1 2]", values, err)
 	}
-	if values, err := collect(t, db, "SELECT 1 WHERE 0", scanInt); err != nil || values != nil {
-		t.Fatalf("CollectRows on no rows = %v, %v; want nil, nil", values, err)
+	if values, err := collect(t, db, "SELECT 1 WHERE 0", scanInt); err != nil || values == nil || len(values) != 0 {
+		t.Fatalf("CollectRows on no rows = %v, %v; want an empty slice, nil", values, err)
 	}
 	failing := func(*sql.Rows) (int, error) { return 0, errors.New("scan failed") }
 	if _, err := collect(t, db, "SELECT 1", failing); err == nil || !strings.Contains(err.Error(), "scan failed") {

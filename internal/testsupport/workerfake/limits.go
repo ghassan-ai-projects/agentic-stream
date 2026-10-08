@@ -7,8 +7,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 )
 
-// Request and event size defaults of the fake worker; the stream limits are
-// the protocol defaults the runtime also enforces.
 const (
 	defaultMaxRequestBytes = 4 << 20
 	defaultMaxEventBytes   = 1 << 20

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
@@ -22,7 +23,6 @@ const loadReconciledProvenanceSQL = `
 		JOIN decisions d ON d.decision_id = i.decision_id
 		WHERE o.outcome_id = ? AND o.command_id = ? AND i.intent_id = ?`
 
-// LoadReconcilableCommand reads a command and its decision trace context.
 func (tx *Tx) LoadReconcilableCommand(ctx context.Context, commandID string) (domain.ReconcilableCommand, error) {
 	command := domain.ReconcilableCommand{ID: commandID}
 	var traceparent, tracestate sql.NullString
@@ -38,8 +38,6 @@ func (tx *Tx) LoadReconcilableCommand(ctx context.Context, commandID string) (do
 	return command, nil
 }
 
-// VerifyDeviceBinding runs the device authority's command-evidence check on
-// this transaction.
 func (tx *Tx) VerifyDeviceBinding(ctx context.Context, command domain.ReconcilableCommand, evidence map[string]any) error {
 	if err := deviceauthority.VerifyCommandEvidence(ctx, tx.tx, deviceauthority.CommandEvidence{
 		CommandID: command.ID, Target: command.Target, Evidence: evidence,
@@ -49,8 +47,6 @@ func (tx *Tx) VerifyDeviceBinding(ctx context.Context, command domain.Reconcilab
 	return nil
 }
 
-// CloseReconciliation moves the reconciled command and its verification row to
-// the states the final status implies.
 func (tx *Tx) CloseReconciliation(ctx context.Context, closure domain.ReconciliationClosure) error {
 	at := formatTime(closure.At)
 	if _, err := tx.tx.ExecContext(ctx, "UPDATE commands SET status = ?, updated_at = ? WHERE command_id = ? AND status IN ('reconciling', 'outcome_unknown', 'manual_review')", closure.FinalStatus, at, closure.Command.ID); err != nil {
@@ -62,8 +58,6 @@ func (tx *Tx) CloseReconciliation(ctx context.Context, closure domain.Reconcilia
 	return nil
 }
 
-// LoadReconciledProvenance reads the stored outcome a reconciliation
-// notification cites.
 func (tx *Tx) LoadReconciledProvenance(ctx context.Context, outcomeID, commandID, intentID string) (domain.ReconciledProvenance, error) {
 	var provenance domain.ReconciledProvenance
 	var traceparent, tracestate sql.NullString
@@ -75,8 +69,6 @@ func (tx *Tx) LoadReconciledProvenance(ctx context.Context, outcomeID, commandID
 	return provenance, nil
 }
 
-// AwaitingReconciliation lists the tenant's commands whose outcome is
-// uncertain, oldest first.
 func (s Store) AwaitingReconciliation(ctx context.Context, tenantID string) ([]domain.AwaitingCommand, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT command_id, intent_id, effector_route, normalized_target, status, updated_at FROM commands
 		WHERE tenant_id = ? AND status IN ('reconciling', 'outcome_unknown', 'manual_review') ORDER BY updated_at, command_id`, tenantID)
@@ -84,13 +76,17 @@ func (s Store) AwaitingReconciliation(ctx context.Context, tenantID string) ([]d
 		return nil, fmt.Errorf("list commands awaiting reconciliation: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var awaiting []domain.AwaitingCommand
-	for rows.Next() {
-		var command domain.AwaitingCommand
-		if err := rows.Scan(&command.CommandID, &command.IntentID, &command.Route, &command.Target, &command.Status, &command.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan command awaiting reconciliation: %w", err)
-		}
-		awaiting = append(awaiting, command)
+	awaiting, err := storage.CollectRows(rows, "commands awaiting reconciliation", scanAwaitingCommand)
+	if err != nil {
+		return nil, fmt.Errorf("list commands awaiting reconciliation: %w", err)
 	}
-	return awaiting, rows.Err() //nolint:wrapcheck // The iteration error is the driver's.
+	return awaiting, nil
+}
+
+func scanAwaitingCommand(rows *sql.Rows) (domain.AwaitingCommand, error) {
+	var command domain.AwaitingCommand
+	if err := rows.Scan(&command.CommandID, &command.IntentID, &command.Route, &command.Target, &command.Status, &command.UpdatedAt); err != nil {
+		return domain.AwaitingCommand{}, fmt.Errorf("scan command awaiting reconciliation: %w", err)
+	}
+	return command, nil
 }

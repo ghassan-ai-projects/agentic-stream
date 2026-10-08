@@ -26,14 +26,11 @@ func newEpisodeCommand() *cobra.Command {
 	return cmd
 }
 
-// episodeInspection follows an episode from its attempts to the intents its
-// Decisions proposed.
 type episodeInspection struct {
 	Episode   episodeledger.EpisodeRecord `json:"episode"`
 	Decisions []decisionInspection        `json:"decisions"`
 }
 
-// decisionInspection is one Decision and the intents it proposed.
 type decisionInspection struct {
 	Decision episodes.DecisionView `json:"decision"`
 	Intents  []policy.IntentView   `json:"intents"`

@@ -11,16 +11,12 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
 )
 
-// Config controls the provider and read-only capabilities used by the native
-// loop. Episode resource ceilings come from each trusted Request. Structured
-// output repair is always limited to one attempt.
 type Config struct {
 	Provider    domain.ModelProvider
 	Tools       []domain.Tool
 	ToolFactory func(*episodes.Request) []domain.Tool
 }
 
-// Executor is a bounded native Go episode executor.
 type Executor struct {
 	provider    domain.ModelProvider
 	tools       map[string]domain.Tool
@@ -28,10 +24,8 @@ type Executor struct {
 	toolFactory func(*episodes.Request) []domain.Tool
 }
 
-// Ensure the native executor remains a valid episode executor.
 var _ episodes.Executor = (*Executor)(nil)
 
-// New creates a native executor and rejects duplicate or empty tool names.
 func New(cfg Config) (*Executor, error) {
 	if cfg.Provider == nil {
 		return nil, errors.New("native provider is required")
@@ -49,8 +43,6 @@ func New(cfg Config) (*Executor, error) {
 	return &Executor{provider: cfg.Provider, tools: tools, maxRepair: 1, toolFactory: cfg.ToolFactory}, nil
 }
 
-// Execute runs the provider/read-tool loop and returns a typed attempt
-// terminal. It never mutates episode, situation, or action state.
 func (e *Executor) Execute(ctx context.Context, req *episodes.Request) (*episodes.Outcome, error) {
 	if e == nil || e.provider == nil {
 		return nil, errors.New("native executor is not configured")

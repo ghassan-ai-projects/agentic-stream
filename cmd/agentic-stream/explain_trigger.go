@@ -11,8 +11,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// triggerExplanation is a trigger evaluation and, when it admitted work, what
-// the scheduler and the episode ledger did with it.
 type triggerExplanation struct {
 	Evaluation cognition.TriggerEvaluationRecord `json:"evaluation"`
 	Scheduling *episodeledger.SchedulingRecord   `json:"scheduling,omitempty"`

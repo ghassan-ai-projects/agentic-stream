@@ -1,6 +1,5 @@
 package domain
 
-// Result is the durable policy result for one Intent evaluation.
 type Result struct {
 	IntentID   string `json:"intent_id"`
 	DecisionID string `json:"decision_id"`
@@ -10,8 +9,6 @@ type Result struct {
 	ApprovalID string `json:"approval_id,omitempty"`
 }
 
-// ApprovalAssertion is the signed, single-use approval binding. The runtime
-// reconstructs the canonical bytes from durable rows before verifying it.
 type ApprovalAssertion struct {
 	Approved         bool
 	ApprovalID       string
@@ -29,7 +26,6 @@ type ApprovalAssertion struct {
 	RelayID          string
 }
 
-// IntentRecord is the read-only durable handoff projection used by governance.
 type IntentRecord struct {
 	IntentID            string
 	DecisionID          string

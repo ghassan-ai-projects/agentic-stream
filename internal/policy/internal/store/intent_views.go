@@ -4,14 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
-// Reader reads intents and their evaluations without a transaction.
 type Reader struct{ db *sql.DB }
 
-// NewReader binds an intent reader to an open database.
 func NewReader(db *sql.DB) Reader { return Reader{db: db} }
 
 const intentViewSQL = `
@@ -19,7 +18,6 @@ const intentViewSQL = `
 		requires_approval, expires_at, intent_json, created_at
 	FROM intents WHERE tenant_id = ?`
 
-// Intent reads one of the tenant's intents with its evaluations.
 func (r Reader) Intent(ctx context.Context, tenantID, intentID string) (domain.IntentView, error) {
 	intents, err := r.intents(ctx, intentViewSQL+` AND intent_id = ?`, tenantID, intentID)
 	if err != nil {
@@ -31,8 +29,6 @@ func (r Reader) Intent(ctx context.Context, tenantID, intentID string) (domain.I
 	return intents[0], nil
 }
 
-// DecisionIntents reads the intents one Decision proposed, with their
-// evaluations.
 func (r Reader) DecisionIntents(ctx context.Context, tenantID, decisionID string) ([]domain.IntentView, error) {
 	return r.intents(ctx, intentViewSQL+` AND decision_id = ? ORDER BY created_at, intent_id`, tenantID, decisionID)
 }
@@ -56,15 +52,19 @@ func (r Reader) scanIntents(ctx context.Context, query string, args ...any) ([]d
 		return nil, fmt.Errorf("read intents: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	views := []domain.IntentView{}
-	for rows.Next() {
-		var v domain.IntentView
-		if err := rows.Scan(&v.IntentID, &v.DecisionID, &v.SituationID, &v.SituationVersion, &v.IntentType, &v.RiskClass, &v.PolicyStatus, &v.RequiresApproval, &v.ExpiresAt, &v.Intent, &v.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan intent: %w", err)
-		}
-		views = append(views, v)
+	views, err := storage.CollectRows(rows, "intents", scanIntentView)
+	if err != nil {
+		return nil, fmt.Errorf("read intents: %w", err)
 	}
-	return views, rows.Err() //nolint:wrapcheck // The iteration error is the driver's.
+	return views, nil
+}
+
+func scanIntentView(rows *sql.Rows) (domain.IntentView, error) {
+	var v domain.IntentView
+	if err := rows.Scan(&v.IntentID, &v.DecisionID, &v.SituationID, &v.SituationVersion, &v.IntentType, &v.RiskClass, &v.PolicyStatus, &v.RequiresApproval, &v.ExpiresAt, &v.Intent, &v.CreatedAt); err != nil {
+		return domain.IntentView{}, fmt.Errorf("scan intent: %w", err)
+	}
+	return v, nil
 }
 
 func (r Reader) evaluations(ctx context.Context, intentID string) ([]domain.PolicyEvaluationView, error) {
@@ -75,13 +75,17 @@ func (r Reader) evaluations(ctx context.Context, intentID string) ([]domain.Poli
 		return nil, fmt.Errorf("read policy evaluations: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	evaluations := []domain.PolicyEvaluationView{}
-	for rows.Next() {
-		var e domain.PolicyEvaluationView
-		if err := rows.Scan(&e.EvaluationID, &e.Result, &e.Reason, &e.PolicyVersion, &e.PolicyDigest, &e.CommandID, &e.ApprovalID, &e.SituationVersion, &e.EvaluatedAt); err != nil {
-			return nil, fmt.Errorf("scan policy evaluation: %w", err)
-		}
-		evaluations = append(evaluations, e)
+	evaluations, err := storage.CollectRows(rows, "policy evaluations", scanPolicyEvaluation)
+	if err != nil {
+		return nil, fmt.Errorf("read policy evaluations: %w", err)
 	}
-	return evaluations, rows.Err() //nolint:wrapcheck // The iteration error is the driver's.
+	return evaluations, nil
+}
+
+func scanPolicyEvaluation(rows *sql.Rows) (domain.PolicyEvaluationView, error) {
+	var e domain.PolicyEvaluationView
+	if err := rows.Scan(&e.EvaluationID, &e.Result, &e.Reason, &e.PolicyVersion, &e.PolicyDigest, &e.CommandID, &e.ApprovalID, &e.SituationVersion, &e.EvaluatedAt); err != nil {
+		return domain.PolicyEvaluationView{}, fmt.Errorf("scan policy evaluation: %w", err)
+	}
+	return e, nil
 }

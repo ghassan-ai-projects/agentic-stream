@@ -60,8 +60,6 @@ func invalidFrame(dir, fileName string) InvalidFrame {
 	return InvalidFrame{Name: name, MessageType: messageType, Doc: doc}
 }
 
-// conformanceDir is the committed frame directory, found from this file so
-// tests in any package read the same data.
 func conformanceDir() string {
 	_, file, _, _ := runtime.Caller(0)
 	return filepath.Join(filepath.Dir(file), "..", "internal", "domain", "conformance", "v1")

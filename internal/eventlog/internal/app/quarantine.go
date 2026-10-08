@@ -10,8 +10,6 @@ import (
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/store"
 )
 
-// Quarantine records an invalid event durably without placing it in the
-// executable event log. Repeated delivery increments a bounded retry count.
 func (s *Service) Quarantine(ctx context.Context, tenantID string, env map[string]any, reason, now string) error {
 	if err := domain.ValidQuarantine(tenantID, reason, now); err != nil {
 		return err
@@ -30,8 +28,6 @@ func (s *Service) Quarantine(ctx context.Context, tenantID string, env map[strin
 	return nil
 }
 
-// quarantineInUnit commits the quarantine delivery in one transaction; a hash
-// conflict commits the rejection and is reported after commit.
 func (s *Service) quarantineInUnit(ctx context.Context, payload domain.QuarantinePayload, tenantID, reason, now string) (bool, error) {
 	conflict := false
 	if err := s.store.Unit(ctx, func(u *store.Unit) error {
@@ -44,8 +40,6 @@ func (s *Service) quarantineInUnit(ctx context.Context, payload domain.Quarantin
 	return conflict, nil
 }
 
-// persistQuarantine upserts the payload identity: a different payload under
-// the same event id rejects the record; a spent retry budget records a gap.
 func (s *Service) persistQuarantine(ctx context.Context, u *store.Unit, payload domain.QuarantinePayload, tenantID, reason, now string) (bool, error) {
 	existing, err := u.QuarantineDigest(ctx, tenantID, payload.EventID)
 	if err != nil {
@@ -64,7 +58,6 @@ func (s *Service) persistQuarantine(ctx context.Context, u *store.Unit, payload 
 	return false, s.recordOverflow(ctx, u, payload, tenantID, now)
 }
 
-// recordOverflow records an event gap once the record's retries are spent.
 func (s *Service) recordOverflow(ctx context.Context, u *store.Unit, payload domain.QuarantinePayload, tenantID, now string) error {
 	status, err := u.QuarantineStatus(ctx, tenantID, payload.EventID)
 	if err != nil {
@@ -76,7 +69,6 @@ func (s *Service) recordOverflow(ctx context.Context, u *store.Unit, payload dom
 	return u.InsertOverflowGap(ctx, payload.OverflowGapID(), tenantID, now)
 }
 
-// QuarantineEnvelope records a normalized envelope that failed validation.
 func (s *Service) QuarantineEnvelope(ctx context.Context, tenantID string, env contractsv1.Envelope, reason, now string) error {
 	encoded, err := json.Marshal(env)
 	if err != nil {
@@ -89,7 +81,6 @@ func (s *Service) QuarantineEnvelope(ctx context.Context, tenantID string, env c
 	return s.Quarantine(ctx, tenantID, document, reason, now)
 }
 
-// QuarantineRaw preserves malformed JSON as data with a stable line identity.
 func (s *Service) QuarantineRaw(ctx context.Context, tenantID, eventID string, raw []byte, reason, now string) error {
 	return s.Quarantine(ctx, tenantID, map[string]any{
 		"id": eventID, "type": "", "schema_version": "", "source": "",
@@ -97,7 +88,6 @@ func (s *Service) QuarantineRaw(ctx context.Context, tenantID, eventID string, r
 	}, reason, now)
 }
 
-// ReleaseQuarantine marks one record ready for an explicit re-drive.
 func (s *Service) ReleaseQuarantine(ctx context.Context, tenantID, eventID, now string) error {
 	if err := domain.ValidRelease(tenantID, eventID, now); err != nil {
 		return err
@@ -110,8 +100,6 @@ func (s *Service) ReleaseQuarantine(ctx context.Context, tenantID, eventID, now 
 	return nil
 }
 
-// RedriveQuarantine validates and appends a released envelope atomically,
-// exactly once.
 func (s *Service) RedriveQuarantine(ctx context.Context, tenantID, eventID, now string) (domain.LogPosition, error) {
 	if err := domain.ValidRelease(tenantID, eventID, now); err != nil {
 		return -1, err
@@ -127,7 +115,6 @@ func (s *Service) RedriveQuarantine(ctx context.Context, tenantID, eventID, now 
 	return position, nil
 }
 
-// redrive revalidates and appends a released event, then marks it redriven.
 func (s *Service) redrive(ctx context.Context, u *store.Unit, tenantID, eventID, now string) (domain.LogPosition, error) {
 	env, err := u.ReleasedEnvelope(ctx, tenantID, eventID)
 	if err != nil {
@@ -143,7 +130,10 @@ func (s *Service) redrive(ctx context.Context, u *store.Unit, tenantID, eventID,
 	return position, u.MarkRedriven(ctx, tenantID, eventID, now)
 }
 
-// Quarantined lists the tenant's quarantine records, newest first.
 func (s *Service) Quarantined(ctx context.Context, tenantID string) ([]domain.QuarantineRecord, error) {
-	return s.store.Quarantined(ctx, tenantID) //nolint:wrapcheck // The store names the failed read.
+	records, err := s.store.Quarantined(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("quarantined records of tenant %s: %w", tenantID, err)
+	}
+	return records, nil
 }

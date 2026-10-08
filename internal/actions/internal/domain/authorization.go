@@ -9,7 +9,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
-// IntentRow is the ledger projection of the intent a command executes.
 type IntentRow struct {
 	ID, TenantID, DecisionID, SituationID string
 	Version                               int
@@ -17,35 +16,28 @@ type IntentRow struct {
 	JSON, SHA                             []byte
 }
 
-// ApprovalRow is the latest approved human approval of an intent. It is absent
-// when the intent has no approved approval.
 type ApprovalRow struct {
 	ID, ExpiresAt string
 	Present       bool
 }
 
-// DecisionRow is the ledger projection of the decision that produced the intent.
 type DecisionRow struct {
 	ValidationStatus, SituationID, EpisodeID string
 	SituationVersion                         int
 	JSON, SHA                                []byte
 }
 
-// EpisodeRow is the ledger projection of the episode that concluded the decision.
 type EpisodeRow struct {
 	TenantID, SituationID, Lifecycle string
 	SituationVersion                 int
 }
 
-// SituationRow is the live Situation the intent is bound to.
 type SituationRow struct {
 	TenantID string
-	// LastMaterialVersion is the newest version cognition judged material;
-	// a newer version that is not material keeps the intent current (ADR-018).
+
 	LastMaterialVersion int
 }
 
-// AuthorizationRecords is every ledger row a command's authority rests on.
 type AuthorizationRecords struct {
 	Command   CommandRow
 	Intent    IntentRow
@@ -55,8 +47,6 @@ type AuthorizationRecords struct {
 	Situation SituationRow
 }
 
-// VerifiedCommand decodes the command document and requires it to be
-// schema-valid, digest-bound, and identical to its ledger columns.
 func (r AuthorizationRecords) VerifiedCommand() (CommandDocument, error) {
 	var raw Document
 	row := r.Command
@@ -73,8 +63,6 @@ func (r AuthorizationRecords) VerifiedCommand() (CommandDocument, error) {
 
 var errCommandIdentity = errors.New("command ledger identity mismatch")
 
-// RequireApprovedIntent requires the policy plane's approval of the command's
-// intent and an accepted decision.
 func (r AuthorizationRecords) RequireApprovedIntent() error {
 	if r.Command.TenantID == r.Intent.TenantID && r.Command.IntentID == r.Intent.ID && r.Command.Route == r.Intent.Type &&
 		r.Intent.PolicyStatus == "approved" && r.Decision.ValidationStatus == "accepted" {
@@ -83,7 +71,6 @@ func (r AuthorizationRecords) RequireApprovedIntent() error {
 	return errors.New("command is no longer approved for its intent")
 }
 
-// CheckApproval requires an unexpired human approval for an R2 intent.
 func (r AuthorizationRecords) CheckApproval(now time.Time) error {
 	if r.Intent.Risk != "R2" {
 		return nil
@@ -98,9 +85,6 @@ func (r AuthorizationRecords) CheckApproval(now time.Time) error {
 	return nil
 }
 
-// RequireCurrent requires the decision and episode to still match the intent's
-// tenant and Situation version, and the live Situation to have no material
-// version newer than the intent's.
 func (r AuthorizationRecords) RequireCurrent() error {
 	intent, episode := r.Intent, r.Episode
 	if episode.TenantID == intent.TenantID && r.Situation.TenantID == intent.TenantID &&
@@ -113,8 +97,6 @@ func (r AuthorizationRecords) RequireCurrent() error {
 	return errors.New("command authorization is stale")
 }
 
-// CheckIntent requires an unexpired, digest-bound intent document that matches
-// its ledger row.
 func (r AuthorizationRecords) CheckIntent(now time.Time) error {
 	row := r.Intent
 	expiresAt, err := time.Parse(time.RFC3339Nano, row.ExpiresAt)
@@ -131,8 +113,6 @@ func (r AuthorizationRecords) CheckIntent(now time.Time) error {
 	return nil
 }
 
-// CheckDecision requires a digest-bound decision document that matches the
-// intent's episode and Situation version.
 func (r AuthorizationRecords) CheckDecision() error {
 	row := r.Decision
 	var document Document
@@ -146,8 +126,6 @@ func (r AuthorizationRecords) CheckDecision() error {
 	return nil
 }
 
-// CheckPolicyDigest requires the digest a command names to match the latest
-// approving policy evaluation of its intent.
 func CheckPolicyDigest(commanded, evaluated string) error {
 	if commanded != evaluated {
 		return errors.New("command policy digest is stale")

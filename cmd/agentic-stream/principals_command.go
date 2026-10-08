@@ -14,7 +14,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// errDryRun rolls back a dry-run apply after it has computed its result.
 var errDryRun = errors.New("dry run")
 
 func newPrincipalsCommand() *cobra.Command {
@@ -81,18 +80,15 @@ func readPrincipalDocument(file string) (policy.PrincipalDocument, error) {
 	return document, nil
 }
 
-// applyPrincipalDocument applies the document under the runtime owner lease;
-// a dry run rolls the transaction back after computing the result.
 func applyPrincipalDocument(ctx context.Context, db *storage.DB, document policy.PrincipalDocument, dryRun bool) (policy.PrincipalSummary, error) {
 	var summary policy.PrincipalSummary
 	err := withRuntimeOwnership(ctx, db, func(ownership operatorOwnership) error {
-		return db.WithTx(ctx, func(tx *sql.Tx) error {
-			var err error
-			summary, err = policy.ApplyPrincipals(ctx, tx, policy.Ownership{Check: ownership.owner.Assert, Epoch: ownership.epoch}, document, time.Now().UTC())
+		return db.WithTx(ctx, func(tx *sql.Tx) (err error) {
+			summary, err = applyPrincipals(ctx, tx, ownership, document)
 			if err == nil && dryRun {
 				return errDryRun
 			}
-			return err //nolint:wrapcheck // The policy module names the failed step.
+			return err
 		})
 	})
 	if errors.Is(err, errDryRun) {
@@ -101,20 +97,40 @@ func applyPrincipalDocument(ctx context.Context, db *storage.DB, document policy
 	return summary, err
 }
 
+func applyPrincipals(ctx context.Context, tx *sql.Tx, ownership operatorOwnership, document policy.PrincipalDocument) (policy.PrincipalSummary, error) {
+	summary, err := policy.ApplyPrincipals(ctx, tx, policy.Ownership{Check: ownership.owner.Assert, Epoch: ownership.epoch}, document, time.Now().UTC())
+	if err != nil {
+		return policy.PrincipalSummary{}, fmt.Errorf("apply principals: %w", err)
+	}
+	return summary, nil
+}
+
 func runPrincipalsShow(cmd *cobra.Command, flags operatorFlags) error {
 	db, err := flags.openOperatorDatabase(cmd.Context())
 	if err != nil {
 		return err
 	}
 	defer func() { _ = db.Close() }()
-	var summary policy.PrincipalSummary
-	if err := db.WithTx(cmd.Context(), func(tx *sql.Tx) (err error) {
-		summary, err = policy.GovernanceSummary(cmd.Context(), tx, flags.tenantID)
-		return err //nolint:wrapcheck // The policy module names the failed step.
-	}); err != nil {
-		return fmt.Errorf("read governance: %w", err)
+	summary, err := governanceSummary(cmd.Context(), db, flags.tenantID)
+	if err != nil {
+		return err
 	}
 	return printPrincipalSummary(cmd, flags, summary, false)
+}
+
+func governanceSummary(ctx context.Context, db *storage.DB, tenantID string) (policy.PrincipalSummary, error) {
+	var summary policy.PrincipalSummary
+	err := db.WithTx(ctx, func(tx *sql.Tx) (err error) {
+		summary, err = policy.GovernanceSummary(ctx, tx, tenantID)
+		if err != nil {
+			return fmt.Errorf("summarize governance: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return policy.PrincipalSummary{}, fmt.Errorf("read governance: %w", err)
+	}
+	return summary, nil
 }
 
 func printPrincipalSummary(cmd *cobra.Command, flags operatorFlags, summary policy.PrincipalSummary, dryRun bool) error {

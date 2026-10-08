@@ -9,9 +9,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
-// ShadowComparisonResult identifies the durable report produced for one
-// paired shadow trial and carries its sealed document and both canonical
-// decisions, so a scorer never reads the replay database.
 type ShadowComparisonResult struct {
 	EpisodeKey             string
 	ComparisonSHA256       string
@@ -23,8 +20,6 @@ type ShadowComparisonResult struct {
 	TamozDecisionJSON      []byte
 }
 
-// Comparison is the sealed, report-only record of one shadow trial, ready for
-// the replay store; it never enters intents, commands or the outbox.
 type Comparison struct {
 	ComparisonID            string
 	ComparisonKey           string
@@ -56,8 +51,6 @@ type builtComparison struct {
 
 type comparisonDigests struct{ snapshot, spec, policy []byte }
 
-// BuildComparison seals one paired shadow trial as a durable comparison and
-// its result summary. Wall time enters only the record's creation timestamp.
 func BuildComparison(input ShadowInput, baseline, tamoz ValidatedOutput, tenantID string, createdAt time.Time) (Comparison, ShadowComparisonResult, error) {
 	comparisonKey := tenantID + ":" + input.EpisodeKey
 	document := comparisonDocument(input, baseline, tamoz, tenantID, comparisonKey)

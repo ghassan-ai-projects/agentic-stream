@@ -8,19 +8,14 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
-// DeterministicProvider is the built-in provider for replay and tests. It can
-// return scripted tool calls, then emits a valid empty-intent Decision.
 type DeterministicProvider struct {
 	Responses []ModelResponse
 	mu        sync.Mutex
 	index     int
 }
 
-// Name returns the provider identity.
 func (p *DeterministicProvider) Name() string { return "deterministic" }
 
-// Stream returns the next scripted response, or a valid deterministic
-// Decision when no script is configured.
 func (p *DeterministicProvider) Stream(_ context.Context, req ModelRequest) (ModelResponse, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

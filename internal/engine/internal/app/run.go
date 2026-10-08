@@ -9,24 +9,22 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 )
 
-// RunGlobal applies all partitions in durable event-log position order. Replay
-// uses it so one virtual clock cannot observe a later partition before an
-// earlier record in the authoritative trace.
 func (s *Service) RunGlobal(ctx context.Context, beforeApply func(eventlog.Record) error) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.runGlobal(ctx, beforeApply)
 }
 
-// runGlobal applies the records after the applied position, then fires due
-// timers. Resuming from the durable position keeps a run proportional to new
-// evidence; starting from the beginning re-read the whole log on every run.
 func (s *Service) runGlobal(ctx context.Context, beforeApply func(eventlog.Record) error) (int, error) {
-	applied, err := s.store.AppliedThrough(ctx)
+	lastPosition, err := s.appliedPosition(ctx)
 	if err != nil {
-		return 0, err //nolint:wrapcheck // The store names the failed read.
+		return 0, err
 	}
-	processed, lastPosition := 0, eventlog.LogPosition(applied)
+	return s.applyUntilEmpty(ctx, lastPosition, beforeApply)
+}
+
+func (s *Service) applyUntilEmpty(ctx context.Context, lastPosition eventlog.LogPosition, beforeApply func(eventlog.Record) error) (int, error) {
+	processed := 0
 	for {
 		batch, err := s.runGlobalBatch(ctx, lastPosition, beforeApply)
 		processed += batch.processed
@@ -40,15 +38,20 @@ func (s *Service) runGlobal(ctx context.Context, beforeApply func(eventlog.Recor
 	}
 }
 
-// globalBatch is the outcome of one page of the global event log.
+func (s *Service) appliedPosition(ctx context.Context) (eventlog.LogPosition, error) {
+	applied, err := s.store.AppliedThrough(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("read applied position: %w", err)
+	}
+	return eventlog.LogPosition(applied), nil
+}
+
 type globalBatch struct {
 	processed    int
 	lastPosition eventlog.LogPosition
 	empty        bool
 }
 
-// runGlobalBatch applies the next page after lastPosition and checkpoints the
-// WAL; an empty page ends the run.
 func (s *Service) runGlobalBatch(ctx context.Context, lastPosition eventlog.LogPosition, beforeApply func(eventlog.Record) error) (globalBatch, error) {
 	records, err := s.readGlobalRecords(ctx, lastPosition)
 	if err != nil {
@@ -129,8 +132,6 @@ func (s *Service) applyGlobalRecord(ctx context.Context, record eventlog.Record,
 	return outcome, nil
 }
 
-// prepareRecord derives the record's watermark from its partition checkpoint
-// and runs the before-apply hook.
 func (s *Service) prepareRecord(ctx context.Context, record eventlog.Record, beforeApply func(eventlog.Record) error) (time.Time, error) {
 	checkpoint, err := s.store.LoadCheckpoint(ctx, record.PartitionID)
 	if err != nil {

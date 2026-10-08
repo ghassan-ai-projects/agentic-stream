@@ -3,6 +3,7 @@ package actions
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
@@ -30,7 +31,7 @@ type Reconciler struct{ app *app.Reconciler }
 func NewReconciler(cfg ReconcilerConfig) (*Reconciler, error) {
 	reconciler, err := app.NewReconciler(store.New(cfg.DB, cfg.RuntimeOwner, cfg.Epoch, interlock.DurableReader{}), nil, nil)
 	if err != nil {
-		return nil, err //nolint:wrapcheck // The app layer's constructor errors are the facade's contract.
+		return nil, fmt.Errorf("build reconciler: %w", err)
 	}
 	return &Reconciler{app: reconciler}, nil
 }
@@ -39,10 +40,10 @@ func NewReconciler(cfg ReconcilerConfig) (*Reconciler, error) {
 // independent evidence, fenced by the runtime owner, and publishes the
 // reconciliation notification.
 func (r *Reconciler) Resolve(ctx context.Context, commandID, finalStatus string, evidence map[string]any) error {
-	return r.app.Resolve(ctx, commandID, finalStatus, evidence) //nolint:wrapcheck // The app layer names the failed step.
+	return r.app.Resolve(ctx, commandID, finalStatus, evidence) //nolint:wrapcheck // Facade operations must only delegate (architecture gate); the app layer owns the error context.
 }
 
 // Awaiting lists the tenant's commands awaiting reconciliation, oldest first.
 func (r *Reconciler) Awaiting(ctx context.Context, tenantID string) ([]AwaitingCommand, error) {
-	return r.app.Awaiting(ctx, tenantID) //nolint:wrapcheck // The app layer names the failed step.
+	return r.app.Awaiting(ctx, tenantID) //nolint:wrapcheck // Facade operations must only delegate (architecture gate); the app layer owns the error context.
 }

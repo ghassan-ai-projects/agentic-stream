@@ -6,14 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/domain"
 )
 
-// Reader reads trigger evaluations from a database without a transaction.
 type Reader struct{ db *sql.DB }
 
-// NewReader binds a trigger-evaluation reader to an open database.
 func NewReader(db *sql.DB) Reader { return Reader{db: db} }
 
 const triggerEvaluationColumns = `
@@ -21,7 +20,6 @@ const triggerEvaluationColumns = `
 		reasons_json, delta_json, policy_sha256, evaluated_at
 	FROM trigger_evaluations`
 
-// TriggerEvaluation reads one of the tenant's trigger evaluations.
 func (r Reader) TriggerEvaluation(ctx context.Context, tenantID, triggerID string) (domain.TriggerEvaluationRecord, error) {
 	rows, err := r.db.QueryContext(ctx, triggerEvaluationColumns+` WHERE tenant_id = ? AND trigger_id = ?`, tenantID, triggerID)
 	if err != nil {
@@ -37,7 +35,6 @@ func (r Reader) TriggerEvaluation(ctx context.Context, tenantID, triggerID strin
 	return records[0], nil
 }
 
-// TriggerEvaluations reads every trigger evaluation of one Situation version.
 func (r Reader) TriggerEvaluations(ctx context.Context, tenantID, situationID string, version int) ([]domain.TriggerEvaluationRecord, error) {
 	rows, err := r.db.QueryContext(ctx, triggerEvaluationColumns+` WHERE tenant_id = ? AND situation_id = ? AND situation_version = ? ORDER BY trigger_name`, tenantID, situationID, version)
 	if err != nil {
@@ -48,15 +45,11 @@ func (r Reader) TriggerEvaluations(ctx context.Context, tenantID, situationID st
 
 func collectEvaluations(rows *sql.Rows) ([]domain.TriggerEvaluationRecord, error) {
 	defer func() { _ = rows.Close() }()
-	var records []domain.TriggerEvaluationRecord
-	for rows.Next() {
-		record, err := scanEvaluation(rows)
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, record)
+	records, err := storage.CollectRows(rows, "trigger evaluations", scanEvaluation)
+	if err != nil {
+		return nil, fmt.Errorf("read trigger evaluations: %w", err)
 	}
-	return records, rows.Err() //nolint:wrapcheck // The iteration error is the driver's.
+	return records, nil
 }
 
 func scanEvaluation(rows *sql.Rows) (domain.TriggerEvaluationRecord, error) {

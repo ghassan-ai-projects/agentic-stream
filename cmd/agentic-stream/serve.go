@@ -16,7 +16,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
-// serveFlags are the serve command's flags.
 type serveFlags struct {
 	liveFlags
 	listenAddress, liveSocket string
@@ -51,8 +50,6 @@ func registerServeFlags(cmd *cobra.Command, flags *serveFlags) {
 	cmd.Flags().BoolVar(&flags.demoMode, "demo-mode", false, "admit fixture executors (demos and tests only; a production route never admits fixture)")
 }
 
-// validate checks every serve input before a database, socket, or credential
-// is opened, and returns the notification subscriber token.
 func (f serveFlags) validate() (string, error) {
 	if f.dbPath == "" {
 		return "", fmt.Errorf("--db is required")
@@ -118,8 +115,6 @@ func isLoopbackListenAddress(address string) bool {
 	return host == "127.0.0.1" || host == "localhost" || host == "::1"
 }
 
-// serve runs the runtime HTTP surface and, when a spec is configured, the
-// continuous pipeline, until ctx ends or a source fails.
 func serve(ctx context.Context, flags serveFlags) error {
 	subscriberToken, err := flags.validate()
 	if err != nil {
@@ -172,12 +167,11 @@ func (core *runtimeCore) runtimeHandler(flags serveFlags, subscriberToken string
 	}, telemetry.MetricsHandler(metrics), core.epochControl, core.epoch, os.Getenv("AGENTIC_STREAM_CONTROL_TOKEN")))
 }
 
-// serveHTTP serves handler until ctx ends, then shuts down gracefully.
 func serveHTTP(ctx context.Context, address string, handler http.Handler) error {
 	server := &http.Server{Addr: address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 30 * time.Second}
 	go func() {
 		<-ctx.Done()
-		// ctx is already done; keep its values but give shutdown its own deadline.
+
 		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdownCtx)

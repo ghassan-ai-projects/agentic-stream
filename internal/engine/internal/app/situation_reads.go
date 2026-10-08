@@ -2,18 +2,24 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/store"
 )
 
-// ListSituations reads the tenant's Situations, newest evidence first.
 func ListSituations(ctx context.Context, reader store.Reader, tenantID, entityID string) ([]domain.SituationSummary, error) {
-	return reader.ListSituations(ctx, tenantID, entityID) //nolint:wrapcheck // The store names the failed read.
+	situations, err := reader.ListSituations(ctx, tenantID, entityID)
+	if err != nil {
+		return nil, fmt.Errorf("situations of tenant %s: %w", tenantID, err)
+	}
+	return situations, nil
 }
 
-// SituationVersion reads one version of a tenant's Situation with its
-// evidence set; version 0 means the current version.
 func SituationVersion(ctx context.Context, reader store.Reader, tenantID, situationID string, version int) (domain.SituationVersionRecord, error) {
-	return reader.SituationVersion(ctx, tenantID, situationID, version) //nolint:wrapcheck // The store names the failed read.
+	record, err := reader.SituationVersion(ctx, tenantID, situationID, version)
+	if err != nil {
+		return domain.SituationVersionRecord{}, fmt.Errorf("situation %s version %d: %w", situationID, version, err)
+	}
+	return record, nil
 }

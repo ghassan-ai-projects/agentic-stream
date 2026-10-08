@@ -8,9 +8,6 @@ import (
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 )
 
-// applyCapabilities runs the worker-aware part of a replay mode: recorded
-// decisions are verified against the replay worklist and shadow executors are
-// compared report-only.
 func applyCapabilities(ctx context.Context, session *replaySession, mode domain.Mode, caps domain.Capabilities, evaluationTime time.Time, result *domain.Result) error {
 	episodes, err := session.store.EpisodeWorklist(ctx, session.tenantID)
 	if err != nil {
@@ -25,8 +22,6 @@ func applyCapabilities(ctx context.Context, session *replaySession, mode domain.
 	return nil
 }
 
-// applyRecorded requires the ledger to hold exactly one valid recorded
-// decision per replay episode, each matching the episode it is keyed to.
 func applyRecorded(ctx context.Context, session *replaySession, ledger domain.RecordedLedger, episodes []domain.ReplayEpisode, result *domain.Result) error {
 	entries, byKey, err := indexedRecordedEntries(ctx, ledger, episodes)
 	if err != nil {

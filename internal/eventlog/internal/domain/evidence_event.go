@@ -1,7 +1,5 @@
 package domain
 
-// EvidenceEvent locates one logged event an explanation cites: its log
-// position, identity, source and times.
 type EvidenceEvent struct {
 	Position   int64  `json:"position"`
 	EventID    string `json:"event_id"`

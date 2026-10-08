@@ -17,12 +17,8 @@ import (
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
-// shadowRuntimeInstance names replay to the worker during the handshake.
 const shadowRuntimeInstance = "agentic-stream-replay-shadow"
 
-// ShadowWorker is the shadow candidate behind the EpisodeWorker protocol. It
-// sends the episode request replay assembled, offers no evidence tools (the
-// snapshot is the whole input) and never retries: one request per trial.
 type ShadowWorker struct {
 	conn     *grpc.ClientConn
 	executor *remote.Executor
@@ -31,7 +27,6 @@ type ShadowWorker struct {
 
 var _ domain.ShadowExecutor = (*ShadowWorker)(nil)
 
-// DialShadowWorker connects to a worker on its Unix socket.
 func DialShadowWorker(ctx context.Context, socketPath, name string) (*ShadowWorker, error) {
 	conn, err := worker.DialEpisodeWorkerSocketTLS(ctx, socketPath, nil)
 	if err != nil {
@@ -41,12 +36,13 @@ func DialShadowWorker(ctx context.Context, socketPath, name string) (*ShadowWork
 	return &ShadowWorker{conn: conn, executor: executor, name: name}, nil
 }
 
-// Close releases the worker connection.
 func (w *ShadowWorker) Close() error {
-	return w.conn.Close() //nolint:wrapcheck // Raw close error; callers discard it on teardown.
+	if err := w.conn.Close(); err != nil {
+		return fmt.Errorf("close shadow worker connection: %w", err)
+	}
+	return nil
 }
 
-// ExecuteShadow runs one trial on the worker and returns its decision.
 func (w *ShadowWorker) ExecuteShadow(ctx context.Context, input domain.ShadowInput) (domain.ShadowOutput, error) {
 	request, err := shadowEpisodeRequest(input)
 	if err != nil {
@@ -59,8 +55,6 @@ func (w *ShadowWorker) ExecuteShadow(ctx context.Context, input domain.ShadowInp
 	return w.shadowOutput(input, outcome)
 }
 
-// shadowEpisodeRequest is the replayed episode as a worker attempt: the
-// synthetic attempt and fence of the trial, dispatched in shadow mode.
 func shadowEpisodeRequest(input domain.ShadowInput) (*episodes.Request, error) {
 	prompt, err := promptProvenance(input.Request.RequestJSON)
 	if err != nil {
@@ -90,8 +84,6 @@ func promptProvenance(requestJSON []byte) (requestPrompt, error) {
 	return request.Executor, nil
 }
 
-// shadowOutput accepts only a produced decision, in canonical bytes, with a
-// manifest that digests what the runtime asked the worker to run.
 func (w *ShadowWorker) shadowOutput(input domain.ShadowInput, outcome *episodes.Outcome) (domain.ShadowOutput, error) {
 	if outcome.Status != string(episodeledger.AttemptProduced) {
 		return domain.ShadowOutput{}, fmt.Errorf("worker %s produced no decision: %s (%s)", w.name, outcome.Status, strings.Join(outcome.Reasons, ", "))

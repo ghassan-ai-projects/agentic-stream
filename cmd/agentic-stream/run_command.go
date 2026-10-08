@@ -8,7 +8,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
 )
 
-// runFlags are the replay command's flags.
 type runFlags struct {
 	dbPath, tenantID, sourceDB string
 	workerSocket, workerName   string
@@ -55,7 +54,6 @@ func (f *runFlags) run(cmd *cobra.Command) error {
 	return runReplayCommand(cmd, f)
 }
 
-// requireOneMode refuses flags that select different replay modes.
 func (f *runFlags) requireOneMode() error {
 	selected := 0
 	for _, on := range []bool{f.sourceDB != "", f.workerSocket != "", f.repeat != 1} {
@@ -69,8 +67,6 @@ func (f *runFlags) requireOneMode() error {
 	return nil
 }
 
-// runRepeatedReplay is the determinism check: N fresh replays of the same
-// trace must produce byte-identical Situation histories.
 func runRepeatedReplay(cmd *cobra.Command, dbPath, tenantID string, repeat int) error {
 	if repeat < 2 || dbPath != "" {
 		return fmt.Errorf("--repeat needs at least 2 runs and its own fresh databases (no --db)")
@@ -97,8 +93,6 @@ func reportRepeatedReplay(cmd *cobra.Command, results []replay.Result) error {
 	return nil
 }
 
-// runRecordedReplay verifies a live run: the replayed episodes must match the
-// decisions the source database recorded, without calling a worker.
 func runRecordedReplay(cmd *cobra.Command, f *runFlags) error {
 	request, err := replayRequest(cmd, f)
 	if err != nil {

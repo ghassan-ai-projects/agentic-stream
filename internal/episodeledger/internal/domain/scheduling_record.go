@@ -2,9 +2,6 @@ package domain
 
 import "encoding/json"
 
-// SchedulingRecord is what became of one admitted trigger evaluation: its
-// scheduler item, the episode it admitted (if any) and any results the
-// ledger refused for that episode.
 type SchedulingRecord struct {
 	SchedulerItemID         string            `json:"scheduler_item_id"`
 	Status                  string            `json:"status"`
@@ -18,7 +15,6 @@ type SchedulingRecord struct {
 	Rejections              []RejectionRecord `json:"rejections"`
 }
 
-// RejectionRecord is one worker result the ledger refused, with its reason.
 type RejectionRecord struct {
 	Reason    string          `json:"reason"`
 	AttemptID string          `json:"attempt_id,omitempty"`

@@ -28,15 +28,12 @@ func newIntentCommand() *cobra.Command {
 	return cmd
 }
 
-// intentInspection follows an intent through governance to its effects.
 type intentInspection struct {
 	Intent    policy.IntentView             `json:"intent"`
 	Approvals []approvalledger.ApprovalView `json:"approvals"`
 	Commands  []commandInspection           `json:"commands"`
 }
 
-// commandInspection is one command and, when it installed a watch, the watch
-// with its fires.
 type commandInspection struct {
 	Command actions.CommandView `json:"command"`
 	Watch   *watch.WatchView    `json:"watch,omitempty"`
@@ -73,23 +70,32 @@ func inspectCommands(cmd *cobra.Command, db *storage.DB, tenantID, intentID stri
 	return inspections, nil
 }
 
-// installedWatch finds the watch a command installed: the watch effector
-// reports its id in the outcome's provider result.
 func installedWatch(cmd *cobra.Command, db *storage.DB, tenantID string, command actions.CommandView) (*watch.WatchView, error) {
 	for _, outcome := range command.Outcomes {
-		var result struct {
-			WatchID string `json:"watch_id"`
-		}
-		if json.Unmarshal(outcome.ProviderResult, &result) != nil || result.WatchID == "" {
+		watchID := reportedWatchID(outcome)
+		if watchID == "" {
 			continue
 		}
-		installed, found, err := watch.Watch(cmd.Context(), db, tenantID, result.WatchID)
-		if err != nil || !found {
-			return nil, err //nolint:wrapcheck // The watch module names the failed read.
+		installed, found, err := watch.Watch(cmd.Context(), db, tenantID, watchID)
+		if err != nil {
+			return nil, fmt.Errorf("read watch %s of command %s: %w", watchID, command.CommandID, err)
+		}
+		if !found {
+			return nil, nil
 		}
 		return &installed, nil
 	}
 	return nil, nil
+}
+
+func reportedWatchID(outcome actions.OutcomeView) string {
+	var result struct {
+		WatchID string `json:"watch_id"`
+	}
+	if json.Unmarshal(outcome.ProviderResult, &result) != nil {
+		return ""
+	}
+	return result.WatchID
 }
 
 func (i intentInspection) text() string {

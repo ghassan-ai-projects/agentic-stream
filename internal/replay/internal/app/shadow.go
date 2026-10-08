@@ -61,10 +61,6 @@ func shadowAllowedTypes(intents []spec.Intent) map[string]struct{} {
 	return allowedTypes
 }
 
-// compareShadowEpisode runs one paired trial. The baseline is this
-// repository's own code, so its failure fails the run; a candidate that fails
-// or answers outside the contract is a finding about the candidate, and the
-// trial continues with the next episode.
 func compareShadowEpisode(ctx context.Context, session *replaySession, caps domain.Capabilities, episode domain.ReplayEpisode, rules domain.ShadowRules, evaluationTime time.Time, result *domain.Result) error {
 	input, err := loadShadowInput(ctx, session, episode, rules.PolicyDigest, evaluationTime)
 	if err != nil {
@@ -117,8 +113,6 @@ func evaluateBaseline(ctx context.Context, caps domain.Capabilities, input domai
 	return validated, nil
 }
 
-// evaluateCandidate returns nil and records a finding when the candidate
-// fails or its output is invalid. Cancellation still stops the run.
 func evaluateCandidate(ctx context.Context, caps domain.Capabilities, input domain.ShadowInput, rules domain.ShadowRules, evaluationTime time.Time, result *domain.Result) (*domain.ValidatedOutput, error) {
 	output, err := caps.ShadowExecutor.ExecuteShadow(ctx, input.Clone())
 	result.WorkerInvoked = true
@@ -136,8 +130,6 @@ func evaluateCandidate(ctx context.Context, caps domain.Capabilities, input doma
 	return &validated, nil
 }
 
-// candidateFinding records a candidate's failure as a result of the trial;
-// it always returns nil so the trial moves on.
 func candidateFinding(result *domain.Result, code string, input domain.ShadowInput, cause error) error {
 	result.Findings = append(result.Findings, domain.Finding{Code: code, Message: input.EpisodeKey + ": " + cause.Error()})
 	return nil

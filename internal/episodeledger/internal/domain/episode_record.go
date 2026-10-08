@@ -2,8 +2,6 @@ package domain
 
 import "encoding/json"
 
-// EpisodeRecord is one episode as an operator inspects it: what it reasoned
-// over, its lifecycle, every attempt and every result the ledger refused.
 type EpisodeRecord struct {
 	EpisodeID        string            `json:"episode_id"`
 	SchedulerItemID  string            `json:"scheduler_item_id"`
@@ -25,7 +23,6 @@ type EpisodeRecord struct {
 	Rejections       []RejectionRecord `json:"rejections"`
 }
 
-// AttemptView is one fenced worker attempt of an episode, as inspected.
 type AttemptView struct {
 	AttemptID string          `json:"attempt_id"`
 	Fence     int64           `json:"fence"`

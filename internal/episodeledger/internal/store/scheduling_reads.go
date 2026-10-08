@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
 )
@@ -16,8 +17,6 @@ const schedulingSQL = `
 	LEFT JOIN episodes e ON e.scheduler_item_id = si.scheduler_item_id
 	WHERE si.tenant_id = ? AND si.trigger_id = ?`
 
-// Scheduling reads what became of one trigger evaluation; found is false
-// when the evaluation never created a scheduler item.
 func (t *Tx) Scheduling(ctx context.Context, tenantID, triggerID string) (domain.SchedulingRecord, bool, error) {
 	var record domain.SchedulingRecord
 	err := t.q.QueryRowContext(ctx, schedulingSQL, tenantID, triggerID).Scan(&record.SchedulerItemID, &record.Status, &record.Lane, &record.Priority, &record.ExpiresAt, &record.UpdatedAt,
@@ -32,8 +31,6 @@ func (t *Tx) Scheduling(ctx context.Context, tenantID, triggerID string) (domain
 	return record, err == nil, err
 }
 
-// Rejections reads the results the ledger refused for one episode, oldest
-// first.
 func (t *Tx) Rejections(ctx context.Context, episodeID string) ([]domain.RejectionRecord, error) {
 	rows, err := t.q.QueryContext(ctx, `
 		SELECT reason, COALESCE(attempt_id, ''), fence, details_json, created_at
@@ -42,13 +39,17 @@ func (t *Tx) Rejections(ctx context.Context, episodeID string) ([]domain.Rejecti
 		return nil, fmt.Errorf("read episode rejections: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	rejections := []domain.RejectionRecord{}
-	for rows.Next() {
-		var rejection domain.RejectionRecord
-		if err := rows.Scan(&rejection.Reason, &rejection.AttemptID, &rejection.Fence, &rejection.Details, &rejection.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan episode rejection: %w", err)
-		}
-		rejections = append(rejections, rejection)
+	rejections, err := storage.CollectRows(rows, "episode rejections", scanRejection)
+	if err != nil {
+		return nil, fmt.Errorf("read episode rejections: %w", err)
 	}
-	return rejections, rows.Err() //nolint:wrapcheck // The iteration error is the driver's.
+	return rejections, nil
+}
+
+func scanRejection(rows *sql.Rows) (domain.RejectionRecord, error) {
+	var rejection domain.RejectionRecord
+	if err := rows.Scan(&rejection.Reason, &rejection.AttemptID, &rejection.Fence, &rejection.Details, &rejection.CreatedAt); err != nil {
+		return domain.RejectionRecord{}, fmt.Errorf("scan episode rejection: %w", err)
+	}
+	return rejection, nil
 }

@@ -15,7 +15,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-// Version metadata injected at build time.
 var (
 	Version = "dev"
 	Commit  = "none"
@@ -48,8 +47,6 @@ cognitive scheduler decides reasoning is useful.`,
 	return root
 }
 
-// registerCommands adds the runtime commands, then the operator commands
-// that act on a runtime database.
 func registerCommands(root *cobra.Command) {
 	root.AddCommand(newVersionCommand(), newValidateCommand(), newRunCommand(), newServeCommand(), newRunLiveCommand(),
 		newExportRunCommand(), newVerifyRunCommand())
@@ -91,8 +88,6 @@ func validateSpecCommand(cmd *cobra.Command, path string, outputJSON bool) error
 	return printCompiledSpec(cmd, result)
 }
 
-// printCompiledSpec prints the spec summary and the policy digest every device
-// command will carry, which a device gateway allow-lists.
 func printCompiledSpec(cmd *cobra.Command, result *spec.CompiledSpec) error {
 	policyDigest, err := policy.DigestForVersion(result.Digest)
 	if err != nil {

@@ -13,8 +13,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// SaveDeployment persists a compiled spec as an active deployment record.
-// It is idempotent: duplicate inserts for the same deployment_id are ignored.
 func SaveDeployment(ctx context.Context, db *storage.DB, tenantID string, compiled *domain.CompiledSpec) error {
 	record, err := newDeploymentRecord(tenantID, compiled)
 	if err != nil {
@@ -28,8 +26,6 @@ func SaveDeployment(ctx context.Context, db *storage.DB, tenantID string, compil
 	return nil
 }
 
-// persist retires earlier versions, registers the input schemas and inserts
-// the deployment in one transaction.
 func (r deploymentRecord) persist(ctx context.Context, tx *sql.Tx) error {
 	if err := r.retirePriorVersions(ctx, tx); err != nil {
 		return err
@@ -40,7 +36,6 @@ func (r deploymentRecord) persist(ctx context.Context, tx *sql.Tx) error {
 	return r.insert(ctx, tx)
 }
 
-// deploymentRecord is a compiled spec in its stored form.
 type deploymentRecord struct {
 	tenantID               string
 	compiled               *domain.CompiledSpec
@@ -64,8 +59,6 @@ func newDeploymentRecord(tenantID string, compiled *domain.CompiledSpec) (deploy
 	return record, nil
 }
 
-// encode fills the source JSON when the spec carries none, the compiled IR
-// and the decoded spec digest.
 func (r *deploymentRecord) encode() error {
 	var err error
 	if len(r.sourceJSON) == 0 {
@@ -82,11 +75,6 @@ func (r *deploymentRecord) encode() error {
 	return nil
 }
 
-// retirePriorVersions implements P8 graph versioning: a definition change is
-// a new version and a FRESH namespace. The previous active deployment of the
-// same name is retired first (the schema enforces one active per name), so
-// the new version's state never touches the old version's rows. A redeploy
-// of the SAME digest is idempotent: it must not retire itself.
 func (r deploymentRecord) retirePriorVersions(ctx context.Context, tx *sql.Tx) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE spec_deployments SET status = 'retired', activated_at = ?
@@ -97,8 +85,6 @@ func (r deploymentRecord) retirePriorVersions(ctx context.Context, tx *sql.Tx) e
 	return nil
 }
 
-// registerInputSchemas registers the event schema of every input whose
-// schema is known to the registry.
 func registerInputSchemas(ctx context.Context, tx *sql.Tx, inputs []domain.Input, now string) error {
 	for _, input := range inputs {
 		definition, ok := domain.LookupEventSchema(input.SchemaRef)
@@ -116,7 +102,6 @@ func registerInputSchemas(ctx context.Context, tx *sql.Tx, inputs []domain.Input
 	return nil
 }
 
-// insert records the deployment as active; a repeated insert is ignored.
 func (r deploymentRecord) insert(ctx context.Context, tx *sql.Tx) error {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO spec_deployments (
@@ -131,7 +116,6 @@ func (r deploymentRecord) insert(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-// LoadDeployment reads the compiled spec a deployment stored.
 func LoadDeployment(ctx context.Context, db *storage.DB, deploymentID string) (*domain.CompiledSpec, error) {
 	var compiledIR []byte
 	if err := db.QueryRowContext(ctx, "SELECT compiled_ir FROM spec_deployments WHERE deployment_id = ?", deploymentID).Scan(&compiledIR); err != nil {

@@ -9,9 +9,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
 )
 
-// runShadowReplay pairs the deterministic baseline with the candidate worker
-// on every replayed episode. Disagreement and candidate failures are results:
-// the command fails only when replay itself does.
 func runShadowReplay(cmd *cobra.Command, f *runFlags) error {
 	request, err := replayRequest(cmd, f)
 	if err != nil {

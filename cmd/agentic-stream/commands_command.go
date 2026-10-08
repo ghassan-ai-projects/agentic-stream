@@ -64,8 +64,6 @@ func runCommandsList(cmd *cobra.Command, flags operatorFlags) error {
 	return printResult(cmd, flags.asJSON, awaiting, func() string { return awaitingTable(awaiting) })
 }
 
-// refuseWrites is the owner check of a read-only reconciler: it never holds
-// the lease, so any write it attempted would be refused.
 func refuseWrites(context.Context, *sql.Tx, string) error {
 	return fmt.Errorf("read-only listing holds no runtime ownership")
 }
@@ -112,8 +110,6 @@ func readEvidence(file string) (map[string]any, error) {
 	return evidence, nil
 }
 
-// resolveCommand closes the command under the runtime owner lease, fenced in
-// the reconciliation transaction.
 func resolveCommand(ctx context.Context, db *storage.DB, commandID, status string, evidence map[string]any) error {
 	return withRuntimeOwnership(ctx, db, func(ownership operatorOwnership) error {
 		reconciler, err := actions.NewReconciler(actions.ReconcilerConfig{DB: db, RuntimeOwner: ownership.owner.Assert, Epoch: ownership.epoch})

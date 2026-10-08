@@ -46,8 +46,6 @@ func newExplainTriggerCommand() *cobra.Command {
 	return cmd
 }
 
-// situationExplanation traces one Situation version to the spec that derives
-// its fields, the evidence it was built from and the triggers it fired.
 type situationExplanation struct {
 	Version  engine.SituationVersionRecord       `json:"version"`
 	Fields   []fieldExplanation                  `json:"fields"`
@@ -55,7 +53,6 @@ type situationExplanation struct {
 	Triggers []cognition.TriggerEvaluationRecord `json:"triggers"`
 }
 
-// fieldExplanation is one Situation field's value and how the spec derives it.
 type fieldExplanation struct {
 	Value      any                  `json:"value"`
 	Derivation spec.FieldDerivation `json:"derivation"`
@@ -87,8 +84,6 @@ func explainSituation(cmd *cobra.Command, tenantID string, db *storage.DB, situa
 	return explanation, nil
 }
 
-// explainFields pairs every reduced field of the deployed spec with its value
-// in the version's snapshot.
 func explainFields(cmd *cobra.Command, db *storage.DB, record engine.SituationVersionRecord) ([]fieldExplanation, error) {
 	compiled, err := spec.LoadDeployment(cmd.Context(), db, record.DeploymentID)
 	if err != nil {
@@ -105,8 +100,6 @@ func explainFields(cmd *cobra.Command, db *storage.DB, record engine.SituationVe
 	return fields, nil
 }
 
-// snapshotValue finds a reduced field: facts are keyed by their full name
-// under "facts"; other fields sit at the top level.
 func snapshotValue(snapshot map[string]any, field string) any {
 	if facts, ok := snapshot["facts"].(map[string]any); ok {
 		if value, ok := facts[field]; ok {

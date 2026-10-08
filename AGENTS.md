@@ -139,11 +139,25 @@ See [.agents/context/testing.md](.agents/context/testing.md) for the testing and
 
 - Use `context.Context` as the first parameter for cancellable or I/O work.
 - Use `log/slog` for logging.
-- Wrap errors with `%w`.
+- Wrap every error you return from another function with `%w` and context the
+  callee lacks (the operation, an identifier, the layer). Do not silence
+  `wrapcheck` with `//nolint` or return a callee's error bare because "it
+  already names the step"; that is only true until someone changes the callee.
+  A bare return is allowed in exactly two cases, and the directive must say
+  which: a facade operation that an architecture gate requires to be a single
+  delegating return, or an error that must reach a protocol unchanged (a gRPC
+  `status` error). Check `rows.Err()` and `Close()` like any other call.
 - Keep handlers thin; business logic lives in the engine/operators/situations/policy packages, not in API handlers.
 - Prefer standard library helpers such as `cmp`, `maps`, and `slices`.
 - Prefer existing package boundaries and local helpers over new abstractions.
-- Document exported symbols.
+- Comment only a module's public interface: the doc comment on each exported
+  symbol of its facade package, and one package comment per package (an
+  architecture gate requires it). Inside a module (`internal/<module>/internal/**`,
+  `cmd/`) write no comments: a name, a function boundary or a test says what a
+  comment would. If code needs a comment to be understood, rename or split it.
+  The only comments allowed inside are tool directives (`//go:embed`,
+  `//nolint:<linter> // <reason>`), and a `//nolint` reason must be true of the
+  code, not a convenience.
 - Use table-driven tests with `t.Run()` and `t.Parallel()` where safe.
 - Use `t.Context()` in tests when appropriate.
 - Canonical JSON (RFC 8785) everywhere a digest is computed.

@@ -3,6 +3,7 @@ package policy
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/app"
@@ -23,7 +24,11 @@ type Ownership = app.Ownership
 
 // ParsePrincipals decodes and validates a YAML principal document.
 func ParsePrincipals(data []byte) (PrincipalDocument, error) {
-	return domain.ParsePrincipalDocument(data) //nolint:wrapcheck // The domain rule's message is the operator-facing text.
+	document, err := domain.ParsePrincipalDocument(data)
+	if err != nil {
+		return PrincipalDocument{}, fmt.Errorf("parse principal document: %w", err)
+	}
+	return document, nil
 }
 
 // ApplyPrincipals makes the tenant's approval governance match the document

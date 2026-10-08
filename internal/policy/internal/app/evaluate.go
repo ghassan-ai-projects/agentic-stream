@@ -10,7 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
 )
 
-// EvaluateIntent runs ordered governance gates on the caller transaction.
 func (g *Service) EvaluateIntent(ctx context.Context, tx *store.Tx, request domain.EvaluationRequest) (domain.Result, error) {
 	if err := g.assertOwner(ctx, tx); err != nil {
 		return domain.Result{IntentID: request.IntentID}, err
@@ -83,11 +82,6 @@ func (g *Service) routeIntent(ctx context.Context, tx *store.Tx, e evaluation) (
 	}
 }
 
-// approveOrRequireApproval dispatches when a human has already approved this
-// intent, otherwise it opens a fresh approval request. Consulting the existing
-// approval is what breaks the approve -> re-pending -> new-approval loop: once
-// ResolveApproval marks the approval 'approved' and re-runs EvaluateIntent,
-// this path finds that row and terminates in dispatch.
 func (g *Service) approveOrRequireApproval(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
 	approvedApproval, err := tx.ApprovedApproval(ctx, e.row.IntentID)
 	switch {

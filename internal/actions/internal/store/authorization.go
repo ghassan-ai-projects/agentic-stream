@@ -26,9 +26,6 @@ const loadAuthorizationRecordsSQL = `
 			JOIN situations s ON s.situation_id = i.situation_id
 			WHERE c.command_id = ? AND c.status = 'dispatching'`
 
-// LoadAuthorizationRecords projects the rows a dispatching command's authority
-// rests on. They are read-only; their owners are policy, episodes, engine and
-// the approval ledger.
 func (tx *Tx) LoadAuthorizationRecords(ctx context.Context, commandID string) (domain.AuthorizationRecords, error) {
 	var r domain.AuthorizationRecords
 	var approvalID, approvalExpiry sql.NullString
@@ -42,8 +39,6 @@ func (tx *Tx) LoadAuthorizationRecords(ctx context.Context, commandID string) (d
 	return r, nil
 }
 
-// ApprovedPolicyDigest reads the latest approving policy evaluation's digest
-// for an intent.
 func (tx *Tx) ApprovedPolicyDigest(ctx context.Context, intentID string) (string, error) {
 	var digest string
 	if err := tx.tx.QueryRowContext(ctx, `

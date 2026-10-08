@@ -13,9 +13,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
-// startContinuousPipeline starts the worker runtime and pipeline, then feeds
-// it from the live socket or by polling the trace file. A source failure is
-// reported on failures and stops the process.
 func startContinuousPipeline(ctx context.Context, stop context.CancelFunc, core *runtimeCore, flags serveFlags, opened effects, metrics *telemetry.Runtime, failures chan error, cleanup *cleanups) error {
 	pipeline, err := core.openContinuousPipeline(ctx, stop, flags, opened, metrics, failures, cleanup)
 	if err != nil {
@@ -68,7 +65,6 @@ func runLiveSocketSource(ctx context.Context, stop context.CancelFunc, pipeline 
 	}
 }
 
-// runPipelineClock advances time-driven work while the live socket is quiet.
 func runPipelineClock(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, interval time.Duration, failures chan error) {
 	if runErr := pipeline.AdvanceEvery(ctx, interval); runErr != nil && !errors.Is(runErr, context.Canceled) {
 		failures <- fmt.Errorf("pipeline clock: %w", runErr)
@@ -76,8 +72,6 @@ func runPipelineClock(ctx context.Context, stop context.CancelFunc, pipeline *ru
 	}
 }
 
-// runEpisodeLoop executes episodes beside the live socket, so a worker's
-// reasoning never holds back ingestion (ADR-018).
 func runEpisodeLoop(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, interval time.Duration, failures chan error) {
 	if runErr := pipeline.RunEpisodesEvery(ctx, interval); runErr != nil && !errors.Is(runErr, context.Canceled) {
 		failures <- fmt.Errorf("episode loop: %w", runErr)

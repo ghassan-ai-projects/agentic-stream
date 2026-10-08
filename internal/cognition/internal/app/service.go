@@ -49,8 +49,6 @@ func New(c Config) (*Service, error) {
 	return &Service{deploymentID: c.DeploymentID, tenantID: c.TenantID, spec: c.Spec, rules: rules, clk: c.Clock, scheduler: &scheduler{spec: c.Spec, idGen: c.IDGen, clk: c.Clock}}, nil
 }
 
-// Process evaluates all triggers for a new Situation version and updates the
-// durable scheduler queue. It runs inside the supplied transaction.
 func (e *Service) Process(ctx context.Context, tx *store.Tx, v situations.Version) error {
 	if !tx.Configured() {
 		return fmt.Errorf("cognition caller transaction is required")
@@ -68,9 +66,6 @@ func (e *Service) Process(ctx context.Context, tx *store.Tx, v situations.Versio
 	return e.markVersion(ctx, tx, v, previous)
 }
 
-// markVersion records the version as reasoned and, when it changes the
-// Situation materially, as its latest material version, which keeps or ends
-// the freshness of pending intents (ADR-018).
 func (e *Service) markVersion(ctx context.Context, tx *store.Tx, v situations.Version, previous *situations.Version) error {
 	if e.rules.Material(v, previous) {
 		if err := tx.MarkVersionMaterial(ctx, v); err != nil {
@@ -80,8 +75,6 @@ func (e *Service) markVersion(ctx context.Context, tx *store.Tx, v situations.Ve
 	return tx.MarkVersionReasoned(ctx, v)
 }
 
-// lastReasonedVersion loads the version cognition last reasoned about, which
-// is nil before the first one.
 func (e *Service) lastReasonedVersion(ctx context.Context, tx *store.Tx, situationID string) (*situations.Version, error) {
 	lastReasoned, err := tx.LoadLastReasonedVersion(ctx, situationID)
 	if err != nil {

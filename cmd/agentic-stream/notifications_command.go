@@ -53,21 +53,33 @@ func runNotificationsPrune(cmd *cobra.Command, flags operatorFlags, retention ti
 	})
 }
 
-// pruneNotifications retires old notifications under the runtime owner lease,
-// so a live subscriber's cursor cannot race the deletion; a dry run only counts.
 func pruneNotifications(ctx context.Context, db *storage.DB, retention time.Duration, dryRun bool) (int64, error) {
 	outbox, err := notify.New(db)
 	if err != nil {
 		return 0, fmt.Errorf("open notification outbox: %w", err)
 	}
-	now := time.Now().UTC()
 	if dryRun {
-		return outbox.Prunable(ctx, now, retention) //nolint:wrapcheck // The notify module names the failed step.
+		return countPrunable(ctx, outbox, retention)
 	}
+	return pruneUnderOwnership(ctx, db, outbox, retention)
+}
+
+func countPrunable(ctx context.Context, outbox *notify.Service, retention time.Duration) (int64, error) {
+	count, err := outbox.Prunable(ctx, time.Now().UTC(), retention)
+	if err != nil {
+		return 0, fmt.Errorf("count prunable notifications: %w", err)
+	}
+	return count, nil
+}
+
+func pruneUnderOwnership(ctx context.Context, db *storage.DB, outbox *notify.Service, retention time.Duration) (int64, error) {
 	var retired int64
-	err = withRuntimeOwnership(ctx, db, func(operatorOwnership) (err error) {
-		retired, err = outbox.Prune(ctx, now, retention)
-		return err //nolint:wrapcheck // The notify module names the failed step.
+	err := withRuntimeOwnership(ctx, db, func(operatorOwnership) (err error) {
+		retired, err = outbox.Prune(ctx, time.Now().UTC(), retention)
+		if err != nil {
+			return fmt.Errorf("prune notifications: %w", err)
+		}
+		return nil
 	})
 	return retired, err
 }

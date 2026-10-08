@@ -10,9 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// Situation and explain commands only read the runtime database; they take
-// no runtime owner lease and are safe beside a running runtime.
-
 func newSituationCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "situation", Short: "List Situations and show one version."}
 	cmd.AddCommand(newSituationListCommand(), newSituationShowCommand())
@@ -47,7 +44,6 @@ func newSituationShowCommand() *cobra.Command {
 	return cmd
 }
 
-// readOperatorDatabase opens the runtime database for one read and closes it.
 func readOperatorDatabase(cmd *cobra.Command, flags operatorFlags, read func(*storage.DB) error) error {
 	db, err := flags.openOperatorDatabase(cmd.Context())
 	if err != nil {

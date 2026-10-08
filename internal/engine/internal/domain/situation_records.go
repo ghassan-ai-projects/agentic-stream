@@ -2,7 +2,6 @@ package domain
 
 import "encoding/json"
 
-// SituationSummary is a Situation's current row as an operator sees it.
 type SituationSummary struct {
 	SituationID         string `json:"situation_id"`
 	DeploymentID        string `json:"deployment_id"`
@@ -18,8 +17,6 @@ type SituationSummary struct {
 	LatestEventTime     string `json:"latest_event_time"`
 }
 
-// SituationVersionRecord is one published Situation version with the
-// evidence set (lineage) it was derived from.
 type SituationVersionRecord struct {
 	SituationID     string          `json:"situation_id"`
 	DeploymentID    string          `json:"deployment_id"`

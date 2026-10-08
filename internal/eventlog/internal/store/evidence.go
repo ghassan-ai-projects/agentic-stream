@@ -5,12 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
 )
 
-// EvidenceEvents locates the tenant's logged events with the given ids, in log
-// order. Ids that were never logged are absent from the result.
 func (s Store) EvidenceEvents(ctx context.Context, tenantID string, eventIDs []string) ([]domain.EvidenceEvent, error) {
 	ids, err := json.Marshal(eventIDs)
 	if err != nil {
@@ -21,18 +20,18 @@ func (s Store) EvidenceEvents(ctx context.Context, tenantID string, eventIDs []s
 	if err != nil {
 		return nil, fmt.Errorf("read evidence events: %w", err)
 	}
-	return scanEvidenceEvents(rows)
+	defer func() { _ = rows.Close() }()
+	events, err := storage.CollectRows(rows, "evidence events", scanEvidenceEvent)
+	if err != nil {
+		return nil, fmt.Errorf("read evidence events: %w", err)
+	}
+	return events, nil
 }
 
-func scanEvidenceEvents(rows *sql.Rows) ([]domain.EvidenceEvent, error) {
-	defer func() { _ = rows.Close() }()
-	events := []domain.EvidenceEvent{}
-	for rows.Next() {
-		var event domain.EvidenceEvent
-		if err := rows.Scan(&event.Position, &event.EventID, &event.EventType, &event.Source, &event.EntityID, &event.EventTime, &event.IngestedAt); err != nil {
-			return nil, fmt.Errorf("scan evidence event: %w", err)
-		}
-		events = append(events, event)
+func scanEvidenceEvent(rows *sql.Rows) (domain.EvidenceEvent, error) {
+	var event domain.EvidenceEvent
+	if err := rows.Scan(&event.Position, &event.EventID, &event.EventType, &event.Source, &event.EntityID, &event.EventTime, &event.IngestedAt); err != nil {
+		return domain.EvidenceEvent{}, fmt.Errorf("scan evidence event: %w", err)
 	}
-	return events, rows.Err() //nolint:wrapcheck // The iteration error is the driver's.
+	return event, nil
 }

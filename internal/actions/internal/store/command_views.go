@@ -9,12 +9,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// Reader is a Store that can only read: it has no owner fence or interlock,
-// so every write path refuses it as unconfigured.
 func Reader(db *storage.DB) Store { return Store{db: db} }
 
-// IntentCommands reads the commands one intent produced, with their outcomes
-// and verifications.
 func (s Store) IntentCommands(ctx context.Context, intentID string) ([]domain.CommandView, error) {
 	commands, err := s.intentCommandRows(ctx, intentID)
 	if err != nil {
@@ -38,15 +34,19 @@ func (s Store) intentCommandRows(ctx context.Context, intentID string) ([]domain
 		return nil, fmt.Errorf("read intent commands: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	commands := []domain.CommandView{}
-	for rows.Next() {
-		var c domain.CommandView
-		if err := rows.Scan(&c.CommandID, &c.EffectorRoute, &c.Target, &c.Status, &c.CreatedAt, &c.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan intent command: %w", err)
-		}
-		commands = append(commands, c)
+	commands, err := storage.CollectRows(rows, "intent commands", scanCommandView)
+	if err != nil {
+		return nil, fmt.Errorf("read intent commands: %w", err)
 	}
-	return commands, rows.Err() //nolint:wrapcheck // The iteration error is the driver's.
+	return commands, nil
+}
+
+func scanCommandView(rows *sql.Rows) (domain.CommandView, error) {
+	var c domain.CommandView
+	if err := rows.Scan(&c.CommandID, &c.EffectorRoute, &c.Target, &c.Status, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		return domain.CommandView{}, fmt.Errorf("scan intent command: %w", err)
+	}
+	return c, nil
 }
 
 func (s Store) outcomeViews(ctx context.Context, commandID string) ([]domain.OutcomeView, error) {
@@ -55,7 +55,12 @@ func (s Store) outcomeViews(ctx context.Context, commandID string) ([]domain.Out
 	if err != nil {
 		return nil, fmt.Errorf("read command outcomes: %w", err)
 	}
-	return scanRows(rows, scanOutcomeView)
+	defer func() { _ = rows.Close() }()
+	outcomes, err := storage.CollectRows(rows, "command outcomes", scanOutcomeView)
+	if err != nil {
+		return nil, fmt.Errorf("read command outcomes: %w", err)
+	}
+	return outcomes, nil
 }
 
 func scanOutcomeView(rows *sql.Rows) (domain.OutcomeView, error) {
@@ -76,7 +81,12 @@ func (s Store) verificationViews(ctx context.Context, commandID string) ([]domai
 	if err != nil {
 		return nil, fmt.Errorf("read command verifications: %w", err)
 	}
-	return scanRows(rows, scanVerificationView)
+	defer func() { _ = rows.Close() }()
+	verifications, err := storage.CollectRows(rows, "command verifications", scanVerificationView)
+	if err != nil {
+		return nil, fmt.Errorf("read command verifications: %w", err)
+	}
+	return verifications, nil
 }
 
 func scanVerificationView(rows *sql.Rows) (domain.VerificationView, error) {
@@ -89,19 +99,4 @@ func scanVerificationView(rows *sql.Rows) (domain.VerificationView, error) {
 		v.Verdict = verdict
 	}
 	return v, nil
-}
-
-// scanRows reads every row with scan and closes the rows; an empty result is
-// an empty, non-nil slice.
-func scanRows[T any](rows *sql.Rows, scan func(*sql.Rows) (T, error)) ([]T, error) {
-	defer func() { _ = rows.Close() }()
-	values := []T{}
-	for rows.Next() {
-		value, err := scan(rows)
-		if err != nil {
-			return nil, err
-		}
-		values = append(values, value)
-	}
-	return values, rows.Err() //nolint:wrapcheck // The iteration error is the driver's.
 }

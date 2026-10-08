@@ -1,7 +1,5 @@
 package domain
 
-// ApprovalView is one approval request of an intent and how it ended:
-// approved or denied by whom through which relay, expired, or withdrawn.
 type ApprovalView struct {
 	ApprovalID       string `json:"approval_id"`
 	Status           string `json:"status"`

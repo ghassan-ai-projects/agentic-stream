@@ -11,24 +11,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// PrincipalDocument declares a tenant's approval governance: who may relay and
-// sign approvals, the roles they hold, and which entity and risk each role may
-// approve. Applying it makes the stored governance match the document.
 type PrincipalDocument struct {
 	Tenant     string           `yaml:"tenant" json:"tenant"`
 	Principals []PrincipalEntry `yaml:"principals" json:"principals"`
 	Roles      []RoleEntry      `yaml:"roles" json:"roles"`
 }
 
-// PrincipalEntry is one relay or approver. Approvers carry an Ed25519 public
-// key (standard base64); a relay needs none.
 type PrincipalEntry struct {
 	ID        string `yaml:"id" json:"id"`
 	PublicKey string `yaml:"public_key,omitempty" json:"public_key,omitempty"`
 	Status    string `yaml:"status,omitempty" json:"status,omitempty"`
 }
 
-// RoleEntry grants its members approval authority over entities and risks.
 type RoleEntry struct {
 	ID          string           `yaml:"id" json:"id"`
 	Name        string           `yaml:"name" json:"name"`
@@ -36,13 +30,11 @@ type RoleEntry struct {
 	Authorities []AuthorityEntry `yaml:"authorities" json:"authorities"`
 }
 
-// AuthorityEntry lets a role approve intents of the listed risks on one entity.
 type AuthorityEntry struct {
 	Entity string   `yaml:"entity" json:"entity"`
 	Risks  []string `yaml:"risks" json:"risks"`
 }
 
-// PrincipalSummary counts what an applied document left in place.
 type PrincipalSummary struct {
 	Tenant      string `json:"tenant"`
 	Active      int    `json:"active_principals"`
@@ -52,12 +44,8 @@ type PrincipalSummary struct {
 	Authorities int    `json:"authorities"`
 }
 
-// approvableRisks are the risks a human approval can unlock: R3 and R4 are
-// always denied, so an authority over them would promise what policy refuses.
 var approvableRisks = []string{"R0", "R1", "R2"}
 
-// ParsePrincipalDocument decodes and validates a YAML principal document,
-// refusing unknown fields.
 func ParsePrincipalDocument(data []byte) (PrincipalDocument, error) {
 	var document PrincipalDocument
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
@@ -68,7 +56,6 @@ func ParsePrincipalDocument(data []byte) (PrincipalDocument, error) {
 	return document, document.Validate()
 }
 
-// Validate checks identities, keys, roles, membership references and risks.
 func (d PrincipalDocument) Validate() error {
 	if d.Tenant == "" {
 		return errors.New("principal document needs a tenant")
@@ -80,7 +67,6 @@ func (d PrincipalDocument) Validate() error {
 	return d.validateRoles(keyed)
 }
 
-// validatePrincipals checks each principal and returns which ones carry a key.
 func (d PrincipalDocument) validatePrincipals() (map[string]bool, error) {
 	keyed := make(map[string]bool, len(d.Principals))
 	for _, principal := range d.Principals {
@@ -108,7 +94,6 @@ func (p PrincipalEntry) validate() error {
 	return nil
 }
 
-// KeyBytes decodes the principal's Ed25519 public key; nil when it has none.
 func (p PrincipalEntry) KeyBytes() ([]byte, error) {
 	if p.PublicKey == "" {
 		return nil, nil
@@ -120,7 +105,6 @@ func (p PrincipalEntry) KeyBytes() ([]byte, error) {
 	return key, nil
 }
 
-// EffectiveStatus is the principal's status, active by default.
 func (p PrincipalEntry) EffectiveStatus() string {
 	if p.Status == "" {
 		return "active"

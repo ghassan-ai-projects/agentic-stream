@@ -5,9 +5,6 @@ import (
 	"fmt"
 )
 
-// Mode is an effect-safe replay mode. Replay has no credential or resolver
-// input by construction; recorded mode uses durable ledgers, shadow reports
-// differences without effects.
 type Mode string
 
 const (
@@ -16,21 +13,14 @@ const (
 	ModeShadow        Mode = "shadow"
 )
 
-// ErrModeCapabilityRequired means a worker-aware replay mode was requested
-// without its explicit ledger or worker capability.
 var ErrModeCapabilityRequired = errors.New("replay mode capability required")
 
-// ErrUnsupportedMode means the caller supplied a mode outside the frozen
-// replay contract.
 var ErrUnsupportedMode = errors.New("unsupported replay mode")
 
-// WorkerAwareMode reports whether a mode executes worker-aware capability
-// phases after the deterministic stream replay.
 func WorkerAwareMode(mode Mode) bool {
 	return mode == ModeRecorded || mode == ModeShadow
 }
 
-// AdmitCapabilities accepts at most one explicit capability set per replay.
 func AdmitCapabilities(sets []Capabilities) (Capabilities, error) {
 	if len(sets) > 1 {
 		return Capabilities{}, fmt.Errorf("at most one replay capability set is allowed")
@@ -41,7 +31,6 @@ func AdmitCapabilities(sets []Capabilities) (Capabilities, error) {
 	return Capabilities{}, nil
 }
 
-// Validate fails closed when a worker-aware mode lacks its explicit capability.
 func (c Capabilities) Validate(mode Mode) error {
 	switch mode {
 	case ModeRecorded:

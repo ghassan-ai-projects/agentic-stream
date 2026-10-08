@@ -16,8 +16,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker/internal/domain"
 )
 
-// ListenEvidenceSocket creates a private runtime-owned Unix socket. It
-// refuses symlinks and active sockets rather than unlinking an unknown path.
 func ListenEvidenceSocket(path string) (net.Listener, error) {
 	if err := prepareEvidenceSocket(path); err != nil {
 		return nil, err
@@ -56,9 +54,6 @@ func refuseExistingEvidenceSocket(path string) error {
 	return nil
 }
 
-// DialEpisodeWorkerSocketTLS dials an EpisodeWorker over UDS using TLS when
-// tlsConfig is non-nil. This supports local UDS workers and remote-style
-// certificate authentication without changing the application protocol.
 func DialEpisodeWorkerSocketTLS(ctx context.Context, path string, tlsConfig *tls.Config) (*grpc.ClientConn, error) {
 	if err := domain.ValidateEvidenceSocketPath(path); err != nil {
 		return nil, err
@@ -104,8 +99,7 @@ func prepareEvidenceSocket(path string) error {
 }
 
 func secureEvidenceListener(path string, listener net.Listener) (net.Listener, error) {
-	// The stdlib would unlink the path on close whatever is there by then;
-	// removeOwnedSocket removes it only while it is still this socket.
+
 	if unix, ok := listener.(*net.UnixListener); ok {
 		unix.SetUnlinkOnClose(false)
 	}

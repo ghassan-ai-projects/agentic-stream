@@ -6,6 +6,7 @@ package spectest
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/store"
@@ -13,11 +14,18 @@ import (
 
 // EventSchemaJSON returns the structural schema of a built-in definition.
 func EventSchemaJSON(definition domain.EventSchema) ([]byte, error) {
-	return domain.EventSchemaJSON(definition) //nolint:wrapcheck // The domain names the failed rule.
+	schema, err := domain.EventSchemaJSON(definition)
+	if err != nil {
+		return nil, fmt.Errorf("render event schema: %w", err)
+	}
+	return schema, nil
 }
 
 // RegisterEventSchema stores one event schema version in the caller's
 // transaction; re-registering identical bytes is allowed.
 func RegisterEventSchema(ctx context.Context, tx *sql.Tx, definition domain.EventSchema, schemaJSON []byte, now string) error {
-	return store.RegisterEventSchema(ctx, tx, definition, schemaJSON, now) //nolint:wrapcheck // The store names the failed step.
+	if err := store.RegisterEventSchema(ctx, tx, definition, schemaJSON, now); err != nil {
+		return fmt.Errorf("register event schema: %w", err)
+	}
+	return nil
 }

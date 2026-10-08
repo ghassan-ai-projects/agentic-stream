@@ -2,8 +2,6 @@ package domain
 
 import "encoding/json"
 
-// DecisionView is one Decision a worker returned for an episode and how the
-// runtime validated it.
 type DecisionView struct {
 	DecisionID       string          `json:"decision_id"`
 	AttemptID        string          `json:"attempt_id,omitempty"`

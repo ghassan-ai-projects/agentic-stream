@@ -5,25 +5,20 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 )
 
-// SourceLedger reads the accepted decisions a live runtime recorded, from its
-// database opened read-only, as the recorded ledger of a recorded replay.
 type SourceLedger struct {
 	db                   *sql.DB
 	tenantID, specDigest string
 }
 
-// NewSourceLedger binds the read-only source database to a tenant and the
-// replayed spec.
 func NewSourceLedger(db *sql.DB, tenantID, specDigest string) SourceLedger {
 	return SourceLedger{db: db, tenantID: tenantID, specDigest: specDigest}
 }
 
-// RequireDeployment refuses a source that never deployed the replayed spec:
-// its decisions answered a different question.
 func (l SourceLedger) RequireDeployment(ctx context.Context) error {
 	var deployed int
 	if err := l.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM spec_deployments WHERE deployment_id = ? AND tenant_id = ?", l.specDigest, l.tenantID).Scan(&deployed); err != nil {
@@ -44,24 +39,17 @@ const recordedDecisionsQuery = `
 	AND si.situation_id IN (SELECT situation_id FROM situations WHERE deployment_id = ?)
 	ORDER BY si.situation_id, si.situation_version, si.trigger_id`
 
-// Entries returns every accepted decision the source recorded for the tenant
-// and the replayed spec, keyed by the stable situation/version/trigger
-// identity.
 func (l SourceLedger) Entries(ctx context.Context) ([]domain.RecordedEntry, error) {
 	rows, err := l.db.QueryContext(ctx, recordedDecisionsQuery, l.tenantID, l.specDigest)
 	if err != nil {
 		return nil, fmt.Errorf("read recorded decisions: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var entries []domain.RecordedEntry
-	for rows.Next() {
-		entry, err := scanRecordedEntry(rows)
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, entry)
+	entries, err := storage.CollectRows(rows, "recorded decisions", scanRecordedEntry)
+	if err != nil {
+		return nil, fmt.Errorf("read recorded decisions: %w", err)
 	}
-	return entries, rows.Err() //nolint:wrapcheck // The iteration error is the driver's.
+	return entries, nil
 }
 
 func scanRecordedEntry(rows *sql.Rows) (domain.RecordedEntry, error) {
@@ -78,12 +66,10 @@ func scanRecordedEntry(rows *sql.Rows) (domain.RecordedEntry, error) {
 	return withAttemptProvenance(entry)
 }
 
-// withAttemptProvenance derives the attempt provenance digest the recorded
-// ledger contract carries from the decision's own episode, attempt and fence.
 func withAttemptProvenance(entry domain.RecordedEntry) (domain.RecordedEntry, error) {
 	provenance, err := domain.AttemptProvenance(entry)
 	if err != nil {
-		return domain.RecordedEntry{}, err //nolint:wrapcheck // Domain error already names the step.
+		return domain.RecordedEntry{}, fmt.Errorf("attempt provenance of %s: %w", entry.EpisodeKey, err)
 	}
 	entry.AttemptProvenanceSHA256 = provenance
 	return entry, nil

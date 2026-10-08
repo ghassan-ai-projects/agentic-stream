@@ -59,7 +59,10 @@ introducing a type is warranted only when several steps share state.
 - Split by responsibility: extract a named step or a type that owns one concern.
   Do not split a function mechanically into `partA` and `partB`.
 - Do not use `//nolint` for `gocognit`, `gocyclo`, `nestif`, or `funlen`. Fix
-  the code instead. Any other `//nolint` names its linter and gives a reason.
+  the code instead. Any other `//nolint` names its linter and gives a reason
+  that is true of the code. `//nolint:wrapcheck` is allowed only for a gated
+  facade delegation or a protocol error (AGENTS.md, Go Standards); otherwise
+  wrap the error.
 - Do not delete or weaken tests, and do not exclude packages, to meet Q4.
 - A new package edge must follow the data flow in
   [architecture.md](architecture.md). Add it to the allowlist in

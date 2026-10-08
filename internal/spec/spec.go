@@ -3,6 +3,7 @@ package spec
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/app"
@@ -104,13 +105,20 @@ type Actions = domain.Actions
 
 // CompileFile reads a SituationSpec from path and compiles it.
 func CompileFile(ctx context.Context, path string) (*CompiledSpec, error) {
-	return app.CompileFile(ctx, path) //nolint:wrapcheck // The compiler's CompileError carries the operator-facing path and message.
+	compiled, err := app.CompileFile(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("compile spec %s: %w", path, err)
+	}
+	return compiled, nil
 }
 
 // SaveDeployment persists a compiled spec as an active deployment record. It is
 // idempotent for the same deployment.
 func SaveDeployment(ctx context.Context, db *storage.DB, tenantID string, compiled *CompiledSpec) error {
-	return store.SaveDeployment(ctx, db, tenantID, compiled) //nolint:wrapcheck // The store names the failed step.
+	if err := store.SaveDeployment(ctx, db, tenantID, compiled); err != nil {
+		return fmt.Errorf("save deployment: %w", err)
+	}
+	return nil
 }
 
 // FieldDerivation explains one Situation field from the spec: the reducer
@@ -119,5 +127,9 @@ type FieldDerivation = domain.FieldDerivation
 
 // LoadDeployment reads the compiled spec a deployment stored.
 func LoadDeployment(ctx context.Context, db *storage.DB, deploymentID string) (*CompiledSpec, error) {
-	return store.LoadDeployment(ctx, db, deploymentID) //nolint:wrapcheck // The store names the failed step.
+	compiled, err := store.LoadDeployment(ctx, db, deploymentID)
+	if err != nil {
+		return nil, fmt.Errorf("load deployment: %w", err)
+	}
+	return compiled, nil
 }

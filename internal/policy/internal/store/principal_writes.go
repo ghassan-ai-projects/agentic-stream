@@ -7,10 +7,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
-// ReplaceGovernance makes the tenant's principals, role memberships and
-// approval authorities match the document. Principals are never deleted:
-// those the document omits are disabled, so past approvals keep their
-// signers. Memberships and authorities of the tenant are replaced.
 func (tx *Tx) ReplaceGovernance(ctx context.Context, document domain.PrincipalDocument, now string) (domain.PrincipalSummary, error) {
 	if err := tx.disableTenantPrincipals(ctx, document.Tenant); err != nil {
 		return domain.PrincipalSummary{}, err
@@ -37,7 +33,6 @@ func (tx *Tx) upsertPrincipals(ctx context.Context, document domain.PrincipalDoc
 	return nil
 }
 
-// upsertPrincipal refuses to move a principal between tenants.
 func (tx *Tx) upsertPrincipal(ctx context.Context, tenant string, principal domain.PrincipalEntry, key []byte, now string) error {
 	result, err := tx.tx.ExecContext(ctx, `
 		INSERT INTO principals (principal_id, tenant_id, status, public_key, created_at) VALUES (?, ?, ?, ?, ?)
@@ -53,9 +48,6 @@ func (tx *Tx) upsertPrincipal(ctx context.Context, tenant string, principal doma
 	return nil
 }
 
-// disableTenantPrincipals disables every principal of the tenant; the
-// upsert that follows restores the declared ones, so omitted principals stay
-// disabled in the same transaction.
 func (tx *Tx) disableTenantPrincipals(ctx context.Context, tenant string) error {
 	if _, err := tx.tx.ExecContext(ctx, `UPDATE principals SET status = 'disabled' WHERE tenant_id = ?`, tenant); err != nil {
 		return fmt.Errorf("disable omitted principals: %w", err)
@@ -63,8 +55,6 @@ func (tx *Tx) disableTenantPrincipals(ctx context.Context, tenant string) error 
 	return nil
 }
 
-// replaceRoles upserts the roles, then replaces the tenant's memberships and
-// authorities with the document's.
 func (tx *Tx) replaceRoles(ctx context.Context, document domain.PrincipalDocument) error {
 	if err := tx.clearTenantGrants(ctx, document.Tenant); err != nil {
 		return err
@@ -110,7 +100,6 @@ func (tx *Tx) writeAuthorities(ctx context.Context, tenant string, role domain.R
 	return nil
 }
 
-// GovernanceSummary counts the tenant's stored governance.
 func (tx *Tx) GovernanceSummary(ctx context.Context, tenant string) (domain.PrincipalSummary, error) {
 	summary := domain.PrincipalSummary{Tenant: tenant}
 	err := tx.tx.QueryRowContext(ctx, `SELECT
