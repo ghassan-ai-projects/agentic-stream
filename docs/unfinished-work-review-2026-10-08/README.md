@@ -132,7 +132,7 @@ as the change.
 | X05 | [Checked-in experiment specs](tasks/X05-checked-in-experiment-specs.md) | Complete | P0 | S | X01 | todo |
 | X06 | [Bench mapping and heartbeat](tasks/X06-bench-mapping-and-heartbeat.md) | Research repo config | P0 | S | X05 | todo |
 | X08 | [The live pipeline advances on a clock](tasks/X08-live-pipeline-clock.md) | Fix (found by X01) | P0 | S | — | done |
-| X09 | [Episodes run beside ingestion](tasks/X09-episodes-beside-ingestion.md) | Complete (design §11.4–11.5) | P0 | M | X03 | todo |
+| X09 | [Episodes run beside ingestion](tasks/X09-episodes-beside-ingestion.md) | Complete (design §11.4–11.5) | P0 | M | X03 | done |
 | X07 | [Joined rehearsal: simulator, then bench](tasks/X07-joined-rehearsal.md) | Run the proof | P0 | M | X03–X06, U15 | todo |
 | U01 | [Reject unenforced intent policies](tasks/U01-reject-unenforced-intent-policies.md) | Fix | P0 | S | — | todo |
 | U02 | [Delete counterfactual replay](tasks/U02-delete-counterfactual-replay.md) | Delete | P2 | S | — | todo |

@@ -52,7 +52,11 @@ append-only JSONL source at `--poll-interval` (one second by default), resumes
 from durable connector state, and processes newly appended data. Supplying
 `--spec` with `--live-socket` instead starts a live normalized JSONL UDS source;
 clients may disconnect and reconnect, and malformed lines are quarantined while
-the source continues. `--trace` and `--live-socket` are mutually exclusive.
+the source continues. With a live socket, `--poll-interval` also paces the work
+that does not wait for new evidence (timers such as a missing heartbeat,
+debounced cognition, approved commands), and episodes run beside ingestion, so
+evidence keeps flowing while a worker reasons. `--trace` and `--live-socket`
+are mutually exclusive.
 
 For a live emulator-profile source, keep the effect boundary separate from the
 telemetry socket:

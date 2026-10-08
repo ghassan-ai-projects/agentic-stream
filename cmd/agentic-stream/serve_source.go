@@ -54,6 +54,7 @@ func startContinuousSource(ctx context.Context, stop context.CancelFunc, pipelin
 	if flags.liveSocket != "" {
 		go runLiveSocketSource(ctx, stop, pipeline, flags.liveSocket, failures)
 		go runPipelineClock(ctx, stop, pipeline, flags.pollInterval, failures)
+		go runEpisodeLoop(ctx, stop, pipeline, flags.pollInterval, failures)
 		return waitForLiveSocket(ctx, flags.liveSocket, failures)
 	}
 	go runPollingSource(ctx, stop, pipeline, flags, failures)
@@ -71,6 +72,15 @@ func runLiveSocketSource(ctx context.Context, stop context.CancelFunc, pipeline 
 func runPipelineClock(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, interval time.Duration, failures chan error) {
 	if runErr := pipeline.AdvanceEvery(ctx, interval); runErr != nil && !errors.Is(runErr, context.Canceled) {
 		failures <- fmt.Errorf("pipeline clock: %w", runErr)
+		stop()
+	}
+}
+
+// runEpisodeLoop executes episodes beside the live socket, so a worker's
+// reasoning never holds back ingestion (ADR-018).
+func runEpisodeLoop(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, interval time.Duration, failures chan error) {
+	if runErr := pipeline.RunEpisodesEvery(ctx, interval); runErr != nil && !errors.Is(runErr, context.Canceled) {
+		failures <- fmt.Errorf("episode loop: %w", runErr)
 		stop()
 	}
 }

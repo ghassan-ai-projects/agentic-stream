@@ -65,3 +65,9 @@ func (p *Pipeline) Advance(ctx context.Context) (PipelineReport, error) {
 func (p *Pipeline) AdvanceEvery(ctx context.Context, interval time.Duration) error {
 	return p.useCases().AdvanceEvery(ctx, interval)
 }
+
+// RunEpisodesEvery executes admitted episodes beside ingestion until ctx ends,
+// so a worker's reasoning never holds back evidence, timers or supersession.
+func (p *Pipeline) RunEpisodesEvery(ctx context.Context, interval time.Duration) error {
+	return p.useCases().RunEpisodesEvery(ctx, interval)
+}

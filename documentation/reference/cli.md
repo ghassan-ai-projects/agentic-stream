@@ -79,7 +79,7 @@ Starts the live runtime with HTTP health checks and notifications.
 | `--tenant` | `default` | served tenant |
 | `--listen` | `127.0.0.1:8080` | loopback HTTP address |
 | `--owner-lease` | `1m` | runtime owner lease |
-| `--poll-interval` | `1s` | continuous source polling |
+| `--poll-interval` | `1s` | continuous source polling; with `--live-socket`, the pace of timers, due cognition and dispatch while the socket is quiet |
 | `--demo-mode` | `false` | admit fixtures; tests/demos only |
 | `--model-endpoint` | empty | OpenAI-compatible endpoint |
 | `--model-name` | empty | model name; required with endpoint |

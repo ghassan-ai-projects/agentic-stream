@@ -269,7 +269,30 @@ func ledgerSummary(t *testing.T, db *sql.DB) string {
 		_ = db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table).Scan(&count) //nolint:gosec // fixed table names
 		parts = append(parts, fmt.Sprintf("%s=%d", table, count))
 	}
-	return strings.Join(parts, " ") + " queue: " + schedulerQueue(t, db) + " episodes: " + episodeStates(t, db)
+	return strings.Join(parts, " ") + " versions: " + situationVersions(t, db) + " queue: " + schedulerQueue(t, db) + " episodes: " + episodeStates(t, db)
+}
+
+// situationVersions shows the latest versions, the material marker and the
+// intents' policy status, which decide intent freshness.
+func situationVersions(t *testing.T, db *sql.DB) string {
+	t.Helper()
+	var material int
+	var statuses string
+	_ = db.QueryRowContext(t.Context(), "SELECT COALESCE(MAX(last_material_version), 0), COALESCE((SELECT group_concat(situation_version || ':' || policy_status) FROM intents), '') FROM situations").Scan(&material, &statuses)
+	rows, err := db.QueryContext(t.Context(), "SELECT version, phase, severity, completeness FROM situation_versions ORDER BY version DESC LIMIT 6")
+	if err != nil {
+		return err.Error()
+	}
+	defer func() { _ = rows.Close() }()
+	var versions []string
+	for rows.Next() {
+		var version, severity int
+		var phase, completeness string
+		if rows.Scan(&version, &phase, &severity, &completeness) == nil {
+			versions = append(versions, fmt.Sprintf("v%d:%s/%d/%s", version, phase, severity, completeness))
+		}
+	}
+	return fmt.Sprintf("material=v%d intents=[%s] latest=[%s]", material, statuses, strings.Join(versions, " "))
 }
 
 // episodeStates shows each episode's lifecycle and its attempts' terminals.

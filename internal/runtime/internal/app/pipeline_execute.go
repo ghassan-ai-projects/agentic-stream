@@ -7,6 +7,15 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
+// executeInlineEpisodes executes admitted episodes inside the batch, as batch
+// commands and replay do, unless RunEpisodesEvery owns them.
+func (p *Pipeline) executeInlineEpisodes(ctx context.Context, report *PipelineReport) error {
+	if p.episodesBeside.Load() {
+		return nil
+	}
+	return p.executeAdmittedEpisodes(ctx, report)
+}
+
 func (p *Pipeline) executeAdmittedEpisodes(ctx context.Context, report *PipelineReport) error {
 	for {
 		processed, runErr := p.runner.RunOnce(ctx, p.tenantID)

@@ -164,7 +164,7 @@ func (p *Pipeline) runGovernedBatch(ctx context.Context, report *PipelineReport)
 }
 
 func (p *Pipeline) runAdmittedBatch(ctx context.Context, report *PipelineReport) error {
-	if err := p.executeAdmittedEpisodes(ctx, report); err != nil {
+	if err := p.executeInlineEpisodes(ctx, report); err != nil {
 		return err
 	}
 	if err := p.evaluatePendingIntents(ctx, report); err != nil {

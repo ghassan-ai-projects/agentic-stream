@@ -1,6 +1,6 @@
 # Design: the real-world-sensor closed loop
 
-Status: **proposed 2026-10-08, owner review needed** (D1 needs an ADR).
+Status: D1 accepted as ADR-018 and implemented (X03, X08, X09) on 2026-10-08; D2–D6 open (X04–X07).
 Scope: what Agentic Stream, Tamoz, Streams Simulator and the bench gateway must
 each do so that the experiment's closed loop works live, not only in a paused
 test feed. The experiment is the product's core proof, so this design comes

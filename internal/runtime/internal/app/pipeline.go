@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
@@ -37,12 +38,15 @@ type Pipeline struct {
 	clk          sources.Clock
 	tenantID     string
 	// batchMu serializes source batches with scheduled advances.
-	batchMu   sync.Mutex
-	watchMu   sync.Mutex
-	watchStop context.CancelFunc
-	watchDone chan struct{}
-	watchErr  error
-	telemetry *telemetry.Runtime
+	batchMu sync.Mutex
+	// episodesBeside is set while RunEpisodesEvery executes episodes, so
+	// batches leave them to that loop.
+	episodesBeside atomic.Bool
+	watchMu        sync.Mutex
+	watchStop      context.CancelFunc
+	watchDone      chan struct{}
+	watchErr       error
+	telemetry      *telemetry.Runtime
 }
 
 // Start begins runtime-owned maintenance loops. It is safe to call once for

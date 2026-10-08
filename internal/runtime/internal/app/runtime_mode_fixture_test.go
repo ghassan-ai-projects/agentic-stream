@@ -76,7 +76,9 @@ func newModePipeline(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, 
 		cfg.Clock = sources.Physical()
 	}
 	cfg.IDGenerator = sources.Deterministic()
-	cfg.Executor = fixture.New()
+	if cfg.Executor == nil {
+		cfg.Executor = fixture.New()
+	}
 	cfg.Effector = device.NewSimulatedEffector()
 	pipeline, err := runtime.NewPipeline(context.Background(), cfg)
 	if err != nil {

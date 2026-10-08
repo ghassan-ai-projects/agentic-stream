@@ -53,7 +53,14 @@ references, and its link to a prior Command when proposing compensation.
 ## Policy
 
 The gateway evaluates against current durable state, not the state observed when
-the model started. Approval-required paths create durable approval records;
+the model started. An Intent stays fresh until the Situation changes
+materially: cognition records the latest version for which a trigger's
+`materialDelta` holds (or that ends the occurrence), and policy, approval
+resolution and dispatch refuse the Intent as `situation_version_stale` only
+when such a version is newer than the Intent's. A window's provisional and
+on-time versions alone do not cancel a pending decision. A trigger without
+`materialDelta` keeps the strict rule: any newer version is stale
+([ADR-018](../../docs/design/DECISIONS.md)). Approval-required paths create durable approval records;
 automatic paths still pass all revalidation and interlock checks. Drain and kill
 controls apply to the current policy epoch, the generation of operational
 permission. A worker response cannot bypass an operator stop.

@@ -27,7 +27,10 @@ func materialityRules(t *testing.T, triggers ...spec.Trigger) *Rules {
 func TestMaterialityFollowsTheSpecsDeclaration(t *testing.T) {
 	t.Parallel()
 	declared := spec.Trigger{Name: "overtemp", When: "false", Score: "1.0", Threshold: 1, MaterialDelta: thermalMaterialDelta}
-	previous := situations.Version{SituationID: "s", Version: 7, OccurrenceID: "occ-1", Phase: "cooling", Severity: 55, Completeness: "provisional", Facts: map[string]any{"temp_mean": 33.0}}
+	// Stored versions carry no occurrence id, as cognition loads them.
+	previous := situations.Version{SituationID: "s", Version: 7, Phase: "cooling", Severity: 55, Completeness: "provisional", Facts: map[string]any{"temp_mean": 33.0}}
+	resolved := previous
+	resolved.Phase = situations.PhaseResolved
 	cases := []struct {
 		name     string
 		rules    *Rules
@@ -42,7 +45,7 @@ func TestMaterialityFollowsTheSpecsDeclaration(t *testing.T) {
 		{"a severity jump is material", materialityRules(t, declared), &previous, func(v *situations.Version) { v.Severity = 85 }, true},
 		{"the closing phase is always material", materialityRules(t, declared), &previous, func(v *situations.Version) { v.Phase = situations.PhaseResolved }, true},
 		{"a terminal phase is always material", materialityRules(t, declared), &previous, func(v *situations.Version) { v.Phase = "done" }, true},
-		{"a new occurrence is material", materialityRules(t, declared), &previous, func(v *situations.Version) { v.OccurrenceID = "occ-2" }, true},
+		{"the version after the occurrence ended is material", materialityRules(t, declared), &resolved, func(*situations.Version) {}, true},
 		{"a first version is material", materialityRules(t, declared), nil, func(*situations.Version) {}, true},
 		{"a trigger without materialDelta keeps every version material", materialityRules(t, declared, spec.Trigger{Name: "plain", When: "false", Score: "1.0", Threshold: 1}), &previous, func(*situations.Version) {}, true},
 		{"a spec without triggers keeps every version material", materialityRules(t), &previous, func(*situations.Version) {}, true},
@@ -51,7 +54,7 @@ func TestMaterialityFollowsTheSpecsDeclaration(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			current := previous
-			current.Version = 8
+			current.Version, current.OccurrenceID = 8, "occ-1"
 			tc.change(&current)
 			if got := tc.rules.Material(current, tc.previous); got != tc.want {
 				t.Fatalf("Material = %v, want %v", got, tc.want)

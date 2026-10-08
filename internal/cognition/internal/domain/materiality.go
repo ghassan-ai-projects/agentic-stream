@@ -8,11 +8,11 @@ import (
 // the previously evaluated version (ADR-018). A newer version that is not
 // material leaves pending intents fresh. The spec declares materiality per
 // trigger through materialDelta, evaluated whether or not the trigger fires;
-// a first version, a new occurrence, a closing or terminal phase, a spec
-// without triggers, a trigger without materialDelta and a materialDelta that
-// fails to evaluate are all material, so the rule fails strict.
+// a first version, a version that ends the occurrence or follows its end, a
+// spec without triggers, a trigger without materialDelta and a materialDelta
+// that fails to evaluate are all material, so the rule fails strict.
 func (e *Rules) Material(current situations.Version, previous *situations.Version) bool {
-	if previous == nil || current.OccurrenceID != previous.OccurrenceID || e.endsOccurrence(current.Phase) {
+	if previous == nil || e.endsOccurrence(current.Phase) || e.endsOccurrence(previous.Phase) {
 		return true
 	}
 	return e.anyTriggerDeclaresMaterial(current, previous)
