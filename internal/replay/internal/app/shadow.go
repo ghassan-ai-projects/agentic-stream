@@ -66,11 +66,15 @@ func compareShadowEpisode(ctx context.Context, session *replaySession, caps doma
 	if err != nil {
 		return err
 	}
-	baseline, tamoz, err := evaluateShadowPair(ctx, caps, input, rules, evaluationTime, result)
+	baseline, err := evaluateBaseline(ctx, caps, input, rules, evaluationTime)
 	if err != nil {
 		return err
 	}
-	return recordShadowComparison(ctx, session, input, baseline, tamoz, evaluationTime, result)
+	tamoz, err := evaluateCandidate(ctx, caps, input, rules, evaluationTime, result)
+	if err != nil || tamoz == nil {
+		return err
+	}
+	return recordShadowComparison(ctx, session, input, baseline, *tamoz, evaluationTime, result)
 }
 
 func loadShadowInput(ctx context.Context, session *replaySession, episode domain.ReplayEpisode, policyDigest string, evaluationTime time.Time) (domain.ShadowInput, error) {
@@ -82,7 +86,9 @@ func loadShadowInput(ctx context.Context, session *replaySession, episode domain
 	if err != nil {
 		return domain.ShadowInput{}, err
 	}
-	return newShadowInput(episode, session.tenantID, session.compiled.Digest, policyDigest, canonical, evaluationTime), nil
+	input := newShadowInput(episode, session.tenantID, session.compiled.Digest, policyDigest, canonical, evaluationTime)
+	input.Request, err = session.store.ShadowRequest(ctx, episode)
+	return input, err
 }
 
 func newShadowInput(episode domain.ReplayEpisode, tenantID, specDigest, policyDigest string, canonical []byte, evaluationTime time.Time) domain.ShadowInput {
@@ -95,18 +101,38 @@ func newShadowInput(episode domain.ReplayEpisode, tenantID, specDigest, policyDi
 	}
 }
 
-func evaluateShadowPair(ctx context.Context, caps domain.Capabilities, input domain.ShadowInput, rules domain.ShadowRules, evaluationTime time.Time, result *domain.Result) (domain.ValidatedOutput, domain.ValidatedOutput, error) {
-	baselineOutput, err := caps.BaselineExecutor.ExecuteBaseline(ctx, input.Clone())
+func evaluateBaseline(ctx context.Context, caps domain.Capabilities, input domain.ShadowInput, rules domain.ShadowRules, evaluationTime time.Time) (domain.ValidatedOutput, error) {
+	output, err := caps.BaselineExecutor.ExecuteBaseline(ctx, input.Clone())
 	if err != nil {
-		return domain.ValidatedOutput{}, domain.ValidatedOutput{}, fmt.Errorf("baseline shadow episode %s: %w", input.EpisodeKey, err)
+		return domain.ValidatedOutput{}, fmt.Errorf("baseline shadow episode %s: %w", input.EpisodeKey, err)
 	}
-	tamozOutput, err := caps.ShadowExecutor.ExecuteShadow(ctx, input.Clone())
+	validated, err := rules.ValidateOutput(input, output, evaluationTime)
 	if err != nil {
-		return domain.ValidatedOutput{}, domain.ValidatedOutput{}, fmt.Errorf("tamoz shadow episode %s: %w", input.EpisodeKey, err)
+		return domain.ValidatedOutput{}, fmt.Errorf("validate baseline shadow episode %s: %w", input.EpisodeKey, err)
 	}
+	return validated, nil
+}
+
+func evaluateCandidate(ctx context.Context, caps domain.Capabilities, input domain.ShadowInput, rules domain.ShadowRules, evaluationTime time.Time, result *domain.Result) (*domain.ValidatedOutput, error) {
+	output, err := caps.ShadowExecutor.ExecuteShadow(ctx, input.Clone())
 	result.WorkerInvoked = true
 	result.CapabilityCalls += 2
-	return rules.ValidatePair(input, baselineOutput, tamozOutput, evaluationTime)
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("tamoz shadow episode %s: %w", input.EpisodeKey, ctx.Err())
+	}
+	if err != nil {
+		return nil, candidateFinding(result, "shadow_candidate_failed", input, err)
+	}
+	validated, err := rules.ValidateOutput(input, output, evaluationTime)
+	if err != nil {
+		return nil, candidateFinding(result, "shadow_candidate_invalid", input, err)
+	}
+	return &validated, nil
+}
+
+func candidateFinding(result *domain.Result, code string, input domain.ShadowInput, cause error) error {
+	result.Findings = append(result.Findings, domain.Finding{Code: code, Message: input.EpisodeKey + ": " + cause.Error()})
+	return nil
 }
 
 func recordShadowComparison(ctx context.Context, session *replaySession, input domain.ShadowInput, baseline, tamoz domain.ValidatedOutput, evaluationTime time.Time, result *domain.Result) error {

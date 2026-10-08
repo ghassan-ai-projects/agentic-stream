@@ -28,8 +28,6 @@ func (e *Engine) evaluate(ctx context.Context, sit *Situation, feature operators
 	return e.materialize(sit, watermark)
 }
 
-// advanceLifecycle checks occurrence close first if active, then phase
-// transitions, then occurrence open if not active.
 func (e *Engine) advanceLifecycle(ctx context.Context, sit *Situation, inputs evaluationInputs) (bool, error) {
 	closed, err := e.closeOccurrence(ctx, sit, inputs)
 	if err != nil {
@@ -46,12 +44,13 @@ func (e *Engine) advanceLifecycle(ctx context.Context, sit *Situation, inputs ev
 	return closed || transitioned || opened, nil
 }
 
-// evaluationInputs are the CEL inputs and times one evaluation uses.
 type evaluationInputs struct {
 	features, situation map[string]any
 	eventTime           time.Time
 	watermark           time.Time
 }
+
+const PhaseResolved = "resolved"
 
 func (e *Engine) closeOccurrence(ctx context.Context, sit *Situation, in evaluationInputs) (bool, error) {
 	if sit.Version == 0 && sit.Phase == e.spec.Situation.InitialPhase {
@@ -61,11 +60,9 @@ func (e *Engine) closeOccurrence(ctx context.Context, sit *Situation, in evaluat
 	if err != nil || !closed {
 		return false, err
 	}
-	return e.transition(sit, "resolved", in.watermark), nil
+	return e.transition(sit, PhaseResolved, in.watermark), nil
 }
 
-// applyTransitions takes every transition out of the current phase whose
-// condition has held for its minimum duration, measured in event time.
 func (e *Engine) applyTransitions(ctx context.Context, sit *Situation, in evaluationInputs) (bool, error) {
 	changed := false
 	for _, tr := range e.spec.Situation.Transitions {
@@ -81,8 +78,6 @@ func (e *Engine) applyTransitions(ctx context.Context, sit *Situation, in evalua
 	return changed, nil
 }
 
-// applyTransition starts or clears the transition's condition timer and
-// moves the Situation once the condition has held for the minimum duration.
 func (e *Engine) applyTransition(ctx context.Context, sit *Situation, tr spec.Transition, in evaluationInputs) (bool, error) {
 	held, err := e.evalBool(ctx, tr.When, in.features, in.situation)
 	if err != nil {
@@ -98,8 +93,6 @@ func (e *Engine) applyTransition(ctx context.Context, sit *Situation, tr spec.Tr
 	return in.eventTime.Sub(start) >= minDur && e.transition(sit, tr.To, in.watermark), nil
 }
 
-// conditionStart returns when the keyed condition began to hold, recording
-// eventTime when it starts now.
 func conditionStart(sit *Situation, key string, eventTime time.Time) time.Time {
 	start := sit.ConditionStart[key]
 	if start.IsZero() {
@@ -147,9 +140,6 @@ func (e *Engine) buildFeaturesMap(sit *Situation) map[string]any {
 	return CELFeatures(e.spec, sit.Facts, sortedEvidenceIDs(sit))
 }
 
-// CELFeatures is the CEL `features` view of a Situation: its reduced facts
-// and evidence, with every missing operator output defaulted so expressions
-// never fail on a missing key. Situations and cognition share this one view.
 func CELFeatures(compiled *spec.CompiledSpec, facts map[string]any, evidence []string) map[string]any {
 	features := make(map[string]any)
 	for _, r := range compiled.Situation.Reducers {
@@ -162,8 +152,7 @@ func CELFeatures(compiled *spec.CompiledSpec, facts map[string]any, evidence []s
 func addReducedFeature(features, facts map[string]any, evidence []string, r spec.Reducer) {
 	switch r.Strategy {
 	case "latest_event_time":
-		// A nil fact means this operator has not materialized an output yet.
-		// Leave it absent so the typed operator default remains effective.
+
 		if v, ok := facts[r.Field]; ok && v != nil {
 			features[r.Input] = v
 		}
@@ -172,9 +161,6 @@ func addReducedFeature(features, facts map[string]any, evidence []string, r spec
 	}
 }
 
-// addOperatorDefaults pre-populates every missing operator output so that CEL
-// expressions never fail on a missing key: heartbeat detectors default to
-// false and numeric features to 0.
 func addOperatorDefaults(features map[string]any, ops []spec.Operator) {
 	for _, op := range ops {
 		if _, ok := features[op.Output]; ok {

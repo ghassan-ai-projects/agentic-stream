@@ -58,8 +58,8 @@ stream core.
    the four reference source trees, including adopted and rejected patterns.
 5. [Runtime worker protocol](contracts/runtime-v1.proto) — the language-neutral
    episode worker and evidence-tool boundary.
-6. [SituationSpec schema](contracts/situation-spec-v1.schema.json) — the
-   authoring contract for the first implementation.
+6. [SituationSpec schema](../../internal/spec/internal/domain/schema.json) — the
+   authoring contract, embedded in the runtime (the only copy).
 7. [Storage schema](contracts/storage-schema-v1.sql) — the logical SQLite
    tables, keys, constraints, and indexes for the first implementation.
 8. [Predictive-maintenance example](examples/predictive-maintenance.situation.yaml)

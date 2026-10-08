@@ -40,3 +40,16 @@ func CoalesceSkippedItem(ctx context.Context, tx *sql.Tx, schedulerItemID string
 func NextPendingSchedulerItem(ctx context.Context, db *sql.DB, tenantID string, now time.Time) (string, bool, error) {
 	return app.NextPendingSchedulerItem(ctx, store.Reader(db), tenantID, now)
 }
+
+// Scheduling reads what became of one trigger evaluation: its scheduler
+// item, the episode it admitted and the results refused for that episode.
+// found is false when the evaluation never created a scheduler item.
+func Scheduling(ctx context.Context, db *sql.DB, tenantID, triggerID string) (SchedulingRecord, bool, error) {
+	return app.Scheduling(ctx, store.Reader(db), tenantID, triggerID)
+}
+
+// Episode reads one of the tenant's episodes with its attempts and the
+// results the ledger refused for it.
+func Episode(ctx context.Context, db *sql.DB, tenantID, episodeID string) (EpisodeRecord, error) {
+	return app.Episode(ctx, store.Reader(db), tenantID, episodeID)
+}

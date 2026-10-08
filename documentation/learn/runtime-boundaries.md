@@ -79,8 +79,9 @@ outcomes provide that history. Notifications expose committed lifecycle events;
 telemetry helps observe execution but does not replace those records.
 
 **Qualification** asks whether the configuration and integration are suitable
-for the intended operating environment. Calibration activation and report-only
-shadow comparisons are separate evidence mechanisms. Passing a motor
+for the intended operating environment. Report-only shadow comparisons are
+evidence for it; they never automate a consequential (R2) intent, which always
+needs human approval. Passing a motor
 test with simulated inputs does not qualify a physical installation.
 Source: [observability](../design/observability.md),
 [shadow decision store](../../internal/episodes/internal/store/shadow.go), and

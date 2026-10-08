@@ -91,7 +91,7 @@ not a code path:
 | Cell | Asserts | Oracle | Coverage |
 | --- | --- | --- | --- |
 | S5.1 effect-free replay | replay loads no production effector, credential, outbox, or token | record + contract | partial — `internal/replay` |
-| S5.2 explicit simulator only | counterfactual mode without an explicit simulator fails closed | contract | partial |
+| S5.2 no counterfactual mode | replay refuses the removed `counterfactual` mode | contract | done |
 | S5.3 shadow parity | a new model or prompt runs against the same trace in effect-disabled shadow mode and produces no effect | record | partial |
 
 ## S6 — Explainability (Class D)
@@ -112,7 +112,7 @@ definition of done; the episode's Decision and Intent are graded against it.
 | S7.1 decision quality | the proposed Intent matches the scenario's definition of done | record + DoD | missing |
 | S7.2 off-catalog fail-closed | an Intent outside the declared catalog never dispatches | record | partial |
 | S7.3 abstention quality | on cells where abstaining is correct, the runtime abstains; on cells where acting is correct, it does not | record + statistics | missing |
-| S7.4 counterfactual regret | paired against `replay.DeterministicBaseline`, regret and win/loss clear a stated minimum effect | statistics | missing |
+| S7.4 regret against the baseline | paired against `replay.DeterministicBaseline`, regret and win/loss clear a stated minimum effect | statistics | missing |
 | S7.5 holdout | the family is held out from any prompt or catalog tuning and recorded by digest | contract | missing |
 | S7.6 cost per cell | model calls, tokens, tool bytes, and wall time are reported per cell, not aggregated away | counter | partial — `internal/control` (cost files) |
 

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
@@ -15,7 +14,7 @@ import (
 func newWatch(t *testing.T, db *storage.DB) *watch.Service {
 	t.Helper()
 	owner := func(context.Context, *sql.Tx, string) error { return nil }
-	service, err := watch.New(watch.Config{DB: db, RuntimeOwner: owner, Epoch: "epoch", Interlock: interlock.DurableReader{}})
+	service, err := watch.New(watch.Config{DB: db, RuntimeOwner: owner, Epoch: "epoch"})
 	if err != nil {
 		t.Fatal(err)
 	}

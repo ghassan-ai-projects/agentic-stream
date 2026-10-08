@@ -28,8 +28,7 @@ func TestDeterministicNativeExecutorConforms(t *testing.T) {
 
 func TestNativeExecutorRunsReadToolThenDecision(t *testing.T) {
 	provider := &native.DeterministicProvider{Responses: []native.ModelResponse{{ToolCalls: []native.ToolCall{{ID: "call-1", Name: "evidence.get", Arguments: json.RawMessage(`{"entity_id":"motor-1"}`)}}}}}
-	store := native.NewMemoryArtifactStore()
-	executor, err := native.New(native.Config{Provider: provider, ArtifactStore: store, Tools: []native.Tool{toolFunc{name: "evidence.get", call: func(_ context.Context, _ json.RawMessage) (native.ToolResult, error) {
+	executor, err := native.New(native.Config{Provider: provider, Tools: []native.Tool{toolFunc{name: "evidence.get", call: func(_ context.Context, _ json.RawMessage) (native.ToolResult, error) {
 		return native.ToolResult{JSON: json.RawMessage(`{"rows":[{"value":42}]}`)}, nil
 	}}}})
 	if err != nil {
@@ -47,10 +46,11 @@ func TestNativeExecutorRunsReadToolThenDecision(t *testing.T) {
 	}
 }
 
-func TestNativeExecutorSpillsOversizedResult(t *testing.T) {
+// A tool result over the episode's tool-result budget fails the attempt: it is
+// never stored elsewhere and referenced, which would read past the budget.
+func TestNativeExecutorFailsClosedOnAnOversizedResult(t *testing.T) {
 	provider := &native.DeterministicProvider{Responses: []native.ModelResponse{{ToolCalls: []native.ToolCall{{ID: "call-1", Name: "evidence.get", Arguments: json.RawMessage(`{}`)}}}}}
-	store := native.NewMemoryArtifactStore()
-	executor, err := native.New(native.Config{Provider: provider, ArtifactStore: store, Tools: []native.Tool{toolFunc{name: "evidence.get", call: func(_ context.Context, _ json.RawMessage) (native.ToolResult, error) {
+	executor, err := native.New(native.Config{Provider: provider, Tools: []native.Tool{toolFunc{name: "evidence.get", call: func(_ context.Context, _ json.RawMessage) (native.ToolResult, error) {
 		return native.ToolResult{JSON: json.RawMessage(`{"large":"payload"}`)}, nil
 	}}}})
 	if err != nil {
@@ -62,8 +62,8 @@ func TestNativeExecutorSpillsOversizedResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outcome.Status != string(episodeledger.AttemptProduced) {
-		t.Fatalf("expected artifact-backed continuation, got %#v", outcome)
+	if outcome.Status == string(episodeledger.AttemptProduced) {
+		t.Fatalf("an oversized tool result must fail the attempt, got %#v", outcome)
 	}
 }
 

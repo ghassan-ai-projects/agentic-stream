@@ -82,6 +82,28 @@ suppression, cancellation, Decision/Intent validation, policy denial,
 idempotent effects, unknown outcomes, replay isolation, shadow mode, and worker
 capability boundaries.
 
+## Explain what happened
+
+Every Situation field and trigger decision is explainable from the runtime
+database. After a `run-live` batch:
+
+```bash
+agentic-stream situation list --db runtime.db
+```
+
+```bash
+agentic-stream explain situation <situation-id> --db runtime.db
+```
+
+```bash
+agentic-stream explain trigger <trigger-id> --db runtime.db
+```
+
+`explain situation` traces each field to its reducer and operator in the
+deployed spec and lists the logged evidence events; it also lists the version's
+trigger evaluations, whose ids `explain trigger` takes. See the
+[CLI reference](../reference/cli.md).
+
 ## What this does not prove
 
 This example does not certify a real maintenance system, a production model,

@@ -13,8 +13,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 )
 
-// loadEvaluationReasons reads the reasons of the evaluation that admitted the
-// scheduler item.
 func (t *Tx) LoadEvaluationReasons(ctx context.Context, schedulerItemID string) (string, []string, error) {
 	var triggerID string
 	var reasonsJSON []byte
@@ -44,7 +42,6 @@ func (t *Tx) UpsertEvaluation(ctx context.Context, eval domain.Evaluation, tenan
 	return nil
 }
 
-// evaluationColumns lists the evaluation in upsertEvaluationSQL column order.
 func evaluationColumns(eval domain.Evaluation, tenantID, deploymentID, policyDigest string) ([]any, error) {
 	reasonsJSON, err := json.Marshal(eval.Reasons)
 	if err != nil {
@@ -78,7 +75,6 @@ const upsertEvaluationSQL = `
 			delta_json = excluded.delta_json,
 			evaluated_at = excluded.evaluated_at`
 
-// announceEvaluation appends the situation.trigger.evaluated notification.
 func (t *Tx) AnnounceEvaluation(ctx context.Context, eval domain.Evaluation, tenantID string) error {
 	event := evaluationEvent(eval, tenantID)
 	var err error
@@ -104,8 +100,7 @@ func evaluationEvent(eval domain.Evaluation, tenantID string) contractsv1.CloudE
 }
 
 func (t *Tx) MarkVersionReasoned(ctx context.Context, v situations.Version) error {
-	// Advance last_reasoned_version unconditionally so that future deltas compare
-	// against the most recently evaluated version regardless of outcome.
+
 	if _, err := t.tx.ExecContext(ctx,
 		"UPDATE situations SET last_reasoned_version = ? WHERE situation_id = ?",
 		v.Version, v.SituationID,
@@ -113,6 +108,16 @@ func (t *Tx) MarkVersionReasoned(ctx context.Context, v situations.Version) erro
 		return fmt.Errorf("update last reasoned version: %w", err)
 	}
 
+	return nil
+}
+
+func (t *Tx) MarkVersionMaterial(ctx context.Context, v situations.Version) error {
+	if _, err := t.tx.ExecContext(ctx,
+		"UPDATE situations SET last_material_version = ? WHERE situation_id = ?",
+		v.Version, v.SituationID,
+	); err != nil {
+		return fmt.Errorf("update last material version: %w", err)
+	}
 	return nil
 }
 

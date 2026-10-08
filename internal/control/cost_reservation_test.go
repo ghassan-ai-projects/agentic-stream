@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -23,7 +25,7 @@ func TestReserveSettleAndKillSwitch(t *testing.T) {
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
 	controller := control.CostLedger{}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		return control.SetCostLimit(ctx, tx, "global", "", 10, false, now)
+		return controltest.SetCostLimit(ctx, tx, "global", "", 10, false, now)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +38,7 @@ func TestReserveSettleAndKillSwitch(t *testing.T) {
 		if err := controller.Settle(ctx, tx, "episode-1", 6, now); err != nil {
 			return fmt.Errorf("settle episode: %w", err)
 		}
-		return control.SetCostLimit(ctx, tx, "global", "", 10, true, now)
+		return controltest.SetCostLimit(ctx, tx, "global", "", 10, true, now)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +63,7 @@ func TestZeroEstimateIsRejectedByTenantCeiling(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		return control.SetCostLimit(ctx, tx, "tenant:tenant-1", "tenant-1", 10, false, now)
+		return controltest.SetCostLimit(ctx, tx, "tenant:tenant-1", "tenant-1", 10, false, now)
 	}); err != nil {
 		t.Fatal(err)
 	}

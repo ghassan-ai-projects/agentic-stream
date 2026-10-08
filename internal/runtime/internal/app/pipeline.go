@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
@@ -18,13 +19,10 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
 
-// PipelineReport counts durable stages completed during one source advancement.
 type PipelineReport = domain.PipelineReport
 
 const watchReadBatchSize = 1000
 
-// Pipeline advances the stream, cognition, episode, policy and action planes
-// in order, with runtime-owned maintenance between source advancements.
 type Pipeline struct {
 	transactions *store.PipelineStore
 	sources      *transport.Sources
@@ -36,15 +34,17 @@ type Pipeline struct {
 	watch        *watch.Service
 	clk          sources.Clock
 	tenantID     string
-	watchMu      sync.Mutex
-	watchStop    context.CancelFunc
-	watchDone    chan struct{}
-	watchErr     error
-	telemetry    *telemetry.Runtime
+
+	batchMu sync.Mutex
+
+	episodesBeside atomic.Bool
+	watchMu        sync.Mutex
+	watchStop      context.CancelFunc
+	watchDone      chan struct{}
+	watchErr       error
+	telemetry      *telemetry.Runtime
 }
 
-// Start begins runtime-owned maintenance loops. It is safe to call once for
-// a pipeline; the caller should call Close when the live runtime stops.
 func (p *Pipeline) Start(ctx context.Context) error {
 	if p == nil || p.watch == nil {
 		return fmt.Errorf("pipeline watch maintenance is not configured")
@@ -88,7 +88,6 @@ func (p *Pipeline) expireMaintainedWatches(ctx context.Context) error {
 	return nil
 }
 
-// Close stops runtime-owned maintenance loops.
 func (p *Pipeline) Close() error {
 	if p == nil {
 		return nil

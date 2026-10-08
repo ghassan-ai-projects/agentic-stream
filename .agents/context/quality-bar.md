@@ -12,8 +12,9 @@ recorded in the same change, never a way to get a diff green.
 | Q3 | Production Go files stay under 300 lines. Generated files are exempt. | `TestProductionFileSize` (`architecture_test.go`) |
 | Q4 | Every package with statements has its own tests and at least 60% statement coverage, measured with `-short`. Generated protobuf stubs are exempt. | `make coverage-check` (`scripts/check-coverage.py`) |
 | Q5 | Package imports follow the declared layering. Foundation packages import no domain package; cognition and episodes never import policy or actions; replay never imports actions or the runtime; nothing under `internal/` imports `cmd/`. | `TestPackageLayering` (`architecture_test.go`) |
-| Q6 | The existing gates stay green: proto, tidy, build, vet, race tests, deadcode, vulncheck, docs. | `make ci-check` |
+| Q6 | The existing gates stay green: proto, tidy, build, vet, race tests, deadcode (no production function reachable only from tests), vulncheck, docs. | `make ci-check` |
 | Q7 | Functions read top-down as intent, following the clean-function rules below. | Code review, checked against [review-checklist.md](review-checklist.md) |
+| Q8 | No copied code: production Go has no token clone of 100 or more tokens, and a change adds no second implementation of something the repo already does. The threshold only goes down. | `dupl` in `.golangci.yml`; the duplication scan in AGENTS.md for the rest |
 
 ## Q7: clean functions
 
@@ -59,7 +60,10 @@ introducing a type is warranted only when several steps share state.
 - Split by responsibility: extract a named step or a type that owns one concern.
   Do not split a function mechanically into `partA` and `partB`.
 - Do not use `//nolint` for `gocognit`, `gocyclo`, `nestif`, or `funlen`. Fix
-  the code instead. Any other `//nolint` names its linter and gives a reason.
+  the code instead. Any other `//nolint` names its linter and gives a reason
+  that is true of the code. `//nolint:wrapcheck` is allowed only for a gated
+  facade delegation or a protocol error (AGENTS.md, Go Standards); otherwise
+  wrap the error.
 - Do not delete or weaken tests, and do not exclude packages, to meet Q4.
 - A new package edge must follow the data flow in
   [architecture.md](architecture.md). Add it to the allowlist in

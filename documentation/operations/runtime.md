@@ -66,6 +66,25 @@ the killed policy epoch. Treat these as operator actions and audit their use.
 The design archive lists broader CRUD and inspection HTTP APIs. The current
 handler exposes only the routes in the [HTTP reference](../reference/http-api.md).
 
+## Emergency stop
+
+To stop every effect immediately, while the runtime keeps ingesting and
+reasoning:
+
+```bash
+agentic-stream interlock trip --db runtime.db --reason "fan running hot"
+```
+
+Pending commands are refused from then on, before creation and before
+delivery. After inspection, stop `serve` and reopen the action plane:
+
+```bash
+agentic-stream interlock clear --db runtime.db --reason "inspected wiring"
+```
+
+The software interlock complements, and never replaces, the physical e-stop
+and the device's own safe state.
+
 ## Next reads
 
 - [HTTP reference](../reference/http-api.md)

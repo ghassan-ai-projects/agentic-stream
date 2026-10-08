@@ -7,11 +7,8 @@ import (
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
 )
 
-// Quarantine records an invalid event durably without placing it in the
-// executable event log. Repeated delivery increments a bounded retry count.
-func (l *EventLog) Quarantine(ctx context.Context, tenantID string, env map[string]any, reason, now string) error {
-	return l.service.Quarantine(ctx, tenantID, env, reason, now)
-}
+// QuarantineRecord is one quarantined event as an operator sees it.
+type QuarantineRecord = domain.QuarantineRecord
 
 // QuarantineEnvelope records a normalized envelope that failed validation.
 func (l *EventLog) QuarantineEnvelope(ctx context.Context, tenantID string, env contractsv1.Envelope, reason, now string) error {
@@ -33,12 +30,7 @@ func (l *EventLog) RedriveQuarantine(ctx context.Context, tenantID, eventID, now
 	return l.service.RedriveQuarantine(ctx, tenantID, eventID, now)
 }
 
-// Gap is one durable discontinuity: an ordered position span in a partition,
-// with the reason it was recorded and the recording time.
-type Gap = domain.Gap
-
-// RecordGap records a durable discontinuity caused by bounded overflow or
-// explicit operator action. It never deletes the original evidence.
-func (l *EventLog) RecordGap(ctx context.Context, gap Gap) error {
-	return l.service.RecordGap(ctx, gap)
+// Quarantined lists the tenant's quarantine records, newest first.
+func (l *EventLog) Quarantined(ctx context.Context, tenantID string) ([]QuarantineRecord, error) {
+	return l.service.Quarantined(ctx, tenantID)
 }

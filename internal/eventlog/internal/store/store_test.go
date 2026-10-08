@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -144,9 +146,6 @@ func TestQuarantineLifecycleSQL(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.RecordGap(ctx, domain.Gap{ID: "gap-1", TenantID: "tenant", PartitionID: 0, From: 1, To: 2, Reason: "manual", CreatedAt: "now"}); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func quarantineThroughUnit(ctx context.Context, u *Unit, payload domain.QuarantinePayload) (bool, error) {
@@ -207,12 +206,12 @@ func TestLoadEventSchemaFailsClosed(t *testing.T) {
 	if !ok {
 		t.Fatal("temperature schema missing from catalog")
 	}
-	schemaJSON, err := spec.EventSchemaJSON(definition)
+	schemaJSON, err := spectest.EventSchemaJSON(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := st.DB.WithTx(context.Background(), func(tx *sql.Tx) error {
-		return spec.RegisterEventSchema(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
+		return spectest.RegisterEventSchema(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
 	}); err != nil {
 		t.Fatal(err)
 	}

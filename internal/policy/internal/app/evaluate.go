@@ -10,7 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
 )
 
-// EvaluateIntent runs ordered governance gates on the caller transaction.
 func (g *Service) EvaluateIntent(ctx context.Context, tx *store.Tx, request domain.EvaluationRequest) (domain.Result, error) {
 	if err := g.assertOwner(ctx, tx); err != nil {
 		return domain.Result{IntentID: request.IntentID}, err
@@ -78,28 +77,11 @@ func (g *Service) routeIntent(ctx context.Context, tx *store.Tx, e evaluation) (
 		return g.approveAutomatic(ctx, tx, e)
 	case "approval":
 		return g.approveOrRequireApproval(ctx, tx, e)
-	case "calibration":
-		return g.routeConsequentialIntent(ctx, tx, e)
 	default:
 		return g.finish(ctx, tx, e, domain.Outcome{Status: "denied", Reason: reason})
 	}
 }
 
-func (g *Service) routeConsequentialIntent(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
-	if e.row.SituationType != "" && e.row.ExecutorVersion != "" {
-		if active, err := tx.CalibrationActive(ctx, e.row.SituationType, e.row.ExecutorVersion); err == nil && active {
-			e.result.Reason = "calibrated_automation"
-			return g.approveAutomatic(ctx, tx, e)
-		}
-	}
-	return g.approveOrRequireApproval(ctx, tx, e)
-}
-
-// approveOrRequireApproval dispatches when a human has already approved this
-// intent, otherwise it opens a fresh approval request. Consulting the existing
-// approval is what breaks the approve -> re-pending -> new-approval loop: once
-// ResolveApproval marks the approval 'approved' and re-runs EvaluateIntent,
-// this path finds that row and terminates in dispatch.
 func (g *Service) approveOrRequireApproval(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
 	approvedApproval, err := tx.ApprovedApproval(ctx, e.row.IntentID)
 	switch {

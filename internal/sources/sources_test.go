@@ -33,3 +33,18 @@ func TestFacadeGeneratesRandomAndDeterministicIdentifiers(t *testing.T) {
 		t.Fatal("deterministic generators must replay the same sequence")
 	}
 }
+
+func TestOrPhysicalAndOrRandomKeepTheCallersChoice(t *testing.T) {
+	t.Parallel()
+	virtual := sources.NewVirtual(time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC))
+	if sources.OrPhysical(virtual) != sources.Clock(virtual) || sources.Quality(sources.OrPhysical(nil)) != "physical" {
+		t.Fatal("OrPhysical must keep a supplied clock and default a nil one to the physical clock")
+	}
+	deterministic := sources.Deterministic()
+	if sources.OrRandom(deterministic) != deterministic {
+		t.Fatal("OrRandom replaced a supplied generator")
+	}
+	if first, second := sources.OrRandom(nil).New("id_"), sources.OrRandom(nil).New("id_"); first == second {
+		t.Fatalf("the default generator repeated %q", first)
+	}
+}

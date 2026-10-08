@@ -8,9 +8,6 @@ import (
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 )
 
-// applyCapabilities runs the worker-aware part of a replay mode: recorded
-// decisions are verified against the replay worklist, shadow executors are
-// compared report-only, and counterfactual commands go only to the simulator.
 func applyCapabilities(ctx context.Context, session *replaySession, mode domain.Mode, caps domain.Capabilities, evaluationTime time.Time, result *domain.Result) error {
 	episodes, err := session.store.EpisodeWorklist(ctx, session.tenantID)
 	if err != nil {
@@ -21,14 +18,10 @@ func applyCapabilities(ctx context.Context, session *replaySession, mode domain.
 		return applyRecorded(ctx, session, caps.RecordedLedger, episodes, result)
 	case domain.ModeShadow:
 		return applyPairedShadow(ctx, session, caps, episodes, evaluationTime, result)
-	case domain.ModeCounterfactual:
-		return applyCounterfactual(ctx, caps, result)
 	}
 	return nil
 }
 
-// applyRecorded requires the ledger to hold exactly one valid recorded
-// decision per replay episode, each matching the episode it is keyed to.
 func applyRecorded(ctx context.Context, session *replaySession, ledger domain.RecordedLedger, episodes []domain.ReplayEpisode, result *domain.Result) error {
 	entries, byKey, err := indexedRecordedEntries(ctx, ledger, episodes)
 	if err != nil {
@@ -95,16 +88,24 @@ func matchRecordedEpisode(ctx context.Context, session *replaySession, episode d
 }
 
 func validateRecordedDecision(ctx context.Context, session *replaySession, entry domain.RecordedEntry, episode domain.ReplayEpisode) error {
-	snapshotDigest, err := session.store.RecordedSnapshotDigest(ctx, episode)
-	if err != nil {
-		return err
-	}
 	decision, err := domain.DecodeRecordedDecision(entry)
 	if err != nil {
 		return err
 	}
-	if err := domain.ValidateRecordedSnapshot(entry, episode, decision, snapshotDigest); err != nil {
+	if err := validateRecordedSnapshot(ctx, session, entry, episode, decision); err != nil {
 		return err
 	}
 	return domain.ValidateRecordedAttempt(entry, decision)
+}
+
+func validateRecordedSnapshot(ctx context.Context, session *replaySession, entry domain.RecordedEntry, episode domain.ReplayEpisode, decision map[string]any) error {
+	cited, err := domain.RecordedCitation(entry, episode, decision)
+	if err != nil {
+		return err
+	}
+	snapshotDigest, err := session.store.RecordedSnapshotDigest(ctx, episode.SituationID, cited)
+	if err != nil {
+		return err
+	}
+	return domain.ValidateRecordedSnapshot(entry, decision, snapshotDigest)
 }

@@ -3,8 +3,7 @@
 Replay converts one trace file into a verified, effect-free proof: it replays
 the trace against a compiled spec inside a fresh isolated database, hashes the
 situation versions deterministically, and in its worker-aware modes verifies
-recorded decisions, compares paired shadow trials report-only, or simulates
-counterfactual commands. No mode accepts credentials, effectors or a resolver;
+recorded decisions or compares paired shadow trials report-only. No mode accepts credentials, effectors or a resolver;
 `EffectsAllowed` is false in every result.
 
 ```mermaid
@@ -24,7 +23,7 @@ flowchart TD
 | Layer | Responsibility |
 | --- | --- |
 | Facade | Public contract aliases and one-line delegation; no logic, SQL or files |
-| App | Session sequencing (compile, deployment, epoch, ingest, engine, materialize, collect) and the recorded/shadow/counterfactual phases |
+| App | Session sequencing (compile, deployment, epoch, ingest, engine, materialize, collect) and the recorded and shadow phases |
 | Domain | Modes, capabilities, worklist episodes, trials and comparisons as pure rules: capability admission, recorded verification and matching, shadow binding precedence, comparison sealing, admission windows, epoch selection, baseline policy, versions hash |
 | Store | The only SQL: worklist, version and snapshot digests, spec deployment, episode materialization through the episodes assembler, comparison persistence into `shadow_comparisons` |
 | Transport | Trace line reading, isolated database lifecycle, trace ingestion through ingress |
@@ -37,12 +36,16 @@ store-owned transactions; replay owns no durable table.
 ## Public operations
 
 - `Run(ctx, Request)` — deterministic session; `Request` carries the isolated database path, spec, trace and tenant.
-- `RunMode(ctx, mode, Request, capabilities...)` — worker-aware modes; each fails
-  closed with `ErrModeCapabilityRequired` before any replay work.
-- `RunNTimes` / `AllHashesEqual` — determinism proof loop.
-- `NewDeterministicBaseline(compiled)` — the default non-model baseline.
-- Capability ports: `RecordedLedger`, `ShadowExecutor`, `BaselineExecutor`,
-  `Simulator` — explicit, non-credential adapters supplied by the caller.
+- `RunRecorded(ctx, Request, sourceDB)` — recorded mode: verifies every
+  replayed episode against the accepted decision a live runtime recorded in
+  `sourceDB`, opened read-only (`run --source-db`).
+- `RunShadow(ctx, Request, workerSocket, workerName)` — shadow mode: pairs the
+  deterministic baseline with a candidate worker on every replayed episode
+  (`run --worker-socket`).
+- `RunNTimes` / `AllHashesEqual` — determinism proof loop (`run --repeat`).
+- Capability ports: `RecordedLedger`, `ShadowExecutor`, `BaselineExecutor` —
+  the contracts the recorded ledger and the shadow worker adapter implement.
+  The package's own tests inject doubles through `RunMode` in `export_test.go`.
 
 ## Evidence and limits
 

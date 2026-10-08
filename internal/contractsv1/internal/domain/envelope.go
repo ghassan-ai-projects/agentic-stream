@@ -6,30 +6,20 @@ import (
 	"time"
 )
 
-// Classification levels for data handled by the runtime.
 type Classification string
 
-const (
-	ClassificationPublic       Classification = "public"
-	ClassificationInternal     Classification = "internal"
-	ClassificationConfidential Classification = "confidential"
-	ClassificationRestricted   Classification = "restricted"
-)
+const ClassificationInternal Classification = "internal"
 
-// QualityFlag captures data-quality annotations on an event.
 type QualityFlag struct {
 	Code    string `json:"code"`
 	Message string `json:"message,omitempty"`
 }
 
-// EntityRef identifies the domain entity an event belongs to.
 type EntityRef struct {
 	Type string `json:"type"`
 	ID   string `json:"id"`
 }
 
-// Envelope is the normalized event representation inside the runtime.
-// Field order matches the external JSON contract in docs/design/TECHNICAL_DESIGN.md.
 type Envelope struct {
 	ID             string         `json:"id"`
 	Type           string         `json:"type"`
@@ -50,11 +40,8 @@ type Envelope struct {
 	Data           map[string]any `json:"data"`
 }
 
-// PayloadHash is the SHA-256 digest of the original normalized payload.
 type PayloadHash [32]byte
 
-// ValidateEnvelope checks the required invariants of the normalized ingress
-// contract before an envelope enters the durable event log.
 func ValidateEnvelope(e Envelope, tenantID string) error {
 	if err := validateEnvelopeIdentity(e, tenantID); err != nil {
 		return err
@@ -71,8 +58,6 @@ func ValidateEnvelope(e Envelope, tenantID string) error {
 	return nil
 }
 
-// validateEnvelopeIdentity requires the event, tenant, partition and entity
-// identity, with the tenant matching the runtime's when one is given.
 func validateEnvelopeIdentity(e Envelope, tenantID string) error {
 	if e.ID == "" || e.Type == "" || e.SchemaVersion == "" || e.Source == "" {
 		return fmt.Errorf("event id, type, schema_version, and source are required")
@@ -89,7 +74,6 @@ func validateEnvelopeIdentity(e Envelope, tenantID string) error {
 	return nil
 }
 
-// PartitionID computes the stable virtual partition for this envelope.
 func (e Envelope) PartitionID(count int) int {
 	if count <= 0 {
 		count = PartitionCount

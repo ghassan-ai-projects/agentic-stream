@@ -9,7 +9,6 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 )
 
 func TestNewRefusesMissingSafetyDependencies(t *testing.T) {
@@ -18,10 +17,9 @@ func TestNewRefusesMissingSafetyDependencies(t *testing.T) {
 	owner := func(context.Context, *sql.Tx, string) error { return nil }
 	effector := &recordingEffector{}
 	cases := map[string]app.Config{
-		"database":  {Store: store.New(nil, owner, "epoch", interlock.DurableReader{}), Effector: effector},
-		"owner":     {Store: store.New(db, nil, "epoch", interlock.DurableReader{}), Effector: effector},
-		"interlock": {Store: store.New(db, owner, "epoch", nil), Effector: effector},
-		"effector":  {Store: store.New(db, owner, "epoch", interlock.DurableReader{})},
+		"database": {Store: store.New(nil, owner, "epoch"), Effector: effector},
+		"owner":    {Store: store.New(db, nil, "epoch"), Effector: effector},
+		"effector": {Store: store.New(db, owner, "epoch")},
 	}
 	for name, cfg := range cases {
 		if service, err := app.New(cfg); err == nil || service != nil {
@@ -34,7 +32,7 @@ func TestNewAppliesDefaultsThatDoNotBypassAuthorization(t *testing.T) {
 	t.Parallel()
 	db, commandID := openActionFixture(t)
 	owner := func(context.Context, *sql.Tx, string) error { return nil }
-	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch", interlock.DurableReader{}), Effector: &recordingEffector{}})
+	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch"), Effector: &recordingEffector{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +77,7 @@ func TestExpiredLeaseIsObserved(t *testing.T) {
 	}
 	observer := &countingObserver{}
 	owner := func(context.Context, *sql.Tx, string) error { return nil }
-	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch", interlock.DurableReader{}), Effector: &recordingEffector{}, Observer: observer})
+	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch"), Effector: &recordingEffector{}, Observer: observer})
 	if err != nil {
 		t.Fatal(err)
 	}

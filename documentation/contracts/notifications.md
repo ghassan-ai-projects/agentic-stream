@@ -35,7 +35,10 @@ so a client can receive the same notification again. Clients must deduplicate by
 `source`/`id`, persist the cursor, and handle:
 
 - `Last-Event-ID` or `cursor` resume;
-- cursor expiry after retention;
+- cursor expiry after retention (an operator retires old notifications with
+  `agentic-stream notifications prune --retention <duration>`, minimum 168h,
+  which keeps tombstones so a retired event id is never reused; an expired
+  cursor gets 409 `cursor_expired` and an audited resnapshot);
 - bounded slow-subscriber disconnects;
 - poison-event retry and audited skip;
 - idle comments and retry hints.

@@ -22,7 +22,7 @@ func TestEngineFacadeOnlyDelegates(t *testing.T) {
 			if function.Recv == nil && slices.Contains([]string{"New", "applicationConfig", "ReplayOwnership"}, function.Name.Name) {
 				continue
 			}
-			if function.Name.Name != "RunGlobal" || !facadeDelegation(function, "app") {
+			if !slices.Contains([]string{"RunGlobal", "ListSituations", "SituationVersion"}, function.Name.Name) || !facadeDelegation(function, "app") {
 				t.Errorf("%s: %s must only delegate through the engine facade", file.rel, function.Name)
 			}
 		}

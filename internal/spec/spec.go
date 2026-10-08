@@ -2,8 +2,8 @@ package spec
 
 import (
 	"context"
-	"database/sql"
 	_ "embed"
+	"fmt"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/app"
@@ -42,11 +42,6 @@ type EventSchema = domain.EventSchema
 // Lookup returns a registered built-in definition.
 func LookupEventSchema(ref string) (domain.EventSchema, bool) {
 	return domain.LookupEventSchema(ref)
-}
-
-// JSON returns the structural schema for a built-in definition.
-func EventSchemaJSON(definition domain.EventSchema) ([]byte, error) {
-	return domain.EventSchemaJSON(definition)
 }
 
 // CompiledSpec is the immutable result of compiling a SituationSpec.
@@ -110,17 +105,31 @@ type Actions = domain.Actions
 
 // CompileFile reads a SituationSpec from path and compiles it.
 func CompileFile(ctx context.Context, path string) (*CompiledSpec, error) {
-	return app.CompileFile(ctx, path) //nolint:wrapcheck // The compiler's CompileError carries the operator-facing path and message.
+	compiled, err := app.CompileFile(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("compile spec %s: %w", path, err)
+	}
+	return compiled, nil
 }
 
 // SaveDeployment persists a compiled spec as an active deployment record. It is
 // idempotent for the same deployment.
 func SaveDeployment(ctx context.Context, db *storage.DB, tenantID string, compiled *CompiledSpec) error {
-	return store.SaveDeployment(ctx, db, tenantID, compiled) //nolint:wrapcheck // The store names the failed step.
+	if err := store.SaveDeployment(ctx, db, tenantID, compiled); err != nil {
+		return fmt.Errorf("save deployment: %w", err)
+	}
+	return nil
 }
 
-// RegisterEventSchema stores one immutable event schema version on the caller's
-// transaction; re-registering identical bytes is allowed.
-func RegisterEventSchema(ctx context.Context, tx *sql.Tx, definition EventSchema, schemaJSON []byte, now string) error {
-	return store.RegisterEventSchema(ctx, tx, definition, schemaJSON, now) //nolint:wrapcheck // The store names the failed step.
+// FieldDerivation explains one Situation field from the spec: the reducer
+// that writes it and the operator that computes the reducer's input.
+type FieldDerivation = domain.FieldDerivation
+
+// LoadDeployment reads the compiled spec a deployment stored.
+func LoadDeployment(ctx context.Context, db *storage.DB, deploymentID string) (*CompiledSpec, error) {
+	compiled, err := store.LoadDeployment(ctx, db, deploymentID)
+	if err != nil {
+		return nil, fmt.Errorf("load deployment: %w", err)
+	}
+	return compiled, nil
 }

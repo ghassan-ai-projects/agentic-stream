@@ -5,9 +5,8 @@
 // and typed documents, and internal/store owns SQL and lifecycle plumbing.
 //
 // Every operation joins the caller's transaction. Ownership, decision epoch and
-// action-readiness checks are required configuration; consequential intents are
-// automated only under an active calibration artifact the store reads, and
-// otherwise go to human approval.
+// action-readiness checks are required configuration; consequential (R2)
+// intents always go to human approval.
 // Decision and intent documents retain their original canonical digest inputs.
 //
 // README.md describes the module pattern. UBIQUITOUS_LANGUAGE.md maps the

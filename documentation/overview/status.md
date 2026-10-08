@@ -16,11 +16,13 @@ environment; the table is not deployment approval.
 | Deterministic cognition scheduling, debounce, cooldown, coalescing, reconsideration | `internal/cognition/` |
 | Bounded episodes, budgets, cancellation, fencing, recovery, rebind | `internal/episodes/` |
 | Decision/Intent schema and binding validation | `internal/decisions/`, `internal/contractsv1/` |
-| Deterministic policy, approvals, interlocks, calibration and epoch controls | `internal/policy/`, `internal/interlock/`, `internal/storage/` |
+| Deterministic policy, approvals, interlocks and epoch controls | `internal/policy/`, `internal/interlock/`, `internal/storage/` |
 | Idempotent outbox dispatch, simulated/watch effectors, unknown outcomes | `internal/actions/`, `internal/device/`, `internal/watch/` |
 | Typed device-gateway integration with authority and reconciliation records; hardware qualification remains separate | `internal/device/`, `internal/authority/`, CLI effect-profile tests |
 | Native deterministic/OpenAI-compatible executor and Go EpisodeWorker boundary | `internal/executor/`, `internal/worker/`, `proto/` |
-| Deterministic, recorded, shadow, and counterfactual replay modes | `internal/replay/` |
+| Deterministic (`run --repeat`), recorded (`run --source-db`) and shadow (`run --worker-socket`) replay from the CLI | `internal/replay/`, `cmd/agentic-stream/` |
+| Operator commands: interlock, approval principals, quarantine redrive, notification retention, command reconciliation | `cmd/agentic-stream/`, [CLI reference](../reference/cli.md) |
+| Read-only explainability: Situations, field derivations, trigger decisions, episodes and intents through to verification | `situation`, `explain`, `episode` and `intent` commands |
 | Loopback HTTP, readiness, metrics, durable SSE notifications, drain/kill control | `internal/api/`, `internal/notify/`, `internal/telemetry/` |
 | Predictive-maintenance fixtures and stream-plane path | `internal/runtime/pipeline_test.go`, `examples/` |
 
@@ -36,14 +38,10 @@ environment; the table is not deployment approval.
   effectors require an integration-specific implementation and review.
 - Environment-level release evidence, long-running soak evidence, and a
   stable-release process are not implied by the green unit suite.
-- `config effective` exists as a CLI placeholder and reports that it is not yet
-  implemented; it is not a configuration introspection API.
-- SituationSpec `policy` values are schema-visible, but current runtime
-  catalog enforcement reduces policy behavior to the implemented approval
-  path. Do not rely on `deny` or `simulate` semantics until dedicated runtime
-  enforcement and tests exist.
-- SituationSpec does not expose retention or telemetry controls yet; runtime
-  telemetry is configured separately at deployment time.
+- Inspection is read-only CLI over the runtime database; there are no HTTP read
+  routes for Situations, triggers, episodes or intents.
+- SituationSpec has no retention or telemetry blocks; runtime telemetry is
+  configured at deployment time, and only notifications are pruned.
 
 ## Deliberately deferred
 

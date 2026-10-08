@@ -33,6 +33,10 @@ var durableOwners = map[string]string{
 	"evidence_call_ledger":          "internal/evidence/internal/store",
 	"intent_dispatch_counts":        "internal/policy/internal/store",
 	"intents":                       "internal/policy/internal/store",
+	"principals":                    "internal/policy/internal/store",
+	"principal_roles":               "internal/policy/internal/store",
+	"roles":                         "internal/policy/internal/store",
+	"approval_authorities":          "internal/policy/internal/store",
 	"lineage_sets":                  "internal/engine/internal/store",
 	"notification_audits":           "internal/notify/internal/store",
 	"notification_cursors":          "internal/notify/internal/store",
@@ -110,7 +114,7 @@ func ownsMutation(pkg string, m sqlMutation) bool {
 		return pkg == "internal/policy/internal/store" && m.operation == "update" && columnsWithin(m.columns, []string{"policy_status", "updated_at"})
 	case "situations":
 		if pkg == "internal/cognition/internal/store" {
-			return m.operation == "update" && columnsWithin(m.columns, []string{"last_reasoned_version"})
+			return m.operation == "update" && columnsWithin(m.columns, []string{"last_reasoned_version", "last_material_version"})
 		}
 	}
 	return durableOwners[m.table] == pkg

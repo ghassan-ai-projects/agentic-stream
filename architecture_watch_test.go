@@ -22,7 +22,7 @@ func TestWatchFacadeOnlyDelegates(t *testing.T) {
 			if function.Recv == nil && function.Name.Name == "New" {
 				continue
 			}
-			if !slices.Contains([]string{"Dispatch", "DispatchAuthorized", "Expire", "FireEvent"}, function.Name.Name) || !facadeDelegation(function, "app") {
+			if !slices.Contains([]string{"Dispatch", "DispatchAuthorized", "Expire", "FireEvent", "Watch"}, function.Name.Name) || !facadeDelegation(function, "app") {
 				t.Errorf("%s: %s must only delegate through the watch facade", file.rel, function.Name)
 			}
 		}

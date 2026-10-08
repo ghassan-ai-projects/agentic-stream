@@ -12,7 +12,6 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/store"
@@ -263,7 +262,7 @@ func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
 func newService(t *testing.T, db *storage.DB, clk sources.Clock) *app.Service {
 	t.Helper()
 	owner := func(context.Context, *sql.Tx, string) error { return nil }
-	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch", interlock.DurableReader{}), Clock: clk})
+	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch"), Clock: clk})
 	if err != nil {
 		t.Fatalf("new watch service: %v", err)
 	}

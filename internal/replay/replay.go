@@ -17,10 +17,19 @@ func Run(ctx context.Context, request Request) (Result, error) {
 	return app.Run(ctx, request)
 }
 
-// RunMode executes a replay mode without accepting credentials, effectors, or
-// a resolver. Only counterfactual simulation may be added at a higher layer.
-func RunMode(ctx context.Context, mode Mode, request Request, capabilities ...Capabilities) (Result, error) {
-	return app.RunMode(ctx, mode, request, capabilities...)
+// RunRecorded replays the request's trace and verifies every replayed episode
+// against the accepted decision a live runtime recorded in the database at
+// sourcePath, which is opened read-only. No worker is called.
+func RunRecorded(ctx context.Context, request Request, sourcePath string) (Result, error) {
+	return app.RunRecorded(ctx, request, sourcePath)
+}
+
+// RunShadow replays the request's trace and pairs the deterministic baseline
+// with the candidate worker on socketPath for every replayed episode. A
+// candidate failure or disagreement is a finding, not an error; nothing is
+// dispatched.
+func RunShadow(ctx context.Context, request Request, socketPath, workerName string) (Result, error) {
+	return app.RunShadow(ctx, request, socketPath, workerName)
 }
 
 // RunNTimes replays the same request n times against fresh isolated databases

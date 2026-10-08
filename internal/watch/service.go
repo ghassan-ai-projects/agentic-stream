@@ -5,15 +5,14 @@ import (
 	"database/sql"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/store"
 )
 
-// Config supplies the safety dependencies a watch service requires. DB,
-// RuntimeOwner and Interlock are required: a missing one is a constructor
+// Config supplies the safety dependencies a watch service requires. DB
+// and RuntimeOwner are required: a missing one is a constructor
 // error, never a silently skipped check. RuntimeOwner is the ownership
 // assertion for Epoch, run on the mutating transaction;
 // control.RuntimeOwner.Assert is the production check. Clock defaults to the
@@ -22,7 +21,6 @@ type Config struct {
 	DB           *storage.DB
 	RuntimeOwner func(context.Context, *sql.Tx, string) error
 	Epoch        string
-	Interlock    interlock.Reader
 	Clock        sources.Clock
 }
 
@@ -32,7 +30,7 @@ type Service struct{ app *app.Service }
 
 // New validates the configuration and composes the watch use cases.
 func New(cfg Config) (*Service, error) {
-	service, err := app.New(app.Config{Store: store.New(cfg.DB, cfg.RuntimeOwner, cfg.Epoch, cfg.Interlock), Clock: cfg.Clock})
+	service, err := app.New(app.Config{Store: store.New(cfg.DB, cfg.RuntimeOwner, cfg.Epoch), Clock: cfg.Clock})
 	if err != nil {
 		return nil, err //nolint:wrapcheck // The app layer's constructor errors are the facade's contract.
 	}

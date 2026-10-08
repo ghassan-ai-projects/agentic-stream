@@ -9,18 +9,17 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
-// ShadowComparisonResult identifies the durable report produced for one
-// paired shadow trial.
 type ShadowComparisonResult struct {
 	EpisodeKey             string
 	ComparisonSHA256       string
 	BaselineDecisionSHA256 string
 	TamozDecisionSHA256    string
 	DecisionsEqual         bool
+	ComparisonJSON         []byte
+	BaselineDecisionJSON   []byte
+	TamozDecisionJSON      []byte
 }
 
-// Comparison is the sealed, report-only record of one shadow trial, ready for
-// the replay store; it never enters intents, commands or the outbox.
 type Comparison struct {
 	ComparisonID            string
 	ComparisonKey           string
@@ -52,8 +51,6 @@ type builtComparison struct {
 
 type comparisonDigests struct{ snapshot, spec, policy []byte }
 
-// BuildComparison seals one paired shadow trial as a durable comparison and
-// its result summary. Wall time enters only the record's creation timestamp.
 func BuildComparison(input ShadowInput, baseline, tamoz ValidatedOutput, tenantID string, createdAt time.Time) (Comparison, ShadowComparisonResult, error) {
 	comparisonKey := tenantID + ":" + input.EpisodeKey
 	document := comparisonDocument(input, baseline, tamoz, tenantID, comparisonKey)
@@ -139,7 +136,8 @@ func assembleComparison(input ShadowInput, baseline, tamoz ValidatedOutput, tena
 		record: comparisonRecord(input, baseline, tamoz, tenantID, comparisonKey, comparisonID, comparisonJSON, comparisonSHA, digests, createdAt),
 		result: ShadowComparisonResult{EpisodeKey: input.EpisodeKey, ComparisonSHA256: comparisonDigest,
 			BaselineDecisionSHA256: baseline.Output.DecisionSHA256, TamozDecisionSHA256: tamoz.Output.DecisionSHA256,
-			DecisionsEqual: bytes.Equal(baseline.Canonical, tamoz.Canonical)},
+			DecisionsEqual: bytes.Equal(baseline.Canonical, tamoz.Canonical), ComparisonJSON: comparisonJSON,
+			BaselineDecisionJSON: baseline.Canonical, TamozDecisionJSON: tamoz.Canonical},
 	}
 }
 

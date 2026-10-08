@@ -21,8 +21,9 @@ The two services are:
 
 Handshake compatibility currently validates protocol/contract versions, worker
 identity, non-interactive execution, and requested features. The protocol also
-carries shadow/counterfactual, replay-ledger, and episode-kind fields, but the
-runtime does not yet fully enforce those capability fields.
+carries shadow, replay-ledger and episode-kind fields. `counterfactual_capable`
+is a frozen wire field with no runtime mode behind it: counterfactual replay was
+removed. The runtime does not yet fully enforce those capability fields.
 
 ## Request identity
 

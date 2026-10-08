@@ -43,3 +43,4 @@ documentation authority matrix and root navigation in the same change.
 - [Documentation plan](../documentation/PLAN.md)
 
 - [Branch clean-function completion](plans/2026-10-02-clean-functions.md)
+- [Unfinished work review (2026-10-08)](unfinished-work-review-2026-10-08/README.md)

@@ -12,16 +12,15 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-func TestDurableReaderFailsClosedAndVersionIsMonotonic(t *testing.T) {
+func TestAssertFailsClosedAndVersionIsMonotonic(t *testing.T) {
 	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "interlock.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
-	reader := store.DurableReader{}
 	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
-		return reader.Assert(context.Background(), tx, "tenant", "motor/1", "R1")
+		return store.Assert(context.Background(), tx)
 	}); err != nil {
 		t.Fatalf("initial interlock: %v", err)
 	}
@@ -31,7 +30,7 @@ func TestDurableReaderFailsClosedAndVersionIsMonotonic(t *testing.T) {
 		t.Fatalf("trip interlock: %v", err)
 	}
 	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
-		if err := reader.Assert(context.Background(), tx, "tenant", "motor/1", "R1"); err == nil {
+		if err := store.Assert(context.Background(), tx); err == nil {
 			return fmt.Errorf("expected tripped interlock rejection")
 		}
 		return nil

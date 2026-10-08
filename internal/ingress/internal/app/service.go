@@ -51,15 +51,8 @@ func New(cfg Config) (*Service, error) {
 	if !cfg.Store.Configured() || cfg.Log == nil {
 		return nil, errors.New("ingress requires a database and an event log")
 	}
-	return &Service{store: cfg.Store, log: cfg.Log, clk: orPhysical(cfg.Clock), tenantID: domain.TenantOrDefault(cfg.TenantID),
+	return &Service{store: cfg.Store, log: cfg.Log, clk: sources.OrPhysical(cfg.Clock), tenantID: domain.TenantOrDefault(cfg.TenantID),
 		logger: orDefaultLogger(cfg.Logger), telemetry: cfg.Telemetry, queueSize: orDefaultQueue(cfg.LiveQueueSize)}, nil
-}
-
-func orPhysical(clk sources.Clock) sources.Clock {
-	if clk == nil {
-		return sources.Physical()
-	}
-	return clk
 }
 
 func orDefaultLogger(logger *slog.Logger) *slog.Logger {

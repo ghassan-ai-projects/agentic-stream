@@ -52,9 +52,12 @@ administrative boundary and audit every call.
 Approval routes are enabled only with `serve --spec` and both
 `AGENTIC_STREAM_APPROVAL_TOKEN` and `AGENTIC_STREAM_APPROVAL_RELAY` set. The
 credential authenticates one configured relay in the served tenant; it is
-independent of subscriber and control credentials. Existing durable principals,
-Ed25519 verification keys, roles and tenant/entity/risk authorities must be
-provisioned by the deployment. There is no public provisioning endpoint.
+independent of subscriber and control credentials. Durable principals,
+Ed25519 verification keys, roles and tenant/entity/risk authorities are
+provisioned with `agentic-stream principals apply --file <principals.yaml>`
+while the runtime is stopped (see the CLI reference and
+`examples/real-world-sensor/principals.example.yaml`). There is no HTTP
+provisioning endpoint.
 
 Fetch `/v1/approvals/{id}?approver={principal}&approved=true` (or `false`) using
 `Authorization: Bearer $AGENTIC_STREAM_APPROVAL_TOKEN`. The response includes
@@ -92,7 +95,8 @@ without waiting for new sensor input. Existing dispatch fences and verification
 still apply. Observe durable events for delivery and outcome evidence.
 
 The [package integration design](../../internal/policy/APPROVAL_HTTP_DESIGN.md)
-records the contract and validation. A CLI approval client remains follow-up work.
+records the contract and validation. There is no CLI approve or deny command, by
+decision: approval is this signed relay and approver flow.
 
 ## Not current
 

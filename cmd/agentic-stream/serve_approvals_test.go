@@ -2,10 +2,10 @@ package main
 
 import (
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 )
@@ -47,7 +47,7 @@ func TestServeMountsApprovalsOnlyForConfiguredPipeline(t *testing.T) {
 			t.Setenv("AGENTIC_STREAM_APPROVAL_RELAY", "relay")
 			core := &runtimeCore{pipeline: tc.pipeline}
 			rec := httptest.NewRecorder()
-			core.approvalHandler(api.NewHealthHandler(nil)).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), "GET", "/v1/approvals/id", nil))
+			core.approvalHandler(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), "GET", "/v1/approvals/id", nil))
 			if rec.Code != tc.status {
 				t.Fatal(rec.Code)
 			}

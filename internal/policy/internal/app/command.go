@@ -73,16 +73,16 @@ func (g *Service) queueApprovedCommand(ctx context.Context, tx *store.Tx, e eval
 }
 
 func interlockDenialAuditReason(err error) string {
-	const prefix = "assert action interlock: "
-	detail := strings.TrimSpace(strings.TrimPrefix(err.Error(), prefix))
-	if detail == "" {
+	_, detail, found := strings.Cut(err.Error(), interlock.ErrTripped.Error()+": ")
+	detail = strings.TrimSpace(detail)
+	if !found || detail == "" {
 		return "interlock_not_ready"
 	}
 	return "interlock_not_ready: " + detail
 }
 
 func (g *Service) assertInterlock(ctx context.Context, tx *store.Tx, e evaluation) error {
-	return tx.AssertInterlock(ctx, g.interlock, e.row.TenantID, domain.NormalizedTarget(e.row.IntentID, e.documents.Intent.Parameters), e.row.RiskClass)
+	return tx.AssertInterlock(ctx)
 }
 
 func (g *Service) approvePreparedCommand(ctx context.Context, tx *store.Tx, e evaluation, command domain.CommandRecord, existingID string) (domain.Result, error) {

@@ -138,7 +138,7 @@ func TestStoreReadsPopulatedWorklistAndDigests(t *testing.T) {
 	if first.EpisodeKey != domain.EpisodeKey(first.SituationID, first.SituationVersion, first.TriggerID) {
 		t.Fatalf("worklist episode is not keyed: %+v", first)
 	}
-	if _, err := store.RecordedSnapshotDigest(t.Context(), first); err != nil {
+	if _, err := store.RecordedSnapshotDigest(t.Context(), first.SituationID, first.SituationVersion); err != nil {
 		t.Fatalf("recorded digest = %v", err)
 	}
 	snapshot, persisted, err := store.ShadowSnapshot(t.Context(), first)

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -22,7 +21,7 @@ func TestPipelineStorePreservesOriginalFenceAndOperationErrors(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	sentinel := errors.New("owner lost")
-	service, err := policy.New(policy.Config{PolicyVersion: "test", Interlock: interlock.DurableReader{}, RuntimeOwner: func(context.Context, *sql.Tx, string) error { return sentinel }, DecisionEpoch: func(context.Context, *sql.Tx, string) error { return nil }})
+	service, err := policy.New(policy.Config{PolicyVersion: "test", RuntimeOwner: func(context.Context, *sql.Tx, string) error { return sentinel }, DecisionEpoch: func(context.Context, *sql.Tx, string) error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}

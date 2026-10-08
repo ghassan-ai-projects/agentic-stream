@@ -9,12 +9,6 @@ import (
 // part of this type.
 type CloudEvent = domain.CloudEvent
 
-// ConformanceValidFrame loads the canonical valid frame for one device message
-// type from the committed conformance data.
-func ConformanceValidFrame(messageType string) map[string]any {
-	return domain.ConformanceValidFrame(messageType)
-}
-
 // SchemaForMessageType maps a device message_type to its schema name.
 func SchemaForMessageType(messageType string) (domain.SchemaName, bool) {
 	return domain.SchemaForMessageType(messageType)

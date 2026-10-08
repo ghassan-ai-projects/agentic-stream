@@ -3,6 +3,7 @@ package domain_test
 import (
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/internal/domain"
 )
 
@@ -13,13 +14,13 @@ import (
 // unknown-type, and unknown-field frames — an invalid frame must never validate
 // into a usable record.
 //
-// The frames themselves are loaded by conformance.go from committed fixtures
+// The frames themselves are loaded by contractstest from committed fixtures
 // under conformance/v1/, so the schema pinning here and the copies the other
 // repos test against are all one source. See conformance/README.md.
 
 func TestDeviceWireGoldenFramesValidate(t *testing.T) {
 	t.Parallel()
-	for _, messageType := range domain.ConformanceValidMessageTypes() {
+	for _, messageType := range contractstest.MessageTypes {
 		messageType := messageType
 		t.Run(messageType, func(t *testing.T) {
 			t.Parallel()
@@ -27,7 +28,7 @@ func TestDeviceWireGoldenFramesValidate(t *testing.T) {
 			if !ok {
 				t.Fatalf("no schema for message_type %q", messageType)
 			}
-			if err := domain.Validate(schema, domain.ConformanceValidFrame(messageType)); err != nil {
+			if err := domain.Validate(schema, contractstest.ValidFrame(messageType)); err != nil {
 				t.Fatalf("golden %s frame must validate: %v", messageType, err)
 			}
 		})
@@ -36,7 +37,7 @@ func TestDeviceWireGoldenFramesValidate(t *testing.T) {
 
 func TestDeviceWireFramesFailClosed(t *testing.T) {
 	t.Parallel()
-	frames := domain.ConformanceInvalidFrames()
+	frames := contractstest.InvalidFrames()
 	if len(frames) == 0 {
 		t.Fatal("expected a non-empty invalid conformance corpus")
 	}
@@ -44,7 +45,11 @@ func TestDeviceWireFramesFailClosed(t *testing.T) {
 		frame := frame
 		t.Run(frame.Name, func(t *testing.T) {
 			t.Parallel()
-			if err := domain.Validate(frame.Schema, frame.Doc); err == nil {
+			schema, ok := domain.SchemaForMessageType(frame.MessageType)
+			if !ok {
+				t.Fatalf("cannot map invalid frame %q to a schema", frame.Name)
+			}
+			if err := domain.Validate(schema, frame.Doc); err == nil {
 				t.Fatalf("mutated %s frame must fail closed, but validated", frame.Name)
 			}
 		})

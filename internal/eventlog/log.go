@@ -38,9 +38,7 @@ func NewEventLog(db *storage.DB) *EventLog {
 
 // NewEventLogWithClock creates an EventLog backed by db and the given clock.
 func NewEventLogWithClock(db *storage.DB, clk sources.Clock) *EventLog {
-	if clk == nil {
-		clk = sources.Physical()
-	}
+	clk = sources.OrPhysical(clk)
 	return &EventLog{service: app.New(clk, store.New(db))}
 }
 

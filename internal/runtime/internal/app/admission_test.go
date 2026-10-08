@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
+
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
@@ -151,7 +153,7 @@ func composeConfig(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, gi
 func setCostKillSwitch(t *testing.T, db *storage.DB) {
 	t.Helper()
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		return runtimecontrol.SetCostLimit(t.Context(), tx, "global", "", 0, true, time.Now().UTC().Format(time.RFC3339Nano))
+		return controltest.SetCostLimit(t.Context(), tx, "global", "", 0, true, time.Now().UTC().Format(time.RFC3339Nano))
 	}); err != nil {
 		t.Fatal(err)
 	}

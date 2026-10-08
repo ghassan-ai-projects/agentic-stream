@@ -28,8 +28,19 @@ count, Situation-version count, and versions hash.
 | `--trace` | required | normalized JSONL trace path |
 | `--db` | `<trace>.replay.db` | fresh replay database path |
 | `--tenant` | `default` | runtime tenant |
+| `--repeat` | `1` | replay N times in fresh databases and fail unless every Situation history hash is identical (cannot be combined with `--db`) |
+| `--source-db` | empty | recorded mode: a live runtime database, opened read-only, whose accepted decisions every replayed episode must match |
+| `--worker-socket` | empty | shadow mode: candidate EpisodeWorker Unix socket, paired with the deterministic baseline on every replayed episode |
+| `--worker-name` | `tamoz` | shadow mode: expected candidate worker name |
+| `--json` | `false` | shadow mode: print the result, sealed comparisons and both decisions as JSON |
 
-Replay has no external effects.
+`--repeat`, `--source-db` and `--worker-socket` select different modes and
+cannot be combined.
+
+Replay has no external effects. `--source-db` verifies a live run without
+calling a worker; `--worker-socket` compares a candidate worker with the
+baseline and exits 0 when they disagree; see [replay and shadow modes](../design/replay-and-shadow.md). `--repeat 3` is the determinism check of the
+release bar: three fresh runs must produce byte-identical Situation history.
 
 ## `run-live --spec <spec.yaml> --trace <trace.jsonl>`
 
@@ -79,7 +90,7 @@ Starts the live runtime with HTTP health checks and notifications.
 | `--tenant` | `default` | served tenant |
 | `--listen` | `127.0.0.1:8080` | loopback HTTP address |
 | `--owner-lease` | `1m` | runtime owner lease |
-| `--poll-interval` | `1s` | continuous source polling |
+| `--poll-interval` | `1s` | continuous source polling; with `--live-socket`, the pace of timers, due cognition and dispatch while the socket is quiet |
 | `--demo-mode` | `false` | admit fixtures; tests/demos only |
 | `--model-endpoint` | empty | OpenAI-compatible endpoint |
 | `--model-name` | empty | model name; required with endpoint |
@@ -107,15 +118,96 @@ use `--live-socket` rather than `--trace`. The physical profile additionally
 requires both explicit actuation and owner-authorization flags. Agentic Stream
 never opens a raw serial port.
 
-## `config effective`
+## Operator commands
 
-Registered as a placeholder. It currently prints `config effective: not yet
-implemented`; it is not a configuration API.
+Operator commands act on a runtime database (`--db`, `--tenant`, `--json`).
+A command that changes runtime state first claims the runtime owner lease, so
+it is refused while `serve` or `run-live` holds it: stop the runtime first.
+Read-only commands take no lease. The interlock trip is the exception: it only
+stops effects, so it works while the runtime runs or is hung.
+
+### `interlock status | trip --reason <text> | clear --reason <text>`
+
+The interlock is the global software stop for the action plane. Policy checks
+it before creating a command and again immediately before delivering an
+effect. `trip` blocks every effect and needs no lease; `clear` reopens the
+action plane and needs the lease. Each change is versioned and records its
+reason and time. It does not replace a physical e-stop.
+
+### `quarantine list | release <event-id> | redrive <event-id>`
+
+Invalid or not-yet-registered evidence is quarantined, never dropped. `list`
+shows each record's status: `quarantined`, `released`, `redriven`, or
+`rejected` when its retries ran out (the log records a gap for it). `release`
+is the operator's decision to admit a record again; `redrive` re-validates the
+released record against the schemas registered now and appends it to the log
+exactly once, so the engine processes it on the next run. Both changes need
+the runtime owner lease. A record that still fails validation stays released.
+
+### `notifications prune --retention <duration> [--dry-run]`
+
+Retires notifications older than the retention (minimum 168h) in one
+transaction under the runtime owner lease, keeping tombstones so a retired
+event identity is never accepted again and cursors stay monotonic. A client
+whose cursor fell behind the retention gets `cursor_expired` and resnapshots.
+`--dry-run` only counts. Schedule it with the host's own scheduler.
+
+### `commands list | resolve <command-id> --status <status> --evidence <file>`
+
+A provider timeout can mean the provider accepted the request, so the runtime
+never retries such a command blindly: it waits in `outcome_unknown`,
+`reconciling` or `manual_review`. `list` shows those commands. `resolve` closes
+one as `succeeded`, `failed` or `manual_review` with independent evidence (a
+JSON object with `source`, `evidence_type` and the fields of that type), records
+the reconciliation outcome and its notification, and needs the runtime owner
+lease. Device commands with device-state evidence are checked against their
+device binding.
+
+### `principals apply --file <principals.yaml> [--dry-run] | show`
+
+Provisions the approval governance the `/v1/approvals` flow checks: relays,
+approvers with their Ed25519 public keys, roles, role membership, and which
+entity and risk (R0–R2) each role may approve. `apply` makes the tenant's
+governance match the document in one transaction under the runtime owner
+lease: principals the document omits are disabled, never deleted, so past
+approvals keep their signers; memberships and authorities are replaced.
+`--dry-run` reports the result and changes nothing. Unknown fields, repeated
+ids, members without a key and R3/R4 authorities are refused.
+
+### `situation list [--entity <id>] | show <situation-id> [--version N]`
+
+Read-only. `list` shows the tenant's Situations, newest evidence first, with
+their current and last material version. `show` prints one version (default:
+current) with its snapshot and evidence set.
+
+### `explain situation <situation-id> [--version N] | trigger <trigger-id>`
+
+Read-only answers to "why", from durable records only. `explain situation`
+prints each field of the version with its value, the reducer that writes it
+and the operator that computes the reducer's input (from the deployed spec),
+then the evidence events the version was built from (log position, event id,
+type, source, event time) and the trigger evaluations of that version.
+Lineage is recorded per version, so evidence is the version's evidence set,
+not a per-field attribution. `explain trigger` prints the evaluation (outcome,
+score against threshold, lane, reasons and the delta it saw) and, when it
+admitted work, the scheduler item, the episode it led to (which may have
+assembled a later version) and any worker results the ledger refused.
+
+### `episode show <episode-id>` and `intent show <intent-id>`
+
+Read-only. `episode show` prints what the episode reasoned over (Situation
+version, snapshot digest, executor), every fenced attempt with its terminal
+record, every worker result the ledger refused, and each Decision with the
+intents it proposed. `intent show` follows an intent through governance to its
+effects: policy evaluations with reasons, approval requests and how they ended,
+commands with their outcomes and verifications, and the watch a command
+installed with its fires. There is no `intent approve`: approval is the signed
+HTTP flow.
 
 ## Not registered yet
 
 Design records may mention commands such as `init`, `ingest`, `simulate`,
-`situation`, `episode`, `intent`, `explain`, `compare`, or `doctor`. They are not
+`compare`, or `doctor`. They are not
 current CLI commands and must not be used as implementation claims.
 
 ## Next reads

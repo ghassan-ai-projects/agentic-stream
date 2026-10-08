@@ -47,7 +47,7 @@ func TestStoreSnapshotLookupsFailClosedOnMissingVersions(t *testing.T) {
 	t.Parallel()
 	store := newStore(t)
 	episode := domain.ReplayEpisode{SituationID: "missing", SituationVersion: 1}
-	if _, err := store.RecordedSnapshotDigest(t.Context(), episode); err == nil || !strings.Contains(err.Error(), "load recorded snapshot digest") {
+	if _, err := store.RecordedSnapshotDigest(t.Context(), episode.SituationID, episode.SituationVersion); err == nil || !strings.Contains(err.Error(), "load recorded snapshot digest") {
 		t.Fatalf("recorded digest err = %v", err)
 	}
 	if _, _, err := store.ShadowSnapshot(t.Context(), episode); err == nil || !strings.Contains(err.Error(), "load shadow snapshot") {

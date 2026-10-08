@@ -47,7 +47,7 @@ func TestRunRejectsExistingDatabase(t *testing.T) {
 
 func TestRunModeFailsClosedBeforeWorkWithoutCapabilities(t *testing.T) {
 	t.Parallel()
-	for _, mode := range []domain.Mode{domain.ModeRecorded, domain.ModeShadow, domain.ModeCounterfactual} {
+	for _, mode := range []domain.Mode{domain.ModeRecorded, domain.ModeShadow} {
 		t.Run(string(mode), func(t *testing.T) {
 			t.Parallel()
 			result, err := RunMode(context.Background(), mode, domain.Request{DBPath: filepath.Join(t.TempDir(), "mode.db"), SpecPath: fixtureSpec, TracePath: fixtureTrace, TenantID: "default"})
@@ -85,29 +85,6 @@ func TestRunNTimesRepeatsDeterministically(t *testing.T) {
 	if _, err := RunNTimes(context.Background(), domain.Request{SpecPath: fixtureSpec, TracePath: fixtureTrace, TenantID: "default"}, 0); err == nil {
 		t.Fatal("n = 0 accepted")
 	}
-}
-
-func TestCounterfactualDuplicateRetainsPriorSimulation(t *testing.T) {
-	simulator := &countingSimulator{}
-	command := domain.SimulatedCommand{CommandID: "one", Route: "simulated", Target: "motor"}
-	result := &domain.Result{}
-	err := applyCounterfactual(t.Context(), domain.Capabilities{Simulator: simulator, Commands: []domain.SimulatedCommand{command, command}}, result)
-	if err == nil || !strings.Contains(err.Error(), "is duplicated") {
-		t.Fatalf("expected duplicate rejection, got %v", err)
-	}
-	if simulator.calls != 1 || result.CapabilityCalls != 1 || len(result.SimulatedResults) != 1 {
-		t.Fatalf("prior simulation was not retained: calls=%d result=%+v", simulator.calls, result)
-	}
-	if err := applyCounterfactual(t.Context(), domain.Capabilities{}, &domain.Result{}); err == nil {
-		t.Fatal("empty command set accepted")
-	}
-}
-
-type countingSimulator struct{ calls int }
-
-func (s *countingSimulator) Simulate(_ context.Context, command domain.SimulatedCommand) (map[string]any, error) {
-	s.calls++
-	return map[string]any{"command_id": command.CommandID}, nil
 }
 
 func TestNewDeterministicBaselineRequiresCompiledSpec(t *testing.T) {

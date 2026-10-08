@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // RecordLineage stores the evidence references once per lineage ID.
@@ -65,7 +66,7 @@ func (tx *Tx) InsertSituationVersion(ctx context.Context, version situations.Ver
 		version.Severity, version.Confidence, version.Completeness,
 		version.EventHorizon.Format(time.RFC3339Nano), version.Watermark.Format(time.RFC3339Nano),
 		version.EventHorizon.Format(time.RFC3339Nano), version.SnapshotJSON, snapshotDigest,
-		lineageID, nullableString(version.Traceparent), nullableString(version.Tracestate), formatTime(now),
+		lineageID, storage.NullIfEmpty(version.Traceparent), storage.NullIfEmpty(version.Tracestate), formatTime(now),
 	); err != nil {
 		return fmt.Errorf("insert situation version: %w", err)
 	}
@@ -83,10 +84,6 @@ const insertSituationVersionSQL = `
 func previousVersion(version situations.Version) sql.NullInt64 {
 	previous, ok := domain.PreviousVersion(version)
 	return sql.NullInt64{Int64: int64(previous), Valid: ok}
-}
-
-func nullableString(value string) sql.NullString {
-	return sql.NullString{String: value, Valid: value != ""}
 }
 
 // SaveSituationRuntimeState persists the in-memory state of a Situation at its

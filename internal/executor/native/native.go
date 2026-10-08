@@ -1,9 +1,6 @@
 package native
 
 import (
-	"context"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	app "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/app"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/store"
@@ -37,14 +34,8 @@ type (
 	ToolResult = domain.ToolResult
 	// Observation is the durable-safe projection sent to the provider.
 	Observation = domain.Observation
-	// ArtifactRef identifies a bounded externalized tool result.
-	ArtifactRef = domain.ArtifactRef
-	// ArtifactStore receives oversized tool results.
-	ArtifactStore = domain.ArtifactStore
 	// DeterministicProvider is the built-in provider for replay and tests.
 	DeterministicProvider = domain.DeterministicProvider
-	// MemoryArtifactStore is a bounded test and reference artifact store.
-	MemoryArtifactStore = domain.MemoryArtifactStore
 	// OpenAICompatibleProvider is the HTTP provider for chat-completions endpoints.
 	OpenAICompatibleProvider = transport.OpenAICompatibleProvider
 	// SQLiteEvidenceTool exposes bounded, read-only event evidence.
@@ -53,12 +44,7 @@ type (
 	Config = app.Config
 	// Executor is a bounded native Go episode executor.
 	Executor = app.Executor
-	// BatchResult is one benchmark cell's comparator outcome.
-	BatchResult = app.BatchResult
 )
-
-// NewMemoryArtifactStore creates an in-memory artifact store.
-func NewMemoryArtifactStore() *MemoryArtifactStore { return domain.NewMemoryArtifactStore() }
 
 // NewSQLiteEvidenceTool creates a scoped native evidence tool.
 func NewSQLiteEvidenceTool(db *storage.DB, name, tenantID, entityID string) *SQLiteEvidenceTool {
@@ -67,13 +53,3 @@ func NewSQLiteEvidenceTool(db *storage.DB, name, tenantID, entityID string) *SQL
 
 // New creates a native executor and rejects duplicate or empty tool names.
 func New(cfg Config) (*Executor, error) { return app.New(cfg) } //nolint:wrapcheck // The application names each failed step.
-
-// RunBatch drives the executor over benchmark cells, reporting every cell.
-func RunBatch(ctx context.Context, executor episodes.Executor, requests []*episodes.Request, cellIDs []string) ([]BatchResult, error) {
-	return app.RunBatch(ctx, executor, requests, cellIDs) //nolint:wrapcheck // The application names each failed step.
-}
-
-// RunBatchJSON is the wire form of RunBatch.
-func RunBatchJSON(ctx context.Context, executor episodes.Executor, requests []*episodes.Request, cellIDs []string) ([]byte, error) {
-	return app.RunBatchJSON(ctx, executor, requests, cellIDs) //nolint:wrapcheck // The application names each failed step.
-}

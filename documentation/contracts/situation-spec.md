@@ -7,10 +7,9 @@ it to canonical JSON, and computes a `sha256:` digest before deployment.
 ## Runtime authority
 
 The runtime embeds and validates against
-[`internal/spec/internal/domain/schema.json`](../../internal/spec/internal/domain/schema.json). The design
-package contains a reviewed schema copy at
-[`docs/design/contracts/situation-spec-v1.schema.json`](../../docs/design/contracts/situation-spec-v1.schema.json);
-the compiler tests are the authority for semantic behavior beyond the schema.
+[`internal/spec/internal/domain/schema.json`](../../internal/spec/internal/domain/schema.json), the only
+copy of the schema; the compiler tests are the authority for semantic behavior
+beyond it.
 
 ## Shape
 
@@ -67,10 +66,10 @@ definitions it used.
 - Cognition declares triggers, thresholds, lanes, executor identity, and hard
   budgets.
 - Actions declare the allowed Intent vocabulary, risk, parameter schema, and
-  policy mode. The schema accepts `automatic`, `approval`, `deny`, and
-  `simulate`; current runtime enforcement is not complete for every value, so
-  treat the non-approval modes as a documented gap until dedicated tests close
-  it.
+  policy mode: `automatic` or `approval` (the default). `automatic` never
+  relaxes the risk route: R2 always needs approval and R3/R4 are denied. An
+  Intent that must never run is not declared at all; undeclared types are
+  refused by Decision validation.
 
 ## Next reads
 

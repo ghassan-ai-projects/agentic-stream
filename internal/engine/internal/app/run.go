@@ -9,9 +9,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 )
 
-// RunGlobal applies all partitions in durable event-log position order. Replay
-// uses it so one virtual clock cannot observe a later partition before an
-// earlier record in the authoritative trace.
 func (s *Service) RunGlobal(ctx context.Context, beforeApply func(eventlog.Record) error) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -19,7 +16,15 @@ func (s *Service) RunGlobal(ctx context.Context, beforeApply func(eventlog.Recor
 }
 
 func (s *Service) runGlobal(ctx context.Context, beforeApply func(eventlog.Record) error) (int, error) {
-	processed, lastPosition := 0, eventlog.LogPosition(0)
+	lastPosition, err := s.appliedPosition(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return s.applyUntilEmpty(ctx, lastPosition, beforeApply)
+}
+
+func (s *Service) applyUntilEmpty(ctx context.Context, lastPosition eventlog.LogPosition, beforeApply func(eventlog.Record) error) (int, error) {
+	processed := 0
 	for {
 		batch, err := s.runGlobalBatch(ctx, lastPosition, beforeApply)
 		processed += batch.processed
@@ -33,15 +38,20 @@ func (s *Service) runGlobal(ctx context.Context, beforeApply func(eventlog.Recor
 	}
 }
 
-// globalBatch is the outcome of one page of the global event log.
+func (s *Service) appliedPosition(ctx context.Context) (eventlog.LogPosition, error) {
+	applied, err := s.store.AppliedThrough(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("read applied position: %w", err)
+	}
+	return eventlog.LogPosition(applied), nil
+}
+
 type globalBatch struct {
 	processed    int
 	lastPosition eventlog.LogPosition
 	empty        bool
 }
 
-// runGlobalBatch applies the next page after lastPosition and checkpoints the
-// WAL; an empty page ends the run.
 func (s *Service) runGlobalBatch(ctx context.Context, lastPosition eventlog.LogPosition, beforeApply func(eventlog.Record) error) (globalBatch, error) {
 	records, err := s.readGlobalRecords(ctx, lastPosition)
 	if err != nil {
@@ -122,8 +132,6 @@ func (s *Service) applyGlobalRecord(ctx context.Context, record eventlog.Record,
 	return outcome, nil
 }
 
-// prepareRecord derives the record's watermark from its partition checkpoint
-// and runs the before-apply hook.
 func (s *Service) prepareRecord(ctx context.Context, record eventlog.Record, beforeApply func(eventlog.Record) error) (time.Time, error) {
 	checkpoint, err := s.store.LoadCheckpoint(ctx, record.PartitionID)
 	if err != nil {
@@ -151,83 +159,4 @@ func runBeforeApply(beforeApply func(eventlog.Record) error, record eventlog.Rec
 
 func (s *Service) watermarkForRecord(eventTime time.Time, previous string) (time.Time, error) {
 	return domain.WatermarkFor(eventTime, s.spec.Time.MaxOutOfOrderness, previous) //nolint:wrapcheck // Callers name the failed step.
-}
-
-func (s *Service) run(ctx context.Context, partitionID int, beforeApply func(eventlog.Record) error) (int, error) {
-	processed, err := s.drainPartition(ctx, partitionID, beforeApply)
-	if err != nil {
-		return processed, err
-	}
-	fired, err := s.runDueTimers(ctx, partitionID)
-	if err != nil {
-		return processed, err
-	}
-	processed += fired
-	if err := s.store.CheckpointWAL(ctx); err != nil {
-		return processed, fmt.Errorf("checkpoint WAL after partition timers: %w", err)
-	}
-	return processed, nil
-}
-
-// drainPartition applies batches until the partition has no unread records.
-func (s *Service) drainPartition(ctx context.Context, partitionID int, beforeApply func(eventlog.Record) error) (int, error) {
-	processed := 0
-	for {
-		batchCount, err := s.runBatch(ctx, partitionID, beforeApply)
-		if err != nil || batchCount == 0 {
-			return processed, err
-		}
-		processed += batchCount
-	}
-}
-
-func (s *Service) runBatch(ctx context.Context, partitionID int, beforeApply func(eventlog.Record) error) (int, error) {
-	checkpoint, err := s.store.LoadCheckpoint(ctx, partitionID)
-	if err != nil {
-		return 0, fmt.Errorf("load checkpoint: %w", err)
-	}
-	records, err := s.readPartitionRecords(ctx, partitionID, eventlog.LogPosition(checkpoint.LastPosition))
-	if err != nil || len(records) == 0 {
-		return 0, err
-	}
-	if err := s.applyPartitionRecords(ctx, partitionID, records, checkpoint, beforeApply); err != nil {
-		return 0, err
-	}
-	if err := s.store.CheckpointWAL(ctx); err != nil {
-		return 0, fmt.Errorf("checkpoint WAL after partition batch: %w", err)
-	}
-	return len(records), nil
-}
-
-// applyPartitionRecords applies records in log order, advancing the local
-// watermark from the checkpoint record by record.
-func (s *Service) applyPartitionRecords(ctx context.Context, partitionID int, records []eventlog.Record, checkpoint domain.Checkpoint, beforeApply func(eventlog.Record) error) error {
-	for _, record := range records {
-		if err := runBeforeApply(beforeApply, record); err != nil {
-			return err
-		}
-		watermark, err := s.watermarkForRecord(record.EventTime, checkpoint.Watermark)
-		if err != nil {
-			return fmt.Errorf("watermark: %w", err)
-		}
-		if err := s.applyRecord(ctx, partitionID, record, watermark); err != nil {
-			return fmt.Errorf("apply record %d: %w", record.Position, err)
-		}
-		checkpoint.Watermark = watermark.Format(time.RFC3339Nano)
-	}
-	return nil
-}
-
-func (s *Service) readPartitionRecords(ctx context.Context, partitionID int, afterPosition eventlog.LogPosition) ([]eventlog.Record, error) {
-	const batchSize = 100
-	var records []eventlog.Record
-	if err := s.log.Read(ctx, eventlog.ReadRequest{
-		TenantID: s.tenantID, PartitionID: partitionID, AfterPosition: afterPosition, Limit: batchSize,
-	}, func(record eventlog.Record) error {
-		records = append(records, record)
-		return nil
-	}); err != nil {
-		return nil, fmt.Errorf("read event log: %w", err)
-	}
-	return records, nil
 }

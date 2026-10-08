@@ -13,10 +13,12 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
-// RunJSONL ingests normalized JSONL, evaluates the stream and cognition,
-// executes all admitted episodes, applies policy, and dispatches approved
-// commands. Each stage is idempotent against the durable ledgers.
 func (p *Pipeline) RunJSONL(ctx context.Context, path string) (PipelineReport, error) {
+	unlock, err := p.lockBatch()
+	if err != nil {
+		return PipelineReport{}, err
+	}
+	defer unlock()
 	before, err := p.prepareIngest(ctx)
 	if err != nil {
 		return PipelineReport{}, err
@@ -39,10 +41,6 @@ func (p *Pipeline) prepareIngest(ctx context.Context) (eventlog.LogPosition, err
 	return p.currentEventPosition(ctx)
 }
 
-// RunLiveSocket serves normalized JSONL from a live Unix socket and advances
-// the same event, situation, cognition, policy, and action pipeline used by a
-// continuous file source. The live source is not replay: an emulator or
-// physical effect profile may be selected by the caller's startup guards.
 func (p *Pipeline) RunLiveSocket(ctx context.Context, path string) error {
 	if p == nil {
 		return fmt.Errorf("pipeline is nil")
@@ -60,24 +58,37 @@ func (p *Pipeline) RunLiveSocket(ctx context.Context, path string) error {
 }
 
 func (p *Pipeline) ingestLiveEvent(ctx context.Context, env contractsv1.Envelope) error {
+	unlock, err := p.lockBatch()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	before, err := p.prepareIngest(ctx)
 	if err != nil {
 		return err
 	}
-	positions, err := p.log.Append(ctx, p.tenantID, []contractsv1.Envelope{env})
-	if err != nil {
-		return fmt.Errorf("append live event: %w", err)
-	}
-	if len(positions) != 1 || positions[0] < 0 {
-		return nil
+	appended, err := p.appendLiveEvent(ctx, env)
+	if err != nil || !appended {
+		return err
 	}
 	_, err = p.runAfterIngest(ctx, PipelineReport{EventsIngested: 1}, before)
 	return err
 }
 
-// RunSimulatorJSONL ingests the strict streams-simulator adapter format and
-// runs the same pipeline stages as RunJSONL.
+func (p *Pipeline) appendLiveEvent(ctx context.Context, env contractsv1.Envelope) (bool, error) {
+	positions, err := p.log.Append(ctx, p.tenantID, []contractsv1.Envelope{env})
+	if err != nil {
+		return false, fmt.Errorf("append live event: %w", err)
+	}
+	return len(positions) == 1 && positions[0] >= 0, nil
+}
+
 func (p *Pipeline) RunSimulatorJSONL(ctx context.Context, path string) (PipelineReport, error) {
+	unlock, err := p.lockBatch()
+	if err != nil {
+		return PipelineReport{}, err
+	}
+	defer unlock()
 	before, err := p.prepareIngest(ctx)
 	if err != nil {
 		return PipelineReport{}, err
@@ -142,7 +153,7 @@ func (p *Pipeline) runGovernedBatch(ctx context.Context, report *PipelineReport)
 }
 
 func (p *Pipeline) runAdmittedBatch(ctx context.Context, report *PipelineReport) error {
-	if err := p.executeAdmittedEpisodes(ctx, report); err != nil {
+	if err := p.executeInlineEpisodes(ctx, report); err != nil {
 		return err
 	}
 	if err := p.evaluatePendingIntents(ctx, report); err != nil {

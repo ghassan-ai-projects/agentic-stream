@@ -37,7 +37,7 @@ func (s *Service) dispatchContext(ctx context.Context) (context.Context, context
 // closes the validation-to-acceptance gap at the effect boundary.
 func (s *Service) dispatchLeased(ctx, callCtx context.Context, leased domain.LeasedCommand) error {
 	command := leased.Command
-	effect, err := s.effector.DispatchAuthorized(callCtx, command, s.store.DispatchAuthorization(command.TenantID, command.NormalizedTarget))
+	effect, err := s.effector.DispatchAuthorized(callCtx, command, s.store.DispatchAuthorization())
 	return s.finalizeProviderDispatch(ctx, callCtx, leased, effect, err)
 }
 

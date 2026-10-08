@@ -2,29 +2,27 @@
   "schema_version": 1,
   "channel": "development",
   "version": "unreleased",
-  "as_of": "2026-10-04",
+  "as_of": "2026-10-08",
   "stable_release": false,
   "implemented": [
-    "deterministic JSONL replay",
+    "deterministic, recorded and shadow replay from the CLI",
     "SituationSpec compilation and canonical digests",
     "event-time stream processing and immutable Situation versions",
     "bounded cognition and episode lifecycle",
     "Decision and Intent validation",
     "policy gateway and idempotent action outbox",
     "Go current-v1 worker boundary",
-    "effect-safe replay and shadow library modes",
     "loopback health, metrics, and cursor-resumable SSE",
     "live normalized JSONL ingress over a Unix domain socket",
-    "typed device-gateway boundary with authority and reconciliation records"
+    "typed device-gateway boundary with authority and reconciliation records",
+    "operator commands for interlock, approval principals, quarantine redrive, notification retention and command reconciliation",
+    "read-only explainability of Situations, triggers, episodes and intents"
   ],
   "partial": [
     "environment-level production qualification",
     "external effector integrations",
     "continuous JSONL serving operations",
     "remote worker deployment",
-    "complete Intent policy-mode enforcement",
-    "runtime enforcement for spec retention/telemetry controls",
-    "packaged operator inspection, approval, reconciliation, and redrive tooling",
     "physical device qualification and hardware-in-the-loop evidence"
   ],
   "deferred": [

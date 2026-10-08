@@ -93,6 +93,11 @@ func (s *Service) Prune(ctx context.Context, now time.Time, retention time.Durat
 	return s.app.Prune(ctx, now, retention)
 }
 
+// Prunable counts the notifications Prune would retire, changing nothing.
+func (s *Service) Prunable(ctx context.Context, now time.Time, retention time.Duration) (int64, error) {
+	return s.app.Prunable(ctx, now, retention)
+}
+
 // Append validates and appends a CloudEvent in the caller's transaction.
 func Append(ctx context.Context, tx *sql.Tx, event contractsv1.CloudEvent, now time.Time) (int64, error) {
 	return app.Append(ctx, store.Join(tx), event, now)

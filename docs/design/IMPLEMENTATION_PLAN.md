@@ -126,7 +126,7 @@ Implement:
 - normalized internal IR;
 - canonical digest;
 - human-readable diagnostic locations;
-- `validate` and `config effective` CLI commands.
+- `validate` CLI command (prints the spec and policy digests).
 
 Tests:
 
@@ -557,22 +557,21 @@ Tests:
 
 ### Epic M3.5 — replay modes
 
-Implement:
+Implement (all as `run` flags over a trace, in an isolated database):
 
-- deterministic replay;
-- recorded-cognition replay;
-- shadow executor replay;
-- counterfactual simulated effector;
-- isolated replay database;
-- result comparison and first-divergence report;
-- CLI `replay` and `compare`.
+- deterministic replay, with `--repeat N` as the determinism check;
+- recorded replay against a read-only source runtime database (`--source-db`);
+- paired shadow replay of the deterministic baseline and a candidate worker
+  over the worker protocol (`--worker-socket`).
 
 Tests:
 
 - production effectors cannot be resolved in replay;
-- recorded cognition reproduces accepted Decision;
-- shadow model differs without creating Intent/Command;
-- comparison locates first Situation divergence.
+- N fresh deterministic replays produce byte-identical Situation histories;
+- recorded replay of a live run verifies its accepted Decisions, and refuses a
+  tampered decision and a spec the run never deployed;
+- shadow replay seals a comparison per episode and creates no Intent, Command
+  or outbox row.
 
 Exit:
 
@@ -635,7 +634,7 @@ Review and test:
 - worker UDS permissions;
 - remote worker disabled by default;
 - secrets absent from logs, traces, Decisions, and artifacts;
-- path traversal and symlink handling in artifact store;
+- path traversal and symlink handling for sockets and trace files;
 - API non-loopback binding warnings;
 - dependency audit and SBOM;
 - fuzz parsers and protocol decoders.

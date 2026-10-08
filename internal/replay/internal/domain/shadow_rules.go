@@ -10,9 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 )
 
-// ShadowRules is the compiled validation context for shadow trials: the intent
-// catalog, allowed intent types, risk ceiling and policy digest derived from
-// the compiled spec by the application layer.
 type ShadowRules struct {
 	Catalog      *decisions.IntentCatalog
 	AllowedTypes map[string]struct{}
@@ -20,8 +17,6 @@ type ShadowRules struct {
 	PolicyDigest string
 }
 
-// ValidatedOutput is a shadow output whose manifest and decision digests are
-// verified and whose decision document is validated against the catalog.
 type ValidatedOutput struct {
 	Output      ShadowOutput
 	Canonical   []byte
@@ -30,21 +25,6 @@ type ValidatedOutput struct {
 	ManifestSHA []byte
 }
 
-// ValidatePair validates the baseline output before the Tamoz output.
-func (r ShadowRules) ValidatePair(input ShadowInput, baselineOutput, tamozOutput ShadowOutput, evaluationTime time.Time) (ValidatedOutput, ValidatedOutput, error) {
-	baseline, err := r.ValidateOutput(input, baselineOutput, evaluationTime)
-	if err != nil {
-		return ValidatedOutput{}, ValidatedOutput{}, fmt.Errorf("validate baseline shadow episode %s: %w", input.EpisodeKey, err)
-	}
-	tamoz, err := r.ValidateOutput(input, tamozOutput, evaluationTime)
-	if err != nil {
-		return ValidatedOutput{}, ValidatedOutput{}, fmt.Errorf("validate Tamoz shadow episode %s: %w", input.EpisodeKey, err)
-	}
-	return baseline, tamoz, nil
-}
-
-// ValidateOutput admits a shadow output: manifest first, then canonical
-// decision bytes, then the decision digest, then full catalog validation.
 func (r ShadowRules) ValidateOutput(input ShadowInput, output ShadowOutput, now time.Time) (ValidatedOutput, error) {
 	bound, err := r.bindOutput(output)
 	if err != nil {
@@ -129,7 +109,6 @@ func (r ShadowRules) validateDecision(input ShadowInput, bound ValidatedOutput, 
 	return bound, nil
 }
 
-// ShadowEntityID reads the entity identity out of a canonical snapshot.
 func ShadowEntityID(snapshot []byte) (string, error) {
 	var document struct {
 		Entity struct {

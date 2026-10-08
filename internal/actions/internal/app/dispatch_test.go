@@ -67,7 +67,8 @@ func (e *tripBeforeAcceptEffector) Dispatch(context.Context, actionport.Command)
 
 func (e *tripBeforeAcceptEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
 	if err := e.db.WithTx(ctx, func(tx *sql.Tx) error {
-		return interlock.Set(ctx, tx, "tripped", "race stop", 2, time.Now().UTC().Format(time.RFC3339Nano))
+		_, err := interlock.TripIn(ctx, tx, "race stop", time.Now())
+		return err
 	}); err != nil {
 		return actionport.Effect{}, fmt.Errorf("trip interlock: %w", err)
 	}
@@ -364,7 +365,8 @@ func TestDispatcherRefusesCommandWhenInterlockTrips(t *testing.T) {
 	db, commandID := openActionFixture(t)
 	defer func() { _ = db.Close() }()
 	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
-		return interlock.Set(context.Background(), tx, "tripped", "maintenance stop", 2, time.Now().UTC().Format(time.RFC3339Nano))
+		_, err := interlock.TripIn(context.Background(), tx, "maintenance stop", time.Now())
+		return err
 	}); err != nil {
 		t.Fatalf("trip interlock: %v", err)
 	}
@@ -658,7 +660,7 @@ func newService(t *testing.T, db *storage.DB, effector actionport.AuthorizedEffe
 
 func newServiceWithOwner(t *testing.T, db *storage.DB, effector actionport.AuthorizedEffector, leaseOwner string, leaseFor time.Duration, owner store.OwnerCheck) *app.Service {
 	t.Helper()
-	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch", interlock.DurableReader{}), Effector: effector,
+	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch"), Effector: effector,
 		Clock: sources.Physical(), IDs: sources.Deterministic(), LeaseOwner: leaseOwner, LeaseFor: leaseFor})
 	if err != nil {
 		t.Fatalf("new action service: %v", err)

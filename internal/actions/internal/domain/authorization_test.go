@@ -36,7 +36,7 @@ func TestAuthorizationRefusesEachStaleOrAlteredRecord(t *testing.T) {
 		{"policy not approved", func(r *AuthorizationRecords) { r.Intent.PolicyStatus = "pending" }, AuthorizationRecords.RequireApprovedIntent, "command is no longer approved for its intent"},
 		{"decision not accepted", func(r *AuthorizationRecords) { r.Decision.ValidationStatus = "rejected" }, AuthorizationRecords.RequireApprovedIntent, "command is no longer approved for its intent"},
 		{"route differs from intent type", func(r *AuthorizationRecords) { r.Command.Route = "other" }, AuthorizationRecords.RequireApprovedIntent, "command is no longer approved for its intent"},
-		{"newer Situation version", func(r *AuthorizationRecords) { r.Situation.CurrentVersion = 2 }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
+		{"newer material Situation version", func(r *AuthorizationRecords) { r.Situation.LastMaterialVersion = 2 }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
 		{"episode still running", func(r *AuthorizationRecords) { r.Episode.Lifecycle = "running" }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
 		{"episode tenant", func(r *AuthorizationRecords) { r.Episode.TenantID = "other" }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
 		{"decision version", func(r *AuthorizationRecords) { r.Decision.SituationVersion = 2 }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
@@ -105,5 +105,16 @@ func TestDocumentAccessorsTolerateMissingFields(t *testing.T) {
 	}
 	if d.Object("o")["k"] != 1 || d.Object("s") != nil || d.Digest("bad") != nil || d.Digest("missing") != nil {
 		t.Fatal("object and digest accessors changed")
+	}
+}
+
+// A newer Situation version that cognition did not judge material keeps the
+// command's authority current (ADR-018).
+func TestAuthorizationKeepsCommandsCurrentAcrossVersionsThatAreNotMaterial(t *testing.T) {
+	t.Parallel()
+	records := authorizationRecords(t, "R1")
+	records.Situation.LastMaterialVersion = 0
+	if err := records.RequireCurrent(); err != nil {
+		t.Fatalf("command refused although no material version followed its intent: %v", err)
 	}
 }

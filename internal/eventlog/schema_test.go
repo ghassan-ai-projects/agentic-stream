@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -19,12 +21,12 @@ func registerTemperatureSchema(t *testing.T, db *storage.DB) {
 	if !ok {
 		t.Fatal("temperature schema is not registered in the built-in catalog")
 	}
-	schemaJSON, err := spec.EventSchemaJSON(definition)
+	schemaJSON, err := spectest.EventSchemaJSON(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
-		return spec.RegisterEventSchema(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
+		return spectest.RegisterEventSchema(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -36,12 +38,12 @@ func registerSchema(t *testing.T, db *storage.DB, ref string) {
 	if !ok {
 		t.Fatalf("schema %q is not registered in the built-in catalog", ref)
 	}
-	schemaJSON, err := spec.EventSchemaJSON(definition)
+	schemaJSON, err := spectest.EventSchemaJSON(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
-		return spec.RegisterEventSchema(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
+		return spectest.RegisterEventSchema(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
 	}); err != nil {
 		t.Fatal(err)
 	}

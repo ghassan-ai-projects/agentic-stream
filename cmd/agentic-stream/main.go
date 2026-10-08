@@ -11,11 +11,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-// Version metadata injected at build time.
 var (
 	Version = "dev"
 	Commit  = "none"
@@ -49,15 +48,10 @@ cognitive scheduler decides reasoning is useful.`,
 }
 
 func registerCommands(root *cobra.Command) {
-	root.AddCommand(newVersionCommand())
-	root.AddCommand(newValidateCommand())
-	root.AddCommand(newRunCommand())
-	root.AddCommand(newConfigEffectiveCommand())
-	root.AddCommand(newServeCommand())
-	root.AddCommand(newRunLiveCommand())
-	root.AddCommand(newExportRunCommand())
-	root.AddCommand(newVerifyRunCommand())
-
+	root.AddCommand(newVersionCommand(), newValidateCommand(), newRunCommand(), newServeCommand(), newRunLiveCommand(),
+		newExportRunCommand(), newVerifyRunCommand())
+	root.AddCommand(newInterlockCommand(), newPrincipalsCommand(), newQuarantineCommand(), newNotificationsCommand(),
+		newCommandsCommand(), newSituationCommand(), newExplainCommand(), newEpisodeCommand(), newIntentCommand())
 }
 
 func newVersionCommand() *cobra.Command {
@@ -87,72 +81,22 @@ func validateSpecCommand(cmd *cobra.Command, path string, outputJSON bool) error
 	if err != nil {
 		return fmt.Errorf("compile %s: %w", path, err)
 	}
-	printCompiledSpec(cmd, result, outputJSON)
-	return nil
-}
-
-func printCompiledSpec(cmd *cobra.Command, result *spec.CompiledSpec, outputJSON bool) {
 	if outputJSON {
 		cmd.Printf("%s\n", result.CanonicalJSON)
-		return
+		return nil
+	}
+	return printCompiledSpec(cmd, result)
+}
+
+func printCompiledSpec(cmd *cobra.Command, result *spec.CompiledSpec) error {
+	policyDigest, err := policy.DigestForVersion(result.Digest)
+	if err != nil {
+		return fmt.Errorf("derive policy digest: %w", err)
 	}
 	cmd.Printf("ok: %s\n", result.Metadata.Name)
 	cmd.Printf("version: %s\n", result.Metadata.Version)
 	cmd.Printf("digest: %s\n", result.Digest)
+	cmd.Printf("policy_digest: %s\n", policyDigest)
 	cmd.Printf("schema: %s\n", result.SchemaVersion)
-}
-
-func newRunCommand() *cobra.Command {
-	var dbPath, tenantID string
-	cmd := &cobra.Command{
-		Use:   "run --spec <spec.yaml> --trace <trace.jsonl>",
-		Short: "Replay a JSONL trace against a spec and print the canonical result.", Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error { return runReplayCommand(cmd, &dbPath, tenantID) },
-	}
-	cmd.Flags().String("spec", "", "Path to the SituationSpec YAML file")
-	cmd.Flags().String("trace", "", "Path to the JSONL trace file")
-	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite database path (default: <trace>.replay.db)")
-	cmd.Flags().StringVar(&tenantID, "tenant", "default", "Tenant ID")
-	return cmd
-}
-
-func runReplayCommand(cmd *cobra.Command, dbPath *string, tenantID string) error {
-	specPath, tracePath, err := replayPaths(cmd)
-	if err != nil {
-		return err
-	}
-	if *dbPath == "" {
-		*dbPath = tracePath + ".replay.db"
-	}
-	result, err := replay.Run(cmd.Context(), replay.Request{DBPath: *dbPath, SpecPath: specPath, TracePath: tracePath, TenantID: tenantID})
-	if err != nil {
-		return fmt.Errorf("run replay: %w", err)
-	}
-	cmd.Printf("events_processed=%d situation_versions=%d versions_hash=%s\n", result.EventsProcessed, result.VersionCount, result.VersionsHash)
 	return nil
-}
-
-func replayPaths(cmd *cobra.Command) (string, string, error) {
-	specPath, err := cmd.Flags().GetString("spec")
-	if err != nil {
-		return "", "", fmt.Errorf("get spec flag: %w", err)
-	}
-	tracePath, err := cmd.Flags().GetString("trace")
-	if err != nil {
-		return "", "", fmt.Errorf("get trace flag: %w", err)
-	}
-	if specPath == "" || tracePath == "" {
-		return "", "", fmt.Errorf("--spec and --trace are required")
-	}
-	return specPath, tracePath, nil
-}
-
-func newConfigEffectiveCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "config effective",
-		Short: "Show effective runtime configuration (placeholder).",
-		Run: func(_ *cobra.Command, _ []string) {
-			fmt.Println("config effective: not yet implemented")
-		},
-	}
 }

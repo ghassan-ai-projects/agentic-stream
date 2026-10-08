@@ -1,8 +1,8 @@
 # Configuration reference
 
 The current runtime is configured through CLI flags and environment variables.
-There is no committed config-file format, and `config effective` is a
-placeholder.
+There is no config-file format and no command that prints the effective
+configuration; `validate` prints the spec and policy digests a deployment uses.
 
 ## Environment variables
 

@@ -17,7 +17,7 @@ Names mean the same thing in conversation, code, storage and audit trails.
 | Overflow | Retries spent; the loss is recorded as a gap | app overflow step | `quarantine_retry_exhausted` |
 | Release | Operator marks a quarantined event eligible for redrive | app release use case | `status='released'` |
 | Redrive | Validate and append a released event atomically, once | app redrive use case | `redriven_at` |
-| Gap | Durable discontinuity never deleting evidence | `RecordGap` | `event_gaps` row |
+| Gap | Durable record that a quarantined event exhausted its retries; never deletes evidence | `InsertOverflowGap` (store) | `event_gaps` row |
 | Entity window | Read-only bounded evidence window over one entity | `domain.EntityWindow` | `event_log` range scan |
 | Unit of work | One transaction spanning admission, insert and lifecycle steps | `store.Unit` | — |
 

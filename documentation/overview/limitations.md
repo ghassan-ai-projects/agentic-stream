@@ -60,9 +60,9 @@ readiness](../../docs/design/OPERATIONS_READINESS.md).
 
 ### Some spec controls are not runtime controls yet
 
-The schema accepts action policy values such as `automatic`, `approval`,
-`deny`, and `simulate`, but the current catalog/runtime path does not provide
-complete, separately enforced behavior for all four values. Data retention
+An intent's `policy` is `automatic` or `approval`; both are enforced, and
+`automatic` never relaxes the risk route (R2 always needs approval, R3 and R4
+are denied). An intent that must never run is simply not declared. Data retention
 is an operational release concern and the SituationSpec intentionally does not
 expose a retention or telemetry control until the runtime can enforce it.
 
@@ -71,8 +71,9 @@ expose a retention or telemetry control until the runtime can enforce it.
 The current engine keeps a stable Situation/occurrence identity for the
 tenant, deployment, partition, type, and entity; it does not automatically
 create a new occurrence after resolution. Confidence starts at `1.0` without
-a calibrated update mechanism, and subsequent primary-hypothesis change
-tracking is not implemented. Completeness is an evidence-processing status,
+a calibrated update mechanism. Hypotheses are Decision output, not Situation
+state, so the trigger delta key `primary_hypothesis_changed` is true only for a
+Situation's first reasoned version. Completeness is an evidence-processing status,
 not a certified all-source coverage measure; the trigger `completeness` field
 is not independently enforced by the current scheduler.
 
@@ -81,13 +82,15 @@ See [the domain model](../learn/domain-model.md),
 [trigger state view](../../internal/cognition/internal/domain/delta.go), and
 [trigger gates](../../internal/cognition/internal/domain/trigger_rules.go).
 
-### Operator inspection and redrive are internal capabilities
+### Operator tooling is CLI over the runtime database
 
-Durable quarantine, approval, reconciliation, and explainability records exist
-inside the runtime, but the current public CLI and HTTP API do not expose
-general inspection, approval resolution, unknown-outcome reconciliation, or
-quarantine redrive commands. A deployment needs approved internal tooling and
-runbooks for those actions; they are not available as ready-to-use public operations.
+Quarantine redrive, approval governance, the interlock, notification retention,
+unknown-outcome reconciliation and read-only inspection (`situation`,
+`explain`, `episode`, `intent`) are CLI commands that act on the runtime
+database. Commands that change state need the runtime owner lease, so they run
+while the runtime is stopped (the interlock trip is the exception). There is no
+HTTP inspection API, and a deployment still needs its own runbooks for when to
+use each command.
 
 ## Deliberate non-goals
 

@@ -19,6 +19,9 @@ type Engine = domain.Engine
 // Situation is the mutable current state for one occurrence.
 type Situation = domain.Situation
 
+// PhaseResolved is the phase a Situation enters when its occurrence closes.
+const PhaseResolved = domain.PhaseResolved
+
 // Version is an immutable Situation version.
 type Version = domain.Version
 

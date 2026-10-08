@@ -91,6 +91,6 @@ func authorizationRecords(t *testing.T, risk string) AuthorizationRecords {
 		Command: commandRow(t), Intent: intent, Decision: decisionRow(t, intent),
 		Approval:  ApprovalRow{ID: "apr-1", ExpiresAt: testNow.Add(time.Hour).Format(time.RFC3339Nano), Present: true},
 		Episode:   EpisodeRow{TenantID: "tenant", SituationID: "sit-1", SituationVersion: 1, Lifecycle: "concluded"},
-		Situation: SituationRow{TenantID: "tenant", CurrentVersion: 1},
+		Situation: SituationRow{TenantID: "tenant", LastMaterialVersion: 1},
 	}
 }

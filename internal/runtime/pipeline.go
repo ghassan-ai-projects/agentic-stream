@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"time"
 
 	app "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
 	composition "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/composition"
@@ -51,4 +52,16 @@ func (p *Pipeline) RunSimulatorJSONL(ctx context.Context, path string) (Pipeline
 // RunLiveSocket owns a live source until cancellation or failure.
 func (p *Pipeline) RunLiveSocket(ctx context.Context, path string) error {
 	return p.useCases().RunLiveSocket(ctx, path)
+}
+
+// AdvanceEvery advances the pipeline on a schedule until ctx ends, so a quiet
+// live source still makes time-driven progress.
+func (p *Pipeline) AdvanceEvery(ctx context.Context, interval time.Duration) error {
+	return p.useCases().AdvanceEvery(ctx, interval)
+}
+
+// RunEpisodesEvery executes admitted episodes beside ingestion until ctx ends,
+// so a worker's reasoning never holds back evidence, timers or supersession.
+func (p *Pipeline) RunEpisodesEvery(ctx context.Context, interval time.Duration) error {
+	return p.useCases().RunEpisodesEvery(ctx, interval)
 }

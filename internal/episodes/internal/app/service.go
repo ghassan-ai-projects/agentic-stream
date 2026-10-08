@@ -41,9 +41,7 @@ func New(cfg Config) (*Service, error) {
 	if err := validateConfig(cfg); err != nil {
 		return nil, err
 	}
-	if cfg.IDGenerator == nil {
-		cfg.IDGenerator = sources.Random()
-	}
+	cfg.IDGenerator = sources.OrRandom(cfg.IDGenerator)
 	assembler := &Assembler{spec: cfg.Spec, idGen: cfg.IDGenerator, cost: cfg.CostControl}
 	return &Service{assembler: assembler, runner: configuredRunner(cfg, assembler)}, nil
 }
@@ -68,9 +66,7 @@ func configuredRunner(cfg Config, assembler *Assembler) *Runner {
 		return nil
 	}
 	execution := *cfg.Execution
-	if execution.Clock == nil {
-		execution.Clock = sources.Physical()
-	}
+	execution.Clock = sources.OrPhysical(execution.Clock)
 	return &Runner{episodes: execution.Episodes, executor: execution.Executor, clk: execution.Clock, idGen: cfg.IDGenerator, ownerEpoch: execution.OwnerEpoch, cost: cfg.CostControl, decisionEpoch: execution.DecisionEpoch, telemetry: execution.Telemetry, assembler: assembler}
 }
 

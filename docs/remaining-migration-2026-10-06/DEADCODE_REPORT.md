@@ -1,5 +1,9 @@
 # Dead, unreachable and test-only code (2026-10-06)
 
+> **Superseded** by [the unfinished work review (2026-10-08)](../unfinished-work-review-2026-10-08/README.md):
+> every item here was completed, deleted or moved to test support, and
+> `make deadcode` now fails on any production function reachable only from tests.
+
 Method: `deadcode ./...` (reachability from `main`, production only) and `deadcode -test ./...` (reachability including tests), plus a token scan for exported types, constants and variables. `golangci-lint` `unused` reports nothing (no unused unexported code).
 
 ## Headline

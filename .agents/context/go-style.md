@@ -4,9 +4,9 @@
 
 - Use `context.Context` as the first parameter for I/O, blocking, or cancellable work.
 - Return `error` last.
-- Wrap errors with `%w` and enough local context to debug failures.
+- Wrap errors with `%w` and context the callee lacks (operation, identifier, layer). Never silence `wrapcheck` because the callee "already names the step"; see AGENTS.md for the two allowed bare returns.
 - Use `log/slog` instead of `fmt.Println` for logging.
-- Document every exported symbol.
+- Comment only the public interface of a module (exported symbols of the facade package, plus one package comment per package). No comments inside a module; make the code say it.
 - Prefer standard library packages like `cmp`, `maps`, and `slices` over new helper dependencies.
 - Keep packages small, lowercase, and singular.
 - Prefer direct code over indirection when both are maintainable.
@@ -54,3 +54,9 @@
 - helpers that save only one or two lines while hiding behavior
 - placeholder TODO logic shipped as if complete
 - unrelated refactors in the same change
+
+## Mechanical Changes
+
+Use `gopls`, `gofmt -r`, `goimports` or a throwaway `go/ast` program for renames,
+signature changes and table edits; never `sed` or regex on Go source. See
+AGENTS.md, "Refactoring Go Code".

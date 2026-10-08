@@ -47,7 +47,7 @@ func TestUnconfiguredControlRefusesEveryOperation(t *testing.T) {
 	if err := AssertAdmission(ctx, &Epochs{}, "e"); !errors.Is(err, domain.ErrEpochControlNotConfigured) {
 		t.Fatalf("admission = %v", err)
 	}
-	if err := AuthorizeDispatch(ctx, store.New(nil), nil, "t", "target"); !errors.Is(err, domain.ErrDispatchGateNotConfigured) {
+	if err := AuthorizeDispatch(ctx, store.New(nil)); !errors.Is(err, domain.ErrDispatchGateNotConfigured) {
 		t.Fatalf("dispatch = %v", err)
 	}
 }

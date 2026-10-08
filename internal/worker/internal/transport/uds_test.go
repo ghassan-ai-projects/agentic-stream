@@ -1,12 +1,9 @@
 package transport
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
-
-	"google.golang.org/grpc"
 )
 
 func TestEvidenceSocketIsPrivateAndCleansUp(t *testing.T) {
@@ -39,30 +36,5 @@ func TestEvidenceSocketIsPrivateAndCleansUp(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("socket still exists: %v", err)
-	}
-}
-
-func TestEvidenceSocketDialsOnlyUnix(t *testing.T) {
-	dir, err := os.MkdirTemp("", "as-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	path := filepath.Join(dir, "evidence.sock")
-	listener, err := ListenEvidenceSocket(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = listener.Close() }()
-	server := grpc.NewServer()
-	go func() { _ = server.Serve(listener) }()
-	defer server.Stop()
-	conn, err := DialEvidenceSocket(context.Background(), path)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer func() { _ = conn.Close() }()
-	if conn.Target() == "" {
-		t.Fatal("missing connection target")
 	}
 }

@@ -3,7 +3,7 @@ package interlock_test
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -12,38 +12,80 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-func TestDurableReaderFailsClosedAndVersionIsMonotonic(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "interlock.db"))
+var now = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+
+func allow(t *testing.T) interlock.Fence {
+	t.Helper()
+	return func(context.Context, *sql.Tx) error { return nil }
+}
+
+func openDB(t *testing.T) *storage.DB {
+	t.Helper()
+	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "interlock.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
-	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
-	reader := interlock.DurableReader{}
-	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
-		return reader.Assert(context.Background(), tx, "tenant", "motor/1", "R1")
-	}); err != nil {
-		t.Fatalf("initial interlock: %v", err)
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+func admits(t *testing.T, db *storage.DB) error {
+	t.Helper()
+	return db.WithTx(t.Context(), func(tx *sql.Tx) error {
+		return interlock.Assert(t.Context(), tx)
+	})
+}
+
+func TestTripBlocksAndClearReopensTheActionPlane(t *testing.T) {
+	t.Parallel()
+	db := openDB(t)
+	if err := admits(t, db); err != nil {
+		t.Fatalf("the seeded interlock must be ready: %v", err)
 	}
-	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
-		return interlock.Set(context.Background(), tx, "tripped", "test stop", 2, now)
-	}); err != nil {
-		t.Fatalf("trip interlock: %v", err)
+	tripped, err := interlock.Trip(t.Context(), db, "operator stop", now)
+	if err != nil || tripped.Status != "tripped" || tripped.Version != 2 || tripped.Reason != "operator stop" {
+		t.Fatalf("trip = %+v, %v", tripped, err)
 	}
-	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
-		if err := reader.Assert(context.Background(), tx, "tenant", "motor/1", "R1"); err == nil {
-			return fmt.Errorf("expected tripped interlock rejection")
-		}
-		return nil
-	}); err != nil {
+	if err := admits(t, db); !errors.Is(err, interlock.ErrTripped) {
+		t.Fatalf("a tripped interlock must refuse: %v", err)
+	}
+	cleared, err := interlock.Clear(t.Context(), db, allow(t), "inspected", now)
+	if err != nil || cleared.Status != "ready" || cleared.Version != 3 {
+		t.Fatalf("clear = %+v, %v", cleared, err)
+	}
+	if err := admits(t, db); err != nil {
+		t.Fatalf("a cleared interlock must admit: %v", err)
+	}
+	status, err := interlock.Status(t.Context(), db)
+	if err != nil || status != cleared {
+		t.Fatalf("status = %+v, %v; want %+v", status, err, cleared)
+	}
+}
+
+func TestClearIsRefusedWithoutTheFenceAndWritesNothing(t *testing.T) {
+	t.Parallel()
+	db := openDB(t)
+	if _, err := interlock.Trip(t.Context(), db, "operator stop", now); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
-		if err := interlock.Set(context.Background(), tx, "ready", "stale reopen", 1, now); err == nil {
-			return fmt.Errorf("expected stale interlock update rejection")
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
+	denied := errors.New("not the owner")
+	fence := func(context.Context, *sql.Tx) error { return denied }
+	if _, err := interlock.Clear(t.Context(), db, fence, "too early", now); !errors.Is(err, denied) {
+		t.Fatalf("a clear the fence refused = %v", err)
+	}
+	if _, err := interlock.Clear(t.Context(), db, nil, "no fence", now); err == nil {
+		t.Fatal("a clear without a fence was accepted")
+	}
+	status, err := interlock.Status(t.Context(), db)
+	if err != nil || status.Status != "tripped" || status.Version != 2 {
+		t.Fatalf("a refused clear changed the interlock: %+v, %v", status, err)
+	}
+}
+
+func TestChangesNeedAReason(t *testing.T) {
+	t.Parallel()
+	db := openDB(t)
+	if _, err := interlock.Trip(t.Context(), db, "", now); err == nil {
+		t.Fatal("a trip without a reason was accepted")
 	}
 }

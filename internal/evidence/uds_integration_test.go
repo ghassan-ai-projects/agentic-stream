@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
+
 	"google.golang.org/grpc"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
@@ -36,7 +38,7 @@ func TestEvidenceToolsOverPrivateUDS(t *testing.T) {
 	runtimev1.RegisterEvidenceToolsServer(server, mustCallService(t, issuer, now, func(context.Context, Call) (QueryResult, error) { return QueryResult{JSON: []byte(`{"ok":true}`)}, nil }))
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
-	conn, err := worker.DialEvidenceSocket(t.Context(), path)
+	conn, err := workerfake.DialEvidenceSocket(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}

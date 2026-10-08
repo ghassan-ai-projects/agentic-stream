@@ -90,8 +90,10 @@ and [cognition's state view](../../internal/cognition/internal/domain/delta.go).
 
 A **hypothesis** is a proposed explanation, such as bearing wear rather than
 a faulty sensor. It belongs in the reasoning output and its evidence; it is
-not a new phase or permission to change a reduced fact. The present runtime
-does not maintain a changing primary-hypothesis model in Situation state.
+not a new phase or permission to change a reduced fact. Situation state holds
+no hypothesis, because replaying the stream must not depend on what a model
+said; the trigger delta key `primary_hypothesis_changed` is therefore true only
+for a Situation's first reasoned version.
 
 Phase is separate from an episode's status and a Command's status. A motor can
 remain in `warning` while an episode finishes, a proposal is refused, or a

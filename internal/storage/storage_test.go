@@ -50,3 +50,30 @@ func TestFacadeRetriesOnlyBusyFailures(t *testing.T) {
 		t.Fatalf("fresh database: %v", err)
 	}
 }
+
+func TestFacadeNullIfEmptyAndQueryAll(t *testing.T) {
+	t.Parallel()
+	if storage.NullIfEmpty("").Valid || !storage.NullIfEmpty("x").Valid || storage.NullIfEmpty("x").String != "x" {
+		t.Fatal("NullIfEmpty must be NULL only for the empty string")
+	}
+	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "queryall.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	scan := func(rows *sql.Rows) (int, error) {
+		var value int
+		return value, rows.Scan(&value)
+	}
+	values, err := storage.QueryAll(t.Context(), db, "numbers", scan, "SELECT 1 UNION SELECT 2")
+	if err != nil || len(values) != 2 {
+		t.Fatalf("values = %v, %v", values, err)
+	}
+	none, err := storage.QueryAll(t.Context(), db, "numbers", scan, "SELECT 1 WHERE 0")
+	if err != nil || none == nil || len(none) != 0 {
+		t.Fatalf("no rows = %v, %v; want an empty slice", none, err)
+	}
+	if _, err := storage.QueryAll(t.Context(), db, "numbers", scan, "SELECT * FROM missing_table"); err == nil {
+		t.Fatal("a failing query was accepted")
+	}
+}

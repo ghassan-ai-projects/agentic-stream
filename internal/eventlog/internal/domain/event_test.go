@@ -70,23 +70,6 @@ func TestUseCaseInputsFailClosed(t *testing.T) {
 	if err := ValidRelease("tenant", "", "now"); err == nil {
 		t.Fatal("eventless release accepted")
 	}
-	for name, gap := range map[string]Gap{
-		"no gap id":     {ID: "", TenantID: "t", PartitionID: 0, From: 0, To: 1, Reason: "r", CreatedAt: "n"},
-		"reversed span": {ID: "g", TenantID: "t", PartitionID: 0, From: 2, To: 1, Reason: "r", CreatedAt: "n"},
-		"negative from": {ID: "g", TenantID: "t", PartitionID: 0, From: -1, To: 1, Reason: "r", CreatedAt: "n"},
-		"no reason":     {ID: "g", TenantID: "t", PartitionID: 0, From: 0, To: 1, Reason: "", CreatedAt: "n"},
-	} {
-		check := gap.Valid
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			if err := check(); err == nil {
-				t.Fatal("invalid gap accepted")
-			}
-		})
-	}
-	if err := (Gap{ID: "g", TenantID: "t", PartitionID: 0, From: 1, To: 2, Reason: "r", CreatedAt: "n"}).Valid(); err != nil {
-		t.Fatalf("valid gap rejected: %v", err)
-	}
 }
 
 func TestEncodeEventBodyDigestsPayloadBytes(t *testing.T) {

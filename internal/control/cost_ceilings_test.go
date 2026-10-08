@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -34,10 +36,10 @@ func TestApplyCeilingsPreservesUnspecifiedLimitsAndAtomicity(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = db.Close() })
 			if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-				if err := control.SetCostLimit(ctx, tx, "global", "", 100, true, "2026-01-01T00:00:00Z"); err != nil {
+				if err := controltest.SetCostLimit(ctx, tx, "global", "", 100, true, "2026-01-01T00:00:00Z"); err != nil {
 					return err
 				}
-				return control.SetCostLimit(ctx, tx, "tenant:tenant", "tenant", 10, true, "2026-01-01T00:00:00Z")
+				return controltest.SetCostLimit(ctx, tx, "tenant:tenant", "tenant", 10, true, "2026-01-01T00:00:00Z")
 			}); err != nil {
 				t.Fatal(err)
 			}

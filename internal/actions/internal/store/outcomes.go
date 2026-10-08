@@ -6,6 +6,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 const insertOutcomeSQL = `
@@ -40,7 +41,7 @@ func (tx *Tx) InsertOutcome(ctx context.Context, outcome domain.OutcomeRecord) e
 	}
 	if _, err := tx.tx.ExecContext(ctx, insertOutcomeSQL,
 		outcome.ID, outcome.CommandID, outcome.CommandID, outcome.Status, providerJSON, observedJSON,
-		outcome.Reconciliation, outcome.SHA, nullableString(outcome.Trace.Traceparent), nullableString(outcome.Trace.Tracestate), formatTime(outcome.At)); err != nil {
+		outcome.Reconciliation, outcome.SHA, storage.NullIfEmpty(outcome.Trace.Traceparent), storage.NullIfEmpty(outcome.Trace.Tracestate), formatTime(outcome.At)); err != nil {
 		return fmt.Errorf("record action outcome: %w", err)
 	}
 	return nil
@@ -54,7 +55,7 @@ func (tx *Tx) CloseDispatch(ctx context.Context, closure domain.DispatchClosure)
 		return fmt.Errorf("record command status: %w", err)
 	}
 	if _, err := tx.tx.ExecContext(ctx, closeDispatchOutboxSQL,
-		result.OutboxStatus, nullableString(result.ErrorCode), result.OutboxStatus, at, closure.Leased.OutboxID, closure.Leased.LeaseOwner); err != nil {
+		result.OutboxStatus, storage.NullIfEmpty(result.ErrorCode), result.OutboxStatus, at, closure.Leased.OutboxID, closure.Leased.LeaseOwner); err != nil {
 		return fmt.Errorf("finish command outbox: %w", err)
 	}
 	if _, err := tx.tx.ExecContext(ctx, storeVerificationSQL,

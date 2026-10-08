@@ -52,10 +52,11 @@ conflict and redrive behavior. Gates enforce downward imports, domain purity,
 app infrastructure isolation, store-only SQL and single durable ownership
 (now pointing at the store layer); injected violations were rejected during
 migration. `ReadEntityWindow` still takes the raw database handle; moving its
-callers onto a facade method is a recorded follow-up. `RecordGap` takes the
-typed `Gap` record (deliberate public API change replacing eight positional
-arguments); `Quarantine` keeps `map[string]any` because an invalid envelope
-is, by definition, an untyped document.
+callers onto a facade method is a recorded follow-up. Invalid evidence enters
+quarantine through `QuarantineEnvelope` or `QuarantineRaw`; the only gap the
+log records is the one a quarantine record owes when its retries run out
+(`event_gaps`, reason `quarantine_retry_exhausted`). Ingress applies
+backpressure and never drops evidence, so there is no general gap API.
 
 - [Event log language](UBIQUITOUS_LANGUAGE.md)
 - [Migration design](../../docs/eventlog-reference-module-2026-10-05/DESIGN.md)

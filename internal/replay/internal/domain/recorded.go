@@ -10,9 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
-// RecordedEntry is the immutable worker result recorded with an episode.
-// Replay compares by the stable situation/version/trigger key and never calls
-// a worker to recreate it.
 type RecordedEntry struct {
 	EpisodeKey              string
 	SituationID             string
@@ -27,18 +24,14 @@ type RecordedEntry struct {
 	ManifestSHA256          string
 }
 
-// RecordedLedger supplies worker results from a durable, read-only ledger.
 type RecordedLedger interface {
 	Entries(context.Context) ([]RecordedEntry, error)
 }
 
-// RecordedLedgerForReplay binds recorded entries to the exact replay worklist.
 type RecordedLedgerForReplay interface {
 	EntriesForReplay(context.Context, []ReplayEpisode) ([]RecordedEntry, error)
 }
 
-// IndexRecordedEntries verifies every entry and keys it by episode key,
-// rejecting duplicates.
 func IndexRecordedEntries(entries []RecordedEntry) (map[string]RecordedEntry, error) {
 	byKey := make(map[string]RecordedEntry, len(entries))
 	for _, entry := range entries {
@@ -53,21 +46,25 @@ func IndexRecordedEntries(entries []RecordedEntry) (map[string]RecordedEntry, er
 	return byKey, nil
 }
 
-// VerifyRecordedEntry requires a complete entry whose attempt provenance and
-// schema-valid decision both match their digests.
 func VerifyRecordedEntry(entry RecordedEntry) error {
 	if entry.EpisodeKey == "" || entry.SituationID == "" || entry.SituationVersion <= 0 || entry.TriggerID == "" || entry.EpisodeID == "" || entry.AttemptID == "" || entry.Fence <= 0 || entry.AttemptProvenanceSHA256 == "" || len(entry.DecisionJSON) == 0 || entry.DecisionSHA256 == "" {
 		return fmt.Errorf("recorded ledger contains an incomplete entry")
 	}
-	provenance, err := canonicaljson.Digest(canonicaljson.DomainOutcome, map[string]any{"episode_id": entry.EpisodeID, "attempt_id": entry.AttemptID, "fence": entry.Fence})
+	provenance, err := AttemptProvenance(entry)
 	if err != nil || provenance != entry.AttemptProvenanceSHA256 {
 		return fmt.Errorf("recorded ledger attempt provenance is invalid for %q", entry.EpisodeKey)
 	}
 	return VerifyRecordedDocument(entry)
 }
 
-// VerifyRecordedDocument requires a canonical, schema-valid decision whose
-// digest matches the recorded digest.
+func AttemptProvenance(entry RecordedEntry) (string, error) {
+	provenance, err := canonicaljson.Digest(canonicaljson.DomainOutcome, map[string]any{"episode_id": entry.EpisodeID, "attempt_id": entry.AttemptID, "fence": entry.Fence})
+	if err != nil {
+		return "", fmt.Errorf("digest attempt provenance: %w", err)
+	}
+	return provenance, nil
+}
+
 func VerifyRecordedDocument(entry RecordedEntry) error {
 	canonical, err := canonicaljson.Marshal(json.RawMessage(entry.DecisionJSON))
 	if err != nil {
@@ -86,7 +83,6 @@ func VerifyRecordedDocument(entry RecordedEntry) error {
 	return nil
 }
 
-// RequireEmptyRecordedLedger rejects entries when replay produced no episodes.
 func RequireEmptyRecordedLedger(entries []RecordedEntry) error {
 	if len(entries) > 0 {
 		return fmt.Errorf("recorded ledger is non-empty but replay produced no executable episodes")
@@ -94,16 +90,13 @@ func RequireEmptyRecordedLedger(entries []RecordedEntry) error {
 	return nil
 }
 
-// MatchRecordedMetadata requires the entry to describe exactly this episode.
 func MatchRecordedMetadata(entry RecordedEntry, episode ReplayEpisode) error {
-	if entry.SituationID != episode.SituationID || entry.SituationVersion != episode.SituationVersion || entry.TriggerID != episode.TriggerID || entry.EpisodeID != episode.EpisodeID {
+	if entry.SituationID != episode.SituationID || entry.SituationVersion != episode.SituationVersion || entry.TriggerID != episode.TriggerID {
 		return fmt.Errorf("recorded ledger metadata does not match replay episode %q", episode.EpisodeKey)
 	}
 	return nil
 }
 
-// DecodeRecordedDecision returns the decision document only when the recorded
-// bytes are already canonical JSON.
 func DecodeRecordedDecision(entry RecordedEntry) (map[string]any, error) {
 	canonical, err := canonicaljson.Marshal(json.RawMessage(entry.DecisionJSON))
 	if err != nil {
@@ -119,23 +112,24 @@ func DecodeRecordedDecision(entry RecordedEntry) (map[string]any, error) {
 	return decision, nil
 }
 
-// ValidateRecordedSnapshot requires the decision to cite the replayed
-// situation version and its persisted snapshot digest.
-func ValidateRecordedSnapshot(entry RecordedEntry, episode ReplayEpisode, decision map[string]any, snapshotDigest []byte) error {
+func RecordedCitation(entry RecordedEntry, episode ReplayEpisode, decision map[string]any) (int, error) {
 	if got, _ := decision["situation_id"].(string); got != episode.SituationID {
-		return fmt.Errorf("recorded decision %q has mismatched situation", entry.EpisodeKey)
+		return 0, fmt.Errorf("recorded decision %q has mismatched situation", entry.EpisodeKey)
 	}
-	if got, ok := decision["situation_version"].(float64); !ok || int(got) != episode.SituationVersion {
-		return fmt.Errorf("recorded decision %q has mismatched situation version", entry.EpisodeKey)
+	cited, ok := decision["situation_version"].(float64)
+	if !ok || int(cited) < episode.SituationVersion {
+		return 0, fmt.Errorf("recorded decision %q has mismatched situation version", entry.EpisodeKey)
 	}
+	return int(cited), nil
+}
+
+func ValidateRecordedSnapshot(entry RecordedEntry, decision map[string]any, snapshotDigest []byte) error {
 	if got, _ := decision["snapshot_digest"].(string); got != canonicaljson.EncodeDigest(snapshotDigest) {
 		return fmt.Errorf("recorded decision %q has mismatched snapshot digest", entry.EpisodeKey)
 	}
 	return nil
 }
 
-// ValidateRecordedAttempt requires the decision to cite the recorded attempt
-// identity and fence: episode first, then attempt, then fence.
 func ValidateRecordedAttempt(entry RecordedEntry, decision map[string]any) error {
 	if got, _ := decision["episode_id"].(string); got != entry.EpisodeID {
 		return fmt.Errorf("recorded decision %q has mismatched episode identity", entry.EpisodeKey)
@@ -149,7 +143,6 @@ func ValidateRecordedAttempt(entry RecordedEntry, decision map[string]any) error
 	return nil
 }
 
-// RequireExpectedRecordedKeys rejects ledger decisions outside the worklist.
 func RequireExpectedRecordedKeys(episodesByKey map[string]ReplayEpisode, byKey map[string]RecordedEntry) error {
 	for key := range byKey {
 		if _, ok := episodesByKey[key]; !ok {

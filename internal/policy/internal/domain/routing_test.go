@@ -23,7 +23,7 @@ func TestRiskRulesRemainAuthoritative(t *testing.T) {
 					want = "approval"
 				}
 			case "R2":
-				want = "calibration"
+				want = "approval"
 			}
 			if route != want || want == "denied" && reason == "" || want != "denied" && reason != "" {
 				t.Fatal(risk, approval, route, reason)
@@ -41,8 +41,16 @@ func TestFreshnessAndApprovalPrecedence(t *testing.T) {
 		status, reason string
 	}{
 		{"healthy", func(*IntentRecord) {}, "", ""},
-		{"lifecycle first", func(r *IntentRecord) { r.EpisodeLifecycle = "running"; r.CurrentSituation = 2; r.ExpiresAt = "invalid" }, "denied", "episode_not_concluded"},
-		{"stale before health", func(r *IntentRecord) { r.CurrentSituation = 2; r.CurrentCompleteness = "uncertain" }, "stale", "situation_version_stale"},
+		{"lifecycle first", func(r *IntentRecord) {
+			r.EpisodeLifecycle = "running"
+			r.CurrentSituation, r.LastMaterialVersion = 2, 2
+			r.ExpiresAt = "invalid"
+		}, "denied", "episode_not_concluded"},
+		{"newer version that is not material stays fresh", func(r *IntentRecord) { r.CurrentSituation, r.LastMaterialVersion = 3, 1 }, "", ""},
+		{"stale before health", func(r *IntentRecord) {
+			r.CurrentSituation, r.LastMaterialVersion = 2, 2
+			r.CurrentCompleteness = "uncertain"
+		}, "stale", "situation_version_stale"},
 		{"health before expiry", func(r *IntentRecord) { r.CurrentCompleteness = "uncertain"; r.ExpiresAt = "invalid" }, "denied", "source_health_incomplete"},
 		{"expiry inclusive", func(r *IntentRecord) { r.ExpiresAt = FormatTime(now) }, "expired", "intent_expired"},
 	} {
@@ -58,6 +66,10 @@ func TestFreshnessAndApprovalPrecedence(t *testing.T) {
 	a := ApprovalRecord{Status: "pending", ExpiresAt: FormatTime(now)}
 	r := ApprovalResolution{Approved: true, Now: now}
 	base.CurrentSituation = 2
+	if ApprovalDisposition(base, a, r) != "expired" {
+		t.Fatal("a newer version that is not material must not stale an approval")
+	}
+	base.LastMaterialVersion = 2
 	if ApprovalDisposition(base, a, r) != "stale" {
 		t.Fatal("stale precedence")
 	}

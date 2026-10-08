@@ -14,7 +14,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	app "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
@@ -27,12 +26,8 @@ func pipelineDefaults(cfg PipelineConfig) PipelineConfig {
 	if cfg.TenantID == "" {
 		cfg.TenantID = "default"
 	}
-	if cfg.Clock == nil {
-		cfg.Clock = sources.Physical()
-	}
-	if cfg.IDGenerator == nil {
-		cfg.IDGenerator = sources.Random()
-	}
+	cfg.Clock = sources.OrPhysical(cfg.Clock)
+	cfg.IDGenerator = sources.OrRandom(cfg.IDGenerator)
 	return pipelineExecutionDefaults(cfg)
 }
 
@@ -47,7 +42,7 @@ func pipelineExecutionDefaults(cfg PipelineConfig) PipelineConfig {
 }
 
 func composeEffectors(cfg PipelineConfig) (actionport.Effector, *watch.Service, error) {
-	watch, err := watch.New(watch.Config{DB: cfg.DB, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch, Interlock: interlock.DurableReader{}, Clock: cfg.Clock})
+	watch, err := watch.New(watch.Config{DB: cfg.DB, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch, Clock: cfg.Clock})
 	if err != nil {
 		return nil, nil, fmt.Errorf("compose watch: %w", err)
 	}
@@ -119,7 +114,7 @@ func composeEpisodes(cfg PipelineConfig) (*episodes.Service, error) {
 }
 
 func composePolicy(cfg PipelineConfig) (*policy.Service, error) {
-	service, err := policy.New(policy.Config{PolicyVersion: cfg.Spec.Digest, IDGenerator: cfg.IDGenerator, OwnerEpoch: cfg.OwnerEpoch, RuntimeOwner: runtimeOwnershipCheck(cfg), DecisionEpoch: policyEpochCheck(cfg), Interlock: interlock.DurableReader{}})
+	service, err := policy.New(policy.Config{PolicyVersion: cfg.Spec.Digest, IDGenerator: cfg.IDGenerator, OwnerEpoch: cfg.OwnerEpoch, RuntimeOwner: runtimeOwnershipCheck(cfg), DecisionEpoch: policyEpochCheck(cfg)})
 	if err != nil {
 		return nil, fmt.Errorf("compose policy: %w", err)
 	}
@@ -148,7 +143,7 @@ func composeDispatcher(cfg PipelineConfig) (*actions.Service, error) {
 		return nil, fmt.Errorf("compose actions: effector must enforce dispatch authorization")
 	}
 	service, err := actions.New(actions.Config{DB: cfg.DB, Effector: effector, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch,
-		Interlock: interlock.DurableReader{}, Clock: cfg.Clock, IDs: cfg.IDGenerator, LeaseOwner: "runtime-actions/" + cfg.OwnerEpoch,
+		Clock: cfg.Clock, IDs: cfg.IDGenerator, LeaseOwner: "runtime-actions/" + cfg.OwnerEpoch,
 		LeaseFor: time.Minute, Telemetry: cfg.Telemetry})
 	if err != nil {
 		return nil, fmt.Errorf("compose actions: %w", err)

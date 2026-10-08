@@ -53,3 +53,6 @@ Thumbs.db
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Locally built CLI binary (go build ./cmd/agentic-stream from the root)
+/agentic-stream

@@ -2,12 +2,12 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 const insertDecisionSQL = `
@@ -52,7 +52,7 @@ func InsertDecision(ctx context.Context, tx *Tx, row DecisionInsert) error {
 		row.DecisionID, row.EpisodeID, row.AttemptID, row.Fence, ordinal,
 		row.SituationID, row.SituationVersion,
 		row.RawJSON, row.Digest, row.ValidationStatus, row.ValidationJSON,
-		nullableString(row.Traceparent), nullableString(row.Tracestate), row.Now,
+		storage.NullIfEmpty(row.Traceparent), storage.NullIfEmpty(row.Tracestate), row.Now,
 	); err != nil {
 		return fmt.Errorf("insert decision: %w", err)
 	}
@@ -85,10 +85,6 @@ func InsertValidatedIntent(ctx context.Context, tx *Tx, row ValidatedIntentInser
 		return fmt.Errorf("insert intent %s: %w", row.Intent.ID, err)
 	}
 	return nil
-}
-
-func nullableString(value string) sql.NullString {
-	return sql.NullString{String: value, Valid: value != ""}
 }
 
 func boolToInt(value bool) int {

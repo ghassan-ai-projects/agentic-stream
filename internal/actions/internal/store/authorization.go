@@ -18,7 +18,7 @@ const loadAuthorizationRecordsSQL = `
 			       (SELECT a.expires_at FROM approvals a WHERE a.intent_id = i.intent_id AND a.status = 'approved' ORDER BY a.decided_at DESC LIMIT 1),
 			       d.validation_status, d.raw_json, d.decision_sha256, d.situation_id, d.situation_version, d.episode_id,
 			       e.tenant_id, e.situation_id, e.situation_version, e.lifecycle_status,
-			       s.tenant_id, s.current_version
+			       s.tenant_id, s.last_material_version
 			FROM commands c
 			JOIN intents i ON i.intent_id = c.intent_id
 			JOIN decisions d ON d.decision_id = i.decision_id
@@ -26,14 +26,11 @@ const loadAuthorizationRecordsSQL = `
 			JOIN situations s ON s.situation_id = i.situation_id
 			WHERE c.command_id = ? AND c.status = 'dispatching'`
 
-// LoadAuthorizationRecords projects the rows a dispatching command's authority
-// rests on. They are read-only; their owners are policy, episodes, engine and
-// the approval ledger.
 func (tx *Tx) LoadAuthorizationRecords(ctx context.Context, commandID string) (domain.AuthorizationRecords, error) {
 	var r domain.AuthorizationRecords
 	var approvalID, approvalExpiry sql.NullString
 	dests := concat(commandDests(&r.Command), intentDests(&r.Intent), []any{&approvalID, &approvalExpiry},
-		decisionDests(&r.Decision), episodeDests(&r.Episode), []any{&r.Situation.TenantID, &r.Situation.CurrentVersion})
+		decisionDests(&r.Decision), episodeDests(&r.Episode), []any{&r.Situation.TenantID, &r.Situation.LastMaterialVersion})
 	if err := tx.tx.QueryRowContext(ctx, loadAuthorizationRecordsSQL, commandID).Scan(dests...); err != nil {
 		return domain.AuthorizationRecords{}, fmt.Errorf("load authorization records: %w", err)
 	}
@@ -42,8 +39,6 @@ func (tx *Tx) LoadAuthorizationRecords(ctx context.Context, commandID string) (d
 	return r, nil
 }
 
-// ApprovedPolicyDigest reads the latest approving policy evaluation's digest
-// for an intent.
 func (tx *Tx) ApprovedPolicyDigest(ctx context.Context, intentID string) (string, error) {
 	var digest string
 	if err := tx.tx.QueryRowContext(ctx, `

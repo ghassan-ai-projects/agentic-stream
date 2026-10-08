@@ -12,7 +12,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
@@ -21,7 +20,7 @@ import (
 // Config supplies the safety dependencies a dispatcher requires and the
 // replaceable clock, identity, lease and telemetry settings.
 type Config struct {
-	// DB, Effector, RuntimeOwner and Interlock are required: a missing one is a
+	// DB, Effector and RuntimeOwner are required: a missing one is a
 	// constructor error, never a silently skipped check. RuntimeOwner is the
 	// ownership assertion for Epoch, run on the dispatch transaction;
 	// control.RuntimeOwner.Assert is the production check.
@@ -29,7 +28,6 @@ type Config struct {
 	Effector     actionport.AuthorizedEffector
 	RuntimeOwner func(context.Context, *sql.Tx, string) error
 	Epoch        string
-	Interlock    interlock.Reader
 	// Clock, IDs, LeaseOwner and LeaseFor default to the physical clock, random
 	// identities, "actions" and one minute.
 	Clock      sources.Clock
@@ -46,7 +44,7 @@ type Service struct{ app *app.Service }
 // New validates the configuration and composes the action use cases.
 func New(cfg Config) (*Service, error) {
 	service, err := app.New(app.Config{
-		Store:    store.New(cfg.DB, cfg.RuntimeOwner, cfg.Epoch, cfg.Interlock),
+		Store:    store.New(cfg.DB, cfg.RuntimeOwner, cfg.Epoch),
 		Effector: cfg.Effector, Clock: cfg.Clock, IDs: cfg.IDs, LeaseOwner: cfg.LeaseOwner, LeaseFor: cfg.LeaseFor,
 		Observer: leaseObserver(cfg.Telemetry),
 	})

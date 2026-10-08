@@ -1,5 +1,9 @@
 # Production dead code: decisions
 
+> **Superseded** by [the unfinished work review (2026-10-08)](../unfinished-work-review-2026-10-08/README.md):
+> every item here was completed, deleted or moved to test support, and
+> `make deadcode` now fails on any production function reachable only from tests.
+
 Method: `deadcode ./...` (no `-test`) roots at `main` and lists functions that
 no production path reaches: 182 at this commit, raw list in
 [deadcode-production-unreachable.txt](deadcode-production-unreachable.txt).

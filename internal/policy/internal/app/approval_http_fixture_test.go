@@ -56,7 +56,7 @@ func openApprovalHTTP(t *testing.T, configure ...func(*runtime.PipelineConfig)) 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = pipeline.Close() })
-	handler := api.WithApprovals(api.NewHealthHandler(nil), api.ApprovalConfig{
+	handler := api.WithApprovals(http.NotFoundHandler(), api.ApprovalConfig{
 		Token: "relay-secret", Relay: "relay-1", ErrorStatus: approvalTestStatus,
 		Present: func(ctx context.Context, r api.ApprovalSelection) (any, error) {
 			return pipeline.ApprovalForSigning(ctx, policy.ApprovalLookup{ID: r.ID, Approver: r.Approver, Relay: r.Relay, Approved: r.Approved})

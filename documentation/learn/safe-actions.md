@@ -74,8 +74,7 @@ merits. [Time and state](time-and-state.md) explains these three different jobs.
 
 Deterministic replay rebuilds stream history without external effects. Shadow
 mode evaluates an executor without sending its proposals into governance.
-Counterfactual mode can use an explicitly supplied simulator. None of these
-modes authorizes a production effect.
+None of these modes authorizes a production effect.
 
 Sources: [Decision/Intent contract](../contracts/decision-intent.md),
 [unknown-outcome tests](../../internal/actions/internal/app/dispatch_test.go),

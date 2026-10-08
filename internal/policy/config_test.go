@@ -4,12 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"testing"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 )
 
 func validConfig() Config {
-	return Config{PolicyVersion: "v1", RuntimeOwner: func(context.Context, *sql.Tx, string) error { return nil }, DecisionEpoch: func(context.Context, *sql.Tx, string) error { return nil }, Interlock: interlock.DurableReader{}}
+	return Config{PolicyVersion: "v1", RuntimeOwner: func(context.Context, *sql.Tx, string) error { return nil }, DecisionEpoch: func(context.Context, *sql.Tx, string) error { return nil }}
 }
 func TestNewRequiresSafetyDependencies(t *testing.T) {
 	t.Parallel()
@@ -17,7 +15,7 @@ func TestNewRequiresSafetyDependencies(t *testing.T) {
 		name   string
 		change func(*Config)
 	}{
-		{"owner", func(c *Config) { c.RuntimeOwner = nil }}, {"epoch", func(c *Config) { c.DecisionEpoch = nil }}, {"interlock", func(c *Config) { c.Interlock = nil }}, {"version", func(c *Config) { c.PolicyVersion = "" }},
+		{"owner", func(c *Config) { c.RuntimeOwner = nil }}, {"epoch", func(c *Config) { c.DecisionEpoch = nil }}, {"version", func(c *Config) { c.PolicyVersion = "" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := validConfig()

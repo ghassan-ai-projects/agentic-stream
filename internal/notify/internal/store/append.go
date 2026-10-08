@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // Stored is an identity already present in the outbox or its tombstones.
@@ -71,7 +73,7 @@ func (tx *Tx) InsertNotification(ctx context.Context, n Notification) (bool, err
 	result, err := tx.q.ExecContext(ctx, `
 		INSERT INTO notifications (tenant_id, cursor, event_id, event_type, event_json, event_sha256, traceparent, tracestate, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(tenant_id, event_id) DO NOTHING`,
-		n.TenantID, n.Cursor, n.EventID, n.EventType, n.EventJSON, n.EventSHA, nullable(n.Traceparent), nullable(n.Tracestate), formatTime(n.CreatedAt))
+		n.TenantID, n.Cursor, n.EventID, n.EventType, n.EventJSON, n.EventSHA, storage.NullIfEmpty(n.Traceparent), storage.NullIfEmpty(n.Tracestate), formatTime(n.CreatedAt))
 	if err != nil {
 		return false, fmt.Errorf("append notification: %w", err)
 	}
@@ -108,10 +110,6 @@ func (tx *Tx) NotificationCursor(ctx context.Context, tenantID, eventID string) 
 		return 0, fmt.Errorf("read notification cursor: %w", err)
 	}
 	return cursor, nil
-}
-
-func nullable(value string) sql.NullString {
-	return sql.NullString{String: value, Valid: value != ""}
 }
 
 func formatTime(at time.Time) string { return at.UTC().Format(time.RFC3339Nano) }
