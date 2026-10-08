@@ -1,0 +1,70 @@
+# DUP-002: Durable timestamps: one writer, one parser, one expiry rule (layout unchanged)
+
+- Status: open
+- Severity: medium
+- Verdict (finders): DIVERGED, REAL
+- Themes: business rules, contracts and shapes, mechanisms
+- Wave: 2
+- Finder sources: S1, M5, R5 (P persistence, R rules, S shapes, M mechanisms)
+
+## Reviewer notes
+
+Scope is consolidation only: every durable timestamp is written by `sources.FormatTime` (UTC) and read by a new `sources.ParseTime`; add `sources.Expired(text, now)` for the fail-closed rule. Do not change the stored layout here (that is DUP-003). Normalising non-UTC inputs to UTC is intended; confirm no golden fixture carries an offset. Digest preimages that embed these strings must stay byte-identical for UTC inputs. Add an architecture test forbidding `Format(time.RFC3339Nano)` and `time.Parse(time.RFC3339Nano` outside `internal/sources`, with the exceptions the gate needs listed explicitly.
+
+Finders read the code but ran nothing. The fixer re-reads every site first and corrects or rejects any claim that does not hold, and records that in Outcome.
+
+## Finder reports
+
+### Finder report S1: Durable timestamp text: `sources.FormatTime` vs raw `.Format(time.RFC3339Nano)` vs authority's fixed-width layout, plus ~28 hand-written parses
+
+- Verdict: DIVERGED
+- Shared meaning: a durable timestamp is stored as text that SQL then compares (`expires_at > ?`, `lease_until > ?`, `due_at <= ?`), so one canonical writer and one canonical reader are required.
+- Sites (writers):
+  - internal/sources/sources.go:110 - `FormatTime`: `at.UTC().Format(time.RFC3339Nano)` (the consolidated writer; RFC3339Nano trims trailing zeros, so width varies)
+  - internal/authority/internal/store/reader.go:15-21 - private `storedTimeLayout = "2006-01-02T15:04:05.000000000Z"` + `formatTime` (fixed width; comment says "so stored times compare correctly as text")
+  - internal/policy/internal/domain/documents.go:60 - `FormatTime` wrapper that only calls `sources.FormatTime`
+  - Raw `.Format(time.RFC3339Nano)` with NO `.UTC()` and no use of `sources.FormatTime`: internal/eventlog/internal/store/events.go:41,42,69 (event_time, ingested_at, observed_at); internal/engine/internal/store/situations.go:34,68,69,100; internal/engine/internal/store/timers.go:50,92,130; internal/engine/internal/store/record.go:31; internal/engine/internal/domain/timers.go:101; internal/engine/internal/domain/heartbeat.go:74,95 (inside a hashed timer-id preimage); internal/episodeledger/internal/store/scheduler.go:53,58; internal/episodeledger/internal/store/scheduler_queue.go:17,67; internal/cognition/internal/store/evaluations.go:58; internal/storage/internal/store/storage.go:166; internal/situations/internal/domain/materialize.go:106,107 (snapshot event_horizon / watermark, inside the digest preimage)
+- Sites (readers): `time.Parse(time.RFC3339Nano, ...)` at internal/evidence/internal/wire/token.go:85; ingress/internal/domain/simulator_event.go:186; cognition/internal/store/queue.go:19, history.go:78,104; decisions/internal/domain/intent.go:105, validator.go:157; actions/internal/domain/dispatch.go:23, authorization.go:81,102, candidate.go:34; watch/internal/domain/condition.go:67; executor/native/internal/domain/evidence_query.go:59,64; replay/internal/domain/epoch.go:74,78,93; eventlog/internal/domain/event.go:41,45,60; authority/internal/store/reader.go:24; engine/internal/domain/watermark.go:43,64, situation_state.go:73,160; policy/internal/domain/rules.go:57, routing.go:37. Several wrap it locally (`parseTime`, `parseSituationTime`, `parseOptionalTime`, `parseObservedAt`, `parseSimulatorTime`).
+- How they differ / already diverged: (1) RFC3339Nano text is variable width. "2026-01-01T00:00:00Z" sorts AFTER "2026-01-01T00:00:00.5Z" as text ('Z' > '.'), so a SQL `expires_at > ?` between a whole-second value and a fractional value in the same second gives the wrong answer. authority already knows this and uses a fixed-width layout; every other module relies on the variable-width text. (2) The ~20 raw `.Format` sites skip `.UTC()`: eventlog stores `env.EventTime` in whatever zone the envelope carried, so event_time text from a +02:00 producer does not sort with UTC rows and evidence range reads (`time_from/time_until`) misorder. (3) Two private re-wrappers (policy `FormatTime`, authority `formatTime`) show the consolidation round stopped at the call sites that were already `sources.FormatTime`-shaped. Whether authority's fixed width is intentional looks yes; the rest looks like an unfinished consolidation (latent bug only inside the same-second window, but silent).
+- Risk if left: changing the durable layout (for example to fixed width, the real fix) needs ~45 edits and any site missed silently breaks text ordering; non-UTC input already stores non-comparable text; digest preimages (snapshot `event_horizon`/`watermark`, timer ids) depend on un-normalised zones.
+- Proposed canonical owner: `internal/sources` (layer 4, already imported by nearly every module). Add `sources.ParseTime(what, value string) (time.Time, error)` beside `FormatTime`; make `FormatTime` the single layout constant.
+- Proposed fix: replace each raw `.Format(time.RFC3339Nano)` in store/domain code with `sources.FormatTime`; replace the local `parse*` wrappers and bare `time.Parse(time.RFC3339Nano, ...)` with `sources.ParseTime`; delete policy `FormatTime`; decide separately (design change, not this refactor) whether `FormatTime` becomes fixed width, then authority's `storedTimeLayout` folds in. New allowedImports edges (all lower layers, so legal): eventlog/internal/domain -> sources, authority/internal/store -> sources, decisions/internal/domain -> sources, engine/internal/domain already has none for sources (add), cognition/internal/store (has sources), executor/native/internal/domain -> sources, replay/internal/domain (has), watch/internal/domain (has), actions/internal/domain (has), ingress/internal/domain -> sources, evidence/internal/wire (has).
+- Behaviour to preserve: stored text must stay byte-identical for already-UTC inputs (replay goldens, `TestAllBuiltinsLoadFromData`-style digest pins, snapshot digest, timer ids `tmr_...`). For non-UTC inputs the output intentionally changes to UTC; confirm no golden fixture carries an offset. Error text "parse <what>: ..." is wrapped by callers.
+- Verification: existing replay/golden suites and `sources_test.go`. New: table test for `ParseTime(FormatTime(t)) == t.UTC()`, a test that `FormatTime` of a +02:00 instant is UTC, and a lint-style test in `architecture_*` forbidding `Format(time.RFC3339Nano)` and `time.Parse(time.RFC3339Nano` outside `internal/sources`.
+
+### Finder report M5: Deadline-passed rule and RFC3339 parsing repeated at ~30 sites with no shared parser
+
+- Verdict: REAL
+- Shared meaning: a durable timestamp is parsed from TEXT (RFC3339Nano); a deadline is expired when it cannot be parsed or `!expires.After(now)` (the deadline instant itself is expired).
+- Sites (expiry rule): actions/internal/domain/dispatch.go:23 `LeaseStanding`; actions/internal/domain/candidate.go:34 `Lease.Expired`; actions/internal/domain/authorization.go:81 (`CheckApproval`, "approval is expired") and :102 (`CheckIntent`); policy/internal/domain/routing.go:37 (intent expiry); policy/internal/domain/rules.go:57 `ApprovalExpired` (the same approval rule as actions authorization.go:81, in another module); decisions/internal/domain/intent.go:105-109 (parse error and expiry split into two rejections); watch/internal/domain/condition.go:67 (expiry must be after now, then re-encodes with `sources.FormatTime`).
+- Sites (parse only, each with its own error wording): replay/internal/domain/epoch.go:74,78,93; engine/internal/domain/watermark.go:43,64, situation_state.go:73,160; eventlog/internal/domain/event.go:41,45,60; cognition/internal/store/queue.go:19, history.go:78,104; ingress/internal/domain/simulator_event.go:186; evidence/internal/wire/token.go:85; executor/native/internal/domain/evidence_query.go:59,64; authority/internal/store/reader.go:24; storage migration timestamp storage.go:166.
+- How they differ: parsed values keep the stored zone (no `.UTC()`), error text differs, `err != nil` is treated as expired in 5 sites, as a rejection in 2, as a wrapped parse error in the rest. The approval-expiry rule exists in both policy and actions.
+- Risk if left: changing the boundary (inclusive/exclusive deadline) or the accepted layout needs ~30 edits; the policy and actions copies of the approval rule can drift (an approval policy still thinks live but actions refuses, or the reverse).
+- Proposed canonical owner: `internal/sources` next to `FormatTime`: `ParseTime(text) (time.Time, error)` (RFC3339Nano, returns UTC) and `Expired(deadlineText string, now time.Time) bool`. sources is already allowed in actions domain, policy domain, watch domain, replay domain, authority app, cognition domain/store, evidence wire. New edges needed: `internal/decisions/internal/domain -> internal/sources`, `internal/engine/internal/domain -> internal/sources`, `internal/eventlog/internal/domain -> internal/sources`, `internal/ingress/internal/domain -> internal/sources`, `internal/executor/native/internal/domain -> internal/sources`, `internal/authority/internal/store -> internal/sources`. Adopt in the modules that already import it first (actions, policy, watch, replay, evidence, cognition) and add edges only where wanted.
+- Proposed fix: add the two functions to sources, point the seven expiry sites at `sources.Expired`, make actions' approval check and policy's `ApprovalExpired` the same call; leave the wrapped-error parse sites to call `sources.ParseTime` and add their own context.
+- Behaviour to preserve: `!After` boundary; invalid text counts as expired; decisions keeps two distinct rejection codes (`schema_invalid` vs `expired`); returned values compared as instants (UTC conversion is value-preserving); error messages that tests match.
+- Verification: policy rules_test, actions authorization tests, decisions intent tests, watch condition tests. New test: table test on `Expired` (past, equal to now, future, invalid text, offset zone) in sources; one parity test that policy and actions agree on an approval at the boundary.
+
+### Finder report R5: "Intent/approval is still current and unexpired" evaluated in policy and again in actions with separate code
+
+- Verdict: REAL (rule restated), with timestamp-parse idiom repeated 8 times
+- Shared meaning: an intent is dispatchable only while its episode has concluded, no newer material Situation version exists, and `expires_at` is in the future; an approval is valid only before its expiry; unparseable timestamps count as expired.
+- Sites:
+  - internal/policy/internal/domain/routing.go:27-41 - `FreshnessFailure`: concluded, `MateriallySuperseded` (`LastMaterialVersion > SituationVersion`, :45-47), source health, then `time.Parse(RFC3339Nano, row.ExpiresAt); err != nil || !expires.After(now)`.
+  - internal/policy/internal/domain/rules.go:55-58 - `ApprovalExpired` (same parse-or-not-after idiom).
+  - internal/actions/internal/domain/authorization.go:93-94 - `RequireCurrent`: concluded|closed and `LastMaterialVersion <= intent.Version` (inverse of `MateriallySuperseded`).
+  - internal/actions/internal/domain/authorization.go:80-84 - `CheckApproval` expiry (same idiom); :102-104 `CheckIntent` expiry (same idiom).
+  - internal/actions/internal/domain/dispatch.go:22-24 - `LeaseStanding`: parse `Until`, `expiresAt.After(now)`.
+  - internal/actions/internal/domain/candidate.go:33-36 - `Lease.Expired`: `err != nil || ... || !expiresAt.After(now)`.
+  - internal/watch/internal/domain/condition.go:66-70 - `!parsedExpiry.After(now)` -> "expiry is invalid".
+  - internal/decisions/internal/domain/intent.go:104-111 - intent expiry (different: parse failure is `schema_invalid`, expired is `expired`).
+- How they differ: the source-health gate exists only in policy (actions does not re-check it at dispatch); the freshness rule is expressed positively in one module and negatively in the other, and the "concluded" set is a third literal copy (see C3). The timestamp idiom is identical text except decisions.
+- Risk if left: tightening freshness (e.g. also deny when situation phase changed) is done in policy and forgotten in actions, or vice versa; dispatch then accepts commands policy would now refuse.
+- Proposed canonical owner: for the timestamp idiom, `internal/sources` (already owns `FormatTime`, `OrLease`; imported by policy/actions/watch domains). For the freshness predicates, policy owns the rule on `IntentRecord`; actions keeps its own re-check (revalidation at dispatch is by design, invariant) but should reuse a shared pure predicate `Fresh(episodeLifecycle, lastMaterialVersion, intentVersion)` placed with C3 in episodeledger (lifecycle) - NOT imported from policy (policy 23 < actions 25 is allowed, but actions importing policy domain widens the effect-plane coupling; prefer episodeledger).
+- Proposed fix: `sources.Expired(text string, now time.Time) bool` (parse-or-not-after) used by the six identical sites; a `Governable()` lifecycle predicate (C3) and a `MaterialVersionCurrent(last, version int)` helper used by both policy and actions.
+- Behaviour to preserve: all error texts ("approval is expired", "intent authorization is expired", "command authorization is stale", `intent_expired`, `situation_version_stale`), decisions' distinct reject reasons, boundary semantics (deadline itself is expired).
+- Verification: policy rules tests, actions authorization_test.go, watch condition tests. New: boundary test (`expires == now` is expired) in sources.
+
+## Outcome
+
+Not started.
