@@ -113,10 +113,10 @@ def main() -> int:
 
     cli_page = (PUBLIC / "reference" / "cli.md").read_text(encoding="utf-8")
     cli_source = (ROOT / "cmd" / "agentic-stream" / "main.go").read_text(encoding="utf-8")
-    for command in ("version", "validate", "run", "run-live", "serve", "interlock", "principals", "quarantine", "notifications"):
+    for command in ("version", "validate", "run", "run-live", "serve", "interlock", "principals", "quarantine", "notifications", "commands"):
         if command not in cli_page:
             errors.append(f"CLI reference omits command: {command}")
-    for source_marker in ("newVersionCommand", "newValidateCommand", "newRunCommand", "newRunLiveCommand", "newServeCommand", "newInterlockCommand", "newPrincipalsCommand", "newQuarantineCommand", "newNotificationsCommand"):
+    for source_marker in ("newVersionCommand", "newValidateCommand", "newRunCommand", "newRunLiveCommand", "newServeCommand", "newInterlockCommand", "newPrincipalsCommand", "newQuarantineCommand", "newNotificationsCommand", "newCommandsCommand"):
         if source_marker not in cli_source:
             errors.append(f"CLI source marker missing: {source_marker}")
 

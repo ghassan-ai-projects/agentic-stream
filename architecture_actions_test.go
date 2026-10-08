@@ -19,7 +19,7 @@ func TestActionsFacadeOnlyDelegates(t *testing.T) {
 			if !ok {
 				continue
 			}
-			if function.Recv == nil && slices.Contains([]string{"New", "leaseObserver"}, function.Name.Name) {
+			if function.Recv == nil && slices.Contains([]string{"New", "NewReconciler", "leaseObserver"}, function.Name.Name) {
 				continue
 			}
 			if !actionsFacadeOperation(function) {
@@ -45,7 +45,7 @@ func TestActionsApplicationUsesTransactionalPorts(t *testing.T) {
 // DispatchOnce to the app service, CountUnresolvedOutcomes to the store join.
 func actionsFacadeOperation(function *ast.FuncDecl) bool {
 	switch function.Name.Name {
-	case "DispatchOnce":
+	case "DispatchOnce", "Resolve", "Awaiting":
 		return facadeDelegation(function, "app")
 	case "CountUnresolvedOutcomes":
 		return function.Recv == nil && function.Body != nil && len(function.Body.List) == 1

@@ -153,3 +153,14 @@ func Verdict(finalStatus string) string {
 func ReconciliationOutcomeDocument(commandID, outcomeID, finalStatus string, evidence map[string]any, at time.Time) Document {
 	return OutcomeDocument(commandID, outcomeID, OutcomeReconciled, map[string]any{"final_status": finalStatus, "evidence": evidence}, "", at)
 }
+
+// AwaitingCommand is a command whose outcome is uncertain and that waits for
+// reconciliation evidence.
+type AwaitingCommand struct {
+	CommandID string `json:"command_id"`
+	IntentID  string `json:"intent_id"`
+	Route     string `json:"route"`
+	Target    string `json:"target"`
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updated_at"`
+}

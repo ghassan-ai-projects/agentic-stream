@@ -141,6 +141,17 @@ event identity is never accepted again and cursors stay monotonic. A client
 whose cursor fell behind the retention gets `cursor_expired` and resnapshots.
 `--dry-run` only counts. Schedule it with the host's own scheduler.
 
+### `commands list | resolve <command-id> --status <status> --evidence <file>`
+
+A provider timeout can mean the provider accepted the request, so the runtime
+never retries such a command blindly: it waits in `outcome_unknown`,
+`reconciling` or `manual_review`. `list` shows those commands. `resolve` closes
+one as `succeeded`, `failed` or `manual_review` with independent evidence (a
+JSON object with `source`, `evidence_type` and the fields of that type), records
+the reconciliation outcome and its notification, and needs the runtime owner
+lease. Device commands with device-state evidence are checked against their
+device binding.
+
 ### `principals apply --file <principals.yaml> [--dry-run] | show`
 
 Provisions the approval governance the `/v1/approvals` flow checks: relays,

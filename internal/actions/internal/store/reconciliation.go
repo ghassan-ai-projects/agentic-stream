@@ -74,3 +74,23 @@ func (tx *Tx) LoadReconciledProvenance(ctx context.Context, outcomeID, commandID
 	provenance.Trace = contractsv1.TraceContext{Traceparent: traceparent.String, Tracestate: tracestate.String}
 	return provenance, nil
 }
+
+// AwaitingReconciliation lists the tenant's commands whose outcome is
+// uncertain, oldest first.
+func (s Store) AwaitingReconciliation(ctx context.Context, tenantID string) ([]domain.AwaitingCommand, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT command_id, intent_id, effector_route, normalized_target, status, updated_at FROM commands
+		WHERE tenant_id = ? AND status IN ('reconciling', 'outcome_unknown', 'manual_review') ORDER BY updated_at, command_id`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("list commands awaiting reconciliation: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var awaiting []domain.AwaitingCommand
+	for rows.Next() {
+		var command domain.AwaitingCommand
+		if err := rows.Scan(&command.CommandID, &command.IntentID, &command.Route, &command.Target, &command.Status, &command.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan command awaiting reconciliation: %w", err)
+		}
+		awaiting = append(awaiting, command)
+	}
+	return awaiting, rows.Err() //nolint:wrapcheck // The iteration error is the driver's.
+}

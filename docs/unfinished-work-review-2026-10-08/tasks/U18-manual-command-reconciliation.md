@@ -1,6 +1,6 @@
 # U18 — Manual command reconciliation
 
-Status: todo · Decision: **complete** · Priority: P1 · Size: M · Depends on: U13
+Status: done · Decision: **complete** · Priority: P1 · Size: M · Depends on: U13
 
 ## Finding
 
@@ -41,3 +41,12 @@ agentic-stream commands resolve --db <db> <command-id> --status succeeded|failed
 - `export_test.go` no longer needs `ReconcileUnknown`.
 - The limitations page drops "unknown-outcome reconciliation" from the
   internal-only list.
+
+## Result
+
+`actions.Reconciler` (no effector; owner-fenced store) exposes the existing
+reconciliation use case and a listing of commands awaiting reconciliation;
+`agentic-stream commands list|resolve` drives it under the runtime owner lease.
+Device commands are not refused: the existing use case already checks
+device-state evidence against the command's device binding, which is stricter
+than refusing them.
