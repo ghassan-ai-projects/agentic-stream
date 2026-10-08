@@ -55,6 +55,7 @@ func TestExperimentClosedLoopThroughServe(t *testing.T) {
 	assertDeviceReceivedPolicyDigest(t, run)
 	run.stop()
 	assertRunArtifactVerifies(t, run)
+	assertRecordedReplayVerifies(t, run, trace)
 }
 
 func startExperiment(t *testing.T, options experimentOptions) experimentRun {

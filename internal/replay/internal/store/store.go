@@ -96,11 +96,11 @@ func collectVersionDigests(rows *sql.Rows) ([]domain.VersionDigest, error) {
 	return versions, nil
 }
 
-// RecordedSnapshotDigest loads the persisted snapshot digest of one
-// situation version for recorded-decision verification.
-func (s Store) RecordedSnapshotDigest(ctx context.Context, episode domain.ReplayEpisode) ([]byte, error) {
+// RecordedSnapshotDigest loads the persisted snapshot digest of the situation
+// version a recorded decision cites.
+func (s Store) RecordedSnapshotDigest(ctx context.Context, situationID string, version int) ([]byte, error) {
 	var snapshotDigest []byte
-	if err := s.DB.QueryRowContext(ctx, `SELECT snapshot_sha256 FROM situation_versions WHERE situation_id = ? AND version = ?`, episode.SituationID, episode.SituationVersion).Scan(&snapshotDigest); err != nil {
+	if err := s.DB.QueryRowContext(ctx, `SELECT snapshot_sha256 FROM situation_versions WHERE situation_id = ? AND version = ?`, situationID, version).Scan(&snapshotDigest); err != nil {
 		return nil, fmt.Errorf("load recorded snapshot digest: %w", err)
 	}
 	return snapshotDigest, nil

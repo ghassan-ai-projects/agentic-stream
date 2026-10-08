@@ -59,11 +59,21 @@ func VerifyRecordedEntry(entry RecordedEntry) error {
 	if entry.EpisodeKey == "" || entry.SituationID == "" || entry.SituationVersion <= 0 || entry.TriggerID == "" || entry.EpisodeID == "" || entry.AttemptID == "" || entry.Fence <= 0 || entry.AttemptProvenanceSHA256 == "" || len(entry.DecisionJSON) == 0 || entry.DecisionSHA256 == "" {
 		return fmt.Errorf("recorded ledger contains an incomplete entry")
 	}
-	provenance, err := canonicaljson.Digest(canonicaljson.DomainOutcome, map[string]any{"episode_id": entry.EpisodeID, "attempt_id": entry.AttemptID, "fence": entry.Fence})
+	provenance, err := AttemptProvenance(entry)
 	if err != nil || provenance != entry.AttemptProvenanceSHA256 {
 		return fmt.Errorf("recorded ledger attempt provenance is invalid for %q", entry.EpisodeKey)
 	}
 	return VerifyRecordedDocument(entry)
+}
+
+// AttemptProvenance digests the episode, attempt and fence a recorded
+// decision came from, the provenance a recorded ledger carries.
+func AttemptProvenance(entry RecordedEntry) (string, error) {
+	provenance, err := canonicaljson.Digest(canonicaljson.DomainOutcome, map[string]any{"episode_id": entry.EpisodeID, "attempt_id": entry.AttemptID, "fence": entry.Fence})
+	if err != nil {
+		return "", fmt.Errorf("digest attempt provenance: %w", err)
+	}
+	return provenance, nil
 }
 
 // VerifyRecordedDocument requires a canonical, schema-valid decision whose
@@ -94,9 +104,12 @@ func RequireEmptyRecordedLedger(entries []RecordedEntry) error {
 	return nil
 }
 
-// MatchRecordedMetadata requires the entry to describe exactly this episode.
+// MatchRecordedMetadata requires the entry to describe this episode by its
+// stable situation/version/trigger identity. Episode identifiers are not
+// compared: the live runtime assigns random ones and replay its own, so only
+// the stable key can match a recorded ledger to a replay.
 func MatchRecordedMetadata(entry RecordedEntry, episode ReplayEpisode) error {
-	if entry.SituationID != episode.SituationID || entry.SituationVersion != episode.SituationVersion || entry.TriggerID != episode.TriggerID || entry.EpisodeID != episode.EpisodeID {
+	if entry.SituationID != episode.SituationID || entry.SituationVersion != episode.SituationVersion || entry.TriggerID != episode.TriggerID {
 		return fmt.Errorf("recorded ledger metadata does not match replay episode %q", episode.EpisodeKey)
 	}
 	return nil
@@ -119,15 +132,25 @@ func DecodeRecordedDecision(entry RecordedEntry) (map[string]any, error) {
 	return decision, nil
 }
 
-// ValidateRecordedSnapshot requires the decision to cite the replayed
-// situation version and its persisted snapshot digest.
-func ValidateRecordedSnapshot(entry RecordedEntry, episode ReplayEpisode, decision map[string]any, snapshotDigest []byte) error {
+// RecordedCitation returns the situation version the recorded decision
+// reasoned over. An episode assembles the latest version when it is admitted,
+// so a live decision may cite a later version than its trigger, never an
+// earlier one or another situation.
+func RecordedCitation(entry RecordedEntry, episode ReplayEpisode, decision map[string]any) (int, error) {
 	if got, _ := decision["situation_id"].(string); got != episode.SituationID {
-		return fmt.Errorf("recorded decision %q has mismatched situation", entry.EpisodeKey)
+		return 0, fmt.Errorf("recorded decision %q has mismatched situation", entry.EpisodeKey)
 	}
-	if got, ok := decision["situation_version"].(float64); !ok || int(got) != episode.SituationVersion {
-		return fmt.Errorf("recorded decision %q has mismatched situation version", entry.EpisodeKey)
+	cited, ok := decision["situation_version"].(float64)
+	if !ok || int(cited) < episode.SituationVersion {
+		return 0, fmt.Errorf("recorded decision %q has mismatched situation version", entry.EpisodeKey)
 	}
+	return int(cited), nil
+}
+
+// ValidateRecordedSnapshot requires the decision's snapshot digest to equal
+// the digest replay persisted for the version it cites: the live worker
+// reasoned over exactly the snapshot replay reproduces.
+func ValidateRecordedSnapshot(entry RecordedEntry, decision map[string]any, snapshotDigest []byte) error {
 	if got, _ := decision["snapshot_digest"].(string); got != canonicaljson.EncodeDigest(snapshotDigest) {
 		return fmt.Errorf("recorded decision %q has mismatched snapshot digest", entry.EpisodeKey)
 	}

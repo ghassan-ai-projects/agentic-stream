@@ -29,8 +29,10 @@ count, Situation-version count, and versions hash.
 | `--db` | `<trace>.replay.db` | fresh replay database path |
 | `--tenant` | `default` | runtime tenant |
 | `--repeat` | `1` | replay N times in fresh databases and fail unless every Situation history hash is identical (cannot be combined with `--db`) |
+| `--source-db` | empty | recorded mode: a live runtime database, opened read-only, whose accepted decisions every replayed episode must match (cannot be combined with `--repeat`) |
 
-Replay has no external effects. `--repeat 3` is the determinism check of the
+Replay has no external effects. `--source-db` verifies a live run without
+calling a worker; see [replay and shadow modes](../design/replay-and-shadow.md). `--repeat 3` is the determinism check of the
 release bar: three fresh runs must produce byte-identical Situation history.
 
 ## `run-live --spec <spec.yaml> --trace <trace.jsonl>`

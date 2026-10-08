@@ -154,7 +154,7 @@ as the change.
 | U17 | [Notification retention command](tasks/U17-notification-retention-command.md) | Complete | P1 | S | U13 | done |
 | U18 | [Manual command reconciliation](tasks/U18-manual-command-reconciliation.md) | Complete | P1 | M | U13 | done |
 | U19 | [`run --repeat N`](tasks/U19-replay-repeat-flag.md) | Complete | P2 | XS | — | done |
-| U20 | [Recorded replay mode](tasks/U20-recorded-replay-mode.md) | Complete | P1 | M | U02 | todo |
+| U20 | [Recorded replay mode](tasks/U20-recorded-replay-mode.md) | Complete | P1 | M | U02 | done |
 | U21 | [Shadow replay mode](tasks/U21-shadow-replay-mode.md) | Complete | P1 | M | U20 | todo |
 | U22 | [Explain situation and trigger](tasks/U22-explain-situation-and-trigger.md) | Complete | P1 | M | U13 | todo |
 | U23 | [Inspect episode, intent and command](tasks/U23-inspect-episode-intent-command.md) | Complete | P2 | M | U22 | todo |

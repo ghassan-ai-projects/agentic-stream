@@ -93,16 +93,24 @@ func matchRecordedEpisode(ctx context.Context, session *replaySession, episode d
 }
 
 func validateRecordedDecision(ctx context.Context, session *replaySession, entry domain.RecordedEntry, episode domain.ReplayEpisode) error {
-	snapshotDigest, err := session.store.RecordedSnapshotDigest(ctx, episode)
-	if err != nil {
-		return err
-	}
 	decision, err := domain.DecodeRecordedDecision(entry)
 	if err != nil {
 		return err
 	}
-	if err := domain.ValidateRecordedSnapshot(entry, episode, decision, snapshotDigest); err != nil {
+	if err := validateRecordedSnapshot(ctx, session, entry, episode, decision); err != nil {
 		return err
 	}
 	return domain.ValidateRecordedAttempt(entry, decision)
+}
+
+func validateRecordedSnapshot(ctx context.Context, session *replaySession, entry domain.RecordedEntry, episode domain.ReplayEpisode, decision map[string]any) error {
+	cited, err := domain.RecordedCitation(entry, episode, decision)
+	if err != nil {
+		return err
+	}
+	snapshotDigest, err := session.store.RecordedSnapshotDigest(ctx, episode.SituationID, cited)
+	if err != nil {
+		return err
+	}
+	return domain.ValidateRecordedSnapshot(entry, decision, snapshotDigest)
 }

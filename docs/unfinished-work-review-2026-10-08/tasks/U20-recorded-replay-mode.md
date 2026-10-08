@@ -1,6 +1,6 @@
 # U20 — Recorded replay mode
 
-Status: todo · Decision: **complete** · Priority: P1 · Size: M · Depends on: U02
+Status: done · Decision: **complete** · Priority: P1 · Size: M · Depends on: U02
 
 ## Finding
 
@@ -59,3 +59,30 @@ artifact format; do it only if a consumer needs offline recorded replay.
   `main`.
 - `documentation/design/replay-and-shadow.md` "CLI reality" section is replaced
   by the command.
+
+## Result
+
+`agentic-stream run --source-db <runtime.db>` (the flag selects recorded mode;
+no separate `--mode`). `replay.RunRecorded` opens the source read-only in
+`replay/internal/transport`, reads accepted decisions for the replayed spec's
+situations in `replay/internal/store` (`SourceLedger`), and refuses a source
+that never deployed the spec.
+
+Building it against a real live run exposed two defects in the existing rules,
+both fixed:
+
+- `MatchRecordedMetadata` required the recorded episode ID to equal replay's.
+  Live IDs are random and replay's deterministic, so no production ledger could
+  ever match. Matching now uses only the stable situation/version/trigger key.
+- `ValidateRecordedSnapshot` required the decision to cite the trigger's
+  version. A live episode assembles the latest version at admission (it ran on
+  version 17 for a trigger on version 6), so the rule now requires a cited
+  version at or after the trigger and checks the snapshot digest of the cited
+  version.
+
+Test: the experiment end-to-end test (`serve`, Tamoz stand-in, device stand-in)
+replays the ingested trace against the live database and verifies its
+decisions; a copy with edited decision bytes and the bench spec (never
+deployed) are refused. Live and replay Situation histories were byte-identical
+(17 versions). The `run-live` predictive-maintenance traces admit no episodes,
+so the test uses the experiment's live run instead.

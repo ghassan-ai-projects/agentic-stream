@@ -12,7 +12,6 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -112,95 +111,4 @@ func printCompiledSpec(cmd *cobra.Command, result *spec.CompiledSpec) error {
 	cmd.Printf("policy_digest: %s\n", policyDigest)
 	cmd.Printf("schema: %s\n", result.SchemaVersion)
 	return nil
-}
-
-// runFlags are the replay command's flags.
-type runFlags struct {
-	dbPath, tenantID string
-	repeat           int
-}
-
-func newRunCommand() *cobra.Command {
-	var flags runFlags
-	cmd := &cobra.Command{
-		Use:   "run --spec <spec.yaml> --trace <trace.jsonl>",
-		Short: "Replay a JSONL trace against a spec and print the canonical result.", Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error { return flags.run(cmd) },
-	}
-	flags.register(cmd)
-	return cmd
-}
-
-func (f *runFlags) register(cmd *cobra.Command) {
-	cmd.Flags().String("spec", "", "Path to the SituationSpec YAML file")
-	cmd.Flags().String("trace", "", "Path to the JSONL trace file")
-	cmd.Flags().StringVar(&f.dbPath, "db", "", "SQLite database path (default: <trace>.replay.db)")
-	cmd.Flags().StringVar(&f.tenantID, "tenant", "default", "Tenant ID")
-	cmd.Flags().IntVar(&f.repeat, "repeat", 1, "Replay N times in fresh databases and fail unless every Situation history hash is identical")
-}
-
-func (f *runFlags) run(cmd *cobra.Command) error {
-	if f.repeat != 1 {
-		return runRepeatedReplay(cmd, f.dbPath, f.tenantID, f.repeat)
-	}
-	return runReplayCommand(cmd, &f.dbPath, f.tenantID)
-}
-
-// runRepeatedReplay is the determinism check: N fresh replays of the same
-// trace must produce byte-identical Situation histories.
-func runRepeatedReplay(cmd *cobra.Command, dbPath, tenantID string, repeat int) error {
-	if repeat < 2 || dbPath != "" {
-		return fmt.Errorf("--repeat needs at least 2 runs and its own fresh databases (no --db)")
-	}
-	specPath, tracePath, err := replayPaths(cmd)
-	if err != nil {
-		return err
-	}
-	results, err := replay.RunNTimes(cmd.Context(), replay.Request{SpecPath: specPath, TracePath: tracePath, TenantID: tenantID}, repeat)
-	if err != nil {
-		return fmt.Errorf("repeat replay: %w", err)
-	}
-	return reportRepeatedReplay(cmd, results)
-}
-
-func reportRepeatedReplay(cmd *cobra.Command, results []replay.Result) error {
-	for i, result := range results {
-		cmd.Printf("run=%d events_processed=%d situation_versions=%d versions_hash=%s\n", i+1, result.EventsProcessed, result.VersionCount, result.VersionsHash)
-	}
-	if !replay.AllHashesEqual(results) {
-		return fmt.Errorf("replay is not deterministic: the %d runs produced different Situation histories", len(results))
-	}
-	cmd.Printf("deterministic: %d identical runs\n", len(results))
-	return nil
-}
-
-func runReplayCommand(cmd *cobra.Command, dbPath *string, tenantID string) error {
-	specPath, tracePath, err := replayPaths(cmd)
-	if err != nil {
-		return err
-	}
-	if *dbPath == "" {
-		*dbPath = tracePath + ".replay.db"
-	}
-	result, err := replay.Run(cmd.Context(), replay.Request{DBPath: *dbPath, SpecPath: specPath, TracePath: tracePath, TenantID: tenantID})
-	if err != nil {
-		return fmt.Errorf("run replay: %w", err)
-	}
-	cmd.Printf("events_processed=%d situation_versions=%d versions_hash=%s\n", result.EventsProcessed, result.VersionCount, result.VersionsHash)
-	return nil
-}
-
-func replayPaths(cmd *cobra.Command) (string, string, error) {
-	specPath, err := cmd.Flags().GetString("spec")
-	if err != nil {
-		return "", "", fmt.Errorf("get spec flag: %w", err)
-	}
-	tracePath, err := cmd.Flags().GetString("trace")
-	if err != nil {
-		return "", "", fmt.Errorf("get trace flag: %w", err)
-	}
-	if specPath == "" || tracePath == "" {
-		return "", "", fmt.Errorf("--spec and --trace are required")
-	}
-	return specPath, tracePath, nil
 }

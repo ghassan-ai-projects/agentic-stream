@@ -94,15 +94,46 @@ func TestRequireEmptyAndExpectedRecordedKeys(t *testing.T) {
 	}
 }
 
-func TestMatchRecordedMetadataRequiresExactEpisode(t *testing.T) {
+func TestMatchRecordedMetadataUsesTheStableKey(t *testing.T) {
 	t.Parallel()
-	episode := ReplayEpisode{EpisodeKey: "s1/1/t1", EpisodeID: "e1", SituationID: "s1", SituationVersion: 1, TriggerID: "t1"}
-	entry := RecordedEntry{SituationID: "s1", SituationVersion: 1, TriggerID: "t1", EpisodeID: "e1"}
+	episode := ReplayEpisode{EpisodeKey: "s1/1/t1", EpisodeID: "epi-replay", SituationID: "s1", SituationVersion: 1, TriggerID: "t1"}
+	entry := RecordedEntry{SituationID: "s1", SituationVersion: 1, TriggerID: "t1", EpisodeID: "epi-live-random"}
 	if err := MatchRecordedMetadata(entry, episode); err != nil {
-		t.Fatalf("matching metadata rejected: %v", err)
+		t.Fatalf("a live episode id differing from replay's was refused: %v", err)
 	}
-	entry.EpisodeID = "other"
+	entry.SituationVersion = 2
 	if err := MatchRecordedMetadata(entry, episode); err == nil || !strings.Contains(err.Error(), "metadata does not match") {
 		t.Fatalf("mismatched metadata accepted: %v", err)
+	}
+}
+
+func TestRecordedCitationAllowsALaterVersionOnly(t *testing.T) {
+	t.Parallel()
+	episode := ReplayEpisode{EpisodeKey: "s1/6/t1", SituationID: "s1", SituationVersion: 6, TriggerID: "t1"}
+	tests := []struct {
+		name     string
+		decision map[string]any
+		want     int
+		wantErr  string
+	}{
+		{name: "trigger version", decision: map[string]any{"situation_id": "s1", "situation_version": float64(6)}, want: 6},
+		{name: "version assembled at admission", decision: map[string]any{"situation_id": "s1", "situation_version": float64(17)}, want: 17},
+		{name: "earlier version", decision: map[string]any{"situation_id": "s1", "situation_version": float64(5)}, wantErr: "mismatched situation version"},
+		{name: "other situation", decision: map[string]any{"situation_id": "s2", "situation_version": float64(6)}, wantErr: "mismatched situation"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := RecordedCitation(RecordedEntry{EpisodeKey: episode.EpisodeKey}, episode, tt.decision)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil || got != tt.want {
+				t.Fatalf("cited = %d, %v; want %d", got, err, tt.want)
+			}
+		})
 	}
 }
