@@ -12,23 +12,19 @@ type readyNow struct{}
 
 func (readyNow) Ready() error { return nil }
 
-func TestFacadeBuildsTheHealthAndRuntimeHandlers(t *testing.T) {
+func TestFacadeBuildsTheRuntimeHandler(t *testing.T) {
 	t.Parallel()
-	for name, handler := range map[string]http.Handler{
-		"health":  api.NewHealthHandler(readyNow{}),
-		"runtime": api.NewRuntimeHandler(readyNow{}, nil, api.SSEConfig{}, nil, nil, "", ""),
-	} {
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/ready", nil))
-		if response.Code != http.StatusOK {
-			t.Errorf("%s readiness = %d", name, response.Code)
-		}
+	handler := api.NewRuntimeHandler(readyNow{}, nil, api.SSEConfig{}, nil, nil, "", "")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/ready", nil))
+	if response.Code != http.StatusOK {
+		t.Errorf("runtime readiness = %d", response.Code)
 	}
 }
 
 func TestFacadeMountsApprovalsAndBearerAuthorization(t *testing.T) {
 	t.Parallel()
-	handler := api.WithApprovals(api.NewHealthHandler(readyNow{}), api.ApprovalConfig{})
+	handler := api.WithApprovals(http.NotFoundHandler(), api.ApprovalConfig{})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/approvals/x", nil))
 	if response.Code != http.StatusServiceUnavailable {
@@ -38,8 +34,5 @@ func TestFacadeMountsApprovalsAndBearerAuthorization(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer secret")
 	if !api.BearerTokenAuthorizer("secret")(request, "") || api.BearerTokenAuthorizer("other")(request, "") {
 		t.Fatal("bearer authorizer is wrong")
-	}
-	if api.NewSSEHandler(api.SSEConfig{}) == nil {
-		t.Fatal("stream handler is nil")
 	}
 }

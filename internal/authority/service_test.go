@@ -112,11 +112,6 @@ func TestServiceDelegatesEveryOperation(t *testing.T) {
 	if err := service.AssertClaim(ctx, claim); !errors.Is(err, authority.ErrTargetClaimNotOwned) {
 		t.Fatalf("released claim = %v", err)
 	}
-	if _, err := authority.ParseReconciliationEvidence(evidence, device); err != nil || !authority.PhysicalEvidenceComplete(map[string]any{
-		"evidence_complete": true, "source": "s", "evidence_digest": evidence["state_digest"],
-	}) {
-		t.Fatalf("stateless rules: %v", err)
-	}
 }
 
 func must(t *testing.T, err error) {

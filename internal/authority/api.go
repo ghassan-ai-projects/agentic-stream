@@ -78,15 +78,3 @@ var (
 func SealReconciliationEvidence(source, target string, state, feedback map[string]any) (ReconciliationEvidence, error) {
 	return domain.SealReconciliationEvidence(source, target, state, feedback)
 }
-
-// ParseReconciliationEvidence validates an evidence document for device and
-// returns it typed.
-func ParseReconciliationEvidence(document map[string]any, device DeviceBoot) (ReconciliationEvidence, error) {
-	return domain.ParseReconciliationEvidence(document, device)
-}
-
-// PhysicalEvidenceComplete reports whether a physical transition marked
-// complete names its source and a SHA-256 evidence digest.
-func PhysicalEvidenceComplete(details map[string]any) bool {
-	return domain.PhysicalEvidenceComplete(details)
-}

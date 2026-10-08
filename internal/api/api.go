@@ -32,15 +32,6 @@ func BearerTokenAuthorizer(expected string) AuthorizeSubscriber {
 	return transport.BearerTokenAuthorizer(expected)
 }
 
-// NewHealthHandler creates /health/live and /health/ready handlers.
-func NewHealthHandler(readiness Readiness) http.Handler {
-	return transport.NewHealthHandler(readiness)
-}
-
-// NewSSEHandler creates a cursor-resumable, at-least-once Server-Sent Events
-// handler over the durable notification outbox.
-func NewSSEHandler(cfg SSEConfig) http.Handler { return transport.NewSSEHandler(cfg) }
-
 // WithApprovals mounts authenticated approval operations alongside existing routes.
 func WithApprovals(base http.Handler, cfg ApprovalConfig) http.Handler {
 	return transport.WithApprovals(base, cfg)

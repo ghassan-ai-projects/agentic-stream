@@ -95,6 +95,7 @@ var packageLayers = map[string]int{
 	"internal/watch":                              19,
 	"internal/cognition/internal/store":           20,
 	"internal/control":                            20,
+	"internal/control/controltest":                20,
 	"internal/engine/internal/store":              20,
 	"internal/evidence/internal/transport":        20,
 	"internal/ingress/internal/app":               20,

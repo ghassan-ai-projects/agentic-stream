@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/api/internal/transport"
 )
 
 type readiness struct{ err error }
@@ -15,7 +15,7 @@ type readiness struct{ err error }
 func (r readiness) Ready() error { return r.err }
 
 func TestHealthEndpointsAndProblemDetails(t *testing.T) {
-	handler := api.NewHealthHandler(readiness{})
+	handler := transport.NewHealthHandler(readiness{})
 	for _, path := range []string{"/health/live", "/health/ready"} {
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
@@ -24,7 +24,7 @@ func TestHealthEndpointsAndProblemDetails(t *testing.T) {
 			t.Fatalf("%s status = %d", path, rec.Code)
 		}
 	}
-	handler = api.NewHealthHandler(readiness{err: errors.New("wal recovery pending")})
+	handler = transport.NewHealthHandler(readiness{err: errors.New("wal recovery pending")})
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health/ready", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

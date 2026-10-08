@@ -9,6 +9,7 @@ import (
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/api/internal/transport"
 )
 
 type countedReadiness struct{ calls int }
@@ -18,7 +19,7 @@ func (r *countedReadiness) Ready() error { r.calls++; return nil }
 func TestHealthRejectsMethodBeforeConsultingReadiness(t *testing.T) {
 	t.Parallel()
 	ready := &countedReadiness{}
-	handler := api.NewHealthHandler(ready)
+	handler := transport.NewHealthHandler(ready)
 	for _, path := range []string{"/health/live", "/health/ready"} {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, nil))
@@ -40,7 +41,7 @@ func TestHealthRejectsMethodBeforeConsultingReadiness(t *testing.T) {
 func TestUnconfiguredHealthPreservesProblemResponse(t *testing.T) {
 	t.Parallel()
 	rec := httptest.NewRecorder()
-	api.NewHealthHandler(nil).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/ready", nil))
+	transport.NewHealthHandler(nil).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/ready", nil))
 	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Content-Type") != "application/problem+json" || !strings.Contains(rec.Body.String(), `"detail":"runtime is not configured"`) {
 		t.Fatalf("unconfigured readiness response: %d %v %s", rec.Code, rec.Header(), rec.Body.String())
 	}
@@ -48,7 +49,7 @@ func TestUnconfiguredHealthPreservesProblemResponse(t *testing.T) {
 
 func TestControlConfigurationPrecedesAuthenticationAndMethod(t *testing.T) {
 	t.Parallel()
-	handler := api.NewRuntimeHandler(readiness{}, nil, api.SSEConfig{}, nil, &runtimecontrol.EpochControl{}, "", "")
+	handler := api.NewRuntimeHandler(readiness{}, nil, transport.SSEConfig{}, nil, &runtimecontrol.EpochControl{}, "", "")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/control/kill", nil))
 	if rec.Code != http.StatusServiceUnavailable || rec.Body.String() != "epoch control is not configured\n" {

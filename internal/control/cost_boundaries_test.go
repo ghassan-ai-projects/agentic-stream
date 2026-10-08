@@ -3,6 +3,7 @@ package control_test
 import (
 	"database/sql"
 	"errors"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
 	"math"
 	"path/filepath"
 	"strings"
@@ -16,7 +17,7 @@ func TestReservationRollsBackGlobalAccountingOnTenantRejection(t *testing.T) {
 	t.Parallel()
 	db := newCostDB(t)
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		return control.SetCostLimit(t.Context(), tx, "tenant:tenant", "tenant", 3, false, "now")
+		return controltest.SetCostLimit(t.Context(), tx, "tenant:tenant", "tenant", 3, false, "now")
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -37,10 +38,10 @@ func TestGlobalCostRejectionPrecedesTenantRejection(t *testing.T) {
 	t.Parallel()
 	db := newCostDB(t)
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		if err := control.SetCostLimit(t.Context(), tx, "global", "", 1, true, "now"); err != nil {
+		if err := controltest.SetCostLimit(t.Context(), tx, "global", "", 1, true, "now"); err != nil {
 			return err
 		}
-		return control.SetCostLimit(t.Context(), tx, "tenant:tenant", "tenant", 1, true, "now")
+		return controltest.SetCostLimit(t.Context(), tx, "tenant:tenant", "tenant", 1, true, "now")
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +59,7 @@ func TestSettlementRollsBackAllAccountingOnTenantWriteFailure(t *testing.T) {
 	db := newCostDB(t)
 	controller := control.CostLedger{}
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		if err := control.SetCostLimit(t.Context(), tx, "tenant:tenant", "tenant", 10, false, "now"); err != nil {
+		if err := controltest.SetCostLimit(t.Context(), tx, "tenant:tenant", "tenant", 10, false, "now"); err != nil {
 			return err
 		}
 		return controller.Reserve(t.Context(), tx, "episode", "tenant", 4, "now")
@@ -87,7 +88,7 @@ func TestRepeatedSettlementDoesNotSpendTwiceOrChangeKillSwitch(t *testing.T) {
 	db := newCostDB(t)
 	controller := control.CostLedger{}
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		if err := control.SetCostLimit(t.Context(), tx, "global", "", 5, false, "now"); err != nil {
+		if err := controltest.SetCostLimit(t.Context(), tx, "global", "", 5, false, "now"); err != nil {
 			return err
 		}
 		return controller.Reserve(t.Context(), tx, "episode", "tenant", 4, "now")
@@ -115,7 +116,7 @@ func TestCostRangeValidationPrecedesTransactionAccess(t *testing.T) {
 	if err := controller.Settle(t.Context(), nil, "episode", math.MaxUint64, "now"); err == nil || err.Error() != "invalid cost settlement" {
 		t.Fatalf("overflow settlement = %v", err)
 	}
-	if err := control.SetCostLimit(t.Context(), nil, "global", "", math.MaxUint64, false, "now"); err == nil || err.Error() != "invalid cost limit" {
+	if err := controltest.SetCostLimit(t.Context(), nil, "global", "", math.MaxUint64, false, "now"); err == nil || err.Error() != "invalid cost limit" {
 		t.Fatalf("overflow limit = %v", err)
 	}
 }

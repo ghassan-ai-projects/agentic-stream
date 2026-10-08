@@ -25,12 +25,6 @@ func (CostLedger) Settle(ctx context.Context, tx *sql.Tx, episodeID string, actu
 	return app.Settle(ctx, store.Join(tx), episodeID, actual, now)
 }
 
-// SetCostLimit configures a ceiling or kill switch. It is intended to run inside
-// an owner-fenced transaction.
-func SetCostLimit(ctx context.Context, tx *sql.Tx, scopeKey, tenantID string, maxMicro uint64, killSwitch bool, now string) error {
-	return app.SetLimit(ctx, store.Join(tx), scopeKey, tenantID, maxMicro, killSwitch, now)
-}
-
 // ApplyCostCeilings writes the global and tenant ceilings inside the caller's
 // owner-fenced transaction.
 func ApplyCostCeilings(ctx context.Context, tx *sql.Tx, ceilings CostCeilings, tenantID, now string) error {
