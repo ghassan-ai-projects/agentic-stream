@@ -10,11 +10,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/domain"
 )
 
-// Reader is a Store that can only read: it has no owner fence or interlock.
 func Reader(db *storage.DB) Store { return Store{db: db} }
 
-// Watch reads one of the tenant's watches with its fires; found is false when
-// no such watch was installed.
 func (s Store) Watch(ctx context.Context, tenantID, watchID string) (domain.WatchView, bool, error) {
 	var w domain.WatchView
 	err := s.db.QueryRowContext(ctx, `SELECT watch_id, situation_id, situation_version, expression, target, status, expires_at, remaining_fires, max_fires
@@ -35,13 +32,17 @@ func (s Store) fires(ctx context.Context, watchID string) ([]domain.FireView, er
 		return nil, fmt.Errorf("read watch fires: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	fires := []domain.FireView{}
-	for rows.Next() {
-		var fire domain.FireView
-		if err := rows.Scan(&fire.EventID, &fire.FiredAt); err != nil {
-			return nil, fmt.Errorf("scan watch fire: %w", err)
-		}
-		fires = append(fires, fire)
+	fires, err := storage.CollectRows(rows, "watch fires", scanFire)
+	if err != nil {
+		return nil, fmt.Errorf("read watch fires: %w", err)
 	}
-	return fires, rows.Err() //nolint:wrapcheck // The iteration error is the driver's.
+	return fires, nil
+}
+
+func scanFire(rows *sql.Rows) (domain.FireView, error) {
+	var fire domain.FireView
+	if err := rows.Scan(&fire.EventID, &fire.FiredAt); err != nil {
+		return domain.FireView{}, fmt.Errorf("scan watch fire: %w", err)
+	}
+	return fire, nil
 }

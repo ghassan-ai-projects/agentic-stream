@@ -3,6 +3,8 @@ package interlock
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock/internal/store"
@@ -24,20 +26,77 @@ type DurableReader = store.DurableReader
 // State is the durable global interlock: its status, why, when, and version.
 type State = domain.State
 
-// Read returns the interlock inside the caller's transaction.
-func Read(ctx context.Context, tx *sql.Tx) (State, error) {
-	return store.Read(ctx, tx) //nolint:wrapcheck // The store names the failed step.
+// Transactor opens one database transaction; *storage.DB satisfies it.
+type Transactor interface {
+	WithTx(ctx context.Context, fn func(*sql.Tx) error) error
 }
 
-// Trip blocks the action plane for reason. Tripping only stops effects, so it
-// needs no runtime ownership: an emergency stop must work when the runtime is
-// hung.
-func Trip(ctx context.Context, tx *sql.Tx, reason, now string) (State, error) {
-	return store.Change(ctx, tx, domain.StatusTripped, reason, now) //nolint:wrapcheck // The store names the failed step.
+// Fence is checked inside the transaction of a change, before it writes.
+type Fence func(ctx context.Context, tx *sql.Tx) error
+
+// Status returns the interlock.
+func Status(ctx context.Context, db Transactor) (State, error) {
+	var state State
+	err := db.WithTx(ctx, func(tx *sql.Tx) (err error) {
+		state, err = store.Read(ctx, tx)
+		return err
+	})
+	if err != nil {
+		return State{}, fmt.Errorf("read interlock: %w", err)
+	}
+	return state, nil
 }
 
-// Clear reopens the action plane for reason. Callers must fence it with the
-// runtime owner inside the same transaction, so it cannot race a dispatch.
-func Clear(ctx context.Context, tx *sql.Tx, reason, now string) (State, error) {
-	return store.Change(ctx, tx, domain.StatusReady, reason, now) //nolint:wrapcheck // The store names the failed step.
+// Trip blocks every effect for reason. Tripping only stops effects, so it
+// takes no fence: an emergency stop must work when the runtime is hung.
+func Trip(ctx context.Context, db Transactor, reason string, now time.Time) (State, error) {
+	return within(ctx, db, nil, func(tx *sql.Tx) (State, error) { return TripIn(ctx, tx, reason, now) })
 }
+
+// Clear reopens the action plane for reason. The fence runs in the same
+// transaction before the write, so a caller that does not hold it cannot
+// reopen the plane while a dispatch races.
+func Clear(ctx context.Context, db Transactor, fence Fence, reason string, now time.Time) (State, error) {
+	if fence == nil {
+		return State{}, fmt.Errorf("clear interlock: a fence is required")
+	}
+	return within(ctx, db, fence, func(tx *sql.Tx) (State, error) { return ClearIn(ctx, tx, reason, now) })
+}
+
+// TripIn blocks every effect inside the caller's transaction.
+func TripIn(ctx context.Context, tx *sql.Tx, reason string, now time.Time) (State, error) {
+	state, err := store.Change(ctx, tx, domain.StatusTripped, reason, now.UTC().Format(timeLayout))
+	if err != nil {
+		return State{}, fmt.Errorf("trip interlock: %w", err)
+	}
+	return state, nil
+}
+
+// ClearIn reopens the action plane inside the caller's transaction; the caller
+// owns the fence.
+func ClearIn(ctx context.Context, tx *sql.Tx, reason string, now time.Time) (State, error) {
+	state, err := store.Change(ctx, tx, domain.StatusReady, reason, now.UTC().Format(timeLayout))
+	if err != nil {
+		return State{}, fmt.Errorf("clear interlock: %w", err)
+	}
+	return state, nil
+}
+
+func within(ctx context.Context, db Transactor, fence Fence, apply func(*sql.Tx) (State, error)) (State, error) {
+	var state State
+	err := db.WithTx(ctx, func(tx *sql.Tx) (err error) {
+		if fence != nil {
+			if err = fence(ctx, tx); err != nil {
+				return err
+			}
+		}
+		state, err = apply(tx)
+		return err
+	})
+	if err != nil {
+		return State{}, fmt.Errorf("interlock transaction: %w", err)
+	}
+	return state, nil
+}
+
+const timeLayout = "2006-01-02T15:04:05.000000000Z"

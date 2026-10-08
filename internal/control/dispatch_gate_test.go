@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
+	"time"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
@@ -13,17 +14,15 @@ import (
 func TestDispatchCapabilityReadsCurrentInterlockWithoutUpstreamCallback(t *testing.T) {
 	db, _ := openOwnerDB(t)
 	ctx := t.Context()
-	set := func(change func(context.Context, *sql.Tx, string, string) (interlock.State, error)) error {
-		return db.WithTx(ctx, func(tx *sql.Tx) error { _, err := change(ctx, tx, "operator", "now"); return err })
-	}
-	if err := set(interlock.Clear); err != nil {
+	allow := func(context.Context, *sql.Tx) error { return nil }
+	if _, err := interlock.Clear(ctx, db, allow, "operator", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	gate := runtimecontrol.NewDispatchAuthorization(db, interlock.DurableReader{}, "tenant", "target")
 	if err := gate.Check(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := set(interlock.Trip); err != nil {
+	if _, err := interlock.Trip(ctx, db, "operator", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if err := gate.Check(ctx); !errors.Is(err, interlock.ErrTripped) {

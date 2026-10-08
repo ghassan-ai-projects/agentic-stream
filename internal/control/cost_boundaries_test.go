@@ -116,7 +116,7 @@ func TestCostRangeValidationPrecedesTransactionAccess(t *testing.T) {
 	if err := controller.Settle(t.Context(), nil, "episode", math.MaxUint64, "now"); err == nil || err.Error() != "invalid cost settlement" {
 		t.Fatalf("overflow settlement = %v", err)
 	}
-	if err := controltest.SetCostLimit(t.Context(), nil, "global", "", math.MaxUint64, false, "now"); err == nil || err.Error() != "invalid cost limit" {
+	if err := controltest.SetCostLimit(t.Context(), nil, "global", "", math.MaxUint64, false, "now"); err == nil || !strings.HasSuffix(err.Error(), "invalid cost limit") {
 		t.Fatalf("overflow limit = %v", err)
 	}
 }

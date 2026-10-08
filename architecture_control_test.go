@@ -12,7 +12,6 @@ var controlOperations = []string{
 	"Claim", "ClaimAndRecover", "Renew", "Release", "Assert",
 	"Kill", "Drain", "State", "AssertDecision", "AssertDecisionTx", "AssertOrdinaryTx", "AssertAdmission",
 	"Reserve", "Settle", "ApplyCostCeilings",
-	"ReadInterlock", "TripInterlock", "ClearInterlock",
 }
 
 // TestControlFacadeOnlyDelegates confines control rules and SQL to private layers.

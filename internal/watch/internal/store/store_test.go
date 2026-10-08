@@ -140,7 +140,7 @@ func TestOwnerAndInterlockChecksRunOnTheTransaction(t *testing.T) {
 	}
 	inTx(t, s, func(tx *Tx) error { return tx.AssertInterlock(t.Context(), "tenant", "motor-1") })
 	if err := s.db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		_, err := interlock.Trip(t.Context(), tx, "stop", testNow.Format(time.RFC3339Nano))
+		_, err := interlock.TripIn(t.Context(), tx, "stop", testNow)
 		return err
 	}); err != nil {
 		t.Fatal(err)

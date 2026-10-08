@@ -77,7 +77,7 @@ func TestInterlockTripRefusesTheCommand(t *testing.T) {
 	t.Parallel()
 	db, _ := openActionFixture(t)
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		_, err := interlock.Trip(t.Context(), tx, "stop", time.Now().UTC().Format(time.RFC3339Nano))
+		_, err := interlock.TripIn(t.Context(), tx, "stop", time.Now())
 		return err
 	}); err != nil {
 		t.Fatal(err)
