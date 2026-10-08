@@ -6,6 +6,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // Owner is the configuration of one runtime owner. A nil Owner is unconfigured
@@ -48,7 +49,7 @@ func claimAndRecover(ctx context.Context, o *Owner, tx *store.Tx, epoch string, 
 }
 
 func claim(ctx context.Context, o *Owner, tx *store.Tx, epoch string, now time.Time) error {
-	until := now.Add(domain.LeaseDuration(o.Lease))
+	until := now.Add(sources.OrLease(o.Lease))
 	if err := tx.ClaimLease(ctx, epoch, o.Instance, domain.TimeText(now), domain.TimeText(until)); err != nil {
 		return err
 	}
@@ -66,7 +67,7 @@ func Renew(ctx context.Context, o *Owner, epoch string) error {
 		return domain.ErrOwnerNotConfigured
 	}
 	now := o.Now()
-	until := now.Add(domain.LeaseDuration(o.Lease))
+	until := now.Add(sources.OrLease(o.Lease))
 	rows, err := o.Store.Autocommit().RenewLease(ctx, epoch, o.Instance, domain.TimeText(now), domain.TimeText(until))
 	if err != nil {
 		return err

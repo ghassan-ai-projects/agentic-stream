@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"fmt"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
 
 // DispatchedEpisode is the oldest dispatchable episode as scanned, before its
@@ -46,15 +48,17 @@ func DispatchableEpisode(ctx context.Context, tx *Tx, tenantID string, killedSup
 	return episode, nil
 }
 
-func dispatchableEpisodeQuery(killedSuperseded bool) string {
-	lifecyclePredicate := "lifecycle_status IN ('admitted', 'running')"
-	if killedSuperseded {
-		// Kill supersedes admitted episodes that have not started an attempt.
-		// Include only those rows so the runner can release their reservation
-		// and durably quarantine them; other superseded episodes are terminal
-		// for a different reason and must not be dispatched again.
-		lifecyclePredicate += ` OR (lifecycle_status = 'superseded' AND current_attempt_id IS NULL
+var (
+	liveEpisodePredicate = "lifecycle_status IN " + episodeledger.LifecycleSQL(episodeledger.LifecycleStatus.Live)
+
+	killedUnstartedEpisodePredicate = ` OR (lifecycle_status = '` + string(episodeledger.LifecycleSuperseded) + `' AND current_attempt_id IS NULL
 			AND EXISTS (SELECT 1 FROM epoch_control WHERE epoch = episodes.policy_epoch AND state = 'killed'))`
+)
+
+func dispatchableEpisodeQuery(killedSuperseded bool) string {
+	lifecyclePredicate := liveEpisodePredicate
+	if killedSuperseded {
+		lifecyclePredicate += killedUnstartedEpisodePredicate
 	}
 	return fmt.Sprintf(`
 		SELECT episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,

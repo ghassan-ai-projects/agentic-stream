@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
@@ -38,20 +39,26 @@ func (tx *Tx) DispatchWithinLimit(ctx context.Context, row domain.IntentRecord, 
 func scanPolicyIntent(query *sql.Row) (domain.IntentRecord, error) {
 	var row domain.IntentRecord
 	var traceparent, tracestate sql.NullString
-	err := query.Scan(
-		&row.IntentID, &row.DecisionID, &row.TenantID, &row.SituationID,
-		&row.SituationVersion, &row.IntentType, &row.RiskClass, &row.IntentJSON,
-		&row.IntentSHA, &row.ExpiresAt, &row.PolicyStatus, &row.RateLimitPerHour, &row.RequiresApproval,
-		&row.ValidationStatus, &row.DecisionJSON, &row.DecisionSHA,
-		&row.DecisionSituation, &row.DecisionVersion, &traceparent, &tracestate,
-		&row.EpisodeID, &row.EpisodeTenant, &row.EpisodeSituation, &row.EpisodeVersion,
-		&row.EpisodeLifecycle, &row.ExecutorVersion, &row.PolicyEpoch, &row.SituationTenant, &row.CurrentSituation, &row.LastMaterialVersion, &row.SituationType, &row.CurrentCompleteness,
-	)
+	var lifecycle episodeledger.LifecycleStatus
+	err := query.Scan(policyIntentDests(&row, &traceparent, &tracestate, &lifecycle)...)
 	if err == nil {
+		row.EpisodeProducedDecision = lifecycle.ProducedDecision()
 		row.Traceparent = traceparent.String
 		row.Tracestate = tracestate.String
 	}
 	return row, err //nolint:wrapcheck // loadIntent preserves the database error text.
+}
+
+func policyIntentDests(row *domain.IntentRecord, traceparent, tracestate *sql.NullString, lifecycle *episodeledger.LifecycleStatus) []any {
+	return []any{
+		&row.IntentID, &row.DecisionID, &row.TenantID, &row.SituationID,
+		&row.SituationVersion, &row.IntentType, &row.RiskClass, &row.IntentJSON,
+		&row.IntentSHA, &row.ExpiresAt, &row.PolicyStatus, &row.RateLimitPerHour, &row.RequiresApproval,
+		&row.ValidationStatus, &row.DecisionJSON, &row.DecisionSHA,
+		&row.DecisionSituation, &row.DecisionVersion, traceparent, tracestate,
+		&row.EpisodeID, &row.EpisodeTenant, &row.EpisodeSituation, &row.EpisodeVersion,
+		lifecycle, &row.ExecutorVersion, &row.PolicyEpoch, &row.SituationTenant, &row.CurrentSituation, &row.LastMaterialVersion, &row.SituationType, &row.CurrentCompleteness,
+	}
 }
 
 const loadPolicyIntentSQL = `

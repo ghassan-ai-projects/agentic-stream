@@ -13,6 +13,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 // ReconsiderationTrigger is the trigger name for corrected action evidence.
@@ -123,7 +124,7 @@ func ReconsiderationEvaluation(r Reconsideration, deltaJSON []byte, policyDigest
 	return Evaluation{
 		TriggerID: r.TriggerID, TriggerName: ReconsiderationTrigger,
 		SituationID: r.Current.SituationID, SituationVersion: r.Current.Version,
-		Score: 100, Threshold: 0, Lane: "deep", Outcome: "admitted",
+		Score: 100, Threshold: 0, Lane: spec.LaneDeep, Outcome: "admitted",
 		Reasons:      []string{"accepted action invalidated by corrected Situation version"},
 		PolicySHA256: policyDigest, DeltaJSON: deltaJSON, EvaluatedAt: now,
 	}
@@ -131,9 +132,9 @@ func ReconsiderationEvaluation(r Reconsideration, deltaJSON []byte, policyDigest
 
 func ReconsiderationItem(r Reconsideration, now time.Time) episodeledger.SchedulerItem {
 	return episodeledger.SchedulerItem{
-		SchedulerItemID: r.SchedulerItemID, Kind: "reconsider", TriggerID: r.TriggerID,
+		SchedulerItemID: r.SchedulerItemID, Kind: episodeledger.KindReconsider, TriggerID: r.TriggerID,
 		SituationID: r.Current.SituationID, SituationVersion: r.Current.Version,
-		Lane: "deep", Priority: 100, Status: "pending",
+		Lane: spec.LaneDeep, Priority: 100, Status: "pending",
 		ExpiresAt: ReconsiderationExpiry(now),
 	}
 }

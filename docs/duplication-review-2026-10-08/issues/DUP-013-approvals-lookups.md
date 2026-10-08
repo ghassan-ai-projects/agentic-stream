@@ -1,6 +1,6 @@
 # DUP-013: pending and latest-approved approval lookups are written in policy and actions
 
-- Status: open
+- Status: fixed
 - Severity: medium
 - Verdict (finders): REAL
 - Themes: persistence
@@ -33,4 +33,20 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Commit: pending (reviewer commits)
+
+Verified:
+- Confirmed: policy held three separate `approvals` selects by intent (pending id, pending id+expiry, latest approved id) plus the pending expiry/nonce read by approval id; actions held two independent scalar subqueries for the latest approved id and expiry. All used `status` literals and `ORDER BY decided_at DESC LIMIT 1` with no tie-break.
+- Confirmed latent defect: with two approved rows sharing a `decided_at`, the two actions subqueries were free to pick different rows, binding the id of one approval to the expiry of another.
+- Left alone: `LoadApproval` in policy (joins `intents` for the tenant check and reads `approval_json`; a policy projection, not a duplicate lookup).
+
+Changed:
+- `internal/approvalledger`: new facade reads `PendingOfIntent`, `LatestApprovedOfIntent` (one statement, `ORDER BY decided_at DESC, approval_id DESC`, returns id and expiry from one row) and `PendingBinding`; `domain.StatusApproved`, `domain.Approval`, `domain.AssertionBinding`; store `approval_lookup.go`, app `approval_lookup.go`. All three queries bind the status as a parameter from the domain constants.
+- `internal/policy/internal/store/approval_lookup.go`: `PendingApproval`, `PendingApprovalExpiry`, `ApprovedApproval`, `AssertionBinding` now delegate to the ledger (signatures unchanged); `pending_approval.go` deleted.
+- `internal/actions/internal/store/authorization.go`: the two subqueries removed from `loadAuthorizationRecordsSQL`; `LoadAuthorizationRecords` reads the approval once through `approvalledger.LatestApprovedOfIntent` on the same transaction. Error text "approved intent has no approved approval record" and the expiry check in actions domain are untouched.
+- `architecture_test.go`: allowedImports edge `internal/actions/internal/store -> internal/approvalledger` (layer 23 over 13, legal). `architecture_approvalledger_test.go`: the three new facade operations added to `approvalLedgerOperations`.
+- `internal/approvalledger/UBIQUITOUS_LANGUAGE.md`: two rows for the new terms.
+
+Decisions: the tie-break is the larger `approval_id` (deterministic, independent of insertion order). Behaviour change is limited to the previously undefined tie case.
+
+Pinning tests: `TestLatestApprovedOfIntentPicksOneRowAndBreaksDecidedAtTiesByLargerID`, `TestPendingLookupsReadTheUnresolvedApprovalOnly` (approvalledger), `TestAuthorizationRecordsBindOneApprovedApprovalWhenDecisionsTie` (actions store). Existing policy tests (`TestApprovalLedgerAndReadProjections` etc.) pass unchanged.

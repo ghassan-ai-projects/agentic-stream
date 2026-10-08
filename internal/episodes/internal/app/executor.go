@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"time"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
@@ -55,7 +54,7 @@ func (r *Runner) executeAdmittedClaim(ctx context.Context, claim *episodeClaim) 
 	if r.telemetry != nil {
 		r.telemetry.ObserveDuration(r.clk.Now().Sub(startedAt))
 	}
-	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	persistCtx, cancel := sources.DetachedContext(ctx)
 	defer cancel()
 	return r.recordExecution(persistCtx, claim, outcome, executionErr, r.deadlineExceeded(&claim.req, startedAt))
 }

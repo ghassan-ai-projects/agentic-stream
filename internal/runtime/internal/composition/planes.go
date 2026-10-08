@@ -4,10 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
@@ -24,7 +24,7 @@ import (
 
 func pipelineDefaults(cfg PipelineConfig) PipelineConfig {
 	if cfg.TenantID == "" {
-		cfg.TenantID = "default"
+		cfg.TenantID = contractsv1.TenantID
 	}
 	cfg.Clock = sources.OrPhysical(cfg.Clock)
 	cfg.IDGenerator = sources.OrRandom(cfg.IDGenerator)
@@ -144,7 +144,7 @@ func composeDispatcher(cfg PipelineConfig) (*actions.Service, error) {
 	}
 	service, err := actions.New(actions.Config{DB: cfg.DB, Effector: effector, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch,
 		Clock: cfg.Clock, IDs: cfg.IDGenerator, LeaseOwner: "runtime-actions/" + cfg.OwnerEpoch,
-		LeaseFor: time.Minute, Telemetry: cfg.Telemetry})
+		Telemetry: cfg.Telemetry})
 	if err != nil {
 		return nil, fmt.Errorf("compose actions: %w", err)
 	}

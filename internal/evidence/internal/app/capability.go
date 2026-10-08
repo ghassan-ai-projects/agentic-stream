@@ -10,8 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/wire"
 )
 
-const defaultCapabilityTTL = domain.DefaultCapabilityTTL
-
 // Issuer signs opaque capability tokens with an HMAC-SHA256 key ring.
 type Issuer struct {
 	Issuer   string
@@ -39,7 +37,7 @@ func (i *Issuer) Issue(scope Scope) ([]byte, error) {
 	return wire.SignToken(scope, key)
 }
 func (i *Issuer) completeScope(scope Scope, now time.Time) (Scope, error) {
-	maxTTL := cmp.Or(i.MaxTTL, defaultCapabilityTTL)
+	maxTTL := cmp.Or(i.MaxTTL, domain.DefaultCapabilityTTL)
 	scope.KeyID = cmp.Or(scope.KeyID, i.KeyID)
 	scope, err := prepareScope(scope, now, maxTTL)
 	if err != nil {

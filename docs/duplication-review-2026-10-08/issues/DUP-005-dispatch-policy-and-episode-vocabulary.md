@@ -1,6 +1,6 @@
 # DUP-005: Dispatch policy (shadow/active), kind and lane vocabularies; unset must mean shadow everywhere
 
-- Status: open
+- Status: fixed
 - Severity: high (fail-open polarity)
 - Verdict (finders): DIVERGED, REAL
 - Themes: business rules, contracts and shapes, persistence
@@ -71,4 +71,31 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Status: fixed. Commit: pending (reviewer commits).
+
+Verified (all re-read):
+- Confirmed: `runner_decision.go` treated only the literal `"shadow"` as shadow, so an empty or unknown policy governed as active (fail-open); remote and ledger defaulted to shadow. A new runner test seeded a shadow row, bypassed the CHECK with `PRAGMA ignore_check_constraints`, and shows the old polarity would have written intents.
+- Confirmed: literals `"reconsider"`/`"standard"`/`"deep"` in cognition, episodes, decisions, replay and a second `runtime.ReconsiderKind`; remote `episodeKind`/`episodeLane` accepted `diagnose`, `diagnosis`, `reconsideration`, `batch` and mixed case.
+- Partly right: the proposed owner. `episodeledger/internal/domain` is layer 0 and cannot import `spec` (layer 11), and `spec` cannot import `episodeledger` (13). So the dispatch policy and the lane vocabulary live in `spec` (the authoring side, which also owns the compiled default that rides the digest); kinds live in `episodeledger`.
+- Aliases and `batch`: the host builds the request JSON `kind` from `SchedulerItem.Kind` (`standard` or `reconsider`) and the lane from the spec-validated trigger lane (`fast`/`deep`); a worker never sends them. Only four test fixtures used `"diagnose"`.
+- Not done: the scheduler item status literal `"pending"` (cognition correction.go, timing.go). It belongs with the lifecycle/status sets of DUP-004; left as is.
+
+Changed:
+- `internal/spec/internal/domain/vocabulary.go` (new): `DispatchShadow`, `DispatchActive`, `LaneFast`, `LaneDeep`, `EffectiveDispatchPolicy`; `normalize.go` and `references.go` use them; `internal/spec/spec.go` re-exports them. Compiled digests unchanged (default is still `shadow`).
+- `internal/episodeledger/internal/domain/admission.go`: `KindStandard` and `KindReconsider`; `DispatchShadow` and `Admission.EffectiveDispatchPolicy` deleted (a second default that masked invalid empties); `internal/episodeledger/kinds.go` (new) exports the kinds; `internal/app/admission.go` stores the declared policy.
+- `internal/episodes/internal/domain/admission.go`: `AdmittedEpisode` is now the single place that applies `spec.EffectiveDispatchPolicy` before the ledger. `runner_decision.go`: `!= spec.DispatchActive` is shadow (fail-safe). `assembler_inputs.go` and `decision_input.go` use `episodeledger.KindReconsider`.
+- `internal/decisions`: `Input.Kind string` replaced by `Input.Reconsider bool` (decisions, layer 13, cannot import the ledger or spec; it now receives the parsed fact). `intent.go`, `validator.go`, `facade_test.go`, `validator_test.go`, and `replay/internal/domain/shadow_rules.go` (dropped the hardcoded `Kind: "standard"`) follow.
+- `internal/cognition/internal/domain/correction.go`, `timing.go`: kind and lane constants.
+- `internal/runtime/internal/domain/admission.go`: `ReconsiderKind` deleted; `internal/runtime/internal/app/admission_skip.go` uses `episodeledger.KindReconsider`.
+- `internal/executor/remote/internal/domain/request_fields.go`: policy mapping uses `spec.DispatchActive`; `episodeKind` accepts exactly `standard` and `reconsider`, `episodeLane` exactly `fast` and `deep` (aliases, `batch` and case folding removed; error text `unsupported episode kind %q` unchanged).
+- `internal/replay/internal/transport/shadow_worker.go`: `spec.DispatchShadow`; `architecture_test.go` gained the allowedImports edge `internal/replay/internal/transport -> internal/spec`.
+- `internal/episodeledger/UBIQUITOUS_LANGUAGE.md`: dispatch policy row now names the spec as owner.
+
+Deliberate behaviour changes: (1) the ledger no longer defaults an empty policy; an empty `Admission.DispatchPolicy` is refused by the table CHECK (fail closed). Production reaches the ledger only through `AdmittedEpisode`, which defaults it. (2) the remote worker request builder rejects the old aliases, `batch` and upper case. Fixture changes that follow: `episodeledger/ownership_test.go` (renamed to `TestAdmissionStoresDeclaredPolicyAndRejectsConflictingLiveEpisode`, sets `DispatchPolicy: "shadow"`), `episodeledger/internal/app/app_test.go` (fixture sets the policy), `episodeledger/internal/domain/rules_test.go` (fallback assertion removed), `"kind":"diagnose"` fixtures changed to `"standard"` in `executor/remote/internal/app/executor_test.go`, `executor/remote/internal/domain/request_test.go` and `testsupport/executorconformance/conformance.go`, and the `diagnose` row of `TestEpisodeKind` now expects rejection.
+
+Tests that pin the rule:
+- `TestOnlyAnExplicitActivePolicyEntersGovernance` (episodes/internal/app; `""`, `bogus`, `ACTIVE` never persist intents and are shadow-scored).
+- `TestUnsetDispatchPolicyIsShadow` and `TestSchemaEnumsMatchDeclaredVocabulary` (spec/internal/domain; schema enums equal the constants, compiled default is shadow).
+- `TestAdmittedEpisodeDeclaresShadowWhenRequestHasNoPolicy` (episodes/internal/domain).
+- `TestAdmissionRefusesAnUndeclaredDispatchPolicy` (episodeledger; no hidden default in the ledger).
+- `TestDispatchPolicyEnumTreatsAnythingButActiveAsShadow`, `TestEpisodeLaneAcceptsOnlyDeclaredLanes`, `TestEpisodeKind` (executor/remote/internal/domain).

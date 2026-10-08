@@ -7,6 +7,7 @@ import (
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
@@ -72,7 +73,7 @@ func (r *Runner) rejectDecision(ctx context.Context, tx *store.Tx, identity epis
 // governDecision hands a valid Decision to the action plane, or only scores it
 // in shadow mode, and marks it accepted.
 func (r *Runner) governDecision(ctx context.Context, tx *store.Tx, claim *episodeClaim, outcome *Outcome, record *decisionRecord, now string) error {
-	if claim.req.DispatchPolicy == "shadow" {
+	if claim.req.DispatchPolicy != spec.DispatchActive {
 		// P8 (shadow-first): a shadow decision is scored (the would-be policy
 		// outcome is computed from the intents) but NOTHING is written to
 		// intents or commands. Shadow never enters action governance.

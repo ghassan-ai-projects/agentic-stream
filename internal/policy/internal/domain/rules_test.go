@@ -130,11 +130,6 @@ func TestIntentDigestChecksOriginalDocument(t *testing.T) {
 func TestRuleBoundaries(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
-	for _, status := range []string{"concluded", "closed", "running"} {
-		if EpisodeConcluded(IntentRecord{EpisodeLifecycle: status}) != (status != "running") {
-			t.Fatalf("lifecycle=%s", status)
-		}
-	}
 	for _, risk := range []string{"R0", "R1", "R2", "R3", "R4"} {
 		for _, health := range []string{"on_time", "provisional", "uncertain"} {
 			want := risk >= "R2" && health != "on_time"

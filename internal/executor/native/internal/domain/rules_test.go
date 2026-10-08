@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
@@ -130,5 +131,14 @@ func TestToolDefinitionsKeepOnlyConfiguredAllowListedToolsSorted(t *testing.T) {
 	definitions := ToolDefinitions(raw, tools)
 	if len(definitions) != 2 || definitions[0].Name != "a" || definitions[1].Name != "b" {
 		t.Fatalf("definitions = %+v", definitions)
+	}
+}
+
+func TestEvidenceQueryWindowDefaultsToTheScopeWindowBeforeNow(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	query, err := EvidenceScope{EntityID: "motor-1", MaxRows: 10, MaxBytes: 1024, Window: 6 * time.Hour}.Query(json.RawMessage(`{}`), now)
+	if err != nil || !query.From.Equal(now.Add(-6*time.Hour)) || !query.Until.Equal(now) {
+		t.Fatalf("query = %+v, err = %v", query, err)
 	}
 }

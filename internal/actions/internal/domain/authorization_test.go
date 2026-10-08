@@ -40,7 +40,7 @@ func TestAuthorizationRefusesEachStaleOrAlteredRecord(t *testing.T) {
 		{"decision not accepted", func(r *AuthorizationRecords) { r.Decision.ValidationStatus = "rejected" }, AuthorizationRecords.RequireApprovedIntent, "command is no longer approved for its intent"},
 		{"route differs from intent type", func(r *AuthorizationRecords) { r.Command.Route = "other" }, AuthorizationRecords.RequireApprovedIntent, "command is no longer approved for its intent"},
 		{"newer material Situation version", func(r *AuthorizationRecords) { r.Situation.LastMaterialVersion = 2 }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
-		{"episode still running", func(r *AuthorizationRecords) { r.Episode.Lifecycle = "running" }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
+		{"episode still running", func(r *AuthorizationRecords) { r.Episode.ProducedDecision = false }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
 		{"episode tenant", func(r *AuthorizationRecords) { r.Episode.TenantID = "other" }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
 		{"decision version", func(r *AuthorizationRecords) { r.Decision.SituationVersion = 2 }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
 		{"intent digest", func(r *AuthorizationRecords) { r.Intent.SHA = make([]byte, 32) }, func(r AuthorizationRecords) error { return r.CheckIntent(testNow) }, "intent authorization is invalid"},

@@ -29,8 +29,9 @@ type DecisionRow struct {
 }
 
 type EpisodeRow struct {
-	TenantID, SituationID, Lifecycle string
-	SituationVersion                 int
+	TenantID, SituationID string
+	SituationVersion      int
+	ProducedDecision      bool
 }
 
 type SituationRow struct {
@@ -91,7 +92,7 @@ func (r AuthorizationRecords) RequireCurrent() error {
 	if episode.TenantID == intent.TenantID && r.Situation.TenantID == intent.TenantID &&
 		r.Decision.SituationID == intent.SituationID && r.Decision.SituationVersion == intent.Version &&
 		episode.SituationID == intent.SituationID && episode.SituationVersion == intent.Version &&
-		(episode.Lifecycle == "concluded" || episode.Lifecycle == "closed") &&
+		episode.ProducedDecision &&
 		r.Situation.LastMaterialVersion <= intent.Version {
 		return nil
 	}

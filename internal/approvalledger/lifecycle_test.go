@@ -31,12 +31,17 @@ func approvalDB(t *testing.T) *storage.DB {
 		id      string
 		version int
 	}{{"old", 1}, {"current", 2}, {"expired", 1}, {"denied", 1}} {
-		if _, err := db.ExecContext(t.Context(), `INSERT INTO intents (intent_id,decision_id,tenant_id,situation_id,situation_version,intent_type,risk_class,intent_json,intent_sha256,expires_at,policy_status,created_at,updated_at)
- VALUES (?,'decision','tenant','situation',?,'review','R2',X'7B7D',?,'later','approval_required','now','now')`, item.id, item.version, make([]byte, 32)); err != nil {
-			t.Fatal(err)
-		}
+		insertIntent(t, db, item.id, item.version)
 	}
 	return db
+}
+
+func insertIntent(t *testing.T, db *storage.DB, id string, version int) {
+	t.Helper()
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO intents (intent_id,decision_id,tenant_id,situation_id,situation_version,intent_type,risk_class,intent_json,intent_sha256,expires_at,policy_status,created_at,updated_at)
+ VALUES (?,'decision','tenant','situation',?,'review','R2',X'7B7D',?,'later','approval_required','now','now')`, id, version, make([]byte, 32)); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestApprovalTransitionsPreserveTerminalStateAndAssertionBinding(t *testing.T) {

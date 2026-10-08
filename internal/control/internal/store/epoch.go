@@ -75,8 +75,8 @@ const epochControlUpsert = `
 		ON CONFLICT(epoch) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at
 		WHERE epoch_control.state <> 'killed'`
 
-const unstartedEpisodeReservationsSQL = `
+var unstartedEpisodeReservationsSQL = `
 		SELECT e.episode_id
 		FROM episodes e JOIN cost_reservations r ON r.episode_id = e.episode_id
-		WHERE e.policy_epoch = ? AND e.lifecycle_status = 'admitted'
+		WHERE e.policy_epoch = ? AND e.lifecycle_status = '` + string(episodeledger.LifecycleAdmitted) + `'
 		  AND e.current_attempt_id IS NULL AND r.status = 'reserved'`

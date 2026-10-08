@@ -165,10 +165,3 @@ func TestFailedUnitOfWorkRollsBack(t *testing.T) {
 		return nil
 	})
 }
-
-func TestContentionClassification(t *testing.T) {
-	t.Parallel()
-	if IsContended(errors.New("plain")) {
-		t.Fatal("plain error classified as contention")
-	}
-}

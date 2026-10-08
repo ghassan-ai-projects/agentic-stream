@@ -75,7 +75,7 @@ func checkIntentPermission(document map[string]any, input Input, intentType stri
 	isCompensation := contractsv1.DocumentString(document, "compensates") != ""
 	// The allowlist bypass is kind-scoped: only a RECONSIDER episode may carry
 	// compensating intents. A DIAGNOSE worker forging compensates is rejected.
-	if isCompensation && input.Kind != "reconsider" {
+	if isCompensation && !input.Reconsider {
 		return reject("intent_type_not_allowed", "intent.compensates",
 			"compensating intents require a reconsider episode")
 	}

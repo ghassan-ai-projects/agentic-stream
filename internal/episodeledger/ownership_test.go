@@ -10,7 +10,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
-func TestAdmissionOwnsShadowDefaultAndRejectsConflictingLiveEpisode(t *testing.T) {
+func TestAdmissionStoresDeclaredPolicyAndRejectsConflictingLiveEpisode(t *testing.T) {
 	db := storagetest.OpenTemp(t)
 
 	seedEpisode(t, t.Context(), db, "original")
@@ -21,7 +21,7 @@ func TestAdmissionOwnsShadowDefaultAndRejectsConflictingLiveEpisode(t *testing.T
 	now := time.Date(2026, 10, 2, 12, 0, 0, 123456789, time.UTC)
 	admission := episodeledger.Admission{EpisodeID: "next", SchedulerItemID: "sch-next", TenantID: "tenant", SituationID: "other", SituationVersion: 1,
 		ExecutorName: "executor", ExecutorVersion: "revision", ModelPolicy: "policy", PromptVersion: "prompt", SnapshotSHA256: make([]byte, 32),
-		PromptSHA256: make([]byte, 32), ObjectiveSHA256: make([]byte, 32), AdmissionKey: make([]byte, 32), RequestJSON: []byte(`{}`), PolicyEpoch: "epoch"}
+		PromptSHA256: make([]byte, 32), ObjectiveSHA256: make([]byte, 32), AdmissionKey: make([]byte, 32), RequestJSON: []byte(`{}`), PolicyEpoch: "epoch", DispatchPolicy: "shadow"}
 	admission.AdmissionKey[0] = 1
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error { return episodeledger.Admit(t.Context(), tx, admission, now) }); err != nil {
 		t.Fatal(err)
@@ -155,5 +155,21 @@ func TestUnknownWorkerRejectionIsDurableAndIdempotent(t *testing.T) {
 		return episodeledger.RecordRejection(t.Context(), tx, identity, episodeledger.RejectionReason("invented"), nil, now)
 	}); err == nil {
 		t.Fatal("unregistered rejection accepted")
+	}
+}
+
+func TestAdmissionRefusesAnUndeclaredDispatchPolicy(t *testing.T) {
+	db := storagetest.OpenTemp(t)
+
+	seedEpisode(t, t.Context(), db, "original")
+	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
+		t.Fatal(err)
+	}
+	admission := episodeledger.Admission{EpisodeID: "next", SchedulerItemID: "sch-next", Kind: episodeledger.KindStandard, TenantID: "tenant", SituationID: "other", SituationVersion: 1,
+		ExecutorName: "executor", ExecutorVersion: "revision", ModelPolicy: "policy", PromptVersion: "prompt", SnapshotSHA256: make([]byte, 32),
+		PromptSHA256: make([]byte, 32), ObjectiveSHA256: make([]byte, 32), AdmissionKey: make([]byte, 32), RequestJSON: []byte(`{}`), PolicyEpoch: "epoch"}
+	err := db.WithTx(t.Context(), func(tx *sql.Tx) error { return episodeledger.Admit(t.Context(), tx, admission, time.Now()) })
+	if err == nil {
+		t.Fatal("the ledger admitted an episode with no declared dispatch policy")
 	}
 }

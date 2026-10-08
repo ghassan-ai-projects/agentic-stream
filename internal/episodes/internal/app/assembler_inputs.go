@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 )
@@ -65,7 +66,7 @@ func loadTriggerContext(ctx context.Context, tx *store.Tx, item schedulerItem, i
 			return assemblyInputs{}, fmt.Errorf("unmarshal delta: %w", err)
 		}
 	}
-	if item.Kind == "reconsider" {
+	if item.Kind == episodeledger.KindReconsider {
 		inputs.Reconsideration, err = loadReconsideration(ctx, tx, item, inputs.Evaluation, inputs.Delta, inputs.Snapshot.Document)
 		if err != nil {
 			return assemblyInputs{}, fmt.Errorf("load reconsideration: %w", err)

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
@@ -147,4 +148,15 @@ func testEvidenceLedger(t *testing.T, db *storage.DB) *evidence.Service {
 		t.Fatal(err)
 	}
 	return service
+}
+
+func TestEvidenceCapabilityFactoryUsesTheEvidenceReadBudget(t *testing.T) {
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	factory := evidenceCapabilityFactory(nil, "epoch-1", now)
+	if factory.MaxRows != evidence.DefaultReadMaxRows || factory.MaxBytes != evidence.DefaultReadMaxBytes {
+		t.Errorf("budget = %d rows, %d bytes", factory.MaxRows, factory.MaxBytes)
+	}
+	if !factory.From.Equal(now.Add(-evidence.DefaultReadWindow)) || !factory.Until.Equal(now.Add(evidence.DefaultReadWindow)) {
+		t.Errorf("window = %v..%v", factory.From, factory.Until)
+	}
 }

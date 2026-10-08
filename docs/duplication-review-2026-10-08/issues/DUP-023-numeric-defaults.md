@@ -1,6 +1,6 @@
 # DUP-023: One-minute lease, capability TTL, evidence read budget and tenant default stated in several modules
 
-- Status: open
+- Status: fixed
 - Severity: low
 - Verdict (finders): REAL
 - Themes: business rules, mechanisms
@@ -46,4 +46,19 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Verified (re-read every site):
+- Confirmed: `control.DefaultLease/LeaseDuration` was an identical copy of `sources.OrLease`; `authority.defaultClaimLease/claimLease` duplicated it (the negative-lease rejection lives in `Config.validate`, so `sources.OrLease` after validation is equivalent); `LeaseFor: time.Minute` in composition was redundant with `sources.OrLease` in actions; `serve.go`/`run_live.go` lease literals; evidence `defaultCapabilityTTL` alias; four `"default"` tenant flag literals, the composition literal, and ingress `DefaultTenant` (a copy of `contractsv1.TenantID`); the 1000 rows / 1 MiB / 24 h evidence budget in runtime transport and native; `actions.orDefault` duplicated `cmp.Or`.
+- Confirmed latent bug: remote's `now.Add(15 * time.Minute)` fallback ignored the issuer's `MaxTTL`; with `MaxTTL < 15m` a default-expiry token would be refused by `CheckIssuable`. `PrepareScope` already defaults `ExpiresAt` to `IssuedAt+maxTTL`, so the fallback was deleted and the default now follows the issuer's maximum.
+- Partly right: the "15 minute scheduler expiry" and `evidence` call deadline (`time.Minute`) are different concepts and were left alone, as were the operator lease (30 s, intentional) and the engine's `contractsv1.TenantID` fallback (already the owner). The remote worker window reaching 24 h into the future versus native stopping at now is intentional and kept; only the shared 24 h span and the row/byte budget are shared constants.
+
+Changed:
+- Leases: deleted `control/internal/domain` `DefaultLease`/`LeaseDuration` (control app uses `sources.OrLease`); deleted `authority` `defaultClaimLease`/`claimLease()` (and replaced the private `clock()` helper with `sources.OrPhysical`); removed `LeaseFor: time.Minute` from `runtime/internal/composition/planes.go`; `serve --owner-lease` default and `run-live` owner lease use `sources.DefaultLease`.
+- Tenant: `ingress/internal/domain` `DefaultTenant` deleted, `TenantOrDefault` is `cmp.Or(tenantID, contractsv1.TenantID)`; composition and the four cmd `--tenant` flags use `contractsv1.TenantID`.
+- Capability TTL: evidence app alias removed (uses `domain.DefaultCapabilityTTL`); remote issuer no longer sets its own 15 minute expiry and `issueScopedCapability` was folded into `Issue`.
+- Evidence budget: new `evidence.DefaultReadMaxRows`, `DefaultReadMaxBytes`, `DefaultReadWindow` (defined in evidence domain, re-exported by the facade). Runtime transport uses them through the new `evidenceCapabilityFactory`; native store uses them and passes the window through a new `EvidenceScope.Window` field (so native's pure domain does not import evidence).
+- `actions/internal/app` `orDefault` replaced by `cmp.Or`.
+- Files: architecture_test.go (allowedImports: control/internal/app -> sources, composition -> contractsv1, native/internal/store -> evidence), cmd/agentic-stream/{operator,run_command,run_live,serve}.go, internal/{control,authority,actions,evidence,ingress,runtime,executor/native,executor/remote} files listed in git status for those trees.
+
+Pinning tests: `TestRuntimeOwnerUnsetLeaseIsTheSourcesDefaultLease` (control), `TestUnsetClaimLeaseIsTheSourcesDefaultLease` and `TestNewRefusesConfigurationThatSkipsSafetyChecks/negative_lease` (authority), `TestFlagDefaultsComeFromTheirOwners` (cmd, tenant and owner-lease flag defaults), `TestPipelineDefaultsTenantIsTheContractTenant` (composition), the `TenantOrDefault` assertion in ingress `rules_test.go`, now against `contractsv1.TenantID`, `TestAttemptCapabilityDefaultExpiryFollowsTheIssuerMaximum` (remote; regression for the MaxTTL bug), `TestEvidenceCapabilityFactoryUsesTheEvidenceReadBudget` (runtime transport), `TestEvidenceToolStartsWithTheEvidenceReadBudget` (native store), `TestEvidenceQueryWindowDefaultsToTheScopeWindowBeforeNow` (native domain). The removed control assertion on `LeaseDuration` is covered by `TestOrLeaseDefaultsAnUnspecifiedLease` (sources).
+
+Deferred: none.

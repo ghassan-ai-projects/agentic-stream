@@ -2,7 +2,9 @@ package app_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
@@ -150,5 +152,42 @@ func TestActiveDispatchPersistsIntents(t *testing.T) {
 	}
 	if intents != 1 {
 		t.Fatalf("active dispatch must persist its intent, got %d", intents)
+	}
+}
+
+func TestOnlyAnExplicitActivePolicyEntersGovernance(t *testing.T) {
+	for _, policy := range []string{"", "bogus", "ACTIVE"} {
+		t.Run("policy "+policy, func(t *testing.T) {
+			db := storagetest.OpenTemp(t)
+			seedShadowEpisode(t, db, "epi-unset", "shadow")
+			overridePolicyBypassingCheck(t, db, policy)
+
+			runner := app.NewRunner(store.New(db), fixture.New(), sources.Physical(), sources.Deterministic())
+			if processed, err := runner.RunOnce(context.Background(), "tenant"); err != nil || !processed {
+				t.Fatalf("processed=%v err=%v", processed, err)
+			}
+			var intents, shadowed int
+			if err := db.QueryRowContext(context.Background(), "SELECT (SELECT COUNT(*) FROM intents), (SELECT COUNT(*) FROM shadow_decisions)").Scan(&intents, &shadowed); err != nil {
+				t.Fatal(err)
+			}
+			if intents != 0 || shadowed != 1 {
+				t.Fatalf("policy %q must be scored as shadow: intents=%d shadow decisions=%d", policy, intents, shadowed)
+			}
+		})
+	}
+}
+
+func overridePolicyBypassingCheck(t *testing.T, db *storage.DB, policy string) {
+	t.Helper()
+	err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
+		for _, statement := range []string{"PRAGMA ignore_check_constraints = ON", "UPDATE episodes SET dispatch_policy = '" + policy + "'", "PRAGMA ignore_check_constraints = OFF"} {
+			if _, err := tx.ExecContext(context.Background(), statement); err != nil {
+				return fmt.Errorf("%s: %w", statement, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

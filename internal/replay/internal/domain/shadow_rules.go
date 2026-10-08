@@ -96,7 +96,7 @@ func (r ShadowRules) validateDecision(input ShadowInput, bound ValidatedOutput, 
 		TenantID: input.TenantID, SituationID: input.SituationID,
 		SituationVersion: input.SituationVersion, EntityID: entityID, SnapshotDigest: input.SnapshotDigest,
 		AllowedIntentTypes: r.AllowedTypes, RiskCeiling: r.RiskCeiling, IntentCatalog: r.Catalog,
-		Kind: "standard", Now: now,
+		Now: now,
 	})
 	if err != nil {
 		return ValidatedOutput{}, fmt.Errorf("validate shadow decision: %w", err)

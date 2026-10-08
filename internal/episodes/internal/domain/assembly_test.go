@@ -154,3 +154,21 @@ func TestCostBudgetPreservesAdmissionCeiling(t *testing.T) {
 		t.Fatalf("invalid cost document=%v", err)
 	}
 }
+
+func TestAdmittedEpisodeDeclaresShadowWhenRequestHasNoPolicy(t *testing.T) {
+	t.Parallel()
+	tests := []struct{ name, policy, want string }{
+		{name: "unset", policy: "", want: spec.DispatchShadow},
+		{name: "shadow", policy: spec.DispatchShadow, want: spec.DispatchShadow},
+		{name: "active", policy: spec.DispatchActive, want: spec.DispatchActive},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			admission := AdmittedEpisode(&Request{DispatchPolicy: tt.policy}, RequestDigests{})
+			if admission.DispatchPolicy != tt.want {
+				t.Fatalf("admitted policy = %q, want %q", admission.DispatchPolicy, tt.want)
+			}
+		})
+	}
+}

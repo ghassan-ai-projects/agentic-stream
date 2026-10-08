@@ -35,7 +35,7 @@ func TestRiskRulesRemainAuthoritative(t *testing.T) {
 func TestFreshnessAndApprovalPrecedence(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
-	base := IntentRecord{EpisodeLifecycle: "concluded", CurrentSituation: 1, SituationVersion: 1, RiskClass: "R2", CurrentCompleteness: "on_time", ExpiresAt: FormatTime(now.Add(time.Hour))}
+	base := IntentRecord{EpisodeProducedDecision: true, CurrentSituation: 1, SituationVersion: 1, RiskClass: "R2", CurrentCompleteness: "on_time", ExpiresAt: FormatTime(now.Add(time.Hour))}
 	for _, tc := range []struct {
 		name           string
 		change         func(*IntentRecord)
@@ -43,7 +43,7 @@ func TestFreshnessAndApprovalPrecedence(t *testing.T) {
 	}{
 		{"healthy", func(*IntentRecord) {}, "", ""},
 		{"lifecycle first", func(r *IntentRecord) {
-			r.EpisodeLifecycle = "running"
+			r.EpisodeProducedDecision = false
 			r.CurrentSituation, r.LastMaterialVersion = 2, 2
 			r.ExpiresAt = "invalid"
 		}, "denied", "episode_not_concluded"},

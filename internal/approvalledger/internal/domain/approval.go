@@ -6,6 +6,8 @@ const (
 	StatusPending = "pending"
 	StatusExpired = "expired"
 	StatusDenied  = "denied"
+
+	StatusApproved = "approved"
 )
 
 // Stable reasons recorded with a transition.
@@ -25,4 +27,16 @@ type Withdrawal struct {
 	SituationVersion int
 	Traceparent      string
 	Tracestate       string
+}
+
+// Approval is the identity and expiry of one approval request of an intent.
+type Approval struct {
+	ID        string
+	ExpiresAt string
+}
+
+// AssertionBinding is what a signed approver assertion is bound to.
+type AssertionBinding struct {
+	ExpiresAt string
+	Nonce     string
 }

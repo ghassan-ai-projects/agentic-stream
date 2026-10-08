@@ -1,6 +1,6 @@
 # DUP-004: Episode lifecycle and attempt state sets are re-spelled as literals and SQL lists
 
-- Status: open
+- Status: fixed
 - Severity: high
 - Verdict (finders): DIVERGED, REAL
 - Themes: business rules, persistence
@@ -61,4 +61,34 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+### Verified
+
+- Confirmed: evidence `attempt.go` spelled `Closed()` as five literals, "in flight" as `dispatched|running` twice and "running" once; actions `authorization.go` and policy `rules.go` spelled `concluded|closed` independently; the ledger store (`recovery.go`, `supersession.go`, `episode.go`), `episodes/store` (`dispatch.go`, `assembler.go`) and `control/store` (`epoch.go`) restated the sets as SQL lists or literals. The domain packages cannot import the ledger (same layer 13), so the finders' layer conflict was real.
+- Partly right: attempt "active" is not three different sets. `cancelling` is the only difference and it is deliberate (see below); `unfinished` (recovery) equals "not terminal", `in flight` (evidence, coalesced-episode cancellation) excludes `cancelling`.
+- Confirmed but kept: `closed` and `expired` are written by no production code. They are durable CHECK values, so removing them needs a migration; they stay and are now covered by the all-values tests.
+
+### Changed
+
+- Owner `internal/episodeledger/internal/domain/status_sets.go` (new): predicates `LifecycleStatus.Live`, `ProducedDecision` (alongside the existing `Closed`, now built from `ProducedDecision`), `AttemptStatus.InFlight`, `Unfinished`, `CountsAsFailure`; `LifecycleSQL(member)` and `AttemptSQL(member)` render a SQL value list from a predicate over every enum value, so a query selects exactly what the Go predicate selects. `IsTerminalAttempt` and `fence.go` `CheckStartable` use them. The facade (`episodeledger.go`) re-exports `LifecycleSQL` and `AttemptSQL`; `architecture_episodeledger_test.go` lists them as domain-delegating helpers.
+- Ledger store: `status_sql.go` (new) holds the four derived lists; `recovery.go`, `supersession.go`, `episode.go` use them instead of literals (SQL consts became vars built by concatenation).
+- `episodes/store` `dispatch.go` (live predicate, the one `superseded` literal via the constant) and `assembler.go` (retry-budget statuses via `CountsAsFailure`); `control/store/epoch.go` (`admitted` via the constant).
+- evidence: `EpisodeState` now carries `Closed` and `Running` bools and the attempt checks take `inFlight bool`; `store/reads.go` scans typed `episodeledger` statuses and computes them (one shared `episodeState` read replaces two copies of the scan). Error texts are unchanged.
+- actions: `EpisodeRow.Lifecycle string` became `ProducedDecision bool`, computed in `store/authorization.go`. policy: `IntentRecord.EpisodeLifecycle string` became `EpisodeProducedDecision bool` computed in `store/intent_reads.go` (the scan list moved into `policyIntentDests` to stay under the function-length limit); `EpisodeConcluded` was deleted and `FreshnessFailure` reads the field. Reason `episode_not_concluded` unchanged.
+- Architecture: new allowedImports edges `evidence/internal/store`, `actions/internal/store`, `policy/internal/store` -> `internal/episodeledger` (layers 17, 23, 20 are above 13, no cycle). The domains keep importing nothing new.
+
+### Decisions
+
+- Stores compute the typed result and hand the domains a bool, as the reviewer notes directed; no layer table change.
+- Evidence treats `cancelling` as not live on purpose: once cancellation is requested no new evidence call may be reserved or completed. The rule now has the name `AttemptStatus.InFlight` with that stated in its doc comment, and is pinned by the tests below.
+- `closed` and `expired` kept (migration needed to remove). Single-value writes such as `SET lifecycle_status = 'concluded'` stay as literals inside the owner store.
+
+### Tests pinning the rule
+
+- `TestLifecycleStatusSetsCoverEveryValue`, `TestAttemptStatusSetsCoverEveryValue`, `TestStatusSQLListsFollowThePredicates` (episodeledger domain): every value of both enums against every predicate, partition checks, exact SQL lists.
+- `TestStatusEnumsMatchTheSchemaChecks` (episodeledger): the Go enums equal the CHECK lists in the migrated `episodes` and `episode_attempts` tables.
+- Consumer parity: `TestEpisodeAndAttemptStateFollowTheLedgerPredicates` (evidence store), `TestAuthorizationEpisodeFollowsTheLedgerDecisionPredicate` (actions store), `TestIntentEpisodeFollowsTheLedgerDecisionPredicate` (policy store).
+- Existing tests moved only where a field type changed: evidence `TestAttemptAndReservationRules`, policy `routing_test.go` and `TestRuleBoundaries` (the lifecycle loop moved to the store parity test), actions `authorization_test.go`, `fixture_test.go`, `store_test.go`.
+
+### Deferred
+
+- The migration partial unique index and CHECK lists remain SQL literals by nature; they are guarded by the schema parity test rather than generated.

@@ -28,7 +28,7 @@ func TestEpisodeLedgerFacadeOnlyDelegates(t *testing.T) {
 				continue
 			}
 			target := "app"
-			if slices.Contains([]string{"IsTerminalAttempt"}, function.Name.Name) {
+			if slices.Contains([]string{"IsTerminalAttempt", "LifecycleSQL", "AttemptSQL"}, function.Name.Name) {
 				target = "domain"
 			} else if !slices.Contains(episodeLedgerOperations, function.Name.Name) {
 				t.Errorf("%s: %s is not an episode ledger operation", file.rel, function.Name)

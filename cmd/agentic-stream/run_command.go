@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
 )
 
@@ -30,7 +31,7 @@ func (f *runFlags) register(cmd *cobra.Command) {
 	cmd.Flags().String("spec", "", "Path to the SituationSpec YAML file")
 	cmd.Flags().String("trace", "", "Path to the JSONL trace file")
 	cmd.Flags().StringVar(&f.dbPath, "db", "", "SQLite database path (default: <trace>.replay.db)")
-	cmd.Flags().StringVar(&f.tenantID, "tenant", "default", "Tenant ID")
+	cmd.Flags().StringVar(&f.tenantID, "tenant", contractsv1.TenantID, "Tenant ID")
 	cmd.Flags().IntVar(&f.repeat, "repeat", 1, "Replay N times in fresh databases and fail unless every Situation history hash is identical")
 	cmd.Flags().StringVar(&f.sourceDB, "source-db", "", "Live runtime database whose recorded decisions every replayed episode must match (opened read-only)")
 	cmd.Flags().StringVar(&f.workerSocket, "worker-socket", "", "Shadow mode: candidate EpisodeWorker Unix socket, paired with the deterministic baseline on every replayed episode")

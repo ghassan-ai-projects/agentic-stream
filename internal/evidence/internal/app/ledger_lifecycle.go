@@ -7,6 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 func (l *Ledger) Complete(ctx context.Context, reservation ledgerReservation, result QueryResult) error {
@@ -14,8 +15,7 @@ func (l *Ledger) Complete(ctx context.Context, reservation ledgerReservation, re
 		return fmt.Errorf("evidence ledger is not configured")
 	}
 	now := l.now()
-	// Persist even when the caller was canceled; keep its values (trace).
-	persistenceCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	persistenceCtx, cancel := sources.DetachedContext(ctx)
 	defer cancel()
 	err := l.Store.WithTx(persistenceCtx, func(tx *store.Tx) error { return l.completeTx(persistenceCtx, tx, reservation, result, now) })
 	if err != nil {
@@ -38,8 +38,7 @@ func (l *Ledger) Fail(ctx context.Context, reservation ledgerReservation, code s
 	if l == nil || !l.Store.Configured() {
 		return fmt.Errorf("evidence ledger is not configured")
 	}
-	// Persist even when the caller was canceled; keep its values (trace).
-	persistenceCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	persistenceCtx, cancel := sources.DetachedContext(ctx)
 	defer cancel()
 	now := l.now()
 	err := l.Store.WithTx(persistenceCtx, func(tx *store.Tx) error { return l.failTx(persistenceCtx, tx, reservation, code, now) })

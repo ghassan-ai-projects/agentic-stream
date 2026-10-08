@@ -1,16 +1,15 @@
 package domain
 
-import "fmt"
+import (
+	"cmp"
+	"fmt"
 
-// DefaultTenant is the tenant a source uses when none is configured.
-const DefaultTenant = "default"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+)
 
 // TenantOrDefault names the default tenant when none is configured.
 func TenantOrDefault(tenantID string) string {
-	if tenantID == "" {
-		return DefaultTenant
-	}
-	return tenantID
+	return cmp.Or(tenantID, contractsv1.TenantID)
 }
 
 // JSONLConnectorID is the connector identity of a normalized JSONL trace.

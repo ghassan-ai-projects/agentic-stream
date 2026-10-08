@@ -13,6 +13,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/remote"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
@@ -65,7 +66,7 @@ func shadowEpisodeRequest(input domain.ShadowInput) (*episodes.Request, error) {
 		ExecutorName: input.Request.ExecutorName, ExecutorVersion: input.Request.ExecutorVersion, ModelPolicy: input.Request.ModelPolicy,
 		PromptVersion: input.Request.PromptVersion, PromptSHA256: prompt.PromptSHA256, ObjectiveSHA256: prompt.ObjectiveSHA256,
 		SnapshotSHA256: input.Request.SnapshotSHA256, AttemptID: input.AttemptID, Fence: input.Fence,
-		RequestJSON: input.Request.RequestJSON, DispatchPolicy: "shadow",
+		RequestJSON: input.Request.RequestJSON, DispatchPolicy: spec.DispatchShadow,
 	}, nil
 }
 

@@ -31,7 +31,7 @@ func admission(id string) domain.Admission {
 	return domain.Admission{
 		EpisodeID: id, SchedulerItemID: "item-" + id, Kind: "standard", TenantID: "t", SituationID: "s-" + id, SituationVersion: 1,
 		ExecutorName: "x", ExecutorVersion: "v", ModelPolicy: "p", PromptVersion: "v1",
-		SnapshotSHA256: digest, PromptSHA256: digest, ObjectiveSHA256: digest, AdmissionKey: append([]byte(id), digest[len(id):]...), RequestJSON: []byte("{}"),
+		SnapshotSHA256: digest, PromptSHA256: digest, ObjectiveSHA256: digest, AdmissionKey: append([]byte(id), digest[len(id):]...), RequestJSON: []byte("{}"), DispatchPolicy: "shadow",
 	}
 }
 

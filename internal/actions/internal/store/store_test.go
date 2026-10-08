@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
@@ -219,7 +221,7 @@ func TestAuthorizationRecordsProjectTheLedgerJoin(t *testing.T) {
 			t.Fatal(err)
 		}
 		if records.Command.ID != commandID || records.Intent.ID != "int-action" || records.Decision.EpisodeID != "epi-action" ||
-			records.Episode.Lifecycle != "concluded" || records.Situation.LastMaterialVersion != 1 || records.Approval.Present {
+			!records.Episode.ProducedDecision || records.Situation.LastMaterialVersion != 1 || records.Approval.Present {
 			t.Fatalf("records = %+v", records)
 		}
 		if _, err := records.VerifiedCommand(); err != nil {
@@ -251,6 +253,29 @@ func TestAuthorizationRecordsCarryTheCatalogApprovalRequirement(t *testing.T) {
 			return nil
 		})
 	}
+}
+
+func TestAuthorizationRecordsBindOneApprovedApprovalWhenDecisionsTie(t *testing.T) {
+	t.Parallel()
+	db, commandID := openActionFixture(t)
+	for _, approval := range []struct{ id, expiresAt string }{{"approval-b", "2031-01-01T00:00:00Z"}, {"approval-a", "2032-01-01T00:00:00Z"}} {
+		if _, err := db.ExecContext(t.Context(), `INSERT INTO approvals (approval_id, intent_id, status, requested_at, expires_at, decided_at, approval_json)
+			VALUES (?, 'int-action', 'approved', '2030-01-01T00:00:00Z', ?, '2030-01-02T00:00:00Z', X'7B7D')`, approval.id, approval.expiresAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inTx(t, db, func(tx *Tx) error { return tx.MarkCommandDispatching(t.Context(), commandID, time.Now().UTC()) })
+	inTx(t, db, func(tx *Tx) error {
+		records, err := tx.LoadAuthorizationRecords(t.Context(), commandID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := domain.ApprovalRow{ID: "approval-b", ExpiresAt: "2031-01-01T00:00:00Z", Present: true}
+		if records.Approval != want {
+			t.Fatalf("approval = %+v, want %+v", records.Approval, want)
+		}
+		return nil
+	})
 }
 
 func TestOutcomesAppendWithIncreasingOrdinals(t *testing.T) {
@@ -422,5 +447,23 @@ func assertNotification(t *testing.T, db *storage.DB, eventType string) {
 	}
 	if tenant != "tenant" || source != notify.SourceForTenant("tenant") {
 		t.Fatalf("%s tenant/source = %q/%q", eventType, tenant, source)
+	}
+}
+
+func TestAuthorizationEpisodeFollowsTheLedgerDecisionPredicate(t *testing.T) {
+	t.Parallel()
+	db, commandID := openActionFixture(t)
+	inTx(t, db, func(tx *Tx) error { return tx.MarkCommandDispatching(t.Context(), commandID, time.Now().UTC()) })
+	for _, lifecycle := range []episodeledger.LifecycleStatus{episodeledger.LifecycleAdmitted, episodeledger.LifecycleRunning, episodeledger.LifecycleConcluded, episodeledger.LifecycleClosed, episodeledger.LifecycleSuperseded, episodeledger.LifecycleExpired, episodeledger.LifecycleAbandoned} {
+		if _, err := db.ExecContext(t.Context(), "UPDATE episodes SET lifecycle_status = ?", string(lifecycle)); err != nil {
+			t.Fatal(err)
+		}
+		inTx(t, db, func(tx *Tx) error {
+			records, err := tx.LoadAuthorizationRecords(t.Context(), commandID)
+			if err != nil || records.Episode.ProducedDecision != lifecycle.ProducedDecision() {
+				t.Errorf("lifecycle %s: producedDecision=%v err=%v", lifecycle, records.Episode.ProducedDecision, err)
+			}
+			return nil
+		})
 	}
 }

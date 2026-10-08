@@ -23,14 +23,14 @@ func (t *Tx) CancelCoalescedAttempts(ctx context.Context, situationID string) er
 	return nil
 }
 
-const supersedeCoalescedEpisodesSQL = `
+var supersedeCoalescedEpisodesSQL = `
 		UPDATE episodes SET lifecycle_status = 'superseded', ended_at = ?
 		WHERE scheduler_item_id IN (
 			SELECT scheduler_item_id FROM scheduler_items
 			WHERE situation_id = ? AND status = 'coalesced'
-		) AND lifecycle_status IN ('admitted', 'running')`
+		) AND lifecycle_status IN ` + liveLifecycles
 
-const cancelCoalescedAttemptsSQL = `
+var cancelCoalescedAttemptsSQL = `
 		UPDATE episode_attempts SET status = 'cancelling'
 		WHERE episode_id IN (
 			SELECT episode_id FROM episodes
@@ -38,4 +38,4 @@ const cancelCoalescedAttemptsSQL = `
 				SELECT scheduler_item_id FROM scheduler_items
 				WHERE situation_id = ? AND status = 'coalesced'
 			) AND lifecycle_status = 'superseded'
-		) AND status IN ('dispatched', 'running')`
+		) AND status IN ` + inFlightAttempts

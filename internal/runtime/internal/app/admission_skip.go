@@ -19,7 +19,7 @@ func (a *Admitter) skipUnadmittable(ctx context.Context, itemID string, now time
 	switch {
 	case errors.Is(err, runtimecontrol.ErrCostReservationRejected):
 		return true, a.skipCostRejected(ctx, itemID, now, err)
-	case refused.Kind == domain.ReconsiderKind && errors.Is(err, episodeledger.ErrLiveEpisodeConflict):
+	case refused.Kind == episodeledger.KindReconsider && errors.Is(err, episodeledger.ErrLiveEpisodeConflict):
 		return true, a.skipLiveReconsideration(ctx, itemID, now, refused, err)
 	case errors.Is(err, domain.ErrFixtureRejected):
 		return true, a.skipFixture(ctx, itemID, now, refused, err)

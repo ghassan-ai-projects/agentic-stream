@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 )
 
@@ -68,11 +69,13 @@ func LiveSituationVersion(ctx context.Context, tx *Tx, tenantID, situationID str
 	return liveVersion, nil
 }
 
+var countFailedAttemptsSQL = `SELECT COUNT(*) FROM episode_attempts WHERE episode_id = ? AND status IN ` + episodeledger.AttemptSQL(episodeledger.AttemptStatus.CountsAsFailure)
+
 // CountFailedAttempts counts an episode's attempts in the three failure
 // statuses the retry budget counts.
 func CountFailedAttempts(ctx context.Context, tx *Tx, episodeID string) (int, error) {
 	var failedAttempts int
-	if err := tx.tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM episode_attempts WHERE episode_id = ? AND status IN ('failed', 'timed_out', 'cancelled')`, episodeID).Scan(&failedAttempts); err != nil {
+	if err := tx.tx.QueryRowContext(ctx, countFailedAttemptsSQL, episodeID).Scan(&failedAttempts); err != nil {
 		return 0, fmt.Errorf("count failed attempts: %w", err)
 	}
 	return failedAttempts, nil

@@ -6,6 +6,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 // RequestDigests are the decoded immutable admission provenance.
@@ -34,7 +35,7 @@ func AdmittedEpisode(req *Request, digests RequestDigests) episodeledger.Admissi
 		ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion, ModelPolicy: req.ModelPolicy,
 		PromptVersion: req.PromptVersion, SnapshotSHA256: digests.snapshot, PromptSHA256: digests.prompt,
 		ObjectiveSHA256: digests.objective, AdmissionKey: req.AdmissionKey, RequestJSON: req.RequestJSON,
-		DispatchPolicy: req.DispatchPolicy, PolicyEpoch: req.PolicyEpoch}
+		DispatchPolicy: spec.EffectiveDispatchPolicy(req.DispatchPolicy), PolicyEpoch: req.PolicyEpoch}
 }
 
 // RebindRequest refreshes the snapshot while preserving the admission evidence.

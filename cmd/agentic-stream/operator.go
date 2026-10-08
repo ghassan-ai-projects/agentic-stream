@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -23,7 +24,7 @@ type operatorFlags struct {
 
 func (f *operatorFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.dbPath, "db", "", "Runtime SQLite database path")
-	cmd.Flags().StringVar(&f.tenantID, "tenant", "default", "Tenant ID")
+	cmd.Flags().StringVar(&f.tenantID, "tenant", contractsv1.TenantID, "Tenant ID")
 	cmd.Flags().BoolVar(&f.asJSON, "json", false, "Emit JSON instead of text")
 }
 

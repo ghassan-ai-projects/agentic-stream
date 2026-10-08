@@ -12,9 +12,6 @@ var ErrFixtureRejected = errors.New("fixture executor rejected")
 // FixtureExecutor names the demo and test executor.
 const FixtureExecutor = "fixture"
 
-// ReconsiderKind is the scheduler item kind of a reconsideration.
-const ReconsiderKind = "reconsider"
-
 // AdmissionAttempt identifies the request an admission assembled, so a refusal
 // can be reported against it.
 type AdmissionAttempt struct {

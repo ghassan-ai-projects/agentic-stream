@@ -121,12 +121,3 @@ func TestFireRequiresIdentity(t *testing.T) {
 		t.Fatal("fire without a watch ID was accepted")
 	}
 }
-
-func TestExpireWaitHonorsCancellation(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if err := app.AwaitRetry(ctx); !errors.Is(err, context.Canceled) {
-		t.Fatalf("retry wait = %v", err)
-	}
-}

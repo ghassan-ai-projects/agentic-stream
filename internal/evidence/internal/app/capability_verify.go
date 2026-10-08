@@ -42,7 +42,7 @@ func (v *Verifier) checkValidity(scope Scope) error {
 	if v.Now != nil {
 		now = v.Now().UTC()
 	}
-	maxTTL := cmp.Or(v.MaxTTL, defaultCapabilityTTL)
+	maxTTL := cmp.Or(v.MaxTTL, domain.DefaultCapabilityTTL)
 	return domain.CheckValidity(scope, now, maxTTL, cmp.Or(v.ClockSkew, time.Second))
 }
 

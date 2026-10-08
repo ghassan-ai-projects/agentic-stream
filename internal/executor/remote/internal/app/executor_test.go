@@ -218,7 +218,7 @@ func validWorkerRequest() *episodes.Request {
 		PromptVersion: "prompt-v1", SnapshotSHA256: "sha256:" + "00" + "00000000000000000000000000000000000000000000000000000000000000",
 		AttemptID: "attempt-1", Fence: 7, Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
 		PromptSHA256: promptDigest, ObjectiveSHA256: objectiveDigest,
-		RequestJSON: []byte(fmt.Sprintf(`{"kind":"diagnose","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","prompt_sha256":%q,"objective_sha256":%q,"decision_schema":{"type":"object"},"intent_catalog":%s,"intent_catalog_sha256":%q},"budget":{"wall_time":"1m"}}`, promptDigest, objectiveDigest, string(intentCatalogJSON), intentDigest)),
+		RequestJSON: []byte(fmt.Sprintf(`{"kind":"standard","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","prompt_sha256":%q,"objective_sha256":%q,"decision_schema":{"type":"object"},"intent_catalog":%s,"intent_catalog_sha256":%q},"budget":{"wall_time":"1m"}}`, promptDigest, objectiveDigest, string(intentCatalogJSON), intentDigest)),
 	}
 }
 

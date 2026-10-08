@@ -1,6 +1,6 @@
 # DUP-024: Detached 5 s persistence idiom (five sites) and watch retry loop that copies storage retry
 
-- Status: open
+- Status: fixed
 - Severity: low
 - Verdict (finders): DIVERGED, REAL
 - Themes: business rules, mechanisms
@@ -46,4 +46,18 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Not started.
+Verified (all by re-opening the sites): the five-second detach-and-bound idiom was confirmed at evidence `Complete` and `Fail`, episodes `executor.go`, device `requireReconciliation` (through `reconciliationPersistTimeout`) and `serveHTTP` shutdown in `cmd/agentic-stream/serve.go`. The watch retry loop was confirmed as a diverged copy of `storage.RetrySQLiteBusy` (3 attempts, flat 250 ms versus 6 attempts, 25 ms doubling to 1 s). `store.IsContended` was a one-line alias of `storage.IsSQLiteBusy`. One related site was not part of the idiom and was left alone: `cmd/agentic-stream/operator.go:55` uses `WithoutCancel` with no bound (owner release).
+
+Changed:
+- New `internal/sources/internal/domain/detached.go` (`PersistGrace = 5s`, `DetachedContext`) and facade `internal/sources/detached.go` (`sources.PersistGrace`, `sources.DetachedContext`). It keeps the caller's values and drops its cancellation and deadline.
+- The five sites now call `sources.DetachedContext(ctx)`: `internal/evidence/internal/app/ledger_lifecycle.go` (two), `internal/episodes/internal/app/executor.go`, `internal/device/internal/app/session_reconcile.go` (constant removed from `session_state.go`), `cmd/agentic-stream/serve.go`. The two "Persist even when the caller was canceled" comments were removed with the idiom (no comments allowed inside modules).
+- `architecture_test.go`: allowedImports edge `internal/device/internal/app -> internal/sources`.
+- Watch: `internal/watch/internal/domain/retry.go` deleted; `retryWhileContended`/`awaitRetry` and `store.IsContended` deleted; `Store.RetryBusy` (calls `storage.RetrySQLiteBusy`, same shape as the engine store) added in `internal/watch/internal/store/tx.go`; `Service.Expire` in `internal/watch/internal/app/expire.go` wraps the result once as `expire watch conditions`.
+
+Decisions: the shared `sources` module owns the helper because evidence, episodes and cmd already import it, and device needed one edge. The watch retry policy deliberately changes to the storage policy (6 attempts, exponential backoff), as the issue asks. Consequence: the expiry tick can now block up to about 1.5 s under sustained contention instead of about 0.5 s. The wait is still cancellable, and the next tick retries.
+
+Test changes: `TestWatchEffectorExpireRetriesAfterSQLiteBusy` now asserts elapsed >= 100 ms (the lock release time) rather than 200 ms, because the new schedule (0, 25, 75, 175 ms) can legitimately succeed at 175 ms. The setup moved into the helper `lockExpiringWatch`. `TestExpireWaitHonorsCancellation` and `app.AwaitRetry` (export_test.go) were replaced by `TestWatchExpireHonorsCancellationWhileContended`. `TestContentionClassification` (store) was removed with `IsContended`; `storage_test.go` already covers `IsSQLiteBusy`.
+
+Pinning tests: `TestDetachedContextKeepsValuesDropsCancellationAndIsBounded` (internal/sources), `TestWatchEffectorExpireRetriesAfterSQLiteBusy`, `TestWatchExpireHonorsCancellationWhileContended`; the engine and storage retry tests cover the shared helper.
+
+Deferred: the timer-and-select waits (`waitForSQLiteRetry`, `waitProviderRetry`, `retryAccept`) are not exact copies (different error text, one returns a bool, different modules), so they were not folded.

@@ -13,6 +13,7 @@ type EvidenceScope struct {
 	EntityID string
 	MaxRows  uint64
 	MaxBytes uint64
+	Window   time.Duration
 }
 
 // EvidenceQuery is a scoped, bounded evidence read.
@@ -30,7 +31,7 @@ type evidenceArguments struct {
 }
 
 // Query applies the caller's arguments to the scope. The window defaults to the
-// 24 hours before now.
+// scope's Window before now.
 func (s EvidenceScope) Query(raw json.RawMessage, now time.Time) (EvidenceQuery, error) {
 	var args evidenceArguments
 	if err := json.Unmarshal(raw, &args); err != nil {
@@ -43,7 +44,7 @@ func (s EvidenceScope) Query(raw json.RawMessage, now time.Time) (EvidenceQuery,
 }
 
 func (s EvidenceScope) scopedQuery(args evidenceArguments, now time.Time) (EvidenceQuery, error) {
-	query := EvidenceQuery{From: now.Add(-24 * time.Hour), Until: now, MaxRows: s.MaxRows, MaxBytes: s.MaxBytes}
+	query := EvidenceQuery{From: now.Add(-s.Window), Until: now, MaxRows: s.MaxRows, MaxBytes: s.MaxBytes}
 	if args.MaxRows > 0 && args.MaxRows < query.MaxRows {
 		query.MaxRows = args.MaxRows
 	}

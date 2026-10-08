@@ -34,3 +34,24 @@ func testCapabilities(t *testing.T, cfg evidence.CapabilityConfig) *evidence.Ser
 	}
 	return service
 }
+
+func TestAttemptCapabilityDefaultExpiryFollowsTheIssuerMaximum(t *testing.T) {
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	keys := map[string][]byte{"k1": []byte("01234567890123456789012345678901")}
+	for name, tc := range map[string]struct{ maxTTL, want time.Duration }{
+		"unset maximum":    {0, 15 * time.Minute},
+		"shorter maximum":  {5 * time.Minute, 5 * time.Minute},
+		"explicit maximum": {time.Hour, time.Hour},
+	} {
+		service := testCapabilities(t, evidence.CapabilityConfig{Issuer: "runtime", Audience: "evidence-tools", KeyID: "k1", Keys: keys, MaxTTL: tc.maxTTL, Now: func() time.Time { return now }})
+		factory := &AttemptCapabilityIssuer{Issuer: service, RuntimeEpoch: "epoch-1", Tools: []string{"evidence.get"}, From: now.Add(-time.Hour), Until: now, MaxRows: 10, MaxBytes: 1024}
+		token, err := factory.Issue(&episodes.Request{EpisodeID: "episode-1", AttemptID: "attempt-1", Fence: 2, TenantID: "tenant-1", SituationID: "situation-1", SituationVersion: 3, EntityID: "motor-1", Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"})
+		if err != nil {
+			t.Fatalf("%s: issue: %v", name, err)
+		}
+		scope, err := service.Verify(token)
+		if err != nil || !scope.ExpiresAt.Equal(now.Add(tc.want)) {
+			t.Errorf("%s: expires %v (err %v), want %v", name, scope.ExpiresAt, err, now.Add(tc.want))
+		}
+	}
+}

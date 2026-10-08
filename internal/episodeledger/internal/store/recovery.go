@@ -74,24 +74,23 @@ func (t *Tx) EpisodeLifecycle(ctx context.Context, episodeID string) (domain.Lif
 	return lifecycle, nil
 }
 
-const unfinishedAttemptsSQL = `
+var unfinishedAttemptsSQL = `
 		SELECT attempt_id, episode_id, status, COALESCE(owner_epoch, '')
 		FROM episode_attempts
-		WHERE status IN ('dispatched', 'running', 'cancelling')
+		WHERE status IN ` + unfinishedAttempts + `
 		  AND (owner_epoch IS NULL OR owner_epoch <> ?)`
 
-const abandonAttemptSQL = `
+var abandonAttemptSQL = `
 		UPDATE episode_attempts
 		SET status = 'abandoned', ended_at = ?, terminal_json = ?
 		WHERE attempt_id = ? AND episode_id = ?
-		  AND status IN ('dispatched', 'running', 'cancelling')`
+		  AND status IN ` + unfinishedAttempts
 
-const abandonCancelingEpisodeSQL = `
+var abandonCancelingEpisodeSQL = `
 		UPDATE episodes
 		SET lifecycle_status = 'abandoned', ended_at = ?,
 		    terminal_json = ?
-		WHERE episode_id = ? AND lifecycle_status NOT IN
-		    ('concluded', 'closed', 'superseded', 'expired', 'abandoned')`
+		WHERE episode_id = ? AND lifecycle_status NOT IN ` + closedLifecycles
 
 // Settler settles or releases the cost reservation of an episode on the
 // caller's transaction. The runtime's cost ledger satisfies it.

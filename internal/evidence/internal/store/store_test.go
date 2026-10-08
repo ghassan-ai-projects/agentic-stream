@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -130,5 +132,41 @@ func TestStorePreservesOwnerAndDatabaseErrors(t *testing.T) {
 	}
 	if err := s.WithTx(t.Context(), func(*Tx) error { return nil }); err == nil {
 		t.Fatal("closed db accepted")
+	}
+}
+
+func TestEpisodeAndAttemptStateFollowTheLedgerPredicates(t *testing.T) {
+	db := openLedgerDB(t)
+	s := New(db, func(context.Context, *sql.Tx, string) error { return nil }, "epoch-1")
+	call := ledgerTestCall()
+	for _, lifecycle := range []episodeledger.LifecycleStatus{episodeledger.LifecycleAdmitted, episodeledger.LifecycleRunning, episodeledger.LifecycleConcluded, episodeledger.LifecycleClosed, episodeledger.LifecycleSuperseded, episodeledger.LifecycleExpired, episodeledger.LifecycleAbandoned} {
+		if _, err := db.ExecContext(t.Context(), "UPDATE episodes SET lifecycle_status = ?", string(lifecycle)); err != nil {
+			t.Fatal(err)
+		}
+		err := s.WithTx(t.Context(), func(tx *Tx) error {
+			live, err := tx.LiveEpisode(t.Context(), call)
+			if err != nil || live.Closed != lifecycle.Closed() || live.Running != (lifecycle == episodeledger.LifecycleRunning) {
+				t.Errorf("lifecycle %s: live=%+v err=%v", lifecycle, live, err)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, attempt := range []episodeledger.AttemptStatus{episodeledger.AttemptDispatched, episodeledger.AttemptRunning, episodeledger.AttemptCancelling, episodeledger.AttemptProduced, episodeledger.AttemptDeclined, episodeledger.AttemptCancelled, episodeledger.AttemptFailed, episodeledger.AttemptTimedOut, episodeledger.AttemptAbandoned} {
+		if _, err := db.ExecContext(t.Context(), "UPDATE episode_attempts SET status = ?", string(attempt)); err != nil {
+			t.Fatal(err)
+		}
+		err := s.WithTx(t.Context(), func(tx *Tx) error {
+			inFlight, err := tx.LiveAttempt(t.Context(), call)
+			if err != nil || inFlight != attempt.InFlight() {
+				t.Errorf("attempt %s: inFlight=%v err=%v", attempt, inFlight, err)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }

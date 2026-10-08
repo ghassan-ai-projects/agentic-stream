@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
@@ -112,5 +113,14 @@ func TestEvidenceToolRejectsOutOfScopeArguments(t *testing.T) {
 	}
 	if _, err := (&SQLiteEvidenceTool{}).Call(t.Context(), json.RawMessage(`{}`)); err == nil {
 		t.Error("an unconfigured tool answered a call")
+	}
+}
+
+func TestEvidenceToolStartsWithTheEvidenceReadBudget(t *testing.T) {
+	t.Parallel()
+
+	tool := NewSQLiteEvidenceTool(nil, "evidence.get", "tenant-1", "motor-1")
+	if tool.maxRows != evidence.DefaultReadMaxRows || tool.maxBytes != evidence.DefaultReadMaxBytes {
+		t.Errorf("budget = %d rows, %d bytes", tool.maxRows, tool.maxBytes)
 	}
 }

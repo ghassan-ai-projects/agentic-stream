@@ -90,3 +90,12 @@ const (
 
 // IsTerminalAttempt reports whether an attempt state is terminal.
 func IsTerminalAttempt(status AttemptStatus) bool { return domain.IsTerminalAttempt(status) }
+
+// LifecycleSQL renders the lifecycle statuses accepted by member as a SQL
+// value list, for example LifecycleSQL(LifecycleStatus.Live). A query built
+// from it selects exactly what the Go predicate selects.
+func LifecycleSQL(member func(LifecycleStatus) bool) string { return domain.LifecycleSQL(member) }
+
+// AttemptSQL renders the attempt statuses accepted by member as a SQL value
+// list, for example AttemptSQL(AttemptStatus.Unfinished).
+func AttemptSQL(member func(AttemptStatus) bool) string { return domain.AttemptSQL(member) }

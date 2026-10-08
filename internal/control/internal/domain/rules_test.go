@@ -49,9 +49,6 @@ func TestOnlyDrainAndKillAreControllable(t *testing.T) {
 
 func TestOwnerRules(t *testing.T) {
 	t.Parallel()
-	if LeaseDuration(0) != DefaultLease || LeaseDuration(-time.Second) != DefaultLease || LeaseDuration(time.Hour) != time.Hour {
-		t.Fatal("lease default not applied")
-	}
 	if err := CheckHolder(Holder{"e", "i"}, "e", "i"); err != nil {
 		t.Fatalf("own lease refused: %v", err)
 	}

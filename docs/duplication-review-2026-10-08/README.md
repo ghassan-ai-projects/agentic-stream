@@ -55,8 +55,8 @@ than one place, so that one change needs several edits and can diverge.
 | [DUP-001](issues/DUP-001-risk-class-and-approval-requirement.md) | Risk class order, routes and "needs approval" are decided in eight places | high (probable bug) | fixed | 1 |
 | [DUP-002](issues/DUP-002-timestamp-parse-format-and-expiry.md) | Durable timestamps: one writer, one parser, one expiry rule (layout unchanged) | medium | open | 2 |
 | [DUP-003](issues/DUP-003-ordered-timestamp-columns.md) | Text-compared timestamp columns mix fixed-width and variable-width encodings | high (latent bug) | needs-decision | - |
-| [DUP-004](issues/DUP-004-episode-lifecycle-and-attempt-state-sets.md) | Episode lifecycle and attempt state sets are re-spelled as literals and SQL lists | high | open | 2 |
-| [DUP-005](issues/DUP-005-dispatch-policy-and-episode-vocabulary.md) | Dispatch policy (shadow/active), kind and lane vocabularies; unset must mean shadow everywhere | high (fail-open polarity) | open | 2 |
+| [DUP-004](issues/DUP-004-episode-lifecycle-and-attempt-state-sets.md) | Episode lifecycle and attempt state sets are re-spelled as literals and SQL lists | high | fixed | 2 |
+| [DUP-005](issues/DUP-005-dispatch-policy-and-episode-vocabulary.md) | Dispatch policy (shadow/active), kind and lane vocabularies; unset must mean shadow everywhere | high (fail-open polarity) | fixed | 2 |
 | [DUP-006](issues/DUP-006-unresolved-command-outcomes.md) | The "unresolved command outcome" set differs between actions and the soak report | high (probable bug) | fixed | 1 |
 | [DUP-007](issues/DUP-007-stored-document-verification.md) | Stored intent/decision/snapshot/command verification is implemented separately in twelve places | high | open | 3 |
 | [DUP-008](issues/DUP-008-digest-primitives.md) | Digest plumbing: Digest-then-Decode, Marshal-then-Digest, raw SHA-256 and hand-built sha256: strings | medium | open | 2 |
@@ -64,7 +64,7 @@ than one place, so that one change needs several edits and can diverge.
 | [DUP-010](issues/DUP-010-situation-state-document.md) | The situation state document is written as a map in situations and read as a struct in engine | medium | open | 3 |
 | [DUP-011](issues/DUP-011-hash-derived-ids-and-prefixes.md) | Hash-derived identities: eleven spellings and prefix literals outside sources | medium | open | 3 |
 | [DUP-012](issues/DUP-012-vocabulary-constants.md) | Approval and completeness vocabularies re-typed as literals although the owner exports constants | low | open | 3 |
-| [DUP-013](issues/DUP-013-approvals-lookups.md) | pending and latest-approved approval lookups are written in policy and actions | medium | open | 2 |
+| [DUP-013](issues/DUP-013-approvals-lookups.md) | pending and latest-approved approval lookups are written in policy and actions | medium | fixed | 2 |
 | [DUP-014](issues/DUP-014-episode-fence-and-attempt-reads.md) | Episode fence and attempt-status point reads are re-written in evidence and episodes | medium | open | 2 |
 | [DUP-015](issues/DUP-015-runtime-owner-and-ownership-fence.md) | The runtime_owner lease check is re-implemented in episodeledger and the ownership fence port is declared about ten times | medium | open | 3 |
 | [DUP-016](issues/DUP-016-due-scheduler-items-live-vs-replay.md) | Which pending scheduler items are due is written twice, with different rules, for live and replay | high | needs-decision | - |
@@ -74,8 +74,8 @@ than one place, so that one change needs several edits and can diverge.
 | [DUP-020](issues/DUP-020-offline-schema-compiler.md) | The offline JSON-Schema compiler is copied in four modules | medium | fixed | 1 |
 | [DUP-021](issues/DUP-021-sqlite-error-classification.md) | SQLite constraint classification lives in episodeledger and depends on message text | low | fixed | 1 |
 | [DUP-022](issues/DUP-022-cmd-reimplements-owner-rules.md) | cmd re-derives rules and shapes owned by device, watch and replay | medium | fixed | 1 |
-| [DUP-023](issues/DUP-023-numeric-defaults.md) | One-minute lease, capability TTL, evidence read budget and tenant default stated in several modules | low | open | 2 |
-| [DUP-024](issues/DUP-024-detached-context-and-busy-retry.md) | Detached 5 s persistence idiom (five sites) and watch retry loop that copies storage retry | low | open | 2 |
+| [DUP-023](issues/DUP-023-numeric-defaults.md) | One-minute lease, capability TTL, evidence read budget and tenant default stated in several modules | low | fixed | 2 |
+| [DUP-024](issues/DUP-024-detached-context-and-busy-retry.md) | Detached 5 s persistence idiom (five sites) and watch retry loop that copies storage retry | low | fixed | 2 |
 | [DUP-025](issues/DUP-025-notification-identity.md) | approval.withdrawn is built in two places with different payloads; notification ids and sources drift | medium | fixed | 1 |
 | [DUP-026](issues/DUP-026-deadline-and-cancel-classification.md) | Execution deadline and cancel are classified three ways across executors | medium | open | 3 |
 | [DUP-027](issues/DUP-027-clock-defaulting.md) | Nil-clock defaulting and wall-clock reads that bypass the injected clock | low | open | 2 |

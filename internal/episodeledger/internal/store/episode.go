@@ -39,14 +39,15 @@ func (t *Tx) RetainEpisodeForRetry(ctx context.Context, episodeID string) error 
 
 // SupersedeEpochEpisodes cancels the in-flight episodes of a killed epoch.
 func (t *Tx) SupersedeEpochEpisodes(ctx context.Context, epoch, now string) error {
-	if _, err := t.q.ExecContext(ctx, `
-		UPDATE episodes SET lifecycle_status = 'superseded', ended_at = ?
-		WHERE policy_epoch = ? AND lifecycle_status IN ('admitted', 'running')`,
-		now, epoch); err != nil {
+	if _, err := t.q.ExecContext(ctx, supersedeEpochEpisodesSQL, now, epoch); err != nil {
 		return fmt.Errorf("supersede in-flight episodes of killed epoch: %w", err)
 	}
 	return nil
 }
+
+var supersedeEpochEpisodesSQL = `
+		UPDATE episodes SET lifecycle_status = 'superseded', ended_at = ?
+		WHERE policy_epoch = ? AND lifecycle_status IN ` + liveLifecycles
 
 func (t *Tx) write(ctx context.Context, query string, args ...any) error {
 	if _, err := t.q.ExecContext(ctx, query, args...); err != nil {

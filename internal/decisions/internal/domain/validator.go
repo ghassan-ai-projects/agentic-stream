@@ -26,7 +26,7 @@ type Input struct {
 	AllowedIntentTypes map[string]struct{}
 	RiskCeiling        string
 	IntentCatalog      *IntentCatalog
-	Kind               string
+	Reconsider         bool
 	Now                time.Time
 }
 

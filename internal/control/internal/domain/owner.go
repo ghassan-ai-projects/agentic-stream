@@ -8,17 +8,6 @@ import (
 // ErrRuntimeOwnerBusy means another runtime currently owns the database lease.
 var ErrRuntimeOwnerBusy = errors.New("runtime owner lease is held by another process")
 
-// DefaultLease is the lease duration used when none is configured.
-const DefaultLease = time.Minute
-
-// LeaseDuration returns the configured lease, or the default.
-func LeaseDuration(lease time.Duration) time.Duration {
-	if lease > 0 {
-		return lease
-	}
-	return DefaultLease
-}
-
 // Holder identifies the owner recorded in the lease row.
 type Holder struct {
 	Epoch    string

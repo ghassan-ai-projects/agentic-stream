@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -25,7 +26,7 @@ type SQLiteEvidenceTool struct {
 
 // NewSQLiteEvidenceTool creates a scoped native evidence tool.
 func NewSQLiteEvidenceTool(db *storage.DB, name, tenantID, entityID string) *SQLiteEvidenceTool {
-	return &SQLiteEvidenceTool{db: db, name: name, tenantID: tenantID, entityID: entityID, maxRows: 1000, maxBytes: 1 << 20}
+	return &SQLiteEvidenceTool{db: db, name: name, tenantID: tenantID, entityID: entityID, maxRows: evidence.DefaultReadMaxRows, maxBytes: evidence.DefaultReadMaxBytes}
 }
 
 // Name returns the configured tool name.
@@ -37,7 +38,7 @@ func (t *SQLiteEvidenceTool) Call(ctx context.Context, raw json.RawMessage) (dom
 	if t == nil || t.db == nil || t.tenantID == "" || t.entityID == "" {
 		return domain.ToolResult{}, fmt.Errorf("evidence tool is not configured")
 	}
-	query, err := domain.EvidenceScope{EntityID: t.entityID, MaxRows: t.maxRows, MaxBytes: t.maxBytes}.Query(raw, time.Now().UTC())
+	query, err := domain.EvidenceScope{EntityID: t.entityID, MaxRows: t.maxRows, MaxBytes: t.maxBytes, Window: evidence.DefaultReadWindow}.Query(raw, time.Now().UTC())
 	if err != nil {
 		return domain.ToolResult{}, err
 	}

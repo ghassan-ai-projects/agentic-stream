@@ -11,7 +11,7 @@ names. The ledger runs every operation on the caller's transaction.
 | Episode | One bounded reasoning run admitted from a scheduler item | `Admission` | `episodes` |
 | Lifecycle | The episode's coordination state; not a Decision, intent or command | `LifecycleStatus` | `lifecycle_status` |
 | Admission | Persisting the episode and its identity once | `Admit` | `episodes` insert |
-| Dispatch policy | Whether the episode's intents enter governance; empty means shadow | `DispatchPolicy`, `DispatchShadow` | `dispatch_policy` |
+| Dispatch policy | Whether the episode's intents enter governance; the spec owns the vocabulary and the shadow default, the ledger stores the declared value | `DispatchPolicy`, `spec.DispatchShadow` | `dispatch_policy` |
 | Live episode conflict | A reconsideration colliding with the one live episode a Situation may have | `ErrLiveEpisodeConflict` | unique `situation_id` |
 | Attempt | One worker dispatch of an episode | `AttemptStatus` | `episode_attempts` |
 | Fence | Monotonic number of an episode's attempts; an older fence is stale | `Identity.Fence` | `current_fence`, `fence` |

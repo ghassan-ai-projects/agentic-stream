@@ -9,6 +9,12 @@ import (
 // DefaultCapabilityTTL bounds an unspecified capability lifetime.
 const DefaultCapabilityTTL = 15 * time.Minute
 
+const (
+	DefaultReadMaxRows  uint64 = 1000
+	DefaultReadMaxBytes uint64 = 1 << 20
+	DefaultReadWindow          = 24 * time.Hour
+)
+
 // PrepareScope defaults the validity window before a token identity is assigned.
 func PrepareScope(scope Scope, now time.Time, maxTTL time.Duration) (Scope, error) {
 	if scope.Traceparent == "" {

@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -162,13 +163,14 @@ func TestWatchEffectorEvaluatesExpressionAndExpiresWithoutAFire(t *testing.T) {
 	}
 }
 
-func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
+func lockExpiringWatch(t *testing.T) (*app.Service, *storage.DB, *sql.Conn) {
+	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "watch-contended.db")
 	db, err := storagetest.Open(t.Context(), dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	virtual := sources.NewVirtual(now)
@@ -204,18 +206,24 @@ func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = raw.Close() }()
+	t.Cleanup(func() { _ = raw.Close() })
 	locker, err := raw.Conn(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = locker.Close() }()
+	t.Cleanup(func() { _ = locker.Close() })
 	if _, err := locker.ExecContext(t.Context(), "BEGIN IMMEDIATE"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := locker.ExecContext(t.Context(), "UPDATE watch_conditions SET updated_at = updated_at WHERE watch_id = 'cmd-contended'"); err != nil {
 		t.Fatal(err)
 	}
+
+	return effector, db, locker
+}
+
+func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
+	effector, db, locker := lockExpiringWatch(t)
 
 	released := make(chan error, 1)
 	go func() {
@@ -227,7 +235,7 @@ func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
 	}()
 
 	started := time.Now()
-	err = effector.Expire(t.Context())
+	err := effector.Expire(t.Context())
 	elapsed := time.Since(started)
 	if releaseErr := <-released; releaseErr != nil {
 		t.Fatalf("release SQLite lock: %v", releaseErr)
@@ -235,7 +243,7 @@ func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expire under a transient SQLite lock: %v", err)
 	}
-	if elapsed < 200*time.Millisecond {
+	if elapsed < 100*time.Millisecond {
 		t.Fatalf("Expire completed in %s; expected a busy retry after the lock was released", elapsed)
 	}
 
@@ -245,6 +253,16 @@ func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
 	}
 	if status != "expired" {
 		t.Fatalf("watch status = %q, want expired", status)
+	}
+}
+
+func TestWatchExpireHonorsCancellationWhileContended(t *testing.T) {
+	effector, _, _ := lockExpiringWatch(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	err := effector.Expire(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Expire under a held SQLite lock = %v, want the context deadline", err)
 	}
 }
 

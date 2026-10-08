@@ -82,7 +82,7 @@ func assertLiveAttempt(ctx context.Context, tx *store.Tx, call Call) error {
 }
 
 func assertAttempt[K any](ctx context.Context, key K, loadEpisode func(context.Context, K) (domain.EpisodeState, error), checkEpisode func(domain.EpisodeState, K) error,
-	loadAttempt func(context.Context, K) (string, error), checkAttempt func(string) error) error {
+	loadAttempt func(context.Context, K) (bool, error), checkAttempt func(bool) error) error {
 	state, err := loadEpisode(ctx, key)
 	if err != nil {
 		return err
@@ -90,11 +90,11 @@ func assertAttempt[K any](ctx context.Context, key K, loadEpisode func(context.C
 	if err := checkEpisode(state, key); err != nil {
 		return err
 	}
-	status, err := loadAttempt(ctx, key)
+	inFlight, err := loadAttempt(ctx, key)
 	if err != nil {
 		return err
 	}
-	return checkAttempt(status)
+	return checkAttempt(inFlight)
 }
 func loadReservation(ctx context.Context, tx *store.Tx, pending ledgerReservation) (*ledgerReservation, error) {
 	row, err := tx.ReadReservation(ctx, pending.Key)

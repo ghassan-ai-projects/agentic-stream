@@ -8,7 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
@@ -30,7 +32,7 @@ func registerLiveBatchFlags(cmd *cobra.Command, flags *liveFlags) {
 	cmd.Flags().StringVar(&flags.dbPath, "db", "", "SQLite runtime database path")
 	cmd.Flags().StringVar(&flags.specPath, "spec", "", "SituationSpec YAML path")
 	cmd.Flags().StringVar(&flags.tracePath, "trace", "", "JSONL trace path")
-	cmd.Flags().StringVar(&flags.tenantID, "tenant", "default", "Tenant ID")
+	cmd.Flags().StringVar(&flags.tenantID, "tenant", contractsv1.TenantID, "Tenant ID")
 	cmd.Flags().StringVar(&flags.traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
 	flags.registerShared(cmd)
 }
@@ -80,7 +82,7 @@ func prepareLiveBatch(runCtx context.Context, flags liveFlags, stop context.Canc
 	if err != nil {
 		return nil, nil, fmt.Errorf("compile spec: %w", err)
 	}
-	core, err := openRuntimeCore(runCtx, flags.dbPath, time.Minute, cleanup)
+	core, err := openRuntimeCore(runCtx, flags.dbPath, sources.DefaultLease, cleanup)
 	if err != nil {
 		return nil, nil, err
 	}

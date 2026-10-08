@@ -87,5 +87,5 @@ func HasPreviousVersion(version int) bool { return version > 0 }
 
 // NewSchedulerItem binds an admitted evaluation to its pending queue record.
 func NewSchedulerItem(id string, eval Evaluation) episodeledger.SchedulerItem {
-	return episodeledger.SchedulerItem{SchedulerItemID: id, Kind: "standard", TriggerID: eval.TriggerID, SituationID: eval.SituationID, SituationVersion: eval.SituationVersion, Lane: eval.Lane, Priority: eval.Score, Status: "pending"}
+	return episodeledger.SchedulerItem{SchedulerItemID: id, Kind: episodeledger.KindStandard, TriggerID: eval.TriggerID, SituationID: eval.SituationID, SituationVersion: eval.SituationVersion, Lane: eval.Lane, Priority: eval.Score, Status: "pending"}
 }

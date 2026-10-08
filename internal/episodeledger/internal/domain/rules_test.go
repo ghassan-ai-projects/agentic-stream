@@ -140,12 +140,9 @@ func TestRejectionRules(t *testing.T) {
 	}
 }
 
-func TestAdmissionDefaultsAndConflictReporting(t *testing.T) {
+func TestAdmissionConflictReporting(t *testing.T) {
 	t.Parallel()
-	if (Admission{}).EffectiveDispatchPolicy() != DispatchShadow || (Admission{DispatchPolicy: "active"}).EffectiveDispatchPolicy() != "active" {
-		t.Fatal("dispatch policy default changed")
-	}
-	if !(Admission{Kind: KindReconsider}).ReportsLiveConflict() || (Admission{Kind: "standard"}).ReportsLiveConflict() {
+	if !(Admission{Kind: KindReconsider}).ReportsLiveConflict() || (Admission{Kind: KindStandard}).ReportsLiveConflict() {
 		t.Fatal("only reconsiderations report a live conflict")
 	}
 }

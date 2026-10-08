@@ -30,23 +30,14 @@ func (i *AttemptCapabilityIssuer) Issue(req *episodes.Request) ([]byte, error) {
 	if req.EpisodeID == "" || req.AttemptID == "" || req.Fence <= 0 || req.TenantID == "" || req.SituationID == "" || req.SituationVersion <= 0 || req.EntityID == "" || i.RuntimeEpoch == "" || len(i.Tools) == 0 || i.From.IsZero() || i.Until.IsZero() || i.MaxRows == 0 || i.MaxBytes == 0 {
 		return nil, fmt.Errorf("attempt capability scope is incomplete")
 	}
-	return i.issueScopedCapability(req)
+	return i.signAttemptScope(req, i.Issuer.IssueTime())
 }
 
-func (i *AttemptCapabilityIssuer) issueScopedCapability(req *episodes.Request) ([]byte, error) {
-	now := i.Issuer.IssueTime()
-	expiresAt := i.ExpiresAt
-	if expiresAt.IsZero() {
-		expiresAt = now.Add(15 * time.Minute)
-	}
-	return i.signAttemptScope(req, now, expiresAt)
-}
-
-func (i *AttemptCapabilityIssuer) signAttemptScope(req *episodes.Request, now, expiresAt time.Time) ([]byte, error) {
+func (i *AttemptCapabilityIssuer) signAttemptScope(req *episodes.Request, now time.Time) ([]byte, error) {
 	token, err := i.Issuer.Issue(evidence.Scope{
 		EpisodeID: req.EpisodeID, AttemptID: req.AttemptID, Fence: req.Fence,
 		TenantID: req.TenantID, SituationID: req.SituationID, SituationVersion: int64(req.SituationVersion), EntityID: req.EntityID,
-		Tools: append([]string(nil), i.Tools...), NotBefore: now, ExpiresAt: expiresAt,
+		Tools: append([]string(nil), i.Tools...), NotBefore: now, ExpiresAt: i.ExpiresAt,
 		MaxRows: i.MaxRows, MaxBytes: i.MaxBytes, From: i.From, Until: i.Until,
 		Traceparent: req.Traceparent, Tracestate: req.Tracestate, RuntimeEpoch: i.RuntimeEpoch,
 	})

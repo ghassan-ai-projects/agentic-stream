@@ -28,7 +28,7 @@ func denialReason(risk contractsv1.RiskClass, route contractsv1.Route) string {
 }
 
 func FreshnessFailure(row IntentRecord, now time.Time) (status, reason string, expires time.Time) {
-	if !EpisodeConcluded(row) {
+	if !row.EpisodeProducedDecision {
 		return "denied", "episode_not_concluded", time.Time{}
 	}
 	if MateriallySuperseded(row) {

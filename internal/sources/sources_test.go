@@ -1,6 +1,7 @@
 package sources_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -67,5 +68,28 @@ func TestFormatTimeIsUTCWithNanoseconds(t *testing.T) {
 	local := time.Date(2026, 8, 12, 14, 0, 0, 123456789, time.FixedZone("plus2", 2*3600))
 	if got, want := sources.FormatTime(local), "2026-08-12T12:00:00.123456789Z"; got != want {
 		t.Fatalf("FormatTime = %q, want %q", got, want)
+	}
+}
+
+type detachedKey struct{}
+
+func TestDetachedContextKeepsValuesDropsCancellationAndIsBounded(t *testing.T) {
+	t.Parallel()
+	parent, cancelParent := context.WithCancel(context.WithValue(t.Context(), detachedKey{}, "trace"))
+	cancelParent()
+	detached, cancel := sources.DetachedContext(parent)
+	defer cancel()
+	if detached.Err() != nil {
+		t.Fatalf("detached context inherited cancellation: %v", detached.Err())
+	}
+	if detached.Value(detachedKey{}) != "trace" {
+		t.Fatal("detached context lost the caller's values")
+	}
+	deadline, ok := detached.Deadline()
+	if !ok || time.Until(deadline) > sources.PersistGrace || time.Until(deadline) <= 0 {
+		t.Fatalf("detached context is not bounded by PersistGrace: deadline=%v ok=%v", deadline, ok)
+	}
+	if sources.PersistGrace != 5*time.Second {
+		t.Fatalf("PersistGrace = %v, want 5s", sources.PersistGrace)
 	}
 }

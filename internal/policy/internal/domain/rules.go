@@ -41,11 +41,6 @@ func MatchesIntentIdentity(row IntentRecord, document IntentDocument) bool {
 		document.RiskClass == row.RiskClass
 }
 
-// EpisodeConcluded permits governance only after the episode has concluded.
-func EpisodeConcluded(row IntentRecord) bool {
-	return row.EpisodeLifecycle == "concluded" || row.EpisodeLifecycle == "closed"
-}
-
 // SourceHealthIncomplete refuses consequential work from incomplete current evidence.
 func SourceHealthIncomplete(row IntentRecord) bool {
 	consequential := contractsv1.RiskClass(row.RiskClass).Consequential()

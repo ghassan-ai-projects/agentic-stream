@@ -107,7 +107,7 @@ func facadeInput(catalog *IntentCatalog, now time.Time) Input {
 		TenantID: "tenant-1", SituationID: "situation-1", SituationVersion: 1,
 		EntityID: "entity-1", SnapshotDigest: "sha256:" + facadeZeros(64),
 		AllowedIntentTypes: map[string]struct{}{"act": {}}, RiskCeiling: "R1",
-		IntentCatalog: catalog, Kind: "standard", Now: now,
+		IntentCatalog: catalog, Now: now,
 	}
 }
 

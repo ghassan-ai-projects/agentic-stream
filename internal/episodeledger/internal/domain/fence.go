@@ -40,7 +40,7 @@ func (f EpisodeFence) CheckIdentity(identity Identity) error {
 // CheckStartable requires an admitted or running episode and returns its
 // current fence; the caller still has to verify the prior attempt is terminal.
 func (f EpisodeFence) CheckStartable() (int64, error) {
-	if f.Lifecycle != LifecycleAdmitted && f.Lifecycle != LifecycleRunning {
+	if !f.Lifecycle.Live() {
 		return 0, Refuse(RejectEpisodeClosed)
 	}
 	return f.Fence, nil
