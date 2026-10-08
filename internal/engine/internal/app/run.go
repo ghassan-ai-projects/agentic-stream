@@ -18,8 +18,15 @@ func (s *Service) RunGlobal(ctx context.Context, beforeApply func(eventlog.Recor
 	return s.runGlobal(ctx, beforeApply)
 }
 
+// runGlobal applies the records after the applied position, then fires due
+// timers. Resuming from the durable position keeps a run proportional to new
+// evidence; starting from the beginning re-read the whole log on every run.
 func (s *Service) runGlobal(ctx context.Context, beforeApply func(eventlog.Record) error) (int, error) {
-	processed, lastPosition := 0, eventlog.LogPosition(0)
+	applied, err := s.store.AppliedThrough(ctx)
+	if err != nil {
+		return 0, err //nolint:wrapcheck // The store names the failed read.
+	}
+	processed, lastPosition := 0, eventlog.LogPosition(applied)
 	for {
 		batch, err := s.runGlobalBatch(ctx, lastPosition, beforeApply)
 		processed += batch.processed
@@ -151,83 +158,4 @@ func runBeforeApply(beforeApply func(eventlog.Record) error, record eventlog.Rec
 
 func (s *Service) watermarkForRecord(eventTime time.Time, previous string) (time.Time, error) {
 	return domain.WatermarkFor(eventTime, s.spec.Time.MaxOutOfOrderness, previous) //nolint:wrapcheck // Callers name the failed step.
-}
-
-func (s *Service) run(ctx context.Context, partitionID int, beforeApply func(eventlog.Record) error) (int, error) {
-	processed, err := s.drainPartition(ctx, partitionID, beforeApply)
-	if err != nil {
-		return processed, err
-	}
-	fired, err := s.runDueTimers(ctx, partitionID)
-	if err != nil {
-		return processed, err
-	}
-	processed += fired
-	if err := s.store.CheckpointWAL(ctx); err != nil {
-		return processed, fmt.Errorf("checkpoint WAL after partition timers: %w", err)
-	}
-	return processed, nil
-}
-
-// drainPartition applies batches until the partition has no unread records.
-func (s *Service) drainPartition(ctx context.Context, partitionID int, beforeApply func(eventlog.Record) error) (int, error) {
-	processed := 0
-	for {
-		batchCount, err := s.runBatch(ctx, partitionID, beforeApply)
-		if err != nil || batchCount == 0 {
-			return processed, err
-		}
-		processed += batchCount
-	}
-}
-
-func (s *Service) runBatch(ctx context.Context, partitionID int, beforeApply func(eventlog.Record) error) (int, error) {
-	checkpoint, err := s.store.LoadCheckpoint(ctx, partitionID)
-	if err != nil {
-		return 0, fmt.Errorf("load checkpoint: %w", err)
-	}
-	records, err := s.readPartitionRecords(ctx, partitionID, eventlog.LogPosition(checkpoint.LastPosition))
-	if err != nil || len(records) == 0 {
-		return 0, err
-	}
-	if err := s.applyPartitionRecords(ctx, partitionID, records, checkpoint, beforeApply); err != nil {
-		return 0, err
-	}
-	if err := s.store.CheckpointWAL(ctx); err != nil {
-		return 0, fmt.Errorf("checkpoint WAL after partition batch: %w", err)
-	}
-	return len(records), nil
-}
-
-// applyPartitionRecords applies records in log order, advancing the local
-// watermark from the checkpoint record by record.
-func (s *Service) applyPartitionRecords(ctx context.Context, partitionID int, records []eventlog.Record, checkpoint domain.Checkpoint, beforeApply func(eventlog.Record) error) error {
-	for _, record := range records {
-		if err := runBeforeApply(beforeApply, record); err != nil {
-			return err
-		}
-		watermark, err := s.watermarkForRecord(record.EventTime, checkpoint.Watermark)
-		if err != nil {
-			return fmt.Errorf("watermark: %w", err)
-		}
-		if err := s.applyRecord(ctx, partitionID, record, watermark); err != nil {
-			return fmt.Errorf("apply record %d: %w", record.Position, err)
-		}
-		checkpoint.Watermark = watermark.Format(time.RFC3339Nano)
-	}
-	return nil
-}
-
-func (s *Service) readPartitionRecords(ctx context.Context, partitionID int, afterPosition eventlog.LogPosition) ([]eventlog.Record, error) {
-	const batchSize = 100
-	var records []eventlog.Record
-	if err := s.log.Read(ctx, eventlog.ReadRequest{
-		TenantID: s.tenantID, PartitionID: partitionID, AfterPosition: afterPosition, Limit: batchSize,
-	}, func(record eventlog.Record) error {
-		records = append(records, record)
-		return nil
-	}); err != nil {
-		return nil, fmt.Errorf("read event log: %w", err)
-	}
-	return records, nil
 }

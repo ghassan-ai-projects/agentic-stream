@@ -104,6 +104,10 @@ MVP item ("cancel a stale episode after material supersession") holds only in
 replay. On the bench it means an over-temperature escalation or a dead link is
 not processed while the model thinks. Fix: [X09](tasks/X09-episodes-beside-ingestion.md).
 
+**G10. Every engine run re-read the whole event log.** Found while deleting
+U04: the cost of each live advance grew with the log, which a long bench soak
+would hit. Fixed in [X10](tasks/X10-engine-resumes-from-applied-position.md).
+
 ## Decisions
 
 ### D1 — Material freshness: declared compatibility (Agentic Stream core; new ADR)

@@ -85,7 +85,7 @@ func TestEngineCreatesTriggerAndSchedulerItem(t *testing.T) {
 		t.Fatalf("append event: %v", err)
 	}
 
-	if _, err := eng.Run(ctx, env.PartitionID(0)); err != nil {
+	if _, err := eng.RunGlobal(ctx, nil); err != nil {
 		t.Fatalf("run engine: %v", err)
 	}
 

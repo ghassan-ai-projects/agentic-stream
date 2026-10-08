@@ -100,6 +100,21 @@ func (s Store) LoadCheckpoint(ctx context.Context, partitionID int) (domain.Chec
 	return result, nil
 }
 
+// AppliedThrough is the log position up to which the global run has applied
+// every record: records are applied in position order and positions commit in
+// order (SQLite serializes writers), so the highest partition checkpoint is a
+// position below which nothing is left to apply. Zero before the first record.
+func (s Store) AppliedThrough(ctx context.Context) (int64, error) {
+	var position int64
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT COALESCE(MAX(last_position), 0) FROM partition_checkpoints WHERE consumer_name = ? AND tenant_id = ?",
+		ConsumerName, s.tenantID,
+	).Scan(&position); err != nil {
+		return 0, fmt.Errorf("query applied position: %w", err)
+	}
+	return position, nil
+}
+
 // AssertOwner requires the configured runtime owner and epoch in this transaction.
 func (tx *Tx) AssertOwner(ctx context.Context) error {
 	if err := tx.owner(ctx, tx.tx, tx.epoch); err != nil {

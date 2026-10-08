@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -56,8 +57,7 @@ func TestEngineAdvancesCheckpoint(t *testing.T) {
 		t.Fatalf("append event: %v", err)
 	}
 
-	partitionID := env.PartitionID(0)
-	processed, err := eng.Run(ctx, partitionID)
+	processed, err := eng.RunGlobal(ctx, nil)
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestEngineAdvancesCheckpoint(t *testing.T) {
 	}
 
 	// A second run should process nothing because the inbox record exists.
-	processed, err = eng.Run(ctx, partitionID)
+	processed, err = eng.RunGlobal(ctx, nil)
 	if err != nil {
 		t.Fatalf("second Run failed: %v", err)
 	}
@@ -162,8 +162,8 @@ func TestEngineRestoresSituationStateAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
-	partitionID := appendLevel(t, ctx, log, "evt-1", 0, 15)
-	if processed, err := eng.Run(ctx, partitionID); err != nil || processed != 1 {
+	appendLevel(t, ctx, log, "evt-1", 0, 15)
+	if processed, err := eng.RunGlobal(ctx, nil); err != nil || processed != 1 {
 		t.Fatalf("first run: processed=%d err=%v", processed, err)
 	}
 	var firstID string
@@ -201,8 +201,8 @@ func TestEngineRestoresSituationStateAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("restore engine: %v", err)
 	}
-	partitionID = appendLevel(t, ctx, log, "evt-2", time.Minute, 16)
-	if processed, err := eng.Run(ctx, partitionID); err != nil || processed != 1 {
+	appendLevel(t, ctx, log, "evt-2", time.Minute, 16)
+	if processed, err := eng.RunGlobal(ctx, nil); err != nil || processed != 1 {
 		t.Fatalf("second run: processed=%d err=%v", processed, err)
 	}
 	var secondID string
@@ -217,7 +217,7 @@ func TestEngineRestoresSituationStateAcrossRestart(t *testing.T) {
 		t.Fatalf("expected restored situation to advance to version 2, got %d", version)
 	}
 	appendLevel(t, ctx, log, "evt-3", 2*time.Minute, 20)
-	if processed, err := eng.Run(ctx, partitionID); err != nil || processed != 1 {
+	if processed, err := eng.RunGlobal(ctx, nil); err != nil || processed != 1 {
 		t.Fatalf("non-version state run: processed=%d err=%v", processed, err)
 	}
 	var stateJSON string
@@ -245,7 +245,7 @@ func TestEngineFiresDurableProcessingTimerExactlyOnce(t *testing.T) {
 		t.Fatalf("new engine: %v", err)
 	}
 	partitionID := appendHeartbeat(t, ctx, log, "hb-1", 0)
-	if processed, err := eng.Run(ctx, partitionID); err != nil || processed != 1 {
+	if processed, err := eng.RunGlobal(ctx, nil); err != nil || processed != 1 {
 		t.Fatalf("heartbeat run: processed=%d err=%v", processed, err)
 	}
 	var status string
@@ -284,7 +284,7 @@ func TestEngineFiresDurableProcessingTimerExactlyOnce(t *testing.T) {
 		t.Fatalf("expected fired timer to be idempotent, got %d", fired)
 	}
 	appendHeartbeat(t, ctx, log, "hb-2", time.Minute)
-	if processed, err := eng.Run(ctx, partitionID); err != nil || processed != 1 {
+	if processed, err := eng.RunGlobal(ctx, nil); err != nil || processed != 1 {
 		t.Fatalf("post-fire heartbeat run: processed=%d err=%v", processed, err)
 	}
 	var firedTimers, pendingTimers int
@@ -342,11 +342,11 @@ func TestEngineRetiresTimerFromPreviousDeviceBoot(t *testing.T) {
 		t.Fatalf("new engine: %v", err)
 	}
 	partitionID := appendHeartbeatWithBoot(t, ctx, log, "hb-a", 0, "boot-A")
-	if processed, err := eng.Run(ctx, partitionID); err != nil || processed != 1 {
+	if processed, err := eng.RunGlobal(ctx, nil); err != nil || processed != 1 {
 		t.Fatalf("boot-A run: processed=%d err=%v", processed, err)
 	}
 	appendHeartbeatWithBoot(t, ctx, log, "hb-b", time.Minute, "boot-B")
-	if processed, err := eng.Run(ctx, partitionID); err != nil || processed != 1 {
+	if processed, err := eng.RunGlobal(ctx, nil); err != nil || processed != 1 {
 		t.Fatalf("boot-B run: processed=%d err=%v", processed, err)
 	}
 	clk.Advance(6 * time.Minute)
@@ -457,12 +457,48 @@ func TestGlobalRunFailurePreservesProgressAndInboxDeduplication(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM event_inbox").Scan(&inbox); err != nil || inbox != 1 {
 		t.Fatalf("inbox=%d err=%v", inbox, err)
 	}
-	// Global runs count redelivered records; the inbox suppresses repeated state writes.
+	// A resumed run starts after the applied position, so it applies only the
+	// record that failed; the inbox still suppresses any repeated state write.
 	processed, err = eng.RunGlobal(ctx, nil)
-	if err != nil || processed != 2 {
+	if err != nil || processed != 1 {
 		t.Fatalf("resume processed=%d err=%v", processed, err)
 	}
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM event_inbox").Scan(&inbox); err != nil || inbox != 2 {
 		t.Fatalf("resumed inbox=%d err=%v", inbox, err)
+	}
+}
+
+// A run with no new evidence must not revisit applied records: the live
+// pipeline advances on every event and on every clock tick, so a run that
+// re-read the log would grow with the log forever.
+func TestGlobalRunResumesAfterTheAppliedPosition(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "resume.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	compiled := restartSpec()
+	log := eventlog.NewEventLog(db)
+	eng, err := newService(ctx, db, log, sources.Physical(), &compiled, "default", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 50 {
+		appendLevel(t, ctx, log, fmt.Sprintf("evt-%02d", i), time.Duration(i)*time.Second, 15)
+	}
+	if processed, err := eng.RunGlobal(ctx, nil); err != nil || processed != 50 {
+		t.Fatalf("first run processed=%d err=%v", processed, err)
+	}
+	visited := 0
+	processed, err := eng.RunGlobal(ctx, func(eventlog.Record) error { visited++; return nil })
+	if err != nil || processed != 0 || visited != 0 {
+		t.Fatalf("idle run processed=%d visited=%d err=%v; it must not revisit applied records", processed, visited, err)
+	}
+	appendLevel(t, ctx, log, "evt-new", time.Minute, 16)
+	processed, err = eng.RunGlobal(ctx, func(eventlog.Record) error { visited++; return nil })
+	if err != nil || processed != 1 || visited != 1 {
+		t.Fatalf("next run processed=%d visited=%d err=%v; it must apply only the new record", processed, visited, err)
 	}
 }

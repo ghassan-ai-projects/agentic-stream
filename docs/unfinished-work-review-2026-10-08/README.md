@@ -133,11 +133,12 @@ as the change.
 | X06 | [Bench mapping and heartbeat](tasks/X06-bench-mapping-and-heartbeat.md) | Research repo config | P0 | S | X05 | todo |
 | X08 | [The live pipeline advances on a clock](tasks/X08-live-pipeline-clock.md) | Fix (found by X01) | P0 | S | — | done |
 | X09 | [Episodes run beside ingestion](tasks/X09-episodes-beside-ingestion.md) | Complete (design §11.4–11.5) | P0 | M | X03 | done |
+| X10 | [The global engine run resumes from the applied position](tasks/X10-engine-resumes-from-applied-position.md) | Fix (found by U04) | P0 | S | — | done |
 | X07 | [Joined rehearsal: simulator, then bench](tasks/X07-joined-rehearsal.md) | Run the proof | P0 | M | X03–X06, U15 | todo |
 | U01 | [Reject unenforced intent policies](tasks/U01-reject-unenforced-intent-policies.md) | Fix | P0 | S | — | done |
 | U02 | [Delete counterfactual replay](tasks/U02-delete-counterfactual-replay.md) | Delete | P2 | S | — | done |
 | U03 | [Delete eventlog gap writer and map quarantine](tasks/U03-delete-eventlog-gap-writer-and-map-quarantine.md) | Delete | P2 | S | — | done |
-| U04 | [Delete engine per-partition run path](tasks/U04-delete-engine-partition-run-path.md) | Delete | P2 | S | — | todo |
+| U04 | [Delete engine per-partition run path](tasks/U04-delete-engine-partition-run-path.md) | Delete | P2 | S | — | done |
 | U05 | [Delete native batch runner and artifact store](tasks/U05-delete-native-batch-runner-and-artifact-store.md) | Delete | P2 | S | — | todo |
 | U06 | [Move reference worker server to test support](tasks/U06-move-reference-worker-server-to-testsupport.md) | Move | P2 | M | — | todo |
 | U07 | [Remove test-only facade exports](tasks/U07-remove-test-only-facade-exports.md) | Delete / move | P2 | M | — | todo |

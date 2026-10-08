@@ -1,6 +1,6 @@
 # U04 — Delete the engine per-partition run path
 
-Status: todo · Decision: **delete** · Priority: P2 · Size: S
+Status: done · Decision: **delete** · Priority: P2 · Size: S
 
 ## Finding
 
@@ -28,3 +28,10 @@ that can drift, and tests that pass on the loop production never uses.
 - The five symbols are gone from `deadcode ./...`.
 - Golden replay hashes are unchanged.
 - engine README no longer mentions a per-partition run.
+
+## Result
+
+The five functions and the test-only `Run` export are gone; the engine tests run
+`RunGlobal`, the production path. Porting them exposed X10: `RunGlobal`
+re-read the whole log on every call. With X10 the ported tests keep their
+original expectations (an idle second run processes nothing).
