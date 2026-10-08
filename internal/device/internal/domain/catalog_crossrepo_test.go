@@ -13,6 +13,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
+// physicalCapabilityDigest is the capability digest the real-world-sensor bench
+// firmware reports in every state frame; changing it needs a firmware rebuild.
 const physicalCapabilityDigest = "sha256:0d61225286c628cfba8cbf7aea514e1fdc95918b514b4b810516dbe0fc44fc76"
 
 func physicalSensorRoot(t *testing.T) string {

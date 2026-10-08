@@ -125,7 +125,7 @@ as the change.
 
 | ID | Task | Decision | Priority | Size | Depends on | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| X01 | [Experiment compatibility guard](tasks/X01-experiment-compatibility-guard.md) | Complete | P0 | M | — | todo |
+| X01 | [Experiment compatibility guard](tasks/X01-experiment-compatibility-guard.md) | Complete | P0 | M | — | in progress (pins done) |
 | X02 | [Repair experiment references](tasks/X02-repair-experiment-references.md) | Fix references (research repo) | P0 | XS | — | todo |
 | X03 | [Material freshness (ADR-018)](tasks/X03-material-freshness.md) | Complete | P0 | M | X01, ADR | todo |
 | X04 | [One thermal intent vocabulary](tasks/X04-thermal-intent-vocabulary.md) | Tamoz change + pin | P0 | S | — | todo |

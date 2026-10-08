@@ -1,6 +1,6 @@
 # X01 — Experiment compatibility guard
 
-Status: todo · Decision: **complete, before any other task** · Priority: P0 · Size: M
+Status: in progress (pins done; end-to-end test next) · Decision: **complete, before any other task** · Priority: P0 · Size: M
 
 ## Finding
 
@@ -36,17 +36,18 @@ RUNBOOK-G1 does, with in-process stand-ins for the two other repositories:
 5. Run `export-run` and `verify-run`; assert the file set (E10) and
    `verdict: pass`.
 
-Plus one table-driven pin test, `TestCrossRepositoryContractPins`, which fails
-with a message naming the consumer repository when one of these changes:
+Plus pin tests. Each one lives in the module that owns the surface (modularity
+rule) and fails with a message naming the consumer repository to update:
 
-| Pin | Consumer |
-| --- | --- |
-| zone-thermal compiled digest (as copied by the runbook) | gateway `--device-policy-digest` allow-list |
-| thermal catalog digest and file path | Streams Simulator, gateway, RUNBOOK-G1 |
-| `runtime-v1.proto` SHA-256 | Tamoz vendored copy |
-| notification goldens SHA-256 | Tamoz vendored copy |
-| `zone.*` event schema names and versions | DHT11 mapping file |
-| CLI flag names in E1 | runbooks |
+| Pin | Owner test | Consumer |
+| --- | --- | --- |
+| zone-thermal compiled digest | `internal/spec/experiment_contract_test.go` | gateway `--device-policy-digest`, RUNBOOK-G1 |
+| `zone.*` event schemas | `internal/spec/experiment_contract_test.go` | DHT11 mapping, Streams Simulator |
+| thermal catalog path | `internal/contractsv1/experiment_contract_test.go` | RUNBOOK-G1 `--device-catalog` |
+| thermal catalog digest | `internal/device/internal/domain/catalog_crossrepo_test.go` (existing) | bench firmware, Streams Simulator |
+| `runtime-v1.proto` SHA-256 | `internal/contractsv1/experiment_contract_test.go` | Tamoz vendored copy |
+| notification goldens SHA-256 | `internal/notify/experiment_contract_test.go` | Tamoz vendored copy |
+| CLI commands and flags (E1) | `cmd/agentic-stream/experiment_contract_test.go` | runbooks |
 
 Optional: when `REAL_WORLD_SENSOR_ROOT` is set (the same variable
 `catalog_crossrepo_test.go` already uses), also compare against the files in the
