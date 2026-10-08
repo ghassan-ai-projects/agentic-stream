@@ -2,8 +2,6 @@
 package evidence
 
 import (
-	"context"
-	"database/sql"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/app"
@@ -18,7 +16,7 @@ type CapabilityConfig = app.CapabilityConfig
 // LedgerConfig binds durable calls to one runtime owner.
 type LedgerConfig struct {
 	DB                       *storage.DB
-	OwnerCheck               func(context.Context, *sql.Tx, string) error
+	OwnerCheck               storage.OwnerCheck
 	LeaseOwner, RuntimeEpoch string
 	Lease                    time.Duration
 	Now                      func() time.Time

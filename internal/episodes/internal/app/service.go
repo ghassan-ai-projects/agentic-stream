@@ -26,7 +26,7 @@ type ExecutionConfig struct {
 	Executor      Executor
 	Clock         sources.Clock
 	OwnerEpoch    string
-	DecisionEpoch store.DecisionEpochCheck
+	DecisionEpoch store.OwnerCheck
 	Telemetry     *telemetry.Runtime
 }
 
@@ -58,6 +58,9 @@ func validateExecution(cfg Config) error {
 	execution := cfg.Execution
 	if !execution.Episodes.Configured() || execution.Executor == nil || execution.DecisionEpoch == nil {
 		return fmt.Errorf("episode execution database, executor and decision epoch check are required")
+	}
+	if execution.OwnerEpoch != "" && !execution.Episodes.IsFenced() {
+		return fmt.Errorf("episode execution runtime owner check is required with an owner epoch")
 	}
 	return nil
 }

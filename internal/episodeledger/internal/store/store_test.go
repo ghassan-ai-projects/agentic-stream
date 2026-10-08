@@ -80,8 +80,8 @@ func TestEpisodeFenceReadsReportUnknownEpisodes(t *testing.T) {
 		if known, err := tx.EpisodeExists(ctx, "missing"); err != nil || known {
 			t.Fatalf("exists=%v err=%v", known, err)
 		}
-		if held, err := tx.OwnerHoldsLease(ctx, "e", at); err != nil || held {
-			t.Fatalf("held=%v err=%v", held, err)
+		if err := tx.AssertOwner(ctx, nil, "e"); err == nil {
+			t.Fatal("a missing owner check passed")
 		}
 	})
 }

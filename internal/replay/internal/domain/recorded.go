@@ -66,19 +66,12 @@ func AttemptProvenance(entry RecordedEntry) (string, error) {
 }
 
 func VerifyRecordedDocument(entry RecordedEntry) error {
-	canonical, err := canonicaljson.Marshal(json.RawMessage(entry.DecisionJSON))
+	sum, err := canonicaljson.DecodeDigest(entry.DecisionSHA256)
 	if err != nil {
-		return fmt.Errorf("recorded ledger decision %q is not canonical JSON: %w", entry.EpisodeKey, err)
+		return fmt.Errorf("recorded ledger decision %q has an invalid digest: %w", entry.EpisodeKey, err)
 	}
-	var decision map[string]any
-	if err := json.Unmarshal(canonical, &decision); err != nil {
-		return fmt.Errorf("recorded ledger decision %q is invalid JSON: %w", entry.EpisodeKey, err)
-	}
-	if err := contractsv1.Validate(contractsv1.SchemaDecision, decision); err != nil {
-		return fmt.Errorf("recorded ledger decision %q violates the decision schema: %w", entry.EpisodeKey, err)
-	}
-	if !canonicaljson.Verify(canonicaljson.DomainDecision, decision, entry.DecisionSHA256) {
-		return fmt.Errorf("recorded ledger decision %q has an invalid digest", entry.EpisodeKey)
+	if _, err := contractsv1.VerifyStoredDocument(contractsv1.SchemaDecision, canonicaljson.DomainDecision, entry.DecisionJSON, sum); err != nil {
+		return fmt.Errorf("recorded ledger decision %q: %w", entry.EpisodeKey, err)
 	}
 	return nil
 }

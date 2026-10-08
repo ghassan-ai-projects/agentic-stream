@@ -6,6 +6,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 )
 
 func pendingCandidate(t *testing.T) Candidate {
@@ -30,6 +31,7 @@ func TestAdmitDecidesEachCandidateKind(t *testing.T) {
 		{"succeeded command only closes outbox", func(c *Candidate) { c.CommandStatus = actionport.CommandSucceeded }, CloseOutboxOnly, "", OutboxDelivered},
 		{"unknown command fails outbox", func(c *Candidate) { c.CommandStatus = actionport.CommandOutcomeUnknown }, CloseOutboxOnly, "", OutboxFailed},
 		{"invalid JSON fails command", func(c *Candidate) { c.Command.JSON = []byte("{") }, FailInvalidCommand, FailureCommandJSONInvalid, ""},
+		{"ambiguous document fails command", func(c *Candidate) { c.Command.JSON = contractstest.AmbiguousKeyJSON(c.Command.JSON, "command_id") }, FailInvalidCommand, FailureCommandJSONInvalid, ""},
 		{"schema-invalid document fails command", func(c *Candidate) { c.Command.JSON = []byte(`{"command_id":"cmd-1"}`) }, FailInvalidCommand, FailureCommandSchemaInvalid, ""},
 		{"ledger tenant mismatch fails command", func(c *Candidate) { c.Command.TenantID = "other" }, FailInvalidCommand, FailureCommandDigestMismatch, ""},
 		{"digest mismatch fails command", func(c *Candidate) { c.Command.SHA = make([]byte, 32) }, FailInvalidCommand, FailureCommandDigestMismatch, ""},

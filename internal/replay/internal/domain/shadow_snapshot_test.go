@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 )
 
 func snapshotFixture(t *testing.T) ([]byte, []byte) {
@@ -45,6 +46,9 @@ func TestVerifiedSnapshotRejectsTampering(t *testing.T) {
 	canonical, persisted := snapshotFixture(t)
 	if _, err := VerifiedSnapshot([]byte(`{"entity":{"id":"other"},"phase":"warning"}`), persisted); err == nil {
 		t.Fatal("tampered snapshot accepted")
+	}
+	if _, err := VerifiedSnapshot(contractstest.AmbiguousKeyJSON(canonical, "phase"), persisted); err == nil {
+		t.Fatal("ambiguous snapshot bytes accepted")
 	}
 	if _, err := VerifiedSnapshot([]byte(`not json`), persisted); err == nil {
 		t.Fatal("invalid JSON accepted")

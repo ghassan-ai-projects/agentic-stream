@@ -2,7 +2,6 @@ package watch
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
@@ -19,7 +18,7 @@ import (
 // physical clock.
 type Config struct {
 	DB           *storage.DB
-	RuntimeOwner func(context.Context, *sql.Tx, string) error
+	RuntimeOwner storage.OwnerCheck
 	Epoch        string
 	Clock        sources.Clock
 }

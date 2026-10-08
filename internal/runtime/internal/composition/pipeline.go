@@ -51,6 +51,9 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*app.Pipeline, error)
 	if cfg.DB == nil || cfg.Spec == nil {
 		return nil, fmt.Errorf("pipeline database and spec are required")
 	}
+	if err := validateOwnership(cfg); err != nil {
+		return nil, err
+	}
 	cfg = pipelineDefaults(cfg)
 	effector, watch, err := composeEffectors(cfg)
 	if err != nil {
@@ -58,6 +61,13 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*app.Pipeline, error)
 	}
 	cfg.Effector = effector
 	return composeOwnedPipeline(ctx, cfg, watch)
+}
+
+func validateOwnership(cfg PipelineConfig) error {
+	if (cfg.Owner == nil) != (cfg.OwnerEpoch == "") {
+		return fmt.Errorf("pipeline runtime owner and owner epoch are configured together")
+	}
+	return nil
 }
 
 func composeOwnedPipeline(ctx context.Context, cfg PipelineConfig, watch *watch.Service) (*app.Pipeline, error) {

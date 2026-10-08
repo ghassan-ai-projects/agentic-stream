@@ -10,10 +10,10 @@ import (
 )
 
 // TransitionAttempt applies a valid attempt transition and records terminal
-// data. The identity is checked before the state mutation; wall is the instant
-// the owner lease is judged at.
-func TransitionAttempt(ctx context.Context, tx *store.Tx, identity domain.Identity, to domain.AttemptStatus, now time.Time, terminal []byte, wall time.Time) error {
-	if err := validateTransitionIdentity(ctx, tx, identity, to, wall); err != nil {
+// data. The identity is checked before the state mutation; owner confirms the
+// runtime ownership of an identity with an owner epoch.
+func TransitionAttempt(ctx context.Context, tx *store.Tx, identity domain.Identity, to domain.AttemptStatus, now time.Time, terminal []byte, owner store.OwnerCheck) error {
+	if err := validateTransitionIdentity(ctx, tx, identity, to, owner); err != nil {
 		return err
 	}
 	from, err := tx.ReadAttemptStatus(ctx, identity.AttemptID)
@@ -30,15 +30,15 @@ func TransitionAttempt(ctx context.Context, tx *store.Tx, identity domain.Identi
 // episode still needs to durably acknowledge cancellation of its in-flight
 // attempt; only cancellation or abandonment may take that exception, never a
 // produced Decision.
-func validateTransitionIdentity(ctx context.Context, tx *store.Tx, identity domain.Identity, to domain.AttemptStatus, wall time.Time) error {
-	err := ValidateWorkerIdentity(ctx, tx, identity, wall)
+func validateTransitionIdentity(ctx context.Context, tx *store.Tx, identity domain.Identity, to domain.AttemptStatus, owner store.OwnerCheck) error {
+	err := ValidateWorkerIdentity(ctx, tx, identity, owner)
 	if err == nil {
 		return nil
 	}
 	if !domain.MayAcknowledgeCancellation(to) || !domain.IsIdentityReason(err, domain.RejectEpisodeClosed) {
 		return err
 	}
-	return validateTerminalIdentity(ctx, tx, identity, wall)
+	return validateTerminalIdentity(ctx, tx, identity, owner)
 }
 
 func persistTransition(ctx context.Context, tx *store.Tx, identity domain.Identity, to domain.AttemptStatus, now time.Time, terminal []byte) error {

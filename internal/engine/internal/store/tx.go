@@ -16,15 +16,13 @@ import (
 
 const ConsumerName = "engine"
 
-type OwnerCheck func(context.Context, *sql.Tx, string) error
-
 type VersionProcessor interface {
 	Process(context.Context, *sql.Tx, situations.Version) error
 }
 
 type Store struct {
 	db           *storage.DB
-	owner        OwnerCheck
+	owner        storage.OwnerCheck
 	epoch        string
 	tenantID     string
 	deploymentID string
@@ -32,13 +30,13 @@ type Store struct {
 
 type Tx struct {
 	tx           *sql.Tx
-	owner        OwnerCheck
+	owner        storage.OwnerCheck
 	epoch        string
 	tenantID     string
 	deploymentID string
 }
 
-func New(db *storage.DB, owner OwnerCheck, epoch, tenantID, deploymentID string) Store {
+func New(db *storage.DB, owner storage.OwnerCheck, epoch, tenantID, deploymentID string) Store {
 	return Store{db: db, owner: owner, epoch: epoch, tenantID: tenantID, deploymentID: deploymentID}
 }
 

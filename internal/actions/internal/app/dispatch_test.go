@@ -653,7 +653,7 @@ func newService(t *testing.T, db *storage.DB, effector actionport.AuthorizedEffe
 	return newServiceWithOwner(t, db, effector, leaseOwner, leaseFor, func(context.Context, *sql.Tx, string) error { return nil })
 }
 
-func newServiceWithOwner(t *testing.T, db *storage.DB, effector actionport.AuthorizedEffector, leaseOwner string, leaseFor time.Duration, owner store.OwnerCheck) *app.Service {
+func newServiceWithOwner(t *testing.T, db *storage.DB, effector actionport.AuthorizedEffector, leaseOwner string, leaseFor time.Duration, owner storage.OwnerCheck) *app.Service {
 	t.Helper()
 	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch"), Effector: effector,
 		Clock: sources.Physical(), IDs: sources.Deterministic(), LeaseOwner: leaseOwner, LeaseFor: leaseFor})

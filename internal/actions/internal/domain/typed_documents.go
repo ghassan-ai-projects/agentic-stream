@@ -5,6 +5,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 // CommandDocument is the typed view of a command document, parsed once at the
@@ -18,13 +19,18 @@ type CommandDocument struct {
 }
 
 // ParseCommandDocument reads the command fields the dispatcher depends on.
-func ParseCommandDocument(d Document) CommandDocument {
+func ParseCommandDocument(d map[string]any) CommandDocument {
 	return CommandDocument{
-		CommandID: d.String("command_id"), IntentID: d.String("intent_id"), TenantID: d.String("tenant_id"),
-		EffectorRoute: d.String("effector_route"), NormalizedTarget: d.String("normalized_target"),
-		IdempotencyKey: d.String("idempotency_key"), PolicyDigest: d.String("policy_digest"),
-		NotBeforeMonoUS: d.Int64("not_before_mono_us"), Payload: d.Object("payload"),
+		CommandID: contractsv1.DocumentString(d, "command_id"), IntentID: contractsv1.DocumentString(d, "intent_id"), TenantID: contractsv1.DocumentString(d, "tenant_id"),
+		EffectorRoute: contractsv1.DocumentString(d, "effector_route"), NormalizedTarget: contractsv1.DocumentString(d, "normalized_target"),
+		IdempotencyKey: contractsv1.DocumentString(d, "idempotency_key"), PolicyDigest: contractsv1.DocumentString(d, "policy_digest"),
+		NotBeforeMonoUS: int64(contractsv1.DocumentInt(d, "not_before_mono_us")), Payload: payloadOf(d),
 	}
+}
+
+func payloadOf(d map[string]any) map[string]any {
+	payload, _ := d["payload"].(map[string]any)
+	return payload
 }
 
 // MatchesLedger reports whether the document carries the ledger row's identity,
@@ -52,9 +58,9 @@ type IntentDocument struct {
 }
 
 // ParseIntentDocument reads the intent identity fields.
-func ParseIntentDocument(d Document) IntentDocument {
-	return IntentDocument{IntentID: d.String("intent_id"), DecisionID: d.String("decision_id"), TenantID: d.String("tenant_id"),
-		SituationID: d.String("situation_id"), Type: d.String("type"), RiskClass: d.String("risk_class"), SituationVersion: d.Int("situation_version")}
+func ParseIntentDocument(d map[string]any) IntentDocument {
+	return IntentDocument{IntentID: contractsv1.DocumentString(d, "intent_id"), DecisionID: contractsv1.DocumentString(d, "decision_id"), TenantID: contractsv1.DocumentString(d, "tenant_id"),
+		SituationID: contractsv1.DocumentString(d, "situation_id"), Type: contractsv1.DocumentString(d, "type"), RiskClass: contractsv1.DocumentString(d, "risk_class"), SituationVersion: contractsv1.DocumentInt(d, "situation_version")}
 }
 
 // MatchesLedger reports whether the document carries the ledger row's identity.
@@ -70,7 +76,7 @@ type DecisionDocument struct {
 }
 
 // ParseDecisionDocument reads the decision identity fields.
-func ParseDecisionDocument(d Document) DecisionDocument {
-	return DecisionDocument{DecisionID: d.String("decision_id"), EpisodeID: d.String("episode_id"),
-		SituationID: d.String("situation_id"), SituationVersion: d.Int("situation_version")}
+func ParseDecisionDocument(d map[string]any) DecisionDocument {
+	return DecisionDocument{DecisionID: contractsv1.DocumentString(d, "decision_id"), EpisodeID: contractsv1.DocumentString(d, "episode_id"),
+		SituationID: contractsv1.DocumentString(d, "situation_id"), SituationVersion: contractsv1.DocumentInt(d, "situation_version")}
 }

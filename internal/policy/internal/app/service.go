@@ -7,7 +7,7 @@ import (
 )
 
 // Fences are required lower runtime checks on the current transaction.
-type Fences struct{ RuntimeOwner, DecisionEpoch store.Fence }
+type Fences struct{ RuntimeOwner, DecisionEpoch store.OwnerCheck }
 
 // Config contains validated dependencies supplied by the policy facade.
 type Config struct {

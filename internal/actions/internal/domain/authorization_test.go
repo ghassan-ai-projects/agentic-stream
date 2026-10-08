@@ -36,6 +36,15 @@ func TestAuthorizationRefusesEachStaleOrAlteredRecord(t *testing.T) {
 	}{
 		{"altered command document", func(r *AuthorizationRecords) { r.Command.Target = "motor/2" }, func(r AuthorizationRecords) error { _, err := r.VerifiedCommand(); return err }, "command ledger identity mismatch"},
 		{"command digest", func(r *AuthorizationRecords) { r.Command.SHA = make([]byte, 32) }, func(r AuthorizationRecords) error { _, err := r.VerifiedCommand(); return err }, "command ledger identity mismatch"},
+		{"ambiguous command bytes", func(r *AuthorizationRecords) {
+			r.Command.JSON = contractstest.AmbiguousKeyJSON(r.Command.JSON, "command_id")
+		}, func(r AuthorizationRecords) error { _, err := r.VerifiedCommand(); return err }, "command ledger identity mismatch"},
+		{"ambiguous intent bytes", func(r *AuthorizationRecords) {
+			r.Intent.JSON = contractstest.AmbiguousKeyJSON(r.Intent.JSON, "intent_id")
+		}, func(r AuthorizationRecords) error { return r.CheckIntent(testNow) }, "intent authorization is invalid"},
+		{"ambiguous decision bytes", func(r *AuthorizationRecords) {
+			r.Decision.JSON = contractstest.AmbiguousKeyJSON(r.Decision.JSON, "decision_id")
+		}, AuthorizationRecords.CheckDecision, "decision authorization is invalid"},
 		{"policy not approved", func(r *AuthorizationRecords) { r.Intent.PolicyStatus = "pending" }, AuthorizationRecords.RequireApprovedIntent, "command is no longer approved for its intent"},
 		{"decision not accepted", func(r *AuthorizationRecords) { r.Decision.ValidationStatus = "rejected" }, AuthorizationRecords.RequireApprovedIntent, "command is no longer approved for its intent"},
 		{"route differs from intent type", func(r *AuthorizationRecords) { r.Command.Route = "other" }, AuthorizationRecords.RequireApprovedIntent, "command is no longer approved for its intent"},
@@ -109,17 +118,6 @@ func TestPolicyDigestMustMatchLatestApproval(t *testing.T) {
 	}
 	if err := CheckPolicyDigest("sha256:a", "sha256:b"); err == nil || err.Error() != "command policy digest is stale" {
 		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestDocumentAccessorsTolerateMissingFields(t *testing.T) {
-	t.Parallel()
-	d := Document{"s": "x", "i": float64(3), "o": map[string]any{"k": 1}, "bad": "sha256:zz"}
-	if d.String("s") != "x" || d.String("missing") != "" || d.Int("i") != 3 || d.Int64("i") != 3 || d.Int("s") != 0 {
-		t.Fatal("scalar accessors changed")
-	}
-	if d.Object("o")["k"] != 1 || d.Object("s") != nil || d.Digest("bad") != nil || d.Digest("missing") != nil {
-		t.Fatal("object and digest accessors changed")
 	}
 }
 

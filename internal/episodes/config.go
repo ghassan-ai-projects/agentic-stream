@@ -1,9 +1,6 @@
 package episodes
 
 import (
-	"context"
-	"database/sql"
-
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
@@ -22,14 +19,17 @@ type Config struct {
 	Execution   *ExecutionConfig
 }
 
-// ExecutionConfig requires a database, executor and decision-epoch check.
-// Shadow persistence is required when the configured spec dispatches in shadow mode.
+// ExecutionConfig requires a database, executor and decision-epoch check. A
+// non-empty OwnerEpoch fences every attempt to that runtime epoch and requires
+// RuntimeOwner, the check that confirms the epoch still owns the runtime on the
+// attempt's transaction. Shadow persistence is required when the configured spec dispatches in shadow mode.
 type ExecutionConfig struct {
 	DB            *storage.DB
 	Executor      Executor
 	Clock         sources.Clock
 	OwnerEpoch    string
-	DecisionEpoch func(context.Context, *sql.Tx, string) error
+	RuntimeOwner  storage.OwnerCheck
+	DecisionEpoch storage.OwnerCheck
 	Telemetry     *telemetry.Runtime
 }
 
@@ -50,5 +50,5 @@ func executionConfig(cfg *ExecutionConfig) *app.ExecutionConfig {
 	if cfg == nil {
 		return nil
 	}
-	return &app.ExecutionConfig{Episodes: store.New(cfg.DB), Executor: cfg.Executor, Clock: cfg.Clock, OwnerEpoch: cfg.OwnerEpoch, DecisionEpoch: cfg.DecisionEpoch, Telemetry: cfg.Telemetry}
+	return &app.ExecutionConfig{Episodes: store.New(cfg.DB).Fenced(cfg.RuntimeOwner), Executor: cfg.Executor, Clock: cfg.Clock, OwnerEpoch: cfg.OwnerEpoch, DecisionEpoch: cfg.DecisionEpoch, Telemetry: cfg.Telemetry}
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 )
 
 func TestTargetResolutionPreservesFallbackPrecedence(t *testing.T) {
@@ -48,6 +49,7 @@ func TestDecisionValidationPrecedenceAndBinding(t *testing.T) {
 		{"tenant before digest", func(r *IntentRecord) { r.EpisodeTenant = "other"; r.DecisionSHA = nil }, "identity_mismatch"},
 		{"situation", func(r *IntentRecord) { r.EpisodeVersion = 2 }, "identity_mismatch"},
 		{"digest", func(r *IntentRecord) { r.DecisionSHA = make([]byte, 32) }, "decision_digest_mismatch"},
+		{"ambiguous bytes", func(r *IntentRecord) { r.DecisionJSON = contractstest.AmbiguousKeyJSON(r.DecisionJSON, "decision_id") }, "schema_invalid"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := good
@@ -193,11 +195,8 @@ func TestDefinitionAndAssertionCanonicalBytes(t *testing.T) {
 }
 
 func documentMatchesBytes(raw, digest []byte, domain canonicaljson.Domain) bool {
-	var document map[string]any
-	if json.Unmarshal(raw, &document) != nil {
-		return false
-	}
-	return DocumentDigestMatches(document, digest, domain)
+	document, err := contractsv1.DecodeDocumentJSON(raw)
+	return err == nil && contractsv1.VerifyDocumentDigest(domain, document, digest)
 }
 
 func testParameters(value any) map[string]any { v, _ := value.(map[string]any); return v }

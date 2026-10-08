@@ -2,6 +2,7 @@ package domain
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -102,22 +103,19 @@ func verifyRowDigest(row map[string]any, documentField, digestField string, doma
 	if err != nil {
 		return err
 	}
-	expected, err := expectedDigest(document, documentField, domain)
-	if err != nil || string(stored) == string(expected) {
+	matches, err := rowDigestMatches(document, documentField, stored, domain)
+	if err != nil || matches {
 		return err
 	}
 	return fmt.Errorf("%s does not match %s", digestField, documentField)
 }
 
-func expectedDigest(document map[string]any, documentField string, domain canonicaljson.Domain) ([]byte, error) {
-	if domain == "" {
-		return plainDigest(document, documentField)
+func rowDigestMatches(document map[string]any, documentField string, stored []byte, domain canonicaljson.Domain) (bool, error) {
+	if domain != "" {
+		return canonicaljson.VerifySum(domain, document, stored), nil
 	}
-	sum, err := canonicaljson.DigestSum(domain, document)
-	if err != nil {
-		return nil, fmt.Errorf("digest %s: %w", documentField, err)
-	}
-	return sum, nil
+	expected, err := plainDigest(document, documentField)
+	return bytes.Equal(stored, expected), err
 }
 
 func plainDigest(document map[string]any, documentField string) ([]byte, error) {

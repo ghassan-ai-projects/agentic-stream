@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"context"
 	"errors"
 	"time"
 
@@ -51,13 +50,6 @@ func CheckUsage(usage Usage, budget Budget) error {
 		return errors.New("budget_exhausted:cost_microunits")
 	}
 	return nil
-}
-
-func TerminalForContext(req *episodes.Request, err error, usage Usage) *episodes.Outcome {
-	if errors.Is(err, context.DeadlineExceeded) {
-		return Failed(req, "timed_out", usage)
-	}
-	return &episodes.Outcome{Status: string(episodeledger.AttemptCancelled), AttemptID: req.AttemptID, Fence: req.Fence, Reasons: []string{"canceled"}, CostMicrounits: usage.CostMicrounits}
 }
 
 func Failed(req *episodes.Request, reason string, usage Usage) *episodes.Outcome {

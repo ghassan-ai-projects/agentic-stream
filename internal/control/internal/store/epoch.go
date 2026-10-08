@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/control/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -75,7 +76,7 @@ func collectEpisodeIDs(rows *sql.Rows) ([]string, error) {
 const epochControlUpsert = `
 		INSERT INTO epoch_control (epoch, state, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT(epoch) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at
-		WHERE epoch_control.state <> 'killed'`
+		WHERE epoch_control.state <> '` + domain.EpochKilled + `'`
 
 var unstartedEpisodeReservationsSQL = `
 		SELECT e.episode_id

@@ -1,11 +1,10 @@
 package policy
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
@@ -14,7 +13,7 @@ import (
 type Config struct {
 	PolicyVersion, OwnerEpoch   string
 	IDGenerator                 sources.Generator
-	RuntimeOwner, DecisionEpoch func(context.Context, *sql.Tx, string) error
+	RuntimeOwner, DecisionEpoch store.OwnerCheck
 }
 
 // New validates configuration before constructing a policy service.

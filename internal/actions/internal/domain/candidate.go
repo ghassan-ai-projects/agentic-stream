@@ -1,7 +1,7 @@
 package domain
 
 import (
-	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
@@ -123,12 +123,9 @@ func outboxClosure(commandStatus string) string {
 // VerifiedDocument decodes the command document and returns the lease failure
 // code when it is invalid or disagrees with its ledger columns.
 func (c Candidate) VerifiedDocument() (CommandDocument, string) {
-	var raw Document
-	if err := json.Unmarshal(c.Command.JSON, &raw); err != nil {
-		return CommandDocument{}, FailureCommandJSONInvalid
-	}
-	if err := contractsv1.Validate(contractsv1.SchemaCommand, map[string]any(raw)); err != nil {
-		return CommandDocument{}, FailureCommandSchemaInvalid
+	raw, err := contractsv1.DecodeDocument(c.Command.JSON, contractsv1.SchemaCommand)
+	if err != nil {
+		return CommandDocument{}, commandDecodeFailure(err)
 	}
 	document := ParseCommandDocument(raw)
 	if !c.matchesLedger(raw, document) {
@@ -137,6 +134,13 @@ func (c Candidate) VerifiedDocument() (CommandDocument, string) {
 	return document, ""
 }
 
-func (c Candidate) matchesLedger(raw Document, document CommandDocument) bool {
-	return document.MatchesLedger(c.Command) && verifyDigest(canonicaljson.DomainCommand, raw, c.Command.SHA)
+func commandDecodeFailure(err error) string {
+	if errors.Is(err, contractsv1.ErrDocumentSchema) {
+		return FailureCommandSchemaInvalid
+	}
+	return FailureCommandJSONInvalid
+}
+
+func (c Candidate) matchesLedger(raw map[string]any, document CommandDocument) bool {
+	return document.MatchesLedger(c.Command) && contractsv1.VerifyDocumentDigest(canonicaljson.DomainCommand, raw, c.Command.SHA)
 }

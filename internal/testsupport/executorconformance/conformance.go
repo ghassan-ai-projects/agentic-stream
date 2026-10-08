@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 
@@ -78,4 +79,17 @@ func mustDocument(raw []byte) map[string]any {
 	var document map[string]any
 	_ = json.Unmarshal(raw, &document)
 	return document
+}
+
+// CheckContextEnding requires outcome to be what the episode runner records
+// when an executor returns ending (context.Canceled or
+// context.DeadlineExceeded) as its error: the same attempt status and reason,
+// so an executor that reports the ending in its Outcome and one that returns
+// the error leave the same durable attempt.
+func CheckContextEnding(req *episodes.Request, outcome *episodes.Outcome, ending error) error {
+	want := req.ContextEndingOutcome(ending, outcome.CostMicrounits)
+	if outcome.Status != want.Status || !slices.Equal(outcome.Reasons, want.Reasons) || outcome.AttemptID != req.AttemptID || outcome.Fence != req.Fence {
+		return fmt.Errorf("outcome for %q = %+v, want status %q reasons %q bound to attempt %s fence %d", ending.Error(), outcome, want.Status, want.Reasons, req.AttemptID, req.Fence)
+	}
+	return nil
 }

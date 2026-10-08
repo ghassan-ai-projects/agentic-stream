@@ -1,7 +1,7 @@
 package domain
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -100,24 +100,23 @@ func validateDecisionIntents(rawIntents []any, input Input, decisionID string, d
 	return intents, nil
 }
 
-// parseDecision canonicalizes the raw Decision, validates it against the
-// shared schema, and verifies the transmitted digest.
 func parseDecision(raw []byte, transmittedDigest string) (map[string]any, error) {
-	canonical, err := canonicaljson.Marshal(json.RawMessage(raw))
+	document, err := contractsv1.DecodeDocument(raw, contractsv1.SchemaDecision)
 	if err != nil {
-		return nil, reject("schema_invalid", "canonical_json", err.Error())
+		return nil, reject("schema_invalid", decodeFailureField(err), err.Error())
 	}
-	var document map[string]any
-	if err := json.Unmarshal(canonical, &document); err != nil {
-		return nil, reject("schema_invalid", "json", err.Error())
-	}
-	if err := contractsv1.Validate(contractsv1.SchemaDecision, document); err != nil {
-		return nil, reject("schema_invalid", "decision_schema", err.Error())
-	}
-	if !canonicaljson.Verify(canonicaljson.DomainDecision, document, transmittedDigest) {
+	sum, err := canonicaljson.DecodeDigest(transmittedDigest)
+	if err != nil || !contractsv1.VerifyDocumentDigest(canonicaljson.DomainDecision, document, sum) {
 		return nil, reject("schema_invalid", "decision_digest", "decision digest is missing or does not match canonical JSON")
 	}
 	return document, nil
+}
+
+func decodeFailureField(err error) string {
+	if errors.Is(err, contractsv1.ErrDocumentSchema) {
+		return "decision_schema"
+	}
+	return "canonical_json"
 }
 
 func integerField(document map[string]any, name string) (int, bool) {

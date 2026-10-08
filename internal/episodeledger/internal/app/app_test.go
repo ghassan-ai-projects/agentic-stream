@@ -48,34 +48,31 @@ func TestAttemptLifecycleRunsUnderFencing(t *testing.T) {
 		if _, err := StartAttempt(ctx, tx, "e1", "a2", now); err == nil {
 			t.Fatal("second active attempt accepted")
 		}
-		if err := TransitionAttempt(ctx, tx, identity, domain.AttemptRunning, now, nil, now); err != nil {
+		if err := TransitionAttempt(ctx, tx, identity, domain.AttemptRunning, now, nil, nil); err != nil {
 			t.Fatal(err)
 		}
-		if err := TransitionAttempt(ctx, tx, identity, domain.AttemptDispatched, now, nil, now); err == nil {
+		if err := TransitionAttempt(ctx, tx, identity, domain.AttemptDispatched, now, nil, nil); err == nil {
 			t.Fatal("backward transition accepted")
 		}
-		if err := TransitionAttempt(ctx, tx, identity, domain.AttemptProduced, now, []byte("{}"), now); err != nil {
+		if err := TransitionAttempt(ctx, tx, identity, domain.AttemptProduced, now, []byte("{}"), nil); err != nil {
 			t.Fatal(err)
 		}
 		stale := identity
 		stale.Fence = 0
-		if err := ValidateWorkerIdentity(ctx, tx, stale, now); !domain.IsIdentityReason(err, domain.RejectStaleAttempt) {
+		if err := ValidateWorkerIdentity(ctx, tx, stale, nil); !domain.IsIdentityReason(err, domain.RejectStaleAttempt) {
 			t.Fatalf("stale identity = %v", err)
 		}
 	})
 }
 
-func TestStartingAnAttemptRequiresAnOwnedEpochToHoldTheLease(t *testing.T) {
+func TestStartingAnAttemptRequiresAnOwnedEpoch(t *testing.T) {
 	t.Parallel()
 	within(t, func(ctx context.Context, tx *store.Tx) {
 		if err := Admit(ctx, tx, admission("e1"), now); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := StartAttemptOwned(ctx, tx, "e1", "a1", "", now); err == nil {
+		if _, err := StartAttemptOwned(ctx, tx, "e1", "a1", "", heldBy("epoch"), now); err == nil {
 			t.Fatal("owned start without an epoch accepted")
-		}
-		if _, err := StartAttemptOwned(ctx, tx, "e1", "a1", "epoch", now); !domain.IsIdentityReason(err, domain.RejectStaleAttempt) {
-			t.Fatalf("owned start without a lease = %v", err)
 		}
 		if _, err := StartAttempt(ctx, tx, "", "a1", now); err == nil {
 			t.Fatal("start without an episode accepted")
@@ -207,7 +204,7 @@ func TestCancellationOfASupersededEpisodeIsAcknowledgedButOutputIsNot(t *testing
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := TransitionAttempt(ctx, tx, identity, domain.AttemptRunning, now, nil, now); err != nil {
+		if err := TransitionAttempt(ctx, tx, identity, domain.AttemptRunning, now, nil, nil); err != nil {
 			t.Fatal(err)
 		}
 		if err := SupersedeEpoch(ctx, tx, "", now); err != nil {
@@ -222,10 +219,10 @@ func TestCancellationOfASupersededEpisodeIsAcknowledgedButOutputIsNot(t *testing
 		if err := Abandon(ctx, tx, "e1", now, nil); err != nil {
 			t.Fatal(err)
 		}
-		if err := TransitionAttempt(ctx, tx, identity, domain.AttemptProduced, now, nil, now); !domain.IsIdentityReason(err, domain.RejectEpisodeClosed) {
+		if err := TransitionAttempt(ctx, tx, identity, domain.AttemptProduced, now, nil, nil); !domain.IsIdentityReason(err, domain.RejectEpisodeClosed) {
 			t.Fatalf("output after closure = %v", err)
 		}
-		if err := TransitionAttempt(ctx, tx, identity, domain.AttemptCancelled, now, []byte("{}"), now); err != nil {
+		if err := TransitionAttempt(ctx, tx, identity, domain.AttemptCancelled, now, []byte("{}"), nil); err != nil {
 			t.Fatalf("cancellation acknowledgement = %v", err)
 		}
 	})

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 )
 
@@ -65,16 +66,13 @@ func bindShadowManifest(output ShadowOutput) ([]byte, error) {
 }
 
 func canonicalShadowDecision(output ShadowOutput) ([]byte, map[string]any, error) {
-	canonical, err := canonicaljson.Marshal(json.RawMessage(output.DecisionJSON))
+	document, err := contractsv1.DecodeDocumentJSON(output.DecisionJSON)
 	if err != nil {
 		return nil, nil, fmt.Errorf("decision JSON: %w", err)
 	}
-	if !bytes.Equal(canonical, output.DecisionJSON) {
+	canonical, err := canonicaljson.Marshal(document)
+	if err != nil || !bytes.Equal(canonical, output.DecisionJSON) {
 		return nil, nil, fmt.Errorf("decision JSON is not canonical")
-	}
-	var document map[string]any
-	if err := json.Unmarshal(canonical, &document); err != nil {
-		return nil, nil, fmt.Errorf("decode decision JSON: %w", err)
 	}
 	return canonical, document, nil
 }
@@ -84,7 +82,7 @@ func bindShadowDecisionDigest(output ShadowOutput, document map[string]any) ([]b
 	if err != nil {
 		return nil, fmt.Errorf("decision digest: %w", err)
 	}
-	if !canonicaljson.Verify(canonicaljson.DomainDecision, document, output.DecisionSHA256) {
+	if !contractsv1.VerifyDocumentDigest(canonicaljson.DomainDecision, document, decisionSHA) {
 		return nil, fmt.Errorf("decision digest does not match decision JSON")
 	}
 	return decisionSHA, nil

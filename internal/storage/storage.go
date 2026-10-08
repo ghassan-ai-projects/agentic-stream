@@ -81,6 +81,11 @@ func BoolInt(value bool) int {
 // Querier is anything that can run a query: *sql.DB, *sql.Tx and *DB.
 type Querier = store.Querier
 
+// OwnerCheck is a write fence: it runs on the caller's transaction and fails
+// when the given epoch no longer owns the runtime. Control's owner assertion
+// satisfies it; every module that fences its writes takes this one type.
+type OwnerCheck = store.OwnerCheck
+
 // QueryOptional scans the first column of the first row of query. A query
 // without rows reports found as false and no error; callers add the operation.
 func QueryOptional[T any](ctx context.Context, q Querier, query string, args ...any) (value T, found bool, err error) {

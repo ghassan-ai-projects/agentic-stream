@@ -1,18 +1,13 @@
 package domain
 
 import (
-	"encoding/json"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 // DecodeDocument decodes and schema-validates a governance contract.
 func DecodeDocument(raw []byte, schema contractsv1.SchemaName) (map[string]any, string) {
-	var document map[string]any
-	if err := json.Unmarshal(raw, &document); err != nil {
-		return nil, "schema_invalid"
-	}
-	if err := contractsv1.Validate(schema, document); err != nil {
+	document, err := contractsv1.DecodeDocument(raw, schema)
+	if err != nil {
 		return nil, "schema_invalid"
 	}
 	return document, ""

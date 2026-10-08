@@ -12,24 +12,24 @@ import (
 // StartAttempt allocates the next fence for an admitted episode and records a
 // dispatched worker attempt on the caller's transaction.
 func StartAttempt(ctx context.Context, tx *store.Tx, episodeID, attemptID string, now time.Time) (domain.Identity, error) {
-	return startAttempt(ctx, tx, episodeID, attemptID, "", now)
+	return startAttempt(ctx, tx, episodeID, attemptID, "", nil, now)
 }
 
-// StartAttemptOwned allocates an attempt fenced to the current runtime epoch.
-// Live composition uses this entry point; StartAttempt serves isolated fixtures
-// that do not model runtime ownership.
-func StartAttemptOwned(ctx context.Context, tx *store.Tx, episodeID, attemptID, ownerEpoch string, now time.Time) (domain.Identity, error) {
+// StartAttemptOwned allocates an attempt fenced to the current runtime epoch,
+// which owner must confirm. Live composition uses this entry point;
+// StartAttempt serves isolated fixtures that do not model runtime ownership.
+func StartAttemptOwned(ctx context.Context, tx *store.Tx, episodeID, attemptID, ownerEpoch string, owner store.OwnerCheck, now time.Time) (domain.Identity, error) {
 	if ownerEpoch == "" {
 		return domain.Identity{}, fmt.Errorf("runtime owner epoch is required")
 	}
-	return startAttempt(ctx, tx, episodeID, attemptID, ownerEpoch, now)
+	return startAttempt(ctx, tx, episodeID, attemptID, ownerEpoch, owner, now)
 }
 
-func startAttempt(ctx context.Context, tx *store.Tx, episodeID, attemptID, ownerEpoch string, now time.Time) (domain.Identity, error) {
+func startAttempt(ctx context.Context, tx *store.Tx, episodeID, attemptID, ownerEpoch string, owner store.OwnerCheck, now time.Time) (domain.Identity, error) {
 	if episodeID == "" || attemptID == "" {
 		return domain.Identity{}, fmt.Errorf("episode and attempt IDs are required")
 	}
-	if err := requireOwnerLease(ctx, tx, ownerEpoch, now); err != nil {
+	if err := requireOwnerLease(ctx, tx, owner, ownerEpoch); err != nil {
 		return domain.Identity{}, err
 	}
 	fence, err := requireStartableEpisode(ctx, tx, episodeID)

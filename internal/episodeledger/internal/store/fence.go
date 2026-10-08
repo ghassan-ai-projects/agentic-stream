@@ -5,12 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
+
+// OwnerCheck is the runtime owner assertion an owned identity is fenced by.
+type OwnerCheck = storage.OwnerCheck
 
 // ReadEpisodeFence reads the episode's tenant, lifecycle, current attempt and
 // fence; found is false for an unknown episode.
@@ -63,14 +64,17 @@ func (t *Tx) ReadEpisodeAttemptStatus(ctx context.Context, episodeID, attemptID 
 	return status, nil
 }
 
-// OwnerHoldsLease reports whether the epoch owns an unexpired runtime lease at
-// now. The lease table belongs to control; this is a read of its row.
-func (t *Tx) OwnerHoldsLease(ctx context.Context, epoch string, now time.Time) (bool, error) {
-	_, held, err := storage.QueryOptional[string](ctx, t.q, `
-		SELECT owner_epoch FROM runtime_owner
-		WHERE singleton_id = 1 AND owner_epoch = ? AND lease_until > ?`, epoch, kernel.FormatTime(now))
-	if err != nil {
-		return false, fmt.Errorf("assert runtime owner epoch: %w", err)
+// AssertOwner runs the runtime owner check for epoch on the caller's
+// transaction. The lease table belongs to control, so the ledger neither reads
+// nor interprets it; a missing check or transaction refuses the write.
+func (t *Tx) AssertOwner(ctx context.Context, owner storage.OwnerCheck, epoch string) error {
+	if owner == nil || t.tx == nil {
+		return errOwnerUnchecked
 	}
-	return held, nil
+	if err := owner(ctx, t.tx, epoch); err != nil {
+		return fmt.Errorf("assert runtime owner epoch %s: %w", epoch, err)
+	}
+	return nil
 }
+
+var errOwnerUnchecked = errors.New("an owned identity requires a runtime owner check on a transaction")

@@ -140,7 +140,7 @@ func composeConfig(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, gi
 		t.Fatal(err)
 	}
 	return app.AdmitterConfig{
-		Store: &store.PipelineStore{DB: db, Owner: owner, OwnerEpoch: ownerEpoch, Episodes: assembler, TenantID: "default"},
+		Store: &store.PipelineStore{DB: db, RuntimeOwner: owner.Assert, OwnerEpoch: ownerEpoch, Episodes: assembler, TenantID: "default"},
 		Clock: admissionClock(given), OwnerEpoch: ownerEpoch, EpochControl: control, DemoMode: given.demo,
 	}
 }

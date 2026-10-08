@@ -158,6 +158,11 @@ func TestTypedIntentRetainsDigestInput(t *testing.T) {
 	if docs.Intent.Parameters["opaque"].(map[string]any)["value"] != true {
 		t.Fatal("opaque payload lost")
 	}
+	ambiguous := r
+	ambiguous.IntentJSON = contractstest.AmbiguousKeyJSON(r.IntentJSON, "intent_id")
+	if _, reason := ParseIntent(ambiguous); reason != "schema_invalid" {
+		t.Fatal(reason)
+	}
 	r.IntentSHA = nil
 	if _, reason := ParseIntent(r); reason != "intent_digest_mismatch" {
 		t.Fatal(reason)

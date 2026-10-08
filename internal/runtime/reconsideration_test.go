@@ -81,7 +81,7 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	admitter, err := app.NewAdmitter(app.AdmitterConfig{Store: &store.PipelineStore{DB: db, Episodes: episodeService, TenantID: "default"}, Clock: sources.Physical()})
+	admitter, err := app.NewAdmitter(app.AdmitterConfig{Store: &store.PipelineStore{DB: db, RuntimeOwner: func(context.Context, *sql.Tx, string) error { return nil }, Episodes: episodeService, TenantID: "default"}, Clock: sources.Physical()})
 	if err != nil {
 		t.Fatal(err)
 	}

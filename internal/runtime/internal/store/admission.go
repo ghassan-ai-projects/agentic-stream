@@ -30,16 +30,9 @@ func (p *PipelineStore) InAdmission(ctx context.Context, work func(*AdmissionTx)
 	return p.DB.WithTx(ctx, func(tx *sql.Tx) error { return work(&AdmissionTx{tx: tx, store: p}) })
 }
 
-// AssertOwner fences the transaction to the runtime owner; it does nothing
-// when no owner is bound.
+// AssertOwner fences the transaction to the runtime owner.
 func (t *AdmissionTx) AssertOwner(ctx context.Context) error {
-	if t.store.Owner == nil || t.store.OwnerEpoch == "" {
-		return nil
-	}
-	if err := t.store.Owner.Assert(ctx, t.tx, t.store.OwnerEpoch); err != nil {
-		return fmt.Errorf("runtime ownership lost: %w", err)
-	}
-	return nil
+	return assertRuntimeOwner(ctx, t.tx, t.store.RuntimeOwner, t.store.OwnerEpoch)
 }
 
 // Assemble builds the scheduler item's episode request.

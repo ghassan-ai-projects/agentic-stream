@@ -108,7 +108,7 @@ func TestCancellationRecoveryAbandonsRatherThanRequeues(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		return episodeledger.TransitionAttempt(t.Context(), tx, identity, episodeledger.AttemptCancelling, now, nil)
+		return episodeledger.TransitionAttempt(t.Context(), tx, identity, episodeledger.AttemptCancelling, now, nil, nil)
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -21,7 +21,7 @@ func TestPipelineStorePreservesOriginalFenceAndOperationErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter := &PipelineStore{DB: db, Policy: service}
+	adapter := &PipelineStore{DB: db, Policy: service, RuntimeOwner: func(context.Context, *sql.Tx, string) error { return nil }}
 	if err := adapter.AssertOwner(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -55,12 +55,12 @@ func TestCostConfigurationCommitsUnderOwnerFence(t *testing.T) {
 	if err := owner.Claim(t.Context(), "epoch"); err != nil {
 		t.Fatal(err)
 	}
-	adapter := &PipelineStore{DB: db, Owner: owner, OwnerEpoch: "epoch"}
+	adapter := &PipelineStore{DB: db, RuntimeOwner: owner.Assert, OwnerEpoch: "epoch"}
 	if err := adapter.AssertOwner(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	ceiling := uint64(100)
-	cfg := CostConfiguration{DB: db, Owner: owner, OwnerEpoch: "epoch", Clock: clk, TenantID: "tenant"}
+	cfg := CostConfiguration{DB: db, RuntimeOwner: owner.Assert, OwnerEpoch: "epoch", Clock: clk, TenantID: "tenant"}
 	if err := ConfigureCostLimits(t.Context(), cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -74,5 +74,44 @@ func TestCostConfigurationCommitsUnderOwnerFence(t *testing.T) {
 	}
 	if err := adapter.AssertOwner(t.Context()); err == nil {
 		t.Fatal("expired owner accepted")
+	}
+}
+
+func TestEveryOwnerAssertionGoesThroughTheOneRuntimeOwnerCheck(t *testing.T) {
+	t.Parallel()
+	lost := errors.New("owner lost")
+	ceiling := uint64(1)
+	for name, tc := range map[string]struct {
+		owner   func(context.Context, *sql.Tx, string) error
+		wantErr error
+	}{
+		"owner holds": {owner: func(context.Context, *sql.Tx, string) error { return nil }},
+		"owner lost":  {owner: func(context.Context, *sql.Tx, string) error { return lost }, wantErr: lost},
+		"no check":    {wantErr: errOwnerCheckMissing},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			db := storagetest.OpenTemp(t)
+			pipeline := &PipelineStore{DB: db, RuntimeOwner: tc.owner, OwnerEpoch: "epoch"}
+			admission := pipeline.InAdmission(t.Context(), func(tx *AdmissionTx) error { return tx.AssertOwner(t.Context()) })
+			cost := ConfigureCostLimits(t.Context(), CostConfiguration{DB: db, RuntimeOwner: tc.owner, OwnerEpoch: "epoch", Clock: sources.Physical(), TenantID: "tenant", Ceilings: control.CostCeilings{Global: &ceiling}})
+			for step, err := range map[string]error{"pipeline": pipeline.AssertOwner(t.Context()), "admission": admission, "cost configuration": cost} {
+				if tc.wantErr == nil && err != nil || tc.wantErr != nil && !errors.Is(err, tc.wantErr) {
+					t.Fatalf("%s assertion = %v, want %v", step, err, tc.wantErr)
+				}
+			}
+		})
+	}
+}
+
+func TestOwnerAssertionPassesTheBoundEpoch(t *testing.T) {
+	t.Parallel()
+	var asked string
+	pipeline := &PipelineStore{DB: storagetest.OpenTemp(t), OwnerEpoch: "epoch-7", RuntimeOwner: func(_ context.Context, _ *sql.Tx, epoch string) error {
+		asked = epoch
+		return nil
+	}}
+	if err := pipeline.AssertOwner(t.Context()); err != nil || asked != "epoch-7" {
+		t.Fatalf("asked %q err=%v", asked, err)
 	}
 }

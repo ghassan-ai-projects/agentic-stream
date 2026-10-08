@@ -21,7 +21,7 @@ func (tx *Tx) MarkAdmitted(ctx context.Context, id string, now time.Time) error 
 
 // StartAttemptOwned fences an attempt to the runtime owner.
 func (tx *Tx) StartAttemptOwned(ctx context.Context, episode, attempt, owner string, now time.Time) (episodeledger.Identity, error) {
-	return episodeledger.StartAttemptOwned(ctx, tx.tx, episode, attempt, owner, now) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
+	return episodeledger.StartAttemptOwned(ctx, tx.tx, episode, attempt, owner, tx.owner, now) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
 }
 
 // StartAttempt allocates a fenced attempt for unowned fixture execution.
@@ -31,7 +31,7 @@ func (tx *Tx) StartAttempt(ctx context.Context, episode, attempt string, now tim
 
 // TransitionAttempt performs the lifecycle owner's fenced transition.
 func (tx *Tx) TransitionAttempt(ctx context.Context, identity episodeledger.Identity, status episodeledger.AttemptStatus, now time.Time, terminal []byte) error {
-	return episodeledger.TransitionAttempt(ctx, tx.tx, identity, status, now, terminal) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
+	return episodeledger.TransitionAttempt(ctx, tx.tx, identity, status, now, terminal, tx.owner) //nolint:wrapcheck // Use cases preserve established operation context and sentinel errors.
 }
 
 // Rebind updates the episode's immutable snapshot binding.

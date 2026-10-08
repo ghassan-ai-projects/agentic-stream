@@ -2,9 +2,12 @@ package domain
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -55,10 +58,13 @@ func TestReconsiderationEvidenceAndDigestRefusal(t *testing.T) {
 	if err != nil || !bytes.Equal(first, second) {
 		t.Fatalf("correction bytes changed: %v", err)
 	}
-	if _, _, err := DecodeCorrection([]byte(`{"invalid":true}`)); err == nil {
+	if _, err := DecodeCorrection([]byte(`{"invalid":true}`)); err == nil {
 		t.Fatal("invalid correction schema admitted")
 	}
-	if _, err := MatchCorrectionDigest(make([]byte, 32), make([]byte, 31)); err == nil {
+	if _, err := DecodeCorrection(contractstest.AmbiguousKeyJSON([]byte(`{"phase":"warning"}`), "phase")); !errors.Is(err, contractsv1.ErrDocumentJSON) {
+		t.Fatalf("ambiguous correction bytes err = %v", err)
+	}
+	if _, err := MatchCorrectionDigest(map[string]any{}, make([]byte, 31)); err == nil {
 		t.Fatal("incomplete persisted digest admitted")
 	}
 }

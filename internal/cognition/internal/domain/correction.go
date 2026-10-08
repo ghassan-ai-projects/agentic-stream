@@ -1,10 +1,8 @@
 package domain
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -39,28 +37,23 @@ func ShouldReconsider(current situations.Version, latePolicy string) bool {
 	return current.Completeness == "corrected" && current.PreviousVersion > 0 && latePolicy == "correct_and_reconsider"
 }
 
-// DecodeCorrection validates and digests the persisted corrected snapshot.
-func DecodeCorrection(snapshotJSON []byte) (map[string]any, []byte, error) {
-	var correction map[string]any
-	if err := json.Unmarshal(snapshotJSON, &correction); err != nil {
-		return nil, nil, fmt.Errorf("decode correction snapshot: %w", err)
-	}
-	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, correction); err != nil {
-		return nil, nil, fmt.Errorf("validate correction snapshot: %w", err)
-	}
-	sum, err := canonicaljson.DigestSum(canonicaljson.DomainSnapshot, correction)
+// DecodeCorrection strictly decodes and schema-validates the persisted
+// corrected snapshot.
+func DecodeCorrection(snapshotJSON []byte) (map[string]any, error) {
+	correction, err := contractsv1.DecodeDocument(snapshotJSON, contractsv1.SchemaSnapshot)
 	if err != nil {
-		return nil, nil, fmt.Errorf("digest correction snapshot: %w", err)
+		return nil, fmt.Errorf("decode correction snapshot: %w", err)
 	}
-	return correction, sum, nil
+	return correction, nil
 }
 
-// MatchCorrectionDigest checks the persisted bytes against the expected digest.
-func MatchCorrectionDigest(sum, persisted []byte) ([]byte, error) {
-	if !bytes.Equal(sum, persisted) {
+// MatchCorrectionDigest returns the persisted digest when it binds the
+// decoded correction snapshot.
+func MatchCorrectionDigest(correction map[string]any, persisted []byte) ([]byte, error) {
+	if !contractsv1.VerifyDocumentDigest(canonicaljson.DomainSnapshot, correction, persisted) {
 		return nil, fmt.Errorf("correction snapshot digest mismatch")
 	}
-	return sum, nil
+	return persisted, nil
 }
 
 // NewReconsideration binds deterministic identities to one invalidated command.

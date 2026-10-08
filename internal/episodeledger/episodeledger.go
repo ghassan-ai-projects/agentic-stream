@@ -41,6 +41,11 @@ type (
 	CostSettler = store.Settler
 )
 
+// ErrOwnerLost is what a runtime owner check reports, wrapped, when the epoch
+// no longer owns the runtime. Any other check error is a failure to check and
+// is returned as such.
+var ErrOwnerLost = domain.ErrOwnerLost
+
 // ErrLiveEpisodeConflict means a reconsideration collides with a live episode.
 var ErrLiveEpisodeConflict = domain.ErrLiveEpisodeConflict
 

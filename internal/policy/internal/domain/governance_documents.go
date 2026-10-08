@@ -51,7 +51,7 @@ func ParseDecision(row IntentRecord) (DecisionDocument, string) {
 	if !MatchesDecisionIdentity(row, decision) {
 		return DecisionDocument{}, "identity_mismatch"
 	}
-	if !DocumentDigestMatches(document, row.DecisionSHA, canonicaljson.DomainDecision) {
+	if !contractsv1.VerifyDocumentDigest(canonicaljson.DomainDecision, document, row.DecisionSHA) {
 		return DecisionDocument{}, "decision_digest_mismatch"
 	}
 	return decision, ""
@@ -66,7 +66,7 @@ func ParseIntent(row IntentRecord) (IntentDocument, string) {
 	if reason != "" {
 		return IntentDocument{}, reason
 	}
-	if !DocumentDigestMatches(document, row.IntentSHA, canonicaljson.DomainIntent) {
+	if !contractsv1.VerifyDocumentDigest(canonicaljson.DomainIntent, document, row.IntentSHA) {
 		return IntentDocument{}, "intent_digest_mismatch"
 	}
 	return ProjectIntent(document), ""

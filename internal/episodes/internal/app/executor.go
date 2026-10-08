@@ -18,7 +18,7 @@ type Runner struct {
 	idGen         sources.Generator
 	ownerEpoch    string
 	cost          *runtimecontrol.CostLedger
-	decisionEpoch store.DecisionEpochCheck
+	decisionEpoch store.OwnerCheck
 	telemetry     *telemetry.Runtime
 	assembler     *Assembler
 }

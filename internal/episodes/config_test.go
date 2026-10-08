@@ -17,15 +17,16 @@ func TestConstructionRejectsIncompleteExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	control := &control.EpochControl{DB: db}
+	epochs := &control.EpochControl{DB: db}
 	tests := []struct {
 		name string
 		cfg  episodes.Config
 	}{
 		{"missing spec", episodes.Config{}},
-		{"missing database", episodes.Config{Spec: compiled, Execution: &episodes.ExecutionConfig{Executor: declinedExecutor{}, DecisionEpoch: control.AssertDecisionTx}}},
-		{"missing executor", episodes.Config{Spec: compiled, Execution: &episodes.ExecutionConfig{DB: db, DecisionEpoch: control.AssertDecisionTx}}},
+		{"missing database", episodes.Config{Spec: compiled, Execution: &episodes.ExecutionConfig{Executor: declinedExecutor{}, DecisionEpoch: epochs.AssertDecisionTx}}},
+		{"missing executor", episodes.Config{Spec: compiled, Execution: &episodes.ExecutionConfig{DB: db, DecisionEpoch: epochs.AssertDecisionTx}}},
 		{"missing epoch check", episodes.Config{Spec: compiled, Execution: &episodes.ExecutionConfig{DB: db, Executor: declinedExecutor{}}}},
+		{"owner epoch without a runtime owner check", episodes.Config{Spec: compiled, Execution: &episodes.ExecutionConfig{DB: db, Executor: declinedExecutor{}, OwnerEpoch: "epoch", DecisionEpoch: epochs.AssertDecisionTx}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -35,11 +36,15 @@ func TestConstructionRejectsIncompleteExecution(t *testing.T) {
 			}
 		})
 	}
+	owner := &control.RuntimeOwner{DB: db, InstanceID: "instance"}
+	if service, err := episodes.New(episodes.Config{Spec: compiled, Execution: &episodes.ExecutionConfig{DB: db, Executor: declinedExecutor{}, OwnerEpoch: "epoch", RuntimeOwner: owner.Assert, DecisionEpoch: epochs.AssertDecisionTx}}); err != nil || service == nil {
+		t.Fatalf("owned execution refused: %v %v", service, err)
+	}
 	// Shadow persistence is the episode store's own table, so a shadow spec needs
 	// nothing beyond the database every execution already requires.
 	shadowSpec := *compiled
 	shadowSpec.Cognition.Executor.DispatchPolicy = "shadow"
-	if service, err := episodes.New(episodes.Config{Spec: &shadowSpec, Execution: &episodes.ExecutionConfig{DB: db, Executor: declinedExecutor{}, DecisionEpoch: control.AssertDecisionTx}}); err != nil || service == nil {
+	if service, err := episodes.New(episodes.Config{Spec: &shadowSpec, Execution: &episodes.ExecutionConfig{DB: db, Executor: declinedExecutor{}, DecisionEpoch: epochs.AssertDecisionTx}}); err != nil || service == nil {
 		t.Fatalf("shadow execution refused: %v %v", service, err)
 	}
 }

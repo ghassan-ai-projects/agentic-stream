@@ -12,16 +12,19 @@ Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 | Facade | Aliases of the domain vocabulary; one-line operations that join the caller's `*sql.Tx`; the wall-clock default for the owner-lease check |
 | App | Use cases in order: read state, decide (domain), write; worker identity validation (run by every transition), attempt start and transition under fencing, recovery loop, queue operations |
 | Domain | Statuses, `Identity`, fence and attempt checks over values the store read, the transition table, rejection reasons and ids, admission defaults, the recovery terminal |
-| Store | The only SQL for `scheduler_items`, `episodes`, `episode_attempts`, `episode_rejections`; reads the runtime owner lease; classifies unique violations |
+| Store | The only SQL for `scheduler_items`, `episodes`, `episode_attempts`, `episode_rejections`; never reads the runtime owner lease (it runs the injected owner check); classifies unique violations |
 
 Every operation takes the caller's transaction; the ledger never begins or commits. Fencing keeps
-its order: episode fence, owner lease, attempt state; a closed episode may still acknowledge the
+its order: episode fence, owner lease, attempt state. The owner lease is judged by the
+`OwnerCheck` the caller passes to `StartAttemptOwned` and `TransitionAttempt` (control's
+`RuntimeOwner.Assert`, so epoch, instance and lease time are control's rule); a check that reports
+`ErrOwnerLost` is a stale attempt, any other check error is returned, and an owned identity with no
+check is refused; a closed episode may still acknowledge the
 cancellation of its current attempt, never a produced Decision. Recovery releases cost
 reservations only for canceling attempts, through the `CostSettler` port, because `control`
 imports this ledger and cannot be imported back.
 
-The store reads `runtime_owner` (control's table) and the coalescing statement reads
-`trigger_evaluations` (cognition's table); both are recorded as follow-ups. The dispatch read
+The coalescing statement reads `trigger_evaluations` (cognition's table); this is recorded as a follow-up. The dispatch read
 also checks `epoch_control` (control's table) for killed policy epochs.
 
 Other modules read `episodes` and `episode_attempts` only through the ledger: `ReadEpisodeFence`,

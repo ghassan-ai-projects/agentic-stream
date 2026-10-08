@@ -40,6 +40,10 @@ func ExecutionFailureReason(err error) string {
 	}
 }
 
+func isContextError(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
 // ExecutionFailureStatus classifies an execution error into the attempt
 // lifecycle status the ledger records.
 func ExecutionFailureStatus(err error) episodeledger.AttemptStatus {
@@ -50,4 +54,22 @@ func ExecutionFailureStatus(err error) episodeledger.AttemptStatus {
 		return episodeledger.AttemptTimedOut
 	}
 	return episodeledger.AttemptFailed
+}
+
+// ContextEndingOutcome is the terminal outcome of an executor that observed a
+// context error itself, classified exactly as the runner classifies the same
+// error returned by an executor: a cancellation ends the attempt as
+// AttemptCancelled and a deadline as AttemptTimedOut. It is nil when err is
+// neither.
+func (r *Request) ContextEndingOutcome(err error, costMicrounits uint64) *Outcome {
+	if !isContextError(err) {
+		return nil
+	}
+	return &Outcome{
+		Status:         string(ExecutionFailureStatus(err)),
+		AttemptID:      r.AttemptID,
+		Fence:          r.Fence,
+		Reasons:        []string{ExecutionFailureReason(err)},
+		CostMicrounits: costMicrounits,
+	}
 }

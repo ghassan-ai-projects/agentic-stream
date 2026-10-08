@@ -10,7 +10,7 @@ import (
 )
 
 // WithDecisionEpoch installs an explicit test fence without reimplementing refusal rules.
-func (r *Runner) WithDecisionEpoch(check store.DecisionEpochCheck) *Runner {
+func (r *Runner) WithDecisionEpoch(check store.OwnerCheck) *Runner {
 	r.decisionEpoch = check
 	return r
 }

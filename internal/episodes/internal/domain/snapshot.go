@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -24,12 +23,9 @@ type SnapshotEvidence struct {
 // snapshot contract and the episode admission identity, and verifies its
 // persisted digest. A stale or tampered snapshot never reaches a worker.
 func ValidateSnapshotEvidence(snapshotJSON, persistedDigest []byte, traceparent, tracestate, situationID string, version int, tenantID string) (*SnapshotEvidence, error) {
-	var snapshot map[string]any
-	if err := json.Unmarshal(snapshotJSON, &snapshot); err != nil {
-		return nil, fmt.Errorf("unmarshal snapshot: %w", err)
-	}
-	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, snapshot); err != nil {
-		return nil, fmt.Errorf("validate snapshot: %w", err)
+	snapshot, err := contractsv1.DecodeDocument(snapshotJSON, contractsv1.SchemaSnapshot)
+	if err != nil {
+		return nil, fmt.Errorf("decode snapshot: %w", err)
 	}
 	if contractsv1.DocumentString(snapshot, "situation_id") != situationID ||
 		contractsv1.DocumentInt(snapshot, "situation_version") != version ||
@@ -44,15 +40,11 @@ func bindSnapshotEvidence(snapshotJSON, persistedDigest []byte, traceparent, tra
 	if err != nil {
 		return nil, fmt.Errorf("load snapshot entity: %w", err)
 	}
-	sum, err := canonicaljson.DigestSum(canonicaljson.DomainSnapshot, snapshot)
-	if err != nil {
-		return nil, fmt.Errorf("digest snapshot: %w", err)
-	}
-	if !bytes.Equal(sum, persistedDigest) {
+	if !contractsv1.VerifyDocumentDigest(canonicaljson.DomainSnapshot, snapshot, persistedDigest) {
 		return nil, fmt.Errorf("snapshot digest does not match persisted situation version")
 	}
 	return &SnapshotEvidence{
-		Document: snapshot, EntityID: entityID, Digest: canonicaljson.EncodeDigest(sum), Traceparent: traceparent, Tracestate: tracestate,
+		Document: snapshot, EntityID: entityID, Digest: canonicaljson.EncodeDigest(persistedDigest), Traceparent: traceparent, Tracestate: tracestate,
 	}, nil
 }
 

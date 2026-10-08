@@ -10,7 +10,7 @@ import (
 )
 
 type Ownership struct {
-	Check store.Fence
+	Check store.OwnerCheck
 	Epoch string
 }
 

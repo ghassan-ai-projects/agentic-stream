@@ -21,7 +21,7 @@ func TestSupersededAttemptOnlyAcceptsCurrentCancellation(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		return episodeledger.TransitionAttempt(t.Context(), tx, identity, episodeledger.AttemptRunning, now, nil)
+		return episodeledger.TransitionAttempt(t.Context(), tx, identity, episodeledger.AttemptRunning, now, nil, nil)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestSupersededAttemptOnlyAcceptsCurrentCancellation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-				return episodeledger.TransitionAttempt(t.Context(), tx, tt.identity, tt.to, now, nil)
+				return episodeledger.TransitionAttempt(t.Context(), tx, tt.identity, tt.to, now, nil, nil)
 			})
 			if tt.reason == "" && err != nil {
 				t.Fatal(err)

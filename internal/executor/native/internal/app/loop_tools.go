@@ -21,7 +21,7 @@ func (l *episodeLoop) runTools(ctx context.Context, calls []domain.ToolCall) *ep
 	for _, call := range calls {
 		l.toolCalls++
 		if err := ctx.Err(); err != nil {
-			return domain.TerminalForContext(l.req, err, l.usage)
+			return l.req.ContextEndingOutcome(err, l.usage.CostMicrounits)
 		}
 		if outcome := l.runTool(ctx, call); outcome != nil {
 			return outcome
