@@ -142,3 +142,8 @@ func (s *Service) redrive(ctx context.Context, u *store.Unit, tenantID, eventID,
 	}
 	return position, u.MarkRedriven(ctx, tenantID, eventID, now)
 }
+
+// Quarantined lists the tenant's quarantine records, newest first.
+func (s *Service) Quarantined(ctx context.Context, tenantID string) ([]domain.QuarantineRecord, error) {
+	return s.store.Quarantined(ctx, tenantID) //nolint:wrapcheck // The store names the failed read.
+}

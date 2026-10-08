@@ -1,6 +1,6 @@
 # U16 — Quarantine list, release and redrive
 
-Status: todo · Decision: **complete** · Priority: P1 · Size: M · Depends on: U13, U03
+Status: done · Decision: **complete** · Priority: P1 · Size: M · Depends on: U13, U03
 
 ## Finding
 

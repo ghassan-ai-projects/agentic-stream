@@ -150,7 +150,7 @@ as the change.
 | U13 | [Operator command foundation](tasks/U13-operator-command-foundation.md) | Complete | P1 | S | — | done |
 | U14 | [Interlock trip/clear command](tasks/U14-interlock-operator-command.md) | Complete | P1 | S | U13 | done |
 | U15 | [Approval principal provisioning](tasks/U15-approval-principal-provisioning.md) | Complete | P0 (experiment: R2 fan approval) | M | U13 | done |
-| U16 | [Quarantine list/release/redrive](tasks/U16-quarantine-operator-commands.md) | Complete | P1 | M | U13, U03 | todo |
+| U16 | [Quarantine list/release/redrive](tasks/U16-quarantine-operator-commands.md) | Complete | P1 | M | U13, U03 | done |
 | U17 | [Notification retention command](tasks/U17-notification-retention-command.md) | Complete | P1 | S | U13 | todo |
 | U18 | [Manual command reconciliation](tasks/U18-manual-command-reconciliation.md) | Complete | P1 | M | U13 | todo |
 | U19 | [`run --repeat N`](tasks/U19-replay-repeat-flag.md) | Complete | P2 | XS | — | todo |

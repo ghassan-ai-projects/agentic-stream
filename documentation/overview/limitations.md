@@ -85,9 +85,9 @@ See [the domain model](../learn/domain-model.md),
 ### Operator inspection and redrive are internal capabilities
 
 Durable quarantine, approval, reconciliation, and explainability records exist
-inside the runtime, but the current public CLI and HTTP API do not expose
-general inspection, approval resolution, unknown-outcome reconciliation, or
-quarantine redrive commands. A deployment needs approved internal tooling and
+inside the runtime. Quarantine redrive, approval governance and the interlock
+have CLI commands; the public CLI and HTTP API do not yet expose general
+inspection or unknown-outcome reconciliation. A deployment needs approved internal tooling and
 runbooks for those actions; they are not available as ready-to-use public operations.
 
 ## Deliberate non-goals

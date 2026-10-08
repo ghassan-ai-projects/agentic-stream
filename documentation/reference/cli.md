@@ -123,6 +123,16 @@ effect. `trip` blocks every effect and needs no lease; `clear` reopens the
 action plane and needs the lease. Each change is versioned and records its
 reason and time. It does not replace a physical e-stop.
 
+### `quarantine list | release <event-id> | redrive <event-id>`
+
+Invalid or not-yet-registered evidence is quarantined, never dropped. `list`
+shows each record's status: `quarantined`, `released`, `redriven`, or
+`rejected` when its retries ran out (the log records a gap for it). `release`
+is the operator's decision to admit a record again; `redrive` re-validates the
+released record against the schemas registered now and appends it to the log
+exactly once, so the engine processes it on the next run. Both changes need
+the runtime owner lease. A record that still fails validation stays released.
+
 ### `principals apply --file <principals.yaml> [--dry-run] | show`
 
 Provisions the approval governance the `/v1/approvals` flow checks: relays,

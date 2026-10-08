@@ -74,3 +74,24 @@ func ValidRelease(tenantID, eventID, now string) error {
 	}
 	return nil
 }
+
+// QuarantineRecord is one quarantined event as an operator sees it. Status is
+// quarantined, released, redriven (released and appended to the log) or
+// rejected (its retries ran out; the log recorded a gap for it).
+type QuarantineRecord struct {
+	EventID      string `json:"event_id"`
+	EventType    string `json:"event_type"`
+	ReasonCode   string `json:"reason_code"`
+	Status       string `json:"status"`
+	AttemptCount int    `json:"attempt_count"`
+	FirstSeenAt  string `json:"first_seen_at"`
+	LastSeenAt   string `json:"last_seen_at"`
+}
+
+// OperatorStatus folds the redrive marker into the stored status.
+func OperatorStatus(stored string, redriven bool) string {
+	if stored == "released" && redriven {
+		return "redriven"
+	}
+	return stored
+}

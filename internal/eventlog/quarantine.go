@@ -4,7 +4,11 @@ import (
 	"context"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
 )
+
+// QuarantineRecord is one quarantined event as an operator sees it.
+type QuarantineRecord = domain.QuarantineRecord
 
 // QuarantineEnvelope records a normalized envelope that failed validation.
 func (l *EventLog) QuarantineEnvelope(ctx context.Context, tenantID string, env contractsv1.Envelope, reason, now string) error {
@@ -24,4 +28,9 @@ func (l *EventLog) ReleaseQuarantine(ctx context.Context, tenantID, eventID, now
 // RedriveQuarantine validates and appends a released envelope atomically.
 func (l *EventLog) RedriveQuarantine(ctx context.Context, tenantID, eventID, now string) (LogPosition, error) {
 	return l.service.RedriveQuarantine(ctx, tenantID, eventID, now)
+}
+
+// Quarantined lists the tenant's quarantine records, newest first.
+func (l *EventLog) Quarantined(ctx context.Context, tenantID string) ([]QuarantineRecord, error) {
+	return l.service.Quarantined(ctx, tenantID)
 }
