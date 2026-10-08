@@ -21,20 +21,26 @@ import (
 // together with the named consumer. See
 // docs/unfinished-work-review-2026-10-08/EXPERIMENT_COMPATIBILITY.md.
 
-const (
-	zoneThermalSpec   = "../../docs/design/examples/zone-thermal.situation.yaml"
-	zoneThermalDigest = "sha256:d5907b52280fc34ec1d17c88e905c2ac79ad4358eb4bb2253e6f7efdf0f925fb"
-	zoneSchemasDigest = "sha256:eb765c6cd6ccfaf67c2be6ba2bae91694fb079020ddd065871ba1849e2f81a4d"
-)
+const zoneSchemasDigest = "sha256:eb765c6cd6ccfaf67c2be6ba2bae91694fb079020ddd065871ba1849e2f81a4d"
 
-func TestExperimentThermalSpecCompilesToItsPinnedDigest(t *testing.T) {
+// experimentSpecs are the specs the experiment runs and the canonical example
+// they derive from.
+var experimentSpecs = []struct{ path, digest string }{
+	{"../../docs/design/examples/zone-thermal.situation.yaml", "sha256:d5907b52280fc34ec1d17c88e905c2ac79ad4358eb4bb2253e6f7efdf0f925fb"},
+	{"../../examples/real-world-sensor/zone-thermal-sim.situation.yaml", "sha256:a6153efe15c9a2b5ea7706d8e8f62312263b8c994eb6839caeb45b84412ae171"},
+	{"../../examples/real-world-sensor/zone-thermal-bench.situation.yaml", "sha256:b1b60be7ddae1ef91da2b43f52ee44263f6d2a367bfdd0605bdd1c28ad9c34cf"},
+}
+
+func TestExperimentSpecsCompileToTheirPinnedDigests(t *testing.T) {
 	t.Parallel()
-	compiled, err := spec.CompileFile(context.Background(), zoneThermalSpec)
-	if err != nil {
-		t.Fatalf("zone-thermal no longer compiles; the real-world-sensor runbook copies it: %v", err)
-	}
-	if compiled.Digest != zoneThermalDigest {
-		t.Errorf("zone-thermal compiles to %s; update the real-world-sensor runbook and the gateway --device-policy-digest in the same change, then this pin", compiled.Digest)
+	for _, pinned := range experimentSpecs {
+		compiled, err := spec.CompileFile(context.Background(), pinned.path)
+		if err != nil {
+			t.Fatalf("%s no longer compiles; the real-world-sensor runbooks run it: %v", pinned.path, err)
+		}
+		if compiled.Digest != pinned.digest {
+			t.Errorf("%s compiles to %s; update the real-world-sensor runbook and the gateway --device-policy-digest in the same change, then this pin", pinned.path, compiled.Digest)
+		}
 	}
 }
 

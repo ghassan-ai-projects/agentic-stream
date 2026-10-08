@@ -1,6 +1,6 @@
 # X04 — One intent vocabulary for the thermal domain
 
-Status: todo · Decision: **Tamoz adopts the spec catalog; pin parity here** · Priority: P0 (experiment) · Size: S here, M in Tamoz
+Status: Agentic Stream part done (parity pin); Tamoz change pending · Decision: **Tamoz adopts the spec catalog; pin parity here** · Priority: P0 (experiment) · Size: S here, M in Tamoz
 
 Design and reasoning: [EXPERIMENT_DESIGN.md](../EXPERIMENT_DESIGN.md) G3, D2.
 

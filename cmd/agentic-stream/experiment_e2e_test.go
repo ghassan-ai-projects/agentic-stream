@@ -25,7 +25,7 @@ import (
 // docs/unfinished-work-review-2026-10-08/tasks/X01-experiment-compatibility-guard.md.
 
 const (
-	experimentSpec    = "../../docs/design/examples/zone-thermal.situation.yaml"
+	experimentSpec    = "../../examples/real-world-sensor/zone-thermal-sim.situation.yaml"
 	experimentCatalog = "../../internal/contractsv1/internal/domain/conformance/v1/thermal-capability-catalog.json"
 	experimentTrace   = "../../examples/thermal-chamber/testdata/trace-opening.jsonl"
 )
@@ -81,19 +81,15 @@ func privateSocketDir(t *testing.T) string {
 	return dir
 }
 
-// tamozActiveSpec copies the canonical spec with the two edits RUNBOOK-G1
-// makes, the Tamoz executor and the active dispatch policy, plus any edits the
-// test asks for.
+// tamozActiveSpec copies the experiment's simulator spec, which runs Tamoz with
+// active dispatch, with any edits the test asks for.
 func tamozActiveSpec(t *testing.T, dir string, edits map[string]string) string {
 	t.Helper()
 	data, err := os.ReadFile(experimentSpec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	edited := strings.Replace(string(data), "    name: native\n", "    name: tamoz\n    dispatchPolicy: active\n", 1)
-	if edited == string(data) {
-		t.Fatal("zone-thermal executor block changed; update the runbook edit and this test")
-	}
+	edited := string(data)
 	for old, replacement := range edits {
 		if !strings.Contains(edited, old) {
 			t.Fatalf("zone-thermal has no %q to edit", old)

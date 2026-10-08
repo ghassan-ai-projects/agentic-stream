@@ -1,6 +1,6 @@
 # X05 — Check in the experiment's specs
 
-Status: todo · Decision: **complete** · Priority: P0 (experiment) · Size: S · Depends on: X01
+Status: done · Decision: **complete** · Priority: P0 (experiment) · Size: S · Depends on: X01
 
 Design and reasoning: [EXPERIMENT_DESIGN.md](../EXPERIMENT_DESIGN.md) G1, G4, G7, D3.
 
@@ -27,3 +27,15 @@ Design and reasoning: [EXPERIMENT_DESIGN.md](../EXPERIMENT_DESIGN.md) G1, G4, G7
 
 The research runbooks reference these files instead of "copy and edit", and
 X01 fails if either spec stops validating or changes digest.
+
+## Result
+
+- `examples/real-world-sensor/zone-thermal-sim.situation.yaml` and
+  `zone-thermal-bench.situation.yaml`, with a README; the X01 end-to-end tests
+  now run the sim spec.
+- `validate` prints `policy_digest:` from the policy facade.
+- Pins: spec digests (spec), policy digests (policy), thermal intent catalog
+  digest for Tamoz parity (episodes, X04's part in this repository).
+- `internal/replay/bench_spec_test.go`: on a temperature-and-heartbeat trace
+  the bench spec opens and reaches `cooling`, while the sim spec never opens,
+  which confirms G1.
