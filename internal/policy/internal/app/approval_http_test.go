@@ -101,7 +101,7 @@ func TestHTTPResolutionRechecksCurrentStateAndTrustedClock(t *testing.T) {
 			body := signedApproval(t, f, true)
 			switch change {
 			case "stale":
-				if _, err := f.db.ExecContext(t.Context(), "UPDATE situations SET current_version=2 WHERE situation_id='sit-policy'"); err != nil {
+				if _, err := f.db.ExecContext(t.Context(), "UPDATE situations SET current_version=2, last_material_version=2 WHERE situation_id='sit-policy'"); err != nil {
 					t.Fatal(err)
 				}
 			case "expired":

@@ -10,14 +10,15 @@ then adds trigger deltas, policy audits, lifecycle fencing, reconsiderations,
 notifications, evidence ledgers, runtime ownership, quarantine/redrive,
 cost/interlock controls, mode/shadow state, epoch control, calibration, and
 episode rebinding, paired shadow comparisons, device authority,
-reconciliation, and soak evidence, and the device-reconciliation column names.
+reconciliation, and soak evidence, the device-reconciliation column names,
+and each Situation's latest material version.
 
 The current head is
-[`031_device_reconciliation_language.sql`](../../migrations/031_device_reconciliation_language.sql),
-which aligns `device_reconciliation` columns with the device-authority
-vocabulary;
-[`030_authority_reconciliation_soak.sql`](../../migrations/030_authority_reconciliation_soak.sql)
-adds the preceding device-authority records.
+[`032_situation_material_version.sql`](../../migrations/032_situation_material_version.sql),
+which records the latest material Situation version that intent freshness
+checks against (ADR-018);
+[`031_device_reconciliation_language.sql`](../../migrations/031_device_reconciliation_language.sql)
+aligns `device_reconciliation` columns with the device-authority vocabulary.
 
 The filenames are the precise history. Read the SQL and storage tests before
 depending on a column or status value.

@@ -53,6 +53,9 @@ type evaluationInputs struct {
 	watermark           time.Time
 }
 
+// PhaseResolved is the phase a Situation enters when its occurrence closes.
+const PhaseResolved = "resolved"
+
 func (e *Engine) closeOccurrence(ctx context.Context, sit *Situation, in evaluationInputs) (bool, error) {
 	if sit.Version == 0 && sit.Phase == e.spec.Situation.InitialPhase {
 		return false, nil
@@ -61,7 +64,7 @@ func (e *Engine) closeOccurrence(ctx context.Context, sit *Situation, in evaluat
 	if err != nil || !closed {
 		return false, err
 	}
-	return e.transition(sit, "resolved", in.watermark), nil
+	return e.transition(sit, PhaseResolved, in.watermark), nil
 }
 
 // applyTransitions takes every transition out of the current phase whose

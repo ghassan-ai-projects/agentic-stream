@@ -76,9 +76,9 @@ func openActionFixture(t *testing.T) (*storage.DB, string) {
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO situations (
 			situation_id, tenant_id, deployment_id, situation_type, entity_type, entity_id,
-			partition_id, occurrence_id, current_version, phase, status,
+			partition_id, occurrence_id, current_version, last_material_version, phase, status,
 			first_event_time, latest_event_time, updated_at, created_at
-		) VALUES ('sit-action', 'tenant', 'dep', 'test', 'motor', 'motor-1', 0, 'occ-action', 1, 'watch', 'open', ?, ?, ?, ?)`,
+		) VALUES ('sit-action', 'tenant', 'dep', 'test', 'motor', 'motor-1', 0, 'occ-action', 1, 1, 'watch', 'open', ?, ?, ?, ?)`,
 		now, now, now, now); err != nil {
 		t.Fatalf("insert situation: %v", err)
 	}

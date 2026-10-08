@@ -54,7 +54,7 @@ func scanPolicyIntent(query *sql.Row) (domain.IntentRecord, error) {
 		&row.ValidationStatus, &row.DecisionJSON, &row.DecisionSHA,
 		&row.DecisionSituation, &row.DecisionVersion, &traceparent, &tracestate,
 		&row.EpisodeID, &row.EpisodeTenant, &row.EpisodeSituation, &row.EpisodeVersion,
-		&row.EpisodeLifecycle, &row.ExecutorVersion, &row.PolicyEpoch, &row.SituationTenant, &row.CurrentSituation, &row.SituationType, &row.CurrentCompleteness,
+		&row.EpisodeLifecycle, &row.ExecutorVersion, &row.PolicyEpoch, &row.SituationTenant, &row.CurrentSituation, &row.LastMaterialVersion, &row.SituationType, &row.CurrentCompleteness,
 	)
 	if err == nil {
 		row.Traceparent = traceparent.String
@@ -70,7 +70,7 @@ const loadPolicyIntentSQL = `
 		       d.validation_status, d.raw_json, d.decision_sha256,
 		       d.situation_id, d.situation_version, d.traceparent, d.tracestate,
 		       e.episode_id, e.tenant_id, e.situation_id, e.situation_version,
-		       e.lifecycle_status, e.executor_version, e.policy_epoch, s.tenant_id, s.current_version, s.situation_type,
+		       e.lifecycle_status, e.executor_version, e.policy_epoch, s.tenant_id, s.current_version, s.last_material_version, s.situation_type,
 		       COALESCE((SELECT sv.completeness FROM situation_versions sv WHERE sv.situation_id = s.situation_id AND sv.version = s.current_version), '')
 		FROM intents i
 		JOIN decisions d ON d.decision_id = i.decision_id

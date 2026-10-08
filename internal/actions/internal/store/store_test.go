@@ -220,7 +220,7 @@ func TestAuthorizationRecordsProjectTheLedgerJoin(t *testing.T) {
 			t.Fatal(err)
 		}
 		if records.Command.ID != commandID || records.Intent.ID != "int-action" || records.Decision.EpisodeID != "epi-action" ||
-			records.Episode.Lifecycle != "concluded" || records.Situation.CurrentVersion != 1 || records.Approval.Present {
+			records.Episode.Lifecycle != "concluded" || records.Situation.LastMaterialVersion != 1 || records.Approval.Present {
 			t.Fatalf("records = %+v", records)
 		}
 		if _, err := records.VerifiedCommand(); err != nil {

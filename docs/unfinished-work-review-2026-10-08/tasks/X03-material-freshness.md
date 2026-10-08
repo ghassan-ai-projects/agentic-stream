@@ -1,6 +1,6 @@
 # X03 — Material freshness for intents, approvals and dispatch
 
-Status: todo (needs ADR-018 accepted) · Decision: **complete** · Priority: P0 (experiment core) · Size: M · Depends on: X01
+Status: done (ADR-018 accepted) · Decision: **complete** · Priority: P0 (experiment core) · Size: M · Depends on: X01
 
 Design and reasoning: [EXPERIMENT_DESIGN.md](../EXPERIMENT_DESIGN.md) G2, D1.
 
@@ -42,3 +42,20 @@ stopped.
   resolved after a phase change is refused as superseded.
 - `documentation/design/decisions-and-actions.md` explains freshness in one
   paragraph.
+
+## Result
+
+- `migrations/032_situation_material_version.sql` adds
+  `situations.last_material_version` (existing rows start strict).
+- Cognition (`domain.Rules.Material`, `app.markVersion`) records it in the
+  transaction that publishes each version. Materiality uses the triggers'
+  materialDelta whether or not they fire, with strict floors for first
+  versions, new occurrences, closing or terminal phases, triggers without
+  materialDelta and evaluation errors.
+- Policy (`MateriallySuperseded`, used at evaluation and approval) and actions
+  (`RequireCurrent`, at dispatch) refuse an intent only when a newer material
+  version exists. Reason codes and the policy document are unchanged.
+- Tests: cognition materiality table, policy domain and gateway cases for a
+  newer version that is not material, actions authorization in both directions.
+  The end-to-end continuous-feed proof lands with X09, which is what exposes
+  intents to newer versions during reasoning.

@@ -110,7 +110,7 @@ func ownsMutation(pkg string, m sqlMutation) bool {
 		return pkg == "internal/policy/internal/store" && m.operation == "update" && columnsWithin(m.columns, []string{"policy_status", "updated_at"})
 	case "situations":
 		if pkg == "internal/cognition/internal/store" {
-			return m.operation == "update" && columnsWithin(m.columns, []string{"last_reasoned_version"})
+			return m.operation == "update" && columnsWithin(m.columns, []string{"last_reasoned_version", "last_material_version"})
 		}
 	}
 	return durableOwners[m.table] == pkg

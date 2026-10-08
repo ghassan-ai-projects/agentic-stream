@@ -58,6 +58,7 @@ type IntentRecord struct {
 	Tracestate          string
 	EpisodeLifecycle    string
 	CurrentSituation    int
+	LastMaterialVersion int
 	CurrentCompleteness string
 	ExecutorVersion     string
 	SituationType       string

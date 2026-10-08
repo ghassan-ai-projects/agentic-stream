@@ -26,7 +26,7 @@ func TestApprovalStalenessPrecedesExpiryAndAuthorization(t *testing.T) {
 		t.Fatalf("request = %+v", requested)
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, "UPDATE situations SET current_version = 2 WHERE situation_id = 'sit-policy'"); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE situations SET current_version = 2, last_material_version = 2 WHERE situation_id = 'sit-policy'"); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, "UPDATE approvals SET expires_at = ? WHERE approval_id = ?", formatTime(now), requested.ApprovalID); err != nil {

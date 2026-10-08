@@ -18,7 +18,7 @@ const loadAuthorizationRecordsSQL = `
 			       (SELECT a.expires_at FROM approvals a WHERE a.intent_id = i.intent_id AND a.status = 'approved' ORDER BY a.decided_at DESC LIMIT 1),
 			       d.validation_status, d.raw_json, d.decision_sha256, d.situation_id, d.situation_version, d.episode_id,
 			       e.tenant_id, e.situation_id, e.situation_version, e.lifecycle_status,
-			       s.tenant_id, s.current_version
+			       s.tenant_id, s.last_material_version
 			FROM commands c
 			JOIN intents i ON i.intent_id = c.intent_id
 			JOIN decisions d ON d.decision_id = i.decision_id
@@ -33,7 +33,7 @@ func (tx *Tx) LoadAuthorizationRecords(ctx context.Context, commandID string) (d
 	var r domain.AuthorizationRecords
 	var approvalID, approvalExpiry sql.NullString
 	dests := concat(commandDests(&r.Command), intentDests(&r.Intent), []any{&approvalID, &approvalExpiry},
-		decisionDests(&r.Decision), episodeDests(&r.Episode), []any{&r.Situation.TenantID, &r.Situation.CurrentVersion})
+		decisionDests(&r.Decision), episodeDests(&r.Episode), []any{&r.Situation.TenantID, &r.Situation.LastMaterialVersion})
 	if err := tx.tx.QueryRowContext(ctx, loadAuthorizationRecordsSQL, commandID).Scan(dests...); err != nil {
 		return domain.AuthorizationRecords{}, fmt.Errorf("load authorization records: %w", err)
 	}

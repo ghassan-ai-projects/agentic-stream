@@ -65,6 +65,18 @@ func (e *Service) Process(ctx context.Context, tx *store.Tx, v situations.Versio
 	if _, err := e.admitReconsiderations(ctx, tx, v); err != nil {
 		return fmt.Errorf("admit reconsideration: %w", err)
 	}
+	return e.markVersion(ctx, tx, v, previous)
+}
+
+// markVersion records the version as reasoned and, when it changes the
+// Situation materially, as its latest material version, which keeps or ends
+// the freshness of pending intents (ADR-018).
+func (e *Service) markVersion(ctx context.Context, tx *store.Tx, v situations.Version, previous *situations.Version) error {
+	if e.rules.Material(v, previous) {
+		if err := tx.MarkVersionMaterial(ctx, v); err != nil {
+			return err
+		}
+	}
 	return tx.MarkVersionReasoned(ctx, v)
 }
 

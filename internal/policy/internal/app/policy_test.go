@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"cmp"
 	"context"
 	"crypto/ed25519"
 	"database/sql"
@@ -81,13 +82,17 @@ func TestGatewayRiskFreshnessAndExpiry(t *testing.T) {
 		risk           string
 		currentVersion int
 		intentVersion  int
-		expiresAt      time.Time
-		wantResult     string
-		wantReason     string
+		// materialVersion is the Situation's latest material version
+		// (ADR-018); zero means the current version.
+		materialVersion int
+		expiresAt       time.Time
+		wantResult      string
+		wantReason      string
 	}{
 		{name: "approval", risk: "R2", currentVersion: 1, intentVersion: 1, expiresAt: time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC), wantResult: "approval_required", wantReason: "risk_requires_approval"},
 		{name: "deny high risk", risk: "R3", currentVersion: 1, intentVersion: 1, expiresAt: time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC), wantResult: "denied", wantReason: "risk_policy_denied"},
 		{name: "stale", risk: "R1", currentVersion: 2, intentVersion: 1, expiresAt: time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC), wantResult: "stale", wantReason: "situation_version_stale"},
+		{name: "newer version that is not material", risk: "R1", currentVersion: 3, intentVersion: 1, materialVersion: 1, expiresAt: time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC), wantResult: "approved", wantReason: "automatic_r0_r1"},
 		{name: "expired", risk: "R1", currentVersion: 1, intentVersion: 1, expiresAt: time.Date(2026, 8, 12, 11, 0, 0, 0, time.UTC), wantResult: "expired", wantReason: "intent_expired"},
 	}
 	for _, test := range tests {
@@ -95,6 +100,7 @@ func TestGatewayRiskFreshnessAndExpiry(t *testing.T) {
 			ctx := context.Background()
 			db, intentID := openPolicyFixture(t, test.risk, test.currentVersion, test.intentVersion, test.expiresAt)
 			defer func() { _ = db.Close() }()
+			setMaterialVersion(t, db, cmp.Or(test.materialVersion, test.currentVersion))
 			var result policy.Result
 			now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 			if err := db.WithTx(ctx, func(tx *sql.Tx) error {
@@ -434,4 +440,13 @@ func openPolicyFixture(t *testing.T, risk string, currentVersion, intentVersion 
 		t.Fatalf("enable foreign keys: %v", err)
 	}
 	return db, intentID
+}
+
+// setMaterialVersion records the fixture Situation's latest material version,
+// which cognition writes in production (ADR-018).
+func setMaterialVersion(t *testing.T, db *storage.DB, version int) {
+	t.Helper()
+	if _, err := db.ExecContext(t.Context(), "UPDATE situations SET last_material_version = ? WHERE situation_id = 'sit-policy'", version); err != nil {
+		t.Fatalf("set material version: %v", err)
+	}
 }

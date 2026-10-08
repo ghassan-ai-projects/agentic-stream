@@ -39,8 +39,10 @@ type EpisodeRow struct {
 
 // SituationRow is the live Situation the intent is bound to.
 type SituationRow struct {
-	TenantID       string
-	CurrentVersion int
+	TenantID string
+	// LastMaterialVersion is the newest version cognition judged material;
+	// a newer version that is not material keeps the intent current (ADR-018).
+	LastMaterialVersion int
 }
 
 // AuthorizationRecords is every ledger row a command's authority rests on.
@@ -96,15 +98,16 @@ func (r AuthorizationRecords) CheckApproval(now time.Time) error {
 	return nil
 }
 
-// RequireCurrent requires the decision, episode and live Situation to still
-// match the intent's tenant and Situation version.
+// RequireCurrent requires the decision and episode to still match the intent's
+// tenant and Situation version, and the live Situation to have no material
+// version newer than the intent's.
 func (r AuthorizationRecords) RequireCurrent() error {
 	intent, episode := r.Intent, r.Episode
 	if episode.TenantID == intent.TenantID && r.Situation.TenantID == intent.TenantID &&
 		r.Decision.SituationID == intent.SituationID && r.Decision.SituationVersion == intent.Version &&
 		episode.SituationID == intent.SituationID && episode.SituationVersion == intent.Version &&
 		(episode.Lifecycle == "concluded" || episode.Lifecycle == "closed") &&
-		r.Situation.CurrentVersion == intent.Version {
+		r.Situation.LastMaterialVersion <= intent.Version {
 		return nil
 	}
 	return errors.New("command authorization is stale")

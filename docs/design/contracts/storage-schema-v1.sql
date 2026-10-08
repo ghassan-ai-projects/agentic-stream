@@ -250,6 +250,7 @@ CREATE TABLE situations (
     occurrence_id       TEXT NOT NULL,
     current_version     INTEGER NOT NULL CHECK (current_version >= 1),
     last_reasoned_version INTEGER NOT NULL DEFAULT 0 CHECK (last_reasoned_version >= 0),
+    last_material_version INTEGER NOT NULL DEFAULT 0 CHECK (last_material_version >= 0),
     phase               TEXT NOT NULL,
     status              TEXT NOT NULL,
     first_event_time    TEXT NOT NULL,

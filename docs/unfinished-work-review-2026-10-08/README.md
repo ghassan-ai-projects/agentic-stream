@@ -127,7 +127,7 @@ as the change.
 | --- | --- | --- | --- | --- | --- | --- |
 | X01 | [Experiment compatibility guard](tasks/X01-experiment-compatibility-guard.md) | Complete | P0 | M | — | done |
 | X02 | [Repair experiment references](tasks/X02-repair-experiment-references.md) | Fix references (research repo) | P0 | XS | — | todo |
-| X03 | [Material freshness (ADR-018)](tasks/X03-material-freshness.md) | Complete | P0 | M | X01, ADR | todo |
+| X03 | [Material freshness (ADR-018)](tasks/X03-material-freshness.md) | Complete | P0 | M | X01, ADR | done |
 | X04 | [One thermal intent vocabulary](tasks/X04-thermal-intent-vocabulary.md) | Tamoz change + pin | P0 | S | — | todo |
 | X05 | [Checked-in experiment specs](tasks/X05-checked-in-experiment-specs.md) | Complete | P0 | S | X01 | todo |
 | X06 | [Bench mapping and heartbeat](tasks/X06-bench-mapping-and-heartbeat.md) | Research repo config | P0 | S | X05 | todo |

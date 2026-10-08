@@ -116,6 +116,19 @@ func (t *Tx) MarkVersionReasoned(ctx context.Context, v situations.Version) erro
 	return nil
 }
 
+// MarkVersionMaterial records the version as its Situation's latest material
+// version. Policy, approval resolution and dispatch read it to decide whether
+// a pending intent is still fresh (ADR-018).
+func (t *Tx) MarkVersionMaterial(ctx context.Context, v situations.Version) error {
+	if _, err := t.tx.ExecContext(ctx,
+		"UPDATE situations SET last_material_version = ? WHERE situation_id = ?",
+		v.Version, v.SituationID,
+	); err != nil {
+		return fmt.Errorf("update last material version: %w", err)
+	}
+	return nil
+}
+
 func (t *Tx) RecordCostReason(ctx context.Context, triggerID string, reasons []string) error {
 	encoded, err := json.Marshal(reasons)
 	if err != nil {

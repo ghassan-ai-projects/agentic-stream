@@ -30,7 +30,7 @@ func FreshnessFailure(row IntentRecord, now time.Time) (status, reason string, e
 	if !EpisodeConcluded(row) {
 		return "denied", "episode_not_concluded", time.Time{}
 	}
-	if row.CurrentSituation != row.SituationVersion {
+	if MateriallySuperseded(row) {
 		return "stale", "situation_version_stale", time.Time{}
 	}
 	if SourceHealthIncomplete(row) {
@@ -41,6 +41,13 @@ func FreshnessFailure(row IntentRecord, now time.Time) (status, reason string, e
 		return "expired", "intent_expired", time.Time{}
 	}
 	return "", "", expires
+}
+
+// MateriallySuperseded reports a material Situation version newer than the
+// intent's. Newer versions that change nothing material keep it fresh
+// (ADR-018).
+func MateriallySuperseded(row IntentRecord) bool {
+	return row.LastMaterialVersion > row.SituationVersion
 }
 
 // CompensationFailure binds compensation targets to the same tenant.
@@ -59,7 +66,7 @@ func ApprovalDisposition(row IntentRecord, a ApprovalRecord, r ApprovalResolutio
 	if a.Status != "pending" {
 		return "resolved"
 	}
-	if r.Approved && row.CurrentSituation != row.SituationVersion {
+	if r.Approved && MateriallySuperseded(row) {
 		return "stale"
 	}
 	if ApprovalExpired(a.ExpiresAt, r.Now) {
