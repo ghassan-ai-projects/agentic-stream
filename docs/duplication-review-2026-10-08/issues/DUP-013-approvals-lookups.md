@@ -33,7 +33,7 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Commit: pending (reviewer commits)
+Commit: f039750
 
 Verified:
 - Confirmed: policy held three separate `approvals` selects by intent (pending id, pending id+expiry, latest approved id) plus the pending expiry/nonce read by approval id; actions held two independent scalar subqueries for the latest approved id and expiry. All used `status` literals and `ORDER BY decided_at DESC LIMIT 1` with no tie-break.

@@ -71,7 +71,7 @@ Finders read the code but ran nothing. The fixer re-reads every site first and c
 
 ## Outcome
 
-Status: fixed. Commit: pending (reviewer commits).
+Status: fixed. Commit: f039750.
 
 Verified (all re-read):
 - Confirmed: `runner_decision.go` treated only the literal `"shadow"` as shadow, so an empty or unknown policy governed as active (fail-open); remote and ledger defaulted to shadow. A new runner test seeded a shadow row, bypassed the CHECK with `PRAGMA ignore_check_constraints`, and shows the old polarity would have written intents.
