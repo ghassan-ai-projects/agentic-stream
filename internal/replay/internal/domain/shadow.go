@@ -21,6 +21,18 @@ type ShadowInput struct {
 	PolicyDigest     string
 	EvaluationTime   time.Time
 	SnapshotJSON     []byte
+	Request          EpisodeRequest
+}
+
+// EpisodeRequest is the episode request replay assembled for the trial: the
+// same bytes a live worker would receive for this episode.
+type EpisodeRequest struct {
+	ExecutorName    string
+	ExecutorVersion string
+	ModelPolicy     string
+	PromptVersion   string
+	SnapshotSHA256  string
+	RequestJSON     []byte
 }
 
 // ShadowOutput is the report-only artifact produced by a shadow executor.
@@ -55,5 +67,6 @@ type Capabilities struct {
 // executor cannot mutate what the other sees.
 func (i ShadowInput) Clone() ShadowInput {
 	i.SnapshotJSON = append([]byte(nil), i.SnapshotJSON...)
+	i.Request.RequestJSON = append([]byte(nil), i.Request.RequestJSON...)
 	return i
 }

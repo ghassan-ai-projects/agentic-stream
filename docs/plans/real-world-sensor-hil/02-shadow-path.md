@@ -1,7 +1,11 @@
 # Phase 02 — Supervisory shadow (WP3 → Gate G3)
 
 Implementation status: the paired replay shadow path and deterministic
-baseline are implemented. The executable work breakdown and evidence bar are
+baseline are implemented, and an operator runs them against a Tamoz worker
+with `agentic-stream run --spec <spec> --trace <trace> --worker-socket <path>
+[--worker-name tamoz] [--json]` (the G3 evidence path; see
+[replay and shadow modes](../../../documentation/design/replay-and-shadow.md)).
+The executable work breakdown and evidence bar are
 in [PHASE-02-EXECUTION.md](PHASE-02-EXECUTION.md); G3 is not called green until
 the repository gates and any required cross-repo evidence pass.
 

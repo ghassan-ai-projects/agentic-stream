@@ -299,8 +299,8 @@ func TestShadowReplayValidatesAnExecutableOpportunity(t *testing.T) {
 		t.Fatalf("shadow worklist was not executed: result=%+v calls=%d", result, shadow.calls)
 	}
 	bad, err := replay.RunMode(context.Background(), replay.ModeShadow, replay.Request{DBPath: filepath.Join(t.TempDir(), "bad-shadow.db"), SpecPath: workingSpec, TracePath: "../../examples/predictive-maintenance/testdata/trace-opening.jsonl", TenantID: "default"}, replay.Capabilities{BaselineExecutor: &testBaselineExecutor{}, ShadowExecutor: &testShadowExecutor{manifest: "sha256:bad"}})
-	if err == nil {
-		t.Fatalf("malformed shadow manifest was accepted: result=%+v err=%v", bad, err)
+	if err != nil || len(bad.ShadowComparisons) != 0 || !hasFinding(bad, "shadow_candidate_invalid", "manifest digest") {
+		t.Fatalf("malformed shadow manifest was not refused as a finding: result=%+v err=%v", bad, err)
 	}
 }
 
@@ -415,9 +415,9 @@ func (outOfCatalogShadowExecutor) ExecuteShadow(_ context.Context, input replay.
 
 func TestShadowReplayRejectsOutOfCatalogIntent(t *testing.T) {
 	workingSpec := alwaysTriggerSpec(t)
-	_, err := replay.RunMode(context.Background(), replay.ModeShadow, replay.Request{DBPath: filepath.Join(t.TempDir(), "shadow.db"), SpecPath: workingSpec, TracePath: "../../examples/predictive-maintenance/testdata/trace-opening.jsonl", TenantID: "default"}, replay.Capabilities{BaselineExecutor: &testBaselineExecutor{}, ShadowExecutor: outOfCatalogShadowExecutor{}})
-	if err == nil || !strings.Contains(err.Error(), "intent_type_not_allowed") {
-		t.Fatalf("out-of-catalog shadow intent was not rejected: %v", err)
+	result, err := replay.RunMode(context.Background(), replay.ModeShadow, replay.Request{DBPath: filepath.Join(t.TempDir(), "shadow.db"), SpecPath: workingSpec, TracePath: "../../examples/predictive-maintenance/testdata/trace-opening.jsonl", TenantID: "default"}, replay.Capabilities{BaselineExecutor: &testBaselineExecutor{}, ShadowExecutor: outOfCatalogShadowExecutor{}})
+	if err != nil || len(result.ShadowComparisons) != 0 || !hasFinding(result, "shadow_candidate_invalid", "intent_type_not_allowed") {
+		t.Fatalf("out-of-catalog shadow intent was not refused as a finding: result=%+v err=%v", result, err)
 	}
 }
 
@@ -481,4 +481,13 @@ func alwaysTriggerSpec(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return workingSpec
+}
+
+func hasFinding(result replay.Result, code, reason string) bool {
+	for _, finding := range result.Findings {
+		if finding.Code == code && strings.Contains(finding.Message, reason) {
+			return true
+		}
+	}
+	return false
 }

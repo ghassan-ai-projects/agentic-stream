@@ -1,6 +1,6 @@
 # U21 — Shadow replay mode
 
-Status: todo · Decision: **complete** · Priority: P1 · Size: M · Depends on: U20 (shared mode plumbing)
+Status: done · Decision: **complete** · Priority: P1 · Size: M · Depends on: U20 (shared mode plumbing)
 
 ## Finding
 
@@ -61,3 +61,33 @@ documented as "not a production reasoner".
   allow-list is empty.
 - HIL `02-shadow-path.md` and `PHASE-02-EXECUTION.md` cite the command as the
   G3 evidence path.
+
+## Result
+
+`agentic-stream run --worker-socket <path> [--worker-name tamoz] [--json]`
+(the flag selects shadow mode; no separate `--mode`). `replay.RunShadow`
+compiles the baseline, dials the worker through the existing remote executor
+(`replay/internal/transport.ShadowWorker`, plain Unix socket as in the
+experiment) and runs the paired trial.
+
+Design changes made while building it:
+
+- The candidate receives the episode request replay already assembled in its
+  isolated database (`episodes.request_json`), not a request rebuilt from the
+  snapshot. That is exactly what a live worker would get, budget included.
+- The worker protocol's terminal manifest is not carried by the episode
+  Outcome, so the candidate manifest digests what the runtime asked the worker
+  to run. Changing the Outcome would change live outcome documents; not worth
+  it for an attribution digest.
+- A candidate failure or invalid answer used to abort the whole run and lose
+  the evaluation. It is now a `shadow_candidate_failed` /
+  `shadow_candidate_invalid` finding and the trial continues; the baseline,
+  which is this repository's code, still fails the run. `ValidatePair` was
+  removed (each side is validated on its own path).
+- `replay/internal/transport` moved to layer 29 so it can use the remote
+  executor.
+
+Test: `TestExperimentShadowReplayComparesTheCandidate` runs the experiment
+trace with the Tamoz stand-in as candidate; comparisons are sealed with both
+decisions in `--json`, and the replay database has no intent, command or
+outbox row.

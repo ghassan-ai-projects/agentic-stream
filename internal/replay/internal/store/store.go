@@ -117,3 +117,17 @@ func (s Store) ShadowSnapshot(ctx context.Context, episode domain.ReplayEpisode)
 	}
 	return snapshot, persistedDigest, nil
 }
+
+// ShadowRequest loads the episode request replay assembled for one episode,
+// which a candidate worker receives unchanged.
+func (s Store) ShadowRequest(ctx context.Context, episode domain.ReplayEpisode) (domain.EpisodeRequest, error) {
+	var request domain.EpisodeRequest
+	var snapshotDigest []byte
+	if err := s.DB.QueryRowContext(ctx, `
+		SELECT executor_name, executor_version, model_policy, prompt_version, snapshot_sha256, request_json
+		FROM episodes WHERE episode_id = ?`, episode.EpisodeID).Scan(&request.ExecutorName, &request.ExecutorVersion, &request.ModelPolicy, &request.PromptVersion, &snapshotDigest, &request.RequestJSON); err != nil {
+		return domain.EpisodeRequest{}, fmt.Errorf("load shadow episode request: %w", err)
+	}
+	request.SnapshotSHA256 = "sha256:" + hex.EncodeToString(snapshotDigest)
+	return request, nil
+}

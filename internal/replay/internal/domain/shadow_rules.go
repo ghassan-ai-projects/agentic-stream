@@ -30,19 +30,6 @@ type ValidatedOutput struct {
 	ManifestSHA []byte
 }
 
-// ValidatePair validates the baseline output before the Tamoz output.
-func (r ShadowRules) ValidatePair(input ShadowInput, baselineOutput, tamozOutput ShadowOutput, evaluationTime time.Time) (ValidatedOutput, ValidatedOutput, error) {
-	baseline, err := r.ValidateOutput(input, baselineOutput, evaluationTime)
-	if err != nil {
-		return ValidatedOutput{}, ValidatedOutput{}, fmt.Errorf("validate baseline shadow episode %s: %w", input.EpisodeKey, err)
-	}
-	tamoz, err := r.ValidateOutput(input, tamozOutput, evaluationTime)
-	if err != nil {
-		return ValidatedOutput{}, ValidatedOutput{}, fmt.Errorf("validate Tamoz shadow episode %s: %w", input.EpisodeKey, err)
-	}
-	return baseline, tamoz, nil
-}
-
 // ValidateOutput admits a shadow output: manifest first, then canonical
 // decision bytes, then the decision digest, then full catalog validation.
 func (r ShadowRules) ValidateOutput(input ShadowInput, output ShadowOutput, now time.Time) (ValidatedOutput, error) {

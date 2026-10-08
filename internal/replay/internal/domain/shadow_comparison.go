@@ -10,13 +10,17 @@ import (
 )
 
 // ShadowComparisonResult identifies the durable report produced for one
-// paired shadow trial.
+// paired shadow trial and carries its sealed document and both canonical
+// decisions, so a scorer never reads the replay database.
 type ShadowComparisonResult struct {
 	EpisodeKey             string
 	ComparisonSHA256       string
 	BaselineDecisionSHA256 string
 	TamozDecisionSHA256    string
 	DecisionsEqual         bool
+	ComparisonJSON         []byte
+	BaselineDecisionJSON   []byte
+	TamozDecisionJSON      []byte
 }
 
 // Comparison is the sealed, report-only record of one shadow trial, ready for
@@ -139,7 +143,8 @@ func assembleComparison(input ShadowInput, baseline, tamoz ValidatedOutput, tena
 		record: comparisonRecord(input, baseline, tamoz, tenantID, comparisonKey, comparisonID, comparisonJSON, comparisonSHA, digests, createdAt),
 		result: ShadowComparisonResult{EpisodeKey: input.EpisodeKey, ComparisonSHA256: comparisonDigest,
 			BaselineDecisionSHA256: baseline.Output.DecisionSHA256, TamozDecisionSHA256: tamoz.Output.DecisionSHA256,
-			DecisionsEqual: bytes.Equal(baseline.Canonical, tamoz.Canonical)},
+			DecisionsEqual: bytes.Equal(baseline.Canonical, tamoz.Canonical), ComparisonJSON: comparisonJSON,
+			BaselineDecisionJSON: baseline.Canonical, TamozDecisionJSON: tamoz.Canonical},
 	}
 }
 

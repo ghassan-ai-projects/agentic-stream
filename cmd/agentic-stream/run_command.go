@@ -11,7 +11,9 @@ import (
 // runFlags are the replay command's flags.
 type runFlags struct {
 	dbPath, tenantID, sourceDB string
+	workerSocket, workerName   string
 	repeat                     int
+	jsonOutput                 bool
 }
 
 func newRunCommand() *cobra.Command {
@@ -32,16 +34,39 @@ func (f *runFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.tenantID, "tenant", "default", "Tenant ID")
 	cmd.Flags().IntVar(&f.repeat, "repeat", 1, "Replay N times in fresh databases and fail unless every Situation history hash is identical")
 	cmd.Flags().StringVar(&f.sourceDB, "source-db", "", "Live runtime database whose recorded decisions every replayed episode must match (opened read-only)")
+	cmd.Flags().StringVar(&f.workerSocket, "worker-socket", "", "Shadow mode: candidate EpisodeWorker Unix socket, paired with the deterministic baseline on every replayed episode")
+	cmd.Flags().StringVar(&f.workerName, "worker-name", "tamoz", "Shadow mode: expected candidate worker name")
+	cmd.Flags().BoolVar(&f.jsonOutput, "json", false, "Shadow mode: print the result, sealed comparisons and both decisions as JSON")
 }
 
 func (f *runFlags) run(cmd *cobra.Command) error {
+	if err := f.requireOneMode(); err != nil {
+		return err
+	}
 	if f.sourceDB != "" {
 		return runRecordedReplay(cmd, f)
+	}
+	if f.workerSocket != "" {
+		return runShadowReplay(cmd, f)
 	}
 	if f.repeat != 1 {
 		return runRepeatedReplay(cmd, f.dbPath, f.tenantID, f.repeat)
 	}
 	return runReplayCommand(cmd, f)
+}
+
+// requireOneMode refuses flags that select different replay modes.
+func (f *runFlags) requireOneMode() error {
+	selected := 0
+	for _, on := range []bool{f.sourceDB != "", f.workerSocket != "", f.repeat != 1} {
+		if on {
+			selected++
+		}
+	}
+	if selected > 1 {
+		return fmt.Errorf("--source-db, --worker-socket and --repeat select different replay modes; use one")
+	}
+	return nil
 }
 
 // runRepeatedReplay is the determinism check: N fresh replays of the same
@@ -75,9 +100,6 @@ func reportRepeatedReplay(cmd *cobra.Command, results []replay.Result) error {
 // runRecordedReplay verifies a live run: the replayed episodes must match the
 // decisions the source database recorded, without calling a worker.
 func runRecordedReplay(cmd *cobra.Command, f *runFlags) error {
-	if f.repeat != 1 {
-		return fmt.Errorf("--source-db and --repeat cannot be combined")
-	}
 	request, err := replayRequest(cmd, f)
 	if err != nil {
 		return err

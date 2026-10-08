@@ -30,6 +30,14 @@ func RunRecorded(ctx context.Context, request Request, sourcePath string) (Resul
 	return app.RunRecorded(ctx, request, sourcePath)
 }
 
+// RunShadow replays the request's trace and pairs the deterministic baseline
+// with the candidate worker on socketPath for every replayed episode. A
+// candidate failure or disagreement is a finding, not an error; nothing is
+// dispatched.
+func RunShadow(ctx context.Context, request Request, socketPath, workerName string) (Result, error) {
+	return app.RunShadow(ctx, request, socketPath, workerName)
+}
+
 // RunNTimes replays the same request n times against fresh isolated databases
 // and returns the canonical versions hash from each run. All hashes must be
 // identical for the replay to be deterministic.

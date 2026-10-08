@@ -196,7 +196,7 @@ var allowedImports = map[string][]string{
 	"internal/replay/internal/app":                {"internal/sources", "internal/contractsv1", "internal/decisions", "internal/engine", "internal/episodes", "internal/eventlog", "internal/policy", "internal/replay/internal/domain", "internal/replay/internal/store", "internal/replay/internal/transport", "internal/spec"},
 	"internal/replay/internal/domain":             {"internal/canonicaljson", "internal/contractsv1", "internal/decisions"},
 	"internal/replay/internal/store":              {"internal/episodes", "internal/replay/internal/domain", "internal/sources", "internal/spec", "internal/storage"},
-	"internal/replay/internal/transport":          {"internal/sources", "internal/eventlog", "internal/ingress", "internal/storage"},
+	"internal/replay/internal/transport":          {"internal/canonicaljson", "internal/episodeledger", "internal/episodes", "internal/eventlog", "internal/executor/remote", "internal/ingress", "internal/replay/internal/domain", "internal/sources", "internal/storage", "internal/worker", "proto/agenticstream/runtime/v1"},
 	"internal/runartifact":                        {"internal/policy", "internal/runartifact/internal/app", "internal/runartifact/internal/domain", "internal/runartifact/internal/store", "internal/storage"},
 	"internal/runartifact/internal/app":           {"internal/canonicaljson", "internal/runartifact/internal/domain", "internal/runartifact/internal/store", "internal/runartifact/internal/transport"},
 	"internal/runartifact/internal/domain":        {"internal/canonicaljson"},

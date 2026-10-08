@@ -1,7 +1,10 @@
 # Phase 02 execution plan — paired supervisory shadow
 
 Status: repository implementation complete; G3 gate remains open pending
-full repository and cross-repository evidence.
+full repository and cross-repository evidence. The evidence path is
+`agentic-stream run --spec <spec> --trace <trace> --worker-socket <path>
+--json`: it prints each sealed comparison with both decisions, so the scorer
+does not read SQLite.
 
 This is the concrete execution plan for Phase 02 / G3 in
 `02-shadow-path.md`. It is deliberately limited to the Agentic Stream shadow
