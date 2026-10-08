@@ -7,7 +7,7 @@
 | Intent record | Accepted intent plus its decision, episode and current Situation projection | `IntentRecord`, `intents` |
 | Policy result | Stable result/reason and any command/approval identity | `Result` |
 | Policy definition | Canonical rules bound to one version | policy document / digest |
-| Readiness check | Current action interlock before command publication | `interlock.Reader` |
+| Readiness check | Current action interlock before command publication | `interlock.Assert` |
 | Runtime ownership check | Original transaction's owner fence | configured `RuntimeOwner` check |
 | Decision epoch check | Refuse the episode's killed/unbound policy epoch | configured `DecisionEpoch` check |
 | Approval resolution | Human decision, principals, signature, reason and time | `ApprovalResolution`, `approvals` |

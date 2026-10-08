@@ -80,5 +80,5 @@ func assertGuards(ctx context.Context, tx *store.Tx, tenantID, target string) er
 	if err := tx.AssertOwner(ctx); err != nil {
 		return err
 	}
-	return tx.AssertInterlock(ctx, tenantID, target)
+	return tx.AssertInterlock(ctx)
 }

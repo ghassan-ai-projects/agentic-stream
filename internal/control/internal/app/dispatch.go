@@ -9,9 +9,9 @@ import (
 
 // AuthorizeDispatch is the read-only final readiness gate for one command's
 // tenant and target.
-func AuthorizeDispatch(ctx context.Context, s store.Store, reader store.Interlock, tenantID, target string) error {
-	if !s.Configured() || reader == nil {
+func AuthorizeDispatch(ctx context.Context, s store.Store) error {
+	if !s.Configured() {
 		return domain.ErrDispatchGateNotConfigured
 	}
-	return s.AssertInterlock(ctx, reader, tenantID, target)
+	return s.AssertInterlock(ctx)
 }

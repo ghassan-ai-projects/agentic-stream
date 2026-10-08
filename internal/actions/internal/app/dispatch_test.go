@@ -660,7 +660,7 @@ func newService(t *testing.T, db *storage.DB, effector actionport.AuthorizedEffe
 
 func newServiceWithOwner(t *testing.T, db *storage.DB, effector actionport.AuthorizedEffector, leaseOwner string, leaseFor time.Duration, owner store.OwnerCheck) *app.Service {
 	t.Helper()
-	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch", interlock.DurableReader{}), Effector: effector,
+	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch"), Effector: effector,
 		Clock: sources.Physical(), IDs: sources.Deterministic(), LeaseOwner: leaseOwner, LeaseFor: leaseFor})
 	if err != nil {
 		t.Fatalf("new action service: %v", err)

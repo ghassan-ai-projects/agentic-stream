@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
@@ -85,7 +84,7 @@ func TestJoinedTransactionPersistsOnlyOnCallerCommit(t *testing.T) {
 		}, "owner"); err != nil {
 			return err
 		}
-		if err := tx.AssertInterlock(ctx, interlock.DurableReader{}, row.TenantID, "motor", "R1"); err != nil {
+		if err := tx.AssertInterlock(ctx); err != nil {
 			return err
 		}
 		return rollback

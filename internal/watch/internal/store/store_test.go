@@ -24,7 +24,7 @@ func openStore(t *testing.T) Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return New(db, allowOwner, "epoch", interlock.DurableReader{})
+	return New(db, allowOwner, "epoch")
 }
 
 func inTx(t *testing.T, s Store, use func(*Tx) error) {
@@ -42,9 +42,8 @@ func condition() domain.Condition {
 func TestStoreRequiresEverySafetyPort(t *testing.T) {
 	t.Parallel()
 	s := openStore(t)
-	reader := interlock.DurableReader{}
 	for name, bad := range map[string]Store{
-		"database": New(nil, allowOwner, "epoch", reader), "owner": New(s.db, nil, "epoch", reader), "interlock": New(s.db, allowOwner, "epoch", nil),
+		"database": New(nil, allowOwner, "epoch"), "owner": New(s.db, nil, "epoch"),
 	} {
 		if bad.Configured() {
 			t.Fatalf("store without %s reported configured", name)
@@ -134,18 +133,18 @@ func TestOwnerAndInterlockChecksRunOnTheTransaction(t *testing.T) {
 	t.Parallel()
 	s := openStore(t)
 	lost := errors.New("ownership lost")
-	denied := New(s.db, func(context.Context, *sql.Tx, string) error { return lost }, "epoch", interlock.DurableReader{})
+	denied := New(s.db, func(context.Context, *sql.Tx, string) error { return lost }, "epoch")
 	if err := denied.WithTx(t.Context(), func(tx *Tx) error { return tx.AssertOwner(t.Context()) }); !errors.Is(err, lost) {
 		t.Fatalf("owner err = %v", err)
 	}
-	inTx(t, s, func(tx *Tx) error { return tx.AssertInterlock(t.Context(), "tenant", "motor-1") })
+	inTx(t, s, func(tx *Tx) error { return tx.AssertInterlock(t.Context()) })
 	if err := s.db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		_, err := interlock.TripIn(t.Context(), tx, "stop", testNow)
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.WithTx(t.Context(), func(tx *Tx) error { return tx.AssertInterlock(t.Context(), "tenant", "motor-1") }); err == nil {
+	if err := s.WithTx(t.Context(), func(tx *Tx) error { return tx.AssertInterlock(t.Context()) }); err == nil {
 		t.Fatal("tripped interlock accepted a watch write")
 	}
 }

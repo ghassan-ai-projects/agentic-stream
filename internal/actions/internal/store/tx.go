@@ -18,41 +18,39 @@ type OwnerCheck func(context.Context, *sql.Tx, string) error
 // Store keeps the database, the runtime ownership check and the interlock
 // private. It never exposes a raw transaction.
 type Store struct {
-	db        *storage.DB
-	owner     OwnerCheck
-	epoch     string
-	interlock interlock.Reader
+	db    *storage.DB
+	owner OwnerCheck
+	epoch string
 }
 
 // Tx is an opaque unit of work. It never begins or commits a transaction.
 type Tx struct {
-	tx        *sql.Tx
-	owner     OwnerCheck
-	epoch     string
-	interlock interlock.Reader
+	tx    *sql.Tx
+	owner OwnerCheck
+	epoch string
 }
 
 // New binds the persistence ports without opening a transaction.
-func New(db *storage.DB, owner OwnerCheck, epoch string, reader interlock.Reader) Store {
-	return Store{db: db, owner: owner, epoch: epoch, interlock: reader}
+func New(db *storage.DB, owner OwnerCheck, epoch string) Store {
+	return Store{db: db, owner: owner, epoch: epoch}
 }
 
 // Configured reports whether every persistence safety port was supplied.
 func (s Store) Configured() bool {
-	return s.db != nil && s.owner != nil && s.interlock != nil
+	return s.db != nil && s.owner != nil
 }
 
 // WithTx opens one original unit of work.
 func (s Store) WithTx(ctx context.Context, use func(*Tx) error) error {
 	return s.db.WithTx(ctx, func(tx *sql.Tx) error {
-		return use(&Tx{tx: tx, owner: s.owner, epoch: s.epoch, interlock: s.interlock})
+		return use(&Tx{tx: tx, owner: s.owner, epoch: s.epoch})
 	})
 }
 
 // DispatchAuthorization binds the final readiness gate that a concrete effector
 // runs immediately before it accepts one command.
-func (s Store) DispatchAuthorization(tenantID, target string) actionport.Authorization {
-	return control.NewDispatchAuthorization(s.db, s.interlock, tenantID, target)
+func (s Store) DispatchAuthorization() actionport.Authorization {
+	return control.NewDispatchAuthorization(s.db)
 }
 
 // JoinCaller wraps a caller-owned transaction for reads that need no ownership
@@ -70,12 +68,9 @@ func (tx *Tx) AssertOwner(ctx context.Context) error {
 	return nil
 }
 
-// AssertInterlock asks the configured final readiness gate in this transaction.
-func (tx *Tx) AssertInterlock(ctx context.Context, tenantID, target, risk string) error {
-	if tx.interlock == nil {
-		return fmt.Errorf("action interlock is not configured")
-	}
-	if err := tx.interlock.Assert(ctx, tx.tx, tenantID, target, risk); err != nil {
+// AssertInterlock requires the global interlock to be ready in this transaction.
+func (tx *Tx) AssertInterlock(ctx context.Context) error {
+	if err := interlock.Assert(ctx, tx.tx); err != nil {
 		return fmt.Errorf("interlock rejected command: %w", err)
 	}
 	return nil

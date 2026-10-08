@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -13,27 +12,21 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 )
 
-type stubInterlock struct {
-	err error
-}
-
-func (s stubInterlock) Assert(context.Context, *sql.Tx, string, string, string) error {
-	return s.err
-}
-
 func TestGatewayPropagatesInterlockInfrastructureFailure(t *testing.T) {
 	ctx := context.Background()
 	db, intentID := openPolicyFixture(t, "R1", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
 	defer func() { _ = db.Close() }()
-	wantErr := errors.New("temporary interlock storage failure")
-	gateway := newTestService(t, func(c *policy.Config) { c.Interlock = stubInterlock{err: wantErr} })
+	if _, err := db.ExecContext(ctx, "DROP TABLE runtime_interlock"); err != nil {
+		t.Fatal(err)
+	}
+	gateway := newTestService(t)
 
 	err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		_, err := gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)})
 		return err
 	})
-	if err == nil || !errors.Is(err, wantErr) {
-		t.Fatalf("interlock infrastructure error = %v, want wrapped %v", err, wantErr)
+	if err == nil || errors.Is(err, interlock.ErrTripped) {
+		t.Fatalf("interlock infrastructure error = %v, want a storage failure, not a trip", err)
 	}
 
 	var status string
@@ -59,11 +52,13 @@ func TestGatewayRecordsInterlockDenialCauseWithoutChangingStableReason(t *testin
 	ctx := context.Background()
 	db, intentID := openPolicyFixture(t, "R1", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
 	defer func() { _ = db.Close() }()
-	gateway := newTestService(t, func(c *policy.Config) {
-		c.Interlock = stubInterlock{
-			err: fmt.Errorf("%w: operator stop", interlock.ErrTripped),
-		}
-	})
+	gateway := newTestService(t)
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		_, err := interlock.TripIn(ctx, tx, "operator stop", time.Now())
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
 	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error

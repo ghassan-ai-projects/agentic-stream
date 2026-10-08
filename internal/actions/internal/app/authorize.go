@@ -57,7 +57,7 @@ func (s *Service) authorizeCurrentCommand(ctx context.Context, tx *store.Tx, lea
 	if err := records.RequireApprovedIntent(); err != nil {
 		return err
 	}
-	if err := tx.AssertInterlock(ctx, records.Command.TenantID, records.Command.Target, records.Intent.Risk); err != nil {
+	if err := tx.AssertInterlock(ctx); err != nil {
 		return err
 	}
 	if err := records.CheckApproval(s.clk.Now()); err != nil {

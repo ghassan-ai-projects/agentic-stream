@@ -7,7 +7,6 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -29,7 +28,7 @@ type Reconciler struct{ app *app.Reconciler }
 
 // NewReconciler validates the configuration.
 func NewReconciler(cfg ReconcilerConfig) (*Reconciler, error) {
-	reconciler, err := app.NewReconciler(store.New(cfg.DB, cfg.RuntimeOwner, cfg.Epoch, interlock.DurableReader{}), nil, nil)
+	reconciler, err := app.NewReconciler(store.New(cfg.DB, cfg.RuntimeOwner, cfg.Epoch), nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build reconciler: %w", err)
 	}

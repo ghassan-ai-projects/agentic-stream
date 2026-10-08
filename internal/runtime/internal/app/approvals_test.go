@@ -11,7 +11,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -24,7 +23,7 @@ func TestApprovalTransactionsPreserveMissingRequestAndOwnerErrors(t *testing.T) 
 	defer func() { _ = db.Close() }()
 	ownerErr := errors.New("owner lost")
 	for _, failure := range []error{nil, ownerErr} {
-		service, err := policy.New(policy.Config{PolicyVersion: "test", Interlock: interlock.DurableReader{}, RuntimeOwner: func(context.Context, *sql.Tx, string) error { return failure }, DecisionEpoch: func(context.Context, *sql.Tx, string) error { return nil }})
+		service, err := policy.New(policy.Config{PolicyVersion: "test", RuntimeOwner: func(context.Context, *sql.Tx, string) error { return failure }, DecisionEpoch: func(context.Context, *sql.Tx, string) error { return nil }})
 		if err != nil {
 			t.Fatal(err)
 		}

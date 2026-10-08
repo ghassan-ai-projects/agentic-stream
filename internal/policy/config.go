@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
@@ -16,7 +15,6 @@ type Config struct {
 	PolicyVersion, OwnerEpoch   string
 	IDGenerator                 sources.Generator
 	RuntimeOwner, DecisionEpoch func(context.Context, *sql.Tx, string) error
-	Interlock                   interlock.Reader
 }
 
 // New validates configuration before constructing a policy service.
@@ -31,8 +29,8 @@ func New(c Config) (*Service, error) {
 	return &Service{app: app.New(applicationConfig(c, digest))}, nil
 }
 func validateConfig(c Config) error {
-	if c.RuntimeOwner == nil || c.DecisionEpoch == nil || c.Interlock == nil {
-		return fmt.Errorf("policy ownership, decision epoch and interlock checks are required")
+	if c.RuntimeOwner == nil || c.DecisionEpoch == nil {
+		return fmt.Errorf("policy ownership and decision epoch checks are required")
 	}
 	return nil
 }
@@ -41,6 +39,6 @@ func applicationConfig(c Config, digest string) app.Config {
 	if generator == nil {
 		generator = sources.Random()
 	}
-	cfg := app.Config{PolicyVersion: c.PolicyVersion, PolicyDigest: digest, OwnerEpoch: c.OwnerEpoch, IDGenerator: generator, Fences: app.Fences{RuntimeOwner: c.RuntimeOwner, DecisionEpoch: c.DecisionEpoch}, Interlock: c.Interlock}
+	cfg := app.Config{PolicyVersion: c.PolicyVersion, PolicyDigest: digest, OwnerEpoch: c.OwnerEpoch, IDGenerator: generator, Fences: app.Fences{RuntimeOwner: c.RuntimeOwner, DecisionEpoch: c.DecisionEpoch}}
 	return cfg
 }

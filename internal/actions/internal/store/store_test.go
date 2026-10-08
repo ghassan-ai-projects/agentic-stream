@@ -19,7 +19,7 @@ import (
 func allowOwner(context.Context, *sql.Tx, string) error { return nil }
 
 func newStore(db *storage.DB) Store {
-	return New(db, allowOwner, "epoch", interlock.DurableReader{})
+	return New(db, allowOwner, "epoch")
 }
 
 func inTx(t *testing.T, db *storage.DB, use func(*Tx) error) {
@@ -32,11 +32,9 @@ func inTx(t *testing.T, db *storage.DB, use func(*Tx) error) {
 func TestStoreRequiresEverySafetyPort(t *testing.T) {
 	t.Parallel()
 	db, _ := openActionFixture(t)
-	reader := interlock.DurableReader{}
 	cases := map[string]Store{
-		"database":  New(nil, allowOwner, "epoch", reader),
-		"owner":     New(db, nil, "epoch", reader),
-		"interlock": New(db, allowOwner, "epoch", nil),
+		"database": New(nil, allowOwner, "epoch"),
+		"owner":    New(db, nil, "epoch"),
 	}
 	for name, s := range cases {
 		if s.Configured() {
@@ -48,13 +46,13 @@ func TestStoreRequiresEverySafetyPort(t *testing.T) {
 	}
 }
 
-func TestUnjoinedTransactionRefusesOwnerAndInterlockChecks(t *testing.T) {
+func TestUnjoinedTransactionRefusesTheOwnerCheck(t *testing.T) {
 	t.Parallel()
 	db, _ := openActionFixture(t)
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		joined := JoinCaller(tx)
-		if joined.AssertOwner(t.Context()) == nil || joined.AssertInterlock(t.Context(), "tenant", "motor/1", "R1") == nil {
-			t.Fatal("a caller-joined transaction without ports passed a safety check")
+		if joined.AssertOwner(t.Context()) == nil {
+			t.Fatal("a caller-joined transaction without an owner check passed")
 		}
 		return nil
 	}); err != nil {
@@ -66,7 +64,7 @@ func TestAssertOwnerNamesTheLostOwnership(t *testing.T) {
 	t.Parallel()
 	db, _ := openActionFixture(t)
 	lost := errors.New("owned elsewhere")
-	s := New(db, func(context.Context, *sql.Tx, string) error { return lost }, "epoch", interlock.DurableReader{})
+	s := New(db, func(context.Context, *sql.Tx, string) error { return lost }, "epoch")
 	err := s.WithTx(t.Context(), func(tx *Tx) error { return tx.AssertOwner(t.Context()) })
 	if !errors.Is(err, lost) {
 		t.Fatalf("err = %v, want wrapped ownership error", err)
@@ -82,7 +80,7 @@ func TestInterlockTripRefusesTheCommand(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	err := newStore(db).WithTx(t.Context(), func(tx *Tx) error { return tx.AssertInterlock(t.Context(), "tenant", "motor/1", "R1") })
+	err := newStore(db).WithTx(t.Context(), func(tx *Tx) error { return tx.AssertInterlock(t.Context()) })
 	if err == nil {
 		t.Fatal("tripped interlock accepted a command")
 	}

@@ -15,7 +15,7 @@ type LeaseObserver interface{ ObserveLeaseExpiry() }
 // Config supplies the safety dependencies every dispatch needs and the
 // replaceable clock, identity, lease and telemetry settings.
 type Config struct {
-	// Store carries the database, runtime ownership check and interlock. It must
+	// Store carries the database and runtime ownership check. It must
 	// be fully configured.
 	Store store.Store
 	// Effector must enforce the final dispatch authorization check at the
@@ -45,7 +45,7 @@ type Service struct {
 // defaults, none of which bypass authorization.
 func New(cfg Config) (*Service, error) {
 	if !cfg.Store.Configured() {
-		return nil, errors.New("actions require a database, runtime owner check and interlock")
+		return nil, errors.New("actions require a database and runtime owner check")
 	}
 	if cfg.Effector == nil {
 		return nil, errors.New("actions require an effector")

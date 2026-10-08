@@ -13,15 +13,15 @@ import (
 // ErrTripped means the action plane is globally blocked by a durable interlock.
 var ErrTripped = domain.ErrTripped
 
-// Reader is the narrow, read-only surface used immediately before command
-// creation and again immediately before effect delivery.
-type Reader interface {
-	Assert(context.Context, *sql.Tx, string, string, string) error
+// Assert reads the singleton interlock inside the caller's transaction and
+// fails closed, wrapping ErrTripped, when it is absent or not ready. Policy
+// calls it before creating a command and again before the effect is delivered.
+func Assert(ctx context.Context, tx *sql.Tx) error {
+	if err := store.Assert(ctx, tx); err != nil {
+		return fmt.Errorf("assert interlock: %w", err)
+	}
+	return nil
 }
-
-// DurableReader reads the singleton interlock inside the caller's transaction
-// and fails closed when it is absent or not ready.
-type DurableReader = store.DurableReader
 
 // State is the durable global interlock: its status, why, when, and version.
 type State = domain.State

@@ -37,8 +37,7 @@ func TestNewRefusesMissingSafetyDependencies(t *testing.T) {
 	db := openDB(t)
 	owner := func(context.Context, *sql.Tx, string) error { return nil }
 	for name, s := range map[string]store.Store{
-		"database": store.New(nil, owner, "epoch", interlock.DurableReader{}), "owner": store.New(db, nil, "epoch", interlock.DurableReader{}),
-		"interlock": store.New(db, owner, "epoch", nil),
+		"database": store.New(nil, owner, "epoch"), "owner": store.New(db, nil, "epoch"),
 	} {
 		if service, err := app.New(app.Config{Store: s}); err == nil || service != nil {
 			t.Fatalf("service without %s was constructed", name)
@@ -50,7 +49,7 @@ func TestInstallRefusesWithoutRuntimeOwnership(t *testing.T) {
 	t.Parallel()
 	db := openDB(t)
 	lost := errors.New("ownership lost")
-	service, err := app.New(app.Config{Store: store.New(db, func(context.Context, *sql.Tx, string) error { return lost }, "epoch", interlock.DurableReader{})})
+	service, err := app.New(app.Config{Store: store.New(db, func(context.Context, *sql.Tx, string) error { return lost }, "epoch")})
 	if err != nil {
 		t.Fatal(err)
 	}

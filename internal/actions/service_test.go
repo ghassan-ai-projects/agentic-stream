@@ -8,7 +8,6 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
@@ -41,12 +40,11 @@ func owned(context.Context, *sql.Tx, string) error { return nil }
 func TestNewRefusesEveryMissingSafetyDependency(t *testing.T) {
 	t.Parallel()
 	db := openDB(t)
-	complete := actions.Config{DB: db, Effector: noopEffector{}, RuntimeOwner: owned, Epoch: "epoch", Interlock: interlock.DurableReader{}}
+	complete := actions.Config{DB: db, Effector: noopEffector{}, RuntimeOwner: owned, Epoch: "epoch"}
 	cases := map[string]func(*actions.Config){
-		"database":  func(c *actions.Config) { c.DB = nil },
-		"effector":  func(c *actions.Config) { c.Effector = nil },
-		"owner":     func(c *actions.Config) { c.RuntimeOwner = nil },
-		"interlock": func(c *actions.Config) { c.Interlock = nil },
+		"database": func(c *actions.Config) { c.DB = nil },
+		"effector": func(c *actions.Config) { c.Effector = nil },
+		"owner":    func(c *actions.Config) { c.RuntimeOwner = nil },
 	}
 	for name, remove := range cases {
 		cfg := complete
@@ -63,7 +61,7 @@ func TestNewRefusesEveryMissingSafetyDependency(t *testing.T) {
 func TestServiceDispatchesNothingFromAnEmptyOutbox(t *testing.T) {
 	t.Parallel()
 	service, err := actions.New(actions.Config{DB: openDB(t), Effector: noopEffector{}, RuntimeOwner: owned, Epoch: "epoch",
-		Interlock: interlock.DurableReader{}, Telemetry: &telemetry.Runtime{}})
+		Telemetry: &telemetry.Runtime{}})
 	if err != nil {
 		t.Fatal(err)
 	}

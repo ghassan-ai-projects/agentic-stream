@@ -24,7 +24,7 @@ type Service struct {
 // clock.
 func New(cfg Config) (*Service, error) {
 	if !cfg.Store.Configured() {
-		return nil, errors.New("watch requires a database, runtime owner check and interlock")
+		return nil, errors.New("watch requires a database and runtime owner check")
 	}
 	clk := cfg.Clock
 	if clk == nil {

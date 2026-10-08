@@ -2,7 +2,6 @@
 package app
 
 import (
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
@@ -15,7 +14,6 @@ type Config struct {
 	PolicyVersion, PolicyDigest, OwnerEpoch string
 	IDGenerator                             sources.Generator
 	Fences                                  Fences
-	Interlock                               interlock.Reader
 }
 
 // Service implements the deterministic policy use cases.
@@ -23,10 +21,9 @@ type Service struct {
 	policyVersion, policyDigest, ownerEpoch string
 	idGen                                   sources.Generator
 	fences                                  Fences
-	interlock                               interlock.Reader
 }
 
 // New accepts dependencies already validated by the facade.
 func New(c Config) *Service {
-	return &Service{policyVersion: c.PolicyVersion, policyDigest: c.PolicyDigest, ownerEpoch: c.OwnerEpoch, idGen: c.IDGenerator, fences: c.Fences, interlock: c.Interlock}
+	return &Service{policyVersion: c.PolicyVersion, policyDigest: c.PolicyDigest, ownerEpoch: c.OwnerEpoch, idGen: c.IDGenerator, fences: c.Fences}
 }

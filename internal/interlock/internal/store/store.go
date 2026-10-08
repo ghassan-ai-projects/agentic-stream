@@ -8,9 +8,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock/internal/domain"
 )
 
-type DurableReader struct{}
-
-func (DurableReader) Assert(ctx context.Context, tx *sql.Tx, _ string, _ string, _ string) error {
+func Assert(ctx context.Context, tx *sql.Tx) error {
 	state, err := Read(ctx, tx)
 	if err != nil {
 		return err

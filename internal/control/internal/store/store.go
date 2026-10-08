@@ -5,12 +5,8 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
-
-// Interlock is the governance interlock reader used for dispatch readiness.
-type Interlock = interlock.Reader
 
 // Recovery runs the caller's recovery writes on the claiming transaction.
 type Recovery func(*sql.Tx, time.Time) error

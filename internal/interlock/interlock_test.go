@@ -32,7 +32,7 @@ func openDB(t *testing.T) *storage.DB {
 func admits(t *testing.T, db *storage.DB) error {
 	t.Helper()
 	return db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		return interlock.DurableReader{}.Assert(t.Context(), tx, "tenant", "motor/1", "R1")
+		return interlock.Assert(t.Context(), tx)
 	})
 }
 

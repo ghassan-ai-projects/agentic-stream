@@ -5,14 +5,13 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 func newTestService(t *testing.T, configure ...func(*policy.Config)) *policy.Service {
 	t.Helper()
-	cfg := policy.Config{PolicyVersion: "policy-v1", IDGenerator: sources.Deterministic(), RuntimeOwner: unownedCheck, DecisionEpoch: unownedCheck, Interlock: interlock.DurableReader{}}
+	cfg := policy.Config{PolicyVersion: "policy-v1", IDGenerator: sources.Deterministic(), RuntimeOwner: unownedCheck, DecisionEpoch: unownedCheck}
 	for _, change := range configure {
 		change(&cfg)
 	}

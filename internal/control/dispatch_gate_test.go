@@ -18,7 +18,7 @@ func TestDispatchCapabilityReadsCurrentInterlockWithoutUpstreamCallback(t *testi
 	if _, err := interlock.Clear(ctx, db, allow, "operator", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	gate := runtimecontrol.NewDispatchAuthorization(db, interlock.DurableReader{}, "tenant", "target")
+	gate := runtimecontrol.NewDispatchAuthorization(db)
 	if err := gate.Check(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -35,20 +35,7 @@ func TestDispatchCapabilityReadsCurrentInterlockWithoutUpstreamCallback(t *testi
 	if version != 3 {
 		t.Fatalf("read-only gate mutated interlock: version=%d", version)
 	}
-	for _, misconfigured := range []struct {
-		database bool
-		reader   bool
-	}{{false, true}, {true, false}} {
-		dbArg := db
-		if !misconfigured.database {
-			dbArg = nil
-		}
-		var reader interlock.Reader = interlock.DurableReader{}
-		if !misconfigured.reader {
-			reader = nil
-		}
-		if err := runtimecontrol.NewDispatchAuthorization(dbArg, reader, "tenant", "target").Check(ctx); err == nil {
-			t.Fatal("misconfigured gate allowed dispatch")
-		}
+	if err := runtimecontrol.NewDispatchAuthorization(nil).Check(ctx); err == nil {
+		t.Fatal("a gate without a database allowed dispatch")
 	}
 }

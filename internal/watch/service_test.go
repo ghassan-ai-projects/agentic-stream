@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
@@ -27,10 +26,9 @@ func openDB(t *testing.T) *storage.DB {
 func TestNewRefusesEveryMissingSafetyDependency(t *testing.T) {
 	t.Parallel()
 	db := openDB(t)
-	complete := watch.Config{DB: db, RuntimeOwner: owned, Epoch: "epoch", Interlock: interlock.DurableReader{}}
+	complete := watch.Config{DB: db, RuntimeOwner: owned, Epoch: "epoch"}
 	for name, remove := range map[string]func(*watch.Config){
 		"database": func(c *watch.Config) { c.DB = nil }, "owner": func(c *watch.Config) { c.RuntimeOwner = nil },
-		"interlock": func(c *watch.Config) { c.Interlock = nil },
 	} {
 		cfg := complete
 		remove(&cfg)
@@ -45,7 +43,7 @@ func TestNewRefusesEveryMissingSafetyDependency(t *testing.T) {
 
 func TestServiceInstallsFiresAndExpiresThroughTheFacade(t *testing.T) {
 	t.Parallel()
-	service, err := watch.New(watch.Config{DB: openDB(t), RuntimeOwner: owned, Epoch: "epoch", Interlock: interlock.DurableReader{}})
+	service, err := watch.New(watch.Config{DB: openDB(t), RuntimeOwner: owned, Epoch: "epoch"})
 	if err != nil {
 		t.Fatal(err)
 	}

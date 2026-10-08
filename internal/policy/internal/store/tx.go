@@ -19,8 +19,8 @@ func (tx *Tx) Assert(ctx context.Context, fence Fence, epoch string) error {
 	return fence(ctx, tx.tx, epoch)
 }
 
-func (tx *Tx) AssertInterlock(ctx context.Context, reader interlock.Reader, tenant, target, risk string) error {
-	if err := reader.Assert(ctx, tx.tx, tenant, target, risk); err != nil {
+func (tx *Tx) AssertInterlock(ctx context.Context) error {
+	if err := interlock.Assert(ctx, tx.tx); err != nil {
 		return fmt.Errorf("assert action interlock: %w", err)
 	}
 	return nil

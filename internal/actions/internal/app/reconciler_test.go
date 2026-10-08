@@ -8,7 +8,6 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
@@ -22,7 +21,7 @@ func TestReconcilerListsAndClosesAnUnknownOutcome(t *testing.T) {
 	if processed, err := dispatcher.DispatchOnce(context.Background()); err != nil || !processed {
 		t.Fatalf("unknown dispatch processed=%v err=%v", processed, err)
 	}
-	reconciler, err := app.NewReconciler(store.New(db, func(context.Context, *sql.Tx, string) error { return nil }, "epoch", interlock.DurableReader{}), sources.Physical(), sources.Deterministic())
+	reconciler, err := app.NewReconciler(store.New(db, func(context.Context, *sql.Tx, string) error { return nil }, "epoch"), sources.Physical(), sources.Deterministic())
 	if err != nil {
 		t.Fatal(err)
 	}

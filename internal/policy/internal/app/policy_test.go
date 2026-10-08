@@ -284,7 +284,7 @@ func TestGatewayFailsClosedWhenInterlockTripped(t *testing.T) {
 	db, intentID := openPolicyFixture(t, "R1", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
 	defer func() { _ = db.Close() }()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-	gateway := newTestService(t, func(c *policy.Config) { c.Interlock = interlock.DurableReader{} })
+	gateway := newTestService(t)
 	var result policy.Result
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		if _, err := interlock.TripIn(ctx, tx, "operator stop", now); err != nil {

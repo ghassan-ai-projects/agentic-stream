@@ -16,7 +16,7 @@ type Reconciler struct{ service *Service }
 
 func NewReconciler(st store.Store, clk sources.Clock, ids sources.Generator) (*Reconciler, error) {
 	if !st.Configured() {
-		return nil, errors.New("reconciliation requires a database, runtime owner check and interlock")
+		return nil, errors.New("reconciliation requires a database and runtime owner check")
 	}
 	return &Reconciler{service: &Service{store: st, clk: orPhysical(clk), ids: orRandom(ids)}}, nil
 }
