@@ -40,7 +40,11 @@ func assertStoreEncapsulatesInfrastructure(t *testing.T, pkg string) {
 
 func assertApplicationUsesOpaquePorts(t *testing.T, pkg string) {
 	t.Helper()
-	raw := []string{"Exec", "ExecContext", "Query", "QueryContext", "QueryRow", "QueryRowContext", "Begin", "BeginTx", "Commit", "Rollback"}
+	assertApplicationAvoidsCalls(t, pkg, []string{"Exec", "ExecContext", "Query", "QueryContext", "QueryRow", "QueryRowContext", "Begin", "BeginTx", "Commit", "Rollback"})
+}
+
+func assertApplicationAvoidsCalls(t *testing.T, pkg string, raw []string) {
+	t.Helper()
 	for _, file := range productionGoFiles(t, repoRoot(t)) {
 		if path.Dir(file.rel) != pkg {
 			continue

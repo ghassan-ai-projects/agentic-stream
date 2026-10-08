@@ -26,11 +26,8 @@ import (
 func TestPipelineRunLiveSocketOpensSituation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "live.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	compiled := &spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
 		Digest:        "sha256:0000000000000000000000000000000000000000000000000000000000000000",

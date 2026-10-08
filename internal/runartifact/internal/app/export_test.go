@@ -22,11 +22,8 @@ func stubPolicy() domain.PolicyDocuments {
 
 func openRun(t *testing.T) *storage.DB {
 	t.Helper()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	return db
 }
 

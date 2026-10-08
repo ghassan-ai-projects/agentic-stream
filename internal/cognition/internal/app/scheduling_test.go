@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -21,12 +20,7 @@ const testSpecDigest = "sha256:0000000000000000000000000000000000000000000000000
 
 func TestTriggerAdmittedWhenConditionTrue(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	compiled := spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
@@ -100,12 +94,7 @@ func TestTriggerAdmittedWhenConditionTrue(t *testing.T) {
 
 func TestCapacityExhaustionDefers(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	compiled := spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
@@ -187,12 +176,7 @@ func TestCapacityExhaustionDefers(t *testing.T) {
 
 func TestCoalescingPendingItem(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	compiled := spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
@@ -286,12 +270,7 @@ func TestCoalescingPendingItem(t *testing.T) {
 
 func TestDebounceAndCooldownTogether(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	compiled := spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",

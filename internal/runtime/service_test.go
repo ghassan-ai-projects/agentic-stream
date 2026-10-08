@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -13,11 +12,8 @@ import (
 )
 
 func TestServiceReadinessFollowsRecoveryAndClose(t *testing.T) {
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "service.db"))
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	epoch := "epoch-service"
 	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-service", Lease: time.Minute, Now: func() time.Time { return now }}

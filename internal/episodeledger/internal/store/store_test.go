@@ -3,7 +3,6 @@ package store_test
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,16 +15,10 @@ var at = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 
 func within(t *testing.T, work func(ctx context.Context, tx *store.Tx)) {
 	t.Helper()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	db.SetMaxOpenConns(1)
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+
 	// Situation and trigger provenance is covered by cognition tests; isolate the ledger here.
-	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatal(err)
-	}
+
 	if err := db.WithTx(t.Context(), func(raw *sql.Tx) error {
 		work(t.Context(), store.Join(raw))
 		return nil

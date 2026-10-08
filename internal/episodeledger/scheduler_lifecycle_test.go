@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,16 +15,10 @@ import (
 
 func queueDB(t *testing.T) *storage.DB {
 	t.Helper()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "queue.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	db.SetMaxOpenConns(1)
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+
 	// Situation/spec provenance is covered by cognition acceptance tests; isolate queue transitions here.
-	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatal(err)
-	}
+
 	for _, id := range []string{"trigger", "other"} {
 		if _, err := db.ExecContext(t.Context(), `INSERT INTO trigger_evaluations (
  trigger_id,tenant_id,deployment_id,trigger_name,situation_id,situation_version,score,threshold,lane,outcome,reasons_json,policy_sha256,evaluated_at

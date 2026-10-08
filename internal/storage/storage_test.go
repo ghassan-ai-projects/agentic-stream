@@ -12,11 +12,8 @@ import (
 
 func TestFacadeOpensRunsTransactionsAndCollectsRows(t *testing.T) {
 	t.Parallel()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "facade.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(t.Context(), "CREATE TABLE t (n INTEGER)")
 		return err
@@ -57,11 +54,8 @@ func TestFacadeNullIfEmptyAndQueryAll(t *testing.T) {
 	if storage.NullIfEmpty("").Valid || !storage.NullIfEmpty("x").Valid || storage.NullIfEmpty("x").String != "x" {
 		t.Fatal("NullIfEmpty must be NULL only for the empty string")
 	}
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "queryall.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	scan := func(rows *sql.Rows) (int, error) {
 		var value int
 		return value, rows.Scan(&value)

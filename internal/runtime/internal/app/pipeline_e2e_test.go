@@ -20,11 +20,8 @@ import (
 
 func TestPipelineCompletesDecisionToSimulatedOutcome(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "e2e.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	compiled := &spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1", Digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		Inputs: []spec.Input{{Name: "level", EventType: "test.observed", SchemaVersion: "1.0", PartitionKey: "entity.id", EntityType: "thing", Classification: "internal"}},
@@ -61,11 +58,8 @@ func TestPipelineCompletesDecisionToSimulatedOutcome(t *testing.T) {
 
 func TestPipelineCorrectsLateWindowAndAdmitsOneReconsideration(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "late-correction.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	compiled := &spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1", Digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		Inputs:    []spec.Input{{Name: "level", EventType: "test.observed", SchemaVersion: "1.0", PartitionKey: "entity.id", EntityType: "thing", Classification: "internal"}},

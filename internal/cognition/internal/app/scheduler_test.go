@@ -2,7 +2,6 @@ package app
 
 import (
 	"database/sql"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,11 +15,7 @@ func TestInsertItemIgnoresDeterministicIDCollision(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	const (
 		deploymentID = "dep-test"

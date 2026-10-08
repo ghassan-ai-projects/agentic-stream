@@ -3,7 +3,6 @@ package store
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,11 +18,8 @@ var evidenceBase = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 // event for another entity that must never be returned.
 func seedEvidence(t *testing.T, count int) *storage.DB {
 	t.Helper()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "evidence.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	insert := func(eventID, entityID string, at time.Time) {
 		payload := []byte(fmt.Sprintf(`{"value":%d}`, at.Minute()))
 		if _, err := db.ExecContext(t.Context(), `INSERT INTO event_log (tenant_id, partition_id, event_id, event_type, schema_version, source, partition_key, entity_type, entity_id, event_time, ingested_at, classification, quality_json, payload_json, payload_sha256, created_at)

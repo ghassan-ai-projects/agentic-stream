@@ -12,11 +12,8 @@ import (
 
 func TestNewRefusesMissingDependencies(t *testing.T) {
 	t.Parallel()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "ingress.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	if service, err := ingress.New(ingress.Config{Log: eventlog.NewEventLog(db)}); err == nil || service != nil {
 		t.Fatal("ingress without a database was constructed")
 	}
@@ -28,11 +25,8 @@ func TestNewRefusesMissingDependencies(t *testing.T) {
 func TestServiceReplaysAndResumesThroughTheFacade(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	db, err := storagetest.Open(t.Context(), filepath.Join(dir, "ingress.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	service, err := ingress.New(ingress.Config{DB: db, Log: eventlog.NewEventLog(db), TenantID: "default"})
 	if err != nil {
 		t.Fatal(err)

@@ -2,7 +2,6 @@ package eventlog_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -13,11 +12,8 @@ import (
 
 func newTestLog(t *testing.T) (*eventlog.EventLog, func()) {
 	t.Helper()
-	dir := t.TempDir()
-	db, err := storagetest.Open(context.Background(), filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
+	db := storagetest.OpenTemp(t)
+
 	return eventlog.NewEventLog(db), func() { _ = db.Close() }
 }
 

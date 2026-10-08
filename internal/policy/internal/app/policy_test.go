@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -29,14 +28,7 @@ func TestGatewayAutomaticCommandIsIdempotent(t *testing.T) {
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	gateway := newTestService(t)
 
-	var first policy.Result
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		first, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
-		return err
-	}); err != nil {
-		t.Fatalf("evaluate intent: %v", err)
-	}
+	first := evaluateIntent(t, db, gateway, intentID, now)
 	if first.Result != "approved" || first.CommandID == "" {
 		t.Fatalf("first result = %+v", first)
 	}
@@ -55,14 +47,7 @@ func TestGatewayAutomaticCommandIsIdempotent(t *testing.T) {
 		t.Fatalf("generated command missing device freshness/policy binding: %#v", commandDocument)
 	}
 
-	var second policy.Result
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		second, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now.Add(time.Second)})
-		return err
-	}); err != nil {
-		t.Fatalf("repeat evaluation: %v", err)
-	}
+	second := evaluateIntent(t, db, gateway, intentID, now.Add(time.Second))
 	var commandCount, outboxCount, auditCount int
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM commands WHERE intent_id = ?", intentID).Scan(&commandCount); err != nil {
 		t.Fatalf("count commands: %v", err)
@@ -99,19 +84,11 @@ func TestGatewayRiskFreshnessAndExpiry(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			ctx := context.Background()
 			db, intentID := openPolicyFixture(t, test.risk, test.currentVersion, test.intentVersion, test.expiresAt)
 			defer func() { _ = db.Close() }()
 			setMaterialVersion(t, db, cmp.Or(test.materialVersion, test.currentVersion))
-			var result policy.Result
 			now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-			if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-				var err error
-				result, err = newTestService(t).EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
-				return err
-			}); err != nil {
-				t.Fatalf("evaluate intent: %v", err)
-			}
+			result := evaluateIntent(t, db, newTestService(t), intentID, now)
 			if result.Result != test.wantResult || result.Reason != test.wantReason {
 				t.Fatalf("result = %+v, want %s/%s", result, test.wantResult, test.wantReason)
 			}
@@ -125,14 +102,7 @@ func TestGatewayResolvesApprovalBeforeCommanding(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	gateway := newTestService(t)
-	var approval policy.Result
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		approval, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
-		return err
-	}); err != nil {
-		t.Fatalf("request approval: %v", err)
-	}
+	approval := evaluateIntent(t, db, gateway, intentID, now)
 	if approval.Result != "approval_required" || approval.ApprovalID == "" {
 		t.Fatalf("approval result = %+v", approval)
 	}
@@ -143,19 +113,7 @@ func TestGatewayResolvesApprovalBeforeCommanding(t *testing.T) {
 	if requestedType != (notify.ApprovalRequested{}).EventType() {
 		t.Fatalf("approval notification type=%q", requestedType)
 	}
-	var resolved policy.Result
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		presentation, err := gateway.ApprovalForSigning(ctx, tx, policy.ApprovalLookup{ID: approval.ApprovalID, TenantID: "tenant", Approver: "operator-1", Relay: "relay-1", Approved: true})
-		if err != nil {
-			return err
-		}
-
-		privateKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
-		resolved, err = gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{TenantID: "tenant", ID: approval.ApprovalID, Approved: true, Approver: "operator-1", Relay: "relay-1", Signature: ed25519.Sign(privateKey, presentation.SigningBytes), Reason: "approved for maintenance", Now: now})
-		return err
-	}); err != nil {
-		t.Fatalf("resolve approval: %v", err)
-	}
+	resolved := resolveApproval(t, db, gateway, approval.ApprovalID, "approved for maintenance", now)
 	if resolved.Result != "approved" || resolved.CommandID == "" {
 		t.Fatalf("resolved result = %+v", resolved)
 	}
@@ -174,14 +132,7 @@ func TestEvaluateIntentDeniesHighRiskDespiteRequiresApproval(t *testing.T) {
 			if _, err := db.ExecContext(ctx, "UPDATE intents SET requires_approval = 1 WHERE intent_id = ?", intentID); err != nil {
 				t.Fatalf("set requires_approval: %v", err)
 			}
-			var result policy.Result
-			if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-				var err error
-				result, err = newTestService(t).EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
-				return err
-			}); err != nil {
-				t.Fatalf("evaluate intent: %v", err)
-			}
+			result := evaluateIntent(t, db, newTestService(t), intentID, now)
 			if result.Result != "denied" || result.Reason != "risk_policy_denied" {
 				t.Fatalf("result = %+v, want denied/risk_policy_denied", result)
 			}
@@ -209,31 +160,12 @@ func TestEvaluateIntentApprovedRequiresApprovalDispatches(t *testing.T) {
 	}
 	gateway := newTestService(t)
 
-	var approval policy.Result
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		approval, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
-		return err
-	}); err != nil {
-		t.Fatalf("request approval: %v", err)
-	}
+	approval := evaluateIntent(t, db, gateway, intentID, now)
 	if approval.Result != "approval_required" || approval.ApprovalID == "" {
 		t.Fatalf("approval result = %+v, want an approval request", approval)
 	}
 
-	var resolved policy.Result
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		presentation, err := gateway.ApprovalForSigning(ctx, tx, policy.ApprovalLookup{ID: approval.ApprovalID, TenantID: "tenant", Approver: "operator-1", Relay: "relay-1", Approved: true})
-		if err != nil {
-			return err
-		}
-
-		privateKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
-		resolved, err = gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{TenantID: "tenant", ID: approval.ApprovalID, Approved: true, Approver: "operator-1", Relay: "relay-1", Signature: ed25519.Sign(privateKey, presentation.SigningBytes), Reason: "approved", Now: now})
-		return err
-	}); err != nil {
-		t.Fatalf("resolve approval: %v", err)
-	}
+	resolved := resolveApproval(t, db, gateway, approval.ApprovalID, "approved", now)
 	if resolved.Result != "approved" || resolved.CommandID == "" {
 		t.Fatalf("resolved result = %+v, want approved with a command (no re-pending loop)", resolved)
 	}
@@ -255,14 +187,7 @@ func TestGatewayRejectsSamePrincipalRelay(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	gateway := newTestService(t)
-	var approval policy.Result
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		approval, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
-		return err
-	}); err != nil {
-		t.Fatalf("request approval: %v", err)
-	}
+	approval := evaluateIntent(t, db, gateway, intentID, now)
 	err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		_, err := gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{TenantID: "tenant", ID: approval.ApprovalID, Approved: true, Approver: "operator-1", Relay: "operator-1", Now: now})
 		return err
@@ -313,26 +238,48 @@ func TestGatewayDeniesConsequentialIntentWhenCompletenessIsProvisional(t *testin
 	if _, err := db.ExecContext(ctx, `UPDATE situation_versions SET completeness = 'provisional', snapshot_json = ?, snapshot_sha256 = ?, lineage_id = 'lineage-health' WHERE situation_id = 'sit-policy' AND version = 1`, []byte("{}"), digest); err != nil {
 		t.Fatal(err)
 	}
-	var result policy.Result
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		result, err = newTestService(t).EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)})
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
+	result := evaluateIntent(t, db, newTestService(t), intentID, time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC))
 	if result.Result != "denied" || result.Reason != "source_health_incomplete" {
 		t.Fatalf("result = %+v, want source_health_incomplete denial", result)
 	}
 }
 
+func evaluateIntent(t *testing.T, db *storage.DB, gateway *policy.Service, intentID string, now time.Time) policy.Result {
+	t.Helper()
+	var result policy.Result
+	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
+		var err error
+		result, err = gateway.EvaluateIntent(t.Context(), tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
+		return err
+	}); err != nil {
+		t.Fatalf("evaluate intent %s: %v", intentID, err)
+	}
+	return result
+}
+
+func resolveApproval(t *testing.T, db *storage.DB, gateway *policy.Service, approvalID, reason string, now time.Time) policy.Result {
+	t.Helper()
+	ctx := t.Context()
+	var resolved policy.Result
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		presentation, err := gateway.ApprovalForSigning(ctx, tx, policy.ApprovalLookup{ID: approvalID, TenantID: "tenant", Approver: "operator-1", Relay: "relay-1", Approved: true})
+		if err != nil {
+			return err
+		}
+		privateKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+		resolved, err = gateway.ResolveApproval(ctx, tx, policy.ApprovalResolution{TenantID: "tenant", ID: approvalID, Approved: true, Approver: "operator-1", Relay: "relay-1", Signature: ed25519.Sign(privateKey, presentation.SigningBytes), Reason: reason, Now: now})
+		return err
+	}); err != nil {
+		t.Fatalf("resolve approval %s: %v", approvalID, err)
+	}
+	return resolved
+}
+
 func openPolicyFixture(t *testing.T, risk string, currentVersion, intentVersion int, expiresAt time.Time) (*storage.DB, string) {
 	t.Helper()
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "policy.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
 		t.Fatalf("disable foreign keys: %v", err)

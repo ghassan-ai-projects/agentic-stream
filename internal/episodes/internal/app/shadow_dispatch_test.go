@@ -3,7 +3,6 @@ package app_test
 import (
 	"context"
 	"encoding/json"
-	"path/filepath"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
@@ -93,11 +92,8 @@ func seedShadowEpisode(t *testing.T, db *storage.DB, episodeID, dispatchPolicy s
 // A shadow dispatch scores the decision but never persists an intent or a
 // command.
 func TestShadowDispatchScoresWithoutGovernance(t *testing.T) {
-	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "shadow.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedShadowEpisode(t, db, "epi-shadow", "shadow")
 
 	runner := app.NewRunner(store.New(db), fixture.New(), sources.Physical(), sources.Deterministic())
@@ -136,11 +132,8 @@ func TestShadowDispatchScoresWithoutGovernance(t *testing.T) {
 // An ACTIVE dispatch still persists intents (the control: the shadow path is
 // the only one that skips governance).
 func TestActiveDispatchPersistsIntents(t *testing.T) {
-	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "active.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedShadowEpisode(t, db, "epi-active", "active")
 
 	runner := app.NewRunner(store.New(db), fixture.New(), sources.Physical(), sources.Deterministic())

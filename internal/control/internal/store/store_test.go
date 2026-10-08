@@ -3,7 +3,6 @@ package store_test
 import (
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,11 +15,8 @@ const now = "2026-01-01T00:00:00.000000000Z"
 
 func openStore(t *testing.T) (store.Store, *storage.DB) {
 	t.Helper()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	return store.New(db), db
 }
 

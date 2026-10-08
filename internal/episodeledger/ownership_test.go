@@ -3,7 +3,6 @@ package episodeledger_test
 import (
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -12,11 +11,8 @@ import (
 )
 
 func TestAdmissionOwnsShadowDefaultAndRejectsConflictingLiveEpisode(t *testing.T) {
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, t.Context(), db, "original")
 	// Isolate the row contract from unrelated upstream situation/scheduler fixtures.
 	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
@@ -42,25 +38,22 @@ func TestAdmissionOwnsShadowDefaultAndRejectsConflictingLiveEpisode(t *testing.T
 	admission.Kind = "reconsider"
 	admission.SituationID = "sit-test"
 	admission.AdmissionKey[0] = 2
-	err = db.WithTx(t.Context(), func(tx *sql.Tx) error { return episodeledger.Admit(t.Context(), tx, admission, now) })
+	err := db.WithTx(t.Context(), func(tx *sql.Tx) error { return episodeledger.Admit(t.Context(), tx, admission, now) })
 	if !errors.Is(err, episodeledger.ErrLiveEpisodeConflict) {
 		t.Fatalf("live episode conflict lost: %v", err)
 	}
 }
 
 func TestEpisodeMutationsRemainInsideCallerTransaction(t *testing.T) {
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, t.Context(), db, "episode")
 	// Isolate the row contract from unrelated upstream situation/scheduler fixtures.
 	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
 		t.Fatal(err)
 	}
 	rollback := errors.New("abort composed transition")
-	err = db.WithTx(t.Context(), func(tx *sql.Tx) error {
+	err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		ctx := t.Context()
 		if err := episodeledger.Rebind(ctx, tx, "episode", 2, make([]byte, 32), []byte(`{"snapshot":"fresh"}`)); err != nil {
 			return err
@@ -104,11 +97,8 @@ func TestEpisodeMutationsRemainInsideCallerTransaction(t *testing.T) {
 }
 
 func TestCancellationRecoveryAbandonsRatherThanRequeues(t *testing.T) {
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, t.Context(), db, "episode")
 	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
@@ -141,11 +131,8 @@ func TestCancellationRecoveryAbandonsRatherThanRequeues(t *testing.T) {
 }
 
 func TestUnknownWorkerRejectionIsDurableAndIdempotent(t *testing.T) {
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 	identity := episodeledger.Identity{EpisodeID: "unknown", AttemptID: "forged", Fence: 7}
 	for range 2 {

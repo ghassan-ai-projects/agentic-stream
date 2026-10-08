@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/app"
@@ -17,11 +16,8 @@ import (
 func TestNewRefusesMissingDependencies(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "engine.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	compiled := restartSpec()
 	owner := func(context.Context, *sql.Tx, string) error { return nil }
 	log := eventlog.NewEventLog(db)
@@ -40,11 +36,8 @@ func TestNewRefusesMissingDependencies(t *testing.T) {
 
 func TestRunStopsWithoutRuntimeOwnershipAndAppliesNothing(t *testing.T) {
 	ctx := t.Context()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "engine.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	compiled := restartSpec()
 	log := eventlog.NewEventLog(db)
 	lost := errors.New("ownership lost")

@@ -2,7 +2,6 @@ package controltest_test
 
 import (
 	"database/sql"
-	"path/filepath"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
@@ -11,11 +10,8 @@ import (
 
 func TestSetCostLimitWritesOneScope(t *testing.T) {
 	t.Parallel()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "control.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		return controltest.SetCostLimit(t.Context(), tx, "tenant:default", "default", 1000, true, "2026-10-08T00:00:00Z")
 	}); err != nil {

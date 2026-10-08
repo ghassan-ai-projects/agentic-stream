@@ -24,11 +24,7 @@ import (
 
 func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "reconsideration.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	compiled := &spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",

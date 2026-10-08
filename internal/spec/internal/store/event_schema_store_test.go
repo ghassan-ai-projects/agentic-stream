@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,11 +14,8 @@ import (
 
 func TestSchemaRegistrationIsImmutableAndTransactionScoped(t *testing.T) {
 	ctx := t.Context()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "schemas.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	definition, ok := domain.LookupEventSchema("bay.air_temp.observed/1.0")
 	if !ok {
 		t.Fatal("builtin schema missing")

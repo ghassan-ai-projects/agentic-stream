@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,11 +18,8 @@ var now = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 
 func openService(t *testing.T) (*Service, store.Store, *storage.DB) {
 	t.Helper()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	persistence := store.New(db)
 	service := New(persistence)
 	return service, persistence, db

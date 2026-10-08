@@ -1,7 +1,6 @@
 package app_test
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
@@ -11,11 +10,7 @@ import (
 )
 
 func TestCompositeEffectorRoutesWatchBeforeSimulatedFallback(t *testing.T) {
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "composite.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	effector := app.NewCompositeEffector(newWatch(t, db), device.NewSimulatedEffector())
 	watchCommand := actionport.Command{

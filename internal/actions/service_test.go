@@ -3,7 +3,6 @@ package actions_test
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
@@ -28,11 +27,8 @@ func (noopEffector) Dispatch(context.Context, actionport.Command) (actionport.Ef
 
 func openDB(t *testing.T) *storage.DB {
 	t.Helper()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "actions.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	return db
 }
 

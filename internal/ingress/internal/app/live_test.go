@@ -25,11 +25,7 @@ import (
 )
 
 func TestLiveUDSSourceQuarantinesMalformedLinesAndCountsValidLines(t *testing.T) {
-	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "live.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	runtimeTelemetry := telemetry.NewRuntime(time.Unix(1, 0))
 	source := newLiveService(t, db, runtimeTelemetry)
@@ -78,11 +74,8 @@ func TestLiveUDSSourceQuarantinesMalformedLinesAndCountsValidLines(t *testing.T)
 }
 
 func TestLiveUDSSourceAcceptsReconnects(t *testing.T) {
-	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "live.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	path := filepath.Join("/tmp", fmt.Sprintf("agentic-stream-live-%d.sock", time.Now().UnixNano()))
 	source := newLiveService(t, db, nil)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -175,11 +168,7 @@ func TestLiveUDSSourceAcceptsReconnects(t *testing.T) {
 }
 
 func TestLiveUDSSourcePropagatesSinkDeadlineWithActiveParent(t *testing.T) {
-	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "live.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	path := filepath.Join("/tmp", fmt.Sprintf("agentic-stream-live-deadline-%d.sock", time.Now().UnixNano()))
 	source := newLiveService(t, db, nil)
@@ -254,11 +243,8 @@ func newLiveService(t *testing.T, db *storage.DB, runtimeTelemetry *telemetry.Ru
 }
 
 func TestOversizedLiveLineIsQuarantinedAsItsBoundedPrefix(t *testing.T) {
-	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "live.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	source := newLiveService(t, db, nil)
 	prefix := bytes.Repeat([]byte("x"), domain.MaxLineBytes)
 	item := domain.LiveLine{ConnectionID: 7, LineNumber: 1, Data: prefix, ReadErr: domain.ErrLineTooLarge}

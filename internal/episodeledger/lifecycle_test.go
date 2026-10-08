@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -17,11 +16,8 @@ import (
 
 func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "lifecycle.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 	seedEpisode(t, ctx, db, "epi-fenced")
 
@@ -100,11 +96,8 @@ func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 
 func TestRecoveryAbandonsPriorEpochAndIsIdempotent(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "recovery.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, ctx, db, "epi-recovery")
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO episode_attempts (

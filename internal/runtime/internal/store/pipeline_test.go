@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -15,11 +14,8 @@ import (
 )
 
 func TestPipelineStorePreservesOriginalFenceAndOperationErrors(t *testing.T) {
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "runtime.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	sentinel := errors.New("owner lost")
 	service, err := policy.New(policy.Config{PolicyVersion: "test", RuntimeOwner: func(context.Context, *sql.Tx, string) error { return sentinel }, DecisionEpoch: func(context.Context, *sql.Tx, string) error { return nil }})
 	if err != nil {
@@ -51,11 +47,8 @@ func TestPipelineStorePreservesOriginalFenceAndOperationErrors(t *testing.T) {
 }
 
 func TestCostConfigurationCommitsUnderOwnerFence(t *testing.T) {
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "cost.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	now := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
 	clk := sources.NewVirtual(now)
 	owner := &control.RuntimeOwner{DB: db, InstanceID: "owner", Lease: time.Minute, Now: clk.Now}

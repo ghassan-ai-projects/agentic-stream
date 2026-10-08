@@ -1,7 +1,6 @@
 package store_test
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runartifact/internal/domain"
@@ -10,12 +9,9 @@ import (
 )
 
 func TestSnapshotReadsEveryLedgerAndProvenance(t *testing.T) {
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
-	err = store.New(db).InSnapshot(t.Context(), func(snapshot *store.Snapshot) error {
+	db := storagetest.OpenTemp(t)
+
+	err := store.New(db).InSnapshot(t.Context(), func(snapshot *store.Snapshot) error {
 		for _, name := range domain.LedgerFiles() {
 			if _, err := snapshot.Ledger(t.Context(), name, "tenant"); err != nil {
 				t.Fatalf("ledger %s: %v", name, err)
@@ -38,12 +34,9 @@ func TestSnapshotReadsEveryLedgerAndProvenance(t *testing.T) {
 }
 
 func TestSnapshotReadsRecordedDigestsAndSafetyEvidence(t *testing.T) {
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
-	err = store.New(db).InSnapshot(t.Context(), func(snapshot *store.Snapshot) error {
+	db := storagetest.OpenTemp(t)
+
+	err := store.New(db).InSnapshot(t.Context(), func(snapshot *store.Snapshot) error {
 		ctx := t.Context()
 		if digest, err := snapshot.LatestSpecDigest(ctx, "tenant"); err != nil || digest != nil {
 			t.Fatalf("digest %v err %v", digest, err)

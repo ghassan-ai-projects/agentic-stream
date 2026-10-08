@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"crypto/ed25519"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,14 +15,8 @@ import (
 func openPolicyFixture(t *testing.T, risk string, currentVersion, intentVersion int, expiresAt time.Time) (*storage.DB, string) {
 	t.Helper()
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "policy.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatalf("disable foreign keys: %v", err)
-	}
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+
 	intentID := "int-policy"
 	decisionID := "dec-policy"
 	episodeID := "epi-policy"

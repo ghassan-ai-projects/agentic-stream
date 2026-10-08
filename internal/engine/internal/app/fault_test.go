@@ -1,7 +1,6 @@
 package app_test
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -26,11 +25,8 @@ func TestRecordWriteFailureRollsBackAndTheEventAppliesOnceAfterRecovery(t *testi
 	for name, trigger := range faults {
 		t.Run(name, func(t *testing.T) {
 			ctx := t.Context()
-			db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "engine.db"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _ = db.Close() }()
+			db := storagetest.OpenTemp(t)
+
 			compiled := restartSpec()
 			log := eventlog.NewEventLog(db)
 			eng, err := newService(ctx, db, log, sources.Physical(), &compiled, "default", false)

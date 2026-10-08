@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -42,15 +41,8 @@ func TestReconsiderationAdmissionIsReplayDeduplicated(t *testing.T) {
 func runReconsiderationAdmissionTest(t *testing.T, versionCount, commandVersion, correctionVersion, previousVersion int) {
 	t.Helper()
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "reconsideration.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatalf("disable foreign keys: %v", err)
-	}
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+
 	zero := make([]byte, 32)
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	if _, err := db.ExecContext(ctx, `

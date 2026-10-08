@@ -21,12 +21,7 @@ import (
 
 func TestEngineAdvancesCheckpoint(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	compiled, err := spec.CompileFile(ctx, "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
 	if err != nil {
@@ -328,14 +323,10 @@ func TestEngineFiresDurableProcessingTimerExactlyOnce(t *testing.T) {
 
 func TestEngineRetiresTimerFromPreviousDeviceBoot(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
 	clk := sources.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	compiled := heartbeatSpec()
-	db, err := storagetest.Open(ctx, filepath.Join(dir, "stale-timer.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	log := eventlog.NewEventLogWithClock(db, clk)
 	eng, err := newService(ctx, db, log, clk, &compiled, "default", false)
 	if err != nil {
@@ -430,11 +421,8 @@ func appendHeartbeatWithBoot(t *testing.T, ctx context.Context, log *eventlog.Ev
 func TestGlobalRunFailurePreservesProgressAndInboxDeduplication(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "partial-global.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	compiled := restartSpec()
 	log := eventlog.NewEventLog(db)
 	eng, err := newService(ctx, db, log, sources.Physical(), &compiled, "default", false)
@@ -474,11 +462,8 @@ func TestGlobalRunFailurePreservesProgressAndInboxDeduplication(t *testing.T) {
 func TestGlobalRunResumesAfterTheAppliedPosition(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "resume.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	compiled := restartSpec()
 	log := eventlog.NewEventLog(db)
 	eng, err := newService(ctx, db, log, sources.Physical(), &compiled, "default", false)

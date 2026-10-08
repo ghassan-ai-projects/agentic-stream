@@ -3,7 +3,6 @@ package store_test
 import (
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,11 +12,8 @@ import (
 
 func TestCollectRowsScansInOrderAndPropagatesScanErrors(t *testing.T) {
 	t.Parallel()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "rows.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	scanInt := func(rows *sql.Rows) (int, error) {
 		var value int
 		return value, rows.Scan(&value)
@@ -47,11 +43,8 @@ func collect(t *testing.T, db *storage.DB, query string, scan func(*sql.Rows) (i
 
 func TestQueryAllScansEveryRowAndNamesWhatFailed(t *testing.T) {
 	t.Parallel()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "rows.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	scanInt := func(rows *sql.Rows) (int, error) {
 		var value int
 		return value, rows.Scan(&value)
@@ -75,11 +68,8 @@ func TestQueryAllScansEveryRowAndNamesWhatFailed(t *testing.T) {
 
 func TestQueryOptionalReportsAbsenceWithoutError(t *testing.T) {
 	t.Parallel()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "optional.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	if value, found, err := storage.QueryOptional[string](t.Context(), db, "SELECT 'x' UNION SELECT 'y' ORDER BY 1"); err != nil || !found || value != "x" {
 		t.Fatalf("QueryOptional = %q, %v, %v; want the first row", value, found, err)
 	}

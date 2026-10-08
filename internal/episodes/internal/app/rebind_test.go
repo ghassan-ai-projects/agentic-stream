@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -19,7 +18,6 @@ import (
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
@@ -200,11 +198,8 @@ func rebindSpec() *spec.CompiledSpec {
 // A stale episode is re-bound to the live version and dispatched against the
 // live snapshot; the decision is recorded at the live version (B1).
 func TestStaleEpisodeRebindsToLiveVersionAndDispatches(t *testing.T) {
-	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "rebind.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedRebindEpisode(t, db, "epi-rebind", "sit-rebind", false, 0, 2)
 	asm := app.NewAssembler(rebindSpec(), sources.Deterministic())
 	rec := &recordingExecutor{delegate: fixture.New()}
@@ -264,11 +259,8 @@ func TestStaleEpisodeRebindsToLiveVersionAndDispatches(t *testing.T) {
 // The bound payload carries trace context, trigger delta and reconsideration
 // evidence — all preserved byte-identically across the re-bind.
 func TestRebindOnlyMutatesSnapshotFields(t *testing.T) {
-	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "rebind-b3.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedRebindEpisode(t, db, "epi-b3", "sit-b3", false, 0, 2)
 	var boundJSON []byte
 	if err := db.QueryRowContext(context.Background(),
@@ -288,7 +280,7 @@ func TestRebindOnlyMutatesSnapshotFields(t *testing.T) {
 		"reconsideration_id": "rec-b3", "superseded_version": 1, "correction_version": 1,
 		"invalidated_command_id": "cmd-b3",
 	}
-	boundJSON, err = json.Marshal(boundDoc)
+	boundJSON, err := json.Marshal(boundDoc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,11 +344,8 @@ func TestRebindOnlyMutatesSnapshotFields(t *testing.T) {
 // The constant is unexported and this test is external, so the seeded value 3
 // is pinned here — keep it in sync with maxStaleRebinds.
 func TestRebindLimitExhaustedAbandons(t *testing.T) {
-	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "rebind-limit.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedRebindEpisode(t, db, "epi-limit", "sit-limit", false, 3, 2)
 	asm := app.NewAssembler(rebindSpec(), sources.Deterministic())
 	runner := app.NewRunner(store.New(db), fixture.New(), sources.Physical(), sources.Deterministic()).WithAssembler(asm)
@@ -392,11 +381,8 @@ func TestRebindLimitExhaustedAbandons(t *testing.T) {
 // (rebind_failed) and does NOT stall the queue — the next admitted episode
 // still dispatches (B4).
 func TestRebindFailsClosedOnCorruptLiveSnapshot(t *testing.T) {
-	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "rebind-corrupt.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedRebindEpisode(t, db, "epi-corrupt", "sit-corrupt", true, 0, 2)
 	// A second, fresh episode (bound == live) admitted AFTER the corrupt one —
 	// it must still dispatch once the corrupt episode is quarantined.
@@ -452,76 +438,25 @@ func TestRebindFailsClosedOnCorruptLiveSnapshot(t *testing.T) {
 // the runner must re-bind to v2 and produce a decision at v2 (B6).
 func TestRebindRaceReproducesWaterM7(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "rebind-race.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
+	compiled := triggeredSpec(
+		spec.Executor{
+			Name:           "fake",
+			DispatchPolicy: "active",
+			ModelPolicy:    "test-policy",
+			PromptVersion:  "prompt-v1", Prompt: "Analyze the situation and return a typed decision.",
 		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:      "high",
-					When:      "features.level > 10",
-					Score:     "situation.severity",
-					Threshold: 5,
-					Lane:      "fast",
-				},
-			},
-			Executor: spec.Executor{
-				Name:           "fake",
-				DispatchPolicy: "active",
-				ModelPolicy:    "test-policy",
-				PromptVersion:  "prompt-v1", Prompt: "Analyze the situation and return a typed decision.",
-			},
-		},
-		Actions: spec.Actions{
-			Intents: []spec.Intent{
-				{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
-			},
-		},
-	}
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
-	base := time.Now().UTC()
-	v1 := situations.Version{
-		SituationID: "sit-race", Version: 1, Phase: "candidate",
-		Severity: 10, Confidence: 1.0, Completeness: "provisional",
-		EntityType: "thing", EntityID: "ent-1", EventHorizon: base, Watermark: base,
-		Facts: map[string]any{"facts.level": 15.0},
-	}
+		spec.Intent{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
+	)
 	// The trigger admits at v1; the batch then churns the version before the
 	// runner ever dispatches (water site-H: 4 versions per minute of events).
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v1, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v1)
-	}); err != nil {
-		t.Fatalf("process v1: %v", err)
-	}
+	s := admitTriggeredSituation(t, ctx, compiled, "sit-race")
 	v2 := situations.Version{
 		SituationID: "sit-race", Version: 2, Phase: "critical",
 		Severity: 10, Confidence: 1.0, Completeness: "on_time",
-		EntityType: "thing", EntityID: "ent-1", EventHorizon: base.Add(time.Minute), Watermark: base.Add(time.Minute),
+		EntityType: "thing", EntityID: "ent-1", EventHorizon: s.base.Add(time.Minute), Watermark: s.base.Add(time.Minute),
 		Facts: map[string]any{"facts.level": 20.0},
 	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+	if err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := insertSituationVersion(ctx, tx, v2, testSpecDigest, "default"); err != nil {
 			return err
 		}
@@ -532,23 +467,9 @@ func TestRebindRaceReproducesWaterM7(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("publish v2: %v", err)
 	}
-	var schedulerItemID string
-	if err := db.QueryRowContext(ctx,
-		"SELECT scheduler_item_id FROM scheduler_items WHERE situation_id = 'sit-race'").Scan(&schedulerItemID); err != nil {
-		t.Fatalf("query scheduler item: %v", err)
-	}
-	asm := app.NewAssembler(&compiled, sources.Deterministic())
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		req, err := asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
-		if err != nil {
-			return fmt.Errorf("assemble: %w", err)
-		}
-		return asm.Persist(ctx, store.Join(tx), req, base)
-	}); err != nil {
-		t.Fatalf("assemble and persist: %v", err)
-	}
+	s.assembleAndPersist(t, ctx)
 	rec := &recordingExecutor{delegate: fixture.New()}
-	runner := app.NewRunner(store.New(db), rec, sources.Physical(), sources.Deterministic()).WithAssembler(asm)
+	runner := app.NewRunner(store.New(s.db), rec, sources.Physical(), sources.Deterministic()).WithAssembler(s.asm)
 	processed, err := runner.RunOnce(ctx, "default")
 	if err != nil {
 		t.Fatalf("run once: %v", err)
@@ -568,7 +489,7 @@ func TestRebindRaceReproducesWaterM7(t *testing.T) {
 		t.Fatalf("dispatched snapshot phase = %q, want critical (live)", phase)
 	}
 	var boundVersion, rebinds int
-	if err := db.QueryRowContext(ctx,
+	if err := s.db.QueryRowContext(ctx,
 		"SELECT situation_version, stale_rebind_count FROM episodes WHERE situation_id = 'sit-race'").Scan(&boundVersion, &rebinds); err != nil {
 		t.Fatal(err)
 	}
@@ -577,7 +498,7 @@ func TestRebindRaceReproducesWaterM7(t *testing.T) {
 	}
 	var decisionVersion int
 	var validationStatus string
-	if err := db.QueryRowContext(ctx,
+	if err := s.db.QueryRowContext(ctx,
 		"SELECT situation_version, validation_status FROM decisions WHERE situation_id = 'sit-race'").Scan(&decisionVersion, &validationStatus); err != nil {
 		t.Fatal(err)
 	}

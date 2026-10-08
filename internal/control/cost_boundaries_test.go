@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"math"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -125,11 +124,8 @@ func TestCostRangeValidationPrecedesTransactionAccess(t *testing.T) {
 
 func newCostDB(t *testing.T) *storage.DB {
 	t.Helper()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "cost.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	return db
 }
 

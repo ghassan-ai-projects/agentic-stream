@@ -2,7 +2,6 @@ package app_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
@@ -16,11 +15,8 @@ import (
 
 func TestRunnerOrdersEpisodesByChronologicalAcceptedAt(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "accepted-order.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, ctx, db, "epi-order-earlier")
 	if _, err := db.ExecContext(ctx, "UPDATE episodes SET accepted_at = '2026-08-12T10:00:00.000000000Z' WHERE episode_id = 'epi-order-earlier'"); err != nil {
 		t.Fatalf("normalize earlier accepted_at: %v", err)

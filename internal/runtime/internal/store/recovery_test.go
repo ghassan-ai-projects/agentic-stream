@@ -1,8 +1,6 @@
 package store
 
 import (
-	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -43,15 +41,8 @@ func TestRecoveryCoordinatorAtomicallyRecoversEpisodesAndEvidence(t *testing.T) 
 
 func seedRecoveryState(t *testing.T) (*storage.DB, time.Time) {
 	t.Helper()
-	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "runtime.db"))
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatalf("disable fixture foreign keys: %v", err)
-	}
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+
 	digest := make([]byte, 32)
 	if _, err := db.ExecContext(t.Context(), `
 		INSERT INTO episodes (

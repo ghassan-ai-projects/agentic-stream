@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -121,12 +120,8 @@ func mustBeginTx(t *testing.T, db *storage.DB) *sql.Tx {
 
 func openLedgerDB(t *testing.T) *storage.DB {
 	t.Helper()
-	dir := t.TempDir()
-	db, err := storagetest.Open(t.Context(), filepath.Join(dir, "runtime.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
 		t.Fatal(err)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -102,5 +103,31 @@ func TestTemplateIsBuiltOnceAndReusedFromItsDirectory(t *testing.T) {
 	}
 	if len(built) == 0 || !bytes.Equal(built, reused) {
 		t.Fatalf("template changed between builds: %d bytes then %d bytes", len(built), len(reused))
+	}
+}
+
+func TestOpenTempGivesAMigratedDatabaseThatClosesWithTheTest(t *testing.T) {
+	t.Parallel()
+	var db *storage.DB
+	t.Run("session", func(t *testing.T) {
+		db = storagetest.OpenTemp(t)
+		if applied := countApplied(t, db); applied == 0 {
+			t.Fatal("OpenTemp returned a database with no migrations applied")
+		}
+	})
+	if err := db.PingContext(t.Context()); err == nil {
+		t.Fatal("OpenTemp left the database open after its test finished")
+	}
+}
+
+func TestOpenTempWithoutForeignKeysAllowsOrphanRows(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+	if _, err := db.ExecContext(t.Context(), "INSERT INTO situation_versions (situation_id, version) VALUES ('missing', 1)"); err != nil && strings.Contains(err.Error(), "FOREIGN KEY") {
+		t.Fatalf("foreign keys are still enforced: %v", err)
+	}
+	found, _, err := storage.QueryOptional[int](t.Context(), db, "PRAGMA foreign_keys")
+	if err != nil || found != 0 {
+		t.Fatalf("PRAGMA foreign_keys = %d, %v; want 0", found, err)
 	}
 }

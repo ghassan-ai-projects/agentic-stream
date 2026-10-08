@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,11 +13,8 @@ import (
 )
 
 func TestServiceReadinessFollowsRecoveryAndClose(t *testing.T) {
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "service.db"))
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	epoch := "epoch-service"
 	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-service", Lease: time.Minute, Now: func() time.Time { return now }}
@@ -62,10 +58,8 @@ func TestServiceConfigurationAndAbsentLifecycle(t *testing.T) {
 }
 
 func TestServiceLeaseFailureClearsReadiness(t *testing.T) {
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "lease.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := storagetest.OpenTemp(t)
+
 	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance", Lease: time.Minute}
 	ledger, ledgerErr := evidence.New(evidence.Config{Ledger: &evidence.LedgerConfig{OwnerCheck: owner.Assert, DB: db, LeaseOwner: "instance", RuntimeEpoch: "epoch", Lease: time.Minute}})
 	if ledgerErr != nil {

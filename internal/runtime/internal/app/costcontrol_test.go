@@ -17,11 +17,7 @@ import (
 
 func TestPipelineKeepsIngestingWhenCostReservationIsRejected(t *testing.T) {
 	ctx := t.Context()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "cost-rejection.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	compiled := &spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",

@@ -16,11 +16,8 @@ const faultLine = `{"id":"evt-1","type":"motor.vibration.observed","schema_versi
 func faultFixture(t *testing.T) (*storage.DB, *eventlog.EventLog, string) {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := storagetest.Open(t.Context(), filepath.Join(dir, "ingress.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	path := filepath.Join(dir, "trace.jsonl")
 	if err := os.WriteFile(path, []byte(faultLine), 0o600); err != nil {
 		t.Fatal(err)

@@ -2,7 +2,6 @@ package store_test
 
 import (
 	"database/sql"
-	"path/filepath"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger/internal/store"
@@ -11,15 +10,8 @@ import (
 
 func TestApprovalsReadsEveryRequestOfAnIntent(t *testing.T) {
 	t.Parallel()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "approvals.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatal(err)
-	}
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+
 	if err := db.WithTx(t.Context(), func(raw *sql.Tx) error {
 		tx := store.Join(raw)
 		if err := tx.InsertPending(t.Context(), "apr-1", "int-1", "2026-10-08T00:00:00Z", "2026-10-08T01:00:00Z", []byte("{}"), "n-1"); err != nil {

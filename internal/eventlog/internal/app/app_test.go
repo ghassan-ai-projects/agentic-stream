@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,11 +15,8 @@ import (
 
 func newService(t *testing.T) *Service {
 	t.Helper()
-	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), "app.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	return New(sources.Physical(), store.New(db))
 }
 

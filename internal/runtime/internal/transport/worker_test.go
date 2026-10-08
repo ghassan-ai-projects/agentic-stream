@@ -47,11 +47,8 @@ func TestNativeBackendSelectsProviderAndScopedTools(t *testing.T) {
 }
 
 func TestWorkerBackendEvidenceAndRemoteLifetime(t *testing.T) {
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "worker.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	socketDir, err := os.MkdirTemp("", "as-runtime-")
 	if err != nil {
 		t.Fatal(err)

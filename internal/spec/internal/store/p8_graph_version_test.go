@@ -2,7 +2,6 @@ package store_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
@@ -20,11 +19,7 @@ import (
 // (a boot-time SaveDeployment must not retire its own row).
 func TestP8SameDigestRedeployKeepsTheDeploymentActive(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "redeploy.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	specDoc := p8VersionedSpec(t, "graph-test", "1.0", "sha256:0000000000000000000000000000000000000000000000000000000000000003")
 	if err := store.SaveDeployment(ctx, db, "tenant", specDoc); err != nil {
@@ -47,11 +42,7 @@ func TestP8SameDigestRedeployKeepsTheDeploymentActive(t *testing.T) {
 
 func TestP8GraphVersionChangeIsAFreshNamespace(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "graph-version.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	base := p8VersionedSpec(t, "graph-test", "1.0", "sha256:0000000000000000000000000000000000000000000000000000000000000001")
 	next := p8VersionedSpec(t, "graph-test", "2.0", "sha256:0000000000000000000000000000000000000000000000000000000000000002")

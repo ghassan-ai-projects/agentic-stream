@@ -1,10 +1,8 @@
 package authority_test
 
 import (
-	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,11 +16,8 @@ import (
 
 func openDB(t *testing.T, name string) *storage.DB {
 	t.Helper()
-	db, err := storagetest.Open(context.Background(), filepath.Join(t.TempDir(), name))
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 	return db
 }

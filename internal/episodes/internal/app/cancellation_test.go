@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -28,11 +27,8 @@ import (
 func TestRunnerPersistsCancellationAfterExecutorCancelsContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "cancel.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, ctx, db, "epi-cancel")
 
 	runner := app.NewRunner(store.New(db), cancelingExecutor{cancel: cancel}, sources.Physical(), sources.Deterministic())
@@ -60,11 +56,8 @@ func TestRunnerPersistsCancellationAfterExecutorCancelsContext(t *testing.T) {
 func TestRunnerPersistsSuccessfulOutcomeAfterParentCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "cancel-success.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, ctx, db, "epi-cancel-success")
 
 	runner := app.NewRunner(store.New(db), successfulCancelingExecutor{cancel: cancel}, sources.Physical(), sources.Deterministic())
@@ -95,11 +88,8 @@ func TestRunnerPersistsSuccessfulOutcomeAfterParentCancellation(t *testing.T) {
 func TestRunnerPersistsProducedOutcomeAfterParentCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "cancel-produced.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedProducedEpisode(t, ctx, db, "epi-cancel-produced")
 
 	runner := app.NewRunner(store.New(db), producedCancelingExecutor{cancel: cancel}, sources.Physical(), sources.Deterministic())
@@ -131,11 +121,8 @@ func TestRunnerPersistsProducedOutcomeAfterParentCancellation(t *testing.T) {
 
 func TestRunnerCancelsSupersededStreamedAttempt(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "supersede.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, ctx, db, "epi-supersede")
 	started := make(chan struct{})
 	runner := app.NewRunner(store.New(db), blockingExecutor{started: started}, sources.Physical(), sources.Deterministic())
@@ -171,11 +158,8 @@ func TestRunnerCancelsSupersededStreamedAttempt(t *testing.T) {
 
 func TestRunnerQuarantinesAlreadyKilledEpochBeforeAttempt(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "kill-before-attempt.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, ctx, db, "epi-kill-before-attempt")
 	if _, err := db.ExecContext(ctx, "UPDATE episodes SET policy_epoch = 'epoch-kill-before-attempt' WHERE episode_id = 'epi-kill-before-attempt'"); err != nil {
 		t.Fatalf("bind policy epoch: %v", err)
@@ -210,11 +194,8 @@ func TestRunnerQuarantinesAlreadyKilledEpochBeforeAttempt(t *testing.T) {
 
 func TestRunnerQuarantinesUnboundEpochBeforeAttempt(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "unbound-epoch.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, ctx, db, "epi-unbound-epoch")
 	control := &runtimecontrol.EpochControl{DB: db}
 	runner := withEpochControl(app.NewRunner(store.New(db), producedCancelingExecutor{}, sources.Physical(), sources.Deterministic()), control)
@@ -235,11 +216,8 @@ func TestRunnerQuarantinesUnboundEpochBeforeAttempt(t *testing.T) {
 
 func TestRunnerQuarantinesLateOutcomeAfterEpochKill(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "kill-late.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedProducedEpisode(t, ctx, db, "epi-kill-late")
 	if _, err := db.ExecContext(ctx, "UPDATE episodes SET policy_epoch = 'epoch-kill-late' WHERE episode_id = 'epi-kill-late'"); err != nil {
 		t.Fatalf("bind policy epoch: %v", err)

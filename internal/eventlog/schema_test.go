@@ -3,7 +3,6 @@ package eventlog_test
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -52,11 +51,8 @@ func registerSchema(t *testing.T, db *storage.DB, ref string) {
 
 func TestAppendRejectsUnknownAndWrongTypedPayloadsAgainstDurableSchema(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "schema.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	registerTemperatureSchema(t, db)
 	log := eventlog.NewEventLog(db).RequireSchemaValidation()
 	env := contractsv1.Envelope{
@@ -79,11 +75,8 @@ func TestAppendRejectsUnknownAndWrongTypedPayloadsAgainstDurableSchema(t *testin
 
 func TestAppendRejectsThermalQualityOutsideSchemaEnum(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "thermal-schema.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	registerSchema(t, db, "zone.temp.observed/1.0")
 	log := eventlog.NewEventLog(db).RequireSchemaValidation()
 	base := contractsv1.Envelope{
@@ -115,11 +108,8 @@ func TestAppendRejectsThermalQualityOutsideSchemaEnum(t *testing.T) {
 
 func TestAppendAcceptsThermalHumidityEnvelopeAgainstDurableSchema(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "humidity-schema.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	registerSchema(t, db, "zone.humidity.observed/1.0")
 	log := eventlog.NewEventLog(db).RequireSchemaValidation()
 	env := contractsv1.Envelope{
@@ -140,11 +130,8 @@ func TestAppendAcceptsThermalHumidityEnvelopeAgainstDurableSchema(t *testing.T) 
 
 func TestReleasedQuarantineCanBeValidatedAndRedrivenOnce(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "redrive.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	registerTemperatureSchema(t, db)
 	log := eventlog.NewEventLog(db).RequireSchemaValidation()
 	env := contractsv1.Envelope{

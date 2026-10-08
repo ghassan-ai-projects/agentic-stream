@@ -1,7 +1,6 @@
 package eventlog_test
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -13,11 +12,8 @@ import (
 
 func TestReadEntityWindowIsScopedOrderedAndStoppable(t *testing.T) {
 	t.Parallel()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "window.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	appendEvents(t, db, start, []string{"motor-1", "motor-2", "motor-1", "motor-1"})
 

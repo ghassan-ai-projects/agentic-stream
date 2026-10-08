@@ -35,11 +35,8 @@ const (
 func replayedStore(t *testing.T) *storage.DB {
 	t.Helper()
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "episodes.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	compiled, err := spec.CompileFile(ctx, alwaysTriggerSpec(t))
 	if err != nil {
 		t.Fatal(err)

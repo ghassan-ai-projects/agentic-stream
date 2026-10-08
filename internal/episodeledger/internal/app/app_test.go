@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -17,15 +16,8 @@ var now = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 
 func within(t *testing.T, work func(ctx context.Context, tx *store.Tx)) {
 	t.Helper()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatal(err)
-	}
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+
 	if err := db.WithTx(t.Context(), func(raw *sql.Tx) error {
 		work(t.Context(), store.Join(raw))
 		return nil

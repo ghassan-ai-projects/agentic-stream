@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -20,11 +19,8 @@ var baseTime = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 
 func openOutbox(t *testing.T) (*storage.DB, *notify.Service) {
 	t.Helper()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "notify.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	outbox, err := notify.New(db)
 	if err != nil {
 		t.Fatal(err)

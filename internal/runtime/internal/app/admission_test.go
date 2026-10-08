@@ -91,12 +91,8 @@ type scenario struct {
 // exactly one pending scheduler item for an admitter in the given scenario.
 func pendingItem(t *testing.T, given scenario) (*storage.DB, *app.Admitter) {
 	t.Helper()
-	ctx := t.Context()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "admission.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	compiled := testSpec(given.executor)
 	runStream(t, db, compiled)
 	admitter, err := app.NewAdmitter(composeConfig(t, db, compiled, given))

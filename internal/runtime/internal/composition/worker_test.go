@@ -18,11 +18,8 @@ func TestWorkerCompositionValidatesBeforeOpeningResources(t *testing.T) {
 	if _, err := newWorkerRuntime(t.Context(), transport.WorkerRuntimeConfig{}, constructor); err == nil || err.Error() != "worker runtime database is required" {
 		t.Fatalf("database validation=%v", err)
 	}
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "composition.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	if _, err := newWorkerRuntime(t.Context(), transport.WorkerRuntimeConfig{DB: db, WorkerSocket: "worker"}, constructor); err == nil || calls != 0 {
 		t.Fatalf("option validation=%v native calls=%d", err, calls)
 	}

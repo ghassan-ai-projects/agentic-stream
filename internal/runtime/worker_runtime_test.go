@@ -16,11 +16,8 @@ func TestWorkerRuntimeFacade(t *testing.T) {
 	if _, err := NewWorkerRuntime(t.Context(), WorkerRuntimeConfig{}); err == nil {
 		t.Fatal("missing database accepted")
 	}
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "worker.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	for _, remote := range []bool{false, true} {
 		cfg := WorkerRuntimeConfig{DB: db}
 		if remote {

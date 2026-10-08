@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,14 +15,11 @@ import (
 
 func TestJoinedTransactionKeepsCallerOwnership(t *testing.T) {
 	t.Parallel()
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "join.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 	rollback := errors.New("rollback entire admission")
-	err = db.WithTx(t.Context(), func(original *sql.Tx) error {
+	err := db.WithTx(t.Context(), func(original *sql.Tx) error {
 		joined := store.Join(original)
 		check := func(ctx context.Context, received *sql.Tx, epoch string) error {
 			if received != original || epoch != "epoch" {
@@ -137,15 +133,8 @@ func TestProjectionErrorsPreserveCancellation(t *testing.T) {
 func TestShadowDecisionSharesCallerTransactionAndNeverCreatesActionRecords(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "shadow.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatal(err)
-	}
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+
 	digest := make([]byte, 32)
 	decision := domain.ShadowDecision{
 		ShadowDecisionID: "shadow", EpisodeID: "episode", DecisionID: "decision", AttemptID: "attempt",

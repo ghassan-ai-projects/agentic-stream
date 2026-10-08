@@ -20,11 +20,8 @@ import (
 
 func TestWatchEffectorIsBoundedExpiringAndOneShot(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "watch.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	effector := newService(t, db, nil)
 	command := actionport.Command{
 		CommandID: "cmd-watch", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
@@ -55,11 +52,8 @@ func TestWatchEffectorIsBoundedExpiringAndOneShot(t *testing.T) {
 
 func TestWatchEffectorFiresTamozFallbackFromEventFeatures(t *testing.T) {
 	ctx := t.Context()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "watch-tamoz-fallback.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	effector := newService(t, db, nil)
 	command := actionport.Command{
 		CommandID: "cmd-tamoz-fallback", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
@@ -81,11 +75,8 @@ func TestWatchEffectorFiresTamozFallbackFromEventFeatures(t *testing.T) {
 
 func TestWatchEffectorSkipsCELEvaluationErrorAndFiresWhenDataArrives(t *testing.T) {
 	ctx := t.Context()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "watch-evaluation-error.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	effector := newService(t, db, nil)
 	command := actionport.Command{
 		CommandID: "cmd-watch-evaluation-error", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
@@ -132,11 +123,8 @@ func TestWatchEffectorSkipsCELEvaluationErrorAndFiresWhenDataArrives(t *testing.
 
 func TestWatchEffectorEvaluatesExpressionAndExpiresWithoutAFire(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "watch-expiry.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	virtual := sources.NewVirtual(now)
 	effector := newService(t, db, virtual)

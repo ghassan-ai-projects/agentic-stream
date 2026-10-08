@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -19,7 +18,6 @@ import (
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -88,110 +86,23 @@ func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Versio
 
 func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
-
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
-		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:      "high",
-					When:      "features.level > 10",
-					Score:     "situation.severity",
-					Threshold: 5,
-					Lane:      "fast",
-				},
-			},
-			Executor: spec.Executor{
-				Name:          "native",
-				ModelPolicy:   "test-policy",
-				PromptVersion: "prompt-v1", Prompt: "Analyze the situation and return a typed decision.",
-			},
-		},
-		Actions: spec.Actions{
-			Intents: []spec.Intent{
-				{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema(), Policy: "approval", RateLimitPerHour: 2},
-				{Type: "downgrade_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema(), Policy: "automatic", RateLimitPerHour: 2},
-				{Type: "withdraw_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema(), Policy: "automatic", RateLimitPerHour: 2},
-			},
-		},
-	}
-
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
-
-	base := time.Now().UTC()
-	v := situations.Version{
-		SituationID:    "sit-1",
-		Version:        1,
-		Phase:          "candidate",
-		Severity:       10,
-		Confidence:     1.0,
-		Completeness:   "provisional",
-		EntityType:     "thing",
-		EntityID:       "ent-1",
-		EventHorizon:   base,
-		Watermark:      base,
-		Facts:          map[string]any{"facts.level": 15.0},
-		SnapshotJSON:   []byte(`{"situation_id":"sit-1","phase":"candidate","severity":10,"facts":{"facts.level":15}}`),
-		SnapshotSHA256: testDigest,
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v)
-	}); err != nil {
-		t.Fatalf("process: %v", err)
-	}
-
-	var schedulerItemID string
-	if err := db.QueryRowContext(ctx,
-		"SELECT scheduler_item_id FROM scheduler_items WHERE situation_id = ?", v.SituationID,
-	).Scan(&schedulerItemID); err != nil {
-		t.Fatalf("query scheduler item: %v", err)
-	}
-
-	asm := app.NewAssembler(&compiled, sources.Deterministic())
-	var req *app.Request
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		req, err = asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
-		if err != nil {
-			return fmt.Errorf("assemble: %w", err)
-		}
-		return nil
-	}); err != nil {
-		t.Fatalf("assemble tx: %v", err)
-	}
+	compiled := triggeredSpec(
+		spec.Executor{Name: "native", ModelPolicy: "test-policy", PromptVersion: "prompt-v1", Prompt: "Analyze the situation and return a typed decision."},
+		spec.Intent{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema(), Policy: "approval", RateLimitPerHour: 2},
+		spec.Intent{Type: "downgrade_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema(), Policy: "automatic", RateLimitPerHour: 2},
+		spec.Intent{Type: "withdraw_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema(), Policy: "automatic", RateLimitPerHour: 2},
+	)
+	s := admitTriggeredSituation(t, ctx, compiled, "sit-1")
+	req := s.assemble(t, ctx)
 
 	if req.EpisodeID == "" {
 		t.Fatal("expected episode id")
 	}
-	if req.SchedulerItemID != schedulerItemID {
-		t.Fatalf("expected scheduler item id %s, got %s", schedulerItemID, req.SchedulerItemID)
+	if req.SchedulerItemID != s.schedulerItemID {
+		t.Fatalf("expected scheduler item id %s, got %s", s.schedulerItemID, req.SchedulerItemID)
 	}
-	if req.SituationID != v.SituationID {
-		t.Fatalf("expected situation id %s, got %s", v.SituationID, req.SituationID)
+	if req.SituationID != s.version.SituationID {
+		t.Fatalf("expected situation id %s, got %s", s.version.SituationID, req.SituationID)
 	}
 	if req.ExecutorName != "native" {
 		t.Fatalf("expected executor native, got %s", req.ExecutorName)
@@ -232,15 +143,8 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			floor := tt.floor
-			compiled.Actions.WatchConfidenceFloor = &floor
-			var explicitReq *app.Request
-			if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-				var err error
-				explicitReq, err = asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
-				return err
-			}); err != nil {
-				t.Fatalf("assemble tx: %v", err)
-			}
+			s.compiled.Actions.WatchConfidenceFloor = &floor
+			explicitReq := s.assemble(t, ctx)
 			var explicitPayload struct {
 				WatchConfidenceFloor float64 `json:"watch_confidence_floor"`
 			}
@@ -256,11 +160,8 @@ func TestAssemblerBuildsEpisodeRequest(t *testing.T) {
 
 func TestAssemblerPersistsReconsiderationPayload(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "reconsideration.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 
 	compiled := spec.CompiledSpec{
@@ -491,104 +392,16 @@ func TestAssemblerPersistsReconsiderationPayload(t *testing.T) {
 
 func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
-
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
-		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:      "high",
-					When:      "features.level > 10",
-					Score:     "situation.severity",
-					Threshold: 5,
-					Lane:      "fast",
-				},
-			},
-			Executor: spec.Executor{
-				Name:          "native",
-				ModelPolicy:   "test-policy",
-				PromptVersion: "prompt-v1",
-			},
-		},
-		Actions: spec.Actions{
-			Intents: []spec.Intent{
-				{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
-			},
-		},
-	}
-
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
-
-	base := time.Now().UTC()
-	v := situations.Version{
-		SituationID:    "sit-1",
-		Version:        1,
-		Phase:          "candidate",
-		Severity:       10,
-		Confidence:     1.0,
-		Completeness:   "provisional",
-		EntityType:     "thing",
-		EntityID:       "ent-1",
-		EventHorizon:   base,
-		Watermark:      base,
-		Facts:          map[string]any{"facts.level": 15.0},
-		SnapshotJSON:   []byte(`{"situation_id":"sit-1","phase":"candidate"}`),
-		SnapshotSHA256: testDigest,
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v)
-	}); err != nil {
-		t.Fatalf("process: %v", err)
-	}
-
-	var schedulerItemID string
-	if err := db.QueryRowContext(ctx,
-		"SELECT scheduler_item_id FROM scheduler_items WHERE situation_id = ?", v.SituationID,
-	).Scan(&schedulerItemID); err != nil {
-		t.Fatalf("query scheduler item: %v", err)
-	}
-
-	asm := app.NewAssembler(&compiled, sources.Deterministic())
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		req, err := asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
-		if err != nil {
-			return fmt.Errorf("assemble: %w", err)
-		}
-		if err := asm.Persist(ctx, store.Join(tx), req, base); err != nil {
-			return fmt.Errorf("persist: %w", err)
-		}
-		return nil
-	}); err != nil {
-		t.Fatalf("assemble and persist: %v", err)
-	}
+	compiled := triggeredSpec(
+		spec.Executor{Name: "native", ModelPolicy: "test-policy", PromptVersion: "prompt-v1"},
+		spec.Intent{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
+	)
+	s := admitTriggeredSituation(t, ctx, compiled, "sit-1")
+	s.assembleAndPersist(t, ctx)
 
 	var episodeID, status string
-	if err := db.QueryRowContext(ctx,
-		"SELECT episode_id, lifecycle_status FROM episodes WHERE scheduler_item_id = ?", schedulerItemID,
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT episode_id, lifecycle_status FROM episodes WHERE scheduler_item_id = ?", s.schedulerItemID,
 	).Scan(&episodeID, &status); err != nil {
 		t.Fatalf("query episode: %v", err)
 	}
@@ -599,7 +412,7 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 		t.Fatalf("expected admitted lifecycle status, got %s", status)
 	}
 	var promptSHA, objectiveSHA []byte
-	if err := db.QueryRowContext(ctx, "SELECT prompt_sha256, objective_sha256 FROM episodes WHERE episode_id = ?", episodeID).Scan(&promptSHA, &objectiveSHA); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT prompt_sha256, objective_sha256 FROM episodes WHERE episode_id = ?", episodeID).Scan(&promptSHA, &objectiveSHA); err != nil {
 		t.Fatalf("query episode provenance: %v", err)
 	}
 	if len(promptSHA) != 32 || len(objectiveSHA) != 32 {
@@ -607,8 +420,8 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 	}
 
 	var itemStatus string
-	if err := db.QueryRowContext(ctx,
-		"SELECT status FROM scheduler_items WHERE scheduler_item_id = ?", schedulerItemID,
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT status FROM scheduler_items WHERE scheduler_item_id = ?", s.schedulerItemID,
 	).Scan(&itemStatus); err != nil {
 		t.Fatalf("query scheduler item status: %v", err)
 	}
@@ -619,11 +432,7 @@ func TestAssemblerPersistCreatesEpisode(t *testing.T) {
 
 func TestAssemblerMarksReconsiderationLiveEpisodeConflict(t *testing.T) {
 	ctx := t.Context()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "live-conflict.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	compiled := spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
@@ -711,7 +520,7 @@ func TestAssemblerMarksReconsiderationLiveEpisodeConflict(t *testing.T) {
 	}
 
 	asm := app.NewAssembler(&compiled, sources.Deterministic())
-	err = db.WithTx(ctx, func(tx *sql.Tx) error {
+	err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		return asm.Persist(ctx, store.Join(tx), &app.Request{
 			EpisodeID:        "epi-live-second",
 			SchedulerItemID:  "sch-live-reconsider",
@@ -742,110 +551,14 @@ func TestAssemblerMarksReconsiderationLiveEpisodeConflict(t *testing.T) {
 
 func TestAssemblerIsDeterministic(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	compiled := triggeredSpec(
+		spec.Executor{Name: "native", ModelPolicy: "test-policy", PromptVersion: "prompt-v1"},
+		spec.Intent{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
+	)
+	s := admitTriggeredSituation(t, ctx, compiled, "sit-1")
 
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
-		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:      "high",
-					When:      "features.level > 10",
-					Score:     "situation.severity",
-					Threshold: 5,
-					Lane:      "fast",
-				},
-			},
-			Executor: spec.Executor{
-				Name:          "native",
-				ModelPolicy:   "test-policy",
-				PromptVersion: "prompt-v1",
-			},
-		},
-		Actions: spec.Actions{
-			Intents: []spec.Intent{
-				{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
-			},
-		},
-	}
-
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
-
-	base := time.Now().UTC()
-	v := situations.Version{
-		SituationID:    "sit-1",
-		Version:        1,
-		Phase:          "candidate",
-		Severity:       10,
-		Confidence:     1.0,
-		Completeness:   "provisional",
-		EntityType:     "thing",
-		EntityID:       "ent-1",
-		EventHorizon:   base,
-		Watermark:      base,
-		Facts:          map[string]any{"facts.level": 15.0},
-		SnapshotJSON:   []byte(`{"situation_id":"sit-1","phase":"candidate"}`),
-		SnapshotSHA256: testDigest,
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v)
-	}); err != nil {
-		t.Fatalf("process: %v", err)
-	}
-
-	var schedulerItemID string
-	if err := db.QueryRowContext(ctx,
-		"SELECT scheduler_item_id FROM scheduler_items WHERE situation_id = ?", v.SituationID,
-	).Scan(&schedulerItemID); err != nil {
-		t.Fatalf("query scheduler item: %v", err)
-	}
-
-	asm := app.NewAssembler(&compiled, sources.Deterministic())
-
-	var req1, req2 *app.Request
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		req1, err = asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
-		if err != nil {
-			return fmt.Errorf("assemble 1: %w", err)
-		}
-		return nil
-	}); err != nil {
-		t.Fatalf("assemble 1 tx: %v", err)
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		req2, err = asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
-		if err != nil {
-			return fmt.Errorf("assemble 2: %w", err)
-		}
-		return nil
-	}); err != nil {
-		t.Fatalf("assemble 2 tx: %v", err)
-	}
+	req1 := s.assemble(t, ctx)
+	req2 := s.assemble(t, ctx)
 
 	if req1.SnapshotSHA256 != req2.SnapshotSHA256 {
 		t.Fatalf("deterministic snapshot hash mismatch: %s vs %s", req1.SnapshotSHA256, req2.SnapshotSHA256)
@@ -854,93 +567,9 @@ func TestAssemblerIsDeterministic(t *testing.T) {
 
 func TestAssemblerRequestContainsDelta(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	s := admitTriggeredSituation(t, ctx, triggeredSpec(spec.Executor{Name: "native"}, spec.Intent{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()}), "sit-1")
 
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
-		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:      "high",
-					When:      "features.level > 10",
-					Score:     "situation.severity",
-					Threshold: 5,
-					Lane:      "fast",
-				},
-			},
-			Executor: spec.Executor{Name: "native"},
-		},
-		Actions: spec.Actions{
-			Intents: []spec.Intent{{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()}},
-		},
-	}
-
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
-
-	base := time.Now().UTC()
-	v := situations.Version{
-		SituationID:    "sit-1",
-		Version:        1,
-		Phase:          "candidate",
-		Severity:       10,
-		Confidence:     1.0,
-		Completeness:   "provisional",
-		EntityType:     "thing",
-		EntityID:       "ent-1",
-		EventHorizon:   base,
-		Watermark:      base,
-		Facts:          map[string]any{"facts.level": 15.0},
-		SnapshotJSON:   []byte(`{"situation_id":"sit-1","phase":"candidate"}`),
-		SnapshotSHA256: testDigest,
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v)
-	}); err != nil {
-		t.Fatalf("process: %v", err)
-	}
-
-	var schedulerItemID string
-	if err := db.QueryRowContext(ctx,
-		"SELECT scheduler_item_id FROM scheduler_items WHERE situation_id = ?", v.SituationID,
-	).Scan(&schedulerItemID); err != nil {
-		t.Fatalf("query scheduler item: %v", err)
-	}
-
-	asm := app.NewAssembler(&compiled, sources.Deterministic())
-	var req *app.Request
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		req, err = asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
-		if err != nil {
-			return fmt.Errorf("assemble: %w", err)
-		}
-		return nil
-	}); err != nil {
-		t.Fatalf("assemble tx: %v", err)
-	}
+	req := s.assemble(t, ctx)
 
 	var payload map[string]any
 	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
@@ -953,84 +582,10 @@ func TestAssemblerRequestContainsDelta(t *testing.T) {
 
 func TestAssemblerTenantMismatch(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	s := admitTriggeredSituation(t, ctx, triggeredSpec(spec.Executor{Name: "native"}, spec.Intent{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()}), "sit-1")
 
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
-		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:      "high",
-					When:      "features.level > 10",
-					Score:     "situation.severity",
-					Threshold: 5,
-					Lane:      "fast",
-				},
-			},
-			Executor: spec.Executor{Name: "native"},
-		},
-		Actions: spec.Actions{
-			Intents: []spec.Intent{{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()}},
-		},
-	}
-
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
-
-	base := time.Now().UTC()
-	v := situations.Version{
-		SituationID:    "sit-1",
-		Version:        1,
-		Phase:          "candidate",
-		Severity:       10,
-		Confidence:     1.0,
-		Completeness:   "provisional",
-		EntityType:     "thing",
-		EntityID:       "ent-1",
-		EventHorizon:   base,
-		Watermark:      base,
-		Facts:          map[string]any{"facts.level": 15.0},
-		SnapshotJSON:   []byte(`{"situation_id":"sit-1"}`),
-		SnapshotSHA256: testDigest,
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v)
-	}); err != nil {
-		t.Fatalf("process: %v", err)
-	}
-
-	var schedulerItemID string
-	if err := db.QueryRowContext(ctx,
-		"SELECT scheduler_item_id FROM scheduler_items WHERE situation_id = ?", v.SituationID,
-	).Scan(&schedulerItemID); err != nil {
-		t.Fatalf("query scheduler item: %v", err)
-	}
-
-	asm := app.NewAssembler(&compiled, sources.Deterministic())
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		_, err := asm.Assemble(ctx, store.Join(tx), schedulerItemID, "other-tenant")
+	if err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		_, err := s.asm.Assemble(ctx, store.Join(tx), s.schedulerItemID, "other-tenant")
 		if err == nil {
 			return fmt.Errorf("expected tenant mismatch error")
 		}
@@ -1042,92 +597,18 @@ func TestAssemblerTenantMismatch(t *testing.T) {
 
 func TestAssemblerPersistRejectsNonPending(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	s := admitTriggeredSituation(t, ctx, triggeredSpec(spec.Executor{Name: "native"}, spec.Intent{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()}), "sit-1")
 
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
-		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:      "high",
-					When:      "features.level > 10",
-					Score:     "situation.severity",
-					Threshold: 5,
-					Lane:      "fast",
-				},
-			},
-			Executor: spec.Executor{Name: "native"},
-		},
-		Actions: spec.Actions{
-			Intents: []spec.Intent{{Type: "create_ticket", Risk: "R1", ParameterSchema: ticketSchema()}},
-		},
-	}
-
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
-
-	base := time.Now().UTC()
-	v := situations.Version{
-		SituationID:    "sit-1",
-		Version:        1,
-		Phase:          "candidate",
-		Severity:       10,
-		Confidence:     1.0,
-		Completeness:   "provisional",
-		EntityType:     "thing",
-		EntityID:       "ent-1",
-		EventHorizon:   base,
-		Watermark:      base,
-		Facts:          map[string]any{"facts.level": 15.0},
-		SnapshotJSON:   []byte(`{"situation_id":"sit-1"}`),
-		SnapshotSHA256: testDigest,
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v)
-	}); err != nil {
-		t.Fatalf("process: %v", err)
-	}
-
-	var schedulerItemID string
-	if err := db.QueryRowContext(ctx,
-		"SELECT scheduler_item_id FROM scheduler_items WHERE situation_id = ?", v.SituationID,
-	).Scan(&schedulerItemID); err != nil {
-		t.Fatalf("query scheduler item: %v", err)
-	}
-
-	asm := app.NewAssembler(&compiled, sources.Deterministic())
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		req, err := asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
+	if err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		req, err := s.asm.Assemble(ctx, store.Join(tx), s.schedulerItemID, "default")
 		if err != nil {
 			return fmt.Errorf("assemble: %w", err)
 		}
-		if err := asm.Persist(ctx, store.Join(tx), req, base); err != nil {
+		if err := s.asm.Persist(ctx, store.Join(tx), req, s.base); err != nil {
 			return fmt.Errorf("first persist: %w", err)
 		}
 		// Second persist should fail because scheduler item is no longer pending.
-		if err := asm.Persist(ctx, store.Join(tx), req, base); err == nil {
+		if err := s.asm.Persist(ctx, store.Join(tx), req, s.base); err == nil {
 			return fmt.Errorf("expected error persisting non-pending item")
 		} else if errors.Is(err, episodeledger.ErrLiveEpisodeConflict) {
 			return fmt.Errorf("non-constraint storage error was classified as live-episode conflict: %w", err)

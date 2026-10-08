@@ -2,7 +2,6 @@ package app_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -15,12 +14,7 @@ import (
 
 func TestEngineCreatesTriggerAndSchedulerItem(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storagetest.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	compiled := spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",

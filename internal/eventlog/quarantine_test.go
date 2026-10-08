@@ -2,7 +2,6 @@ package eventlog_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -11,11 +10,8 @@ import (
 
 func TestQuarantineIsBoundedAndReleasable(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "quarantine.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	log := eventlog.NewEventLog(db)
 	poison := []byte(`{"id":"evt-poison","data":{"unexpected":true}}`)
 	for i := 0; i < 12; i++ {
@@ -55,11 +51,8 @@ func TestQuarantineIsBoundedAndReleasable(t *testing.T) {
 
 func TestQuarantineRejectsEventIDHashConflict(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "conflict.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	log := eventlog.NewEventLog(db)
 	if err := log.QuarantineRaw(ctx, "tenant-1", "evt-conflict", []byte(`{"value":1}`), "invalid", "2026-08-12T12:00:00Z"); err != nil {
 		t.Fatal(err)

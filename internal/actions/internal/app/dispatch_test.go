@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -465,14 +464,8 @@ func TestDispatcherReclaimsExpiredLease(t *testing.T) {
 func openActionFixture(t *testing.T) (*storage.DB, string) {
 	t.Helper()
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "actions.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatalf("disable foreign keys: %v", err)
-	}
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+
 	now := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
 	commandID := "cmd-action"
 	expiresAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)

@@ -2,7 +2,6 @@ package episodeledger_test
 
 import (
 	"database/sql"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -11,11 +10,8 @@ import (
 )
 
 func TestSupersededAttemptOnlyAcceptsCurrentCancellation(t *testing.T) {
-	db, err := storagetest.Open(t.Context(), filepath.Join(t.TempDir(), "cancel-fence.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, t.Context(), db, "episode")
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	var identity episodeledger.Identity

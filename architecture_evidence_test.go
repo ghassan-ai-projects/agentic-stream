@@ -47,33 +47,7 @@ func evidenceDelegationTarget(operation string) string {
 // TestEvidenceStoreKeepsInfrastructurePrivate prevents raw transaction aliases and handles.
 func TestEvidenceStoreKeepsInfrastructurePrivate(t *testing.T) {
 	t.Parallel()
-	for _, file := range productionGoFiles(t, repoRoot(t)) {
-		if path.Dir(file.rel) != "internal/evidence/internal/store" {
-			continue
-		}
-		ast.Inspect(parseGoFile(t, file), func(node ast.Node) bool {
-			declaration, ok := node.(*ast.TypeSpec)
-			if !ok || !slices.Contains([]string{"Store", "Tx"}, declaration.Name.Name) {
-				return true
-			}
-			record, ok := declaration.Type.(*ast.StructType)
-			if declaration.Assign.IsValid() || !ok {
-				t.Errorf("%s: %s must encapsulate infrastructure", file.rel, declaration.Name)
-				return true
-			}
-			for _, field := range record.Fields.List {
-				if len(field.Names) == 0 {
-					t.Errorf("%s: %s must not embed infrastructure", file.rel, declaration.Name)
-				}
-				for _, name := range field.Names {
-					if name.IsExported() {
-						t.Errorf("%s: infrastructure field %s must be private", file.rel, name)
-					}
-				}
-			}
-			return true
-		})
-	}
+	assertStoreEncapsulatesInfrastructure(t, "internal/evidence/internal/store")
 }
 
 // TestEvidenceRulesExcludeProtocolAndCodecs keeps authorization transport neutral.
@@ -100,21 +74,5 @@ func TestEvidenceRulesExcludeProtocolAndCodecs(t *testing.T) {
 // TestEvidenceApplicationUsesOpaquePorts prevents infrastructure calls through aliases.
 func TestEvidenceApplicationUsesOpaquePorts(t *testing.T) {
 	t.Parallel()
-	raw := []string{"Exec", "ExecContext", "QueryContext", "QueryRow", "QueryRowContext", "Begin", "BeginTx", "Commit", "Rollback"}
-	for _, file := range productionGoFiles(t, repoRoot(t)) {
-		if path.Dir(file.rel) != "internal/evidence/internal/app" {
-			continue
-		}
-		ast.Inspect(parseGoFile(t, file), func(node ast.Node) bool {
-			call, ok := node.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			selector, ok := call.Fun.(*ast.SelectorExpr)
-			if ok && slices.Contains(raw, selector.Sel.Name) {
-				t.Errorf("%s: app calls raw infrastructure operation %s", file.rel, selector.Sel.Name)
-			}
-			return true
-		})
-	}
+	assertApplicationAvoidsCalls(t, "internal/evidence/internal/app", []string{"Exec", "ExecContext", "QueryContext", "QueryRow", "QueryRowContext", "Begin", "BeginTx", "Commit", "Rollback"})
 }

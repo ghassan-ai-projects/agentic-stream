@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -17,11 +16,8 @@ import (
 
 func TestReserveSettleAndKillSwitch(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "cost.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
 	controller := control.CostLedger{}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
@@ -56,11 +52,8 @@ func TestReserveSettleAndKillSwitch(t *testing.T) {
 
 func TestZeroEstimateIsRejectedByTenantCeiling(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "cost.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		return controltest.SetCostLimit(ctx, tx, "tenant:tenant-1", "tenant-1", 10, false, now)

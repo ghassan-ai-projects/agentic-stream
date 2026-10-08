@@ -3,7 +3,6 @@ package store_test
 import (
 	"bytes"
 	"context"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,11 +14,7 @@ import (
 
 func TestSaveDeploymentStoresCanonicalDigestBytes(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	digest := "sha256:" + strings.Repeat("ab", 32)
 	compiled := &domain.CompiledSpec{
@@ -49,11 +44,7 @@ func TestSaveDeploymentStoresCanonicalDigestBytes(t *testing.T) {
 
 func TestSaveDeploymentRejectsUnprefixedDigest(t *testing.T) {
 	ctx := context.Background()
-	db, err := storagetest.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	compiled := &domain.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
