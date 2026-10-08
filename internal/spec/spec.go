@@ -2,7 +2,6 @@ package spec
 
 import (
 	"context"
-	"database/sql"
 	_ "embed"
 	"time"
 
@@ -42,11 +41,6 @@ type EventSchema = domain.EventSchema
 // Lookup returns a registered built-in definition.
 func LookupEventSchema(ref string) (domain.EventSchema, bool) {
 	return domain.LookupEventSchema(ref)
-}
-
-// JSON returns the structural schema for a built-in definition.
-func EventSchemaJSON(definition domain.EventSchema) ([]byte, error) {
-	return domain.EventSchemaJSON(definition)
 }
 
 // CompiledSpec is the immutable result of compiling a SituationSpec.
@@ -117,10 +111,4 @@ func CompileFile(ctx context.Context, path string) (*CompiledSpec, error) {
 // idempotent for the same deployment.
 func SaveDeployment(ctx context.Context, db *storage.DB, tenantID string, compiled *CompiledSpec) error {
 	return store.SaveDeployment(ctx, db, tenantID, compiled) //nolint:wrapcheck // The store names the failed step.
-}
-
-// RegisterEventSchema stores one immutable event schema version on the caller's
-// transaction; re-registering identical bytes is allowed.
-func RegisterEventSchema(ctx context.Context, tx *sql.Tx, definition EventSchema, schemaJSON []byte, now string) error {
-	return store.RegisterEventSchema(ctx, tx, definition, schemaJSON, now) //nolint:wrapcheck // The store names the failed step.
 }

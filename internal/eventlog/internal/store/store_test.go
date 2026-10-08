@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
 	"path/filepath"
 	"testing"
 	"time"
@@ -204,12 +205,12 @@ func TestLoadEventSchemaFailsClosed(t *testing.T) {
 	if !ok {
 		t.Fatal("temperature schema missing from catalog")
 	}
-	schemaJSON, err := spec.EventSchemaJSON(definition)
+	schemaJSON, err := spectest.EventSchemaJSON(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := st.DB.WithTx(context.Background(), func(tx *sql.Tx) error {
-		return spec.RegisterEventSchema(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
+		return spectest.RegisterEventSchema(context.Background(), tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
 	}); err != nil {
 		t.Fatal(err)
 	}

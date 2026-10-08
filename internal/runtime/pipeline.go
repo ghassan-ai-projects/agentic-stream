@@ -54,12 +54,6 @@ func (p *Pipeline) RunLiveSocket(ctx context.Context, path string) error {
 	return p.useCases().RunLiveSocket(ctx, path)
 }
 
-// Advance runs the stages after ingestion without new evidence: due timers,
-// debounced cognition, pending intents and approved commands.
-func (p *Pipeline) Advance(ctx context.Context) (PipelineReport, error) {
-	return p.useCases().Advance(ctx)
-}
-
 // AdvanceEvery advances the pipeline on a schedule until ctx ends, so a quiet
 // live source still makes time-driven progress.
 func (p *Pipeline) AdvanceEvery(ctx context.Context, interval time.Duration) error {

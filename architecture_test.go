@@ -202,6 +202,7 @@ var allowedImports = map[string][]string{
 	"internal/runartifact/internal/transport":     {"internal/runartifact/internal/domain"},
 	"internal/runtime":                            {"internal/control", "internal/episodes", "internal/evidence", "internal/policy", "internal/runtime/internal/app", "internal/runtime/internal/composition", "internal/runtime/internal/domain", "internal/runtime/internal/transport"},
 	"internal/situations":                         {"internal/situations/internal/domain", "internal/sources", "internal/spec"},
+	"internal/spec/spectest":                      {"internal/spec/internal/domain", "internal/spec/internal/store"},
 	"internal/spec":                               {"internal/spec/internal/app", "internal/spec/internal/domain", "internal/spec/internal/store", "internal/storage"},
 	"internal/storage":                            {"internal/storage/internal/store"},
 	"internal/telemetry":                          {"internal/telemetry/internal/domain", "internal/telemetry/internal/transport"},

@@ -6,7 +6,8 @@ import (
 	"time"
 )
 
-// AdvanceEvery advances the pipeline on a schedule until ctx ends, so that
+// AdvanceEvery advances the pipeline on a schedule until ctx ends (a normal
+// stop, even mid-advance), so that
 // time-driven work makes progress while the source is quiet: due timers
 // (windows, missing heartbeats), debounced and cooled-down cognition, intents
 // waiting for policy and commands approved by a human. A live source that only
@@ -22,7 +23,7 @@ func (p *Pipeline) AdvanceEvery(ctx context.Context, interval time.Duration) err
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			if _, err := p.Advance(ctx); err != nil {
+			if _, err := p.Advance(ctx); err != nil && ctx.Err() == nil {
 				return err
 			}
 		}

@@ -35,7 +35,8 @@ func (r *reasoningExecutor) Execute(ctx context.Context, req *episodes.Request) 
 func TestEpisodesRunBesideIngestion(t *testing.T) {
 	t.Parallel()
 	worker := &reasoningExecutor{started: make(chan struct{}, 1), release: make(chan struct{})}
-	pipeline := newModePipeline(t, openModeDB(t, "beside.db"), modeCompiledSpec("native", "active"), runtime.PipelineConfig{OwnerEpoch: "epoch-beside", Executor: worker})
+	db := openModeDB(t, "beside.db")
+	pipeline := newModePipeline(t, db, modeCompiledSpec("native", "active"), runtime.PipelineConfig{OwnerEpoch: "epoch-beside", Executor: worker})
 	ctx, stop := context.WithCancel(t.Context())
 	defer stop()
 	loopDone := make(chan error, 1)
@@ -48,7 +49,8 @@ func TestEpisodesRunBesideIngestion(t *testing.T) {
 		t.Fatalf("batches must leave episodes to the loop and keep ingesting: first=%+v second=%+v", admitted, ingested)
 	}
 	close(worker.release)
-	waitForDispatch(t, pipeline)
+	go func() { _ = pipeline.AdvanceEvery(ctx, 10*time.Millisecond) }()
+	waitForRows(t, db, "commands")
 	stop()
 	if err := <-loopDone; err != nil {
 		t.Fatalf("episode loop: %v", err)
@@ -83,22 +85,6 @@ func waitFor(t *testing.T, signal <-chan struct{}, failure string) {
 	case <-time.After(10 * time.Second):
 		t.Fatal(failure)
 	}
-}
-
-func waitForDispatch(t *testing.T, pipeline *runtime.Pipeline) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		report, err := pipeline.Advance(t.Context())
-		if err != nil {
-			t.Fatalf("advance: %v", err)
-		}
-		if report.CommandsDispatched > 0 {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatal("the decision reached after reasoning was never dispatched")
 }
 
 func TestRunEpisodesEveryRejectsANonPositiveInterval(t *testing.T) {

@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"database/sql"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,12 +103,12 @@ func TestJSONLReplayQuarantinesMalformedAndSchemaInvalidLines(t *testing.T) {
 	if !ok {
 		t.Fatal("vibration schema is not registered in the built-in catalog")
 	}
-	schemaJSON, err := spec.EventSchemaJSON(definition)
+	schemaJSON, err := spectest.EventSchemaJSON(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		return spec.RegisterEventSchema(ctx, tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
+		return spectest.RegisterEventSchema(ctx, tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
 	}); err != nil {
 		t.Fatal(err)
 	}

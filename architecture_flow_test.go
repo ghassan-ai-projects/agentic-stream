@@ -51,6 +51,7 @@ var packageLayers = map[string]int{
 	"internal/spec/internal/app":                  10,
 	"internal/spec/internal/store":                10,
 	"internal/spec":                               11,
+	"internal/spec/spectest":                      11,
 	"internal/contractsv1":                        12,
 	"internal/actions/internal/domain":            13,
 	"internal/approvalledger":                     13,
