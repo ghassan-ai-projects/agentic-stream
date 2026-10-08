@@ -142,8 +142,8 @@ as the change.
 | U05 | [Delete native batch runner and artifact store](tasks/U05-delete-native-batch-runner-and-artifact-store.md) | Delete | P2 | S | — | done |
 | U06 | [Move reference worker server to test support](tasks/U06-move-reference-worker-server-to-testsupport.md) | Move | P2 | M | — | todo |
 | U07 | [Remove test-only facade exports](tasks/U07-remove-test-only-facade-exports.md) | Delete / move | P2 | M | — | todo |
-| U08 | [Resolve unused exported constants](tasks/U08-resolve-unused-exported-constants.md) | Delete / keep | P3 | XS | — | todo |
-| U09 | [Delete `config effective` placeholder](tasks/U09-delete-config-effective-placeholder.md) | Delete | P3 | XS | — | todo |
+| U08 | [Resolve unused exported constants](tasks/U08-resolve-unused-exported-constants.md) | Delete / keep | P3 | XS | — | done |
+| U09 | [Delete `config effective` placeholder](tasks/U09-delete-config-effective-placeholder.md) | Delete | P3 | XS | — | done |
 | U10 | [Define the primary-hypothesis delta key](tasks/U10-remove-primary-hypothesis-delta-key.md) | Keep key, drop from plan (revised for the experiment) | P3 | XS | — | todo |
 | U11 | [Drop unused tables](tasks/U11-drop-unused-tables.md) | Delete | P3 | S | U02 | todo |
 | U12 | [Dead-code gate](tasks/U12-deadcode-gate.md) | Complete | P1 | S | U02–U07 | todo |

@@ -1095,7 +1095,6 @@ agentic-stream intent approve|deny <id>
 agentic-stream replay <range> --mode deterministic
 agentic-stream compare <replay-a> <replay-b>
 agentic-stream doctor
-agentic-stream config effective
 ```
 
 Human-readable output defaults to concise tables. `--json` returns stable

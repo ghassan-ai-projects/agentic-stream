@@ -9,7 +9,6 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -99,9 +98,12 @@ func TestLiveUDSSourceAcceptsReconnects(t *testing.T) {
 		})
 	}()
 
-	deadline := time.Now().Add(time.Second)
+	// The socket file appears at bind, before the listener accepts, so wait
+	// until a dial succeeds rather than until the file exists.
+	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if _, statErr := os.Stat(path); statErr == nil {
+		if probe, dialErr := (&net.Dialer{}).DialContext(context.Background(), "unix", path); dialErr == nil {
+			_ = probe.Close()
 			break
 		}
 		select {
@@ -189,9 +191,12 @@ func TestLiveUDSSourcePropagatesSinkDeadlineWithActiveParent(t *testing.T) {
 		})
 	}()
 
-	deadline := time.Now().Add(time.Second)
+	// The socket file appears at bind, before the listener accepts, so wait
+	// until a dial succeeds rather than until the file exists.
+	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if _, statErr := os.Stat(path); statErr == nil {
+		if probe, dialErr := (&net.Dialer{}).DialContext(context.Background(), "unix", path); dialErr == nil {
+			_ = probe.Close()
 			break
 		}
 		select {

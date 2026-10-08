@@ -1,6 +1,6 @@
 # U09 — Delete the `config effective` placeholder
 
-Status: todo · Decision: **delete from code and plan** · Priority: P3 · Size: XS
+Status: done · Decision: **delete from code and plan** · Priority: P3 · Size: XS
 
 ## Finding
 

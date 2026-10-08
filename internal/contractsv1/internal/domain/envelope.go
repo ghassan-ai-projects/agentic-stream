@@ -6,15 +6,12 @@ import (
 	"time"
 )
 
-// Classification levels for data handled by the runtime.
+// Classification is the data-handling level of an envelope. Spec inputs
+// declare it as data; the runtime itself writes only the internal level.
 type Classification string
 
-const (
-	ClassificationPublic       Classification = "public"
-	ClassificationInternal     Classification = "internal"
-	ClassificationConfidential Classification = "confidential"
-	ClassificationRestricted   Classification = "restricted"
-)
+// ClassificationInternal is the level of every envelope the runtime writes.
+const ClassificationInternal Classification = "internal"
 
 // QualityFlag captures data-quality annotations on an event.
 type QualityFlag struct {

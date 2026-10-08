@@ -1,6 +1,6 @@
 # U08 — Resolve unused exported constants
 
-Status: todo · Decision: **delete three, keep the status sets** · Priority: P3 · Size: XS
+Status: done · Decision: **delete three, keep the status sets** · Priority: P3 · Size: XS
 
 ## Finding (from DEADCODE_REPORT, re-checked 2026-10-08)
 

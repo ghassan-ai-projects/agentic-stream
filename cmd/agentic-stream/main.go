@@ -53,7 +53,6 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newValidateCommand())
 	root.AddCommand(newRunCommand())
-	root.AddCommand(newConfigEffectiveCommand())
 	root.AddCommand(newServeCommand())
 	root.AddCommand(newRunLiveCommand())
 	root.AddCommand(newExportRunCommand())
@@ -155,14 +154,4 @@ func replayPaths(cmd *cobra.Command) (string, string, error) {
 		return "", "", fmt.Errorf("--spec and --trace are required")
 	}
 	return specPath, tracePath, nil
-}
-
-func newConfigEffectiveCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "config effective",
-		Short: "Show effective runtime configuration (placeholder).",
-		Run: func(_ *cobra.Command, _ []string) {
-			fmt.Println("config effective: not yet implemented")
-		},
-	}
 }

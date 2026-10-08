@@ -134,11 +134,6 @@ approvals keep their signers; memberships and authorities are replaced.
 `--dry-run` reports the result and changes nothing. Unknown fields, repeated
 ids, members without a key and R3/R4 authorities are refused.
 
-## `config effective`
-
-Registered as a placeholder. It currently prints `config effective: not yet
-implemented`; it is not a configuration API.
-
 ## Not registered yet
 
 Design records may mention commands such as `init`, `ingest`, `simulate`,
