@@ -137,6 +137,9 @@ Policy evaluation, approval resolution and dispatch authorization replace
   number on a safety path.
 
 **Experiment impact.** The zone-thermal digest is unchanged (no spec change).
+Keep the policy document unchanged as well: freshness is enforced in code and
+recorded per evaluation, so adding a field to the document would change the
+policy digest every gateway allow-lists for no safety gain.
 X01 must gain a test that feeds continuously while an approval is pending.
 
 ### D2 — The spec's intent catalog is the only intent vocabulary
@@ -172,8 +175,8 @@ specs the experiment runs, so nobody edits copies by hand:
 
 The design example `zone-thermal.situation.yaml` stays the safe default
 (`native`, shadow). X01 validates all three, pins both experiment digests, and
-the runbook takes the gateway `--device-policy-digest` from
-`agentic-stream validate --json`, never from a hand-typed value.
+`validate` prints the policy digest (the value the gateway allow-lists, see
+E5) so the runbook never computes or hand-types it.
 
 **Why.** It fixes G1, G4 and G7 in one place and puts the experiment's real
 inputs under this repository's CI.

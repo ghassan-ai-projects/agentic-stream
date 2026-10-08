@@ -15,9 +15,10 @@ Design and reasoning: [EXPERIMENT_DESIGN.md](../EXPERIMENT_DESIGN.md) G1, G4, G7
    `missing_heartbeat` in the trigger guard. Same intents, presets and risks as
    the sim spec. The header comment says why the ambient guard is absent and how
    to drive the thresholds on the bench.
-3. A README in that folder lists the run order, the
-   `agentic-stream validate --json` command that yields the digest for the
-   gateway's `--device-policy-digest`, and the X01 pins.
+3. `validate` also prints `policy_digest:` (from the policy facade's
+   `DigestForVersion`), additive output, so the runbook reads the value for the
+   gateway's `--device-policy-digest` instead of extracting it from an exported
+   run. A README in the folder lists the run order and the X01 pins.
 4. Extend X01: validate both specs, pin both digests, and run the X01 end-to-end
    scenario with the sim spec. Add a bench-shaped scenario: temperature and
    humidity only, entity `zone-01`, must open the Situation.

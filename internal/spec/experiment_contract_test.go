@@ -15,10 +15,11 @@ import (
 
 // The real-world-sensor experiment depends on two spec surfaces it cannot see
 // change from its own repository: the compiled digest of the thermal spec,
-// which every device command carries as its policy digest and the bench
-// gateway allow-lists, and the zone.* event schemas its gateway and the
-// Streams Simulator emit. Change a pin only together with the named consumer.
-// See docs/unfinished-work-review-2026-10-08/EXPERIMENT_COMPATIBILITY.md.
+// which is the policy version every device command's policy digest is derived
+// from (the bench gateway allow-lists that digest), and the zone.* event
+// schemas its gateway and the Streams Simulator emit. Change a pin only
+// together with the named consumer. See
+// docs/unfinished-work-review-2026-10-08/EXPERIMENT_COMPATIBILITY.md.
 
 const (
 	zoneThermalSpec   = "../../docs/design/examples/zone-thermal.situation.yaml"

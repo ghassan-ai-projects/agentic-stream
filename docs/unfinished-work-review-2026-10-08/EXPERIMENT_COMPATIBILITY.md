@@ -22,7 +22,7 @@ Tamoz `tamoz-stream` gem.
 | E2 | Live ingress | Normalized JSONL envelopes from `arduino_gateway.py` over the `--live-socket` UDS; quarantine on invalid input |
 | E3 | Event schemas | `zone.temp.observed/1.0`, `zone.humidity.observed/1.0`, `zone.heartbeat.observed`, `zone.ambient.observed`, `zone.fan_tach.observed` in `event_schema_data.json` |
 | E4 | Spec | `docs/design/examples/zone-thermal.situation.yaml`, copied per run with `executor.name: tamoz` and `dispatchPolicy: active`. Uses sliding windows; `aggregate` (`mean`, `count`, `latest`), `slope`, `missing_heartbeat`; reducers `latest_event_time`, `set_union`; delta keys `novelty`, `phase_changed`, `severity_change`, **`primary_hypothesis_changed`**; intent policies `automatic` (R0, R1) and `approval` (R2) |
-| E5 | Policy digest | The gateway allow-lists the Agentic **policy digest** (`--device-policy-digest`), which is the compiled spec digest. Any change to the canonical compiled form of zone-thermal changes it and stops device commands at the gateway |
+| E5 | Policy digest | The gateway allow-lists the Agentic **policy digest** (`--device-policy-digest`) that every device command carries. It is the digest of the policy document bound to the compiled spec digest (`policy.DigestForVersion`). It changes when the spec's canonical form changes **or** when the policy document's rules change (risk table, source-health rule, target resolution); either stops device commands at the gateway. Pinned in `internal/policy/experiment_contract_test.go` |
 | E6 | Device wire v1 | Agentic Stream as the UDS client of the gateway or emulator: command / receipt / result / state records, `policy_digest`, `capability_digest`, `safe_stop`, `query_state`, reconciliation |
 | E7 | Capability catalog | Canonical thermal catalog JSON, digest `sha256:0d6122…fc44fc76` (equal to the board-reported `capability_digest`); the runbook passes its **file path** to `--device-catalog` |
 | E8 | Worker protocol | `proto/agenticstream/runtime/v1/runtime-v1.proto`, vendored by Tamoz (`gems/tamoz-stream/contracts/runtime-v1.proto`); Tamoz advertises **no** handshake features |
@@ -69,7 +69,7 @@ references only; X02 updates them.
 | U16–U18 | operator commands | additive | — |
 | U19–U21 | replay CLI | additive; `run` without `--mode` is unchanged. U21's handshake offers no features, which matches Tamoz (E8) | — |
 | U22, U23 | read-only commands | additive | — |
-| U24 | calibration route | none: zone-thermal's R2 intent is `approval`, the route production already takes; the policy digest is the spec digest and does not change | — |
+| U24 | calibration route | none: zone-thermal's R2 intent is `approval`, the route production already takes. The policy document already says `R2: approval`, so its digest does not change | Keep the policy document byte-identical |
 | P01 | design spec schema | none if the canonical example stays valid | X01 validates every example spec |
 
 ## Rules for every task
