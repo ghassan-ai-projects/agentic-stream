@@ -1,6 +1,6 @@
 # Test audit (2026-10-09)
 
-Status: in progress (rounds 0–9 of 17 done)
+Status: in progress (rounds 0–10 of 17 done)
 
 A full audit of the repository's tests: organize them so the repository is easy
 to read, make them faster, raise coverage where it proves behavior, and remove
@@ -50,8 +50,8 @@ what proves nothing. Every test ends at the [test bar](TEST_BAR.md).
 | 6 | `operators`, `situations`, `cognition` | done | every package ≥ 83% (situations domain 72.3 → 93.8, cognition 66.7 → 100, store 68.8 → 83.2) | ≈1.3–2.8 s each; cognition app proves 59 cases instead of 15 | ede78cf3 |
 | 7 | `episodes` | done | every package ≥ 84% (app 63.9 → 84.3, store 69.3 → 93.0) | no test above 0.7 s, sleep replaced by virtual clock | f29e6d29 |
 | 8 | `episodeledger`, `approvalledger` | done | every package ≥ 85% (episodeledger facade 64.5 → 100, store 67.5 → 86.1) | no test above 0.6 s; attempt state machine checked over all 81 pairs | a0e50cc1 |
-| 9 | `evidence`, `decisions` | done | every package ≥ 87% (evidence app 81.5 → 98.1, decisions domain 84.5 → 95.3) | slowest test 0.32 s | see git log |
-| 10 | `executor/*`, `worker`, `testsupport/*` | todo | | | |
+| 9 | `evidence`, `decisions` | done | every package ≥ 87% (evidence app 81.5 → 98.1, decisions domain 84.5 → 95.3) | slowest test 0.32 s | a0e50cc1 |
+| 10 | `executor/*`, `worker`, `testsupport/*` | done | every package ≥ 78% (remote domain 69.9 → 97.8, conformance 66.7 → 94.9, worker transport 69.4 → 78.8) | slowest test 1.41 s → 0.34 s; conformance no longer re-execs a process | see git log |
 | 11 | `policy`, `authority` | todo | | | |
 | 12 | `actions`, `actionport`, `watch`, `notify` | todo | | | |
 | 13 | `device`, `control` | todo | | | |
@@ -81,4 +81,5 @@ not a test decision.
 | 9 | A provider result after the call deadline returns `DeadlineExceeded` but leaves the reservation `running` until lease reclaim. Compensating intents bypass `AllowedIntentTypes` (only the reconsider flag and catalog membership gate them). Confirm both. | [evidence.md](modules/evidence.md), [decisions.md](modules/decisions.md) |
 | 8 | Invariant 10 gap: `approvalledger.ExpireIntent` writes no `decided_at` or `reason`, so an approval expired this way is not explainable from its row. `Resolve` accepts `pending` and stamps `decided_at` and the approver. | [approvalledger.md](modules/approvalledger.md) |
 | 8 | Episode lifecycle writers (`Conclude`, `Abandon`, `RetainForRetry`, ...) have no lifecycle guard in their SQL: `Abandon` after `Conclude` overwrites the outcome, `RetainForRetry` revives a concluded episode. They rely on callers. | [episodeledger.md](modules/episodeledger.md) |
+| 10 | The fixture executor panics on a nil request and ignores its context, while native and remote return an error. The native retry backoff is a fixed 10 ms real timer. | [executor-fixture.md](modules/executor-fixture.md), [executor-native.md](modules/executor-native.md) |
 

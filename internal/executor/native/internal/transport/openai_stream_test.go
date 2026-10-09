@@ -53,3 +53,10 @@ func TestProviderStatusPreservesRetryClassificationAndBodyBound(t *testing.T) {
 		})
 	}
 }
+
+func TestProviderStreamRejectsAnEventItCannotDecode(t *testing.T) {
+	t.Parallel()
+	if _, err := parseSSE(strings.NewReader("data: {not json}\n\n")); err == nil || !strings.Contains(err.Error(), "decode model stream event") {
+		t.Fatalf("parseSSE() = %v, want a decode error", err)
+	}
+}

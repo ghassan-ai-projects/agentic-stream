@@ -36,7 +36,7 @@ type failingReadTool struct{ calls *int }
 func (f failingReadTool) Name() string { return "read" }
 func (f failingReadTool) Call(context.Context, json.RawMessage) (domain.ToolResult, error) {
 	*f.calls++
-	return domain.ToolResult{}, errors.New("read domain.Failed")
+	return domain.ToolResult{}, errors.New("read failed")
 }
 
 func TestToolResultBudgetAccountsRejectedBytes(t *testing.T) {

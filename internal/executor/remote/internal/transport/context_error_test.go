@@ -10,10 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TestTransportStatusesClassifyAsContextErrors pins rule A8: the runner sees
-// transport cancellation and deadlines as context errors, while the gRPC
-// status and message stay intact for diagnostics.
-func TestTransportStatusesClassifyAsContextErrors(t *testing.T) {
+func TestCancellationAndDeadlineStatusesMatchTheContextErrorsAndKeepTheirStatus(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {

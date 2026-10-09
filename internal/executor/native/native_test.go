@@ -4,17 +4,33 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/executorconformance"
 )
 
-func TestFacadeConstructsExecutorAndEvidenceTool(t *testing.T) {
+func TestNativeExecutorConformsToTheExecutorPort(t *testing.T) {
 	t.Parallel()
-	if _, err := native.New(native.Config{Provider: &native.DeterministicProvider{}}); err != nil {
-		t.Fatalf("new executor: %v", err)
+	executor, err := native.New(native.Config{Provider: &native.DeterministicProvider{}})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if native.NewSQLiteEvidenceTool(nil, "evidence", "tenant", "entity").Name() != "evidence" {
-		t.Fatal("evidence tool name lost")
-	}
-	if native.ErrInterrupt == nil {
-		t.Fatal("interrupt sentinel missing")
+	t.Run("produced outcome", func(t *testing.T) {
+		t.Parallel()
+		if err := executorconformance.Run(t.Context(), executor); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("canceled context", func(t *testing.T) {
+		t.Parallel()
+		if err := executorconformance.RunCanceled(t.Context(), executor); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+func TestFacadeBuildsTheScopedEvidenceTool(t *testing.T) {
+	t.Parallel()
+	tool := native.NewSQLiteEvidenceTool(nil, "evidence.get", "tenant", "entity")
+	if tool.Name() != "evidence.get" {
+		t.Fatalf("Name() = %q, want the configured tool name", tool.Name())
 	}
 }

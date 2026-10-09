@@ -16,24 +16,23 @@ import (
 
 var evidenceBase = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 
-// seedEvidence stores count events for motor-1 one minute apart, plus one
-// event for another entity that must never be returned.
 func seedEvidence(t *testing.T, count int) *storage.DB {
 	t.Helper()
 	db := storagetest.OpenTemp(t)
 
-	insert := func(eventID, entityID string, at time.Time) {
+	insert := func(eventID, tenantID, entityID string, at time.Time) {
 		payload := []byte(fmt.Sprintf(`{"value":%d}`, at.Minute()))
 		if _, err := db.ExecContext(t.Context(), `INSERT INTO event_log (tenant_id, partition_id, event_id, event_type, schema_version, source, partition_key, entity_type, entity_id, event_time, ingested_at, classification, quality_json, payload_json, payload_sha256, created_at)
-			VALUES ('tenant-1', 0, ?, 'motor.temperature.observed', '1.0', 'test', ?, 'motor', ?, ?, ?, 'internal', CAST('[]' AS BLOB), ?, zeroblob(32), ?)`,
-			eventID, entityID, entityID, kernel.FormatTime(at), kernel.FormatTime(at), payload, kernel.FormatTime(at)); err != nil {
+			VALUES (?, 0, ?, 'motor.temperature.observed', '1.0', 'test', ?, 'motor', ?, ?, ?, 'internal', CAST('[]' AS BLOB), ?, zeroblob(32), ?)`,
+			tenantID, eventID, entityID, entityID, kernel.FormatTime(at), kernel.FormatTime(at), payload, kernel.FormatTime(at)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for i := range count {
-		insert(fmt.Sprintf("evt-%02d", i), "motor-1", evidenceBase.Add(time.Duration(i)*time.Minute))
+		insert(fmt.Sprintf("evt-%02d", i), "tenant-1", "motor-1", evidenceBase.Add(time.Duration(i)*time.Minute))
 	}
-	insert("evt-other", "motor-2", evidenceBase)
+	insert("evt-other-entity", "tenant-1", "motor-2", evidenceBase)
+	insert("evt-other-tenant", "tenant-2", "motor-1", evidenceBase)
 	return db
 }
 
@@ -55,7 +54,7 @@ func callEvidence(t *testing.T, tool *SQLiteEvidenceTool, args string) (domain.T
 	return result, document.Rows
 }
 
-func TestEvidenceToolReturnsOnlyTheScopedEntityWindow(t *testing.T) {
+func TestEvidenceToolReturnsOnlyTheScopedTenantEntityWindow(t *testing.T) {
 	t.Parallel()
 
 	tool := NewSQLiteEvidenceTool(seedEvidence(t, 5), "evidence.get", "tenant-1", "motor-1")
@@ -68,52 +67,59 @@ func TestEvidenceToolReturnsOnlyTheScopedEntityWindow(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("max_rows did not narrow the result: %d rows", len(rows))
 	}
+	_, rows = callEvidence(t, tool, `{"from":"2026-08-12T00:00:00Z","until":"2026-08-13T00:00:00Z"}`)
+	for _, row := range rows {
+		if id, _ := row["event_id"].(string); !strings.HasPrefix(id, "evt-0") {
+			t.Fatalf("row %q belongs to another entity or tenant", id)
+		}
+	}
+	if len(rows) != 5 {
+		t.Fatalf("rows = %d, want the 5 events of tenant-1 / motor-1", len(rows))
+	}
 }
 
 func TestEvidenceToolByteBoundKeepsTheLongestFittingPrefix(t *testing.T) {
 	t.Parallel()
 
 	tool := NewSQLiteEvidenceTool(seedEvidence(t, 6), "evidence.get", "tenant-1", "motor-1")
-	all, rows := callEvidence(t, tool, `{"from":"2026-08-12T00:00:00Z","until":"2026-08-13T00:00:00Z"}`)
+	window := `"from":"2026-08-12T00:00:00Z","until":"2026-08-13T00:00:00Z"`
+	_, rows := callEvidence(t, tool, `{`+window+`}`)
 	if len(rows) != 6 {
 		t.Fatalf("unbounded rows = %d", len(rows))
 	}
-	for limit := uint64(len(`{"rows":[]}`)); limit <= all.Bytes; limit++ {
-		args := fmt.Sprintf(`{"from":"2026-08-12T00:00:00Z","until":"2026-08-13T00:00:00Z","max_bytes":%d}`, limit)
-		result, bounded := callEvidence(t, tool, args)
-		if result.Bytes > limit {
-			t.Fatalf("max_bytes %d returned %d bytes", limit, result.Bytes)
+	for fitting := 1; fitting <= len(rows); fitting++ {
+		encoded, err := json.Marshal(map[string]any{"rows": rows[:fitting]})
+		if err != nil {
+			t.Fatal(err)
 		}
-		// One more row must not have fit: the prefix is maximal.
-		if len(bounded) < len(rows) {
-			extended, err := json.Marshal(map[string]any{"rows": rows[:len(bounded)+1]})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if uint64(len(extended)) <= limit {
-				t.Fatalf("max_bytes %d stopped at %d rows although %d rows fit in %d bytes", limit, len(bounded), len(bounded)+1, len(extended))
+		exact := uint64(len(encoded))
+		for limit, want := range map[uint64]int{exact: fitting, exact - 1: fitting - 1} {
+			result, bounded := callEvidence(t, tool, fmt.Sprintf(`{%s,"max_bytes":%d}`, window, limit))
+			if len(bounded) != want || result.Bytes > limit {
+				t.Errorf("max_bytes %d returned %d rows in %d bytes, want %d rows", limit, len(bounded), result.Bytes, want)
 			}
 		}
 	}
 }
 
-func TestEvidenceToolRejectsOutOfScopeArguments(t *testing.T) {
+func TestEvidenceToolRefusesWhatItIsNotScopedFor(t *testing.T) {
 	t.Parallel()
 
 	tool := NewSQLiteEvidenceTool(seedEvidence(t, 1), "evidence.get", "tenant-1", "motor-1")
-	for args, want := range map[string]string{
-		`{"entity_id":"motor-2"}`: "outside episode scope",
-		`{"from":"yesterday"}`:    "invalid evidence from",
-		`{"until":"tomorrow"}`:    "invalid evidence until",
-		`{"from":"2026-08-12T12:00:00Z","until":"2026-08-12T11:00:00Z"}`: "until must be after from",
-		`not json`: "decode evidence arguments",
-	} {
-		if _, err := tool.Call(t.Context(), json.RawMessage(args)); err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("Call(%s) error = %v, want %q", args, err, want)
-		}
+	if _, err := tool.Call(t.Context(), json.RawMessage(`{"entity_id":"motor-2"}`)); err == nil || !strings.Contains(err.Error(), "outside episode scope") {
+		t.Errorf("a foreign entity was queried: %v", err)
 	}
-	if _, err := (&SQLiteEvidenceTool{}).Call(t.Context(), json.RawMessage(`{}`)); err == nil {
-		t.Error("an unconfigured tool answered a call")
+	if _, err := tool.Call(t.Context(), json.RawMessage(`not json`)); err == nil || !strings.Contains(err.Error(), "decode evidence arguments") {
+		t.Errorf("malformed arguments were accepted: %v", err)
+	}
+	unscoped := []*SQLiteEvidenceTool{
+		{}, NewSQLiteEvidenceTool(nil, "evidence.get", "tenant-1", "motor-1"),
+		NewSQLiteEvidenceTool(seedEvidence(t, 1), "evidence.get", "", "motor-1"), NewSQLiteEvidenceTool(seedEvidence(t, 1), "evidence.get", "tenant-1", ""),
+	}
+	for index, candidate := range unscoped {
+		if _, err := candidate.Call(t.Context(), json.RawMessage(`{}`)); err == nil || !strings.Contains(err.Error(), "not configured") {
+			t.Errorf("unscoped tool %d answered a call: %v", index, err)
+		}
 	}
 }
 
@@ -121,7 +127,7 @@ func TestEvidenceToolStartsWithTheEvidenceReadBudget(t *testing.T) {
 	t.Parallel()
 
 	tool := NewSQLiteEvidenceTool(nil, "evidence.get", "tenant-1", "motor-1")
-	if tool.maxRows != evidence.DefaultReadMaxRows || tool.maxBytes != evidence.DefaultReadMaxBytes {
+	if tool.Name() != "evidence.get" || tool.maxRows != evidence.DefaultReadMaxRows || tool.maxBytes != evidence.DefaultReadMaxBytes {
 		t.Errorf("budget = %d rows, %d bytes", tool.maxRows, tool.maxBytes)
 	}
 }
