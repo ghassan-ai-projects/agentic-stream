@@ -14,7 +14,7 @@ each part of the runtime has a clear responsibility.
 | Entity | The thing evidence describes, identified by type and ID | Event envelope and Situation state |
 | Situation type | The kind of condition followed for an entity | SituationSpec |
 | Deployment | An activated compiled definition and its state namespace | `internal/spec` |
-| Occurrence | The recorded instance of a condition lifecycle | `internal/situations`; automatic reopening as a fresh occurrence is not implemented |
+| Occurrence | The recorded instance of a condition lifecycle | `internal/situations`; a resolved Situation reopens as a fresh occurrence after `reopenCooldown` |
 | Phase | The domain state, such as `candidate` or `warning` | Spec transitions evaluated by the stream |
 | Severity | Domain-defined importance of a phase | Phase declaration |
 | Confidence | Certainty field for the interpretation | Starts at `1.0`; no calibrated update mechanism in the current Situation engine |

@@ -56,6 +56,7 @@ type Situation struct {
 	Inputs          map[string]operators.Completeness
 	ConditionStart  map[string]time.Time
 	OpenedAt        time.Time
+	ResolvedAt      time.Time
 	UpdatedAt       time.Time
 	Traceparent     string
 	Tracestate      string

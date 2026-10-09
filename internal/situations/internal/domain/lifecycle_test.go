@@ -121,7 +121,9 @@ func TestALateFeatureNeitherMovesTheHorizonBackNorStartsAHysteresisClockInThePas
 
 func TestOccurrenceResolvesWhenItsCloseConditionHolds(t *testing.T) {
 	t.Parallel()
-	engine := newEngine(t, vibrationSpec())
+	compiled := vibrationSpec()
+	compiled.Situation.Occurrence.ReopenCooldown = "5m"
+	engine := newEngine(t, compiled)
 	runSteps(t, engine, []step{
 		{at: 0, value: 5.0, wantPhase: "watch"},
 		{at: time.Minute, value: 2.0, wantPhase: domain.PhaseResolved},
@@ -132,6 +134,36 @@ func TestOccurrenceResolvesWhenItsCloseConditionHolds(t *testing.T) {
 	if state.Phase != domain.PhaseResolved || state.PreviousPhase != "watch" || state.Severity != 0 || state.Version != 2 {
 		t.Fatalf("state = %+v, want resolved after watch at severity 0, version 2", state)
 	}
+}
+
+func TestAResolvedOccurrenceReopensAsANewOccurrenceAfterItsCooldown(t *testing.T) {
+	t.Parallel()
+	compiled := vibrationSpec()
+	compiled.Situation.Occurrence.ReopenCooldown = "5m"
+	engine := newEngine(t, compiled)
+	first := apply(t, engine, vibration(5.0, base))[0]
+	apply(t, engine, vibration(2.0, base.Add(time.Minute)))
+	runSteps(t, engine, []step{
+		{at: 5*time.Minute + 59*time.Second, value: 6.0, wantNoEdit: true},
+		{at: 6 * time.Minute, value: 6.0, wantPhase: "candidate"},
+		{at: 7 * time.Minute, value: 6.0, wantPhase: "watch"},
+	})
+	state, _, _, _, _ := engine.CurrentState(0, "motor", "motor-17")
+	if state.SituationID != first.SituationID || state.OccurrenceID == first.OccurrenceID || !state.FirstEventTime.Equal(base.Add(6*time.Minute)) {
+		t.Fatalf("reopened state = %s/%s first %s, want the same Situation with a new occurrence first seen at 6m", state.SituationID, state.OccurrenceID, state.FirstEventTime)
+	}
+}
+
+func TestADeclaredTransitionIntoResolvedHoldsCloseToItsMinimumDuration(t *testing.T) {
+	t.Parallel()
+	compiled := vibrationSpec()
+	compiled.Situation.Transitions = append(compiled.Situation.Transitions, spec.Transition{From: "watch", To: domain.PhaseResolved, When: "features.vibration_rms < 3.0", MinDuration: "10m"})
+	runSteps(t, newEngine(t, compiled), []step{
+		{at: 0, value: 5.0, wantPhase: "watch"},
+		{at: time.Minute, value: 2.0, wantNoEdit: true},
+		{at: 10 * time.Minute, value: 2.0, wantNoEdit: true},
+		{at: 11 * time.Minute, value: 2.0, wantPhase: domain.PhaseResolved},
+	})
 }
 
 func TestEachPublishedVersionNamesItsPredecessorAndPhase(t *testing.T) {
@@ -233,12 +265,12 @@ func TestChainedTransitionsOfOneFeaturePublishOnlyTheFinalVersion(t *testing.T) 
 		t.Fatalf("published %d versions for one feature, want exactly 1", len(versions))
 	}
 	got := versions[0]
-	if got.Version != 2 || got.PreviousVersion != 1 || got.Phase != "warning" || got.PreviousPhase != "watch" {
-		t.Fatalf("version = %d (previous %d) %s after %s, want version 2 (previous 1) in warning after watch: the intermediate version 1 is counted but never published", got.Version, got.PreviousVersion, got.Phase, got.PreviousPhase)
+	if got.Version != 1 || got.PreviousVersion != 0 || got.Phase != "warning" || got.PreviousPhase != "candidate" {
+		t.Fatalf("version = %d (previous %d) %s after %s, want version 1 in warning after candidate: one feature publishes one version", got.Version, got.PreviousVersion, got.Phase, got.PreviousPhase)
 	}
 	next := apply(t, engine, vibration(2.0, base.Add(time.Minute)))
-	if len(next) != 1 || next[0].Version != 3 || next[0].PreviousVersion != 2 {
-		t.Fatalf("next = %+v, want version 3 following the published version 2", next)
+	if len(next) != 1 || next[0].Version != 2 || next[0].PreviousVersion != 1 {
+		t.Fatalf("next = %+v, want version 2 following the published version 1", next)
 	}
 }
 

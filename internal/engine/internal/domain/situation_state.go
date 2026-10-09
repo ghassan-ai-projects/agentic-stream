@@ -21,6 +21,7 @@ type SituationState struct {
 	Facts          map[string]any       `json:"facts"`
 	Evidence       []string             `json:"evidence"`
 	Inputs         map[string]string    `json:"inputs,omitempty"`
+	ResolvedAt     *time.Time           `json:"resolved_at,omitempty"`
 	ConditionStart map[string]time.Time `json:"condition_start"`
 	Traceparent    string               `json:"traceparent,omitempty"`
 	Tracestate     string               `json:"tracestate,omitempty"`
@@ -51,7 +52,7 @@ func (r StoredSituation) situation(tenantID, deploymentID string, state Situatio
 		OccurrenceID: r.OccurrenceID, Version: r.Version, Phase: r.Phase,
 		PreviousPhase: r.PreviousPhase, Severity: r.Severity, Confidence: r.Confidence,
 		Completeness: r.Completeness, FirstEventTime: r.FirstEventTime, LatestEventTime: r.LatestEventTime,
-		Facts: state.Facts, Evidence: state.Evidence, Inputs: inputCompleteness(state.Inputs), ConditionStart: state.ConditionStart,
+		Facts: state.Facts, Evidence: state.Evidence, Inputs: inputCompleteness(state.Inputs), ConditionStart: state.ConditionStart, ResolvedAt: resolvedAt(state.ResolvedAt),
 		OpenedAt: r.FirstEventTime, UpdatedAt: r.UpdatedAt, Traceparent: r.Traceparent, Tracestate: r.Tracestate,
 	}
 }
@@ -139,4 +140,11 @@ func inputCompleteness(inputs map[string]string) map[string]operators.Completene
 		completeness[output] = operators.Completeness(value)
 	}
 	return completeness
+}
+
+func resolvedAt(at *time.Time) time.Time {
+	if at == nil {
+		return time.Time{}
+	}
+	return *at
 }

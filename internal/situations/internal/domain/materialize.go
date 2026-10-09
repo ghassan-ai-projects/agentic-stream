@@ -154,10 +154,17 @@ func stateDocument(sit *Situation, facts map[string]any, evidence []string, cond
 		"traceparent":     sit.Traceparent,
 		"tracestate":      sit.Tracestate,
 	}
+	addLifecycleState(document, sit)
+	return document
+}
+
+func addLifecycleState(document map[string]any, sit *Situation) {
 	if len(sit.Inputs) > 0 {
 		document["inputs"] = stateInputs(sit.Inputs)
 	}
-	return document
+	if !sit.ResolvedAt.IsZero() {
+		document["resolved_at"] = kernel.FormatTime(sit.ResolvedAt)
+	}
 }
 
 func stateInputs(inputs map[string]operators.Completeness) map[string]any {
