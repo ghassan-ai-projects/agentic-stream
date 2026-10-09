@@ -20,15 +20,13 @@ type Service struct {
 }
 
 type scheduler struct {
-	spec  *spec.CompiledSpec
-	idGen sources.Generator
-	clk   sources.Clock
+	spec *spec.CompiledSpec
+	clk  sources.Clock
 }
 
 type Config struct {
 	DeploymentID, TenantID string
 	Spec                   *spec.CompiledSpec
-	IDGen                  sources.Generator
 	Clock                  sources.Clock
 }
 
@@ -37,12 +35,11 @@ func New(c Config) (*Service, error) {
 		return nil, fmt.Errorf("cognition spec, deployment and tenant are required")
 	}
 	c.Clock = sources.OrPhysical(c.Clock)
-	c.IDGen = sources.OrRandom(c.IDGen)
 	rules, err := domain.NewRules(c.Spec)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("compile cognition rules: %w", err)
 	}
-	return &Service{deploymentID: c.DeploymentID, tenantID: c.TenantID, spec: c.Spec, rules: rules, clk: c.Clock, scheduler: &scheduler{spec: c.Spec, idGen: c.IDGen, clk: c.Clock}}, nil
+	return &Service{deploymentID: c.DeploymentID, tenantID: c.TenantID, spec: c.Spec, rules: rules, clk: c.Clock, scheduler: &scheduler{spec: c.Spec, clk: c.Clock}}, nil
 }
 
 func (e *Service) Process(ctx context.Context, tx *store.Tx, v situations.Version) error {
@@ -65,10 +62,13 @@ func (e *Service) Process(ctx context.Context, tx *store.Tx, v situations.Versio
 func (e *Service) markVersion(ctx context.Context, tx *store.Tx, v situations.Version, previous *situations.Version) error {
 	if e.rules.Material(v, previous) {
 		if err := tx.MarkVersionMaterial(ctx, v); err != nil {
-			return err
+			return fmt.Errorf("mark %s v%d material: %w", v.SituationID, v.Version, err)
 		}
 	}
-	return tx.MarkVersionReasoned(ctx, v)
+	if err := tx.MarkVersionReasoned(ctx, v); err != nil {
+		return fmt.Errorf("mark %s v%d reasoned: %w", v.SituationID, v.Version, err)
+	}
+	return nil
 }
 
 func (e *Service) lastReasonedVersion(ctx context.Context, tx *store.Tx, situationID string) (*situations.Version, error) {

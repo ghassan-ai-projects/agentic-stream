@@ -71,3 +71,14 @@ func TestClosedRoutesAreOwnedBeforeTheFallback(t *testing.T) {
 		}
 	}
 }
+
+func TestAFailedRenewalLosesTheLeaseOnlyOnceTheLeaseHasRunOut(t *testing.T) {
+	t.Parallel()
+	renewed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if LeaseLapsed(renewed, renewed.Add(59*time.Second), time.Minute) {
+		t.Fatal("a renewal failure inside the lease lost it")
+	}
+	if !LeaseLapsed(renewed, renewed.Add(time.Minute), time.Minute) {
+		t.Fatal("a lease past its duration is still held")
+	}
+}

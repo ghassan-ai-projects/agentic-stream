@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -64,9 +63,6 @@ func (s *Service) runGlobalBatch(ctx context.Context, lastPosition eventlog.LogP
 	if err != nil {
 		return globalBatch{processed: processed}, err
 	}
-	if err := s.store.CheckpointWAL(ctx); err != nil {
-		return globalBatch{processed: processed}, fmt.Errorf("checkpoint WAL after global batch: %w", err)
-	}
 	return globalBatch{processed: processed, lastPosition: position}, nil
 }
 
@@ -105,9 +101,6 @@ func (s *Service) finishGlobalRun(ctx context.Context, processed int) (int, erro
 	if err != nil {
 		return processed, fmt.Errorf("run global timers: %w", err)
 	}
-	if err := s.store.CheckpointWAL(ctx); err != nil {
-		return processed + timerCount, fmt.Errorf("checkpoint WAL after global timers: %w", err)
-	}
 	return processed + timerCount, nil
 }
 
@@ -117,7 +110,7 @@ type globalRecordOutcome struct {
 }
 
 func (s *Service) applyGlobalRecord(ctx context.Context, record eventlog.Record, beforeApply func(eventlog.Record) error) (globalRecordOutcome, error) {
-	watermark, err := s.prepareRecord(ctx, record, beforeApply)
+	prepared, err := s.prepareRecord(ctx, record, beforeApply)
 	if err != nil {
 		return globalRecordOutcome{}, err
 	}
@@ -126,25 +119,31 @@ func (s *Service) applyGlobalRecord(ctx context.Context, record eventlog.Record,
 		return globalRecordOutcome{}, fmt.Errorf("run timers before event %d: %w", record.Position, err)
 	}
 	outcome := globalRecordOutcome{fired: fired, timersRan: true}
-	if err := s.applyRecord(ctx, record.PartitionID, record, watermark); err != nil {
+	if err := s.applyRecord(ctx, record.PartitionID, record, prepared); err != nil {
 		return outcome, fmt.Errorf("apply record %d: %w", record.Position, err)
 	}
 	return outcome, nil
 }
 
-func (s *Service) prepareRecord(ctx context.Context, record eventlog.Record, beforeApply func(eventlog.Record) error) (time.Time, error) {
+type preparedRecord struct {
+	clock    domain.PartitionClock
+	lateness domain.LateDisposition
+}
+
+func (s *Service) prepareRecord(ctx context.Context, record eventlog.Record, beforeApply func(eventlog.Record) error) (preparedRecord, error) {
 	checkpoint, err := s.store.LoadCheckpoint(ctx, record.PartitionID)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("load partition checkpoint: %w", err)
+		return preparedRecord{}, fmt.Errorf("load partition checkpoint: %w", err)
 	}
-	watermark, err := s.watermarkForRecord(record.EventTime, checkpoint.Watermark)
+	clock := domain.EventClock{Source: record.Envelope.Source, EventTime: record.EventTime, IngestedAt: record.Envelope.IngestedAt}
+	placement, err := domain.PlaceInTime(clock, checkpoint, s.spec.Time)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("watermark: %w", err)
+		return preparedRecord{}, fmt.Errorf("place event %s in time: %w", record.EventID, err)
 	}
 	if err := runBeforeApply(beforeApply, record); err != nil {
-		return time.Time{}, err
+		return preparedRecord{}, err
 	}
-	return watermark, nil
+	return preparedRecord{clock: placement.Clock, lateness: placement.Disposition}, nil
 }
 
 func runBeforeApply(beforeApply func(eventlog.Record) error, record eventlog.Record) error {
@@ -155,8 +154,4 @@ func runBeforeApply(beforeApply func(eventlog.Record) error, record eventlog.Rec
 		return fmt.Errorf("before apply hook: %w", err)
 	}
 	return nil
-}
-
-func (s *Service) watermarkForRecord(eventTime, previous time.Time) (time.Time, error) {
-	return domain.WatermarkFor(eventTime, s.spec.Time.MaxOutOfOrderness, previous) //nolint:wrapcheck // Callers name the failed step.
 }

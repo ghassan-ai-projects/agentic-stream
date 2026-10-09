@@ -1,0 +1,16 @@
+{
+  "events_processed": 192,
+  "version_count": 7,
+  "versions_hash": "423ce94236ef9954c68ba464eef37cb8370428ad4020128723c8cb2bbc9e3914",
+  "phases": {
+    "motor/motor-17": [
+      "candidate",
+      "watch",
+      "warning",
+      "warning",
+      "warning",
+      "warning",
+      "warning"
+    ]
+  }
+}

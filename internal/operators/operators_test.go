@@ -33,3 +33,20 @@ func TestFacadeCompletenessConstantsKeepTheirStoredText(t *testing.T) {
 		}
 	}
 }
+
+func TestFacadeWeakestCompletenessIsTheLeastCompleteValue(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		values []operators.Completeness
+		want   operators.Completeness
+	}{
+		"none":           {nil, ""},
+		"one":            {[]operators.Completeness{operators.CompletenessOnTime}, operators.CompletenessOnTime},
+		"uncertain wins": {[]operators.Completeness{operators.CompletenessOnTime, operators.CompletenessUncertain, operators.CompletenessFinalByPolicy}, operators.CompletenessUncertain},
+	}
+	for name, tc := range cases {
+		if got := operators.WeakestCompleteness(tc.values); got != tc.want {
+			t.Errorf("%s: weakest = %q, want %q", name, got, tc.want)
+		}
+	}
+}

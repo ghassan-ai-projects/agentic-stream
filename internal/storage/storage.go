@@ -18,14 +18,18 @@ func Open(ctx context.Context, path string) (*DB, error) {
 	return store.Open(ctx, path) //nolint:wrapcheck // The store names the failed step.
 }
 
+// OpenExisting opens the SQLite database at path and runs pending migrations,
+// refusing a path that holds no database file, so a mistyped path never
+// becomes a fresh, empty runtime.
+func OpenExisting(ctx context.Context, path string) (*DB, error) {
+	return store.OpenExisting(ctx, path) //nolint:wrapcheck // Facade operations only delegate; the store names the path.
+}
+
 // OpenFresh atomically reserves a new database path before opening SQLite, for
 // isolated replay.
 func OpenFresh(ctx context.Context, path string) (*DB, error) {
 	return store.OpenFresh(ctx, path) //nolint:wrapcheck // The store names the failed step.
 }
-
-// IsSQLiteBusy reports whether err is a retryable SQLite busy or locked result.
-func IsSQLiteBusy(err error) bool { return store.IsSQLiteBusy(err) }
 
 // IsUniqueViolation reports whether err is a SQLite uniqueness failure (primary
 // key or unique index) on column, written as table.column.
@@ -62,14 +66,14 @@ func InClause(column string, values []string) (string, []any) {
 	return column + " IN (" + strings.TrimSuffix(strings.Repeat("?, ", len(values)), ", ") + ")", args
 }
 
-// RowsAffected is the number of rows a statement changed, or zero when the
-// driver cannot report it.
-func RowsAffected(result sql.Result) int64 {
+// RowsAffected is the number of rows a statement changed. It fails when the
+// driver cannot report it, so a lost count never reads as "no row matched".
+func RowsAffected(result sql.Result) (int64, error) {
 	count, err := result.RowsAffected()
 	if err != nil {
-		return 0
+		return 0, fmt.Errorf("rows affected: %w", err)
 	}
-	return count
+	return count, nil
 }
 
 // BoolInt is the SQL integer of a boolean: 1 for true, 0 for false.

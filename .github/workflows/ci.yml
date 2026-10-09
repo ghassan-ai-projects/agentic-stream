@@ -93,6 +93,8 @@ jobs:
             golangci-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-
 
       - name: CI check
+        env:
+          TEST_BUDGET_SCALE: "4"
         run: make ci-check-go
 
       # Build + publish the release binary only when landing on main. PRs get

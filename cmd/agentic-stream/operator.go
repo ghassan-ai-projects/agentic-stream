@@ -32,7 +32,7 @@ func (f *operatorFlags) openOperatorDatabase(ctx context.Context) (*storage.DB, 
 	if f.dbPath == "" {
 		return nil, fmt.Errorf("--db is required")
 	}
-	db, err := storage.Open(ctx, f.dbPath)
+	db, err := storage.OpenExisting(ctx, f.dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open runtime database: %w", err)
 	}
@@ -70,8 +70,6 @@ func printResult(cmd *cobra.Command, asJSON bool, value any, format func() strin
 	return nil
 }
 
-// newOperatorCommand builds an operator command: its --db, --tenant and --json
-// flags, then extra flags, and run with the parsed flags and arguments.
 func newOperatorCommand(use, short string, args cobra.PositionalArgs, run func(*cobra.Command, operatorFlags, []string) error, extra ...func(*cobra.Command)) *cobra.Command {
 	var flags operatorFlags
 	cmd := &cobra.Command{
@@ -85,8 +83,6 @@ func newOperatorCommand(use, short string, args cobra.PositionalArgs, run func(*
 	return cmd
 }
 
-// newDatabaseCommand is an operator command whose run needs the runtime
-// database: it is opened before run and closed after.
 func newDatabaseCommand(use, short string, args cobra.PositionalArgs, run func(*cobra.Command, operatorFlags, *storage.DB, []string) error, extra ...func(*cobra.Command)) *cobra.Command {
 	return newOperatorCommand(use, short, args, func(cmd *cobra.Command, flags operatorFlags, argv []string) error {
 		return withOperatorDatabase(cmd, flags, func(db *storage.DB) error { return run(cmd, flags, db, argv) })
@@ -121,7 +117,6 @@ func tableText[T any](rows []T, empty string, line func(T) string) string {
 	return strings.Join(lines, "\n")
 }
 
-// newByIDCommand is a database command that takes exactly one identifier.
 func newByIDCommand(use, short string, show func(*cobra.Command, operatorFlags, *storage.DB, string) error) *cobra.Command {
 	return newDatabaseCommand(use, short, cobra.ExactArgs(1),
 		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB, args []string) error {
@@ -129,15 +124,12 @@ func newByIDCommand(use, short string, show func(*cobra.Command, operatorFlags, 
 		})
 }
 
-// newShowGroup is a command group with one by-ID `show` subcommand.
 func newShowGroup(name, groupShort, idName, showShort string, show func(*cobra.Command, operatorFlags, *storage.DB, string) error) *cobra.Command {
 	group := &cobra.Command{Use: name, Short: groupShort}
 	group.AddCommand(newByIDCommand("show <"+idName+">", showShort, show))
 	return group
 }
 
-// newVersionedCommand is a by-ID database command with a --version flag whose
-// default 0 means the current version.
 func newVersionedCommand(use, short string, show func(*cobra.Command, operatorFlags, *storage.DB, string, int) error) *cobra.Command {
 	var version int
 	return newDatabaseCommand(use, short, cobra.ExactArgs(1),

@@ -8,7 +8,6 @@ import (
 	"os"
 )
 
-// OpenTrace opens a trace file for reading; what names it in the error.
 func OpenTrace(path, what string) (io.ReadCloser, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -17,9 +16,6 @@ func OpenTrace(path, what string) (io.ReadCloser, error) {
 	return f, nil
 }
 
-// EachScannedLine hands every line of r to fn, scanner-bounded, counting blank
-// lines; fn decides what a blank line means. A line longer than the scanner
-// limit fails the read.
 func EachScannedLine(r io.Reader, fn func(line []byte) error) error {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
@@ -33,40 +29,63 @@ func EachScannedLine(r io.Reader, fn func(line []byte) error) error {
 	return nil
 }
 
-// BoundedReader reads newline-terminated lines of at most max bytes.
 type BoundedReader struct {
-	reader *bufio.Reader
-	max    int
+	reader   *bufio.Reader
+	max      int
+	consumed int64
 }
 
-// NewBoundedReader caps per-line memory at max bytes.
 func NewBoundedReader(r io.Reader, max int) *BoundedReader {
 	return &BoundedReader{reader: bufio.NewReaderSize(r, max), max: max}
 }
 
-// Next reads one line. When a line exceeds the bound it returns the truncated
-// prefix with tooLarge=true and resynchronizes to the start of the next line
-// (discarding the overlong remainder) so ingestion continues rather than
-// aborting. It returns io.EOF only when no bytes remained to read. Unlike the
-// live-socket reader, which drops its connection after an oversized frame, this
-// resyncs deterministically for a file trace.
 func (b *BoundedReader) Next() ([]byte, bool, error) {
 	var line []byte
 	over := false
 	for {
 		part, err := b.reader.ReadSlice('\n')
+		b.consumed += int64(len(part))
 		line, over = appendBounded(line, part, b.max, over)
 		if !errors.Is(err, bufio.ErrBufferFull) {
 			return finishBoundedLine(line, over, err)
 		}
 		if over {
-			return line, true, skipOverlongRemainder(b.reader)
+			skipped, err := skipOverlongRemainder(b.reader)
+			b.consumed += skipped
+			return line, true, err
 		}
 	}
 }
 
-// finishBoundedLine completes a line at a newline or at end of input; io.EOF
-// is returned only when no bytes remained.
+func (b *BoundedReader) Consumed() int64 { return b.consumed }
+
+func OpenTraceFrom(path string, offset int64) (io.ReadCloser, bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, false, fmt.Errorf("open trace file: %w", err)
+	}
+	resumed, err := seekWithinFile(f, offset)
+	if err != nil {
+		_ = f.Close()
+		return nil, false, err
+	}
+	return f, resumed, nil
+}
+
+func seekWithinFile(f *os.File, offset int64) (bool, error) {
+	info, err := f.Stat()
+	if err != nil {
+		return false, fmt.Errorf("stat trace file: %w", err)
+	}
+	if offset <= 0 || info.Size() < offset {
+		return false, nil
+	}
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return false, fmt.Errorf("seek trace file: %w", err)
+	}
+	return true, nil
+}
+
 func finishBoundedLine(line []byte, over bool, err error) ([]byte, bool, error) {
 	switch {
 	case err == nil:
@@ -80,8 +99,6 @@ func finishBoundedLine(line []byte, over bool, err error) ([]byte, bool, error) 
 	}
 }
 
-// appendBounded appends part to line while line stays within max bytes, and
-// reports whether the line has overflowed.
 func appendBounded(line, part []byte, max int, over bool) ([]byte, bool) {
 	if len(line)+len(part) <= max {
 		return append(line, part...), over
@@ -92,26 +109,25 @@ func appendBounded(line, part []byte, max int, over bool) ([]byte, bool) {
 	return line, true
 }
 
-// skipOverlongRemainder discards the rest of an oversized line; reaching the
-// end of input while doing so is not an error.
-func skipOverlongRemainder(r *bufio.Reader) error {
-	if err := discardToNewline(r); err != nil && !errors.Is(err, io.EOF) {
-		return err
+func skipOverlongRemainder(r *bufio.Reader) (int64, error) {
+	skipped, err := discardToNewline(r)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return skipped, err
 	}
-	return nil
+	return skipped, nil
 }
 
-// discardToNewline consumes the reader up to and including the next newline,
-// used to resynchronize after an oversized line whose prefix was quarantined.
-func discardToNewline(r *bufio.Reader) error {
+func discardToNewline(r *bufio.Reader) (int64, error) {
+	var skipped int64
 	for {
-		_, err := r.ReadSlice('\n')
+		part, err := r.ReadSlice('\n')
+		skipped += int64(len(part))
 		if err == nil {
-			return nil
+			return skipped, nil
 		}
 		if errors.Is(err, bufio.ErrBufferFull) {
 			continue
 		}
-		return fmt.Errorf("discard to newline: %w", err)
+		return skipped, fmt.Errorf("discard to newline: %w", err)
 	}
 }

@@ -27,9 +27,6 @@ func TestFacadeDelegatesToTheStore(t *testing.T) {
 	if err := storage.RetrySQLiteBusy(ctx, func() error { calls++; return nil }); err != nil || calls != 1 {
 		t.Fatalf("RetrySQLiteBusy = %v after %d calls, want nil after 1", err, calls)
 	}
-	if storage.IsSQLiteBusy(errors.New("plain")) {
-		t.Fatal("a plain error is not busy")
-	}
 	_, duplicate := db.ExecContext(ctx, "INSERT INTO schema_migrations (version, name, applied_at) VALUES (1, 'again', 'now')")
 	if !storage.IsUniqueViolation(duplicate, "schema_migrations.version") {
 		t.Fatalf("IsUniqueViolation(%v) = false for a duplicate primary key", duplicate)
@@ -117,11 +114,11 @@ func TestRowsAffectedCountsChangedRowsAndReportsZeroWhenTheDriverCannot(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := storage.RowsAffected(result); got != 3 {
-		t.Fatalf("RowsAffected = %d, want 3", got)
+	if got, err := storage.RowsAffected(result); err != nil || got != 3 {
+		t.Fatalf("RowsAffected = %d err=%v, want 3", got, err)
 	}
-	if got := storage.RowsAffected(unreportedResult{}); got != 0 {
-		t.Fatalf("RowsAffected without driver support = %d, want 0", got)
+	if got, err := storage.RowsAffected(unreportedResult{}); err == nil || got != 0 {
+		t.Fatalf("RowsAffected without driver support = %d err=%v, want an error", got, err)
 	}
 }
 

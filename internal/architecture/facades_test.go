@@ -141,7 +141,7 @@ var facadeSpecs = []facadeSpec{
 		module:       "internal/cognition",
 		constructors: []string{"New", "applicationConfig"},
 		operations: operations(to("app", "Process", "RecordCostRejectionReason", "RecordSchedulerExpiryReason", "TriggerEvaluation",
-			"TriggerEvaluations")),
+			"TriggerEvaluations", "PruneIgnoredEvaluations")),
 	},
 	{
 		module: "internal/control",
@@ -156,7 +156,7 @@ var facadeSpecs = []facadeSpec{
 	{
 		module:       "internal/engine",
 		constructors: []string{"New", "applicationConfig", "ReplayOwnership"},
-		operations:   operations(to("app", "RunGlobal", "ListSituations", "SituationVersion")),
+		operations:   operations(to("app", "RunGlobal", "ListSituations", "SituationVersion", "PruneHistory")),
 	},
 	{
 		module: "internal/episodeledger",

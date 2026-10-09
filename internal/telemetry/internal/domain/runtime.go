@@ -10,8 +10,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Runtime holds process-local counters for the live pipeline. Counters are
-// monotonic and have no tenant, entity, or event-id labels.
 type Runtime struct {
 	started            time.Time
 	tracer             trace.Tracer
@@ -22,24 +20,15 @@ type Runtime struct {
 	intentsEvaluated   atomic.Uint64
 	commandsDispatched atomic.Uint64
 	streamFailures     atomic.Uint64
-	// The freshness/latency surface — stale-decision rejections and the
-	// dispatch→decision duration histogram (p95/p99), exported via /metrics
-	// so the freshness SLO is one honest number.
+
 	staleRejections atomic.Uint64
-	// ISSUE-061: stale episodes recovered by re-binding to the live situation
-	// version instead of being abandoned — the recovery counter, so a dense
-	// trace's dispatch churn is visible, not silent.
+
 	staleRebinds atomic.Uint64
-	// ISSUE-061: re-binds that failed because the live snapshot did not
-	// validate (DB corruption — the engine validates at publish). Counted
-	// separately from stale_rejections so corruption is distinguishable from
-	// benign churn in /metrics.
+
 	rebindFailures         atomic.Uint64
 	deviceFrameErrors      atomic.Uint64
-	deviceReconnects       atomic.Uint64
 	actionUnknownOutcomes  atomic.Uint64
 	verificationPending    atomic.Uint64
-	verificationFailures   atomic.Uint64
 	leaseExpiries          atomic.Uint64
 	safeStateEntries       atomic.Uint64
 	reconciliationBarriers atomic.Uint64
@@ -53,14 +42,10 @@ type Runtime struct {
 	durations              []time.Duration
 }
 
-// NewRuntime creates an operational counter set with an explicit tracer, which
-// keeps tests and embedded runtimes independent of global setup. A nil tracer
-// disables runtime spans.
 func NewRuntime(now time.Time, tracer trace.Tracer) *Runtime {
 	return &Runtime{started: now.UTC(), tracer: tracer}
 }
 
-// StartSpan starts a runtime span when this telemetry runtime is configured.
 func (r *Runtime) StartSpan(ctx context.Context, name string, options ...trace.SpanStartOption) (context.Context, trace.Span) {
 	if r == nil || r.tracer == nil {
 		return ctx, trace.SpanFromContext(ctx)
@@ -68,7 +53,6 @@ func (r *Runtime) StartSpan(ctx context.Context, name string, options ...trace.S
 	return r.tracer.Start(ctx, name, options...)
 }
 
-// PipelineReport is the small counter projection accepted from runtime.
 type PipelineReport struct {
 	EventsIngested     int
 	EventsProcessed    int
@@ -78,7 +62,6 @@ type PipelineReport struct {
 	CommandsDispatched int
 }
 
-// ObserveDuration records one dispatch→decision duration for the histogram.
 func (r *Runtime) ObserveDuration(duration time.Duration) {
 	if r == nil {
 		return
@@ -86,10 +69,13 @@ func (r *Runtime) ObserveDuration(duration time.Duration) {
 	r.durationsMu.Lock()
 	defer r.durationsMu.Unlock()
 	r.durations = append(r.durations, duration)
+	if excess := len(r.durations) - MaxRecentDurations; excess > 0 {
+		r.durations = r.durations[excess:]
+	}
 }
 
-// Percentile returns the p-th percentile of the recorded durations (0-100),
-// or 0 when no durations were recorded.
+const MaxRecentDurations = 1024
+
 func (r *Runtime) Percentile(p float64) time.Duration {
 	if r == nil {
 		return 0
@@ -105,7 +91,6 @@ func (r *Runtime) Percentile(p float64) time.Duration {
 	return sorted[index]
 }
 
-// Snapshot returns a stable counter view.
 func (r *Runtime) Snapshot() map[string]uint64 {
 	if r == nil {
 		return nil
@@ -117,7 +102,6 @@ func (r *Runtime) Snapshot() map[string]uint64 {
 	return snapshot
 }
 
-// runtimeCounters names every counter in the Snapshot view.
 var runtimeCounters = []struct {
 	name  string
 	value func(*Runtime) *atomic.Uint64
@@ -133,10 +117,8 @@ var runtimeCounters = []struct {
 	{"agentic_stream_stale_rebinds_total", func(r *Runtime) *atomic.Uint64 { return &r.staleRebinds }},
 	{"agentic_stream_rebind_failures_total", func(r *Runtime) *atomic.Uint64 { return &r.rebindFailures }},
 	{"agentic_stream_device_frame_errors_total", func(r *Runtime) *atomic.Uint64 { return &r.deviceFrameErrors }},
-	{"agentic_stream_device_reconnects_total", func(r *Runtime) *atomic.Uint64 { return &r.deviceReconnects }},
 	{"agentic_stream_action_unknown_outcomes_total", func(r *Runtime) *atomic.Uint64 { return &r.actionUnknownOutcomes }},
 	{"agentic_stream_verification_pending_total", func(r *Runtime) *atomic.Uint64 { return &r.verificationPending }},
-	{"agentic_stream_verification_failures_total", func(r *Runtime) *atomic.Uint64 { return &r.verificationFailures }},
 	{"agentic_stream_lease_expiries_total", func(r *Runtime) *atomic.Uint64 { return &r.leaseExpiries }},
 	{"agentic_stream_safe_state_entries_total", func(r *Runtime) *atomic.Uint64 { return &r.safeStateEntries }},
 	{"agentic_stream_reconciliation_barriers_total", func(r *Runtime) *atomic.Uint64 { return &r.reconciliationBarriers }},
@@ -148,8 +130,6 @@ var runtimeCounters = []struct {
 	{"agentic_stream_live_lines_rejected_total", func(r *Runtime) *atomic.Uint64 { return &r.liveLinesRejected }},
 }
 
-// latencyNanos converts a recorded duration to uint64 nanoseconds, clamping
-// negative values to zero so an anomalous clock cannot wrap the metric.
 func latencyNanos(d time.Duration) uint64 {
 	if d < 0 {
 		return 0
@@ -157,8 +137,6 @@ func latencyNanos(d time.Duration) uint64 {
 	return uint64(d)
 }
 
-// LatencySnapshot returns the p50/p95/p99 dispatch→decision latencies in
-// nanoseconds (0 when no durations were recorded yet).
 func (r *Runtime) LatencySnapshot() map[string]uint64 {
 	return map[string]uint64{
 		"agentic_stream_dispatch_decision_p50_ns": latencyNanos(r.Percentile(50)),

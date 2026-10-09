@@ -57,7 +57,7 @@ func newHarness(t *testing.T, compiled *spec.CompiledSpec) *harness {
 		t.Fatalf("save deployment: %v", err)
 	}
 	clock := sources.NewVirtual(base)
-	svc, err := New(Config{DeploymentID: compiled.Digest, TenantID: testTenant, Spec: compiled, IDGen: sources.Deterministic(), Clock: clock})
+	svc, err := New(Config{DeploymentID: compiled.Digest, TenantID: testTenant, Spec: compiled, Clock: clock})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-// OwnerHeartbeatInterval preserves renewal cadence for configured/default leases.
 func OwnerHeartbeatInterval(lease time.Duration) time.Duration {
 	interval := lease / 3
 	if interval <= 0 {
@@ -22,12 +21,10 @@ func MaintenanceInterval(configured time.Duration) time.Duration {
 	return configured
 }
 
-// NormalLiveSocketShutdown requires the source parent to be terminated.
 func NormalLiveSocketShutdown(parentErr, err error) bool {
 	return parentErr != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
 }
 
-// RouteKind identifies the closed route owner, independent of implementation.
 type RouteKind uint8
 
 const (
@@ -36,7 +33,6 @@ const (
 	FallbackRoute
 )
 
-// ClassifyRoute reserves watch and device routes before fallback.
 func ClassifyRoute(route string) RouteKind {
 	switch route {
 	case "install_watch_condition":
@@ -46,4 +42,8 @@ func ClassifyRoute(route string) RouteKind {
 	default:
 		return FallbackRoute
 	}
+}
+
+func LeaseLapsed(lastRenewed, now time.Time, lease time.Duration) bool {
+	return now.Sub(lastRenewed) >= lease
 }

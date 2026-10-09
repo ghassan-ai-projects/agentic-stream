@@ -21,6 +21,16 @@ Use these commands unless the task is documentation-only:
 - `make deadcode` (`scripts/check-deadcode.sh`) runs `deadcode ./...` without `-test` and fails when a production function is reachable only from tests. Test-support packages are exempt: `internal/testsupport/...` and packages whose name ends in `test` (`controltest`, `spectest`, ...). Fix a finding by wiring the function into production, deleting it, or moving it to test support (an `export_test.go` for a package's own tests).
 - `deadcode` and `govulncheck` are optional locally when the tools are missing; the Makefile reports that explicitly. CI installs the pinned versions, so the gates always run there.
 
+## Golden Replay
+
+`TestGoldenTracesMatchTheirRecordedResults` (`internal/replay`) replays every
+example trace and compares events processed, version count, the versions hash
+and each entity's phase sequence with `internal/replay/testdata/golden/*.json`.
+A trace that publishes no version must say `expect_empty` in its golden file.
+When a reviewed behavior change moves these results, regenerate with
+`go test ./internal/replay -run TestGoldenTracesMatchTheirRecordedResults -update`
+and review the diff of the golden files in the same change.
+
 ## Repository-Wide Gates
 
 Tests that check the whole repository (import layering, SQL ownership, facade shape, file size, kernel purity) live in `internal/architecture`, one file per gate family, indexed in its [README](../../internal/architecture/README.md). The repository root holds no tests; `TestNoTestsAtRepositoryRoot` fails when one appears. A test that proves one module's behavior lives in that module.
@@ -31,10 +41,10 @@ Every test meets the rules T1-T12, which name how each is checked. In short:
 
 - **Place (T1, T2).** A test lives with the code it proves, at the lowest layer that owns the behavior, plus at most one integration path through the layer above. Nothing at the repository root; repository-wide gates live in `internal/architecture`.
 - **Name (T3).** The name is a sentence about the subject (`TestLeaseExpiresAfterItsTTL`); the file is named for the subject under test. No phase, round, ticket or wave numbers.
-- **Assert (T4).** Every test checks an observable outcome and prints got and want. Error tests assert which error (`errors.Is`, `errors.As`, or the domain message), never `err != nil` alone.
+- **Assert (T4).** Every test checks an observable outcome and prints got and want. Error tests assert which error (`errors.Is`, `errors.As`, or the domain message), never `err != nil` alone. `TestErrorAssertionsNameTheErrorTheyExpect` ratchets the remaining assertions that accept any error: a file may only lower its count.
 - **Deterministic (T5).** A test never sleeps to wait for work: `TestTestsNeverSleep` fails on any `time.Sleep` in a `_test.go` file. Wait on a channel, a condition, or a bounded poll bound to `t.Context()`; take time from a virtual clock (`sources.NewVirtual`) and identities from deterministic generators.
 - **Isolated and parallel (T6).** Every top-level test and subtest calls `t.Parallel()`; use `t.TempDir`, `t.Context`, `t.Cleanup`, `t.Setenv`. A test that cannot be parallel or cannot use `t.TempDir` (process-global state, Unix socket path length) says why in `//nolint:paralleltest // <reason>`. No mutable package-level test state; no network beyond loopback and Unix sockets.
-- **Fast (T7).** `go test -short -race ./...` finishes in 35 s on the reference machine; no package takes more than 15 s and no test more than 5 s, unless it is in the slow-test register. Product acceptance tests are made faster, never skipped under `-short`.
+- **Fast (T7).** `go test -short -race ./...` finishes in 35 s on the reference machine; no package takes more than 15 s and no test more than 5 s, unless it is in the slow-test register (`scripts/slow-tests.txt`, enforced by `make coverage-check`; checked at twice the budget to absorb run-to-run variance; `TEST_BUDGET_SCALE` overrides the factor, CI uses 4). Product acceptance tests are made faster, never skipped under `-short`.
 - **Covered (T8).** Every package is at 70% or above, the repository at 80% or above. Every exported facade operation and every error branch that enforces an invariant or architecture rule has a test. Coverage is never raised with assertion-free tests.
 - **Shared fixtures (T9).** Inputs come from `testdata/`, `examples/` or a named builder, never a local `docs/` directory; helpers call `t.Helper()`; setup repeated in two places moves into one helper.
 - **No dead tests (T10).** Delete tests that repeat another assertion at the same layer, test removed behavior or assert that a constant equals its literal. `t.Skip` only for `testing.Short()` or a missing optional tool, and it says which.

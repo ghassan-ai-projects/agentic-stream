@@ -45,9 +45,26 @@ printing the key.
 Inspect event identity, schema version, tenant, partition key, event/ingestion
 times, and source heartbeat. A late event may be intentionally dropped,
 history-only, corrective, or reconsideration-producing according to the spec.
-Do not edit the database to “fix” a late-data result. Quarantine release and
-redrive are internal capabilities; there is no packaged public CLI or HTTP
-redrive command. Use approved deployment tooling and preserve the audit.
+Every late or clock-skewed event's disposition is in the
+`event_time_dispositions` table, and an event set aside because applying it
+failed every time is in `apply_failures`. Do not edit the database to “fix” a
+late-data result. Release and redrive quarantined events with `agentic-stream
+quarantine release|redrive` (see the [CLI reference](../reference/cli.md));
+there is no HTTP redrive route.
+
+## The runtime falls behind or the disk fills
+
+Watch `agentic_stream_ingest_lag_events` on `/metrics`: a growing value means
+the engine applies events more slowly than they arrive. Expect a few
+milliseconds per event on SSD storage and a few kilobytes of database per
+event; back up with `maintenance backup` and prune with `maintenance prune`
+(see [recovery](../operations/recovery.md)).
+
+## `serve` refuses to start: lease held by another process
+
+A stopped runtime releases its owner lease. After a crash the lease expires on
+its own after `--owner-lease` (default one minute); start again after that, or
+check that no other `serve` or `run-live` is using the same database.
 
 ## `/v1/events` does not resume
 

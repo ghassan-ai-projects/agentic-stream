@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -48,6 +49,8 @@ func (p *Pipeline) RunLiveSocket(ctx context.Context, path string) error {
 	if err := p.assertOwner(ctx); err != nil {
 		return err
 	}
+	p.handDispatchToMaintenance()
+	defer p.dispatchInMaintenance.Store(false)
 	err := p.sources.RunLiveSocket(ctx, path, func(sinkCtx context.Context, env contractsv1.Envelope) error {
 		return p.ingestLiveEvent(sinkCtx, env)
 	})
@@ -102,7 +105,10 @@ func (p *Pipeline) RunSimulatorJSONL(ctx context.Context, path string) (Pipeline
 
 func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport, before eventlog.LogPosition) (result PipelineReport, err error) {
 	ctx, span := telemetry.StartSpan(ctx, "agentic_stream.pipeline.batch", trace.WithSpanKind(trace.SpanKindConsumer))
-	defer func() { finishBatchSpan(span, report, err) }()
+	defer func() {
+		finishBatchSpan(span, report, err)
+		p.recordBatchFailure(before, err)
+	}()
 	err = p.advanceBatch(ctx, &report, before, span)
 	return report, err
 }
@@ -159,11 +165,26 @@ func (p *Pipeline) runAdmittedBatch(ctx context.Context, report *PipelineReport)
 	if err := p.evaluatePendingIntents(ctx, report); err != nil {
 		return err
 	}
-	if err := p.dispatchApprovedCommands(ctx, report); err != nil {
+	if err := p.dispatchOrHandOff(ctx, report); err != nil {
 		return err
 	}
 	p.observeBatch(*report)
 	return nil
+}
+
+func (p *Pipeline) handDispatchToMaintenance() {
+	p.watchMu.Lock()
+	running := p.watchStop != nil
+	p.watchMu.Unlock()
+	p.dispatchInMaintenance.Store(running)
+}
+
+func (p *Pipeline) dispatchOrHandOff(ctx context.Context, report *PipelineReport) error {
+	if p.dispatchInMaintenance.Load() {
+		p.wakeDispatch()
+		return nil
+	}
+	return p.dispatchApprovedCommands(ctx, report)
 }
 
 func (p *Pipeline) currentEventPosition(ctx context.Context) (eventlog.LogPosition, error) {
@@ -242,4 +263,12 @@ func (p *Pipeline) watchPage() int {
 		return p.watchPageSize
 	}
 	return defaultWatchPageSize
+}
+
+func (p *Pipeline) recordBatchFailure(before eventlog.LogPosition, err error) {
+	if err == nil {
+		return
+	}
+	p.telemetry.ObserveFailure()
+	slog.Error("pipeline batch failed", "tenant", p.tenantID, "after_position", before, "error", err)
 }

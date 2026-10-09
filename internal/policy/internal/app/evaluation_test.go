@@ -149,3 +149,42 @@ func TestAnApprovedIntentThatRequiresApprovalDispatchesInsteadOfRequestingAgain(
 		})
 	}
 }
+
+func TestAReEvaluationThatFindsAStoredCommandReportsAlreadyCommandedAndQueuesNothing(t *testing.T) {
+	t.Parallel()
+	db, intentID := openPolicyFixture(t, "R1", 1, 1, farFuture)
+	service := newTestService(t)
+	first := evaluateIntent(t, db, service, intentID, fixtureNow)
+	if _, err := db.ExecContext(t.Context(), "UPDATE intents SET policy_status = 'pending' WHERE intent_id = ?", intentID); err != nil {
+		t.Fatal(err)
+	}
+	again := evaluateIntent(t, db, service, intentID, fixtureNow.Add(time.Second))
+	if again.Result != "approved" || again.Reason != "already_commanded" || again.CommandID != first.CommandID {
+		t.Fatalf("re-evaluation = %+v, want approved/already_commanded with command %s", again, first.CommandID)
+	}
+	outbox := scalar[int](t, db, "SELECT COUNT(*) FROM outbox WHERE kind = 'command' AND aggregate_id = ?", first.CommandID)
+	audits := scalar[int](t, db, "SELECT COUNT(*) FROM policy_evaluations WHERE intent_id = ?", intentID)
+	if outbox != 1 || audits != 2 {
+		t.Fatalf("outbox=%d audits=%d, want the one queued command and one audit per evaluation", outbox, audits)
+	}
+}
+
+func TestARiskyIntentReEvaluatedWhileItsApprovalIsPendingReusesThatApproval(t *testing.T) {
+	t.Parallel()
+	db, intentID := openPolicyFixture(t, "R2", 1, 1, farFuture)
+	service := newTestService(t)
+	first := evaluateIntent(t, db, service, intentID, fixtureNow)
+	if first.Result != "approval_required" || first.ApprovalID == "" {
+		t.Fatalf("first evaluation = %+v, want an approval request", first)
+	}
+	if _, err := db.ExecContext(t.Context(), "UPDATE intents SET policy_status = 'pending' WHERE intent_id = ?", intentID); err != nil {
+		t.Fatal(err)
+	}
+	again := evaluateIntent(t, db, service, intentID, fixtureNow.Add(time.Second))
+	if again.ApprovalID != first.ApprovalID || again.Result != "approval_required" {
+		t.Fatalf("re-evaluation = %+v, want the pending approval %s reused", again, first.ApprovalID)
+	}
+	if approvals := scalar[int](t, db, "SELECT COUNT(*) FROM approvals WHERE intent_id = ?", intentID); approvals != 1 {
+		t.Fatalf("approvals = %d, want one", approvals)
+	}
+}

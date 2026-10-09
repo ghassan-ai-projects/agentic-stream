@@ -4,7 +4,7 @@
 Go sources, configuration or documentation of the whole repository and fails
 when a rule breaks. It has no production code (`doc.go` only) and nothing
 imports it. The repository root holds no tests (rule T1 of the
-test audit bar (`docs/test-audit-2026-10-09/TEST_BAR.md`)); a gate that
+[test bar](../../.agents/context/testing.md)); a gate that
 spans modules lives here, in the file named for its subject. Tests that prove
 one module's behavior live in that module.
 
@@ -32,6 +32,10 @@ the code.
 | `import_rules_test.go` | `foundationPackages`, `forbiddenImports`, `allowedImports` | `TestPackageLayering`, `TestAllowedImportsHaveNoStaleEdges` |
 | `package_layers_test.go` | `packageLayers` | `TestImportsOnlyPointToLowerArchitectureLayers` |
 | `ownership_test.go` | `durableOwners` | `TestDurableMutationsHaveOneOwnerOrAnExplicitHandoffPhase` |
+| `ownership_test.go` | `appendOnlyTables` | `TestAppendOnlyTablesAreNeverRewritten` |
+| `TestErrorAssertionsNameTheErrorTheyExpect` | T4 | No test file under `internal/` or `cmd/` has more `if err == nil { t.Fatal… }` assertions that accept any error than its baseline in `unnamedErrorAssertions`; a file that drops below its baseline must lower it. |
+| `error_assertions_test.go` | `unnamedErrorAssertions` (burn-down baseline per file) | `TestErrorAssertionsNameTheErrorTheyExpect` |
+| `layers_test.go` | `wallClockReaders` | `TestApplicationAndStoreLayersTakeTimeFromTheInjectedClock` |
 | `facades_test.go` | `facadeSpecs` | `TestFacadesOnlyDelegate` |
 | `module_shape_test.go` | `moduleShapeExceptions`, `opaqueStoreModules`, `applicationLayerSpecs` | module shape gates |
 
@@ -69,6 +73,7 @@ A new module adds itself to `allowedImports`, `packageLayers`, `durableOwners`
 | `TestModuleSQLStaysInStore` | A12 | A module with a store layer keeps every SQL statement there. |
 | `TestCompositionRootsContainNoSQL` | A10 | `runtime` and `cmd` contain no SQL. |
 | `TestDeterministicLayersDoNotUseTimeOrRandomSources` | A12, AGENTS | Domain layers and the replay store take time and randomness as parameters. |
+| `TestApplicationAndStoreLayersTakeTimeFromTheInjectedClock` | A12, AGENTS | No `internal/app` or `internal/store` file calls `time.Now` except the audit-only readers in `wallClockReaders`, and that list has no stale entries. |
 
 ### `module_shape_test.go`
 
@@ -98,6 +103,7 @@ A new module adds itself to `allowedImports`, `packageLayers`, `durableOwners`
 | Test | Rule | Protects |
 | --- | --- | --- |
 | `TestDurableMutationsHaveOneOwnerOrAnExplicitHandoffPhase` | A4 | Every SQL mutation in production code is made by the table's owner, or by a reviewed handoff phase with the columns it may write. |
+| `TestAppendOnlyTablesAreNeverRewritten` | Invariant 3, A4 | No production SQL updates or upserts over `situation_versions`, `event_log`, `outcomes`, `policy_evaluations`, `event_time_dispositions` or `apply_failures`; a delete is allowed only from the retention file `appendOnlyTables` names. |
 | `TestHandoffOwnershipRejectsAuthorityAndPayloadBypasses` | A4 | Self-test: foreign lifecycle writes and payload or status bypasses are refused. |
 | `TestSQLMutationClassifierRecognizesOwnershipBoundaries` | A4 | Self-test: quoted identifiers, comments, CTEs, upserts and update columns classify correctly. |
 | `TestInsertConflictClassifierDistinguishesIgnoreFromRewrite` | A4 | Self-test: ignoring a conflict differs from rewriting an existing row. |

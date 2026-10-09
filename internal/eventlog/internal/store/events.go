@@ -12,8 +12,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// InsertEvent inserts one envelope and returns its position, or -1 when the
-// tenant already logged the event id.
 func (u *Unit) InsertEvent(ctx context.Context, tenantID string, env contractsv1.Envelope, body domain.EncodedEvent, createdAt time.Time) (domain.LogPosition, error) {
 	res, err := u.tx.ExecContext(ctx, insertEventSQL, eventColumns(tenantID, env, body, createdAt)...)
 	if err != nil {
@@ -35,7 +33,6 @@ const insertEventSQL = `
 		)
 		ON CONFLICT(tenant_id, event_id) DO NOTHING`
 
-// eventColumns lists one envelope in insertEventSQL column order.
 func eventColumns(tenantID string, env contractsv1.Envelope, body domain.EncodedEvent, createdAt time.Time) []any {
 	return []any{
 		tenantID, env.PartitionID(0), env.ID, env.Type, env.SchemaVersion,
@@ -46,8 +43,6 @@ func eventColumns(tenantID string, env contractsv1.Envelope, body domain.Encoded
 	}
 }
 
-// insertedPosition returns the new row's position, or -1 when the insert was
-// ignored as a duplicate.
 func insertedPosition(res sql.Result) (domain.LogPosition, error) {
 	rowsAffected, err := res.RowsAffected()
 	if err != nil {
@@ -69,3 +64,16 @@ func nullableTime(value *time.Time) sql.NullString {
 	}
 	return sql.NullString{String: kernel.FormatTime(*value), Valid: true}
 }
+
+func (u *Unit) LoggedEvent(ctx context.Context, tenantID, eventID string) (domain.LoggedEvent, error) {
+	var logged domain.LoggedEvent
+	if err := u.tx.QueryRowContext(ctx, loggedEventSQL, tenantID, eventID).Scan(
+		&logged.EventType, &logged.EntityType, &logged.EntityID, &logged.EventTime, &logged.PayloadSHA256); err != nil {
+		return domain.LoggedEvent{}, fmt.Errorf("read logged event %s: %w", eventID, err)
+	}
+	return logged, nil
+}
+
+const loggedEventSQL = `
+		SELECT event_type, entity_type, entity_id, event_time, payload_sha256
+		FROM event_log WHERE tenant_id = ? AND event_id = ?`

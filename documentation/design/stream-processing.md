@@ -48,8 +48,39 @@ allowed lateness, clock-skew tolerance, and one of these late policies:
 | `correct` | Recompute the affected state and publish a correction |
 | `correct_and_reconsider` | Correct state and reevaluate for a deduplicated reconsideration, subject to eligibility |
 
+Each virtual partition keeps a clock per source: the latest event time and
+ingestion time it has seen. The partition watermark is the slowest active
+source's latest event time minus `maxOutOfOrderness`, where a source counts as
+active until it has been silent for `idleTimeout` of ingestion time; the
+watermark never moves backwards. An event whose event time is ahead of its
+`ingested_at` by more than `clockSkewTolerance` is refused as `clock_skew`: it
+changes no state and never moves the watermark, so one device with a wrong
+clock cannot push its neighbors into lateness.
+
+An event is late when its event time is before its partition's watermark.
+A late event later than `allowedLateness` (zero when undeclared) never changes
+state under any policy. The engine records every late or skewed event's disposition
+(`corrected`, `history_only`, `dropped`, `beyond_allowed_lateness` or
+`clock_skew`) in the `event_time_dispositions` table, and the event itself stays in the event log.
+
 Missing heartbeat and source-health signals can make completeness uncertain.
 Incomplete evidence is explicit state, not a silent default.
+
+When applying an event fails the same way on every attempt (an operator or a
+Situation rule refuses it), the engine records the failure in
+`apply_failures`, marks the event processed and continues, so one bad record
+cannot halt the tenant; storage and ownership failures still stop the run and
+are retried. Due timers that fail the same way are acknowledged and logged.
+
+A Situation's completeness is the weakest of the latest completeness of each
+of its inputs, ordered `uncertain` < `provisional` < `on_time` < `corrected` <
+`final_by_policy`. A change of completeness alone publishes a version only when
+the Situation becomes uncertain, recovers from uncertainty, or takes a late
+correction; other changes ride on the next version published for a phase or
+fact change. A window that emits `early_and_close` emits a provisional value on
+each event and the final value when the window closes. A trigger's
+`completeness` (`any`, `on_time`, `final_by_policy`) admits only versions at
+least that complete, and names the unmet requirement otherwise.
 
 ## Operators and windows
 

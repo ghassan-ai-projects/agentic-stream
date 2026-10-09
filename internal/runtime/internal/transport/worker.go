@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"time"
 
 	"google.golang.org/grpc"
 
@@ -20,9 +19,6 @@ import (
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
-// WorkerRuntimeConfig contains the complete validated composition for native
-// or process-isolated episode execution. The same configuration is used by
-// run-live and serve so their worker and evidence boundaries cannot drift.
 type WorkerRuntimeConfig struct {
 	DB               *storage.DB
 	Ledger           *evidence.Service
@@ -39,8 +35,6 @@ type WorkerRuntimeConfig struct {
 	ModelName        string
 }
 
-// WorkerBackend owns the executor connection and the runtime-side evidence
-// gRPC server. Close is safe to call on partially initialized instances.
 type WorkerBackend struct {
 	cfg              WorkerRuntimeConfig
 	newNative        NativeConstructor
@@ -50,15 +44,12 @@ type WorkerBackend struct {
 	evidenceErrors   chan error
 }
 
-// NativeConstructor is supplied by composition; remote routes do not invoke it.
 type NativeConstructor func(nativeexecutor.Config) (*nativeexecutor.Executor, error)
 
-// NewWorkerBackend allocates resource ownership without opening resources.
 func NewWorkerBackend(cfg WorkerRuntimeConfig, constructor NativeConstructor) *WorkerBackend {
 	return &WorkerBackend{cfg: cfg, newNative: constructor, evidenceErrors: make(chan error, 1)}
 }
 
-// WorkerOptions projects pure configuration for validation and setup ordering.
 func WorkerOptions(cfg WorkerRuntimeConfig) domain.WorkerOptions {
 	return domain.WorkerOptions{
 		RuntimeEpoch:     cfg.RuntimeEpoch,
@@ -75,7 +66,6 @@ func WorkerOptions(cfg WorkerRuntimeConfig) domain.WorkerOptions {
 	}
 }
 
-// NativeExecutor constructs only the explicitly selected native route.
 func (r *WorkerBackend) NativeExecutor() (episodes.Executor, error) {
 	cfg := r.cfg
 	var provider nativeexecutor.ModelProvider = &nativeexecutor.DeterministicProvider{}
@@ -94,12 +84,14 @@ func (r *WorkerBackend) NativeExecutor() (episodes.Executor, error) {
 
 func nativeEvidenceTools(db *storage.DB) func(*episodes.Request) []nativeexecutor.Tool {
 	return func(req *episodes.Request) []nativeexecutor.Tool {
-		return []nativeexecutor.Tool{nativeexecutor.NewSQLiteEvidenceTool(db, "evidence_get", req.TenantID, req.EntityID), nativeexecutor.NewSQLiteEvidenceTool(db, "evidence.get", req.TenantID, req.EntityID)}
+		horizon, _ := req.EvidenceHorizon()
+		return []nativeexecutor.Tool{
+			nativeexecutor.NewSQLiteEvidenceTool(db, "evidence_get", req.TenantID, req.EntityID, horizon),
+			nativeexecutor.NewSQLiteEvidenceTool(db, "evidence.get", req.TenantID, req.EntityID, horizon),
+		}
 	}
 }
 
-// StartEvidence serves the ledger-backed evidence tools on the private
-// evidence socket and returns the capability signing key.
 func (r *WorkerBackend) StartEvidence() ([]byte, error) {
 	cfg := r.cfg
 	evidenceSecret, err := domain.DecodeEvidenceKey(cfg.EvidenceKey)
@@ -150,8 +142,6 @@ func (r *WorkerBackend) runEvidenceServer(evidenceGRPC *grpc.Server, listener ne
 	}
 }
 
-// ConnectWorker dials the EpisodeWorker over its socket, with mTLS when
-// configured, and negotiates evidence tools when the evidence server runs.
 func (r *WorkerBackend) ConnectWorker(ctx context.Context, evidenceSecret []byte) (episodes.Executor, error) {
 	cfg := r.cfg
 	tlsConfig, err := loadWorkerTLS(cfg.WorkerCA, cfg.WorkerCert, cfg.WorkerKey, cfg.WorkerServerName)
@@ -175,16 +165,15 @@ func (r *WorkerBackend) installRemoteExecutor(cfg WorkerRuntimeConfig, evidenceS
 	if err != nil {
 		return nil, err
 	}
-	factory := evidenceCapabilityFactory(issuer, cfg.RuntimeEpoch, time.Now().UTC())
+	factory := evidenceCapabilityFactory(issuer, cfg.RuntimeEpoch)
 	features := []string{worker.EvidenceToolsFeature}
 	return remoteexecutor.NewExecutorWithEvidence(client, cfg.WorkerName, cfg.RuntimeEpoch, features, cfg.EvidenceSocket, factory), nil
 }
 
-func evidenceCapabilityFactory(issuer *evidence.Service, runtimeEpoch string, now time.Time) *remoteexecutor.AttemptCapabilityIssuer {
+func evidenceCapabilityFactory(issuer *evidence.Service, runtimeEpoch string) *remoteexecutor.AttemptCapabilityIssuer {
 	return &remoteexecutor.AttemptCapabilityIssuer{
 		Issuer: issuer, RuntimeEpoch: runtimeEpoch, Tools: []string{"evidence.get"},
-		From: now.Add(-evidence.DefaultReadWindow), Until: now.Add(evidence.DefaultReadWindow),
-		MaxRows: evidence.DefaultReadMaxRows, MaxBytes: evidence.DefaultReadMaxBytes,
+		Window: evidence.DefaultReadWindow, MaxRows: evidence.DefaultReadMaxRows, MaxBytes: evidence.DefaultReadMaxBytes,
 	}
 }
 
@@ -196,8 +185,6 @@ func evidenceIssuer(secret []byte) (*evidence.Service, error) {
 	return service, nil
 }
 
-// Errors reports asynchronous evidence-server failures. A closed channel is
-// not used: callers select it alongside their process lifecycle context.
 func (r *WorkerBackend) Errors() <-chan error {
 	if r == nil || r.evidenceErrors == nil {
 		return nil
@@ -205,7 +192,6 @@ func (r *WorkerBackend) Errors() <-chan error {
 	return r.evidenceErrors
 }
 
-// Close stops the evidence server and closes the worker connection.
 func (r *WorkerBackend) Close() error {
 	if r == nil {
 		return nil

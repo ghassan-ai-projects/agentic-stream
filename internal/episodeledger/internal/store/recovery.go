@@ -11,8 +11,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// UnfinishedAttempts lists the active attempts owned by an epoch other than
-// the current one, closing the result set before returning.
 func (t *Tx) UnfinishedAttempts(ctx context.Context, currentEpoch string) ([]domain.UnfinishedAttempt, error) {
 	rows, err := t.q.QueryContext(ctx, unfinishedAttemptsSQL, currentEpoch)
 	if err != nil {
@@ -44,7 +42,6 @@ func collectUnfinishedAttempts(rows *sql.Rows) ([]domain.UnfinishedAttempt, erro
 	return attempts, nil
 }
 
-// AbandonUnfinishedAttempt abandons one active attempt and returns the rows it changed.
 func (t *Tx) AbandonUnfinishedAttempt(ctx context.Context, attemptID, episodeID string, endedAt time.Time, terminal []byte) (int64, error) {
 	result, err := t.q.ExecContext(ctx, abandonAttemptSQL, kernel.FormatTime(endedAt), terminal, attemptID, episodeID)
 	if err != nil {
@@ -57,14 +54,16 @@ func (t *Tx) AbandonUnfinishedAttempt(ctx context.Context, attemptID, episodeID 
 	return count, nil
 }
 
-// AbandonOpenEpisode abandons an episode that is not yet closed and returns
-// the rows it changed.
 func (t *Tx) AbandonOpenEpisode(ctx context.Context, episodeID string, endedAt time.Time, terminal []byte) (int64, error) {
 	result, err := t.q.ExecContext(ctx, abandonCancelingEpisodeSQL, kernel.FormatTime(endedAt), terminal, episodeID)
 	if err != nil {
 		return 0, fmt.Errorf("abandon canceling episode %s: %w", episodeID, err)
 	}
-	return storage.RowsAffected(result), nil
+	changed, err := storage.RowsAffected(result)
+	if err != nil {
+		return 0, fmt.Errorf("abandon canceling episode %s: %w", episodeID, err)
+	}
+	return changed, nil
 }
 
 func (t *Tx) EpisodeLifecycle(ctx context.Context, episodeID string) (domain.LifecycleStatus, error) {
@@ -96,14 +95,10 @@ var abandonCancelingEpisodeSQL = `
 		    terminal_json = ?
 		WHERE episode_id = ? AND lifecycle_status NOT IN ` + closedLifecycles
 
-// Settler settles or releases the cost reservation of an episode on the
-// caller's transaction. The runtime's cost ledger satisfies it.
 type Settler interface {
 	Settle(ctx context.Context, tx *sql.Tx, episodeID string, actual uint64, now string) error
 }
 
-// SettleEpisodeCost releases the episode's cost reservation through the
-// settler on this transaction.
 func (t *Tx) SettleEpisodeCost(ctx context.Context, settler Settler, episodeID string, now time.Time) error {
 	if err := settler.Settle(ctx, t.tx, episodeID, 0, kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("settle cost of episode %s: %w", episodeID, err)

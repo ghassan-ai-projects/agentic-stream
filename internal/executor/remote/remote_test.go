@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/remote"
@@ -34,9 +35,9 @@ func TestRemoteExecutorConformsToTheExecutorPort(t *testing.T) {
 
 type countingFactory struct{ issued atomic.Int32 }
 
-func (f *countingFactory) Issue(*episodes.Request) ([]byte, error) {
+func (f *countingFactory) Issue(*episodes.Request) (remote.EvidenceGrant, error) {
 	f.issued.Add(1)
-	return []byte("capability"), nil
+	return remote.EvidenceGrant{Token: []byte("capability"), From: time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC), Until: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)}, nil
 }
 
 func TestExecutorWithEvidenceIssuesTheCapabilityForTheConfiguredEndpoint(t *testing.T) {
@@ -60,5 +61,8 @@ func TestExecutorWithEvidenceIssuesTheCapabilityForTheConfiguredEndpoint(t *test
 	got := sent.Load()
 	if factory.issued.Load() != 1 || got.GetEvidenceToolsEndpoint() != endpoint || string(got.GetCapabilityToken()) != "capability" {
 		t.Fatalf("issued=%d endpoint=%q token=%q, want one capability for %q", factory.issued.Load(), got.GetEvidenceToolsEndpoint(), got.GetCapabilityToken(), endpoint)
+	}
+	if window := got.GetEvidenceTimeRange(); !window.GetFrom().AsTime().Equal(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)) || !window.GetUntil().AsTime().Equal(time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)) {
+		t.Fatalf("evidence time range = %v, want the granted window", window)
 	}
 }

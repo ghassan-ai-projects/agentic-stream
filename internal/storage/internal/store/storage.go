@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -15,13 +16,11 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/migrations"
 )
 
-// DB wraps a sql.DB with runtime-specific configuration.
 type DB struct {
 	*sql.DB
 	reservationPath string
 }
 
-// Open opens or creates the SQLite database at path and runs pending migrations.
 func Open(ctx context.Context, path string) (*DB, error) {
 	if _, err := os.Lstat(domain.ReservationPath(path)); err == nil {
 		return nil, fmt.Errorf("database path is reserved by an active replay: %s", path)
@@ -31,9 +30,17 @@ func Open(ctx context.Context, path string) (*DB, error) {
 	return open(ctx, path)
 }
 
-// OpenFresh atomically reserves a new database path before opening SQLite.
-// It is used by isolated replay so an existing database, symlink, or
-// concurrent creator cannot be mistaken for a disposable run database.
+func OpenExisting(ctx context.Context, path string) (*DB, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("runtime database %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("runtime database %s is not a regular file", path)
+	}
+	return Open(ctx, path)
+}
+
 func OpenFresh(ctx context.Context, path string) (*DB, error) {
 	reservationPath, err := reserveFreshDatabase(path)
 	if err != nil {
@@ -48,7 +55,6 @@ func OpenFresh(ctx context.Context, path string) (*DB, error) {
 	return db, nil
 }
 
-// Close closes the database and releases its private replay reservation.
 func (db *DB) Close() error {
 	err := db.DB.Close()
 	if db.reservationPath != "" {
@@ -63,32 +69,28 @@ func open(ctx context.Context, path string) (*DB, error) {
 	if err := requireStoredTimeFunction(); err != nil {
 		return nil, err
 	}
-	sqlDB, err := sql.Open("sqlite", domain.ConnectionString(path))
+	sqlDB, err := openPool(path)
 	if err != nil {
-		return nil, fmt.Errorf("open sqlite: %w", err)
+		return nil, err
 	}
-
 	db := &DB{DB: sqlDB}
 	if err := db.Migrate(ctx); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
-
 	return db, nil
 }
 
-// Checkpoint performs a non-blocking WAL checkpoint. SQLite may leave frames
-// for a later checkpoint when readers or another writer are active; callers
-// should treat that as normal maintenance behavior.
-func (db *DB) Checkpoint(ctx context.Context) error {
-	var busy, logFrames, checkpointed int
-	if err := db.QueryRowContext(ctx, "PRAGMA wal_checkpoint(PASSIVE)").Scan(&busy, &logFrames, &checkpointed); err != nil {
-		return fmt.Errorf("checkpoint WAL: %w", err)
+func openPool(path string) (*sql.DB, error) {
+	sqlDB, err := sql.Open("sqlite", domain.ConnectionString(path))
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	return nil
+	sqlDB.SetMaxOpenConns(domain.MaxOpenConnections)
+	sqlDB.SetMaxIdleConns(domain.MaxOpenConnections)
+	return sqlDB, nil
 }
 
-// Migrate runs embedded migrations that have not yet been applied.
 func (db *DB) Migrate(ctx context.Context) error {
 	migrationList, err := migrations.All()
 	if err != nil {
@@ -98,16 +100,21 @@ func (db *DB) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for _, m := range domain.PendingMigrations(migrationList, applied) {
+	return db.applyPending(ctx, domain.PendingMigrations(migrationList, applied), len(applied))
+}
+
+func (db *DB) applyPending(ctx context.Context, pending []migrations.Migration, alreadyApplied int) error {
+	for _, m := range pending {
 		if err := db.runMigration(ctx, m); err != nil {
 			return fmt.Errorf("migration %d %s: %w", m.Version, m.Name, err)
 		}
 	}
+	if len(pending) > 0 {
+		slog.Info("database migrated", "applied", len(pending), "from_version", alreadyApplied, "to_version", pending[len(pending)-1].Version)
+	}
 	return nil
 }
 
-// appliedMigrationVersions returns the recorded migration versions; a new
-// database has none.
 func (db *DB) appliedMigrationVersions(ctx context.Context) (map[int]struct{}, error) {
 	if !hasMigrationsTable(ctx, db) {
 		return make(map[int]struct{}), nil
@@ -160,7 +167,6 @@ func (db *DB) runMigration(ctx context.Context, m migrations.Migration) error {
 	return nil
 }
 
-// applyMigration executes the migration script and records its version.
 func applyMigration(ctx context.Context, tx *sql.Tx, m migrations.Migration) error {
 	if _, err := tx.ExecContext(ctx, m.SQL); err != nil {
 		return fmt.Errorf("execute: %w", err)
@@ -174,7 +180,6 @@ func applyMigration(ctx context.Context, tx *sql.Tx, m migrations.Migration) err
 	return nil
 }
 
-// WithTx runs fn inside a transaction that commits if fn returns nil.
 func (db *DB) WithTx(ctx context.Context, fn func(*sql.Tx) error) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -188,6 +193,25 @@ func (db *DB) WithTx(ctx context.Context, fn func(*sql.Tx) error) error {
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
+	}
+	return nil
+}
+
+func (db *DB) BackupInto(ctx context.Context, path string) error {
+	if _, err := os.Lstat(path); err == nil {
+		return fmt.Errorf("backup target %s already exists", path)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect backup target %s: %w", path, err)
+	}
+	if _, err := db.ExecContext(ctx, "VACUUM INTO ?", path); err != nil {
+		return fmt.Errorf("back up database into %s: %w", path, err)
+	}
+	return nil
+}
+
+func (db *DB) Vacuum(ctx context.Context) error {
+	if _, err := db.ExecContext(ctx, "VACUUM"); err != nil {
+		return fmt.Errorf("vacuum database: %w", err)
 	}
 	return nil
 }

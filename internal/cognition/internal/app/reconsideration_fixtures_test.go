@@ -64,7 +64,7 @@ func newReconsiderationFixture(t *testing.T, shape correctionShape) *reconsidera
 func (f *reconsiderationFixture) newService(latePolicy string) *Service {
 	f.t.Helper()
 	compiled := &spec.CompiledSpec{Digest: testSpecDigest, Time: spec.TimePolicy{LatePolicy: latePolicy}}
-	service, err := New(Config{DeploymentID: "dep", TenantID: "tenant", Spec: compiled, IDGen: sources.Deterministic(), Clock: sources.NewVirtual(reconsiderNow)})
+	service, err := New(Config{DeploymentID: "dep", TenantID: "tenant", Spec: compiled, Clock: sources.NewVirtual(reconsiderNow)})
 	if err != nil {
 		f.t.Fatalf("New: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,25 +34,17 @@ func TestAQueuedItemKeepsItsIdentityWhenItsTriggerIsQueuedAgain(t *testing.T) {
 	})
 }
 
-func TestAnItemIdClashIsClassifiedAndInsertIfAbsentKeepsTheExistingItem(t *testing.T) {
+func TestAnItemIDClashWithAnotherTriggerFailsInsteadOfDroppingTheItem(t *testing.T) {
 	t.Parallel()
 	within(t, func(ctx context.Context, tx *store.Tx, raw *sql.Tx) {
 		must(t, tx.UpsertSchedulerItem(ctx, item("item", "trigger-1"), "tenant", make32(1), at))
 		clash := item("item", "trigger-2")
 		clash.Priority = 5
-		if err := tx.UpsertSchedulerItem(ctx, clash, "tenant", make32(2), at); !store.IsSchedulerItemIDConflict(err) {
-			t.Fatalf("id clash = %v, want it classified as a scheduler item id conflict", err)
+		if err := tx.UpsertSchedulerItem(ctx, clash, "tenant", make32(2), at); err == nil || !strings.Contains(err.Error(), "scheduler_items.scheduler_item_id") {
+			t.Fatalf("id clash = %v, want the uniqueness failure reported", err)
 		}
-		if store.IsSchedulerItemIDConflict(nil) {
-			t.Fatal("no error was classified as a conflict")
-		}
-		must(t, tx.InsertSchedulerItemIfAbsent(ctx, clash, "tenant", make32(2), at))
 		if count := queryText(t, ctx, raw, "SELECT COUNT(*) || '|' || MIN(trigger_id) || '|' || MIN(priority) FROM scheduler_items"); count != "1|trigger-1|0.0" {
-			t.Fatalf("after insert-if-absent: %s, want the original item untouched", count)
-		}
-		must(t, tx.InsertSchedulerItemIfAbsent(ctx, item("fresh", "trigger-3"), "tenant", make32(3), at))
-		if count := queryText(t, ctx, raw, "SELECT COUNT(*) FROM scheduler_items"); count != "2" {
-			t.Fatalf("insert-if-absent of a new id left %s items", count)
+			t.Fatalf("after the clash: %s, want the original item untouched", count)
 		}
 	})
 }

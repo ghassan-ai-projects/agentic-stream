@@ -12,13 +12,14 @@ import (
 )
 
 func (s *Service) runDueTimersForAllPartitions(ctx context.Context) (int, error) {
-	partitions, err := s.store.TimerPartitions(ctx)
+	now := s.clock.Now().UTC()
+	partitions, err := s.store.DueTimerPartitions(ctx, now)
 	if err != nil {
-		return 0, err //nolint:wrapcheck // The store names the failed read.
+		return 0, fmt.Errorf("find partitions with due timers: %w", err)
 	}
 	var fired int
 	for _, partitionID := range partitions {
-		partitionFired, err := s.runDueTimers(ctx, partitionID)
+		partitionFired, err := s.runDueTimers(ctx, partitionID, now)
 		if err != nil {
 			return fired, err
 		}
@@ -27,8 +28,7 @@ func (s *Service) runDueTimersForAllPartitions(ctx context.Context) (int, error)
 	return fired, nil
 }
 
-func (s *Service) runDueTimers(ctx context.Context, partitionID int) (int, error) {
-	now := s.clock.Now().UTC()
+func (s *Service) runDueTimers(ctx context.Context, partitionID int, now time.Time) (int, error) {
 	watermark, err := s.timerWatermark(ctx, partitionID, now)
 	if err != nil {
 		return 0, err
@@ -38,16 +38,37 @@ func (s *Service) runDueTimers(ctx context.Context, partitionID int) (int, error
 		fired, err = s.fireDueTimers(ctx, tx, partitionID, watermark, now)
 		return err
 	}); err != nil {
-		return 0, s.timerFailure(ctx, err)
+		return 0, s.timerFailure(ctx, partitionID, now, err)
 	}
 	return fired, nil
 }
 
-func (s *Service) timerFailure(ctx context.Context, err error) error {
+func (s *Service) timerFailure(ctx context.Context, partitionID int, now time.Time, err error) error {
 	if restoreErr := s.restoreAfterRollback(ctx); restoreErr != nil {
 		return fmt.Errorf("run timers transaction: %w; restore after rollback: %w", err, restoreErr)
 	}
+	if failure, ruled := domain.AsRuleFailure(err); ruled {
+		return s.setAsideDueTimers(ctx, partitionID, now, failure)
+	}
 	return fmt.Errorf("run timers transaction: %w", err)
+}
+
+func (s *Service) setAsideDueTimers(ctx context.Context, partitionID int, now time.Time, failure *domain.RuleFailure) error {
+	s.logger.Error("due timers set aside: firing them fails every time", "partition_id", partitionID, "step", failure.Step, "error", failure.Err)
+	err := s.store.WithTx(ctx, func(tx *store.Tx) error {
+		if err := tx.AssertOwner(ctx); err != nil {
+			return fmt.Errorf("assert owner before setting timers aside: %w", err)
+		}
+		timers, err := tx.LoadDueTimers(ctx, partitionID, now)
+		if err != nil {
+			return fmt.Errorf("load due timers: %w", err)
+		}
+		return tx.AcknowledgeTimers(ctx, timers, now)
+	})
+	if err != nil {
+		return fmt.Errorf("set aside due timers of partition %d: %w", partitionID, err)
+	}
+	return nil
 }
 
 func (s *Service) timerWatermark(ctx context.Context, partitionID int, now time.Time) (time.Time, error) {
@@ -58,14 +79,16 @@ func (s *Service) timerWatermark(ctx context.Context, partitionID int, now time.
 	return domain.TimerWatermark(checkpoint.Watermark, now), nil
 }
 
-// fireDueTimers applies the partition's due timers under the owner fence.
 func (s *Service) fireDueTimers(ctx context.Context, tx *store.Tx, partitionID int, watermark, now time.Time) (int, error) {
 	if err := tx.AssertOwner(ctx); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("assert owner before timers of partition %d: %w", partitionID, err)
 	}
 	timers, err := tx.LoadDueTimers(ctx, partitionID, now)
-	if err != nil || len(timers) == 0 {
-		return 0, err
+	if err != nil {
+		return 0, fmt.Errorf("load due timers of partition %d: %w", partitionID, err)
+	}
+	if len(timers) == 0 {
+		return 0, nil
 	}
 	return s.applyDueTimers(ctx, tx, partitionID, timers, watermark, now)
 }
@@ -79,29 +102,27 @@ func (s *Service) applyDueTimers(ctx context.Context, tx *store.Tx, partitionID 
 	if err != nil {
 		return 0, err
 	}
-	if err := s.saveTimerSituationStates(ctx, tx, partitionID, appliedFeatures); err != nil {
+	if err := s.saveSituationStatesOf(ctx, tx, partitionID, appliedFeatures); err != nil {
 		return 0, err
 	}
-	return len(timers), tx.AcknowledgeTimers(ctx, timers, now)
+	if err := tx.AcknowledgeTimers(ctx, timers, now); err != nil {
+		return 0, fmt.Errorf("acknowledge timers of partition %d: %w", partitionID, err)
+	}
+	return len(timers), nil
 }
 
-// timerFeatures loads the partition's operator state and lets the operators
-// emit their timer features.
 func (s *Service) timerFeatures(ctx context.Context, tx *store.Tx, partitionID int, watermark, now time.Time) (*operators.PartitionState, []operators.Feature, error) {
 	state, err := tx.LoadOperatorState(ctx, partitionID, "")
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("load operator state of partition %d: %w", partitionID, err)
 	}
 	features, _, err := s.opRuntime.ApplyTimer(ctx, state, watermark, now)
 	if err != nil {
-		return nil, nil, fmt.Errorf("apply timers: %w", err)
+		return nil, nil, ruleFailure(ctx, "apply timers", err)
 	}
 	return state, features, nil
 }
 
-// applyMatchedTimerFeatures applies each feature that fires a due timer for its
-// expected last event. Every timer must either fire or belong to a fenced
-// (inactive) boot.
 func (s *Service) applyMatchedTimerFeatures(ctx context.Context, tx *store.Tx, partitionID int, state *operators.PartitionState, timers []domain.DueTimer, features []operators.Feature, watermark, now time.Time) ([]operators.Feature, error) {
 	matched := domain.InactiveTimerIDs(timers, func(stateKey string) bool { return s.opRuntime.IsTimerStateActive(state, stateKey) })
 	var applied []operators.Feature
@@ -112,10 +133,12 @@ func (s *Service) applyMatchedTimerFeatures(ctx context.Context, tx *store.Tx, p
 		}
 		applied = append(applied, feature)
 	}
-	return applied, domain.RequireAllTimersMatched(matched, timers) //nolint:wrapcheck // The domain rule names the unmatched timers.
+	if err := domain.RequireAllTimersMatched(matched, timers); err != nil {
+		return nil, fmt.Errorf("match timers of partition %d: %w", partitionID, err)
+	}
+	return applied, nil
 }
 
-// fireTimer records the firing's provenance and applies the feature.
 func (s *Service) fireTimer(ctx context.Context, tx *store.Tx, partitionID int, firing domain.TimerFiring, watermark, now time.Time) (operators.Feature, error) {
 	feature := firing.Feature
 	domain.EnrichTimerFeature(&feature, s.tenantID, partitionID, firing.Timer, now, sources.Quality(s.clock))
@@ -125,7 +148,7 @@ func (s *Service) fireTimer(ctx context.Context, tx *store.Tx, partitionID int, 
 func (s *Service) saveTimerFeature(ctx context.Context, tx *store.Tx, partitionID int, feature operators.Feature, watermark time.Time) error {
 	versions, err := s.sitEngine.ApplyFeature(ctx, feature, watermark)
 	if err != nil {
-		return fmt.Errorf("apply timer situation: %w", err)
+		return ruleFailure(ctx, "apply timer situation", err)
 	}
 	for _, version := range versions {
 		if err := s.saveSituationVersion(ctx, tx, partitionID, version); err != nil {
@@ -140,23 +163,6 @@ func (s *Service) saveTimerFeature(ctx context.Context, tx *store.Tx, partitionI
 	return nil
 }
 
-func (s *Service) saveTimerSituationStates(ctx context.Context, tx *store.Tx, partitionID int, features []operators.Feature) error {
-	updated := make(map[string]struct{}, len(features))
-	for _, feature := range features {
-		key := domain.EntityKey(feature)
-		if _, seen := updated[key]; seen {
-			continue
-		}
-		updated[key] = struct{}{}
-		if err := s.saveCurrentSituationState(ctx, tx, partitionID, feature.EntityType, feature.EntityID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// scheduleHeartbeatTimers arms the missing-heartbeat timers the operator state
-// implies, all stamped with one clock read.
 func (s *Service) scheduleHeartbeatTimers(ctx context.Context, tx *store.Tx, partitionID int, state *operators.PartitionState) error {
 	if state == nil {
 		return nil
@@ -164,11 +170,11 @@ func (s *Service) scheduleHeartbeatTimers(ctx context.Context, tx *store.Tx, par
 	now := s.clock.Now().UTC()
 	timers, err := domain.HeartbeatTimers(s.deploymentID, s.tenantID, partitionID, s.spec.Operators, state)
 	if err != nil {
-		return err //nolint:wrapcheck // The domain rule names the failed operator.
+		return ruleFailure(ctx, "plan heartbeat timers", err)
 	}
 	for _, timer := range timers {
 		if err := tx.ArmHeartbeatTimer(ctx, partitionID, timer, now); err != nil {
-			return err
+			return fmt.Errorf("arm heartbeat timer %s: %w", timer.ID, err)
 		}
 	}
 	return nil

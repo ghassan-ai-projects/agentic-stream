@@ -137,7 +137,7 @@ test-coverage: ## Run tests and produce HTML coverage report
 	  echo "(no packages yet -- skipping coverage)"; \
 	fi
 
-coverage-check: ## Run short race tests and enforce the per-package coverage floor (quality bar Q4)
+coverage-check: ## Run short race tests; enforce the coverage floor (Q4) and the runtime budget (T7)
 	python3 scripts/check-coverage.py
 
 # ---- Pipeline -------------------------------------------------------------

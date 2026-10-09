@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
@@ -33,7 +34,7 @@ func TestRetrySQLiteBusyPassesThroughOtherOutcomes(t *testing.T) {
 			}
 		})
 	}
-	if storage.IsSQLiteBusy(permanent) || storage.IsSQLiteBusy(nil) {
+	if store.IsSQLiteBusy(permanent) || store.IsSQLiteBusy(nil) {
 		t.Fatal("non-SQLite error classified as busy")
 	}
 }
@@ -70,7 +71,7 @@ func TestRetrySQLiteBusyStopsAtAttemptLimit(t *testing.T) {
 	contender := openContender(t, db)
 	holdWriterLock(t, db)
 	busyErr := beginAndRollback(t.Context(), contender)
-	if !storage.IsSQLiteBusy(busyErr) {
+	if !store.IsSQLiteBusy(busyErr) {
 		t.Fatalf("expected SQLite contention: %v", busyErr)
 	}
 

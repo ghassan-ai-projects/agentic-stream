@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"time"
@@ -27,6 +28,7 @@ func (core *runtimeCore) openContinuousPipeline(ctx context.Context, stop contex
 	if err != nil {
 		return nil, fmt.Errorf("compile spec: %w", err)
 	}
+	slog.Info("spec loaded", "spec", compiled.Metadata.Name, "version", compiled.Metadata.Version, "digest", compiled.Digest, "path", flags.specPath)
 	workerRuntime, err := core.openWorkerRuntime(ctx, flags.worker, cleanup)
 	if err != nil {
 		return nil, err

@@ -26,7 +26,7 @@ func TestRunGlobalNamesTheStepThatFailed(t *testing.T) {
 			t.Fatalf("err = %v, want read applied position", err)
 		}
 	})
-	t.Run("ownership lost before timers", func(t *testing.T) {
+	t.Run("ownership lost while firing a due timer", func(t *testing.T) {
 		t.Parallel()
 		var denied atomic.Bool
 		lost := errors.New("ownership lost")
@@ -46,8 +46,9 @@ func TestRunGlobalNamesTheStepThatFailed(t *testing.T) {
 		}
 		appendHeartbeat(t, log, "hb-1", 0, "")
 		runGlobal(t, service)
-		denied.Store(true)
 		appendHeartbeat(t, log, "hb-2", time.Minute, "")
+		clk.Advance(10 * time.Minute)
+		denied.Store(true)
 		processed, err := service.RunGlobal(t.Context(), nil)
 		if !errors.Is(err, lost) || processed != 0 || !strings.Contains(err.Error(), "run timers before event 2") {
 			t.Fatalf("processed=%d err=%v, want run timers before event 2 wrapping the ownership error", processed, err)
@@ -55,19 +56,26 @@ func TestRunGlobalNamesTheStepThatFailed(t *testing.T) {
 	})
 }
 
-func TestInvalidHeartbeatDurationFailsTheWholeRecord(t *testing.T) {
+func TestARecordThatFailsEveryTimeIsSetAsideWithoutHaltingTheLog(t *testing.T) {
 	t.Parallel()
 	compiled := heartbeatSpec()
 	compiled.Operators[0].Duration = "soon"
 	rig := newRig(t, compiled)
 	appendHeartbeat(t, rig.log, "hb-1", 0, "")
-	_, err := rig.service.RunGlobal(t.Context(), nil)
-	if err == nil || !strings.Contains(err.Error(), "apply operators") || !strings.Contains(err.Error(), "heartbeat duration") {
-		t.Fatalf("err = %v, want apply operators naming the heartbeat duration", err)
+	appendLevel(t, rig.log, "evt-after", time.Minute, 5)
+	if _, err := rig.service.RunGlobal(t.Context(), nil); err != nil {
+		t.Fatalf("RunGlobal = %v, want the failing record set aside", err)
 	}
-	for _, table := range []string{"event_inbox", "operator_state", "timers"} {
+	failure := queryText(t, rig.db, "SELECT event_id || '|' || step || '|' || (error_text LIKE '%heartbeat duration%') FROM apply_failures WHERE event_id = 'hb-1'")
+	if failure != "hb-1|apply operators|1" {
+		t.Fatalf("apply failure = %q, want hb-1 refused by its operators naming the heartbeat duration", failure)
+	}
+	for _, table := range []string{"operator_state", "timers"} {
 		if got := countRows(t, rig.db, "SELECT COUNT(*) FROM "+table); got != 0 {
 			t.Errorf("%s holds %d rows after the failed record, want none", table, got)
 		}
+	}
+	if got := countRows(t, rig.db, "SELECT COUNT(*) FROM event_inbox"); got != 2 {
+		t.Fatalf("processed events = %d, want both the set-aside record and the one after it", got)
 	}
 }

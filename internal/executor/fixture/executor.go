@@ -57,7 +57,7 @@ func fakeExecutorInputs(req *episodes.Request) (string, string, error) {
 
 // fakeIntent is a digest-bound R1 maintenance-ticket intent for the episode.
 func fakeIntent(req *episodes.Request, phase string) (map[string]any, error) {
-	parameters := map[string]any{"reason": phase}
+	parameters := map[string]any{explanationParameter(req): phase}
 	if req.EntityID != "" {
 		parameters["entity_id"] = req.EntityID
 	}
@@ -109,4 +109,30 @@ func fakeOutcome(req *episodes.Request, decision map[string]any) (*episodes.Outc
 	}
 	outcome.Reasons = []string{"deterministic fake outcome"}
 	return outcome, nil
+}
+
+type requestCatalog struct {
+	Executor struct {
+		IntentCatalog []struct {
+			Type            string `json:"type"`
+			ParameterSchema struct {
+				Properties map[string]any `json:"properties"`
+			} `json:"parameter_schema"`
+		} `json:"intent_catalog"`
+	} `json:"executor"`
+}
+
+// explanationParameter names the ticket parameter that carries the phase: the
+// catalog schema's "hypothesis" when it declares one, otherwise "reason".
+func explanationParameter(req *episodes.Request) string {
+	var payload requestCatalog
+	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
+		return "reason"
+	}
+	for _, entry := range payload.Executor.IntentCatalog {
+		if _, declared := entry.ParameterSchema.Properties["hypothesis"]; entry.Type == "create_maintenance_ticket" && declared {
+			return "hypothesis"
+		}
+	}
+	return "reason"
 }

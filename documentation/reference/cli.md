@@ -4,6 +4,20 @@ The registered commands are defined in
 [`cmd/agentic-stream/main.go`](../../cmd/agentic-stream/main.go). Use
 `agentic-stream <command> --help` for Cobra's runtime-rendered help.
 
+## Global flags
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--log-level` | `info` | `debug`, `info`, `warn` or `error` |
+| `--log-format` | `text` | `text` or `json` structured logs on stderr |
+
+`serve` logs one structured line when the spec is loaded (name, version,
+digest), when the runtime is ready (owner epoch and lease), when it starts
+serving (version, commit, listen address, database, tenant, effect profile,
+worker socket), on every failed owner-lease renewal, when the lease is lost,
+and when it stops and releases the lease. A failed renewal is retried on the
+next heartbeat; readiness is cleared only once the lease has run out.
+
 ## `version`
 
 Prints runtime version/commit metadata, contract version, and worker protocol
@@ -203,6 +217,21 @@ effects: policy evaluations with reasons, approval requests and how they ended,
 commands with their outcomes and verifications, and the watch a command
 installed with its fires. There is no `intent approve`: approval is the signed
 HTTP flow.
+
+### `maintenance backup --output <file> | prune [--older-than 720h] [--vacuum]`
+
+`backup` writes a consistent copy of the runtime database to a new file with
+SQLite `VACUUM INTO`; it takes no lease, so it is safe while `serve` runs, and
+it refuses an existing target. `prune` needs the lease (stop the runtime
+first) and, in one transaction, removes bookkeeping older than `--older-than`
+(default 30 days) that nothing references: ignored trigger evaluations no
+scheduler item or reconsideration cites, applied engine inbox entries, fired
+and cancelled timers, superseded Situation versions that no evaluation,
+scheduler item, episode, decision or intent references (never the current,
+last reasoned or last material version), and lineage sets no version cites.
+The event log, decisions, intents, commands, outcomes and every admitted,
+deferred, coalesced, rejected or expired evaluation are kept. `--vacuum`
+reclaims the freed space afterwards.
 
 ## Not registered yet
 

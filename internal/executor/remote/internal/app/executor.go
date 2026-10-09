@@ -24,15 +24,10 @@ import (
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
-// CapabilityFactory issues an ephemeral token from the trusted attempt
-// request. Implementations must never persist or log the returned bytes.
 type CapabilityFactory interface {
-	Issue(*episodes.Request) ([]byte, error)
+	Issue(*episodes.Request) (EvidenceGrant, error)
 }
 
-// Executor adapts the streamed EpisodeWorker protocol to the durable
-// aggregate Outcome consumed by Runner. It never accepts a Decision before a
-// matching terminal stream has been observed.
 type Executor struct {
 	worker                transport.Worker
 	profile               domain.Profile
@@ -42,7 +37,6 @@ type Executor struct {
 
 var _ episodes.Executor = (*Executor)(nil)
 
-// New creates an executor for an already-connected worker.
 func New(client runtimev1.EpisodeWorkerClient, name, runtimeInstance string, requestedFeatures []string) *Executor {
 	return &Executor{
 		worker:  transport.NewWorker(client),
@@ -50,8 +44,6 @@ func New(client runtimev1.EpisodeWorkerClient, name, runtimeInstance string, req
 	}
 }
 
-// NewWithEvidence creates an executor whose evidence capability is issued per
-// attempt rather than supplied as caller-controlled bytes.
 func NewWithEvidence(client runtimev1.EpisodeWorkerClient, name, runtimeInstance string, requestedFeatures []string, endpoint string, factory CapabilityFactory) *Executor {
 	executor := New(client, name, runtimeInstance, requestedFeatures)
 	executor.evidenceToolsEndpoint = endpoint
@@ -59,10 +51,6 @@ func NewWithEvidence(client runtimev1.EpisodeWorkerClient, name, runtimeInstance
 	return executor
 }
 
-// Execute performs the current-version handshake and consumes one validated
-// server stream. RPC cancellation and deadline statuses also match
-// context.Canceled and context.DeadlineExceeded, so the runner classifies them
-// as cancellation or timeout without importing the transport.
 func (e *Executor) Execute(ctx context.Context, req *episodes.Request) (*episodes.Outcome, error) {
 	if e == nil || !e.worker.Configured() {
 		return nil, fmt.Errorf("worker client is not configured")
@@ -89,8 +77,6 @@ func finishExecutionSpan(span trace.Span, err error) {
 	span.End()
 }
 
-// executeWithinBudget bounds the attempt by its wall-time budget, then
-// negotiates, sends the request, and consumes the validated stream.
 func (e *Executor) executeWithinBudget(ctx context.Context, req *episodes.Request) (*episodes.Outcome, error) {
 	wallTime, err := req.WallTimeBudget()
 	if err != nil {
@@ -116,9 +102,6 @@ func (e *Executor) executeWorker(ctx context.Context, req *episodes.Request) (*e
 	return e.consumeWorker(ctx, req, wireRequest, handshake)
 }
 
-// wireRequest builds the validated worker request for one attempt, bound to
-// the execution deadline and, when evidence tools are enabled, carrying a
-// freshly issued capability.
 func (e *Executor) wireRequest(ctx context.Context, req *episodes.Request) (*runtimev1.EpisodeRequest, error) {
 	if err := e.profile.ValidateEvidenceConfig(e.evidenceToolsEndpoint, e.capabilityFactory != nil); err != nil {
 		return nil, err //nolint:wrapcheck // The domain rule's message is the operator-facing text.
@@ -139,11 +122,12 @@ func (e *Executor) bindExecutionScope(ctx context.Context, req *episodes.Request
 	}
 	wireRequest.EvidenceToolsEndpoint = e.evidenceToolsEndpoint
 	if e.evidenceToolsEndpoint != "" {
-		capabilityToken, err := e.capabilityFactory.Issue(req)
+		grant, err := e.capabilityFactory.Issue(req)
 		if err != nil {
 			return nil, fmt.Errorf("issue evidence capability: %w", err)
 		}
-		wireRequest.CapabilityToken = slices.Clone(capabilityToken)
+		wireRequest.CapabilityToken = slices.Clone(grant.Token)
+		wireRequest.EvidenceTimeRange = &runtimev1.EvidenceTimeRange{From: timestamppb.New(grant.From), Until: timestamppb.New(grant.Until)}
 	}
 	return wireRequest, nil
 }
@@ -171,7 +155,6 @@ func (e *Executor) consumeWorker(ctx context.Context, req *episodes.Request, wir
 	return stream.Outcome() //nolint:wrapcheck // The domain rule's message is the operator-facing text.
 }
 
-// consume reads the stream to EOF, rejecting the first invalid event.
 func consume(events transport.EventReceiver, stream *domain.Stream) error {
 	for {
 		event, err := events.Recv()

@@ -12,9 +12,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// SQLiteEvidenceTool exposes bounded, read-only event evidence to the native
-// executor. The tenant and entity are bound by the trusted episode request;
-// caller-supplied values cannot widen that scope.
 type SQLiteEvidenceTool struct {
 	db       *storage.DB
 	name     string
@@ -22,23 +19,20 @@ type SQLiteEvidenceTool struct {
 	entityID string
 	maxRows  uint64
 	maxBytes uint64
+	horizon  time.Time
 }
 
-// NewSQLiteEvidenceTool creates a scoped native evidence tool.
-func NewSQLiteEvidenceTool(db *storage.DB, name, tenantID, entityID string) *SQLiteEvidenceTool {
-	return &SQLiteEvidenceTool{db: db, name: name, tenantID: tenantID, entityID: entityID, maxRows: evidence.DefaultReadMaxRows, maxBytes: evidence.DefaultReadMaxBytes}
+func NewSQLiteEvidenceTool(db *storage.DB, name, tenantID, entityID string, horizon time.Time) *SQLiteEvidenceTool {
+	return &SQLiteEvidenceTool{db: db, name: name, tenantID: tenantID, entityID: entityID, maxRows: evidence.DefaultReadMaxRows, maxBytes: evidence.DefaultReadMaxBytes, horizon: horizon}
 }
 
-// Name returns the configured tool name.
 func (t *SQLiteEvidenceTool) Name() string { return t.name }
 
-// Call reads bounded event evidence. Supported arguments are entity_id,
-// from, until, max_rows, and max_bytes.
 func (t *SQLiteEvidenceTool) Call(ctx context.Context, raw json.RawMessage) (domain.ToolResult, error) {
-	if t == nil || t.db == nil || t.tenantID == "" || t.entityID == "" {
+	if t == nil || t.db == nil || t.tenantID == "" || t.entityID == "" || t.horizon.IsZero() {
 		return domain.ToolResult{}, fmt.Errorf("evidence tool is not configured")
 	}
-	query, err := domain.EvidenceScope{EntityID: t.entityID, MaxRows: t.maxRows, MaxBytes: t.maxBytes, Window: evidence.DefaultReadWindow}.Query(raw, time.Now().UTC())
+	query, err := domain.EvidenceScope{EntityID: t.entityID, MaxRows: t.maxRows, MaxBytes: t.maxBytes, Window: evidence.DefaultReadWindow}.Query(raw, t.horizon)
 	if err != nil {
 		return domain.ToolResult{}, err
 	}
@@ -49,8 +43,6 @@ func (t *SQLiteEvidenceTool) Call(ctx context.Context, raw json.RawMessage) (dom
 	return encodeEvidenceResult(rows)
 }
 
-// readRows returns the longest prefix of matching events whose encoded
-// {"rows":[...]} document stays within maxBytes.
 func (t *SQLiteEvidenceTool) readRows(ctx context.Context, query domain.EvidenceQuery) ([]json.RawMessage, error) {
 	rows := boundedRows{maxBytes: query.MaxBytes, size: uint64(len(`{"rows":[]}`)), result: make([]json.RawMessage, 0)}
 	window := eventlog.EntityWindow{TenantID: t.tenantID, EntityID: t.entityID, From: query.From, Until: query.Until, MaxRows: query.MaxRows}
@@ -60,16 +52,11 @@ func (t *SQLiteEvidenceTool) readRows(ctx context.Context, query domain.Evidence
 	return rows.result, nil
 }
 
-// boundedRows collects encoded rows while the encoded {"rows":[r1,r2,...]}
-// document, counting the envelope and the commas between rows, stays within
-// maxBytes.
 type boundedRows struct {
 	maxBytes, size uint64
 	result         []json.RawMessage
 }
 
-// add appends the event's encoded row, reporting false once the next row
-// would exceed the byte limit.
 func (b *boundedRows) add(event eventlog.EntityEvent) (bool, error) {
 	encoded, err := encodeEvidenceRow(event)
 	if err != nil {

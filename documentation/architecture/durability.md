@@ -8,7 +8,7 @@ completed work from work that still needs attention.
 
 The runtime uses SQLite in write-ahead log (WAL) mode through `modernc.org/sqlite`. Database open
 applies the numbered migrations under [`migrations/`](../../migrations/). The
-current repository contains 31 migrations; migration order is append-only.
+current repository contains 37 migrations; migration order is append-only.
 
 Important durable record families include:
 
@@ -63,6 +63,14 @@ Operators must back up the SQLite database, protect its permissions, rehearse
 restore, and treat a missing or corrupted database as a recovery event rather
 than allowing a new empty database to masquerade as continuity. See the
 [recovery runbook](../operations/recovery.md).
+
+Operator and export commands open an existing database only: a mistyped
+`--db` fails and creates nothing. `serve` and `run-live` still create a
+database at a new path, so a fresh run directory works, but they log a
+`creating a new runtime database` warning first; every applied migration is
+logged too. The runtime opens at most eight SQLite connections and relies on
+SQLite's automatic WAL checkpoint (every 256 pages) rather than checkpointing
+after each event.
 
 ## Next reads
 

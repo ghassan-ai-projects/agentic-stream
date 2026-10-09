@@ -28,7 +28,13 @@ func NewRuntime(now time.Time) *Runtime {
 
 // MetricsHandler exposes the runtime's counters and latencies as Prometheus
 // text without leaking tenant or event data.
-func MetricsHandler(runtime *Runtime) http.Handler { return transport.MetricsHandler(runtime) }
+func MetricsHandler(runtime *Runtime, gauges GaugeSource) http.Handler {
+	return transport.MetricsHandler(runtime, gauges)
+}
+
+// GaugeSource reads point-in-time gauges, such as queue depths, when metrics
+// are scraped.
+type GaugeSource = transport.GaugeSource
 
 // Configure installs the process tracer provider and returns it for deferred
 // shutdown. The caller owns the provider lifecycle.

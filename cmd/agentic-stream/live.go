@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"os"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
@@ -21,8 +23,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
-// liveFlags are the flags run-live and serve share. Registering them in one
-// place keeps the two live commands from drifting apart.
 type liveFlags struct {
 	dbPath, specPath, tracePath, tenantID, traceFormat string
 	effectProfile                                      string
@@ -30,13 +30,8 @@ type liveFlags struct {
 	worker                                             runtime.WorkerRuntimeConfig
 }
 
-// cleanups runs registered release functions in reverse order, like a
-// sequence of defers that helper functions can extend.
 type cleanups []func()
 
-// runtimeCore is the owner-fenced runtime both live commands start from: the
-// database, a fresh runtime epoch with its owner lease and evidence ledger,
-// epoch control, and the started runtime service.
 type runtimeCore struct {
 	pipeline     *runtime.Pipeline
 	db           *storage.DB
@@ -47,13 +42,11 @@ type runtimeCore struct {
 	service      *runtime.Service
 }
 
-// effects is the opened effect profile.
 type effects struct {
 	effector actionport.Effector
 	serial   *device.GatewayEffector
 }
 
-// registerShared adds the effect-profile and worker-runtime flags.
 func (f *liveFlags) registerShared(cmd *cobra.Command) {
 	addEffectProfileFlags(cmd, &f.effectProfile, &f.effect.DeviceSocket, &f.effect.DeviceCatalog,
 		&f.effect.AllowedFirmwareDigests, &f.effect.LiveActuation, &f.effect.OwnerAuthorized)
@@ -65,7 +58,6 @@ func (f *liveFlags) registerShared(cmd *cobra.Command) {
 	})
 }
 
-// profileOptions returns the effect-profile options with the parsed profile.
 func (f *liveFlags) profileOptions() effectProfileOptions {
 	options := f.effect
 	options.Profile = device.EffectProfile(f.effectProfile)
@@ -74,16 +66,16 @@ func (f *liveFlags) profileOptions() effectProfileOptions {
 
 func (c *cleanups) add(fn func()) { *c = append(*c, fn) }
 
-func (c cleanups) run() {
-	for i := len(c) - 1; i >= 0; i-- {
-		c[i]()
+func (c *cleanups) run() {
+	for i := len(*c) - 1; i >= 0; i-- {
+		(*c)[i]()
 	}
 }
 
 func openRuntimeCore(ctx context.Context, dbPath string, lease time.Duration, cleanup *cleanups) (*runtimeCore, error) {
-	db, err := storage.Open(ctx, dbPath)
+	db, err := openOrCreateRuntimeDatabase(ctx, dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("open runtime database: %w", err)
+		return nil, err
 	}
 	cleanup.add(func() { _ = db.Close() })
 	core, err := newRuntimeCore(db, lease)
@@ -165,7 +157,6 @@ func (core *runtimeCore) startPipeline(ctx context.Context, compiled *spec.Compi
 	return pipeline, nil
 }
 
-// runTrace runs one batch of a JSONL trace in the given format.
 func runTrace(ctx context.Context, pipeline *runtime.Pipeline, format, path string) (runtime.PipelineReport, error) {
 	runs := map[string]func(context.Context, string) (runtime.PipelineReport, error){
 		"normalized": pipeline.RunJSONL,
@@ -182,8 +173,6 @@ func runTrace(ctx context.Context, pipeline *runtime.Pipeline, format, path stri
 	return report, nil
 }
 
-// pollTrace reruns an append-only trace every interval until ctx ends. It
-// returns nil on cancellation and the first other error.
 func pollTrace(ctx context.Context, pipeline *runtime.Pipeline, format, path string, interval time.Duration) error {
 	for {
 		if _, err := runTrace(ctx, pipeline, format, path); err != nil && !errors.Is(err, context.Canceled) {
@@ -197,4 +186,15 @@ func pollTrace(ctx context.Context, pipeline *runtime.Pipeline, format, path str
 		case <-timer.C:
 		}
 	}
+}
+
+func openOrCreateRuntimeDatabase(ctx context.Context, dbPath string) (*storage.DB, error) {
+	if _, err := os.Stat(dbPath); errors.Is(err, os.ErrNotExist) {
+		slog.Warn("creating a new runtime database", "db", dbPath)
+	}
+	db, err := storage.Open(ctx, dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open runtime database: %w", err)
+	}
+	return db, nil
 }

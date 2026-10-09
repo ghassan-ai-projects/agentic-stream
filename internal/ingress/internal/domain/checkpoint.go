@@ -5,29 +5,36 @@ import (
 	"fmt"
 )
 
-// Checkpoint records how far a trace connector has read.
 type Checkpoint struct {
-	Version  int `json:"version"`
-	LastLine int `json:"last_line"`
+	Version  int   `json:"version"`
+	LastLine int   `json:"last_line"`
+	Offset   int64 `json:"offset,omitempty"`
 }
 
-// CheckpointVersion is the only checkpoint layout in use.
 const CheckpointVersion = 1
 
-// EncodeCheckpoint serializes the position after lastLine lines.
 func EncodeCheckpoint(lastLine int) ([]byte, error) {
-	blob, err := json.Marshal(Checkpoint{Version: CheckpointVersion, LastLine: lastLine})
+	return EncodePosition(Checkpoint{LastLine: lastLine})
+}
+
+func EncodePosition(position Checkpoint) ([]byte, error) {
+	position.Version = CheckpointVersion
+	blob, err := json.Marshal(position)
 	if err != nil {
 		return nil, fmt.Errorf("marshal checkpoint: %w", err)
 	}
 	return blob, nil
 }
 
-// DecodeCheckpoint reads the last line a stored checkpoint covers.
 func DecodeCheckpoint(blob []byte) (int, error) {
+	position, err := DecodePosition(blob)
+	return position.LastLine, err
+}
+
+func DecodePosition(blob []byte) (Checkpoint, error) {
 	var checkpoint Checkpoint
 	if err := json.Unmarshal(blob, &checkpoint); err != nil {
-		return 0, fmt.Errorf("unmarshal checkpoint: %w", err)
+		return Checkpoint{}, fmt.Errorf("unmarshal checkpoint: %w", err)
 	}
-	return checkpoint.LastLine, nil
+	return checkpoint, nil
 }

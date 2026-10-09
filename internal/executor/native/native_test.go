@@ -2,6 +2,7 @@ package native_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/executorconformance"
@@ -29,7 +30,7 @@ func TestNativeExecutorConformsToTheExecutorPort(t *testing.T) {
 
 func TestFacadeBuildsTheScopedEvidenceTool(t *testing.T) {
 	t.Parallel()
-	tool := native.NewSQLiteEvidenceTool(nil, "evidence.get", "tenant", "entity")
+	tool := native.NewSQLiteEvidenceTool(nil, "evidence.get", "tenant", "entity", time.Time{})
 	if tool.Name() != "evidence.get" {
 		t.Fatalf("Name() = %q, want the configured tool name", tool.Name())
 	}

@@ -36,13 +36,15 @@ bearing degradation and overheating would need separate domain definitions;
 changing a spec also creates a fresh deployment namespace. These examples
 explain modeling choices, not additional committed motor fixtures.
 
-**Current occurrence boundary:** the engine derives Situation and occurrence
-identities from the same stable combination and retains the current record. It
-does not create a fresh occurrence automatically after resolution. The
-occurrence field does not yet support a complete history of separate, recurring
-incidents. Source: [`newSituation` and
-`openOccurrence`](../../internal/situations/) and [deployment
-versioning](../../internal/spec/internal/store/deployments.go).
+**Occurrences:** the engine derives the Situation identity from a stable
+combination of deployment, tenant, partition, Situation type and entity. When a
+spec declares a transition into `resolved`, the Situation closes only through
+that transition, so its minimum duration applies; otherwise `closeWhen` closes
+it. Once resolved, the Situation reopens as a fresh occurrence (same Situation
+ID, a new occurrence ID, back in the initial phase) when `openWhen` holds again
+and at least `reopenCooldown` of event time has passed since resolution.
+Source: [lifecycle](../../internal/situations/internal/domain/evaluate.go) and
+[deployment versioning](../../internal/spec/internal/store/deployments.go).
 
 ## Evidence becomes features, then facts
 
@@ -106,8 +108,9 @@ The current state can change. It contains the facts, evidence, and condition
 timers needed for the next evaluation. A published **snapshot** is the stable view supplied
 to readers and reasoning. Internal reducer values and timers are stored separately from the snapshot.
 
-The current engine publishes when the occurrence opens, a lifecycle transition
-changes phase, or completeness changes after publication. A fact update alone
+The current engine publishes at most one version per feature: when the
+occurrence opens or reopens, a lifecycle transition changes phase, or the
+Situation becomes or stops being uncertain or takes a late correction. A fact update alone
 does not necessarily publish a new version. The next publication includes
 the facts held at that time; a snapshot is not a live view of every incoming reading.
 Source: [publication gates](../../internal/situations/internal/domain/evaluate.go)

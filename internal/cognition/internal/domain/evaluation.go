@@ -14,7 +14,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-// Evaluation is the deterministic result of evaluating one trigger.
 type Evaluation struct {
 	TriggerID        string
 	TriggerName      string
@@ -30,7 +29,6 @@ type Evaluation struct {
 	EvaluatedAt      time.Time
 }
 
-// Admitted reports whether this evaluation may create queue work.
 func (e Evaluation) Admitted() bool { return e.Outcome == "admitted" }
 
 type Rules struct {
@@ -68,8 +66,6 @@ func (e *Rules) Evaluate(input EvaluationInput) (Evaluation, error) {
 	return eval, nil
 }
 
-// newEvaluation starts an ignored evaluation of the trigger against the
-// version, stamped with the current time.
 func (e *Rules) newEvaluation(input EvaluationInput) Evaluation {
 	tr, current := input.Trigger, input.Current
 	evalAt := input.Now.UTC()
@@ -98,23 +94,22 @@ func (e *Rules) triggerInputs(current situations.Version, previous *situations.V
 	return triggerInputs{
 		features: e.buildFeatures(current), situation: e.buildSituation(current),
 		delta: e.buildDelta(current, previous), eventHorizon: current.EventHorizon, watermark: current.Watermark,
+		completeness: current.Completeness,
 	}
 }
 
-// triggerInputs are the CEL inputs one trigger is evaluated over.
 type triggerInputs struct {
 	features, situation, delta map[string]any
 	eventHorizon, watermark    time.Time
+	completeness               string
 }
 
-// triggerVerdict is the outcome of one trigger evaluation and its reason.
 type triggerVerdict struct {
 	score    float64
 	reason   string
 	admitted bool
 }
 
-// EvaluationInput supplies the immutable versions, policy trigger and trusted time.
 type EvaluationInput struct {
 	DeploymentID string
 	Trigger      spec.Trigger

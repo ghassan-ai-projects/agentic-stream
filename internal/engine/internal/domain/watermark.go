@@ -10,11 +10,9 @@ import (
 type Checkpoint struct {
 	LastPosition int64
 	Watermark    time.Time
+	Sources      map[string]SourceClock
 }
 
-// RequiresSchemaValidation reports whether every declared input names a schema,
-// which makes event schema validation mandatory. An input without a schema, or
-// no inputs at all, leaves it optional.
 func RequiresSchemaValidation(inputs []spec.Input) bool {
 	if len(inputs) == 0 {
 		return false
@@ -27,8 +25,6 @@ func RequiresSchemaValidation(inputs []spec.Input) bool {
 	return true
 }
 
-// WatermarkFor derives a record's watermark as its event time minus the
-// maximum out-of-orderness, never moving before the previous watermark.
 func WatermarkFor(eventTime time.Time, maxOutOfOrderness string, previous time.Time) (time.Time, error) {
 	maxLag, err := spec.ParseDuration(maxOutOfOrderness)
 	if err != nil {
@@ -41,7 +37,6 @@ func WatermarkFor(eventTime time.Time, maxOutOfOrderness string, previous time.T
 	return latest(watermark, previous), nil
 }
 
-// latest keeps the watermark monotonic: it never moves before previous.
 func latest(watermark, previous time.Time) time.Time {
 	if watermark.Before(previous) {
 		return previous
@@ -49,8 +44,6 @@ func latest(watermark, previous time.Time) time.Time {
 	return watermark
 }
 
-// TimerWatermark is the watermark due timers fire under: the partition's
-// checkpoint watermark, or now before the first record.
 func TimerWatermark(checkpointWatermark, now time.Time) time.Time {
 	if checkpointWatermark.IsZero() {
 		return now

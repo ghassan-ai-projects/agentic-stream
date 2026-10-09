@@ -12,7 +12,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// RecordLineage stores the evidence references once per lineage ID.
 func (tx *Tx) RecordLineage(ctx context.Context, lineage domain.Lineage, now time.Time) error {
 	if _, err := tx.tx.ExecContext(ctx, `
 		INSERT INTO lineage_sets (lineage_id, sha256, reference_count, references_json, created_at)
@@ -25,8 +24,10 @@ func (tx *Tx) RecordLineage(ctx context.Context, lineage domain.Lineage, now tim
 	return nil
 }
 
-// UpsertSituation writes the Situation's current row for a published version.
 func (tx *Tx) UpsertSituation(ctx context.Context, partitionID int, version situations.Version, write domain.SituationWrite, now time.Time) error {
+	if _, err := tx.tx.ExecContext(ctx, "DELETE FROM unopened_situations WHERE situation_id = ?", version.SituationID); err != nil {
+		return fmt.Errorf("forget unopened situation: %w", err)
+	}
 	at := kernel.FormatTime(now)
 	if _, err := tx.tx.ExecContext(ctx, upsertSituationSQL,
 		version.SituationID, tx.tenantID, tx.deploymentID, version.Type, version.EntityType,
@@ -48,6 +49,8 @@ const upsertSituationSQL = `
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(situation_id)
 		DO UPDATE SET current_version = excluded.current_version,
+		              occurrence_id = excluded.occurrence_id,
+		              first_event_time = excluded.first_event_time,
 		              phase = excluded.phase,
 		              status = excluded.status,
 		              latest_event_time = excluded.latest_event_time,
@@ -56,11 +59,10 @@ const upsertSituationSQL = `
 		              state_json = excluded.state_json,
 		              state_sha256 = excluded.state_sha256`
 
-// InsertSituationVersion appends the immutable version row, citing its lineage.
 func (tx *Tx) InsertSituationVersion(ctx context.Context, version situations.Version, lineageID string, now time.Time) error {
 	snapshotDigest, err := domain.DecodeSnapshotDigest(version.SnapshotSHA256)
 	if err != nil {
-		return err
+		return fmt.Errorf("snapshot digest of %s v%d: %w", version.SituationID, version.Version, err)
 	}
 	if _, err := tx.tx.ExecContext(ctx, insertSituationVersionSQL,
 		version.SituationID, version.Version, previousVersion(version), version.Phase, version.PreviousPhase,
@@ -81,16 +83,11 @@ const insertSituationVersionSQL = `
 			valid_from, snapshot_json, snapshot_sha256, lineage_id, traceparent, tracestate, created_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-// previousVersion is NULL for a first version.
 func previousVersion(version situations.Version) sql.NullInt64 {
 	previous, ok := domain.PreviousVersion(version)
 	return sql.NullInt64{Int64: int64(previous), Valid: ok}
 }
 
-// SaveSituationRuntimeState persists the in-memory state of a Situation at its
-// current version. A zero-row update means the persisted current_version
-// diverged from the in-memory version that produced this state, which would
-// silently leave state_json stale.
 func (tx *Tx) SaveSituationRuntimeState(ctx context.Context, situation situations.Situation, stateJSON, stateDigest []byte, now time.Time) error {
 	result, err := tx.tx.ExecContext(ctx, `
 		UPDATE situations
@@ -115,3 +112,31 @@ func requireCurrentVersion(result sql.Result, situation situations.Situation) er
 	}
 	return nil
 }
+
+func (tx *Tx) SaveUnopenedSituationState(ctx context.Context, situation situations.Situation, stateJSON, stateDigest []byte, now time.Time) error {
+	if _, err := tx.tx.ExecContext(ctx, upsertUnopenedSituationSQL,
+		situation.SituationID, tx.tenantID, tx.deploymentID, situation.Type, situation.EntityType, situation.EntityID,
+		situation.PartitionID, situation.OccurrenceID, situation.Phase, situation.Severity, situation.Confidence,
+		situation.Completeness, kernel.FormatTime(situation.FirstEventTime), kernel.FormatTime(situation.LatestEventTime),
+		storage.NullIfEmpty(situation.Traceparent), storage.NullIfEmpty(situation.Tracestate),
+		stateJSON, stateDigest, kernel.FormatTime(now)); err != nil {
+		return fmt.Errorf("save unopened situation state: %w", err)
+	}
+	return nil
+}
+
+const upsertUnopenedSituationSQL = `
+		INSERT INTO unopened_situations (
+			situation_id, tenant_id, deployment_id, situation_type, entity_type, entity_id,
+			partition_id, occurrence_id, phase, severity, confidence,
+			completeness, first_event_time, latest_event_time,
+			traceparent, tracestate, state_json, state_sha256, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(situation_id) DO UPDATE SET
+			completeness = excluded.completeness,
+			latest_event_time = excluded.latest_event_time,
+			traceparent = excluded.traceparent,
+			tracestate = excluded.tracestate,
+			state_json = excluded.state_json,
+			state_sha256 = excluded.state_sha256,
+			updated_at = excluded.updated_at`

@@ -11,12 +11,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
-// TimerPartitions lists the partitions that have pending processing-time timers.
-func (s Store) TimerPartitions(ctx context.Context) ([]int, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT DISTINCT partition_id FROM timers
-		WHERE deployment_id = ? AND tenant_id = ? AND timer_kind = 'processing_time' AND status = 'pending'
-		ORDER BY partition_id`, s.deploymentID, s.tenantID)
+func (s Store) DueTimerPartitions(ctx context.Context, now time.Time) ([]int, error) {
+	rows, err := s.db.QueryContext(ctx, dueTimerPartitionsSQL, s.deploymentID, s.tenantID, kernel.FormatTime(now))
 	if err != nil {
 		return nil, fmt.Errorf("query timer partitions: %w", err)
 	}
@@ -39,8 +35,6 @@ func scanTimerPartitions(rows *sql.Rows) ([]int, error) {
 	return partitions, nil
 }
 
-// LoadDueTimers reads the partition's pending processing-time timers due at now,
-// in due-time then ID order.
 func (tx *Tx) LoadDueTimers(ctx context.Context, partitionID int, now time.Time) ([]domain.DueTimer, error) {
 	rows, err := tx.tx.QueryContext(ctx, `
 		SELECT timer_id, operator_id, state_key, due_at, payload_json FROM timers
@@ -70,7 +64,6 @@ func scanDueTimers(rows *sql.Rows) ([]domain.DueTimer, error) {
 	return timers, nil
 }
 
-// scanDueTimer reads one timer and the event its payload expects to be last.
 func scanDueTimer(rows *sql.Rows) (domain.DueTimer, error) {
 	var timer domain.DueTimer
 	var payload []byte
@@ -79,13 +72,12 @@ func scanDueTimer(rows *sql.Rows) (domain.DueTimer, error) {
 	}
 	expected, err := domain.ParseTimerPayload(timer.ID, payload)
 	if err != nil {
-		return domain.DueTimer{}, err //nolint:wrapcheck // The domain codec names the failed timer.
+		return domain.DueTimer{}, fmt.Errorf("decode due timer %s: %w", timer.ID, err)
 	}
 	timer.ExpectedEventID = expected
 	return timer, nil
 }
 
-// AcknowledgeTimers marks the given pending timers fired at now.
 func (tx *Tx) AcknowledgeTimers(ctx context.Context, timers []domain.DueTimer, now time.Time) error {
 	placeholders := strings.TrimRight(strings.Repeat("?,", len(timers)), ",")
 	args := make([]any, 0, len(timers)+2)
@@ -103,14 +95,8 @@ func (tx *Tx) AcknowledgeTimers(ctx context.Context, timers []domain.DueTimer, n
 	return nil
 }
 
-// ArmHeartbeatTimer replaces the pending heartbeat timer of an operator state
-// key: it cancels the prior one, then arms the new one, reviving a withdrawn
-// timer at the same due time but never a fired one.
 func (tx *Tx) ArmHeartbeatTimer(ctx context.Context, partitionID int, timer domain.HeartbeatTimer, now time.Time) error {
-	if _, err := tx.tx.ExecContext(ctx, `
-		UPDATE timers SET status = 'cancelled'
-		WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?
-		  AND operator_id = ? AND state_key = ? AND timer_kind = 'processing_time' AND status = 'pending'`,
+	if _, err := tx.tx.ExecContext(ctx, cancelPendingHeartbeatSQL,
 		tx.deploymentID, tx.tenantID, partitionID, timer.OperatorID, timer.StateKey); err != nil {
 		return fmt.Errorf("cancel prior heartbeat timer: %w", err)
 	}
@@ -132,3 +118,14 @@ func (tx *Tx) insertHeartbeatTimer(ctx context.Context, partitionID int, timer d
 	}
 	return nil
 }
+
+const dueTimerPartitionsSQL = `
+		SELECT DISTINCT partition_id FROM timers
+		WHERE deployment_id = ? AND tenant_id = ? AND timer_kind = 'processing_time' AND status = 'pending'
+		  AND due_at <= ?
+		ORDER BY partition_id`
+
+const cancelPendingHeartbeatSQL = `
+		UPDATE timers SET status = 'cancelled'
+		WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?
+		  AND operator_id = ? AND state_key = ? AND timer_kind = 'processing_time' AND status = 'pending'`

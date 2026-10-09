@@ -23,12 +23,19 @@ const selectCurrentSituationsSQL = `
 		JOIN situation_versions v
 		  ON v.situation_id = s.situation_id AND v.version = s.current_version
 		WHERE s.deployment_id = ? AND s.tenant_id = ?
-		ORDER BY s.partition_id, s.entity_type, s.entity_id`
+		UNION ALL
+		SELECT situation_id, situation_type, entity_type, entity_id, partition_id,
+		       occurrence_id, 0, phase,
+		       first_event_time, latest_event_time, updated_at,
+		       1, state_json, state_sha256,
+		       NULL, severity, confidence,
+		       completeness, traceparent, tracestate
+		FROM unopened_situations
+		WHERE deployment_id = ? AND tenant_id = ?
+		ORDER BY 5, 3, 4`
 
-// EachCurrentSituation streams every current Situation of the deployment, in
-// partition, entity type and entity order, to restore.
 func (s Store) EachCurrentSituation(ctx context.Context, restore func(domain.StoredSituation) error) error {
-	rows, err := s.db.QueryContext(ctx, selectCurrentSituationsSQL, s.deploymentID, s.tenantID)
+	rows, err := s.db.QueryContext(ctx, selectCurrentSituationsSQL, s.deploymentID, s.tenantID, s.deploymentID, s.tenantID)
 	if err != nil {
 		return fmt.Errorf("query current situations: %w", err)
 	}

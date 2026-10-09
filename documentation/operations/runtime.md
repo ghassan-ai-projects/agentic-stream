@@ -66,6 +66,36 @@ the killed policy epoch. Treat these as operator actions and audit their use.
 The design archive lists broader CRUD and inspection HTTP APIs. The current
 handler exposes only the routes in the [HTTP reference](../reference/http-api.md).
 
+## Effects and ingestion
+
+In `serve --live-socket`, approved commands are dispatched by the pipeline's
+maintenance loop, which a batch wakes as soon as it approves a command, so a
+slow device or gateway never holds up ingestion. `run-live` and `serve
+--trace` still dispatch inside each batch and run episodes inline, so a slow
+effector or model call delays the next batch there. Live episodes run one at a
+time beside ingestion; reasoning throughput is bounded by episode duration.
+
+## Metrics
+
+`GET /metrics` serves Prometheus text sorted by name, with a `# TYPE` line per
+metric and no tenant or event labels. Counters (`*_total`) count pipeline work,
+batch failures, stale decisions, device frame errors, unknown outcomes,
+verification-pending effects, lease expiries, safe stops, target-claim
+rejections and live-socket lines. Gauges read at scrape time answer "are we
+keeping up?":
+
+| Gauge | Meaning | Alert when |
+| --- | --- | --- |
+| `agentic_stream_ingest_lag_events` | logged events the engine has not applied | it keeps growing |
+| `agentic_stream_scheduler_items_pending` | reasoning opportunities waiting for admission | it keeps growing |
+| `agentic_stream_outbox_open` | approved commands not yet delivered | it keeps growing |
+| `agentic_stream_verifications_awaiting` / `_refuted` | effects awaiting or failing independent verification | refuted rises |
+| `agentic_stream_apply_failures` | events set aside because applying them fails every time | above zero |
+| `agentic_stream_database_bytes` | SQLite file size | near the disk budget |
+
+The `dispatch_decision_p50/p95/p99_ns` gauges cover the most recent 1,024
+episodes.
+
 ## Emergency stop
 
 To stop every effect immediately, while the runtime keeps ingesting and

@@ -93,3 +93,26 @@ func TestAnIncompleteLifecycleRequestIsRefusedBeforeAnythingIsStored(t *testing.
 		t.Fatalf("stored notifications = %d, %v; want none", stored, err)
 	}
 }
+
+func TestPublishingAnEventThatLostTheRaceReturnsTheWinnersCursorAndKeepsCursorsGapless(t *testing.T) {
+	t.Parallel()
+	_, persistence, _ := openService(t)
+	appendAll(t, persistence, "winner")
+	sealed, err := domain.Seal(event("winner"), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = persistence.WithTx(t.Context(), func(tx *store.Tx) error {
+		cursor, err := publish(t.Context(), tx, sealed, now)
+		if err != nil || cursor != 1 {
+			t.Fatalf("raced publish = cursor %d err=%v, want the winner's cursor 1", cursor, err)
+		}
+		if next, _ := tx.AllocateCursor(t.Context(), "t"); next != 2 {
+			t.Fatalf("next cursor = %d, want 2: the raced allocation must be given back", next)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

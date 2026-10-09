@@ -149,3 +149,28 @@ func TestOnlyAnAdmittedEvaluationMayCreateQueueWork(t *testing.T) {
 		}
 	}
 }
+
+func TestATriggerAdmitsOnlyVersionsAsCompleteAsItRequires(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		required, have, outcome, reason string
+	}{
+		{"any", "uncertain", "admitted", "meets threshold"},
+		{"", "provisional", "admitted", "meets threshold"},
+		{"on_time", "provisional", "ignored", "completeness provisional does not meet on_time"},
+		{"on_time", "uncertain", "ignored", "completeness uncertain does not meet on_time"},
+		{"on_time", "on_time", "admitted", "meets threshold"},
+		{"on_time", "final_by_policy", "admitted", "meets threshold"},
+		{"final_by_policy", "on_time", "ignored", "completeness on_time does not meet final_by_policy"},
+		{"final_by_policy", "final_by_policy", "admitted", "meets threshold"},
+	} {
+		t.Run(tc.required+" over "+tc.have, func(t *testing.T) {
+			t.Parallel()
+			trigger := spec.Trigger{Name: "test", When: "true", Score: "5", Threshold: 5, Lane: "fast", Completeness: tc.required}
+			eval := evaluate(t, newRules(t, trigger), trigger, situations.Version{SituationID: "s1", Version: 1, Completeness: tc.have})
+			if eval.Outcome != tc.outcome || len(eval.Reasons) != 1 || !strings.Contains(eval.Reasons[0], tc.reason) {
+				t.Fatalf("evaluation = %s %v, want %s naming %q", eval.Outcome, eval.Reasons, tc.outcome, tc.reason)
+			}
+		})
+	}
+}

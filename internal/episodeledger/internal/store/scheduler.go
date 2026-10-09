@@ -8,31 +8,13 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// UpsertSchedulerItem inserts a queue item or refreshes the item already
-// queued for the same trigger. IsSchedulerItemIDConflict classifies an id clash.
 func (t *Tx) UpsertSchedulerItem(ctx context.Context, item domain.SchedulerItem, tenantID string, dedupeKey []byte, now time.Time) error {
-	return t.writeSchedulerItem(ctx, upsertSchedulerItemSQL, "upsert scheduler item", item, tenantID, dedupeKey, now)
-}
-
-// InsertSchedulerItemIfAbsent inserts the item unless its id already exists,
-// keeping the existing item's identity.
-func (t *Tx) InsertSchedulerItemIfAbsent(ctx context.Context, item domain.SchedulerItem, tenantID string, dedupeKey []byte, now time.Time) error {
-	return t.writeSchedulerItem(ctx, insertSchedulerItemSQL, "ignore scheduler item ID conflict", item, tenantID, dedupeKey, now)
-}
-
-func (t *Tx) writeSchedulerItem(ctx context.Context, statement, operation string, item domain.SchedulerItem, tenantID string, dedupeKey []byte, now time.Time) error {
-	if _, err := t.q.ExecContext(ctx, statement, itemValues(item, tenantID, dedupeKey, now)...); err != nil {
-		return fmt.Errorf("%s: %w", operation, err)
+	if _, err := t.q.ExecContext(ctx, upsertSchedulerItemSQL, itemValues(item, tenantID, dedupeKey, now)...); err != nil {
+		return fmt.Errorf("upsert scheduler item: %w", err)
 	}
 	return nil
-}
-
-// IsSchedulerItemIDConflict reports whether err is a scheduler item id uniqueness failure.
-func IsSchedulerItemIDConflict(err error) bool {
-	return storage.IsUniqueViolation(err, "scheduler_items.scheduler_item_id")
 }
 
 func itemValues(item domain.SchedulerItem, tenantID string, dedupeKey []byte, now time.Time) []any {
@@ -47,15 +29,6 @@ func itemValues(item domain.SchedulerItem, tenantID string, dedupeKey []byte, no
 	}
 }
 
-const insertSchedulerItemSQL = `
-		INSERT INTO scheduler_items (
-			scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version,
-			kind, lane, priority, status, dedupe_key, not_before, expires_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(scheduler_item_id) DO NOTHING`
-
-// upsertSchedulerItemSQL inserts a queue item or refreshes the item already
-// queued for the same trigger.
 const upsertSchedulerItemSQL = `
 		INSERT INTO scheduler_items (
 			scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version,

@@ -61,7 +61,7 @@ func TestCurrentStateIsACopyWithItsCanonicalStateAndDigest(t *testing.T) {
 		t.Fatalf("state blob/digest differ from the published version: %s %s vs %s %s", blob, digest, published.StateJSON, published.StateSHA256)
 	}
 	state.Facts["facts.vibration_rms"] = 0.0
-	state.Evidence["tampered"] = struct{}{}
+	state.Evidence[0] = "tampered"
 	state.ConditionStart["x"] = base
 	_, again, againDigest, _, _ := engine.CurrentState(0, "motor", "motor-17")
 	if !bytes.Equal(again, blob) || againDigest != digest {

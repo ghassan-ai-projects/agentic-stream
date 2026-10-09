@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -56,8 +57,14 @@ func TestTimerFeatureKeysFallBackToTheEntity(t *testing.T) {
 	if len(MatchTimerFeatures(byEntity, []operators.Feature{feature}, map[string]struct{}{})) != 1 {
 		t.Fatal("a feature without a state key must match by entity")
 	}
-	if EntityKey(operators.Feature{EntityType: "motor", EntityID: "m1"}) != "motor\x00m1" {
-		t.Fatal("entity key changed")
+}
+
+func TestDistinctEntitiesKeepFirstSeenOrder(t *testing.T) {
+	t.Parallel()
+	features := []operators.Feature{{EntityType: "motor", EntityID: "m2"}, {EntityType: "motor", EntityID: "m1"}, {EntityType: "motor", EntityID: "m2"}, {EntityType: "pump", EntityID: "m1"}}
+	want := []EntityRef{{Type: "motor", ID: "m2"}, {Type: "motor", ID: "m1"}, {Type: "pump", ID: "m1"}}
+	if got := DistinctEntities(features); !slices.Equal(got, want) {
+		t.Fatalf("entities = %v, want %v", got, want)
 	}
 }
 

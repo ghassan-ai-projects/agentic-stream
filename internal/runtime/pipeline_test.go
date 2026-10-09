@@ -2,8 +2,10 @@ package runtime_test
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
@@ -70,15 +72,15 @@ func TestPipelineFacadeDelegatesEveryOperationToTheUseCases(t *testing.T) {
 	if report, err := pipeline.RunJSONL(t.Context(), exampleTrace); err != nil || report.EventsIngested != 1 || report.EventsProcessed != 1 {
 		t.Fatalf("RunJSONL = %+v, %v; want one event ingested and processed", report, err)
 	}
-	if _, err := pipeline.RunSimulatorJSONL(t.Context(), filepath.Join(t.TempDir(), "missing.jsonl")); err == nil {
-		t.Fatal("RunSimulatorJSONL accepted a missing trace")
+	if _, err := pipeline.RunSimulatorJSONL(t.Context(), filepath.Join(t.TempDir(), "missing.jsonl")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("RunSimulatorJSONL over a missing trace = %v, want not exist", err)
 	}
 	occupied := filepath.Join(workerfake.SocketDir(t), "occupied")
 	if err := os.WriteFile(occupied, []byte("not a socket"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := pipeline.RunLiveSocket(t.Context(), occupied); err == nil {
-		t.Fatal("RunLiveSocket replaced an existing file")
+	if err := pipeline.RunLiveSocket(t.Context(), occupied); err == nil || !strings.Contains(err.Error(), "refusing unsafe existing live socket path") {
+		t.Fatalf("RunLiveSocket over an existing file = %v, want it refused", err)
 	}
 	if pipeline.AdvanceEvery(t.Context(), 0) == nil || pipeline.RunEpisodesEvery(t.Context(), 0) == nil {
 		t.Fatal("a schedule without a positive interval was accepted")

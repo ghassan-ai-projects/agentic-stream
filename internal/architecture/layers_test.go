@@ -186,3 +186,46 @@ func sourceSelectors(parsed *ast.File) []string {
 	})
 	return names
 }
+
+// wallClockReaders lists the application and store files allowed to read the
+// wall clock, each with why the reading never feeds a decision, a digest or a
+// replayed outcome.
+var wallClockReaders = map[string]string{
+	"internal/spec/internal/store/deployments.go": "the deployment record's registration time is audit metadata only",
+	"internal/storage/internal/store/storage.go":  "a migration's applied_at is audit metadata only",
+}
+
+func TestApplicationAndStoreLayersTakeTimeFromTheInjectedClock(t *testing.T) {
+	t.Parallel()
+	seen := make(map[string]bool)
+	for _, file := range loadRepository(t).production {
+		layer := path.Base(file.dir)
+		if layer != "app" && layer != "store" || !callsTimeNow(file.syntax) {
+			continue
+		}
+		seen[file.rel] = true
+		if _, allowed := wallClockReaders[file.rel]; !allowed {
+			t.Errorf("%s: %s layer reads time.Now; take time from the injected sources.Clock", file.rel, layer)
+		}
+	}
+	for rel := range wallClockReaders {
+		if !seen[rel] {
+			t.Errorf("wallClockReaders lists %s, which no longer reads the wall clock; remove the entry", rel)
+		}
+	}
+}
+
+func callsTimeNow(parsed *ast.File) bool {
+	found := false
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok {
+			return !found
+		}
+		if ident, isIdent := selector.X.(*ast.Ident); isIdent && ident.Name == "time" && selector.Sel.Name == "Now" {
+			found = true
+		}
+		return !found
+	})
+	return found
+}

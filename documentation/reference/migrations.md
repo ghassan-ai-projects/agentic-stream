@@ -1,7 +1,7 @@
 # Migration reference
 
 The runtime applies numbered SQLite migrations from
-[`migrations/`](../../migrations/). The current tree contains 31 migrations.
+[`migrations/`](../../migrations/). The current tree contains 37 migrations.
 
 ## Migration families
 
@@ -11,11 +11,23 @@ notifications, evidence ledgers, runtime ownership, quarantine/redrive,
 cost/interlock controls, mode/shadow state, epoch control, calibration, and
 episode rebinding, paired shadow comparisons, device authority,
 reconciliation, and soak evidence, the device-reconciliation column names,
-each Situation's latest material version, and the removal of unused tables.
+each Situation's latest material version, the removal of unused tables, and
+indexes for the per-event hot path, event-time dispositions with per-source
+partition clocks, durable state for unopened Situations, and set-aside apply failures.
 
 The current head is
-[`033_drop_unused_tables.sql`](../../migrations/033_drop_unused_tables.sql),
-which drops `calibration_artifacts`, `replay_jobs` and `episode_events`, none of
+[`037_apply_failures.sql`](../../migrations/037_apply_failures.sql), which
+records events set aside because applying them fails every time;
+[`036_unopened_situations.sql`](../../migrations/036_unopened_situations.sql)
+keeps the runtime state of Situations that have not opened yet;
+[`035_event_time_dispositions.sql`](../../migrations/035_event_time_dispositions.sql)
+records every late or clock-skewed event's disposition and adds per-source
+clocks to partition checkpoints;
+[`034_hot_path_indexes.sql`](../../migrations/034_hot_path_indexes.sql)
+indexes the queries the runtime issues on every event or batch (the event-log
+head and global page read, pending timers, pending intents and watch expiry);
+[`033_drop_unused_tables.sql`](../../migrations/033_drop_unused_tables.sql)
+drops `calibration_artifacts`, `replay_jobs` and `episode_events`, none of
 which anything read or wrote;
 [`032_situation_material_version.sql`](../../migrations/032_situation_material_version.sql)
 records the latest material Situation version that intent freshness checks

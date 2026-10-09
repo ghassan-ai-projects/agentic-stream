@@ -68,3 +68,17 @@ func TestLatencySnapshotReportsNanosecondsAndClampsNegativeDurations(t *testing.
 		})
 	}
 }
+
+func TestLatencyPercentilesCoverOnlyTheMostRecentDurations(t *testing.T) {
+	t.Parallel()
+	runtime := NewRuntime(time.Unix(1, 0), nil)
+	for range MaxRecentDurations {
+		runtime.ObserveDuration(time.Hour)
+	}
+	for range MaxRecentDurations {
+		runtime.ObserveDuration(time.Millisecond)
+	}
+	if got := runtime.Percentile(99); got != time.Millisecond {
+		t.Fatalf("p99 = %s, want the recent millisecond durations only", got)
+	}
+}

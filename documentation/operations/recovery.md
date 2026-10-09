@@ -68,13 +68,18 @@ them. Once the provider's evidence is in hand, close the command with
 
 ## 6. Restore and backup
 
-**Deployment responsibility, not a packaged command:** stop writes or use the
-SQLite online backup API from the deployment wrapper; never copy an active WAL
-database with ordinary file-copy tools. In an isolated restore directory, open
-the backup read-only, run `PRAGMA integrity_check`, compare the migration
-version and highest event/notification cursors with the source, then restore
-only while the runtime is stopped. Start the runtime and verify readiness before
-resuming ingress. The repository does not provide a backup or restore CLI.
+Back up with `agentic-stream maintenance backup --db <runtime.db> --output
+<new file>`: it writes a consistent copy with SQLite `VACUUM INTO` and is safe
+while `serve` runs. Never copy an active WAL database with ordinary file-copy
+tools. To restore, in an isolated directory open the backup, run `PRAGMA
+integrity_check`, compare the migration version and highest
+event/notification cursors with the source, then put it in place only while
+the runtime is stopped. Start the runtime and verify readiness before resuming
+ingress. There is no restore command.
+
+Disk use grows with every event. Prune bookkeeping nothing references with
+`agentic-stream maintenance prune --db <runtime.db> --older-than 720h --vacuum`
+while the runtime is stopped; see the [CLI reference](../reference/cli.md).
 
 ## 7. Notification recovery
 

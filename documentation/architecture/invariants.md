@@ -69,19 +69,22 @@ detail is in the test audit.
 ### Invariant 2: Event time, watermark, completeness, and late-data status are explicit.
 
 - `internal/eventlog`: [`TestLateArrivingEventKeepsItsEventTimeAndTakesTheNextLogPosition`](../../internal/eventlog/internal/store/read_test.go), [`TestOutOfOrderEventsAreLoggedInArrivalOrderWithTheirOwnEventTime`](../../internal/eventlog/internal/app/append_test.go)
-- `internal/engine`: [`TestWatermarkTrailsEventTimeAndNeverMovesBackwards`](../../internal/engine/internal/domain/watermark_test.go), [`TestLateEventIsAppliedButNeverPullsThePartitionWatermarkBack`](../../internal/engine/internal/app/run_test.go), [`TestMissingHeartbeatMakesTheSituationUncertainUntilTheHeartbeatReturns`](../../internal/engine/internal/app/timers_test.go)
+- `internal/engine`: [`TestWatermarkTrailsEventTimeAndNeverMovesBackwards`](../../internal/engine/internal/domain/watermark_test.go), [`TestLateEventIsAppliedButNeverPullsThePartitionWatermarkBack`](../../internal/engine/internal/app/run_test.go), [`TestMissingHeartbeatMakesTheSituationUncertainUntilTheHeartbeatReturns`](../../internal/engine/internal/app/timers_test.go), [`TestLateEventsAreClassifiedByPolicyAndAllowedLateness`](../../internal/engine/internal/domain/lateness_test.go), [`TestALateEventChangesStateOnlyWhenItsPolicyCorrectsWithinAllowedLateness`](../../internal/engine/internal/app/lateness_test.go)
 - `internal/operators`: [`TestLatestAndMaximumFollowEventTimeThenEventIDNotArrivalOrder`](../../internal/operators/internal/domain/window_test.go), [`TestStaleBootCannotMutateTheActiveWindow`](../../internal/operators/internal/domain/boot_test.go), [`TestInvalidHeartbeatDoesNotRefreshLiveness`](../../internal/operators/internal/domain/heartbeat_test.go)
 - `internal/ingress`: [`TestJSONLReplayAppendsEventsAndResumesFromItsCheckpoint`](../../internal/ingress/internal/app/jsonl_test.go)
 
 ### Invariant 3: A Situation version is immutable after publication.
 
 - `internal/situations`: [`TestPublishedSituationVersionNeverChangesAfterLaterFeatures`](../../internal/situations/internal/domain/version_immutability_test.go), [`TestMutatingAPublishedVersionDoesNotReachTheEngine`](../../internal/situations/internal/domain/version_immutability_test.go), [`TestVersionNumbersOnlyGrowAndEachStepNamesItsPredecessor`](../../internal/situations/internal/domain/version_immutability_test.go), [`TestMaterializationKeepsCanonicalEvidenceAndPrivateState`](../../internal/situations/internal/domain/materialize_test.go), [`TestCurrentStateIsACopyWithItsCanonicalStateAndDigest`](../../internal/situations/internal/domain/restore_test.go)
+- `internal/architecture`: [`TestAppendOnlyTablesAreNeverRewritten`](../../internal/architecture/ownership_test.go)
 - `internal/engine`: [`TestAPublishedSituationVersionIsNeverRewritten`](../../internal/engine/internal/store/situations_test.go), [`TestPublishedVersionsAreReadableByNumberAndAsTheCurrentOne`](../../internal/engine/internal/app/situation_reads_test.go)
 
 ### Invariant 4: Deterministic state changes are serial per virtual partition.
 
 - `internal/contractsv1`: [`TestPartitionIDsAreFrozenFNV1aOfTenantNulKey`](../../internal/contractsv1/internal/domain/envelope_test.go)
 - `internal/engine`: [`TestConcurrentRunsApplyEachEventExactlyOnce`](../../internal/engine/internal/app/run_test.go), [`TestTheSameEvidenceYieldsIdenticalSituationsOnEveryRun`](../../internal/engine/internal/app/run_test.go)
+- `internal/replay`: [`TestGoldenTracesMatchTheirRecordedResults`](../../internal/replay/golden_record_test.go), [`TestGoldenTracesAreDeterministic`](../../internal/replay/golden_replay_test.go)
+- `internal/runtime`: [`TestPredictiveMaintenanceAcceptance`](../../internal/runtime/predictive_maintenance_acceptance_test.go)
 - `internal/runtime`: [`TestEpisodesRunBesideIngestion`](../../internal/runtime/internal/app/episodes_beside_ingestion_test.go)
 - `internal/control`: [`TestALostLeaseFencesTheOldEpochsRenewalsAndWrites`](../../internal/control/runtime_owner_test.go), [`TestRecoveryCannotCommitOnceTheOwnerLeaseIsLost`](../../internal/control/owner_recovery_test.go)
 
@@ -134,7 +137,7 @@ detail is in the test audit.
 ### Invariant 9: Replay never performs external effects unless an explicit, separate simulation mode is selected.
 
 - `internal/architecture`: [`TestReasoningAndReplayCannotReachEffectImplementations`](../../internal/architecture/imports_test.go)
-- `internal/replay`: [`TestDeterministicModeEqualsRunAndNeverInvokesCognition`](../../internal/replay/internal/app/run_test.go), [`TestRunModeFailsClosedBeforeAnyWorkWithoutCapabilities`](../../internal/replay/internal/app/run_test.go), [`TestShadowPhasePersistsOnlyComparisonsAndRepeatsByteForByte`](../../internal/replay/internal/app/shadow_test.go), [`TestRecordedPhaseValidatesACompleteLedger`](../../internal/replay/internal/app/recorded_test.go), [`TestGoldenTracesAreDeterministic`](../../internal/replay/golden_replay_test.go), [`TestRunNTimesRepeatsDeterministicallyInSeparateDatabases`](../../internal/replay/internal/app/run_test.go), [`TestThermalChamberReplayIsDeterministic`](../../internal/replay/thermal_chamber_test.go)
+- `internal/replay`: [`TestDeterministicReplayOfAnEffectProducingTraceWritesNoIntentOrCommand`](../../internal/replay/effect_free_replay_test.go), [`TestDeterministicModeEqualsRunAndNeverInvokesCognition`](../../internal/replay/internal/app/run_test.go), [`TestRunModeFailsClosedBeforeAnyWorkWithoutCapabilities`](../../internal/replay/internal/app/run_test.go), [`TestShadowPhasePersistsOnlyComparisonsAndRepeatsByteForByte`](../../internal/replay/internal/app/shadow_test.go), [`TestRecordedPhaseValidatesACompleteLedger`](../../internal/replay/internal/app/recorded_test.go), [`TestRunNTimesRepeatsDeterministicallyInSeparateDatabases`](../../internal/replay/internal/app/run_test.go), [`TestThermalChamberReplayIsDeterministic`](../../internal/replay/thermal_chamber_test.go)
 - `internal/storage`: [`TestOpenFreshReservesPathUntilClose`](../../internal/storage/internal/store/fresh_database_test.go), [`TestOpenFreshRejectsCollisionsWithoutRemovingExistingFiles`](../../internal/storage/internal/store/fresh_database_test.go)
 - `internal/device`: [`TestEffectProfileValidationReadsTheConfigurationItIsGiven`](../../internal/device/profile_test.go), [`TestCheckEffectProfile`](../../internal/device/internal/domain/profile_test.go)
 - `internal/sources`: [`TestDeterministicSequenceIsReproducible`](../../internal/sources/internal/domain/ids_test.go)

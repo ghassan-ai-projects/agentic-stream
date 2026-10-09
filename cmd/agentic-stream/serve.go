@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -155,6 +156,8 @@ func (core *runtimeCore) servePipeline(runCtx context.Context, stop context.Canc
 		}
 	}
 	handler := core.runtimeHandler(flags, subscriberToken, metrics)
+	slog.Info("serving runtime API", "version", Version, "commit", Commit, "listen", flags.listenAddress, "db", flags.dbPath,
+		"tenant", flags.tenantID, "epoch", core.epoch, "effect_profile", flags.effectProfile, "worker_socket", flags.worker.WorkerSocket)
 	if err := serveHTTP(runCtx, flags.listenAddress, handler); err != nil {
 		return err
 	}
@@ -166,7 +169,7 @@ func (core *runtimeCore) runtimeHandler(flags serveFlags, subscriberToken string
 		TenantID:  flags.tenantID,
 		MaxLag:    1000,
 		Authorize: api.BearerTokenAuthorizer(subscriberToken),
-	}, telemetry.MetricsHandler(metrics), core.epochControl, core.epoch, os.Getenv("AGENTIC_STREAM_CONTROL_TOKEN")))
+	}, telemetry.MetricsHandler(metrics, core.healthGauges()), core.epochControl, core.epoch, os.Getenv("AGENTIC_STREAM_CONTROL_TOKEN")))
 }
 
 func serveHTTP(ctx context.Context, address string, handler http.Handler) error {
@@ -182,4 +185,11 @@ func serveHTTP(ctx context.Context, address string, handler http.Handler) error 
 		return fmt.Errorf("serve runtime: %w", err)
 	}
 	return nil
+}
+
+func (core *runtimeCore) healthGauges() telemetry.GaugeSource {
+	if core.pipeline == nil {
+		return nil
+	}
+	return core.pipeline.HealthGauges
 }

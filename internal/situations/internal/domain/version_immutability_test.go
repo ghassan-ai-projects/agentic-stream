@@ -47,7 +47,7 @@ func TestMutatingAPublishedVersionDoesNotReachTheEngine(t *testing.T) {
 	if state.Facts["facts.vibration_rms"] != 6.0 || len(next) != 0 {
 		t.Fatalf("state facts = %v, published %+v: the caller's edit leaked into the engine", state.Facts, next)
 	}
-	if _, tampered := state.Evidence["tampered"]; tampered {
+	if slices.Contains(state.Evidence, "tampered") {
 		t.Fatalf("evidence = %v, want the caller's edit ignored", state.Evidence)
 	}
 	if _, leaked := state.ConditionStart["watch->warning"]; !leaked || !state.ConditionStart["watch->warning"].Equal(base.Add(time.Minute)) {

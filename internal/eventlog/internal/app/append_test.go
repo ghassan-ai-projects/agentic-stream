@@ -150,6 +150,22 @@ func TestValidateEnvelopeIsOptionalUntilSchemasAreRequired(t *testing.T) {
 	}
 }
 
+func TestARegisteredSchemaIsReadOncePerService(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.registerTemperatureSchema(t, temperatureSchema)
+	h.service.RequireSchemaValidation()
+	if err := h.service.ValidateEnvelope(t.Context(), envelope("evt-1")); err != nil {
+		t.Fatalf("conforming envelope refused: %v", err)
+	}
+	if _, err := h.db.ExecContext(t.Context(), "UPDATE event_schemas SET schema_json = CAST('not json' AS BLOB)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.service.ValidateEnvelope(t.Context(), envelope("evt-2")); err != nil {
+		t.Fatalf("validation re-read the registry instead of the decoded schema: %v", err)
+	}
+}
+
 func TestReadEntityEventsWrapsTheWindowRead(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -202,5 +218,26 @@ func TestEveryOperationNamesItsFailureWhenStorageIsGone(t *testing.T) {
 				t.Fatalf("err = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestAReusedEventIDWithADifferentPayloadIsQuarantinedNotSilentlyDropped(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.append(t, envelope("evt-1"))
+	redelivered := h.append(t, envelope("evt-1"))
+	reused := envelope("evt-1")
+	reused.Data = map[string]any{"celsius": 99}
+	conflicting := h.append(t, reused)
+	if redelivered[0] != -1 || conflicting[0] != -1 {
+		t.Fatalf("positions = %v and %v, want both refused as already logged", redelivered, conflicting)
+	}
+	var reason string
+	if err := h.db.QueryRowContext(t.Context(), "SELECT reason_code FROM event_quarantine WHERE tenant_id = 'tenant' AND event_id = 'evt-1'").Scan(&reason); err != nil || reason != domain.ReasonEventIDConflict {
+		t.Fatalf("quarantine reason = %q err=%v, want %s", reason, err, domain.ReasonEventIDConflict)
+	}
+	var quarantined int
+	if err := h.db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM event_quarantine").Scan(&quarantined); err != nil || quarantined != 1 {
+		t.Fatalf("quarantined = %d err=%v, want only the conflicting delivery", quarantined, err)
 	}
 }

@@ -12,26 +12,30 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// Store keeps the database private. It never exposes a raw handle.
 type Store struct{ db *storage.DB }
 
-// New binds the database without opening a transaction.
 func New(db *storage.DB) Store { return Store{db: db} }
 
-// Configured reports whether the database was supplied.
 func (s Store) Configured() bool { return s.db != nil }
 
-// LoadLine reads the last line a connector has read. A connector with no
-// checkpoint starts at line 0.
 func (s Store) LoadLine(ctx context.Context, connectorID string) (int, error) {
+	blob, found, err := s.loadBlob(ctx, connectorID)
+	if err != nil || !found {
+		return 0, err
+	}
+	line, err := domain.DecodeCheckpoint(blob)
+	if err != nil {
+		return 0, fmt.Errorf("connector checkpoint %s: %w", connectorID, err)
+	}
+	return line, nil
+}
+
+func (s Store) loadBlob(ctx context.Context, connectorID string) ([]byte, bool, error) {
 	blob, found, err := storage.QueryOptional[[]byte](ctx, s.db, "SELECT checkpoint_blob FROM connector_checkpoints WHERE connector_id = ?", connectorID)
 	if err != nil {
-		return 0, fmt.Errorf("load connector checkpoint: %w", err)
+		return nil, false, fmt.Errorf("load connector checkpoint %s: %w", connectorID, err)
 	}
-	if !found {
-		return 0, nil
-	}
-	return domain.DecodeCheckpoint(blob) //nolint:wrapcheck // The domain codec names the failed decode.
+	return blob, found, nil
 }
 
 const upsertCheckpointSQL = `
@@ -42,14 +46,37 @@ const upsertCheckpointSQL = `
 		              checkpoint_blob = excluded.checkpoint_blob,
 		              updated_at = excluded.updated_at`
 
-// SaveLine records that a connector of the given kind has read lastLine lines.
 func (s Store) SaveLine(ctx context.Context, connectorID, kind string, lastLine int, now time.Time) error {
 	blob, err := domain.EncodeCheckpoint(lastLine)
 	if err != nil {
-		return err //nolint:wrapcheck // The domain codec names the failed encode.
+		return fmt.Errorf("connector checkpoint %s: %w", connectorID, err)
 	}
+	return s.saveBlob(ctx, connectorID, kind, blob, now)
+}
+
+func (s Store) saveBlob(ctx context.Context, connectorID, kind string, blob []byte, now time.Time) error {
 	if _, err := s.db.ExecContext(ctx, upsertCheckpointSQL, connectorID, kind, domain.CheckpointVersion, blob, kernel.FormatTime(now)); err != nil {
-		return fmt.Errorf("upsert checkpoint: %w", err)
+		return fmt.Errorf("upsert checkpoint %s: %w", connectorID, err)
 	}
 	return nil
+}
+
+func (s Store) LoadPosition(ctx context.Context, connectorID string) (domain.Checkpoint, error) {
+	blob, found, err := s.loadBlob(ctx, connectorID)
+	if err != nil || !found {
+		return domain.Checkpoint{}, err
+	}
+	position, err := domain.DecodePosition(blob)
+	if err != nil {
+		return domain.Checkpoint{}, fmt.Errorf("connector checkpoint %s: %w", connectorID, err)
+	}
+	return position, nil
+}
+
+func (s Store) SavePosition(ctx context.Context, connectorID, kind string, position domain.Checkpoint, now time.Time) error {
+	blob, err := domain.EncodePosition(position)
+	if err != nil {
+		return fmt.Errorf("connector checkpoint %s: %w", connectorID, err)
+	}
+	return s.saveBlob(ctx, connectorID, kind, blob, now)
 }

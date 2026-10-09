@@ -65,3 +65,9 @@ func (p *Pipeline) AdvanceEvery(ctx context.Context, interval time.Duration) err
 func (p *Pipeline) RunEpisodesEvery(ctx context.Context, interval time.Duration) error {
 	return p.useCases().RunEpisodesEvery(ctx, interval)
 }
+
+// HealthGauges reads the tenant's ingest lag, queue depths, set-aside records
+// and database size; serve exposes them on /metrics at scrape time.
+func (p *Pipeline) HealthGauges(ctx context.Context) (map[string]float64, error) {
+	return p.useCases().HealthGauges(ctx) //nolint:wrapcheck // Facade operations only delegate; the use case names the failure.
+}

@@ -3,6 +3,7 @@ package storagetest_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -230,4 +231,29 @@ func TestAnUnsoundCachedTemplateIsRefused(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOpenExistingRefusesAPathWithoutADatabase(t *testing.T) {
+	t.Parallel()
+	missing := filepath.Join(t.TempDir(), "missing.db")
+	if _, err := storage.OpenExisting(t.Context(), missing); err == nil {
+		t.Fatal("OpenExisting created a database")
+	}
+	if _, err := os.Stat(missing); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing path now exists: %v", err)
+	}
+	if _, err := storage.OpenExisting(t.Context(), t.TempDir()); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("a directory was opened as a database: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "runtime.db")
+	db, err := storagetest.Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	existing, err := storage.OpenExisting(t.Context(), path)
+	if err != nil {
+		t.Fatalf("OpenExisting refused an existing database: %v", err)
+	}
+	_ = existing.Close()
 }

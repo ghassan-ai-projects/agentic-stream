@@ -3,13 +3,12 @@ package domain
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/ext"
 )
 
-// ValidateExpression requires a watch expression that avoids forbidden syntax
-// and compiles as CEL over `features` and `situation`.
 func ValidateExpression(expression string) error {
 	if strings.ContainsAny(expression, "{};`") {
 		return fmt.Errorf("watch expression contains forbidden syntax")
@@ -18,21 +17,38 @@ func ValidateExpression(expression string) error {
 	return err
 }
 
-// Evaluate reports whether the expression matches the event features.
 func Evaluate(expression string, features map[string]any) (bool, error) {
-	env, ast, err := compile(expression)
+	program, err := compiledProgram(expression)
 	if err != nil {
 		return false, err
-	}
-	program, err := env.Program(ast)
-	if err != nil {
-		return false, fmt.Errorf("build watch expression program: %w", err)
 	}
 	return evaluateProgram(program, features)
 }
 
+var compiledPrograms sync.Map
+
+func compiledProgram(expression string) (cel.Program, error) {
+	if cached, ok := compiledPrograms.Load(expression); ok {
+		return cached.(cel.Program), nil
+	}
+	env, ast, err := compile(expression)
+	if err != nil {
+		return nil, err
+	}
+	program, err := env.Program(ast)
+	if err != nil {
+		return nil, fmt.Errorf("build watch expression program: %w", err)
+	}
+	compiledPrograms.Store(expression, program)
+	return program, nil
+}
+
+var watchEnvironment = sync.OnceValues(func() (*cel.Env, error) {
+	return cel.NewEnv(cel.Variable("features", cel.MapType(cel.StringType, cel.DynType)), cel.Variable("situation", cel.MapType(cel.StringType, cel.DynType)), ext.Bindings())
+})
+
 func compile(expression string) (*cel.Env, *cel.Ast, error) {
-	env, err := cel.NewEnv(cel.Variable("features", cel.MapType(cel.StringType, cel.DynType)), cel.Variable("situation", cel.MapType(cel.StringType, cel.DynType)), ext.Bindings())
+	env, err := watchEnvironment()
 	if err != nil {
 		return nil, nil, fmt.Errorf("create watch expression environment: %w", err)
 	}

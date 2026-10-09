@@ -16,6 +16,8 @@ import (
 
 var evidenceBase = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 
+var evidenceHorizon = evidenceBase.Add(time.Hour)
+
 func seedEvidence(t *testing.T, count int) *storage.DB {
 	t.Helper()
 	db := storagetest.OpenTemp(t)
@@ -57,7 +59,7 @@ func callEvidence(t *testing.T, tool *SQLiteEvidenceTool, args string) (domain.T
 func TestEvidenceToolReturnsOnlyTheScopedTenantEntityWindow(t *testing.T) {
 	t.Parallel()
 
-	tool := NewSQLiteEvidenceTool(seedEvidence(t, 5), "evidence.get", "tenant-1", "motor-1")
+	tool := NewSQLiteEvidenceTool(seedEvidence(t, 5), "evidence.get", "tenant-1", "motor-1", evidenceHorizon)
 	window := fmt.Sprintf(`{"from":%q,"until":%q}`, evidenceBase.Add(time.Minute).Format(time.RFC3339), evidenceBase.Add(3*time.Minute).Format(time.RFC3339))
 	_, rows := callEvidence(t, tool, window)
 	if len(rows) != 3 || rows[0]["event_id"] != "evt-01" || rows[2]["event_id"] != "evt-03" {
@@ -81,7 +83,7 @@ func TestEvidenceToolReturnsOnlyTheScopedTenantEntityWindow(t *testing.T) {
 func TestEvidenceToolByteBoundKeepsTheLongestFittingPrefix(t *testing.T) {
 	t.Parallel()
 
-	tool := NewSQLiteEvidenceTool(seedEvidence(t, 6), "evidence.get", "tenant-1", "motor-1")
+	tool := NewSQLiteEvidenceTool(seedEvidence(t, 6), "evidence.get", "tenant-1", "motor-1", evidenceHorizon)
 	window := `"from":"2026-08-12T00:00:00Z","until":"2026-08-13T00:00:00Z"`
 	_, rows := callEvidence(t, tool, `{`+window+`}`)
 	if len(rows) != 6 {
@@ -105,7 +107,7 @@ func TestEvidenceToolByteBoundKeepsTheLongestFittingPrefix(t *testing.T) {
 func TestEvidenceToolRefusesWhatItIsNotScopedFor(t *testing.T) {
 	t.Parallel()
 
-	tool := NewSQLiteEvidenceTool(seedEvidence(t, 1), "evidence.get", "tenant-1", "motor-1")
+	tool := NewSQLiteEvidenceTool(seedEvidence(t, 1), "evidence.get", "tenant-1", "motor-1", evidenceHorizon)
 	if _, err := tool.Call(t.Context(), json.RawMessage(`{"entity_id":"motor-2"}`)); err == nil || !strings.Contains(err.Error(), "outside episode scope") {
 		t.Errorf("a foreign entity was queried: %v", err)
 	}
@@ -113,8 +115,9 @@ func TestEvidenceToolRefusesWhatItIsNotScopedFor(t *testing.T) {
 		t.Errorf("malformed arguments were accepted: %v", err)
 	}
 	unscoped := []*SQLiteEvidenceTool{
-		{}, NewSQLiteEvidenceTool(nil, "evidence.get", "tenant-1", "motor-1"),
-		NewSQLiteEvidenceTool(seedEvidence(t, 1), "evidence.get", "", "motor-1"), NewSQLiteEvidenceTool(seedEvidence(t, 1), "evidence.get", "tenant-1", ""),
+		{}, NewSQLiteEvidenceTool(nil, "evidence.get", "tenant-1", "motor-1", evidenceHorizon),
+		NewSQLiteEvidenceTool(seedEvidence(t, 1), "evidence.get", "", "motor-1", evidenceHorizon), NewSQLiteEvidenceTool(seedEvidence(t, 1), "evidence.get", "tenant-1", "", evidenceHorizon),
+		NewSQLiteEvidenceTool(seedEvidence(t, 1), "evidence.get", "tenant-1", "motor-1", time.Time{}),
 	}
 	for index, candidate := range unscoped {
 		if _, err := candidate.Call(t.Context(), json.RawMessage(`{}`)); err == nil || !strings.Contains(err.Error(), "not configured") {
@@ -126,8 +129,21 @@ func TestEvidenceToolRefusesWhatItIsNotScopedFor(t *testing.T) {
 func TestEvidenceToolStartsWithTheEvidenceReadBudget(t *testing.T) {
 	t.Parallel()
 
-	tool := NewSQLiteEvidenceTool(nil, "evidence.get", "tenant-1", "motor-1")
+	tool := NewSQLiteEvidenceTool(nil, "evidence.get", "tenant-1", "motor-1", evidenceHorizon)
 	if tool.Name() != "evidence.get" || tool.maxRows != evidence.DefaultReadMaxRows || tool.maxBytes != evidence.DefaultReadMaxBytes {
 		t.Errorf("budget = %d rows, %d bytes", tool.maxRows, tool.maxBytes)
+	}
+}
+
+func TestEvidenceToolReadsOnlyUpToTheSnapshotHorizon(t *testing.T) {
+	t.Parallel()
+	tool := NewSQLiteEvidenceTool(seedEvidence(t, 5), "evidence.get", "tenant-1", "motor-1", evidenceBase.Add(2*time.Minute+30*time.Second))
+	_, rows := callEvidence(t, tool, `{"from":"2026-08-12T00:00:00Z","until":"2026-08-13T00:00:00Z"}`)
+	if len(rows) != 3 || rows[2]["event_id"] != "evt-02" {
+		t.Fatalf("rows = %v, want the three events at or before the snapshot horizon", rows)
+	}
+	_, defaults := callEvidence(t, tool, `{}`)
+	if len(defaults) != 3 {
+		t.Fatalf("default window rows = %d, want the window that ends at the horizon", len(defaults))
 	}
 }

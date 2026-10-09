@@ -9,10 +9,10 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 )
 
-// SituationState is the persisted runtime state of one Situation.
 type SituationState struct {
 	SituationID    string               `json:"situation_id"`
 	OccurrenceID   string               `json:"occurrence_id"`
@@ -20,13 +20,13 @@ type SituationState struct {
 	Version        int                  `json:"version"`
 	Facts          map[string]any       `json:"facts"`
 	Evidence       []string             `json:"evidence"`
+	Inputs         map[string]string    `json:"inputs,omitempty"`
+	ResolvedAt     *time.Time           `json:"resolved_at,omitempty"`
 	ConditionStart map[string]time.Time `json:"condition_start"`
 	Traceparent    string               `json:"traceparent,omitempty"`
 	Tracestate     string               `json:"tracestate,omitempty"`
 }
 
-// StoredSituation is one current Situation joined with its current version, as
-// read from storage.
 type StoredSituation struct {
 	SituationID, Type, EntityType, EntityID, OccurrenceID, Phase string
 	PartitionID, Version, Severity, StateCodecVersion            int
@@ -52,7 +52,7 @@ func (r StoredSituation) situation(tenantID, deploymentID string, state Situatio
 		OccurrenceID: r.OccurrenceID, Version: r.Version, Phase: r.Phase,
 		PreviousPhase: r.PreviousPhase, Severity: r.Severity, Confidence: r.Confidence,
 		Completeness: r.Completeness, FirstEventTime: r.FirstEventTime, LatestEventTime: r.LatestEventTime,
-		Facts: state.Facts, Evidence: evidenceSet(state.Evidence), ConditionStart: state.ConditionStart,
+		Facts: state.Facts, Evidence: state.Evidence, Inputs: inputCompleteness(state.Inputs), ConditionStart: state.ConditionStart, ResolvedAt: resolvedAt(state.ResolvedAt),
 		OpenedAt: r.FirstEventTime, UpdatedAt: r.UpdatedAt, Traceparent: r.Traceparent, Tracestate: r.Tracestate,
 	}
 }
@@ -74,8 +74,6 @@ func (r StoredSituation) decodeState() (SituationState, error) {
 	return state, restoreFactTimes(state.Facts)
 }
 
-// checkStateCodec requires codec version 1 and complete state bytes; legacy
-// codec 0 state must be rebuilt.
 func (r StoredSituation) checkStateCodec() error {
 	if r.StateCodecVersion == 0 {
 		return fmt.Errorf("situation %s requires rebuild: legacy runtime state has no supported codec", r.SituationID)
@@ -133,10 +131,20 @@ func restoreFactTimes(facts map[string]any) error {
 	return nil
 }
 
-func evidenceSet(ids []string) map[string]struct{} {
-	evidence := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		evidence[id] = struct{}{}
+func inputCompleteness(inputs map[string]string) map[string]operators.Completeness {
+	if len(inputs) == 0 {
+		return nil
 	}
-	return evidence
+	completeness := make(map[string]operators.Completeness, len(inputs))
+	for output, value := range inputs {
+		completeness[output] = operators.Completeness(value)
+	}
+	return completeness
+}
+
+func resolvedAt(at *time.Time) time.Time {
+	if at == nil {
+		return time.Time{}
+	}
+	return *at
 }

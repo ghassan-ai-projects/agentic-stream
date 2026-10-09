@@ -31,7 +31,7 @@ func newCapabilityService(t *testing.T, cfg evidence.CapabilityConfig) *evidence
 func newIssuer(service *evidence.Service) *AttemptCapabilityIssuer {
 	return &AttemptCapabilityIssuer{
 		Issuer: service, RuntimeEpoch: "epoch-1", Tools: []string{"evidence.get"},
-		From: capabilityNow.Add(-time.Hour), Until: capabilityNow, MaxRows: 10, MaxBytes: 1024,
+		Window: time.Hour, MaxRows: 10, MaxBytes: 1024,
 		ExpiresAt: capabilityNow.Add(10 * time.Minute),
 	}
 }
@@ -40,17 +40,18 @@ func attemptRequest() *episodes.Request {
 	return &episodes.Request{
 		EpisodeID: "episode-1", AttemptID: "attempt-1", Fence: 2, TenantID: "tenant-1", SituationID: "situation-1", SituationVersion: 3,
 		EntityID: "motor-1", Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", Tracestate: "vendor=1",
+		RequestJSON: []byte(`{"snapshot":{"event_horizon":"2026-08-12T11:30:00.000000000Z"}}`),
 	}
 }
 
 func TestAttemptCapabilityIssuerBindsRequestIdentityAndScope(t *testing.T) {
 	t.Parallel()
 	service := newCapabilityService(t, capabilityConfig(0))
-	token, err := newIssuer(service).Issue(attemptRequest())
+	grant, err := newIssuer(service).Issue(attemptRequest())
 	if err != nil {
 		t.Fatalf("Issue() = %v", err)
 	}
-	scope, err := service.Verify(token)
+	scope, err := service.Verify(grant.Token)
 	if err != nil {
 		t.Fatalf("Verify() = %v", err)
 	}
@@ -61,6 +62,10 @@ func TestAttemptCapabilityIssuerBindsRequestIdentityAndScope(t *testing.T) {
 	}
 	if len(scope.Tools) != 1 || scope.Tools[0] != "evidence.get" || scope.MaxRows != 10 || scope.MaxBytes != 1024 {
 		t.Fatalf("scope bounds = %+v", scope)
+	}
+	horizon := time.Date(2026, 8, 12, 11, 30, 0, 0, time.UTC)
+	if !scope.Until.Equal(horizon) || !scope.From.Equal(horizon.Add(-time.Hour)) || !grant.Until.Equal(scope.Until) || !grant.From.Equal(scope.From) {
+		t.Fatalf("window = %s..%s (grant %s..%s), want the hour ending at the snapshot horizon %s", scope.From, scope.Until, grant.From, grant.Until, horizon)
 	}
 }
 
@@ -81,11 +86,11 @@ func TestAttemptCapabilityExpiryFollowsTheIssuerMaximumWhenUnset(t *testing.T) {
 			service := newCapabilityService(t, capabilityConfig(tt.maxTTL))
 			issuer := newIssuer(service)
 			issuer.ExpiresAt = time.Time{}
-			token, err := issuer.Issue(attemptRequest())
+			grant, err := issuer.Issue(attemptRequest())
 			if err != nil {
 				t.Fatalf("Issue() = %v", err)
 			}
-			scope, err := service.Verify(token)
+			scope, err := service.Verify(grant.Token)
 			if err != nil || !scope.ExpiresAt.Equal(capabilityNow.Add(tt.want)) {
 				t.Fatalf("expires %v (err %v), want %v", scope.ExpiresAt, err, capabilityNow.Add(tt.want))
 			}
@@ -110,7 +115,8 @@ func TestAttemptCapabilityIssuerFailsClosedWithoutAFullScope(t *testing.T) {
 		{"missing entity", func(_ *AttemptCapabilityIssuer, r *episodes.Request) { r.EntityID = "" }, "scope is incomplete"},
 		{"missing runtime epoch", func(i *AttemptCapabilityIssuer, _ *episodes.Request) { i.RuntimeEpoch = "" }, "scope is incomplete"},
 		{"no tools", func(i *AttemptCapabilityIssuer, _ *episodes.Request) { i.Tools = nil }, "scope is incomplete"},
-		{"no evidence window", func(i *AttemptCapabilityIssuer, _ *episodes.Request) { i.From = time.Time{} }, "scope is incomplete"},
+		{"no evidence window", func(i *AttemptCapabilityIssuer, _ *episodes.Request) { i.Window = 0 }, "scope is incomplete"},
+		{"no snapshot horizon", func(_ *AttemptCapabilityIssuer, r *episodes.Request) { r.RequestJSON = []byte(`{}`) }, "attempt capability window"},
 		{"no row bound", func(i *AttemptCapabilityIssuer, _ *episodes.Request) { i.MaxRows = 0 }, "scope is incomplete"},
 		{"no byte bound", func(i *AttemptCapabilityIssuer, _ *episodes.Request) { i.MaxBytes = 0 }, "scope is incomplete"},
 		{"no evidence service", func(i *AttemptCapabilityIssuer, _ *episodes.Request) { i.Issuer = nil }, "not configured"},
@@ -121,9 +127,9 @@ func TestAttemptCapabilityIssuerFailsClosedWithoutAFullScope(t *testing.T) {
 			t.Parallel()
 			issuer, req := newIssuer(service), attemptRequest()
 			tt.breakIt(issuer, req)
-			token, err := issuer.Issue(req)
-			if err == nil || !strings.Contains(err.Error(), tt.want) || token != nil {
-				t.Fatalf("Issue() = %q, %v; want no token and error containing %q", token, err, tt.want)
+			grant, err := issuer.Issue(req)
+			if err == nil || !strings.Contains(err.Error(), tt.want) || grant.Token != nil {
+				t.Fatalf("Issue() = %q, %v; want no token and error containing %q", grant.Token, err, tt.want)
 			}
 		})
 	}

@@ -2,29 +2,36 @@ package domain
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/cel-go/cel"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-func (e *Engine) evaluate(ctx context.Context, sit *Situation, feature operators.Feature, watermark time.Time, completenessChanged bool) (*Version, error) {
-	inputs := evaluationInputs{features: e.buildFeaturesMap(sit), situation: e.buildSituationMap(sit), eventTime: feature.EventTime, watermark: watermark}
+func (e *Engine) evaluate(ctx context.Context, sit *Situation, watermark time.Time, completenessChanged bool) (*Version, error) {
+	inputs := evaluationInputs{features: e.buildFeaturesMap(sit), situation: e.buildSituationMap(sit), eventTime: sit.LatestEventTime, watermark: watermark}
+	publishedPhase := sit.Phase
 	changed, err := e.advanceLifecycle(ctx, sit, inputs)
 	if err != nil {
 		return nil, err
 	}
-	if !changed && completenessChanged && sit.Version > 0 {
-		sit.Version++
-		sit.UpdatedAt = watermark
-		changed = true
-	}
-	if !changed {
+	if !changed && (!completenessChanged || sit.Version == 0) {
 		return nil, nil
 	}
+	return e.publish(sit, publishedPhase, watermark)
+}
+
+func (e *Engine) publish(sit *Situation, publishedPhase string, watermark time.Time) (*Version, error) {
+	if sit.Phase != publishedPhase {
+		sit.PreviousPhase = publishedPhase
+	}
+	sit.Version++
+	sit.UpdatedAt = watermark
 	return e.materialize(sit, watermark)
 }
 
@@ -53,14 +60,23 @@ type evaluationInputs struct {
 const PhaseResolved = "resolved"
 
 func (e *Engine) closeOccurrence(ctx context.Context, sit *Situation, in evaluationInputs) (bool, error) {
-	if sit.Version == 0 && sit.Phase == e.spec.Situation.InitialPhase {
+	if e.closesThroughTransitions() || !e.occurrenceOpen(sit) {
 		return false, nil
 	}
 	closed, err := e.evalBool(ctx, e.spec.Situation.Occurrence.CloseWhen, in.features, in.situation)
 	if err != nil || !closed {
 		return false, err
 	}
-	return e.transition(sit, PhaseResolved, in.watermark), nil
+	return e.transition(sit, PhaseResolved, in), nil
+}
+
+func (e *Engine) closesThroughTransitions() bool {
+	return slices.ContainsFunc(e.spec.Situation.Transitions, func(tr spec.Transition) bool { return tr.To == PhaseResolved })
+}
+
+func (e *Engine) occurrenceOpen(sit *Situation) bool {
+	notYetOpened := sit.Version == 0 && sit.Phase == e.spec.Situation.InitialPhase
+	return !notYetOpened && sit.Phase != PhaseResolved
 }
 
 func (e *Engine) applyTransitions(ctx context.Context, sit *Situation, in evaluationInputs) (bool, error) {
@@ -88,9 +104,23 @@ func (e *Engine) applyTransition(ctx context.Context, sit *Situation, tr spec.Tr
 		delete(sit.ConditionStart, key)
 		return false, nil
 	}
+	minDuration, err := optionalDuration(tr.MinDuration)
+	if err != nil {
+		return false, fmt.Errorf("transition %s minDuration: %w", key, err)
+	}
 	start := conditionStart(sit, key, in.eventTime)
-	minDur, _ := spec.ParseDuration(tr.MinDuration)
-	return in.eventTime.Sub(start) >= minDur && e.transition(sit, tr.To, in.watermark), nil
+	return in.eventTime.Sub(start) >= minDuration && e.transition(sit, tr.To, in), nil
+}
+
+func optionalDuration(text string) (time.Duration, error) {
+	if text == "" {
+		return 0, nil
+	}
+	duration, err := spec.ParseDuration(text)
+	if err != nil {
+		return 0, fmt.Errorf("parse duration: %w", err)
+	}
+	return duration, nil
 }
 
 func conditionStart(sit *Situation, key string, eventTime time.Time) time.Time {
@@ -103,27 +133,55 @@ func conditionStart(sit *Situation, key string, eventTime time.Time) time.Time {
 }
 
 func (e *Engine) openOccurrence(ctx context.Context, sit *Situation, in evaluationInputs) (bool, error) {
-	if sit.Version != 0 || sit.Phase != e.spec.Situation.InitialPhase {
+	switch {
+	case sit.Version == 0 && sit.Phase == e.spec.Situation.InitialPhase:
+		return e.evalBool(ctx, e.spec.Situation.Occurrence.OpenWhen, in.features, in.situation)
+	case sit.Phase == PhaseResolved:
+		return e.reopenOccurrence(ctx, sit, in)
+	}
+	return false, nil
+}
+
+func (e *Engine) reopenOccurrence(ctx context.Context, sit *Situation, in evaluationInputs) (bool, error) {
+	cooldown, err := optionalDuration(e.spec.Situation.Occurrence.ReopenCooldown)
+	if err != nil {
+		return false, fmt.Errorf("occurrence reopenCooldown: %w", err)
+	}
+	if in.eventTime.Sub(sit.ResolvedAt) < cooldown {
 		return false, nil
 	}
 	opened, err := e.evalBool(ctx, e.spec.Situation.Occurrence.OpenWhen, in.features, in.situation)
 	if err != nil || !opened {
 		return false, err
 	}
-	sit.Version++
+	e.startNextOccurrence(sit, in.eventTime)
 	return true, nil
 }
 
-func (e *Engine) transition(sit *Situation, to string, watermark time.Time) bool {
+func (e *Engine) startNextOccurrence(sit *Situation, eventTime time.Time) {
+	sit.OccurrenceID = nextOccurrenceID(sit.SituationID, sit.Version+1)
+	sit.Phase = e.spec.Situation.InitialPhase
+	sit.Severity = e.initialSeverity()
+	sit.FirstEventTime, sit.OpenedAt = eventTime, eventTime
+	sit.ResolvedAt = time.Time{}
+	sit.ConditionStart = make(map[string]time.Time)
+}
+
+func nextOccurrenceID(situationID string, version int) string {
+	identity := fmt.Sprintf("%s\x00occurrence\x00%d", situationID, version)
+	return "occ_" + hex.EncodeToString(canonicaljson.Sum([]byte(identity)))
+}
+
+func (e *Engine) transition(sit *Situation, to string, in evaluationInputs) bool {
 	if sit.Phase == to {
 		return false
 	}
-	sit.PreviousPhase = sit.Phase
 	sit.Phase = to
-	sit.Version++
 	sit.Severity = e.severityForPhase(to)
-	sit.UpdatedAt = watermark
 	sit.ConditionStart = make(map[string]time.Time)
+	if to == PhaseResolved {
+		sit.ResolvedAt = in.eventTime
+	}
 	return true
 }
 
@@ -202,6 +260,21 @@ func (e *Engine) evalBool(_ context.Context, expr string, features, situation ma
 }
 
 func (e *Engine) program(expr string) (cel.Program, error) {
+	if cached, ok := e.programs[expr]; ok {
+		return cached, nil
+	}
+	prg, err := e.compileProgram(expr)
+	if err != nil {
+		return nil, err
+	}
+	if e.programs == nil {
+		e.programs = make(map[string]cel.Program)
+	}
+	e.programs[expr] = prg
+	return prg, nil
+}
+
+func (e *Engine) compileProgram(expr string) (cel.Program, error) {
 	ast, issues := e.celEnv.Compile(expr)
 	if issues != nil && issues.Err() != nil {
 		return nil, fmt.Errorf("compile cel: %w", issues.Err())
