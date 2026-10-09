@@ -57,6 +57,16 @@ state under any policy. The engine records every late event's disposition
 Missing heartbeat and source-health signals can make completeness uncertain.
 Incomplete evidence is explicit state, not a silent default.
 
+A Situation's completeness is the weakest of the latest completeness of each
+of its inputs, ordered `uncertain` < `provisional` < `on_time` < `corrected` <
+`final_by_policy`. A change of completeness alone publishes a version only when
+the Situation becomes uncertain, recovers from uncertainty, or takes a late
+correction; other changes ride on the next version published for a phase or
+fact change. A window that emits `early_and_close` emits a provisional value on
+each event and the final value when the window closes. A trigger's
+`completeness` (`any`, `on_time`, `final_by_policy`) admits only versions at
+least that complete, and names the unmet requirement otherwise.
+
 ## Operators and windows
 
 The current deterministic operators include aggregates, slope-like features,

@@ -113,7 +113,7 @@ var allowedImports = map[string][]string{
 	"internal/canonicaljson":                      {"internal/canonicaljson/internal/domain"},
 	"internal/canonicaljson/internal/domain":      {},
 	"internal/cognition/internal/app":             {"internal/cognition/internal/domain", "internal/cognition/internal/store", "internal/episodeledger", "internal/situations", "internal/sources", "internal/spec"},
-	"internal/cognition/internal/domain":          {"internal/canonicaljson", "internal/contractsv1", "internal/episodeledger", "internal/situations", "internal/sources", "internal/spec"},
+	"internal/cognition/internal/domain":          {"internal/canonicaljson", "internal/contractsv1", "internal/episodeledger", "internal/operators", "internal/situations", "internal/sources", "internal/spec"},
 	"internal/cognition/internal/store":           {"internal/approvalledger", "internal/canonicaljson", "internal/cognition/internal/domain", "internal/contractsv1", "internal/episodeledger", "internal/notify", "internal/situations", "internal/sources", "internal/storage"},
 	"internal/sources":                            {"internal/sources/internal/domain", "internal/sources/internal/transport"},
 	"internal/cognition":                          {"internal/cognition/internal/app", "internal/cognition/internal/domain", "internal/cognition/internal/store", "internal/situations"},

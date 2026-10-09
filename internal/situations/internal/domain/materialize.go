@@ -10,6 +10,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 )
 
 func (e *Engine) materialize(sit *Situation, watermark time.Time) (*Version, error) {
@@ -142,7 +143,7 @@ func stateConditionStart(sit *Situation) map[string]string {
 }
 
 func stateDocument(sit *Situation, facts map[string]any, evidence []string, conditionStart map[string]string) map[string]any {
-	return map[string]any{
+	document := map[string]any{
 		"situation_id":    sit.SituationID,
 		"occurrence_id":   sit.OccurrenceID,
 		"partition_id":    sit.PartitionID,
@@ -153,6 +154,18 @@ func stateDocument(sit *Situation, facts map[string]any, evidence []string, cond
 		"traceparent":     sit.Traceparent,
 		"tracestate":      sit.Tracestate,
 	}
+	if len(sit.Inputs) > 0 {
+		document["inputs"] = stateInputs(sit.Inputs)
+	}
+	return document
+}
+
+func stateInputs(inputs map[string]operators.Completeness) map[string]any {
+	document := make(map[string]any, len(inputs))
+	for output, completeness := range inputs {
+		document[output] = string(completeness)
+	}
+	return document
 }
 
 func cloneTimes(values map[string]time.Time) map[string]time.Time {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 )
 
@@ -19,6 +20,7 @@ type SituationState struct {
 	Version        int                  `json:"version"`
 	Facts          map[string]any       `json:"facts"`
 	Evidence       []string             `json:"evidence"`
+	Inputs         map[string]string    `json:"inputs,omitempty"`
 	ConditionStart map[string]time.Time `json:"condition_start"`
 	Traceparent    string               `json:"traceparent,omitempty"`
 	Tracestate     string               `json:"tracestate,omitempty"`
@@ -49,7 +51,7 @@ func (r StoredSituation) situation(tenantID, deploymentID string, state Situatio
 		OccurrenceID: r.OccurrenceID, Version: r.Version, Phase: r.Phase,
 		PreviousPhase: r.PreviousPhase, Severity: r.Severity, Confidence: r.Confidence,
 		Completeness: r.Completeness, FirstEventTime: r.FirstEventTime, LatestEventTime: r.LatestEventTime,
-		Facts: state.Facts, Evidence: state.Evidence, ConditionStart: state.ConditionStart,
+		Facts: state.Facts, Evidence: state.Evidence, Inputs: inputCompleteness(state.Inputs), ConditionStart: state.ConditionStart,
 		OpenedAt: r.FirstEventTime, UpdatedAt: r.UpdatedAt, Traceparent: r.Traceparent, Tracestate: r.Tracestate,
 	}
 }
@@ -126,4 +128,15 @@ func restoreFactTimes(facts map[string]any) error {
 		facts[key] = parsed
 	}
 	return nil
+}
+
+func inputCompleteness(inputs map[string]string) map[string]operators.Completeness {
+	if len(inputs) == 0 {
+		return nil
+	}
+	completeness := make(map[string]operators.Completeness, len(inputs))
+	for output, value := range inputs {
+		completeness[output] = operators.Completeness(value)
+	}
+	return completeness
 }

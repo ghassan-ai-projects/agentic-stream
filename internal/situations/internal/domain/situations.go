@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -52,6 +53,7 @@ type Situation struct {
 	LatestEventTime time.Time
 	Facts           map[string]any
 	Evidence        []string
+	Inputs          map[string]operators.Completeness
 	ConditionStart  map[string]time.Time
 	OpenedAt        time.Time
 	UpdatedAt       time.Time
@@ -126,6 +128,7 @@ func cloneSituation(sit *Situation) Situation {
 	copy := *sit
 	copy.Facts = cloneMap(sit.Facts)
 	copy.Evidence = slices.Clone(sit.Evidence)
+	copy.Inputs = maps.Clone(sit.Inputs)
 	copy.ConditionStart = cloneTimes(sit.ConditionStart)
 	return copy
 }

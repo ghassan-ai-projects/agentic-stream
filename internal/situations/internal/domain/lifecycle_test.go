@@ -241,3 +241,58 @@ func TestChainedTransitionsOfOneFeaturePublishOnlyTheFinalVersion(t *testing.T) 
 		t.Fatalf("next = %+v, want version 3 following the published version 2", next)
 	}
 }
+
+func healthSpec() *spec.CompiledSpec {
+	compiled := vibrationSpec()
+	compiled.Situation.Reducers = append(compiled.Situation.Reducers, spec.Reducer{Field: "facts.heartbeat_missing", Strategy: "latest_event_time", Input: "heartbeat_missing"})
+	return compiled
+}
+
+func heartbeatFeature(missing bool, completeness operators.Completeness, at time.Time) operators.Feature {
+	return operators.Feature{
+		OutputName: "heartbeat_missing", EntityType: "motor", EntityID: "motor-17", Value: missing,
+		Completeness: string(completeness), EventTime: at, Watermark: at, InputEventIDs: []string{"hb"},
+	}
+}
+
+func TestAnUncertainInputKeepsTheSituationUncertainUntilItRecovers(t *testing.T) {
+	t.Parallel()
+	engine := newEngine(t, healthSpec())
+	opening := vibration(5.0, base)
+	opening.Completeness = string(operators.CompletenessProvisional)
+	apply(t, engine, opening)
+	missing := apply(t, engine, heartbeatFeature(true, operators.CompletenessUncertain, base.Add(time.Minute)))
+	if len(missing) != 1 || missing[0].Completeness != string(operators.CompletenessUncertain) {
+		t.Fatalf("missing heartbeat published %+v, want one uncertain version", missing)
+	}
+	later := vibration(5.0, base.Add(2*time.Minute))
+	later.Completeness = string(operators.CompletenessProvisional)
+	apply(t, engine, later)
+	state, _, _, _, _ := engine.CurrentState(0, "motor", "motor-17")
+	if state.Completeness != string(operators.CompletenessUncertain) {
+		t.Fatalf("completeness = %s after a provisional vibration, want it still uncertain", state.Completeness)
+	}
+	recovered := apply(t, engine, heartbeatFeature(false, operators.CompletenessOnTime, base.Add(3*time.Minute)))
+	if len(recovered) != 1 || recovered[0].Completeness != string(operators.CompletenessProvisional) {
+		t.Fatalf("returning heartbeat published %+v, want one provisional version", recovered)
+	}
+}
+
+func TestAlternatingProvisionalAndOnTimeInputsPublishNoVersions(t *testing.T) {
+	t.Parallel()
+	engine := newEngine(t, healthSpec())
+	opening := vibration(5.0, base)
+	opening.Completeness = string(operators.CompletenessProvisional)
+	apply(t, engine, opening)
+	for minute := 1; minute <= 6; minute++ {
+		at := base.Add(time.Duration(minute) * time.Minute)
+		feature := heartbeatFeature(false, operators.CompletenessOnTime, at)
+		if minute%2 == 0 {
+			feature = vibration(5.0, at)
+			feature.Completeness = string(operators.CompletenessProvisional)
+		}
+		if versions := apply(t, engine, feature); len(versions) != 0 {
+			t.Fatalf("minute %d published %+v, want no version from a completeness alternation", minute, versions)
+		}
+	}
+}

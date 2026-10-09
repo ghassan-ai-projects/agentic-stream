@@ -3,12 +3,10 @@ package domain
 import (
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-// judgeTrigger admits a trigger whose condition holds, whose delta is material, and
-// whose score meets the threshold, and otherwise names the first gate that
-// failed.
 func (e *Rules) judgeTrigger(tr spec.Trigger, in triggerInputs) (triggerVerdict, error) {
 	fired, err := e.evalBool(tr, "when", in)
 	if err != nil || !fired {
@@ -18,13 +16,25 @@ func (e *Rules) judgeTrigger(tr spec.Trigger, in triggerInputs) (triggerVerdict,
 	if err != nil {
 		return triggerVerdict{}, err
 	}
+	if reason, met := completenessMet(tr, in.completeness); !met {
+		return triggerVerdict{score: score, reason: reason}, nil
+	}
 	if material, err := e.materialDelta(tr, in); err != nil || !material {
 		return triggerVerdict{score: score, reason: "material delta false"}, err
 	}
 	return thresholdVerdict(tr, score), nil
 }
 
-// materialDelta holds when the trigger has no material-delta condition.
+func completenessMet(tr spec.Trigger, completeness string) (string, bool) {
+	if tr.Completeness == "" || tr.Completeness == "any" {
+		return "", true
+	}
+	if operators.Completeness(completeness).AtLeast(operators.Completeness(tr.Completeness)) {
+		return "", true
+	}
+	return fmt.Sprintf("completeness %s does not meet %s", completeness, tr.Completeness), false
+}
+
 func (e *Rules) materialDelta(tr spec.Trigger, in triggerInputs) (bool, error) {
 	if tr.MaterialDelta == "" {
 		return true, nil

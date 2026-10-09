@@ -29,8 +29,6 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 	return r.emitWindow(inst, env, ws, agg, watermark, corrected), nil
 }
 
-// windowState returns the blob's window, binding its first boot and its
-// initial end to the current watermark.
 func (blob *OperatorStateBlob) windowState(bootID string, watermark time.Time) *WindowState {
 	if blob.Window == nil {
 		blob.Window = &WindowState{}
@@ -45,9 +43,6 @@ func (blob *OperatorStateBlob) windowState(bootID string, watermark time.Time) *
 	return ws
 }
 
-// emitWindow emits the features the window's emit mode calls for. Watermark
-// advancement is the close signal: a single latest close is emitted after a
-// gap so the runtime never fabricates unobserved windows.
 func (r *OperatorRuntime) emitWindow(inst *operatorInstance, env contractsv1.Envelope, ws *WindowState, agg float64, watermark time.Time, corrected bool) []Feature {
 	closeDue := windowCloseDue(inst.window, ws, watermark)
 	var features []Feature
@@ -63,14 +58,11 @@ func (r *OperatorRuntime) emitWindow(inst *operatorInstance, env contractsv1.Env
 	return features
 }
 
-// addSample records a sample, evicts samples before cutoff, and keeps the
-// window sorted by event time, then event ID, for deterministic output.
 func (ws *WindowState) addSample(sample Sample, cutoff time.Time) {
 	ws.Samples = slices.DeleteFunc(append(ws.Samples, sample), func(s Sample) bool { return s.EventTime.Before(cutoff) })
 	slices.SortStableFunc(ws.Samples, compareSamples)
 }
 
-// compareSamples orders samples by event time, then event ID.
 func compareSamples(a, b Sample) int {
 	if a.EventTime.Equal(b.EventTime) {
 		return strings.Compare(a.EventID, b.EventID)
@@ -81,10 +73,6 @@ func compareSamples(a, b Sample) int {
 	return 1
 }
 
-// windowEmissions lists the completeness of each feature a window emits for
-// this event, in emission order. A late correction re-emits the window as
-// corrected; otherwise on_update and early_and_close emit a provisional value
-// and on_close emits the final value when the window closes.
 func windowEmissions(emit string, corrected, closeDue, hasSamples bool) []string {
 	if !hasSamples {
 		return nil
@@ -96,7 +84,7 @@ func windowEmissions(emit string, corrected, closeDue, hasSamples bool) []string
 	if emit == "on_update" || emit == "early_and_close" {
 		emissions = append(emissions, string(CompletenessProvisional))
 	}
-	if closeDue && emit == "on_close" {
+	if closeDue && emit != "on_update" {
 		emissions = append(emissions, string(CompletenessFinalByPolicy))
 	}
 	return emissions
@@ -153,8 +141,6 @@ func computeAggregate(agg string, samples []Sample) (float64, error) {
 	return compute(samples), nil
 }
 
-// aggregates are the supported window aggregates. Samples are sorted by event
-// time, then event ID, so "latest" is the last sample.
 var aggregates = map[string]func([]Sample) float64{
 	"mean":   func(s []Sample) float64 { return sumValues(s) / float64(len(s)) },
 	"rms":    rootMeanSquare,
@@ -182,7 +168,6 @@ func rootMeanSquare(samples []Sample) float64 {
 	return math.Sqrt(sumSquares / float64(len(samples)))
 }
 
-// extremeValue returns the first sample value that no later value beats.
 func extremeValue(samples []Sample, beats func(candidate, current float64) bool) float64 {
 	extreme := samples[0].Value
 	for _, s := range samples {
@@ -193,9 +178,6 @@ func extremeValue(samples []Sample, beats func(candidate, current float64) bool)
 	return extreme
 }
 
-// linearSlope returns the rate in value-units per hour. The output unit is
-// metadata on the emitted feature; rate scaling is a single runtime contract,
-// not inferred from domain-specific unit names.
 func linearSlope(samples []Sample) float64 {
 	if len(samples) < 2 {
 		return 0
@@ -209,7 +191,6 @@ func linearSlope(samples []Sample) float64 {
 	return (n*sumXY - sumX*sumY) / denom
 }
 
-// slopeSums are the least-squares sums over hours since the first sample.
 func slopeSums(samples []Sample) (sumX, sumY, sumXY, sumXX float64) {
 	start := samples[0].EventTime
 	for _, s := range samples {

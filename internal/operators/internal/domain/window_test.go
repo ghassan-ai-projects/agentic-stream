@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,7 +54,7 @@ func TestEmitModeDecidesWhichEventsEmitAFeature(t *testing.T) {
 		want []string
 	}{
 		{"on_update", []string{provisional, provisional, provisional, provisional}},
-		{"early_and_close", []string{provisional, provisional, provisional, provisional}},
+		{"early_and_close", []string{provisional, provisional, provisional + "," + final, provisional}},
 		{"on_close", []string{none, none, final, none}},
 		{"", []string{none, none, final, none}},
 	}
@@ -75,10 +76,11 @@ func TestEmitModeDecidesWhichEventsEmitAFeature(t *testing.T) {
 }
 
 func completenessOf(features []domain.Feature) string {
-	if len(features) == 0 {
-		return ""
+	completeness := make([]string, len(features))
+	for i, feature := range features {
+		completeness[i] = feature.Completeness
 	}
-	return features[0].Completeness
+	return strings.Join(completeness, ",")
 }
 
 func TestOnCloseWindowEmitsTheClosedAggregateAtTheWatermark(t *testing.T) {

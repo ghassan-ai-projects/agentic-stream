@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"maps"
 	"slices"
 	"time"
 
@@ -8,10 +9,7 @@ import (
 )
 
 func (e *Engine) applyFeatureEvidence(sit *Situation, feature operators.Feature) bool {
-	completenessChanged := feature.Completeness != "" && feature.Completeness != sit.Completeness
-	if feature.Completeness != "" {
-		sit.Completeness = feature.Completeness
-	}
+	completenessMatters := recordInputCompleteness(sit, feature)
 	e.applyReducers(sit, feature)
 	recordTimerProvenance(sit, feature.Metadata)
 	if feature.EventTime.After(sit.LatestEventTime) {
@@ -21,7 +19,21 @@ func (e *Engine) applyFeatureEvidence(sit *Situation, feature operators.Feature)
 		sit.Traceparent = feature.Traceparent
 		sit.Tracestate = feature.Tracestate
 	}
-	return completenessChanged
+	return completenessMatters
+}
+
+func recordInputCompleteness(sit *Situation, feature operators.Feature) bool {
+	if feature.Completeness == "" {
+		return false
+	}
+	if sit.Inputs == nil {
+		sit.Inputs = make(map[string]operators.Completeness)
+	}
+	sit.Inputs[feature.OutputName] = operators.Completeness(feature.Completeness)
+	wasUncertain := sit.Completeness == string(operators.CompletenessUncertain)
+	sit.Completeness = string(operators.WeakestCompleteness(slices.Collect(maps.Values(sit.Inputs))))
+	isUncertain := sit.Completeness == string(operators.CompletenessUncertain)
+	return wasUncertain != isUncertain || feature.Completeness == string(operators.CompletenessCorrected)
 }
 
 func recordTimerProvenance(sit *Situation, metadata map[string]any) {
