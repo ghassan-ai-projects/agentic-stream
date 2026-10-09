@@ -1,54 +1,11 @@
 package store
 
 import (
-	"context"
-	"database/sql"
-	"errors"
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/domain"
 )
-
-var testNow = time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
-
-func allowOwner(context.Context, *sql.Tx, string) error { return nil }
-
-func openStore(t *testing.T) Store {
-	t.Helper()
-	db := storagetest.OpenTemp(t)
-
-	return New(db, allowOwner, "epoch")
-}
-
-func inTx(t *testing.T, s Store, use func(*Tx) error) {
-	t.Helper()
-	if err := s.WithTx(t.Context(), use); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func condition() domain.Condition {
-	return domain.Condition{TenantID: "tenant", SituationID: "sit-1", Expression: "features.x > 1", Target: "motor-1",
-		ExpiresAt: testNow.Add(time.Hour), SituationVersion: 1, MaxFires: 2}
-}
-
-func TestStoreRequiresEverySafetyPort(t *testing.T) {
-	t.Parallel()
-	s := openStore(t)
-	for name, bad := range map[string]Store{
-		"database": New(nil, allowOwner, "epoch"), "owner": New(s.db, nil, "epoch"),
-	} {
-		if bad.Configured() {
-			t.Fatalf("store without %s reported configured", name)
-		}
-	}
-	if !s.Configured() {
-		t.Fatal("complete store reported unconfigured")
-	}
-}
 
 func TestConditionRoundTripsAndInsertIsIdempotent(t *testing.T) {
 	t.Parallel()
@@ -125,47 +82,6 @@ func TestExpiryHidesWatchesFromActiveReads(t *testing.T) {
 	})
 }
 
-func TestOwnerAndInterlockChecksRunOnTheTransaction(t *testing.T) {
-	t.Parallel()
-	s := openStore(t)
-	lost := errors.New("ownership lost")
-	denied := New(s.db, func(context.Context, *sql.Tx, string) error { return lost }, "epoch")
-	if err := denied.WithTx(t.Context(), func(tx *Tx) error { return tx.AssertOwner(t.Context()) }); !errors.Is(err, lost) {
-		t.Fatalf("owner err = %v", err)
-	}
-	inTx(t, s, func(tx *Tx) error { return tx.AssertInterlock(t.Context()) })
-	if err := s.db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		_, err := interlock.TripIn(t.Context(), tx, "stop", testNow)
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.WithTx(t.Context(), func(tx *Tx) error { return tx.AssertInterlock(t.Context()) }); err == nil {
-		t.Fatal("tripped interlock accepted a watch write")
-	}
-}
-
-func TestFailedUnitOfWorkRollsBack(t *testing.T) {
-	t.Parallel()
-	s := openStore(t)
-	boom := errors.New("boom")
-	err := s.WithTx(t.Context(), func(tx *Tx) error {
-		if err := tx.InsertCondition(t.Context(), "w-1", condition(), testNow); err != nil {
-			return err
-		}
-		return boom
-	})
-	if !errors.Is(err, boom) {
-		t.Fatalf("err = %v", err)
-	}
-	inTx(t, s, func(tx *Tx) error {
-		if _, found, err := tx.LoadCondition(t.Context(), "w-1"); err != nil || found {
-			t.Fatalf("rolled-back watch found=%v err=%v", found, err)
-		}
-		return nil
-	})
-}
-
 func TestLoadConditionFailsClosedOnUnreadableStoredExpiry(t *testing.T) {
 	t.Parallel()
 	s := openStore(t)
@@ -215,6 +131,40 @@ func TestUnreadableStoredExpiryIsExpiredNotActive(t *testing.T) {
 			if status != "expired" {
 				t.Fatalf("status = %q, want expired", status)
 			}
+		})
+	}
+}
+
+func TestAWatchIsVisibleUpToItsExpiryAndHiddenAtIt(t *testing.T) {
+	t.Parallel()
+	expiry := condition().ExpiresAt
+	cases := []struct {
+		name string
+		at   time.Time
+		want bool
+	}{
+		{"a nanosecond before", expiry.Add(-time.Nanosecond), true},
+		{"at the expiry instant", expiry, false},
+		{"after", expiry.Add(time.Second), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := openStore(t)
+			inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), testNow) })
+			candidates, err := s.ActiveForTarget(t.Context(), "motor-1", tc.at)
+			if visible := len(candidates) == 1; err != nil || visible != tc.want {
+				t.Errorf("ActiveForTarget visible = %v, %v; want %v", visible, err, tc.want)
+			}
+			inTx(t, s, func(tx *Tx) error {
+				if _, found, err := tx.LoadActive(t.Context(), "w-1", tc.at); err != nil || found != tc.want {
+					t.Errorf("LoadActive found = %v, %v; want %v", found, err, tc.want)
+				}
+				if recorded, err := tx.RecordFire(t.Context(), "w-1", "evt-1", tc.at); err != nil || recorded != tc.want {
+					t.Errorf("RecordFire recorded = %v, %v; want %v", recorded, err, tc.want)
+				}
+				return nil
+			})
 		})
 	}
 }

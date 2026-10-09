@@ -187,7 +187,7 @@ func validSuperseded() SituationSuperseded {
 
 func TestNewLifecycleEventRefusesIncompleteIdentityBadTraceAndBadPayload(t *testing.T) {
 	t.Parallel()
-	valid := LifecycleEvent{ID: "i", TenantID: "acme", Subject: "s", PartitionKey: "p", Payload: validSuperseded(), At: time.Now()}
+	valid := LifecycleEvent{ID: "i", TenantID: "acme", Subject: "s", PartitionKey: "p", Payload: validSuperseded(), At: sealNow}
 	for name, mutate := range map[string]func(*LifecycleEvent){
 		"missing id":        func(r *LifecycleEvent) { r.ID = "" },
 		"missing tenant":    func(r *LifecycleEvent) { r.TenantID = "" },
@@ -200,11 +200,14 @@ func TestNewLifecycleEventRefusesIncompleteIdentityBadTraceAndBadPayload(t *test
 		"empty required":    func(r *LifecycleEvent) { r.Payload = SituationSuperseded{SupersededVersion: 1, ReplacementVersion: 2} },
 		"nil approval maps": func(r *LifecycleEvent) { r.Payload = ApprovalRequested{ApprovalID: "a"} },
 	} {
-		request := valid
-		mutate(&request)
-		if _, err := NewLifecycleEvent(request); err == nil {
-			t.Errorf("%s: request was accepted", name)
-		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			request := valid
+			mutate(&request)
+			if _, err := NewLifecycleEvent(request); err == nil {
+				t.Error("request was accepted")
+			}
+		})
 	}
 	if _, err := NewLifecycleEvent(valid); err != nil {
 		t.Fatalf("valid request refused: %v", err)

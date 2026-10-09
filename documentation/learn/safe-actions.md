@@ -77,7 +77,7 @@ mode evaluates an executor without sending its proposals into governance.
 None of these modes authorizes a production effect.
 
 Sources: [Decision/Intent contract](../contracts/decision-intent.md),
-[unknown-outcome tests](../../internal/actions/internal/app/dispatch_test.go),
+[unknown-outcome tests](../../internal/actions/internal/app/crash_recovery_test.go),
 [recovery](../operations/recovery.md), and [replay](../design/replay-and-shadow.md).
 
 ## Next reads
