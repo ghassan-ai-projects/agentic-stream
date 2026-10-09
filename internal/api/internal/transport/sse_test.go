@@ -1,6 +1,7 @@
 package transport_test
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -169,6 +170,31 @@ func TestSSEKeepsAnIdleConnectionAliveWithComments(t *testing.T) {
 	session.disconnect()
 }
 
+func TestSSEOutlivesTheServerWriteTimeout(t *testing.T) {
+	t.Parallel()
+	cfg := fastStream(storagetest.OpenTemp(t))
+	cfg.IdleInterval = 10 * time.Millisecond
+	server := httptest.NewUnstartedServer(transport.NewSSEHandler(cfg))
+	server.Config.WriteTimeout = 50 * time.Millisecond
+	server.Start()
+	t.Cleanup(server.Close)
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/v1/events", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	reader := bufio.NewReader(response.Body)
+	for opened := time.Now(); time.Since(opened) < 300*time.Millisecond; {
+		if _, err := reader.ReadString('\n'); err != nil {
+			t.Fatalf("stream cut after %s, past the 50ms write timeout: %v", time.Since(opened), err)
+		}
+	}
+}
+
 func TestSSEStopsWhenTheClientDisconnects(t *testing.T) {
 	t.Parallel()
 	session := connect(t, transport.NewSSEHandler(fastStream(storagetest.OpenTemp(t))), "/v1/events", nil)
@@ -287,10 +313,6 @@ func TestSSEEndsWithAStreamErrorWhenAFollowUpReadFails(t *testing.T) {
 	}
 }
 
-// provokeUntilStreamError repeats the provocation while a poll that straddled
-// the commit delivered the new events instead of seeing the lag: the outbox
-// reads its bounds and its rows in two separate queries, so one poll can miss
-// the lag a commit created. A later round outpaces the subscriber again.
 func provokeUntilStreamError(t *testing.T, session *sseSession, db *storage.DB, provoke func(*testing.T, *storage.DB, int)) string {
 	t.Helper()
 	const maxRounds = 50

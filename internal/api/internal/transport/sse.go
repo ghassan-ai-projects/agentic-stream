@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -11,19 +12,14 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// AuthorizeSubscriber checks the subscriber credential and event type. The
-// callback runs before the stream starts and for every delivered event.
 type AuthorizeSubscriber func(*http.Request, string) bool
 
-// BearerTokenAuthorizer creates a constant-time subscriber credential check.
-// The token is intentionally separate from worker capability tokens.
 func BearerTokenAuthorizer(expected string) AuthorizeSubscriber {
 	return func(r *http.Request, _ string) bool {
 		return domain.LooseBearer(r.Header.Get("Authorization"), expected)
 	}
 }
 
-// SSEConfig configures one durable notification stream.
 type SSEConfig struct {
 	DB                *storage.DB
 	TenantID          string
@@ -38,8 +34,6 @@ type SSEConfig struct {
 	Now               func() time.Time
 }
 
-// NewSSEHandler creates a cursor-resumable Server-Sent Events handler. The
-// handler is at-least-once: clients must deduplicate by CloudEvent source/id.
 func NewSSEHandler(cfg SSEConfig) http.Handler {
 	cfg.PageSize = domain.NormalizePageSize(cfg.PageSize)
 	cfg = defaultStreamTiming(cfg)
@@ -56,7 +50,6 @@ func serveSSE(w http.ResponseWriter, r *http.Request, cfg SSEConfig) {
 	stream.followFromCursor()
 }
 
-// sseStream is one subscriber's notification stream.
 type sseStream struct {
 	w        http.ResponseWriter
 	flusher  http.Flusher
@@ -68,8 +61,6 @@ type sseStream struct {
 	seen     *domain.Dedup
 }
 
-// admitSubscriber requires a GET from an authorized subscriber for a known
-// tenant with a valid resume cursor, answering with a problem otherwise.
 func admitSubscriber(w http.ResponseWriter, r *http.Request, cfg SSEConfig) (*sseStream, bool) {
 	tenantID, admitted := admitSubscriberIdentity(w, r, cfg)
 	if !admitted {
@@ -83,8 +74,6 @@ func admitSubscriber(w http.ResponseWriter, r *http.Request, cfg SSEConfig) (*ss
 	return openStream(w, r, cfg, tenantID, cursor)
 }
 
-// openStream binds the response, the notification outbox and the subscriber's
-// resume position into one stream.
 func openStream(w http.ResponseWriter, r *http.Request, cfg SSEConfig, tenantID string, cursor int64) (*sseStream, bool) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -96,11 +85,13 @@ func openStream(w http.ResponseWriter, r *http.Request, cfg SSEConfig, tenantID 
 		writeSSEProblem(w, http.StatusServiceUnavailable, "runtime_not_ready", "notification store is not configured")
 		return nil, false
 	}
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		writeSSEProblem(w, http.StatusInternalServerError, "stream_unsupported", "response deadline cannot be lifted for a stream")
+		return nil, false
+	}
 	return &sseStream{w: w, flusher: flusher, r: r, cfg: cfg, outbox: outbox, tenantID: tenantID, cursor: cursor, seen: domain.NewDedup(cfg.PageSize)}, true
 }
 
-// subscriberTenant is the configured tenant, then the request's derived
-// tenant, then the tenant query parameter.
 func subscriberTenant(r *http.Request, cfg SSEConfig) string {
 	tenantID := cfg.TenantID
 	if cfg.TenantFromRequest != nil {
@@ -117,7 +108,6 @@ func (s *sseStream) readPage() (notify.Page, error) {
 	return s.outbox.ReadPage(s.r.Context(), request, sources.NowUTC(s.cfg.Now)) //nolint:wrapcheck // The error detail is part of the SSE stream_error contract.
 }
 
-// beginResponse commits the event-stream headers and a connected comment.
 func (s *sseStream) beginResponse() error {
 	s.w.Header().Set("Content-Type", "text/event-stream")
 	s.w.Header().Set("Cache-Control", "no-cache")
@@ -135,9 +125,6 @@ func (s *sseStream) deliverPage(page notify.Page) error {
 	return writePage(s.w, s.flusher, s.r, s.cfg, page, &s.cursor, s.seen)
 }
 
-// followNotifications polls for new pages and keeps the connection alive until the
-// subscriber leaves or a read fails, which ends the stream with a control
-// event.
 func (s *sseStream) followNotifications() {
 	poll := time.NewTicker(s.cfg.PollInterval)
 	defer poll.Stop()
@@ -182,8 +169,7 @@ func defaultStreamTiming(cfg SSEConfig) SSEConfig {
 }
 
 func (s *sseStream) followFromCursor() {
-	// Prime the stream before committing headers so an expired cursor returns a
-	// normal problem response and can force the client's audited resnapshot.
+
 	page, err := s.readPage()
 	if err != nil {
 		writeStreamError(s.w, err)
