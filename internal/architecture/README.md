@@ -33,6 +33,8 @@ the code.
 | `package_layers_test.go` | `packageLayers` | `TestImportsOnlyPointToLowerArchitectureLayers` |
 | `ownership_test.go` | `durableOwners` | `TestDurableMutationsHaveOneOwnerOrAnExplicitHandoffPhase` |
 | `ownership_test.go` | `appendOnlyTables` | `TestAppendOnlyTablesAreNeverRewritten` |
+| `TestErrorAssertionsNameTheErrorTheyExpect` | T4 | No test file under `internal/` or `cmd/` has more `if err == nil { t.Fatal… }` assertions that accept any error than its baseline in `unnamedErrorAssertions`; a file that drops below its baseline must lower it. |
+| `error_assertions_test.go` | `unnamedErrorAssertions` (burn-down baseline per file) | `TestErrorAssertionsNameTheErrorTheyExpect` |
 | `layers_test.go` | `wallClockReaders` | `TestApplicationAndStoreLayersTakeTimeFromTheInjectedClock` |
 | `facades_test.go` | `facadeSpecs` | `TestFacadesOnlyDelegate` |
 | `module_shape_test.go` | `moduleShapeExceptions`, `opaqueStoreModules`, `applicationLayerSpecs` | module shape gates |

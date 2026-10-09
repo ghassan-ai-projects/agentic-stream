@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
@@ -77,8 +78,8 @@ func TestOtherRoutesGoToTheFallbackAndAPhysicalFallbackFailsClosed(t *testing.T)
 		t.Fatalf("simulated fallback: effect=%v err=%v", effect, err)
 	}
 	physical := app.NewCompositeEffector(nil, device.NewFailClosedEffector(device.EffectProfilePhysical))
-	if _, err := physical.Dispatch(t.Context(), command); err == nil {
-		t.Fatal("the physical fallback accepted an unmapped route")
+	if _, err := physical.Dispatch(t.Context(), command); err == nil || !strings.Contains(err.Error(), `has no effector for route "start_aerator"`) {
+		t.Fatalf("physical fallback = %v, want the unmapped route refused", err)
 	}
 }
 
@@ -88,18 +89,19 @@ func TestARouteWithoutItsEffectorFailsClosedInsteadOfFallingBack(t *testing.T) {
 		name     string
 		effector *app.CompositeEffector
 		route    string
+		want     string
 	}{
-		{"no watch effector for a watch route", app.NewCompositeEffector(nil, &recordingRoute{}), "install_watch_condition"},
-		{"no device effector for set_indicator", app.NewCompositeEffector(nil, &recordingRoute{}), "set_indicator"},
-		{"no device effector for select_thermal_mode", app.NewCompositeEffector(nil, &recordingRoute{}), "select_thermal_mode"},
-		{"no fallback for an ordinary route", app.NewCompositeEffector(nil, nil), "start_aerator"},
-		{"no effector at all", nil, "start_aerator"},
+		{"no watch effector for a watch route", app.NewCompositeEffector(nil, &recordingRoute{}), "install_watch_condition", "watch effector is not configured"},
+		{"no device effector for set_indicator", app.NewCompositeEffector(nil, &recordingRoute{}), "set_indicator", `serial effector is not configured for route "set_indicator"`},
+		{"no device effector for select_thermal_mode", app.NewCompositeEffector(nil, &recordingRoute{}), "select_thermal_mode", `serial effector is not configured for route "select_thermal_mode"`},
+		{"no fallback for an ordinary route", app.NewCompositeEffector(nil, nil), "start_aerator", `no effector is configured for route "start_aerator"`},
+		{"no effector at all", nil, "start_aerator", "composite effector is not configured"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := tt.effector.Dispatch(t.Context(), actionport.Command{EffectorRoute: tt.route}); err == nil {
-				t.Fatalf("route %s was dispatched without its effector", tt.route)
+			if _, err := tt.effector.Dispatch(t.Context(), actionport.Command{EffectorRoute: tt.route}); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("route %s = %v, want it refused with %q", tt.route, err, tt.want)
 			}
 		})
 	}
@@ -110,8 +112,8 @@ func TestDeviceRoutesNeverReachTheFallback(t *testing.T) {
 	fallback := &recordingRoute{}
 	routes := app.NewCompositeEffector(nil, fallback)
 	for _, route := range []string{"set_indicator", "select_thermal_mode"} {
-		if _, err := routes.Dispatch(t.Context(), actionport.Command{EffectorRoute: route}); err == nil {
-			t.Fatalf("missing device route %s fell through to the fallback", route)
+		if _, err := routes.Dispatch(t.Context(), actionport.Command{EffectorRoute: route}); err == nil || !strings.Contains(err.Error(), "serial effector is not configured") {
+			t.Fatalf("missing device route %s = %v, want it refused instead of falling through to the fallback", route, err)
 		}
 	}
 	physical := &recordingRoute{}
