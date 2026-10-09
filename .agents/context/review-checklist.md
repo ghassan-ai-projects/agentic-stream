@@ -25,7 +25,7 @@ Use this before the final answer.
 - Were tests added for production-code changes?
 - For behavior changes, were tests written first when feasible, or was the exception explained?
 - Do the tests prove the behavior change rather than merely execute code?
-- Do changed tests meet the [test bar](../../docs/test-audit-2026-10-09/TEST_BAR.md) T1-T12 (see [testing.md](testing.md)): named for behavior, assert got and want and which error, parallel, no `time.Sleep`, shared fixtures, no dead or duplicate tests?
+- Do changed tests meet the test bar (`docs/test-audit-2026-10-09/TEST_BAR.md`) T1-T12 (see [testing.md](testing.md)): named for behavior, assert got and want and which error, parallel, no `time.Sleep`, shared fixtures, no dead or duplicate tests?
 - Does a change that touches a product invariant update its proving tests in [invariants.md](../../documentation/architecture/invariants.md)?
 - Did you run the relevant validation commands?
 - Did you record validation failures accurately?

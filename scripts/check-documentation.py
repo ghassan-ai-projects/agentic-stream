@@ -100,7 +100,7 @@ def main() -> int:
             if page not in reachable:
                 errors.append(f"orphan public page: {page.relative_to(ROOT)}")
 
-    for relative in ("README.md", "CONTRIBUTING.md", "SECURITY.md", "SUPPORT.md", "CODE_OF_CONDUCT.md", "CHANGELOG.md", "docs/README.md"):
+    for relative in ("README.md", "CONTRIBUTING.md", "SECURITY.md", "SUPPORT.md", "CODE_OF_CONDUCT.md", "CHANGELOG.md"):
         if not (ROOT / relative).is_file():
             errors.append(f"missing open-source entrypoint: {relative}")
 

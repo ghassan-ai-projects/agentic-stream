@@ -73,7 +73,7 @@ the same transaction as attempt start. Identity, budget, trigger delta, and
 reconsideration evidence are preserved. The durable limit is three rebindings
 across retries; invalid live evidence abandons the episode as `rebind_failed`.
 Each started attempt uses its fixed request. See
-[ADR-013](../../docs/design/DECISIONS.md#adr-013-re-bind-stale-episodes-to-the-live-situation-version-before-dispatch)
+ADR-013 (`docs/design/DECISIONS.md`)
 and [rebinding tests](../../internal/episodes/internal/app/rebind_test.go).
 
 ## Cancellation and reconsideration

@@ -8,7 +8,7 @@ implementation, or to separate its layers.
 The user's standing preferences for this work:
 
 - Plan first. Write findings and a plan into a dated folder under `docs/`
-  before touching code.
+  (local-only and git-ignored, so it is never committed) before touching code.
 - One responsibility per layer. Never put logic in the persistence or adapter
   layer, never put database or transport code in the logic layer, and keep the
   public package a thin facade.

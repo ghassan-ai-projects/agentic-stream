@@ -2,7 +2,7 @@
 
 Status: HTTP integration implemented and validated, 2026-10-05.
 This makes the existing loopback approval requirement in
-[implementation plan M3.3](../../docs/design/IMPLEMENTATION_PLAN.md) concrete.
+implementation plan M3.3 (`docs/design/IMPLEMENTATION_PLAN.md`) concrete.
 The CLI approve/deny client is separate follow-up work.
 
 ## Production contract

@@ -91,5 +91,5 @@ bytes through presentation. See [the HTTP design](APPROVAL_HTTP_DESIGN.md).
 
 - [Approval integration record](APPROVAL_INTEGRATION.md) retains the original 33-function inventory, completed HTTP path and remaining CLI/deployment work.
 - [Ubiquitous language](UBIQUITOUS_LANGUAGE.md) maps governance terms to code and durable records.
-- [Refactor plan](../../docs/policy-reference-module-2026-10-05/PLAN.md) and
-  [validation](../../docs/policy-reference-module-2026-10-05/VALIDATION.md) retain the dated change history and evidence.
+- Refactor plan (`docs/policy-reference-module-2026-10-05/PLAN.md`) and
+  validation (`docs/policy-reference-module-2026-10-05/VALIDATION.md`) retain the dated change history and evidence.

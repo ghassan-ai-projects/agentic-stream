@@ -8,7 +8,7 @@ explain why the runtime took each step.
 
 The ordered SQL files under [`migrations/`](../../migrations/) are the schema
 authority executed by `internal/storage`. The design SQL at
-[`docs/design/contracts/storage-schema-v1.sql`](../../docs/design/contracts/storage-schema-v1.sql)
+`docs/design/contracts/storage-schema-v1.sql`
 is a reviewed baseline and may contain design context that is not a literal
 description of the current migration head.
 

@@ -78,10 +78,9 @@ The curated public documentation is the primary entrypoint:
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Changelog](CHANGELOG.md)
 
-The `docs/` directory is the working archive: current design records,
-machine-facing contract sources, research, audits, runbooks, and historical
-iterations. See [`docs/README.md`](docs/README.md) before using it as a source.
-Nothing executable reads from `docs/`: the quickstart's specs live under
+The `docs/` directory is a local-only working archive (design records,
+research, audits, runbooks, historical iterations). It is git-ignored and not
+part of the repository. Nothing executable reads from `docs/`: the quickstart's specs live under
 `examples/`, the worker protocol under `proto/`.
 
 ## Technology

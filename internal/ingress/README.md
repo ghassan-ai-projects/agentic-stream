@@ -34,6 +34,6 @@ activations in strictly increasing recorded time, and close with `trace_end`.
 The channel-to-field mapping is data in
 `internal/domain/simulator_data.json`, not code.
 
-[Migration record](../../docs/ingress-reference-module-2026-10-06/README.md).
+Migration record (`docs/ingress-reference-module-2026-10-06/README.md`).
 Architecture gates enforce a pure domain, an opaque store, exact write ownership
 of `connector_checkpoints`, and facade delegation.

@@ -28,7 +28,7 @@ Tests that check the whole repository (import layering, SQL ownership, facade sh
 ## The Test Bar
 
 Every test meets the rules T1-T12 in
-[docs/test-audit-2026-10-09/TEST_BAR.md](../../docs/test-audit-2026-10-09/TEST_BAR.md),
+docs/test-audit-2026-10-09/TEST_BAR.md,
 which names how each is checked. In short:
 
 - **Place (T1, T2).** A test lives with the code it proves, at the lowest layer that owns the behavior, plus at most one integration path through the layer above. Nothing at the repository root; repository-wide gates live in `internal/architecture`.
@@ -36,7 +36,7 @@ which names how each is checked. In short:
 - **Assert (T4).** Every test checks an observable outcome and prints got and want. Error tests assert which error (`errors.Is`, `errors.As`, or the domain message), never `err != nil` alone.
 - **Deterministic (T5).** A test never sleeps to wait for work: `TestTestsNeverSleep` fails on any `time.Sleep` in a `_test.go` file. Wait on a channel, a condition, or a bounded poll bound to `t.Context()`; take time from a virtual clock (`sources.NewVirtual`) and identities from deterministic generators.
 - **Isolated and parallel (T6).** Every top-level test and subtest calls `t.Parallel()`; use `t.TempDir`, `t.Context`, `t.Cleanup`, `t.Setenv`. A test that cannot be parallel or cannot use `t.TempDir` (process-global state, Unix socket path length) says why in `//nolint:paralleltest // <reason>`. No mutable package-level test state; no network beyond loopback and Unix sockets.
-- **Fast (T7).** `go test -short -race ./...` finishes in 35 s on the reference machine; no package takes more than 15 s and no test more than 5 s, unless it is in the [slow-test register](../../docs/test-audit-2026-10-09/TEST_BAR.md#slow-test-register-t7). Product acceptance tests are made faster, never skipped under `-short`.
+- **Fast (T7).** `go test -short -race ./...` finishes in 35 s on the reference machine; no package takes more than 15 s and no test more than 5 s, unless it is in the slow-test register (`docs/test-audit-2026-10-09/TEST_BAR.md`). Product acceptance tests are made faster, never skipped under `-short`.
 - **Covered (T8).** Every package is at 70% or above, the repository at 80% or above. Every exported facade operation and every error branch that enforces an invariant or architecture rule has a test. Coverage is never raised with assertion-free tests.
 - **Shared fixtures (T9).** Inputs come from `testdata/`, `examples/` or a named builder, never `docs/`; helpers call `t.Helper()`; setup repeated in two places moves into one helper.
 - **No dead tests (T10).** Delete tests that repeat another assertion at the same layer, test removed behavior or assert that a constant equals its literal. `t.Skip` only for `testing.Short()` or a missing optional tool, and it says which.

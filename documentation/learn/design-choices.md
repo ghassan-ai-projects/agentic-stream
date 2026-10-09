@@ -13,8 +13,8 @@ scheduler control reasoning cost and freshness.
 
 The cost is explicit domain modeling: developers must define inputs,
 calculations, lifecycle, and triggers. A model cannot invent the state rules
-as it goes. See [ADR-001](../../docs/design/DECISIONS.md#adr-001-situation-is-the-primary-semantic-unit)
-and [ADR-002](../../docs/design/DECISIONS.md#adr-002-separate-continuous-and-episodic-runtimes).
+as it goes. See ADR-001 (`docs/design/DECISIONS.md`)
+and ADR-002 (`docs/design/DECISIONS.md`).
 
 ## Begin with one process and one database
 
@@ -26,8 +26,8 @@ separate services for every reading.
 That makes ordering, recovery, and audit easier to understand. It also limits
 write concurrency and capacity to one node. Virtual partitions divide state
 ownership inside this design; they do not automatically distribute it across
-machines. See [ADR-004](../../docs/design/DECISIONS.md#adr-004-single-node-modular-monolith-first)
-and [ADR-005](../../docs/design/DECISIONS.md#adr-005-sqlite-wal-is-the-local-system-of-record).
+machines. See ADR-004 (`docs/design/DECISIONS.md`)
+and ADR-005 (`docs/design/DECISIONS.md`).
 
 ## Author behavior as data
 
@@ -39,7 +39,7 @@ This makes the deployed behavior inspectable and replayable. It also restricts
 what a spec can express: arbitrary scripts are not part of the contract.
 Some policy values pass schema validation but are not fully enforced today.
 A valid spec is therefore not proof that every declared control works. See
-[ADR-006](../../docs/design/DECISIONS.md#adr-006-compile-situationspec-to-deterministic-ir)
+ADR-006 (`docs/design/DECISIONS.md`)
 and [SituationSpec limitations](../overview/limitations.md).
 
 ## Keep model proposals away from effect credentials
@@ -52,7 +52,7 @@ Go protocol without taking ownership of stream state or effects.
 These boundaries add validation and possible approval latency. They also make
 refusal, cancellation, and uncertain outcomes visible. Correctness still
 requires trustworthy effect adapters and deployment controls. See
-[ADR-008](../../docs/design/DECISIONS.md#adr-008-agents-cannot-execute-effects),
+ADR-008 (`docs/design/DECISIONS.md`),
 [worker boundary](../architecture/worker-boundary.md), and
 [module ownership](../architecture/modules.md).
 
@@ -65,7 +65,7 @@ runtime distinguish a repeated request from new work.
 This is not a universal exactly-once guarantee. For each external integration,
 document how it handles duplicate requests and how the runtime can verify the
 result. See
-[ADR-007](../../docs/design/DECISIONS.md#adr-007-at-least-once-plus-idempotent-state-effects).
+ADR-007 (`docs/design/DECISIONS.md`).
 
 ## Choose your next level of detail
 

@@ -55,8 +55,8 @@ conformance suite.
 Focused tests cover deterministic replay, recovery, fencing, policy, actions,
 notifications, and security boundaries. They do not replace workload-specific
 capacity testing, storage backup rehearsal, key rotation rehearsal, or
-long-running environment qualification. See the archived [operations
-readiness](../../docs/design/OPERATIONS_READINESS.md).
+long-running environment qualification. See the archived operations
+readiness (`docs/design/OPERATIONS_READINESS.md`).
 
 ### Some spec controls are not runtime controls yet
 

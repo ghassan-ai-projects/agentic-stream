@@ -28,6 +28,6 @@ pending item. Corrections verify the persisted snapshot digest and deduplicate
 by Situation, superseded version and command identity.
 
 The root exposes no `Engine`, `Scheduler` or mutable evaluation state. Tests
-exercise the same durable path as production. [Migration findings and audit](../../docs/cognition-reference-module-2026-10-05/README.md)
+exercise the same durable path as production. Migration findings and audit (`docs/cognition-reference-module-2026-10-05/README.md`)
 record changes and remaining owner-read-port work. Architecture gates enforce
 pure domain, opaque transactions, exact write ownership and facade delegation.

@@ -60,7 +60,7 @@ resolution and dispatch refuse the Intent as `situation_version_stale` only
 when such a version is newer than the Intent's. A window's provisional and
 on-time versions alone do not cancel a pending decision. A trigger without
 `materialDelta` keeps the strict rule: any newer version is stale
-([ADR-018](../../docs/design/DECISIONS.md)). Approval-required paths create durable approval records;
+(ADR-018 (`docs/design/DECISIONS.md`)). Approval-required paths create durable approval records;
 automatic paths still pass all revalidation and interlock checks. Drain and kill
 controls apply to the current policy epoch, the generation of operational
 permission. A worker response cannot bypass an operator stop.

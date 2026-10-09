@@ -1,7 +1,7 @@
 # Architecture decision records
 
 The current decision record is the accepted design document
-[`docs/design/DECISIONS.md`](../../docs/design/DECISIONS.md). The public pages
+`docs/design/DECISIONS.md`. The public pages
 summarize its durable choices; they do not invent a second decision history.
 
 ## Accepted decision themes
@@ -30,7 +30,7 @@ alternatives, consequences, and evidence.
 
 The v0 and v0.1 design directories are historical iterations. They are useful
 for rationale and critique, but are not current implementation authority. See
-the [archive guide](../../docs/README.md).
+the archive guide (`docs/README.md`).
 
 ## Next reads
 

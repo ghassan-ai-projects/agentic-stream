@@ -8,7 +8,7 @@ Agentic Stream is a streaming-native agent runtime ("Situation Runtime"): it con
 
 Deliberately lighter than a general-purpose agent framework: no channel gateway, no graph engine in the event hot path, no LLM invocation per event, no multi-agent mesh, no direct model access to effectors or production credentials in version 1.
 
-The design is implementation-ready and lives in [docs/design/](docs/design/README.md). The ten product invariants in the design README are release-blocking, not guidelines. The MVP proof is the predictive-maintenance example: a simulated motor emits sensor events, and the release must satisfy the acceptance list in the design README (deterministic replay, duplicate/out-of-order handling, hysteresis, episode cancellation, governed intents, idempotent effects, shadow mode, explainability).
+The design is implementation-ready and lives in docs/design/ (local-only, git-ignored; absent from a fresh clone). The ten product invariants in the design README are release-blocking, not guidelines. The MVP proof is the predictive-maintenance example: a simulated motor emits sensor events, and the release must satisfy the acceptance list in the design README (deterministic replay, duplicate/out-of-order handling, hysteresis, episode cancellation, governed intents, idempotent effects, shadow mode, explainability).
 
 ## Engineering Priorities
 
@@ -28,7 +28,7 @@ Before editing:
 
 1. Read this file.
 2. Read [README.md](README.md).
-3. Read the relevant sections of [docs/design/TECHNICAL_DESIGN.md](docs/design/TECHNICAL_DESIGN.md) and [docs/design/DECISIONS.md](docs/design/DECISIONS.md) before touching architecture, invariants, or protocol surfaces.
+3. Read the relevant sections of docs/design/TECHNICAL_DESIGN.md and docs/design/DECISIONS.md before touching architecture, invariants, or protocol surfaces.
 4. Check the worktree with `git status --short`.
 5. Read the smallest relevant context files under `.agents/context/`.
 6. Make a short plan before editing.
@@ -63,7 +63,7 @@ Do not invent architecture outside the documented design. The design was written
 
 ## Architecture Overview
 
-The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design/TECHNICAL_DESIGN.md)):
+The documented structure (see docs/design/TECHNICAL_DESIGN.md §23):
 
 - `cmd/agentic-stream/` - entrypoint, flags, wiring, shutdown
 - `internal/contractsv1` - versioned envelopes and JSON contracts
@@ -84,12 +84,12 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/watch` - derived-trigger watches installed by approved commands; configured facade, app use cases, pure domain rules and an opaque-transaction store (see [watch module guide](internal/watch/README.md))
 - `internal/notify` - durable notification outbox and lifecycle contract; configured facade, app use cases, pure domain rules (including the embedded Channel-B contract) and a store that owns the five notification tables (see [notify module guide](internal/notify/README.md))
 - `internal/actionport` - approved-command/effect contracts without implementation dependencies
-- `internal/device` - device effect boundary; the reference adapter module: thin facade, session use cases in `internal/app`, pure `internal/domain`, record codec in `internal/wire`, gateway link in `internal/transport` (record in [docs/device-reference-module-2026-10-05](docs/device-reference-module-2026-10-05/README.md))
+- `internal/device` - device effect boundary; the reference adapter module: thin facade, session use cases in `internal/app`, pure `internal/domain`, record codec in `internal/wire`, gateway link in `internal/transport` (record in docs/device-reference-module-2026-10-05)
 - `internal/episodeledger` - durable episode pipeline lifecycle (scheduler queue items, episodes, fenced attempts, rejection audit, recovery); configured facade, app use cases, pure domain rules and an opaque-transaction store (see [episode ledger guide](internal/episodeledger/README.md))
 - `internal/approvalledger` - durable human approval lifecycle (request, expiry, resolution, withdrawal); configured facade, app use cases, pure domain and an opaque-transaction store; imports no `notify`, the caller supplies the withdrawal publisher (see [approval ledger guide](internal/approvalledger/README.md))
 - `internal/runtime` - thin live-pipeline, readiness and worker facades; concrete assembly in `internal/composition`, ordered use cases in `internal/app`, pure rules/reports in `internal/domain`, transaction plumbing in `internal/store`, source and worker resource adapters in `internal/transport` (see [runtime module guide](internal/runtime/README.md)).
 - `internal/control` - runtime control plane: owner lease, epoch drain/kill, final readiness capability and cost control (ledger, ceilings, kill switch); configured facade, app use cases, pure domain rules and an opaque-transaction store (see [control module guide](internal/control/README.md))
-- `internal/authority` - device claims, bindings, reconciliation and safety evidence; the reference module: thin `Service` facade, use cases in `internal/app`, pure `internal/domain`, transactions and SQL in `internal/store` (see [module pattern](docs/authority-reference-module-2026-10-05/MODULE_PATTERN.md) and its [ubiquitous language](docs/authority-reference-module-2026-10-05/UBIQUITOUS_LANGUAGE.md)). To bring another package to this standard, follow [the reference module refactor prompt](.agents/prompts/reference-module-refactor.md)
+- `internal/authority` - device claims, bindings, reconciliation and safety evidence; the reference module: thin `Service` facade, use cases in `internal/app`, pure `internal/domain`, transactions and SQL in `internal/store` (see module pattern (`docs/authority-reference-module-2026-10-05/MODULE_PATTERN.md`) and its ubiquitous language (`docs/authority-reference-module-2026-10-05/UBIQUITOUS_LANGUAGE.md`)). To bring another package to this standard, follow [the reference module refactor prompt](.agents/prompts/reference-module-refactor.md)
 - `internal/replay` - effect-safe replay modes; ordered session use cases in `internal/app`, pure verification rules in `internal/domain`, all replay SQL in `internal/store`, trace files and isolated databases in `internal/transport` (see [replay module guide](internal/replay/README.md))
 - `internal/api` - JSON/HTTP plus Server-Sent Events
 - `internal/telemetry` - OpenTelemetry traces, metrics, logs
@@ -107,7 +107,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - Worker implementations are Go-only; use the current-v1 protobuf/gRPC boundary
   for a separate Go worker process.
 - `documentation/` - curated public documentation
-- `docs/` - dated working archive: design iterations, audits, research and runbooks; documentation only, never an input of code, tests or the build
+- `docs/` - local-only, git-ignored working archive: design iterations, audits, research and runbooks; documentation only, never an input of code, tests or the build. It is not in a fresh clone; paths to it in this repository are plain text, not links
 
 Keep most Go packages under `internal` until their contracts survive a release. Public SDK packages contain client and authoring types only.
 
@@ -137,7 +137,7 @@ Important behavior:
 - `make test` and `go test ./...` run every package, including the repository-wide gates in `internal/architecture` (indexed in its README).
 - `make lint` depends on `golangci-lint` and may fail if the environment cannot write to its cache.
 
-See [.agents/context/testing.md](.agents/context/testing.md) for the testing and validation bar. The acceptance gates live in [docs/design/IMPLEMENTATION_PLAN.md](docs/design/IMPLEMENTATION_PLAN.md); golden replay and the predictive-maintenance suite are the correctness contracts.
+See [.agents/context/testing.md](.agents/context/testing.md) for the testing and validation bar. The acceptance gates live in docs/design/IMPLEMENTATION_PLAN.md; golden replay and the predictive-maintenance suite are the correctness contracts.
 
 ## Go Standards
 

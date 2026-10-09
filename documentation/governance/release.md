@@ -25,8 +25,8 @@ posture.
 ## Release review
 
 The release owner must reconcile this checklist with
-[`docs/design/BUILD_COMPLETION_BAR.md`](../../docs/design/BUILD_COMPLETION_BAR.md),
-[`docs/design/OPERATIONS_READINESS.md`](../../docs/design/OPERATIONS_READINESS.md),
+`docs/design/BUILD_COMPLETION_BAR.md`,
+`docs/design/OPERATIONS_READINESS.md`,
 and the current code/tests. A passing unit suite cannot close a deployment
 evidence gap by itself.
 

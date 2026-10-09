@@ -56,3 +56,6 @@ Thumbs.db
 
 # Locally built CLI binary (go build ./cmd/agentic-stream from the root)
 /agentic-stream
+
+# --- Local-only working archive (kept on disk, not in git) ---
+/docs/

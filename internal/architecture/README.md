@@ -4,7 +4,7 @@
 Go sources, configuration or documentation of the whole repository and fails
 when a rule breaks. It has no production code (`doc.go` only) and nothing
 imports it. The repository root holds no tests (rule T1 of the
-[test audit bar](../../docs/test-audit-2026-10-09/TEST_BAR.md)); a gate that
+test audit bar (`docs/test-audit-2026-10-09/TEST_BAR.md`)); a gate that
 spans modules lives here, in the file named for its subject. Tests that prove
 one module's behavior live in that module.
 
