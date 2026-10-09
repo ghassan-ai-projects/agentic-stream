@@ -63,6 +63,9 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           version: "35.1"
+          # Authenticated release lookups: anonymous calls share the runner
+          # IP's rate limit and fail the job before any check runs.
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Cache the compiled tool binaries keyed on their pinned versions, so we
       # only pay to build them on the first run (or when a version changes).

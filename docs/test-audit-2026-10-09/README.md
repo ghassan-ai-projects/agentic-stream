@@ -49,9 +49,9 @@ what proves nothing. Every test ends at the [test bar](TEST_BAR.md).
 | 5 | `eventlog`, `engine` | done | every package ≥ 87% (eventlog store 67.1 → 92.2, app 71.5 → 94.9) | ≤ 3.3 s each, no sleeps | 6fb148d2 |
 | 6 | `operators`, `situations`, `cognition` | done | every package ≥ 83% (situations domain 72.3 → 93.8, cognition 66.7 → 100, store 68.8 → 83.2) | ≈1.3–2.8 s each; cognition app proves 59 cases instead of 15 | ede78cf3 |
 | 7 | `episodes` | done | every package ≥ 84% (app 63.9 → 84.3, store 69.3 → 93.0) | no test above 0.7 s, sleep replaced by virtual clock | f29e6d29 |
-| 8 | `episodeledger`, `approvalledger` | done | every package ≥ 85% (episodeledger facade 64.5 → 100, store 67.5 → 86.1) | no test above 0.6 s; attempt state machine checked over all 81 pairs | a0e50cc1 |
+| 8 | `episodeledger`, `approvalledger` | done | every package ≥ 85% (episodeledger facade 64.5 → 100, store 67.5 → 86.1) | no test above 0.6 s; attempt state machine checked over all 81 pairs | 5f8d47a7 |
 | 9 | `evidence`, `decisions` | done | every package ≥ 87% (evidence app 81.5 → 98.1, decisions domain 84.5 → 95.3) | slowest test 0.32 s | a0e50cc1 |
-| 10 | `executor/*`, `worker`, `testsupport/*` | done | every package ≥ 78% (remote domain 69.9 → 97.8, conformance 66.7 → 94.9, worker transport 69.4 → 78.8) | slowest test 1.41 s → 0.34 s; conformance no longer re-execs a process | see git log |
+| 10 | `executor/*`, `worker`, `testsupport/*` | done | every package ≥ 78% (remote domain 69.9 → 97.8, conformance 66.7 → 94.9, worker transport 69.4 → 78.8) | slowest test 1.41 s → 0.34 s; conformance no longer re-execs a process | 995b3c40 |
 | 11 | `policy`, `authority` | todo | | | |
 | 12 | `actions`, `actionport`, `watch`, `notify` | todo | | | |
 | 13 | `device`, `control` | todo | | | |
