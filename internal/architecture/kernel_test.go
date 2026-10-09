@@ -105,7 +105,7 @@ func kernelImportViolations(parsed *ast.File) []string {
 }
 
 func kernelClockViolations(parsed *ast.File) []string {
-	names := kernelTimeNames(parsed)
+	names := timeImportNames(parsed)
 	var violations []string
 	ast.Inspect(parsed, func(node ast.Node) bool {
 		selector, ok := node.(*ast.SelectorExpr)
@@ -120,7 +120,7 @@ func kernelClockViolations(parsed *ast.File) []string {
 	return violations
 }
 
-func kernelTimeNames(parsed *ast.File) map[string]bool {
+func timeImportNames(parsed *ast.File) map[string]bool {
 	names := map[string]bool{}
 	for _, spec := range parsed.Imports {
 		if imported, _ := strconv.Unquote(spec.Path.Value); imported != "time" {

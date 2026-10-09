@@ -6,6 +6,12 @@ version: "2"
 # Industry-best static analysis for Go, opinionated settings for gosec and
 # wrapcheck, plus the complexity limits of quality-bar rules Q1 and Q2
 # (.agents/context/quality-bar.md). Matches the rules in AGENTS.md.
+#
+# Test hygiene (test bar T6, T9; docs/test-audit-2026-10-09/TEST_BAR.md):
+# paralleltest, tparallel, usetesting and thelper apply to test files like any
+# other code. A test that cannot be parallel (process-global state such as
+# t.Setenv) or cannot use t.TempDir (Unix socket path length) carries
+# `//nolint:<linter> // <reason that is true of the code>`.
 # ---------------------------------------------------------------------------
 
 linters:
@@ -24,6 +30,9 @@ linters:
     - misspell       # English spell-check
     - noctx          # http.Request without ctx
     - thelper        # test helpers missing t.Helper()
+    - paralleltest   # T6: tests and subtests call t.Parallel()
+    - tparallel      # T6: t.Parallel() is used consistently in a test and its subtests
+    - usetesting     # T6: t.Context, t.TempDir, t.Setenv, t.Chdir instead of os/context equivalents
     - musttag        # struct fields needing json/xml tags
     - wrapcheck      # exported funcs must wrap errors
     - errorlint      # error comparisons must use errors.Is/As

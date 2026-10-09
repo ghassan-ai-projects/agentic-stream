@@ -14,6 +14,10 @@ var registerStoredTimeFunction = sync.OnceValue(func() error {
 	return sqlite.RegisterDeterministicScalarFunction("stored_time_ok", 1, storedTimeOK)
 })
 
+func init() {
+	_ = registerStoredTimeFunction()
+}
+
 func storedTimeOK(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
 	text, isText := args[0].(string)
 	if !isText {

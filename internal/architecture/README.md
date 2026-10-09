@@ -112,6 +112,25 @@ A new module adds itself to `allowedImports`, `packageLayers`, `durableOwners`
 | `TestKernelHasNoSubpackages` | AGENTS (kernel) | The kernel stays one package. |
 | `TestDigestTextHasOneOwner` | AGENTS (kernel) | No production package spells the `sha256:` prefix; digests go through `kernel.EncodeDigest` and `DecodeDigest`. |
 
+### `test_hygiene_test.go`
+
+| Test | Rule | Protects |
+| --- | --- | --- |
+| `TestTestsNeverSleep` | T5 | No `_test.go` file calls `time.Sleep` (under any import alias, or as a function value) unless `sleepAllowlist` names the file with a reason. The list is empty. |
+| `TestSleepAllowlistHasNoStaleEntries` | T5 | An allowlist entry whose file no longer sleeps is removed. |
+| `TestSleepDetectorCatchesEveryWayToCallTimeSleep` | T5 | Self-test: direct, aliased and function-value uses are caught; timers and other packages' `Sleep` are not. |
+
+The other mechanical test rules (T6 parallel and isolated, T9 helpers) are
+enforced by `paralleltest`, `tparallel`, `usetesting` and `thelper` in
+`.golangci.yml` (`make lint`).
+
+### `invariants_test.go`
+
+| Test | Rule | Protects |
+| --- | --- | --- |
+| `TestEveryInvariantNamesTestsThatExist` | T12 | Each of the ten product invariants lists proving tests in `documentation/architecture/invariants.md`, and every listed test is declared in the file its link names. |
+| `TestProvingTestsAreReadPerInvariantSection` | T12 | Self-test: links are assigned to the invariant section they sit in. |
+
 ### Other files
 
 | File | Test | Rule | Protects |
