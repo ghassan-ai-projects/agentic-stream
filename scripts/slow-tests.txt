@@ -1,0 +1,19 @@
+# Slow-test register (testing rule T7).
+#
+# Under `go test -short -race ./...` no test may take more than 5 s and no
+# package more than 15 s unless it is listed here. One entry per line:
+#   <package import path suffix> <TestName>   a slow top-level test
+#   <package import path suffix>              a slow package
+# followed by " # " and why it cannot be faster. Remove an entry when the test
+# or package is back under budget; scripts/check-coverage.py reports stale ones.
+
+internal/replay TestRunMigratesAFreshIsolatedDatabaseItself # replays the full predictive-maintenance trace into a freshly migrated database
+internal/replay TestBenchSpecOpensOnTemperatureAndHeartbeatAlone # replays a bench-shaped trace under the bench and the simulator spec
+internal/replay TestDeterministicReplayOfAnEffectProducingTraceWritesNoIntentOrCommand # replays the thermal-chamber opening trace under an active-dispatch spec
+internal/replay TestThermalChamberReplayIsDeterministic # replays the thermal-chamber trace three times
+internal/runtime TestPredictiveMaintenanceAcceptance # product acceptance suite on the full acceptance trace
+internal/runtime TestPredictiveMaintenanceInShadowModeRecordsComparisonsWithoutEffects # product acceptance suite in shadow mode
+cmd/agentic-stream TestExperimentInterlockStopsEffects # real-world-sensor experiment through serve with a worker process
+cmd/agentic-stream TestExperimentClosedLoopUnderAContinuousFeed # real-world-sensor experiment through serve with a live feed
+cmd/agentic-stream TestExperimentClosedLoopThroughServe # real-world-sensor experiment through serve end to end
+cmd/agentic-stream # holds the real-world-sensor experiment suite, which runs serve end to end
