@@ -54,3 +54,67 @@ func TestPriorDocumentsRejectIdentityBeforeCommand(t *testing.T) {
 		t.Fatalf("error precedence: %v", err)
 	}
 }
+
+func TestPriorDocumentsRefuseUnreadableOrMismatchedHistory(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		mutate  func(*InvalidatedCommand)
+		wantErr string
+	}{
+		{"decision missing", func(c *InvalidatedCommand) { c.DecisionJSON = nil }, "prior decision is empty"},
+		{"decision not json", func(c *InvalidatedCommand) { c.DecisionJSON = []byte(`{`) }, "decode prior decision"},
+		{"decision not an object", func(c *InvalidatedCommand) { c.DecisionJSON = []byte(`null`) }, "prior decision must be an object"},
+		{"decision without identity", func(c *InvalidatedCommand) { c.DecisionID = "" }, "decision_id is required"},
+		{"command missing", func(c *InvalidatedCommand) { c.CommandJSON = nil }, "executed command is empty"},
+		{"command for another command", func(c *InvalidatedCommand) { c.CommandJSON = []byte(`{"command_id":"other"}`) }, "command_id identity mismatch"},
+		{"command for another intent", func(c *InvalidatedCommand) { c.CommandJSON = []byte(`{"command_id":"c","intent_id":"other"}`) }, "intent_id identity mismatch"},
+		{"command without intent identity", func(c *InvalidatedCommand) { c.IntentID = "" }, "intent_id is required"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			command := priorFixture()
+			tc.mutate(&command)
+			if _, err := command.priorDocuments(); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("error = %v, want one containing %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestPriorCommandCarriesItsStatusAndKeepsAnExistingParameterSet(t *testing.T) {
+	t.Parallel()
+	command := priorFixture()
+	documents, err := command.priorDocuments()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if documents.command["status"] != "succeeded" || documents.command["intent_type"] != "ticket" || documents.command["risk_class"] != "R1" || documents.command["intent_id"] != "i" {
+		t.Fatalf("command = %v", documents.command)
+	}
+	if payload, ok := documents.command["parameters"].(map[string]any); !ok || payload["p"] != 1.0 {
+		t.Fatalf("parameters = %v, want the payload copied", documents.command["parameters"])
+	}
+	command.CommandJSON = []byte(`{"command_id":"c","payload":{"p":1},"parameters":{"q":2}}`)
+	documents, err = command.priorDocuments()
+	if err != nil || documents.command["parameters"].(map[string]any)["q"] != 2.0 {
+		t.Fatalf("explicit parameters were replaced: %v, %v", documents.command, err)
+	}
+}
+
+func TestPriorOutcomeOmitsResultsTheProviderNeverReturned(t *testing.T) {
+	t.Parallel()
+	command := priorFixture()
+	command.ProviderJSON, command.ObservedJSON = nil, nil
+	outcome := command.PriorOutcome()
+	if _, ok := outcome["provider_result"]; ok {
+		t.Error("an absent provider result was invented")
+	}
+	if _, ok := outcome["observed_effect"]; ok {
+		t.Error("an absent observed effect was invented")
+	}
+	if outcome["ordinal"] != 2 || outcome["status"] != "succeeded" || outcome["reconciliation_status"] != "observed" {
+		t.Fatalf("outcome = %v", outcome)
+	}
+}

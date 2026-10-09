@@ -19,13 +19,17 @@ func TestFacadeBuildsAnOperatorRuntimeForACompiledSpec(t *testing.T) {
 	if err != nil || runtime == nil {
 		t.Fatalf("runtime = %v err %v", runtime, err)
 	}
-	state := operators.PartitionState{OperatorStates: map[string]map[string]*operators.OperatorStateBlob{}}
-	if len(state.OperatorStates) != 0 {
-		t.Fatal("fresh partition state must be empty")
-	}
-	var feature operators.Feature
-	var heartbeat operators.HeartbeatState
-	if feature.Completeness != "" || heartbeat.BootID != "" || operators.CompletenessProvisional == "" {
-		t.Fatal("zero values and the provisional completeness must be stable")
+}
+
+func TestFacadeCompletenessConstantsKeepTheirStoredText(t *testing.T) {
+	t.Parallel()
+	for want, got := range map[string]string{
+		"provisional": string(operators.CompletenessProvisional),
+		"on_time":     string(operators.CompletenessOnTime),
+		"uncertain":   string(operators.CompletenessUncertain),
+	} {
+		if got != want {
+			t.Errorf("completeness = %q, want %q: the text is stored in snapshots", got, want)
+		}
 	}
 }
