@@ -25,27 +25,32 @@ func (r *OperatorRuntime) applyHeartbeatOperator(inst *operatorInstance, blob *O
 		return nil, fmt.Errorf("heartbeat duration: %w", err)
 	}
 	missing := watermark.Sub(*hs.LastEventTime) >= duration
-	return []Feature{r.heartbeatFeature(inst, env, hs.BootID, watermark, processingTime, missing)}, nil
+	return []Feature{r.heartbeatFeature(inst, env, hs, watermark, duration, missing)}, nil
 }
 
-// recordHeartbeat stores the event as the latest heartbeat. A new device
-// boot starts a fresh heartbeat state.
 func recordHeartbeat(blob *OperatorStateBlob, env contractsv1.Envelope, processingTime time.Time) *HeartbeatState {
 	if blob.Heartbeat == nil {
 		blob.Heartbeat = &HeartbeatState{}
 	}
 	hs := blob.Heartbeat
 	hs.adoptBoot(deviceBootID(env))
-	hs.LastEventTime = &env.EventTime
-	hs.LastEventID = env.ID
-	hs.Traceparent = env.Traceparent
-	hs.Tracestate = env.Tracestate
+	if hs.isNewerThanLatest(env) {
+		hs.LastEventTime = &env.EventTime
+		hs.LastEventID = env.ID
+		hs.Traceparent = env.Traceparent
+		hs.Tracestate = env.Tracestate
+	}
 	hs.LastProcessingTime = &processingTime
 	return hs
 }
 
-// adoptBoot resets the heartbeat when a different explicit boot appears and
-// records the first boot otherwise.
+func (hs *HeartbeatState) isNewerThanLatest(env contractsv1.Envelope) bool {
+	if hs.LastEventTime == nil || env.EventTime.After(*hs.LastEventTime) {
+		return true
+	}
+	return env.EventTime.Equal(*hs.LastEventTime) && env.ID > hs.LastEventID
+}
+
 func (hs *HeartbeatState) adoptBoot(bootID string) {
 	if bootID != "" && hs.BootID != bootID {
 		*hs = HeartbeatState{BootID: bootID}
@@ -54,37 +59,27 @@ func (hs *HeartbeatState) adoptBoot(bootID string) {
 	}
 }
 
-// heartbeatFeature reports whether the heartbeat is missing at the watermark.
-// A missing heartbeat is uncertain and timed at processing time.
-func (r *OperatorRuntime) heartbeatFeature(inst *operatorInstance, env contractsv1.Envelope, bootID string, watermark, processingTime time.Time, missing bool) Feature {
+func (r *OperatorRuntime) heartbeatFeature(inst *operatorInstance, env contractsv1.Envelope, hs *HeartbeatState, watermark time.Time, duration time.Duration, missing bool) Feature {
 	feature := Feature{
 		FeatureID: r.idGen.New(sources.PrefixEvent), OperatorID: inst.def.Name, OutputName: inst.def.Output,
 		TenantID: env.TenantID, EntityType: env.Entity.Type, EntityID: env.Entity.ID,
-		StateKey: operatorStateKey(env), BootID: bootID, PartitionID: env.PartitionID(0),
-		WindowStart: env.EventTime, WindowEnd: watermark, Value: missing,
-		EventTime: env.EventTime, Watermark: watermark, InputEventIDs: []string{env.ID},
-		Completeness: string(CompletenessOnTime), Traceparent: env.Traceparent, Tracestate: env.Tracestate,
+		StateKey: operatorStateKey(env), BootID: hs.BootID, PartitionID: env.PartitionID(0),
+		WindowStart: *hs.LastEventTime, WindowEnd: watermark, Value: missing,
+		EventTime: *hs.LastEventTime, Watermark: watermark, InputEventIDs: []string{hs.LastEventID},
+		Completeness: string(CompletenessOnTime), Traceparent: hs.Traceparent, Tracestate: hs.Tracestate,
 	}
 	if missing {
-		feature.EventTime = processingTime
+		feature.EventTime = hs.LastEventTime.Add(duration)
 		feature.Completeness = string(CompletenessUncertain)
 	}
 	return feature
 }
 
-// TimerIdentity identifies the tenant and partition whose timer is firing.
-// Timer calls that persist features must provide it explicitly; an omitted
-// identity yields an unknown tenant and partition.
 type TimerIdentity struct {
 	TenantID    string
 	PartitionID int
 }
 
-// ApplyTimer fires due timers and emits any resulting features. In Phase 2 this
-// is used primarily for missing-heartbeat detection. The optional identity is
-// required by direct callers that consume the returned feature; the engine's
-// persistence path supplies its authoritative tenant and partition while
-// enriching timer features.
 func (r *OperatorRuntime) ApplyTimer(ctx context.Context, ps *PartitionState, watermark, processingTime time.Time, identities ...TimerIdentity) ([]Feature, *PartitionState, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, ps, fmt.Errorf("apply timer canceled: %w", err)
@@ -100,7 +95,6 @@ func (r *OperatorRuntime) ApplyTimer(ctx context.Context, ps *PartitionState, wa
 	return features, ps, err
 }
 
-// applyHeartbeatTimers fires every missing-heartbeat operator in name order.
 func (r *OperatorRuntime) applyHeartbeatTimers(ctx context.Context, ps *PartitionState, watermark, processingTime time.Time, identity TimerIdentity) ([]Feature, error) {
 	var features []Feature
 	for _, op := range r.operatorsByName() {
@@ -116,7 +110,6 @@ func (r *OperatorRuntime) applyHeartbeatTimers(ctx context.Context, ps *Partitio
 	return features, nil
 }
 
-// operatorsByName lists each operator once, sorted by name.
 func (r *OperatorRuntime) operatorsByName() []*operatorInstance {
 	var instances []*operatorInstance
 	for _, inputInstances := range r.byInput {
@@ -155,14 +148,12 @@ func (r *OperatorRuntime) applyHeartbeatTimer(ctx context.Context, inst *operato
 			return nil, fmt.Errorf("heartbeat timer canceled: %w", err)
 		}
 		if hs := states[stateKey].Heartbeat; r.isActiveBoot(ps, stateKey) && heartbeatOverdue(hs, processingTime, duration) {
-			features = append(features, r.missedHeartbeatFeature(inst, stateKey, hs, identity, watermark, processingTime))
+			features = append(features, r.missedHeartbeatFeature(inst, stateKey, hs, identity, watermark, duration))
 		}
 	}
 	return features, nil
 }
 
-// heartbeatOverdue reports whether no heartbeat was processed for at least
-// duration before processingTime.
 func heartbeatOverdue(hs *HeartbeatState, processingTime time.Time, duration time.Duration) bool {
 	if hs == nil || hs.LastEventTime == nil {
 		return false
@@ -174,16 +165,14 @@ func heartbeatOverdue(hs *HeartbeatState, processingTime time.Time, duration tim
 	return processingTime.Sub(*lastProcessingTime) >= duration
 }
 
-// missedHeartbeatFeature is the timer-driven, uncertain "heartbeat missing"
-// feature that continues the last heartbeat's trace.
-func (r *OperatorRuntime) missedHeartbeatFeature(inst *operatorInstance, stateKey string, hs *HeartbeatState, identity TimerIdentity, watermark, processingTime time.Time) Feature {
+func (r *OperatorRuntime) missedHeartbeatFeature(inst *operatorInstance, stateKey string, hs *HeartbeatState, identity TimerIdentity, watermark time.Time, duration time.Duration) Feature {
 	return Feature{
 		FeatureID: r.idGen.New(sources.PrefixEvent), OperatorID: inst.def.Name, OutputName: inst.def.Output,
-		// For Phase 2 the entity type is known from the spec input.
+
 		TenantID: identity.TenantID, EntityType: r.entityTypeForOperator(inst.def.Name),
 		EntityID: entityIDFromStateKey(stateKey), StateKey: stateKey, BootID: hs.BootID, PartitionID: identity.PartitionID,
-		WindowStart: *hs.LastEventTime, WindowEnd: processingTime, Value: true,
-		EventTime: processingTime, Watermark: watermark, InputEventIDs: []string{hs.LastEventID},
+		WindowStart: *hs.LastEventTime, WindowEnd: hs.LastEventTime.Add(duration), Value: true,
+		EventTime: hs.LastEventTime.Add(duration), Watermark: watermark, InputEventIDs: []string{hs.LastEventID},
 		Completeness: string(CompletenessUncertain), TraceContinuation: true,
 		Traceparent: hs.Traceparent, Tracestate: hs.Tracestate,
 	}

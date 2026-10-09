@@ -40,10 +40,10 @@ func TestHeartbeatEventReportsPresenceAtTheWatermark(t *testing.T) {
 			}
 			wantTime := base
 			if tc.wantMissing {
-				wantTime = processing
+				wantTime = base.Add(5 * time.Minute)
 			}
 			if !got.EventTime.Equal(wantTime) {
-				t.Fatalf("event time = %s, want %s: a missing heartbeat is timed at processing time", got.EventTime, wantTime)
+				t.Fatalf("event time = %s, want %s: a missing heartbeat is timed at its expected event horizon", got.EventTime, wantTime)
 			}
 		})
 	}
@@ -58,7 +58,7 @@ func TestHeartbeatEventFallsBackToItsEventTimeWithoutProcessingTime(t *testing.T
 	}
 }
 
-func TestMissingHeartbeatTimerIsTimedAtDetection(t *testing.T) {
+func TestMissingHeartbeatTimerIsTimedAtTheExpectedEventHorizon(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, heartbeatSpec())
 	seen := heartbeat("hb-1", base, nil)
@@ -77,8 +77,8 @@ func TestMissingHeartbeatTimerIsTimedAtDetection(t *testing.T) {
 	if got.Value != true || got.Completeness != string(domain.CompletenessUncertain) || got.EntityType != "motor" || got.EntityID != "motor-17" {
 		t.Fatalf("timer feature = %+v, want an uncertain true feature for motor-17", got)
 	}
-	if !got.EventTime.Equal(detection) || !got.WindowStart.Equal(base) || !slices.Equal(got.InputEventIDs, []string{"hb-1"}) {
-		t.Fatalf("timer feature times/inputs = %s %s %v, want detection %s, window start %s, [hb-1]", got.EventTime, got.WindowStart, got.InputEventIDs, detection, base)
+	if horizon := base.Add(5 * time.Minute); !got.EventTime.Equal(horizon) || !got.WindowStart.Equal(base) || !slices.Equal(got.InputEventIDs, []string{"hb-1"}) {
+		t.Fatalf("timer feature times/inputs = %s %s %v, want horizon %s, window start %s, [hb-1]", got.EventTime, got.WindowStart, got.InputEventIDs, horizon, base)
 	}
 	if !got.TraceContinuation || got.Traceparent != seen.Traceparent {
 		t.Fatalf("timer feature trace = %q continuation %v, want the last heartbeat's trace", got.Traceparent, got.TraceContinuation)
@@ -269,5 +269,20 @@ func TestInvalidHeartbeatDoesNotRefreshLiveness(t *testing.T) {
 				t.Fatalf("timer features = %+v, want one missing feature over the valid heartbeat", features)
 			}
 		})
+	}
+}
+
+func TestALateHeartbeatNeverMovesHeartbeatStateBackwards(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, heartbeatSpec())
+	fresh := base.Add(6 * time.Minute)
+	watermark := base.Add(4 * time.Minute)
+	h.apply(heartbeat("hb-fresh", fresh, nil), watermark, fresh)
+	features := h.apply(heartbeat("hb-buffered", base.Add(-2*time.Minute), nil), watermark, fresh.Add(time.Second))
+	if len(features) != 1 || features[0].Value != false || features[0].Completeness != string(domain.CompletenessOnTime) {
+		t.Fatalf("late heartbeat feature = %+v, want an on-time present heartbeat", features)
+	}
+	if !features[0].EventTime.Equal(fresh) || !slices.Equal(features[0].InputEventIDs, []string{"hb-fresh"}) {
+		t.Fatalf("late heartbeat reported %s from %v, want the latest heartbeat at %s", features[0].EventTime, features[0].InputEventIDs, fresh)
 	}
 }

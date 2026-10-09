@@ -7,12 +7,11 @@ import (
 
 	"github.com/google/cel-go/cel"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-func (e *Engine) evaluate(ctx context.Context, sit *Situation, feature operators.Feature, watermark time.Time, completenessChanged bool) (*Version, error) {
-	inputs := evaluationInputs{features: e.buildFeaturesMap(sit), situation: e.buildSituationMap(sit), eventTime: feature.EventTime, watermark: watermark}
+func (e *Engine) evaluate(ctx context.Context, sit *Situation, watermark time.Time, completenessChanged bool) (*Version, error) {
+	inputs := evaluationInputs{features: e.buildFeaturesMap(sit), situation: e.buildSituationMap(sit), eventTime: sit.LatestEventTime, watermark: watermark}
 	changed, err := e.advanceLifecycle(ctx, sit, inputs)
 	if err != nil {
 		return nil, err

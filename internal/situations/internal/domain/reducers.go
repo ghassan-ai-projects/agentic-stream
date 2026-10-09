@@ -14,7 +14,9 @@ func (e *Engine) applyFeatureEvidence(sit *Situation, feature operators.Feature)
 	}
 	e.applyReducers(sit, feature)
 	recordTimerProvenance(sit, feature.Metadata)
-	sit.LatestEventTime = feature.EventTime
+	if feature.EventTime.After(sit.LatestEventTime) {
+		sit.LatestEventTime = feature.EventTime
+	}
 	if feature.Traceparent != "" || !feature.TraceContinuation {
 		sit.Traceparent = feature.Traceparent
 		sit.Tracestate = feature.Tracestate

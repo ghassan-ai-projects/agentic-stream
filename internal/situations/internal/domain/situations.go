@@ -170,7 +170,7 @@ func (e *Engine) ApplyFeature(ctx context.Context, feature operators.Feature, wa
 	sit := e.situationForFeature(feature)
 	completenessChanged := e.applyFeatureEvidence(sit, feature)
 
-	version, err := e.evaluate(ctx, sit, feature, watermark, completenessChanged)
+	version, err := e.evaluate(ctx, sit, watermark, completenessChanged)
 	if err != nil {
 		return nil, fmt.Errorf("evaluate situation: %w", err)
 	}

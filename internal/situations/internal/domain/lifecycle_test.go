@@ -102,6 +102,23 @@ func TestConditionStartRecordsTheInstantAPendingTransitionFirstHeld(t *testing.T
 	}
 }
 
+func TestALateFeatureNeitherMovesTheHorizonBackNorStartsAHysteresisClockInThePast(t *testing.T) {
+	t.Parallel()
+	engine := newEngine(t, vibrationSpec())
+	apply(t, engine, vibration(5.0, base))
+	tick := operators.Feature{OutputName: "tick", EntityType: "motor", EntityID: "motor-17", EventTime: base.Add(20 * time.Minute), Watermark: base.Add(20 * time.Minute)}
+	apply(t, engine, tick)
+	apply(t, engine, vibration(6.0, base.Add(5*time.Minute)))
+	state, _, _, _, _ := engine.CurrentState(0, "motor", "motor-17")
+	if horizon := base.Add(20 * time.Minute); !state.LatestEventTime.Equal(horizon) || !state.ConditionStart["watch->warning"].Equal(horizon) {
+		t.Fatalf("horizon %s, condition start %v, want both at the horizon %s", state.LatestEventTime, state.ConditionStart, horizon)
+	}
+	runSteps(t, engine, []step{
+		{at: 21 * time.Minute, value: 6.0, wantNoEdit: true},
+		{at: 22 * time.Minute, value: 6.0, wantPhase: "warning"},
+	})
+}
+
 func TestOccurrenceResolvesWhenItsCloseConditionHolds(t *testing.T) {
 	t.Parallel()
 	engine := newEngine(t, vibrationSpec())
