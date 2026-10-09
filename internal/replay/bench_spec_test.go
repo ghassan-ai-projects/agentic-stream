@@ -2,7 +2,6 @@ package replay_test
 
 import (
 	"bufio"
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,7 +20,7 @@ func TestBenchSpecOpensOnTemperatureAndHeartbeatAlone(t *testing.T) {
 	dir := t.TempDir()
 	trace := benchShapedTrace(t, dir)
 	dbPath := filepath.Join(dir, "bench.db")
-	result, err := replay.Run(context.Background(), replay.Request{DBPath: dbPath, SpecPath: benchSpec, TracePath: trace, TenantID: "default"})
+	result, err := replay.Run(seededContext(t), replay.Request{DBPath: dbPath, SpecPath: benchSpec, TracePath: trace, TenantID: "default"})
 	if err != nil {
 		t.Fatalf("replay bench trace: %v", err)
 	}
@@ -31,7 +30,7 @@ func TestBenchSpecOpensOnTemperatureAndHeartbeatAlone(t *testing.T) {
 	if phase := finalThermalPhase(t, dbPath); phase != "cooling" {
 		t.Fatalf("final phase = %q, want cooling", phase)
 	}
-	simulator, err := replay.Run(context.Background(), replay.Request{DBPath: filepath.Join(dir, "sim.db"), SpecPath: "../../examples/real-world-sensor/zone-thermal-sim.situation.yaml", TracePath: trace, TenantID: "default"})
+	simulator, err := replay.Run(seededContext(t), replay.Request{DBPath: filepath.Join(dir, "sim.db"), SpecPath: "../../examples/real-world-sensor/zone-thermal-sim.situation.yaml", TracePath: trace, TenantID: "default"})
 	if err != nil || simulator.VersionCount != 0 {
 		t.Fatalf("the simulator spec must not open without ambient readings: versions=%d err=%v", simulator.VersionCount, err)
 	}

@@ -48,7 +48,7 @@ Use the prompt files under `.agents/prompts/` when the task matches them.
 ## Current Repository State
 
 - Module path: `github.com/ghassan-ai-projects/agentic-stream` (set).
-- Design baseline is complete under `docs/` (current v1 design plus archived v0/v0.1 iterations, contracts, examples, research reports). The executable runtime is implemented through the current P-series; deployment qualification remains a separate release gate. Public documentation is curated under `documentation/`.
+- Design baseline is complete under `docs/` (current v1 design plus archived v0/v0.1 iterations, research reports and audits; nothing executable reads from it). The executable runtime is implemented through the current P-series; deployment qualification remains a separate release gate. Public documentation is curated under `documentation/`.
 - Implementation is complete through the P-series phases: the CLI lives in
   `cmd/agentic-stream/` (`version`, `validate`, `run-live`, `serve`, …) and `internal/`
   holds the spec compiler, ingress, eventlog, operators, situations, cognition,
@@ -101,12 +101,13 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `proto/agenticstream/runtime/v1/` - worker protocol (Protobuf/gRPC over UDS)
 - `internal/spec/internal/domain/schema.json` and `internal/contractsv1/internal/domain/schemas/v1/` - embedded JSON Schemas
 - `migrations/` - SQLite migrations
-- `examples/predictive-maintenance/` - the first product fixture and acceptance work
-- `examples/predictive-maintenance/testdata/` - replay and simulator traces
+- `examples/` - product fixtures shared by several modules and tests: SituationSpecs and replay traces (`predictive-maintenance/`, `thermal-chamber/`, `rotating-machinery/`, `real-world-sensor/`); the predictive-maintenance example is the first acceptance work
+- `examples/<name>/testdata/` - replay and simulator traces
+- `<module>/testdata/` - data private to one module
 - Worker implementations are Go-only; use the current-v1 protobuf/gRPC boundary
   for a separate Go worker process.
 - `documentation/` - curated public documentation
-- `docs/` - classified working archive: design, contracts, examples, research, audits, and runbooks
+- `docs/` - dated working archive: design iterations, audits, research and runbooks; documentation only, never an input of code, tests or the build
 
 Keep most Go packages under `internal` until their contracts survive a release. Public SDK packages contain client and authoring types only.
 
@@ -285,6 +286,7 @@ and say why in the change.
 
 - Do not add secrets, credentials, or machine-specific private data.
 - Do not add network calls to unit tests.
+- Do not read from `docs/`. It is a dated archive, not an input: no Go file (tests included) opens a path under it and the Makefile uses nothing in it. Test inputs live in `examples/` (fixtures shared by several modules) or in the owning module's `testdata/`; the worker protocol lives in `proto/`. Enforced by `TestNothingExecutableReadsFromTheDocsArchive`.
 - Do not let untrusted content become instructions or executable parameters (invariant 1).
 - Do not add graph engines, brokers, LangChain/LangGraph, or a web UI into the version-1 core (see design README).
 - Do not give models direct access to effectors or production credentials.

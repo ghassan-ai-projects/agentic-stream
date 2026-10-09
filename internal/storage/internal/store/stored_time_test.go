@@ -1,8 +1,11 @@
 package store_test
 
 import (
+	"database/sql"
 	"testing"
 	"time"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
@@ -42,5 +45,21 @@ func TestStoredTimeFunctionAcceptsOnlyDurableTimeText(t *testing.T) {
 				t.Fatalf("stored_time_ok(%#v) = %v, want %v", tc.value, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestStoredTimeFunctionIsRegisteredBeforeAnyDatabaseIsOpened(t *testing.T) {
+	t.Parallel()
+	raw, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open raw connection: %v", err)
+	}
+	t.Cleanup(func() { _ = raw.Close() })
+	var got bool
+	if err := raw.QueryRowContext(t.Context(), "SELECT stored_time_ok(?)", kernel.FormatTime(time.Date(2026, 10, 9, 14, 0, 0, 0, time.UTC))).Scan(&got); err != nil {
+		t.Fatalf("stored_time_ok on a connection opened outside storage.Open: %v", err)
+	}
+	if !got {
+		t.Fatal("stored_time_ok(valid durable time) = false, want true")
 	}
 }

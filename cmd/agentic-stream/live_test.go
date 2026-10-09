@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -13,16 +16,16 @@ import (
 )
 
 const (
-	testSpec  = "../../docs/design/examples/predictive-maintenance.situation.yaml"
+	testSpec  = "../../examples/predictive-maintenance/predictive-maintenance.situation.yaml"
 	testTrace = "../../examples/predictive-maintenance/testdata/trace-opening.jsonl"
 )
 
 func TestRunLiveProcessesTraceEndToEnd(t *testing.T) {
-	disableTelemetryExport(t)
+	t.Parallel()
 	cmd := newRunLiveCommand()
 	var out strings.Builder
 	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"--db", filepath.Join(t.TempDir(), "runtime.db"), "--spec", testSpec, "--trace", testTrace})
+	cmd.SetArgs([]string{"--db", newMigratedDatabasePath(t), "--spec", testSpec, "--trace", testTrace})
 	if err := cmd.ExecuteContext(t.Context()); err != nil {
 		t.Fatalf("run-live: %v", err)
 	}
@@ -32,7 +35,7 @@ func TestRunLiveProcessesTraceEndToEnd(t *testing.T) {
 }
 
 func TestRunLiveRejectsInvalidInputsBeforeOpeningState(t *testing.T) {
-	disableTelemetryExport(t)
+	t.Parallel()
 	dbPath := filepath.Join(t.TempDir(), "runtime.db")
 	tests := []struct {
 		name string
@@ -40,17 +43,20 @@ func TestRunLiveRejectsInvalidInputsBeforeOpeningState(t *testing.T) {
 		want string
 	}{
 		{name: "missing trace", args: []string{"--db", dbPath, "--spec", testSpec}, want: "--spec, --trace, and --db are required"},
-		{name: "unknown trace format", args: []string{"--db", dbPath, "--spec", testSpec, "--trace", testTrace, "--trace-format", "csv"}, want: `unsupported --trace-format "csv"`},
 		{name: "physical profile on a replay source", args: []string{"--db", dbPath, "--spec", testSpec, "--trace", testTrace, "--effect-profile", "physical"}, want: "validate effect profile"},
 		{name: "missing spec file", args: []string{"--db", dbPath, "--spec", "missing.yaml", "--trace", testTrace}, want: "compile spec"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cmd := newRunLiveCommand()
 			cmd.SetArgs(tt.args)
 			err := cmd.ExecuteContext(t.Context())
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %v, want it to contain %q", err, tt.want)
+			}
+			if _, statErr := os.Stat(dbPath); !errors.Is(statErr, fs.ErrNotExist) {
+				t.Fatalf("rejected input opened state at %s: %v", dbPath, statErr)
 			}
 		})
 	}
@@ -99,14 +105,13 @@ func TestServeFlagsValidate(t *testing.T) {
 }
 
 func TestServeRunsContinuousPipelineUntilCanceled(t *testing.T) {
-	disableTelemetryExport(t)
-	t.Setenv("AGENTIC_STREAM_SUBSCRIBER_TOKEN", "subscriber-secret")
+	t.Parallel()
 	address := freeLoopbackAddress(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	cmd := newServeCommand()
-	cmd.SetArgs([]string{"--db", filepath.Join(t.TempDir(), "runtime.db"), "--spec", testSpec, "--trace", testTrace,
+	cmd.SetArgs([]string{"--db", newMigratedDatabasePath(t), "--spec", testSpec, "--trace", testTrace,
 		"--listen", address, "--poll-interval", "10ms"})
 	done := make(chan error, 1)
 	go func() { done <- cmd.ExecuteContext(ctx) }()
@@ -124,12 +129,14 @@ func TestServeRunsContinuousPipelineUntilCanceled(t *testing.T) {
 }
 
 func TestRunTraceRejectsUnknownFormat(t *testing.T) {
+	t.Parallel()
 	if _, err := runTrace(t.Context(), nil, "csv", "trace.csv"); err == nil || !strings.Contains(err.Error(), "unsupported --trace-format") {
 		t.Fatalf("runTrace error = %v", err)
 	}
 }
 
 func TestCleanupsRunInReverseOrder(t *testing.T) {
+	t.Parallel()
 	var order []int
 	var cleanup cleanups
 	for i := range 3 {
@@ -141,33 +148,26 @@ func TestCleanupsRunInReverseOrder(t *testing.T) {
 	}
 }
 
-func disableTelemetryExport(t *testing.T) {
-	t.Helper()
-	for _, key := range []string{"AGENTIC_STREAM_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT"} {
-		t.Setenv(key, "")
-	}
-}
-
 var claimedLoopbackAddresses sync.Map
 
 const loopbackPickAttempts = 50
 
 func freeLoopbackAddress(t *testing.T) string {
 	t.Helper()
-	address, err := claimUnclaimedAddress(func() (string, error) { return pickLoopbackAddress(t.Context()) })
+	address, err := claimUnclaimedAddress(&claimedLoopbackAddresses, func() (string, error) { return pickLoopbackAddress(t.Context()) })
 	if err != nil {
 		t.Fatal(err)
 	}
 	return address
 }
 
-func claimUnclaimedAddress(pick func() (string, error)) (string, error) {
+func claimUnclaimedAddress(claimed *sync.Map, pick func() (string, error)) (string, error) {
 	for range loopbackPickAttempts {
 		address, err := pick()
 		if err != nil {
 			return "", err
 		}
-		if _, taken := claimedLoopbackAddresses.LoadOrStore(address, struct{}{}); !taken {
+		if _, taken := claimed.LoadOrStore(address, struct{}{}); !taken {
 			return address, nil
 		}
 	}
@@ -194,11 +194,12 @@ func TestClaimedLoopbackAddressIsNeverHandedOutAgain(t *testing.T) {
 		offered = offered[1:]
 		return next, nil
 	}
-	first, err := claimUnclaimedAddress(func() (string, error) { return "127.0.0.1:61001", nil })
+	claimed := &sync.Map{}
+	first, err := claimUnclaimedAddress(claimed, func() (string, error) { return "127.0.0.1:61001", nil })
 	if err != nil || first != "127.0.0.1:61001" {
 		t.Fatalf("first claim = %q, %v", first, err)
 	}
-	second, err := claimUnclaimedAddress(pick)
+	second, err := claimUnclaimedAddress(claimed, pick)
 	if err != nil || second != "127.0.0.1:61002" {
 		t.Fatalf("second claim = %q, %v; want the next unclaimed port", second, err)
 	}
@@ -206,11 +207,12 @@ func TestClaimedLoopbackAddressIsNeverHandedOutAgain(t *testing.T) {
 
 func TestClaimGivesUpWhenEveryPickIsTaken(t *testing.T) {
 	t.Parallel()
+	claimed := &sync.Map{}
 	taken := func() (string, error) { return "127.0.0.1:61003", nil }
-	if _, err := claimUnclaimedAddress(taken); err != nil {
+	if _, err := claimUnclaimedAddress(claimed, taken); err != nil {
 		t.Fatalf("first claim: %v", err)
 	}
-	if address, err := claimUnclaimedAddress(taken); err == nil {
+	if address, err := claimUnclaimedAddress(claimed, taken); err == nil {
 		t.Fatalf("claimed %s although every pick was taken", address)
 	}
 }
@@ -219,24 +221,29 @@ const readyTimeout = time.Minute
 
 func waitReady(t *testing.T, url string, done <-chan error) {
 	t.Helper()
-	deadline := time.Now().Add(readyTimeout)
-	for time.Now().Before(deadline) {
+	live := pollUntil(t, readyTimeout, func() bool {
 		select {
 		case err := <-done:
 			t.Fatalf("serve exited before becoming live: %v", err)
 		default:
 		}
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if resp, err := http.DefaultClient.Do(req); err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return
-			}
-		}
-		time.Sleep(20 * time.Millisecond)
+		return respondsOK(t, url)
+	})
+	if !live {
+		t.Fatal("serve did not become live")
 	}
-	t.Fatal("serve did not become live")
+}
+
+func respondsOK(t *testing.T, url string) bool {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }

@@ -177,6 +177,7 @@ var allowedImports = map[string][]string{
 	"internal/policy/internal/domain":             {"internal/canonicaljson", "internal/contractsv1"},
 	"internal/policy":                             {"internal/policy/internal/app", "internal/policy/internal/domain", "internal/policy/internal/store", "internal/sources"},
 	"internal/replay":                             {"internal/replay/internal/app", "internal/replay/internal/domain"},
+	"internal/replay/replaytest":                  {"internal/replay/internal/transport", "internal/storage"},
 	"internal/replay/internal/app":                {"internal/sources", "internal/contractsv1", "internal/decisions", "internal/engine", "internal/episodes", "internal/eventlog", "internal/policy", "internal/replay/internal/domain", "internal/replay/internal/store", "internal/replay/internal/transport", "internal/spec"},
 	"internal/replay/internal/domain":             {"internal/canonicaljson", "internal/contractsv1", "internal/decisions"},
 	"internal/replay/internal/store":              {"internal/episodeledger", "internal/episodes", "internal/replay/internal/domain", "internal/sources", "internal/spec", "internal/storage"},

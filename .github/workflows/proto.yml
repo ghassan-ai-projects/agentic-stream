@@ -13,7 +13,6 @@ on:
   push:
     branches: [main]
     paths:
-      - "docs/design/contracts/runtime-v1.proto"
       - "proto/**"
       - "Makefile"
       - "go.mod"
@@ -21,7 +20,6 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "docs/design/contracts/runtime-v1.proto"
       - "proto/**"
       - "Makefile"
       - "go.mod"

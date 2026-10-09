@@ -78,7 +78,7 @@ func pipelineDependencies(cfg PipelineConfig, log *eventlog.EventLog, stream *en
 		Log: log, Engine: stream, Admission: admitter, Runner: runner, Dispatcher: dispatcher, Watch: watch, Telemetry: cfg.Telemetry,
 		Transactions: transactions,
 		Sources:      &transport.Sources{DB: cfg.DB, Log: log, TenantID: cfg.TenantID, Telemetry: cfg.Telemetry},
-		Clock:        cfg.Clock, TenantID: cfg.TenantID,
+		Clock:        cfg.Clock, TenantID: cfg.TenantID, MaintenanceInterval: cfg.MaintenanceInterval,
 	}
 }
 

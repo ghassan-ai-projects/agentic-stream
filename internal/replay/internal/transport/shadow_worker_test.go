@@ -1,11 +1,17 @@
 package transport
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"google.golang.org/grpc"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 func shadowTrialInput() domain.ShadowInput {
@@ -47,5 +53,36 @@ func TestShadowOutputAcceptsOnlyAProducedDecision(t *testing.T) {
 	}
 	if string(output.DecisionJSON) != `{"a":2,"b":1}` || output.ManifestSHA256 == "" || output.ExecutorVersion != "tamoz@sha256:"+strings.Repeat("a", 64) {
 		t.Fatalf("shadow output = %+v", output)
+	}
+}
+
+func TestDialShadowWorkerRefusesAnythingButAnAbsoluteSocketPath(t *testing.T) {
+	t.Parallel()
+	if _, err := DialShadowWorker(t.Context(), "worker.sock", "tamoz"); err == nil || !strings.Contains(err.Error(), "dial shadow worker") {
+		t.Fatalf("a relative socket path = %v, want dial shadow worker failure", err)
+	}
+}
+
+func TestShadowWorkerNamesItselfInTheErrorOfAFailedExecution(t *testing.T) {
+	t.Parallel()
+	socketPath := filepath.Join(workerfake.SocketDir(t), "worker.sock")
+	listener, err := worker.ListenEvidenceSocket(socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := grpc.NewServer()
+	runtimev1.RegisterEpisodeWorkerServer(server, &workerfake.Server{WorkerName: "tamoz", WorkerVersion: "test"})
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+
+	shadow, err := DialShadowWorker(t.Context(), socketPath, "tamoz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := shadow.ExecuteShadow(t.Context(), shadowTrialInput()); err == nil || !strings.Contains(err.Error(), "worker tamoz:") {
+		t.Fatalf("an unservable request = %v, want an error naming worker tamoz", err)
+	}
+	if err := shadow.Close(); err != nil {
+		t.Fatalf("close the shadow worker connection: %v", err)
 	}
 }

@@ -12,11 +12,11 @@ and code changes.
 | `go test ./...` | all package tests |
 | `make test` | race, shuffle, one run, coverage profile |
 | `make test-short` | short race-enabled suite |
-| `make coverage-check` | short race-enabled suite used by CI, with the 60% per-package coverage floor |
+| `make coverage-check` | short race-enabled suite used by CI, with the 70% per-package coverage floor |
 | `make test-race` | race-enabled tests without shuffle/coverage wrapper |
 | `make test-coverage` | HTML coverage report |
 | `go vet ./...` | static analysis |
-| `make lint` | golangci-lint |
+| `make lint` | golangci-lint, including the test-hygiene linters (`paralleltest`, `tparallel`, `usetesting`, `thelper`) |
 | `make proto-check` | generated worker stubs match source |
 | `make ci-check` | local CI-equivalent gate |
 | `make docs-check` | public docs structure/surface checks |

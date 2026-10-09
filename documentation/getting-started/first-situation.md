@@ -5,8 +5,8 @@ defines accepted events, time rules, calculations, and Situation state. It
 also defines when reasoning may start, its budget, and the proposals it may
 return.
 
-The starter fixture remains under `docs/design/examples` because it is also
-used by implementation tests. This page is the maintained authoring guide;
+The starter fixture lives under `examples/predictive-maintenance/` because it is
+also used by implementation tests. This page is the maintained authoring guide;
 start here for the instructions, then use the example as your working model.
 
 ## Start from a known-good example
@@ -16,7 +16,7 @@ to a temporary working file. This keeps the committed test fixture intact:
 
 ```bash
 spec_dir=$(mktemp -d)
-cp docs/design/examples/predictive-maintenance.situation.yaml "$spec_dir/motor.situation.yaml"
+cp examples/predictive-maintenance/predictive-maintenance.situation.yaml "$spec_dir/motor.situation.yaml"
 ./bin/agentic-stream validate "$spec_dir/motor.situation.yaml"
 ```
 

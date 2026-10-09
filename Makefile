@@ -14,7 +14,8 @@ MODULE    ?= $(shell go list -m 2>/dev/null)
 VERSION   := $(shell git describe --tags 2>/dev/null || echo dev)
 COMMIT    := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 LDFLAGS   := -ldflags="-X main.Version=$(VERSION) -X main.Commit=$(COMMIT)"
-PROTO     := docs/design/contracts/runtime-v1.proto
+PROTO_DIR := proto/agenticstream/runtime/v1
+PROTO     := $(PROTO_DIR)/runtime-v1.proto
 PROTO_OUT ?= .
 TOOLS_BIN ?= $(CURDIR)/.tools/bin
 PROTOC_VERSION ?= 35.1
@@ -161,7 +162,7 @@ proto-generate: ## Generate committed Go worker protocol stubs
 		GOBIN=$(TOOLS_BIN) go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION); \
 	fi
 	PATH=$(TOOLS_BIN):$$PATH protoc \
-		--proto_path=docs/design/contracts \
+		--proto_path=$(PROTO_DIR) \
 		--go_out=$(PROTO_OUT) --go_opt=paths=import --go_opt=module=$(MODULE) \
 		--go-grpc_out=$(PROTO_OUT) --go-grpc_opt=paths=import --go-grpc_opt=module=$(MODULE) \
 		$(PROTO)
@@ -170,7 +171,7 @@ proto-check: ## Verify generated worker protocol stubs are current
 	@tmp_dir=$$(mktemp -d); \
 		trap 'rm -rf "$$tmp_dir"' EXIT; \
 		$(MAKE) --no-print-directory proto-generate PROTO_OUT="$$tmp_dir" TOOLS_BIN="$(TOOLS_BIN)" >/dev/null; \
-		diff -ru proto "$$tmp_dir/proto"
+		diff -ru -x '*.proto' proto "$$tmp_dir/proto"
 
 # ---- Tools ----------------------------------------------------------------
 deadcode: ## Fail when production code is reachable only from tests

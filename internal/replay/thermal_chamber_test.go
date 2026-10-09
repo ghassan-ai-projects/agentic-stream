@@ -1,7 +1,6 @@
 package replay_test
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -22,7 +21,7 @@ import (
 //
 // docs/plans/real-world-sensor-hil/01-telemetry-vertical.md
 
-const thermalSpec = "../../docs/design/examples/zone-thermal.situation.yaml"
+const thermalSpec = "../../examples/thermal-chamber/zone-thermal.situation.yaml"
 
 func thermalTrace(name string) string {
 	return filepath.Join("../../examples/thermal-chamber/testdata", name)
@@ -50,7 +49,7 @@ func TestThermalChamberOpensOnlyOnRealOverTemp(t *testing.T) {
 		t.Run(tc.trace, func(t *testing.T) {
 			t.Parallel()
 			dbPath := filepath.Join(t.TempDir(), "replay.db")
-			result, err := replay.Run(context.Background(), replay.Request{DBPath: dbPath, SpecPath: thermalSpec, TracePath: thermalTrace(tc.trace), TenantID: "default"})
+			result, err := replay.Run(seededContext(t), replay.Request{DBPath: dbPath, SpecPath: thermalSpec, TracePath: thermalTrace(tc.trace), TenantID: "default"})
 			if err != nil {
 				t.Fatalf("replay %s: %v", tc.trace, err)
 			}
@@ -82,7 +81,7 @@ func TestThermalChamberAmbientDiscountHoldsInWatch(t *testing.T) {
 		t.Run(tc.trace, func(t *testing.T) {
 			t.Parallel()
 			dbPath := filepath.Join(t.TempDir(), "replay.db")
-			if _, err := replay.Run(context.Background(), replay.Request{DBPath: dbPath, SpecPath: thermalSpec, TracePath: thermalTrace(tc.trace), TenantID: "default"}); err != nil {
+			if _, err := replay.Run(seededContext(t), replay.Request{DBPath: dbPath, SpecPath: thermalSpec, TracePath: thermalTrace(tc.trace), TenantID: "default"}); err != nil {
 				t.Fatalf("replay %s: %v", tc.trace, err)
 			}
 			if tc.wantPhase == "" {
@@ -106,7 +105,7 @@ func TestThermalChamberAmbientDiscountHoldsInWatch(t *testing.T) {
 func TestThermalChamberRebootWrapAndBacklogStayBootScoped(t *testing.T) {
 	t.Parallel()
 	dbPath := filepath.Join(t.TempDir(), "reboot-backlog.db")
-	result, err := replay.Run(context.Background(), replay.Request{DBPath: dbPath, SpecPath: thermalSpec, TracePath: thermalTrace("trace-reboot-backlog.jsonl"), TenantID: "default"})
+	result, err := replay.Run(seededContext(t), replay.Request{DBPath: dbPath, SpecPath: thermalSpec, TracePath: thermalTrace("trace-reboot-backlog.jsonl"), TenantID: "default"})
 	if err != nil {
 		t.Fatalf("replay reboot/backlog trace: %v", err)
 	}
@@ -125,14 +124,14 @@ func queryThermalDB(t *testing.T, dbPath, query string, dest *int) error {
 		return fmt.Errorf("open replay db: %w", err)
 	}
 	defer func() { _ = db.Close() }()
-	return db.QueryRowContext(context.Background(), query).Scan(dest)
+	return db.QueryRowContext(t.Context(), query).Scan(dest)
 }
 
 // Replay of the thermal spec is byte-stable across runs — the deterministic
 // replay contract, on a physical-evidence domain.
 func TestThermalChamberReplayIsDeterministic(t *testing.T) {
 	t.Parallel()
-	results, err := replay.RunNTimes(context.Background(), replay.Request{SpecPath: thermalSpec, TracePath: thermalTrace("trace-opening.jsonl"), TenantID: "default"}, 3)
+	results, err := replay.RunNTimes(seededContext(t), replay.Request{SpecPath: thermalSpec, TracePath: thermalTrace("trace-opening.jsonl"), TenantID: "default"}, 3)
 	if err != nil {
 		t.Fatalf("run n times: %v", err)
 	}
@@ -152,7 +151,7 @@ func TestThermalReplayQuarantinesMalformedInputAfterSchemaSetup(t *testing.T) {
 		t.Fatal(err)
 	}
 	dbPath := filepath.Join(t.TempDir(), "replay.db")
-	result, err := replay.Run(context.Background(), replay.Request{DBPath: dbPath, SpecPath: thermalSpec, TracePath: path, TenantID: "default"})
+	result, err := replay.Run(seededContext(t), replay.Request{DBPath: dbPath, SpecPath: thermalSpec, TracePath: path, TenantID: "default"})
 	if err != nil {
 		t.Fatalf("replay malformed trace: %v", err)
 	}
@@ -165,10 +164,10 @@ func TestThermalReplayQuarantinesMalformedInputAfterSchemaSetup(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	var events, quarantined int
-	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM event_log").Scan(&events); err != nil {
+	if err := db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM event_log").Scan(&events); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM event_quarantine WHERE reason_code = 'malformed_json'").Scan(&quarantined); err != nil {
+	if err := db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM event_quarantine WHERE reason_code = 'malformed_json'").Scan(&quarantined); err != nil {
 		t.Fatal(err)
 	}
 	if events != 1 || quarantined != 1 {
@@ -184,7 +183,7 @@ func finalThermalPhase(t *testing.T, dbPath string) string {
 	}
 	defer func() { _ = db.Close() }()
 	var phase string
-	if err := db.QueryRowContext(context.Background(), `SELECT phase FROM situations WHERE situation_type = 'zone_over_temp'`).Scan(&phase); err != nil {
+	if err := db.QueryRowContext(t.Context(), `SELECT phase FROM situations WHERE situation_type = 'zone_over_temp'`).Scan(&phase); err != nil {
 		t.Fatalf("query final phase: %v", err)
 	}
 	return phase

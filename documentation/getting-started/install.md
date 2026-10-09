@@ -46,7 +46,7 @@ the full target list.
 ## Generated protocol code
 
 The committed Go files under `proto/agenticstream/runtime/v1/` are generated
-from [`docs/design/contracts/runtime-v1.proto`](../../docs/design/contracts/runtime-v1.proto).
+from [`proto/agenticstream/runtime/v1/runtime-v1.proto`](../../proto/agenticstream/runtime/v1/runtime-v1.proto).
 Do not hand-edit them. When the protocol changes, use:
 
 ```bash

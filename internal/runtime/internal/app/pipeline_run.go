@@ -181,7 +181,7 @@ func (p *Pipeline) fireRecentWatches(ctx context.Context, before eventlog.LogPos
 		if err != nil {
 			return err
 		}
-		if read < watchReadBatchSize {
+		if read < p.watchPage() {
 			return nil
 		}
 		if lastPosition <= cursor {
@@ -198,7 +198,7 @@ func (p *Pipeline) fireWatchPage(ctx context.Context, cursor eventlog.LogPositio
 		TenantID:      p.tenantID,
 		PartitionID:   -1,
 		AfterPosition: cursor,
-		Limit:         watchReadBatchSize,
+		Limit:         p.watchPage(),
 	}, func(record eventlog.Record) error {
 		return p.fireWatchRecord(ctx, cursor, record, span, &read, &lastPosition)
 	}); err != nil {
@@ -235,4 +235,11 @@ func (p *Pipeline) evaluatePendingIntents(ctx context.Context, report *PipelineR
 
 func (p *Pipeline) evaluateIntent(ctx context.Context, intentID string) error {
 	return p.transactions.EvaluateIntent(ctx, intentID, p.clk.Now().UTC())
+}
+
+func (p *Pipeline) watchPage() int {
+	if p.watchPageSize > 0 {
+		return p.watchPageSize
+	}
+	return defaultWatchPageSize
 }

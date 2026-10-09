@@ -45,12 +45,14 @@ store-owned transactions; replay owns no durable table.
 - `RunNTimes` / `AllHashesEqual` — determinism proof loop (`run --repeat`).
 - Capability ports: `RecordedLedger`, `ShadowExecutor`, `BaselineExecutor` —
   the contracts the recorded ledger and the shadow worker adapter implement.
-  The package's own tests inject doubles through `RunMode` in `export_test.go`.
+  `RunMode` is not part of the facade; the app tests inject capability doubles through it.
 
 ## Evidence and limits
 
-Each layer has its own tests (facade 100%, app 75%, domain 71%, store 81%,
-transport 92% coverage). Gates enforce downward imports, pure domain rules,
+Each layer has its own tests (facade 100%, app 86%, domain 93%, store 82%,
+transport 84% coverage). Tests open their isolated databases from the migrated
+template (`replaytest.WithDatabaseOpener` with `storagetest.Open`); one test per
+layer keeps the real `storage.OpenFresh` path. Gates enforce downward imports, pure domain rules,
 app infrastructure isolation, store-only SQL and the effect/replay isolation
 now covering every replay layer; injected violations were rejected during
 migration. `Result.SimulatedResults` stays `[]map[string]any` by contract:

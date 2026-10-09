@@ -137,7 +137,7 @@ conceptual explanation; operations pages own procedures and failure response.
 | CLI commands and flags | `cmd/agentic-stream/main.go` and CLI tests | `reference/cli.md` |
 | HTTP/SSE routes | `internal/api/`, `internal/notify/`, API tests | `reference/http-api.md` |
 | SituationSpec runtime schema | `internal/spec/internal/domain/schema.json`, compiler tests | `contracts/situation-spec.md` |
-| Worker protocol | `docs/design/contracts/runtime-v1.proto`, generated stubs, proto tests | `contracts/worker-protocol.md` |
+| Worker protocol | `proto/agenticstream/runtime/v1/runtime-v1.proto`, generated stubs, proto tests | `contracts/worker-protocol.md` |
 | Runtime JSON schemas | `internal/contractsv1/internal/domain/schemas/v1/`, contract tests | `contracts/decision-intent.md` |
 | Notification schemas | `internal/notify/internal/domain/contracts/`, contract tests | `contracts/notifications.md` |
 | Durable schema | `migrations/`, storage tests | `contracts/persistence.md`, `reference/migrations.md` |

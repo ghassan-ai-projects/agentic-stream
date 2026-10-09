@@ -9,7 +9,7 @@ version supports Go workers only.
 Start with:
 
 - [Worker protocol](../contracts/worker-protocol.md)
-- [`docs/design/contracts/runtime-v1.proto`](../../docs/design/contracts/runtime-v1.proto)
+- [`proto/agenticstream/runtime/v1/runtime-v1.proto`](../../proto/agenticstream/runtime/v1/runtime-v1.proto)
 - [`internal/testsupport/executorconformance/`](../../internal/testsupport/executorconformance/)
 - [`internal/testsupport/workerfake/`](../../internal/testsupport/workerfake/), a validating fake worker that shows the contract (an example to read, not a library: it is internal to this module)
 
@@ -50,7 +50,7 @@ and capability checks.
 ```bash
 ./bin/agentic-stream run-live \
   --db runtime.db \
-  --spec docs/design/examples/predictive-maintenance.situation.yaml \
+  --spec examples/predictive-maintenance/predictive-maintenance.situation.yaml \
   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl \
   --worker-socket /tmp/agentic-stream/episode-worker.sock \
   --worker-name example-worker

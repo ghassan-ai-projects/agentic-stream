@@ -44,17 +44,17 @@ func TestVerifiedSnapshotAcceptsMatchingDigest(t *testing.T) {
 func TestVerifiedSnapshotRejectsTampering(t *testing.T) {
 	t.Parallel()
 	canonical, persisted := snapshotFixture(t)
-	if _, err := VerifiedSnapshot([]byte(`{"entity":{"id":"other"},"phase":"warning"}`), persisted); err == nil {
-		t.Fatal("tampered snapshot accepted")
+	for name, snapshot := range map[string][]byte{
+		"tampered snapshot":         []byte(`{"entity":{"id":"other"},"phase":"warning"}`),
+		"ambiguous snapshot bytes":  contractstest.AmbiguousKeyJSON(canonical, "phase"),
+		"snapshot that is not JSON": []byte(`not json`),
+	} {
+		if _, err := VerifiedSnapshot(snapshot, persisted); err == nil || !strings.Contains(err.Error(), "verify shadow snapshot:") {
+			t.Fatalf("%s = %v, want verify shadow snapshot failure", name, err)
+		}
 	}
-	if _, err := VerifiedSnapshot(contractstest.AmbiguousKeyJSON(canonical, "phase"), persisted); err == nil {
-		t.Fatal("ambiguous snapshot bytes accepted")
-	}
-	if _, err := VerifiedSnapshot([]byte(`not json`), persisted); err == nil {
-		t.Fatal("invalid JSON accepted")
-	}
-	if _, err := VerifiedSnapshot(canonical, []byte(strings.Repeat("0", 32))); err == nil {
-		t.Fatal("wrong digest accepted")
+	if _, err := VerifiedSnapshot(canonical, []byte(strings.Repeat("0", 32))); err == nil || !strings.Contains(err.Error(), "verify shadow snapshot:") {
+		t.Fatalf("a wrong digest = %v, want verify shadow snapshot failure", err)
 	}
 }
 
@@ -63,14 +63,17 @@ func TestShadowEntityIDRequiresEntity(t *testing.T) {
 	if id, err := ShadowEntityID([]byte(`{"entity":{"id":"motor-1"}}`)); err != nil || id != "motor-1" {
 		t.Fatalf("id=%q err=%v", id, err)
 	}
-	for name, snapshot := range map[string][]byte{
-		"empty":     {},
-		"no entity": []byte(`{"phase":"warning"}`),
+	for name, tc := range map[string]struct {
+		snapshot []byte
+		wantErr  string
+	}{
+		"empty":     {[]byte{}, "decode shadow entity"},
+		"no entity": {[]byte(`{"phase":"warning"}`), "entity id is required"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := ShadowEntityID(snapshot); err == nil {
-				t.Fatal("missing entity accepted")
+			if _, err := ShadowEntityID(tc.snapshot); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("ShadowEntityID(%s) = %v, want %q", name, err, tc.wantErr)
 			}
 		})
 	}

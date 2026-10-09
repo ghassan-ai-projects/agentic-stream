@@ -5,8 +5,8 @@ Run these commands from the repository root with the prerequisites in
 [install and build](install.md). No model account, worker, broker, or credentials
 are needed for this local path.
 
-The spec and trace are committed fixtures. The spec stays under
-`docs/design/examples` because tests also load it; this page owns the public
+The spec and trace are committed fixtures. The spec lives under
+`examples/predictive-maintenance/` because tests also load it; this page owns the public
 instructions.
 
 ## 1. Build
@@ -21,7 +21,7 @@ its error before continuing.
 ## 2. Validate the motor spec
 
 ```bash
-./bin/agentic-stream validate docs/design/examples/predictive-maintenance.situation.yaml
+./bin/agentic-stream validate examples/predictive-maintenance/predictive-maintenance.situation.yaml
 ```
 
 Expected result: `ok: motor_bearing_degradation`, version `0.1.0`, a
@@ -31,7 +31,7 @@ normalized spec; it is not a runtime outcome.
 To inspect the normalized JSON, use:
 
 ```bash
-./bin/agentic-stream validate --json docs/design/examples/predictive-maintenance.situation.yaml
+./bin/agentic-stream validate --json examples/predictive-maintenance/predictive-maintenance.situation.yaml
 ```
 
 Validation checks the schema and meaning of the spec, including input fields,
@@ -46,9 +46,9 @@ can be copied and run again without colliding with a previous run:
 
 ```bash
 demo_dir=$(mktemp -d)
-./bin/agentic-stream run   --db "$demo_dir/replay-a.db"   --spec docs/design/examples/predictive-maintenance.situation.yaml   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl   | tee "$demo_dir/replay-a.txt"
+./bin/agentic-stream run   --db "$demo_dir/replay-a.db"   --spec examples/predictive-maintenance/predictive-maintenance.situation.yaml   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl   | tee "$demo_dir/replay-a.txt"
 
-./bin/agentic-stream run   --db "$demo_dir/replay-b.db"   --spec docs/design/examples/predictive-maintenance.situation.yaml   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl   | tee "$demo_dir/replay-b.txt"
+./bin/agentic-stream run   --db "$demo_dir/replay-b.db"   --spec examples/predictive-maintenance/predictive-maintenance.situation.yaml   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl   | tee "$demo_dir/replay-b.txt"
 
 cmp "$demo_dir/replay-a.txt" "$demo_dir/replay-b.txt"
 ```
@@ -71,7 +71,7 @@ with `--trace-format simulator` on `run-live` or `serve`, not `run`.
 Use the same terminal, where `demo_dir` is still set:
 
 ```bash
-./bin/agentic-stream run-live   --db "$demo_dir/live.db"   --spec docs/design/examples/predictive-maintenance.situation.yaml   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl
+./bin/agentic-stream run-live   --db "$demo_dir/live.db"   --spec examples/predictive-maintenance/predictive-maintenance.situation.yaml   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl
 ```
 
 Expected report:

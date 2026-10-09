@@ -13,7 +13,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
-const exampleSpec = "../../docs/design/examples/predictive-maintenance.situation.yaml"
+const exampleSpec = "../../examples/predictive-maintenance/predictive-maintenance.situation.yaml"
 
 func completeConfig(t *testing.T) (engine.Config, *storage.DB) {
 	t.Helper()

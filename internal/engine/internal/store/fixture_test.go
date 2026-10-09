@@ -18,7 +18,7 @@ import (
 var testNow = time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
 
 var compiledSpec = sync.OnceValues(func() (*spec.CompiledSpec, error) {
-	return spec.CompileFile(context.Background(), "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
+	return spec.CompileFile(context.Background(), "../../../../examples/predictive-maintenance/predictive-maintenance.situation.yaml")
 })
 
 func allowOwner(context.Context, *sql.Tx, string) error { return nil }

@@ -8,7 +8,7 @@ budgets, validation, lifecycle, policy, and effects.
 ## Protocol shape
 
 The current-v1 Protobuf source is
-[`docs/design/contracts/runtime-v1.proto`](../../docs/design/contracts/runtime-v1.proto)
+[`proto/agenticstream/runtime/v1/runtime-v1.proto`](../../proto/agenticstream/runtime/v1/runtime-v1.proto)
 and generated Go stubs live under
 [`proto/agenticstream/runtime/v1/`](../../proto/agenticstream/runtime/v1/).
 

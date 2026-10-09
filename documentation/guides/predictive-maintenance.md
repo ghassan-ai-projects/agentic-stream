@@ -19,21 +19,21 @@ only applies in `warning` or `incident`.
 
 ## The assets
 
-- Spec: [`docs/design/examples/predictive-maintenance.situation.yaml`](../../docs/design/examples/predictive-maintenance.situation.yaml)
+- Spec: [`examples/predictive-maintenance/predictive-maintenance.situation.yaml`](../../examples/predictive-maintenance/predictive-maintenance.situation.yaml)
 - Opening trace: [`trace-opening.jsonl`](../../examples/predictive-maintenance/testdata/trace-opening.jsonl)
 - Heartbeat trace: [`trace-heartbeat.jsonl`](../../examples/predictive-maintenance/testdata/trace-heartbeat.jsonl)
 - Watch trace: [`trace-watch.jsonl`](../../examples/predictive-maintenance/testdata/trace-watch.jsonl)
-- Synthetic runtime proof for the later action path: [`internal/runtime/internal/app/pipeline_e2e_test.go`](../../internal/runtime/internal/app/pipeline_e2e_test.go)
+- Synthetic runtime proof for the later action path: [`internal/runtime/internal/app/pipeline_end_to_end_test.go`](../../internal/runtime/internal/app/pipeline_end_to_end_test.go)
 
 ## Run it
 
 ```bash
 make build
 walkthrough_dir=$(mktemp -d)
-./bin/agentic-stream validate docs/design/examples/predictive-maintenance.situation.yaml
+./bin/agentic-stream validate examples/predictive-maintenance/predictive-maintenance.situation.yaml
 ./bin/agentic-stream run-live \
   --db "$walkthrough_dir/predictive-maintenance.db" \
-  --spec docs/design/examples/predictive-maintenance.situation.yaml \
+  --spec examples/predictive-maintenance/predictive-maintenance.situation.yaml \
   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl
 ```
 
@@ -57,7 +57,7 @@ configured.
 
 These are example rules, not a diagnosis or recommended operating thresholds
 for a real motor. The exact conditions and durations are in the
-[fixture](../../docs/design/examples/predictive-maintenance.situation.yaml).
+[fixture](../../examples/predictive-maintenance/predictive-maintenance.situation.yaml).
 
 ## What the trace exercises
 

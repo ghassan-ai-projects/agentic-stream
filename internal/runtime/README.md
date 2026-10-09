@@ -64,7 +64,8 @@ Batch: prepare/fence source advancement → ingest → expire watches → advanc
 episodes → execute episodes → evaluate intents → dispatch approved commands.
 Clock reads, identity sources, ordering, locks and transaction boundaries retain
 the original behavior. Maintenance expires watches and dispatches committed
-approved commands without waiting for new source input.
+approved commands without waiting for new source input, every
+`PipelineConfig.MaintenanceInterval` (one second when unset).
 
 Effect routing reserves watch installation and closed device routes before
 fallback. Device routes with no gateway fail closed. Authorization and device

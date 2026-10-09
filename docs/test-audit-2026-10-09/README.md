@@ -1,6 +1,6 @@
 # Test audit (2026-10-09)
 
-Status: paused after round 13 (rounds 0–13 of 17 done; 0–10 merged in PR #50). See [Resume](#resume).
+Status: closed after round 17 (rounds 0–10 merged in PR #50, 11–13 in PR #55, 14–17 on branch `test-audit-rounds-14-17`). See [SUMMARY.md](SUMMARY.md).
 
 A full audit of the repository's tests: organize them so the repository is easy
 to read, make them faster, raise coverage where it proves behavior, and remove
@@ -10,6 +10,7 @@ what proves nothing. Every test ends at the [test bar](TEST_BAR.md).
 | --- | --- |
 | [TEST_BAR.md](TEST_BAR.md) | The bar, rules T1–T12, and the slow-test register |
 | [BASELINE.md](BASELINE.md) | Coverage, timing and lint numbers before the audit |
+| [SUMMARY.md](SUMMARY.md) | Final numbers against the baseline, gates added, open items |
 | [WORKER_BRIEF.md](WORKER_BRIEF.md) | What a round's worker does and how it reports |
 | [ROUND_PROMPT.md](ROUND_PROMPT.md) | The shared prompt given to every round worker |
 | [SLOW_TESTS.md](SLOW_TESTS.md) | Static investigation of the slowest tests, for rounds 14 and 16 |
@@ -39,57 +40,12 @@ what proves nothing. Every test ends at the [test bar](TEST_BAR.md).
 | Packages below 70% | 21 | 0 |
 | `paralleltest` + `tparallel` + `usetesting` findings | 610 | 0 |
 
-## Resume
+## Closed
 
-The audit paused on 2026-10-09 after round 10 because the pull request grew
-large. Rounds 0–10 were merged to `main` as pull request
-ghassan-ai-projects/agentic-stream#50. Rounds 11–13 continue on branch
-`test-audit-rounds-11-13`.
-
-To continue in a fresh session:
-
-1. Continue on a new branch from `main`, one or two rounds per pull request,
-   so each stays reviewable.
-2. Rounds 11, 12 and 13 are done. Continue with round 14.
-3. Run each round as the [method](#method) says: one worker per round with
-   [ROUND_PROMPT.md](ROUND_PROMPT.md) plus the round notes below, review the
-   diff, verify, commit `test(<modules>): audit to the test bar`, update the
-   tracker row and the findings table.
-4. Workers must also run `make docs-check`: renaming a test file can break a
-   documentation link (round 3 broke one, fixed in `b184c443`).
-
-### Round notes still to use
-
-- **11 `policy`, `authority`:** `internal/policy/internal/app` takes 10.5 s and
-  has 45 hygiene findings; `approval_access_test.go` sleeps. Invariant 7
-  (revalidation before dispatch) lives here; the risk-class rule (DUP-001)
-  wants one table test. `authority` is the reference module: its tests should
-  be exemplary.
-- **12 `actions`, `actionport`, `watch`, `notify`:** split
-  `actions/internal/app/dispatch_test.go` (735 lines) and
-  `actions/internal/store/store_test.go` (543). Name the tests for "no
-  duplicate effects across crash and replay" and invariant 8.
-  `notify/internal/store` is at 68%.
-- **13 `device`, `control`:** rename `device/internal/app/phase04_test.go`;
-  39 hygiene findings in `device/internal/app`. Name the tests for lease loss,
-  epoch drain, cost ceiling and kill switch. `control/controltest` is at 66.7%.
-  Use `workerfake.SocketDir` for short Unix socket paths.
-- **14 `replay`, `runartifact`:** the slowest tests after `cmd`; see
-  [SLOW_TESTS.md](SLOW_TESTS.md) (sequential repeats in `RunNTimes`,
-  independent replays run one after another). Decide the `OpenFresh` template
-  question from round 3 here.
-- **15 `runtime`, `api`:** `runtime/internal/app` takes 7.7 s and sleeps in
-  `pipeline_clock_test.go` and `live_socket_test.go`.
-- **16 `cmd/agentic-stream`:** 58 s, the critical path. The experiment
-  end-to-end tests are product acceptance tests (they must keep running, never
-  skipped under `-short`); speed them up as [SLOW_TESTS.md](SLOW_TESTS.md)
-  suggests (pre-seeded databases, parallel repeats, shorter spec timings).
-- **17 gates:** add `paralleltest`, `tparallel` and `usetesting` to
-  `.golangci.yml`, raise `MIN_COVERAGE` in `scripts/check-coverage.py` to 70,
-  name the proving tests per invariant in
-  `documentation/architecture/invariants.md` (the module reports list them),
-  move the bar into `.agents/context/testing.md`, and measure the final
-  numbers against [BASELINE.md](BASELINE.md).
+The audit is closed; the final numbers and the open items are in
+[SUMMARY.md](SUMMARY.md). Nothing is stashed or pending. New work that touches a
+test follows the bar in [TEST_BAR.md](TEST_BAR.md), enforced by `make lint`,
+`make coverage-check` and `internal/architecture`.
 
 ## Tracker
 
@@ -109,10 +65,10 @@ To continue in a fresh session:
 | 11 | `policy`, `authority` | done | every package ≥ 81% (policy facade 85.2 → 100, policy store 80.2 → 89.9) | policy app 8.5 s → 3.4 s (serial tests, per-test pipeline, 12 autocommits, sleep) | 046acfd7 |
 | 12 | `actions`, `actionport`, `watch`, `notify` | done | every package ≥ 77% (notify store 68.0 → 93.0, actionport domain 80 → 100, actions app 81.9 → 89.4) | no test above 1 s; crash-between-effect-and-outcome proven | 8a4cd57c |
 | 13 | `device`, `control` | done | every package ≥ 79% (controltest 66.7 → 100, device 93.3 → 100, control store 70.8 → 79.2) | slowest test 0.65 s; no sleeps | 46092904 |
-| 14 | `replay`, `runartifact` | todo | | | |
-| 15 | `runtime`, `api` | todo | | | |
-| 16 | `cmd/agentic-stream` | todo | | | |
-| 17 | gates: linters, coverage floor, invariant map, docs | todo | | | |
+| 14 | `replay`, `runartifact` | done | every package ≥ 75% (replay 60.0 → 100, replay app 68.1 → 86.2, transport 67.9 → 83.3, runartifact store 71.3 → 84.0) | `replay` 31–36 s → 5.4–6.5 s; slowest test 32.6 s → 1.5 s alone | c2067055 |
+| 15 | `runtime`, `api` | done | every package ≥ 79% (runtime store 68.2 → 83.5, api transport 85.0 → 96.8, runtime app 80.3 → 89.8) | runtime app 6.0 s → 3.1 s; policy approval test 1.24 s → 0.26 s; sleeps 4 → 0 | f592033b |
+| 16 | `cmd/agentic-stream` | done | 74.3 → 83.1% | package 51–58 s → 9.6–11 s; experiment tests 33–39 s → 5–8 s | 6df1a2bb |
+| 17 | gates: linters, coverage floor, invariant map, docs | done | floor 60 → 70%, total 75.6 → 85.6% | gates in `make lint`, `make coverage-check` and `internal/architecture` | see git log |
 
 ## Findings for the owner
 
@@ -137,7 +93,12 @@ not a test decision.
 | 8 | Episode lifecycle writers (`Conclude`, `Abandon`, `RetainForRetry`, ...) have no lifecycle guard in their SQL: `Abandon` after `Conclude` overwrites the outcome, `RetainForRetry` revives a concluded episode. They rely on callers. Tracked in [#54](https://github.com/ghassan-ai-projects/agentic-stream/issues/54). | [episodeledger.md](modules/episodeledger.md) |
 | 10 | The fixture executor panics on a nil request and ignores its context, while native and remote return an error. The native retry backoff is a fixed 10 ms real timer. | [executor-fixture.md](modules/executor-fixture.md), [executor-native.md](modules/executor-native.md) |
 | 13 | Production error text in `device` (`gateway_effector.go`, `session*.go`) still says "serial", a word the device language retires. The optional cross-repository catalog check skips when `REAL_WORLD_SENSOR_ROOT` is unset (it used to pass silently). | [device.md](modules/device.md) |
-| 12 | Possible bugs in `actions`: a command refused before the effector is stored `failed` with its verification left `awaiting` forever; `MarkCommandDispatching` also moves `failed` commands to `dispatching`; the lease-expiry metric counts one abandoned lease twice. Not pinned by tests. | [actions.md](modules/actions.md) |
+| 12 | Possible bugs in `actions`: a command refused before the effector is stored `failed` with its verification left `awaiting` forever; `MarkCommandDispatching` also moves `failed` commands to `dispatching`; the lease-expiry metric counts one abandoned lease twice. Not pinned by tests. Tracked in [#58](https://github.com/ghassan-ai-projects/agentic-stream/issues/58). | [actions.md](modules/actions.md) |
 | 12 | `watch/internal/app/install.go` `assertGuards` ignores its `tenantID` and `target` parameters. The watch busy-retry test releases the SQLite lock from a 50 ms real timer (the retry backoff is a real timer inside storage). | [watch.md](modules/watch.md) |
 | 11 | A stale approval ends `denied` plus `withdrawn_at` because the ledger has no `withdrawn` status (pinned only). `authority/internal/store/reader.go` has its own `nullable[T]` where AGENTS.md names `storage.NullIfEmpty`. `TestACommittedApprovalDispatchesWithoutNewSensorInput` is bound to a fixed 1 s outbox ticker in `Pipeline.Start` (round 15). | [policy.md](modules/policy.md), [authority.md](modules/authority.md) |
+| 14 | A thermal-trace replay costs 1.2 s under `-race` (70 ms without), from goroutine wake-ups in `database/sql` and the SQLite driver inside `internal/engine` and `internal/storage`. `internal/replay/internal/transport` failed once in about 12 early timing runs (not captured, not reproduced in 50+ later runs); if it returns, look at `TestShadowWorkerNamesItselfInTheErrorOfAFailedExecution` first. | [replay.md](modules/replay.md) |
+| 16 | `run-live` validates `--trace-format` only after opening the database (a behavior change to move it earlier). The experiment end-to-end tests now run the spec with 2 s debounce and cooldown (test copy only; `examples/` untouched) and wait on durable rows instead of sleeping. | [cmd-agentic-stream.md](modules/cmd-agentic-stream.md) |
+| 15 | Bug: `notify` reads the tenant bounds (`TenantBounds`) and the page rows (`ReadPage`) in separate autocommit queries. A subscriber reading an empty tenant stream while its first event is appended gets a spurious `cursor_expired`, and a lagging subscriber can miss the lag (a flake in the SSE test under load). Read both in one snapshot, with a regression test in `notify`. Tracked in [#56](https://github.com/ghassan-ai-projects/agentic-stream/issues/56). | [api.md](modules/api.md) |
+| 15 | `RunLiveSocket` returns an error when the context is cancelled during a commit: `database/sql` reports `ErrTxDone`, which `domain.NormalLiveSocketShutdown` does not treat as cancellation, so a clean shutdown looks like a failure (`AdvanceEvery` and `RunEpisodesEvery` already ignore errors after cancel). Two fix options in the report. Tracked in [#57](https://github.com/ghassan-ai-projects/agentic-stream/issues/57). | [runtime.md](modules/runtime.md) |
+| 15 | Quarantined and expired scheduler items flood test output with slog lines; `AdvanceEvery` at 1 ms starves ingestion under `-race`; no test uses a `GatewayEffector`. | [runtime.md](modules/runtime.md) |
 

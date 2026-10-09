@@ -12,19 +12,20 @@ import (
 func TestCompileSealsTheExampleSpecs(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
+		dir     string
 		file    string
 		name    string
 		inputs  int
 		intents int
 	}{
-		{file: "predictive-maintenance", name: "motor_bearing_degradation", inputs: -1, intents: -1},
-		{file: "rotating-machinery", name: "pump_bearing_degradation", inputs: 7, intents: -1},
-		{file: "zone-thermal", name: "zone_over_temp", inputs: 5, intents: 3},
+		{dir: "predictive-maintenance", file: "predictive-maintenance", name: "motor_bearing_degradation", inputs: -1, intents: -1},
+		{dir: "rotating-machinery", file: "rotating-machinery", name: "pump_bearing_degradation", inputs: 7, intents: -1},
+		{dir: "thermal-chamber", file: "zone-thermal", name: "zone_over_temp", inputs: 5, intents: 3},
 	}
 	for _, tt := range tests {
 		t.Run(tt.file, func(t *testing.T) {
 			t.Parallel()
-			compiled := compileFile(t, "../../../../docs/design/examples/"+tt.file+".situation.yaml")
+			compiled := compileFile(t, "../../../../examples/"+tt.dir+"/"+tt.file+".situation.yaml")
 			if compiled.Metadata.Name != tt.name {
 				t.Fatalf("name = %q, want %q", compiled.Metadata.Name, tt.name)
 			}

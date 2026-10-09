@@ -46,11 +46,10 @@ fails named tests.
   transaction now (app and store fixtures).
 - Cause 4: `TestCommittedApprovalDispatchesWithoutNewSensorInput` slept in a
   10 ms loop. It now polls on a ticker bound to a context with a 5 s timeout.
-  It still takes 1.1 to 1.4 s because `Pipeline.Start` maintains the outbox on
-  a fixed 1 s ticker; that is production behavior (runtime round 15) and the
-  test is the product proof that an approval dispatches without sensor input.
-  It runs in parallel with everything else, so it is the package's critical path
-  (about 1.3 s of the 3.4 s).
+  It took 1.1 to 1.4 s because `Pipeline.Start` maintained the outbox on a
+  fixed 1 s ticker. Round 15 added `PipelineConfig.MaintenanceInterval` (unset
+  keeps 1 s) and this test now sets 10 ms: 1.24 s to 0.26 s, and the package
+  from about 2.7 s to about 1.7 s.
 
 ## Findings and changes
 

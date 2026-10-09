@@ -2,8 +2,10 @@
 """Enforce quality-bar rule Q4: every package with statements has its own
 tests and at least MIN_COVERAGE percent statement coverage.
 
-Runs the short, race-enabled test suite once and reads the per-package
-coverage lines, so `make ci-check` does not run the tests twice.
+The floor is 70%, raised from 60% when the test audit closed
+(docs/test-audit-2026-10-09/, rule T8). Runs the short, race-enabled test
+suite once and reads the per-package coverage lines, so `make ci-check` does
+not run the tests twice.
 See .agents/context/quality-bar.md.
 """
 
@@ -11,7 +13,7 @@ import re
 import subprocess
 import sys
 
-MIN_COVERAGE = 60.0
+MIN_COVERAGE = 70.0
 
 # Generated protobuf stubs carry no hand-written logic to test.
 EXEMPT_SUFFIXES = ("/proto/agenticstream/runtime/v1",)

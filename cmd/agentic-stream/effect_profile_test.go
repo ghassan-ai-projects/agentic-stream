@@ -81,8 +81,8 @@ func TestEffectProfileOptionsValidate(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := tc.options.validate(tc.replay)
 			if tc.wantValid {
 				if err != nil {

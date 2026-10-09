@@ -3,6 +3,7 @@ package composition
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
@@ -43,6 +44,8 @@ type PipelineConfig struct {
 	// GatewayEffector is optional and supplies the explicitly routed thermal
 	// action boundary. It is never used by replay or shadow execution.
 	GatewayEffector *device.GatewayEffector
+
+	MaintenanceInterval time.Duration
 }
 
 // NewPipeline creates a fully composed live pipeline. The caller must start

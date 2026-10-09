@@ -15,8 +15,8 @@ import (
 // the worker reasons, and every window slide publishes two Situation versions
 // (provisional, then on time) although nothing material changed. Such
 // versions must not cancel the decision they arrive after. zone-thermal slides
-// every 30 s; this run slides every 2 s and lets the worker reason for 5 s, so
-// slides always land inside the episode.
+// every 30 s; this run slides every second and lets the worker reason for 2 s,
+// so slides always land inside the episode.
 //
 // Today the loop closes only because the episode runs inside the ingest batch
 // and holds ingestion back while the worker reasons (G9). Once episodes run
@@ -24,7 +24,7 @@ import (
 // docs/unfinished-work-review-2026-10-08/EXPERIMENT_DESIGN.md (G2, G9).
 func TestExperimentClosedLoopUnderAContinuousFeed(t *testing.T) {
 	t.Parallel()
-	run := startExperiment(t, experimentOptions{specEdits: map[string]string{"slide: 30s": "slide: 2s"}, workerDelay: 5 * time.Second})
+	run := startExperiment(t, experimentOptions{specEdits: map[string]string{"slide: 30s": "slide: 1s"}, workerDelay: 2 * time.Second})
 	trace := shiftedTrace(t, time.Now().Add(-time.Second))
 	feedLive(t, run.liveSocket, trace)
 	ctx, stopReadings := context.WithCancel(t.Context())
@@ -51,6 +51,7 @@ func TestExperimentClosedLoopUnderAContinuousFeed(t *testing.T) {
 // hundredth of a degree above the last, the others steady. New facts, the same
 // phase.
 func streamReadings(ctx context.Context, t *testing.T, socket string, every time.Duration) {
+	t.Helper()
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", socket)
 	if err != nil {
 		t.Errorf("dial live socket: %v", err)
@@ -74,6 +75,7 @@ func streamReadings(ctx context.Context, t *testing.T, socket string, every time
 }
 
 func thermalReadings(t *testing.T, seq int) [][]byte {
+	t.Helper()
 	sources := []struct {
 		short, kind string
 		data        map[string]any
@@ -91,6 +93,7 @@ func thermalReadings(t *testing.T, seq int) [][]byte {
 }
 
 func thermalReading(t *testing.T, id, kind string, seq int, data map[string]any) []byte {
+	t.Helper()
 	now := time.Now().UTC()
 	for key, value := range map[string]any{"quality": "valid", "calibration_id": "cal-1", "firmware_id": "fw-1", "boot_id": "boot-A", "schema_version": "1.0", "seq": seq} {
 		data[key] = value

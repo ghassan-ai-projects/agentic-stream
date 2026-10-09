@@ -2,7 +2,7 @@
 
 The v1 worker protocol uses Protobuf and gRPC to communicate with a separate
 Go EpisodeWorker process. The source is
-[`docs/design/contracts/runtime-v1.proto`](../../docs/design/contracts/runtime-v1.proto);
+[`proto/agenticstream/runtime/v1/runtime-v1.proto`](../../proto/agenticstream/runtime/v1/runtime-v1.proto);
 generated Go output is under
 [`proto/agenticstream/runtime/v1/`](../../proto/agenticstream/runtime/v1/).
 

@@ -32,12 +32,13 @@ func predictiveStyleIntents() []Intent {
 }
 
 func TestBaselinePolicyRequiresCatalog(t *testing.T) {
-	if _, err := NewBaselinePolicy(nil); err == nil {
-		t.Fatal("empty catalog accepted")
+	t.Parallel()
+	if _, err := NewBaselinePolicy(nil); err == nil || !strings.Contains(err.Error(), "non-empty intent catalog") {
+		t.Fatalf("an empty catalog = %v, want a non-empty intent catalog requirement", err)
 	}
 	var unconfigured *BaselinePolicy
-	if _, err := unconfigured.ExecuteBaseline(context.Background(), baselineFixtureInput()); err == nil {
-		t.Fatal("unconfigured baseline accepted")
+	if _, err := unconfigured.ExecuteBaseline(t.Context(), baselineFixtureInput()); err == nil || !strings.Contains(err.Error(), "baseline is not configured") {
+		t.Fatalf("an unconfigured baseline = %v, want baseline is not configured", err)
 	}
 }
 

@@ -12,7 +12,7 @@ contract guide.
 | Normalized event envelope | `internal/contractsv1/internal/domain/envelope.go` and ingress validation | `docs/design/TECHNICAL_DESIGN.md` describes the projection |
 | Snapshot/Decision/Intent/Command/Outcome | `internal/contractsv1/internal/domain/schemas/v1/` and `internal/contractsv1/` tests | schema pages and protocol payloads |
 | Notification contract v1 | `internal/notify/internal/domain/contracts/` and `internal/notify/internal/domain/lifecycle_contract.go` | `docs/contracts/` contains the repository-level mirror |
-| Worker protocol | `docs/design/contracts/runtime-v1.proto` | generated Go stubs under `proto/` |
+| Worker protocol | `proto/agenticstream/runtime/v1/runtime-v1.proto` | generated Go stubs under `proto/` |
 | SQLite persistence | ordered files under `migrations/` | `docs/design/contracts/storage-schema-v1.sql` is a design baseline |
 
 When two artifacts differ, the public documentation must say which one the

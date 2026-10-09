@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 	transport "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/transport"
@@ -104,8 +105,10 @@ func (s *replaySession) completeReplay(ctx context.Context, request sessionReque
 }
 
 // RunNTimes replays the same request n times against fresh isolated
-// databases and returns the canonical result of each run. All versions
-// hashes must be identical for the replay to be deterministic.
+// databases and returns the canonical result of each run, in run order. The
+// runs share nothing and execute concurrently; a failure is reported for the
+// lowest run index. All versions hashes must be identical for the replay to be
+// deterministic.
 func RunNTimes(ctx context.Context, request Request, n int) ([]domain.Result, error) {
 	if n <= 0 {
 		return nil, fmt.Errorf("n must be > 0")
@@ -124,14 +127,32 @@ func RunNTimes(ctx context.Context, request Request, n int) ([]domain.Result, er
 
 func repeatReplay(ctx context.Context, dir string, request Request, n int) ([]domain.Result, error) {
 	results := make([]domain.Result, n)
-	for i := 0; i < n; i++ {
-		repeat := request
-		repeat.DBPath = filepath.Join(dir, fmt.Sprintf("replay-%d.db", i))
-		res, err := Run(ctx, repeat)
-		if err != nil {
-			return nil, fmt.Errorf("run %d: %w", i, err)
-		}
-		results[i] = res
+	failures := make([]error, n)
+	var running sync.WaitGroup
+	for i := range n {
+		running.Go(func() { results[i], failures[i] = replayRepeat(ctx, dir, request, i) })
+	}
+	running.Wait()
+	if err := firstFailure(failures); err != nil {
+		return nil, err
 	}
 	return results, nil
+}
+
+func replayRepeat(ctx context.Context, dir string, request Request, index int) (domain.Result, error) {
+	request.DBPath = filepath.Join(dir, fmt.Sprintf("replay-%d.db", index))
+	result, err := Run(ctx, request)
+	if err != nil {
+		return domain.Result{}, fmt.Errorf("run %d: %w", index, err)
+	}
+	return result, nil
+}
+
+func firstFailure(failures []error) error {
+	for _, err := range failures {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

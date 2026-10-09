@@ -131,7 +131,7 @@ Record every deliberate behavior change in `PLAN.md`.
 - `golangci-lint` `wrapcheck` accepts errors from a module's own
   `internal/*/internal/*` layers and from `storage.DB.WithTx`; wrap everything
   else with the operation name. Do not add `fmt.Errorf("%w", err)` no-ops.
-- Each new package needs its own tests at 60% coverage or more; behavior tests
+- Each new package needs its own tests at 70% coverage or more; behavior tests
   belong to the layer they exercise, and the facade keeps configuration and
   delegation tests.
 - A function value can satisfy a port without the caller importing the port's

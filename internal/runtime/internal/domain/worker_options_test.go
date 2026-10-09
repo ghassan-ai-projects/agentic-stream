@@ -3,6 +3,7 @@ package domain
 import "testing"
 
 func TestValidateWorkerOptions(t *testing.T) {
+	t.Parallel()
 	validKey := "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
 	tests := []struct {
 		name    string
@@ -23,6 +24,7 @@ func TestValidateWorkerOptions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := ValidateWorkerOptions(tt.config)
 			if tt.wantErr == "" {
 				if err != nil {
@@ -32,6 +34,30 @@ func TestValidateWorkerOptions(t *testing.T) {
 			}
 			if err == nil || err.Error() != tt.wantErr {
 				t.Fatalf("ValidateWorkerOptions() error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestDecodeEvidenceKeyAcceptsOnlyHexOfAtLeastThirtyTwoBytes(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, key string
+		wantLen   int
+		wantErr   bool
+	}{
+		{"thirty-two bytes", "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", 32, false},
+		{"longer keys are kept whole", "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20", 33, false},
+		{"too short", "0001", 0, true},
+		{"not hex", "not-hex", 0, true},
+		{"empty", "", 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			key, err := DecodeEvidenceKey(tt.key)
+			if (err != nil) != tt.wantErr || len(key) != tt.wantLen {
+				t.Fatalf("DecodeEvidenceKey(%q) = %d bytes, %v; want %d bytes, error=%v", tt.key, len(key), err, tt.wantLen, tt.wantErr)
 			}
 		})
 	}

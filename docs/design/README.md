@@ -56,13 +56,13 @@ stream core.
    accepted ADRs.
 4. [Research evidence](EVIDENCE.md) — findings from the existing reports and
    the four reference source trees, including adopted and rejected patterns.
-5. [Runtime worker protocol](contracts/runtime-v1.proto) — the language-neutral
+5. [Runtime worker protocol](../../proto/agenticstream/runtime/v1/runtime-v1.proto) — the language-neutral
    episode worker and evidence-tool boundary.
 6. [SituationSpec schema](../../internal/spec/internal/domain/schema.json) — the
    authoring contract, embedded in the runtime (the only copy).
 7. [Storage schema](contracts/storage-schema-v1.sql) — the logical SQLite
    tables, keys, constraints, and indexes for the first implementation.
-8. [Predictive-maintenance example](examples/predictive-maintenance.situation.yaml)
+8. [Predictive-maintenance example](../../examples/predictive-maintenance/predictive-maintenance.situation.yaml)
    — an end-to-end example used by the simulator and golden replay suite.
 
 ## Product invariants

@@ -57,25 +57,28 @@ func TestIndexRecordedEntriesAcceptsCompleteAndRejectsDuplicates(t *testing.T) {
 func TestVerifyRecordedEntryRejectsIncomplete(t *testing.T) {
 	t.Parallel()
 	episode := ReplayEpisode{EpisodeKey: "s1/1/t1", EpisodeID: "e1", SituationID: "s1", SituationVersion: 1, TriggerID: "t1", SnapshotDigest: "sha256:" + strings.Repeat("0", 64)}
-	for name, mutate := range map[string]func(*RecordedEntry){
-		"no key":        func(e *RecordedEntry) { e.EpisodeKey = "" },
-		"zero fence":    func(e *RecordedEntry) { e.Fence = 0 },
-		"no provenance": func(e *RecordedEntry) { e.AttemptProvenanceSHA256 = "" },
-		"bad provenance": func(e *RecordedEntry) {
+	for name, tc := range map[string]struct {
+		mutate  func(*RecordedEntry)
+		wantErr string
+	}{
+		"no key":        {func(e *RecordedEntry) { e.EpisodeKey = "" }, "incomplete entry"},
+		"zero fence":    {func(e *RecordedEntry) { e.Fence = 0 }, "incomplete entry"},
+		"no provenance": {func(e *RecordedEntry) { e.AttemptProvenanceSHA256 = "" }, "incomplete entry"},
+		"no decision":   {func(e *RecordedEntry) { e.DecisionJSON = nil }, "incomplete entry"},
+		"bad provenance": {func(e *RecordedEntry) {
 			e.AttemptProvenanceSHA256 = "sha256:" + strings.Repeat("f", 64)
-		},
-		"no decision": func(e *RecordedEntry) { e.DecisionJSON = nil },
-		"ambiguous decision bytes": func(e *RecordedEntry) {
+		}, "attempt provenance is invalid"},
+		"ambiguous decision bytes": {func(e *RecordedEntry) {
 			e.DecisionJSON = contractstest.AmbiguousKeyJSON(e.DecisionJSON, "decision_id")
-		},
-		"bad digest": func(e *RecordedEntry) { e.DecisionSHA256 = "sha256:" + strings.Repeat("e", 64) },
+		}, `recorded ledger decision "s1/1/t1"`},
+		"bad digest": {func(e *RecordedEntry) { e.DecisionSHA256 = "sha256:" + strings.Repeat("e", 64) }, `recorded ledger decision "s1/1/t1"`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			entry := validRecordedEntry(t, episode)
-			mutate(&entry)
-			if err := VerifyRecordedEntry(entry); err == nil {
-				t.Fatal("invalid entry accepted")
+			tc.mutate(&entry)
+			if err := VerifyRecordedEntry(entry); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("VerifyRecordedEntry = %v, want an error containing %q", err, tc.wantErr)
 			}
 		})
 	}
@@ -86,15 +89,15 @@ func TestRequireEmptyAndExpectedRecordedKeys(t *testing.T) {
 	if err := RequireEmptyRecordedLedger(nil); err != nil {
 		t.Fatalf("empty ledger rejected: %v", err)
 	}
-	if err := RequireEmptyRecordedLedger([]RecordedEntry{{}}); err == nil {
-		t.Fatal("non-empty ledger accepted without episodes")
+	if err := RequireEmptyRecordedLedger([]RecordedEntry{{}}); err == nil || !strings.Contains(err.Error(), "non-empty but replay produced no executable episodes") {
+		t.Fatalf("a non-empty ledger without episodes = %v, want non-empty but replay produced no executable episodes", err)
 	}
 	episodes := map[string]ReplayEpisode{"k": {}}
 	if err := RequireExpectedRecordedKeys(episodes, map[string]RecordedEntry{"k": {}}); err != nil {
 		t.Fatalf("expected key rejected: %v", err)
 	}
-	if err := RequireExpectedRecordedKeys(episodes, map[string]RecordedEntry{"other": {}}); err == nil {
-		t.Fatal("unexpected ledger key accepted")
+	if err := RequireExpectedRecordedKeys(episodes, map[string]RecordedEntry{"other": {}}); err == nil || !strings.Contains(err.Error(), `unexpected decision "other"`) {
+		t.Fatalf("an unexpected ledger key = %v, want unexpected decision \"other\"", err)
 	}
 }
 
@@ -139,5 +142,63 @@ func TestRecordedCitationAllowsALaterVersionOnly(t *testing.T) {
 				t.Fatalf("cited = %d, %v; want %d", got, err, tt.want)
 			}
 		})
+	}
+}
+
+func TestValidateRecordedAttemptRejectsEachIdentityMismatch(t *testing.T) {
+	t.Parallel()
+	entry := RecordedEntry{EpisodeKey: "episode", EpisodeID: "ep", AttemptID: "attempt", Fence: 2}
+	good := func() map[string]any {
+		return map[string]any{"episode_id": "ep", "attempt_id": "attempt", "fence": float64(2)}
+	}
+	if err := ValidateRecordedAttempt(entry, good()); err != nil {
+		t.Fatalf("matching identity rejected: %v", err)
+	}
+	for name, mutate := range map[string]struct {
+		change  func(map[string]any)
+		wantErr string
+	}{
+		"episode": {func(d map[string]any) { d["episode_id"] = "other" }, "mismatched episode identity"},
+		"attempt": {func(d map[string]any) { d["attempt_id"] = "other" }, "mismatched attempt identity"},
+		"fence":   {func(d map[string]any) { d["fence"] = float64(3) }, "mismatched fence"},
+		"missing": {func(d map[string]any) { delete(d, "fence") }, "mismatched fence"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			decision := good()
+			mutate.change(decision)
+			if err := ValidateRecordedAttempt(entry, decision); err == nil || !strings.Contains(err.Error(), mutate.wantErr) {
+				t.Fatalf("ValidateRecordedAttempt = %v, want an error containing %q", err, mutate.wantErr)
+			}
+		})
+	}
+}
+
+func TestDecodeRecordedDecisionRequiresCanonicalJSON(t *testing.T) {
+	t.Parallel()
+	entry := RecordedEntry{EpisodeKey: "episode", DecisionJSON: []byte(`{"a":1,"b":2}`)}
+	decision, err := DecodeRecordedDecision(entry)
+	if err != nil || decision["b"] != float64(2) {
+		t.Fatalf("canonical decision = %v, %v", decision, err)
+	}
+	entry.DecisionJSON = []byte(`{"b": 2, "a": 1}`)
+	if _, err := DecodeRecordedDecision(entry); err == nil || !strings.Contains(err.Error(), "is not canonical JSON") {
+		t.Fatalf("a non-canonical decision = %v, want is not canonical JSON", err)
+	}
+	entry.DecisionJSON = []byte(`{`)
+	if _, err := DecodeRecordedDecision(entry); err == nil || !strings.Contains(err.Error(), "canonicalize recorded decision") {
+		t.Fatalf("a malformed decision = %v, want canonicalize recorded decision", err)
+	}
+}
+
+func TestValidateRecordedSnapshotRequiresTheReplayedSnapshotDigest(t *testing.T) {
+	t.Parallel()
+	replayed := []byte(strings.Repeat("\x07", 32))
+	entry := RecordedEntry{EpisodeKey: "episode"}
+	if err := ValidateRecordedSnapshot(entry, map[string]any{"snapshot_digest": canonicaljson.EncodeDigest(replayed)}, replayed); err != nil {
+		t.Fatalf("matching snapshot digest rejected: %v", err)
+	}
+	if err := ValidateRecordedSnapshot(entry, map[string]any{"snapshot_digest": "sha256:" + strings.Repeat("0", 64)}, replayed); err == nil || !strings.Contains(err.Error(), "mismatched snapshot digest") {
+		t.Fatalf("a foreign snapshot digest = %v, want mismatched snapshot digest", err)
 	}
 }

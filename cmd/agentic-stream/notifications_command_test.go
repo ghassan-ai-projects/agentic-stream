@@ -1,14 +1,13 @@
 package main
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestNotificationsPruneEnforcesTheFloorAndCountsFirst(t *testing.T) {
 	t.Parallel()
-	db := filepath.Join(t.TempDir(), "runtime.db")
+	db := newMigratedDatabasePath(t)
 	if _, err := runOperatorCommand(t, "notifications", "prune", "--db", db, "--retention", "24h"); err == nil {
 		t.Fatal("a one-day retention was accepted")
 	}

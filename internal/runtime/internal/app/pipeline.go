@@ -21,7 +21,7 @@ import (
 
 type PipelineReport = domain.PipelineReport
 
-const watchReadBatchSize = 1000
+const defaultWatchPageSize = 1000
 
 type Pipeline struct {
 	transactions *store.PipelineStore
@@ -34,6 +34,9 @@ type Pipeline struct {
 	watch        *watch.Service
 	clk          sources.Clock
 	tenantID     string
+
+	maintenanceInterval time.Duration
+	watchPageSize       int
 
 	batchMu sync.Mutex
 
@@ -64,7 +67,7 @@ func (p *Pipeline) Start(ctx context.Context) error {
 
 func (p *Pipeline) maintainWatches(watchCtx context.Context, done chan struct{}) {
 	defer close(done)
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(domain.MaintenanceInterval(p.maintenanceInterval))
 	defer ticker.Stop()
 	for {
 		select {
