@@ -1,7 +1,7 @@
 # Migration reference
 
 The runtime applies numbered SQLite migrations from
-[`migrations/`](../../migrations/). The current tree contains 36 migrations.
+[`migrations/`](../../migrations/). The current tree contains 37 migrations.
 
 ## Migration families
 
@@ -13,11 +13,13 @@ episode rebinding, paired shadow comparisons, device authority,
 reconciliation, and soak evidence, the device-reconciliation column names,
 each Situation's latest material version, the removal of unused tables, and
 indexes for the per-event hot path, event-time dispositions with per-source
-partition clocks, and durable state for unopened Situations.
+partition clocks, durable state for unopened Situations, and set-aside apply failures.
 
 The current head is
-[`036_unopened_situations.sql`](../../migrations/036_unopened_situations.sql),
-which keeps the runtime state of Situations that have not opened yet;
+[`037_apply_failures.sql`](../../migrations/037_apply_failures.sql), which
+records events set aside because applying them fails every time;
+[`036_unopened_situations.sql`](../../migrations/036_unopened_situations.sql)
+keeps the runtime state of Situations that have not opened yet;
 [`035_event_time_dispositions.sql`](../../migrations/035_event_time_dispositions.sql)
 records every late or clock-skewed event's disposition and adds per-source
 clocks to partition checkpoints;

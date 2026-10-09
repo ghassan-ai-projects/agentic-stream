@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -16,8 +17,29 @@ func (s *Service) applyRecord(ctx context.Context, partitionID int, record event
 	err := s.store.RetryBusy(ctx, func() error {
 		return s.applyRecordTransaction(ctx, partitionID, record, prepared)
 	})
+	if failure, ruled := domain.AsRuleFailure(err); ruled {
+		return s.setAsideFailedRecord(ctx, partitionID, record, prepared, failure)
+	}
 	if err != nil {
 		return fmt.Errorf("apply record transaction: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) setAsideFailedRecord(ctx context.Context, partitionID int, record eventlog.Record, prepared preparedRecord, failure *domain.RuleFailure) error {
+	s.logger.Error("event set aside: applying it fails every time", "event_id", record.EventID, "position", record.Position, "step", failure.Step, "error", failure.Err)
+	setAside := domain.ApplyFailure{PartitionID: partitionID, EventID: record.EventID, Position: int64(record.Position), Step: failure.Step, ErrorText: failure.Err.Error()}
+	err := s.store.WithTx(ctx, func(tx *store.Tx) error {
+		if applied, err := s.alreadyApplied(ctx, tx, record.EventID); err != nil || applied {
+			return err
+		}
+		if err := tx.RecordApplyFailure(ctx, setAside, s.clock.Now().UTC()); err != nil {
+			return fmt.Errorf("record apply failure of %s: %w", record.EventID, err)
+		}
+		return tx.RecordApplied(ctx, partitionID, record.EventID, int64(record.Position), prepared.clock, s.clock.Now().UTC())
+	})
+	if err != nil {
+		return fmt.Errorf("set aside event %s: %w", record.EventID, err)
 	}
 	return nil
 }
@@ -95,7 +117,7 @@ func (s *Service) applyEventFeatures(ctx context.Context, tx *store.Tx, partitio
 	}
 	features, newState, err := s.opRuntime.ApplyEventAt(ctx, operatorState, record.Envelope, watermark, s.clock.Now().UTC())
 	if err != nil {
-		return nil, fmt.Errorf("apply operators: %w", err)
+		return nil, ruleFailure(ctx, "apply operators", err)
 	}
 	if err := s.applyAndSaveFeatures(ctx, tx, partitionID, features, watermark); err != nil {
 		return nil, err
@@ -127,7 +149,7 @@ func (s *Service) persistOperatorState(ctx context.Context, tx *store.Tx, partit
 func (s *Service) applyFeature(ctx context.Context, tx *store.Tx, partitionID int, feature operators.Feature, watermark time.Time) error {
 	versions, err := s.sitEngine.ApplyFeature(ctx, feature, watermark)
 	if err != nil {
-		return fmt.Errorf("apply situation: %w", err)
+		return ruleFailure(ctx, "apply situation", err)
 	}
 	for _, version := range versions {
 		if err := s.publishVersion(ctx, tx, partitionID, version); err != nil {
@@ -169,4 +191,11 @@ func (s *Service) saveSituationState(ctx context.Context, tx *store.Tx, situatio
 		return tx.SaveUnopenedSituationState(ctx, situation, stateJSON, digest, s.clock.Now().UTC())
 	}
 	return tx.SaveSituationRuntimeState(ctx, situation, stateJSON, digest, s.clock.Now().UTC())
+}
+
+func ruleFailure(ctx context.Context, step string, err error) error {
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("%s: %w", step, err)
+	}
+	return &domain.RuleFailure{Step: step, Err: err}
 }

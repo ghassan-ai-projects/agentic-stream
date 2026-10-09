@@ -38,16 +38,37 @@ func (s *Service) runDueTimers(ctx context.Context, partitionID int, now time.Ti
 		fired, err = s.fireDueTimers(ctx, tx, partitionID, watermark, now)
 		return err
 	}); err != nil {
-		return 0, s.timerFailure(ctx, err)
+		return 0, s.timerFailure(ctx, partitionID, now, err)
 	}
 	return fired, nil
 }
 
-func (s *Service) timerFailure(ctx context.Context, err error) error {
+func (s *Service) timerFailure(ctx context.Context, partitionID int, now time.Time, err error) error {
 	if restoreErr := s.restoreAfterRollback(ctx); restoreErr != nil {
 		return fmt.Errorf("run timers transaction: %w; restore after rollback: %w", err, restoreErr)
 	}
+	if failure, ruled := domain.AsRuleFailure(err); ruled {
+		return s.setAsideDueTimers(ctx, partitionID, now, failure)
+	}
 	return fmt.Errorf("run timers transaction: %w", err)
+}
+
+func (s *Service) setAsideDueTimers(ctx context.Context, partitionID int, now time.Time, failure *domain.RuleFailure) error {
+	s.logger.Error("due timers set aside: firing them fails every time", "partition_id", partitionID, "step", failure.Step, "error", failure.Err)
+	err := s.store.WithTx(ctx, func(tx *store.Tx) error {
+		if err := tx.AssertOwner(ctx); err != nil {
+			return fmt.Errorf("assert owner before setting timers aside: %w", err)
+		}
+		timers, err := tx.LoadDueTimers(ctx, partitionID, now)
+		if err != nil {
+			return fmt.Errorf("load due timers: %w", err)
+		}
+		return tx.AcknowledgeTimers(ctx, timers, now)
+	})
+	if err != nil {
+		return fmt.Errorf("set aside due timers of partition %d: %w", partitionID, err)
+	}
+	return nil
 }
 
 func (s *Service) timerWatermark(ctx context.Context, partitionID int, now time.Time) (time.Time, error) {
@@ -97,7 +118,7 @@ func (s *Service) timerFeatures(ctx context.Context, tx *store.Tx, partitionID i
 	}
 	features, _, err := s.opRuntime.ApplyTimer(ctx, state, watermark, now)
 	if err != nil {
-		return nil, nil, fmt.Errorf("apply timers: %w", err)
+		return nil, nil, ruleFailure(ctx, "apply timers", err)
 	}
 	return state, features, nil
 }
@@ -127,7 +148,7 @@ func (s *Service) fireTimer(ctx context.Context, tx *store.Tx, partitionID int, 
 func (s *Service) saveTimerFeature(ctx context.Context, tx *store.Tx, partitionID int, feature operators.Feature, watermark time.Time) error {
 	versions, err := s.sitEngine.ApplyFeature(ctx, feature, watermark)
 	if err != nil {
-		return fmt.Errorf("apply timer situation: %w", err)
+		return ruleFailure(ctx, "apply timer situation", err)
 	}
 	for _, version := range versions {
 		if err := s.saveSituationVersion(ctx, tx, partitionID, version); err != nil {
@@ -149,7 +170,7 @@ func (s *Service) scheduleHeartbeatTimers(ctx context.Context, tx *store.Tx, par
 	now := s.clock.Now().UTC()
 	timers, err := domain.HeartbeatTimers(s.deploymentID, s.tenantID, partitionID, s.spec.Operators, state)
 	if err != nil {
-		return fmt.Errorf("plan heartbeat timers of partition %d: %w", partitionID, err)
+		return ruleFailure(ctx, "plan heartbeat timers", err)
 	}
 	for _, timer := range timers {
 		if err := tx.ArmHeartbeatTimer(ctx, partitionID, timer, now); err != nil {

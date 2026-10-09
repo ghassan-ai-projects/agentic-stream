@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
@@ -33,6 +34,7 @@ type Service struct {
 	spec         *spec.CompiledSpec
 	tenantID     string
 	deploymentID string
+	logger       *slog.Logger
 
 	opRuntime *operators.OperatorRuntime
 	sitEngine *situations.Engine
@@ -49,7 +51,7 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	if domain.RequiresSchemaValidation(cfg.Spec.Inputs) {
 		cfg.Log.RequireSchemaValidation()
 	}
-	service := &Service{store: cfg.Store, log: cfg.Log, clock: sources.OrPhysical(cfg.Clock), spec: cfg.Spec, tenantID: cfg.TenantID, deploymentID: cfg.Spec.Digest}
+	service := &Service{store: cfg.Store, log: cfg.Log, clock: sources.OrPhysical(cfg.Clock), spec: cfg.Spec, tenantID: cfg.TenantID, deploymentID: cfg.Spec.Digest, logger: slog.Default()}
 	if err := service.buildPlanes(ctx, cfg.Cognition); err != nil {
 		return nil, fmt.Errorf("build engine planes: %w", err)
 	}

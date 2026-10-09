@@ -66,6 +66,12 @@ state under any policy. The engine records every late or skewed event's disposit
 Missing heartbeat and source-health signals can make completeness uncertain.
 Incomplete evidence is explicit state, not a silent default.
 
+When applying an event fails the same way on every attempt (an operator or a
+Situation rule refuses it), the engine records the failure in
+`apply_failures`, marks the event processed and continues, so one bad record
+cannot halt the tenant; storage and ownership failures still stop the run and
+are retried. Due timers that fail the same way are acknowledged and logged.
+
 A Situation's completeness is the weakest of the latest completeness of each
 of its inputs, ordered `uncertain` < `provisional` < `on_time` < `corrected` <
 `final_by_policy`. A change of completeness alone publishes a version only when

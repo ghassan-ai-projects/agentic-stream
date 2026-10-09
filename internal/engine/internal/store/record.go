@@ -56,3 +56,13 @@ func (tx *Tx) RecordLateEvent(ctx context.Context, late domain.LateEvent, now ti
 	}
 	return nil
 }
+
+func (tx *Tx) RecordApplyFailure(ctx context.Context, failure domain.ApplyFailure, now time.Time) error {
+	if _, err := tx.tx.ExecContext(ctx, `
+		INSERT INTO apply_failures (tenant_id, event_id, log_position, partition_id, step, error_text, recorded_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		tx.tenantID, failure.EventID, failure.Position, failure.PartitionID, failure.Step, failure.ErrorText, kernel.FormatTime(now)); err != nil {
+		return fmt.Errorf("insert apply failure: %w", err)
+	}
+	return nil
+}

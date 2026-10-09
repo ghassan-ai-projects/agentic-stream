@@ -32,6 +32,7 @@ var durableOwners = map[string]string{
 	"event_inbox":                   "internal/engine/internal/store",
 	"event_time_dispositions":       "internal/engine/internal/store",
 	"unopened_situations":           "internal/engine/internal/store",
+	"apply_failures":                "internal/engine/internal/store",
 	"event_log":                     "internal/eventlog/internal/store",
 	"event_quarantine":              "internal/eventlog/internal/store",
 	"event_schemas":                 "internal/spec/internal/store",
