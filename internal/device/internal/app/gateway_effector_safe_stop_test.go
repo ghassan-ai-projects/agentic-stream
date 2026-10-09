@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
@@ -102,4 +103,22 @@ func TestSafeStopRejectionThatCannotBeRecordedIsUnknownAndSurvivesRestart(t *tes
 		t.Fatalf("close session: %v", err)
 	}
 	assertRestartedSessionRefusesOrdinaryCommands(t, control, catalog, stateFor(t, catalog), "safe stop has priority")
+}
+
+func TestASafeStopAcceptedWithoutDurableEvidenceRequiresReconciliation(t *testing.T) {
+	t.Parallel()
+	session, transport, catalog, control := openThermalSessionWithControl(t, acceptedReceipt("safe-stop/fan-01"))
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	transport.sendHook = cancel
+	_, err := app.NewGatewayEffector(session, catalog).SafeStop(ctx, "fan-01")
+	if err == nil || !strings.Contains(err.Error(), "safe-stop accepted but lifecycle evidence was not durable") {
+		t.Fatalf("accepted safe stop without durable evidence err=%v", err)
+	}
+	if !reconciliationRequired(t, control) {
+		t.Fatal("an accepted safe stop with lost evidence left no reconciliation barrier")
+	}
+	if completed := countAuthorityEvents(t, control, "safe_stop_completed"); completed != 0 {
+		t.Fatalf("recorded %d completions for a stop whose evidence was lost", completed)
+	}
 }
