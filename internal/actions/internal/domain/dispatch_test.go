@@ -65,24 +65,31 @@ func TestLeaseStandingDistinguishesForeignExpiredAndLive(t *testing.T) {
 	}
 }
 
-func TestDeviceVerificationOutcomes(t *testing.T) {
+func TestDeviceVerificationDecidesTheDispatchOutcome(t *testing.T) {
 	t.Parallel()
-	verifyErr := errors.New("query failed")
-	check := ClassifyDeviceVerification(DeviceCheck{Effect: actionport.Effect{VerificationPending: true}, VerifyErr: verifyErr})
-	if !actionport.IsUnknownOutcome(check.DispatchErr) || check.Effect.VerificationPending {
-		t.Fatalf("verification error must make the dispatch unknown: %+v", check)
+	pending := actionport.Effect{VerificationPending: true}
+	cases := []struct {
+		name        string
+		check       DeviceCheck
+		wantUnknown bool
+		wantFailed  bool
+		wantPending bool
+	}{
+		{"query error leaves the dispatch unknown", DeviceCheck{Effect: pending, VerifyErr: errors.New("query failed")}, true, false, false},
+		{"failed state fails the dispatch", DeviceCheck{Effect: pending, FinalStatus: actionport.CommandFailed}, false, true, false},
+		{"succeeded state settles the dispatch", DeviceCheck{Effect: pending, FinalStatus: actionport.CommandSucceeded}, false, false, false},
+		{"a command without device state keeps its pending verification", DeviceCheck{Effect: pending}, false, false, true},
 	}
-	check = ClassifyDeviceVerification(DeviceCheck{Effect: actionport.Effect{VerificationPending: true}, FinalStatus: actionport.CommandFailed})
-	if check.DispatchErr == nil || actionport.IsUnknownOutcome(check.DispatchErr) || check.Effect.VerificationPending {
-		t.Fatalf("failed verification must make the dispatch failed: %+v", check)
-	}
-	check = ClassifyDeviceVerification(DeviceCheck{Effect: actionport.Effect{VerificationPending: true}, FinalStatus: actionport.CommandSucceeded})
-	if check.DispatchErr != nil || check.Effect.VerificationPending {
-		t.Fatalf("successful verification must settle the dispatch: %+v", check)
-	}
-	check = ClassifyDeviceVerification(DeviceCheck{Effect: actionport.Effect{VerificationPending: true}})
-	if !check.Effect.VerificationPending {
-		t.Fatal("a non-device command must keep its pending verification")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := ClassifyDeviceVerification(tc.check)
+			unknown := actionport.IsUnknownOutcome(got.DispatchErr)
+			failed := got.DispatchErr != nil && !unknown
+			if unknown != tc.wantUnknown || failed != tc.wantFailed || got.Effect.VerificationPending != tc.wantPending {
+				t.Fatalf("unknown=%v failed=%v pending=%v, want %v %v %v (%+v)", unknown, failed, got.Effect.VerificationPending, tc.wantUnknown, tc.wantFailed, tc.wantPending, got)
+			}
+		})
 	}
 }
 
@@ -100,12 +107,28 @@ func TestReconcilesUnknownNeedsUnknownDispatchAndCleanVerification(t *testing.T)
 		{"known failure", DeviceCheck{DispatchErr: errors.New("rejected"), FinalStatus: actionport.CommandFailed}, false},
 	}
 	for _, tc := range cases {
-		if got := tc.check.ReconcilesUnknown(); got != tc.want {
-			t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tc.check.ReconcilesUnknown(); got != tc.want {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+		})
 	}
+}
+
+func TestDeviceVerificationAppliesOnlyToSuccessAndUnknownResults(t *testing.T) {
+	t.Parallel()
+	unknown := &actionport.UnknownOutcomeError{Err: errors.New("timeout")}
 	if SkipsDeviceVerification(nil) || SkipsDeviceVerification(unknown) || !SkipsDeviceVerification(errors.New("rejected")) {
 		t.Fatal("device verification applies only to success and unknown results")
+	}
+}
+
+func TestAResultAfterTheLeaseExpiredIsAnUnknownOutcomeWithoutAnEffect(t *testing.T) {
+	t.Parallel()
+	effect, err := ExpiredLeaseResult()
+	if !actionport.IsUnknownOutcome(err) || effect.ProviderResult != nil || effect.VerificationPending {
+		t.Fatalf("effect = %+v, err = %v; want an empty effect and an unknown outcome", effect, err)
 	}
 }
 

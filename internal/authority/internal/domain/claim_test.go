@@ -20,7 +20,7 @@ var (
 	}
 )
 
-func TestDecideClaim(t *testing.T) {
+func TestAClaimDecisionFollowsTheHeldClaimAndItsLease(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -46,7 +46,7 @@ func TestDecideClaim(t *testing.T) {
 	}
 }
 
-func TestClaimEventRecordsFenceOrRejection(t *testing.T) {
+func TestClaimEventsRecordTheFenceTheRejectionAndTheRelease(t *testing.T) {
 	t.Parallel()
 	held := heldBy(claimByB, 2, liveLease, ClaimActive)
 	rejected := ClaimEvent(ClaimDecision{Event: EventClaimRejected}, claimByA, held, testNow)
@@ -62,7 +62,7 @@ func TestClaimEventRecordsFenceOrRejection(t *testing.T) {
 	}
 }
 
-func TestClaimHolderChecks(t *testing.T) {
+func TestOnlyTheExactLiveHolderOfAClaimMayAssertItAndAnyActiveHolderMayReleaseIt(t *testing.T) {
 	t.Parallel()
 	otherBoot := claimByA
 	otherBoot.Device.BootID = "boot-2"
@@ -92,15 +92,28 @@ func TestClaimHolderChecks(t *testing.T) {
 	}
 }
 
-func TestIdentityCompleteness(t *testing.T) {
+func TestIdentitiesAreCompleteOnlyWithEveryPart(t *testing.T) {
 	t.Parallel()
-	if !claimByA.Complete() || (TargetClaim{Device: bootOne, Owner: ownerA}).Complete() {
-		t.Fatal("target claim completeness")
+	tests := []struct {
+		name     string
+		complete bool
+		want     bool
+	}{
+		{"a claim with target, device and owner", claimByA.Complete(), true},
+		{"a claim without a target", (TargetClaim{Device: bootOne, Owner: ownerA}).Complete(), false},
+		{"an owner without an instance", (Owner{Epoch: "e"}).Complete(), false},
+		{"a device boot without a boot id", (DeviceBoot{DeviceID: "d"}).Complete(), false},
 	}
-	if (Owner{Epoch: "e"}).Complete() || (DeviceBoot{DeviceID: "d"}).Complete() {
-		t.Fatal("partial identities reported complete")
+	for _, tt := range tests {
+		if tt.complete != tt.want {
+			t.Errorf("%s: Complete = %t, want %t", tt.name, tt.complete, tt.want)
+		}
 	}
-	if subject := DeviceSubject(bootOne, ownerA); subject.Target != bootOne.DeviceID || subject.Owner != ownerA {
-		t.Fatalf("device subject = %+v", subject)
+}
+
+func TestADeviceSubjectNamesTheDeviceAsTheTarget(t *testing.T) {
+	t.Parallel()
+	if subject := DeviceSubject(bootOne, ownerA); subject.Target != bootOne.DeviceID || subject.Owner != ownerA || subject.Device != bootOne {
+		t.Fatalf("device subject = %+v, want target %q for owner %+v", subject, bootOne.DeviceID, ownerA)
 	}
 }

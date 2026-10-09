@@ -11,7 +11,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 )
 
-func TestApplyCeilingsPreservesUnspecifiedLimitsAndAtomicity(t *testing.T) {
+func TestApplyingCeilingsKeepsUnspecifiedLimitsAndIsAtomic(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name                                      string

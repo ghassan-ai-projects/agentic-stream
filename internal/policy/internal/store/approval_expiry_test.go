@@ -18,13 +18,10 @@ func requestPendingApproval(t *testing.T, tx *Tx, intentID, approvalID string, e
 }
 
 func TestUnreadableApprovalExpiryRefusesOnlyItsOwnApproval(t *testing.T) {
-	now := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+	t.Parallel()
+	now := fixtureNow
 	db, intentID := openPolicyFixture(t, "R2", 1, 1, now.Add(time.Hour))
-	defer func() { _ = db.Close() }()
-	if _, err := db.ExecContext(t.Context(), `CREATE TEMP TABLE neighbor AS SELECT * FROM intents WHERE intent_id = ?;
-		UPDATE neighbor SET intent_id = 'neighbor-intent'; INSERT INTO intents SELECT * FROM neighbor`, intentID); err != nil {
-		t.Fatal(err)
-	}
+	copyIntent(t, db, intentID, "neighbor-intent", "policy_status = 'pending'")
 	if err := db.WithTx(t.Context(), func(original *sql.Tx) error {
 		tx := Join(original)
 		requestPendingApproval(t, tx, intentID, "corrupt", now.Add(time.Hour), now)

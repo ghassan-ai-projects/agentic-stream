@@ -2,6 +2,9 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,14 +15,54 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
+var testNow = time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+
+func allowOwner(context.Context, *sql.Tx, string) error { return nil }
+
+func newStore(db *storage.DB) Store {
+	return New(db, allowOwner, "epoch")
+}
+
+func inTx(t *testing.T, db *storage.DB, use func(*Tx) error) {
+	t.Helper()
+	if err := newStore(db).WithTx(t.Context(), use); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func execute(t *testing.T, db *storage.DB, statement string, args ...any) {
+	t.Helper()
+	if _, err := db.ExecContext(t.Context(), statement, args...); err != nil {
+		t.Fatalf("%s: %v", strings.Fields(statement)[0], err)
+	}
+}
+
+func countRows(t *testing.T, db *storage.DB, query string, args ...any) int {
+	t.Helper()
+	n, err := strconv.Atoi(queryString(t, db, query, args...))
+	if err != nil {
+		t.Fatalf("count %q: %v", query, err)
+	}
+	return n
+}
+
+func queryString(t *testing.T, db *storage.DB, query string, args ...any) string {
+	t.Helper()
+	var value string
+	if err := db.QueryRowContext(t.Context(), query, args...).Scan(&value); err != nil {
+		t.Fatalf("query %q: %v", query, err)
+	}
+	return value
+}
+
 func openActionFixture(t *testing.T) (*storage.DB, string) {
 	t.Helper()
 	ctx := context.Background()
 	db := storagetest.OpenTempWithoutForeignKeys(t)
 
-	now := kernel.FormatTime(time.Now().UTC().Add(-time.Minute))
+	now := kernel.FormatTime(testNow.Add(-time.Minute))
 	commandID := "cmd-action"
-	expiresAt := kernel.FormatTime(time.Now().UTC().Add(time.Hour))
+	expiresAt := kernel.FormatTime(testNow.Add(time.Hour))
 	intent := map[string]any{
 		"intent_id": "int-action", "decision_id": "dec-action", "tenant_id": "tenant",
 		"situation_id": "sit-action", "situation_version": 1, "type": "maintenance.ticket",

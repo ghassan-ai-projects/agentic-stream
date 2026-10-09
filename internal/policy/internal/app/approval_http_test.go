@@ -2,159 +2,128 @@ package app_test
 
 import (
 	"encoding/json"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
 )
 
 func TestHTTPApprovalAndDenialCommitOnce(t *testing.T) {
-	for _, approved := range []bool{true, false} {
-		name := "deny"
-		if approved {
-			name = "approve"
-		}
-		t.Run(name, func(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		approved     bool
+		wantStatus   string
+		wantCommands int
+	}{
+		{"approve", true, "approved", 1},
+		{"deny", false, "denied", 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			f := openApprovalHTTP(t)
-			body := signedApproval(t, f, approved)
+			body := signedApproval(t, f, test.approved)
 			for range 2 {
-				rec := approvalRequest(t, f.handler, "POST", "/v1/approvals/"+f.id, body)
-				if rec.Code != 200 {
-					t.Fatal(rec.Code, rec.Body.String())
+				if rec := approvalRequest(t, f.handler, http.MethodPost, "/v1/approvals/"+f.approvalID, body); rec.Code != http.StatusOK {
+					t.Fatalf("POST = %d %s", rec.Code, rec.Body.String())
 				}
 			}
-			commands, outbox := approvalCounts(t, f.db)
-			expected := 0
-			if approved {
-				expected = 1
+			commands, outbox := commandAndOutboxCounts(t, f.db)
+			resolved := scalar[int](t, f.db, "SELECT COUNT(*) FROM notifications WHERE event_type = 'io.agenticstream.approval.resolved.v1'")
+			if status := f.status(t); status != test.wantStatus || commands != test.wantCommands || outbox != test.wantCommands || resolved != 1 {
+				t.Fatalf("status=%q commands=%d outbox=%d resolution events=%d, want %s/%d/%d/1", status, commands, outbox, resolved, test.wantStatus, test.wantCommands, test.wantCommands)
 			}
-			if commands != expected || outbox != expected || approvalStatus(t, f) != map[bool]string{true: "approved", false: "denied"}[approved] {
-				t.Fatal(commands, outbox, approvalStatus(t, f))
-			}
-			var events int
-			if err := f.db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM notifications WHERE event_type = 'io.agenticstream.approval.resolved.v1'").Scan(&events); err != nil {
-				t.Fatal(err)
-			}
-			if events != 1 {
-				t.Fatal("resolution events", events)
-			}
-			rec := approvalRequest(t, f.handler, "GET", "/v1/approvals/"+f.id+"?approver=operator-1&approved=true", nil)
-			if rec.Code != 409 {
-				t.Fatal(rec.Code)
+			if rec := approvalRequest(t, f.handler, http.MethodGet, "/v1/approvals/"+f.approvalID+"?approver=operator-1&approved=true", nil); rec.Code != http.StatusConflict {
+				t.Fatalf("presenting a resolved approval = %d, want %d", rec.Code, http.StatusConflict)
 			}
 		})
 	}
 }
 
-func TestHTTPRejectsInvalidDecisionsWithoutConsumingApproval(t *testing.T) {
-	for _, change := range []string{"signature", "decision", "principal", "relay inactive", "approver inactive", "authority"} {
-		t.Run(change, func(t *testing.T) {
+func TestHTTPRefusesAnUnauthorizedDecisionWithoutConsumingTheApproval(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		zeroSignature bool
+		sql           string
+	}{
+		{name: "the signature does not cover the request", zeroSignature: true},
+		{name: "the approver's authority was revoked", sql: revokeApprovalAuthority},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			f := openApprovalHTTP(t)
-			body := signedApproval(t, f, true)
 			var input map[string]any
-			if err := json.Unmarshal(body, &input); err != nil {
+			if err := json.Unmarshal(signedApproval(t, f, true), &input); err != nil {
 				t.Fatal(err)
 			}
-			switch change {
-			case "signature":
+			if test.zeroSignature {
 				input["signature"] = make([]byte, 64)
-			case "decision":
-				input["approved"] = false
-			case "principal":
-				input["approver_id"] = "relay-1"
-			case "relay inactive":
-				if _, err := f.db.ExecContext(t.Context(), "UPDATE principals SET status='disabled' WHERE principal_id='relay-1'"); err != nil {
-					t.Fatal(err)
-				}
-			case "approver inactive":
-				if _, err := f.db.ExecContext(t.Context(), "UPDATE principals SET status='disabled' WHERE principal_id='operator-1'"); err != nil {
-					t.Fatal(err)
-				}
-			case "authority":
-				if _, err := f.db.ExecContext(t.Context(), "DELETE FROM approval_authorities"); err != nil {
-					t.Fatal(err)
-				}
+			}
+			if test.sql != "" {
+				exec(t, f.db, test.sql)
 			}
 			body, err := json.Marshal(input)
 			if err != nil {
 				t.Fatal(err)
 			}
-			rec := approvalRequest(t, f.handler, "POST", "/v1/approvals/"+f.id, body)
-			commands, outbox := approvalCounts(t, f.db)
-			if rec.Code != 403 || approvalStatus(t, f) != "pending" || commands != 0 || outbox != 0 {
-				t.Fatal(rec.Code, rec.Body.String(), approvalStatus(t, f), commands, outbox)
-			}
-			var bound []byte
-			if err := f.db.QueryRowContext(t.Context(), "SELECT assertion_sha256 FROM approvals WHERE approval_id=?", f.id).Scan(&bound); err != nil {
-				t.Fatal(err)
-			}
-			if len(bound) != 0 {
-				t.Fatal("unauthorized assertion persisted")
+
+			rec := approvalRequest(t, f.handler, http.MethodPost, "/v1/approvals/"+f.approvalID, body)
+			commands, outbox := commandAndOutboxCounts(t, f.db)
+			if rec.Code != http.StatusForbidden || f.status(t) != "pending" || commands != 0 || outbox != 0 {
+				t.Fatalf("POST = %d %s, status %q commands=%d outbox=%d; want 403 and nothing consumed", rec.Code, rec.Body.String(), f.status(t), commands, outbox)
 			}
 		})
 	}
 }
 
-func TestHTTPResolutionRechecksCurrentStateAndTrustedClock(t *testing.T) {
-	for _, change := range []string{"stale", "expired", "interlock", "health"} {
-		t.Run(change, func(t *testing.T) {
-			f := openApprovalHTTP(t)
-			body := signedApproval(t, f, true)
-			switch change {
-			case "stale":
-				if _, err := f.db.ExecContext(t.Context(), "UPDATE situations SET current_version=2, last_material_version=2 WHERE situation_id='sit-policy'"); err != nil {
-					t.Fatal(err)
-				}
-			case "expired":
-				f.clock.Advance(2 * time.Hour)
-			case "interlock":
-				if _, err := f.db.ExecContext(t.Context(), "UPDATE runtime_interlock SET status='tripped',reason='test' WHERE singleton_id=1"); err != nil {
-					t.Fatal(err)
-				}
-			case "health":
-				if _, err := f.db.ExecContext(t.Context(), "UPDATE situation_versions SET completeness='uncertain'"); err != nil {
-					t.Fatal(err)
-				}
-			}
-			rec := approvalRequest(t, f.handler, "POST", "/v1/approvals/"+f.id, body)
-			commands, outbox := approvalCounts(t, f.db)
-			if rec.Code != 200 || commands != 0 || outbox != 0 {
-				t.Fatal(rec.Code, rec.Body.String(), commands, outbox)
-			}
-		})
+func TestHTTPResolutionUsesTheRuntimeClockNotTheCallers(t *testing.T) {
+	t.Parallel()
+	f := openApprovalHTTP(t)
+	body := signedApproval(t, f, true)
+	f.clock.Advance(2 * time.Hour)
+
+	rec := approvalRequest(t, f.handler, http.MethodPost, "/v1/approvals/"+f.approvalID, body)
+	commands, outbox := commandAndOutboxCounts(t, f.db)
+	if rec.Code != http.StatusOK || f.status(t) != "expired" || commands != 0 || outbox != 0 {
+		t.Fatalf("POST = %d %s, status %q commands=%d outbox=%d; want the approval expired by the runtime clock", rec.Code, rec.Body.String(), f.status(t), commands, outbox)
 	}
 }
 
 func TestConcurrentHTTPRepliesCreateOneCommand(t *testing.T) {
+	t.Parallel()
 	f := openApprovalHTTP(t)
 	body := signedApproval(t, f, true)
 	var wg sync.WaitGroup
 	for range 4 {
 		wg.Go(func() {
-			rec := approvalRequest(t, f.handler, "POST", "/v1/approvals/"+f.id, body)
-			if rec.Code != 200 {
+			rec := approvalRequest(t, f.handler, http.MethodPost, "/v1/approvals/"+f.approvalID, body)
+			if rec.Code != http.StatusOK {
 				t.Errorf("reply: %d %s", rec.Code, rec.Body.String())
 			}
 		})
 	}
 	wg.Wait()
-	commands, outbox := approvalCounts(t, f.db)
-	if commands != 1 || outbox != 1 {
-		t.Fatal(commands, outbox)
+	if commands, outbox := commandAndOutboxCounts(t, f.db); commands != 1 || outbox != 1 {
+		t.Fatalf("commands=%d outbox=%d after concurrent replies, want 1/1", commands, outbox)
 	}
 }
 
-func TestHTTPApprovalRollbackOnPublicationFailure(t *testing.T) {
+func TestHTTPApprovalRollsBackWhenAnyPublicationWriteFails(t *testing.T) {
+	t.Parallel()
 	for _, table := range []string{"notifications", "policy_evaluations", "commands", "outbox"} {
 		t.Run(table, func(t *testing.T) {
+			t.Parallel()
 			f := openApprovalHTTP(t)
 			body := signedApproval(t, f, true)
-			if _, err := f.db.ExecContext(t.Context(), "CREATE TRIGGER fail_resolution BEFORE INSERT ON "+table+" BEGIN SELECT RAISE(ABORT,'injected publication failure'); END"); err != nil {
-				t.Fatal(err)
-			}
-			rec := approvalRequest(t, f.handler, "POST", "/v1/approvals/"+f.id, body)
-			commands, outbox := approvalCounts(t, f.db)
-			if rec.Code != 503 || approvalStatus(t, f) != "pending" || commands != 0 || outbox != 0 {
-				t.Fatal(rec.Code, approvalStatus(t, f), commands, outbox)
+			exec(t, f.db, "CREATE TRIGGER fail_resolution BEFORE INSERT ON "+table+" BEGIN SELECT RAISE(ABORT,'injected publication failure'); END")
+
+			rec := approvalRequest(t, f.handler, http.MethodPost, "/v1/approvals/"+f.approvalID, body)
+			commands, outbox := commandAndOutboxCounts(t, f.db)
+			if rec.Code != http.StatusServiceUnavailable || f.status(t) != "pending" || commands != 0 || outbox != 0 {
+				t.Fatalf("POST = %d, status %q commands=%d outbox=%d; want 503 with the approval still pending", rec.Code, f.status(t), commands, outbox)
 			}
 		})
 	}

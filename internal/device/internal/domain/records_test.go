@@ -6,6 +6,7 @@ import (
 )
 
 func TestResultMatchesCommandUsesExplicitReceiptResultMatrix(t *testing.T) {
+	t.Parallel()
 	expired, notReady := "expired", "not_ready"
 	command := Command{CommandID: "cmd-1", Operation: "set_led"}
 	cases := []struct {
@@ -23,6 +24,7 @@ func TestResultMatchesCommandUsesExplicitReceiptResultMatrix(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := ResultMatches(tc.result, command, "boot-A", tc.receipt); got != tc.matches {
 				t.Fatalf("result match=%v, want %v", got, tc.matches)
 			}
@@ -31,6 +33,7 @@ func TestResultMatchesCommandUsesExplicitReceiptResultMatrix(t *testing.T) {
 }
 
 func TestResultMatchesCommandRequiresSafeStateForSafeStop(t *testing.T) {
+	t.Parallel()
 	command := Command{CommandID: "safe-stop/fan-01", Operation: "safe_stop"}
 	receipt := Receipt{Accepted: true}
 	for _, status := range []string{"executed", "rejected", "expired", "superseded"} {

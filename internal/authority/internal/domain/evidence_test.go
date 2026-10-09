@@ -36,7 +36,7 @@ func cloneEvidence(evidence map[string]any) map[string]any {
 	return maps.Clone(evidence)
 }
 
-func TestParseReconciliationEvidence(t *testing.T) {
+func TestReconciliationEvidenceIsValidatedInADeclaredOrder(t *testing.T) {
 	t.Parallel()
 	valid := validEvidence(t, bootOne, "fan-01")
 	tests := []struct {

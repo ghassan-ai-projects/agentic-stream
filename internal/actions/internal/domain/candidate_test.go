@@ -107,8 +107,11 @@ func TestLeaseExpiredTreatsZeroAndAbsentAsExpired(t *testing.T) {
 		"fractional second": {Lease{Owner: "w", Until: testNow.Add(500 * time.Millisecond), HasOwner: true, HasUntil: true}, false},
 	}
 	for name, tc := range cases {
-		if got := tc.lease.Expired(testNow); got != tc.want {
-			t.Fatalf("%s: expired = %v, want %v", name, got, tc.want)
-		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if got := tc.lease.Expired(testNow); got != tc.want {
+				t.Fatalf("expired = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

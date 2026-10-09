@@ -1,6 +1,6 @@
 # Test audit (2026-10-09)
 
-Status: paused after round 10 (rounds 0–10 of 17 done, PR #50). See [Resume](#resume).
+Status: paused after round 13 (rounds 0–13 of 17 done; 0–10 merged in PR #50). See [Resume](#resume).
 
 A full audit of the repository's tests: organize them so the repository is easy
 to read, make them faster, raise coverage where it proves behavior, and remove
@@ -42,26 +42,15 @@ what proves nothing. Every test ends at the [test bar](TEST_BAR.md).
 ## Resume
 
 The audit paused on 2026-10-09 after round 10 because the pull request grew
-large. Rounds 0–10 are committed on branch `improve-cleanup-tests` and open as
-pull request ghassan-ai-projects/agentic-stream#50.
+large. Rounds 0–10 were merged to `main` as pull request
+ghassan-ai-projects/agentic-stream#50. Rounds 11–13 continue on branch
+`test-audit-rounds-11-13`.
 
 To continue in a fresh session:
 
-1. Merge pull request #50 first (or review it), then continue on a new branch
-   from `main`, one or two rounds per pull request, so each stays reviewable.
-2. Rounds 11, 12 and 13 were stopped mid-way. Their unverified partial work is
-   in local git stashes on the machine that ran them:
-
-   | Stash message | Round |
-   | --- | --- |
-   | `test-audit round 11 partial (policy, authority) - unverified` | 11 |
-   | `test-audit round 12 partial (actions, actionport, watch, notify) - unverified` | 12 |
-   | `test-audit round 13 partial (device, control) - unverified` | 13 |
-
-   Find them with `git stash list`. A stopped worker leaves files half
-   rewritten, so the simplest path is to drop them and rerun the round from
-   [ROUND_PROMPT.md](ROUND_PROMPT.md); apply one (`git stash apply stash@{n}`)
-   only to inspect or salvage it.
+1. Continue on a new branch from `main`, one or two rounds per pull request,
+   so each stays reviewable.
+2. Rounds 11, 12 and 13 are done. Continue with round 14.
 3. Run each round as the [method](#method) says: one worker per round with
    [ROUND_PROMPT.md](ROUND_PROMPT.md) plus the round notes below, review the
    diff, verify, commit `test(<modules>): audit to the test bar`, update the
@@ -117,9 +106,9 @@ To continue in a fresh session:
 | 8 | `episodeledger`, `approvalledger` | done | every package ≥ 85% (episodeledger facade 64.5 → 100, store 67.5 → 86.1) | no test above 0.6 s; attempt state machine checked over all 81 pairs | 5f8d47a7 |
 | 9 | `evidence`, `decisions` | done | every package ≥ 87% (evidence app 81.5 → 98.1, decisions domain 84.5 → 95.3) | slowest test 0.32 s | a0e50cc1 |
 | 10 | `executor/*`, `worker`, `testsupport/*` | done | every package ≥ 78% (remote domain 69.9 → 97.8, conformance 66.7 → 94.9, worker transport 69.4 → 78.8) | slowest test 1.41 s → 0.34 s; conformance no longer re-execs a process | 995b3c40 |
-| 11 | `policy`, `authority` | stopped (partial work stashed) | | | |
-| 12 | `actions`, `actionport`, `watch`, `notify` | stopped (partial work stashed) | | | |
-| 13 | `device`, `control` | stopped (partial work stashed) | | | |
+| 11 | `policy`, `authority` | done | every package ≥ 81% (policy facade 85.2 → 100, policy store 80.2 → 89.9) | policy app 8.5 s → 3.4 s (serial tests, per-test pipeline, 12 autocommits, sleep) | 046acfd7 |
+| 12 | `actions`, `actionport`, `watch`, `notify` | done | every package ≥ 77% (notify store 68.0 → 93.0, actionport domain 80 → 100, actions app 81.9 → 89.4) | no test above 1 s; crash-between-effect-and-outcome proven | 8a4cd57c |
+| 13 | `device`, `control` | done | every package ≥ 79% (controltest 66.7 → 100, device 93.3 → 100, control store 70.8 → 79.2) | slowest test 0.65 s; no sleeps | 46092904 |
 | 14 | `replay`, `runartifact` | todo | | | |
 | 15 | `runtime`, `api` | todo | | | |
 | 16 | `cmd/agentic-stream` | todo | | | |
@@ -147,4 +136,8 @@ not a test decision.
 | 8 | Invariant 10 gap: `approvalledger.ExpireIntent` writes no `decided_at` or `reason`, so an approval expired this way is not explainable from its row. `Resolve` accepts `pending` and stamps `decided_at` and the approver. Tracked in [#53](https://github.com/ghassan-ai-projects/agentic-stream/issues/53). | [approvalledger.md](modules/approvalledger.md) |
 | 8 | Episode lifecycle writers (`Conclude`, `Abandon`, `RetainForRetry`, ...) have no lifecycle guard in their SQL: `Abandon` after `Conclude` overwrites the outcome, `RetainForRetry` revives a concluded episode. They rely on callers. Tracked in [#54](https://github.com/ghassan-ai-projects/agentic-stream/issues/54). | [episodeledger.md](modules/episodeledger.md) |
 | 10 | The fixture executor panics on a nil request and ignores its context, while native and remote return an error. The native retry backoff is a fixed 10 ms real timer. | [executor-fixture.md](modules/executor-fixture.md), [executor-native.md](modules/executor-native.md) |
+| 13 | Production error text in `device` (`gateway_effector.go`, `session*.go`) still says "serial", a word the device language retires. The optional cross-repository catalog check skips when `REAL_WORLD_SENSOR_ROOT` is unset (it used to pass silently). | [device.md](modules/device.md) |
+| 12 | Possible bugs in `actions`: a command refused before the effector is stored `failed` with its verification left `awaiting` forever; `MarkCommandDispatching` also moves `failed` commands to `dispatching`; the lease-expiry metric counts one abandoned lease twice. Not pinned by tests. | [actions.md](modules/actions.md) |
+| 12 | `watch/internal/app/install.go` `assertGuards` ignores its `tenantID` and `target` parameters. The watch busy-retry test releases the SQLite lock from a 50 ms real timer (the retry backoff is a real timer inside storage). | [watch.md](modules/watch.md) |
+| 11 | A stale approval ends `denied` plus `withdrawn_at` because the ledger has no `withdrawn` status (pinned only). `authority/internal/store/reader.go` has its own `nullable[T]` where AGENTS.md names `storage.NullIfEmpty`. `TestACommittedApprovalDispatchesWithoutNewSensorInput` is bound to a fixed 1 s outbox ticker in `Pipeline.Start` (round 15). | [policy.md](modules/policy.md), [authority.md](modules/authority.md) |
 

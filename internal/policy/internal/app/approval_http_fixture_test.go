@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -17,37 +16,24 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 type approvalHTTPFixture struct {
-	db       *storage.DB
+	pendingApproval
 	handler  http.Handler
 	pipeline *runtime.Pipeline
 	clock    *sources.Virtual
-	id       string
 }
 
 func openApprovalHTTP(t *testing.T, configure ...func(*runtime.PipelineConfig)) approvalHTTPFixture {
 	t.Helper()
-	now := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
-	db, intent := openPolicyFixture(t, "R2", 1, 1, now.Add(time.Hour))
-	t.Cleanup(func() { _ = db.Close() })
-	service := newTestService(t)
-	var request policy.Result
-	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		var err error
-		request, err = service.EvaluateIntent(t.Context(), tx, policy.EvaluationRequest{IntentID: intent, Now: now})
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
+	p := openPendingApproval(t)
 	compiled, err := spec.CompileFile(t.Context(), "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	clk := sources.NewVirtual(now)
-	cfg := runtime.PipelineConfig{DB: db, Spec: compiled, TenantID: "tenant", Clock: clk}
+	clk := sources.NewVirtual(p.now)
+	cfg := runtime.PipelineConfig{DB: p.db, Spec: compiled, TenantID: "tenant", Clock: clk}
 	for _, change := range configure {
 		change(&cfg)
 	}
@@ -62,22 +48,22 @@ func openApprovalHTTP(t *testing.T, configure ...func(*runtime.PipelineConfig)) 
 			return pipeline.ApprovalForSigning(ctx, policy.ApprovalLookup{ID: r.ID, Approver: r.Approver, Relay: r.Relay, Approved: r.Approved})
 		},
 		Resolve: func(ctx context.Context, r api.ApprovalSubmission) (any, error) {
-			return pipeline.ResolveApproval(ctx, policy.ApprovalResolution{ID: r.ID, Approver: r.Approver, Relay: r.Relay, Approved: r.Approved, Signature: r.Signature, Reason: r.Reason, Now: now.Add(-24 * time.Hour), TenantID: "foreign"})
+			return pipeline.ResolveApproval(ctx, policy.ApprovalResolution{ID: r.ID, Approver: r.Approver, Relay: r.Relay, Approved: r.Approved, Signature: r.Signature, Reason: r.Reason, Now: p.now.Add(-24 * time.Hour), TenantID: "foreign"})
 		},
 	})
-	return approvalHTTPFixture{db: db, handler: handler, pipeline: pipeline, clock: clk, id: request.ApprovalID}
+	return approvalHTTPFixture{pendingApproval: p, handler: handler, pipeline: pipeline, clock: clk}
 }
 
 func approvalTestStatus(err error) int {
 	switch {
 	case errors.Is(err, policy.ErrApprovalNotFound):
-		return 404
+		return http.StatusNotFound
 	case errors.Is(err, policy.ErrApprovalUnauthorized):
-		return 403
+		return http.StatusForbidden
 	case errors.Is(err, policy.ErrApprovalResolved):
-		return 409
+		return http.StatusConflict
 	default:
-		return 503
+		return http.StatusServiceUnavailable
 	}
 }
 
@@ -96,15 +82,15 @@ func signedApproval(t *testing.T, f approvalHTTPFixture, approved bool) []byte {
 	if approved {
 		decision = "true"
 	}
-	rec := approvalRequest(t, f.handler, "GET", "/v1/approvals/"+f.id+"?approver=operator-1&approved="+decision, nil)
-	if rec.Code != 200 {
-		t.Fatal(rec.Code, rec.Body.String())
+	rec := approvalRequest(t, f.handler, "GET", "/v1/approvals/"+f.approvalID+"?approver=operator-1&approved="+decision, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("presentation = %d %s", rec.Code, rec.Body.String())
 	}
 	var presentation policy.ApprovalPresentation
 	if err := json.Unmarshal(rec.Body.Bytes(), &presentation); err != nil {
 		t.Fatal(err)
 	}
-	if presentation.ID != f.id || len(presentation.Request) == 0 {
+	if presentation.ID != f.approvalID || len(presentation.Request) == 0 {
 		t.Fatal(presentation)
 	}
 	signature := ed25519.Sign(ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)), presentation.SigningBytes)
@@ -113,24 +99,4 @@ func signedApproval(t *testing.T, f approvalHTTPFixture, approved bool) []byte {
 		t.Fatal(err)
 	}
 	return body
-}
-
-func approvalCounts(t *testing.T, db *storage.DB) (commands, outbox int) {
-	t.Helper()
-	if err := db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM commands").Scan(&commands); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM outbox").Scan(&outbox); err != nil {
-		t.Fatal(err)
-	}
-	return
-}
-
-func approvalStatus(t *testing.T, f approvalHTTPFixture) string {
-	t.Helper()
-	var status string
-	if err := f.db.QueryRowContext(t.Context(), "SELECT status FROM approvals WHERE approval_id = ?", f.id).Scan(&status); err != nil {
-		t.Fatal(err)
-	}
-	return status
 }

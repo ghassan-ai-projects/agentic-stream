@@ -11,7 +11,7 @@ const (
 	digestOther = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 )
 
-func TestDecideBinding(t *testing.T) {
+func TestACommandBindingIsFirstRecordedThenOnlyRepeatedIdentically(t *testing.T) {
 	t.Parallel()
 	bound := CommandBinding{CommandID: "cmd-1", Target: "fan-01", Device: bootOne, Owner: ownerA, CommandDigest: digestLower}
 	with := func(change func(*CommandBinding)) CommandBinding {
@@ -39,18 +39,27 @@ func TestDecideBinding(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := DecideBinding(tt.existing, tt.requested)
-			if got != tt.wantBound || (err != nil) != tt.wantErr {
-				t.Fatalf("DecideBinding = %v, %v", got, err)
+			alreadyBound, err := DecideBinding(tt.existing, tt.requested)
+			if alreadyBound != tt.wantBound || (err != nil) != tt.wantErr {
+				t.Fatalf("DecideBinding = already bound %t, %v; want %t, error=%t", alreadyBound, err, tt.wantBound, tt.wantErr)
 			}
 		})
 	}
-	if !bound.Complete() || with(func(b *CommandBinding) { b.CommandID = "" }).Complete() {
-		t.Fatal("binding completeness")
+}
+
+func TestACommandBindingIsCompleteOnlyWithItsCommandId(t *testing.T) {
+	t.Parallel()
+	bound := CommandBinding{CommandID: "cmd-1", Target: "fan-01", Device: bootOne, Owner: ownerA}
+	if !bound.Complete() {
+		t.Errorf("%+v is incomplete", bound)
+	}
+	bound.CommandID = ""
+	if bound.Complete() {
+		t.Errorf("%+v without a command id is complete", bound)
 	}
 }
 
-func TestCheckCommandEvidence(t *testing.T) {
+func TestCommandEvidenceMustMatchTheCommandsBinding(t *testing.T) {
 	t.Parallel()
 	binding := &CommandBinding{CommandID: "cmd-1", Target: "fan-01", Device: bootOne, Owner: ownerA}
 	valid := validEvidence(t, bootOne, "fan-01")
