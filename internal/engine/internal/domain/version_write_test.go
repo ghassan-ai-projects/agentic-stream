@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/hex"
 	"strings"
 	"testing"
 
@@ -13,7 +14,7 @@ func TestNewSituationWriteRequiresStateAndDefaultsIdentity(t *testing.T) {
 		t.Fatalf("missing state err = %v", err)
 	}
 	stored := storedSituation(t)
-	digest := "sha256:" + hexOf(stored.StateSHA256)
+	digest := "sha256:" + hex.EncodeToString(stored.StateSHA256)
 	version := situations.Version{SituationID: "sit-1", Version: 1, StateJSON: stored.StateJSON, StateSHA256: digest, EventHorizon: base}
 	write, err := NewSituationWrite(version)
 	if err != nil || write.OccurrenceID != "occ-sit-1" || !write.FirstEventTime.Equal(base) || len(write.StateDigest) != 32 {
@@ -51,13 +52,4 @@ func TestPreviousVersionIsAbsentForAFirstVersion(t *testing.T) {
 	if previous, ok := PreviousVersion(situations.Version{PreviousVersion: 4}); !ok || previous != 4 {
 		t.Fatalf("previous = %d, %v", previous, ok)
 	}
-}
-
-func hexOf(raw []byte) string {
-	const digits = "0123456789abcdef"
-	out := make([]byte, 0, len(raw)*2)
-	for _, b := range raw {
-		out = append(out, digits[b>>4], digits[b&0xf])
-	}
-	return string(out)
 }

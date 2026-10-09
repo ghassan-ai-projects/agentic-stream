@@ -1,71 +1,47 @@
 package eventlog_test
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
-func TestQuarantineIsBoundedAndReleasable(t *testing.T) {
-	ctx := context.Background()
-	db := storagetest.OpenTemp(t)
-
-	log := eventlog.NewEventLog(db)
-	poison := []byte(`{"id":"evt-poison","data":{"unexpected":true}}`)
-	for i := 0; i < 12; i++ {
-		if err := log.QuarantineRaw(ctx, "tenant-1", "evt-poison", poison, "unknown_payload_field", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err != nil {
-			t.Fatalf("quarantine %d: %v", i, err)
-		}
-	}
-	var attempts int
-	if err := db.QueryRowContext(ctx, "SELECT attempt_count FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", "tenant-1", "evt-poison").Scan(&attempts); err != nil {
+func TestQuarantinedEnvelopeIsListedReleasedAndRedrivenOnceThroughTheFacade(t *testing.T) {
+	t.Parallel()
+	log, _ := newLog(t)
+	event := envelope("evt-1", "default")
+	if err := log.QuarantineEnvelope(t.Context(), "default", event, "operator_hold", noon); err != nil {
 		t.Fatal(err)
 	}
-	if attempts != 10 {
-		t.Fatalf("attempt count = %d, want bounded count 10", attempts)
-	}
-	var status string
-	if err := db.QueryRowContext(ctx, "SELECT status FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", "tenant-1", "evt-poison").Scan(&status); err != nil {
+	if err := log.QuarantineRaw(t.Context(), "default", "line-1", []byte("not-json"), "malformed_json", noon); err != nil {
 		t.Fatal(err)
 	}
-	if status != "rejected" {
-		t.Fatalf("status = %q, want rejected after retry exhaustion", status)
+	records, err := log.Quarantined(t.Context(), "default")
+	if err != nil || len(records) != 2 {
+		t.Fatalf("records = %+v err=%v, want the envelope and the raw line", records, err)
 	}
-	var gaps int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM event_gaps WHERE tenant_id = ? AND reason_code = 'quarantine_retry_exhausted'", "tenant-1").Scan(&gaps); err != nil {
+	if err := log.ReleaseQuarantine(t.Context(), "default", "evt-1", noon.Add(1)); err != nil {
 		t.Fatal(err)
 	}
-	if gaps != 1 {
-		t.Fatalf("overflow gaps = %d, want 1", gaps)
+	position, err := log.RedriveQuarantine(t.Context(), "default", "evt-1", noon.Add(2))
+	if err != nil || position <= 0 {
+		t.Fatalf("redrive position = %d err=%v, want a log position", position, err)
 	}
-
-	if err := log.QuarantineRaw(ctx, "tenant-1", "evt-releasable", []byte(`{"id":"evt-releasable"}`), "unknown_payload_field", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err != nil {
-		t.Fatalf("releasable quarantine: %v", err)
+	if ids := readIDs(t, log, eventlog.ReadRequest{TenantID: "default", PartitionID: -1}); len(ids) != 1 || ids[0] != "evt-1" {
+		t.Fatalf("log = %v, want the redriven evt-1", ids)
 	}
-	if err := log.ReleaseQuarantine(ctx, "tenant-1", "evt-releasable", time.Date(2026, 8, 12, 12, 1, 0, 0, time.UTC)); err != nil {
-		t.Fatalf("release: %v", err)
+	if _, err := log.RedriveQuarantine(t.Context(), "default", "evt-1", noon.Add(3)); err == nil {
+		t.Fatal("a second redrive was accepted")
 	}
-}
-
-func TestQuarantineRejectsEventIDHashConflict(t *testing.T) {
-	ctx := context.Background()
-	db := storagetest.OpenTemp(t)
-
-	log := eventlog.NewEventLog(db)
-	if err := log.QuarantineRaw(ctx, "tenant-1", "evt-conflict", []byte(`{"value":1}`), "invalid", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err != nil {
+	statuses := map[string]string{}
+	records, err = log.Quarantined(t.Context(), "default")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := log.QuarantineRaw(ctx, "tenant-1", "evt-conflict", []byte(`{"value":2}`), "invalid", time.Date(2026, 8, 12, 12, 1, 0, 0, time.UTC)); err == nil {
-		t.Fatal("expected hash conflict")
+	for _, record := range records {
+		statuses[record.EventID] = record.Status
 	}
-	var status string
-	if err := db.QueryRowContext(ctx, "SELECT status FROM event_quarantine WHERE tenant_id = ? AND event_id = ?", "tenant-1", "evt-conflict").Scan(&status); err != nil {
-		t.Fatal(err)
-	}
-	if status != "rejected" {
-		t.Fatalf("status = %q, want rejected", status)
+	if statuses["evt-1"] != "redriven" || statuses["line-1"] != "quarantined" {
+		t.Fatalf("statuses = %v, want evt-1 redriven and line-1 quarantined", statuses)
 	}
 }
