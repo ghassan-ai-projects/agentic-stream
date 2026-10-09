@@ -10,8 +10,9 @@ T7: no top-level test takes more than TEST_BUDGET seconds and no package more
 than PACKAGE_BUDGET seconds unless it is in the slow-test register
 (scripts/slow-tests.txt). Timings under the parallel race suite swing by
 about half between runs, so the budgets are checked at DEFAULT_SCALE times
-their value; TEST_BUDGET_SCALE overrides it on a slower machine (CI sets it). Register entries that
-are back under budget are reported so the register shrinks.
+their value; TEST_BUDGET_SCALE overrides it on a slower machine (CI sets it).
+A register entry that ran within the unscaled budget is reported so the
+register shrinks.
 
 See .agents/context/quality-bar.md and .agents/context/testing.md.
 """
@@ -104,12 +105,12 @@ def budget_failures(events):
     register = load_register()
     failures, under_budget = [], set(register)
     for package, test, elapsed in timings(events):
-        budget = (TEST_BUDGET if test else PACKAGE_BUDGET) * scale
+        base = TEST_BUDGET if test else PACKAGE_BUDGET
         entry = registered(register, package, test)
-        if elapsed > budget and entry is None:
-            failures.append(f"T7 budget: {package} {test or '(package)'} took {elapsed:.1f}s > {budget:.0f}s; "
+        if elapsed > base * scale and entry is None:
+            failures.append(f"T7 budget: {package} {test or '(package)'} took {elapsed:.1f}s > {base * scale:.0f}s; "
                             f"make it faster or add it to {REGISTER.name} with a reason")
-        if elapsed > budget and entry is not None:
+        if elapsed > base and entry is not None:
             under_budget.discard(entry)
     for suffix, test in sorted(under_budget):
         print(f"coverage-check: register entry back under budget, remove it: {suffix} {test}".rstrip())

@@ -27,9 +27,6 @@ func TestFacadeDelegatesToTheStore(t *testing.T) {
 	if err := storage.RetrySQLiteBusy(ctx, func() error { calls++; return nil }); err != nil || calls != 1 {
 		t.Fatalf("RetrySQLiteBusy = %v after %d calls, want nil after 1", err, calls)
 	}
-	if storage.IsSQLiteBusy(errors.New("plain")) {
-		t.Fatal("a plain error is not busy")
-	}
 	_, duplicate := db.ExecContext(ctx, "INSERT INTO schema_migrations (version, name, applied_at) VALUES (1, 'again', 'now')")
 	if !storage.IsUniqueViolation(duplicate, "schema_migrations.version") {
 		t.Fatalf("IsUniqueViolation(%v) = false for a duplicate primary key", duplicate)

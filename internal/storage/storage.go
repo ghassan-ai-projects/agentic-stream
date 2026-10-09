@@ -31,9 +31,6 @@ func OpenFresh(ctx context.Context, path string) (*DB, error) {
 	return store.OpenFresh(ctx, path) //nolint:wrapcheck // The store names the failed step.
 }
 
-// IsSQLiteBusy reports whether err is a retryable SQLite busy or locked result.
-func IsSQLiteBusy(err error) bool { return store.IsSQLiteBusy(err) }
-
 // IsUniqueViolation reports whether err is a SQLite uniqueness failure (primary
 // key or unique index) on column, written as table.column.
 func IsUniqueViolation(err error, column string) bool {
