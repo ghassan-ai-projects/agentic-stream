@@ -1,8 +1,10 @@
 package migrations
 
 import (
+	"io/fs"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 // TestAllReturnsEveryScriptInContiguousOrder guards the schema history: a
@@ -60,6 +62,37 @@ func TestParseName(t *testing.T) {
 			version, name, ok := parseName(tt.file)
 			if version != tt.wantVersion || name != tt.wantName || ok != tt.wantOK {
 				t.Fatalf("parseName(%q) = %d, %q, %v; want %d, %q, %v", tt.file, version, name, ok, tt.wantVersion, tt.wantName, tt.wantOK)
+			}
+		})
+	}
+}
+
+func TestReadMigrationLoadsOnlyVersionedScripts(t *testing.T) {
+	t.Parallel()
+
+	listing := fstest.MapFS{
+		"001_initial.sql": {},
+		"notes.sql":       {},
+		"abc_initial.sql": {},
+		"README.md":       {},
+		"archive":         {Mode: fs.ModeDir},
+	}
+	entries, err := fs.ReadDir(listing, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded := map[string]bool{"001_initial.sql": true}
+	for _, entry := range entries {
+		t.Run(entry.Name(), func(t *testing.T) {
+			t.Parallel()
+
+			migration, ok, err := readMigration(entry)
+
+			if err != nil || ok != loaded[entry.Name()] {
+				t.Fatalf("readMigration(%q) = ok %v, err %v; want ok %v", entry.Name(), ok, err, loaded[entry.Name()])
+			}
+			if ok && (migration.Version != 1 || migration.Name != "initial" || !strings.Contains(migration.SQL, "schema_migrations")) {
+				t.Fatalf("readMigration(%q) = version %d name %q; want the embedded initial script", entry.Name(), migration.Version, migration.Name)
 			}
 		})
 	}

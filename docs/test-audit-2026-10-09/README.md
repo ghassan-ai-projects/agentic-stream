@@ -1,6 +1,6 @@
 # Test audit (2026-10-09)
 
-Status: in progress (rounds 0–1 of 17 done)
+Status: in progress (rounds 0, 1, 3 of 17 done)
 
 A full audit of the repository's tests: organize them so the repository is easy
 to read, make them faster, raise coverage where it proves behavior, and remove
@@ -42,9 +42,9 @@ what proves nothing. Every test ends at the [test bar](TEST_BAR.md).
 | Round | Modules | Status | Coverage before → after | Time before → after | Commit |
 | --- | --- | --- | --- | --- | --- |
 | 0 | audit folder, bar, baseline | done | - | - | - |
-| 1 | repository root → `internal/architecture` | done | - | 2.8 s → 1.6 s | see git log |
+| 1 | repository root → `internal/architecture` | done | - | 2.8 s → 1.6 s | 5f289206 |
 | 2 | `kernel`, `canonicaljson`, `sources`, `contractsv1`, `interlock` | todo | | | |
-| 3 | `storage`, `telemetry`, `migrations` | todo | | | |
+| 3 | `storage`, `telemetry`, `migrations` | done | every package ≥ 81% (storage 64 → 100, telemetry 66.7 → 100) | store 8.4 s → 4.0 s, storagetest 5.4 s → 3.5 s | see git log |
 | 4 | `spec`, `ingress` | todo | | | |
 | 5 | `eventlog`, `engine` | todo | | | |
 | 6 | `operators`, `situations`, `cognition` | todo | | | |
@@ -59,3 +59,14 @@ what proves nothing. Every test ends at the [test bar](TEST_BAR.md).
 | 15 | `runtime`, `api` | todo | | | |
 | 16 | `cmd/agentic-stream` | todo | | | |
 | 17 | gates: linters, coverage floor, invariant map, docs | todo | | | |
+
+## Findings for the owner
+
+Behavior questions a round found but did not change, because the decision is
+not a test decision.
+
+| Round | Finding | Where |
+| --- | --- | --- |
+| 3 | `telemetry.RecordError` promises no payload leakage, but `span.RecordError(err)` stores the error text in an `exception` span event; only the status description is fixed. Current behavior is pinned by a test. | [telemetry.md](modules/telemetry.md) |
+| 3 | `storage.OpenFresh` could copy a migrated template instead of migrating: saves about 1.3 s per isolated replay under `-race`, about 0.06 s in production. Not done; revisit after the replay round. | [storage.md](modules/storage.md) |
+

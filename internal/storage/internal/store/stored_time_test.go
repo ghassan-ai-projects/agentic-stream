@@ -1,4 +1,4 @@
-package storage_test
+package store_test
 
 import (
 	"testing"
@@ -13,8 +13,9 @@ func TestStoredTimeFunctionAcceptsOnlyDurableTimeText(t *testing.T) {
 	db := storagetest.OpenTemp(t)
 	whole := time.Date(2026, 10, 9, 14, 0, 0, 0, time.UTC)
 	cases := []struct {
-		name, text string
-		want       bool
+		name  string
+		value any
+		want  bool
 	}{
 		{"whole second", kernel.FormatTime(whole), true},
 		{"fraction", kernel.FormatTime(whole.Add(123456789)), true},
@@ -27,32 +28,19 @@ func TestStoredTimeFunctionAcceptsOnlyDurableTimeText(t *testing.T) {
 		{"digits only", "9999-99-99T99:99:99.999999999Z", false},
 		{"empty", "", false},
 		{"garbage", "garbage", false},
+		{"NULL", nil, false},
+		{"BLOB of valid time text", []byte(kernel.FormatTime(whole)), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var got bool
-			if err := db.QueryRowContext(t.Context(), "SELECT stored_time_ok(?)", tc.text).Scan(&got); err != nil {
+			if err := db.QueryRowContext(t.Context(), "SELECT stored_time_ok(?)", tc.value).Scan(&got); err != nil {
 				t.Fatal(err)
 			}
 			if got != tc.want {
-				t.Fatalf("stored_time_ok(%q) = %v, want %v", tc.text, got, tc.want)
+				t.Fatalf("stored_time_ok(%#v) = %v, want %v", tc.value, got, tc.want)
 			}
 		})
-	}
-}
-
-func TestStoredTimeFunctionRefusesNullAndBlobs(t *testing.T) {
-	t.Parallel()
-	db := storagetest.OpenTemp(t)
-	var got bool
-	if err := db.QueryRowContext(t.Context(), "SELECT stored_time_ok(NULL)").Scan(&got); err != nil {
-		t.Fatal(err)
-	}
-	if got {
-		t.Fatal("NULL counted as readable time text")
-	}
-	if err := db.QueryRowContext(t.Context(), "SELECT stored_time_ok(X'323032362D31302D30395431343A30303A30302E3030303030303030305A')").Scan(&got); err != nil || got {
-		t.Fatalf("a BLOB counted as readable time text: %v %v", got, err)
 	}
 }
