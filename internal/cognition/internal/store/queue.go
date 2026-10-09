@@ -25,9 +25,10 @@ func (t *Tx) LatestAdmittedTime(ctx context.Context, situationID, triggerName, e
 }
 
 const latestAdmittedSQL = `
-		SELECT evaluated_at FROM trigger_evaluations
-		WHERE situation_id = ? AND trigger_name = ? AND outcome = 'admitted' AND trigger_id != ?
-		ORDER BY evaluated_at DESC LIMIT 1`
+		SELECT e.evaluated_at FROM trigger_evaluations e
+		WHERE e.situation_id = ? AND e.trigger_name = ? AND e.outcome = 'admitted' AND e.trigger_id != ?
+		  AND NOT EXISTS (SELECT 1 FROM scheduler_items i WHERE i.trigger_id = e.trigger_id AND i.status IN ('pending', 'coalesced'))
+		ORDER BY e.evaluated_at DESC LIMIT 1`
 
 func (t *Tx) CountPending(ctx context.Context, tenantID string) (int, error) {
 	var count int

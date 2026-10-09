@@ -17,22 +17,27 @@ func TestDebounceAndCooldownDecideWhenAnAdmittedItemMayStart(t *testing.T) {
 		return tr
 	}
 	tests := []struct {
-		name    string
-		trigger spec.Trigger
-		second  time.Duration
-		want    time.Duration
+		name     string
+		trigger  spec.Trigger
+		firstRan bool
+		second   time.Duration
+		want     time.Duration
 	}{
-		{"no timing declared", timed("", ""), 2 * time.Minute, 0},
-		{"debounce delays from the evaluation", timed("5m", ""), 2 * time.Minute, 7 * time.Minute},
-		{"cooldown delays from the previous admission", timed("", "10m"), 2 * time.Minute, 10 * time.Minute},
-		{"the later of debounce and cooldown wins", timed("3m", "10m"), 2 * time.Minute, 10 * time.Minute},
-		{"debounce wins when it ends later", timed("20m", "10m"), 2 * time.Minute, 22 * time.Minute},
+		{"no timing declared", timed("", ""), true, 2 * time.Minute, 0},
+		{"debounce delays from the evaluation", timed("5m", ""), true, 2 * time.Minute, 7 * time.Minute},
+		{"cooldown delays from the previous admission that ran", timed("", "10m"), true, 2 * time.Minute, 10 * time.Minute},
+		{"the later of debounce and cooldown wins", timed("3m", "10m"), true, 2 * time.Minute, 10 * time.Minute},
+		{"debounce wins when it ends later", timed("20m", "10m"), true, 2 * time.Minute, 22 * time.Minute},
+		{"a superseded admission that never ran starts no cooldown", timed("", "10m"), false, 2 * time.Minute, 0},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			h := newTriggerHarness(t, tc.trigger)
 			h.process(candidateVersion("sit-1", 1, 15))
+			if tc.firstRan {
+				h.exec("UPDATE scheduler_items SET status = 'admitted' WHERE situation_version = 1")
+			}
 			h.clock.Advance(tc.second)
 			second := candidateVersion("sit-1", 2, 20)
 			h.process(second)
@@ -75,6 +80,7 @@ func TestUnreadableStoredTimesRefuseTheNextVersionOfThatSituationOnly(t *testing
 			trigger.Cooldown = "10m"
 			h := newTriggerHarness(t, trigger)
 			h.process(candidateVersion("sit-1", 1, 15))
+			h.exec("UPDATE scheduler_items SET status = 'admitted' WHERE situation_id = 'sit-1'")
 			h.exec(corrupt)
 			other := candidateVersion("sit-2", 1, 15)
 			h.process(other)
