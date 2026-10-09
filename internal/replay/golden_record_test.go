@@ -30,7 +30,7 @@ type goldenTrace struct{ example, spec, trace string }
 
 func goldenTraces() []goldenTrace {
 	var traces []goldenTrace
-	for _, name := range []string{"trace-opening.jsonl", "trace-watch.jsonl", "trace-heartbeat.jsonl"} {
+	for _, name := range []string{"trace-opening.jsonl", "trace-watch.jsonl", "trace-heartbeat.jsonl", "trace-acceptance.jsonl"} {
 		traces = append(traces, goldenTrace{"predictive-maintenance", predictiveSpec, "../../examples/predictive-maintenance/testdata/" + name})
 	}
 	for _, name := range []string{"trace-opening.jsonl", "trace-ambient-tracking.jsonl", "trace-invalid-quality.jsonl", "trace-quiet.jsonl", "trace-reboot-backlog.jsonl"} {

@@ -83,6 +83,7 @@ detail is in the test audit.
 - `internal/contractsv1`: [`TestPartitionIDsAreFrozenFNV1aOfTenantNulKey`](../../internal/contractsv1/internal/domain/envelope_test.go)
 - `internal/engine`: [`TestConcurrentRunsApplyEachEventExactlyOnce`](../../internal/engine/internal/app/run_test.go), [`TestTheSameEvidenceYieldsIdenticalSituationsOnEveryRun`](../../internal/engine/internal/app/run_test.go)
 - `internal/replay`: [`TestGoldenTracesMatchTheirRecordedResults`](../../internal/replay/golden_record_test.go), [`TestGoldenTracesAreDeterministic`](../../internal/replay/golden_replay_test.go)
+- `internal/runtime`: [`TestPredictiveMaintenanceAcceptance`](../../internal/runtime/predictive_maintenance_acceptance_test.go)
 - `internal/runtime`: [`TestEpisodesRunBesideIngestion`](../../internal/runtime/internal/app/episodes_beside_ingestion_test.go)
 - `internal/control`: [`TestALostLeaseFencesTheOldEpochsRenewalsAndWrites`](../../internal/control/runtime_owner_test.go), [`TestRecoveryCannotCommitOnceTheOwnerLeaseIsLost`](../../internal/control/owner_recovery_test.go)
 
