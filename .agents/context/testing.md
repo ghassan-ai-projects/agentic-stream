@@ -15,7 +15,7 @@ Use these commands unless the task is documentation-only:
 ## Template-Specific Behavior
 
 - `make build` prints a skip message when `cmd/` does not exist.
-- `make ci-check` runs `proto-check -> tidy -> build -> vet -> lint-ci -> coverage-check -> deadcode -> vulncheck -> docs-check`. `coverage-check` runs the short race suite once and enforces the per-package coverage floor.
+- `make ci-check` runs `proto-check -> tidy -> build -> vet -> lint-ci -> coverage-check -> deadcode -> vulncheck -> docs-check`. CI splits it: `.github/workflows/ci.yml` runs `make ci-check-go` (everything but `proto-check`) on every change, and `.github/workflows/proto.yml` runs `make proto-check` only when the protocol, its stubs or their generation inputs change. `coverage-check` runs the short race suite once and enforces the per-package coverage floor.
 - In restricted environments, `golangci-lint` can fail because it writes outside the workspace cache.
 - `make deadcode` (`scripts/check-deadcode.sh`) runs `deadcode ./...` without `-test` and fails when a production function is reachable only from tests. Test-support packages are exempt: `internal/testsupport/...` and packages whose name ends in `test` (`controltest`, `spectest`, ...). Fix a finding by wiring the function into production, deleting it, or moving it to test support (an `export_test.go` for a package's own tests).
 - `deadcode` and `govulncheck` are optional locally when the tools are missing; the Makefile reports that explicitly. CI installs the pinned versions, so the gates always run there.
