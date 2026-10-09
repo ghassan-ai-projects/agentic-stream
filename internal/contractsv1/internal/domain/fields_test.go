@@ -4,20 +4,25 @@ import "testing"
 
 func TestDocumentFieldsProjectWithoutCoercion(t *testing.T) {
 	t.Parallel()
-	document := map[string]any{"name": "pump", "count": float64(7), "text_number": "7", "number_text": float64(3)}
-	if got := DocumentString(document, "name"); got != "pump" {
-		t.Fatalf("DocumentString(name) = %q, want pump", got)
+	document := map[string]any{"name": "pump", "count": float64(7), "text_number": "7", "fraction": 2.9, "null": nil}
+	strings := []struct {
+		key, want string
+	}{{"name", "pump"}, {"count", ""}, {"absent", ""}, {"null", ""}}
+	for _, tt := range strings {
+		if got := DocumentString(document, tt.key); got != tt.want {
+			t.Errorf("DocumentString(%q) = %q, want %q", tt.key, got, tt.want)
+		}
 	}
-	if got := DocumentString(document, "number_text"); got != "" {
-		t.Fatalf("DocumentString on a number = %q, want empty", got)
+	ints := []struct {
+		key  string
+		want int
+	}{{"count", 7}, {"fraction", 2}, {"text_number", 0}, {"absent", 0}, {"null", 0}}
+	for _, tt := range ints {
+		if got := DocumentInt(document, tt.key); got != tt.want {
+			t.Errorf("DocumentInt(%q) = %d, want %d", tt.key, got, tt.want)
+		}
 	}
-	if got := DocumentString(document, "absent"); got != "" {
-		t.Fatalf("DocumentString on an absent field = %q, want empty", got)
-	}
-	if got := DocumentInt(document, "count"); got != 7 {
-		t.Fatalf("DocumentInt(count) = %d, want 7", got)
-	}
-	if got := DocumentInt(document, "text_number"); got != 0 {
-		t.Fatalf("DocumentInt on a string = %d, want 0", got)
+	if DocumentString(nil, "name") != "" || DocumentInt(nil, "count") != 0 {
+		t.Error("a nil document must project empty values")
 	}
 }

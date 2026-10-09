@@ -40,3 +40,14 @@ func TestHydrationPreservesBoundaryErrorPrecedence(t *testing.T) {
 		t.Fatalf("request=%#v", req)
 	}
 }
+
+func TestHydrationOfARequestWithoutASnapshotLeavesTheEntityUnbound(t *testing.T) {
+	t.Parallel()
+	req := &Request{RequestJSON: []byte(`{"budget":{"wall_time":"1s"}}`)}
+	if err := HydratePersistedRequest(req); err != nil {
+		t.Fatal(err)
+	}
+	if req.EntityID != "" || !req.wallTimeValidated {
+		t.Fatalf("request = %#v", req)
+	}
+}

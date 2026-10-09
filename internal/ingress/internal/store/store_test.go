@@ -1,9 +1,11 @@
 package store
 
 import (
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
@@ -43,19 +45,58 @@ func TestCheckpointStartsAtZeroAndAdvancesPerConnector(t *testing.T) {
 	}
 }
 
-func TestLoadRefusesStorageFailureAndCorruption(t *testing.T) {
+func TestLoadRefusesACorruptCheckpoint(t *testing.T) {
 	t.Parallel()
 	s, db := openStore(t)
 	if _, err := db.ExecContext(t.Context(), `INSERT INTO connector_checkpoints (connector_id, connector_kind, checkpoint_version, checkpoint_blob, updated_at) VALUES ('bad', 'jsonl-replay', 1, X'7B', 'now')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.LoadLine(t.Context(), "bad"); err == nil {
-		t.Fatal("a corrupt checkpoint loaded")
+
+	_, err := s.LoadLine(t.Context(), "bad")
+
+	if err == nil || !strings.Contains(err.Error(), "unmarshal checkpoint") {
+		t.Fatalf("err = %v, want a checkpoint decode failure", err)
 	}
+}
+
+func TestStorageFailureIsNeverAnEmptyCheckpoint(t *testing.T) {
+	t.Parallel()
+	s, db := openStore(t)
 	if _, err := db.ExecContext(t.Context(), `DROP TABLE connector_checkpoints`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.LoadLine(t.Context(), "c1"); err == nil {
-		t.Fatal("a storage failure was treated as an empty checkpoint")
+
+	_, loadErr := s.LoadLine(t.Context(), "c1")
+	saveErr := s.SaveLine(t.Context(), "c1", "jsonl-replay", 1, time.Now())
+
+	if loadErr == nil || !strings.Contains(loadErr.Error(), "load connector checkpoint") {
+		t.Fatalf("load err = %v, want a storage failure", loadErr)
+	}
+	if saveErr == nil || !strings.Contains(saveErr.Error(), "upsert checkpoint") {
+		t.Fatalf("save err = %v, want a storage failure", saveErr)
+	}
+}
+
+func TestSaveLineUpdatesOneRowPerConnectorAndKeepsItsKind(t *testing.T) {
+	t.Parallel()
+	s, db := openStore(t)
+	first := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	later := first.Add(time.Hour)
+	for _, save := range []struct {
+		kind string
+		at   time.Time
+	}{{"jsonl-replay", first}, {"simulator-jsonl", later}} {
+		if err := s.SaveLine(t.Context(), "c1", save.kind, 5, save.at); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var kind, updated string
+	var rows int
+	if err := db.QueryRowContext(t.Context(), `SELECT connector_kind, updated_at, (SELECT COUNT(*) FROM connector_checkpoints) FROM connector_checkpoints WHERE connector_id = 'c1'`).Scan(&kind, &updated, &rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 1 || kind != "jsonl-replay" || updated != kernel.FormatTime(later) {
+		t.Fatalf("rows = %d, kind = %q, updated_at = %q, want one jsonl-replay row updated at %q", rows, kind, updated, kernel.FormatTime(later))
 	}
 }

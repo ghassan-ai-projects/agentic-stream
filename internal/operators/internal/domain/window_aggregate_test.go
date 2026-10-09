@@ -36,3 +36,19 @@ func TestWindowAggregatesKeepNumericAndEmptySemantics(t *testing.T) {
 		t.Fatalf("empty input must precede aggregate validation: value=%g err=%v", value, err)
 	}
 }
+
+func TestSlopeIsZeroWithoutSpreadInTime(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for name, samples := range map[string][]Sample{
+		"one sample":               {{EventTime: at, Value: 5}},
+		"samples at the same time": {{EventTime: at, Value: 5}, {EventTime: at, Value: 9}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if value, err := computeAggregate("slope", samples); err != nil || value != 0 {
+				t.Fatalf("slope = %g err %v, want 0", value, err)
+			}
+		})
+	}
+}

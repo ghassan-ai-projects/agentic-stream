@@ -11,6 +11,40 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
+func TestOpenFreshReservesPathUntilClose(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	path := filepath.Join(t.TempDir(), "replay.db")
+
+	db, err := storage.OpenFresh(ctx, path)
+	if err != nil {
+		t.Fatalf("open fresh: %v", err)
+	}
+	if opened, err := storage.Open(ctx, path); err == nil {
+		_ = opened.Close()
+		t.Fatal("Open succeeded on a path reserved by an active replay")
+	} else if !strings.Contains(err.Error(), "reserved by an active replay") {
+		t.Fatalf("Open on a reserved path = %v, want the reservation named", err)
+	}
+	if again, err := storage.OpenFresh(ctx, path); err == nil {
+		_ = again.Close()
+		t.Fatal("a second fresh open reused a reserved path")
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if _, err := os.Stat(path + ".replay-reservation"); !os.IsNotExist(err) {
+		t.Fatalf("reservation not released: %v", err)
+	}
+	if again, err := storage.OpenFresh(ctx, path); err == nil {
+		_ = again.Close()
+		t.Fatal("OpenFresh accepted an existing database file")
+	}
+	if _, err := os.Stat(path + ".replay-reservation"); !os.IsNotExist(err) {
+		t.Fatalf("failed fresh open leaked its reservation: %v", err)
+	}
+}
+
 func TestOpenFreshRejectsCollisionsWithoutRemovingExistingFiles(t *testing.T) {
 	t.Parallel()
 	for _, suffix := range []string{"", "-wal", "-shm", ".replay-reservation"} {

@@ -1,106 +1,108 @@
 package domain_test
 
 import (
-	"context"
-	"os"
+	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
 )
 
-func TestCompilePredictiveMaintenance(t *testing.T) {
-	compiled, err := compileFile("../../../../docs/design/examples/predictive-maintenance.situation.yaml")
-	if err != nil {
-		t.Fatalf("CompileFile failed: %v", err)
+func TestCompileSealsTheExampleSpecs(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		file    string
+		name    string
+		inputs  int
+		intents int
+	}{
+		{file: "predictive-maintenance", name: "motor_bearing_degradation", inputs: -1, intents: -1},
+		{file: "rotating-machinery", name: "pump_bearing_degradation", inputs: 7, intents: -1},
+		{file: "zone-thermal", name: "zone_over_temp", inputs: 5, intents: 3},
 	}
-	if compiled.Metadata.Name != "motor_bearing_degradation" {
-		t.Fatalf("unexpected name %q", compiled.Metadata.Name)
-	}
-	if compiled.Digest == "" {
-		t.Fatal("expected non-empty digest")
-	}
-	if len(compiled.CanonicalJSON) == 0 {
-		t.Fatal("expected canonical JSON")
-	}
-}
-
-func TestCompileRotatingMachinery(t *testing.T) {
-	compiled, err := compileFile("../../../../docs/design/examples/rotating-machinery.situation.yaml")
-	if err != nil {
-		t.Fatalf("CompileFile failed: %v", err)
-	}
-	if compiled.Metadata.Name != "pump_bearing_degradation" {
-		t.Fatalf("unexpected name %q", compiled.Metadata.Name)
-	}
-	if len(compiled.Inputs) != 7 {
-		t.Fatalf("input count = %d, want 7 simulator channels", len(compiled.Inputs))
-	}
-	if compiled.Digest == "" {
-		t.Fatal("expected non-empty digest")
-	}
-}
-
-func TestCompileZoneThermal(t *testing.T) {
-	// The Real-World Sensor HIL-0 telemetry spec must compile against the
-	// CURRENT schema grammar — it deliberately avoids the invented fields
-	// (schema:, supervisor:, expectedFeedback:, aggregate: latest) that made the
-	// round-1 starter fail. docs/plans/real-world-sensor-hil/01-telemetry-vertical.md
-	compiled, err := compileFile("../../../../docs/design/examples/zone-thermal.situation.yaml")
-	if err != nil {
-		t.Fatalf("CompileFile failed: %v", err)
-	}
-	if compiled.Metadata.Name != "zone_over_temp" {
-		t.Fatalf("unexpected name %q", compiled.Metadata.Name)
-	}
-	if len(compiled.Inputs) != 5 {
-		t.Fatalf("input count = %d, want 5 (temp, humidity, ambient, fan_tach, heartbeat)", len(compiled.Inputs))
-	}
-	if len(compiled.Actions.Intents) != 3 {
-		t.Fatalf("intent count = %d, want 3 (install_watch_condition, set_indicator, select_thermal_mode)", len(compiled.Actions.Intents))
-	}
-	if compiled.Digest == "" {
-		t.Fatal("expected non-empty digest")
+	for _, tt := range tests {
+		t.Run(tt.file, func(t *testing.T) {
+			t.Parallel()
+			compiled := compileFile(t, "../../../../docs/design/examples/"+tt.file+".situation.yaml")
+			if compiled.Metadata.Name != tt.name {
+				t.Fatalf("name = %q, want %q", compiled.Metadata.Name, tt.name)
+			}
+			if tt.inputs >= 0 && len(compiled.Inputs) != tt.inputs {
+				t.Fatalf("input count = %d, want %d", len(compiled.Inputs), tt.inputs)
+			}
+			if tt.intents >= 0 && len(compiled.Actions.Intents) != tt.intents {
+				t.Fatalf("intent count = %d, want %d", len(compiled.Actions.Intents), tt.intents)
+			}
+			if !strings.HasPrefix(compiled.Digest, "sha256:") || len(compiled.CanonicalJSON) == 0 {
+				t.Fatalf("spec was not sealed: digest %q, %d canonical bytes", compiled.Digest, len(compiled.CanonicalJSON))
+			}
+		})
 	}
 }
 
-func TestCompileStableDigestForEquivalentYAML(t *testing.T) {
-	yaml := minimalSpecYAML()
+func TestCompileGivesEquivalentYAMLTheSameDigest(t *testing.T) {
+	t.Parallel()
+	reordered := editedSpec("  name: test\n  version: 0.1.0\n", "  version: 0.1.0\n  name:    test\n")
 
-	c1, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "a.yaml")
+	first, err := compileSource(t, minimalSpecYAML())
 	if err != nil {
-		t.Fatalf("first compile failed: %v", err)
+		t.Fatal(err)
 	}
-
-	yaml2 := strings.ReplaceAll(yaml, "  name: test\n  version: 0.1.0\n", "  version: 0.1.0\n  name: test\n")
-	yaml2 = strings.ReplaceAll(yaml2, "  name: test\n", "  name:    test\n")
-
-	c2, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml2), "b.yaml")
+	second, err := compileSource(t, reordered)
 	if err != nil {
-		t.Fatalf("second compile failed: %v", err)
+		t.Fatal(err)
 	}
-	if c1.Digest != c2.Digest {
-		t.Fatalf("digests differ: %s vs %s", c1.Digest, c2.Digest)
+	if first.Digest != second.Digest {
+		t.Fatalf("digests differ: %s vs %s", first.Digest, second.Digest)
 	}
 }
 
-func TestCompilePromptContentChangesDigestWithoutVersionChange(t *testing.T) {
-	base := minimalSpecYAML()
-	changed := strings.Replace(base, "prompt: Analyze the situation and return a typed decision.", "prompt: Return a typed decision with explicit evidence.", 1)
-	first, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(base), "base.yaml")
+func TestCompilePromptContentChangesTheDigestWithoutAVersionChange(t *testing.T) {
+	t.Parallel()
+	changed := editedSpec("prompt: Analyze the situation and return a typed decision.", "prompt: Return a typed decision with explicit evidence.")
+
+	first, err := compileSource(t, minimalSpecYAML())
 	if err != nil {
-		t.Fatalf("compile base: %v", err)
+		t.Fatal(err)
 	}
-	second, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(changed), "changed.yaml")
+	second, err := compileSource(t, changed)
 	if err != nil {
-		t.Fatalf("compile changed: %v", err)
+		t.Fatal(err)
 	}
 	if first.Digest == second.Digest {
-		t.Fatal("prompt content change did not change compiled provenance")
+		t.Fatalf("a prompt change kept digest %s", first.Digest)
 	}
+}
+
+func TestConcurrentCompilesAgreeOnEverySource(t *testing.T) {
+	t.Parallel()
+	valid := minimalSpecYAML()
+	invalid := editedSpec("aggregate: mean", "aggregate: unsupported")
+	want, err := compileSource(t, valid)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var group sync.WaitGroup
+	for range 8 {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			got, err := compileSource(t, valid)
+			if err != nil || got.Digest != want.Digest {
+				t.Errorf("valid spec: digest %v, err %v, want digest %s", got, err, want.Digest)
+			}
+			if _, err := compileSource(t, invalid); err == nil || !strings.Contains(err.Error(), "schema validation") {
+				t.Errorf("invalid spec: err = %v, want a schema validation failure", err)
+			}
+		}()
+	}
+	group.Wait()
 }
 
 func TestEffectiveWatchConfidenceFloor(t *testing.T) {
+	t.Parallel()
 	var explicitZero float64
 	explicitCustom := 0.7
 	tests := []struct {
@@ -112,9 +114,9 @@ func TestEffectiveWatchConfidenceFloor(t *testing.T) {
 		{name: "custom", actions: domain.Actions{WatchConfidenceFloor: &explicitCustom}, want: 0.7},
 		{name: "opt out", actions: domain.Actions{WatchConfidenceFloor: &explicitZero}, want: 0},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := tt.actions.EffectiveWatchConfidenceFloor(); got != tt.want {
 				t.Fatalf("effective watch confidence floor = %v, want %v", got, tt.want)
 			}
@@ -122,290 +124,219 @@ func TestEffectiveWatchConfidenceFloor(t *testing.T) {
 	}
 }
 
-func TestCompileWatchConfidenceFloorSchemaValidation(t *testing.T) {
+func TestCompileBoundsTheWatchConfidenceFloorToZeroAndOne(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name    string
 		value   string
 		wantErr bool
 	}{
-		{name: "accepted", value: "0.7"},
-		{name: "negative", value: "-0.1", wantErr: true},
-		{name: "over one", value: "1.1", wantErr: true},
+		{value: "0"},
+		{value: "0.7"},
+		{value: "1"},
+		{value: "-0.1", wantErr: true},
+		{value: "1.1", wantErr: true},
 	}
-
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			yaml := strings.Replace(
-				minimalSpecYAML(),
-				"actions:\n",
-				"actions:\n  watch_confidence_floor: "+tt.value+"\n",
-				1,
-			)
-			compiled, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
+		t.Run(tt.value, func(t *testing.T) {
+			t.Parallel()
+			compiled, err := compileSource(t, editedSpec("actions:\n", "actions:\n  watch_confidence_floor: "+tt.value+"\n"))
 			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected schema validation error")
+				if err == nil || !strings.Contains(err.Error(), "schema validation") {
+					t.Fatalf("floor %s: err = %v, want a schema validation failure", tt.value, err)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("compile failed: %v", err)
+				t.Fatal(err)
 			}
-			if compiled.Actions.WatchConfidenceFloor == nil || *compiled.Actions.WatchConfidenceFloor != 0.7 {
-				t.Fatalf("compiled watch confidence floor = %v, want 0.7", compiled.Actions.WatchConfidenceFloor)
+			if got := compiled.Actions.WatchConfidenceFloor; got == nil || *got != mustFloat(t, tt.value) {
+				t.Fatalf("compiled floor = %v, want %s", got, tt.value)
 			}
 		})
 	}
 }
 
-func TestCompileRejectsUndeclaredPayloadField(t *testing.T) {
-	yaml := strings.Replace(minimalSpecYAML(), "field: data.value", "field: data.not_declared", 1)
-	_, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
-	if err == nil || !strings.Contains(err.Error(), "not_declared") {
-		t.Fatalf("expected undeclared payload field diagnostic, got %v", err)
+func TestCompileAcceptsTheLatestAggregate(t *testing.T) {
+	t.Parallel()
+	compiled, err := compileSource(t, editedSpec("    aggregate: mean\n", "    aggregate: latest\n"))
+	if err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestCompileRejectsPayloadUnitMismatch(t *testing.T) {
-	yaml := strings.Replace(minimalSpecYAML(), "    aggregate: mean\n", "    aggregate: mean\n    unit: kelvin\n", 1)
-	_, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
-	if err == nil || !strings.Contains(err.Error(), "does not match") {
-		t.Fatalf("expected unit mismatch diagnostic, got %v", err)
-	}
-}
-
-func TestCompileAcceptsLatestAggregate(t *testing.T) {
-	yaml := strings.Replace(minimalSpecYAML(), "    aggregate: mean\n", "    aggregate: latest\n", 1)
-	if _, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "latest.yaml"); err != nil {
-		t.Fatalf("compile latest aggregate: %v", err)
+	if got := compiled.Operators[0].Aggregate; got != "latest" {
+		t.Fatalf("aggregate = %q, want latest", got)
 	}
 }
 
 func TestCompileAcceptsDigestPinnedExecutorSkills(t *testing.T) {
-	yaml := strings.Replace(
-		minimalSpecYAML(),
-		"    tools: []\n",
-		"    tools: []\n    skills:\n      - name: diagnostic_playbook\n        tree_sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n",
-		1,
-	)
-	compiled, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "skills.yaml")
+	t.Parallel()
+	const tree = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	compiled, err := compileSource(t, editedSpec("    tools: []\n", "    tools: []\n    skills:\n      - name: diagnostic_playbook\n        tree_sha256: "+tree+"\n"))
 	if err != nil {
-		t.Fatalf("compile skill-enabled spec: %v", err)
+		t.Fatal(err)
 	}
-	if len(compiled.Cognition.Executor.Skills) != 1 {
-		t.Fatalf("compiled skill count = %d, want 1", len(compiled.Cognition.Executor.Skills))
-	}
-	if got := compiled.Cognition.Executor.Skills[0].Name; got != "diagnostic_playbook" {
-		t.Fatalf("compiled skill name = %q, want diagnostic_playbook", got)
+	skills := compiled.Cognition.Executor.Skills
+	if len(skills) != 1 || skills[0].Name != "diagnostic_playbook" || skills[0].TreeSHA256 != tree {
+		t.Fatalf("compiled skills = %+v, want diagnostic_playbook pinned to %s", skills, tree)
 	}
 }
 
-func TestCompileRejectsUnsupportedRuntimeSurface(t *testing.T) {
+func TestCompileRejectsASpecThatBreaksARule(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name string
-		edit func(string) string
+		name    string
+		source  string
+		wantErr string
 	}{
 		{
-			name: "count window",
-			edit: func(yaml string) string {
-				return strings.Replace(yaml, "    kind: tumbling\n    size: 1m", "    kind: count\n    count: 5", 1)
-			},
+			name:    "payload field the schema does not declare",
+			source:  editedSpec("field: data.value", "field: data.not_declared"),
+			wantErr: `operators.op1.field: payload field "not_declared" is not declared by schema "sensor.temperature/1.0"`,
 		},
 		{
-			name: "map operator",
-			edit: func(yaml string) string {
-				return strings.Replace(yaml, "    kind: aggregate\n", "    kind: map\n", 1)
-			},
+			name:    "aggregate unit that differs from the payload field",
+			source:  editedSpec("    aggregate: mean\n", "    aggregate: mean\n    unit: kelvin\n"),
+			wantErr: `operators.op1.unit: unit "kelvin" does not match field "value" unit "celsius"`,
 		},
 		{
-			name: "variance aggregate",
-			edit: func(yaml string) string {
-				return strings.Replace(yaml, "    aggregate: mean\n", "    aggregate: variance\n", 1)
-			},
+			name:    "count window",
+			source:  editedSpec("    kind: tumbling\n    size: 1m", "    kind: count\n    count: 5"),
+			wantErr: "schema validation",
 		},
 		{
-			name: "max reducer",
-			edit: func(yaml string) string {
-				return strings.Replace(yaml, "      strategy: latest_event_time\n", "      strategy: max\n", 1)
-			},
+			name:    "map operator",
+			source:  editedSpec("    kind: aggregate\n", "    kind: map\n"),
+			wantErr: "schema validation",
+		},
+		{
+			name:    "variance aggregate",
+			source:  editedSpec("    aggregate: mean\n", "    aggregate: variance\n"),
+			wantErr: "schema validation",
+		},
+		{
+			name:    "max reducer",
+			source:  editedSpec("      strategy: latest_event_time\n", "      strategy: max\n"),
+			wantErr: "schema validation",
+		},
+		{
+			name:    "retention control nothing enforces",
+			source:  minimalSpecYAML() + "retention:\n  rawEvents: 7d\n",
+			wantErr: "retention",
+		},
+		{
+			name:    "telemetry control nothing enforces",
+			source:  minimalSpecYAML() + "telemetry:\n  traceSampleRatio: 1\n",
+			wantErr: "telemetry",
+		},
+		{
+			name:    "duplicate yaml key",
+			source:  editedSpec("  name: test\n", "  name: test\n  name: test2\n"),
+			wantErr: `duplicate key "name"`,
+		},
+		{
+			name:    "malformed yaml",
+			source:  "inputs: [unclosed",
+			wantErr: "parse yaml",
+		},
+		{
+			name:    "duplicate input name",
+			source:  editedSpec("time:\n", "  - name: temp\n    eventType: sensor.temperature\n    schemaVersion: \"1.0\"\n    schema: sensor.temperature/1.0\n    partitionKey: entity.id\n    entityType: sensor\ntime:\n"),
+			wantErr: `inputs: duplicate input name "temp"`,
+		},
+		{
+			name:    "duplicate window name",
+			source:  editedSpec("  - name: w1\n    kind: tumbling\n    size: 1m", "  - name: w1\n    kind: tumbling\n    size: 1m\n  - name: w1\n    kind: tumbling\n    size: 2m"),
+			wantErr: `duplicate window name "w1"`,
+		},
+		{
+			name:    "duplicate operator name",
+			source:  editedSpec("    output: mean_value\n", "    output: mean_value\n  - name: op1\n    kind: aggregate\n    inputs: [temp]\n    field: data.value\n    window: w1\n    aggregate: mean\n    output: other_value\n"),
+			wantErr: `operators: duplicate operator name "op1"`,
+		},
+		{
+			name:    "duplicate operator output",
+			source:  editedSpec("    output: mean_value\n", "    output: mean_value\n  - name: op2\n    kind: aggregate\n    inputs: [temp]\n    field: data.value\n    window: w1\n    aggregate: mean\n    output: mean_value\n"),
+			wantErr: `operators: duplicate operator output "mean_value"`,
+		},
+		{
+			name:    "duplicate phase name",
+			source:  editedSpec("    - name: alert\n", "    - name: ok\n      severity: 0\n    - name: alert\n"),
+			wantErr: `situation.phases: duplicate phase name "ok"`,
+		},
+		{
+			name:    "event schema nobody registered",
+			source:  editedSpec("schema: sensor.temperature/1.0", "schema: sensor.unregistered/1.0"),
+			wantErr: `inputs.temp.schema: unknown event schema "sensor.unregistered/1.0"`,
+		},
+		{
+			name:    "event schema bound to another event type",
+			source:  editedSpec("eventType: sensor.temperature", "eventType: sensor.other"),
+			wantErr: "inputs.temp.schema: schema reference does not match eventType/schemaVersion",
+		},
+		{
+			name:    "operator input that is neither an input nor an output",
+			source:  editedSpec("    inputs: [temp]\n", "    inputs: [nowhere]\n"),
+			wantErr: `operators.op1.inputs: unknown input "nowhere"`,
+		},
+		{
+			name:    "operator window nobody declared",
+			source:  editedSpec("    window: w1\n", "    window: nowhere\n"),
+			wantErr: `operators.op1.window: unknown window "nowhere"`,
+		},
+		{
+			name:    "reducer over an unknown operator output",
+			source:  editedSpec("      input: mean_value", "      input: unknown_output"),
+			wantErr: `situation.reducers.facts.mean.input: unknown operator output "unknown_output"`,
+		},
+		{
+			name:    "initial phase nobody declared",
+			source:  editedSpec("initialPhase: ok", "initialPhase: missing"),
+			wantErr: `situation.initialPhase: unknown phase "missing"`,
+		},
+		{
+			name:    "transition from an unknown phase",
+			source:  editedSpec("    - from: ok\n", "    - from: missing\n"),
+			wantErr: `situation.transitions.missing-alert.from: unknown phase "missing"`,
+		},
+		{
+			name:    "transition to an unknown phase",
+			source:  editedSpec("      to: alert\n", "      to: missing\n"),
+			wantErr: `situation.transitions.ok-missing.to: unknown phase "missing"`,
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(tt.edit(minimalSpecYAML())), tt.name+".yaml"); err == nil {
-				t.Fatal("expected schema validation error")
+			t.Parallel()
+			compiled, err := compileSource(t, tt.source)
+			if compiled != nil || err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("compiled = %v, err = %v, want a failure containing %q", compiled != nil, err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func TestCompileRejectsUnenforcedTopLevelControls(t *testing.T) {
+func TestCompileReportsTheCELExpressionThatDoesNotParse(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name  string
-		field string
-		value string
+		name     string
+		source   string
+		wantPath string
 	}{
-		{name: "retention", field: "retention", value: "  rawEvents: 7d\n"},
-		{name: "telemetry", field: "telemetry", value: "  traceSampleRatio: 1\n"},
+		{name: "open condition", source: editedSpec("openWhen: features.mean_value > 1.0", "openWhen: features.mean_value >"), wantPath: "situation.occurrence.openWhen"},
+		{name: "close condition", source: editedSpec("closeWhen: features.mean_value <= 1.0", "closeWhen: features.mean_value <="), wantPath: "situation.occurrence.closeWhen"},
+		{name: "transition condition", source: editedSpec("      when: features.mean_value > 1.0", "      when: features.mean_value >"), wantPath: "situation.transitions[0].when"},
+		{name: "trigger condition", source: editedSpec(`when: situation.phase == "alert"`, `when: situation.phase ==`), wantPath: "cognition.triggers[0].when"},
+		{name: "trigger score", source: editedSpec("score: 1.0", `score: "1.0 +"`), wantPath: "cognition.triggers[0].score"},
+		{name: "trigger material delta", source: editedSpec("materialDelta: delta.phase_changed", "materialDelta: delta."), wantPath: "cognition.triggers[0].materialDelta"},
+		{name: "operator filter", source: editedSpec("    aggregate: mean\n", "    aggregate: mean\n    where: features >\n"), wantPath: "operators[0].where"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			yaml := minimalSpecYAML() + tt.field + ":\n" + tt.value
-			_, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), tt.name+".yaml")
-			if err == nil || !strings.Contains(err.Error(), tt.field) {
-				t.Fatalf("expected %s to be rejected explicitly, got %v", tt.field, err)
+			t.Parallel()
+			_, err := compileSource(t, tt.source)
+			var compileErr *domain.CompileError
+			if !errors.As(err, &compileErr) || compileErr.Path != tt.wantPath || !strings.HasPrefix(compileErr.Message, "cel:") {
+				t.Fatalf("err = %v, want a cel failure at %s", err, tt.wantPath)
 			}
 		})
 	}
-}
-
-func TestCompileRejectsUnknownOperatorOutput(t *testing.T) {
-	yaml := strings.ReplaceAll(minimalSpecYAML(),
-		"      input: mean_value",
-		"      input: unknown_output")
-	_, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
-	if err == nil {
-		t.Fatal("expected error for unknown operator output")
-	}
-	if !strings.Contains(err.Error(), "unknown operator output") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestCompileRejectsInvalidCEL(t *testing.T) {
-	yaml := strings.ReplaceAll(minimalSpecYAML(),
-		"      when: features.mean_value > 1.0",
-		"      when: features.mean_value >")
-	_, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
-	if err == nil {
-		t.Fatal("expected error for invalid CEL")
-	}
-	if !strings.Contains(err.Error(), "cel:") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestCompileRejectsDuplicateYAMLKey(t *testing.T) {
-	yaml := strings.ReplaceAll(minimalSpecYAML(),
-		"  name: test\n",
-		"  name: test\n  name: test2\n")
-	_, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
-	if err == nil {
-		t.Fatal("expected error for duplicate YAML key")
-	}
-	if !strings.Contains(err.Error(), "duplicate key") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestCompileRejectsDuplicateWindowName(t *testing.T) {
-	yaml := strings.ReplaceAll(minimalSpecYAML(),
-		"  - name: w1\n    kind: tumbling\n    size: 1m",
-		"  - name: w1\n    kind: tumbling\n    size: 1m\n  - name: w1\n    kind: tumbling\n    size: 2m")
-	_, err := domain.NewCompiler().CompileBytes(context.Background(), []byte(yaml), "test.yaml")
-	if err == nil {
-		t.Fatal("expected error for duplicate window name")
-	}
-	if !strings.Contains(err.Error(), "duplicate window name") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func minimalSpecYAML() string {
-	return `apiVersion: agentic-stream/v1
-kind: SituationSpec
-metadata:
-  name: test
-  version: 0.1.0
-inputs:
-  - name: temp
-    eventType: sensor.temperature
-    schemaVersion: "1.0"
-    schema: sensor.temperature/1.0
-    partitionKey: entity.id
-    entityType: sensor
-time:
-  watermarkStrategy: bounded_out_of_orderness
-  maxOutOfOrderness: 1m
-  idleTimeout: 5m
-  allowedLateness: 10m
-  latePolicy: drop_with_audit
-windows:
-  - name: w1
-    kind: tumbling
-    size: 1m
-operators:
-  - name: op1
-    kind: aggregate
-    inputs: [temp]
-    field: data.value
-    window: w1
-    aggregate: mean
-    output: mean_value
-situation:
-  type: simple
-  entityKey: entity.id
-  occurrence:
-    openWhen: features.mean_value > 1.0
-    closeWhen: features.mean_value <= 1.0
-  initialPhase: ok
-  phases:
-    - name: ok
-      severity: 0
-    - name: alert
-      severity: 50
-  transitions:
-    - from: ok
-      to: alert
-      when: features.mean_value > 1.0
-  reducers:
-    - field: facts.mean
-      strategy: latest_event_time
-      input: mean_value
-cognition:
-  triggers:
-    - name: diagnose
-      when: situation.phase == "alert"
-      score: 1.0
-      threshold: 0.5
-      lane: fast
-      materialDelta: delta.phase_changed
-  executor:
-    name: fake
-    objective: test
-    prompt: Analyze the situation and return a typed decision.
-    modelPolicy: fake
-    promptVersion: v1
-    decisionSchema: schemas/test.json
-    tools: []
-    budget:
-      wallTime: 1m
-      modelCalls: 1
-      inputTokens: 1
-      outputTokens: 1
-      toolCalls: 0
-      toolResultBytes: 0
-      totalToolResultBytes: 0
-      providerRetries: 0
-      costMicrounits: 0
-actions:
-  intents:
-    - type: notify
-      risk: R0
-      parameterSchema:
-        type: object
-        properties:
-          entity_id:
-            type: string
-        additionalProperties: false
-`
-}
-
-func compileFile(path string) (*domain.CompiledSpec, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	return domain.NewCompiler().CompileBytes(context.Background(), data, path)
 }

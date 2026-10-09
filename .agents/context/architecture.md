@@ -74,11 +74,11 @@ databases; production code never imports it. `runtime` and `cmd` alone wire conc
 adapters; dispatch and device implementations meet through `actionport`.
 
 Every production import is allowlisted and points to a strictly lower reviewed
-level (`architecture_flow_test.go`). Logical feedback reenters through durable
+level (`internal/architecture/imports_test.go`, tables in `package_layers_test.go`). Logical feedback reenters through durable
 records/evidence; it does not create reverse service dependencies. Control and
 cognition call ledger APIs using the original transaction.
 
-`architecture_ownership_test.go` pins all current production SQL mutation
+`internal/architecture/ownership_test.go` pins all current production SQL mutation
 owners. Shared handoffs are restricted by phase and update columns: episodes
 produce intents, policy governs them and publishes commands/outbox, actions
 consume the outbox, and cognition only marks the last reasoned Situation

@@ -46,9 +46,9 @@ stream in log order with the documented scope and limit rules.
 
 ## Evidence and limits
 
-Each layer has its own tests (facade 79%, app 75%, domain 81%, store 76%
-coverage) plus the unchanged package suite pinning rollback, duplicate,
-conflict and redrive behavior. Gates enforce downward imports, domain purity,
+Each layer has its own tests (every package above 90% statement coverage)
+pinning rollback, duplicate, out-of-order, conflict and redrive behavior at
+the lowest layer that owns it; the facade tests prove wiring only. Gates enforce downward imports, domain purity,
 app infrastructure isolation, store-only SQL and single durable ownership
 (now pointing at the store layer); injected violations were rejected during
 migration. `ReadEntityWindow` still takes the raw database handle; moving its

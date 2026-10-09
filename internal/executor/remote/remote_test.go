@@ -1,20 +1,64 @@
 package remote_test
 
 import (
+	"context"
+	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/remote"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/executorconformance"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
-func TestExecutorWithoutClientRefusesToRun(t *testing.T) {
+func TestRemoteExecutorConformsToTheExecutorPort(t *testing.T) {
 	t.Parallel()
-	executor := remote.NewExecutor(nil, "worker", "instance", nil)
-	if _, err := executor.Execute(t.Context(), &episodes.Request{}); err == nil {
-		t.Fatal("executor without a worker client ran")
+	client := workerfake.ConnectClient(t, conformingWorker())
+	executor := remote.NewExecutor(client, "worker-1", "runtime", nil)
+	t.Run("produced outcome", func(t *testing.T) {
+		t.Parallel()
+		if err := executorconformance.Run(t.Context(), executor); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("canceled context", func(t *testing.T) {
+		t.Parallel()
+		if err := executorconformance.RunCanceled(t.Context(), executor); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+type countingFactory struct{ issued atomic.Int32 }
+
+func (f *countingFactory) Issue(*episodes.Request) ([]byte, error) {
+	f.issued.Add(1)
+	return []byte("capability"), nil
+}
+
+func TestExecutorWithEvidenceIssuesTheCapabilityForTheConfiguredEndpoint(t *testing.T) {
+	t.Parallel()
+	var sent atomic.Pointer[runtimev1.EpisodeRequest]
+	fake := conformingWorker()
+	fake.SupportedFeatures = []string{worker.EvidenceToolsFeature}
+	propose := fake.ExecuteFunc
+	fake.ExecuteFunc = func(ctx context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
+		sent.Store(req)
+		return propose(ctx, req, emit)
 	}
-	with := remote.NewExecutorWithEvidence(nil, "worker", "instance", nil, "", nil)
-	if _, err := with.Execute(t.Context(), nil); err == nil {
-		t.Fatal("executor without a worker client accepted a nil request")
+	factory := &countingFactory{}
+	endpoint := filepath.Join(t.TempDir(), "evidence.sock")
+	executor := remote.NewExecutorWithEvidence(workerfake.ConnectClient(t, fake), "worker-1", "runtime", []string{worker.EvidenceToolsFeature}, endpoint, factory)
+
+	if err := executorconformance.Run(t.Context(), executor); err != nil {
+		t.Fatal(err)
+	}
+
+	got := sent.Load()
+	if factory.issued.Load() != 1 || got.GetEvidenceToolsEndpoint() != endpoint || string(got.GetCapabilityToken()) != "capability" {
+		t.Fatalf("issued=%d endpoint=%q token=%q, want one capability for %q", factory.issued.Load(), got.GetEvidenceToolsEndpoint(), got.GetCapabilityToken(), endpoint)
 	}
 }

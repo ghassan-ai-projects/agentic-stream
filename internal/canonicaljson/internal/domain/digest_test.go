@@ -2,128 +2,95 @@ package domain
 
 import (
 	"math"
+	"regexp"
+	"strings"
 	"testing"
 )
 
-// testDomain is a digest domain private to these tests.
 const testDomain Domain = "situation-runtime/test/v1\n"
 
-func TestMarshalSortsObjectKeys(t *testing.T) {
-	v := map[string]any{
-		"z": 1,
-		"a": 2,
-		"m": 3,
-	}
-	got, err := Marshal(v)
-	if err != nil {
-		t.Fatalf("Marshal error: %v", err)
-	}
-	want := `{"a":2,"m":3,"z":1}`
-	if string(got) != want {
-		t.Fatalf("got %s, want %s", got, want)
-	}
-}
-
-func TestMarshalNested(t *testing.T) {
-	v := map[string]any{
-		"b": []any{map[string]any{"y": 1, "x": 2}},
-		"a": true,
-	}
-	got, err := Marshal(v)
-	if err != nil {
-		t.Fatalf("Marshal error: %v", err)
-	}
-	want := `{"a":true,"b":[{"x":2,"y":1}]}`
-	if string(got) != want {
-		t.Fatalf("got %s, want %s", got, want)
-	}
-}
-
-func TestDigestStable(t *testing.T) {
-	v := map[string]any{"b": 2, "a": 1}
-	d1, err := Digest(testDomain, v)
-	if err != nil {
-		t.Fatalf("Digest error: %v", err)
-	}
-	d2, err := Digest(testDomain, map[string]any{"a": 1, "b": 2})
-	if err != nil {
-		t.Fatalf("Digest error: %v", err)
-	}
-	if d1 != d2 {
-		t.Fatalf("digests differ: %s vs %s", d1, d2)
-	}
-}
-
-func TestMarshalFloat(t *testing.T) {
-	got, err := Marshal(map[string]any{"v": 1.5})
-	if err != nil {
-		t.Fatalf("Marshal error: %v", err)
-	}
-	want := `{"v":1.5}`
-	if string(got) != want {
-		t.Fatalf("got %s, want %s", got, want)
-	}
-}
-
-func TestMarshalRejectsNonFinite(t *testing.T) {
-	_, err := Marshal(map[string]any{"v": math.Inf(1)})
-	if err == nil {
-		t.Fatal("expected error for +Inf")
-	}
-	_, err = Marshal(map[string]any{"v": math.NaN()})
-	if err == nil {
-		t.Fatal("expected error for NaN")
-	}
-}
-
-func TestMarshalRejectsNegativeZero(t *testing.T) {
-	_, err := Marshal(map[string]any{"v": math.Copysign(0, -1)})
-	if err == nil {
-		t.Fatal("expected error for negative zero")
-	}
-}
-
-func TestDigestHasDomainSeparation(t *testing.T) {
-	got, err := Digest(testDomain, map[string]any{"ok": true})
-	if err != nil {
-		t.Fatalf("Digest error: %v", err)
-	}
-	if len(got) != len("sha256:")+64 || got[:len("sha256:")] != "sha256:" {
-		t.Fatalf("unexpected digest format: %s", got)
-	}
-	if !Verify(testDomain, map[string]any{"ok": true}, got) {
-		t.Fatal("expected digest to verify")
-	}
-	if Verify(DomainSnapshot, map[string]any{"ok": true}, got) {
-		t.Fatal("digest verified under the wrong domain")
-	}
-}
-
-func TestDecodeDigestRequiresCanonicalPrefix(t *testing.T) {
-	if _, err := DecodeDigest("0000000000000000000000000000000000000000000000000000000000000000"); err == nil {
-		t.Fatal("expected unprefixed digest to be rejected")
-	}
-	if got, err := DecodeDigest("sha256:0000000000000000000000000000000000000000000000000000000000000000"); err != nil || len(got) != 32 {
-		t.Fatalf("expected prefixed digest to decode, got %x, %v", got, err)
-	}
-}
-
-func TestDecodeDigestRejectsMalformedReferences(t *testing.T) {
+func TestDomainsAreTheFrozenDigestNamespaces(t *testing.T) {
 	t.Parallel()
-	zeros := "0000000000000000000000000000000000000000000000000000000000000000"
-	tests := []struct{ name, digest string }{
-		{"unprefixed", zeros},
-		{"uppercase hex", "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB"},
-		{"short", "sha256:00"},
-		{"long", "sha256:" + zeros + "00"},
-		{"not hex", "sha256:" + zeros[:63] + "g"},
-		{"empty", ""},
+	tests := []struct {
+		domain Domain
+		want   string
+	}{
+		{DomainSnapshot, "situation-runtime/snapshot/v1\n"},
+		{DomainSpec, "situation-runtime/spec/v1\n"},
+		{DomainDecision, "situation-runtime/decision/v1\n"},
+		{DomainIntent, "situation-runtime/intent/v1\n"},
+		{DomainCommand, "situation-runtime/command/v1\n"},
+		{DomainEvent, "situation-runtime/event/v1\n"},
+		{DomainOutcome, "situation-runtime/outcome/v1\n"},
+		{DomainSituationState, "situation-runtime/situation-state/v1\n"},
+		{DomainEnvelope, "situation-runtime/envelope/v1\n"},
+		{DomainPrompt, "situation-runtime/prompt/v1\n"},
+		{DomainObjective, "situation-runtime/objective/v1\n"},
+		{DomainDiagnosisCatalog, "situation-runtime/diagnosis-catalog/v1\n"},
+		{DomainIntentCatalog, "situation-runtime/intent-catalog/v1\n"},
+		{DomainApproval, "situation-runtime/approval-assertion/v1\n"},
+		{DomainPolicy, "situation-runtime/policy/v1\n"},
+		{DomainCapabilityCatalog, "situation-runtime/capability-catalog/v1\n"},
+		{DomainShadowComparison, "situation-runtime/shadow-comparison/v1\n"},
+	}
+	shape := regexp.MustCompile(`^situation-runtime/[a-z-]+/v1\n$`)
+	seen := map[Domain]bool{}
+	for _, tt := range tests {
+		if string(tt.domain) != tt.want || !shape.MatchString(tt.want) {
+			t.Errorf("domain %q, want %q in the form situation-runtime/<name>/v1 plus a newline", tt.domain, tt.want)
+		}
+		if seen[tt.domain] {
+			t.Errorf("domain %q names two namespaces", tt.domain)
+		}
+		seen[tt.domain] = true
+	}
+}
+
+func TestDigestIgnoresKeyOrderAndIsBoundToItsDomain(t *testing.T) {
+	t.Parallel()
+	first, err := Digest(testDomain, map[string]any{"b": 2, "a": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Digest(testDomain, map[string]any{"a": 1, "b": 2})
+	if err != nil || first != second {
+		t.Fatalf("digests of the same object differ: %s vs %s (%v)", first, second, err)
+	}
+	if !regexp.MustCompile(`^sha256:[0-9a-f]{64}$`).MatchString(first) {
+		t.Fatalf("digest %q is not sha256:<64 lowercase hex>", first)
+	}
+	other, err := Digest(DomainSnapshot, map[string]any{"a": 1, "b": 2})
+	if err != nil || other == first {
+		t.Fatalf("the same value digests identically in two domains: %s (%v)", other, err)
+	}
+	changed, err := Digest(testDomain, map[string]any{"a": 1, "b": 3})
+	if err != nil || changed == first {
+		t.Fatalf("a changed value kept its digest: %s (%v)", changed, err)
+	}
+}
+
+func TestDigestRefusesAnEmptyDomainAndUnencodableValues(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		domain Domain
+		value  any
+		want   string
+	}{
+		{"empty domain", "", map[string]any{}, "empty digest domain"},
+		{"non-finite number", testDomain, math.NaN(), "non-finite float"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got, err := DecodeDigest(tt.digest); err == nil {
-				t.Fatalf("DecodeDigest(%q) = %x, want an error", tt.digest, got)
+			if got, err := Digest(tt.domain, tt.value); err == nil || got != "" || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Digest = %q, %v; want no digest and an error containing %q", got, err, tt.want)
+			}
+			if got, err := DigestSum(tt.domain, tt.value); err == nil || got != nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("DigestSum = %x, %v; want no sum and an error containing %q", got, err, tt.want)
+			}
+			if canonical, sum, err := Seal(tt.domain, tt.value); err == nil || canonical != nil || sum != nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Seal = %s, %x, %v; want nothing and an error containing %q", canonical, sum, err, tt.want)
 			}
 		})
 	}
@@ -149,16 +116,37 @@ func TestSealCanonicalizesOnceAndMatchesDigestSum(t *testing.T) {
 	}
 }
 
-func TestSealAndDigestSumRefuseEmptyDomainAndUnencodableValues(t *testing.T) {
+func TestVerifyBindsDigestToValueAndDomain(t *testing.T) {
 	t.Parallel()
-	if _, _, err := Seal("", map[string]any{}); err == nil {
-		t.Fatal("Seal accepted an empty domain")
+	document := map[string]any{"ok": true}
+	digest, err := Digest(testDomain, document)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := DigestSum("", map[string]any{}); err == nil {
-		t.Fatal("DigestSum accepted an empty domain")
+	tests := []struct {
+		name   string
+		domain Domain
+		value  any
+		digest string
+		want   bool
+	}{
+		{"matching", testDomain, document, digest, true},
+		{"wrong domain", DomainSnapshot, document, digest, false},
+		{"changed value", testDomain, map[string]any{"ok": false}, digest, false},
+		{"empty domain", "", document, digest, false},
+		{"unencodable value", testDomain, math.NaN(), digest, false},
+		{"empty digest", testDomain, document, "", false},
+		{"truncated digest", testDomain, document, digest[:len(digest)-1], false},
+		{"same length different digest", testDomain, document, flipLastDigit(digest), false},
+		{"upper case digest", testDomain, document, strings.ToUpper(digest), false},
 	}
-	if _, _, err := Seal(testDomain, math.NaN()); err == nil {
-		t.Fatal("Seal accepted a non-finite number")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := Verify(tt.domain, tt.value, tt.digest); got != tt.want {
+				t.Fatalf("Verify = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -169,7 +157,6 @@ func TestVerifySumBindsSumToValueAndDomain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	truncated := sum[:len(sum)-1]
 	tests := []struct {
 		name   string
 		domain Domain
@@ -180,7 +167,7 @@ func TestVerifySumBindsSumToValueAndDomain(t *testing.T) {
 		{"matching", testDomain, document, sum, true},
 		{"wrong domain", DomainSnapshot, document, sum, false},
 		{"changed value", testDomain, map[string]any{"ok": false}, sum, false},
-		{"wrong length", testDomain, document, truncated, false},
+		{"wrong length", testDomain, document, sum[:len(sum)-1], false},
 		{"nil sum", testDomain, document, nil, false},
 		{"empty domain", "", document, sum, false},
 		{"unencodable value", testDomain, math.NaN(), sum, false},
@@ -193,4 +180,23 @@ func TestVerifySumBindsSumToValueAndDomain(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDecodeDigestNamesTheModuleInItsErrors(t *testing.T) {
+	t.Parallel()
+	zeros := strings.Repeat("0", 64)
+	if got, err := DecodeDigest("sha256:" + zeros); err != nil || len(got) != 32 {
+		t.Fatalf("DecodeDigest(valid) = %x, %v", got, err)
+	}
+	if got, err := DecodeDigest(zeros); err == nil || !strings.HasPrefix(err.Error(), "canonicaljson: ") {
+		t.Fatalf("DecodeDigest(unprefixed) = %x, %v; want a canonicaljson-prefixed error", got, err)
+	}
+}
+
+func flipLastDigit(digest string) string {
+	last := "0"
+	if strings.HasSuffix(digest, "0") {
+		last = "1"
+	}
+	return digest[:len(digest)-1] + last
 }

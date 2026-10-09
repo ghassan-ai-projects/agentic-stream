@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -64,6 +65,63 @@ func TestCheckPayloadAllowsAdditionalWhenDeclared(t *testing.T) {
 func TestDecodeEventSchemaRejectsInvalidJSON(t *testing.T) {
 	t.Parallel()
 	if _, err := DecodeEventSchema([]byte(`not-json`)); err == nil || !strings.Contains(err.Error(), "decode event schema") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestCheckPayloadMatchesEachDeclaredJSONType(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name       string
+		declared   string
+		value      any
+		acceptable bool
+	}{
+		{"number accepts float", "number", 1.5, true},
+		{"number accepts int", "number", 3, true},
+		{"number accepts json.Number", "number", json.Number("2.5"), true},
+		{"number refuses string", "number", "1", false},
+		{"integer accepts int", "integer", 3, true},
+		{"integer accepts whole float", "integer", 3.0, true},
+		{"integer refuses fraction", "integer", 3.5, false},
+		{"integer refuses string", "integer", "3", false},
+		{"string accepts string", "string", "x", true},
+		{"string refuses number", "string", 1.0, false},
+		{"boolean accepts bool", "boolean", true, true},
+		{"boolean refuses string", "boolean", "true", false},
+		{"object accepts map", "object", map[string]any{"a": 1}, true},
+		{"object refuses list", "object", []any{1}, false},
+		{"array accepts list", "array", []any{1}, true},
+		{"array accepts string list", "array", []string{"a"}, true},
+		{"array refuses map", "array", map[string]any{}, false},
+		{"null accepts nil", "null", nil, true},
+		{"null refuses a value", "null", "x", false},
+		{"undeclared type accepts anything", "", map[string]any{"a": 1}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			schema := EventSchema{Properties: map[string]SchemaProperty{"field": {Type: tc.declared}}}
+			err := schema.CheckPayload(map[string]any{"field": tc.value})
+			if tc.acceptable && err != nil {
+				t.Fatalf("value %#v refused for type %q: %v", tc.value, tc.declared, err)
+			}
+			wantRefusal := "expected " + tc.declared
+			if tc.declared == "null" {
+				wantRefusal = "unsupported JSON type"
+			}
+			if !tc.acceptable && (err == nil || !strings.Contains(err.Error(), wantRefusal)) {
+				t.Fatalf("value %#v accepted for type %q, err = %v", tc.value, tc.declared, err)
+			}
+		})
+	}
+}
+
+func TestEnumRefusesNonStringValuesAndNamesTheAllowedOnes(t *testing.T) {
+	t.Parallel()
+	schema := EventSchema{Properties: map[string]SchemaProperty{"quality": {Enum: []string{"valid", "drift"}}}}
+	err := schema.CheckPayload(map[string]any{"quality": 3.0})
+	if err == nil || !strings.Contains(err.Error(), "expected one of [valid drift], got float64") {
 		t.Fatalf("err = %v", err)
 	}
 }

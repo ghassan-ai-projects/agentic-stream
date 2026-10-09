@@ -107,9 +107,9 @@ check rather than allowing payload columns to escape inspection.
 The [architecture bar](../../.agents/context/architecture-bar.md) extends the
 existing complexity, coverage and full CI requirements:
 
-- [Layer/import and transitive reachability checks](../../architecture_flow_test.go) reject upward/same-level dependencies and reasoning/replay paths to effect implementations.
-- [SQL ownership checks](../../architecture_ownership_test.go) reject foreign lifecycle writes and shared-handoff payload/status bypasses.
-- [SQL classifier tests](../../architecture_sql_test.go) cover quoted identifiers, comments, CTEs, inserts/upserts and update columns.
+- [Layer/import and transitive reachability checks](../../internal/architecture/imports_test.go) reject upward/same-level dependencies and reasoning/replay paths to effect implementations.
+- [SQL ownership checks](../../internal/architecture/ownership_test.go) reject foreign lifecycle writes and shared-handoff payload/status bypasses.
+- [SQL classifier tests](../../internal/architecture/sql_test.go) cover quoted identifiers, comments, CTEs, inserts/upserts and update columns.
 - Contract isolation and final-authorization construction checks separate ports from adapters and upstream services.
 - Regression tests prove rollback, identities, recovery, cancellation, fail-closed routing and current readiness.
 

@@ -1,193 +1,178 @@
 package app_test
 
 import (
-	"context"
-	"database/sql"
-	"os"
+	"errors"
+	"io/fs"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
-func TestJSONLReplayAppendsEvents(t *testing.T) {
-	ctx := context.Background()
-	dir := t.TempDir()
+func TestJSONLReplayAppendsEventsAndResumesFromItsCheckpoint(t *testing.T) {
+	t.Parallel()
 	db := storagetest.OpenTemp(t)
+	path := writeTrace(t, joinLines(vibrationLine("evt-1", "2026-01-01T00:00:00Z"), vibrationLine("evt-2", "2026-01-01T00:01:00Z")))
+	conn := newJSONL(t, db, eventlog.NewEventLog(db), "default", path, "test-connector")
 
-	tracePath := filepath.Join(dir, "trace.jsonl")
-	if err := os.WriteFile(tracePath, []byte(`
-{"id":"evt-1","type":"motor.vibration.observed","schema_version":"1.0","tenant_id":"default","source":"sim","partition_key":"motor-17","entity":{"type":"motor","id":"motor-17"},"event_time":"2026-01-01T00:00:00Z","ingested_at":"2026-01-01T00:00:01Z","classification":"internal","data":{"rms_mm_s":5.0}}
-{"id":"evt-2","type":"motor.vibration.observed","schema_version":"1.0","tenant_id":"default","source":"sim","partition_key":"motor-17","entity":{"type":"motor","id":"motor-17"},"event_time":"2026-01-01T00:01:00Z","ingested_at":"2026-01-01T00:01:01Z","classification":"internal","data":{"rms_mm_s":6.0}}
-`), 0o600); err != nil {
-		t.Fatalf("write trace: %v", err)
+	for step, want := range []struct {
+		trace string
+		count int
+	}{
+		{trace: "", count: 2},
+		{trace: "", count: 0},
+		{trace: joinLines(vibrationLine("evt-3", "2026-01-01T00:02:00Z")), count: 1},
+	} {
+		appendToTrace(t, path, want.trace)
+		if count, err := conn.Run(t.Context()); err != nil || count != want.count {
+			t.Fatalf("run %d appended %d, err = %v, want %d", step+1, count, err, want.count)
+		}
 	}
+	if got := countRows(t, db, "event_log"); got != 3 {
+		t.Fatalf("event log holds %d events, want 3", got)
+	}
+}
 
-	log := eventlog.NewEventLog(db)
-	conn := newJSONL(t, db, log, "default", tracePath, "test-connector")
-	count, err := conn.Run(ctx)
-	if err != nil {
-		t.Fatalf("run connector: %v", err)
+func TestJSONLReplayAppendsALargeTraceAcrossBatches(t *testing.T) {
+	t.Parallel()
+	const events = 205
+	db := storagetest.OpenTemp(t)
+	lines := make([]string, events)
+	for i := range lines {
+		lines[i] = vibrationLine("evt-"+strconv.Itoa(i), "2026-01-01T00:00:00Z")
 	}
-	if count != 2 {
-		t.Fatalf("expected 2 appended events, got %d", count)
-	}
+	path := writeTrace(t, joinLines(lines...))
 
-	// Running again should append nothing because the checkpoint advanced.
-	count, err = conn.Run(ctx)
-	if err != nil {
-		t.Fatalf("second run: %v", err)
-	}
-	if count != 0 {
-		t.Fatalf("expected 0 events on replay, got %d", count)
+	count, err := newJSONL(t, db, eventlog.NewEventLog(db), "default", path, "batches").Run(t.Context())
+
+	if err != nil || count != events || countRows(t, db, "event_log") != events {
+		t.Fatalf("appended %d, err = %v, event log holds %d, want %d", count, err, countRows(t, db, "event_log"), events)
 	}
 }
 
 func TestJSONLReplayFillsMissingTenantID(t *testing.T) {
-	ctx := context.Background()
-	dir := t.TempDir()
+	t.Parallel()
 	db := storagetest.OpenTemp(t)
+	line := strings.Replace(vibrationLine("evt-1", "2026-01-01T00:00:00Z"), `"tenant_id":"default",`, "", 1)
+	path := writeTrace(t, joinLines(line))
 
-	tracePath := filepath.Join(dir, "trace.jsonl")
-	if err := os.WriteFile(tracePath, []byte(`
-{"id":"evt-1","type":"motor.vibration.observed","schema_version":"1.0","source":"sim","partition_key":"motor-17","entity":{"type":"motor","id":"motor-17"},"event_time":"2026-01-01T00:00:00Z","ingested_at":"2026-01-01T00:00:01Z","classification":"internal","data":{"rms_mm_s":5.0}}
-`), 0o600); err != nil {
-		t.Fatalf("write trace: %v", err)
-	}
-
-	log := eventlog.NewEventLog(db)
-	conn := newJSONL(t, db, log, "default", tracePath, "")
-	if _, err := conn.Run(ctx); err != nil {
-		t.Fatalf("run connector: %v", err)
+	if _, err := newJSONL(t, db, eventlog.NewEventLog(db), "default", path, "").Run(t.Context()); err != nil {
+		t.Fatal(err)
 	}
 
 	var tenantID string
-	if err := db.QueryRowContext(ctx, "SELECT tenant_id FROM event_log WHERE event_id = ?", "evt-1").Scan(&tenantID); err != nil {
-		t.Fatalf("query event: %v", err)
+	if err := db.QueryRowContext(t.Context(), "SELECT tenant_id FROM event_log WHERE event_id = ?", "evt-1").Scan(&tenantID); err != nil {
+		t.Fatal(err)
 	}
 	if tenantID != "default" {
-		t.Fatalf("expected tenant default, got %s", tenantID)
+		t.Fatalf("tenant = %q, want default", tenantID)
 	}
 }
 
 func TestJSONLReplayQuarantinesMalformedAndSchemaInvalidLines(t *testing.T) {
-	ctx := context.Background()
-	dir := t.TempDir()
+	t.Parallel()
 	db := storagetest.OpenTemp(t)
+	registerBuiltinSchema(t, db, "motor.vibration.observed/1.0")
+	unknownField := strings.Replace(vibrationLine("evt-bad", "2026-01-01T00:00:00Z"), `"rms_mm_s":5.0`, `"unknown":5`, 1)
+	path := writeTrace(t, joinLines("not-json", unknownField))
 
-	tracePath := filepath.Join(dir, "trace.jsonl")
-	contents := "not-json\n" +
-		`{"id":"evt-bad","type":"motor.vibration.observed","schema_version":"1.0","tenant_id":"default","source":"sim","partition_key":"motor-17","entity":{"type":"motor","id":"motor-17"},"event_time":"2026-01-01T00:00:00Z","ingested_at":"2026-01-01T00:00:01Z","classification":"internal","data":{"unknown":5}}` + "\n"
-	if err := os.WriteFile(tracePath, []byte(contents), 0o600); err != nil {
-		t.Fatal(err)
+	count, err := newJSONL(t, db, eventlog.NewEventLog(db).RequireSchemaValidation(), "default", path, "mixed").Run(t.Context())
+	if err != nil || count != 0 {
+		t.Fatalf("appended %d, err = %v, want only quarantined lines", count, err)
 	}
-	log := eventlog.NewEventLog(db).RequireSchemaValidation()
-	// The deployment path normally registers schemas. This test registers the
-	// built-in schema directly to exercise the connector boundary in isolation.
-	definition, ok := spec.LookupEventSchema("motor.vibration.observed/1.0")
-	if !ok {
-		t.Fatal("vibration schema is not registered in the built-in catalog")
-	}
-	schemaJSON, err := spectest.EventSchemaJSON(definition)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		return spectest.RegisterEventSchema(ctx, tx, definition, schemaJSON, "2026-08-12T12:00:00Z")
-	}); err != nil {
-		t.Fatal(err)
-	}
-	conn := newJSONL(t, db, log, "default", tracePath, "malformed-test")
-	count, err := conn.Run(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if count != 0 {
-		t.Fatalf("quarantined lines appended %d events", count)
-	}
-	var quarantined int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM event_quarantine WHERE tenant_id = 'default'").Scan(&quarantined); err != nil {
-		t.Fatal(err)
-	}
-	if quarantined != 2 {
-		t.Fatalf("quarantined rows = %d, want 2", quarantined)
+
+	want := map[string]string{"mixed:line:1": "malformed_json", "evt-bad": "schema_invalid"}
+	if got := quarantine(t, db); !reflect.DeepEqual(got, want) {
+		t.Fatalf("quarantine = %v, want %v", got, want)
 	}
 	var raw string
-	if err := db.QueryRowContext(ctx, "SELECT json_extract(payload_json, '$.data.raw') FROM event_quarantine WHERE reason_code = 'malformed_json'").Scan(&raw); err != nil {
-		t.Fatal(err)
-	}
-	if raw != "not-json" {
-		t.Fatalf("raw quarantine payload = %q", raw)
+	if err := db.QueryRowContext(t.Context(), "SELECT json_extract(payload_json, '$.data.raw') FROM event_quarantine WHERE reason_code = 'malformed_json'").Scan(&raw); err != nil || raw != "not-json" {
+		t.Fatalf("raw quarantine payload = %q, err = %v, want the original line", raw, err)
 	}
 }
 
-// TestJSONLReplayQuarantineIDsAreConnectorScoped guards A-049 F1: two traces
-// ingested by the same tenant whose malformed lines share a line number must
-// not collide on (tenant_id, event_id). A bare "line:<N>" quarantine ID made
-// the second run fail with a conflicting-payload error and corrupt the first
-// record; the ID must be connector-scoped.
+func TestJSONLReplayQuarantinesAnEnvelopeOfAnotherTenant(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	foreign := strings.Replace(vibrationLine("evt-foreign", "2026-01-01T00:00:00Z"), `"tenant_id":"default"`, `"tenant_id":"other"`, 1)
+	path := writeTrace(t, joinLines(foreign, vibrationLine("evt-ok", "2026-01-01T00:00:00Z")))
+
+	count, err := newJSONL(t, db, eventlog.NewEventLog(db), "default", path, "tenants").Run(t.Context())
+
+	if err != nil || count != 1 {
+		t.Fatalf("appended %d, err = %v, want the valid event only", count, err)
+	}
+	if got := quarantine(t, db); !reflect.DeepEqual(got, map[string]string{"evt-foreign": "envelope_invalid"}) {
+		t.Fatalf("quarantine = %v, want the foreign event as envelope_invalid", got)
+	}
+}
+
 func TestJSONLReplayQuarantineIDsAreConnectorScoped(t *testing.T) {
-	ctx := context.Background()
-	dir := t.TempDir()
+	t.Parallel()
 	db := storagetest.OpenTemp(t)
-
 	log := eventlog.NewEventLog(db)
 
-	for i, connectorID := range []string{"replay:trace-a", "replay:trace-b"} {
-		tracePath := filepath.Join(dir, connectorID[len("replay:"):]+".jsonl")
-		// Line 1 of each trace is malformed with a distinct payload.
-		if err := os.WriteFile(tracePath, []byte("not-json-"+connectorID+"\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		conn := newJSONL(t, db, log, "default", tracePath, connectorID)
-		if _, err := conn.Run(ctx); err != nil {
-			t.Fatalf("run %d (%s): %v", i, connectorID, err)
+	for _, connectorID := range []string{"replay:trace-a", "replay:trace-b"} {
+		path := writeTrace(t, "not-json-"+connectorID+"\n")
+		if _, err := newJSONL(t, db, log, "default", path, connectorID).Run(t.Context()); err != nil {
+			t.Fatalf("%s: %v", connectorID, err)
 		}
 	}
 
-	var quarantined int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM event_quarantine WHERE tenant_id = 'default'").Scan(&quarantined); err != nil {
-		t.Fatal(err)
-	}
-	if quarantined != 2 {
-		t.Fatalf("quarantined rows = %d, want 2 (one per connector, no collision)", quarantined)
+	want := map[string]string{"replay:trace-a:line:1": "malformed_json", "replay:trace-b:line:1": "malformed_json"}
+	if got := quarantine(t, db); !reflect.DeepEqual(got, want) {
+		t.Fatalf("quarantine = %v, want one record per connector for the same line number", got)
 	}
 }
 
-// TestJSONLReplayQuarantinesOversizedLine guards A-049 F4: an oversized line is
-// quarantined as line_too_large and ingestion continues to the next line,
-// instead of aborting the whole replay with a scanner "token too long" error.
-func TestJSONLReplayQuarantinesOversizedLine(t *testing.T) {
-	ctx := context.Background()
-	dir := t.TempDir()
+func TestJSONLReplayQuarantinesAnOversizedLineAndContinues(t *testing.T) {
+	t.Parallel()
 	db := storagetest.OpenTemp(t)
+	path := writeTrace(t, joinLines(strings.Repeat("a", 70*1024), vibrationLine("evt-after", "2026-01-01T00:00:00Z")))
 
-	oversized := strings.Repeat("a", 70*1024)
-	valid := `{"id":"evt-after","type":"motor.vibration.observed","schema_version":"1.0","tenant_id":"default","source":"sim","partition_key":"motor-17","entity":{"type":"motor","id":"motor-17"},"event_time":"2026-01-01T00:00:00Z","ingested_at":"2026-01-01T00:00:01Z","classification":"internal","data":{"rms_mm_s":5.0}}`
-	tracePath := filepath.Join(dir, "trace.jsonl")
-	if err := os.WriteFile(tracePath, []byte(oversized+"\n"+valid+"\n"), 0o600); err != nil {
+	count, err := newJSONL(t, db, eventlog.NewEventLog(db), "default", path, "oversized").Run(t.Context())
+
+	if err != nil || count != 1 {
+		t.Fatalf("appended %d, err = %v, want the valid line after the oversized one", count, err)
+	}
+	if got := quarantine(t, db); !reflect.DeepEqual(got, map[string]string{"oversized:line:1": "line_too_large"}) {
+		t.Fatalf("quarantine = %v, want the oversized line as line_too_large", got)
+	}
+}
+
+func TestJSONLReplayCountsBlankLinesAndStripsLineTerminators(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	path := writeTrace(t, "\n\r\nbad\r\n")
+
+	if _, err := newJSONL(t, db, eventlog.NewEventLog(db), "default", path, "crlf").Run(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 
-	log := eventlog.NewEventLog(db)
-	conn := newJSONL(t, db, log, "default", tracePath, "oversized-test")
-	count, err := conn.Run(ctx)
-	if err != nil {
-		t.Fatalf("run connector: %v", err)
+	if got := quarantine(t, db); !reflect.DeepEqual(got, map[string]string{"crlf:line:3": "malformed_json"}) {
+		t.Fatalf("quarantine = %v, want only line 3 quarantined (blank lines are counted, not quarantined)", got)
 	}
-	if count != 1 {
-		t.Fatalf("appended = %d, want 1 (the valid line after the oversized one)", count)
+	var raw string
+	if err := db.QueryRowContext(t.Context(), "SELECT json_extract(payload_json, '$.data.raw') FROM event_quarantine").Scan(&raw); err != nil || raw != "bad" {
+		t.Fatalf("raw = %q, err = %v, want the line without its terminator", raw, err)
 	}
-	var reason string
-	if err := db.QueryRowContext(ctx, "SELECT reason_code FROM event_quarantine WHERE tenant_id = 'default'").Scan(&reason); err != nil {
-		t.Fatal(err)
+}
+
+func TestJSONLReplayNamesAMissingTrace(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	conn := newJSONL(t, db, eventlog.NewEventLog(db), "default", filepath.Join(t.TempDir(), "absent.jsonl"), "")
+
+	_, err := conn.Run(t.Context())
+
+	if !errors.Is(err, fs.ErrNotExist) || !strings.Contains(err.Error(), "open trace file") {
+		t.Fatalf("err = %v, want fs.ErrNotExist wrapped by open trace file", err)
 	}
-	if reason != "line_too_large" {
-		t.Fatalf("quarantine reason = %q, want line_too_large", reason)
+	if got := countRows(t, db, "connector_checkpoints"); got != 0 {
+		t.Fatalf("a missing trace left %d checkpoints", got)
 	}
 }

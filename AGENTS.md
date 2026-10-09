@@ -94,6 +94,7 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/api` - JSON/HTTP plus Server-Sent Events
 - `internal/telemetry` - OpenTelemetry traces, metrics, logs
 - `internal/storage` - SQLite WAL via `modernc.org/sqlite`
+- `internal/architecture` - repository-wide architecture and quality gates: tests only, no production code; the only place for tests that span modules, and the repository root holds none (see [gate index](internal/architecture/README.md))
 - `internal/storage/storagetest` - test support only: opens a migrated temporary database from a template built once per migration set; import it from tests, never from production code
 - `internal/kernel` - the shared pure vocabulary: durable time text (`FormatTime`, `ParseTime`, `ParseStoredTime`) and digest text (`EncodeDigest`, `DecodeDigest`). Standard library only: no database, file, network, random source or clock read. Any production package may import it without declaring an `allowedImports` edge; `TestKernelStaysPure` enforces the purity. A symbol is admitted only when two or more modules need it and it is a stable representation rule, not business behaviour (see [kernel vocabulary](internal/kernel/UBIQUITOUS_LANGUAGE.md))
 - `internal/sources` - injected time and identity sources: physical/virtual clock, random/deterministic id generators and the id prefixes
@@ -132,7 +133,7 @@ Primary commands:
 Important behavior:
 
 - `make build` skips gracefully until `cmd/` exists.
-- `make test` and `go test ./...` operate on the root scaffold package until real packages exist.
+- `make test` and `go test ./...` run every package, including the repository-wide gates in `internal/architecture` (indexed in its README).
 - `make lint` depends on `golangci-lint` and may fail if the environment cannot write to its cache.
 
 See [.agents/context/testing.md](.agents/context/testing.md) for the testing and validation bar. The acceptance gates live in [docs/design/IMPLEMENTATION_PLAN.md](docs/design/IMPLEMENTATION_PLAN.md); golden replay and the predictive-maintenance suite are the correctness contracts.
@@ -168,7 +169,7 @@ See [.agents/context/testing.md](.agents/context/testing.md) for the testing and
   derive it, do so (`go list -m`). Do not add new string literals for it. The
   unavoidable copies (protobuf `go_package`, pre-commit `goimports -local`,
   telemetry instrumentation scope) are pinned by
-  `TestModulePathSingleSourceOfTruth` in `module_path_test.go`.
+  `TestModulePathSingleSourceOfTruth` in `internal/architecture/module_path_test.go`.
 
 See [.agents/context/go-style.md](.agents/context/go-style.md) for the repo-specific style rules.
 
@@ -218,10 +219,10 @@ comments, break formatting and leave the compiler to find what they missed.
 - Rewrite a call or expression pattern across files: `gofmt -r 'old -> new'`.
 - Fix imports after any edit: `goimports -w`.
 - For anything else (remove a parameter or struct field, change a signature,
-  move comments, edit an entry of a table literal such as `allowedImports`,
+  move comments, edit an entry of a table literal such as `allowedImports` (`internal/architecture/import_rules_test.go`),
   strip or restructure many functions), write a small `go/parser` + `go/ast` +
   `go/format` program, run it over the files, and keep it outside the repo
-  (the session scratchpad). The architecture tests in the repo root show the
+  (the session scratchpad). The gates in `internal/architecture` show the
   pattern.
 - `sed`, `awk` and regex are for non-Go text only: Markdown, YAML, JSON, the
   Makefile.

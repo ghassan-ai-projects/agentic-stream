@@ -1,89 +1,49 @@
 package app_test
 
 import (
-	"context"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
-func TestEngineCreatesTriggerAndSchedulerItem(t *testing.T) {
-	ctx := context.Background()
-	db := storagetest.OpenTemp(t)
+func cognitionSpec() spec.CompiledSpec {
+	compiled := restartSpec()
+	compiled.Time.MaxOutOfOrderness = "2m"
+	compiled.Inputs = []spec.Input{{Name: "level", EventType: "test.observed", EntityType: "thing"}}
+	compiled.Situation.Phases = []spec.Phase{{Name: "candidate", Severity: 10}}
+	compiled.Situation.Transitions = nil
+	compiled.Cognition = spec.Cognition{Triggers: []spec.Trigger{{
+		Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast", MaterialDelta: "delta.phase_changed",
+	}}}
+	return compiled
+}
 
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-		Time: spec.TimePolicy{
-			MaxOutOfOrderness: "2m",
-		},
-		Inputs: []spec.Input{
-			{Name: "level", EventType: "test.observed", EntityType: "thing"},
-		},
-		Windows: []spec.Window{
-			{Name: "tiny", Kind: "tumbling", Size: "1m", Emit: "early_and_close"},
-		},
-		Operators: []spec.Operator{
-			{Name: "level_latest", Kind: "aggregate", Inputs: []string{"level"}, Field: "data.level", Aggregate: "max", Window: "tiny", Output: "level"},
-		},
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Occurrence: spec.Occurrence{
-				OpenWhen: "features.level > 10",
-			},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
-		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:          "high",
-					When:          "features.level > 10",
-					Score:         "situation.severity",
-					Threshold:     5,
-					Lane:          "fast",
-					MaterialDelta: "delta.phase_changed",
-				},
-			},
-		},
-	}
+func TestANewSituationVersionReachesCognitionInTheSameTransactionWhenEnabled(t *testing.T) {
+	t.Parallel()
+	rig := newRigWithCognition(t, cognitionSpec(), true)
+	appendEnvelope(t, rig.log, thingEnvelope("evt-1", "test.observed", 0, map[string]any{"level": 15.0}))
+	runGlobal(t, rig.service)
 
-	log := eventlog.NewEventLog(db)
-	eng, err := newService(ctx, db, log, sources.Physical(), &compiled, "default", true)
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
+	if outcome := queryText(t, rig.db, "SELECT outcome FROM trigger_evaluations WHERE tenant_id = 'default'"); outcome != "admitted" {
+		t.Fatalf("trigger outcome = %q, want admitted", outcome)
 	}
+	if items := countRows(t, rig.db, "SELECT COUNT(*) FROM scheduler_items WHERE tenant_id = 'default'"); items != 1 {
+		t.Fatalf("scheduler items = %d, want 1", items)
+	}
+}
 
-	appendObservedEvent(t, log, "test.observed", "sim", contractsv1.EntityRef{Type: "thing", ID: "ent-1"}, map[string]any{"level": 15.0})
+func TestCognitionIsNotReachedWhenDisabled(t *testing.T) {
+	t.Parallel()
+	rig := newRigWithCognition(t, cognitionSpec(), false)
+	appendEnvelope(t, rig.log, thingEnvelope("evt-1", "test.observed", 0, map[string]any{"level": 15.0}))
+	runGlobal(t, rig.service)
 
-	if _, err := eng.RunGlobal(ctx, nil); err != nil {
-		t.Fatalf("run engine: %v", err)
+	if versions := countRows(t, rig.db, "SELECT COUNT(*) FROM situation_versions"); versions == 0 {
+		t.Fatal("no Situation version was published, so the scenario proves nothing")
 	}
-
-	var outcome string
-	if err := db.QueryRowContext(ctx,
-		"SELECT outcome FROM trigger_evaluations WHERE tenant_id = ?", "default",
-	).Scan(&outcome); err != nil {
-		t.Fatalf("query trigger: %v", err)
-	}
-	if outcome != "admitted" {
-		t.Fatalf("expected admitted trigger, got %s", outcome)
-	}
-
-	var itemCount int
-	if err := db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM scheduler_items WHERE tenant_id = ?", "default",
-	).Scan(&itemCount); err != nil {
-		t.Fatalf("count items: %v", err)
-	}
-	if itemCount != 1 {
-		t.Fatalf("expected one scheduler item, got %d", itemCount)
+	for _, table := range []string{"trigger_evaluations", "scheduler_items"} {
+		if rows := countRows(t, rig.db, "SELECT COUNT(*) FROM "+table); rows != 0 {
+			t.Fatalf("%s holds %d rows, want none with cognition disabled", table, rows)
+		}
 	}
 }

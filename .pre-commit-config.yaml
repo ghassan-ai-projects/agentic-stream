@@ -6,7 +6,7 @@
 #
 # The `-local` flag below groups this module's imports first. Its value must
 # match the module path declared in go.mod. pre-commit cannot interpolate it,
-# so TestModulePathSingleSourceOfTruth (module_path_test.go) pins the copy.
+# so TestModulePathSingleSourceOfTruth (internal/architecture/module_path_test.go) pins the copy.
 # ---------------------------------------------------------------------------
 
 repos:

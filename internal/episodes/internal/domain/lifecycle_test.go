@@ -1,8 +1,6 @@
 package domain
 
 import (
-	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
@@ -44,23 +42,6 @@ func TestRetryBudgetNeverRevivesSupersededEpisode(t *testing.T) {
 	}
 }
 
-func TestEpochRefusalRetainsSentinelCause(t *testing.T) {
-	t.Parallel()
-	unbound, killed, unexpected := errors.New("unbound"), errors.New("killed"), errors.New("store failed")
-	for _, test := range []struct {
-		err    error
-		reason string
-	}{{nil, ""}, {fmt.Errorf("wrapped: %w", unbound), "epoch_unbound"}, {fmt.Errorf("wrapped: %w", killed), "epoch_killed"}} {
-		reason, err := DecisionEpochRefusal(test.err, unbound, killed)
-		if err != nil || reason != test.reason {
-			t.Fatalf("refusal=%s error=%v", reason, err)
-		}
-	}
-	if reason, err := DecisionEpochRefusal(unexpected, unbound, killed); reason != "" || !errors.Is(err, unexpected) {
-		t.Fatalf("unexpected refusal=%s error=%v", reason, err)
-	}
-}
-
 func TestOutcomeIdentityRejectsStaleFenceBeforeWrongAttempt(t *testing.T) {
 	t.Parallel()
 	current := episodeledger.Identity{AttemptID: "current", Fence: 3}
@@ -69,5 +50,31 @@ func TestOutcomeIdentityRejectsStaleFenceBeforeWrongAttempt(t *testing.T) {
 	}
 	if got := OutcomeIdentityRejection(current, episodeledger.Identity{AttemptID: "wrong", Fence: 3}); got != episodeledger.RejectWrongAttempt {
 		t.Fatalf("wrong attempt=%s", got)
+	}
+}
+
+func TestTerminalAttemptStatusGivesDecisionValidationPrecedenceOverExecutorStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		outcome       *Outcome
+		hasDecision   bool
+		validDecision bool
+		want          episodeledger.AttemptStatus
+	}{
+		{name: "valid decision", outcome: &Outcome{Status: "declined"}, hasDecision: true, validDecision: true, want: episodeledger.AttemptProduced},
+		{name: "rejected decision", outcome: &Outcome{}, hasDecision: true, want: episodeledger.AttemptFailed},
+		{name: "no decision, no status", outcome: &Outcome{}, want: episodeledger.AttemptDeclined},
+		{name: "no decision, executor status", outcome: &Outcome{Status: string(episodeledger.AttemptTimedOut)}, want: episodeledger.AttemptTimedOut},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := TerminalAttemptStatus(tt.outcome, tt.hasDecision, tt.validDecision); got != tt.want {
+				t.Fatalf("terminalAttemptStatus = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

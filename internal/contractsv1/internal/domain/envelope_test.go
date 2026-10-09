@@ -81,30 +81,24 @@ func TestPartitionIDIsStableAndBounded(t *testing.T) {
 	}
 }
 
-func TestIntentDigestExcludesItselfAndVerifies(t *testing.T) {
+func TestPartitionIDsAreFrozenFNV1aOfTenantNulKey(t *testing.T) {
 	t.Parallel()
 
-	document := map[string]any{"intent_id": "int-1", "type": "inspect", "parameters": map[string]any{"depth": 2}}
-	digest, err := IntentDigest(document)
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		tenant, key string
+		count, want int
+	}{
+		{"default", "motor-1", PartitionCount, 49},
+		{"default", "motor-2", PartitionCount, 24},
+		{"tenant-a", "motor-1", PartitionCount, 32},
+		{"default", "motor-1", 8, 1},
+		{"default", "motor-1", -3, 49},
 	}
-	document["intent_digest"] = digest
-	if again, err := IntentDigest(document); err != nil || again != digest {
-		t.Fatalf("digest must ignore its own field: %q, %v", again, err)
-	}
-	if !VerifyIntentDigest(document) {
-		t.Fatal("valid digest did not verify")
-	}
-
-	tampered := map[string]any{"intent_id": "int-1", "type": "shutdown", "parameters": map[string]any{"depth": 2}, "intent_digest": digest}
-	if VerifyIntentDigest(tampered) {
-		t.Fatal("tampered intent verified")
-	}
-	if VerifyIntentDigest(map[string]any{"intent_id": "int-1"}) {
-		t.Fatal("intent without a digest verified")
-	}
-	if VerifyIntentDigest(map[string]any{"intent_digest": 42}) {
-		t.Fatal("non-string digest verified")
+	for _, tt := range tests {
+		envelope := validEnvelope()
+		envelope.TenantID, envelope.PartitionKey = tt.tenant, tt.key
+		if got := envelope.PartitionID(tt.count); got != tt.want {
+			t.Errorf("PartitionID(%q, %q, %d) = %d, want %d", tt.tenant, tt.key, tt.count, got, tt.want)
+		}
 	}
 }

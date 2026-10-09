@@ -5,42 +5,66 @@ import (
 	"time"
 )
 
-// P8 (docs/new-design/PHASE_P8_ROLLOUT.md, exit gate 6): latency/freshness
-// SLOs are measured and exported — the dispatch→decision percentiles and the
-// stale-decision rejection rate appear in the /metrics payload.
-
-func TestLatencyPercentilesAndStaleRejectionsAreMeasured(t *testing.T) {
-	r := NewRuntime(time.Now().UTC(), nil)
+func TestPercentileOrdersRecordedDurations(t *testing.T) {
+	t.Parallel()
+	hundred := make([]time.Duration, 0, 100)
 	for i := 1; i <= 100; i++ {
-		r.ObserveDuration(time.Duration(i) * time.Millisecond)
+		hundred = append(hundred, time.Duration(i)*time.Millisecond)
 	}
-	if got := r.Percentile(50); got != 50*time.Millisecond {
-		t.Fatalf("p50 = %v, want 50ms", got)
+	tests := []struct {
+		name      string
+		durations []time.Duration
+		percent   float64
+		want      time.Duration
+	}{
+		{"p50 of 1..100ms", hundred, 50, 50 * time.Millisecond},
+		{"p95 of 1..100ms", hundred, 95, 95 * time.Millisecond},
+		{"p99 of 1..100ms", hundred, 99, 99 * time.Millisecond},
+		{"p0 is the smallest of unordered input", []time.Duration{30, 10, 20}, 0, 10},
+		{"p100 is the largest of unordered input", []time.Duration{30, 10, 20}, 100, 30},
+		{"no durations", nil, 95, 0},
 	}
-	if got := r.Percentile(95); got != 95*time.Millisecond {
-		t.Fatalf("p95 = %v, want 95ms", got)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runtime := NewRuntime(time.Unix(1, 0), nil)
+			for _, duration := range tc.durations {
+				runtime.ObserveDuration(duration)
+			}
+			if got := runtime.Percentile(tc.percent); got != tc.want {
+				t.Fatalf("Percentile(%v) = %v, want %v", tc.percent, got, tc.want)
+			}
+		})
 	}
-	if got := r.Percentile(99); got != 99*time.Millisecond {
-		t.Fatalf("p99 = %v, want 99ms", got)
+}
+
+func TestLatencySnapshotReportsNanosecondsAndClampsNegativeDurations(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		durations []time.Duration
+		want      uint64
+	}{
+		{"nothing recorded yet", nil, 0},
+		{"one duration", []time.Duration{1500 * time.Microsecond}, 1_500_000},
+		{"an anomalous clock cannot wrap the metric", []time.Duration{-time.Second}, 0},
 	}
-	r.ObserveStaleRejection()
-	r.ObserveStaleRejection()
-	if r.Snapshot()["agentic_stream_stale_rejections_total"] != 2 {
-		t.Fatalf("stale rejection counter = %d, want 2",
-			r.Snapshot()["agentic_stream_stale_rejections_total"])
-	}
-	// ISSUE-061: recovered stale episodes are counted separately from true
-	// losses, so a dense trace's dispatch churn is visible in /metrics.
-	r.ObserveStaleRebind()
-	if r.Snapshot()["agentic_stream_stale_rebinds_total"] != 1 {
-		t.Fatalf("stale re-bind counter = %d, want 1",
-			r.Snapshot()["agentic_stream_stale_rebinds_total"])
-	}
-	// ISSUE-061: a re-bind that failed on an invalid live snapshot (corruption)
-	// is counted under its own counter, distinct from benign stale rejections.
-	r.ObserveRebindFailure()
-	if r.Snapshot()["agentic_stream_rebind_failures_total"] != 1 {
-		t.Fatalf("re-bind failure counter = %d, want 1",
-			r.Snapshot()["agentic_stream_rebind_failures_total"])
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runtime := NewRuntime(time.Unix(1, 0), nil)
+			for _, duration := range tc.durations {
+				runtime.ObserveDuration(duration)
+			}
+			snapshot := runtime.LatencySnapshot()
+			for _, name := range []string{"p50", "p95", "p99"} {
+				if got := snapshot["agentic_stream_dispatch_decision_"+name+"_ns"]; got != tc.want {
+					t.Errorf("%s = %d, want %d", name, got, tc.want)
+				}
+			}
+			if len(snapshot) != 3 {
+				t.Errorf("latency snapshot has %d entries, want 3", len(snapshot))
+			}
+		})
 	}
 }

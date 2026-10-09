@@ -61,6 +61,19 @@ func TestTimerFeatureKeysFallBackToTheEntity(t *testing.T) {
 	}
 }
 
+func TestTimerWithoutTheExpectedLastEventIsNotMatched(t *testing.T) {
+	t.Parallel()
+	timers := []DueTimer{{ID: "t", OperatorID: "hb", StateKey: "m1", ExpectedEventID: "evt-2"}}
+	features := []operators.Feature{
+		{OperatorID: "hb", StateKey: "m1", InputEventIDs: nil},
+		{OperatorID: "hb", StateKey: "m1", InputEventIDs: []string{"evt-2", "evt-3"}},
+		{OperatorID: "other", StateKey: "m1", InputEventIDs: []string{"evt-2"}},
+	}
+	if firings := MatchTimerFeatures(timers, features, map[string]struct{}{}); len(firings) != 0 {
+		t.Fatalf("firings = %+v, want none: only the last input event of the right operator fires the timer", firings)
+	}
+}
+
 func TestEnrichTimerFeatureRecordsProvenance(t *testing.T) {
 	t.Parallel()
 	feature := operators.Feature{Traceparent: "tp", Tracestate: "ts"}
@@ -94,9 +107,14 @@ func TestHeartbeatTimersArmOnlyHeartbeatOperatorsWithAnEvent(t *testing.T) {
 	if !strings.HasPrefix(byKey["m1"].ID, "tmr_") || byKey["m1"].ID == byKey["m2"].ID || !strings.Contains(string(byKey["m1"].Payload), `"expected_event_id":"evt-1"`) {
 		t.Fatalf("timer identity or payload = %+v", byKey["m1"])
 	}
-	again, _ := HeartbeatTimers("dep", "tenant", 1, specs, state)
-	if again[0].ID != timers[0].ID && again[0].ID != timers[1].ID {
-		t.Fatal("timer identity must be stable for the same due time")
+	again, err := HeartbeatTimers("dep", "tenant", 1, specs, state)
+	if err != nil || len(again) != 2 {
+		t.Fatalf("second derivation = %+v err=%v", again, err)
+	}
+	for _, timer := range again {
+		if timer.ID != byKey[timer.StateKey].ID {
+			t.Fatalf("timer identity of %s changed between derivations: %s then %s", timer.StateKey, byKey[timer.StateKey].ID, timer.ID)
+		}
 	}
 	bad := []spec.Operator{{Name: "hb", Kind: "missing_heartbeat", Duration: "soon"}}
 	if _, err := HeartbeatTimers("dep", "tenant", 1, bad, state); err == nil || !strings.Contains(err.Error(), "parse hb duration") {

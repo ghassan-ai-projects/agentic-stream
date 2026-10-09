@@ -1,11 +1,11 @@
 package spec_test
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,18 +13,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-// The real-world-sensor experiment depends on two spec surfaces it cannot see
-// change from its own repository: the compiled digest of the thermal spec,
-// which is the policy version every device command's policy digest is derived
-// from (the bench gateway allow-lists that digest), and the zone.* event
-// schemas its gateway and the Streams Simulator emit. Change a pin only
-// together with the named consumer. See
-// docs/unfinished-work-review-2026-10-08/EXPERIMENT_COMPATIBILITY.md.
-
 const zoneSchemasDigest = "sha256:eb765c6cd6ccfaf67c2be6ba2bae91694fb079020ddd065871ba1849e2f81a4d"
 
-// experimentSpecs are the specs the experiment runs and the canonical example
-// they derive from.
 var experimentSpecs = []struct{ path, digest string }{
 	{"../../docs/design/examples/zone-thermal.situation.yaml", "sha256:d5907b52280fc34ec1d17c88e905c2ac79ad4358eb4bb2253e6f7efdf0f925fb"},
 	{"../../examples/real-world-sensor/zone-thermal-sim.situation.yaml", "sha256:a6153efe15c9a2b5ea7706d8e8f62312263b8c994eb6839caeb45b84412ae171"},
@@ -34,13 +24,16 @@ var experimentSpecs = []struct{ path, digest string }{
 func TestExperimentSpecsCompileToTheirPinnedDigests(t *testing.T) {
 	t.Parallel()
 	for _, pinned := range experimentSpecs {
-		compiled, err := spec.CompileFile(context.Background(), pinned.path)
-		if err != nil {
-			t.Fatalf("%s no longer compiles; the real-world-sensor runbooks run it: %v", pinned.path, err)
-		}
-		if compiled.Digest != pinned.digest {
-			t.Errorf("%s compiles to %s; update the real-world-sensor runbook and the gateway --device-policy-digest in the same change, then this pin", pinned.path, compiled.Digest)
-		}
+		t.Run(filepath.Base(pinned.path), func(t *testing.T) {
+			t.Parallel()
+			compiled, err := spec.CompileFile(t.Context(), pinned.path)
+			if err != nil {
+				t.Fatalf("%s no longer compiles; the real-world-sensor runbooks run it: %v", pinned.path, err)
+			}
+			if compiled.Digest != pinned.digest {
+				t.Errorf("%s compiles to %s; update the real-world-sensor runbook and the gateway --device-policy-digest in the same change, then this pin (docs/unfinished-work-review-2026-10-08/EXPERIMENT_COMPATIBILITY.md)", pinned.path, compiled.Digest)
+			}
+		})
 	}
 }
 
@@ -48,7 +41,7 @@ func TestExperimentZoneEventSchemasAreUnchanged(t *testing.T) {
 	t.Parallel()
 	digest := zoneSchemaRegistryDigest(t)
 	if digest != zoneSchemasDigest {
-		t.Errorf("zone.* event schemas changed (%s); update the real-world-sensor DHT11 mapping and the Streams Simulator thermal domain first", digest)
+		t.Errorf("zone.* event schemas changed (%s); update the real-world-sensor DHT11 mapping and the Streams Simulator thermal domain first (docs/unfinished-work-review-2026-10-08/EXPERIMENT_COMPATIBILITY.md)", digest)
 	}
 }
 

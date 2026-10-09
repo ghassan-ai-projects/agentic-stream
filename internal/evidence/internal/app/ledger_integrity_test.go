@@ -1,77 +1,39 @@
 package app
 
-import (
-	"context"
-	"strings"
-	"testing"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
-)
+import "testing"
 
 func TestLedgerRejectsCorruptedCompletedResults(t *testing.T) {
+	t.Parallel()
 	tests := []struct{ name, mutation, want string }{
 		{"size", "result_bytes = -1", "stored evidence result is malformed"},
 		{"row count", "row_count = -1", "stored evidence result is malformed"},
 		{"digest size", "result_sha256 = X'00'", "stored evidence result is malformed"},
 		{"digest mismatch", "result_sha256 = zeroblob(32)", "stored evidence result digest mismatch"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			db := openLedgerDB(t)
-			ledger := &Ledger{Store: store.New(db, allowOwner, "epoch-1"), LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Now: fixedLedgerClock()}
-			call := ledgerTestCall()
-			reservation, err := ledger.Reserve(t.Context(), call, "token-1", "epoch-1")
-			if err != nil {
-				t.Fatal(err)
-			}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			ledger, db := newLedger(t)
+			reservation := reserveTestCall(t, ledger)
 			if err := ledger.Complete(t.Context(), reservation, QueryResult{JSON: []byte(`[]`), RowCount: 1}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := db.ExecContext(t.Context(), "PRAGMA ignore_check_constraints = ON"); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := db.ExecContext(t.Context(), "UPDATE evidence_call_ledger SET "+tt.mutation); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := ledger.Reserve(t.Context(), call, "token-1", "epoch-1"); err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("reserve corrupted result = %v, want %s", err, tt.want)
-			}
+			execSQL(t, db, "PRAGMA ignore_check_constraints = ON")
+			execSQL(t, db, "UPDATE evidence_call_ledger SET "+test.mutation)
+			_, err := ledger.Reserve(t.Context(), ledgerTestCall(), "token-1", "epoch-1")
+			requireContains(t, err, test.want)
 		})
 	}
 }
 
-func TestLedgerCompletionSurvivesCancellation(t *testing.T) {
-	db := openLedgerDB(t)
-	ledger := &Ledger{Store: store.New(db, allowOwner, "epoch-1"), LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Now: fixedLedgerClock()}
-	reservation, err := ledger.Reserve(t.Context(), ledgerTestCall(), "token-1", "epoch-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if err := ledger.Complete(ctx, reservation, QueryResult{JSON: []byte(`[]`)}); err != nil {
-		t.Fatal(err)
-	}
-	if status, _ := readLedgerStatus(t, db, "call-1"); status != "completed" {
-		t.Fatalf("status = %s", status)
-	}
-}
-
-func TestReservationIdentityErrorsPrecedeResultIntegrity(t *testing.T) {
-	db := openLedgerDB(t)
-	ledger := &Ledger{Store: store.New(db, allowOwner, "epoch-1"), LeaseOwner: "owner-1", RuntimeEpoch: "epoch-1", Now: fixedLedgerClock()}
-	if _, err := ledger.Reserve(t.Context(), ledgerTestCall(), "original", "epoch-1"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.ExecContext(t.Context(), "PRAGMA ignore_check_constraints = ON"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.ExecContext(t.Context(), "UPDATE evidence_call_ledger SET status = 'completed', result_bytes = -1"); err != nil {
-		t.Fatal(err)
-	}
+func TestLedgerReportsReuseBeforeResultIntegrity(t *testing.T) {
+	t.Parallel()
+	ledger, db := newLedger(t)
+	reserveTestCall(t, ledger)
+	execSQL(t, db, "PRAGMA ignore_check_constraints = ON")
+	execSQL(t, db, "UPDATE evidence_call_ledger SET status = 'completed', result_bytes = -1")
 	changed := ledgerTestCall()
 	changed.MaxBytes++
-	if _, err := ledger.Reserve(t.Context(), changed, "other", "epoch-1"); err == nil || !strings.Contains(err.Error(), "different request") {
-		t.Fatalf("error precedence = %v", err)
-	}
+	_, err := ledger.Reserve(t.Context(), changed, "token-1", "epoch-1")
+	requireContains(t, err, "different request")
 }

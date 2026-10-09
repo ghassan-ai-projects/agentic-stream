@@ -1,105 +1,76 @@
 package telemetry_test
 
 import (
-	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
-func TestRuntimeCountersAndMetricsAreLowCardinality(t *testing.T) {
+func TestMetricsHandlerServesTheRuntimeCountersWithoutLabels(t *testing.T) {
+	t.Parallel()
 	runtime := telemetry.NewRuntime(time.Unix(1, 0))
-	runtime.ObservePipeline(telemetry.PipelineReport{EventsIngested: 2, EventsProcessed: 3, EpisodesAdmitted: 1, EpisodesExecuted: 1, IntentsEvaluated: 1, CommandsDispatched: 1})
+	runtime.ObservePipeline(telemetry.PipelineReport{EventsIngested: 2, CommandsDispatched: 1})
 	runtime.ObserveFailure()
-	runtime.ObserveDeviceFrameError()
-	runtime.ObserveDeviceReconnect()
-	runtime.ObserveActionUnknownOutcome()
-	runtime.ObserveVerificationPending()
-	runtime.ObserveVerificationFailure()
-	runtime.ObserveLeaseExpiry()
-	runtime.ObserveSafeStateEntry()
-	runtime.ObserveLiveLineIngested()
-	runtime.ObserveLiveLineRejected()
-	if got := runtime.Snapshot()["agentic_stream_events_ingested_total"]; got != 2 {
-		t.Fatalf("events=%d", got)
-	}
-	for name := range map[string]struct{}{
-		"agentic_stream_device_frame_errors_total":     {},
-		"agentic_stream_device_reconnects_total":       {},
-		"agentic_stream_action_unknown_outcomes_total": {},
-		"agentic_stream_verification_pending_total":    {},
-		"agentic_stream_verification_failures_total":   {},
-		"agentic_stream_lease_expiries_total":          {},
-		"agentic_stream_safe_state_entries_total":      {},
-		"agentic_stream_live_lines_ingested_total":     {},
-		"agentic_stream_live_lines_rejected_total":     {},
+	response := httptest.NewRecorder()
+
+	telemetry.MetricsHandler(runtime).ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
+
+	lines := strings.Split(response.Body.String(), "\n")
+	for _, want := range []string{
+		"agentic_stream_events_ingested_total 2",
+		"agentic_stream_commands_dispatched_total 1",
+		"agentic_stream_pipeline_failures_total 1",
 	} {
-		if got := runtime.Snapshot()[name]; got != 1 {
-			t.Fatalf("%s=%d", name, got)
+		if !slices.Contains(lines, want) {
+			t.Errorf("metrics lack the line %q:\n%s", want, response.Body.String())
 		}
 	}
-	response := httptest.NewRecorder()
-	telemetry.MetricsHandler(runtime).ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", nil))
-	if !strings.Contains(response.Body.String(), "agentic_stream_pipeline_failures_total 1") || strings.Contains(response.Body.String(), "tenant") {
-		t.Fatalf("metrics=%s", response.Body.String())
+	if strings.ContainsAny(response.Body.String(), "{}") || strings.Contains(response.Body.String(), "tenant") {
+		t.Fatalf("metrics carry labels:\n%s", response.Body.String())
 	}
 }
 
-func TestDurableW3CContextBecomesOpenTelemetryLink(t *testing.T) {
-	exporter := tracetest.NewInMemoryExporter()
-	provider := trace.NewTracerProvider(trace.WithSyncer(exporter))
-	defer func() { _ = provider.Shutdown(context.Background()) }()
-
-	_, span := provider.Tracer("test").Start(context.Background(), "pipeline")
-	if !telemetry.AddLinkFromW3C(span, "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", "vendor=value") {
-		t.Fatal("expected valid W3C link")
+//nolint:paralleltest // Configure replaces the process-wide tracer provider and propagator.
+func TestSpansStartedThroughTheFacadeReachTheConfiguredProvider(t *testing.T) {
+	previousProvider, previousPropagator := otel.GetTracerProvider(), otel.GetTextMapPropagator()
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previousProvider)
+		otel.SetTextMapPropagator(previousPropagator)
+	})
+	provider, err := telemetry.Configure(t.Context(), "facade-test", "")
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
 	}
-	span.End()
+	exporter := tracetest.NewInMemoryExporter()
+	provider.RegisterSpanProcessor(trace.NewSimpleSpanProcessor(exporter))
+	t.Cleanup(func() { _ = provider.Shutdown(t.Context()) })
+
+	ctx, pipeline := telemetry.StartSpan(t.Context(), "pipeline")
+	linked := telemetry.AddLinkFromW3C(pipeline, "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", "")
+	telemetry.RecordError(pipeline, errors.New("boom"))
+	pipeline.End()
+	_, runtimeSpan := telemetry.NewRuntime(time.Unix(1, 0)).StartSpan(ctx, "runtime-step")
+	runtimeSpan.End()
 
 	spans := exporter.GetSpans()
-	if len(spans) != 1 || len(spans[0].Links) != 1 {
-		t.Fatalf("exported spans=%d links=%d", len(spans), len(spans[0].Links))
+	if len(spans) != 2 || spans[0].Name != "pipeline" || spans[1].Name != "runtime-step" {
+		t.Fatalf("exported spans = %v, want pipeline then runtime-step", spans)
 	}
-	if got := spans[0].Links[0].SpanContext.TraceID().String(); got != "4bf92f3577b34da6a3ce929d0e0e4736" {
-		t.Fatalf("linked trace id=%s", got)
+	if !linked || len(spans[0].Links) != 1 || spans[0].Status.Code != codes.Error {
+		t.Fatalf("pipeline span: linked=%v links=%d status=%+v; want one link and an error status", linked, len(spans[0].Links), spans[0].Status)
 	}
-}
-
-func TestOTLPHTTPProviderExportsSpans(t *testing.T) {
-	requests := make(chan struct{}, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/traces" {
-			t.Errorf("path=%s", r.URL.Path)
-		}
-		requests <- struct{}{}
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	previousProvider := otel.GetTracerProvider()
-	defer otel.SetTracerProvider(previousProvider)
-	provider, err := telemetry.Configure(context.Background(), "test-runtime", server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, span := provider.Tracer("test").Start(context.Background(), "exported")
-	span.End()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := provider.Shutdown(shutdownCtx); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-requests:
-	case <-shutdownCtx.Done():
-		t.Fatal("OTLP exporter did not send a request")
+	if spans[1].Parent.SpanID() != spans[0].SpanContext.SpanID() {
+		t.Fatal("the runtime span is not a child of the span in its context")
 	}
 }

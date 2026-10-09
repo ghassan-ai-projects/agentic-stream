@@ -3,8 +3,12 @@
 # ---------------------------------------------------------------------------
 # Runs on push/PR to main. Pipeline:
 #   tidy → build → vet → lint → test (short, race) → deadcode → vulncheck
-#   → documentation checks
+#   → documentation checks (make ci-check-go)
 #   → cross-compile linux/amd64 → upload artifact (push to main only)
+#
+# The generated worker-protocol stubs are checked by proto.yml, which runs
+# only when the protocol or its generation inputs change, so this workflow
+# needs no protoc.
 #
 # Optimized for minimal CI minutes:
 #   - concurrency cancels superseded runs
@@ -59,11 +63,6 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      - name: Set up protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          version: "35.1"
-
       # Cache the compiled tool binaries keyed on their pinned versions, so we
       # only pay to build them on the first run (or when a version changes).
       # This is the biggest per-run saving: golangci-lint in particular is slow
@@ -94,10 +93,10 @@ jobs:
             golangci-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-
 
       - name: CI check
-        run: make ci-check
+        run: make ci-check-go
 
       # Build + publish the release binary only when landing on main. PRs get
-      # full correctness coverage from `make ci-check` above; a per-PR
+      # full correctness coverage from `make ci-check-go` above; a per-PR
       # cross-compile and artifact upload adds minutes and storage for no gain.
       - name: Cross-compile linux/amd64
         if: github.event_name == 'push'

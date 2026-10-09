@@ -2,8 +2,10 @@ package domain
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -73,5 +75,17 @@ func TestUnsetDispatchPolicyIsShadow(t *testing.T) {
 				t.Fatalf("compiled default = %q, want %q", cognition.Executor.DispatchPolicy, tt.want)
 			}
 		})
+	}
+}
+
+func TestResolveReferencesRejectsALaneOutsideTheVocabulary(t *testing.T) {
+	t.Parallel()
+	err := checkTriggerLanes([]Trigger{{Name: "diagnose", Lane: LaneFast}, {Name: "sweep", Lane: "slow"}})
+	var compileErr *CompileError
+	if !errors.As(err, &compileErr) || compileErr.Path != "cognition.triggers.sweep.lane" || !strings.Contains(compileErr.Message, `invalid lane "slow"`) {
+		t.Fatalf("err = %v, want an invalid lane failure for the sweep trigger", err)
+	}
+	if err := checkTriggerLanes([]Trigger{{Name: "a", Lane: LaneFast}, {Name: "b", Lane: LaneDeep}}); err != nil {
+		t.Fatalf("declared lanes rejected: %v", err)
 	}
 }

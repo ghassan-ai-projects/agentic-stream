@@ -5,91 +5,123 @@ import (
 	"time"
 )
 
-func TestVirtualClockAdvances(t *testing.T) {
-	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	v := NewVirtual(start)
-	if got := v.Now(); !got.Equal(start) {
-		t.Fatalf("Now() = %v, want %v", got, start)
-	}
-	v.Advance(time.Hour)
-	if got := v.Now(); !got.Equal(start.Add(time.Hour)) {
-		t.Fatalf("Now() = %v, want %v", got, start.Add(time.Hour))
+var epoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+func fired(timer Timer) (time.Time, bool) {
+	select {
+	case at := <-timer.C():
+		return at, true
+	default:
+		return time.Time{}, false
 	}
 }
 
-func TestVirtualTimerFires(t *testing.T) {
-	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	v := NewVirtual(start)
+func TestVirtualClockStartsAtItsStartInUTCAndAdvances(t *testing.T) {
+	t.Parallel()
+	zone := time.FixedZone("plus2", 2*3600)
+	v := NewVirtual(epoch.In(zone))
+	if got := v.Now(); !got.Equal(epoch) || got.Location() != time.UTC {
+		t.Fatalf("Now() = %v, want %v in UTC", got, epoch)
+	}
+	v.Advance(time.Hour)
+	if got, want := v.Now(), epoch.Add(time.Hour); !got.Equal(want) {
+		t.Fatalf("Now() after Advance = %v, want %v", got, want)
+	}
+}
+
+func TestQualityNamesTheClockKind(t *testing.T) {
+	t.Parallel()
+	if got := Quality(NewVirtual(epoch)); got != "virtual" {
+		t.Fatalf("Quality(virtual) = %q", got)
+	}
+	if got := Quality(otherClock{}); got != "physical" {
+		t.Fatalf("Quality(any other clock) = %q, want physical", got)
+	}
+}
+
+type otherClock struct{ Clock }
+
+func TestVirtualTimerFiresOnlyOnceTheClockReachesItsDueTime(t *testing.T) {
+	t.Parallel()
+	v := NewVirtual(epoch)
 	timer := v.NewTimer(time.Minute)
 
-	select {
-	case <-timer.C():
+	if _, ok := fired(timer); ok {
 		t.Fatal("timer fired before Advance")
-	default:
 	}
-
-	v.Advance(time.Minute)
-	select {
-	case fired := <-timer.C():
-		if !fired.Equal(start.Add(time.Minute)) {
-			t.Fatalf("fired at %v, want %v", fired, start.Add(time.Minute))
-		}
-	default:
-		t.Fatal("timer did not fire")
+	v.Advance(time.Minute - time.Nanosecond)
+	if _, ok := fired(timer); ok {
+		t.Fatal("timer fired one nanosecond before it was due")
+	}
+	v.Advance(time.Nanosecond)
+	at, ok := fired(timer)
+	if !ok || !at.Equal(epoch.Add(time.Minute)) {
+		t.Fatalf("timer fired = %v at %v, want it to fire with its due time %v", ok, at, epoch.Add(time.Minute))
 	}
 }
 
 func TestVirtualAdvanceFiresDueTimersBehindLaterHead(t *testing.T) {
-	// Regression: timers scheduled out of due order must all fire during the
-	// Advance in which they become due, even when a not-yet-due timer was
-	// scheduled first and would otherwise sit at the head of the queue.
-	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	v := NewVirtual(start)
-
+	t.Parallel()
+	v := NewVirtual(epoch)
 	t10 := v.NewTimer(10 * time.Minute)
 	t5 := v.NewTimer(5 * time.Minute)
 	t7 := v.NewTimer(7 * time.Minute)
 
 	v.Advance(7 * time.Minute)
 
-	fired := func(name string, timer Timer) bool {
-		select {
-		case f := <-timer.C():
-			_ = f
-			return true
-		default:
-			return false
-		}
-	}
-
-	if !fired("t5", t5) {
+	if _, ok := fired(t5); !ok {
 		t.Error("timer due at +5m did not fire during Advance(7m)")
 	}
-	if !fired("t7", t7) {
+	if _, ok := fired(t7); !ok {
 		t.Error("timer due at +7m did not fire during Advance(7m)")
 	}
-	if fired("t10", t10) {
+	if _, ok := fired(t10); ok {
 		t.Error("timer due at +10m fired early during Advance(7m)")
 	}
-
-	// The +10m timer fires on a later advance.
 	v.Advance(3 * time.Minute)
-	if !fired("t10", t10) {
-		t.Error("timer due at +10m did not fire during Advance to +10m")
+	if _, ok := fired(t10); !ok {
+		t.Error("timer due at +10m did not fire once the clock reached +10m")
+	}
+}
+
+func TestVirtualTimerFiresOnce(t *testing.T) {
+	t.Parallel()
+	v := NewVirtual(epoch)
+	timer := v.NewTimer(time.Minute)
+	v.Advance(time.Hour)
+	if _, ok := fired(timer); !ok {
+		t.Fatal("timer did not fire")
+	}
+	v.Advance(time.Hour)
+	if _, ok := fired(timer); ok {
+		t.Fatal("timer fired a second time")
 	}
 }
 
 func TestVirtualTimerStop(t *testing.T) {
-	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	v := NewVirtual(start)
-	timer := v.NewTimer(time.Minute)
-	if !timer.Stop() {
-		t.Fatal("Stop returned false for pending timer")
-	}
-	v.Advance(time.Minute)
-	select {
-	case <-timer.C():
-		t.Fatal("stopped timer fired")
-	default:
-	}
+	t.Parallel()
+	t.Run("a pending timer is stopped and never fires", func(t *testing.T) {
+		t.Parallel()
+		v := NewVirtual(epoch)
+		timer := v.NewTimer(time.Minute)
+		if !timer.Stop() {
+			t.Fatal("Stop returned false for a pending timer")
+		}
+		if timer.Stop() {
+			t.Fatal("Stop returned true for an already stopped timer")
+		}
+		v.Advance(time.Minute)
+		if _, ok := fired(timer); ok {
+			t.Fatal("stopped timer fired")
+		}
+	})
+	t.Run("a fired timer cannot be stopped", func(t *testing.T) {
+		t.Parallel()
+		v := NewVirtual(epoch)
+		timer := v.NewTimer(time.Minute)
+		v.Advance(time.Minute)
+		if timer.Stop() {
+			t.Fatal("Stop returned true for a timer that already fired")
+		}
+	})
 }

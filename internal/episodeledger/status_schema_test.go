@@ -11,6 +11,7 @@ import (
 )
 
 func TestStatusEnumsMatchTheSchemaChecks(t *testing.T) {
+	t.Parallel()
 	db := storagetest.OpenTemp(t)
 	for _, test := range []struct{ table, column, want string }{
 		{"episodes", "lifecycle_status", domain.LifecycleSQL(func(domain.LifecycleStatus) bool { return true })},

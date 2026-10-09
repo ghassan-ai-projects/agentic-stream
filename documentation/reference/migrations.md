@@ -37,7 +37,7 @@ depending on a column or status value.
 ## Source evidence
 
 - Migration runner: [`migrations/migrations.go`](../../migrations/migrations.go)
-- Storage tests: [`internal/storage/storage_test.go`](../../internal/storage/storage_test.go)
+- Migration tests: [`internal/storage/internal/store/open_test.go`](../../internal/storage/internal/store/open_test.go), [`legacy_migration_test.go`](../../internal/storage/internal/store/legacy_migration_test.go)
 - Persistence contract: [contracts/persistence.md](../contracts/persistence.md)
 
 ## Next reads

@@ -89,45 +89,6 @@ func TestRequestAssemblyRejectsInvalidConfiguration(t *testing.T) {
 	}
 }
 
-func TestRebindPreservesAdmissionEvidence(t *testing.T) {
-	t.Parallel()
-	compiled, item, inputs := assemblyFixture(t)
-	inputs.Reconsideration = map[string]any{"correction_version": 2}
-	compiled.Cognition.Executor.RiskCeiling = ""
-	req, err := AssembleRequest(compiled, "epi", item, inputs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	snapshot := validSnapshotDocument(t, func(doc map[string]any) { doc["situation_version"] = 3 })
-	live, err := ValidateSnapshotEvidence(snapshot, persistedDigestOf(t, snapshot), "", "", "s1", 3, "tenant")
-	if err != nil {
-		t.Fatal(err)
-	}
-	fresh, err := RebindRequest(req, 3, live)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if req.SituationVersion != 2 || fresh.SituationVersion != 3 || fresh.SnapshotSHA256 != live.Digest || fresh.PromptSHA256 != req.PromptSHA256 || !bytes.Equal(fresh.AdmissionKey, req.AdmissionKey) {
-		t.Fatal("rebind changed admission or missed snapshot")
-	}
-	var before, after map[string]any
-	if err := json.Unmarshal(req.RequestJSON, &before); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(fresh.RequestJSON, &after); err != nil {
-		t.Fatal(err)
-	}
-	for _, key := range []string{"snapshot", "snapshot_digest", "situation_version"} {
-		delete(before, key)
-		delete(after, key)
-	}
-	a, _ := canonicaljson.Marshal(before)
-	b, _ := canonicaljson.Marshal(after)
-	if !bytes.Equal(a, b) {
-		t.Fatal("rebind changed original trigger, budget or correction evidence")
-	}
-}
-
 func snapshotDocumentDigest(t *testing.T, document map[string]any) []byte {
 	t.Helper()
 	raw, err := canonicaljson.Marshal(document)
@@ -135,40 +96,4 @@ func snapshotDocumentDigest(t *testing.T, document map[string]any) []byte {
 		t.Fatal(err)
 	}
 	return persistedDigestOf(t, raw)
-}
-
-func TestRebindRefusesEntityChangeBeforeMalformedRequest(t *testing.T) {
-	t.Parallel()
-	req := &Request{EntityID: "original", RequestJSON: []byte("{")}
-	if _, err := RebindRequest(req, 2, &SnapshotEvidence{EntityID: "different"}); err == nil || !strings.HasPrefix(err.Error(), "live snapshot entity") {
-		t.Fatalf("rebind precedence=%v", err)
-	}
-}
-
-func TestCostBudgetPreservesAdmissionCeiling(t *testing.T) {
-	t.Parallel()
-	if cost, err := CostBudget([]byte(`{"budget":{"cost_microunits":42}}`)); err != nil || cost != 42 {
-		t.Fatalf("ceiling=%d err=%v", cost, err)
-	}
-	if _, err := CostBudget([]byte("{")); err == nil || !strings.HasPrefix(err.Error(), "decode episode cost budget:") {
-		t.Fatalf("invalid cost document=%v", err)
-	}
-}
-
-func TestAdmittedEpisodeDeclaresShadowWhenRequestHasNoPolicy(t *testing.T) {
-	t.Parallel()
-	tests := []struct{ name, policy, want string }{
-		{name: "unset", policy: "", want: spec.DispatchShadow},
-		{name: "shadow", policy: spec.DispatchShadow, want: spec.DispatchShadow},
-		{name: "active", policy: spec.DispatchActive, want: spec.DispatchActive},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			admission := AdmittedEpisode(&Request{DispatchPolicy: tt.policy}, RequestDigests{})
-			if admission.DispatchPolicy != tt.want {
-				t.Fatalf("admitted policy = %q, want %q", admission.DispatchPolicy, tt.want)
-			}
-		})
-	}
 }

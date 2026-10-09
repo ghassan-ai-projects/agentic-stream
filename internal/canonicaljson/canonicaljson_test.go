@@ -8,8 +8,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
-// The facade exposes each domain rule unchanged: the same input gives the same
-// canonical bytes, digests and verdicts through the public API.
 func TestFacadeDelegatesEveryOperationToTheDomain(t *testing.T) {
 	t.Parallel()
 	document := map[string]any{"b": 1, "a": []any{"x", true}}
@@ -38,8 +36,23 @@ func TestFacadeDelegatesEveryOperationToTheDomain(t *testing.T) {
 	}
 }
 
-// The raw-sum operations are the byte form of the string operations: they
-// agree with Digest, Verify and the stored-bytes hash for the same input.
+func TestFacadeCompilesSchemasOfflineWithFormatAssertions(t *testing.T) {
+	t.Parallel()
+	schema, err := canonicaljson.CompileSchemaJSON("urn:test:facade:v1", []byte(`{"type":"string","format":"date-time"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.Validate("2026-10-09T00:00:00Z"); err != nil {
+		t.Fatalf("valid date-time refused: %v", err)
+	}
+	if err := schema.Validate("yesterday"); err == nil {
+		t.Fatal("format assertion is off: an invalid date-time validated")
+	}
+	if _, err := canonicaljson.CompileSchema("urn:test:facade-ref:v1", map[string]any{"$ref": "https://example.invalid/s.json"}); err == nil {
+		t.Fatal("an external reference was loaded")
+	}
+}
+
 func TestFacadeRawSumOperationsAgreeWithTextForm(t *testing.T) {
 	t.Parallel()
 	document := map[string]any{"b": 1, "a": []any{"x", true}}

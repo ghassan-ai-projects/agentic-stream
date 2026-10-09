@@ -1,0 +1,66 @@
+# ---------------------------------------------------------------------------
+# Worker protocol stubs
+# ---------------------------------------------------------------------------
+# Regenerates the Go worker-protocol stubs with the pinned protoc and fails
+# when they differ from the committed ones (make proto-check). Runs only when
+# the protocol, the committed stubs or their generation inputs change, so the
+# main CI workflow installs no protoc.
+# ---------------------------------------------------------------------------
+
+name: Protocol
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/design/contracts/runtime-v1.proto"
+      - "proto/**"
+      - "Makefile"
+      - "go.mod"
+      - ".github/workflows/proto.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/design/contracts/runtime-v1.proto"
+      - "proto/**"
+      - "Makefile"
+      - "go.mod"
+      - ".github/workflows/proto.yml"
+
+env:
+  GO_VERSION: "1.26.9"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  proto:
+    name: "Protocol stubs"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Set up protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "35.1"
+          # Authenticated release lookups: anonymous calls share the runner
+          # IP's rate limit and fail the job before any check runs.
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check generated stubs
+        run: make proto-check

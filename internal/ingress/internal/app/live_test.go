@@ -4,14 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"log/slog"
-	"net"
-	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -24,196 +19,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
-func TestLiveUDSSourceQuarantinesMalformedLinesAndCountsValidLines(t *testing.T) {
-	db := storagetest.OpenTemp(t)
-
-	runtimeTelemetry := telemetry.NewRuntime(time.Unix(1, 0))
-	source := newLiveService(t, db, runtimeTelemetry)
-	ctx := context.Background()
-	var received contractsv1.Envelope
-	malformed := domain.LiveLine{ConnectionID: 1, LineNumber: 1, Data: []byte("not-json\n")}
-	if err := source.processLine(ctx, "inst", malformed, func(_ context.Context, _ contractsv1.Envelope) error {
-		t.Fatal("malformed line reached the sink")
-		return nil
-	}); err != nil {
-		t.Fatalf("process malformed line: %v", err)
-	}
-
-	envelope := liveEnvelope("evt-live-1")
-	line, err := json.Marshal(envelope)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := source.processLine(ctx, "inst", domain.LiveLine{ConnectionID: 1, LineNumber: 2, Data: line}, func(_ context.Context, got contractsv1.Envelope) error {
-		received = got
-		return nil
-	}); err != nil {
-		t.Fatalf("process valid line: %v", err)
-	}
-	if received.ID != envelope.ID {
-		t.Fatalf("received event = %q, want %q", received.ID, envelope.ID)
-	}
-	if got := runtimeTelemetry.Snapshot()["agentic_stream_live_lines_ingested_total"]; got != 1 {
-		t.Fatalf("live lines ingested = %d, want 1", got)
-	}
-	if got := runtimeTelemetry.Snapshot()["agentic_stream_live_lines_rejected_total"]; got != 1 {
-		t.Fatalf("live lines rejected = %d, want 1", got)
-	}
-	var raw string
-	if err := db.QueryRowContext(ctx, "SELECT json_extract(payload_json, '$.data.raw') FROM event_quarantine WHERE reason_code = 'malformed_json'").Scan(&raw); err != nil {
-		t.Fatal(err)
-	}
-	if raw != "not-json\n" {
-		t.Fatalf("quarantined raw line = %q, want original line", raw)
-	}
-}
-
-func TestLiveUDSSourceAcceptsReconnects(t *testing.T) {
-	db := storagetest.OpenTemp(t)
-
-	path := filepath.Join("/tmp", fmt.Sprintf("agentic-stream-live-%d.sock", time.Now().UnixNano()))
-	source := newLiveService(t, db, nil)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	received := make(chan string, 2)
-	runDone := make(chan error, 1)
-	go func() {
-		runDone <- source.ServeLive(ctx, path, func(ctx context.Context, env contractsv1.Envelope) error {
-			if _, err := source.log.Append(ctx, "default", []contractsv1.Envelope{env}); err != nil {
-				return fmt.Errorf("append test event: %w", err)
-			}
-			received <- env.ID
-			return nil
-		})
-	}()
-
-	// The socket file appears at bind, before the listener accepts, so wait
-	// until a dial succeeds rather than until the file exists.
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if probe, dialErr := (&net.Dialer{}).DialContext(context.Background(), "unix", path); dialErr == nil {
-			_ = probe.Close()
-			break
-		}
-		select {
-		case runErr := <-runDone:
-			if runErr != nil && (errors.Is(runErr, syscall.EPERM) || strings.Contains(runErr.Error(), "operation not permitted")) {
-				t.Skipf("Unix socket listeners unavailable: %v", runErr)
-			}
-			t.Fatalf("live source stopped before listening: %v", runErr)
-		default:
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("live source did not create its socket")
-		}
-		time.Sleep(time.Millisecond)
-	}
-
-	writeMalformed := func() {
-		t.Helper()
-		conn, dialErr := (&net.Dialer{}).DialContext(context.Background(), "unix", path)
-		if dialErr != nil {
-			t.Fatal(dialErr)
-		}
-		defer func() { _ = conn.Close() }()
-		if _, writeErr := conn.Write([]byte("not-json\n")); writeErr != nil {
-			t.Fatal(writeErr)
-		}
-	}
-	writeEvent := func(id string) {
-		t.Helper()
-		conn, dialErr := (&net.Dialer{}).DialContext(context.Background(), "unix", path)
-		if dialErr != nil {
-			t.Fatal(dialErr)
-		}
-		defer func() { _ = conn.Close() }()
-		env := liveEnvelope(id)
-		line, marshalErr := json.Marshal(env)
-		if marshalErr != nil {
-			t.Fatal(marshalErr)
-		}
-		if _, writeErr := conn.Write(append(line, '\n')); writeErr != nil {
-			t.Fatal(writeErr)
-		}
-	}
-	writeMalformed()
-	writeEvent("evt-live-1")
-	writeEvent("evt-live-2")
-	for expected := 0; expected < 2; expected++ {
-		select {
-		case <-received:
-		case <-time.After(time.Second):
-			t.Fatal("live source did not deliver a reconnecting client event")
-		}
-	}
-	cancel()
-	select {
-	case runErr := <-runDone:
-		if runErr != nil {
-			t.Fatalf("live source shutdown: %v", runErr)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("live source did not shut down")
-	}
-}
-
-func TestLiveUDSSourcePropagatesSinkDeadlineWithActiveParent(t *testing.T) {
-	db := storagetest.OpenTemp(t)
-
-	path := filepath.Join("/tmp", fmt.Sprintf("agentic-stream-live-deadline-%d.sock", time.Now().UnixNano()))
-	source := newLiveService(t, db, nil)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	runDone := make(chan error, 1)
-	go func() {
-		runDone <- source.ServeLive(ctx, path, func(context.Context, contractsv1.Envelope) error {
-			return context.DeadlineExceeded
-		})
-	}()
-
-	// The socket file appears at bind, before the listener accepts, so wait
-	// until a dial succeeds rather than until the file exists.
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if probe, dialErr := (&net.Dialer{}).DialContext(context.Background(), "unix", path); dialErr == nil {
-			_ = probe.Close()
-			break
-		}
-		select {
-		case runErr := <-runDone:
-			t.Fatalf("live source stopped before listening: %v", runErr)
-		default:
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("live source did not create its socket")
-		}
-		time.Sleep(time.Millisecond)
-	}
-
-	conn, err := (&net.Dialer{}).DialContext(context.Background(), "unix", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	envelope := liveEnvelope("evt-live-deadline")
-	line, err := json.Marshal(envelope)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := conn.Write(append(line, '\n')); err != nil {
-		t.Fatal(err)
-	}
-	_ = conn.Close()
-
-	select {
-	case runErr := <-runDone:
-		if runErr == nil || !errors.Is(runErr, context.DeadlineExceeded) {
-			t.Fatalf("sink deadline result = %v, want propagated deadline", runErr)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("live source did not surface sink deadline")
-	}
-}
-
 func liveEnvelope(id string) contractsv1.Envelope {
 	return contractsv1.Envelope{
 		ID: id, Type: "motor.vibration.observed", SchemaVersion: "1.0", TenantID: "default", Source: "gateway",
@@ -221,6 +26,15 @@ func liveEnvelope(id string) contractsv1.Envelope {
 		EventTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), IngestedAt: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
 		Classification: contractsv1.ClassificationInternal, Data: map[string]any{"rms_mm_s": 1.0},
 	}
+}
+
+func liveEnvelopeLine(t *testing.T, id string) []byte {
+	t.Helper()
+	line, err := json.Marshal(liveEnvelope(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append(line, '\n')
 }
 
 func newLiveService(t *testing.T, db *storage.DB, runtimeTelemetry *telemetry.Runtime) *Service {
@@ -236,23 +50,103 @@ func newLiveService(t *testing.T, db *storage.DB, runtimeTelemetry *telemetry.Ru
 	return service
 }
 
-func TestOversizedLiveLineIsQuarantinedAsItsBoundedPrefix(t *testing.T) {
-	db := storagetest.OpenTemp(t)
+func refuseSink(t *testing.T) EnvelopeSink {
+	t.Helper()
+	return func(context.Context, contractsv1.Envelope) error {
+		t.Error("a rejected line reached the sink")
+		return nil
+	}
+}
 
+func quarantinedRaw(t *testing.T, db *storage.DB, reason string) string {
+	t.Helper()
+	var raw string
+	query := "SELECT json_extract(payload_json, '$.data.raw') FROM event_quarantine WHERE reason_code = ?"
+	if err := db.QueryRowContext(t.Context(), query, reason).Scan(&raw); err != nil {
+		t.Fatalf("quarantined %s line: %v", reason, err)
+	}
+	return raw
+}
+
+func TestProcessLineQuarantinesMalformedLinesAndPassesValidOnesToTheSink(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	runtimeTelemetry := telemetry.NewRuntime(time.Unix(1, 0))
+	source := newLiveService(t, db, runtimeTelemetry)
+	var received contractsv1.Envelope
+
+	malformed := domain.LiveLine{ConnectionID: 1, LineNumber: 1, Data: []byte("not-json\n")}
+	if err := source.processLine(t.Context(), "inst", malformed, refuseSink(t)); err != nil {
+		t.Fatalf("process malformed line: %v", err)
+	}
+	valid := domain.LiveLine{ConnectionID: 1, LineNumber: 2, Data: liveEnvelopeLine(t, "evt-live-1")}
+	if err := source.processLine(t.Context(), "inst", valid, func(_ context.Context, got contractsv1.Envelope) error {
+		received = got
+		return nil
+	}); err != nil {
+		t.Fatalf("process valid line: %v", err)
+	}
+
+	if received.ID != "evt-live-1" {
+		t.Fatalf("received event = %q, want evt-live-1", received.ID)
+	}
+	snapshot := runtimeTelemetry.Snapshot()
+	if snapshot["agentic_stream_live_lines_ingested_total"] != 1 || snapshot["agentic_stream_live_lines_rejected_total"] != 1 {
+		t.Fatalf("telemetry = %v, want one ingested and one rejected line", snapshot)
+	}
+	if raw := quarantinedRaw(t, db, "malformed_json"); raw != "not-json\n" {
+		t.Fatalf("quarantined raw line = %q, want the original line", raw)
+	}
+}
+
+func TestProcessLineQuarantinesAnEnvelopeThatBreaksTheContract(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	runtimeTelemetry := telemetry.NewRuntime(time.Unix(1, 0))
+	source := newLiveService(t, db, runtimeTelemetry)
+	foreign := bytes.Replace(liveEnvelopeLine(t, "evt-foreign"), []byte(`"tenant_id":"default"`), []byte(`"tenant_id":"other"`), 1)
+
+	err := source.processLine(t.Context(), "inst", domain.LiveLine{ConnectionID: 1, LineNumber: 1, Data: foreign}, refuseSink(t))
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reason string
+	if err := db.QueryRowContext(t.Context(), "SELECT reason_code FROM event_quarantine WHERE event_id = 'evt-foreign'").Scan(&reason); err != nil || reason != "envelope_invalid" {
+		t.Fatalf("reason = %q, err = %v, want the envelope quarantined as envelope_invalid", reason, err)
+	}
+	if got := runtimeTelemetry.Snapshot()["agentic_stream_live_lines_rejected_total"]; got != 1 {
+		t.Fatalf("rejected lines = %d, want 1", got)
+	}
+}
+
+func TestProcessLineQuarantinesAnOversizedLineAsItsBoundedPrefix(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
 	source := newLiveService(t, db, nil)
 	prefix := bytes.Repeat([]byte("x"), domain.MaxLineBytes)
 	item := domain.LiveLine{ConnectionID: 7, LineNumber: 1, Data: prefix, ReadErr: domain.ErrLineTooLarge}
-	if err := source.processLine(context.Background(), "inst", item, func(context.Context, contractsv1.Envelope) error {
-		t.Fatal("oversized line reached the sink")
-		return nil
-	}); err != nil {
+
+	if err := source.processLine(t.Context(), "inst", item, refuseSink(t)); err != nil {
 		t.Fatalf("process oversized line: %v", err)
 	}
-	var raw string
-	if err := db.QueryRowContext(context.Background(), "SELECT json_extract(payload_json, '$.data.raw') FROM event_quarantine WHERE reason_code = 'line_too_large'").Scan(&raw); err != nil {
+
+	if raw := quarantinedRaw(t, db, "line_too_large"); raw != string(prefix) {
+		t.Fatalf("quarantined raw prefix = %d bytes, want %d", len(raw), len(prefix))
+	}
+}
+
+func TestProcessLineReportsAFailedQuarantineWrite(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	source := newLiveService(t, db, nil)
+	if _, err := db.ExecContext(t.Context(), "DROP TABLE event_quarantine"); err != nil {
 		t.Fatal(err)
 	}
-	if raw != string(prefix) {
-		t.Fatalf("quarantined raw prefix = %d bytes, want %d", len(raw), len(prefix))
+
+	err := source.processLine(t.Context(), "inst", domain.LiveLine{ConnectionID: 1, LineNumber: 1, Data: []byte("not-json\n")}, refuseSink(t))
+
+	if err == nil || !strings.Contains(err.Error(), "quarantine live line") {
+		t.Fatalf("err = %v, want the failed quarantine write reported", err)
 	}
 }

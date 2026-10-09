@@ -28,9 +28,9 @@ PROTOC_GEN_GO_GRPC_VERSION ?= v1.6.2
 PKGS := $(shell go list ./... 2>/dev/null)
 HAS_PKGS := $(if $(PKGS),yes,no)
 
-# Detect main packages separately. doc.go keeps one non-main package at the
-# module root, so HAS_PKGS is yes even in a fresh template -- but deadcode
-# needs a main package as its entry point and errors out without one.
+# Detect main packages separately. HAS_PKGS can be yes without a main package,
+# but deadcode needs a main package as its entry point and errors out without
+# one.
 MAIN_PKGS := $(shell go list -f '{{if eq .Name "main"}}{{.ImportPath}}{{end}}' ./... 2>/dev/null)
 HAS_MAIN := $(if $(MAIN_PKGS),yes,no)
 
@@ -39,7 +39,7 @@ HAS_MAIN := $(if $(MAIN_PKGS),yes,no)
 
 # ---- Phony declarations ---------------------------------------------------
 .PHONY: help all build vet fmt tidy lint lint-ci test test-short test-race \
-        test-coverage ci-check deadcode vulncheck clean run cross-compile \
+        test-coverage ci-check ci-check-go deadcode vulncheck clean run cross-compile \
         proto-generate proto-check docs-check
 
 # ---- Help -----------------------------------------------------------------
@@ -140,8 +140,10 @@ coverage-check: ## Run short race tests and enforce the per-package coverage flo
 	python3 scripts/check-coverage.py
 
 # ---- Pipeline -------------------------------------------------------------
-ci-check: proto-check tidy build vet lint-ci coverage-check deadcode vulncheck docs-check ## Run the full CI pipeline locally (matches .github/workflows/ci.yml)
+ci-check: proto-check ci-check-go ## Run every CI gate locally (both workflows: ci.yml and proto.yml)
 	@echo "  CI check passed"
+
+ci-check-go: tidy build vet lint-ci coverage-check deadcode vulncheck docs-check ## Run the gates of .github/workflows/ci.yml (all but proto-check)
 
 # ---- Documentation --------------------------------------------------------
 docs-check: ## Check public documentation structure and volatile surfaces

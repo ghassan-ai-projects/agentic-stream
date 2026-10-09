@@ -1,6 +1,7 @@
 package storagetest
 
 var (
-	LoadTemplate = loadTemplate
-	TemplatePath = templatePath
+	LoadTemplate      = loadTemplate
+	TemplatePath      = templatePath
+	ReadSoundTemplate = readSoundTemplate
 )

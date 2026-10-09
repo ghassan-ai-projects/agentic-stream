@@ -1,41 +1,44 @@
 package domain
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestParse(t *testing.T) {
+func TestParseDurationAcceptsGoUnitsAndWholeDays(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		in      string
 		want    time.Duration
-		wantErr bool
+		wantErr string
 	}{
 		{in: "15m", want: 15 * time.Minute},
 		{in: "6h", want: 6 * time.Hour},
 		{in: "1h30m", want: 90 * time.Minute},
 		{in: "30d", want: 30 * 24 * time.Hour},
 		{in: "1d", want: 24 * time.Hour},
-		{in: "", wantErr: true},
-		{in: "d", wantErr: true},
-		{in: "1.5d", wantErr: true},
-		{in: "0d", wantErr: true},
-		{in: "-2d", wantErr: true},
-		{in: "106752d", wantErr: true}, // exceeds time.Duration's ~292 years
-		{in: "soon", wantErr: true},
+		{in: "106751d", want: 106751 * 24 * time.Hour},
+		{in: "", wantErr: "empty duration"},
+		{in: "d", wantErr: "parse days"},
+		{in: "1.5d", wantErr: "parse days"},
+		{in: "0d", wantErr: "must be positive"},
+		{in: "-2d", wantErr: "must be positive"},
+		{in: "106752d", wantErr: "overflows time.Duration"},
+		{in: "soon", wantErr: "parse duration"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
 			t.Parallel()
-
 			got, err := ParseDuration(tt.in)
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("ParseDuration(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("ParseDuration(%q) error = %v, want %q", tt.in, err, tt.wantErr)
+				}
+				return
 			}
-			if got != tt.want {
-				t.Fatalf("ParseDuration(%q) = %v, want %v", tt.in, got, tt.want)
+			if err != nil || got != tt.want {
+				t.Fatalf("ParseDuration(%q) = %v, %v, want %v", tt.in, got, err, tt.want)
 			}
 		})
 	}

@@ -14,30 +14,51 @@ import (
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
-func TestExecutionBoundsKeepEarlierDeadlineAndCancelBothTimers(t *testing.T) {
+func TestExecutionContextEndsAtTheEarliestOfParentDeadlineAndWallTime(t *testing.T) {
 	t.Parallel()
-	deadline := time.Now().Add(time.Hour)
-	req := &runtimev1.EpisodeRequest{Deadline: timestamppb.New(deadline), Budget: &runtimev1.EpisodeBudget{WallTime: durationpb.New(2 * time.Hour)}}
-	ctx, cancel, err := boundedExecutionContext(t.Context(), req)
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name                    string
+		parent, request, budget time.Duration
+		bound                   time.Duration
+	}{
+		{"parent first", 10 * time.Second, 20 * time.Second, 30 * time.Second, 10 * time.Second},
+		{"request deadline first", 30 * time.Second, 10 * time.Second, 20 * time.Second, 10 * time.Second},
+		{"wall time first", 30 * time.Second, 20 * time.Second, 10 * time.Second, 10 * time.Second},
 	}
-	got, ok := ctx.Deadline()
-	if !ok || !got.Equal(deadline) {
-		t.Fatalf("deadline = %v, want %v", got, deadline)
-	}
-	cancel()
-	if !errors.Is(ctx.Err(), context.Canceled) {
-		t.Fatalf("cancel = %v", ctx.Err())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			start := time.Now()
+			parent, parentCancel := context.WithDeadline(t.Context(), start.Add(tt.parent))
+			defer parentCancel()
+			req := validRequest()
+			req.Deadline = timestamppb.New(start.Add(tt.request))
+			req.Budget.WallTime = durationpb.New(tt.budget)
+
+			ctx, cancel, err := boundedExecutionContext(parent, req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cancel()
+
+			deadline, ok := ctx.Deadline()
+			if !ok || deadline.Before(start.Add(tt.bound)) || deadline.After(time.Now().Add(tt.bound)) {
+				t.Fatalf("deadline = %v, want about %v after the start", deadline, tt.bound)
+			}
+			cancel()
+			if !errors.Is(ctx.Err(), context.Canceled) || parent.Err() != nil {
+				t.Fatalf("after cancel: child %v, parent %v; want only the child canceled", ctx.Err(), parent.Err())
+			}
+		})
 	}
 }
 
-func TestInvalidWallBudgetCancelsExistingDeadline(t *testing.T) {
+func TestInvalidWallBudgetCancelsTheDeadlineItWasGiven(t *testing.T) {
 	t.Parallel()
 	canceled := false
 	req := &runtimev1.EpisodeRequest{Budget: &runtimev1.EpisodeBudget{WallTime: durationpb.New(0)}}
 	ctx, cancel, err := applyWallBudget(t.Context(), func() { canceled = true }, req)
 	if ctx != nil || cancel != nil || status.Code(err) != codes.InvalidArgument || !canceled {
-		t.Fatalf("invalid budget: ctx=%v err=%v canceled=%v", ctx, err, canceled)
+		t.Fatalf("applyWallBudget() = %v, %v, %v (canceled=%v); want an InvalidArgument refusal that released the deadline", ctx, cancel != nil, err, canceled)
 	}
 }

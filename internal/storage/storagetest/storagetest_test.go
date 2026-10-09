@@ -91,49 +91,124 @@ func TestOpenReportsAnUnwritableSeedPath(t *testing.T) {
 	}
 }
 
-func TestTemplateIsBuiltOnceAndReusedFromItsDirectory(t *testing.T) {
+func TestTemplateIsBuiltOnceReusedAndOlderTemplatesAreDeleted(t *testing.T) {
 	t.Parallel()
-	directory := filepath.Join(t.TempDir(), "templates")
+	directory := t.TempDir()
+	older := filepath.Join(directory, "template-0123456789abcdef.db")
+	unrelated := filepath.Join(directory, "notes.txt")
+	for _, planted := range []string{older, unrelated} {
+		if err := os.WriteFile(planted, []byte("planted"), 0o600); err != nil {
+			t.Fatalf("plant %s: %v", planted, err)
+		}
+	}
 	built, err := storagetest.LoadTemplate(directory)
 	if err != nil {
 		t.Fatalf("build template: %v", err)
 	}
+	current, err := storagetest.TemplatePath(directory)
+	if err != nil {
+		t.Fatalf("template path: %v", err)
+	}
+	builtFile := statFile(t, current)
+
 	reused, err := storagetest.LoadTemplate(directory)
 	if err != nil {
 		t.Fatalf("reuse template: %v", err)
 	}
+
 	if len(built) == 0 || !bytes.Equal(built, reused) {
-		t.Fatalf("template changed between builds: %d bytes then %d bytes", len(built), len(reused))
+		t.Fatalf("template changed between loads: %d bytes then %d bytes", len(built), len(reused))
 	}
+	if reusedFile := statFile(t, current); !os.SameFile(builtFile, reusedFile) || !reusedFile.ModTime().Equal(builtFile.ModTime()) {
+		t.Fatal("the second load published a new template file instead of reusing the first")
+	}
+	for planted, wantKept := range map[string]bool{older: false, unrelated: true, current: true} {
+		if _, err := os.Lstat(planted); (err == nil) != wantKept {
+			t.Errorf("%s kept = %t, want %t", filepath.Base(planted), err == nil, wantKept)
+		}
+	}
+}
+
+func statFile(t *testing.T, path string) os.FileInfo {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	return info
 }
 
 func TestOpenTempGivesAMigratedDatabaseThatClosesWithTheTest(t *testing.T) {
 	t.Parallel()
 	var db *storage.DB
-	t.Run("session", func(t *testing.T) {
-		db = storagetest.OpenTemp(t)
-		if applied := countApplied(t, db); applied == 0 {
-			t.Fatal("OpenTemp returned a database with no migrations applied")
+	t.Cleanup(func() {
+		if err := db.PingContext(context.WithoutCancel(t.Context())); err == nil {
+			t.Error("OpenTemp left the database open after its test finished")
 		}
 	})
-	if err := db.PingContext(t.Context()); err == nil {
-		t.Fatal("OpenTemp left the database open after its test finished")
+	db = storagetest.OpenTemp(t)
+	if applied := countApplied(t, db); applied == 0 {
+		t.Fatal("OpenTemp returned a database with no migrations applied")
 	}
 }
 
 func TestOpenTempWithoutForeignKeysAllowsOrphanRows(t *testing.T) {
 	t.Parallel()
 	db := storagetest.OpenTempWithoutForeignKeys(t)
-	if _, err := db.ExecContext(t.Context(), "INSERT INTO situation_versions (situation_id, version) VALUES ('missing', 1)"); err != nil && strings.Contains(err.Error(), "FOREIGN KEY") {
-		t.Fatalf("foreign keys are still enforced: %v", err)
+	for _, statement := range []string{
+		"CREATE TABLE parents (id INTEGER PRIMARY KEY)",
+		"CREATE TABLE children (parent_id INTEGER REFERENCES parents(id))",
+		"INSERT INTO children (parent_id) VALUES (42)",
+	} {
+		if _, err := db.ExecContext(t.Context(), statement); err != nil {
+			t.Fatalf("%s: %v", statement, err)
+		}
 	}
-	found, _, err := storage.QueryOptional[int](t.Context(), db, "PRAGMA foreign_keys")
-	if err != nil || found != 0 {
-		t.Fatalf("PRAGMA foreign_keys = %d, %v; want 0", found, err)
+	if got := db.Stats().MaxOpenConnections; got != 1 {
+		t.Fatalf("max open connections = %d, want 1", got)
+	}
+}
+
+func TestOpenTempEnforcesForeignKeys(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	for _, statement := range []string{
+		"CREATE TABLE parents (id INTEGER PRIMARY KEY)",
+		"CREATE TABLE children (parent_id INTEGER REFERENCES parents(id))",
+	} {
+		if _, err := db.ExecContext(t.Context(), statement); err != nil {
+			t.Fatalf("%s: %v", statement, err)
+		}
+	}
+	_, err := db.ExecContext(t.Context(), "INSERT INTO children (parent_id) VALUES (42)")
+	if err == nil || !strings.Contains(err.Error(), "FOREIGN KEY") {
+		t.Fatalf("orphan insert = %v, want a FOREIGN KEY failure", err)
 	}
 }
 
 func TestTemplateIsRebuiltWhenTheCachedFileIsUnsound(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	path, err := storagetest.TemplatePath(directory)
+	if err != nil {
+		t.Fatalf("template path: %v", err)
+	}
+	planted := []byte("this is not a sqlite database, but it is long enough to be read as one")
+	if err := os.WriteFile(path, planted, 0o600); err != nil {
+		t.Fatalf("plant cached file: %v", err)
+	}
+
+	rebuilt, err := storagetest.LoadTemplate(directory)
+
+	if err != nil || len(rebuilt) == 0 || bytes.Equal(rebuilt, planted) {
+		t.Fatalf("unsound cache was not rebuilt: %d bytes, err=%v", len(rebuilt), err)
+	}
+	if onDisk, err := os.ReadFile(path); err != nil || !bytes.Equal(onDisk, rebuilt) {
+		t.Fatalf("rebuilt template was not published: err=%v", err)
+	}
+}
+
+func TestAnUnsoundCachedTemplateIsRefused(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -146,45 +221,13 @@ func TestTemplateIsRebuiltWhenTheCachedFileIsUnsound(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			directory := t.TempDir()
-			path, err := storagetest.TemplatePath(directory)
-			if err != nil {
-				t.Fatalf("template path: %v", err)
-			}
+			path := filepath.Join(t.TempDir(), "template.db")
 			if err := os.WriteFile(path, test.content, 0o600); err != nil {
 				t.Fatalf("plant cached file: %v", err)
 			}
-			rebuilt, err := storagetest.LoadTemplate(directory)
-			if err != nil || len(rebuilt) == 0 || bytes.Equal(rebuilt, test.content) {
-				t.Fatalf("unsound cache was not rebuilt: %d bytes, err=%v", len(rebuilt), err)
-			}
-			if onDisk, err := os.ReadFile(path); err != nil || !bytes.Equal(onDisk, rebuilt) {
-				t.Fatalf("rebuilt template was not published: err=%v", err)
+			if content, err := storagetest.ReadSoundTemplate(path); err == nil {
+				t.Fatalf("ReadSoundTemplate accepted %s (%d bytes)", test.name, len(content))
 			}
 		})
-	}
-}
-
-func TestTemplateBuildDeletesOlderTemplatesOnly(t *testing.T) {
-	t.Parallel()
-	directory := t.TempDir()
-	older := filepath.Join(directory, "template-0123456789abcdef.db")
-	unrelated := filepath.Join(directory, "notes.txt")
-	for _, planted := range []string{older, unrelated} {
-		if err := os.WriteFile(planted, []byte("planted"), 0o600); err != nil {
-			t.Fatalf("plant %s: %v", planted, err)
-		}
-	}
-	if _, err := storagetest.LoadTemplate(directory); err != nil {
-		t.Fatalf("build template: %v", err)
-	}
-	current, err := storagetest.TemplatePath(directory)
-	if err != nil {
-		t.Fatalf("template path: %v", err)
-	}
-	for planted, wantKept := range map[string]bool{older: false, unrelated: true, current: true} {
-		if _, err := os.Lstat(planted); (err == nil) != wantKept {
-			t.Errorf("%s kept = %t, want %t", filepath.Base(planted), err == nil, wantKept)
-		}
 	}
 }

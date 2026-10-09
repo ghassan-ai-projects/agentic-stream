@@ -11,7 +11,7 @@ import (
 
 func TestIsUniqueViolationClassifiesPrimaryKeyAndUniqueIndex(t *testing.T) {
 	t.Parallel()
-	db, _ := openOwnerDB(t)
+	db := openSingleConnectionDB(t)
 	ctx := t.Context()
 	for _, statement := range []string{
 		`CREATE TABLE uv_items (item_id TEXT PRIMARY KEY, owner TEXT, other TEXT)`,
