@@ -9,23 +9,23 @@ Measured with `go test -short -race -count=1 -cover -json ./cmd/agentic-stream`,
 
 | Package | Coverage before | after | Time before | after | Tests before (top-level / passing) | after |
 | --- | --- | --- | --- | --- | --- | --- |
-| `cmd/agentic-stream` | 74.3% | 83.1% | 51-58 s | 14.4-15.7 s (15.1 s median of 9 runs) | 41 / 75 | 48 / 83 |
+| `cmd/agentic-stream` | 74.3% | 83.1% | 51-58 s | 9.6-11.1 s (4 runs; 15.1 s before the replay opener below) | 41 / 75 | 48 / 83 |
 
-Slowest tests, before → after, in the full-package run (alone under `-race`: 5.0 s, 6.8 s, 4.5 s, 2.8 s, 2.1 s, 1.5 s):
+Slowest tests, before → after, in the full-package run (alone under `-race`: 4.9 s, 7.6 s, 5.8 s, 1.6 s, 0.2 s, 0.2 s):
 
 | Test | Before | After (in package run) |
 | --- | --- | --- |
-| `TestExperimentClosedLoopThroughServe` | 39.0 s | 9.6-10.2 s (5.0 s alone) |
-| `TestExperimentClosedLoopUnderAContinuousFeed` | 37.2 s | 10.7-11.9 s (6.8 s alone) |
-| `TestExperimentInterlockStopsEffects` | 33.1 s | 8.6-9.7 s (4.5 s alone) |
-| `TestRunRepeatProvesDeterminism` | 14.0 s | 6-9 s (2.1 s alone) |
+| `TestExperimentClosedLoopThroughServe` | 39.0 s | 6.1-7.1 s (4.9 s alone) |
+| `TestExperimentClosedLoopUnderAContinuousFeed` | 37.2 s | 7.7-8.0 s (7.6 s alone) |
+| `TestExperimentInterlockStopsEffects` | 33.1 s | 5.6-6.6 s (5.8 s alone) |
+| `TestRunRepeatProvesDeterminism` | 14.0 s | 0.2 s |
 | `TestPrincipalsApplyProvisionsTheExampleGovernance` | 8.0 s | 0.9 s |
 | `TestInterlockTripAndClear` | 8.0 s | 1.0 s |
 | `TestNotificationsPruneEnforcesTheFloorAndCountsFirst` | 8.0 s | 0.9 s |
 | `TestCommandsListAndResolveRefuseWhatIsNotAwaiting` | 7.5 s | 0.6 s |
-| `TestExperimentShadowReplayComparesTheCandidate` | 3.2 s | 7.3-8.3 s (2.8 s alone; slower in the package because six cold replays and four `serve` runs share the CPUs) |
+| `TestExperimentShadowReplayComparesTheCandidate` | 3.2 s | 1.7-2.0 s (1.6 s alone) |
 
-The three experiment tests are 20-30 s faster each and 9-12 s inside the package run, because the ten or so heavy tests compete for the same cores; alone they take 4.5-6.8 s. They are in the slow-test register.
+The three experiment tests are 26-31 s faster each. They are ingestion-bound (64 trace events through a race-instrumented pipeline, then the 2 s debounce), so they are no faster alone than in the package run; the slowest is 7.6-8.0 s, and all three are in the slow-test register.
 
 Hygiene lint (`paralleltest`, `tparallel`, `usetesting`, `thelper`): 23 findings → 0 (the one `usetesting` finding, `os.MkdirTemp` in `privateSocketDir`, is a `//nolint:usetesting` with the true reason: `t.TempDir()` paths exceed the Unix socket path limit). Repository `golangci-lint`: 0 issues. `go test -race -shuffle=on -count=3 ./cmd/agentic-stream` passes. No `time.Sleep` left in the package.
 
@@ -45,6 +45,7 @@ Hygiene lint (`paralleltest`, `tparallel`, `usetesting`, `thelper`): 23 findings
 - `waitForRow` and `waitReady` poll with a ticker bound to `t.Context()` and a timeout (`pollUntil`, 25 ms) instead of `time.Sleep`.
 - The experiment `serve` database and every operator-command, `run-live`, `serve` and explain test database is seeded from the migrated template (`seedMigratedDatabase`, `newMigratedDatabasePath` over `storagetest.Open`), so the commands under test open a migrated file as in production after the first start. The first-start migration is proven in `internal/storage`.
 - The recorded-replay checks (live run verifies, tampered decision refused, never-deployed spec refused) are three parallel subtests; the tampered/verify replays overlap instead of running one after another.
+- Every replay a test starts (`--repeat`, recorded, shadow, plain `run`) opens its isolated database from the migrated template: the test passes `seededReplayContext(t)` (`replaytest.WithDatabaseOpener(t.Context(), storagetest.Open)`, round 14) to `ExecuteContext`, which the commands hand to `replay`. The production `run` command is unchanged and keeps `storage.OpenFresh`; the real opener stays proven in `internal/replay` and `internal/storage`. Package 15.1 s → 9.6-11.1 s; `TestRunRepeatProvesDeterminism` 2.1 s → 0.2 s alone; each recorded-replay subtest 3.5 s → 1.5-2.1 s; shadow 2.8 s → 1.6 s.
 - Process environment (OTLP exporters off, the subscriber token) is set once in `TestMain` instead of per test with `t.Setenv`, which made 8 tests non-parallel; the experiment tests keep their single process-wide environment, now in one place.
 - One shared read-only fixture, `watchRunDatabase` (`sync.OnceValues`, removed by `TestMain`), replaces a per-test run-live of the watch trace.
 - Tried and rejected: `--poll-interval` 10 ms (slower, 7.3 s ingest), 250 ms (faster ingest, slower dispatch, net equal), live feed reading interval 500 ms (no change).
@@ -77,5 +78,5 @@ Hygiene lint (`paralleltest`, `tparallel`, `usetesting`, `thelper`): 23 findings
 - Experiment compatibility (X01) and invariants 2, 6, 8: `TestExperimentClosedLoopThroughServe`, `TestExperimentClosedLoopUnderAContinuousFeed`, `TestExperimentInterlockStopsEffects`, `TestExperimentShadowReplayComparesTheCandidate`, `TestExperimentCommandsKeepTheirFlags`.
 
 ## Open items
-- Six tests in this package still do a cold `storage.OpenFresh` migration (3 replays of `--repeat`, 3 replays of the recorded checks, 1 of the shadow test, 1 of `run`): about 1.5 s of CPU each under `-race`, which is why the experiment tests are 10 s in the package run and 5-7 s alone. `replay.WithSeededDatabases` exists only in `internal/replay/export_test.go` (round 14), so `cmd` cannot use it. A seeded-database seam that other packages' tests can import (for example a `replaytest` package) would take the package from about 15 s to about 11 s and the experiment tests under 8 s. Alternatively the storage round-3 finding (`OpenFresh` copying a migrated template) would do it in production code.
+- Resolved: no test in this package pays a cold `storage.OpenFresh` migration any more (see Speed).
 - `run-live` validates `--trace-format` only after opening the database, so a bad format costs a migration; validating it in `validateLiveBatch` would be a behavior change (error precedence), not done.

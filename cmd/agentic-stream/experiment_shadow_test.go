@@ -23,7 +23,7 @@ func TestExperimentShadowReplayComparesTheCandidate(t *testing.T) {
 	var out strings.Builder
 	cmd.SetOut(&out)
 	cmd.SetArgs([]string{"--spec", tamozActiveSpec(t, dir, nil), "--trace", experimentTrace, "--db", dbPath, "--worker-socket", socket, "--json"})
-	if err := cmd.ExecuteContext(t.Context()); err != nil {
+	if err := cmd.ExecuteContext(seededReplayContext(t)); err != nil {
 		t.Fatalf("shadow replay: %v\n%s", err, out.String())
 	}
 	report := decodeShadowReport(t, out.String())

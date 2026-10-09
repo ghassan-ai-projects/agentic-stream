@@ -13,7 +13,7 @@ func TestRunRepeatProvesDeterminism(t *testing.T) {
 	var out strings.Builder
 	cmd.SetOut(&out)
 	cmd.SetArgs([]string{"--spec", testSpec, "--trace", testTrace, "--repeat", "3"})
-	if err := cmd.ExecuteContext(t.Context()); err != nil {
+	if err := cmd.ExecuteContext(seededReplayContext(t)); err != nil {
 		t.Fatalf("run --repeat: %v", err)
 	}
 	if !strings.Contains(out.String(), "deterministic: 3 identical runs") || strings.Count(out.String(), "versions_hash=") != 3 {
@@ -31,7 +31,14 @@ var replaySummary = regexp.MustCompile(`^events_processed=([1-9]\d*) situation_v
 func TestRunReplaysTheTraceIntoItsDatabase(t *testing.T) {
 	t.Parallel()
 	dbPath := filepath.Join(t.TempDir(), "replay.db")
-	out := runCLI(t, newRunCommand(), "--spec", testSpec, "--trace", testTrace, "--db", dbPath)
+	cmd := newRunCommand()
+	var printed strings.Builder
+	cmd.SetOut(&printed)
+	cmd.SetArgs([]string{"--spec", testSpec, "--trace", testTrace, "--db", dbPath})
+	if err := cmd.ExecuteContext(seededReplayContext(t)); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	out := printed.String()
 	if !replaySummary.MatchString(out) {
 		t.Fatalf("run output = %q, want non-zero events_processed and situation_versions and a 64-digit versions_hash", out)
 	}

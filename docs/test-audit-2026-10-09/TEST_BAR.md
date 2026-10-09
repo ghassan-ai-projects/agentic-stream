@@ -57,7 +57,6 @@ with the reason it cannot be faster.
 
 | Test | Package | Time | Reason |
 | --- | --- | --- | --- |
-| `TestExperimentClosedLoopUnderAContinuousFeed` | `cmd/agentic-stream` | 10.7-11.9 s in the package run, 6.8 s alone | Product acceptance test: a real `serve`, 64 trace events plus a continuous feed through a race-instrumented pipeline, a debounced episode and a verified command. Spec gates are already shortened in the test copy (debounce and cooldown 2 s, slide 1 s, worker 2 s); the rest is ingestion and four other `serve` runs sharing the CPUs. |
-| `TestExperimentClosedLoopThroughServe` | `cmd/agentic-stream` | 9.6-10.2 s in the package run, 5.0 s alone | Same; plus two cold replays of the recorded-replay checks (`storage.OpenFresh` runs 33 migrations). |
-| `TestExperimentInterlockStopsEffects` | `cmd/agentic-stream` | 8.6-9.7 s in the package run, 4.5 s alone | Same: it must ingest the whole trace and reach the policy denial. |
-| `TestExperimentShadowReplayComparesTheCandidate` | `cmd/agentic-stream` | 7.3-8.3 s in the package run, 2.8 s alone | Cold `OpenFresh` migration plus a shadow replay with a worker, competing with the other heavy tests. |
+| `TestExperimentClosedLoopUnderAContinuousFeed` | `cmd/agentic-stream` | 7.7-8.0 s | Product acceptance test: a real `serve`, 64 trace events plus a continuous feed through a race-instrumented pipeline, a debounced episode and a verified command. Spec gates are already shortened in the test copy (debounce and cooldown 2 s, slide 1 s, worker 2 s); the rest is ingestion. |
+| `TestExperimentClosedLoopThroughServe` | `cmd/agentic-stream` | 6.1-7.1 s | Same; plus the recorded-replay checks. |
+| `TestExperimentInterlockStopsEffects` | `cmd/agentic-stream` | 5.6-6.6 s | Same: it must ingest the whole trace and reach the policy denial. |

@@ -47,7 +47,7 @@ func runRecordedCommand(t *testing.T, specPath, tracePath, sourceDB string) (str
 	var out strings.Builder
 	cmd.SetOut(&out)
 	cmd.SetArgs([]string{"--spec", specPath, "--trace", tracePath, "--db", filepath.Join(t.TempDir(), "replay.db"), "--source-db", sourceDB})
-	err := cmd.ExecuteContext(t.Context())
+	err := cmd.ExecuteContext(seededReplayContext(t))
 	return out.String(), err
 }
 

@@ -111,7 +111,7 @@ To continue in a fresh session:
 | 13 | `device`, `control` | done | every package ≥ 79% (controltest 66.7 → 100, device 93.3 → 100, control store 70.8 → 79.2) | slowest test 0.65 s; no sleeps | 46092904 |
 | 14 | `replay`, `runartifact` | done | every package ≥ 75% (replay 60.0 → 100, replay app 68.1 → 86.2, transport 67.9 → 83.3, runartifact store 71.3 → 84.0) | `replay` 31–36 s → 5.4–6.5 s; slowest test 32.6 s → 1.5 s alone | see git log |
 | 15 | `runtime`, `api` | todo | | | |
-| 16 | `cmd/agentic-stream` | done | 74.3 → 83.1% | package 51–58 s → 14.4–15.7 s; experiment tests 33–39 s → 5–7 s alone | see git log |
+| 16 | `cmd/agentic-stream` | done | 74.3 → 83.1% | package 51–58 s → 9.6–11 s; experiment tests 33–39 s → 5–8 s | see git log |
 | 17 | gates: linters, coverage floor, invariant map, docs | todo | | | |
 
 ## Findings for the owner

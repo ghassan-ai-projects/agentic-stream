@@ -6,8 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/replay/replaytest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
+
+func seededReplayContext(t *testing.T) context.Context {
+	t.Helper()
+	return replaytest.WithDatabaseOpener(t.Context(), storagetest.Open)
+}
 
 const pollEvery = 25 * time.Millisecond
 
