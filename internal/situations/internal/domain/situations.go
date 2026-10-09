@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/cel-go/cel"
@@ -15,7 +16,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-// Engine evaluates features and maintains Situation state for one partition.
 type Engine struct {
 	deploymentID string
 	tenantID     string
@@ -33,7 +33,6 @@ type situationKey struct {
 	entityID    string
 }
 
-// Situation is the mutable current state for one occurrence.
 type Situation struct {
 	SituationID     string
 	TenantID        string
@@ -52,15 +51,14 @@ type Situation struct {
 	FirstEventTime  time.Time
 	LatestEventTime time.Time
 	Facts           map[string]any
-	Evidence        map[string]struct{}
-	ConditionStart  map[string]time.Time // transition key -> first true event time
+	Evidence        []string
+	ConditionStart  map[string]time.Time
 	OpenedAt        time.Time
 	UpdatedAt       time.Time
 	Traceparent     string
 	Tracestate      string
 }
 
-// Version is an immutable Situation version.
 type Version struct {
 	SituationID     string
 	Type            string
@@ -89,16 +87,12 @@ type Version struct {
 	SnapshotSHA256  string
 }
 
-// Restore loads one durable current Situation into the in-memory index.
 func (e *Engine) Restore(s Situation) error {
 	if s.SituationID == "" || s.EntityType == "" || s.EntityID == "" {
 		return fmt.Errorf("restore situation requires identity")
 	}
 	if s.Facts == nil {
 		s.Facts = make(map[string]any)
-	}
-	if s.Evidence == nil {
-		s.Evidence = make(map[string]struct{})
 	}
 	if s.ConditionStart == nil {
 		s.ConditionStart = make(map[string]time.Time)
@@ -107,14 +101,10 @@ func (e *Engine) Restore(s Situation) error {
 	return nil
 }
 
-// Reset discards the in-memory index so it can be rebuilt from durable state
-// after a transaction rollback.
 func (e *Engine) Reset() {
 	e.active = make(map[situationKey]*Situation)
 }
 
-// CurrentState returns a copy of the current Situation and its canonical
-// reducer-state payload for transactional persistence.
 func (e *Engine) CurrentState(partitionID int, entityType, entityID string) (Situation, []byte, string, bool, error) {
 	sit, ok := e.active[situationKey{partitionID: partitionID, entityType: entityType, entityID: entityID}]
 	if !ok {
@@ -132,12 +122,10 @@ func (e *Engine) CurrentState(partitionID int, entityType, entityID string) (Sit
 	return copy, blob, digest, true, nil
 }
 
-// cloneSituation copies the Situation with its own facts, evidence and
-// condition timers.
 func cloneSituation(sit *Situation) Situation {
 	copy := *sit
 	copy.Facts = cloneMap(sit.Facts)
-	copy.Evidence = cloneSet(sit.Evidence)
+	copy.Evidence = slices.Clone(sit.Evidence)
 	copy.ConditionStart = cloneTimes(sit.ConditionStart)
 	return copy
 }
@@ -162,15 +150,6 @@ func cloneMap(values map[string]any) map[string]any {
 	return clone
 }
 
-func cloneSet(values map[string]struct{}) map[string]struct{} {
-	clone := make(map[string]struct{}, len(values))
-	for key := range values {
-		clone[key] = struct{}{}
-	}
-	return clone
-}
-
-// NewEngine creates a situation engine.
 func NewEngine(deploymentID, tenantID string, partitionID int, compiled *spec.CompiledSpec, idGen sources.Generator) (*Engine, error) {
 	env, err := spec.NewCELEnv()
 	if err != nil {
@@ -187,7 +166,6 @@ func NewEngine(deploymentID, tenantID string, partitionID int, compiled *spec.Co
 	}, nil
 }
 
-// ApplyFeature updates situation state with one emitted feature.
 func (e *Engine) ApplyFeature(ctx context.Context, feature operators.Feature, watermark time.Time) ([]Version, error) {
 	sit := e.situationForFeature(feature)
 	completenessChanged := e.applyFeatureEvidence(sit, feature)
@@ -222,7 +200,7 @@ func (e *Engine) newSituation(partitionID int, entityType, entityID string, even
 		OccurrenceID: "occ_" + hash, Version: 0, Phase: e.spec.Situation.InitialPhase,
 		Severity: e.initialSeverity(), Confidence: 1.0, Completeness: string(operators.CompletenessProvisional),
 		FirstEventTime: eventTime, LatestEventTime: eventTime,
-		Facts: make(map[string]any), Evidence: make(map[string]struct{}), ConditionStart: make(map[string]time.Time),
+		Facts: make(map[string]any), ConditionStart: make(map[string]time.Time),
 		OpenedAt: eventTime, UpdatedAt: eventTime, Traceparent: "", Tracestate: "",
 	}
 }

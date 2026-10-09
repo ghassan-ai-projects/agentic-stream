@@ -1,13 +1,12 @@
 package domain
 
 import (
+	"slices"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 )
 
-// applyFeatureEvidence folds one feature into the Situation's facts, evidence
-// and trace context, reporting whether its completeness changed.
 func (e *Engine) applyFeatureEvidence(sit *Situation, feature operators.Feature) bool {
 	completenessChanged := feature.Completeness != "" && feature.Completeness != sit.Completeness
 	if feature.Completeness != "" {
@@ -42,13 +41,11 @@ func (e *Engine) applyReducers(sit *Situation, feature operators.Feature) {
 		case "latest_event_time":
 			keepLatestFact(sit, r.Field, feature)
 		case "set_union":
-			addEvidence(sit, feature.InputEventIDs)
+			addEvidence(sit, feature.InputEventIDs, evidenceLimit(r.Limit))
 		}
 	}
 }
 
-// keepLatestFact stores the feature value unless the fact already holds a
-// value from a later or equal event time.
 func keepLatestFact(sit *Situation, field string, feature operators.Feature) {
 	_, exists := sit.Facts[field]
 	currentTime, _ := sit.Facts[field+"_event_time"].(time.Time)
@@ -58,11 +55,45 @@ func keepLatestFact(sit *Situation, field string, feature operators.Feature) {
 	}
 }
 
-func addEvidence(sit *Situation, eventIDs []string) {
-	if sit.Evidence == nil {
-		sit.Evidence = make(map[string]struct{})
+const MaxEvidence = 4096
+
+func evidenceLimit(declared int) int {
+	if declared <= 0 || declared > MaxEvidence {
+		return MaxEvidence
 	}
+	return declared
+}
+
+func addEvidence(sit *Situation, eventIDs []string, limit int) {
+	batch := newEvidenceBatch(eventIDs)
+	sit.Evidence = append(slices.DeleteFunc(sit.Evidence, batch.contains), batch.order...)
+	sit.Evidence = keepNewest(sit.Evidence, limit)
+}
+
+type evidenceBatch struct {
+	order   []string
+	members map[string]struct{}
+}
+
+func newEvidenceBatch(eventIDs []string) evidenceBatch {
+	batch := evidenceBatch{members: make(map[string]struct{}, len(eventIDs))}
 	for _, id := range eventIDs {
-		sit.Evidence[id] = struct{}{}
+		if !batch.contains(id) {
+			batch.members[id] = struct{}{}
+			batch.order = append(batch.order, id)
+		}
 	}
+	return batch
+}
+
+func (b evidenceBatch) contains(id string) bool {
+	_, member := b.members[id]
+	return member
+}
+
+func keepNewest(evidence []string, limit int) []string {
+	if excess := len(evidence) - limit; excess > 0 {
+		return slices.Delete(evidence, 0, excess)
+	}
+	return evidence
 }

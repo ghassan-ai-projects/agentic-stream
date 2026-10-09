@@ -12,7 +12,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 )
 
-// SituationState is the persisted runtime state of one Situation.
 type SituationState struct {
 	SituationID    string               `json:"situation_id"`
 	OccurrenceID   string               `json:"occurrence_id"`
@@ -25,8 +24,6 @@ type SituationState struct {
 	Tracestate     string               `json:"tracestate,omitempty"`
 }
 
-// StoredSituation is one current Situation joined with its current version, as
-// read from storage.
 type StoredSituation struct {
 	SituationID, Type, EntityType, EntityID, OccurrenceID, Phase string
 	PartitionID, Version, Severity, StateCodecVersion            int
@@ -52,7 +49,7 @@ func (r StoredSituation) situation(tenantID, deploymentID string, state Situatio
 		OccurrenceID: r.OccurrenceID, Version: r.Version, Phase: r.Phase,
 		PreviousPhase: r.PreviousPhase, Severity: r.Severity, Confidence: r.Confidence,
 		Completeness: r.Completeness, FirstEventTime: r.FirstEventTime, LatestEventTime: r.LatestEventTime,
-		Facts: state.Facts, Evidence: evidenceSet(state.Evidence), ConditionStart: state.ConditionStart,
+		Facts: state.Facts, Evidence: state.Evidence, ConditionStart: state.ConditionStart,
 		OpenedAt: r.FirstEventTime, UpdatedAt: r.UpdatedAt, Traceparent: r.Traceparent, Tracestate: r.Tracestate,
 	}
 }
@@ -74,8 +71,6 @@ func (r StoredSituation) decodeState() (SituationState, error) {
 	return state, restoreFactTimes(state.Facts)
 }
 
-// checkStateCodec requires codec version 1 and complete state bytes; legacy
-// codec 0 state must be rebuilt.
 func (r StoredSituation) checkStateCodec() error {
 	if r.StateCodecVersion == 0 {
 		return fmt.Errorf("situation %s requires rebuild: legacy runtime state has no supported codec", r.SituationID)
@@ -131,12 +126,4 @@ func restoreFactTimes(facts map[string]any) error {
 		facts[key] = parsed
 	}
 	return nil
-}
-
-func evidenceSet(ids []string) map[string]struct{} {
-	evidence := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		evidence[id] = struct{}{}
-	}
-	return evidence
 }

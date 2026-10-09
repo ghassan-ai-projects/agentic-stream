@@ -19,7 +19,7 @@ func TestMaterializationKeepsCanonicalEvidenceAndPrivateState(t *testing.T) {
 		SituationID: "s1", TenantID: "tenant", Type: "test", Version: 2, Phase: "watch", PreviousPhase: "candidate",
 		EntityType: "motor", EntityID: "m1", Completeness: "on_time", Confidence: 1,
 		LatestEventTime: now, Facts: map[string]any{"level": 3.0, "level_event_time": kernel.FormatTime(now)},
-		Evidence: map[string]struct{}{"evt-z": {}, "evt-a": {}}, ConditionStart: map[string]time.Time{"watch": now},
+		Evidence: []string{"evt-z", "evt-a"}, ConditionStart: map[string]time.Time{"watch": now},
 	}
 	first, err := engine.materialize(sit, now)
 	if err != nil {
@@ -31,10 +31,13 @@ func TestMaterializationKeepsCanonicalEvidenceAndPrivateState(t *testing.T) {
 	if _, exists := first.Facts["level_event_time"]; exists || !bytes.Contains(first.StateJSON, []byte("level_event_time")) {
 		t.Fatal("internal event time must be persisted but excluded from published facts")
 	}
-	sit.Evidence = map[string]struct{}{"evt-a": {}, "evt-z": {}}
+	sit.Evidence = []string{"evt-a", "evt-z"}
 	second, err := engine.materialize(sit, now)
-	if err != nil || !bytes.Equal(first.SnapshotJSON, second.SnapshotJSON) || first.SnapshotSHA256 != second.SnapshotSHA256 || first.StateSHA256 != second.StateSHA256 {
-		t.Fatalf("map insertion order changed materialization: err=%v", err)
+	if err != nil || !bytes.Equal(first.SnapshotJSON, second.SnapshotJSON) || first.SnapshotSHA256 != second.SnapshotSHA256 {
+		t.Fatalf("evidence arrival order changed the published snapshot: err=%v", err)
+	}
+	if first.StateSHA256 == second.StateSHA256 {
+		t.Fatal("private state must keep evidence in arrival order so the oldest is evicted first")
 	}
 	sit.Facts["level"] = 8.0
 	sit.ConditionStart["watch"] = now.Add(time.Hour)
@@ -71,7 +74,7 @@ func TestMaterializationPinsTheDigestsThatEmbedInstants(t *testing.T) {
 		SituationID: "s1", TenantID: "tenant", Type: "test", Version: 2, Phase: "watch", PreviousPhase: "candidate",
 		EntityType: "motor", EntityID: "m1", Completeness: "on_time", Confidence: 1,
 		LatestEventTime: now, Facts: map[string]any{"level": 3.0, "level_event_time": now},
-		Evidence: map[string]struct{}{"evt-a": {}}, ConditionStart: map[string]time.Time{"watch": now},
+		Evidence: []string{"evt-a"}, ConditionStart: map[string]time.Time{"watch": now},
 	}
 	version, err := engine.materialize(sit, now)
 	if err != nil {

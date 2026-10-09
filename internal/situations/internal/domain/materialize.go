@@ -3,7 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -53,8 +53,6 @@ func publicationVersion(sit *Situation, watermark time.Time) *Version {
 	}
 }
 
-// publishedFacts are the situation facts without internal event-time
-// bookkeeping.
 func publishedFacts(sit *Situation) map[string]any {
 	facts := make(map[string]any, len(sit.Facts))
 	for k, v := range sit.Facts {
@@ -66,16 +64,11 @@ func publishedFacts(sit *Situation) map[string]any {
 }
 
 func sortedEvidenceIDs(sit *Situation) []string {
-	evidenceIDs := make([]string, 0, len(sit.Evidence))
-	for id := range sit.Evidence {
-		evidenceIDs = append(evidenceIDs, id)
-	}
-	sort.Strings(evidenceIDs)
+	evidenceIDs := slices.Clone(sit.Evidence)
+	slices.Sort(evidenceIDs)
 	return evidenceIDs
 }
 
-// snapshot builds the immutable, schema-valid Situation snapshot and returns
-// its canonical JSON and digest.
 func (e *Engine) snapshot(sit *Situation, facts map[string]any, evidenceIDs []string, watermark time.Time) ([]byte, string, error) {
 	snapshot := e.snapshotDocument(sit, facts, evidenceIDs, watermark)
 	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, snapshot); err != nil {
@@ -104,8 +97,6 @@ func (e *Engine) snapshotDocument(sit *Situation, facts map[string]any, evidence
 	}
 }
 
-// persistedState returns the situation's persisted runtime state and its
-// digest.
 func persistedState(sit *Situation) ([]byte, string, error) {
 	stateBlob, err := stateJSON(sit)
 	if err != nil {
@@ -123,14 +114,13 @@ func persistedState(sit *Situation) ([]byte, string, error) {
 }
 
 func stateJSON(sit *Situation) ([]byte, error) {
-	blob, err := canonicaljson.Marshal(stateDocument(sit, stateFacts(sit), sortedEvidenceIDs(sit), stateConditionStart(sit)))
+	blob, err := canonicaljson.Marshal(stateDocument(sit, stateFacts(sit), sit.Evidence, stateConditionStart(sit)))
 	if err != nil {
 		return nil, fmt.Errorf("marshal situation state: %w", err)
 	}
 	return blob, nil
 }
 
-// stateFacts renders time-valued facts as RFC 3339 text.
 func stateFacts(sit *Situation) map[string]any {
 	facts := make(map[string]any, len(sit.Facts))
 	for key, value := range sit.Facts {

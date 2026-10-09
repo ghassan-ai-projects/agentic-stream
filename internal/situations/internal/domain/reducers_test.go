@@ -1,11 +1,13 @@
 package domain_test
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
+	domain "github.com/ghassan-ai-projects/agentic-stream/internal/situations/internal/domain"
 )
 
 func TestLatestEventTimeFactKeepsTheNewestObservation(t *testing.T) {
@@ -44,13 +46,42 @@ func TestSetUnionReducerAccumulatesEvidenceWithoutDuplicates(t *testing.T) {
 	}
 	apply(t, engine, vibration(6.0, base.Add(6*time.Minute), "evt-d"))
 	state, _, _, _, _ := engine.CurrentState(0, "motor", "motor-17")
-	var got []string
-	for id := range state.Evidence {
-		got = append(got, id)
+	if want := []string{"evt-b", "evt-c", "evt-a", "evt-d"}; !slices.Equal(state.Evidence, want) {
+		t.Fatalf("evidence = %v, want %v, most recently seen last", state.Evidence, want)
 	}
-	slices.Sort(got)
-	if want := []string{"evt-a", "evt-b", "evt-c", "evt-d"}; !slices.Equal(got, want) {
-		t.Fatalf("evidence = %v, want %v", got, want)
+}
+
+func TestSetUnionReducerKeepsOnlyTheMostRecentEvidenceWithinItsLimit(t *testing.T) {
+	t.Parallel()
+	compiled := vibrationSpec()
+	compiled.Situation.Reducers[len(compiled.Situation.Reducers)-1].Limit = 2
+	engine := newEngine(t, compiled)
+	for i, id := range []string{"evt-1", "evt-2", "evt-3", "evt-2", "evt-4"} {
+		apply(t, engine, vibration(5.0, base.Add(time.Duration(i)*time.Minute), id))
+	}
+	state, _, _, _, _ := engine.CurrentState(0, "motor", "motor-17")
+	if want := []string{"evt-2", "evt-4"}; !slices.Equal(state.Evidence, want) {
+		t.Fatalf("evidence = %v, want the two most recent %v", state.Evidence, want)
+	}
+}
+
+func TestEvidenceWithoutADeclaredLimitStaysWithinTheSnapshotContract(t *testing.T) {
+	t.Parallel()
+	engine := newEngine(t, vibrationSpec())
+	ids := make([]string, domain.MaxEvidence+500)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("evt-%05d", i)
+	}
+	apply(t, engine, vibration(5.0, base, ids...))
+	versions := apply(t, engine, vibration(5.0, base.Add(time.Minute), "evt-last"))
+	state, _, _, _, _ := engine.CurrentState(0, "motor", "motor-17")
+	if len(state.Evidence) != domain.MaxEvidence || state.Evidence[len(state.Evidence)-1] != "evt-last" {
+		t.Fatalf("evidence holds %d references ending %q, want %d ending evt-last", len(state.Evidence), state.Evidence[len(state.Evidence)-1], domain.MaxEvidence)
+	}
+	for _, version := range versions {
+		if len(version.Evidence) > domain.MaxEvidence {
+			t.Fatalf("published %d evidence references, more than the snapshot allows", len(version.Evidence))
+		}
 	}
 }
 
