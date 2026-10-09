@@ -100,11 +100,17 @@ func (db *DB) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for _, m := range domain.PendingMigrations(migrationList, applied) {
+	return db.applyPending(ctx, domain.PendingMigrations(migrationList, applied), len(applied))
+}
+
+func (db *DB) applyPending(ctx context.Context, pending []migrations.Migration, alreadyApplied int) error {
+	for _, m := range pending {
 		if err := db.runMigration(ctx, m); err != nil {
 			return fmt.Errorf("migration %d %s: %w", m.Version, m.Name, err)
 		}
-		slog.Info("database migration applied", "version", m.Version, "name", m.Name)
+	}
+	if len(pending) > 0 {
+		slog.Info("database migrated", "applied", len(pending), "from_version", alreadyApplied, "to_version", pending[len(pending)-1].Version)
 	}
 	return nil
 }
