@@ -47,10 +47,10 @@ what proves nothing. Every test ends at the [test bar](TEST_BAR.md).
 | 3 | `storage`, `telemetry`, `migrations` | done | every package ≥ 81% (storage 64 → 100, telemetry 66.7 → 100) | store 8.4 s → 4.0 s, storagetest 5.4 s → 3.5 s | ff3a06ce |
 | 4 | `spec`, `ingress` | done | every package ≥ 85% (spec store 68.9 → 86.5, spectest 71.4 → 85.7) | ≈1–2 s each; spec compile 26.9 → 6.9 ms under `-race` (schema compiled once) | 27f1968f |
 | 5 | `eventlog`, `engine` | done | every package ≥ 87% (eventlog store 67.1 → 92.2, app 71.5 → 94.9) | ≤ 3.3 s each, no sleeps | 6fb148d2 |
-| 6 | `operators`, `situations`, `cognition` | done | every package ≥ 83% (situations domain 72.3 → 93.8, cognition 66.7 → 100, store 68.8 → 83.2) | ≈1.3–2.8 s each; cognition app proves 59 cases instead of 15 | see git log |
+| 6 | `operators`, `situations`, `cognition` | done | every package ≥ 83% (situations domain 72.3 → 93.8, cognition 66.7 → 100, store 68.8 → 83.2) | ≈1.3–2.8 s each; cognition app proves 59 cases instead of 15 | ede78cf3 |
 | 7 | `episodes` | done | every package ≥ 84% (app 63.9 → 84.3, store 69.3 → 93.0) | no test above 0.7 s, sleep replaced by virtual clock | f29e6d29 |
 | 8 | `episodeledger`, `approvalledger` | todo | | | |
-| 9 | `evidence`, `decisions` | todo | | | |
+| 9 | `evidence`, `decisions` | done | every package ≥ 87% (evidence app 81.5 → 98.1, decisions domain 84.5 → 95.3) | slowest test 0.32 s | see git log |
 | 10 | `executor/*`, `worker`, `testsupport/*` | todo | | | |
 | 11 | `policy`, `authority` | todo | | | |
 | 12 | `actions`, `actionport`, `watch`, `notify` | todo | | | |
@@ -77,4 +77,6 @@ not a test decision.
 | 7 | Production files under `internal/episodes/internal/**` still carry ticket comments (`ISSUE-061`, `P8`) against the no-comments rule. | [episodes.md](modules/episodes.md) |
 | 6 | Confirmed: one feature can satisfy several transitions; `Version` is bumped per transition but only the last is published, so the first published version can be 2. `situations/UBIQUITOUS_LANGUAGE.md` says every change publishes a new version. Decide which is right. Pinned by `TestChainedTransitionsOfOneFeaturePublishOnlyTheFinalVersion`. | [situations.md](modules/situations.md) |
 | 6 | `RecordCostRejectionReason` and `RecordSchedulerExpiryReason` append a reason but leave the outcome `admitted`. The cognition language says reopening an occurrence needs a cooldown, but the engine never reopens one. | [cognition.md](modules/cognition.md) |
+| 9 | Security: `wire.SignedPayload` decodes the evidence token signature with non-strict base64, so three other final characters verify as the same token (the MAC still holds; authority does not widen). Fix: `base64.RawURLEncoding.Strict()`. | [evidence.md](modules/evidence.md) |
+| 9 | A provider result after the call deadline returns `DeadlineExceeded` but leaves the reservation `running` until lease reclaim. Compensating intents bypass `AllowedIntentTypes` (only the reconsider flag and catalog membership gate them). Confirm both. | [evidence.md](modules/evidence.md), [decisions.md](modules/decisions.md) |
 
