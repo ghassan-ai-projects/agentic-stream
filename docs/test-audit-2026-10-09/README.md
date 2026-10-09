@@ -1,6 +1,6 @@
 # Test audit (2026-10-09)
 
-Status: paused after round 10 (rounds 0–10 of 17 done, PR #50). See [Resume](#resume).
+Status: paused after round 13 (rounds 0–13 of 17 done; 0–10 merged in PR #50). See [Resume](#resume).
 
 A full audit of the repository's tests: organize them so the repository is easy
 to read, make them faster, raise coverage where it proves behavior, and remove
@@ -106,9 +106,9 @@ To continue in a fresh session:
 | 8 | `episodeledger`, `approvalledger` | done | every package ≥ 85% (episodeledger facade 64.5 → 100, store 67.5 → 86.1) | no test above 0.6 s; attempt state machine checked over all 81 pairs | 5f8d47a7 |
 | 9 | `evidence`, `decisions` | done | every package ≥ 87% (evidence app 81.5 → 98.1, decisions domain 84.5 → 95.3) | slowest test 0.32 s | a0e50cc1 |
 | 10 | `executor/*`, `worker`, `testsupport/*` | done | every package ≥ 78% (remote domain 69.9 → 97.8, conformance 66.7 → 94.9, worker transport 69.4 → 78.8) | slowest test 1.41 s → 0.34 s; conformance no longer re-execs a process | 995b3c40 |
-| 11 | `policy`, `authority` | done | every package ≥ 81% (policy facade 85.2 → 100, policy store 80.2 → 89.9) | policy app 8.5 s → 3.4 s (serial tests, per-test pipeline, 12 autocommits, sleep) | see git log |
-| 12 | `actions`, `actionport`, `watch`, `notify` | stopped (partial work stashed) | | | |
-| 13 | `device`, `control` | done | every package ≥ 79% (controltest 66.7 → 100, device 93.3 → 100, control store 70.8 → 79.2) | slowest test 0.65 s; no sleeps | see git log |
+| 11 | `policy`, `authority` | done | every package ≥ 81% (policy facade 85.2 → 100, policy store 80.2 → 89.9) | policy app 8.5 s → 3.4 s (serial tests, per-test pipeline, 12 autocommits, sleep) | 046acfd7 |
+| 12 | `actions`, `actionport`, `watch`, `notify` | done | every package ≥ 77% (notify store 68.0 → 93.0, actionport domain 80 → 100, actions app 81.9 → 89.4) | no test above 1 s; crash-between-effect-and-outcome proven | 8a4cd57c |
+| 13 | `device`, `control` | done | every package ≥ 79% (controltest 66.7 → 100, device 93.3 → 100, control store 70.8 → 79.2) | slowest test 0.65 s; no sleeps | 46092904 |
 | 14 | `replay`, `runartifact` | todo | | | |
 | 15 | `runtime`, `api` | todo | | | |
 | 16 | `cmd/agentic-stream` | todo | | | |
