@@ -6,10 +6,13 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
 )
@@ -44,6 +47,60 @@ func TestALiveSocketEventFlowsThroughEveryGovernedStageUntilShutdown(t *testing.
 	case <-time.After(10 * time.Second):
 		t.Fatal("live pipeline did not shut down")
 	}
+}
+
+type stalledEffector struct {
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (e *stalledEffector) Dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
+	e.stall(ctx)
+	return device.NewSimulatedEffector().Dispatch(ctx, command)
+}
+
+func (e *stalledEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
+	e.stall(ctx)
+	return device.NewSimulatedEffector().DispatchAuthorized(ctx, command, authorization)
+}
+
+func (e *stalledEffector) stall(ctx context.Context) {
+	e.once.Do(func() { close(e.entered) })
+	select {
+	case <-e.release:
+	case <-ctx.Done():
+	}
+}
+
+func TestASlowEffectorNeverHoldsUpLiveIngestion(t *testing.T) {
+	t.Parallel()
+	effector := &stalledEffector{entered: make(chan struct{}), release: make(chan struct{})}
+	pipeline, db := openPipeline(t, thingSpec("native", "active"), runtime.PipelineConfig{Effector: effector})
+	if err := pipeline.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	socketPath := filepath.Join(workerfake.SocketDir(t), "live.sock")
+	ctx, shutdown := context.WithCancel(t.Context())
+	defer shutdown()
+	runDone := make(chan error, 1)
+	go func() { runDone <- pipeline.RunLiveSocket(ctx, socketPath) }()
+
+	sendLiveEvent(t, socketPath, liveEnvelope("evt-first", "thing-1", 15), runDone)
+	select {
+	case <-effector.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the approved command never reached the effector")
+	}
+	second := liveEnvelope("evt-second", "thing-2", 15)
+	sendLiveEvent(t, socketPath, second, runDone)
+	waitUntil(t, "the second event to be applied while the effector is stalled", func() bool {
+		return scalar[int](t, db, "SELECT COUNT(*) FROM event_inbox WHERE event_id = 'evt-second'") == 1
+	})
+	close(effector.release)
+	awaitLiveBatchEnd(t, pipeline)
+	shutdown()
+	<-runDone
 }
 
 func TestALiveSocketNeverReplacesAnExistingFile(t *testing.T) {

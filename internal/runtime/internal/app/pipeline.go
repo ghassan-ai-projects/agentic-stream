@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -46,6 +47,9 @@ type Pipeline struct {
 	watchDone      chan struct{}
 	watchErr       error
 	telemetry      *telemetry.Runtime
+
+	dispatchWake          chan struct{}
+	dispatchInMaintenance atomic.Bool
 }
 
 func (p *Pipeline) Start(ctx context.Context) error {
@@ -60,12 +64,13 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	watchCtx, stop := context.WithCancel(ctx)
 	p.watchStop = stop
 	p.watchDone = make(chan struct{})
-	done := p.watchDone
-	go p.maintainWatches(watchCtx, done)
+	p.dispatchWake = make(chan struct{}, 1)
+	done, wake := p.watchDone, p.dispatchWake
+	go p.maintainWatches(watchCtx, done, wake)
 	return nil
 }
 
-func (p *Pipeline) maintainWatches(watchCtx context.Context, done chan struct{}) {
+func (p *Pipeline) maintainWatches(watchCtx context.Context, done chan struct{}, wake <-chan struct{}) {
 	defer close(done)
 	ticker := time.NewTicker(domain.MaintenanceInterval(p.maintenanceInterval))
 	defer ticker.Stop()
@@ -74,10 +79,22 @@ func (p *Pipeline) maintainWatches(watchCtx context.Context, done chan struct{})
 		case <-watchCtx.Done():
 			return
 		case <-ticker.C:
-			if err := p.expireMaintainedWatches(watchCtx); err != nil {
-				return
-			}
+		case <-wake:
 		}
+		if err := p.expireMaintainedWatches(watchCtx); err != nil {
+			slog.Error("pipeline maintenance stopped", "tenant", p.tenantID, "error", err)
+			return
+		}
+	}
+}
+
+func (p *Pipeline) wakeDispatch() {
+	p.watchMu.Lock()
+	wake := p.dispatchWake
+	p.watchMu.Unlock()
+	select {
+	case wake <- struct{}{}:
+	default:
 	}
 }
 

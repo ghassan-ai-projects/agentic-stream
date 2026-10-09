@@ -125,7 +125,9 @@ func newPipeline(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, cfg 
 	if cfg.Executor == nil {
 		cfg.Executor = fixture.New()
 	}
-	cfg.Effector = device.NewSimulatedEffector()
+	if cfg.Effector == nil {
+		cfg.Effector = device.NewSimulatedEffector()
+	}
 	pipeline, err := runtime.NewPipeline(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)

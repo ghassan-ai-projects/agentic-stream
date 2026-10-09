@@ -66,6 +66,15 @@ the killed policy epoch. Treat these as operator actions and audit their use.
 The design archive lists broader CRUD and inspection HTTP APIs. The current
 handler exposes only the routes in the [HTTP reference](../reference/http-api.md).
 
+## Effects and ingestion
+
+In `serve --live-socket`, approved commands are dispatched by the pipeline's
+maintenance loop, which a batch wakes as soon as it approves a command, so a
+slow device or gateway never holds up ingestion. `run-live` and `serve
+--trace` still dispatch inside each batch and run episodes inline, so a slow
+effector or model call delays the next batch there. Live episodes run one at a
+time beside ingestion; reasoning throughput is bounded by episode duration.
+
 ## Metrics
 
 `GET /metrics` serves Prometheus text sorted by name, with a `# TYPE` line per
