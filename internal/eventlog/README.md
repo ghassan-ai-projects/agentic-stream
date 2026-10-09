@@ -17,6 +17,10 @@ flowchart TD
     S --> R["event_schemas registry (read-only)"]
 ```
 
+A service decodes each registered schema (event type and version) once and
+reuses it for every later envelope of that type and version until the process
+restarts; register a new schema version rather than editing an active one.
+
 ## Responsibilities
 
 | Layer | Responsibility |

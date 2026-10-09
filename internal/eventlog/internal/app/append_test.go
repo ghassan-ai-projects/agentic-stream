@@ -150,6 +150,22 @@ func TestValidateEnvelopeIsOptionalUntilSchemasAreRequired(t *testing.T) {
 	}
 }
 
+func TestARegisteredSchemaIsReadOncePerService(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.registerTemperatureSchema(t, temperatureSchema)
+	h.service.RequireSchemaValidation()
+	if err := h.service.ValidateEnvelope(t.Context(), envelope("evt-1")); err != nil {
+		t.Fatalf("conforming envelope refused: %v", err)
+	}
+	if _, err := h.db.ExecContext(t.Context(), "UPDATE event_schemas SET schema_json = CAST('not json' AS BLOB)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.service.ValidateEnvelope(t.Context(), envelope("evt-2")); err != nil {
+		t.Fatalf("validation re-read the registry instead of the decoded schema: %v", err)
+	}
+}
+
 func TestReadEntityEventsWrapsTheWindowRead(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

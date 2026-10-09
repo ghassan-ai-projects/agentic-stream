@@ -260,6 +260,21 @@ func (e *Engine) evalBool(_ context.Context, expr string, features, situation ma
 }
 
 func (e *Engine) program(expr string) (cel.Program, error) {
+	if cached, ok := e.programs[expr]; ok {
+		return cached, nil
+	}
+	prg, err := e.compileProgram(expr)
+	if err != nil {
+		return nil, err
+	}
+	if e.programs == nil {
+		e.programs = make(map[string]cel.Program)
+	}
+	e.programs[expr] = prg
+	return prg, nil
+}
+
+func (e *Engine) compileProgram(expr string) (cel.Program, error) {
 	ast, issues := e.celEnv.Compile(expr)
 	if issues != nil && issues.Err() != nil {
 		return nil, fmt.Errorf("compile cel: %w", issues.Err())

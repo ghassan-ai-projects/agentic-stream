@@ -24,6 +24,7 @@ type Engine struct {
 	spec         *spec.CompiledSpec
 	idGen        sources.Generator
 	celEnv       *cel.Env
+	programs     map[string]cel.Program
 
 	active map[situationKey]*Situation
 }
@@ -166,6 +167,7 @@ func NewEngine(deploymentID, tenantID string, partitionID int, compiled *spec.Co
 		spec:         compiled,
 		idGen:        idGen,
 		celEnv:       env,
+		programs:     make(map[string]cel.Program),
 		active:       make(map[situationKey]*Situation),
 	}, nil
 }

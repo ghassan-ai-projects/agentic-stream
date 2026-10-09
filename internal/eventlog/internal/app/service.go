@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
@@ -15,7 +16,10 @@ type Service struct {
 	store          store.Store
 	clk            sources.Clock
 	requireSchemas bool
+	schemas        sync.Map
 }
+
+type schemaRef struct{ eventType, version string }
 
 func New(clk sources.Clock, st store.Store) *Service {
 	clk = sources.OrPhysical(clk)
@@ -35,20 +39,47 @@ func (s *Service) ValidateEnvelope(ctx context.Context, env contractsv1.Envelope
 	if !s.requireSchemas {
 		return nil
 	}
+	if schema, cached := s.cachedSchema(env); cached {
+		return checkPayload(schema, env)
+	}
 	return s.store.Unit(ctx, func(u *store.Unit) error {
 		return s.validateSchema(ctx, u, env)
 	})
 }
 
 func (s *Service) validateSchema(ctx context.Context, u *store.Unit, env contractsv1.Envelope) error {
+	schema, err := s.registeredSchema(ctx, u, env)
+	if err != nil {
+		return err
+	}
+	return checkPayload(schema, env)
+}
+
+func (s *Service) cachedSchema(env contractsv1.Envelope) (domain.EventSchema, bool) {
+	cached, ok := s.schemas.Load(schemaRef{env.Type, env.SchemaVersion})
+	if !ok {
+		return domain.EventSchema{}, false
+	}
+	return cached.(domain.EventSchema), true
+}
+
+func (s *Service) registeredSchema(ctx context.Context, u *store.Unit, env contractsv1.Envelope) (domain.EventSchema, error) {
+	if schema, cached := s.cachedSchema(env); cached {
+		return schema, nil
+	}
 	schemaJSON, err := u.LoadEventSchemaJSON(ctx, env.Type, env.SchemaVersion)
 	if err != nil {
-		return fmt.Errorf("load schema of %s: %w", env.ID, err)
+		return domain.EventSchema{}, fmt.Errorf("load schema of %s: %w", env.ID, err)
 	}
 	schema, err := domain.DecodeEventSchema(schemaJSON)
 	if err != nil {
-		return fmt.Errorf("decode schema %s/%s: %w", env.Type, env.SchemaVersion, err)
+		return domain.EventSchema{}, fmt.Errorf("decode schema %s/%s: %w", env.Type, env.SchemaVersion, err)
 	}
+	s.schemas.Store(schemaRef{env.Type, env.SchemaVersion}, schema)
+	return schema, nil
+}
+
+func checkPayload(schema domain.EventSchema, env contractsv1.Envelope) error {
 	if err := schema.CheckPayload(env.Data); err != nil {
 		return fmt.Errorf("check payload of %s: %w", env.ID, err)
 	}
