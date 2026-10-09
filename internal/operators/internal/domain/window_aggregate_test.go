@@ -52,3 +52,12 @@ func TestSlopeIsZeroWithoutSpreadInTime(t *testing.T) {
 		})
 	}
 }
+
+func TestRootMeanSquareRoundsEachProductOnEveryArchitecture(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	samples := []Sample{{EventTime: start, Value: 0.8}, {EventTime: start, Value: 0.3}, {EventTime: start, Value: 1.7}}
+	if got, want := rootMeanSquare(samples), 1.098483803552272; got != want {
+		t.Fatalf("rms = %v, want %v: a fused multiply-add changed the last bit, so replay would differ by CPU", got, want)
+	}
+}

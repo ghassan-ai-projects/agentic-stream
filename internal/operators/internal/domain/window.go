@@ -163,7 +163,7 @@ func sumValues(samples []Sample) float64 {
 func rootMeanSquare(samples []Sample) float64 {
 	var sumSquares float64
 	for _, s := range samples {
-		sumSquares += s.Value * s.Value
+		sumSquares += roundedProduct(s.Value, s.Value)
 	}
 	return math.Sqrt(sumSquares / float64(len(samples)))
 }
@@ -184,11 +184,11 @@ func linearSlope(samples []Sample) float64 {
 	}
 	sumX, sumY, sumXY, sumXX := slopeSums(samples)
 	n := float64(len(samples))
-	denom := n*sumXX - sumX*sumX
+	denom := roundedProduct(n, sumXX) - roundedProduct(sumX, sumX)
 	if denom == 0 {
 		return 0
 	}
-	return (n*sumXY - sumX*sumY) / denom
+	return (roundedProduct(n, sumXY) - roundedProduct(sumX, sumY)) / denom
 }
 
 func slopeSums(samples []Sample) (sumX, sumY, sumXY, sumXX float64) {
@@ -197,10 +197,14 @@ func slopeSums(samples []Sample) (sumX, sumY, sumXY, sumXX float64) {
 		x := s.EventTime.Sub(start).Hours()
 		sumX += x
 		sumY += s.Value
-		sumXY += x * s.Value
-		sumXX += x * x
+		sumXY += roundedProduct(x, s.Value)
+		sumXX += roundedProduct(x, x)
 	}
 	return sumX, sumY, sumXY, sumXX
+}
+
+func roundedProduct(a, b float64) float64 {
+	return float64(a * b)
 }
 
 func eventIDs(samples []Sample) []string {
