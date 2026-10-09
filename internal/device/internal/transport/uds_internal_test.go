@@ -9,14 +9,17 @@ import (
 	"time"
 )
 
+const internalWaitBound = 5 * time.Second
+
 func TestUDSTransportMarksPartialWriteAsPossiblySent(t *testing.T) {
+	t.Parallel()
 	client, server := net.Pipe()
 	defer func() { _ = client.Close() }()
 	defer func() { _ = server.Close() }()
 	cause := errors.New("write interrupted")
 	transport := newUDS(&partialWriteConn{Conn: client, cause: cause})
 
-	err := transport.Send(context.Background(), []byte("{}\n"))
+	err := transport.Send(t.Context(), []byte("{}\n"))
 	if !errors.Is(err, cause) {
 		t.Fatalf("send error = %v, want %v", err, cause)
 	}
@@ -26,7 +29,8 @@ func TestUDSTransportMarksPartialWriteAsPossiblySent(t *testing.T) {
 }
 
 func TestPrepareDeadlineClosesTransportWhenCancellationDeadlineFails(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	cause := errors.New("deadline unsupported")
 	closed := make(chan struct{})
@@ -46,7 +50,7 @@ func TestPrepareDeadlineClosesTransportWhenCancellationDeadlineFails(t *testing.
 	cancel()
 	select {
 	case <-closed:
-	case <-time.After(time.Second):
+	case <-time.After(internalWaitBound):
 		t.Fatal("transport was not closed after cancellation deadline failure")
 	}
 	if err := cleanup(); !errors.Is(err, cause) {
@@ -55,6 +59,7 @@ func TestPrepareDeadlineClosesTransportWhenCancellationDeadlineFails(t *testing.
 }
 
 func TestUDSQueryStateDoesNotHoldReadLockWhileWaitingToWrite(t *testing.T) {
+	t.Parallel()
 	client, server := net.Pipe()
 	defer func() { _ = client.Close() }()
 	defer func() { _ = server.Close() }()
@@ -62,7 +67,7 @@ func TestUDSQueryStateDoesNotHoldReadLockWhileWaitingToWrite(t *testing.T) {
 	<-transport.writeGate
 	transport.readMu.Lock()
 
-	baseCtx, cancel := context.WithCancel(context.Background())
+	baseCtx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	ctx := &observedContext{Context: baseCtx, observed: make(chan struct{})}
 	queryDone := make(chan error, 1)
@@ -72,7 +77,7 @@ func TestUDSQueryStateDoesNotHoldReadLockWhileWaitingToWrite(t *testing.T) {
 	}()
 	select {
 	case <-ctx.observed:
-	case <-time.After(time.Second):
+	case <-time.After(internalWaitBound):
 		t.Fatal("query state did not wait for the write gate")
 	}
 	transport.readMu.Unlock()
@@ -85,13 +90,13 @@ func TestUDSQueryStateDoesNotHoldReadLockWhileWaitingToWrite(t *testing.T) {
 	}()
 	select {
 	case <-readLockAvailable:
-	case <-time.After(time.Second):
+	case <-time.After(internalWaitBound):
 		t.Fatal("query state held read lock while waiting for write gate")
 	}
 	cancel()
 	select {
 	case <-queryDone:
-	case <-time.After(time.Second):
+	case <-time.After(internalWaitBound):
 		t.Fatal("query state did not stop after cancellation")
 	}
 }

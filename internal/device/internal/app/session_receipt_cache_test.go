@@ -6,7 +6,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 )
 
-func TestCachedReplyIsIsolatedFromCallerMutation(t *testing.T) {
+func TestACachedReplyIsACopyThatCallersCannotMutate(t *testing.T) {
 	t.Parallel()
 	code := "expired"
 	session := &Session{receipts: map[string]cachedExchange{

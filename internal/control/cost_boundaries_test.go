@@ -11,12 +11,11 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-func TestReservationRollsBackGlobalAccountingOnTenantRejection(t *testing.T) {
+func TestATenantCeilingRefusalRollsBackTheGlobalAccountingOfTheReservation(t *testing.T) {
 	t.Parallel()
-	db := newCostDB(t)
+	db := storagetest.OpenTemp(t)
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		return controltest.SetCostLimit(t.Context(), tx, "tenant:tenant", "tenant", 3, false, "now")
 	}); err != nil {
@@ -35,9 +34,9 @@ func TestReservationRollsBackGlobalAccountingOnTenantRejection(t *testing.T) {
 	}
 }
 
-func TestGlobalCostRejectionPrecedesTenantRejection(t *testing.T) {
+func TestTheGlobalCeilingIsCheckedBeforeTheTenantCeiling(t *testing.T) {
 	t.Parallel()
-	db := newCostDB(t)
+	db := storagetest.OpenTemp(t)
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		if err := controltest.SetCostLimit(t.Context(), tx, "global", "", 1, true, "now"); err != nil {
 			return err
@@ -55,16 +54,12 @@ func TestGlobalCostRejectionPrecedesTenantRejection(t *testing.T) {
 	assertCostTotals(t, db, 0, 0, 1)
 }
 
-func TestSettlementRollsBackAllAccountingOnTenantWriteFailure(t *testing.T) {
+func TestSettlementRollsBackAllAccountingWhenTheTenantWriteFails(t *testing.T) {
 	t.Parallel()
-	db := newCostDB(t)
+	db := storagetest.OpenTemp(t)
 	controller := control.CostLedger{}
-	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		if err := controltest.SetCostLimit(t.Context(), tx, "tenant:tenant", "tenant", 10, false, "now"); err != nil {
-			return err
-		}
-		return controller.Reserve(t.Context(), tx, "episode", "tenant", 4, "now")
-	}); err != nil {
+	setLimit(t, db, "tenant:tenant", "tenant", 10, false)
+	if err := reserveAs(t, db, "episode", "tenant", 4); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.ExecContext(t.Context(), `CREATE TRIGGER reject_tenant_settlement
@@ -84,16 +79,12 @@ func TestSettlementRollsBackAllAccountingOnTenantWriteFailure(t *testing.T) {
 	}
 }
 
-func TestRepeatedSettlementDoesNotSpendTwiceOrChangeKillSwitch(t *testing.T) {
+func TestSettlingTwiceSpendsOnceAndRefusesAConflictingActual(t *testing.T) {
 	t.Parallel()
-	db := newCostDB(t)
+	db := storagetest.OpenTemp(t)
 	controller := control.CostLedger{}
-	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		if err := controltest.SetCostLimit(t.Context(), tx, "global", "", 5, false, "now"); err != nil {
-			return err
-		}
-		return controller.Reserve(t.Context(), tx, "episode", "tenant", 4, "now")
-	}); err != nil {
+	setLimit(t, db, "global", "", 5, false)
+	if err := reserveAs(t, db, "episode", "tenant", 4); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
@@ -108,7 +99,7 @@ func TestRepeatedSettlementDoesNotSpendTwiceOrChangeKillSwitch(t *testing.T) {
 	assertCostTotals(t, db, 0, 5, 1)
 }
 
-func TestCostRangeValidationPrecedesTransactionAccess(t *testing.T) {
+func TestOutOfRangeCostsAreRefusedBeforeAnyTransactionIsUsed(t *testing.T) {
 	t.Parallel()
 	controller := control.CostLedger{}
 	if err := controller.Reserve(t.Context(), nil, "episode", "tenant", math.MaxUint64, "now"); err == nil || err.Error() != "invalid cost reservation" {
@@ -119,23 +110,5 @@ func TestCostRangeValidationPrecedesTransactionAccess(t *testing.T) {
 	}
 	if err := controltest.SetCostLimit(t.Context(), nil, "global", "", math.MaxUint64, false, "now"); err == nil || !strings.HasSuffix(err.Error(), "invalid cost limit") {
 		t.Fatalf("overflow limit = %v", err)
-	}
-}
-
-func newCostDB(t *testing.T) *storage.DB {
-	t.Helper()
-	db := storagetest.OpenTemp(t)
-
-	return db
-}
-
-func assertCostTotals(t *testing.T, db *storage.DB, reserved, spent, killed int) {
-	t.Helper()
-	var gotReserved, gotSpent, gotKilled int
-	if err := db.QueryRowContext(t.Context(), "SELECT reserved_micro, spent_micro, kill_switch FROM cost_limits WHERE scope_key = 'global'").Scan(&gotReserved, &gotSpent, &gotKilled); err != nil {
-		t.Fatal(err)
-	}
-	if gotReserved != reserved || gotSpent != spent || gotKilled != killed {
-		t.Fatalf("global accounting = (%d,%d,%d), want (%d,%d,%d)", gotReserved, gotSpent, gotKilled, reserved, spent, killed)
 	}
 }

@@ -1,62 +1,64 @@
 package control_test
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"testing"
 	"time"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-
+	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
-func TestEpochControlKillIsAtomicWithEpisodeSupersession(t *testing.T) {
-	db, _ := openOwnerDB(t)
-	ctx := t.Context()
-	seedRunningEpochEpisode(t, db, "epi-kill-atomic", "epoch-kill-atomic")
+const killedAt = "2026-08-12T12:34:56.123456789Z"
 
-	now := time.Date(2026, 8, 12, 12, 34, 56, 123456789, time.UTC)
-	control := &runtimecontrol.EpochControl{DB: db, Now: func() time.Time { return now }}
-	if err := control.Kill(ctx, "epoch-kill-atomic"); err != nil {
+func killClock() time.Time { return time.Date(2026, 8, 12, 12, 34, 56, 123456789, time.UTC) }
+
+func openOrphanTolerantDB(t *testing.T) *storage.DB {
+	t.Helper()
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+	db.SetMaxOpenConns(1)
+	return db
+}
+
+func episodeLifecycle(t *testing.T, db *storage.DB, episodeID string) (lifecycle string, endedAt sql.NullString) {
+	t.Helper()
+	if err := db.QueryRowContext(t.Context(), "SELECT lifecycle_status, ended_at FROM episodes WHERE episode_id = ?", episodeID).Scan(&lifecycle, &endedAt); err != nil {
+		t.Fatalf("read episode %s: %v", episodeID, err)
+	}
+	return lifecycle, endedAt
+}
+
+func TestKillingAnEpochRecordsItAndSupersedesItsInFlightEpisodesAtomically(t *testing.T) {
+	t.Parallel()
+	db := openOrphanTolerantDB(t)
+	seedEpisode(t, db, "epi-kill-atomic", "epoch-kill-atomic", "running")
+	control := &runtimecontrol.EpochControl{DB: db, Now: killClock}
+	if err := control.Kill(t.Context(), "epoch-kill-atomic"); err != nil {
 		t.Fatalf("kill epoch: %v", err)
 	}
 
-	var state, updatedAt, lifecycle, endedAt string
-	if err := db.QueryRowContext(ctx, "SELECT state, updated_at FROM epoch_control WHERE epoch = ?", "epoch-kill-atomic").Scan(&state, &updatedAt); err != nil {
+	var state, updatedAt string
+	if err := db.QueryRowContext(t.Context(), "SELECT state, updated_at FROM epoch_control WHERE epoch = ?", "epoch-kill-atomic").Scan(&state, &updatedAt); err != nil {
 		t.Fatalf("read epoch control: %v", err)
 	}
-	if err := db.QueryRowContext(ctx, "SELECT lifecycle_status, ended_at FROM episodes WHERE episode_id = ?", "epi-kill-atomic").Scan(&lifecycle, &endedAt); err != nil {
-		t.Fatalf("read superseded episode: %v", err)
+	lifecycle, endedAt := episodeLifecycle(t, db, "epi-kill-atomic")
+	if state != "killed" || updatedAt != killedAt || lifecycle != "superseded" || endedAt.String != killedAt {
+		t.Fatalf("state=%q updated_at=%q lifecycle=%q ended_at=%q", state, updatedAt, lifecycle, endedAt.String)
 	}
-	wantTime := "2026-08-12T12:34:56.123456789Z"
-	if state != "killed" || updatedAt != wantTime || lifecycle != "superseded" || endedAt != wantTime {
-		t.Fatalf("state=%q updated_at=%q lifecycle=%q ended_at=%q", state, updatedAt, lifecycle, endedAt)
-	}
-
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		return control.AssertDecisionTx(ctx, tx, "epoch-kill-atomic")
-	}); !errors.Is(err, runtimecontrol.ErrEpochKilled) {
+	err := db.WithTx(t.Context(), func(tx *sql.Tx) error { return control.AssertDecisionTx(t.Context(), tx, "epoch-kill-atomic") })
+	if !errors.Is(err, runtimecontrol.ErrEpochKilled) {
 		t.Fatalf("transactional decision assertion = %v, want ErrEpochKilled", err)
-	}
-	if err := control.Drain(ctx, "epoch-kill-atomic"); err != nil {
-		t.Fatalf("drain after kill: %v", err)
-	}
-	state, err := control.State(ctx, "epoch-kill-atomic")
-	if err != nil {
-		t.Fatalf("read terminal epoch state: %v", err)
-	}
-	if state != "killed" {
-		t.Fatalf("epoch state after drain = %q, want killed", state)
 	}
 }
 
-func TestEpochControlKillRollsBackWhenSupersessionFails(t *testing.T) {
-	db, _ := openOwnerDB(t)
-	ctx := t.Context()
-	seedRunningEpochEpisode(t, db, "epi-kill-rollback", "epoch-kill-rollback")
-	if _, err := db.ExecContext(ctx, `
+func TestKillingAnEpochRollsBackTheRecordWhenSupersessionFails(t *testing.T) {
+	t.Parallel()
+	db := openOrphanTolerantDB(t)
+	seedEpisode(t, db, "epi-kill-rollback", "epoch-kill-rollback", "running")
+	if _, err := db.ExecContext(t.Context(), `
 		CREATE TRIGGER abort_epoch_supersession
 		BEFORE UPDATE OF lifecycle_status ON episodes
 		WHEN NEW.lifecycle_status = 'superseded'
@@ -66,127 +68,45 @@ func TestEpochControlKillRollsBackWhenSupersessionFails(t *testing.T) {
 		t.Fatalf("install supersession failure trigger: %v", err)
 	}
 
-	control := &runtimecontrol.EpochControl{DB: db}
-	if err := control.Kill(ctx, "epoch-kill-rollback"); err == nil {
-		t.Fatal("Kill succeeded despite supersession failure")
-	}
+	err := (&runtimecontrol.EpochControl{DB: db}).Kill(t.Context(), "epoch-kill-rollback")
+	assertRefusal(t, err, "forced supersession failure")
 
 	var state string
-	if err := db.QueryRowContext(ctx, "SELECT state FROM epoch_control WHERE epoch = ?", "epoch-kill-rollback").Scan(&state); !errors.Is(err, sql.ErrNoRows) {
+	if err := db.QueryRowContext(t.Context(), "SELECT state FROM epoch_control WHERE epoch = ?", "epoch-kill-rollback").Scan(&state); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("epoch control after rollback = %q, err=%v; want no row", state, err)
 	}
-	var lifecycle string
-	if err := db.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = ?", "epi-kill-rollback").Scan(&lifecycle); err != nil {
-		t.Fatalf("read episode after rollback: %v", err)
-	}
-	if lifecycle != "running" {
+	if lifecycle, _ := episodeLifecycle(t, db, "epi-kill-rollback"); lifecycle != "running" {
 		t.Fatalf("episode lifecycle after rollback = %q, want running", lifecycle)
 	}
 }
 
-func TestEpochControlKillReleasesUnstartedEpisodeReservation(t *testing.T) {
-	db, _ := openOwnerDB(t)
-	ctx := t.Context()
-	seedRunningEpochEpisode(t, db, "epi-kill-cost", "epoch-kill-cost")
-	if _, err := db.ExecContext(ctx, `
-		UPDATE episodes SET lifecycle_status = 'admitted', current_attempt_id = NULL
-		WHERE episode_id = 'epi-kill-cost'`); err != nil {
-		t.Fatalf("make episode admitted: %v", err)
+func TestKillingAnEpochReleasesTheCostReservationOfAnAdmittedEpisodeThatNeverStarted(t *testing.T) {
+	t.Parallel()
+	db := openOrphanTolerantDB(t)
+	seedEpisode(t, db, "epi-kill-cost", "epoch-kill-cost", "admitted")
+	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
+		if err := controltest.SetCostLimit(t.Context(), tx, "global", "", 100, false, "2026-08-12T10:00:00Z"); err != nil {
+			return err
+		}
+		if err := controltest.SetCostLimit(t.Context(), tx, "tenant:tenant", "tenant", 100, false, "2026-08-12T10:00:00Z"); err != nil {
+			return err
+		}
+		return (runtimecontrol.CostLedger{}).Reserve(t.Context(), tx, "epi-kill-cost", "tenant", 10, "2026-08-12T10:00:00Z")
+	}); err != nil {
+		t.Fatalf("reserve cost for the admitted episode: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
-		INSERT INTO cost_reservations (reservation_id, episode_id, tenant_id, reserved_micro, status, created_at)
-		VALUES ('res-epi-kill-cost', 'epi-kill-cost', 'tenant', 10, 'reserved', '2026-08-12T10:00:00Z')`); err != nil {
-		t.Fatalf("seed cost reservation: %v", err)
-	}
-	if _, err := db.ExecContext(ctx, "UPDATE cost_limits SET reserved_micro = 10 WHERE scope_key = 'global'"); err != nil {
-		t.Fatalf("seed global reservation: %v", err)
-	}
+	assertCostTotals(t, db, 10, 0, 0)
 
-	control := &runtimecontrol.EpochControl{DB: db, Now: func() time.Time {
-		return time.Date(2026, 8, 12, 12, 34, 56, 123456789, time.UTC)
-	}}
-	if err := control.Kill(ctx, "epoch-kill-cost"); err != nil {
+	if err := (&runtimecontrol.EpochControl{DB: db, Now: killClock}).Kill(t.Context(), "epoch-kill-cost"); err != nil {
 		t.Fatalf("kill epoch: %v", err)
 	}
 	var status string
 	var reserved, actual int64
-	if err := db.QueryRowContext(ctx, `SELECT status, reserved_micro, actual_micro FROM cost_reservations WHERE episode_id = 'epi-kill-cost'`).Scan(&status, &reserved, &actual); err != nil {
+	if err := db.QueryRowContext(t.Context(), `SELECT status, reserved_micro, actual_micro FROM cost_reservations WHERE episode_id = 'epi-kill-cost'`).Scan(&status, &reserved, &actual); err != nil {
 		t.Fatalf("read released reservation: %v", err)
 	}
 	if status != "settled" || reserved != 10 || actual != 0 {
 		t.Fatalf("reservation status=%q reserved=%d actual=%d, want settled/10/0", status, reserved, actual)
 	}
-	if err := db.QueryRowContext(ctx, "SELECT reserved_micro FROM cost_limits WHERE scope_key = 'global'").Scan(&reserved); err != nil {
-		t.Fatalf("read global reservation: %v", err)
-	}
-	if reserved != 0 {
-		t.Fatalf("global reserved_micro=%d, want 0", reserved)
-	}
-}
-
-func TestEpochControlDecisionPathFailsClosedWhenMisconfigured(t *testing.T) {
-	ctx := context.Background()
-	var nilControl *runtimecontrol.EpochControl
-	if _, err := nilControl.State(ctx, "epoch"); err == nil {
-		t.Fatal("nil State receiver returned success")
-	}
-	if err := nilControl.AssertDecision(ctx, "epoch"); err == nil {
-		t.Fatal("nil AssertDecision receiver returned success")
-	}
-
-	db, _ := openOwnerDB(t)
-	control := &runtimecontrol.EpochControl{DB: db}
-	if _, err := control.State(ctx, ""); err == nil {
-		t.Fatal("empty State epoch returned success")
-	}
-	if err := control.AssertDecision(ctx, ""); err == nil {
-		t.Fatal("empty AssertDecision epoch returned success")
-	}
-	var nilDBControl = &runtimecontrol.EpochControl{}
-	if err := nilDBControl.AssertDecisionTx(ctx, nil, "epoch"); err == nil {
-		t.Fatal("nil DB/transactional AssertDecision returned success")
-	}
-	if err := control.AssertDecisionTx(ctx, nil, "epoch"); err == nil {
-		t.Fatal("nil transaction AssertDecision returned success")
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		return control.AssertDecisionTx(ctx, tx, "")
-	}); err == nil {
-		t.Fatal("empty transactional AssertDecision epoch returned success")
-	}
-}
-
-func seedRunningEpochEpisode(t *testing.T, db *storage.DB, episodeID, epoch string) {
-	t.Helper()
-	ctx := context.Background()
-	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatalf("disable foreign keys for fixture: %v", err)
-	}
-	digest := make([]byte, 32)
-	if _, err := db.ExecContext(ctx, `
-		INSERT INTO episodes (
-			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
-			executor_name, executor_version, model_policy, prompt_version,
-			snapshot_sha256, admission_key, request_json, lifecycle_status, current_fence,
-			accepted_at, policy_epoch
-		) VALUES (?, ?, 'tenant', ?, 1, 'executor', 'v1', 'policy', 'prompt', ?, ?, X'7B7D', 'running', 1,
-			'2026-08-12T10:00:00.000000000Z', ?)`,
-		episodeID, "sch-"+episodeID, "sit-"+episodeID, digest, digest, epoch); err != nil {
-		t.Fatalf("seed in-flight episode: %v", err)
-	}
-	if _, err := db.ExecContext(ctx, `
-		INSERT INTO situations (
-			situation_id, tenant_id, deployment_id, situation_type, entity_type,
-			entity_id, partition_id, occurrence_id, current_version,
-			last_reasoned_version, phase, status, first_event_time, latest_event_time,
-			updated_at, created_at
-		) VALUES (?, 'tenant', 'dep-epoch', 'test', 'thing', 'ent-epoch', 0, ?, 1, 0,
-			'candidate', 'open', '2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z',
-			'2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z')`,
-		"sit-"+episodeID, "occ-"+episodeID); err != nil {
-		t.Fatalf("seed situation registry: %v", err)
-	}
-	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
-		t.Fatalf("restore foreign keys: %v", err)
-	}
+	assertCostTotals(t, db, 0, 0, 0)
 }

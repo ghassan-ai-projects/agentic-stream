@@ -38,8 +38,9 @@ func TestTypedStatePreservesEvidenceDocument(t *testing.T) {
 
 func TestTypedRepliesPreserveOptionalCodes(t *testing.T) {
 	t.Parallel()
-	for _, code := range []any{nil, "expired"} {
-		t.Run("code", func(t *testing.T) {
+	for name, code := range map[string]any{"accepted without a code": nil, "rejected with a code": "expired"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			receiptDocument, resultDocument := goldenDeviceReceipt(), goldenDeviceResult()
 			receiptDocument["accepted"] = code == nil
 			if code != nil {
@@ -83,14 +84,11 @@ func TestTypedRepliesPreserveOptionalCodes(t *testing.T) {
 
 func TestTypedDecodersRejectInvalidFrames(t *testing.T) {
 	t.Parallel()
-	invalid := []byte("{\"message_type\":\"state\",\"protocol_version\":1}\n")
-	if _, err := wire.DecodeState(invalid); err == nil {
-		t.Fatal("incomplete state accepted")
-	}
-	if _, err := wire.DecodeReceipt(invalid); err == nil {
-		t.Fatal("incomplete frame accepted as receipt")
-	}
-	if _, err := wire.DecodeResult(invalid); err == nil {
-		t.Fatal("incomplete frame accepted as result")
-	}
+	incomplete := []byte("{\"message_type\":\"state\",\"protocol_version\":1}\n")
+	_, stateErr := wire.DecodeState(incomplete)
+	_, receiptErr := wire.DecodeReceipt(incomplete)
+	_, resultErr := wire.DecodeResult(incomplete)
+	assertRefusal(t, stateErr, "validate device frame")
+	assertRefusal(t, receiptErr, "validate device frame")
+	assertRefusal(t, resultErr, "validate device frame")
 }

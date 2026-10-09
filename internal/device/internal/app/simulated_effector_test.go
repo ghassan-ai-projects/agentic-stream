@@ -1,7 +1,6 @@
 package app_test
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
@@ -11,6 +10,7 @@ import (
 )
 
 func TestSimulatedEffectorAcceptsAnyRouteAndIsIdempotent(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		route string
@@ -20,13 +20,14 @@ func TestSimulatedEffectorAcceptsAnyRouteAndIsIdempotent(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			effector := app.NewSimulatedEffector()
 			command := actionport.Command{EffectorRoute: tt.route, NormalizedTarget: "pump-1", IdempotencyKey: "sha256:key-" + tt.route}
-			first, err := effector.Dispatch(context.Background(), command)
+			first, err := effector.Dispatch(t.Context(), command)
 			if err != nil {
 				t.Fatal(err)
 			}
-			second, err := effector.Dispatch(context.Background(), command)
+			second, err := effector.Dispatch(t.Context(), command)
 			if err != nil {
 				t.Fatal(err)
 			}

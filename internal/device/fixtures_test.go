@@ -1,19 +1,16 @@
 package device_test
 
 import (
-	"context"
-	"time"
-
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func loadThermalCatalog(t *testing.T) *device.CapabilityCatalog {
@@ -33,37 +30,18 @@ func idemKey() string { return "sha256:" + strings.Repeat("a", 64) }
 
 func policyKey() string { return "sha256:" + strings.Repeat("b", 64) }
 
-func goldenDeviceState() map[string]any {
-	return map[string]any{
-		"message_type":      "state",
-		"protocol_version":  1,
-		"device_id":         "thermal-01",
-		"boot_id":           "boot-A",
-		"firmware_digest":   "sha256:" + strings.Repeat("c", 64),
-		"capability_digest": "sha256:" + strings.Repeat("d", 64),
-		"safe_state":        true,
-	}
-}
+func firmwareDigest() string { return "sha256:" + strings.Repeat("c", 64) }
 
-// deviceControl is an admitted runtime owner with its device authority.
-type deviceControl struct {
-	authority *deviceauthority.Service
-}
-
-func newDeviceControl(t *testing.T) deviceControl {
+func newDeviceAuthority(t *testing.T) *deviceauthority.Service {
 	t.Helper()
-	db, err := storagetest.Open(context.Background(), t.TempDir()+"/device.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
 	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Minute}
-	if err := owner.Claim(context.Background(), "epoch-1"); err != nil {
-		t.Fatal(err)
+	if err := owner.Claim(t.Context(), "epoch-1"); err != nil {
+		t.Fatalf("claim runtime owner: %v", err)
 	}
 	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: &runtimecontrol.EpochControl{DB: db}, Outcomes: actions.CountUnresolvedOutcomes})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("new device authority: %v", err)
 	}
-	return deviceControl{authority: authority}
+	return authority
 }

@@ -5,60 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
 )
 
-func goldenDeviceState() map[string]any {
-	return map[string]any{
-		"message_type":      "state",
-		"protocol_version":  1,
-		"device_id":         "thermal-01",
-		"boot_id":           "boot-A",
-		"firmware_digest":   "sha256:" + strings.Repeat("c", 64),
-		"capability_digest": "sha256:" + strings.Repeat("d", 64),
-		"safe_state":        true,
-	}
-}
-
-func goldenDeviceReceipt() map[string]any {
-	return map[string]any{
-		"message_type":     "receipt",
-		"protocol_version": 1,
-		"command_id":       "cmd-1",
-		"boot_id":          "boot-A",
-		"accepted":         true,
-	}
-}
-
-func goldenDeviceResult() map[string]any {
-	return map[string]any{
-		"message_type":     "result",
-		"protocol_version": 1,
-		"command_id":       "cmd-1",
-		"boot_id":          "boot-A",
-		"status":           "executed",
-	}
-}
-
-func goldenDeviceCommand() map[string]any {
-	return map[string]any{
-		"message_type":       "command",
-		"protocol_version":   1,
-		"command_id":         "cmd-1",
-		"idempotency_key":    idemKey(),
-		"target":             "led-01",
-		"operation":          "set_led",
-		"parameters":         map[string]any{"brightness_permille": 500, "pattern": "slow_blink"},
-		"expected_boot_id":   "boot-A",
-		"not_before_mono_us": 0,
-		"expires_after_ms":   1000,
-		"policy_digest":      policyKey(),
-	}
-}
-
-func TestDeviceCodecAcceptsCanonicalRecords(t *testing.T) {
+func TestCodecRoundTripsEveryCanonicalRecordAsOneSchemaValidLine(t *testing.T) {
 	t.Parallel()
 	for name, document := range map[string]map[string]any{
 		"command": goldenDeviceCommand(),
@@ -66,7 +17,6 @@ func TestDeviceCodecAcceptsCanonicalRecords(t *testing.T) {
 		"result":  goldenDeviceResult(),
 		"state":   goldenDeviceState(),
 	} {
-		name, document := name, document
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			frame, err := wire.Encode(document)
@@ -80,46 +30,83 @@ func TestDeviceCodecAcceptsCanonicalRecords(t *testing.T) {
 			if err != nil {
 				t.Fatalf("decode: %v", err)
 			}
-			if err := contractsv1.Validate(schemaForMessageType(decoded), decoded); err != nil {
+			schema, ok := contractsv1.SchemaForMessageType(name)
+			if !ok {
+				t.Fatalf("no schema for message type %q", name)
+			}
+			if err := contractsv1.Validate(schema, decoded); err != nil {
 				t.Fatalf("decoded record is not schema-valid: %v", err)
 			}
 		})
 	}
 }
 
-func TestDeviceCodecFailsClosed(t *testing.T) {
+func TestDecodeFailsClosed(t *testing.T) {
 	t.Parallel()
 	valid, err := wire.Encode(goldenDeviceCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
-	cases := map[string][]byte{
-		"empty":           nil,
-		"malformed":       []byte("{\"message_type\":"),
-		"trailing record": append(append([]byte(nil), valid...), []byte("{\"message_type\":\"receipt\"}")...),
-		"wrong version":   bytes.Replace(valid, []byte("\"protocol_version\":1"), []byte("\"protocol_version\":2"), 1),
-		"unknown type":    bytes.Replace(valid, []byte("\"message_type\":\"command\""), []byte("\"message_type\":\"motor\""), 1),
-		"unknown field":   bytes.Replace(valid, []byte("\"target\":\"led-01\""), []byte("\"pin\":13,\"target\":\"led-01\""), 1),
+	replaced := func(old, replacement string) []byte {
+		return bytes.Replace(valid, []byte(old), []byte(replacement), 1)
 	}
-	for name, frame := range cases {
-		name, frame := name, frame
-		t.Run(name, func(t *testing.T) {
+	cases := []struct {
+		name  string
+		frame []byte
+		want  string
+	}{
+		{"empty", nil, "device frame is empty"},
+		{"malformed", []byte(`{"message_type":`), "decode device frame"},
+		{"not an object", []byte("null\n"), "must be a JSON object"},
+		{"trailing record", append(append([]byte(nil), valid...), []byte(`{"message_type":"receipt"}`)...), "device frame contains trailing JSON"},
+		{"trailing record before an unsupported type", []byte("{\"message_type\":\"unsupported\"}\n{}\n"), "device frame contains trailing JSON"},
+		{"trailing garbage", append(append([]byte(nil), valid...), '}'), "decode trailing device frame data"},
+		{"no message type", []byte(`{"protocol_version":1}`), "device message_type is required"},
+		{"wrong version", replaced(`"protocol_version":1`, `"protocol_version":2`), "validate device frame"},
+		{"unknown type", replaced(`"message_type":"command"`, `"message_type":"motor"`), `unsupported device message_type "motor"`},
+		{"unknown field", replaced(`"target":"led-01"`, `"pin":13,"target":"led-01"`), "validate device frame"},
+		{"oversized", append(append([]byte(nil), valid...), bytes.Repeat([]byte{' '}, wire.MaxFrameBytes)...), "exceeds 65536 bytes"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := wire.Decode(frame); err == nil {
-				t.Fatalf("invalid %s frame was accepted", name)
+			document, err := wire.Decode(tc.frame)
+			assertRefusal(t, err, tc.want)
+			if document != nil {
+				t.Fatalf("an invalid frame decoded to %v", document)
 			}
 		})
 	}
-	oversized := append(append([]byte(nil), valid...), bytes.Repeat([]byte{' '}, 64*1024)...)
-	if _, err := wire.Decode(oversized); err == nil {
-		t.Fatal("oversized frame was accepted")
+}
+
+func TestEncodeFailsClosed(t *testing.T) {
+	t.Parallel()
+	oversized := goldenDeviceCommand()
+	oversized["parameters"] = map[string]any{"padding": strings.Repeat("x", 70*1024)}
+	noType := goldenDeviceCommand()
+	delete(noType, "message_type")
+	incomplete := goldenDeviceState()
+	delete(incomplete, "boot_id")
+	cases := []struct {
+		name     string
+		document map[string]any
+		want     string
+	}{
+		{"no record", nil, "device record is required"},
+		{"no message type", noType, "device message_type is required"},
+		{"unsupported type", map[string]any{"message_type": "motor"}, `unsupported device message_type "motor"`},
+		{"schema-invalid record", incomplete, "validate device record"},
+		{"oversized record", oversized, "device record exceeds 65536 bytes"},
 	}
-	if _, err := wire.Encode(map[string]any{
-		"message_type": "command", "protocol_version": 1, "command_id": "cmd-1", "idempotency_key": idemKey(),
-		"target": "led-01", "operation": "set_led", "parameters": map[string]any{"padding": strings.Repeat("x", 70*1024)},
-		"expected_boot_id": "boot-A", "not_before_mono_us": 0, "expires_after_ms": 1000, "policy_digest": policyKey(),
-	}); err == nil {
-		t.Fatal("oversized encoded frame was accepted")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			frame, err := wire.Encode(tc.document)
+			assertRefusal(t, err, tc.want)
+			if frame != nil {
+				t.Fatalf("a refused record produced a frame: %q", frame)
+			}
+		})
 	}
 }
 
@@ -129,7 +116,7 @@ func FuzzDecode(f *testing.F) {
 		f.Fatal(err)
 	}
 	f.Add(valid)
-	f.Add([]byte("{\"message_type\":\"command\",\"protocol_version\":999}"))
+	f.Add([]byte(`{"message_type":"command","protocol_version":999}`))
 	f.Fuzz(func(t *testing.T, frame []byte) {
 		document, err := wire.Decode(frame)
 		if err != nil {
@@ -141,29 +128,4 @@ func FuzzDecode(f *testing.F) {
 			}
 		}
 	})
-}
-
-func schemaForMessageType(document map[string]any) contractsv1.SchemaName {
-	switch document["message_type"] {
-	case "command":
-		return contractsv1.SchemaDeviceCommand
-	case "receipt":
-		return contractsv1.SchemaDeviceReceipt
-	case "result":
-		return contractsv1.SchemaDeviceResult
-	default:
-		return contractsv1.SchemaDeviceState
-	}
-}
-
-func idemKey() string { return "sha256:" + strings.Repeat("a", 64) }
-
-func policyKey() string { return "sha256:" + strings.Repeat("b", 64) }
-
-func TestDeviceDecodeRejectsTrailingDataBeforeMessageSchema(t *testing.T) {
-	t.Parallel()
-	_, err := wire.Decode([]byte("{\"message_type\":\"unsupported\"}\n{}\n"))
-	if err == nil || err.Error() != "device frame contains trailing JSON" {
-		t.Fatalf("decode error=%v", err)
-	}
 }

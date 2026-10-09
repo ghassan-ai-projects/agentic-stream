@@ -42,13 +42,14 @@ what proves nothing. Every test ends at the [test bar](TEST_BAR.md).
 ## Resume
 
 The audit paused on 2026-10-09 after round 10 because the pull request grew
-large. Rounds 0–10 are committed on branch `improve-cleanup-tests` and open as
-pull request ghassan-ai-projects/agentic-stream#50.
+large. Rounds 0–10 were merged to `main` as pull request
+ghassan-ai-projects/agentic-stream#50. Rounds 11–13 continue on branch
+`test-audit-rounds-11-13`.
 
 To continue in a fresh session:
 
-1. Merge pull request #50 first (or review it), then continue on a new branch
-   from `main`, one or two rounds per pull request, so each stays reviewable.
+1. Continue on a new branch from `main`, one or two rounds per pull request,
+   so each stays reviewable.
 2. Rounds 11, 12 and 13 were stopped mid-way. Their unverified partial work is
    in local git stashes on the machine that ran them:
 
@@ -119,7 +120,7 @@ To continue in a fresh session:
 | 10 | `executor/*`, `worker`, `testsupport/*` | done | every package ≥ 78% (remote domain 69.9 → 97.8, conformance 66.7 → 94.9, worker transport 69.4 → 78.8) | slowest test 1.41 s → 0.34 s; conformance no longer re-execs a process | 995b3c40 |
 | 11 | `policy`, `authority` | stopped (partial work stashed) | | | |
 | 12 | `actions`, `actionport`, `watch`, `notify` | stopped (partial work stashed) | | | |
-| 13 | `device`, `control` | stopped (partial work stashed) | | | |
+| 13 | `device`, `control` | done | every package ≥ 79% (controltest 66.7 → 100, device 93.3 → 100, control store 70.8 → 79.2) | slowest test 0.65 s; no sleeps | see git log |
 | 14 | `replay`, `runartifact` | todo | | | |
 | 15 | `runtime`, `api` | todo | | | |
 | 16 | `cmd/agentic-stream` | todo | | | |
@@ -147,4 +148,5 @@ not a test decision.
 | 8 | Invariant 10 gap: `approvalledger.ExpireIntent` writes no `decided_at` or `reason`, so an approval expired this way is not explainable from its row. `Resolve` accepts `pending` and stamps `decided_at` and the approver. Tracked in [#53](https://github.com/ghassan-ai-projects/agentic-stream/issues/53). | [approvalledger.md](modules/approvalledger.md) |
 | 8 | Episode lifecycle writers (`Conclude`, `Abandon`, `RetainForRetry`, ...) have no lifecycle guard in their SQL: `Abandon` after `Conclude` overwrites the outcome, `RetainForRetry` revives a concluded episode. They rely on callers. Tracked in [#54](https://github.com/ghassan-ai-projects/agentic-stream/issues/54). | [episodeledger.md](modules/episodeledger.md) |
 | 10 | The fixture executor panics on a nil request and ignores its context, while native and remote return an error. The native retry backoff is a fixed 10 ms real timer. | [executor-fixture.md](modules/executor-fixture.md), [executor-native.md](modules/executor-native.md) |
+| 13 | Production error text in `device` (`gateway_effector.go`, `session*.go`) still says "serial", a word the device language retires. The optional cross-repository catalog check skips when `REAL_WORLD_SENSOR_ROOT` is unset (it used to pass silently). | [device.md](modules/device.md) |
 

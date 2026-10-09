@@ -2,22 +2,15 @@ package domain_test
 
 import (
 	"encoding/json"
-	"os"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 )
 
-const thermalCapabilityCatalogDigest = "sha256:0d61225286c628cfba8cbf7aea514e1fdc95918b514b4b810516dbe0fc44fc76"
-
-func TestThermalCapabilityCatalogDigest(t *testing.T) {
+func TestThermalCapabilityCatalogDigestIsPinned(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../../contractsv1/internal/domain/conformance/v1/thermal-capability-catalog.json")
-	if err != nil {
-		t.Fatalf("read canonical catalog: %v", err)
-	}
+	data := thermalCatalogBytes(t)
 	catalog, err := domain.LoadCapabilityCatalog(data)
 	if err != nil {
 		t.Fatalf("load canonical catalog: %v", err)
@@ -26,8 +19,8 @@ func TestThermalCapabilityCatalogDigest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("digest canonical catalog: %v", err)
 	}
-	if digest != thermalCapabilityCatalogDigest {
-		t.Fatalf("canonical catalog digest = %q, want %q", digest, thermalCapabilityCatalogDigest)
+	if digest != thermalCapabilityCatalogHash {
+		t.Fatalf("canonical catalog digest = %q, want %q; the bench firmware reports this digest, so changing it needs a firmware rebuild", digest, thermalCapabilityCatalogHash)
 	}
 	var document any
 	if err := json.Unmarshal(data, &document); err != nil {
