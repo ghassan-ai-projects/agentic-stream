@@ -43,12 +43,7 @@ func defaultCognition(cognition *Cognition) {
 	if cognition.Executor.RiskCeiling == "" {
 		cognition.Executor.RiskCeiling = "R1"
 	}
-	// P8: the default dispatch policy is SHADOW — nothing enters action
-	// governance until the owner declares active. The value rides the
-	// compiled digest, so a mode change is a new spec version.
-	if cognition.Executor.DispatchPolicy == "" {
-		cognition.Executor.DispatchPolicy = "shadow"
-	}
+	cognition.Executor.DispatchPolicy = EffectiveDispatchPolicy(cognition.Executor.DispatchPolicy)
 }
 
 func defaultIntents(intents []Intent) {

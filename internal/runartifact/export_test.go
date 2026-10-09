@@ -11,15 +11,12 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runartifact"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestExportPublishesVerifiableArtifactAndRefusesImplicitOverwrite(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	output := filepath.Join(t.TempDir(), "artifact")
 	path, err := runartifact.Export(t.Context(), runartifact.Options{
 		DB: db, OutputDir: output,
@@ -37,11 +34,8 @@ func TestExportPublishesVerifiableArtifactAndRefusesImplicitOverwrite(t *testing
 }
 
 func TestVerifyDetectsTamperedJSONL(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	output := filepath.Join(t.TempDir(), "artifact")
 	if _, err := runartifact.Export(t.Context(), runartifact.Options{DB: db, OutputDir: output, Manifest: runartifact.Manifest{TenantID: "tenant"}}); err != nil {
 		t.Fatal(err)
@@ -60,11 +54,8 @@ func TestVerifyDetectsTamperedJSONL(t *testing.T) {
 }
 
 func TestVerifyDetectsStaleDurableCommandDigest(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
 		t.Fatal(err)
 	}
@@ -89,11 +80,8 @@ func TestVerifyDetectsStaleDurableCommandDigest(t *testing.T) {
 }
 
 func TestVerifyDetectsStaleSafetyEventDigest(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	details := []byte(`{"reason":"test"}`)
 	detailsHash := sha256.Sum256(details)
 	if _, err := db.ExecContext(t.Context(), `INSERT INTO device_safety_events

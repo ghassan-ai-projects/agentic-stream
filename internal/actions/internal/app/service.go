@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"errors"
 	"time"
 
@@ -51,19 +52,5 @@ func New(cfg Config) (*Service, error) {
 		return nil, errors.New("actions require an effector")
 	}
 	return &Service{store: cfg.Store, effector: cfg.Effector, clk: sources.OrPhysical(cfg.Clock), ids: sources.OrRandom(cfg.IDs),
-		owner: orDefault(cfg.LeaseOwner, "actions"), leaseFor: orMinute(cfg.LeaseFor), observer: cfg.Observer}, nil
-}
-
-func orDefault(value, fallback string) string {
-	if value == "" {
-		return fallback
-	}
-	return value
-}
-
-func orMinute(lease time.Duration) time.Duration {
-	if lease <= 0 {
-		return time.Minute
-	}
-	return lease
+		owner: cmp.Or(cfg.LeaseOwner, "actions"), leaseFor: sources.OrLease(cfg.LeaseFor), observer: cfg.Observer}, nil
 }

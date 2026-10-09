@@ -5,82 +5,30 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 const testSpecDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
 func TestTriggerAdmittedWhenConditionTrue(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
-
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
-		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:          "high",
-					When:          "features.level > 10",
-					Score:         "situation.severity",
-					Threshold:     5,
-					Lane:          "fast",
-					MaterialDelta: "delta.phase_changed",
-				},
-			},
-		},
-	}
-
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
+	db := storagetest.OpenTemp(t)
+	trigger := fastTrigger()
+	trigger.MaterialDelta = "delta.phase_changed"
+	eng := newSchedulingEngine(t, db, trigger, sources.Physical())
 
 	base := time.Now().UTC()
-	v := situations.Version{
-		SituationID:  "sit-1",
-		Version:      1,
-		Phase:        "candidate",
-		Severity:     10,
-		Confidence:   1.0,
-		Completeness: "provisional",
-		EventHorizon: base,
-		Watermark:    base,
-		Facts:        map[string]any{"facts.level": 15.0},
-	}
-
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v)
-	}); err != nil {
-		t.Fatalf("process: %v", err)
-	}
+	v := candidateVersion("sit-1", 1, base, 15.0)
+	processVersion(t, db, eng, v)
 
 	var outcome, lane string
 	if err := db.QueryRowContext(ctx,
@@ -99,69 +47,16 @@ func TestTriggerAdmittedWhenConditionTrue(t *testing.T) {
 
 func TestCapacityExhaustionDefers(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
-
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
-		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:      "high",
-					When:      "features.level > 10",
-					Score:     "situation.severity",
-					Threshold: 5,
-					Lane:      "fast",
-				},
-			},
-		},
-	}
-
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
+	db := storagetest.OpenTemp(t)
+	eng := newSchedulingEngine(t, db, fastTrigger(), sources.Physical())
 
 	base := time.Now().UTC()
 	if err := fillPendingSchedulerItems(ctx, db, testSpecDigest, "default", 100, base); err != nil {
 		t.Fatalf("fill pending: %v", err)
 	}
 
-	v := situations.Version{
-		SituationID:  "sit-cap",
-		Version:      1,
-		Phase:        "candidate",
-		Severity:     10,
-		Confidence:   1.0,
-		Completeness: "provisional",
-		EventHorizon: base,
-		Watermark:    base,
-		Facts:        map[string]any{"facts.level": 15.0},
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v)
-	}); err != nil {
-		t.Fatalf("process: %v", err)
-	}
+	v := candidateVersion("sit-cap", 1, base, 15.0)
+	processVersion(t, db, eng, v)
 
 	var outcome string
 	if err := db.QueryRowContext(ctx,
@@ -186,85 +81,13 @@ func TestCapacityExhaustionDefers(t *testing.T) {
 
 func TestCoalescingPendingItem(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
-
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
-		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:      "high",
-					When:      "features.level > 10",
-					Score:     "situation.severity",
-					Threshold: 5,
-					Lane:      "fast",
-				},
-			},
-		},
-	}
-
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
+	db := storagetest.OpenTemp(t)
+	eng := newSchedulingEngine(t, db, fastTrigger(), sources.Physical())
 
 	base := time.Now().UTC()
-	v1 := situations.Version{
-		SituationID:  "sit-1",
-		Version:      1,
-		Phase:        "candidate",
-		Severity:     10,
-		Confidence:   1.0,
-		Completeness: "provisional",
-		EventHorizon: base,
-		Watermark:    base,
-		Facts:        map[string]any{"facts.level": 15.0},
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v1, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v1)
-	}); err != nil {
-		t.Fatalf("process v1: %v", err)
-	}
-
-	v2 := situations.Version{
-		SituationID:  "sit-1",
-		Version:      2,
-		Phase:        "candidate",
-		Severity:     10,
-		Confidence:   1.0,
-		Completeness: "provisional",
-		EventHorizon: base.Add(time.Minute),
-		Watermark:    base.Add(time.Minute),
-		Facts:        map[string]any{"facts.level": 20.0},
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v2, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v2)
-	}); err != nil {
-		t.Fatalf("process v2: %v", err)
-	}
+	v1 := candidateVersion("sit-1", 1, base, 15.0)
+	processVersion(t, db, eng, v1)
+	processVersion(t, db, eng, candidateVersion("sit-1", 2, base.Add(time.Minute), 20.0))
 
 	var pending, coalesced int
 	if err := db.QueryRowContext(ctx, `
@@ -285,13 +108,46 @@ func TestCoalescingPendingItem(t *testing.T) {
 
 func TestDebounceAndCooldownTogether(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+	trigger := fastTrigger()
+	trigger.Debounce = "3m"
+	trigger.Cooldown = "10m"
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	clk := sources.NewVirtual(base)
+	eng := newSchedulingEngine(t, db, trigger, clk)
 
+	processVersion(t, db, eng, candidateVersion("sit-1", 1, base, 15.0))
+
+	clk.Advance(2 * time.Minute)
+	v2 := candidateVersion("sit-1", 2, base.Add(2*time.Minute), 20.0)
+	processVersion(t, db, eng, v2)
+
+	var notBefore string
+	if err := db.QueryRowContext(ctx,
+		"SELECT not_before FROM scheduler_items WHERE situation_id = ? AND situation_version = ?",
+		v2.SituationID, v2.Version,
+	).Scan(&notBefore); err != nil {
+		t.Fatalf("query not_before: %v", err)
+	}
+
+	want := kernel.FormatTime(base.Add(10 * time.Minute))
+	if notBefore != want {
+		t.Fatalf("expected not_before %s, got %s", want, notBefore)
+	}
+}
+
+func fastTrigger() spec.Trigger {
+	return spec.Trigger{
+		Name:      "high",
+		When:      "features.level > 10",
+		Score:     "situation.severity",
+		Threshold: 5,
+		Lane:      "fast",
+	}
+}
+
+func newSchedulingEngine(t *testing.T, db *storage.DB, trigger spec.Trigger, clock sources.Clock) *cognition.Service {
+	t.Helper()
 	compiled := spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
 		Digest:        testSpecDigest,
@@ -303,83 +159,42 @@ func TestDebounceAndCooldownTogether(t *testing.T) {
 				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
 			},
 		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:      "high",
-					When:      "features.level > 10",
-					Score:     "situation.severity",
-					Threshold: 5,
-					Lane:      "fast",
-					Debounce:  "3m",
-					Cooldown:  "10m",
-				},
-			},
-		},
+		Cognition: spec.Cognition{Triggers: []spec.Trigger{trigger}},
 	}
-
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
+	if err := spec.SaveDeployment(t.Context(), db, "default", &compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	clk := sources.NewVirtual(base)
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: clk})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: clock})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
+	return eng
+}
 
-	v1 := situations.Version{
-		SituationID:  "sit-1",
-		Version:      1,
+func candidateVersion(situationID string, version int, at time.Time, level float64) situations.Version {
+	return situations.Version{
+		SituationID:  situationID,
+		Version:      version,
 		Phase:        "candidate",
 		Severity:     10,
 		Confidence:   1.0,
 		Completeness: "provisional",
-		EventHorizon: base,
-		Watermark:    base,
-		Facts:        map[string]any{"facts.level": 15.0},
+		EventHorizon: at,
+		Watermark:    at,
+		Facts:        map[string]any{"facts.level": level},
 	}
+}
+
+func processVersion(t *testing.T, db *storage.DB, eng *cognition.Service, v situations.Version) {
+	t.Helper()
+	ctx := t.Context()
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v1, testSpecDigest, "default"); err != nil {
+		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
 			return err
 		}
-		return eng.Process(ctx, tx, v1)
+		return eng.Process(ctx, tx, v)
 	}); err != nil {
-		t.Fatalf("process v1: %v", err)
-	}
-
-	clk.Advance(2 * time.Minute)
-	v2 := situations.Version{
-		SituationID:  "sit-1",
-		Version:      2,
-		Phase:        "candidate",
-		Severity:     10,
-		Confidence:   1.0,
-		Completeness: "provisional",
-		EventHorizon: base.Add(2 * time.Minute),
-		Watermark:    base.Add(2 * time.Minute),
-		Facts:        map[string]any{"facts.level": 20.0},
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v2, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v2)
-	}); err != nil {
-		t.Fatalf("process v2: %v", err)
-	}
-
-	var notBefore string
-	if err := db.QueryRowContext(ctx,
-		"SELECT not_before FROM scheduler_items WHERE situation_id = ? AND situation_version = ?",
-		v2.SituationID, v2.Version,
-	).Scan(&notBefore); err != nil {
-		t.Fatalf("query not_before: %v", err)
-	}
-	// Cooldown from v1 (base) dominates debounce from v2 (base+2m+3m = base+5m).
-	want := base.Add(10 * time.Minute).Format(time.RFC3339Nano)
-	if notBefore != want {
-		t.Fatalf("expected not_before %s, got %s", want, notBefore)
+		t.Fatalf("process v%d: %v", v.Version, err)
 	}
 }
 
@@ -399,7 +214,7 @@ func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Versio
 		ON CONFLICT(situation_id) DO NOTHING`,
 		v.SituationID, tenantID, deploymentID, "test", v.EntityType, v.EntityID,
 		0, "occ-"+v.SituationID, v.Version, v.Phase,
-		v.EventHorizon.Format(time.RFC3339Nano), v.EventHorizon.Format(time.RFC3339Nano),
+		kernel.FormatTime(v.EventHorizon), kernel.FormatTime(v.EventHorizon),
 	); err != nil {
 		return fmt.Errorf("insert situation: %w", err)
 	}
@@ -411,8 +226,8 @@ func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Versio
 		) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'lin_test', datetime('now'))`,
 		v.SituationID, v.Version, v.Phase, v.PreviousPhase,
 		v.Severity, v.Confidence, v.Completeness,
-		v.EventHorizon.Format(time.RFC3339Nano), v.Watermark.Format(time.RFC3339Nano),
-		v.EventHorizon.Format(time.RFC3339Nano), []byte("{}"), make([]byte, 32),
+		kernel.FormatTime(v.EventHorizon), kernel.FormatTime(v.Watermark),
+		kernel.FormatTime(v.EventHorizon), []byte("{}"), make([]byte, 32),
 	); err != nil {
 		return fmt.Errorf("insert situation version: %w", err)
 	}
@@ -439,7 +254,7 @@ func fillPendingSchedulerItems(ctx context.Context, db *storage.DB, deploymentID
 				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'active', ?, ?, datetime('now'), datetime('now'))`,
 				sitID, tenantID, deploymentID, "test", "thing", fmt.Sprintf("ent-%d", i),
 				0, "occ-"+sitID, 1, "candidate",
-				base.Format(time.RFC3339Nano), base.Format(time.RFC3339Nano),
+				kernel.FormatTime(base), kernel.FormatTime(base),
 			); err != nil {
 				return fmt.Errorf("insert situation %d: %w", i, err)
 			}
@@ -451,8 +266,8 @@ func fillPendingSchedulerItems(ctx context.Context, db *storage.DB, deploymentID
 				) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'lin_test', datetime('now'))`,
 				sitID, 1, "candidate", "",
 				10, 1.0, "provisional",
-				base.Format(time.RFC3339Nano), base.Format(time.RFC3339Nano),
-				base.Format(time.RFC3339Nano), []byte("{}"), make([]byte, 32),
+				kernel.FormatTime(base), kernel.FormatTime(base),
+				kernel.FormatTime(base), []byte("{}"), make([]byte, 32),
 			); err != nil {
 				return fmt.Errorf("insert version %d: %w", i, err)
 			}
@@ -465,7 +280,7 @@ func fillPendingSchedulerItems(ctx context.Context, db *storage.DB, deploymentID
 				trgID, tenantID, deploymentID, "fill",
 				sitID, 1, 10.0, 5.0, "fast",
 				[]byte("[]"), make([]byte, 32),
-				base.Format(time.RFC3339Nano),
+				kernel.FormatTime(base),
 			); err != nil {
 				return fmt.Errorf("insert evaluation %d: %w", i, err)
 			}
@@ -476,7 +291,7 @@ func fillPendingSchedulerItems(ctx context.Context, db *storage.DB, deploymentID
 				) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, datetime('now'), datetime('now'))`,
 				itemID, trgID, tenantID, sitID, 1,
 				"fast", 10.0, func(i int) []byte { h := sha256.Sum256([]byte(fmt.Sprintf("dedupe-%d", i))); return h[:] }(i),
-				base.Format(time.RFC3339Nano), base.Add(15*time.Minute).Format(time.RFC3339Nano),
+				kernel.FormatTime(base), kernel.FormatTime(base.Add(15*time.Minute)),
 			); err != nil {
 				return fmt.Errorf("insert item %d: %w", i, err)
 			}

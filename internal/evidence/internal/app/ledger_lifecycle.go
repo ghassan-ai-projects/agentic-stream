@@ -7,6 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 func (l *Ledger) Complete(ctx context.Context, reservation ledgerReservation, result QueryResult) error {
@@ -14,8 +15,7 @@ func (l *Ledger) Complete(ctx context.Context, reservation ledgerReservation, re
 		return fmt.Errorf("evidence ledger is not configured")
 	}
 	now := l.now()
-	// Persist even when the caller was canceled; keep its values (trace).
-	persistenceCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	persistenceCtx, cancel := sources.DetachedContext(ctx)
 	defer cancel()
 	err := l.Store.WithTx(persistenceCtx, func(tx *store.Tx) error { return l.completeTx(persistenceCtx, tx, reservation, result, now) })
 	if err != nil {
@@ -38,8 +38,7 @@ func (l *Ledger) Fail(ctx context.Context, reservation ledgerReservation, code s
 	if l == nil || !l.Store.Configured() {
 		return fmt.Errorf("evidence ledger is not configured")
 	}
-	// Persist even when the caller was canceled; keep its values (trace).
-	persistenceCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	persistenceCtx, cancel := sources.DetachedContext(ctx)
 	defer cancel()
 	now := l.now()
 	err := l.Store.WithTx(persistenceCtx, func(tx *store.Tx) error { return l.failTx(persistenceCtx, tx, reservation, code, now) })
@@ -70,18 +69,7 @@ func (l *Ledger) RecoverTx(ctx context.Context, tx *store.Tx, now time.Time) (in
 	return tx.Recover(ctx, now)
 }
 func assertAttemptRunning(ctx context.Context, tx *store.Tx, key ledgerKey) error {
-	state, err := tx.CompletionEpisode(ctx, key)
-	if err != nil {
-		return err
-	}
-	if err := domain.CheckCompletionEpisode(state, key); err != nil {
-		return err
-	}
-	status, err := tx.CompletionAttempt(ctx, key)
-	if err != nil {
-		return err
-	}
-	return domain.CheckCompletionAttempt(status)
+	return assertAttempt(ctx, key, tx.CompletionEpisode, domain.CheckCompletionEpisode, tx.CompletionAttempt, domain.CheckCompletionAttempt)
 }
 func (l *Ledger) failTx(ctx context.Context, tx *store.Tx, reservation ledgerReservation, code string, now time.Time) error {
 	if err := l.assertOwner(ctx, tx); err != nil {

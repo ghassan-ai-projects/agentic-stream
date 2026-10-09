@@ -7,6 +7,7 @@ import (
 
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // ResolveReconciliation records typed state/feedback evidence for the device
@@ -55,7 +56,7 @@ func (s *Session) requireReconciliation(ctx context.Context, reason string) erro
 	wasRequired := s.reconciliationRequired
 	s.stateQueryRequired = true
 	s.reconciliationRequired = true
-	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), reconciliationPersistTimeout)
+	persistCtx, cancel := sources.DetachedContext(ctx)
 	defer cancel()
 	return s.finishReconciliationBarrier(persistCtx, reason, wasRequired, s.openReconciliation(persistCtx, reason))
 }

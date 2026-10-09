@@ -6,6 +6,7 @@ import (
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 func TestRecoveryWithoutOverrideUsesClaimTimestamp(t *testing.T) {
@@ -26,7 +27,7 @@ func TestRecoveryWithoutOverrideUsesClaimTimestamp(t *testing.T) {
 	if err := db.QueryRowContext(t.Context(), "SELECT completed_at FROM evidence_call_ledger WHERE call_id = 'call-old'").Scan(&evidenceCompleted); err != nil {
 		t.Fatal(err)
 	}
-	want := now.UTC().Format(time.RFC3339Nano)
+	want := kernel.FormatTime(now.UTC())
 	if attemptEnded != want || evidenceCompleted != want {
 		t.Fatalf("recovery times = %q, %q; want claim time %q", attemptEnded, evidenceCompleted, want)
 	}

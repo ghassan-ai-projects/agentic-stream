@@ -4,10 +4,13 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
@@ -40,14 +43,7 @@ func TestAdmitPendingStampsTheOwnerEpoch(t *testing.T) {
 
 func TestAdmitPendingQuarantinesFixtureOnProductionRoute(t *testing.T) {
 	t.Parallel()
-	db, admitter := pendingItem(t, scenario{executor: "fixture"})
-	admitted, err := admitter.AdmitPending(t.Context())
-	if err != nil || admitted != 0 {
-		t.Fatalf("AdmitPending = %d, %v; want a quarantined item and no error", admitted, err)
-	}
-	if status := itemStatus(t, db); status != "coalesced" {
-		t.Fatalf("scheduler item status = %q, want coalesced", status)
-	}
+	assertNoAdmission(t, scenario{executor: "fixture"}, "coalesced", "a quarantined item and no error")
 }
 
 func TestAdmitPendingAdmitsFixtureInDemoMode(t *testing.T) {
@@ -60,42 +56,131 @@ func TestAdmitPendingAdmitsFixtureInDemoMode(t *testing.T) {
 
 func TestAdmitPendingStopsWhileTheEpochDrains(t *testing.T) {
 	t.Parallel()
-	db, admitter := pendingItem(t, scenario{executor: "native", drain: true})
-	if admitted, err := admitter.AdmitPending(t.Context()); err != nil || admitted != 0 {
-		t.Fatalf("AdmitPending = %d, %v; want no admission while draining", admitted, err)
-	}
-	if status := itemStatus(t, db); status != "pending" {
-		t.Fatalf("scheduler item status = %q, want pending", status)
-	}
+	assertNoAdmission(t, scenario{executor: "native", drain: true}, "pending", "no admission while draining")
 }
 
 func TestAdmitPendingSkipsCostRejectedItems(t *testing.T) {
 	t.Parallel()
-	db, admitter := pendingItem(t, scenario{executor: "native", costKill: true})
+	assertNoAdmission(t, scenario{executor: "native", costKill: true}, "coalesced", "a cost-rejected skip")
+}
+
+func TestAdmitPendingExpiresAnItemPastItsExpiry(t *testing.T) {
+	t.Parallel()
+	db, admitter := pendingItem(t, scenario{executor: "native", stale: true})
 	if admitted, err := admitter.AdmitPending(t.Context()); err != nil || admitted != 0 {
-		t.Fatalf("AdmitPending = %d, %v; want a cost-rejected skip", admitted, err)
+		t.Fatalf("AdmitPending = %d, %v; want no admission after the item expired", admitted, err)
 	}
-	if status := itemStatus(t, db); status != "coalesced" {
-		t.Fatalf("scheduler item status = %q, want coalesced", status)
+	if status := itemStatus(t, db); status != "expired" {
+		t.Fatalf("scheduler item status = %q, want expired", status)
+	}
+	if reasons := evaluationReasons(t, db); !strings.Contains(reasons, "scheduler item expired: expired before admission") {
+		t.Fatalf("trigger evaluation reasons = %s", reasons)
+	}
+	if admitted, err := admitter.AdmitPending(t.Context()); err != nil || admitted != 0 {
+		t.Fatalf("second AdmitPending = %d, %v", admitted, err)
+	}
+}
+
+func TestExpiredItemsNoLongerFillGlobalCapacityOrTheNextPoll(t *testing.T) {
+	t.Parallel()
+	db, admitter := pendingItem(t, scenario{executor: "native", stale: true})
+	addPendingItems(t, db, 100, "2026-01-01T00:00:00.000000000Z")
+	if admitted, err := admitter.AdmitPending(t.Context()); err != nil || admitted != 0 {
+		t.Fatalf("AdmitPending = %d, %v", admitted, err)
+	}
+	counts := itemCounts(t, db)
+	if counts["pending"] != 0 || counts["expired"] != 101 {
+		t.Fatalf("item statuses after admission = %v, want 101 expired and none pending", counts)
+	}
+}
+
+func TestAnUnreadableSchedulerTimeExpiresThatItemAndAdmissionContinues(t *testing.T) {
+	t.Parallel()
+	db, admitter := pendingItem(t, scenario{executor: "native"})
+	addPendingItems(t, db, 1, "not a time")
+	if admitted, err := admitter.AdmitPending(t.Context()); err != nil || admitted != 1 {
+		t.Fatalf("AdmitPending = %d, %v; want the readable item admitted", admitted, err)
+	}
+	counts := itemCounts(t, db)
+	if counts["admitted"] != 1 || counts["expired"] != 1 || counts["pending"] != 0 {
+		t.Fatalf("item statuses = %v", counts)
+	}
+	if reasons := evaluationReasons(t, db); !strings.Contains(reasons, "scheduler item expired: unreadable expires_at") {
+		t.Fatalf("trigger evaluation reasons = %s", reasons)
+	}
+}
+
+func addPendingItems(t *testing.T, db *storage.DB, count int, expiresAt string) {
+	t.Helper()
+	const cloneEvaluations = `
+		WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?)
+		INSERT INTO trigger_evaluations (trigger_id, tenant_id, deployment_id, trigger_name, situation_id, situation_version, score, threshold, lane, outcome, reasons_json, policy_sha256, evaluated_at)
+		SELECT 'extra-' || i, tenant_id, deployment_id, trigger_name, situation_id, situation_version, score, threshold, lane, outcome, X'5B5D', policy_sha256, evaluated_at
+		FROM trigger_evaluations, n LIMIT ?`
+	const cloneItems = `
+		WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?)
+		INSERT INTO scheduler_items (scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version, kind, lane, priority, status, dedupe_key, not_before, expires_at, created_at, updated_at)
+		SELECT 'extra-item-' || i, 'extra-' || i, tenant_id, situation_id, situation_version, kind, lane, priority, 'pending', randomblob(32), NULL, ?, created_at, created_at
+		FROM scheduler_items, n LIMIT ?`
+	if _, err := db.ExecContext(t.Context(), cloneEvaluations, count, count); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(t.Context(), cloneItems, count, expiresAt, count); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func itemCounts(t *testing.T, db *storage.DB) map[string]int {
+	t.Helper()
+	counts := map[string]int{}
+	rows, err := db.QueryContext(t.Context(), "SELECT status, COUNT(*) FROM scheduler_items GROUP BY status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			t.Fatal(err)
+		}
+		counts[status] = count
+	}
+	return counts
+}
+
+func evaluationReasons(t *testing.T, db *storage.DB) string {
+	t.Helper()
+	var reasons string
+	if err := db.QueryRowContext(t.Context(), "SELECT group_concat(CAST(reasons_json AS TEXT)) FROM trigger_evaluations").Scan(&reasons); err != nil {
+		t.Fatal(err)
+	}
+	return reasons
+}
+
+func assertNoAdmission(t *testing.T, given scenario, wantStatus, wantOutcome string) {
+	t.Helper()
+	db, admitter := pendingItem(t, given)
+	if admitted, err := admitter.AdmitPending(t.Context()); err != nil || admitted != 0 {
+		t.Fatalf("AdmitPending = %d, %v; want %s", admitted, err, wantOutcome)
+	}
+	if status := itemStatus(t, db); status != wantStatus {
+		t.Fatalf("scheduler item status = %q, want %s", status, wantStatus)
 	}
 }
 
 // scenario is the admission condition a test arranges.
 type scenario struct {
-	executor              string
-	demo, drain, costKill bool
+	executor                     string
+	demo, drain, costKill, stale bool
 }
 
 // pendingItem ingests one triggering event and runs the stream engine, leaving
 // exactly one pending scheduler item for an admitter in the given scenario.
 func pendingItem(t *testing.T, given scenario) (*storage.DB, *app.Admitter) {
 	t.Helper()
-	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "admission.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	compiled := testSpec(given.executor)
 	runStream(t, db, compiled)
 	admitter, err := app.NewAdmitter(composeConfig(t, db, compiled, given))
@@ -145,15 +230,15 @@ func composeConfig(t *testing.T, db *storage.DB, compiled *spec.CompiledSpec, gi
 		t.Fatal(err)
 	}
 	return app.AdmitterConfig{
-		Store: &store.PipelineStore{DB: db, Owner: owner, OwnerEpoch: ownerEpoch, Episodes: assembler, TenantID: "default"},
-		Clock: sources.Physical(), OwnerEpoch: ownerEpoch, EpochControl: control, DemoMode: given.demo,
+		Store: &store.PipelineStore{DB: db, RuntimeOwner: owner.Assert, OwnerEpoch: ownerEpoch, Episodes: assembler, TenantID: "default"},
+		Clock: admissionClock(given), OwnerEpoch: ownerEpoch, EpochControl: control, DemoMode: given.demo,
 	}
 }
 
 func setCostKillSwitch(t *testing.T, db *storage.DB) {
 	t.Helper()
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		return controltest.SetCostLimit(t.Context(), tx, "global", "", 0, true, time.Now().UTC().Format(time.RFC3339Nano))
+		return controltest.SetCostLimit(t.Context(), tx, "global", "", 0, true, kernel.FormatTime(time.Now().UTC()))
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +264,7 @@ func testSpec(executorName string) *spec.CompiledSpec {
 		Situation: spec.Situation{Type: "test", InitialPhase: "candidate", Phases: []spec.Phase{{Name: "candidate", Severity: 10}}, Occurrence: spec.Occurrence{OpenWhen: "features.level > 10"}, Reducers: []spec.Reducer{{Field: "facts.level", Strategy: "latest_event_time", Input: "level"}}},
 		Cognition: spec.Cognition{Triggers: []spec.Trigger{{Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast"}},
 			Executor: spec.Executor{Name: executorName, DispatchPolicy: "shadow", ModelPolicy: "test", PromptVersion: "v1",
-				DecisionSchema: "schemas/decision.json", Budget: spec.Budget{WallTime: "5s"}}},
+				DecisionSchema: "schemas/decision.json", Budget: spec.Budget{WallTime: "5s"}, RiskCeiling: "R1"}},
 		Actions: spec.Actions{Intents: []spec.Intent{{Type: "create_maintenance_ticket", Risk: "R1", Policy: "automatic",
 			ParameterSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"entity_id": map[string]any{"type": "string"}}}}}},
 	}
@@ -214,4 +299,11 @@ func TestAdmitterRequiresItsStoreAssemblerAndClock(t *testing.T) {
 			t.Errorf("%s: construction = (%v, %v)", name, admitter, err)
 		}
 	}
+}
+
+func admissionClock(given scenario) sources.Clock {
+	if given.stale {
+		return sources.NewVirtual(time.Now().Add(24 * time.Hour))
+	}
+	return sources.Physical()
 }

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestFacadeCompilesAndDeploysASpec(t *testing.T) {
@@ -15,11 +15,8 @@ func TestFacadeCompilesAndDeploysASpec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "spec.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	if err := spec.SaveDeployment(t.Context(), db, "tenant", compiled); err != nil {
 		t.Fatalf("deploy: %v", err)
 	}
@@ -50,11 +47,8 @@ func TestLoadDeploymentReturnsTheDeployedSpec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "spec.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	if err := spec.SaveDeployment(t.Context(), db, "tenant", compiled); err != nil {
 		t.Fatal(err)
 	}

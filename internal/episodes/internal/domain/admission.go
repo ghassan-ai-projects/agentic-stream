@@ -6,6 +6,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 // RequestDigests are the decoded immutable admission provenance.
@@ -34,7 +35,19 @@ func AdmittedEpisode(req *Request, digests RequestDigests) episodeledger.Admissi
 		ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion, ModelPolicy: req.ModelPolicy,
 		PromptVersion: req.PromptVersion, SnapshotSHA256: digests.snapshot, PromptSHA256: digests.prompt,
 		ObjectiveSHA256: digests.objective, AdmissionKey: req.AdmissionKey, RequestJSON: req.RequestJSON,
-		DispatchPolicy: req.DispatchPolicy, PolicyEpoch: req.PolicyEpoch}
+		DispatchPolicy: spec.EffectiveDispatchPolicy(req.DispatchPolicy), PolicyEpoch: req.PolicyEpoch}
+}
+
+func AdmittedRequest(admission episodeledger.Admission) Request {
+	return Request{EpisodeID: admission.EpisodeID, SchedulerItemID: admission.SchedulerItemID,
+		TenantID: admission.TenantID, SituationID: admission.SituationID, SituationVersion: admission.SituationVersion,
+		ExecutorName: admission.ExecutorName, ExecutorVersion: admission.ExecutorVersion,
+		ModelPolicy: admission.ModelPolicy, PromptVersion: admission.PromptVersion,
+		SnapshotSHA256:  canonicaljson.EncodeDigest(admission.SnapshotSHA256),
+		PromptSHA256:    canonicaljson.EncodeDigest(admission.PromptSHA256),
+		ObjectiveSHA256: canonicaljson.EncodeDigest(admission.ObjectiveSHA256),
+		AdmissionKey:    admission.AdmissionKey, RequestJSON: admission.RequestJSON,
+		DispatchPolicy: admission.DispatchPolicy, PolicyEpoch: admission.PolicyEpoch}
 }
 
 // RebindRequest refreshes the snapshot while preserving the admission evidence.
@@ -72,13 +85,8 @@ func reboundRequestJSON(req *Request, liveVersion int, evidence *SnapshotEvidenc
 
 // CostBudget reads the admitted cost ceiling before opening a reservation.
 func CostBudget(raw []byte) (uint64, error) {
-	var payload struct {
-		Budget struct {
-			CostMicrounits uint64 `json:"cost_microunits"`
-		} `json:"budget"`
-	}
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return 0, fmt.Errorf("decode episode cost budget: %w", err)
-	}
-	return payload.Budget.CostMicrounits, nil
+	budget, err := decodeBudget[struct {
+		CostMicrounits uint64 `json:"cost_microunits"`
+	}](raw, "decode episode cost budget")
+	return budget.CostMicrounits, err
 }

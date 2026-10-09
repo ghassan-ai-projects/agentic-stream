@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,17 +11,15 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/store"
 )
 
 func openDB(t *testing.T) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "watch.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	return db
 }
 
@@ -122,14 +119,5 @@ func TestFireRequiresIdentity(t *testing.T) {
 	}
 	if _, err := service.Fire(t.Context(), "", "evt-1", "sit-1", "motor-1", nil); err == nil {
 		t.Fatal("fire without a watch ID was accepted")
-	}
-}
-
-func TestExpireWaitHonorsCancellation(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if err := app.AwaitRetry(ctx); !errors.Is(err, context.Canceled) {
-		t.Fatalf("retry wait = %v", err)
 	}
 }

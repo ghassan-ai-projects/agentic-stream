@@ -4,14 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/api/internal/transport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 const (
@@ -22,11 +21,8 @@ const (
 func newControlRuntime(t *testing.T, token string) (http.Handler, *runtimecontrol.EpochControl) {
 	t.Helper()
 
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "control.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	control := &runtimecontrol.EpochControl{DB: db}
 	return api.NewRuntimeHandler(readiness{}, nil, transport.SSEConfig{}, nil, control, controlEpoch, token), control
 }

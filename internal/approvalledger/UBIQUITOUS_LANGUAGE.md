@@ -12,6 +12,8 @@ operation runs on the caller's transaction.
 | Assertion binding | Attaching the verified assertion digest without touching the nonce | `BindAssertion` | `assertion_sha256` |
 | Expire | A pending approval that ran out of time, by approval id or because its intent expired | `Expire`, `ExpireIntent`, `StatusExpired` | `expired`, reason `approval_expired` |
 | Withdraw | Denying a pending approval because a newer Situation version superseded its basis | `Withdraw`, `StatusDenied` | `denied`, `withdrawn_at`, reason `approval_withdrawn` |
+| Latest approved | The approved approval of an intent decided last; a `decided_at` tie resolves to the larger approval id, and the id and expiry always come from that one row | `LatestApprovedOfIntent`, `StatusApproved` | `approved`, `ORDER BY decided_at DESC, approval_id DESC` |
+| Pending lookup | The unresolved approval of an intent, and the expiry and nonce a signed assertion binds | `PendingOfIntent`, `PendingBinding` | `status = 'pending'`, `expires_at`, `nonce` |
 | Withdrawal reason | Why a withdrawal happened; today only a version conflict | `WithdrawalConflict` | `withdrawal_reason = situation_version_conflict` |
 | Withdrawal | A withdrawn approval with what its notification needs, including the trace context | `Withdrawal` | — |
 | Withdrawal publisher | The caller's function that publishes one withdrawal's notification in the same transaction | `WithdrawalPublisher` | `approval.withdrawn` event |

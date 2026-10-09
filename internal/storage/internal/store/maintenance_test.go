@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestOpenFreshReservesPathUntilClose(t *testing.T) {
@@ -19,7 +20,7 @@ func TestOpenFreshReservesPathUntilClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open fresh: %v", err)
 	}
-	if _, err := storage.Open(ctx, path); err == nil {
+	if _, err := storagetest.Open(ctx, path); err == nil {
 		t.Fatal("Open succeeded on a path reserved by an active replay")
 	}
 	if _, err := storage.OpenFresh(ctx, path); err == nil {
@@ -62,7 +63,7 @@ func TestRetrySQLiteBusyPassesThroughOtherOutcomes(t *testing.T) {
 func TestRetrySQLiteBusyRetriesRealContention(t *testing.T) {
 	ctx := t.Context()
 	path := filepath.Join(t.TempDir(), "busy.db")
-	db, err := storage.Open(ctx, path)
+	db, err := storagetest.Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}

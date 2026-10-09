@@ -4,14 +4,11 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
-
-const reconciliationPersistTimeout = 5 * time.Second
 
 // BootID returns the current handshake-bound boot identity.
 func (s *Session) BootID() string {

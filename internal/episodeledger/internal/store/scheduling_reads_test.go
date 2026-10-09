@@ -13,7 +13,7 @@ func TestSchedulingReadsTheItemOrReportsNone(t *testing.T) {
 		if _, found, err := tx.Scheduling(ctx, "default", "trg_missing"); err != nil || found {
 			t.Fatalf("an unscheduled trigger was found: found=%t err=%v", found, err)
 		}
-		if err := tx.UpsertSchedulerItem(ctx, item("sch_1", "trg_1"), "default", make32(1), at.Format("2006-01-02T15:04:05Z")); err != nil {
+		if err := tx.UpsertSchedulerItem(ctx, item("sch_1", "trg_1"), "default", make32(1), at); err != nil {
 			t.Fatal(err)
 		}
 		record, found, err := tx.Scheduling(ctx, "default", "trg_1")

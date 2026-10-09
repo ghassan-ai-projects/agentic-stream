@@ -14,10 +14,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// defaultClaimLease is how long a target claim stays live without renewal
-// when Config.ClaimLease is zero.
-const defaultClaimLease = time.Minute
-
 // OutcomeLedger counts, inside tx, the commands among commandIDs whose
 // outcome is still unresolved. actions.CountUnresolvedOutcomes implements it;
 // the action ledger owns what "unresolved" means.
@@ -51,8 +47,8 @@ func New(cfg Config) (*Service, error) {
 		Fences:        app.Fences{RuntimeOwner: cfg.Owner.Assert, EpochControl: cfg.Epochs.AssertOrdinaryTx},
 		Outcomes:      store.OutcomeLedger(cfg.Outcomes),
 		OwnerInstance: cfg.Owner.InstanceID,
-		ClaimLease:    cfg.claimLease(),
-		Clock:         cfg.clock(),
+		ClaimLease:    sources.OrLease(cfg.ClaimLease),
+		Clock:         sources.OrPhysical(cfg.Clock),
 	})}, nil
 }
 
@@ -70,18 +66,4 @@ func (cfg Config) validate() error {
 		return fmt.Errorf("device authority claim lease %s is negative", cfg.ClaimLease)
 	}
 	return nil
-}
-
-func (cfg Config) claimLease() time.Duration {
-	if cfg.ClaimLease == 0 {
-		return defaultClaimLease
-	}
-	return cfg.ClaimLease
-}
-
-func (cfg Config) clock() sources.Clock {
-	if cfg.Clock == nil {
-		return sources.Physical()
-	}
-	return cfg.Clock
 }

@@ -8,7 +8,7 @@ import (
 )
 
 // approvalLedgerOperations are the facade functions; each delegates to the app layer.
-var approvalLedgerOperations = []string{"Request", "ExpireIntent", "Expire", "Resolve", "BindAssertion", "Withdraw", "WithdrawSuperseded", "Approvals"}
+var approvalLedgerOperations = []string{"Request", "ExpireIntent", "Expire", "Resolve", "BindAssertion", "Withdraw", "WithdrawSuperseded", "Approvals", "PendingOfIntent", "LatestApprovedOfIntent", "PendingBinding"}
 
 // TestApprovalLedgerFacadeOnlyDelegates confines approval rules and SQL to private layers.
 func TestApprovalLedgerFacadeOnlyDelegates(t *testing.T) {

@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,17 +11,15 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 var now = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 
 func openService(t *testing.T) (*Service, store.Store, *storage.DB) {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "app.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	persistence := store.New(db)
 	service := New(persistence)
 	return service, persistence, db

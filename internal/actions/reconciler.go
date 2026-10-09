@@ -2,7 +2,6 @@ package actions
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/app"
@@ -17,7 +16,7 @@ type AwaitingCommand = app.AwaitingCommand
 // reconciler never dispatches, so it takes no effector.
 type ReconcilerConfig struct {
 	DB           *storage.DB
-	RuntimeOwner func(context.Context, *sql.Tx, string) error
+	RuntimeOwner storage.OwnerCheck
 	Epoch        string
 }
 

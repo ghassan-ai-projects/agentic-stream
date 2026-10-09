@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
@@ -13,7 +14,7 @@ import (
 func (tx *Tx) InsertCommand(ctx context.Context, row domain.IntentRecord, command domain.CommandRecord, now time.Time) (bool, error) {
 	result, err := tx.tx.ExecContext(ctx, insertPolicyCommandSQL,
 		command.ID, row.IntentID, row.TenantID, row.IntentType, command.Target,
-		command.Key, command.JSON, command.SHA, domain.FormatTime(now), domain.FormatTime(now),
+		command.Key, command.JSON, command.SHA, kernel.FormatTime(now), kernel.FormatTime(now),
 	)
 	if err != nil {
 		return false, fmt.Errorf("insert command: %w", err)
@@ -45,7 +46,7 @@ func (tx *Tx) InsertCommandOutbox(ctx context.Context, commandID string, command
 			available_at, created_at
 		) VALUES ('command', ?, 1, ?, 'pending', ?, ?)
 		ON CONFLICT(kind, aggregate_id, aggregate_version) DO NOTHING`,
-		commandID, commandJSON, domain.FormatTime(now), domain.FormatTime(now),
+		commandID, commandJSON, kernel.FormatTime(now), kernel.FormatTime(now),
 	); err != nil {
 		return fmt.Errorf("insert command outbox: %w", err)
 	}

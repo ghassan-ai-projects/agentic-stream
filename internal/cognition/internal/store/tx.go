@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
@@ -18,16 +20,19 @@ func Join(tx *sql.Tx) *Tx { return &Tx{tx: tx} }
 
 func (t *Tx) Configured() bool { return t != nil && t.tx != nil }
 
-func (t *Tx) InsertItem(ctx context.Context, item episodeledger.SchedulerItem, tenantID string, key []byte, now string) error {
+func (t *Tx) InsertItem(ctx context.Context, item episodeledger.SchedulerItem, tenantID string, key []byte, now time.Time) error {
 	return episodeledger.UpsertSchedulerItem(ctx, t.tx, item, tenantID, key, now) //nolint:wrapcheck // Preserve the owning ledger error contract.
 }
 
 // WithdrawSuperseded withdraws the approvals a newer Situation version
 // superseded and publishes each withdrawal in this transaction, reading the
 // clock after each withdrawal.
-func (t *Tx) WithdrawSuperseded(ctx context.Context, situationID, tenantID string, version int, now string, clk sources.Clock) error {
+func (t *Tx) WithdrawSuperseded(ctx context.Context, situationID, tenantID string, version int, now time.Time, clk sources.Clock) error {
 	publish := withdrawalPublisher(tenantID, clk)
-	return approvalledger.WithdrawSuperseded(ctx, t.tx, situationID, version, now, publish) //nolint:wrapcheck // Preserve the owning ledger error contract.
+	if err := approvalledger.WithdrawSuperseded(ctx, t.tx, situationID, version, kernel.FormatTime(now), publish); err != nil {
+		return fmt.Errorf("withdraw approvals superseded by situation %s version %d: %w", situationID, version, err)
+	}
+	return nil
 }
 
 // withdrawalPublisher publishes the approval.withdrawn notification of a
@@ -42,16 +47,10 @@ func withdrawalPublisher(tenantID string, clk sources.Clock) approvalledger.With
 }
 
 func supersededWithdrawalEvent(w approvalledger.Withdrawal, tenantID string, clk sources.Clock) notify.LifecycleEvent {
-	return notify.LifecycleEvent{
-		ID:           "approval.withdrawn:" + w.ApprovalID,
-		TenantID:     tenantID,
-		Subject:      "approval/" + w.ApprovalID,
-		PartitionKey: w.SituationID,
-		Payload: notify.ApprovalWithdrawn{
-			ApprovalID: w.ApprovalID, IntentID: w.IntentID, SituationID: w.SituationID,
-			SituationVersion: w.SituationVersion, Reason: "situation_version_conflict",
-		},
-		At:    clk.Now().UTC(),
-		Trace: contractsv1.TraceContext{Traceparent: w.Traceparent, Tracestate: w.Tracestate},
+	payload := notify.ApprovalWithdrawn{
+		ApprovalID: w.ApprovalID, IntentID: w.IntentID, SituationID: w.SituationID,
+		SituationVersion: w.SituationVersion, Reason: "situation_version_conflict",
 	}
+	trace := contractsv1.TraceContext{Traceparent: w.Traceparent, Tracestate: w.Tracestate}
+	return notify.ApprovalWithdrawnEvent(tenantID, payload, clk.Now().UTC(), trace)
 }

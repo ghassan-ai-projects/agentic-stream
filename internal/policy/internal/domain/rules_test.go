@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 )
 
 func TestTargetResolutionPreservesFallbackPrecedence(t *testing.T) {
@@ -49,6 +49,7 @@ func TestDecisionValidationPrecedenceAndBinding(t *testing.T) {
 		{"tenant before digest", func(r *IntentRecord) { r.EpisodeTenant = "other"; r.DecisionSHA = nil }, "identity_mismatch"},
 		{"situation", func(r *IntentRecord) { r.EpisodeVersion = 2 }, "identity_mismatch"},
 		{"digest", func(r *IntentRecord) { r.DecisionSHA = make([]byte, 32) }, "decision_digest_mismatch"},
+		{"ambiguous bytes", func(r *IntentRecord) { r.DecisionJSON = contractstest.AmbiguousKeyJSON(r.DecisionJSON, "decision_id") }, "schema_invalid"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := good
@@ -129,12 +130,6 @@ func TestIntentDigestChecksOriginalDocument(t *testing.T) {
 
 func TestRuleBoundaries(t *testing.T) {
 	t.Parallel()
-	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
-	for _, status := range []string{"concluded", "closed", "running"} {
-		if EpisodeConcluded(IntentRecord{EpisodeLifecycle: status}) != (status != "running") {
-			t.Fatalf("lifecycle=%s", status)
-		}
-	}
 	for _, risk := range []string{"R0", "R1", "R2", "R3", "R4"} {
 		for _, health := range []string{"on_time", "provisional", "uncertain"} {
 			want := risk >= "R2" && health != "on_time"
@@ -142,9 +137,6 @@ func TestRuleBoundaries(t *testing.T) {
 				t.Fatalf("health=%s risk=%s", health, risk)
 			}
 		}
-	}
-	if !ApprovalExpired("invalid", now) || !ApprovalExpired(FormatTime(now), now) || ApprovalExpired(FormatTime(now.Add(time.Nanosecond)), now) {
-		t.Fatal("expiry boundary changed")
 	}
 	for _, approved := range []bool{true, false} {
 		status, policy := ApprovalDecision(approved)
@@ -203,11 +195,8 @@ func TestDefinitionAndAssertionCanonicalBytes(t *testing.T) {
 }
 
 func documentMatchesBytes(raw, digest []byte, domain canonicaljson.Domain) bool {
-	var document map[string]any
-	if json.Unmarshal(raw, &document) != nil {
-		return false
-	}
-	return DocumentDigestMatches(document, digest, domain)
+	document, err := contractsv1.DecodeDocumentJSON(raw)
+	return err == nil && contractsv1.VerifyDocumentDigest(domain, document, digest)
 }
 
 func testParameters(value any) map[string]any { v, _ := value.(map[string]any); return v }

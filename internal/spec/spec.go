@@ -87,6 +87,21 @@ type SkillRef = domain.SkillRef
 // Executor configures the episode runtime.
 type Executor = domain.Executor
 
+// Dispatch policies an Executor may declare, and the trigger lanes a Trigger
+// may declare. The spec owns this vocabulary; consumers compare against these.
+const (
+	DispatchShadow = domain.DispatchShadow
+	DispatchActive = domain.DispatchActive
+	LaneFast       = domain.LaneFast
+	LaneDeep       = domain.LaneDeep
+)
+
+// EffectiveDispatchPolicy is the declared policy, or shadow when none was
+// declared: nothing enters action governance unless the spec declared active.
+func EffectiveDispatchPolicy(policy string) string {
+	return domain.EffectiveDispatchPolicy(policy)
+}
+
 // Budget caps episode resource usage.
 type Budget = domain.Budget
 

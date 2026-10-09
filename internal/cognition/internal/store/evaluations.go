@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 )
@@ -20,7 +20,7 @@ func (t *Tx) LoadEvaluationReasons(ctx context.Context, schedulerItemID string) 
 			SELECT trigger_id, reasons_json FROM trigger_evaluations
 			WHERE trigger_id = (SELECT trigger_id FROM scheduler_items WHERE scheduler_item_id = ?)`, schedulerItemID).
 		Scan(&triggerID, &reasonsJSON); err != nil {
-		return "", nil, fmt.Errorf("load cost-rejected trigger evaluation: %w", err)
+		return "", nil, fmt.Errorf("load trigger evaluation reasons: %w", err)
 	}
 	var reasons []string
 	if len(reasonsJSON) > 0 {
@@ -54,7 +54,7 @@ func evaluationColumns(eval domain.Evaluation, tenantID, deploymentID, policyDig
 	return []any{
 		eval.TriggerID, tenantID, deploymentID, eval.TriggerName,
 		eval.SituationID, eval.SituationVersion, eval.Score, eval.Threshold, eval.Lane,
-		eval.Outcome, reasonsJSON, policySHA[:], eval.DeltaJSON, eval.EvaluatedAt.Format(time.RFC3339Nano),
+		eval.Outcome, reasonsJSON, policySHA[:], eval.DeltaJSON, kernel.FormatTime(eval.EvaluatedAt),
 	}, nil
 }
 
@@ -89,7 +89,7 @@ func (t *Tx) AnnounceEvaluation(ctx context.Context, eval domain.Evaluation, ten
 
 func evaluationEvent(eval domain.Evaluation, tenantID string) contractsv1.CloudEvent {
 	return contractsv1.CloudEvent{
-		SpecVersion: "1.0", ID: eval.TriggerID + ":" + eval.Outcome + ":" + eval.EvaluatedAt.UTC().Format(time.RFC3339Nano), Source: "//agentic-stream/tenants/" + tenantID,
+		SpecVersion: "1.0", ID: eval.TriggerID + ":" + eval.Outcome + ":" + kernel.FormatTime(eval.EvaluatedAt), Source: "//agentic-stream/tenants/" + tenantID,
 		Type: "situation.trigger.evaluated", Subject: "situation/" + eval.SituationID,
 		Time: eval.EvaluatedAt, DataContentType: "application/json",
 		DataSchema: "urn:situation-runtime:schema:trigger-evaluation:v1",
@@ -99,35 +99,33 @@ func evaluationEvent(eval domain.Evaluation, tenantID string) contractsv1.CloudE
 	}
 }
 
+const (
+	markReasonedSQL = "UPDATE situations SET last_reasoned_version = ? WHERE situation_id = ?"
+	markMaterialSQL = "UPDATE situations SET last_material_version = ? WHERE situation_id = ?"
+)
+
 func (t *Tx) MarkVersionReasoned(ctx context.Context, v situations.Version) error {
-
-	if _, err := t.tx.ExecContext(ctx,
-		"UPDATE situations SET last_reasoned_version = ? WHERE situation_id = ?",
-		v.Version, v.SituationID,
-	); err != nil {
-		return fmt.Errorf("update last reasoned version: %w", err)
-	}
-
-	return nil
+	return t.markVersion(ctx, markReasonedSQL, "reasoned", v)
 }
 
 func (t *Tx) MarkVersionMaterial(ctx context.Context, v situations.Version) error {
-	if _, err := t.tx.ExecContext(ctx,
-		"UPDATE situations SET last_material_version = ? WHERE situation_id = ?",
-		v.Version, v.SituationID,
-	); err != nil {
-		return fmt.Errorf("update last material version: %w", err)
+	return t.markVersion(ctx, markMaterialSQL, "material", v)
+}
+
+func (t *Tx) markVersion(ctx context.Context, statement, kind string, v situations.Version) error {
+	if _, err := t.tx.ExecContext(ctx, statement, v.Version, v.SituationID); err != nil {
+		return fmt.Errorf("update last %s version: %w", kind, err)
 	}
 	return nil
 }
 
-func (t *Tx) RecordCostReason(ctx context.Context, triggerID string, reasons []string) error {
+func (t *Tx) RecordReasons(ctx context.Context, triggerID string, reasons []string) error {
 	encoded, err := json.Marshal(reasons)
 	if err != nil {
 		return fmt.Errorf("encode trigger evaluation reasons: %w", err)
 	}
 	if _, err := t.tx.ExecContext(ctx, "UPDATE trigger_evaluations SET reasons_json = ? WHERE trigger_id = ?", encoded, triggerID); err != nil {
-		return fmt.Errorf("record cost rejection reason: %w", err)
+		return fmt.Errorf("record trigger evaluation reasons: %w", err)
 	}
 	return nil
 }

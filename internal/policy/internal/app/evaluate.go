@@ -54,13 +54,16 @@ func (g *Service) evaluateExisting(ctx context.Context, tx *store.Tx, e evaluati
 
 func (g *Service) expireExistingApproval(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, bool, error) {
 	approvalID, expiry, err := tx.PendingApprovalExpiry(ctx, e.row.IntentID)
+	if errors.Is(err, store.ErrUnreadableApprovalExpiry) {
+		return g.recordExpiredApproval(ctx, tx, e, approvalID, "approval_expiry_unreadable")
+	}
 	if err != nil || approvalID == "" {
 		return e.result, false, err
 	}
-	if !domain.ApprovalExpired(expiry, e.now) {
+	if expiry.After(e.now) {
 		return e.result, false, nil
 	}
-	return g.recordExpiredApproval(ctx, tx, e, approvalID)
+	return g.recordExpiredApproval(ctx, tx, e, approvalID, "approval_expired")
 }
 
 func (g *Service) markStale(ctx context.Context, tx *store.Tx, e evaluation) (domain.Result, error) {
@@ -104,13 +107,13 @@ func (g *Service) denyEpochIntent(ctx context.Context, tx *store.Tx, e evaluatio
 	return g.finish(ctx, tx, e, domain.Outcome{Status: "denied", Reason: reason})
 }
 
-func (g *Service) recordExpiredApproval(ctx context.Context, tx *store.Tx, e evaluation, approvalID string) (domain.Result, bool, error) {
+func (g *Service) recordExpiredApproval(ctx context.Context, tx *store.Tx, e evaluation, approvalID, reason string) (domain.Result, bool, error) {
 	if err := tx.ExpireIntentApproval(ctx, e.row.IntentID); err != nil {
 		return e.result, true, err
 	}
-	if err := tx.AppendApprovalResolved(ctx, domain.ApprovalEvent{Intent: e.row, ID: approvalID, Status: "expired", Reason: "approval_expired", Now: e.now}); err != nil {
+	if err := tx.AppendApprovalResolved(ctx, domain.ApprovalEvent{Intent: e.row, ID: approvalID, Status: "expired", Reason: reason, Now: e.now}); err != nil {
 		return e.result, true, err
 	}
-	result, err := g.finish(ctx, tx, e, domain.Outcome{Status: "expired", Reason: "approval_expired"})
+	result, err := g.finish(ctx, tx, e, domain.Outcome{Status: "expired", Reason: reason})
 	return result, true, err
 }

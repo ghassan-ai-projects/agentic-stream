@@ -8,5 +8,5 @@ import (
 )
 
 func configureCostLimits(ctx context.Context, cfg PipelineConfig) error {
-	return store.ConfigureCostLimits(ctx, store.CostConfiguration{DB: cfg.DB, Owner: cfg.Owner, OwnerEpoch: cfg.OwnerEpoch, Clock: cfg.Clock, TenantID: cfg.TenantID, Ceilings: runtimecontrol.CostCeilings{Global: cfg.GlobalCostCeiling, Tenant: cfg.TenantCostCeiling, KillSwitch: cfg.CostKillSwitch}})
+	return store.ConfigureCostLimits(ctx, store.CostConfiguration{DB: cfg.DB, RuntimeOwner: runtimeOwnershipCheck(cfg), OwnerEpoch: cfg.OwnerEpoch, Clock: cfg.Clock, TenantID: cfg.TenantID, Ceilings: runtimecontrol.CostCeilings{Global: cfg.GlobalCostCeiling, Tenant: cfg.TenantCostCeiling, KillSwitch: cfg.CostKillSwitch}})
 }

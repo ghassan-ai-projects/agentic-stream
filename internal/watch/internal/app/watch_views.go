@@ -19,3 +19,7 @@ func Watch(ctx context.Context, s store.Store, tenantID, watchID string) (domain
 	}
 	return watch, found, nil
 }
+
+func InstalledWatchID(providerResult []byte) string {
+	return domain.InstalledWatchID(providerResult)
+}

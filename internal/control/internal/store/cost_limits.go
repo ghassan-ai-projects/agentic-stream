@@ -2,22 +2,18 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // LimitExists reports whether the scope has a cost limit row.
 func (t *Tx) LimitExists(ctx context.Context, scopeKey string) (bool, error) {
-	var exists int
-	err := t.q.QueryRowContext(ctx, "SELECT 1 FROM cost_limits WHERE scope_key = ?", scopeKey).Scan(&exists)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
+	_, exists, err := storage.QueryOptional[int](ctx, t.q, "SELECT 1 FROM cost_limits WHERE scope_key = ?", scopeKey)
 	if err != nil {
 		return false, fmt.Errorf("read %s cost limit: %w", scopeKey, err)
 	}
-	return true, nil
+	return exists, nil
 }
 
 // ReadLimit reads the scope's ceiling and kill switch.
@@ -37,11 +33,11 @@ func (t *Tx) WriteLimit(ctx context.Context, scopeKey, tenantID string, maxMicro
 		VALUES (?, NULLIF(?, ''), ?, ?, ?)
 		ON CONFLICT(scope_key) DO UPDATE SET tenant_id = excluded.tenant_id,
 			max_micro = excluded.max_micro, kill_switch = excluded.kill_switch, updated_at = excluded.updated_at`,
-		scopeKey, tenantID, maxMicro, boolInt(killSwitch), now)
+		scopeKey, tenantID, maxMicro, storage.BoolInt(killSwitch), now)
 	if err != nil {
 		return 0, fmt.Errorf("set cost limit: %w", err)
 	}
-	return rowsOrZero(result), nil
+	return storage.RowsAffected(result), nil
 }
 
 // ReserveAvailable adds the amount to the scope's reserved cost when the kill
@@ -76,20 +72,5 @@ func (t *Tx) SettleLimit(ctx context.Context, scopeKey string, reserved, actual 
 	if err != nil {
 		return 0, fmt.Errorf("settle %s cost: %w", scopeKey, err)
 	}
-	return rowsOrZero(result), nil
-}
-
-func rowsOrZero(result sql.Result) int64 {
-	count, err := result.RowsAffected()
-	if err != nil {
-		return 0
-	}
-	return count
-}
-
-func boolInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
+	return storage.RowsAffected(result), nil
 }

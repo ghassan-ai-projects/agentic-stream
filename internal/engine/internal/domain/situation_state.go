@@ -2,13 +2,13 @@ package domain
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 )
 
@@ -30,62 +30,30 @@ type SituationState struct {
 type StoredSituation struct {
 	SituationID, Type, EntityType, EntityID, OccurrenceID, Phase string
 	PartitionID, Version, Severity, StateCodecVersion            int
-	FirstEventTime, LatestEventTime, UpdatedAt, Completeness     string
+	Completeness                                                 string
+	FirstEventTime, LatestEventTime, UpdatedAt                   time.Time
 	StateJSON, StateSHA256                                       []byte
 	PreviousPhase, Traceparent, Tracestate                       string
 	Confidence                                                   float64
 }
 
-// Restore rebuilds the in-memory Situation: it parses the lifecycle times,
-// verifies the persisted state's codec, digest and identity, and restores fact
-// times.
 func (r StoredSituation) Restore(tenantID, deploymentID string) (situations.Situation, error) {
-	times, err := r.parseTimes()
-	if err != nil {
-		return situations.Situation{}, err
-	}
 	state, err := r.decodeState()
 	if err != nil {
 		return situations.Situation{}, err
 	}
-	return r.situation(tenantID, deploymentID, times, state), nil
+	return r.situation(tenantID, deploymentID, state), nil
 }
 
-// situationTimes are the parsed lifecycle times of a stored Situation.
-type situationTimes struct{ first, latest, updated time.Time }
-
-func (r StoredSituation) parseTimes() (situationTimes, error) {
-	var times situationTimes
-	var err error
-	if times.first, err = parseSituationTime("first event time", r.FirstEventTime); err != nil {
-		return situationTimes{}, err
-	}
-	if times.latest, err = parseSituationTime("latest event time", r.LatestEventTime); err != nil {
-		return situationTimes{}, err
-	}
-	if times.updated, err = parseSituationTime("updated time", r.UpdatedAt); err != nil {
-		return situationTimes{}, err
-	}
-	return times, nil
-}
-
-func parseSituationTime(name, value string) (time.Time, error) {
-	parsed, err := time.Parse(time.RFC3339Nano, value)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("parse %s: %w", name, err)
-	}
-	return parsed, nil
-}
-
-func (r StoredSituation) situation(tenantID, deploymentID string, times situationTimes, state SituationState) situations.Situation {
+func (r StoredSituation) situation(tenantID, deploymentID string, state SituationState) situations.Situation {
 	return situations.Situation{
 		SituationID: r.SituationID, TenantID: tenantID, DeploymentID: deploymentID, Type: r.Type,
 		EntityType: r.EntityType, EntityID: r.EntityID, PartitionID: r.PartitionID,
 		OccurrenceID: r.OccurrenceID, Version: r.Version, Phase: r.Phase,
 		PreviousPhase: r.PreviousPhase, Severity: r.Severity, Confidence: r.Confidence,
-		Completeness: r.Completeness, FirstEventTime: times.first, LatestEventTime: times.latest,
+		Completeness: r.Completeness, FirstEventTime: r.FirstEventTime, LatestEventTime: r.LatestEventTime,
 		Facts: state.Facts, Evidence: evidenceSet(state.Evidence), ConditionStart: state.ConditionStart,
-		OpenedAt: times.first, UpdatedAt: times.updated, Traceparent: r.Traceparent, Tracestate: r.Tracestate,
+		OpenedAt: r.FirstEventTime, UpdatedAt: r.UpdatedAt, Traceparent: r.Traceparent, Tracestate: r.Tracestate,
 	}
 }
 
@@ -115,7 +83,7 @@ func (r StoredSituation) checkStateCodec() error {
 	if r.StateCodecVersion != 1 {
 		return fmt.Errorf("situation %s has unsupported state codec %d", r.SituationID, r.StateCodecVersion)
 	}
-	if len(r.StateJSON) == 0 || len(r.StateSHA256) != sha256.Size {
+	if len(r.StateJSON) == 0 || !canonicaljson.HasSumLength(r.StateSHA256) {
 		return fmt.Errorf("situation %s has incomplete persisted state", r.SituationID)
 	}
 	return nil
@@ -126,12 +94,11 @@ func verifyStateDigest(situationID string, stateJSON, stateSHA256 []byte) error 
 	if err := json.Unmarshal(stateJSON, &document); err != nil {
 		return fmt.Errorf("decode situation state document %s: %w", situationID, err)
 	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainSituationState, document)
+	sum, err := canonicaljson.DigestSum(canonicaljson.DomainSituationState, document)
 	if err != nil {
 		return fmt.Errorf("digest situation state %s: %w", situationID, err)
 	}
-	decodedDigest, err := canonicaljson.DecodeDigest(digest)
-	if err != nil || !bytes.Equal(decodedDigest, stateSHA256) {
+	if !bytes.Equal(sum, stateSHA256) {
 		return fmt.Errorf("situation %s persisted state digest mismatch", situationID)
 	}
 	return nil
@@ -157,7 +124,7 @@ func restoreFactTimes(facts map[string]any) error {
 		if !ok {
 			continue
 		}
-		parsed, err := time.Parse(time.RFC3339Nano, text)
+		parsed, err := kernel.ParseTime(text)
 		if err != nil {
 			return fmt.Errorf("parse fact time %s: %w", key, err)
 		}

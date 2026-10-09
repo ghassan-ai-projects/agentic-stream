@@ -133,8 +133,28 @@ func TestNativeExecutorEnforcesWallTimeAfterLateProviderResponse(t *testing.T) {
 	request := executorconformance.FixtureRequest()
 	request.RequestJSON = replaceBudget(request.RequestJSON, `{"wall_time":"1ms"}`)
 	outcome, err := executor.Execute(context.Background(), request)
-	if err != nil || outcome.Status != string(episodeledger.AttemptFailed) || len(outcome.Reasons) != 1 || outcome.Reasons[0] != "timed_out" || outcome.CostMicrounits != 42 {
+	if err != nil || outcome.CostMicrounits != 42 {
 		t.Fatalf("outcome=%+v err=%v", outcome, err)
+	}
+	if err := executorconformance.CheckContextEnding(request, outcome, context.DeadlineExceeded); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNativeExecutorRecordsCancellationAsTheRunnerDoes(t *testing.T) {
+	executor, err := native.New(native.Config{Provider: &countingProvider{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	request := executorconformance.FixtureRequest()
+	outcome, err := executor.Execute(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := executorconformance.CheckContextEnding(request, outcome, context.Canceled); err != nil {
+		t.Fatal(err)
 	}
 }
 

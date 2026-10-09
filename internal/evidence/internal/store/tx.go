@@ -9,25 +9,22 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// OwnerCheck asserts runtime ownership inside the transaction.
-type OwnerCheck func(context.Context, *sql.Tx, string) error
-
 // Store keeps the database and runtime assertion private.
 type Store struct {
 	db    *storage.DB
-	owner OwnerCheck
+	owner storage.OwnerCheck
 	epoch string
 }
 
 // Tx is an opaque caller-owned transaction.
 type Tx struct {
 	tx    *sql.Tx
-	owner OwnerCheck
+	owner storage.OwnerCheck
 	epoch string
 }
 
 // New binds the persistence ports without opening a transaction.
-func New(db *storage.DB, owner OwnerCheck, epoch string) Store {
+func New(db *storage.DB, owner storage.OwnerCheck, epoch string) Store {
 	return Store{db: db, owner: owner, epoch: epoch}
 }
 

@@ -2,22 +2,18 @@ package runtime
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestServiceReadinessFollowsRecoveryAndClose(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "service.db"))
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	epoch := "epoch-service"
 	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-service", Lease: time.Minute, Now: func() time.Time { return now }}

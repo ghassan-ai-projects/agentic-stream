@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 
@@ -58,7 +57,7 @@ type workerRequestPayload struct {
 // with the digests that bind them.
 type requestArtifacts struct {
 	snapshot, tools, decisionSchema   []byte
-	toolsSHA256, decisionSchemaSHA256 [sha256.Size]byte
+	toolsSHA256, decisionSchemaSHA256 []byte
 }
 
 // requestProvenance are the digests that tie the wire request to the durable
@@ -127,7 +126,7 @@ func (payload *workerRequestPayload) boundRequest(req *episodes.Request, artifac
 		ProtocolVersion: worker.ProtocolVersion, EpisodeId: req.EpisodeID, TriggerId: payload.Trigger.TriggerID,
 		TenantId: req.TenantID, SituationId: req.SituationID, SituationVersion: uint64(req.SituationVersion), //nolint:gosec // SituationVersion is validated positive before dispatch.
 		SnapshotJson: artifacts.snapshot, SnapshotSha256: provenance.snapshot, DecisionSchemaJson: artifacts.decisionSchema,
-		DecisionSchemaSha256: artifacts.decisionSchemaSHA256[:], ToolCatalogJson: artifacts.tools, ToolCatalogSha256: artifacts.toolsSHA256[:], SpecSha256: provenance.spec,
+		DecisionSchemaSha256: artifacts.decisionSchemaSHA256, ToolCatalogJson: artifacts.tools, ToolCatalogSha256: artifacts.toolsSHA256, SpecSha256: provenance.spec,
 		Objective: payload.Executor.Objective, ExecutorName: req.ExecutorName, ExecutorVersion: req.ExecutorVersion,
 	}
 }
@@ -157,8 +156,8 @@ func (p *workerRequestPayload) artifacts() (requestArtifacts, error) {
 	if artifacts.decisionSchema, err = requiredJSON(p.Executor.DecisionSchema, "decision_schema"); err != nil {
 		return requestArtifacts{}, err
 	}
-	artifacts.decisionSchemaSHA256 = sha256.Sum256(artifacts.decisionSchema)
-	artifacts.toolsSHA256 = sha256.Sum256(artifacts.tools)
+	artifacts.decisionSchemaSHA256 = canonicaljson.Sum(artifacts.decisionSchema)
+	artifacts.toolsSHA256 = canonicaljson.Sum(artifacts.tools)
 	return artifacts, nil
 }
 

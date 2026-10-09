@@ -10,6 +10,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
@@ -29,7 +30,7 @@ func modeCompiledSpec(executorName, dispatchPolicy string) *spec.CompiledSpec {
 		Situation: spec.Situation{Type: "test", InitialPhase: "candidate", Phases: []spec.Phase{{Name: "candidate", Severity: 10}}, Occurrence: spec.Occurrence{OpenWhen: "features.level > 10"}, Reducers: []spec.Reducer{{Field: "facts.level", Strategy: "latest_event_time", Input: "level"}}},
 		Cognition: spec.Cognition{Triggers: []spec.Trigger{{Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast"}},
 			Executor: spec.Executor{Name: executorName, DispatchPolicy: dispatchPolicy, ModelPolicy: "test", PromptVersion: "v1",
-				DecisionSchema: "schemas/decision.json", Budget: spec.Budget{WallTime: "5s"}}},
+				DecisionSchema: "schemas/decision.json", Budget: spec.Budget{WallTime: "5s"}, RiskCeiling: "R1"}},
 		Actions: spec.Actions{Intents: []spec.Intent{{Type: "create_maintenance_ticket", Risk: "R1",
 			ParameterSchema: runtimeTicketSchema(), Policy: "automatic"}}},
 	}
@@ -52,11 +53,8 @@ func modeTraceForEntity(t *testing.T, level int, eventID, entityID string) strin
 
 func openModeDB(t *testing.T, name string) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	return db
 }
 

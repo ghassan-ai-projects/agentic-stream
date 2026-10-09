@@ -6,8 +6,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 )
 
@@ -44,18 +44,10 @@ func TestUsageAccountingAndTelemetryRules(t *testing.T) {
 	}
 }
 
-func TestTerminalOutcomesClassifyContextErrors(t *testing.T) {
+func TestFailedOutcomeBindsAttemptIdentityAndCost(t *testing.T) {
 	t.Parallel()
 	req := &episodes.Request{AttemptID: "att", Fence: 3}
-	timeout := TerminalForContext(req, context.DeadlineExceeded, Usage{CostMicrounits: 7})
-	if timeout.Status != "failed" || timeout.Reasons[0] != "timed_out" || timeout.CostMicrounits != 7 {
-		t.Fatalf("timeout = %+v", timeout)
-	}
-	canceled := TerminalForContext(req, context.Canceled, Usage{})
-	if canceled.Status != string(episodeledger.AttemptCancelled) || canceled.Reasons[0] != "canceled" {
-		t.Fatalf("cancel = %+v", canceled)
-	}
-	if failed := Failed(req, "why", Usage{}); failed.Status != "failed" || failed.AttemptID != "att" || failed.Fence != 3 {
+	if failed := Failed(req, "why", Usage{CostMicrounits: 7}); failed.Status != "failed" || failed.AttemptID != "att" || failed.Fence != 3 || failed.Reasons[0] != "why" || failed.CostMicrounits != 7 {
 		t.Fatalf("failed = %+v", failed)
 	}
 }
@@ -130,5 +122,14 @@ func TestToolDefinitionsKeepOnlyConfiguredAllowListedToolsSorted(t *testing.T) {
 	definitions := ToolDefinitions(raw, tools)
 	if len(definitions) != 2 || definitions[0].Name != "a" || definitions[1].Name != "b" {
 		t.Fatalf("definitions = %+v", definitions)
+	}
+}
+
+func TestEvidenceQueryWindowDefaultsToTheScopeWindowBeforeNow(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	query, err := EvidenceScope{EntityID: "motor-1", MaxRows: 10, MaxBytes: 1024, Window: 6 * time.Hour}.Query(json.RawMessage(`{}`), now)
+	if err != nil || !query.From.Equal(now.Add(-6*time.Hour)) || !query.Until.Equal(now) {
+		t.Fatalf("query = %+v, err = %v", query, err)
 	}
 }

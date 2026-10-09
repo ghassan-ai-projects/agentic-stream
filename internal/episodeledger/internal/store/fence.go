@@ -7,35 +7,20 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// ReadEpisodeFence reads the episode's lifecycle, current attempt and fence;
-// found is false for an unknown episode.
+type OwnerCheck = storage.OwnerCheck
+
 func (t *Tx) ReadEpisodeFence(ctx context.Context, episodeID string) (domain.EpisodeFence, bool, error) {
 	var fence domain.EpisodeFence
 	var attempt sql.NullString
-	err := t.q.QueryRowContext(ctx, `SELECT lifecycle_status, current_attempt_id, current_fence FROM episodes WHERE episode_id = ?`, episodeID).Scan(&fence.Lifecycle, &attempt, &fence.Fence)
+	err := t.q.QueryRowContext(ctx, `SELECT tenant_id, lifecycle_status, current_attempt_id, current_fence FROM episodes WHERE episode_id = ?`, episodeID).Scan(&fence.TenantID, &fence.Lifecycle, &attempt, &fence.Fence)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.EpisodeFence{}, false, nil
 	}
 	if err != nil {
 		return domain.EpisodeFence{}, false, fmt.Errorf("load episode identity: %w", err)
-	}
-	fence.Attempt, fence.HasAttempt = attempt.String, attempt.Valid
-	return fence, true, nil
-}
-
-// ReadTerminalEpisodeFence reads the current attempt and fence only, for the
-// acknowledgement of a cancellation on an already closed episode.
-func (t *Tx) ReadTerminalEpisodeFence(ctx context.Context, episodeID string) (domain.EpisodeFence, bool, error) {
-	var fence domain.EpisodeFence
-	var attempt sql.NullString
-	err := t.q.QueryRowContext(ctx, "SELECT current_attempt_id, current_fence FROM episodes WHERE episode_id = ?", episodeID).Scan(&attempt, &fence.Fence)
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.EpisodeFence{}, false, nil
-	}
-	if err != nil {
-		return domain.EpisodeFence{}, false, fmt.Errorf("load terminal attempt identity: %w", err)
 	}
 	fence.Attempt, fence.HasAttempt = attempt.String, attempt.Valid
 	return fence, true, nil
@@ -57,16 +42,6 @@ func (t *Tx) ReadAttempt(ctx context.Context, identity domain.Identity) (domain.
 	return record, true, nil
 }
 
-// ReadAttemptStatusOf reads the status of the attempt under the identity; a
-// missing attempt is an error.
-func (t *Tx) ReadAttemptStatusOf(ctx context.Context, identity domain.Identity) (domain.AttemptStatus, error) {
-	var status domain.AttemptStatus
-	if err := t.q.QueryRowContext(ctx, "SELECT status FROM episode_attempts WHERE attempt_id = ? AND episode_id = ? AND fence = ?", identity.AttemptID, identity.EpisodeID, identity.Fence).Scan(&status); err != nil {
-		return "", fmt.Errorf("load terminal attempt: %w", err)
-	}
-	return status, nil
-}
-
 // ReadAttemptStatus reads an attempt's status by id; a missing attempt is an error.
 func (t *Tx) ReadAttemptStatus(ctx context.Context, attemptID string) (domain.AttemptStatus, error) {
 	var status domain.AttemptStatus
@@ -86,18 +61,14 @@ func (t *Tx) ReadEpisodeAttemptStatus(ctx context.Context, episodeID, attemptID 
 	return status, nil
 }
 
-// OwnerHoldsLease reports whether the epoch owns an unexpired runtime lease at
-// nowText. The lease table belongs to control; this is a read of its row.
-func (t *Tx) OwnerHoldsLease(ctx context.Context, epoch, nowText string) (bool, error) {
-	var current string
-	err := t.q.QueryRowContext(ctx, `
-		SELECT owner_epoch FROM runtime_owner
-		WHERE singleton_id = 1 AND owner_epoch = ? AND lease_until > ?`, epoch, nowText).Scan(&current)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
+func (t *Tx) AssertOwner(ctx context.Context, owner storage.OwnerCheck, epoch string) error {
+	if owner == nil || t.tx == nil {
+		return errOwnerUnchecked
 	}
-	if err != nil {
-		return false, fmt.Errorf("assert runtime owner epoch: %w", err)
+	if err := owner(ctx, t.tx, epoch); err != nil {
+		return fmt.Errorf("assert runtime owner epoch %s: %w", epoch, err)
 	}
-	return true, nil
+	return nil
 }
+
+var errOwnerUnchecked = errors.New("an owned identity requires a runtime owner check on a transaction")

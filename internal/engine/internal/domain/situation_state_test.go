@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 func storedSituation(t *testing.T) StoredSituation {
 	t.Helper()
 	state := SituationState{SituationID: "sit-1", OccurrenceID: "occ-1", PartitionID: 3, Version: 2,
-		Facts: map[string]any{"level": 4.5, "level_event_time": base.Format(time.RFC3339Nano)}, Evidence: []string{"evt-1", "evt-2"}}
+		Facts: map[string]any{"level": 4.5, "level_event_time": kernel.FormatTime(base)}, Evidence: []string{"evt-1", "evt-2"}}
 	stateJSON, err := json.Marshal(state)
 	if err != nil {
 		t.Fatal(err)
@@ -31,8 +32,8 @@ func storedSituation(t *testing.T) StoredSituation {
 		t.Fatal(err)
 	}
 	return StoredSituation{SituationID: "sit-1", Type: "bearing", EntityType: "motor", EntityID: "motor-1", OccurrenceID: "occ-1", Phase: "watch",
-		PartitionID: 3, Version: 2, Severity: 1, StateCodecVersion: 1, FirstEventTime: base.Format(time.RFC3339Nano),
-		LatestEventTime: base.Format(time.RFC3339Nano), UpdatedAt: base.Format(time.RFC3339Nano), Completeness: "complete",
+		PartitionID: 3, Version: 2, Severity: 1, StateCodecVersion: 1, FirstEventTime: base,
+		LatestEventTime: base, UpdatedAt: base, Completeness: "complete",
 		StateJSON: stateJSON, StateSHA256: raw, PreviousPhase: "normal", Confidence: 0.5}
 }
 
@@ -64,9 +65,6 @@ func TestRestoreRefusesUnsafeStoredState(t *testing.T) {
 		{"short digest", func(r *StoredSituation) { r.StateSHA256 = make([]byte, 4) }, "incomplete persisted state"},
 		{"digest mismatch", func(r *StoredSituation) { r.StateSHA256 = make([]byte, sha256.Size) }, "digest mismatch"},
 		{"identity mismatch", func(r *StoredSituation) { r.PartitionID = 9 }, "identity mismatch"},
-		{"bad first event time", func(r *StoredSituation) { r.FirstEventTime = "x" }, "parse first event time"},
-		{"bad latest event time", func(r *StoredSituation) { r.LatestEventTime = "x" }, "parse latest event time"},
-		{"bad updated time", func(r *StoredSituation) { r.UpdatedAt = "x" }, "parse updated time"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

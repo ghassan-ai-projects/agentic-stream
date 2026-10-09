@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/api/internal/domain"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -43,9 +43,6 @@ type SSEConfig struct {
 func NewSSEHandler(cfg SSEConfig) http.Handler {
 	cfg.PageSize = domain.NormalizePageSize(cfg.PageSize)
 	cfg = defaultStreamTiming(cfg)
-	if cfg.Now == nil {
-		cfg.Now = time.Now
-	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		serveSSE(w, r, cfg)
 	})
@@ -117,7 +114,7 @@ func subscriberTenant(r *http.Request, cfg SSEConfig) string {
 
 func (s *sseStream) readPage() (notify.Page, error) {
 	request := notify.PageRequest{TenantID: s.tenantID, Cursor: s.cursor, Limit: s.cfg.PageSize, MaxLag: s.cfg.MaxLag}
-	return s.outbox.ReadPage(s.r.Context(), request, s.cfg.Now().UTC()) //nolint:wrapcheck // The error detail is part of the SSE stream_error contract.
+	return s.outbox.ReadPage(s.r.Context(), request, sources.NowUTC(s.cfg.Now)) //nolint:wrapcheck // The error detail is part of the SSE stream_error contract.
 }
 
 // beginResponse commits the event-stream headers and a connected comment.

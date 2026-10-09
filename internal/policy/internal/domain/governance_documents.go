@@ -51,13 +51,13 @@ func ParseDecision(row IntentRecord) (DecisionDocument, string) {
 	if !MatchesDecisionIdentity(row, decision) {
 		return DecisionDocument{}, "identity_mismatch"
 	}
-	if !DocumentDigestMatches(document, row.DecisionSHA, canonicaljson.DomainDecision) {
+	if !contractsv1.VerifyDocumentDigest(canonicaljson.DomainDecision, document, row.DecisionSHA) {
 		return DecisionDocument{}, "decision_digest_mismatch"
 	}
 	return decision, ""
 }
 func projectDecision(document map[string]any) DecisionDocument {
-	return DecisionDocument{Document: document, ID: DocumentString(document, "decision_id"), EpisodeID: DocumentString(document, "episode_id"), SituationID: DocumentString(document, "situation_id"), SituationVersion: DocumentInt(document, "situation_version"), Summary: DocumentString(document, "summary"), Hypothesis: DocumentString(document, "primary_hypothesis")}
+	return DecisionDocument{Document: document, ID: contractsv1.DocumentString(document, "decision_id"), EpisodeID: contractsv1.DocumentString(document, "episode_id"), SituationID: contractsv1.DocumentString(document, "situation_id"), SituationVersion: contractsv1.DocumentInt(document, "situation_version"), Summary: contractsv1.DocumentString(document, "summary"), Hypothesis: contractsv1.DocumentString(document, "primary_hypothesis")}
 }
 
 // ParseIntent validates schema and digest before compensation and identity checks.
@@ -66,7 +66,7 @@ func ParseIntent(row IntentRecord) (IntentDocument, string) {
 	if reason != "" {
 		return IntentDocument{}, reason
 	}
-	if !DocumentDigestMatches(document, row.IntentSHA, canonicaljson.DomainIntent) {
+	if !contractsv1.VerifyDocumentDigest(canonicaljson.DomainIntent, document, row.IntentSHA) {
 		return IntentDocument{}, "intent_digest_mismatch"
 	}
 	return ProjectIntent(document), ""
@@ -75,5 +75,5 @@ func ParseIntent(row IntentRecord) (IntentDocument, string) {
 // ProjectIntent selects governance fields while retaining the original document.
 func ProjectIntent(document map[string]any) IntentDocument {
 	parameters, _ := document["parameters"].(map[string]any)
-	return IntentDocument{Document: document, ID: DocumentString(document, "intent_id"), DecisionID: DocumentString(document, "decision_id"), TenantID: DocumentString(document, "tenant_id"), SituationID: DocumentString(document, "situation_id"), SituationVersion: DocumentInt(document, "situation_version"), Type: DocumentString(document, "type"), RiskClass: DocumentString(document, "risk_class"), Compensates: DocumentString(document, "compensates"), Parameters: parameters, Evidence: intentEvidence(document)}
+	return IntentDocument{Document: document, ID: contractsv1.DocumentString(document, "intent_id"), DecisionID: contractsv1.DocumentString(document, "decision_id"), TenantID: contractsv1.DocumentString(document, "tenant_id"), SituationID: contractsv1.DocumentString(document, "situation_id"), SituationVersion: contractsv1.DocumentInt(document, "situation_version"), Type: contractsv1.DocumentString(document, "type"), RiskClass: contractsv1.DocumentString(document, "risk_class"), Compensates: contractsv1.DocumentString(document, "compensates"), Parameters: parameters, Evidence: intentEvidence(document)}
 }

@@ -3,10 +3,12 @@ package app
 import (
 	"context"
 	"fmt"
+	"time"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
@@ -16,7 +18,7 @@ type decisionRecord = domain.DecisionRecord
 // persistDecision validates and stores the outcome's Decision, then sends a
 // valid one to governance and records why an invalid one was rejected. It
 // returns nil when the outcome carries no Decision.
-func (r *Runner) persistDecision(ctx context.Context, tx *store.Tx, claim *episodeClaim, outcome *Outcome, now string) (*decisionRecord, error) {
+func (r *Runner) persistDecision(ctx context.Context, tx *store.Tx, claim *episodeClaim, outcome *Outcome, now time.Time) (*decisionRecord, error) {
 	if outcome.DecisionJSON == nil {
 		return nil, nil
 	}
@@ -48,7 +50,7 @@ func (r *Runner) validateDecision(claim *episodeClaim, outcome *Outcome) (*decis
 }
 
 // decisionInsert binds a validated decision record to its episode attempt.
-func decisionInsert(claim *episodeClaim, outcome *Outcome, record *decisionRecord, now string) store.DecisionInsert {
+func decisionInsert(claim *episodeClaim, outcome *Outcome, record *decisionRecord, now time.Time) store.DecisionInsert {
 	validationStatus := record.ValidationStatus()
 	return store.DecisionInsert{
 		DecisionID: record.ID, EpisodeID: claim.episodeID, AttemptID: claim.identity.AttemptID, Fence: claim.identity.Fence,
@@ -71,8 +73,8 @@ func (r *Runner) rejectDecision(ctx context.Context, tx *store.Tx, identity epis
 
 // governDecision hands a valid Decision to the action plane, or only scores it
 // in shadow mode, and marks it accepted.
-func (r *Runner) governDecision(ctx context.Context, tx *store.Tx, claim *episodeClaim, outcome *Outcome, record *decisionRecord, now string) error {
-	if claim.req.DispatchPolicy == "shadow" {
+func (r *Runner) governDecision(ctx context.Context, tx *store.Tx, claim *episodeClaim, outcome *Outcome, record *decisionRecord, now time.Time) error {
+	if claim.req.DispatchPolicy != spec.DispatchActive {
 		// P8 (shadow-first): a shadow decision is scored (the would-be policy
 		// outcome is computed from the intents) but NOTHING is written to
 		// intents or commands. Shadow never enters action governance.

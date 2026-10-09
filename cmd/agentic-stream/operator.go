@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -22,7 +24,7 @@ type operatorFlags struct {
 
 func (f *operatorFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.dbPath, "db", "", "Runtime SQLite database path")
-	cmd.Flags().StringVar(&f.tenantID, "tenant", "default", "Tenant ID")
+	cmd.Flags().StringVar(&f.tenantID, "tenant", contractsv1.TenantID, "Tenant ID")
 	cmd.Flags().BoolVar(&f.asJSON, "json", false, "Emit JSON instead of text")
 }
 
@@ -98,6 +100,25 @@ func withOperatorDatabase(cmd *cobra.Command, flags operatorFlags, use func(*sto
 	}
 	defer func() { _ = db.Close() }()
 	return use(db)
+}
+
+func newListCommand(use, short string, run func(*cobra.Command, operatorFlags, *storage.DB) error, extra ...func(*cobra.Command)) *cobra.Command {
+	return newDatabaseCommand(use, short, cobra.NoArgs,
+		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB, _ []string) error {
+			return run(cmd, flags, db)
+		},
+		extra...)
+}
+
+func tableText[T any](rows []T, empty string, line func(T) string) string {
+	if len(rows) == 0 {
+		return empty
+	}
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		lines = append(lines, line(row))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // newByIDCommand is a database command that takes exactly one identifier.

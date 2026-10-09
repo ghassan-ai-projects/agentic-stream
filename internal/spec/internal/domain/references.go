@@ -24,7 +24,7 @@ func resolveReferences(spec *CompiledSpec) error {
 
 func checkTriggerLanes(triggers []Trigger) error {
 	for _, tr := range triggers {
-		if tr.Lane != "fast" && tr.Lane != "deep" {
+		if tr.Lane != LaneFast && tr.Lane != LaneDeep {
 			return &CompileError{Path: fmt.Sprintf("cognition.triggers.%s.lane", tr.Name), Message: fmt.Sprintf("invalid lane %q", tr.Lane)}
 		}
 	}

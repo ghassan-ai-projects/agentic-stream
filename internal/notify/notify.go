@@ -112,3 +112,51 @@ func AppendLifecycleEvent(ctx context.Context, tx *sql.Tx, request LifecycleEven
 // SourceForTenant returns the stable CloudEvents source for lifecycle events
 // emitted for tenantID.
 func SourceForTenant(tenantID string) string { return domain.SourceForTenant(tenantID) }
+
+// ApprovalRequestedEvent builds the lifecycle event for an approval request with its one stable
+// identity, subject and partition.
+func ApprovalRequestedEvent(tenantID string, payload ApprovalRequested, at time.Time, trace contractsv1.TraceContext) LifecycleEvent {
+	return domain.ApprovalRequestedEvent(tenantID, payload, at, trace)
+}
+
+// ApprovalWithdrawnEvent builds the lifecycle event for an approval withdrawal with its one stable
+// identity, subject and partition.
+func ApprovalWithdrawnEvent(tenantID string, payload ApprovalWithdrawn, at time.Time, trace contractsv1.TraceContext) LifecycleEvent {
+	return domain.ApprovalWithdrawnEvent(tenantID, payload, at, trace)
+}
+
+// ApprovalResolvedEvent builds the lifecycle event for an approval disposition with its one stable
+// identity, subject and partition.
+func ApprovalResolvedEvent(tenantID string, payload ApprovalResolved, at time.Time, trace contractsv1.TraceContext) LifecycleEvent {
+	return domain.ApprovalResolvedEvent(tenantID, payload, at, trace)
+}
+
+// CommandDispatchedEvent builds the lifecycle event for a dispatch result with its one stable
+// identity, subject and partition.
+func CommandDispatchedEvent(tenantID string, payload CommandDispatched, at time.Time, trace contractsv1.TraceContext) LifecycleEvent {
+	return domain.CommandDispatchedEvent(tenantID, payload, at, trace)
+}
+
+// OutcomeRecordedEvent builds the lifecycle event for a recorded outcome with its one stable
+// identity, subject and partition.
+func OutcomeRecordedEvent(tenantID string, payload OutcomeRecorded, at time.Time, trace contractsv1.TraceContext) LifecycleEvent {
+	return domain.OutcomeRecordedEvent(tenantID, payload, at, trace)
+}
+
+// OutcomeReconciledEvent builds the lifecycle event for a reconciled outcome with its one stable
+// identity, subject and partition.
+func OutcomeReconciledEvent(tenantID string, payload OutcomeReconciled, at time.Time, trace contractsv1.TraceContext) LifecycleEvent {
+	return domain.OutcomeReconciledEvent(tenantID, payload, at, trace)
+}
+
+// ReconsiderationAdmittedEvent builds the lifecycle event for an admitted correction with its one stable
+// identity, subject and partition.
+func ReconsiderationAdmittedEvent(tenantID string, payload ReconsiderationAdmitted, at time.Time, trace contractsv1.TraceContext) LifecycleEvent {
+	return domain.ReconsiderationAdmittedEvent(tenantID, payload, at, trace)
+}
+
+// SituationSupersededEvent builds the lifecycle event for work a newer
+// Situation version superseded; itemID names the superseded work item.
+func SituationSupersededEvent(tenantID, itemID string, payload SituationSuperseded, at time.Time, trace contractsv1.TraceContext) LifecycleEvent {
+	return domain.SituationSupersededEvent(tenantID, itemID, payload, at, trace)
+}

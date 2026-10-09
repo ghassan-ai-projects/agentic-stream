@@ -7,6 +7,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
+type OwnerCheck = storage.OwnerCheck
+
 // Store opens the module's units of work and serves its standalone reads.
 type Store struct {
 	db *storage.DB
@@ -36,12 +38,8 @@ func (s *Store) InTx(ctx context.Context, work func(*Tx) error) error {
 	})
 }
 
-// Fence is a check owned by another module that must read its own state inside
-// this unit of work, such as control.RuntimeOwner.Assert.
-type Fence func(ctx context.Context, tx *sql.Tx, epoch string) error
-
 // Assert runs fence for epoch on this unit of work's transaction.
-func (t *Tx) Assert(ctx context.Context, fence Fence, epoch string) error {
+func (t *Tx) Assert(ctx context.Context, fence storage.OwnerCheck, epoch string) error {
 	return fence(ctx, t.tx, epoch)
 }
 

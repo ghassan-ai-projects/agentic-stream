@@ -13,6 +13,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 // A reading quarantined because its schema was not registered yet is released
@@ -46,7 +47,7 @@ func TestQuarantineReleaseAndRedriveRecoverEvidence(t *testing.T) {
 
 func quarantineReading(t *testing.T, path string) {
 	t.Helper()
-	db, err := storage.Open(context.Background(), path)
+	db, err := storagetest.Open(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +58,7 @@ func quarantineReading(t *testing.T, path string) {
 		EventTime: time.Date(2026, 10, 8, 10, 0, 0, 0, time.UTC), IngestedAt: time.Date(2026, 10, 8, 10, 0, 1, 0, time.UTC),
 		Classification: contractsv1.ClassificationInternal, Data: map[string]any{"celsius": 31.5, "quality": "valid"},
 	}
-	if err := eventlog.NewEventLog(db).QuarantineEnvelope(t.Context(), "default", reading, "schema_unregistered", "2026-10-08T10:00:01Z"); err != nil {
+	if err := eventlog.NewEventLog(db).QuarantineEnvelope(t.Context(), "default", reading, "schema_unregistered", time.Date(2026, 10, 8, 10, 0, 1, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
 	registerZoneTemperatureSchema(t, db)

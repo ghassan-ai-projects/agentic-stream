@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 )
 
 func recordedDecision(t *testing.T, episode ReplayEpisode, entry RecordedEntry) (map[string]any, []byte, string) {
@@ -64,7 +65,10 @@ func TestVerifyRecordedEntryRejectsIncomplete(t *testing.T) {
 			e.AttemptProvenanceSHA256 = "sha256:" + strings.Repeat("f", 64)
 		},
 		"no decision": func(e *RecordedEntry) { e.DecisionJSON = nil },
-		"bad digest":  func(e *RecordedEntry) { e.DecisionSHA256 = "sha256:" + strings.Repeat("e", 64) },
+		"ambiguous decision bytes": func(e *RecordedEntry) {
+			e.DecisionJSON = contractstest.AmbiguousKeyJSON(e.DecisionJSON, "decision_id")
+		},
+		"bad digest": func(e *RecordedEntry) { e.DecisionSHA256 = "sha256:" + strings.Repeat("e", 64) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

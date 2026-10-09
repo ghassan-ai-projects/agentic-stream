@@ -3,9 +3,9 @@ package domain
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // BuildApprovalNotification renders typed governance context into the existing contract.
@@ -43,7 +43,7 @@ func approvalNotificationFields(n ApprovalNotice, summary, hypothesis string) Ap
 		SituationID: n.Row.SituationID, SituationVersion: n.Row.SituationVersion,
 		IntentDigest:   canonicaljson.EncodeDigest(n.Row.IntentSHA),
 		SnapshotDigest: canonicaljson.EncodeDigest(n.Context.Snapshot), RiskClass: n.Row.RiskClass,
-		ExpiresAt: n.ExpiresAt.UTC().Format(time.RFC3339Nano), Audience: "stream-approval-relay",
+		ExpiresAt: kernel.FormatTime(n.ExpiresAt), Audience: "stream-approval-relay",
 		Summary: summary, Delta: objectOrEmpty(n.Context.Delta), Hypothesis: hypothesis, Evidence: n.Intent.Evidence,
 		Action: n.Intent.Parameters, DeclineConsequence: "The intent will not be dispatched.",
 		SourceAuthority: n.Context.Source,

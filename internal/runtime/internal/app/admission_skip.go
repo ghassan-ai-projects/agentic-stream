@@ -19,7 +19,7 @@ func (a *Admitter) skipUnadmittable(ctx context.Context, itemID string, now time
 	switch {
 	case errors.Is(err, runtimecontrol.ErrCostReservationRejected):
 		return true, a.skipCostRejected(ctx, itemID, now, err)
-	case refused.Kind == domain.ReconsiderKind && errors.Is(err, episodeledger.ErrLiveEpisodeConflict):
+	case refused.Kind == episodeledger.KindReconsider && errors.Is(err, episodeledger.ErrLiveEpisodeConflict):
 		return true, a.skipLiveReconsideration(ctx, itemID, now, refused, err)
 	case errors.Is(err, domain.ErrFixtureRejected):
 		return true, a.skipFixture(ctx, itemID, now, refused, err)
@@ -95,4 +95,26 @@ func (a *Admitter) coalesceSkipped(ctx context.Context, itemID string, now time.
 		return fmt.Errorf("coalesce scheduler item %s: %w", itemID, err)
 	}
 	return nil
+}
+
+func (a *Admitter) expireUnadmittable(ctx context.Context, expired []episodeledger.ExpiredItem, now time.Time) error {
+	for _, item := range expired {
+		if err := a.expireItem(ctx, item, now); err != nil {
+			return fmt.Errorf("expire scheduler item %s: %w", item.SchedulerItemID, err)
+		}
+		slog.WarnContext(ctx, "scheduler item expired without admission",
+			"scheduler_item_id", item.SchedulerItemID,
+			"reason", item.Reason,
+		)
+	}
+	return nil
+}
+
+func (a *Admitter) expireItem(ctx context.Context, item episodeledger.ExpiredItem, now time.Time) error {
+	return a.cfg.Store.InAdmission(ctx, func(tx *store.AdmissionTx) error {
+		if err := tx.AssertOwner(ctx); err != nil {
+			return fmt.Errorf("assert pipeline owner: %w", err)
+		}
+		return tx.Expire(ctx, item, now)
+	})
 }

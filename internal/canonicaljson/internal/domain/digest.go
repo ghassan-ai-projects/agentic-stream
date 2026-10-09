@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
-	"strings"
 	"unicode/utf8"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // Domain identifies the contract namespace included in a digest preimage.
@@ -37,8 +37,6 @@ const (
 	DomainShadowComparison  Domain = "situation-runtime/shadow-comparison/v1\n"
 )
 
-const digestPrefix = "sha256:"
-
 // Marshal returns the canonical JSON encoding of v.
 func Marshal(v any) ([]byte, error) {
 	var buf bytes.Buffer
@@ -50,32 +48,44 @@ func Marshal(v any) ([]byte, error) {
 
 // Digest computes a domain-separated SHA-256 digest of v.
 func Digest(domain Domain, v any) (string, error) {
-	if domain == "" {
-		return "", fmt.Errorf("canonicaljson: empty digest domain")
-	}
-	b, err := Marshal(v)
+	sum, err := DigestSum(domain, v)
 	if err != nil {
 		return "", err
 	}
-	h := sha256.New()
-	_, _ = h.Write([]byte(domain))
-	_, _ = h.Write(b)
-	return digestPrefix + hex.EncodeToString(h.Sum(nil)), nil
+	return EncodeDigest(sum), nil
 }
 
-// DecodeDigest converts a canonical sha256 digest into its 32-byte storage
-// representation. Unprefixed digests are invalid contract values.
-func DecodeDigest(digest string) ([]byte, error) {
-	if !strings.HasPrefix(digest, digestPrefix) {
-		return nil, fmt.Errorf("canonicaljson: digest must use %q prefix", digestPrefix)
+func DigestSum(domain Domain, v any) ([]byte, error) {
+	_, sum, err := Seal(domain, v)
+	return sum, err
+}
+
+func Seal(domain Domain, v any) ([]byte, []byte, error) {
+	if domain == "" {
+		return nil, nil, fmt.Errorf("canonicaljson: empty digest domain")
 	}
-	encoded := strings.TrimPrefix(digest, digestPrefix)
-	decoded, err := hex.DecodeString(encoded)
+	canonical, err := Marshal(v)
 	if err != nil {
-		return nil, fmt.Errorf("canonicaljson: decode digest: %w", err)
+		return nil, nil, err
 	}
-	if len(decoded) != sha256.Size {
-		return nil, fmt.Errorf("canonicaljson: digest has %d bytes, want %d", len(decoded), sha256.Size)
+	h := sha256.New()
+	_, _ = h.Write([]byte(domain))
+	_, _ = h.Write(canonical)
+	return canonical, h.Sum(nil), nil
+}
+
+func VerifySum(domain Domain, v any, sum []byte) bool {
+	expected, err := DigestSum(domain, v)
+	if err != nil || len(expected) != len(sum) {
+		return false
+	}
+	return subtle.ConstantTimeCompare(expected, sum) == 1
+}
+
+func DecodeDigest(digest string) ([]byte, error) {
+	decoded, err := kernel.DecodeDigest(digest)
+	if err != nil {
+		return nil, fmt.Errorf("canonicaljson: %w", err)
 	}
 	return decoded, nil
 }

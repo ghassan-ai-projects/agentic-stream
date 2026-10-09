@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -94,4 +95,34 @@ func TestEffectProfileOptionsValidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEffectProfileConsentComesFromTheDeviceRule(t *testing.T) {
+	t.Parallel()
+	base := effectProfileOptions{
+		Profile: device.EffectProfilePhysical, DeviceSocket: "/tmp/device.sock", DeviceCatalog: "catalog.json",
+		AllowedFirmwareDigests: []string{"sha256:" + strings.Repeat("a", 64)},
+	}
+	for _, tc := range []struct {
+		name    string
+		options effectProfileOptions
+	}{
+		{"no consent", base},
+		{"no owner", withConsent(base, true, false)},
+		{"no live actuation", withConsent(base, false, true)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			want := device.ValidateEffectProfile(tc.options.profileConfig(false))
+			err := tc.options.validate(false)
+			if want == nil || errors.Unwrap(err) == nil || errors.Unwrap(err).Error() != want.Error() {
+				t.Fatalf("validate = %v, device rule = %v", err, want)
+			}
+		})
+	}
+}
+
+func withConsent(options effectProfileOptions, live, owner bool) effectProfileOptions {
+	options.LiveActuation, options.OwnerAuthorized = live, owner
+	return options
 }

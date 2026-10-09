@@ -48,10 +48,7 @@ func (e *GatewayEffector) Dispatch(ctx context.Context, command actionport.Comma
 // DispatchAuthorized performs the final authorization check immediately
 // before materialization and transport delivery.
 func (e *GatewayEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
-	if err := authorizeDispatch(ctx, authorization); err != nil {
-		return actionport.Effect{}, err
-	}
-	return e.dispatch(ctx, command)
+	return dispatchAuthorized(ctx, command, authorization, e.dispatch)
 }
 
 func (e *GatewayEffector) dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {

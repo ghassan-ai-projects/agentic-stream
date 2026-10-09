@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
@@ -27,12 +27,8 @@ const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
 
 func openLedgerDB(t *testing.T) *storage.DB {
 	t.Helper()
-	dir := t.TempDir()
-	db, err := storage.Open(t.Context(), filepath.Join(dir, "runtime.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
 		t.Fatal(err)
@@ -112,7 +108,7 @@ func TestEventLogProviderPreservesExactScopedBytes(t *testing.T) {
 	query := EventLogQuery(db)
 	call := domain.Call{TenantID: "default", EntityID: "motor-1", From: now, Until: now.Add(time.Second), MaxRows: 1}
 	result, err := query(t.Context(), call)
-	const want = `{"rows":[{"data":{"celsius":42},"event_id":"evt-1","event_time":"2026-08-12T12:00:00Z","event_type":"sensor.temperature"}]}`
+	const want = `{"rows":[{"data":{"celsius":42},"event_id":"evt-1","event_time":"2026-08-12T12:00:00.000000000Z","event_type":"sensor.temperature"}]}`
 	if err != nil || result.RowCount != 1 || string(result.JSON) != want {
 		t.Fatalf("result=%s err=%v", result.JSON, err)
 	}

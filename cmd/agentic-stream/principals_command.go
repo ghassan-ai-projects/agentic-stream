@@ -37,10 +37,7 @@ func newPrincipalsApplyCommand() *cobra.Command {
 }
 
 func newPrincipalsShowCommand() *cobra.Command {
-	return newDatabaseCommand("show", "Count the tenant's approval governance.", cobra.NoArgs,
-		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB, _ []string) error {
-			return runPrincipalsShow(cmd, flags, db)
-		})
+	return newListCommand("show", "Count the tenant's approval governance.", runPrincipalsShow)
 }
 
 func runPrincipalsApply(cmd *cobra.Command, flags operatorFlags, file string, dryRun bool) error {
@@ -48,13 +45,11 @@ func runPrincipalsApply(cmd *cobra.Command, flags operatorFlags, file string, dr
 	if err != nil {
 		return err
 	}
-	db, err := flags.openOperatorDatabase(cmd.Context())
-	if err != nil {
+	var summary policy.PrincipalSummary
+	if err := withOperatorDatabase(cmd, flags, func(db *storage.DB) (err error) {
+		summary, err = applyPrincipalDocument(cmd.Context(), db, document, dryRun)
 		return err
-	}
-	defer func() { _ = db.Close() }()
-	summary, err := applyPrincipalDocument(cmd.Context(), db, document, dryRun)
-	if err != nil {
+	}); err != nil {
 		return err
 	}
 	return printPrincipalSummary(cmd, flags, summary, dryRun)

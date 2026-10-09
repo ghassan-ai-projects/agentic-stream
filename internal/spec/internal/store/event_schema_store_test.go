@@ -4,23 +4,18 @@ import (
 	"bytes"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/store"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestSchemaRegistrationIsImmutableAndTransactionScoped(t *testing.T) {
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "schemas.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	definition, ok := domain.LookupEventSchema("bay.air_temp.observed/1.0")
 	if !ok {
 		t.Fatal("builtin schema missing")

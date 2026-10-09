@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -146,22 +148,78 @@ func disableTelemetryExport(t *testing.T) {
 	}
 }
 
+var claimedLoopbackAddresses sync.Map
+
+const loopbackPickAttempts = 50
+
 func freeLoopbackAddress(t *testing.T) string {
 	t.Helper()
-	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	address, err := claimUnclaimedAddress(func() (string, error) { return pickLoopbackAddress(t.Context()) })
 	if err != nil {
-		t.Fatal(err)
-	}
-	address := listener.Addr().String()
-	if err := listener.Close(); err != nil {
 		t.Fatal(err)
 	}
 	return address
 }
 
+func claimUnclaimedAddress(pick func() (string, error)) (string, error) {
+	for range loopbackPickAttempts {
+		address, err := pick()
+		if err != nil {
+			return "", err
+		}
+		if _, taken := claimedLoopbackAddresses.LoadOrStore(address, struct{}{}); !taken {
+			return address, nil
+		}
+	}
+	return "", fmt.Errorf("no unclaimed loopback port after %d picks", loopbackPickAttempts)
+}
+
+func pickLoopbackAddress(ctx context.Context) (string, error) {
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", fmt.Errorf("reserve loopback port: %w", err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		return "", fmt.Errorf("release loopback port: %w", err)
+	}
+	return address, nil
+}
+
+func TestClaimedLoopbackAddressIsNeverHandedOutAgain(t *testing.T) {
+	t.Parallel()
+	offered := []string{"127.0.0.1:61001", "127.0.0.1:61001", "127.0.0.1:61002"}
+	pick := func() (string, error) {
+		next := offered[0]
+		offered = offered[1:]
+		return next, nil
+	}
+	first, err := claimUnclaimedAddress(func() (string, error) { return "127.0.0.1:61001", nil })
+	if err != nil || first != "127.0.0.1:61001" {
+		t.Fatalf("first claim = %q, %v", first, err)
+	}
+	second, err := claimUnclaimedAddress(pick)
+	if err != nil || second != "127.0.0.1:61002" {
+		t.Fatalf("second claim = %q, %v; want the next unclaimed port", second, err)
+	}
+}
+
+func TestClaimGivesUpWhenEveryPickIsTaken(t *testing.T) {
+	t.Parallel()
+	taken := func() (string, error) { return "127.0.0.1:61003", nil }
+	if _, err := claimUnclaimedAddress(taken); err != nil {
+		t.Fatalf("first claim: %v", err)
+	}
+	if address, err := claimUnclaimedAddress(taken); err == nil {
+		t.Fatalf("claimed %s although every pick was taken", address)
+	}
+}
+
+const readyTimeout = time.Minute
+
 func waitReady(t *testing.T, url string, done <-chan error) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(readyTimeout)
 	for time.Now().Before(deadline) {
 		select {
 		case err := <-done:

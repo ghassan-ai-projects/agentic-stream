@@ -61,6 +61,6 @@ func (payload decisionRequestAuthority) boundValidationInput(req *Request, ident
 		TenantID: req.TenantID, SituationID: req.SituationID, SituationVersion: req.SituationVersion,
 		EntityID: req.EntityID, SnapshotDigest: req.SnapshotSHA256,
 		AllowedIntentTypes: allowed, RiskCeiling: payload.RiskCeiling, IntentCatalog: compiled,
-		Kind: payload.Kind, Now: now,
+		Reconsider: payload.Kind == episodeledger.KindReconsider, Now: now,
 	}
 }

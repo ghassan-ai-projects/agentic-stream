@@ -5,24 +5,21 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/controltest"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestReserveSettleAndKillSwitch(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "cost.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
-	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
+	db := storagetest.OpenTemp(t)
+
+	now := kernel.FormatTime(time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC))
 	controller := control.CostLedger{}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		return controltest.SetCostLimit(ctx, tx, "global", "", 10, false, now)
@@ -56,12 +53,9 @@ func TestReserveSettleAndKillSwitch(t *testing.T) {
 
 func TestZeroEstimateIsRejectedByTenantCeiling(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "cost.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
-	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
+	db := storagetest.OpenTemp(t)
+
+	now := kernel.FormatTime(time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC))
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		return controltest.SetCostLimit(ctx, tx, "tenant:tenant-1", "tenant-1", 10, false, now)
 	}); err != nil {

@@ -167,28 +167,17 @@ func (core *runtimeCore) startPipeline(ctx context.Context, compiled *spec.Compi
 
 // runTrace runs one batch of a JSONL trace in the given format.
 func runTrace(ctx context.Context, pipeline *runtime.Pipeline, format, path string) (runtime.PipelineReport, error) {
-	switch format {
-	case "normalized":
-		return runNormalizedTrace(ctx, pipeline, path)
-	case "simulator":
-		return runSimulatorTrace(ctx, pipeline, path)
-	default:
+	runs := map[string]func(context.Context, string) (runtime.PipelineReport, error){
+		"normalized": pipeline.RunJSONL,
+		"simulator":  pipeline.RunSimulatorJSONL,
+	}
+	run, ok := runs[format]
+	if !ok {
 		return runtime.PipelineReport{}, fmt.Errorf("unsupported --trace-format %q", format)
 	}
-}
-
-func runNormalizedTrace(ctx context.Context, pipeline *runtime.Pipeline, path string) (runtime.PipelineReport, error) {
-	report, err := pipeline.RunJSONL(ctx, path)
+	report, err := run(ctx, path)
 	if err != nil {
-		return report, fmt.Errorf("run normalized trace: %w", err)
-	}
-	return report, nil
-}
-
-func runSimulatorTrace(ctx context.Context, pipeline *runtime.Pipeline, path string) (runtime.PipelineReport, error) {
-	report, err := pipeline.RunSimulatorJSONL(ctx, path)
-	if err != nil {
-		return report, fmt.Errorf("run simulator trace: %w", err)
+		return report, fmt.Errorf("run %s trace: %w", format, err)
 	}
 	return report, nil
 }

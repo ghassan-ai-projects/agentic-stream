@@ -9,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 func (e *Engine) materialize(sit *Situation, watermark time.Time) (*Version, error) {
@@ -80,15 +81,11 @@ func (e *Engine) snapshot(sit *Situation, facts map[string]any, evidenceIDs []st
 	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, snapshot); err != nil {
 		return nil, "", fmt.Errorf("validate snapshot: %w", err)
 	}
-	snapshotJSON, err := canonicaljson.Marshal(snapshot)
+	snapshotJSON, sum, err := canonicaljson.Seal(canonicaljson.DomainSnapshot, snapshot)
 	if err != nil {
-		return nil, "", fmt.Errorf("marshal snapshot: %w", err)
+		return nil, "", fmt.Errorf("seal snapshot: %w", err)
 	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, snapshot)
-	if err != nil {
-		return nil, "", fmt.Errorf("digest snapshot: %w", err)
-	}
-	return snapshotJSON, digest, nil
+	return snapshotJSON, canonicaljson.EncodeDigest(sum), nil
 }
 
 func (e *Engine) snapshotDocument(sit *Situation, facts map[string]any, evidenceIDs []string, watermark time.Time) map[string]any {
@@ -102,8 +99,8 @@ func (e *Engine) snapshotDocument(sit *Situation, facts map[string]any, evidence
 		"partition_id": sit.PartitionID, "phase": sit.Phase, "previous_phase": sit.PreviousPhase,
 		"severity": sit.Severity, "confidence": sit.Confidence, "completeness": sit.Completeness,
 		"facts": facts, "evidence": evidence,
-		"event_horizon": sit.LatestEventTime.Format(time.RFC3339Nano),
-		"watermark":     watermark.Format(time.RFC3339Nano), "spec_digest": e.spec.Digest,
+		"event_horizon": kernel.FormatTime(sit.LatestEventTime),
+		"watermark":     kernel.FormatTime(watermark), "spec_digest": e.spec.Digest,
 	}
 }
 
@@ -138,7 +135,7 @@ func stateFacts(sit *Situation) map[string]any {
 	facts := make(map[string]any, len(sit.Facts))
 	for key, value := range sit.Facts {
 		if timestamp, ok := value.(time.Time); ok {
-			facts[key] = timestamp.UTC().Format(time.RFC3339Nano)
+			facts[key] = kernel.FormatTime(timestamp)
 			continue
 		}
 		facts[key] = value
@@ -149,7 +146,7 @@ func stateFacts(sit *Situation) map[string]any {
 func stateConditionStart(sit *Situation) map[string]string {
 	conditionStart := make(map[string]string, len(sit.ConditionStart))
 	for key, value := range sit.ConditionStart {
-		conditionStart[key] = value.UTC().Format(time.RFC3339Nano)
+		conditionStart[key] = kernel.FormatTime(value)
 	}
 	return conditionStart
 }

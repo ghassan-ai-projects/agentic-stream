@@ -10,6 +10,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 const updateReconciledVerificationSQL = `
@@ -49,14 +50,21 @@ func (tx *Tx) VerifyDeviceBinding(ctx context.Context, command domain.Reconcilab
 }
 
 func (tx *Tx) CloseReconciliation(ctx context.Context, closure domain.ReconciliationClosure) error {
-	at := formatTime(closure.At)
-	if _, err := tx.tx.ExecContext(ctx, "UPDATE commands SET status = ?, updated_at = ? WHERE command_id = ? AND status IN ('reconciling', 'outcome_unknown', 'manual_review')", closure.FinalStatus, at, closure.Command.ID); err != nil {
+	at := kernel.FormatTime(closure.At)
+	query, args := closeCommandQuery(closure, at)
+	if _, err := tx.tx.ExecContext(ctx, query, args...); err != nil {
 		return fmt.Errorf("close reconciled command: %w", err)
 	}
 	if _, err := tx.tx.ExecContext(ctx, updateReconciledVerificationSQL, closure.OutcomeID, domain.ReconciledVerificationStatus(closure.FinalStatus), at, at, closure.Command.ID); err != nil {
 		return fmt.Errorf("update reconciliation verification: %w", err)
 	}
 	return nil
+}
+
+func closeCommandQuery(closure domain.ReconciliationClosure, at string) (string, []any) {
+	unresolved, statusArgs := unresolvedCommandFilter()
+	args := append([]any{closure.FinalStatus, at, closure.Command.ID}, statusArgs...)
+	return "UPDATE commands SET status = ?, updated_at = ? WHERE command_id = ? AND " + unresolved, args
 }
 
 func (tx *Tx) LoadReconciledProvenance(ctx context.Context, outcomeID, commandID, intentID string) (domain.ReconciledProvenance, error) {
@@ -71,8 +79,9 @@ func (tx *Tx) LoadReconciledProvenance(ctx context.Context, outcomeID, commandID
 }
 
 func (s Store) AwaitingReconciliation(ctx context.Context, tenantID string) ([]domain.AwaitingCommand, error) {
+	unresolved, statusArgs := unresolvedCommandFilter()
 	awaiting, err := storage.QueryAll(ctx, s.db, "commands awaiting reconciliation", scanAwaitingCommand, `SELECT command_id, intent_id, effector_route, normalized_target, status, updated_at FROM commands
-		WHERE tenant_id = ? AND status IN ('reconciling', 'outcome_unknown', 'manual_review') ORDER BY updated_at, command_id`, tenantID)
+		WHERE tenant_id = ? AND `+unresolved+` ORDER BY updated_at, command_id`, append([]any{tenantID}, statusArgs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("list commands awaiting reconciliation: %w", err)
 	}

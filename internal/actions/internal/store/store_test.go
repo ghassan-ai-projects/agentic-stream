@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
@@ -219,7 +221,7 @@ func TestAuthorizationRecordsProjectTheLedgerJoin(t *testing.T) {
 			t.Fatal(err)
 		}
 		if records.Command.ID != commandID || records.Intent.ID != "int-action" || records.Decision.EpisodeID != "epi-action" ||
-			records.Episode.Lifecycle != "concluded" || records.Situation.LastMaterialVersion != 1 || records.Approval.Present {
+			!records.Episode.ProducedDecision || records.Situation.LastMaterialVersion != 1 || records.Approval.Present {
 			t.Fatalf("records = %+v", records)
 		}
 		if _, err := records.VerifiedCommand(); err != nil {
@@ -230,6 +232,81 @@ func TestAuthorizationRecordsProjectTheLedgerJoin(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+func TestAuthorizationRecordsCarryTheCatalogApprovalRequirement(t *testing.T) {
+	t.Parallel()
+	for _, flagged := range []int{0, 1} {
+		db, commandID := openActionFixture(t)
+		if _, err := db.ExecContext(t.Context(), `UPDATE intents SET requires_approval = ?`, flagged); err != nil {
+			t.Fatal(err)
+		}
+		inTx(t, db, func(tx *Tx) error { return tx.MarkCommandDispatching(t.Context(), commandID, time.Now().UTC()) })
+		inTx(t, db, func(tx *Tx) error {
+			records, err := tx.LoadAuthorizationRecords(t.Context(), commandID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if records.Intent.RequiresApproval != (flagged == 1) {
+				t.Fatalf("requires_approval %d loaded as %t", flagged, records.Intent.RequiresApproval)
+			}
+			return nil
+		})
+	}
+}
+
+func TestAuthorizationRecordsBindOneApprovedApprovalWhenDecisionsTie(t *testing.T) {
+	t.Parallel()
+	smaller := struct{ id, expiresAt string }{"approval-a", "2032-01-01T00:00:00Z"}
+	larger := struct{ id, expiresAt string }{"approval-b", "2031-01-01T00:00:00Z"}
+	orders := map[string][]struct{ id, expiresAt string }{"larger inserted last": {smaller, larger}, "larger inserted first": {larger, smaller}}
+	for name, insertion := range orders {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			db, commandID := openActionFixture(t)
+			for _, approval := range insertion {
+				if _, err := db.ExecContext(t.Context(), `INSERT INTO approvals (approval_id, intent_id, status, requested_at, expires_at, decided_at, approval_json)
+			VALUES (?, 'int-action', 'approved', '2030-01-01T00:00:00Z', ?, '2030-01-02T00:00:00Z', X'7B7D')`, approval.id, approval.expiresAt); err != nil {
+					t.Fatal(err)
+				}
+			}
+			inTx(t, db, func(tx *Tx) error { return tx.MarkCommandDispatching(t.Context(), commandID, time.Now().UTC()) })
+			inTx(t, db, func(tx *Tx) error {
+				records, err := tx.LoadAuthorizationRecords(t.Context(), commandID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := domain.ApprovalRow{ID: "approval-b", ExpiresAt: time.Date(2031, 1, 1, 0, 0, 0, 0, time.UTC), Present: true}
+				if records.Approval != want {
+					t.Fatalf("approval = %+v, want %+v", records.Approval, want)
+				}
+				return nil
+			})
+		})
+	}
+}
+
+func TestAuthorizationRecordsRefuseUnreadableExpiryText(t *testing.T) {
+	t.Parallel()
+	for name, corrupt := range map[string]string{
+		"intent expiry":   `UPDATE intents SET expires_at = 'not a time'`,
+		"approval expiry": `INSERT INTO approvals (approval_id, intent_id, status, requested_at, expires_at, decided_at, approval_json) VALUES ('approval-x', 'int-action', 'approved', '2030-01-01T00:00:00Z', 'not a time', '2030-01-02T00:00:00Z', X'7B7D')`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			db, commandID := openActionFixture(t)
+			if _, err := db.ExecContext(t.Context(), corrupt); err != nil {
+				t.Fatal(err)
+			}
+			inTx(t, db, func(tx *Tx) error { return tx.MarkCommandDispatching(t.Context(), commandID, time.Now().UTC()) })
+			inTx(t, db, func(tx *Tx) error {
+				if _, err := tx.LoadAuthorizationRecords(t.Context(), commandID); err == nil {
+					t.Fatal("authorization records loaded with an unreadable expiry")
+				}
+				return nil
+			})
+		})
+	}
 }
 
 func TestOutcomesAppendWithIncreasingOrdinals(t *testing.T) {
@@ -297,14 +374,14 @@ func TestReconciliationClosesCommandAndCitesStoredOutcome(t *testing.T) {
 	}
 	inTx(t, db, func(tx *Tx) error {
 		command, err := tx.LoadReconcilableCommand(t.Context(), commandID)
-		if err != nil || command.Status != domain.CommandReconciling || command.IntentID != "int-action" {
+		if err != nil || command.Status != actionport.CommandReconciling || command.IntentID != "int-action" {
 			t.Fatalf("command = %+v err=%v", command, err)
 		}
 		if err := tx.InsertOutcome(t.Context(), domain.OutcomeRecord{ID: "out-r", CommandID: commandID, Status: domain.OutcomeReconciled,
 			Reconciliation: domain.ReconciliationReconciled, SHA: make([]byte, sha256.Size), At: now}); err != nil {
 			return err
 		}
-		if err := tx.CloseReconciliation(t.Context(), domain.ReconciliationClosure{Command: command, FinalStatus: domain.CommandSucceeded, OutcomeID: "out-r", At: now}); err != nil {
+		if err := tx.CloseReconciliation(t.Context(), domain.ReconciliationClosure{Command: command, FinalStatus: actionport.CommandSucceeded, OutcomeID: "out-r", At: now}); err != nil {
 			return err
 		}
 		provenance, err := tx.LoadReconciledProvenance(t.Context(), "out-r", commandID, "int-action")
@@ -312,7 +389,7 @@ func TestReconciliationClosesCommandAndCitesStoredOutcome(t *testing.T) {
 			t.Fatalf("provenance = %+v err=%v", provenance, err)
 		}
 		return tx.AppendReconciliationNotice(t.Context(), domain.ReconciliationNotice{TenantID: "tenant", IntentID: "int-action", CommandID: commandID, OutcomeID: "out-r",
-			FinalStatus: domain.CommandSucceeded, Provenance: provenance, At: now})
+			FinalStatus: actionport.CommandSucceeded, Provenance: provenance, At: now})
 	})
 	var status string
 	if err := db.QueryRowContext(t.Context(), "SELECT status FROM commands WHERE command_id = ?", commandID).Scan(&status); err != nil || status != "succeeded" {
@@ -327,7 +404,7 @@ func TestDispatchNoticesCarryTenantAndSource(t *testing.T) {
 	now := time.Now().UTC()
 	command := actionport.Command{CommandID: commandID, TenantID: "tenant", IntentID: "int-action"}
 	inTx(t, db, func(tx *Tx) error {
-		if err := tx.AppendDispatchNotice(t.Context(), domain.DispatchNotice{Command: command, Status: domain.CommandSucceeded, OutcomeID: "out-1", At: now}); err != nil {
+		if err := tx.AppendDispatchNotice(t.Context(), domain.DispatchNotice{Command: command, Status: actionport.CommandSucceeded, OutcomeID: "out-1", At: now}); err != nil {
 			return err
 		}
 		return tx.AppendOutcomeNotice(t.Context(), domain.OutcomeNotice{Command: command, OutcomeID: "out-1", Status: domain.OutcomeReconcileRequired,
@@ -401,5 +478,66 @@ func assertNotification(t *testing.T, db *storage.DB, eventType string) {
 	}
 	if tenant != "tenant" || source != notify.SourceForTenant("tenant") {
 		t.Fatalf("%s tenant/source = %q/%q", eventType, tenant, source)
+	}
+}
+
+func TestAuthorizationEpisodeFollowsTheLedgerDecisionPredicate(t *testing.T) {
+	t.Parallel()
+	db, commandID := openActionFixture(t)
+	inTx(t, db, func(tx *Tx) error { return tx.MarkCommandDispatching(t.Context(), commandID, time.Now().UTC()) })
+	for _, lifecycle := range []episodeledger.LifecycleStatus{episodeledger.LifecycleAdmitted, episodeledger.LifecycleRunning, episodeledger.LifecycleConcluded, episodeledger.LifecycleClosed, episodeledger.LifecycleSuperseded, episodeledger.LifecycleExpired, episodeledger.LifecycleAbandoned} {
+		if _, err := db.ExecContext(t.Context(), "UPDATE episodes SET lifecycle_status = ?", string(lifecycle)); err != nil {
+			t.Fatal(err)
+		}
+		inTx(t, db, func(tx *Tx) error {
+			records, err := tx.LoadAuthorizationRecords(t.Context(), commandID)
+			if err != nil || records.Episode.ProducedDecision != lifecycle.ProducedDecision() {
+				t.Errorf("lifecycle %s: producedDecision=%v err=%v", lifecycle, records.Episode.ProducedDecision, err)
+			}
+			return nil
+		})
+	}
+}
+
+var unreadableLeaseTexts = map[string]string{
+	"low digit":       "1",
+	"empty":           "",
+	"space separated": "2999-01-01 00:00:00.000000000Z",
+	"offset":          "2999-01-01T00:00:00.000000000+02:00",
+	"trimmed":         "2999-01-01T00:00:00Z",
+	"digits only":     "9999-99-99T99:99:99.999999999Z",
+}
+
+func TestUnreadableLeaseExpiryIsExpiredAndNeverBlocksTheQueue(t *testing.T) {
+	t.Parallel()
+	for name, corrupt := range unreadableLeaseTexts {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			db, _ := openActionFixture(t)
+			if _, err := db.ExecContext(t.Context(), "UPDATE outbox SET status = 'leased', lease_owner = 'w', lease_until = ?", corrupt); err != nil {
+				t.Fatal(err)
+			}
+			now := time.Now().UTC()
+			inTx(t, db, func(tx *Tx) error {
+				candidate, found, err := tx.NextCandidate(t.Context(), now)
+				if err != nil || !found || !candidate.Lease.Unreadable || !candidate.Lease.Expired(now) {
+					t.Fatalf("candidate=%+v found=%v err=%v, want the row selected with an unreadable, expired lease", candidate.Lease, found, err)
+				}
+				if live, err := tx.LeaseIsLive(t.Context(), candidate.OutboxID, "w", now); err != nil || live {
+					t.Fatalf("live=%v err=%v, want never live", live, err)
+				}
+				if ok, err := tx.RefreshLease(t.Context(), candidate.OutboxID, "w", now.Add(time.Hour), now); err != nil || ok {
+					t.Fatalf("refresh ok=%v err=%v, want refused", ok, err)
+				}
+				lease, found, err := tx.LoadOutboxLease(t.Context(), candidate.OutboxID)
+				if held, live := lease.LeaseStanding("w", now); err != nil || !found || !held || live {
+					t.Fatalf("standing held=%v live=%v found=%v err=%v, want held and not live", held, live, found, err)
+				}
+				if ok, err := tx.AcquireLease(t.Context(), candidate.OutboxID, "next", now.Add(time.Minute), now); err != nil || !ok {
+					t.Fatalf("acquire over unreadable lease ok=%v err=%v", ok, err)
+				}
+				return nil
+			})
+		})
 	}
 }

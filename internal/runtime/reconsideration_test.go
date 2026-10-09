@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
@@ -23,11 +25,7 @@ import (
 
 func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "reconsideration.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	compiled := &spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
@@ -45,7 +43,7 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 		},
 		Cognition: spec.Cognition{
 			Triggers: []spec.Trigger{{Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast", MaterialDelta: "delta.phase_changed"}},
-			Executor: spec.Executor{Name: "native", DispatchPolicy: "active", ModelPolicy: "test", PromptVersion: "v1", DecisionSchema: "schemas/decision.json", Budget: spec.Budget{WallTime: "5s"}},
+			Executor: spec.Executor{Name: "native", DispatchPolicy: "active", ModelPolicy: "test", PromptVersion: "v1", DecisionSchema: "schemas/decision.json", Budget: spec.Budget{WallTime: "5s"}, RiskCeiling: "R1"},
 		},
 		Actions: spec.Actions{Intents: []spec.Intent{{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: runtimeTicketSchema(), Policy: "automatic"}}},
 	}
@@ -83,7 +81,7 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	admitter, err := app.NewAdmitter(app.AdmitterConfig{Store: &store.PipelineStore{DB: db, Episodes: episodeService, TenantID: "default"}, Clock: sources.Physical()})
+	admitter, err := app.NewAdmitter(app.AdmitterConfig{Store: &store.PipelineStore{DB: db, RuntimeOwner: func(context.Context, *sql.Tx, string) error { return nil }, Episodes: episodeService, TenantID: "default"}, Clock: sources.Physical()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,6 +126,44 @@ func TestPipelineSkipsSecondReconsiderationForOneSituation(t *testing.T) {
 	}
 	if reconsiderations != 2 {
 		t.Fatalf("reconsiderations = %d, want 2", reconsiderations)
+	}
+	assertReconsiderationRequestCarriesAdmittedEvidence(t, db)
+}
+
+func assertReconsiderationRequestCarriesAdmittedEvidence(t *testing.T, db *storage.DB) {
+	t.Helper()
+	var requestJSON []byte
+	if err := db.QueryRowContext(t.Context(), `
+		SELECT e.request_json
+		FROM episodes e JOIN scheduler_items si ON si.scheduler_item_id = e.scheduler_item_id
+		WHERE si.kind = 'reconsider' AND e.lifecycle_status IN ('admitted', 'running')`).Scan(&requestJSON); err != nil {
+		t.Fatalf("load reconsideration request: %v", err)
+	}
+	var request struct {
+		Delta           map[string]any `json:"delta"`
+		Reconsideration struct {
+			ID            string           `json:"reconsideration_id"`
+			PriorDecision map[string]any   `json:"prior_decision"`
+			Commands      []map[string]any `json:"commands"`
+			Outcomes      []map[string]any `json:"outcomes"`
+			CommandID     string           `json:"invalidated_command_id"`
+			OutcomeID     string           `json:"invalidated_outcome_id"`
+		} `json:"reconsideration"`
+	}
+	if err := json.Unmarshal(requestJSON, &request); err != nil {
+		t.Fatalf("decode reconsideration request: %v", err)
+	}
+	got := request.Reconsideration
+	if got.ID == "" || got.PriorDecision["decision_id"] == nil || len(got.Commands) != 1 || len(got.Outcomes) != 1 {
+		t.Fatalf("reconsideration evidence incomplete: %s", requestJSON)
+	}
+	if got.Commands[0]["command_id"] != got.CommandID || got.Outcomes[0]["command_id"] != got.CommandID || got.Outcomes[0]["outcome_id"] != got.OutcomeID {
+		t.Fatalf("reconsideration outcome does not match invalidated command: %s", requestJSON)
+	}
+	for _, key := range []string{"prior_decision", "prior_command", "prior_outcome"} {
+		if _, duplicated := request.Delta[key]; duplicated {
+			t.Fatalf("request delta duplicates %s", key)
+		}
 	}
 }
 

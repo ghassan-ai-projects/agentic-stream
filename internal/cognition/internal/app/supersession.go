@@ -14,21 +14,27 @@ import (
 // attempts, then announces each superseded older version and withdraws its
 // pending approvals.
 func (s *scheduler) supersedePending(ctx context.Context, tx *store.Tx, situationID, triggerName string) error {
-	now := s.clk.Now().UTC().Format(time.RFC3339Nano)
-	replacement, items, err := tx.LoadSupersession(ctx, situationID, triggerName)
+	now := s.clk.Now()
+	replacement, items, err := coalesceTriggerWork(ctx, tx, situationID, triggerName, now)
 	if err != nil {
-		return err
-	}
-	if err := tx.CoalesceTriggerWork(ctx, situationID, triggerName, now); err != nil {
 		return err
 	}
 	if err := s.announceSuperseded(ctx, tx, replacement, items); err != nil {
 		return err
 	}
 	if err := tx.WithdrawSuperseded(ctx, situationID, replacement.TenantID, replacement.Version, now, s.clk); err != nil {
-		return fmt.Errorf("%w", err)
+		return fmt.Errorf("supersede pending work of situation %s: %w", situationID, err)
 	}
 	return nil
+}
+
+func coalesceTriggerWork(ctx context.Context, tx *store.Tx, situationID, triggerName string, now time.Time) (store.ReplacementVersion, []store.SupersededItem, error) {
+	replacement, err := tx.LoadReplacement(ctx, situationID)
+	if err != nil {
+		return store.ReplacementVersion{}, nil, err
+	}
+	items, err := tx.CoalesceTriggerWork(ctx, situationID, triggerName, now)
+	return replacement, items, err
 }
 
 // announceSuperseded appends a situation.superseded notification for every

@@ -157,6 +157,6 @@ func runBeforeApply(beforeApply func(eventlog.Record) error, record eventlog.Rec
 	return nil
 }
 
-func (s *Service) watermarkForRecord(eventTime time.Time, previous string) (time.Time, error) {
+func (s *Service) watermarkForRecord(eventTime, previous time.Time) (time.Time, error) {
 	return domain.WatermarkFor(eventTime, s.spec.Time.MaxOutOfOrderness, previous) //nolint:wrapcheck // Callers name the failed step.
 }

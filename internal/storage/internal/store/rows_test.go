@@ -3,20 +3,17 @@ package store_test
 import (
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestCollectRowsScansInOrderAndPropagatesScanErrors(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "rows.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	scanInt := func(rows *sql.Rows) (int, error) {
 		var value int
 		return value, rows.Scan(&value)
@@ -46,11 +43,8 @@ func collect(t *testing.T, db *storage.DB, query string, scan func(*sql.Rows) (i
 
 func TestQueryAllScansEveryRowAndNamesWhatFailed(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "rows.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	scanInt := func(rows *sql.Rows) (int, error) {
 		var value int
 		return value, rows.Scan(&value)
@@ -69,5 +63,23 @@ func TestQueryAllScansEveryRowAndNamesWhatFailed(t *testing.T) {
 	failing := func(*sql.Rows) (int, error) { return 0, errors.New("scan failed") }
 	if _, err := storage.QueryAll(t.Context(), db, "numbers", failing, "SELECT 1"); err == nil || !strings.Contains(err.Error(), "scan failed") {
 		t.Fatalf("a failing scan = %v", err)
+	}
+}
+
+func TestQueryOptionalReportsAbsenceWithoutError(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+
+	if value, found, err := storage.QueryOptional[string](t.Context(), db, "SELECT 'x' UNION SELECT 'y' ORDER BY 1"); err != nil || !found || value != "x" {
+		t.Fatalf("QueryOptional = %q, %v, %v; want the first row", value, found, err)
+	}
+	if value, found, err := storage.QueryOptional[string](t.Context(), db, "SELECT 'x' WHERE 0"); err != nil || found || value != "" {
+		t.Fatalf("QueryOptional on no rows = %q, %v, %v; want zero, false, nil", value, found, err)
+	}
+	if _, _, err := storage.QueryOptional[string](t.Context(), db, "SELECT * FROM missing_table"); err == nil || !strings.Contains(err.Error(), "run query") {
+		t.Fatalf("QueryOptional on a bad query = %v, want run query error", err)
+	}
+	if _, _, err := storage.QueryOptional[int](t.Context(), db, "SELECT 'text'"); err == nil || !strings.Contains(err.Error(), "scan optional value") {
+		t.Fatalf("QueryOptional on a mismatched type = %v, want scan error", err)
 	}
 }

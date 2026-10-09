@@ -6,6 +6,8 @@ const (
 	StatusPending = "pending"
 	StatusExpired = "expired"
 	StatusDenied  = "denied"
+
+	StatusApproved = "approved"
 )
 
 // Stable reasons recorded with a transition.
@@ -25,4 +27,14 @@ type Withdrawal struct {
 	SituationVersion int
 	Traceparent      string
 	Tracestate       string
+}
+
+type Approval struct {
+	ID        string
+	ExpiresAt string
+}
+
+type AssertionBinding struct {
+	ExpiresAt string
+	Nonce     string
 }

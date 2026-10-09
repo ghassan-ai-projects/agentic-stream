@@ -7,15 +7,16 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-type Fence func(context.Context, *sql.Tx, string) error
+type OwnerCheck = storage.OwnerCheck
 
 type Tx struct{ tx *sql.Tx }
 
 func Join(tx *sql.Tx) *Tx { return &Tx{tx: tx} }
 
-func (tx *Tx) Assert(ctx context.Context, fence Fence, epoch string) error {
+func (tx *Tx) Assert(ctx context.Context, fence storage.OwnerCheck, epoch string) error {
 	return fence(ctx, tx.tx, epoch)
 }
 

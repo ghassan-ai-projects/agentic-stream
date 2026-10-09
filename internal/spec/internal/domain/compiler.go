@@ -53,15 +53,11 @@ func (c *Compiler) parseValidated(data []byte) (*rawSpec, error) {
 
 // sealSpec records the spec's canonical JSON and its digest.
 func sealSpec(spec *CompiledSpec) (*CompiledSpec, error) {
-	canonicalJSON, err := canonicaljson.Marshal(spec)
+	canonicalJSON, sum, err := canonicaljson.Seal(canonicaljson.DomainSpec, spec)
 	if err != nil {
-		return nil, fmt.Errorf("canonical json: %w", err)
-	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainSpec, spec)
-	if err != nil {
-		return nil, fmt.Errorf("digest: %w", err)
+		return nil, fmt.Errorf("seal spec: %w", err)
 	}
 	spec.CanonicalJSON = canonicalJSON
-	spec.Digest = digest
+	spec.Digest = canonicaljson.EncodeDigest(sum)
 	return spec, nil
 }

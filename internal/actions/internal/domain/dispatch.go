@@ -8,10 +8,14 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // OutboxLease is the lease state of one command outbox row.
-type OutboxLease struct{ Status, Owner, Until string }
+type OutboxLease struct {
+	Status, Owner string
+	Until         time.Time
+}
 
 // LeaseStanding reports whether owner still holds the outbox lease and, when
 // it does, whether that lease is unexpired at now.
@@ -19,8 +23,7 @@ func (l OutboxLease) LeaseStanding(owner string, now time.Time) (held, live bool
 	if l.Status != OutboxLeased || l.Owner != owner {
 		return false, false
 	}
-	expiresAt, err := time.Parse(time.RFC3339Nano, l.Until)
-	return true, err == nil && expiresAt.After(now)
+	return true, l.Until.After(now)
 }
 
 // DispatchResult is how one dispatch is recorded across the outcome, command,
@@ -35,21 +38,21 @@ type DispatchResult struct {
 
 // ClassifyDispatch maps a provider effect and error to the ledger states.
 func ClassifyDispatch(effect actionport.Effect, dispatchErr error) DispatchResult {
-	result := DispatchResult{Status: OutcomeSucceeded, Reconciliation: ReconciliationObserved, CommandStatus: CommandSucceeded,
-		OutboxStatus: OutboxDelivered, VerificationStatus: VerificationObserved}
+	result := DispatchResult{Status: OutcomeSucceeded, Reconciliation: ReconciliationObserved, CommandStatus: actionport.CommandSucceeded,
+		OutboxStatus: OutboxDelivered, VerificationStatus: actionport.VerificationObserved}
 	switch {
 	case dispatchErr != nil && actionport.IsUnknownOutcome(dispatchErr):
-		result.Status, result.Reconciliation, result.CommandStatus = OutcomeUnknown, ReconciliationRequired, CommandReconciling
+		result.Status, result.Reconciliation, result.CommandStatus = OutcomeUnknown, ReconciliationRequired, actionport.CommandReconciling
 		result.ErrorCode = ErrorOutcomeUnknown
 	case dispatchErr != nil:
-		result.Status, result.Reconciliation, result.CommandStatus = OutcomeFailed, ReconciliationNotRequired, CommandFailed
+		result.Status, result.Reconciliation, result.CommandStatus = OutcomeFailed, ReconciliationNotRequired, actionport.CommandFailed
 		result.ErrorCode = ErrorDispatchFailed
 	case effect.VerificationPending:
 		// A transport receipt is not physical success. Keep the command in the
 		// existing non-terminal manual-review state until an independent
 		// feedback verifier closes it; the outbox is delivered because no blind
 		// resend is safe after the provider accepted the frame.
-		result.Status, result.Reconciliation, result.CommandStatus = OutcomeReconcileRequired, ReconciliationRequired, CommandManualReview
+		result.Status, result.Reconciliation, result.CommandStatus = OutcomeReconcileRequired, ReconciliationRequired, actionport.CommandManualReview
 	}
 	return completeClassification(result, effect, dispatchErr)
 }
@@ -59,7 +62,7 @@ func completeClassification(result DispatchResult, effect actionport.Effect, dis
 		result.OutboxStatus = OutboxFailed
 	}
 	if dispatchErr != nil || effect.VerificationPending {
-		result.VerificationStatus = VerificationAwaiting
+		result.VerificationStatus = actionport.VerificationAwaiting
 	}
 	result.Settled = !effect.VerificationPending && (result.Status == OutcomeSucceeded || result.Status == OutcomeFailed)
 	return result
@@ -73,7 +76,7 @@ func ExpiredLeaseResult() (actionport.Effect, error) {
 
 // OutcomeDocument is the schema document an outcome digest binds.
 func OutcomeDocument(commandID, outcomeID, status string, result map[string]any, errorCode string, at time.Time) Document {
-	document := Document{"outcome_id": outcomeID, "command_id": commandID, "status": status, "observed_at": at.UTC().Format(time.RFC3339Nano)}
+	document := Document{"outcome_id": outcomeID, "command_id": commandID, "status": status, "observed_at": kernel.FormatTime(at)}
 	if result != nil {
 		document["result"] = result
 	}
@@ -89,13 +92,9 @@ func OutcomeDigest(document Document) ([]byte, error) {
 	if err := contractsv1.Validate(contractsv1.SchemaOutcome, map[string]any(document)); err != nil {
 		return nil, fmt.Errorf("validate outcome: %w", err)
 	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainOutcome, map[string]any(document))
+	outcomeSHA, err := canonicaljson.DigestSum(canonicaljson.DomainOutcome, map[string]any(document))
 	if err != nil {
 		return nil, fmt.Errorf("digest outcome: %w", err)
-	}
-	outcomeSHA, err := canonicaljson.DecodeDigest(digest)
-	if err != nil {
-		return nil, fmt.Errorf("decode outcome digest: %w", err)
 	}
 	return outcomeSHA, nil
 }
@@ -141,7 +140,7 @@ func ClassifyDeviceVerification(check DeviceCheck) DeviceCheck {
 		check.DispatchErr = &actionport.UnknownOutcomeError{Err: fmt.Errorf("verify device state: %w", check.VerifyErr)}
 	case check.FinalStatus != "":
 		check.Effect.VerificationPending = false
-		if check.FinalStatus == CommandFailed {
+		if check.FinalStatus == actionport.CommandFailed {
 			check.DispatchErr = errors.New("device state verification failed")
 		}
 	}

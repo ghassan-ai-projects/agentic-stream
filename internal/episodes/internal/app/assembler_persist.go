@@ -38,7 +38,7 @@ func (a *Assembler) reserveCost(ctx context.Context, tx *store.Tx, req *Request,
 	if err != nil {
 		return err
 	}
-	if err := tx.ReserveCost(ctx, a.cost, req.EpisodeID, req.TenantID, budget, now.UTC().Format(time.RFC3339Nano)); err != nil {
+	if err := tx.ReserveCost(ctx, a.cost, req.EpisodeID, req.TenantID, budget, now); err != nil {
 		return fmt.Errorf("reserve episode cost: %w", err)
 	}
 	return nil

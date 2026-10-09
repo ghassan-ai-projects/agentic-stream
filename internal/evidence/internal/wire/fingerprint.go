@@ -4,22 +4,21 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // CallFingerprint preserves the persisted request identity encoding.
 func CallFingerprint(call domain.Call) ([]byte, error) {
-	document := fingerprintDocument{call.EpisodeID, call.CallID, call.ToolName, call.TenantID, call.SituationID, call.EntityID, call.AttemptID, call.SituationVersion, call.Fence, call.Arguments, formatLedgerTime(call.Deadline), formatLedgerTime(call.From), formatLedgerTime(call.Until), call.MaxRows, call.MaxBytes, call.Trace.Traceparent, call.Trace.Tracestate}
+	document := fingerprintDocument{call.EpisodeID, call.CallID, call.ToolName, call.TenantID, call.SituationID, call.EntityID, call.AttemptID, call.SituationVersion, call.Fence, call.Arguments, kernel.FormatTime(call.Deadline), kernel.FormatTime(call.From), kernel.FormatTime(call.Until), call.MaxRows, call.MaxBytes, call.Trace.Traceparent, call.Trace.Tracestate}
 	raw, err := json.Marshal(document)
 	if err != nil {
 		return nil, fmt.Errorf("marshal evidence fingerprint: %w", err)
 	}
-	hash := sha256.Sum256(raw)
-	return hash[:], nil
+	sum := sha256.Sum256(raw)
+	return sum[:], nil
 }
-func formatLedgerTime(value time.Time) string { return value.UTC().Format(time.RFC3339Nano) }
 
 // fingerprintDocument preserves the encoded request identity and field order.
 type fingerprintDocument struct {

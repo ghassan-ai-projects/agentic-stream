@@ -2,122 +2,36 @@ package app_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
-
-	compiled := spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Digest:        testSpecDigest,
-		Situation: spec.Situation{
-			Type:         "test",
-			InitialPhase: "candidate",
-			Phases:       []spec.Phase{{Name: "candidate", Severity: 10}},
-			Reducers: []spec.Reducer{
-				{Field: "facts.level", Strategy: "latest_event_time", Input: "level"},
-			},
+	compiled := triggeredSpec(
+		spec.Executor{
+			Name:           "fake",
+			DispatchPolicy: "active",
+			ModelPolicy:    "test-policy",
+			PromptVersion:  "prompt-v1", Prompt: "Analyze the situation and return a typed decision.",
 		},
-		Cognition: spec.Cognition{
-			Triggers: []spec.Trigger{
-				{
-					Name:      "high",
-					When:      "features.level > 10",
-					Score:     "situation.severity",
-					Threshold: 5,
-					Lane:      "fast",
-				},
-			},
-			Executor: spec.Executor{
-				Name:           "fake",
-				DispatchPolicy: "active",
-				ModelPolicy:    "test-policy",
-				PromptVersion:  "prompt-v1", Prompt: "Analyze the situation and return a typed decision.",
-			},
-		},
-		Actions: spec.Actions{
-			Intents: []spec.Intent{
-				{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
-			},
-		},
-	}
+		spec.Intent{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
+	)
+	s := admitTriggeredSituation(t, ctx, compiled, "sit-1")
+	s.assembleAndPersist(t, ctx)
 
-	if err := spec.SaveDeployment(ctx, db, "default", &compiled); err != nil {
-		t.Fatalf("save deployment: %v", err)
-	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: &compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
-	}
-
-	base := time.Now().UTC()
-	v := situations.Version{
-		SituationID:    "sit-1",
-		Version:        1,
-		Phase:          "candidate",
-		Severity:       10,
-		Confidence:     1.0,
-		Completeness:   "provisional",
-		EntityType:     "thing",
-		EntityID:       "ent-1",
-		EventHorizon:   base,
-		Watermark:      base,
-		Facts:          map[string]any{"facts.level": 15.0},
-		SnapshotJSON:   []byte(`{"situation_id":"sit-1","phase":"candidate"}`),
-		SnapshotSHA256: testDigest,
-	}
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := insertSituationVersion(ctx, tx, v, testSpecDigest, "default"); err != nil {
-			return err
-		}
-		return eng.Process(ctx, tx, v)
-	}); err != nil {
-		t.Fatalf("process: %v", err)
-	}
-
-	var schedulerItemID string
-	if err := db.QueryRowContext(ctx,
-		"SELECT scheduler_item_id FROM scheduler_items WHERE situation_id = ?", v.SituationID,
-	).Scan(&schedulerItemID); err != nil {
-		t.Fatalf("query scheduler item: %v", err)
-	}
-
-	asm := app.NewAssembler(&compiled, sources.Deterministic())
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		req, err := asm.Assemble(ctx, store.Join(tx), schedulerItemID, "default")
-		if err != nil {
-			return fmt.Errorf("assemble: %w", err)
-		}
-		return asm.Persist(ctx, store.Join(tx), req, base)
-	}); err != nil {
-		t.Fatalf("assemble and persist: %v", err)
-	}
-
-	runner := app.NewRunner(store.New(db), fixture.New(), sources.Physical(), sources.Deterministic())
+	runner := app.NewRunner(store.New(s.db), fixture.New(), sources.Physical(), sources.Deterministic())
 	ran, err := runner.RunOnce(ctx, "default")
 	if err != nil {
 		t.Fatalf("run once: %v", err)
@@ -127,8 +41,8 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 	}
 
 	var status string
-	if err := db.QueryRowContext(ctx,
-		"SELECT lifecycle_status FROM episodes WHERE scheduler_item_id = ?", schedulerItemID,
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT lifecycle_status FROM episodes WHERE scheduler_item_id = ?", s.schedulerItemID,
 	).Scan(&status); err != nil {
 		t.Fatalf("query episode status: %v", err)
 	}
@@ -137,8 +51,8 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 	}
 
 	var decisionCount int
-	if err := db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM decisions WHERE situation_id = ?", v.SituationID,
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM decisions WHERE situation_id = ?", s.version.SituationID,
 	).Scan(&decisionCount); err != nil {
 		t.Fatalf("count decisions: %v", err)
 	}
@@ -147,16 +61,16 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 	}
 	var validationStatus, attemptID string
 	var fence int64
-	if err := db.QueryRowContext(ctx, `
+	if err := s.db.QueryRowContext(ctx, `
 		SELECT validation_status, attempt_id, fence
-		FROM decisions WHERE situation_id = ?`, v.SituationID).Scan(&validationStatus, &attemptID, &fence); err != nil {
+		FROM decisions WHERE situation_id = ?`, s.version.SituationID).Scan(&validationStatus, &attemptID, &fence); err != nil {
 		t.Fatalf("query decision provenance: %v", err)
 	}
 	if validationStatus != "accepted" || attemptID == "" || fence != 1 {
 		t.Fatalf("decision provenance = status %q attempt %q fence %d", validationStatus, attemptID, fence)
 	}
 	var attemptStatus string
-	if err := db.QueryRowContext(ctx,
+	if err := s.db.QueryRowContext(ctx,
 		"SELECT status FROM episode_attempts WHERE attempt_id = ?", attemptID).Scan(&attemptStatus); err != nil {
 		t.Fatalf("query attempt status: %v", err)
 	}
@@ -164,9 +78,9 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 		t.Fatalf("expected produced attempt, got %s", attemptStatus)
 	}
 	var intentType, policyStatus string
-	if err := db.QueryRowContext(ctx, `
+	if err := s.db.QueryRowContext(ctx, `
 		SELECT intent_type, policy_status FROM intents
-		WHERE decision_id = (SELECT decision_id FROM decisions WHERE situation_id = ?)`, v.SituationID).
+		WHERE decision_id = (SELECT decision_id FROM decisions WHERE situation_id = ?)`, s.version.SituationID).
 		Scan(&intentType, &policyStatus); err != nil {
 		t.Fatalf("query validated intent: %v", err)
 	}
@@ -177,12 +91,7 @@ func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
 
 func TestRunnerNoWorkWhenEmpty(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	runner := app.NewRunner(store.New(db), fixture.New(), sources.Physical(), sources.Deterministic())
 	ran, err := runner.RunOnce(ctx, "default")
@@ -213,11 +122,8 @@ func (e *failOnceExecutor) Execute(ctx context.Context, req *app.Request) (*app.
 
 func TestRunnerRetriesFailedAttemptWithNextFence(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "retry.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
 		t.Fatalf("disable foreign keys for fixture: %v", err)

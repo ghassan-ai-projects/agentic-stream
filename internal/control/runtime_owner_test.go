@@ -1,14 +1,14 @@
 package control_test
 
 import (
-	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -98,13 +98,26 @@ func TestRuntimeOwnerClaimAndRecoverRollsBackOnFailure(t *testing.T) {
 	}
 }
 
+func TestRuntimeOwnerUnsetLeaseIsTheSourcesDefaultLease(t *testing.T) {
+	db, now := openOwnerDB(t)
+	at := now
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Now: func() time.Time { return at }}
+	if err := owner.Claim(t.Context(), "epoch-1"); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	for offset, wantLive := range map[time.Duration]bool{sources.DefaultLease - time.Nanosecond: true, sources.DefaultLease: false} {
+		at = now.Add(offset)
+		err := db.WithTx(t.Context(), func(tx *sql.Tx) error { return owner.Assert(t.Context(), tx, "epoch-1") })
+		if (err == nil) != wantLive {
+			t.Errorf("assert at +%v: err = %v, want live = %v", offset, err, wantLive)
+		}
+	}
+}
+
 func openOwnerDB(t *testing.T) (*storage.DB, time.Time) {
 	t.Helper()
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "runtime.db"))
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 	return db, time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 }

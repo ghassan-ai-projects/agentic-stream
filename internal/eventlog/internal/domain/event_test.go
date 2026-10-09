@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestQuarantineIdentityIsStableAndFallbackDerived(t *testing.T) {
@@ -64,10 +65,10 @@ func TestQuarantineMarshalFailureIsWrapped(t *testing.T) {
 
 func TestUseCaseInputsFailClosed(t *testing.T) {
 	t.Parallel()
-	if err := ValidQuarantine("", "reason", "now"); err == nil {
+	if err := ValidQuarantine("", "reason", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err == nil {
 		t.Fatal("tenantless quarantine accepted")
 	}
-	if err := ValidRelease("tenant", "", "now"); err == nil {
+	if err := ValidRelease("tenant", "", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err == nil {
 		t.Fatal("eventless release accepted")
 	}
 }
@@ -94,26 +95,6 @@ func TestEncodeEventBodyDigestsPayloadBytes(t *testing.T) {
 	}
 	if _, err := EncodeEventBody(nil, make(chan int)); err == nil {
 		t.Fatal("unmarshalable quality accepted")
-	}
-}
-
-func TestStoredTimesParseInColumnOrder(t *testing.T) {
-	t.Parallel()
-	eventTime := "2026-01-01T00:00:00Z"
-	observed := "2026-01-01T00:00:01Z"
-	parsedEvent, parsedIngested, parsedObserved, err := StoredTimes{EventTime: eventTime, IngestedAt: eventTime, ObservedAt: &observed}.Parse()
-	if err != nil || parsedObserved == nil || !parsedEvent.Equal(parsedIngested) {
-		t.Fatalf("parse = (%v, %v, %v) err=%v", parsedEvent, parsedIngested, parsedObserved, err)
-	}
-	if _, _, _, err := (StoredTimes{EventTime: "bad"}).Parse(); err == nil || !strings.Contains(err.Error(), "parse event_time") {
-		t.Fatalf("err = %v", err)
-	}
-	if _, _, _, err := (StoredTimes{EventTime: eventTime, IngestedAt: "bad"}).Parse(); err == nil || !strings.Contains(err.Error(), "parse ingested_at") {
-		t.Fatalf("err = %v", err)
-	}
-	badObserved := "bad"
-	if _, _, _, err := (StoredTimes{EventTime: eventTime, IngestedAt: eventTime, ObservedAt: &badObserved}).Parse(); err == nil || !strings.Contains(err.Error(), "parse observed_at") {
-		t.Fatalf("err = %v", err)
 	}
 }
 

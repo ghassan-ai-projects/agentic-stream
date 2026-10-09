@@ -8,20 +8,16 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestPipelineKeepsIngestingWhenCostReservationIsRejected(t *testing.T) {
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "cost-rejection.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	compiled := &spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
@@ -42,7 +38,7 @@ func TestPipelineKeepsIngestingWhenCostReservationIsRejected(t *testing.T) {
 			Triggers: []spec.Trigger{{Name: "high", When: "features.level > 10", Score: "situation.severity", Threshold: 5, Lane: "fast"}},
 			Executor: spec.Executor{
 				Name: "native", ModelPolicy: "test", PromptVersion: "v1", DecisionSchema: "schemas/decision.json",
-				Budget: spec.Budget{WallTime: "5s", CostMicrounits: 2},
+				Budget: spec.Budget{WallTime: "5s", CostMicrounits: 2}, RiskCeiling: "R1",
 			},
 		},
 		Actions: spec.Actions{Intents: []spec.Intent{{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: runtimeTicketSchema(), Policy: "automatic"}}},

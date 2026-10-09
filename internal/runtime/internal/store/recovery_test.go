@@ -1,12 +1,11 @@
 package store
 
 import (
-	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -42,15 +41,8 @@ func TestRecoveryCoordinatorAtomicallyRecoversEpisodesAndEvidence(t *testing.T) 
 
 func seedRecoveryState(t *testing.T) (*storage.DB, time.Time) {
 	t.Helper()
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "runtime.db"))
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatalf("disable fixture foreign keys: %v", err)
-	}
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+
 	digest := make([]byte, 32)
 	if _, err := db.ExecContext(t.Context(), `
 		INSERT INTO episodes (

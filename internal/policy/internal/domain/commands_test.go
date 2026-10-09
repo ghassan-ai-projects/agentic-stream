@@ -25,7 +25,7 @@ func TestCommandIdentityAndPayloadRemainBound(t *testing.T) {
 		t.Fatal(err)
 	}
 	key := sha256.Sum256([]byte("tenant|intent|ticket|motor"))
-	if !bytes.Equal(command.Key, key[:]) || command.Target != "motor" || document["created_at"] != "2026-10-05T00:00:00Z" || document["policy_digest"] != "policy" || document["not_before_mono_us"] != float64(0) {
+	if !bytes.Equal(command.Key, key[:]) || command.Target != "motor" || document["created_at"] != "2026-10-05T00:00:00.000000000Z" || document["policy_digest"] != "policy" || document["not_before_mono_us"] != float64(0) {
 		t.Fatal(document)
 	}
 	if !documentMatchesBytes(command.JSON, command.SHA, canonicaljson.DomainCommand) {
@@ -84,7 +84,7 @@ func TestApprovalNotificationKeepsItsSealedJSONShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	zero := "sha256:" + strings.Repeat("0", 64)
-	want := `{"action":{},"approval_id":"approval","audience":"stream-approval-relay","decision_id":"decision","decline_consequence":"The intent will not be dispatched.","delta":{},"evidence":[],"expires_at":"2099-01-01T00:00:00Z","hypothesis":"h","intent_digest":"` + zero + `","intent_id":"intent","risk_class":"R2","situation_id":"situation","situation_version":2,"snapshot_digest":"` + zero + `","source_authority":"source","summary":"s","tenant_id":"tenant"}`
+	want := `{"action":{},"approval_id":"approval","audience":"stream-approval-relay","decision_id":"decision","decline_consequence":"The intent will not be dispatched.","delta":{},"evidence":[],"expires_at":"2099-01-01T00:00:00.000000000Z","hypothesis":"h","intent_digest":"` + zero + `","intent_id":"intent","risk_class":"R2","situation_id":"situation","situation_version":2,"snapshot_digest":"` + zero + `","source_authority":"source","summary":"s","tenant_id":"tenant"}`
 	if string(raw) != want {
 		t.Fatalf("sealed notification changed:\n got %s\nwant %s", raw, want)
 	}

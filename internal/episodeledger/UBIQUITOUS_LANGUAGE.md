@@ -8,10 +8,11 @@ names. The ledger runs every operation on the caller's transaction.
 | Scheduler item | One queued opportunity to reason about a Situation; the pre-admission state of an episode | `SchedulerItem` | `scheduler_items` |
 | Pending / admitted / coalesced | Queue states: waiting, taken by an episode, replaced or skipped | `Status` | `status` |
 | Coalesce | Remove a pending or admitted item because newer work replaced it, or it was skipped or cost-rejected | `CoalesceSchedulerItems`, `CoalesceSkippedItem`, `CoalesceCostRejectedItem` | `status = 'coalesced'` |
+| Due item | A pending item whose admission window is open: the later of `created_at` and `not_before` has arrived and precedes `expires_at`; live admission takes the first unexpired one, replay iterates all, in queue order (not_before, created_at, id) | `DueItem`, `DueSchedulerItems` | `scheduler_items` |
 | Episode | One bounded reasoning run admitted from a scheduler item | `Admission` | `episodes` |
 | Lifecycle | The episode's coordination state; not a Decision, intent or command | `LifecycleStatus` | `lifecycle_status` |
 | Admission | Persisting the episode and its identity once | `Admit` | `episodes` insert |
-| Dispatch policy | Whether the episode's intents enter governance; empty means shadow | `DispatchPolicy`, `DispatchShadow` | `dispatch_policy` |
+| Dispatch policy | Whether the episode's intents enter governance; the spec owns the vocabulary and the shadow default, the ledger stores the declared value | `DispatchPolicy`, `spec.DispatchShadow` | `dispatch_policy` |
 | Live episode conflict | A reconsideration colliding with the one live episode a Situation may have | `ErrLiveEpisodeConflict` | unique `situation_id` |
 | Attempt | One worker dispatch of an episode | `AttemptStatus` | `episode_attempts` |
 | Fence | Monotonic number of an episode's attempts; an older fence is stale | `Identity.Fence` | `current_fence`, `fence` |
@@ -29,6 +30,6 @@ names. The ledger runs every operation on the caller's transaction.
 | Retired | Replacement | Why |
 | --- | --- | --- |
 | `scheduleledger` (package) | `episodeledger` | The queue item is the episode's pre-admission state, written in the same transactions |
-| `Item`, `Upsert`, `MarkAdmitted`, `Coalesce`, `NextPending` | `SchedulerItem`, `UpsertSchedulerItem`, `MarkSchedulerItemAdmitted`, `CoalesceSchedulerItems`, `NextPendingSchedulerItem` | Meaningful without the old package prefix |
+| `Item`, `Upsert`, `MarkAdmitted`, `Coalesce`, `NextPending` | `SchedulerItem`, `UpsertSchedulerItem`, `MarkSchedulerItemAdmitted`, `CoalesceSchedulerItems`, `PollSchedulerQueue` | Meaningful without the old package prefix |
 | `RecoverUnfinishedAttemptsWithCost` and the cost-free wrapper | `RecoverUnfinishedAttempts(…, costs)` | One entry point; a nil settler skips cost release |
 | `Abandon`/`Conclude` (episode) vs attempt `Abandoned` | keep, but read the receiver: episode writers take an episode id, attempt states are `AttemptStatus` | Two lifecycles share a word on purpose |

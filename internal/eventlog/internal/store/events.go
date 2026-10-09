@@ -8,12 +8,13 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // InsertEvent inserts one envelope and returns its position, or -1 when the
 // tenant already logged the event id.
-func (u *Unit) InsertEvent(ctx context.Context, tenantID string, env contractsv1.Envelope, body domain.EncodedEvent, createdAt string) (domain.LogPosition, error) {
+func (u *Unit) InsertEvent(ctx context.Context, tenantID string, env contractsv1.Envelope, body domain.EncodedEvent, createdAt time.Time) (domain.LogPosition, error) {
 	res, err := u.tx.ExecContext(ctx, insertEventSQL, eventColumns(tenantID, env, body, createdAt)...)
 	if err != nil {
 		return -1, fmt.Errorf("insert event: %w", err)
@@ -35,13 +36,13 @@ const insertEventSQL = `
 		ON CONFLICT(tenant_id, event_id) DO NOTHING`
 
 // eventColumns lists one envelope in insertEventSQL column order.
-func eventColumns(tenantID string, env contractsv1.Envelope, body domain.EncodedEvent, createdAt string) []any {
+func eventColumns(tenantID string, env contractsv1.Envelope, body domain.EncodedEvent, createdAt time.Time) []any {
 	return []any{
 		tenantID, env.PartitionID(0), env.ID, env.Type, env.SchemaVersion,
-		env.Source, env.PartitionKey, env.Entity.Type, env.Entity.ID, env.EventTime.Format(time.RFC3339Nano),
-		nullableTime(env.ObservedAt), env.IngestedAt.Format(time.RFC3339Nano), storage.NullIfEmpty(env.CorrelationID), storage.NullIfEmpty(env.CausationID),
+		env.Source, env.PartitionKey, env.Entity.Type, env.Entity.ID, kernel.FormatTime(env.EventTime),
+		nullableTime(env.ObservedAt), kernel.FormatTime(env.IngestedAt), storage.NullIfEmpty(env.CorrelationID), storage.NullIfEmpty(env.CausationID),
 		storage.NullIfEmpty(env.Traceparent), storage.NullIfEmpty(env.Tracestate), string(env.Classification), body.QualityJSON, body.PayloadJSON,
-		body.PayloadSHA256, createdAt,
+		body.PayloadSHA256, kernel.FormatTime(createdAt),
 	}
 }
 
@@ -66,5 +67,5 @@ func nullableTime(value *time.Time) sql.NullString {
 	if value == nil {
 		return sql.NullString{}
 	}
-	return sql.NullString{String: value.Format(time.RFC3339Nano), Valid: true}
+	return sql.NullString{String: kernel.FormatTime(*value), Valid: true}
 }

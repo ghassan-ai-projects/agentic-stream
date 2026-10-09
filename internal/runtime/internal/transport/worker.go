@@ -175,12 +175,17 @@ func (r *WorkerBackend) installRemoteExecutor(cfg WorkerRuntimeConfig, evidenceS
 	if err != nil {
 		return nil, err
 	}
-	factory := &remoteexecutor.AttemptCapabilityIssuer{
-		Issuer: issuer, RuntimeEpoch: cfg.RuntimeEpoch, Tools: []string{"evidence.get"},
-		From: time.Now().UTC().Add(-24 * time.Hour), Until: time.Now().UTC().Add(24 * time.Hour), MaxRows: 1000, MaxBytes: 1 << 20,
-	}
+	factory := evidenceCapabilityFactory(issuer, cfg.RuntimeEpoch, time.Now().UTC())
 	features := []string{worker.EvidenceToolsFeature}
 	return remoteexecutor.NewExecutorWithEvidence(client, cfg.WorkerName, cfg.RuntimeEpoch, features, cfg.EvidenceSocket, factory), nil
+}
+
+func evidenceCapabilityFactory(issuer *evidence.Service, runtimeEpoch string, now time.Time) *remoteexecutor.AttemptCapabilityIssuer {
+	return &remoteexecutor.AttemptCapabilityIssuer{
+		Issuer: issuer, RuntimeEpoch: runtimeEpoch, Tools: []string{"evidence.get"},
+		From: now.Add(-evidence.DefaultReadWindow), Until: now.Add(evidence.DefaultReadWindow),
+		MaxRows: evidence.DefaultReadMaxRows, MaxBytes: evidence.DefaultReadMaxBytes,
+	}
 }
 
 func evidenceIssuer(secret []byte) (*evidence.Service, error) {

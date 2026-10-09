@@ -83,28 +83,23 @@ func TestAdmissionRulesPreserveOrderAndBounds(t *testing.T) {
 }
 
 func TestAttemptAndReservationRules(t *testing.T) {
-	call := Call{AttemptID: "a", Fence: 1}
 	key := ReservationKey{AttemptID: "a", Fence: 1}
-	state := EpisodeState{Lifecycle: "running", AttemptID: "a", Fence: 1}
-	if err := CheckLiveEpisode(state, call); err != nil {
+	state := EpisodeState{Running: true, Current: true}
+	if err := CheckLiveEpisode(state); err != nil {
 		t.Fatal(err)
 	}
-	if err := CheckCompletionEpisode(state, key); err != nil {
+	if err := CheckCompletionEpisode(state); err != nil {
 		t.Fatal(err)
 	}
-	for _, status := range []string{"concluded", "closed", "superseded", "expired", "abandoned"} {
-		state.Lifecycle = status
-		if CheckLiveEpisode(state, call) == nil || CheckCompletionEpisode(state, key) == nil {
-			t.Fatalf("terminal=%s", status)
-		}
+	state.Closed, state.Running = true, false
+	if CheckLiveEpisode(state) == nil || CheckCompletionEpisode(state) == nil {
+		t.Fatal("closed episode accepted")
 	}
-	for _, status := range []string{"dispatched", "running"} {
-		if CheckLiveAttempt(status) != nil || CheckCompletionAttempt(status) != nil {
-			t.Fatal(status)
-		}
+	if CheckLiveAttempt(true) != nil || CheckCompletionAttempt(true) != nil {
+		t.Fatal("in-flight attempt refused")
 	}
-	if CheckLiveAttempt("failed") == nil || CheckCompletionAttempt("failed") == nil {
-		t.Fatal("terminal attempt accepted")
+	if CheckLiveAttempt(false) == nil || CheckCompletionAttempt(false) == nil {
+		t.Fatal("attempt that is not in flight accepted")
 	}
 	if err := ReservationRefusal(Reservation{Created: true}); err != nil {
 		t.Fatal(err)

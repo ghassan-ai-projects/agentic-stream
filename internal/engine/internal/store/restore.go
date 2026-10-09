@@ -1,9 +1,13 @@
 package store
 
 import (
+	"time"
+
 	"context"
 	"database/sql"
 	"fmt"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
 )
@@ -51,12 +55,34 @@ func restoreRow(rows *sql.Rows, restore func(domain.StoredSituation) error) erro
 func scanStoredSituation(rows *sql.Rows) (domain.StoredSituation, error) {
 	var r domain.StoredSituation
 	var previousPhase, traceparent, tracestate sql.NullString
+	var firstEventTime, latestEventTime, updatedAt string
 	if err := rows.Scan(&r.SituationID, &r.Type, &r.EntityType, &r.EntityID, &r.PartitionID,
-		&r.OccurrenceID, &r.Version, &r.Phase, &r.FirstEventTime, &r.LatestEventTime,
-		&r.UpdatedAt, &r.StateCodecVersion, &r.StateJSON, &r.StateSHA256, &previousPhase, &r.Severity, &r.Confidence,
+		&r.OccurrenceID, &r.Version, &r.Phase, &firstEventTime, &latestEventTime,
+		&updatedAt, &r.StateCodecVersion, &r.StateJSON, &r.StateSHA256, &previousPhase, &r.Severity, &r.Confidence,
 		&r.Completeness, &traceparent, &tracestate); err != nil {
 		return domain.StoredSituation{}, fmt.Errorf("scan current situation: %w", err)
 	}
 	r.PreviousPhase, r.Traceparent, r.Tracestate = previousPhase.String, traceparent.String, tracestate.String
+	if err := parseStoredTimes(&r, firstEventTime, latestEventTime, updatedAt); err != nil {
+		return domain.StoredSituation{}, err
+	}
 	return r, nil
+}
+
+func parseStoredTimes(r *domain.StoredSituation, firstEventTime, latestEventTime, updatedAt string) error {
+	for _, column := range []struct {
+		name, text string
+		into       *time.Time
+	}{
+		{"first event time", firstEventTime, &r.FirstEventTime},
+		{"latest event time", latestEventTime, &r.LatestEventTime},
+		{"updated time", updatedAt, &r.UpdatedAt},
+	} {
+		parsed, err := kernel.ParseTime(column.text)
+		if err != nil {
+			return fmt.Errorf("parse %s of situation %s: %w", column.name, r.SituationID, err)
+		}
+		*column.into = parsed
+	}
+	return nil
 }

@@ -33,8 +33,5 @@ func (e *FailClosedEffector) Dispatch(ctx context.Context, command actionport.Co
 // DispatchAuthorized preserves the final interlock check before rejecting the
 // unmapped route.
 func (e *FailClosedEffector) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
-	if err := authorizeDispatch(ctx, authorization); err != nil {
-		return actionport.Effect{}, err
-	}
-	return e.Dispatch(ctx, command)
+	return dispatchAuthorized(ctx, command, authorization, e.Dispatch)
 }

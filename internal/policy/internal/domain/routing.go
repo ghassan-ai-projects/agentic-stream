@@ -2,30 +2,33 @@ package domain
 
 import (
 	"crypto/ed25519"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 func RiskRoute(row IntentRecord) (route, reason string) {
-	switch row.RiskClass {
-	case "R0", "R1":
-		if row.RequiresApproval != 0 {
-			return "approval", ""
-		}
-		return "automatic", ""
-	case "R2":
-		return "approval", ""
-	case "R3", "R4":
-		return "denied", "risk_policy_denied"
+	risk := contractsv1.RiskClass(row.RiskClass)
+	routed := contractsv1.RouteFor(risk, row.RequiresApproval != 0)
+	return string(routed), denialReason(risk, routed)
+}
+
+func denialReason(risk contractsv1.RiskClass, route contractsv1.Route) string {
+	switch {
+	case !risk.Valid():
+		return "unknown_risk_class"
+	case route == contractsv1.RouteDenied:
+		return "risk_policy_denied"
 	default:
-		return "denied", "unknown_risk_class"
+		return ""
 	}
 }
 
 func FreshnessFailure(row IntentRecord, now time.Time) (status, reason string, expires time.Time) {
-	if !EpisodeConcluded(row) {
+	if !row.EpisodeProducedDecision {
 		return "denied", "episode_not_concluded", time.Time{}
 	}
 	if MateriallySuperseded(row) {
@@ -34,11 +37,20 @@ func FreshnessFailure(row IntentRecord, now time.Time) (status, reason string, e
 	if SourceHealthIncomplete(row) {
 		return "denied", "source_health_incomplete", time.Time{}
 	}
-	expires, err := time.Parse(time.RFC3339Nano, row.ExpiresAt)
-	if err != nil || !expires.After(now) {
-		return "expired", "intent_expired", time.Time{}
+	if status, reason := expiryFailure(row, now); reason != "" {
+		return status, reason, time.Time{}
 	}
-	return "", "", expires
+	return "", "", row.ExpiresAt
+}
+
+func expiryFailure(row IntentRecord, now time.Time) (status, reason string) {
+	if row.ExpiryUnreadable {
+		return "denied", "intent_expiry_unreadable"
+	}
+	if !row.ExpiresAt.After(now) {
+		return "expired", "intent_expired"
+	}
+	return "", ""
 }
 
 func MateriallySuperseded(row IntentRecord) bool {
@@ -62,7 +74,7 @@ func ApprovalDisposition(row IntentRecord, a ApprovalRecord, r ApprovalResolutio
 	if r.Approved && MateriallySuperseded(row) {
 		return "stale"
 	}
-	if ApprovalExpired(a.ExpiresAt, r.Now) {
+	if !a.ExpiresAt.After(r.Now) {
 		return "expired"
 	}
 	return "authorize"
@@ -76,20 +88,18 @@ func DistinctPrincipals(r ApprovalResolution) error {
 }
 
 func ApprovalNonce(approvalID, intentID string) string {
-	digest := sha256.Sum256([]byte(approvalID + "|" + intentID))
-	return hex.EncodeToString(digest[:])
+	return hex.EncodeToString(canonicaljson.Sum([]byte(approvalID + "|" + intentID)))
 }
 
 func VerifyAssertion(publicKey, assertion, signature []byte) ([]byte, error) {
 	if len(publicKey) != ed25519.PublicKeySize || !ed25519.Verify(ed25519.PublicKey(publicKey), assertion, signature) {
 		return nil, fmt.Errorf("approval assertion signature is invalid")
 	}
-	digest := sha256.Sum256(assertion)
-	return digest[:], nil
+	return canonicaljson.Sum(assertion), nil
 }
 
 func CompleteDigest(digest []byte, kind string) error {
-	if len(digest) != sha256.Size {
+	if !canonicaljson.HasSumLength(digest) {
 		return fmt.Errorf("%s digest is incomplete", kind)
 	}
 	return nil

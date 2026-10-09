@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
 )
@@ -56,7 +54,7 @@ func (e *Executor) executeLoop(ctx context.Context, req *episodes.Request, paylo
 // loop should continue.
 func (l *episodeLoop) step(ctx context.Context) *episodes.Outcome {
 	if err := ctx.Err(); err != nil {
-		return domain.TerminalForContext(l.req, err, l.usage)
+		return l.req.ContextEndingOutcome(err, l.usage.CostMicrounits)
 	}
 	if l.budget.ModelCalls > 0 && l.modelCalls >= l.budget.ModelCalls {
 		return domain.Failed(l.req, "budget_exhausted:model_calls", l.usage)
@@ -86,8 +84,8 @@ func (l *episodeLoop) providerFailure(ctx context.Context, err error) *episodes.
 	if errors.Is(err, domain.ErrInterrupt) {
 		return domain.Failed(l.req, "interrupt_in_non_interactive_episode", l.usage)
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return domain.TerminalForContext(l.req, err, l.usage)
+	if outcome := l.req.ContextEndingOutcome(err, l.usage.CostMicrounits); outcome != nil {
+		return outcome
 	}
 	var retryable *domain.RetryableError
 	if !errors.As(err, &retryable) {
@@ -100,7 +98,7 @@ func (l *episodeLoop) retryProvider(ctx context.Context) *episodes.Outcome {
 	if l.providerRetries < l.budget.ProviderRetries {
 		l.providerRetries++
 		if waitErr := waitProviderRetry(ctx); waitErr != nil {
-			return domain.TerminalForContext(l.req, waitErr, l.usage)
+			return l.req.ContextEndingOutcome(waitErr, l.usage.CostMicrounits)
 		}
 		return nil
 	}
@@ -123,7 +121,7 @@ func (l *episodeLoop) account(ctx context.Context, response domain.ModelResponse
 	// A provider is expected to honor cancellation, but a hard wall-time
 	// budget must also win when an adapter returns a late response.
 	if err := ctx.Err(); err != nil {
-		return domain.TerminalForContext(l.req, err, l.usage)
+		return l.req.ContextEndingOutcome(err, l.usage.CostMicrounits)
 	}
 	if err := domain.CheckUsage(l.usage, l.budget); err != nil {
 		return domain.Failed(l.req, err.Error(), l.usage)
@@ -151,15 +149,11 @@ func (l *episodeLoop) decide(response domain.ModelResponse) *episodes.Outcome {
 }
 
 func (l *episodeLoop) produced(decision map[string]any) *episodes.Outcome {
-	digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, decision)
-	if err != nil {
-		return domain.Failed(l.req, "decision_digest_failed", l.usage)
-	}
-	decisionJSON, err := canonicaljson.Marshal(decision)
+	outcome, err := l.req.ProducedOutcome(decision, l.usage.CostMicrounits)
 	if err != nil {
 		return domain.Failed(l.req, "decision_canonicalization_failed", l.usage)
 	}
-	return &episodes.Outcome{Status: string(episodeledger.AttemptProduced), AttemptID: l.req.AttemptID, Fence: l.req.Fence, DecisionJSON: decisionJSON, DecisionSHA256: digest, CostMicrounits: l.usage.CostMicrounits}
+	return outcome
 }
 
 func waitProviderRetry(ctx context.Context) error {

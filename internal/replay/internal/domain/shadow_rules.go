@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 )
 
@@ -34,11 +35,7 @@ func (r ShadowRules) ValidateOutput(input ShadowInput, output ShadowOutput, now 
 	if err != nil {
 		return ValidatedOutput{}, err
 	}
-	riskCeiling := r.RiskCeiling
-	if riskCeiling == "" {
-		riskCeiling = "R1"
-	}
-	return r.validateDecision(input, bound, entityID, riskCeiling, now)
+	return r.validateDecision(input, bound, entityID, now)
 }
 
 func (r ShadowRules) bindOutput(output ShadowOutput) (ValidatedOutput, error) {
@@ -69,16 +66,13 @@ func bindShadowManifest(output ShadowOutput) ([]byte, error) {
 }
 
 func canonicalShadowDecision(output ShadowOutput) ([]byte, map[string]any, error) {
-	canonical, err := canonicaljson.Marshal(json.RawMessage(output.DecisionJSON))
+	document, err := contractsv1.DecodeDocumentJSON(output.DecisionJSON)
 	if err != nil {
 		return nil, nil, fmt.Errorf("decision JSON: %w", err)
 	}
-	if !bytes.Equal(canonical, output.DecisionJSON) {
+	canonical, err := canonicaljson.Marshal(document)
+	if err != nil || !bytes.Equal(canonical, output.DecisionJSON) {
 		return nil, nil, fmt.Errorf("decision JSON is not canonical")
-	}
-	var document map[string]any
-	if err := json.Unmarshal(canonical, &document); err != nil {
-		return nil, nil, fmt.Errorf("decode decision JSON: %w", err)
 	}
 	return canonical, document, nil
 }
@@ -88,19 +82,19 @@ func bindShadowDecisionDigest(output ShadowOutput, document map[string]any) ([]b
 	if err != nil {
 		return nil, fmt.Errorf("decision digest: %w", err)
 	}
-	if !canonicaljson.Verify(canonicaljson.DomainDecision, document, output.DecisionSHA256) {
+	if !contractsv1.VerifyDocumentDigest(canonicaljson.DomainDecision, document, decisionSHA) {
 		return nil, fmt.Errorf("decision digest does not match decision JSON")
 	}
 	return decisionSHA, nil
 }
 
-func (r ShadowRules) validateDecision(input ShadowInput, bound ValidatedOutput, entityID, riskCeiling string, now time.Time) (ValidatedOutput, error) {
+func (r ShadowRules) validateDecision(input ShadowInput, bound ValidatedOutput, entityID string, now time.Time) (ValidatedOutput, error) {
 	validated, err := decisions.Validate(bound.Canonical, bound.Output.DecisionSHA256, decisions.Input{
 		EpisodeID: input.EpisodeID, AttemptID: input.AttemptID, Fence: input.Fence,
 		TenantID: input.TenantID, SituationID: input.SituationID,
 		SituationVersion: input.SituationVersion, EntityID: entityID, SnapshotDigest: input.SnapshotDigest,
-		AllowedIntentTypes: r.AllowedTypes, RiskCeiling: riskCeiling, IntentCatalog: r.Catalog,
-		Kind: "standard", Now: now,
+		AllowedIntentTypes: r.AllowedTypes, RiskCeiling: r.RiskCeiling, IntentCatalog: r.Catalog,
+		Now: now,
 	})
 	if err != nil {
 		return ValidatedOutput{}, fmt.Errorf("validate shadow decision: %w", err)

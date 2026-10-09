@@ -10,12 +10,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	_ "modernc.org/sqlite" // read-only view of the runtime database
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // The real-world-sensor experiment's Agentic Stream slice, run the way
@@ -45,6 +47,7 @@ type experimentRun struct {
 }
 
 func TestExperimentClosedLoopThroughServe(t *testing.T) {
+	t.Parallel()
 	run := startExperiment(t, experimentOptions{})
 	trace := shiftedTrace(t, time.Now().Add(-time.Second))
 	feedLive(t, run.liveSocket, trace, "{not json")
@@ -61,14 +64,35 @@ func TestExperimentClosedLoopThroughServe(t *testing.T) {
 
 func startExperiment(t *testing.T, options experimentOptions) experimentRun {
 	t.Helper()
-	disableTelemetryExport(t)
-	t.Setenv("AGENTIC_STREAM_SUBSCRIBER_TOKEN", "subscriber-secret")
+	useExperimentEnvironment(t)
 	dir := privateSocketDir(t)
 	run := experimentRun{dir: dir, db: filepath.Join(dir, "stream.db"), specPath: tamozActiveSpec(t, dir, options.specEdits), liveSocket: filepath.Join(dir, "telemetry.sock")}
 	serveTamozStandIn(t, filepath.Join(dir, "worker.sock"), options.workerDelay)
 	run.device = serveDeviceStandIn(t, filepath.Join(dir, "device.sock"), thermalCatalogDigest(t))
 	run.stop = startServe(t, run, freeLoopbackAddress(t))
 	return run
+}
+
+var experimentEnvironment = sync.OnceValue(func() error {
+	values := map[string]string{
+		"AGENTIC_STREAM_SUBSCRIBER_TOKEN":    "subscriber-secret",
+		"AGENTIC_STREAM_OTLP_ENDPOINT":       "",
+		"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "",
+		"OTEL_EXPORTER_OTLP_ENDPOINT":        "",
+	}
+	for key, value := range values {
+		if err := os.Setenv(key, value); err != nil {
+			return fmt.Errorf("set %s: %w", key, err)
+		}
+	}
+	return nil
+})
+
+func useExperimentEnvironment(t *testing.T) {
+	t.Helper()
+	if err := experimentEnvironment(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // privateSocketDir is short (sun_path limit) and 0700, as the worker socket
@@ -187,11 +211,11 @@ func shiftEvent(t *testing.T, line string, offset time.Duration) string {
 		t.Fatal(err)
 	}
 	for _, field := range []string{"event_time", "ingested_at"} {
-		at, err := time.Parse(time.RFC3339Nano, event[field].(string))
+		at, err := kernel.ParseTime(event[field].(string))
 		if err != nil {
 			t.Fatal(err)
 		}
-		event[field] = at.Add(offset).UTC().Format(time.RFC3339Nano)
+		event[field] = kernel.FormatTime(at.Add(offset).UTC())
 	}
 	shifted, err := json.Marshal(event)
 	if err != nil {
@@ -328,13 +352,14 @@ func schedulerQueue(t *testing.T, db *sql.DB) string {
 			items = append(items, fmt.Sprintf("[%s v%d not_before=%s expires=%s created=%s]", status, version, notBefore, expiresAt, createdAt))
 		}
 	}
-	return strings.Join(items, " ") + " now=" + time.Now().UTC().Format(time.RFC3339Nano)
+	return strings.Join(items, " ") + " now=" + kernel.FormatTime(time.Now().UTC())
 }
 
 // A tripped interlock is the experiment's software emergency stop: with it
 // tripped, the loop still reasons and governs, but no command reaches the
 // device.
 func TestExperimentInterlockStopsEffects(t *testing.T) {
+	t.Parallel()
 	run := startExperiment(t, experimentOptions{})
 	if out, err := runOperatorCommand(t, "interlock", "trip", "--db", run.db, "--reason", "operator stop"); err != nil {
 		t.Fatalf("trip = %q, %v", out, err)

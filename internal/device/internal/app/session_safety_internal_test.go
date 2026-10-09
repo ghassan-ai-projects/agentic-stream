@@ -10,7 +10,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 
@@ -74,7 +74,7 @@ func TestSafeStopPossiblySentFailureInvalidatesTransport(t *testing.T) {
 // testAuthority is a device authority for an admitted epoch-1 of instance-1.
 func testAuthority(t *testing.T) *deviceauthority.Service {
 	t.Helper()
-	db, err := storage.Open(context.Background(), t.TempDir()+"/device.db")
+	db, err := storagetest.Open(context.Background(), t.TempDir()+"/device.db")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,17 +16,12 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestEngineAdvancesCheckpoint(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	compiled, err := spec.CompileFile(ctx, "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
 	if err != nil {
@@ -40,22 +35,7 @@ func TestEngineAdvancesCheckpoint(t *testing.T) {
 		t.Fatalf("new engine: %v", err)
 	}
 
-	env := contractsv1.Envelope{
-		ID:             "evt-1",
-		Type:           "motor.vibration.observed",
-		SchemaVersion:  "1.0",
-		TenantID:       "default",
-		Source:         "simulator",
-		PartitionKey:   "motor-17",
-		Entity:         contractsv1.EntityRef{Type: "motor", ID: "motor-17"},
-		EventTime:      time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		IngestedAt:     time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
-		Classification: contractsv1.ClassificationInternal,
-		Data:           map[string]any{"rms_mm_s": 5.0},
-	}
-	if _, err := log.Append(ctx, "default", []contractsv1.Envelope{env}); err != nil {
-		t.Fatalf("append event: %v", err)
-	}
+	appendObservedEvent(t, log, "motor.vibration.observed", "simulator", contractsv1.EntityRef{Type: "motor", ID: "motor-17"}, map[string]any{"rms_mm_s": 5.0})
 
 	processed, err := eng.RunGlobal(ctx, nil)
 	if err != nil {
@@ -79,7 +59,7 @@ func TestEngineRetriesApplyAfterTransientSQLiteBusy(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "apply-contention.db")
-	db, err := storage.Open(ctx, dbPath)
+	db, err := storagetest.Open(ctx, dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -153,7 +133,7 @@ func TestEngineRestoresSituationStateAcrossRestart(t *testing.T) {
 	compiled := restartSpec()
 	clk := sources.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 
-	db, err := storage.Open(ctx, dbPath)
+	db, err := storagetest.Open(ctx, dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -173,7 +153,7 @@ func TestEngineRestoresSituationStateAcrossRestart(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatalf("close first db: %v", err)
 	}
-	legacyDB, err := storage.Open(ctx, dbPath)
+	legacyDB, err := storagetest.Open(ctx, dbPath)
 	if err != nil {
 		t.Fatalf("reopen for incompatibility check: %v", err)
 	}
@@ -191,7 +171,7 @@ func TestEngineRestoresSituationStateAcrossRestart(t *testing.T) {
 		t.Fatalf("close incompatibility-check db: %v", err)
 	}
 
-	db, err = storage.Open(ctx, dbPath)
+	db, err = storagetest.Open(ctx, dbPath)
 	if err != nil {
 		t.Fatalf("reopen db: %v", err)
 	}
@@ -234,7 +214,7 @@ func TestEngineFiresDurableProcessingTimerExactlyOnce(t *testing.T) {
 	dir := t.TempDir()
 	clk := sources.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	compiled := heartbeatSpec()
-	db, err := storage.Open(ctx, filepath.Join(dir, "timer.db"))
+	db, err := storagetest.Open(ctx, filepath.Join(dir, "timer.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -258,7 +238,7 @@ func TestEngineFiresDurableProcessingTimerExactlyOnce(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatalf("close before timer restart: %v", err)
 	}
-	db, err = storage.Open(ctx, filepath.Join(dir, "timer.db"))
+	db, err = storagetest.Open(ctx, filepath.Join(dir, "timer.db"))
 	if err != nil {
 		t.Fatalf("reopen timer db: %v", err)
 	}
@@ -328,14 +308,10 @@ func TestEngineFiresDurableProcessingTimerExactlyOnce(t *testing.T) {
 
 func TestEngineRetiresTimerFromPreviousDeviceBoot(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
 	clk := sources.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	compiled := heartbeatSpec()
-	db, err := storage.Open(ctx, filepath.Join(dir, "stale-timer.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	log := eventlog.NewEventLogWithClock(db, clk)
 	eng, err := newService(ctx, db, log, clk, &compiled, "default", false)
 	if err != nil {
@@ -430,11 +406,8 @@ func appendHeartbeatWithBoot(t *testing.T, ctx context.Context, log *eventlog.Ev
 func TestGlobalRunFailurePreservesProgressAndInboxDeduplication(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "partial-global.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	compiled := restartSpec()
 	log := eventlog.NewEventLog(db)
 	eng, err := newService(ctx, db, log, sources.Physical(), &compiled, "default", false)
@@ -474,11 +447,8 @@ func TestGlobalRunFailurePreservesProgressAndInboxDeduplication(t *testing.T) {
 func TestGlobalRunResumesAfterTheAppliedPosition(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "resume.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	compiled := restartSpec()
 	log := eventlog.NewEventLog(db)
 	eng, err := newService(ctx, db, log, sources.Physical(), &compiled, "default", false)

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 type QuarantinePayload struct {
@@ -23,13 +24,13 @@ func NewQuarantinePayload(env map[string]any) (QuarantinePayload, error) {
 	if err != nil {
 		return QuarantinePayload{}, fmt.Errorf("marshal quarantined payload: %w", err)
 	}
-	digest := sha256.Sum256(payload)
-	q := QuarantinePayload{Payload: payload, Digest: digest[:]}
+	digest := contentSum(payload)
+	q := QuarantinePayload{Payload: payload, Digest: digest}
 	q.readHeader(env)
 	if q.EventID == "" {
 		q.EventID = "payload:" + hex.EncodeToString(digest[:12])
 	}
-	idDigest := sha256.Sum256(append([]byte(q.EventID+"|"), payload...))
+	idDigest := contentSum(append([]byte(q.EventID+"|"), payload...))
 	q.QuarantineID = "q_" + hex.EncodeToString(idDigest[:12])
 	return q, nil
 }
@@ -49,15 +50,15 @@ func (q QuarantinePayload) OverflowGapID() string {
 	return q.QuarantineID + ":gap"
 }
 
-func ValidQuarantine(tenantID, reason, now string) error {
-	if tenantID == "" || reason == "" || now == "" {
+func ValidQuarantine(tenantID, reason string, now time.Time) error {
+	if tenantID == "" || reason == "" || now.IsZero() {
 		return fmt.Errorf("tenant, reason, and time are required")
 	}
 	return nil
 }
 
-func ValidRelease(tenantID, eventID, now string) error {
-	if tenantID == "" || eventID == "" || now == "" {
+func ValidRelease(tenantID, eventID string, now time.Time) error {
+	if tenantID == "" || eventID == "" || now.IsZero() {
 		return fmt.Errorf("tenant, event, and time are required")
 	}
 	return nil
@@ -78,4 +79,9 @@ func OperatorStatus(stored string, redriven bool) string {
 		return "redriven"
 	}
 	return stored
+}
+
+func contentSum(data []byte) []byte {
+	sum := sha256.Sum256(data)
+	return sum[:]
 }

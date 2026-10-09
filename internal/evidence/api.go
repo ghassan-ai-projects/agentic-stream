@@ -22,6 +22,15 @@ type QueryResult = domain.QueryResult
 // EvidenceGetArguments is the closed v1 argument record.
 type EvidenceGetArguments = domain.EvidenceGetArguments
 
+// DefaultReadMaxRows is the row budget of an evidence read that names none.
+const DefaultReadMaxRows = domain.DefaultReadMaxRows
+
+// DefaultReadMaxBytes is the byte budget of an evidence read that names none.
+const DefaultReadMaxBytes = domain.DefaultReadMaxBytes
+
+// DefaultReadWindow is how far an evidence read reaches from now by default.
+const DefaultReadWindow = domain.DefaultReadWindow
+
 // NewRuntimeEpoch generates one opaque process-owner identity.
 func NewRuntimeEpoch() (string, error) { return wire.NewRuntimeEpoch() }
 

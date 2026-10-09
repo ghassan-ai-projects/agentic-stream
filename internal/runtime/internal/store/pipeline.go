@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -14,10 +13,10 @@ import (
 
 // PipelineStore joins governance and owner checks to the caller-owned database.
 type PipelineStore struct {
-	DB         *storage.DB
-	Policy     *policy.Service
-	Owner      *runtimecontrol.RuntimeOwner
-	OwnerEpoch string
+	DB           *storage.DB
+	Policy       *policy.Service
+	RuntimeOwner storage.OwnerCheck
+	OwnerEpoch   string
 	// Episodes and TenantID serve admission: the episode assembler and the
 	// tenant whose scheduler items are admitted.
 	Episodes *episodes.Service
@@ -26,13 +25,10 @@ type PipelineStore struct {
 
 // AssertOwner checks the bound owner epoch in the original transaction scope.
 func (p *PipelineStore) AssertOwner(ctx context.Context) error {
-	if p.Owner == nil || p.OwnerEpoch == "" {
-		return nil
-	}
 	if err := p.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		return p.Owner.Assert(ctx, tx, p.OwnerEpoch)
+		return assertRuntimeOwner(ctx, tx, p.RuntimeOwner, p.OwnerEpoch)
 	}); err != nil {
-		return fmt.Errorf("runtime ownership lost: %w", err)
+		return fmt.Errorf("assert pipeline owner: %w", err)
 	}
 	return nil
 }

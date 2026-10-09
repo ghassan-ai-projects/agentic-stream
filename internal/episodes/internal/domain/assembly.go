@@ -78,7 +78,7 @@ func (a requestAssembly) bindRequestCapabilities(request map[string]any, executo
 	request["tools"] = a.buildTools()
 	request["allowed_intent_types"] = a.allowedIntentTypeList()
 	request["watch_confidence_floor"] = a.spec.Actions.EffectiveWatchConfidenceFloor()
-	request["risk_ceiling"] = a.effectiveRiskCeiling()
+	request["risk_ceiling"] = a.spec.Cognition.Executor.RiskCeiling
 	request["executor"] = executorDocument.Document
 	request["budget"] = a.budgetMap()
 }

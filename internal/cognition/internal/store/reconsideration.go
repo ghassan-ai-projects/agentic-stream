@@ -3,27 +3,23 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func (t *Tx) ReconsiderationExists(ctx context.Context, current situations.Version, commandID string) (bool, error) {
-	var existing int
-	err := t.tx.QueryRowContext(ctx, `SELECT 1 FROM reconsiderations WHERE situation_id = ? AND superseded_version = ? AND invalidated_command_id = ?`, current.SituationID, current.PreviousVersion, commandID).Scan(&existing)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
+	_, found, err := storage.QueryOptional[int](ctx, t.tx, `SELECT 1 FROM reconsiderations WHERE situation_id = ? AND superseded_version = ? AND invalidated_command_id = ?`, current.SituationID, current.PreviousVersion, commandID)
 	if err != nil {
 		return false, fmt.Errorf("check reconsideration dedupe: %w", err)
 	}
-	return true, nil
+	return found, nil
 }
 
 func (t *Tx) RecordReconsideration(ctx context.Context, r domain.Reconsideration, correctionDigest []byte, tenantID string, now time.Time) error {
@@ -35,7 +31,7 @@ func (t *Tx) RecordReconsideration(ctx context.Context, r domain.Reconsideration
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.ID, tenantID, r.Current.SituationID, r.Current.PreviousVersion,
 		r.Current.Version, correctionDigest, r.Command.CommandID, r.Command.OutcomeID, r.Command.OutcomeSHA,
-		now.UTC().Format(time.RFC3339Nano)); err != nil {
+		kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("insert reconsideration: %w", err)
 	}
 	return nil
@@ -49,15 +45,8 @@ func (t *Tx) AnnounceReconsideration(ctx context.Context, r domain.Reconsiderati
 }
 
 func reconsiderationEvent(r domain.Reconsideration, tenantID string, now time.Time) notify.LifecycleEvent {
-	return notify.LifecycleEvent{
-		ID:           "reconsideration.admitted:" + r.ID,
-		TenantID:     tenantID,
-		Subject:      "situation/" + r.Current.SituationID,
-		PartitionKey: r.Current.SituationID,
-		Payload:      reconsideration(r),
-		At:           now.UTC(),
-		Trace:        contractsv1.TraceContext{Traceparent: r.Current.Traceparent, Tracestate: r.Current.Tracestate},
-	}
+	trace := contractsv1.TraceContext{Traceparent: r.Current.Traceparent, Tracestate: r.Current.Tracestate}
+	return notify.ReconsiderationAdmittedEvent(tenantID, reconsideration(r), now.UTC(), trace)
 }
 
 func reconsideration(r domain.Reconsideration) notify.ReconsiderationAdmitted {
@@ -83,7 +72,8 @@ func (t *Tx) InvalidatedCommands(ctx context.Context, current situations.Version
 // outcome.
 const selectInvalidatedCommandsSQL = `
 		SELECT c.command_id, d.decision_id, o.outcome_id, o.ordinal, o.status, o.provider_result_json,
-		       o.observed_effect_json, o.reconciliation_status, o.outcome_sha256
+		       o.observed_effect_json, COALESCE(o.reconciliation_status, ''), o.outcome_sha256,
+		       d.raw_json, c.command_json, c.status, i.intent_id, i.intent_type, i.risk_class
 		FROM commands c
 		JOIN intents i ON i.intent_id = c.intent_id
 		JOIN decisions d ON d.decision_id = i.decision_id
@@ -103,7 +93,8 @@ const selectInvalidatedCommandsSQL = `
 
 func scanInvalidatedCommand(rows *sql.Rows) (domain.InvalidatedCommand, error) {
 	var c domain.InvalidatedCommand
-	if err := rows.Scan(&c.CommandID, &c.DecisionID, &c.OutcomeID, &c.OutcomeOrdinal, &c.OutcomeStatus, &c.ProviderJSON, &c.ObservedJSON, &c.ReconciliationStatus, &c.OutcomeSHA); err != nil {
+	if err := rows.Scan(&c.CommandID, &c.DecisionID, &c.OutcomeID, &c.OutcomeOrdinal, &c.OutcomeStatus, &c.ProviderJSON, &c.ObservedJSON, &c.ReconciliationStatus, &c.OutcomeSHA,
+		&c.DecisionJSON, &c.CommandJSON, &c.CommandStatus, &c.IntentID, &c.IntentType, &c.RiskClass); err != nil {
 		return domain.InvalidatedCommand{}, fmt.Errorf("scan invalidated command: %w", err)
 	}
 	return c, nil

@@ -21,6 +21,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 const (
@@ -34,11 +35,8 @@ const (
 func replayedStore(t *testing.T) *storage.DB {
 	t.Helper()
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "episodes.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	compiled, err := spec.CompileFile(ctx, alwaysTriggerSpec(t))
 	if err != nil {
 		t.Fatal(err)
@@ -102,22 +100,26 @@ func TestDispatchableEpisodeReadsOldestAdmittedEpisode(t *testing.T) {
 	t.Parallel()
 	db := replayedStore(t)
 	ctx := context.Background()
-	var episode store.DispatchedEpisode
+	var episode episodeledger.DispatchableEpisode
+	var found bool
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		episode, err = store.DispatchableEpisode(ctx, store.Join(tx), "default", false)
+		episode, found, err = store.DispatchableEpisode(ctx, store.Join(tx), "default", false)
 		return err
-	}); err != nil {
-		t.Fatal(err)
+	}); err != nil || !found {
+		t.Fatalf("found = %v err = %v", found, err)
 	}
 	if episode.EpisodeID == "" || episode.TenantID != "default" || len(episode.RequestJSON) == 0 || episode.StaleRebindCount != 0 {
 		t.Fatalf("dispatched episode = %+v", episode)
 	}
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		_, err := store.DispatchableEpisode(ctx, store.Join(tx), "missing-tenant", false)
+		_, found, err := store.DispatchableEpisode(ctx, store.Join(tx), "missing-tenant", false)
+		if found {
+			t.Fatal("unknown tenant produced an episode")
+		}
 		return err
-	}); err == nil {
-		t.Fatal("unknown tenant produced an episode")
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -129,7 +131,7 @@ func TestLifecycleReadsAndAttemptCounts(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT episode_id FROM episodes LIMIT 1").Scan(&episodeID); err != nil {
 		t.Fatal(err)
 	}
-	var lifecycle string
+	var lifecycle episodeledger.LifecycleStatus
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
 		lifecycle, err = store.EpisodeLifecycle(ctx, store.Join(tx), episodeID)
@@ -211,7 +213,7 @@ func TestDecisionAndIntentInsertsAnnotateAndAccept(t *testing.T) {
 		if err := store.InsertDecision(ctx, store.Join(tx), store.DecisionInsert{
 			DecisionID: "dec-1", EpisodeID: episodeID, AttemptID: identity.AttemptID, Fence: identity.Fence,
 			SituationID: situationID, SituationVersion: situationVersion, RawJSON: []byte(`{"decision_id":"dec-1"}`),
-			Digest: bytesOf(1), ValidationStatus: "proposed", ValidationJSON: []byte(`{}`), Now: "2026-01-01T00:00:00Z",
+			Digest: bytesOf(1), ValidationStatus: "proposed", ValidationJSON: []byte(`{}`), Now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		}); err != nil {
 			return err
 		}
@@ -234,7 +236,7 @@ func TestDecisionAndIntentInsertsAnnotateAndAccept(t *testing.T) {
 		return store.InsertValidatedIntent(ctx, store.Join(tx), store.ValidatedIntentInsert{
 			Intent:     intentFixture(),
 			DecisionID: "dec-1", TenantID: "default", SituationID: situationID, SituationVersion: situationVersion,
-			Now: "2026-01-01T00:00:00Z",
+			Now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		})
 	})
 	if err != nil {

@@ -32,13 +32,11 @@ func newNotificationsPruneCommand() *cobra.Command {
 }
 
 func runNotificationsPrune(cmd *cobra.Command, flags operatorFlags, retention time.Duration, dryRun bool) error {
-	db, err := flags.openOperatorDatabase(cmd.Context())
-	if err != nil {
+	var retired int64
+	if err := withOperatorDatabase(cmd, flags, func(db *storage.DB) (err error) {
+		retired, err = pruneNotifications(cmd.Context(), db, retention, dryRun)
 		return err
-	}
-	defer func() { _ = db.Close() }()
-	retired, err := pruneNotifications(cmd.Context(), db, retention, dryRun)
-	if err != nil {
+	}); err != nil {
 		return err
 	}
 	return printResult(cmd, flags.asJSON, map[string]any{"retired": retired, "dry_run": dryRun}, func() string {

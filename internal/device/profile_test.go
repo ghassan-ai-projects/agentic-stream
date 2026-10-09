@@ -22,6 +22,12 @@ func TestEffectProfilesFenceReplayAndLiveLinks(t *testing.T) {
 		{"physical replay", device.EffectProfileConfig{Profile: device.EffectProfilePhysical, GatewayLink: transport, ReplaySource: true, LiveActuation: true, OwnerAuthorized: true}, false},
 		{"physical needs explicit live flag", device.EffectProfileConfig{Profile: device.EffectProfilePhysical, GatewayLink: transport, OwnerAuthorized: true}, false},
 		{"physical needs owner", device.EffectProfileConfig{Profile: device.EffectProfilePhysical, GatewayLink: transport, LiveActuation: true}, false},
+		{"emulator with configured options", device.EffectProfileConfig{Profile: device.EffectProfileEmulator, GatewayOptions: true}, true},
+		{"emulator options in replay", device.EffectProfileConfig{Profile: device.EffectProfileEmulator, GatewayOptions: true, ReplaySource: true}, false},
+		{"physical options need explicit live flag", device.EffectProfileConfig{Profile: device.EffectProfilePhysical, GatewayOptions: true, OwnerAuthorized: true}, false},
+		{"physical options need owner", device.EffectProfileConfig{Profile: device.EffectProfilePhysical, GatewayOptions: true, LiveActuation: true}, false},
+		{"physical options authorized", device.EffectProfileConfig{Profile: device.EffectProfilePhysical, GatewayOptions: true, LiveActuation: true, OwnerAuthorized: true}, true},
+		{"simulated options", device.EffectProfileConfig{GatewayOptions: true}, false},
 		{"physical authorized", device.EffectProfileConfig{Profile: device.EffectProfilePhysical, GatewayLink: transport, LiveActuation: true, OwnerAuthorized: true}, true},
 	}
 	for _, tc := range cases {

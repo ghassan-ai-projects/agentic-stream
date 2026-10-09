@@ -6,9 +6,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"slices"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 type PrincipalDocument struct {
@@ -43,8 +44,6 @@ type PrincipalSummary struct {
 	Memberships int    `json:"memberships"`
 	Authorities int    `json:"authorities"`
 }
-
-var approvableRisks = []string{"R0", "R1", "R2"}
 
 func ParsePrincipalDocument(data []byte) (PrincipalDocument, error) {
 	var document PrincipalDocument
@@ -146,7 +145,7 @@ func (a AuthorityEntry) validate(role string) error {
 		return fmt.Errorf("role %s authority needs an entity and at least one risk", role)
 	}
 	for _, risk := range a.Risks {
-		if !slices.Contains(approvableRisks, risk) {
+		if !contractsv1.RiskClass(risk).Approvable() {
 			return fmt.Errorf("role %s authority risk %q is not approvable (R0, R1 or R2)", role, risk)
 		}
 	}

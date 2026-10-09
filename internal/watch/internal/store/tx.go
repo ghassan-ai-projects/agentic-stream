@@ -4,32 +4,28 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// OwnerCheck asserts runtime ownership of an epoch inside the transaction.
-type OwnerCheck func(context.Context, *sql.Tx, string) error
-
 // Store keeps the database, the runtime ownership check and the interlock
 // private. It never exposes a raw transaction.
 type Store struct {
 	db    *storage.DB
-	owner OwnerCheck
+	owner storage.OwnerCheck
 	epoch string
 }
 
 // Tx is an opaque unit of work. It never begins or commits a transaction.
 type Tx struct {
 	tx    *sql.Tx
-	owner OwnerCheck
+	owner storage.OwnerCheck
 	epoch string
 }
 
 // New binds the persistence ports without opening a transaction.
-func New(db *storage.DB, owner OwnerCheck, epoch string) Store {
+func New(db *storage.DB, owner storage.OwnerCheck, epoch string) Store {
 	return Store{db: db, owner: owner, epoch: epoch}
 }
 
@@ -43,8 +39,12 @@ func (s Store) WithTx(ctx context.Context, use func(*Tx) error) error {
 	})
 }
 
-// IsContended reports whether err is SQLite writer contention.
-func IsContended(err error) bool { return storage.IsSQLiteBusy(err) }
+func (s Store) RetryBusy(ctx context.Context, fn func() error) error {
+	if err := storage.RetrySQLiteBusy(ctx, fn); err != nil {
+		return fmt.Errorf("retry watch work on sqlite busy: %w", err)
+	}
+	return nil
+}
 
 // AssertOwner requires the configured runtime owner and epoch in this transaction.
 func (tx *Tx) AssertOwner(ctx context.Context) error {
@@ -60,8 +60,4 @@ func (tx *Tx) AssertInterlock(ctx context.Context) error {
 		return fmt.Errorf("assert watch interlock: %w", err)
 	}
 	return nil
-}
-
-func formatTime(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
 }

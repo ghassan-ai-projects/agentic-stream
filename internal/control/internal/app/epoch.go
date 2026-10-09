@@ -7,6 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // Epochs is the configuration of the epoch drain/kill record. A nil Epochs is
@@ -45,7 +46,7 @@ func killTx(ctx context.Context, tx *store.Tx, epoch string, now time.Time) erro
 	if err != nil {
 		return err
 	}
-	if err := tx.SupersedeEpoch(ctx, epoch, domain.TimeText(now)); err != nil {
+	if err := tx.SupersedeEpoch(ctx, epoch, now); err != nil {
 		return err
 	}
 	return releaseEpisodeCosts(ctx, tx, unstarted, now)
@@ -53,7 +54,7 @@ func killTx(ctx context.Context, tx *store.Tx, epoch string, now time.Time) erro
 
 func releaseEpisodeCosts(ctx context.Context, tx *store.Tx, episodeIDs []string, now time.Time) error {
 	for _, episodeID := range episodeIDs {
-		if err := Settle(ctx, tx, episodeID, 0, domain.TimeText(now)); err != nil {
+		if err := Settle(ctx, tx, episodeID, 0, kernel.FormatTime(now)); err != nil {
 			return fmt.Errorf("release admitted episode cost %s: %w", episodeID, err)
 		}
 	}
@@ -78,7 +79,7 @@ func recordState(ctx context.Context, tx *store.Tx, epoch, state string, now tim
 	if err := domain.CheckControllable(state); err != nil {
 		return err
 	}
-	return tx.RecordEpochState(ctx, epoch, state, domain.TimeText(now))
+	return tx.RecordEpochState(ctx, epoch, state, now)
 }
 
 // State returns "draining", "killed", or "" when the epoch is uncontrolled.

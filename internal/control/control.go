@@ -1,8 +1,6 @@
 package control
 
 import (
-	"time"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/internal/domain"
 )
 
@@ -24,11 +22,3 @@ var (
 // CostCeilings is an operator's cost configuration. A nil field leaves the
 // current value in place; the kill switch also applies to the tenant ceiling.
 type CostCeilings = domain.CostCeilings
-
-// utcNow returns the configured clock in UTC, or the physical clock.
-func utcNow(now func() time.Time) func() time.Time {
-	if now == nil {
-		return func() time.Time { return time.Now().UTC() }
-	}
-	return func() time.Time { return now().UTC() }
-}

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
@@ -152,7 +154,7 @@ func TestApprovalLedgerAndReadProjections(t *testing.T) {
 			t.Fatal(got, err)
 		}
 		got, expiry, err := tx.PendingApprovalExpiry(ctx, id)
-		if err != nil || got != request.ID || expiry != domain.FormatTime(now.Add(time.Hour)) {
+		if err != nil || got != request.ID || !expiry.Equal(now.Add(time.Hour)) {
 			t.Fatal(got, expiry, err)
 		}
 		_, nonce, err := tx.AssertionBinding(ctx, request.ID)
@@ -241,6 +243,26 @@ func TestClosedTransactionErrorsRemainDistinguishable(t *testing.T) {
 	for i, check := range checks {
 		if err := check(); !errors.Is(err, sql.ErrTxDone) {
 			t.Fatalf("check %d: %v", i, err)
+		}
+	}
+}
+
+func TestIntentEpisodeFollowsTheLedgerDecisionPredicate(t *testing.T) {
+	now := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+	db, id := openPolicyFixture(t, "R2", 1, 1, now.Add(time.Hour))
+	for _, lifecycle := range []episodeledger.LifecycleStatus{episodeledger.LifecycleAdmitted, episodeledger.LifecycleRunning, episodeledger.LifecycleConcluded, episodeledger.LifecycleClosed, episodeledger.LifecycleSuperseded, episodeledger.LifecycleExpired, episodeledger.LifecycleAbandoned} {
+		if _, err := db.ExecContext(t.Context(), "UPDATE episodes SET lifecycle_status = ?", string(lifecycle)); err != nil {
+			t.Fatal(err)
+		}
+		err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
+			row, err := Join(tx).LoadIntent(t.Context(), id)
+			if err != nil || row.EpisodeProducedDecision != lifecycle.ProducedDecision() {
+				t.Errorf("lifecycle %s: producedDecision=%v err=%v", lifecycle, row.EpisodeProducedDecision, err)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
 }

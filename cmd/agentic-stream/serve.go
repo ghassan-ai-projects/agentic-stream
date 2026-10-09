@@ -12,7 +12,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
 
@@ -43,9 +45,9 @@ func registerServeFlags(cmd *cobra.Command, flags *serveFlags) {
 	cmd.Flags().StringVar(&flags.liveSocket, "live-socket", "", "Unix socket for live normalized JSONL telemetry ingestion")
 	cmd.Flags().StringVar(&flags.traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
 	flags.registerShared(cmd)
-	cmd.Flags().StringVar(&flags.tenantID, "tenant", "default", "tenant served by this runtime process")
+	cmd.Flags().StringVar(&flags.tenantID, "tenant", contractsv1.TenantID, "tenant served by this runtime process")
 	cmd.Flags().StringVar(&flags.listenAddress, "listen", "127.0.0.1:8080", "loopback HTTP listen address")
-	cmd.Flags().DurationVar(&flags.ownerLease, "owner-lease", time.Minute, "runtime owner lease duration")
+	cmd.Flags().DurationVar(&flags.ownerLease, "owner-lease", sources.DefaultLease, "runtime owner lease duration")
 	cmd.Flags().DurationVar(&flags.pollInterval, "poll-interval", time.Second, "interval for polling a --trace source and for advancing timers, debounced cognition and approved commands while a --live-socket is quiet")
 	cmd.Flags().BoolVar(&flags.demoMode, "demo-mode", false, "admit fixture executors (demos and tests only; a production route never admits fixture)")
 }
@@ -172,7 +174,7 @@ func serveHTTP(ctx context.Context, address string, handler http.Handler) error 
 	go func() {
 		<-ctx.Done()
 
-		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		shutdownCtx, cancel := sources.DetachedContext(ctx)
 		defer cancel()
 		_ = server.Shutdown(shutdownCtx)
 	}()

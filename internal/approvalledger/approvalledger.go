@@ -21,6 +21,13 @@ type Withdrawal = domain.Withdrawal
 // caller's transaction, so the withdrawal and its notification commit together.
 type WithdrawalPublisher = store.Publisher
 
+// Approval is the identity and expiry of one approval request of an intent.
+type Approval = domain.Approval
+
+// AssertionBinding is the expiry and single-use nonce a signed approver
+// assertion is bound to.
+type AssertionBinding = domain.AssertionBinding
+
 // ErrPublisherRequired means a withdrawal would be silent.
 var ErrPublisherRequired = app.ErrPublisherRequired
 
@@ -59,4 +66,22 @@ func Withdraw(ctx context.Context, tx *sql.Tx, approvalID, now string) error {
 // transaction.
 func WithdrawSuperseded(ctx context.Context, tx *sql.Tx, situationID string, replacementVersion int, now string, publish WithdrawalPublisher) error {
 	return app.WithdrawSuperseded(ctx, store.Join(tx), situationID, replacementVersion, now, publish)
+}
+
+// PendingOfIntent reads the unresolved approval of an intent. It reports false
+// when the intent has none.
+func PendingOfIntent(ctx context.Context, tx *sql.Tx, intentID string) (Approval, bool, error) {
+	return app.PendingOfIntent(ctx, store.Join(tx), intentID)
+}
+
+// LatestApprovedOfIntent reads the most recently decided approved approval of
+// an intent; approvals decided at the same instant resolve by the larger id. It
+// reports false when the intent has none.
+func LatestApprovedOfIntent(ctx context.Context, tx *sql.Tx, intentID string) (Approval, bool, error) {
+	return app.LatestApprovedOfIntent(ctx, store.Join(tx), intentID)
+}
+
+// PendingBinding reads the expiry and single-use nonce of a pending approval.
+func PendingBinding(ctx context.Context, tx *sql.Tx, approvalID string) (AssertionBinding, error) {
+	return app.PendingBinding(ctx, store.Join(tx), approvalID)
 }

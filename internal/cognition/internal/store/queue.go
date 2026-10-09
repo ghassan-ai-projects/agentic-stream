@@ -2,22 +2,22 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func (t *Tx) LatestAdmittedTime(ctx context.Context, situationID, triggerName, excludeTriggerID string) (*time.Time, error) {
-	var evaluatedAt string
-	err := t.tx.QueryRowContext(ctx, latestAdmittedSQL, situationID, triggerName, excludeTriggerID).Scan(&evaluatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
+	evaluatedAt, found, err := storage.QueryOptional[string](ctx, t.tx, latestAdmittedSQL, situationID, triggerName, excludeTriggerID)
 	if err != nil {
 		return nil, fmt.Errorf("query latest admitted: %w", err)
 	}
-	parsed, err := time.Parse(time.RFC3339Nano, evaluatedAt)
+	if !found {
+		return nil, nil
+	}
+	parsed, err := kernel.ParseTime(evaluatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("parse evaluated_at: %w", err)
 	}

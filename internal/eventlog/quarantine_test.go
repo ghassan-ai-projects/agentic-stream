@@ -2,24 +2,21 @@ package eventlog_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestQuarantineIsBoundedAndReleasable(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "quarantine.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	log := eventlog.NewEventLog(db)
 	poison := []byte(`{"id":"evt-poison","data":{"unexpected":true}}`)
 	for i := 0; i < 12; i++ {
-		if err := log.QuarantineRaw(ctx, "tenant-1", "evt-poison", poison, "unknown_payload_field", "2026-08-12T12:00:00Z"); err != nil {
+		if err := log.QuarantineRaw(ctx, "tenant-1", "evt-poison", poison, "unknown_payload_field", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err != nil {
 			t.Fatalf("quarantine %d: %v", i, err)
 		}
 	}
@@ -45,26 +42,23 @@ func TestQuarantineIsBoundedAndReleasable(t *testing.T) {
 		t.Fatalf("overflow gaps = %d, want 1", gaps)
 	}
 
-	if err := log.QuarantineRaw(ctx, "tenant-1", "evt-releasable", []byte(`{"id":"evt-releasable"}`), "unknown_payload_field", "2026-08-12T12:00:00Z"); err != nil {
+	if err := log.QuarantineRaw(ctx, "tenant-1", "evt-releasable", []byte(`{"id":"evt-releasable"}`), "unknown_payload_field", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatalf("releasable quarantine: %v", err)
 	}
-	if err := log.ReleaseQuarantine(ctx, "tenant-1", "evt-releasable", "2026-08-12T12:01:00Z"); err != nil {
+	if err := log.ReleaseQuarantine(ctx, "tenant-1", "evt-releasable", time.Date(2026, 8, 12, 12, 1, 0, 0, time.UTC)); err != nil {
 		t.Fatalf("release: %v", err)
 	}
 }
 
 func TestQuarantineRejectsEventIDHashConflict(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "conflict.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	log := eventlog.NewEventLog(db)
-	if err := log.QuarantineRaw(ctx, "tenant-1", "evt-conflict", []byte(`{"value":1}`), "invalid", "2026-08-12T12:00:00Z"); err != nil {
+	if err := log.QuarantineRaw(ctx, "tenant-1", "evt-conflict", []byte(`{"value":1}`), "invalid", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
-	if err := log.QuarantineRaw(ctx, "tenant-1", "evt-conflict", []byte(`{"value":2}`), "invalid", "2026-08-12T12:01:00Z"); err == nil {
+	if err := log.QuarantineRaw(ctx, "tenant-1", "evt-conflict", []byte(`{"value":2}`), "invalid", time.Date(2026, 8, 12, 12, 1, 0, 0, time.UTC)); err == nil {
 		t.Fatal("expected hash conflict")
 	}
 	var status string

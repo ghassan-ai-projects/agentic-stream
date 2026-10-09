@@ -1,10 +1,10 @@
 package domain
 
 import (
-	"crypto/sha256"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -81,7 +81,7 @@ func compileIntentEntry(intent spec.Intent) (map[string]any, error) {
 
 // validateIntentSchema requires a declared risk and a closed object schema.
 func validateIntentSchema(intent spec.Intent) error {
-	if intent.Risk != "R0" && intent.Risk != "R1" && intent.Risk != "R2" && intent.Risk != "R3" && intent.Risk != "R4" {
+	if !contractsv1.RiskClass(intent.Risk).Valid() {
 		return fmt.Errorf("intent %q has invalid declared risk %q", intent.Type, intent.Risk)
 	}
 	if intent.ParameterSchema == nil {
@@ -143,16 +143,11 @@ func intentCatalogEntry(intent spec.Intent, canonicalSchema []byte) map[string]a
 		"type":                    intent.Type,
 		"risk_class":              intent.Risk,
 		"parameter_schema":        intent.ParameterSchema,
-		"parameter_schema_digest": canonicaljson.EncodeDigest(sha256Sum(canonicalSchema)),
+		"parameter_schema_digest": canonicaljson.EncodeDigest(canonicaljson.Sum(canonicalSchema)),
 		"model_writable_fields":   writable,
 	}
 	addOptionalIntentFields(entry, intent)
 	return entry
-}
-
-func sha256Sum(bytes []byte) []byte {
-	sum := sha256.Sum256(bytes)
-	return sum[:]
 }
 
 // addOptionalIntentFields adds the fields the wire form omits when unset.

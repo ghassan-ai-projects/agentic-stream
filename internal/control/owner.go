@@ -7,6 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -25,7 +26,7 @@ func (o *RuntimeOwner) session() *app.Owner {
 	if o == nil {
 		return nil
 	}
-	return &app.Owner{Store: store.New(o.DB), Instance: o.InstanceID, Lease: o.Lease, Now: utcNow(o.Now)}
+	return &app.Owner{Store: store.New(o.DB), Instance: o.InstanceID, Lease: o.Lease, Now: sources.NowFunc(o.Now)}
 }
 
 // Claim acquires or renews the singleton lease for epoch. A valid lease held

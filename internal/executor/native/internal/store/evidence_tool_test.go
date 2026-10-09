@@ -3,13 +3,15 @@ package store
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 var evidenceBase = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
@@ -18,16 +20,13 @@ var evidenceBase = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 // event for another entity that must never be returned.
 func seedEvidence(t *testing.T, count int) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "evidence.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	insert := func(eventID, entityID string, at time.Time) {
 		payload := []byte(fmt.Sprintf(`{"value":%d}`, at.Minute()))
 		if _, err := db.ExecContext(t.Context(), `INSERT INTO event_log (tenant_id, partition_id, event_id, event_type, schema_version, source, partition_key, entity_type, entity_id, event_time, ingested_at, classification, quality_json, payload_json, payload_sha256, created_at)
 			VALUES ('tenant-1', 0, ?, 'motor.temperature.observed', '1.0', 'test', ?, 'motor', ?, ?, ?, 'internal', CAST('[]' AS BLOB), ?, zeroblob(32), ?)`,
-			eventID, entityID, entityID, at.Format(time.RFC3339Nano), at.Format(time.RFC3339Nano), payload, at.Format(time.RFC3339Nano)); err != nil {
+			eventID, entityID, entityID, kernel.FormatTime(at), kernel.FormatTime(at), payload, kernel.FormatTime(at)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -115,5 +114,14 @@ func TestEvidenceToolRejectsOutOfScopeArguments(t *testing.T) {
 	}
 	if _, err := (&SQLiteEvidenceTool{}).Call(t.Context(), json.RawMessage(`{}`)); err == nil {
 		t.Error("an unconfigured tool answered a call")
+	}
+}
+
+func TestEvidenceToolStartsWithTheEvidenceReadBudget(t *testing.T) {
+	t.Parallel()
+
+	tool := NewSQLiteEvidenceTool(nil, "evidence.get", "tenant-1", "motor-1")
+	if tool.maxRows != evidence.DefaultReadMaxRows || tool.maxBytes != evidence.DefaultReadMaxBytes {
+		t.Errorf("budget = %d rows, %d bytes", tool.maxRows, tool.maxBytes)
 	}
 }

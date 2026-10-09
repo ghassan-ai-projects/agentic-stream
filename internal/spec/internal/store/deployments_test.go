@@ -3,23 +3,18 @@ package store_test
 import (
 	"bytes"
 	"context"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestSaveDeploymentStoresCanonicalDigestBytes(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	digest := "sha256:" + strings.Repeat("ab", 32)
 	compiled := &domain.CompiledSpec{
@@ -49,11 +44,7 @@ func TestSaveDeploymentStoresCanonicalDigestBytes(t *testing.T) {
 
 func TestSaveDeploymentRejectsUnprefixedDigest(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	compiled := &domain.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",

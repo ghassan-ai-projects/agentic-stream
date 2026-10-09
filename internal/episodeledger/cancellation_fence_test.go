@@ -2,21 +2,16 @@ package episodeledger_test
 
 import (
 	"database/sql"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestSupersededAttemptOnlyAcceptsCurrentCancellation(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "cancel-fence.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, t.Context(), db, "episode")
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	var identity episodeledger.Identity
@@ -26,7 +21,7 @@ func TestSupersededAttemptOnlyAcceptsCurrentCancellation(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		return episodeledger.TransitionAttempt(t.Context(), tx, identity, episodeledger.AttemptRunning, now, nil)
+		return episodeledger.TransitionAttempt(t.Context(), tx, identity, episodeledger.AttemptRunning, now, nil, nil)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +43,7 @@ func TestSupersededAttemptOnlyAcceptsCurrentCancellation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-				return episodeledger.TransitionAttempt(t.Context(), tx, tt.identity, tt.to, now, nil)
+				return episodeledger.TransitionAttempt(t.Context(), tx, tt.identity, tt.to, now, nil, nil)
 			})
 			if tt.reason == "" && err != nil {
 				t.Fatal(err)

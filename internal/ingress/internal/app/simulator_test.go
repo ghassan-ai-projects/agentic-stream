@@ -9,15 +9,12 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestSimulatorJSONLReplayConvertsControlsAndEvents(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "sim.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	path := filepath.Join(t.TempDir(), "trace.jsonl")
 	content := `{"record_type":"runtime_config","runtime_version":"0.1.0","storage_schema_version":1,"max_episodes_per_hour":100}
 {"record_type":"event","event":{"id":"evt-pond-000001","entity_type":"pond","entity_id":"site-a.pond-1","type":"pond.dissolved_oxygen","event_time":"2026-07-29T09:00:00Z","arrival_time":"2026-07-29T09:00:01.5Z","value":6.38}}
@@ -80,11 +77,8 @@ func TestSimulatorJSONLReplayConvertsControlsAndEvents(t *testing.T) {
 }
 
 func TestSimulatorJSONLReplayRejectsFlattenedAndOutOfOrderRecords(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "sim.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	path := filepath.Join(t.TempDir(), "trace.jsonl")
 	content := `{"record_type":"runtime_config","runtime_version":"0.1.0","storage_schema_version":1,"max_episodes_per_hour":100}
 {"record_type":"event","event.id":"evt-000001","event.entity_type":"pump","event.entity_id":"pump-1","event.type":"vibration","event.event_time":"2026-07-29T09:00:00Z","event.arrival_time":"2026-07-29T09:00:01Z","event.value":5.2,"event.unit":"mm/s"}
@@ -100,11 +94,8 @@ func TestSimulatorJSONLReplayRejectsFlattenedAndOutOfOrderRecords(t *testing.T) 
 }
 
 func TestSimulatorJSONLReplayRejectsUnknownRecord(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "sim.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	path := filepath.Join(t.TempDir(), "trace.jsonl")
 	if err := os.WriteFile(path, []byte(`{"record_type":"unknown"}`+"\n"), 0o600); err != nil {
 		t.Fatal(err)

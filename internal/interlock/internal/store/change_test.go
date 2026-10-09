@@ -2,22 +2,19 @@ package store_test
 
 import (
 	"database/sql"
-	"path/filepath"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestChangeMovesTheInterlockOneVersionAtATime(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "interlock.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	var initial, tripped, cleared, read domain.State
+	var err error
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		if initial, err = store.Read(t.Context(), tx); err != nil {
 			return err

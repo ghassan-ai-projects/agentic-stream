@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 )
 
@@ -98,7 +99,7 @@ func EnrichTimerFeature(feature *operators.Feature, tenantID string, partitionID
 		"timer_id":               timer.ID,
 		"timer_basis":            "processing_time",
 		"timer_due_at":           timer.DueAt,
-		"timer_fired_at":         now.Format(time.RFC3339Nano),
+		"timer_fired_at":         kernel.FormatTime(now),
 		"expected_event_horizon": timer.DueAt,
 		"clock_quality":          clockQuality,
 		"source_traceparent":     feature.Traceparent,

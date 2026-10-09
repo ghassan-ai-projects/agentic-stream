@@ -26,7 +26,7 @@ type Config struct {
 	// control.RuntimeOwner.Assert is the production check.
 	DB           *storage.DB
 	Effector     actionport.AuthorizedEffector
-	RuntimeOwner func(context.Context, *sql.Tx, string) error
+	RuntimeOwner storage.OwnerCheck
 	Epoch        string
 	// Clock, IDs, LeaseOwner and LeaseFor default to the physical clock, random
 	// identities, "actions" and one minute.

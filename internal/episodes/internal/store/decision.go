@@ -7,6 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -38,7 +39,7 @@ type DecisionInsert struct {
 	ValidationJSON   []byte
 	Traceparent      string
 	Tracestate       string
-	Now              string
+	Now              time.Time
 }
 
 // InsertDecision allocates the episode's next decision ordinal and inserts
@@ -52,7 +53,7 @@ func InsertDecision(ctx context.Context, tx *Tx, row DecisionInsert) error {
 		row.DecisionID, row.EpisodeID, row.AttemptID, row.Fence, ordinal,
 		row.SituationID, row.SituationVersion,
 		row.RawJSON, row.Digest, row.ValidationStatus, row.ValidationJSON,
-		storage.NullIfEmpty(row.Traceparent), storage.NullIfEmpty(row.Tracestate), row.Now,
+		storage.NullIfEmpty(row.Traceparent), storage.NullIfEmpty(row.Tracestate), kernel.FormatTime(row.Now),
 	); err != nil {
 		return fmt.Errorf("insert decision: %w", err)
 	}
@@ -66,7 +67,7 @@ type ValidatedIntentInsert struct {
 	TenantID         string
 	SituationID      string
 	SituationVersion int
-	Now              string
+	Now              time.Time
 }
 
 // InsertValidatedIntent inserts one validated intent (policy_status pending,
@@ -79,17 +80,10 @@ func InsertValidatedIntent(ctx context.Context, tx *Tx, row ValidatedIntentInser
 	if _, err := tx.tx.ExecContext(ctx, insertValidatedIntentSQL,
 		row.Intent.ID, row.DecisionID, row.TenantID, row.SituationID, row.SituationVersion,
 		row.Intent.Type, row.Intent.RiskClass, row.Intent.CanonicalJSON, digest,
-		row.Intent.ExpiresAt.UTC().Format(time.RFC3339Nano), row.Intent.RateLimitPerHour,
-		boolToInt(row.Intent.RequiresApproval), row.Now, row.Now,
+		kernel.FormatTime(row.Intent.ExpiresAt), row.Intent.RateLimitPerHour,
+		storage.BoolInt(row.Intent.RequiresApproval), kernel.FormatTime(row.Now), kernel.FormatTime(row.Now),
 	); err != nil {
 		return fmt.Errorf("insert intent %s: %w", row.Intent.ID, err)
 	}
 	return nil
-}
-
-func boolToInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }

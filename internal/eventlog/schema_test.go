@@ -3,11 +3,11 @@ package eventlog_test
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -51,19 +51,12 @@ func registerSchema(t *testing.T, db *storage.DB, ref string) {
 
 func TestAppendRejectsUnknownAndWrongTypedPayloadsAgainstDurableSchema(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "schema.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	registerTemperatureSchema(t, db)
 	log := eventlog.NewEventLog(db).RequireSchemaValidation()
-	env := contractsv1.Envelope{
-		ID: "evt-invalid", Type: "sensor.temperature", SchemaVersion: "1.0", TenantID: "default", Source: "test",
-		PartitionKey: "motor-17", Entity: contractsv1.EntityRef{Type: "motor", ID: "motor-17"},
-		EventTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), IngestedAt: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
-		Classification: contractsv1.ClassificationInternal, Data: map[string]any{"value": "hot", "unexpected": true},
-	}
+	env := boundaryEnvelope("evt-invalid", "default")
+	env.Data = map[string]any{"value": "hot", "unexpected": true}
 	if _, err := log.Append(ctx, "default", []contractsv1.Envelope{env}); err == nil {
 		t.Fatal("expected durable schema rejection")
 	}
@@ -78,11 +71,8 @@ func TestAppendRejectsUnknownAndWrongTypedPayloadsAgainstDurableSchema(t *testin
 
 func TestAppendRejectsThermalQualityOutsideSchemaEnum(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "thermal-schema.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	registerSchema(t, db, "zone.temp.observed/1.0")
 	log := eventlog.NewEventLog(db).RequireSchemaValidation()
 	base := contractsv1.Envelope{
@@ -114,11 +104,8 @@ func TestAppendRejectsThermalQualityOutsideSchemaEnum(t *testing.T) {
 
 func TestAppendAcceptsThermalHumidityEnvelopeAgainstDurableSchema(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "humidity-schema.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	registerSchema(t, db, "zone.humidity.observed/1.0")
 	log := eventlog.NewEventLog(db).RequireSchemaValidation()
 	env := contractsv1.Envelope{
@@ -139,26 +126,19 @@ func TestAppendAcceptsThermalHumidityEnvelopeAgainstDurableSchema(t *testing.T) 
 
 func TestReleasedQuarantineCanBeValidatedAndRedrivenOnce(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "redrive.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	registerTemperatureSchema(t, db)
 	log := eventlog.NewEventLog(db).RequireSchemaValidation()
-	env := contractsv1.Envelope{
-		ID: "evt-redrive", Type: "sensor.temperature", SchemaVersion: "1.0", TenantID: "default", Source: "test",
-		PartitionKey: "motor-17", Entity: contractsv1.EntityRef{Type: "motor", ID: "motor-17"},
-		EventTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), IngestedAt: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
-		Classification: contractsv1.ClassificationInternal, Data: map[string]any{"value": 42.0},
-	}
-	if err := log.QuarantineEnvelope(ctx, "default", env, "operator_hold", "2026-08-12T12:00:00Z"); err != nil {
+	env := boundaryEnvelope("evt-redrive", "default")
+	env.Data = map[string]any{"value": 42.0}
+	if err := log.QuarantineEnvelope(ctx, "default", env, "operator_hold", time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
-	if err := log.ReleaseQuarantine(ctx, "default", env.ID, "2026-08-12T12:01:00Z"); err != nil {
+	if err := log.ReleaseQuarantine(ctx, "default", env.ID, time.Date(2026, 8, 12, 12, 1, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
-	position, err := log.RedriveQuarantine(ctx, "default", env.ID, "2026-08-12T12:02:00Z")
+	position, err := log.RedriveQuarantine(ctx, "default", env.ID, time.Date(2026, 8, 12, 12, 2, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +152,7 @@ func TestReleasedQuarantineCanBeValidatedAndRedrivenOnce(t *testing.T) {
 	if redrivenAt == "" {
 		t.Fatal("redrive timestamp was not persisted")
 	}
-	if _, err := log.RedriveQuarantine(ctx, "default", env.ID, "2026-08-12T12:03:00Z"); err == nil {
+	if _, err := log.RedriveQuarantine(ctx, "default", env.ID, time.Date(2026, 8, 12, 12, 3, 0, 0, time.UTC)); err == nil {
 		t.Fatal("expected second redrive to fail")
 	}
 }

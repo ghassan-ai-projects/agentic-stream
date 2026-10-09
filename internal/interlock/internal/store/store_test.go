@@ -4,21 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestAssertFailsClosedAndVersionIsMonotonic(t *testing.T) {
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "interlock.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
-	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
+	db := storagetest.OpenTemp(t)
+
+	now := kernel.FormatTime(time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC))
 	if err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
 		return store.Assert(context.Background(), tx)
 	}); err != nil {

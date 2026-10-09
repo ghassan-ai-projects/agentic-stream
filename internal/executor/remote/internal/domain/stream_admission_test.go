@@ -3,6 +3,7 @@ package domain
 import (
 	"google.golang.org/protobuf/proto"
 
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -159,7 +160,8 @@ func TestStreamBindsTerminalStatusToOutcome(t *testing.T) {
 	}
 	for status, want := range map[runtimev1.TerminalStatus]string{
 		runtimev1.TerminalStatus_TERMINAL_STATUS_DECLINED:  "declined",
-		runtimev1.TerminalStatus_TERMINAL_STATUS_TIMED_OUT: "timed_out",
+		runtimev1.TerminalStatus_TERMINAL_STATUS_TIMED_OUT: req.ContextEndingOutcome(context.DeadlineExceeded, 0).Status,
+		runtimev1.TerminalStatus_TERMINAL_STATUS_CANCELLED: req.ContextEndingOutcome(context.Canceled, 0).Status, //nolint:misspell // Wire enum is frozen by the protocol.
 		runtimev1.TerminalStatus_TERMINAL_STATUS_FAILED:    "failed",
 	} {
 		stream := NewStream(req, &runtimev1.EpisodeBudget{}, 0)

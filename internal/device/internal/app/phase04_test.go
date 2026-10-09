@@ -9,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/wire"
 
@@ -267,7 +268,7 @@ func TestSerialSessionStartupBarrierRequiresFreshStateQuery(t *testing.T) {
 
 func openActionDB(t *testing.T) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(context.Background(), t.TempDir()+"/actions.db")
+	db, err := storagetest.Open(context.Background(), t.TempDir()+"/actions.db")
 	if err != nil {
 		t.Fatal(err)
 	}

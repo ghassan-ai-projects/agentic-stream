@@ -3,8 +3,10 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
@@ -15,11 +17,8 @@ type reconsiderationRequest struct {
 	Correction    json.RawMessage   `json:"correction"`
 }
 
-// dispatchPolicyEnum maps the durable policy string to the wire enum. An
-// empty/unset policy is shadow — nothing enters action governance unless the
-// spec declared active.
 func dispatchPolicyEnum(policy string) runtimev1.DispatchPolicy {
-	if policy == "active" {
+	if policy == spec.DispatchActive {
 		return runtimev1.DispatchPolicy_DISPATCH_POLICY_ACTIVE
 	}
 	return runtimev1.DispatchPolicy_DISPATCH_POLICY_SHADOW
@@ -88,10 +87,10 @@ func requiredJSON(raw json.RawMessage, name string) ([]byte, error) {
 }
 
 func episodeKind(value string) (runtimev1.EpisodeKind, error) {
-	switch strings.ToLower(value) {
-	case "standard", "diagnose", "diagnosis":
+	switch value {
+	case episodeledger.KindStandard:
 		return runtimev1.EpisodeKind_EPISODE_KIND_DIAGNOSE, nil
-	case "reconsider", "reconsideration":
+	case episodeledger.KindReconsider:
 		return runtimev1.EpisodeKind_EPISODE_KIND_RECONSIDER, nil
 	default:
 		return 0, fmt.Errorf("unsupported episode kind %q", value)
@@ -99,22 +98,20 @@ func episodeKind(value string) (runtimev1.EpisodeKind, error) {
 }
 
 func episodeLane(value string) (runtimev1.EpisodeLane, error) {
-	switch strings.ToLower(value) {
-	case "fast":
+	switch value {
+	case spec.LaneFast:
 		return runtimev1.EpisodeLane_EPISODE_LANE_FAST, nil
-	case "deep":
+	case spec.LaneDeep:
 		return runtimev1.EpisodeLane_EPISODE_LANE_DEEP, nil
-	case "batch":
-		return runtimev1.EpisodeLane_EPISODE_LANE_BATCH, nil
 	default:
 		return 0, fmt.Errorf("unsupported episode lane %q", value)
 	}
 }
 
 func riskClass(value string) (runtimev1.RiskClass, error) {
-	value = strings.ToUpper(strings.TrimSpace(value))
-	if len(value) != 2 || value[0] != 'R' || value[1] < '0' || value[1] > '4' {
+	risk := contractsv1.RiskClass(value)
+	if !risk.Valid() {
 		return 0, fmt.Errorf("unsupported risk ceiling %q", value)
 	}
-	return runtimev1.RiskClass(int32(runtimev1.RiskClass_RISK_CLASS_R0) + int32(value[1]-'0')), nil
+	return runtimev1.RiskClass(runtimev1.RiskClass_value["RISK_CLASS_"+string(risk)]), nil
 }

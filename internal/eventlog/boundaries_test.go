@@ -3,7 +3,6 @@ package eventlog_test
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -11,7 +10,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestAppendRollsBackEarlierRecordsWhenLaterAdmissionFails(t *testing.T) {
@@ -89,11 +88,8 @@ func TestReadFiltersBeforeLimitAndPreservesLogOrder(t *testing.T) {
 
 func TestReadStopsOnCallbackFailureAndReleasesConnection(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "events.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 	log := eventlog.NewEventLog(db)
 	if _, err := log.Append(t.Context(), "tenant", []contractsv1.Envelope{boundaryEnvelope("first", "tenant"), boundaryEnvelope("second", "tenant")}); err != nil {
@@ -101,7 +97,7 @@ func TestReadStopsOnCallbackFailureAndReleasesConnection(t *testing.T) {
 	}
 	stopped := errors.New("consumer stopped")
 	calls := 0
-	err = log.Read(t.Context(), eventlog.ReadRequest{TenantID: "tenant", PartitionID: -1}, func(eventlog.Record) error { calls++; return stopped })
+	err := log.Read(t.Context(), eventlog.ReadRequest{TenantID: "tenant", PartitionID: -1}, func(eventlog.Record) error { calls++; return stopped })
 	if !errors.Is(err, stopped) || calls != 1 {
 		t.Fatalf("callback failure: err=%v calls=%d", err, calls)
 	}

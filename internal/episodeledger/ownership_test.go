@@ -3,21 +3,17 @@ package episodeledger_test
 import (
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
-func TestAdmissionOwnsShadowDefaultAndRejectsConflictingLiveEpisode(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+func TestAdmissionStoresDeclaredPolicyAndRejectsConflictingLiveEpisode(t *testing.T) {
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, t.Context(), db, "original")
 	// Isolate the row contract from unrelated upstream situation/scheduler fixtures.
 	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
@@ -26,7 +22,7 @@ func TestAdmissionOwnsShadowDefaultAndRejectsConflictingLiveEpisode(t *testing.T
 	now := time.Date(2026, 10, 2, 12, 0, 0, 123456789, time.UTC)
 	admission := episodeledger.Admission{EpisodeID: "next", SchedulerItemID: "sch-next", TenantID: "tenant", SituationID: "other", SituationVersion: 1,
 		ExecutorName: "executor", ExecutorVersion: "revision", ModelPolicy: "policy", PromptVersion: "prompt", SnapshotSHA256: make([]byte, 32),
-		PromptSHA256: make([]byte, 32), ObjectiveSHA256: make([]byte, 32), AdmissionKey: make([]byte, 32), RequestJSON: []byte(`{}`), PolicyEpoch: "epoch"}
+		PromptSHA256: make([]byte, 32), ObjectiveSHA256: make([]byte, 32), AdmissionKey: make([]byte, 32), RequestJSON: []byte(`{}`), PolicyEpoch: "epoch", DispatchPolicy: "shadow"}
 	admission.AdmissionKey[0] = 1
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error { return episodeledger.Admit(t.Context(), tx, admission, now) }); err != nil {
 		t.Fatal(err)
@@ -43,25 +39,23 @@ func TestAdmissionOwnsShadowDefaultAndRejectsConflictingLiveEpisode(t *testing.T
 	admission.Kind = "reconsider"
 	admission.SituationID = "sit-test"
 	admission.AdmissionKey[0] = 2
-	err = db.WithTx(t.Context(), func(tx *sql.Tx) error { return episodeledger.Admit(t.Context(), tx, admission, now) })
+	err := db.WithTx(t.Context(), func(tx *sql.Tx) error { return episodeledger.Admit(t.Context(), tx, admission, now) })
 	if !errors.Is(err, episodeledger.ErrLiveEpisodeConflict) {
 		t.Fatalf("live episode conflict lost: %v", err)
 	}
 }
 
 func TestEpisodeMutationsRemainInsideCallerTransaction(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
+
 	seedEpisode(t, t.Context(), db, "episode")
 	// Isolate the row contract from unrelated upstream situation/scheduler fixtures.
 	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
 		t.Fatal(err)
 	}
 	rollback := errors.New("abort composed transition")
-	err = db.WithTx(t.Context(), func(tx *sql.Tx) error {
+	err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		ctx := t.Context()
 		if err := episodeledger.Rebind(ctx, tx, "episode", 2, make([]byte, 32), []byte(`{"snapshot":"fresh"}`)); err != nil {
 			return err
@@ -69,16 +63,16 @@ func TestEpisodeMutationsRemainInsideCallerTransaction(t *testing.T) {
 		if err := episodeledger.BindRequest(ctx, tx, "episode", []byte(`{"attempt":"bound"}`)); err != nil {
 			return err
 		}
-		if err := episodeledger.AbandonRebind(ctx, tx, "episode", "first", []byte(`{"reason":"invalid"}`)); err != nil {
+		if err := episodeledger.AbandonRebind(ctx, tx, "episode", now, []byte(`{"reason":"invalid"}`)); err != nil {
 			return err
 		}
 		if err := episodeledger.RetainForRetry(ctx, tx, "episode"); err != nil {
 			return err
 		}
-		if err := episodeledger.Conclude(ctx, tx, "episode", "second", []byte(`{"status":"declined"}`)); err != nil {
+		if err := episodeledger.Conclude(ctx, tx, "episode", now.Add(time.Second), []byte(`{"status":"declined"}`)); err != nil {
 			return err
 		}
-		if err := episodeledger.Abandon(ctx, tx, "episode", "final", []byte(`{"reason":"killed"}`)); err != nil {
+		if err := episodeledger.Abandon(ctx, tx, "episode", now.Add(2*time.Second), []byte(`{"reason":"killed"}`)); err != nil {
 			return err
 		}
 		var state, ended string
@@ -86,7 +80,7 @@ func TestEpisodeMutationsRemainInsideCallerTransaction(t *testing.T) {
 		if err := tx.QueryRowContext(ctx, "SELECT lifecycle_status, ended_at, stale_rebind_count, situation_version FROM episodes WHERE episode_id='episode'").Scan(&state, &ended, &rebinds, &version); err != nil {
 			return err
 		}
-		if state != "abandoned" || ended != "final" || rebinds != 2 || version != 2 {
+		if state != "abandoned" || ended != kernel.FormatTime(now.Add(2*time.Second)) || rebinds != 2 || version != 2 {
 			t.Fatalf("composed state=%s ended=%s rebinds=%d version=%d", state, ended, rebinds, version)
 		}
 		return rollback
@@ -105,11 +99,8 @@ func TestEpisodeMutationsRemainInsideCallerTransaction(t *testing.T) {
 }
 
 func TestCancellationRecoveryAbandonsRatherThanRequeues(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, t.Context(), db, "episode")
 	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
@@ -117,7 +108,7 @@ func TestCancellationRecoveryAbandonsRatherThanRequeues(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		return episodeledger.TransitionAttempt(t.Context(), tx, identity, episodeledger.AttemptCancelling, now, nil)
+		return episodeledger.TransitionAttempt(t.Context(), tx, identity, episodeledger.AttemptCancelling, now, nil, nil)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -142,11 +133,8 @@ func TestCancellationRecoveryAbandonsRatherThanRequeues(t *testing.T) {
 }
 
 func TestUnknownWorkerRejectionIsDurableAndIdempotent(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "ledger.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 	identity := episodeledger.Identity{EpisodeID: "unknown", AttemptID: "forged", Fence: 7}
 	for range 2 {
@@ -169,5 +157,21 @@ func TestUnknownWorkerRejectionIsDurableAndIdempotent(t *testing.T) {
 		return episodeledger.RecordRejection(t.Context(), tx, identity, episodeledger.RejectionReason("invented"), nil, now)
 	}); err == nil {
 		t.Fatal("unregistered rejection accepted")
+	}
+}
+
+func TestAdmissionRefusesAnUndeclaredDispatchPolicy(t *testing.T) {
+	db := storagetest.OpenTemp(t)
+
+	seedEpisode(t, t.Context(), db, "original")
+	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
+		t.Fatal(err)
+	}
+	admission := episodeledger.Admission{EpisodeID: "next", SchedulerItemID: "sch-next", Kind: episodeledger.KindStandard, TenantID: "tenant", SituationID: "other", SituationVersion: 1,
+		ExecutorName: "executor", ExecutorVersion: "revision", ModelPolicy: "policy", PromptVersion: "prompt", SnapshotSHA256: make([]byte, 32),
+		PromptSHA256: make([]byte, 32), ObjectiveSHA256: make([]byte, 32), AdmissionKey: make([]byte, 32), RequestJSON: []byte(`{}`), PolicyEpoch: "epoch"}
+	err := db.WithTx(t.Context(), func(tx *sql.Tx) error { return episodeledger.Admit(t.Context(), tx, admission, time.Now()) })
+	if err == nil {
+		t.Fatal("the ledger admitted an episode with no declared dispatch policy")
 	}
 }

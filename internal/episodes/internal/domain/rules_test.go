@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 )
 
 func requestWithBudget(wallTime string) []byte {
@@ -104,6 +105,7 @@ func TestValidateSnapshotEvidenceRejectsTamperingAndIdentityDrift(t *testing.T) 
 		{"version drift", tampered, func() []byte { return persistedDigestOf(t, tampered) }, "s1", 3, "tenant", "identity does not match"},
 		{"tenant drift", tampered, func() []byte { return persistedDigestOf(t, tampered) }, "s1", 2, "other", "identity does not match"},
 		{"invalid snapshot", []byte(`{}`), func() []byte { return nil }, "s1", 2, "tenant", "validate snapshot"},
+		{"ambiguous bytes", contractstest.AmbiguousKeyJSON(raw, "phase"), func() []byte { return persistedDigestOf(t, raw) }, "s1", 2, "tenant", "unmarshal snapshot"},
 		{"undecodable", []byte("nope"), func() []byte { return nil }, "s1", 2, "tenant", "unmarshal snapshot"},
 	}
 	for _, tc := range cases {

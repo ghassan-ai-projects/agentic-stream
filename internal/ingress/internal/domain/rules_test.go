@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 const validLine = `{"id":"evt-1","type":"motor.vibration.observed","schema_version":"1.0","source":"sim","partition_key":"m1","entity":{"type":"motor","id":"m1"},"event_time":"2026-01-01T00:00:00Z","ingested_at":"2026-01-01T00:00:01Z","classification":"internal","data":{"rms_mm_s":5.0}}`
@@ -40,7 +42,7 @@ func TestIdentitiesScopeQuarantineToTheirSource(t *testing.T) {
 		SimulatorConnectorID("", "/t.jsonl") != "simulator-jsonl:/t.jsonl" || SimulatorConnectorID("y", "/t.jsonl") != "y" {
 		t.Fatal("connector identity defaults changed")
 	}
-	if TenantOrDefault("") != DefaultTenant || TenantOrDefault("acme") != "acme" {
+	if TenantOrDefault("") != contractsv1.TenantID || TenantOrDefault("acme") != "acme" {
 		t.Fatal("tenant default changed")
 	}
 }

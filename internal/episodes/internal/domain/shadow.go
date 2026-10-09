@@ -1,6 +1,9 @@
 package domain
 
 import (
+	"strings"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
@@ -36,29 +39,48 @@ type ShadowDecision struct {
 	PolicyEpoch      string
 }
 
-// ScoreShadowDecision is the would-be policy outcome of a shadow decision: the
-// highest-risk intent's result under the live policy.
 func ScoreShadowDecision(validated *decisions.Result) (ShadowScore, string) {
-	highest := highestRiskIntent(validated)
-	switch highest.RiskClass {
-	case "R0", "R1":
-		return ShadowWouldApprove, "would_approve_" + highest.RiskClass
-	case "R2":
-		return ShadowWouldRequireApproval, "would_require_approval_r2"
+	strictest := strictestIntent(validated)
+	switch intentRoute(strictest) {
+	case contractsv1.RouteAutomatic:
+		return ShadowWouldApprove, "would_approve_" + strictest.RiskClass
+	case contractsv1.RouteApproval:
+		return ShadowWouldRequireApproval, "would_require_approval_" + strings.ToLower(strictest.RiskClass)
 	default:
-		return ShadowWouldDeny, "would_deny_" + highest.RiskClass
+		return ShadowWouldDeny, "would_deny_" + strictest.RiskClass
 	}
 }
 
-// highestRiskIntent returns the validated decision's highest-risk intent.
-func highestRiskIntent(validated *decisions.Result) decisions.Intent {
-	highest := validated.Intents[0]
+func strictestIntent(validated *decisions.Result) decisions.Intent {
+	strictest := validated.Intents[0]
 	for _, intent := range validated.Intents[1:] {
-		if riskRank(intent.RiskClass) > riskRank(highest.RiskClass) {
-			highest = intent
+		if stricterThan(intent, strictest) {
+			strictest = intent
 		}
 	}
-	return highest
+	return strictest
+}
+
+func stricterThan(candidate, incumbent decisions.Intent) bool {
+	if candidateStrictness, incumbentStrictness := routeStrictness(intentRoute(candidate)), routeStrictness(intentRoute(incumbent)); candidateStrictness != incumbentStrictness {
+		return candidateStrictness > incumbentStrictness
+	}
+	return contractsv1.RiskClass(candidate.RiskClass).Rank() > contractsv1.RiskClass(incumbent.RiskClass).Rank()
+}
+
+func intentRoute(intent decisions.Intent) contractsv1.Route {
+	return contractsv1.RouteFor(contractsv1.RiskClass(intent.RiskClass), intent.RequiresApproval)
+}
+
+func routeStrictness(route contractsv1.Route) int {
+	switch route {
+	case contractsv1.RouteAutomatic:
+		return 0
+	case contractsv1.RouteApproval:
+		return 1
+	default:
+		return 2
+	}
 }
 
 // ShadowDecisionIdentity binds a shadow row to the decision it scored.
@@ -82,20 +104,5 @@ func NewShadowDecision(identity ShadowDecisionIdentity, attempt episodeledger.Id
 		ShadowScore: score, ScoreReason: reason,
 		TenantID: identity.TenantID, SituationID: identity.SituationID, SituationVersion: identity.SituationVersion,
 		PolicyEpoch: identity.PolicyEpoch,
-	}
-}
-
-func riskRank(risk string) int {
-	switch risk {
-	case "R1":
-		return 1
-	case "R2":
-		return 2
-	case "R3":
-		return 3
-	case "R4":
-		return 4
-	default:
-		return 0
 	}
 }

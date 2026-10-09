@@ -3,58 +3,47 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
-	"strings"
 	"time"
 
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // UpsertSchedulerItem inserts a queue item or refreshes the item already
 // queued for the same trigger. IsSchedulerItemIDConflict classifies an id clash.
-func (t *Tx) UpsertSchedulerItem(ctx context.Context, item domain.SchedulerItem, tenantID string, dedupeKey []byte, now string) error {
-	if _, err := t.q.ExecContext(ctx, upsertSchedulerItemSQL, itemValues(item, tenantID, dedupeKey, now)...); err != nil {
-		return fmt.Errorf("upsert scheduler item: %w", err)
-	}
-	return nil
+func (t *Tx) UpsertSchedulerItem(ctx context.Context, item domain.SchedulerItem, tenantID string, dedupeKey []byte, now time.Time) error {
+	return t.writeSchedulerItem(ctx, upsertSchedulerItemSQL, "upsert scheduler item", item, tenantID, dedupeKey, now)
 }
 
 // InsertSchedulerItemIfAbsent inserts the item unless its id already exists,
 // keeping the existing item's identity.
-func (t *Tx) InsertSchedulerItemIfAbsent(ctx context.Context, item domain.SchedulerItem, tenantID string, dedupeKey []byte, now string) error {
-	if _, err := t.q.ExecContext(ctx, insertSchedulerItemSQL, itemValues(item, tenantID, dedupeKey, now)...); err != nil {
-		return fmt.Errorf("ignore scheduler item ID conflict: %w", err)
+func (t *Tx) InsertSchedulerItemIfAbsent(ctx context.Context, item domain.SchedulerItem, tenantID string, dedupeKey []byte, now time.Time) error {
+	return t.writeSchedulerItem(ctx, insertSchedulerItemSQL, "ignore scheduler item ID conflict", item, tenantID, dedupeKey, now)
+}
+
+func (t *Tx) writeSchedulerItem(ctx context.Context, statement, operation string, item domain.SchedulerItem, tenantID string, dedupeKey []byte, now time.Time) error {
+	if _, err := t.q.ExecContext(ctx, statement, itemValues(item, tenantID, dedupeKey, now)...); err != nil {
+		return fmt.Errorf("%s: %w", operation, err)
 	}
 	return nil
 }
 
 // IsSchedulerItemIDConflict reports whether err is a scheduler item id uniqueness failure.
 func IsSchedulerItemIDConflict(err error) bool {
-	var sqliteErr *sqlite.Error
-	if !errors.As(err, &sqliteErr) {
-		return false
-	}
-	switch sqliteErr.Code() {
-	case sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY, sqlite3.SQLITE_CONSTRAINT_UNIQUE:
-		return strings.Contains(err.Error(), "UNIQUE constraint failed: scheduler_items.scheduler_item_id")
-	default:
-		return false
-	}
+	return storage.IsUniqueViolation(err, "scheduler_items.scheduler_item_id")
 }
 
-func itemValues(item domain.SchedulerItem, tenantID string, dedupeKey []byte, now string) []any {
+func itemValues(item domain.SchedulerItem, tenantID string, dedupeKey []byte, now time.Time) []any {
 	notBefore := sql.NullString{}
 	if item.NotBefore != nil {
-		notBefore = sql.NullString{String: item.NotBefore.Format(time.RFC3339Nano), Valid: true}
+		notBefore = sql.NullString{String: kernel.FormatTime(*item.NotBefore), Valid: true}
 	}
 	return []any{
 		item.SchedulerItemID, item.TriggerID, tenantID, item.SituationID, item.SituationVersion, item.Kind,
 		item.Lane, item.Priority, item.Status, dedupeKey,
-		notBefore, item.ExpiresAt.Format(time.RFC3339Nano), now, now,
+		notBefore, kernel.FormatTime(item.ExpiresAt), kernel.FormatTime(now), kernel.FormatTime(now),
 	}
 }
 

@@ -1,5 +1,7 @@
 package domain
 
+import "slices"
+
 // LifecycleStatus is the coordination state of an episode aggregate. It does
 // not describe a Decision, intent, command, or outcome.
 type LifecycleStatus string
@@ -17,12 +19,7 @@ const (
 
 // Closed reports whether the episode lifecycle is terminal.
 func (s LifecycleStatus) Closed() bool {
-	switch s {
-	case LifecycleConcluded, LifecycleClosed, LifecycleSuperseded, LifecycleExpired, LifecycleAbandoned:
-		return true
-	default:
-		return false
-	}
+	return s.ProducedDecision() || s == LifecycleSuperseded || s == LifecycleExpired || s == LifecycleAbandoned
 }
 
 // AttemptStatus is the state of one worker dispatch.
@@ -57,10 +54,5 @@ func CanTransitionAttempt(from, to AttemptStatus) bool {
 
 // IsTerminalAttempt reports whether an attempt state is terminal.
 func IsTerminalAttempt(status AttemptStatus) bool {
-	switch status {
-	case AttemptProduced, AttemptDeclined, AttemptCancelled, AttemptFailed, AttemptTimedOut, AttemptAbandoned:
-		return true
-	default:
-		return false
-	}
+	return !status.Unfinished() && slices.Contains(attemptStatuses, status)
 }

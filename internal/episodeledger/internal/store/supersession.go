@@ -3,12 +3,15 @@ package store
 import (
 	"context"
 	"fmt"
+	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // SupersedeCoalescedEpisodes ends the live episodes bound to coalesced
 // scheduler items of the situation.
-func (t *Tx) SupersedeCoalescedEpisodes(ctx context.Context, situationID, now string) error {
-	if _, err := t.q.ExecContext(ctx, supersedeCoalescedEpisodesSQL, now, situationID); err != nil {
+func (t *Tx) SupersedeCoalescedEpisodes(ctx context.Context, situationID string, now time.Time) error {
+	if _, err := t.q.ExecContext(ctx, supersedeCoalescedEpisodesSQL, kernel.FormatTime(now), situationID); err != nil {
 		return fmt.Errorf("supersede episodes: %w", err)
 	}
 	return nil
@@ -23,14 +26,14 @@ func (t *Tx) CancelCoalescedAttempts(ctx context.Context, situationID string) er
 	return nil
 }
 
-const supersedeCoalescedEpisodesSQL = `
+var supersedeCoalescedEpisodesSQL = `
 		UPDATE episodes SET lifecycle_status = 'superseded', ended_at = ?
 		WHERE scheduler_item_id IN (
 			SELECT scheduler_item_id FROM scheduler_items
 			WHERE situation_id = ? AND status = 'coalesced'
-		) AND lifecycle_status IN ('admitted', 'running')`
+		) AND lifecycle_status IN ` + liveLifecycles
 
-const cancelCoalescedAttemptsSQL = `
+var cancelCoalescedAttemptsSQL = `
 		UPDATE episode_attempts SET status = 'cancelling'
 		WHERE episode_id IN (
 			SELECT episode_id FROM episodes
@@ -38,4 +41,4 @@ const cancelCoalescedAttemptsSQL = `
 				SELECT scheduler_item_id FROM scheduler_items
 				WHERE situation_id = ? AND status = 'coalesced'
 			) AND lifecycle_status = 'superseded'
-		) AND status IN ('dispatched', 'running')`
+		) AND status IN ` + inFlightAttempts

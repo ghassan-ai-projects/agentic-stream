@@ -93,3 +93,103 @@ const ContractVersion = domain.ContractVersion
 const ProtocolVersion = domain.ProtocolVersion
 
 const DeviceProtocolVersion = domain.DeviceProtocolVersion
+
+// DocumentString projects a decoded JSON string field without coercion; an
+// absent or non-string field is the empty string.
+func DocumentString(document map[string]any, key string) string {
+	return domain.DocumentString(document, key)
+}
+
+// DocumentInt projects a decoded JSON number field as an integer without
+// string coercion; an absent or non-number field is zero.
+func DocumentInt(document map[string]any, key string) int {
+	return domain.DocumentInt(document, key)
+}
+
+// DigestDomain names the domain separation of a document digest; the
+// canonicaljson constants are its values.
+type DigestDomain = domain.DigestDomain
+
+// ErrDocumentJSON is the cause when stored document bytes are not
+// unambiguous JSON: duplicate keys, invalid Unicode, several values or inexact
+// numbers.
+var ErrDocumentJSON = domain.ErrDocumentJSON
+
+// ErrDocumentSchema is the cause when a stored document violates its schema.
+var ErrDocumentSchema = domain.ErrDocumentSchema
+
+// ErrDocumentDigest is the cause when a stored document does not match the
+// digest that binds it.
+var ErrDocumentDigest = domain.ErrDocumentDigest
+
+// DecodeDocumentJSON strictly decodes stored bytes into a JSON object. Bytes
+// that decode differently under a lenient reader are refused with
+// ErrDocumentJSON.
+func DecodeDocumentJSON(raw []byte) (map[string]any, error) {
+	return domain.DecodeDocumentJSON(raw)
+}
+
+// DecodeDocument strictly decodes stored bytes and validates them against the
+// schema; failures wrap ErrDocumentJSON or ErrDocumentSchema.
+func DecodeDocument(raw []byte, schema domain.SchemaName) (map[string]any, error) {
+	return domain.DecodeDocument(raw, schema)
+}
+
+// VerifyDocumentDigest reports whether sum, a raw 32-byte digest, binds the
+// decoded document in the digest domain. An intent is bound without its own
+// digest field and must also carry that digest. Comparison is constant time.
+func VerifyDocumentDigest(digestDomain DigestDomain, document map[string]any, sum []byte) bool {
+	return domain.VerifyDocumentDigest(digestDomain, document, sum)
+}
+
+// VerifyStoredDocument is the one rule for a stored document that a digest
+// binds: strict decode, schema validation, then the digest check. Failures
+// wrap ErrDocumentJSON, ErrDocumentSchema or ErrDocumentDigest.
+func VerifyStoredDocument(schema domain.SchemaName, digestDomain DigestDomain, raw, sum []byte) (map[string]any, error) {
+	return domain.VerifyStoredDocument(schema, digestDomain, raw, sum)
+}
+
+// RiskClass is the closed, ordered set of intent risk classes R0 to R4.
+// Valid reports membership, Rank gives the total order (zero when invalid),
+// AtMost compares against an episode ceiling, Consequential marks the classes
+// that need healthy source evidence and Approvable marks the classes a human
+// approver may be granted.
+type RiskClass = domain.RiskClass
+
+const (
+	RiskR0 = domain.RiskR0
+	RiskR1 = domain.RiskR1
+	RiskR2 = domain.RiskR2
+	RiskR3 = domain.RiskR3
+	RiskR4 = domain.RiskR4
+)
+
+// Route is how the policy plane treats an intent: run automatically, wait for
+// a human approval, or refuse.
+type Route = domain.Route
+
+const (
+	RouteAutomatic = domain.RouteAutomatic
+	RouteApproval  = domain.RouteApproval
+	RouteDenied    = domain.RouteDenied
+)
+
+// RouteFor is the one rule for whether an intent of a risk class runs
+// automatically, needs approval or is denied, given the catalog
+// requires_approval flag. An unknown class is denied.
+func RouteFor(risk RiskClass, requiresApproval bool) Route {
+	return domain.RouteFor(risk, requiresApproval)
+}
+
+// RiskPolicyDocument is the route per risk class, ignoring the catalog flag,
+// as bound into the policy digest.
+func RiskPolicyDocument() map[string]any {
+	return domain.RiskPolicyDocument()
+}
+
+// IncompleteSourceHealthDocument is the route per consequential risk class
+// when the current source health is incomplete, as bound into the policy
+// digest.
+func IncompleteSourceHealthDocument() map[string]any {
+	return domain.IncompleteSourceHealthDocument()
+}

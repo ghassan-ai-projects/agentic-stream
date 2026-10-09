@@ -23,7 +23,7 @@ func RecoverUnfinishedAttempts(ctx context.Context, tx *store.Tx, currentEpoch s
 	if err != nil {
 		return domain.RecoveryReport{}, err
 	}
-	recovery := &attemptRecovery{tx: tx, now: store.TimeText(now.UTC()), costs: costs}
+	recovery := &attemptRecovery{tx: tx, now: now, costs: costs}
 	for _, item := range attempts {
 		if err := recovery.recover(ctx, item); err != nil {
 			return domain.RecoveryReport{}, err
@@ -36,7 +36,7 @@ func RecoverUnfinishedAttempts(ctx context.Context, tx *store.Tx, currentEpoch s
 // transaction and tallies the result.
 type attemptRecovery struct {
 	tx     *store.Tx
-	now    string
+	now    time.Time
 	costs  store.Settler
 	report domain.RecoveryReport
 }

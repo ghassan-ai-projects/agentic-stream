@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
@@ -55,7 +56,7 @@ func newDeploymentRecord(tenantID string, compiled *domain.CompiledSpec) (deploy
 	if err := record.encode(); err != nil {
 		return deploymentRecord{}, err
 	}
-	record.now = time.Now().UTC().Format(time.RFC3339Nano)
+	record.now = kernel.FormatTime(time.Now())
 	return record, nil
 }
 

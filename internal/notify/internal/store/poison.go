@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // CountPoisonAttempt records one more delivery attempt of a poison
 // notification and returns the attempts so far.
 func (tx *Tx) CountPoisonAttempt(ctx context.Context, tenantID string, cursor int64, at time.Time) (int, error) {
-	_, err := tx.q.ExecContext(ctx, `INSERT INTO notification_poison_attempts (tenant_id, cursor, attempts, last_attempt_at) VALUES (?, ?, 1, ?) ON CONFLICT(tenant_id, cursor) DO UPDATE SET attempts = attempts + 1, last_attempt_at = excluded.last_attempt_at`, tenantID, cursor, formatTime(at))
+	_, err := tx.q.ExecContext(ctx, `INSERT INTO notification_poison_attempts (tenant_id, cursor, attempts, last_attempt_at) VALUES (?, ?, 1, ?) ON CONFLICT(tenant_id, cursor) DO UPDATE SET attempts = attempts + 1, last_attempt_at = excluded.last_attempt_at`, tenantID, cursor, kernel.FormatTime(at))
 	if err != nil {
 		return 0, fmt.Errorf("record notification poison attempt: %w", err)
 	}

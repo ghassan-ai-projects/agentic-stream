@@ -1,11 +1,11 @@
 package domain
 
 import (
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
@@ -16,8 +16,7 @@ type ReconcilableCommand struct {
 }
 
 func (c ReconcilableCommand) RequireAwaitingReconciliation() error {
-	switch c.Status {
-	case CommandReconciling, CommandOutcomeUnknown, CommandManualReview:
+	if actionport.IsUnresolvedCommandStatus(c.Status) {
 		return nil
 	}
 	return fmt.Errorf("command %s is not awaiting reconciliation", c.ID)
@@ -30,7 +29,7 @@ type ReconciledProvenance struct {
 }
 
 func (p ReconciledProvenance) Validate() error {
-	if p.Version < 1 || len(p.Digest) != sha256.Size {
+	if p.Version < 1 || !canonicaljson.HasSumLength(p.Digest) {
 		return errors.New("reconciled outcome provenance is incomplete")
 	}
 	return nil
@@ -50,7 +49,7 @@ type Evidence struct {
 }
 
 func ParseReconciliation(finalStatus string, raw map[string]any) (Evidence, error) {
-	if finalStatus != CommandSucceeded && finalStatus != CommandFailed && finalStatus != CommandManualReview {
+	if finalStatus != actionport.CommandSucceeded && finalStatus != actionport.CommandFailed && finalStatus != actionport.CommandManualReview {
 		return Evidence{}, fmt.Errorf("invalid reconciliation status %q", finalStatus)
 	}
 	if len(raw) == 0 {
@@ -109,20 +108,20 @@ func requireEvidenceDigest(evidence map[string]any) error {
 
 func ReconciledVerificationStatus(finalStatus string) string {
 	switch finalStatus {
-	case CommandSucceeded:
-		return VerificationReconciled
-	case CommandFailed:
-		return VerificationRefuted
+	case actionport.CommandSucceeded:
+		return actionport.VerificationReconciled
+	case actionport.CommandFailed:
+		return actionport.VerificationRefuted
 	default:
-		return VerificationInconclusive
+		return actionport.VerificationInconclusive
 	}
 }
 
 func Verdict(finalStatus string) string {
 	switch finalStatus {
-	case CommandSucceeded:
+	case actionport.CommandSucceeded:
 		return "verified"
-	case CommandFailed:
+	case actionport.CommandFailed:
 		return "refuted"
 	default:
 		return "inconclusive"

@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
@@ -34,7 +32,7 @@ func (e *Executor) Execute(ctx context.Context, req *episodes.Request) (*episode
 		return nil, err
 	}
 	decision := fakeDecision(req, phase, triggerName, intent)
-	return producedOutcome(req, decision)
+	return fakeOutcome(req, decision)
 }
 
 // fakeExecutorInputs reads the snapshot phase and trigger name, defaulting
@@ -102,21 +100,13 @@ func fakeDecision(req *episodes.Request, phase, triggerName string, intent map[s
 	}
 }
 
-// producedOutcome canonicalizes and digests the decision as a produced
-// outcome for the request's attempt.
-func producedOutcome(req *episodes.Request, decision map[string]any) (*episodes.Outcome, error) {
-	decisionJSON, err := canonicaljson.Marshal(decision)
+// fakeOutcome seals the decision as a produced outcome and labels it as the
+// fake executor's.
+func fakeOutcome(req *episodes.Request, decision map[string]any) (*episodes.Outcome, error) {
+	outcome, err := req.ProducedOutcome(decision, 0)
 	if err != nil {
-		return nil, fmt.Errorf("marshal decision: %w", err)
+		return nil, fmt.Errorf("produce fake outcome: %w", err)
 	}
-	decisionDigest, err := canonicaljson.Digest(canonicaljson.DomainDecision, decision)
-	if err != nil {
-		return nil, fmt.Errorf("digest decision: %w", err)
-	}
-	return &episodes.Outcome{
-		Status: string(episodeledger.AttemptProduced), AttemptID: req.AttemptID, Fence: req.Fence,
-		DecisionJSON:   decisionJSON,
-		DecisionSHA256: decisionDigest,
-		Reasons:        []string{"deterministic fake outcome"},
-	}, nil
+	outcome.Reasons = []string{"deterministic fake outcome"}
+	return outcome, nil
 }

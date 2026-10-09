@@ -3,24 +3,16 @@ package store_test
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func within(t *testing.T, work func(ctx context.Context, tx *store.Tx, raw *sql.Tx)) {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "approvals.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatal(err)
-	}
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+
 	if err := db.WithTx(t.Context(), func(raw *sql.Tx) error {
 		work(t.Context(), store.Join(raw), raw)
 		return nil

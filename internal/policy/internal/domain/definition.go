@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // ApprovalAssertionSigningBytes returns the domain-separated durable assertion bytes.
@@ -21,7 +23,7 @@ func canonicalApprovalAssertion(assertion ApprovalAssertion) ([]byte, error) {
 		"tenant_id": assertion.TenantID, "situation_id": assertion.SituationID,
 		"situation_version": assertion.SituationVersion, "risk_class": assertion.RiskClass,
 		"intent_digest": assertion.IntentDigest, "decision_digest": assertion.DecisionDigest,
-		"expires_at": assertion.ExpiresAt, "nonce": assertion.Nonce,
+		"expires_at": kernel.FormatTime(assertion.ExpiresAt), "nonce": assertion.Nonce,
 		"approver_id": assertion.ApproverID, "relay_id": assertion.RelayID, "approved": assertion.Approved,
 	})
 	if err != nil {
@@ -45,11 +47,9 @@ func DigestForVersion(policyVersion string) (string, error) {
 // CanonicalDocumentForVersion returns the exact definition bound into policy evidence.
 func CanonicalDocumentForVersion(policyVersion string) map[string]any {
 	return map[string]any{
-		"policy_version": policyVersion,
-		"risk_policy": map[string]any{
-			"R0": "automatic", "R1": "automatic", "R2": "approval", "R3": "denied", "R4": "denied",
-		},
-		"incomplete_source_health": map[string]any{"R2": "denied", "R3": "denied", "R4": "denied"},
+		"policy_version":           policyVersion,
+		"risk_policy":              contractsv1.RiskPolicyDocument(),
+		"incomplete_source_health": contractsv1.IncompleteSourceHealthDocument(),
 		"target_resolution":        "closed_catalog_binding",
 	}
 }

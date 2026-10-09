@@ -7,15 +7,12 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestSourcesPreserveFileFailuresAndEmptyInput(t *testing.T) {
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "source.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	source := &Sources{DB: db, Log: eventlog.NewEventLog(db), TenantID: "tenant"}
 	path := filepath.Join(t.TempDir(), "empty.jsonl")
 	if err := os.WriteFile(path, nil, 0600); err != nil {
@@ -43,7 +40,7 @@ func TestSourcesPreserveFileFailuresAndEmptyInput(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	err = source.RunLiveSocket(ctx, filepath.Join(t.TempDir(), "source.sock"), nil)
+	err := source.RunLiveSocket(ctx, filepath.Join(t.TempDir(), "source.sock"), nil)
 	if err == nil {
 		t.Fatal("canceled source unexpectedly ran")
 	}

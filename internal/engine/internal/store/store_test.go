@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,7 +12,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 var testNow = time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
@@ -21,15 +21,8 @@ func allowOwner(context.Context, *sql.Tx, string) error { return nil }
 
 func openStore(t *testing.T) Store {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "engine.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatal(err)
-	}
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+
 	compiled, err := spec.CompileFile(t.Context(), "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +78,7 @@ func TestRecordedEventsAreIdempotentAndAdvanceTheCheckpoint(t *testing.T) {
 		return nil
 	})
 	checkpoint, err := s.LoadCheckpoint(t.Context(), 1)
-	if err != nil || checkpoint.LastPosition != 7 || checkpoint.Watermark != testNow.Format(time.RFC3339Nano) {
+	if err != nil || checkpoint.LastPosition != 7 || !checkpoint.Watermark.Equal(testNow) {
 		t.Fatalf("checkpoint = %+v err=%v", checkpoint, err)
 	}
 	if err := s.WithTx(t.Context(), func(tx *Tx) error { return tx.RecordApplied(t.Context(), 1, "evt-1", 8, testNow, testNow) }); err == nil {
@@ -183,6 +176,9 @@ func TestSituationVersionsPersistWithLineageAndGuardRuntimeState(t *testing.T) {
 	if len(restored) != 1 || restored[0].Phase != "alert" || restored[0].Version != 1 || restored[0].StateCodecVersion != 1 {
 		t.Fatalf("restored = %+v", restored)
 	}
+	if !restored[0].FirstEventTime.Equal(testNow) || !restored[0].LatestEventTime.Equal(testNow) || !restored[0].UpdatedAt.Equal(testNow) {
+		t.Fatalf("restored times = %v %v %v", restored[0].FirstEventTime, restored[0].LatestEventTime, restored[0].UpdatedAt)
+	}
 	stop := errors.New("stop")
 	if err := s.EachCurrentSituation(t.Context(), func(domain.StoredSituation) error { return stop }); !errors.Is(err, stop) {
 		t.Fatalf("restore callback error = %v", err)
@@ -276,5 +272,49 @@ func TestFailedUnitOfWorkRollsBackAndWALCheckpointSucceeds(t *testing.T) {
 	calls := 0
 	if err := s.RetryBusy(t.Context(), func() error { calls++; return nil }); err != nil || calls != 1 {
 		t.Fatalf("calls=%d err=%v", calls, err)
+	}
+}
+
+func TestCorruptStoredTimesRefuseTheReadWithTheirColumn(t *testing.T) {
+	t.Parallel()
+	for _, column := range []string{"first_event_time", "latest_event_time", "updated_at"} {
+		t.Run(column, func(t *testing.T) {
+			t.Parallel()
+			s := openStore(t)
+			lineage, err := domain.NewLineage([]string{"evt-1"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			inTx(t, s, func(tx *Tx) error {
+				version := publishedVersion(1)
+				write := domain.SituationWrite{OccurrenceID: "occ-1", FirstEventTime: testNow, StateJSON: []byte(`{}`), StateDigest: make([]byte, 32)}
+				if err := tx.RecordLineage(t.Context(), lineage, testNow); err != nil {
+					return err
+				}
+				if err := tx.UpsertSituation(t.Context(), 0, version, write, testNow); err != nil {
+					return err
+				}
+				return tx.InsertSituationVersion(t.Context(), version, lineage.ID, testNow)
+			})
+			if _, err := s.db.ExecContext(t.Context(), "UPDATE situations SET "+column+" = 'not a time'"); err != nil {
+				t.Fatal(err)
+			}
+			err = s.EachCurrentSituation(t.Context(), func(domain.StoredSituation) error { return nil })
+			if err == nil || !strings.Contains(err.Error(), "parse") {
+				t.Fatalf("corrupt %s err = %v", column, err)
+			}
+		})
+	}
+}
+
+func TestCorruptCheckpointWatermarkRefusesTheRead(t *testing.T) {
+	t.Parallel()
+	s := openStore(t)
+	inTx(t, s, func(tx *Tx) error { return tx.RecordApplied(t.Context(), 1, "evt-1", 7, testNow, testNow) })
+	if _, err := s.db.ExecContext(t.Context(), "UPDATE partition_checkpoints SET watermark = 'not a time'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.LoadCheckpoint(t.Context(), 1); err == nil || !strings.Contains(err.Error(), "parse checkpoint watermark") {
+		t.Fatalf("corrupt watermark err = %v", err)
 	}
 }

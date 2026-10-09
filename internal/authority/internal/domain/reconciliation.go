@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"time"
@@ -142,8 +141,7 @@ func NewResolution(request ResolutionRequest) (Resolution, error) {
 	if err != nil {
 		return Resolution{}, fmt.Errorf("canonicalize reconciliation evidence: %w", err)
 	}
-	sum := sha256.Sum256(evidenceJSON)
-	return Resolution{Device: request.Device, Owner: request.Owner, Outcome: request.Outcome, Evidence: evidence, EvidenceJSON: evidenceJSON, EvidenceSHA256: sum[:]}, nil
+	return Resolution{Device: request.Device, Owner: request.Owner, Outcome: request.Outcome, Evidence: evidence, EvidenceJSON: evidenceJSON, EvidenceSHA256: canonicaljson.Sum(evidenceJSON)}, nil
 }
 
 // CheckResolvable requires an open reconciliation for the resolution's boot,

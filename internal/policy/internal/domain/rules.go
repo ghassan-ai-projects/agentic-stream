@@ -1,19 +1,13 @@
 package domain
 
 import (
-	"encoding/json"
-	"time"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 // DecodeDocument decodes and schema-validates a governance contract.
 func DecodeDocument(raw []byte, schema contractsv1.SchemaName) (map[string]any, string) {
-	var document map[string]any
-	if err := json.Unmarshal(raw, &document); err != nil {
-		return nil, "schema_invalid"
-	}
-	if err := contractsv1.Validate(schema, document); err != nil {
+	document, err := contractsv1.DecodeDocument(raw, schema)
+	if err != nil {
 		return nil, "schema_invalid"
 	}
 	return document, ""
@@ -41,21 +35,10 @@ func MatchesIntentIdentity(row IntentRecord, document IntentDocument) bool {
 		document.RiskClass == row.RiskClass
 }
 
-// EpisodeConcluded permits governance only after the episode has concluded.
-func EpisodeConcluded(row IntentRecord) bool {
-	return row.EpisodeLifecycle == "concluded" || row.EpisodeLifecycle == "closed"
-}
-
 // SourceHealthIncomplete refuses consequential work from incomplete current evidence.
 func SourceHealthIncomplete(row IntentRecord) bool {
-	consequential := row.RiskClass == "R2" || row.RiskClass == "R3" || row.RiskClass == "R4"
+	consequential := contractsv1.RiskClass(row.RiskClass).Consequential()
 	return consequential && (row.CurrentCompleteness == "provisional" || row.CurrentCompleteness == "uncertain")
-}
-
-// ApprovalExpired treats invalid expiry and the deadline itself as expired.
-func ApprovalExpired(expiresAt string, now time.Time) bool {
-	expires, err := time.Parse(time.RFC3339Nano, expiresAt)
-	return err != nil || !expires.After(now)
 }
 
 // ApprovalDecision chooses lifecycle and intent status for a human decision.

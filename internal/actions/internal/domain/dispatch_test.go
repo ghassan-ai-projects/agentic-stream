@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/hex"
 	"errors"
 	"testing"
 	"time"
@@ -17,10 +18,10 @@ func TestClassifyDispatchMapsEveryLedger(t *testing.T) {
 		err    error
 		want   DispatchResult
 	}{
-		{"success", actionport.Effect{}, nil, DispatchResult{Status: OutcomeSucceeded, Reconciliation: ReconciliationObserved, CommandStatus: CommandSucceeded, OutboxStatus: OutboxDelivered, VerificationStatus: VerificationObserved, Settled: true}},
-		{"unknown", actionport.Effect{}, unknown, DispatchResult{Status: OutcomeUnknown, Reconciliation: ReconciliationRequired, CommandStatus: CommandReconciling, ErrorCode: ErrorOutcomeUnknown, OutboxStatus: OutboxFailed, VerificationStatus: VerificationAwaiting}},
-		{"failure", actionport.Effect{}, errors.New("rejected"), DispatchResult{Status: OutcomeFailed, Reconciliation: ReconciliationNotRequired, CommandStatus: CommandFailed, ErrorCode: ErrorDispatchFailed, OutboxStatus: OutboxFailed, VerificationStatus: VerificationAwaiting, Settled: true}},
-		{"pending verification", actionport.Effect{VerificationPending: true}, nil, DispatchResult{Status: OutcomeReconcileRequired, Reconciliation: ReconciliationRequired, CommandStatus: CommandManualReview, OutboxStatus: OutboxDelivered, VerificationStatus: VerificationAwaiting}},
+		{"success", actionport.Effect{}, nil, DispatchResult{Status: OutcomeSucceeded, Reconciliation: ReconciliationObserved, CommandStatus: actionport.CommandSucceeded, OutboxStatus: OutboxDelivered, VerificationStatus: actionport.VerificationObserved, Settled: true}},
+		{"unknown", actionport.Effect{}, unknown, DispatchResult{Status: OutcomeUnknown, Reconciliation: ReconciliationRequired, CommandStatus: actionport.CommandReconciling, ErrorCode: ErrorOutcomeUnknown, OutboxStatus: OutboxFailed, VerificationStatus: actionport.VerificationAwaiting}},
+		{"failure", actionport.Effect{}, errors.New("rejected"), DispatchResult{Status: OutcomeFailed, Reconciliation: ReconciliationNotRequired, CommandStatus: actionport.CommandFailed, ErrorCode: ErrorDispatchFailed, OutboxStatus: OutboxFailed, VerificationStatus: actionport.VerificationAwaiting, Settled: true}},
+		{"pending verification", actionport.Effect{VerificationPending: true}, nil, DispatchResult{Status: OutcomeReconcileRequired, Reconciliation: ReconciliationRequired, CommandStatus: actionport.CommandManualReview, OutboxStatus: OutboxDelivered, VerificationStatus: actionport.VerificationAwaiting}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -42,7 +43,7 @@ func TestNotifiedStatusHidesReconcileRequired(t *testing.T) {
 func TestLeaseStandingDistinguishesForeignExpiredAndLive(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
-	at := func(d time.Duration) string { return now.Add(d).Format(time.RFC3339Nano) }
+	at := func(d time.Duration) time.Time { return now.Add(d) }
 	cases := []struct {
 		name       string
 		lease      OutboxLease
@@ -50,7 +51,7 @@ func TestLeaseStandingDistinguishesForeignExpiredAndLive(t *testing.T) {
 	}{
 		{"live", OutboxLease{OutboxLeased, "me", at(time.Minute)}, true, true},
 		{"expired", OutboxLease{OutboxLeased, "me", at(-time.Second)}, true, false},
-		{"unparseable expiry", OutboxLease{OutboxLeased, "me", "soon"}, true, false},
+		{"zero expiry", OutboxLease{OutboxLeased, "me", time.Time{}}, true, false},
 		{"foreign owner", OutboxLease{OutboxLeased, "other", at(time.Minute)}, false, false},
 		{"not leased", OutboxLease{OutboxDelivered, "me", at(time.Minute)}, false, false},
 	}
@@ -71,11 +72,11 @@ func TestDeviceVerificationOutcomes(t *testing.T) {
 	if !actionport.IsUnknownOutcome(check.DispatchErr) || check.Effect.VerificationPending {
 		t.Fatalf("verification error must make the dispatch unknown: %+v", check)
 	}
-	check = ClassifyDeviceVerification(DeviceCheck{Effect: actionport.Effect{VerificationPending: true}, FinalStatus: CommandFailed})
+	check = ClassifyDeviceVerification(DeviceCheck{Effect: actionport.Effect{VerificationPending: true}, FinalStatus: actionport.CommandFailed})
 	if check.DispatchErr == nil || actionport.IsUnknownOutcome(check.DispatchErr) || check.Effect.VerificationPending {
 		t.Fatalf("failed verification must make the dispatch failed: %+v", check)
 	}
-	check = ClassifyDeviceVerification(DeviceCheck{Effect: actionport.Effect{VerificationPending: true}, FinalStatus: CommandSucceeded})
+	check = ClassifyDeviceVerification(DeviceCheck{Effect: actionport.Effect{VerificationPending: true}, FinalStatus: actionport.CommandSucceeded})
 	if check.DispatchErr != nil || check.Effect.VerificationPending {
 		t.Fatalf("successful verification must settle the dispatch: %+v", check)
 	}
@@ -93,10 +94,10 @@ func TestReconcilesUnknownNeedsUnknownDispatchAndCleanVerification(t *testing.T)
 		check DeviceCheck
 		want  bool
 	}{
-		{"settled unknown", DeviceCheck{DispatchErr: unknown, FinalStatus: CommandSucceeded}, true},
+		{"settled unknown", DeviceCheck{DispatchErr: unknown, FinalStatus: actionport.CommandSucceeded}, true},
 		{"no final status", DeviceCheck{DispatchErr: unknown}, false},
-		{"verification error", DeviceCheck{DispatchErr: unknown, FinalStatus: CommandSucceeded, VerifyErr: errors.New("x")}, false},
-		{"known failure", DeviceCheck{DispatchErr: errors.New("rejected"), FinalStatus: CommandFailed}, false},
+		{"verification error", DeviceCheck{DispatchErr: unknown, FinalStatus: actionport.CommandSucceeded, VerifyErr: errors.New("x")}, false},
+		{"known failure", DeviceCheck{DispatchErr: errors.New("rejected"), FinalStatus: actionport.CommandFailed}, false},
 	}
 	for _, tc := range cases {
 		if got := tc.check.ReconcilesUnknown(); got != tc.want {
@@ -115,6 +116,9 @@ func TestOutcomeDigestBindsSchemaValidDocuments(t *testing.T) {
 	digest, err := OutcomeDigest(document)
 	if err != nil || len(digest) != 32 {
 		t.Fatalf("digest = %x, %v", digest, err)
+	}
+	if got := hex.EncodeToString(digest); got != "df440c12b477548adf8979b52d74acb466da3546d2e1c67668b44e1f841cc300" {
+		t.Fatalf("outcome digest = %s: observed_at is the nine-digit UTC text, so a change here moves every stored outcome_sha256", got)
 	}
 	if _, err := OutcomeDigest(Document{"outcome_id": "out-1"}); err == nil {
 		t.Fatal("schema-invalid outcome produced a digest")

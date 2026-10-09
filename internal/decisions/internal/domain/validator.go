@@ -1,12 +1,13 @@
 package domain
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // Input is the immutable stream context against which a worker Decision is
@@ -26,7 +27,7 @@ type Input struct {
 	AllowedIntentTypes map[string]struct{}
 	RiskCeiling        string
 	IntentCatalog      *IntentCatalog
-	Kind               string
+	Reconsider         bool
 	Now                time.Time
 }
 
@@ -99,29 +100,23 @@ func validateDecisionIntents(rawIntents []any, input Input, decisionID string, d
 	return intents, nil
 }
 
-// parseDecision canonicalizes the raw Decision, validates it against the
-// shared schema, and verifies the transmitted digest.
 func parseDecision(raw []byte, transmittedDigest string) (map[string]any, error) {
-	canonical, err := canonicaljson.Marshal(json.RawMessage(raw))
+	document, err := contractsv1.DecodeDocument(raw, contractsv1.SchemaDecision)
 	if err != nil {
-		return nil, reject("schema_invalid", "canonical_json", err.Error())
+		return nil, reject("schema_invalid", decodeFailureField(err), err.Error())
 	}
-	var document map[string]any
-	if err := json.Unmarshal(canonical, &document); err != nil {
-		return nil, reject("schema_invalid", "json", err.Error())
-	}
-	if err := contractsv1.Validate(contractsv1.SchemaDecision, document); err != nil {
-		return nil, reject("schema_invalid", "decision_schema", err.Error())
-	}
-	if _, err := canonicaljson.DecodeDigest(transmittedDigest); err != nil || !canonicaljson.Verify(canonicaljson.DomainDecision, document, transmittedDigest) {
+	sum, err := canonicaljson.DecodeDigest(transmittedDigest)
+	if err != nil || !contractsv1.VerifyDocumentDigest(canonicaljson.DomainDecision, document, sum) {
 		return nil, reject("schema_invalid", "decision_digest", "decision digest is missing or does not match canonical JSON")
 	}
 	return document, nil
 }
 
-func documentString(document map[string]any, key string) string {
-	value, _ := document[key].(string)
-	return value
+func decodeFailureField(err error) string {
+	if errors.Is(err, contractsv1.ErrDocumentSchema) {
+		return "decision_schema"
+	}
+	return "canonical_json"
 }
 
 func integerField(document map[string]any, name string) (int, bool) {
@@ -130,23 +125,6 @@ func integerField(document map[string]any, name string) (int, bool) {
 		return 0, false
 	}
 	return int(value), true
-}
-
-func riskRank(risk string) int {
-	switch risk {
-	case "R0":
-		return 1
-	case "R1":
-		return 2
-	case "R2":
-		return 3
-	case "R3":
-		return 4
-	case "R4":
-		return 5
-	default:
-		return 0
-	}
 }
 
 func reject(reason, field, message string) *ValidationError {
@@ -159,11 +137,8 @@ func reject(reason, field, message string) *ValidationError {
 // closed: an unparseable trusted-side timestamp is treated as expired so the
 // decision is rejected rather than admitted on a malformed validity window.
 func isExpired(now time.Time, value string) bool {
-	parsed, err := time.Parse(time.RFC3339Nano, value)
-	if err != nil {
-		return true
-	}
-	return !now.Before(parsed)
+	validUntil, err := kernel.ParseTime(value)
+	return err != nil || !validUntil.After(now)
 }
 
 func checkTrustedInput(input Input) error {

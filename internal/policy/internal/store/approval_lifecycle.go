@@ -6,13 +6,14 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/approvalledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
 // RequestApproval delegates lifecycle creation to the approval ledger.
 func (tx *Tx) RequestApproval(ctx context.Context, p domain.ApprovalPublication) error {
 	r := p.Request
-	if err := approvalledger.Request(ctx, tx.tx, r.ID, p.IntentID, domain.FormatTime(p.Now), domain.FormatTime(p.ExpiresAt), r.JSON, r.Nonce); err != nil {
+	if err := approvalledger.Request(ctx, tx.tx, r.ID, p.IntentID, kernel.FormatTime(p.Now), kernel.FormatTime(p.ExpiresAt), r.JSON, r.Nonce); err != nil {
 		return fmt.Errorf("insert approval: %w", err)
 	}
 	return nil
@@ -20,7 +21,7 @@ func (tx *Tx) RequestApproval(ctx context.Context, p domain.ApprovalPublication)
 
 // ResolveApproval delegates a human decision to the approval ledger.
 func (tx *Tx) ResolveApproval(ctx context.Context, r domain.ApprovalResolution, status, operation string) error {
-	if err := approvalledger.Resolve(ctx, tx.tx, r.ID, status, r.Approver, r.Relay, r.Reason, domain.FormatTime(r.Now)); err != nil {
+	if err := approvalledger.Resolve(ctx, tx.tx, r.ID, status, r.Approver, r.Relay, r.Reason, kernel.FormatTime(r.Now)); err != nil {
 		return fmt.Errorf("%s: %w", operation, err)
 	}
 	return nil
@@ -28,7 +29,7 @@ func (tx *Tx) ResolveApproval(ctx context.Context, r domain.ApprovalResolution, 
 
 // WithdrawApproval delegates stale withdrawal to the approval ledger.
 func (tx *Tx) WithdrawApproval(ctx context.Context, id string, now time.Time) error {
-	if err := approvalledger.Withdraw(ctx, tx.tx, id, domain.FormatTime(now)); err != nil {
+	if err := approvalledger.Withdraw(ctx, tx.tx, id, kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("withdraw stale approval: %w", err)
 	}
 	return nil
@@ -36,7 +37,7 @@ func (tx *Tx) WithdrawApproval(ctx context.Context, id string, now time.Time) er
 
 // ExpireApproval delegates expiry to the approval ledger.
 func (tx *Tx) ExpireApproval(ctx context.Context, id string, now time.Time) error {
-	if err := approvalledger.Expire(ctx, tx.tx, id, domain.FormatTime(now)); err != nil {
+	if err := approvalledger.Expire(ctx, tx.tx, id, kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("expire approval %s: %w", id, err)
 	}
 	return nil

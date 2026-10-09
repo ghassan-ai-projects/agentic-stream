@@ -87,7 +87,4 @@ func TestConfiguredAuthorityAndLeaseDefaults(t *testing.T) {
 	if _, err := CompleteScope(scope, Authority{}, now); err == nil {
 		t.Fatal("invalid scope accepted")
 	}
-	if ReservationLease(0) != time.Minute || ReservationLease(2*time.Minute) != 2*time.Minute {
-		t.Fatal("lease defaults changed")
-	}
 }

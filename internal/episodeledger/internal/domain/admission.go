@@ -5,9 +5,8 @@ import "errors"
 // ErrLiveEpisodeConflict means a reconsideration collides with a live episode.
 var ErrLiveEpisodeConflict = errors.New("one live episode per situation constraint")
 
-// Dispatch policies.
 const (
-	DispatchShadow = "shadow"
+	KindStandard   = "standard"
 	KindReconsider = "reconsider"
 )
 
@@ -20,15 +19,11 @@ type Admission struct {
 	DispatchPolicy, PolicyEpoch                                              string
 }
 
-// EffectiveDispatchPolicy is the declared policy, or shadow when none was
-// declared: nothing enters action governance unless the spec declared active.
-func (a Admission) EffectiveDispatchPolicy() string {
-	if a.DispatchPolicy == "" {
-		return DispatchShadow
-	}
-	return a.DispatchPolicy
-}
-
 // ReportsLiveConflict reports whether a live-episode uniqueness violation
 // counts as a conflict: only a reconsideration reports one.
 func (a Admission) ReportsLiveConflict() bool { return a.Kind == KindReconsider }
+
+type DispatchableEpisode struct {
+	Admission
+	StaleRebindCount int
+}

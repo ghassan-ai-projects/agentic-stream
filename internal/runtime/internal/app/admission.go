@@ -61,11 +61,14 @@ func (a *Admitter) admitNext(ctx context.Context) (admitted, more bool, err erro
 	if a.draining(ctx) {
 		return false, false, nil
 	}
-	itemID, found, err := a.cfg.Store.NextPendingSchedulerItem(ctx, now)
-	if err != nil || !found {
+	poll, err := a.cfg.Store.PollSchedulerQueue(ctx, now)
+	if err != nil {
 		return false, false, err
 	}
-	return a.admitOrSkip(ctx, itemID, now)
+	if err := a.expireUnadmittable(ctx, poll.Expired, now); err != nil || !poll.Found {
+		return false, false, err
+	}
+	return a.admitOrSkip(ctx, poll.Next, now)
 }
 
 // draining reports whether the epoch is draining or killed. No NEW episode is

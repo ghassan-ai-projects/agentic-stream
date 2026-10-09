@@ -2,22 +2,18 @@ package eventlog_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func newTestLog(t *testing.T) (*eventlog.EventLog, func()) {
 	t.Helper()
-	dir := t.TempDir()
-	db, err := storage.Open(context.Background(), filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
+	db := storagetest.OpenTemp(t)
+
 	return eventlog.NewEventLog(db), func() { _ = db.Close() }
 }
 
@@ -26,21 +22,9 @@ func TestAppendAndRead(t *testing.T) {
 	log, cleanup := newTestLog(t)
 	defer cleanup()
 
-	env := contractsv1.Envelope{
-		ID:             "evt-1",
-		Type:           "sensor.temperature",
-		SchemaVersion:  "1.0",
-		TenantID:       "default",
-		Source:         "test",
-		PartitionKey:   "motor-17",
-		Entity:         contractsv1.EntityRef{Type: "motor", ID: "motor-17"},
-		EventTime:      time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		IngestedAt:     time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
-		Traceparent:    "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
-		Tracestate:     "vendor=value",
-		Classification: contractsv1.ClassificationInternal,
-		Data:           map[string]any{"celsius": 42.0},
-	}
+	env := boundaryEnvelope("evt-1", "default")
+	env.Traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	env.Tracestate = "vendor=value"
 
 	positions, err := log.Append(ctx, "default", []contractsv1.Envelope{env})
 	if err != nil {
@@ -83,19 +67,7 @@ func TestCurrentPositionIsTenantScoped(t *testing.T) {
 	log, cleanup := newTestLog(t)
 	defer cleanup()
 
-	base := contractsv1.Envelope{
-		ID:             "evt-default-1",
-		Type:           "sensor.temperature",
-		SchemaVersion:  "1.0",
-		TenantID:       "default",
-		Source:         "test",
-		PartitionKey:   "motor-17",
-		Entity:         contractsv1.EntityRef{Type: "motor", ID: "motor-17"},
-		EventTime:      time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		IngestedAt:     time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
-		Classification: contractsv1.ClassificationInternal,
-		Data:           map[string]any{"celsius": 42.0},
-	}
+	base := boundaryEnvelope("evt-default-1", "default")
 	position, err := log.Append(ctx, "default", []contractsv1.Envelope{base})
 	if err != nil {
 		t.Fatalf("append default event: %v", err)
@@ -145,19 +117,7 @@ func TestAppendDuplicateIgnored(t *testing.T) {
 	log, cleanup := newTestLog(t)
 	defer cleanup()
 
-	env := contractsv1.Envelope{
-		ID:             "evt-1",
-		Type:           "sensor.temperature",
-		SchemaVersion:  "1.0",
-		TenantID:       "default",
-		Source:         "test",
-		PartitionKey:   "motor-17",
-		Entity:         contractsv1.EntityRef{Type: "motor", ID: "motor-17"},
-		EventTime:      time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		IngestedAt:     time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC),
-		Classification: contractsv1.ClassificationInternal,
-		Data:           map[string]any{"celsius": 42.0},
-	}
+	env := boundaryEnvelope("evt-1", "default")
 
 	_, err := log.Append(ctx, "default", []contractsv1.Envelope{env})
 	if err != nil {

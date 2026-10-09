@@ -2,26 +2,21 @@ package app
 
 import (
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestFireRecentWatchesPaginatesPastFullPage(t *testing.T) {
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "watch-pagination.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	watch := newWatch(t, db)
 	if _, err := watch.Dispatch(ctx, actionport.Command{

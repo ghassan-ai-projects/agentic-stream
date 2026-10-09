@@ -1,10 +1,8 @@
 package domain
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -13,6 +11,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 // ReconsiderationTrigger is the trigger name for corrected action evidence.
@@ -21,8 +20,9 @@ const ReconsiderationTrigger = "prior_action_invalidated"
 // InvalidatedCommand is the latest successful action result invalidated by a correction.
 type InvalidatedCommand struct {
 	CommandID, DecisionID, OutcomeID, OutcomeStatus, ReconciliationStatus string
+	CommandStatus, IntentID, IntentType, RiskClass                        string
 	OutcomeOrdinal                                                        int
-	ProviderJSON, ObservedJSON, OutcomeSHA                                []byte
+	ProviderJSON, ObservedJSON, OutcomeSHA, DecisionJSON, CommandJSON     []byte
 }
 
 // Reconsideration binds one corrected Situation to its invalidated command.
@@ -37,29 +37,19 @@ func ShouldReconsider(current situations.Version, latePolicy string) bool {
 	return current.Completeness == "corrected" && current.PreviousVersion > 0 && latePolicy == "correct_and_reconsider"
 }
 
-// DecodeCorrection validates and digests the persisted corrected snapshot.
-func DecodeCorrection(snapshotJSON []byte) (map[string]any, string, error) {
-	var correction map[string]any
-	if err := json.Unmarshal(snapshotJSON, &correction); err != nil {
-		return nil, "", fmt.Errorf("decode correction snapshot: %w", err)
-	}
-	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, correction); err != nil {
-		return nil, "", fmt.Errorf("validate correction snapshot: %w", err)
-	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, correction)
+func DecodeCorrection(snapshotJSON []byte) (map[string]any, error) {
+	correction, err := contractsv1.DecodeDocument(snapshotJSON, contractsv1.SchemaSnapshot)
 	if err != nil {
-		return nil, "", fmt.Errorf("digest correction snapshot: %w", err)
+		return nil, fmt.Errorf("decode correction snapshot: %w", err)
 	}
-	return correction, digest, nil
+	return correction, nil
 }
 
-// MatchCorrectionDigest decodes the expected digest and checks persisted bytes.
-func MatchCorrectionDigest(digest string, persisted []byte) ([]byte, error) {
-	decoded, err := canonicaljson.DecodeDigest(digest)
-	if err != nil || !bytes.Equal(decoded, persisted) {
+func MatchCorrectionDigest(correction map[string]any, persisted []byte) ([]byte, error) {
+	if !contractsv1.VerifyDocumentDigest(canonicaljson.DomainSnapshot, correction, persisted) {
 		return nil, fmt.Errorf("correction snapshot digest mismatch")
 	}
-	return decoded, nil
+	return persisted, nil
 }
 
 // NewReconsideration binds deterministic identities to one invalidated command.
@@ -88,52 +78,51 @@ func ReconsiderationSchedulerID(key string) string {
 
 // EvidenceJSON returns canonical evidence for the reconsideration episode.
 func (r Reconsideration) EvidenceJSON(correction map[string]any) ([]byte, error) {
-	evidence := map[string]any{
-		"reason": ReconsiderationTrigger, "correction": correction,
-		"superseded_version": r.Current.PreviousVersion, "correction_version": r.Current.Version,
-		"invalidated_command_id": r.Command.CommandID, "prior_decision_id": r.Command.DecisionID,
-		"prior_outcome": r.Command.PriorOutcome(),
+	prior, err := r.Command.priorDocuments()
+	if err != nil {
+		return nil, err
 	}
-	encoded, err := canonicaljson.Marshal(evidence)
+	encoded, err := canonicaljson.Marshal(r.evidence(correction, prior))
 	if err != nil {
 		return nil, fmt.Errorf("canonicalize reconsideration evidence: %w", err)
 	}
 	return encoded, nil
 }
 
-// PriorOutcome projects the latest action result into reconsideration evidence.
-func (c InvalidatedCommand) PriorOutcome() map[string]any {
-	outcome := map[string]any{
-		"status": c.OutcomeStatus, "reconciliation_status": c.ReconciliationStatus,
-		"outcome_id": c.OutcomeID, "ordinal": c.OutcomeOrdinal,
-		"outcome_sha256": canonicaljson.EncodeDigest(c.OutcomeSHA),
+func (r Reconsideration) evidence(correction map[string]any, prior priorDocuments) map[string]any {
+	return map[string]any{
+		"reason": ReconsiderationTrigger, "correction": correction,
+		"reconsideration_id": r.ID,
+		"superseded_version": r.Current.PreviousVersion, "correction_version": r.Current.Version,
+		"invalidated_command_id": r.Command.CommandID, "invalidated_outcome_id": r.Command.OutcomeID,
+		"prior_decision_id": r.Command.DecisionID,
+		"prior_decision":    prior.decision, "prior_command": prior.command, "prior_outcome": prior.outcome,
 	}
-	if len(c.ProviderJSON) > 0 {
-		outcome["provider_result"] = json.RawMessage(c.ProviderJSON)
-	}
-	if len(c.ObservedJSON) > 0 {
-		outcome["observed_effect"] = json.RawMessage(c.ObservedJSON)
-	}
-	return outcome
 }
 
-// reconsiderationEvaluation is the admitted deep-lane evaluation that
-// explains why the Reconsideration exists.
 func ReconsiderationEvaluation(r Reconsideration, deltaJSON []byte, policyDigest string, now time.Time) Evaluation {
+	return reconsiderationOutcome(r, "admitted", "accepted action invalidated by corrected Situation version", deltaJSON, policyDigest, now)
+}
+
+func RejectedReconsiderationEvaluation(r Reconsideration, cause error, policyDigest string, now time.Time) Evaluation {
+	return reconsiderationOutcome(r, "rejected", "prior documents unavailable: "+cause.Error(), []byte("{}"), policyDigest, now)
+}
+
+func reconsiderationOutcome(r Reconsideration, outcome, reason string, deltaJSON []byte, policyDigest string, now time.Time) Evaluation {
 	return Evaluation{
 		TriggerID: r.TriggerID, TriggerName: ReconsiderationTrigger,
 		SituationID: r.Current.SituationID, SituationVersion: r.Current.Version,
-		Score: 100, Threshold: 0, Lane: "deep", Outcome: "admitted",
-		Reasons:      []string{"accepted action invalidated by corrected Situation version"},
+		Score: 100, Threshold: 0, Lane: spec.LaneDeep, Outcome: outcome,
+		Reasons:      []string{reason},
 		PolicySHA256: policyDigest, DeltaJSON: deltaJSON, EvaluatedAt: now,
 	}
 }
 
 func ReconsiderationItem(r Reconsideration, now time.Time) episodeledger.SchedulerItem {
 	return episodeledger.SchedulerItem{
-		SchedulerItemID: r.SchedulerItemID, Kind: "reconsider", TriggerID: r.TriggerID,
+		SchedulerItemID: r.SchedulerItemID, Kind: episodeledger.KindReconsider, TriggerID: r.TriggerID,
 		SituationID: r.Current.SituationID, SituationVersion: r.Current.Version,
-		Lane: "deep", Priority: 100, Status: "pending",
+		Lane: spec.LaneDeep, Priority: 100, Status: "pending",
 		ExpiresAt: ReconsiderationExpiry(now),
 	}
 }

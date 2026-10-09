@@ -9,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 func TestNewRefusesMissingSafetyDependencies(t *testing.T) {
@@ -68,7 +69,7 @@ func (o *countingObserver) ObserveLeaseExpiry() { o.expiries++ }
 func TestExpiredLeaseIsObserved(t *testing.T) {
 	t.Parallel()
 	db, commandID := openActionFixture(t)
-	claimedAt := time.Now().UTC().Add(-2 * time.Minute).Format(time.RFC3339Nano)
+	claimedAt := kernel.FormatTime(time.Now().UTC().Add(-2 * time.Minute))
 	if _, err := db.ExecContext(t.Context(), `UPDATE commands SET status = 'dispatching' WHERE command_id = ?`, commandID); err != nil {
 		t.Fatal(err)
 	}

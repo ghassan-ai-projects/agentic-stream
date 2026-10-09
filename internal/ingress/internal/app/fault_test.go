@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 const faultLine = `{"id":"evt-1","type":"motor.vibration.observed","schema_version":"1.0","tenant_id":"default","source":"sim","partition_key":"m1","entity":{"type":"motor","id":"m1"},"event_time":"2026-01-01T00:00:00Z","ingested_at":"2026-01-01T00:00:01Z","classification":"internal","data":{"rms_mm_s":5.0}}` + "\n"
@@ -15,11 +16,8 @@ const faultLine = `{"id":"evt-1","type":"motor.vibration.observed","schema_versi
 func faultFixture(t *testing.T) (*storage.DB, *eventlog.EventLog, string) {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := storage.Open(t.Context(), filepath.Join(dir, "ingress.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	path := filepath.Join(dir, "trace.jsonl")
 	if err := os.WriteFile(path, []byte(faultLine), 0o600); err != nil {
 		t.Fatal(err)

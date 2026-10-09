@@ -7,15 +7,13 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestFacadeOpensRunsTransactionsAndCollectsRows(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "facade.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(t.Context(), "CREATE TABLE t (n INTEGER)")
 		return err
@@ -56,11 +54,8 @@ func TestFacadeNullIfEmptyAndQueryAll(t *testing.T) {
 	if storage.NullIfEmpty("").Valid || !storage.NullIfEmpty("x").Valid || storage.NullIfEmpty("x").String != "x" {
 		t.Fatal("NullIfEmpty must be NULL only for the empty string")
 	}
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "queryall.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	scan := func(rows *sql.Rows) (int, error) {
 		var value int
 		return value, rows.Scan(&value)
@@ -75,5 +70,31 @@ func TestFacadeNullIfEmptyAndQueryAll(t *testing.T) {
 	}
 	if _, err := storage.QueryAll(t.Context(), db, "numbers", scan, "SELECT * FROM missing_table"); err == nil {
 		t.Fatal("a failing query was accepted")
+	}
+}
+
+func TestInClauseBindsOnePlaceholderPerValue(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		values []string
+		clause string
+	}{
+		{"one", []string{"a"}, "c IN (?)"},
+		{"many", []string{"a", "b", "c"}, "c IN (?, ?, ?)"},
+		{"none", nil, "c IN ()"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			clause, args := storage.InClause("c", tc.values)
+			if clause != tc.clause || len(args) != len(tc.values) {
+				t.Fatalf("clause = %q args = %v", clause, args)
+			}
+			for i, value := range tc.values {
+				if args[i] != value {
+					t.Fatalf("arg %d = %v, want %q", i, args[i], value)
+				}
+			}
+		})
 	}
 }

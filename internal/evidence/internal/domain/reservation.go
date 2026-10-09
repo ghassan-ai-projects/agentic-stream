@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"fmt"
 )
@@ -47,8 +48,7 @@ func (row ReservationRow) checkResultIntegrity() error {
 	if row.ResultBytes < 0 || uint64(row.ResultBytes) != uint64(len(row.ResultJSON)) || len(row.ResultHash) != sha256.Size || row.RowCount < 0 {
 		return fmt.Errorf("stored evidence result is malformed")
 	}
-	hash := sha256.Sum256(row.ResultJSON)
-	if string(hash[:]) != string(row.ResultHash) {
+	if !bytes.Equal(QueryResult{JSON: row.ResultJSON}.SHA256(), row.ResultHash) {
 		return fmt.Errorf("stored evidence result digest mismatch")
 	}
 	return nil

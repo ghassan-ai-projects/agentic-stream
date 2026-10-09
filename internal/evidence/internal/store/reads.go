@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 )
 
@@ -27,40 +28,48 @@ func (tx *Tx) ReadReservation(ctx context.Context, key domain.ReservationKey) (*
 
 // LiveEpisode loads the tenant-bound episode at reservation time.
 func (tx *Tx) LiveEpisode(ctx context.Context, call domain.Call) (domain.EpisodeState, error) {
-	var state domain.EpisodeState
-	err := tx.tx.QueryRowContext(ctx, `SELECT lifecycle_status, COALESCE(current_attempt_id, ''), current_fence FROM episodes WHERE episode_id = ? AND tenant_id = ?`, call.EpisodeID, call.TenantID).Scan(&state.Lifecycle, &state.AttemptID, &state.Fence)
-	if errors.Is(err, sql.ErrNoRows) {
-		return state, fmt.Errorf("evidence episode is unknown")
-	}
+	fence, found, err := episodeledger.ReadEpisodeFence(ctx, tx.tx, call.EpisodeID)
 	if err != nil {
-		return state, fmt.Errorf("load evidence episode: %w", err)
+		return domain.EpisodeState{}, fmt.Errorf("load evidence episode: %w", err)
 	}
-	return state, nil
+	if !found || fence.TenantID != call.TenantID {
+		return domain.EpisodeState{}, fmt.Errorf("evidence episode is unknown")
+	}
+	return episodeState(fence, call.EpisodeID, call.AttemptID, call.Fence), nil
 }
 
 // LiveAttempt loads the exact fenced attempt status.
-func (tx *Tx) LiveAttempt(ctx context.Context, call domain.Call) (string, error) {
-	var status string
-	if err := tx.tx.QueryRowContext(ctx, `SELECT status FROM episode_attempts WHERE episode_id = ? AND attempt_id = ? AND fence = ?`, call.EpisodeID, call.AttemptID, call.Fence).Scan(&status); err != nil {
-		return "", fmt.Errorf("load evidence attempt: %w", err)
-	}
-	return status, nil
+func (tx *Tx) LiveAttempt(ctx context.Context, call domain.Call) (bool, error) {
+	return tx.attemptInFlight(ctx, "load evidence attempt", call.EpisodeID, call.AttemptID, call.Fence)
 }
 
 // CompletionEpisode loads the current binding without changing the original query.
 func (tx *Tx) CompletionEpisode(ctx context.Context, key domain.ReservationKey) (domain.EpisodeState, error) {
-	var state domain.EpisodeState
-	if err := tx.tx.QueryRowContext(ctx, `SELECT lifecycle_status, COALESCE(current_attempt_id, ''), current_fence FROM episodes WHERE episode_id = ?`, key.EpisodeID).Scan(&state.Lifecycle, &state.AttemptID, &state.Fence); err != nil {
-		return state, fmt.Errorf("load completion episode: %w", err)
+	fence, _, err := episodeledger.ReadEpisodeFence(ctx, tx.tx, key.EpisodeID)
+	if err != nil {
+		return domain.EpisodeState{}, fmt.Errorf("load completion episode: %w", err)
 	}
-	return state, nil
+	return episodeState(fence, key.EpisodeID, key.AttemptID, key.Fence), nil
 }
 
 // CompletionAttempt loads the reserved fenced attempt at conclusion.
-func (tx *Tx) CompletionAttempt(ctx context.Context, key domain.ReservationKey) (string, error) {
-	var status string
-	if err := tx.tx.QueryRowContext(ctx, `SELECT status FROM episode_attempts WHERE attempt_id = ? AND episode_id = ? AND fence = ?`, key.AttemptID, key.EpisodeID, key.Fence).Scan(&status); err != nil {
-		return "", fmt.Errorf("load completion attempt: %w", err)
+func (tx *Tx) CompletionAttempt(ctx context.Context, key domain.ReservationKey) (bool, error) {
+	return tx.attemptInFlight(ctx, "load completion attempt", key.EpisodeID, key.AttemptID, key.Fence)
+}
+
+func episodeState(fence episodeledger.EpisodeFence, episodeID, attemptID string, attemptFence int64) domain.EpisodeState {
+	identity := episodeledger.Identity{EpisodeID: episodeID, AttemptID: attemptID, Fence: attemptFence}
+	return domain.EpisodeState{
+		Current: fence.CheckIdentity(identity) == nil,
+		Closed:  fence.Lifecycle.Closed(),
+		Running: fence.Lifecycle == episodeledger.LifecycleRunning,
 	}
-	return status, nil
+}
+
+func (tx *Tx) attemptInFlight(ctx context.Context, failure, episodeID, attemptID string, fence int64) (bool, error) {
+	status, err := episodeledger.ReadAttemptStatus(ctx, tx.tx, episodeledger.Identity{EpisodeID: episodeID, AttemptID: attemptID, Fence: fence})
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", failure, err)
+	}
+	return status.InFlight(), nil
 }

@@ -3,6 +3,9 @@ package domain
 import (
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 )
 
 func TestAuthorizationAcceptsCurrentApprovedRecords(t *testing.T) {
@@ -33,11 +36,20 @@ func TestAuthorizationRefusesEachStaleOrAlteredRecord(t *testing.T) {
 	}{
 		{"altered command document", func(r *AuthorizationRecords) { r.Command.Target = "motor/2" }, func(r AuthorizationRecords) error { _, err := r.VerifiedCommand(); return err }, "command ledger identity mismatch"},
 		{"command digest", func(r *AuthorizationRecords) { r.Command.SHA = make([]byte, 32) }, func(r AuthorizationRecords) error { _, err := r.VerifiedCommand(); return err }, "command ledger identity mismatch"},
+		{"ambiguous command bytes", func(r *AuthorizationRecords) {
+			r.Command.JSON = contractstest.AmbiguousKeyJSON(r.Command.JSON, "command_id")
+		}, func(r AuthorizationRecords) error { _, err := r.VerifiedCommand(); return err }, "command ledger identity mismatch"},
+		{"ambiguous intent bytes", func(r *AuthorizationRecords) {
+			r.Intent.JSON = contractstest.AmbiguousKeyJSON(r.Intent.JSON, "intent_id")
+		}, func(r AuthorizationRecords) error { return r.CheckIntent(testNow) }, "intent authorization is invalid"},
+		{"ambiguous decision bytes", func(r *AuthorizationRecords) {
+			r.Decision.JSON = contractstest.AmbiguousKeyJSON(r.Decision.JSON, "decision_id")
+		}, AuthorizationRecords.CheckDecision, "decision authorization is invalid"},
 		{"policy not approved", func(r *AuthorizationRecords) { r.Intent.PolicyStatus = "pending" }, AuthorizationRecords.RequireApprovedIntent, "command is no longer approved for its intent"},
 		{"decision not accepted", func(r *AuthorizationRecords) { r.Decision.ValidationStatus = "rejected" }, AuthorizationRecords.RequireApprovedIntent, "command is no longer approved for its intent"},
 		{"route differs from intent type", func(r *AuthorizationRecords) { r.Command.Route = "other" }, AuthorizationRecords.RequireApprovedIntent, "command is no longer approved for its intent"},
 		{"newer material Situation version", func(r *AuthorizationRecords) { r.Situation.LastMaterialVersion = 2 }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
-		{"episode still running", func(r *AuthorizationRecords) { r.Episode.Lifecycle = "running" }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
+		{"episode still running", func(r *AuthorizationRecords) { r.Episode.ProducedDecision = false }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
 		{"episode tenant", func(r *AuthorizationRecords) { r.Episode.TenantID = "other" }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
 		{"decision version", func(r *AuthorizationRecords) { r.Decision.SituationVersion = 2 }, AuthorizationRecords.RequireCurrent, "command authorization is stale"},
 		{"intent digest", func(r *AuthorizationRecords) { r.Intent.SHA = make([]byte, 32) }, func(r AuthorizationRecords) error { return r.CheckIntent(testNow) }, "intent authorization is invalid"},
@@ -63,27 +75,52 @@ func TestIntentExpiresAtItsDeadline(t *testing.T) {
 	if err := records.CheckIntent(testNow.Add(2 * time.Hour)); err == nil || err.Error() != "intent authorization is expired" {
 		t.Fatalf("expired intent err = %v", err)
 	}
-	records.Intent.ExpiresAt = "never"
+	records.Intent.ExpiresAt = time.Time{}
 	if err := records.CheckIntent(testNow); err == nil || err.Error() != "intent authorization is expired" {
-		t.Fatalf("unparseable expiry err = %v", err)
+		t.Fatalf("zero expiry err = %v", err)
 	}
 }
 
-func TestOnlyR2IntentsNeedAnUnexpiredApproval(t *testing.T) {
+func TestApprovalIsCheckedExactlyWhereThePolicyRoutesToApproval(t *testing.T) {
 	t.Parallel()
-	r1 := authorizationRecords(t, "R1")
-	r1.Approval = ApprovalRow{}
-	if err := r1.CheckApproval(testNow); err != nil {
-		t.Fatalf("R1 needs no approval: %v", err)
+	want := map[contractsv1.Route]string{
+		contractsv1.RouteAutomatic: "",
+		contractsv1.RouteApproval:  "approved intent has no approved approval record",
+		contractsv1.RouteDenied:    "risk policy denies the intent",
 	}
-	r2 := authorizationRecords(t, "R2")
-	r2.Approval = ApprovalRow{}
-	if err := r2.CheckApproval(testNow); err == nil || err.Error() != "approved intent has no approved approval record" {
-		t.Fatalf("missing approval err = %v", err)
+	for _, risk := range contractstest.RiskClasses() {
+		for _, flagged := range []bool{false, true} {
+			records := authorizationRecords(t, string(risk))
+			records.Intent.RequiresApproval = flagged
+			records.Approval = ApprovalRow{}
+			err := records.CheckApproval(testNow)
+			if message := want[contractsv1.RouteFor(contractsv1.RiskClass(risk), flagged)]; message == "" && err != nil || message != "" && (err == nil || err.Error() != message) {
+				t.Fatalf("%s requires_approval=%t: err = %v, want %q", risk, flagged, err, message)
+			}
+		}
 	}
-	r2 = authorizationRecords(t, "R2")
-	if err := r2.CheckApproval(testNow.Add(2 * time.Hour)); err == nil || err.Error() != "approval is expired" {
-		t.Fatalf("expired approval err = %v", err)
+}
+
+func TestCheckApprovalRefusesAnUnrecognisedRiskClass(t *testing.T) {
+	t.Parallel()
+	records := authorizationRecords(t, "R1")
+	records.Intent.Risk = "R9"
+	if err := records.CheckApproval(testNow); err == nil {
+		t.Fatal("an unrecognized risk class passed the approval check")
+	}
+}
+
+func TestApprovalRequiredIntentsNeedAnUnexpiredApproval(t *testing.T) {
+	t.Parallel()
+	for _, risk := range []string{"R1", "R2"} {
+		records := authorizationRecords(t, risk)
+		records.Intent.RequiresApproval = true
+		if err := records.CheckApproval(testNow); err != nil {
+			t.Fatalf("%s current approval: %v", risk, err)
+		}
+		if err := records.CheckApproval(testNow.Add(2 * time.Hour)); err == nil || err.Error() != "approval is expired" {
+			t.Fatalf("%s expired approval err = %v", risk, err)
+		}
 	}
 }
 
@@ -94,17 +131,6 @@ func TestPolicyDigestMustMatchLatestApproval(t *testing.T) {
 	}
 	if err := CheckPolicyDigest("sha256:a", "sha256:b"); err == nil || err.Error() != "command policy digest is stale" {
 		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestDocumentAccessorsTolerateMissingFields(t *testing.T) {
-	t.Parallel()
-	d := Document{"s": "x", "i": float64(3), "o": map[string]any{"k": 1}, "bad": "sha256:zz"}
-	if d.String("s") != "x" || d.String("missing") != "" || d.Int("i") != 3 || d.Int64("i") != 3 || d.Int("s") != 0 {
-		t.Fatal("scalar accessors changed")
-	}
-	if d.Object("o")["k"] != 1 || d.Object("s") != nil || d.Digest("bad") != nil || d.Digest("missing") != nil {
-		t.Fatal("object and digest accessors changed")
 	}
 }
 

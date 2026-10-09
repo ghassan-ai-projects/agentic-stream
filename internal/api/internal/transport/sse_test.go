@@ -15,28 +15,18 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestSSEStreamsDurableEventsAndResumesFromLastEventID(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-	db, err := storage.Open(ctx, t.TempDir()+"/sse.db")
+	db, err := storagetest.Open(ctx, t.TempDir()+"/sse.db")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	for i, id := range []string{"evt-1", "evt-2"} {
-		event := sseTestEvent(id, now.Add(time.Duration(i)*time.Second))
-		if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-			_, err := notify.Append(ctx, tx, event, now)
-			if err != nil {
-				return fmt.Errorf("append event: %w", err)
-			}
-			return nil
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
+	appendSSEEvents(t, db, now, "evt-1", "evt-2")
 	handler := transport.NewSSEHandler(transport.SSEConfig{DB: db, TenantID: "tenant", PollInterval: time.Millisecond, IdleInterval: time.Hour, Now: func() time.Time { return now }})
 	body := serveUntilCanceled(t, handler, "/v1/events", "")
 	if !strings.Contains(body, "id: 1\nevent: situation.version.published") || !strings.Contains(body, `"id":"evt-1"`) {
@@ -52,21 +42,12 @@ func TestSSEStreamsDurableEventsAndResumesFromLastEventID(t *testing.T) {
 func TestSSEExpiredCursorForcesAuditedResnapshot(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-	db, err := storage.Open(ctx, t.TempDir()+"/sse-expired.db")
+	db, err := storagetest.Open(ctx, t.TempDir()+"/sse-expired.db")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	event := sseTestEvent("evt-1", now)
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		_, err := notify.Append(ctx, tx, event, now)
-		if err != nil {
-			return fmt.Errorf("append event: %w", err)
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
+	appendSSEEvents(t, db, now, "evt-1")
 	prunedAt := now.Add(8*24*time.Hour + time.Second)
 	outbox, err := notify.New(db)
 	if err != nil {
@@ -92,23 +73,12 @@ func TestSSEExpiredCursorForcesAuditedResnapshot(t *testing.T) {
 func TestSSEDisconnectsSlowSubscriber(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-	db, err := storage.Open(ctx, t.TempDir()+"/sse-slow.db")
+	db, err := storagetest.Open(ctx, t.TempDir()+"/sse-slow.db")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	for i, id := range []string{"evt-1", "evt-2"} {
-		event := sseTestEvent(id, now.Add(time.Duration(i)*time.Second))
-		if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-			_, err := notify.Append(ctx, tx, event, now)
-			if err != nil {
-				return fmt.Errorf("append event: %w", err)
-			}
-			return nil
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
+	appendSSEEvents(t, db, now, "evt-1", "evt-2")
 	handler := transport.NewSSEHandler(transport.SSEConfig{DB: db, TenantID: "tenant", MaxLag: 1, Now: func() time.Time { return now }})
 	request := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/events", nil)
 	response := httptest.NewRecorder()
@@ -167,6 +137,23 @@ func (w *cancelOnFlushWriter) Flush() {
 	}
 }
 
+func appendSSEEvents(t *testing.T, db *storage.DB, now time.Time, ids ...string) {
+	t.Helper()
+	ctx := t.Context()
+	for i, id := range ids {
+		event := sseTestEvent(id, now.Add(time.Duration(i)*time.Second))
+		if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+			_, err := notify.Append(ctx, tx, event, now)
+			if err != nil {
+				return fmt.Errorf("append event: %w", err)
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func sseTestEvent(id string, at time.Time) contractsv1.CloudEvent {
 	event := contractsv1.CloudEvent{SpecVersion: "1.0", ID: id, Source: "//agentic-stream/tenant/tenant", Type: "situation.version.published", Subject: "situation/s1", Time: at, DataContentType: "application/json", DataSchema: "urn:situation-runtime:schema:snapshot:v1", Data: map[string]any{"version": id}, TenantID: "tenant", PartitionKey: "s1", IngestedTime: at, Classification: contractsv1.ClassificationInternal}
 	digest, _ := event.ComputeEnvelopeDigest()
@@ -177,7 +164,7 @@ func sseTestEvent(id string, at time.Time) contractsv1.CloudEvent {
 func TestSSEAdmissionPreservesProblemPrecedence(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	db, err := storage.Open(ctx, t.TempDir()+"/admission.db")
+	db, err := storagetest.Open(ctx, t.TempDir()+"/admission.db")
 	if err != nil {
 		t.Fatal(err)
 	}

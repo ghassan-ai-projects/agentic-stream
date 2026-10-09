@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/internal/domain"
@@ -21,6 +22,19 @@ func IsSQLiteBusy(err error) bool {
 	}
 	code := sqliteErr.Code() & 0xff
 	return code == sqlite3.SQLITE_BUSY || code == sqlite3.SQLITE_LOCKED
+}
+
+func IsUniqueViolation(err error, column string) bool {
+	var sqliteErr *sqlite.Error
+	if !errors.As(err, &sqliteErr) {
+		return false
+	}
+	switch sqliteErr.Code() {
+	case sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY, sqlite3.SQLITE_CONSTRAINT_UNIQUE:
+		return strings.Contains(err.Error(), "UNIQUE constraint failed: "+column)
+	default:
+		return false
+	}
 }
 
 // RetrySQLiteBusy retries fn after transient SQLite writer contention. The

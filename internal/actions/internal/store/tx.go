@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
@@ -12,26 +11,23 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// OwnerCheck asserts runtime ownership of an epoch inside the transaction.
-type OwnerCheck func(context.Context, *sql.Tx, string) error
-
 // Store keeps the database, the runtime ownership check and the interlock
 // private. It never exposes a raw transaction.
 type Store struct {
 	db    *storage.DB
-	owner OwnerCheck
+	owner storage.OwnerCheck
 	epoch string
 }
 
 // Tx is an opaque unit of work. It never begins or commits a transaction.
 type Tx struct {
 	tx    *sql.Tx
-	owner OwnerCheck
+	owner storage.OwnerCheck
 	epoch string
 }
 
 // New binds the persistence ports without opening a transaction.
-func New(db *storage.DB, owner OwnerCheck, epoch string) Store {
+func New(db *storage.DB, owner storage.OwnerCheck, epoch string) Store {
 	return Store{db: db, owner: owner, epoch: epoch}
 }
 
@@ -74,8 +70,4 @@ func (tx *Tx) AssertInterlock(ctx context.Context) error {
 		return fmt.Errorf("interlock rejected command: %w", err)
 	}
 	return nil
-}
-
-func formatTime(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
 }

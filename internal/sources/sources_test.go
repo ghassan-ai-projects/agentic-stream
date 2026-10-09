@@ -1,6 +1,7 @@
 package sources_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -46,5 +47,60 @@ func TestOrPhysicalAndOrRandomKeepTheCallersChoice(t *testing.T) {
 	}
 	if first, second := sources.OrRandom(nil).New("id_"), sources.OrRandom(nil).New("id_"); first == second {
 		t.Fatalf("the default generator repeated %q", first)
+	}
+}
+
+func TestNowUTCReadsTheConfiguredClockInUTCOrThePhysicalClock(t *testing.T) {
+	t.Parallel()
+	zone := time.FixedZone("plus3", 3*60*60)
+	local := time.Date(2026, 8, 12, 15, 0, 0, 0, zone)
+	configured := func() time.Time { return local }
+	if got := sources.NowUTC(configured); !got.Equal(local) || got.Location() != time.UTC {
+		t.Fatalf("NowUTC(configured) = %v, want %v in UTC", got, local)
+	}
+	if got := sources.NowFunc(configured)(); !got.Equal(local) || got.Location() != time.UTC {
+		t.Fatalf("NowFunc(configured)() = %v, want %v in UTC", got, local)
+	}
+	before := time.Now()
+	for name, got := range map[string]time.Time{"NowUTC": sources.NowUTC(nil), "NowFunc": sources.NowFunc(nil)()} {
+		if got.Before(before) || time.Since(got) > time.Minute || got.Location() != time.UTC {
+			t.Fatalf("%s(nil) = %v, want the current time in UTC", name, got)
+		}
+	}
+}
+
+func TestOrLeaseDefaultsAnUnspecifiedLease(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct{ in, want time.Duration }{
+		"zero":     {0, sources.DefaultLease},
+		"negative": {-time.Second, sources.DefaultLease},
+		"chosen":   {2 * time.Minute, 2 * time.Minute},
+	} {
+		if got := sources.OrLease(tc.in); got != tc.want {
+			t.Errorf("%s: OrLease(%v) = %v, want %v", name, tc.in, got, tc.want)
+		}
+	}
+}
+
+type detachedKey struct{}
+
+func TestDetachedContextKeepsValuesDropsCancellationAndIsBounded(t *testing.T) {
+	t.Parallel()
+	parent, cancelParent := context.WithCancel(context.WithValue(t.Context(), detachedKey{}, "trace"))
+	cancelParent()
+	detached, cancel := sources.DetachedContext(parent)
+	defer cancel()
+	if detached.Err() != nil {
+		t.Fatalf("detached context inherited cancellation: %v", detached.Err())
+	}
+	if detached.Value(detachedKey{}) != "trace" {
+		t.Fatal("detached context lost the caller's values")
+	}
+	deadline, ok := detached.Deadline()
+	if !ok || time.Until(deadline) > sources.PersistGrace || time.Until(deadline) <= 0 {
+		t.Fatalf("detached context is not bounded by PersistGrace: deadline=%v ok=%v", deadline, ok)
+	}
+	if sources.PersistGrace != 5*time.Second {
+		t.Fatalf("PersistGrace = %v, want 5s", sources.PersistGrace)
 	}
 }

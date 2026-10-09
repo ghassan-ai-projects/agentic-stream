@@ -6,6 +6,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 func validateIntent(document map[string]any, input Input, decisionID string, decisionDocument map[string]any, seenIDs map[string]struct{}) (*Intent, error) {
@@ -72,10 +73,10 @@ func checkIntentAuthority(document map[string]any, input Input) (*intentEntry, e
 }
 
 func checkIntentPermission(document map[string]any, input Input, intentType string) error {
-	isCompensation := documentString(document, "compensates") != ""
+	isCompensation := contractsv1.DocumentString(document, "compensates") != ""
 	// The allowlist bypass is kind-scoped: only a RECONSIDER episode may carry
 	// compensating intents. A DIAGNOSE worker forging compensates is rejected.
-	if isCompensation && input.Kind != "reconsider" {
+	if isCompensation && !input.Reconsider {
 		return reject("intent_type_not_allowed", "intent.compensates",
 			"compensating intents require a reconsider episode")
 	}
@@ -93,7 +94,7 @@ func checkIntentRisk(document map[string]any, input Input, entry *intentEntry, i
 		return reject("risk_label_mismatch", "intent.risk_class",
 			fmt.Sprintf("proposed risk %s does not equal the declared %s for %s", risk, entry.RiskClass, intentType))
 	}
-	if riskRank(risk) > riskRank(input.RiskCeiling) {
+	if !contractsv1.RiskClass(risk).AtMost(contractsv1.RiskClass(input.RiskCeiling)) {
 		return reject("risk_ceiling_exceeded", "intent.risk_class", "intent risk exceeds the episode ceiling")
 	}
 	return nil
@@ -102,14 +103,14 @@ func checkIntentRisk(document map[string]any, input Input, entry *intentEntry, i
 // buildIntent checks the intent expiry and builds the validated Intent.
 func buildIntent(document map[string]any, input Input, entry *intentEntry) (*Intent, error) {
 	expiresAtString, _ := document["expires_at"].(string)
-	expiresAt, err := time.Parse(time.RFC3339Nano, expiresAtString)
+	expiresAt, err := kernel.ParseTime(expiresAtString)
 	if err != nil {
 		return nil, reject("schema_invalid", "intent.expires_at", err.Error())
 	}
 	if !expiresAt.After(input.Now) {
 		return nil, reject("expired", "intent.expires_at", "intent has expired")
 	}
-	return materializeIntent(document, entry, expiresAt)
+	return materializeIntent(document, entry, expiresAt.UTC())
 }
 
 func materializeIntent(document map[string]any, entry *intentEntry, expiresAt time.Time) (*Intent, error) {

@@ -3,12 +3,14 @@ package store_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/migrations"
 
@@ -20,6 +22,9 @@ func TestOpenCreatesDatabaseAndRunsMigrations(t *testing.T) {
 	dbPath := filepath.Join(dir, "test.db")
 
 	ctx := context.Background()
+	if _, err := os.Lstat(dbPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("database exists before Open: %v", err)
+	}
 	db, err := storage.Open(ctx, dbPath)
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
@@ -127,7 +132,7 @@ func TestLifecycleMigrationMapsEveryFormerEpisodeStatus(t *testing.T) {
 		}
 		if _, err := raw.ExecContext(ctx,
 			"INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
-			migration.Version, migration.Name, time.Now().UTC().Format(time.RFC3339Nano),
+			migration.Version, migration.Name, kernel.FormatTime(time.Now().UTC()),
 		); err != nil {
 			t.Fatalf("record migration %d: %v", migration.Version, err)
 		}

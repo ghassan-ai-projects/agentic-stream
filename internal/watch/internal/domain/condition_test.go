@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 var testNow = time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
 
 func installCommand(mutate func(map[string]any)) actionport.Command {
 	payload := map[string]any{"expression": "features.temperature > 90", "target": "motor-1", "situation_id": "sit-1",
-		"situation_version": 1, "max_fires": 3, "expires_at": testNow.Add(time.Hour).Format(time.RFC3339Nano)}
+		"situation_version": 1, "max_fires": 3, "expires_at": kernel.FormatTime(testNow.Add(time.Hour))}
 	if mutate != nil {
 		mutate(payload)
 	}
@@ -27,7 +28,7 @@ func TestConditionFromCommandAcceptsAValidPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Condition{TenantID: "tenant", SituationID: "sit-1", Expression: "features.temperature > 90", Target: "motor-1",
-		ExpiresAt: testNow.Add(time.Hour).Format(time.RFC3339Nano), SituationVersion: 1, MaxFires: 3}
+		ExpiresAt: testNow.Add(time.Hour), SituationVersion: 1, MaxFires: 3}
 	if condition != want {
 		t.Fatalf("condition = %+v, want %+v", condition, want)
 	}
@@ -51,7 +52,7 @@ func TestConditionFromCommandRefusesInvalidPayloadsInPrecedenceOrder(t *testing.
 		{"identity precedes expression", func(p map[string]any) { p["max_fires"] = 0; p["expression"] = "features.x;" }, "watch condition payload is invalid"},
 		{"expression precedes expiry", func(p map[string]any) { p["expression"] = "features.x;"; p["expires_at"] = "invalid" }, "forbidden syntax"},
 		{"unparseable expiry", func(p map[string]any) { p["expires_at"] = "soon" }, "watch condition expiry is invalid"},
-		{"expiry not in the future", func(p map[string]any) { p["expires_at"] = testNow.Format(time.RFC3339Nano) }, "watch condition expiry is invalid"},
+		{"expiry not in the future", func(p map[string]any) { p["expires_at"] = kernel.FormatTime(testNow) }, "watch condition expiry is invalid"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runartifact"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestVerifyRejectsInvalidChecksumIndex(t *testing.T) {
@@ -89,11 +89,8 @@ func TestVerifyRejectsSyntaxEvenWithMatchingChecksum(t *testing.T) {
 
 func newVerificationArtifact(t *testing.T) string {
 	t.Helper()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "run.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	dir := filepath.Join(t.TempDir(), "artifact")
 	if _, err := runartifact.Export(t.Context(), runartifact.Options{DB: db, OutputDir: dir, Manifest: runartifact.Manifest{TenantID: "tenant"}}); err != nil {
 		t.Fatal(err)

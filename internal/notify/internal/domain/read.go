@@ -2,9 +2,10 @@ package domain
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 // MaxPageLimit bounds one delivery page.
@@ -67,8 +68,7 @@ func (retained Retained) expired(cursor int64) bool {
 // DecodeRecord verifies the stored digest, then decodes and validates the
 // event. It reports false for a poison record.
 func DecodeRecord(tenantID string, cursor int64, eventJSON, eventSHA []byte) (Record, bool) {
-	computed := sha256.Sum256(eventJSON)
-	if !bytes.Equal(computed[:], eventSHA) {
+	if !bytes.Equal(canonicaljson.Sum(eventJSON), eventSHA) {
 		return Record{}, false
 	}
 	record := Record{TenantID: tenantID, Cursor: cursor}

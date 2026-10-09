@@ -3,6 +3,8 @@ package domain
 import (
 	"strings"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
 const (
@@ -34,7 +36,7 @@ func TestSimulatorTraceAcceptsAWellFormedTrace(t *testing.T) {
 	}
 	trace.NextLine()
 	env, isEvent, err := trace.Accept([]byte(eventLine("evt-1", "2026-07-29T09:00:01Z")))
-	if err != nil || !isEvent || env.ID != "evt-1" || env.TenantID != DefaultTenant || env.Type != "pump.temperature.observed" {
+	if err != nil || !isEvent || env.ID != "evt-1" || env.TenantID != contractsv1.TenantID || env.Type != "pump.temperature.observed" {
 		t.Fatalf("event %+v isEvent=%v err=%v", env, isEvent, err)
 	}
 	if err := acceptAll(t, trace, endLine); err != nil || trace.Finish() != nil || trace.Line() != 3 {
@@ -87,7 +89,7 @@ func TestFinishRequiresFramingRecords(t *testing.T) {
 func TestSimulatorOptionsNormalizeDefaults(t *testing.T) {
 	t.Parallel()
 	got := SimulatorOptions{EntityType: "pump"}.Normalized()
-	if got.TenantID != DefaultTenant || got.EventTypePrefix != "pump." || got.Source != "streams-simulator" {
+	if got.TenantID != contractsv1.TenantID || got.EventTypePrefix != "pump." || got.Source != "streams-simulator" {
 		t.Fatalf("normalized = %+v", got)
 	}
 	if kept := (SimulatorOptions{TenantID: "t", EventTypePrefix: "x.", Source: "s"}).Normalized(); kept.TenantID != "t" || kept.EventTypePrefix != "x." || kept.Source != "s" {

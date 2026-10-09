@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
@@ -21,7 +22,9 @@ func TestEpisodeKind(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "standard", value: "standard", want: runtimev1.EpisodeKind_EPISODE_KIND_DIAGNOSE},
-		{name: "diagnose", value: "diagnose", want: runtimev1.EpisodeKind_EPISODE_KIND_DIAGNOSE},
+		{name: "diagnose alias", value: "diagnose", wantErr: true},
+		{name: "reconsideration alias", value: "reconsideration", wantErr: true},
+		{name: "upper case", value: "STANDARD", wantErr: true},
 		{name: "reconsider", value: "reconsider", want: runtimev1.EpisodeKind_EPISODE_KIND_RECONSIDER},
 		{name: "invalid", value: "unsupported", wantErr: true},
 	}
@@ -151,10 +154,75 @@ func validWorkerRequest() *episodes.Request {
 		PromptVersion: "prompt-v1", SnapshotSHA256: "sha256:" + "00" + "00000000000000000000000000000000000000000000000000000000000000",
 		AttemptID: "attempt-1", Fence: 7, Traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
 		PromptSHA256: promptDigest, ObjectiveSHA256: objectiveDigest,
-		RequestJSON: []byte(fmt.Sprintf(`{"kind":"diagnose","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","prompt_sha256":%q,"objective_sha256":%q,"decision_schema":{"type":"object"},"intent_catalog":%s,"intent_catalog_sha256":%q},"budget":{"wall_time":"1m"}}`, promptDigest, objectiveDigest, string(intentCatalogJSON), intentDigest)),
+		RequestJSON: []byte(fmt.Sprintf(`{"kind":"standard","snapshot":{"situation_id":"situation-1"},"tools":[],"risk_ceiling":"R1","trigger":{"trigger_id":"trigger-1","lane":"fast"},"executor":{"objective":"diagnose","prompt_sha256":%q,"objective_sha256":%q,"decision_schema":{"type":"object"},"intent_catalog":%s,"intent_catalog_sha256":%q},"budget":{"wall_time":"1m"}}`, promptDigest, objectiveDigest, string(intentCatalogJSON), intentDigest)),
 	}
 }
 
 func ticketSchema() map[string]any {
 	return map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"entity_id": map[string]any{"type": "string"}, "reason": map[string]any{"type": "string"}}}
+}
+
+func TestRiskCeilingMapsEveryClassAndNothingElse(t *testing.T) {
+	t.Parallel()
+	want := []runtimev1.RiskClass{
+		runtimev1.RiskClass_RISK_CLASS_R0, runtimev1.RiskClass_RISK_CLASS_R1, runtimev1.RiskClass_RISK_CLASS_R2,
+		runtimev1.RiskClass_RISK_CLASS_R3, runtimev1.RiskClass_RISK_CLASS_R4,
+	}
+	for index, class := range contractstest.RiskClasses() {
+		got, err := riskClass(string(class))
+		if err != nil || got != want[index] {
+			t.Fatalf("%s: got %v, %v", class, got, err)
+		}
+	}
+	for _, value := range []string{"", "r1", " R1 ", "R5"} {
+		if _, err := riskClass(value); err == nil {
+			t.Fatalf("%q accepted", value)
+		}
+	}
+}
+
+func TestDispatchPolicyEnumTreatsAnythingButActiveAsShadow(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		policy string
+		want   runtimev1.DispatchPolicy
+	}{
+		{policy: spec.DispatchActive, want: runtimev1.DispatchPolicy_DISPATCH_POLICY_ACTIVE},
+		{policy: spec.DispatchShadow, want: runtimev1.DispatchPolicy_DISPATCH_POLICY_SHADOW},
+		{policy: "", want: runtimev1.DispatchPolicy_DISPATCH_POLICY_SHADOW},
+		{policy: "bogus", want: runtimev1.DispatchPolicy_DISPATCH_POLICY_SHADOW},
+	}
+	for _, tt := range tests {
+		t.Run("policy "+tt.policy, func(t *testing.T) {
+			t.Parallel()
+			if got := dispatchPolicyEnum(tt.policy); got != tt.want {
+				t.Fatalf("dispatchPolicyEnum(%q) = %v, want %v", tt.policy, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEpisodeLaneAcceptsOnlyDeclaredLanes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		value   string
+		want    runtimev1.EpisodeLane
+		wantErr bool
+	}{
+		{value: spec.LaneFast, want: runtimev1.EpisodeLane_EPISODE_LANE_FAST},
+		{value: spec.LaneDeep, want: runtimev1.EpisodeLane_EPISODE_LANE_DEEP},
+		{value: "batch", wantErr: true},
+		{value: "FAST", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			t.Parallel()
+			got, err := episodeLane(tt.value)
+			if (err != nil) != tt.wantErr || got != tt.want {
+				t.Fatalf("episodeLane(%q) = %v, %v", tt.value, got, err)
+			}
+		})
+	}
 }

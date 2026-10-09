@@ -40,6 +40,10 @@ func ExecutionFailureReason(err error) string {
 	}
 }
 
+func isContextError(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
 // ExecutionFailureStatus classifies an execution error into the attempt
 // lifecycle status the ledger records.
 func ExecutionFailureStatus(err error) episodeledger.AttemptStatus {
@@ -50,4 +54,17 @@ func ExecutionFailureStatus(err error) episodeledger.AttemptStatus {
 		return episodeledger.AttemptTimedOut
 	}
 	return episodeledger.AttemptFailed
+}
+
+func (r *Request) ContextEndingOutcome(err error, costMicrounits uint64) *Outcome {
+	if !isContextError(err) {
+		return nil
+	}
+	return &Outcome{
+		Status:         string(ExecutionFailureStatus(err)),
+		AttemptID:      r.AttemptID,
+		Fence:          r.Fence,
+		Reasons:        []string{ExecutionFailureReason(err)},
+		CostMicrounits: costMicrounits,
+	}
 }

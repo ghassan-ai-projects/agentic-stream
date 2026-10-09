@@ -6,6 +6,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/wire"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // Verifier validates token integrity, issuer/audience, time bounds, and the
@@ -38,12 +39,8 @@ func (v *Verifier) Verify(token []byte) (Scope, error) {
 	return scope, nil
 }
 func (v *Verifier) checkValidity(scope Scope) error {
-	now := time.Now().UTC()
-	if v.Now != nil {
-		now = v.Now().UTC()
-	}
-	maxTTL := cmp.Or(v.MaxTTL, defaultCapabilityTTL)
-	return domain.CheckValidity(scope, now, maxTTL, cmp.Or(v.ClockSkew, time.Second))
+	maxTTL := cmp.Or(v.MaxTTL, domain.DefaultCapabilityTTL)
+	return domain.CheckValidity(scope, sources.NowUTC(v.Now), maxTTL, cmp.Or(v.ClockSkew, time.Second))
 }
 
 func verifiedScope(raw []byte, keyID string) (Scope, error) {

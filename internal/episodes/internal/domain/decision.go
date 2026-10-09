@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -28,8 +27,7 @@ func DecisionIDFromJSON(raw []byte) string {
 func StorageDecisionDigest(raw []byte) ([]byte, bool) {
 	digest, hasContractDigest := decisionDigestForStorage(raw)
 	if !hasContractDigest {
-		rawHash := sha256.Sum256(raw)
-		digest = rawHash[:]
+		digest = canonicaljson.Sum(raw)
 	}
 	return digest, hasContractDigest
 }
@@ -49,15 +47,8 @@ func decisionDigestForStorage(raw []byte) ([]byte, bool) {
 // documentDigestForStorage digests a decision document over the decision
 // domain, reporting whether the digest could be derived.
 func documentDigestForStorage(document map[string]any) ([]byte, bool) {
-	digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
-	if err != nil {
-		return nil, false
-	}
-	decoded, err := canonicaljson.DecodeDigest(digest)
-	if err != nil {
-		return nil, false
-	}
-	return decoded, true
+	sum, err := canonicaljson.DigestSum(canonicaljson.DomainDecision, document)
+	return sum, err == nil
 }
 
 // ValidationFailureJSON describes a rejected Decision. Without a contract
@@ -83,12 +74,11 @@ func ValidationFailureJSON(validationErr error, raw []byte, hasContractDigest bo
 
 func rawValidationFailureJSON(validationJSON, raw []byte) ([]byte, error) {
 	var err error
-	rawHash := sha256.Sum256(raw)
 	var details map[string]any
 	if err := json.Unmarshal(validationJSON, &details); err != nil {
 		return nil, fmt.Errorf("decode decision validation: %w", err)
 	}
-	details["raw_sha256"] = hex.EncodeToString(rawHash[:])
+	details["raw_sha256"] = hex.EncodeToString(canonicaljson.Sum(raw))
 	validationJSON, err = json.Marshal(details)
 	if err != nil {
 		return nil, fmt.Errorf("marshal raw decision validation: %w", err)

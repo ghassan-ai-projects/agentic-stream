@@ -5,7 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
@@ -15,15 +16,13 @@ import (
 
 const ConsumerName = "engine"
 
-type OwnerCheck func(context.Context, *sql.Tx, string) error
-
 type VersionProcessor interface {
 	Process(context.Context, *sql.Tx, situations.Version) error
 }
 
 type Store struct {
 	db           *storage.DB
-	owner        OwnerCheck
+	owner        storage.OwnerCheck
 	epoch        string
 	tenantID     string
 	deploymentID string
@@ -31,13 +30,13 @@ type Store struct {
 
 type Tx struct {
 	tx           *sql.Tx
-	owner        OwnerCheck
+	owner        storage.OwnerCheck
 	epoch        string
 	tenantID     string
 	deploymentID string
 }
 
-func New(db *storage.DB, owner OwnerCheck, epoch, tenantID, deploymentID string) Store {
+func New(db *storage.DB, owner storage.OwnerCheck, epoch, tenantID, deploymentID string) Store {
 	return Store{db: db, owner: owner, epoch: epoch, tenantID: tenantID, deploymentID: deploymentID}
 }
 
@@ -78,7 +77,9 @@ func (s Store) LoadCheckpoint(ctx context.Context, partitionID int) (domain.Chec
 		return result, fmt.Errorf("query checkpoint: %w", err)
 	}
 	if watermark.Valid {
-		result.Watermark = watermark.String
+		if result.Watermark, err = kernel.ParseTime(watermark.String); err != nil {
+			return result, fmt.Errorf("parse checkpoint watermark of partition %d: %w", partitionID, err)
+		}
 	}
 	return result, nil
 }
@@ -103,8 +104,4 @@ func (tx *Tx) AssertOwner(ctx context.Context) error {
 
 func (tx *Tx) ProcessVersion(ctx context.Context, processor VersionProcessor, version situations.Version) error {
 	return processor.Process(ctx, tx.tx, version) //nolint:wrapcheck // The caller names the failed step.
-}
-
-func formatTime(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
 }

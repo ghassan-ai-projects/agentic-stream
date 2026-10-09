@@ -5,7 +5,6 @@ import (
 	"math"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestEpochRefusalsByState(t *testing.T) {
@@ -49,9 +48,6 @@ func TestOnlyDrainAndKillAreControllable(t *testing.T) {
 
 func TestOwnerRules(t *testing.T) {
 	t.Parallel()
-	if LeaseDuration(0) != DefaultLease || LeaseDuration(-time.Second) != DefaultLease || LeaseDuration(time.Hour) != time.Hour {
-		t.Fatal("lease default not applied")
-	}
 	if err := CheckHolder(Holder{"e", "i"}, "e", "i"); err != nil {
 		t.Fatalf("own lease refused: %v", err)
 	}
@@ -64,14 +60,6 @@ func TestOwnerRules(t *testing.T) {
 		if (CheckOwnerMutation(rows) == nil) != ok {
 			t.Errorf("rows=%d accepted=%v", rows, !ok)
 		}
-	}
-}
-
-func TestTimeTextIsFixedWidthUTC(t *testing.T) {
-	t.Parallel()
-	zone := time.FixedZone("x", 3600)
-	if got := TimeText(time.Date(2026, 1, 2, 4, 5, 6, 0, zone)); got != "2026-01-02T03:05:06.000000000Z" {
-		t.Fatalf("text = %s", got)
 	}
 }
 

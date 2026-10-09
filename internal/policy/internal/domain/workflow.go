@@ -14,8 +14,9 @@ type CommandRecord struct {
 
 // ApprovalRecord is a read-only projection of the approval lifecycle.
 type ApprovalRecord struct {
-	IntentID, Status, ExpiresAt string
-	JSON                        json.RawMessage
+	IntentID, Status string
+	ExpiresAt        time.Time
+	JSON             json.RawMessage
 }
 
 // EvaluationRequest identifies the intent and evaluation time.

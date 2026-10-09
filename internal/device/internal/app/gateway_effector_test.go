@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device/internal/domain"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 )
@@ -49,90 +51,79 @@ func TestSerialEffectorReturnsPendingReceiptAfterAuthorization(t *testing.T) {
 	}
 }
 
-func TestSerialEffectorVerificationRejectsMismatchedIndicatorValue(t *testing.T) {
-	session, transport, catalog := openThermalSession(t)
-	defer func() { _ = session.Close() }()
-	digest, err := catalog.Digest()
-	if err != nil {
-		t.Fatal(err)
+func TestSerialEffectorVerificationRejectsMismatchedOutput(t *testing.T) {
+	tests := []struct {
+		name    string
+		output  map[string]any
+		command actionport.Command
+	}{
+		{
+			name:   "indicator value",
+			output: map[string]any{"target": "led-01", "operation": "set_led", "value": float64(500), "energized": true},
+			command: actionport.Command{
+				CommandID: "cmd-alert", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
+				IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "alert"},
+			},
+		},
+		{
+			name:   "fan duty",
+			output: map[string]any{"target": "fan-01", "operation": "set_pwm_lease", "value": float64(300), "energized": true},
+			command: actionport.Command{
+				CommandID: "cmd-fan", EffectorRoute: "select_thermal_mode", NormalizedTarget: "fan-01",
+				IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"mode": "bounded_cooling"},
+			},
+		},
 	}
-	state := goldenDeviceState()
-	state["capability_digest"] = digest
-	state["current_output"] = map[string]any{
-		"target": "led-01", "operation": "set_led", "value": float64(500), "energized": true,
-	}
-	frame, err := wire.Encode(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	transport.frames = append(transport.frames, frame)
-
-	status, evidence, err := app.NewGatewayEffector(session, catalog).VerifyDeviceCommand(context.Background(), actionport.Command{
-		CommandID: "cmd-alert", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",
-		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"state": "alert"},
-	})
-	if err != nil {
-		t.Fatalf("verify device command: %v", err)
-	}
-	if status != "failed" {
-		t.Fatalf("verification status=%q, want failed for a mismatched indicator value", status)
-	}
-	if evidence["target"] != "led-01" {
-		t.Fatalf("reconciliation evidence target=%v, want led-01", evidence["target"])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertMismatchedOutputFailsVerification(t, tt.name, tt.output, tt.command)
+		})
 	}
 }
 
-func TestSerialEffectorVerificationRejectsMismatchedFanDuty(t *testing.T) {
+func assertMismatchedOutputFailsVerification(t *testing.T, what string, output map[string]any, command actionport.Command) {
+	t.Helper()
 	session, transport, catalog := openThermalSession(t)
 	defer func() { _ = session.Close() }()
+	queueDeviceState(t, transport, catalog, map[string]any{"current_output": output})
+
+	status, evidence, err := app.NewGatewayEffector(session, catalog).VerifyDeviceCommand(context.Background(), command)
+	if err != nil {
+		t.Fatalf("verify device command: %v", err)
+	}
+	if status != "failed" {
+		t.Fatalf("verification status=%q, want failed for a mismatched %s", status, what)
+	}
+	if evidence["target"] != command.NormalizedTarget {
+		t.Fatalf("reconciliation evidence target=%v, want %s", evidence["target"], command.NormalizedTarget)
+	}
+}
+
+func queueDeviceState(t *testing.T, transport *fakeDeviceTransport, catalog *domain.CapabilityCatalog, fields map[string]any) {
+	t.Helper()
 	digest, err := catalog.Digest()
 	if err != nil {
 		t.Fatal(err)
 	}
 	state := goldenDeviceState()
 	state["capability_digest"] = digest
-	state["current_output"] = map[string]any{
-		"target": "fan-01", "operation": "set_pwm_lease", "value": float64(300), "energized": true,
-	}
+	maps.Copy(state, fields)
 	frame, err := wire.Encode(state)
 	if err != nil {
 		t.Fatal(err)
 	}
 	transport.frames = append(transport.frames, frame)
-
-	status, evidence, err := app.NewGatewayEffector(session, catalog).VerifyDeviceCommand(context.Background(), actionport.Command{
-		CommandID: "cmd-fan", EffectorRoute: "select_thermal_mode", NormalizedTarget: "fan-01",
-		IdempotencyKey: idemKey(), PolicyDigest: policyKey(), Payload: map[string]any{"mode": "bounded_cooling"},
-	})
-	if err != nil {
-		t.Fatalf("verify device command: %v", err)
-	}
-	if status != "failed" {
-		t.Fatalf("verification status=%q, want failed for a mismatched fan duty", status)
-	}
-	if evidence["target"] != "fan-01" {
-		t.Fatalf("reconciliation evidence target=%v, want fan-01", evidence["target"])
-	}
 }
 
 func TestSerialEffectorVerificationDoesNotAcceptBootRollover(t *testing.T) {
 	session, transport, catalog, control := openThermalSessionWithControl(t)
 	defer func() { _ = session.Close() }()
-	digest, err := catalog.Digest()
-	if err != nil {
-		t.Fatal(err)
-	}
-	state := goldenDeviceState()
-	state["capability_digest"] = digest
-	state["boot_id"] = "boot-B"
-	state["current_output"] = map[string]any{
-		"target": "led-01", "operation": "set_led", "value": float64(500), "energized": true,
-	}
-	frame, err := wire.Encode(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	transport.frames = append(transport.frames, frame)
+	queueDeviceState(t, transport, catalog, map[string]any{
+		"boot_id": "boot-B",
+		"current_output": map[string]any{
+			"target": "led-01", "operation": "set_led", "value": float64(500), "energized": true,
+		},
+	})
 
 	status, _, err := app.NewGatewayEffector(session, catalog).VerifyDeviceCommand(context.Background(), actionport.Command{
 		CommandID: "cmd-watch", EffectorRoute: "set_indicator", NormalizedTarget: "led-01",

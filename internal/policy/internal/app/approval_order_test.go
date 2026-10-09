@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 )
 
@@ -29,7 +30,7 @@ func TestApprovalStalenessPrecedesExpiryAndAuthorization(t *testing.T) {
 		if _, err := tx.ExecContext(ctx, "UPDATE situations SET current_version = 2, last_material_version = 2 WHERE situation_id = 'sit-policy'"); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE approvals SET expires_at = ? WHERE approval_id = ?", formatTime(now), requested.ApprovalID); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE approvals SET expires_at = ? WHERE approval_id = ?", kernel.FormatTime(now), requested.ApprovalID); err != nil {
 			return err
 		}
 		var err error

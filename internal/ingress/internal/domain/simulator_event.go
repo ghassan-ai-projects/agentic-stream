@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // ConvertEvent maps one simulator event record to a normalized envelope.
@@ -183,9 +184,9 @@ func parseSimulatorTime(record map[string]any, key string) (time.Time, error) {
 	if !ok || value == "" {
 		return time.Time{}, fmt.Errorf("%s is required", key)
 	}
-	parsed, err := time.Parse(time.RFC3339Nano, value)
+	parsed, err := kernel.ParseTime(value)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("parse %s: %w", key, err)
 	}
-	return parsed.UTC(), nil
+	return parsed, nil
 }

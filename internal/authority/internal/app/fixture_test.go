@@ -1,8 +1,6 @@
 package app_test
 
 import (
-	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,6 +12,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 var (
@@ -39,11 +38,8 @@ const runtimeLease = time.Hour
 // builds its service.
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "runtime.db"))
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 	f := &fixture{db: db, clock: sources.NewVirtual(time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC))}
 	f.runtime, f.service = f.admit(t, ownerOne, runtimeLease)

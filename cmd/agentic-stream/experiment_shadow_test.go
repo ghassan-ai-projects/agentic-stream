@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
 )
 
 // TestExperimentShadowReplayComparesTheCandidate runs the experiment's trace
@@ -31,9 +33,9 @@ func TestExperimentShadowReplayComparesTheCandidate(t *testing.T) {
 	assertNoEffectRows(t, dbPath)
 }
 
-func decodeShadowReport(t *testing.T, output string) shadowReport {
+func decodeShadowReport(t *testing.T, output string) replay.ShadowReport {
 	t.Helper()
-	var report shadowReport
+	var report replay.ShadowReport
 	if err := json.Unmarshal([]byte(output), &report); err != nil {
 		t.Fatalf("decode shadow report: %v\n%s", err, output)
 	}
@@ -45,7 +47,7 @@ func decodeShadowReport(t *testing.T, output string) shadowReport {
 	return report
 }
 
-func countDiffering(report shadowReport) int {
+func countDiffering(report replay.ShadowReport) int {
 	differing := 0
 	for _, comparison := range report.Comparisons {
 		if !comparison.DecisionsEqual {

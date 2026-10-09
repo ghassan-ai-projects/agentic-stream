@@ -107,3 +107,90 @@ func TestDecodeDigestRequiresCanonicalPrefix(t *testing.T) {
 		t.Fatalf("expected prefixed digest to decode, got %x, %v", got, err)
 	}
 }
+
+func TestDecodeDigestRejectsMalformedReferences(t *testing.T) {
+	t.Parallel()
+	zeros := "0000000000000000000000000000000000000000000000000000000000000000"
+	tests := []struct{ name, digest string }{
+		{"unprefixed", zeros},
+		{"uppercase hex", "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB"},
+		{"short", "sha256:00"},
+		{"long", "sha256:" + zeros + "00"},
+		{"not hex", "sha256:" + zeros[:63] + "g"},
+		{"empty", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got, err := DecodeDigest(tt.digest); err == nil {
+				t.Fatalf("DecodeDigest(%q) = %x, want an error", tt.digest, got)
+			}
+		})
+	}
+}
+
+func TestSealCanonicalizesOnceAndMatchesDigestSum(t *testing.T) {
+	t.Parallel()
+	document := map[string]any{"b": 1, "a": "x"}
+	canonical, sum, err := Seal(testDomain, document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantJSON, _ := Marshal(document)
+	if string(canonical) != string(wantJSON) {
+		t.Fatalf("Seal json = %s, want %s", canonical, wantJSON)
+	}
+	digest, err := Digest(testDomain, document)
+	if err != nil || EncodeDigest(sum) != digest {
+		t.Fatalf("Seal sum = %s, want %s (err %v)", EncodeDigest(sum), digest, err)
+	}
+	if byDigestSum, err := DigestSum(testDomain, document); err != nil || string(byDigestSum) != string(sum) {
+		t.Fatalf("DigestSum = %x, want %x (err %v)", byDigestSum, sum, err)
+	}
+}
+
+func TestSealAndDigestSumRefuseEmptyDomainAndUnencodableValues(t *testing.T) {
+	t.Parallel()
+	if _, _, err := Seal("", map[string]any{}); err == nil {
+		t.Fatal("Seal accepted an empty domain")
+	}
+	if _, err := DigestSum("", map[string]any{}); err == nil {
+		t.Fatal("DigestSum accepted an empty domain")
+	}
+	if _, _, err := Seal(testDomain, math.NaN()); err == nil {
+		t.Fatal("Seal accepted a non-finite number")
+	}
+}
+
+func TestVerifySumBindsSumToValueAndDomain(t *testing.T) {
+	t.Parallel()
+	document := map[string]any{"ok": true}
+	sum, err := DigestSum(testDomain, document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	truncated := sum[:len(sum)-1]
+	tests := []struct {
+		name   string
+		domain Domain
+		value  any
+		sum    []byte
+		want   bool
+	}{
+		{"matching", testDomain, document, sum, true},
+		{"wrong domain", DomainSnapshot, document, sum, false},
+		{"changed value", testDomain, map[string]any{"ok": false}, sum, false},
+		{"wrong length", testDomain, document, truncated, false},
+		{"nil sum", testDomain, document, nil, false},
+		{"empty domain", "", document, sum, false},
+		{"unencodable value", testDomain, math.NaN(), sum, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := VerifySum(tt.domain, tt.value, tt.sum); got != tt.want {
+				t.Fatalf("VerifySum = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

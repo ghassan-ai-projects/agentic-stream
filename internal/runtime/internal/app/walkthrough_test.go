@@ -10,7 +10,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 // TestWalkthrough runs the whole pipeline once for a human to inspect: events to
@@ -25,7 +25,7 @@ func TestWalkthrough(t *testing.T) {
 	}
 	ctx := context.Background()
 	_ = os.Remove(out) //nolint:gosec // The output path is chosen by the person running the walkthrough.
-	db, err := storage.Open(ctx, out)
+	db, err := storagetest.Open(ctx, out)
 	if err != nil {
 		t.Fatal(err)
 	}

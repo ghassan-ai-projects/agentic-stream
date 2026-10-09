@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
 )
 
@@ -38,20 +40,31 @@ func (tx *Tx) DispatchWithinLimit(ctx context.Context, row domain.IntentRecord, 
 func scanPolicyIntent(query *sql.Row) (domain.IntentRecord, error) {
 	var row domain.IntentRecord
 	var traceparent, tracestate sql.NullString
-	err := query.Scan(
+	var lifecycle episodeledger.LifecycleStatus
+	var expiresAt string
+	err := query.Scan(policyIntentDests(&row, &traceparent, &tracestate, &lifecycle, &expiresAt)...)
+	if err != nil {
+		return row, fmt.Errorf("scan intent row: %w", err)
+	}
+	row.EpisodeProducedDecision = lifecycle.ProducedDecision()
+	row.Traceparent = traceparent.String
+	row.Tracestate = tracestate.String
+	if row.ExpiresAt, err = kernel.ParseTime(expiresAt); err != nil {
+		row.ExpiryUnreadable = true
+	}
+	return row, nil
+}
+
+func policyIntentDests(row *domain.IntentRecord, traceparent, tracestate *sql.NullString, lifecycle *episodeledger.LifecycleStatus, expiresAt *string) []any {
+	return []any{
 		&row.IntentID, &row.DecisionID, &row.TenantID, &row.SituationID,
 		&row.SituationVersion, &row.IntentType, &row.RiskClass, &row.IntentJSON,
-		&row.IntentSHA, &row.ExpiresAt, &row.PolicyStatus, &row.RateLimitPerHour, &row.RequiresApproval,
+		&row.IntentSHA, expiresAt, &row.PolicyStatus, &row.RateLimitPerHour, &row.RequiresApproval,
 		&row.ValidationStatus, &row.DecisionJSON, &row.DecisionSHA,
-		&row.DecisionSituation, &row.DecisionVersion, &traceparent, &tracestate,
+		&row.DecisionSituation, &row.DecisionVersion, traceparent, tracestate,
 		&row.EpisodeID, &row.EpisodeTenant, &row.EpisodeSituation, &row.EpisodeVersion,
-		&row.EpisodeLifecycle, &row.ExecutorVersion, &row.PolicyEpoch, &row.SituationTenant, &row.CurrentSituation, &row.LastMaterialVersion, &row.SituationType, &row.CurrentCompleteness,
-	)
-	if err == nil {
-		row.Traceparent = traceparent.String
-		row.Tracestate = tracestate.String
+		lifecycle, &row.ExecutorVersion, &row.PolicyEpoch, &row.SituationTenant, &row.CurrentSituation, &row.LastMaterialVersion, &row.SituationType, &row.CurrentCompleteness,
 	}
-	return row, err //nolint:wrapcheck // loadIntent preserves the database error text.
 }
 
 const loadPolicyIntentSQL = `

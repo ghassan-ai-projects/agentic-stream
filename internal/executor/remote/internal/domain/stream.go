@@ -1,12 +1,12 @@
 package domain
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"google.golang.org/protobuf/proto"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
@@ -131,15 +131,11 @@ func (s *Stream) acceptDecision(candidate *runtimev1.DecisionProposed) error {
 }
 
 func verifyDecisionDigest(raw, digest []byte) error {
-	var document map[string]any
-	if err := json.Unmarshal(raw, &document); err != nil {
+	document, err := contractsv1.DecodeDocumentJSON(raw)
+	if err != nil {
 		return fmt.Errorf("worker decision is not valid JSON: %w", err)
 	}
-	computed, err := canonicaljson.Digest(canonicaljson.DomainDecision, document)
-	if err != nil {
-		return fmt.Errorf("compute worker decision digest: %w", err)
-	}
-	if computed != canonicaljson.EncodeDigest(digest) {
+	if !contractsv1.VerifyDocumentDigest(canonicaljson.DomainDecision, document, digest) {
 		return fmt.Errorf("worker decision digest mismatch")
 	}
 	return nil

@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -14,7 +14,7 @@ import (
 // CostConfiguration binds operator ceilings to an original owner-fenced transaction.
 type CostConfiguration struct {
 	DB                   *storage.DB
-	Owner                *runtimecontrol.RuntimeOwner
+	RuntimeOwner         storage.OwnerCheck
 	OwnerEpoch, TenantID string
 	Clock                sources.Clock
 	Ceilings             runtimecontrol.CostCeilings
@@ -28,22 +28,13 @@ func ConfigureCostLimits(ctx context.Context, cfg CostConfiguration) error {
 		return nil
 	}
 	if err := cfg.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := assertCostConfigurationOwner(ctx, tx, cfg); err != nil {
+		if err := assertRuntimeOwner(ctx, tx, cfg.RuntimeOwner, cfg.OwnerEpoch); err != nil {
 			return err
 		}
-		now := cfg.Clock.Now().UTC().Format(time.RFC3339Nano)
+		now := kernel.FormatTime(cfg.Clock.Now())
 		return runtimecontrol.ApplyCostCeilings(ctx, tx, ceilings, cfg.TenantID, now) //nolint:wrapcheck // Wrapped below with the configuration step.
 	}); err != nil {
 		return fmt.Errorf("configure cost limits: %w", err)
-	}
-	return nil
-}
-
-func assertCostConfigurationOwner(ctx context.Context, tx *sql.Tx, cfg CostConfiguration) error {
-	if cfg.Owner != nil && cfg.OwnerEpoch != "" {
-		if err := cfg.Owner.Assert(ctx, tx, cfg.OwnerEpoch); err != nil {
-			return fmt.Errorf("assert owner for cost configuration: %w", err)
-		}
 	}
 	return nil
 }

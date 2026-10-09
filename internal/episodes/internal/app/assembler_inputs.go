@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 )
@@ -29,7 +30,7 @@ func (a *Assembler) loadInputs(ctx context.Context, tx *store.Tx, item scheduler
 	if err != nil {
 		return assemblyInputs{}, err
 	}
-	return loadTriggerContext(ctx, tx, item, inputs)
+	return bindTriggerContext(item, inputs)
 }
 
 func (a *Assembler) loadEvaluation(ctx context.Context, tx *store.Tx, triggerID string) (evaluation, error) {
@@ -58,17 +59,17 @@ func (a *Assembler) loadSnapshotJSON(ctx context.Context, tx *store.Tx, situatio
 	return snapshotJSON, snapshotDigest, traceparent, tracestate, nil
 }
 
-func loadTriggerContext(ctx context.Context, tx *store.Tx, item schedulerItem, inputs assemblyInputs) (assemblyInputs, error) {
+func bindTriggerContext(item schedulerItem, inputs assemblyInputs) (assemblyInputs, error) {
 	var err error
 	if len(inputs.Evaluation.DeltaJSON) > 0 {
 		if err := json.Unmarshal(inputs.Evaluation.DeltaJSON, &inputs.Delta); err != nil {
 			return assemblyInputs{}, fmt.Errorf("unmarshal delta: %w", err)
 		}
 	}
-	if item.Kind == "reconsider" {
-		inputs.Reconsideration, err = loadReconsideration(ctx, tx, item, inputs.Evaluation, inputs.Delta, inputs.Snapshot.Document)
+	if item.Kind == episodeledger.KindReconsider {
+		inputs.Reconsideration, err = domain.TakeReconsideration(item, inputs.Evaluation, inputs.Delta, inputs.Snapshot.Document)
 		if err != nil {
-			return assemblyInputs{}, fmt.Errorf("load reconsideration: %w", err)
+			return assemblyInputs{}, fmt.Errorf("take reconsideration: %w", err)
 		}
 	}
 	return inputs, nil

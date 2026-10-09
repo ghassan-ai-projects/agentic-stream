@@ -11,10 +11,12 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 )
 
-// NextPendingSchedulerItem returns the tenant's next due pending scheduler
-// item, in queue order.
-func (p *PipelineStore) NextPendingSchedulerItem(ctx context.Context, now time.Time) (string, bool, error) {
-	return episodeledger.NextPendingSchedulerItem(ctx, p.DB.DB, p.TenantID, now) //nolint:wrapcheck // The ledger names the failed read; the batch error text is unchanged.
+func (p *PipelineStore) PollSchedulerQueue(ctx context.Context, now time.Time) (episodeledger.QueuePoll, error) {
+	poll, err := episodeledger.PollSchedulerQueue(ctx, p.DB.DB, p.TenantID, now)
+	if err != nil {
+		return poll, fmt.Errorf("poll scheduler queue of tenant %s: %w", p.TenantID, err)
+	}
+	return poll, nil
 }
 
 // AdmissionTx is one owner-fenced admission transaction. It joins the episode
@@ -30,16 +32,8 @@ func (p *PipelineStore) InAdmission(ctx context.Context, work func(*AdmissionTx)
 	return p.DB.WithTx(ctx, func(tx *sql.Tx) error { return work(&AdmissionTx{tx: tx, store: p}) })
 }
 
-// AssertOwner fences the transaction to the runtime owner; it does nothing
-// when no owner is bound.
 func (t *AdmissionTx) AssertOwner(ctx context.Context) error {
-	if t.store.Owner == nil || t.store.OwnerEpoch == "" {
-		return nil
-	}
-	if err := t.store.Owner.Assert(ctx, t.tx, t.store.OwnerEpoch); err != nil {
-		return fmt.Errorf("runtime ownership lost: %w", err)
-	}
-	return nil
+	return assertRuntimeOwner(ctx, t.tx, t.store.RuntimeOwner, t.store.OwnerEpoch)
 }
 
 // Assemble builds the scheduler item's episode request.
@@ -69,4 +63,14 @@ func (t *AdmissionTx) CoalesceCostRejected(ctx context.Context, itemID string, n
 // CoalesceSkipped removes an unavailable item from the pending queue.
 func (t *AdmissionTx) CoalesceSkipped(ctx context.Context, itemID string, now time.Time) error {
 	return episodeledger.CoalesceSkippedItem(ctx, t.tx, itemID, now) //nolint:wrapcheck // The owning ledger's error is wrapped by the caller.
+}
+
+func (t *AdmissionTx) Expire(ctx context.Context, expired episodeledger.ExpiredItem, now time.Time) error {
+	if err := cognition.RecordSchedulerExpiryReason(ctx, t.tx, expired.SchedulerItemID, expired.Reason); err != nil {
+		return fmt.Errorf("record scheduler item expiry: %w", err)
+	}
+	if err := episodeledger.ExpireSchedulerItem(ctx, t.tx, expired.SchedulerItemID, now); err != nil {
+		return fmt.Errorf("expire scheduler item %s: %w", expired.SchedulerItemID, err)
+	}
+	return nil
 }

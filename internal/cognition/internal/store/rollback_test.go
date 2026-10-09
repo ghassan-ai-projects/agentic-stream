@@ -6,12 +6,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
@@ -42,11 +43,8 @@ func TestReconsiderationStoreRetainsCallerRollback(t *testing.T) {
 func runReconsiderationAdmissionTest(t *testing.T, versionCount, commandVersion, correctionVersion, previousVersion int) {
 	t.Helper()
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "reconsideration.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
 		t.Fatalf("disable foreign keys: %v", err)
@@ -60,7 +58,7 @@ func runReconsiderationAdmissionTest(t *testing.T, versionCount, commandVersion,
 			first_event_time, latest_event_time, updated_at, created_at
 		) VALUES ('sit-reconsider', 'tenant', 'dep', 'test', 'motor', 'm1', 0, 'occ', ?, 1, 'corrected', 'open', ?, ?, ?, ?)`,
 		correctionVersion,
-		now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+		kernel.FormatTime(now), kernel.FormatTime(now), kernel.FormatTime(now), kernel.FormatTime(now)); err != nil {
 		t.Fatalf("insert situation: %v", err)
 	}
 	for version := 1; version <= versionCount; version++ {
@@ -73,7 +71,7 @@ func runReconsiderationAdmissionTest(t *testing.T, versionCount, commandVersion,
 		snapshot := map[string]any{
 			"situation_id": "sit-reconsider", "situation_version": version, "situation_type": "test", "tenant_id": "tenant",
 			"entity": map[string]any{"type": "motor", "id": "m1"}, "phase": "watch", "severity": 10,
-			"completeness": completeness, "event_horizon": now.Format(time.RFC3339Nano), "spec_digest": "sha256:" + hex.EncodeToString(zero), "facts": map[string]any{},
+			"completeness": completeness, "event_horizon": kernel.FormatTime(now), "spec_digest": "sha256:" + hex.EncodeToString(zero), "facts": map[string]any{},
 		}
 		snapshotJSON, _ := canonicaljson.Marshal(snapshot)
 		snapshotDigest, _ := canonicaljson.Digest(canonicaljson.DomainSnapshot, snapshot)
@@ -85,8 +83,8 @@ func runReconsiderationAdmissionTest(t *testing.T, versionCount, commandVersion,
 				lineage_id, created_at
 			) VALUES ('sit-reconsider', ?, ?, 'watch', 'candidate', 10, 1.0, ?, ?, ?, ?, ?, ?, 'lin-reconsider', ?)`,
 			version, nullablePrevious(version), completeness,
-			now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano),
-			snapshotJSON, snapshotSHA, now.Format(time.RFC3339Nano)); err != nil {
+			kernel.FormatTime(now), kernel.FormatTime(now), kernel.FormatTime(now),
+			snapshotJSON, snapshotSHA, kernel.FormatTime(now)); err != nil {
 			t.Fatalf("insert situation version %d: %v", version, err)
 		}
 	}
@@ -94,7 +92,7 @@ func runReconsiderationAdmissionTest(t *testing.T, versionCount, commandVersion,
 		deployment_id, tenant_id, spec_name, spec_version, spec_schema_version,
 		spec_sha256, source_json, compiled_ir, status, activated_at, created_at
 	) VALUES ('dep', 'tenant', 'test', 'v1', 'agentic-stream/v1', ?, X'7B7D', X'7B7D', 'active', ?, ?)`,
-		zero, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+		zero, kernel.FormatTime(now), kernel.FormatTime(now)); err != nil {
 		t.Fatalf("insert deployment: %v", err)
 	}
 	if err := insertExecutedCommandFixture(ctx, db, "cmd-reconsider-1", "dec-reconsider-1", "epi-reconsider-1", "int-reconsider-1", commandVersion, zero, now); err != nil {
@@ -111,7 +109,7 @@ func runReconsiderationAdmissionTest(t *testing.T, versionCount, commandVersion,
 	currentSnapshot := map[string]any{
 		"situation_id": "sit-reconsider", "situation_version": correctionVersion, "situation_type": "test", "tenant_id": "tenant",
 		"entity": map[string]any{"type": "motor", "id": "m1"}, "phase": "watch", "severity": 10,
-		"completeness": "corrected", "event_horizon": now.Format(time.RFC3339Nano), "spec_digest": "sha256:" + hex.EncodeToString(zero), "facts": map[string]any{},
+		"completeness": "corrected", "event_horizon": kernel.FormatTime(now), "spec_digest": "sha256:" + hex.EncodeToString(zero), "facts": map[string]any{},
 	}
 	currentJSON, _ := canonicaljson.Marshal(currentSnapshot)
 	current := situations.Version{SituationID: "sit-reconsider", Version: correctionVersion, PreviousVersion: previousVersion, Phase: "corrected", Completeness: "corrected", EventHorizon: now, Watermark: now, SnapshotJSON: currentJSON}
@@ -159,33 +157,33 @@ func insertExecutedCommandFixture(ctx context.Context, db *storage.DB, commandID
 		executor_version, model_policy, prompt_version, snapshot_sha256, admission_key, request_json,
 		lifecycle_status, current_fence, accepted_at
 	) VALUES (?, ?, 'tenant', 'sit-reconsider', ?, 'executor', 'v1', 'policy', 'prompt', ?, ?, X'7B7D', 'concluded', 1, ?)`,
-		episodeID, "sch-"+episodeID, situationVersion, zero, zero, now.Format(time.RFC3339Nano)); err != nil {
+		episodeID, "sch-"+episodeID, situationVersion, zero, zero, kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("insert episode fixture: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO decisions (
 		decision_id, episode_id, attempt_id, fence, ordinal, situation_id, situation_version,
 		raw_json, decision_sha256, validation_status, validation_json, created_at
 	) VALUES (?, ?, ?, 1, 1, 'sit-reconsider', ?, X'7B7D', ?, 'accepted', X'7B7D', ?)`,
-		decisionID, episodeID, "att-"+decisionID, situationVersion, zero, now.Format(time.RFC3339Nano)); err != nil {
+		decisionID, episodeID, "att-"+decisionID, situationVersion, zero, kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("insert decision fixture: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO intents (
 		intent_id, decision_id, tenant_id, situation_id, situation_version, intent_type, risk_class,
 		intent_json, intent_sha256, expires_at, policy_status, created_at, updated_at
 	) VALUES (?, ?, 'tenant', 'sit-reconsider', ?, 'maintenance.ticket', 'R1', X'7B7D', ?, ?, 'approved', ?, ?)`,
-		intentID, decisionID, situationVersion, zero, now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+		intentID, decisionID, situationVersion, zero, kernel.FormatTime(now.Add(time.Hour)), kernel.FormatTime(now), kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("insert intent fixture: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO commands (
 		command_id, intent_id, tenant_id, effector_route, normalized_target, idempotency_key, command_json,
 		command_sha256, status, created_at, updated_at
 	) VALUES (?, ?, 'tenant', 'maintenance.ticket', 'motor/1', ?, X'7B7D', ?, 'succeeded', ?, ?)`,
-		commandID, intentID, zero, zero, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+		commandID, intentID, zero, zero, kernel.FormatTime(now), kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("insert command fixture: %w", err)
 	}
 	_, err := db.ExecContext(ctx, `INSERT INTO outcomes (
 		outcome_id, command_id, ordinal, status, reconciliation_status, outcome_sha256, occurred_at
-	) VALUES (?, ?, 1, 'succeeded', 'observed', ?, ?)`, "out-"+commandID, commandID, zero, now.Format(time.RFC3339Nano))
+	) VALUES (?, ?, 1, 'succeeded', 'observed', ?, ?)`, "out-"+commandID, commandID, zero, kernel.FormatTime(now))
 	if err != nil {
 		return fmt.Errorf("insert outcome fixture: %w", err)
 	}

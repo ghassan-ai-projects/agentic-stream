@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 type Result struct {
 	IntentID   string `json:"intent_id"`
 	DecisionID string `json:"decision_id"`
@@ -20,43 +22,44 @@ type ApprovalAssertion struct {
 	RiskClass        string
 	IntentDigest     string
 	DecisionDigest   string
-	ExpiresAt        string
+	ExpiresAt        time.Time
 	Nonce            string
 	ApproverID       string
 	RelayID          string
 }
 
 type IntentRecord struct {
-	IntentID            string
-	DecisionID          string
-	EpisodeID           string
-	EpisodeTenant       string
-	EpisodeSituation    string
-	EpisodeVersion      int
-	SituationTenant     string
-	DecisionSituation   string
-	DecisionVersion     int
-	TenantID            string
-	SituationID         string
-	SituationVersion    int
-	IntentType          string
-	RiskClass           string
-	IntentJSON          []byte
-	IntentSHA           []byte
-	RateLimitPerHour    int
-	RequiresApproval    int
-	ExpiresAt           string
-	PolicyStatus        string
-	ValidationStatus    string
-	DecisionJSON        []byte
-	DecisionSHA         []byte
-	Traceparent         string
-	Tracestate          string
-	EpisodeLifecycle    string
-	CurrentSituation    int
-	LastMaterialVersion int
-	CurrentCompleteness string
-	ExecutorVersion     string
-	SituationType       string
-	PolicyEpoch         string
+	IntentID                string
+	DecisionID              string
+	EpisodeID               string
+	EpisodeTenant           string
+	EpisodeSituation        string
+	EpisodeVersion          int
+	SituationTenant         string
+	DecisionSituation       string
+	DecisionVersion         int
+	TenantID                string
+	SituationID             string
+	SituationVersion        int
+	IntentType              string
+	RiskClass               string
+	IntentJSON              []byte
+	IntentSHA               []byte
+	RateLimitPerHour        int
+	RequiresApproval        int
+	ExpiresAt               time.Time
+	ExpiryUnreadable        bool
+	PolicyStatus            string
+	ValidationStatus        string
+	DecisionJSON            []byte
+	DecisionSHA             []byte
+	Traceparent             string
+	Tracestate              string
+	EpisodeProducedDecision bool
+	CurrentSituation        int
+	LastMaterialVersion     int
+	CurrentCompleteness     string
+	ExecutorVersion         string
+	SituationType           string
+	PolicyEpoch             string
 }

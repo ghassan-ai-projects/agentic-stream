@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/internal/domain"
 
 	_ "modernc.org/sqlite"
@@ -59,6 +60,9 @@ func (db *DB) Close() error {
 }
 
 func open(ctx context.Context, path string) (*DB, error) {
+	if err := requireStoredTimeFunction(); err != nil {
+		return nil, err
+	}
 	sqlDB, err := sql.Open("sqlite", domain.ConnectionString(path))
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -163,7 +167,7 @@ func applyMigration(ctx context.Context, tx *sql.Tx, m migrations.Migration) err
 	}
 	if _, err := tx.ExecContext(ctx,
 		"INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
-		m.Version, m.Name, time.Now().UTC().Format(time.RFC3339Nano),
+		m.Version, m.Name, kernel.FormatTime(time.Now()),
 	); err != nil {
 		return fmt.Errorf("record migration: %w", err)
 	}

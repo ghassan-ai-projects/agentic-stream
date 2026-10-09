@@ -94,6 +94,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/interlock/internal/store/` | `runtime_interlock` read and write SQL |
 | `internal/canonicaljson/` | RFC 8785 canonical JSON and domain-separated digests: thin facade (public API only) |
 | `internal/canonicaljson/internal/domain/` | pure canonical encoder, number and string rules, strict validation, digest and stored-document rules (reference module layer) |
+| `internal/kernel/` | shared pure vocabulary: durable time text and digest text; imports only the standard library, no database, clock read or I/O; importable by any package |
 | `internal/sources/` | injected time and identity sources (facade) |
 | `internal/sources/internal/domain/` | pure clock and generator contracts, virtual clock, deterministic generator, id prefixes |
 | `internal/sources/internal/transport/` | the operating-system clock and the cryptographic random generator |
@@ -116,6 +117,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/storage/` | SQLite infrastructure, migrations and transactions (facade) |
 | `internal/storage/internal/domain/` | pure connection string, busy-retry backoff, pending-migration and reservation rules |
 | `internal/storage/internal/store/` | SQLite adapter: open, migrate, transactions, busy retry, checkpoint, fresh replay databases |
+| `internal/storage/storagetest/` | test support: opens a migrated runtime database from a template built once per migration set, so tests skip the migration replay |
 | `internal/contractsv1/` | versioned envelope/schema contracts (facade) |
 | `internal/contractsv1/internal/domain/` | pure envelope, CloudEvent, trace context, schema validation and digest rules |
 | `internal/telemetry/` | OpenTelemetry and runtime metrics (facade) |

@@ -812,34 +812,24 @@ func testOperatorEnvelope(id, eventType string, eventTime time.Time, data map[st
 	}
 }
 
-func meanSpec() *spec.CompiledSpec {
+func temperatureSpec(windowSize, windowSlide string, operator spec.Operator) *spec.CompiledSpec {
+	operator.Name, operator.Inputs, operator.Field, operator.Window = "op1", []string{"temp"}, "data.celsius", "w1"
 	return &spec.CompiledSpec{
 		SchemaVersion: "agentic-stream/v1",
 		Inputs: []spec.Input{
 			{Name: "temp", EventType: "sensor.temperature", SchemaVersion: "1.0", PartitionKey: "entity.id", EntityType: "motor"},
 		},
-		Windows: []spec.Window{
-			{Name: "w1", Kind: "sliding", Size: "5m", Slide: "1m", Emit: "on_update"},
-		},
-		Operators: []spec.Operator{
-			{Name: "op1", Kind: "aggregate", Inputs: []string{"temp"}, Field: "data.celsius", Window: "w1", Aggregate: "mean", Output: "mean_value", Unit: "celsius"},
-		},
+		Windows:   []spec.Window{{Name: "w1", Kind: "sliding", Size: windowSize, Slide: windowSlide, Emit: "on_update"}},
+		Operators: []spec.Operator{operator},
 	}
 }
 
+func meanSpec() *spec.CompiledSpec {
+	return temperatureSpec("5m", "1m", spec.Operator{Kind: "aggregate", Aggregate: "mean", Output: "mean_value", Unit: "celsius"})
+}
+
 func slopeSpec() *spec.CompiledSpec {
-	return &spec.CompiledSpec{
-		SchemaVersion: "agentic-stream/v1",
-		Inputs: []spec.Input{
-			{Name: "temp", EventType: "sensor.temperature", SchemaVersion: "1.0", PartitionKey: "entity.id", EntityType: "motor"},
-		},
-		Windows: []spec.Window{
-			{Name: "w1", Kind: "sliding", Size: "6h", Slide: "15m", Emit: "on_update"},
-		},
-		Operators: []spec.Operator{
-			{Name: "op1", Kind: "slope", Inputs: []string{"temp"}, Field: "data.celsius", Window: "w1", Aggregate: "slope", Output: "slope_value", Unit: "celsius_per_hour"},
-		},
-	}
+	return temperatureSpec("6h", "15m", spec.Operator{Kind: "slope", Aggregate: "slope", Output: "slope_value", Unit: "celsius_per_hour"})
 }
 
 func heartbeatSpec() *spec.CompiledSpec {

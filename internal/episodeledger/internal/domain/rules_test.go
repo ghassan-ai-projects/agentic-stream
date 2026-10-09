@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAttemptTransitionTable(t *testing.T) {
@@ -131,21 +132,19 @@ func TestRejectionRules(t *testing.T) {
 		t.Fatal("details default changed")
 	}
 	identity := Identity{EpisodeID: "e", AttemptID: "a", Fence: 3}
-	first := RejectionID(identity, RejectStaleAttempt, []byte("{}"), "t")
-	if first != RejectionID(identity, RejectStaleAttempt, []byte("{}"), "t") || !strings.HasPrefix(first, "rej_") {
+	instant := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	first := RejectionID(identity, RejectStaleAttempt, []byte("{}"), instant)
+	if first != RejectionID(identity, RejectStaleAttempt, []byte("{}"), instant) || !strings.HasPrefix(first, "rej_") {
 		t.Fatalf("id = %s", first)
 	}
-	if first == RejectionID(identity, RejectWrongAttempt, []byte("{}"), "t") || first == RejectionID(identity, RejectStaleAttempt, []byte("{}"), "u") {
+	if first == RejectionID(identity, RejectWrongAttempt, []byte("{}"), instant) || first == RejectionID(identity, RejectStaleAttempt, []byte("{}"), instant.Add(time.Nanosecond)) {
 		t.Fatal("id ignores its inputs")
 	}
 }
 
-func TestAdmissionDefaultsAndConflictReporting(t *testing.T) {
+func TestAdmissionConflictReporting(t *testing.T) {
 	t.Parallel()
-	if (Admission{}).EffectiveDispatchPolicy() != DispatchShadow || (Admission{DispatchPolicy: "active"}).EffectiveDispatchPolicy() != "active" {
-		t.Fatal("dispatch policy default changed")
-	}
-	if !(Admission{Kind: KindReconsider}).ReportsLiveConflict() || (Admission{Kind: "standard"}).ReportsLiveConflict() {
+	if !(Admission{Kind: KindReconsider}).ReportsLiveConflict() || (Admission{Kind: KindStandard}).ReportsLiveConflict() {
 		t.Fatal("only reconsiderations report a live conflict")
 	}
 }
@@ -169,5 +168,21 @@ func TestSchedulerRules(t *testing.T) {
 	t.Parallel()
 	if CheckStillPending(1, "i") != nil || CheckStillPending(0, "i") == nil {
 		t.Fatal("pending check changed")
+	}
+}
+
+func TestRejectionIDIsPinnedForWholeSecondAndFractionalInstants(t *testing.T) {
+	t.Parallel()
+	identity := Identity{EpisodeID: "e", AttemptID: "a", Fence: 1}
+	for name, test := range map[string]struct {
+		at   time.Time
+		want string
+	}{
+		"whole second": {time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC), "rej_151d5295a1b297ed669b5b3b0c68e26c8b94c55475de86f1ac6076568f7641ed"},
+		"fractional":   {time.Date(2026, 8, 12, 12, 0, 0, 500_000_000, time.UTC), "rej_87cea6ff9879c8ab4ad11791c6b47330073a9edc0708a1c87af4df19ec0a5beb"},
+	} {
+		if got := RejectionID(identity, RejectStaleAttempt, []byte("{}"), test.at); got != test.want {
+			t.Errorf("%s: id = %s, want %s", name, got, test.want)
+		}
 	}
 }

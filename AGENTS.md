@@ -94,6 +94,8 @@ The documented structure (see [docs/design/TECHNICAL_DESIGN.md §23](docs/design
 - `internal/api` - JSON/HTTP plus Server-Sent Events
 - `internal/telemetry` - OpenTelemetry traces, metrics, logs
 - `internal/storage` - SQLite WAL via `modernc.org/sqlite`
+- `internal/storage/storagetest` - test support only: opens a migrated temporary database from a template built once per migration set; import it from tests, never from production code
+- `internal/kernel` - the shared pure vocabulary: durable time text (`FormatTime`, `ParseTime`, `ParseStoredTime`) and digest text (`EncodeDigest`, `DecodeDigest`). Standard library only: no database, file, network, random source or clock read. Any production package may import it without declaring an `allowedImports` edge; `TestKernelStaysPure` enforces the purity. A symbol is admitted only when two or more modules need it and it is a stable representation rule, not business behaviour (see [kernel vocabulary](internal/kernel/UBIQUITOUS_LANGUAGE.md))
 - `internal/sources` - injected time and identity sources: physical/virtual clock, random/deterministic id generators and the id prefixes
 - `proto/agenticstream/runtime/v1/` - worker protocol (Protobuf/gRPC over UDS)
 - `internal/spec/internal/domain/schema.json` and `internal/contractsv1/internal/domain/schemas/v1/` - embedded JSON Schemas
@@ -244,7 +246,10 @@ review checklist (Q8) has stopped finding duplicates.
    job it does (`grep -rn` for the verb and for `func` names such as `nullable`,
    `orPhysical`, `collect`, `format`). Use what exists:
    `storage.QueryAll` and `storage.CollectRows` (read rows),
-   `storage.NullIfEmpty` (empty string to NULL),
+   `storage.NullIfEmpty` (empty string to NULL), `storage.QueryOptional` (one
+   value or none), `storage.RowsAffected` and `storage.BoolInt`,
+   `contractsv1.DocumentString` and `DocumentInt` (decoded JSON fields),
+   `sources.OrLease` (default lease),
    `sources.OrPhysical` and `sources.OrRandom` (default clock and identities),
    `interlock.Assert` (the interlock check), and `newOperatorCommand`,
    `newDatabaseCommand`, `newByIDCommand` (operator CLI). If two modules need
@@ -263,13 +268,15 @@ review checklist (Q8) has stopped finding duplicates.
    private types that only look alike (each module's opaque `Join`, each
    module's `Tx`) are not duplicates; helpers with the same body are.
 
-Fix with the refactoring tools above, then run `make lint`. Test files are
-outside the `dupl` gate, but repeated test setup still moves into a helper.
+Fix with the refactoring tools above, then run `make lint`. The `dupl` gate
+covers test files too; repeated test setup moves into a helper
+(`storagetest.OpenTemp` opens a migrated temporary database).
 
-Known duplication to burn down: `LoadSchedulerItem` and `LoadEvaluation` in
-`internal/episodes/internal/store/assembler.go` share a single-row load shape;
-`orMinute` (`actions`) and `ReservationLease` (`evidence`) default a lease to one
-minute independently; clones in test files. Remove an item from this list when
+Known duplication to burn down: at threshold 60 the
+`dupl` pairs `principals`/`notifications` (operator command constructors),
+`scanCommandView`/`scanAwaitingCommand` (`actions` store) and `LoadSchedulerItem`/
+`LoadEvaluation` (`episodes` store) are structural twins that a shared helper
+would not shorten. Remove an item from this list when
 you fix it, add one only for a duplicate you could not fix in the same change
 and say why in the change.
 

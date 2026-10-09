@@ -15,7 +15,7 @@ import (
 func (r *Runner) quarantineStale(ctx context.Context, tx *store.Tx, claim *episodeClaim, liveVersion int64) error {
 	terminal := map[string]any{"reason": "stale_situation",
 		"bound": claim.req.SituationVersion, "live": liveVersion, "rebind_attempts": claim.rebindCount}
-	if err := r.abandonEpisode(ctx, tx, claim.episodeID, terminal, r.runtimeNow()); err != nil {
+	if err := r.abandonEpisode(ctx, tx, claim.episodeID, terminal, r.clk.Now()); err != nil {
 		return fmt.Errorf("quarantine stale episode: %w", err)
 	}
 	if r.telemetry != nil {
@@ -52,7 +52,7 @@ func (r *Runner) abandonRebindFailure(ctx context.Context, tx *store.Tx, claim *
 	if err != nil {
 		return fmt.Errorf("marshal rebind terminal: %w", err)
 	}
-	if err := tx.AbandonRebind(ctx, claim.episodeID, r.runtimeNow(), terminal); err != nil {
+	if err := tx.AbandonRebind(ctx, claim.episodeID, r.clk.Now(), terminal); err != nil {
 		return fmt.Errorf("quarantine rebind-failed episode: %w", err)
 	}
 	return nil
@@ -73,7 +73,7 @@ func (r *Runner) quarantineRefusedEpoch(ctx context.Context, tx *store.Tx, claim
 }
 
 func (r *Runner) abandonRefusedEpoch(ctx context.Context, tx *store.Tx, claim *episodeClaim, reason string) error {
-	now := r.runtimeNow()
+	now := r.clk.Now()
 	if err := r.abandonEpisode(ctx, tx, claim.episodeID, map[string]any{"reason": reason}, now); err != nil {
 		return fmt.Errorf("quarantine killed-epoch episode: %w", err)
 	}
@@ -94,7 +94,7 @@ func (r *Runner) epochRefusal(ctx context.Context, tx *store.Tx, policyEpoch str
 }
 
 // abandonEpisode durably quarantines an episode with a terminal reason.
-func (r *Runner) abandonEpisode(ctx context.Context, tx *store.Tx, episodeID string, terminal map[string]any, now string) error {
+func (r *Runner) abandonEpisode(ctx context.Context, tx *store.Tx, episodeID string, terminal map[string]any, now time.Time) error {
 	terminalJSON, err := json.Marshal(terminal)
 	if err != nil {
 		return fmt.Errorf("marshal episode terminal: %w", err)
@@ -103,9 +103,4 @@ func (r *Runner) abandonEpisode(ctx context.Context, tx *store.Tx, episodeID str
 		return fmt.Errorf("abandon episode: %w", err)
 	}
 	return nil
-}
-
-// runtimeNow formats the runner clock for durable timestamps.
-func (r *Runner) runtimeNow() string {
-	return r.clk.Now().UTC().Format(time.RFC3339Nano)
 }

@@ -19,18 +19,11 @@ func (tx *Tx) AppendApprovalWithdrawn(ctx context.Context, event domain.Approval
 }
 
 func approvalWithdrawnEvent(event domain.ApprovalEvent) notify.LifecycleEvent {
-	return notify.LifecycleEvent{
-		ID:           "approval.withdrawn:" + event.ID,
-		TenantID:     event.Intent.TenantID,
-		Subject:      "approval/" + event.ID,
-		PartitionKey: event.Intent.SituationID,
-		Payload: notify.ApprovalWithdrawn{
-			ApprovalID: event.ID, IntentID: event.Intent.IntentID, SituationID: event.Intent.SituationID,
-			SituationVersion: event.Intent.SituationVersion, Reason: event.Reason,
-		},
-		At:    event.Now,
-		Trace: traceContext(event.Intent),
+	payload := notify.ApprovalWithdrawn{
+		ApprovalID: event.ID, IntentID: event.Intent.IntentID, SituationID: event.Intent.SituationID,
+		SituationVersion: event.Intent.SituationVersion, Reason: event.Reason,
 	}
+	return notify.ApprovalWithdrawnEvent(event.Intent.TenantID, payload, event.Now, traceContext(event.Intent))
 }
 
 // AppendApprovalResolved publishes a durable approval disposition.
@@ -42,19 +35,12 @@ func (tx *Tx) AppendApprovalResolved(ctx context.Context, event domain.ApprovalE
 }
 
 func approvalResolvedEvent(event domain.ApprovalEvent) notify.LifecycleEvent {
-	return notify.LifecycleEvent{
-		ID:           "approval.resolved:" + event.ID + ":" + event.Status,
-		TenantID:     event.Intent.TenantID,
-		Subject:      "approval/" + event.ID,
-		PartitionKey: event.Intent.SituationID,
-		Payload: notify.ApprovalResolved{
-			ApprovalID: event.ID, IntentID: event.Intent.IntentID, DecisionID: event.Intent.DecisionID,
-			SituationID: event.Intent.SituationID, SituationVersion: event.Intent.SituationVersion,
-			Status: event.Status, Reason: event.Reason,
-		},
-		At:    event.Now,
-		Trace: traceContext(event.Intent),
+	payload := notify.ApprovalResolved{
+		ApprovalID: event.ID, IntentID: event.Intent.IntentID, DecisionID: event.Intent.DecisionID,
+		SituationID: event.Intent.SituationID, SituationVersion: event.Intent.SituationVersion,
+		Status: event.Status, Reason: event.Reason,
 	}
+	return notify.ApprovalResolvedEvent(event.Intent.TenantID, payload, event.Now, traceContext(event.Intent))
 }
 
 func traceContext(row domain.IntentRecord) contractsv1.TraceContext {
@@ -70,15 +56,8 @@ func (tx *Tx) AppendApprovalRequested(ctx context.Context, row domain.IntentReco
 	if err := request.Data.CheckBinding(row.TenantID, notify.SourceForTenant(row.TenantID)); err != nil {
 		return fmt.Errorf("append approval requested notification: %w", err)
 	}
-	if err := notify.AppendLifecycleEvent(ctx, tx.tx, notify.LifecycleEvent{
-		ID:           "approval.requested:" + request.ID,
-		TenantID:     row.TenantID,
-		Subject:      "approval/" + request.ID,
-		PartitionKey: row.SituationID,
-		Payload:      approvalRequested(request.Data),
-		At:           now,
-		Trace:        traceContext(row),
-	}); err != nil {
+	event := notify.ApprovalRequestedEvent(row.TenantID, approvalRequested(request.Data), now, traceContext(row))
+	if err := notify.AppendLifecycleEvent(ctx, tx.tx, event); err != nil {
 		return fmt.Errorf("append approval requested notification: %w", err)
 	}
 	return nil

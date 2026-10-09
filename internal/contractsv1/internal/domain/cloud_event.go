@@ -102,12 +102,16 @@ func (e CloudEvent) ComputeEnvelopeDigest() (string, error) {
 	return digest, nil
 }
 
+func (e CloudEvent) wireTime() string {
+	return e.Time.UTC().Format(time.RFC3339Nano)
+}
+
 // envelopeProjection is the digested view of the envelope: its attributes,
 // the data digest and, when present, the trace context.
 func (e CloudEvent) envelopeProjection(dataDigest string) map[string]any {
 	projection := map[string]any{
 		"specversion": e.SpecVersion, "type": e.Type, "source": e.Source, "id": e.ID,
-		"subject": e.Subject, "time": e.Time.UTC().Format(time.RFC3339Nano),
+		"subject": e.Subject, "time": e.wireTime(),
 		"dataschema": e.DataSchema, "tenantid": e.TenantID, "partitionkey": e.PartitionKey,
 		"classification": e.Classification, "datadigest": dataDigest,
 	}

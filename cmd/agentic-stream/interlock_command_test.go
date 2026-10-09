@@ -8,7 +8,7 @@ import (
 	"time"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func runOperatorCommand(t *testing.T, args ...string) (string, error) {
@@ -50,7 +50,7 @@ func TestInterlockTripAndClear(t *testing.T) {
 func TestInterlockClearWaitsForTheRuntimeButTripDoesNot(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "runtime.db")
-	db, err := storage.Open(context.Background(), path)
+	db, err := storagetest.Open(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}

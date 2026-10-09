@@ -27,7 +27,7 @@ type Config struct {
 	Clock        sources.Clock
 	Spec         *spec.CompiledSpec
 	TenantID     string
-	RuntimeOwner func(context.Context, *sql.Tx, string) error
+	RuntimeOwner storage.OwnerCheck
 	Epoch        string
 	Cognition    bool
 }

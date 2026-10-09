@@ -27,6 +27,16 @@ var ErrUnsupportedMode = domain.ErrUnsupportedMode
 // Result is the deterministic output of a replay run.
 type Result = domain.Result
 
+// ShadowReport is the JSON report of a shadow replay: its totals, one item per
+// paired trial and the findings.
+type ShadowReport = domain.ShadowReport
+
+// ShadowReportItem is one paired trial of a ShadowReport.
+type ShadowReportItem = domain.ShadowReportItem
+
+// ReportFinding is one finding of a ShadowReport.
+type ReportFinding = domain.ReportFinding
+
 // Finding is a deterministic, non-effectful replay observation.
 type Finding = domain.Finding
 

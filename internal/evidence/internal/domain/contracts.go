@@ -3,6 +3,7 @@ package domain
 
 import (
 	"context"
+	"crypto/sha256"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
@@ -46,6 +47,11 @@ type Query func(context.Context, Call) (QueryResult, error)
 type QueryResult struct {
 	JSON     []byte
 	RowCount uint64
+}
+
+func (r QueryResult) SHA256() []byte {
+	sum := sha256.Sum256(r.JSON)
+	return sum[:]
 }
 
 // EvidenceGetArguments is the complete v1 schema for evidence.get. Query

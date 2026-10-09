@@ -4,26 +4,22 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestJoinedTransactionKeepsCallerOwnership(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(t.Context(), filepath.Join(t.TempDir(), "join.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 	rollback := errors.New("rollback entire admission")
-	err = db.WithTx(t.Context(), func(original *sql.Tx) error {
+	err := db.WithTx(t.Context(), func(original *sql.Tx) error {
 		joined := store.Join(original)
 		check := func(ctx context.Context, received *sql.Tx, epoch string) error {
 			if received != original || epoch != "epoch" {
@@ -77,7 +73,7 @@ func TestLifecycleHandoffRollsBackWithDecisionUnit(t *testing.T) {
 		if err := tx.RetainForRetry(t.Context(), episodeID); err != nil {
 			return err
 		}
-		if err := tx.Conclude(t.Context(), episodeID, "2026-10-05T00:00:00Z", []byte(`{}`)); err != nil {
+		if err := tx.Conclude(t.Context(), episodeID, time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC), []byte(`{}`)); err != nil {
 			return err
 		}
 		return rejected
@@ -120,7 +116,6 @@ func TestProjectionErrorsPreserveCancellation(t *testing.T) {
 			func() error {
 				return store.InsertValidatedIntent(ctx, tx, store.ValidatedIntentInsert{Intent: intentFixture()})
 			},
-			func() error { _, err := store.LoadReconsideration(ctx, tx, store.SchedulerItem{}, 1, ""); return err },
 		}
 		for i, operation := range operations {
 			if err := operation(); !errors.Is(err, context.Canceled) {
@@ -137,15 +132,8 @@ func TestProjectionErrorsPreserveCancellation(t *testing.T) {
 func TestShadowDecisionSharesCallerTransactionAndNeverCreatesActionRecords(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "shadow.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatal(err)
-	}
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+
 	digest := make([]byte, 32)
 	decision := domain.ShadowDecision{
 		ShadowDecisionID: "shadow", EpisodeID: "episode", DecisionID: "decision", AttemptID: "attempt",
@@ -154,14 +142,16 @@ func TestShadowDecisionSharesCallerTransactionAndNeverCreatesActionRecords(t *te
 	}
 	rollback := errors.New("caller failed after recording evidence")
 	if err := db.WithTx(ctx, func(raw *sql.Tx) error {
-		if err := store.Join(raw).RecordShadowDecision(ctx, decision, "now"); err != nil {
+		if err := store.Join(raw).RecordShadowDecision(ctx, decision, time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)); err != nil {
 			return err
 		}
 		return rollback
 	}); !errors.Is(err, rollback) {
 		t.Fatalf("record/rollback: %v", err)
 	}
-	if err := db.WithTx(ctx, func(raw *sql.Tx) error { return store.Join(raw).RecordShadowDecision(ctx, decision, "now") }); err != nil {
+	if err := db.WithTx(ctx, func(raw *sql.Tx) error {
+		return store.Join(raw).RecordShadowDecision(ctx, decision, time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC))
+	}); err != nil {
 		t.Fatal(err)
 	}
 	for table, want := range map[string]int{"shadow_decisions": 1, "intents": 0, "commands": 0, "outbox": 0} {

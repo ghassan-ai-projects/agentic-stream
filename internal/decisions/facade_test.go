@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 func TestValidateDelegatesAndPreservesTypedRefusal(t *testing.T) {
@@ -107,7 +108,7 @@ func facadeInput(catalog *IntentCatalog, now time.Time) Input {
 		TenantID: "tenant-1", SituationID: "situation-1", SituationVersion: 1,
 		EntityID: "entity-1", SnapshotDigest: "sha256:" + facadeZeros(64),
 		AllowedIntentTypes: map[string]struct{}{"act": {}}, RiskCeiling: "R1",
-		IntentCatalog: catalog, Kind: "standard", Now: now,
+		IntentCatalog: catalog, Now: now,
 	}
 }
 
@@ -119,7 +120,7 @@ func facadeDecision(t *testing.T, now time.Time) map[string]any {
 		"risk_class": "R1", "parameters": map[string]any{
 			"priority": "routine", "metadata": map[string]any{"labels": []any{"original"}},
 		},
-		"expires_at": now.Add(time.Hour).Format(time.RFC3339Nano),
+		"expires_at": kernel.FormatTime(now.Add(time.Hour)),
 	}
 	digest, err := contractsv1.IntentDigest(intent)
 	if err != nil {

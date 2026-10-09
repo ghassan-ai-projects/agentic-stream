@@ -2,36 +2,40 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 )
 
 // EpisodeLifecycle reads an episode's durable lifecycle status.
-func EpisodeLifecycle(ctx context.Context, tx *Tx, episodeID string) (string, error) {
-	var lifecycle string
-	if err := tx.tx.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = ?", episodeID).Scan(&lifecycle); err != nil {
+func EpisodeLifecycle(ctx context.Context, tx *Tx, episodeID string) (episodeledger.LifecycleStatus, error) {
+	fence, found, err := episodeledger.ReadEpisodeFence(ctx, tx.tx, episodeID)
+	if err != nil {
 		return "", fmt.Errorf("read episode lifecycle: %w", err)
 	}
-	return lifecycle, nil
+	if !found {
+		return "", fmt.Errorf("read episode lifecycle: episode %s: %w", episodeID, sql.ErrNoRows)
+	}
+	return fence.Lifecycle, nil
 }
 
 // EpisodeSupersededNow reports whether the episode is already superseded,
 // polled outside a transaction by the supersession watch. Read errors are the
 // caller's to ignore; the poll retries.
 func (s Store) EpisodeSupersededNow(ctx context.Context, episodeID string) bool {
-	var lifecycle string
-	return s.db.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = ?", episodeID).Scan(&lifecycle) == nil &&
-		lifecycle == string(episodeledger.LifecycleSuperseded)
+	lifecycle, err := episodeledger.ReadEpisodeLifecycle(ctx, s.db.DB, episodeID)
+	return err == nil && lifecycle == episodeledger.LifecycleSuperseded
 }
 
 // AttemptStatus reads an attempt's current lifecycle status.
 func AttemptStatus(ctx context.Context, tx *Tx, identity episodeledger.Identity) (episodeledger.AttemptStatus, error) {
-	var current episodeledger.AttemptStatus
-	if err := tx.tx.QueryRowContext(ctx, "SELECT status FROM episode_attempts WHERE attempt_id = ? AND episode_id = ? AND fence = ?", identity.AttemptID, identity.EpisodeID, identity.Fence).Scan(&current); err != nil {
+	status, err := episodeledger.ReadAttemptStatus(ctx, tx.tx, identity)
+	if err != nil {
 		return "", fmt.Errorf("read episode attempt status: %w", err)
 	}
-	return current, nil
+	return status, nil
 }
 
 // AnnotateRejectedDecision records why a decision was rejected.
@@ -59,7 +63,7 @@ func RetainForRetry(ctx context.Context, tx *Tx, episodeID string) error {
 }
 
 // ConcludeEpisode concludes an episode with its terminal document.
-func ConcludeEpisode(ctx context.Context, tx *Tx, episodeID, now string, terminalJSON []byte) error {
+func ConcludeEpisode(ctx context.Context, tx *Tx, episodeID string, now time.Time, terminalJSON []byte) error {
 	if err := episodeledger.Conclude(ctx, tx.tx, episodeID, now, terminalJSON); err != nil {
 		return fmt.Errorf("update episode terminal: %w", err)
 	}

@@ -1,7 +1,7 @@
 package domain
 
 import (
-	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
@@ -22,17 +22,27 @@ type CommandRow struct {
 	JSON, SHA, Idempotency                []byte
 }
 
-// Lease is the dispatch lease columns of a command outbox row. Absent columns
-// are distinguished from empty ones.
 type Lease struct {
-	Owner, Until       string
-	HasOwner, HasUntil bool
+	Owner                          string
+	Until                          time.Time
+	HasOwner, HasUntil, Unreadable bool
 }
 
 // Expired reports whether a leased row has no valid, unexpired lease at now.
 func (l Lease) Expired(now time.Time) bool {
-	expiresAt, err := time.Parse(time.RFC3339Nano, l.Until)
-	return err != nil || !l.HasOwner || !l.HasUntil || !expiresAt.After(now)
+	return !l.HasOwner || !l.HasUntil || !l.Until.After(now)
+}
+
+const (
+	AbandonLeaseExpired    = "lease expired before dispatch"
+	AbandonLeaseUnreadable = "lease expiry unreadable before dispatch"
+)
+
+func (l Lease) abandonReason() string {
+	if l.Unreadable {
+		return AbandonLeaseUnreadable
+	}
+	return AbandonLeaseExpired
 }
 
 // Candidate is the oldest available command outbox row with the ledger columns
@@ -69,7 +79,8 @@ const (
 type Admission struct {
 	Step AdmissionStep
 	// FailureCode is set for FailInvalidCommand.
-	FailureCode string
+	FailureCode   string
+	AbandonReason string
 	// OutboxClosure is the outbox status for CloseOutboxOnly.
 	OutboxClosure string
 	Leased        LeasedCommand
@@ -84,7 +95,7 @@ func (c Candidate) Admit(now time.Time) Admission {
 	if c.OutboxStatus == OutboxLeased {
 		leased.LeaseOwner = c.Lease.Owner
 		if c.Lease.Expired(now) {
-			return Admission{Step: AbandonExpiredLease, Leased: c.withLedgerIdentity(leased)}
+			return Admission{Step: AbandonExpiredLease, AbandonReason: c.Lease.abandonReason(), Leased: c.withLedgerIdentity(leased)}
 		}
 	}
 	return c.admitCommandDocument(leased)
@@ -98,7 +109,7 @@ func (c Candidate) admitCommandDocument(leased LeasedCommand) Admission {
 		return Admission{Step: FailInvalidCommand, FailureCode: failureCode, Leased: leased}
 	}
 	leased.Command = document.Command(leased.Command)
-	if c.CommandStatus == CommandSucceeded || c.CommandStatus == CommandOutcomeUnknown {
+	if c.CommandStatus == actionport.CommandSucceeded || c.CommandStatus == actionport.CommandOutcomeUnknown {
 		return Admission{Step: CloseOutboxOnly, OutboxClosure: outboxClosure(c.CommandStatus), Leased: leased}
 	}
 	return Admission{Step: AcquireLease, Leased: leased}
@@ -114,7 +125,7 @@ func (c Candidate) withLedgerIdentity(leased LeasedCommand) LeasedCommand {
 }
 
 func outboxClosure(commandStatus string) string {
-	if commandStatus == CommandOutcomeUnknown {
+	if commandStatus == actionport.CommandOutcomeUnknown {
 		return OutboxFailed
 	}
 	return OutboxDelivered
@@ -123,12 +134,9 @@ func outboxClosure(commandStatus string) string {
 // VerifiedDocument decodes the command document and returns the lease failure
 // code when it is invalid or disagrees with its ledger columns.
 func (c Candidate) VerifiedDocument() (CommandDocument, string) {
-	var raw Document
-	if err := json.Unmarshal(c.Command.JSON, &raw); err != nil {
-		return CommandDocument{}, FailureCommandJSONInvalid
-	}
-	if err := contractsv1.Validate(contractsv1.SchemaCommand, map[string]any(raw)); err != nil {
-		return CommandDocument{}, FailureCommandSchemaInvalid
+	raw, err := contractsv1.DecodeDocument(c.Command.JSON, contractsv1.SchemaCommand)
+	if err != nil {
+		return CommandDocument{}, commandDecodeFailure(err)
 	}
 	document := ParseCommandDocument(raw)
 	if !c.matchesLedger(raw, document) {
@@ -137,6 +145,13 @@ func (c Candidate) VerifiedDocument() (CommandDocument, string) {
 	return document, ""
 }
 
-func (c Candidate) matchesLedger(raw Document, document CommandDocument) bool {
-	return document.MatchesLedger(c.Command) && verifyDigest(canonicaljson.DomainCommand, raw, c.Command.SHA)
+func commandDecodeFailure(err error) string {
+	if errors.Is(err, contractsv1.ErrDocumentSchema) {
+		return FailureCommandSchemaInvalid
+	}
+	return FailureCommandJSONInvalid
+}
+
+func (c Candidate) matchesLedger(raw map[string]any, document CommandDocument) bool {
+	return document.MatchesLedger(c.Command) && contractsv1.VerifyDocumentDigest(canonicaljson.DomainCommand, raw, c.Command.SHA)
 }

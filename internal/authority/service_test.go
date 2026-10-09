@@ -1,10 +1,8 @@
 package authority_test
 
 import (
-	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,16 +10,15 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func openDB(t *testing.T, name string) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), name))
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 	return db
 }
@@ -111,6 +108,25 @@ func TestServiceDelegatesEveryOperation(t *testing.T) {
 	}
 	if err := service.AssertClaim(ctx, claim); !errors.Is(err, authority.ErrTargetClaimNotOwned) {
 		t.Fatalf("released claim = %v", err)
+	}
+}
+
+func TestUnsetClaimLeaseIsTheSourcesDefaultLease(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	db := openDB(t, "runtime.db")
+	clock := sources.NewVirtual(time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC))
+	runtimeOwner := &control.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Hour, Now: clock.Now}
+	must(t, runtimeOwner.Claim(ctx, "epoch-1"))
+	service, err := authority.New(authority.Config{DB: db, Owner: runtimeOwner, Epochs: &control.EpochControl{DB: db}, Outcomes: actions.CountUnresolvedOutcomes, Clock: clock})
+	must(t, err)
+	claim := authority.TargetClaim{Target: "fan-01", Device: authority.DeviceBoot{DeviceID: "thermal-01", BootID: "boot-A"}, Owner: authority.Owner{Epoch: "epoch-1", Instance: service.OwnerInstance()}}
+	must(t, service.Claim(ctx, claim))
+	clock.Advance(sources.DefaultLease - time.Nanosecond)
+	must(t, service.AssertClaim(ctx, claim))
+	clock.Advance(time.Nanosecond)
+	if err := service.AssertClaim(ctx, claim); !errors.Is(err, authority.ErrTargetClaimNotOwned) {
+		t.Fatalf("claim at the default lease = %v, want not owned", err)
 	}
 }
 

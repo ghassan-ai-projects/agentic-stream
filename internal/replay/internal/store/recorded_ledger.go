@@ -3,9 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
@@ -57,7 +57,7 @@ func scanRecordedEntry(rows *sql.Rows) (domain.RecordedEntry, error) {
 		return domain.RecordedEntry{}, fmt.Errorf("scan recorded decision: %w", err)
 	}
 	entry.AttemptID, entry.Fence = attemptID.String, fence.Int64
-	entry.DecisionSHA256 = "sha256:" + hex.EncodeToString(digest)
+	entry.DecisionSHA256 = kernel.EncodeDigest(digest)
 	entry.EpisodeKey = domain.EpisodeKey(entry.SituationID, entry.SituationVersion, entry.TriggerID)
 	return withAttemptProvenance(entry)
 }

@@ -162,14 +162,11 @@ func setBaselineIntents(decision map[string]any, intent map[string]any) {
 }
 
 func finalizeBaselineOutput(input ShadowInput, decision map[string]any) (ShadowOutput, error) {
-	decisionJSON, err := canonicaljson.Marshal(decision)
+	decisionJSON, sum, err := canonicaljson.Seal(canonicaljson.DomainDecision, decision)
 	if err != nil {
-		return ShadowOutput{}, fmt.Errorf("marshal baseline decision: %w", err)
+		return ShadowOutput{}, fmt.Errorf("seal baseline decision: %w", err)
 	}
-	decisionDigest, err := canonicaljson.Digest(canonicaljson.DomainDecision, decision)
-	if err != nil {
-		return ShadowOutput{}, fmt.Errorf("digest baseline decision: %w", err)
-	}
+	decisionDigest := canonicaljson.EncodeDigest(sum)
 	manifestDigest, err := baselineManifestDigest(input, decisionDigest)
 	if err != nil {
 		return ShadowOutput{}, err

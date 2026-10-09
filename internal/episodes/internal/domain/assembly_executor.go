@@ -132,14 +132,6 @@ func (a requestAssembly) allowedIntentTypes() map[string]bool {
 	return configured
 }
 
-func (a requestAssembly) effectiveRiskCeiling() string {
-	ceiling := a.spec.Cognition.Executor.RiskCeiling
-	if ceiling == "" {
-		return "R1"
-	}
-	return ceiling
-}
-
 func (a requestAssembly) budgetMap() map[string]any {
 	b := a.spec.Cognition.Executor.Budget
 	return map[string]any{

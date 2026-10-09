@@ -1,9 +1,15 @@
 package domain
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+var ErrOwnerLost = errors.New("runtime owner lost")
 
 // EpisodeFence is what the ledger records about an episode's current attempt.
 type EpisodeFence struct {
+	TenantID   string
 	Lifecycle  LifecycleStatus
 	Attempt    string
 	HasAttempt bool
@@ -40,7 +46,7 @@ func (f EpisodeFence) CheckIdentity(identity Identity) error {
 // CheckStartable requires an admitted or running episode and returns its
 // current fence; the caller still has to verify the prior attempt is terminal.
 func (f EpisodeFence) CheckStartable() (int64, error) {
-	if f.Lifecycle != LifecycleAdmitted && f.Lifecycle != LifecycleRunning {
+	if !f.Lifecycle.Live() {
 		return 0, Refuse(RejectEpisodeClosed)
 	}
 	return f.Fence, nil

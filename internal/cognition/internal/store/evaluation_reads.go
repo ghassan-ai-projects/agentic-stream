@@ -3,10 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/domain"
@@ -62,6 +62,6 @@ func scanEvaluation(rows *sql.Rows) (domain.TriggerEvaluationRecord, error) {
 	if err := json.Unmarshal(reasons, &record.Reasons); err != nil {
 		return domain.TriggerEvaluationRecord{}, fmt.Errorf("decode trigger reasons %s: %w", record.TriggerID, err)
 	}
-	record.Delta, record.PolicySHA256 = delta, "sha256:"+hex.EncodeToString(policy)
+	record.Delta, record.PolicySHA256 = delta, canonicaljson.EncodeDigest(policy)
 	return record, nil
 }

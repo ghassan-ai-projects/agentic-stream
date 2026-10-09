@@ -15,6 +15,19 @@ import (
 	"strings"
 )
 
+// AmbiguousKeyJSON returns canonical JSON with key declared twice, first with
+// a decoy value. A lenient reader keeps the later value and sees the original
+// document; a strict reader must refuse the bytes.
+func AmbiguousKeyJSON(canonical []byte, key string) []byte {
+	return append([]byte(`{"`+key+`":"decoy",`), canonical[1:]...)
+}
+
+// RiskClasses lists every risk class in rising order, for tests that must
+// cover each class.
+func RiskClasses() []string {
+	return []string{"R0", "R1", "R2", "R3", "R4"}
+}
+
 // MessageTypes are the four device-wire record types, in wire order.
 var MessageTypes = []string{"command", "receipt", "result", "state"}
 

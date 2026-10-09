@@ -3,16 +3,19 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
+	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/control/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // RecordEpochState records a drain or kill. Kill is terminal: once an epoch is
 // killed, neither a later drain nor a repeated kill rewrites the row.
-func (t *Tx) RecordEpochState(ctx context.Context, epoch, state, nowText string) error {
-	if _, err := t.q.ExecContext(ctx, epochControlUpsert, epoch, state, nowText); err != nil {
+func (t *Tx) RecordEpochState(ctx context.Context, epoch, state string, now time.Time) error {
+	if _, err := t.q.ExecContext(ctx, epochControlUpsert, epoch, state, kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("record epoch control: %w", err)
 	}
 	return nil
@@ -20,20 +23,17 @@ func (t *Tx) RecordEpochState(ctx context.Context, epoch, state, nowText string)
 
 // EpochState reads the epoch's control state; what names the read in errors.
 func (t *Tx) EpochState(ctx context.Context, epoch, what string) (state string, found bool, err error) {
-	err = t.q.QueryRowContext(ctx, `SELECT state FROM epoch_control WHERE epoch = ?`, epoch).Scan(&state)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", false, nil
-	}
+	state, found, err = storage.QueryOptional[string](ctx, t.q, `SELECT state FROM epoch_control WHERE epoch = ?`, epoch)
 	if err != nil {
 		return "", false, fmt.Errorf("read %s: %w", what, err)
 	}
-	return state, true, nil
+	return state, found, nil
 }
 
 // SupersedeEpoch cancels the epoch's in-flight episodes through the episode
 // ledger on this transaction.
-func (t *Tx) SupersedeEpoch(ctx context.Context, epoch, nowText string) error {
-	if err := episodeledger.SupersedeEpoch(ctx, t.tx, epoch, nowText); err != nil {
+func (t *Tx) SupersedeEpoch(ctx context.Context, epoch string, now time.Time) error {
+	if err := episodeledger.SupersedeEpoch(ctx, t.tx, epoch, now); err != nil {
 		return fmt.Errorf("supersede epoch episodes: %w", err)
 	}
 	return nil
@@ -76,10 +76,10 @@ func collectEpisodeIDs(rows *sql.Rows) ([]string, error) {
 const epochControlUpsert = `
 		INSERT INTO epoch_control (epoch, state, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT(epoch) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at
-		WHERE epoch_control.state <> 'killed'`
+		WHERE epoch_control.state <> '` + domain.EpochKilled + `'`
 
-const unstartedEpisodeReservationsSQL = `
+var unstartedEpisodeReservationsSQL = `
 		SELECT e.episode_id
 		FROM episodes e JOIN cost_reservations r ON r.episode_id = e.episode_id
-		WHERE e.policy_epoch = ? AND e.lifecycle_status = 'admitted'
+		WHERE e.policy_epoch = ? AND e.lifecycle_status = '` + string(episodeledger.LifecycleAdmitted) + `'
 		  AND e.current_attempt_id IS NULL AND r.status = 'reserved'`

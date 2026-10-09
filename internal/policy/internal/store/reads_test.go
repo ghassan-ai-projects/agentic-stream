@@ -50,7 +50,7 @@ func TestReplaceGovernanceDisablesOmittedPrincipals(t *testing.T) {
 	}
 	var summary domain.PrincipalSummary
 	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
-		summary, err = Join(tx).ReplaceGovernance(t.Context(), document, "2026-10-08T00:00:00Z")
+		summary, err = Join(tx).ReplaceGovernance(t.Context(), document, time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC))
 		return err
 	}); err != nil {
 		t.Fatal(err)

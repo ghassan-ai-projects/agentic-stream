@@ -22,7 +22,7 @@ Names mean the same thing in conversation, code, storage and audit trails.
 | Capability | Explicit non-credential adapter a mode requires | `domain.Capabilities` | — |
 | Mode | Effect-safe replay mode (deterministic, recorded, shadow) | `domain.Mode` | result `mode` |
 | Versions hash | Ordered SHA-256 over all situation-version digests | `domain.HashVersionDigests` | result `versions_hash` |
-| Admission window | Earliest admission time and expiry of a scheduler item | `domain.AdmissionWindow` | `created_at`, `not_before`, `expires_at` |
+| Admission window | Earliest admission time and expiry of a scheduler item, owned by the episode ledger | `episodeledger.DueItem` | `created_at`, `not_before`, `expires_at` |
 
 ## Retired words
 

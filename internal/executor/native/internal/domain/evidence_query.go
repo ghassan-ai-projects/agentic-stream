@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // EvidenceScope is what the trusted episode request grants an evidence tool:
@@ -13,6 +15,7 @@ type EvidenceScope struct {
 	EntityID string
 	MaxRows  uint64
 	MaxBytes uint64
+	Window   time.Duration
 }
 
 // EvidenceQuery is a scoped, bounded evidence read.
@@ -29,8 +32,6 @@ type evidenceArguments struct {
 	MaxBytes uint64 `json:"max_bytes"`
 }
 
-// Query applies the caller's arguments to the scope. The window defaults to the
-// 24 hours before now.
 func (s EvidenceScope) Query(raw json.RawMessage, now time.Time) (EvidenceQuery, error) {
 	var args evidenceArguments
 	if err := json.Unmarshal(raw, &args); err != nil {
@@ -43,7 +44,7 @@ func (s EvidenceScope) Query(raw json.RawMessage, now time.Time) (EvidenceQuery,
 }
 
 func (s EvidenceScope) scopedQuery(args evidenceArguments, now time.Time) (EvidenceQuery, error) {
-	query := EvidenceQuery{From: now.Add(-24 * time.Hour), Until: now, MaxRows: s.MaxRows, MaxBytes: s.MaxBytes}
+	query := EvidenceQuery{From: now.Add(-s.Window), Until: now, MaxRows: s.MaxRows, MaxBytes: s.MaxBytes}
 	if args.MaxRows > 0 && args.MaxRows < query.MaxRows {
 		query.MaxRows = args.MaxRows
 	}
@@ -56,12 +57,12 @@ func (s EvidenceScope) scopedQuery(args evidenceArguments, now time.Time) (Evide
 func evidenceWindow(query EvidenceQuery, args evidenceArguments) (EvidenceQuery, error) {
 	var err error
 	if args.From != "" {
-		if query.From, err = time.Parse(time.RFC3339Nano, args.From); err != nil {
+		if query.From, err = kernel.ParseTime(args.From); err != nil {
 			return EvidenceQuery{}, fmt.Errorf("invalid evidence from: %w", err)
 		}
 	}
 	if args.Until != "" {
-		if query.Until, err = time.Parse(time.RFC3339Nano, args.Until); err != nil {
+		if query.Until, err = kernel.ParseTime(args.Until); err != nil {
 			return EvidenceQuery{}, fmt.Errorf("invalid evidence until: %w", err)
 		}
 	}

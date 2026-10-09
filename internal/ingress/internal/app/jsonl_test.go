@@ -9,20 +9,16 @@ import (
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestJSONLReplayAppendsEvents(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	tracePath := filepath.Join(dir, "trace.jsonl")
 	if err := os.WriteFile(tracePath, []byte(`
@@ -55,11 +51,7 @@ func TestJSONLReplayAppendsEvents(t *testing.T) {
 func TestJSONLReplayFillsMissingTenantID(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	tracePath := filepath.Join(dir, "trace.jsonl")
 	if err := os.WriteFile(tracePath, []byte(`
@@ -86,11 +78,8 @@ func TestJSONLReplayFillsMissingTenantID(t *testing.T) {
 func TestJSONLReplayQuarantinesMalformedAndSchemaInvalidLines(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	tracePath := filepath.Join(dir, "trace.jsonl")
 	contents := "not-json\n" +
 		`{"id":"evt-bad","type":"motor.vibration.observed","schema_version":"1.0","tenant_id":"default","source":"sim","partition_key":"motor-17","entity":{"type":"motor","id":"motor-17"},"event_time":"2026-01-01T00:00:00Z","ingested_at":"2026-01-01T00:00:01Z","classification":"internal","data":{"unknown":5}}` + "\n"
@@ -145,11 +134,8 @@ func TestJSONLReplayQuarantinesMalformedAndSchemaInvalidLines(t *testing.T) {
 func TestJSONLReplayQuarantineIDsAreConnectorScoped(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	log := eventlog.NewEventLog(db)
 
 	for i, connectorID := range []string{"replay:trace-a", "replay:trace-b"} {
@@ -179,11 +165,7 @@ func TestJSONLReplayQuarantineIDsAreConnectorScoped(t *testing.T) {
 func TestJSONLReplayQuarantinesOversizedLine(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := storage.Open(ctx, filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
 
 	oversized := strings.Repeat("a", 70*1024)
 	valid := `{"id":"evt-after","type":"motor.vibration.observed","schema_version":"1.0","tenant_id":"default","source":"sim","partition_key":"motor-17","entity":{"type":"motor","id":"motor-17"},"event_time":"2026-01-01T00:00:00Z","ingested_at":"2026-01-01T00:00:01Z","classification":"internal","data":{"rms_mm_s":5.0}}`

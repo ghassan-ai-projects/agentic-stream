@@ -3,16 +3,19 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // ClaimLease writes the singleton lease for the epoch and instance. A lease
 // held by another unexpired epoch is left untouched; the caller reads the
 // recorded owner back to learn the outcome.
-func (t *Tx) ClaimLease(ctx context.Context, epoch, instance, nowText, untilText string) error {
-	if _, err := t.q.ExecContext(ctx, claimOwnerLeaseSQL, epoch, instance, nowText, nowText, untilText); err != nil {
+func (t *Tx) ClaimLease(ctx context.Context, epoch, instance string, now, until time.Time) error {
+	nowText := kernel.FormatTime(now)
+	if _, err := t.q.ExecContext(ctx, claimOwnerLeaseSQL, epoch, instance, nowText, nowText, kernel.FormatTime(until)); err != nil {
 		return fmt.Errorf("claim runtime owner: %w", err)
 	}
 	return nil
@@ -29,8 +32,9 @@ func (t *Tx) RecordedOwner(ctx context.Context) (epoch, instance string, err err
 
 // RenewLease extends the lease of the owning, unexpired epoch and returns the
 // rows it changed.
-func (t *Tx) RenewLease(ctx context.Context, epoch, instance, nowText, untilText string) (int64, error) {
-	result, err := t.q.ExecContext(ctx, renewOwnerLeaseSQL, nowText, untilText, epoch, instance, nowText)
+func (t *Tx) RenewLease(ctx context.Context, epoch, instance string, now, until time.Time) (int64, error) {
+	nowText := kernel.FormatTime(now)
+	result, err := t.q.ExecContext(ctx, renewOwnerLeaseSQL, nowText, kernel.FormatTime(until), epoch, instance, nowText)
 	if err != nil {
 		return 0, fmt.Errorf("renew runtime owner: %w", err)
 	}
@@ -38,7 +42,8 @@ func (t *Tx) RenewLease(ctx context.Context, epoch, instance, nowText, untilText
 }
 
 // ReleaseLease expires the lease of the owning epoch and returns the rows it changed.
-func (t *Tx) ReleaseLease(ctx context.Context, epoch, instance, nowText string) (int64, error) {
+func (t *Tx) ReleaseLease(ctx context.Context, epoch, instance string, now time.Time) (int64, error) {
+	nowText := kernel.FormatTime(now)
 	result, err := t.q.ExecContext(ctx, releaseOwnerLeaseSQL, nowText, nowText, epoch, instance)
 	if err != nil {
 		return 0, fmt.Errorf("release runtime owner: %w", err)
@@ -46,17 +51,12 @@ func (t *Tx) ReleaseLease(ctx context.Context, epoch, instance, nowText string) 
 	return affectedOwners(result, "released")
 }
 
-// HoldsLease reports whether the epoch and instance own an unexpired lease at nowText.
-func (t *Tx) HoldsLease(ctx context.Context, epoch, instance, nowText string) (bool, error) {
-	var current string
-	err := t.q.QueryRowContext(ctx, holdsOwnerLeaseSQL, epoch, instance, nowText).Scan(&current)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
+func (t *Tx) HoldsLease(ctx context.Context, epoch, instance string, now time.Time) (bool, error) {
+	_, held, err := storage.QueryOptional[string](ctx, t.q, holdsOwnerLeaseSQL, epoch, instance, kernel.FormatTime(now))
 	if err != nil {
 		return false, fmt.Errorf("assert runtime owner: %w", err)
 	}
-	return true, nil
+	return held, nil
 }
 
 // Recover hands the claiming transaction to the caller's recovery writes.
@@ -91,12 +91,14 @@ const claimOwnerLeaseSQL = `
 		WHERE (runtime_owner.owner_epoch = excluded.owner_epoch
 			AND runtime_owner.owner_instance = excluded.owner_instance)
 			OR (runtime_owner.owner_epoch <> excluded.owner_epoch
-				AND runtime_owner.lease_until <= excluded.heartbeat_at)`
+				AND (runtime_owner.lease_until <= excluded.heartbeat_at
+					OR NOT stored_time_ok(runtime_owner.lease_until)))`
 
 const renewOwnerLeaseSQL = `
 		UPDATE runtime_owner
 		SET heartbeat_at = ?, lease_until = ?
-		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ? AND lease_until > ?`
+		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ? AND lease_until > ?
+			AND stored_time_ok(lease_until)`
 
 const releaseOwnerLeaseSQL = `
 		UPDATE runtime_owner SET heartbeat_at = ?, lease_until = ?
@@ -104,4 +106,5 @@ const releaseOwnerLeaseSQL = `
 
 const holdsOwnerLeaseSQL = `
 		SELECT owner_epoch FROM runtime_owner
-		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ? AND lease_until > ?`
+		WHERE singleton_id = 1 AND owner_epoch = ? AND owner_instance = ? AND lease_until > ?
+			AND stored_time_ok(lease_until)`

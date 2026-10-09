@@ -80,17 +80,7 @@ func TestDispatchModeNativeActiveRecordsPolicy(t *testing.T) {
 
 // native×shadow: dispatched and scored, never dispatched to actions.
 func TestDispatchModeNativeShadowIsScoredNotDispatched(t *testing.T) {
-	db := openModeDB(t, "p8-native-shadow.db")
-	compiled := modeCompiledSpec("native", "shadow")
-	pipeline := newModePipeline(t, db, compiled, runtime.PipelineConfig{OwnerEpoch: "epoch-p8-ns"})
-	report, err := pipeline.RunJSONL(t.Context(), modeTraceFile(t, 15))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if report.EpisodesAdmitted != 1 || report.CommandsDispatched != 0 {
-		t.Fatalf("native+shadow must never dispatch, got %+v", report)
-	}
-	assertShadowWithoutEffects(t, db)
+	assertShadowIsScoredNotDispatched(t, "native", "p8-native-shadow.db", "epoch-p8-ns")
 }
 
 // tamoz×active: the configured executor name is admitted under active policy.
@@ -110,15 +100,20 @@ func TestDispatchModeTamozActiveDispatches(t *testing.T) {
 
 // tamoz×shadow: admitted and scored, never dispatched to actions.
 func TestDispatchModeTamozShadowIsScoredNotDispatched(t *testing.T) {
-	db := openModeDB(t, "p8-tamoz-shadow.db")
-	compiled := modeCompiledSpec("tamoz", "shadow")
-	pipeline := newModePipeline(t, db, compiled, runtime.PipelineConfig{OwnerEpoch: "epoch-p8-ts"})
+	assertShadowIsScoredNotDispatched(t, "tamoz", "p8-tamoz-shadow.db", "epoch-p8-ts")
+}
+
+func assertShadowIsScoredNotDispatched(t *testing.T, executor, dbName, epoch string) {
+	t.Helper()
+	db := openModeDB(t, dbName)
+	compiled := modeCompiledSpec(executor, "shadow")
+	pipeline := newModePipeline(t, db, compiled, runtime.PipelineConfig{OwnerEpoch: epoch})
 	report, err := pipeline.RunJSONL(t.Context(), modeTraceFile(t, 15))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if report.EpisodesAdmitted != 1 || report.CommandsDispatched != 0 {
-		t.Fatalf("tamoz+shadow must never dispatch, got %+v", report)
+		t.Fatalf("%s+shadow must never dispatch, got %+v", executor, report)
 	}
 	assertShadowWithoutEffects(t, db)
 }

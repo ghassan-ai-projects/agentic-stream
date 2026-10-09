@@ -15,6 +15,7 @@ Stream. The curated public reading path is
 | `research/` | Research reports and generated working artifacts | Reference material; generated variants are not public entrypoints |
 | `runbooks/` | Engineering/operator working notes | Public summaries live under `documentation/operations/` |
 | dated audits and plans | Implementation evidence or historical planning | Check date and status before relying on a claim |
+| `duplication-review-2026-10-08/` | Semantic duplication audit: 30 issues with finder evidence, fix status and outcomes | Start at its README; each issue records what changed and which commit |
 
 ## Authority rules
 

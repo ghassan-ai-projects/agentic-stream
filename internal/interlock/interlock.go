@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
 // ErrTripped means the action plane is globally blocked by a durable interlock.
@@ -75,7 +76,7 @@ func ClearIn(ctx context.Context, tx *sql.Tx, reason string, now time.Time) (Sta
 }
 
 func changeIn(ctx context.Context, tx *sql.Tx, verb, status, reason string, now time.Time) (State, error) {
-	state, err := store.Change(ctx, tx, status, reason, now.UTC().Format(timeLayout))
+	state, err := store.Change(ctx, tx, status, reason, kernel.FormatTime(now))
 	if err != nil {
 		return State{}, fmt.Errorf("%s interlock: %w", verb, err)
 	}
@@ -98,5 +99,3 @@ func within(ctx context.Context, db Transactor, fence Fence, apply func(*sql.Tx)
 	}
 	return state, nil
 }
-
-const timeLayout = "2006-01-02T15:04:05.000000000Z"

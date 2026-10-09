@@ -2,21 +2,16 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 // ExistingCommandID distinguishes an absent command from a lookup failure.
 func (tx *Tx) ExistingCommandID(ctx context.Context, intentID string) (string, error) {
-	var commandID string
-	err := tx.tx.QueryRowContext(ctx, "SELECT command_id FROM commands WHERE intent_id = ?", intentID).Scan(&commandID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
-	}
+	commandID, _, err := storage.QueryOptional[string](ctx, tx.tx, "SELECT command_id FROM commands WHERE intent_id = ?", intentID)
 	if err != nil {
 		return "", fmt.Errorf("find existing command: %w", err)
 	}

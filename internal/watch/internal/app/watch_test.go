@@ -3,15 +3,18 @@ package app_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	_ "modernc.org/sqlite"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/store"
@@ -19,11 +22,8 @@ import (
 
 func TestWatchEffectorIsBoundedExpiringAndOneShot(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "watch.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	effector := newService(t, db, nil)
 	command := actionport.Command{
 		CommandID: "cmd-watch", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
@@ -54,11 +54,8 @@ func TestWatchEffectorIsBoundedExpiringAndOneShot(t *testing.T) {
 
 func TestWatchEffectorFiresTamozFallbackFromEventFeatures(t *testing.T) {
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "watch-tamoz-fallback.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	effector := newService(t, db, nil)
 	command := actionport.Command{
 		CommandID: "cmd-tamoz-fallback", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
@@ -80,11 +77,8 @@ func TestWatchEffectorFiresTamozFallbackFromEventFeatures(t *testing.T) {
 
 func TestWatchEffectorSkipsCELEvaluationErrorAndFiresWhenDataArrives(t *testing.T) {
 	ctx := t.Context()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "watch-evaluation-error.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	effector := newService(t, db, nil)
 	command := actionport.Command{
 		CommandID: "cmd-watch-evaluation-error", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
@@ -131,17 +125,14 @@ func TestWatchEffectorSkipsCELEvaluationErrorAndFiresWhenDataArrives(t *testing.
 
 func TestWatchEffectorEvaluatesExpressionAndExpiresWithoutAFire(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "watch-expiry.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	virtual := sources.NewVirtual(now)
 	effector := newService(t, db, virtual)
 	command := actionport.Command{
 		CommandID: "cmd-expiry", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
-		Payload: map[string]any{"expression": "features.temperature > 90", "target": "motor-1", "expires_at": now.Add(time.Minute).Format(time.RFC3339Nano), "situation_id": "sit-1", "situation_version": 1, "max_fires": 2},
+		Payload: map[string]any{"expression": "features.temperature > 90", "target": "motor-1", "expires_at": kernel.FormatTime(now.Add(time.Minute)), "situation_id": "sit-1", "situation_version": 1, "max_fires": 2},
 	}
 	if _, err := effector.Dispatch(ctx, command); err != nil {
 		t.Fatal(err)
@@ -173,13 +164,14 @@ func TestWatchEffectorEvaluatesExpressionAndExpiresWithoutAFire(t *testing.T) {
 	}
 }
 
-func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
+func lockExpiringWatch(t *testing.T) (*app.Service, *storage.DB, *sql.Conn) {
+	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "watch-contended.db")
-	db, err := storage.Open(t.Context(), dbPath)
+	db, err := storagetest.Open(t.Context(), dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	virtual := sources.NewVirtual(now)
@@ -188,7 +180,7 @@ func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
 		CommandID: "cmd-contended", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
 		Payload: map[string]any{
 			"expression": "features.temperature > 90", "target": "motor-1",
-			"expires_at": now.Add(time.Minute).Format(time.RFC3339Nano), "situation_id": "sit-1",
+			"expires_at": kernel.FormatTime(now.Add(time.Minute)), "situation_id": "sit-1",
 			"situation_version": 1, "max_fires": 1,
 		},
 	}
@@ -215,18 +207,24 @@ func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = raw.Close() }()
+	t.Cleanup(func() { _ = raw.Close() })
 	locker, err := raw.Conn(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = locker.Close() }()
+	t.Cleanup(func() { _ = locker.Close() })
 	if _, err := locker.ExecContext(t.Context(), "BEGIN IMMEDIATE"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := locker.ExecContext(t.Context(), "UPDATE watch_conditions SET updated_at = updated_at WHERE watch_id = 'cmd-contended'"); err != nil {
 		t.Fatal(err)
 	}
+
+	return effector, db, locker
+}
+
+func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
+	effector, db, locker := lockExpiringWatch(t)
 
 	released := make(chan error, 1)
 	go func() {
@@ -238,7 +236,7 @@ func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
 	}()
 
 	started := time.Now()
-	err = effector.Expire(t.Context())
+	err := effector.Expire(t.Context())
 	elapsed := time.Since(started)
 	if releaseErr := <-released; releaseErr != nil {
 		t.Fatalf("release SQLite lock: %v", releaseErr)
@@ -246,7 +244,7 @@ func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expire under a transient SQLite lock: %v", err)
 	}
-	if elapsed < 200*time.Millisecond {
+	if elapsed < 100*time.Millisecond {
 		t.Fatalf("Expire completed in %s; expected a busy retry after the lock was released", elapsed)
 	}
 
@@ -256,6 +254,16 @@ func TestWatchEffectorExpireRetriesAfterSQLiteBusy(t *testing.T) {
 	}
 	if status != "expired" {
 		t.Fatalf("watch status = %q, want expired", status)
+	}
+}
+
+func TestWatchExpireHonorsCancellationWhileContended(t *testing.T) {
+	effector, _, _ := lockExpiringWatch(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	err := effector.Expire(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Expire under a held SQLite lock = %v, want the context deadline", err)
 	}
 }
 

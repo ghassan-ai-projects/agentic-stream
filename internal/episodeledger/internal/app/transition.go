@@ -9,11 +9,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/store"
 )
 
-// TransitionAttempt applies a valid attempt transition and records terminal
-// data. The identity is checked before the state mutation; wall is the instant
-// the owner lease is judged at.
-func TransitionAttempt(ctx context.Context, tx *store.Tx, identity domain.Identity, to domain.AttemptStatus, now time.Time, terminal []byte, wall time.Time) error {
-	if err := validateTransitionIdentity(ctx, tx, identity, to, wall); err != nil {
+func TransitionAttempt(ctx context.Context, tx *store.Tx, identity domain.Identity, to domain.AttemptStatus, now time.Time, terminal []byte, owner store.OwnerCheck) error {
+	if err := validateTransitionIdentity(ctx, tx, identity, to, owner); err != nil {
 		return err
 	}
 	from, err := tx.ReadAttemptStatus(ctx, identity.AttemptID)
@@ -30,15 +27,15 @@ func TransitionAttempt(ctx context.Context, tx *store.Tx, identity domain.Identi
 // episode still needs to durably acknowledge cancellation of its in-flight
 // attempt; only cancellation or abandonment may take that exception, never a
 // produced Decision.
-func validateTransitionIdentity(ctx context.Context, tx *store.Tx, identity domain.Identity, to domain.AttemptStatus, wall time.Time) error {
-	err := ValidateWorkerIdentity(ctx, tx, identity, wall)
+func validateTransitionIdentity(ctx context.Context, tx *store.Tx, identity domain.Identity, to domain.AttemptStatus, owner store.OwnerCheck) error {
+	err := ValidateWorkerIdentity(ctx, tx, identity, owner)
 	if err == nil {
 		return nil
 	}
 	if !domain.MayAcknowledgeCancellation(to) || !domain.IsIdentityReason(err, domain.RejectEpisodeClosed) {
 		return err
 	}
-	return validateTerminalIdentity(ctx, tx, identity, wall)
+	return validateTerminalIdentity(ctx, tx, identity, owner)
 }
 
 func persistTransition(ctx context.Context, tx *store.Tx, identity domain.Identity, to domain.AttemptStatus, now time.Time, terminal []byte) error {
@@ -55,9 +52,9 @@ func persistTransition(ctx context.Context, tx *store.Tx, identity domain.Identi
 func writeTransition(ctx context.Context, tx *store.Tx, identity domain.Identity, to domain.AttemptStatus, now time.Time, terminal []byte) (int64, error) {
 	switch domain.KindOf(to) {
 	case domain.TransitionTerminal:
-		return tx.FinishAttempt(ctx, identity, to, store.TimeText(now), terminal)
+		return tx.FinishAttempt(ctx, identity, to, now, terminal)
 	case domain.TransitionRunning:
-		return tx.StartRunningAttempt(ctx, identity, store.TimeText(now))
+		return tx.StartRunningAttempt(ctx, identity, now)
 	default:
 		return tx.SetAttemptStatus(ctx, identity, to)
 	}

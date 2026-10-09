@@ -57,7 +57,20 @@ execution inserts validated pending intents for downstream policy. Shadow
 execution writes the store's own shadow scores and no intents or commands.
 Episode/scheduler lifecycle tables remain owned by their ledgers; foreign
 mutations are not permitted. Existing transactional read projections over
-scheduler, situation and reconsideration evidence remain in store.
+scheduler and situation evidence remain in store. Reconsideration evidence
+(prior decision, command and outcome) is built once by cognition into the
+trigger delta; assembly reads it from there and reads no action tables.
+
+## Deadline and cancellation
+
+An attempt that hits its deadline ends as `timed_out`, and one that is cancelled
+ends as `cancelled`; neither is `failed` with a reason. Both consume the retry
+budget (`CountsAsFailure`). `Request.ContextEndingOutcome` is the one rule: the
+runner applies it to an executor error, and the native executor builds its own
+Outcome with it, so both leave the same status and reason
+(`worker_deadline_exceeded`, `worker_cancelled`). The remote executor returns
+the transport's context error, and its wire `TIMED_OUT` and `CANCELLED`
+terminals map to the same two statuses.
 
 ## Evidence and audit
 

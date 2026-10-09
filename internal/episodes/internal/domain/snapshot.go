@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -24,16 +23,13 @@ type SnapshotEvidence struct {
 // snapshot contract and the episode admission identity, and verifies its
 // persisted digest. A stale or tampered snapshot never reaches a worker.
 func ValidateSnapshotEvidence(snapshotJSON, persistedDigest []byte, traceparent, tracestate, situationID string, version int, tenantID string) (*SnapshotEvidence, error) {
-	var snapshot map[string]any
-	if err := json.Unmarshal(snapshotJSON, &snapshot); err != nil {
-		return nil, fmt.Errorf("unmarshal snapshot: %w", err)
+	snapshot, err := contractsv1.DecodeDocument(snapshotJSON, contractsv1.SchemaSnapshot)
+	if err != nil {
+		return nil, fmt.Errorf("decode snapshot: %w", err)
 	}
-	if err := contractsv1.Validate(contractsv1.SchemaSnapshot, snapshot); err != nil {
-		return nil, fmt.Errorf("validate snapshot: %w", err)
-	}
-	if SnapshotString(snapshot, "situation_id") != situationID ||
-		SnapshotInt(snapshot, "situation_version") != version ||
-		SnapshotString(snapshot, "tenant_id") != tenantID {
+	if contractsv1.DocumentString(snapshot, "situation_id") != situationID ||
+		contractsv1.DocumentInt(snapshot, "situation_version") != version ||
+		contractsv1.DocumentString(snapshot, "tenant_id") != tenantID {
 		return nil, fmt.Errorf("snapshot identity does not match episode admission")
 	}
 	return bindSnapshotEvidence(snapshotJSON, persistedDigest, traceparent, tracestate, snapshot)
@@ -44,16 +40,11 @@ func bindSnapshotEvidence(snapshotJSON, persistedDigest []byte, traceparent, tra
 	if err != nil {
 		return nil, fmt.Errorf("load snapshot entity: %w", err)
 	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, snapshot)
-	if err != nil {
-		return nil, fmt.Errorf("digest snapshot: %w", err)
-	}
-	decodedDigest, err := canonicaljson.DecodeDigest(digest)
-	if err != nil || !bytes.Equal(decodedDigest, persistedDigest) {
+	if !contractsv1.VerifyDocumentDigest(canonicaljson.DomainSnapshot, snapshot, persistedDigest) {
 		return nil, fmt.Errorf("snapshot digest does not match persisted situation version")
 	}
 	return &SnapshotEvidence{
-		Document: snapshot, EntityID: entityID, Digest: digest, Traceparent: traceparent, Tracestate: tracestate,
+		Document: snapshot, EntityID: entityID, Digest: canonicaljson.EncodeDigest(persistedDigest), Traceparent: traceparent, Tracestate: tracestate,
 	}, nil
 }
 
@@ -71,14 +62,4 @@ func SnapshotEntityID(raw []byte) (string, error) {
 		return "", fmt.Errorf("snapshot entity id is required")
 	}
 	return snapshot.Entity.ID, nil
-}
-
-func SnapshotString(snapshot map[string]any, key string) string {
-	value, _ := snapshot[key].(string)
-	return value
-}
-
-func SnapshotInt(snapshot map[string]any, key string) int {
-	value, _ := snapshot[key].(float64)
-	return int(value)
 }

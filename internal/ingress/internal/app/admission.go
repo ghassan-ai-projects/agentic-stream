@@ -22,15 +22,13 @@ func (s *Service) admit(ctx context.Context, line []byte) domain.LineVerdict {
 	return verdict
 }
 
-func (s *Service) nowText() string { return s.clk.Now().UTC().Format(time.RFC3339Nano) }
-
 // quarantineRaw records a refused line as raw bytes.
-func (s *Service) quarantineRaw(ctx context.Context, eventID string, line []byte, reason, now string) error {
+func (s *Service) quarantineRaw(ctx context.Context, eventID string, line []byte, reason string, now time.Time) error {
 	return s.log.QuarantineRaw(ctx, s.tenantID, eventID, line, reason, now) //nolint:wrapcheck // Callers label the failed reason.
 }
 
 // quarantineEnvelope records a refused line as its decoded envelope.
-func (s *Service) quarantineEnvelope(ctx context.Context, env contractsv1.Envelope, reason, now string) error {
+func (s *Service) quarantineEnvelope(ctx context.Context, env contractsv1.Envelope, reason string, now time.Time) error {
 	return s.log.QuarantineEnvelope(ctx, s.tenantID, env, reason, now) //nolint:wrapcheck // Callers label the failed reason.
 }
 

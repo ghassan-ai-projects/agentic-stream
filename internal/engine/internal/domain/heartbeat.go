@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
@@ -71,7 +72,7 @@ func newHeartbeatTimer(deploymentID, tenantID string, partitionID int, operatorI
 	dueAt := heartbeatDueAt(heartbeat, delay)
 	payload, err := json.Marshal(map[string]any{
 		"operator_id": operatorID, "state_key": stateKey,
-		"expected_event_id": heartbeat.LastEventID, "due_at": dueAt.Format(time.RFC3339Nano),
+		"expected_event_id": heartbeat.LastEventID, "due_at": kernel.FormatTime(dueAt),
 	})
 	if err != nil {
 		return HeartbeatTimer{}, fmt.Errorf("marshal heartbeat timer: %w", err)
@@ -92,6 +93,6 @@ func heartbeatDueAt(hs *operators.HeartbeatState, delay time.Duration) time.Time
 
 func heartbeatTimerID(deploymentID, tenantID string, partitionID int, operatorID, stateKey string, dueAt time.Time) string {
 	h := sha256.Sum256([]byte(fmt.Sprintf("agentic-stream/timer/v1\x00%s\x00%s\x00%d\x00%s\x00%s\x00%s\x00%s",
-		deploymentID, tenantID, partitionID, operatorID, stateKey, "processing_time", dueAt.Format(time.RFC3339Nano))))
+		deploymentID, tenantID, partitionID, operatorID, stateKey, "processing_time", kernel.FormatTime(dueAt))))
 	return "tmr_" + hex.EncodeToString(h[:])
 }

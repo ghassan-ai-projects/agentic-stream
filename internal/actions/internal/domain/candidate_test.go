@@ -4,18 +4,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 )
 
 func pendingCandidate(t *testing.T) Candidate {
 	t.Helper()
-	return Candidate{OutboxID: 7, OutboxStatus: OutboxPending, Command: commandRow(t), CommandStatus: CommandPending,
+	return Candidate{OutboxID: 7, OutboxStatus: OutboxPending, Command: commandRow(t), CommandStatus: actionport.CommandPending,
 		Trace: contractsv1.TraceContext{Traceparent: "tp", Tracestate: "ts"}}
 }
 
 func TestAdmitDecidesEachCandidateKind(t *testing.T) {
 	t.Parallel()
-	expired := Lease{Owner: "crashed", Until: testNow.Add(-time.Minute).Format(time.RFC3339Nano), HasOwner: true, HasUntil: true}
+	expired := Lease{Owner: "crashed", Until: testNow.Add(-time.Minute), HasOwner: true, HasUntil: true}
 	cases := []struct {
 		name   string
 		mutate func(*Candidate)
@@ -26,9 +28,10 @@ func TestAdmitDecidesEachCandidateKind(t *testing.T) {
 		{"fresh command is leased", func(*Candidate) {}, AcquireLease, "", ""},
 		{"expired in-flight lease is abandoned", func(c *Candidate) { c.OutboxStatus, c.Lease = OutboxLeased, expired }, AbandonExpiredLease, "", ""},
 		{"lease without owner counts as expired", func(c *Candidate) { c.OutboxStatus = OutboxLeased }, AbandonExpiredLease, "", ""},
-		{"succeeded command only closes outbox", func(c *Candidate) { c.CommandStatus = CommandSucceeded }, CloseOutboxOnly, "", OutboxDelivered},
-		{"unknown command fails outbox", func(c *Candidate) { c.CommandStatus = CommandOutcomeUnknown }, CloseOutboxOnly, "", OutboxFailed},
+		{"succeeded command only closes outbox", func(c *Candidate) { c.CommandStatus = actionport.CommandSucceeded }, CloseOutboxOnly, "", OutboxDelivered},
+		{"unknown command fails outbox", func(c *Candidate) { c.CommandStatus = actionport.CommandOutcomeUnknown }, CloseOutboxOnly, "", OutboxFailed},
 		{"invalid JSON fails command", func(c *Candidate) { c.Command.JSON = []byte("{") }, FailInvalidCommand, FailureCommandJSONInvalid, ""},
+		{"ambiguous document fails command", func(c *Candidate) { c.Command.JSON = contractstest.AmbiguousKeyJSON(c.Command.JSON, "command_id") }, FailInvalidCommand, FailureCommandJSONInvalid, ""},
 		{"schema-invalid document fails command", func(c *Candidate) { c.Command.JSON = []byte(`{"command_id":"cmd-1"}`) }, FailInvalidCommand, FailureCommandSchemaInvalid, ""},
 		{"ledger tenant mismatch fails command", func(c *Candidate) { c.Command.TenantID = "other" }, FailInvalidCommand, FailureCommandDigestMismatch, ""},
 		{"digest mismatch fails command", func(c *Candidate) { c.Command.SHA = make([]byte, 32) }, FailInvalidCommand, FailureCommandDigestMismatch, ""},
@@ -61,7 +64,7 @@ func TestAdmitRestoresLedgerIdentityOnAbandonedLease(t *testing.T) {
 	t.Parallel()
 	candidate := pendingCandidate(t)
 	candidate.OutboxStatus = OutboxLeased
-	candidate.Lease = Lease{Owner: "crashed", Until: "2000-01-01T00:00:00Z", HasOwner: true, HasUntil: true}
+	candidate.Lease = Lease{Owner: "crashed", Until: time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC), HasOwner: true, HasUntil: true}
 	candidate.Command.JSON = []byte("{")
 	leased := candidate.Admit(testNow).Leased
 	if leased.LeaseOwner != "crashed" || leased.Command.TenantID != "tenant" || leased.Command.IntentID != "int-1" {
@@ -69,19 +72,39 @@ func TestAdmitRestoresLedgerIdentityOnAbandonedLease(t *testing.T) {
 	}
 }
 
-func TestLeaseExpiredTreatsUnparseableAndAbsentAsExpired(t *testing.T) {
+func TestAdmitNamesWhyAnInFlightLeaseWasAbandoned(t *testing.T) {
 	t.Parallel()
-	future := testNow.Add(time.Minute).Format(time.RFC3339Nano)
+	for name, tc := range map[string]struct {
+		lease Lease
+		want  string
+	}{
+		"expired":    {Lease{Owner: "w", Until: testNow.Add(-time.Minute), HasOwner: true, HasUntil: true}, AbandonLeaseExpired},
+		"unreadable": {Lease{Owner: "w", HasOwner: true, Unreadable: true}, AbandonLeaseUnreadable},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			candidate := pendingCandidate(t)
+			candidate.OutboxStatus, candidate.Lease = OutboxLeased, tc.lease
+			if got := candidate.Admit(testNow); got.Step != AbandonExpiredLease || got.AbandonReason != tc.want {
+				t.Fatalf("admission = %+v, want abandon with %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLeaseExpiredTreatsZeroAndAbsentAsExpired(t *testing.T) {
+	t.Parallel()
+	future := testNow.Add(time.Minute)
 	cases := map[string]struct {
 		lease Lease
 		want  bool
 	}{
 		"live":              {Lease{Owner: "w", Until: future, HasOwner: true, HasUntil: true}, false},
-		"exactly now":       {Lease{Owner: "w", Until: testNow.Format(time.RFC3339Nano), HasOwner: true, HasUntil: true}, true},
-		"unparseable":       {Lease{Owner: "w", Until: "x", HasOwner: true, HasUntil: true}, true},
+		"exactly now":       {Lease{Owner: "w", Until: testNow, HasOwner: true, HasUntil: true}, true},
+		"zero expiry":       {Lease{Owner: "w", HasOwner: true, HasUntil: true}, true},
 		"missing owner":     {Lease{Until: future, HasUntil: true}, true},
 		"missing expiry":    {Lease{Owner: "w", HasOwner: true}, true},
-		"fractional second": {Lease{Owner: "w", Until: testNow.Add(500 * time.Millisecond).Format(time.RFC3339Nano), HasOwner: true, HasUntil: true}, false},
+		"fractional second": {Lease{Owner: "w", Until: testNow.Add(500 * time.Millisecond), HasOwner: true, HasUntil: true}, false},
 	}
 	for name, tc := range cases {
 		if got := tc.lease.Expired(testNow); got != tc.want {

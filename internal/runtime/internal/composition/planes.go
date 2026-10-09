@@ -1,13 +1,11 @@
 package composition
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
@@ -19,12 +17,13 @@ import (
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 	transport "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/transport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
 
 func pipelineDefaults(cfg PipelineConfig) PipelineConfig {
 	if cfg.TenantID == "" {
-		cfg.TenantID = "default"
+		cfg.TenantID = contractsv1.TenantID
 	}
 	cfg.Clock = sources.OrPhysical(cfg.Clock)
 	cfg.IDGenerator = sources.OrRandom(cfg.IDGenerator)
@@ -66,7 +65,7 @@ func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.
 	if err != nil {
 		return nil, err
 	}
-	transactions := &store.PipelineStore{DB: cfg.DB, Policy: policyGateway, Owner: cfg.Owner, OwnerEpoch: cfg.OwnerEpoch, Episodes: episodeService, TenantID: cfg.TenantID}
+	transactions := &store.PipelineStore{DB: cfg.DB, Policy: policyGateway, RuntimeOwner: runtimeOwnershipCheck(cfg), OwnerEpoch: cfg.OwnerEpoch, Episodes: episodeService, TenantID: cfg.TenantID}
 	admitter, err := composeAdmission(cfg, transactions)
 	if err != nil {
 		return nil, err
@@ -106,7 +105,7 @@ func composeAdmission(cfg PipelineConfig, transactions *store.PipelineStore) (*a
 }
 
 func composeEpisodes(cfg PipelineConfig) (*episodes.Service, error) {
-	service, err := episodes.New(episodes.Config{Spec: cfg.Spec, IDGenerator: cfg.IDGenerator, CostControl: &runtimecontrol.CostLedger{}, Execution: &episodes.ExecutionConfig{DB: cfg.DB, Executor: cfg.Executor, Clock: cfg.Clock, OwnerEpoch: cfg.OwnerEpoch, DecisionEpoch: policyEpochCheck(cfg), Telemetry: cfg.Telemetry}})
+	service, err := episodes.New(episodes.Config{Spec: cfg.Spec, IDGenerator: cfg.IDGenerator, CostControl: &runtimecontrol.CostLedger{}, Execution: &episodes.ExecutionConfig{DB: cfg.DB, Executor: cfg.Executor, Clock: cfg.Clock, OwnerEpoch: cfg.OwnerEpoch, RuntimeOwner: runtimeOwnershipCheck(cfg), DecisionEpoch: policyEpochCheck(cfg), Telemetry: cfg.Telemetry}})
 	if err != nil {
 		return nil, fmt.Errorf("compose episodes: %w", err)
 	}
@@ -121,21 +120,19 @@ func composePolicy(cfg PipelineConfig) (*policy.Service, error) {
 	return service, nil
 }
 
-func runtimeOwnershipCheck(cfg PipelineConfig) func(context.Context, *sql.Tx, string) error {
-	if cfg.Owner == nil || cfg.OwnerEpoch == "" {
-		return unownedCheck
+func runtimeOwnershipCheck(cfg PipelineConfig) storage.OwnerCheck {
+	if cfg.Owner == nil {
+		return engine.ReplayOwnership
 	}
 	return cfg.Owner.Assert
 }
 
-func policyEpochCheck(cfg PipelineConfig) func(context.Context, *sql.Tx, string) error {
+func policyEpochCheck(cfg PipelineConfig) storage.OwnerCheck {
 	if cfg.EpochControl == nil {
-		return unownedCheck
+		return engine.ReplayOwnership
 	}
 	return cfg.EpochControl.AssertDecisionTx
 }
-
-func unownedCheck(context.Context, *sql.Tx, string) error { return nil }
 
 func composeDispatcher(cfg PipelineConfig) (*actions.Service, error) {
 	effector, ok := cfg.Effector.(actionport.AuthorizedEffector)
@@ -144,7 +141,7 @@ func composeDispatcher(cfg PipelineConfig) (*actions.Service, error) {
 	}
 	service, err := actions.New(actions.Config{DB: cfg.DB, Effector: effector, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch,
 		Clock: cfg.Clock, IDs: cfg.IDGenerator, LeaseOwner: "runtime-actions/" + cfg.OwnerEpoch,
-		LeaseFor: time.Minute, Telemetry: cfg.Telemetry})
+		Telemetry: cfg.Telemetry})
 	if err != nil {
 		return nil, fmt.Errorf("compose actions: %w", err)
 	}

@@ -1,5 +1,7 @@
 package domain
 
+import "github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+
 // checkDecisionBinding requires the Decision to name the dispatched episode,
 // attempt, fence, snapshot, and Situation version, and to be unexpired. It
 // returns the decision ID.
@@ -86,7 +88,7 @@ func countActionableIntents(rawIntents []any) (int, error) {
 			return 0, reject("schema_invalid", "intents", "intent must be an object")
 		}
 		intentType, _ := intent["type"].(string)
-		if intentType == "install_watch_condition" || documentString(intent, "compensates") != "" {
+		if intentType == "install_watch_condition" || contractsv1.DocumentString(intent, "compensates") != "" {
 			continue
 		}
 		actionable++

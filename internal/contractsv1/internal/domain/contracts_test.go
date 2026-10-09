@@ -120,7 +120,7 @@ func TestCloudEventEnvelopeDigestBindsMetadataAndData(t *testing.T) {
 	}
 	if !canonicaljson.Verify(canonicaljson.DomainEnvelope, map[string]any{
 		"specversion": "1.0", "type": event.Type, "source": event.Source, "id": event.ID,
-		"subject": event.Subject, "time": now.Format(time.RFC3339Nano),
+		"subject": event.Subject, "time": "2026-08-04T22:26:00Z",
 		"dataschema": event.DataSchema, "tenantid": "default", "partitionkey": "motor-1",
 		"classification": "internal", "datadigest": mustDigest(t, event.Data),
 	}, digest) {

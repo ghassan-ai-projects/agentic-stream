@@ -8,7 +8,7 @@ import (
 	"time"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 const examplePrincipals = "../../examples/real-world-sensor/principals.example.yaml"
@@ -36,7 +36,7 @@ func TestPrincipalsApplyProvisionsTheExampleGovernance(t *testing.T) {
 func TestPrincipalsApplyWaitsForTheRuntime(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "runtime.db")
-	db, err := storage.Open(context.Background(), path)
+	db, err := storagetest.Open(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}

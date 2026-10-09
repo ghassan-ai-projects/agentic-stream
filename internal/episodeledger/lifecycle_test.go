@@ -5,22 +5,19 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "lifecycle.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	db.SetMaxOpenConns(1)
 	seedEpisode(t, ctx, db, "epi-fenced")
 
@@ -32,10 +29,10 @@ func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err := episodeledger.TransitionAttempt(ctx, tx, first, episodeledger.AttemptRunning, now, nil); err != nil {
+		if err := episodeledger.TransitionAttempt(ctx, tx, first, episodeledger.AttemptRunning, now, nil, nil); err != nil {
 			return err
 		}
-		return episodeledger.TransitionAttempt(ctx, tx, first, episodeledger.AttemptAbandoned, now.Add(time.Second), []byte(`{"reason":"grace_expired"}`))
+		return episodeledger.TransitionAttempt(ctx, tx, first, episodeledger.AttemptAbandoned, now.Add(time.Second), []byte(`{"reason":"grace_expired"}`), nil)
 	}); err != nil {
 		t.Fatalf("finish first attempt: %v", err)
 	}
@@ -53,13 +50,13 @@ func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 	}
 
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := episodeledger.TransitionAttempt(ctx, tx, first, episodeledger.AttemptProduced, now, nil); !reasonIs(err, episodeledger.RejectStaleAttempt) {
+		if err := episodeledger.TransitionAttempt(ctx, tx, first, episodeledger.AttemptProduced, now, nil, nil); !reasonIs(err, episodeledger.RejectStaleAttempt) {
 			return testErrorf("late first attempt error = %v, want stale_attempt", err)
 		}
 		if err := episodeledger.RecordRejection(ctx, tx, first, episodeledger.RejectStaleAttempt, []byte(`{"same_snapshot":true}`), now.Add(3*time.Second)); err != nil {
 			return err
 		}
-		return episodeledger.TransitionAttempt(ctx, tx, second, episodeledger.AttemptRunning, now.Add(3*time.Second), nil)
+		return episodeledger.TransitionAttempt(ctx, tx, second, episodeledger.AttemptRunning, now.Add(3*time.Second), nil, nil)
 	}); err != nil {
 		t.Fatalf("validate fenced identities: %v", err)
 	}
@@ -88,7 +85,7 @@ func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 		if _, err := tx.ExecContext(ctx, "UPDATE episodes SET lifecycle_status = 'closed' WHERE episode_id = ?", "epi-fenced"); err != nil {
 			return fmt.Errorf("close episode fixture: %w", err)
 		}
-		if err := episodeledger.TransitionAttempt(ctx, tx, second, episodeledger.AttemptProduced, now.Add(4*time.Second), nil); !reasonIs(err, episodeledger.RejectEpisodeClosed) {
+		if err := episodeledger.TransitionAttempt(ctx, tx, second, episodeledger.AttemptProduced, now.Add(4*time.Second), nil, nil); !reasonIs(err, episodeledger.RejectEpisodeClosed) {
 			return testErrorf("closed episode error = %v, want episode_closed", err)
 		}
 		return nil
@@ -99,11 +96,8 @@ func TestFencingRejectsLateOutputWithIdenticalSnapshot(t *testing.T) {
 
 func TestRecoveryAbandonsPriorEpochAndIsIdempotent(t *testing.T) {
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "recovery.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	seedEpisode(t, ctx, db, "epi-recovery")
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO episode_attempts (

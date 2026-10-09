@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
@@ -44,7 +45,7 @@ func (s *Service) admit(ctx context.Context, tx *store.Tx, admission domain.Admi
 	leased := admission.Leased
 	switch admission.Step {
 	case domain.AbandonExpiredLease:
-		return leased, false, s.abandonExpiredLease(ctx, tx, leased)
+		return leased, false, s.abandonExpiredLease(ctx, tx, leased, admission.AbandonReason)
 	case domain.FailInvalidCommand:
 		return leased, false, tx.FailInvalidCommand(ctx, leased.OutboxID, leased.Command.CommandID, admission.FailureCode, now)
 	case domain.CloseOutboxOnly:
@@ -56,9 +57,10 @@ func (s *Service) admit(ctx context.Context, tx *store.Tx, admission domain.Admi
 
 // abandonExpiredLease records an unknown outcome for a command whose earlier
 // lease expired mid-dispatch, so no worker can blindly repeat the effect.
-func (s *Service) abandonExpiredLease(ctx context.Context, tx *store.Tx, leased domain.LeasedCommand) error {
+func (s *Service) abandonExpiredLease(ctx context.Context, tx *store.Tx, leased domain.LeasedCommand, reason string) error {
 	s.observeLeaseExpiry()
-	return s.finalizeIn(ctx, tx, leased, actionport.Effect{}, &actionport.UnknownOutcomeError{Err: errors.New("lease expired before dispatch")})
+	slog.WarnContext(ctx, "abandoning command lease as an unknown outcome", "outbox_id", leased.OutboxID, "command_id", leased.Command.CommandID, "reason", reason)
+	return s.finalizeIn(ctx, tx, leased, actionport.Effect{}, &actionport.UnknownOutcomeError{Err: errors.New(reason)})
 }
 
 func (s *Service) observeLeaseExpiry() {

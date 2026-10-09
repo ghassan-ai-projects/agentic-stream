@@ -22,6 +22,14 @@ type (
 	Admission = domain.Admission
 	// SchedulerItem is one durable scheduler entry.
 	SchedulerItem = domain.SchedulerItem
+	// CoalescedItem is a scheduler item replaced by newer work, with its Situation version.
+	CoalescedItem = domain.CoalescedItem
+	// DueItem is a pending scheduler item whose admission window is open.
+	DueItem = domain.DueItem
+	// QueuePoll is the next admittable scheduler item and the items to expire.
+	QueuePoll = domain.QueuePoll
+	// ExpiredItem is a pending scheduler item that can never be admitted, with the reason.
+	ExpiredItem = domain.ExpiredItem
 	// SchedulingRecord is what became of one admitted trigger evaluation.
 	SchedulingRecord = domain.SchedulingRecord
 	// RejectionRecord is one worker result the ledger refused, with its reason.
@@ -36,6 +44,11 @@ type (
 	// caller's transaction; the runtime's cost ledger satisfies it.
 	CostSettler = store.Settler
 )
+
+// ErrOwnerLost is what a runtime owner check reports, wrapped, when the epoch
+// no longer owns the runtime. Any other check error is a failure to check and
+// is returned as such.
+var ErrOwnerLost = domain.ErrOwnerLost
 
 // ErrLiveEpisodeConflict means a reconsideration collides with a live episode.
 var ErrLiveEpisodeConflict = domain.ErrLiveEpisodeConflict
@@ -90,3 +103,7 @@ const (
 
 // IsTerminalAttempt reports whether an attempt state is terminal.
 func IsTerminalAttempt(status AttemptStatus) bool { return domain.IsTerminalAttempt(status) }
+
+// AttemptSQL renders the attempt statuses accepted by member as a SQL value
+// list, for example AttemptSQL(AttemptStatus.Unfinished).
+func AttemptSQL(member func(AttemptStatus) bool) string { return domain.AttemptSQL(member) }

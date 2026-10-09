@@ -18,8 +18,8 @@ func newSituationCommand() *cobra.Command {
 
 func newSituationListCommand() *cobra.Command {
 	var entityID string
-	return newDatabaseCommand("list", "List Situations, newest evidence first.", cobra.NoArgs,
-		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB, _ []string) error {
+	return newListCommand("list", "List Situations, newest evidence first.",
+		func(cmd *cobra.Command, flags operatorFlags, db *storage.DB) error {
 			return printSituations(cmd, flags, db, entityID)
 		},
 		func(cmd *cobra.Command) {

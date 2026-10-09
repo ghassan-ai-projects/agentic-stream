@@ -8,6 +8,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence/internal/wire"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // Ledger stores evidence-call reservations and completed bounded results.
@@ -25,7 +26,7 @@ func (l *Ledger) Reserve(ctx context.Context, call Call, tokenID, runtimeEpoch s
 	if l == nil || !l.Store.Configured() || l.LeaseOwner == "" || l.RuntimeEpoch == "" || runtimeEpoch == "" || runtimeEpoch != l.RuntimeEpoch || tokenID == "" {
 		return ledgerReservation{}, fmt.Errorf("evidence ledger is not configured")
 	}
-	now, lease := l.now(), domain.ReservationLease(l.Lease)
+	now, lease := l.now(), sources.OrLease(l.Lease)
 	fingerprint, err := wire.CallFingerprint(call)
 	if err != nil {
 		return ledgerReservation{}, err
@@ -35,11 +36,7 @@ func (l *Ledger) Reserve(ctx context.Context, call Call, tokenID, runtimeEpoch s
 	return l.reserveCall(ctx, call, pending, now, lease)
 }
 func (l *Ledger) now() time.Time {
-	now := time.Now().UTC()
-	if l.Now != nil {
-		now = l.Now().UTC()
-	}
-	return now
+	return sources.NowUTC(l.Now)
 }
 func (l *Ledger) reserveCall(ctx context.Context, call Call, pending ledgerReservation, now time.Time, lease time.Duration) (ledgerReservation, error) {
 	var reservation ledgerReservation
@@ -77,18 +74,23 @@ func derefReservation(reservation *ledgerReservation) ledgerReservation {
 }
 func (l *Ledger) assertOwner(ctx context.Context, tx *store.Tx) error { return tx.AssertOwner(ctx) }
 func assertLiveAttempt(ctx context.Context, tx *store.Tx, call Call) error {
-	state, err := tx.LiveEpisode(ctx, call)
+	return assertAttempt(ctx, call, tx.LiveEpisode, domain.CheckLiveEpisode, tx.LiveAttempt, domain.CheckLiveAttempt)
+}
+
+func assertAttempt[K any](ctx context.Context, key K, loadEpisode func(context.Context, K) (domain.EpisodeState, error), checkEpisode func(domain.EpisodeState) error,
+	loadAttempt func(context.Context, K) (bool, error), checkAttempt func(bool) error) error {
+	state, err := loadEpisode(ctx, key)
 	if err != nil {
 		return err
 	}
-	if err := domain.CheckLiveEpisode(state, call); err != nil {
+	if err := checkEpisode(state); err != nil {
 		return err
 	}
-	status, err := tx.LiveAttempt(ctx, call)
+	inFlight, err := loadAttempt(ctx, key)
 	if err != nil {
 		return err
 	}
-	return domain.CheckLiveAttempt(status)
+	return checkAttempt(inFlight)
 }
 func loadReservation(ctx context.Context, tx *store.Tx, pending ledgerReservation) (*ledgerReservation, error) {
 	row, err := tx.ReadReservation(ctx, pending.Key)

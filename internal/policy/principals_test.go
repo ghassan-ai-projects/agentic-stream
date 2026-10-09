@@ -4,12 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 const approverKey = "O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik="
@@ -37,11 +37,8 @@ func apply(t *testing.T, db *storage.DB, fence policy.Ownership, document policy
 
 func TestApplyPrincipalsMakesGovernanceMatchTheDocument(t *testing.T) {
 	t.Parallel()
-	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "governance.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
+	db := storagetest.OpenTemp(t)
+
 	full := governanceDocument(t, "default", "  - id: relay\n  - id: alice\n    public_key: "+approverKey+"\nroles:\n  - id: r\n    name: thermal\n    members: [alice]\n    authorities:\n      - entity: zone-01\n        risks: [R1, R2]\n")
 	first, err := apply(t, db, passFence, full)
 	if err != nil || first.Active != 2 || first.Roles != 1 || first.Memberships != 1 || first.Authorities != 2 {

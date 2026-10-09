@@ -22,15 +22,20 @@ func StartAttempt(ctx context.Context, tx *sql.Tx, episodeID, attemptID string, 
 }
 
 // StartAttemptOwned allocates an attempt fenced to the current runtime epoch.
-// Live composition uses this entry point.
-func StartAttemptOwned(ctx context.Context, tx *sql.Tx, episodeID, attemptID, ownerEpoch string, now time.Time) (Identity, error) {
-	return app.StartAttemptOwned(ctx, store.Join(tx), episodeID, attemptID, ownerEpoch, now)
+// owner must confirm that the epoch owns the runtime on the caller's
+// transaction; a check that reports ErrOwnerLost refuses the start as a stale
+// attempt, and a missing check refuses it too. Live composition uses this
+// entry point.
+func StartAttemptOwned(ctx context.Context, tx *sql.Tx, episodeID, attemptID, ownerEpoch string, owner store.OwnerCheck, now time.Time) (Identity, error) {
+	return app.StartAttemptOwned(ctx, store.Join(tx), episodeID, attemptID, ownerEpoch, owner, now)
 }
 
 // TransitionAttempt applies a valid attempt transition and records terminal
-// data. The identity is checked, at the wall clock, before the state mutation.
-func TransitionAttempt(ctx context.Context, tx *sql.Tx, identity Identity, to AttemptStatus, now time.Time, terminalJSON []byte) error {
-	return app.TransitionAttempt(ctx, store.Join(tx), identity, to, now, terminalJSON, time.Now().UTC())
+// data. The identity is checked before the state mutation; an identity with an
+// owner epoch is fenced by owner, which must report ErrOwnerLost when the epoch
+// no longer owns the runtime. A missing check refuses an owned identity.
+func TransitionAttempt(ctx context.Context, tx *sql.Tx, identity Identity, to AttemptStatus, now time.Time, terminalJSON []byte, owner store.OwnerCheck) error {
+	return app.TransitionAttempt(ctx, store.Join(tx), identity, to, now, terminalJSON, owner)
 }
 
 // RecordRejection durably records a rejected worker input or Decision. It is

@@ -7,18 +7,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/interlock"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -413,7 +414,7 @@ func TestDispatcherReclaimsExpiredLease(t *testing.T) {
 	db, commandID := openActionFixture(t)
 	t.Cleanup(func() { _ = db.Close() })
 	ctx := t.Context()
-	claimedAt := time.Now().UTC().Add(-2 * time.Minute).Format(time.RFC3339Nano)
+	claimedAt := kernel.FormatTime(time.Now().UTC().Add(-2 * time.Minute))
 	if _, err := db.ExecContext(ctx, `
 		UPDATE commands SET status = 'dispatching', updated_at = ? WHERE command_id = ?`, claimedAt, commandID); err != nil {
 		t.Fatalf("mark command dispatching: %v", err)
@@ -461,20 +462,45 @@ func TestDispatcherReclaimsExpiredLease(t *testing.T) {
 	}
 }
 
+func TestDispatcherAbandonsUnreadableLeaseAsUnknownOutcomeWithoutError(t *testing.T) {
+	for name, corrupt := range map[string]string{
+		"offset in the far future": "2999-01-01T00:00:00.000000000+02:00",
+		"impossible digits":        "9999-99-99T99:99:99.999999999Z",
+		"empty":                    "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			db, commandID := openActionFixture(t)
+			t.Cleanup(func() { _ = db.Close() })
+			if _, err := db.ExecContext(t.Context(), `UPDATE commands SET status = 'dispatching' WHERE command_id = ?`, commandID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.ExecContext(t.Context(), `UPDATE outbox SET status = 'leased', lease_owner = 'crashed', lease_until = ?, attempt_count = 1 WHERE aggregate_id = ?`, corrupt, commandID); err != nil {
+				t.Fatal(err)
+			}
+			effector := &recordingEffector{}
+			processed, err := newService(t, db, effector, "test-dispatcher", time.Minute).DispatchOnce(t.Context())
+			if err != nil || processed || effector.calls != 0 {
+				t.Fatalf("processed=%v err=%v calls=%d, want the row abandoned without an error or a dispatch", processed, err, effector.calls)
+			}
+			var commandStatus, outcomeStatus string
+			if err := db.QueryRowContext(t.Context(), `SELECT c.status, r.status FROM commands c JOIN outcomes r ON r.command_id = c.command_id WHERE c.command_id = ?`, commandID).Scan(&commandStatus, &outcomeStatus); err != nil {
+				t.Fatal(err)
+			}
+			if commandStatus != "reconciling" || outcomeStatus != "unknown" {
+				t.Fatalf("command=%q outcome=%q, want reconciling and unknown", commandStatus, outcomeStatus)
+			}
+		})
+	}
+}
+
 func openActionFixture(t *testing.T) (*storage.DB, string) {
 	t.Helper()
 	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "actions.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatalf("disable foreign keys: %v", err)
-	}
-	now := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+
+	now := kernel.FormatTime(time.Now().UTC().Add(-time.Minute))
 	commandID := "cmd-action"
-	expiresAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)
+	expiresAt := kernel.FormatTime(time.Now().UTC().Add(time.Hour))
 	intent := map[string]any{
 		"intent_id": "int-action", "decision_id": "dec-action", "tenant_id": "tenant",
 		"situation_id": "sit-action", "situation_version": 1, "type": "maintenance.ticket",
@@ -658,7 +684,7 @@ func newService(t *testing.T, db *storage.DB, effector actionport.AuthorizedEffe
 	return newServiceWithOwner(t, db, effector, leaseOwner, leaseFor, func(context.Context, *sql.Tx, string) error { return nil })
 }
 
-func newServiceWithOwner(t *testing.T, db *storage.DB, effector actionport.AuthorizedEffector, leaseOwner string, leaseFor time.Duration, owner store.OwnerCheck) *app.Service {
+func newServiceWithOwner(t *testing.T, db *storage.DB, effector actionport.AuthorizedEffector, leaseOwner string, leaseFor time.Duration, owner storage.OwnerCheck) *app.Service {
 	t.Helper()
 	service, err := app.New(app.Config{Store: store.New(db, owner, "epoch"), Effector: effector,
 		Clock: sources.Physical(), IDs: sources.Deterministic(), LeaseOwner: leaseOwner, LeaseFor: leaseFor})

@@ -8,6 +8,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 )
 
 func TestRiskRulesRemainAuthoritative(t *testing.T) {
@@ -34,7 +35,7 @@ func TestRiskRulesRemainAuthoritative(t *testing.T) {
 func TestFreshnessAndApprovalPrecedence(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
-	base := IntentRecord{EpisodeLifecycle: "concluded", CurrentSituation: 1, SituationVersion: 1, RiskClass: "R2", CurrentCompleteness: "on_time", ExpiresAt: FormatTime(now.Add(time.Hour))}
+	base := IntentRecord{EpisodeProducedDecision: true, CurrentSituation: 1, SituationVersion: 1, RiskClass: "R2", CurrentCompleteness: "on_time", ExpiresAt: now.Add(time.Hour)}
 	for _, tc := range []struct {
 		name           string
 		change         func(*IntentRecord)
@@ -42,17 +43,18 @@ func TestFreshnessAndApprovalPrecedence(t *testing.T) {
 	}{
 		{"healthy", func(*IntentRecord) {}, "", ""},
 		{"lifecycle first", func(r *IntentRecord) {
-			r.EpisodeLifecycle = "running"
+			r.EpisodeProducedDecision = false
 			r.CurrentSituation, r.LastMaterialVersion = 2, 2
-			r.ExpiresAt = "invalid"
+			r.ExpiresAt = time.Time{}
 		}, "denied", "episode_not_concluded"},
 		{"newer version that is not material stays fresh", func(r *IntentRecord) { r.CurrentSituation, r.LastMaterialVersion = 3, 1 }, "", ""},
 		{"stale before health", func(r *IntentRecord) {
 			r.CurrentSituation, r.LastMaterialVersion = 2, 2
 			r.CurrentCompleteness = "uncertain"
 		}, "stale", "situation_version_stale"},
-		{"health before expiry", func(r *IntentRecord) { r.CurrentCompleteness = "uncertain"; r.ExpiresAt = "invalid" }, "denied", "source_health_incomplete"},
-		{"expiry inclusive", func(r *IntentRecord) { r.ExpiresAt = FormatTime(now) }, "expired", "intent_expired"},
+		{"health before expiry", func(r *IntentRecord) { r.CurrentCompleteness = "uncertain"; r.ExpiresAt = time.Time{} }, "denied", "source_health_incomplete"},
+		{"unreadable expiry denies rather than expires", func(r *IntentRecord) { r.ExpiresAt, r.ExpiryUnreadable = time.Time{}, true }, "denied", "intent_expiry_unreadable"},
+		{"expiry inclusive", func(r *IntentRecord) { r.ExpiresAt = now }, "expired", "intent_expired"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := base
@@ -63,7 +65,7 @@ func TestFreshnessAndApprovalPrecedence(t *testing.T) {
 			}
 		})
 	}
-	a := ApprovalRecord{Status: "pending", ExpiresAt: FormatTime(now)}
+	a := ApprovalRecord{Status: "pending", ExpiresAt: now}
 	r := ApprovalResolution{Approved: true, Now: now}
 	base.CurrentSituation = 2
 	if ApprovalDisposition(base, a, r) != "expired" {
@@ -82,7 +84,7 @@ func TestFreshnessAndApprovalPrecedence(t *testing.T) {
 	if ApprovalDisposition(base, a, r) != "expired" {
 		t.Fatal("decline expiry")
 	}
-	a.ExpiresAt = FormatTime(now.Add(time.Hour))
+	a.ExpiresAt = now.Add(time.Hour)
 	if ApprovalDisposition(base, a, r) != "authorize" {
 		t.Fatal("fresh decline")
 	}
@@ -157,6 +159,11 @@ func TestTypedIntentRetainsDigestInput(t *testing.T) {
 	if docs.Intent.Parameters["opaque"].(map[string]any)["value"] != true {
 		t.Fatal("opaque payload lost")
 	}
+	ambiguous := r
+	ambiguous.IntentJSON = contractstest.AmbiguousKeyJSON(r.IntentJSON, "intent_id")
+	if _, reason := ParseIntent(ambiguous); reason != "schema_invalid" {
+		t.Fatal(reason)
+	}
 	r.IntentSHA = nil
 	if _, reason := ParseIntent(r); reason != "intent_digest_mismatch" {
 		t.Fatal(reason)
@@ -168,5 +175,56 @@ func TestTypedIntentRetainsDigestInput(t *testing.T) {
 	r.ValidationStatus = "rejected"
 	if _, reason := ParseGovernanceDocuments(r); reason != "decision_not_accepted" {
 		t.Fatal(reason)
+	}
+}
+
+func TestPolicyDocumentAndRoutesAgreeWithTheRiskTable(t *testing.T) {
+	t.Parallel()
+	document := CanonicalDocumentForVersion("v1")
+	riskPolicy := document["risk_policy"].(map[string]any)
+	health := document["incomplete_source_health"].(map[string]any)
+	for _, risk := range contractstest.RiskClasses() {
+		for _, approval := range []int{0, 1} {
+			route, _ := RiskRoute(IntentRecord{RiskClass: string(risk), RequiresApproval: approval})
+			if want := contractsv1.RouteFor(contractsv1.RiskClass(risk), approval != 0); route != string(want) {
+				t.Fatalf("%s %d: route %s, want %s", risk, approval, route, want)
+			}
+		}
+		if got := riskPolicy[string(risk)]; got != string(contractsv1.RouteFor(contractsv1.RiskClass(risk), false)) {
+			t.Fatalf("%s: document route %v", risk, got)
+		}
+		_, documented := health[string(risk)]
+		incomplete := SourceHealthIncomplete(IntentRecord{RiskClass: string(risk), CurrentCompleteness: "uncertain"})
+		if documented != incomplete {
+			t.Fatalf("%s: document incomplete=%t, rule=%t", risk, documented, incomplete)
+		}
+	}
+}
+
+func TestPolicyDigestIsPinned(t *testing.T) {
+	t.Parallel()
+	digest, err := DigestForVersion("v1")
+	if err != nil || digest != "sha256:473ca13620fa9323385b275037070a405ab5f1d9a3c911d1403d3475dc5fb75e" {
+		t.Fatal(digest, err)
+	}
+}
+
+func TestOnlyApprovableRisksMayBeGranted(t *testing.T) {
+	t.Parallel()
+	for _, name := range append(contractstest.RiskClasses(), "R5", "") {
+		risk := contractsv1.RiskClass(name)
+		authority := AuthorityEntry{Entity: "motor", Risks: []string{name}}
+		if granted := authority.validate("operator") == nil; granted != risk.Approvable() {
+			t.Fatalf("%q granted=%t approvable=%t", risk, granted, risk.Approvable())
+		}
+	}
+}
+
+func TestWithdrawnApprovalIsNeverWithdrawnAgainByThePolicyPath(t *testing.T) {
+	t.Parallel()
+	superseded := IntentRecord{SituationVersion: 1, LastMaterialVersion: 2}
+	resolution := ApprovalResolution{Approved: true, Now: time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)}
+	if got := ApprovalDisposition(superseded, ApprovalRecord{Status: "withdrawn"}, resolution); got != "resolved" {
+		t.Fatalf("disposition of a withdrawn approval = %q, want resolved", got)
 	}
 }

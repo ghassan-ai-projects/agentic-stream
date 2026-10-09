@@ -41,7 +41,7 @@ type Comparison struct {
 	TamozDecisionSHA256     []byte
 	ComparisonJSON          []byte
 	ComparisonSHA256        []byte
-	CreatedAt               string
+	CreatedAt               time.Time
 }
 
 type builtComparison struct {
@@ -54,16 +54,16 @@ type comparisonDigests struct{ snapshot, spec, policy []byte }
 func BuildComparison(input ShadowInput, baseline, tamoz ValidatedOutput, tenantID string, createdAt time.Time) (Comparison, ShadowComparisonResult, error) {
 	comparisonKey := tenantID + ":" + input.EpisodeKey
 	document := comparisonDocument(input, baseline, tamoz, tenantID, comparisonKey)
-	comparisonJSON, comparisonDigest, comparisonSHA, err := sealComparison(document)
+	comparisonJSON, comparisonSHA, err := canonicaljson.Seal(canonicaljson.DomainShadowComparison, document)
 	if err != nil {
-		return Comparison{}, ShadowComparisonResult{}, err
+		return Comparison{}, ShadowComparisonResult{}, fmt.Errorf("seal comparison: %w", err)
 	}
 	digests, err := inputDigests(input)
 	if err != nil {
 		return Comparison{}, ShadowComparisonResult{}, err
 	}
 	comparisonID := "cmp_" + hex.EncodeToString(comparisonSHA)
-	built := assembleComparison(input, baseline, tamoz, tenantID, comparisonKey, comparisonID, comparisonJSON, comparisonDigest, comparisonSHA, digests, createdAt)
+	built := assembleComparison(input, baseline, tamoz, tenantID, comparisonKey, comparisonID, comparisonJSON, canonicaljson.EncodeDigest(comparisonSHA), comparisonSHA, digests, createdAt)
 	return built.record, built.result, nil
 }
 
@@ -97,22 +97,6 @@ func outputDifferences(baseline, tamoz ValidatedOutput) []string {
 
 func outputProvenance(value ValidatedOutput) map[string]any {
 	return map[string]any{"executor_version": value.Output.ExecutorVersion, "manifest_sha256": value.Output.ManifestSHA256, "decision_sha256": value.Output.DecisionSHA256}
-}
-
-func sealComparison(document map[string]any) ([]byte, string, []byte, error) {
-	comparisonJSON, err := canonicaljson.Marshal(document)
-	if err != nil {
-		return nil, "", nil, fmt.Errorf("canonicalize comparison: %w", err)
-	}
-	comparisonDigest, err := canonicaljson.Digest(canonicaljson.DomainShadowComparison, document)
-	if err != nil {
-		return nil, "", nil, fmt.Errorf("digest comparison: %w", err)
-	}
-	comparisonSHA, err := canonicaljson.DecodeDigest(comparisonDigest)
-	if err != nil {
-		return nil, "", nil, fmt.Errorf("decode comparison digest: %w", err)
-	}
-	return comparisonJSON, comparisonDigest, comparisonSHA, nil
 }
 
 func inputDigests(input ShadowInput) (comparisonDigests, error) {
@@ -150,6 +134,6 @@ func comparisonRecord(input ShadowInput, baseline, tamoz ValidatedOutput, tenant
 		BaselineManifestSHA256: baseline.ManifestSHA, TamozManifestSHA256: tamoz.ManifestSHA,
 		BaselineDecisionJSON: baseline.Canonical, BaselineDecisionSHA256: baseline.DecisionSHA,
 		TamozDecisionJSON: tamoz.Canonical, TamozDecisionSHA256: tamoz.DecisionSHA,
-		ComparisonJSON: comparisonJSON, ComparisonSHA256: comparisonSHA, CreatedAt: createdAt.UTC().Format(time.RFC3339Nano),
+		ComparisonJSON: comparisonJSON, ComparisonSHA256: comparisonSHA, CreatedAt: createdAt,
 	}
 }

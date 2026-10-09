@@ -130,7 +130,7 @@ func TestValidateCompensatingIntentTypes(t *testing.T) {
 			if test.useSpecAllowlist {
 				input.AllowedIntentTypes = specAllowed
 			}
-			input.Kind = "reconsider"
+			input.Reconsider = true
 
 			result, err := Validate(raw, digest, input)
 			if test.wantErr != "" {

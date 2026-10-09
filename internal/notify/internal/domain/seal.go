@@ -2,7 +2,6 @@ package domain
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"fmt"
 	"time"
 
@@ -31,8 +30,7 @@ func Seal(event contractsv1.CloudEvent, now time.Time) (Sealed, error) {
 	if err != nil {
 		return Sealed{}, fmt.Errorf("canonicalize notification: %w", err)
 	}
-	sum := sha256.Sum256(eventJSON)
-	return Sealed{Event: event, JSON: eventJSON, SHA: sum[:]}, nil
+	return Sealed{Event: event, JSON: eventJSON, SHA: canonicaljson.Sum(eventJSON)}, nil
 }
 
 // CheckSamePayload accepts a stored event with the same SHA-256; the same

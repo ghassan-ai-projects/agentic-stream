@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -12,13 +11,16 @@ import (
 type IntentRow struct {
 	ID, TenantID, DecisionID, SituationID string
 	Version                               int
-	Type, Risk, ExpiresAt, PolicyStatus   string
+	Type, Risk, PolicyStatus              string
+	ExpiresAt                             time.Time
+	RequiresApproval                      bool
 	JSON, SHA                             []byte
 }
 
 type ApprovalRow struct {
-	ID, ExpiresAt string
-	Present       bool
+	ID        string
+	ExpiresAt time.Time
+	Present   bool
 }
 
 type DecisionRow struct {
@@ -28,8 +30,9 @@ type DecisionRow struct {
 }
 
 type EpisodeRow struct {
-	TenantID, SituationID, Lifecycle string
-	SituationVersion                 int
+	TenantID, SituationID string
+	SituationVersion      int
+	ProducedDecision      bool
 }
 
 type SituationRow struct {
@@ -48,14 +51,12 @@ type AuthorizationRecords struct {
 }
 
 func (r AuthorizationRecords) VerifiedCommand() (CommandDocument, error) {
-	var raw Document
-	row := r.Command
-	if err := json.Unmarshal(row.JSON, &raw); err != nil || contractsv1.Validate(contractsv1.SchemaCommand, map[string]any(raw)) != nil ||
-		!verifyDigest(canonicaljson.DomainCommand, raw, row.SHA) {
+	raw, err := contractsv1.VerifyStoredDocument(contractsv1.SchemaCommand, canonicaljson.DomainCommand, r.Command.JSON, r.Command.SHA)
+	if err != nil {
 		return CommandDocument{}, errCommandIdentity
 	}
 	document := ParseCommandDocument(raw)
-	if !document.MatchesLedger(row) {
+	if !document.MatchesLedger(r.Command) {
 		return CommandDocument{}, errCommandIdentity
 	}
 	return document, nil
@@ -72,14 +73,21 @@ func (r AuthorizationRecords) RequireApprovedIntent() error {
 }
 
 func (r AuthorizationRecords) CheckApproval(now time.Time) error {
-	if r.Intent.Risk != "R2" {
+	switch contractsv1.RouteFor(contractsv1.RiskClass(r.Intent.Risk), r.Intent.RequiresApproval) {
+	case contractsv1.RouteAutomatic:
 		return nil
+	case contractsv1.RouteApproval:
+		return r.checkApprovalRecord(now)
+	default:
+		return errors.New("risk policy denies the intent")
 	}
+}
+
+func (r AuthorizationRecords) checkApprovalRecord(now time.Time) error {
 	if !r.Approval.Present {
 		return errors.New("approved intent has no approved approval record")
 	}
-	approvalExpires, err := time.Parse(time.RFC3339Nano, r.Approval.ExpiresAt)
-	if err != nil || !approvalExpires.After(now) {
+	if !r.Approval.ExpiresAt.After(now) {
 		return errors.New("approval is expired")
 	}
 	return nil
@@ -90,7 +98,7 @@ func (r AuthorizationRecords) RequireCurrent() error {
 	if episode.TenantID == intent.TenantID && r.Situation.TenantID == intent.TenantID &&
 		r.Decision.SituationID == intent.SituationID && r.Decision.SituationVersion == intent.Version &&
 		episode.SituationID == intent.SituationID && episode.SituationVersion == intent.Version &&
-		(episode.Lifecycle == "concluded" || episode.Lifecycle == "closed") &&
+		episode.ProducedDecision &&
 		r.Situation.LastMaterialVersion <= intent.Version {
 		return nil
 	}
@@ -99,12 +107,11 @@ func (r AuthorizationRecords) RequireCurrent() error {
 
 func (r AuthorizationRecords) CheckIntent(now time.Time) error {
 	row := r.Intent
-	expiresAt, err := time.Parse(time.RFC3339Nano, row.ExpiresAt)
-	if err != nil || !expiresAt.After(now) {
+	if !row.ExpiresAt.After(now) {
 		return errors.New("intent authorization is expired")
 	}
-	var document Document
-	if err := json.Unmarshal(row.JSON, &document); err != nil || contractsv1.Validate(contractsv1.SchemaIntent, map[string]any(document)) != nil || !verifyIntentDigest(document, row.SHA) {
+	document, err := contractsv1.VerifyStoredDocument(contractsv1.SchemaIntent, canonicaljson.DomainIntent, row.JSON, row.SHA)
+	if err != nil {
 		return errors.New("intent authorization is invalid")
 	}
 	if !ParseIntentDocument(document).MatchesLedger(row) {
@@ -115,8 +122,8 @@ func (r AuthorizationRecords) CheckIntent(now time.Time) error {
 
 func (r AuthorizationRecords) CheckDecision() error {
 	row := r.Decision
-	var document Document
-	if err := json.Unmarshal(row.JSON, &document); err != nil || contractsv1.Validate(contractsv1.SchemaDecision, map[string]any(document)) != nil || !verifyDigest(canonicaljson.DomainDecision, document, row.SHA) {
+	document, err := contractsv1.VerifyStoredDocument(contractsv1.SchemaDecision, canonicaljson.DomainDecision, row.JSON, row.SHA)
+	if err != nil {
 		return errors.New("decision authorization is invalid")
 	}
 	if decision := ParseDecisionDocument(document); decision.DecisionID != r.Intent.DecisionID || decision.EpisodeID != row.EpisodeID ||
