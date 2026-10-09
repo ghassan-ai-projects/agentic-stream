@@ -125,3 +125,16 @@ func TestPollExpiresAnItemAtItsExpiryInstantAndNotOneNanosecondBefore(t *testing
 		t.Fatalf("at expiry: %+v", poll)
 	}
 }
+
+func TestAPendingOnlyTransitionMustChangeExactlyOneItem(t *testing.T) {
+	t.Parallel()
+	if err := CheckStillPending(1, "item"); err != nil {
+		t.Fatalf("one changed row refused: %v", err)
+	}
+	for _, rows := range []int64{0, 2} {
+		err := CheckStillPending(rows, "item")
+		if err == nil || err.Error() != "scheduler item item is no longer pending" {
+			t.Errorf("rows=%d: err = %v, want the item named as no longer pending", rows, err)
+		}
+	}
+}

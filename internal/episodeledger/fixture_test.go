@@ -1,0 +1,58 @@
+package episodeledger_test
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+)
+
+var now = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+
+func inTx(t *testing.T, db *storage.DB, work func(ctx context.Context, tx *sql.Tx) error) {
+	t.Helper()
+	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error { return work(t.Context(), tx) }); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func seedEpisode(t *testing.T, ctx context.Context, db *storage.DB, episodeID string) {
+	t.Helper()
+	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		t.Fatalf("disable foreign keys: %v", err)
+	}
+	digest := make([]byte, 32)
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO episodes (
+			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
+			executor_name, executor_version, model_policy, prompt_version,
+			snapshot_sha256, admission_key, request_json, lifecycle_status, current_fence, accepted_at
+		) VALUES (?, 'sch-test', 'tenant', 'sit-test', 1, 'executor', 'v1', 'policy', 'prompt', ?, ?, X'7B7D', 'admitted', 0, ?)`,
+		episodeID, digest, digest, "2026-08-12T10:00:00Z"); err != nil {
+		t.Fatalf("seed episode: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO situations (
+			situation_id, tenant_id, deployment_id, situation_type, entity_type,
+			entity_id, partition_id, occurrence_id, current_version,
+			last_reasoned_version, phase, status, first_event_time, latest_event_time, updated_at, created_at
+		) VALUES ('sit-test', 'tenant', 'dep-test', 'test', 'thing', 'ent-1', 0, 'occ-test', 1, 0, 'candidate', 'open',
+			'2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z')`); err != nil {
+		t.Fatalf("seed situation registry: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
+		t.Fatalf("enable foreign keys: %v", err)
+	}
+}
+
+func reasonIs(err error, reason episodeledger.RejectionReason) bool {
+	var identityErr *episodeledger.IdentityError
+	return errors.As(err, &identityErr) && identityErr.Reason == reason
+}
+
+func ownerHolds(context.Context, *sql.Tx, string) error { return nil }

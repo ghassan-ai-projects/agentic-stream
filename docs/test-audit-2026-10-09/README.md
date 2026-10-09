@@ -1,6 +1,6 @@
 # Test audit (2026-10-09)
 
-Status: in progress (rounds 0–7 of 17 done)
+Status: in progress (rounds 0–9 of 17 done)
 
 A full audit of the repository's tests: organize them so the repository is easy
 to read, make them faster, raise coverage where it proves behavior, and remove
@@ -49,7 +49,7 @@ what proves nothing. Every test ends at the [test bar](TEST_BAR.md).
 | 5 | `eventlog`, `engine` | done | every package ≥ 87% (eventlog store 67.1 → 92.2, app 71.5 → 94.9) | ≤ 3.3 s each, no sleeps | 6fb148d2 |
 | 6 | `operators`, `situations`, `cognition` | done | every package ≥ 83% (situations domain 72.3 → 93.8, cognition 66.7 → 100, store 68.8 → 83.2) | ≈1.3–2.8 s each; cognition app proves 59 cases instead of 15 | ede78cf3 |
 | 7 | `episodes` | done | every package ≥ 84% (app 63.9 → 84.3, store 69.3 → 93.0) | no test above 0.7 s, sleep replaced by virtual clock | f29e6d29 |
-| 8 | `episodeledger`, `approvalledger` | todo | | | |
+| 8 | `episodeledger`, `approvalledger` | done | every package ≥ 85% (episodeledger facade 64.5 → 100, store 67.5 → 86.1) | no test above 0.6 s; attempt state machine checked over all 81 pairs | a0e50cc1 |
 | 9 | `evidence`, `decisions` | done | every package ≥ 87% (evidence app 81.5 → 98.1, decisions domain 84.5 → 95.3) | slowest test 0.32 s | see git log |
 | 10 | `executor/*`, `worker`, `testsupport/*` | todo | | | |
 | 11 | `policy`, `authority` | todo | | | |
@@ -79,4 +79,6 @@ not a test decision.
 | 6 | `RecordCostRejectionReason` and `RecordSchedulerExpiryReason` append a reason but leave the outcome `admitted`. The cognition language says reopening an occurrence needs a cooldown, but the engine never reopens one. | [cognition.md](modules/cognition.md) |
 | 9 | Security: `wire.SignedPayload` decodes the evidence token signature with non-strict base64, so three other final characters verify as the same token (the MAC still holds; authority does not widen). Fix: `base64.RawURLEncoding.Strict()`. | [evidence.md](modules/evidence.md) |
 | 9 | A provider result after the call deadline returns `DeadlineExceeded` but leaves the reservation `running` until lease reclaim. Compensating intents bypass `AllowedIntentTypes` (only the reconsider flag and catalog membership gate them). Confirm both. | [evidence.md](modules/evidence.md), [decisions.md](modules/decisions.md) |
+| 8 | Invariant 10 gap: `approvalledger.ExpireIntent` writes no `decided_at` or `reason`, so an approval expired this way is not explainable from its row. `Resolve` accepts `pending` and stamps `decided_at` and the approver. | [approvalledger.md](modules/approvalledger.md) |
+| 8 | Episode lifecycle writers (`Conclude`, `Abandon`, `RetainForRetry`, ...) have no lifecycle guard in their SQL: `Abandon` after `Conclude` overwrites the outcome, `RetainForRetry` revives a concluded episode. They rely on callers. | [episodeledger.md](modules/episodeledger.md) |
 

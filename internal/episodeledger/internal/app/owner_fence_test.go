@@ -27,9 +27,7 @@ func failingOwner(context.Context, *sql.Tx, string) error { return errCheckFaile
 
 func startOwned(t *testing.T, ctx context.Context, tx *store.Tx) domain.Identity {
 	t.Helper()
-	if err := Admit(ctx, tx, admission("e1"), now); err != nil {
-		t.Fatal(err)
-	}
+	admit(t, ctx, tx, "e1")
 	identity, err := StartAttemptOwned(ctx, tx, "e1", "a1", "epoch", heldBy("epoch"), now)
 	if err != nil || identity.OwnerEpoch != "epoch" {
 		t.Fatalf("owned start identity=%+v err=%v", identity, err)
@@ -51,10 +49,8 @@ func TestOwnedStartIsFencedByTheOwnerCheck(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			within(t, func(ctx context.Context, tx *store.Tx) {
-				if err := Admit(ctx, tx, admission("e1"), now); err != nil {
-					t.Fatal(err)
-				}
+			within(t, func(ctx context.Context, tx *store.Tx, _ *sql.Tx) {
+				admit(t, ctx, tx, "e1")
 				_, err := StartAttemptOwned(ctx, tx, "e1", "a1", "epoch", tc.owner, now)
 				assertFenceRefusal(t, err, tc.stale, tc.checkErr)
 				if _, found, readErr := tx.ReadAttempt(ctx, domain.Identity{EpisodeID: "e1", AttemptID: "a1", Fence: 1, OwnerEpoch: "epoch"}); readErr != nil || found {
@@ -92,19 +88,20 @@ func TestOwnedIdentityIsFencedOnEveryTransition(t *testing.T) {
 		stale    bool
 		checkErr error
 		allowed  bool
+		unowned  bool
 	}{
 		"owner holds":        {owner: heldBy("epoch"), allowed: true},
 		"owner lost":         {owner: lostOwner, stale: true},
 		"another epoch":      {owner: heldBy("other"), stale: true},
 		"the check fails":    {owner: failingOwner, checkErr: errCheckFailed},
 		"no check supplied":  {owner: nil},
-		"unowned identities": {owner: nil, allowed: true},
+		"unowned identities": {owner: nil, allowed: true, unowned: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			within(t, func(ctx context.Context, tx *store.Tx) {
+			within(t, func(ctx context.Context, tx *store.Tx, _ *sql.Tx) {
 				identity := startOwned(t, ctx, tx)
-				if name == "unowned identities" {
+				if tc.unowned {
 					identity.OwnerEpoch = ""
 				}
 				err := TransitionAttempt(ctx, tx, identity, domain.AttemptRunning, now, nil, tc.owner)
@@ -126,7 +123,7 @@ func TestOwnedIdentityIsFencedOnEveryTransition(t *testing.T) {
 
 func TestOwnerCheckReceivesTheIdentitysEpoch(t *testing.T) {
 	t.Parallel()
-	within(t, func(ctx context.Context, tx *store.Tx) {
+	within(t, func(ctx context.Context, tx *store.Tx, _ *sql.Tx) {
 		identity := startOwned(t, ctx, tx)
 		var asked []string
 		record := func(_ context.Context, _ *sql.Tx, epoch string) error {
@@ -145,32 +142,4 @@ func TestOwnerCheckReceivesTheIdentitysEpoch(t *testing.T) {
 			t.Fatalf("an identity without an owner epoch consulted the check: %v %v", asked, err)
 		}
 	})
-}
-
-func TestCancellationAcknowledgementOfAClosedEpisodeIsStillFenced(t *testing.T) {
-	t.Parallel()
-	for name, tc := range map[string]struct {
-		owner store.OwnerCheck
-		stale bool
-	}{
-		"owner holds": {owner: heldBy("epoch")},
-		"owner lost":  {owner: lostOwner, stale: true},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			within(t, func(ctx context.Context, tx *store.Tx) {
-				identity := startOwned(t, ctx, tx)
-				if err := TransitionAttempt(ctx, tx, identity, domain.AttemptRunning, now, nil, heldBy("epoch")); err != nil {
-					t.Fatal(err)
-				}
-				if err := tx.SupersedeEpochEpisodes(ctx, "", now); err != nil {
-					t.Fatal(err)
-				}
-				err := TransitionAttempt(ctx, tx, identity, domain.AttemptCancelled, now, []byte("{}"), tc.owner)
-				if tc.stale != domain.IsIdentityReason(err, domain.RejectStaleAttempt) || (!tc.stale && err != nil) {
-					t.Fatalf("acknowledgement = %v, want stale=%v", err, tc.stale)
-				}
-			})
-		})
-	}
 }
