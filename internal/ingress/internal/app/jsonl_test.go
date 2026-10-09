@@ -3,6 +3,7 @@ package app_test
 import (
 	"errors"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -34,6 +35,43 @@ func TestJSONLReplayAppendsEventsAndResumesFromItsCheckpoint(t *testing.T) {
 	}
 	if got := countRows(t, db, "event_log"); got != 3 {
 		t.Fatalf("event log holds %d events, want 3", got)
+	}
+}
+
+func TestJSONLReplayResumesAtTheCheckpointedByteOffsetWithoutRereadingTheFile(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	first := joinLines(vibrationLine("evt-1", "2026-01-01T00:00:00Z"))
+	path := writeTrace(t, first)
+	conn := newJSONL(t, db, eventlog.NewEventLog(db), "default", path, "offset-connector")
+	if count, err := conn.Run(t.Context()); err != nil || count != 1 {
+		t.Fatalf("first run appended %d, err = %v", count, err)
+	}
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", len(first)-1)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	appendToTrace(t, path, joinLines(vibrationLine("evt-2", "2026-01-01T00:01:00Z")))
+	if count, err := conn.Run(t.Context()); err != nil || count != 1 {
+		t.Fatalf("second run appended %d, err = %v, want only the appended line", count, err)
+	}
+	if quarantined := countRows(t, db, "event_quarantine"); quarantined != 0 {
+		t.Fatalf("the already-read bytes were read again: %d quarantined", quarantined)
+	}
+}
+
+func TestJSONLReplayRestartsFromTheTopWhenTheTraceShrank(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	path := writeTrace(t, joinLines(vibrationLine("evt-1", "2026-01-01T00:00:00Z"), vibrationLine("evt-2", "2026-01-01T00:01:00Z")))
+	conn := newJSONL(t, db, eventlog.NewEventLog(db), "default", path, "shrunk-connector")
+	if _, err := conn.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(joinLines(vibrationLine("evt-1", "2026-01-01T00:00:00Z"))), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := conn.Run(t.Context()); err != nil || count != 0 {
+		t.Fatalf("run over a shrunk trace appended %d, err = %v, want nothing new", count, err)
 	}
 }
 
