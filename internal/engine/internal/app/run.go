@@ -117,7 +117,7 @@ type globalRecordOutcome struct {
 }
 
 func (s *Service) applyGlobalRecord(ctx context.Context, record eventlog.Record, beforeApply func(eventlog.Record) error) (globalRecordOutcome, error) {
-	watermark, err := s.prepareRecord(ctx, record, beforeApply)
+	prepared, err := s.prepareRecord(ctx, record, beforeApply)
 	if err != nil {
 		return globalRecordOutcome{}, err
 	}
@@ -126,25 +126,42 @@ func (s *Service) applyGlobalRecord(ctx context.Context, record eventlog.Record,
 		return globalRecordOutcome{}, fmt.Errorf("run timers before event %d: %w", record.Position, err)
 	}
 	outcome := globalRecordOutcome{fired: fired, timersRan: true}
-	if err := s.applyRecord(ctx, record.PartitionID, record, watermark); err != nil {
+	if err := s.applyRecord(ctx, record.PartitionID, record, prepared); err != nil {
 		return outcome, fmt.Errorf("apply record %d: %w", record.Position, err)
 	}
 	return outcome, nil
 }
 
-func (s *Service) prepareRecord(ctx context.Context, record eventlog.Record, beforeApply func(eventlog.Record) error) (time.Time, error) {
+type preparedRecord struct {
+	watermark time.Time
+	lateness  domain.LateDisposition
+}
+
+func (s *Service) prepareRecord(ctx context.Context, record eventlog.Record, beforeApply func(eventlog.Record) error) (preparedRecord, error) {
 	checkpoint, err := s.store.LoadCheckpoint(ctx, record.PartitionID)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("load partition checkpoint: %w", err)
+		return preparedRecord{}, fmt.Errorf("load partition checkpoint: %w", err)
 	}
-	watermark, err := s.watermarkForRecord(record.EventTime, checkpoint.Watermark)
+	prepared, err := s.placeInTime(record, checkpoint.Watermark)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("watermark: %w", err)
+		return preparedRecord{}, err
 	}
 	if err := runBeforeApply(beforeApply, record); err != nil {
-		return time.Time{}, err
+		return preparedRecord{}, err
 	}
-	return watermark, nil
+	return prepared, nil
+}
+
+func (s *Service) placeInTime(record eventlog.Record, previousWatermark time.Time) (preparedRecord, error) {
+	watermark, err := s.watermarkForRecord(record.EventTime, previousWatermark)
+	if err != nil {
+		return preparedRecord{}, fmt.Errorf("watermark: %w", err)
+	}
+	lateness, err := domain.ClassifyLateness(record.EventTime, previousWatermark, s.spec.Time)
+	if err != nil {
+		return preparedRecord{}, fmt.Errorf("classify lateness of event %s: %w", record.EventID, err)
+	}
+	return preparedRecord{watermark: watermark, lateness: lateness}, nil
 }
 
 func runBeforeApply(beforeApply func(eventlog.Record) error, record eventlog.Record) error {
@@ -158,5 +175,9 @@ func runBeforeApply(beforeApply func(eventlog.Record) error, record eventlog.Rec
 }
 
 func (s *Service) watermarkForRecord(eventTime, previous time.Time) (time.Time, error) {
-	return domain.WatermarkFor(eventTime, s.spec.Time.MaxOutOfOrderness, previous) //nolint:wrapcheck // Callers name the failed step.
+	watermark, err := domain.WatermarkFor(eventTime, s.spec.Time.MaxOutOfOrderness, previous)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("derive watermark for event time %s: %w", eventTime, err)
+	}
+	return watermark, nil
 }

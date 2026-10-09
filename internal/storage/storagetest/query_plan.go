@@ -1,6 +1,7 @@
 package storagetest
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 
@@ -24,6 +25,11 @@ func queryPlan(tb testing.TB, db *storage.DB, query string, args ...any) string 
 		tb.Fatalf("explain query plan: %v", err)
 	}
 	defer func() { _ = rows.Close() }()
+	return strings.Join(planSteps(tb, rows), "; ")
+}
+
+func planSteps(tb testing.TB, rows *sql.Rows) []string {
+	tb.Helper()
 	var steps []string
 	for rows.Next() {
 		var id, parent, unused int
@@ -36,5 +42,5 @@ func queryPlan(tb testing.TB, db *storage.DB, query string, args ...any) string 
 	if err := rows.Err(); err != nil {
 		tb.Fatalf("read query plan: %v", err)
 	}
-	return strings.Join(steps, "; ")
+	return steps
 }

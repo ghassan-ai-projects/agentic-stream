@@ -107,8 +107,17 @@ func EnrichTimerFeature(feature *operators.Feature, tenantID string, partitionID
 	}
 }
 
-// EntityKey identifies the entity a feature belongs to, for per-entity
-// de-duplication.
-func EntityKey(feature operators.Feature) string {
-	return feature.EntityType + "\x00" + feature.EntityID
+type EntityRef struct{ Type, ID string }
+
+func DistinctEntities(features []operators.Feature) []EntityRef {
+	seen := make(map[EntityRef]struct{}, len(features))
+	var entities []EntityRef
+	for _, feature := range features {
+		entity := EntityRef{Type: feature.EntityType, ID: feature.EntityID}
+		if _, repeated := seen[entity]; !repeated {
+			seen[entity] = struct{}{}
+			entities = append(entities, entity)
+		}
+	}
+	return entities
 }

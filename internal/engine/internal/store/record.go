@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// EventApplied reports whether the inbox already holds the event.
 func (tx *Tx) EventApplied(ctx context.Context, eventID string) (bool, error) {
 	_, applied, err := storage.QueryOptional[int](ctx, tx.tx,
 		"SELECT 1 FROM event_inbox WHERE consumer_name = ? AND tenant_id = ? AND event_id = ?",
@@ -20,7 +20,6 @@ func (tx *Tx) EventApplied(ctx context.Context, eventID string) (bool, error) {
 	return applied, nil
 }
 
-// RecordApplied advances the partition checkpoint and marks the event applied.
 func (tx *Tx) RecordApplied(ctx context.Context, partitionID int, eventID string, position int64, watermark, now time.Time) error {
 	at := kernel.FormatTime(now)
 	if _, err := tx.tx.ExecContext(ctx, `
@@ -35,6 +34,18 @@ func (tx *Tx) RecordApplied(ctx context.Context, partitionID int, eventID string
 		"INSERT INTO event_inbox (consumer_name, tenant_id, event_id, log_position, applied_at) VALUES (?, ?, ?, ?, ?)",
 		ConsumerName, tx.tenantID, eventID, position, at); err != nil {
 		return fmt.Errorf("mark inbox: %w", err)
+	}
+	return nil
+}
+
+func (tx *Tx) RecordLateEvent(ctx context.Context, late domain.LateEvent, now time.Time) error {
+	if _, err := tx.tx.ExecContext(ctx, `
+		INSERT INTO late_events (
+			tenant_id, event_id, log_position, partition_id, event_time, watermark, late_policy, disposition, recorded_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		tx.tenantID, late.EventID, late.Position, late.PartitionID, kernel.FormatTime(late.EventTime),
+		kernel.FormatTime(late.Watermark), late.Policy, string(late.Disposition), kernel.FormatTime(now)); err != nil {
+		return fmt.Errorf("insert late event: %w", err)
 	}
 	return nil
 }

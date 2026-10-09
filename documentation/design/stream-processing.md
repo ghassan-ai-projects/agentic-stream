@@ -48,6 +48,12 @@ allowed lateness, clock-skew tolerance, and one of these late policies:
 | `correct` | Recompute the affected state and publish a correction |
 | `correct_and_reconsider` | Correct state and reevaluate for a deduplicated reconsideration, subject to eligibility |
 
+An event is late when its event time is before its partition's watermark.
+A late event later than `allowedLateness` (zero when undeclared) never changes
+state under any policy. The engine records every late event's disposition
+(`corrected`, `history_only`, `dropped` or `beyond_allowed_lateness`) in the
+`late_events` table, and the event itself stays in the event log.
+
 Missing heartbeat and source-health signals can make completeness uncertain.
 Incomplete evidence is explicit state, not a silent default.
 

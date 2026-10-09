@@ -23,7 +23,7 @@ func TestARestartedSchedulerQueuesEveryAdmittedTriggerUnderItsOwnItem(t *testing
 	if err != nil {
 		t.Fatalf("read scheduler items: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var itemID, triggerID string
 		if err := rows.Scan(&itemID, &triggerID); err != nil {

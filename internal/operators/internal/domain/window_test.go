@@ -96,7 +96,7 @@ func TestOnCloseWindowEmitsTheClosedAggregateAtTheWatermark(t *testing.T) {
 	}
 }
 
-func TestLateEventIsCorrectedOnlyWithinPolicyAndAllowedLateness(t *testing.T) {
+func TestALateSampleIsLabelledCorrectedOnlyUnderACorrectingPolicyWithinAllowedLateness(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name        string
@@ -108,7 +108,8 @@ func TestLateEventIsCorrectedOnlyWithinPolicyAndAllowedLateness(t *testing.T) {
 		{"correct within lateness", "correct", "5m", time.Minute, true},
 		{"correct_and_reconsider within lateness", "correct_and_reconsider", "5m", time.Minute, true},
 		{"exactly at allowed lateness", "correct", "5m", 5 * time.Minute, true},
-		{"policy does not correct", "quarantine", "5m", time.Minute, false},
+		{"history only does not correct", "history_only", "5m", time.Minute, false},
+		{"drop with audit does not correct", "drop_with_audit", "5m", time.Minute, false},
 		{"no allowed lateness declared", "correct", "", time.Minute, false},
 		{"later than allowed lateness", "correct", "30s", time.Minute, false},
 		{"older than the window", "correct", "10m", 6 * time.Minute, false},

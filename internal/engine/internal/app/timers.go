@@ -81,7 +81,7 @@ func (s *Service) applyDueTimers(ctx context.Context, tx *store.Tx, partitionID 
 	if err != nil {
 		return 0, err
 	}
-	if err := s.saveTimerSituationStates(ctx, tx, partitionID, appliedFeatures); err != nil {
+	if err := s.saveSituationStatesOf(ctx, tx, partitionID, appliedFeatures); err != nil {
 		return 0, err
 	}
 	if err := tx.AcknowledgeTimers(ctx, timers, now); err != nil {
@@ -137,21 +137,6 @@ func (s *Service) saveTimerFeature(ctx context.Context, tx *store.Tx, partitionI
 			if err := tx.ProcessVersion(ctx, s.cogEngine, version); err != nil {
 				return fmt.Errorf("process timer cognition: %w", err)
 			}
-		}
-	}
-	return nil
-}
-
-func (s *Service) saveTimerSituationStates(ctx context.Context, tx *store.Tx, partitionID int, features []operators.Feature) error {
-	updated := make(map[string]struct{}, len(features))
-	for _, feature := range features {
-		key := domain.EntityKey(feature)
-		if _, seen := updated[key]; seen {
-			continue
-		}
-		updated[key] = struct{}{}
-		if err := s.saveCurrentSituationState(ctx, tx, partitionID, feature.EntityType, feature.EntityID); err != nil {
-			return err
 		}
 	}
 	return nil
