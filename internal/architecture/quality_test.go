@@ -1,4 +1,4 @@
-package agenticstream
+package architecture
 
 import (
 	"os"
@@ -10,11 +10,26 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// maxProductionFileLines is quality-bar rule Q3: production files stay under
+// 300 lines. See .agents/context/quality-bar.md.
+const maxProductionFileLines = 299
+
+// TestProductionFileSize enforces quality-bar rule Q3.
+func TestProductionFileSize(t *testing.T) {
+	t.Parallel()
+
+	for _, file := range loadRepository(t).production {
+		if !file.generated && file.lines > maxProductionFileLines {
+			t.Errorf("%s has %d lines; split it by responsibility to under %d", file.rel, file.lines, maxProductionFileLines+1)
+		}
+	}
+}
+
 // TestProductionFunctionLengthBar prevents the lint gate from drifting away
 // from the clean-function bar recorded in AGENTS.md.
 func TestProductionFunctionLengthBar(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".golangci.yml"))
+	data, err := os.ReadFile(filepath.Join(loadRepository(t).root, ".golangci.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +61,7 @@ func TestProductionFunctionLengthBar(t *testing.T) {
 // conflicting with the byte-for-byte protocol generation gate.
 func TestGeneratedProtocolImportsStayGeneratorOwned(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".pre-commit-config.yaml"))
+	data, err := os.ReadFile(filepath.Join(loadRepository(t).root, ".pre-commit-config.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}

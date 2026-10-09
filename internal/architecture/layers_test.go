@@ -1,13 +1,9 @@
-package agenticstream
+package architecture
 
 import (
 	"go/ast"
-	"go/parser"
-	"go/token"
 	"path"
-	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -33,16 +29,15 @@ var clockReads = []string{"Now", "Since", "Until"}
 // I/O and reads no clock: time arrives as a parameter.
 func TestDomainPackagesArePure(t *testing.T) {
 	t.Parallel()
-	root := repoRoot(t)
-	module := readModulePath(t, filepath.Join(root, "go.mod"))
-	for _, file := range layerFiles(t, root, "domain") {
-		parsed := parseGoFile(t, file)
-		for _, imported := range importPaths(t, file, parsed) {
-			if impureDomainImport(module, imported) {
+
+	repo := loadRepository(t)
+	for _, file := range repo.layerFiles("domain") {
+		for _, imported := range file.imports {
+			if impureDomainImport(repo.module, imported) {
 				t.Errorf("%s: domain layer imports %s", file.rel, imported)
 			}
 		}
-		for _, call := range clockCalls(parsed) {
+		for _, call := range clockCalls(file.syntax) {
 			t.Errorf("%s: domain layer reads the clock with time.%s; take time as a parameter", file.rel, call)
 		}
 	}
@@ -57,11 +52,11 @@ var infrastructureImports = []string{"database/sql", "internal/storage", "net", 
 // layers.
 func TestApplicationLayersDoNotTouchInfrastructure(t *testing.T) {
 	t.Parallel()
-	root := repoRoot(t)
-	module := readModulePath(t, filepath.Join(root, "go.mod"))
-	for _, file := range layerFiles(t, root, "app") {
-		for _, imported := range importPaths(t, file, parseGoFile(t, file)) {
-			if slices.Contains(infrastructureImports, strings.TrimPrefix(imported, module+"/")) {
+
+	repo := loadRepository(t)
+	for _, file := range repo.layerFiles("app") {
+		for _, imported := range file.imports {
+			if slices.Contains(infrastructureImports, strings.TrimPrefix(imported, repo.module+"/")) {
 				t.Errorf("%s: application layer imports %s; go through the store or an adapter layer", file.rel, imported)
 			}
 		}
@@ -72,15 +67,15 @@ func TestApplicationLayersDoNotTouchInfrastructure(t *testing.T) {
 // every SQL statement there.
 func TestModuleSQLStaysInStore(t *testing.T) {
 	t.Parallel()
-	root := repoRoot(t)
-	modules := modulesWithStore(t, root)
-	for _, file := range productionGoFiles(t, root) {
-		pkg := path.Dir(file.rel)
-		module, ok := owningLayeredModule(pkg, modules)
-		if !ok || pkg == module+"/internal/store" {
+
+	repo := loadRepository(t)
+	modules := modulesWithStore(repo)
+	for _, file := range repo.production {
+		module, ok := owningLayeredModule(file.dir, modules)
+		if !ok || file.dir == module+"/internal/store" {
 			continue
 		}
-		for _, literal := range stringLiterals(t, file) {
+		for _, literal := range stringLiterals(file) {
 			if sqlStatement.MatchString(literal) {
 				t.Errorf("%s: SQL %q outside %s/internal/store", file.rel, firstLine(literal), module)
 			}
@@ -88,24 +83,31 @@ func TestModuleSQLStaysInStore(t *testing.T) {
 	}
 }
 
-// layerFiles lists production files of every internal/<module>/internal/<layer>.
-func layerFiles(t *testing.T, root, layer string) []goFile {
-	t.Helper()
-	var files []goFile
-	for _, file := range productionGoFiles(t, root) {
-		pkg := path.Dir(file.rel)
-		if path.Base(pkg) == layer && path.Base(path.Dir(pkg)) == "internal" {
-			files = append(files, file)
+// compositionRoots wire modules and drive loops; they own no business rule.
+var compositionRoots = []string{"internal/runtime", "cmd/agentic-stream"}
+
+// TestCompositionRootsContainNoSQL enforces architecture-bar rule A10: reads
+// and writes belong to the module that owns the data, never to composition.
+func TestCompositionRootsContainNoSQL(t *testing.T) {
+	t.Parallel()
+
+	repo := loadRepository(t)
+	for _, file := range repo.production {
+		if !slices.Contains(compositionRoots, file.dir) {
+			continue
+		}
+		for _, literal := range stringLiterals(file) {
+			if sqlStatement.MatchString(literal) {
+				t.Errorf("%s contains SQL %q; call the owning module instead", file.rel, firstLine(literal))
+			}
 		}
 	}
-	return files
 }
 
-func modulesWithStore(t *testing.T, root string) []string {
-	t.Helper()
+func modulesWithStore(repo *repository) []string {
 	var modules []string
-	for _, file := range layerFiles(t, root, "store") {
-		module := path.Dir(path.Dir(path.Dir(file.rel)))
+	for _, file := range repo.layerFiles("store") {
+		module := path.Dir(path.Dir(file.dir))
 		if !slices.Contains(modules, module) {
 			modules = append(modules, module)
 		}
@@ -120,28 +122,6 @@ func owningLayeredModule(pkg string, modules []string) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-func parseGoFile(t *testing.T, file goFile) *ast.File {
-	t.Helper()
-	parsed, err := parser.ParseFile(token.NewFileSet(), file.abs, nil, 0)
-	if err != nil {
-		t.Fatalf("parse %s: %v", file.rel, err)
-	}
-	return parsed
-}
-
-func importPaths(t *testing.T, file goFile, parsed *ast.File) []string {
-	t.Helper()
-	var paths []string
-	for _, spec := range parsed.Imports {
-		value, err := strconv.Unquote(spec.Path.Value)
-		if err != nil {
-			t.Fatalf("unquote import in %s: %v", file.rel, err)
-		}
-		paths = append(paths, value)
-	}
-	return paths
 }
 
 func impureDomainImport(module, imported string) bool {
@@ -178,13 +158,12 @@ var nondeterministicSources = []string{"Clock", "Timer", "Virtual", "Physical", 
 // reaching for a clock or a random generator.
 func TestDeterministicLayersDoNotUseTimeOrRandomSources(t *testing.T) {
 	t.Parallel()
-	root := repoRoot(t)
-	for _, file := range productionGoFiles(t, root) {
-		pkg := path.Dir(file.rel)
-		if path.Base(pkg) != "domain" && pkg != "internal/replay/internal/store" {
+
+	for _, file := range loadRepository(t).production {
+		if path.Base(file.dir) != "domain" && file.dir != "internal/replay/internal/store" {
 			continue
 		}
-		for _, symbol := range sourceSelectors(parseGoFile(t, file)) {
+		for _, symbol := range sourceSelectors(file.syntax) {
 			if slices.Contains(nondeterministicSources, symbol) {
 				t.Errorf("%s: deterministic layer uses sources.%s; take it as a parameter", file.rel, symbol)
 			}

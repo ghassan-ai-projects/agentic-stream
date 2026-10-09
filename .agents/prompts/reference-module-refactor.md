@@ -35,8 +35,9 @@ The user's standing preferences for this work:
    package does not own, and other packages querying its tables
    (`grep -rn '<table>' --include='*.go'`).
 4. Read the package's tests and the architecture gates that name it
-   (`architecture_test.go`, `architecture_flow_test.go`,
-   `architecture_ownership_test.go`, `architecture_layers_test.go`).
+   (`internal/architecture/import_rules_test.go`, `imports_test.go`,
+   `ownership_test.go`, `layers_test.go`, `facades_test.go`; the index is
+   `internal/architecture/README.md`).
 
 ## 2. Choose the layer shape
 
@@ -88,15 +89,16 @@ level of abstraction).
 1. **Shared helpers out.** Move utilities that are not the package's business
    (digests, encodings) to their foundation package.
 2. **Domain.** Create `internal/<pkg>/internal/domain` with types and pure rules
-   and table-driven tests. Register it in `packageLayers`, `allowedImports` and
+   and table-driven tests. Register it in `packageLayers`, `allowedImports` (`internal/architecture`) and
    `documentation/architecture/repository-map.md` in the same commit.
 3. **Store or adapters.** Move every SQL statement, socket and codec into the
-   adapter layer, named after domain actions. Point `durableOwners` at the
+   adapter layer, named after domain actions. Point `durableOwners` (`internal/architecture/ownership_test.go`) at the
    store.
 4. **App and facade.** Move orchestration into `internal/app`; reduce the root
-   package to configuration and delegation. Update every caller and test. When
+   package to configuration and delegation (add it to `facadeSpecs`, and its
+   store and app layers to `opaqueStoreModules` and `applicationLayerSpecs`). Update every caller and test. When
    ownership gates would see two writers, land store and app in one commit.
-5. **Gates and docs.** Add or extend architecture tests, prove each new gate by
+5. **Gates and docs.** Add or extend the gates in `internal/architecture`, prove each new gate by
    injecting a violation and watching it fail, then update `AGENTS.md`,
    `.agents/context/architecture-bar.md` and the module maps.
 6. **Polish rounds**, one commit each:

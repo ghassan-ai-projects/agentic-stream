@@ -1,10 +1,9 @@
-package agenticstream
+package architecture
 
 import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,19 +28,11 @@ var kernelForbiddenTimeSelectors = []string{
 // source, and never reads the wall clock or the host time zone.
 func TestKernelStaysPure(t *testing.T) {
 	t.Parallel()
-	root := repoRoot(t)
-	found := false
-	for _, file := range productionGoFiles(t, root) {
-		if path.Dir(file.rel) != kernelPackage {
-			continue
-		}
-		found = true
-		for _, violation := range kernelViolations(parseGoFile(t, file)) {
+
+	for _, file := range loadRepository(t).filesIn(t, kernelPackage) {
+		for _, violation := range kernelViolations(file.syntax) {
 			t.Errorf("%s: %s", file.rel, violation)
 		}
-	}
-	if !found {
-		t.Fatalf("no production files found in %s", kernelPackage)
 	}
 }
 
@@ -148,9 +139,30 @@ func kernelTimeNames(parsed *ast.File) map[string]bool {
 // would be a second layer with its own rules.
 func TestKernelHasNoSubpackages(t *testing.T) {
 	t.Parallel()
-	for _, file := range productionGoFiles(t, repoRoot(t)) {
-		if strings.HasPrefix(file.rel, kernelPackage+"/") && path.Dir(file.rel) != kernelPackage {
+
+	for _, file := range loadRepository(t).filesUnder(kernelPackage) {
+		if file.dir != kernelPackage {
 			t.Errorf("%s: the kernel is a single package", file.rel)
 		}
+	}
+}
+
+// TestDigestTextHasOneOwner keeps the "sha256:<hex>" text form in
+// internal/kernel: no other production package concatenates the prefix onto a
+// hex sum; it calls kernel.EncodeDigest (canonicaljson.EncodeDigest delegates).
+func TestDigestTextHasOneOwner(t *testing.T) {
+	t.Parallel()
+
+	for _, file := range loadRepository(t).production {
+		if strings.HasPrefix(file.rel, kernelPackage+"/") {
+			continue
+		}
+		ast.Inspect(file.syntax, func(node ast.Node) bool {
+			literal, ok := node.(*ast.BasicLit)
+			if ok && literal.Kind == token.STRING && literal.Value == `"sha256:"` {
+				t.Errorf("%s: spell digests with kernel.EncodeDigest and DecodeDigest, not the bare prefix", file.rel)
+			}
+			return true
+		})
 	}
 }

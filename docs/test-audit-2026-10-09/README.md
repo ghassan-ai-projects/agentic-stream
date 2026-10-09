@@ -1,6 +1,6 @@
 # Test audit (2026-10-09)
 
-Status: in progress (round 0 of 17 done)
+Status: in progress (rounds 0–1 of 17 done)
 
 A full audit of the repository's tests: organize them so the repository is easy
 to read, make them faster, raise coverage where it proves behavior, and remove
@@ -42,7 +42,7 @@ what proves nothing. Every test ends at the [test bar](TEST_BAR.md).
 | Round | Modules | Status | Coverage before → after | Time before → after | Commit |
 | --- | --- | --- | --- | --- | --- |
 | 0 | audit folder, bar, baseline | done | - | - | - |
-| 1 | repository root → `internal/architecture` | todo | | | |
+| 1 | repository root → `internal/architecture` | done | - | 2.8 s → 1.6 s | see git log |
 | 2 | `kernel`, `canonicaljson`, `sources`, `contractsv1`, `interlock` | todo | | | |
 | 3 | `storage`, `telemetry`, `migrations` | todo | | | |
 | 4 | `spec`, `ingress` | todo | | | |

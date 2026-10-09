@@ -1,15 +1,36 @@
-package agenticstream
+package architecture
 
 import (
-	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 )
+
+// sqlStatement matches a string literal that is a SQL statement.
+var sqlStatement = regexp.MustCompile(`(?i)^\s*(SELECT|INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE|REPLACE|WITH)\s`)
+
+// stringLiterals lists the decoded string literals of a production file.
+func stringLiterals(file goFile) []string {
+	var literals []string
+	ast.Inspect(file.syntax, func(node ast.Node) bool {
+		if literal, ok := node.(*ast.BasicLit); ok && literal.Kind == token.STRING {
+			if value, err := strconv.Unquote(literal.Value); err == nil {
+				literals = append(literals, value)
+			}
+		}
+		return true
+	})
+	return literals
+}
+
+func firstLine(text string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	return line
+}
 
 type sqlMutation struct {
 	operation, table, query string
@@ -201,32 +222,6 @@ func sqlUpdatedColumns(tokens []sqlLexeme, index int) []string {
 	return columns
 }
 
-func productionSQLMutations(t *testing.T, visit func(string, string, sqlMutation)) {
-	t.Helper()
-	root := repoRoot(t)
-	for _, file := range productionGoFiles(t, root) {
-		positions := token.NewFileSet()
-		parsed, err := parser.ParseFile(positions, file.abs, nil, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		ast.Inspect(parsed, func(node ast.Node) bool {
-			literal, ok := node.(*ast.BasicLit)
-			if !ok || literal.Kind != token.STRING {
-				return true
-			}
-			query, err := strconv.Unquote(literal.Value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, mutation := range sqlMutations(query) {
-				visit(file.rel, fmt.Sprintf("%s:%d", file.rel, positions.Position(literal.Pos()).Line), mutation)
-			}
-			return true
-		})
-	}
-}
-
 func TestSQLMutationClassifierRecognizesOwnershipBoundaries(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -239,6 +234,8 @@ func TestSQLMutationClassifierRecognizesOwnershipBoundaries(t *testing.T) {
 		{`REPLACE INTO main.commands(command_id) VALUES (?)`, "commands", "insert", nil},
 	} {
 		t.Run(tc.table+tc.operation, func(t *testing.T) {
+			t.Parallel()
+
 			got := sqlMutations(tc.query)
 			if len(got) != 1 || got[0].table != tc.table || got[0].operation != tc.operation || !slices.Equal(got[0].columns, tc.columns) {
 				t.Fatalf("classify %s: %+v", tc.query, got)
@@ -249,5 +246,43 @@ func TestSQLMutationClassifierRecognizesOwnershipBoundaries(t *testing.T) {
 		if got := sqlMutations(query); len(got) != 0 {
 			t.Fatalf("read/text classified as mutation: %s: %+v", query, got)
 		}
+	}
+}
+
+func TestInsertConflictClassifierDistinguishesIgnoreFromRewrite(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		query    string
+		rewrites bool
+	}{
+		{`INSERT INTO commands(command_id) VALUES (?)`, false},
+		{`INSERT OR IGNORE INTO commands(command_id) VALUES (?)`, false},
+		{`INSERT INTO commands(command_id) VALUES ('DO UPDATE SET') ON CONFLICT DO NOTHING`, false},
+		{`INSERT INTO commands(command_id) VALUES (?) ON CONFLICT DO UPDATE SET command_json=?`, true},
+		{`INSERT OR REPLACE INTO main.commands(command_id) VALUES (?)`, true},
+		{`REPLACE INTO "commands"(command_id) VALUES (?)`, true},
+	} {
+		mutations := sqlMutations(tc.query)
+		if len(mutations) != 1 || mutations[0].rewritesExisting != tc.rewrites {
+			t.Fatalf("conflict rewrite classification: %s: %+v", tc.query, mutations)
+		}
+		if allowed := ownsMutation("internal/policy/internal/store", mutations[0]); allowed == tc.rewrites {
+			t.Fatalf("prepared command creation permission: %s: allowed=%v", tc.query, allowed)
+		}
+	}
+}
+
+// TestSQLGateDistinguishesInsertStatementsFromErrorMessages preserves error text.
+func TestSQLGateDistinguishesInsertStatementsFromErrorMessages(t *testing.T) {
+	t.Parallel()
+
+	for _, query := range []string{"INSERT INTO items(id) VALUES (?)", "INSERT OR IGNORE INTO items(id) VALUES (?)", "insert or replace into items(id) values (?)"} {
+		if !sqlStatement.MatchString(query) {
+			t.Errorf("SQL missed: %s", query)
+		}
+	}
+	if sqlStatement.MatchString("insert item: %w") || sqlStatement.MatchString("insert reconsideration item: %w") {
+		t.Fatal("error prefix classified as executable SQL")
 	}
 }

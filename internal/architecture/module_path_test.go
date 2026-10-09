@@ -1,9 +1,8 @@
-package agenticstream
+package architecture
 
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -25,8 +24,8 @@ import (
 func TestModulePathSingleSourceOfTruth(t *testing.T) {
 	t.Parallel()
 
-	root := repoRoot(t)
-	module := readModulePath(t, filepath.Join(root, "go.mod"))
+	repo := loadRepository(t)
+	root, module := repo.root, repo.module
 
 	cases := []struct {
 		file string
@@ -68,32 +67,4 @@ func TestModulePathSingleSourceOfTruth(t *testing.T) {
 	if !strings.Contains(string(makefile), "MODULE    ?= $(shell go list -m") {
 		t.Error("Makefile must derive MODULE from go.mod via `go list -m`")
 	}
-}
-
-// repoRoot returns the module root, which is the directory holding this test.
-func repoRoot(t *testing.T) string {
-	t.Helper()
-
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller did not return the test path")
-	}
-	return filepath.Dir(filename)
-}
-
-// readModulePath extracts the module directive from a go.mod file.
-func readModulePath(t *testing.T, goModPath string) string {
-	t.Helper()
-
-	body, err := os.ReadFile(goModPath)
-	if err != nil {
-		t.Fatalf("read go.mod: %v", err)
-	}
-	for _, line := range strings.Split(string(body), "\n") {
-		if module, ok := strings.CutPrefix(strings.TrimSpace(line), "module "); ok {
-			return strings.TrimSpace(module)
-		}
-	}
-	t.Fatal("go.mod does not declare a module path")
-	return ""
 }

@@ -1,11 +1,8 @@
-package agenticstream
+package architecture
 
 import (
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"io/fs"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -13,7 +10,7 @@ import (
 
 const storedTimeLayoutPrefix = "2006-01-02T15:04:05"
 
-const timestampGateFile = "architecture_timetext_test.go"
+const timestampGateFile = "internal/architecture/timetext_test.go"
 
 // cloudEventWireFile owns the trimmed RFC 3339 form that the CloudEvents
 // envelope digest binds across repositories; it is a contract, not a stored
@@ -26,19 +23,15 @@ const cloudEventWireFile = "internal/contractsv1/internal/domain/cloud_event.go"
 // form is the one named exception.
 func TestTimestampTextHasOneOwner(t *testing.T) {
 	t.Parallel()
-	root := repoRoot(t)
-	for _, file := range allGoFiles(t, root) {
+
+	repo := loadRepository(t)
+	for _, file := range repo.allFiles(t) {
 		if strings.HasPrefix(file.rel, "internal/kernel/") || file.rel == timestampGateFile || file.rel == cloudEventWireFile {
 			continue
 		}
-		fileSet := token.NewFileSet()
-		parsed, err := parser.ParseFile(fileSet, file.abs, nil, 0)
-		if err != nil {
-			t.Fatalf("parse %s: %v", file.rel, err)
-		}
-		ast.Inspect(parsed, func(node ast.Node) bool {
+		ast.Inspect(file.syntax, func(node ast.Node) bool {
 			if reason := timestampLayoutUse(node); reason != "" {
-				t.Errorf("%s: %s: use kernel.FormatTime and kernel.ParseTime", fileSet.Position(node.Pos()), reason)
+				t.Errorf("%s: %s: use kernel.FormatTime and kernel.ParseTime", repo.position(node), reason)
 			}
 			return true
 		})
@@ -57,34 +50,4 @@ func timestampLayoutUse(node ast.Node) string {
 		}
 	}
 	return ""
-}
-
-func allGoFiles(t *testing.T, root string) []goFile {
-	t.Helper()
-	var files []goFile
-	err := filepath.WalkDir(root, func(abs string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		name := entry.Name()
-		if entry.IsDir() {
-			if abs != root && (strings.HasPrefix(name, ".") || name == "testdata" || name == "vendor" || name == "tmp" || name == "bin") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(name, ".go") {
-			return nil
-		}
-		rel, err := filepath.Rel(root, abs)
-		if err != nil {
-			return err
-		}
-		files = append(files, goFile{abs: abs, rel: filepath.ToSlash(rel)})
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walk repository: %v", err)
-	}
-	return files
 }

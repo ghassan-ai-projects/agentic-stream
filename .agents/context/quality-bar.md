@@ -9,9 +9,9 @@ recorded in the same change, never a way to get a diff green.
 | --- | --- | --- |
 | Q1 | `golangci-lint` reports 0 issues across the whole tree, with no "new issues only" baseline. | `make lint-ci` (`.golangci.yml`) |
 | Q2 | Production functions stay short and flat: cognitive complexity ≤ 15, cyclomatic complexity ≤ 20, nested-`if` complexity ≤ 3, at most 15 body lines (comments excluded) and 15 statements. These are the mechanical floor for Q7, not its target. | `gocognit`, `gocyclo`, `nestif`, `funlen` in `.golangci.yml` |
-| Q3 | Production Go files stay under 300 lines. Generated files are exempt. | `TestProductionFileSize` (`architecture_test.go`) |
+| Q3 | Production Go files stay under 300 lines. Generated files are exempt. | `TestProductionFileSize` (`internal/architecture/quality_test.go`) |
 | Q4 | Every package with statements has its own tests and at least 60% statement coverage, measured with `-short`. Generated protobuf stubs are exempt. | `make coverage-check` (`scripts/check-coverage.py`) |
-| Q5 | Package imports follow the declared layering. Foundation packages import no domain package; cognition and episodes never import policy or actions; replay never imports actions or the runtime; nothing under `internal/` imports `cmd/`. | `TestPackageLayering` (`architecture_test.go`) |
+| Q5 | Package imports follow the declared layering. Foundation packages import no domain package; cognition and episodes never import policy or actions; replay never imports actions or the runtime; nothing under `internal/` imports `cmd/`. | `TestPackageLayering` (`internal/architecture/imports_test.go`) |
 | Q6 | The existing gates stay green: proto, tidy, build, vet, race tests, deadcode (no production function reachable only from tests), vulncheck, docs. | `make ci-check` |
 | Q7 | Functions read top-down as intent, following the clean-function rules below. | Code review, checked against [review-checklist.md](review-checklist.md) |
 | Q8 | No copied code: Go code, tests included, has no token clone of 75 or more tokens, and a change adds no second implementation of something the repo already does. The threshold only goes down. | `dupl` in `.golangci.yml`; the duplication scan in AGENTS.md for the rest |
@@ -67,7 +67,7 @@ introducing a type is warranted only when several steps share state.
 - Do not delete or weaken tests, and do not exclude packages, to meet Q4.
 - A new package edge must follow the data flow in
   [architecture.md](architecture.md). Add it to the allowlist in
-  `architecture_test.go` in the same change, with the reason in review.
+  `internal/architecture/import_rules_test.go` in the same change, with the reason in review.
 
 ## Architecture ownership and directed flow
 

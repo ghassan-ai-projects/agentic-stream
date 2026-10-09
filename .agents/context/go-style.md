@@ -25,7 +25,7 @@
 - The only permitted literal copies are ones a tool forces on us: the protobuf
   `go_package` option, the `goimports -local` prefix in
   `.pre-commit-config.yaml`, and the OpenTelemetry instrumentation scope
-  constant. `TestModulePathSingleSourceOfTruth` (root `module_path_test.go`)
+  constant. `TestModulePathSingleSourceOfTruth` (`internal/architecture/module_path_test.go`)
   pins each of those copies to `go.mod`, so a rename cannot drift.
 - To rename the module: `go mod edit -module=<new>`, update the pinned literals
   above, regenerate the protobuf stubs with `make proto-generate` (never hand-edit

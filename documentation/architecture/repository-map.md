@@ -94,6 +94,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/interlock/internal/store/` | `runtime_interlock` read and write SQL |
 | `internal/canonicaljson/` | RFC 8785 canonical JSON and domain-separated digests: thin facade (public API only) |
 | `internal/canonicaljson/internal/domain/` | pure canonical encoder, number and string rules, strict validation, digest and stored-document rules (reference module layer) |
+| `internal/architecture/` | repository-wide architecture and quality gates: tests only, indexed in its README; no production code |
 | `internal/kernel/` | shared pure vocabulary: durable time text and digest text; imports only the standard library, no database, clock read or I/O; importable by any package |
 | `internal/sources/` | injected time and identity sources (facade) |
 | `internal/sources/internal/domain/` | pure clock and generator contracts, virtual clock, deterministic generator, id prefixes |

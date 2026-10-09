@@ -1,8 +1,11 @@
-package agenticstream
+package architecture
 
 import (
+	"go/ast"
+	"go/token"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -67,6 +70,7 @@ var durableOwners = map[string]string{
 
 func TestDurableMutationsHaveOneOwnerOrAnExplicitHandoffPhase(t *testing.T) {
 	t.Parallel()
+
 	seen := map[string]bool{}
 	productionSQLMutations(t, func(file, position string, mutation sqlMutation) {
 		pkg := filepath.ToSlash(filepath.Dir(file))
@@ -86,6 +90,28 @@ func TestDurableMutationsHaveOneOwnerOrAnExplicitHandoffPhase(t *testing.T) {
 		if !seen[table] {
 			t.Errorf("stale durable owner declaration: %s", table)
 		}
+	}
+}
+
+func productionSQLMutations(t *testing.T, visit func(file, position string, mutation sqlMutation)) {
+	t.Helper()
+
+	repo := loadRepository(t)
+	for _, file := range repo.production {
+		ast.Inspect(file.syntax, func(node ast.Node) bool {
+			literal, ok := node.(*ast.BasicLit)
+			if !ok || literal.Kind != token.STRING {
+				return true
+			}
+			query, err := strconv.Unquote(literal.Value)
+			if err != nil {
+				t.Fatalf("unquote string literal at %s: %v", repo.position(literal), err)
+			}
+			for _, mutation := range sqlMutations(query) {
+				visit(file.rel, repo.position(literal), mutation)
+			}
+			return true
+		})
 	}
 }
 
@@ -134,6 +160,7 @@ func columnsWithin(actual, allowed []string) bool {
 
 func TestHandoffOwnershipRejectsAuthorityAndPayloadBypasses(t *testing.T) {
 	t.Parallel()
+
 	for _, tc := range []struct{ pkg, query string }{
 		{"internal/cognition/internal/store", "UPDATE episodes SET lifecycle_status='superseded'"},
 		{"internal/control/internal/store", "UPDATE episodes SET lifecycle_status='superseded'"},
