@@ -46,9 +46,9 @@ what proves nothing. Every test ends at the [test bar](TEST_BAR.md).
 | 2 | `kernel`, `canonicaljson`, `sources`, `contractsv1`, `interlock` | done | every package ≥ 90% (interlock domain 66.7 → 100, contractsv1 73.3 → 100) | unchanged (≈1.2 s each, race start-up) | 592b586f |
 | 3 | `storage`, `telemetry`, `migrations` | done | every package ≥ 81% (storage 64 → 100, telemetry 66.7 → 100) | store 8.4 s → 4.0 s, storagetest 5.4 s → 3.5 s | ff3a06ce |
 | 4 | `spec`, `ingress` | done | every package ≥ 85% (spec store 68.9 → 86.5, spectest 71.4 → 85.7) | ≈1–2 s each; spec compile 26.9 → 6.9 ms under `-race` (schema compiled once) | 27f1968f |
-| 5 | `eventlog`, `engine` | done | every package ≥ 87% (eventlog store 67.1 → 92.2, app 71.5 → 94.9) | ≤ 3.3 s each, no sleeps | see git log |
+| 5 | `eventlog`, `engine` | done | every package ≥ 87% (eventlog store 67.1 → 92.2, app 71.5 → 94.9) | ≤ 3.3 s each, no sleeps | 6fb148d2 |
 | 6 | `operators`, `situations`, `cognition` | todo | | | |
-| 7 | `episodes` | todo | | | |
+| 7 | `episodes` | done | every package ≥ 84% (app 63.9 → 84.3, store 69.3 → 93.0) | no test above 0.7 s, sleep replaced by virtual clock | see git log |
 | 8 | `episodeledger`, `approvalledger` | todo | | | |
 | 9 | `evidence`, `decisions` | todo | | | |
 | 10 | `executor/*`, `worker`, `testsupport/*` | todo | | | |
@@ -73,4 +73,6 @@ not a test decision.
 | 2 | canonicaljson accepts a native `float64` above 2^53 but refuses the same value as a raw JSON integer; both pinned, needs a design decision. `containsSurrogate` has an unreachable branch. | [canonicaljson.md](modules/canonicaljson.md) |
 | 4 | Bug: `cleanLiveListener.closeAndRemove` (`internal/ingress/internal/transport/listener.go`) should remove the socket file only if it is still the listener's, but `net.UnixListener.Close` unlinks the path first, so a replacing file is deleted and `removeSocketFile` is unreachable. Fix: `SetUnlinkOnClose(false)` in `listenSocket`, as its own change. | [ingress.md](modules/ingress.md) |
 | 5 | A single event can chain several Situation transitions and publish only the last version, so published versions can start at 2. Confirm this is intended (situations round checks it). `RunGlobal` counts an event already in the inbox as processed. | [engine.md](modules/engine.md) |
+| 7 | An executor outcome with a non-terminal status and no decision (for example `running`) makes `RunOnce` return an error and leaves the attempt `running`. With cost control on, `Settle` for an episode that never reserved errors after the attempt ran. | [episodes.md](modules/episodes.md) |
+| 7 | Production files under `internal/episodes/internal/**` still carry ticket comments (`ISSUE-061`, `P8`) against the no-comments rule. | [episodes.md](modules/episodes.md) |
 

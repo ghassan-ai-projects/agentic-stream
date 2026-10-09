@@ -8,75 +8,91 @@ import (
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+)
+
+type runtimeOwners struct {
+	db     *storage.DB
+	holder *runtimecontrol.RuntimeOwner
+	other  *runtimecontrol.RuntimeOwner
+}
+
+func claimedRuntime(t *testing.T) runtimeOwners {
+	t.Helper()
+	db := replayedStore(t)
+	owners := runtimeOwners{
+		db:     db,
+		holder: &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-a", Lease: time.Minute},
+		other:  &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-b", Lease: time.Minute},
+	}
+	if err := owners.holder.Claim(t.Context(), "epoch"); err != nil {
+		t.Fatal(err)
+	}
+	return owners
+}
+
+func assertOwnedRefusal(t *testing.T, err error, want ownedOutcome) {
+	t.Helper()
+	var rejection *episodeledger.IdentityError
+	isRejection := errors.As(err, &rejection)
+	switch want {
+	case ownedAccepted:
+		if err != nil {
+			t.Fatalf("holder refused: %v", err)
+		}
+	case ownedStale:
+		if !isRejection || rejection.Reason != episodeledger.RejectStaleAttempt {
+			t.Fatalf("err=%v, want a stale attempt rejection", err)
+		}
+	case ownedUnfenced:
+		if err == nil || isRejection {
+			t.Fatalf("err=%v, want a refusal that is not a worker rejection", err)
+		}
+	}
+}
+
+type ownedOutcome int
+
+const (
+	ownedAccepted ownedOutcome = iota
+	ownedStale
+	ownedUnfenced
 )
 
 func TestOwnedAttemptsAreFencedByTheRuntimeOwnerAssertion(t *testing.T) {
 	t.Parallel()
-	db := replayedStore(t)
-	var episodeID string
-	if err := db.QueryRowContext(t.Context(), "SELECT episode_id FROM episodes LIMIT 1").Scan(&episodeID); err != nil {
-		t.Fatal(err)
-	}
-	holder := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-a", Lease: time.Minute}
-	if err := holder.Claim(t.Context(), "epoch"); err != nil {
-		t.Fatal(err)
-	}
-	sameEpochOtherInstance := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-b", Lease: time.Minute}
-	now := time.Now().UTC()
-	for name, tc := range map[string]struct {
-		store     store.Store
-		wantStale bool
-		wantOther bool
+	tests := []struct {
+		name  string
+		store func(o runtimeOwners) store.Store
+		want  ownedOutcome
 	}{
-		"the holding instance":                 {store: store.New(db).Fenced(holder.Assert)},
-		"the same epoch from another instance": {store: store.New(db).Fenced(sameEpochOtherInstance.Assert), wantStale: true},
-		"no runtime owner check":               {store: store.New(db), wantOther: true},
-	} {
-		t.Run(name, func(t *testing.T) {
-			err := tc.store.WithTx(t.Context(), func(tx *store.Tx) error {
-				_, err := tx.StartAttemptOwned(t.Context(), episodeID, "attempt-"+name, "epoch", now)
+		{"the holding instance", func(o runtimeOwners) store.Store { return store.New(o.db).Fenced(o.holder.Assert) }, ownedAccepted},
+		{"the same epoch from another instance", func(o runtimeOwners) store.Store { return store.New(o.db).Fenced(o.other.Assert) }, ownedStale},
+		{"no runtime owner check", func(o runtimeOwners) store.Store { return store.New(o.db) }, ownedUnfenced},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			owners := claimedRuntime(t)
+			episodeID := admittedEpisodeID(t, owners.db)
+
+			err := tc.store(owners).WithTx(t.Context(), func(tx *store.Tx) error {
+				_, err := tx.StartAttemptOwned(t.Context(), episodeID, "attempt", "epoch", time.Now().UTC())
 				return err
 			})
-			assertOwnedRefusal(t, err, tc.wantStale, tc.wantOther)
-		})
-	}
-}
 
-func assertOwnedRefusal(t *testing.T, err error, wantStale, wantOther bool) {
-	t.Helper()
-	var rejection *episodeledger.IdentityError
-	isRejection := errors.As(err, &rejection)
-	switch {
-	case wantStale:
-		if !isRejection || rejection.Reason != episodeledger.RejectStaleAttempt {
-			t.Fatalf("err=%v, want a stale attempt rejection", err)
-		}
-	case wantOther:
-		if err == nil || isRejection {
-			t.Fatalf("err=%v, want a refusal that is not a worker rejection", err)
-		}
-	default:
-		if err != nil {
-			t.Fatalf("holder refused: %v", err)
-		}
+			assertOwnedRefusal(t, err, tc.want)
+		})
 	}
 }
 
 func TestOwnedTransitionIsRefusedForTheSameEpochFromAnotherInstance(t *testing.T) {
 	t.Parallel()
-	db := replayedStore(t)
-	var episodeID string
-	if err := db.QueryRowContext(t.Context(), "SELECT episode_id FROM episodes LIMIT 1").Scan(&episodeID); err != nil {
-		t.Fatal(err)
-	}
-	holder := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-a", Lease: time.Minute}
-	other := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-b", Lease: time.Minute}
-	if err := holder.Claim(t.Context(), "epoch"); err != nil {
-		t.Fatal(err)
-	}
+	owners := claimedRuntime(t)
+	episodeID := admittedEpisodeID(t, owners.db)
 	now := time.Now().UTC()
 	var identity episodeledger.Identity
-	if err := store.New(db).Fenced(holder.Assert).WithTx(t.Context(), func(tx *store.Tx) error {
+	if err := store.New(owners.db).Fenced(owners.holder.Assert).WithTx(t.Context(), func(tx *store.Tx) error {
 		var err error
 		identity, err = tx.StartAttemptOwned(t.Context(), episodeID, "attempt", "epoch", now)
 		return err
@@ -88,7 +104,8 @@ func TestOwnedTransitionIsRefusedForTheSameEpochFromAnotherInstance(t *testing.T
 			return tx.TransitionAttempt(t.Context(), identity, episodeledger.AttemptRunning, now, nil)
 		})
 	}
-	assertOwnedRefusal(t, transition(store.New(db).Fenced(other.Assert)), true, false)
-	assertOwnedRefusal(t, transition(store.New(db)), false, true)
-	assertOwnedRefusal(t, transition(store.New(db).Fenced(holder.Assert)), false, false)
+
+	assertOwnedRefusal(t, transition(store.New(owners.db).Fenced(owners.other.Assert)), ownedStale)
+	assertOwnedRefusal(t, transition(store.New(owners.db)), ownedUnfenced)
+	assertOwnedRefusal(t, transition(store.New(owners.db).Fenced(owners.holder.Assert)), ownedAccepted)
 }

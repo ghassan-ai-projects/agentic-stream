@@ -1,8 +1,14 @@
 package domain
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestWallTimeBudgetValidatesOnceAtRequestBoundary(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		raw       string
@@ -20,6 +26,7 @@ func TestWallTimeBudgetValidatesOnceAtRequestBoundary(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			req := &Request{RequestJSON: []byte(test.raw)}
 			got, err := req.WallTimeBudget()
 			if (err != nil) != test.wantErr {
@@ -38,5 +45,39 @@ func TestWallTimeBudgetValidatesOnceAtRequestBoundary(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func requestWithBudget(wallTime string) []byte {
+	document := map[string]any{"budget": map[string]any{"wall_time": wallTime}}
+	raw, err := json.Marshal(document)
+	if err != nil {
+		panic(err)
+	}
+	return raw
+}
+
+func TestParseWallTimeBudgetValidatesBounds(t *testing.T) {
+	t.Parallel()
+	if duration, err := ParseWallTimeBudget(requestWithBudget("90s")); err != nil || duration != 90*time.Second {
+		t.Fatalf("budget = %v err = %v", duration, err)
+	}
+	if duration, err := ParseWallTimeBudget(requestWithBudget("")); err != nil || duration != 0 {
+		t.Fatalf("empty budget = %v err = %v", duration, err)
+	}
+	for name, tc := range map[string]struct{ wallTime, want string }{
+		"zero":        {"0s", "invalid wall_time budget"},
+		"negative":    {"-5s", "invalid wall_time budget"},
+		"unparseable": {"soon", "invalid wall_time budget"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := ParseWallTimeBudget(requestWithBudget(tc.wallTime)); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want one containing %q", err, tc.want)
+			}
+		})
+	}
+	if _, err := ParseWallTimeBudget([]byte("not-json")); err == nil || !strings.Contains(err.Error(), "decode episode budget") {
+		t.Fatalf("err = %v", err)
 	}
 }

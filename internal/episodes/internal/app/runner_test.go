@@ -2,218 +2,159 @@ package app_test
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
-
-	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
-
-	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
-func TestRunnerExecutesAdmittedEpisode(t *testing.T) {
-	ctx := context.Background()
+func TestRunnerExecutesAnAdmittedEpisodeAndGovernsItsDecision(t *testing.T) {
+	t.Parallel()
 	compiled := triggeredSpec(
-		spec.Executor{
-			Name:           "fake",
-			DispatchPolicy: "active",
-			ModelPolicy:    "test-policy",
-			PromptVersion:  "prompt-v1", Prompt: "Analyze the situation and return a typed decision.",
-		},
+		spec.Executor{Name: "fake", DispatchPolicy: "active", ModelPolicy: "test-policy", PromptVersion: "prompt-v1", Prompt: "Analyze the situation and return a typed decision."},
 		spec.Intent{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
 	)
-	s := admitTriggeredSituation(t, ctx, compiled, "sit-1")
-	s.assembleAndPersist(t, ctx)
+	s := admitTriggeredSituation(t, compiled, "sit-1")
+	s.assembleAndPersist(t)
 
-	runner := app.NewRunner(store.New(s.db), fixture.New(), sources.Physical(), sources.Deterministic())
-	ran, err := runner.RunOnce(ctx, "default")
-	if err != nil {
-		t.Fatalf("run once: %v", err)
-	}
-	if !ran {
-		t.Fatal("expected runner to process an episode")
-	}
+	ran, err := app.NewRunner(store.New(s.db), fixture.New(), sources.Physical(), sources.Deterministic()).RunOnce(t.Context(), "default")
 
-	var status string
-	if err := s.db.QueryRowContext(ctx,
-		"SELECT lifecycle_status FROM episodes WHERE scheduler_item_id = ?", s.schedulerItemID,
-	).Scan(&status); err != nil {
-		t.Fatalf("query episode status: %v", err)
+	if err != nil || !ran {
+		t.Fatalf("RunOnce ran=%v err=%v, want true nil", ran, err)
 	}
-	if status != "concluded" {
-		t.Fatalf("expected concluded, got %s", status)
+	if got := scalar[string](t, s.db, "SELECT lifecycle_status FROM episodes WHERE scheduler_item_id = ?", s.schedulerItemID); got != "concluded" {
+		t.Fatalf("episode lifecycle = %q, want concluded", got)
 	}
-
-	var decisionCount int
-	if err := s.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM decisions WHERE situation_id = ?", s.version.SituationID,
-	).Scan(&decisionCount); err != nil {
-		t.Fatalf("count decisions: %v", err)
-	}
-	if decisionCount != 1 {
-		t.Fatalf("expected one decision, got %d", decisionCount)
-	}
-	var validationStatus, attemptID string
+	var decisionID, validation, attemptID string
 	var fence int64
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT validation_status, attempt_id, fence
-		FROM decisions WHERE situation_id = ?`, s.version.SituationID).Scan(&validationStatus, &attemptID, &fence); err != nil {
-		t.Fatalf("query decision provenance: %v", err)
+	if err := s.db.QueryRowContext(t.Context(), "SELECT decision_id, validation_status, attempt_id, fence FROM decisions WHERE situation_id = ?", s.version.SituationID).
+		Scan(&decisionID, &validation, &attemptID, &fence); err != nil {
+		t.Fatalf("exactly one decision must be recorded: %v", err)
 	}
-	if validationStatus != "accepted" || attemptID == "" || fence != 1 {
-		t.Fatalf("decision provenance = status %q attempt %q fence %d", validationStatus, attemptID, fence)
+	if validation != "accepted" || attemptID == "" || fence != 1 {
+		t.Fatalf("decision provenance = status %q attempt %q fence %d, want accepted, an attempt and fence 1", validation, attemptID, fence)
 	}
-	var attemptStatus string
-	if err := s.db.QueryRowContext(ctx,
-		"SELECT status FROM episode_attempts WHERE attempt_id = ?", attemptID).Scan(&attemptStatus); err != nil {
-		t.Fatalf("query attempt status: %v", err)
-	}
-	if attemptStatus != "produced" {
-		t.Fatalf("expected produced attempt, got %s", attemptStatus)
+	if got := scalar[string](t, s.db, "SELECT status FROM episode_attempts WHERE attempt_id = ?", attemptID); got != "produced" {
+		t.Fatalf("attempt status = %q, want produced", got)
 	}
 	var intentType, policyStatus string
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT intent_type, policy_status FROM intents
-		WHERE decision_id = (SELECT decision_id FROM decisions WHERE situation_id = ?)`, s.version.SituationID).
-		Scan(&intentType, &policyStatus); err != nil {
-		t.Fatalf("query validated intent: %v", err)
+	if err := s.db.QueryRowContext(t.Context(), "SELECT intent_type, policy_status FROM intents WHERE decision_id = ?", decisionID).Scan(&intentType, &policyStatus); err != nil {
+		t.Fatalf("the accepted decision must leave one pending intent: %v", err)
 	}
 	if intentType != "create_maintenance_ticket" || policyStatus != "pending" {
-		t.Fatalf("validated intent = type %q policy %q", intentType, policyStatus)
+		t.Fatalf("intent = type %q policy %q, want create_maintenance_ticket pending", intentType, policyStatus)
 	}
 }
 
-func TestRunnerNoWorkWhenEmpty(t *testing.T) {
-	ctx := context.Background()
+func TestRunnerReportsNoWorkWhenNothingIsAdmitted(t *testing.T) {
+	t.Parallel()
 	db := storagetest.OpenTemp(t)
 
-	runner := app.NewRunner(store.New(db), fixture.New(), sources.Physical(), sources.Deterministic())
-	ran, err := runner.RunOnce(ctx, "default")
-	if err != nil {
-		t.Fatalf("run once: %v", err)
-	}
-	if ran {
-		t.Fatal("expected no work")
+	ran, err := permissiveRunner(db, fixture.New()).RunOnce(t.Context(), "default")
+
+	if err != nil || ran {
+		t.Fatalf("RunOnce ran=%v err=%v, want false nil", ran, err)
 	}
 }
 
-type failOnceExecutor struct {
+func TestRunnerDispatchesTheOldestAcceptedEpisodeFirst(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	later := newEpisodeSeed("epi-later")
+	later.AcceptedAt = "2026-08-12T10:00:00.500000000Z"
+	later.insert(t, db)
+	earlier := newEpisodeSeed("epi-earlier")
+	earlier.AcceptedAt = "2026-08-12T10:00:00.000000000Z"
+	earlier.insert(t, db)
+	executor := &declinedRecorder{}
+
+	mustRunOnce(t, permissiveRunner(db, executor))
+
+	if len(executor.episodeIDs) != 1 || executor.episodeIDs[0] != "epi-earlier" {
+		t.Fatalf("dispatched episodes = %v, want [epi-earlier]", executor.episodeIDs)
+	}
+}
+
+type declinedRecorder struct{ episodeIDs []string }
+
+func (e *declinedRecorder) Execute(_ context.Context, req *app.Request) (*app.Outcome, error) {
+	e.episodeIDs = append(e.episodeIDs, req.EpisodeID)
+	return &app.Outcome{Status: string(episodeledger.AttemptDeclined), AttemptID: req.AttemptID, Fence: req.Fence}, nil
+}
+
+type failingExecutor struct {
+	failures int
 	calls    int
-	delegate *fixture.Executor
 }
 
-func (e *failOnceExecutor) Execute(ctx context.Context, req *app.Request) (*app.Outcome, error) {
+func (e *failingExecutor) Execute(ctx context.Context, req *app.Request) (*app.Outcome, error) {
 	e.calls++
-	if e.calls == 1 {
-		return nil, fmt.Errorf("transient worker failure")
+	if e.calls <= e.failures {
+		return nil, errors.New("transient worker failure")
 	}
-	outcome, err := e.delegate.Execute(ctx, req)
+	outcome, err := fixture.New().Execute(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("fail-once delegate: %w", err)
+		return nil, fmt.Errorf("delegate: %w", err)
 	}
 	return outcome, nil
 }
 
-func TestRunnerRetriesFailedAttemptWithNextFence(t *testing.T) {
-	ctx := context.Background()
+func TestRunnerRetriesAFailedAttemptWithTheNextFence(t *testing.T) {
+	t.Parallel()
 	db := storagetest.OpenTemp(t)
+	seedEpisode(t, db, "epi-retry")
+	runner := permissiveRunner(db, &failingExecutor{failures: 1})
 
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatalf("disable foreign keys for fixture: %v", err)
+	mustRunOnce(t, runner)
+
+	if got := lifecycleOf(t, db, "epi-retry"); got != "running" {
+		t.Fatalf("lifecycle after the failed attempt = %q, want running (kept for retry)", got)
 	}
-	digest := make([]byte, 32)
-	acceptedAt := "2026-08-12T12:00:00Z"
-	intentCatalog, intentDigest, err := domain.CompileIntentCatalog([]spec.Intent{
-		{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
-	})
-	if err != nil {
-		t.Fatalf("compile intent catalog: %v", err)
-	}
-	requestPayload, err := json.Marshal(map[string]any{
-		"snapshot":             map[string]any{"phase": "candidate"},
-		"trigger":              map[string]any{"trigger_name": "retry"},
-		"allowed_intent_types": []string{"create_maintenance_ticket"},
-		"risk_ceiling":         "R1",
-		"executor": map[string]any{
-			"intent_catalog":        intentCatalog,
-			"intent_catalog_sha256": intentDigest,
-		},
-	})
-	if err != nil {
-		t.Fatalf("marshal request payload: %v", err)
-	}
-	requestJSON := requestPayload
-	if _, err := db.ExecContext(ctx, `
-		INSERT INTO episodes (
-			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
-			executor_name, executor_version, model_policy, prompt_version, snapshot_sha256,
-			admission_key, request_json, lifecycle_status, current_fence, accepted_at, dispatch_policy
-		) VALUES ('epi-retry', 'sch-retry', 'tenant', 'sit-retry', 1,
-			'executor', 'v1', 'policy', 'prompt', ?, ?, ?, 'admitted', 0, ?, 'active')`,
-		digest, digest, requestJSON, acceptedAt); err != nil {
-		t.Fatalf("insert episode fixture: %v", err)
-	}
-	// P8 (freshness): the dispatch-time situation-version recheck reads the
-	// live situations registry — seed the row this episode is bound to.
-	if _, err := db.ExecContext(ctx, `
-		INSERT INTO situations (
-			situation_id, tenant_id, deployment_id, situation_type, entity_type,
-			entity_id, partition_id, occurrence_id, current_version,
-			last_reasoned_version, phase, status, first_event_time, latest_event_time, updated_at, created_at
-		) VALUES ('sit-retry', 'tenant', 'dep-retry', 'test', 'thing', 'ent-1', 0, 'occ-retry', 1, 0, 'candidate', 'open',
-			'2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z')`); err != nil {
-		t.Fatalf("seed situation registry: %v", err)
+	if got := scalar[int](t, db, "SELECT COUNT(*) FROM episode_attempts WHERE episode_id = 'epi-retry' AND status = 'failed'"); got != 1 {
+		t.Fatalf("failed attempts = %d, want 1", got)
 	}
 
-	executor := &failOnceExecutor{delegate: fixture.New()}
-	runner := app.NewRunner(store.New(db), executor, sources.Physical(), sources.Deterministic())
-	processed, err := runner.RunOnce(ctx, "tenant")
-	if err != nil || !processed {
-		t.Fatalf("first run processed=%v err=%v", processed, err)
+	mustRunOnce(t, runner)
+
+	if got := lifecycleOf(t, db, "epi-retry"); got != "concluded" {
+		t.Fatalf("lifecycle after the retry = %q, want concluded", got)
 	}
-	var lifecycle string
-	if err := db.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = 'epi-retry'").Scan(&lifecycle); err != nil {
-		t.Fatalf("read lifecycle after failure: %v", err)
+	if got := scalar[int](t, db, "SELECT current_fence FROM episodes WHERE episode_id = 'epi-retry'"); got != 2 {
+		t.Fatalf("episode fence = %d, want 2", got)
 	}
-	if lifecycle != "running" {
-		t.Fatalf("lifecycle after failed attempt = %q, want running", lifecycle)
+	if got := scalar[int](t, db, "SELECT fence FROM episode_attempts WHERE episode_id = 'epi-retry' AND status = 'produced'"); got != 2 {
+		t.Fatalf("produced attempt fence = %d, want 2", got)
 	}
-	var failedCount int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM episode_attempts WHERE episode_id = 'epi-retry' AND status = 'failed'").Scan(&failedCount); err != nil {
-		t.Fatalf("count failed attempts: %v", err)
+	if got := decisionCount(t, db, "epi-retry"); got != 1 {
+		t.Fatalf("decisions = %d, want 1", got)
 	}
-	if failedCount != 1 {
-		t.Fatalf("failed attempts = %d, want 1", failedCount)
+}
+
+func TestRunnerConcludesAnEpisodeAfterThreeFailedAttempts(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	seedEpisode(t, db, "epi-exhausted")
+	executor := &failingExecutor{failures: 10}
+	runner := permissiveRunner(db, executor)
+
+	for range 3 {
+		mustRunOnce(t, runner)
 	}
 
-	processed, err = runner.RunOnce(ctx, "tenant")
-	if err != nil || !processed {
-		t.Fatalf("retry run processed=%v err=%v", processed, err)
+	if got := lifecycleOf(t, db, "epi-exhausted"); got != "concluded" {
+		t.Fatalf("lifecycle = %q, want concluded", got)
 	}
-	if err := db.QueryRowContext(ctx, "SELECT lifecycle_status FROM episodes WHERE episode_id = 'epi-retry'").Scan(&lifecycle); err != nil {
-		t.Fatalf("read lifecycle after retry: %v", err)
+	if got := terminalReasonOf(t, db, "epi-exhausted"); got != "attempt_retry_limit" {
+		t.Fatalf("terminal reason = %q, want attempt_retry_limit", got)
 	}
-	if lifecycle != "concluded" {
-		t.Fatalf("lifecycle after retry = %q, want concluded", lifecycle)
-	}
-	var attempts, decisions, currentFence, producedFence int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*), MAX(current_fence) FROM episodes WHERE episode_id = 'epi-retry'").Scan(&attempts, &currentFence); err != nil {
-		t.Fatalf("read retry fence: %v", err)
-	}
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM decisions WHERE episode_id = 'epi-retry'").Scan(&decisions); err != nil {
-		t.Fatalf("count decisions after retry: %v", err)
-	}
-	if err := db.QueryRowContext(ctx, "SELECT fence FROM episode_attempts WHERE episode_id = 'epi-retry' AND status = 'produced'").Scan(&producedFence); err != nil {
-		t.Fatalf("read produced fence: %v", err)
-	}
-	if attempts != 1 || currentFence != 2 || producedFence != 2 || decisions != 1 {
-		t.Fatalf("retry state attempts=%d current_fence=%d produced_fence=%d decisions=%d", attempts, currentFence, producedFence, decisions)
+	if ran, err := runner.RunOnce(t.Context(), episodeTenant); err != nil || ran || executor.calls != 3 {
+		t.Fatalf("after exhaustion RunOnce ran=%v err=%v, executor calls=%d; want false nil 3", ran, err, executor.calls)
 	}
 }

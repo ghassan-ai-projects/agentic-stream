@@ -1,177 +1,65 @@
 package app_test
 
 import (
-	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"testing"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
-
-	domain "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/domain"
-	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
-// Shadow-first dispatch (introduced in phase P8): a shadow dispatch
-// persists and scores the produced decision but NEVER writes to intents or
-// commands — nothing from a shadow run enters action governance.
+func TestShadowDispatchScoresTheDecisionWithoutEnteringGovernance(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	seed := newEpisodeSeed("epi-shadow")
+	seed.DispatchPolicy = spec.DispatchShadow
+	seed.insert(t, db)
 
-func seedShadowEpisode(t *testing.T, db *storage.DB, episodeID, dispatchPolicy string) {
-	t.Helper()
-	digest := make([]byte, 32)
-	intentCatalog, intentDigest, err := domain.CompileIntentCatalog([]spec.Intent{
-		{Type: "create_maintenance_ticket", Risk: "R1", ParameterSchema: ticketSchema()},
-	})
-	if err != nil {
+	mustRunOnce(t, permissiveRunner(db, fixture.New()))
+
+	if intents, commands := scalar[int](t, db, "SELECT COUNT(*) FROM intents"), scalar[int](t, db, "SELECT COUNT(*) FROM commands"); intents != 0 || commands != 0 {
+		t.Fatalf("a shadow dispatch entered governance: intents=%d commands=%d", intents, commands)
+	}
+	var score, reason, shadowDecision, decision string
+	if err := db.QueryRowContext(t.Context(), "SELECT shadow_score, score_reason, decision_id FROM shadow_decisions WHERE episode_id = 'epi-shadow'").Scan(&score, &reason, &shadowDecision); err != nil {
+		t.Fatalf("the shadow decision must be scored: %v", err)
+	}
+	if err := db.QueryRowContext(t.Context(), "SELECT decision_id FROM decisions WHERE episode_id = 'epi-shadow'").Scan(&decision); err != nil {
 		t.Fatal(err)
 	}
-	requestPayload, err := json.Marshal(map[string]any{
-		"snapshot":             map[string]any{"phase": "candidate"},
-		"trigger":              map[string]any{"trigger_name": "shadow"},
-		"allowed_intent_types": []string{"create_maintenance_ticket"},
-		"risk_ceiling":         "R1",
-		"executor": map[string]any{
-			"intent_catalog":        intentCatalog,
-			"intent_catalog_sha256": intentDigest,
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.ExecContext(context.Background(), "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if _, err := db.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
-			t.Fatal(err)
-		}
-	}()
-	if _, err := db.ExecContext(context.Background(), `
-		INSERT INTO episodes (
-			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
-			executor_name, executor_version, model_policy, prompt_version,
-			snapshot_sha256, admission_key, request_json, lifecycle_status, current_fence,
-			accepted_at, dispatch_policy, policy_epoch
-		) VALUES (?, 'sch-shadow', 'tenant', 'sit-shadow', 1, 'executor', 'v1', 'policy', 'prompt',
-			?, ?, ?, 'admitted', 0, '2026-08-12T10:00:00Z', ?, 'epoch-shadow')`,
-		episodeID, digest, digest, requestPayload, dispatchPolicy); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.ExecContext(context.Background(), `
-		INSERT INTO situations (
-			situation_id, tenant_id, deployment_id, situation_type, entity_type,
-			entity_id, partition_id, occurrence_id, current_version,
-			last_reasoned_version, phase, status, first_event_time, latest_event_time, updated_at, created_at
-		) VALUES ('sit-shadow', 'tenant', 'dep-shadow', 'test', 'thing', 'ent-1', 0, 'occ-shadow', 1,
-			0, 'candidate', 'open', '2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z',
-			'2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z')`); err != nil {
-		t.Fatal(err)
-	}
-	lineageID := "lin-shadow"
-	if _, err := db.ExecContext(context.Background(), `
-		INSERT INTO lineage_sets (lineage_id, sha256, reference_count, references_json, created_at)
-		VALUES (?, ?, 1, X'7B7D', '2026-08-12T10:00:00Z')`, lineageID, digest); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.ExecContext(context.Background(), `
-		INSERT INTO situation_versions (
-			situation_id, version, lineage_id, phase, severity, confidence, completeness,
-			event_horizon, valid_from, snapshot_json, snapshot_sha256, created_at
-		) VALUES ('sit-shadow', 1, ?, 'candidate', 10, 0.9, 'on_time',
-			'2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z', X'7B7D', ?, '2026-08-12T10:00:00Z')`,
-		lineageID, digest); err != nil {
-		t.Fatal(err)
+	if score != "would_approve" || reason != "would_approve_R1" || shadowDecision != decision {
+		t.Fatalf("shadow decision = score %q reason %q for %q, want would_approve (R1) correlated to decision %q", score, reason, shadowDecision, decision)
 	}
 }
 
-// A shadow dispatch scores the decision but never persists an intent or a
-// command.
-func TestShadowDispatchScoresWithoutGovernance(t *testing.T) {
+func TestActiveDispatchPersistsItsIntentsAndScoresNothing(t *testing.T) {
+	t.Parallel()
 	db := storagetest.OpenTemp(t)
+	seedEpisode(t, db, "epi-active")
 
-	seedShadowEpisode(t, db, "epi-shadow", "shadow")
+	mustRunOnce(t, permissiveRunner(db, fixture.New()))
 
-	runner := app.NewRunner(store.New(db), fixture.New(), sources.Physical(), sources.Deterministic())
-	processed, err := runner.RunOnce(context.Background(), "tenant")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !processed {
-		t.Fatal("expected the shadow episode to be processed")
-	}
-
-	var intents, commands int
-	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM intents").Scan(&intents); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM commands").Scan(&commands); err != nil {
-		t.Fatal(err)
-	}
-	if intents != 0 || commands != 0 {
-		t.Fatalf("shadow dispatch must never enter governance: intents=%d commands=%d", intents, commands)
-	}
-
-	var score, reason, decisionID string
-	if err := db.QueryRowContext(context.Background(), `
-		SELECT shadow_score, score_reason, decision_id FROM shadow_decisions WHERE episode_id = 'epi-shadow'`).Scan(&score, &reason, &decisionID); err != nil {
-		t.Fatalf("shadow decision must be scored: %v", err)
-	}
-	if score != "would_approve" {
-		t.Fatalf("shadow score = %q, want would_approve (R1 intent)", score)
-	}
-	if decisionID == "" {
-		t.Fatal("shadow decision must be correlated to its decision_id")
-	}
-}
-
-// An ACTIVE dispatch still persists intents (the control: the shadow path is
-// the only one that skips governance).
-func TestActiveDispatchPersistsIntents(t *testing.T) {
-	db := storagetest.OpenTemp(t)
-
-	seedShadowEpisode(t, db, "epi-active", "active")
-
-	runner := app.NewRunner(store.New(db), fixture.New(), sources.Physical(), sources.Deterministic())
-	processed, err := runner.RunOnce(context.Background(), "tenant")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !processed {
-		t.Fatal("expected the active episode to be processed")
-	}
-	var intents int
-	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM intents").Scan(&intents); err != nil {
-		t.Fatal(err)
-	}
-	if intents != 1 {
-		t.Fatalf("active dispatch must persist its intent, got %d", intents)
+	if intents, shadowed := scalar[int](t, db, "SELECT COUNT(*) FROM intents"), scalar[int](t, db, "SELECT COUNT(*) FROM shadow_decisions"); intents != 1 || shadowed != 0 {
+		t.Fatalf("active dispatch persisted intents=%d shadow decisions=%d, want 1 and 0", intents, shadowed)
 	}
 }
 
 func TestOnlyAnExplicitActivePolicyEntersGovernance(t *testing.T) {
+	t.Parallel()
 	for _, policy := range []string{"", "bogus", "ACTIVE"} {
 		t.Run("policy "+policy, func(t *testing.T) {
+			t.Parallel()
 			db := storagetest.OpenTemp(t)
-			seedShadowEpisode(t, db, "epi-unset", "shadow")
+			seedEpisode(t, db, "epi-policy")
 			overridePolicyBypassingCheck(t, db, policy)
 
-			runner := app.NewRunner(store.New(db), fixture.New(), sources.Physical(), sources.Deterministic())
-			if processed, err := runner.RunOnce(context.Background(), "tenant"); err != nil || !processed {
-				t.Fatalf("processed=%v err=%v", processed, err)
-			}
-			var intents, shadowed int
-			if err := db.QueryRowContext(context.Background(), "SELECT (SELECT COUNT(*) FROM intents), (SELECT COUNT(*) FROM shadow_decisions)").Scan(&intents, &shadowed); err != nil {
-				t.Fatal(err)
-			}
-			if intents != 0 || shadowed != 1 {
-				t.Fatalf("policy %q must be scored as shadow: intents=%d shadow decisions=%d", policy, intents, shadowed)
+			mustRunOnce(t, permissiveRunner(db, fixture.New()))
+
+			if intents, shadowed := scalar[int](t, db, "SELECT COUNT(*) FROM intents"), scalar[int](t, db, "SELECT COUNT(*) FROM shadow_decisions"); intents != 0 || shadowed != 1 {
+				t.Fatalf("policy %q persisted intents=%d shadow decisions=%d, want it scored as shadow (0 and 1)", policy, intents, shadowed)
 			}
 		})
 	}
@@ -179,9 +67,9 @@ func TestOnlyAnExplicitActivePolicyEntersGovernance(t *testing.T) {
 
 func overridePolicyBypassingCheck(t *testing.T, db *storage.DB, policy string) {
 	t.Helper()
-	err := db.WithTx(context.Background(), func(tx *sql.Tx) error {
+	err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
 		for _, statement := range []string{"PRAGMA ignore_check_constraints = ON", "UPDATE episodes SET dispatch_policy = '" + policy + "'", "PRAGMA ignore_check_constraints = OFF"} {
-			if _, err := tx.ExecContext(context.Background(), statement); err != nil {
+			if _, err := tx.ExecContext(t.Context(), statement); err != nil {
 				return fmt.Errorf("%s: %w", statement, err)
 			}
 		}

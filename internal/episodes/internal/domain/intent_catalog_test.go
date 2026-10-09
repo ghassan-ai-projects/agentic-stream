@@ -1,98 +1,140 @@
 package domain
 
 import (
-	"encoding/json"
-	"os"
+	"strings"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-// P4/T5 cross-repo conformance: the aquaculture intent catalog compiled on
-// the Go side must digest to the SAME shared-domain value the Ruby worker's
-// IntentCatalog computes over the identical document (fixture data authored
-// once in test/fixtures/domains/aquaculture.json, loaded via
-// test/support/domain_loader.rb). The Go copy lives as DATA in
-// testdata/aquaculture_intents.json (domain-knowledge extraction —
-// docs/design/impl/GO_DOMAIN_DATA_EXTRACTION.md); this test supplies only
-// the derivation machinery. A drift on either side breaks every Go-driven
-// episode at the worker's verify_wire gate.
-func TestAquacultureIntentCatalogDigestParity(t *testing.T) {
-	const pinnedDigest = "sha256:e4f866204344a5f19994e28afdea67b610e34405b062bbfd2879209a363d81f3"
+func validIntent() spec.Intent {
+	return spec.Intent{Type: "create_ticket", Risk: "R1", ParameterSchema: catalogTicketSchema()}
+}
 
-	document := loadAquacultureIntents(t)
-
-	targetTypes := map[string]bool{}
-	for _, row := range document.Intents {
-		for _, target := range row.Compensation {
-			targetTypes[target.(string)] = true
-		}
+func TestCompileIntentCatalogRejectsAnInvalidCatalog(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		intents func() []spec.Intent
+		want    string
+	}{
+		{"empty", func() []spec.Intent { return nil }, "intent catalog is empty"},
+		{"no type", func() []spec.Intent { i := validIntent(); i.Type = ""; return []spec.Intent{i} }, "has no type"},
+		{"duplicate type", func() []spec.Intent { return []spec.Intent{validIntent(), validIntent()} }, `duplicates type "create_ticket"`},
+		{"undeclared risk", func() []spec.Intent { i := validIntent(); i.Risk = ""; return []spec.Intent{i} }, "invalid declared risk"},
+		{"unknown risk", func() []spec.Intent { i := validIntent(); i.Risk = "R9"; return []spec.Intent{i} }, "invalid declared risk"},
+		{"no schema", func() []spec.Intent { i := validIntent(); i.ParameterSchema = nil; return []spec.Intent{i} }, "has no parameter schema"},
+		{"schema not an object", func() []spec.Intent {
+			i := validIntent()
+			i.ParameterSchema = map[string]any{"type": "string", "additionalProperties": false}
+			return []spec.Intent{i}
+		}, "parameter schema is not an object"},
+		{"schema open to unknown properties", func() []spec.Intent {
+			i := validIntent()
+			i.ParameterSchema = map[string]any{"type": "object"}
+			return []spec.Intent{i}
+		}, "must reject unknown properties"},
+		{"schema allows unknown properties", func() []spec.Intent {
+			i := validIntent()
+			i.ParameterSchema = map[string]any{"type": "object", "additionalProperties": true}
+			return []spec.Intent{i}
+		}, "must reject unknown properties"},
+		{"writable field outside the schema", func() []spec.Intent {
+			i := validIntent()
+			i.ModelWritableFields = []string{"severity"}
+			return []spec.Intent{i}
+		}, `marks "severity" writable`},
+		{"preset parameter outside the schema", func() []spec.Intent {
+			i := validIntent()
+			i.Presets = map[string]map[string]any{"default": {"severity": "high"}}
+			return []spec.Intent{i}
+		}, `preset "default" references undeclared parameter "severity"`},
+		{"too many presets", func() []spec.Intent {
+			i := validIntent()
+			i.Presets = map[string]map[string]any{}
+			for n := range 65 {
+				i.Presets[strings.Repeat("p", n+1)] = map[string]any{}
+			}
+			return []spec.Intent{i}
+		}, "too many presets"},
+		{"oversized preset", func() []spec.Intent {
+			i := validIntent()
+			large := map[string]any{}
+			for n := range 129 {
+				large[strings.Repeat("k", n+1)] = 1
+			}
+			i.Presets = map[string]map[string]any{"big": large}
+			return []spec.Intent{i}
+		}, `preset "big" is too large`},
+		{"negative rate limit", func() []spec.Intent { i := validIntent(); i.RateLimitPerHour = -1; return []spec.Intent{i} }, "invalid rate limit"},
 	}
-
-	intents := make([]spec.Intent, 0, len(document.Intents))
-	for _, row := range document.Intents {
-		schema := document.ActionSchema
-		writable := []string{"hypothesis"}
-		presets := map[string]map[string]any{"default": {}}
-		if targetTypes[row.Type] {
-			// The compensate node's note/priority parameters are declared on
-			// the TARGET schemas (the Ruby fixture mirrors this).
-			schema = document.CompensationSchema
-		}
-		if row.Type == "install_watch_condition" {
-			schema = document.WatchSchema
-			writable = []string{}
-			presets = map[string]map[string]any{"default": document.WatchPreset}
-		}
-		intents = append(intents, spec.Intent{
-			Type:                row.Type,
-			Risk:                row.Risk,
-			Description:         row.Type + " (" + row.Risk + ")",
-			Policy:              document.Policy,
-			RateLimitPerHour:    document.RateLimitPerHour,
-			ParameterSchema:     schema,
-			ModelWritableFields: writable,
-			Presets:             presets,
-			Compensation:        row.Compensation,
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			catalog, digest, err := CompileIntentCatalog(tc.intents())
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want one containing %q", err, tc.want)
+			}
+			if catalog != nil || digest != "" {
+				t.Fatalf("rejected catalog leaked entries=%v digest=%q", catalog, digest)
+			}
 		})
 	}
+}
 
-	_, digest, err := CompileIntentCatalog(intents)
+func TestCompileIntentCatalogCarriesOnlyTheDeclaredOptionalFields(t *testing.T) {
+	t.Parallel()
+	bare, _, err := CompileIntentCatalog([]spec.Intent{validIntent()})
 	if err != nil {
-		t.Fatalf("compile aquaculture catalog: %v", err)
+		t.Fatal(err)
 	}
-	if digest != pinnedDigest {
-		t.Fatalf("intent catalog digest = %s, want the Ruby-pinned %s", digest, pinnedDigest)
+	for _, field := range []string{"presets", "description", "policy", "rate_limit", "compensation"} {
+		if _, present := bare[0][field]; present {
+			t.Errorf("bare intent carries %s", field)
+		}
 	}
-}
+	if writable, _ := bare[0]["model_writable_fields"].([]string); writable == nil || len(writable) != 0 {
+		t.Fatalf("model_writable_fields = %#v, want an empty list", bare[0]["model_writable_fields"])
+	}
 
-// aquacultureIntentDocument mirrors testdata/aquaculture_intents.json: the
-// 22 intent rows plus the schema-builder data and construction constants.
-type aquacultureIntentDocument struct {
-	ActionSchema       map[string]any         `json:"action_schema"`
-	WatchSchema        map[string]any         `json:"watch_schema"`
-	CompensationSchema map[string]any         `json:"compensation_schema"`
-	WatchPreset        map[string]any         `json:"watch_preset"`
-	Policy             string                 `json:"policy"`
-	RateLimitPerHour   int                    `json:"rate_limit_per_hour"`
-	Intents            []aquacultureIntentRow `json:"intents"`
-}
-
-type aquacultureIntentRow struct {
-	Type         string         `json:"type"`
-	Risk         string         `json:"risk"`
-	Compensation map[string]any `json:"compensation"`
-}
-
-func loadAquacultureIntents(t *testing.T) *aquacultureIntentDocument {
-	t.Helper()
-	raw, err := os.ReadFile("../../testdata/aquaculture_intents.json")
+	full := validIntent()
+	full.Description = "open a ticket"
+	full.Policy = "approval"
+	full.RateLimitPerHour = 4
+	full.ModelWritableFields = []string{"reason"}
+	full.Presets = map[string]map[string]any{"default": {"reason": "x"}}
+	full.Compensation = map[string]any{"undo": "withdraw_ticket"}
+	entries, _, err := CompileIntentCatalog([]spec.Intent{full})
 	if err != nil {
-		t.Fatalf("read aquaculture intents data: %v", err)
+		t.Fatal(err)
 	}
-	var document aquacultureIntentDocument
-	if err := json.Unmarshal(raw, &document); err != nil {
-		t.Fatalf("parse aquaculture intents data: %v", err)
+	entry := entries[0]
+	if entry["description"] != "open a ticket" || entry["policy"].(map[string]any)["requires_approval"] != true ||
+		entry["rate_limit"].(map[string]any)["per_hour"] != 4 || entry["compensation"] == nil || entry["presets"] == nil {
+		t.Fatalf("entry = %#v", entry)
 	}
-	return &document
+	automatic := validIntent()
+	automatic.Policy = "automatic"
+	entries, _, err = CompileIntentCatalog([]spec.Intent{automatic})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entries[0]["policy"].(map[string]any)["requires_approval"] != false {
+		t.Fatalf("automatic policy = %#v", entries[0]["policy"])
+	}
+}
+
+func TestCompileIntentCatalogDigestBindsTheCatalogOrder(t *testing.T) {
+	t.Parallel()
+	other := validIntent()
+	other.Type = "withdraw_ticket"
+	_, forward, err := CompileIntentCatalog([]spec.Intent{validIntent(), other})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, again, _ := CompileIntentCatalog([]spec.Intent{validIntent(), other})
+	_, reversed, _ := CompileIntentCatalog([]spec.Intent{other, validIntent()})
+	if forward != again || forward == reversed {
+		t.Fatalf("forward=%s again=%s reversed=%s, want a stable digest that depends on order", forward, again, reversed)
+	}
 }

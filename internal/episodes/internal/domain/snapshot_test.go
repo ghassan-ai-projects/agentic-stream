@@ -4,41 +4,10 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 )
-
-func requestWithBudget(wallTime string) []byte {
-	document := map[string]any{"budget": map[string]any{"wall_time": wallTime}}
-	raw, err := json.Marshal(document)
-	if err != nil {
-		panic(err)
-	}
-	return raw
-}
-
-func TestParseWallTimeBudgetValidatesBounds(t *testing.T) {
-	t.Parallel()
-	if duration, err := ParseWallTimeBudget(requestWithBudget("90s")); err != nil || duration != 90*time.Second {
-		t.Fatalf("budget = %v err = %v", duration, err)
-	}
-	if duration, err := ParseWallTimeBudget(requestWithBudget("")); err != nil || duration != 0 {
-		t.Fatalf("empty budget = %v err = %v", duration, err)
-	}
-	for name, wallTime := range map[string]string{"zero": "0s", "negative": "-5s", "unparseable": "soon"} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			if _, err := ParseWallTimeBudget(requestWithBudget(wallTime)); err == nil {
-				t.Fatal("invalid budget accepted")
-			}
-		})
-	}
-	if _, err := ParseWallTimeBudget([]byte("not-json")); err == nil || !strings.Contains(err.Error(), "decode episode budget") {
-		t.Fatalf("err = %v", err)
-	}
-}
 
 func validSnapshotDocument(t *testing.T, mutate func(map[string]any)) []byte {
 	t.Helper()
@@ -119,12 +88,15 @@ func TestValidateSnapshotEvidenceRejectsTamperingAndIdentityDrift(t *testing.T) 
 	}
 }
 
-func TestSnapshotEntityIDRequiresEntity(t *testing.T) {
+func TestSnapshotEntityIDRequiresADecodableEntityWithAnID(t *testing.T) {
 	t.Parallel()
 	if id, err := SnapshotEntityID([]byte(`{"entity":{"id":"motor-1"}}`)); err != nil || id != "motor-1" {
 		t.Fatalf("id = %q err = %v", id, err)
 	}
-	if _, err := SnapshotEntityID([]byte(`{"entity":{}}`)); err == nil {
-		t.Fatal("missing entity accepted")
+	if _, err := SnapshotEntityID([]byte(`{"entity":{}}`)); err == nil || !strings.Contains(err.Error(), "snapshot entity id is required") {
+		t.Fatalf("missing entity error = %v", err)
+	}
+	if _, err := SnapshotEntityID([]byte(`{"entity":`)); err == nil || !strings.Contains(err.Error(), "decode snapshot entity") {
+		t.Fatalf("undecodable snapshot error = %v", err)
 	}
 }

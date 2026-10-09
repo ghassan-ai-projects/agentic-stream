@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/app"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/episodes/internal/store"
@@ -57,17 +60,18 @@ func triggeredSpec(executor spec.Executor, intents ...spec.Intent) *spec.Compile
 	}
 }
 
-func admitTriggeredSituation(t *testing.T, ctx context.Context, compiled *spec.CompiledSpec, situationID string) *admittedSituation {
+func admitTriggeredSituation(t *testing.T, compiled *spec.CompiledSpec, situationID string) *admittedSituation {
 	t.Helper()
+	ctx := t.Context()
 	db := storagetest.OpenTemp(t)
 	if err := spec.SaveDeployment(ctx, db, "default", compiled); err != nil {
 		t.Fatalf("save deployment: %v", err)
 	}
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: compiled, IDGen: sources.Deterministic(), Clock: sources.Physical()})
+	base := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: compiled, IDGen: sources.Deterministic(), Clock: sources.NewVirtual(base)})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
-	base := time.Now().UTC()
 	v := situations.Version{
 		SituationID:  situationID,
 		Version:      1,
@@ -101,8 +105,9 @@ func admitTriggeredSituation(t *testing.T, ctx context.Context, compiled *spec.C
 	}
 }
 
-func (s *admittedSituation) assemble(t *testing.T, ctx context.Context) *app.Request {
+func (s *admittedSituation) assemble(t *testing.T) *app.Request {
 	t.Helper()
+	ctx := t.Context()
 	var req *app.Request
 	if err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
 		var err error
@@ -117,8 +122,9 @@ func (s *admittedSituation) assemble(t *testing.T, ctx context.Context) *app.Req
 	return req
 }
 
-func (s *admittedSituation) assembleAndPersist(t *testing.T, ctx context.Context) {
+func (s *admittedSituation) assembleAndPersist(t *testing.T) {
 	t.Helper()
+	ctx := t.Context()
 	if err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
 		req, err := s.asm.Assemble(ctx, store.Join(tx), s.schedulerItemID, "default")
 		if err != nil {
@@ -133,34 +139,62 @@ func (s *admittedSituation) assembleAndPersist(t *testing.T, ctx context.Context
 	}
 }
 
-func seedEpisode(t *testing.T, ctx context.Context, db *storage.DB, episodeID string) {
-	t.Helper()
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatalf("disable foreign keys: %v", err)
+const testSpecDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+func insertSituationVersion(ctx context.Context, tx *sql.Tx, v situations.Version, deploymentID, tenantID string) error {
+	snapshot := map[string]any{
+		"situation_id": v.SituationID, "situation_version": v.Version,
+		"situation_type": "test", "tenant_id": tenantID,
+		"entity":       map[string]any{"type": v.EntityType, "id": v.EntityID},
+		"partition_id": 0, "phase": v.Phase, "previous_phase": v.PreviousPhase,
+		"severity": v.Severity, "confidence": v.Confidence, "completeness": v.Completeness,
+		"event_horizon": kernel.FormatTime(v.EventHorizon),
+		"watermark":     kernel.FormatTime(v.Watermark), "spec_digest": testSpecDigest,
+		"facts": v.Facts, "evidence": []any{},
 	}
-	digest := make([]byte, 32)
-	if _, err := db.ExecContext(ctx, `
-		INSERT INTO episodes (
-			episode_id, scheduler_item_id, tenant_id, situation_id, situation_version,
-			executor_name, executor_version, model_policy, prompt_version,
-			snapshot_sha256, admission_key, request_json, lifecycle_status, current_fence, accepted_at
-		) VALUES (?, 'sch-test', 'tenant', 'sit-test', 1, 'executor', 'v1', 'policy', 'prompt', ?, ?, X'7B7D', 'admitted', 0, ?)`,
-		episodeID, digest, digest, "2026-08-12T10:00:00Z"); err != nil {
-		t.Fatalf("seed episode: %v", err)
+	snapshotJSON, err := canonicaljson.Marshal(snapshot)
+	if err != nil {
+		return fmt.Errorf("marshal test snapshot: %w", err)
 	}
-	// P8 (freshness): the dispatch-time situation-version recheck reads the
-	// live situations registry — seed the row the episode is bound to.
-	if _, err := db.ExecContext(ctx, `
+	snapshotDigest, err := canonicaljson.Digest(canonicaljson.DomainSnapshot, snapshot)
+	if err != nil {
+		return fmt.Errorf("digest test snapshot: %w", err)
+	}
+	snapshotSHA, err := canonicaljson.DecodeDigest(snapshotDigest)
+	if err != nil {
+		return fmt.Errorf("decode test snapshot digest: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO lineage_sets (lineage_id, sha256, reference_count, references_json, created_at)
+		VALUES ('lin_test', X'0000000000000000000000000000000000000000000000000000000000000000', 1, X'5B5D', datetime('now'))
+		ON CONFLICT(lineage_id) DO NOTHING`); err != nil {
+		return fmt.Errorf("insert lineage set: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO situations (
 			situation_id, tenant_id, deployment_id, situation_type, entity_type,
-			entity_id, partition_id, occurrence_id, current_version,
-			last_reasoned_version, phase, status, first_event_time, latest_event_time, updated_at, created_at
-		) VALUES ('sit-test', 'tenant', 'dep-test', 'test', 'thing', 'ent-1', 0, 'occ-test', 1, 0, 'candidate', 'open',
-			'2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z', '2026-08-12T10:00:00Z')`); err != nil {
-		t.Fatalf("seed situation registry: %v", err)
+			entity_id, partition_id, occurrence_id, current_version, last_reasoned_version,
+			phase, status, first_event_time, latest_event_time, updated_at, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'active', ?, ?, datetime('now'), datetime('now'))
+		ON CONFLICT(situation_id) DO NOTHING`,
+		v.SituationID, tenantID, deploymentID, "test", v.EntityType, v.EntityID,
+		0, "occ-"+v.SituationID, v.Version, v.Phase,
+		kernel.FormatTime(v.EventHorizon), kernel.FormatTime(v.EventHorizon),
+	); err != nil {
+		return fmt.Errorf("insert situation: %w", err)
 	}
-	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
-		t.Fatalf("enable foreign keys: %v", err)
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO situation_versions (
+			situation_id, version, previous_version, phase, previous_phase,
+			severity, confidence, completeness, event_horizon, watermark,
+			valid_from, snapshot_json, snapshot_sha256, lineage_id, created_at
+		) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'lin_test', datetime('now'))`,
+		v.SituationID, v.Version, v.Phase, v.PreviousPhase,
+		v.Severity, v.Confidence, v.Completeness,
+		kernel.FormatTime(v.EventHorizon), kernel.FormatTime(v.Watermark),
+		kernel.FormatTime(v.EventHorizon), snapshotJSON, snapshotSHA,
+	); err != nil {
+		return fmt.Errorf("insert situation version: %w", err)
 	}
+	return nil
 }
