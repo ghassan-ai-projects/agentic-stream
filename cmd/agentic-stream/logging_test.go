@@ -9,12 +9,13 @@ import (
 )
 
 func TestLogFlagsInstallTheRequestedHandler(t *testing.T) { //nolint:paralleltest // It replaces the process-wide default logger.
+	previous := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(previous) })
 	var out bytes.Buffer
 	flags := logFlags{level: "warn", format: "json"}
 	if err := flags.install(&out); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { slog.SetDefault(slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))) })
 	slog.Info("hidden")
 	slog.Warn("shown", "epoch", "e1")
 	var line map[string]any

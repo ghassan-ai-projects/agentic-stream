@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -15,7 +16,7 @@ type logFlags struct {
 func (f *logFlags) register(root *cobra.Command) {
 	root.PersistentFlags().StringVar(&f.level, "log-level", "info", "Log level: debug, info, warn or error")
 	root.PersistentFlags().StringVar(&f.format, "log-format", "text", "Log format on stderr: text or json")
-	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error { return f.install(cmd.ErrOrStderr()) }
+	root.PersistentPreRunE = func(*cobra.Command, []string) error { return f.install(os.Stderr) }
 }
 
 func (f *logFlags) install(stderr io.Writer) error {
