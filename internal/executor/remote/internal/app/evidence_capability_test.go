@@ -34,7 +34,9 @@ func (s *sentRequests) all() []*runtimev1.EpisodeRequest {
 
 type failingFactory struct{ err error }
 
-func (f failingFactory) Issue(*episodes.Request) ([]byte, error) { return nil, f.err }
+func (f failingFactory) Issue(*episodes.Request) (EvidenceGrant, error) {
+	return EvidenceGrant{}, f.err
+}
 
 func evidenceExecutor(t *testing.T, fake *countingWorker, endpoint string, factory CapabilityFactory) *Executor {
 	t.Helper()

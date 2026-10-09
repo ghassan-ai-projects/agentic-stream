@@ -16,6 +16,9 @@ type CapabilityFactory = app.CapabilityFactory
 // trusted durable Request. The raw token exists only in the dispatch call.
 type AttemptCapabilityIssuer = app.AttemptCapabilityIssuer
 
+// EvidenceGrant is a capability token and the evidence time range it covers.
+type EvidenceGrant = app.EvidenceGrant
+
 // Executor adapts the streamed EpisodeWorker protocol to the durable aggregate
 // Outcome consumed by Runner.
 type Executor struct {

@@ -8,9 +8,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
-// EvidenceScope is what the trusted episode request grants an evidence tool:
-// one entity and upper bounds on rows and bytes. Caller arguments may only
-// narrow the bounds and never widen the entity.
 type EvidenceScope struct {
 	EntityID string
 	MaxRows  uint64
@@ -18,7 +15,6 @@ type EvidenceScope struct {
 	Window   time.Duration
 }
 
-// EvidenceQuery is a scoped, bounded evidence read.
 type EvidenceQuery struct {
 	From, Until       time.Time
 	MaxRows, MaxBytes uint64
@@ -32,7 +28,7 @@ type evidenceArguments struct {
 	MaxBytes uint64 `json:"max_bytes"`
 }
 
-func (s EvidenceScope) Query(raw json.RawMessage, now time.Time) (EvidenceQuery, error) {
+func (s EvidenceScope) Query(raw json.RawMessage, horizon time.Time) (EvidenceQuery, error) {
 	var args evidenceArguments
 	if err := json.Unmarshal(raw, &args); err != nil {
 		return EvidenceQuery{}, fmt.Errorf("decode evidence arguments: %w", err)
@@ -40,11 +36,11 @@ func (s EvidenceScope) Query(raw json.RawMessage, now time.Time) (EvidenceQuery,
 	if args.EntityID != "" && args.EntityID != s.EntityID {
 		return EvidenceQuery{}, fmt.Errorf("evidence entity is outside episode scope")
 	}
-	return s.scopedQuery(args, now)
+	return s.scopedQuery(args, horizon)
 }
 
-func (s EvidenceScope) scopedQuery(args evidenceArguments, now time.Time) (EvidenceQuery, error) {
-	query := EvidenceQuery{From: now.Add(-s.Window), Until: now, MaxRows: s.MaxRows, MaxBytes: s.MaxBytes}
+func (s EvidenceScope) scopedQuery(args evidenceArguments, horizon time.Time) (EvidenceQuery, error) {
+	query := EvidenceQuery{From: horizon.Add(-s.Window), Until: horizon, MaxRows: s.MaxRows, MaxBytes: s.MaxBytes}
 	if args.MaxRows > 0 && args.MaxRows < query.MaxRows {
 		query.MaxRows = args.MaxRows
 	}
@@ -55,19 +51,37 @@ func (s EvidenceScope) scopedQuery(args evidenceArguments, now time.Time) (Evide
 }
 
 func evidenceWindow(query EvidenceQuery, args evidenceArguments) (EvidenceQuery, error) {
-	var err error
-	if args.From != "" {
-		if query.From, err = kernel.ParseTime(args.From); err != nil {
-			return EvidenceQuery{}, fmt.Errorf("invalid evidence from: %w", err)
-		}
+	from, err := requestedBound(args.From, query.From)
+	if err != nil {
+		return EvidenceQuery{}, fmt.Errorf("invalid evidence from: %w", err)
 	}
-	if args.Until != "" {
-		if query.Until, err = kernel.ParseTime(args.Until); err != nil {
-			return EvidenceQuery{}, fmt.Errorf("invalid evidence until: %w", err)
-		}
+	until, err := requestedBound(args.Until, query.Until)
+	if err != nil {
+		return EvidenceQuery{}, fmt.Errorf("invalid evidence until: %w", err)
+	}
+	return narrowWindow(query, from, until)
+}
+
+func narrowWindow(query EvidenceQuery, from, until time.Time) (EvidenceQuery, error) {
+	if from.After(query.From) {
+		query.From = from
+	}
+	if until.Before(query.Until) {
+		query.Until = until
 	}
 	if !query.Until.After(query.From) {
 		return EvidenceQuery{}, fmt.Errorf("evidence until must be after from")
 	}
 	return query, nil
+}
+
+func requestedBound(text string, granted time.Time) (time.Time, error) {
+	if text == "" {
+		return granted, nil
+	}
+	bound, err := kernel.ParseTime(text)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse evidence bound: %w", err)
+	}
+	return bound, nil
 }

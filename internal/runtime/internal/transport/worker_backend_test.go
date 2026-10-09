@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"google.golang.org/grpc"
 
@@ -211,13 +210,12 @@ func testEvidenceLedger(t *testing.T, db *storage.DB) *evidence.Service {
 
 func TestEvidenceCapabilityFactoryUsesTheEvidenceReadBudget(t *testing.T) {
 	t.Parallel()
-	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-	factory := evidenceCapabilityFactory(nil, "epoch-1", now)
+	factory := evidenceCapabilityFactory(nil, "epoch-1")
 	if factory.MaxRows != evidence.DefaultReadMaxRows || factory.MaxBytes != evidence.DefaultReadMaxBytes {
 		t.Errorf("budget = %d rows, %d bytes", factory.MaxRows, factory.MaxBytes)
 	}
-	if !factory.From.Equal(now.Add(-evidence.DefaultReadWindow)) || !factory.Until.Equal(now.Add(evidence.DefaultReadWindow)) {
-		t.Errorf("window = %v..%v", factory.From, factory.Until)
+	if factory.Window != evidence.DefaultReadWindow {
+		t.Errorf("window = %s, want the evidence read window", factory.Window)
 	}
 }
 

@@ -46,7 +46,7 @@ func fixtureRequestJSON(promptDigest, objectiveDigest string) []byte {
 		panic(err)
 	}
 	intentCatalogJSON, _ := json.Marshal(intentCatalog)
-	return []byte(fmt.Sprintf(`{"kind":"standard","snapshot":{"phase":"warning"},"trigger":{"trigger_id":"trg-1","trigger_name":"warning","lane":"deep"},"tools":[],"allowed_intent_types":["create_maintenance_ticket"],"risk_ceiling":"R1","executor":{"objective":"diagnose","prompt_sha256":%q,"objective_sha256":%q,"decision_schema":{},"intent_catalog":%s,"intent_catalog_sha256":%q},"budget":{"wall_time":"5s"}}`, promptDigest, objectiveDigest, string(intentCatalogJSON), intentDigest))
+	return []byte(fmt.Sprintf(`{"kind":"standard","snapshot":{"phase":"warning","event_horizon":"2026-01-01T00:00:00.000000000Z"},"trigger":{"trigger_id":"trg-1","trigger_name":"warning","lane":"deep"},"tools":[],"allowed_intent_types":["create_maintenance_ticket"],"risk_ceiling":"R1","executor":{"objective":"diagnose","prompt_sha256":%q,"objective_sha256":%q,"decision_schema":{},"intent_catalog":%s,"intent_catalog_sha256":%q},"budget":{"wall_time":"5s"}}`, promptDigest, objectiveDigest, string(intentCatalogJSON), intentDigest))
 }
 
 // Run executes the shared semantic checks against one executor: a standard

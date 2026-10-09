@@ -1,6 +1,8 @@
 package native
 
 import (
+	"time"
+
 	app "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/app"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/native/internal/store"
@@ -47,8 +49,8 @@ type (
 )
 
 // NewSQLiteEvidenceTool creates a scoped native evidence tool.
-func NewSQLiteEvidenceTool(db *storage.DB, name, tenantID, entityID string) *SQLiteEvidenceTool {
-	return store.NewSQLiteEvidenceTool(db, name, tenantID, entityID)
+func NewSQLiteEvidenceTool(db *storage.DB, name, tenantID, entityID string, horizon time.Time) *SQLiteEvidenceTool {
+	return store.NewSQLiteEvidenceTool(db, name, tenantID, entityID, horizon)
 }
 
 // New creates a native executor and rejects duplicate or empty tool names.
