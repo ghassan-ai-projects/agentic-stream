@@ -111,7 +111,7 @@ To continue in a fresh session:
 | 13 | `device`, `control` | done | every package ≥ 79% (controltest 66.7 → 100, device 93.3 → 100, control store 70.8 → 79.2) | slowest test 0.65 s; no sleeps | 46092904 |
 | 14 | `replay`, `runartifact` | done | every package ≥ 75% (replay 60.0 → 100, replay app 68.1 → 86.2, transport 67.9 → 83.3, runartifact store 71.3 → 84.0) | `replay` 31–36 s → 5.4–6.5 s; slowest test 32.6 s → 1.5 s alone | see git log |
 | 15 | `runtime`, `api` | todo | | | |
-| 16 | `cmd/agentic-stream` | todo | | | |
+| 16 | `cmd/agentic-stream` | done | 74.3 → 83.1% | package 51–58 s → 14.4–15.7 s; experiment tests 33–39 s → 5–7 s alone | see git log |
 | 17 | gates: linters, coverage floor, invariant map, docs | todo | | | |
 
 ## Findings for the owner
@@ -141,4 +141,5 @@ not a test decision.
 | 12 | `watch/internal/app/install.go` `assertGuards` ignores its `tenantID` and `target` parameters. The watch busy-retry test releases the SQLite lock from a 50 ms real timer (the retry backoff is a real timer inside storage). | [watch.md](modules/watch.md) |
 | 11 | A stale approval ends `denied` plus `withdrawn_at` because the ledger has no `withdrawn` status (pinned only). `authority/internal/store/reader.go` has its own `nullable[T]` where AGENTS.md names `storage.NullIfEmpty`. `TestACommittedApprovalDispatchesWithoutNewSensorInput` is bound to a fixed 1 s outbox ticker in `Pipeline.Start` (round 15). | [policy.md](modules/policy.md), [authority.md](modules/authority.md) |
 | 14 | A thermal-trace replay costs 1.2 s under `-race` (70 ms without), from goroutine wake-ups in `database/sql` and the SQLite driver inside `internal/engine` and `internal/storage`. `internal/replay/internal/transport` failed once in about 12 early timing runs (not captured, not reproduced in 50+ later runs); if it returns, look at `TestShadowWorkerNamesItselfInTheErrorOfAFailedExecution` first. | [replay.md](modules/replay.md) |
+| 16 | `run-live` validates `--trace-format` only after opening the database (a behavior change to move it earlier). The experiment end-to-end tests now run the spec with 2 s debounce and cooldown (test copy only; `examples/` untouched) and wait on durable rows instead of sleeping. | [cmd-agentic-stream.md](modules/cmd-agentic-stream.md) |
 

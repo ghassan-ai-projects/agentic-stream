@@ -9,6 +9,7 @@ import (
 )
 
 func TestWorkerFailureStillStopsWhenFailureChannelIsFull(t *testing.T) {
+	t.Parallel()
 	workerFailure := errors.New("worker failed")
 	priorFailure := errors.New("source failed")
 	workerErrors := make(chan error, 1)
@@ -33,6 +34,7 @@ func TestWorkerFailureStillStopsWhenFailureChannelIsFull(t *testing.T) {
 }
 
 func TestSocketCancellationRetainsPendingSourceFailure(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	failure := errors.New("source failed before cancellation")
@@ -47,6 +49,7 @@ func TestSocketCancellationRetainsPendingSourceFailure(t *testing.T) {
 }
 
 func TestServeSourceValidationPrecedesCredentialValidation(t *testing.T) {
+	t.Parallel()
 	flags := serveFlags{liveFlags: liveFlags{dbPath: "runtime.db", specPath: "spec.yaml", tracePath: "trace.jsonl", traceFormat: "simulator"}, liveSocket: "live.sock"}
 	flags.worker.EvidenceKey = "invalid"
 	_, err := flags.validate()

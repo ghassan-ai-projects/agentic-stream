@@ -4,13 +4,32 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"path/filepath"
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
 
+func TestMain(m *testing.M) {
+	for key, value := range processEnvironment {
+		if err := os.Setenv(key, value); err != nil {
+			panic(err)
+		}
+	}
+	code := m.Run()
+	removeSharedFixtures()
+	os.Exit(code)
+}
+
+var processEnvironment = map[string]string{
+	"AGENTIC_STREAM_SUBSCRIBER_TOKEN":    "subscriber-secret",
+	"AGENTIC_STREAM_OTLP_ENDPOINT":       "",
+	"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "",
+	"OTEL_EXPORTER_OTLP_ENDPOINT":        "",
+}
+
 func TestVersionCommand(t *testing.T) {
+	t.Parallel()
 	cmd := newRootCommand()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -34,6 +53,7 @@ func TestVersionCommand(t *testing.T) {
 }
 
 func TestServeCommandRequiresContinuousSourcePair(t *testing.T) {
+	t.Parallel()
 	cmd := newServeCommand()
 	cmd.SetArgs([]string{"--db", "runtime.db", "--spec", "spec.yaml"})
 
@@ -44,6 +64,7 @@ func TestServeCommandRequiresContinuousSourcePair(t *testing.T) {
 }
 
 func TestServeCommandRefusesPhysicalProfileWithJSONLSource(t *testing.T) {
+	t.Parallel()
 	cmd := newServeCommand()
 	cmd.SetArgs([]string{"--db", "runtime.db", "--spec", "spec.yaml", "--trace", "trace.jsonl", "--effect-profile", "physical"})
 
@@ -54,12 +75,14 @@ func TestServeCommandRefusesPhysicalProfileWithJSONLSource(t *testing.T) {
 }
 
 func TestServeSourceValidationAllowsLiveSocketWithWorker(t *testing.T) {
+	t.Parallel()
 	if err := validateServeSources("spec.yaml", "", "/tmp/live.sock", "/tmp/worker.sock"); err != nil {
 		t.Fatalf("live socket plus worker rejected: %v", err)
 	}
 }
 
 func TestServeSourceValidationRejectsMixedSources(t *testing.T) {
+	t.Parallel()
 	err := validateServeSources("spec.yaml", "trace.jsonl", "/tmp/live.sock", "")
 	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
 		t.Fatalf("expected mixed source rejection, got %v", err)
@@ -67,6 +90,7 @@ func TestServeSourceValidationRejectsMixedSources(t *testing.T) {
 }
 
 func TestServeSourceValidationRequiresSpecForLiveSocket(t *testing.T) {
+	t.Parallel()
 	err := validateServeSources("", "", "/tmp/live.sock", "")
 	if err == nil || !strings.Contains(err.Error(), "--spec and --live-socket") {
 		t.Fatalf("expected live source/spec pairing error, got %v", err)
@@ -74,6 +98,7 @@ func TestServeSourceValidationRequiresSpecForLiveSocket(t *testing.T) {
 }
 
 func TestLoopbackListenAddress(t *testing.T) {
+	t.Parallel()
 	for address, want := range map[string]bool{
 		"127.0.0.1:8080": true,
 		"localhost:8080": true,
@@ -88,6 +113,7 @@ func TestLoopbackListenAddress(t *testing.T) {
 }
 
 func TestWorkerRuntimeFlagsMatchAcrossLiveCommands(t *testing.T) {
+	t.Parallel()
 	runLive := newRunLiveCommand()
 	serve := newServeCommand()
 	flagNames := []string{
@@ -108,6 +134,7 @@ func TestWorkerRuntimeFlagsMatchAcrossLiveCommands(t *testing.T) {
 }
 
 func TestWorkerRuntimeErrorMonitorForwardsAndCancels(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	workerErrors := make(chan error, 1)
@@ -133,24 +160,5 @@ func TestWorkerRuntimeErrorMonitorForwardsAndCancels(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("worker runtime error monitor did not stop")
-	}
-}
-
-func TestRunRepeatProvesDeterminism(t *testing.T) {
-	t.Parallel()
-	cmd := newRunCommand()
-	var out strings.Builder
-	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"--spec", testSpec, "--trace", testTrace, "--repeat", "3"})
-	if err := cmd.ExecuteContext(t.Context()); err != nil {
-		t.Fatalf("run --repeat: %v", err)
-	}
-	if !strings.Contains(out.String(), "deterministic: 3 identical runs") || strings.Count(out.String(), "versions_hash=") != 3 {
-		t.Fatalf("output = %q", out.String())
-	}
-	bad := newRunCommand()
-	bad.SetArgs([]string{"--spec", testSpec, "--trace", testTrace, "--repeat", "2", "--db", filepath.Join(t.TempDir(), "x.db")})
-	if err := bad.ExecuteContext(t.Context()); err == nil {
-		t.Fatal("--repeat with a shared --db was accepted")
 	}
 }

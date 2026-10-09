@@ -6,11 +6,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -31,6 +31,14 @@ const (
 	experimentCatalog = "../../internal/contractsv1/internal/domain/conformance/v1/thermal-capability-catalog.json"
 	experimentTrace   = "../../examples/thermal-chamber/testdata/trace-opening.jsonl"
 )
+
+var shorterCognitionGates = map[string]string{"debounce: 5s": "debounce: 2s", "cooldown: 20s": "cooldown: 2s"}
+
+func experimentSpecEdits(options experimentOptions) map[string]string {
+	edits := maps.Clone(shorterCognitionGates)
+	maps.Copy(edits, options.specEdits)
+	return edits
+}
 
 // experimentOptions vary one run: spec text replacements on top of the
 // runbook's edits, and how long the worker reasons before it decides.
@@ -64,42 +72,20 @@ func TestExperimentClosedLoopThroughServe(t *testing.T) {
 
 func startExperiment(t *testing.T, options experimentOptions) experimentRun {
 	t.Helper()
-	useExperimentEnvironment(t)
 	dir := privateSocketDir(t)
-	run := experimentRun{dir: dir, db: filepath.Join(dir, "stream.db"), specPath: tamozActiveSpec(t, dir, options.specEdits), liveSocket: filepath.Join(dir, "telemetry.sock")}
+	seedMigratedDatabase(t, filepath.Join(dir, "stream.db"))
+	run := experimentRun{dir: dir, db: filepath.Join(dir, "stream.db"), specPath: tamozActiveSpec(t, dir, experimentSpecEdits(options)), liveSocket: filepath.Join(dir, "telemetry.sock")}
 	serveTamozStandIn(t, filepath.Join(dir, "worker.sock"), options.workerDelay)
 	run.device = serveDeviceStandIn(t, filepath.Join(dir, "device.sock"), thermalCatalogDigest(t))
 	run.stop = startServe(t, run, freeLoopbackAddress(t))
 	return run
 }
 
-var experimentEnvironment = sync.OnceValue(func() error {
-	values := map[string]string{
-		"AGENTIC_STREAM_SUBSCRIBER_TOKEN":    "subscriber-secret",
-		"AGENTIC_STREAM_OTLP_ENDPOINT":       "",
-		"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "",
-		"OTEL_EXPORTER_OTLP_ENDPOINT":        "",
-	}
-	for key, value := range values {
-		if err := os.Setenv(key, value); err != nil {
-			return fmt.Errorf("set %s: %w", key, err)
-		}
-	}
-	return nil
-})
-
-func useExperimentEnvironment(t *testing.T) {
-	t.Helper()
-	if err := experimentEnvironment(); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // privateSocketDir is short (sun_path limit) and 0700, as the worker socket
 // requires.
 func privateSocketDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "as-x01")
+	dir, err := os.MkdirTemp("/tmp", "as-x01") //nolint:usetesting // t.TempDir() paths exceed the Unix socket path limit
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,13 +256,12 @@ func openReadOnly(t *testing.T, path string) *sql.DB {
 func waitForRow(t *testing.T, dbPath, query string, timeout time.Duration) {
 	t.Helper()
 	db := openReadOnly(t, dbPath)
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	found := pollUntil(t, timeout, func() bool {
 		var count int
-		if err := db.QueryRowContext(t.Context(), query).Scan(&count); err == nil && count > 0 {
-			return
-		}
-		time.Sleep(100 * time.Millisecond)
+		return db.QueryRowContext(t.Context(), query).Scan(&count) == nil && count > 0
+	})
+	if found {
+		return
 	}
 	t.Fatalf("no row for %q within %s; ledger: %s", query, timeout, ledgerSummary(t, db))
 }
@@ -357,7 +342,8 @@ func schedulerQueue(t *testing.T, db *sql.DB) string {
 
 // A tripped interlock is the experiment's software emergency stop: with it
 // tripped, the loop still reasons and governs, but no command reaches the
-// device.
+// device. The policy plane denies the intent before any command exists, so the
+// denial row is the last step that could have produced one.
 func TestExperimentInterlockStopsEffects(t *testing.T) {
 	t.Parallel()
 	run := startExperiment(t, experimentOptions{})
@@ -365,9 +351,15 @@ func TestExperimentInterlockStopsEffects(t *testing.T) {
 		t.Fatalf("trip = %q, %v", out, err)
 	}
 	feedLive(t, run.liveSocket, shiftedTrace(t, time.Now().Add(-time.Second)))
-	waitForRow(t, run.db, "SELECT COUNT(*) FROM policy_evaluations", 60*time.Second)
-	time.Sleep(time.Second)
-	if commands := run.device.received(); len(commands) != 0 {
-		t.Fatalf("a tripped interlock let %d commands reach the device: %v", len(commands), commands)
+	waitForRow(t, run.db, "SELECT COUNT(*) FROM policy_evaluations WHERE result = 'denied' AND reason LIKE 'interlock_not_ready%'", 60*time.Second)
+	var evaluations, commands int
+	if err := openReadOnly(t, run.db).QueryRowContext(t.Context(), "SELECT (SELECT COUNT(*) FROM policy_evaluations WHERE result <> 'denied'), (SELECT COUNT(*) FROM commands)").Scan(&evaluations, &commands); err != nil {
+		t.Fatal(err)
+	}
+	if evaluations != 0 || commands != 0 {
+		t.Fatalf("a tripped interlock left %d non-denied evaluations and %d commands", evaluations, commands)
+	}
+	if received := run.device.received(); len(received) != 0 {
+		t.Fatalf("a tripped interlock let %d commands reach the device: %v", len(received), received)
 	}
 }

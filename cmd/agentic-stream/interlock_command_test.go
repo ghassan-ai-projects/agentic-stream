@@ -24,7 +24,7 @@ func runOperatorCommand(t *testing.T, args ...string) (string, error) {
 
 func TestInterlockTripAndClear(t *testing.T) {
 	t.Parallel()
-	db := filepath.Join(t.TempDir(), "runtime.db")
+	db := newMigratedDatabasePath(t)
 	steps := []struct {
 		args []string
 		want string

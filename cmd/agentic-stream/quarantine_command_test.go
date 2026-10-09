@@ -40,7 +40,7 @@ func TestQuarantineReleaseAndRedriveRecoverEvidence(t *testing.T) {
 			t.Fatalf("%v = %q, %v", step.args, out, err)
 		}
 	}
-	if logged := countLogged(t, path); logged != 1 {
+	if logged := countRows(t, path, "event_log"); logged != 1 {
 		t.Fatalf("event log holds %d records, want the redriven reading once", logged)
 	}
 }
@@ -79,13 +79,4 @@ func registerZoneTemperatureSchema(t *testing.T, db *storage.DB) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func countLogged(t *testing.T, path string) int {
-	t.Helper()
-	var count int
-	if err := openReadOnly(t, path).QueryRowContext(t.Context(), "SELECT COUNT(*) FROM event_log").Scan(&count); err != nil {
-		t.Fatal(err)
-	}
-	return count
 }

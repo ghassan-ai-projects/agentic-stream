@@ -20,16 +20,25 @@ func assertRecordedReplayVerifies(t *testing.T, run experimentRun, trace []strin
 	if err := os.WriteFile(tracePath, []byte(strings.Join(trace, "\n")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out, err := runRecordedCommand(t, run.specPath, tracePath, run.db)
-	if err != nil || !strings.Contains(out, "mode=recorded") || strings.Contains(out, "recorded_decisions_verified=0") {
-		t.Fatalf("recorded replay of the live run: %v\n%s", err, out)
-	}
-	if _, err := runRecordedCommand(t, run.specPath, tracePath, tamperedDecisions(t, run.db)); err == nil || !strings.Contains(err.Error(), "recorded ledger decision") {
-		t.Fatalf("a tampered recorded decision was accepted: %v", err)
-	}
-	if _, err := runRecordedCommand(t, benchSpec, tracePath, run.db); err == nil || !strings.Contains(err.Error(), "never deployed spec") {
-		t.Fatalf("a spec the live run never deployed was accepted: %v", err)
-	}
+	t.Run("the live run verifies", func(t *testing.T) {
+		t.Parallel()
+		out, err := runRecordedCommand(t, run.specPath, tracePath, run.db)
+		if err != nil || !strings.Contains(out, "mode=recorded") || strings.Contains(out, "recorded_decisions_verified=0") {
+			t.Fatalf("recorded replay of the live run: %v\n%s", err, out)
+		}
+	})
+	t.Run("a tampered decision is refused", func(t *testing.T) {
+		t.Parallel()
+		if _, err := runRecordedCommand(t, run.specPath, tracePath, tamperedDecisions(t, run.db)); err == nil || !strings.Contains(err.Error(), "recorded ledger decision") {
+			t.Fatalf("a tampered recorded decision was accepted: %v", err)
+		}
+	})
+	t.Run("a spec the run never deployed is refused", func(t *testing.T) {
+		t.Parallel()
+		if _, err := runRecordedCommand(t, benchSpec, tracePath, run.db); err == nil || !strings.Contains(err.Error(), "never deployed spec") {
+			t.Fatalf("a spec the live run never deployed was accepted: %v", err)
+		}
+	})
 }
 
 func runRecordedCommand(t *testing.T, specPath, tracePath, sourceDB string) (string, error) {

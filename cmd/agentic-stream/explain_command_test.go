@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,9 +14,8 @@ import (
 // fields to trace to the spec and its evidence to logged events, and every
 // trigger evaluation to explain itself with a reason.
 func TestExplainTracesTheFinalSituationAndEveryTrigger(t *testing.T) {
-	disableTelemetryExport(t)
-	dbPath := filepath.Join(t.TempDir(), "runtime.db")
-	runCLI(t, newRunLiveCommand(), "--db", dbPath, "--spec", testSpec, "--trace", "../../examples/predictive-maintenance/testdata/trace-watch.jsonl")
+	t.Parallel()
+	dbPath := watchRunDatabase(t)
 	var situations []map[string]any
 	decodeJSON(t, runCLI(t, newSituationCommand(), "list", "--db", dbPath, "--json"), &situations)
 	if len(situations) == 0 {

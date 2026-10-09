@@ -9,8 +9,8 @@ import (
 
 func TestCommandsListAndResolveRefuseWhatIsNotAwaiting(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	db := filepath.Join(dir, "runtime.db")
+	db := newMigratedDatabasePath(t)
+	dir := filepath.Dir(db)
 	if out, err := runOperatorCommand(t, "commands", "list", "--db", db); err != nil || !strings.Contains(out, "none awaiting reconciliation") {
 		t.Fatalf("list = %q, %v", out, err)
 	}

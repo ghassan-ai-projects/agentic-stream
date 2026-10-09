@@ -15,7 +15,7 @@ const examplePrincipals = "../../examples/real-world-sensor/principals.example.y
 
 func TestPrincipalsApplyProvisionsTheExampleGovernance(t *testing.T) {
 	t.Parallel()
-	db := filepath.Join(t.TempDir(), "runtime.db")
+	db := newMigratedDatabasePath(t)
 	steps := []struct {
 		args []string
 		want string

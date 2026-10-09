@@ -14,7 +14,7 @@ import (
 // gets a sealed comparison, and the replay database holds no intent, command
 // or outbox row.
 func TestExperimentShadowReplayComparesTheCandidate(t *testing.T) {
-	disableTelemetryExport(t)
+	t.Parallel()
 	dir := privateSocketDir(t)
 	socket := filepath.Join(dir, "worker.sock")
 	serveTamozStandIn(t, socket, 0)
