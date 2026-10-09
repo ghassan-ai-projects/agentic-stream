@@ -52,7 +52,8 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(newVersionCommand(), newValidateCommand(), newRunCommand(), newServeCommand(), newRunLiveCommand(),
 		newExportRunCommand(), newVerifyRunCommand())
 	root.AddCommand(newInterlockCommand(), newPrincipalsCommand(), newQuarantineCommand(), newNotificationsCommand(),
-		newCommandsCommand(), newSituationCommand(), newExplainCommand(), newEpisodeCommand(), newIntentCommand())
+		newCommandsCommand(), newSituationCommand(), newExplainCommand(), newEpisodeCommand(), newIntentCommand(),
+		newMaintenanceCommand())
 }
 
 func newVersionCommand() *cobra.Command {

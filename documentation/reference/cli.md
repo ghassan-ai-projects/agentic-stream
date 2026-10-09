@@ -218,6 +218,21 @@ commands with their outcomes and verifications, and the watch a command
 installed with its fires. There is no `intent approve`: approval is the signed
 HTTP flow.
 
+### `maintenance backup --output <file> | prune [--older-than 720h] [--vacuum]`
+
+`backup` writes a consistent copy of the runtime database to a new file with
+SQLite `VACUUM INTO`; it takes no lease, so it is safe while `serve` runs, and
+it refuses an existing target. `prune` needs the lease (stop the runtime
+first) and, in one transaction, removes bookkeeping older than `--older-than`
+(default 30 days) that nothing references: ignored trigger evaluations no
+scheduler item or reconsideration cites, applied engine inbox entries, fired
+and cancelled timers, superseded Situation versions that no evaluation,
+scheduler item, episode, decision or intent references (never the current,
+last reasoned or last material version), and lineage sets no version cites.
+The event log, decisions, intents, commands, outcomes and every admitted,
+deferred, coalesced, rejected or expired evaluation are kept. `--vacuum`
+reclaims the freed space afterwards.
+
 ## Not registered yet
 
 Design records may mention commands such as `init`, `ingest`, `simulate`,

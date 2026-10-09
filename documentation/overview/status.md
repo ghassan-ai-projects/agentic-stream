@@ -41,7 +41,9 @@ environment; the table is not deployment approval.
 - Inspection is read-only CLI over the runtime database; there are no HTTP read
   routes for Situations, triggers, episodes or intents.
 - SituationSpec has no retention or telemetry blocks; runtime telemetry is
-  configured at deployment time, and only notifications are pruned.
+  configured at deployment time. Notifications are pruned by the runtime;
+other bookkeeping is pruned on demand with `maintenance prune`, and the event
+log is never pruned.
 
 ## Deliberately deferred
 

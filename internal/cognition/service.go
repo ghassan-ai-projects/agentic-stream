@@ -4,6 +4,7 @@ package cognition
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/store"
@@ -30,4 +31,12 @@ func RecordCostRejectionReason(ctx context.Context, tx *sql.Tx, itemID string, r
 // RecordSchedulerExpiryReason explains on the trigger evaluation why its scheduler item expired.
 func RecordSchedulerExpiryReason(ctx context.Context, tx *sql.Tx, itemID, reason string) error {
 	return app.RecordSchedulerExpiryReason(ctx, store.Join(tx), itemID, reason)
+}
+
+// PruneIgnoredEvaluations removes, inside the caller's transaction, the
+// tenant's trigger evaluations older than before whose outcome was ignored and
+// that no scheduler item or reconsideration references. Admitted, deferred,
+// coalesced, superseded, expired and rejected evaluations are always kept.
+func PruneIgnoredEvaluations(ctx context.Context, tx *sql.Tx, tenantID string, before time.Time) (int64, error) {
+	return app.PruneIgnoredEvaluations(ctx, store.Join(tx), tenantID, before)
 }

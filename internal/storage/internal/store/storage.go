@@ -190,3 +190,22 @@ func (db *DB) WithTx(ctx context.Context, fn func(*sql.Tx) error) error {
 	}
 	return nil
 }
+
+func (db *DB) BackupInto(ctx context.Context, path string) error {
+	if _, err := os.Lstat(path); err == nil {
+		return fmt.Errorf("backup target %s already exists", path)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect backup target %s: %w", path, err)
+	}
+	if _, err := db.ExecContext(ctx, "VACUUM INTO ?", path); err != nil {
+		return fmt.Errorf("back up database into %s: %w", path, err)
+	}
+	return nil
+}
+
+func (db *DB) Vacuum(ctx context.Context) error {
+	if _, err := db.ExecContext(ctx, "VACUUM"); err != nil {
+		return fmt.Errorf("vacuum database: %w", err)
+	}
+	return nil
+}
