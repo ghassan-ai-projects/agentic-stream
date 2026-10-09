@@ -21,7 +21,7 @@ import (
 //
 // docs/plans/real-world-sensor-hil/01-telemetry-vertical.md
 
-const thermalSpec = "../../docs/design/examples/zone-thermal.situation.yaml"
+const thermalSpec = "../../examples/thermal-chamber/zone-thermal.situation.yaml"
 
 func thermalTrace(name string) string {
 	return filepath.Join("../../examples/thermal-chamber/testdata", name)

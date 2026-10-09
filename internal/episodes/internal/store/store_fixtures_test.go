@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	fixtureSpecPath  = "../../../../docs/design/examples/predictive-maintenance.situation.yaml"
+	fixtureSpecPath  = "../../../../examples/predictive-maintenance/predictive-maintenance.situation.yaml"
 	fixtureTracePath = "../../../../examples/predictive-maintenance/testdata/trace-opening.jsonl"
 )
 

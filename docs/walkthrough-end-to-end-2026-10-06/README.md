@@ -6,7 +6,7 @@ comes from an actual run of the files in this folder; nothing is invented.
 
 ## What the system is, in one paragraph
 
-A **SituationSpec** (YAML, `docs/design/examples/predictive-maintenance.situation.yaml`)
+A **SituationSpec** (YAML, `examples/predictive-maintenance/predictive-maintenance.situation.yaml`)
 is the program: it declares which events are accepted, how to compute **features**
 from them (windows and operators), how a **Situation** moves between phases, when
 reasoning is worth starting (**triggers**), and which **intents** an agent may
@@ -57,7 +57,7 @@ The test (`internal/runtime/internal/app/walkthrough_test.go`) is skipped unless
 with the in-process fixture executor and the simulated effector, so no model and
 no hardware are needed.
 
-`walkthrough.situation.yaml` is the shipped example with three changes, so one
+`walkthrough.situation.yaml` (now `internal/runtime/internal/app/testdata/walkthrough.situation.yaml`) is the shipped example with three changes, so one
 batch reaches the end: `dispatchPolicy: active` (the default is shadow, which
 scores a decision but never creates intents), no trigger `debounce`/`cooldown`
 (real-time delays that a single batch would wait out), and a `reason` property on

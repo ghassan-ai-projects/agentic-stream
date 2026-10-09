@@ -124,6 +124,15 @@ The other mechanical test rules (T6 parallel and isolated, T9 helpers) are
 enforced by `paralleltest`, `tparallel`, `usetesting` and `thelper` in
 `.golangci.yml` (`make lint`).
 
+### `docs_archive_test.go`
+
+| Test | Rule | Protects |
+| --- | --- | --- |
+| `TestNothingExecutableReadsFromTheDocsArchive` | T9, AGENTS (forbidden changes) | No Go file, tests included, has a string literal that starts with `docs/` (after any `./` or `../`) or a `Join` call with a `"docs"` element. The nested `docs/` archive module is not scanned. Test inputs live in `examples/` or a module's `testdata/`. |
+| `TestMakefileDoesNotUseTheDocsArchive` | T9, AGENTS (forbidden changes) | No Makefile line, comments excluded, contains `docs/`; the worker protocol the build reads lives in `proto/`. |
+| `TestDocsArchiveDetectorCatchesEveryWayToNameAPathUnderDocs` | T9 | Self-test: relative, parent-relative, raw, concatenated and `Join` forms are caught; comments, messages that mention `docs/` and `documentation/` are not. |
+| `TestMakefileDetectorReadsRecipesAndVariablesButNotComments` | T9 | Self-test: variables and recipes are caught; comments, trailing comments and the `docs-check` target are not. |
+
 ### `invariants_test.go`
 
 | Test | Rule | Protects |

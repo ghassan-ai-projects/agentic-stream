@@ -13,7 +13,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
-var predictiveMaintenance = filepath.Join("..", "..", "docs", "design", "examples", "predictive-maintenance.situation.yaml")
+var predictiveMaintenance = filepath.Join("..", "..", "examples", "predictive-maintenance", "predictive-maintenance.situation.yaml")
 
 func TestFacadeCompilesDeploysAndLoadsASpec(t *testing.T) {
 	t.Parallel()

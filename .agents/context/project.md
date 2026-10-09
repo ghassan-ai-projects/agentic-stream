@@ -8,7 +8,8 @@ The design is implementation-ready and committed under `docs/`; the curated publ
 
 ## Current State
 
-- Design baseline v1 is complete under `docs/design/`; v0 and v0.1 iterations are archived under `docs/design-v0/` and `docs/design-v0.1/`; notification mirrors are in `docs/contracts/`; runtime contract sources are under `docs/design/contracts/`, `internal/contractsv1/`, `internal/spec/internal/domain/schema.json`, `proto/`, and `migrations/`; research reports are in `docs/research/`.
+- Design baseline v1 is complete under `docs/design/`; v0 and v0.1 iterations are archived under `docs/design-v0/` and `docs/design-v0.1/`; notification mirrors are in `docs/contracts/`; runtime contract sources are `proto/agenticstream/runtime/v1/runtime-v1.proto`, `internal/contractsv1/`, `internal/spec/internal/domain/schema.json`, `proto/`, and `migrations/`; research reports are in `docs/research/`.
+- `docs/` is a dated archive: no code, test or build step reads from it. Specs shared by modules live in `examples/`; data private to one module lives in that module's `testdata/`.
 - Module path `github.com/ghassan-ai-projects/agentic-stream` is set.
 - The CLI lives in `cmd/agentic-stream/`; runtime packages live under `internal/`; generated worker stubs live under `proto/agenticstream/runtime/v1/`.
 - The current implementation includes deterministic replay, live JSONL processing, bounded cognition/episodes, policy/actions, worker/evidence boundaries, notifications, telemetry, and storage recovery. The remaining release posture is documented in `documentation/governance/release-status.json`.
@@ -26,5 +27,5 @@ The design is implementation-ready and committed under `docs/`; the curated publ
 - Letting untrusted content become instructions or executable parameters.
 - Weakening determinism (timing, map iteration, non-canonical JSON, unseeded randomness, out-of-order watermark handling).
 - Adding deferred scope (Kafka/NATS/Pulsar, web UI, multi-agent, vector retrieval) before the single-node semantic suite passes.
-- Drifting from the documented contracts (`documentation/contracts/`, `docs/design/contracts/`, embedded schemas, `proto/`, and `migrations/`).
+- Drifting from the documented contracts (`documentation/contracts/`, `proto/agenticstream/runtime/v1/runtime-v1.proto`, embedded schemas, `proto/`, and `migrations/`).
 - Documenting commands that do not match actual Makefile/CI behavior.

@@ -11,7 +11,7 @@ import (
 
 func TestFacadeBuildsAnOperatorRuntimeForACompiledSpec(t *testing.T) {
 	t.Parallel()
-	compiled, err := spec.CompileFile(t.Context(), filepath.Join("..", "..", "docs", "design", "examples", "predictive-maintenance.situation.yaml"))
+	compiled, err := spec.CompileFile(t.Context(), filepath.Join("..", "..", "examples", "predictive-maintenance", "predictive-maintenance.situation.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}

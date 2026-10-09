@@ -51,10 +51,10 @@ before evaluating an integration.
 
 ```bash
 make build
-./bin/agentic-stream validate docs/design/examples/predictive-maintenance.situation.yaml
+./bin/agentic-stream validate examples/predictive-maintenance/predictive-maintenance.situation.yaml
 ./bin/agentic-stream run \
   --db predictive-maintenance.replay.db \
-  --spec docs/design/examples/predictive-maintenance.situation.yaml \
+  --spec examples/predictive-maintenance/predictive-maintenance.situation.yaml \
   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl
 ```
 
@@ -81,8 +81,8 @@ The curated public documentation is the primary entrypoint:
 The `docs/` directory is the working archive: current design records,
 machine-facing contract sources, research, audits, runbooks, and historical
 iterations. See [`docs/README.md`](docs/README.md) before using it as a source.
-The quickstart's `docs/design/examples/` paths are current test fixtures, not a
-replacement for the curated public reading path.
+Nothing executable reads from `docs/`: the quickstart's specs live under
+`examples/`, the worker protocol under `proto/`.
 
 ## Technology
 

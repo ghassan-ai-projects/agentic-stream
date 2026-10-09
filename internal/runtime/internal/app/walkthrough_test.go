@@ -30,7 +30,7 @@ func TestWalkthrough(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	compiled, err := spec.CompileFile(ctx, "../../../../docs/walkthrough-end-to-end-2026-10-06/walkthrough.situation.yaml")
+	compiled, err := spec.CompileFile(ctx, "testdata/walkthrough.situation.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

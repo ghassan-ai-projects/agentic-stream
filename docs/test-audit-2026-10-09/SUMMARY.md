@@ -107,6 +107,32 @@ are small and behavior-preserving, each recorded in its module report:
   from `storage.Open`. Proven by
   `TestStoredTimeFunctionIsRegisteredBeforeAnyDatabaseIsOpened`.
 
+## No reads from docs/
+
+`docs/` is a dated working archive, so nothing executable may depend on it. About
+30 tests and the Makefile did: they read the example specs, the walkthrough spec
+and the worker protocol from `docs/`. The files moved with `git mv`, content
+unchanged (the zone-thermal spec digest and the protocol SHA-256 pins did not
+change):
+
+| From | To |
+| --- | --- |
+| `docs/design/examples/predictive-maintenance.situation.yaml` | `examples/predictive-maintenance/predictive-maintenance.situation.yaml` |
+| `docs/design/examples/zone-thermal.situation.yaml` | `examples/thermal-chamber/zone-thermal.situation.yaml` |
+| `docs/design/examples/rotating-machinery.situation.yaml` | `examples/rotating-machinery/rotating-machinery.situation.yaml` |
+| `docs/walkthrough-end-to-end-2026-10-06/walkthrough.situation.yaml` | `internal/runtime/internal/app/testdata/walkthrough.situation.yaml` |
+| `docs/design/contracts/runtime-v1.proto` | `proto/agenticstream/runtime/v1/runtime-v1.proto` |
+
+The Makefile builds the stubs from the new location (`PROTO_DIR`; `proto-check`
+ignores the `.proto` beside the generated files) and the stubs are byte-identical.
+`TestNothingExecutableReadsFromTheDocsArchive` and `TestMakefileDoesNotUseTheDocsArchive`
+(`internal/architecture/docs_archive_test.go`) keep it that way: a Go string
+literal that starts with `docs/`, a `Join` element `"docs"` or a Makefile line
+using `docs/` fails the build. Test inputs live in `examples/` (shared by
+modules) or the module's `testdata/`. Stubs in `docs/design/examples/` and
+`docs/design/contracts/` point to the new paths; the module notes under
+`modules/` keep the historical paths.
+
 ## Remaining open items
 
 - **Wall time** is 35.3–37.5 s against the 35 s target, and `cmd/agentic-stream`

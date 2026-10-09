@@ -36,7 +36,7 @@ func TestModulePathSingleSourceOfTruth(t *testing.T) {
 			want: `const InstrumentationName = "` + module + `"`,
 		},
 		{
-			file: "docs/design/contracts/runtime-v1.proto",
+			file: "proto/agenticstream/runtime/v1/runtime-v1.proto",
 			want: `option go_package = "` + module + `/proto/agenticstream/runtime/v1;runtimev1";`,
 		},
 		{

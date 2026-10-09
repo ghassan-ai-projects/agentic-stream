@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	predictiveSpec  = "../../docs/design/examples/predictive-maintenance.situation.yaml"
+	predictiveSpec  = "../../examples/predictive-maintenance/predictive-maintenance.situation.yaml"
 	predictiveTrace = "../../examples/predictive-maintenance/testdata/trace-opening.jsonl"
 )
 

@@ -132,10 +132,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/notify/internal/app/` | append, lifecycle append, page read with resume, lag and poison handling, prune |
 | `internal/notify/internal/domain/` | lifecycle contract (schema and binding), sealing, dedupe, resume, poison and retention rules |
 | `internal/notify/internal/store/` | the only SQL for notifications, cursors, tombstones, poison attempts and audits |
-| `proto/agenticstream/runtime/v1/` | generated current-v1 Go protocol |
+| `proto/agenticstream/runtime/v1/` | current-v1 worker protocol source (`runtime-v1.proto`) and its generated Go stubs |
 | `migrations/` | ordered SQLite schema changes |
-| `examples/` | trace fixtures and predictive-maintenance evidence |
-| `docs/design/` | current full design record, contracts, examples, plans |
+| `examples/` | product fixtures shared by modules and tests: `predictive-maintenance/`, `thermal-chamber/` and `rotating-machinery/` (SituationSpecs, traces under `testdata/`) and `real-world-sensor/` |
+| `docs/design/` | current full design record and plans; a dated archive that no code, test or build step reads |
 | `docs/design-v0/`, `docs/design-v0.1/` | archived design iterations |
 | `docs/research/` | research and generated working artifacts |
 | `documentation/` | curated public documentation |

@@ -59,7 +59,7 @@ A `set_union` reducer collects supporting event identities.
 Facts are derived values. Evidence identities identify the observations that
 support them. **Provenance** connects the published interpretation to its spec,
 evidence, time boundary, and content digest so it can be inspected later.
-Source: [motor spec](../../docs/design/examples/predictive-maintenance.situation.yaml),
+Source: [motor spec](../../examples/predictive-maintenance/predictive-maintenance.situation.yaml),
 [reducers](../../internal/situations/internal/domain/reducers.go), and
 [snapshot materialization](../../internal/situations/internal/domain/materialize.go).
 

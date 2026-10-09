@@ -18,7 +18,7 @@ const (
 	thermalCatalogPath = "internal/domain/conformance/v1/thermal-capability-catalog.json"
 	// workerProtocolPath is vendored byte for byte by Tamoz
 	// (gems/tamoz-stream/contracts/runtime-v1.proto).
-	workerProtocolPath   = "../../docs/design/contracts/runtime-v1.proto"
+	workerProtocolPath   = "../../proto/agenticstream/runtime/v1/runtime-v1.proto"
 	workerProtocolSHA256 = "621ae92f9ed3f059c5dee46ae168fd10bedc8490e1c6ceaad14a39fefe1a7688"
 )
 

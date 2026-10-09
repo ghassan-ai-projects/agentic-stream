@@ -100,7 +100,7 @@ func TestSourcesIngestTraceThroughIngress(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	ctx := context.Background()
-	compiled, err := spec.CompileFile(ctx, "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
+	compiled, err := spec.CompileFile(ctx, "../../../../examples/predictive-maintenance/predictive-maintenance.situation.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

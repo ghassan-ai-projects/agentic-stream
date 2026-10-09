@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	testSpec  = "../../docs/design/examples/predictive-maintenance.situation.yaml"
+	testSpec  = "../../examples/predictive-maintenance/predictive-maintenance.situation.yaml"
 	testTrace = "../../examples/predictive-maintenance/testdata/trace-opening.jsonl"
 )
 

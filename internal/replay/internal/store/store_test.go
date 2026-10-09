@@ -22,7 +22,7 @@ func TestStoreSavesSpecDeploymentAndReadsEmptyDigests(t *testing.T) {
 	t.Parallel()
 	store := newStore(t)
 	ctx := context.Background()
-	compiled, err := spec.CompileFile(ctx, "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
+	compiled, err := spec.CompileFile(ctx, fixtureSpecPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestStoreMaterializeEpisodesSucceedsWithoutPendingItems(t *testing.T) {
 	t.Parallel()
 	store := newStore(t)
 	ctx := context.Background()
-	compiled, err := spec.CompileFile(ctx, "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
+	compiled, err := spec.CompileFile(ctx, fixtureSpecPath)
 	if err != nil {
 		t.Fatal(err)
 	}

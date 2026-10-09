@@ -14,12 +14,14 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
+const motorSpecPath = "../../../../examples/predictive-maintenance/predictive-maintenance.situation.yaml"
+
 func TestPipelineRunsNormalizedBatchThroughAllPlanes(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	db := storagetest.OpenTemp(t)
 
-	compiled, err := spec.CompileFile(ctx, "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
+	compiled, err := spec.CompileFile(ctx, motorSpecPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +46,7 @@ func TestPipelineSurvivesWatchExpressionEvaluationError(t *testing.T) {
 	ctx := t.Context()
 	db := storagetest.OpenTemp(t)
 
-	compiled, err := spec.CompileFile(ctx, "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
+	compiled, err := spec.CompileFile(ctx, motorSpecPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +87,7 @@ func TestPipelineSurvivesWatchExpressionEvaluationError(t *testing.T) {
 func TestPipelineRecordsTheConfiguredCostCeilingsBeforeAnyWork(t *testing.T) {
 	t.Parallel()
 	db := storagetest.OpenTemp(t)
-	compiled, err := spec.CompileFile(t.Context(), "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
+	compiled, err := spec.CompileFile(t.Context(), motorSpecPath)
 	if err != nil {
 		t.Fatal(err)
 	}

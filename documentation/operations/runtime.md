@@ -12,7 +12,7 @@ confirmed is owned by this runtime:
 ```bash
 ./bin/agentic-stream run-live \
   --db runtime.db \
-  --spec docs/design/examples/predictive-maintenance.situation.yaml \
+  --spec examples/predictive-maintenance/predictive-maintenance.situation.yaml \
   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl
 ```
 
@@ -25,7 +25,7 @@ policy/action path, and simulated effector for the batch.
 export AGENTIC_STREAM_SUBSCRIBER_TOKEN='rotate-out-of-band'
 ./bin/agentic-stream serve \
   --db runtime.db \
-  --spec docs/design/examples/predictive-maintenance.situation.yaml \
+  --spec examples/predictive-maintenance/predictive-maintenance.situation.yaml \
   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl \
   --listen 127.0.0.1:8080
 ```

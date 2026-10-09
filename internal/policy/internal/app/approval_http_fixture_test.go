@@ -28,7 +28,7 @@ type approvalHTTPFixture struct {
 func openApprovalHTTP(t *testing.T, configure ...func(*runtime.PipelineConfig)) approvalHTTPFixture {
 	t.Helper()
 	p := openPendingApproval(t)
-	compiled, err := spec.CompileFile(t.Context(), "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
+	compiled, err := spec.CompileFile(t.Context(), "../../../../examples/predictive-maintenance/predictive-maintenance.situation.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

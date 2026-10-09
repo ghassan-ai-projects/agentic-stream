@@ -35,7 +35,7 @@ and completeness changes can publish another version; a fact update alone
 need not publish. Old versions remain fixed. [The domain model](domain-model.md)
 explains the difference between current state and a published snapshot.
 
-Source: [motor SituationSpec](../../docs/design/examples/predictive-maintenance.situation.yaml)
+Source: [motor SituationSpec](../../examples/predictive-maintenance/predictive-maintenance.situation.yaml)
 and [time and state](time-and-state.md).
 
 ## 3. Decide whether reasoning is useful

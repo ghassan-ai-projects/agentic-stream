@@ -8,7 +8,7 @@ import (
 
 func TestCompileRefusesIntentPoliciesThePolicyPlaneDoesNotEnforce(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../../../docs/design/examples/zone-thermal.situation.yaml")
+	data, err := os.ReadFile("../../../../examples/thermal-chamber/zone-thermal.situation.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

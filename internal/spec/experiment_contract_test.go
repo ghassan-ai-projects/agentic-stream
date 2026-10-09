@@ -16,7 +16,7 @@ import (
 const zoneSchemasDigest = "sha256:eb765c6cd6ccfaf67c2be6ba2bae91694fb079020ddd065871ba1849e2f81a4d"
 
 var experimentSpecs = []struct{ path, digest string }{
-	{"../../docs/design/examples/zone-thermal.situation.yaml", "sha256:d5907b52280fc34ec1d17c88e905c2ac79ad4358eb4bb2253e6f7efdf0f925fb"},
+	{"../../examples/thermal-chamber/zone-thermal.situation.yaml", "sha256:d5907b52280fc34ec1d17c88e905c2ac79ad4358eb4bb2253e6f7efdf0f925fb"},
 	{"../../examples/real-world-sensor/zone-thermal-sim.situation.yaml", "sha256:a6153efe15c9a2b5ea7706d8e8f62312263b8c994eb6839caeb45b84412ae171"},
 	{"../../examples/real-world-sensor/zone-thermal-bench.situation.yaml", "sha256:b1b60be7ddae1ef91da2b43f52ee44263f6d2a367bfdd0605bdd1c28ad9c34cf"},
 }

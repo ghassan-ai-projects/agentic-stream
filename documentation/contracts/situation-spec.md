@@ -29,7 +29,7 @@ actions: {}
 ```
 
 Start from the working example:
-[`predictive-maintenance.situation.yaml`](../../docs/design/examples/predictive-maintenance.situation.yaml).
+[`predictive-maintenance.situation.yaml`](../../examples/predictive-maintenance/predictive-maintenance.situation.yaml).
 
 ## Compilation
 

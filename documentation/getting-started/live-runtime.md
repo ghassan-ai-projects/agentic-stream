@@ -12,7 +12,7 @@ Agentic Stream has two local runtime workflows:
 ```bash
 ./bin/agentic-stream run-live \
   --db runtime.live.db \
-  --spec docs/design/examples/predictive-maintenance.situation.yaml \
+  --spec examples/predictive-maintenance/predictive-maintenance.situation.yaml \
   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl
 ```
 
@@ -26,7 +26,7 @@ name and keep the API key in the environment:
 export AGENTIC_STREAM_MODEL_API_KEY='set-out-of-band'
 ./bin/agentic-stream run-live \
   --db runtime.live.db \
-  --spec docs/design/examples/predictive-maintenance.situation.yaml \
+  --spec examples/predictive-maintenance/predictive-maintenance.situation.yaml \
   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl \
   --model-endpoint 'https://model.example/v1/chat/completions' \
   --model-name 'model-id'
@@ -42,7 +42,7 @@ The runtime never puts the key in a trace, Situation, Decision, or command.
 export AGENTIC_STREAM_SUBSCRIBER_TOKEN='rotate-this-out-of-band'
 ./bin/agentic-stream serve \
   --db runtime.serve.db \
-  --spec docs/design/examples/predictive-maintenance.situation.yaml \
+  --spec examples/predictive-maintenance/predictive-maintenance.situation.yaml \
   --trace examples/predictive-maintenance/testdata/trace-opening.jsonl \
   --listen 127.0.0.1:8080
 ```
@@ -64,7 +64,7 @@ telemetry socket:
 ```bash
 ./bin/agentic-stream serve \
   --db runtime.serve.db \
-  --spec docs/design/examples/zone-thermal.situation.yaml \
+  --spec examples/thermal-chamber/zone-thermal.situation.yaml \
   --live-socket /tmp/agentic-stream-live.sock \
   --effect-profile emulator \
   --device-socket /tmp/device-gateway.sock \

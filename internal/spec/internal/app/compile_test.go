@@ -14,7 +14,7 @@ import (
 
 func TestCompileFileReadsAndSealsAnExampleSpec(t *testing.T) {
 	t.Parallel()
-	compiled, err := app.CompileFile(t.Context(), filepath.Join("..", "..", "..", "..", "docs", "design", "examples", "predictive-maintenance.situation.yaml"))
+	compiled, err := app.CompileFile(t.Context(), filepath.Join("..", "..", "..", "..", "examples", "predictive-maintenance", "predictive-maintenance.situation.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}

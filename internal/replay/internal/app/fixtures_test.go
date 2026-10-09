@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	fixtureSpec  = "../../../../docs/design/examples/predictive-maintenance.situation.yaml"
+	fixtureSpec  = "../../../../examples/predictive-maintenance/predictive-maintenance.situation.yaml"
 	fixtureTrace = "../../../../examples/predictive-maintenance/testdata/trace-opening.jsonl"
 )
 

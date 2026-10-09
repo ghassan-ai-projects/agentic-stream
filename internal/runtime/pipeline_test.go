@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	examplePolicy = "../../docs/design/examples/predictive-maintenance.situation.yaml"
+	examplePolicy = "../../examples/predictive-maintenance/predictive-maintenance.situation.yaml"
 	exampleTrace  = "../../examples/predictive-maintenance/testdata/trace-opening.jsonl"
 )
 
