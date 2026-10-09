@@ -68,7 +68,7 @@ func admitTriggeredSituation(t *testing.T, compiled *spec.CompiledSpec, situatio
 		t.Fatalf("save deployment: %v", err)
 	}
 	base := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
-	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: compiled, IDGen: sources.Deterministic(), Clock: sources.NewVirtual(base)})
+	eng, err := cognition.New(cognition.Config{DeploymentID: testSpecDigest, TenantID: "default", Spec: compiled, Clock: sources.NewVirtual(base)})
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}

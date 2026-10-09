@@ -3,9 +3,11 @@ package domain
 import (
 	"crypto/sha256"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -23,7 +25,7 @@ type timing struct{ expiresAfter, debounce, cooldown time.Duration }
 func ApplyTiming(item *episodeledger.SchedulerItem, trigger spec.Trigger, now time.Time, latestAdmitted *time.Time) error {
 	window, err := parseTiming(trigger)
 	if err != nil {
-		return err
+		return fmt.Errorf("parse timing of trigger %s: %w", trigger.Name, err)
 	}
 	item.NotBefore = window.notBefore(now, latestAdmitted)
 	item.ExpiresAt = mayStartAt(now, item.NotBefore).Add(window.expiresAfter)
@@ -127,7 +129,10 @@ func Supersedes(replacement, old int) bool { return old < replacement }
 
 func HasPreviousVersion(version int) bool { return version > 0 }
 
-// NewSchedulerItem binds an admitted evaluation to its pending queue record.
-func NewSchedulerItem(id string, eval Evaluation) episodeledger.SchedulerItem {
-	return episodeledger.SchedulerItem{SchedulerItemID: id, Kind: episodeledger.KindStandard, TriggerID: eval.TriggerID, SituationID: eval.SituationID, SituationVersion: eval.SituationVersion, Lane: eval.Lane, Priority: eval.Score, Status: "pending"}
+func NewSchedulerItem(eval Evaluation) episodeledger.SchedulerItem {
+	return episodeledger.SchedulerItem{SchedulerItemID: SchedulerItemID(eval.TriggerID), Kind: episodeledger.KindStandard, TriggerID: eval.TriggerID, SituationID: eval.SituationID, SituationVersion: eval.SituationVersion, Lane: eval.Lane, Priority: eval.Score, Status: "pending"}
+}
+
+func SchedulerItemID(triggerID string) string {
+	return sources.PrefixScheduler + strings.TrimPrefix(triggerID, sources.PrefixTrigger)
 }

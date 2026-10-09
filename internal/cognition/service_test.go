@@ -24,7 +24,7 @@ func newService(t *testing.T) *cognition.Service {
 			{Name: "high", When: "true", Score: "situation.severity", Threshold: 5, Lane: "fast"},
 		}},
 	}
-	service, err := cognition.New(cognition.Config{DeploymentID: "dep", TenantID: "tenant", Spec: compiled, IDGen: sources.Deterministic(), Clock: sources.NewVirtual(time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC))})
+	service, err := cognition.New(cognition.Config{DeploymentID: "dep", TenantID: "tenant", Spec: compiled, Clock: sources.NewVirtual(time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC))})
 	if err != nil {
 		t.Fatal(err)
 	}

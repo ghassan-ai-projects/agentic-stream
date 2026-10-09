@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,12 +68,14 @@ func expiredIDs(poll domain.QueuePoll) []string {
 	return ids
 }
 
-func TestAnItemIdClashKeepsTheExistingItemAndATriggerKeepsItsFirstId(t *testing.T) {
+func TestAnItemIDClashIsRefusedAndATriggerKeepsItsFirstID(t *testing.T) {
 	t.Parallel()
 	within(t, func(ctx context.Context, tx *store.Tx, raw *sql.Tx) {
 		enqueue(t, ctx, tx, queued{id: "item", expires: 60})
 		clash := domain.SchedulerItem{SchedulerItemID: "item", TriggerID: "trigger-other", SituationID: "s", SituationVersion: 1, Kind: "standard", Lane: "fast", Status: "pending", ExpiresAt: minutes(60)}
-		must(t, UpsertSchedulerItem(ctx, tx, clash, "tenant", append([]byte{1}, make([]byte, 31)...), now))
+		if err := UpsertSchedulerItem(ctx, tx, clash, "tenant", append([]byte{1}, make([]byte, 31)...), now); err == nil || !strings.Contains(err.Error(), "upsert scheduler item item") {
+			t.Fatalf("clash = %v, want the id clash refused", err)
+		}
 		reissued := domain.SchedulerItem{SchedulerItemID: "item-new-id", TriggerID: "trigger-item", SituationID: "s", SituationVersion: 2, Kind: "standard", Lane: "deep", Priority: 9, Status: "pending", ExpiresAt: minutes(60)}
 		must(t, UpsertSchedulerItem(ctx, tx, reissued, "tenant", append([]byte{2}, make([]byte, 31)...), now))
 		row := queryText(t, ctx, raw, "SELECT COUNT(*) || '|' || MIN(scheduler_item_id) || '|' || MIN(trigger_id) || '|' || MIN(situation_version) || '|' || MIN(lane) || '|' || MIN(priority) FROM scheduler_items")

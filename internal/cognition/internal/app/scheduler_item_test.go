@@ -1,41 +1,39 @@
 package app
 
 import (
-	"database/sql"
 	"testing"
-	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/domain"
 )
 
-func TestInsertItemKeepsTheExistingItemOnADeterministicIDCollision(t *testing.T) {
+func TestARestartedSchedulerQueuesEveryAdmittedTriggerUnderItsOwnItem(t *testing.T) {
 	t.Parallel()
 	h := newTriggerHarness(t, fastTrigger())
-	v := candidateVersion("sit-1", 1, 15)
-	h.process(v)
-	existing := scalar[string](h, "SELECT scheduler_item_id FROM scheduler_items")
-	h.exec(`INSERT INTO trigger_evaluations (
-		trigger_id, tenant_id, deployment_id, trigger_name, situation_id, situation_version, score, threshold, lane, outcome,
-		reasons_json, policy_sha256, evaluated_at
-	) VALUES ('trg-new', ?, ?, 'other', 'sit-1', 1, 10, 5, 'fast', 'admitted', X'5B5D', zeroblob(32), ?)`, testTenant, testSpecDigest, kernel.FormatTime(base))
-	colliding := &scheduler{idGen: sources.Deterministic(), clk: h.clock}
-	item := episodeledger.SchedulerItem{
-		SchedulerItemID: colliding.itemID(), Kind: episodeledger.KindStandard, TriggerID: "trg-new", SituationID: "sit-1",
-		SituationVersion: 1, Lane: "fast", Priority: 10, Status: "pending", ExpiresAt: base.Add(15 * time.Minute),
+	h.process(candidateVersion("sit-1", 1, 15))
+	restarted, err := New(Config{DeploymentID: testSpecDigest, TenantID: testTenant, Spec: h.svc.spec, Clock: h.clock})
+	if err != nil {
+		t.Fatalf("New: %v", err)
 	}
-	if item.SchedulerItemID != existing {
-		t.Fatalf("deterministic item id = %q, want the collision with %q", item.SchedulerItemID, existing)
+	h.svc = restarted
+	h.process(candidateVersion("sit-2", 1, 15))
+	if items := scalar[int](h, "SELECT COUNT(*) FROM scheduler_items"); items != 2 {
+		t.Fatalf("scheduler items = %d, want one per admitted trigger", items)
 	}
-	if err := h.db.WithTx(t.Context(), func(tx *sql.Tx) error { return colliding.insertItem(t.Context(), store.Join(tx), item, testTenant) }); err != nil {
-		t.Fatalf("insertItem on a colliding id: %v", err)
+	rows, err := h.db.QueryContext(t.Context(), "SELECT scheduler_item_id, trigger_id FROM scheduler_items")
+	if err != nil {
+		t.Fatalf("read scheduler items: %v", err)
 	}
-	if got := scalar[string](h, "SELECT trigger_id FROM scheduler_items WHERE scheduler_item_id = ?", existing); got == "trg-new" {
-		t.Fatalf("the colliding insert replaced the existing item: trigger %s", got)
+	defer rows.Close()
+	for rows.Next() {
+		var itemID, triggerID string
+		if err := rows.Scan(&itemID, &triggerID); err != nil {
+			t.Fatalf("scan scheduler item: %v", err)
+		}
+		if itemID != domain.SchedulerItemID(triggerID) {
+			t.Fatalf("scheduler item %s for trigger %s, want the id derived from the trigger", itemID, triggerID)
+		}
 	}
-	if rows := scalar[int](h, "SELECT COUNT(*) FROM scheduler_items"); rows != 1 {
-		t.Fatalf("scheduler items = %d, want 1", rows)
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate scheduler items: %v", err)
 	}
 }

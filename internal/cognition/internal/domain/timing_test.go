@@ -58,7 +58,7 @@ func TestTimingRefusesAnUnreadableDuration(t *testing.T) {
 			t.Parallel()
 			var item episodeledger.SchedulerItem
 			err := ApplyTiming(&item, trigger, time.Now(), nil)
-			if err == nil || !strings.HasPrefix(err.Error(), "parse "+field+":") {
+			if err == nil || !strings.Contains(err.Error(), "parse "+field+":") {
 				t.Fatalf("error = %v, want one naming %s", err, field)
 			}
 		})
@@ -155,9 +155,9 @@ func TestFindTriggerNamesTheTriggerItCouldNotFind(t *testing.T) {
 
 func TestSchedulerItemBindsAnAdmittedEvaluationToItsQueueRecord(t *testing.T) {
 	t.Parallel()
-	eval := Evaluation{TriggerID: "trg", SituationID: "sit", SituationVersion: 4, Lane: "deep", Score: 42}
-	item := NewSchedulerItem("sch-1", eval)
-	want := episodeledger.SchedulerItem{SchedulerItemID: "sch-1", Kind: episodeledger.KindStandard, TriggerID: "trg", SituationID: "sit", SituationVersion: 4, Lane: "deep", Priority: 42, Status: "pending"}
+	eval := Evaluation{TriggerID: "trg_abc", SituationID: "sit", SituationVersion: 4, Lane: "deep", Score: 42}
+	item := NewSchedulerItem(eval)
+	want := episodeledger.SchedulerItem{SchedulerItemID: "sch_abc", Kind: episodeledger.KindStandard, TriggerID: "trg_abc", SituationID: "sit", SituationVersion: 4, Lane: "deep", Priority: 42, Status: "pending"}
 	if item != want {
 		t.Fatalf("item = %+v, want %+v", item, want)
 	}

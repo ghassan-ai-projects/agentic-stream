@@ -9,17 +9,14 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/cognition/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-// Admit persists the trigger evaluation and creates or updates the durable
-// scheduler item. It runs inside the supplied transaction.
 func (s *scheduler) Admit(ctx context.Context, tx *store.Tx, eval domain.Evaluation, v situations.Version, tenantID, deploymentID string) error {
 	if err := s.saveEvaluation(ctx, tx, eval, tenantID, deploymentID); err != nil {
 		return fmt.Errorf("save evaluation: %w", err)
 	}
-	// Ignored or rejected evaluations do not create queue items.
+
 	if !eval.Admitted() {
 		return nil
 	}
@@ -30,14 +27,10 @@ func (s *scheduler) Admit(ctx context.Context, tx *store.Tx, eval domain.Evaluat
 	return s.enqueueOrDefer(ctx, tx, eval, item, tenantID, deploymentID)
 }
 
-// enqueueOrDefer defers the evaluation when global capacity is exhausted;
-// otherwise it supersedes stale pending items for the same Situation and
-// trigger (and their episodes, so the new episode fits the one-live-episode
-// constraint) and queues the item.
 func (s *scheduler) enqueueOrDefer(ctx context.Context, tx *store.Tx, eval domain.Evaluation, item episodeledger.SchedulerItem, tenantID, deploymentID string) error {
 	full, err := s.capacityExhausted(ctx, tx, eval, tenantID)
 	if err != nil {
-		return err
+		return fmt.Errorf("check scheduler capacity: %w", err)
 	}
 	if full {
 		return s.deferEvaluation(ctx, tx, eval, tenantID, deploymentID)
@@ -51,8 +44,6 @@ func (s *scheduler) enqueueOrDefer(ctx context.Context, tx *store.Tx, eval domai
 	return nil
 }
 
-// capacityExhausted reports a full queue, unless this version replaces a
-// stale pending item for the same Situation and trigger.
 func (s *scheduler) capacityExhausted(ctx context.Context, tx *store.Tx, eval domain.Evaluation, tenantID string) (bool, error) {
 	pending, err := tx.CountPending(ctx, tenantID)
 	if err != nil {
@@ -75,40 +66,46 @@ func (s *scheduler) deferEvaluation(ctx context.Context, tx *store.Tx, eval doma
 
 func (s *scheduler) saveEvaluation(ctx context.Context, tx *store.Tx, eval domain.Evaluation, tenantID, deploymentID string) error {
 	if err := tx.UpsertEvaluation(ctx, eval, tenantID, deploymentID, s.spec.Digest); err != nil {
-		return err
+		return fmt.Errorf("record trigger evaluation %s: %w", eval.TriggerID, err)
 	}
-	return tx.AnnounceEvaluation(ctx, eval, tenantID)
+	if err := tx.AnnounceEvaluation(ctx, eval, tenantID); err != nil {
+		return fmt.Errorf("announce trigger evaluation %s: %w", eval.TriggerID, err)
+	}
+	return nil
 }
 
 func (s *scheduler) buildItem(ctx context.Context, tx *store.Tx, eval domain.Evaluation) (episodeledger.SchedulerItem, error) {
-	item := domain.NewSchedulerItem(s.itemID(), eval)
+	item := domain.NewSchedulerItem(eval)
 	trigger, err := domain.FindTrigger(s.spec, eval.TriggerName)
 	if err != nil {
-		return item, err
+		return item, fmt.Errorf("find trigger for item %s: %w", item.SchedulerItemID, err)
 	}
 	latest, err := s.latestAdmission(ctx, tx, eval, trigger)
 	if err != nil {
 		return item, err
 	}
-	return item, domain.ApplyTiming(&item, trigger, s.clk.Now().UTC(), latest)
+	if err := domain.ApplyTiming(&item, trigger, s.clk.Now().UTC(), latest); err != nil {
+		return item, fmt.Errorf("time scheduler item %s: %w", item.SchedulerItemID, err)
+	}
+	return item, nil
 }
 
 func (s *scheduler) latestAdmission(ctx context.Context, tx *store.Tx, eval domain.Evaluation, trigger spec.Trigger) (*time.Time, error) {
 	if trigger.Cooldown == "" {
 		return nil, nil
 	}
-	return tx.LatestAdmittedTime(ctx, eval.SituationID, eval.TriggerName, eval.TriggerID)
-}
-
-func (s *scheduler) itemID() string {
-	return s.idGen.New(sources.PrefixScheduler)
+	latest, err := tx.LatestAdmittedTime(ctx, eval.SituationID, eval.TriggerName, eval.TriggerID)
+	if err != nil {
+		return nil, fmt.Errorf("read latest admission of trigger %s: %w", eval.TriggerName, err)
+	}
+	return latest, nil
 }
 
 func (s *scheduler) insertItem(ctx context.Context, tx *store.Tx, item episodeledger.SchedulerItem, tenantID string) error {
 	now := s.clk.Now()
 	key := domain.SchedulerDedupeKey(item.SituationID, item.SituationVersion, item.TriggerID)
 	if err := tx.InsertItem(ctx, item, tenantID, key, now); err != nil {
-		return fmt.Errorf("%w", err)
+		return fmt.Errorf("queue scheduler item %s for trigger %s: %w", item.SchedulerItemID, item.TriggerID, err)
 	}
 	return nil
 }
