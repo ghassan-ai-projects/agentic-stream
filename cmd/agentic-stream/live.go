@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"os"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
@@ -71,9 +73,9 @@ func (c *cleanups) run() {
 }
 
 func openRuntimeCore(ctx context.Context, dbPath string, lease time.Duration, cleanup *cleanups) (*runtimeCore, error) {
-	db, err := storage.Open(ctx, dbPath)
+	db, err := openOrCreateRuntimeDatabase(ctx, dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("open runtime database: %w", err)
+		return nil, err
 	}
 	cleanup.add(func() { _ = db.Close() })
 	core, err := newRuntimeCore(db, lease)
@@ -184,4 +186,15 @@ func pollTrace(ctx context.Context, pipeline *runtime.Pipeline, format, path str
 		case <-timer.C:
 		}
 	}
+}
+
+func openOrCreateRuntimeDatabase(ctx context.Context, dbPath string) (*storage.DB, error) {
+	if _, err := os.Stat(dbPath); errors.Is(err, os.ErrNotExist) {
+		slog.Warn("creating a new runtime database", "db", dbPath)
+	}
+	db, err := storage.Open(ctx, dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open runtime database: %w", err)
+	}
+	return db, nil
 }

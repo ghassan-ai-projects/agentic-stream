@@ -63,9 +63,6 @@ func (s *Service) runGlobalBatch(ctx context.Context, lastPosition eventlog.LogP
 	if err != nil {
 		return globalBatch{processed: processed}, err
 	}
-	if err := s.store.CheckpointWAL(ctx); err != nil {
-		return globalBatch{processed: processed}, fmt.Errorf("checkpoint WAL after global batch: %w", err)
-	}
 	return globalBatch{processed: processed, lastPosition: position}, nil
 }
 
@@ -103,9 +100,6 @@ func (s *Service) finishGlobalRun(ctx context.Context, processed int) (int, erro
 	timerCount, err := s.runDueTimersForAllPartitions(ctx)
 	if err != nil {
 		return processed, fmt.Errorf("run global timers: %w", err)
-	}
-	if err := s.store.CheckpointWAL(ctx); err != nil {
-		return processed + timerCount, fmt.Errorf("checkpoint WAL after global timers: %w", err)
 	}
 	return processed + timerCount, nil
 }

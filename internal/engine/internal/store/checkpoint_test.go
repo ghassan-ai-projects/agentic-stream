@@ -150,9 +150,6 @@ func TestFailedUnitOfWorkRollsBackWholeAndWALCheckpointSucceeds(t *testing.T) {
 	if checkpoint, err := s.LoadCheckpoint(t.Context(), 2); err != nil || checkpoint.LastPosition != 0 {
 		t.Fatalf("rolled-back checkpoint = %+v err=%v, want untouched", checkpoint, err)
 	}
-	if err := s.CheckpointWAL(t.Context()); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestRetryBusyRunsTheWorkOnceWhenItSucceeds(t *testing.T) {
@@ -210,7 +207,6 @@ func TestStoreReadsNameTheirFailureOnAClosedDatabase(t *testing.T) {
 		{"current situations", func(ctx context.Context, s Store) error {
 			return s.EachCurrentSituation(ctx, func(domain.StoredSituation) error { return nil })
 		}, "query current situations"},
-		{"WAL checkpoint", func(ctx context.Context, s Store) error { return s.CheckpointWAL(ctx) }, "checkpoint WAL"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

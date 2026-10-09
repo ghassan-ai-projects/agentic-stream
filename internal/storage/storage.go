@@ -18,6 +18,13 @@ func Open(ctx context.Context, path string) (*DB, error) {
 	return store.Open(ctx, path) //nolint:wrapcheck // The store names the failed step.
 }
 
+// OpenExisting opens the SQLite database at path and runs pending migrations,
+// refusing a path that holds no database file, so a mistyped path never
+// becomes a fresh, empty runtime.
+func OpenExisting(ctx context.Context, path string) (*DB, error) {
+	return store.OpenExisting(ctx, path) //nolint:wrapcheck // Facade operations only delegate; the store names the path.
+}
+
 // OpenFresh atomically reserves a new database path before opening SQLite, for
 // isolated replay.
 func OpenFresh(ctx context.Context, path string) (*DB, error) {

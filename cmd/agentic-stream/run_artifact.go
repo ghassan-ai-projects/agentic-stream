@@ -37,7 +37,7 @@ func exportRunArtifact(ctx context.Context, dbPath, outputDir string, manifest r
 	if dbPath == "" || outputDir == "" {
 		return "", fmt.Errorf("--db and --output are required")
 	}
-	db, err := storage.Open(ctx, dbPath)
+	db, err := storage.OpenExisting(ctx, dbPath)
 	if err != nil {
 		return "", fmt.Errorf("open runtime database: %w", err)
 	}

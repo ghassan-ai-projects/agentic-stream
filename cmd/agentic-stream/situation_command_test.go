@@ -1,6 +1,10 @@
 package main
 
 import (
+	"errors"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -58,4 +62,18 @@ func firstSituation(t *testing.T, dbPath string) (situationID, entityID string) 
 		t.Fatalf("the watch trace opened no identifiable Situation: %+v", situations)
 	}
 	return situations[0].SituationID, situations[0].EntityID
+}
+
+func TestInspectingAMistypedDatabasePathFailsWithoutCreatingIt(t *testing.T) {
+	t.Parallel()
+	missing := filepath.Join(t.TempDir(), "does-not-exist.db")
+	cmd := newSituationCommand()
+	cmd.SetOut(io.Discard)
+	cmd.SetArgs([]string{"list", "--db", missing})
+	if err := cmd.ExecuteContext(t.Context()); err == nil || !strings.Contains(err.Error(), "does-not-exist.db") {
+		t.Fatalf("situation list on a missing database = %v, want it refused naming the path", err)
+	}
+	if _, err := os.Stat(missing); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the mistyped database path now exists: %v", err)
+	}
 }

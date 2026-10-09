@@ -52,13 +52,6 @@ func (s Store) RetryBusy(ctx context.Context, fn func() error) error {
 	return storage.RetrySQLiteBusy(ctx, fn) //nolint:wrapcheck // The retry helper owns the contention error text.
 }
 
-func (s Store) CheckpointWAL(ctx context.Context) error {
-	if err := s.db.Checkpoint(ctx); err != nil && !storage.IsSQLiteBusy(err) {
-		return fmt.Errorf("checkpoint WAL: %w", err)
-	}
-	return nil
-}
-
 func (s Store) SaveDeployment(ctx context.Context, compiled *spec.CompiledSpec) error {
 	if err := spec.SaveDeployment(ctx, s.db, s.tenantID, compiled); err != nil {
 		return fmt.Errorf("save deployment: %w", err)

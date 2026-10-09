@@ -64,6 +64,14 @@ restore, and treat a missing or corrupted database as a recovery event rather
 than allowing a new empty database to masquerade as continuity. See the
 [recovery runbook](../operations/recovery.md).
 
+Operator and export commands open an existing database only: a mistyped
+`--db` fails and creates nothing. `serve` and `run-live` still create a
+database at a new path, so a fresh run directory works, but they log a
+`creating a new runtime database` warning first; every applied migration is
+logged too. The runtime opens at most eight SQLite connections and relies on
+SQLite's automatic WAL checkpoint (every 256 pages) rather than checkpointing
+after each event.
+
 ## Next reads
 
 - [Persistence contract](../contracts/persistence.md)
