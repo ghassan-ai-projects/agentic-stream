@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -31,6 +32,19 @@ func TestRunLiveProcessesTraceEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "events_ingested=") || strings.Contains(out.String(), "events_ingested=0 ") {
 		t.Fatalf("run-live reported no ingestion: %q", out.String())
+	}
+}
+
+func TestRunLiveReleasesTheOwnerLeaseSoAnImmediateRestartSucceeds(t *testing.T) {
+	t.Parallel()
+	dbPath := newMigratedDatabasePath(t)
+	for run := range 2 {
+		cmd := newRunLiveCommand()
+		cmd.SetOut(io.Discard)
+		cmd.SetArgs([]string{"--db", dbPath, "--spec", testSpec, "--trace", testTrace})
+		if err := cmd.ExecuteContext(t.Context()); err != nil {
+			t.Fatalf("run-live %d on the same database: %v", run+1, err)
+		}
 	}
 }
 
@@ -145,6 +159,21 @@ func TestCleanupsRunInReverseOrder(t *testing.T) {
 	cleanup.run()
 	if len(order) != 3 || order[0] != 2 || order[2] != 0 {
 		t.Fatalf("cleanup order = %v, want [2 1 0]", order)
+	}
+}
+
+func TestDeferredCleanupsRunEveryCleanupAddedAfterTheDefer(t *testing.T) {
+	t.Parallel()
+	var ran []int
+	func() {
+		var cleanup cleanups
+		defer cleanup.run()
+		for i := range 3 {
+			cleanup.add(func() { ran = append(ran, i) })
+		}
+	}()
+	if len(ran) != 3 || ran[0] != 2 || ran[2] != 0 {
+		t.Fatalf("deferred cleanups ran %v, want [2 1 0]", ran)
 	}
 }
 

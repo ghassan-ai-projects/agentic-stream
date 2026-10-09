@@ -74,9 +74,9 @@ func (f *liveFlags) profileOptions() effectProfileOptions {
 
 func (c *cleanups) add(fn func()) { *c = append(*c, fn) }
 
-func (c cleanups) run() {
-	for i := len(c) - 1; i >= 0; i-- {
-		c[i]()
+func (c *cleanups) run() {
+	for i := len(*c) - 1; i >= 0; i-- {
+		(*c)[i]()
 	}
 }
 
