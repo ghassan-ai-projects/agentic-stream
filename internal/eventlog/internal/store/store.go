@@ -20,9 +20,7 @@ type Unit struct {
 }
 
 func (s Store) Unit(ctx context.Context, work func(*Unit) error) error {
-	return s.DB.WithTx(ctx, func(tx *sql.Tx) error {
-		return work(&Unit{tx: tx})
-	})
+	return s.DB.WithTx(ctx, func(tx *sql.Tx) error { return work(&Unit{tx: tx}) }) //nolint:wrapcheck // The unit of work names its own failure.
 }
 
 func (u *Unit) LoadEventSchemaJSON(ctx context.Context, eventType, schemaVersion string) ([]byte, error) {
@@ -35,7 +33,7 @@ func (u *Unit) LoadEventSchemaJSON(ctx context.Context, eventType, schemaVersion
 
 func (s Store) CurrentPosition(ctx context.Context, tenantID string) (domain.LogPosition, error) {
 	var position int64
-	if err := s.DB.QueryRowContext(ctx, "SELECT COALESCE(MAX(position), 0) FROM event_log WHERE tenant_id = ?", tenantID).Scan(&position); err != nil {
+	if err := s.DB.QueryRowContext(ctx, currentPositionSQL, tenantID).Scan(&position); err != nil {
 		return 0, fmt.Errorf("read current event position for tenant %q: %w", tenantID, err)
 	}
 	return domain.LogPosition(position), nil
@@ -61,3 +59,5 @@ func scanQuarantineRecord(rows *sql.Rows) (domain.QuarantineRecord, error) {
 	record.Status = domain.OperatorStatus(record.Status, redriven)
 	return record, nil
 }
+
+const currentPositionSQL = "SELECT COALESCE(MAX(position), 0) FROM event_log WHERE tenant_id = ?"

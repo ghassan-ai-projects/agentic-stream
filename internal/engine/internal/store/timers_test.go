@@ -45,7 +45,10 @@ func TestHeartbeatTimersAreReplacedAndAcknowledgedOnce(t *testing.T) {
 	due := testNow.Add(time.Minute)
 	timer := heartbeatTimer("tmr-1", "m1", due)
 	armTimers(t, s, 0, timer, timer)
-	if partitions, err := s.TimerPartitions(t.Context()); err != nil || !slices.Equal(partitions, []int{0}) {
+	if partitions, err := s.DueTimerPartitions(t.Context(), testNow); err != nil || len(partitions) != 0 {
+		t.Fatalf("partitions = %v err=%v, want none before the timer is due", partitions, err)
+	}
+	if partitions, err := s.DueTimerPartitions(t.Context(), due); err != nil || !slices.Equal(partitions, []int{0}) {
 		t.Fatalf("partitions = %v err=%v, want [0]", partitions, err)
 	}
 	if ids := dueTimerIDs(t, s, 0, testNow); len(ids) != 0 {
@@ -65,7 +68,7 @@ func TestHeartbeatTimersAreReplacedAndAcknowledgedOnce(t *testing.T) {
 	if ids := dueTimerIDs(t, s, 0, due); len(ids) != 0 {
 		t.Fatalf("re-arming revived a fired timer: %v", ids)
 	}
-	if partitions, err := s.TimerPartitions(t.Context()); err != nil || len(partitions) != 0 {
+	if partitions, err := s.DueTimerPartitions(t.Context(), due); err != nil || len(partitions) != 0 {
 		t.Fatalf("partitions = %v err=%v, want none once every timer fired", partitions, err)
 	}
 }
@@ -95,11 +98,11 @@ func TestDueTimersAreOrderedByDueTimeAndScopedToPartitionAndTenant(t *testing.T)
 	if got := dueTimerIDs(t, s, 0, testNow.Add(time.Hour)); !slices.Equal(got, []string{"tmr-a", "tmr-b"}) {
 		t.Fatalf("due timers = %v, want due-time order", got)
 	}
-	if partitions, err := s.TimerPartitions(t.Context()); err != nil || !slices.Equal(partitions, []int{0, 3}) {
+	if partitions, err := s.DueTimerPartitions(t.Context(), testNow.Add(time.Hour)); err != nil || !slices.Equal(partitions, []int{0, 3}) {
 		t.Fatalf("partitions = %v err=%v, want [0 3]", partitions, err)
 	}
 	other := New(s.db, allowOwner, "epoch", "other", s.deploymentID)
-	if partitions, err := other.TimerPartitions(t.Context()); err != nil || len(partitions) != 0 {
+	if partitions, err := other.DueTimerPartitions(t.Context(), testNow.Add(time.Hour)); err != nil || len(partitions) != 0 {
 		t.Fatalf("another tenant's partitions = %v err=%v, want none", partitions, err)
 	}
 }

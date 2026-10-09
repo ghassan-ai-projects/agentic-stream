@@ -199,7 +199,7 @@ func TestStoreReadsNameTheirFailureOnAClosedDatabase(t *testing.T) {
 	}{
 		{"checkpoint", func(ctx context.Context, s Store) error { _, err := s.LoadCheckpoint(ctx, 1); return err }, "query checkpoint"},
 		{"applied position", func(ctx context.Context, s Store) error { _, err := s.AppliedThrough(ctx); return err }, "query applied position"},
-		{"timer partitions", func(ctx context.Context, s Store) error { _, err := s.TimerPartitions(ctx); return err }, "query timer partitions"},
+		{"timer partitions", func(ctx context.Context, s Store) error { _, err := s.DueTimerPartitions(ctx, testNow); return err }, "query timer partitions"},
 		{"current situations", func(ctx context.Context, s Store) error {
 			return s.EachCurrentSituation(ctx, func(domain.StoredSituation) error { return nil })
 		}, "query current situations"},

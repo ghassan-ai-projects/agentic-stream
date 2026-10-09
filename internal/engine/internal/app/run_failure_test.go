@@ -26,7 +26,7 @@ func TestRunGlobalNamesTheStepThatFailed(t *testing.T) {
 			t.Fatalf("err = %v, want read applied position", err)
 		}
 	})
-	t.Run("ownership lost before timers", func(t *testing.T) {
+	t.Run("ownership lost while firing a due timer", func(t *testing.T) {
 		t.Parallel()
 		var denied atomic.Bool
 		lost := errors.New("ownership lost")
@@ -46,8 +46,9 @@ func TestRunGlobalNamesTheStepThatFailed(t *testing.T) {
 		}
 		appendHeartbeat(t, log, "hb-1", 0, "")
 		runGlobal(t, service)
-		denied.Store(true)
 		appendHeartbeat(t, log, "hb-2", time.Minute, "")
+		clk.Advance(10 * time.Minute)
+		denied.Store(true)
 		processed, err := service.RunGlobal(t.Context(), nil)
 		if !errors.Is(err, lost) || processed != 0 || !strings.Contains(err.Error(), "run timers before event 2") {
 			t.Fatalf("processed=%d err=%v, want run timers before event 2 wrapping the ownership error", processed, err)
