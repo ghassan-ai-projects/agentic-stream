@@ -47,9 +47,6 @@
       "make docs-check",
       "git diff --check"
     ],
-    "design_archive": "docs/design/",
-    "implementation_audit": "docs/STREAM_IMPLEMENTATION_AUDIT_2026-08-12.md",
-    "implementation_audit_note": "Dated snapshot; validate current claims against code, tests, and migrations.",
-    "operations_readiness": "docs/design/OPERATIONS_READINESS.md"
+    "note": "Validate current claims against code, tests, and migrations."
   }
 }

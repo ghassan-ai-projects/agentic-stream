@@ -3,7 +3,7 @@
 tests and at least MIN_COVERAGE percent statement coverage.
 
 The floor is 70%, raised from 60% when the test audit closed
-(docs/test-audit-2026-10-09/, rule T8). Runs the short, race-enabled test
+(rule T8). Runs the short, race-enabled test
 suite once and reads the per-package coverage lines, so `make ci-check` does
 not run the tests twice.
 See .agents/context/quality-bar.md.

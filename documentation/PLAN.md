@@ -12,8 +12,7 @@ rules used to keep it honest.
 
 1. `documentation/` is the curated public reading path. `BAR.md` and `PLAN.md`
    are public maintainer-governance pages, not end-user tutorials.
-2. `docs/` is the working archive: authoritative design records, research,
-   implementation notes, contracts, fixtures, and historical iterations.
+2. Code, tests, schemas and migrations are the authority for behavior.
 3. Code and tests remain the authority for implemented behavior; public pages
    summarize them and link to the exact source evidence.
 4. The root README is a short product landing page. It points to
@@ -101,15 +100,12 @@ documentation/
 
 ## Migration rules
 
-- Do not delete or silently rewrite the existing `docs/` archive in this pass.
 - Do not move fixtures that are loaded by tests unless all code references are
   updated and the full suite proves the move.
 - Do not copy every historical design page into the public set. Summarize the
   stable contract and link to the archive for deep implementation detail.
 - Preserve exact archive links in pages that make design or status claims.
 - Update root `README.md` to point to the public set and label the archive.
-- Add `docs/README.md` to explain the archive’s purpose and classify its
-  current-authority, generated, historical, research, and evidence material.
 - Add mandatory open-source entrypoints: `SUPPORT.md`, `CODE_OF_CONDUCT.md`,
   and `CHANGELOG.md`. They must contain project-specific routing and must not
   promise unsupported service levels.
@@ -143,7 +139,7 @@ conceptual explanation; operations pages own procedures and failure response.
 | Durable schema | `migrations/`, storage tests | `contracts/persistence.md`, `reference/migrations.md` |
 | Runtime behavior | subsystem packages and focused/E2E tests | `overview/status.md`, design summaries |
 | Release posture | `governance/release-status.json` | status, limitations, roadmap, release |
-| Historical rationale | `docs/design-v0*`, dated audits, research | ADR/archive pages |
+| Historical rationale | dated audits, research | ADR pages |
 
 The two SituationSpec schema files and duplicated notification contract files
 must be explicitly labeled where they differ or mirror one another. The public
@@ -172,7 +168,7 @@ implemented.
 | --- | --- |
 | User-facing command behavior | `cmd/agentic-stream/main.go` and CLI tests |
 | Runtime behavior | subsystem packages (`eventlog`, `engine`, `operators`, `situations`, `cognition`, `episodes`, `evidence`, `decisions`, `policy`, `actions`, `replay`, `runtime`, `storage`, `notify`, `telemetry`) and package/E2E tests |
-| Invariants and architecture | `AGENTS.md`, `docs/design/README.md`, technical design, tests |
+| Invariants and architecture | `AGENTS.md`, `documentation/architecture/invariants.md`, tests |
 | Contracts and schemas | `internal/contractsv1`, `internal/spec`, `proto/`, `migrations/` |
 | Domain data | embedded JSON registries and their digest/parity tests |
 | Quality gates | `Makefile`, CI workflow, `CONTRIBUTING.md`, tests |

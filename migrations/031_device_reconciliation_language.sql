@@ -1,5 +1,4 @@
--- Align device_reconciliation with the device-authority ubiquitous language
--- (docs/authority-reference-module-2026-10-05/UBIQUITOUS_LANGUAGE.md):
+-- Align device_reconciliation with the device-authority ubiquitous language:
 --   * opening_boot_id always equalled boot_id, so it carried no information;
 --   * authority_epoch is the owner epoch every other table calls owner_epoch;
 --   * opened_at recorded when the device's first state was seen, not when a

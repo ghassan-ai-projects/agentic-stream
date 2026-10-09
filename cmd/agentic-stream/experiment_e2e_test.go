@@ -23,8 +23,7 @@ import (
 // The real-world-sensor experiment's Agentic Stream slice, run the way
 // RUNBOOK-G1 runs it: `serve` with a live normalized socket, a Tamoz worker on
 // the worker socket and the emulator effect profile on the device socket. The
-// other two processes are stand-ins that speak only the public contracts. See
-// docs/unfinished-work-review-2026-10-08/tasks/X01-experiment-compatibility-guard.md.
+// other two processes are stand-ins that speak only the public contracts.
 
 const (
 	experimentSpec    = "../../examples/real-world-sensor/zone-thermal-sim.situation.yaml"

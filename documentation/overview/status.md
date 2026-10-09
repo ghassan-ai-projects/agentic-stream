@@ -61,9 +61,6 @@ implementation audit and operations readiness notes remain in the working
 archive. The audit is a historical snapshot and predates the current migration
 count; code, tests, and the public status manifest are authoritative:
 
-- [`docs/STREAM_IMPLEMENTATION_AUDIT_2026-08-12.md`](../../docs/STREAM_IMPLEMENTATION_AUDIT_2026-08-12.md)
-- [`docs/design/OPERATIONS_READINESS.md`](../../docs/design/OPERATIONS_READINESS.md)
-- [`docs/design/BUILD_COMPLETION_BAR.md`](../../docs/design/BUILD_COMPLETION_BAR.md)
 
 ## Next reads
 

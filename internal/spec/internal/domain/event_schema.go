@@ -29,8 +29,7 @@ type EventSchema struct {
 }
 
 // The event-schema catalog (motor/sensor/pump/pond/bay) lives in
-// event_schema_data.json — domain DATA, not code (see
-// docs/design/impl/GO_DOMAIN_DATA_EXTRACTION.md). Loaded once at first use.
+// event_schema_data.json — domain DATA, not code. Loaded once at first use.
 var builtins = sync.OnceValues(loadRegistry)
 
 func loadRegistry() (map[string]EventSchema, error) {

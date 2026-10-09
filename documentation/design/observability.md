@@ -62,7 +62,6 @@ need approved read-only tooling for detailed record review. See the
 - Telemetry: [`internal/telemetry/`](../../internal/telemetry/)
 - Notifications: [`internal/notify/`](../../internal/notify/)
 - Notification contract: [`internal/notify/internal/domain/`](../../internal/notify/internal/domain/)
-- Runtime operations runbook: [`docs/runbooks/runtime-operations.md`](../../docs/runbooks/runtime-operations.md)
 
 ## Next reads
 

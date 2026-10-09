@@ -48,13 +48,8 @@ Maintainers can also read the [documentation plan](PLAN.md) and the
 
 ## Public docs and the working archive
 
-`documentation/` is the public reading path. `docs/` remains the working
-archive for full technical design records, research, audits, implementation
-notes, contracts, examples, and historical design iterations. The archive is
-useful evidence, but it is intentionally not the first stop for a new reader.
-
-See [the archive guide](../docs/README.md) for the relationship between the two
-trees and the source-of-truth rules.
+`documentation/` is the public reading path. Code, tests, embedded schemas,
+migrations and the worker proto are the authority for implemented behavior.
 
 ## Source of truth
 

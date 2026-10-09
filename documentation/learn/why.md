@@ -59,8 +59,8 @@ not yet qualified for use as a production maintenance service. See the
 
 ## Where the reasoning comes from
 
-The [design's root-cause analysis](../../docs/design/TECHNICAL_DESIGN.md#2-root-cause-analysis)
-and [ADR-002](../../docs/design/DECISIONS.md#adr-002-separate-continuous-and-episodic-runtimes)
+The design's root-cause analysis
+and ADR-002
 explain the continuous/episodic separation. The
 [stream design](../design/stream-processing.md) shows the implemented path.
 

@@ -22,10 +22,10 @@ that does not supply a human approval completion path.
 
 Supporting sources:
 
-- [Approval design, section 13.3](../../docs/design/TECHNICAL_DESIGN.md).
+- Approval design, section 13.3.
 - [Production HTTP composition](../api/events.go).
 - [Policy composition](../runtime/pipeline_composition.go).
-- [Operator surface roadmap gap](../../docs/research/next-level-2026-10/README.md).
+- Operator surface roadmap gap.
 - [Signed resolution tests](internal/app/approval_resolution_test.go) and [over HTTP](internal/app/approval_http_test.go).
 - [Stale approval precedence tests](internal/app/approval_resolution_test.go).
 

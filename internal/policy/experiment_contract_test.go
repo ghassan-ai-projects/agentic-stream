@@ -10,8 +10,7 @@ import (
 // bench gateway allow-lists it (arduino_gateway.py --device-policy-digest).
 // The digest covers the policy document bound to a spec digest, so changing
 // the document's rules changes the value every deployed gateway accepts.
-// Change the document only together with the gateway allow-lists. See
-// docs/unfinished-work-review-2026-10-08/EXPERIMENT_COMPATIBILITY.md (E5).
+// Change the document only together with the gateway allow-lists.
 // experimentPolicyDigests map each experiment spec digest (pinned by the spec
 // module) to the policy digest its device commands carry.
 var experimentPolicyDigests = []struct{ name, specDigest, policyDigest string }{

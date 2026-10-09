@@ -60,5 +60,5 @@ the simulator port returns arbitrary outcome JSON, and worker-aware modes are no
 into the CLI (deferred follow-up in the migration plan).
 
 - [Ubiquitous language](UBIQUITOUS_LANGUAGE.md)
-- [Migration design](../../docs/replay-reference-module-2026-10-05/DESIGN.md)
-- [Plan and rounds](../../docs/replay-reference-module-2026-10-05/PLAN.md)
+- Migration design
+- Plan and rounds

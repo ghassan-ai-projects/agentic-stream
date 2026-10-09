@@ -47,7 +47,7 @@
 
 ## Avoid
 
-- persistence outside the documented SQLite WAL choice (see `docs/design/TECHNICAL_DESIGN.md`)
+- persistence outside the documented SQLite WAL choice
 - `init()` outside configuration/bootstrap cases
 - global mutable state
 - "future-proof" interfaces or wrapper layers with no current consumer need

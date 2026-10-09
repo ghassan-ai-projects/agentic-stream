@@ -20,8 +20,7 @@ import (
 //
 // Today the loop closes only because the episode runs inside the ingest batch
 // and holds ingestion back while the worker reasons (G9). Once episodes run
-// beside ingestion (X09) this test needs material freshness (X03) to pass. See
-// docs/unfinished-work-review-2026-10-08/EXPERIMENT_DESIGN.md (G2, G9).
+// beside ingestion (X09) this test needs material freshness (X03) to pass.
 func TestExperimentClosedLoopUnderAContinuousFeed(t *testing.T) {
 	t.Parallel()
 	run := startExperiment(t, experimentOptions{specEdits: map[string]string{"slide: 30s": "slide: 1s"}, workerDelay: 2 * time.Second})

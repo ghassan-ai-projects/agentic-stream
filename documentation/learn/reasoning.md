@@ -83,8 +83,8 @@ to act on the world.
 
 Sources: [episode lifecycle](../../internal/episodeledger/lifecycle.go), [worker
 boundary](../architecture/worker-boundary.md), [cognition
-design](../design/cognition.md), and [the accepted rebinding
-decision](../../docs/design/DECISIONS.md#adr-013-re-bind-stale-episodes-to-the-live-situation-version-before-dispatch).
+design](../design/cognition.md), and the accepted rebinding
+decision.
 
 ## Next reads
 

@@ -31,4 +31,4 @@ Other modules read `episodes` and `episode_attempts` only through the ledger: `R
 `ReadAttemptStatus`, `ReadEpisodeLifecycle`, `NextDispatchableEpisode` and `ReadAdmission`. The
 admission columns have one list, `admissionColumns`, shared by the INSERT and both reads.
 
-[Migration record](../../docs/ledgers-reference-module-2026-10-06/README.md).
+Migration record.

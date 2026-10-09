@@ -24,12 +24,11 @@ accepted.
 
 When changing a boundary, identify which invariant it touches, name the durable
 record or test that proves it, and include the failure path. The focused tests
-are organized by package, while the design rationale is in
-[`docs/design/TECHNICAL_DESIGN.md`](../../docs/design/TECHNICAL_DESIGN.md).
+are organized by package.
 
 ## Snapshot binding under invariant 5
 
-The accepted [ADR-013](../../docs/design/DECISIONS.md#adr-013-re-bind-stale-episodes-to-the-live-situation-version-before-dispatch)
+The accepted ADR-013
 interprets the binding as one immutable snapshot at any instant. Before an
 attempt starts, bounded rebinding may repoint the episode to a validated live
 version. It preserves identity, admission evidence, and finite budget; it does
@@ -54,7 +53,7 @@ that owns the behavior. A test sits at the lowest layer that owns the rule; the
 module's own tests prove the rest. A change that weakens an invariant fails at
 least one test listed here, so a rename or deletion of a listed test is a
 change to the invariant's evidence and is reviewed as one. The per-module
-detail is in the [test audit](../../docs/test-audit-2026-10-09/modules/README.md).
+detail is in the test audit.
 
 ### Invariant 1: Raw events are evidence, never executable instructions.
 

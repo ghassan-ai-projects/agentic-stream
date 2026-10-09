@@ -10,8 +10,7 @@ import (
 // Tamoz vendors the notification goldens byte for byte
 // (gems/tamoz-stream/contracts/notification-goldens-v1.json) and the
 // real-world-sensor experiment runs Tamoz against this runtime's SSE stream.
-// Change the goldens only together with that copy. See
-// docs/unfinished-work-review-2026-10-08/EXPERIMENT_COMPATIBILITY.md (E9).
+// Change the goldens only together with that copy.
 const notificationGoldensSHA256 = "4ddf669678dd8c10053986c07879fe85e92d6fe4dbb6e553a45f1328fa923f03"
 
 func TestExperimentNotificationGoldensAreUnchanged(t *testing.T) {

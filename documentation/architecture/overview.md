@@ -75,8 +75,6 @@ behavior before any broker or distributed scheduler is introduced.
 
 - Runtime composition: [`internal/runtime/pipeline.go`](../../internal/runtime/pipeline.go)
 - CLI wiring: [`cmd/agentic-stream/main.go`](../../cmd/agentic-stream/main.go)
-- Detailed design record: [`docs/design/TECHNICAL_DESIGN.md`](../../docs/design/TECHNICAL_DESIGN.md)
-- Dated implementation audit snapshot (not current migration authority): [`docs/STREAM_IMPLEMENTATION_AUDIT_2026-08-12.md`](../../docs/STREAM_IMPLEMENTATION_AUDIT_2026-08-12.md)
 - Repository map: [repository-map.md](repository-map.md)
 
 ## Next reads

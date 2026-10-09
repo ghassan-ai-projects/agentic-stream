@@ -28,9 +28,7 @@ Every procedure is labeled:
 
 ## Source evidence
 
-The longer working runbook is [`docs/runbooks/runtime-operations.md`](../../docs/runbooks/runtime-operations.md).
-It is an engineering archive, so this public set calls out current code
-boundaries explicitly.
+This public set calls out current code boundaries explicitly.
 
 ## Next reads
 

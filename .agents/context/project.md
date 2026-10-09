@@ -4,12 +4,12 @@
 
 Agentic Stream is a streaming-native agent runtime. It continuously converts unbounded evidence into durable, versioned Situations and starts bounded agent episodes only when a deterministic cognitive scheduler decides reasoning is useful. Agents return typed Decisions and Action Intents; a separate deterministic policy and action plane decides what may execute.
 
-The design is implementation-ready and committed under `docs/`; the curated public documentation is under `documentation/`. The ten product invariants are release-blocking.
+The design is implementation-ready; the curated public documentation is under `documentation/`. The ten product invariants are release-blocking.
 
 ## Current State
 
-- Design baseline v1 is complete under `docs/design/`; v0 and v0.1 iterations are archived under `docs/design-v0/` and `docs/design-v0.1/`; notification mirrors are in `docs/contracts/`; runtime contract sources are `proto/agenticstream/runtime/v1/runtime-v1.proto`, `internal/contractsv1/`, `internal/spec/internal/domain/schema.json`, `proto/`, and `migrations/`; research reports are in `docs/research/`.
-- `docs/` is a dated archive: no code, test or build step reads from it. Specs shared by modules live in `examples/`; data private to one module lives in that module's `testdata/`.
+- Design baseline v1 is complete; runtime contract sources are `proto/agenticstream/runtime/v1/runtime-v1.proto`, `internal/contractsv1/`, `internal/spec/internal/domain/schema.json`, `proto/`, and `migrations/`.
+- Specs shared by modules live in `examples/`; data private to one module lives in that module's `testdata/`.
 - Module path `github.com/ghassan-ai-projects/agentic-stream` is set.
 - The CLI lives in `cmd/agentic-stream/`; runtime packages live under `internal/`; generated worker stubs live under `proto/agenticstream/runtime/v1/`.
 - The current implementation includes deterministic replay, live JSONL processing, bounded cognition/episodes, policy/actions, worker/evidence boundaries, notifications, telemetry, and storage recovery. The remaining release posture is documented in `documentation/governance/release-status.json`.

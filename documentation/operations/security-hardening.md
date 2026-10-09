@@ -34,7 +34,7 @@ production deployment.
 
 Environment release evidence is not complete in the current snapshot. See
 [`documentation/governance/release-status.json`](../governance/release-status.json)
-and the archived [operations readiness](../../docs/design/OPERATIONS_READINESS.md).
+and the archived operations readiness.
 
 ## Reporting
 
