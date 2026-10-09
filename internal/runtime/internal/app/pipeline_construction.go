@@ -1,6 +1,8 @@
 package app
 
 import (
+	"time"
+
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
@@ -25,9 +27,11 @@ type PipelineDependencies struct {
 	Sources      *transport.Sources
 	Clock        sources.Clock
 	TenantID     string
+
+	MaintenanceInterval time.Duration
 }
 
 // NewPipeline joins the supplied planes into one owner-scoped orchestrator.
 func NewPipeline(d PipelineDependencies) *Pipeline {
-	return &Pipeline{log: d.Log, engine: d.Engine, admission: d.Admission, runner: d.Runner, dispatcher: d.Dispatcher, watch: d.Watch, telemetry: d.Telemetry, transactions: d.Transactions, sources: d.Sources, clk: d.Clock, tenantID: d.TenantID}
+	return &Pipeline{log: d.Log, engine: d.Engine, admission: d.Admission, runner: d.Runner, dispatcher: d.Dispatcher, watch: d.Watch, telemetry: d.Telemetry, transactions: d.Transactions, sources: d.Sources, clk: d.Clock, tenantID: d.TenantID, maintenanceInterval: d.MaintenanceInterval}
 }

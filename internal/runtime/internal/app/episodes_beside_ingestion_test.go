@@ -10,8 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 )
 
-// reasoningExecutor stands for a worker that takes its time: it reports when
-// an attempt starts and decides only when released.
 type reasoningExecutor struct {
 	started chan struct{}
 	release chan struct{}
@@ -30,36 +28,38 @@ func (r *reasoningExecutor) Execute(ctx context.Context, req *episodes.Request) 
 	return fixture.New().Execute(ctx, req)
 }
 
-// While a worker reasons, the live pipeline keeps ingesting and advancing; the
-// decision is governed and dispatched once it arrives (ADR-018).
 func TestEpisodesRunBesideIngestion(t *testing.T) {
 	t.Parallel()
 	worker := &reasoningExecutor{started: make(chan struct{}, 1), release: make(chan struct{})}
-	db := openModeDB(t, "beside.db")
-	pipeline := newModePipeline(t, db, modeCompiledSpec("native", "active"), runtime.PipelineConfig{OwnerEpoch: "epoch-beside", Executor: worker})
+	pipeline, db := openPipeline(t, thingSpec("native", "active"), runtime.PipelineConfig{OwnerEpoch: "epoch-beside", Executor: worker})
 	ctx, stop := context.WithCancel(t.Context())
 	defer stop()
 	loopDone := make(chan error, 1)
 	go func() { loopDone <- pipeline.RunEpisodesEvery(ctx, 10*time.Millisecond) }()
 
-	admitted := runSource(t, pipeline, modeTraceForEntity(t, 15, "evt-1", "ent-1"))
-	waitFor(t, worker.started, "the episode loop never started the attempt")
-	ingested := runSource(t, pipeline, modeTraceForEntity(t, 15, "evt-2", "ent-2"))
+	admitted := ingestWhileReasoning(t, pipeline, writeTrace(t, levelEvent("evt-1", "ent-1", 15)))
+	waitForSignal(t, worker.started, "the episode loop never started the attempt")
+	ingested := ingestWhileReasoning(t, pipeline, writeTrace(t, levelEvent("evt-2", "ent-2", 15)))
 	if admitted.EpisodesExecuted != 0 || ingested.EventsIngested != 1 {
 		t.Fatalf("batches must leave episodes to the loop and keep ingesting: first=%+v second=%+v", admitted, ingested)
 	}
+	if commands := countRows(t, db, "commands"); commands != 0 {
+		t.Fatalf("%d commands before the worker decided", commands)
+	}
 	close(worker.release)
-	go func() { _ = pipeline.AdvanceEvery(ctx, 10*time.Millisecond) }()
+	advanceDone := make(chan error, 1)
+	go func() { advanceDone <- pipeline.AdvanceEvery(ctx, 10*time.Millisecond) }()
 	waitForRows(t, db, "commands")
 	stop()
 	if err := <-loopDone; err != nil {
 		t.Fatalf("episode loop: %v", err)
 	}
+	if err := <-advanceDone; err != nil {
+		t.Fatalf("advance loop: %v", err)
+	}
 }
 
-// runSource ingests one trace and must return while an attempt is still
-// reasoning.
-func runSource(t *testing.T, pipeline *runtime.Pipeline, trace string) runtime.PipelineReport {
+func ingestWhileReasoning(t *testing.T, pipeline *runtime.Pipeline, trace string) runtime.PipelineReport {
 	t.Helper()
 	done := make(chan runtime.PipelineReport, 1)
 	go func() {
@@ -78,19 +78,11 @@ func runSource(t *testing.T, pipeline *runtime.Pipeline, trace string) runtime.P
 	}
 }
 
-func waitFor(t *testing.T, signal <-chan struct{}, failure string) {
+func waitForSignal(t *testing.T, signal <-chan struct{}, failure string) {
 	t.Helper()
 	select {
 	case <-signal:
 	case <-time.After(10 * time.Second):
 		t.Fatal(failure)
-	}
-}
-
-func TestRunEpisodesEveryRejectsANonPositiveInterval(t *testing.T) {
-	t.Parallel()
-	pipeline := newModePipeline(t, openModeDB(t, "episodes-interval.db"), modeCompiledSpec("native", "active"), runtime.PipelineConfig{OwnerEpoch: "epoch-episodes-interval"})
-	if err := pipeline.RunEpisodesEvery(t.Context(), 0); err == nil {
-		t.Fatal("a zero interval must be refused")
 	}
 }

@@ -72,7 +72,7 @@ Source: [the governed action path](safe-actions.md).
 | Intents/Commands | Zero | No episode proposed work; no effect was dispatched |
 
 Zero actions is the expected result. The separate
-[synthetic end-to-end test](../../internal/runtime/internal/app/pipeline_e2e_test.go)
+[synthetic end-to-end test](../../internal/runtime/internal/app/pipeline_end_to_end_test.go)
 `TestPipelineCompletesDecisionToSimulatedOutcome` proves the later path with a
 small test-specific spec, fake executor, and simulated effector. It does not
 certify a physical motor or ticket provider.

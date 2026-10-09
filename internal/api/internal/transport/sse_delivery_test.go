@@ -11,7 +11,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/notify"
 )
 
-func TestFilteredDuplicatePageStillAdvancesResumeCursor(t *testing.T) {
+func TestAFilteredPageStillAdvancesTheResumeCursor(t *testing.T) {
 	t.Parallel()
 	w := httptest.NewRecorder()
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/events", nil)

@@ -1,7 +1,6 @@
 package composition_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
@@ -16,7 +15,8 @@ import (
 )
 
 func TestPipelineRunsNormalizedBatchThroughAllPlanes(t *testing.T) {
-	ctx := context.Background()
+	t.Parallel()
+	ctx := t.Context()
 	db := storagetest.OpenTemp(t)
 
 	compiled, err := spec.CompileFile(ctx, "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
@@ -40,6 +40,7 @@ func TestPipelineRunsNormalizedBatchThroughAllPlanes(t *testing.T) {
 }
 
 func TestPipelineSurvivesWatchExpressionEvaluationError(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	db := storagetest.OpenTemp(t)
 
@@ -78,5 +79,38 @@ func TestPipelineSurvivesWatchExpressionEvaluationError(t *testing.T) {
 	}
 	if status != "active" || remaining != 1 {
 		t.Fatalf("watch after pipeline batch = status %q, remaining fires %d; want active, 1", status, remaining)
+	}
+}
+
+func TestPipelineRecordsTheConfiguredCostCeilingsBeforeAnyWork(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	compiled, err := spec.CompileFile(t.Context(), "../../../../docs/design/examples/predictive-maintenance.situation.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	global, tenant, kill := uint64(500), uint64(200), true
+	if _, err := runtime.NewPipeline(t.Context(), runtime.PipelineConfig{DB: db, Spec: compiled, TenantID: "tenant-a", GlobalCostCeiling: &global, TenantCostCeiling: &tenant, CostKillSwitch: &kill}); err != nil {
+		t.Fatal(err)
+	}
+	limits := map[string]int{}
+	rows, err := db.QueryContext(t.Context(), "SELECT scope_key, max_micro FROM cost_limits")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var scope string
+		var max int
+		if err := rows.Scan(&scope, &max); err != nil {
+			t.Fatal(err)
+		}
+		limits[scope] = max
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(limits) != 2 || limits["global"] != 500 || limits["tenant:tenant-a"] != 200 {
+		t.Fatalf("cost limits = %v, want global 500 and tenant:tenant-a 200", limits)
 	}
 }

@@ -1,7 +1,6 @@
 package app_test
 
 import (
-	"context"
 	"os"
 	"testing"
 
@@ -19,11 +18,12 @@ import (
 // AGENTIC_STREAM_WALKTHROUGH names the output database. See
 // docs/walkthrough-end-to-end-2026-10-06/README.md.
 func TestWalkthrough(t *testing.T) {
+	t.Parallel()
 	out := os.Getenv("AGENTIC_STREAM_WALKTHROUGH")
 	if out == "" {
 		t.Skip("set AGENTIC_STREAM_WALKTHROUGH=<db path> to run the walkthrough")
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 	_ = os.Remove(out) //nolint:gosec // The output path is chosen by the person running the walkthrough.
 	db, err := storagetest.Open(ctx, out)
 	if err != nil {

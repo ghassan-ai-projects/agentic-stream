@@ -1,60 +1,54 @@
-package runtime
+package runtime_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
-func TestServiceReadinessFollowsRecoveryAndClose(t *testing.T) {
+func TestServiceFacadeIsReadyOnlyBetweenStartAndClose(t *testing.T) {
+	t.Parallel()
 	db := storagetest.OpenTemp(t)
-
-	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-	epoch := "epoch-service"
-	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-service", Lease: time.Minute, Now: func() time.Time { return now }}
-	ledger, ledgerErr := evidence.New(evidence.Config{Ledger: &evidence.LedgerConfig{OwnerCheck: owner.Assert, DB: db, LeaseOwner: "instance-service", RuntimeEpoch: epoch, Lease: time.Minute}})
-	if ledgerErr != nil {
-		t.Fatal(ledgerErr)
-	}
-	service, err := NewService(owner, ledger, epoch)
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-service", Lease: time.Minute}
+	ledger, err := evidence.New(evidence.Config{Ledger: &evidence.LedgerConfig{OwnerCheck: owner.Assert, DB: db, LeaseOwner: "instance-service", RuntimeEpoch: "epoch-service", Lease: time.Minute}})
 	if err != nil {
-		t.Fatalf("new service: %v", err)
+		t.Fatal(err)
 	}
-	if err := service.Ready(); err == nil {
+	service, err := runtime.NewService(owner, ledger, "epoch-service")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if service.Ready() == nil {
 		t.Fatal("service was ready before start")
 	}
 	if _, err := service.Start(t.Context()); err != nil {
-		t.Fatalf("start service: %v", err)
+		t.Fatalf("start: %v", err)
 	}
 	if err := service.Ready(); err != nil {
-		t.Fatalf("service not ready after start: %v", err)
+		t.Fatalf("not ready after start: %v", err)
 	}
-	if err := service.Close(context.Background()); err != nil {
-		t.Fatalf("close service: %v", err)
+	if err := service.Close(t.Context()); err != nil {
+		t.Fatalf("close: %v", err)
 	}
-	if err := service.Ready(); err == nil {
+	if service.Ready() == nil {
 		t.Fatal("service remained ready after close")
 	}
 }
 
-func TestReadinessFacadeRejectsMissingConfiguration(t *testing.T) {
+func TestServiceFacadeRequiresItsConfigurationAndToleratesAnAbsentInstance(t *testing.T) {
 	t.Parallel()
-	if _, err := NewService(nil, nil, ""); err == nil {
+	if _, err := runtime.NewService(nil, nil, ""); err == nil {
 		t.Fatal("missing service dependencies accepted")
 	}
-	var service *Service
+	var service *runtime.Service
 	if _, err := service.Start(t.Context()); err == nil {
 		t.Fatal("nil service started")
 	}
-	if service.Ready() == nil {
-		t.Fatal("nil service ready")
-	}
-	if err := service.Close(t.Context()); err != nil {
-		t.Fatal(err)
+	if service.Ready() == nil || service.Close(t.Context()) != nil {
+		t.Fatal("a nil service must report not ready and close without error")
 	}
 }

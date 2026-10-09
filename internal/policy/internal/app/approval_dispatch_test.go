@@ -5,12 +5,14 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 )
 
 // Maintenance drains committed command outbox work without new sensor input.
 func TestACommittedApprovalDispatchesWithoutNewSensorInput(t *testing.T) {
 	t.Parallel()
-	f := openApprovalHTTP(t)
+	f := openApprovalHTTP(t, func(cfg *runtime.PipelineConfig) { cfg.MaintenanceInterval = 10 * time.Millisecond })
 	body := signedApproval(t, f, true)
 	if rec := approvalRequest(t, f.handler, http.MethodPost, "/v1/approvals/"+f.approvalID, body); rec.Code != http.StatusOK {
 		t.Fatalf("POST = %d %s", rec.Code, rec.Body.String())

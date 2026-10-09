@@ -39,7 +39,7 @@ func (p *workerProbe) ConnectWorker(_ context.Context, secret []byte) (episodes.
 func (p *workerProbe) Errors() <-chan error { return p.errors }
 func (p *workerProbe) Close() error         { return p.step("close") }
 
-func TestWorkerSetupOrderAndFailureCleanup(t *testing.T) {
+func TestWorkerSetupOrderAndCleanupAfterAFailedStep(t *testing.T) {
 	t.Parallel()
 	sentinel := errors.New("setup failed")
 	for _, tc := range []struct {
@@ -56,6 +56,7 @@ func TestWorkerSetupOrderAndFailureCleanup(t *testing.T) {
 		{"worker failure", domain.WorkerOptions{WorkerSocket: "worker", EvidenceSocket: "evidence"}, "worker", []string{"evidence", "worker", "close"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			p := &workerProbe{fail: tc.fail, sentinel: sentinel, executor: fixture.New(), errors: make(chan error, 1)}
 			r, err := NewWorkerRuntime(t.Context(), tc.cfg, p)
 			if !reflect.DeepEqual(p.calls, tc.calls) {
@@ -84,7 +85,7 @@ func TestWorkerSetupOrderAndFailureCleanup(t *testing.T) {
 	}
 }
 
-func TestWorkerLifecycleHandlesAbsentResources(t *testing.T) {
+func TestAnAbsentWorkerRuntimeHasNoErrorsAndClosesCleanly(t *testing.T) {
 	t.Parallel()
 	for _, r := range []*WorkerRuntime{nil, {}} {
 		if r.Errors() != nil || r.Close() != nil {

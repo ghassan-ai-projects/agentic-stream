@@ -15,6 +15,13 @@ func OwnerHeartbeatInterval(lease time.Duration) time.Duration {
 	return interval
 }
 
+func MaintenanceInterval(configured time.Duration) time.Duration {
+	if configured <= 0 {
+		return time.Second
+	}
+	return configured
+}
+
 // NormalLiveSocketShutdown requires the source parent to be terminated.
 func NormalLiveSocketShutdown(parentErr, err error) bool {
 	return parentErr != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
