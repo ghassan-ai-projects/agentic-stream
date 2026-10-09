@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strings"
 	"sync"
 	"testing"
 )
@@ -47,5 +48,25 @@ func TestGeneratorsAreSafeForConcurrentUse(t *testing.T) {
 	// 8 goroutines x 100 iterations x 2 ids: the next one is call 1601 (0x641).
 	if got := deterministic.New(PrefixOutcome); got != "out_0000000000000641" {
 		t.Fatalf("generator did not count every concurrent call: %q", got)
+	}
+}
+
+func TestIdentityPrefixesAreDistinctAndEndWithAnUnderscore(t *testing.T) {
+	t.Parallel()
+
+	prefixes := []string{
+		PrefixEvent, PrefixSituation, PrefixEpisode, PrefixAttempt, PrefixScheduler, PrefixTrigger,
+		PrefixDecision, PrefixIntent, PrefixApproval, PrefixCommand, PrefixOutcome, PrefixPolicy,
+		PrefixVerification, PrefixLease, PrefixReconsideration, PrefixAudit, PrefixShadow,
+	}
+	seen := map[string]bool{}
+	for _, prefix := range prefixes {
+		if !strings.HasSuffix(prefix, "_") || len(prefix) < 2 {
+			t.Errorf("prefix %q must name a kind and end with an underscore", prefix)
+		}
+		if seen[prefix] {
+			t.Errorf("prefix %q names two identity spaces", prefix)
+		}
+		seen[prefix] = true
 	}
 }

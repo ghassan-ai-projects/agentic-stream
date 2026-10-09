@@ -1,27 +1,18 @@
 package domain_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/contractstest"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1/internal/domain"
 )
 
-// Device wire schemas for the serial effector boundary (Real-World Sensor
-// HIL-0, Phase 03 Task 3.1). The contract is the single source of truth shared
-// with the gateway/emulator/firmware repos. These tests pin the golden frames
-// and prove the codec fails closed on malformed, oversized, wrong-version,
-// unknown-type, and unknown-field frames — an invalid frame must never validate
-// into a usable record.
-//
-// The frames themselves are loaded by contractstest from committed fixtures
-// under conformance/v1/, so the schema pinning here and the copies the other
-// repos test against are all one source. See conformance/README.md.
-
 func TestDeviceWireGoldenFramesValidate(t *testing.T) {
 	t.Parallel()
 	for _, messageType := range contractstest.MessageTypes {
-		messageType := messageType
 		t.Run(messageType, func(t *testing.T) {
 			t.Parallel()
 			schema, ok := domain.SchemaForMessageType(messageType)
@@ -42,7 +33,6 @@ func TestDeviceWireFramesFailClosed(t *testing.T) {
 		t.Fatal("expected a non-empty invalid conformance corpus")
 	}
 	for _, frame := range frames {
-		frame := frame
 		t.Run(frame.Name, func(t *testing.T) {
 			t.Parallel()
 			schema, ok := domain.SchemaForMessageType(frame.MessageType)
@@ -51,6 +41,57 @@ func TestDeviceWireFramesFailClosed(t *testing.T) {
 			}
 			if err := domain.Validate(schema, frame.Doc); err == nil {
 				t.Fatalf("mutated %s frame must fail closed, but validated", frame.Name)
+			}
+		})
+	}
+}
+
+func TestTheInvalidCorpusExercisesEveryMessageType(t *testing.T) {
+	t.Parallel()
+	covered := map[string]int{}
+	for _, frame := range contractstest.InvalidFrames() {
+		covered[frame.MessageType]++
+	}
+	for _, messageType := range contractstest.MessageTypes {
+		if covered[messageType] == 0 {
+			t.Errorf("no invalid conformance frame breaks a %s record", messageType)
+		}
+	}
+}
+
+func TestSchemaForMessageTypeKnowsOnlyTheFourDeviceRecords(t *testing.T) {
+	t.Parallel()
+	want := map[string]domain.SchemaName{
+		"command": domain.SchemaDeviceCommand, "receipt": domain.SchemaDeviceReceipt,
+		"result": domain.SchemaDeviceResult, "state": domain.SchemaDeviceState,
+	}
+	for messageType, schema := range want {
+		if got, ok := domain.SchemaForMessageType(messageType); !ok || got != schema {
+			t.Errorf("SchemaForMessageType(%q) = %q, %v; want %q", messageType, got, ok, schema)
+		}
+	}
+	for _, unknown := range []string{"", "Command", "heartbeat", "device-command"} {
+		if got, ok := domain.SchemaForMessageType(unknown); ok || got != "" {
+			t.Errorf("SchemaForMessageType(%q) = %q, %v; want no schema", unknown, got, ok)
+		}
+	}
+}
+
+func TestValidConformanceFramesAreByteExactCanonicalJSON(t *testing.T) {
+	t.Parallel()
+	for _, messageType := range contractstest.MessageTypes {
+		t.Run(messageType, func(t *testing.T) {
+			t.Parallel()
+			raw, err := os.ReadFile(filepath.Join("conformance", "v1", "valid", messageType+".json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			canonical, err := canonicaljson.Marshal(contractstest.ValidFrame(messageType))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := string(canonical) + "\n"; string(raw) != want {
+				t.Fatalf("%s.json is not the canonical wire form:\n got %q\nwant %q", messageType, raw, want)
 			}
 		})
 	}

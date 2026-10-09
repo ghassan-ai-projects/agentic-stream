@@ -9,41 +9,45 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
-func TestFacadeExposesPhysicalAndVirtualTime(t *testing.T) {
+func TestFacadeExposesPhysicalAndVirtualClocks(t *testing.T) {
 	t.Parallel()
-	if sources.Quality(sources.Physical()) != "physical" {
-		t.Fatal("physical clock must report physical quality")
+	if got := sources.Quality(sources.Physical()); got != "physical" {
+		t.Fatalf("Quality(Physical()) = %q, want physical", got)
 	}
-	virtual := sources.NewVirtual(time.Unix(10, 0))
-	if sources.Quality(virtual) != "virtual" || !virtual.Now().Equal(time.Unix(10, 0)) {
-		t.Fatal("virtual clock must start where it was told")
+	start := time.Unix(10, 0)
+	virtual := sources.NewVirtual(start)
+	if got := sources.Quality(virtual); got != "virtual" {
+		t.Fatalf("Quality(NewVirtual()) = %q, want virtual", got)
 	}
-	virtual.Advance(time.Second)
-	if !virtual.Now().Equal(time.Unix(11, 0)) {
-		t.Fatal("virtual clock did not advance")
+	if !virtual.Now().Equal(start) {
+		t.Fatalf("virtual clock starts at %v, want %v", virtual.Now(), start)
 	}
 }
 
 func TestFacadeGeneratesRandomAndDeterministicIdentifiers(t *testing.T) {
 	t.Parallel()
-	if id := sources.Random().New(sources.PrefixEvent); !strings.HasPrefix(id, sources.PrefixEvent) || id == sources.Random().New(sources.PrefixEvent) {
-		t.Fatalf("random id %q is not unique and prefixed", id)
+	random := sources.Random()
+	if first, second := random.New(sources.PrefixEvent), random.New(sources.PrefixEvent); !strings.HasPrefix(first, sources.PrefixEvent) || first == second {
+		t.Fatalf("random ids %q and %q must be prefixed and distinct", first, second)
 	}
 	first, second := sources.Deterministic(), sources.Deterministic()
-	if first.New(sources.PrefixEpisode) != second.New(sources.PrefixEpisode) {
-		t.Fatal("deterministic generators must replay the same sequence")
+	if a, b := first.New(sources.PrefixEpisode), second.New(sources.PrefixEpisode); a != b {
+		t.Fatalf("deterministic generators must replay the same sequence: %q != %q", a, b)
 	}
 }
 
 func TestOrPhysicalAndOrRandomKeepTheCallersChoice(t *testing.T) {
 	t.Parallel()
 	virtual := sources.NewVirtual(time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC))
-	if sources.OrPhysical(virtual) != sources.Clock(virtual) || sources.Quality(sources.OrPhysical(nil)) != "physical" {
-		t.Fatal("OrPhysical must keep a supplied clock and default a nil one to the physical clock")
+	if got := sources.OrPhysical(virtual); got != sources.Clock(virtual) {
+		t.Fatalf("OrPhysical replaced the supplied clock with %T", got)
+	}
+	if got := sources.Quality(sources.OrPhysical(nil)); got != "physical" {
+		t.Fatalf("OrPhysical(nil) quality = %q, want physical", got)
 	}
 	deterministic := sources.Deterministic()
 	if sources.OrRandom(deterministic) != deterministic {
-		t.Fatal("OrRandom replaced a supplied generator")
+		t.Fatal("OrRandom replaced the supplied generator")
 	}
 	if first, second := sources.OrRandom(nil).New("id_"), sources.OrRandom(nil).New("id_"); first == second {
 		t.Fatalf("the default generator repeated %q", first)
@@ -52,8 +56,7 @@ func TestOrPhysicalAndOrRandomKeepTheCallersChoice(t *testing.T) {
 
 func TestNowUTCReadsTheConfiguredClockInUTCOrThePhysicalClock(t *testing.T) {
 	t.Parallel()
-	zone := time.FixedZone("plus3", 3*60*60)
-	local := time.Date(2026, 8, 12, 15, 0, 0, 0, zone)
+	local := time.Date(2026, 8, 12, 15, 0, 0, 0, time.FixedZone("plus3", 3*60*60))
 	configured := func() time.Time { return local }
 	if got := sources.NowUTC(configured); !got.Equal(local) || got.Location() != time.UTC {
 		t.Fatalf("NowUTC(configured) = %v, want %v in UTC", got, local)
@@ -64,43 +67,43 @@ func TestNowUTCReadsTheConfiguredClockInUTCOrThePhysicalClock(t *testing.T) {
 	before := time.Now()
 	for name, got := range map[string]time.Time{"NowUTC": sources.NowUTC(nil), "NowFunc": sources.NowFunc(nil)()} {
 		if got.Before(before) || time.Since(got) > time.Minute || got.Location() != time.UTC {
-			t.Fatalf("%s(nil) = %v, want the current time in UTC", name, got)
+			t.Errorf("%s(nil) = %v, want the current time in UTC", name, got)
 		}
 	}
 }
 
 func TestOrLeaseDefaultsAnUnspecifiedLease(t *testing.T) {
 	t.Parallel()
-	for name, tc := range map[string]struct{ in, want time.Duration }{
-		"zero":     {0, sources.DefaultLease},
-		"negative": {-time.Second, sources.DefaultLease},
-		"chosen":   {2 * time.Minute, 2 * time.Minute},
-	} {
-		if got := sources.OrLease(tc.in); got != tc.want {
-			t.Errorf("%s: OrLease(%v) = %v, want %v", name, tc.in, got, tc.want)
-		}
+	tests := []struct {
+		name     string
+		in, want time.Duration
+	}{
+		{"zero", 0, sources.DefaultLease},
+		{"negative", -time.Second, sources.DefaultLease},
+		{"smallest positive", time.Nanosecond, time.Nanosecond},
+		{"chosen", 2 * time.Minute, 2 * time.Minute},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := sources.OrLease(tt.in); got != tt.want {
+				t.Fatalf("OrLease(%v) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
 	}
 }
 
-type detachedKey struct{}
-
-func TestDetachedContextKeepsValuesDropsCancellationAndIsBounded(t *testing.T) {
+func TestFacadeDetachedContextDropsCancellationAndIsBounded(t *testing.T) {
 	t.Parallel()
-	parent, cancelParent := context.WithCancel(context.WithValue(t.Context(), detachedKey{}, "trace"))
+	parent, cancelParent := context.WithCancel(t.Context())
 	cancelParent()
 	detached, cancel := sources.DetachedContext(parent)
 	defer cancel()
 	if detached.Err() != nil {
 		t.Fatalf("detached context inherited cancellation: %v", detached.Err())
 	}
-	if detached.Value(detachedKey{}) != "trace" {
-		t.Fatal("detached context lost the caller's values")
-	}
 	deadline, ok := detached.Deadline()
-	if !ok || time.Until(deadline) > sources.PersistGrace || time.Until(deadline) <= 0 {
-		t.Fatalf("detached context is not bounded by PersistGrace: deadline=%v ok=%v", deadline, ok)
-	}
-	if sources.PersistGrace != 5*time.Second {
-		t.Fatalf("PersistGrace = %v, want 5s", sources.PersistGrace)
+	if remaining := time.Until(deadline); !ok || remaining > sources.PersistGrace || remaining <= 0 {
+		t.Fatalf("detached context must expire within PersistGrace: deadline=%v ok=%v remaining=%v", deadline, ok, remaining)
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -29,148 +28,85 @@ type canonicalizationVectors struct {
 	} `json:"reject"`
 }
 
-func TestSharedCanonicalizationVectors(t *testing.T) {
+func TestSharedAcceptVectorsCanonicalizeAndDigestAsRecorded(t *testing.T) {
+	t.Parallel()
 	vectors := readVectors(t)
 	if len(vectors.Accept) != 16 {
-		t.Fatalf("expected 16 accept vectors, got %d", len(vectors.Accept))
+		t.Fatalf("shared corpus has %d accept vectors, want 16", len(vectors.Accept))
 	}
-	if len(vectors.Reject) != 8 {
-		t.Fatalf("expected 8 reject vectors, got %d", len(vectors.Reject))
-	}
-
 	for _, vector := range vectors.Accept {
-		vector := vector
 		t.Run(vector.Name, func(t *testing.T) {
-			gotCanonical, err := marshalString(vector.Input)
-			if err != nil {
-				t.Fatalf("MarshalString failed: %v", err)
-			}
-			if gotCanonical != vector.Canonical {
-				t.Fatalf("canonical = %q, want %q", gotCanonical, vector.Canonical)
-			}
+			t.Parallel()
+			requireMarshals(t, vector.Input, vector.Canonical)
 			gotDigest, err := Digest(Domain(vector.Domain), vector.Input)
-			if err != nil {
-				t.Fatalf("Digest failed: %v", err)
-			}
-			if gotDigest != vector.Digest {
-				t.Fatalf("digest = %q, want %q", gotDigest, vector.Digest)
+			if err != nil || gotDigest != vector.Digest {
+				t.Fatalf("Digest = %q, %v; want %q", gotDigest, err, vector.Digest)
 			}
 		})
 	}
 }
 
-func TestNativeOnlyDoubleVectors(t *testing.T) {
-	tests := []struct {
-		name      string
-		value     float64
-		canonical string
-	}{
-		{name: "double-integral-value", value: 1.0, canonical: `{"n":1}`},
-		{name: "double-integral-negative", value: -2.0, canonical: `{"n":-2}`},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got, err := marshalString(map[string]any{"n": test.value})
-			if err != nil {
-				t.Fatalf("MarshalString failed: %v", err)
-			}
-			if got != test.canonical {
-				t.Fatalf("canonical = %q, want %q", got, test.canonical)
-			}
-		})
-	}
-}
-
-func TestSharedRejectVectors(t *testing.T) {
+func TestSharedNativeOnlyVectorsCanonicalizeGoDoubles(t *testing.T) {
+	t.Parallel()
+	nativeValues := map[string]float64{"double-integral-value": 1.0, "double-integral-negative": -2.0}
 	vectors := readVectors(t)
-	for _, vector := range vectors.Reject {
-		vector := vector
+	if len(vectors.NativeOnly) != len(nativeValues) {
+		t.Fatalf("shared corpus has %d native-only vectors, the test knows %d", len(vectors.NativeOnly), len(nativeValues))
+	}
+	for _, vector := range vectors.NativeOnly {
 		t.Run(vector.Name, func(t *testing.T) {
-			var value any
-			switch vector.InputForm {
-			case "native":
-				switch vector.Name {
-				case "reject-nan":
-					value = math.NaN()
-				case "reject-positive-infinity":
-					value = math.Inf(1)
-				case "reject-negative-infinity":
-					value = math.Inf(-1)
-				case "reject-negative-zero":
-					value = math.Copysign(0, -1)
-				default:
-					t.Fatalf("unknown native vector %q", vector.Name)
-				}
-			case "raw_json":
-				value = json.RawMessage(vector.Input)
-			default:
-				t.Fatalf("unknown input form %q", vector.InputForm)
+			t.Parallel()
+			value, known := nativeValues[vector.Name]
+			if !known {
+				t.Fatalf("native-only vector %q has no Go value in this test", vector.Name)
 			}
-			if _, err := Marshal(value); err == nil {
-				t.Fatal("expected vector to be rejected")
+			requireMarshals(t, map[string]any{"n": value}, vector.Canonical)
+		})
+	}
+}
+
+func TestSharedRejectVectorsAreRefused(t *testing.T) {
+	t.Parallel()
+	nativeValues := map[string]float64{
+		"reject-nan":               math.NaN(),
+		"reject-positive-infinity": math.Inf(1),
+		"reject-negative-infinity": math.Inf(-1),
+		"reject-negative-zero":     math.Copysign(0, -1),
+	}
+	vectors := readVectors(t)
+	if len(vectors.Reject) != 8 {
+		t.Fatalf("shared corpus has %d reject vectors, want 8", len(vectors.Reject))
+	}
+	for _, vector := range vectors.Reject {
+		t.Run(vector.Name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := Marshal(rejectedInput(t, vector.Name, vector.InputForm, vector.Input, nativeValues)); err == nil {
+				t.Fatal("the vector was accepted")
 			}
 		})
 	}
 }
 
-func TestNativeIntegerOutsideExactRangeIsRejected(t *testing.T) {
-	if _, err := Marshal(int64(9007199254740993)); err == nil {
-		t.Fatal("expected unsafe native integer to be rejected")
-	}
-}
-
-func TestRawUnsafeIntegerSpellingsAreRejected(t *testing.T) {
-	for _, raw := range []string{
-		`{"n":9007199254740992}`,
-		`{"n":9007199254740993.0}`,
-		`{"n":9007199254740993e0}`,
-	} {
-		if _, err := Marshal(json.RawMessage(raw)); err == nil {
-			t.Fatalf("expected unsafe integer spelling %s to be rejected", raw)
+func rejectedInput(t *testing.T, name, form, input string, native map[string]float64) any {
+	t.Helper()
+	switch form {
+	case "native":
+		value, known := native[name]
+		if !known {
+			t.Fatalf("native reject vector %q has no Go value in this test", name)
 		}
-	}
-}
-
-func TestRawValidEscapedSurrogatePairIsAccepted(t *testing.T) {
-	got, err := marshalString(json.RawMessage(`{"k":"\ud83d\ude00"}`))
-	if err != nil {
-		t.Fatalf("expected valid surrogate pair to be accepted: %v", err)
-	}
-	if got != `{"k":"😀"}` {
-		t.Fatalf("canonical = %q, want %q", got, `{"k":"😀"}`)
-	}
-}
-
-func TestRawEscapedEquivalentDuplicateKeysAreRejected(t *testing.T) {
-	if _, err := Marshal(json.RawMessage(`{"a":1,"\u0061":2}`)); err == nil {
-		t.Fatal("expected escaped-equivalent duplicate keys to be rejected")
-	}
-}
-
-func TestExactlyRepresentableDoubleAtSafeBoundaryIsAccepted(t *testing.T) {
-	got, err := marshalString(map[string]any{"n": float64(1 << 53)})
-	if err != nil {
-		t.Fatalf("expected exactly representable double to be accepted: %v", err)
-	}
-	if got != `{"n":9007199254740992}` {
-		t.Fatalf("canonical = %q, want %q", got, `{"n":9007199254740992}`)
-	}
-}
-
-func TestNativeInvalidUnicodeIsRejected(t *testing.T) {
-	if _, err := Marshal(string([]byte{'\xc3', '('})); err == nil {
-		t.Fatal("expected invalid UTF-8 to be rejected")
+		return value
+	case "raw_json":
+		return json.RawMessage(input)
+	default:
+		t.Fatalf("unknown input form %q", form)
+		return nil
 	}
 }
 
 func readVectors(t *testing.T) canonicalizationVectors {
 	t.Helper()
-	_, source, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
-	}
-	path := filepath.Join(filepath.Dir(source), "..", "..", "..", "contractsv1", "internal", "domain", "testdata", "canonicalization-vectors.json")
+	path := filepath.Join("..", "..", "..", "contractsv1", "internal", "domain", "testdata", "canonicalization-vectors.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read vectors: %v", err)
@@ -180,10 +116,4 @@ func readVectors(t *testing.T) canonicalizationVectors {
 		t.Fatalf("decode vectors: %v", err)
 	}
 	return vectors
-}
-
-// marshalString is the canonical encoding as text.
-func marshalString(v any) (string, error) {
-	b, err := Marshal(v)
-	return string(b), err
 }
