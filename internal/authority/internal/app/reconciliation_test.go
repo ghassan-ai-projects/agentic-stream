@@ -129,3 +129,29 @@ func TestOpeningRefusesAPreviousBootOrAnUnknownDevice(t *testing.T) {
 		t.Fatal("refused openings were audited")
 	}
 }
+
+func TestADeviceStateWithoutADeviceAndBootIsRefusedAndRecordsNothing(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	for name, document := range map[string]map[string]any{
+		"no identity":  {"safe_state": true},
+		"no boot":      {"device_id": "thermal-01"},
+		"not encoded":  {"device_id": "thermal-01", "boot_id": "b", "bad": func() {}},
+		"empty device": {"device_id": "", "boot_id": "b"},
+	} {
+		if _, err := f.service.RecordDeviceState(t.Context(), ownerOne, document); err == nil {
+			t.Errorf("%s: the device state was accepted", name)
+		}
+	}
+	if recorded := f.count(t, `SELECT COUNT(*) FROM device_reconciliation`); recorded != 0 {
+		t.Fatalf("refused states left %d reconciliation rows", recorded)
+	}
+}
+
+func TestAskingWhetherADeviceRequiresReconciliationNeedsADeviceId(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	if required, err := f.service.ReconciliationRequired(t.Context(), ""); err == nil || required {
+		t.Fatalf("ReconciliationRequired(\"\") = %t, %v; want a refusal", required, err)
+	}
+}

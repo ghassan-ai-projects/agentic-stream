@@ -7,7 +7,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
-func TestNextPendingIntentReportsAnEmptyQueue(t *testing.T) {
+func TestNextPendingIntentReportsAnEmptyQueueAndAFailedRead(t *testing.T) {
 	t.Parallel()
 	db := storagetest.OpenTemp(t)
 

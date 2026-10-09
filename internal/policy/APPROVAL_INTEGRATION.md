@@ -26,8 +26,8 @@ Supporting sources:
 - [Production HTTP composition](../api/events.go).
 - [Policy composition](../runtime/pipeline_composition.go).
 - [Operator surface roadmap gap](../../docs/research/next-level-2026-10/README.md).
-- [Signed resolution integration tests](internal/app/policy_test.go).
-- [Stale approval precedence tests](internal/app/approval_order_test.go).
+- [Signed resolution tests](internal/app/approval_resolution_test.go) and [over HTTP](internal/app/approval_http_test.go).
+- [Stale approval precedence tests](internal/app/approval_resolution_test.go).
 
 ## Original reachability inventory
 

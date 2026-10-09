@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,8 +56,67 @@ func TestApplyPrincipalsMakesGovernanceMatchTheDocument(t *testing.T) {
 	if _, err := apply(t, db, passFence, governanceDocument(t, "other", "  - id: relay\n")); err == nil {
 		t.Fatal("a principal moved to another tenant")
 	}
-	refused := policy.Ownership{Check: func(context.Context, *sql.Tx, string) error { return errors.New("runtime running") }, Epoch: "operator"}
-	if _, err := apply(t, db, refused, full); err == nil {
-		t.Fatal("a change without runtime ownership was applied")
+}
+
+func TestApplyPrincipalsRequiresTheRuntimeOwnerFence(t *testing.T) {
+	t.Parallel()
+	document := governanceDocument(t, "default", "  - id: relay\n")
+	notRunning := errors.New("runtime running")
+	tests := []struct {
+		name  string
+		fence policy.Ownership
+		want  string
+	}{
+		{"no check", policy.Ownership{Epoch: "operator"}, "need the runtime owner fence"},
+		{"no epoch", policy.Ownership{Check: passFence.Check}, "need the runtime owner fence"},
+		{"the owner lease is held elsewhere", policy.Ownership{Check: func(context.Context, *sql.Tx, string) error { return notRunning }, Epoch: "operator"}, "need runtime ownership"},
 	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			db := storagetest.OpenTemp(t)
+			if _, err := apply(t, db, test.fence, document); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("apply = %v, want a refusal mentioning %q", err, test.want)
+			}
+			if summary := governanceSummary(t, db, "default"); summary != (policy.PrincipalSummary{Tenant: "default"}) {
+				t.Fatalf("a refused apply left governance %+v", summary)
+			}
+		})
+	}
+}
+
+func TestGovernanceSummaryCountsOnlyTheTenantsStoredGovernance(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	document := governanceDocument(t, "default", "  - id: relay\n  - id: alice\n    public_key: "+approverKey+"\nroles:\n  - id: r\n    name: thermal\n    members: [alice]\n    authorities:\n      - entity: zone-01\n        risks: [R2]\n")
+	if _, err := apply(t, db, passFence, document); err != nil {
+		t.Fatal(err)
+	}
+
+	want := policy.PrincipalSummary{Tenant: "default", Active: 2, Roles: 1, Memberships: 1, Authorities: 1}
+	if got := governanceSummary(t, db, "default"); got != want {
+		t.Fatalf("summary of default = %+v, want %+v", got, want)
+	}
+	if got := governanceSummary(t, db, "other"); got != (policy.PrincipalSummary{Tenant: "other"}) {
+		t.Fatalf("summary of another tenant = %+v, want empty", got)
+	}
+}
+
+func TestParsePrincipalsNamesTheDocumentWhenItIsInvalid(t *testing.T) {
+	t.Parallel()
+	if _, err := policy.ParsePrincipals([]byte("tenant: \"\"\n")); err == nil || !strings.Contains(err.Error(), "parse principal document") {
+		t.Fatalf("ParsePrincipals = %v, want a wrapped refusal", err)
+	}
+}
+
+func governanceSummary(t *testing.T, db *storage.DB, tenant string) policy.PrincipalSummary {
+	t.Helper()
+	var summary policy.PrincipalSummary
+	if err := db.WithTx(t.Context(), func(tx *sql.Tx) (err error) {
+		summary, err = policy.GovernanceSummary(t.Context(), tx, tenant)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return summary
 }

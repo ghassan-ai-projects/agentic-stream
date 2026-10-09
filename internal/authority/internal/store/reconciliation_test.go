@@ -38,7 +38,7 @@ func lastResolution(t *testing.T, db *storage.DB) string {
 	return outcome
 }
 
-func TestReconciliationLifecycle(t *testing.T) {
+func TestReconciliationMovesFromFirstStateThroughManualReviewToAReboot(t *testing.T) {
 	t.Parallel()
 	s, db := openStore(t)
 	if loadRecorded(t, s) != nil {

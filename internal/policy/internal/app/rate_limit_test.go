@@ -1,97 +1,45 @@
 package app_test
 
 import (
-	"context"
-	"database/sql"
 	"testing"
-	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 )
 
-// P4: the catalog's per-intent hourly rate limit is enforced before dispatch.
-// Dispatches up to the limit pass; one more is denied with rate_limited —
-// never clamped or delayed.
-func TestEvaluateIntentEnforcesTheCatalogRateLimit(t *testing.T) {
-	ctx := context.Background()
-	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
-
+// The catalog's per-intent hourly rate limit is enforced before dispatch:
+// dispatches up to the limit pass, one more is denied with rate_limited, never
+// clamped or delayed, and a denial does not consume budget.
+func TestEvaluationEnforcesTheCatalogRateLimit(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name       string
-		limit      int
-		dispatches int
-		wantReason string
-		wantDenied bool
+		name          string
+		dispatched    int
+		wantResult    string
+		wantReason    string
+		wantDispatchs int
+		wantCommands  int
 	}{
-		{name: "under the limit", limit: 2, dispatches: 0, wantReason: "automatic_r0_r1"},
-		{name: "the current dispatch fills the limit", limit: 2, dispatches: 1, wantReason: "automatic_r0_r1"},
-		{name: "over the limit", limit: 2, dispatches: 2, wantReason: "rate_limited", wantDenied: true},
+		{name: "under the limit", dispatched: 0, wantResult: "approved", wantReason: "automatic_r0_r1", wantDispatchs: 1, wantCommands: 1},
+		{name: "the current dispatch fills the limit", dispatched: 1, wantResult: "approved", wantReason: "automatic_r0_r1", wantDispatchs: 2, wantCommands: 1},
+		{name: "over the limit", dispatched: 2, wantResult: "denied", wantReason: "rate_limited", wantDispatchs: 2, wantCommands: 0},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			db, intentID := openPolicyFixture(t, "R1", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
-			defer func() { _ = db.Close() }()
-			if _, err := db.ExecContext(ctx,
-				"UPDATE intents SET rate_limit_per_hour = ? WHERE intent_id = ?",
-				test.limit, intentID); err != nil {
-				t.Fatalf("set rate limit: %v", err)
-			}
-			if test.dispatches > 0 {
-				bucket := now.UTC().Format("2006-01-02T15:00")
-				if _, err := db.ExecContext(ctx, `
-					INSERT INTO intent_dispatch_counts (tenant_id, intent_type, bucket, count)
-					VALUES ('tenant', 'create_ticket', ?, ?)`,
-					bucket, test.dispatches); err != nil {
-					t.Fatalf("insert dispatch: %v", err)
-				}
+			t.Parallel()
+			db, intentID := openPolicyFixture(t, "R1", 1, 1, farFuture)
+			exec(t, db, "UPDATE intents SET rate_limit_per_hour = 2 WHERE intent_id = ?", intentID)
+			bucket := fixtureNow.Format("2006-01-02T15:00")
+			if test.dispatched > 0 {
+				exec(t, db, "INSERT INTO intent_dispatch_counts (tenant_id, intent_type, bucket, count) VALUES ('tenant', 'create_ticket', ?, ?)", bucket, test.dispatched)
 			}
 
-			gateway := newTestService(t)
-			var result policy.Result
-			if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-				var err error
-				result, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
-				return err
-			}); err != nil {
-				t.Fatalf("evaluate intent: %v", err)
+			result := evaluateIntent(t, db, newTestService(t), intentID, fixtureNow)
+			if result.Result != test.wantResult || result.Reason != test.wantReason {
+				t.Fatalf("result = %s/%s, want %s/%s", result.Result, result.Reason, test.wantResult, test.wantReason)
 			}
-			if test.wantDenied {
-				if result.Result != "denied" || result.Reason != "rate_limited" {
-					t.Fatalf("result = %s/%s, want denied/rate_limited", result.Result, result.Reason)
-				}
-				return
-			}
-			if result.Reason != test.wantReason {
-				t.Fatalf("reason = %s, want %s", result.Reason, test.wantReason)
+			dispatched := scalar[int](t, db, "SELECT COALESCE(SUM(count), 0) FROM intent_dispatch_counts WHERE tenant_id = 'tenant' AND intent_type = 'create_ticket' AND bucket = ?", bucket)
+			commands, outbox := commandAndOutboxCounts(t, db)
+			if dispatched != test.wantDispatchs || commands != test.wantCommands || outbox != test.wantCommands {
+				t.Fatalf("dispatch count=%d commands=%d outbox=%d, want %d/%d/%d", dispatched, commands, outbox, test.wantDispatchs, test.wantCommands, test.wantCommands)
 			}
 		})
 	}
 }
-
-// P4: the catalog's declared policy is enforced — an intent the catalog marks
-// requires_approval goes through the approval pipeline regardless of risk.
-func TestEvaluateIntentHonorsTheCatalogApprovalPolicy(t *testing.T) {
-	ctx := context.Background()
-	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
-	db, intentID := openPolicyFixture(t, "R1", 1, 1, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
-	defer func() { _ = db.Close() }()
-	if _, err := db.ExecContext(ctx,
-		"UPDATE intents SET requires_approval = 1 WHERE intent_id = ?", intentID); err != nil {
-		t.Fatalf("set requires_approval: %v", err)
-	}
-
-	gateway := newTestService(t)
-	var result policy.Result
-	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		result, err = gateway.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now})
-		return err
-	}); err != nil {
-		t.Fatalf("evaluate intent: %v", err)
-	}
-	if result.Result != "approval_required" || result.ApprovalID == "" {
-		t.Fatalf("result = %+v, want an approval request", result)
-	}
-}
-
-var _ = sql.ErrNoRows

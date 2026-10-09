@@ -11,21 +11,12 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
-func openDB(t *testing.T, name string) *storage.DB {
-	t.Helper()
-	db := storagetest.OpenTemp(t)
-
-	db.SetMaxOpenConns(1)
-	return db
-}
-
 func TestNewRefusesConfigurationThatSkipsSafetyChecks(t *testing.T) {
 	t.Parallel()
-	db, other := openDB(t, "runtime.db"), openDB(t, "other.db")
+	db, other := storagetest.OpenTemp(t), storagetest.OpenTemp(t)
 	owner := &control.RuntimeOwner{DB: db, InstanceID: "instance-1"}
 	epochs := &control.EpochControl{DB: db}
 	ledger := authority.OutcomeLedger(actions.CountUnresolvedOutcomes)
@@ -58,7 +49,7 @@ func TestNewRefusesConfigurationThatSkipsSafetyChecks(t *testing.T) {
 func TestServiceDelegatesEveryOperation(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	db := openDB(t, "runtime.db")
+	db := storagetest.OpenTemp(t)
 	runtimeOwner := &control.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Hour}
 	if err := runtimeOwner.Claim(ctx, "epoch-1"); err != nil {
 		t.Fatal(err)
@@ -114,7 +105,7 @@ func TestServiceDelegatesEveryOperation(t *testing.T) {
 func TestUnsetClaimLeaseIsTheSourcesDefaultLease(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	db := openDB(t, "runtime.db")
+	db := storagetest.OpenTemp(t)
 	clock := sources.NewVirtual(time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC))
 	runtimeOwner := &control.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Hour, Now: clock.Now}
 	must(t, runtimeOwner.Claim(ctx, "epoch-1"))
