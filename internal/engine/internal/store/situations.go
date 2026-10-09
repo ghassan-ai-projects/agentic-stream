@@ -25,6 +25,9 @@ func (tx *Tx) RecordLineage(ctx context.Context, lineage domain.Lineage, now tim
 }
 
 func (tx *Tx) UpsertSituation(ctx context.Context, partitionID int, version situations.Version, write domain.SituationWrite, now time.Time) error {
+	if _, err := tx.tx.ExecContext(ctx, "DELETE FROM unopened_situations WHERE situation_id = ?", version.SituationID); err != nil {
+		return fmt.Errorf("forget unopened situation: %w", err)
+	}
 	at := kernel.FormatTime(now)
 	if _, err := tx.tx.ExecContext(ctx, upsertSituationSQL,
 		version.SituationID, tx.tenantID, tx.deploymentID, version.Type, version.EntityType,
@@ -59,7 +62,7 @@ const upsertSituationSQL = `
 func (tx *Tx) InsertSituationVersion(ctx context.Context, version situations.Version, lineageID string, now time.Time) error {
 	snapshotDigest, err := domain.DecodeSnapshotDigest(version.SnapshotSHA256)
 	if err != nil {
-		return err
+		return fmt.Errorf("snapshot digest of %s v%d: %w", version.SituationID, version.Version, err)
 	}
 	if _, err := tx.tx.ExecContext(ctx, insertSituationVersionSQL,
 		version.SituationID, version.Version, previousVersion(version), version.Phase, version.PreviousPhase,
@@ -109,3 +112,31 @@ func requireCurrentVersion(result sql.Result, situation situations.Situation) er
 	}
 	return nil
 }
+
+func (tx *Tx) SaveUnopenedSituationState(ctx context.Context, situation situations.Situation, stateJSON, stateDigest []byte, now time.Time) error {
+	if _, err := tx.tx.ExecContext(ctx, upsertUnopenedSituationSQL,
+		situation.SituationID, tx.tenantID, tx.deploymentID, situation.Type, situation.EntityType, situation.EntityID,
+		situation.PartitionID, situation.OccurrenceID, situation.Phase, situation.Severity, situation.Confidence,
+		situation.Completeness, kernel.FormatTime(situation.FirstEventTime), kernel.FormatTime(situation.LatestEventTime),
+		storage.NullIfEmpty(situation.Traceparent), storage.NullIfEmpty(situation.Tracestate),
+		stateJSON, stateDigest, kernel.FormatTime(now)); err != nil {
+		return fmt.Errorf("save unopened situation state: %w", err)
+	}
+	return nil
+}
+
+const upsertUnopenedSituationSQL = `
+		INSERT INTO unopened_situations (
+			situation_id, tenant_id, deployment_id, situation_type, entity_type, entity_id,
+			partition_id, occurrence_id, phase, severity, confidence,
+			completeness, first_event_time, latest_event_time,
+			traceparent, tracestate, state_json, state_sha256, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(situation_id) DO UPDATE SET
+			completeness = excluded.completeness,
+			latest_event_time = excluded.latest_event_time,
+			traceparent = excluded.traceparent,
+			tracestate = excluded.tracestate,
+			state_json = excluded.state_json,
+			state_sha256 = excluded.state_sha256,
+			updated_at = excluded.updated_at`

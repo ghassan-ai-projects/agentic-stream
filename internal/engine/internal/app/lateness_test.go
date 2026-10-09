@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -55,5 +57,30 @@ func TestAnOnTimeEventLeavesNoLateAudit(t *testing.T) {
 	runGlobal(t, rig.service)
 	if got := countRows(t, rig.db, "SELECT COUNT(*) FROM late_events"); got != 0 {
 		t.Fatalf("late events = %d, want none for events at the watermark", got)
+	}
+}
+
+func TestAnUnopenedSituationSurvivesARestartAndIsForgottenOnceItPublishes(t *testing.T) {
+	t.Parallel()
+	compiled := restartSpec()
+	_, db := openDatabaseFile(t)
+	log := eventlog.NewEventLog(db)
+	service, err := newService(t.Context(), db, log, sources.Physical(), &compiled, "default", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendLevel(t, log, "evt-quiet", 0, 5)
+	runGlobal(t, service)
+	if got := queryText(t, db, `SELECT phase || '|' || (CAST(state_json AS TEXT) LIKE '%"facts.level":5%') FROM unopened_situations`); got != "candidate|1" {
+		t.Fatalf("unopened situation = %q, want the candidate state holding the level fact", got)
+	}
+	restarted, err := newService(t.Context(), db, log, sources.Physical(), &compiled, "default", false)
+	if err != nil {
+		t.Fatalf("restart over an unopened situation: %v", err)
+	}
+	appendLevel(t, log, "evt-loud", 30*time.Second, 50)
+	runGlobal(t, restarted)
+	if unopened, opened := countRows(t, db, "SELECT COUNT(*) FROM unopened_situations"), countRows(t, db, "SELECT COUNT(*) FROM situations"); unopened != 0 || opened != 1 {
+		t.Fatalf("unopened = %d, opened = %d after the first publication, want 0 and 1", unopened, opened)
 	}
 }

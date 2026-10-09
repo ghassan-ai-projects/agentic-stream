@@ -29,7 +29,6 @@ func (tx *Tx) LoadOutboxLease(ctx context.Context, outboxID int64) (domain.Outbo
 	return lease, true, nil
 }
 
-// LeaseIsLive reports whether owner holds an unexpired lease on the outbox row.
 func (tx *Tx) LeaseIsLive(ctx context.Context, outboxID int64, owner string, now time.Time) (bool, error) {
 	_, live, err := storage.QueryOptional[int](ctx, tx.tx, liveLeaseSQL, outboxID, owner, kernel.FormatTime(now))
 	if err != nil {
@@ -38,14 +37,16 @@ func (tx *Tx) LeaseIsLive(ctx context.Context, outboxID int64, owner string, now
 	return live, nil
 }
 
-// RefreshLease extends a live lease. It reports false when the lease was lost.
 func (tx *Tx) RefreshLease(ctx context.Context, outboxID int64, owner string, until, now time.Time) (bool, error) {
 	result, err := tx.tx.ExecContext(ctx, refreshLeaseSQL, kernel.FormatTime(until), outboxID, owner, kernel.FormatTime(now))
 	if err != nil {
 		return false, fmt.Errorf("refresh dispatch lease: %w", err)
 	}
-	count, err := result.RowsAffected()
-	return err == nil && count == 1, nil
+	count, err := storage.RowsAffected(result)
+	if err != nil {
+		return false, fmt.Errorf("refresh dispatch lease: %w", err)
+	}
+	return count == 1, nil
 }
 
 const liveLeaseSQL = `SELECT 1 FROM outbox WHERE outbox_id = ? AND status = 'leased' AND lease_owner = ? AND lease_until > ? AND stored_time_ok(lease_until)`

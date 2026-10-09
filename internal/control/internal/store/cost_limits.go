@@ -7,7 +7,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// LimitExists reports whether the scope has a cost limit row.
 func (t *Tx) LimitExists(ctx context.Context, scopeKey string) (bool, error) {
 	_, exists, err := storage.QueryOptional[int](ctx, t.q, "SELECT 1 FROM cost_limits WHERE scope_key = ?", scopeKey)
 	if err != nil {
@@ -16,7 +15,6 @@ func (t *Tx) LimitExists(ctx context.Context, scopeKey string) (bool, error) {
 	return exists, nil
 }
 
-// ReadLimit reads the scope's ceiling and kill switch.
 func (t *Tx) ReadLimit(ctx context.Context, scopeKey string) (maxMicro int64, killSwitch bool, err error) {
 	var kill int
 	if err := t.q.QueryRowContext(ctx, "SELECT max_micro, kill_switch FROM cost_limits WHERE scope_key = ?", scopeKey).Scan(&maxMicro, &kill); err != nil {
@@ -25,8 +23,6 @@ func (t *Tx) ReadLimit(ctx context.Context, scopeKey string) (maxMicro int64, ki
 	return maxMicro, kill != 0, nil
 }
 
-// WriteLimit upserts a ceiling and kill switch and returns the rows it changed
-// (zero when the row count could not be read).
 func (t *Tx) WriteLimit(ctx context.Context, scopeKey, tenantID string, maxMicro int64, killSwitch bool, now string) (int64, error) {
 	result, err := t.q.ExecContext(ctx, `
 		INSERT INTO cost_limits (scope_key, tenant_id, max_micro, kill_switch, updated_at)
@@ -37,11 +33,13 @@ func (t *Tx) WriteLimit(ctx context.Context, scopeKey, tenantID string, maxMicro
 	if err != nil {
 		return 0, fmt.Errorf("set cost limit: %w", err)
 	}
-	return storage.RowsAffected(result), nil
+	changed, err := storage.RowsAffected(result)
+	if err != nil {
+		return 0, fmt.Errorf("set cost limit %s: %w", scopeKey, err)
+	}
+	return changed, nil
 }
 
-// ReserveAvailable adds the amount to the scope's reserved cost when the kill
-// switch is off and the ceiling has room, and returns the rows it changed.
 func (t *Tx) ReserveAvailable(ctx context.Context, scopeKey string, amount int64, now string) (int64, error) {
 	result, err := t.q.ExecContext(ctx, `
 		UPDATE cost_limits
@@ -58,9 +56,6 @@ func (t *Tx) ReserveAvailable(ctx context.Context, scopeKey string, amount int64
 	return count, nil
 }
 
-// SettleLimit moves the reservation to spent in the scope, trips the kill
-// switch when spend reaches the ceiling, and returns the rows it changed (zero
-// when the row count could not be read).
 func (t *Tx) SettleLimit(ctx context.Context, scopeKey string, reserved, actual int64, now string) (int64, error) {
 	result, err := t.q.ExecContext(ctx, `
 		UPDATE cost_limits
@@ -72,5 +67,9 @@ func (t *Tx) SettleLimit(ctx context.Context, scopeKey string, reserved, actual 
 	if err != nil {
 		return 0, fmt.Errorf("settle %s cost: %w", scopeKey, err)
 	}
-	return storage.RowsAffected(result), nil
+	changed, err := storage.RowsAffected(result)
+	if err != nil {
+		return 0, fmt.Errorf("settle %s cost: %w", scopeKey, err)
+	}
+	return changed, nil
 }

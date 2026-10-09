@@ -117,11 +117,11 @@ func TestRowsAffectedCountsChangedRowsAndReportsZeroWhenTheDriverCannot(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := storage.RowsAffected(result); got != 3 {
-		t.Fatalf("RowsAffected = %d, want 3", got)
+	if got, err := storage.RowsAffected(result); err != nil || got != 3 {
+		t.Fatalf("RowsAffected = %d err=%v, want 3", got, err)
 	}
-	if got := storage.RowsAffected(unreportedResult{}); got != 0 {
-		t.Fatalf("RowsAffected without driver support = %d, want 0", got)
+	if got, err := storage.RowsAffected(unreportedResult{}); err == nil || got != 0 {
+		t.Fatalf("RowsAffected without driver support = %d err=%v, want an error", got, err)
 	}
 }
 

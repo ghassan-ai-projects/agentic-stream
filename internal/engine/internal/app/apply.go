@@ -9,6 +9,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
 )
 
 func (s *Service) applyRecord(ctx context.Context, partitionID int, record eventlog.Record, prepared preparedRecord) error {
@@ -150,15 +151,22 @@ func (s *Service) saveCurrentSituationState(ctx context.Context, tx *store.Tx, p
 	if err != nil {
 		return fmt.Errorf("snapshot current situation state: %w", err)
 	}
-	if !ok || situation.Version <= 0 {
+	if !ok {
 		return nil
 	}
 	digest, err := domain.DecodeStateDigest(stateDigest)
 	if err != nil {
 		return fmt.Errorf("save current situation state: %w", err)
 	}
-	if err := tx.SaveSituationRuntimeState(ctx, situation, stateJSON, digest, s.clock.Now().UTC()); err != nil {
-		return fmt.Errorf("save current situation state: %w", err)
+	if err := s.saveSituationState(ctx, tx, situation, stateJSON, digest); err != nil {
+		return fmt.Errorf("save state of situation %s: %w", situation.SituationID, err)
 	}
 	return nil
+}
+
+func (s *Service) saveSituationState(ctx context.Context, tx *store.Tx, situation situations.Situation, stateJSON, digest []byte) error {
+	if situation.Version == 0 {
+		return tx.SaveUnopenedSituationState(ctx, situation, stateJSON, digest, s.clock.Now().UTC())
+	}
+	return tx.SaveSituationRuntimeState(ctx, situation, stateJSON, digest, s.clock.Now().UTC())
 }

@@ -62,14 +62,14 @@ func InClause(column string, values []string) (string, []any) {
 	return column + " IN (" + strings.TrimSuffix(strings.Repeat("?, ", len(values)), ", ") + ")", args
 }
 
-// RowsAffected is the number of rows a statement changed, or zero when the
-// driver cannot report it.
-func RowsAffected(result sql.Result) int64 {
+// RowsAffected is the number of rows a statement changed. It fails when the
+// driver cannot report it, so a lost count never reads as "no row matched".
+func RowsAffected(result sql.Result) (int64, error) {
 	count, err := result.RowsAffected()
 	if err != nil {
-		return 0
+		return 0, fmt.Errorf("rows affected: %w", err)
 	}
-	return count
+	return count, nil
 }
 
 // BoolInt is the SQL integer of a boolean: 1 for true, 0 for false.
