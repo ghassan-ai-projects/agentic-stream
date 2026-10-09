@@ -45,10 +45,7 @@ func (d LateDisposition) ChangesState() bool {
 }
 
 func allowedLateness(text string) (time.Duration, error) {
-	if text == "" {
-		return 0, nil
-	}
-	allowed, err := spec.ParseDuration(text)
+	allowed, err := optionalDuration(text)
 	if err != nil {
 		return 0, fmt.Errorf("parse allowedLateness: %w", err)
 	}

@@ -48,11 +48,20 @@ allowed lateness, clock-skew tolerance, and one of these late policies:
 | `correct` | Recompute the affected state and publish a correction |
 | `correct_and_reconsider` | Correct state and reevaluate for a deduplicated reconsideration, subject to eligibility |
 
+Each virtual partition keeps a clock per source: the latest event time and
+ingestion time it has seen. The partition watermark is the slowest active
+source's latest event time minus `maxOutOfOrderness`, where a source counts as
+active until it has been silent for `idleTimeout` of ingestion time; the
+watermark never moves backwards. An event whose event time is ahead of its
+`ingested_at` by more than `clockSkewTolerance` is refused as `clock_skew`: it
+changes no state and never moves the watermark, so one device with a wrong
+clock cannot push its neighbors into lateness.
+
 An event is late when its event time is before its partition's watermark.
 A late event later than `allowedLateness` (zero when undeclared) never changes
-state under any policy. The engine records every late event's disposition
-(`corrected`, `history_only`, `dropped` or `beyond_allowed_lateness`) in the
-`late_events` table, and the event itself stays in the event log.
+state under any policy. The engine records every late or skewed event's disposition
+(`corrected`, `history_only`, `dropped`, `beyond_allowed_lateness` or
+`clock_skew`) in the `event_time_dispositions` table, and the event itself stays in the event log.
 
 Missing heartbeat and source-health signals can make completeness uncertain.
 Incomplete evidence is explicit state, not a silent default.

@@ -36,7 +36,7 @@ func TestALateEventChangesStateOnlyWhenItsPolicyCorrectsWithinAllowedLateness(t 
 			appendLevel(t, rig.log, "evt-on-time", time.Hour, 5)
 			appendLevel(t, rig.log, "evt-late", time.Hour-tc.lateBy, 50)
 			runGlobal(t, rig.service)
-			if got := queryText(t, rig.db, "SELECT disposition || '|' || late_policy FROM late_events WHERE event_id = 'evt-late'"); got != tc.wantDisposition+"|"+tc.policy {
+			if got := queryText(t, rig.db, "SELECT disposition || '|' || late_policy FROM event_time_dispositions WHERE event_id = 'evt-late'"); got != tc.wantDisposition+"|"+tc.policy {
 				t.Fatalf("late event audit = %q, want %s under %s", got, tc.wantDisposition, tc.policy)
 			}
 			if got := countRows(t, rig.db, "SELECT COUNT(*) FROM operator_state WHERE CAST(state_blob AS TEXT) LIKE '%evt-late%'"); got != tc.wantInWindow {
@@ -55,7 +55,7 @@ func TestAnOnTimeEventLeavesNoLateAudit(t *testing.T) {
 	appendLevel(t, rig.log, "evt-1", time.Hour, 50)
 	appendLevel(t, rig.log, "evt-2", time.Hour, 60)
 	runGlobal(t, rig.service)
-	if got := countRows(t, rig.db, "SELECT COUNT(*) FROM late_events"); got != 0 {
+	if got := countRows(t, rig.db, "SELECT COUNT(*) FROM event_time_dispositions"); got != 0 {
 		t.Fatalf("late events = %d, want none for events at the watermark", got)
 	}
 }
@@ -82,5 +82,25 @@ func TestAnUnopenedSituationSurvivesARestartAndIsForgottenOnceItPublishes(t *tes
 	runGlobal(t, restarted)
 	if unopened, opened := countRows(t, db, "SELECT COUNT(*) FROM unopened_situations"), countRows(t, db, "SELECT COUNT(*) FROM situations"); unopened != 0 || opened != 1 {
 		t.Fatalf("unopened = %d, opened = %d after the first publication, want 0 and 1", unopened, opened)
+	}
+}
+
+func TestASkewedDeviceCannotPushItsNeighborsIntoLateness(t *testing.T) {
+	t.Parallel()
+	compiled := latenessSpec("correct")
+	compiled.Time.ClockSkewTolerance = "5m"
+	rig := newRig(t, compiled)
+	skewed := thingEnvelope("evt-skewed", "test.level", 24*time.Hour, map[string]any{"level": 5.0})
+	skewed.IngestedAt = epoch0
+	appendEnvelope(t, rig.log, skewed)
+	neighbor := thingEnvelope("evt-neighbor", "test.level", time.Minute, map[string]any{"level": 50.0})
+	neighbor.Entity.ID = "thing-2"
+	appendEnvelope(t, rig.log, neighbor)
+	runGlobal(t, rig.service)
+	if got := queryText(t, rig.db, "SELECT group_concat(event_id || ':' || disposition) FROM event_time_dispositions"); got != "evt-skewed:clock_skew" {
+		t.Fatalf("dispositions = %q, want only the skewed event refused", got)
+	}
+	if got := countRows(t, rig.db, "SELECT COUNT(*) FROM operator_state WHERE CAST(state_blob AS TEXT) LIKE '%evt-neighbor%'"); got != 1 {
+		t.Fatalf("operator states holding the neighbor's event = %d, want it applied on time", got)
 	}
 }

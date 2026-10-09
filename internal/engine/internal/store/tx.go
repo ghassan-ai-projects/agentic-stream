@@ -69,17 +69,25 @@ func (s Store) SaveDeployment(ctx context.Context, compiled *spec.CompiledSpec) 
 func (s Store) LoadCheckpoint(ctx context.Context, partitionID int) (domain.Checkpoint, error) {
 	var result domain.Checkpoint
 	var watermark sql.NullString
-	err := s.db.QueryRowContext(ctx,
-		"SELECT last_position, watermark FROM partition_checkpoints WHERE consumer_name = ? AND tenant_id = ? AND partition_id = ?",
-		ConsumerName, s.tenantID, partitionID,
-	).Scan(&result.LastPosition, &watermark)
+	var sources []byte
+	err := s.db.QueryRowContext(ctx, loadCheckpointSQL, ConsumerName, s.tenantID, partitionID).Scan(&result.LastPosition, &watermark, &sources)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return result, fmt.Errorf("query checkpoint: %w", err)
 	}
+	return decodeCheckpoint(result, partitionID, watermark, sources)
+}
+
+const loadCheckpointSQL = "SELECT last_position, watermark, sources_json FROM partition_checkpoints WHERE consumer_name = ? AND tenant_id = ? AND partition_id = ?"
+
+func decodeCheckpoint(result domain.Checkpoint, partitionID int, watermark sql.NullString, sources []byte) (domain.Checkpoint, error) {
+	var err error
 	if watermark.Valid {
 		if result.Watermark, err = kernel.ParseTime(watermark.String); err != nil {
 			return result, fmt.Errorf("parse checkpoint watermark of partition %d: %w", partitionID, err)
 		}
+	}
+	if result.Sources, err = domain.DecodeSourceClocks(sources); err != nil {
+		return result, fmt.Errorf("checkpoint of partition %d: %w", partitionID, err)
 	}
 	return result, nil
 }

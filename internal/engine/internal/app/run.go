@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -133,8 +132,8 @@ func (s *Service) applyGlobalRecord(ctx context.Context, record eventlog.Record,
 }
 
 type preparedRecord struct {
-	watermark time.Time
-	lateness  domain.LateDisposition
+	clock    domain.PartitionClock
+	lateness domain.LateDisposition
 }
 
 func (s *Service) prepareRecord(ctx context.Context, record eventlog.Record, beforeApply func(eventlog.Record) error) (preparedRecord, error) {
@@ -142,26 +141,15 @@ func (s *Service) prepareRecord(ctx context.Context, record eventlog.Record, bef
 	if err != nil {
 		return preparedRecord{}, fmt.Errorf("load partition checkpoint: %w", err)
 	}
-	prepared, err := s.placeInTime(record, checkpoint.Watermark)
+	clock := domain.EventClock{Source: record.Envelope.Source, EventTime: record.EventTime, IngestedAt: record.Envelope.IngestedAt}
+	placement, err := domain.PlaceInTime(clock, checkpoint, s.spec.Time)
 	if err != nil {
-		return preparedRecord{}, err
+		return preparedRecord{}, fmt.Errorf("place event %s in time: %w", record.EventID, err)
 	}
 	if err := runBeforeApply(beforeApply, record); err != nil {
 		return preparedRecord{}, err
 	}
-	return prepared, nil
-}
-
-func (s *Service) placeInTime(record eventlog.Record, previousWatermark time.Time) (preparedRecord, error) {
-	watermark, err := s.watermarkForRecord(record.EventTime, previousWatermark)
-	if err != nil {
-		return preparedRecord{}, fmt.Errorf("watermark: %w", err)
-	}
-	lateness, err := domain.ClassifyLateness(record.EventTime, previousWatermark, s.spec.Time)
-	if err != nil {
-		return preparedRecord{}, fmt.Errorf("classify lateness of event %s: %w", record.EventID, err)
-	}
-	return preparedRecord{watermark: watermark, lateness: lateness}, nil
+	return preparedRecord{clock: placement.Clock, lateness: placement.Disposition}, nil
 }
 
 func runBeforeApply(beforeApply func(eventlog.Record) error, record eventlog.Record) error {
@@ -172,12 +160,4 @@ func runBeforeApply(beforeApply func(eventlog.Record) error, record eventlog.Rec
 		return fmt.Errorf("before apply hook: %w", err)
 	}
 	return nil
-}
-
-func (s *Service) watermarkForRecord(eventTime, previous time.Time) (time.Time, error) {
-	watermark, err := domain.WatermarkFor(eventTime, s.spec.Time.MaxOutOfOrderness, previous)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("derive watermark for event time %s: %w", eventTime, err)
-	}
-	return watermark, nil
 }

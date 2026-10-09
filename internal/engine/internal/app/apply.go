@@ -42,7 +42,7 @@ func (s *Service) applyRecordInTx(ctx context.Context, tx *store.Tx, partitionID
 	if err := s.applyEventState(ctx, tx, partitionID, record, prepared); err != nil {
 		return err
 	}
-	if err := tx.RecordApplied(ctx, partitionID, record.EventID, int64(record.Position), prepared.watermark, s.clock.Now().UTC()); err != nil {
+	if err := tx.RecordApplied(ctx, partitionID, record.EventID, int64(record.Position), prepared.clock, s.clock.Now().UTC()); err != nil {
 		return fmt.Errorf("record event %s applied: %w", record.EventID, err)
 	}
 	return nil
@@ -66,7 +66,7 @@ func (s *Service) applyEventState(ctx context.Context, tx *store.Tx, partitionID
 	if !prepared.lateness.ChangesState() {
 		return nil
 	}
-	newState, err := s.applyEventFeatures(ctx, tx, partitionID, record, prepared.watermark)
+	newState, err := s.applyEventFeatures(ctx, tx, partitionID, record, prepared.clock.Watermark)
 	if err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func (s *Service) recordLateness(ctx context.Context, tx *store.Tx, partitionID 
 	}
 	late := domain.LateEvent{
 		PartitionID: partitionID, EventID: record.EventID, Position: int64(record.Position),
-		EventTime: record.EventTime, Watermark: prepared.watermark,
+		EventTime: record.EventTime, Watermark: prepared.clock.Watermark,
 		Policy: s.spec.Time.LatePolicy, Disposition: prepared.lateness,
 	}
 	if err := tx.RecordLateEvent(ctx, late, s.clock.Now().UTC()); err != nil {

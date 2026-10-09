@@ -20,14 +20,14 @@ func (tx *Tx) EventApplied(ctx context.Context, eventID string) (bool, error) {
 	return applied, nil
 }
 
-func (tx *Tx) RecordApplied(ctx context.Context, partitionID int, eventID string, position int64, watermark, now time.Time) error {
+func (tx *Tx) RecordApplied(ctx context.Context, partitionID int, eventID string, position int64, clock domain.PartitionClock, now time.Time) error {
+	sources, err := domain.EncodeSourceClocks(clock.Sources)
+	if err != nil {
+		return fmt.Errorf("checkpoint source clocks: %w", err)
+	}
 	at := kernel.FormatTime(now)
-	if _, err := tx.tx.ExecContext(ctx, `
-		INSERT INTO partition_checkpoints (consumer_name, tenant_id, partition_id, last_position, watermark, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(consumer_name, tenant_id, partition_id)
-		DO UPDATE SET last_position = excluded.last_position, watermark = excluded.watermark, updated_at = excluded.updated_at`,
-		ConsumerName, tx.tenantID, partitionID, position, kernel.FormatTime(watermark), at); err != nil {
+	if _, err := tx.tx.ExecContext(ctx, upsertCheckpointSQL,
+		ConsumerName, tx.tenantID, partitionID, position, kernel.FormatTime(clock.Watermark), sources, at); err != nil {
 		return fmt.Errorf("update checkpoint: %w", err)
 	}
 	if _, err := tx.tx.ExecContext(ctx,
@@ -38,9 +38,16 @@ func (tx *Tx) RecordApplied(ctx context.Context, partitionID int, eventID string
 	return nil
 }
 
+const upsertCheckpointSQL = `
+		INSERT INTO partition_checkpoints (consumer_name, tenant_id, partition_id, last_position, watermark, sources_json, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(consumer_name, tenant_id, partition_id)
+		DO UPDATE SET last_position = excluded.last_position, watermark = excluded.watermark,
+		              sources_json = excluded.sources_json, updated_at = excluded.updated_at`
+
 func (tx *Tx) RecordLateEvent(ctx context.Context, late domain.LateEvent, now time.Time) error {
 	if _, err := tx.tx.ExecContext(ctx, `
-		INSERT INTO late_events (
+		INSERT INTO event_time_dispositions (
 			tenant_id, event_id, log_position, partition_id, event_time, watermark, late_policy, disposition, recorded_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		tx.tenantID, late.EventID, late.Position, late.PartitionID, kernel.FormatTime(late.EventTime),

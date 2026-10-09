@@ -30,7 +30,7 @@ var durableOwners = map[string]string{
 	"epoch_control":                 "internal/control/internal/store",
 	"event_gaps":                    "internal/eventlog/internal/store",
 	"event_inbox":                   "internal/engine/internal/store",
-	"late_events":                   "internal/engine/internal/store",
+	"event_time_dispositions":       "internal/engine/internal/store",
 	"unopened_situations":           "internal/engine/internal/store",
 	"event_log":                     "internal/eventlog/internal/store",
 	"event_quarantine":              "internal/eventlog/internal/store",

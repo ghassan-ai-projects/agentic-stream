@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -57,14 +58,14 @@ func TestOwnerCheckReceivesTheEpochAndTheOpenTransaction(t *testing.T) {
 func TestRecordedEventsAreIdempotentAndAdvanceTheCheckpoint(t *testing.T) {
 	t.Parallel()
 	s := openStore(t)
-	if checkpoint, err := s.LoadCheckpoint(t.Context(), 1); err != nil || checkpoint != (domain.Checkpoint{}) {
+	if checkpoint, err := s.LoadCheckpoint(t.Context(), 1); err != nil || !reflect.DeepEqual(checkpoint, domain.Checkpoint{}) {
 		t.Fatalf("fresh checkpoint = %+v err=%v", checkpoint, err)
 	}
 	inTx(t, s, func(tx *Tx) error {
 		if applied, err := tx.EventApplied(t.Context(), "evt-1"); err != nil || applied {
 			t.Fatalf("unseen event applied=%v err=%v", applied, err)
 		}
-		return tx.RecordApplied(t.Context(), 1, "evt-1", 7, testNow, testNow)
+		return tx.RecordApplied(t.Context(), 1, "evt-1", 7, domain.PartitionClock{Watermark: testNow}, testNow)
 	})
 	inTx(t, s, func(tx *Tx) error {
 		if applied, err := tx.EventApplied(t.Context(), "evt-1"); err != nil || !applied {
@@ -76,7 +77,9 @@ func TestRecordedEventsAreIdempotentAndAdvanceTheCheckpoint(t *testing.T) {
 	if err != nil || checkpoint.LastPosition != 7 || !checkpoint.Watermark.Equal(testNow) {
 		t.Fatalf("checkpoint = %+v err=%v", checkpoint, err)
 	}
-	err = s.WithTx(t.Context(), func(tx *Tx) error { return tx.RecordApplied(t.Context(), 1, "evt-1", 8, testNow, testNow) })
+	err = s.WithTx(t.Context(), func(tx *Tx) error {
+		return tx.RecordApplied(t.Context(), 1, "evt-1", 8, domain.PartitionClock{Watermark: testNow}, testNow)
+	})
 	if err == nil || !strings.Contains(err.Error(), "mark inbox") {
 		t.Fatalf("err = %v, want mark inbox: a duplicate inbox entry must be refused", err)
 	}
@@ -91,7 +94,7 @@ func TestCheckpointAdvancesPerPartitionAndAppliedThroughIsTheGreatestPosition(t 
 	inTx(t, s, func(tx *Tx) error {
 		for i, partition := range []int{1, 2, 1} {
 			position := int64([]int{5, 9, 7}[i])
-			if err := tx.RecordApplied(t.Context(), partition, []string{"evt-1", "evt-2", "evt-3"}[i], position, testNow.Add(time.Duration(i)*time.Minute), testNow); err != nil {
+			if err := tx.RecordApplied(t.Context(), partition, []string{"evt-1", "evt-2", "evt-3"}[i], position, domain.PartitionClock{Watermark: testNow.Add(time.Duration(i) * time.Minute)}, testNow); err != nil {
 				return err
 			}
 		}
@@ -110,7 +113,9 @@ func TestCheckpointAdvancesPerPartitionAndAppliedThroughIsTheGreatestPosition(t 
 func TestInboxAndCheckpointAreScopedToTheTenant(t *testing.T) {
 	t.Parallel()
 	s := openStore(t)
-	inTx(t, s, func(tx *Tx) error { return tx.RecordApplied(t.Context(), 1, "evt-1", 7, testNow, testNow) })
+	inTx(t, s, func(tx *Tx) error {
+		return tx.RecordApplied(t.Context(), 1, "evt-1", 7, domain.PartitionClock{Watermark: testNow}, testNow)
+	})
 	other := New(s.db, allowOwner, "epoch", "other", s.deploymentID)
 	inTx(t, other, func(tx *Tx) error {
 		if applied, err := tx.EventApplied(t.Context(), "evt-1"); err != nil || applied {
@@ -128,7 +133,7 @@ func TestFailedUnitOfWorkRollsBackWholeAndWALCheckpointSucceeds(t *testing.T) {
 	s := openStore(t)
 	boom := errors.New("boom")
 	err := s.WithTx(t.Context(), func(tx *Tx) error {
-		if err := tx.RecordApplied(t.Context(), 2, "evt-x", 1, testNow, testNow); err != nil {
+		if err := tx.RecordApplied(t.Context(), 2, "evt-x", 1, domain.PartitionClock{Watermark: testNow}, testNow); err != nil {
 			return err
 		}
 		return boom
@@ -167,7 +172,9 @@ func TestRetryBusyRunsTheWorkOnceWhenItSucceeds(t *testing.T) {
 func TestCorruptCheckpointWatermarkRefusesTheRead(t *testing.T) {
 	t.Parallel()
 	s := openStore(t)
-	inTx(t, s, func(tx *Tx) error { return tx.RecordApplied(t.Context(), 1, "evt-1", 7, testNow, testNow) })
+	inTx(t, s, func(tx *Tx) error {
+		return tx.RecordApplied(t.Context(), 1, "evt-1", 7, domain.PartitionClock{Watermark: testNow}, testNow)
+	})
 	if _, err := s.db.ExecContext(t.Context(), "UPDATE partition_checkpoints SET watermark = 'not a time'"); err != nil {
 		t.Fatal(err)
 	}
@@ -181,10 +188,10 @@ func TestCheckpointStatementsNameTheirFailure(t *testing.T) {
 	cases := []txFailure{
 		{"inbox check", "event_inbox", func(ctx context.Context, tx *Tx) error { _, err := tx.EventApplied(ctx, "evt-1"); return err }, "check inbox"},
 		{"checkpoint update", "partition_checkpoints", func(ctx context.Context, tx *Tx) error {
-			return tx.RecordApplied(ctx, 1, "evt-1", 7, testNow, testNow)
+			return tx.RecordApplied(ctx, 1, "evt-1", 7, domain.PartitionClock{Watermark: testNow}, testNow)
 		}, "update checkpoint"},
 		{"inbox insert", "event_inbox", func(ctx context.Context, tx *Tx) error {
-			return tx.RecordApplied(ctx, 1, "evt-1", 7, testNow, testNow)
+			return tx.RecordApplied(ctx, 1, "evt-1", 7, domain.PartitionClock{Watermark: testNow}, testNow)
 		}, "mark inbox"},
 	}
 	checkTxFailures(t, cases)
