@@ -1,14 +1,14 @@
 # Reference Module Refactor Prompt
 
 Rebuild one package to the reference-module standard set by `internal/authority`
-(see `docs/authority-reference-module-2026-10-05/`). Use this prompt when asked
+(see `internal/authority/`). Use this prompt when asked
 to "do the same" for another package, to make a package a reference
 implementation, or to separate its layers.
 
 The user's standing preferences for this work:
 
-- Plan first. Write findings and a plan into a dated folder under `docs/`
-  (local-only and git-ignored, so it is never committed) before touching code.
+- Plan first. Write findings and a plan into a dated planning folder
+  kept local and out of git before touching code.
 - One responsibility per layer. Never put logic in the persistence or adapter
   layer, never put database or transport code in the logic layer, and keep the
   public package a thin facade.
@@ -68,7 +68,7 @@ Layer responsibilities, enforced by architecture tests:
 
 ## 3. Write the planning folder
 
-Create `docs/<pkg>-reference-module-<YYYY-MM-DD>/` with:
+Create a local, uncommitted `<pkg>-reference-module-<YYYY-MM-DD>/` planning folder with:
 
 | File | Contents |
 | --- | --- |

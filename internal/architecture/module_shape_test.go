@@ -10,8 +10,7 @@ import (
 )
 
 // moduleShapeExceptions are the stand-alone packages that do not carry a domain
-// layer, each with the reason it must not: see
-// docs/remaining-migration-2026-10-06/UNIFORM_ARCHITECTURE.md.
+// layer, each with the reason it must not.
 var moduleShapeExceptions = map[string]string{
 	"internal/architecture":     "repository-wide gates: no production code beyond its package comment (README.md)",
 	"internal/executor/fixture": "demo executor used by composition; held for the owner",

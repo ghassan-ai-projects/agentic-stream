@@ -18,8 +18,6 @@ import (
 // quality-gated samples are still retained as evidence, and that the ambient
 // discount rejects a merely ambient-tracking rise before opening. No model, no
 // effector — this is the deterministic engine only.
-//
-// docs/plans/real-world-sensor-hil/01-telemetry-vertical.md
 
 const thermalSpec = "../../examples/thermal-chamber/zone-thermal.situation.yaml"
 

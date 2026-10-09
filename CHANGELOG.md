@@ -11,4 +11,4 @@ evidence.
 
 - Relicensed the project from Apache-2.0 to the MIT License.
 - Reorganized the curated open-source documentation under `documentation/`.
-- Removed `docs/` from version control; it stays on disk as a git-ignored local archive and Markdown links into it became plain paths.
+- Removed the `docs/` working archive from version control; it is now git-ignored and nothing links to it.

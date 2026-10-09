@@ -10,8 +10,7 @@ records remain authoritative; a notification does not authorize an action.
 - Data schema: `urn:situation-runtime:notification-contract:v1`
 - Machine authority: [`internal/notify/internal/domain/`](../../internal/notify/internal/domain/)
 
-The repository-level mirror under `docs/contracts/`
-exists for contract packaging and review. The embedded files under
+The embedded files under
 `internal/notify/internal/domain/contracts/` are what the runtime loads.
 
 ## Current event types

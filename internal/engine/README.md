@@ -29,6 +29,6 @@ share one deterministic ID sequence in a fixed construction order, so replay is
 byte-stable. Timers fire per partition under the same fence; a timer whose
 operator state belongs to a fenced boot is acknowledged without firing.
 
-Migration record (`docs/engine-reference-module-2026-10-06/README.md`).
+Migration record.
 Architecture gates enforce a pure domain, opaque transactions, exact write
 ownership of the seven engine tables, and facade delegation.

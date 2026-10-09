@@ -9,8 +9,7 @@ import (
 // The real-world-sensor runbooks (RUNBOOK-G1, RUNBOOK-HIL-THIS-WEEK) start the
 // runtime with these commands and flags. Renaming or removing one breaks the
 // experiment without failing anything else in this repository; new commands
-// and flags are additive. See
-// docs/unfinished-work-review-2026-10-08/EXPERIMENT_COMPATIBILITY.md (E1).
+// and flags are additive.
 func TestExperimentCommandsKeepTheirFlags(t *testing.T) {
 	t.Parallel()
 	commands := map[string]*cobra.Command{}

@@ -15,8 +15,7 @@ import (
 // TestWalkthrough runs the whole pipeline once for a human to inspect: events to
 // situation versions, trigger evaluations, an episode, a decision, an intent, a
 // policy verdict, a command, an outcome and a verification. It is skipped unless
-// AGENTIC_STREAM_WALKTHROUGH names the output database. See
-// docs/walkthrough-end-to-end-2026-10-06/README.md.
+// AGENTIC_STREAM_WALKTHROUGH names the output database.
 func TestWalkthrough(t *testing.T) {
 	t.Parallel()
 	out := os.Getenv("AGENTIC_STREAM_WALKTHROUGH")

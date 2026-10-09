@@ -19,4 +19,4 @@ does not import `notify`: the cognition store supplies the publisher, which read
 withdrawal and appends the `approval.withdrawn` event in the same transaction, so a failed publication
 rolls the withdrawal back. This keeps the ledger at the bottom of the layer table.
 
-Migration record (`docs/ledgers-reference-module-2026-10-06/README.md`).
+Migration record.

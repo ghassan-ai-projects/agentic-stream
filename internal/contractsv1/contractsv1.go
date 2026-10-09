@@ -40,7 +40,7 @@ type QualityFlag = domain.QualityFlag
 type EntityRef = domain.EntityRef
 
 // Envelope is the normalized event representation inside the runtime.
-// Field order matches the external JSON contract in docs/design/TECHNICAL_DESIGN.md.
+// Field order matches the external JSON contract.
 type Envelope = domain.Envelope
 
 // ValidateEnvelope checks the required invariants of the normalized ingress
@@ -64,7 +64,7 @@ const SchemaOutcome = domain.SchemaOutcome
 
 // Device wire records for the physical (serial) effector boundary. These
 // use snake_case, matching the device wire convention (not the camelCase
-// SituationSpec). See docs/plans/real-world-sensor-hil/03-serial-effector.md.
+// SituationSpec).
 const SchemaDeviceCommand = domain.SchemaDeviceCommand
 
 const SchemaDeviceReceipt = domain.SchemaDeviceReceipt

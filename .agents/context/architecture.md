@@ -2,7 +2,7 @@
 
 ## Repository Architecture
 
-The authoritative architecture is docs/design/TECHNICAL_DESIGN.md. This file is the concise version agents should load before editing.
+The architecture is summarized in [documentation/architecture/](../../documentation/architecture/README.md). This file is the concise version agents should load before editing.
 
 ## Current Structure
 
@@ -11,7 +11,7 @@ The authoritative architecture is docs/design/TECHNICAL_DESIGN.md. This file is 
 - `Makefile` defines the authoritative local commands.
 - `.github/workflows/ci.yml` defines CI parity for core checks.
 - `.golangci.yml` and `.pre-commit-config.yaml` enforce code quality and hygiene.
-- `documentation/` holds the curated public documentation; `docs/` holds the local-only, git-ignored design/evidence archive. Code, tests, embedded schemas, migrations, and the worker proto are the authority for implemented behavior.
+- `documentation/` holds the curated public documentation. Code, tests, embedded schemas, migrations, and the worker proto are the authority for implemented behavior.
 
 ## Target Structure (per design §23)
 

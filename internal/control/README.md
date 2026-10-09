@@ -26,6 +26,6 @@ instance) refuses every call with a sentinel error rather than skipping a check.
 Kill reads `episodes` joined with `cost_reservations` to find admitted episodes
 that never started; that foreign read is recorded as deferred work.
 
-Migration record (`docs/control-reference-module-2026-10-06/README.md`).
+Migration record.
 Architecture gates enforce a pure domain, no SQL or `database/sql` in app, exact
 write ownership of the four tables, opaque store types and facade delegation.

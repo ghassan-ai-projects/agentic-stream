@@ -40,4 +40,4 @@ outcome; the validator's parsed document is not a replacement for that audit
 input.
 
 See [module vocabulary](UBIQUITOUS_LANGUAGE.md) and the
-migration audit (`docs/decisions-reference-module-2026-10-05/CODE_AUDIT.md`).
+migration audit.

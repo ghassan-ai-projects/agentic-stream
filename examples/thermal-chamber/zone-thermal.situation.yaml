@@ -2,7 +2,7 @@ apiVersion: agentic-stream/v1
 kind: SituationSpec
 
 # Thermal-chamber over-temp detection — the Agentic Stream telemetry vertical for
-# the Real-World Sensor HIL-0 program (docs/plans/real-world-sensor-hil/).
+# the Real-World Sensor HIL-0 program.
 # This spec uses ONLY current schema grammar. It intentionally does NOT use the
 # invented fields from the round-1 starter (schema:, supervisor:, expectedFeedback:,
 # idempotencyKeyTemplate:) — those do not compile.

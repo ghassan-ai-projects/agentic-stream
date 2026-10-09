@@ -90,6 +90,6 @@ synchronous and backlog/fairness behavior remains a separate audit follow-up.
 This migration does not qualify a deployment or a physical device installation.
 
 - [Runtime language](UBIQUITOUS_LANGUAGE.md)
-- Migration design (`docs/runtime-reference-module-2026-10-05/DESIGN.md`)
-- Plan and rounds (`docs/runtime-reference-module-2026-10-05/PLAN.md`)
-- Validation and review (`docs/runtime-reference-module-2026-10-05/VALIDATION.md`)
+- Migration design
+- Plan and rounds
+- Validation and review

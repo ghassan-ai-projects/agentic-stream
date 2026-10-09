@@ -48,11 +48,8 @@ Maintainers can also read the [documentation plan](PLAN.md) and the
 
 ## Public docs and the working archive
 
-`documentation/` is the public reading path. `docs/` is a local-only,
-git-ignored working archive for full technical design records, research,
-audits, implementation notes and historical design iterations. It is not part
-of the repository, so pages here name archive paths in code font instead of
-linking to them.
+`documentation/` is the public reading path. Code, tests, embedded schemas,
+migrations and the worker proto are the authority for implemented behavior.
 
 ## Source of truth
 

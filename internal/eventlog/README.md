@@ -59,5 +59,5 @@ log records is the one a quarantine record owes when its retries run out
 backpressure and never drops evidence, so there is no general gap API.
 
 - [Event log language](UBIQUITOUS_LANGUAGE.md)
-- Migration design (`docs/eventlog-reference-module-2026-10-05/DESIGN.md`)
-- Plan and rounds (`docs/eventlog-reference-module-2026-10-05/PLAN.md`)
+- Migration design
+- Plan and rounds

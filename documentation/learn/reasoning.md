@@ -84,7 +84,7 @@ to act on the world.
 Sources: [episode lifecycle](../../internal/episodeledger/lifecycle.go), [worker
 boundary](../architecture/worker-boundary.md), [cognition
 design](../design/cognition.md), and the accepted rebinding
-decision (`docs/design/DECISIONS.md`).
+decision.
 
 ## Next reads
 

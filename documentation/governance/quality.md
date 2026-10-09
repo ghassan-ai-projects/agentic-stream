@@ -41,7 +41,7 @@ checks when installed.
 - Write for a named audience and end with Next reads.
 - Use implemented/partial/deferred/unsupported labels.
 - Link to exact code, schema, migration, or test evidence for volatile claims.
-- Keep `documentation/` curated and `docs/` classified as archive material.
+- Keep `documentation/` curated.
 - Do not copy machine-local paths, secrets, generated noise, or private context
   into public pages.
 - Update status, limitations, roadmap, and release posture together.

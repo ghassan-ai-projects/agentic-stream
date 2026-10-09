@@ -35,6 +35,6 @@ an audit row in the same transaction that clears its counter.
 deduplication horizon). It is not scheduled by the runtime; see the open
 decision in the migration record.
 
-Migration record (`docs/notify-reference-module-2026-10-06/README.md`).
+Migration record.
 Architecture gates enforce a pure domain, no SQL or `database/sql` in app, exact
 write ownership of the five tables, opaque store types and facade delegation.

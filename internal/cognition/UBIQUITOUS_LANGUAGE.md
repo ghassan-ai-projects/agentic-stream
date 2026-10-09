@@ -1,7 +1,7 @@
 # Cognition language
 
 This file is the canonical vocabulary for the cognitive scheduler. The dated
-migration record (`docs/cognition-reference-module-2026-10-05/UBIQUITOUS_LANGUAGE.md`)
+migration record
 keeps the code-backed planning snapshot.
 
 | Term | Meaning | Code or storage name |

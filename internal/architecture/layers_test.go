@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// The reference module pattern (docs/authority-reference-module-2026-10-05)
+// The reference module pattern of internal/authority
 // splits a module into internal/<module>/internal/domain (pure rules) and
 // internal/<module>/internal/store (all SQL). These tests keep any module that
 // adopts the pattern honest.

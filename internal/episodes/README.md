@@ -81,6 +81,6 @@ shadow isolation and replay parity. Architecture gates enforce facade
 operations, opaque transactions, store-only SQL, pure domain rules, application
 ports and transport isolation across every episode layer.
 
-The completion record (`docs/episodes-reference-module-2026-10-05/README.md`)
-contains the plan, validation and dead/test-only code decisions (`docs/episodes-reference-module-2026-10-05/CODE_AUDIT.md`).
+The completion record
+contains the plan, validation and dead/test-only code decisions.
 See [module language](UBIQUITOUS_LANGUAGE.md) for matching code/storage terms.

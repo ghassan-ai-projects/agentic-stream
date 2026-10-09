@@ -76,7 +76,7 @@ records or returned values, not reverse service dependencies.
 | `runtime` / `cmd` | Wiring, lifecycle and orchestration; concrete device selection lives here |
 
 The [repository map](repository-map.md) covers the stream, ingress, evidence and
-supporting packages. ADR-017 (`docs/design/DECISIONS.md`)
+supporting packages. ADR-017
 records why these additional boundaries exist.
 
 ## Shared durable handoffs

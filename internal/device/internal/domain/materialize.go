@@ -18,7 +18,7 @@ import (
 // concrete device parameters come from a CLOSED capability catalog that is
 // configuration, never model output. The hard bounds are re-enforced here — at
 // the last boundary — even though policy presets already produced bounded values
-// (defense in depth). See docs/plans/real-world-sensor-hil/03-serial-effector.md.
+// (defense in depth).
 
 // Materialize converts a policy-approved actionport.Command into a bounded device
 // wire command (contractsv1.SchemaDeviceCommand). expectedBootID binds the

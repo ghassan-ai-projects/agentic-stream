@@ -97,7 +97,7 @@ result integrity, owner loss, supersession, cancellation and caller rollback.
 Architecture gates keep the facade thin, domain pure, SQL in store, handles
 opaque and protocol/codecs outside app/domain/store.
 
-The completion record (`docs/evidence-reference-module-2026-10-05/README.md`)
-contains the code audit (`docs/evidence-reference-module-2026-10-05/CODE_AUDIT.md`)
+The completion record
+contains the code audit
 and final validation. The next useful improvement is an owner-provided
 transactional episode/attempt read port, preserving the existing atomic checks.

@@ -1,5 +1,4 @@
--- Drop tables nothing reads or writes
--- (docs/unfinished-work-review-2026-10-08, tasks U11 and U24):
+-- Drop tables nothing reads or writes:
 --   * calibration_artifacts: its only writer was deleted with qualification and
 --     policy no longer reads it; consequential (R2) intents always need human
 --     approval;

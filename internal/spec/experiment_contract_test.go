@@ -31,7 +31,7 @@ func TestExperimentSpecsCompileToTheirPinnedDigests(t *testing.T) {
 				t.Fatalf("%s no longer compiles; the real-world-sensor runbooks run it: %v", pinned.path, err)
 			}
 			if compiled.Digest != pinned.digest {
-				t.Errorf("%s compiles to %s; update the real-world-sensor runbook and the gateway --device-policy-digest in the same change, then this pin (docs/unfinished-work-review-2026-10-08/EXPERIMENT_COMPATIBILITY.md)", pinned.path, compiled.Digest)
+				t.Errorf("%s compiles to %s; update the real-world-sensor runbook and the gateway --device-policy-digest in the same change, then this pin", pinned.path, compiled.Digest)
 			}
 		})
 	}
@@ -41,7 +41,7 @@ func TestExperimentZoneEventSchemasAreUnchanged(t *testing.T) {
 	t.Parallel()
 	digest := zoneSchemaRegistryDigest(t)
 	if digest != zoneSchemasDigest {
-		t.Errorf("zone.* event schemas changed (%s); update the real-world-sensor DHT11 mapping and the Streams Simulator thermal domain first (docs/unfinished-work-review-2026-10-08/EXPERIMENT_COMPATIBILITY.md)", digest)
+		t.Errorf("zone.* event schemas changed (%s); update the real-world-sensor DHT11 mapping and the Streams Simulator thermal domain first", digest)
 	}
 }
 

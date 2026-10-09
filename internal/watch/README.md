@@ -27,6 +27,6 @@ watches, requires the watch's Situation and target to match, evaluates the
 expression (an evaluation error is a logged no-fire), records the fire once per
 event and spends one allowance, disabling the watch at zero.
 
-Migration record (`docs/watch-reference-module-2026-10-06/README.md`).
+Migration record.
 Architecture gates enforce a pure domain, opaque transactions, exact write
 ownership of `watch_conditions` and `watch_fires`, and facade delegation.

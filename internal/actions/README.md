@@ -43,7 +43,7 @@ verification settles an unknown outcome; its evidence rules apply in order:
 final status, evidence presence, source, type, device-feedback fields, first
 present digest.
 
-Migration findings and audit (`docs/actions-reference-module-2026-10-05/README.md`)
+Migration findings and audit
 record changes and remaining owner-read-port work. Architecture gates enforce
 pure domain, opaque transactions, exact write ownership of `commands`,
 `outbox`, `outcomes` and `verifications`, and facade delegation.

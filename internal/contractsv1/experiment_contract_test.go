@@ -10,8 +10,7 @@ import (
 
 // Two contract files leave this repository by path or by copy, and the
 // real-world-sensor experiment depends on both. Change them only together with
-// the named consumer. See
-// docs/unfinished-work-review-2026-10-08/EXPERIMENT_COMPATIBILITY.md (E7, E8).
+// the named consumer.
 const (
 	// thermalCatalogPath is passed to `serve --device-catalog` by the
 	// real-world-sensor RUNBOOK-G1; its digest is pinned by the device module.

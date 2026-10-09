@@ -8,7 +8,7 @@ Agentic Stream is a streaming-native agent runtime ("Situation Runtime"): it con
 
 Deliberately lighter than a general-purpose agent framework: no channel gateway, no graph engine in the event hot path, no LLM invocation per event, no multi-agent mesh, no direct model access to effectors or production credentials in version 1.
 
-The design is implementation-ready and lives in docs/design/ (local-only, git-ignored; absent from a fresh clone). The ten product invariants in the design README are release-blocking, not guidelines. The MVP proof is the predictive-maintenance example: a simulated motor emits sensor events, and the release must satisfy the acceptance list in the design README (deterministic replay, duplicate/out-of-order handling, hysteresis, episode cancellation, governed intents, idempotent effects, shadow mode, explainability).
+The design is implementation-ready and summarized in [documentation/](documentation/README.md). The ten product invariants ([documentation/architecture/invariants.md](documentation/architecture/invariants.md)) are release-blocking, not guidelines. The MVP proof is the predictive-maintenance example: a simulated motor emits sensor events, and the release must satisfy the acceptance list in the design (deterministic replay, duplicate/out-of-order handling, hysteresis, episode cancellation, governed intents, idempotent effects, shadow mode, explainability).
 
 ## Engineering Priorities
 
@@ -28,7 +28,7 @@ Before editing:
 
 1. Read this file.
 2. Read [README.md](README.md).
-3. Read the relevant sections of docs/design/TECHNICAL_DESIGN.md and docs/design/DECISIONS.md before touching architecture, invariants, or protocol surfaces.
+3. Read the relevant pages of [documentation/architecture/](documentation/architecture/README.md) and [documentation/design/](documentation/design/README.md) before touching architecture, invariants, or protocol surfaces.
 4. Check the worktree with `git status --short`.
 5. Read the smallest relevant context files under `.agents/context/`.
 6. Make a short plan before editing.
@@ -48,7 +48,7 @@ Use the prompt files under `.agents/prompts/` when the task matches them.
 ## Current Repository State
 
 - Module path: `github.com/ghassan-ai-projects/agentic-stream` (set).
-- Design baseline is complete under `docs/` (current v1 design plus archived v0/v0.1 iterations, research reports and audits; nothing executable reads from it). The executable runtime is implemented through the current P-series; deployment qualification remains a separate release gate. Public documentation is curated under `documentation/`.
+- Design baseline is complete. The executable runtime is implemented through the current P-series; deployment qualification remains a separate release gate. Public documentation is curated under `documentation/`.
 - Implementation is complete through the P-series phases: the CLI lives in
   `cmd/agentic-stream/` (`version`, `validate`, `run-live`, `serve`, …) and `internal/`
   holds the spec compiler, ingress, eventlog, operators, situations, cognition,
@@ -56,14 +56,13 @@ Use the prompt files under `.agents/prompts/` when the task matches them.
   protocol is `proto/agenticstream/runtime/v1/`; migrations live in `migrations/`.
   Domain data is extracted to `internal/spec/internal/domain/event_schema_data.json`,
   `internal/ingress/internal/domain/simulator_data.json`, and
-  `internal/episodes/testdata/aquaculture_intents.json` (see
-  `docs/design/impl/GO_DOMAIN_DATA_EXTRACTION.md`).
+  `internal/episodes/testdata/aquaculture_intents.json`.
 
 Do not invent architecture outside the documented design. The design was written to be built as specified; deviations need a design change first.
 
 ## Architecture Overview
 
-The documented structure (see docs/design/TECHNICAL_DESIGN.md §23):
+The documented structure (see [documentation/architecture/repository-map.md](documentation/architecture/repository-map.md)):
 
 - `cmd/agentic-stream/` - entrypoint, flags, wiring, shutdown
 - `internal/contractsv1` - versioned envelopes and JSON contracts
@@ -84,12 +83,12 @@ The documented structure (see docs/design/TECHNICAL_DESIGN.md §23):
 - `internal/watch` - derived-trigger watches installed by approved commands; configured facade, app use cases, pure domain rules and an opaque-transaction store (see [watch module guide](internal/watch/README.md))
 - `internal/notify` - durable notification outbox and lifecycle contract; configured facade, app use cases, pure domain rules (including the embedded Channel-B contract) and a store that owns the five notification tables (see [notify module guide](internal/notify/README.md))
 - `internal/actionport` - approved-command/effect contracts without implementation dependencies
-- `internal/device` - device effect boundary; the reference adapter module: thin facade, session use cases in `internal/app`, pure `internal/domain`, record codec in `internal/wire`, gateway link in `internal/transport` (record in docs/device-reference-module-2026-10-05)
+- `internal/device` - device effect boundary; the reference adapter module: thin facade, session use cases in `internal/app`, pure `internal/domain`, record codec in `internal/wire`, gateway link in `internal/transport`
 - `internal/episodeledger` - durable episode pipeline lifecycle (scheduler queue items, episodes, fenced attempts, rejection audit, recovery); configured facade, app use cases, pure domain rules and an opaque-transaction store (see [episode ledger guide](internal/episodeledger/README.md))
 - `internal/approvalledger` - durable human approval lifecycle (request, expiry, resolution, withdrawal); configured facade, app use cases, pure domain and an opaque-transaction store; imports no `notify`, the caller supplies the withdrawal publisher (see [approval ledger guide](internal/approvalledger/README.md))
 - `internal/runtime` - thin live-pipeline, readiness and worker facades; concrete assembly in `internal/composition`, ordered use cases in `internal/app`, pure rules/reports in `internal/domain`, transaction plumbing in `internal/store`, source and worker resource adapters in `internal/transport` (see [runtime module guide](internal/runtime/README.md)).
 - `internal/control` - runtime control plane: owner lease, epoch drain/kill, final readiness capability and cost control (ledger, ceilings, kill switch); configured facade, app use cases, pure domain rules and an opaque-transaction store (see [control module guide](internal/control/README.md))
-- `internal/authority` - device claims, bindings, reconciliation and safety evidence; the reference module: thin `Service` facade, use cases in `internal/app`, pure `internal/domain`, transactions and SQL in `internal/store` (see module pattern (`docs/authority-reference-module-2026-10-05/MODULE_PATTERN.md`) and its ubiquitous language (`docs/authority-reference-module-2026-10-05/UBIQUITOUS_LANGUAGE.md`)). To bring another package to this standard, follow [the reference module refactor prompt](.agents/prompts/reference-module-refactor.md)
+- `internal/authority` - device claims, bindings, reconciliation and safety evidence; the reference module: thin `Service` facade, use cases in `internal/app`, pure `internal/domain`, transactions and SQL in `internal/store` (see module pattern and its ubiquitous language). To bring another package to this standard, follow [the reference module refactor prompt](.agents/prompts/reference-module-refactor.md)
 - `internal/replay` - effect-safe replay modes; ordered session use cases in `internal/app`, pure verification rules in `internal/domain`, all replay SQL in `internal/store`, trace files and isolated databases in `internal/transport` (see [replay module guide](internal/replay/README.md))
 - `internal/api` - JSON/HTTP plus Server-Sent Events
 - `internal/telemetry` - OpenTelemetry traces, metrics, logs
@@ -107,7 +106,6 @@ The documented structure (see docs/design/TECHNICAL_DESIGN.md §23):
 - Worker implementations are Go-only; use the current-v1 protobuf/gRPC boundary
   for a separate Go worker process.
 - `documentation/` - curated public documentation
-- `docs/` - local-only, git-ignored working archive: design iterations, audits, research and runbooks; documentation only, never an input of code, tests or the build. It is not in a fresh clone; paths to it in this repository are plain text, not links
 
 Keep most Go packages under `internal` until their contracts survive a release. Public SDK packages contain client and authoring types only.
 
@@ -137,7 +135,7 @@ Important behavior:
 - `make test` and `go test ./...` run every package, including the repository-wide gates in `internal/architecture` (indexed in its README).
 - `make lint` depends on `golangci-lint` and may fail if the environment cannot write to its cache.
 
-See [.agents/context/testing.md](.agents/context/testing.md) for the testing and validation bar. The acceptance gates live in docs/design/IMPLEMENTATION_PLAN.md; golden replay and the predictive-maintenance suite are the correctness contracts.
+See [.agents/context/testing.md](.agents/context/testing.md) for the testing and validation bar. The acceptance gates are the tests in `internal/architecture` and the predictive-maintenance suite; golden replay and the predictive-maintenance suite are the correctness contracts.
 
 ## Go Standards
 
@@ -286,7 +284,7 @@ and say why in the change.
 
 - Do not add secrets, credentials, or machine-specific private data.
 - Do not add network calls to unit tests.
-- Do not read from `docs/`. It is a dated archive, not an input: no Go file (tests included) opens a path under it and the Makefile uses nothing in it. Test inputs live in `examples/` (fixtures shared by several modules) or in the owning module's `testdata/`; the worker protocol lives in `proto/`. Enforced by `TestNothingExecutableReadsFromTheDocsArchive`.
+- Do not read from `docs/`. It is a local, git-ignored directory and not part of the repository: no Go file (tests included) opens a path under it and the Makefile uses nothing in it. Test inputs live in `examples/` (fixtures shared by several modules) or in the owning module's `testdata/`; the worker protocol lives in `proto/`. Enforced by `TestNothingExecutableReadsFromTheDocsArchive`.
 - Do not let untrusted content become instructions or executable parameters (invariant 1).
 - Do not add graph engines, brokers, LangChain/LangGraph, or a web UI into the version-1 core (see design README).
 - Do not give models direct access to effectors or production credentials.

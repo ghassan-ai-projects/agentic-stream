@@ -22,7 +22,7 @@ const (
 	SchemaTriggerEvaluation SchemaName = "trigger-evaluation"
 	// Device wire records for the physical (serial) effector boundary. These
 	// use snake_case, matching the device wire convention (not the camelCase
-	// SituationSpec). See docs/plans/real-world-sensor-hil/03-serial-effector.md.
+	// SituationSpec).
 	SchemaDeviceCommand SchemaName = "device-command"
 	SchemaDeviceReceipt SchemaName = "device-receipt"
 	SchemaDeviceResult  SchemaName = "device-result"

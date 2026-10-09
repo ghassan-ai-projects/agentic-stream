@@ -1,8 +1,7 @@
 # Design
 
 These pages are public summaries of the current Agentic Stream design. The
-full technical record remains in `docs/design/`, while
-the implementation and tests decide what can be claimed as shipped.
+implementation and tests decide what can be claimed as shipped.
 
 ## Before the detailed diagrams
 

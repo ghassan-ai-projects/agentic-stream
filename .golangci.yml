@@ -7,7 +7,7 @@ version: "2"
 # wrapcheck, plus the complexity limits of quality-bar rules Q1 and Q2
 # (.agents/context/quality-bar.md). Matches the rules in AGENTS.md.
 #
-# Test hygiene (test bar T6, T9; docs/test-audit-2026-10-09/TEST_BAR.md):
+# Test hygiene (test bar T6, T9):
 # paralleltest, tparallel, usetesting and thelper apply to test files like any
 # other code. A test that cannot be parallel (process-global state such as
 # t.Setenv) or cannot use t.TempDir (Unix socket path length) carries
