@@ -82,6 +82,7 @@ detail is in the test audit.
 
 - `internal/contractsv1`: [`TestPartitionIDsAreFrozenFNV1aOfTenantNulKey`](../../internal/contractsv1/internal/domain/envelope_test.go)
 - `internal/engine`: [`TestConcurrentRunsApplyEachEventExactlyOnce`](../../internal/engine/internal/app/run_test.go), [`TestTheSameEvidenceYieldsIdenticalSituationsOnEveryRun`](../../internal/engine/internal/app/run_test.go)
+- `internal/replay`: [`TestGoldenTracesMatchTheirRecordedResults`](../../internal/replay/golden_record_test.go), [`TestGoldenTracesAreDeterministic`](../../internal/replay/golden_replay_test.go)
 - `internal/runtime`: [`TestEpisodesRunBesideIngestion`](../../internal/runtime/internal/app/episodes_beside_ingestion_test.go)
 - `internal/control`: [`TestALostLeaseFencesTheOldEpochsRenewalsAndWrites`](../../internal/control/runtime_owner_test.go), [`TestRecoveryCannotCommitOnceTheOwnerLeaseIsLost`](../../internal/control/owner_recovery_test.go)
 
@@ -134,7 +135,7 @@ detail is in the test audit.
 ### Invariant 9: Replay never performs external effects unless an explicit, separate simulation mode is selected.
 
 - `internal/architecture`: [`TestReasoningAndReplayCannotReachEffectImplementations`](../../internal/architecture/imports_test.go)
-- `internal/replay`: [`TestDeterministicModeEqualsRunAndNeverInvokesCognition`](../../internal/replay/internal/app/run_test.go), [`TestRunModeFailsClosedBeforeAnyWorkWithoutCapabilities`](../../internal/replay/internal/app/run_test.go), [`TestShadowPhasePersistsOnlyComparisonsAndRepeatsByteForByte`](../../internal/replay/internal/app/shadow_test.go), [`TestRecordedPhaseValidatesACompleteLedger`](../../internal/replay/internal/app/recorded_test.go), [`TestGoldenTracesAreDeterministic`](../../internal/replay/golden_replay_test.go), [`TestRunNTimesRepeatsDeterministicallyInSeparateDatabases`](../../internal/replay/internal/app/run_test.go), [`TestThermalChamberReplayIsDeterministic`](../../internal/replay/thermal_chamber_test.go)
+- `internal/replay`: [`TestDeterministicModeEqualsRunAndNeverInvokesCognition`](../../internal/replay/internal/app/run_test.go), [`TestRunModeFailsClosedBeforeAnyWorkWithoutCapabilities`](../../internal/replay/internal/app/run_test.go), [`TestShadowPhasePersistsOnlyComparisonsAndRepeatsByteForByte`](../../internal/replay/internal/app/shadow_test.go), [`TestRecordedPhaseValidatesACompleteLedger`](../../internal/replay/internal/app/recorded_test.go), [`TestRunNTimesRepeatsDeterministicallyInSeparateDatabases`](../../internal/replay/internal/app/run_test.go), [`TestThermalChamberReplayIsDeterministic`](../../internal/replay/thermal_chamber_test.go)
 - `internal/storage`: [`TestOpenFreshReservesPathUntilClose`](../../internal/storage/internal/store/fresh_database_test.go), [`TestOpenFreshRejectsCollisionsWithoutRemovingExistingFiles`](../../internal/storage/internal/store/fresh_database_test.go)
 - `internal/device`: [`TestEffectProfileValidationReadsTheConfigurationItIsGiven`](../../internal/device/profile_test.go), [`TestCheckEffectProfile`](../../internal/device/internal/domain/profile_test.go)
 - `internal/sources`: [`TestDeterministicSequenceIsReproducible`](../../internal/sources/internal/domain/ids_test.go)

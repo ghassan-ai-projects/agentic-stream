@@ -1,0 +1,12 @@
+{
+  "events_processed": 64,
+  "version_count": 3,
+  "versions_hash": "f11ff53471d1a674728462c46b01bee2f6dc14f553da97e273bdfce351f78e40",
+  "phases": {
+    "thermal_zone/zone-01": [
+      "candidate",
+      "watch",
+      "cooling"
+    ]
+  }
+}

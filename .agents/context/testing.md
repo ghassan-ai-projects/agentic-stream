@@ -21,6 +21,16 @@ Use these commands unless the task is documentation-only:
 - `make deadcode` (`scripts/check-deadcode.sh`) runs `deadcode ./...` without `-test` and fails when a production function is reachable only from tests. Test-support packages are exempt: `internal/testsupport/...` and packages whose name ends in `test` (`controltest`, `spectest`, ...). Fix a finding by wiring the function into production, deleting it, or moving it to test support (an `export_test.go` for a package's own tests).
 - `deadcode` and `govulncheck` are optional locally when the tools are missing; the Makefile reports that explicitly. CI installs the pinned versions, so the gates always run there.
 
+## Golden Replay
+
+`TestGoldenTracesMatchTheirRecordedResults` (`internal/replay`) replays every
+example trace and compares events processed, version count, the versions hash
+and each entity's phase sequence with `internal/replay/testdata/golden/*.json`.
+A trace that publishes no version must say `expect_empty` in its golden file.
+When a reviewed behavior change moves these results, regenerate with
+`go test ./internal/replay -run TestGoldenTracesMatchTheirRecordedResults -update`
+and review the diff of the golden files in the same change.
+
 ## Repository-Wide Gates
 
 Tests that check the whole repository (import layering, SQL ownership, facade shape, file size, kernel purity) live in `internal/architecture`, one file per gate family, indexed in its [README](../../internal/architecture/README.md). The repository root holds no tests; `TestNoTestsAtRepositoryRoot` fails when one appears. A test that proves one module's behavior lives in that module.
