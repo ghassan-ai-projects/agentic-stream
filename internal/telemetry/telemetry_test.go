@@ -24,7 +24,7 @@ func TestMetricsHandlerServesTheRuntimeCountersWithoutLabels(t *testing.T) {
 	runtime.ObserveFailure()
 	response := httptest.NewRecorder()
 
-	telemetry.MetricsHandler(runtime).ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
+	telemetry.MetricsHandler(runtime, nil).ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
 
 	lines := strings.Split(response.Body.String(), "\n")
 	for _, want := range []string{

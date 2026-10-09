@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -102,7 +103,10 @@ func (p *Pipeline) RunSimulatorJSONL(ctx context.Context, path string) (Pipeline
 
 func (p *Pipeline) runAfterIngest(ctx context.Context, report PipelineReport, before eventlog.LogPosition) (result PipelineReport, err error) {
 	ctx, span := telemetry.StartSpan(ctx, "agentic_stream.pipeline.batch", trace.WithSpanKind(trace.SpanKindConsumer))
-	defer func() { finishBatchSpan(span, report, err) }()
+	defer func() {
+		finishBatchSpan(span, report, err)
+		p.recordBatchFailure(before, err)
+	}()
 	err = p.advanceBatch(ctx, &report, before, span)
 	return report, err
 }
@@ -242,4 +246,12 @@ func (p *Pipeline) watchPage() int {
 		return p.watchPageSize
 	}
 	return defaultWatchPageSize
+}
+
+func (p *Pipeline) recordBatchFailure(before eventlog.LogPosition, err error) {
+	if err == nil {
+		return
+	}
+	p.telemetry.ObserveFailure()
+	slog.Error("pipeline batch failed", "tenant", p.tenantID, "after_position", before, "error", err)
 }

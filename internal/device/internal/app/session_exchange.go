@@ -13,18 +13,11 @@ import (
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 )
 
-// Exchange is the ordered terminal response to one device command.
-// Receipt proves admission; Result is the device-reported terminal execution
-// status. Neither is physical confirmation by itself.
 type Exchange struct {
 	Receipt domain.Receipt
 	Result  domain.Result
 }
 
-// Exchange sends one already-materialized command and consumes its
-// receipt and terminal result. The bool reports whether bytes were handed to
-// the transport; callers must treat a post-send receive error as an unknown
-// outcome.
 func (s *Session) Exchange(ctx context.Context, command domain.Command) (Exchange, bool, error) {
 	exchange, sent, err := s.exchange(ctx, command)
 	if exchange == nil {
@@ -55,7 +48,6 @@ func (s *Session) ensureOpen() error {
 	return nil
 }
 
-// commandDelivery binds the prepared bytes and identity to their target claim.
 type commandDelivery struct {
 	command  domain.Command
 	frame    []byte
@@ -103,6 +95,7 @@ func (s *Session) validateCommandLifetime(command domain.Command) error {
 func (s *Session) claimCommand(ctx context.Context, command domain.Command, commandIdentity string) (deviceauthority.TargetClaim, error) {
 	claim := s.targetClaim(command.Target)
 	if err := s.authority.Claim(ctx, claim); err != nil {
+		s.telemetry.ObserveTargetClaimRejection()
 		return claim, fmt.Errorf("claim device target: %w", err)
 	}
 	return s.bindClaimedCommand(ctx, command, claim, commandIdentity)
@@ -124,9 +117,7 @@ func (s *Session) bindClaimedCommand(ctx context.Context, command domain.Command
 
 func (s *Session) assertClaimBeforeDelivery(ctx context.Context, claim deviceauthority.TargetClaim) (deviceauthority.TargetClaim, error) {
 	s.claimedTargets[claim.Target] = struct{}{}
-	// Claim performs the durable admission check. Repeat it directly before
-	// transport delivery to minimize the revoke-to-send race; a post-send
-	// failure remains an unknown outcome because bytes cannot be retracted.
+
 	if err := s.authority.AssertClaim(ctx, claim); err != nil {
 		return claim, fmt.Errorf("assert device target authority: %w", err)
 	}
@@ -147,8 +138,6 @@ func (s *Session) deliverClaimedCommand(ctx context.Context, delivery commandDel
 	return s.receiveCommandOutcome(ctx, delivery)
 }
 
-// cachedExchange returns the first answer to a repeated idempotency key. A key
-// reused for a different command is a conflict.
 func (s *Session) cachedExchange(idempotencyKey, commandIdentity string) (*Exchange, bool, error) {
 	cached, ok := s.receipts[idempotencyKey]
 	if !ok {
@@ -216,9 +205,7 @@ func (s *Session) cacheCommandOutcome(ctx context.Context, delivery commandDeliv
 
 func (s *Session) unknownDeviceOutcome(ctx context.Context, partial *Exchange, err error) (*Exchange, bool, error) {
 	barrierErr := s.requireReconciliation(ctx, "device exchange was not trustworthy")
-	// A malformed, incomplete, or mismatched pair leaves the next frame's
-	// meaning unknowable. Do not let a caller reuse a potentially desynchronized
-	// transport; a fresh handshake is required.
+
 	s.invalidateTransportLocked()
 	return partial, true, &deviceExchangeError{err: errors.Join(err, barrierErr)}
 }

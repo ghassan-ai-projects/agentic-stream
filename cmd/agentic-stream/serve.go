@@ -169,7 +169,7 @@ func (core *runtimeCore) runtimeHandler(flags serveFlags, subscriberToken string
 		TenantID:  flags.tenantID,
 		MaxLag:    1000,
 		Authorize: api.BearerTokenAuthorizer(subscriberToken),
-	}, telemetry.MetricsHandler(metrics), core.epochControl, core.epoch, os.Getenv("AGENTIC_STREAM_CONTROL_TOKEN")))
+	}, telemetry.MetricsHandler(metrics, core.healthGauges()), core.epochControl, core.epoch, os.Getenv("AGENTIC_STREAM_CONTROL_TOKEN")))
 }
 
 func serveHTTP(ctx context.Context, address string, handler http.Handler) error {
@@ -185,4 +185,11 @@ func serveHTTP(ctx context.Context, address string, handler http.Handler) error 
 		return fmt.Errorf("serve runtime: %w", err)
 	}
 	return nil
+}
+
+func (core *runtimeCore) healthGauges() telemetry.GaugeSource {
+	if core.pipeline == nil {
+		return nil
+	}
+	return core.pipeline.HealthGauges
 }
