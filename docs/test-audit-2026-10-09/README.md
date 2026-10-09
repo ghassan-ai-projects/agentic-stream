@@ -109,7 +109,7 @@ To continue in a fresh session:
 | 11 | `policy`, `authority` | done | every package ≥ 81% (policy facade 85.2 → 100, policy store 80.2 → 89.9) | policy app 8.5 s → 3.4 s (serial tests, per-test pipeline, 12 autocommits, sleep) | 046acfd7 |
 | 12 | `actions`, `actionport`, `watch`, `notify` | done | every package ≥ 77% (notify store 68.0 → 93.0, actionport domain 80 → 100, actions app 81.9 → 89.4) | no test above 1 s; crash-between-effect-and-outcome proven | 8a4cd57c |
 | 13 | `device`, `control` | done | every package ≥ 79% (controltest 66.7 → 100, device 93.3 → 100, control store 70.8 → 79.2) | slowest test 0.65 s; no sleeps | 46092904 |
-| 14 | `replay`, `runartifact` | todo | | | |
+| 14 | `replay`, `runartifact` | done | every package ≥ 75% (replay 60.0 → 100, replay app 68.1 → 86.2, transport 67.9 → 83.3, runartifact store 71.3 → 84.0) | `replay` 31–36 s → 5.4–6.5 s; slowest test 32.6 s → 1.5 s alone | see git log |
 | 15 | `runtime`, `api` | todo | | | |
 | 16 | `cmd/agentic-stream` | todo | | | |
 | 17 | gates: linters, coverage floor, invariant map, docs | todo | | | |
@@ -140,4 +140,5 @@ not a test decision.
 | 12 | Possible bugs in `actions`: a command refused before the effector is stored `failed` with its verification left `awaiting` forever; `MarkCommandDispatching` also moves `failed` commands to `dispatching`; the lease-expiry metric counts one abandoned lease twice. Not pinned by tests. | [actions.md](modules/actions.md) |
 | 12 | `watch/internal/app/install.go` `assertGuards` ignores its `tenantID` and `target` parameters. The watch busy-retry test releases the SQLite lock from a 50 ms real timer (the retry backoff is a real timer inside storage). | [watch.md](modules/watch.md) |
 | 11 | A stale approval ends `denied` plus `withdrawn_at` because the ledger has no `withdrawn` status (pinned only). `authority/internal/store/reader.go` has its own `nullable[T]` where AGENTS.md names `storage.NullIfEmpty`. `TestACommittedApprovalDispatchesWithoutNewSensorInput` is bound to a fixed 1 s outbox ticker in `Pipeline.Start` (round 15). | [policy.md](modules/policy.md), [authority.md](modules/authority.md) |
+| 14 | A thermal-trace replay costs 1.2 s under `-race` (70 ms without), from goroutine wake-ups in `database/sql` and the SQLite driver inside `internal/engine` and `internal/storage`. `internal/replay/internal/transport` failed once in about 12 early timing runs (not captured, not reproduced in 50+ later runs); if it returns, look at `TestShadowWorkerNamesItselfInTheErrorOfAFailedExecution` first. | [replay.md](modules/replay.md) |
 

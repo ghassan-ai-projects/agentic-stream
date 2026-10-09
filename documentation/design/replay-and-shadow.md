@@ -95,10 +95,10 @@ unexpected, tampered or mis-cited decision fails the command.
 ## Source evidence
 
 - Replay implementation: [`internal/replay/replay.go`](../../internal/replay/replay.go)
-- Replay tests: [`internal/replay/replay_test.go`](../../internal/replay/replay_test.go)
+- Replay tests: [golden determinism](../../internal/replay/golden_replay_test.go), [mode and capability sessions](../../internal/replay/internal/app/run_test.go), [shadow phase](../../internal/replay/internal/app/shadow_test.go), [recorded phase](../../internal/replay/internal/app/recorded_test.go)
 - Shadow replay with the Tamoz stand-in: [`cmd/agentic-stream/experiment_shadow_test.go`](../../cmd/agentic-stream/experiment_shadow_test.go)
 - Recorded replay of a live experiment run: [`cmd/agentic-stream/experiment_recorded_test.go`](../../cmd/agentic-stream/experiment_recorded_test.go)
-- Shadow/mode tests: [`internal/episodes/internal/app/shadow_dispatch_test.go`](../../internal/episodes/internal/app/shadow_dispatch_test.go), [dispatch modes](../../internal/runtime/internal/app/dispatch_mode_test.go), [epoch controls](../../internal/runtime/internal/app/epoch_control_test.go)
+- Shadow/mode tests: [`internal/episodes/internal/app/shadow_dispatch_test.go`](../../internal/episodes/internal/app/shadow_dispatch_test.go), [dispatch modes](../../internal/runtime/internal/app/dispatch_policy_test.go), [epoch controls](../../internal/runtime/internal/app/epoch_control_test.go)
 
 ## Next reads
 

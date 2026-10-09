@@ -133,6 +133,7 @@ var packageLayers = map[string]int{
 	"internal/replay/internal/transport":          29,
 	"internal/runtime/internal/transport":         29,
 	"internal/replay/internal/app":                30,
+	"internal/replay/replaytest":                  30,
 	"internal/runtime/internal/app":               30,
 	"internal/replay":                             31,
 	"internal/runtime/internal/composition":       31,

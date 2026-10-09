@@ -9,6 +9,7 @@ import (
 )
 
 func TestShadowManifestAdmissionPrecedesDecisionAndSnapshot(t *testing.T) {
+	t.Parallel()
 	_, err := ShadowRules{}.ValidateOutput(ShadowInput{SnapshotJSON: []byte(`broken`)}, ShadowOutput{ExecutorVersion: "test", ManifestSHA256: "invalid", DecisionJSON: []byte(`broken`)}, time.Time{})
 	if err == nil || !strings.HasPrefix(err.Error(), "manifest digest:") {
 		t.Fatalf("expected manifest rejection first, got %v", err)
@@ -16,6 +17,7 @@ func TestShadowManifestAdmissionPrecedesDecisionAndSnapshot(t *testing.T) {
 }
 
 func TestRecordedAttemptIdentityPrecedesFence(t *testing.T) {
+	t.Parallel()
 	entry := RecordedEntry{EpisodeKey: "episode", EpisodeID: "ep", AttemptID: "attempt", Fence: 2}
 	err := ValidateRecordedAttempt(entry, map[string]any{"episode_id": "ep", "attempt_id": "wrong", "fence": float64(3)})
 	if err == nil || !strings.Contains(err.Error(), "mismatched attempt identity") {
@@ -24,6 +26,7 @@ func TestRecordedAttemptIdentityPrecedesFence(t *testing.T) {
 }
 
 func TestEpochFromEarliestDefaultsToUnixOrigin(t *testing.T) {
+	t.Parallel()
 	epoch := EpochFromEarliest(time.Time{})
 	if !epoch.Equal(time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("zero epoch = %v", epoch)

@@ -182,7 +182,7 @@ func TestStoreRecordsShadowComparisonForReplayedEpisode(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("recorded %d comparisons, want 1", count)
 	}
-	if err := store.RecordShadowComparison(t.Context(), comparison); err == nil {
-		t.Fatal("duplicate comparison key accepted")
+	if err := store.RecordShadowComparison(t.Context(), comparison); err == nil || !strings.Contains(err.Error(), "UNIQUE constraint failed: shadow_comparisons") {
+		t.Fatalf("a duplicate comparison key = %v, want a shadow_comparisons uniqueness violation", err)
 	}
 }

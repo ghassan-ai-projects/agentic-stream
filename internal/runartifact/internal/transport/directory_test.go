@@ -30,8 +30,8 @@ func TestPublishWritesFilesAndChecksumsThenRefusesExistingOutput(t *testing.T) {
 func TestPublishRefusesPathEscapingNames(t *testing.T) {
 	t.Parallel()
 	output := filepath.Join(t.TempDir(), "artifact")
-	if err := transport.Publish(output, map[string][]byte{"../x": nil}); err == nil {
-		t.Fatal("escaping name accepted")
+	if err := transport.Publish(output, map[string][]byte{"../x": nil}); err == nil || !strings.Contains(err.Error(), `invalid artifact file name "../x"`) {
+		t.Fatalf("a path-escaping name = %v, want invalid artifact file name", err)
 	}
 	if _, err := os.Stat(output); err == nil {
 		t.Fatal("partial artifact published")
@@ -44,7 +44,7 @@ func TestRequireDirectoryRefusesFiles(t *testing.T) {
 	if err := os.WriteFile(file, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := transport.RequireDirectory(file); err == nil {
-		t.Fatal("file accepted as directory")
+	if err := transport.RequireDirectory(file); err == nil || !strings.Contains(err.Error(), "run artifact is not a directory") {
+		t.Fatalf("a file as the artifact directory = %v, want run artifact is not a directory", err)
 	}
 }

@@ -30,6 +30,7 @@ func newAuthority(t *testing.T, db *storage.DB) *deviceauthority.Service {
 }
 
 func TestSoakReportPassesCompletePhysicalTransitions(t *testing.T) {
+	t.Parallel()
 	db, _ := openSoakDB(t)
 	authority := newAuthority(t, db)
 	if err := authority.RecordSafetyEvent(t.Context(), deviceauthority.SafetyEvent{Type: "physical_transition", Target: "fan-01", Details: completeEvidence()}); err != nil {
@@ -45,6 +46,7 @@ func TestSoakReportPassesCompletePhysicalTransitions(t *testing.T) {
 }
 
 func TestSoakReportFailsUnresolvedActionOutcome(t *testing.T) {
+	t.Parallel()
 	db, _ := openSoakDB(t)
 	insertCommand(t, db, "cmd-unknown", actionport.CommandReconciling)
 	report, err := computeSoak(t, db)
@@ -57,11 +59,13 @@ func TestSoakReportFailsUnresolvedActionOutcome(t *testing.T) {
 }
 
 func TestSoakReportCountsEveryCommandStatusLikeTheReconciliationBarrier(t *testing.T) {
+	t.Parallel()
 	for _, status := range []string{
 		actionport.CommandPending, actionport.CommandDispatching, actionport.CommandSucceeded, actionport.CommandFailed,
 		actionport.CommandReconciling, actionport.CommandOutcomeUnknown, actionport.CommandManualReview,
 	} {
 		t.Run(status, func(t *testing.T) {
+			t.Parallel()
 			db, _ := openSoakDB(t)
 			insertCommand(t, db, "cmd-1", status)
 			report, err := computeSoak(t, db)
@@ -81,6 +85,7 @@ func TestSoakReportCountsEveryCommandStatusLikeTheReconciliationBarrier(t *testi
 }
 
 func TestSoakReportCountsOnlyAwaitingVerificationsOfSucceededCommands(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		verification string
 		want         uint64
@@ -90,6 +95,7 @@ func TestSoakReportCountsOnlyAwaitingVerificationsOfSucceededCommands(t *testing
 		{actionport.VerificationObserved, 0},
 	} {
 		t.Run(tc.verification, func(t *testing.T) {
+			t.Parallel()
 			db, _ := openSoakDB(t)
 			insertCommand(t, db, "cmd-1", actionport.CommandSucceeded)
 			if _, err := db.ExecContext(t.Context(), `INSERT INTO verifications (verification_id, intent_id, command_id, outcome_id, status, updated_at)
@@ -108,6 +114,7 @@ func TestSoakReportCountsOnlyAwaitingVerificationsOfSucceededCommands(t *testing
 }
 
 func TestSoakReportBindsTenantBeforeTheStatusArguments(t *testing.T) {
+	t.Parallel()
 	db, _ := openSoakDB(t)
 	insertCommand(t, db, "cmd-1", actionport.CommandReconciling)
 	if _, err := db.ExecContext(t.Context(), `UPDATE commands SET tenant_id = 'other-tenant'`); err != nil {
@@ -152,6 +159,7 @@ func countBarrier(t *testing.T, db *storage.DB, commandID string) int64 {
 }
 
 func TestSoakReportFailsAnyZeroToleranceEventOrIncompleteEvidence(t *testing.T) {
+	t.Parallel()
 	db, _ := openSoakDB(t)
 	authority := newAuthority(t, db)
 	for _, event := range []deviceauthority.SafetyEvent{
@@ -172,6 +180,7 @@ func TestSoakReportFailsAnyZeroToleranceEventOrIncompleteEvidence(t *testing.T) 
 }
 
 func TestSoakReportFailsWithActiveReconciliationBarrier(t *testing.T) {
+	t.Parallel()
 	db, _ := openSoakDB(t)
 	authority := newAuthority(t, db)
 	owner := deviceauthority.Owner{Epoch: "epoch-1", Instance: "instance-1"}

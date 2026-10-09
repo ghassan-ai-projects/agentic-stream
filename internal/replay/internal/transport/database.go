@@ -22,8 +22,19 @@ func (d Database) Close() error {
 	return d.DB.Close() //nolint:wrapcheck // Raw storage close error; callers discard it on the session teardown path.
 }
 
+type DatabaseOpener func(ctx context.Context, path string) (*storage.DB, error)
+
+type DatabaseOpenerKey struct{}
+
+func databaseOpener(ctx context.Context) DatabaseOpener {
+	if open, ok := ctx.Value(DatabaseOpenerKey{}).(DatabaseOpener); ok {
+		return open
+	}
+	return storage.OpenFresh
+}
+
 func OpenIsolatedDatabase(ctx context.Context, path string) (Database, error) {
-	db, err := storage.OpenFresh(ctx, path)
+	db, err := databaseOpener(ctx)(ctx, path)
 	if err != nil {
 		return Database{}, err //nolint:wrapcheck // App wraps with the session operation name.
 	}

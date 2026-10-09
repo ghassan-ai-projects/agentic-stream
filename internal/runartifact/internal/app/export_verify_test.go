@@ -28,6 +28,7 @@ func openRun(t *testing.T) *storage.DB {
 }
 
 func TestExportThenVerifyRoundTripsAndRefusesOverwrite(t *testing.T) {
+	t.Parallel()
 	db := openRun(t)
 	request := app.Request{Store: store.New(db), OutputDir: filepath.Join(t.TempDir(), "artifact"), Manifest: domain.Manifest{TenantID: "tenant"}, Policy: stubPolicy()}
 	output, err := app.Export(t.Context(), request)
@@ -43,19 +44,24 @@ func TestExportThenVerifyRoundTripsAndRefusesOverwrite(t *testing.T) {
 }
 
 func TestExportRequiresDatabaseOutputAndTenant(t *testing.T) {
+	t.Parallel()
 	db := openRun(t)
-	for name, request := range map[string]app.Request{
-		"store":  {OutputDir: "x", Manifest: domain.Manifest{TenantID: "t"}},
-		"output": {Store: store.New(db), Manifest: domain.Manifest{TenantID: "t"}},
-		"tenant": {Store: store.New(db), OutputDir: "x"},
+	for name, tc := range map[string]struct {
+		request app.Request
+		wantErr string
+	}{
+		"store":  {app.Request{OutputDir: "x", Manifest: domain.Manifest{TenantID: "t"}}, "database and output directory are required"},
+		"output": {app.Request{Store: store.New(db), Manifest: domain.Manifest{TenantID: "t"}}, "database and output directory are required"},
+		"tenant": {app.Request{Store: store.New(db), OutputDir: "x"}, "tenant is required"},
 	} {
-		if _, err := app.Export(t.Context(), request); err == nil {
-			t.Errorf("%s missing but export succeeded", name)
+		if _, err := app.Export(t.Context(), tc.request); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+			t.Errorf("export without %s = %v, want %q", name, err, tc.wantErr)
 		}
 	}
 }
 
 func TestVerifyDetectsTamperingAndMissingDirectory(t *testing.T) {
+	t.Parallel()
 	db := openRun(t)
 	output, err := app.Export(t.Context(), app.Request{Store: store.New(db), OutputDir: filepath.Join(t.TempDir(), "artifact"), Manifest: domain.Manifest{TenantID: "tenant"}, Policy: stubPolicy()})
 	if err != nil {
@@ -67,10 +73,10 @@ func TestVerifyDetectsTamperingAndMissingDirectory(t *testing.T) {
 	if err := app.Verify(output, stubPolicy()); err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
 		t.Fatalf("tamper = %v", err)
 	}
-	if err := app.Verify("", stubPolicy()); err == nil {
-		t.Fatal("empty directory accepted")
+	if err := app.Verify("", stubPolicy()); err == nil || !strings.Contains(err.Error(), "run artifact directory is required") {
+		t.Fatalf("an empty directory name = %v, want run artifact directory is required", err)
 	}
-	if err := app.Verify(filepath.Join(t.TempDir(), "missing"), stubPolicy()); err == nil {
-		t.Fatal("missing directory accepted")
+	if err := app.Verify(filepath.Join(t.TempDir(), "missing"), stubPolicy()); err == nil || !strings.Contains(err.Error(), "stat run artifact") {
+		t.Fatalf("a missing directory = %v, want stat run artifact", err)
 	}
 }

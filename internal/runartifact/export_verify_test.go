@@ -15,6 +15,7 @@ import (
 )
 
 func TestExportPublishesVerifiableArtifactAndRefusesImplicitOverwrite(t *testing.T) {
+	t.Parallel()
 	db := storagetest.OpenTemp(t)
 
 	output := filepath.Join(t.TempDir(), "artifact")
@@ -28,12 +29,13 @@ func TestExportPublishesVerifiableArtifactAndRefusesImplicitOverwrite(t *testing
 	if err := runartifact.Verify(output); err != nil {
 		t.Fatalf("verify exported artifact: %v", err)
 	}
-	if _, err := runartifact.Export(t.Context(), runartifact.Options{DB: db, OutputDir: output, Manifest: runartifact.Manifest{TenantID: "tenant"}}); err == nil {
-		t.Fatal("export silently overwrote existing artifact")
+	if _, err := runartifact.Export(t.Context(), runartifact.Options{DB: db, OutputDir: output, Manifest: runartifact.Manifest{TenantID: "tenant"}}); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("export over an existing artifact = %v, want already exists", err)
 	}
 }
 
 func TestVerifyDetectsTamperedJSONL(t *testing.T) {
+	t.Parallel()
 	db := storagetest.OpenTemp(t)
 
 	output := filepath.Join(t.TempDir(), "artifact")
@@ -48,12 +50,13 @@ func TestVerifyDetectsTamperedJSONL(t *testing.T) {
 	if err := os.WriteFile(path, []byte(strings.TrimSuffix(string(data), "\n")+"\n{\"tampered\":true}\n"), 0o600); err != nil { //nolint:gosec // path is rooted in t.TempDir
 		t.Fatal(err)
 	}
-	if err := runartifact.Verify(output); err == nil {
-		t.Fatal("tampered artifact verified")
+	if err := runartifact.Verify(output); err == nil || !strings.Contains(err.Error(), "checksum mismatch for commands.jsonl") {
+		t.Fatalf("a tampered ledger = %v, want checksum mismatch for commands.jsonl", err)
 	}
 }
 
 func TestVerifyDetectsStaleDurableCommandDigest(t *testing.T) {
+	t.Parallel()
 	db := storagetest.OpenTemp(t)
 
 	if _, err := db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
@@ -74,12 +77,13 @@ func TestVerifyDetectsStaleDurableCommandDigest(t *testing.T) {
 	if _, err := runartifact.Export(t.Context(), runartifact.Options{DB: db, OutputDir: output, Manifest: runartifact.Manifest{TenantID: "tenant"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := runartifact.Verify(output); err == nil {
-		t.Fatal("artifact with stale durable command digest verified")
+	if err := runartifact.Verify(output); err == nil || !strings.Contains(err.Error(), "command_sha256 does not match command_json") {
+		t.Fatalf("a stale durable command digest = %v, want command_sha256 does not match command_json", err)
 	}
 }
 
 func TestVerifyDetectsStaleSafetyEventDigest(t *testing.T) {
+	t.Parallel()
 	db := storagetest.OpenTemp(t)
 
 	details := []byte(`{"reason":"test"}`)
@@ -118,7 +122,7 @@ func TestVerifyDetectsStaleSafetyEventDigest(t *testing.T) {
 	if err := os.WriteFile(checksumsPath, updatedChecksums, 0o600); err != nil { //nolint:gosec // path is rooted in t.TempDir
 		t.Fatal(err)
 	}
-	if err := runartifact.Verify(output); err == nil {
-		t.Fatal("artifact with stale safety event digest verified")
+	if err := runartifact.Verify(output); err == nil || !strings.Contains(err.Error(), "details_sha256 does not match details_json") {
+		t.Fatalf("a stale safety event digest = %v, want details_sha256 does not match details_json", err)
 	}
 }

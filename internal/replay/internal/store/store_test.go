@@ -91,8 +91,8 @@ func TestShadowComparisonIsAppendOnlyAndNeverCreatesActionRecords(t *testing.T) 
 	if err := s.RecordShadowComparison(ctx, comparison); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RecordShadowComparison(ctx, comparison); err == nil {
-		t.Fatal("duplicate comparison overwrote the prior record")
+	if err := s.RecordShadowComparison(ctx, comparison); err == nil || !strings.Contains(err.Error(), "UNIQUE constraint failed: shadow_comparisons") {
+		t.Fatalf("a duplicate comparison = %v, want a shadow_comparisons uniqueness violation", err)
 	}
 	for table, want := range map[string]int{"shadow_comparisons": 1, "intents": 0, "commands": 0, "outbox": 0} {
 		var count int

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -66,8 +67,8 @@ func TestAdmitCapabilitiesAcceptsAtMostOneSet(t *testing.T) {
 	if err != nil || got.RecordedLedger == nil {
 		t.Fatalf("single admission = %+v err=%v", got, err)
 	}
-	if _, err = AdmitCapabilities([]Capabilities{single, single}); err == nil {
-		t.Fatal("duplicate capability sets were accepted")
+	if _, err = AdmitCapabilities([]Capabilities{single, single}); err == nil || !strings.Contains(err.Error(), "at most one replay capability set") {
+		t.Fatalf("duplicate capability sets = %v, want at most one replay capability set", err)
 	}
 }
 
