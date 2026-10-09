@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
-
-	domain "github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/domain"
 )
 
 func TestCompilePreservesValidationPrecedence(t *testing.T) {
@@ -51,7 +49,7 @@ func TestCompilePreservesValidationPrecedence(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			compiled, err := domain.NewCompiler().CompileBytes(t.Context(), []byte(tt.source), "input.yaml")
+			compiled, err := compileSource(t, tt.source)
 			if err == nil || !strings.Contains(err.Error(), tt.want) || compiled != nil {
 				t.Fatalf("compile: hasCompiled=%t err=%v, want %q", compiled != nil, err, tt.want)
 			}
@@ -59,17 +57,12 @@ func TestCompilePreservesValidationPrecedence(t *testing.T) {
 	}
 }
 
-func TestCompilerReusePreservesJSONAndYAMLDigestParity(t *testing.T) {
+func TestCompileGivesJSONAndYAMLSourcesTheSameDigest(t *testing.T) {
 	t.Parallel()
-	compiler := domain.NewCompiler()
-	// CEL source is text: preserve "1.0" through the format conversion.
 	source := []byte(strings.Replace(minimalSpecYAML(), "score: 1.0", `score: "1.0"`, 1))
-	first, err := compiler.CompileBytes(t.Context(), source, "first.yaml")
+	first, err := compileSource(t, string(source))
 	if err != nil {
 		t.Fatal(err)
-	}
-	if _, err := compiler.CompileBytes(t.Context(), []byte("kind: invalid"), "failed.yaml"); err == nil {
-		t.Fatal("invalid document compiled")
 	}
 	var document map[string]any
 	if err := yaml.Unmarshal(source, &document); err != nil {
@@ -79,7 +72,7 @@ func TestCompilerReusePreservesJSONAndYAMLDigestParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := compiler.CompileBytes(t.Context(), jsonSource, "second.json")
+	second, err := compileSource(t, string(jsonSource))
 	if err != nil {
 		t.Fatal(err)
 	}

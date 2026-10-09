@@ -4,15 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/santhosh-tekuri/jsonschema/v6"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 // Compiler validates and compiles SituationSpec documents.
-type Compiler struct {
-	schema *jsonschema.Schema
-}
+type Compiler struct{}
 
 // NewCompiler creates a compiler with the embedded v1 JSON Schema.
 func NewCompiler() *Compiler {
@@ -38,14 +34,15 @@ func (c *Compiler) CompileBytes(_ context.Context, data []byte, path string) (*C
 // parseValidated parses the YAML source and validates it against the
 // embedded SituationSpec schema.
 func (c *Compiler) parseValidated(data []byte) (*rawSpec, error) {
-	if err := c.prepareSchema(); err != nil {
+	schema, err := embeddedSchema()
+	if err != nil {
 		return nil, err
 	}
 	raw, err := parseRawSpec(data)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.validateSchema(raw); err != nil {
+	if err := validateSchema(schema, raw); err != nil {
 		return nil, err
 	}
 	return raw, nil

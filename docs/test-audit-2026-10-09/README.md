@@ -1,6 +1,6 @@
 # Test audit (2026-10-09)
 
-Status: in progress (rounds 0–3 of 17 done)
+Status: in progress (rounds 0–4 of 17 done)
 
 A full audit of the repository's tests: organize them so the repository is easy
 to read, make them faster, raise coverage where it proves behavior, and remove
@@ -43,9 +43,9 @@ what proves nothing. Every test ends at the [test bar](TEST_BAR.md).
 | --- | --- | --- | --- | --- | --- |
 | 0 | audit folder, bar, baseline | done | - | - | - |
 | 1 | repository root → `internal/architecture` | done | - | 2.8 s → 1.6 s | 5f289206 |
-| 2 | `kernel`, `canonicaljson`, `sources`, `contractsv1`, `interlock` | done | every package ≥ 90% (interlock domain 66.7 → 100, contractsv1 73.3 → 100) | unchanged (≈1.2 s each, race start-up) | see git log |
+| 2 | `kernel`, `canonicaljson`, `sources`, `contractsv1`, `interlock` | done | every package ≥ 90% (interlock domain 66.7 → 100, contractsv1 73.3 → 100) | unchanged (≈1.2 s each, race start-up) | 592b586f |
 | 3 | `storage`, `telemetry`, `migrations` | done | every package ≥ 81% (storage 64 → 100, telemetry 66.7 → 100) | store 8.4 s → 4.0 s, storagetest 5.4 s → 3.5 s | ff3a06ce |
-| 4 | `spec`, `ingress` | todo | | | |
+| 4 | `spec`, `ingress` | done | every package ≥ 85% (spec store 68.9 → 86.5, spectest 71.4 → 85.7) | ≈1–2 s each; spec compile 26.9 → 6.9 ms under `-race` (schema compiled once) | see git log |
 | 5 | `eventlog`, `engine` | todo | | | |
 | 6 | `operators`, `situations`, `cognition` | todo | | | |
 | 7 | `episodes` | todo | | | |
@@ -71,4 +71,5 @@ not a test decision.
 | 3 | `storage.OpenFresh` could copy a migrated template instead of migrating: saves about 1.3 s per isolated replay under `-race`, about 0.06 s in production. Not done; revisit after the replay round. | [storage.md](modules/storage.md) |
 | 2 | `interlock.Assert` documents that a missing row fails closed wrapping `ErrTripped`; it wraps `sql.ErrNoRows` instead (still fails closed). Fix the comment or the code. | [interlock.md](modules/interlock.md) |
 | 2 | canonicaljson accepts a native `float64` above 2^53 but refuses the same value as a raw JSON integer; both pinned, needs a design decision. `containsSurrogate` has an unreachable branch. | [canonicaljson.md](modules/canonicaljson.md) |
+| 4 | Bug: `cleanLiveListener.closeAndRemove` (`internal/ingress/internal/transport/listener.go`) should remove the socket file only if it is still the listener's, but `net.UnixListener.Close` unlinks the path first, so a replacing file is deleted and `removeSocketFile` is unreachable. Fix: `SetUnlinkOnClose(false)` in `listenSocket`, as its own change. | [ingress.md](modules/ingress.md) |
 
