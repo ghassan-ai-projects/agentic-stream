@@ -195,3 +195,30 @@ func TestHandoffOwnershipRejectsAuthorityAndPayloadBypasses(t *testing.T) {
 		}
 	}
 }
+
+// appendOnlyTables are written once and never rewritten: no UPDATE, no
+// rewriting upsert, and no DELETE outside the retention files listed for the
+// table.
+var appendOnlyTables = map[string][]string{
+	"situation_versions":      {"internal/engine/internal/store/retention.go"},
+	"event_log":               nil,
+	"outcomes":                nil,
+	"policy_evaluations":      nil,
+	"event_time_dispositions": nil,
+	"apply_failures":          nil,
+}
+
+func TestAppendOnlyTablesAreNeverRewritten(t *testing.T) {
+	t.Parallel()
+	productionSQLMutations(t, func(file, position string, mutation sqlMutation) {
+		retention, appendOnly := appendOnlyTables[mutation.table]
+		if !appendOnly {
+			return
+		}
+		rewrites := mutation.operation == "update" || mutation.rewritesExisting
+		deletes := mutation.operation == "delete" && !slices.Contains(retention, file)
+		if rewrites || deletes {
+			t.Errorf("%s: %s %s rewrites the append-only table %s", position, mutation.operation, mutation.table, firstLine(mutation.query))
+		}
+	})
+}

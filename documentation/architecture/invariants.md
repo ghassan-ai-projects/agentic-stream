@@ -76,6 +76,7 @@ detail is in the test audit.
 ### Invariant 3: A Situation version is immutable after publication.
 
 - `internal/situations`: [`TestPublishedSituationVersionNeverChangesAfterLaterFeatures`](../../internal/situations/internal/domain/version_immutability_test.go), [`TestMutatingAPublishedVersionDoesNotReachTheEngine`](../../internal/situations/internal/domain/version_immutability_test.go), [`TestVersionNumbersOnlyGrowAndEachStepNamesItsPredecessor`](../../internal/situations/internal/domain/version_immutability_test.go), [`TestMaterializationKeepsCanonicalEvidenceAndPrivateState`](../../internal/situations/internal/domain/materialize_test.go), [`TestCurrentStateIsACopyWithItsCanonicalStateAndDigest`](../../internal/situations/internal/domain/restore_test.go)
+- `internal/architecture`: [`TestAppendOnlyTablesAreNeverRewritten`](../../internal/architecture/ownership_test.go)
 - `internal/engine`: [`TestAPublishedSituationVersionIsNeverRewritten`](../../internal/engine/internal/store/situations_test.go), [`TestPublishedVersionsAreReadableByNumberAndAsTheCurrentOne`](../../internal/engine/internal/app/situation_reads_test.go)
 
 ### Invariant 4: Deterministic state changes are serial per virtual partition.
