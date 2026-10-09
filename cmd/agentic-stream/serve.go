@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -155,6 +156,8 @@ func (core *runtimeCore) servePipeline(runCtx context.Context, stop context.Canc
 		}
 	}
 	handler := core.runtimeHandler(flags, subscriberToken, metrics)
+	slog.Info("serving runtime API", "version", Version, "commit", Commit, "listen", flags.listenAddress, "db", flags.dbPath,
+		"tenant", flags.tenantID, "epoch", core.epoch, "effect_profile", flags.effectProfile, "worker_socket", flags.worker.WorkerSocket)
 	if err := serveHTTP(runCtx, flags.listenAddress, handler); err != nil {
 		return err
 	}

@@ -32,6 +32,7 @@ func main() {
 }
 
 func newRootCommand() *cobra.Command {
+	var logging logFlags
 	root := &cobra.Command{
 		Use:   "agentic-stream",
 		Short: "Streaming-native agent runtime (Situation Runtime).",
@@ -41,7 +42,7 @@ cognitive scheduler decides reasoning is useful.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-
+	logging.register(root)
 	registerCommands(root)
 
 	return root
@@ -77,7 +78,7 @@ func newValidateCommand() *cobra.Command {
 }
 
 func validateSpecCommand(cmd *cobra.Command, path string, outputJSON bool) error {
-	result, err := spec.CompileFile(context.Background(), path)
+	result, err := spec.CompileFile(commandContext(cmd), path)
 	if err != nil {
 		return fmt.Errorf("compile %s: %w", path, err)
 	}
@@ -99,4 +100,11 @@ func printCompiledSpec(cmd *cobra.Command, result *spec.CompiledSpec) error {
 	cmd.Printf("policy_digest: %s\n", policyDigest)
 	cmd.Printf("schema: %s\n", result.SchemaVersion)
 	return nil
+}
+
+func commandContext(cmd *cobra.Command) context.Context {
+	if ctx := cmd.Context(); ctx != nil {
+		return ctx
+	}
+	return context.Background()
 }

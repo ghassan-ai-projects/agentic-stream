@@ -4,6 +4,20 @@ The registered commands are defined in
 [`cmd/agentic-stream/main.go`](../../cmd/agentic-stream/main.go). Use
 `agentic-stream <command> --help` for Cobra's runtime-rendered help.
 
+## Global flags
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--log-level` | `info` | `debug`, `info`, `warn` or `error` |
+| `--log-format` | `text` | `text` or `json` structured logs on stderr |
+
+`serve` logs one structured line when the spec is loaded (name, version,
+digest), when the runtime is ready (owner epoch and lease), when it starts
+serving (version, commit, listen address, database, tenant, effect profile,
+worker socket), on every failed owner-lease renewal, when the lease is lost,
+and when it stops and releases the lease. A failed renewal is retried on the
+next heartbeat; readiness is cleared only once the lease has run out.
+
 ## `version`
 
 Prints runtime version/commit metadata, contract version, and worker protocol

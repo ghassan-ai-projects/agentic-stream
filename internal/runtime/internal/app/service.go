@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -11,18 +12,17 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
-// RecoveryReport is the pure value returned after atomic durable recovery.
 type RecoveryReport = domain.RecoveryReport
 
-// Service owns the live runtime lease and readiness lifecycle. Ingestion and
-// episode dispatch are enabled by later composition layers only after Service
-// reports ready.
 type Service struct {
 	owner  *runtimecontrol.RuntimeOwner
 	ledger *evidence.Service
 	epoch  string
+	now    func() time.Time
+	logger *slog.Logger
 
 	mu       sync.RWMutex
 	ready    bool
@@ -31,17 +31,13 @@ type Service struct {
 	done     chan struct{}
 }
 
-// NewService creates a runtime lifecycle around an already configured owner,
-// ledger, and epoch.
 func NewService(owner *runtimecontrol.RuntimeOwner, ledger *evidence.Service, epoch string) (*Service, error) {
 	if owner == nil || ledger == nil || epoch == "" {
 		return nil, fmt.Errorf("runtime service is not configured")
 	}
-	return &Service{owner: owner, ledger: ledger, epoch: epoch}, nil
+	return &Service{owner: owner, ledger: ledger, epoch: epoch, now: sources.NowFunc(owner.Now), logger: slog.Default()}, nil
 }
 
-// Start claims ownership, recovers durable state, and starts the heartbeat
-// before marking the service ready.
 func (s *Service) Start(ctx context.Context) (RecoveryReport, error) {
 	if s == nil {
 		return RecoveryReport{}, fmt.Errorf("runtime service is nil")
@@ -53,6 +49,7 @@ func (s *Service) Start(ctx context.Context) (RecoveryReport, error) {
 		return RecoveryReport{}, err
 	}
 	s.startHeartbeat()
+	s.logger.Info("runtime ready", "epoch", s.epoch, "owner_lease", s.owner.Lease)
 	return report, nil
 }
 
@@ -72,31 +69,44 @@ func (s *Service) heartbeat(ctx context.Context, done chan struct{}) {
 	defer close(done)
 	ticker := time.NewTicker(domain.OwnerHeartbeatInterval(s.owner.Lease))
 	defer ticker.Stop()
+	lastRenewed := s.now()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := s.maintainRuntimeLease(ctx); err != nil {
-				s.setNotReady(err)
+			if !s.renewOrLoseLease(ctx, &lastRenewed) {
 				return
 			}
 		}
 	}
 }
 
+func (s *Service) renewOrLoseLease(ctx context.Context, lastRenewed *time.Time) bool {
+	err := s.maintainRuntimeLease(ctx)
+	if err == nil {
+		*lastRenewed = s.now()
+		return true
+	}
+	if !domain.LeaseLapsed(*lastRenewed, s.now(), s.owner.Lease) {
+		s.logger.Warn("runtime owner lease renewal failed; retrying within the lease", "epoch", s.epoch, "error", err)
+		return true
+	}
+	s.logger.Error("runtime owner lease lost; runtime not ready", "epoch", s.epoch, "error", err)
+	s.setNotReady(err)
+	return false
+}
+
 func (s *Service) maintainRuntimeLease(ctx context.Context) error {
 	if err := s.owner.Renew(ctx, s.epoch); err != nil {
 		return fmt.Errorf("runtime owner heartbeat: %w", err)
 	}
-	if err := s.ledger.ReclaimExpired(ctx, time.Now().UTC()); err != nil {
+	if err := s.ledger.ReclaimExpired(ctx, s.now().UTC()); err != nil {
 		return fmt.Errorf("evidence lease reclamation: %w", err)
 	}
 	return nil
 }
 
-// Ready reports whether ownership, recovery, and heartbeat health permit live
-// work. It implements api.Readiness.
 func (s *Service) Ready() error {
 	if s == nil {
 		return errors.New("runtime service is nil")
@@ -112,21 +122,17 @@ func (s *Service) Ready() error {
 	return nil
 }
 
-// Close stops heartbeats, clears readiness, and releases the owner lease.
 func (s *Service) Close(ctx context.Context) error {
 	if s == nil {
 		return nil
 	}
-	s.mu.Lock()
-	stop, done := s.stop, s.done
-	s.ready = false
-	s.stop = nil
-	s.mu.Unlock()
-	if stop != nil {
-		stop()
-		<-done
+	s.stopHeartbeat()
+	if err := s.releaseOwner(ctx); err != nil {
+		s.logger.Error("runtime owner lease not released", "epoch", s.epoch, "error", err)
+		return err
 	}
-	return s.releaseOwner(ctx)
+	s.logger.Info("runtime stopped; owner lease released", "epoch", s.epoch)
+	return nil
 }
 
 func (s *Service) releaseOwner(ctx context.Context) error {
@@ -141,4 +147,16 @@ func (s *Service) setNotReady(err error) {
 	s.ready = false
 	s.readyErr = err
 	s.mu.Unlock()
+}
+
+func (s *Service) stopHeartbeat() {
+	s.mu.Lock()
+	stop, done := s.stop, s.done
+	s.ready = false
+	s.stop = nil
+	s.mu.Unlock()
+	if stop != nil {
+		stop()
+		<-done
+	}
 }
