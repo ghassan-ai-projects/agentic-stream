@@ -4,7 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/operators"
 )
 
@@ -115,7 +117,34 @@ func TestOperatorStateStatementsNameTheirFailure(t *testing.T) {
 		{"partition load", "operator_state", func(ctx context.Context, tx *Tx) error { _, err := tx.LoadOperatorState(ctx, 0, ""); return err }, "query partition operator state"},
 		{"save", "operator_state", func(ctx context.Context, tx *Tx) error {
 			return tx.SaveOperatorState(ctx, 0, "m1", operatorState("m1"), testNow)
-		}, "retire prior operator state"},
+		}, "query stored operator state digests"},
 	}
 	checkTxFailures(t, cases)
+}
+
+func TestSavingOperatorStateWritesOnlyWhatChangedAndRetiresWhatIsGone(t *testing.T) {
+	t.Parallel()
+	s := openStore(t)
+	first := operatorState("m1")
+	inTx(t, s, func(tx *Tx) error { return tx.SaveOperatorState(t.Context(), 0, "m1", first, testNow) })
+	later := testNow.Add(time.Hour)
+	inTx(t, s, func(tx *Tx) error { return tx.SaveOperatorState(t.Context(), 0, "m1", first, later) })
+	if got := countStoreRows(t, s, "SELECT COUNT(*) FROM operator_state WHERE updated_at = ?", kernel.FormatTime(later)); got != 0 {
+		t.Fatalf("rewrote %d unchanged operator states", got)
+	}
+	inTx(t, s, func(tx *Tx) error {
+		return tx.SaveOperatorState(t.Context(), 0, "m1", &operators.PartitionState{OperatorStates: map[string]map[string]*operators.OperatorStateBlob{}}, later)
+	})
+	if got := countStoreRows(t, s, "SELECT COUNT(*) FROM operator_state"); got != 0 {
+		t.Fatalf("operator states left = %d, want the retired states removed", got)
+	}
+}
+
+func countStoreRows(t *testing.T, s Store, query string, args ...any) int {
+	t.Helper()
+	var count int
+	if err := s.db.QueryRowContext(t.Context(), query, args...).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	return count
 }
