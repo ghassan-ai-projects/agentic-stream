@@ -68,26 +68,32 @@ func TestBaselinePolicyProducesCanonicalValidatedDecision(t *testing.T) {
 	}
 }
 
-func TestBaselinePolicyMapsPhaseToDeclaredStateAndModeEnums(t *testing.T) {
+func TestBaselinePolicyChoosesTheEnumValueTheIntentDeclaresForThePhase(t *testing.T) {
 	t.Parallel()
 	intents := []Intent{{
-		Type: "set_cooling", Risk: "R1",
+		Type: "set_vent", Risk: "R1",
 		Schema: ParseParameterSchema(map[string]any{
 			"properties": map[string]any{
-				"state": map[string]any{"type": "string", "enum": []any{"watch", "alert"}},
-				"mode":  map[string]any{"type": "string", "enum": []any{"hold", "bounded_cooling"}},
+				"position": map[string]any{"type": "string", "enum": []any{"closed", "half", "open"}},
+				"speed":    map[string]any{"type": "string", "enum": []any{"slow", "fast"}},
 			},
-			"required": []any{"state", "mode"},
+			"required": []any{"position", "speed"},
 		}),
+		ByPhase: map[string]map[string]string{
+			"hot":   {"position": "open", "speed": "fast"},
+			"warm":  {"position": "half"},
+			"stale": {"position": "jammed"},
+		},
 	}}
 	policy, err := NewBaselinePolicy(intents)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for phase, want := range map[string][]string{
-		"over_ceiling": {`"state":"alert"`, `"mode":"bounded_cooling"`},
-		"cooling":      {`"state":"watch"`, `"mode":"hold"`},
-		"unknown":      {`"state":"watch"`, `"mode":"hold"`},
+		"hot":   {`"position":"open"`, `"speed":"fast"`},
+		"warm":  {`"position":"half"`, `"speed":"slow"`},
+		"stale": {`"position":"closed"`, `"speed":"slow"`},
+		"calm":  {`"position":"closed"`, `"speed":"slow"`},
 	} {
 		t.Run(phase, func(t *testing.T) {
 			t.Parallel()

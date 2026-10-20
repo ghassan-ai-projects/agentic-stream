@@ -331,11 +331,11 @@
           }
         },
         "over_ceiling": {
-          "decision_sha256": "sha256:5d54256db685dca249974d7305f815cc95b30fcec72dce15d0625a8f9cb0c298",
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
           "intent_type": "select_thermal_mode",
           "parameters": {
             "entity_id": "entity-1",
-            "mode": "bounded_cooling"
+            "mode": "hold"
           }
         },
         "recovering": {
@@ -373,19 +373,19 @@
           }
         },
         "cooling": {
-          "decision_sha256": "sha256:36875bd2f1c32a80e20092441fb16cac3118d98500109dcc8e8e1b6b72aa41b4",
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
           "intent_type": "set_indicator",
           "parameters": {
             "entity_id": "entity-1",
-            "state": "watch"
+            "state": "off"
           }
         },
         "over_ceiling": {
-          "decision_sha256": "sha256:4c91eda4c2c764ae8d39fc2331dcca63ccde093aa2c70a80083577e93718d8f1",
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
           "intent_type": "set_indicator",
           "parameters": {
             "entity_id": "entity-1",
-            "state": "alert"
+            "state": "off"
           }
         },
         "recovering": {
@@ -523,11 +523,11 @@
           }
         },
         "over_ceiling": {
-          "decision_sha256": "sha256:5d54256db685dca249974d7305f815cc95b30fcec72dce15d0625a8f9cb0c298",
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
           "intent_type": "select_thermal_mode",
           "parameters": {
             "entity_id": "entity-1",
-            "mode": "bounded_cooling"
+            "mode": "hold"
           }
         },
         "recovering": {
@@ -565,19 +565,19 @@
           }
         },
         "cooling": {
-          "decision_sha256": "sha256:36875bd2f1c32a80e20092441fb16cac3118d98500109dcc8e8e1b6b72aa41b4",
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
           "intent_type": "set_indicator",
           "parameters": {
             "entity_id": "entity-1",
-            "state": "watch"
+            "state": "off"
           }
         },
         "over_ceiling": {
-          "decision_sha256": "sha256:4c91eda4c2c764ae8d39fc2331dcca63ccde093aa2c70a80083577e93718d8f1",
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
           "intent_type": "set_indicator",
           "parameters": {
             "entity_id": "entity-1",
-            "state": "alert"
+            "state": "off"
           }
         },
         "recovering": {
@@ -939,11 +939,11 @@
           }
         },
         "over_ceiling": {
-          "decision_sha256": "sha256:5d54256db685dca249974d7305f815cc95b30fcec72dce15d0625a8f9cb0c298",
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
           "intent_type": "select_thermal_mode",
           "parameters": {
             "entity_id": "entity-1",
-            "mode": "bounded_cooling"
+            "mode": "hold"
           }
         },
         "recovering": {
@@ -981,19 +981,19 @@
           }
         },
         "cooling": {
-          "decision_sha256": "sha256:36875bd2f1c32a80e20092441fb16cac3118d98500109dcc8e8e1b6b72aa41b4",
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
           "intent_type": "set_indicator",
           "parameters": {
             "entity_id": "entity-1",
-            "state": "watch"
+            "state": "off"
           }
         },
         "over_ceiling": {
-          "decision_sha256": "sha256:4c91eda4c2c764ae8d39fc2331dcca63ccde093aa2c70a80083577e93718d8f1",
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
           "intent_type": "set_indicator",
           "parameters": {
             "entity_id": "entity-1",
-            "state": "alert"
+            "state": "off"
           }
         },
         "recovering": {

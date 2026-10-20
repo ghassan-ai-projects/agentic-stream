@@ -686,6 +686,24 @@
         "compensation": {
           "type": "object",
           "additionalProperties": true
+        },
+        "baseline": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["byPhase"],
+          "properties": {
+            "byPhase": {
+              "type": "object",
+              "minProperties": 1,
+              "maxProperties": 64,
+              "additionalProperties": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 64,
+                "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 128}
+              }
+            }
+          }
         }
       }
     },

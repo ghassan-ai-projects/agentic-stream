@@ -221,6 +221,11 @@ type Intent struct {
 	Policy              string                    `json:"policy,omitempty" yaml:"policy,omitempty"`
 	RateLimitPerHour    int                       `json:"rateLimitPerHour,omitempty" yaml:"rateLimitPerHour,omitempty"`
 	Compensation        map[string]any            `json:"compensation,omitempty" yaml:"compensation,omitempty"`
+	Baseline            *IntentBaseline           `json:"baseline,omitempty" yaml:"baseline,omitempty"`
+}
+
+type IntentBaseline struct {
+	ByPhase map[string]map[string]string `json:"byPhase" yaml:"byPhase"`
 }
 
 // Actions configures allowed intents.

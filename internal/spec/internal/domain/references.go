@@ -11,15 +11,25 @@ func resolveReferences(spec *CompiledSpec) error {
 	if err != nil {
 		return err
 	}
+	if err := checkOperatorsReferences(spec, names); err != nil {
+		return err
+	}
+	if err := checkSituationReferences(spec, names); err != nil {
+		return err
+	}
+	if err := checkTriggerLanes(spec.Cognition.Triggers); err != nil {
+		return err
+	}
+	return checkIntentBaselines(spec.Actions.Intents, names.phases)
+}
+
+func checkOperatorsReferences(spec *CompiledSpec, names specNames) error {
 	for _, op := range spec.Operators {
 		if err := checkOperatorReferences(spec, op, names); err != nil {
 			return err
 		}
 	}
-	if err := checkSituationReferences(spec, names); err != nil {
-		return err
-	}
-	return checkTriggerLanes(spec.Cognition.Triggers)
+	return nil
 }
 
 func checkTriggerLanes(triggers []Trigger) error {

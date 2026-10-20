@@ -63,6 +63,12 @@ spec's intent catalog, and the comparison is sealed in the replay database's
 worker to run (worker, executor, spec digest, model policy, prompt and
 objective digests).
 
+The baseline chooses the first declared intent whose parameters it can fill. An
+enum parameter takes its first value, unless the intent's `baseline.byPhase`
+names a value for the snapshot's phase (see
+[SituationSpec](../contracts/situation-spec.md)). The baseline knows no field,
+phase or value name of its own.
+
 Disagreement is a result, not an error. A candidate that fails, declines, or
 answers outside the catalog is reported as a `shadow_candidate_failed` or
 `shadow_candidate_invalid` finding and the trial moves on; the command fails

@@ -70,6 +70,22 @@ definitions it used.
   relaxes the risk route: R2 always needs approval and R3/R4 are denied. An
   Intent that must never run is not declared at all; undeclared types are
   refused by Decision validation.
+- An Intent may declare `baseline.byPhase`: for a situation phase, the enum
+  value the deterministic replay baseline chooses for a parameter. The compiler
+  refuses a phase the situation does not declare, a parameter
+  `parameterSchema.properties` does not declare, and a value outside that
+  parameter's `enum`. Values are strings. A parameter without a choice for the
+  phase takes its first enum value. The field is part of the spec digest only
+  when present.
+
+  ```yaml
+  - type: set_indicator
+    # risk, parameterSchema (with state: {enum: [off, watch, alert]}), policy ...
+    baseline:
+      byPhase:
+        over_ceiling: {state: alert}
+        cooling: {state: watch}
+  ```
 
 ## Next reads
 
