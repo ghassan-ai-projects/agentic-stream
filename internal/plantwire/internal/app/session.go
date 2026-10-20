@@ -39,12 +39,17 @@ type session struct {
 	beat         timer
 	queue        chan<- contractsv1.Envelope
 	lines        chan readResult
+	orders       chan request
+	mailboxes    map[string]chan<- domain.Settlement
 	done         chan struct{}
 }
 
 func (h *Host) serve(ctx context.Context, conn *transport.Conn, queue chan<- contractsv1.Envelope) {
 	s := &session{conn: conn, conversation: domain.NewConversation(h.admission, h.epoch, h.mapping), clock: h.clock,
-		queue: queue, lines: make(chan readResult), done: make(chan struct{})}
+		queue: queue, lines: make(chan readResult), orders: make(chan request), mailboxes: map[string]chan<- domain.Settlement{},
+		done: make(chan struct{})}
+	h.goLive(s)
+	defer h.goLive(nil)
 	defer s.close()
 	go s.read()
 	end := s.run(ctx)
@@ -55,19 +60,23 @@ func (h *Host) serve(ctx context.Context, conn *transport.Conn, queue chan<- con
 
 func (s *session) run(ctx context.Context) string {
 	for {
-		select {
-		case <-ctx.Done():
-			_ = s.send(s.conversation.Goodbye())
-			return endHostStopping
-		case read := <-s.lines:
-			if end := s.receive(ctx, read); end != "" {
-				return end
-			}
-		case <-s.beats():
-			if err := s.heartbeat(); err != nil {
-				return endWriteFailed
-			}
+		if end := s.step(ctx); end != "" {
+			return end
 		}
+	}
+}
+
+func (s *session) step(ctx context.Context) string {
+	select {
+	case <-ctx.Done():
+		_ = s.send(s.conversation.Goodbye())
+		return endHostStopping
+	case read := <-s.lines:
+		return s.receive(ctx, read)
+	case <-s.beats():
+		return s.heartbeat()
+	case req := <-s.orders:
+		return s.order(req)
 	}
 }
 
@@ -78,6 +87,7 @@ func (s *session) receive(ctx context.Context, read readResult) string {
 	reaction := s.conversation.Receive(s.arrivalOf(read.line))
 	report(ctx, reaction)
 	s.startBeating(reaction)
+	s.deliver(reaction.Settlements)
 	if !enqueue(s.queue, reaction.Events) {
 		return endPipelineBehind
 	}
@@ -100,9 +110,12 @@ func (s *session) arrivalOf(line []byte) domain.Arrival {
 	return arrival
 }
 
-func (s *session) heartbeat() error {
+func (s *session) heartbeat() string {
 	s.beat = s.clock.NewTimer(domain.HeartbeatInterval)
-	return s.send(s.conversation.Beat())
+	if err := s.send(s.conversation.Beat()); err != nil {
+		return endWriteFailed
+	}
+	return ""
 }
 
 func (s *session) beats() <-chan time.Time {
@@ -140,6 +153,7 @@ func (s *session) read() {
 }
 
 func (s *session) close() {
+	s.deliver(s.conversation.Abandon())
 	close(s.done)
 	if s.beat != nil {
 		s.beat.Stop()

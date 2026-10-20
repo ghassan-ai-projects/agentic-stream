@@ -162,3 +162,10 @@ func (d Directory) KindOf(device string) (string, bool) {
 	entry, named := d.devices[device]
 	return entry.Kind, named
 }
+
+func (d Directory) DeviceFor(target string) (string, bool) {
+	_, named := d.devices[target]
+	return target, named
+}
+
+func (m Mapping) Directory() Directory { return m.directory }

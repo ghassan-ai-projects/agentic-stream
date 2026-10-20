@@ -22,11 +22,14 @@ type Arrival struct {
 	DeviceData  *DeviceData
 	DeviceDeath *DeviceDeath
 	Sync        *Sync
+	Receipt     *Receipt
+	Result      *Result
 }
 
 type Reaction struct {
 	Replies     []map[string]any
 	Events      []contractsv1.Envelope
+	Settlements []Settlement
 	Verdict     *Verdict
 	Quarantined []string
 	Rebirth     bool
@@ -44,10 +47,11 @@ type Conversation struct {
 	bdSeq     uint64
 	heartbeat uint64
 	ingest    *ingest
+	commands  map[string]*inFlight
 }
 
 func NewConversation(admission Admission, epoch int64, mapping Mapping) *Conversation {
-	return &Conversation{admission: admission, epoch: epoch, ingest: newIngest(mapping)}
+	return &Conversation{admission: admission, epoch: epoch, ingest: newIngest(mapping), commands: map[string]*inFlight{}}
 }
 
 func (c *Conversation) Tally() Tally { return c.ingest.tally }
@@ -121,6 +125,10 @@ func (c *Conversation) react(a Arrival, r *Reaction) {
 		c.death(*a.Death, r)
 	case TypeSync:
 		r.Replies = append(r.Replies, c.out.stamp(syncRecord(a.Seq)))
+	case TypeReceipt:
+		c.receipt(*a.Receipt, r)
+	case TypeResult:
+		c.result(*a.Result, r)
 	}
 	c.ingest.observe(a, r)
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"net"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/transport"
@@ -30,6 +32,19 @@ var (
 	ErrNoListener             = app.ErrNoListener
 )
 
+// Errors of a command: no live session or an unborn device (nothing sent), no
+// site device for the command's target, a missing final authorization check, a
+// node refusal (the receipt's reason is in the provider result) and a failure
+// the device reported. An unknown outcome is an actionport.UnknownOutcomeError.
+var (
+	ErrNoSession             = domain.ErrNoSession
+	ErrDeviceNotBorn         = domain.ErrDeviceNotBorn
+	ErrDeviceNotInSite       = app.ErrDeviceNotInSite
+	ErrAuthorizationRequired = app.ErrAuthorizationRequired
+	ErrCommandRefused        = app.ErrCommandRefused
+	ErrCommandFailed         = app.ErrCommandFailed
+)
+
 // Settings are the host's environment, the hardware boards it may command,
 // whether the process holds physical-actuation consent, and its authority
 // epoch (0: Unix seconds when the host starts).
@@ -39,12 +54,15 @@ type Settings = domain.Settings
 // created; the host closes it when it stops. KindsDir holds the commissioned
 // kind files (*.kind.json). SitePath is the optional site file: checked
 // against its schema and the commissioned kinds, and digested. Without it no
-// reading becomes an event. Clock defaults to the physical clock.
+// reading becomes an event. Catalog is the optional capability catalog whose
+// routes the host owns as an effector; without it the host commands nothing.
+// Clock defaults to the physical clock.
 type Config struct {
 	Listener net.Listener
 	Settings Settings
 	KindsDir string
 	SitePath string
+	Catalog  *device.CapabilityCatalog
 	Clock    sources.Clock
 }
 
@@ -54,7 +72,7 @@ type Host struct{ app *app.Host }
 // New checks the settings, commissions the kind files and reads the site file.
 func New(cfg Config) (*Host, error) {
 	host, err := app.New(app.Config{Listener: transport.NewListener(cfg.Listener), Settings: cfg.Settings,
-		KindsDir: cfg.KindsDir, SitePath: cfg.SitePath, Clock: cfg.Clock})
+		KindsDir: cfg.KindsDir, SitePath: cfg.SitePath, Catalog: cfg.Catalog, Clock: cfg.Clock})
 	if err != nil {
 		return nil, err
 	}
@@ -78,3 +96,34 @@ func (h *Host) Run(ctx context.Context, emit func(context.Context, contractsv1.E
 
 // Close closes the listener; a running Run then returns.
 func (h *Host) Close() error { return h.app.Close() }
+
+// OwnsRoute reports whether the catalog names route; the watch route is never
+// a device's.
+func (h *Host) OwnsRoute(route string) bool { return h.app.OwnsRoute(route) }
+
+// Dispatch refuses: a plant wire command is sent only after the final
+// authorization check, through DispatchAuthorized.
+func (h *Host) Dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
+	return h.app.Dispatch(ctx, command)
+}
+
+// DispatchAuthorized bounds the command with the catalog, resolves its device
+// through the site file, runs the final authorization check and sends one
+// DCMD to the live session: the command's idempotency key unchanged, the
+// device's current boot, a deadline of the route's expiry from now on the
+// host clock, the host's authority epoch, the policy digest and safe_off on
+// lease loss. It waits for the terminal answer: accepted then succeeded is
+// pending verification (never done on the device's word), a refusal, a
+// reported failure or a command still queued when the session ends
+// (session_ending) is a failure, and a result unknown to the device, a lost
+// session after the command was sent, or no terminal answer before the
+// deadline or ctx is an unknown outcome.
+func (h *Host) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
+	return h.app.DispatchAuthorized(ctx, command, authorization)
+}
+
+// VerifyDeviceCommand gives no final status yet: a succeeded command stays
+// pending verification until readings confirm it.
+func (h *Host) VerifyDeviceCommand(ctx context.Context, command actionport.Command) (string, map[string]any, error) {
+	return h.app.VerifyDeviceCommand(ctx, command)
+}

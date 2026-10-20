@@ -40,6 +40,9 @@ func conversationReplies(t *testing.T, header map[string]any, steps []map[string
 		ContractDigest: wire.ContractDigest(), Inventory: validInventory(t)}, hostEpoch, domain.Mapping{})
 	var replies []map[string]any
 	for _, step := range steps {
+		if record, _ := step["record"].(map[string]any); step["from"] == "host" && record["type"] == domain.TypeCommand {
+			assertCommandStamped(t, conversation, record)
+		}
 		if step["from"] != "node" {
 			continue
 		}
@@ -119,4 +122,34 @@ func sameValue(got, want any) bool {
 func lineOfValue(value any) []byte {
 	encoded, _ := json.Marshal(value)
 	return encoded
+}
+
+var oldBootCommands = []any{"c-old"}
+
+var stampedCommandMembers = []string{"type", "lane", "session_id", "command_id", "idempotency_key", "device", "command", "args",
+	"expected_boot_id", "deadline_ns", "policy_digest", "fallback_on_lease_loss"}
+
+func assertCommandStamped(t *testing.T, conversation *domain.Conversation, want map[string]any) {
+	t.Helper()
+	deadline, err := want["deadline_ns"].(json.Number).Int64()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := conversation.Command(domain.CommandOrder{CommandID: want["command_id"].(string), IdempotencyKey: want["idempotency_key"].(string),
+		PolicyDigest: want["policy_digest"].(string), Device: want["device"].(string), Command: want["command"].(string),
+		Args: want["args"].(map[string]any), DeadlineNS: deadline})
+	if err != nil {
+		t.Fatalf("Command(%v) = %v", want["command_id"], err)
+	}
+	if _, err := wire.Encode(got); err != nil {
+		t.Fatalf("the stamped DCMD fails the contract: %v", err)
+	}
+	for _, member := range stampedCommandMembers {
+		if member == "expected_boot_id" && slices.Contains(oldBootCommands, want["command_id"]) {
+			continue
+		}
+		if !sameValue(got[member], want[member]) {
+			t.Errorf("DCMD %v %s = %v, want %v", want["command_id"], member, got[member], want[member])
+		}
+	}
 }

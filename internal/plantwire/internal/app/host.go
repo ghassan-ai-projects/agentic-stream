@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/transport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/wire"
@@ -22,6 +24,7 @@ type Config struct {
 	Settings  domain.Settings
 	KindsDir  string
 	SitePath  string
+	Catalog   *device.CapabilityCatalog
 	Clock     sources.Clock
 	QueueSize int
 }
@@ -33,7 +36,10 @@ type Host struct {
 	epoch     int64
 	clock     sources.Clock
 	queueSize int
+	catalog   *device.CapabilityCatalog
 	closing   atomic.Bool
+	liveMu    sync.Mutex
+	live      *session
 }
 
 func New(cfg Config) (*Host, error) {
@@ -71,7 +77,7 @@ func newHost(cfg Config, inventory domain.Inventory, mapping domain.Mapping) *Ho
 	}
 	admission := domain.Admission{Environment: cfg.Settings.Environment, ContractDigest: wire.ContractDigest(), Inventory: inventory}
 	return &Host{listener: cfg.Listener, admission: admission, mapping: mapping, epoch: epoch, clock: clock,
-		queueSize: cmp.Or(max(cfg.QueueSize, 0), defaultQueueSize)}
+		queueSize: cmp.Or(max(cfg.QueueSize, 0), defaultQueueSize), catalog: cfg.Catalog}
 }
 
 func (h *Host) logReady(cfg Config, siteDigest string) {

@@ -75,6 +75,8 @@ var bodies = map[string]func(*domain.Arrival) any{
 	domain.TypeDeviceData:  func(a *domain.Arrival) any { return fresh(&a.DeviceData) },
 	domain.TypeDeviceDeath: func(a *domain.Arrival) any { return fresh(&a.DeviceDeath) },
 	domain.TypeSync:        func(a *domain.Arrival) any { return fresh(&a.Sync) },
+	domain.TypeReceipt:     func(a *domain.Arrival) any { return fresh(&a.Receipt) },
+	domain.TypeResult:      func(a *domain.Arrival) any { return fresh(&a.Result) },
 }
 
 func (in Inbound) decodeBody(arrival *domain.Arrival) error {

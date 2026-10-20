@@ -45,6 +45,9 @@ func composeEffectors(cfg PipelineConfig) (actionport.RoutedEffector, *watch.Ser
 	if err != nil {
 		return nil, nil, fmt.Errorf("compose watch: %w", err)
 	}
+	if cfg.GatewayEffector != nil && cfg.DeviceEffector != nil {
+		return nil, nil, fmt.Errorf("one device effect link per pipeline: a gateway effector and another device effector are both configured")
+	}
 	compositeEffector := composeRouting(cfg, watch)
 	if err := compositeEffector.RequireOwners(cfg.Spec.DispatchedIntentTypes()); err != nil {
 		return nil, nil, fmt.Errorf("active-dispatch spec declares an intent no effector owns: %w", err)
@@ -56,6 +59,9 @@ func composeRouting(cfg PipelineConfig, watch *watch.Service) *app.CompositeEffe
 	compositeEffector := app.NewCompositeEffector(watch, cfg.Effector)
 	if cfg.GatewayEffector != nil {
 		compositeEffector.WithDevice(cfg.GatewayEffector.WithTelemetry(cfg.Telemetry))
+	}
+	if cfg.DeviceEffector != nil {
+		compositeEffector.WithDevice(cfg.DeviceEffector)
 	}
 	return compositeEffector
 }

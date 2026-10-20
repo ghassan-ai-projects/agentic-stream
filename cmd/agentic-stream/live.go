@@ -48,7 +48,13 @@ type effects struct {
 	effector      actionport.RoutedEffector
 	serial        *device.GatewayEffector
 	plant         *plantwire.Host
+	device        deviceEffector
 	dispatchLease time.Duration
+}
+
+type deviceEffector interface {
+	actionport.VerifiedEffector
+	actionport.RouteOwner
 }
 
 func (f *liveFlags) registerShared(cmd *cobra.Command) {
@@ -148,7 +154,7 @@ func (core *runtimeCore) openWorkerRuntime(ctx context.Context, config runtime.W
 func (core *runtimeCore) startPipeline(ctx context.Context, compiled *spec.CompiledSpec, tenantID string, workerRuntime *runtime.WorkerRuntime, opened effects, metrics *telemetry.Runtime, demoMode bool, cleanup *cleanups) (*runtime.Pipeline, error) {
 	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{
 		DB: core.db, Spec: compiled, TenantID: tenantID, Owner: core.owner, OwnerEpoch: core.epoch,
-		Executor: workerRuntime.Executor, Effector: opened.effector, GatewayEffector: opened.serial, DispatchLease: opened.dispatchLease,
+		Executor: workerRuntime.Executor, Effector: opened.effector, GatewayEffector: opened.serial, DeviceEffector: opened.device, DispatchLease: opened.dispatchLease,
 		IDGenerator: sources.Random(), Telemetry: metrics, EpochControl: core.epochControl, DemoMode: demoMode,
 	})
 	if err != nil {

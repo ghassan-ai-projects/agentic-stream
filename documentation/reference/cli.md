@@ -177,9 +177,12 @@ next session when one ends, without a restart. The readings and heartbeats the
 site file maps become normalized events admitted like live socket lines (a
 refused one is quarantined); historical (store-and-forward) data is counted,
 not ingested. It counts as the effect link of
-the `emulator` or `physical` profile instead of `--device-socket`; until the
-plant wire effector ships, commands fall back as with no device link (simulated
-under `emulator`, refused under `physical`).
+the `emulator` or `physical` profile instead of `--device-socket`. With
+`--device-catalog` the host is the device effector of the catalog's routes:
+an approved command goes to the live session as one `DCMD` and its receipts and
+result become the outcome (a success stays pending verification). Without a
+catalog, commands fall back as with no device link (simulated under
+`emulator`, refused under `physical`).
 
 ## Operator commands
 

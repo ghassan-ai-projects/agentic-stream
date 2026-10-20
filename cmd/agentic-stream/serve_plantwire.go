@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"net"
 
 	"github.com/spf13/cobra"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
@@ -61,6 +61,9 @@ func (core *runtimeCore) openServeEffects(ctx context.Context, flags serveFlags,
 		return effects{}, err
 	}
 	opened.plant, err = openPlantWireHost(flags, cleanup)
+	if opened.plant != nil && flags.profileOptions().DeviceCatalog != "" {
+		opened.device = opened.plant
+	}
 	return opened, err
 }
 
@@ -69,11 +72,11 @@ func openPlantWireHost(flags serveFlags, cleanup *cleanups) (*plantwire.Host, er
 	if options.PlantWireSocket == "" {
 		return nil, nil
 	}
-	listener, err := worker.ListenEvidenceSocket(options.PlantWireSocket)
+	catalog, err := plantWireCatalog(options)
 	if err != nil {
-		return nil, fmt.Errorf("listen on the plant wire socket: %w", err)
+		return nil, err
 	}
-	host, err := newPlantWireHost(listener, flags.plantWire, options)
+	host, err := newPlantWireHost(flags.plantWire, options, catalog)
 	if err != nil {
 		return nil, err
 	}
@@ -81,9 +84,27 @@ func openPlantWireHost(flags serveFlags, cleanup *cleanups) (*plantwire.Host, er
 	return host, nil
 }
 
-func newPlantWireHost(listener net.Listener, flags plantWireFlags, options effectProfileOptions) (*plantwire.Host, error) {
+func plantWireCatalog(options effectProfileOptions) (*device.CapabilityCatalog, error) {
+	if options.DeviceCatalog == "" {
+		return nil, nil
+	}
+	catalog, err := options.loadDeviceCatalog()
+	if err != nil {
+		return nil, err
+	}
+	if err := catalog.CheckExpiriesWithin(actions.DispatchCallTimeout(options.DispatchLease)); err != nil {
+		return nil, fmt.Errorf("check the plant wire routes against --dispatch-lease: %w", err)
+	}
+	return catalog, nil
+}
+
+func newPlantWireHost(flags plantWireFlags, options effectProfileOptions, catalog *device.CapabilityCatalog) (*plantwire.Host, error) {
+	listener, err := worker.ListenEvidenceSocket(options.PlantWireSocket)
+	if err != nil {
+		return nil, fmt.Errorf("listen on the plant wire socket: %w", err)
+	}
 	host, err := plantwire.New(plantwire.Config{Listener: listener, Settings: flags.settings(options),
-		KindsDir: flags.kindsDir, SitePath: flags.sitePath})
+		KindsDir: flags.kindsDir, SitePath: flags.sitePath, Catalog: catalog})
 	if err != nil {
 		_ = listener.Close()
 		return nil, fmt.Errorf("open the plant wire host: %w", err)

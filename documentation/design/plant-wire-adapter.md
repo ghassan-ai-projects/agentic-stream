@@ -2,8 +2,11 @@
 
 Status: accepted design, built in rounds. The host sessions exist today
 (`serve --plant-wire-socket`: handshake, commissioning, heartbeats, barriers,
-one session after another), and so does the event mapping (site file, readings
-and heartbeats to normalized events through ingress); the effector is planned.
+one session after another), and so do the event mapping (site file, readings
+and heartbeats to normalized events through ingress) and the effector (one
+`DCMD` per approved command, receipts and results into the outcome ledger);
+verification from readings, the origin check and the device authority calls
+are planned.
 This page is the decision record the module is built against.
 
 ## Context
@@ -104,9 +107,27 @@ Stream.
 The idempotency key of an approved command is forwarded unchanged (one key per
 intent, so a repeated identical command really runs again). The deadline is
 UTC, `authority_epoch` comes from `--plant-wire-epoch` (default: Unix seconds at
-start), and a command that carries a lease falls back `safe_off`. Receipts and
+start), and every command falls back `safe_off` on lease or host loss (the
+semantic kinds name no lease, so the host cannot tell a lease command; the
+contract's fixtures and the reference host do the same). Receipts and
 self-reported results are never counted as done: a command succeeds only when a
 good, current reading of the commanded metric matches what was sent.
+
+The catalog resolves an approved command (route, target binding, preset within
+its bounds: `device.CapabilityCatalog.Bound`, shared with device-wire); the
+directory gives the plant wire device of the catalog target; the device's
+current boot comes from its birth in the live session. A command with no live
+session, an unborn device or no site device is refused before anything is
+sent. The answers map to the outcome ledger as follows.
+
+| Node answers | Outcome |
+| --- | --- |
+| `accepted`, then `DRESULT succeeded` | pending verification (manual review until A3c verifies it) |
+| `refused` (any reason: `local_control`, `expired`, `stale_epoch`, `policy_not_allowed`, `wrong_boot`, ...), possibly after `queued` | failed, the reason in the provider result |
+| `accepted`, then `DRESULT failed` | failed |
+| `accepted`, then `DRESULT unknown`; `accepted` or a result on another boot | unknown outcome |
+| still `queued` when the session ends | failed, `session_ending` |
+| sent and unanswered when the session ends, or no terminal answer by the deadline plus 2 s, or the dispatch call ends | unknown outcome |
 
 ## What the adapter never does
 

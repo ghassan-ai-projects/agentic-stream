@@ -12,11 +12,11 @@ Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 
 | Layer | Responsibility | State |
 | --- | --- | --- |
-| Domain | Envelope and sequencing, the birth view, handshake admission, environment rules, commissioning by kind digest, host settings, the session conversation (STATE, HSYNC, rebirth, goodbye), the site mapping and directory, device births, data and deaths, readings to normalized events, the heartbeat on event time (built); the command plan, receipts and verification (planned) | partly built |
+| Domain | Envelope and sequencing, the birth view, handshake admission, environment rules, commissioning by kind digest, host settings, the session conversation (STATE, HSYNC, rebirth, goodbye), the site mapping and directory, device births, data and deaths, readings to normalized events, the heartbeat on event time, commands in flight and their settlement from receipts and results (built); verification and origin (planned) | partly built |
 | Wire | The vendored contract (embedded schemas, `DIGEST`, `VERSION`), record decoding with size limits and exact integers and the body of each record type, outgoing records checked against their schema, kind file and site file parsing (the site file schema is embedded) | built |
 | Transport | One connection at a time over an injected listener, one record per line, 2 s write deadline | built |
-| App | Kind commissioning, the site file, host supervisor and session loop, the ingest queue and feeder (built); effector, authority calls (planned) | partly built |
-| Facade | `New`, `CheckSettings`, `Run(ctx, emit)`, `Close` (built); the effect port operations (planned) | partly built |
+| App | Kind commissioning, the site file, host supervisor and session loop, the ingest queue and feeder, the effector: catalog bound, device lookup, final authorization, one `DCMD` through the session loop, a mailbox per command (built); verification, origin and authority calls (planned) | partly built |
+| Facade | `New`, `CheckSettings`, `Run(ctx, emit)`, `Close`, `OwnsRoute`, `Dispatch`, `DispatchAuthorized`, `VerifyDeviceCommand` (built) | built |
 
 `serve --plant-wire-socket` is the only caller. It creates the listener with
 the owner-only Unix socket helper of `internal/worker` (absolute path, 0700
@@ -83,3 +83,18 @@ The fixtures under `fixtures/` are the conformance suite: every `valid/`,
 refused at the member it names, and every exchange's opening handshake gets
 the `STATE` it expects. Board mappings (`BOARD`, `rules/`) are the node's and
 the gateway's concern; the host never reads one.
+
+## Commands
+
+With a capability catalog (`Config.Catalog`, from `serve --device-catalog`) the
+host owns exactly the catalog's routes and `serve` routes them to it. The
+effector runs on the dispatcher's goroutine: it bounds the command with the
+catalog, finds the site device of its target, runs the final authorization
+check and hands the order to the live session's loop, which stamps the `DCMD`
+(the device's current boot, the host epoch, `safe_off`) and keeps a mailbox
+for its answers. The conversation tracks the command (sent, queued, accepted)
+and settles it from each receipt and result; when the session ends, a queued
+command is refused `session_ending` and any other is unknown. The effector
+waits until the terminal settlement, the deadline plus 2 s on the host clock,
+or the dispatcher's call timeout. The outcome table is in
+[the design](../../documentation/design/plant-wire-adapter.md#commands).

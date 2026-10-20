@@ -61,3 +61,13 @@ the [device-authority language](../authority/UBIQUITOUS_LANGUAGE.md).
 | **Fresh** | A device whose last good sample is no older than `stale_after_ms` of session time. | `liveDevice.fresh` | — |
 | **Tally** | What a session gave: events, historical records not ingested, dropped records. | `Tally` | — |
 | **Ingest queue** | The bounded queue between the session loop and the pipeline; full ends the session. | `enqueue`, `feedPipeline` | — |
+
+## Commands
+
+| Term | Meaning | Code | Wire |
+| --- | --- | --- | --- |
+| **Command order** | An approved command resolved for one device: id, idempotency key, policy digest, device, kind command and arguments, deadline. | `CommandOrder` | `DCMD` |
+| **In flight** | A command sent in this session and not yet settled: sent, queued or accepted. | `inFlight` | — |
+| **Settlement** | What an answer makes of a command in flight: queued, accepted (progress) or succeeded, refused, failed, unknown, not sent (terminal). | `Settlement` | `DRECEIPT`, `DRESULT` |
+| **Abandon** | Settling every command in flight when the session ends: queued is refused `session_ending`, anything else unknown. | `Conversation.Abandon` | — |
+| **Mailbox** | Where the session loop hands a command's settlements to the dispatcher waiting on it. | `session.mailboxes` | — |

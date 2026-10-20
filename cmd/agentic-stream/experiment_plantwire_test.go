@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"maps"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -140,4 +141,36 @@ func TestServeChecksThePlantWireRoutesAgainstTheDispatchLease(t *testing.T) {
 	node := plantwirefake.Dial(t, "unix", run.socket, "s-1")
 	node.Send(plantwirefake.Fixture(t, ".", "NBIRTH.json"))
 	node.Expect("STATE")
+}
+
+func TestServeMakesThePlantWireHostTheDeviceEffectorOfItsCatalog(t *testing.T) {
+	t.Parallel()
+	kinds, site := filepath.Join(benchPlantWire, "kinds"), filepath.Join(benchPlantWire, "thermal-bench.site.json")
+	raw, err := os.ReadFile(filepath.Join(benchPlantWire, "thermal-bench.catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	partial := strings.Replace(string(raw), `"select_thermal_mode"`, `"open_the_window"`, 1)
+	catalog := filepath.Join(t.TempDir(), "partial.catalog.json")
+	writePrivateFile(t, catalog, partial)
+	cmd := newServeCommand()
+	cmd.SetArgs([]string{"--db", newMigratedDatabasePath(t), "--spec", benchSpec, "--effect-profile", "emulator",
+		"--plant-wire-socket", filepath.Join(privateSocketDir(t), "host.sock"), "--plant-wire-kinds", kinds, "--plant-wire-site", site,
+		"--device-catalog", catalog, "--listen", freeLoopbackAddress(t)})
+	if err := cmd.ExecuteContext(t.Context()); err == nil || !strings.Contains(err.Error(), `route "select_thermal_mode" has no effector`) {
+		t.Fatalf("serve with a catalog missing a dispatched route = %v, want the route refused at start", err)
+	}
+	startPlantWireServe(t, benchSpec, kinds, site, "--device-catalog", filepath.Join(benchPlantWire, "thermal-bench.catalog.json"))
+}
+
+func writePrivateFile(t *testing.T, path, content string) {
+	t.Helper()
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	if err := root.WriteFile(filepath.Base(path), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
