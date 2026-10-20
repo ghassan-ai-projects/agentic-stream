@@ -11,7 +11,7 @@ import (
 )
 
 // InstallRoute is the effector route that installs a watch condition.
-const InstallRoute = "install_watch_condition"
+const InstallRoute = actionport.WatchInstallRoute
 
 // Watch states (`watch_conditions.status`).
 const (

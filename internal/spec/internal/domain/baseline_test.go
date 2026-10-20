@@ -19,7 +19,15 @@ func specWithBaseline(baseline string) string {
             enum: [low, high]
           note:
             type: string
+          tone:
+            type: string
+            enum: [soft, loud]
+            pattern: "^s"
+          mode:
+            type: string
+            enum: [hold, cool]
         additionalProperties: false
+      modelWritableFields: [level, note, tone]
 `+baseline)
 }
 
@@ -60,6 +68,8 @@ func TestCompileRejectsABaselineChoiceTheSpecDoesNotDeclare(t *testing.T) {
 		{"empty phase choices", "          alert: {}\n", "schema validation"},
 		{"a number is read as text and must still be an enum value", "          alert: {level: 3}\n", `value "3" is not in the enum of parameter "level"`},
 		{"non-scalar value", "          alert: {level: [high]}\n", "decode yaml"},
+		{"a parameter the model may not write", "          alert: {mode: cool}\n", `actions.intents.notify.baseline.byPhase.alert.mode: parameter "mode" is not in modelWritableFields`},
+		{"an enum value the parameter schema still refuses", "          alert: {tone: loud}\n", `actions.intents.notify.baseline.byPhase.alert.tone: value "loud" does not satisfy the schema of parameter "tone"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

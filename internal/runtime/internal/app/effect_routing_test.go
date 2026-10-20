@@ -45,12 +45,6 @@ func (r *recordingRoute) VerifyDeviceCommand(context.Context, actionport.Command
 	return r.verifyStatus, map[string]any{"verified": true}, r.verifyErr
 }
 
-type plainEffector struct{}
-
-func (plainEffector) Dispatch(context.Context, actionport.Command) (actionport.Effect, error) {
-	return actionport.Effect{}, nil
-}
-
 func installWatchCommand() actionport.Command {
 	return actionport.Command{
 		CommandID: "cmd-watch", TenantID: "tenant-1", EffectorRoute: "install_watch_condition",
@@ -88,7 +82,7 @@ func TestOtherRoutesGoToTheFallbackAndAPhysicalFallbackFailsClosed(t *testing.T)
 		t.Fatalf("simulated fallback: effect=%v err=%v", effect, err)
 	}
 	physical := app.NewCompositeEffector(nil, device.NewFailClosedEffector(device.EffectProfilePhysical))
-	if _, err := physical.Dispatch(t.Context(), command); err == nil || !strings.Contains(err.Error(), `has no effector for route "start_aerator"`) {
+	if _, err := physical.Dispatch(t.Context(), command); err == nil || !strings.Contains(err.Error(), `route "start_aerator" has no effector: it is not the watch route and the fallback effector does not own it`) {
 		t.Fatalf("physical fallback = %v, want the unmapped route refused", err)
 	}
 }
@@ -103,7 +97,7 @@ func TestARouteWithoutItsEffectorFailsClosedInsteadOfFallingBack(t *testing.T) {
 	}{
 		{"no watch effector for a watch route", app.NewCompositeEffector(nil, &recordingRoute{}), "install_watch_condition", "watch effector is not configured"},
 		{"a device that claims the watch route never takes it", app.NewCompositeEffector(nil, &recordingRoute{}).WithDevice(ownerOf("install_watch_condition")), "install_watch_condition", "watch effector is not configured"},
-		{"no fallback for an ordinary route", app.NewCompositeEffector(nil, nil), "start_aerator", `no effector is configured for route "start_aerator"`},
+		{"no fallback for an ordinary route", app.NewCompositeEffector(nil, nil), "start_aerator", `route "start_aerator" has no effector: it is not the watch route and no fallback effector is configured`},
 		{"no effector at all", nil, "start_aerator", "composite effector is not configured"},
 	}
 	for _, tt := range tests {
@@ -116,29 +110,41 @@ func TestARouteWithoutItsEffectorFailsClosedInsteadOfFallingBack(t *testing.T) {
 	}
 }
 
-func TestARouteTheDeviceOwnsReachesTheDeviceAndEveryOtherRouteTheFallback(t *testing.T) {
+func TestARouteTheDeviceOwnsReachesTheDevice(t *testing.T) {
 	t.Parallel()
-	fallback, deviceEffector := &recordingRoute{}, ownerOf("set_indicator", "vent_open")
+	fallback, deviceEffector := ownerOf("vent_open", "set_indicator"), ownerOf("set_indicator", "vent_open")
 	routes := app.NewCompositeEffector(nil, fallback).WithDevice(deviceEffector)
-	for _, route := range []string{"vent_open", "set_indicator", "start_aerator", "select_thermal_mode"} {
+	for _, route := range []string{"vent_open", "set_indicator"} {
 		if _, err := routes.Dispatch(t.Context(), actionport.Command{EffectorRoute: route}); err != nil {
 			t.Fatalf("dispatch %s: %v", route, err)
 		}
 	}
-	if deviceEffector.dispatches != 2 || fallback.dispatches != 2 {
-		t.Fatalf("device dispatches=%d fallback dispatches=%d; want 2 and 2", deviceEffector.dispatches, fallback.dispatches)
+	if deviceEffector.dispatches != 2 || fallback.dispatches != 0 {
+		t.Fatalf("device dispatches=%d fallback dispatches=%d; want 2 and 0", deviceEffector.dispatches, fallback.dispatches)
 	}
 }
 
-func TestARouteTheCatalogDoesNotNameIsRefusedByAPhysicalFallback(t *testing.T) {
+func TestWithADeviceARouteItsCatalogDoesNotNameIsRefusedAtDispatch(t *testing.T) {
 	t.Parallel()
-	deviceEffector := ownerOf("set_indicator")
-	routes := app.NewCompositeEffector(nil, device.NewFailClosedEffector(device.EffectProfilePhysical)).WithDevice(deviceEffector)
-	if _, err := routes.Dispatch(t.Context(), actionport.Command{EffectorRoute: "select_thermal_mode"}); err == nil || !strings.Contains(err.Error(), `has no effector for route "select_thermal_mode"`) {
-		t.Fatalf("an unnamed route in the physical profile = %v, want it refused by the fail-closed fallback", err)
+	fallbacks := map[string]actionport.RoutedEffector{
+		"physical (fail-closed fallback)":  device.NewFailClosedEffector(device.EffectProfilePhysical),
+		"emulator (simulated fallback)":    device.NewSimulatedEffector(),
+		"a fallback that claims the route": ownerOf("select_thermal_mode"),
 	}
-	if deviceEffector.dispatches != 0 {
-		t.Fatalf("device dispatches = %d for a route its catalog does not name", deviceEffector.dispatches)
+	for name, fallback := range fallbacks {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			deviceEffector := ownerOf("set_indicator")
+			routes := app.NewCompositeEffector(nil, fallback).WithDevice(deviceEffector)
+			command := actionport.Command{EffectorRoute: "select_thermal_mode", IdempotencyKey: "sha256:mode"}
+			allow := actionport.Authorization{Check: func(context.Context) error { return nil }}
+			if _, err := routes.DispatchAuthorized(t.Context(), command, allow); err == nil || !strings.Contains(err.Error(), `route "select_thermal_mode" has no effector: it is not the watch route and the device catalog does not name it`) {
+				t.Fatalf("an unnamed route with a device present = %v, want it refused at dispatch", err)
+			}
+			if deviceEffector.dispatches != 0 {
+				t.Fatalf("device dispatches = %d for a route its catalog does not name", deviceEffector.dispatches)
+			}
+		})
 	}
 }
 
@@ -166,7 +172,7 @@ func TestAuthorizedDispatchKeepsTheFinalAuthorizationCheck(t *testing.T) {
 	}{
 		{"device route runs after the check passes", "set_indicator", actionport.Authorization{Check: func(context.Context) error { return nil }}, nil, false, 1},
 		{"device route is refused when the check denies", "set_indicator", actionport.Authorization{Check: func(context.Context) error { return denied }}, denied, true, 0},
-		{"ordinary route is refused when the check denies", "start_aerator", actionport.Authorization{Check: func(context.Context) error { return denied }}, denied, true, 0},
+		{"a route nobody owns is refused before the check", "start_aerator", actionport.Authorization{Check: func(context.Context) error { return nil }}, nil, true, 0},
 		{"missing authorization never reaches the effect", "set_indicator", actionport.Authorization{}, nil, true, 0},
 	}
 	for _, tt := range tests {
@@ -185,12 +191,14 @@ func TestAuthorizedDispatchKeepsTheFinalAuthorizationCheck(t *testing.T) {
 	}
 }
 
-func TestAuthorizedDispatchRequiresAnEffectorThatCanEnforceAuthorization(t *testing.T) {
+func TestAFallbackRouteKeepsTheFinalAuthorizationCheck(t *testing.T) {
 	t.Parallel()
-	routes := app.NewCompositeEffector(nil, plainEffector{})
-	auth := actionport.Authorization{Check: func(context.Context) error { return nil }}
-	if _, err := routes.DispatchAuthorized(t.Context(), actionport.Command{EffectorRoute: "start_aerator"}, auth); err == nil {
-		t.Fatal("an effector that cannot enforce authorization was used")
+	denied := errors.New("interlock denied")
+	fallback := ownerOf("start_aerator")
+	routes := app.NewCompositeEffector(nil, fallback)
+	auth := actionport.Authorization{Check: func(context.Context) error { return denied }}
+	if _, err := routes.DispatchAuthorized(t.Context(), actionport.Command{EffectorRoute: "start_aerator"}, auth); !errors.Is(err, denied) || fallback.authorized != 0 {
+		t.Fatalf("fallback dispatch under a denying check = %v (accepted %d), want it refused", err, fallback.authorized)
 	}
 }
 

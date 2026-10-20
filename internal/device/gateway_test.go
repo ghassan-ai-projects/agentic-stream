@@ -77,13 +77,16 @@ func TestTheGatewayOwnsExactlyTheRoutesItsCatalogNames(t *testing.T) {
 
 func TestTheSimulatedFallbackOwnsEveryRouteAndTheFailClosedOneNone(t *testing.T) {
 	t.Parallel()
-	simulated, simulatedOwns := device.NewSimulatedEffector().(actionport.RouteOwner)
-	failClosed, failClosedOwns := device.NewFailClosedEffector(device.EffectProfilePhysical).(actionport.RouteOwner)
-	if !simulatedOwns || !failClosedOwns {
-		t.Fatal("both fallbacks must report the routes they own")
-	}
-	if !simulated.OwnsRoute("vent_open") || failClosed.OwnsRoute("set_indicator") {
+	if !device.NewSimulatedEffector().OwnsRoute("vent_open") || device.NewFailClosedEffector(device.EffectProfilePhysical).OwnsRoute("set_indicator") {
 		t.Fatal("the simulated fallback must own every route and the fail-closed one none")
+	}
+}
+
+func TestANilGatewayEffectorOwnsNoRoute(t *testing.T) {
+	t.Parallel()
+	var missing *device.GatewayEffector
+	if missing.OwnsRoute("set_indicator") {
+		t.Fatal("a nil gateway effector owned a route")
 	}
 }
 

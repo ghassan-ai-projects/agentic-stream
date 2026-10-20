@@ -23,7 +23,7 @@ func TestThePipelineStartsOnlyWhenEveryActiveIntentHasAnOwner(t *testing.T) {
 	tests := []struct {
 		name     string
 		specPath string
-		effector actionport.Effector
+		effector actionport.RoutedEffector
 		want     string
 	}{
 		{"an active spec under a fail-closed fallback names its first unowned intent", activeThermalSpecPath, device.NewFailClosedEffector(device.EffectProfilePhysical), `active-dispatch spec declares an intent no effector owns: route "set_indicator" has no effector`},

@@ -45,7 +45,7 @@ type runtimeCore struct {
 }
 
 type effects struct {
-	effector actionport.Effector
+	effector actionport.RoutedEffector
 	serial   *device.GatewayEffector
 	plant    *plantwire.Host
 }

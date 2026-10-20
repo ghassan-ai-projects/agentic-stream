@@ -88,3 +88,10 @@ type VerifiedEffector interface {
 type RouteOwner interface {
 	OwnsRoute(route string) bool
 }
+
+const WatchInstallRoute = "install_watch_condition"
+
+type RoutedEffector interface {
+	AuthorizedEffector
+	RouteOwner
+}

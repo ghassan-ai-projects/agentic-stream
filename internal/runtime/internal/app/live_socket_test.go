@@ -55,6 +55,10 @@ type stalledEffector struct {
 	once    sync.Once
 }
 
+func (e *stalledEffector) OwnsRoute(string) bool {
+	return true
+}
+
 func (e *stalledEffector) Dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
 	e.stall(ctx)
 	return device.NewSimulatedEffector().Dispatch(ctx, command)

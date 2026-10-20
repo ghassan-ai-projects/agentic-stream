@@ -17,7 +17,6 @@ import (
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 	transport "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/transport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
@@ -41,14 +40,14 @@ func pipelineExecutionDefaults(cfg PipelineConfig) PipelineConfig {
 	return cfg
 }
 
-func composeEffectors(cfg PipelineConfig) (actionport.Effector, *watch.Service, error) {
+func composeEffectors(cfg PipelineConfig) (actionport.RoutedEffector, *watch.Service, error) {
 	watch, err := watch.New(watch.Config{DB: cfg.DB, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch, Clock: cfg.Clock})
 	if err != nil {
 		return nil, nil, fmt.Errorf("compose watch: %w", err)
 	}
 	compositeEffector := composeRouting(cfg, watch)
-	if err := requireIntentEffectors(cfg.Spec, compositeEffector); err != nil {
-		return nil, nil, err
+	if err := compositeEffector.RequireOwners(cfg.Spec.DispatchedIntentTypes()); err != nil {
+		return nil, nil, fmt.Errorf("active-dispatch spec declares an intent no effector owns: %w", err)
 	}
 	return compositeEffector, watch, nil
 }
@@ -59,24 +58,6 @@ func composeRouting(cfg PipelineConfig, watch *watch.Service) *app.CompositeEffe
 		compositeEffector.WithDevice(cfg.GatewayEffector.WithTelemetry(cfg.Telemetry))
 	}
 	return compositeEffector
-}
-
-func requireIntentEffectors(compiled *spec.CompiledSpec, routes *app.CompositeEffector) error {
-	if compiled.Cognition.Executor.DispatchPolicy != spec.DispatchActive {
-		return nil
-	}
-	if err := routes.RequireOwners(intentTypes(compiled)); err != nil {
-		return fmt.Errorf("active-dispatch spec declares an intent no effector owns: %w", err)
-	}
-	return nil
-}
-
-func intentTypes(compiled *spec.CompiledSpec) []string {
-	types := make([]string, 0, len(compiled.Actions.Intents))
-	for _, intent := range compiled.Actions.Intents {
-		types = append(types, intent.Type)
-	}
-	return types
 }
 
 func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.Service, watch *watch.Service) (*app.Pipeline, error) {
@@ -158,11 +139,7 @@ func policyEpochCheck(cfg PipelineConfig) storage.OwnerCheck {
 }
 
 func composeDispatcher(cfg PipelineConfig) (*actions.Service, error) {
-	effector, ok := cfg.Effector.(actionport.AuthorizedEffector)
-	if !ok {
-		return nil, fmt.Errorf("compose actions: effector must enforce dispatch authorization")
-	}
-	service, err := actions.New(actions.Config{DB: cfg.DB, Effector: effector, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch,
+	service, err := actions.New(actions.Config{DB: cfg.DB, Effector: cfg.Effector, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch,
 		Clock: cfg.Clock, IDs: cfg.IDGenerator, LeaseOwner: "runtime-actions/" + cfg.OwnerEpoch,
 		Telemetry: cfg.Telemetry})
 	if err != nil {

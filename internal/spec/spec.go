@@ -56,6 +56,14 @@ func BuiltinEventSchemas() *EventSchemas {
 // to the schema), and returns the built-in schemas merged with them. A ref
 // that is already registered must have an identical definition, so a
 // directory can add schemas but never change one.
+//
+// Every schema is checked as it loads, so a bad directory fails at start:
+// each field has a plain name and path, a type of number, integer, string or
+// boolean (empty means number), an enum only on a string field, and the
+// JSON Schema the entry produces must compile. A document must declare at
+// least one schema and may not repeat a key. Only regular files are read
+// (a link, directory or device named *.json is refused, as is *.JSON); at
+// most 64 files of at most 1 MiB each.
 func LoadEventSchemas(dir string) (*EventSchemas, error) {
 	schemas, err := app.LoadEventSchemas(dir)
 	if err != nil {
