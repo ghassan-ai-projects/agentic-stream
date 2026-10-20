@@ -275,10 +275,10 @@ declares at most 256 kinds and 4096 boards of at most 4096 devices.
 
 | Version | Change |
 |---|---|
+| 1.1.0 | Every entry of `NBIRTH.kinds` carries a `kind_digest`; the kind file (`KIND`) is the contract of a kind (section 5). |
 | 1.2.0 | Every board in `NBIRTH.boards` carries `environment` (`simulated` or `hardware`, required); `NBIRTH.environment` gains `mixed`; the host checks the node against its boards and against its own setting, which now has the same three values (section 2). |
 | 1.3.0 | Optional HSYNC command_evidence carries explicit host feedback decisions, independently of board acknowledgement and self-report. |
 | 1.4.0 | The board mapping file (`BOARD`, section 15) carries a board type's raw values, its lease and `board_digest`; the folder gains `VERSION`; section 9 says why a host that repeats a command on purpose needs a fresh `idempotency_key`. No record changes. |
-| 1.1.0 | Every entry of `NBIRTH.kinds` carries a `kind_digest`; the kind file (`KIND`) is the contract of a kind (section 5). |
 
 ## 15. Board mapping
 
@@ -289,7 +289,7 @@ file, so the twin and the real board cannot drift apart. A kind the mapping does
 | Member | Rule |
 |---|---|
 | `board_type` | The board type, for example `arduino-thermal`. |
-| `kinds.<kind>.commands.<command>` | `raw`: the raw command. `args`: each raw argument is `{value}` (fixed) or `{from, scale?}` (the kind argument `from` times `scale`, default 1). `by` with `table`: the kind argument `by` holds a word, and `table.<word>` gives raw argument values. `lease`: `{arg, ms}`, the raw argument that carries the board's lease and its fixed duration. |
+| `kinds.<kind>.commands.<command>` | `raw`: the raw command. `args`: each raw argument is `{value}` (fixed) or `{from, scale?}` (the kind argument `from` times `scale`, default 1; a value within floating-point error of a whole number is that whole number, and a raw integer argument fed by a kind argument whose step times `scale` is not whole is refused when the mapping is checked against its kinds). `by` with `table`: the kind argument `by` holds a word, and `table.<word>` gives raw argument values. `lease`: `{arg, ms}`, the raw argument that carries the board's lease and its fixed duration. |
 | `kinds.<kind>.metrics.<metric>` | `raw`: the raw reading. Alone it is copied; `scale` divides it (the same direction as a command's `scale`: raw = kind value × scale); `table` maps a raw word to the kind's word. |
 | `kinds.<kind>.raw_enums.<raw name>` | The words of a raw enumerated value in the order of their integer codes: a twin that holds the value as an integer uses the index. |
 
@@ -305,4 +305,5 @@ word the metric reads back as the same word (`board_readback_mismatch`); no two 
 metrics, `from` and `by` naming kind arguments, table words equal to the kind's words.
 
 **`board_digest`** is `sha256:` and the SHA-256 of the file's RFC 8785 canonical JSON. A board mapping never carries it (a
-stale one would be accepted and ignored). Across the board mappings a node or gateway loads, each kind appears at most once.
+stale one would be accepted and ignored). Each board type has one mapping; several board types may map the same kind, and
+the board (its type) a device sits on says which mapping applies.
