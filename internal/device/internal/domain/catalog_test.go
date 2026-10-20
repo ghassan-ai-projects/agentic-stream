@@ -66,3 +66,20 @@ func TestCatalogDigestRefusesAMissingOrInvalidCatalog(t *testing.T) {
 	assertRefusal(t, missingErr, "capability catalog is required")
 	assertRefusal(t, invalidErr, "validate capability catalog")
 }
+
+func TestACatalogNamesExactlyTheRoutesItDeclares(t *testing.T) {
+	t.Parallel()
+	catalog, err := domain.LoadCapabilityCatalog([]byte(`{"protocol_version": 1, "routes": {"set_indicator": {` + validRoute + `}, "vent_open": {` + validRoute + `}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for route, want := range map[string]bool{"set_indicator": true, "vent_open": true, "select_thermal_mode": false, "install_watch_condition": false, "": false, "vent_open ": false} {
+		if got := catalog.NamesRoute(route); got != want {
+			t.Errorf("NamesRoute(%q) = %v, want %v", route, got, want)
+		}
+	}
+	var missing *domain.CapabilityCatalog
+	if missing.NamesRoute("set_indicator") {
+		t.Fatal("a missing catalog named a route")
+	}
+}

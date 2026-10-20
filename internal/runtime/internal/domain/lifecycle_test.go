@@ -56,22 +56,6 @@ func TestALiveSocketEndsNormallyOnlyWhenItsParentWasTerminated(t *testing.T) {
 	}
 }
 
-func TestClosedRoutesAreOwnedBeforeTheFallback(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		route string
-		want  RouteKind
-	}{
-		{"install_watch_condition", WatchRoute}, {"set_indicator", DeviceRoute}, {"select_thermal_mode", DeviceRoute},
-		{"start_aerator", FallbackRoute}, {"", FallbackRoute}, {"set_indicator ", FallbackRoute},
-	}
-	for _, tt := range tests {
-		if got := ClassifyRoute(tt.route); got != tt.want {
-			t.Errorf("route %q: got %v want %v", tt.route, got, tt.want)
-		}
-	}
-}
-
 func TestAFailedRenewalLosesTheLeaseOnlyOnceTheLeaseHasRunOut(t *testing.T) {
 	t.Parallel()
 	renewed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)

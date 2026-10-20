@@ -67,10 +67,13 @@ the original behavior. Maintenance expires watches and dispatches committed
 approved commands without waiting for new source input, every
 `PipelineConfig.MaintenanceInterval` (one second when unset).
 
-Effect routing reserves watch installation and closed device routes before
-fallback. Device routes with no gateway fail closed. Authorization and device
-verification stay with the selected effector. Routing is internal to app; the
-unused public `CompositeEffector` and `RecoveryCoordinator` APIs are removed.
+Effect routing sends the watch install route (`watch.InstallRoute`) to the
+watch service, a route the device gateway owns (its capability catalog names
+it) to the gateway, and every other route to the profile's fallback: simulated
+in the `simulated` and `emulator` profiles, fail-closed in `physical`. No route
+name is written in code. Authorization and device verification stay with the
+selected effector. Routing is internal to app; the unused public
+`CompositeEffector` and `RecoveryCoordinator` APIs are removed.
 
 Human approvals use the [authenticated HTTP contract](../policy/APPROVAL_HTTP_DESIGN.md).
 Presentation and resolution both enforce owner/tenant scope; policy owns principal,

@@ -42,3 +42,8 @@ func IsUnknownOutcome(err error) bool {
 
 // VerifiedEffector combines final authorization and independently observed device state.
 type VerifiedEffector = domain.VerifiedEffector
+
+// RouteOwner is an effector that names the routes it accepts. A router sends
+// a command to the effector that owns its route, so a new route needs data
+// (a device catalog entry), never a code edit.
+type RouteOwner = domain.RouteOwner

@@ -25,25 +25,6 @@ func NormalLiveSocketShutdown(parentErr, err error) bool {
 	return parentErr != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
 }
 
-type RouteKind uint8
-
-const (
-	WatchRoute RouteKind = iota
-	DeviceRoute
-	FallbackRoute
-)
-
-func ClassifyRoute(route string) RouteKind {
-	switch route {
-	case "install_watch_condition":
-		return WatchRoute
-	case "set_indicator", "select_thermal_mode":
-		return DeviceRoute
-	default:
-		return FallbackRoute
-	}
-}
-
 func LeaseLapsed(lastRenewed, now time.Time, lease time.Duration) bool {
 	return now.Sub(lastRenewed) >= lease
 }

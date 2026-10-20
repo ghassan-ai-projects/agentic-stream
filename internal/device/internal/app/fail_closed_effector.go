@@ -22,6 +22,10 @@ func NewFailClosedEffector(profile domain.EffectProfile) *FailClosedEffector {
 	return &FailClosedEffector{profile: profile}
 }
 
+func (e *FailClosedEffector) OwnsRoute(string) bool {
+	return false
+}
+
 // Dispatch rejects a route that has no live effector mapping.
 func (e *FailClosedEffector) Dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
 	if err := ctx.Err(); err != nil {

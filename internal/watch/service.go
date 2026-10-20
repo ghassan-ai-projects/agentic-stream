@@ -7,8 +7,14 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/store"
 )
+
+// InstallRoute is the effector route the watch service owns: a command on it
+// installs a watch condition. It is Agentic Stream's own built-in route, not a
+// domain route.
+const InstallRoute = domain.InstallRoute
 
 // Config supplies the safety dependencies a watch service requires. DB
 // and RuntimeOwner are required: a missing one is a constructor

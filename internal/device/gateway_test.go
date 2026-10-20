@@ -65,6 +65,28 @@ func TestGatewayEffectorDrivesAnEmulatedDeviceOverAUnixSocket(t *testing.T) {
 	}
 }
 
+func TestTheGatewayOwnsExactlyTheRoutesItsCatalogNames(t *testing.T) {
+	t.Parallel()
+	_, effector := openEmulatedGatewayEffector(t)
+	for route, want := range map[string]bool{"set_indicator": true, "select_thermal_mode": true, "vent_open": false, "install_watch_condition": false} {
+		if got := effector.OwnsRoute(route); got != want {
+			t.Errorf("OwnsRoute(%q) = %v, want %v", route, got, want)
+		}
+	}
+}
+
+func TestTheSimulatedFallbackOwnsEveryRouteAndTheFailClosedOneNone(t *testing.T) {
+	t.Parallel()
+	simulated, simulatedOwns := device.NewSimulatedEffector().(actionport.RouteOwner)
+	failClosed, failClosedOwns := device.NewFailClosedEffector(device.EffectProfilePhysical).(actionport.RouteOwner)
+	if !simulatedOwns || !failClosedOwns {
+		t.Fatal("both fallbacks must report the routes they own")
+	}
+	if !simulated.OwnsRoute("vent_open") || failClosed.OwnsRoute("set_indicator") {
+		t.Fatal("the simulated fallback must own every route and the fail-closed one none")
+	}
+}
+
 func TestFallbackEffectorsSimulateOrRefuseButNeverReachADevice(t *testing.T) {
 	t.Parallel()
 	command := actionport.Command{CommandID: "c", EffectorRoute: "notify", IdempotencyKey: idemKey()}

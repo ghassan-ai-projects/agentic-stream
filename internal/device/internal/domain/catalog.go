@@ -91,6 +91,14 @@ func finishCapabilityCatalog(decoder *json.Decoder, catalog *CapabilityCatalog) 
 	return catalog, nil
 }
 
+func (c *CapabilityCatalog) NamesRoute(route string) bool {
+	if c == nil {
+		return false
+	}
+	_, named := c.Routes[route]
+	return named
+}
+
 func (c *CapabilityCatalog) validate() error {
 	if c.ProtocolVersion != contractsv1.DeviceProtocolVersion {
 		return fmt.Errorf("capability catalog protocol_version %d is unsupported, want %d", c.ProtocolVersion, contractsv1.DeviceProtocolVersion)

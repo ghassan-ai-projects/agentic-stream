@@ -51,7 +51,7 @@ func composeEffectors(cfg PipelineConfig) (actionport.Effector, *watch.Service, 
 	}
 	compositeEffector := app.NewCompositeEffector(watch, cfg.Effector)
 	if gatewayEffector != nil {
-		compositeEffector.WithSerial(gatewayEffector)
+		compositeEffector.WithDevice(gatewayEffector)
 	}
 	return compositeEffector, watch, nil
 }

@@ -48,6 +48,12 @@ func (e *GatewayEffector) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *Ga
 	return e
 }
 
+// OwnsRoute reports whether the device's capability catalog names route, so
+// the gateway accepts exactly the routes its digest-pinned catalog declares.
+func (e *GatewayEffector) OwnsRoute(route string) bool {
+	return e.effector.OwnsRoute(route)
+}
+
 // Dispatch materializes and delivers one approved command.
 func (e *GatewayEffector) Dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
 	return e.effector.Dispatch(ctx, command)

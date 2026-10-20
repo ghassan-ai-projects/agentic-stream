@@ -84,3 +84,7 @@ type VerifiedEffector interface {
 	AuthorizedEffector
 	DeviceStateVerifier
 }
+
+type RouteOwner interface {
+	OwnsRoute(route string) bool
+}

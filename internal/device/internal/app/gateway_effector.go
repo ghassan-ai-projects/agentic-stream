@@ -38,6 +38,10 @@ func (e *GatewayEffector) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *Ga
 	return e
 }
 
+func (e *GatewayEffector) OwnsRoute(route string) bool {
+	return e != nil && e.catalog.NamesRoute(route)
+}
+
 // Dispatch sends one materialized command. Direct callers should prefer
 // DispatchAuthorized when an interlock is available; the dispatcher uses the
 // authorized method whenever it has a live interlock.

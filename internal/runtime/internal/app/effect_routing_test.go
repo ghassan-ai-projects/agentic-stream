@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,6 +17,15 @@ type recordingRoute struct {
 	dispatches, authorized int
 	verifyStatus           string
 	verifyErr              error
+	owned                  []string
+}
+
+func ownerOf(routes ...string) *recordingRoute {
+	return &recordingRoute{owned: routes}
+}
+
+func (r *recordingRoute) OwnsRoute(route string) bool {
+	return slices.Contains(r.owned, route)
 }
 
 func (r *recordingRoute) Dispatch(context.Context, actionport.Command) (actionport.Effect, error) {
@@ -92,8 +102,7 @@ func TestARouteWithoutItsEffectorFailsClosedInsteadOfFallingBack(t *testing.T) {
 		want     string
 	}{
 		{"no watch effector for a watch route", app.NewCompositeEffector(nil, &recordingRoute{}), "install_watch_condition", "watch effector is not configured"},
-		{"no device effector for set_indicator", app.NewCompositeEffector(nil, &recordingRoute{}), "set_indicator", `serial effector is not configured for route "set_indicator"`},
-		{"no device effector for select_thermal_mode", app.NewCompositeEffector(nil, &recordingRoute{}), "select_thermal_mode", `serial effector is not configured for route "select_thermal_mode"`},
+		{"a device that claims the watch route never takes it", app.NewCompositeEffector(nil, &recordingRoute{}).WithDevice(ownerOf("install_watch_condition")), "install_watch_condition", "watch effector is not configured"},
 		{"no fallback for an ordinary route", app.NewCompositeEffector(nil, nil), "start_aerator", `no effector is configured for route "start_aerator"`},
 		{"no effector at all", nil, "start_aerator", "composite effector is not configured"},
 	}
@@ -107,22 +116,40 @@ func TestARouteWithoutItsEffectorFailsClosedInsteadOfFallingBack(t *testing.T) {
 	}
 }
 
-func TestDeviceRoutesNeverReachTheFallback(t *testing.T) {
+func TestARouteTheDeviceOwnsReachesTheDeviceAndEveryOtherRouteTheFallback(t *testing.T) {
 	t.Parallel()
-	fallback := &recordingRoute{}
-	routes := app.NewCompositeEffector(nil, fallback)
-	for _, route := range []string{"set_indicator", "select_thermal_mode"} {
-		if _, err := routes.Dispatch(t.Context(), actionport.Command{EffectorRoute: route}); err == nil || !strings.Contains(err.Error(), "serial effector is not configured") {
-			t.Fatalf("missing device route %s = %v, want it refused instead of falling through to the fallback", route, err)
+	fallback, deviceEffector := &recordingRoute{}, ownerOf("set_indicator", "vent_open")
+	routes := app.NewCompositeEffector(nil, fallback).WithDevice(deviceEffector)
+	for _, route := range []string{"vent_open", "set_indicator", "start_aerator", "select_thermal_mode"} {
+		if _, err := routes.Dispatch(t.Context(), actionport.Command{EffectorRoute: route}); err != nil {
+			t.Fatalf("dispatch %s: %v", route, err)
 		}
 	}
-	physical := &recordingRoute{}
-	routes.WithSerial(physical)
-	if _, err := routes.Dispatch(t.Context(), actionport.Command{EffectorRoute: "set_indicator"}); err != nil {
-		t.Fatal(err)
+	if deviceEffector.dispatches != 2 || fallback.dispatches != 2 {
+		t.Fatalf("device dispatches=%d fallback dispatches=%d; want 2 and 2", deviceEffector.dispatches, fallback.dispatches)
 	}
-	if fallback.dispatches != 0 || physical.dispatches != 1 {
-		t.Fatalf("fallback dispatches=%d device dispatches=%d; want 0 and 1", fallback.dispatches, physical.dispatches)
+}
+
+func TestARouteTheCatalogDoesNotNameIsRefusedByAPhysicalFallback(t *testing.T) {
+	t.Parallel()
+	deviceEffector := ownerOf("set_indicator")
+	routes := app.NewCompositeEffector(nil, device.NewFailClosedEffector(device.EffectProfilePhysical)).WithDevice(deviceEffector)
+	if _, err := routes.Dispatch(t.Context(), actionport.Command{EffectorRoute: "select_thermal_mode"}); err == nil || !strings.Contains(err.Error(), `has no effector for route "select_thermal_mode"`) {
+		t.Fatalf("an unnamed route in the physical profile = %v, want it refused by the fail-closed fallback", err)
+	}
+	if deviceEffector.dispatches != 0 {
+		t.Fatalf("device dispatches = %d for a route its catalog does not name", deviceEffector.dispatches)
+	}
+}
+
+func TestWithoutADeviceEveryNonWatchRouteIsASimulatedEffect(t *testing.T) {
+	t.Parallel()
+	routes := app.NewCompositeEffector(nil, device.NewSimulatedEffector())
+	for _, route := range []string{"set_indicator", "select_thermal_mode", "vent_open"} {
+		effect, err := routes.Dispatch(t.Context(), actionport.Command{EffectorRoute: route, IdempotencyKey: "sha256:" + route})
+		if err != nil || effect.ProviderResult["accepted"] != true || effect.ObservedEffect["route"] != route {
+			t.Fatalf("simulated %s: effect=%v err=%v", route, effect, err)
+		}
 	}
 }
 
@@ -145,8 +172,8 @@ func TestAuthorizedDispatchKeepsTheFinalAuthorizationCheck(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			fallback, deviceEffector := &recordingRoute{}, &recordingRoute{}
-			routes := app.NewCompositeEffector(nil, fallback).WithSerial(deviceEffector)
+			fallback, deviceEffector := &recordingRoute{}, ownerOf("set_indicator")
+			routes := app.NewCompositeEffector(nil, fallback).WithDevice(deviceEffector)
 			_, err := routes.DispatchAuthorized(t.Context(), actionport.Command{EffectorRoute: tt.route}, tt.auth)
 			if (err != nil) != tt.refused || tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
 				t.Fatalf("error = %v, want refused=%v wrapping %v", err, tt.refused, tt.wantErr)
@@ -177,9 +204,10 @@ func TestDeviceVerificationIsRoutedOnlyForDeviceCommands(t *testing.T) {
 		wantStatus string
 		wantErr    error
 	}{
-		{"device command is verified by the device effector", app.NewCompositeEffector(nil, nil).WithSerial(&recordingRoute{verifyStatus: "succeeded"}), "set_indicator", "succeeded", nil},
-		{"a verification failure is returned with its status", app.NewCompositeEffector(nil, nil).WithSerial(&recordingRoute{verifyStatus: "failed", verifyErr: failure}), "select_thermal_mode", "failed", failure},
-		{"a non-device command has nothing to verify", app.NewCompositeEffector(nil, nil).WithSerial(&recordingRoute{verifyStatus: "succeeded"}), "start_aerator", "", nil},
+		{"device command is verified by the device effector", app.NewCompositeEffector(nil, nil).WithDevice(&recordingRoute{verifyStatus: "succeeded", owned: []string{"set_indicator"}}), "set_indicator", "succeeded", nil},
+		{"a verification failure is returned with its status", app.NewCompositeEffector(nil, nil).WithDevice(&recordingRoute{verifyStatus: "failed", verifyErr: failure, owned: []string{"vent_open"}}), "vent_open", "failed", failure},
+		{"a route the device does not own has nothing to verify", app.NewCompositeEffector(nil, nil).WithDevice(&recordingRoute{verifyStatus: "succeeded", owned: []string{"set_indicator"}}), "start_aerator", "", nil},
+		{"the watch route is never verified by the device", app.NewCompositeEffector(nil, nil).WithDevice(&recordingRoute{verifyStatus: "succeeded", owned: []string{"install_watch_condition"}}), "install_watch_condition", "", nil},
 		{"a device command without a device effector has nothing to verify", app.NewCompositeEffector(nil, nil), "set_indicator", "", nil},
 		{"no effector at all", nil, "set_indicator", "", nil},
 	}
