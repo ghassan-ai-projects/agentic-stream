@@ -12,7 +12,7 @@ import (
 const eventSchemasFlag = "event-schemas"
 
 func registerEventSchemasFlag(root *cobra.Command) {
-	root.PersistentFlags().String(eventSchemasFlag, "", "directory of event-schema JSON files added to the built-in event schemas")
+	root.PersistentFlags().String(eventSchemasFlag, "", "directory of event-schema JSON files added to the built-in event schemas (used by validate, run, run-live and serve; other commands ignore it)")
 }
 
 func loadEventSchemas(cmd *cobra.Command) (*spec.EventSchemas, error) {

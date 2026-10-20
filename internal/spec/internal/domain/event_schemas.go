@@ -75,19 +75,6 @@ func (s *EventSchemas) Merge(source string, document []byte) (*EventSchemas, err
 	return newEventSchemas(merged), nil
 }
 
-func decodeEventSchemaDocument(source string, document []byte) (map[string]registryEntry, error) {
-	decoder := json.NewDecoder(bytes.NewReader(document))
-	decoder.DisallowUnknownFields()
-	var entries map[string]registryEntry
-	if err := decoder.Decode(&entries); err != nil {
-		return nil, fmt.Errorf("decode event schemas %s: %w", source, err)
-	}
-	if decoder.More() {
-		return nil, fmt.Errorf("decode event schemas %s: trailing data after the schema document", source)
-	}
-	return entries, nil
-}
-
 func mergeEventSchemaEntry(merged map[string]registryEntry, ref string, entry registryEntry) error {
 	if err := entry.validate(ref); err != nil {
 		return err
@@ -97,16 +84,6 @@ func mergeEventSchemaEntry(merged map[string]registryEntry, ref string, entry re
 		return fmt.Errorf("event schema %q is already registered with a different definition", ref)
 	}
 	merged[ref] = entry
-	return nil
-}
-
-func (e registryEntry) validate(ref string) error {
-	if e.EventType == "" || e.SchemaVersion == "" {
-		return fmt.Errorf("event schema %q must declare event_type and schema_version", ref)
-	}
-	if ref != e.EventType+"/"+e.SchemaVersion {
-		return fmt.Errorf("event schema %q must be named %q", ref, e.EventType+"/"+e.SchemaVersion)
-	}
 	return nil
 }
 

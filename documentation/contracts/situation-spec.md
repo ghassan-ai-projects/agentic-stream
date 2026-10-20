@@ -73,14 +73,19 @@ definitions it used.
 - An Intent may declare `baseline.byPhase`: for a situation phase, the enum
   value the deterministic replay baseline chooses for a parameter. The compiler
   refuses a phase the situation does not declare, a parameter
-  `parameterSchema.properties` does not declare, and a value outside that
-  parameter's `enum`. Values are strings. A parameter without a choice for the
+  `parameterSchema.properties` does not declare, a parameter that is not in
+  `modelWritableFields` (the Decision validator accepts a chosen value only for
+  a model-writable field), a value outside that parameter's `enum`, and a value
+  the parameter's own schema refuses (for example a `pattern`). Constraints
+  that span several parameters are not checked at compile time. Values are
+  strings. A parameter without a choice for the
   phase takes its first enum value. The field is part of the spec digest only
   when present.
 
   ```yaml
   - type: set_indicator
     # risk, parameterSchema (with state: {enum: [off, watch, alert]}), policy ...
+    modelWritableFields: [state]
     baseline:
       byPhase:
         over_ceiling: {state: alert}

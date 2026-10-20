@@ -28,7 +28,7 @@ type PipelineConfig struct {
 	OwnerEpoch        string
 	Clock             sources.Clock
 	Executor          episodes.Executor
-	Effector          actionport.Effector
+	Effector          actionport.RoutedEffector
 	IDGenerator       sources.Generator
 	GlobalCostCeiling *uint64
 	TenantCostCeiling *uint64

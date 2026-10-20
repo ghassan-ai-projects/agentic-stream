@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -48,6 +49,19 @@ func TestMergingRefusesAMalformedOrConflictingSchema(t *testing.T) {
 		{"an unknown field", strings.Replace(fanSpeedSchema, `"unit": "rpm"`, `"unit": "rpm", "scale": 2`, 1), `unknown field "scale"`},
 		{"trailing data", fanSpeedSchema + " {}", "trailing data after the schema document"},
 		{"not JSON", "{", "decode event schemas bad.json"},
+		{"a field type outside the allowed set", strings.Replace(fanSpeedSchema, `"unit": "rpm"`, `"unit": "rpm", "type": "banana"`, 1), `event schema "fan.speed.observed/1.0" field "rpm": type "banana" is not one of number, integer, string, boolean`},
+		{"an empty path", strings.Replace(fanSpeedSchema, `"path": "rpm"`, `"path": ""`, 1), `field "rpm": path "" is not a plain field name`},
+		{"a path that is not a plain field name", strings.Replace(fanSpeedSchema, `"path": "rpm"`, `"path": "../../etc"`, 1), `path "../../etc" is not a plain field name`},
+		{"a field name that is not a plain name", strings.Replace(fanSpeedSchema, `"rpm": {`, `"r.pm": {`, 1), `field "r.pm": the field name is not a plain name`},
+		{"an enum on a number field", strings.Replace(fanSpeedSchema, `"unit": "rpm"`, `"unit": "rpm", "type": "number", "enum": ["1"]`, 1), "enum is allowed only on a string field"},
+		{"an enum on an untyped field", strings.Replace(fanSpeedSchema, `"unit": "rpm"`, `"unit": "rpm", "enum": ["1"]`, 1), "enum is allowed only on a string field"},
+		{"an empty enum", strings.Replace(fanSpeedSchema, `"unit": "rpm"`, `"unit": "rpm", "type": "string", "enum": []`, 1), "enum must list at least one value"},
+		{"a ref declared twice", strings.Replace(fanSpeedSchema, `}}}}`, `}}}, "fan.speed.observed/1.0": {"event_type": "fan.speed.observed", "schema_version": "1.0", "fields": {}}}`, 1), `duplicate key "fan.speed.observed/1.0"`},
+		{"a field attribute declared twice", strings.Replace(fanSpeedSchema, `"unit": "rpm"`, `"unit": "rpm", "unit": "hz"`, 1), `duplicate key "unit"`},
+		{"a null document", "null", "the document declares no event schema"},
+		{"an empty object", "{}", "the document declares no event schema"},
+		{"an empty file", "", "decode event schemas bad.json: read schema document"},
+		{"a document nested too deeply", `{"a":{"b":{"c":{"d":{"e":{"f":{"g":{"h":{"i":{"j":{}}}}}}}}}}}`, "nests deeper than 8 levels"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -57,6 +71,17 @@ func TestMergingRefusesAMalformedOrConflictingSchema(t *testing.T) {
 				t.Fatalf("Merge = %v, want %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestEveryBuiltInSchemaPassesTheRulesADirectorySchemaMust(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("event_schema_data.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := domain.BuiltinEventSchemas().Merge("event_schema_data.json", data); err != nil {
+		t.Fatalf("a built-in schema breaks the directory rules: %v", err)
 	}
 }
 

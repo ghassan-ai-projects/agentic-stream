@@ -1,27 +1,14 @@
 package architecture
 
 import (
-	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 )
-
-// domainSpecPattern names the SituationSpecs whose declared words production
-// Go code may not repeat: the domains the product ships. Test specs under
-// internal/**/testdata are not read. They are test inputs, not domains, and
-// any word a test chooses (a phase "ok", a preset "default") would turn the
-// runtime's own vocabulary into a finding; today they add no word that the
-// examples do not already declare.
-const domainSpecPattern = "examples/*/*.situation.yaml"
 
 // builtinDomainWord is a word a spec may declare that Agentic Stream itself
 // defines, with the only production files that may spell it and why.
@@ -35,10 +22,10 @@ type builtinDomainWord struct {
 var builtinDomainWords = map[string]builtinDomainWord{
 	"install_watch_condition": {
 		files: []string{
-			"internal/watch/internal/domain/condition.go",
+			"internal/actionport/internal/domain/effect.go",
 			"internal/decisions/internal/domain/binding.go",
 		},
-		reason: "the watch install route is Agentic Stream's own effect route (watch.InstallRoute); specs declare it to allow it, the watch module owns it",
+		reason: "the watch install route is Agentic Stream's own effect route (actionport.WatchInstallRoute, re-exported as watch.InstallRoute); the effect port reserves it so no device catalog may name it; specs declare it to allow it",
 	},
 	"resolved": {
 		files: []string{
@@ -62,6 +49,13 @@ var builtinDomainWords = map[string]builtinDomainWord{
 var domainKnowledgeExemptPaths = map[string]string{
 	"internal/executor/fixture/":                "the deterministic demo executor proposes a fixed example decision; DemoMode admits it, a production pipeline refuses it",
 	"internal/testsupport/executorconformance/": "the executor conformance suite drives executors with a fixed example decision; tests import it, production code does not",
+}
+
+// generatedCodePaths are the only places a "Code generated ... DO NOT EDIT."
+// file is skipped. A file elsewhere that carries the marker is scanned like
+// hand-written code, so the marker cannot opt a file out of the gate.
+var generatedCodePaths = map[string]string{
+	"proto/agenticstream/runtime/v1/": "protoc-gen-go and protoc-gen-go-grpc output of the worker protocol; the generator spells only protocol names",
 }
 
 type wordMatch int
@@ -92,7 +86,7 @@ func TestProductionCodeHoldsNoDomainWords(t *testing.T) {
 	vocabulary := loadDomainVocabulary(t, repo.root)
 	used := make(map[string]bool)
 	for _, file := range repo.production {
-		if file.generated || domainKnowledgeExempt(file.rel) {
+		if generatedCodeExempt(file) || hasPathPrefix(domainKnowledgeExemptPaths, file.rel) {
 			continue
 		}
 		for _, use := range domainWordUses(file.syntax, vocabulary) {
@@ -104,7 +98,8 @@ func TestProductionCodeHoldsNoDomainWords(t *testing.T) {
 		}
 	}
 	reportStaleBuiltins(t, used)
-	reportStaleExemptions(t, repo)
+	reportStaleExemptions(t, repo, domainKnowledgeExemptPaths)
+	reportStaleExemptions(t, repo, generatedCodePaths)
 }
 
 // TestTheDomainWordGateCatchesASpecWordInCode proves the gate is not vacuous:
@@ -132,8 +127,32 @@ var ref = "zone.temp.observed/1.0"
 	}
 }
 
-func domainKnowledgeExempt(rel string) bool {
-	for prefix := range domainKnowledgeExemptPaths {
+// TestOnlyKnownGeneratedPathsSkipTheDomainWordGate proves the generated
+// marker opts a file out only under generatedCodePaths.
+func TestOnlyKnownGeneratedPathsSkipTheDomainWordGate(t *testing.T) {
+	t.Parallel()
+
+	files := []struct {
+		file goFile
+		want bool
+	}{
+		{goFile{rel: "proto/agenticstream/runtime/v1/runtime-v1.pb.go", generated: true}, true},
+		{goFile{rel: "internal/runtime/internal/app/routes.go", generated: true}, false},
+		{goFile{rel: "proto/agenticstream/runtime/v1/handwritten.go"}, false},
+	}
+	for _, tt := range files {
+		if got := generatedCodeExempt(tt.file); got != tt.want {
+			t.Errorf("generatedCodeExempt(%s, generated=%t) = %t, want %t", tt.file.rel, tt.file.generated, got, tt.want)
+		}
+	}
+}
+
+func generatedCodeExempt(file goFile) bool {
+	return file.generated && hasPathPrefix(generatedCodePaths, file.rel)
+}
+
+func hasPathPrefix(prefixes map[string]string, rel string) bool {
+	for prefix := range prefixes {
 		if strings.HasPrefix(rel, prefix) {
 			return true
 		}
@@ -157,11 +176,11 @@ func reportStaleBuiltins(t *testing.T, used map[string]bool) {
 	}
 }
 
-func reportStaleExemptions(t *testing.T, repo *repository) {
+func reportStaleExemptions(t *testing.T, repo *repository, prefixes map[string]string) {
 	t.Helper()
-	for prefix := range domainKnowledgeExemptPaths {
+	for prefix := range prefixes {
 		if len(repo.filesUnder(strings.TrimSuffix(prefix, "/"))) == 0 {
-			t.Errorf("domainKnowledgeExemptPaths names %s, which has no production files; remove the stale entry", prefix)
+			t.Errorf("exempt path %s has no production files; remove the stale entry", prefix)
 		}
 	}
 }
@@ -185,84 +204,4 @@ func domainWordUses(syntax *ast.File, vocabulary []domainWord) []domainWordUse {
 		return true
 	})
 	return uses
-}
-
-type domainSpecWords struct {
-	Inputs []struct {
-		EventType  string `yaml:"eventType"`
-		EntityType string `yaml:"entityType"`
-	} `yaml:"inputs"`
-	Situation struct {
-		Type   string `yaml:"type"`
-		Phases []struct {
-			Name string `yaml:"name"`
-		} `yaml:"phases"`
-	} `yaml:"situation"`
-	Actions struct {
-		Intents []struct {
-			Type            string `yaml:"type"`
-			ParameterSchema struct {
-				Properties map[string]struct {
-					Enum []any `yaml:"enum"`
-				} `yaml:"properties"`
-			} `yaml:"parameterSchema"`
-			Presets map[string]any `yaml:"presets"`
-		} `yaml:"intents"`
-	} `yaml:"actions"`
-}
-
-func loadDomainVocabulary(t *testing.T, root string) []domainWord {
-	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(root, domainSpecPattern))
-	if err != nil || len(paths) == 0 {
-		t.Fatalf("find shipped specs: %v (%d found)", err, len(paths))
-	}
-	words := make(map[domainWord]bool)
-	for _, path := range paths {
-		for _, word := range specWords(t, path) {
-			words[word] = true
-		}
-	}
-	vocabulary := make([]domainWord, 0, len(words))
-	for word := range words {
-		vocabulary = append(vocabulary, word)
-	}
-	slices.SortFunc(vocabulary, func(a, b domainWord) int { return strings.Compare(a.word, b.word) })
-	return vocabulary
-}
-
-func specWords(t *testing.T, path string) []domainWord {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var spec domainSpecWords
-	if err := yaml.Unmarshal(data, &spec); err != nil {
-		t.Fatalf("decode %s: %v", path, err)
-	}
-	words := []domainWord{{spec.Situation.Type, exactWord}}
-	for _, input := range spec.Inputs {
-		words = append(words, domainWord{input.EventType, containedWord}, domainWord{input.EntityType, exactWord})
-	}
-	for _, phase := range spec.Situation.Phases {
-		words = append(words, domainWord{phase.Name, exactWord})
-	}
-	return append(words, intentWords(spec)...)
-}
-
-func intentWords(spec domainSpecWords) []domainWord {
-	var words []domainWord
-	for _, intent := range spec.Actions.Intents {
-		words = append(words, domainWord{intent.Type, containedWord})
-		for preset := range intent.Presets {
-			words = append(words, domainWord{preset, exactWord})
-		}
-		for _, property := range intent.ParameterSchema.Properties {
-			for _, value := range property.Enum {
-				words = append(words, domainWord{fmt.Sprint(value), exactWord})
-			}
-		}
-	}
-	return words
 }

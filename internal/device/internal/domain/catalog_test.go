@@ -83,3 +83,9 @@ func TestACatalogNamesExactlyTheRoutesItDeclares(t *testing.T) {
 		t.Fatal("a missing catalog named a route")
 	}
 }
+
+func TestACatalogMayNotNameTheWatchRoute(t *testing.T) {
+	t.Parallel()
+	_, err := domain.LoadCapabilityCatalog([]byte(`{"protocol_version": 1, "routes": {"install_watch_condition": {` + validRoute + `}}}`))
+	assertRefusal(t, err, `route "install_watch_condition" is reserved for the runtime's watch effector`)
+}

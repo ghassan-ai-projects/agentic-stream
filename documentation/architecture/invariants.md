@@ -106,7 +106,7 @@ detail is in the test audit.
 - `internal/executor/remote`: [`TestExecuteGivesTheWorkerNoEvidenceAccessUnlessConfigured`](../../internal/executor/remote/internal/app/evidence_capability_test.go), [`TestExecuteIssuesAFreshScopedCapabilityPerDispatch`](../../internal/executor/remote/internal/app/evidence_capability_test.go)
 - `internal/worker`: [`TestEvidenceSocketIsPrivateAndCleansUp`](../../internal/worker/internal/transport/uds_test.go)
 - `internal/device`: [`TestEveryEffectorChecksAuthorizationBeforeDispatch`](../../internal/device/internal/app/gateway_effector_authorization_test.go), [`TestMaterializeIgnoresModelSuppliedParameters`](../../internal/device/internal/domain/materialize_test.go), [`TestMaterializeFailsClosed`](../../internal/device/internal/domain/materialize_test.go)
-- `internal/runtime`: [`TestARouteTheCatalogDoesNotNameIsRefusedByAPhysicalFallback`](../../internal/runtime/internal/app/effect_routing_test.go), [`TestARouteWithoutItsEffectorFailsClosedInsteadOfFallingBack`](../../internal/runtime/internal/app/effect_routing_test.go)
+- `internal/runtime`: [`TestWithADeviceARouteItsCatalogDoesNotNameIsRefusedAtDispatch`](../../internal/runtime/internal/app/effect_routing_test.go), [`TestARouteWithoutItsEffectorFailsClosedInsteadOfFallingBack`](../../internal/runtime/internal/app/effect_routing_test.go)
 - `internal/spec`: [`TestCompileRejectsASpecThatBreaksARule`](../../internal/spec/internal/domain/compiler_test.go)
 
 ### Invariant 7: Policy revalidates every Intent against current state immediately before dispatch.

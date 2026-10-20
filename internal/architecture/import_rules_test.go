@@ -194,7 +194,7 @@ var allowedImports = map[string][]string{
 	"internal/storage":                            {"internal/storage/internal/store"},
 	"internal/storage/storagetest":                {"internal/storage", "migrations"},
 	"internal/telemetry":                          {"internal/telemetry/internal/domain", "internal/telemetry/internal/transport"},
-	"internal/watch":                              {"internal/actionport", "internal/sources", "internal/storage", "internal/watch/internal/app", "internal/watch/internal/domain", "internal/watch/internal/store"},
+	"internal/watch":                              {"internal/actionport", "internal/sources", "internal/storage", "internal/watch/internal/app", "internal/watch/internal/store"},
 	"internal/watch/internal/app":                 {"internal/actionport", "internal/sources", "internal/watch/internal/domain", "internal/watch/internal/store"},
 	"internal/watch/internal/domain":              {"internal/actionport"},
 	"internal/watch/internal/store":               {"internal/interlock", "internal/storage", "internal/watch/internal/domain"},

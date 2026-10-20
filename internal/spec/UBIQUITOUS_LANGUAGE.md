@@ -17,7 +17,10 @@
 | Deployment | A compiled spec stored as the active version of its name. A new version retires the previous one; redeploying the same digest is idempotent. | `SaveDeployment` | `spec_deployments` |
 | Duration string | The runtime's textual duration: any `time.ParseDuration` unit plus whole days (a fixed 24 hours, positive, no overflow). All spec duration fields use it. | `ParseDuration` | `15m`, `6h`, `30d` |
 | Event schema | A schema bound to one normalized event type and version, with its payload fields keyed by name. Domain data, never a Go literal. | `EventSchema`, `EventField` | `event_schema_data.json` |
-| Schema reference | The name a spec input uses to select an event schema. | `LookupEventSchema` | `schemaRef` in the spec |
+| Event-schema registry | The immutable set of event schemas a spec compiles against: the built-in ones, plus those loaded from a directory (`--event-schemas`). A directory may add schemas, never change one; each loaded schema is checked before it is used. | `EventSchemas`, `BuiltinEventSchemas`, `LoadEventSchemas`, `WithEventSchemas` | `event_schemas_digest` (logged at start) |
+| Schema reference | The name a spec input uses to select an event schema; resolved in the registry the spec was compiled against. | `CompiledSpec.EventSchema`, `EventSchemas.Lookup` | `schema` of a spec input |
+| Dispatched intent | An intent type an active-dispatch spec may turn into a command; a shadow spec dispatches none. Every one needs an effector that owns its route before the runtime starts. | `CompiledSpec.DispatchedIntentTypes` | `actions.intents[].type` |
+| Baseline choice | The value the deterministic replay baseline writes for a model-writable enum parameter in one Situation phase. It must be an enum value the parameter's schema accepts. | `IntentBaseline` | `actions.intents[].baseline.byPhase` |
 | Registered schema | One immutable, digested event schema version stored for the event log to validate against. Re-registering identical bytes is allowed; different bytes are refused. `spec` is the only writer of the table. | `RegisterEventSchema` | `event_schemas` |
 
 ## Retired words
