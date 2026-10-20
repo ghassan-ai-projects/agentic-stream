@@ -3,11 +3,12 @@
 Status: accepted design, built in rounds. The host sessions exist today
 (`serve --plant-wire-socket`: handshake, commissioning, heartbeats, barriers,
 one session after another), and so do the event mapping (site file, readings
-and heartbeats to normalized events through ingress) and the effector (one
-`DCMD` per approved command, receipts and results into the outcome ledger);
+and heartbeats to normalized events through ingress), the effector (one
+`DCMD` per approved command, receipts and results into the outcome ledger),
 the device authority calls (claim, bind, reconciliation barrier) as device-wire
-makes them; verification from readings and the origin check are planned.
-This page is the decision record the module is built against.
+makes them, the origin check per board, verification from the device's own
+readings and the clearing of a reconciliation by readings. This page is the
+decision record the module is built against.
 
 ## Context
 
@@ -41,8 +42,8 @@ adapter is in use.
 | `internal/plantwire/internal/domain` | Pure rules: envelope and sequencing, record views, handshake admission, environment rules, commissioning by kind digest; later the site model, event mapping, heartbeat state machine, command plan, receipt classification and expected values. No I/O, no clock. | 13 |
 | `internal/plantwire/internal/wire` | The embedded contract (schemas, `DIGEST`, `VERSION`), schema validation, record size limits, exact 64-bit integers, kind file parsing. | 14 |
 | `internal/plantwire/internal/transport` | Framed connection over a listener `cmd` hands in, control lane before data, write deadline. | 15 |
-| `internal/plantwire/internal/app` | Host supervisor and session, site file, ingest queue and feeder, effector with its `authority` calls (built); verification and origin (planned). | 25 |
-| `internal/plantwire` | Facade: configuration, settings check, `Run(ctx, emit)`, `Close` (built); the effect port operations and route ownership (planned). | 26 |
+| `internal/plantwire/internal/app` | Host supervisor and session, site file, ingest queue and feeder, effector with its `authority` calls, origin check, verification and clearing by readings. | 25 |
+| `internal/plantwire` | Facade: configuration, settings check, `Run(ctx, emit)`, `Close`, the effect port operations and route ownership. | 26 |
 
 The contract folder is
 `internal/plantwire/internal/wire/plantwire-contract/` and `make plant-wire-sync`
@@ -122,21 +123,63 @@ sent. The answers map to the outcome ledger as follows.
 
 | Node answers | Outcome |
 | --- | --- |
-| `accepted`, then `DRESULT succeeded` | pending verification (manual review until A3c verifies it) |
+| `accepted`, then `DRESULT succeeded` | pending verification; succeeded when the device's readings verify it, otherwise manual review |
 | `refused` (any reason: `local_control`, `expired`, `stale_epoch`, `policy_not_allowed`, `wrong_boot`, ...), possibly after `queued` | failed, the reason in the provider result |
 | `accepted`, then `DRESULT failed` | failed |
 | `accepted`, then `DRESULT unknown`; `accepted` or a result on another boot | unknown outcome |
 | still `queued` when the session ends | failed, `session_ending` |
 | sent and unanswered when the session ends, or no terminal answer by the deadline plus 2 s, or the dispatch call ends | unknown outcome |
 
+A command to a device on a hardware board without consent, or whose board is
+not in `--hardware-boards`, is a known failure before anything is sent: the
+error is `ErrOriginNotAuthorized` and the provider result says `refused:
+origin_not_authorized` with the board and its environment.
+
 Before a command is sent, the device's boot is recorded with the device
 authority, a reconciliation (opened by a reboot or an earlier unknown outcome)
-refuses it, and the target is claimed and the command bound, through the same
-`authority` operations device-wire uses (`ClaimForDelivery`,
-`RequireReconciliation`). An unknown outcome opens a reconciliation; the
-session's claims are released when it ends. Clearing a reconciliation mirrors
-device-wire (Q4): `ResolveReconciliation` with evidence, which no production
-path calls yet.
+refuses it unless the device's readings clear it, and the target is claimed and
+the command bound, through the same `authority` operations device-wire uses
+(`ClaimForDelivery`, `RequireReconciliation`). An unknown outcome opens a
+reconciliation; the session's claims are released when it ends.
+
+### Verification
+
+A command the node reports succeeded is never counted as done on its word.
+Each argument whose name is a writable metric of the device's kind (the kind
+file, never the birth) is read back on that metric: `set_cooling
+{level_percent}` on `level_percent`, `show_state {state}` on `state`. The
+reading must be a good, non-historical `DDATA` sample on the command's boot that
+arrives after the `DRESULT` (the session starts watching when it settles the
+result), and match within the metric's `resolution` (a word exactly), within a
+**4 s window** from the dispatch's return: shorter than the fan's 5 s lease, so
+a working command is read before its lease lapses, and long enough for two
+samples at the gateway's 2 s cadence. Every expected metric must match; then
+`VerifyDeviceCommand` reports succeeded with the readings sealed as
+device-state evidence (bound to the device, as the dispatcher's reconciliation
+of an unknown outcome expects). Without a match in the window, or with no argument to read
+back, it gives no final status and the outcome stays in manual review. No
+`DQUERY` is sent: a relay answers none for a real device. The next `HSYNC`
+carries each numeric decision as `command_evidence` (`observed` with the value,
+or `not_observed` when the window lapsed); a word has no number for the
+contract's `expected`, so a `state` read-back carries none.
+
+### Clearing a reconciliation by readings
+
+Without a clearing path a reboot, or the switch from a simulated session to a
+real one (a new boot of the same device), would block the device for good. The
+rule lives once in the device authority (`ResolveWithReadings`); plant wire is
+its only caller (device-wire keeps its own path, D4). When the boot is under
+reconciliation, the host presents the latest reading it holds of each writable
+metric of the device's kind (including the values the `DBIRTH` carries), with
+the host time it received them. The authority clears the reconciliation as
+succeeded, recording the readings as the resolution's evidence, when every
+output has a good, live reading on the boot that is newer than the latest
+opening; every reading of a boot is newer than the reboot that opened its
+reconciliation, so a reboot clears on the new boot's first good reading, and
+an unknown outcome on a reading received after it. As for any resolution, it
+refuses while a command bound to the boot is still unresolved in the action
+ledger, so an unknown command must be reconciled first (by its verification or
+an operator).
 
 ## What the adapter never does
 
@@ -164,7 +207,8 @@ path calls yet.
   expires after 60 s, past the 54 s call of the default lease).
 - Historical (store-and-forward) readings are counted and logged, not ingested
   live.
-- A reboot opens the same reconciliation barrier as device-wire.
+- A reboot opens the same reconciliation barrier as device-wire; the device's
+  readings clear it (above).
 - Safe stop over plant wire, and the minimum-version rule for contracts, wait
   for a production need.
 

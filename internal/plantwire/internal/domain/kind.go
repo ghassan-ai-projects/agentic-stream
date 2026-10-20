@@ -97,6 +97,10 @@ func numberOf(value any) (float64, bool) {
 		return parsed, err == nil
 	case float64:
 		return number, true
+	case int:
+		return float64(number), true
+	case int64:
+		return float64(number), true
 	}
 	return 0, false
 }

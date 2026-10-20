@@ -35,12 +35,14 @@ var (
 )
 
 // Errors of a command: no live session, an unborn device, a reboot since the
-// command was bound, or an open reconciliation of the device (nothing sent), no
-// site device for the command's target, a missing final authorization check, a
-// node refusal (the receipt's reason is in the provider result) and a failure
-// the device reported. An unknown outcome is an actionport.UnknownOutcomeError.
+// command was bound, an open reconciliation of the device, or a hardware board
+// the host may not command (nothing sent), no site device for the command's
+// target, a missing final authorization check, a node refusal (the receipt's
+// reason is in the provider result) and a failure the device reported. An
+// unknown outcome is an actionport.UnknownOutcomeError.
 var (
 	ErrNoSession              = domain.ErrNoSession
+	ErrOriginNotAuthorized    = domain.ErrOriginNotAuthorized
 	ErrDeviceNotBorn          = domain.ErrDeviceNotBorn
 	ErrBootChanged            = domain.ErrBootChanged
 	ErrReconciliationRequired = authority.ErrReconciliationRequired
@@ -119,9 +121,15 @@ func (h *Host) Dispatch(ctx context.Context, command actionport.Command) (action
 
 // DispatchAuthorized bounds the command with the catalog, resolves its device
 // through the site file, runs the final authorization check, reads the
-// device's current boot from the live session, records that boot with the
-// device authority (a reboot opens a reconciliation) and refuses while a
-// reconciliation is open, then claims the target, binds the command and
+// device's current boot and origin from the live session, and refuses a device
+// on a hardware board unless the host holds physical-actuation consent and the
+// board is one of its hardware boards (ErrOriginNotAuthorized, with the
+// provider result refused origin_not_authorized and the board). It records the
+// boot with the device authority (a reboot opens a reconciliation); while a
+// reconciliation is open it presents the device's latest readings of its
+// outputs to the authority, which clears it when each output has a good, live
+// reading on the boot newer than the opening, and refuses the command
+// otherwise. It then claims the target, binds the command and
 // asserts the claim before it sends one DCMD: the command's idempotency key unchanged, the
 // device's current boot, a deadline of the route's expiry from now on the
 // host clock, the host's authority epoch, the policy digest and safe_off on
@@ -137,8 +145,20 @@ func (h *Host) DispatchAuthorized(ctx context.Context, command actionport.Comman
 	return h.app.DispatchAuthorized(ctx, command, authorization)
 }
 
-// VerifyDeviceCommand gives no final status yet: a succeeded command stays
-// pending verification until readings confirm it.
+// VerifyDeviceCommand verifies a command this host sent that succeeded or
+// whose outcome is unknown, from the commanded device's own readings: every
+// argument named like a writable metric of the device's kind must be read back
+// on that metric (within the metric's resolution; a word exactly) in a good,
+// live sample on the command's boot that arrives after the command's result,
+// within VerificationWindow of the dispatch's return. Verified, it reports
+// succeeded with the readings sealed as device-state evidence, and the next
+// HSYNC carries the numeric observations as command_evidence. Otherwise it
+// gives no final status, so the command stays pending verification, and a
+// lapsed window is sent as not_observed.
 func (h *Host) VerifyDeviceCommand(ctx context.Context, command actionport.Command) (string, map[string]any, error) {
 	return h.app.VerifyDeviceCommand(ctx, command)
 }
+
+// VerificationWindow is how long a command waits for the readings that verify
+// it, shorter than the shortest lease a kind in use declares (5 s).
+const VerificationWindow = app.VerificationWindow

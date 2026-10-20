@@ -71,7 +71,12 @@ func (s Settlement) Terminal() bool {
 	return s.Phase != SettlementQueued && s.Phase != SettlementAccepted
 }
 
+func (s Settlement) Verifiable() bool {
+	return s.Phase == SettlementSucceeded || s.Phase == SettlementUnknown
+}
+
 type inFlight struct {
+	order CommandOrder
 	boot  string
 	phase string
 }
@@ -98,7 +103,7 @@ func (c *Conversation) Command(o CommandOrder) (map[string]any, error) {
 	if _, twice := c.commands[o.CommandID]; twice {
 		return nil, fmt.Errorf("%w: %s", ErrCommandInFlight, o.CommandID)
 	}
-	c.commands[o.CommandID] = &inFlight{boot: boot, phase: "sent"}
+	c.commands[o.CommandID] = &inFlight{order: o, boot: boot, phase: "sent"}
 	return c.out.stamp(commandRecord(o, c.epoch)), nil
 }
 
@@ -166,6 +171,9 @@ func (c *Conversation) settle(command *inFlight, settlement Settlement, r *React
 		delete(c.commands, settlement.CommandID)
 	}
 	r.Settlements = append(r.Settlements, settlement)
+	if settlement.Verifiable() {
+		c.watch(command.order, r)
+	}
 }
 
 func receiptAnswer(rc Receipt) map[string]any {

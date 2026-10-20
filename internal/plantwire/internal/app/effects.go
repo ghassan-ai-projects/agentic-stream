@@ -54,3 +54,10 @@ func providerResult(order domain.CommandOrder, phase, reason string, trail []map
 	}
 	return map[string]any{"plant_wire": result}
 }
+
+func originRefused(order domain.CommandOrder, origin domain.Origin) actionport.Effect {
+	refusal := map[string]any{"command_id": order.CommandID, "device": order.Device, "command": order.Command, "args": order.Args,
+		"outcome": domain.SettlementNotSent, "refused": domain.RefusalOriginNotAuthorized, "board": origin.Board,
+		"environment": origin.Environment}
+	return actionport.Effect{ProviderResult: map[string]any{"plant_wire": refusal}}
+}

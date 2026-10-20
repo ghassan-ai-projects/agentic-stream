@@ -4,6 +4,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
@@ -17,7 +18,9 @@ type Tally struct {
 type liveDevice struct {
 	name     string
 	kind     string
+	board    string
 	boot     string
+	latest   map[string]HeldReading
 	entity   *contractsv1.EntityRef
 	aliases  map[uint64]string
 	good     bool
@@ -29,18 +32,20 @@ type liveDevice struct {
 type ingest struct {
 	mapping Mapping
 	kinds   map[string]bool
+	boards  map[string]string
 	devices map[string]*liveDevice
 	nowNS   int64
 	tally   Tally
 }
 
 func newIngest(mapping Mapping) *ingest {
-	return &ingest{mapping: mapping, kinds: map[string]bool{}, devices: map[string]*liveDevice{}}
+	return &ingest{mapping: mapping, kinds: map[string]bool{}, boards: map[string]string{}, devices: map[string]*liveDevice{}}
 }
 
 func (g *ingest) rebirth(b Birth, quarantined []string) {
 	clear(g.devices)
 	clear(g.kinds)
+	g.boards = boardEnvironments(b)
 	for _, kind := range b.Kinds {
 		if !slices.Contains(quarantined, kind.Name()) {
 			g.kinds[foldedName(kind)] = true
@@ -67,7 +72,7 @@ func (g *ingest) deviceBirth(b DeviceBirth, a Arrival, r *Reaction) {
 		g.drop(r, reason)
 		return
 	}
-	device := bornDevice(b)
+	device := bornDevice(b, a.ReceivedAt)
 	if entity, found := g.mapping.directory.EntityOf(b.Device); found {
 		device.entity = &entity
 	}
@@ -86,10 +91,11 @@ func (g *ingest) unborn(b DeviceBirth) string {
 	return ""
 }
 
-func bornDevice(b DeviceBirth) *liveDevice {
-	device := &liveDevice{name: b.Device, kind: b.Kind, boot: b.BootID, aliases: map[uint64]string{}}
+func bornDevice(b DeviceBirth, receivedAt time.Time) *liveDevice {
+	device := &liveDevice{name: b.Device, kind: b.Kind, board: b.Board, boot: b.BootID, aliases: map[uint64]string{}, latest: map[string]HeldReading{}}
 	for _, metric := range b.Metrics {
 		device.aliases[metric.Alias] = metric.Name
+		device.hold(metric.Name, metric.Value, metric.Quality, receivedAt)
 		if metric.Quality == qualityGood {
 			device.markGood(b.BirthTimeNS)
 		}
@@ -121,6 +127,7 @@ func (g *ingest) sample(device *liveDevice, s Sample, a Arrival, r *Reaction) {
 	if !known {
 		return
 	}
+	device.hold(metric, s.Value, s.Quality, a.ReceivedAt)
 	if s.Quality == qualityGood {
 		device.markGood(s.EventTimeNS)
 	}

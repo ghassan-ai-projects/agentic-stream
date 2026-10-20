@@ -74,6 +74,18 @@ func (s *Service) ResolveReconciliation(ctx context.Context, request ResolutionR
 	return s.app.ResolveReconciliation(ctx, request)
 }
 
+// ResolveWithReadings resolves the open reconciliation of a device boot as
+// succeeded when the device presents a good, live reading of each of its
+// commanded outputs on that boot, newer than the reconciliation's latest
+// opening (every reading of a boot is newer than the reboot that opened it).
+// The readings are recorded as the resolution's evidence. It reports false,
+// with nothing recorded, when an output has no such reading, and refuses like
+// ResolveReconciliation while a command bound to the boot is unresolved or
+// when State is not the device's latest recorded state.
+func (s *Service) ResolveWithReadings(ctx context.Context, evidence ReadingEvidence) (bool, error) {
+	return s.app.ResolveWithReadings(ctx, evidence)
+}
+
 // ClaimForDelivery claims the binding's target for its device boot and owner,
 // binds the command to it and asserts the claim, in that order, immediately
 // before a command is delivered. A refused claim wraps ErrClaimRefused; a

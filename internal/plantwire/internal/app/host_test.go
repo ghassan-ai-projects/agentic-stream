@@ -18,6 +18,8 @@ import (
 
 const epoch = 7
 
+var hostStart = time.Unix(1_800_000_000, 0)
+
 var simulatedHost = domain.Settings{Environment: domain.EnvironmentSimulated, Epoch: epoch}
 
 type runningHost struct {
@@ -41,7 +43,10 @@ func startHostWith(t *testing.T, config app.Config, emit app.Emit) runningHost {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	config.Listener, config.Clock = transport.NewListener(listener), sources.NewVirtual(time.Unix(1_800_000_000, 0))
+	config.Listener = transport.NewListener(listener)
+	if config.Clock == nil {
+		config.Clock = sources.NewVirtual(hostStart)
+	}
 	host, err := app.New(config)
 	if err != nil {
 		t.Fatalf("New = %v", err)

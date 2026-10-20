@@ -69,6 +69,10 @@ A word that is not here should not appear in the module's public API.
 | **State observation** | A reported device state and what it does: first seen, refreshed, or rebooted. | `StateObservation`, `ObserveState` | — |
 | **Resolve** | Record evidence and an outcome for an open reconciliation. | `ResolveReconciliation` | `reconciliation_recorded` |
 | **Resolution outcome** | `succeeded` or `failed` clears the reconciliation; `manual_review` keeps it required. | `ResolutionOutcome` | `last_resolution_status` |
+| **Reading** | One sample of one device output as the host received it: value, good or not, historical or live, boot, receive time. | `Reading` | — |
+| **Reading evidence** | A device's readings of its commanded outputs, presented with the boot's latest state to resolve its reconciliation. | `ReadingEvidence` | — |
+| **Latest opening** | When the boot's reconciliation was last opened and whether a reboot opened it. | `Opening`, `LatestOpening` | `reconciliation_opened` |
+| **Resolve with readings** | Resolve as succeeded when every output has a good, live reading on the boot newer than the latest opening (any reading of a rebooted boot is), recording the readings as evidence. | `ResolveWithReadings` | `reconciliation_recorded` |
 | **No open reconciliation** | Resolution was attempted when the device boot is clear. | `ErrNoOpenReconciliation` | — |
 
 ## Safety

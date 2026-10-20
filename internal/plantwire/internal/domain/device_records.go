@@ -7,6 +7,7 @@ const qualityGood = "good"
 type DeviceBirth struct {
 	Device      string        `json:"device"`
 	Kind        string        `json:"kind"`
+	Board       string        `json:"board"`
 	BootID      string        `json:"boot_id"`
 	BirthTimeNS int64         `json:"birth_time_ns"`
 	Metrics     []BirthMetric `json:"metrics"`
@@ -15,6 +16,7 @@ type DeviceBirth struct {
 type BirthMetric struct {
 	Name    string `json:"name"`
 	Alias   uint64 `json:"alias"`
+	Value   any    `json:"value"`
 	Quality string `json:"quality"`
 }
 

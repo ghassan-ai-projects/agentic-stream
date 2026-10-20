@@ -27,37 +27,54 @@ func (h *Host) Dispatch(context.Context, actionport.Command) (actionport.Effect,
 	return actionport.Effect{}, ErrAuthorizationRequired
 }
 
-func (h *Host) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
-	order, live, err := h.prepare(ctx, command, authorization)
-	if err != nil {
-		return actionport.Effect{}, err
-	}
-	claim, err := h.admit(ctx, live, order)
-	if err != nil {
-		return actionport.Effect{}, err
-	}
-	effect, err := h.command(ctx, live, order)
-	return h.settleAuthority(ctx, claim, effect, err)
+type target struct {
+	order    domain.CommandOrder
+	live     *session
+	view     domain.DeviceView
+	verified chan domain.Verification
+	window   timer
 }
 
-func (h *Host) prepare(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (domain.CommandOrder, *session, error) {
+func (h *Host) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
+	t, err := h.prepare(ctx, command, authorization)
+	if err != nil {
+		return actionport.Effect{}, err
+	}
+	if refused, err := h.checkOrigin(t); err != nil {
+		return refused, err
+	}
+	claim, err := h.admit(ctx, t)
+	if err != nil {
+		return actionport.Effect{}, err
+	}
+	effect, err := h.command(ctx, t)
+	effect, err = h.settleAuthority(ctx, claim, effect, err)
+	h.expectVerification(t, effect, err)
+	return effect, err
+}
+
+func (h *Host) prepare(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (target, error) {
 	order, err := h.orderFor(command)
 	if err != nil {
-		return domain.CommandOrder{}, nil, err
+		return target{}, err
 	}
 	if err := authorize(ctx, authorization); err != nil {
-		return domain.CommandOrder{}, nil, err
+		return target{}, err
 	}
 	live := h.liveSession()
-	order.ExpectedBootID, err = live.bootOf(ctx, order.Device)
+	view, err := live.deviceOf(ctx, order.Device)
 	if err != nil {
-		return domain.CommandOrder{}, nil, fmt.Errorf("plantwire: command %s not sent: %w", order.CommandID, err)
+		return target{}, fmt.Errorf("plantwire: command %s not sent: %w", order.CommandID, err)
 	}
-	return order, live, nil
+	order.ExpectedBootID = view.BootID
+	return target{order: order, live: live, view: view, verified: make(chan domain.Verification, 1)}, nil
 }
 
-func (h *Host) VerifyDeviceCommand(context.Context, actionport.Command) (string, map[string]any, error) {
-	return "", nil, nil
+func (h *Host) checkOrigin(t target) (actionport.Effect, error) {
+	if err := h.settings.Authorizes(t.view.Origin); err != nil {
+		return originRefused(t.order, t.view.Origin), fmt.Errorf("plantwire: command %s not sent: %w", t.order.CommandID, err)
+	}
+	return actionport.Effect{}, nil
 }
 
 func (h *Host) orderFor(command actionport.Command) (domain.CommandOrder, error) {
@@ -84,14 +101,14 @@ func authorize(ctx context.Context, authorization actionport.Authorization) erro
 	return nil
 }
 
-func (h *Host) command(ctx context.Context, live *session, order domain.CommandOrder) (actionport.Effect, error) {
+func (h *Host) command(ctx context.Context, t target) (actionport.Effect, error) {
 	answers := make(chan domain.Settlement, mailboxSize)
-	deadline := h.clock.NewTimer(time.Unix(0, order.DeadlineNS).Sub(h.clock.Now()) + answerGrace)
+	deadline := h.clock.NewTimer(time.Unix(0, t.order.DeadlineNS).Sub(h.clock.Now()) + answerGrace)
 	defer deadline.Stop()
-	if !live.submit(ctx, request{order: order, answers: answers}) {
-		return actionport.Effect{}, fmt.Errorf("plantwire: command %s not sent: %w", order.CommandID, domain.ErrNoSession)
+	if !t.live.submit(ctx, request{order: t.order, answers: answers, verified: t.verified}) {
+		return actionport.Effect{}, fmt.Errorf("plantwire: command %s not sent: %w", t.order.CommandID, domain.ErrNoSession)
 	}
-	return await(ctx, order, answers, deadline)
+	return await(ctx, t.order, answers, deadline)
 }
 
 func await(ctx context.Context, order domain.CommandOrder, answers <-chan domain.Settlement, deadline timer) (actionport.Effect, error) {

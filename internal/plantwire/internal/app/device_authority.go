@@ -20,42 +20,31 @@ func (h *Host) owner() authority.Owner {
 	return authority.Owner{Epoch: h.ownerEpoch, Instance: h.authority.OwnerInstance()}
 }
 
-func (h *Host) admit(ctx context.Context, live *session, order domain.CommandOrder) (authority.TargetClaim, error) {
-	binding, err := h.binding(ctx, order)
+func (h *Host) admit(ctx context.Context, t target) (authority.TargetClaim, error) {
+	binding, err := h.binding(ctx, t)
 	if err != nil {
-		return authority.TargetClaim{}, fmt.Errorf("plantwire: command %s not sent: %w", order.CommandID, err)
+		return authority.TargetClaim{}, fmt.Errorf("plantwire: command %s not sent: %w", t.order.CommandID, err)
 	}
 	err = h.authority.ClaimForDelivery(ctx, binding)
 	if !errors.Is(err, authority.ErrClaimRefused) && !errors.Is(err, authority.ErrBindingRefused) {
-		live.holdClaim(binding.Claim())
+		t.live.holdClaim(binding.Claim())
 	}
 	if err != nil {
-		return authority.TargetClaim{}, fmt.Errorf("plantwire: command %s not sent: %w", order.CommandID, err)
+		return authority.TargetClaim{}, fmt.Errorf("plantwire: command %s not sent: %w", t.order.CommandID, err)
 	}
 	return binding.Claim(), nil
 }
 
-func (h *Host) binding(ctx context.Context, order domain.CommandOrder) (authority.CommandBinding, error) {
-	device := authority.DeviceBoot{DeviceID: order.Device, BootID: order.ExpectedBootID}
-	if err := h.checkReconciled(ctx, device); err != nil {
+func (h *Host) binding(ctx context.Context, t target) (authority.CommandBinding, error) {
+	device := authority.DeviceBoot{DeviceID: t.order.Device, BootID: t.order.ExpectedBootID}
+	if err := h.checkReconciled(ctx, device, t.view); err != nil {
 		return authority.CommandBinding{}, err
 	}
-	digest, err := domain.CommandDigest(order)
+	digest, err := domain.CommandDigest(t.order)
 	if err != nil {
 		return authority.CommandBinding{}, err
 	}
-	return authority.CommandBinding{CommandID: order.CommandID, Target: order.Device, Device: device, Owner: h.owner(), CommandDigest: digest}, nil
-}
-
-func (h *Host) checkReconciled(ctx context.Context, device authority.DeviceBoot) error {
-	required, err := h.authority.RecordDeviceState(ctx, h.owner(), map[string]any{"device_id": device.DeviceID, "boot_id": device.BootID})
-	if err != nil {
-		return fmt.Errorf("record the device's boot: %w", err)
-	}
-	if required {
-		return fmt.Errorf("%w: %s on %s", authority.ErrReconciliationRequired, device.DeviceID, device.BootID)
-	}
-	return nil
+	return authority.CommandBinding{CommandID: t.order.CommandID, Target: t.order.Device, Device: device, Owner: h.owner(), CommandDigest: digest}, nil
 }
 
 func (h *Host) settleAuthority(ctx context.Context, claim authority.TargetClaim, effect actionport.Effect, err error) (actionport.Effect, error) {

@@ -15,7 +15,9 @@ import (
 
 const pumpCatalog = `{"protocol_version": 1, "routes": {"set_pump_speed": {"operation": "set_speed", "target": "P1",
  "target_bindings": {"station-1": "P1"}, "selector_field": "speed", "expires_after_ms": 20000,
- "presets": {"half": {"pct": 50, "lease_ms": 5000}}, "bounds": {"pct": {"min": 0, "max": 100}}}}}`
+ "presets": {"half": {"pct": 50, "lease_ms": 5000}}, "bounds": {"pct": {"min": 0, "max": 100}}},
+ "hold_pump_setpoint": {"operation": "set_speed", "target": "P1", "target_bindings": {"station-1": "P1"}, "selector_field": "setpoint",
+ "expires_after_ms": 20000, "presets": {"eighty": {"speed_setpoint": 80, "lease_ms": 5000}}}}}`
 
 const (
 	idempotencyKey = "sha256:1111111111111111111111111111111111111111111111111111111111111111"

@@ -34,6 +34,7 @@ type Config struct {
 
 type Host struct {
 	listener   *transport.Listener
+	settings   domain.Settings
 	admission  domain.Admission
 	mapping    domain.Mapping
 	epoch      int64
@@ -45,6 +46,8 @@ type Host struct {
 	closing    atomic.Bool
 	liveMu     sync.Mutex
 	live       *session
+	sentMu     sync.Mutex
+	sent       map[string]target
 }
 
 func New(cfg Config) (*Host, error) {
@@ -84,9 +87,9 @@ func newHost(cfg Config, inventory domain.Inventory, mapping domain.Mapping) *Ho
 		epoch = clock.Now().Unix()
 	}
 	admission := domain.Admission{Environment: cfg.Settings.Environment, ContractDigest: wire.ContractDigest(), Inventory: inventory}
-	return &Host{listener: cfg.Listener, admission: admission, mapping: mapping, epoch: epoch, clock: clock,
+	return &Host{listener: cfg.Listener, settings: cfg.Settings, admission: admission, mapping: mapping, epoch: epoch, clock: clock,
 		queueSize: cmp.Or(max(cfg.QueueSize, 0), defaultQueueSize), catalog: cfg.Catalog,
-		authority: cfg.Authority, ownerEpoch: cfg.OwnerEpoch}
+		authority: cfg.Authority, ownerEpoch: cfg.OwnerEpoch, sent: map[string]target{}}
 }
 
 func (h *Host) logReady(cfg Config, siteDigest string) {

@@ -33,7 +33,8 @@ the [device-authority language](../authority/UBIQUITOUS_LANGUAGE.md).
 | **Schema refusal** | A record that fails its schema, with the members it fails at. It still consumes its sequence number. | `wire.SchemaError` | — |
 | **Contract** | The vendored folder; a node must announce exactly its version and digest. | `ContractVersion`, `wire.ContractDigest` | `contract_version`, `contract_digest` |
 | **Environment** | `simulated`, `hardware` or `mixed`: the node's claim, each board's claim, and the host's setting. | `CheckEnvironment` | `environment` |
-| **Origin** | A device's environment: the environment of its board, never read from a name. | — | `DBIRTH.board` |
+| **Origin** | A device's environment: the environment of its board, never read from a name. | `Origin` | `DBIRTH.board`, `NBIRTH.boards[].environment` |
+| **Origin check** | A device on a simulated board is commanded freely; on a hardware board only with physical-actuation consent and the board named; otherwise refused `origin_not_authorized`, nothing sent. | `Settings.Authorizes`, `ErrOriginNotAuthorized` | — |
 | **Hardware board** | A board the host may command as hardware, named at start. Needs a hardware or mixed host and physical-actuation consent. | `Settings.HardwareBoards` | `--hardware-boards` |
 
 ## Commissioning
@@ -71,3 +72,12 @@ the [device-authority language](../authority/UBIQUITOUS_LANGUAGE.md).
 | **Settlement** | What an answer makes of a command in flight: queued, accepted (progress) or succeeded, refused, failed, unknown, not sent (terminal). | `Settlement` | `DRECEIPT`, `DRESULT` |
 | **Abandon** | Settling every command in flight when the session ends: queued is refused `session_ending`, anything else unknown. | `Conversation.Abandon` | — |
 | **Mailbox** | Where the session loop hands a command's settlements to the dispatcher waiting on it. | `session.mailboxes` | — |
+| **Output** | A writable metric of a device's kind (the kind file, never the birth): what a command can set and a reading can confirm. | `Inventory.Outputs` | `KIND.metrics[].writable` |
+| **Held reading** | The latest sample of a metric of a born device on its boot, with the host time it arrived; the `DBIRTH` values count. | `HeldReading` | — |
+| **Device view** | A born device's boot, origin, outputs and the held reading of each. | `DeviceView`, `Conversation.Device` | — |
+| **Expectation** | A command argument named like an output, to be read back on it within the metric's `resolution` (a word exactly). | `Expectation`, `Inventory.Expectations` | — |
+| **Watch** | The session's wait for the readings that verify a command, started when it settles succeeded or unknown. | `watch`, `Conversation.Unwatch` | — |
+| **Verification** | Every expectation matched by a good, live sample on the command's boot that arrived after its result. | `Verification` | — |
+| **Verification window** | How long a command waits for its verification after the dispatch returns: 4 s, under the fan's 5 s lease. | `VerificationWindow` | — |
+| **Command evidence** | A numeric verification decision sent with the next barrier: observed with the value, or not observed when the window lapsed. | `Conversation.barrier` | `HSYNC.command_evidence` |
+| **Clearing by readings** | Presenting a device's held readings to the device authority, which clears its reconciliation when each output has a good, live reading newer than the opening. | `clearByReadings`, `authority.ResolveWithReadings` | — |

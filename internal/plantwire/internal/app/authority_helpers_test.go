@@ -9,6 +9,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
@@ -16,6 +17,7 @@ import (
 const ownerEpoch = "epoch-1"
 
 type deviceAuthority struct {
+	clock   *sources.Virtual
 	db      *storage.DB
 	owner   *control.RuntimeOwner
 	service *authority.Service
@@ -28,11 +30,13 @@ func newDeviceAuthority(t *testing.T) deviceAuthority {
 	if err := owner.Claim(t.Context(), ownerEpoch); err != nil {
 		t.Fatalf("claim the runtime owner: %v", err)
 	}
-	service, err := authority.New(authority.Config{DB: db, Owner: owner, Epochs: &control.EpochControl{DB: db}, Outcomes: actions.CountUnresolvedOutcomes})
+	clock := sources.NewVirtual(hostStart)
+	service, err := authority.New(authority.Config{DB: db, Owner: owner, Epochs: &control.EpochControl{DB: db}, Outcomes: actions.CountUnresolvedOutcomes,
+		Clock: clock})
 	if err != nil {
 		t.Fatalf("new device authority: %v", err)
 	}
-	return deviceAuthority{db: db, owner: owner, service: service}
+	return deviceAuthority{clock: clock, db: db, owner: owner, service: service}
 }
 
 func commandingConfig(t *testing.T, devices deviceAuthority) app.Config {
@@ -41,7 +45,7 @@ func commandingConfig(t *testing.T, devices deviceAuthority) app.Config {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return app.Config{Catalog: catalog, Authority: devices.service, OwnerEpoch: ownerEpoch}
+	return app.Config{Catalog: catalog, Authority: devices.service, OwnerEpoch: ownerEpoch, Clock: devices.clock}
 }
 
 func (d deviceAuthority) count(t *testing.T, query string) int {

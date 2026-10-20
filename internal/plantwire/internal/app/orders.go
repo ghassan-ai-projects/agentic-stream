@@ -9,18 +9,16 @@ import (
 
 const mailboxSize = 8
 
+type call func() string
+
 type request struct {
-	order   domain.CommandOrder
-	answers chan<- domain.Settlement
+	order    domain.CommandOrder
+	answers  chan<- domain.Settlement
+	verified chan<- domain.Verification
 }
 
-type lookup struct {
-	device string
-	reply  chan<- bootReply
-}
-
-type bootReply struct {
-	boot string
+type deviceReply struct {
+	view domain.DeviceView
 	err  error
 }
 
@@ -36,37 +34,43 @@ func (h *Host) liveSession() *session {
 	return h.live
 }
 
-func (s *session) bootOf(ctx context.Context, device string) (string, error) {
-	if s == nil {
-		return "", domain.ErrNoSession
-	}
-	reply := make(chan bootReply, 1)
+func (s *session) call(ctx context.Context, do call) bool {
 	select {
-	case s.lookups <- lookup{device: device, reply: reply}:
-	case <-s.done:
-		return "", domain.ErrNoSession
-	case <-ctx.Done():
-		return "", fmt.Errorf("plantwire: look up the boot of %s: %w", device, ctx.Err())
-	}
-	answer := <-reply
-	return answer.boot, answer.err
-}
-
-func (s *session) answerLookup(l lookup) string {
-	boot, err := s.conversation.BootOf(l.device)
-	l.reply <- bootReply{boot: boot, err: err}
-	return ""
-}
-
-func (s *session) submit(ctx context.Context, req request) bool {
-	select {
-	case s.orders <- req:
+	case s.calls <- do:
 		return true
 	case <-s.done:
 		return false
 	case <-ctx.Done():
 		return false
 	}
+}
+
+func (s *session) deviceOf(ctx context.Context, device string) (domain.DeviceView, error) {
+	if s == nil {
+		return domain.DeviceView{}, domain.ErrNoSession
+	}
+	reply := make(chan deviceReply, 1)
+	if !s.call(ctx, func() string { reply <- s.lookUp(device); return "" }) {
+		return domain.DeviceView{}, unavailable(ctx, device)
+	}
+	answer := <-reply
+	return answer.view, answer.err
+}
+
+func (s *session) lookUp(device string) deviceReply {
+	view, err := s.conversation.Device(device)
+	return deviceReply{view: view, err: err}
+}
+
+func unavailable(ctx context.Context, device string) error {
+	if ctx.Err() != nil {
+		return fmt.Errorf("plantwire: look up %s: %w", device, ctx.Err())
+	}
+	return domain.ErrNoSession
+}
+
+func (s *session) submit(ctx context.Context, req request) bool {
+	return s.call(ctx, func() string { return s.order(req) })
 }
 
 func (s *session) order(req request) string {
@@ -76,24 +80,36 @@ func (s *session) order(req request) string {
 		return ""
 	}
 	s.mailboxes[req.order.CommandID] = req.answers
+	s.watchers[req.order.CommandID] = req.verified
 	if err := s.send([]map[string]any{record}); err != nil {
 		return endWriteFailed
 	}
 	return ""
 }
 
-func (s *session) deliver(settlements []domain.Settlement) {
+func (s *session) deliver(reaction domain.Reaction) {
+	s.settle(reaction.Settlements)
+	s.verified(reaction.Verifications)
+}
+
+func (s *session) settle(settlements []domain.Settlement) {
 	for _, settlement := range settlements {
-		mailbox := s.mailboxes[settlement.CommandID]
-		if mailbox == nil {
-			continue
+		if mailbox := s.mailboxes[settlement.CommandID]; mailbox != nil {
+			select {
+			case mailbox <- settlement:
+			default:
+			}
 		}
-		select {
-		case mailbox <- settlement:
-		default:
-		}
-		if settlement.Terminal() {
-			delete(s.mailboxes, settlement.CommandID)
-		}
+		s.forget(settlement)
+	}
+}
+
+func (s *session) forget(settlement domain.Settlement) {
+	if !settlement.Terminal() {
+		return
+	}
+	delete(s.mailboxes, settlement.CommandID)
+	if !settlement.Verifiable() {
+		delete(s.watchers, settlement.CommandID)
 	}
 }

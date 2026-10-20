@@ -70,6 +70,6 @@ func ObserveState(recorded *Reconciliation, state DeviceState, owner Owner) Stat
 // RebootEvent is the audit record of the reconciliation a reboot opens.
 func RebootEvent(observation StateObservation, now time.Time) AuthorityEvent {
 	return newEvent(EventReconciliationOpened, DeviceSubject(observation.State.Device, observation.Owner), map[string]any{
-		"reason": "device_rebooted", "previous_boot_id": observation.PreviousBootID,
+		"reason": rebootReason, "previous_boot_id": observation.PreviousBootID,
 	}, now)
 }

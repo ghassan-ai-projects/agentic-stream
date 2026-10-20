@@ -12,11 +12,11 @@ Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 
 | Layer | Responsibility | State |
 | --- | --- | --- |
-| Domain | Envelope and sequencing, the birth view, handshake admission, environment rules, commissioning by kind digest, host settings, the session conversation (STATE, HSYNC, rebirth, goodbye), the site mapping and directory, device births, data and deaths, readings to normalized events, the heartbeat on event time, commands in flight and their settlement from receipts and results (built); verification and origin (planned) | partly built |
+| Domain | Envelope and sequencing, the birth view, handshake admission, environment rules, commissioning by kind digest, host settings, the session conversation (STATE, HSYNC, rebirth, goodbye), the site mapping and directory, device births, data and deaths, readings to normalized events, the heartbeat on event time, commands in flight and their settlement from receipts and results, the origin rule, the device view (boot, origin, outputs and their latest readings), read-back expectations, verification watches and `HSYNC` command evidence | built |
 | Wire | The vendored contract (embedded schemas, `DIGEST`, `VERSION`), record decoding with size limits and exact integers and the body of each record type, outgoing records checked against their schema, kind file and site file parsing (the site file schema is embedded) | built |
 | Transport | One connection at a time over an injected listener, one record per line, 2 s write deadline | built |
-| App | Kind commissioning, the site file, host supervisor and session loop, the ingest queue and feeder, the effector: catalog bound, device lookup, final authorization, one `DCMD` through the session loop, a mailbox per command (built); the device authority calls (built); verification and origin (planned) | partly built |
-| Facade | `New`, `CheckSettings`, `Run(ctx, emit)`, `Close`, `OwnsRoute`, `Dispatch`, `DispatchAuthorized`, `VerifyDeviceCommand` (built) | built |
+| App | Kind commissioning, the site file, host supervisor and session loop, the ingest queue and feeder, the effector: catalog bound, device lookup, final authorization, origin check, one `DCMD` through the session loop, a mailbox per command; the device authority calls and clearing by readings; verification from readings | built |
+| Facade | `New`, `CheckSettings`, `Run(ctx, emit)`, `Close`, `OwnsRoute`, `Dispatch`, `DispatchAuthorized`, `VerifyDeviceCommand`, `VerificationWindow` | built |
 
 `serve --plant-wire-socket` is the only caller. It creates the listener with
 the owner-only Unix socket helper of `internal/worker` (absolute path, 0700
@@ -90,7 +90,11 @@ With a capability catalog (`Config.Catalog`, from `serve --device-catalog`) the
 host owns exactly the catalog's routes and `serve` routes them to it. The
 effector runs on the dispatcher's goroutine: it bounds the command with the
 catalog, finds the site device of its target, runs the final authorization
-check and hands the order to the live session's loop, which stamps the `DCMD`
+check, reads the device's boot and origin from the live session, refuses a
+device on a hardware board unless the host has physical-actuation consent and
+the board is in `--hardware-boards` (`ErrOriginNotAuthorized`, provider result
+`refused: origin_not_authorized` with the board; a simulated board needs no
+consent), and hands the order to the live session's loop, which stamps the `DCMD`
 (the device's current boot, the host epoch, `safe_off`) and keeps a mailbox
 for its answers. The conversation tracks the command (sent, queued, accepted)
 and settles it from each receipt and result; when the session ends, a queued
@@ -121,9 +125,30 @@ device-wire:
    reconciliation for the device boot (`RequireReconciliation`, on the priority
    path after authority loss).
 
-A reconciliation is cleared exactly as for device-wire: through the authority's
-`ResolveReconciliation` with evidence, after the dispatcher's reconciliation of
-the unknown command. No production path calls it today for either link, so an
-open reconciliation blocks the device until an operator path exists (Q4). A
-fresh good reading of the device on its current boot is the evidence a future
-clearing path would present.
+While a reconciliation is open, step 1 presents the device's readings to the
+authority's `ResolveWithReadings`: the latest sample the session holds of each
+writable metric of the device's kind (the `DBIRTH` values count), with the host
+time it arrived. The authority clears the reconciliation, recording the
+readings as evidence, when every output has a good, live reading on the boot
+newer than the latest opening (any reading of a rebooted boot qualifies), and
+nothing bound to the boot is unresolved in the action ledger; otherwise the
+command is refused. A reboot, or the switch from a simulated to a real session
+of the same device, therefore clears on the new boot's first good reading, and
+an unknown outcome on a reading that arrived after it, once the dispatcher has
+reconciled the unknown command. Device-wire does not use it (decision D4).
+
+### Verification
+
+The conversation starts a watch when it settles a command as succeeded or
+unknown: the expectations are the command's arguments named like a writable
+metric of the device's kind, compared within the metric's `resolution` (a word
+exactly). Every good, non-historical `DDATA` sample on the command's boot that
+arrives afterwards is checked; when every expectation has matched, the
+verification goes to the command's waiter and the numeric observations are
+queued for the next `HSYNC` as `command_evidence` (at most 128 per barrier).
+`VerifyDeviceCommand` waits for it until `VerificationWindow` (4 s, shorter
+than the fan's 5 s lease) after the dispatch returned, the call's context or
+the session's end; then it withdraws the watch (`not_observed` evidence) and
+gives no final status. A verified command reports succeeded with the readings
+sealed as device-state evidence. A command with nothing to read back is
+unverified at once. No `DQUERY` is sent.

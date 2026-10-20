@@ -62,15 +62,13 @@ func TestHostSendsNothingToADeviceWhoseLastOutcomeIsUnknown(t *testing.T) {
 	assertNothingSent(t, node)
 }
 
-func TestHostSendsNothingToACommandedDeviceThatRebooted(t *testing.T) {
+func TestHostSendsNothingToACommandedDeviceThatRebootedUntilItReadsItsOutput(t *testing.T) {
 	t.Parallel()
 	host, node := commandingHost(t)
 	succeed(t, host, node, "c-1")
 	node.Send(plantwirefake.Fixture(t, ".", "DDEATH.json"))
-	reborn := plantwirefake.Fixture(t, ".", "DBIRTH.json")
-	reborn["boot_id"] = "board-01-boot-2"
-	node.Send(reborn)
-	host.event(t)
+	node.Send(rebornWarmingUp(t, secondBoot))
+	settled(t, node)
 	if got := answered(t, dispatch(host, pumpCommand("c-2"))); !errors.Is(got.err, authority.ErrReconciliationRequired) {
 		t.Fatalf("c-2 after a reboot = %v, want ErrReconciliationRequired", got.err)
 	}

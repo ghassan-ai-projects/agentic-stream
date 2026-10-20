@@ -31,6 +31,11 @@ type (
 	ResolutionRequest = domain.ResolutionRequest
 	// CommandEvidence is reconciliation evidence presented for one command.
 	CommandEvidence = domain.CommandEvidence
+	// Reading is one sample of one device output, as the host received it.
+	Reading = domain.Reading
+	// ReadingEvidence asks to resolve a device boot's open reconciliation with
+	// the device's own readings of its commanded outputs.
+	ReadingEvidence = domain.ReadingEvidence
 )
 
 // Safety event types: zero-tolerance violations and physical transitions.

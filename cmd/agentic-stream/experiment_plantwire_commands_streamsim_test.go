@@ -38,6 +38,9 @@ func TestThePlantWireEffectorCommandsAPacedStreamsimSession(t *testing.T) {
 		if err != nil || !effect.VerificationPending {
 			t.Fatalf("%s: DispatchAuthorized = %v, %v; want accepted and succeeded, pending verification", command.CommandID, effect, err)
 		}
+		if status, evidence, err := host.VerifyDeviceCommand(t.Context(), command); status != actionport.CommandSucceeded || err != nil {
+			t.Fatalf("%s: VerifyDeviceCommand = %q, %v, %v; want the twin's readings to verify it", command.CommandID, status, evidence, err)
+		}
 	}
 	foreign := benchCommand("c-foreign", "set_indicator", "state", "watch")
 	foreign.PolicyDigest = idempotencyKeyOf("another policy")
