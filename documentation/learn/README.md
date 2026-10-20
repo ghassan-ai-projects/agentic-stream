@@ -52,3 +52,4 @@ This is an unreleased development snapshot. Read the
 - [Start the story: why the project exists](why.md)
 - [Try the local quickstart](../getting-started/quickstart.md)
 - [Look up a term](../overview/concepts.md)
+- [Watch and explore it: the visual guide](../visual-guide/README.md)

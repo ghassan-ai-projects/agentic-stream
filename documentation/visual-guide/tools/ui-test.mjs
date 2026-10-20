@@ -1,0 +1,60 @@
+import { launch, evaluate } from './chrome.mjs';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = join(fileURLToPath(new URL('.', import.meta.url)), '..');
+const failures = [];
+const check = (name, ok, extra = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${extra}`); if (!ok) failures.push(name); };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const c = await launch({ width: 1440, height: 900 });
+const logs = [];
+c.cdp.on((m) => {
+  if (m.method === 'Runtime.exceptionThrown') logs.push('EXC ' + (m.params.exceptionDetails.exception?.description ?? '').slice(0, 200));
+  if (m.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(m.params.type)) logs.push(m.params.type + ' ' + m.params.args.map((a) => a.value ?? a.description).join(' ').slice(0, 200));
+});
+await c.cdp.send('Runtime.enable'); await c.cdp.send('Page.enable'); await c.cdp.send('Input.enable').catch(() => {});
+await c.cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+const key = (k, code = k) => c.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, text: k.length === 1 ? k : undefined }).then(() => c.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code }));
+
+await c.cdp.send('Page.navigate', { url: `file://${join(root, 'world.html')}` });
+await sleep(1800);
+check('start card is shown', await evaluate(c.cdp, "!document.querySelector('.start').classList.contains('gone')"));
+await evaluate(c.cdp, "document.querySelector('#go').click()");
+await sleep(2600);
+const t1 = await evaluate(c.cdp, 'window.__T');
+check('tour plays in real time', t1 > 1.8 && t1 < 3.4, `T=${t1.toFixed(2)}`);
+await key(' ', 'Space');
+await sleep(300);
+const t2 = await evaluate(c.cdp, 'window.__T');
+await sleep(600);
+const t3 = await evaluate(c.cdp, 'window.__T');
+check('space pauses', Math.abs(t3 - t2) < 0.01, `T=${t2.toFixed(2)}`);
+await key('ArrowRight', 'ArrowRight');
+await sleep(300);
+check('arrow right jumps to chapter 2', (await evaluate(c.cdp, "document.querySelector('.chip b').textContent")) === '2');
+await key('5', 'Digit5');
+await sleep(300);
+check('digit 5 jumps to chapter 6', (await evaluate(c.cdp, "document.querySelector('.chip b').textContent")) === '6');
+await evaluate(c.cdp, "document.querySelector('.controls .track').dispatchEvent(new PointerEvent('pointerdown',{clientX: innerWidth*0.5, clientY: innerHeight-40, pointerId: 1, bubbles:true}))").catch(() => {});
+await key('e', 'KeyE');
+await sleep(300);
+check('E enters free camera', (await evaluate(c.cdp, "[...document.querySelectorAll('.controls .btn')].some(b => b.textContent.includes('Resume tour'))")));
+await key('e', 'KeyE');
+await sleep(300);
+check('E again resumes the tour camera', (await evaluate(c.cdp, "[...document.querySelectorAll('.controls .btn')].some(b => b.textContent.includes('Explore'))")));
+check('guide panel open at 1440 wide? (closed under 1500)', await evaluate(c.cdp, "document.querySelector('.panel').classList.contains('closed')"));
+await key('g', 'KeyG');
+await sleep(400);
+check('G opens the guide panel with the chapter text', (await evaluate(c.cdp, "document.querySelector('.panel .narr')?.textContent.length")) > 40);
+
+await c.cdp.send('Page.navigate', { url: `file://${join(root, 'world.html')}?station=policy` });
+await sleep(1800);
+check('?station=policy opens that station', (await evaluate(c.cdp, "document.querySelector('.panel h2')?.textContent")) === 'Policy');
+check('?station hides the start card', await evaluate(c.cdp, "document.querySelector('.start').classList.contains('gone')"));
+const owner = await evaluate(c.cdp, "document.querySelector('.panel .mono')?.textContent");
+check('station card shows its owning module', /internal\/policy/.test(owner ?? ''), owner);
+check('no console errors', logs.length === 0, logs.join(' | '));
+await c.close();
+console.log(failures.length ? `${failures.length} FAILED` : 'all UI checks passed');
+process.exit(failures.length ? 1 : 0);

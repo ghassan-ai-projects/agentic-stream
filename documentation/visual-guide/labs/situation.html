@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Situation and hysteresis — Agentic Stream</title>
+<link rel="stylesheet" href="lab.css">
+</head>
+<body>
+<header class="top"><a class="brand" href="../index.html">Agentic Stream</a>
+<nav aria-label="Visual guide"><a href="../index.html">Home</a><a href="../world.html">3D world</a><a href="time.html">Time</a><a href="situation.html" aria-current="page">Situation</a><a href="scheduler.html">Reasoning gate</a><a href="authority.html">Authority</a></nav></header>
+<main>
+<div class="kicker">Lab 2 · Stream plane</div>
+<h1>A condition changes state, not its mind every second</h1>
+<p class="lede">A noisy sensor crosses a threshold again and again. A Situation should not flap with it. Compare a naive single threshold with a spec-style rule (separate enter and exit thresholds, plus a minimum duration), and see why every change becomes an immutable, numbered version.</p>
+<div class="stage" id="stage"></div>
+<div class="chips" id="chips" aria-live="polite"></div>
+<div class="controls"><div class="transport" id="transport"></div><div class="group" id="ctl"></div></div>
+<div class="cards"><div class="card"><div class="tag">Reading the picture</div><h3>Two machines, one signal</h3><p>One synthetic signal drives both state machines. The strips under the chart show each machine's state over time and count its flips. Each flip of the spec machine publishes a version into the stack.</p></div><div class="card"><div class="tag">Key idea</div><h3>Hysteresis and minimum duration</h3><p>Enter above 30 °C, but only leave at or below 28 °C, and only believe a new state after it has held for a minimum duration. Small wobbles stop mattering.</p></div><div class="card"><div class="tag">Why it matters</div><h3>Versions are facts, not drafts</h3><p>A published version never changes. A correction publishes a new one, so you can always reconstruct what the system believed at the time, and every later step can point at exactly that version.</p></div></div>
+<div class="note">The signal is synthetic, for illustration. The 30 °C enter and 28 °C exit thresholds and the minimum duration default come from the experiment's bench spec (examples/real-world-sensor). Use the button to show the 22 versions of the recorded run instead.</div>
+<footer class="src">Read more<ul><li><a href="../../learn/domain-model.md">What a Situation represents</a></li><li><a href="../../learn/time-and-state.md">Time and changing state</a></li></ul></footer>
+</main>
+<script src="../dist/lab-situation.js"></script>
+</body>
+</html>
