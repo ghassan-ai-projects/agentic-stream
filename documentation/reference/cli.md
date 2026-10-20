@@ -179,8 +179,13 @@ refused one is quarantined); historical (store-and-forward) data is counted,
 not ingested. It counts as the effect link of
 the `emulator` or `physical` profile instead of `--device-socket`. With
 `--device-catalog` the host is the device effector of the catalog's routes:
-an approved command goes to the live session as one `DCMD` and its receipts and
-result become the outcome (a success stays pending verification). Without a
+an approved command goes to the live session as one `DCMD`, its receipts and
+result become the outcome, and the device's own readings verify a success (a
+success no reading confirms stays pending verification). A device on a
+hardware board is commanded only with the physical profile's consent flags and
+its board in `--hardware-boards`. At start `serve` logs `spec loaded` with the
+spec digest and the `policy_digest` its commands carry, the value a node's or
+gateway's policy allow-list must hold (also printed by `validate`). Without a
 catalog, commands fall back as with no device link (simulated under
 `emulator`, refused under `physical`).
 

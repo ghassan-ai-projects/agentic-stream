@@ -160,5 +160,7 @@ func (h *Host) VerifyDeviceCommand(ctx context.Context, command actionport.Comma
 }
 
 // VerificationWindow is how long a command waits for the readings that verify
-// it, shorter than the shortest lease a kind in use declares (5 s).
+// it: one report period of the slowest output in use (the twin's indicator
+// reports every 5 s) and a second of slack. Only a matching reading verifies,
+// so a reading after a lease has lapsed cannot verify a leased command.
 const VerificationWindow = app.VerificationWindow

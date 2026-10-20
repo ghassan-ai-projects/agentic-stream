@@ -44,6 +44,7 @@
             "raw": "pattern",
             "table": {
               "off": "off",
+              "slow_blink": "watch",
               "solid": "alert"
             }
           },

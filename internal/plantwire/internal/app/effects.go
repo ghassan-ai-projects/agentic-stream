@@ -3,8 +3,10 @@ package app
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 )
 
@@ -48,7 +50,7 @@ func providerResult(order domain.CommandOrder, phase, reason string, trail []map
 		answers[i] = answer
 	}
 	result := map[string]any{"command_id": order.CommandID, "device": order.Device, "command": order.Command,
-		"args": order.Args, "deadline_ns": order.DeadlineNS, "outcome": phase, "answers": answers}
+		"args": order.Args, "deadline": kernel.FormatTime(time.Unix(0, order.DeadlineNS)), "outcome": phase, "answers": answers}
 	if reason != "" {
 		result["reason"] = reason
 	}

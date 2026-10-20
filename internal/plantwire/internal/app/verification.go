@@ -11,7 +11,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 )
 
-const VerificationWindow = 4 * time.Second
+const VerificationWindow = 6 * time.Second
 
 func (h *Host) VerifyDeviceCommand(ctx context.Context, command actionport.Command) (string, map[string]any, error) {
 	t, sent := h.takeSent(command.CommandID)

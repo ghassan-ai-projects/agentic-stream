@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -61,19 +62,23 @@ func serveWorkerProposing(t *testing.T, socketPath string, delay time.Duration, 
 	t.Cleanup(server.Stop)
 }
 
+// proposeAfter proposes one intent per episode, as a decision carries at most
+// one actionable intent: the proposals in order, then the last one again.
 func proposeAfter(delay time.Duration, proposals []proposal) workerfake.ExecuteFunc {
+	var episodes atomic.Int64
 	return func(ctx context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(delay):
 		}
-		return propose(req, emit, proposals)
+		next := min(int(episodes.Add(1))-1, len(proposals)-1)
+		return propose(req, emit, proposals[next])
 	}
 }
 
-func propose(req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error, proposals []proposal) error {
-	decision, err := proposedDecision(req, proposals)
+func propose(req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error, proposed proposal) error {
+	decision, err := proposedDecision(req, proposed)
 	if err != nil {
 		return err
 	}
@@ -97,27 +102,23 @@ func propose(req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) e
 	}}))
 }
 
-func proposedDecision(req *runtimev1.EpisodeRequest, proposals []proposal) (map[string]any, error) {
+func proposedDecision(req *runtimev1.EpisodeRequest, proposed proposal) (map[string]any, error) {
 	entityID, err := snapshotEntityID(req.GetSnapshotJson())
 	if err != nil {
 		return nil, err
 	}
 	scope := fmt.Sprintf("%s.%s.%d", req.GetEpisodeId(), req.GetAttemptId(), req.GetFence())
 	validUntil := time.Now().UTC().Add(10 * time.Minute).Format(time.RFC3339)
-	intents := make([]any, 0, len(proposals))
-	for _, proposed := range proposals {
-		intent, err := proposedIntent(req, proposed, scope, entityID, validUntil)
-		if err != nil {
-			return nil, err
-		}
-		intents = append(intents, intent)
+	intent, err := proposedIntent(req, proposed, scope, entityID, validUntil)
+	if err != nil {
+		return nil, err
 	}
 	return map[string]any{
 		"decision_id": "decision." + scope, "episode_id": req.GetEpisodeId(), "attempt_id": req.GetAttemptId(), "fence": req.GetFence(),
 		"snapshot_digest": "sha256:" + hex.EncodeToString(req.GetSnapshotSha256()),
 		"situation_id":    req.GetSituationId(), "situation_version": req.GetSituationVersion(),
 		"primary_hypothesis": "over_temperature", "confidence": 0.9, "summary": "sustained rise above the band",
-		"facts_used": []any{}, "alternatives": []any{}, "intents": intents, "valid_until": validUntil,
+		"facts_used": []any{}, "alternatives": []any{}, "intents": []any{intent}, "valid_until": validUntil,
 	}, nil
 }
 

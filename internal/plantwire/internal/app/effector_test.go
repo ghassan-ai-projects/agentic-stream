@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/plantwirefake"
@@ -109,6 +111,12 @@ func TestHostSendsTheGovernedCommandAsOneDCMD(t *testing.T) {
 	}
 	if answers := got.effect.ProviderResult["plant_wire"].(map[string]any)["answers"].([]any); len(answers) != 2 {
 		t.Fatalf("provider result answers = %v, want the receipt and the result", answers)
+	}
+	if _, err := canonicaljson.Marshal(got.effect.ProviderResult); err != nil {
+		t.Fatalf("the provider result has no canonical form, so the outcome ledger cannot digest it: %v", err)
+	}
+	if deadline := got.effect.ProviderResult["plant_wire"].(map[string]any)["deadline"]; deadline != kernel.FormatTime(sentAt.Add(20*time.Second)) {
+		t.Fatalf("provider result deadline = %v, want the deadline as durable time text", deadline)
 	}
 }
 

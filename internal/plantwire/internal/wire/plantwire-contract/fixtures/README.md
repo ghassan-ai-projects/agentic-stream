@@ -36,5 +36,6 @@ observations do not move. `verified-result` is the positive control: the observa
 `valid/BOARD.json` maps the pump kind of `valid/KIND.json` to a pump controller: a scaled argument and reading (`freq_dhz`,
 scale 5, in both directions), a fixed raw argument, a copied reading and a raw enumerated word translated by a `table`. The
 `BOARD-*` fixtures in `invalid/` break the schema; those in `rules/` break a rule a schema cannot say (member names, raw words,
-an argument set twice, uneven table rows, scales that disagree), so a conformant side checks those as well. Every expectation
+an argument set twice, uneven table rows, scales that disagree, a read-back table missing a raw word, a table row that
+reads back as another word, two metrics on one raw value), so a conformant side checks those as well. Every expectation
 names only a `device`, `command_id` and `boot_id` some record of its exchange carries.

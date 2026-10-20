@@ -82,10 +82,15 @@ func runCommandingHost(t *testing.T, kinds string) (*plantwire.Host, string) {
 
 func startPacedSession(t *testing.T, binary, repository, kinds, socket string) {
 	t.Helper()
+	startPlannedSession(t, binary, repository, kinds, map[string]any{"schema_version": "0.1", "domain": "arduino-thermal",
+		"host_socket": socket, "pace": "wall", "policies": []string{benchPolicyDigest}})
+}
+
+func startPlannedSession(t *testing.T, binary, repository, kinds string, sessionPlan map[string]any) {
+	t.Helper()
 	dir := t.TempDir()
 	copyFile(t, filepath.Join(kinds, "thermal-board.domain.json"), dir)
-	plan, err := json.Marshal(map[string]any{"schema_version": "0.1", "domain": "arduino-thermal", "host_socket": socket,
-		"pace": "wall", "policies": []string{benchPolicyDigest}})
+	plan, err := json.Marshal(sessionPlan)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
@@ -24,11 +25,10 @@ func startContinuousPipeline(ctx context.Context, stop context.CancelFunc, core 
 }
 
 func (core *runtimeCore) openContinuousPipeline(ctx context.Context, stop context.CancelFunc, flags serveFlags, opened effects, metrics *telemetry.Runtime, failures chan error, cleanup *cleanups) (*runtime.Pipeline, error) {
-	compiled, err := spec.CompileFile(ctx, flags.specPath, spec.WithEventSchemas(flags.eventSchemas))
+	compiled, err := loadSpec(ctx, flags)
 	if err != nil {
-		return nil, fmt.Errorf("compile spec: %w", err)
+		return nil, err
 	}
-	slog.Info("spec loaded", "spec", compiled.Metadata.Name, "version", compiled.Metadata.Version, "digest", compiled.Digest, "path", flags.specPath)
 	workerRuntime, err := core.openWorkerRuntime(ctx, flags.worker, cleanup)
 	if err != nil {
 		return nil, err
@@ -39,6 +39,24 @@ func (core *runtimeCore) openContinuousPipeline(ctx context.Context, stop contex
 		return nil, err
 	}
 	return pipeline, nil
+}
+
+func loadSpec(ctx context.Context, flags serveFlags) (*spec.CompiledSpec, error) {
+	compiled, err := spec.CompileFile(ctx, flags.specPath, spec.WithEventSchemas(flags.eventSchemas))
+	if err != nil {
+		return nil, fmt.Errorf("compile spec: %w", err)
+	}
+	return compiled, logLoadedSpec(slog.Default(), compiled, flags.specPath)
+}
+
+func logLoadedSpec(logger *slog.Logger, compiled *spec.CompiledSpec, path string) error {
+	policyDigest, err := policy.DigestForVersion(compiled.Digest)
+	if err != nil {
+		return fmt.Errorf("derive policy digest: %w", err)
+	}
+	logger.Info("spec loaded", "spec", compiled.Metadata.Name, "version", compiled.Metadata.Version, "digest", compiled.Digest,
+		"policy_digest", policyDigest, "path", path)
+	return nil
 }
 
 func registerWorkerMonitor(ctx context.Context, workerErrors <-chan error, failures chan error, stop context.CancelFunc, cleanup *cleanups) {

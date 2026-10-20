@@ -23,8 +23,23 @@ and code changes.
 | `make plant-wire-sync` | copy the plant wire contract from `PLANT_WIRE_CONTRACT_DIR` byte-identically and run its guard tests (digest, version, safety members, byte identity) |
 | `git diff --check` | whitespace/error check |
 
-`TestServeHostsTwoSessionsOfTheStreamsimNodeWithoutARestart` runs the real
-streams-simulator plant wire node against `serve`. It is skipped unless
+The streamsim tests run the real streams-simulator plant wire node against the
+host: `TestServeHostsTwoSessionsOfTheStreamsimNodeWithoutARestart` (two sessions
+without a restart), `TestThePlantWireEffectorCommandsAPacedStreamsimSession`
+(both bench commands verified by the twin's readings) and
+`TestTheFanExperimentClosesTheLoopThroughAPacedStreamsimTwin` (the fan
+experiment's simulated rung through `serve`: streamsim's own
+`fan-experiment/simulate.plan.json` with the zone heat load moved to 5 s and
+Agentic Stream's policy digest filled in, paced to the wall clock; the bench
+spec opens a situation, a Tamoz-shaped worker proposes `set_indicator alert`
+and then `select_thermal_mode bounded_cooling`, both reach the twin as
+`show_state` and `set_cooling {level_percent: 45}` and are verified by its
+readings, with no quarantined event; about 45 s). The same loop runs in the
+default suite against a fake bench node:
+`TestTheBenchLoopSendsTheFanItsBoundedLevelAndItsReadingVerifiesIt` (the fan
+command verified by its reading) and
+`TestAnUnknownPlantWireOutcomeIsReconciledByTheDevicesOwnReading` (an unknown
+outcome reconciled from a reading). The streamsim tests are skipped unless
 `STREAMSIM_BIN` names a streams-simulator binary built after the streamsim
 checkout's HEAD commit; the checkout is the binary's grandparent directory, or
 `STREAMSIM_REPO` when the binary is built elsewhere:

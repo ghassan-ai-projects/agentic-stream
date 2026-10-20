@@ -148,8 +148,9 @@ exactly). Every good, non-historical `DDATA` sample on the command's boot that
 arrives afterwards is checked; when every expectation has matched, the
 verification goes to the command's waiter and the numeric observations are
 queued for the next `HSYNC` as `command_evidence` (at most 128 per barrier).
-`VerifyDeviceCommand` waits for it until `VerificationWindow` (4 s, shorter
-than the fan's 5 s lease) after the dispatch returned, the call's context or
+`VerifyDeviceCommand` waits for it until `VerificationWindow` (6 s: the
+indicator twin reports every 5 s; only a matching reading verifies, so a
+reading after the fan's 5 s lease lapsed cannot) after the dispatch returned, the call's context or
 the session's end; then it withdraws the watch (`not_observed` evidence) and
 gives no final status. A verified command reports succeeded with the readings
 sealed as device-state evidence. A command with nothing to read back is

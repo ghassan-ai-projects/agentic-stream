@@ -190,8 +190,10 @@ Commands still queued when a session ends get no receipt; the host counts them a
 | Idempotency (below) | `duplicate` |
 | The device's own preconditions, mode and interlocks | `local_control`, `permissive_not_met`, `locked_out`, `maintenance_isolated`, `interlocked`, `not_ready` |
 
-**Idempotency.** A command's content is `{device, command, args, expected_boot_id}`; `idempotency_key` is `sha256:` and the
-SHA-256 of its RFC 8785 canonical JSON. A node keeps, per key, the content digest, the terminal receipt and the result, for at
+**Idempotency.** A command's content is `{device, command, args, expected_boot_id}`; its content digest is `sha256:` and the
+SHA-256 of its RFC 8785 canonical JSON. `idempotency_key` names one intent; the reference host and the fixtures derive it as the
+digest of `{command_id, content}` (the content digest), so a retransmission keeps its key and a new command gets a new one. A
+node never checks how a key was derived. A node keeps, per key, the content digest, the terminal receipt and the result, for at
 least 24 h plus transport delay (a gateway across restarts). A repeated key with the same content replays the stored receipt
 and result with no second effect; with different content it is refused `duplicate`. A host that derives `idempotency_key` from
 the content alone therefore gets a repeated identical command replayed and never executed again, so a host that may repeat a
@@ -297,7 +299,9 @@ schema a validator checks (`fixtures/rules/`): every member name is an id (`boar
 listed in `raw_enums`, and every key of a metric `table`, is one of its words (`board_raw_word_unknown`); no raw argument is set
 twice by `args`, a `table` row and the `lease` (`board_argument_conflict`); every `table` row sets the same raw arguments
 (`board_table_uneven`); a metric read from the raw argument a command writes from that metric's name has the command's scale
-(`board_scale_mismatch`). A host or gateway also checks the mapping against the kind files it serves: the same commands and
+(`board_scale_mismatch`); a metric whose `table` reads a raw value back has a row for every word of that raw value's
+`raw_enums` (`board_table_incomplete`), and a command whose `by` names that metric writes, for each word of its `table`, a raw
+word the metric reads back as the same word (`board_readback_mismatch`); no two metrics read one raw value (`board_raw_shared`). A host or gateway also checks the mapping against the kind files it serves: the same commands and
 metrics, `from` and `by` naming kind arguments, table words equal to the kind's words.
 
 **`board_digest`** is `sha256:` and the SHA-256 of the file's RFC 8785 canonical JSON. A board mapping never carries it (a

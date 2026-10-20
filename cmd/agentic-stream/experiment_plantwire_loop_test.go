@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -16,26 +17,31 @@ import (
 const (
 	benchBoot        = "boot-A"
 	loopTimeout      = 90 * time.Second
-	readingCadence   = 10 * time.Second
-	backdatedHistory = 10 * time.Minute
+	readingCadence   = 5 * time.Second
+	backdatedHistory = 2 * time.Minute
 )
 
-var benchLoopEdits = map[string]string{"debounce: 5s": "debounce: 2s", "cooldown: 20s": "cooldown: 2s",
-	"policy: approval": "policy: automatic"}
+// benchLoopEdits speed the bench spec up for a test (cognition gates, phase
+// dwell times and the out-of-orderness bound) and make the fan intent R1
+// automatic: the node approves it (D9).
+var benchLoopEdits = map[string]string{"debounce: 5s": "debounce: 100ms", "cooldown: 20s": "cooldown: 100ms",
+	"minDuration: 1m": "minDuration: 20s", "minDuration: 30s": "minDuration: 100ms", "maxOutOfOrderness: 15s": "maxOutOfOrderness: 100ms",
+	"      risk: R2": "      risk: R1", "policy: approval": "policy: automatic"}
 
 type plantWireLoop struct {
-	dir, db, socket string
+	dir, db, socket, specPath string
 }
 
 func startPlantWireLoop(t *testing.T, proposals ...proposal) plantWireLoop {
 	t.Helper()
 	dir := privateSocketDir(t)
-	loop := plantWireLoop{dir: dir, db: filepath.Join(dir, "stream.db"), socket: filepath.Join(dir, "host.sock")}
+	loop := plantWireLoop{dir: dir, db: filepath.Join(dir, "stream.db"), socket: filepath.Join(dir, "host.sock"),
+		specPath: editedSpec(t, benchSpec, dir, benchLoopEdits)}
 	seedMigratedDatabase(t, loop.db)
 	serveWorkerProposing(t, filepath.Join(dir, "worker.sock"), 0, proposals...)
 	address := freeLoopbackAddress(t)
 	cmd := newServeCommand()
-	cmd.SetArgs([]string{"--db", loop.db, "--spec", editedSpec(t, benchSpec, dir, benchLoopEdits),
+	cmd.SetArgs([]string{"--db", loop.db, "--spec", loop.specPath,
 		"--worker-socket", filepath.Join(dir, "worker.sock"), "--worker-name", "tamoz", "--effect-profile", "emulator",
 		"--plant-wire-socket", loop.socket, "--plant-wire-kinds", filepath.Join(benchPlantWire, "kinds"),
 		"--plant-wire-site", filepath.Join(benchPlantWire, "thermal-bench.site.json"),
@@ -82,32 +88,23 @@ func outputReading(device string, value any) map[string]any {
 		"metrics": []any{map[string]any{"alias": 1, "value": value, "quality": "good", "event_time_ns": time.Now().UnixNano(), "time_source": "device"}}}
 }
 
-// zoneWarming sends the zone's readings from backdated history up to now,
-// rising 0.3 C a minute from 31 C, and returns the feed that keeps it rising
-// in real time.
-func zoneWarming(node *plantwirefake.Node) func() {
+// zoneWarming sends the zone's backdated temperatures, rising 8.4 C an hour
+// from 31 C up to now: enough to open the situation and watch it.
+func zoneWarming(node *plantwirefake.Node) {
 	start := time.Now().Add(-backdatedHistory)
-	send := func(at time.Time) {
-		celsius := 31 + 0.3*at.Sub(start).Minutes()
-		node.Send(map[string]any{"type": "DDATA", "lane": "data", "device": "zone-01", "boot_id": benchBoot, "historical": false,
-			"metrics": []any{benchSample(1, celsius, at.UnixNano()), benchSample(2, 40, at.UnixNano())}})
-	}
 	for at := start; at.Before(time.Now()); at = at.Add(readingCadence) {
-		send(at)
+		node.Send(map[string]any{"type": "DDATA", "lane": "data", "device": "zone-01", "boot_id": benchBoot, "historical": false,
+			"metrics": []any{benchSample(1, 31+0.14*at.Sub(start).Minutes(), at.UnixNano())}})
 	}
-	return func() { send(time.Now()) }
 }
 
 // awaitCommand reads the host's records, skipping heartbeats and barriers,
-// and keeps the zone warming every second until a DCMD arrives.
-func awaitCommand(t *testing.T, node *plantwirefake.Node, warm func()) map[string]any {
+// until a DCMD arrives.
+func awaitCommand(t *testing.T, node *plantwirefake.Node) map[string]any {
 	t.Helper()
-	deadline := time.Now().Add(loopTimeout)
-	for time.Now().Before(deadline) {
+	for deadline := time.Now().Add(loopTimeout); time.Now().Before(deadline); {
 		if record, read := node.Next(time.Second); read && record["type"] == "DCMD" {
 			return record
-		} else if !read {
-			warm()
 		}
 	}
 	t.Fatal("the host sent no command before the loop timeout")
@@ -122,7 +119,8 @@ func TestAnUnknownPlantWireOutcomeIsReconciledByTheDevicesOwnReading(t *testing.
 	t.Parallel()
 	loop := startPlantWireLoop(t, indicatorAlert)
 	node := benchNode(t, loop.socket)
-	command := awaitCommand(t, node, zoneWarming(node))
+	zoneWarming(node)
+	command := awaitCommand(t, node)
 	if command["device"] != "led-01" || command["command"] != "show_state" {
 		t.Fatalf("DCMD = %v, want show_state on led-01", command)
 	}
@@ -133,4 +131,20 @@ func TestAnUnknownPlantWireOutcomeIsReconciledByTheDevicesOwnReading(t *testing.
 	waitForRow(t, loop.db, "SELECT COUNT(*) FROM commands WHERE command_id = '"+id+"' AND status = 'succeeded'", loopTimeout)
 	waitForRow(t, loop.db, "SELECT COUNT(*) FROM verifications WHERE command_id = '"+id+"' AND status = 'reconciled'", loopTimeout)
 	waitForRow(t, loop.db, "SELECT COUNT(*) FROM outcomes WHERE command_id = '"+id+"' AND json_extract(provider_result_json, '$.source') = 'plantwire.reading'", loopTimeout)
+}
+
+func TestTheBenchLoopSendsTheFanItsBoundedLevelAndItsReadingVerifiesIt(t *testing.T) {
+	t.Parallel()
+	loop := startPlantWireLoop(t, thermalModeCooling)
+	node := benchNode(t, loop.socket)
+	zoneWarming(node)
+	command := awaitCommand(t, node)
+	if args, _ := command["args"].(map[string]any); command["device"] != "fan-01" || command["command"] != "set_cooling" || args["level_percent"] != json.Number("45") {
+		t.Fatalf("DCMD = %v, want set_cooling {level_percent: 45} on fan-01", command)
+	}
+	answer(node, command, "DRECEIPT", "status", "accepted")
+	answer(node, command, "DRESULT", "reported_outcome", "succeeded")
+	node.Send(outputReading("fan-01", 45))
+	waitForRow(t, loop.db, "SELECT COUNT(*) FROM commands WHERE effector_route = 'select_thermal_mode' AND status = 'succeeded'", loopTimeout)
+	assertTwinReadBack(t, loop.db, "set_cooling", "level_percent", "45")
 }

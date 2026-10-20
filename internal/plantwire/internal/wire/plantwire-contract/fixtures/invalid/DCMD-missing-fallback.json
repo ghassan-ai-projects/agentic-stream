@@ -8,7 +8,7 @@
     "seq": 2,
     "lane": "control",
     "command_id": "c-1",
-    "idempotency_key": "sha256:80f43ea83bf83014412e6861b2b1a43a18df67abca91d82fb745f110442dfbac",
+    "idempotency_key": "sha256:c16de560cda622f0c59403923fd0f84feb94315f91020c1e5fa3662e5e104114",
     "device": "P1",
     "command": "set_speed",
     "args": {

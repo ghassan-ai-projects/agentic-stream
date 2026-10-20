@@ -6,6 +6,9 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 func TestLogFlagsInstallTheRequestedHandler(t *testing.T) { //nolint:paralleltest // It replaces the process-wide default logger.
@@ -30,5 +33,25 @@ func TestLogFlagsRefuseUnknownValues(t *testing.T) {
 		if err := flags.install(&bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "--log-") {
 			t.Fatalf("flags %+v were accepted", flags)
 		}
+	}
+}
+
+func TestTheLoadedSpecIsLoggedWithThePolicyDigestItsCommandsCarry(t *testing.T) {
+	t.Parallel()
+	compiled, err := spec.CompileFile(t.Context(), benchSpec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := policy.DigestForVersion(compiled.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := logLoadedSpec(slog.New(slog.NewJSONHandler(&out, nil)), compiled, benchSpec); err != nil {
+		t.Fatal(err)
+	}
+	var line map[string]any
+	if err := json.Unmarshal(out.Bytes(), &line); err != nil || line["msg"] != "spec loaded" || line["policy_digest"] != want || line["digest"] != compiled.Digest {
+		t.Fatalf("log line = %q, %v; want the spec digest and policy digest %s", out.String(), err, want)
 	}
 }

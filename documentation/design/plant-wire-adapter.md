@@ -151,9 +151,11 @@ file, never the birth) is read back on that metric: `set_cooling
 reading must be a good, non-historical `DDATA` sample on the command's boot that
 arrives after the `DRESULT` (the session starts watching when it settles the
 result), and match within the metric's `resolution` (a word exactly), within a
-**4 s window** from the dispatch's return: shorter than the fan's 5 s lease, so
-a working command is read before its lease lapses, and long enough for two
-samples at the gateway's 2 s cadence. Every expected metric must match; then
+**6 s window** from the dispatch's return: the slowest output in use (the
+twin's indicator) reports every 5 s, plus a second of slack; the gateway reports
+every 2 s. The window may outlast the fan's 5 s lease because only a matching
+reading verifies: once the lease lapses the fan reads 0, which cannot verify
+`level_percent 45`, so a verified fan command was read during its lease. Every expected metric must match; then
 `VerifyDeviceCommand` reports succeeded with the readings sealed as
 device-state evidence about the device output. The command binding records the
 command's normalized target beside the output it was bound to, so the
@@ -198,6 +200,10 @@ an operator).
   data.
 
 ## Consequences
+
+- `serve` logs the policy digest its commands carry at start (`spec loaded`,
+  `policy_digest`), beside the commissioned kind digests, the site file digest
+  and the epoch, so a session plan's or gateway's policy list can be filled in.
 
 - The session ships behind `serve` flags; device-wire stays as it is and the
   two links are not used in one process yet.

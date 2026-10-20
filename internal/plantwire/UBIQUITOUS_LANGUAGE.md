@@ -78,6 +78,6 @@ the [device-authority language](../authority/UBIQUITOUS_LANGUAGE.md).
 | **Expectation** | A command argument named like an output, to be read back on it within the metric's `resolution` (a word exactly). | `Expectation`, `Inventory.Expectations` | — |
 | **Watch** | The session's wait for the readings that verify a command, started when it settles succeeded or unknown. | `watch`, `Conversation.Unwatch` | — |
 | **Verification** | Every expectation matched by a good, live sample on the command's boot that arrived after its result. | `Verification` | — |
-| **Verification window** | How long a command waits for its verification after the dispatch returns: 4 s, under the fan's 5 s lease. | `VerificationWindow` | — |
+| **Verification window** | How long a command waits for its verification after the dispatch returns: 6 s, the slowest output's 5 s report period and a second of slack. | `VerificationWindow` | — |
 | **Command evidence** | A numeric verification decision sent with the next barrier: observed with the value, or not observed when the window lapsed. | `Conversation.barrier` | `HSYNC.command_evidence` |
 | **Clearing by readings** | Presenting a device's held readings to the device authority, which clears its reconciliation when each output has a good, live reading newer than the opening. | `clearByReadings`, `authority.ResolveWithReadings` | — |
