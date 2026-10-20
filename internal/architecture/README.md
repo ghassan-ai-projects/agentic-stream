@@ -38,6 +38,7 @@ the code.
 | `layers_test.go` | `wallClockReaders` | `TestApplicationAndStoreLayersTakeTimeFromTheInjectedClock` |
 | `facades_test.go` | `facadeSpecs` | `TestFacadesOnlyDelegate` |
 | `module_shape_test.go` | `moduleShapeExceptions`, `opaqueStoreModules`, `applicationLayerSpecs` | module shape gates |
+| `domain_knowledge_test.go` | `builtinDomainWords`, `domainKnowledgeExemptPaths` | `TestProductionCodeHoldsNoDomainWords` |
 
 A new module adds itself to `allowedImports`, `packageLayers`, `durableOwners`
 (for tables it owns), and, once it has the reference shape, to `facadeSpecs`,
@@ -138,6 +139,13 @@ enforced by `paralleltest`, `tparallel`, `usetesting` and `thelper` in
 | `TestMakefileDoesNotUseTheDocsArchive` | T9, AGENTS (forbidden changes) | No Makefile line, comments excluded, contains `docs/`; the worker protocol the build reads lives in `proto/`. |
 | `TestDocsArchiveDetectorCatchesEveryWayToNameAPathUnderDocs` | T9 | Self-test: relative, parent-relative, raw, concatenated and `Join` forms are caught; comments, messages that mention `docs/` and `documentation/` are not. |
 | `TestMakefileDetectorReadsRecipesAndVariablesButNotComments` | T9 | Self-test: variables and recipes are caught; comments, trailing comments and the `docs-check` target are not. |
+
+### `domain_knowledge_test.go`
+
+| Test | Rule | Protects |
+| --- | --- | --- |
+| `TestProductionCodeHoldsNoDomainWords` | AGENTS (forbidden changes: domain data in Go) | No production string literal names a word a shipped spec (`examples/*/*.situation.yaml`) declares: an intent or event type (substring), an entity type, situation type, phase, preset or parameter enum value (exact). Agentic Stream's own words are listed in `builtinDomainWords` with the files that may spell them and why; a stale entry fails. The demo executor and the executor conformance suite are exempt (`domainKnowledgeExemptPaths`); an exempt path without production files fails. Test specs under `testdata/` are not a vocabulary source. |
+| `TestTheDomainWordGateCatchesASpecWordInCode` | AGENTS | Self-test: a literal `"set_indicator"` and an event type inside a schema reference are caught; a phase inside a longer literal is not. |
 
 ### `invariants_test.go`
 
