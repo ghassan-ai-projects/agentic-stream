@@ -3,6 +3,7 @@ package authority
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/store"
@@ -10,6 +11,11 @@ import (
 
 // OwnerInstance is the runtime owner instance every operation must name.
 func (s *Service) OwnerInstance() string { return s.app.OwnerInstance() }
+
+// ClaimLease is how long a target claim stays live without a renewal. A
+// caller that holds a claim across a long wait renews it before the lease
+// ends.
+func (s *Service) ClaimLease() time.Duration { return s.app.ClaimLease() }
 
 // AssertRuntime verifies ordinary admission for epoch without touching device
 // state.

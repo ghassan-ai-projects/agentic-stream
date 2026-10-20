@@ -52,6 +52,11 @@ func (s *Service) OwnerInstance() string {
 	return s.ownerInstance
 }
 
+// ClaimLease is how long a target claim stays live without renewal.
+func (s *Service) ClaimLease() time.Duration {
+	return s.claimLease
+}
+
 // AssertRuntime verifies ordinary admission for epoch without touching device
 // state.
 func (s *Service) AssertRuntime(ctx context.Context, epoch string) error {

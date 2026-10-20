@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -98,7 +99,8 @@ func TestTheHostIsTheEffectorOfItsCatalogsRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	host, err := plantwire.New(plantwire.Config{Listener: listener, KindsDir: plantwirefake.KindsDir(t, "."), Catalog: catalog,
+	host, err := plantwire.New(plantwire.Config{Listener: listener, KindsDir: thermalKindsDir(), Catalog: catalog,
+		SitePath:  filepath.Join("..", "..", "examples", "real-world-sensor", "testdata", "plant-wire", "thermal-bench.site.json"),
 		Authority: deviceAuthority(t), OwnerEpoch: "epoch-1", Settings: plantwire.Settings{Environment: plantwire.EnvironmentSimulated}})
 	if err != nil {
 		t.Fatalf("New = %v", err)
@@ -112,12 +114,56 @@ func TestTheHostIsTheEffectorOfItsCatalogsRoutes(t *testing.T) {
 		t.Errorf("Dispatch = %v, want ErrAuthorizationRequired", err)
 	}
 	allow := actionport.Authorization{Check: func(context.Context) error { return nil }}
-	if _, err := host.DispatchAuthorized(t.Context(), command, allow); !errors.Is(err, plantwire.ErrDeviceNotInSite) {
-		t.Errorf("DispatchAuthorized without a site file = %v, want ErrDeviceNotInSite", err)
+	if _, err := host.DispatchAuthorized(t.Context(), command, allow); !errors.Is(err, plantwire.ErrNoSession) {
+		t.Errorf("DispatchAuthorized without a live session = %v, want ErrNoSession", err)
 	}
 	if status, _, err := host.VerifyDeviceCommand(t.Context(), command); status != "" || err != nil {
 		t.Errorf("VerifyDeviceCommand = %q, %v; want no final status yet", status, err)
 	}
+}
+
+func TestNewRefusesACatalogWithoutASiteFileOrWithATargetTheSiteDoesNotName(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "examples", "real-world-sensor", "testdata", "plant-wire", "thermal-bench.catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := device.LoadCapabilityCatalog(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	withoutSite := plantwire.Config{Listener: listener, KindsDir: plantwirefake.KindsDir(t, "."), Catalog: catalog,
+		Authority: deviceAuthority(t), OwnerEpoch: "epoch-1", Settings: plantwire.Settings{Environment: plantwire.EnvironmentSimulated}}
+	if _, err := plantwire.New(withoutSite); !errors.Is(err, plantwire.ErrNoSiteFile) {
+		t.Errorf("New(catalog without a site file) = %v, want ErrNoSiteFile", err)
+	}
+	other := plantwirefake.KindsDir(t, ".")
+	otherSite := plantwire.Config{Listener: listener, KindsDir: other, Catalog: catalog, SitePath: siteOfOtherKinds(t),
+		Authority: deviceAuthority(t), OwnerEpoch: "epoch-1", Settings: plantwire.Settings{Environment: plantwire.EnvironmentSimulated}}
+	if _, err := plantwire.New(otherSite); err == nil || !strings.Contains(err.Error(), "no device of the site file") {
+		t.Errorf("New(a catalog whose target the site file names no device) = %v, want the target refused", err)
+	}
+}
+
+func siteOfOtherKinds(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "other.site.json")
+	site := `{"version":1,"source":"plantwire-test","devices":{"X1":{"kind":"pump","entity":{"type":"station","id":"station-1"}}},` +
+		`"readings":[],"heartbeats":[],"quality":{"good":"valid","warming_up":"warming","suspect":"invalid",` +
+		`"out_of_range":"invalid","stale":"invalid","disconnected":"disconnected","manual_override":"invalid",` +
+		`"out_of_service":"disconnected"}}`
+	if err := os.WriteFile(path, []byte(site), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func thermalKindsDir() string {
+	return filepath.Join("..", "..", "examples", "real-world-sensor", "testdata", "plant-wire", "kinds")
 }
 
 func deviceAuthority(t *testing.T) *authority.Service {

@@ -137,10 +137,21 @@ func TestServeChecksThePlantWireRoutesAgainstTheDispatchLease(t *testing.T) {
 	if err := cmd.ExecuteContext(t.Context()); !errors.Is(err, device.ErrRouteOutlivesDispatch) || !strings.Contains(err.Error(), "set_indicator") {
 		t.Fatalf("serve under the default lease = %v, want the 60 s set_indicator route refused", err)
 	}
-	run := startPlantWireServe(t, testSpec, kinds, "", "--device-catalog", experimentCatalog, "--dispatch-lease", "2m")
+	run := startPlantWireServe(t, testSpec, kinds, experimentSite(t), "--device-catalog", experimentCatalog, "--dispatch-lease", "2m")
 	node := plantwirefake.Dial(t, "unix", run.socket, "s-1")
-	node.Send(plantwirefake.Fixture(t, ".", "NBIRTH.json"))
+	node.Send(plantwirefake.Birth(t, kinds, "board-01", "led-01", "fan-01"))
 	node.Expect("STATE")
+}
+
+func experimentSite(t *testing.T) string {
+	t.Helper()
+	site := `{"version":1,"source":"plantwire-test","devices":{"led-01":{"kind":"pump"},"fan-01":{"kind":"pump"}},` +
+		`"readings":[],"heartbeats":[],"quality":{"good":"valid","warming_up":"warming","suspect":"invalid",` +
+		`"out_of_range":"invalid","stale":"invalid","disconnected":"disconnected","manual_override":"invalid",` +
+		`"out_of_service":"disconnected"}}`
+	path := filepath.Join(t.TempDir(), "experiment.site.json")
+	writePrivateFile(t, path, site)
+	return path
 }
 
 func TestServeMakesThePlantWireHostTheDeviceEffectorOfItsCatalog(t *testing.T) {

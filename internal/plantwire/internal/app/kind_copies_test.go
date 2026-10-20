@@ -31,7 +31,9 @@ func TestTheBenchKindFilesAreByteCopiesOfStreamsims(t *testing.T) {
 			continue
 		}
 		if !slices.Equal(commandNames(t, mine), commandNames(t, theirs)) {
-			t.Skipf("%s in %s announces other commands (%v, here %v): streamsim does not hold the semantic kinds yet", filepath.Base(copied), master, commandNames(t, theirs), commandNames(t, mine))
+			t.Logf("%s in %s announces other commands (%v, here %v): streamsim does not hold the semantic kinds yet",
+				filepath.Base(copied), master, commandNames(t, theirs), commandNames(t, mine))
+			continue
 		}
 		t.Errorf("%s differs from %s: copy it again", copied, filepath.Join(master, filepath.Base(copied)))
 	}

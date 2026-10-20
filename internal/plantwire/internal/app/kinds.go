@@ -16,20 +16,12 @@ const kindFileSuffix = ".kind.json"
 
 var ErrNoKindFiles = errors.New("plantwire: the kind directory holds no *" + kindFileSuffix + " file")
 
-func commissionKinds(dir string) (domain.Inventory, error) {
+func commissionedKinds(dir string) ([]domain.Kind, error) {
 	paths, err := kindFiles(dir)
 	if err != nil {
-		return domain.Inventory{}, err
+		return nil, err
 	}
-	kinds, err := readKindFiles(paths)
-	if err != nil {
-		return domain.Inventory{}, err
-	}
-	inventory, err := domain.Commission(kinds, nil)
-	if err != nil {
-		return domain.Inventory{}, fmt.Errorf("plantwire: commission %s: %w", dir, err)
-	}
-	return inventory, nil
+	return readKindFiles(paths)
 }
 
 func readKindFiles(paths []string) ([]domain.Kind, error) {

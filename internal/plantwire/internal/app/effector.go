@@ -7,10 +7,11 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 )
 
-const answerGrace = 2 * domain.HeartbeatInterval
+const AnswerGrace = 2 * domain.HeartbeatInterval
 
 var (
 	ErrAuthorizationRequired = errors.New("plantwire: a command needs the final authorization check")
@@ -48,7 +49,7 @@ func (h *Host) DispatchAuthorized(ctx context.Context, command actionport.Comman
 	if err != nil {
 		return actionport.Effect{}, err
 	}
-	effect, err := h.command(ctx, t)
+	effect, err := h.command(ctx, t, claim)
 	effect, err = h.settleAuthority(ctx, claim, effect, err)
 	h.expectVerification(t, effect, err)
 	return effect, err
@@ -59,13 +60,13 @@ func (h *Host) prepare(ctx context.Context, command actionport.Command, authoriz
 	if err != nil {
 		return target{}, err
 	}
-	if err := authorize(ctx, authorization); err != nil {
-		return target{}, err
-	}
 	live := h.liveSession()
 	view, err := live.deviceOf(ctx, order.Device)
 	if err != nil {
 		return target{}, fmt.Errorf("plantwire: command %s not sent: %w", order.CommandID, err)
+	}
+	if err := authorize(ctx, authorization); err != nil {
+		return target{}, err
 	}
 	order.ExpectedBootID = view.BootID
 	return target{order: order, named: command.NormalizedTarget, live: live, view: view, verified: make(chan domain.Verification, 1)}, nil
@@ -102,28 +103,15 @@ func authorize(ctx context.Context, authorization actionport.Authorization) erro
 	return nil
 }
 
-func (h *Host) command(ctx context.Context, t target) (actionport.Effect, error) {
+func (h *Host) command(ctx context.Context, t target, claim authority.TargetClaim) (actionport.Effect, error) {
 	answers := make(chan domain.Settlement, mailboxSize)
-	deadline := h.clock.NewTimer(time.Unix(0, t.order.DeadlineNS).Sub(h.clock.Now()) + answerGrace)
+	deadline := h.clock.NewTimer(time.Unix(0, t.order.DeadlineNS).Sub(h.clock.Now()) + AnswerGrace)
 	defer deadline.Stop()
+	wait := &waiting{host: h, live: t.live, order: t.order, answers: answers, deadline: deadline, claim: claim}
+	wait.startRenewal()
+	defer wait.stopRenewal()
 	if !t.live.submit(ctx, request{order: t.order, answers: answers, verified: t.verified}) {
 		return actionport.Effect{}, fmt.Errorf("plantwire: command %s not sent: %w", t.order.CommandID, domain.ErrNoSession)
 	}
-	return await(ctx, t.order, answers, deadline)
-}
-
-func await(ctx context.Context, order domain.CommandOrder, answers <-chan domain.Settlement, deadline timer) (actionport.Effect, error) {
-	var trail []map[string]any
-	for {
-		select {
-		case settlement := <-answers:
-			if trail = appendAnswer(trail, settlement); settlement.Terminal() {
-				return effectOf(order, settlement, trail)
-			}
-		case <-deadline.C():
-			return unknownEffect(order, trail, "no terminal answer before the command's deadline")
-		case <-ctx.Done():
-			return unknownEffect(order, trail, ctx.Err().Error())
-		}
-	}
+	return wait.answer(ctx)
 }

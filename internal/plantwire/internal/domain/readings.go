@@ -32,6 +32,17 @@ func (c *Conversation) Device(name string) (DeviceView, error) {
 	return DeviceView{BootID: device.boot, Origin: c.ingest.originOf(device), Outputs: outputs, Readings: device.readingsOf(outputs)}, nil
 }
 
+func (c *Conversation) OriginOf(name string) (Origin, error) {
+	if !c.accepted {
+		return Origin{}, ErrNoSession
+	}
+	device := c.ingest.devices[name]
+	if device == nil {
+		return Origin{}, fmt.Errorf("%w: %s", ErrDeviceNotBorn, name)
+	}
+	return c.ingest.originOf(device), nil
+}
+
 func (d *liveDevice) hold(metric string, value any, quality string, receivedAt time.Time) {
 	d.latest[metric] = HeldReading{Metric: metric, Value: value, Good: quality == qualityGood, BootID: d.boot, ReceivedAt: receivedAt}
 }

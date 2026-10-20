@@ -47,14 +47,21 @@ func (c *Conn) ReadLine() ([]byte, error) {
 	return append([]byte(nil), line...), nil
 }
 
-func (c *Conn) Write(line []byte) error {
+func (c *Conn) Write(line []byte) (int, error) {
 	if err := c.conn.SetWriteDeadline(time.Now().Add(writeDeadline)); err != nil {
-		return fmt.Errorf("plantwire: set the write deadline: %w", err)
+		return 0, fmt.Errorf("plantwire: set the write deadline: %w", err)
 	}
-	if _, err := c.conn.Write(append(line, '\n')); err != nil {
-		return fmt.Errorf("plantwire: write a record: %w", err)
+	written, err := c.conn.Write(withNewline(line))
+	if err != nil {
+		return written, fmt.Errorf("plantwire: write a record: %w", err)
 	}
-	return nil
+	return written, nil
+}
+
+func withNewline(line []byte) []byte {
+	buffer := make([]byte, 0, len(line)+1)
+	buffer = append(buffer, line...)
+	return append(buffer, '\n')
 }
 
 func (l *Listener) Close() error {

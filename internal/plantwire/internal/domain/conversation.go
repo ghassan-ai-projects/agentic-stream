@@ -139,14 +139,36 @@ func (c *Conversation) react(a Arrival, r *Reaction) {
 }
 
 func (c *Conversation) birth(b Birth, r *Reaction) {
-	c.asked, c.bdSeq = false, b.BDSeq
-	if !c.accepted {
-		c.handshake(b, r)
-	}
+	c.asked = false
 	if c.accepted {
-		r.Quarantined = c.admission.Inventory.Quarantined(b)
-		c.ingest.rebirth(b, r.Quarantined)
+		c.rebirth(b, r)
+		return
 	}
+	c.handshake(b, r)
+	if c.accepted {
+		c.commission(b, r)
+	}
+}
+
+func (c *Conversation) rebirth(b Birth, r *Reaction) {
+	if b.BDSeq <= c.bdSeq {
+		r.Dropped = "a birth that does not advance bd_seq"
+		return
+	}
+	verdict := c.admission.Admit(b)
+	r.Verdict = &verdict
+	if !verdict.Accepted() {
+		r.Replies = append(r.Replies, c.out.stamp(stateRecord(c.epoch, c.heartbeat, verdict.Refusal)))
+		r.End = EndRefused
+		return
+	}
+	c.bdSeq = b.BDSeq
+	c.commission(b, r)
+}
+
+func (c *Conversation) commission(b Birth, r *Reaction) {
+	r.Quarantined = c.admission.Inventory.Quarantined(b)
+	c.ingest.rebirth(b, r.Quarantined)
 }
 
 func (c *Conversation) handshake(b Birth, r *Reaction) {
@@ -154,6 +176,7 @@ func (c *Conversation) handshake(b Birth, r *Reaction) {
 	r.Verdict = &verdict
 	c.accepted = verdict.Accepted()
 	c.out = transmitter{session: b.SessionID, version: ProtocolVersion}
+	c.bdSeq = b.BDSeq
 	r.Replies = append(r.Replies, c.out.stamp(stateRecord(c.epoch, 0, verdict.Refusal)))
 	if !c.accepted {
 		r.End = EndRefused

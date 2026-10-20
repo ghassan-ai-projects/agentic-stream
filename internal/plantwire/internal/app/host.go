@@ -20,6 +20,8 @@ import (
 
 var ErrNoListener = errors.New("plantwire: the host needs a listener")
 
+var ErrNoSiteFile = errors.New("plantwire: a host with a device catalog needs a site file")
+
 type Config struct {
 	Listener   *transport.Listener
 	Settings   domain.Settings
@@ -54,16 +56,15 @@ func New(cfg Config) (*Host, error) {
 	if err := checkConfig(cfg); err != nil {
 		return nil, err
 	}
-	inventory, err := commissionKinds(cfg.KindsDir)
+	open, err := openInventory(cfg)
 	if err != nil {
 		return nil, err
 	}
-	site, err := loadSite(cfg.SitePath, inventory)
-	if err != nil {
+	if err := checkCatalogTargets(cfg.Catalog, open.mapping); err != nil {
 		return nil, err
 	}
-	host := newHost(cfg, inventory, site.mapping)
-	host.logReady(cfg, site.digest)
+	host := newHost(cfg, open.inventory, open.mapping)
+	host.logReady(cfg, open.digest)
 	return host, nil
 }
 
@@ -76,6 +77,9 @@ func checkConfig(cfg Config) error {
 	}
 	if cfg.Catalog != nil && (cfg.Authority == nil || cfg.OwnerEpoch == "") {
 		return ErrAuthorityRequired
+	}
+	if cfg.Catalog != nil && cfg.SitePath == "" {
+		return ErrNoSiteFile
 	}
 	return nil
 }

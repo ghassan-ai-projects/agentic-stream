@@ -32,6 +32,7 @@ var (
 	ErrNegativeEpoch          = domain.ErrNegativeEpoch
 	ErrNoListener             = app.ErrNoListener
 	ErrAuthorityRequired      = app.ErrAuthorityRequired
+	ErrNoSiteFile             = app.ErrNoSiteFile
 )
 
 // Errors of a command: no live session, an unborn device, a reboot since the
@@ -106,7 +107,8 @@ func (h *Host) Run(ctx context.Context, emit func(context.Context, contractsv1.E
 	return h.app.Run(ctx, emit)
 }
 
-// Close closes the listener; a running Run then returns.
+// Close closes the listener, so no further session is accepted; a running Run
+// returns when the caller's context ends.
 func (h *Host) Close() error { return h.app.Close() }
 
 // OwnsRoute reports whether the catalog names route; the watch route is never
@@ -164,3 +166,7 @@ func (h *Host) VerifyDeviceCommand(ctx context.Context, command actionport.Comma
 // reports every 5 s) and a second of slack. Only a matching reading verifies,
 // so a reading after a lease has lapsed cannot verify a leased command.
 const VerificationWindow = app.VerificationWindow
+
+// AnswerGrace is how long the host waits for the node's terminal answer after
+// the command's own deadline.
+const AnswerGrace = app.AnswerGrace

@@ -59,9 +59,10 @@ func damperOrder(id string, args map[string]any) domain.CommandOrder {
 
 func succeeded(t *testing.T, conversation *domain.Conversation, seq uint64, order domain.CommandOrder) domain.Reaction {
 	t.Helper()
-	if _, err := conversation.Command(order); err != nil {
+	if _, err := conversation.Prepare(order); err != nil {
 		t.Fatal(err)
 	}
+	conversation.Register(order)
 	conversation.Receive(answer(seq, domain.TypeReceipt, order.CommandID, "accepted", "b1"))
 	return conversation.Receive(answer(seq+1, domain.TypeResult, order.CommandID, "succeeded", "b1"))
 }
@@ -166,7 +167,7 @@ func TestACommandWithNothingToReadBackIsUnverifiedAtOnce(t *testing.T) {
 	if len(verifications) != 1 || verifications[0].Verified || verifications[0].CommandID != "c-1" {
 		t.Fatalf("Verifications = %+v, want c-1 unverified at once", verifications)
 	}
-	if _, err := conversation.Command(damperOrder("c-2", map[string]any{"opening": 40.0})); err != nil {
+	if _, err := conversation.Prepare(damperOrder("c-2", map[string]any{"opening": 40.0})); err != nil {
 		t.Fatal(err)
 	}
 	conversation.Receive(answer(4, domain.TypeReceipt, "c-2", "refused", "b1"))

@@ -32,25 +32,26 @@ func answer(seq uint64, recordType, id, status, boot string) domain.Arrival {
 func TestConversationRefusesACommandItCannotSend(t *testing.T) {
 	t.Parallel()
 	unborn := ingesting(t, valveInventory(t))
-	if _, err := unborn.Command(valveOrder("c-1")); !errors.Is(err, domain.ErrDeviceNotBorn) {
-		t.Errorf("Command(unborn device) = %v, want ErrDeviceNotBorn", err)
+	if _, err := unborn.Prepare(valveOrder("c-1")); !errors.Is(err, domain.ErrDeviceNotBorn) {
+		t.Errorf("Prepare(unborn device) = %v, want ErrDeviceNotBorn", err)
 	}
 	before := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, nil), 1, domain.Mapping{})
-	if _, err := before.Command(valveOrder("c-1")); !errors.Is(err, domain.ErrNoSession) {
-		t.Errorf("Command(before the handshake) = %v, want ErrNoSession", err)
+	if _, err := before.Prepare(valveOrder("c-1")); !errors.Is(err, domain.ErrNoSession) {
+		t.Errorf("Prepare(before the handshake) = %v, want ErrNoSession", err)
 	}
 	conversation := commanding(t)
-	record, err := conversation.Command(valveOrder("c-1"))
+	record, err := conversation.Prepare(valveOrder("c-1"))
 	if err != nil || record["type"] != domain.TypeCommand || record["expected_boot_id"] != "b1" || record["authority_epoch"] != int64(1) {
-		t.Fatalf("Command = %v, %v; want a DCMD on boot b1 at epoch 1", record, err)
+		t.Fatalf("Prepare = %v, %v; want a DCMD on boot b1 at epoch 1", record, err)
 	}
-	if _, err := conversation.Command(valveOrder("c-1")); !errors.Is(err, domain.ErrCommandInFlight) {
-		t.Errorf("Command(the same id twice) = %v, want ErrCommandInFlight", err)
+	conversation.Register(valveOrder("c-1"))
+	if _, err := conversation.Prepare(valveOrder("c-1")); !errors.Is(err, domain.ErrCommandInFlight) {
+		t.Errorf("Prepare(the same id twice) = %v, want ErrCommandInFlight", err)
 	}
 	stale := valveOrder("c-2")
 	stale.ExpectedBootID = "b0"
-	if _, err := conversation.Command(stale); !errors.Is(err, domain.ErrBootChanged) {
-		t.Errorf("Command(bound to an older boot) = %v, want ErrBootChanged", err)
+	if _, err := conversation.Prepare(stale); !errors.Is(err, domain.ErrBootChanged) {
+		t.Errorf("Prepare(bound to an older boot) = %v, want ErrBootChanged", err)
 	}
 }
 
@@ -73,9 +74,10 @@ func TestConversationSettlesEachCommandFromItsAnswers(t *testing.T) {
 	t.Parallel()
 	conversation := commanding(t)
 	for _, id := range []string{"c-ok", "c-queued", "c-refused", "c-accepted"} {
-		if _, err := conversation.Command(valveOrder(id)); err != nil {
+		if _, err := conversation.Prepare(valveOrder(id)); err != nil {
 			t.Fatal(err)
 		}
+		conversation.Register(valveOrder(id))
 	}
 	steps := []struct {
 		arrival domain.Arrival

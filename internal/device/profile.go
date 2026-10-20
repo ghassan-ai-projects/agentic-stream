@@ -35,3 +35,12 @@ func ValidateEffectProfile(config EffectProfileConfig) error {
 		HasGatewayLink: config.GatewayLink != nil || config.GatewayOptions, LiveActuation: config.LiveActuation, OwnerAuthorized: config.OwnerAuthorized,
 	})
 }
+
+// GrantsActuationConsent reports whether the configuration grants consent for
+// physical actuation: the physical profile with explicit live actuation and
+// owner authorization.
+func GrantsActuationConsent(config EffectProfileConfig) bool {
+	return domain.GrantsActuationConsent(domain.ProfileRequest{
+		Profile: config.Profile, LiveActuation: config.LiveActuation, OwnerAuthorized: config.OwnerAuthorized,
+	})
+}

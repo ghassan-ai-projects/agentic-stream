@@ -23,8 +23,8 @@ func TestConnReadsOneRecordPerLineAndWritesLines(t *testing.T) {
 			t.Fatalf("ReadLine = %q, %v; want %q", line, err, want)
 		}
 	}
-	if err := conn.Write([]byte(`{"type":"STATE"}`)); err != nil {
-		t.Fatalf("Write = %v", err)
+	if written, err := conn.Write([]byte(`{"type":"STATE"}`)); err != nil || written == 0 {
+		t.Fatalf("Write = %d, %v", written, err)
 	}
 	if line, err := bufio.NewReader(peer).ReadString('\n'); err != nil || line != "{\"type\":\"STATE\"}\n" {
 		t.Fatalf("the peer read %q, %v", line, err)
@@ -50,8 +50,8 @@ func TestConnReportsTheEndOfTheStreamAndAClosedConnection(t *testing.T) {
 	if err := conn.Close(); err != nil {
 		t.Fatalf("Close = %v", err)
 	}
-	if err := conn.Write([]byte("{}")); !errors.Is(err, net.ErrClosed) {
-		t.Fatalf("Write after Close = %v, want net.ErrClosed", err)
+	if written, err := conn.Write([]byte("{}")); !errors.Is(err, net.ErrClosed) || written != 0 {
+		t.Fatalf("Write after Close = %d, %v, want net.ErrClosed and nothing written", written, err)
 	}
 	if err := conn.Close(); !errors.Is(err, net.ErrClosed) {
 		t.Fatalf("a second Close = %v, want net.ErrClosed", err)

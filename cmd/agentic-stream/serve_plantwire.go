@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -52,7 +53,7 @@ func (f plantWireFlags) rejectWithoutSocket() error {
 }
 
 func (f plantWireFlags) settings(options effectProfileOptions) plantwire.Settings {
-	consent := options.profile() == device.EffectProfilePhysical && options.LiveActuation && options.OwnerAuthorized
+	consent := device.GrantsActuationConsent(options.profileConfig(false))
 	return plantwire.Settings{Environment: f.environment, HardwareBoards: f.hardwareBoards, PhysicalConsent: consent, Epoch: f.epoch}
 }
 
@@ -111,10 +112,15 @@ func plantWireCatalog(options effectProfileOptions) (*device.CapabilityCatalog, 
 	if err != nil {
 		return nil, err
 	}
-	if err := catalog.CheckExpiriesWithin(actions.DispatchCallTimeout(options.DispatchLease)); err != nil {
+	if err := catalog.CheckExpiriesWithin(plantWireCallTimeout(options)); err != nil {
 		return nil, fmt.Errorf("check the plant wire routes against --dispatch-lease: %w", err)
 	}
 	return catalog, nil
+}
+
+func plantWireCallTimeout(options effectProfileOptions) time.Duration {
+	call := actions.DispatchCallTimeout(options.DispatchLease)
+	return call - plantwire.AnswerGrace - plantwire.VerificationWindow
 }
 
 func newPlantWireHost(flags plantWireFlags, options effectProfileOptions, commanding plantWireCommanding) (*plantwire.Host, error) {

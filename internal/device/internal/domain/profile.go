@@ -82,3 +82,13 @@ func requireActuationConsent(request ProfileRequest) error {
 	}
 	return nil
 }
+
+// GrantsActuationConsent reports whether the request grants consent for
+// physical actuation: the physical profile with explicit live actuation and
+// owner authorization. It reads the same rule the profile check enforces.
+func GrantsActuationConsent(request ProfileRequest) bool {
+	if request.Profile != EffectProfilePhysical {
+		return false
+	}
+	return requireActuationConsent(request) == nil
+}

@@ -61,7 +61,10 @@ the code implements.
    `environment_mismatch`, `contract_unsupported` (exact contract version and
    digest), `version_unsupported`, `inventory_mismatch` (a kind digest that does
    not recompute, a kind announced twice, a required device missing). The host
-   answers `STATE` and then sends a heartbeat every second.
+   answers `STATE` and then sends a heartbeat every second. Every later
+   `NBIRTH` of the session (the rebirth) is admitted by the same rules: a
+   rebirth that contradicts them is refused with `STATE{online:false}` and ends
+   the session, and a rebirth whose `bd_seq` does not advance is dropped.
 3. A kind whose `kind_digest` differs from the commissioned kind file, or that
    no kind file commissions, is quarantined: its devices give no events and take
    no commands, and the session stays up.
@@ -103,6 +106,14 @@ board is sent only when the process runs the `physical` effect profile with
 session can switch from simulated to real boards without restarting Agentic
 Stream.
 
+The rule is checked twice: once before the command is claimed, and once more in
+the session that writes the record, from the device's board as the node
+announced it at that moment. A node that moves a device to another board
+between the two checks therefore cannot be commanded: the second check reads
+the live origin, not the one the first check saw. The consent itself is one
+fact of the `device` module (`device.GrantsActuationConsent`), which `cmd`
+copies; `cmd` derives no rule of its own.
+
 ### Commands
 
 The idempotency key of an approved command is forwarded unchanged (one key per
@@ -141,6 +152,19 @@ refuses it unless the device's readings clear it, and the target is claimed and
 the command bound, through the same `authority` operations device-wire uses
 (`ClaimForDelivery`, `RequireReconciliation`). An unknown outcome opens a
 reconciliation; the session's claims are released when it ends.
+
+The claim is renewed while the command waits for the node: a command held at
+the node for the node operator (up to its route's expiry) outlives the claim
+lease, and the lease is renewed from the same claim, so the target stays held
+for the whole wait and the authority assertion after it still means something.
+A renewal the authority refuses (another owner holds the target, or the
+runtime lost its lease) makes the outcome unknown and opens the reconciliation.
+
+The record is built and encoded before the command is registered as in flight:
+a command the host cannot encode is reported as not sent (nothing left the
+host), and the sequence number it took is given back, so no gap reaches the
+node. A command whose write fails before a byte was written is reported the
+same way; a write that failed after bytes were sent stays an unknown outcome.
 
 ### Verification
 
@@ -210,10 +234,15 @@ an operator).
 - A dispatch held at the node longer than 0.9 of the dispatch lease becomes an
   unknown outcome, so `serve --dispatch-lease` sets that lease and, with a plant
   wire link and a catalog, `serve` refuses to start when a route's
-  `expires_after_ms` does not end inside 0.9 of it. Device-wire links are
-  not checked: a device-wire command is not held for approval at the device,
-  and the check would refuse today's thermal catalog (its indicator route
-  expires after 60 s, past the 54 s call of the default lease).
+  `expires_after_ms` does not end inside 0.9 of it, less the answer grace (2 s)
+  and the verification window (6 s) the same call waits for. Device-wire links
+  are not checked: a device-wire command is not held for approval at the
+  device, and the check would refuse today's thermal catalog (its indicator
+  route expires after 60 s, past the 54 s call of the default lease).
+- A host with a device catalog needs a site file: the site's devices are the
+  ones the node must announce (a missing one is an `inventory_mismatch`), and
+  every route target and safe stop must be a device of the site file. A host
+  without a catalog needs no site file and only feeds events.
 - Historical (store-and-forward) readings are counted and logged, not ingested
   live.
 - A reboot opens the same reconciliation barrier as device-wire; the device's

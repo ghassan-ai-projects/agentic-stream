@@ -15,8 +15,8 @@ Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 | Domain | Envelope and sequencing, the birth view, handshake admission, environment rules, commissioning by kind digest, host settings, the session conversation (STATE, HSYNC, rebirth, goodbye), the site mapping and directory, device births, data and deaths, readings to normalized events, the heartbeat on event time, commands in flight and their settlement from receipts and results, the origin rule, the device view (boot, origin, outputs and their latest readings), read-back expectations, verification watches and `HSYNC` command evidence | built |
 | Wire | The vendored contract (embedded schemas, `DIGEST`, `VERSION`), record decoding with size limits and exact integers and the body of each record type, outgoing records checked against their schema, kind file and site file parsing (the site file schema is embedded) | built |
 | Transport | One connection at a time over an injected listener, one record per line, 2 s write deadline | built |
-| App | Kind commissioning, the site file, host supervisor and session loop, the ingest queue and feeder, the effector: catalog bound, device lookup, final authorization, origin check, one `DCMD` through the session loop, a mailbox per command; the device authority calls and clearing by readings; verification from readings | built |
-| Facade | `New`, `CheckSettings`, `Run(ctx, emit)`, `Close`, `OwnsRoute`, `Dispatch`, `DispatchAuthorized`, `VerifyDeviceCommand`, `VerificationWindow` | built |
+| App | Kind commissioning, the site file, host supervisor and session loop, the ingest queue and feeder, the effector: catalog bound, device lookup, final authorization, origin check, one `DCMD` through the session loop, a mailbox per command; the device authority calls, the claim renewal while a command waits and clearing by readings; verification from readings | built |
+| Facade | `New`, `CheckSettings`, `Run(ctx, emit)`, `Close`, `OwnsRoute`, `Dispatch`, `DispatchAuthorized`, `VerifyDeviceCommand`, `VerificationWindow`, `AnswerGrace` | built |
 
 `serve --plant-wire-socket` is the only caller. It creates the listener with
 the owner-only Unix socket helper of `internal/worker` (absolute path, 0700
@@ -24,7 +24,9 @@ directory, 0600 socket) and hands it to `New`. A session's reader never waits on
 the host: records are read on their own goroutine and answered from one loop,
 so a barrier is answered at once. The session's state is the pure
 `domain.Conversation`; the app layer only moves lines and timers. Heartbeats
-use the injected clock, so tests drive them with a virtual clock.
+use the injected clock, so tests drive them with a virtual clock. The app layer
+reads the kind files and the site file from disk (the module's edge is the
+socket; `internal/spec/internal/app` reads its files the same way).
 
 ## Ingest
 
@@ -96,7 +98,13 @@ the board is in `--hardware-boards` (`ErrOriginNotAuthorized`, provider result
 `refused: origin_not_authorized` with the board; a simulated board needs no
 consent), and hands the order to the live session's loop, which stamps the `DCMD`
 (the device's current boot, the host epoch, `safe_off`) and keeps a mailbox
-for its answers. The conversation tracks the command (sent, queued, accepted)
+for its answers. The session's loop checks the origin once more, from the
+device's board as the node announced it at that moment, and refuses the
+command when it is no longer authorized: a node that moves a device to another
+board between the two checks cannot be commanded. The record is encoded before
+the command is registered, so a command the host cannot encode is reported as
+not sent and leaves no gap in the stream. The conversation tracks the command
+(sent, queued, accepted)
 and settles it from each receipt and result; when the session ends, a queued
 command is refused `session_ending` and any other is unknown. The effector
 waits until the terminal settlement, the deadline plus 2 s on the host clock,
@@ -126,6 +134,10 @@ device-wire:
    a lost claim makes the outcome unknown. An unknown outcome opens a
    reconciliation for the device boot (`RequireReconciliation`, on the priority
    path after authority loss).
+5. While the command waits at the node, the claim is renewed: a command held for
+   the node operator outlives the claim lease, and the renewal keeps the target
+   held for the whole wait. A refused renewal (another owner holds the target,
+   or the runtime lost its lease) makes the outcome unknown.
 
 While a reconciliation is open, step 1 presents the device's readings to the
 authority's `ResolveWithReadings`: the latest sample the session holds of each

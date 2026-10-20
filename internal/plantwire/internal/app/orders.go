@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/wire"
 )
 
 const mailboxSize = 8
@@ -74,20 +75,58 @@ func (s *session) submit(ctx context.Context, req request) bool {
 }
 
 func (s *session) order(req request) string {
-	record, err := s.conversation.Command(req.order)
+	record, err := s.authorized(req)
 	if err != nil {
-		req.answers <- domain.Settlement{CommandID: req.order.CommandID, Phase: domain.SettlementNotSent, Reason: err.Error(), Cause: err}
+		s.notSent(req, err)
 		return ""
 	}
-	s.mailboxes[req.order.CommandID] = req.answers
-	s.watchers[req.order.CommandID] = req.verified
-	if err := s.send([]map[string]any{record}); err != nil {
-		return endWriteFailed
+	line, err := wire.Encode(record)
+	if err != nil {
+		s.conversation.Discard(record)
+		s.notSent(req, err)
+		return ""
 	}
-	return ""
+	s.conversation.Register(req.order)
+	s.remember(req)
+	return s.deliver(req, line)
 }
 
-func (s *session) deliver(reaction domain.Reaction) {
+func (s *session) authorized(req request) (map[string]any, error) {
+	origin, err := s.conversation.OriginOf(req.order.Device)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.settings.Authorizes(origin); err != nil {
+		return nil, fmt.Errorf("%s: %w", domain.RefusalOriginNotAuthorized, err)
+	}
+	return s.conversation.Prepare(req.order)
+}
+
+func (s *session) notSent(req request, err error) {
+	req.answers <- domain.Settlement{CommandID: req.order.CommandID, Phase: domain.SettlementNotSent, Reason: err.Error(), Cause: err}
+	delete(s.mailboxes, req.order.CommandID)
+	delete(s.watchers, req.order.CommandID)
+}
+
+func (s *session) remember(req request) {
+	s.mailboxes[req.order.CommandID] = req.answers
+	s.watchers[req.order.CommandID] = req.verified
+}
+
+func (s *session) deliver(req request, line []byte) string {
+	written, err := s.conn.Write(line)
+	if err == nil {
+		return ""
+	}
+	if written == 0 {
+		s.conversation.Forget(req.order.CommandID)
+		s.notSent(req, err)
+		return ""
+	}
+	return endWriteFailed
+}
+
+func (s *session) deliverReaction(reaction domain.Reaction) {
 	s.settle(reaction.Settlements)
 	s.verified(reaction.Verifications)
 }

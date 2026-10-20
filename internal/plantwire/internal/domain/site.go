@@ -148,6 +148,10 @@ func (s Site) emitsFor(kind string) bool {
 		slices.ContainsFunc(s.Heartbeats, func(h HeartbeatRule) bool { return h.Kind == kind })
 }
 
+func (s Site) DeviceNames() []string {
+	return slices.Sorted(maps.Keys(s.Devices))
+}
+
 type Directory struct{ devices map[string]SiteDevice }
 
 func (d Directory) EntityOf(device string) (contractsv1.EntityRef, bool) {

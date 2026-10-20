@@ -42,6 +42,7 @@ type session struct {
 	queue        chan<- contractsv1.Envelope
 	lines        chan readResult
 	calls        chan call
+	settings     domain.Settings
 	authority    *authority.Service
 	claimsMu     sync.Mutex
 	claims       map[string]authority.TargetClaim
@@ -54,7 +55,7 @@ func (h *Host) serve(ctx context.Context, conn *transport.Conn, queue chan<- con
 	s := &session{conn: conn, conversation: domain.NewConversation(h.admission, h.epoch, h.mapping), clock: h.clock,
 		queue: queue, lines: make(chan readResult), calls: make(chan call), mailboxes: map[string]chan<- domain.Settlement{},
 		watchers: map[string]chan<- domain.Verification{}, authority: h.authority, claims: map[string]authority.TargetClaim{},
-		done: make(chan struct{})}
+		settings: h.settings, done: make(chan struct{})}
 	h.goLive(s)
 	defer h.goLive(nil)
 	defer s.close()
@@ -94,7 +95,7 @@ func (s *session) receive(ctx context.Context, read readResult) string {
 	reaction := s.conversation.Receive(s.arrivalOf(read.line))
 	report(ctx, reaction)
 	s.startBeating(reaction)
-	s.deliver(reaction)
+	s.deliverReaction(reaction)
 	if !enqueue(s.queue, reaction.Events) {
 		return endPipelineBehind
 	}
@@ -138,7 +139,7 @@ func (s *session) send(records []map[string]any) error {
 		if err != nil {
 			return err
 		}
-		if err := s.conn.Write(line); err != nil {
+		if _, err := s.conn.Write(line); err != nil {
 			return err
 		}
 	}
@@ -167,6 +168,15 @@ func (s *session) close() {
 		s.beat.Stop()
 	}
 	_ = s.conn.Close()
+}
+
+func (s *session) ended() bool {
+	select {
+	case <-s.done:
+		return true
+	default:
+		return false
+	}
 }
 
 func arrivalOf(line []byte) domain.Arrival {

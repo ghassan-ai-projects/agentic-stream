@@ -150,7 +150,7 @@ Starts the live runtime with HTTP health checks and notifications.
 | `--plant-wire-socket` | empty | owner-only Unix socket a plant wire node dials (absolute path in a 0700 directory); a continuous source, exclusive with `--trace` and `--device-socket` |
 | `--plant-wire-environment` | `simulated` | plant wire nodes accepted: `simulated`, `hardware` or `mixed`; `hardware` and `mixed` need the physical profile with both consent flags |
 | `--plant-wire-kinds` | empty | directory of the commissioned kind files (`*.kind.json`); required with the socket |
-| `--plant-wire-site` | empty | site file kept outside the repository: checked against its schema and the commissioned kinds, its digest logged at start; without it no reading becomes an event |
+| `--plant-wire-site` | empty | site file kept outside the repository: checked against its schema and the commissioned kinds, its digest logged at start; without it no reading becomes an event, and with `--device-catalog` it is required (the site's devices are the ones the node must announce, and every route target must be one of them) |
 | `--plant-wire-epoch` | `0` | authority epoch the host announces; `0` means Unix seconds at start |
 | `--hardware-boards` | empty | repeatable hardware boards the plant wire host may command; needs a hardware or mixed host |
 
@@ -183,7 +183,11 @@ an approved command goes to the live session as one `DCMD`, its receipts and
 result become the outcome, and the device's own readings verify a success (a
 success no reading confirms stays pending verification). A device on a
 hardware board is commanded only with the physical profile's consent flags and
-its board in `--hardware-boards`. At start `serve` logs `spec loaded` with the
+its board in `--hardware-boards`, and the board is read again from the live
+session when the record is written, so a node that moves a device to another
+board in between is refused. The target claim is renewed while a command
+waits at the node, so a command held for the operator keeps its authority. At
+start `serve` logs `spec loaded` with the
 spec digest and the `policy_digest` its commands carry, the value a node's or
 gateway's policy allow-list must hold (also printed by `validate`). Without a
 catalog, commands fall back as with no device link (simulated under

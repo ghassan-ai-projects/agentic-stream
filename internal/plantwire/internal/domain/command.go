@@ -92,7 +92,7 @@ func (c *Conversation) BootOf(device string) (string, error) {
 	return born.boot, nil
 }
 
-func (c *Conversation) Command(o CommandOrder) (map[string]any, error) {
+func (c *Conversation) Prepare(o CommandOrder) (map[string]any, error) {
 	boot, err := c.BootOf(o.Device)
 	if err != nil {
 		return nil, err
@@ -103,8 +103,24 @@ func (c *Conversation) Command(o CommandOrder) (map[string]any, error) {
 	if _, twice := c.commands[o.CommandID]; twice {
 		return nil, fmt.Errorf("%w: %s", ErrCommandInFlight, o.CommandID)
 	}
-	c.commands[o.CommandID] = &inFlight{order: o, boot: boot, phase: "sent"}
 	return c.out.stamp(commandRecord(o, c.epoch)), nil
+}
+
+func (c *Conversation) Register(o CommandOrder) {
+	c.commands[o.CommandID] = &inFlight{order: o, boot: o.ExpectedBootID, phase: "sent"}
+}
+
+// Discard gives back the sequence number of a record that was never written,
+// so a record that cannot be encoded leaves no gap in the stream.
+func (c *Conversation) Discard(record map[string]any) {
+	seq, ok := record["seq"].(uint64)
+	if ok && seq+1 == c.out.next {
+		c.out.next = seq
+	}
+}
+
+func (c *Conversation) Forget(commandID string) {
+	delete(c.commands, commandID)
 }
 
 func CommandDigest(o CommandOrder) (string, error) {

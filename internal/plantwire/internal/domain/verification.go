@@ -45,8 +45,15 @@ func (c *Conversation) watch(o CommandOrder, r *Reaction) {
 
 func (c *Conversation) Unwatch(commandID string) {
 	if w := c.watches[commandID]; w != nil {
-		c.evidence = append(c.evidence, w.evidence()...)
+		c.keepEvidence(w.evidence()...)
 		delete(c.watches, commandID)
+	}
+}
+
+func (c *Conversation) keepEvidence(entries ...map[string]any) {
+	c.evidence = append(c.evidence, entries...)
+	if len(c.evidence) > maxEvidence {
+		c.evidence = c.evidence[len(c.evidence)-maxEvidence:]
 	}
 }
 
@@ -71,7 +78,7 @@ func (c *Conversation) observe(device *liveDevice, metric string, value any, r *
 		w := c.watches[id]
 		if w.order.Device == device.name && w.order.ExpectedBootID == device.boot && w.observe(metric, value) {
 			r.Verifications = append(r.Verifications, w.verification())
-			c.evidence = append(c.evidence, w.evidence()...)
+			c.keepEvidence(w.evidence()...)
 			delete(c.watches, id)
 		}
 	}

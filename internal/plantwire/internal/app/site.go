@@ -10,23 +10,19 @@ import (
 )
 
 type loadedSite struct {
-	mapping domain.Mapping
-	digest  string
+	site   domain.Site
+	digest string
 }
 
-func loadSite(path string, inventory domain.Inventory) (loadedSite, error) {
+func loadSite(path string) (loadedSite, error) {
 	if path == "" {
-		return loadedSite{}, nil
+		return loadedSite{site: domain.Site{}}, nil
 	}
 	raw, site, err := readSite(path)
 	if err != nil {
 		return loadedSite{}, err
 	}
-	mapping, err := domain.NewMapping(site, inventory)
-	if err != nil {
-		return loadedSite{}, fmt.Errorf("plantwire: site file %s: %w", path, err)
-	}
-	return loadedSite{mapping: mapping, digest: canonicaljson.ContentDigest(raw)}, nil
+	return loadedSite{site: site, digest: canonicaljson.ContentDigest(raw)}, nil
 }
 
 func readSite(path string) ([]byte, domain.Site, error) {
