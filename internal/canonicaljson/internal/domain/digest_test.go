@@ -32,6 +32,7 @@ func TestDomainsAreTheFrozenDigestNamespaces(t *testing.T) {
 		{DomainPolicy, "situation-runtime/policy/v1\n"},
 		{DomainCapabilityCatalog, "situation-runtime/capability-catalog/v1\n"},
 		{DomainShadowComparison, "situation-runtime/shadow-comparison/v1\n"},
+		{DomainEventSchemas, "situation-runtime/event-schemas/v1\n"},
 	}
 	shape := regexp.MustCompile(`^situation-runtime/[a-z-]+/v1\n$`)
 	seen := map[Domain]bool{}

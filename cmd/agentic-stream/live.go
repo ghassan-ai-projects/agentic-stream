@@ -28,6 +28,7 @@ type liveFlags struct {
 	effectProfile                                      string
 	effect                                             effectProfileOptions
 	worker                                             runtime.WorkerRuntimeConfig
+	eventSchemas                                       *spec.EventSchemas
 }
 
 type cleanups []func()

@@ -32,6 +32,11 @@ func newServeCommand() *cobra.Command {
 		Use:   "serve",
 		Short: "Start the live Go runtime and readiness endpoint.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			schemas, err := loadLoggedEventSchemas(cmd)
+			if err != nil {
+				return err
+			}
+			flags.eventSchemas = schemas
 			return serve(cmd.Context(), flags)
 		},
 	}

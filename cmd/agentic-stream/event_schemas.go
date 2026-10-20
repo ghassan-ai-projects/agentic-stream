@@ -2,19 +2,48 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
+
+	"github.com/spf13/cobra"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-const eventSchemasFlagUsage = "directory of event-schema JSON files added to the built-in event schemas"
+const eventSchemasFlag = "event-schemas"
 
-func eventSchemaCompileOptions(dir string) ([]spec.CompileOption, error) {
+func registerEventSchemasFlag(root *cobra.Command) {
+	root.PersistentFlags().String(eventSchemasFlag, "", "directory of event-schema JSON files added to the built-in event schemas")
+}
+
+func loadEventSchemas(cmd *cobra.Command) (*spec.EventSchemas, error) {
+	dir := eventSchemaDirectory(cmd)
 	if dir == "" {
-		return nil, nil
+		return spec.BuiltinEventSchemas(), nil
 	}
 	schemas, err := spec.LoadEventSchemas(dir)
 	if err != nil {
-		return nil, fmt.Errorf("--event-schemas: %w", err)
+		return nil, fmt.Errorf("--%s: %w", eventSchemasFlag, err)
 	}
-	return []spec.CompileOption{spec.WithEventSchemas(schemas)}, nil
+	return schemas, nil
+}
+
+func loadLoggedEventSchemas(cmd *cobra.Command) (*spec.EventSchemas, error) {
+	schemas, err := loadEventSchemas(cmd)
+	if err != nil {
+		return nil, err
+	}
+	digest, err := schemas.Digest()
+	if err != nil {
+		return nil, fmt.Errorf("digest event schemas: %w", err)
+	}
+	slog.Info("event schemas loaded", "event_schemas_digest", digest, "event_schemas_dir", eventSchemaDirectory(cmd))
+	return schemas, nil
+}
+
+func eventSchemaDirectory(cmd *cobra.Command) string {
+	flag := cmd.Flags().Lookup(eventSchemasFlag)
+	if flag == nil {
+		return ""
+	}
+	return flag.Value.String()
 }

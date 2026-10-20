@@ -42,22 +42,22 @@ func TestRunRecordedRefusesASourceThatCannotVouchForTheReplay(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name    string
-		request func(*testing.T) (domain.Request, string)
+		request func(*testing.T) (Request, string)
 		wantErr string
 	}{
-		{"source database missing", func(t *testing.T) (domain.Request, string) {
+		{"source database missing", func(t *testing.T) (Request, string) {
 			t.Helper()
 			return newRequest(t, fixtureSpec), filepath.Join(t.TempDir(), "missing.db")
 		}, "source database"},
-		{"spec never deployed in the source", func(t *testing.T) (domain.Request, string) {
+		{"spec never deployed in the source", func(t *testing.T) (Request, string) {
 			t.Helper()
 			return newRequest(t, alwaysTriggerSpec(t)), recordedSource(t, fixtureSpec)
 		}, "never deployed spec"},
-		{"spec unreadable", func(t *testing.T) (domain.Request, string) {
+		{"spec unreadable", func(t *testing.T) (Request, string) {
 			t.Helper()
 			return newRequest(t, filepath.Join(t.TempDir(), "missing.situation.yaml")), recordedSource(t, fixtureSpec)
 		}, "compile spec"},
-		{"source recorded no decision for an executable episode", func(t *testing.T) (domain.Request, string) {
+		{"source recorded no decision for an executable episode", func(t *testing.T) (Request, string) {
 			t.Helper()
 			workingSpec := alwaysTriggerSpec(t)
 			return newRequest(t, workingSpec), recordedSource(t, workingSpec)

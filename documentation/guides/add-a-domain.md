@@ -16,6 +16,12 @@ Include event type, schema version, payload fields, units, and constraints that
 the registry can validate. Extend registry tests and deliberately update the
 golden digest only when the data change is reviewed.
 
+A deployment that must not wait for a rebuild can keep its schemas outside the
+repository instead: put them, in the same format, in a directory and pass it
+with the global `--event-schemas <dir>` flag to `validate`, `run`, `run-live`
+and `serve`. The directory adds schemas to the built-in ones and can never
+change a built-in one. See [CLI reference](../reference/cli.md#global-flags).
+
 ## 2. Define simulator input only when needed
 
 For simulator traces, update:

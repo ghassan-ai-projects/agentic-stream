@@ -10,6 +10,26 @@ The registered commands are defined in
 | --- | --- | --- |
 | `--log-level` | `info` | `debug`, `info`, `warn` or `error` |
 | `--log-format` | `text` | `text` or `json` structured logs on stderr |
+| `--event-schemas` | empty | directory of event-schema JSON files added to the built-in event schemas; read by `validate`, `run`, `run-live` and `serve` |
+
+`--event-schemas` reads every `*.json` file of the directory, in name order. Each
+file has the format of
+[`event_schema_data.json`](../../internal/spec/internal/domain/event_schema_data.json):
+a map from `<event_type>/<schema_version>` to the schema. A directory can add
+schemas but never change one: a ref that is already registered must have an
+identical definition, and a missing directory, a directory without `*.json`
+files or a malformed file stops the command before it opens a database or a
+listener. `run`, `run-live` and `serve` log `event_schemas_digest` (and the
+directory) at start, so two runs can be checked against the same schemas.
+
+The schemas are an input to compilation, not part of the spec digest or the run
+artifact. Give the same directory every time a spec that uses them is compiled:
+`serve` after a restart, and `run` when replaying the run (a fresh replay
+database has no memory of the schemas the live run used). A runtime database
+refuses a second definition of a ref it already stores, so a changed directory
+fails at deployment rather than silently validating differently. Commands that
+read a stored deployment instead of compiling the spec (`explain`) see only the
+built-in schemas and do not need the directory.
 
 `serve` logs one structured line when the spec is loaded (name, version,
 digest), when the runtime is ready (owner epoch and lease), when it starts
@@ -30,7 +50,6 @@ Compiles and validates one SituationSpec.
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `--json` | `false` | Emit canonical JSON instead of the summary |
-| `--event-schemas` | empty | directory of event-schema JSON files (the format of `event_schema_data.json`) added to the built-in schemas; a ref already registered must be identical |
 
 ## `run --spec <spec.yaml> --trace <trace.jsonl>`
 

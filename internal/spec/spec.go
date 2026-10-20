@@ -46,6 +46,11 @@ type EventSchema = domain.EventSchema
 // deployment.
 type EventSchemas = domain.EventSchemas
 
+// BuiltinEventSchemas returns the event schemas compiled into the binary.
+func BuiltinEventSchemas() *EventSchemas {
+	return domain.BuiltinEventSchemas()
+}
+
 // LoadEventSchemas reads every *.json file of dir, in name order, in the
 // format of the built-in registry (a map from "<event_type>/<schema_version>"
 // to the schema), and returns the built-in schemas merged with them. A ref

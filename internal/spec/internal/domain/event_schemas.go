@@ -7,6 +7,8 @@ import (
 	"maps"
 	"slices"
 	"sync"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 type EventSchemas struct {
@@ -46,6 +48,17 @@ func (s *EventSchemas) Lookup(ref string) (EventSchema, bool) {
 	}
 	definition, ok := s.schemas[ref]
 	return definition, ok
+}
+
+func (s *EventSchemas) Digest() (string, error) {
+	if s == nil {
+		return BuiltinEventSchemas().Digest()
+	}
+	digest, err := canonicaljson.Digest(canonicaljson.DomainEventSchemas, s.entries)
+	if err != nil {
+		return "", fmt.Errorf("digest event schemas: %w", err)
+	}
+	return digest, nil
 }
 
 func (s *EventSchemas) Merge(source string, document []byte) (*EventSchemas, error) {

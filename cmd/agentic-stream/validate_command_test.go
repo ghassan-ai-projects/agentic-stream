@@ -69,7 +69,7 @@ func TestValidateWithEventSchemasPrintsTheSameDigestsForEveryExampleSpec(t *test
 	dir := eventSchemaDir(t)
 	for _, path := range specs {
 		embedded := runCLI(t, newValidateCommand(), path)
-		withDirectory := runCLI(t, newValidateCommand(), path, "--event-schemas", dir)
+		withDirectory := runCLI(t, newRootCommand(), "validate", path, "--event-schemas", dir)
 		if withDirectory != embedded {
 			t.Fatalf("%s: validate --event-schemas =\n%s\nwant the embedded result\n%s", path, withDirectory, embedded)
 		}
@@ -92,15 +92,15 @@ func TestValidateWithEventSchemasCompilesASpecThatUsesADirectorySchema(t *testin
 	if err := cmd.ExecuteContext(t.Context()); err == nil || !strings.Contains(err.Error(), `unknown event schema "fan.speed.observed/1.0"`) {
 		t.Fatalf("validate without the directory = %v, want the fan schema unknown", err)
 	}
-	if out := runCLI(t, newValidateCommand(), path, "--event-schemas", eventSchemaDir(t)); !strings.HasPrefix(out, "ok: ") {
+	if out := runCLI(t, newRootCommand(), "validate", path, "--event-schemas", eventSchemaDir(t)); !strings.HasPrefix(out, "ok: ") {
 		t.Fatalf("validate --event-schemas = %q, want ok", out)
 	}
 }
 
 func TestValidateRefusesAnEventSchemaDirectoryItCannotRead(t *testing.T) {
 	t.Parallel()
-	cmd := newValidateCommand()
-	cmd.SetArgs([]string{experimentSpec, "--event-schemas", filepath.Join(t.TempDir(), "absent")})
+	cmd := newRootCommand()
+	cmd.SetArgs([]string{"validate", experimentSpec, "--event-schemas", filepath.Join(t.TempDir(), "absent")})
 	if err := cmd.ExecuteContext(t.Context()); err == nil || !strings.Contains(err.Error(), "--event-schemas: load event schemas from") {
 		t.Fatalf("validate with a missing schema directory = %v, want it refused", err)
 	}

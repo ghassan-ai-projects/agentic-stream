@@ -115,7 +115,7 @@ func TestRunModeRefusesMultipleCapabilitySets(t *testing.T) {
 
 func TestRunNTimesRepeatsDeterministicallyInSeparateDatabases(t *testing.T) {
 	t.Parallel()
-	results, err := RunNTimes(seededContext(t), domain.Request{SpecPath: fixtureSpec, TracePath: fixtureTrace, TenantID: "default"}, 3)
+	results, err := RunNTimes(seededContext(t), Request{SpecPath: fixtureSpec, TracePath: fixtureTrace, TenantID: "default"}, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestRunNTimesRepeatsDeterministicallyInSeparateDatabases(t *testing.T) {
 
 func TestRunNTimesRejectsANonPositiveCountAndNamesTheFailedRun(t *testing.T) {
 	t.Parallel()
-	request := domain.Request{SpecPath: fixtureSpec, TracePath: fixtureTrace, TenantID: "default"}
+	request := Request{SpecPath: fixtureSpec, TracePath: fixtureTrace, TenantID: "default"}
 	if _, err := RunNTimes(t.Context(), request, 0); err == nil || !strings.Contains(err.Error(), "n must be > 0") {
 		t.Fatalf("n = 0 = %v, want n must be > 0", err)
 	}

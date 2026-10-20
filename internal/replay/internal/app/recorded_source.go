@@ -2,18 +2,16 @@ package app
 
 import (
 	"context"
-	"fmt"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/store"
 	transport "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/transport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 func RunRecorded(ctx context.Context, request Request, sourcePath string) (domain.Result, error) {
-	compiled, err := spec.CompileFile(ctx, request.SpecPath)
+	compiled, err := compileRequestSpec(ctx, request)
 	if err != nil {
-		return domain.Result{}, fmt.Errorf("compile spec: %w", err)
+		return domain.Result{}, err
 	}
 	source, err := transport.OpenSourceDatabase(ctx, sourcePath)
 	if err != nil {

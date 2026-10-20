@@ -7,6 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/replay"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 type runFlags struct {
@@ -14,6 +15,7 @@ type runFlags struct {
 	workerSocket, workerName   string
 	repeat                     int
 	jsonOutput                 bool
+	eventSchemas               *spec.EventSchemas
 }
 
 func newRunCommand() *cobra.Command {
@@ -43,6 +45,15 @@ func (f *runFlags) run(cmd *cobra.Command) error {
 	if err := f.requireOneMode(); err != nil {
 		return err
 	}
+	schemas, err := loadLoggedEventSchemas(cmd)
+	if err != nil {
+		return err
+	}
+	f.eventSchemas = schemas
+	return f.runSelectedMode(cmd)
+}
+
+func (f *runFlags) runSelectedMode(cmd *cobra.Command) error {
 	if f.sourceDB != "" {
 		return runRecordedReplay(cmd, f)
 	}
@@ -50,7 +61,7 @@ func (f *runFlags) run(cmd *cobra.Command) error {
 		return runShadowReplay(cmd, f)
 	}
 	if f.repeat != 1 {
-		return runRepeatedReplay(cmd, f.dbPath, f.tenantID, f.repeat)
+		return runRepeatedReplay(cmd, f)
 	}
 	return runReplayCommand(cmd, f)
 }
@@ -68,15 +79,15 @@ func (f *runFlags) requireOneMode() error {
 	return nil
 }
 
-func runRepeatedReplay(cmd *cobra.Command, dbPath, tenantID string, repeat int) error {
-	if repeat < 2 || dbPath != "" {
+func runRepeatedReplay(cmd *cobra.Command, f *runFlags) error {
+	if f.repeat < 2 || f.dbPath != "" {
 		return fmt.Errorf("--repeat needs at least 2 runs and its own fresh databases (no --db)")
 	}
 	specPath, tracePath, err := replayPaths(cmd)
 	if err != nil {
 		return err
 	}
-	results, err := replay.RunNTimes(cmd.Context(), replay.Request{SpecPath: specPath, TracePath: tracePath, TenantID: tenantID}, repeat)
+	results, err := replay.RunNTimes(cmd.Context(), replay.Request{SpecPath: specPath, TracePath: tracePath, TenantID: f.tenantID, EventSchemas: f.eventSchemas}, f.repeat)
 	if err != nil {
 		return fmt.Errorf("repeat replay: %w", err)
 	}
@@ -115,7 +126,7 @@ func replayRequest(cmd *cobra.Command, f *runFlags) (replay.Request, error) {
 	if f.dbPath == "" {
 		f.dbPath = tracePath + ".replay.db"
 	}
-	return replay.Request{DBPath: f.dbPath, SpecPath: specPath, TracePath: tracePath, TenantID: f.tenantID}, nil
+	return replay.Request{DBPath: f.dbPath, SpecPath: specPath, TracePath: tracePath, TenantID: f.tenantID, EventSchemas: f.eventSchemas}, nil
 }
 
 func runReplayCommand(cmd *cobra.Command, f *runFlags) error {

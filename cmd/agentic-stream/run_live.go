@@ -21,6 +21,11 @@ func newRunLiveCommand() *cobra.Command {
 		Use:   "run-live --spec <spec.yaml> --trace <trace.jsonl>",
 		Short: "Run one owner-scoped live Go pipeline batch.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			schemas, err := loadLoggedEventSchemas(cmd)
+			if err != nil {
+				return err
+			}
+			flags.eventSchemas = schemas
 			return printLiveBatch(cmd, flags)
 		},
 	}
@@ -78,7 +83,7 @@ func prepareLiveBatch(runCtx context.Context, flags liveFlags, stop context.Canc
 	if err := startLiveTelemetry(runCtx, cleanup); err != nil {
 		return nil, nil, err
 	}
-	compiled, err := spec.CompileFile(runCtx, flags.specPath)
+	compiled, err := spec.CompileFile(runCtx, flags.specPath, spec.WithEventSchemas(flags.eventSchemas))
 	if err != nil {
 		return nil, nil, fmt.Errorf("compile spec: %w", err)
 	}

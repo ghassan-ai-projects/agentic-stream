@@ -8,8 +8,9 @@ import (
 )
 
 // Request identifies one replay session: the isolated database path, the
-// spec file, the trace file and the tenant.
-type Request = domain.Request
+// spec file, the trace file, the tenant and the event schemas the spec
+// compiles against (nil means the built-in schemas).
+type Request = app.Request
 
 // Run replays the request's trace against its spec and returns the canonical
 // result.

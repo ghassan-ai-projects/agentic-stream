@@ -29,21 +29,20 @@ type replaySession struct {
 	tenantID string
 }
 
-func prepareReplaySession(ctx context.Context, database transport.Database, specPath, tracePath, tenantID string) (*replaySession, error) {
-	compiled, err := spec.CompileFile(ctx, specPath)
+func prepareReplaySession(ctx context.Context, database transport.Database, request Request) (*replaySession, error) {
+	compiled, err := compileRequestSpec(ctx, request)
 	if err != nil {
-		return nil, fmt.Errorf("compile spec: %w", err)
+		return nil, err
 	}
-
-	session := &replaySession{database: database, store: store.New(database.DB), compiled: compiled, tenantID: tenantID}
+	session := &replaySession{database: database, store: store.New(database.DB), compiled: compiled, tenantID: request.TenantID}
 	// Register the compiled schemas before deriving the virtual clock epoch.
 	// Epoch derivation must inspect the same ingress validity boundary as
 	// JSONLReplay; otherwise a quarantined future-dated line could move the
 	// replay clock and change the result of valid evidence.
-	if err := session.store.SaveSpecDeployment(ctx, tenantID, compiled); err != nil {
+	if err := session.store.SaveSpecDeployment(ctx, request.TenantID, compiled); err != nil {
 		return nil, fmt.Errorf("prepare replay deployment: %w", err)
 	}
-	log, clk, err := session.prepareReplayClock(ctx, tracePath)
+	log, clk, err := session.prepareReplayClock(ctx, request.TracePath)
 	if err != nil {
 		return nil, err
 	}

@@ -26,9 +26,9 @@ func seededContext(t *testing.T) context.Context {
 	return replaytest.WithDatabaseOpener(t.Context(), storagetest.Open)
 }
 
-func newRequest(t *testing.T, specPath string) domain.Request {
+func newRequest(t *testing.T, specPath string) Request {
 	t.Helper()
-	return domain.Request{DBPath: filepath.Join(t.TempDir(), "replay.db"), SpecPath: specPath, TracePath: fixtureTrace, TenantID: "default"}
+	return Request{DBPath: filepath.Join(t.TempDir(), "replay.db"), SpecPath: specPath, TracePath: fixtureTrace, TenantID: "default"}
 }
 
 func openReplayDatabase(t *testing.T, path string) *storage.DB {

@@ -1,12 +1,5 @@
 package domain
 
-type Request struct {
-	DBPath    string
-	SpecPath  string
-	TracePath string
-	TenantID  string
-}
-
 type Result struct {
 	EventsProcessed   int
 	VersionCount      int

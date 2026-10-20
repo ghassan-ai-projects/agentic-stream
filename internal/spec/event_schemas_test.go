@@ -92,3 +92,23 @@ func TestLoadEventSchemasNamesTheDirectory(t *testing.T) {
 		t.Fatalf("LoadEventSchemas = %v, want the directory named", err)
 	}
 }
+
+func TestTheEventSchemaDigestNamesExactlyTheRegisteredSchemas(t *testing.T) {
+	t.Parallel()
+	builtin, err := spec.BuiltinEventSchemas().Digest()
+	if err != nil || !strings.HasPrefix(builtin, "sha256:") {
+		t.Fatalf("built-in digest = %q, %v", builtin, err)
+	}
+	var unset *spec.EventSchemas
+	if fallback, err := unset.Digest(); err != nil || fallback != builtin {
+		t.Fatalf("a nil registry digest = %q, %v, want the built-in %q", fallback, err, builtin)
+	}
+	_, schemaDir := pulseSpecAndSchemas(t)
+	schemas, err := spec.LoadEventSchemas(schemaDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if extended, err := schemas.Digest(); err != nil || extended == builtin {
+		t.Fatalf("a registry with one more schema digests to %q, %v; want a digest other than the built-in", extended, err)
+	}
+}
