@@ -5,8 +5,8 @@ Status: accepted design, built in rounds. The host sessions exist today
 one session after another), and so do the event mapping (site file, readings
 and heartbeats to normalized events through ingress) and the effector (one
 `DCMD` per approved command, receipts and results into the outcome ledger);
-verification from readings, the origin check and the device authority calls
-are planned.
+the device authority calls (claim, bind, reconciliation barrier) as device-wire
+makes them; verification from readings and the origin check are planned.
 This page is the decision record the module is built against.
 
 ## Context
@@ -41,7 +41,7 @@ adapter is in use.
 | `internal/plantwire/internal/domain` | Pure rules: envelope and sequencing, record views, handshake admission, environment rules, commissioning by kind digest; later the site model, event mapping, heartbeat state machine, command plan, receipt classification and expected values. No I/O, no clock. | 13 |
 | `internal/plantwire/internal/wire` | The embedded contract (schemas, `DIGEST`, `VERSION`), schema validation, record size limits, exact 64-bit integers, kind file parsing. | 14 |
 | `internal/plantwire/internal/transport` | Framed connection over a listener `cmd` hands in, control lane before data, write deadline. | 15 |
-| `internal/plantwire/internal/app` | Host supervisor and session, site file, ingest queue and feeder (built); effector, calls to `authority` (planned). | 25 |
+| `internal/plantwire/internal/app` | Host supervisor and session, site file, ingest queue and feeder, effector with its `authority` calls (built); verification and origin (planned). | 25 |
 | `internal/plantwire` | Facade: configuration, settings check, `Run(ctx, emit)`, `Close` (built); the effect port operations and route ownership (planned). | 26 |
 
 The contract folder is
@@ -128,6 +128,15 @@ sent. The answers map to the outcome ledger as follows.
 | `accepted`, then `DRESULT unknown`; `accepted` or a result on another boot | unknown outcome |
 | still `queued` when the session ends | failed, `session_ending` |
 | sent and unanswered when the session ends, or no terminal answer by the deadline plus 2 s, or the dispatch call ends | unknown outcome |
+
+Before a command is sent, the device's boot is recorded with the device
+authority, a reconciliation (opened by a reboot or an earlier unknown outcome)
+refuses it, and the target is claimed and the command bound, through the same
+`authority` operations device-wire uses (`ClaimForDelivery`,
+`RequireReconciliation`). An unknown outcome opens a reconciliation; the
+session's claims are released when it ends. Clearing a reconciliation mirrors
+device-wire (Q4): `ResolveReconciliation` with evidence, which no production
+path calls yet.
 
 ## What the adapter never does
 

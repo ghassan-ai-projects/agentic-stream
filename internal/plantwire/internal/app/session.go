@@ -5,8 +5,10 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sync"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/transport"
@@ -40,13 +42,18 @@ type session struct {
 	queue        chan<- contractsv1.Envelope
 	lines        chan readResult
 	orders       chan request
+	lookups      chan lookup
+	authority    *authority.Service
+	claimsMu     sync.Mutex
+	claims       map[string]authority.TargetClaim
 	mailboxes    map[string]chan<- domain.Settlement
 	done         chan struct{}
 }
 
 func (h *Host) serve(ctx context.Context, conn *transport.Conn, queue chan<- contractsv1.Envelope) {
 	s := &session{conn: conn, conversation: domain.NewConversation(h.admission, h.epoch, h.mapping), clock: h.clock,
-		queue: queue, lines: make(chan readResult), orders: make(chan request), mailboxes: map[string]chan<- domain.Settlement{},
+		queue: queue, lines: make(chan readResult), orders: make(chan request), lookups: make(chan lookup),
+		mailboxes: map[string]chan<- domain.Settlement{}, authority: h.authority, claims: map[string]authority.TargetClaim{},
 		done: make(chan struct{})}
 	h.goLive(s)
 	defer h.goLive(nil)
@@ -77,6 +84,8 @@ func (s *session) step(ctx context.Context) string {
 		return s.heartbeat()
 	case req := <-s.orders:
 		return s.order(req)
+	case l := <-s.lookups:
+		return s.answerLookup(l)
 	}
 }
 
@@ -155,6 +164,7 @@ func (s *session) read() {
 func (s *session) close() {
 	s.deliver(s.conversation.Abandon())
 	close(s.done)
+	s.releaseClaims()
 	if s.beat != nil {
 		s.beat.Stop()
 	}

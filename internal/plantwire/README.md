@@ -15,7 +15,7 @@ Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 | Domain | Envelope and sequencing, the birth view, handshake admission, environment rules, commissioning by kind digest, host settings, the session conversation (STATE, HSYNC, rebirth, goodbye), the site mapping and directory, device births, data and deaths, readings to normalized events, the heartbeat on event time, commands in flight and their settlement from receipts and results (built); verification and origin (planned) | partly built |
 | Wire | The vendored contract (embedded schemas, `DIGEST`, `VERSION`), record decoding with size limits and exact integers and the body of each record type, outgoing records checked against their schema, kind file and site file parsing (the site file schema is embedded) | built |
 | Transport | One connection at a time over an injected listener, one record per line, 2 s write deadline | built |
-| App | Kind commissioning, the site file, host supervisor and session loop, the ingest queue and feeder, the effector: catalog bound, device lookup, final authorization, one `DCMD` through the session loop, a mailbox per command (built); verification, origin and authority calls (planned) | partly built |
+| App | Kind commissioning, the site file, host supervisor and session loop, the ingest queue and feeder, the effector: catalog bound, device lookup, final authorization, one `DCMD` through the session loop, a mailbox per command (built); the device authority calls (built); verification and origin (planned) | partly built |
 | Facade | `New`, `CheckSettings`, `Run(ctx, emit)`, `Close`, `OwnsRoute`, `Dispatch`, `DispatchAuthorized`, `VerifyDeviceCommand` (built) | built |
 
 `serve --plant-wire-socket` is the only caller. It creates the listener with
@@ -98,3 +98,32 @@ command is refused `session_ending` and any other is unknown. The effector
 waits until the terminal settlement, the deadline plus 2 s on the host clock,
 or the dispatcher's call timeout. The outcome table is in
 [the design](../../documentation/design/plant-wire-adapter.md#commands).
+
+### Device authority
+
+The host commands as the runtime owner (`Config.Authority`, `Config.OwnerEpoch`;
+`serve` passes its own), through the same `internal/authority` operations as
+device-wire:
+
+1. The device's current boot is read from the live session and recorded
+   (`RecordDeviceState` with `device_id` and `boot_id`). The first boot is
+   clear, the same boot keeps its status and a new boot opens a reconciliation;
+   while one is open the command is refused (`ErrReconciliationRequired`) and
+   nothing is sent. Only devices the host commands are recorded.
+2. `ClaimForDelivery` claims the target for that boot, binds the command (its
+   digest is the content the node compares: device, command, args, expected
+   boot) and asserts the claim. The session holds its claims and releases them
+   when it ends.
+3. The order carries the bound boot; if the device rebooted meanwhile the loop
+   refuses it (`ErrBootChanged`).
+4. After an executed command (succeeded or failed) the claim is asserted again;
+   a lost claim makes the outcome unknown. An unknown outcome opens a
+   reconciliation for the device boot (`RequireReconciliation`, on the priority
+   path after authority loss).
+
+A reconciliation is cleared exactly as for device-wire: through the authority's
+`ResolveReconciliation` with evidence, after the dispatcher's reconciliation of
+the unknown command. No production path calls it today for either link, so an
+open reconciliation blocks the device until an operator path exists (Q4). A
+fresh good reading of the device on its current boot is the evidence a future
+clearing path would present.

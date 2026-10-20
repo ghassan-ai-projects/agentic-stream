@@ -28,14 +28,32 @@ func (h *Host) Dispatch(context.Context, actionport.Command) (actionport.Effect,
 }
 
 func (h *Host) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
-	order, err := h.orderFor(command)
+	order, live, err := h.prepare(ctx, command, authorization)
 	if err != nil {
 		return actionport.Effect{}, err
 	}
-	if err := authorize(ctx, authorization); err != nil {
+	claim, err := h.admit(ctx, live, order)
+	if err != nil {
 		return actionport.Effect{}, err
 	}
-	return h.command(ctx, order)
+	effect, err := h.command(ctx, live, order)
+	return h.settleAuthority(ctx, claim, effect, err)
+}
+
+func (h *Host) prepare(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (domain.CommandOrder, *session, error) {
+	order, err := h.orderFor(command)
+	if err != nil {
+		return domain.CommandOrder{}, nil, err
+	}
+	if err := authorize(ctx, authorization); err != nil {
+		return domain.CommandOrder{}, nil, err
+	}
+	live := h.liveSession()
+	order.ExpectedBootID, err = live.bootOf(ctx, order.Device)
+	if err != nil {
+		return domain.CommandOrder{}, nil, fmt.Errorf("plantwire: command %s not sent: %w", order.CommandID, err)
+	}
+	return order, live, nil
 }
 
 func (h *Host) VerifyDeviceCommand(context.Context, actionport.Command) (string, map[string]any, error) {
@@ -66,12 +84,11 @@ func authorize(ctx context.Context, authorization actionport.Authorization) erro
 	return nil
 }
 
-func (h *Host) command(ctx context.Context, order domain.CommandOrder) (actionport.Effect, error) {
+func (h *Host) command(ctx context.Context, live *session, order domain.CommandOrder) (actionport.Effect, error) {
 	answers := make(chan domain.Settlement, mailboxSize)
 	deadline := h.clock.NewTimer(time.Unix(0, order.DeadlineNS).Sub(h.clock.Now()) + answerGrace)
 	defer deadline.Stop()
-	live := h.liveSession()
-	if live == nil || !live.submit(ctx, request{order: order, answers: answers}) {
+	if !live.submit(ctx, request{order: order, answers: answers}) {
 		return actionport.Effect{}, fmt.Errorf("plantwire: command %s not sent: %w", order.CommandID, domain.ErrNoSession)
 	}
 	return await(ctx, order, answers, deadline)

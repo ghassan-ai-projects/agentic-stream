@@ -14,10 +14,13 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 )
 
@@ -59,7 +62,8 @@ func runCommandingHost(t *testing.T, kinds string) (*plantwire.Host, string) {
 		t.Fatal(err)
 	}
 	host, err := plantwire.New(plantwire.Config{Listener: listener, Settings: plantwire.Settings{Environment: plantwire.EnvironmentSimulated},
-		KindsDir: kinds, SitePath: filepath.Join(benchPlantWire, "thermal-bench.site.json"), Catalog: catalog})
+		KindsDir: kinds, SitePath: filepath.Join(benchPlantWire, "thermal-bench.site.json"), Catalog: catalog,
+		Authority: testDeviceAuthority(t), OwnerEpoch: testOwnerEpoch})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,4 +131,20 @@ func dispatchOnceBorn(t *testing.T, host *plantwire.Host, command actionport.Com
 func idempotencyKeyOf(id string) string {
 	sum := sha256.Sum256([]byte(id))
 	return kernel.EncodeDigest(sum[:])
+}
+
+const testOwnerEpoch = "epoch-1"
+
+func testDeviceAuthority(t *testing.T) *deviceauthority.Service {
+	t.Helper()
+	db := storagetest.OpenTemp(t)
+	owner := &runtimecontrol.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Hour}
+	if err := owner.Claim(t.Context(), testOwnerEpoch); err != nil {
+		t.Fatal(err)
+	}
+	authority, err := newDeviceAuthority(db, owner, &runtimecontrol.EpochControl{DB: db})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return authority
 }

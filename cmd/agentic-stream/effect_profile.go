@@ -171,10 +171,10 @@ func (o effectProfileOptions) validateGatewayLink(transport *device.UDSTransport
 }
 
 func (o effectProfileOptions) openGatewayEffector(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, transport *device.UDSTransport, catalog *device.CapabilityCatalog) (actionport.RoutedEffector, *device.GatewayEffector, func() error, error) {
-	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: epochControl, Outcomes: actions.CountUnresolvedOutcomes, ClaimLease: owner.Lease})
+	authority, err := newDeviceAuthority(db, owner, epochControl)
 	if err != nil {
 		_ = transport.Close()
-		return nil, nil, nil, fmt.Errorf("configure device authority: %w", err)
+		return nil, nil, nil, err
 	}
 	serial, closeFn, err := device.NewGatewayEffector(ctx, o.gatewayEffectorConfig(authority, epoch, telemetryRuntime, transport, catalog))
 	if err != nil {
@@ -194,6 +194,14 @@ func (o effectProfileOptions) gatewayEffectorConfig(authority *deviceauthority.S
 		Authority:              authority,
 		Telemetry:              telemetryRuntime,
 	}
+}
+
+func newDeviceAuthority(db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl) (*deviceauthority.Service, error) {
+	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: epochControl, Outcomes: actions.CountUnresolvedOutcomes, ClaimLease: owner.Lease})
+	if err != nil {
+		return nil, fmt.Errorf("configure device authority: %w", err)
+	}
+	return authority, nil
 }
 
 func fallbackEffector(profile device.EffectProfile) actionport.RoutedEffector {

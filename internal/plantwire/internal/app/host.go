@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
@@ -20,26 +21,30 @@ import (
 var ErrNoListener = errors.New("plantwire: the host needs a listener")
 
 type Config struct {
-	Listener  *transport.Listener
-	Settings  domain.Settings
-	KindsDir  string
-	SitePath  string
-	Catalog   *device.CapabilityCatalog
-	Clock     sources.Clock
-	QueueSize int
+	Listener   *transport.Listener
+	Settings   domain.Settings
+	KindsDir   string
+	SitePath   string
+	Catalog    *device.CapabilityCatalog
+	Authority  *authority.Service
+	OwnerEpoch string
+	Clock      sources.Clock
+	QueueSize  int
 }
 
 type Host struct {
-	listener  *transport.Listener
-	admission domain.Admission
-	mapping   domain.Mapping
-	epoch     int64
-	clock     sources.Clock
-	queueSize int
-	catalog   *device.CapabilityCatalog
-	closing   atomic.Bool
-	liveMu    sync.Mutex
-	live      *session
+	listener   *transport.Listener
+	admission  domain.Admission
+	mapping    domain.Mapping
+	epoch      int64
+	clock      sources.Clock
+	queueSize  int
+	catalog    *device.CapabilityCatalog
+	authority  *authority.Service
+	ownerEpoch string
+	closing    atomic.Bool
+	liveMu     sync.Mutex
+	live       *session
 }
 
 func New(cfg Config) (*Host, error) {
@@ -66,6 +71,9 @@ func checkConfig(cfg Config) error {
 	if err := domain.CheckSettings(cfg.Settings); err != nil {
 		return fmt.Errorf("plantwire: host settings: %w", err)
 	}
+	if cfg.Catalog != nil && (cfg.Authority == nil || cfg.OwnerEpoch == "") {
+		return ErrAuthorityRequired
+	}
 	return nil
 }
 
@@ -77,7 +85,8 @@ func newHost(cfg Config, inventory domain.Inventory, mapping domain.Mapping) *Ho
 	}
 	admission := domain.Admission{Environment: cfg.Settings.Environment, ContractDigest: wire.ContractDigest(), Inventory: inventory}
 	return &Host{listener: cfg.Listener, admission: admission, mapping: mapping, epoch: epoch, clock: clock,
-		queueSize: cmp.Or(max(cfg.QueueSize, 0), defaultQueueSize), catalog: cfg.Catalog}
+		queueSize: cmp.Or(max(cfg.QueueSize, 0), defaultQueueSize), catalog: cfg.Catalog,
+		authority: cfg.Authority, ownerEpoch: cfg.OwnerEpoch}
 }
 
 func (h *Host) logReady(cfg Config, siteDigest string) {

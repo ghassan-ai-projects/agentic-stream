@@ -135,9 +135,16 @@ func assertCommandStamped(t *testing.T, conversation *domain.Conversation, want 
 	if err != nil {
 		t.Fatal(err)
 	}
+	boot := want["expected_boot_id"].(string)
+	if slices.Contains(oldBootCommands, want["command_id"]) {
+		boot, err = conversation.BootOf(want["device"].(string))
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := conversation.Command(domain.CommandOrder{CommandID: want["command_id"].(string), IdempotencyKey: want["idempotency_key"].(string),
 		PolicyDigest: want["policy_digest"].(string), Device: want["device"].(string), Command: want["command"].(string),
-		Args: want["args"].(map[string]any), DeadlineNS: deadline})
+		Args: want["args"].(map[string]any), ExpectedBootID: boot, DeadlineNS: deadline})
 	if err != nil {
 		t.Fatalf("Command(%v) = %v", want["command_id"], err)
 	}

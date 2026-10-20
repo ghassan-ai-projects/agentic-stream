@@ -10,9 +10,13 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/plantwirefake"
 )
 
@@ -95,7 +99,7 @@ func TestTheHostIsTheEffectorOfItsCatalogsRoutes(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	host, err := plantwire.New(plantwire.Config{Listener: listener, KindsDir: plantwirefake.KindsDir(t, "."), Catalog: catalog,
-		Settings: plantwire.Settings{Environment: plantwire.EnvironmentSimulated}})
+		Authority: deviceAuthority(t), OwnerEpoch: "epoch-1", Settings: plantwire.Settings{Environment: plantwire.EnvironmentSimulated}})
 	if err != nil {
 		t.Fatalf("New = %v", err)
 	}
@@ -114,4 +118,18 @@ func TestTheHostIsTheEffectorOfItsCatalogsRoutes(t *testing.T) {
 	if status, _, err := host.VerifyDeviceCommand(t.Context(), command); status != "" || err != nil {
 		t.Errorf("VerifyDeviceCommand = %q, %v; want no final status yet", status, err)
 	}
+}
+
+func deviceAuthority(t *testing.T) *authority.Service {
+	t.Helper()
+	db := storagetest.OpenTemp(t)
+	owner := &control.RuntimeOwner{DB: db, InstanceID: "instance-1", Lease: time.Hour}
+	if err := owner.Claim(t.Context(), "epoch-1"); err != nil {
+		t.Fatal(err)
+	}
+	service, err := authority.New(authority.Config{DB: db, Owner: owner, Epochs: &control.EpochControl{DB: db}, Outcomes: actions.CountUnresolvedOutcomes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service
 }

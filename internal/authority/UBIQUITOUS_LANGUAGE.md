@@ -38,6 +38,7 @@ A word that is not here should not appear in the module's public API.
 | **Renew** | The same owner claims again while its claim is still active. | `ClaimRenewed` | `claim_renewed` |
 | **Reject** | Another owner holds a live claim. The attempt is audited and refused. | `ClaimRejected`, `ErrTargetClaimBusy` | `claim_rejected` |
 | **Release** | The exact holder gives up its active claim. | `ReleaseClaim` | `claim_released` |
+| **Claim for delivery** | The one sequence every device link runs before it sends an ordinary command: claim the target, bind the command (a refused binding releases the claim), assert the claim. | `ClaimForDelivery`, `ErrClaimRefused`, `ErrBindingRefused` | — |
 | **Not owned** | The caller is not the exact live holder. | `ErrTargetClaimNotOwned` | — |
 
 ## Commands
@@ -58,6 +59,7 @@ A word that is not here should not appear in the module's public API.
 | **Reboot** | A device state whose boot ID differs from the recorded one. | `StateRebooted` | — |
 | **Reconciliation** | A case opened for a device boot when the runtime can no longer trust what the device did: a reboot, an untrusted receipt, or an unknown outcome. | `domain.Reconciliation` | `device_reconciliation` |
 | **Reconciliation required** | A reconciliation is open. Ordinary commands to the device are blocked. This is the **barrier**. | `ReconciliationRequired`, `ErrReconciliationRequired` | `status = 'required'` |
+| **Require reconciliation** | Open a reconciliation for an unknown outcome, on the priority path when the owner lost its authority. Every device link calls it. | `RequireReconciliation` | `reconciliation_opened` |
 | **Clear** | No reconciliation is open. | `ReconciliationClear` | `status = 'clear'` |
 | **Open** a reconciliation | Move the device boot to required and audit the reason. | `OpenReconciliation`, `OpenReconciliationAfterAuthorityLoss` | `reconciliation_opened` |
 | **Reconciliation evidence** | Independent, digest-bound feedback about one device boot: source, type `device_state_feedback`, typed state, feedback, and three SHA-256 references. A closed set of fields. | `ReconciliationEvidence`, `SealReconciliationEvidence`, `ParseReconciliationEvidence` | `resolution_evidence_json` |

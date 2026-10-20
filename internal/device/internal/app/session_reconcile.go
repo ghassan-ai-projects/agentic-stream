@@ -2,11 +2,9 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
-	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
@@ -58,16 +56,10 @@ func (s *Session) requireReconciliation(ctx context.Context, reason string) erro
 	s.reconciliationRequired = true
 	persistCtx, cancel := sources.DetachedContext(ctx)
 	defer cancel()
-	return s.finishReconciliationBarrier(persistCtx, reason, wasRequired, s.openReconciliation(persistCtx, reason))
+	return s.finishReconciliationBarrier(wasRequired, s.authority.RequireReconciliation(persistCtx, s.reconciliationOpening(reason)))
 }
 
-// openReconciliation persists the reconciliation for the current boot.
-func (s *Session) openReconciliation(ctx context.Context, reason string) error {
-	return s.authority.OpenReconciliation(ctx, s.reconciliationOpening(reason)) //nolint:wrapcheck // finishReconciliationBarrier wraps it.
-}
-
-func (s *Session) finishReconciliationBarrier(persistCtx context.Context, reason string, wasRequired bool, barrierErr error) error {
-	barrierErr = s.recoverReconciliationBarrier(persistCtx, reason, barrierErr)
+func (s *Session) finishReconciliationBarrier(wasRequired bool, barrierErr error) error {
 	if barrierErr != nil {
 		s.opened = false
 		return fmt.Errorf("persist reconciliation barrier: %w", barrierErr)
@@ -76,20 +68,4 @@ func (s *Session) finishReconciliationBarrier(persistCtx context.Context, reason
 		s.telemetry.ObserveReconciliationBarrier()
 	}
 	return nil
-}
-
-func (s *Session) recoverReconciliationBarrier(persistCtx context.Context, reason string, barrierErr error) error {
-	if isAuthorityFailure(barrierErr) {
-		recoveryErr := s.authority.OpenReconciliationAfterAuthorityLoss(persistCtx, s.reconciliationOpening(reason))
-		if recoveryErr == nil {
-			barrierErr = nil
-		} else {
-			barrierErr = errors.Join(barrierErr, recoveryErr)
-		}
-	}
-	return barrierErr
-}
-
-func isAuthorityFailure(err error) bool {
-	return errors.Is(err, runtimecontrol.ErrRuntimeOwnerBusy) || errors.Is(err, runtimecontrol.ErrEpochKilled) || errors.Is(err, runtimecontrol.ErrEpochDraining)
 }

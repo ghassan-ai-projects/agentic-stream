@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/plantwirefake"
@@ -30,15 +29,18 @@ type dispatched struct {
 
 func commandingHost(t *testing.T) (runningHost, *plantwirefake.Node) {
 	t.Helper()
-	catalog, err := device.LoadCapabilityCatalog([]byte(pumpCatalog))
-	if err != nil {
-		t.Fatal(err)
-	}
-	host := pumpHost(t, app.Config{Catalog: catalog}, nil)
+	host, node, _ := commandingHostWith(t)
+	return host, node
+}
+
+func commandingHostWith(t *testing.T) (runningHost, *plantwirefake.Node, deviceAuthority) {
+	t.Helper()
+	devices := newDeviceAuthority(t)
+	host := pumpHost(t, commandingConfig(t, devices), nil)
 	node := bornNode(t, host, "s-1")
 	node.Send(plantwirefake.Fixture(t, ".", "DBIRTH.json"))
 	host.event(t)
-	return host, node
+	return host, node, devices
 }
 
 func pumpCommand(id string) actionport.Command {
@@ -205,11 +207,7 @@ func TestHostSendsNothingItCannotSendSafely(t *testing.T) {
 
 func TestHostRefusesACommandWithoutALiveSessionOrABornDevice(t *testing.T) {
 	t.Parallel()
-	catalog, err := device.LoadCapabilityCatalog([]byte(pumpCatalog))
-	if err != nil {
-		t.Fatal(err)
-	}
-	host := pumpHost(t, app.Config{Catalog: catalog}, nil)
+	host := pumpHost(t, commandingConfig(t, newDeviceAuthority(t)), nil)
 	if got := answered(t, dispatch(host, pumpCommand("c-1"))); !errors.Is(got.err, domain.ErrNoSession) {
 		t.Fatalf("a command with no session = %v, want ErrNoSession", got.err)
 	}

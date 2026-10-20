@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
+	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
@@ -60,28 +61,46 @@ func (core *runtimeCore) openServeEffects(ctx context.Context, flags serveFlags,
 	if err != nil {
 		return effects{}, err
 	}
-	opened.plant, err = openPlantWireHost(flags, cleanup)
+	opened.plant, err = core.openPlantWireHost(flags, cleanup)
 	if opened.plant != nil && flags.profileOptions().DeviceCatalog != "" {
 		opened.device = opened.plant
 	}
 	return opened, err
 }
 
-func openPlantWireHost(flags serveFlags, cleanup *cleanups) (*plantwire.Host, error) {
+type plantWireCommanding struct {
+	catalog   *device.CapabilityCatalog
+	authority *deviceauthority.Service
+	epoch     string
+}
+
+func (core *runtimeCore) openPlantWireHost(flags serveFlags, cleanup *cleanups) (*plantwire.Host, error) {
 	options := flags.profileOptions()
 	if options.PlantWireSocket == "" {
 		return nil, nil
 	}
-	catalog, err := plantWireCatalog(options)
+	commanding, err := core.plantWireCommanding(options)
 	if err != nil {
 		return nil, err
 	}
-	host, err := newPlantWireHost(flags.plantWire, options, catalog)
+	host, err := newPlantWireHost(flags.plantWire, options, commanding)
 	if err != nil {
 		return nil, err
 	}
 	cleanup.add(func() { _ = host.Close() })
 	return host, nil
+}
+
+func (core *runtimeCore) plantWireCommanding(options effectProfileOptions) (plantWireCommanding, error) {
+	catalog, err := plantWireCatalog(options)
+	if err != nil || catalog == nil {
+		return plantWireCommanding{}, err
+	}
+	authority, err := newDeviceAuthority(core.db, core.owner, core.epochControl)
+	if err != nil {
+		return plantWireCommanding{}, err
+	}
+	return plantWireCommanding{catalog: catalog, authority: authority, epoch: core.epoch}, nil
 }
 
 func plantWireCatalog(options effectProfileOptions) (*device.CapabilityCatalog, error) {
@@ -98,13 +117,14 @@ func plantWireCatalog(options effectProfileOptions) (*device.CapabilityCatalog, 
 	return catalog, nil
 }
 
-func newPlantWireHost(flags plantWireFlags, options effectProfileOptions, catalog *device.CapabilityCatalog) (*plantwire.Host, error) {
+func newPlantWireHost(flags plantWireFlags, options effectProfileOptions, commanding plantWireCommanding) (*plantwire.Host, error) {
 	listener, err := worker.ListenEvidenceSocket(options.PlantWireSocket)
 	if err != nil {
 		return nil, fmt.Errorf("listen on the plant wire socket: %w", err)
 	}
 	host, err := plantwire.New(plantwire.Config{Listener: listener, Settings: flags.settings(options),
-		KindsDir: flags.kindsDir, SitePath: flags.sitePath, Catalog: catalog})
+		KindsDir: flags.kindsDir, SitePath: flags.sitePath, Catalog: commanding.catalog, Authority: commanding.authority,
+		OwnerEpoch: commanding.epoch})
 	if err != nil {
 		_ = listener.Close()
 		return nil, fmt.Errorf("open the plant wire host: %w", err)

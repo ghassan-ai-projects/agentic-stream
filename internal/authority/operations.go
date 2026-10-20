@@ -74,6 +74,22 @@ func (s *Service) ResolveReconciliation(ctx context.Context, request ResolutionR
 	return s.app.ResolveReconciliation(ctx, request)
 }
 
+// ClaimForDelivery claims the binding's target for its device boot and owner,
+// binds the command to it and asserts the claim, in that order, immediately
+// before a command is delivered. A refused claim wraps ErrClaimRefused; a
+// refused binding wraps ErrBindingRefused and releases the claim; any other
+// error leaves the claim held, so the caller releases it with its session.
+func (s *Service) ClaimForDelivery(ctx context.Context, binding CommandBinding) error {
+	return s.app.ClaimForDelivery(ctx, binding)
+}
+
+// RequireReconciliation opens a reconciliation for the device boot, on the
+// priority path when the owner's lease or epoch was lost, so an unknown
+// outcome blocks the device even after authority loss.
+func (s *Service) RequireReconciliation(ctx context.Context, opening ReconciliationOpening) error {
+	return s.app.RequireReconciliation(ctx, opening)
+}
+
 // RecordSafeStop records one safe-stop stage on the priority path. Any
 // recorded stage latches the device boot.
 func (s *Service) RecordSafeStop(ctx context.Context, claim TargetClaim, stage SafeStopStage, details map[string]any) error {

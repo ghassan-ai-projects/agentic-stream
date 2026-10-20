@@ -14,8 +14,9 @@ import (
 // Fences are the runtime checks ordinary admission runs inside each admitted
 // unit of work.
 type Fences struct {
-	RuntimeOwner store.OwnerCheck // the singleton runtime lease is held by the epoch
-	EpochControl store.OwnerCheck // the epoch is neither draining nor killed
+	RuntimeOwner  store.OwnerCheck // the singleton runtime lease is held by the epoch
+	EpochControl  store.OwnerCheck // the epoch is neither draining nor killed
+	AuthorityLost func(error) bool
 }
 
 // Config wires the use cases for one runtime owner instance.

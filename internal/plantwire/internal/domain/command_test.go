@@ -9,7 +9,7 @@ import (
 
 func valveOrder(id string) domain.CommandOrder {
 	return domain.CommandOrder{CommandID: id, IdempotencyKey: contractDigest, PolicyDigest: contractDigest, Device: "V1",
-		Command: "set_opening", Args: map[string]any{"opening": 40.0}, DeadlineNS: startNS}
+		Command: "set_opening", Args: map[string]any{"opening": 40.0}, ExpectedBootID: "b1", DeadlineNS: startNS}
 }
 
 func commanding(t *testing.T) *domain.Conversation {
@@ -46,6 +46,26 @@ func TestConversationRefusesACommandItCannotSend(t *testing.T) {
 	}
 	if _, err := conversation.Command(valveOrder("c-1")); !errors.Is(err, domain.ErrCommandInFlight) {
 		t.Errorf("Command(the same id twice) = %v, want ErrCommandInFlight", err)
+	}
+	stale := valveOrder("c-2")
+	stale.ExpectedBootID = "b0"
+	if _, err := conversation.Command(stale); !errors.Is(err, domain.ErrBootChanged) {
+		t.Errorf("Command(bound to an older boot) = %v, want ErrBootChanged", err)
+	}
+}
+
+func TestCommandDigestCoversTheContentTheNodeComparesOnly(t *testing.T) {
+	t.Parallel()
+	first, err := domain.CommandDigest(valveOrder("c-1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, _ := domain.CommandDigest(valveOrder("c-2"))
+	otherBoot := valveOrder("c-1")
+	otherBoot.ExpectedBootID = "b2"
+	moved, _ := domain.CommandDigest(otherBoot)
+	if first != again || first == moved || len(first) != len("sha256:")+64 {
+		t.Fatalf("digests %s, %s, %s: want the id ignored and the boot covered", first, again, moved)
 	}
 }
 

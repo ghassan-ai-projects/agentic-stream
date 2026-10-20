@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/app"
@@ -30,19 +31,23 @@ var (
 	ErrBoardTwice             = domain.ErrBoardTwice
 	ErrNegativeEpoch          = domain.ErrNegativeEpoch
 	ErrNoListener             = app.ErrNoListener
+	ErrAuthorityRequired      = app.ErrAuthorityRequired
 )
 
-// Errors of a command: no live session or an unborn device (nothing sent), no
+// Errors of a command: no live session, an unborn device, a reboot since the
+// command was bound, or an open reconciliation of the device (nothing sent), no
 // site device for the command's target, a missing final authorization check, a
 // node refusal (the receipt's reason is in the provider result) and a failure
 // the device reported. An unknown outcome is an actionport.UnknownOutcomeError.
 var (
-	ErrNoSession             = domain.ErrNoSession
-	ErrDeviceNotBorn         = domain.ErrDeviceNotBorn
-	ErrDeviceNotInSite       = app.ErrDeviceNotInSite
-	ErrAuthorizationRequired = app.ErrAuthorizationRequired
-	ErrCommandRefused        = app.ErrCommandRefused
-	ErrCommandFailed         = app.ErrCommandFailed
+	ErrNoSession              = domain.ErrNoSession
+	ErrDeviceNotBorn          = domain.ErrDeviceNotBorn
+	ErrBootChanged            = domain.ErrBootChanged
+	ErrReconciliationRequired = authority.ErrReconciliationRequired
+	ErrDeviceNotInSite        = app.ErrDeviceNotInSite
+	ErrAuthorizationRequired  = app.ErrAuthorizationRequired
+	ErrCommandRefused         = app.ErrCommandRefused
+	ErrCommandFailed          = app.ErrCommandFailed
 )
 
 // Settings are the host's environment, the hardware boards it may command,
@@ -56,14 +61,18 @@ type Settings = domain.Settings
 // against its schema and the commissioned kinds, and digested. Without it no
 // reading becomes an event. Catalog is the optional capability catalog whose
 // routes the host owns as an effector; without it the host commands nothing.
-// Clock defaults to the physical clock.
+// A host with a catalog needs Authority, the device authority of the runtime
+// owner, and OwnerEpoch, the owner epoch it commands under. Clock defaults to
+// the physical clock.
 type Config struct {
-	Listener net.Listener
-	Settings Settings
-	KindsDir string
-	SitePath string
-	Catalog  *device.CapabilityCatalog
-	Clock    sources.Clock
+	Listener   net.Listener
+	Settings   Settings
+	KindsDir   string
+	SitePath   string
+	Catalog    *device.CapabilityCatalog
+	Authority  *authority.Service
+	OwnerEpoch string
+	Clock      sources.Clock
 }
 
 // Host serves one plant wire session at a time on its listener.
@@ -72,7 +81,8 @@ type Host struct{ app *app.Host }
 // New checks the settings, commissions the kind files and reads the site file.
 func New(cfg Config) (*Host, error) {
 	host, err := app.New(app.Config{Listener: transport.NewListener(cfg.Listener), Settings: cfg.Settings,
-		KindsDir: cfg.KindsDir, SitePath: cfg.SitePath, Catalog: cfg.Catalog, Clock: cfg.Clock})
+		KindsDir: cfg.KindsDir, SitePath: cfg.SitePath, Catalog: cfg.Catalog, Authority: cfg.Authority, OwnerEpoch: cfg.OwnerEpoch,
+		Clock: cfg.Clock})
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +118,11 @@ func (h *Host) Dispatch(ctx context.Context, command actionport.Command) (action
 }
 
 // DispatchAuthorized bounds the command with the catalog, resolves its device
-// through the site file, runs the final authorization check and sends one
-// DCMD to the live session: the command's idempotency key unchanged, the
+// through the site file, runs the final authorization check, reads the
+// device's current boot from the live session, records that boot with the
+// device authority (a reboot opens a reconciliation) and refuses while a
+// reconciliation is open, then claims the target, binds the command and
+// asserts the claim before it sends one DCMD: the command's idempotency key unchanged, the
 // device's current boot, a deadline of the route's expiry from now on the
 // host clock, the host's authority epoch, the policy digest and safe_off on
 // lease loss. It waits for the terminal answer: accepted then succeeded is
@@ -117,7 +130,9 @@ func (h *Host) Dispatch(ctx context.Context, command actionport.Command) (action
 // reported failure or a command still queued when the session ends
 // (session_ending) is a failure, and a result unknown to the device, a lost
 // session after the command was sent, or no terminal answer before the
-// deadline or ctx is an unknown outcome.
+// deadline or ctx is an unknown outcome. An unknown outcome opens a
+// reconciliation for the device boot, and an executed command whose claim is
+// no longer held becomes one; the session's claims are released when it ends.
 func (h *Host) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
 	return h.app.DispatchAuthorized(ctx, command, authorization)
 }

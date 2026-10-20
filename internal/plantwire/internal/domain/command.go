@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
 const (
@@ -30,6 +32,7 @@ var (
 	ErrNoSession       = errors.New("plantwire: no node session is live")
 	ErrDeviceNotBorn   = errors.New("plantwire: the device is not born in the live session")
 	ErrCommandInFlight = errors.New("plantwire: the command is already in flight")
+	ErrBootChanged     = errors.New("plantwire: the device rebooted since the command was bound")
 )
 
 type CommandOrder struct {
@@ -39,6 +42,7 @@ type CommandOrder struct {
 	Device         string
 	Command        string
 	Args           map[string]any
+	ExpectedBootID string
 	DeadlineNS     int64
 }
 
@@ -72,19 +76,39 @@ type inFlight struct {
 	phase string
 }
 
-func (c *Conversation) Command(o CommandOrder) (map[string]any, error) {
+func (c *Conversation) BootOf(device string) (string, error) {
 	if !c.accepted {
-		return nil, ErrNoSession
+		return "", ErrNoSession
 	}
-	device := c.ingest.devices[o.Device]
-	if device == nil {
-		return nil, fmt.Errorf("%w: %s", ErrDeviceNotBorn, o.Device)
+	born := c.ingest.devices[device]
+	if born == nil {
+		return "", fmt.Errorf("%w: %s", ErrDeviceNotBorn, device)
+	}
+	return born.boot, nil
+}
+
+func (c *Conversation) Command(o CommandOrder) (map[string]any, error) {
+	boot, err := c.BootOf(o.Device)
+	if err != nil {
+		return nil, err
+	}
+	if boot != o.ExpectedBootID {
+		return nil, fmt.Errorf("%w: %s is on %s, the command expects %s", ErrBootChanged, o.Device, boot, o.ExpectedBootID)
 	}
 	if _, twice := c.commands[o.CommandID]; twice {
 		return nil, fmt.Errorf("%w: %s", ErrCommandInFlight, o.CommandID)
 	}
-	c.commands[o.CommandID] = &inFlight{boot: device.boot, phase: "sent"}
-	return c.out.stamp(commandRecord(o, device.boot, c.epoch)), nil
+	c.commands[o.CommandID] = &inFlight{boot: boot, phase: "sent"}
+	return c.out.stamp(commandRecord(o, c.epoch)), nil
+}
+
+func CommandDigest(o CommandOrder) (string, error) {
+	content := map[string]any{"device": o.Device, "command": o.Command, "args": o.Args, "expected_boot_id": o.ExpectedBootID}
+	canonical, err := canonicaljson.Marshal(content)
+	if err != nil {
+		return "", fmt.Errorf("plantwire: command %s has no canonical content: %w", o.CommandID, err)
+	}
+	return canonicaljson.ContentDigest(canonical), nil
 }
 
 func (c *Conversation) Abandon() []Settlement {
@@ -103,9 +127,9 @@ func abandoned(id string, command *inFlight) Settlement {
 	return Settlement{CommandID: id, Phase: SettlementUnknown, Reason: "the session ended before the command's terminal answer"}
 }
 
-func commandRecord(o CommandOrder, boot string, epoch int64) Record {
+func commandRecord(o CommandOrder, epoch int64) Record {
 	return Record{Type: TypeCommand, Fields: map[string]any{"command_id": o.CommandID, "idempotency_key": o.IdempotencyKey,
-		"device": o.Device, "command": o.Command, "args": o.Args, "expected_boot_id": boot, "deadline_ns": o.DeadlineNS,
+		"device": o.Device, "command": o.Command, "args": o.Args, "expected_boot_id": o.ExpectedBootID, "deadline_ns": o.DeadlineNS,
 		"not_before_ns": 0, "authority_epoch": epoch, "policy_digest": o.PolicyDigest, "fallback_on_lease_loss": fallbackSafeOff}}
 }
 

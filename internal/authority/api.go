@@ -70,6 +70,10 @@ var (
 	ErrNoOpenReconciliation = domain.ErrNoOpenReconciliation
 	// ErrNoRecordedState means the device has never reported its state.
 	ErrNoRecordedState = domain.ErrNoRecordedState
+	// ErrClaimRefused wraps a refused target claim from ClaimForDelivery: nothing was claimed.
+	ErrClaimRefused = domain.ErrClaimRefused
+	// ErrBindingRefused wraps a refused command binding from ClaimForDelivery: the claim was released.
+	ErrBindingRefused = domain.ErrBindingRefused
 )
 
 // SealReconciliationEvidence builds evidence for the device boot named by
