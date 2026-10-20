@@ -75,6 +75,13 @@ telemetry socket:
 Replace the example firmware digest with the allow-listed digest reported by
 the device gateway.
 
+For a spec with active dispatch, `serve` and `run-live` refuse to start unless
+every declared intent has an owner: the built-in watch route, or a route the
+device catalog names. With a device gateway (`emulator` or `physical`) nothing
+falls back to a simulated or refused effect; in the `simulated` profile the
+simulated effector owns every route. The error names the first intent without an
+owner.
+
 The live socket accepts normalized evidence. Device control uses a separate
 socket. Receiving an event does not prove that an effect occurred; effects
 need independent verification. Replay-file restrictions still apply.

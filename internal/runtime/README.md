@@ -72,8 +72,10 @@ watch service, a route the device gateway owns (its capability catalog names
 it) to the gateway, and every other route to the profile's fallback: simulated
 in the `simulated` and `emulator` profiles, fail-closed in `physical`. No route
 name is written in code. Authorization and device verification stay with the
-selected effector. Routing is internal to app; the unused public
-`CompositeEffector` and `RecoveryCoordinator` APIs are removed.
+selected effector. For an active-dispatch spec the pipeline refuses to start
+when an intent has no owner; with a device present the fallback owns no route.
+Routing is internal to app; the unused public `CompositeEffector` and
+`RecoveryCoordinator` APIs are removed.
 
 Human approvals use the [authenticated HTTP contract](../policy/APPROVAL_HTTP_DESIGN.md).
 Presentation and resolution both enforce owner/tenant scope; policy owns principal,

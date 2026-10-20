@@ -17,6 +17,7 @@ import (
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 	transport "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/transport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
@@ -45,15 +46,37 @@ func composeEffectors(cfg PipelineConfig) (actionport.Effector, *watch.Service, 
 	if err != nil {
 		return nil, nil, fmt.Errorf("compose watch: %w", err)
 	}
-	gatewayEffector := cfg.GatewayEffector
-	if gatewayEffector != nil {
-		gatewayEffector.WithTelemetry(cfg.Telemetry)
-	}
-	compositeEffector := app.NewCompositeEffector(watch, cfg.Effector)
-	if gatewayEffector != nil {
-		compositeEffector.WithDevice(gatewayEffector)
+	compositeEffector := composeRouting(cfg, watch)
+	if err := requireIntentEffectors(cfg.Spec, compositeEffector); err != nil {
+		return nil, nil, err
 	}
 	return compositeEffector, watch, nil
+}
+
+func composeRouting(cfg PipelineConfig, watch *watch.Service) *app.CompositeEffector {
+	compositeEffector := app.NewCompositeEffector(watch, cfg.Effector)
+	if cfg.GatewayEffector != nil {
+		compositeEffector.WithDevice(cfg.GatewayEffector.WithTelemetry(cfg.Telemetry))
+	}
+	return compositeEffector
+}
+
+func requireIntentEffectors(compiled *spec.CompiledSpec, routes *app.CompositeEffector) error {
+	if compiled.Cognition.Executor.DispatchPolicy != spec.DispatchActive {
+		return nil
+	}
+	if err := routes.RequireOwners(intentTypes(compiled)); err != nil {
+		return fmt.Errorf("active-dispatch spec declares an intent no effector owns: %w", err)
+	}
+	return nil
+}
+
+func intentTypes(compiled *spec.CompiledSpec) []string {
+	types := make([]string, 0, len(compiled.Actions.Intents))
+	for _, intent := range compiled.Actions.Intents {
+		types = append(types, intent.Type)
+	}
+	return types
 }
 
 func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.Service, watch *watch.Service) (*app.Pipeline, error) {
