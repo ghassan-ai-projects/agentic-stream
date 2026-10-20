@@ -51,7 +51,7 @@ type specNames struct {
 func collectSpecNames(spec *CompiledSpec) (specNames, error) {
 	var names specNames
 	var err error
-	if names.inputs, err = collectInputNames(spec.Inputs); err != nil {
+	if names.inputs, err = collectInputNames(spec); err != nil {
 		return specNames{}, err
 	}
 	if names.windows, err = uniqueNames(spec.Windows, func(w Window) string { return w.Name }, "windows", "window name"); err != nil {
@@ -79,13 +79,13 @@ func uniqueNames[T any](items []T, name func(T) string, path, kind string) (map[
 
 // collectInputNames requires unique input names, each referencing its
 // registered event schema.
-func collectInputNames(inputs []Input) (map[string]struct{}, error) {
-	seen := make(map[string]struct{}, len(inputs))
-	for _, in := range inputs {
+func collectInputNames(spec *CompiledSpec) (map[string]struct{}, error) {
+	seen := make(map[string]struct{}, len(spec.Inputs))
+	for _, in := range spec.Inputs {
 		if err := addUniqueName(seen, in.Name, "inputs", "input name"); err != nil {
 			return nil, err
 		}
-		if err := checkInputSchema(in); err != nil {
+		if err := checkInputSchema(spec, in); err != nil {
 			return nil, err
 		}
 	}
@@ -116,8 +116,8 @@ func addUniqueName(seen map[string]struct{}, name, path, kind string) error {
 	return nil
 }
 
-func checkInputSchema(in Input) error {
-	definition, ok := LookupEventSchema(in.SchemaRef)
+func checkInputSchema(spec *CompiledSpec, in Input) error {
+	definition, ok := spec.EventSchema(in.SchemaRef)
 	if !ok {
 		return &CompileError{Path: fmt.Sprintf("inputs.%s.schema", in.Name), Message: fmt.Sprintf("unknown event schema %q", in.SchemaRef)}
 	}
@@ -139,7 +139,7 @@ func checkOperatorReferences(spec *CompiledSpec, op Operator, names specNames) e
 		return nil
 	}
 	for _, in := range operatorInputs(spec, op) {
-		if err := checkOperatorField(op, fieldName, in); err != nil {
+		if err := checkOperatorField(spec, op, fieldName, in); err != nil {
 			return err
 		}
 	}
@@ -178,8 +178,8 @@ func operatorInputs(spec *CompiledSpec, op Operator) []Input {
 
 // checkOperatorField requires the input's schema to declare the payload
 // field, with a matching unit for an aggregate.
-func checkOperatorField(op Operator, fieldName string, in Input) error {
-	definition, _ := LookupEventSchema(in.SchemaRef)
+func checkOperatorField(spec *CompiledSpec, op Operator, fieldName string, in Input) error {
+	definition, _ := spec.EventSchema(in.SchemaRef)
 	field, exists := definition.Fields[fieldName]
 	if !exists {
 		return &CompileError{Path: fmt.Sprintf("operators.%s.field", op.Name), Message: fmt.Sprintf("payload field %q is not declared by schema %q", fieldName, in.SchemaRef)}

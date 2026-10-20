@@ -39,9 +39,24 @@ func ParseDuration(s string) (time.Duration, error) {
 // EventSchema identifies a schema bound to one normalized event type.
 type EventSchema = domain.EventSchema
 
-// Lookup returns a registered built-in definition.
-func LookupEventSchema(ref string) (domain.EventSchema, bool) {
-	return domain.LookupEventSchema(ref)
+// EventSchemas is an immutable event-schema registry: the schemas compiled
+// into the binary, plus any loaded from a directory. A compiled spec keeps the
+// registry it was compiled against; CompiledSpec.EventSchema looks a ref up in
+// it, falling back to the built-in schemas for a spec loaded from a
+// deployment.
+type EventSchemas = domain.EventSchemas
+
+// LoadEventSchemas reads every *.json file of dir, in name order, in the
+// format of the built-in registry (a map from "<event_type>/<schema_version>"
+// to the schema), and returns the built-in schemas merged with them. A ref
+// that is already registered must have an identical definition, so a
+// directory can add schemas but never change one.
+func LoadEventSchemas(dir string) (*EventSchemas, error) {
+	schemas, err := app.LoadEventSchemas(dir)
+	if err != nil {
+		return nil, fmt.Errorf("load event schemas from %s: %w", dir, err)
+	}
+	return schemas, nil
 }
 
 // CompiledSpec is the immutable result of compiling a SituationSpec.
@@ -118,9 +133,18 @@ type Intent = domain.Intent
 // Actions configures allowed intents.
 type Actions = domain.Actions
 
+// CompileOption adjusts one compilation.
+type CompileOption = app.CompileOption
+
+// WithEventSchemas compiles against schemas instead of the built-in event
+// schemas. A nil registry means the built-in one.
+func WithEventSchemas(schemas *EventSchemas) CompileOption {
+	return app.WithEventSchemas(schemas)
+}
+
 // CompileFile reads a SituationSpec from path and compiles it.
-func CompileFile(ctx context.Context, path string) (*CompiledSpec, error) {
-	compiled, err := app.CompileFile(ctx, path)
+func CompileFile(ctx context.Context, path string, options ...CompileOption) (*CompiledSpec, error) {
+	compiled, err := app.CompileFile(ctx, path, options...)
 	if err != nil {
 		return nil, fmt.Errorf("compile spec %s: %w", path, err)
 	}

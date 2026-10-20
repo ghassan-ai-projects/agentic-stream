@@ -30,6 +30,7 @@ Compiles and validates one SituationSpec.
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `--json` | `false` | Emit canonical JSON instead of the summary |
+| `--event-schemas` | empty | directory of event-schema JSON files (the format of `event_schema_data.json`) added to the built-in schemas; a ref already registered must be identical |
 
 ## `run --spec <spec.yaml> --trace <trace.jsonl>`
 

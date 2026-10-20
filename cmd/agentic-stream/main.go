@@ -70,16 +70,24 @@ func newVersionCommand() *cobra.Command {
 
 func newValidateCommand() *cobra.Command {
 	var outputJSON bool
+	var eventSchemaDir string
 	cmd := &cobra.Command{
 		Use: "validate <spec.yaml>", Short: "Validate and compile a SituationSpec.", Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error { return validateSpecCommand(cmd, args[0], outputJSON) },
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return validateSpecCommand(cmd, args[0], outputJSON, eventSchemaDir)
+		},
 	}
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Emit canonical JSON instead of summary")
+	cmd.Flags().StringVar(&eventSchemaDir, "event-schemas", "", eventSchemasFlagUsage)
 	return cmd
 }
 
-func validateSpecCommand(cmd *cobra.Command, path string, outputJSON bool) error {
-	result, err := spec.CompileFile(commandContext(cmd), path)
+func validateSpecCommand(cmd *cobra.Command, path string, outputJSON bool, eventSchemaDir string) error {
+	options, err := eventSchemaCompileOptions(eventSchemaDir)
+	if err != nil {
+		return err
+	}
+	result, err := spec.CompileFile(commandContext(cmd), path, options...)
 	if err != nil {
 		return fmt.Errorf("compile %s: %w", path, err)
 	}

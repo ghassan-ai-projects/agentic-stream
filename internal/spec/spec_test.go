@@ -76,8 +76,9 @@ func TestFacadeExposesTheSpecVocabulary(t *testing.T) {
 	if got, err := spec.ParseDuration("2d"); err != nil || got != 48*time.Hour {
 		t.Fatalf("ParseDuration(2d) = %v, %v, want 48h", got, err)
 	}
-	if schema, ok := spec.LookupEventSchema("motor.vibration.observed/1.0"); !ok || schema.EventType != "motor.vibration.observed" {
-		t.Fatalf("LookupEventSchema = %+v, %t, want the built-in vibration schema", schema, ok)
+	var builtin *spec.EventSchemas
+	if schema, ok := builtin.Lookup("motor.vibration.observed/1.0"); !ok || schema.EventType != "motor.vibration.observed" {
+		t.Fatalf("a nil registry Lookup = %+v, %t, want the built-in vibration schema", schema, ok)
 	}
 	if got := spec.EffectiveDispatchPolicy(""); got != spec.DispatchShadow {
 		t.Fatalf("EffectiveDispatchPolicy(\"\") = %q, want %q", got, spec.DispatchShadow)

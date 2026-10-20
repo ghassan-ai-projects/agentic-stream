@@ -7,14 +7,13 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func registerSchema(t *testing.T, db *storage.DB, ref string) {
 	t.Helper()
-	definition, ok := spec.LookupEventSchema(ref)
+	definition, ok := spectest.LookupEventSchema(ref)
 	if !ok {
 		t.Fatalf("schema %q is not registered in the built-in catalog", ref)
 	}

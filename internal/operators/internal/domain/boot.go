@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 const maxSeenBootIDs = 64
@@ -16,7 +15,7 @@ func (r *OperatorRuntime) inputRequiresBootIdentity(inst *operatorInstance) bool
 			if input.Name != inputName || input.SchemaRef == "" {
 				continue
 			}
-			definition, ok := spec.LookupEventSchema(input.SchemaRef)
+			definition, ok := r.spec.EventSchema(input.SchemaRef)
 			if !ok {
 				return false
 			}

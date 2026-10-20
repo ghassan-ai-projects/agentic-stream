@@ -10,7 +10,6 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
@@ -66,7 +65,7 @@ func quarantineReading(t *testing.T, path string) {
 
 func registerZoneTemperatureSchema(t *testing.T, db *storage.DB) {
 	t.Helper()
-	definition, ok := spec.LookupEventSchema("zone.temp.observed/1.0")
+	definition, ok := spectest.LookupEventSchema("zone.temp.observed/1.0")
 	if !ok {
 		t.Fatal("zone.temp.observed/1.0 is not a built-in schema")
 	}

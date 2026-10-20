@@ -75,7 +75,7 @@ func TestThermalSchemasDeclareQualityAndProvenance(t *testing.T) {
 	for _, ref := range refs {
 		t.Run(ref, func(t *testing.T) {
 			t.Parallel()
-			definition, ok := LookupEventSchema(ref)
+			definition, ok := BuiltinEventSchemas().Lookup(ref)
 			if !ok {
 				t.Fatalf("schema %q is not registered", ref)
 			}
@@ -119,14 +119,14 @@ func TestThermalSchemasDeclareQualityAndProvenance(t *testing.T) {
 
 func TestAllBuiltinsLoadFromData(t *testing.T) {
 	t.Parallel()
-	registry, err := builtins()
+	registry, err := builtinEventSchemas()
 	if err != nil {
 		t.Fatalf("load registry: %v", err)
 	}
-	if len(registry) != 52 {
-		t.Fatalf("expected 52 built-in refs, got %d", len(registry))
+	if len(registry.schemas) != 52 {
+		t.Fatalf("expected 52 built-in refs, got %d", len(registry.schemas))
 	}
-	canonical, err := canonicaljson.Marshal(registry)
+	canonical, err := canonicaljson.Marshal(registry.schemas)
 	if err != nil {
 		t.Fatalf("canonicalize registry: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestAllBuiltinsLoadFromData(t *testing.T) {
 	if got := hex.EncodeToString(sum[:]); got != pinnedDigest {
 		t.Fatalf("registry data digest = %s, want the pinned %s", got, pinnedDigest)
 	}
-	for ref, definition := range registry {
+	for ref, definition := range registry.schemas {
 		t.Run(ref, func(t *testing.T) {
 			t.Parallel()
 			if definition.Ref != ref {

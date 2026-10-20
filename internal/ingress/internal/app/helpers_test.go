@@ -13,7 +13,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress/internal/store"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/spectest"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
@@ -106,7 +105,7 @@ func quarantine(t *testing.T, db *storage.DB) map[string]string {
 
 func registerBuiltinSchema(t *testing.T, db *storage.DB, ref string) {
 	t.Helper()
-	definition, ok := spec.LookupEventSchema(ref)
+	definition, ok := spectest.LookupEventSchema(ref)
 	if !ok {
 		t.Fatalf("%s is not in the built-in catalog", ref)
 	}

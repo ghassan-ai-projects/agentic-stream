@@ -31,7 +31,7 @@ func (r deploymentRecord) persist(ctx context.Context, tx *sql.Tx) error {
 	if err := r.retirePriorVersions(ctx, tx); err != nil {
 		return err
 	}
-	if err := registerInputSchemas(ctx, tx, r.compiled.Inputs, r.now); err != nil {
+	if err := registerInputSchemas(ctx, tx, r.compiled, r.now); err != nil {
 		return err
 	}
 	return r.insert(ctx, tx)
@@ -86,9 +86,9 @@ func (r deploymentRecord) retirePriorVersions(ctx context.Context, tx *sql.Tx) e
 	return nil
 }
 
-func registerInputSchemas(ctx context.Context, tx *sql.Tx, inputs []domain.Input, now string) error {
-	for _, input := range inputs {
-		definition, ok := domain.LookupEventSchema(input.SchemaRef)
+func registerInputSchemas(ctx context.Context, tx *sql.Tx, compiled *domain.CompiledSpec, now string) error {
+	for _, input := range compiled.Inputs {
+		definition, ok := compiled.EventSchema(input.SchemaRef)
 		if !ok {
 			continue
 		}

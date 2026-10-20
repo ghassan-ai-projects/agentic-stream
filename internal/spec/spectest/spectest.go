@@ -12,6 +12,11 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec/internal/store"
 )
 
+// LookupEventSchema returns a built-in event schema definition.
+func LookupEventSchema(ref string) (domain.EventSchema, bool) {
+	return domain.BuiltinEventSchemas().Lookup(ref)
+}
+
 // EventSchemaJSON returns the structural schema of a built-in definition.
 func EventSchemaJSON(definition domain.EventSchema) ([]byte, error) {
 	schema, err := domain.EventSchemaJSON(definition)
