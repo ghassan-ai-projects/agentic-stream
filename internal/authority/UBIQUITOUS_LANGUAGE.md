@@ -46,6 +46,7 @@ A word that is not here should not appear in the module's public API.
 | Term | Meaning | Code | Storage |
 | --- | --- | --- | --- |
 | **Command binding** | Immutable record tying a command to the target, device boot and owner that delivered it, plus its digest. Written immediately before delivery. Repeating the identical binding is idempotent; any difference is a conflict. | `CommandBinding`, `BindCommand` | `device_command_bindings` |
+| **Normalized target** (of a binding) | The target the governed command named, recorded when the link bound it to a different device output (plant wire: `zone-01` named, `fan-01` bound). Command evidence is checked against it, so like is compared with like; without it the bound target is the command's own. | `CommandBinding.NormalizedTarget` | `normalized_target` |
 | **Command evidence** | Reconciliation evidence presented for one bound command. It must name the bound target and the bound device boot. | `VerifyCommandEvidence` | — |
 | **Unresolved command** | A command bound to a device boot whose outcome the action ledger still treats as unresolved. The action ledger owns that definition. | `OutcomeLedger`, `actions.CountUnresolvedOutcomes` | `commands.status` (owned by `actions`) |
 | **Command evidence** request | The command, its target and the evidence presented to reconcile it. | `CommandEvidence` | — |

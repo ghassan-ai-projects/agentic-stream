@@ -11,7 +11,10 @@ type (
 	DeviceBoot = domain.DeviceBoot
 	// TargetClaim is an owner's right to command one target on one device boot.
 	TargetClaim = domain.TargetClaim
-	// CommandBinding ties a command to the target, device boot and owner that delivered it.
+	// CommandBinding ties a command to the target, device boot and owner that
+	// delivered it. NormalizedTarget is the target the command named when the
+	// effector bound it to a different device output; reconciliation evidence
+	// for the command is then checked against it, otherwise against Target.
 	CommandBinding = domain.CommandBinding
 	// ResolutionOutcome is the result recorded when a reconciliation is resolved.
 	ResolutionOutcome = domain.ResolutionOutcome

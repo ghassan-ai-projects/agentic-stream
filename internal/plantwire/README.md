@@ -116,7 +116,9 @@ device-wire:
    nothing is sent. Only devices the host commands are recorded.
 2. `ClaimForDelivery` claims the target for that boot, binds the command (its
    digest is the content the node compares: device, command, args, expected
-   boot) and asserts the claim. The session holds its claims and releases them
+   boot; the binding also records the command's normalized target, so the
+   dispatcher's reconciliation of an unknown outcome compares like with like)
+   and asserts the claim. The session holds its claims and releases them
    when it ends.
 3. The order carries the bound boot; if the device rebooted meanwhile the loop
    refuses it (`ErrBootChanged`).

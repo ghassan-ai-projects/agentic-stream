@@ -82,6 +82,13 @@ func (n *Node) Expect(recordType string) map[string]any {
 	return record
 }
 
+// Next reads the host's next record, or reports false when none arrives
+// within the given time.
+func (n *Node) Next(within time.Duration) (map[string]any, bool) {
+	record, err := n.readWithin(within)
+	return record, err == nil
+}
+
 // Closed reports whether the host closed the session before sending another
 // record.
 func (n *Node) Closed() bool {
@@ -94,7 +101,11 @@ func (n *Node) Closed() bool {
 func (n *Node) Close() { _ = n.conn.Close() }
 
 func (n *Node) read() (map[string]any, error) {
-	if err := n.conn.SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
+	return n.readWithin(readTimeout)
+}
+
+func (n *Node) readWithin(within time.Duration) (map[string]any, error) {
+	if err := n.conn.SetReadDeadline(time.Now().Add(within)); err != nil {
 		return nil, fmt.Errorf("set the read deadline: %w", err)
 	}
 	line, err := n.reader.ReadBytes('\n')

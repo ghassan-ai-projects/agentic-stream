@@ -29,6 +29,7 @@ func (h *Host) Dispatch(context.Context, actionport.Command) (actionport.Effect,
 
 type target struct {
 	order    domain.CommandOrder
+	named    string
 	live     *session
 	view     domain.DeviceView
 	verified chan domain.Verification
@@ -67,7 +68,7 @@ func (h *Host) prepare(ctx context.Context, command actionport.Command, authoriz
 		return target{}, fmt.Errorf("plantwire: command %s not sent: %w", order.CommandID, err)
 	}
 	order.ExpectedBootID = view.BootID
-	return target{order: order, live: live, view: view, verified: make(chan domain.Verification, 1)}, nil
+	return target{order: order, named: command.NormalizedTarget, live: live, view: view, verified: make(chan domain.Verification, 1)}, nil
 }
 
 func (h *Host) checkOrigin(t target) (actionport.Effect, error) {

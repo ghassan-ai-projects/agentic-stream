@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net"
 	"sync"
 	"testing"
@@ -36,29 +37,43 @@ const standInFirmwareDigest = "sha256:cccccccccccccccccccccccccccccccccccccccccc
 // before deciding, as a model call does.
 func serveTamozStandIn(t *testing.T, socketPath string, delay time.Duration) {
 	t.Helper()
+	serveWorkerProposing(t, socketPath, delay, indicatorAlert)
+}
+
+// proposal is one intent the stand-in worker proposes: its type, risk class
+// and the model-writable parameters.
+type proposal struct {
+	intentType, risk string
+	parameters       map[string]any
+}
+
+var indicatorAlert = proposal{intentType: "set_indicator", risk: "R1", parameters: map[string]any{"state": "alert"}}
+
+func serveWorkerProposing(t *testing.T, socketPath string, delay time.Duration, proposals ...proposal) {
+	t.Helper()
 	listener, err := worker.ListenEvidenceSocket(socketPath)
 	if err != nil {
 		t.Fatalf("listen worker socket: %v", err)
 	}
 	server := grpc.NewServer()
-	runtimev1.RegisterEpisodeWorkerServer(server, &workerfake.Server{WorkerName: "tamoz", WorkerVersion: "stand-in", ExecuteFunc: proposeIndicatorAlertAfter(delay)})
+	runtimev1.RegisterEpisodeWorkerServer(server, &workerfake.Server{WorkerName: "tamoz", WorkerVersion: "stand-in", ExecuteFunc: proposeAfter(delay, proposals)})
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
 }
 
-func proposeIndicatorAlertAfter(delay time.Duration) workerfake.ExecuteFunc {
+func proposeAfter(delay time.Duration, proposals []proposal) workerfake.ExecuteFunc {
 	return func(ctx context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(delay):
 		}
-		return proposeIndicatorAlert(req, emit)
+		return propose(req, emit, proposals)
 	}
 }
 
-func proposeIndicatorAlert(req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
-	decision, err := indicatorDecision(req)
+func propose(req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error, proposals []proposal) error {
+	decision, err := proposedDecision(req, proposals)
 	if err != nil {
 		return err
 	}
@@ -82,31 +97,44 @@ func proposeIndicatorAlert(req *runtimev1.EpisodeRequest, emit func(*runtimev1.E
 	}}))
 }
 
-func indicatorDecision(req *runtimev1.EpisodeRequest) (map[string]any, error) {
+func proposedDecision(req *runtimev1.EpisodeRequest, proposals []proposal) (map[string]any, error) {
 	entityID, err := snapshotEntityID(req.GetSnapshotJson())
 	if err != nil {
 		return nil, err
 	}
 	scope := fmt.Sprintf("%s.%s.%d", req.GetEpisodeId(), req.GetAttemptId(), req.GetFence())
 	validUntil := time.Now().UTC().Add(10 * time.Minute).Format(time.RFC3339)
+	intents := make([]any, 0, len(proposals))
+	for _, proposed := range proposals {
+		intent, err := proposedIntent(req, proposed, scope, entityID, validUntil)
+		if err != nil {
+			return nil, err
+		}
+		intents = append(intents, intent)
+	}
+	return map[string]any{
+		"decision_id": "decision." + scope, "episode_id": req.GetEpisodeId(), "attempt_id": req.GetAttemptId(), "fence": req.GetFence(),
+		"snapshot_digest": "sha256:" + hex.EncodeToString(req.GetSnapshotSha256()),
+		"situation_id":    req.GetSituationId(), "situation_version": req.GetSituationVersion(),
+		"primary_hypothesis": "over_temperature", "confidence": 0.9, "summary": "sustained rise above the band",
+		"facts_used": []any{}, "alternatives": []any{}, "intents": intents, "valid_until": validUntil,
+	}, nil
+}
+
+func proposedIntent(req *runtimev1.EpisodeRequest, proposed proposal, scope, entityID, validUntil string) (map[string]any, error) {
+	parameters := map[string]any{"entity_id": entityID, "situation_id": req.GetSituationId(), "situation_version": req.GetSituationVersion()}
+	maps.Copy(parameters, proposed.parameters)
 	intent := map[string]any{
-		"intent_id": "intent." + scope + ".set_indicator", "decision_id": "decision." + scope,
+		"intent_id": "intent." + scope + "." + proposed.intentType, "decision_id": "decision." + scope,
 		"tenant_id": req.GetTenantId(), "situation_id": req.GetSituationId(), "situation_version": req.GetSituationVersion(),
-		"type": "set_indicator", "risk_class": "R1", "evidence_ids": []any{}, "expires_at": validUntil,
-		"parameters": map[string]any{"entity_id": entityID, "situation_id": req.GetSituationId(), "situation_version": req.GetSituationVersion(), "state": "alert"},
+		"type": proposed.intentType, "risk_class": proposed.risk, "evidence_ids": []any{}, "expires_at": validUntil, "parameters": parameters,
 	}
 	intentDigest, err := contractsv1.IntentDigest(intent)
 	if err != nil {
 		return nil, fmt.Errorf("digest intent: %w", err)
 	}
 	intent["intent_digest"] = intentDigest
-	return map[string]any{
-		"decision_id": "decision." + scope, "episode_id": req.GetEpisodeId(), "attempt_id": req.GetAttemptId(), "fence": req.GetFence(),
-		"snapshot_digest": "sha256:" + hex.EncodeToString(req.GetSnapshotSha256()),
-		"situation_id":    req.GetSituationId(), "situation_version": req.GetSituationVersion(),
-		"primary_hypothesis": "over_temperature", "confidence": 0.9, "summary": "sustained rise above the band",
-		"facts_used": []any{}, "alternatives": []any{}, "intents": []any{intent}, "valid_until": validUntil,
-	}, nil
+	return intent, nil
 }
 
 func snapshotEntityID(snapshotJSON []byte) (string, error) {

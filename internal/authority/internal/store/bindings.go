@@ -10,10 +10,11 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 const loadBindingSQL = `
-		SELECT target, device_id, boot_id, owner_epoch, owner_instance, command_sha256
+		SELECT target, COALESCE(normalized_target, ''), device_id, boot_id, owner_epoch, owner_instance, command_sha256
 		FROM device_command_bindings WHERE command_id = ?`
 
 // LoadBinding returns the binding of a command, or nil when the command was
@@ -21,7 +22,7 @@ const loadBindingSQL = `
 func (t *Tx) LoadBinding(ctx context.Context, commandID string) (*domain.CommandBinding, error) {
 	binding := domain.CommandBinding{CommandID: commandID}
 	var digest []byte
-	err := t.tx.QueryRowContext(ctx, loadBindingSQL, commandID).Scan(&binding.Target, &binding.Device.DeviceID,
+	err := t.tx.QueryRowContext(ctx, loadBindingSQL, commandID).Scan(&binding.Target, &binding.NormalizedTarget, &binding.Device.DeviceID,
 		&binding.Device.BootID, &binding.Owner.Epoch, &binding.Owner.Instance, &digest)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -37,8 +38,8 @@ func (t *Tx) LoadBinding(ctx context.Context, commandID string) (*domain.Command
 
 const insertBindingSQL = `
 		INSERT INTO device_command_bindings
-			(command_id, target, device_id, boot_id, owner_epoch, owner_instance, command_sha256, bound_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+			(command_id, target, normalized_target, device_id, boot_id, owner_epoch, owner_instance, command_sha256, bound_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 // InsertBinding records a new command binding.
 func (t *Tx) InsertBinding(ctx context.Context, binding domain.CommandBinding, now time.Time) error {
@@ -46,7 +47,7 @@ func (t *Tx) InsertBinding(ctx context.Context, binding domain.CommandBinding, n
 	if err != nil {
 		return err
 	}
-	if _, err := t.tx.ExecContext(ctx, insertBindingSQL, binding.CommandID, binding.Target,
+	if _, err := t.tx.ExecContext(ctx, insertBindingSQL, binding.CommandID, binding.Target, storage.NullIfEmpty(binding.NormalizedTarget),
 		binding.Device.DeviceID, binding.Device.BootID, binding.Owner.Epoch, binding.Owner.Instance,
 		digest, kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("record command binding: %w", err)

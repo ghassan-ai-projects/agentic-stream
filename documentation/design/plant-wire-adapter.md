@@ -155,8 +155,11 @@ result), and match within the metric's `resolution` (a word exactly), within a
 a working command is read before its lease lapses, and long enough for two
 samples at the gateway's 2 s cadence. Every expected metric must match; then
 `VerifyDeviceCommand` reports succeeded with the readings sealed as
-device-state evidence (bound to the device, as the dispatcher's reconciliation
-of an unknown outcome expects). Without a match in the window, or with no argument to read
+device-state evidence about the device output. The command binding records the
+command's normalized target beside the output it was bound to, so the
+dispatcher reconciles an unknown outcome from this evidence (the device
+authority checks the command against the normalized target and the evidence
+against the output). Without a match in the window, or with no argument to read
 back, it gives no final status and the outcome stays in manual review. No
 `DQUERY` is sent: a relay answers none for a real device. The next `HSYNC`
 carries each numeric decision as `command_evidence` (`observed` with the value,

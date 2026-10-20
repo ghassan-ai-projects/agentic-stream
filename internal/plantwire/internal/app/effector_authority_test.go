@@ -31,7 +31,7 @@ func TestHostClaimsAndBindsEachCommandAndReleasesItsClaimsWithTheSession(t *test
 	t.Parallel()
 	host, node, devices := commandingHostWith(t)
 	succeed(t, host, node, "c-1")
-	if bound := devices.count(t, "SELECT COUNT(*) FROM device_command_bindings WHERE command_id = 'c-1'"); bound != 1 {
+	if bound := devices.count(t, "SELECT COUNT(*) FROM device_command_bindings WHERE command_id = 'c-1' AND target = 'P1' AND normalized_target = 'station-1'"); bound != 1 {
 		t.Fatalf("bindings of c-1 = %d, want 1", bound)
 	}
 	if err := devices.service.AssertClaim(t.Context(), devices.pumpClaim()); err != nil {

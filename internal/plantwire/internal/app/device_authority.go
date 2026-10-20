@@ -44,7 +44,8 @@ func (h *Host) binding(ctx context.Context, t target) (authority.CommandBinding,
 	if err != nil {
 		return authority.CommandBinding{}, err
 	}
-	return authority.CommandBinding{CommandID: t.order.CommandID, Target: t.order.Device, Device: device, Owner: h.owner(), CommandDigest: digest}, nil
+	return authority.CommandBinding{CommandID: t.order.CommandID, Target: t.order.Device, NormalizedTarget: t.named, Device: device,
+		Owner: h.owner(), CommandDigest: digest}, nil
 }
 
 func (h *Host) settleAuthority(ctx context.Context, claim authority.TargetClaim, effect actionport.Effect, err error) (actionport.Effect, error) {
