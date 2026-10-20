@@ -140,7 +140,7 @@ func policyEpochCheck(cfg PipelineConfig) storage.OwnerCheck {
 
 func composeDispatcher(cfg PipelineConfig) (*actions.Service, error) {
 	service, err := actions.New(actions.Config{DB: cfg.DB, Effector: cfg.Effector, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch,
-		Clock: cfg.Clock, IDs: cfg.IDGenerator, LeaseOwner: "runtime-actions/" + cfg.OwnerEpoch,
+		Clock: cfg.Clock, IDs: cfg.IDGenerator, LeaseOwner: "runtime-actions/" + cfg.OwnerEpoch, LeaseFor: cfg.DispatchLease,
 		Telemetry: cfg.Telemetry})
 	if err != nil {
 		return nil, fmt.Errorf("compose actions: %w", err)

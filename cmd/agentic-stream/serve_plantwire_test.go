@@ -36,6 +36,7 @@ func TestServeValidatesThePlantWireFlags(t *testing.T) {
 			f.plantWire.environment, f.plantWire.hardwareBoards = plantwire.EnvironmentHardware, []string{"the mega board"}
 		}, "not a plant wire id"},
 		{"a negative epoch", func(f *serveFlags) { f.plantWire.epoch = -1 }, "authority epoch is negative"},
+		{"a negative dispatch lease", func(f *serveFlags) { f.effect.DispatchLease = -time.Second }, "--dispatch-lease must not be negative"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

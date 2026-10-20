@@ -124,7 +124,7 @@ var facadeSpecs = []facadeSpec{
 		module:       "internal/actions",
 		constructors: []string{"New", "NewReconciler", "leaseObserver"},
 		operations: operations(
-			to("app", "DispatchOnce", "Resolve", "Awaiting", "IntentCommands"),
+			to("app", "DispatchOnce", "Resolve", "Awaiting", "IntentCommands", "DispatchCallTimeout"),
 			where(onFunctions(singleStatement), "CountUnresolvedOutcomes"),
 		),
 	},

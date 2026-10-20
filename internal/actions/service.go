@@ -61,6 +61,13 @@ func leaseObserver(runtimeTelemetry *telemetry.Runtime) app.LeaseObserver {
 	return runtimeTelemetry
 }
 
+// DispatchCallTimeout is how long the dispatcher waits for one provider call
+// under a lease of the given length (0: the default lease): nine tenths of the
+// lease. A call still open then becomes an unknown outcome, so an effect route
+// whose command may be held at a device longer than this must not be served
+// under that lease.
+func DispatchCallTimeout(lease time.Duration) time.Duration { return app.DispatchCallTimeout(lease) }
+
 // DispatchOnce processes at most one command: lease, revalidate, dispatch,
 // verify independently when supported, and record the outcome atomically.
 func (s *Service) DispatchOnce(ctx context.Context) (bool, error) { return s.app.DispatchOnce(ctx) }

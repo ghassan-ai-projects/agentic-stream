@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"maps"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/plantwirefake"
 )
 
@@ -20,7 +23,7 @@ type plantWireServe struct {
 	stop            func()
 }
 
-func startPlantWireServe(t *testing.T, specPath, kindsDir, sitePath string) plantWireServe {
+func startPlantWireServe(t *testing.T, specPath, kindsDir, sitePath string, extra ...string) plantWireServe {
 	t.Helper()
 	dir := privateSocketDir(t)
 	run := plantWireServe{dir: dir, socket: filepath.Join(dir, "host.sock"), db: newMigratedDatabasePath(t)}
@@ -30,6 +33,7 @@ func startPlantWireServe(t *testing.T, specPath, kindsDir, sitePath string) plan
 	if sitePath != "" {
 		args = append(args, "--plant-wire-site", sitePath)
 	}
+	args = append(args, extra...)
 	ctx, cancel := context.WithCancel(t.Context())
 	cmd := newServeCommand()
 	cmd.SetArgs(args)
@@ -119,4 +123,21 @@ func eventTypeCounts(t *testing.T, dbPath string) map[string]int {
 		t.Fatal(err)
 	}
 	return counts
+}
+
+func TestServeChecksThePlantWireRoutesAgainstTheDispatchLease(t *testing.T) {
+	t.Parallel()
+	kinds := plantwirefake.KindsDir(t, ".")
+	dir := privateSocketDir(t)
+	cmd := newServeCommand()
+	cmd.SetArgs([]string{"--db", newMigratedDatabasePath(t), "--spec", testSpec, "--effect-profile", "emulator",
+		"--plant-wire-socket", filepath.Join(dir, "host.sock"), "--plant-wire-kinds", kinds, "--device-catalog", experimentCatalog,
+		"--listen", freeLoopbackAddress(t)})
+	if err := cmd.ExecuteContext(t.Context()); !errors.Is(err, device.ErrRouteOutlivesDispatch) || !strings.Contains(err.Error(), "set_indicator") {
+		t.Fatalf("serve under the default lease = %v, want the 60 s set_indicator route refused", err)
+	}
+	run := startPlantWireServe(t, testSpec, kinds, "", "--device-catalog", experimentCatalog, "--dispatch-lease", "2m")
+	node := plantwirefake.Dial(t, "unix", run.socket, "s-1")
+	node.Send(plantwirefake.Fixture(t, ".", "NBIRTH.json"))
+	node.Expect("STATE")
 }

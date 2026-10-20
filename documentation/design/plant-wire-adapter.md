@@ -126,8 +126,12 @@ good, current reading of the commanded metric matches what was sent.
 - The session ships behind `serve` flags; device-wire stays as it is and the
   two links are not used in one process yet.
 - A dispatch held at the node longer than 0.9 of the dispatch lease becomes an
-  unknown outcome, so a `--dispatch-lease` flag and a start-time check against
-  each route's expiry come with the effector.
+  unknown outcome, so `serve --dispatch-lease` sets that lease and, with a plant
+  wire link and a catalog, `serve` refuses to start when a route's
+  `expires_after_ms` does not end inside 0.9 of it. Device-wire links are
+  not checked: a device-wire command is not held for approval at the device,
+  and the check would refuse today's thermal catalog (its indicator route
+  expires after 60 s, past the 54 s call of the default lease).
 - Historical (store-and-forward) readings are counted and logged, not ingested
   live.
 - A reboot opens the same reconciliation barrier as device-wire.

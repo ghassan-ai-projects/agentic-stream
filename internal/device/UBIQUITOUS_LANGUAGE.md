@@ -27,7 +27,9 @@ the words below.
 | **Selector** | The command payload field that names a preset. The model may only choose among presets. | `Route.SelectorField` | `selector_field` |
 | **Hard bound** | An inclusive numeric limit re-checked on the parameters actually sent. | `Bound` | `bounds` |
 | **Target binding** | A logical target name that resolves to the route's physical target. | `Route.TargetBindings` | `target_bindings` |
-| **Materialize** | Turn an approved command into a device command using only the catalog. | `Materialize` | — |
+| **Bounded command** | An approved command resolved by the catalog alone, before any device link: target (through its binding), operation, the selected preset's parameters within every hard bound, and the route's expiry. Shared by device-wire and plant wire. | `BoundedCommand`, `CapabilityCatalog.Bound` | — |
+| **Materialize** | Turn an approved command into a device-wire command: its bounded command plus identity, boot and policy binding. | `Materialize` | — |
+| **Route expiry within the dispatch call** | Every route's `expires_after_ms` ends before a dispatch call does, so a command held at a device until its deadline is never turned into an unknown outcome by the dispatcher. | `CapabilityCatalog.CheckExpiriesWithin`, `ErrRouteOutlivesDispatch` | `expires_after_ms` |
 
 ## Device records
 

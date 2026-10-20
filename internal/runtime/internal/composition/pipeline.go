@@ -42,6 +42,7 @@ type PipelineConfig struct {
 	// every later decision is refused once the epoch is killed.
 	EpochControl    *runtimecontrol.EpochControl
 	GatewayEffector *device.GatewayEffector
+	DispatchLease   time.Duration
 
 	MaintenanceInterval time.Duration
 }

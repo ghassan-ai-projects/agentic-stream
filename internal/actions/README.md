@@ -34,7 +34,10 @@ is leased and marked dispatching. Authorization is then re-proven in one
 transaction (live lease, command/intent/decision digests and bindings, approval,
 current Situation and episode, interlock, policy digest) and the lease refreshed
 last. The effector call and device-state query run outside any transaction; a
-deadline or uncertain result stays unknown and is never retried blindly.
+deadline or uncertain result stays unknown and is never retried blindly. One
+provider call may take nine tenths of the dispatch lease (`LeaseFor`, the
+default lease when unset; `DispatchCallTimeout` gives it to callers that must
+fit an effect route inside it).
 
 An effector that cannot enforce the final authorization check
 (`actionport.AuthorizedEffector`) fails the command closed before any call.

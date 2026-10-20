@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
@@ -26,6 +27,7 @@ type effectProfileOptions struct {
 	AllowedFirmwareDigests []string
 	LiveActuation          bool
 	OwnerAuthorized        bool
+	DispatchLease          time.Duration
 }
 
 // workerRuntimeFlagTargets contains the command-local storage for the shared
@@ -124,7 +126,7 @@ func (o effectProfileOptions) open(ctx context.Context, db *storage.DB, owner *r
 		return device.NewSimulatedEffector(), nil, nil, nil
 	}
 	if o.PlantWireSocket != "" {
-		return fallbackEffector(o.profile()), nil, nil, nil
+		return o.openPlantWireLink()
 	}
 
 	transport, catalog, err := o.connectDeviceGateway(ctx)
@@ -160,6 +162,27 @@ func (o effectProfileOptions) loadDeviceCatalog() (*device.CapabilityCatalog, er
 		return nil, fmt.Errorf("load device capability catalog: %w", err)
 	}
 	return catalog, nil
+}
+
+func (o effectProfileOptions) openPlantWireLink() (actionport.RoutedEffector, *device.GatewayEffector, func() error, error) {
+	if err := o.checkPlantWireCatalog(); err != nil {
+		return nil, nil, nil, err
+	}
+	return fallbackEffector(o.profile()), nil, nil, nil
+}
+
+func (o effectProfileOptions) checkPlantWireCatalog() error {
+	if o.DeviceCatalog == "" {
+		return nil
+	}
+	catalog, err := o.loadDeviceCatalog()
+	if err != nil {
+		return err
+	}
+	if err := catalog.CheckExpiriesWithin(actions.DispatchCallTimeout(o.DispatchLease)); err != nil {
+		return fmt.Errorf("check the plant wire routes against --dispatch-lease: %w", err)
+	}
+	return nil
 }
 
 func (o effectProfileOptions) validateGatewayLink(transport *device.UDSTransport) error {

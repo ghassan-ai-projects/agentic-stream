@@ -134,6 +134,7 @@ Starts the live runtime with HTTP health checks and notifications.
 | `--tenant` | `default` | served tenant |
 | `--listen` | `127.0.0.1:8080` | loopback HTTP address |
 | `--owner-lease` | `1m` | runtime owner lease |
+| `--dispatch-lease` | `0` (the `1m` default lease) | lease of one approved command's dispatch: a device call still open after nine tenths of it is an unknown outcome. With `--plant-wire-socket` and `--device-catalog`, `serve` refuses to start when a route's `expires_after_ms` does not end before that call does |
 | `--poll-interval` | `1s` | continuous source polling; with `--live-socket`, the pace of timers, due cognition and dispatch while the socket is quiet |
 | `--demo-mode` | `false` | admit fixtures; tests/demos only |
 | `--model-endpoint` | empty | OpenAI-compatible endpoint |

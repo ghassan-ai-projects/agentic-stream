@@ -57,6 +57,7 @@ func registerServeFlags(cmd *cobra.Command, flags *serveFlags) {
 	cmd.Flags().DurationVar(&flags.ownerLease, "owner-lease", sources.DefaultLease, "runtime owner lease duration")
 	cmd.Flags().DurationVar(&flags.pollInterval, "poll-interval", time.Second, "interval for polling a --trace source and for advancing timers, debounced cognition and approved commands while a --live-socket is quiet")
 	cmd.Flags().BoolVar(&flags.demoMode, "demo-mode", false, "admit fixture executors (demos and tests only; a production route never admits fixture)")
+	cmd.Flags().DurationVar(&flags.effect.DispatchLease, "dispatch-lease", 0, "lease of one approved command's dispatch; a device call still open after nine tenths of it becomes an unknown outcome (default: the one-minute default lease)")
 	registerPlantWireFlags(cmd, &flags.effect.PlantWireSocket, &flags.plantWire)
 }
 
@@ -77,6 +78,9 @@ func (f serveFlags) validate() (string, error) {
 }
 
 func (f serveFlags) validateEffects() error {
+	if f.effect.DispatchLease < 0 {
+		return fmt.Errorf("--dispatch-lease must not be negative")
+	}
 	if err := f.profileOptions().validate(f.tracePath != ""); err != nil {
 		return fmt.Errorf("validate effect profile: %w", err)
 	}

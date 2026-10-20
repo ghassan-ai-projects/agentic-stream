@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 )
 
 // DispatchOnce processes at most one command. A leased command is marked
@@ -26,11 +28,11 @@ func (s *Service) DispatchOnce(ctx context.Context) (bool, error) {
 }
 
 func (s *Service) dispatchContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	callTimeout := s.leaseFor - s.leaseFor/10
-	if callTimeout <= 0 {
-		callTimeout = s.leaseFor
-	}
-	return context.WithTimeout(ctx, callTimeout)
+	return context.WithTimeout(ctx, domain.CallTimeout(s.leaseFor))
+}
+
+func DispatchCallTimeout(lease time.Duration) time.Duration {
+	return domain.CallTimeout(sources.OrLease(lease))
 }
 
 // dispatchLeased calls the effector with the final authorization check, which
