@@ -149,7 +149,7 @@ Starts the live runtime with HTTP health checks and notifications.
 | `--plant-wire-socket` | empty | owner-only Unix socket a plant wire node dials (absolute path in a 0700 directory); a continuous source, exclusive with `--trace` and `--device-socket` |
 | `--plant-wire-environment` | `simulated` | plant wire nodes accepted: `simulated`, `hardware` or `mixed`; `hardware` and `mixed` need the physical profile with both consent flags |
 | `--plant-wire-kinds` | empty | directory of the commissioned kind files (`*.kind.json`); required with the socket |
-| `--plant-wire-site` | empty | site file kept outside the repository; read and its digest logged at start |
+| `--plant-wire-site` | empty | site file kept outside the repository: checked against its schema and the commissioned kinds, its digest logged at start; without it no reading becomes an event |
 | `--plant-wire-epoch` | `0` | authority epoch the host announces; `0` means Unix seconds at start |
 | `--hardware-boards` | empty | repeatable hardware boards the plant wire host may command; needs a hardware or mixed host |
 
@@ -172,7 +172,10 @@ never opens a raw serial port.
 [the plant wire adapter](../design/plant-wire-adapter.md)): the host admits a
 node's birth against the vendored contract and the commissioned kind files,
 answers every barrier at once, sends a heartbeat every second, and accepts the
-next session when one ends, without a restart. It counts as the effect link of
+next session when one ends, without a restart. The readings and heartbeats the
+site file maps become normalized events admitted like live socket lines (a
+refused one is quarantined); historical (store-and-forward) data is counted,
+not ingested. It counts as the effect link of
 the `emulator` or `physical` profile instead of `--device-socket`; until the
 plant wire effector ships, commands fall back as with no device link (simulated
 under `emulator`, refused under `physical`).

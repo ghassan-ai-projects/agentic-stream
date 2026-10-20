@@ -37,7 +37,7 @@ func conversationReplies(t *testing.T, header map[string]any, steps []map[string
 		t.Fatalf("epoch %s: %v", epoch, err)
 	}
 	conversation := domain.NewConversation(domain.Admission{Environment: hostEnvironment(header),
-		ContractDigest: wire.ContractDigest(), Inventory: validInventory(t)}, hostEpoch)
+		ContractDigest: wire.ContractDigest(), Inventory: validInventory(t)}, hostEpoch, domain.Mapping{})
 	var replies []map[string]any
 	for _, step := range steps {
 		if step["from"] != "node" {

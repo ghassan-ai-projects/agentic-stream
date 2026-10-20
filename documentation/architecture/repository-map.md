@@ -73,10 +73,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/device/internal/wire/` | device record codec: schema-validated canonical NDJSON, typed records and original evidence documents |
 | `internal/device/internal/transport/` | Unix-socket gateway link: framing, deadlines and the may-have-sent signal |
 | `internal/device/internal/domain/` | device-boundary rules: capability catalog, materialization, effect profiles, record matching, output verification |
-| `internal/plantwire/` | plant wire host facade: settings check, host construction over an owner-only listener, `Run` and `Close` ([design](../design/plant-wire-adapter.md)) |
-| `internal/plantwire/internal/app/` | plant wire host use cases: kind commissioning, site digest, one session at a time, handshake, heartbeats, barriers answered at once, goodbye on stop |
-| `internal/plantwire/internal/domain/` | pure plant wire host rules: envelope and sequence, birth view, handshake admission in the contract's order, environment rules, commissioning by kind digest, host settings and the session conversation (STATE, HSYNC, rebirth) |
-| `internal/plantwire/internal/wire/` | the vendored plant wire contract (embedded schemas and pinned digest), record decoding with size limits and exact integers, member-precise schema refusals, kind file parsing |
+| `internal/plantwire/` | plant wire host facade: settings check, host construction over an owner-only listener, `Run` (feeding normalized events to an emit) and `Close` ([design](../design/plant-wire-adapter.md)) |
+| `internal/plantwire/internal/app/` | plant wire host use cases: kind commissioning, the site file, one session at a time, handshake, heartbeats, barriers answered at once, goodbye on stop, the ingest queue and feeder |
+| `internal/plantwire/internal/domain/` | pure plant wire host rules: envelope and sequence, birth view, handshake admission in the contract's order, environment rules, commissioning by kind digest, host settings, the session conversation (STATE, HSYNC, rebirth), the site mapping and directory, readings to normalized events and the heartbeat on event time |
+| `internal/plantwire/internal/wire/` | the vendored plant wire contract (embedded schemas and pinned digest), record decoding with size limits, exact integers and each record's body, member-precise schema refusals, kind file and site file parsing |
 | `internal/plantwire/internal/transport/` | plant wire connection edge: accept, one record per line within the largest record, writes under a 2 s deadline |
 | `internal/episodeledger/` | scheduler queue, episode and attempt lifecycle facade: fencing, rejection audit, supersession and recovery |
 | `internal/episodeledger/internal/app/` | queue, admission, attempt, identity, rejection and recovery use cases |

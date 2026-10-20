@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/transport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/wire"
@@ -18,6 +19,7 @@ const (
 	endConnectionLost = "the connection was lost"
 	endNodeClosed     = "the node closed the connection"
 	endWriteFailed    = "a host record could not be written"
+	endPipelineBehind = "the pipeline fell behind and the ingest queue is full"
 )
 
 type timer interface {
@@ -35,16 +37,20 @@ type session struct {
 	conversation *domain.Conversation
 	clock        sources.Clock
 	beat         timer
+	queue        chan<- contractsv1.Envelope
 	lines        chan readResult
 	done         chan struct{}
 }
 
-func (h *Host) serve(ctx context.Context, conn *transport.Conn) {
-	s := &session{conn: conn, conversation: domain.NewConversation(h.admission, h.epoch), clock: h.clock,
-		lines: make(chan readResult), done: make(chan struct{})}
+func (h *Host) serve(ctx context.Context, conn *transport.Conn, queue chan<- contractsv1.Envelope) {
+	s := &session{conn: conn, conversation: domain.NewConversation(h.admission, h.epoch, h.mapping), clock: h.clock,
+		queue: queue, lines: make(chan readResult), done: make(chan struct{})}
 	defer s.close()
 	go s.read()
-	slog.InfoContext(ctx, "plant wire session ended", "reason", s.run(ctx))
+	end := s.run(ctx)
+	tally := s.conversation.Tally()
+	slog.InfoContext(ctx, "plant wire session ended", "reason", end, "events", tally.Events,
+		"historical_records_not_ingested", tally.Historical, "records_dropped", tally.Dropped)
 }
 
 func (s *session) run(ctx context.Context) string {
@@ -69,16 +75,29 @@ func (s *session) receive(ctx context.Context, read readResult) string {
 	if read.err != nil {
 		return lostConnection(read.err)
 	}
-	reaction := s.conversation.Receive(arrivalOf(read.line))
+	reaction := s.conversation.Receive(s.arrivalOf(read.line))
 	report(ctx, reaction)
-	if reaction.Verdict != nil && reaction.Verdict.Accepted() {
-		s.beat = s.clock.NewTimer(domain.HeartbeatInterval)
+	s.startBeating(reaction)
+	if !enqueue(s.queue, reaction.Events) {
+		return endPipelineBehind
 	}
 	if err := s.send(reaction.Replies); err != nil {
 		slog.WarnContext(ctx, "plant wire host record not written", "error", err)
 		return endWriteFailed
 	}
 	return reaction.End
+}
+
+func (s *session) startBeating(reaction domain.Reaction) {
+	if reaction.Verdict != nil && reaction.Verdict.Accepted() {
+		s.beat = s.clock.NewTimer(domain.HeartbeatInterval)
+	}
+}
+
+func (s *session) arrivalOf(line []byte) domain.Arrival {
+	arrival := arrivalOf(line)
+	arrival.ReceivedAt = s.clock.Now()
+	return arrival
 }
 
 func (s *session) heartbeat() error {

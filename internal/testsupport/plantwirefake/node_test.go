@@ -57,3 +57,17 @@ func TestKindsDirHoldsTheContractKindFile(t *testing.T) {
 		t.Fatalf("the NBIRTH fixture reads as %v", birth["type"])
 	}
 }
+
+func TestBirthAnnouncesTheKindFilesWithTheirDigests(t *testing.T) {
+	t.Parallel()
+	birth := plantwirefake.Birth(t, plantwirefake.KindsDir(t, "."), "board-07", "P1")
+	kinds := birth["kinds"].([]any)
+	fixture := plantwirefake.Fixture(t, ".", "NBIRTH.json")["kinds"].([]any)[0].(map[string]any)
+	if len(kinds) != 1 || kinds[0].(map[string]any)["kind_digest"] != fixture["kind_digest"] {
+		t.Fatalf("kinds = %v, want the pump kind with the fixture's kind_digest %v", kinds, fixture["kind_digest"])
+	}
+	board := birth["boards"].([]any)[0].(map[string]any)
+	if board["board"] != "board-07" || board["environment"] != "simulated" {
+		t.Fatalf("boards = %v, want one simulated board-07", birth["boards"])
+	}
+}

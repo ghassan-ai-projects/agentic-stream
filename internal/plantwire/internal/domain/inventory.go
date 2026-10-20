@@ -4,17 +4,19 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 var ErrKindCommissionedTwice = errors.New("plantwire: a kind is commissioned twice")
 
 type Inventory struct {
 	digests map[string]string
+	kinds   map[string]Kind
 	devices []string
 }
 
 func Commission(files []Kind, devices []string) (Inventory, error) {
-	inventory := Inventory{digests: map[string]string{}, devices: slices.Sorted(slices.Values(devices))}
+	inventory := Inventory{digests: map[string]string{}, kinds: map[string]Kind{}, devices: slices.Sorted(slices.Values(devices))}
 	for _, file := range files {
 		if err := inventory.commission(file); err != nil {
 			return Inventory{}, err
@@ -35,7 +37,18 @@ func (i Inventory) commission(file Kind) error {
 		return err
 	}
 	i.digests[foldedName(file)] = digest
+	i.kinds[foldedName(file)] = file
 	return nil
+}
+
+func (i Inventory) Commissioned(kind string) bool {
+	_, commissioned := i.kinds[strings.ToLower(kind)]
+	return commissioned
+}
+
+func (i Inventory) Declares(kind, metric string) bool {
+	file, commissioned := i.kinds[strings.ToLower(kind)]
+	return commissioned && file.declaresMetric(metric)
 }
 
 func (i Inventory) Quarantined(b Birth) []string {

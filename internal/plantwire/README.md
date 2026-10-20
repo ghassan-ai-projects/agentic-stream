@@ -12,11 +12,11 @@ Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 
 | Layer | Responsibility | State |
 | --- | --- | --- |
-| Domain | Envelope and sequencing, the birth view, handshake admission, environment rules, commissioning by kind digest, host settings, the session conversation (STATE, HSYNC, rebirth, goodbye) | built |
-| Wire | The vendored contract (embedded schemas, `DIGEST`, `VERSION`), record decoding with size limits and exact integers, outgoing records checked against their schema, kind file parsing | built |
+| Domain | Envelope and sequencing, the birth view, handshake admission, environment rules, commissioning by kind digest, host settings, the session conversation (STATE, HSYNC, rebirth, goodbye), the site mapping and directory, device births, data and deaths, readings to normalized events, the heartbeat on event time (built); the command plan, receipts and verification (planned) | partly built |
+| Wire | The vendored contract (embedded schemas, `DIGEST`, `VERSION`), record decoding with size limits and exact integers and the body of each record type, outgoing records checked against their schema, kind file and site file parsing (the site file schema is embedded) | built |
 | Transport | One connection at a time over an injected listener, one record per line, 2 s write deadline | built |
-| App | Kind commissioning, site digest, host supervisor and session loop (built); ingest feed, effector, authority calls (planned) | partly built |
-| Facade | `New`, `CheckSettings`, `Run`, `Close` (built); the effect port operations (planned) | partly built |
+| App | Kind commissioning, the site file, host supervisor and session loop, the ingest queue and feeder (built); effector, authority calls (planned) | partly built |
+| Facade | `New`, `CheckSettings`, `Run(ctx, emit)`, `Close` (built); the effect port operations (planned) | partly built |
 
 `serve --plant-wire-socket` is the only caller. It creates the listener with
 the owner-only Unix socket helper of `internal/worker` (absolute path, 0700
@@ -25,6 +25,47 @@ the host: records are read on their own goroutine and answered from one loop,
 so a barrier is answered at once. The session's state is the pure
 `domain.Conversation`; the app layer only moves lines and timers. Heartbeats
 use the injected clock, so tests drive them with a virtual clock.
+
+## Ingest
+
+`serve` runs the host as an in-process feed: `runtime.Pipeline.RunFeed(ctx,
+host.Run)`, and ingress admits each emitted envelope exactly as a live socket
+line (tenant, envelope contract, registered event schema; a refused envelope is
+quarantined). The session loop puts the events of each record on a bounded
+queue (4096) that one feeder goroutine hands to the pipeline, so a slow batch
+never delays a barrier or a heartbeat; a full queue ends the session (the node
+reconnects) and an emit error stops the host.
+
+What becomes an event is the site file (`--plant-wire-site`, kept outside the
+repository; an example is
+[`examples/real-world-sensor/testdata/plant-wire/`](../../examples/real-world-sensor/testdata/plant-wire/thermal-bench.site.json)).
+It is checked at start against its embedded schema (`internal/wire/site.schema.json`)
+and the commissioned kinds: every site kind is commissioned, every mapped metric
+is declared by its kind, no reading or heartbeat has two rules, every device of
+a kind that gives events names its entity, every wire quality has an event
+quality and none but `good` maps to the event quality of `good`. Without a site
+file the host serves sessions and gives no events.
+
+- A `DBIRTH` registers a device whose kind the birth announced and no kind file
+  quarantines, and whose kind is the one the site file names for it. A rebirth
+  forgets every device; a `DDEATH` of the device's current boot removes it.
+- A non-historical `DDATA` of a born device on its current boot gives one event
+  per sample whose metric the site file maps: the value under the rule's field
+  only when the wire quality is `good`, the mapped quality, `boot_id`, the
+  record's `seq`, `device_mono_us` when sent and `schema_version`; a non-good
+  sample also carries an envelope quality flag. The event id is `pw-` and 32 hex
+  digits of the SHA-256 of origin, device, boot, metric and event time, so a
+  re-sent sample deduplicates in the event log. Historical data is counted and
+  not ingested.
+- The heartbeat runs on event time: the session's time is the largest
+  `NSYNC.world_time_ns`, `birth_time_ns` and sample time seen. A born device of
+  a kind with a heartbeat rule gives one heartbeat event (quality of `good`) at
+  that time when its last good sample is no older than `stale_after_ms` and
+  `every_ms` has passed since its last heartbeat. The host clock is never read,
+  so a silent link or a dead device stops the heartbeats and the spec's
+  missing-heartbeat operator fires.
+- Each session ends with a log of its events, historical records not ingested
+  and dropped records.
 
 ## The vendored contract
 

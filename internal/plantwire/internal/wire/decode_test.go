@@ -66,14 +66,14 @@ func TestDecodeRefusesTypesThatAreNotRecords(t *testing.T) {
 	}
 }
 
-func TestArrivalCarriesTheBodyOfANodeBirthOrDeathOnly(t *testing.T) {
+func TestArrivalCarriesTheBodyOfItsRecordTypeOnly(t *testing.T) {
 	t.Parallel()
 	death := arrivalOf(t, fixture(t, "NDEATH.json"))
 	if death.Invalid != nil || death.Death == nil || death.Death.Reason != "shutdown" || death.Birth != nil {
 		t.Errorf("an NDEATH arrives as %+v, want its death and no birth", death)
 	}
-	if data := arrivalOf(t, fixture(t, "DDATA.json")); data.Invalid != nil || data.Birth != nil || data.Death != nil {
-		t.Errorf("a DDATA arrives as %+v, want no body", data)
+	if receipt := arrivalOf(t, fixture(t, "DRECEIPT.json")); receipt.Invalid != nil || receipt.Birth != nil || receipt.DeviceData != nil {
+		t.Errorf("a DRECEIPT arrives as %+v, want no body", receipt)
 	}
 	var refused *wire.SchemaError
 	if birth := arrivalOf(t, replaced(t, "NBIRTH.json", `"environment": "simulated",`, "")); !errors.As(birth.Invalid, &refused) || birth.Birth != nil {

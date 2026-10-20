@@ -11,7 +11,7 @@ import (
 
 func TestConversationAnswersTheHandshakeBarriersAndHeartbeats(t *testing.T) {
 	t.Parallel()
-	conversation := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, nil), 9)
+	conversation := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, nil), 9, domain.Mapping{})
 	if conversation.Beat() != nil || conversation.Goodbye() != nil {
 		t.Fatal("a conversation beats or says goodbye before its handshake")
 	}
@@ -27,7 +27,7 @@ func TestConversationAnswersTheHandshakeBarriersAndHeartbeats(t *testing.T) {
 
 func TestConversationRefusesABirthAndEndsTheSession(t *testing.T) {
 	t.Parallel()
-	conversation := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, []string{"V9"}), 1)
+	conversation := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, []string{"V9"}), 1, domain.Mapping{})
 	reaction := conversation.Receive(birthArrival(t, 0, 0))
 	assertReply(t, reaction, map[string]any{"type": "STATE", "online": false, "refusal": domain.RefusalInventoryMismatch})
 	if reaction.End != domain.EndRefused || conversation.Beat() != nil {
@@ -37,7 +37,7 @@ func TestConversationRefusesABirthAndEndsTheSession(t *testing.T) {
 
 func TestConversationDropsWhatItCannotUse(t *testing.T) {
 	t.Parallel()
-	conversation := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, nil), 1)
+	conversation := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, nil), 1, domain.Mapping{})
 	outside := syncArrival(3)
 	outside.SessionID = "s-2"
 	steps := []struct {
@@ -61,7 +61,7 @@ func TestConversationDropsWhatItCannotUse(t *testing.T) {
 
 func TestConversationAsksOneRebirthPerGapUntilTheNodeBirthsAgain(t *testing.T) {
 	t.Parallel()
-	conversation := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, nil), 1)
+	conversation := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, nil), 1, domain.Mapping{})
 	conversation.Receive(birthArrival(t, 0, 0))
 	first := conversation.Receive(syncArrival(2))
 	second := conversation.Receive(syncArrival(4))
@@ -79,7 +79,7 @@ func TestConversationAsksOneRebirthPerGapUntilTheNodeBirthsAgain(t *testing.T) {
 
 func TestConversationEndsOnTheDeathOfTheCurrentBirthOnly(t *testing.T) {
 	t.Parallel()
-	conversation := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, nil), 1)
+	conversation := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, nil), 1, domain.Mapping{})
 	conversation.Receive(birthArrival(t, 0, 2))
 	if stale := conversation.Receive(deathArrival(1, 1)); stale.End != "" || stale.Dropped != "a node death of an older birth" {
 		t.Fatalf("an older death gave %+v, want it dropped", stale)
@@ -91,7 +91,7 @@ func TestConversationEndsOnTheDeathOfTheCurrentBirthOnly(t *testing.T) {
 
 func TestConversationReportsTheKindsItQuarantines(t *testing.T) {
 	t.Parallel()
-	conversation := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, nil), 1)
+	conversation := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, nil), 1, domain.Mapping{})
 	arrival := birthArrival(t, 0, 0)
 	arrival.Birth.Kinds = append(arrival.Birth.Kinds, announced(t, domain.Kind{"kind": "pump", "metrics": []any{}, "commands": []any{}}))
 	if reaction := conversation.Receive(arrival); !slices.Equal(reaction.Quarantined, []string{"pump"}) {
@@ -106,7 +106,8 @@ func birthArrival(t *testing.T, seq, bdSeq uint64) domain.Arrival {
 }
 
 func syncArrival(seq uint64) domain.Arrival {
-	return domain.Arrival{Envelope: domain.Envelope{Type: domain.TypeSync, ProtocolVersion: 1, SessionID: "s-1", Seq: seq}, Sequenced: true}
+	return domain.Arrival{Envelope: domain.Envelope{Type: domain.TypeSync, ProtocolVersion: 1, SessionID: "s-1", Seq: seq}, Sequenced: true,
+		Sync: &domain.Sync{WorldTimeNS: 1}}
 }
 
 func deathArrival(seq, bdSeq uint64) domain.Arrival {

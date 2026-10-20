@@ -1,0 +1,25 @@
+{
+  "kind": "indicator",
+  "metrics": [
+    {"name": "state", "data_type": "enum", "enum_values": ["off", "watch", "alert"], "resolution": 1, "writable": true}
+  ],
+  "commands": [
+    {
+      "name": "show_state",
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {"state": {"enum": ["off", "watch", "alert"], "type": "string"}},
+        "required": ["state"],
+        "type": "object"
+      },
+      "risk_class": "low",
+      "safe_stop": false
+    },
+    {
+      "name": "stop_led",
+      "args_schema": {"additionalProperties": false, "properties": {}, "required": [], "type": "object"},
+      "risk_class": "low",
+      "safe_stop": true
+    }
+  ]
+}

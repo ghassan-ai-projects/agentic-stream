@@ -1,12 +1,14 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"sync/atomic"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/transport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/wire"
@@ -16,18 +18,21 @@ import (
 var ErrNoListener = errors.New("plantwire: the host needs a listener")
 
 type Config struct {
-	Listener *transport.Listener
-	Settings domain.Settings
-	KindsDir string
-	SitePath string
-	Clock    sources.Clock
+	Listener  *transport.Listener
+	Settings  domain.Settings
+	KindsDir  string
+	SitePath  string
+	Clock     sources.Clock
+	QueueSize int
 }
 
 type Host struct {
 	listener  *transport.Listener
 	admission domain.Admission
+	mapping   domain.Mapping
 	epoch     int64
 	clock     sources.Clock
+	queueSize int
 	closing   atomic.Bool
 }
 
@@ -39,12 +44,12 @@ func New(cfg Config) (*Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	siteDigest, err := digestSite(cfg.SitePath)
+	site, err := loadSite(cfg.SitePath, inventory)
 	if err != nil {
 		return nil, err
 	}
-	host := newHost(cfg, inventory)
-	host.logReady(cfg, siteDigest)
+	host := newHost(cfg, inventory, site.mapping)
+	host.logReady(cfg, site.digest)
 	return host, nil
 }
 
@@ -58,14 +63,15 @@ func checkConfig(cfg Config) error {
 	return nil
 }
 
-func newHost(cfg Config, inventory domain.Inventory) *Host {
+func newHost(cfg Config, inventory domain.Inventory, mapping domain.Mapping) *Host {
 	clock := sources.OrPhysical(cfg.Clock)
 	epoch := cfg.Settings.Epoch
 	if epoch == 0 {
 		epoch = clock.Now().Unix()
 	}
 	admission := domain.Admission{Environment: cfg.Settings.Environment, ContractDigest: wire.ContractDigest(), Inventory: inventory}
-	return &Host{listener: cfg.Listener, admission: admission, epoch: epoch, clock: clock}
+	return &Host{listener: cfg.Listener, admission: admission, mapping: mapping, epoch: epoch, clock: clock,
+		queueSize: cmp.Or(max(cfg.QueueSize, 0), defaultQueueSize)}
 }
 
 func (h *Host) logReady(cfg Config, siteDigest string) {
@@ -79,7 +85,18 @@ func (h *Host) Close() error {
 	return h.listener.Close()
 }
 
-func (h *Host) Run(ctx context.Context) error {
+func (h *Host) Run(ctx context.Context, emit Emit) error {
+	ctx, stop := context.WithCancelCause(ctx)
+	defer stop(nil)
+	queue := make(chan contractsv1.Envelope, h.queueSize)
+	fed := make(chan error, 1)
+	go func() { fed <- feedPipeline(ctx, queue, emit, stop) }()
+	served := h.acceptSessions(ctx, queue)
+	stop(nil)
+	return errors.Join(<-fed, served)
+}
+
+func (h *Host) acceptSessions(ctx context.Context, queue chan<- contractsv1.Envelope) error {
 	stop := context.AfterFunc(ctx, func() { _ = h.listener.Close() })
 	defer stop()
 	for {
@@ -87,7 +104,7 @@ func (h *Host) Run(ctx context.Context) error {
 		if err != nil {
 			return h.stopped(ctx, err)
 		}
-		h.serve(ctx, conn)
+		h.serve(ctx, conn, queue)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/transport"
@@ -36,8 +37,9 @@ type Settings = domain.Settings
 
 // Config opens a host. Listener is an owner-only Unix listener the caller
 // created; the host closes it when it stops. KindsDir holds the commissioned
-// kind files (*.kind.json). SitePath is the optional site file, read and
-// digested. Clock defaults to the physical clock.
+// kind files (*.kind.json). SitePath is the optional site file: checked
+// against its schema and the commissioned kinds, and digested. Without it no
+// reading becomes an event. Clock defaults to the physical clock.
 type Config struct {
 	Listener net.Listener
 	Settings Settings
@@ -65,8 +67,14 @@ func New(cfg Config) (*Host, error) {
 func CheckSettings(settings Settings) error { return domain.CheckSettings(settings) }
 
 // Run accepts node sessions until ctx ends, then says goodbye to the live
-// session, waits for it to end and closes the listener.
-func (h *Host) Run(ctx context.Context) error { return h.app.Run(ctx) }
+// session, waits for it to end and closes the listener. The readings and
+// heartbeats the site file maps become normalized events handed to emit in
+// order, from a queue beside the session, so a slow emit never delays a
+// barrier; a full queue ends the session. An emit error stops the host and is
+// returned.
+func (h *Host) Run(ctx context.Context, emit func(context.Context, contractsv1.Envelope) error) error {
+	return h.app.Run(ctx, emit)
+}
 
 // Close closes the listener; a running Run then returns.
 func (h *Host) Close() error { return h.app.Close() }

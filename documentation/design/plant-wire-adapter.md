@@ -2,7 +2,8 @@
 
 Status: accepted design, built in rounds. The host sessions exist today
 (`serve --plant-wire-socket`: handshake, commissioning, heartbeats, barriers,
-one session after another); the event mapping and the effector are planned.
+one session after another), and so does the event mapping (site file, readings
+and heartbeats to normalized events through ingress); the effector is planned.
 This page is the decision record the module is built against.
 
 ## Context
@@ -37,8 +38,8 @@ adapter is in use.
 | `internal/plantwire/internal/domain` | Pure rules: envelope and sequencing, record views, handshake admission, environment rules, commissioning by kind digest; later the site model, event mapping, heartbeat state machine, command plan, receipt classification and expected values. No I/O, no clock. | 13 |
 | `internal/plantwire/internal/wire` | The embedded contract (schemas, `DIGEST`, `VERSION`), schema validation, record size limits, exact 64-bit integers, kind file parsing. | 14 |
 | `internal/plantwire/internal/transport` | Framed connection over a listener `cmd` hands in, control lane before data, write deadline. | 15 |
-| `internal/plantwire/internal/app` | Host supervisor and session (built); ingest feed, effector, calls to `authority` (planned). | 25 |
-| `internal/plantwire` | Facade: configuration, settings check, `Run`, `Close` (built); the effect port operations and route ownership (planned). | 26 |
+| `internal/plantwire/internal/app` | Host supervisor and session, site file, ingest queue and feeder (built); effector, calls to `authority` (planned). | 25 |
+| `internal/plantwire` | Facade: configuration, settings check, `Run(ctx, emit)`, `Close` (built); the effect port operations and route ownership (planned). | 26 |
 
 The contract folder is
 `internal/plantwire/internal/wire/plantwire-contract/` and `make plant-wire-sync`
@@ -72,14 +73,18 @@ the code implements.
 Which device feeds which entity, which reading becomes which event type and
 field, which heartbeat event is emitted and how wire quality maps to event
 quality is configuration, not code. It lives in one site file given at start
-(`--plant-wire-site`), outside the repository; its digest is logged. No Go file
-in the module names a metric, an event type or an entity type.
+(`--plant-wire-site`), outside the repository; it is checked against its schema
+and the commissioned kinds, and its digest is logged. No Go file in the module
+names a metric, an event type or an entity type. The rules (registration on
+births, readings, historical data, the heartbeat on event time) are in the
+[module guide](../../internal/plantwire/README.md#ingest).
 
 ### Entity resolution
 
 One seam answers both questions the adapter has: which entity a device reports
 for, and which device an approved command for an entity and route reaches. It
-is read from the site file and the capability catalog now. When the layout
+is read from the site file now (the entity a device reports for); the catalog's
+target bindings join it with the effector, its first caller. When the layout
 arrives in births (a later contract change), a second implementation replaces
 it without changing its callers.
 

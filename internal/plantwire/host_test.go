@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/plantwirefake"
 )
@@ -24,7 +25,7 @@ func TestHostServesANodeUntilItStops(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- host.Run(ctx) }()
+	go func() { done <- host.Run(ctx, discard) }()
 	node := plantwirefake.Dial(t, "tcp", listener.Addr().String(), "s-1")
 	node.Send(plantwirefake.Fixture(t, ".", "NBIRTH.json"))
 	if state := node.Expect("STATE"); state["online"] != true {
@@ -64,7 +65,7 @@ func TestCloseEndsRunWithoutAnError(t *testing.T) {
 		t.Fatalf("New = %v", err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- host.Run(t.Context()) }()
+	go func() { done <- host.Run(t.Context(), discard) }()
 	if err := host.Close(); err != nil {
 		t.Fatalf("Close = %v", err)
 	}
@@ -72,3 +73,5 @@ func TestCloseEndsRunWithoutAnError(t *testing.T) {
 		t.Fatalf("Run = %v after Close, want nil", err)
 	}
 }
+
+func discard(context.Context, contractsv1.Envelope) error { return nil }

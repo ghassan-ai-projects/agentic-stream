@@ -36,6 +36,13 @@ func AdmitEnvelope(line []byte, tenantID string) LineVerdict {
 	if err := json.Unmarshal(line, &env); err != nil {
 		return LineVerdict{Reason: ReasonMalformedJSON, Cause: err}
 	}
+	return CheckEnvelope(env, tenantID)
+}
+
+// CheckEnvelope gives a decoded envelope the tenant when it names none and
+// checks it against the envelope contract. A line admitted by AdmitEnvelope and
+// an envelope handed over by an in-process feed pass the same rule.
+func CheckEnvelope(env contractsv1.Envelope, tenantID string) LineVerdict {
 	if env.TenantID == "" {
 		env.TenantID = tenantID
 	}

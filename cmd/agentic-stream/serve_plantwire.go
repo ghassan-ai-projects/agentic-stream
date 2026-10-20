@@ -9,6 +9,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 )
@@ -90,8 +91,8 @@ func newPlantWireHost(listener net.Listener, flags plantWireFlags, options effec
 	return host, nil
 }
 
-func runPlantWireHost(host *plantwire.Host, run func(string, func(context.Context) error)) {
+func runPlantWireHost(host *plantwire.Host, pipeline *runtime.Pipeline, run func(string, func(context.Context) error)) {
 	if host != nil {
-		run("plant wire host", host.Run)
+		run("plant wire host", func(ctx context.Context) error { return pipeline.RunFeed(ctx, host.Run) })
 	}
 }

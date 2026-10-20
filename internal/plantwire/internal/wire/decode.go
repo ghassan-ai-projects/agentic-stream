@@ -68,16 +68,26 @@ func (in Inbound) Arrival() domain.Arrival {
 	return arrival
 }
 
+var bodies = map[string]func(*domain.Arrival) any{
+	domain.TypeNodeBirth:   func(a *domain.Arrival) any { return fresh(&a.Birth) },
+	domain.TypeNodeDeath:   func(a *domain.Arrival) any { return fresh(&a.Death) },
+	domain.TypeDeviceBirth: func(a *domain.Arrival) any { return fresh(&a.DeviceBirth) },
+	domain.TypeDeviceData:  func(a *domain.Arrival) any { return fresh(&a.DeviceData) },
+	domain.TypeDeviceDeath: func(a *domain.Arrival) any { return fresh(&a.DeviceDeath) },
+	domain.TypeSync:        func(a *domain.Arrival) any { return fresh(&a.Sync) },
+}
+
 func (in Inbound) decodeBody(arrival *domain.Arrival) error {
-	switch in.Type {
-	case domain.TypeNodeBirth:
-		arrival.Birth = &domain.Birth{}
-		return decodeExactly(in.line, arrival.Birth)
-	case domain.TypeNodeDeath:
-		arrival.Death = &domain.NodeDeath{}
-		return decodeExactly(in.line, arrival.Death)
+	body, carried := bodies[in.Type]
+	if !carried {
+		return nil
 	}
-	return nil
+	return decodeExactly(in.line, body(arrival))
+}
+
+func fresh[T any](field **T) *T {
+	*field = new(T)
+	return *field
 }
 
 func withinLimit(recordType string, size int) error {

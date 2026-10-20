@@ -23,6 +23,20 @@ and code changes.
 | `make plant-wire-sync` | copy the plant wire contract from `PLANT_WIRE_CONTRACT_DIR` byte-identically and run its guard tests (digest, version, safety members, byte identity) |
 | `git diff --check` | whitespace/error check |
 
+`TestServeHostsTwoSessionsOfTheStreamsimNodeWithoutARestart` runs the real
+streams-simulator plant wire node against `serve`. It is skipped unless
+`STREAMSIM_BIN` names a streams-simulator binary built after the streamsim
+checkout's HEAD commit; the checkout is the binary's grandparent directory, or
+`STREAMSIM_REPO` when the binary is built elsewhere:
+
+```bash
+go build -o /tmp/streamsim ./cmd/streamsim   # in the streams-simulator checkout
+STREAMSIM_BIN=/tmp/streamsim STREAMSIM_REPO=<streams-simulator checkout> \
+  go test ./cmd/agentic-stream -run Streamsim
+```
+
+The test kills the node at the test deadline, so a hung node cannot stall the run.
+
 Optional local tools such as `deadcode` and `govulncheck` are reported as
 skipped by the Makefile when not installed.
 

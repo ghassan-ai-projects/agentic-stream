@@ -11,6 +11,8 @@ const (
 	HostID                = "agentic-stream"
 	TypeNodeBirth         = "NBIRTH"
 	TypeDeviceBirth       = "DBIRTH"
+	TypeDeviceData        = "DDATA"
+	TypeDeviceDeath       = "DDEATH"
 	TypeNodeDeath         = "NDEATH"
 	TypeSync              = "NSYNC"
 	laneControl           = "control"

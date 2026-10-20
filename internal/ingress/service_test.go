@@ -1,12 +1,15 @@
 package ingress_test
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/ingress"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -102,4 +105,33 @@ func TestServiceRefusesALiveSourceWithoutASink(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "sink is required") {
 		t.Fatalf("err = %v, want the missing sink refusal", err)
 	}
+}
+
+func TestServiceServesAFeedThroughTheFacade(t *testing.T) {
+	t.Parallel()
+	service, db := newService(t)
+	var line contractsv1.Envelope
+	if err := json.Unmarshal([]byte(vibrationLine), &line); err != nil {
+		t.Fatal(err)
+	}
+	feed := func(ctx context.Context, emit func(context.Context, contractsv1.Envelope) error) error {
+		return emit(ctx, line)
+	}
+	var received []string
+	err := service.ServeFeed(t.Context(), feed, func(_ context.Context, env contractsv1.Envelope) error {
+		received = append(received, env.ID)
+		return nil
+	})
+	if err != nil || len(received) != 1 || received[0] != "evt-1" || countQuarantined(t, db) != 0 {
+		t.Fatalf("ServeFeed = %v, sink got %v, want evt-1 admitted and nothing quarantined", err, received)
+	}
+}
+
+func countQuarantined(t *testing.T, db *storage.DB) int {
+	t.Helper()
+	var count int
+	if err := db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM event_quarantine").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	return count
 }

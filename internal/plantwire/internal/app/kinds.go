@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/wire"
 )
@@ -77,15 +76,4 @@ func readKindFile(path string) (domain.Kind, error) {
 	}
 	slog.Info("plant wire kind file read", "kind", kind.Name(), "kind_digest", digest, "path", path)
 	return kind, nil
-}
-
-func digestSite(path string) (string, error) {
-	if path == "" {
-		return "", nil
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("plantwire: read the site file: %w", err)
-	}
-	return canonicaljson.ContentDigest(raw), nil
 }

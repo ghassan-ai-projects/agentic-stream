@@ -45,3 +45,19 @@ the [device-authority language](../authority/UBIQUITOUS_LANGUAGE.md).
 | **Kind digest** | SHA-256 of the RFC 8785 form of a kind entry without `kind_digest`. | `KindDigest` | `kind_digest` |
 | **Commissioned kind** | A kind file the host accepts; only its devices give events and take commands. | `Commission`, `Inventory` | — |
 | **Quarantined kind** | An announced kind no kind file commissions, or whose digest differs. Its devices are ignored; the session stays. | `Inventory.Quarantined` | — |
+
+## Ingest
+
+| Term | Meaning | Code | Wire |
+| --- | --- | --- | --- |
+| **Site file** | The deployment's mapping, outside the repository: devices to kinds and entities, readings to event types and fields, heartbeat rules, wire quality to event quality. | `Site`, `wire.ParseSiteFile` | — |
+| **Mapping** | A site file checked against the commissioned kinds. | `Mapping`, `NewMapping` | — |
+| **Directory** | The one seam that says which entity a device reports for (and, with the effector, which device a command reaches). | `Directory` | — |
+| **Born device** | A device registered by its `DBIRTH` on its current boot until its death or a rebirth. | `liveDevice` | `DBIRTH` |
+| **Reading** | A sample of a mapped metric that becomes one normalized event. | `Reading` | `DDATA.metrics[]` |
+| **Historical data** | Store-and-forward samples; counted, never ingested live. | `DeviceData.Historical` | `historical: true` |
+| **Session time** | The largest world time, birth time and sample time the session has seen; the heartbeat's clock. | `ingest.nowNS` | `NSYNC.world_time_ns`, `event_time_ns` |
+| **Heartbeat event** | The liveness event of a born, fresh device, every `every_ms` of session time. | `HeartbeatRule` | — |
+| **Fresh** | A device whose last good sample is no older than `stale_after_ms` of session time. | `liveDevice.fresh` | — |
+| **Tally** | What a session gave: events, historical records not ingested, dropped records. | `Tally` | — |
+| **Ingest queue** | The bounded queue between the session loop and the pipeline; full ends the session. | `enqueue`, `feedPipeline` | — |

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
@@ -45,6 +46,14 @@ func KindDigest(kind Kind) (string, error) {
 func (k Kind) recomputes() bool {
 	digest, err := KindDigest(k)
 	return err == nil && digest == k.DeclaredDigest()
+}
+
+func (k Kind) declaresMetric(name string) bool {
+	metrics, _ := k["metrics"].([]any)
+	return slices.ContainsFunc(metrics, func(metric any) bool {
+		fields, _ := metric.(map[string]any)
+		return fields["name"] == name
+	})
 }
 
 func foldedName(kind Kind) string {

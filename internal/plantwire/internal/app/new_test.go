@@ -30,6 +30,12 @@ func TestNewRefusesAHostItCannotServeSafely(t *testing.T) {
 		{"a kind file that fails its schema", func(c *app.Config) { c.KindsDir = kindsWith(t, "broken.kind.json", `{"kind":"pump"}`) }, isSchemaRefusal},
 		{"one kind in two files", func(c *app.Config) { c.KindsDir = kindsWith(t, "again.kind.json", kindFile(t, kinds)) }, is(domain.ErrKindCommissionedTwice)},
 		{"an unreadable site file", func(c *app.Config) { c.SitePath = filepath.Join(kinds, "absent.site.json") }, is(os.ErrNotExist)},
+		{"a site file that fails its schema", func(c *app.Config) { c.SitePath = siteFile(t, map[string]any{"version": 1}) }, isSchemaRefusal},
+		{"a site file mapping a metric the kind does not declare", func(c *app.Config) {
+			site := pumpSite()
+			site["readings"].([]any)[0].(map[string]any)["metric"] = "pressure"
+			c.SitePath = siteFile(t, site)
+		}, is(domain.ErrSiteMetricNotDeclared)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -46,10 +52,7 @@ func TestNewRefusesAHostItCannotServeSafely(t *testing.T) {
 
 func TestNewReadsTheSiteFileAndDefaultsTheEpochToTheClock(t *testing.T) {
 	t.Parallel()
-	site := filepath.Join(t.TempDir(), "bench.site.json")
-	if err := os.WriteFile(site, []byte(`{"version":1}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	site := siteFile(t, pumpSite())
 	settings := simulatedHost
 	settings.Epoch = 0
 	host, err := app.New(app.Config{Listener: listener(t), Settings: settings, KindsDir: plantwirefake.KindsDir(t, "."), SitePath: site})

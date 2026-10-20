@@ -59,7 +59,7 @@ func startContinuousSource(ctx context.Context, stop context.CancelFunc, pipelin
 	}
 	run("pipeline clock", func(ctx context.Context) error { return pipeline.AdvanceEvery(ctx, flags.pollInterval) })
 	run("episode loop", func(ctx context.Context) error { return pipeline.RunEpisodesEvery(ctx, flags.pollInterval) })
-	runPlantWireHost(opened.plant, run)
+	runPlantWireHost(opened.plant, pipeline, run)
 	if flags.liveSocket == "" {
 		return nil
 	}

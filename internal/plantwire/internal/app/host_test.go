@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/transport"
@@ -26,25 +27,50 @@ type runningHost struct {
 	cancel  context.CancelFunc
 	done    chan error
 	once    *sync.Once
+	events  chan contractsv1.Envelope
 }
 
 func startHost(t *testing.T, settings domain.Settings) runningHost {
+	t.Helper()
+	return startHostWith(t, app.Config{Settings: settings, KindsDir: plantwirefake.KindsDir(t, ".")}, nil)
+}
+
+func startHostWith(t *testing.T, config app.Config, emit app.Emit) runningHost {
 	t.Helper()
 	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	clock := sources.NewVirtual(time.Unix(1_800_000_000, 0))
-	host, err := app.New(app.Config{Listener: transport.NewListener(listener), Settings: settings,
-		KindsDir: plantwirefake.KindsDir(t, "."), Clock: clock})
+	config.Listener, config.Clock = transport.NewListener(listener), sources.NewVirtual(time.Unix(1_800_000_000, 0))
+	host, err := app.New(config)
 	if err != nil {
 		t.Fatalf("New = %v", err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
-	running := runningHost{host: host, address: listener.Addr().String(), clock: clock, cancel: cancel, done: make(chan error, 1), once: &sync.Once{}}
-	go func() { running.done <- host.Run(ctx) }()
+	running := runningHost{host: host, address: listener.Addr().String(), clock: config.Clock.(*sources.Virtual), cancel: cancel,
+		done: make(chan error, 1), once: &sync.Once{}, events: make(chan contractsv1.Envelope, 64)}
+	if emit == nil {
+		emit = running.collect
+	}
+	go func() { running.done <- host.Run(ctx, emit) }()
 	t.Cleanup(func() { running.stop(t) })
 	return running
+}
+
+func (r runningHost) collect(_ context.Context, event contractsv1.Envelope) error {
+	r.events <- event
+	return nil
+}
+
+func (r runningHost) event(t *testing.T) contractsv1.Envelope {
+	t.Helper()
+	select {
+	case event := <-r.events:
+		return event
+	case <-time.After(5 * time.Second):
+		t.Fatal("the host emitted no event")
+		return contractsv1.Envelope{}
+	}
 }
 
 func (r runningHost) stop(t *testing.T) {

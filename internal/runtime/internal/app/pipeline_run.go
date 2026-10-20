@@ -42,7 +42,23 @@ func (p *Pipeline) prepareIngest(ctx context.Context) (eventlog.LogPosition, err
 	return p.currentEventPosition(ctx)
 }
 
+type Feed = func(context.Context, func(context.Context, contractsv1.Envelope) error) error
+
+type liveSink = func(context.Context, contractsv1.Envelope) error
+
 func (p *Pipeline) RunLiveSocket(ctx context.Context, path string) error {
+	return p.runLiveSource(ctx, "live socket", func(ctx context.Context, sink liveSink) error {
+		return p.sources.RunLiveSocket(ctx, path, sink)
+	})
+}
+
+func (p *Pipeline) RunFeed(ctx context.Context, feed Feed) error {
+	return p.runLiveSource(ctx, "feed", func(ctx context.Context, sink liveSink) error {
+		return p.sources.RunFeed(ctx, feed, sink)
+	})
+}
+
+func (p *Pipeline) runLiveSource(ctx context.Context, name string, serve func(context.Context, liveSink) error) error {
 	if p == nil {
 		return fmt.Errorf("pipeline is nil")
 	}
@@ -51,11 +67,9 @@ func (p *Pipeline) RunLiveSocket(ctx context.Context, path string) error {
 	}
 	p.handDispatchToMaintenance()
 	defer p.dispatchInMaintenance.Store(false)
-	err := p.sources.RunLiveSocket(ctx, path, func(sinkCtx context.Context, env contractsv1.Envelope) error {
-		return p.ingestLiveEvent(sinkCtx, env)
-	})
+	err := serve(ctx, p.ingestLiveEvent)
 	if err != nil && !domain.NormalLiveSocketShutdown(ctx.Err(), err) {
-		return fmt.Errorf("run live socket source: %w", err)
+		return fmt.Errorf("run %s source: %w", name, err)
 	}
 	return nil
 }

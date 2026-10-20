@@ -1,5 +1,11 @@
 package domain
 
+import (
+	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+)
+
 const (
 	EndRefused   = "refused"
 	EndNodeDeath = "node death"
@@ -7,14 +13,20 @@ const (
 
 type Arrival struct {
 	Envelope
-	Sequenced bool
-	Invalid   error
-	Birth     *Birth
-	Death     *NodeDeath
+	Sequenced   bool
+	Invalid     error
+	ReceivedAt  time.Time
+	Birth       *Birth
+	Death       *NodeDeath
+	DeviceBirth *DeviceBirth
+	DeviceData  *DeviceData
+	DeviceDeath *DeviceDeath
+	Sync        *Sync
 }
 
 type Reaction struct {
 	Replies     []map[string]any
+	Events      []contractsv1.Envelope
 	Verdict     *Verdict
 	Quarantined []string
 	Rebirth     bool
@@ -31,11 +43,14 @@ type Conversation struct {
 	asked     bool
 	bdSeq     uint64
 	heartbeat uint64
+	ingest    *ingest
 }
 
-func NewConversation(admission Admission, epoch int64) *Conversation {
-	return &Conversation{admission: admission, epoch: epoch}
+func NewConversation(admission Admission, epoch int64, mapping Mapping) *Conversation {
+	return &Conversation{admission: admission, epoch: epoch, ingest: newIngest(mapping)}
 }
+
+func (c *Conversation) Tally() Tally { return c.ingest.tally }
 
 func (c *Conversation) Receive(a Arrival) Reaction {
 	var reaction Reaction
@@ -107,6 +122,7 @@ func (c *Conversation) react(a Arrival, r *Reaction) {
 	case TypeSync:
 		r.Replies = append(r.Replies, c.out.stamp(syncRecord(a.Seq)))
 	}
+	c.ingest.observe(a, r)
 }
 
 func (c *Conversation) birth(b Birth, r *Reaction) {
@@ -116,6 +132,7 @@ func (c *Conversation) birth(b Birth, r *Reaction) {
 	}
 	if c.accepted {
 		r.Quarantined = c.admission.Inventory.Quarantined(b)
+		c.ingest.rebirth(b, r.Quarantined)
 	}
 }
 

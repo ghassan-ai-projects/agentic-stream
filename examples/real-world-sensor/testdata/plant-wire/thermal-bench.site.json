@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "source": "plantwire",
+  "devices": {
+    "zone-01": {"kind": "thermal_sensor", "entity": {"type": "thermal_zone", "id": "zone-01"}},
+    "led-01": {"kind": "indicator"},
+    "fan-01": {"kind": "fan"}
+  },
+  "readings": [
+    {"kind": "thermal_sensor", "metric": "temperature", "event_type": "zone.temp.observed", "schema_version": "1.0", "field": "celsius"},
+    {"kind": "thermal_sensor", "metric": "humidity", "event_type": "zone.humidity.observed", "schema_version": "1.0", "field": "percent"}
+  ],
+  "heartbeats": [
+    {"kind": "thermal_sensor", "event_type": "zone.heartbeat.observed", "schema_version": "1.0", "every_ms": 10000, "stale_after_ms": 6000}
+  ],
+  "quality": {
+    "good": "valid",
+    "warming_up": "warming",
+    "suspect": "invalid",
+    "out_of_range": "invalid",
+    "stale": "invalid",
+    "disconnected": "disconnected",
+    "manual_override": "invalid",
+    "out_of_service": "disconnected"
+  }
+}

@@ -190,7 +190,7 @@ var facadeSpecs = []facadeSpec{
 	{
 		module:       "internal/ingress",
 		constructors: []string{"New", "applicationConfig"},
-		operations:   operations(to("app", "ReplayJSONL", "ReplaySimulator", "ServeLive")),
+		operations:   operations(to("app", "ReplayJSONL", "ReplaySimulator", "ServeLive", "ServeFeed")),
 	},
 	{
 		module: "internal/executor/native",
