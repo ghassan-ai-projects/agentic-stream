@@ -10,6 +10,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
@@ -46,6 +47,7 @@ type runtimeCore struct {
 type effects struct {
 	effector actionport.Effector
 	serial   *device.GatewayEffector
+	plant    *plantwire.Host
 }
 
 func (f *liveFlags) registerShared(cmd *cobra.Command) {

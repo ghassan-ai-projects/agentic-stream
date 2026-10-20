@@ -1,0 +1,12 @@
+{
+  "schema": "NCMD",
+  "fails_at": "/command",
+  "record": {
+    "type": "NCMD",
+    "protocol_version": 1,
+    "session_id": "s-1",
+    "seq": 1,
+    "lane": "control",
+    "command": "reboot_everything"
+  }
+}

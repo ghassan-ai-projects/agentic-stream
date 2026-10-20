@@ -208,6 +208,11 @@ var facadeSpecs = []facadeSpec{
 		operations: operations(where(reachesApp, "NewExecutor", "NewExecutorWithEvidence", "Execute")),
 	},
 	{
+		module:       "internal/plantwire",
+		constructors: []string{"New"},
+		operations:   operations(to("app", "Run", "Close"), to("domain", "CheckSettings")),
+	},
+	{
 		module:       "internal/runartifact",
 		constructors: []string{"policyDocuments"},
 		operations:   operations(to("app", "Export", "Verify")),

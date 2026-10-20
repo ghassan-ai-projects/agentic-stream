@@ -1,0 +1,9 @@
+{
+  "type": "NSYNC",
+  "protocol_version": 1,
+  "session_id": "s-1",
+  "seq": 8,
+  "lane": "control",
+  "through_seq": 7,
+  "world_time_ns": 1767225660000000000
+}

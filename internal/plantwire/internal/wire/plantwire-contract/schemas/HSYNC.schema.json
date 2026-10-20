@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:plant-wire:v1:HSYNC",
+  "title": "HSYNC",
+  "description": "Barrier reply: the host has processed every node record up to through_seq and sent its commands for that slice.",
+  "type": "object",
+  "required": [
+    "type",
+    "protocol_version",
+    "session_id",
+    "seq",
+    "lane",
+    "through_seq"
+  ],
+  "properties": {
+    "type": {
+      "const": "HSYNC"
+    },
+    "protocol_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lane": {
+      "const": "control"
+    },
+    "through_seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "command_evidence": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command_id",
+          "device",
+          "boot_id",
+          "metric",
+          "outcome",
+          "expected",
+          "tolerance"
+        ],
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+          },
+          "device": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+          },
+          "boot_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+          },
+          "metric": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+          },
+          "outcome": {
+            "enum": [
+              "observed",
+              "not_observed"
+            ]
+          },
+          "expected": {
+            "type": "number"
+          },
+          "tolerance": {
+            "type": "number",
+            "minimum": 0
+          },
+          "observed_value": {
+            "type": "number"
+          }
+        },
+        "if": {
+          "properties": {
+            "outcome": {
+              "const": "observed"
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "observed_value"
+          ]
+        }
+      }
+    }
+  }
+}

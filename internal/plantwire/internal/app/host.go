@@ -1,0 +1,100 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"sync/atomic"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/transport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/wire"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
+)
+
+var ErrNoListener = errors.New("plantwire: the host needs a listener")
+
+type Config struct {
+	Listener *transport.Listener
+	Settings domain.Settings
+	KindsDir string
+	SitePath string
+	Clock    sources.Clock
+}
+
+type Host struct {
+	listener  *transport.Listener
+	admission domain.Admission
+	epoch     int64
+	clock     sources.Clock
+	closing   atomic.Bool
+}
+
+func New(cfg Config) (*Host, error) {
+	if err := checkConfig(cfg); err != nil {
+		return nil, err
+	}
+	inventory, err := commissionKinds(cfg.KindsDir)
+	if err != nil {
+		return nil, err
+	}
+	siteDigest, err := digestSite(cfg.SitePath)
+	if err != nil {
+		return nil, err
+	}
+	host := newHost(cfg, inventory)
+	host.logReady(cfg, siteDigest)
+	return host, nil
+}
+
+func checkConfig(cfg Config) error {
+	if cfg.Listener == nil {
+		return ErrNoListener
+	}
+	if err := domain.CheckSettings(cfg.Settings); err != nil {
+		return fmt.Errorf("plantwire: host settings: %w", err)
+	}
+	return nil
+}
+
+func newHost(cfg Config, inventory domain.Inventory) *Host {
+	clock := sources.OrPhysical(cfg.Clock)
+	epoch := cfg.Settings.Epoch
+	if epoch == 0 {
+		epoch = clock.Now().Unix()
+	}
+	admission := domain.Admission{Environment: cfg.Settings.Environment, ContractDigest: wire.ContractDigest(), Inventory: inventory}
+	return &Host{listener: cfg.Listener, admission: admission, epoch: epoch, clock: clock}
+}
+
+func (h *Host) logReady(cfg Config, siteDigest string) {
+	slog.Info("plant wire host ready", "contract_version", domain.ContractVersion, "contract_digest", wire.ContractDigest(),
+		"environment", cfg.Settings.Environment, "hardware_boards", cfg.Settings.HardwareBoards, "authority_epoch", h.epoch,
+		"kinds_dir", cfg.KindsDir, "site", cfg.SitePath, "site_digest", siteDigest)
+}
+
+func (h *Host) Close() error {
+	h.closing.Store(true)
+	return h.listener.Close()
+}
+
+func (h *Host) Run(ctx context.Context) error {
+	stop := context.AfterFunc(ctx, func() { _ = h.listener.Close() })
+	defer stop()
+	for {
+		conn, err := h.listener.Accept()
+		if err != nil {
+			return h.stopped(ctx, err)
+		}
+		h.serve(ctx, conn)
+	}
+}
+
+func (h *Host) stopped(ctx context.Context, err error) error {
+	_ = h.listener.Close()
+	if ctx.Err() != nil || h.closing.Load() {
+		return nil
+	}
+	return err
+}

@@ -1,0 +1,9 @@
+{
+  "type": "NDEATH",
+  "protocol_version": 1,
+  "session_id": "s-1",
+  "seq": 4,
+  "lane": "control",
+  "bd_seq": 0,
+  "reason": "shutdown"
+}

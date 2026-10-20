@@ -1,10 +1,9 @@
 # Plant wire adapter
 
-Status: accepted design, built in rounds. Only the vendored contract, the
-record codec and the handshake rules exist today (`internal/plantwire/internal/wire`
-and `internal/plantwire/internal/domain`); the session, the event mapping and
-the effector are planned. This page is the decision record the module is built
-against.
+Status: accepted design, built in rounds. The host sessions exist today
+(`serve --plant-wire-socket`: handshake, commissioning, heartbeats, barriers,
+one session after another); the event mapping and the effector are planned.
+This page is the decision record the module is built against.
 
 ## Context
 
@@ -37,9 +36,9 @@ adapter is in use.
 | --- | --- | --- |
 | `internal/plantwire/internal/domain` | Pure rules: envelope and sequencing, record views, handshake admission, environment rules, commissioning by kind digest; later the site model, event mapping, heartbeat state machine, command plan, receipt classification and expected values. No I/O, no clock. | 13 |
 | `internal/plantwire/internal/wire` | The embedded contract (schemas, `DIGEST`, `VERSION`), schema validation, record size limits, exact 64-bit integers, kind file parsing. | 14 |
-| `internal/plantwire/internal/transport` (planned) | Framed connection over a listener `cmd` hands in, control lane before data, write deadline. | 15 |
-| `internal/plantwire/internal/app` (planned) | Host supervisor, session, barrier, ingest feed, effector, calls to `authority`. | 25 |
-| `internal/plantwire` (planned) | Facade: configuration, `Run`, the effect port operations, route ownership, close. | 26 |
+| `internal/plantwire/internal/transport` | Framed connection over a listener `cmd` hands in, control lane before data, write deadline. | 15 |
+| `internal/plantwire/internal/app` | Host supervisor and session (built); ingest feed, effector, calls to `authority` (planned). | 25 |
+| `internal/plantwire` | Facade: configuration, settings check, `Run`, `Close` (built); the effect port operations and route ownership (planned). | 26 |
 
 The contract folder is
 `internal/plantwire/internal/wire/plantwire-contract/` and `make plant-wire-sync`
@@ -50,7 +49,9 @@ the code implements.
 ### Session lifecycle
 
 1. `cmd` creates the owner-only Unix socket and hands its listener to the
-   module. A node dials the host; the host never dials.
+   module. A node dials the host; the host never dials. Sessions are served
+   one at a time: a node that dials while a session is live waits until it
+   ends.
 2. `NBIRTH` is admitted or refused in a fixed order: `protocol_invalid`,
    `environment_mismatch`, `contract_unsupported` (exact contract version and
    digest), `version_unsupported`, `inventory_mismatch` (a kind digest that does
@@ -64,7 +65,7 @@ the code implements.
 5. A sequence gap asks for one rebirth. A socket loss or `NDEATH` ends the
    session: claims are released, commands in flight are settled as the contract
    says, devices go offline. The host then accepts the next session without a
-   restart.
+   restart. When `serve` stops, the host says goodbye (`STATE` offline).
 
 ### Site file
 

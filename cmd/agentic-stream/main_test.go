@@ -58,7 +58,7 @@ func TestServeCommandRequiresContinuousSourcePair(t *testing.T) {
 	cmd.SetArgs([]string{"--db", "runtime.db", "--spec", "spec.yaml"})
 
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "--spec and --trace must be provided together") {
+	if err == nil || !strings.Contains(err.Error(), "--spec and one of --trace, --live-socket or --plant-wire-socket must be provided together") {
 		t.Fatalf("expected paired source validation, got %v", err)
 	}
 }
@@ -76,14 +76,14 @@ func TestServeCommandRefusesPhysicalProfileWithJSONLSource(t *testing.T) {
 
 func TestServeSourceValidationAllowsLiveSocketWithWorker(t *testing.T) {
 	t.Parallel()
-	if err := validateServeSources("spec.yaml", "", "/tmp/live.sock", "/tmp/worker.sock"); err != nil {
+	if err := validateServeSources("spec.yaml", "", "/tmp/live.sock", "", "/tmp/worker.sock"); err != nil {
 		t.Fatalf("live socket plus worker rejected: %v", err)
 	}
 }
 
 func TestServeSourceValidationRejectsMixedSources(t *testing.T) {
 	t.Parallel()
-	err := validateServeSources("spec.yaml", "trace.jsonl", "/tmp/live.sock", "")
+	err := validateServeSources("spec.yaml", "trace.jsonl", "/tmp/live.sock", "", "")
 	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
 		t.Fatalf("expected mixed source rejection, got %v", err)
 	}
@@ -91,8 +91,8 @@ func TestServeSourceValidationRejectsMixedSources(t *testing.T) {
 
 func TestServeSourceValidationRequiresSpecForLiveSocket(t *testing.T) {
 	t.Parallel()
-	err := validateServeSources("", "", "/tmp/live.sock", "")
-	if err == nil || !strings.Contains(err.Error(), "--spec and --live-socket") {
+	err := validateServeSources("", "", "/tmp/live.sock", "", "")
+	if err == nil || !strings.Contains(err.Error(), "--spec and one of --trace, --live-socket or --plant-wire-socket") {
 		t.Fatalf("expected live source/spec pairing error, got %v", err)
 	}
 }

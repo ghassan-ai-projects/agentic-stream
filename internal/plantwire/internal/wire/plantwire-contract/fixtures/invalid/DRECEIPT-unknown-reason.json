@@ -1,0 +1,15 @@
+{
+  "schema": "DRECEIPT",
+  "fails_at": "/reason",
+  "record": {
+    "type": "DRECEIPT",
+    "protocol_version": 1,
+    "session_id": "s-1",
+    "seq": 5,
+    "lane": "control",
+    "command_id": "c-1",
+    "status": "refused",
+    "boot_id": "board-01-boot-1",
+    "reason": "because"
+  }
+}

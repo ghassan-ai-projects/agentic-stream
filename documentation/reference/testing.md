@@ -20,6 +20,7 @@ and code changes.
 | `make proto-check` | generated worker stubs match source |
 | `make ci-check` | local CI-equivalent gate |
 | `make docs-check` | public docs structure/surface checks |
+| `make plant-wire-sync` | copy the plant wire contract from `PLANT_WIRE_CONTRACT_DIR` byte-identically and run its guard tests (digest, version, safety members, byte identity) |
 | `git diff --check` | whitespace/error check |
 
 Optional local tools such as `deadcode` and `govulncheck` are reported as

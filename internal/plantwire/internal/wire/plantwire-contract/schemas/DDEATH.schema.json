@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:plant-wire:v1:DDEATH",
+  "title": "DDEATH",
+  "description": "Device death: the whole device went offline. A failed sensor inside a live device is a quality code.",
+  "type": "object",
+  "required": [
+    "type",
+    "protocol_version",
+    "session_id",
+    "seq",
+    "lane",
+    "device",
+    "boot_id",
+    "reason",
+    "last_seq"
+  ],
+  "properties": {
+    "type": {
+      "const": "DDEATH"
+    },
+    "protocol_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lane": {
+      "const": "control"
+    },
+    "device": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "boot_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "reason": {
+      "enum": [
+        "offline",
+        "link_down",
+        "retired",
+        "reboot",
+        "poll_failure"
+      ]
+    },
+    "last_seq": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

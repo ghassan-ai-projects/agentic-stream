@@ -73,6 +73,11 @@ historical design map where the code has chosen a more specific package name.
 | `internal/device/internal/wire/` | device record codec: schema-validated canonical NDJSON, typed records and original evidence documents |
 | `internal/device/internal/transport/` | Unix-socket gateway link: framing, deadlines and the may-have-sent signal |
 | `internal/device/internal/domain/` | device-boundary rules: capability catalog, materialization, effect profiles, record matching, output verification |
+| `internal/plantwire/` | plant wire host facade: settings check, host construction over an owner-only listener, `Run` and `Close` ([design](../design/plant-wire-adapter.md)) |
+| `internal/plantwire/internal/app/` | plant wire host use cases: kind commissioning, site digest, one session at a time, handshake, heartbeats, barriers answered at once, goodbye on stop |
+| `internal/plantwire/internal/domain/` | pure plant wire host rules: envelope and sequence, birth view, handshake admission in the contract's order, environment rules, commissioning by kind digest, host settings and the session conversation (STATE, HSYNC, rebirth) |
+| `internal/plantwire/internal/wire/` | the vendored plant wire contract (embedded schemas and pinned digest), record decoding with size limits and exact integers, member-precise schema refusals, kind file parsing |
+| `internal/plantwire/internal/transport/` | plant wire connection edge: accept, one record per line within the largest record, writes under a 2 s deadline |
 | `internal/episodeledger/` | scheduler queue, episode and attempt lifecycle facade: fencing, rejection audit, supersession and recovery |
 | `internal/episodeledger/internal/app/` | queue, admission, attempt, identity, rejection and recovery use cases |
 | `internal/episodeledger/internal/domain/` | pure statuses, identity and fence checks, transition table, rejection and recovery rules |
@@ -107,6 +112,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/spec/spectest/` | test support: registers a built-in event schema directly, as deployment does in production |
 | `internal/control/controltest/` | test support: writes one cost limit directly; production uses `control.ApplyCostCeilings` |
 | `internal/testsupport/workerfake/` | test support: a validating EpisodeWorker that speaks the worker protocol like Tamoz or a separate Go worker |
+| `internal/testsupport/plantwirefake/` | test support: a scripted plant wire node that dials a host, sends sequenced records and reads the host's |
 | `internal/testsupport/executorconformance/` | test support: the semantic contract every episode executor must meet |
 | `internal/runartifact/` | bounded operational evidence (soak verdict) and immutable artifact verification; facade, `internal/app`, pure `internal/domain`, read-only `internal/store`, artifact directory in `internal/transport` |
 | `internal/replay/` | effect-safe replay modes |

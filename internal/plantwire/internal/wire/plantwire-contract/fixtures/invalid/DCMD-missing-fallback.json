@@ -1,0 +1,24 @@
+{
+  "schema": "DCMD",
+  "fails_at": "/fallback_on_lease_loss",
+  "record": {
+    "type": "DCMD",
+    "protocol_version": 1,
+    "session_id": "s-1",
+    "seq": 2,
+    "lane": "control",
+    "command_id": "c-1",
+    "idempotency_key": "sha256:80f43ea83bf83014412e6861b2b1a43a18df67abca91d82fb745f110442dfbac",
+    "device": "P1",
+    "command": "set_speed",
+    "args": {
+      "pct": 70,
+      "lease_ms": 30000
+    },
+    "expected_boot_id": "board-01-boot-1",
+    "deadline_ns": 1767225720000000000,
+    "not_before_ns": 0,
+    "authority_epoch": 1,
+    "policy_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "schema": "BOARD",
+  "fails_at": "/kinds/pump/commands/set_speed/args/freq_dhz",
+  "record": {
+    "board_type": "pump-controller",
+    "kinds": {
+      "pump": {
+        "commands": {
+          "safe_stop": {
+            "raw": "estop"
+          },
+          "set_speed": {
+            "raw": "set_vfd",
+            "args": {
+              "freq_dhz": {
+                "from": "pct",
+                "scale": 5,
+                "value": 1
+              },
+              "lease_ms": {
+                "from": "lease_ms"
+              }
+            }
+          },
+          "start": {
+            "raw": "run",
+            "args": {
+              "ramp": {
+                "value": "soft"
+              }
+            }
+          }
+        },
+        "metrics": {
+          "flow": {
+            "raw": "flow"
+          },
+          "speed_setpoint": {
+            "raw": "freq_dhz",
+            "scale": 5
+          },
+          "mode": {
+            "raw": "mode_word",
+            "table": {
+              "AUTO": "auto",
+              "HAND": "hand",
+              "OFF": "off"
+            }
+          }
+        },
+        "raw_enums": {
+          "mode_word": [
+            "OFF",
+            "HAND",
+            "AUTO"
+          ],
+          "ramp": [
+            "hard",
+            "soft"
+          ]
+        }
+      }
+    }
+  }
+}

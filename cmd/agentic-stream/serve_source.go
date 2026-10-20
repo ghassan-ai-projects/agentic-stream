@@ -20,7 +20,7 @@ func startContinuousPipeline(ctx context.Context, stop context.CancelFunc, core 
 		return err
 	}
 	core.pipeline = pipeline
-	return startContinuousSource(ctx, stop, pipeline, flags, failures)
+	return startContinuousSource(ctx, stop, pipeline, flags, opened, failures)
 }
 
 func (core *runtimeCore) openContinuousPipeline(ctx context.Context, stop context.CancelFunc, flags serveFlags, opened effects, metrics *telemetry.Runtime, failures chan error, cleanup *cleanups) (*runtime.Pipeline, error) {
@@ -49,17 +49,21 @@ func registerWorkerMonitor(ctx context.Context, workerErrors <-chan error, failu
 	})
 }
 
-func startContinuousSource(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, flags serveFlags, failures chan error) error {
+func startContinuousSource(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, flags serveFlags, opened effects, failures chan error) error {
 	run := func(name string, source func(context.Context) error) { go runSource(ctx, stop, failures, name, source) }
-	if flags.liveSocket == "" {
+	if flags.tracePath != "" {
 		run("continuous pipeline", func(ctx context.Context) error {
 			return pollTrace(ctx, pipeline, flags.traceFormat, flags.tracePath, flags.pollInterval)
 		})
 		return nil
 	}
-	run("live socket pipeline", func(ctx context.Context) error { return pipeline.RunLiveSocket(ctx, flags.liveSocket) })
 	run("pipeline clock", func(ctx context.Context) error { return pipeline.AdvanceEvery(ctx, flags.pollInterval) })
 	run("episode loop", func(ctx context.Context) error { return pipeline.RunEpisodesEvery(ctx, flags.pollInterval) })
+	runPlantWireHost(opened.plant, run)
+	if flags.liveSocket == "" {
+		return nil
+	}
+	run("live socket pipeline", func(ctx context.Context) error { return pipeline.RunLiveSocket(ctx, flags.liveSocket) })
 	return waitForLiveSocket(ctx, flags.liveSocket, failures)
 }
 

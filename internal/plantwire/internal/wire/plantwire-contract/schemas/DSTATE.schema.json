@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:plant-wire:v1:DSTATE",
+  "title": "DSTATE",
+  "description": "Device state for reconciliation. Always self-reported; safety-relevant verification uses independent feedback.",
+  "type": "object",
+  "required": [
+    "type",
+    "protocol_version",
+    "session_id",
+    "seq",
+    "lane",
+    "device",
+    "boot_id",
+    "self_reported",
+    "safe_state",
+    "outputs",
+    "values"
+  ],
+  "properties": {
+    "type": {
+      "const": "DSTATE"
+    },
+    "protocol_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lane": {
+      "const": "control"
+    },
+    "device": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "boot_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "self_reported": {
+      "const": true
+    },
+    "safe_state": {
+      "type": "boolean"
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+          },
+          "value": {
+            "type": [
+              "number",
+              "integer",
+              "boolean",
+              "string"
+            ],
+            "maxLength": 256
+          }
+        }
+      }
+    },
+    "values": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "alias",
+          "value",
+          "quality"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+          },
+          "alias": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "value": {
+            "type": [
+              "number",
+              "integer",
+              "boolean",
+              "string"
+            ],
+            "maxLength": 256
+          },
+          "quality": {
+            "enum": [
+              "good",
+              "warming_up",
+              "suspect",
+              "out_of_range",
+              "stale",
+              "disconnected",
+              "manual_override",
+              "out_of_service"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:plant-wire:v1:DBIRTH",
+  "title": "DBIRTH",
+  "description": "Device birth: kind, board, boot identity and the current value of every metric (null only while warming up).",
+  "type": "object",
+  "required": [
+    "type",
+    "protocol_version",
+    "session_id",
+    "seq",
+    "lane",
+    "device",
+    "kind",
+    "board",
+    "boot_id",
+    "metadata_version",
+    "birth_time_ns",
+    "metrics"
+  ],
+  "properties": {
+    "type": {
+      "const": "DBIRTH"
+    },
+    "protocol_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lane": {
+      "const": "data"
+    },
+    "device": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "kind": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "board": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "boot_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "metadata_version": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "birth_time_ns": {
+      "type": "integer"
+    },
+    "overrides": {
+      "type": "object",
+      "properties": {
+        "add": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "data_type"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+              },
+              "data_type": {
+                "enum": [
+                  "number",
+                  "integer",
+                  "boolean",
+                  "enum",
+                  "string"
+                ]
+              },
+              "unit": {
+                "type": "string",
+                "maxLength": 32
+              },
+              "eu_range": {
+                "type": "object",
+                "required": [
+                  "min",
+                  "max"
+                ],
+                "properties": {
+                  "min": {
+                    "type": "number"
+                  },
+                  "max": {
+                    "type": "number"
+                  }
+                }
+              },
+              "instrument_range": {
+                "type": "object",
+                "required": [
+                  "min",
+                  "max"
+                ],
+                "properties": {
+                  "min": {
+                    "type": "number"
+                  },
+                  "max": {
+                    "type": "number"
+                  }
+                }
+              },
+              "resolution": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "enum_values": {
+                "type": "array",
+                "maxItems": 64,
+                "items": {
+                  "type": "string",
+                  "maxLength": 64
+                }
+              },
+              "scan_class": {
+                "type": "string",
+                "maxLength": 32
+              },
+              "deadband": {
+                "type": "number",
+                "minimum": 0
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "writable": {
+                "type": "boolean"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 256
+              }
+            }
+          }
+        },
+        "narrow": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+              },
+              "eu_range": {
+                "type": "object",
+                "required": [
+                  "min",
+                  "max"
+                ],
+                "properties": {
+                  "min": {
+                    "type": "number"
+                  },
+                  "max": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "alias",
+          "value",
+          "quality"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+          },
+          "alias": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "value": {
+            "type": [
+              "number",
+              "integer",
+              "boolean",
+              "string",
+              "null"
+            ],
+            "maxLength": 256
+          },
+          "quality": {
+            "enum": [
+              "good",
+              "warming_up",
+              "suspect",
+              "out_of_range",
+              "stale",
+              "disconnected",
+              "manual_override",
+              "out_of_service"
+            ]
+          }
+        },
+        "if": {
+          "properties": {
+            "value": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "value"
+          ]
+        },
+        "then": {
+          "properties": {
+            "quality": {
+              "const": "warming_up"
+            }
+          }
+        }
+      }
+    }
+  }
+}
