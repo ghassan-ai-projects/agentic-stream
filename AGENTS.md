@@ -67,7 +67,7 @@ The documented structure (see [documentation/architecture/repository-map.md](doc
 - `cmd/agentic-stream/` - entrypoint, flags, wiring, shutdown
 - `internal/contractsv1` - versioned envelopes and JSON contracts
 - `internal/canonicaljson` - RFC 8785 canonical JSON and domain-separated digests; thin facade over a pure domain (see [canonical JSON guide](internal/canonicaljson/README.md))
-- `internal/spec` - SituationSpec authoring, YAML in, canonical JSON digest
+- `internal/spec` - SituationSpec authoring, YAML in, canonical JSON digest; the event-schema registry (built-in schemas plus a directory given with the root flag `--event-schemas`, validated as it loads)
 - `internal/ingress` - configured ingress facade; app replay and live-serve use cases, pure domain admission and simulator rules, a checkpoint store and a file/socket transport (see [ingress module guide](internal/ingress/README.md))
 - `internal/eventlog` - normalized event log, watermark/completeness tracking; append/quarantine/redrive use cases in `internal/app`, pure admission and identity rules in `internal/domain`, all SQL in `internal/store` (see [event log module guide](internal/eventlog/README.md))
 - `internal/engine` - configured stream-engine facade; app use cases, pure domain rules and an opaque-transaction store that owns the inbox, checkpoint, operator-state, Situation, lineage and timer tables (see [engine module guide](internal/engine/README.md))
@@ -293,7 +293,9 @@ and say why in the change.
   `internal/ingress/internal/domain/simulator_data.json`, and the aquaculture intent catalog in
   `internal/episodes/testdata/aquaculture_intents.json` — loaded by machinery
   (go:embed + sync.OnceValues, or os.ReadFile in the test). Adding a schema, channel,
-  or intent means editing those JSON files, never a Go literal. Data changes are
+  or intent means editing those JSON files, never a Go literal; an event schema
+  may instead come from a directory given with `--event-schemas` (it may add
+  schemas, never change a built-in one). Data changes are
   gated: `TestAllBuiltinsLoadFromData` pins the registry's golden digest, and
   `TestAquacultureIntentCatalogDigestParity` pins the cross-repo intent digest
   (`e4f86620…`) shared with the Ruby side — update those pins only as a deliberate,

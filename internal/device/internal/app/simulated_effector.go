@@ -21,6 +21,10 @@ func NewSimulatedEffector() *SimulatedEffector {
 	return &SimulatedEffector{results: make(map[string]actionport.Effect)}
 }
 
+func (e *SimulatedEffector) OwnsRoute(string) bool {
+	return true
+}
+
 // Dispatch applies a simulated command exactly once per
 // idempotency key. The returned result is stable across duplicate dispatches.
 func (e *SimulatedEffector) Dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {

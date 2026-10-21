@@ -32,6 +32,7 @@ const (
 	DomainPolicy            = domain.DomainPolicy
 	DomainCapabilityCatalog = domain.DomainCapabilityCatalog
 	DomainShadowComparison  = domain.DomainShadowComparison
+	DomainEventSchemas      = domain.DomainEventSchemas
 )
 
 // Marshal returns the canonical JSON encoding of v.

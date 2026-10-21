@@ -67,10 +67,20 @@ the original behavior. Maintenance expires watches and dispatches committed
 approved commands without waiting for new source input, every
 `PipelineConfig.MaintenanceInterval` (one second when unset).
 
-Effect routing reserves watch installation and closed device routes before
-fallback. Device routes with no gateway fail closed. Authorization and device
-verification stay with the selected effector. Routing is internal to app; the
-unused public `CompositeEffector` and `RecoveryCoordinator` APIs are removed.
+Effect routing makes one ownership decision per route, used both by the start
+check and by every dispatch: the watch install route (`watch.InstallRoute`,
+reserved by `actionport.WatchInstallRoute`) belongs to the watch service; with a
+device present, a route belongs to the gateway when its capability catalog
+names it and otherwise to nobody (the fallback owns no route, so an unnamed
+route is refused at dispatch, never simulated); without a device, a route
+belongs to the fallback when the fallback declares it (`actionport.RoutedEffector`):
+the simulated fallback owns every route, the fail-closed one none. No route
+name is written in code. Authorization and device verification stay with the
+selected effector. The pipeline refuses to start when an intent the spec
+dispatches (`CompiledSpec.DispatchedIntentTypes`: every intent of an
+active-dispatch spec, none of a shadow one) has no owner.
+Routing is internal to app; the unused public `CompositeEffector` and
+`RecoveryCoordinator` APIs are removed.
 
 Human approvals use the [authenticated HTTP contract](../policy/APPROVAL_HTTP_DESIGN.md).
 Presentation and resolution both enforce owner/tenant scope; policy owns principal,

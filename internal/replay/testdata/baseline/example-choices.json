@@ -1,0 +1,1026 @@
+{
+  "predictive-maintenance/predictive-maintenance.situation.yaml": {
+    "catalog": {
+      "candidate": {
+        "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+        "intent_type": "create_maintenance_ticket",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "incident": {
+        "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+        "intent_type": "create_maintenance_ticket",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "recovering": {
+        "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+        "intent_type": "create_maintenance_ticket",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "resolved": {
+        "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+        "intent_type": "create_maintenance_ticket",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "warning": {
+        "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+        "intent_type": "create_maintenance_ticket",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "watch": {
+        "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+        "intent_type": "create_maintenance_ticket",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      }
+    },
+    "single_intent": {
+      "create_maintenance_ticket": {
+        "candidate": {
+          "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+          "intent_type": "create_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "incident": {
+          "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+          "intent_type": "create_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+          "intent_type": "create_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+          "intent_type": "create_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "warning": {
+          "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+          "intent_type": "create_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+          "intent_type": "create_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        }
+      },
+      "downgrade_maintenance_ticket": {
+        "candidate": {
+          "decision_sha256": "sha256:be889a4592fd5bc6e83af362adcfdb41d47a5180d8fe1251eba654dac5a33d81",
+          "intent_type": "downgrade_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "incident": {
+          "decision_sha256": "sha256:be889a4592fd5bc6e83af362adcfdb41d47a5180d8fe1251eba654dac5a33d81",
+          "intent_type": "downgrade_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:be889a4592fd5bc6e83af362adcfdb41d47a5180d8fe1251eba654dac5a33d81",
+          "intent_type": "downgrade_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:be889a4592fd5bc6e83af362adcfdb41d47a5180d8fe1251eba654dac5a33d81",
+          "intent_type": "downgrade_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "warning": {
+          "decision_sha256": "sha256:be889a4592fd5bc6e83af362adcfdb41d47a5180d8fe1251eba654dac5a33d81",
+          "intent_type": "downgrade_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:be889a4592fd5bc6e83af362adcfdb41d47a5180d8fe1251eba654dac5a33d81",
+          "intent_type": "downgrade_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        }
+      },
+      "recommend_operating_limit": {
+        "candidate": {
+          "decision_sha256": "sha256:92ee02c15326b6b5b05ef5125e9b44e9ae8bcd4c574e2259299c1ec301e9e5f2",
+          "intent_type": "recommend_operating_limit",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "incident": {
+          "decision_sha256": "sha256:92ee02c15326b6b5b05ef5125e9b44e9ae8bcd4c574e2259299c1ec301e9e5f2",
+          "intent_type": "recommend_operating_limit",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:92ee02c15326b6b5b05ef5125e9b44e9ae8bcd4c574e2259299c1ec301e9e5f2",
+          "intent_type": "recommend_operating_limit",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:92ee02c15326b6b5b05ef5125e9b44e9ae8bcd4c574e2259299c1ec301e9e5f2",
+          "intent_type": "recommend_operating_limit",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "warning": {
+          "decision_sha256": "sha256:92ee02c15326b6b5b05ef5125e9b44e9ae8bcd4c574e2259299c1ec301e9e5f2",
+          "intent_type": "recommend_operating_limit",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:92ee02c15326b6b5b05ef5125e9b44e9ae8bcd4c574e2259299c1ec301e9e5f2",
+          "intent_type": "recommend_operating_limit",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        }
+      },
+      "withdraw_maintenance_ticket": {
+        "candidate": {
+          "decision_sha256": "sha256:2ab3e56ec29d86a9304b8face3fc30e1092791ff312f348c8152df2ec417bf09",
+          "intent_type": "withdraw_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "incident": {
+          "decision_sha256": "sha256:2ab3e56ec29d86a9304b8face3fc30e1092791ff312f348c8152df2ec417bf09",
+          "intent_type": "withdraw_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:2ab3e56ec29d86a9304b8face3fc30e1092791ff312f348c8152df2ec417bf09",
+          "intent_type": "withdraw_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:2ab3e56ec29d86a9304b8face3fc30e1092791ff312f348c8152df2ec417bf09",
+          "intent_type": "withdraw_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "warning": {
+          "decision_sha256": "sha256:2ab3e56ec29d86a9304b8face3fc30e1092791ff312f348c8152df2ec417bf09",
+          "intent_type": "withdraw_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:2ab3e56ec29d86a9304b8face3fc30e1092791ff312f348c8152df2ec417bf09",
+          "intent_type": "withdraw_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        }
+      }
+    }
+  },
+  "real-world-sensor/zone-thermal-bench.situation.yaml": {
+    "catalog": {
+      "candidate": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "cooling": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "over_ceiling": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "recovering": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "resolved": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "watch": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      }
+    },
+    "single_intent": {
+      "install_watch_condition": {
+        "candidate": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "cooling": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "over_ceiling": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        }
+      },
+      "select_thermal_mode": {
+        "candidate": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "cooling": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "over_ceiling": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        }
+      },
+      "set_indicator": {
+        "candidate": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "cooling": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "over_ceiling": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        }
+      }
+    }
+  },
+  "real-world-sensor/zone-thermal-sim.situation.yaml": {
+    "catalog": {
+      "candidate": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "cooling": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "over_ceiling": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "recovering": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "resolved": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "watch": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      }
+    },
+    "single_intent": {
+      "install_watch_condition": {
+        "candidate": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "cooling": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "over_ceiling": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        }
+      },
+      "select_thermal_mode": {
+        "candidate": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "cooling": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "over_ceiling": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        }
+      },
+      "set_indicator": {
+        "candidate": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "cooling": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "over_ceiling": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        }
+      }
+    }
+  },
+  "rotating-machinery/rotating-machinery.situation.yaml": {
+    "catalog": {
+      "candidate": {
+        "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+        "intent_type": "create_maintenance_ticket",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "incident": {
+        "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+        "intent_type": "create_maintenance_ticket",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "recovering": {
+        "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+        "intent_type": "create_maintenance_ticket",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "resolved": {
+        "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+        "intent_type": "create_maintenance_ticket",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "warning": {
+        "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+        "intent_type": "create_maintenance_ticket",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "watch": {
+        "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+        "intent_type": "create_maintenance_ticket",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      }
+    },
+    "single_intent": {
+      "create_maintenance_ticket": {
+        "candidate": {
+          "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+          "intent_type": "create_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "incident": {
+          "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+          "intent_type": "create_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+          "intent_type": "create_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+          "intent_type": "create_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "warning": {
+          "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+          "intent_type": "create_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:4f8771542857e71bfcc0da1bf3174dbf87300e92377d9a0e9beb4d6cc791f203",
+          "intent_type": "create_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        }
+      },
+      "downgrade_maintenance_ticket": {
+        "candidate": {
+          "decision_sha256": "sha256:be889a4592fd5bc6e83af362adcfdb41d47a5180d8fe1251eba654dac5a33d81",
+          "intent_type": "downgrade_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "incident": {
+          "decision_sha256": "sha256:be889a4592fd5bc6e83af362adcfdb41d47a5180d8fe1251eba654dac5a33d81",
+          "intent_type": "downgrade_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:be889a4592fd5bc6e83af362adcfdb41d47a5180d8fe1251eba654dac5a33d81",
+          "intent_type": "downgrade_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:be889a4592fd5bc6e83af362adcfdb41d47a5180d8fe1251eba654dac5a33d81",
+          "intent_type": "downgrade_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "warning": {
+          "decision_sha256": "sha256:be889a4592fd5bc6e83af362adcfdb41d47a5180d8fe1251eba654dac5a33d81",
+          "intent_type": "downgrade_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:be889a4592fd5bc6e83af362adcfdb41d47a5180d8fe1251eba654dac5a33d81",
+          "intent_type": "downgrade_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        }
+      },
+      "recommend_operating_limit": {
+        "candidate": {
+          "decision_sha256": "sha256:92ee02c15326b6b5b05ef5125e9b44e9ae8bcd4c574e2259299c1ec301e9e5f2",
+          "intent_type": "recommend_operating_limit",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "incident": {
+          "decision_sha256": "sha256:92ee02c15326b6b5b05ef5125e9b44e9ae8bcd4c574e2259299c1ec301e9e5f2",
+          "intent_type": "recommend_operating_limit",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:92ee02c15326b6b5b05ef5125e9b44e9ae8bcd4c574e2259299c1ec301e9e5f2",
+          "intent_type": "recommend_operating_limit",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:92ee02c15326b6b5b05ef5125e9b44e9ae8bcd4c574e2259299c1ec301e9e5f2",
+          "intent_type": "recommend_operating_limit",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "warning": {
+          "decision_sha256": "sha256:92ee02c15326b6b5b05ef5125e9b44e9ae8bcd4c574e2259299c1ec301e9e5f2",
+          "intent_type": "recommend_operating_limit",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:92ee02c15326b6b5b05ef5125e9b44e9ae8bcd4c574e2259299c1ec301e9e5f2",
+          "intent_type": "recommend_operating_limit",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        }
+      },
+      "withdraw_maintenance_ticket": {
+        "candidate": {
+          "decision_sha256": "sha256:2ab3e56ec29d86a9304b8face3fc30e1092791ff312f348c8152df2ec417bf09",
+          "intent_type": "withdraw_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "incident": {
+          "decision_sha256": "sha256:2ab3e56ec29d86a9304b8face3fc30e1092791ff312f348c8152df2ec417bf09",
+          "intent_type": "withdraw_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:2ab3e56ec29d86a9304b8face3fc30e1092791ff312f348c8152df2ec417bf09",
+          "intent_type": "withdraw_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:2ab3e56ec29d86a9304b8face3fc30e1092791ff312f348c8152df2ec417bf09",
+          "intent_type": "withdraw_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "warning": {
+          "decision_sha256": "sha256:2ab3e56ec29d86a9304b8face3fc30e1092791ff312f348c8152df2ec417bf09",
+          "intent_type": "withdraw_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:2ab3e56ec29d86a9304b8face3fc30e1092791ff312f348c8152df2ec417bf09",
+          "intent_type": "withdraw_maintenance_ticket",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        }
+      }
+    }
+  },
+  "thermal-chamber/zone-thermal.situation.yaml": {
+    "catalog": {
+      "candidate": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "cooling": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "over_ceiling": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "recovering": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "resolved": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      },
+      "watch": {
+        "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+        "intent_type": "install_watch_condition",
+        "parameters": {
+          "entity_id": "entity-1"
+        }
+      }
+    },
+    "single_intent": {
+      "install_watch_condition": {
+        "candidate": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "cooling": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "over_ceiling": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:c85039ddd253d7990583db75df67d90b517adb0841a01ef46f47d89515d0d7ba",
+          "intent_type": "install_watch_condition",
+          "parameters": {
+            "entity_id": "entity-1"
+          }
+        }
+      },
+      "select_thermal_mode": {
+        "candidate": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "cooling": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "over_ceiling": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:65f9084a22afc58795ce000c74c80188351da56a627789f540b17371cf4431fe",
+          "intent_type": "select_thermal_mode",
+          "parameters": {
+            "entity_id": "entity-1",
+            "mode": "hold"
+          }
+        }
+      },
+      "set_indicator": {
+        "candidate": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "cooling": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "over_ceiling": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "recovering": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "resolved": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        },
+        "watch": {
+          "decision_sha256": "sha256:c2d0a40c9619d3f16a52239060fb6c284bc25668f766d8aeb85879e89ec94693",
+          "intent_type": "set_indicator",
+          "parameters": {
+            "entity_id": "entity-1",
+            "state": "off"
+          }
+        }
+      }
+    }
+  }
+}

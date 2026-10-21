@@ -24,7 +24,7 @@ func startContinuousPipeline(ctx context.Context, stop context.CancelFunc, core 
 }
 
 func (core *runtimeCore) openContinuousPipeline(ctx context.Context, stop context.CancelFunc, flags serveFlags, opened effects, metrics *telemetry.Runtime, failures chan error, cleanup *cleanups) (*runtime.Pipeline, error) {
-	compiled, err := spec.CompileFile(ctx, flags.specPath)
+	compiled, err := spec.CompileFile(ctx, flags.specPath, spec.WithEventSchemas(flags.eventSchemas))
 	if err != nil {
 		return nil, fmt.Errorf("compile spec: %w", err)
 	}

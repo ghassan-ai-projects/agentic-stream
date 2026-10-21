@@ -10,7 +10,7 @@ import (
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 )
 
-func runShadow(t *testing.T, request domain.Request, baseline *baselineExecutor, candidate domain.ShadowExecutor) (domain.Result, error) {
+func runShadow(t *testing.T, request Request, baseline *baselineExecutor, candidate domain.ShadowExecutor) (domain.Result, error) {
 	t.Helper()
 	return RunMode(seededContext(t), domain.ModeShadow, request, domain.Capabilities{BaselineExecutor: baseline, ShadowExecutor: candidate})
 }

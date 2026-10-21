@@ -11,8 +11,6 @@ internal/replay TestRunMigratesAFreshIsolatedDatabaseItself # replays the full p
 internal/replay TestBenchSpecOpensOnTemperatureAndHeartbeatAlone # replays a bench-shaped trace under the bench and the simulator spec
 internal/replay TestDeterministicReplayOfAnEffectProducingTraceWritesNoIntentOrCommand # replays the thermal-chamber opening trace under an active-dispatch spec
 internal/replay TestThermalChamberReplayIsDeterministic # replays the thermal-chamber trace three times
-internal/runtime TestPredictiveMaintenanceAcceptance # product acceptance suite on the full acceptance trace
-internal/runtime TestPredictiveMaintenanceInShadowModeRecordsComparisonsWithoutEffects # product acceptance suite in shadow mode
 cmd/agentic-stream TestExperimentInterlockStopsEffects # real-world-sensor experiment through serve with a worker process
 cmd/agentic-stream TestExperimentClosedLoopUnderAContinuousFeed # real-world-sensor experiment through serve with a live feed
 cmd/agentic-stream TestExperimentClosedLoopThroughServe # real-world-sensor experiment through serve end to end

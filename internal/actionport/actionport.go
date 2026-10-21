@@ -42,3 +42,18 @@ func IsUnknownOutcome(err error) bool {
 
 // VerifiedEffector combines final authorization and independently observed device state.
 type VerifiedEffector = domain.VerifiedEffector
+
+// RouteOwner is an effector that names the routes it accepts. A router sends
+// a command to the effector that owns its route, so a new route needs data
+// (a device catalog entry), never a code edit.
+type RouteOwner = domain.RouteOwner
+
+// WatchInstallRoute is the one route the runtime reserves for its own watch
+// effector: a command on it installs a watch condition. No device catalog may
+// name it, and a router never sends it to a device.
+const WatchInstallRoute = domain.WatchInstallRoute
+
+// RoutedEffector is an effector that enforces the final authorization check
+// and declares the routes it owns. Every effector a router may choose is one,
+// so ownership is never inferred from a missing method.
+type RoutedEffector = domain.RoutedEffector

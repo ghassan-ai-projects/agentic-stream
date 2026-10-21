@@ -96,7 +96,6 @@ var unnamedErrorAssertions = map[string]int{
 	"internal/policy/principals_test.go":                            1,
 	"internal/runartifact/internal/domain/rules_test.go":            7,
 	"internal/runartifact/internal/transport/directory_test.go":     1,
-	"internal/runtime/internal/app/effect_routing_test.go":          1,
 	"internal/runtime/internal/app/live_socket_test.go":             1,
 	"internal/runtime/internal/app/pipeline_maintenance_test.go":    1,
 	"internal/runtime/internal/app/scheduled_advance_test.go":       2,

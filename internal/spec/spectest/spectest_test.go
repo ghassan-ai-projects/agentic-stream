@@ -13,7 +13,7 @@ import (
 
 func zoneTempSchema(t *testing.T) (spec.EventSchema, []byte) {
 	t.Helper()
-	definition, ok := spec.LookupEventSchema("zone.temp.observed/1.0")
+	definition, ok := spectest.LookupEventSchema("zone.temp.observed/1.0")
 	if !ok {
 		t.Fatal("built-in schema missing")
 	}

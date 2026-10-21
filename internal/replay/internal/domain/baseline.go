@@ -17,9 +17,10 @@ const deterministicBaselineVersion = "deterministic-baseline-v1"
 // class and typed parameter schema. The application layer decodes the schema
 // once at the boundary so this policy never asserts on raw maps.
 type Intent struct {
-	Type   string
-	Risk   string
-	Schema ParameterSchema
+	Type    string
+	Risk    string
+	Schema  ParameterSchema
+	ByPhase map[string]map[string]string
 }
 
 // ParameterSchema is the closed subset of a catalog intent's JSON Schema the
@@ -193,34 +194,33 @@ func baselineParameters(configured Intent, entityID, phase string) (map[string]a
 		}
 		parameters["entity_id"] = entityID
 	}
-	fillBaselineEnums(parameters, configured.Schema.Properties, phase)
+	fillBaselineEnums(parameters, configured, phase)
 	if !requiredBaselineParametersPresent(configured.Schema.Required, parameters) {
 		return nil, false
 	}
 	return parameters, true
 }
 
-func fillBaselineEnums(parameters map[string]any, properties map[string]ParameterProperty, phase string) {
-	for field, property := range properties {
+func fillBaselineEnums(parameters map[string]any, configured Intent, phase string) {
+	choices := configured.ByPhase[phase]
+	for field, property := range configured.Schema.Properties {
 		if field == "entity_id" {
 			continue
 		}
 		if len(property.Enum) == 0 {
 			continue
 		}
-		parameters[field] = baselineEnumValue(field, property.Enum, phase)
+		parameters[field] = baselineEnumValue(property.Enum, choices[field])
 	}
 }
 
-func baselineEnumValue(field string, enum []any, phase string) any {
-	value := enum[0]
-	if field == "state" {
-		value = enumValue(enum, map[string]string{"over_ceiling": "alert", "cooling": "watch"}, phase)
+func baselineEnumValue(enum []any, chosen string) any {
+	for _, value := range enum {
+		if chosen != "" && value == chosen {
+			return value
+		}
 	}
-	if field == "mode" {
-		value = enumValue(enum, map[string]string{"over_ceiling": "bounded_cooling", "cooling": "hold"}, phase)
-	}
-	return value
+	return enum[0]
 }
 
 func requiredBaselineParametersPresent(required []any, parameters map[string]any) bool {
@@ -234,19 +234,6 @@ func requiredBaselineParametersPresent(required []any, parameters map[string]any
 		}
 	}
 	return true
-}
-
-func enumValue(values []any, byPhase map[string]string, phase string) any {
-	wanted, ok := byPhase[phase]
-	if !ok {
-		return values[0]
-	}
-	for _, value := range values {
-		if value == wanted {
-			return value
-		}
-	}
-	return values[0]
 }
 
 func shortKey(value string) string {

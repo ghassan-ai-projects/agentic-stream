@@ -28,7 +28,7 @@ type PipelineConfig struct {
 	OwnerEpoch        string
 	Clock             sources.Clock
 	Executor          episodes.Executor
-	Effector          actionport.Effector
+	Effector          actionport.RoutedEffector
 	IDGenerator       sources.Generator
 	GlobalCostCeiling *uint64
 	TenantCostCeiling *uint64
@@ -40,9 +40,7 @@ type PipelineConfig struct {
 	// P8: the epoch-control reader — nil in tests without drain/kill. When
 	// set, admission refuses new episodes while the epoch is draining and
 	// every later decision is refused once the epoch is killed.
-	EpochControl *runtimecontrol.EpochControl
-	// GatewayEffector is optional and supplies the explicitly routed thermal
-	// action boundary. It is never used by replay or shadow execution.
+	EpochControl    *runtimecontrol.EpochControl
 	GatewayEffector *device.GatewayEffector
 
 	MaintenanceInterval time.Duration

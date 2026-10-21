@@ -21,7 +21,7 @@ the words below.
 
 | Term | Meaning | Code | Wire |
 | --- | --- | --- | --- |
-| **Capability catalog** | The closed set of routes and safe stops a device accepts. Configuration, never model output. Identified by its digest. | `CapabilityCatalog` | catalog JSON |
+| **Capability catalog** | The closed set of routes and safe stops a device accepts. Configuration, never model output. Identified by its digest. It may not name the runtime's reserved watch route (`actionport.WatchInstallRoute`). | `CapabilityCatalog` | catalog JSON |
 | **Route** | One approved effector route mapped to one device operation and target. | `Route` | `routes.<name>` |
 | **Preset** | A named, complete parameter set a route may send. The only source of device parameters. | `Route.Presets` | `presets` |
 | **Selector** | The command payload field that names a preset. The model may only choose among presets. | `Route.SelectorField` | `selector_field` |

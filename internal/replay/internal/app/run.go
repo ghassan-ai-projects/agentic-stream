@@ -8,11 +8,16 @@ import (
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 	transport "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/transport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-// Request identifies one replay session: the isolated database path, the
-// compiled spec file, the trace file and the tenant.
-type Request = domain.Request
+type Request struct {
+	DBPath       string
+	SpecPath     string
+	TracePath    string
+	TenantID     string
+	EventSchemas *spec.EventSchemas
+}
 
 // Run replays the request's trace against its spec deterministically and
 // returns the canonical result.
@@ -41,7 +46,7 @@ func RunMode(ctx context.Context, mode domain.Mode, request Request, capabilitie
 }
 
 type sessionRequest struct {
-	request          domain.Request
+	request          Request
 	cognitionEnabled bool
 	phase            capabilityPhase
 	mode             domain.Mode
@@ -76,7 +81,7 @@ func runSession(ctx context.Context, request sessionRequest) (domain.Result, err
 	}
 	defer func() { _ = database.Close() }()
 
-	session, err := prepareReplaySession(ctx, database, request.request.SpecPath, request.request.TracePath, request.request.TenantID)
+	session, err := prepareReplaySession(ctx, database, request.request)
 	if err != nil {
 		return domain.Result{}, err
 	}

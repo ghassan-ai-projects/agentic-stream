@@ -7,7 +7,7 @@ import (
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/replay/internal/domain"
 )
 
-func runRecorded(t *testing.T, request domain.Request, ledger domain.RecordedLedger) (domain.Result, error) {
+func runRecorded(t *testing.T, request Request, ledger domain.RecordedLedger) (domain.Result, error) {
 	t.Helper()
 	return RunMode(seededContext(t), domain.ModeRecorded, request, domain.Capabilities{RecordedLedger: ledger})
 }

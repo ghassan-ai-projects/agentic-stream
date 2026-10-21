@@ -18,7 +18,14 @@ func baselineIntents(compiled *spec.CompiledSpec) []domain.Intent {
 	}
 	intents := make([]domain.Intent, 0, len(compiled.Actions.Intents))
 	for _, configured := range compiled.Actions.Intents {
-		intents = append(intents, domain.Intent{Type: configured.Type, Risk: configured.Risk, Schema: domain.ParseParameterSchema(configured.ParameterSchema)})
+		intents = append(intents, domain.Intent{Type: configured.Type, Risk: configured.Risk, Schema: domain.ParseParameterSchema(configured.ParameterSchema), ByPhase: baselineChoices(configured)})
 	}
 	return intents
+}
+
+func baselineChoices(configured spec.Intent) map[string]map[string]string {
+	if configured.Baseline == nil {
+		return nil
+	}
+	return configured.Baseline.ByPhase
 }

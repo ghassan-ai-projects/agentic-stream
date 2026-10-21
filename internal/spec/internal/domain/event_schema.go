@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"sync"
 )
 
 //go:embed event_schema_data.json
@@ -26,22 +25,6 @@ type EventSchema struct {
 	EventType     string
 	SchemaVersion string
 	Fields        map[string]EventField
-}
-
-// The event-schema catalog (motor/sensor/pump/pond/bay) lives in
-// event_schema_data.json — domain DATA, not code. Loaded once at first use.
-var builtins = sync.OnceValues(loadRegistry)
-
-func loadRegistry() (map[string]EventSchema, error) {
-	var document map[string]registryEntry
-	if err := json.Unmarshal(registryData, &document); err != nil {
-		return nil, fmt.Errorf("decode eventschema registry data: %w", err)
-	}
-	registry := make(map[string]EventSchema, len(document))
-	for ref, entry := range document {
-		registry[ref] = entry.definition(ref)
-	}
-	return registry, nil
 }
 
 // registryEntry is one schema in event_schema_data.json.
@@ -66,19 +49,6 @@ func (e registryEntry) definition(ref string) EventSchema {
 		fields[name] = EventField(field)
 	}
 	return EventSchema{Ref: ref, EventType: e.EventType, SchemaVersion: e.SchemaVersion, Fields: fields}
-}
-
-// Lookup returns a registered built-in definition.
-func LookupEventSchema(ref string) (EventSchema, bool) {
-	registry, err := builtins()
-	if err != nil {
-		// The catalog is embedded at build time; a decode failure is a
-		// programming error and must fail loudly, not masquerade as an
-		// unregistered ref.
-		panic(fmt.Sprintf("eventschema: corrupt embedded registry data: %v", err))
-	}
-	definition, ok := registry[ref]
-	return definition, ok
 }
 
 // JSON returns the structural schema for a built-in definition.

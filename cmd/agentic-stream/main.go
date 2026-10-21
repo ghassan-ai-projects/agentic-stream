@@ -43,6 +43,7 @@ cognitive scheduler decides reasoning is useful.`,
 		SilenceErrors: true,
 	}
 	logging.register(root)
+	registerEventSchemasFlag(root)
 	registerCommands(root)
 
 	return root
@@ -79,7 +80,11 @@ func newValidateCommand() *cobra.Command {
 }
 
 func validateSpecCommand(cmd *cobra.Command, path string, outputJSON bool) error {
-	result, err := spec.CompileFile(commandContext(cmd), path)
+	schemas, err := loadEventSchemas(cmd)
+	if err != nil {
+		return err
+	}
+	result, err := spec.CompileFile(commandContext(cmd), path, spec.WithEventSchemas(schemas))
 	if err != nil {
 		return fmt.Errorf("compile %s: %w", path, err)
 	}

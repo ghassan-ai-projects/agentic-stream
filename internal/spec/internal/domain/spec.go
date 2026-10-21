@@ -19,6 +19,12 @@ type CompiledSpec struct {
 	// CanonicalJSON is the canonical representation used for the digest.
 	CanonicalJSON []byte `json:"canonicalJSON"`
 	Digest        string `json:"digest"`
+
+	eventSchemas *EventSchemas
+}
+
+func (s *CompiledSpec) EventSchema(ref string) (EventSchema, bool) {
+	return s.eventSchemas.Lookup(ref)
 }
 
 // DeltaKeys are the stable keys available in the `delta` CEL variable when
@@ -221,6 +227,11 @@ type Intent struct {
 	Policy              string                    `json:"policy,omitempty" yaml:"policy,omitempty"`
 	RateLimitPerHour    int                       `json:"rateLimitPerHour,omitempty" yaml:"rateLimitPerHour,omitempty"`
 	Compensation        map[string]any            `json:"compensation,omitempty" yaml:"compensation,omitempty"`
+	Baseline            *IntentBaseline           `json:"baseline,omitempty" yaml:"baseline,omitempty"`
+}
+
+type IntentBaseline struct {
+	ByPhase map[string]map[string]string `json:"byPhase" yaml:"byPhase"`
 }
 
 // Actions configures allowed intents.

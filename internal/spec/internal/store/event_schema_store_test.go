@@ -18,7 +18,7 @@ func TestSchemaRegistrationIsImmutableAndTransactionScoped(t *testing.T) {
 	ctx := t.Context()
 	db := storagetest.OpenTemp(t)
 
-	definition, ok := domain.LookupEventSchema("bay.air_temp.observed/1.0")
+	definition, ok := domain.BuiltinEventSchemas().Lookup("bay.air_temp.observed/1.0")
 	if !ok {
 		t.Fatal("builtin schema missing")
 	}
@@ -96,7 +96,7 @@ func TestSchemaRegistrationValidatesBeforeStorage(t *testing.T) {
 func TestSchemaRegistrationReportsAFailedStorageRead(t *testing.T) {
 	t.Parallel()
 	db := storagetest.OpenTemp(t)
-	definition, _ := domain.LookupEventSchema("bay.air_temp.observed/1.0")
+	definition, _ := domain.BuiltinEventSchemas().Lookup("bay.air_temp.observed/1.0")
 	raw, err := domain.EventSchemaJSON(definition)
 	if err != nil {
 		t.Fatal(err)

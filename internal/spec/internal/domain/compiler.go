@@ -8,11 +8,18 @@ import (
 )
 
 // Compiler validates and compiles SituationSpec documents.
-type Compiler struct{}
+type Compiler struct {
+	eventSchemas *EventSchemas
+}
 
 // NewCompiler creates a compiler with the embedded v1 JSON Schema.
 func NewCompiler() *Compiler {
 	return &Compiler{}
+}
+
+func (c *Compiler) WithEventSchemas(schemas *EventSchemas) *Compiler {
+	c.eventSchemas = schemas
+	return c
 }
 
 // CompileBytes parses and validates raw spec bytes.
@@ -22,6 +29,7 @@ func (c *Compiler) CompileBytes(_ context.Context, data []byte, path string) (*C
 		return nil, err
 	}
 	spec := normalizeSpec(raw)
+	spec.eventSchemas = c.eventSchemas
 	if err := resolveReferences(spec); err != nil {
 		return nil, err
 	}

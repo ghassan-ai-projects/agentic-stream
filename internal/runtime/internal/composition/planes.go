@@ -40,20 +40,24 @@ func pipelineExecutionDefaults(cfg PipelineConfig) PipelineConfig {
 	return cfg
 }
 
-func composeEffectors(cfg PipelineConfig) (actionport.Effector, *watch.Service, error) {
+func composeEffectors(cfg PipelineConfig) (actionport.RoutedEffector, *watch.Service, error) {
 	watch, err := watch.New(watch.Config{DB: cfg.DB, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch, Clock: cfg.Clock})
 	if err != nil {
 		return nil, nil, fmt.Errorf("compose watch: %w", err)
 	}
-	gatewayEffector := cfg.GatewayEffector
-	if gatewayEffector != nil {
-		gatewayEffector.WithTelemetry(cfg.Telemetry)
-	}
-	compositeEffector := app.NewCompositeEffector(watch, cfg.Effector)
-	if gatewayEffector != nil {
-		compositeEffector.WithSerial(gatewayEffector)
+	compositeEffector := composeRouting(cfg, watch)
+	if err := compositeEffector.RequireOwners(cfg.Spec.DispatchedIntentTypes()); err != nil {
+		return nil, nil, fmt.Errorf("active-dispatch spec declares an intent no effector owns: %w", err)
 	}
 	return compositeEffector, watch, nil
+}
+
+func composeRouting(cfg PipelineConfig, watch *watch.Service) *app.CompositeEffector {
+	compositeEffector := app.NewCompositeEffector(watch, cfg.Effector)
+	if cfg.GatewayEffector != nil {
+		compositeEffector.WithDevice(cfg.GatewayEffector.WithTelemetry(cfg.Telemetry))
+	}
+	return compositeEffector
 }
 
 func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.Service, watch *watch.Service) (*app.Pipeline, error) {
@@ -135,11 +139,7 @@ func policyEpochCheck(cfg PipelineConfig) storage.OwnerCheck {
 }
 
 func composeDispatcher(cfg PipelineConfig) (*actions.Service, error) {
-	effector, ok := cfg.Effector.(actionport.AuthorizedEffector)
-	if !ok {
-		return nil, fmt.Errorf("compose actions: effector must enforce dispatch authorization")
-	}
-	service, err := actions.New(actions.Config{DB: cfg.DB, Effector: effector, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch,
+	service, err := actions.New(actions.Config{DB: cfg.DB, Effector: cfg.Effector, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch,
 		Clock: cfg.Clock, IDs: cfg.IDGenerator, LeaseOwner: "runtime-actions/" + cfg.OwnerEpoch,
 		Telemetry: cfg.Telemetry})
 	if err != nil {

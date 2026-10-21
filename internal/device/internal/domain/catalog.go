@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
@@ -91,6 +92,14 @@ func finishCapabilityCatalog(decoder *json.Decoder, catalog *CapabilityCatalog) 
 	return catalog, nil
 }
 
+func (c *CapabilityCatalog) NamesRoute(route string) bool {
+	if c == nil {
+		return false
+	}
+	_, named := c.Routes[route]
+	return named
+}
+
 func (c *CapabilityCatalog) validate() error {
 	if c.ProtocolVersion != contractsv1.DeviceProtocolVersion {
 		return fmt.Errorf("capability catalog protocol_version %d is unsupported, want %d", c.ProtocolVersion, contractsv1.DeviceProtocolVersion)
@@ -109,6 +118,9 @@ func (c *CapabilityCatalog) validate() error {
 func (spec Route) validate(route string) error {
 	if route == "" {
 		return fmt.Errorf("capability catalog contains an empty route")
+	}
+	if route == actionport.WatchInstallRoute {
+		return fmt.Errorf("route %q is reserved for the runtime's watch effector; a device catalog may not name it", route)
 	}
 	if spec.Operation == "" || spec.Target == "" || spec.SelectorField == "" {
 		return fmt.Errorf("route %q must set operation, target, and selector_field", route)

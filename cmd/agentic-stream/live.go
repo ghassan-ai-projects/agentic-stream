@@ -28,6 +28,7 @@ type liveFlags struct {
 	effectProfile                                      string
 	effect                                             effectProfileOptions
 	worker                                             runtime.WorkerRuntimeConfig
+	eventSchemas                                       *spec.EventSchemas
 }
 
 type cleanups []func()
@@ -43,7 +44,7 @@ type runtimeCore struct {
 }
 
 type effects struct {
-	effector actionport.Effector
+	effector actionport.RoutedEffector
 	serial   *device.GatewayEffector
 }
 

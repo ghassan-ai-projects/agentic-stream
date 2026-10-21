@@ -48,6 +48,13 @@ func (e *GatewayEffector) WithTelemetry(runtimeTelemetry *telemetry.Runtime) *Ga
 	return e
 }
 
+// OwnsRoute reports whether the device's capability catalog names route, so
+// the gateway accepts exactly the routes its digest-pinned catalog declares.
+// A nil effector owns no route.
+func (e *GatewayEffector) OwnsRoute(route string) bool {
+	return e != nil && e.effector.OwnsRoute(route)
+}
+
 // Dispatch materializes and delivers one approved command.
 func (e *GatewayEffector) Dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
 	return e.effector.Dispatch(ctx, command)
@@ -72,14 +79,14 @@ func (e *GatewayEffector) VerifyDeviceCommand(ctx context.Context, command actio
 }
 
 // NewSimulatedEffector returns the deterministic effector that accepts each
-// idempotency key once and touches no device.
-func NewSimulatedEffector() actionport.AuthorizedEffector {
+// idempotency key once and touches no device. It owns every route.
+func NewSimulatedEffector() actionport.RoutedEffector {
 	return app.NewSimulatedEffector()
 }
 
 // NewFailClosedEffector returns the fallback that refuses every route no live
 // effector owns, so a live profile never turns an unmapped route into a
-// simulated success.
-func NewFailClosedEffector(profile EffectProfile) actionport.AuthorizedEffector {
+// simulated success. It owns no route.
+func NewFailClosedEffector(profile EffectProfile) actionport.RoutedEffector {
 	return app.NewFailClosedEffector(profile)
 }
