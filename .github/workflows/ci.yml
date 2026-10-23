@@ -32,7 +32,7 @@ env:
   # GO-2026-6612, GO-2026-6611, GO-2026-6610, GO-2026-6608, GO-2026-6607,
   # GO-2026-6605 and others) that this codebase's call graph reaches; all fixed
   # in 1.26.9. golang.org/x/net moved to v0.60.0 for GO-2026-6617.
-  GO_VERSION: "1.26.9"
+  GO_VERSION: "1.26.10"
   GO_TOOLS_VERSION: "v0.45.0"
   GOVULNCHECK_VERSION: "v1.3.0"
   GOLANGCI_LINT_VERSION: "v2.12.2"
