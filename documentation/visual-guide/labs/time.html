@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Time and windows — Agentic Stream</title>
+<link rel="stylesheet" href="lab.css">
+</head>
+<body>
+<header class="top"><a class="brand" href="../index.html">Agentic Stream</a>
+<nav aria-label="Visual guide"><a href="../index.html">Home</a><a href="../world.html">3D world</a><a href="time.html" aria-current="page">Time</a><a href="situation.html">Situation</a><a href="scheduler.html">Reasoning gate</a><a href="authority.html">Authority</a></nav></header>
+<main>
+<div class="kicker">Lab 1 · Stream plane</div>
+<h1>A late reading cannot rewrite history</h1>
+<p class="lede">Sensors send readings. Networks reorder them. The runtime keeps two clocks apart: when something happened (event time) and when it was heard about. Delay a reading and watch the watermark, the window and the result react.</p>
+<div class="stage" id="stage"></div>
+<div class="chips" id="chips" aria-live="polite"></div>
+<div class="controls"><div class="transport" id="transport"></div><div class="group" id="ctl"></div></div>
+<div class="cards"><div class="card"><div class="tag">Reading the picture</div><h3>Two lanes, two clocks</h3><p>Twelve temperature readings from the recorded run sit on two lanes. The top lane is arrival order, the runtime's own clock. The bottom lane is when each one really happened. A line joins them once a reading arrives.</p></div><div class="card"><div class="tag">Key idea</div><h3>The watermark is a promise</h3><p>The watermark is the newest event time seen minus a lag. When it passes the end of a window, the window closes and emits a result. A reading that arrives afterwards is late, and the spec says what to do with it.</p></div><div class="card"><div class="tag">Why it matters</div><h3>Same input, same state</h3><p>If results followed arrival order, a slow network would change the answer. Event time makes the state a function of the evidence alone, which is what makes deterministic replay possible.</p></div></div>
+<div class="note">The readings, their event times, the 5-minute window, the 15 s watermark lag and the 30 s allowed lateness come from the recorded run and the experiment spec. The network delay and the +6 °C spike are what-ifs you control; the recorded readings were not late.</div>
+<footer class="src">Read more<ul><li><a href="../../learn/time-and-state.md">Time and changing state</a></li><li><a href="../../design/stream-processing.md">Stream mechanics</a></li></ul></footer>
+</main>
+<script src="../dist/lab-time.js"></script>
+</body>
+</html>

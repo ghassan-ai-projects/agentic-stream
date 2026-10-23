@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The reasoning gate — Agentic Stream</title>
+<link rel="stylesheet" href="lab.css">
+</head>
+<body>
+<header class="top"><a class="brand" href="../index.html">Agentic Stream</a>
+<nav aria-label="Visual guide"><a href="../index.html">Home</a><a href="../world.html">3D world</a><a href="time.html">Time</a><a href="situation.html">Situation</a><a href="scheduler.html" aria-current="page">Reasoning gate</a><a href="authority.html">Authority</a></nav></header>
+<main>
+<div class="kicker">Lab 3 · Cognition plane</div>
+<h1>Twenty-two versions, one episode</h1>
+<p class="lede">Reasoning is slow, costly and not repeatable, so a deterministic scheduler decides when it is worth starting. Replay the 22 real evaluations, then change the rules and the sensor's pace to see how the gate behaves.</p>
+<div class="stage" id="stage"></div>
+<div class="chips" id="chips" aria-live="polite"></div>
+<div class="controls"><div class="transport" id="transport"></div><div class="group" id="ctl"></div></div>
+<div class="cards"><div class="card"><div class="tag">Reading the picture</div><h3>Evaluations, queue, episodes</h3><p>The top row is every version with its score and outcome. The middle row is queued work with its not-before time. The bottom row is the episodes that actually started.</p></div><div class="card"><div class="tag">Key idea</div><h3>Score, newness, then timing</h3><p>A version must score above the threshold and be materially new. Queued work is delayed by a debounce, spaced by a cooldown, and replaced by newer work for the same trigger.</p></div><div class="card"><div class="tag">Why it matters</div><h3>Rationed attention</h3><p>Every outcome, ignored ones included, is a durable record with a reason. You can always answer the question "why did nothing happen?".</p></div></div>
+<div class="note">This is a simplified model of the scheduler. With the recorded settings it reproduces the recorded run: 22 evaluations, version 5 replaced by version 7, one episode about 21 s after the first admitted evaluation. The recorded run was fast-forwarded, so versions arrived a fraction of a second apart. For a live sensor, 30 s apart, the model predicts a second episode.</div>
+<footer class="src">Read more<ul><li><a href="../../learn/reasoning.md">When an agent should reason</a></li><li><a href="../../design/cognition.md">Cognition mechanics</a></li></ul></footer>
+</main>
+<script src="../dist/lab-scheduler.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>From proposal to proof — Agentic Stream</title>
+<link rel="stylesheet" href="lab.css">
+</head>
+<body>
+<header class="top"><a class="brand" href="../index.html">Agentic Stream</a>
+<nav aria-label="Visual guide"><a href="../index.html">Home</a><a href="../world.html">3D world</a><a href="time.html">Time</a><a href="situation.html">Situation</a><a href="scheduler.html">Reasoning gate</a><a href="authority.html" aria-current="page">Authority</a></nav></header>
+<main>
+<div class="kicker">Lab 4 · Governance and effect planes</div>
+<h1>A proposal is not permission, and "OK" is not proof</h1>
+<p class="lede">Send a proposed action down the real path: validator, policy, outbox and dispatch, device, verification. Flip the conditions of the world and watch where it stops, what record is written, and what a lost reply does.</p>
+<div class="stage" id="stage"></div>
+<div class="chips" id="chips" aria-live="polite"></div>
+<div class="controls"><div class="transport" id="transport"></div><div class="group" id="ctl"></div></div>
+<div class="cards"><div class="card"><div class="tag">Reading the picture</div><h3>Gates, records, outcome</h3><p>Each gate either passes the proposal or stops it and writes a durable record with a reason. The chips under the picture are those records, in order.</p></div><div class="card"><div class="tag">Key idea</div><h3>Check again, right before acting</h3><p>Policy is evaluated against current state at dispatch. A superseded intent, an operator stop or a new runtime owner can turn an earlier yes into a no.</p></div><div class="card"><div class="tag">Why it matters</div><h3>Unknown is a real answer</h3><p>If a reply is lost, the system records an unknown outcome and reconciles with evidence. A stable idempotency key means a retry cannot cause a second effect.</p></div></div>
+<div class="note">The gate order, the risk classes (R0, R1, R2), the human approval rule for R2, and the three answers (receipt, result, query_state) follow the design and the recorded run. The failure switches are what-ifs; the recorded run passed every gate.</div>
+<footer class="src">Read more<ul><li><a href="../../learn/safe-actions.md">From proposal to effect</a></li><li><a href="../../design/decisions-and-actions.md">Decision and action mechanics</a></li><li><a href="../../architecture/security-model.md">Security model</a></li></ul></footer>
+</main>
+<script src="../dist/lab-authority.js"></script>
+</body>
+</html>
