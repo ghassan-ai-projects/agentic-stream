@@ -61,7 +61,10 @@ func completeClassification(result DispatchResult, effect actionport.Effect, dis
 	if dispatchErr != nil {
 		result.OutboxStatus = OutboxFailed
 	}
-	if dispatchErr != nil || effect.VerificationPending {
+	switch {
+	case result.Status == OutcomeFailed:
+		result.VerificationStatus = actionport.VerificationRefuted
+	case dispatchErr != nil || effect.VerificationPending:
 		result.VerificationStatus = actionport.VerificationAwaiting
 	}
 	result.Settled = !effect.VerificationPending && (result.Status == OutcomeSucceeded || result.Status == OutcomeFailed)
