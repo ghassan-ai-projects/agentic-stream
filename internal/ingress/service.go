@@ -17,6 +17,10 @@ import (
 // The sink owns appending the envelope and advancing the runtime pipeline.
 type EnvelopeSink = app.EnvelopeSink
 
+// Feed is an in-process live source: it runs until ctx ends and hands each
+// normalized envelope it produces to emit, in order.
+type Feed = app.Feed
+
 // SimulatorOptions describes the consumer-specific projection from the
 // streams-simulator trace-record-v0.1 format into current normalized events.
 type SimulatorOptions = domain.SimulatorOptions
@@ -71,4 +75,12 @@ func (s *Service) ReplaySimulator(ctx context.Context, options SimulatorOptions,
 // to sink until ctx is canceled or the sink fails.
 func (s *Service) ServeLive(ctx context.Context, path string, sink EnvelopeSink) error {
 	return s.app.ServeLive(ctx, path, sink)
+}
+
+// ServeFeed runs feed and admits each envelope it emits exactly as a live line
+// is admitted (tenant, envelope contract, registered event schema): an
+// admitted envelope goes to sink, a refused one is quarantined as its decoded
+// envelope. It returns when feed returns.
+func (s *Service) ServeFeed(ctx context.Context, feed Feed, sink EnvelopeSink) error {
+	return s.app.ServeFeed(ctx, feed, sink)
 }

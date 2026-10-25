@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:plant-wire:v1:DQUERY",
+  "title": "DQUERY",
+  "description": "State query for reconciliation.",
+  "type": "object",
+  "required": [
+    "type",
+    "protocol_version",
+    "session_id",
+    "seq",
+    "lane",
+    "device"
+  ],
+  "properties": {
+    "type": {
+      "const": "DQUERY"
+    },
+    "protocol_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lane": {
+      "const": "control"
+    },
+    "device": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    }
+  }
+}

@@ -38,6 +38,7 @@ A word that is not here should not appear in the module's public API.
 | **Renew** | The same owner claims again while its claim is still active. | `ClaimRenewed` | `claim_renewed` |
 | **Reject** | Another owner holds a live claim. The attempt is audited and refused. | `ClaimRejected`, `ErrTargetClaimBusy` | `claim_rejected` |
 | **Release** | The exact holder gives up its active claim. | `ReleaseClaim` | `claim_released` |
+| **Claim for delivery** | The one sequence every device link runs before it sends an ordinary command: claim the target, bind the command (a refused binding releases the claim), assert the claim. | `ClaimForDelivery`, `ErrClaimRefused`, `ErrBindingRefused` | — |
 | **Not owned** | The caller is not the exact live holder. | `ErrTargetClaimNotOwned` | — |
 
 ## Commands
@@ -45,6 +46,7 @@ A word that is not here should not appear in the module's public API.
 | Term | Meaning | Code | Storage |
 | --- | --- | --- | --- |
 | **Command binding** | Immutable record tying a command to the target, device boot and owner that delivered it, plus its digest. Written immediately before delivery. Repeating the identical binding is idempotent; any difference is a conflict. | `CommandBinding`, `BindCommand` | `device_command_bindings` |
+| **Normalized target** (of a binding) | The target the governed command named, recorded when the link bound it to a different device output (plant wire: `zone-01` named, `fan-01` bound). Command evidence is checked against it, so like is compared with like; without it the bound target is the command's own. | `CommandBinding.NormalizedTarget` | `normalized_target` |
 | **Command evidence** | Reconciliation evidence presented for one bound command. It must name the bound target and the bound device boot. | `VerifyCommandEvidence` | — |
 | **Unresolved command** | A command bound to a device boot whose outcome the action ledger still treats as unresolved. The action ledger owns that definition. | `OutcomeLedger`, `actions.CountUnresolvedOutcomes` | `commands.status` (owned by `actions`) |
 | **Command evidence** request | The command, its target and the evidence presented to reconcile it. | `CommandEvidence` | — |
@@ -58,6 +60,7 @@ A word that is not here should not appear in the module's public API.
 | **Reboot** | A device state whose boot ID differs from the recorded one. | `StateRebooted` | — |
 | **Reconciliation** | A case opened for a device boot when the runtime can no longer trust what the device did: a reboot, an untrusted receipt, or an unknown outcome. | `domain.Reconciliation` | `device_reconciliation` |
 | **Reconciliation required** | A reconciliation is open. Ordinary commands to the device are blocked. This is the **barrier**. | `ReconciliationRequired`, `ErrReconciliationRequired` | `status = 'required'` |
+| **Require reconciliation** | Open a reconciliation for an unknown outcome, on the priority path when the owner lost its authority. Every device link calls it. | `RequireReconciliation` | `reconciliation_opened` |
 | **Clear** | No reconciliation is open. | `ReconciliationClear` | `status = 'clear'` |
 | **Open** a reconciliation | Move the device boot to required and audit the reason. | `OpenReconciliation`, `OpenReconciliationAfterAuthorityLoss` | `reconciliation_opened` |
 | **Reconciliation evidence** | Independent, digest-bound feedback about one device boot: source, type `device_state_feedback`, typed state, feedback, and three SHA-256 references. A closed set of fields. | `ReconciliationEvidence`, `SealReconciliationEvidence`, `ParseReconciliationEvidence` | `resolution_evidence_json` |
@@ -67,6 +70,10 @@ A word that is not here should not appear in the module's public API.
 | **State observation** | A reported device state and what it does: first seen, refreshed, or rebooted. | `StateObservation`, `ObserveState` | — |
 | **Resolve** | Record evidence and an outcome for an open reconciliation. | `ResolveReconciliation` | `reconciliation_recorded` |
 | **Resolution outcome** | `succeeded` or `failed` clears the reconciliation; `manual_review` keeps it required. | `ResolutionOutcome` | `last_resolution_status` |
+| **Reading** | One sample of one device output as the host received it: value, good or not, historical or live, boot, receive time. | `Reading` | — |
+| **Reading evidence** | A device's readings of its commanded outputs, presented with the boot's latest state to resolve its reconciliation. | `ReadingEvidence` | — |
+| **Latest opening** | When the boot's reconciliation was last opened and whether a reboot opened it. | `Opening`, `LatestOpening` | `reconciliation_opened` |
+| **Resolve with readings** | Resolve as succeeded when every output has a good, live reading on the boot newer than the latest opening (any reading of a rebooted boot is), recording the readings as evidence. | `ResolveWithReadings` | `reconciliation_recorded` |
 | **No open reconciliation** | Resolution was attempted when the device boot is clear. | `ErrNoOpenReconciliation` | — |
 
 ## Safety

@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:plant-wire:v1:NBIRTH",
+  "title": "NBIRTH",
+  "description": "Node birth: the session start or a rebirth. Declares each kind once and the environment of each board; grants nothing.",
+  "type": "object",
+  "required": [
+    "type",
+    "protocol_version",
+    "session_id",
+    "seq",
+    "lane",
+    "protocol_min",
+    "protocol_max",
+    "contract_version",
+    "contract_digest",
+    "environment",
+    "bd_seq",
+    "prior_last_seq",
+    "capability_digest",
+    "kinds",
+    "boards"
+  ],
+  "properties": {
+    "type": {
+      "const": "NBIRTH"
+    },
+    "protocol_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lane": {
+      "const": "control"
+    },
+    "protocol_min": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "protocol_max": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "contract_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "contract_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "environment": {
+      "enum": [
+        "simulated",
+        "hardware",
+        "mixed"
+      ],
+      "description": "The node's environment. simulated: every board is simulated; hardware: every board is hardware; mixed: at least one board of each. A schema cannot say that, so a host checks it at the handshake (SPEC section 2)."
+    },
+    "bd_seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "prior_last_seq": {
+      "type": "integer",
+      "minimum": -1
+    },
+    "capability_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "kinds": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "metrics",
+          "commands",
+          "kind_digest"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+          },
+          "metrics": {
+            "type": "array",
+            "maxItems": 512,
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "data_type"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+                },
+                "data_type": {
+                  "enum": [
+                    "number",
+                    "integer",
+                    "boolean",
+                    "enum",
+                    "string"
+                  ]
+                },
+                "unit": {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                "eu_range": {
+                  "type": "object",
+                  "required": [
+                    "min",
+                    "max"
+                  ],
+                  "properties": {
+                    "min": {
+                      "type": "number"
+                    },
+                    "max": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "instrument_range": {
+                  "type": "object",
+                  "required": [
+                    "min",
+                    "max"
+                  ],
+                  "properties": {
+                    "min": {
+                      "type": "number"
+                    },
+                    "max": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "resolution": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "enum_values": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 64
+                  }
+                },
+                "scan_class": {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                "deadband": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "writable": {
+                  "type": "boolean"
+                },
+                "path": {
+                  "type": "string",
+                  "maxLength": 256
+                }
+              }
+            }
+          },
+          "commands": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "args_schema"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+                },
+                "args_schema": {
+                  "type": "object"
+                },
+                "risk_class": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "safe_stop": {
+                  "type": "boolean"
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 200
+                }
+              }
+            }
+          },
+          "kind_digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "boards": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "required": [
+          "board",
+          "environment",
+          "members"
+        ],
+        "properties": {
+          "board": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+          },
+          "environment": {
+            "enum": [
+              "simulated",
+              "hardware"
+            ],
+            "description": "What this board is: the origin of every device born on it. A claim the host checks against the node's environment (SPEC section 2), never inferred."
+          },
+          "members": {
+            "type": "array",
+            "maxItems": 4096,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+            }
+          }
+        }
+      }
+    },
+    "node_metrics": {
+      "type": "object",
+      "properties": {
+        "clock_mode": {
+          "enum": [
+            "virtual",
+            "wall"
+          ]
+        },
+        "run_state": {
+          "enum": [
+            "running",
+            "paused",
+            "ended"
+          ]
+        }
+      }
+    }
+  }
+}

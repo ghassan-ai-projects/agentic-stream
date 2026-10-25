@@ -94,32 +94,16 @@ func (s *Session) validateCommandLifetime(command domain.Command) error {
 
 func (s *Session) claimCommand(ctx context.Context, command domain.Command, commandIdentity string) (deviceauthority.TargetClaim, error) {
 	claim := s.targetClaim(command.Target)
-	if err := s.authority.Claim(ctx, claim); err != nil {
+	err := s.authority.ClaimForDelivery(ctx, deviceauthority.CommandBinding{
+		CommandID: command.CommandID, Target: claim.Target, Device: claim.Device, Owner: claim.Owner, CommandDigest: commandIdentity,
+	})
+	if errors.Is(err, deviceauthority.ErrClaimRefused) {
 		s.telemetry.ObserveTargetClaimRejection()
-		return claim, fmt.Errorf("claim device target: %w", err)
+	} else if !errors.Is(err, deviceauthority.ErrBindingRefused) {
+		s.claimedTargets[claim.Target] = struct{}{}
 	}
-	return s.bindClaimedCommand(ctx, command, claim, commandIdentity)
-}
-
-func (s *Session) bindClaimedCommand(ctx context.Context, command domain.Command, claim deviceauthority.TargetClaim, commandIdentity string) (deviceauthority.TargetClaim, error) {
-	if err := s.authority.BindCommand(ctx, deviceauthority.CommandBinding{
-		CommandID: command.CommandID, Target: claim.Target, Device: claim.Device,
-		Owner: claim.Owner, CommandDigest: commandIdentity,
-	}); err != nil {
-		releaseErr := s.authority.ReleaseClaim(ctx, claim)
-		if errors.Is(releaseErr, deviceauthority.ErrTargetClaimNotOwned) {
-			releaseErr = nil
-		}
-		return claim, fmt.Errorf("bind device command: %w", errors.Join(err, releaseErr))
-	}
-	return s.assertClaimBeforeDelivery(ctx, claim)
-}
-
-func (s *Session) assertClaimBeforeDelivery(ctx context.Context, claim deviceauthority.TargetClaim) (deviceauthority.TargetClaim, error) {
-	s.claimedTargets[claim.Target] = struct{}{}
-
-	if err := s.authority.AssertClaim(ctx, claim); err != nil {
-		return claim, fmt.Errorf("assert device target authority: %w", err)
+	if err != nil {
+		return claim, fmt.Errorf("device command %s: %w", command.CommandID, err)
 	}
 	return claim, nil
 }

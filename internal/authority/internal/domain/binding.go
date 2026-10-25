@@ -10,11 +10,12 @@ import (
 // delivered it, plus the command digest. It is written immediately before
 // delivery and never changes.
 type CommandBinding struct {
-	CommandID     string
-	Target        string
-	Device        DeviceBoot
-	Owner         Owner
-	CommandDigest string
+	CommandID        string
+	Target           string
+	NormalizedTarget string
+	Device           DeviceBoot
+	Owner            Owner
+	CommandDigest    string
 }
 
 // Complete reports whether every identity of the binding is present. The
@@ -36,7 +37,7 @@ func DecideBinding(existing *CommandBinding, requested CommandBinding) (bool, er
 }
 
 func sameBinding(existing, requested CommandBinding) bool {
-	return existing.Target == requested.Target && existing.Device == requested.Device &&
+	return existing.Target == requested.Target && existing.NormalizedTarget == requested.NormalizedTarget && existing.Device == requested.Device &&
 		existing.Owner == requested.Owner && sameDigest(existing.CommandDigest, requested.CommandDigest)
 }
 
@@ -50,6 +51,13 @@ func sameDigest(existing, requested string) bool {
 	}
 	have, err := canonicaljson.DecodeDigest(existing)
 	return err == nil && string(have) == string(want)
+}
+
+func (b CommandBinding) commandTarget() string {
+	if b.NormalizedTarget != "" {
+		return b.NormalizedTarget
+	}
+	return b.Target
 }
 
 // CommandEvidence is reconciliation evidence presented for one command whose
@@ -67,7 +75,7 @@ func CheckCommandEvidence(binding *CommandBinding, presented CommandEvidence) er
 	if binding == nil {
 		return nil
 	}
-	if binding.Target != presented.Target {
+	if binding.commandTarget() != presented.Target {
 		return fmt.Errorf("device command binding target does not match command %q", presented.CommandID)
 	}
 	if evidenceTarget, _ := presented.Evidence["target"].(string); evidenceTarget != binding.Target {

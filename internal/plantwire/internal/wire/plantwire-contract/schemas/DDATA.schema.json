@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:plant-wire:v1:DDATA",
+  "title": "DDATA",
+  "description": "Device data: one or more samples. Historical data never updates live state or fires real-time rules.",
+  "type": "object",
+  "required": [
+    "type",
+    "protocol_version",
+    "session_id",
+    "seq",
+    "lane",
+    "device",
+    "boot_id",
+    "historical",
+    "metrics"
+  ],
+  "properties": {
+    "type": {
+      "const": "DDATA"
+    },
+    "protocol_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lane": {
+      "const": "data"
+    },
+    "device": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "boot_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "historical": {
+      "type": "boolean"
+    },
+    "metrics": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "required": [
+          "alias",
+          "value",
+          "quality",
+          "event_time_ns",
+          "time_source"
+        ],
+        "properties": {
+          "alias": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "value": {
+            "type": [
+              "number",
+              "integer",
+              "boolean",
+              "string"
+            ],
+            "maxLength": 256
+          },
+          "quality": {
+            "enum": [
+              "good",
+              "warming_up",
+              "suspect",
+              "out_of_range",
+              "stale",
+              "disconnected",
+              "manual_override",
+              "out_of_service"
+            ]
+          },
+          "event_time_ns": {
+            "type": "integer"
+          },
+          "time_source": {
+            "enum": [
+              "device",
+              "gateway",
+              "receipt"
+            ]
+          },
+          "uncertainty_ms": {
+            "type": "number",
+            "minimum": 0
+          },
+          "device_mono_us": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

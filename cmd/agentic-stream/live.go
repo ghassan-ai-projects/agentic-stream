@@ -10,6 +10,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
@@ -44,8 +45,16 @@ type runtimeCore struct {
 }
 
 type effects struct {
-	effector actionport.RoutedEffector
-	serial   *device.GatewayEffector
+	effector      actionport.RoutedEffector
+	serial        *device.GatewayEffector
+	plant         *plantwire.Host
+	device        deviceEffector
+	dispatchLease time.Duration
+}
+
+type deviceEffector interface {
+	actionport.VerifiedEffector
+	actionport.RouteOwner
 }
 
 func (f *liveFlags) registerShared(cmd *cobra.Command) {
@@ -127,7 +136,7 @@ func (core *runtimeCore) openEffects(ctx context.Context, options effectProfileO
 	if closeEffector != nil {
 		cleanup.add(func() { _ = closeEffector() })
 	}
-	return effects{effector: effector, serial: gatewayEffector}, nil
+	return effects{effector: effector, serial: gatewayEffector, dispatchLease: options.DispatchLease}, nil
 }
 
 func (core *runtimeCore) openWorkerRuntime(ctx context.Context, config runtime.WorkerRuntimeConfig, cleanup *cleanups) (*runtime.WorkerRuntime, error) {
@@ -145,7 +154,7 @@ func (core *runtimeCore) openWorkerRuntime(ctx context.Context, config runtime.W
 func (core *runtimeCore) startPipeline(ctx context.Context, compiled *spec.CompiledSpec, tenantID string, workerRuntime *runtime.WorkerRuntime, opened effects, metrics *telemetry.Runtime, demoMode bool, cleanup *cleanups) (*runtime.Pipeline, error) {
 	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{
 		DB: core.db, Spec: compiled, TenantID: tenantID, Owner: core.owner, OwnerEpoch: core.epoch,
-		Executor: workerRuntime.Executor, Effector: opened.effector, GatewayEffector: opened.serial,
+		Executor: workerRuntime.Executor, Effector: opened.effector, GatewayEffector: opened.serial, DeviceEffector: opened.device, DispatchLease: opened.dispatchLease,
 		IDGenerator: sources.Random(), Telemetry: metrics, EpochControl: core.epochControl, DemoMode: demoMode,
 	})
 	if err != nil {

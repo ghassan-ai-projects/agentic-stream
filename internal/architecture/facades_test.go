@@ -124,7 +124,7 @@ var facadeSpecs = []facadeSpec{
 		module:       "internal/actions",
 		constructors: []string{"New", "NewReconciler", "leaseObserver"},
 		operations: operations(
-			to("app", "DispatchOnce", "Resolve", "Awaiting", "IntentCommands"),
+			to("app", "DispatchOnce", "Resolve", "Awaiting", "IntentCommands", "DispatchCallTimeout"),
 			where(onFunctions(singleStatement), "CountUnresolvedOutcomes"),
 		),
 	},
@@ -190,7 +190,7 @@ var facadeSpecs = []facadeSpec{
 	{
 		module:       "internal/ingress",
 		constructors: []string{"New", "applicationConfig"},
-		operations:   operations(to("app", "ReplayJSONL", "ReplaySimulator", "ServeLive")),
+		operations:   operations(to("app", "ReplayJSONL", "ReplaySimulator", "ServeLive", "ServeFeed")),
 	},
 	{
 		module: "internal/executor/native",
@@ -206,6 +206,11 @@ var facadeSpecs = []facadeSpec{
 	{
 		module:     "internal/executor/remote",
 		operations: operations(where(reachesApp, "NewExecutor", "NewExecutorWithEvidence", "Execute")),
+	},
+	{
+		module:       "internal/plantwire",
+		constructors: []string{"New"},
+		operations:   operations(to("app", "Run", "Close", "OwnsRoute", "Dispatch", "DispatchAuthorized", "VerifyDeviceCommand"), to("domain", "CheckSettings")),
 	},
 	{
 		module:       "internal/runartifact",

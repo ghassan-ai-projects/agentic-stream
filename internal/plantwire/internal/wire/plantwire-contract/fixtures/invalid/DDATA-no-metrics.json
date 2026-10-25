@@ -1,0 +1,15 @@
+{
+  "schema": "DDATA",
+  "fails_at": "/metrics",
+  "record": {
+    "type": "DDATA",
+    "protocol_version": 1,
+    "session_id": "s-1",
+    "seq": 2,
+    "lane": "data",
+    "device": "P1",
+    "boot_id": "board-01-boot-1",
+    "historical": false,
+    "metrics": []
+  }
+}

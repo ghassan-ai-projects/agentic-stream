@@ -9,6 +9,7 @@
 | Trace grammar | The record order a simulator trace must follow: `runtime_config`, events and activations in strictly increasing recorded time, then `trace_end`. | `domain.SimulatorTrace` | none |
 | Live line | One framed line from a socket client with its connection and line number. | `domain.LiveLine` | none |
 | Sink | The consumer of each admitted live envelope. | `ingress.EnvelopeSink` | none |
+| Feed | An in-process live source that hands decoded envelopes to ingress, which admits them like live lines. | `ingress.Feed` | none |
 
 ## Retired words
 

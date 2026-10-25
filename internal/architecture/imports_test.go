@@ -105,6 +105,7 @@ var replayPackages = []string{"internal/replay", "internal/replay/internal/app",
 var effectImplementationPackages = []string{
 	"internal/actions", "internal/actions/internal/app", "internal/actions/internal/store",
 	"internal/device", "internal/device/internal/app", "internal/device/internal/transport",
+	"internal/plantwire", "internal/plantwire/internal/app", "internal/plantwire/internal/transport",
 	"internal/watch",
 	"internal/runtime", "internal/runtime/internal/app", "internal/runtime/internal/composition", "internal/runtime/internal/store", "internal/runtime/internal/transport",
 	"cmd/agentic-stream",
@@ -112,7 +113,7 @@ var effectImplementationPackages = []string{
 
 var policyPackages = []string{"internal/policy", "internal/policy/internal/app", "internal/policy/internal/store", "internal/policy/internal/domain"}
 
-var deviceAdapterPackages = []string{"internal/device", "internal/device/internal/app"}
+var deviceAdapterPackages = []string{"internal/device", "internal/device/internal/app", "internal/plantwire", "internal/plantwire/internal/app"}
 
 var upstreamServicePackages = []string{"internal/actions", "internal/policy", "internal/episodes", "internal/runtime"}
 

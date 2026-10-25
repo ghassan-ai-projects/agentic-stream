@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:plant-wire:v1:NSYNC",
+  "title": "NSYNC",
+  "description": "Barrier: the node has sent everything up to through_seq for the slice ending at world_time_ns and waits for HSYNC.",
+  "type": "object",
+  "required": [
+    "type",
+    "protocol_version",
+    "session_id",
+    "seq",
+    "lane",
+    "through_seq",
+    "world_time_ns"
+  ],
+  "properties": {
+    "type": {
+      "const": "NSYNC"
+    },
+    "protocol_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lane": {
+      "const": "control"
+    },
+    "through_seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "world_time_ns": {
+      "type": "integer"
+    }
+  }
+}

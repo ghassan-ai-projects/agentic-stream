@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
@@ -20,15 +21,14 @@ func startContinuousPipeline(ctx context.Context, stop context.CancelFunc, core 
 		return err
 	}
 	core.pipeline = pipeline
-	return startContinuousSource(ctx, stop, pipeline, flags, failures)
+	return startContinuousSource(ctx, stop, pipeline, flags, opened, failures)
 }
 
 func (core *runtimeCore) openContinuousPipeline(ctx context.Context, stop context.CancelFunc, flags serveFlags, opened effects, metrics *telemetry.Runtime, failures chan error, cleanup *cleanups) (*runtime.Pipeline, error) {
-	compiled, err := spec.CompileFile(ctx, flags.specPath, spec.WithEventSchemas(flags.eventSchemas))
+	compiled, err := loadSpec(ctx, flags)
 	if err != nil {
-		return nil, fmt.Errorf("compile spec: %w", err)
+		return nil, err
 	}
-	slog.Info("spec loaded", "spec", compiled.Metadata.Name, "version", compiled.Metadata.Version, "digest", compiled.Digest, "path", flags.specPath)
 	workerRuntime, err := core.openWorkerRuntime(ctx, flags.worker, cleanup)
 	if err != nil {
 		return nil, err
@@ -41,6 +41,24 @@ func (core *runtimeCore) openContinuousPipeline(ctx context.Context, stop contex
 	return pipeline, nil
 }
 
+func loadSpec(ctx context.Context, flags serveFlags) (*spec.CompiledSpec, error) {
+	compiled, err := spec.CompileFile(ctx, flags.specPath, spec.WithEventSchemas(flags.eventSchemas))
+	if err != nil {
+		return nil, fmt.Errorf("compile spec: %w", err)
+	}
+	return compiled, logLoadedSpec(slog.Default(), compiled, flags.specPath)
+}
+
+func logLoadedSpec(logger *slog.Logger, compiled *spec.CompiledSpec, path string) error {
+	policyDigest, err := policy.DigestForVersion(compiled.Digest)
+	if err != nil {
+		return fmt.Errorf("derive policy digest: %w", err)
+	}
+	logger.Info("spec loaded", "spec", compiled.Metadata.Name, "version", compiled.Metadata.Version, "digest", compiled.Digest,
+		"policy_digest", policyDigest, "path", path)
+	return nil
+}
+
 func registerWorkerMonitor(ctx context.Context, workerErrors <-chan error, failures chan error, stop context.CancelFunc, cleanup *cleanups) {
 	workerMonitorDone := monitorWorkerRuntimeErrors(ctx, workerErrors, failures, stop)
 	cleanup.add(func() {
@@ -49,17 +67,21 @@ func registerWorkerMonitor(ctx context.Context, workerErrors <-chan error, failu
 	})
 }
 
-func startContinuousSource(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, flags serveFlags, failures chan error) error {
+func startContinuousSource(ctx context.Context, stop context.CancelFunc, pipeline *runtime.Pipeline, flags serveFlags, opened effects, failures chan error) error {
 	run := func(name string, source func(context.Context) error) { go runSource(ctx, stop, failures, name, source) }
-	if flags.liveSocket == "" {
+	if flags.tracePath != "" {
 		run("continuous pipeline", func(ctx context.Context) error {
 			return pollTrace(ctx, pipeline, flags.traceFormat, flags.tracePath, flags.pollInterval)
 		})
 		return nil
 	}
-	run("live socket pipeline", func(ctx context.Context) error { return pipeline.RunLiveSocket(ctx, flags.liveSocket) })
 	run("pipeline clock", func(ctx context.Context) error { return pipeline.AdvanceEvery(ctx, flags.pollInterval) })
 	run("episode loop", func(ctx context.Context) error { return pipeline.RunEpisodesEvery(ctx, flags.pollInterval) })
+	runPlantWireHost(opened.plant, pipeline, run)
+	if flags.liveSocket == "" {
+		return nil
+	}
+	run("live socket pipeline", func(ctx context.Context) error { return pipeline.RunLiveSocket(ctx, flags.liveSocket) })
 	return waitForLiveSocket(ctx, flags.liveSocket, failures)
 }
 

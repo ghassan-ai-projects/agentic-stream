@@ -35,6 +35,7 @@ func TestACommandBindingIsFirstRecordedThenOnlyRepeatedIdentically(t *testing.T)
 		{"different boot conflicts", &bound, with(func(b *CommandBinding) { b.Device.BootID = "boot-2" }), false, true},
 		{"different owner conflicts", &bound, with(func(b *CommandBinding) { b.Owner = ownerB }), false, true},
 		{"different target conflicts", &bound, with(func(b *CommandBinding) { b.Target = "led-01" }), false, true},
+		{"different normalized target conflicts", &bound, with(func(b *CommandBinding) { b.NormalizedTarget = "zone-01" }), false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -62,6 +63,7 @@ func TestACommandBindingIsCompleteOnlyWithItsCommandId(t *testing.T) {
 func TestCommandEvidenceMustMatchTheCommandsBinding(t *testing.T) {
 	t.Parallel()
 	binding := &CommandBinding{CommandID: "cmd-1", Target: "fan-01", Device: bootOne, Owner: ownerA}
+	named := &CommandBinding{CommandID: "cmd-1", Target: "fan-01", NormalizedTarget: "zone-01", Device: bootOne, Owner: ownerA}
 	valid := validEvidence(t, bootOne, "fan-01")
 	tests := []struct {
 		name    string
@@ -75,6 +77,9 @@ func TestCommandEvidenceMustMatchTheCommandsBinding(t *testing.T) {
 		{"command target differs from binding", binding, "led-01", func(map[string]any) {}, "binding target does not match"},
 		{"evidence target differs from binding", binding, "fan-01", func(e map[string]any) { e["target"] = "led-01" }, "evidence target does not match"},
 		{"evidence for another boot", binding, "fan-01", func(e map[string]any) { e["boot_id"] = "boot-2" }, "validate device reconciliation evidence"},
+		{"a command naming the target its output was bound for", named, "zone-01", func(map[string]any) {}, ""},
+		{"a command naming the output instead of its target", named, "fan-01", func(map[string]any) {}, "binding target does not match"},
+		{"evidence about the command's target instead of its output", named, "zone-01", func(e map[string]any) { e["target"] = "zone-01" }, "evidence target does not match"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

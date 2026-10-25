@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
@@ -80,5 +81,15 @@ func TestCountUnresolvedOutcomesJoinsTheCallersTransaction(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDispatchCallTimeoutFollowsTheLeaseAndItsDefault(t *testing.T) {
+	t.Parallel()
+	if got := actions.DispatchCallTimeout(0); got != 54*time.Second {
+		t.Errorf("DispatchCallTimeout(default lease) = %s, want 54s", got)
+	}
+	if got := actions.DispatchCallTimeout(3 * time.Minute); got != 162*time.Second {
+		t.Errorf("DispatchCallTimeout(3m) = %s, want 162s", got)
 	}
 }

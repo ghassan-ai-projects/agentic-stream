@@ -54,6 +54,17 @@ func (p *Pipeline) RunLiveSocket(ctx context.Context, path string) error {
 	return p.useCases().RunLiveSocket(ctx, path)
 }
 
+// Feed is an in-process live source, such as a plant wire host: it runs until
+// ctx ends and hands each normalized envelope it produces to emit.
+type Feed = app.Feed
+
+// RunFeed owns an in-process live source until cancellation or failure: each
+// envelope it emits is admitted as a live line is and runs through the governed
+// stages.
+func (p *Pipeline) RunFeed(ctx context.Context, feed Feed) error {
+	return p.useCases().RunFeed(ctx, feed)
+}
+
 // AdvanceEvery advances the pipeline on a schedule until ctx ends, so a quiet
 // live source still makes time-driven progress.
 func (p *Pipeline) AdvanceEvery(ctx context.Context, interval time.Duration) error {

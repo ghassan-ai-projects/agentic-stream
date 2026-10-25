@@ -1,0 +1,19 @@
+{
+  "schema": "STATE",
+  "fails_at": "/refusal",
+  "record": {
+    "type": "STATE",
+    "protocol_version": 1,
+    "session_id": "s-1",
+    "seq": 0,
+    "lane": "control",
+    "host_id": "host-a",
+    "online": true,
+    "heartbeat": 0,
+    "heartbeat_interval_ms": 1000,
+    "authority_epoch": 1,
+    "protocol_min": 1,
+    "protocol_max": 1,
+    "refusal": "go_away"
+  }
+}

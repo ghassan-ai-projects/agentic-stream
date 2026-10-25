@@ -44,7 +44,7 @@ func New(cfg Config) (*Service, error) {
 	}
 	return &Service{app: app.New(app.Config{
 		Store:         store.New(cfg.DB),
-		Fences:        app.Fences{RuntimeOwner: cfg.Owner.Assert, EpochControl: cfg.Epochs.AssertOrdinaryTx},
+		Fences:        app.Fences{RuntimeOwner: cfg.Owner.Assert, EpochControl: cfg.Epochs.AssertOrdinaryTx, AuthorityLost: authorityLost},
 		Outcomes:      store.OutcomeLedger(cfg.Outcomes),
 		OwnerInstance: cfg.Owner.InstanceID,
 		ClaimLease:    sources.OrLease(cfg.ClaimLease),
@@ -66,4 +66,8 @@ func (cfg Config) validate() error {
 		return fmt.Errorf("device authority claim lease %s is negative", cfg.ClaimLease)
 	}
 	return nil
+}
+
+func authorityLost(err error) bool {
+	return errors.Is(err, control.ErrRuntimeOwnerBusy) || errors.Is(err, control.ErrEpochKilled) || errors.Is(err, control.ErrEpochDraining)
 }

@@ -39,3 +39,31 @@ func TestEffectProfileValidationReadsTheConfigurationItIsGiven(t *testing.T) {
 		})
 	}
 }
+
+func TestActuationConsentIsThePhysicalProfileWithBothFlags(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		config device.EffectProfileConfig
+		want   bool
+	}{
+		{"the default profile grants nothing", device.EffectProfileConfig{}, false},
+		{"the emulator profile grants nothing", device.EffectProfileConfig{Profile: device.EffectProfileEmulator,
+			LiveActuation: true, OwnerAuthorized: true}, false},
+		{"physical without the flags grants nothing", device.EffectProfileConfig{Profile: device.EffectProfilePhysical}, false},
+		{"physical with live actuation alone grants nothing", device.EffectProfileConfig{Profile: device.EffectProfilePhysical,
+			LiveActuation: true}, false},
+		{"physical with owner authorization alone grants nothing", device.EffectProfileConfig{Profile: device.EffectProfilePhysical,
+			OwnerAuthorized: true}, false},
+		{"physical with both flags grants consent", device.EffectProfileConfig{Profile: device.EffectProfilePhysical,
+			LiveActuation: true, OwnerAuthorized: true}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := device.GrantsActuationConsent(tc.config); got != tc.want {
+				t.Fatalf("GrantsActuationConsent = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

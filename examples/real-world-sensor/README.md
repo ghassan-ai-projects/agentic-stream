@@ -24,6 +24,16 @@ agentic-stream validate examples/real-world-sensor/zone-thermal-bench.situation.
 `policy_digest` is the value the bench gateway allow-lists
 (`arduino_gateway.py --device-policy-digest`).
 
+## Plant wire bench example
+
+[`testdata/plant-wire/`](testdata/plant-wire/) holds an example site file for
+the thermal bench (`thermal-bench.site.json`: `zone-01` reports for the
+`thermal_zone` entity, temperature and humidity become `zone.temp.observed` and
+`zone.humidity.observed`, a heartbeat every 10 s becomes
+`zone.heartbeat.observed`) and copies of the streams-simulator semantic kind
+files it is checked against. The tests use them; a deployment keeps its own
+site file outside the repository and passes it with `serve --plant-wire-site`.
+
 ## Approval governance
 
 The fan intent (`select_thermal_mode`, R2) needs a signed human approval.

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:plant-wire:v1:DCMD",
+  "title": "DCMD",
+  "description": "Device command with its safety fields: absolute deadline, boot identity, authority epoch and policy digest.",
+  "type": "object",
+  "required": [
+    "type",
+    "protocol_version",
+    "session_id",
+    "seq",
+    "lane",
+    "command_id",
+    "idempotency_key",
+    "device",
+    "command",
+    "args",
+    "expected_boot_id",
+    "deadline_ns",
+    "not_before_ns",
+    "authority_epoch",
+    "policy_digest",
+    "fallback_on_lease_loss"
+  ],
+  "properties": {
+    "type": {
+      "const": "DCMD"
+    },
+    "protocol_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lane": {
+      "const": "control"
+    },
+    "command_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "device": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "command": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "args": {
+      "type": "object"
+    },
+    "expected_boot_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "deadline_ns": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "not_before_ns": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "authority_epoch": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "policy_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "fallback_on_lease_loss": {
+      "enum": [
+        "revert_to_local",
+        "hold_last",
+        "safe_off"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

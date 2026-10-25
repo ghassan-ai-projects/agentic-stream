@@ -16,6 +16,19 @@ func TestAdmitEnvelopeGivesALineWithoutATenantTheConnectorTenant(t *testing.T) {
 	}
 }
 
+func TestCheckEnvelopeGivesTheTenantAndRefusesAnotherOne(t *testing.T) {
+	t.Parallel()
+	admitted := AdmitEnvelope([]byte(validLine), "acme").Envelope
+	admitted.TenantID = ""
+	if verdict := CheckEnvelope(admitted, "acme"); verdict.Rejected() || verdict.Envelope.TenantID != "acme" {
+		t.Fatalf("CheckEnvelope = %+v, want the envelope admitted for tenant acme", verdict)
+	}
+	admitted.TenantID = "other"
+	if verdict := CheckEnvelope(admitted, "acme"); verdict.Reason != ReasonEnvelopeInvalid || !verdict.Decoded {
+		t.Fatalf("CheckEnvelope(another tenant) = %+v, want envelope_invalid", verdict)
+	}
+}
+
 func TestAdmitEnvelopeRejectsWithTheReasonAndWhetherTheLineDecoded(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

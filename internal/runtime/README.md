@@ -42,7 +42,8 @@ module contracts; private use-case and connection objects are never returned.
   exposes asynchronous evidence-server failures and `Close()` releases resources.
 - `ValidateWorkerRuntimeConfig(config)` checks option consistency without I/O.
 - `NewPipeline(ctx, config)` → `Start(ctx)` → `RunJSONL`, `RunSimulatorJSONL`
-  or `RunLiveSocket` → `Close()`.
+  or `RunLiveSocket` or `RunFeed` (an in-process live source such as the plant
+  wire host; its envelopes are admitted as live lines are) → `Close()`.
 - `Pipeline.ApprovalForSigning` and `Pipeline.ResolveApproval` bind the configured
   tenant and trusted runtime clock before joining the policy transaction.
 

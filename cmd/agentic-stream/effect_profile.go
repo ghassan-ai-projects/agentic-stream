@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
@@ -21,10 +22,12 @@ import (
 type effectProfileOptions struct {
 	Profile                device.EffectProfile
 	DeviceSocket           string
+	PlantWireSocket        string
 	DeviceCatalog          string
 	AllowedFirmwareDigests []string
 	LiveActuation          bool
 	OwnerAuthorized        bool
+	DispatchLease          time.Duration
 }
 
 // workerRuntimeFlagTargets contains the command-local storage for the shared
@@ -70,6 +73,9 @@ func (o effectProfileOptions) rejectGatewayFlags() error {
 }
 
 func (o effectProfileOptions) requireGatewayOptions(profile device.EffectProfile) error {
+	if o.PlantWireSocket != "" {
+		return o.requirePlantWireLink()
+	}
 	if o.DeviceSocket == "" {
 		return fmt.Errorf("%s effect profile requires --device-socket", profile)
 	}
@@ -82,11 +88,21 @@ func (o effectProfileOptions) requireGatewayOptions(profile device.EffectProfile
 	return nil
 }
 
+func (o effectProfileOptions) requirePlantWireLink() error {
+	if o.DeviceSocket != "" {
+		return fmt.Errorf("one effect link per process: --device-socket and --plant-wire-socket are exclusive")
+	}
+	if len(o.AllowedFirmwareDigests) > 0 {
+		return fmt.Errorf("--device-firmware-digest applies to --device-socket only")
+	}
+	return nil
+}
+
 func (o effectProfileOptions) profileConfig(replaySource bool) device.EffectProfileConfig {
 	return device.EffectProfileConfig{
 		Profile:         o.profile(),
 		ReplaySource:    replaySource,
-		GatewayOptions:  o.DeviceSocket != "",
+		GatewayOptions:  o.DeviceSocket != "" || o.PlantWireSocket != "",
 		LiveActuation:   o.LiveActuation,
 		OwnerAuthorized: o.OwnerAuthorized,
 	}
@@ -108,6 +124,9 @@ func (o effectProfileOptions) open(ctx context.Context, db *storage.DB, owner *r
 	}
 	if o.profile() == device.EffectProfileSimulated {
 		return device.NewSimulatedEffector(), nil, nil, nil
+	}
+	if o.PlantWireSocket != "" {
+		return fallbackEffector(o.profile()), nil, nil, nil
 	}
 
 	transport, catalog, err := o.connectDeviceGateway(ctx)
@@ -152,10 +171,10 @@ func (o effectProfileOptions) validateGatewayLink(transport *device.UDSTransport
 }
 
 func (o effectProfileOptions) openGatewayEffector(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, transport *device.UDSTransport, catalog *device.CapabilityCatalog) (actionport.RoutedEffector, *device.GatewayEffector, func() error, error) {
-	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: epochControl, Outcomes: actions.CountUnresolvedOutcomes, ClaimLease: owner.Lease})
+	authority, err := newDeviceAuthority(db, owner, epochControl)
 	if err != nil {
 		_ = transport.Close()
-		return nil, nil, nil, fmt.Errorf("configure device authority: %w", err)
+		return nil, nil, nil, err
 	}
 	serial, closeFn, err := device.NewGatewayEffector(ctx, o.gatewayEffectorConfig(authority, epoch, telemetryRuntime, transport, catalog))
 	if err != nil {
@@ -177,6 +196,14 @@ func (o effectProfileOptions) gatewayEffectorConfig(authority *deviceauthority.S
 	}
 }
 
+func newDeviceAuthority(db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl) (*deviceauthority.Service, error) {
+	authority, err := deviceauthority.New(deviceauthority.Config{DB: db, Owner: owner, Epochs: epochControl, Outcomes: actions.CountUnresolvedOutcomes, ClaimLease: owner.Lease})
+	if err != nil {
+		return nil, fmt.Errorf("configure device authority: %w", err)
+	}
+	return authority, nil
+}
+
 func fallbackEffector(profile device.EffectProfile) actionport.RoutedEffector {
 	if profile == device.EffectProfilePhysical {
 		return device.NewFailClosedEffector(profile)
@@ -192,7 +219,7 @@ func (o effectProfileOptions) profile() device.EffectProfile {
 }
 
 func (o effectProfileOptions) hasGatewayConfiguration() bool {
-	return o.DeviceSocket != "" || o.DeviceCatalog != "" || len(o.AllowedFirmwareDigests) > 0 || o.LiveActuation || o.OwnerAuthorized
+	return o.DeviceSocket != "" || o.PlantWireSocket != "" || o.DeviceCatalog != "" || len(o.AllowedFirmwareDigests) > 0 || o.LiveActuation || o.OwnerAuthorized
 }
 
 func addEffectProfileFlags(

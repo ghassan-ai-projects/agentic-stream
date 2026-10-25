@@ -1,0 +1,33 @@
+{
+  "protocol_version": 1,
+  "safe_stops": {
+    "led-01": {"operation": "safe_stop", "expires_after_ms": 1000},
+    "fan-01": {"operation": "safe_stop", "expires_after_ms": 1000}
+  },
+  "routes": {
+    "set_indicator": {
+      "operation": "show_state",
+      "target": "led-01",
+      "target_bindings": {"zone-01": "led-01"},
+      "selector_field": "state",
+      "expires_after_ms": 20000,
+      "presets": {
+        "off": {"state": "off"},
+        "watch": {"state": "watch"},
+        "alert": {"state": "alert"}
+      }
+    },
+    "select_thermal_mode": {
+      "operation": "set_cooling",
+      "target": "fan-01",
+      "target_bindings": {"zone-01": "fan-01"},
+      "selector_field": "mode",
+      "expires_after_ms": 20000,
+      "presets": {
+        "hold": {"level_percent": 0},
+        "bounded_cooling": {"level_percent": 45}
+      },
+      "bounds": {"level_percent": {"min": 0, "max": 60}}
+    }
+  }
+}
