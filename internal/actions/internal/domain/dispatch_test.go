@@ -20,7 +20,7 @@ func TestClassifyDispatchMapsEveryLedger(t *testing.T) {
 	}{
 		{"success", actionport.Effect{}, nil, DispatchResult{Status: OutcomeSucceeded, Reconciliation: ReconciliationObserved, CommandStatus: actionport.CommandSucceeded, OutboxStatus: OutboxDelivered, VerificationStatus: actionport.VerificationObserved, Settled: true}},
 		{"unknown", actionport.Effect{}, unknown, DispatchResult{Status: OutcomeUnknown, Reconciliation: ReconciliationRequired, CommandStatus: actionport.CommandReconciling, ErrorCode: ErrorOutcomeUnknown, OutboxStatus: OutboxFailed, VerificationStatus: actionport.VerificationAwaiting}},
-		{"failure", actionport.Effect{}, errors.New("rejected"), DispatchResult{Status: OutcomeFailed, Reconciliation: ReconciliationNotRequired, CommandStatus: actionport.CommandFailed, ErrorCode: ErrorDispatchFailed, OutboxStatus: OutboxFailed, VerificationStatus: actionport.VerificationAwaiting, Settled: true}},
+		{"failure", actionport.Effect{}, errors.New("rejected"), DispatchResult{Status: OutcomeFailed, Reconciliation: ReconciliationNotRequired, CommandStatus: actionport.CommandFailed, ErrorCode: ErrorDispatchFailed, OutboxStatus: OutboxFailed, VerificationStatus: actionport.VerificationRefuted, Settled: true}},
 		{"pending verification", actionport.Effect{VerificationPending: true}, nil, DispatchResult{Status: OutcomeReconcileRequired, Reconciliation: ReconciliationRequired, CommandStatus: actionport.CommandManualReview, OutboxStatus: OutboxDelivered, VerificationStatus: actionport.VerificationAwaiting}},
 	}
 	for _, tc := range cases {

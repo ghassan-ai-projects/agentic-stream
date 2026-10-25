@@ -20,7 +20,7 @@ func TestADispatchRecordsItsOutcomeAndTheEffectIsNeverRepeated(t *testing.T) {
 		{"provider deadline is an unknown outcome", failsWith(context.DeadlineExceeded),
 			ledger{Command: "reconciling", Outbox: "failed", Outcome: "unknown", Reconciliation: "required", Verification: "awaiting", Outcomes: 1}},
 		{"known failure", failsWith(errors.New("provider rejected the command")),
-			ledger{Command: "failed", Outbox: "failed", Outcome: "failed", Reconciliation: "not_required", Verification: "awaiting", Outcomes: 1}},
+			ledger{Command: "failed", Outbox: "failed", Outcome: "failed", Reconciliation: "not_required", Verification: "refuted", Outcomes: 1}},
 		{"accepted transport still needs verification", pendingVerification(),
 			ledger{Command: "manual_review", Outbox: "delivered", Outcome: "reconcile_required", Reconciliation: "required", Verification: "awaiting", Outcomes: 1}},
 	}

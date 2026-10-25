@@ -14,7 +14,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-var refusedCommand = ledger{Command: "failed", Outbox: "failed", Outcome: "failed", Reconciliation: "not_required", Verification: "awaiting", Outcomes: 1}
+var refusedCommand = ledger{Command: "failed", Outbox: "failed", Outcome: "failed", Reconciliation: "not_required", Verification: "refuted", Outcomes: 1}
 
 func approveWithPolicy(t *testing.T, db *storage.DB, digest string) {
 	t.Helper()

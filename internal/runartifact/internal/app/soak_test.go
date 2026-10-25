@@ -113,6 +113,23 @@ func TestSoakReportCountsOnlyAwaitingVerificationsOfSucceededCommands(t *testing
 	}
 }
 
+func TestSoakReportDoesNotCountAFailedCommandWithARefutedVerification(t *testing.T) {
+	t.Parallel()
+	db, _ := openSoakDB(t)
+	insertCommand(t, db, "cmd-refused", actionport.CommandFailed)
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO verifications (verification_id, intent_id, command_id, outcome_id, status, updated_at)
+		VALUES ('ver-1', 'intent-missing', 'cmd-refused', NULL, ?, '2026-08-29T12:00:00Z')`, actionport.VerificationRefuted); err != nil {
+		t.Fatal(err)
+	}
+	report, err := computeSoak(t, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Diagnostics["unresolved_action_outcomes"] != 0 || report.Verdict == "fail" {
+		t.Fatalf("diagnostics=%v verdict=%q, want a refused command to leave nothing unresolved", report.Diagnostics, report.Verdict)
+	}
+}
+
 func TestSoakReportBindsTenantBeforeTheStatusArguments(t *testing.T) {
 	t.Parallel()
 	db, _ := openSoakDB(t)
