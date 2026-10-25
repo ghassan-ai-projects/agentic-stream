@@ -15,6 +15,7 @@ second decision history.
 | Model boundary | Typed proposals, no effector access | [Security model](../architecture/security-model.md) |
 | Effects | Policy/action separation, outbox, idempotency | [Decisions and actions](../design/decisions-and-actions.md) |
 | Worker boundary | Current-v1 Go Protobuf/gRPC over private socket | [Worker protocol](../contracts/worker-protocol.md) |
+| Plant wire | One adapter behind the ingress and effect ports, beside device-wire; consent per hardware board | [Plant wire adapter](../design/plant-wire-adapter.md) |
 | Replay | Effect-disabled by construction | [Replay and shadow](../design/replay-and-shadow.md) |
 | Scale-out | Deferred until single-node semantics are proven | [Product overview](../overview/product.md) |
 

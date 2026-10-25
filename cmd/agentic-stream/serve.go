@@ -21,6 +21,7 @@ import (
 
 type serveFlags struct {
 	liveFlags
+	plantWire                 plantWireFlags
 	listenAddress, liveSocket string
 	ownerLease, pollInterval  time.Duration
 	demoMode                  bool
@@ -56,6 +57,8 @@ func registerServeFlags(cmd *cobra.Command, flags *serveFlags) {
 	cmd.Flags().DurationVar(&flags.ownerLease, "owner-lease", sources.DefaultLease, "runtime owner lease duration")
 	cmd.Flags().DurationVar(&flags.pollInterval, "poll-interval", time.Second, "interval for polling a --trace source and for advancing timers, debounced cognition and approved commands while a --live-socket is quiet")
 	cmd.Flags().BoolVar(&flags.demoMode, "demo-mode", false, "admit fixture executors (demos and tests only; a production route never admits fixture)")
+	cmd.Flags().DurationVar(&flags.effect.DispatchLease, "dispatch-lease", 0, "lease of one approved command's dispatch; a device call still open after nine tenths of it becomes an unknown outcome (default: the one-minute default lease)")
+	registerPlantWireFlags(cmd, &flags.effect.PlantWireSocket, &flags.plantWire)
 }
 
 func (f serveFlags) validate() (string, error) {
@@ -65,8 +68,8 @@ func (f serveFlags) validate() (string, error) {
 	if err := f.validateSources(); err != nil {
 		return "", err
 	}
-	if err := f.profileOptions().validate(f.tracePath != ""); err != nil {
-		return "", fmt.Errorf("validate effect profile: %w", err)
+	if err := f.validateEffects(); err != nil {
+		return "", err
 	}
 	if err := runtime.ValidateWorkerRuntimeConfig(f.worker); err != nil {
 		return "", fmt.Errorf("worker runtime config: %w", err)
@@ -74,8 +77,18 @@ func (f serveFlags) validate() (string, error) {
 	return f.validateOperatorAccess()
 }
 
+func (f serveFlags) validateEffects() error {
+	if f.effect.DispatchLease < 0 {
+		return fmt.Errorf("--dispatch-lease must not be negative")
+	}
+	if err := f.profileOptions().validate(f.tracePath != ""); err != nil {
+		return fmt.Errorf("validate effect profile: %w", err)
+	}
+	return f.plantWire.validate(f.profileOptions())
+}
+
 func (f serveFlags) validateSources() error {
-	if err := validateServeSources(f.specPath, f.tracePath, f.liveSocket, f.worker.WorkerSocket); err != nil {
+	if err := validateServeSources(f.specPath, f.tracePath, f.liveSocket, f.effect.PlantWireSocket, f.worker.WorkerSocket); err != nil {
 		return err
 	}
 	if f.liveSocket != "" && f.traceFormat != "normalized" {
@@ -98,19 +111,16 @@ func (f serveFlags) validateSubscriberAccess() (string, error) {
 	return subscriberToken, nil
 }
 
-func validateServeSources(specPath, tracePath, liveSocket, workerSocket string) error {
-	if tracePath != "" && liveSocket != "" {
-		return fmt.Errorf("--trace and --live-socket are mutually exclusive")
+func validateServeSources(specPath, tracePath, liveSocket, plantWireSocket, workerSocket string) error {
+	if tracePath != "" && (liveSocket != "" || plantWireSocket != "") {
+		return fmt.Errorf("--trace is mutually exclusive with --live-socket and --plant-wire-socket")
 	}
-	continuousSource := tracePath != "" || liveSocket != ""
+	continuousSource := tracePath != "" || liveSocket != "" || plantWireSocket != ""
 	if (specPath == "") != !continuousSource {
-		if liveSocket == "" {
-			return fmt.Errorf("--spec and --trace must be provided together for continuous ingestion")
-		}
-		return fmt.Errorf("--spec and --live-socket must be provided together for continuous ingestion")
+		return fmt.Errorf("--spec and one of --trace, --live-socket or --plant-wire-socket must be provided together for continuous ingestion")
 	}
 	if workerSocket != "" && !continuousSource {
-		return fmt.Errorf("--worker-socket requires --spec and (--trace or --live-socket) for continuous ingestion")
+		return fmt.Errorf("--worker-socket requires --spec and a continuous source (--trace, --live-socket or --plant-wire-socket)")
 	}
 	return nil
 }
@@ -146,7 +156,7 @@ func (core *runtimeCore) serveRuntime(ctx context.Context, flags serveFlags, sub
 	cleanup.add(func() { _ = tracerProvider.Shutdown(context.Background()) })
 	runCtx, stop := context.WithCancel(ctx)
 	cleanup.add(stop)
-	opened, err := core.openEffects(runCtx, flags.profileOptions(), metrics, flags.tracePath != "", cleanup)
+	opened, err := core.openServeEffects(runCtx, flags, metrics, cleanup)
 	if err != nil {
 		return err
 	}

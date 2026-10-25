@@ -51,3 +51,16 @@ func TestACommandIsBoundToADeviceOnce(t *testing.T) {
 		t.Fatalf("second binding of the same command = %v, want a refusal", err)
 	}
 }
+
+func TestACommandBindingKeepsTheTargetTheCommandNamed(t *testing.T) {
+	t.Parallel()
+	s, _ := openStore(t)
+	named := domain.CommandBinding{CommandID: "cmd-1", Target: "fan-01", NormalizedTarget: "zone-01", Device: bootA, Owner: owner}
+	work(t, s, func(tx *Tx) error { return tx.InsertBinding(t.Context(), named, testNow) })
+	work(t, s, func(tx *Tx) error {
+		if got, err := tx.LoadBinding(t.Context(), named.CommandID); err != nil || *got != named {
+			t.Fatalf("binding = %+v, %v; want %+v", got, err, named)
+		}
+		return nil
+	})
+}

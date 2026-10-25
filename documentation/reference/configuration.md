@@ -34,6 +34,9 @@ profiles require the non-replay `--live-socket` source; replay traces remain
 rejected for both device profiles. The `physical` profile also requires
 `--live-actuation` and `--owner-authorized`. `run-live` is trace-backed and
 rejects both device profiles so replay cannot reach an effect boundary.
+A `--plant-wire-socket` replaces `--device-socket` as the effect link of the
+`emulator` or `physical` profile; it needs no firmware digest, and the two
+links are not combined in one process.
 
 ## Data and persistence paths
 

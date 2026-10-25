@@ -1,0 +1,8 @@
+{
+  "kind": "thermal_sensor",
+  "metrics": [
+    {"name": "temperature", "data_type": "number", "unit": "Cel", "eu_range": {"min": 0, "max": 50}, "resolution": 1, "writable": false},
+    {"name": "humidity", "data_type": "number", "unit": "%", "eu_range": {"min": 20, "max": 90}, "resolution": 1, "writable": false}
+  ],
+  "commands": []
+}

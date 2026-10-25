@@ -1,0 +1,14 @@
+{
+  "schema": "DRESULT",
+  "fails_at": "/lane",
+  "record": {
+    "type": "DRESULT",
+    "protocol_version": 1,
+    "session_id": "s-1",
+    "seq": 6,
+    "lane": "data",
+    "command_id": "c-1",
+    "reported_outcome": "unknown",
+    "boot_id": "board-01-boot-1"
+  }
+}

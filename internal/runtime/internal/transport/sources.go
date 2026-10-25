@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -47,4 +48,15 @@ func (s *Sources) RunLiveSocket(ctx context.Context, path string, sink func(cont
 		return err
 	}
 	return service.ServeLive(ctx, path, sink) //nolint:wrapcheck // App classifies cancellation and supplies source operation context.
+}
+
+func (s *Sources) RunFeed(ctx context.Context, feed ingress.Feed, sink func(context.Context, contractsv1.Envelope) error) error {
+	service, err := s.service()
+	if err != nil {
+		return err
+	}
+	if err := service.ServeFeed(ctx, feed, sink); err != nil {
+		return fmt.Errorf("run the feed source: %w", err)
+	}
+	return nil
 }

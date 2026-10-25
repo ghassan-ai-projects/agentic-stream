@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:plant-wire:v1:STATE",
+  "title": "STATE",
+  "description": "Host state and heartbeat; with online false and a refusal, the host refuses the session. online false is otherwise a graceful goodbye.",
+  "type": "object",
+  "required": [
+    "type",
+    "protocol_version",
+    "session_id",
+    "seq",
+    "lane",
+    "host_id",
+    "online",
+    "heartbeat",
+    "heartbeat_interval_ms",
+    "authority_epoch",
+    "protocol_min",
+    "protocol_max"
+  ],
+  "properties": {
+    "type": {
+      "const": "STATE"
+    },
+    "protocol_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lane": {
+      "const": "control"
+    },
+    "host_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "online": {
+      "type": "boolean"
+    },
+    "heartbeat": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "heartbeat_interval_ms": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 600000
+    },
+    "authority_epoch": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "protocol_min": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "protocol_max": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "refusal": {
+      "enum": [
+        "version_unsupported",
+        "contract_unsupported",
+        "environment_mismatch",
+        "inventory_mismatch",
+        "protocol_invalid"
+      ]
+    }
+  }
+}

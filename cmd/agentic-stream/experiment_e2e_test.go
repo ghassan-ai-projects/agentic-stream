@@ -96,18 +96,24 @@ func privateSocketDir(t *testing.T) string {
 // active dispatch, with any edits the test asks for.
 func tamozActiveSpec(t *testing.T, dir string, edits map[string]string) string {
 	t.Helper()
-	data, err := os.ReadFile(experimentSpec)
+	return editedSpec(t, experimentSpec, dir, edits)
+}
+
+// editedSpec copies source into dir with the given text replacements.
+func editedSpec(t *testing.T, source, dir string, edits map[string]string) string {
+	t.Helper()
+	data, err := os.ReadFile(source)
 	if err != nil {
 		t.Fatal(err)
 	}
 	edited := string(data)
 	for old, replacement := range edits {
 		if !strings.Contains(edited, old) {
-			t.Fatalf("zone-thermal has no %q to edit", old)
+			t.Fatalf("%s has no %q to edit", source, old)
 		}
 		edited = strings.ReplaceAll(edited, old, replacement)
 	}
-	path := filepath.Join(dir, "zone-thermal-active.situation.yaml")
+	path := filepath.Join(dir, "active-"+filepath.Base(source))
 	if err := os.WriteFile(path, []byte(edited), 0o600); err != nil { //nolint:gosec // path is inside the test's own MkdirTemp directory
 
 		t.Fatal(err)

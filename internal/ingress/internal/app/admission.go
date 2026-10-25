@@ -12,7 +12,14 @@ import (
 // admit decodes a line, checks the envelope contract, then the registered event
 // schema. File replay and the live socket share this rule.
 func (s *Service) admit(ctx context.Context, line []byte) domain.LineVerdict {
-	verdict := domain.AdmitEnvelope(line, s.tenantID)
+	return s.checkSchema(ctx, domain.AdmitEnvelope(line, s.tenantID))
+}
+
+func (s *Service) admitFed(ctx context.Context, env contractsv1.Envelope) domain.LineVerdict {
+	return s.checkSchema(ctx, domain.CheckEnvelope(env, s.tenantID))
+}
+
+func (s *Service) checkSchema(ctx context.Context, verdict domain.LineVerdict) domain.LineVerdict {
 	if verdict.Rejected() {
 		return verdict
 	}

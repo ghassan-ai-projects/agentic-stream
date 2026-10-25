@@ -1,0 +1,60 @@
+{
+  "schema": "BOARD",
+  "fails_at": "/kinds/led/commands/show_state",
+  "record": {
+    "board_type": "led-board",
+    "kinds": {
+      "led": {
+        "commands": {
+          "show_state": {
+            "raw": "set_led",
+            "table": {
+              "off": {
+                "brightness_permille": 0,
+                "pattern": "off"
+              },
+              "alert": {
+                "brightness_permille": 1000,
+                "pattern": "solid"
+              }
+            }
+          },
+          "set_cooling": {
+            "raw": "set_pwm_lease",
+            "args": {
+              "duty_permille": {
+                "from": "level_percent",
+                "scale": 10
+              }
+            },
+            "lease": {
+              "arg": "lease_ms",
+              "ms": 5000
+            }
+          }
+        },
+        "metrics": {
+          "level_percent": {
+            "raw": "duty_permille",
+            "scale": 10
+          },
+          "state": {
+            "raw": "pattern",
+            "table": {
+              "off": "off",
+              "slow_blink": "watch",
+              "solid": "alert"
+            }
+          }
+        },
+        "raw_enums": {
+          "pattern": [
+            "off",
+            "slow_blink",
+            "solid"
+          ]
+        }
+      }
+    }
+  }
+}

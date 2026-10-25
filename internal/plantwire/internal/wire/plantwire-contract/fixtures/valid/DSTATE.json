@@ -1,0 +1,25 @@
+{
+  "type": "DSTATE",
+  "protocol_version": 1,
+  "session_id": "s-1",
+  "seq": 7,
+  "lane": "control",
+  "device": "P1",
+  "boot_id": "board-01-boot-1",
+  "self_reported": true,
+  "safe_state": false,
+  "outputs": [
+    {
+      "name": "motor",
+      "value": true
+    }
+  ],
+  "values": [
+    {
+      "name": "flow",
+      "alias": 1,
+      "value": 41.0,
+      "quality": "good"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "schema": "KIND",
+  "fails_at": "/commands",
+  "record": {
+    "kind": "pump",
+    "metrics": [
+      {
+        "name": "flow",
+        "data_type": "number",
+        "unit": "m3/h",
+        "eu_range": {
+          "min": 0,
+          "max": 120
+        },
+        "resolution": 0.1,
+        "scan_class": "1s",
+        "description": "Outlet flow",
+        "writable": false
+      },
+      {
+        "name": "speed_setpoint",
+        "data_type": "number",
+        "unit": "%",
+        "eu_range": {
+          "min": 0,
+          "max": 100
+        },
+        "resolution": 1,
+        "writable": true
+      },
+      {
+        "name": "mode",
+        "data_type": "enum",
+        "enum_values": [
+          "auto",
+          "hand",
+          "off"
+        ],
+        "writable": false
+      }
+    ]
+  }
+}

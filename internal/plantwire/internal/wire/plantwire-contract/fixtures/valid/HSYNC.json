@@ -1,0 +1,20 @@
+{
+  "type": "HSYNC",
+  "protocol_version": 1,
+  "session_id": "s-1",
+  "seq": 4,
+  "lane": "control",
+  "through_seq": 8,
+  "command_evidence": [
+    {
+      "command_id": "c-1",
+      "device": "P1",
+      "boot_id": "board-01-boot-1",
+      "metric": "flow",
+      "outcome": "observed",
+      "expected": 42,
+      "tolerance": 0.1,
+      "observed_value": 42
+    }
+  ]
+}

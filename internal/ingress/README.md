@@ -9,7 +9,7 @@ Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 
 | Layer | Responsibility |
 | --- | --- |
-| Facade | `New(Config)`, `ReplayJSONL`, `ReplaySimulator`, `ServeLive`, and the option and sink types |
+| Facade | `New(Config)`, `ReplayJSONL`, `ReplaySimulator`, `ServeLive`, `ServeFeed`, and the option, feed and sink types |
 | App | Replay loops, event-log batching, the event-schema step of admission, quarantine writes, live line handling with telemetry |
 | Domain | Envelope admission, quarantine and connector identities, the checkpoint codec, the simulator trace grammar and event conversion with its embedded channel data, the socket path rule |
 | Store | Connector checkpoint SQL |
@@ -20,7 +20,9 @@ clock and the tenant to `default`; logger, telemetry and the live queue size are
 optional.
 
 A line is admitted in order: decode, envelope contract, then the registered
-event schema. An oversized, malformed or invalid line is quarantined and skipped
+event schema. `ServeFeed` runs an in-process feed (the plant wire host) and
+admits each envelope it emits by the same rule after the decode step, so a fed
+event is quarantined for the same reasons as a live line. An oversized, malformed or invalid line is quarantined and skipped
 rather than aborting the replay; quarantine identities are scoped to their
 connector (or to the live source's instance, connection and line). File traces
 resynchronize after an oversized line; a socket client that sends one is

@@ -11,7 +11,10 @@ type (
 	DeviceBoot = domain.DeviceBoot
 	// TargetClaim is an owner's right to command one target on one device boot.
 	TargetClaim = domain.TargetClaim
-	// CommandBinding ties a command to the target, device boot and owner that delivered it.
+	// CommandBinding ties a command to the target, device boot and owner that
+	// delivered it. NormalizedTarget is the target the command named when the
+	// effector bound it to a different device output; reconciliation evidence
+	// for the command is then checked against it, otherwise against Target.
 	CommandBinding = domain.CommandBinding
 	// ResolutionOutcome is the result recorded when a reconciliation is resolved.
 	ResolutionOutcome = domain.ResolutionOutcome
@@ -31,6 +34,11 @@ type (
 	ResolutionRequest = domain.ResolutionRequest
 	// CommandEvidence is reconciliation evidence presented for one command.
 	CommandEvidence = domain.CommandEvidence
+	// Reading is one sample of one device output, as the host received it.
+	Reading = domain.Reading
+	// ReadingEvidence asks to resolve a device boot's open reconciliation with
+	// the device's own readings of its commanded outputs.
+	ReadingEvidence = domain.ReadingEvidence
 )
 
 // Safety event types: zero-tolerance violations and physical transitions.
@@ -70,6 +78,10 @@ var (
 	ErrNoOpenReconciliation = domain.ErrNoOpenReconciliation
 	// ErrNoRecordedState means the device has never reported its state.
 	ErrNoRecordedState = domain.ErrNoRecordedState
+	// ErrClaimRefused wraps a refused target claim from ClaimForDelivery: nothing was claimed.
+	ErrClaimRefused = domain.ErrClaimRefused
+	// ErrBindingRefused wraps a refused command binding from ClaimForDelivery: the claim was released.
+	ErrBindingRefused = domain.ErrBindingRefused
 )
 
 // SealReconciliationEvidence builds evidence for the device boot named by

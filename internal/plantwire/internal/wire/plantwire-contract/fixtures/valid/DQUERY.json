@@ -1,0 +1,8 @@
+{
+  "type": "DQUERY",
+  "protocol_version": 1,
+  "session_id": "s-1",
+  "seq": 3,
+  "lane": "control",
+  "device": "P1"
+}

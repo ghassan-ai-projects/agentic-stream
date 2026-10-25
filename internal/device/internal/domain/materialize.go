@@ -26,34 +26,30 @@ import (
 // outside the preset set, or a parameter beyond its hard bound is rejected with
 // zero commands emitted — never clamped silently.
 func (c *CapabilityCatalog) Materialize(command actionport.Command, expectedBootID string) (Command, error) {
-	if c == nil {
-		return Command{}, fmt.Errorf("capability catalog is required to materialize a device command")
-	}
-	if c.ProtocolVersion != contractsv1.DeviceProtocolVersion {
-		return Command{}, fmt.Errorf("capability catalog protocol_version %d is unsupported, want %d", c.ProtocolVersion, contractsv1.DeviceProtocolVersion)
-	}
-	if command.CommandID == "" || command.IdempotencyKey == "" || command.PolicyDigest == "" {
-		return Command{}, fmt.Errorf("command identity and policy digest are required to materialize a device command")
-	}
-	if expectedBootID == "" {
-		return Command{}, fmt.Errorf("expected boot id is required to materialize a device command")
-	}
-	return c.materializeRoute(command, expectedBootID)
-}
-
-func (c *CapabilityCatalog) materializeRoute(command actionport.Command, expectedBootID string) (Command, error) {
-	spec, ok := c.Routes[command.EffectorRoute]
-	if !ok {
-		return Command{}, fmt.Errorf("route %q is not in the device capability catalog", command.EffectorRoute)
-	}
-	if err := spec.checkTarget(command); err != nil {
+	if err := c.checkMaterializable(command, expectedBootID); err != nil {
 		return Command{}, err
 	}
-	parameters, err := spec.boundedParameters(command)
+	bounded, err := c.Bound(command)
 	if err != nil {
 		return Command{}, err
 	}
-	return c.deviceCommandDocument(command, expectedBootID, spec, parameters)
+	return c.deviceCommandDocument(command, expectedBootID, bounded)
+}
+
+func (c *CapabilityCatalog) checkMaterializable(command actionport.Command, expectedBootID string) error {
+	if c == nil {
+		return fmt.Errorf("capability catalog is required to materialize a device command")
+	}
+	if c.ProtocolVersion != contractsv1.DeviceProtocolVersion {
+		return fmt.Errorf("capability catalog protocol_version %d is unsupported, want %d", c.ProtocolVersion, contractsv1.DeviceProtocolVersion)
+	}
+	if command.CommandID == "" || command.IdempotencyKey == "" || command.PolicyDigest == "" {
+		return fmt.Errorf("command identity and policy digest are required to materialize a device command")
+	}
+	if expectedBootID == "" {
+		return fmt.Errorf("expected boot id is required to materialize a device command")
+	}
+	return nil
 }
 
 // checkTarget requires the command's normalized target to be the route's
@@ -141,11 +137,11 @@ func toFloat(value any) (float64, bool) {
 	}
 }
 
-func (c *CapabilityCatalog) deviceCommandDocument(command actionport.Command, expectedBootID string, spec Route, parameters map[string]any) (Command, error) {
+func (c *CapabilityCatalog) deviceCommandDocument(command actionport.Command, expectedBootID string, bounded BoundedCommand) (Command, error) {
 	return validatedCommand(Command{
 		ProtocolVersion: c.ProtocolVersion, CommandID: command.CommandID, IdempotencyKey: command.IdempotencyKey,
-		Target: spec.Target, Operation: spec.Operation, Parameters: parameters, ExpectedBootID: expectedBootID,
-		NotBeforeMonoUS: command.NotBeforeMonoUS, ExpiresAfterMs: spec.ExpiresAfterMs, PolicyDigest: command.PolicyDigest,
+		Target: bounded.Target, Operation: bounded.Operation, Parameters: bounded.Parameters, ExpectedBootID: expectedBootID,
+		NotBeforeMonoUS: command.NotBeforeMonoUS, ExpiresAfterMs: bounded.ExpiresAfterMs, PolicyDigest: command.PolicyDigest,
 	}, "materialized device command")
 }
 

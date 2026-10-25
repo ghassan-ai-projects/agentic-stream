@@ -1,0 +1,36 @@
+{
+  "schema": "DBIRTH",
+  "fails_at": "/birth_time_ns",
+  "record": {
+    "type": "DBIRTH",
+    "protocol_version": 1,
+    "session_id": "s-1",
+    "seq": 1,
+    "lane": "data",
+    "device": "P1",
+    "kind": "pump",
+    "board": "board-01",
+    "boot_id": "board-01-boot-1",
+    "metadata_version": 1,
+    "metrics": [
+      {
+        "name": "flow",
+        "alias": 1,
+        "value": 42.0,
+        "quality": "good"
+      },
+      {
+        "name": "speed_setpoint",
+        "alias": 2,
+        "value": 60,
+        "quality": "good"
+      },
+      {
+        "name": "mode",
+        "alias": 3,
+        "value": "auto",
+        "quality": "good"
+      }
+    ]
+  }
+}

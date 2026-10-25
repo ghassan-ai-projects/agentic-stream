@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-stream:plant-wire-site:1",
+  "title": "Plant wire site file",
+  "description": "Which device feeds which entity, which reading becomes which event type and field, which heartbeat event is emitted, and how wire quality maps to event quality.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "source", "devices", "readings", "heartbeats", "quality"],
+  "properties": {
+    "version": {"const": 1},
+    "source": {"$ref": "#/$defs/id"},
+    "devices": {
+      "type": "object",
+      "maxProperties": 4096,
+      "propertyNames": {"$ref": "#/$defs/id"},
+      "additionalProperties": {"$ref": "#/$defs/device"}
+    },
+    "readings": {"type": "array", "maxItems": 4096, "items": {"$ref": "#/$defs/reading"}},
+    "heartbeats": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/heartbeat"}},
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["good", "warming_up", "suspect", "out_of_range", "stale", "disconnected", "manual_override", "out_of_service"],
+      "properties": {
+        "good": {"$ref": "#/$defs/name"},
+        "warming_up": {"$ref": "#/$defs/name"},
+        "suspect": {"$ref": "#/$defs/name"},
+        "out_of_range": {"$ref": "#/$defs/name"},
+        "stale": {"$ref": "#/$defs/name"},
+        "disconnected": {"$ref": "#/$defs/name"},
+        "manual_override": {"$ref": "#/$defs/name"},
+        "out_of_service": {"$ref": "#/$defs/name"}
+      }
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "name": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$"},
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {"$ref": "#/$defs/id"},
+        "entity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "id"],
+          "properties": {"type": {"$ref": "#/$defs/name"}, "id": {"$ref": "#/$defs/name"}}
+        }
+      }
+    },
+    "reading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "metric", "event_type", "schema_version", "field"],
+      "properties": {
+        "kind": {"$ref": "#/$defs/id"},
+        "metric": {"$ref": "#/$defs/id"},
+        "event_type": {"$ref": "#/$defs/name"},
+        "schema_version": {"$ref": "#/$defs/name"},
+        "field": {"$ref": "#/$defs/name"}
+      }
+    },
+    "heartbeat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "event_type", "schema_version", "every_ms", "stale_after_ms"],
+      "properties": {
+        "kind": {"$ref": "#/$defs/id"},
+        "event_type": {"$ref": "#/$defs/name"},
+        "schema_version": {"$ref": "#/$defs/name"},
+        "every_ms": {"type": "integer", "minimum": 1, "maximum": 3600000},
+        "stale_after_ms": {"type": "integer", "minimum": 1, "maximum": 3600000}
+      }
+    }
+  }
+}

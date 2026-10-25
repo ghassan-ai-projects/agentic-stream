@@ -1,0 +1,84 @@
+{
+  "schema": "KIND",
+  "fails_at": "/metrics/0/data_type",
+  "record": {
+    "kind": "pump",
+    "metrics": [
+      {
+        "name": "flow",
+        "data_type": "float",
+        "unit": "m3/h",
+        "eu_range": {
+          "min": 0,
+          "max": 120
+        },
+        "resolution": 0.1,
+        "scan_class": "1s",
+        "description": "Outlet flow",
+        "writable": false
+      },
+      {
+        "name": "speed_setpoint",
+        "data_type": "number",
+        "unit": "%",
+        "eu_range": {
+          "min": 0,
+          "max": 100
+        },
+        "resolution": 1,
+        "writable": true
+      },
+      {
+        "name": "mode",
+        "data_type": "enum",
+        "enum_values": [
+          "auto",
+          "hand",
+          "off"
+        ],
+        "writable": false
+      }
+    ],
+    "commands": [
+      {
+        "name": "safe_stop",
+        "args_schema": {
+          "type": "object"
+        },
+        "risk_class": "low",
+        "safe_stop": true
+      },
+      {
+        "name": "set_speed",
+        "args_schema": {
+          "type": "object",
+          "required": [
+            "pct",
+            "lease_ms"
+          ],
+          "properties": {
+            "pct": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "lease_ms": {
+              "type": "integer",
+              "minimum": 1000
+            }
+          }
+        },
+        "risk_class": "medium",
+        "safe_stop": false
+      },
+      {
+        "name": "start",
+        "args_schema": {
+          "type": "object"
+        },
+        "risk_class": "high",
+        "safe_stop": false
+      }
+    ]
+  }
+}

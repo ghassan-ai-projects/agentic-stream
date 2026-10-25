@@ -1,0 +1,15 @@
+{
+  "schema": "DDEATH",
+  "fails_at": "/reason",
+  "record": {
+    "type": "DDEATH",
+    "protocol_version": 1,
+    "session_id": "s-1",
+    "seq": 3,
+    "lane": "control",
+    "device": "P1",
+    "boot_id": "board-01-boot-1",
+    "reason": "sensor_outage",
+    "last_seq": 2
+  }
+}

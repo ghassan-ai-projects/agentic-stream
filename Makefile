@@ -41,7 +41,7 @@ HAS_MAIN := $(if $(MAIN_PKGS),yes,no)
 # ---- Phony declarations ---------------------------------------------------
 .PHONY: help all build vet fmt tidy lint lint-ci test test-short test-race \
         test-coverage ci-check ci-check-go deadcode vulncheck clean run cross-compile \
-        proto-generate proto-check docs-check
+        proto-generate proto-check docs-check plant-wire-sync
 
 # ---- Help -----------------------------------------------------------------
 help: ## Show this help message
@@ -149,6 +149,20 @@ ci-check-go: tidy build vet lint-ci coverage-check deadcode vulncheck docs-check
 # ---- Documentation --------------------------------------------------------
 docs-check: ## Check public documentation structure and volatile surfaces
 	python3 scripts/check-documentation.py
+
+# ---- Plant wire contract --------------------------------------------------
+# The vendored copy of streamsim's contracts/plant-wire folder. Never edited by
+# hand; a sync copies the whole folder and runs its guard tests. Builds never
+# read PLANT_WIRE_CONTRACT_DIR.
+PLANT_WIRE_CONTRACT := internal/plantwire/internal/wire/plantwire-contract
+
+plant-wire-sync: ## Copy the plant wire contract from PLANT_WIRE_CONTRACT_DIR byte-identically and run its guards
+	@if [ -z "$(PLANT_WIRE_CONTRACT_DIR)" ]; then echo "set PLANT_WIRE_CONTRACT_DIR to the master plant wire contract folder"; exit 1; fi
+	@for required in SPEC.md DIGEST VERSION schemas fixtures; do \
+	  [ -e "$(PLANT_WIRE_CONTRACT_DIR)/$$required" ] || { echo "$(PLANT_WIRE_CONTRACT_DIR) is not a plant wire contract (no $$required)"; exit 1; }; \
+	done
+	rsync -a --delete "$(PLANT_WIRE_CONTRACT_DIR)"/ $(PLANT_WIRE_CONTRACT)/
+	PLANT_WIRE_CONTRACT_DIR="$(PLANT_WIRE_CONTRACT_DIR)" go test -count=1 ./internal/plantwire/internal/wire/
 
 # ---- Protocol generation --------------------------------------------------
 proto-generate: ## Generate committed Go worker protocol stubs

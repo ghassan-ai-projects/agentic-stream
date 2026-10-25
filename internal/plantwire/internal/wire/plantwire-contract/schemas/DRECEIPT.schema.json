@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:plant-wire:v1:DRECEIPT",
+  "title": "DRECEIPT",
+  "description": "Command receipt: accepted, refused (with a reason class) or queued.",
+  "type": "object",
+  "required": [
+    "type",
+    "protocol_version",
+    "session_id",
+    "seq",
+    "lane",
+    "command_id",
+    "status",
+    "boot_id"
+  ],
+  "properties": {
+    "type": {
+      "const": "DRECEIPT"
+    },
+    "protocol_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lane": {
+      "const": "control"
+    },
+    "command_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "status": {
+      "enum": [
+        "accepted",
+        "refused",
+        "queued"
+      ]
+    },
+    "reason": {
+      "enum": [
+        "malformed",
+        "unknown_device",
+        "unknown_command",
+        "out_of_range",
+        "expired",
+        "wrong_boot",
+        "duplicate",
+        "stale_epoch",
+        "policy_not_allowed",
+        "interlocked",
+        "not_ready",
+        "local_control",
+        "permissive_not_met",
+        "locked_out",
+        "maintenance_isolated",
+        "session_ending"
+      ]
+    },
+    "boot_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    }
+  },
+  "if": {
+    "properties": {
+      "status": {
+        "const": "refused"
+      }
+    },
+    "required": [
+      "status"
+    ]
+  },
+  "then": {
+    "required": [
+      "reason"
+    ]
+  },
+  "else": {
+    "not": {
+      "required": [
+        "reason"
+      ]
+    }
+  }
+}

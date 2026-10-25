@@ -14,6 +14,7 @@ contract guide.
 | Notification contract v1 | `internal/notify/internal/domain/contracts/` and `internal/notify/internal/domain/lifecycle_contract.go` | `contracts/notifications.md` |
 | Worker protocol | `proto/agenticstream/runtime/v1/runtime-v1.proto` | generated Go stubs under `proto/` |
 | SQLite persistence | ordered files under `migrations/` | `contracts/persistence.md` |
+| Plant wire v1 | streamsim's `contracts/plant-wire/` folder | vendored byte-identically in `internal/plantwire/internal/wire/plantwire-contract/` by `make plant-wire-sync`, pinned by `VERSION` and `DIGEST` ([design](../design/plant-wire-adapter.md)) |
 
 When two artifacts differ, the public documentation must say which one the
 running code loads. Do not update a mirrored or generated artifact by hand and

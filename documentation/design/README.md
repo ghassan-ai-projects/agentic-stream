@@ -34,6 +34,8 @@ Its first diagram has four stages. The pages below add one boundary at a time;
   and explainability.
 - [Deployment model](deployment-model.md) — single-node runtime, worker
   process, and explicit scale-out deferrals.
+- [Plant wire adapter](plant-wire-adapter.md) — the planned host for plant
+  wire sessions behind the ingress and effect ports, beside device-wire.
 
 ## Drift rule
 

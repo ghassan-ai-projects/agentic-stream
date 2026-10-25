@@ -3,6 +3,7 @@ package authority
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/store"
@@ -10,6 +11,11 @@ import (
 
 // OwnerInstance is the runtime owner instance every operation must name.
 func (s *Service) OwnerInstance() string { return s.app.OwnerInstance() }
+
+// ClaimLease is how long a target claim stays live without a renewal. A
+// caller that holds a claim across a long wait renews it before the lease
+// ends.
+func (s *Service) ClaimLease() time.Duration { return s.app.ClaimLease() }
 
 // AssertRuntime verifies ordinary admission for epoch without touching device
 // state.
@@ -72,6 +78,34 @@ func (s *Service) OpenReconciliationAfterAuthorityLoss(ctx context.Context, open
 // reconciliation of a device boot, and reports whether it cleared.
 func (s *Service) ResolveReconciliation(ctx context.Context, request ResolutionRequest) (bool, error) {
 	return s.app.ResolveReconciliation(ctx, request)
+}
+
+// ResolveWithReadings resolves the open reconciliation of a device boot as
+// succeeded when the device presents a good, live reading of each of its
+// commanded outputs on that boot, newer than the reconciliation's latest
+// opening (every reading of a boot is newer than the reboot that opened it).
+// The readings are recorded as the resolution's evidence. It reports false,
+// with nothing recorded, when an output has no such reading, and refuses like
+// ResolveReconciliation while a command bound to the boot is unresolved or
+// when State is not the device's latest recorded state.
+func (s *Service) ResolveWithReadings(ctx context.Context, evidence ReadingEvidence) (bool, error) {
+	return s.app.ResolveWithReadings(ctx, evidence)
+}
+
+// ClaimForDelivery claims the binding's target for its device boot and owner,
+// binds the command to it and asserts the claim, in that order, immediately
+// before a command is delivered. A refused claim wraps ErrClaimRefused; a
+// refused binding wraps ErrBindingRefused and releases the claim; any other
+// error leaves the claim held, so the caller releases it with its session.
+func (s *Service) ClaimForDelivery(ctx context.Context, binding CommandBinding) error {
+	return s.app.ClaimForDelivery(ctx, binding)
+}
+
+// RequireReconciliation opens a reconciliation for the device boot, on the
+// priority path when the owner's lease or epoch was lost, so an unknown
+// outcome blocks the device even after authority loss.
+func (s *Service) RequireReconciliation(ctx context.Context, opening ReconciliationOpening) error {
+	return s.app.RequireReconciliation(ctx, opening)
 }
 
 // RecordSafeStop records one safe-stop stage on the priority path. Any
