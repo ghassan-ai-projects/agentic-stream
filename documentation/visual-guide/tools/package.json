@@ -1,0 +1,10 @@
+{
+  "name": "agentic-stream-visual-guide-tools",
+  "private": true,
+  "type": "module",
+  "description": "Build and render tooling for the visual guide. Not part of the Go module.",
+  "devDependencies": {
+    "three": "0.186.0",
+    "rolldown": "1.2.8"
+  }
+}

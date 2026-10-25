@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic Stream — visual guide</title>
+<meta name="description" content="A narrated film, an interactive 3D world and four labs that explain how Agentic Stream turns evidence into governed action, using one real recorded run.">
+<link rel="stylesheet" href="labs/lab.css">
+<link rel="stylesheet" href="index.css">
+</head>
+<body>
+<header class="top"><a class="brand" href="index.html">Agentic Stream</a>
+<nav aria-label="Visual guide"><a href="index.html" aria-current="page">Home</a><a href="world.html">3D world</a><a href="labs/time.html">Time</a><a href="labs/situation.html">Situation</a><a href="labs/scheduler.html">Reasoning gate</a><a href="labs/authority.html">Authority</a></nav></header>
+<main>
+<section class="hero">
+<div class="kicker">Visual guide</div>
+<h1>Follow one decision from a warming sensor to a verified effect</h1>
+<p class="lede">Agentic Stream keeps track of a condition, thinks only when thinking is worth it, and acts only when it is permitted. This guide explains every step using one real recorded run. Watch it, walk through it in 3D, then play with the rules.</p>
+<div class="cta"><a class="big" href="#film">Watch the film (4 min 30 s)</a><a class="big ghost" href="world.html">Explore the 3D world</a></div>
+<ol class="strip" aria-label="The recorded run in numbers"><li><b>61</b><span>events</span></li><li><b>22</b><span>Situation versions</span></li><li><b>1</b><span>episode</span></li><li><b>1</b><span>decision</span></li><li><b>1</b><span>command</span></li><li><b>1</b><span>verified effect</span></li></ol>
+<p class="fine">Recorded run <code>round-007-simulator-pass2</code>: simulator-fed joined run (Streams Simulator -> Agentic Stream -> Tamoz -> device emulator). Verdict: <b>pass</b>, every zero-tolerance counter is 0.</p>
+</section>
+
+<section id="film" class="block">
+<div class="kicker">The film</div>
+<h2>The whole path, step by step</h2>
+<div class="video"><video controls preload="metadata" poster="film/poster.jpg" playsinline><source src="film/agentic-stream-explained.mp4" type="video/mp4"><track kind="captions" src="film/captions.vtt" srclang="en" label="English" default>Your browser cannot play this video. Open <a href="film/agentic-stream-explained.mp4">the MP4</a> directly.</video></div>
+<p class="fine">4 min 30 s, narrated, with captions. The same scene is live in the 3D world, where you can pause, scrub, orbit and open any station.</p>
+</section>
+
+<section class="block">
+<div class="kicker">The map</div>
+<h2>Five planes, each with one job</h2>
+<p class="lede small">Work moves through five planes. Each owns one question and is forbidden from doing the others' jobs. That separation is the safety design.</p>
+<div class="planes"><article class="plane" style="--c:#4cc9f0"><h3>Evidence</h3><div class="q">What happened?</div><p>Observations enter, are checked against a schema and are kept in an append-only log.</p><p class="never"><b>Never:</b> Never decides what an observation means, never triggers an action.</p><div class="stlinks"><a href="world.html?station=gateway">Gateway</a><a href="world.html?station=log">Ingress and event log</a></div></article><article class="plane" style="--c:#9b8cff"><h3>Stream</h3><div class="q">What is changing?</div><p>Event-time windows, features and the versioned Situation, built deterministically.</p><p class="never"><b>Never:</b> Never calls a model, never touches a device.</p><div class="stlinks"><a href="world.html?station=engine">Stream engine</a><a href="world.html?station=situation">Situation</a></div></article><article class="plane" style="--c:#f5b94a"><h3>Cognition</h3><div class="q">Is thinking worth it, and what do we propose?</div><p>A scheduler that rations reasoning, and bounded episodes where the reasoner reads evidence and proposes.</p><p class="never"><b>Never:</b> Never mutates stream state, never executes a command.</p><div class="stlinks"><a href="world.html?station=scheduler">Cognitive scheduler</a><a href="world.html?station=episode">Episode</a></div></article><article class="plane" style="--c:#34d399"><h3>Governance</h3><div class="q">Is this proposal valid and permitted now?</div><p>Pure validation against the spec's catalog, then policy re-checked against current state.</p><p class="never"><b>Never:</b> Never reasons, never calls a provider.</p><div class="stlinks"><a href="world.html?station=validator">Decision validator</a><a href="world.html?station=policy">Policy</a></div></article><article class="plane" style="--c:#fb7185"><h3>Effect</h3><div class="q">Did the permitted change really happen?</div><p>Idempotent commands, an outbox, the device boundary and verification of the outcome.</p><p class="never"><b>Never:</b> Never turns a decision into a different intent.</p><div class="stlinks"><a href="world.html?station=action">Action dispatch</a><a href="world.html?station=bench">Sensor bench</a></div></article></div>
+</section>
+
+<section class="block">
+<div class="kicker">Hands on</div>
+<h2>Four labs</h2>
+<div class="labs"><a class="lab" href="labs/time.html"><span class="n">1</span><h3>A late reading cannot rewrite history</h3><p>Delay a reading and watch the watermark, the window and the result react.</p><span class="go">Open the lab →</span></a><a class="lab" href="labs/situation.html"><span class="n">2</span><h3>A condition changes state, not its mind every second</h3><p>Compare a naive threshold with hysteresis and a minimum duration, then inspect immutable versions.</p><span class="go">Open the lab →</span></a><a class="lab" href="labs/scheduler.html"><span class="n">3</span><h3>Twenty-two versions, one episode</h3><p>Replay the 22 real evaluations and change the rules that decide when to think.</p><span class="go">Open the lab →</span></a><a class="lab" href="labs/authority.html"><span class="n">4</span><h3>A proposal is not permission, and "OK" is not proof</h3><p>Flip the conditions of the world and watch where a proposal stops, and what a lost reply does.</p><span class="go">Open the lab →</span></a></div>
+</section>
+
+<section class="block">
+<div class="kicker">Vocabulary</div>
+<h2>Ten words that carry the design</h2>
+<dl class="gloss"><div><dt>Event</dt><dd>One observation with an identity, a source, an event time and a typed payload. Evidence, never an instruction.</dd></div><div><dt>Event time and watermark</dt><dd>Event time is when something happened. The watermark says how far time has progressed, so windows know when they can close.</dd></div><div><dt>Window and operator</dt><dd>A window selects readings (here: the last 5 minutes, sliding every 30 s). An operator turns them into a feature such as a mean or a slope.</dd></div><div><dt>Situation and version</dt><dd>The durable record of one condition of one thing. Each publication is a numbered version that never changes afterwards.</dd></div><div><dt>Trigger and scheduler</dt><dd>Declared rules that say when a version deserves reasoning. The scheduler can ignore, queue, replace or admit it.</dd></div><div><dt>Episode and fence</dt><dd>One bounded reasoning session over one immutable snapshot, with a deadline and a budget. The fence rejects output from a stale attempt.</dd></div><div><dt>Decision and Intent</dt><dd>The reasoner's typed answer, and the typed action it proposes. A proposal, not a permission.</dd></div><div><dt>Policy and approval</dt><dd>Rules re-checked against current state just before dispatch. Higher-risk intents wait for a signed human approval.</dd></div><div><dt>Command and idempotency key</dt><dd>The governed request that may be dispatched. A retry carries the same key, so a device that honours it recognises the repeat instead of acting twice.</dd></div><div><dt>Outcome and verification</dt><dd>What the device reported, and a separate state query of what the output is now. Only a matching observation verifies the effect. "Unknown" is a legal outcome.</dd></div></dl>
+</section>
+
+<section class="block honest">
+<div class="kicker">What is proven</div>
+<h2>Be precise about what this run shows</h2>
+<ul>
+<li><b>Proven in the recorded run:</b> events to Situation, scheduler, one episode, a typed decision, policy approval, one governed command (<code>set_indicator</code>, risk R1), device receipt and result, and a verified state check.</li>
+<li><b>Not physical hardware:</b> a simulator played the sensor bench and a device emulator answered commands behind the gateway socket. The 3D bench and gateway show the designed physical setup, labelled as emulated.</li>
+<li><b>Designed, not part of this run:</b> the fan path (<code>select_thermal_mode</code>, risk R2) with signed human approval. It is shown in the film and the 3D world and labelled as such.</li>
+<li><b>Known blind spots recorded with the run:</b></li>
+</ul>
+<ul class="spots"><li>current ledgers have no execution identifier; exported rows are a tenant snapshot</li><li>gateway transport and firmware provenance are external to Agentic Stream</li><li>independent physical feedback verifier and HIL evidence are not stored by this repository</li><li>process-local telemetry is diagnostic and is not part of the safety verdict</li></ul>
+</section>
+<footer class="src">Regenerate: <code>tools/extract-run-data.mjs</code> reads the recorded run, <code>tools/narrate.mjs</code> builds narration, captions and timing, <code>tools/build.sh</code> bundles the pages, <code>tools/render-film.mjs</code> renders the film. See <a href="README.md">README</a> and <a href="BAR.md">the quality bar</a>.</footer>
+</main>
+</body>
+</html>

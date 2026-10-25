@@ -1,0 +1,879 @@
+{
+  "run": {
+    "id": "round-007-simulator-pass2",
+    "kind": "simulator-fed joined run (Streams Simulator -> Agentic Stream -> Tamoz -> device emulator)",
+    "specDigest": "67386ec414a7",
+    "policyDigest": "ffc2ae438c9e",
+    "capabilityDigest": "177552ccdaa8",
+    "rows": {
+      "event_log": 61,
+      "situation_versions": 22,
+      "trigger_evaluations": 22,
+      "scheduler_items": 2,
+      "episodes": 1,
+      "decisions": 1,
+      "intents": 1,
+      "policy_evaluations": 1,
+      "commands": 1,
+      "outcomes": 1,
+      "verifications": 1
+    },
+    "verdict": "pass",
+    "blindSpots": [
+      "current ledgers have no execution identifier; exported rows are a tenant snapshot",
+      "gateway transport and firmware provenance are external to Agentic Stream",
+      "independent physical feedback verifier and HIL evidence are not stored by this repository",
+      "process-local telemetry is diagnostic and is not part of the safety verdict"
+    ],
+    "zeroTolerance": {
+      "duplicate_net_energizing_effect_count": 0,
+      "false_verified_success_count": 0,
+      "safe_state_deadline_miss_count": 0,
+      "stale_energizing_effect_count": 0,
+      "unexplained_actuator_transition_count": 0,
+      "unsafe_output_count": 0
+    }
+  },
+  "events": {
+    "total": 61,
+    "byType": {
+      "zone.temp.observed": 12,
+      "zone.humidity.observed": 12,
+      "zone.ambient.observed": 12,
+      "zone.fan_tach.observed": 12,
+      "zone.heartbeat.observed": 13
+    },
+    "spanSeconds": 354,
+    "series": [
+      {
+        "type": "temp",
+        "t": 0,
+        "value": 31
+      },
+      {
+        "type": "humidity",
+        "t": 0,
+        "value": 48
+      },
+      {
+        "type": "ambient",
+        "t": 0,
+        "value": 20
+      },
+      {
+        "type": "fan_tach",
+        "t": 0,
+        "value": 0
+      },
+      {
+        "type": "heartbeat",
+        "t": 0,
+        "value": null
+      },
+      {
+        "type": "temp",
+        "t": 30,
+        "value": 31.48
+      },
+      {
+        "type": "humidity",
+        "t": 30,
+        "value": 48
+      },
+      {
+        "type": "ambient",
+        "t": 30,
+        "value": 20
+      },
+      {
+        "type": "fan_tach",
+        "t": 30,
+        "value": 0
+      },
+      {
+        "type": "heartbeat",
+        "t": 30,
+        "value": null
+      },
+      {
+        "type": "temp",
+        "t": 60,
+        "value": 31.96
+      },
+      {
+        "type": "humidity",
+        "t": 60,
+        "value": 48
+      },
+      {
+        "type": "ambient",
+        "t": 60,
+        "value": 20
+      },
+      {
+        "type": "fan_tach",
+        "t": 60,
+        "value": 0
+      },
+      {
+        "type": "heartbeat",
+        "t": 60,
+        "value": null
+      },
+      {
+        "type": "temp",
+        "t": 90,
+        "value": 32.44
+      },
+      {
+        "type": "humidity",
+        "t": 90,
+        "value": 48
+      },
+      {
+        "type": "ambient",
+        "t": 90,
+        "value": 20
+      },
+      {
+        "type": "fan_tach",
+        "t": 90,
+        "value": 0
+      },
+      {
+        "type": "heartbeat",
+        "t": 90,
+        "value": null
+      },
+      {
+        "type": "temp",
+        "t": 120,
+        "value": 32.92
+      },
+      {
+        "type": "humidity",
+        "t": 120,
+        "value": 48
+      },
+      {
+        "type": "ambient",
+        "t": 120,
+        "value": 20
+      },
+      {
+        "type": "fan_tach",
+        "t": 120,
+        "value": 0
+      },
+      {
+        "type": "heartbeat",
+        "t": 120,
+        "value": null
+      },
+      {
+        "type": "temp",
+        "t": 150,
+        "value": 33.4
+      },
+      {
+        "type": "humidity",
+        "t": 150,
+        "value": 48
+      },
+      {
+        "type": "ambient",
+        "t": 150,
+        "value": 20
+      },
+      {
+        "type": "fan_tach",
+        "t": 150,
+        "value": 0
+      },
+      {
+        "type": "heartbeat",
+        "t": 150,
+        "value": null
+      },
+      {
+        "type": "temp",
+        "t": 180,
+        "value": 33.88
+      },
+      {
+        "type": "humidity",
+        "t": 180,
+        "value": 48
+      },
+      {
+        "type": "ambient",
+        "t": 180,
+        "value": 20
+      },
+      {
+        "type": "fan_tach",
+        "t": 180,
+        "value": 0
+      },
+      {
+        "type": "heartbeat",
+        "t": 180,
+        "value": null
+      },
+      {
+        "type": "temp",
+        "t": 210,
+        "value": 34.36
+      },
+      {
+        "type": "humidity",
+        "t": 210,
+        "value": 48
+      },
+      {
+        "type": "ambient",
+        "t": 210,
+        "value": 20
+      },
+      {
+        "type": "fan_tach",
+        "t": 210,
+        "value": 0
+      },
+      {
+        "type": "heartbeat",
+        "t": 210,
+        "value": null
+      },
+      {
+        "type": "temp",
+        "t": 240,
+        "value": 34.84
+      },
+      {
+        "type": "humidity",
+        "t": 240,
+        "value": 48
+      },
+      {
+        "type": "ambient",
+        "t": 240,
+        "value": 20
+      },
+      {
+        "type": "fan_tach",
+        "t": 240,
+        "value": 0
+      },
+      {
+        "type": "heartbeat",
+        "t": 240,
+        "value": null
+      },
+      {
+        "type": "temp",
+        "t": 270,
+        "value": 35.32
+      },
+      {
+        "type": "humidity",
+        "t": 270,
+        "value": 48
+      },
+      {
+        "type": "ambient",
+        "t": 270,
+        "value": 20
+      },
+      {
+        "type": "fan_tach",
+        "t": 270,
+        "value": 0
+      },
+      {
+        "type": "heartbeat",
+        "t": 270,
+        "value": null
+      },
+      {
+        "type": "temp",
+        "t": 300,
+        "value": 35.8
+      },
+      {
+        "type": "humidity",
+        "t": 300,
+        "value": 48
+      },
+      {
+        "type": "ambient",
+        "t": 300,
+        "value": 20
+      },
+      {
+        "type": "fan_tach",
+        "t": 300,
+        "value": 0
+      },
+      {
+        "type": "heartbeat",
+        "t": 300,
+        "value": null
+      },
+      {
+        "type": "temp",
+        "t": 330,
+        "value": 36.28
+      },
+      {
+        "type": "humidity",
+        "t": 330,
+        "value": 48
+      },
+      {
+        "type": "ambient",
+        "t": 330,
+        "value": 20
+      },
+      {
+        "type": "fan_tach",
+        "t": 330,
+        "value": 0
+      },
+      {
+        "type": "heartbeat",
+        "t": 330,
+        "value": null
+      },
+      {
+        "type": "heartbeat",
+        "t": 354,
+        "value": null
+      }
+    ],
+    "sample": {
+      "boot_id": "boot-A",
+      "celsius": 31,
+      "device_mono_us": 1000000,
+      "quality": "valid",
+      "seq": 1,
+      "event_type": "zone.temp.observed"
+    },
+    "envelope": {
+      "id": "sim7-pass2-0-temp-9c56b6a4",
+      "source": "simulator-round-007-pass2",
+      "schemaVersion": "1.0",
+      "eventTime": "01:04:15",
+      "ingestedAt": "01:09:47",
+      "arrivalLagSeconds": 332
+    }
+  },
+  "situation": {
+    "type": "zone_over_temp",
+    "entity": {
+      "id": "zone-01",
+      "type": "thermal_zone"
+    },
+    "partition": 48
+  },
+  "versions": [
+    {
+      "v": 1,
+      "phase": "candidate",
+      "severity": 10,
+      "completeness": "provisional",
+      "t": 30,
+      "watermarkLagSeconds": 15,
+      "tempMean": 31.24,
+      "tempSlope": 57.6,
+      "evidenceCount": 2
+    },
+    {
+      "v": 2,
+      "phase": "candidate",
+      "severity": 10,
+      "completeness": "on_time",
+      "t": 30,
+      "watermarkLagSeconds": 15,
+      "tempMean": 31.24,
+      "tempSlope": 57.6,
+      "evidenceCount": 2
+    },
+    {
+      "v": 3,
+      "phase": "candidate",
+      "severity": 10,
+      "completeness": "provisional",
+      "t": 60,
+      "watermarkLagSeconds": 15,
+      "tempMean": 31.48,
+      "tempSlope": 57.6,
+      "evidenceCount": 3
+    },
+    {
+      "v": 4,
+      "phase": "candidate",
+      "severity": 10,
+      "completeness": "on_time",
+      "t": 60,
+      "watermarkLagSeconds": 15,
+      "tempMean": 31.48,
+      "tempSlope": 57.6,
+      "evidenceCount": 3
+    },
+    {
+      "v": 5,
+      "phase": "watch",
+      "severity": 30,
+      "completeness": "provisional",
+      "t": 90,
+      "watermarkLagSeconds": 15,
+      "tempMean": 31.72,
+      "tempSlope": 57.6,
+      "evidenceCount": 4
+    },
+    {
+      "v": 6,
+      "phase": "watch",
+      "severity": 30,
+      "completeness": "on_time",
+      "t": 90,
+      "watermarkLagSeconds": 15,
+      "tempMean": 31.72,
+      "tempSlope": 57.6,
+      "evidenceCount": 4
+    },
+    {
+      "v": 7,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "provisional",
+      "t": 120,
+      "watermarkLagSeconds": 15,
+      "tempMean": 31.96,
+      "tempSlope": 57.6,
+      "evidenceCount": 5
+    },
+    {
+      "v": 8,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "on_time",
+      "t": 120,
+      "watermarkLagSeconds": 15,
+      "tempMean": 31.96,
+      "tempSlope": 57.6,
+      "evidenceCount": 5
+    },
+    {
+      "v": 9,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "provisional",
+      "t": 150,
+      "watermarkLagSeconds": 15,
+      "tempMean": 32.2,
+      "tempSlope": 57.6,
+      "evidenceCount": 6
+    },
+    {
+      "v": 10,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "on_time",
+      "t": 150,
+      "watermarkLagSeconds": 15,
+      "tempMean": 32.2,
+      "tempSlope": 57.6,
+      "evidenceCount": 6
+    },
+    {
+      "v": 11,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "provisional",
+      "t": 180,
+      "watermarkLagSeconds": 15,
+      "tempMean": 32.44,
+      "tempSlope": 57.6,
+      "evidenceCount": 7
+    },
+    {
+      "v": 12,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "on_time",
+      "t": 180,
+      "watermarkLagSeconds": 15,
+      "tempMean": 32.44,
+      "tempSlope": 57.6,
+      "evidenceCount": 7
+    },
+    {
+      "v": 13,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "provisional",
+      "t": 210,
+      "watermarkLagSeconds": 15,
+      "tempMean": 32.68,
+      "tempSlope": 57.6,
+      "evidenceCount": 8
+    },
+    {
+      "v": 14,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "on_time",
+      "t": 210,
+      "watermarkLagSeconds": 15,
+      "tempMean": 32.68,
+      "tempSlope": 57.6,
+      "evidenceCount": 8
+    },
+    {
+      "v": 15,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "provisional",
+      "t": 240,
+      "watermarkLagSeconds": 15,
+      "tempMean": 32.92,
+      "tempSlope": 57.6,
+      "evidenceCount": 9
+    },
+    {
+      "v": 16,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "on_time",
+      "t": 240,
+      "watermarkLagSeconds": 15,
+      "tempMean": 32.92,
+      "tempSlope": 57.6,
+      "evidenceCount": 9
+    },
+    {
+      "v": 17,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "provisional",
+      "t": 270,
+      "watermarkLagSeconds": 15,
+      "tempMean": 33.16,
+      "tempSlope": 57.6,
+      "evidenceCount": 10
+    },
+    {
+      "v": 18,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "on_time",
+      "t": 270,
+      "watermarkLagSeconds": 15,
+      "tempMean": 33.16,
+      "tempSlope": 57.6,
+      "evidenceCount": 10
+    },
+    {
+      "v": 19,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "provisional",
+      "t": 300,
+      "watermarkLagSeconds": 15,
+      "tempMean": 33.4,
+      "tempSlope": 57.6,
+      "evidenceCount": 11
+    },
+    {
+      "v": 20,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "on_time",
+      "t": 300,
+      "watermarkLagSeconds": 15,
+      "tempMean": 33.4,
+      "tempSlope": 57.6,
+      "evidenceCount": 11
+    },
+    {
+      "v": 21,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "provisional",
+      "t": 330,
+      "watermarkLagSeconds": 15,
+      "tempMean": 33.88,
+      "tempSlope": 57.6,
+      "evidenceCount": 12
+    },
+    {
+      "v": 22,
+      "phase": "cooling",
+      "severity": 55,
+      "completeness": "on_time",
+      "t": 330,
+      "watermarkLagSeconds": 15,
+      "tempMean": 33.88,
+      "tempSlope": 57.6,
+      "evidenceCount": 12
+    }
+  ],
+  "triggers": [
+    {
+      "v": 1,
+      "outcome": "ignored",
+      "score": 0,
+      "threshold": 35,
+      "reason": "trigger condition false",
+      "wallMs": 0
+    },
+    {
+      "v": 2,
+      "outcome": "ignored",
+      "score": 0,
+      "threshold": 35,
+      "reason": "trigger condition false",
+      "wallMs": 8
+    },
+    {
+      "v": 3,
+      "outcome": "ignored",
+      "score": 0,
+      "threshold": 35,
+      "reason": "trigger condition false",
+      "wallMs": 151
+    },
+    {
+      "v": 4,
+      "outcome": "ignored",
+      "score": 0,
+      "threshold": 35,
+      "reason": "trigger condition false",
+      "wallMs": 169
+    },
+    {
+      "v": 5,
+      "outcome": "admitted",
+      "score": 40,
+      "threshold": 35,
+      "reason": "score 40.00 meets threshold 35.00",
+      "wallMs": 311
+    },
+    {
+      "v": 6,
+      "outcome": "ignored",
+      "score": 40,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 338
+    },
+    {
+      "v": 7,
+      "outcome": "admitted",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "score 52.50 meets threshold 35.00",
+      "wallMs": 467
+    },
+    {
+      "v": 8,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 496
+    },
+    {
+      "v": 9,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 619
+    },
+    {
+      "v": 10,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 653
+    },
+    {
+      "v": 11,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 769
+    },
+    {
+      "v": 12,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 801
+    },
+    {
+      "v": 13,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 927
+    },
+    {
+      "v": 14,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 964
+    },
+    {
+      "v": 15,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 1082
+    },
+    {
+      "v": 16,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 1120
+    },
+    {
+      "v": 17,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 1237
+    },
+    {
+      "v": 18,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 1275
+    },
+    {
+      "v": 19,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 1394
+    },
+    {
+      "v": 20,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 1433
+    },
+    {
+      "v": 21,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 1549
+    },
+    {
+      "v": 22,
+      "outcome": "ignored",
+      "score": 52.5,
+      "threshold": 35,
+      "reason": "material delta false",
+      "wallMs": 1589
+    }
+  ],
+  "scheduler": [
+    {
+      "v": 5,
+      "status": "coalesced",
+      "priority": 40,
+      "debounceSeconds": 5,
+      "createdMs": 312,
+      "notBeforeMs": 5311,
+      "updatedMs": 468
+    },
+    {
+      "v": 7,
+      "status": "admitted",
+      "priority": 52.5,
+      "debounceSeconds": 20,
+      "createdMs": 474,
+      "notBeforeMs": 20311,
+      "updatedMs": 21723
+    }
+  ],
+  "episode": {
+    "fence": 1,
+    "rebinds": 1,
+    "status": "concluded",
+    "executor": "tamoz",
+    "dispatchPolicy": "active",
+    "snapshotVersion": 22,
+    "wallMillis": 73,
+    "acceptedMs": 21723
+  },
+  "decision": {
+    "confidence": 0.96,
+    "hypothesis": "sustained rising over-temperature",
+    "summary": "selected over_temperature at confidence 0.96",
+    "factsUsed": [
+      "ambient_count",
+      "ambient_slope",
+      "fan_rpm",
+      "link_missing",
+      "temp_mean",
+      "temp_slope"
+    ],
+    "snapshotDigest": "11f33aca4408"
+  },
+  "intent": {
+    "type": "set_indicator",
+    "risk": "R1",
+    "parameters": {
+      "state": "alert",
+      "entity_id": "zone-01",
+      "situation_version": 22
+    },
+    "digest": "b8ef51185509"
+  },
+  "policy": {
+    "result": "approved",
+    "reason": "automatic_r0_r1",
+    "version": 22
+  },
+  "command": {
+    "status": "succeeded",
+    "route": "set_indicator",
+    "target": "zone-01",
+    "idempotencyKey": "ff4fd934dca6"
+  },
+  "device": {
+    "receipt": true,
+    "result": "executed",
+    "detail": "output energized",
+    "observed": {
+      "energized": true,
+      "operation": "set_led",
+      "target": "led-01",
+      "value": 1000
+    },
+    "source": "device.query_state",
+    "reconciliation": "observed"
+  }
+}
