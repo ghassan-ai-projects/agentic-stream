@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -103,6 +104,34 @@ func TestTheRuntimeBuildsTheProposedRule(t *testing.T) {
 	}
 	if rules.NextVersion(rule.ID) != 1 || rules.NextVersion("bearing-wear") != 2 {
 		t.Fatal("the next version of a new rule is 1, of an existing one its version plus one")
+	}
+}
+
+func TestAProposedRuleCompilesBesideTheRulesOfAnotherKindAndReplacesItsOlderVersion(t *testing.T) {
+	t.Parallel()
+	probeB := Key{DiagnosisCode: "bearing_wear", KindDigest: "sha256:" + strings.Repeat("ab", 32), Intent: "schedule_maintenance", Preset: "bearing_wear"}
+	if id := RuleID(probeB); id != "bearing-wear.schedule-maintenance.bearing-wear.abababababab" {
+		t.Fatalf("rule id = %s, want the key's kind in it", id)
+	}
+	rules := pumpRules(t)
+	rule, err := rules.RuleFromProposal(driftRequest(rules), driftProposal("features.vibration_mean_15m > 3.9", "e1", "e2"), RuleIdentity{Version: 1, KindName: "pump"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule.PinnedKind.Digest = "sha256:" + strings.Repeat("b", 64)
+	for _, version := range []int{1, 2} {
+		rule.Version = version
+		book := rules.WithRule(rule)
+		document, err := spec.MarshalPlaybook(book)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := spec.CompilePlaybook(rules.Spec(), document); err != nil {
+			t.Fatalf("version %d: %v, want the candidate playbook to compile", version, err)
+		}
+		if count := len(slices.DeleteFunc(slices.Clone(book.Rules), func(r spec.Rule) bool { return r.ID != rule.ID })); count != 1 {
+			t.Fatalf("version %d: %d rules named %s, want the new version alone", version, count, rule.ID)
+		}
 	}
 }
 

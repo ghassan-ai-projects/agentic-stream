@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/draftport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -122,6 +124,13 @@ func (r *Rules) margin() float64 {
 	return r.spec.Promotion.EnvelopeMargin
 }
 
+const kindIDBytes = 6
+
 func RuleID(key Key) string {
-	return strings.ReplaceAll(key.DiagnosisCode+"."+key.Intent+"."+key.Preset, "_", "-")
+	id := strings.ReplaceAll(key.DiagnosisCode+"."+key.Intent+"."+key.Preset, "_", "-")
+	kind, err := kernel.DecodeDigest(key.KindDigest)
+	if err != nil {
+		return id
+	}
+	return id + "." + hex.EncodeToString(kind[:kindIDBytes])
 }

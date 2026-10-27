@@ -100,6 +100,7 @@ func (r *Rules) WithRule(rule spec.Rule) *spec.CompiledPlaybook {
 	if r.book != nil {
 		book.Metadata, book.Rules = r.book.Metadata, slices.Clone(r.book.Rules)
 	}
+	book.Rules = slices.DeleteFunc(book.Rules, func(kept spec.Rule) bool { return kept.ID == rule.ID })
 	book.Rules = append(book.Rules, rule)
 	return book
 }

@@ -94,6 +94,7 @@ func (s *Service) settleProposal(ctx context.Context, tx *store.Tx, proposal dom
 
 func (s *Service) writeRule(rule spec.Rule) (string, error) {
 	return s.file.update(func(book *spec.CompiledPlaybook) bool {
+		book.Rules = slices.DeleteFunc(book.Rules, func(kept spec.Rule) bool { return kept.ID == rule.ID })
 		book.Rules = append(book.Rules, rule)
 		return true
 	})
