@@ -10,24 +10,48 @@ const defaultQueueSize = 4096
 
 type Emit = func(context.Context, contractsv1.Envelope) error
 
-func feedPipeline(ctx context.Context, queue <-chan contractsv1.Envelope, emit Emit, stop context.CancelCauseFunc) error {
+type ingestQueue struct {
+	events  chan contractsv1.Envelope
+	drained chan struct{}
+}
+
+func newIngestQueue(size int) *ingestQueue {
+	return &ingestQueue{events: make(chan contractsv1.Envelope, size), drained: make(chan struct{}, 1)}
+}
+
+func (q *ingestQueue) feed(ctx context.Context, emit Emit, stop context.CancelCauseFunc) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case event := <-queue:
+		case event := <-q.events:
 			if err := emit(ctx, event); err != nil {
 				stop(err)
 				return err
 			}
+			q.signalDrained()
 		}
 	}
 }
 
-func enqueue(queue chan<- contractsv1.Envelope, events []contractsv1.Envelope) bool {
+func (q *ingestQueue) signalDrained() {
+	if len(q.events) > 0 {
+		return
+	}
+	select {
+	case q.drained <- struct{}{}:
+	default:
+	}
+}
+
+func (q *ingestQueue) pending() bool {
+	return len(q.events) > 0
+}
+
+func (q *ingestQueue) enqueue(events []contractsv1.Envelope) bool {
 	for _, event := range events {
 		select {
-		case queue <- event:
+		case q.events <- event:
 		default:
 			return false
 		}

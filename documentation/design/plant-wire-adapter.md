@@ -68,8 +68,13 @@ the code implements.
 3. A kind whose `kind_digest` differs from the commissioned kind file, or that
    no kind file commissions, is quarantined: its devices give no events and take
    no commands, and the session stays up.
-4. Every `NSYNC` is answered at once with `HSYNC`; reading never waits on the
-   pipeline, so a slow batch cannot miss a barrier.
+4. Every `NSYNC` is answered with `HSYNC` as soon as the events read before it
+   have left the ingest queue; reading never waits on the pipeline, but the
+   barrier answer does, so a node that paces itself by barriers (an unpaced
+   simulated world) cannot outrun the pipeline. While an answer is held, the
+   host sends nothing else (its records are sequenced) and keeps reading. A
+   node that floods the queue without waiting for barriers still ends the
+   session: the pipeline fell behind.
 5. A sequence gap asks for one rebirth. A socket loss or `NDEATH` ends the
    session: claims are released, commands in flight are settled as the contract
    says, devices go offline. The host then accepts the next session without a

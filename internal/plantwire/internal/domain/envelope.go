@@ -15,6 +15,7 @@ const (
 	TypeDeviceDeath       = "DDEATH"
 	TypeNodeDeath         = "NDEATH"
 	TypeSync              = "NSYNC"
+	TypeHostSync          = "HSYNC"
 	laneControl           = "control"
 )
 

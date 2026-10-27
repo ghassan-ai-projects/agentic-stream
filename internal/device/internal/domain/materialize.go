@@ -10,21 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
-// The deterministic intent→device-command materializer
-// for the physical (serial) effector boundary (Real-World Sensor HIL-0, Phase 03
-// Task 3.2). It is the guarantee that no arbitrary target, pin, opcode, or PWM
-// value ever comes from model output: a policy-approved actionport.Command carries
-// only a bounded selector (an enum the model was allowed to write), and the
-// concrete device parameters come from a CLOSED capability catalog that is
-// configuration, never model output. The hard bounds are re-enforced here — at
-// the last boundary — even though policy presets already produced bounded values
-// (defense in depth).
-
-// Materialize converts a policy-approved actionport.Command into a bounded device
-// wire command (contractsv1.SchemaDeviceCommand). expectedBootID binds the
-// command to the live device session. A route outside the catalog, a selector
-// outside the preset set, or a parameter beyond its hard bound is rejected with
-// zero commands emitted — never clamped silently.
 func (c *CapabilityCatalog) Materialize(command actionport.Command, expectedBootID string) (Command, error) {
 	if err := c.checkMaterializable(command, expectedBootID); err != nil {
 		return Command{}, err
@@ -52,24 +37,32 @@ func (c *CapabilityCatalog) checkMaterializable(command actionport.Command, expe
 	return nil
 }
 
-// checkTarget requires the command's normalized target to be the route's
-// catalog target or one of its declared bindings.
-func (spec Route) checkTarget(command actionport.Command) error {
+func (spec Route) resolveTarget(command actionport.Command) (string, error) {
 	if command.NormalizedTarget == "" {
-		return fmt.Errorf("normalized target is required to materialize a device command")
+		return "", fmt.Errorf("normalized target is required to materialize a device command")
 	}
-	if command.NormalizedTarget == spec.Target {
-		return nil
+	if spec.Target != "" && command.NormalizedTarget == spec.Target {
+		return spec.Target, nil
 	}
-	if boundTarget, ok := spec.TargetBindings[command.NormalizedTarget]; !ok || boundTarget != spec.Target {
-		return fmt.Errorf("route %q target %q is not bound to catalog target %q", command.EffectorRoute, command.NormalizedTarget, spec.Target)
+	boundTarget, ok := spec.TargetBindings[command.NormalizedTarget]
+	if !ok || (spec.Target != "" && boundTarget != spec.Target) {
+		return "", fmt.Errorf("route %q target %q is not bound to catalog target %v", command.EffectorRoute, command.NormalizedTarget, spec.Targets())
 	}
-	return nil
+	return boundTarget, nil
 }
 
-// boundedParameters copies the selected preset (the ONLY source of device
-// parameters) and re-enforces every hard bound at this last boundary.
-func (spec Route) boundedParameters(command actionport.Command) (map[string]any, error) {
+func (spec Route) boundedParameters(command actionport.Command, target string) (map[string]any, error) {
+	parameters, err := spec.presetParameters(command)
+	if err != nil {
+		return nil, err
+	}
+	if spec.TargetArg != "" {
+		parameters[spec.TargetArg] = target
+	}
+	return parameters, nil
+}
+
+func (spec Route) presetParameters(command actionport.Command) (map[string]any, error) {
 	selectorValue, ok := command.Payload[spec.SelectorField].(string)
 	if !ok || selectorValue == "" {
 		return nil, fmt.Errorf("route %q requires a string selector %q in the command payload", command.EffectorRoute, spec.SelectorField)
@@ -152,9 +145,6 @@ func validatedCommand(command Command, what string) (Command, error) {
 	return command, nil
 }
 
-// MaterializeSafeStop creates the fixed catalog-owned safe-state command for a
-// target. It has no caller-supplied parameters or policy authority and cannot
-// be used to clear a physical e-stop.
 func (c *CapabilityCatalog) MaterializeSafeStop(target, expectedBootID string) (Command, error) {
 	if c == nil {
 		return Command{}, fmt.Errorf("capability catalog is required to materialize a safe stop")
@@ -169,8 +159,6 @@ func (c *CapabilityCatalog) MaterializeSafeStop(target, expectedBootID string) (
 	return c.safeStopCommand(target, expectedBootID, spec)
 }
 
-// safeStopCommand builds the safe stop and keys it by its own identity, so the
-// same safe stop on the same boot is always the same command.
 func (c *CapabilityCatalog) safeStopCommand(target, expectedBootID string, spec SafeStopRoute) (Command, error) {
 	catalogDigest, err := c.Digest()
 	if err != nil {

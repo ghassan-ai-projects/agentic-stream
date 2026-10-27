@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "source": "plantwire",
+  "devices": {
+    "site-a:pump-1": {
+      "kind": "pump",
+      "entity": {
+        "type": "pump",
+        "id": "site-a:pump-1"
+      }
+    },
+    "site-a:pump-2": {
+      "kind": "pump",
+      "entity": {
+        "type": "pump",
+        "id": "site-a:pump-2"
+      }
+    },
+    "site-a:pump-3": {
+      "kind": "pump",
+      "entity": {
+        "type": "pump",
+        "id": "site-a:pump-3"
+      }
+    },
+    "site-a:pump-4": {
+      "kind": "pump",
+      "entity": {
+        "type": "pump",
+        "id": "site-a:pump-4"
+      }
+    },
+    "site-a:pump-5": {
+      "kind": "pump",
+      "entity": {
+        "type": "pump",
+        "id": "site-a:pump-5"
+      }
+    },
+    "site-a:pump-6": {
+      "kind": "pump",
+      "entity": {
+        "type": "pump",
+        "id": "site-a:pump-6"
+      }
+    },
+    "site-a:pump-7": {
+      "kind": "pump",
+      "entity": {
+        "type": "pump",
+        "id": "site-a:pump-7"
+      }
+    },
+    "site-a:pump-8": {
+      "kind": "pump",
+      "entity": {
+        "type": "pump",
+        "id": "site-a:pump-8"
+      }
+    }
+  },
+  "readings": [
+    {
+      "kind": "pump",
+      "metric": "vibration",
+      "event_type": "pump.vibration.observed",
+      "schema_version": "1.1",
+      "field": "rms_mm_s"
+    },
+    {
+      "kind": "pump",
+      "metric": "axial_vibration",
+      "event_type": "pump.axial_vibration.observed",
+      "schema_version": "1.1",
+      "field": "value"
+    },
+    {
+      "kind": "pump",
+      "metric": "temperature",
+      "event_type": "pump.temperature.observed",
+      "schema_version": "1.1",
+      "field": "celsius"
+    },
+    {
+      "kind": "pump",
+      "metric": "motor_current",
+      "event_type": "pump.motor_current.observed",
+      "schema_version": "1.1",
+      "field": "value"
+    }
+  ],
+  "heartbeats": [
+    {
+      "kind": "pump",
+      "event_type": "pump.heartbeat.observed",
+      "schema_version": "1.1",
+      "every_ms": 60000,
+      "stale_after_ms": 180000
+    }
+  ],
+  "quality": {
+    "good": "valid",
+    "warming_up": "warming",
+    "suspect": "invalid",
+    "out_of_range": "invalid",
+    "stale": "invalid",
+    "disconnected": "disconnected",
+    "manual_override": "invalid",
+    "out_of_service": "disconnected"
+  }
+}

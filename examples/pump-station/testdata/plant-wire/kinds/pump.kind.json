@@ -1,0 +1,136 @@
+{
+  "kind": "pump",
+  "commands": [
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "pump_id": {
+            "type": "string"
+          },
+          "work_order": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pump_id"
+        ],
+        "type": "object"
+      },
+      "name": "schedule_maintenance",
+      "risk_class": "low",
+      "safe_stop": false
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "pump_id": {
+            "type": "string"
+          },
+          "target_load": {
+            "maximum": 1,
+            "minimum": 0.2,
+            "type": "number"
+          }
+        },
+        "required": [
+          "pump_id"
+        ],
+        "type": "object"
+      },
+      "name": "reduce_load",
+      "risk_class": "medium",
+      "safe_stop": false
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "pump_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pump_id"
+        ],
+        "type": "object"
+      },
+      "name": "stop_motor",
+      "risk_class": "high",
+      "safe_stop": false
+    }
+  ],
+  "metrics": [
+    {
+      "data_type": "number",
+      "eu_range": {
+        "max": 50,
+        "min": 0
+      },
+      "name": "vibration",
+      "resolution": 0.01,
+      "unit": "mm/s",
+      "writable": false
+    },
+    {
+      "data_type": "number",
+      "eu_range": {
+        "max": 30,
+        "min": 0
+      },
+      "name": "axial_vibration",
+      "resolution": 0.01,
+      "unit": "mm/s",
+      "writable": false
+    },
+    {
+      "data_type": "number",
+      "eu_range": {
+        "max": 120,
+        "min": 0
+      },
+      "name": "temperature",
+      "resolution": 0.1,
+      "unit": "degC",
+      "writable": false
+    },
+    {
+      "data_type": "number",
+      "eu_range": {
+        "max": 100,
+        "min": 0
+      },
+      "name": "motor_current",
+      "resolution": 0.1,
+      "unit": "A",
+      "writable": false
+    },
+    {
+      "data_type": "integer",
+      "eu_range": {
+        "max": 3600,
+        "min": 0
+      },
+      "name": "rpm",
+      "resolution": 1,
+      "unit": "rpm",
+      "writable": false
+    },
+    {
+      "data_type": "enum",
+      "enum_values": [
+        "start",
+        "stop",
+        "fault",
+        "maintenance"
+      ],
+      "name": "mode",
+      "resolution": 1,
+      "writable": false
+    }
+  ]
+}

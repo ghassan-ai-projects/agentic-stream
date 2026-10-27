@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/transport"
@@ -110,15 +109,15 @@ func (h *Host) Close() error {
 func (h *Host) Run(ctx context.Context, emit Emit) error {
 	ctx, stop := context.WithCancelCause(ctx)
 	defer stop(nil)
-	queue := make(chan contractsv1.Envelope, h.queueSize)
+	queue := newIngestQueue(h.queueSize)
 	fed := make(chan error, 1)
-	go func() { fed <- feedPipeline(ctx, queue, emit, stop) }()
+	go func() { fed <- queue.feed(ctx, emit, stop) }()
 	served := h.acceptSessions(ctx, queue)
 	stop(nil)
 	return errors.Join(<-fed, served)
 }
 
-func (h *Host) acceptSessions(ctx context.Context, queue chan<- contractsv1.Envelope) error {
+func (h *Host) acceptSessions(ctx context.Context, queue *ingestQueue) error {
 	stop := context.AfterFunc(ctx, func() { _ = h.listener.Close() })
 	defer stop()
 	for {

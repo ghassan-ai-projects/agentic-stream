@@ -29,14 +29,14 @@ func startPlantWireServe(t *testing.T, specPath, kindsDir, sitePath string, extr
 	dir := privateSocketDir(t)
 	run := plantWireServe{dir: dir, socket: filepath.Join(dir, "host.sock"), db: newMigratedDatabasePath(t)}
 	address := freeLoopbackAddress(t)
-	args := []string{"--db", run.db, "--spec", specPath, "--effect-profile", "emulator", "--plant-wire-socket", run.socket,
+	args := []string{"serve", "--db", run.db, "--spec", specPath, "--effect-profile", "emulator", "--plant-wire-socket", run.socket,
 		"--plant-wire-kinds", kindsDir, "--plant-wire-epoch", "11", "--listen", address, "--poll-interval", "50ms"}
 	if sitePath != "" {
 		args = append(args, "--plant-wire-site", sitePath)
 	}
 	args = append(args, extra...)
 	ctx, cancel := context.WithCancel(t.Context())
-	cmd := newServeCommand()
+	cmd := newRootCommand()
 	cmd.SetArgs(args)
 	done := make(chan error, 1)
 	go func() { done <- cmd.ExecuteContext(ctx) }()
@@ -106,19 +106,24 @@ func benchSample(alias int, value float64, atNS int64) map[string]any {
 
 func eventTypeCounts(t *testing.T, dbPath string) map[string]int {
 	t.Helper()
-	rows, err := openReadOnly(t, dbPath).QueryContext(t.Context(), "SELECT event_type, COUNT(*) FROM event_log GROUP BY event_type")
+	return countsBy(t, dbPath, "SELECT event_type, COUNT(*) FROM event_log GROUP BY event_type")
+}
+
+func countsBy(t *testing.T, dbPath, query string) map[string]int {
+	t.Helper()
+	rows, err := openReadOnly(t, dbPath).QueryContext(t.Context(), query)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = rows.Close() }()
 	counts := map[string]int{}
 	for rows.Next() {
-		var eventType string
+		var key string
 		var count int
-		if err := rows.Scan(&eventType, &count); err != nil {
+		if err := rows.Scan(&key, &count); err != nil {
 			t.Fatal(err)
 		}
-		counts[eventType] = count
+		counts[key] = count
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
