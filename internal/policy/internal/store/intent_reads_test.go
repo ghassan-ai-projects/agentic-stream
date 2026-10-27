@@ -7,6 +7,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 func TestLoadingAnIntentJoinsItsDecisionEpisodeAndSituation(t *testing.T) {
@@ -39,20 +40,19 @@ func TestTheCurrentSituationVersionsCompletenessIsReadFromThatVersion(t *testing
 	if _, err := db.ExecContext(t.Context(), "UPDATE situations SET current_version = 2"); err != nil {
 		t.Fatal(err)
 	}
-	inJoined(t, db, func(tx *Tx) error {
-		row, err := tx.LoadIntent(t.Context(), intentID)
-		if err != nil || row.CurrentCompleteness != "" {
-			t.Fatalf("completeness of a current version that has no snapshot = %q, %v; want empty so consequential intents fail closed", row.CurrentCompleteness, err)
-		}
-		return nil
-	})
+	requireCompleteness(t, db, intentID, "", "a current version that has no snapshot")
 	if _, err := db.ExecContext(t.Context(), "UPDATE situations SET current_version = 1"); err != nil {
 		t.Fatal(err)
 	}
+	requireCompleteness(t, db, intentID, "on_time", "the current version")
+}
+
+func requireCompleteness(t *testing.T, db *storage.DB, intentID, want, of string) {
+	t.Helper()
 	inJoined(t, db, func(tx *Tx) error {
 		row, err := tx.LoadIntent(t.Context(), intentID)
-		if err != nil || row.CurrentCompleteness != "on_time" {
-			t.Fatalf("completeness of the current version = %q, %v; want on_time", row.CurrentCompleteness, err)
+		if err != nil || row.CurrentCompleteness != want {
+			t.Fatalf("completeness of %s = %q, %v; want %q (an empty completeness fails consequential intents closed)", of, row.CurrentCompleteness, err, want)
 		}
 		return nil
 	})

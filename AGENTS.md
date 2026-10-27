@@ -273,13 +273,35 @@ Fix with the refactoring tools above, then run `make lint`. The `dupl` gate
 covers test files too; repeated test setup moves into a helper
 (`storagetest.OpenTemp` opens a migrated temporary database).
 
-Known duplication to burn down: at threshold 60 the
-`dupl` pairs `principals`/`notifications` (operator command constructors),
-`scanCommandView`/`scanAwaitingCommand` (`actions` store) and `LoadSchedulerItem`/
-`LoadEvaluation` (`episodes` store) are structural twins that a shared helper
-would not shorten. Remove an item from this list when
-you fix it, add one only for a duplicate you could not fix in the same change
-and say why in the change.
+Known duplication to burn down: at threshold 50 (the scan above, with 50 in
+place of 60) these `dupl` pairs remain. Each is a structural twin that a shared
+helper would not shorten, or whose only shared step would have to return another
+package's error bare, which the wrapping rule forbids:
+
+- `cmd/agentic-stream` operator commands: `notifications prune`/`principals apply`
+  (flag registration differs per command) and `awaitingTable`/`quarantineTable`
+  (a `tableText` call with a per-row format).
+- `internal/actions/internal/store`: `scanCommandView`/`scanAwaitingCommand` (distinct
+  row types and columns).
+- `internal/canonicaljson/internal/domain/digest.go`: `signedInteger`/`unsignedInteger`
+  (one type switch per integer family; a type switch cannot span two type sets).
+- `internal/episodes/internal/store/assembler.go`: `LoadSchedulerItem`/`LoadEvaluation`
+  (`loadRow` already holds the shared step; each call carries its own SQL and columns).
+- `internal/episodeledger/internal/store` (`episode_reads.go`/`scheduling_reads.go`) and
+  `internal/replay/internal/store/store.go`: a `storage.QueryAll` call followed by its one
+  operation-naming wrap; sharing it means returning `storage.QueryAll`'s error bare.
+- `internal/notify/internal/domain/lifecycle_identity.go`: the eight lifecycle event
+  constructors differ only in the event identity formula; the public facade keeps one
+  constructor per payload.
+- `internal/policy/internal/domain/rules.go`: `MatchesDecisionIdentity`/`MatchesIntentIdentity`
+  compare different fields.
+- `internal/policy/internal/store/approval_lookup.go`: `PendingApproval`/`ApprovedApproval`
+  each wrap their own `approvalledger` lookup.
+- `internal/runtime/internal/app/pipeline_run.go`: `RunLiveSocket`/`RunFeed` pass different
+  source callbacks to `runLiveSource`.
+
+Remove an item from this list when you fix it, add one only for a duplicate you
+could not fix in the same change and say why in the change.
 
 ## Forbidden Changes
 

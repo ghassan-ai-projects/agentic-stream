@@ -69,11 +69,7 @@ func TestReconsiderationFollowsOnlyTheLatestApprovedIntentAtOrBeforeThePreviousV
 
 func scalarString(f *reconsiderationFixture, query string) string {
 	f.t.Helper()
-	var value string
-	if err := f.db.QueryRowContext(f.t.Context(), query).Scan(&value); err != nil {
-		f.t.Fatalf("%s: %v", query, err)
-	}
-	return value
+	return queryScalar[string](f.t, f.db, query)
 }
 
 func TestCorrectionsAreNotReconsideredUnlessThePolicySaysSo(t *testing.T) {

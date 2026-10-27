@@ -53,8 +53,12 @@ const upsertQuarantineSQL = `
 
 // RejectQuarantineConflict marks a conflicting record rejected.
 func (u *Unit) RejectQuarantineConflict(ctx context.Context, tenantID, eventID string, now time.Time) error {
-	if _, err := u.tx.ExecContext(ctx, "UPDATE event_quarantine SET status = 'rejected', reason_code = 'event_id_hash_conflict', last_seen_at = ? WHERE tenant_id = ? AND event_id = ?", kernel.FormatTime(now), tenantID, eventID); err != nil {
-		return fmt.Errorf("record quarantine hash conflict: %w", err)
+	return u.exec(ctx, "record quarantine hash conflict", "UPDATE event_quarantine SET status = 'rejected', reason_code = 'event_id_hash_conflict', last_seen_at = ? WHERE tenant_id = ? AND event_id = ?", kernel.FormatTime(now), tenantID, eventID)
+}
+
+func (u *Unit) exec(ctx context.Context, failure, query string, args ...any) error {
+	if _, err := u.tx.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("%s: %w", failure, err)
 	}
 	return nil
 }
@@ -70,10 +74,7 @@ func (u *Unit) QuarantineStatus(ctx context.Context, tenantID, eventID string) (
 
 // InsertOverflowGap records the one gap a spent quarantine record owes.
 func (u *Unit) InsertOverflowGap(ctx context.Context, gapID, tenantID string, now time.Time) error {
-	if _, err := u.tx.ExecContext(ctx, `INSERT INTO event_gaps (gap_id, tenant_id, partition_id, from_position, to_position, reason_code, created_at) VALUES (?, ?, 0, 0, 0, 'quarantine_retry_exhausted', ?) ON CONFLICT(gap_id) DO NOTHING`, gapID, tenantID, kernel.FormatTime(now)); err != nil {
-		return fmt.Errorf("record quarantine overflow gap: %w", err)
-	}
-	return nil
+	return u.exec(ctx, "record quarantine overflow gap", `INSERT INTO event_gaps (gap_id, tenant_id, partition_id, from_position, to_position, reason_code, created_at) VALUES (?, ?, 0, 0, 0, 'quarantine_retry_exhausted', ?) ON CONFLICT(gap_id) DO NOTHING`, gapID, tenantID, kernel.FormatTime(now))
 }
 
 // ReleaseQuarantined marks one quarantined record released; it fails when no
@@ -113,8 +114,5 @@ func (u *Unit) ReleasedEnvelope(ctx context.Context, tenantID, eventID string) (
 
 // MarkRedriven marks a released record redriven.
 func (u *Unit) MarkRedriven(ctx context.Context, tenantID, eventID string, now time.Time) error {
-	if _, err := u.tx.ExecContext(ctx, "UPDATE event_quarantine SET redriven_at = ? WHERE tenant_id = ? AND event_id = ? AND status = 'released'", kernel.FormatTime(now), tenantID, eventID); err != nil {
-		return fmt.Errorf("mark quarantine redriven: %w", err)
-	}
-	return nil
+	return u.exec(ctx, "mark quarantine redriven", "UPDATE event_quarantine SET redriven_at = ? WHERE tenant_id = ? AND event_id = ? AND status = 'released'", kernel.FormatTime(now), tenantID, eventID)
 }

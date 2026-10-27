@@ -104,14 +104,7 @@ func TestReadsOfAnUnknownRowReportNoRows(t *testing.T) {
 		},
 		"episode lifecycle": func(tx *store.Tx) error { _, err := store.EpisodeLifecycle(t.Context(), tx, "missing"); return err },
 	}
-	for name, read := range reads {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			if err := inTx(t, db, read); !errors.Is(err, sql.ErrNoRows) {
-				t.Fatalf("error = %v, want sql.ErrNoRows", err)
-			}
-		})
-	}
+	requireEachFailsWith(t, db, reads, sql.ErrNoRows)
 }
 
 func TestProjectionErrorsPreserveCancellation(t *testing.T) {
@@ -135,11 +128,16 @@ func TestProjectionErrorsPreserveCancellation(t *testing.T) {
 			return store.InsertValidatedIntent(ctx, tx, store.ValidatedIntentInsert{Intent: intentFixture()})
 		},
 	}
+	requireEachFailsWith(t, db, operations, context.Canceled)
+}
+
+func requireEachFailsWith(t *testing.T, db *storage.DB, operations map[string]func(tx *store.Tx) error, want error) {
+	t.Helper()
 	for name, operation := range operations {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if err := inTx(t, db, operation); !errors.Is(err, context.Canceled) {
-				t.Fatalf("error = %v, want one wrapping context.Canceled", err)
+			if err := inTx(t, db, operation); !errors.Is(err, want) {
+				t.Fatalf("error = %v, want one wrapping %v", err, want)
 			}
 		})
 	}

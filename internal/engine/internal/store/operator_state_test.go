@@ -30,13 +30,7 @@ func TestOperatorStateScopeIsAnEntityAndItsCompositeKeysOnly(t *testing.T) {
 		}
 		return tx.SaveOperatorState(t.Context(), 0, "m1", operatorState("m1"), testNow)
 	})
-	inTx(t, s, func(tx *Tx) error {
-		all, err := tx.LoadOperatorState(t.Context(), 0, "")
-		if err != nil || len(all.OperatorStates["op"]) != 2 {
-			t.Fatalf("saving m1 must replace only m1's scope: %v err=%v", all.OperatorStates, err)
-		}
-		return nil
-	})
+	requireOperatorKeys(t, s, "", 2, "saving m1 must replace only m1's scope")
 }
 
 func TestOperatorStateIsScopedToPartitionAndTenant(t *testing.T) {
@@ -63,10 +57,15 @@ func TestSavingNilOperatorStateLeavesStorageUntouched(t *testing.T) {
 	s := openStore(t)
 	inTx(t, s, func(tx *Tx) error { return tx.SaveOperatorState(t.Context(), 0, "m1", operatorState("m1"), testNow) })
 	inTx(t, s, func(tx *Tx) error { return tx.SaveOperatorState(t.Context(), 0, "m1", nil, testNow) })
+	requireOperatorKeys(t, s, "m1", 1, "want the earlier state kept")
+}
+
+func requireOperatorKeys(t *testing.T, s Store, scope string, want int, reason string) {
+	t.Helper()
 	inTx(t, s, func(tx *Tx) error {
-		state, err := tx.LoadOperatorState(t.Context(), 0, "m1")
-		if err != nil || len(state.OperatorStates["op"]) != 1 {
-			t.Fatalf("state = %v err=%v, want the earlier state kept", state.OperatorStates, err)
+		state, err := tx.LoadOperatorState(t.Context(), 0, scope)
+		if err != nil || len(state.OperatorStates["op"]) != want {
+			t.Fatalf("%s: state = %v err=%v", reason, state.OperatorStates, err)
 		}
 		return nil
 	})

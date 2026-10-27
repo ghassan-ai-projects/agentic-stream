@@ -73,9 +73,7 @@ func (f *reconsiderationFixture) newService(latePolicy string) *Service {
 
 func (f *reconsiderationFixture) exec(statement string, args ...any) {
 	f.t.Helper()
-	if _, err := f.db.ExecContext(f.t.Context(), statement, args...); err != nil {
-		f.t.Fatalf("%s: %v", statement, err)
-	}
+	mustExec(f.t, f.db, statement, args...)
 }
 
 func (f *reconsiderationFixture) process() error {
@@ -90,11 +88,7 @@ func (f *reconsiderationFixture) processWith(service *Service) error {
 
 func (f *reconsiderationFixture) count(query string) int {
 	f.t.Helper()
-	var n int
-	if err := f.db.QueryRowContext(f.t.Context(), query).Scan(&n); err != nil {
-		f.t.Fatalf("%s: %v", query, err)
-	}
-	return n
+	return queryScalar[int](f.t, f.db, query)
 }
 
 func snapshotDocument(version int, completeness string) map[string]any {
