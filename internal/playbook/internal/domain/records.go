@@ -36,6 +36,7 @@ type Evaluation struct {
 	SituationID      string
 	SituationVersion int
 	InEnvelope       bool
+	InCap            bool
 	Recommendation   Recommendation
 	Verdict          string
 	Observed         *Observed
@@ -56,14 +57,14 @@ func NewFire(tenantID, episodeID, situationID string, version int, recommendatio
 
 func NewShadowEvaluation(tenantID, episodeID, situationID string, version int, match Match, recommendation Recommendation) Evaluation {
 	return Evaluation{EvaluationID: evaluationPrefix + episodeID + "_" + recommendation.RuleID, TenantID: tenantID, Kind: KindShadow,
-		EpisodeID: episodeID, SituationID: situationID, SituationVersion: version, InEnvelope: match.InEnvelope,
+		EpisodeID: episodeID, SituationID: situationID, SituationVersion: version, InEnvelope: match.InEnvelope, InCap: match.InCap,
 		Recommendation: recommendation, Verdict: VerdictPending}
 }
 
 func NewAuditEvaluation(fire Fire, schedulerItemID string) Evaluation {
 	return Evaluation{EvaluationID: auditPrefix + fire.FireID, TenantID: fire.TenantID, Kind: KindAudit, FireID: fire.FireID,
 		SchedulerItemID: schedulerItemID, SituationID: fire.SituationID, SituationVersion: fire.SituationVersion,
-		InEnvelope: true, Recommendation: fire.Recommendation, Verdict: VerdictPending}
+		InEnvelope: true, InCap: true, Recommendation: fire.Recommendation, Verdict: VerdictPending}
 }
 
 func AuditKey(fire Fire) string {

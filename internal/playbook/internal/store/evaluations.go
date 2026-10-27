@@ -21,12 +21,12 @@ func (t *Tx) RecordEvaluation(ctx context.Context, evaluation domain.Evaluation,
 		return fmt.Errorf("encode the recommendation of evaluation %s: %w", evaluation.EvaluationID, err)
 	}
 	if _, err := t.tx.ExecContext(ctx, `INSERT INTO rule_evaluations (evaluation_id, tenant_id, rule_id, rule_version, playbook_digest,
-		kind, fire_id, scheduler_item_id, episode_id, situation_id, situation_version, in_envelope, recommendation_json, verdict, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		kind, fire_id, scheduler_item_id, episode_id, situation_id, situation_version, in_envelope, in_cap, recommendation_json, verdict,
+		created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		evaluation.EvaluationID, evaluation.TenantID, evaluation.Recommendation.RuleID, evaluation.Recommendation.RuleVersion,
 		evaluation.Recommendation.PlaybookDigest, evaluation.Kind, storage.NullIfEmpty(evaluation.FireID),
 		storage.NullIfEmpty(evaluation.SchedulerItemID), storage.NullIfEmpty(evaluation.EpisodeID), evaluation.SituationID,
-		evaluation.SituationVersion, storage.BoolInt(evaluation.InEnvelope), recommendation, evaluation.Verdict,
+		evaluation.SituationVersion, storage.BoolInt(evaluation.InEnvelope), storage.BoolInt(evaluation.InCap), recommendation, evaluation.Verdict,
 		kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("record evaluation %s: %w", evaluation.EvaluationID, err)
 	}
@@ -99,4 +99,17 @@ func observedDocument(observed *domain.Observed) ([]byte, error) {
 		return nil, fmt.Errorf("encode the observed decision: %w", err)
 	}
 	return document, nil
+}
+
+func (t *Tx) CapCounts(ctx context.Context, rule domain.RuleKey, since time.Time) (domain.CapCounts, error) {
+	var counts domain.CapCounts
+	at := kernel.FormatTime(since)
+	if err := t.tx.QueryRowContext(ctx, `SELECT
+			(SELECT COUNT(*) FROM rule_evaluations WHERE rule_id = ? AND rule_version = ? AND kind = 'shadow' AND created_at >= ?) +
+			(SELECT COUNT(*) FROM rule_fires WHERE rule_id = ? AND rule_version = ? AND fired_at >= ?),
+			(SELECT COUNT(*) FROM rule_evaluations WHERE rule_id = ? AND rule_version = ? AND kind = 'shadow' AND in_cap = 0 AND created_at >= ?)`,
+		rule.ID, rule.Version, at, rule.ID, rule.Version, at, rule.ID, rule.Version, at).Scan(&counts.Matches, &counts.OutsideCap); err != nil {
+		return counts, fmt.Errorf("count the recent matches of rule %s: %w", rule.ID, err)
+	}
+	return counts, nil
 }

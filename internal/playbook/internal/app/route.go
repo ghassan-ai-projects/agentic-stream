@@ -39,13 +39,20 @@ func (s *Service) routeByRules(ctx context.Context, tx *store.Tx, admission doma
 		return domain.Route{}, err
 	}
 	routing := s.rules.Route(s.rules.Features(admission.Facts, admission.Evidence), state)
-	if err := s.recordShadows(ctx, tx, admission, routing.Shadows, now); err != nil {
-		return domain.Route{}, err
-	}
-	if err := s.tripRateCap(ctx, tx, routing.RateCapped, state, now); err != nil {
+	if err := s.recordMisses(ctx, tx, admission, routing, state, now); err != nil {
 		return domain.Route{}, err
 	}
 	return s.fire(ctx, tx, admission, routing.Fire, now)
+}
+
+func (s *Service) recordMisses(ctx context.Context, tx *store.Tx, admission domain.Admission, routing domain.Routing, state domain.State, now time.Time) error {
+	if err := s.recordShadows(ctx, tx, admission, routing.Shadows, now); err != nil {
+		return err
+	}
+	if err := s.recordOutsideEnvelope(ctx, tx, admission, routing.OutsideEnvelope, now); err != nil {
+		return err
+	}
+	return s.tripRateCap(ctx, tx, routing.RateCapped, state, now)
 }
 
 func (s *Service) ruleState(ctx context.Context, tx *store.Tx, now time.Time) (domain.State, error) {
@@ -105,4 +112,19 @@ func (s *Service) tripKindChanges(ctx context.Context, tx *store.Tx, now time.Ti
 		}
 	}
 	return nil
+}
+
+func (s *Service) recordOutsideEnvelope(ctx context.Context, tx *store.Tx, admission domain.Admission, match *domain.Match, now time.Time) error {
+	if match == nil {
+		return nil
+	}
+	if err := s.recordShadows(ctx, tx, admission, []domain.Match{*match}, now); err != nil {
+		return err
+	}
+	rule := domain.RuleKey{ID: match.Rule.ID, Version: match.Rule.Version}
+	counts, err := tx.CapCounts(ctx, rule, now.Add(-domain.OutOfCapWindow))
+	if err != nil || !counts.MostlyOutside() {
+		return err
+	}
+	return tx.OpenCircuit(ctx, domain.OutOfCapCircuit(s.tenantID, rule, counts, now))
 }

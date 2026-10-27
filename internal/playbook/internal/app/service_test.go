@@ -208,3 +208,23 @@ func TestSettleSwitchesOffARuleWhoseCaseReopened(t *testing.T) {
 		t.Fatalf("circuit cause = %q (%v), want no_effect", cause, err)
 	}
 }
+
+func TestMostMatchesOutsideTheCapOpenTheRulesCircuit(t *testing.T) {
+	t.Parallel()
+	service := pumpService(t)
+	for i := range 4 {
+		if routed := route(t, service, admission("far-"+string(rune('a'+i)), 7.0, 2.0)); routed.Kind != domain.RouteModel {
+			t.Fatalf("route outside the envelope = %+v, want the model", routed)
+		}
+	}
+	var cause string
+	if err := service.Store().WithTx(t.Context(), func(tx *store.Tx) error {
+		open, err := tx.OpenCircuits(t.Context(), "t")
+		if open[domain.RuleKey{ID: "bearing-wear", Version: 1}] {
+			cause = "out_of_cap"
+		}
+		return err
+	}); err != nil || cause == "" {
+		t.Fatalf("circuit open = %q (%v), want the rule switched off after most matches fell outside its cap", cause, err)
+	}
+}

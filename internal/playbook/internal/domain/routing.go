@@ -10,13 +10,15 @@ type State struct {
 type Match struct {
 	Rule       spec.Rule
 	InEnvelope bool
+	InCap      bool
 	Features   map[string]any
 }
 
 type Routing struct {
-	Fire       *Match
-	RateCapped *Match
-	Shadows    []Match
+	Fire            *Match
+	RateCapped      *Match
+	OutsideEnvelope *Match
+	Shadows         []Match
 }
 
 func (r *Rules) Route(features map[string]any, state State) Routing {
@@ -37,7 +39,11 @@ func (r *Rules) Route(features map[string]any, state State) Routing {
 }
 
 func (r *Rules) answer(routing Routing, active []Match, state State) Routing {
-	if len(active) != 1 || !active[0].InEnvelope {
+	if len(active) != 1 {
+		return routing
+	}
+	if !active[0].InEnvelope {
+		routing.OutsideEnvelope = &active[0]
 		return routing
 	}
 	match := active[0]
@@ -51,7 +57,7 @@ func (r *Rules) answer(routing Routing, active []Match, state State) Routing {
 
 func (r *Rules) matchOf(rule spec.Rule, features map[string]any) Match {
 	read := readFeatures(append(rule.Reads, r.context...), features)
-	return Match{Rule: rule, InEnvelope: insideEnvelope(rule.Envelope, features), Features: read}
+	return Match{Rule: rule, InEnvelope: insideEnvelope(rule.Envelope, features), InCap: insideEnvelope(rule.Cap, features), Features: read}
 }
 
 func readFeatures(names []string, features map[string]any) map[string]any {

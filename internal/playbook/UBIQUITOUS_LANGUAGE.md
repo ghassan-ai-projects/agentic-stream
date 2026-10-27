@@ -21,4 +21,6 @@
 | Settle window | How long, in event time from the decision, a case must stay resolved: a version that is not resolved on the entity before it ends, or a Situation that never resolves, makes the case not verified. Declared per diagnosis code in the spec; a rule's code must have one. | `Case.Verify`, `CaseEvidence` | `window_ends_at` |
 | Verified case | A case whose action was acknowledged and whose Situation resolved and stayed resolved through its settle window. | `CaseVerified` | `case_verifications.verdict` |
 | No effect | The circuit cause of a rule whose own case was not verified. | `CauseNoEffect`, `NoEffectCircuit` | `rule_circuits.cause` |
+| Envelope and cap | The envelope is the range of each feature a rule's verified source cases showed; the cap, which the approver may tighten, is the wider range a rule may grow into later. A match outside the envelope goes to the model and is recorded with whether it fell inside the cap. | `Match.InEnvelope`, `Match.InCap` | `rule_evaluations.in_envelope`, `in_cap` |
+| Out of cap | The circuit cause of a rule whose recent matches (24 h, at least four) mostly fell outside its cap. | `CauseOutOfCap`, `CapCounts` | `rule_circuits.cause` |
 
