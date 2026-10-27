@@ -244,6 +244,38 @@
       }
     }
   },
+  "pump.axial_vibration.observed/1.1": {
+    "event_type": "pump.axial_vibration.observed",
+    "schema_version": "1.1",
+    "fields": {
+      "value": {
+        "path": "value",
+        "unit": "mm_s",
+        "optional": true
+      },
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "enum": ["valid", "warming", "invalid", "disconnected"],
+        "optional": true
+      },
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "integer",
+        "optional": true
+      },
+      "schema_version": {
+        "path": "schema_version",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
   "pump.demand_event.observed/1.0": {
     "event_type": "pump.demand_event.observed",
     "schema_version": "1.0",
@@ -289,6 +321,33 @@
     "schema_version": "1.0",
     "fields": {}
   },
+  "pump.heartbeat.observed/1.1": {
+    "event_type": "pump.heartbeat.observed",
+    "schema_version": "1.1",
+    "fields": {
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "enum": ["valid", "warming", "invalid", "disconnected"],
+        "optional": true
+      },
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "integer",
+        "optional": true
+      },
+      "schema_version": {
+        "path": "schema_version",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
   "pump.mode.observed/1.0": {
     "event_type": "pump.mode.observed",
     "schema_version": "1.0",
@@ -315,6 +374,38 @@
       "value": {
         "path": "value",
         "unit": "ampere"
+      }
+    }
+  },
+  "pump.motor_current.observed/1.1": {
+    "event_type": "pump.motor_current.observed",
+    "schema_version": "1.1",
+    "fields": {
+      "value": {
+        "path": "value",
+        "unit": "ampere",
+        "optional": true
+      },
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "enum": ["valid", "warming", "invalid", "disconnected"],
+        "optional": true
+      },
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "integer",
+        "optional": true
+      },
+      "schema_version": {
+        "path": "schema_version",
+        "type": "string",
+        "optional": true
       }
     }
   },
@@ -363,6 +454,38 @@
       }
     }
   },
+  "pump.temperature.observed/1.1": {
+    "event_type": "pump.temperature.observed",
+    "schema_version": "1.1",
+    "fields": {
+      "celsius": {
+        "path": "celsius",
+        "unit": "celsius",
+        "optional": true
+      },
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "enum": ["valid", "warming", "invalid", "disconnected"],
+        "optional": true
+      },
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "integer",
+        "optional": true
+      },
+      "schema_version": {
+        "path": "schema_version",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
   "pump.turbidity.observed/1.0": {
     "event_type": "pump.turbidity.observed",
     "schema_version": "1.0",
@@ -388,6 +511,38 @@
       },
       "unit": {
         "path": "unit",
+        "type": "string",
+        "optional": true
+      }
+    }
+  },
+  "pump.vibration.observed/1.1": {
+    "event_type": "pump.vibration.observed",
+    "schema_version": "1.1",
+    "fields": {
+      "rms_mm_s": {
+        "path": "rms_mm_s",
+        "unit": "mm_s",
+        "optional": true
+      },
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "enum": ["valid", "warming", "invalid", "disconnected"],
+        "optional": true
+      },
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "integer",
+        "optional": true
+      },
+      "schema_version": {
+        "path": "schema_version",
         "type": "string",
         "optional": true
       }

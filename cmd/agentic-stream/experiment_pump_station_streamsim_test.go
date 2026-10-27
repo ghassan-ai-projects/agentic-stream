@@ -14,18 +14,11 @@ import (
 
 const pumpStationSpec = "../../examples/pump-station/pump-station.situation.yaml"
 
-var (
-	pumpStationPlantWire    = filepath.Join("..", "..", "examples", "pump-station", "testdata", "plant-wire")
-	pumpStationEventSchemas = filepath.Join("..", "..", "examples", "pump-station", "event-schemas")
-)
+var pumpStationPlantWire = filepath.Join("..", "..", "examples", "pump-station", "testdata", "plant-wire")
 
 func compilePumpStation(t *testing.T) *spec.CompiledSpec {
 	t.Helper()
-	schemas, err := spec.LoadEventSchemas(pumpStationEventSchemas)
-	if err != nil {
-		t.Fatal(err)
-	}
-	compiled, err := spec.CompileFile(t.Context(), pumpStationSpec, spec.WithEventSchemas(schemas))
+	compiled, err := spec.CompileFile(t.Context(), pumpStationSpec)
 	if err != nil {
 		t.Fatalf("compile the pump-station spec: %v", err)
 	}
@@ -45,7 +38,7 @@ func TestThePumpStationOpensAConditionOnTheWornPump(t *testing.T) {
 	t.Parallel()
 	binary, repository := streamsimNode(t)
 	run := startPlantWireServe(t, pumpStationSpec, filepath.Join(pumpStationPlantWire, "kinds"),
-		filepath.Join(pumpStationPlantWire, "pump-station.site.json"), "--event-schemas", pumpStationEventSchemas)
+		filepath.Join(pumpStationPlantWire, "pump-station.site.json"))
 	plan := writePumpStationPlan(t, run.socket, map[string]any{"at_s": 3600, "instance": "site-a/pump-3", "fault": "bearing_wear"})
 	station := filepath.Join(repository, "examples", "pump-station")
 	node := exec.Cmd{Path: binary, Args: []string{binary, "plantwire", "connect", "--plan", plan, "--domains-dir", station,
