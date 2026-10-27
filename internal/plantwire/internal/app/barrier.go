@@ -7,7 +7,7 @@ import (
 )
 
 func (s *session) holdUntilDrained(replies []map[string]any) bool {
-	if s.held == nil && (!s.queue.pending() || !slices.ContainsFunc(replies, isBarrierAnswer)) {
+	if s.held == nil && (!s.queue.backedUp() || !slices.ContainsFunc(replies, isBarrierAnswer)) {
 		return false
 	}
 	s.held = append(s.held, replies...)

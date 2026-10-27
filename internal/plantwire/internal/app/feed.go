@@ -6,7 +6,10 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
-const defaultQueueSize = 4096
+const (
+	defaultQueueSize = 4096
+	backlogShare     = 4
+)
 
 type Emit = func(context.Context, contractsv1.Envelope) error
 
@@ -46,6 +49,10 @@ func (q *ingestQueue) signalDrained() {
 
 func (q *ingestQueue) pending() bool {
 	return len(q.events) > 0
+}
+
+func (q *ingestQueue) backedUp() bool {
+	return len(q.events) >= max(cap(q.events)/backlogShare, 1)
 }
 
 func (q *ingestQueue) enqueue(events []contractsv1.Envelope) bool {

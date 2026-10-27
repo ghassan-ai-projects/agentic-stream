@@ -93,7 +93,7 @@ func TestServeIngestsTheBenchReadingsOfAPlantWireNodeAndOpensASituation(t *testi
 			"metrics": []any{benchSample(1, 31+float64(step), at), benchSample(2, 40, at)}})
 	}
 	node.Send(map[string]any{"type": "NSYNC", "lane": "control", "through_seq": 0, "world_time_ns": start.UnixNano()})
-	node.ExpectWithin("HSYNC", readyTimeout)
+	node.Expect("HSYNC")
 	want := map[string]int{"zone.temp.observed": benchReadings, "zone.humidity.observed": benchReadings, "zone.heartbeat.observed": benchReadings}
 	if !pollUntil(t, readyTimeout, func() bool { return maps.Equal(eventTypeCounts(t, run.db), want) }) {
 		t.Fatalf("event log = %v, want %v", eventTypeCounts(t, run.db), want)

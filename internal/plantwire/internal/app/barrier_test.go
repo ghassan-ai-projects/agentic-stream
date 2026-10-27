@@ -10,17 +10,34 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/plantwirefake"
 )
 
-func TestHostHoldsABarrierAnswerUntilTheIngestQueueHasDrained(t *testing.T) {
-	t.Parallel()
-	release := make(chan struct{})
-	slow := func(ctx context.Context, _ contractsv1.Envelope) error {
+func blockedEmit(release <-chan struct{}) func(context.Context, contractsv1.Envelope) error {
+	return func(ctx context.Context, _ contractsv1.Envelope) error {
 		select {
 		case <-release:
 		case <-ctx.Done():
 		}
 		return nil
 	}
-	host := pumpHost(t, app.Config{QueueSize: 8}, slow)
+}
+
+func TestHostAnswersABarrierAtOnceWhileItsIngestQueueIsNotBackedUp(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	host := pumpHost(t, app.Config{QueueSize: 4096}, blockedEmit(release))
+	node := bornNode(t, host, "s-1")
+	node.Send(plantwirefake.Fixture(t, ".", "DBIRTH.json"))
+	node.Send(pumpData(firstBoot, birthNS+60*second, "good", false))
+	barrier(node)
+	if !barrierAnswerWithin(node, 5*time.Second) {
+		t.Fatal("the host held the barrier for a few queued events")
+	}
+}
+
+func TestHostHoldsABarrierAnswerUntilABackedUpIngestQueueHasDrained(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	host := pumpHost(t, app.Config{QueueSize: 4}, blockedEmit(release))
 	node := bornNode(t, host, "s-1")
 	node.Send(plantwirefake.Fixture(t, ".", "DBIRTH.json"))
 	node.Send(pumpData(firstBoot, birthNS+60*second, "good", false))
