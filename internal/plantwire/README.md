@@ -22,9 +22,10 @@ Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 the owner-only Unix socket helper of `internal/worker` (absolute path, 0700
 directory, 0600 socket) and hands it to `New`. A session's reader never waits on
 the host: records are read on their own goroutine and answered from one loop,
-so a barrier is answered as soon as the events read before it have left the
-ingest queue (the feeder signals each time the queue drains; while an answer is
-held the session sends nothing else and runs no command). The session's state is the pure
+so a barrier is answered at once unless the ingest queue is backed up (a
+quarter of it in use); then the answer is held until the queue drains (the
+feeder signals each time it does; while an answer is held the session sends
+nothing else and runs no command). The session's state is the pure
 `domain.Conversation`; the app layer only moves lines and timers. Heartbeats
 use the injected clock, so tests drive them with a virtual clock. The app layer
 reads the kind files and the site file from disk (the module's edge is the
