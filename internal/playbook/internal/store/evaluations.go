@@ -46,13 +46,9 @@ func (t *Tx) PendingAudit(ctx context.Context, schedulerItemID string) (domain.E
 }
 
 func (t *Tx) PendingEvaluations(ctx context.Context, tenantID string) ([]domain.Evaluation, error) {
-	evaluations, err := storage.QueryAll(ctx, t.tx, "pending evaluations", scanEvaluation, `SELECT `+evaluationColumns+`
+	return readAll(ctx, t.tx, "pending evaluations", scanEvaluation, `SELECT `+evaluationColumns+`
 		FROM rule_evaluations WHERE tenant_id = ? AND verdict = 'pending' AND episode_id IS NOT NULL
 		ORDER BY created_at, evaluation_id`, tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("read pending rule evaluations: %w", err)
-	}
-	return evaluations, nil
 }
 
 func scanEvaluation(rows *sql.Rows) (domain.Evaluation, error) {

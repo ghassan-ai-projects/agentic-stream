@@ -70,12 +70,8 @@ func (t *Tx) announceOpened(ctx context.Context, circuit domain.Circuit, result 
 }
 
 func (t *Tx) Circuits(ctx context.Context, tenantID string) ([]domain.CircuitView, error) {
-	circuits, err := storage.QueryAll(ctx, t.tx, "rule circuits", scanCircuit, `SELECT rule_id, rule_version, state, cause, opened_at,
+	return readAll(ctx, t.tx, "rule circuits", scanCircuit, `SELECT rule_id, rule_version, state, cause, opened_at,
 		COALESCE(closed_at, ''), COALESCE(close_reason, '') FROM rule_circuits WHERE tenant_id = ? ORDER BY opened_at, rule_id, rule_version`, tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("read rule circuits: %w", err)
-	}
-	return circuits, nil
 }
 
 func scanCircuit(rows *sql.Rows) (domain.CircuitView, error) {

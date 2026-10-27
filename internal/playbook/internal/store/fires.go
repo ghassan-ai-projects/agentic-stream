@@ -54,13 +54,9 @@ func scanFireCount(rows *sql.Rows) (fireCount, error) {
 }
 
 func (t *Tx) DueAudits(ctx context.Context, tenantID string) ([]domain.Fire, error) {
-	fires, err := storage.QueryAll(ctx, t.tx, "due audits", scanFire, `SELECT fire_id, tenant_id, episode_id, situation_id,
+	return readAll(ctx, t.tx, "due audits", scanFire, `SELECT fire_id, tenant_id, episode_id, situation_id,
 		situation_version, recommendation_json, audit_due, event_time FROM rule_fires
 		WHERE tenant_id = ? AND audit_due = 1 AND audit_queued = 0 ORDER BY event_time, fire_id`, tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("read due audits: %w", err)
-	}
-	return fires, nil
 }
 
 func scanFire(rows *sql.Rows) (domain.Fire, error) {

@@ -16,13 +16,9 @@ import (
 )
 
 func (t *Tx) KeyedCases(ctx context.Context, tenantID string) ([]domain.KeyedCase, error) {
-	cases, err := storage.QueryAll(ctx, t.tx, "keyed cases", scanKeyedCase, `SELECT diagnosis_code, kind_digest, intent, preset,
+	return readAll(ctx, t.tx, "keyed cases", scanKeyedCase, `SELECT diagnosis_code, kind_digest, intent, preset,
 		episode_id, verdict, features_json, summary FROM case_verifications WHERE tenant_id = ? AND verdict != 'pending'
 		ORDER BY acted_at, situation_id`, tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("read the settled cases: %w", err)
-	}
-	return cases, nil
 }
 
 func scanKeyedCase(rows *sql.Rows) (domain.KeyedCase, error) {

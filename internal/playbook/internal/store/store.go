@@ -51,3 +51,11 @@ func (s Store) WithFencedTx(ctx context.Context, fence Fence, use func(*Tx) erro
 		return use(tx)
 	})
 }
+
+func readAll[T any](ctx context.Context, q storage.Querier, what string, scan func(*sql.Rows) (T, error), query string, args ...any) ([]T, error) {
+	rows, err := storage.QueryAll(ctx, q, what, scan, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", what, err)
+	}
+	return rows, nil
+}

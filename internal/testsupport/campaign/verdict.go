@@ -61,10 +61,10 @@ func WriteVerdict(ctx context.Context, db *sql.DB, runDir, arm string, since tim
 	}
 	v := verdict{SchemaVersion: schemaVersion, RunID: runID, Consumer: consumer{Name: "agentic-stream", Version: "rule-promotion", Arm: arm}}
 	from := kernel.FormatTime(since)
-	if v.Detections, err = readDetections(ctx, db, from); err != nil {
+	if v.Detections, err = readVerdictRows(ctx, db, "detection", scanDetection, detectionsQuery, from); err != nil {
 		return err
 	}
-	if v.Actions, err = readActions(ctx, db, from); err != nil {
+	if v.Actions, err = readVerdictRows(ctx, db, "action", scanAction, actionsQuery, from); err != nil {
 		return err
 	}
 	_, err = writeIn(runDir, verdictFile, v)
@@ -85,12 +85,12 @@ func readRunID(runDir string) (string, error) {
 	return run.RunID, nil
 }
 
-func readDetections(ctx context.Context, db *sql.DB, from string) ([]detection, error) {
-	detections, err := storage.QueryAll(ctx, db, "detection", scanDetection, detectionsQuery, from)
+func readVerdictRows[T any](ctx context.Context, db *sql.DB, what string, scan func(*sql.Rows) (T, error), query, from string) ([]T, error) {
+	rows, err := storage.QueryAll(ctx, db, what, scan, query, from)
 	if err != nil {
-		return nil, fmt.Errorf("read the detections: %w", err)
+		return nil, fmt.Errorf("read the verdict's %ss: %w", what, err)
 	}
-	return detections, nil
+	return rows, nil
 }
 
 func scanDetection(rows *sql.Rows) (detection, error) {
@@ -100,14 +100,6 @@ func scanDetection(rows *sql.Rows) (detection, error) {
 	}
 	d.EntityID = instanceOf(d.EntityID)
 	return d, nil
-}
-
-func readActions(ctx context.Context, db *sql.DB, from string) ([]action, error) {
-	actions, err := storage.QueryAll(ctx, db, "action", scanAction, actionsQuery, from)
-	if err != nil {
-		return nil, fmt.Errorf("read the actions: %w", err)
-	}
-	return actions, nil
 }
 
 func scanAction(rows *sql.Rows) (action, error) {

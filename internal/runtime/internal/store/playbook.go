@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
@@ -67,15 +68,20 @@ func (p *PipelineStore) DraftPlaybook(ctx context.Context) error {
 }
 
 func (p *PipelineStore) PresentRuleProposal(ctx context.Context, r playbook.ProposalLookup) (playbook.ProposalPresentation, error) {
-	if p.Playbook == nil {
-		return playbook.ProposalPresentation{}, playbook.ErrProposalNotFound
-	}
-	return inApprovalResult(ctx, p, "present rule proposal", r, p.Playbook.PresentProposal)
+	return inRuleProposal(ctx, p, "present rule proposal", r, (*playbook.Service).PresentProposal)
 }
 
 func (p *PipelineStore) ResolveRuleProposal(ctx context.Context, r playbook.ProposalResolution) (playbook.ProposalResult, error) {
+	return inRuleProposal(ctx, p, "resolve rule proposal", r, (*playbook.Service).ResolveProposal)
+}
+
+func inRuleProposal[R, T any](ctx context.Context, p *PipelineStore, operation string, request R,
+	run func(*playbook.Service, context.Context, *sql.Tx, R) (T, error)) (T, error) {
 	if p.Playbook == nil {
-		return playbook.ProposalResult{}, playbook.ErrProposalNotFound
+		var none T
+		return none, playbook.ErrProposalNotFound
 	}
-	return inApprovalResult(ctx, p, "resolve rule proposal", r, p.Playbook.ResolveProposal)
+	return inApprovalResult(ctx, p, operation, request, func(ctx context.Context, tx *sql.Tx, request R) (T, error) {
+		return run(p.Playbook, ctx, tx, request)
+	})
 }

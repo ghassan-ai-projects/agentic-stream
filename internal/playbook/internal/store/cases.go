@@ -141,13 +141,9 @@ func wrapEvidence(c domain.Case, err error) error {
 }
 
 func (t *Tx) PendingCases(ctx context.Context, tenantID string) ([]domain.Case, error) {
-	cases, err := storage.QueryAll(ctx, t.tx, "pending cases", scanCase, `SELECT situation_id, situation_version, tenant_id, entity_id,
+	return readAll(ctx, t.tx, "pending cases", scanCase, `SELECT situation_id, situation_version, tenant_id, entity_id,
 		situation_type, episode_id, rule_id, rule_version, acted_at, window_ends_at FROM case_verifications
 		WHERE tenant_id = ? AND verdict = 'pending' ORDER BY acted_at, situation_id`, tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("read pending cases: %w", err)
-	}
-	return cases, nil
 }
 
 func scanCase(rows *sql.Rows) (domain.Case, error) {

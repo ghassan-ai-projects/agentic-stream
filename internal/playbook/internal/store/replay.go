@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/playbook/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
 const replayVersionsSQL = `
@@ -21,11 +20,7 @@ const replayVersionsSQL = `
 	ORDER BY sv.created_at, sv.situation_id, sv.version LIMIT ?`
 
 func (t *Tx) ReplayVersions(ctx context.Context, tenantID, situationType string, limit int) ([]domain.ReplayVersion, error) {
-	versions, err := storage.QueryAll(ctx, t.tx, "replay versions", scanReplayVersion, replayVersionsSQL, tenantID, situationType, limit)
-	if err != nil {
-		return nil, fmt.Errorf("read the situation history to replay: %w", err)
-	}
-	return versions, nil
+	return readAll(ctx, t.tx, "replay versions", scanReplayVersion, replayVersionsSQL, tenantID, situationType, limit)
 }
 
 func scanReplayVersion(rows *sql.Rows) (domain.ReplayVersion, error) {
