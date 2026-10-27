@@ -32,12 +32,8 @@ func signerKey(ctx context.Context, tx *store.Tx, signed domain.SignedApproval) 
 	if err := domain.DistinctPrincipals(domain.ApprovalResolution{Approver: signed.Approver, Relay: signed.Relay}); err != nil {
 		return nil, err
 	}
-	active, err := tx.RelayActivity(ctx, signed.TenantID, signed.Relay)
-	if err := domain.ActiveRelay(active, err != nil); err != nil {
-		return nil, err
-	}
-	key, err := tx.ApproverKey(ctx, signed.TenantID, signed.Approver)
-	if err := domain.ValidApproverKey(key, err != nil); err != nil {
+	key, err := activeRelayAndKey(ctx, tx, signed.TenantID, signed.Relay, signed.Approver)
+	if err != nil {
 		return nil, err
 	}
 	authority, err := tx.RiskAuthority(ctx, signed.TenantID, signed.Approver, signed.RiskClass)

@@ -26,15 +26,20 @@ func loadApprovalPrincipals(ctx context.Context, tx *store.Tx, row domain.Intent
 	if err != nil {
 		return "", nil, err
 	}
-	active, err := tx.RelayActivity(ctx, row.TenantID, r.Relay)
+	key, err := activeRelayAndKey(ctx, tx, row.TenantID, r.Relay, r.Approver)
+	return entity, key, err
+}
+
+func activeRelayAndKey(ctx context.Context, tx *store.Tx, tenantID, relay, approver string) ([]byte, error) {
+	active, err := tx.RelayActivity(ctx, tenantID, relay)
 	if err := domain.ActiveRelay(active, err != nil); err != nil {
-		return "", nil, err
+		return nil, err
 	}
-	key, err := tx.ApproverKey(ctx, row.TenantID, r.Approver)
+	key, err := tx.ApproverKey(ctx, tenantID, approver)
 	if err := domain.ValidApproverKey(key, err != nil); err != nil {
-		return "", nil, err
+		return nil, err
 	}
-	return entity, key, nil
+	return key, nil
 }
 func verifyApprovalAssertion(ctx context.Context, tx *store.Tx, row domain.IntentRecord, r domain.ApprovalResolution, key []byte) error {
 	assertion, err := approvalSigningBytes(ctx, tx, row, r)
