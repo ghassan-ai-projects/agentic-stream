@@ -64,10 +64,7 @@ func compileRule(rule spec.Rule) (compiledRule, error) {
 }
 
 func contextFeatures(compiled *spec.CompiledSpec) []string {
-	if compiled.Promotion == nil {
-		return nil
-	}
-	return slices.Clone(compiled.Promotion.ContextFeatures)
+	return slices.Clone(compiled.Promotion.ContextFeatureNames())
 }
 
 func conditionProgram(env *cel.Env, rule spec.Rule) (cel.Program, error) {

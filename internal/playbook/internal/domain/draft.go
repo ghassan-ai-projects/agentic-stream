@@ -97,7 +97,7 @@ func (r *Rules) RuleFromProposal(request draftport.Request, proposal draftport.P
 		return spec.Rule{}, err
 	}
 	key := Key(request.Key)
-	envelope, limits := ProposedEnvelope(featuresOf(cited), append(reads, r.context...), r.margin())
+	envelope, limits := ProposedEnvelope(featuresOf(cited), append(reads, r.context...), r.spec.Promotion.Margin())
 	return spec.Rule{ID: RuleID(key), Version: identity.Version, DiagnosisCode: proposal.DiagnosisCode, When: proposal.When,
 		Recommend: spec.Recommendation{Intent: proposal.Intent, Preset: proposal.Preset}, Envelope: envelope, Cap: limits,
 		PinnedKind: spec.PinnedKind{Name: identity.KindName, Digest: key.KindDigest}, Mode: spec.RuleModeShadow,
@@ -110,13 +110,6 @@ func featuresOf(cases []draftport.Case) []map[string]any {
 		features = append(features, c.Features)
 	}
 	return features
-}
-
-func (r *Rules) margin() float64 {
-	if r.spec.Promotion == nil {
-		return 0
-	}
-	return r.spec.Promotion.EnvelopeMargin
 }
 
 const kindIDBytes = 6

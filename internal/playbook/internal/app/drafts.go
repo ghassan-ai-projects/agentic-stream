@@ -147,11 +147,7 @@ func (s *Service) checkedRule(request draftport.Request, proposed draftport.Prop
 }
 
 func (s *Service) compiledRule(rule spec.Rule) (spec.Rule, error) {
-	document, err := spec.MarshalPlaybook(s.rules.WithRule(rule))
-	if err != nil {
-		return spec.Rule{}, fmt.Errorf("write the candidate playbook: %w", err)
-	}
-	compiled, err := spec.CompilePlaybook(s.rules.Spec(), document)
+	_, compiled, err := compileCandidate(s.rules.Spec(), s.rules.WithRule(rule))
 	if err != nil {
 		return spec.Rule{}, fmt.Errorf("%w: %w", domain.ErrProposalRefused, err)
 	}

@@ -52,15 +52,23 @@ func (f *playbookFile) current() (*spec.CompiledPlaybook, error) {
 }
 
 func (f *playbookFile) write(book *spec.CompiledPlaybook) (string, error) {
-	document, err := spec.MarshalPlaybook(book)
+	document, compiled, err := compileCandidate(f.spec, book)
 	if err != nil {
-		return "", fmt.Errorf("write the playbook: %w", err)
-	}
-	compiled, err := spec.CompilePlaybook(f.spec, document)
-	if err != nil {
-		return "", fmt.Errorf("check the new playbook: %w", err)
+		return "", err
 	}
 	return compiled.Digest, f.swapIn(document)
+}
+
+func compileCandidate(compiled *spec.CompiledSpec, book *spec.CompiledPlaybook) ([]byte, *spec.CompiledPlaybook, error) {
+	document, err := spec.MarshalPlaybook(book)
+	if err != nil {
+		return nil, nil, fmt.Errorf("write the candidate playbook: %w", err)
+	}
+	checked, err := spec.CompilePlaybook(compiled, document)
+	if err != nil {
+		return nil, nil, fmt.Errorf("check the candidate playbook: %w", err)
+	}
+	return document, checked, nil
 }
 
 func (f *playbookFile) swapIn(document []byte) error {

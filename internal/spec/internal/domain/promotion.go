@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"time"
 )
 
 type Promotion struct {
@@ -15,6 +16,32 @@ type Promotion struct {
 }
 
 const UnknownDiagnosis = "unknown"
+
+func (p *Promotion) SettleWindow(diagnosisCode string) (time.Duration, bool) {
+	if p == nil {
+		return 0, false
+	}
+	source, declared := p.SettleWindows[diagnosisCode]
+	if !declared {
+		return 0, false
+	}
+	window, err := ParseDuration(source)
+	return window, err == nil
+}
+
+func (p *Promotion) ContextFeatureNames() []string {
+	if p == nil {
+		return nil
+	}
+	return p.ContextFeatures
+}
+
+func (p *Promotion) Margin() float64 {
+	if p == nil {
+		return 0
+	}
+	return p.EnvelopeMargin
+}
 
 func (s *CompiledSpec) DiagnosisCodes() ([]string, error) {
 	return ParseDiagnosisCodes(s.Cognition.Executor.DiagnosisCatalog)

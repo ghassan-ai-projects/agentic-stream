@@ -77,10 +77,7 @@ func checkRuleDiagnosis(spec *CompiledSpec, codes []string, rule *Rule, path str
 }
 
 func hasSettleWindow(spec *CompiledSpec, diagnosisCode string) bool {
-	if spec.Promotion == nil {
-		return false
-	}
-	_, declared := spec.Promotion.SettleWindows[diagnosisCode]
+	_, declared := spec.Promotion.SettleWindow(diagnosisCode)
 	return declared
 }
 
@@ -116,10 +113,7 @@ func checkRuleTarget(intent Intent, path string) error {
 }
 
 func contextFeatures(spec *CompiledSpec) []string {
-	if spec.Promotion == nil {
-		return nil
-	}
-	return spec.Promotion.ContextFeatures
+	return spec.Promotion.ContextFeatureNames()
 }
 
 func checkRuleRanges(rule *Rule, context []string, path string) error {

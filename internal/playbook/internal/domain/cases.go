@@ -2,8 +2,6 @@ package domain
 
 import (
 	"time"
-
-	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 const (
@@ -59,7 +57,7 @@ func (r *Rules) NewCase(candidate CaseCandidate) Case {
 	observed := r.Observe(candidate.Decision)
 	verified := Case{CaseCandidate: candidate, Observed: observed, Features: r.Features(candidate.Facts, candidate.Evidence),
 		Summary: summaryOf(candidate.Decision), Verdict: CasePending, Reason: ReasonAwaitingWindow}
-	window, known := r.settleWindow(observed.DiagnosisCode)
+	window, known := r.spec.Promotion.SettleWindow(observed.DiagnosisCode)
 	verified.WindowEndsAt = candidate.ActedAt.Add(window)
 	switch {
 	case !candidate.Acknowledged:
@@ -73,18 +71,6 @@ func (r *Rules) NewCase(candidate CaseCandidate) Case {
 func summaryOf(decision map[string]any) string {
 	summary, _ := decision["summary"].(string)
 	return summary
-}
-
-func (r *Rules) settleWindow(diagnosisCode string) (time.Duration, bool) {
-	if r.spec.Promotion == nil {
-		return 0, false
-	}
-	source, declared := r.spec.Promotion.SettleWindows[diagnosisCode]
-	if !declared {
-		return 0, false
-	}
-	window, err := spec.ParseDuration(source)
-	return window, err == nil
 }
 
 func (c Case) Verify(evidence CaseEvidence) (string, string) {
