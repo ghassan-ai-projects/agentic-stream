@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -66,12 +65,8 @@ func startPumpStationNode(t *testing.T, binary, repository, plan, out string) {
 
 func writePumpStationPlan(t *testing.T, socket, domain string, disturbances ...map[string]any) string {
 	t.Helper()
-	policyDigest, err := policy.DigestForVersion(compilePumpStation(t).Digest)
-	if err != nil {
-		t.Fatal(err)
-	}
 	plan, err := json.Marshal(map[string]any{"schema_version": "0.1", "domain": domain, "seed": 7,
-		"host_socket": socket, "policies": []string{policyDigest}, "disturbances": disturbances})
+		"host_socket": socket, "policies": []string{pumpStationPolicyDigest(t)}, "disturbances": disturbances})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -151,4 +151,5 @@ var packageLayers = map[string]int{
 	"internal/runtime/internal/composition":       31,
 	"internal/runtime":                            32,
 	"cmd/agentic-stream":                          33,
+	"internal/testsupport/campaign":               26,
 }

@@ -12,6 +12,7 @@ the spec the campaign runs against.
 | [`testdata/plant-wire/kinds/`](testdata/plant-wire/kinds/) | The `pump` kind of the `pump-station` world. |
 | [`testdata/site-a.playbook.yaml`](testdata/site-a.playbook.yaml) | A test playbook: an active `bearing-wear` rule and a shadow `misalignment` rule, used by the playbook tests. A real playbook lives in the customer workspace, never in a repository. |
 | [`testdata/plant-wire/kinds-probe-b/`](testdata/plant-wire/kinds-probe-b/) | The `pump` kind of the `pump-station-probe-b` world: the same kind with another digest (scenario S7). |
+| [`testdata/campaign/`](testdata/campaign/) | The campaign driver's data: the approval principals (relay and approver, the all-zero-seed test key, R1 and R2 on every pump), the empty playbook a learning arm starts from and the hand-written static playbook of arm 0. |
 
 The intents: `schedule_maintenance` (R1, automatic, one preset per work order:
 `bearing_wear`, `misalignment`, `sensor_drift`, `sensor_failure`,

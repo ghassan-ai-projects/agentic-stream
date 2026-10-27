@@ -120,6 +120,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/testsupport/workerfake/` | test support: a validating EpisodeWorker that speaks the worker protocol like Tamoz or a separate Go worker |
 | `internal/testsupport/plantwirefake/` | test support: a scripted plant wire node that dials a host, sends sequenced records and reads the host's |
 | `internal/testsupport/executorconformance/` | test support: the semantic contract every episode executor must meet |
+| `internal/testsupport/campaign/` | test support: the rule-promotion campaign driver (session plans, canned recorded worker, scripted approvers on the signed endpoint, verdicts, campaign score) |
 | `internal/runartifact/` | bounded operational evidence (soak verdict) and immutable artifact verification; facade, `internal/app`, pure `internal/domain`, read-only `internal/store`, artifact directory in `internal/transport` |
 | `internal/replay/` | effect-safe replay modes |
 | `internal/replay/internal/app/` | replay sessions: epoch derivation, ingestion, engine runs and capability phases |

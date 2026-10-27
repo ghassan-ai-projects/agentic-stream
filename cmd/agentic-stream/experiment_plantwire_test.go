@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,7 +29,12 @@ func startPlantWireServe(t *testing.T, specPath, kindsDir, sitePath string, extr
 	t.Helper()
 	dir := privateSocketDir(t)
 	run := plantWireServe{dir: dir, socket: filepath.Join(dir, "host.sock"), db: newMigratedDatabasePath(t)}
-	address := freeLoopbackAddress(t)
+	run.stop = servePlantWire(t, run, freeLoopbackAddress(t), specPath, kindsDir, sitePath, extra...)
+	return run
+}
+
+func servePlantWire(t *testing.T, run plantWireServe, address, specPath, kindsDir, sitePath string, extra ...string) func() {
+	t.Helper()
 	args := []string{"serve", "--db", run.db, "--spec", specPath, "--effect-profile", "emulator", "--plant-wire-socket", run.socket,
 		"--plant-wire-kinds", kindsDir, "--plant-wire-epoch", "11", "--listen", address, "--poll-interval", "50ms"}
 	if sitePath != "" {
@@ -41,14 +47,14 @@ func startPlantWireServe(t *testing.T, specPath, kindsDir, sitePath string, extr
 	done := make(chan error, 1)
 	go func() { done <- cmd.ExecuteContext(ctx) }()
 	waitReady(t, "http://"+address+"/health/live", done)
-	run.stop = func() {
+	stop := sync.OnceFunc(func() {
 		cancel()
 		if err := <-done; err != nil {
 			t.Errorf("serve returned %v after cancellation", err)
 		}
-	}
-	t.Cleanup(run.stop)
-	return run
+	})
+	t.Cleanup(stop)
+	return stop
 }
 
 func TestServeHostsPlantWireSessionsOneAfterAnother(t *testing.T) {

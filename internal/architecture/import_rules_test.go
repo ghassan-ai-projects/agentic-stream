@@ -156,7 +156,7 @@ var allowedImports = map[string][]string{
 	"internal/evidence":                           {"internal/evidence/internal/app", "internal/evidence/internal/domain", "internal/evidence/internal/store", "internal/evidence/internal/transport", "internal/evidence/internal/wire", "internal/storage", "proto/agenticstream/runtime/v1"},
 	"internal/evidence/internal/domain":           {"internal/contractsv1"},
 	"internal/evidence/internal/wire":             {"internal/evidence/internal/domain", "proto/agenticstream/runtime/v1"},
-	"internal/testsupport/workerfake":             {"internal/contractsv1", "internal/worker", "proto/agenticstream/runtime/v1"},
+	"internal/testsupport/workerfake":             {"internal/contractsv1", "internal/worker", "proto/agenticstream/runtime/v1", "internal/canonicaljson"},
 	"internal/testsupport/plantwirefake":          {},
 	"internal/testsupport/executorconformance":    {"internal/canonicaljson", "internal/episodeledger", "internal/episodes", "internal/spec"},
 	"internal/executor/native":                    {"internal/executor/native/internal/app", "internal/executor/native/internal/domain", "internal/executor/native/internal/store", "internal/executor/native/internal/transport", "internal/storage"},
@@ -217,4 +217,5 @@ var allowedImports = map[string][]string{
 	"internal/worker":                             {"internal/worker/internal/domain", "internal/worker/internal/transport", "proto/agenticstream/runtime/v1"},
 	"migrations":                                  {},
 	"proto/agenticstream/runtime/v1":              {},
+	"internal/testsupport/campaign":               {"internal/storage", "internal/testsupport/workerfake", "proto/agenticstream/runtime/v1"},
 }
