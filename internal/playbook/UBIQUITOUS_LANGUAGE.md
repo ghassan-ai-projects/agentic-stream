@@ -4,7 +4,7 @@
 | --- | --- | --- | --- |
 | Playbook | The compiled file of human-approved rules (`spec.CompiledPlaybook`), with its own digest. | `Config.Playbook`, `Service.Digest` | `playbook_digest` |
 | Rule | One deterministic answer to a recurring, verified kind of case (see the spec's language). Identified by its id and version. | `domain.RuleKey` | `rule_id`, `rule_version` |
-| Route | How an episode admission is answered: by the model, by one rule, as an audit of a rule, or not yet (an audit that met a live episode stays queued for a later pass). Decided in the admission's transaction from the immutable snapshot, so a replay routes the same way. | `Route`, `RouteModel`, `RouteRule`, `RouteAudit`, `RouteSkip` | — |
+| Route | How an episode admission is answered: by the model, by one rule or as an audit of a rule. Decided in the admission's transaction from the immutable snapshot; an audit that meets a live episode is refused by the episode ledger and the whole admission waits for a later pass. | `Route`, `RouteModel`, `RouteRule`, `RouteAudit` | — |
 | Match | A rule whose condition holds over the snapshot's features; inside its envelope or not; with the features it read. A rule with an open circuit never matches. | `domain.Match` | — |
 | Fire | One episode a rule answered: exactly one active rule matched, inside its envelope, under its rate cap. | `domain.Fire` | `rule_fires` |
 | Recommendation | What a rule recommends: its identity, the playbook digest, the diagnosis code, the intent and preset with its parameters, and the features it read. It becomes the request's rule section. | `Recommendation` | `recommendation_json` |

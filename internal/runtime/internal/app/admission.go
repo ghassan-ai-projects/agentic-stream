@@ -10,7 +10,6 @@ import (
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/playbook"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
@@ -97,7 +96,7 @@ func deferBehindTheLiveEpisode(ctx context.Context, itemID string) error {
 }
 
 func waitsForTheLiveEpisode(err error) bool {
-	return errors.Is(err, episodeledger.ErrLiveEpisodeBusy) || errors.Is(err, playbook.ErrAuditNotAdmittable)
+	return errors.Is(err, episodeledger.ErrLiveEpisodeBusy)
 }
 
 func (a *Admitter) admitItem(ctx context.Context, itemID string, now time.Time) (domain.AdmissionAttempt, error) {

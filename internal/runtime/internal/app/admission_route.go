@@ -26,8 +26,6 @@ func applyRoute(req *episodes.Request, route playbook.Route, playbookDigest stri
 		}
 	case playbook.RouteAudit:
 		req.DispatchInShadow()
-	case playbook.RouteSkip:
-		return playbook.ErrAuditNotAdmittable
 	}
 	return nil
 }

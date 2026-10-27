@@ -22,10 +22,6 @@ func (s *Service) Route(ctx context.Context, tx *store.Tx, admission domain.Admi
 }
 
 func (s *Service) routeAudit(ctx context.Context, tx *store.Tx, audit domain.Evaluation, admission domain.Admission) (domain.Route, error) {
-	live, err := tx.HasLiveEpisode(ctx, admission.SituationID)
-	if err != nil || live {
-		return domain.Route{Kind: domain.RouteSkip}, err
-	}
 	if err := tx.BindEvaluationEpisode(ctx, audit.EvaluationID, admission.EpisodeID); err != nil {
 		return domain.Route{}, err
 	}

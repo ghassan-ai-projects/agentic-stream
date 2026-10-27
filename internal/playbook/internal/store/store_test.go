@@ -122,9 +122,6 @@ func TestForeignReadsSeeNoEpisodeAndTheAuditQueueJoinsTheTransaction(t *testing.
 	t.Parallel()
 	s := New(storagetest.OpenTemp(t))
 	inTx(t, s, func(tx *Tx) error {
-		if live, err := tx.HasLiveEpisode(t.Context(), "s1"); err != nil || live {
-			t.Fatalf("live episode = %v, %v; want none", live, err)
-		}
 		if decision, err := tx.Decision(t.Context(), "missing"); err != nil || decision.Ended {
 			t.Fatalf("decision = %+v, %v; want an episode that has not ended", decision, err)
 		}

@@ -58,11 +58,3 @@ func rawOrNil(document []byte) []byte {
 	}
 	return document
 }
-
-func (t *Tx) HasLiveEpisode(ctx context.Context, situationID string) (bool, error) {
-	_, live, err := storage.QueryOptional[int](ctx, t.q, `SELECT 1 FROM episodes WHERE situation_id = ? AND lifecycle_status IN `+liveLifecycles+` LIMIT 1`, situationID)
-	if err != nil {
-		return false, fmt.Errorf("read live episode of situation %s: %w", situationID, err)
-	}
-	return live, nil
-}

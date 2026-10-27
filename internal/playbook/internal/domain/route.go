@@ -6,7 +6,6 @@ const (
 	RouteModel = "model"
 	RouteRule  = "rule"
 	RouteAudit = "audit"
-	RouteSkip  = "skip"
 )
 
 type Admission struct {

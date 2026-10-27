@@ -19,14 +19,6 @@ type EpisodeDecision struct {
 	Decision map[string]any
 }
 
-func (t *Tx) HasLiveEpisode(ctx context.Context, situationID string) (bool, error) {
-	live, err := episodeledger.HasLiveEpisode(ctx, t.tx, situationID)
-	if err != nil {
-		return false, fmt.Errorf("read whether situation %s has a live episode: %w", situationID, err)
-	}
-	return live, nil
-}
-
 func (t *Tx) EpisodeEnded(ctx context.Context, episodeID string) (bool, error) {
 	fence, found, err := episodeledger.ReadEpisodeFence(ctx, t.tx, episodeID)
 	if err != nil {

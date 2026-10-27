@@ -27,7 +27,3 @@ func NextDispatchableEpisode(ctx context.Context, tx *store.Tx, tenantID string,
 func ReadAdmission(ctx context.Context, tx *store.Tx, episodeID string) (domain.Admission, error) {
 	return tx.ReadAdmission(ctx, episodeID)
 }
-
-func HasLiveEpisode(ctx context.Context, tx *store.Tx, situationID string) (bool, error) {
-	return tx.HasLiveEpisode(ctx, situationID)
-}

@@ -3,7 +3,6 @@ package playbook
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/draftport"
@@ -49,8 +48,8 @@ type AuditRequest = domain.AuditRequest
 // and the immutable snapshot's facts and evidence.
 type Admission = domain.Admission
 
-// Route is how an admission is answered: by the model, by one rule, as an
-// audit of a rule, or not yet (an audit that met a live episode).
+// Route is how an admission is answered: by the model, by one rule or as an
+// audit of a rule.
 type Route = domain.Route
 
 // Recommendation is what a rule recommends: its identity, the playbook
@@ -66,7 +65,6 @@ const (
 	RouteModel = domain.RouteModel
 	RouteRule  = domain.RouteRule
 	RouteAudit = domain.RouteAudit
-	RouteSkip  = domain.RouteSkip
 )
 
 // ProposalLookup names a rule proposal and who would sign its approval.
@@ -92,11 +90,6 @@ var (
 
 // IsProposalID reports whether an approval id names a rule proposal.
 func IsProposalID(id string) bool { return domain.IsProposalID(id) }
-
-// ErrAuditNotAdmittable is the admission refusal of an audit that met a live
-// episode for its Situation; the caller leaves the item queued for a later
-// pass.
-var ErrAuditNotAdmittable = errors.New("playbook audit not admittable: the situation has a live episode")
 
 // Service is the playbook facade.
 type Service struct{ app *app.Service }
